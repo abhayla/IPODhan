@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPODhan - My Portfolio</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-green: #10B981;
+            --primary-red: #EF4444;
+            --primary-blue: #3B82F6;
+            --primary-purple: #8B5CF6;
+            --primary-orange: #F97316;
+            --gray-900: #111827;
+            --gray-700: #374151;
+            --gray-500: #6B7280;
+            --gray-300: #D1D5DB;
+            --gray-100: #F3F4F6;
+            --white: #FFFFFF;
+            --yellow: #FCD34D;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--gray-100);
+            color: var(--gray-900);
+        }
+
+        /* Header */
+        .header {
+            background: var(--white);
+            border-bottom: 1px solid var(--gray-300);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary-blue);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+        }
+
+        .nav-links a {
+            text-decoration: none;
+            color: var(--gray-700);
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav-links a:hover,
+        .nav-links a.active {
+            color: var(--primary-blue);
+        }
+
+        .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--white);
+            font-weight: 600;
+        }
+
+        /* Portfolio Header */
+        .portfolio-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: var(--white);
+            padding: 3rem 0;
+        }
+
+        .portfolio-header-content {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+
+        .greeting {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .portfolio-date {
+            opacity: 0.9;
+        }
+
+        /* Stats Cards */
+        .stats-section {
+            max-width: 1280px;
+            margin: -2rem auto 2rem;
+            padding: 0 1.5rem;
+            position: relative;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.5rem;
+        }
+
+        .stat-card {
+            background: var(--white);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            transition: all 0.3s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .stat-icon.blue {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--primary-blue);
+        }
+
+        .stat-icon.green {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--primary-green);
+        }
+
+        .stat-icon.purple {
+            background: rgba(139, 92, 246, 0.1);
+            color: var(--primary-purple);
+        }
+
+        .stat-icon.orange {
+            background: rgba(249, 115, 22, 0.1);
+            color: var(--primary-orange);
+        }
+
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+        }
+
+        .stat-change {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            margin-top: 0.5rem;
+        }
+
+        .stat-change.positive {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--primary-green);
+        }
+
+        .stat-change.negative {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--primary-red);
+        }
+
+        /* Main Content */
+        .main-content {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 1.5rem 2rem;
+        }
+
+        /* Active Applications */
+        .section {
+            margin-bottom: 2rem;
+        }
+
+        .section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+
+        .view-all {
+            color: var(--primary-blue);
+            text-decoration: none;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .applications-grid {
+            display: grid;
+            gap: 1rem;
+        }
+
+        .application-card {
+            background: var(--white);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto;
+            align-items: center;
+            gap: 1.5rem;
+            transition: all 0.2s;
+        }
+
+        .application-card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+
+        .ipo-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .ipo-logo {
+            width: 48px;
+            height: 48px;
+            border-radius: 0.5rem;
+            background: var(--gray-200);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            color: var(--gray-700);
+        }
+
+        .ipo-details {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .ipo-name {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .ipo-category {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .status-badge.pending {
+            background: rgba(251, 191, 36, 0.1);
+            color: #D97706;
+        }
+
+        .status-badge.applied {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--primary-blue);
+        }
+
+        .status-badge.allotted {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--primary-green);
+        }
+
+        .status-badge.listed {
+            background: rgba(139, 92, 246, 0.1);
+            color: var(--primary-purple);
+        }
+
+        .action-btn {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--gray-300);
+            background: var(--white);
+            border-radius: 0.5rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .action-btn:hover {
+            border-color: var(--primary-blue);
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        /* Performance Chart */
+        .chart-container {
+            background: var(--white);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .chart-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        .chart-tabs {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .chart-tab {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--gray-300);
+            background: var(--white);
+            border-radius: 0.5rem;
+            font-size: 0.875rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .chart-tab.active {
+            background: var(--primary-blue);
+            color: var(--white);
+            border-color: var(--primary-blue);
+        }
+
+        .chart {
+            height: 250px;
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-around;
+            padding: 1rem 0;
+        }
+
+        .month-bar {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .bar-container {
+            width: 100%;
+            height: 200px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+        }
+
+        .bar {
+            width: 40px;
+            background: linear-gradient(180deg, var(--primary-blue), var(--primary-purple));
+            border-radius: 0.25rem 0.25rem 0 0;
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .bar:hover {
+            opacity: 0.8;
+        }
+
+        .bar-value {
+            position: absolute;
+            top: -20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.75rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .month-label {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+        }
+
+        /* Best/Worst Performers */
+        .performers-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+        }
+
+        .performers-card {
+            background: var(--white);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .performers-title {
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .performer-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .performer-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--gray-100);
+        }
+
+        .performer-item:last-child {
+            border-bottom: none;
+        }
+
+        .performer-name {
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .performer-value {
+            font-weight: 600;
+        }
+
+        .performer-value.profit {
+            color: var(--primary-green);
+        }
+
+        .performer-value.loss {
+            color: var(--primary-red);
+        }
+
+        /* Upcoming Actions */
+        .actions-list {
+            background: var(--white);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+
+        .action-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--gray-100);
+        }
+
+        .action-item:last-child {
+            border-bottom: none;
+        }
+
+        .action-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--gray-100);
+        }
+
+        .action-details {
+            flex: 1;
+        }
+
+        .action-title {
+            font-weight: 500;
+            margin-bottom: 0.25rem;
+        }
+
+        .action-date {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .application-card {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .performers-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .nav-links {
+                display: none;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .greeting {
+                font-size: 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">💹 IPODhan</div>
+            <nav class="nav-links">
+                <a href="mockup-dashboard.html">Dashboard</a>
+                <a href="mockup-broker-comparison.html">Brokers</a>
+                <a href="mockup-allotment-checker.html">Tools</a>
+                <a href="#" class="active">Portfolio</a>
+            </nav>
+            <div class="user-menu">
+                <span style="font-weight: 500;">John Doe</span>
+                <div class="user-avatar">JD</div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Portfolio Header -->
+    <div class="portfolio-header">
+        <div class="portfolio-header-content">
+            <h1 class="greeting">Good morning, John! 👋</h1>
+            <p class="portfolio-date">Your portfolio overview • Last updated: 2 mins ago</p>
+        </div>
+    </div>
+
+    <!-- Stats Cards -->
+    <div class="stats-section">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon blue">📊</div>
+                <div class="stat-value">25</div>
+                <div class="stat-label">IPOs Applied</div>
+                <span class="stat-change positive">+3 this month</span>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon green">✅</div>
+                <div class="stat-value">8</div>
+                <div class="stat-label">IPOs Allotted</div>
+                <span class="stat-change positive">32% success</span>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon purple">💰</div>
+                <div class="stat-value">₹45,230</div>
+                <div class="stat-label">Total Returns</div>
+                <span class="stat-change positive">+18.5%</span>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon orange">🎯</div>
+                <div class="stat-value">₹1,20,000</div>
+                <div class="stat-label">Active Investment</div>
+                <span class="stat-change positive">3 IPOs</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <!-- Active Applications -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">Active IPO Applications</h2>
+                <a href="#" class="view-all">View All →</a>
+            </div>
+            <div class="applications-grid">
+                <div class="application-card">
+                    <div class="ipo-info">
+                        <div class="ipo-logo">TV</div>
+                        <div class="ipo-details">
+                            <div class="ipo-name">TechVista Solutions</div>
+                            <div class="ipo-category">Technology • Mainboard</div>
+                        </div>
+                    </div>
+                    <div>
+                        <span class="status-badge pending">Pending</span>
+                    </div>
+                    <div>
+                        <div style="font-weight: 500;">3 Lots</div>
+                        <div style="font-size: 0.875rem; color: var(--gray-600);">150 shares</div>
+                    </div>
+                    <div>
+                        <div style="font-weight: 500;">₹45,000</div>
+                        <div style="font-size: 0.875rem; color: var(--gray-600);">Blocked</div>
+                    </div>
+                    <div>
+                        <div style="font-weight: 500;">Jan 20</div>
+                        <div style="font-size: 0.875rem; color: var(--gray-600);">Allotment</div>
+                    </div>
+                    <div>
+                        <button class="action-btn">View Details</button>
+                    </div>
+                </div>
+
+                <div class="application-card">
+                    <div class="ipo-info">
+                        <div class="ipo-logo" style="background: #FEE2E2; color: #DC2626;">HC</div>
+                        <div class="ipo-details">
+                            <div class="ipo-name">HealthCore Pharma</div>
+                            <div class="ipo-category">Healthcare • Mainboard</div>
+                        </div>
+                    </div>
+                    <div>
+                        <span class="status-badge applied">Applied</span>
+                    </div>
+                    <div>
+                        <div style="font-weight: 500;">2 Lots</div>
+                        <div style="font-size: 0.875rem; color: var(--gray-600);">60 shares</div>
+                    </div>
+                    <div>
+                        <div style="font-weight: 500;">₹28,800</div>
+                        <div style="font-size: 0.875rem; color: var(--gray-600);">Blocked</div>
+                    </div>
+                    <div>
+                        <div style="font-weight: 500;">Jan 19</div>
+                        <div style="font-size: 0.875rem; color: var(--gray-600);">Allotment</div>
+                    </div>
+                    <div>
+                        <button class="action-btn">Track Status</button>
+                    </div>
+                </div>
+
+                <div class="application-card">
+                    <div class="ipo-info">
+                        <div class="ipo-logo" style="background: #D1FAE5; color: #059669;">GE</div>
+                        <div class="ipo-details">
+                            <div class="ipo-name">GreenEnergy Solar</div>
+                            <div class="ipo-category">Energy • SME</div>
+                        </div>
+                    </div>
+                    <div>
+                        <span class="status-badge allotted">Allotted</span>
+                    </div>
+                    <div>
+                        <div style="font-weight: 500;">1 Lot</div>
+                        <div style="font-size: 0.875rem; color: var(--gray-600);">90 shares</div>
+                    </div>
+                    <div>
+                        <div style="font-weight: 500;">₹14,850</div>
+                        <div style="font-size: 0.875rem; color: var(--primary-green);">+₹1,800</div>
+                    </div>
+                    <div>
+                        <div style="font-weight: 500;">Jan 23</div>
+                        <div style="font-size: 0.875rem; color: var(--gray-600);">Listing</div>
+                    </div>
+                    <div>
+                        <button class="action-btn">View Returns</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Performance Chart -->
+        <section class="section">
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3 class="chart-title">Monthly Performance</h3>
+                    <div class="chart-tabs">
+                        <button class="chart-tab active">Returns</button>
+                        <button class="chart-tab">Applications</button>
+                        <button class="chart-tab">Success Rate</button>
+                    </div>
+                </div>
+                <div class="chart">
+                    <div class="month-bar">
+                        <div class="bar-container">
+                            <div class="bar" style="height: 60%;">
+                                <span class="bar-value">+12%</span>
+                            </div>
+                        </div>
+                        <span class="month-label">Jan</span>
+                    </div>
+                    <div class="month-bar">
+                        <div class="bar-container">
+                            <div class="bar" style="height: 0%; background: var(--gray-300);">
+                                <span class="bar-value">0%</span>
+                            </div>
+                        </div>
+                        <span class="month-label">Feb</span>
+                    </div>
+                    <div class="month-bar">
+                        <div class="bar-container">
+                            <div class="bar" style="height: 40%;">
+                                <span class="bar-value">+8%</span>
+                            </div>
+                        </div>
+                        <span class="month-label">Mar</span>
+                    </div>
+                    <div class="month-bar">
+                        <div class="bar-container">
+                            <div class="bar" style="height: 0%; background: var(--gray-300);">
+                                <span class="bar-value">0%</span>
+                            </div>
+                        </div>
+                        <span class="month-label">Apr</span>
+                    </div>
+                    <div class="month-bar">
+                        <div class="bar-container">
+                            <div class="bar" style="height: 75%;">
+                                <span class="bar-value">+15%</span>
+                            </div>
+                        </div>
+                        <span class="month-label">May</span>
+                    </div>
+                    <div class="month-bar">
+                        <div class="bar-container">
+                            <div class="bar" style="height: 15%; background: var(--primary-red);">
+                                <span class="bar-value">-3%</span>
+                            </div>
+                        </div>
+                        <span class="month-label">Jun</span>
+                    </div>
+                    <div class="month-bar">
+                        <div class="bar-container">
+                            <div class="bar" style="height: 100%;">
+                                <span class="bar-value">+20%</span>
+                            </div>
+                        </div>
+                        <span class="month-label">Jul</span>
+                    </div>
+                    <div class="month-bar">
+                        <div class="bar-container">
+                            <div class="bar" style="height: 25%;">
+                                <span class="bar-value">+5%</span>
+                            </div>
+                        </div>
+                        <span class="month-label">Aug</span>
+                    </div>
+                    <div class="month-bar">
+                        <div class="bar-container">
+                            <div class="bar" style="height: 50%;">
+                                <span class="bar-value">+10%</span>
+                            </div>
+                        </div>
+                        <span class="month-label">Sep</span>
+                    </div>
+                    <div class="month-bar">
+                        <div class="bar-container">
+                            <div class="bar" style="height: 80%;">
+                                <span class="bar-value">+16%</span>
+                            </div>
+                        </div>
+                        <span class="month-label">Oct</span>
+                    </div>
+                    <div class="month-bar">
+                        <div class="bar-container">
+                            <div class="bar" style="height: 45%;">
+                                <span class="bar-value">+9%</span>
+                            </div>
+                        </div>
+                        <span class="month-label">Nov</span>
+                    </div>
+                    <div class="month-bar">
+                        <div class="bar-container">
+                            <div class="bar" style="height: 65%;">
+                                <span class="bar-value">+13%</span>
+                            </div>
+                        </div>
+                        <span class="month-label">Dec</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Best/Worst Performers -->
+        <section class="section">
+            <div class="performers-grid">
+                <div class="performers-card">
+                    <h3 class="performers-title">
+                        <span>🏆</span> Best Performers
+                    </h3>
+                    <div class="performer-list">
+                        <div class="performer-item">
+                            <span class="performer-name">DataSync Technologies</span>
+                            <span class="performer-value profit">+125%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="performer-name">MediLife Pharma</span>
+                            <span class="performer-value profit">+89%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="performer-name">SolarTech Energy</span>
+                            <span class="performer-value profit">+67%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="performer-name">CloudServe Solutions</span>
+                            <span class="performer-value profit">+45%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="performer-name">EduLearn Platform</span>
+                            <span class="performer-value profit">+38%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="performers-card">
+                    <h3 class="performers-title">
+                        <span>📉</span> Underperformers
+                    </h3>
+                    <div class="performer-list">
+                        <div class="performer-item">
+                            <span class="performer-name">AutoDrive Motors</span>
+                            <span class="performer-value loss">-18%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="performer-name">RetailPlus Mart</span>
+                            <span class="performer-value loss">-12%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="performer-name">FinanceHub Services</span>
+                            <span class="performer-value loss">-8%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="performer-name">BuildCon Infra</span>
+                            <span class="performer-value loss">-5%</span>
+                        </div>
+                        <div class="performer-item">
+                            <span class="performer-name">TextileCraft Ltd</span>
+                            <span class="performer-value loss">-2%</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Upcoming Actions -->
+        <section class="section">
+            <div class="section-header">
+                <h2 class="section-title">Upcoming Actions</h2>
+            </div>
+            <div class="actions-list">
+                <div class="action-item">
+                    <div class="action-icon">📅</div>
+                    <div class="action-details">
+                        <div class="action-title">TechVista allotment results</div>
+                        <div class="action-date">Tomorrow, Jan 20 • Check your allotment status</div>
+                    </div>
+                    <button class="action-btn">Set Reminder</button>
+                </div>
+                <div class="action-item">
+                    <div class="action-icon">📈</div>
+                    <div class="action-details">
+                        <div class="action-title">HealthCore Pharma listing day</div>
+                        <div class="action-date">Jan 22, 2025 • Expected GMP: +₹120</div>
+                    </div>
+                    <button class="action-btn">Track GMP</button>
+                </div>
+                <div class="action-item">
+                    <div class="action-icon">💳</div>
+                    <div class="action-details">
+                        <div class="action-title">GreenEnergy shares credit</div>
+                        <div class="action-date">Jan 23, 2025 • 90 shares to your demat</div>
+                    </div>
+                    <button class="action-btn">View Details</button>
+                </div>
+                <div class="action-item">
+                    <div class="action-icon">💡</div>
+                    <div class="action-details">
+                        <div class="action-title">3 new IPOs match your criteria</div>
+                        <div class="action-date">Technology sector • Similar to your past selections</div>
+                    </div>
+                    <button class="action-btn">View IPOs</button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // Chart tab switching
+        const chartTabs = document.querySelectorAll('.chart-tab');
+        chartTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                chartTabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

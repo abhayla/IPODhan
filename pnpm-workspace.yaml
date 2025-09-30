@@ -1,0 +1,5 @@
+packages:
+  - 'ipodhan-web'
+  - 'ipodhan-backend'
+  - 'ipodhan-data-pipeline'
+  - 'ipodhan-shared'

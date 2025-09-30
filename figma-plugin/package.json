@@ -1,0 +1,17 @@
+{
+  "name": "figma-plugin",
+  "version": "1.0.0",
+  "description": "- Figma Desktop App (required for local plugin development) - Node.js installed on your system - Basic familiarity with Figma plugins",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.117.0",
+    "typescript": "^5.9.2"
+  }
+}

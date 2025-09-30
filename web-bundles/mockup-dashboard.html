@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPODhan - Dashboard Mockup</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-green: #10B981;
+            --primary-red: #EF4444;
+            --primary-blue: #3B82F6;
+            --primary-purple: #8B5CF6;
+            --gray-900: #111827;
+            --gray-700: #374151;
+            --gray-500: #6B7280;
+            --gray-300: #D1D5DB;
+            --gray-100: #F3F4F6;
+            --white: #FFFFFF;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--gray-100);
+            color: var(--gray-900);
+            line-height: 1.6;
+        }
+
+        /* Header */
+        .header {
+            background: var(--white);
+            border-bottom: 1px solid var(--gray-300);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        }
+
+        .header-content {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary-blue);
+        }
+
+        .nav {
+            display: flex;
+            gap: 2rem;
+            align-items: center;
+        }
+
+        .nav a {
+            text-decoration: none;
+            color: var(--gray-700);
+            font-weight: 500;
+            transition: color 0.2s;
+        }
+
+        .nav a:hover {
+            color: var(--primary-blue);
+        }
+
+        .search-bar {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.5rem;
+            width: 200px;
+        }
+
+        /* Hero Section */
+        .hero {
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            color: var(--white);
+            padding: 3rem 0;
+            text-align: center;
+        }
+
+        .hero h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .hero p {
+            font-size: 1.125rem;
+            opacity: 0.9;
+            margin-bottom: 2rem;
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+
+        .btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+            font-size: 1rem;
+        }
+
+        .btn-primary {
+            background: var(--white);
+            color: var(--primary-blue);
+        }
+
+        .btn-secondary {
+            background: transparent;
+            color: var(--white);
+            border: 2px solid var(--white);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        /* Stats Bar */
+        .stats-bar {
+            background: var(--white);
+            padding: 1.5rem 0;
+            border-bottom: 1px solid var(--gray-300);
+        }
+
+        .stats-container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 2rem;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary-blue);
+        }
+
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--gray-500);
+            margin-top: 0.25rem;
+        }
+
+        /* Filter Bar */
+        .filter-bar {
+            background: var(--white);
+            padding: 1rem 0;
+            margin-bottom: 2rem;
+            border-bottom: 1px solid var(--gray-300);
+        }
+
+        .filter-container {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .filter-dropdown {
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.5rem;
+            background: var(--white);
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+
+        /* Main Content */
+        .main-content {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 1.5rem 2rem;
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 2rem;
+        }
+
+        /* IPO Cards */
+        .ipo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .ipo-card {
+            background: var(--white);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+        }
+
+        .ipo-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.15);
+        }
+
+        .ipo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 1rem;
+        }
+
+        .company-info h3 {
+            font-size: 1.25rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .company-meta {
+            font-size: 0.875rem;
+            color: var(--gray-500);
+        }
+
+        .rating {
+            color: #FCD34D;
+        }
+
+        .price-info {
+            background: var(--gray-100);
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin: 1rem 0;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+
+        .price-item label {
+            display: block;
+            font-size: 0.75rem;
+            color: var(--gray-500);
+            margin-bottom: 0.25rem;
+        }
+
+        .price-item value {
+            font-weight: 600;
+            color: var(--gray-900);
+        }
+
+        .subscription-status {
+            margin: 1rem 0;
+        }
+
+        .status-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+        }
+
+        .status-badge {
+            background: var(--primary-green);
+            color: var(--white);
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .progress-bar {
+            background: var(--gray-300);
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            background: var(--primary-green);
+            height: 100%;
+            transition: width 0.3s;
+        }
+
+        .category-stats {
+            display: flex;
+            gap: 1rem;
+            margin-top: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .category-stat {
+            color: var(--gray-600);
+        }
+
+        .gmp-info {
+            background: #FEF3C7;
+            padding: 0.75rem;
+            border-radius: 0.5rem;
+            margin: 1rem 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .gmp-value {
+            font-weight: 600;
+            color: var(--primary-green);
+        }
+
+        .card-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .btn-card {
+            flex: 1;
+            padding: 0.5rem 1rem;
+            border: 1px solid var(--gray-300);
+            border-radius: 0.5rem;
+            background: var(--white);
+            color: var(--gray-700);
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-card:hover {
+            background: var(--gray-100);
+        }
+
+        .btn-card.primary {
+            background: var(--primary-blue);
+            color: var(--white);
+            border-color: var(--primary-blue);
+        }
+
+        /* Sidebar */
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .sidebar-widget {
+            background: var(--white);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .widget-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .gmp-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .gmp-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--gray-100);
+        }
+
+        .gmp-item:last-child {
+            border-bottom: none;
+        }
+
+        .gmp-company {
+            font-weight: 500;
+        }
+
+        .gmp-premium {
+            color: var(--primary-green);
+            font-weight: 600;
+        }
+
+        .quick-tools {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .tool-link {
+            padding: 0.75rem;
+            background: var(--gray-100);
+            border-radius: 0.5rem;
+            text-decoration: none;
+            color: var(--gray-700);
+            transition: all 0.2s;
+        }
+
+        .tool-link:hover {
+            background: var(--primary-blue);
+            color: var(--white);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .main-content {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                display: grid;
+                grid-template-columns: repeat(2, 1fr);
+                gap: 1rem;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .nav {
+                display: none;
+            }
+
+            .stats-container {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .ipo-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                grid-template-columns: 1fr;
+            }
+
+            .hero h1 {
+                font-size: 1.875rem;
+            }
+
+            .filter-container {
+                overflow-x: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">💹 IPODhan</div>
+            <nav class="nav">
+                <a href="#">Live IPOs</a>
+                <a href="#">Upcoming</a>
+                <a href="#">GMP Tracker</a>
+                <a href="#">Tools</a>
+                <a href="#">Brokers</a>
+                <input type="search" placeholder="Search IPOs..." class="search-bar">
+            </nav>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <h1>Track Live IPOs & Grey Market Premium</h1>
+        <p>Real-time subscription status, GMP tracking, and smart analytics for informed IPO investments</p>
+        <div class="hero-buttons">
+            <button class="btn btn-primary">Get Started</button>
+            <button class="btn btn-secondary">Watch Demo</button>
+        </div>
+    </section>
+
+    <!-- Stats Bar -->
+    <div class="stats-bar">
+        <div class="stats-container">
+            <div class="stat-item">
+                <div class="stat-value">5</div>
+                <div class="stat-label">Live IPOs</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">2</div>
+                <div class="stat-label">Closing Today</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">12</div>
+                <div class="stat-label">Upcoming IPOs</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">3</div>
+                <div class="stat-label">Listed Today</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value">₹45</div>
+                <div class="stat-label">Avg GMP (+12%)</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Bar -->
+    <div class="filter-bar">
+        <div class="filter-container">
+            <select class="filter-dropdown">
+                <option>All Categories</option>
+                <option>Mainboard</option>
+                <option>SME</option>
+            </select>
+            <select class="filter-dropdown">
+                <option>All Exchanges</option>
+                <option>NSE</option>
+                <option>BSE</option>
+                <option>Both</option>
+            </select>
+            <select class="filter-dropdown">
+                <option>Price Range</option>
+                <option>Under ₹500</option>
+                <option>₹500 - ₹1000</option>
+                <option>Above ₹1000</option>
+            </select>
+            <select class="filter-dropdown">
+                <option>All Sectors</option>
+                <option>Technology</option>
+                <option>Healthcare</option>
+                <option>Finance</option>
+            </select>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="ipo-grid">
+            <!-- IPO Card 1 -->
+            <div class="ipo-card">
+                <div class="ipo-header">
+                    <div class="company-info">
+                        <h3>TechVista Solutions</h3>
+                        <div class="company-meta">Mainboard | NSE & BSE | Technology</div>
+                    </div>
+                    <div class="rating">★ 4.2</div>
+                </div>
+
+                <div class="price-info">
+                    <div class="price-item">
+                        <label>Price Band</label>
+                        <value>₹280 - ₹300</value>
+                    </div>
+                    <div class="price-item">
+                        <label>Lot Size</label>
+                        <value>50 shares</value>
+                    </div>
+                    <div class="price-item">
+                        <label>Min Investment</label>
+                        <value>₹15,000</value>
+                    </div>
+                </div>
+
+                <div class="subscription-status">
+                    <div class="status-header">
+                        <span>Subscription Status</span>
+                        <span class="status-badge">LIVE</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 23%"></div>
+                    </div>
+                    <div style="font-weight: 600; margin-top: 0.5rem;">2.3x Overall</div>
+                    <div class="category-stats">
+                        <span class="category-stat">Retail: 3.2x</span>
+                        <span class="category-stat">QIB: 1.8x</span>
+                        <span class="category-stat">NII: 2.1x</span>
+                    </div>
+                </div>
+
+                <div class="gmp-info">
+                    <span>GMP: <span class="gmp-value">+₹45 (15%)</span></span>
+                    <span>Expected: ₹345</span>
+                </div>
+
+                <div class="card-actions">
+                    <button class="btn-card">View Details</button>
+                    <button class="btn-card">Track</button>
+                    <button class="btn-card primary">Apply Now</button>
+                </div>
+            </div>
+
+            <!-- IPO Card 2 -->
+            <div class="ipo-card">
+                <div class="ipo-header">
+                    <div class="company-info">
+                        <h3>HealthCore Pharma</h3>
+                        <div class="company-meta">Mainboard | NSE & BSE | Healthcare</div>
+                    </div>
+                    <div class="rating">★ 4.5</div>
+                </div>
+
+                <div class="price-info">
+                    <div class="price-item">
+                        <label>Price Band</label>
+                        <value>₹450 - ₹480</value>
+                    </div>
+                    <div class="price-item">
+                        <label>Lot Size</label>
+                        <value>30 shares</value>
+                    </div>
+                    <div class="price-item">
+                        <label>Min Investment</label>
+                        <value>₹14,400</value>
+                    </div>
+                </div>
+
+                <div class="subscription-status">
+                    <div class="status-header">
+                        <span>Subscription Status</span>
+                        <span class="status-badge">LIVE</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 56%"></div>
+                    </div>
+                    <div style="font-weight: 600; margin-top: 0.5rem;">5.6x Overall</div>
+                    <div class="category-stats">
+                        <span class="category-stat">Retail: 8.2x</span>
+                        <span class="category-stat">QIB: 4.1x</span>
+                        <span class="category-stat">NII: 5.3x</span>
+                    </div>
+                </div>
+
+                <div class="gmp-info">
+                    <span>GMP: <span class="gmp-value">+₹120 (25%)</span></span>
+                    <span>Expected: ₹600</span>
+                </div>
+
+                <div class="card-actions">
+                    <button class="btn-card">View Details</button>
+                    <button class="btn-card">Track</button>
+                    <button class="btn-card primary">Apply Now</button>
+                </div>
+            </div>
+
+            <!-- IPO Card 3 -->
+            <div class="ipo-card">
+                <div class="ipo-header">
+                    <div class="company-info">
+                        <h3>GreenEnergy Solar</h3>
+                        <div class="company-meta">SME | BSE SME | Renewable Energy</div>
+                    </div>
+                    <div class="rating">★ 3.8</div>
+                </div>
+
+                <div class="price-info">
+                    <div class="price-item">
+                        <label>Price Band</label>
+                        <value>₹150 - ₹165</value>
+                    </div>
+                    <div class="price-item">
+                        <label>Lot Size</label>
+                        <value>90 shares</value>
+                    </div>
+                    <div class="price-item">
+                        <label>Min Investment</label>
+                        <value>₹14,850</value>
+                    </div>
+                </div>
+
+                <div class="subscription-status">
+                    <div class="status-header">
+                        <span>Subscription Status</span>
+                        <span class="status-badge">LIVE</span>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: 18%"></div>
+                    </div>
+                    <div style="font-weight: 600; margin-top: 0.5rem;">1.8x Overall</div>
+                    <div class="category-stats">
+                        <span class="category-stat">Retail: 2.1x</span>
+                        <span class="category-stat">QIB: 1.2x</span>
+                        <span class="category-stat">NII: 1.9x</span>
+                    </div>
+                </div>
+
+                <div class="gmp-info">
+                    <span>GMP: <span class="gmp-value">+₹20 (12%)</span></span>
+                    <span>Expected: ₹185</span>
+                </div>
+
+                <div class="card-actions">
+                    <button class="btn-card">View Details</button>
+                    <button class="btn-card">Track</button>
+                    <button class="btn-card primary">Apply Now</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <!-- Top GMP Gainers Widget -->
+            <div class="sidebar-widget">
+                <h3 class="widget-title">🔥 Top GMP Gainers</h3>
+                <div class="gmp-list">
+                    <div class="gmp-item">
+                        <span class="gmp-company">HealthCore Pharma</span>
+                        <span class="gmp-premium">+₹120</span>
+                    </div>
+                    <div class="gmp-item">
+                        <span class="gmp-company">FinTech Solutions</span>
+                        <span class="gmp-premium">+₹95</span>
+                    </div>
+                    <div class="gmp-item">
+                        <span class="gmp-company">DataSync Tech</span>
+                        <span class="gmp-premium">+₹80</span>
+                    </div>
+                    <div class="gmp-item">
+                        <span class="gmp-company">TechVista Solutions</span>
+                        <span class="gmp-premium">+₹45</span>
+                    </div>
+                    <div class="gmp-item">
+                        <span class="gmp-company">GreenEnergy Solar</span>
+                        <span class="gmp-premium">+₹20</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Tools Widget -->
+            <div class="sidebar-widget">
+                <h3 class="widget-title">🛠 Quick Tools</h3>
+                <div class="quick-tools">
+                    <a href="#" class="tool-link">📊 Allotment Checker</a>
+                    <a href="#" class="tool-link">💰 Returns Calculator</a>
+                    <a href="#" class="tool-link">🏦 Compare Brokers</a>
+                    <a href="#" class="tool-link">📈 GMP Tracker</a>
+                    <a href="#" class="tool-link">📄 Download RHP</a>
+                </div>
+            </div>
+
+            <!-- Market Insights Widget -->
+            <div class="sidebar-widget">
+                <h3 class="widget-title">💡 Market Insights</h3>
+                <div style="padding: 1rem 0;">
+                    <p style="font-size: 0.875rem; color: var(--gray-600); line-height: 1.5;">
+                        <strong>Today's Highlight:</strong> Healthcare sector IPOs showing strong subscription with average 4.5x oversubscription. Technology sector GMP trending upward.
+                    </p>
+                </div>
+            </div>
+        </aside>
+    </div>
+</body>
+</html>

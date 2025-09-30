@@ -1,0 +1,952 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPODhan - Broker Comparison</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-green: #10B981;
+            --primary-red: #EF4444;
+            --primary-blue: #3B82F6;
+            --primary-purple: #8B5CF6;
+            --gray-900: #111827;
+            --gray-700: #374151;
+            --gray-500: #6B7280;
+            --gray-300: #D1D5DB;
+            --gray-100: #F3F4F6;
+            --white: #FFFFFF;
+            --yellow: #FCD34D;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--gray-100);
+            color: var(--gray-900);
+            line-height: 1.6;
+        }
+
+        /* Header */
+        .header {
+            background: var(--white);
+            border-bottom: 1px solid var(--gray-300);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary-blue);
+        }
+
+        /* Page Title */
+        .page-title {
+            background: var(--white);
+            padding: 2rem 0;
+            border-bottom: 1px solid var(--gray-300);
+        }
+
+        .page-title-content {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+
+        .page-title h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-title p {
+            color: var(--gray-600);
+        }
+
+        /* Featured Offers */
+        .featured-offers {
+            max-width: 1280px;
+            margin: 2rem auto;
+            padding: 0 1.5rem;
+        }
+
+        .offers-container {
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            color: var(--white);
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            display: flex;
+            gap: 2rem;
+            overflow-x: auto;
+        }
+
+        .offer-item {
+            min-width: 300px;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .offer-icon {
+            font-size: 2rem;
+        }
+
+        /* Filter Tabs */
+        .filter-tabs {
+            max-width: 1280px;
+            margin: 0 auto 2rem;
+            padding: 0 1.5rem;
+        }
+
+        .tabs-container {
+            background: var(--white);
+            padding: 0.5rem;
+            border-radius: 0.75rem;
+            display: flex;
+            gap: 0.5rem;
+            overflow-x: auto;
+        }
+
+        .tab-btn {
+            padding: 0.75rem 1.5rem;
+            border: none;
+            background: transparent;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: all 0.2s;
+        }
+
+        .tab-btn.active {
+            background: var(--primary-blue);
+            color: var(--white);
+        }
+
+        /* Broker Grid */
+        .broker-grid {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 1.5rem 2rem;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .broker-card {
+            background: var(--white);
+            border-radius: 0.75rem;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+            position: relative;
+        }
+
+        .broker-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        }
+
+        .broker-card.selected {
+            border: 2px solid var(--primary-blue);
+        }
+
+        .broker-checkbox {
+            position: absolute;
+            top: 1rem;
+            left: 1rem;
+            width: 24px;
+            height: 24px;
+            cursor: pointer;
+        }
+
+        .broker-header {
+            padding: 1.5rem;
+            text-align: center;
+            border-bottom: 1px solid var(--gray-100);
+        }
+
+        .broker-logo {
+            width: 60px;
+            height: 60px;
+            background: var(--gray-300);
+            border-radius: 0.5rem;
+            margin: 0 auto 1rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+        }
+
+        .broker-name {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+
+        .broker-rating {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .stars {
+            color: var(--yellow);
+        }
+
+        .broker-charges {
+            padding: 1rem 1.5rem;
+            background: var(--gray-50);
+        }
+
+        .charge-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+        }
+
+        .charge-label {
+            color: var(--gray-600);
+            font-size: 0.875rem;
+        }
+
+        .charge-value {
+            font-weight: 600;
+        }
+
+        .free {
+            color: var(--primary-green);
+        }
+
+        .broker-features {
+            padding: 1rem 1.5rem;
+        }
+
+        .feature-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0;
+            font-size: 0.875rem;
+        }
+
+        .feature-check {
+            color: var(--primary-green);
+        }
+
+        .broker-action {
+            padding: 1rem 1.5rem;
+        }
+
+        .btn-open-account {
+            width: 100%;
+            padding: 0.75rem;
+            background: var(--primary-blue);
+            color: var(--white);
+            border: none;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-open-account:hover {
+            background: #2563EB;
+        }
+
+        /* Comparison Table */
+        .comparison-section {
+            max-width: 1280px;
+            margin: 3rem auto;
+            padding: 0 1.5rem;
+        }
+
+        .comparison-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .comparison-table {
+            background: var(--white);
+            border-radius: 0.75rem;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: var(--gray-100);
+            padding: 1rem;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid var(--gray-300);
+        }
+
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid var(--gray-100);
+        }
+
+        tr:hover {
+            background: var(--gray-50);
+        }
+
+        .broker-col {
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .highlight {
+            background: #FEF3C7;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+        }
+
+        /* Compare Button */
+        .compare-fab {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--primary-blue);
+            color: var(--white);
+            padding: 1rem 2rem;
+            border-radius: 9999px;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-weight: 600;
+            border: none;
+            transition: all 0.3s;
+        }
+
+        .compare-fab:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(59, 130, 246, 0.5);
+        }
+
+        .compare-count {
+            background: var(--white);
+            color: var(--primary-blue);
+            padding: 0.25rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+        }
+
+        /* Recommendation Box */
+        .recommendation {
+            background: linear-gradient(135deg, #FEF3C7, #FDE68A);
+            border: 1px solid #FCD34D;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            margin-top: 2rem;
+        }
+
+        .recommendation h3 {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .recommendation-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+        }
+
+        .rec-item {
+            background: var(--white);
+            padding: 1rem;
+            border-radius: 0.5rem;
+        }
+
+        .rec-title {
+            font-weight: 600;
+            color: var(--gray-700);
+            margin-bottom: 0.25rem;
+        }
+
+        .rec-broker {
+            color: var(--primary-blue);
+            font-weight: 600;
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .broker-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .comparison-table {
+                overflow-x: auto;
+            }
+
+            .compare-fab {
+                bottom: 1rem;
+                right: 1rem;
+                padding: 0.75rem 1.5rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">💹 IPODhan</div>
+            <nav style="display: flex; gap: 2rem;">
+                <a href="mockup-dashboard.html" style="color: var(--gray-700); text-decoration: none;">Dashboard</a>
+                <a href="#" style="color: var(--primary-blue); text-decoration: none; font-weight: 600;">Brokers</a>
+                <a href="mockup-tools.html" style="color: var(--gray-700); text-decoration: none;">Tools</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Page Title -->
+    <div class="page-title">
+        <div class="page-title-content">
+            <h1>Compare & Choose the Best Broker</h1>
+            <p>Open demat account with exclusive offers and start your IPO investment journey</p>
+        </div>
+    </div>
+
+    <!-- Featured Offers -->
+    <div class="featured-offers">
+        <div class="offers-container">
+            <div class="offer-item">
+                <div class="offer-icon">🎉</div>
+                <div>
+                    <strong>Zerodha Special</strong><br>
+                    Free account opening + ₹500 trading credit
+                </div>
+            </div>
+            <div class="offer-item">
+                <div class="offer-icon">🎁</div>
+                <div>
+                    <strong>Upstox Offer</strong><br>
+                    Zero AMC for 1st year + Free demat
+                </div>
+            </div>
+            <div class="offer-item">
+                <div class="offer-icon">💰</div>
+                <div>
+                    <strong>Angel One Deal</strong><br>
+                    Lifetime free AMC + Smart API access
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter Tabs -->
+    <div class="filter-tabs">
+        <div class="tabs-container">
+            <button class="tab-btn active">All Brokers</button>
+            <button class="tab-btn">Zero Brokerage</button>
+            <button class="tab-btn">Full Service</button>
+            <button class="tab-btn">Discount Brokers</button>
+            <button class="tab-btn">3-in-1 Account</button>
+        </div>
+    </div>
+
+    <!-- Broker Grid -->
+    <div class="broker-grid">
+        <!-- Zerodha Card -->
+        <div class="broker-card">
+            <input type="checkbox" class="broker-checkbox">
+            <div class="broker-header">
+                <div class="broker-logo">Z</div>
+                <div class="broker-name">Zerodha</div>
+                <div class="broker-rating">
+                    <span class="stars">⭐⭐⭐⭐⭐</span>
+                    <span>4.5 (12.5k)</span>
+                </div>
+            </div>
+            <div class="broker-charges">
+                <div class="charge-row">
+                    <span class="charge-label">Account Opening</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">AMC</span>
+                    <span class="charge-value">₹300/yr</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">Equity Delivery</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">IPO Application</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+            </div>
+            <div class="broker-features">
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Best trading platform (Kite)</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>1.2+ Crore active users</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Excellent stability</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Mutual funds (Coin app)</span>
+                </div>
+            </div>
+            <div class="broker-action">
+                <button class="btn-open-account">Open Account →</button>
+            </div>
+        </div>
+
+        <!-- Upstox Card -->
+        <div class="broker-card">
+            <input type="checkbox" class="broker-checkbox">
+            <div class="broker-header">
+                <div class="broker-logo">U</div>
+                <div class="broker-name">Upstox</div>
+                <div class="broker-rating">
+                    <span class="stars">⭐⭐⭐⭐</span>
+                    <span>4.2 (8.3k)</span>
+                </div>
+            </div>
+            <div class="broker-charges">
+                <div class="charge-row">
+                    <span class="charge-label">Account Opening</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">AMC</span>
+                    <span class="charge-value free">FREE (1yr)</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">Equity Delivery</span>
+                    <span class="charge-value">₹20</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">IPO Application</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+            </div>
+            <div class="broker-features">
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Mobile-first platform</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Good user interface</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Free AMC first year</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Low cost trading</span>
+                </div>
+            </div>
+            <div class="broker-action">
+                <button class="btn-open-account">Open Account →</button>
+            </div>
+        </div>
+
+        <!-- Angel One Card -->
+        <div class="broker-card">
+            <input type="checkbox" class="broker-checkbox">
+            <div class="broker-header">
+                <div class="broker-logo">A</div>
+                <div class="broker-name">Angel One</div>
+                <div class="broker-rating">
+                    <span class="stars">⭐⭐⭐⭐</span>
+                    <span>4.0 (15.2k)</span>
+                </div>
+            </div>
+            <div class="broker-charges">
+                <div class="charge-row">
+                    <span class="charge-label">Account Opening</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">AMC</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">Equity Delivery</span>
+                    <span class="charge-value">₹20</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">IPO Application</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+            </div>
+            <div class="broker-features">
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Zero AMC forever</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Smart API for algo trading</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Research reports</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>ARQ investment engine</span>
+                </div>
+            </div>
+            <div class="broker-action">
+                <button class="btn-open-account">Open Account →</button>
+            </div>
+        </div>
+
+        <!-- Groww Card -->
+        <div class="broker-card">
+            <input type="checkbox" class="broker-checkbox">
+            <div class="broker-header">
+                <div class="broker-logo">G</div>
+                <div class="broker-name">Groww</div>
+                <div class="broker-rating">
+                    <span class="stars">⭐⭐⭐⭐</span>
+                    <span>4.3 (6.5k)</span>
+                </div>
+            </div>
+            <div class="broker-charges">
+                <div class="charge-row">
+                    <span class="charge-label">Account Opening</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">AMC</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">Equity Delivery</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">IPO Application</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+            </div>
+            <div class="broker-features">
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Beginner friendly</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Clean & simple UI</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Free equity delivery</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Mutual funds platform</span>
+                </div>
+            </div>
+            <div class="broker-action">
+                <button class="btn-open-account">Open Account →</button>
+            </div>
+        </div>
+
+        <!-- ICICI Direct Card -->
+        <div class="broker-card">
+            <input type="checkbox" class="broker-checkbox">
+            <div class="broker-header">
+                <div class="broker-logo">I</div>
+                <div class="broker-name">ICICI Direct</div>
+                <div class="broker-rating">
+                    <span class="stars">⭐⭐⭐⭐</span>
+                    <span>3.8 (9.2k)</span>
+                </div>
+            </div>
+            <div class="broker-charges">
+                <div class="charge-row">
+                    <span class="charge-label">Account Opening</span>
+                    <span class="charge-value">₹750</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">AMC</span>
+                    <span class="charge-value">₹700/yr</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">Equity Delivery</span>
+                    <span class="charge-value">0.55%</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">IPO Application</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+            </div>
+            <div class="broker-features">
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>3-in-1 account</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Full service broker</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Research & advisory</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Branch support</span>
+                </div>
+            </div>
+            <div class="broker-action">
+                <button class="btn-open-account">Open Account →</button>
+            </div>
+        </div>
+
+        <!-- Dhan Card -->
+        <div class="broker-card">
+            <input type="checkbox" class="broker-checkbox">
+            <div class="broker-header">
+                <div class="broker-logo">D</div>
+                <div class="broker-name">Dhan</div>
+                <div class="broker-rating">
+                    <span class="stars">⭐⭐⭐⭐</span>
+                    <span>4.1 (3.8k)</span>
+                </div>
+            </div>
+            <div class="broker-charges">
+                <div class="charge-row">
+                    <span class="charge-label">Account Opening</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">AMC</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">Equity Delivery</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+                <div class="charge-row">
+                    <span class="charge-label">IPO Application</span>
+                    <span class="charge-value free">FREE</span>
+                </div>
+            </div>
+            <div class="broker-features">
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Super trader platform</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Advanced charts</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Options trading focus</span>
+                </div>
+                <div class="feature-item">
+                    <span class="feature-check">✓</span>
+                    <span>Forever free plan</span>
+                </div>
+            </div>
+            <div class="broker-action">
+                <button class="btn-open-account">Open Account →</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Comparison Section -->
+    <div class="comparison-section">
+        <div class="comparison-header">
+            <h2>Detailed Comparison</h2>
+            <button style="padding: 0.5rem 1rem; background: var(--gray-100); border: 1px solid var(--gray-300); border-radius: 0.5rem; cursor: pointer;">
+                Export PDF
+            </button>
+        </div>
+
+        <!-- Recommendation Box -->
+        <div class="recommendation">
+            <h3>💡 Recommendations Based on Your Needs</h3>
+            <div class="recommendation-grid">
+                <div class="rec-item">
+                    <div class="rec-title">For IPO Investments</div>
+                    <div class="rec-broker">All brokers - Free IPO application</div>
+                </div>
+                <div class="rec-item">
+                    <div class="rec-title">Best Overall Platform</div>
+                    <div class="rec-broker">Zerodha - Most stable & reliable</div>
+                </div>
+                <div class="rec-item">
+                    <div class="rec-title">Lowest Cost</div>
+                    <div class="rec-broker">Groww - Free delivery trades</div>
+                </div>
+                <div class="rec-item">
+                    <div class="rec-title">For Beginners</div>
+                    <div class="rec-broker">Groww - Simple interface</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comparison Table -->
+        <div class="comparison-table" style="margin-top: 2rem;">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Feature</th>
+                        <th class="broker-col">Zerodha</th>
+                        <th class="broker-col">Upstox</th>
+                        <th class="broker-col">Angel One</th>
+                        <th class="broker-col">Groww</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>Account Opening</td>
+                        <td class="broker-col free">FREE</td>
+                        <td class="broker-col free">FREE</td>
+                        <td class="broker-col free">FREE</td>
+                        <td class="broker-col free">FREE</td>
+                    </tr>
+                    <tr>
+                        <td>Annual Maintenance</td>
+                        <td class="broker-col">₹300</td>
+                        <td class="broker-col free">FREE (1yr)</td>
+                        <td class="broker-col free">FREE</td>
+                        <td class="broker-col free">FREE</td>
+                    </tr>
+                    <tr>
+                        <td>Equity Delivery</td>
+                        <td class="broker-col free">FREE</td>
+                        <td class="broker-col">₹20</td>
+                        <td class="broker-col">₹20</td>
+                        <td class="broker-col free">FREE</td>
+                    </tr>
+                    <tr>
+                        <td>Equity Intraday</td>
+                        <td class="broker-col">₹20</td>
+                        <td class="broker-col">₹20</td>
+                        <td class="broker-col">₹20</td>
+                        <td class="broker-col">₹20</td>
+                    </tr>
+                    <tr>
+                        <td>F&O Trading</td>
+                        <td class="broker-col">₹20</td>
+                        <td class="broker-col">₹20</td>
+                        <td class="broker-col">₹20</td>
+                        <td class="broker-col">₹20</td>
+                    </tr>
+                    <tr>
+                        <td>IPO Application</td>
+                        <td class="broker-col free">FREE</td>
+                        <td class="broker-col free">FREE</td>
+                        <td class="broker-col free">FREE</td>
+                        <td class="broker-col free">FREE</td>
+                    </tr>
+                    <tr>
+                        <td>Mobile App Rating</td>
+                        <td class="broker-col">4.5★</td>
+                        <td class="broker-col">4.2★</td>
+                        <td class="broker-col">4.0★</td>
+                        <td class="broker-col">4.3★</td>
+                    </tr>
+                    <tr>
+                        <td>Customer Support</td>
+                        <td class="broker-col">Email/Ticket</td>
+                        <td class="broker-col">Phone/Email</td>
+                        <td class="broker-col">Phone/Email</td>
+                        <td class="broker-col">Email/Chat</td>
+                    </tr>
+                    <tr>
+                        <td>Research Reports</td>
+                        <td class="broker-col">Basic</td>
+                        <td class="broker-col">Limited</td>
+                        <td class="broker-col">Comprehensive</td>
+                        <td class="broker-col">Basic</td>
+                    </tr>
+                    <tr>
+                        <td>API Trading</td>
+                        <td class="broker-col">✅</td>
+                        <td class="broker-col">✅</td>
+                        <td class="broker-col">✅</td>
+                        <td class="broker-col">❌</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- Floating Compare Button -->
+    <button class="compare-fab">
+        Compare Selected
+        <span class="compare-count">0</span>
+    </button>
+
+    <script>
+        // Handle checkbox selection
+        const checkboxes = document.querySelectorAll('.broker-checkbox');
+        const compareBtn = document.querySelector('.compare-fab');
+        const compareCount = document.querySelector('.compare-count');
+
+        checkboxes.forEach(checkbox => {
+            checkbox.addEventListener('change', () => {
+                const card = checkbox.closest('.broker-card');
+                if (checkbox.checked) {
+                    card.classList.add('selected');
+                } else {
+                    card.classList.remove('selected');
+                }
+
+                const selectedCount = document.querySelectorAll('.broker-checkbox:checked').length;
+                compareCount.textContent = selectedCount;
+
+                if (selectedCount > 0) {
+                    compareBtn.style.display = 'flex';
+                } else {
+                    compareBtn.style.display = 'none';
+                }
+            });
+        });
+
+        // Tab switching
+        const tabs = document.querySelectorAll('.tab-btn');
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

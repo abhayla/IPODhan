@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>IPODhan - Returns Calculator</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary-green: #10B981;
+            --primary-red: #EF4444;
+            --primary-blue: #3B82F6;
+            --primary-purple: #8B5CF6;
+            --gray-900: #111827;
+            --gray-700: #374151;
+            --gray-500: #6B7280;
+            --gray-300: #D1D5DB;
+            --gray-100: #F3F4F6;
+            --white: #FFFFFF;
+            --yellow: #FCD34D;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: var(--gray-100);
+            color: var(--gray-900);
+        }
+
+        /* Header */
+        .header {
+            background: var(--white);
+            border-bottom: 1px solid var(--gray-300);
+            padding: 1rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--primary-blue);
+        }
+
+        /* Page Title */
+        .page-header {
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            color: var(--white);
+            padding: 3rem 0;
+        }
+
+        .page-header-content {
+            max-width: 1280px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+
+        .page-title {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .page-subtitle {
+            opacity: 0.9;
+        }
+
+        /* Main Content */
+        .main-content {
+            max-width: 1280px;
+            margin: -2rem auto 2rem;
+            padding: 0 1.5rem;
+            position: relative;
+        }
+
+        .content-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        /* Calculator Card */
+        .calculator-card {
+            background: var(--white);
+            border-radius: 0.75rem;
+            padding: 2rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* IPO Selector */
+        .ipo-selector {
+            margin-bottom: 1.5rem;
+        }
+
+        .select-label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--gray-700);
+            margin-bottom: 0.5rem;
+        }
+
+        .ipo-select {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid var(--gray-300);
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            background: var(--white);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .ipo-select:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        /* Input Grid */
+        .input-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .input-group {
+            margin-bottom: 1rem;
+        }
+
+        .input-label {
+            display: block;
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--gray-700);
+            margin-bottom: 0.5rem;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-field {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border: 2px solid var(--gray-300);
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            transition: all 0.2s;
+        }
+
+        .input-field:focus {
+            outline: none;
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+
+        .input-field.auto-filled {
+            background: var(--gray-50);
+        }
+
+        .input-prefix {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--gray-500);
+        }
+
+        .input-field.with-prefix {
+            padding-left: 2rem;
+        }
+
+        /* Lots Selector */
+        .lots-selector {
+            margin: 1.5rem 0;
+        }
+
+        .lots-buttons {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .lot-btn {
+            flex: 1;
+            padding: 0.75rem;
+            border: 2px solid var(--gray-300);
+            background: var(--white);
+            border-radius: 0.5rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .lot-btn:hover {
+            border-color: var(--primary-blue);
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        .lot-btn.active {
+            background: var(--primary-blue);
+            color: var(--white);
+            border-color: var(--primary-blue);
+        }
+
+        /* Calculate Button */
+        .calculate-btn {
+            width: 100%;
+            padding: 1rem;
+            background: linear-gradient(135deg, var(--primary-blue), var(--primary-purple));
+            color: var(--white);
+            border: none;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .calculate-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 20px rgba(59, 130, 246, 0.3);
+        }
+
+        /* Results Section */
+        .results-card {
+            background: var(--white);
+            border-radius: 0.75rem;
+            padding: 2rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+        }
+
+        /* Scenario Tabs */
+        .scenario-tabs {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            padding: 0.5rem;
+            background: var(--gray-100);
+            border-radius: 0.5rem;
+        }
+
+        .scenario-tab {
+            flex: 1;
+            padding: 0.5rem;
+            border: none;
+            background: transparent;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            font-weight: 500;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+        }
+
+        .scenario-tab.active {
+            background: var(--white);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+
+        .scenario-tab.pessimistic {
+            color: var(--primary-red);
+        }
+
+        .scenario-tab.expected {
+            color: var(--primary-blue);
+        }
+
+        .scenario-tab.optimistic {
+            color: var(--primary-green);
+        }
+
+        /* Results Display */
+        .result-summary {
+            text-align: center;
+            padding: 2rem;
+            background: linear-gradient(135deg, #F3F4F6, #E5E7EB);
+            border-radius: 0.75rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .result-label {
+            font-size: 0.875rem;
+            color: var(--gray-600);
+            margin-bottom: 0.5rem;
+        }
+
+        .result-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .result-value.profit {
+            color: var(--primary-green);
+        }
+
+        .result-value.loss {
+            color: var(--primary-red);
+        }
+
+        .result-percentage {
+            font-size: 1.125rem;
+            font-weight: 500;
+        }
+
+        /* Results Table */
+        .results-table {
+            width: 100%;
+            margin-bottom: 1.5rem;
+        }
+
+        .table-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--gray-100);
+        }
+
+        .table-row:last-child {
+            border-bottom: none;
+        }
+
+        .table-label {
+            color: var(--gray-600);
+            font-size: 0.875rem;
+        }
+
+        .table-value {
+            font-weight: 600;
+            text-align: right;
+        }
+
+        /* Chart Container */
+        .chart-container {
+            background: var(--gray-50);
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .chart-title {
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .chart {
+            height: 200px;
+            position: relative;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-around;
+        }
+
+        .bar {
+            width: 60px;
+            background: var(--primary-blue);
+            border-radius: 0.25rem 0.25rem 0 0;
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .bar:hover {
+            opacity: 0.8;
+        }
+
+        .bar.negative {
+            background: var(--primary-red);
+            align-self: flex-start;
+            border-radius: 0 0 0.25rem 0.25rem;
+        }
+
+        .bar-label {
+            position: absolute;
+            top: -25px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.875rem;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .bar.negative .bar-label {
+            top: auto;
+            bottom: -25px;
+        }
+
+        .chart-axis {
+            position: absolute;
+            width: 100%;
+            height: 1px;
+            background: var(--gray-400);
+            top: 50%;
+        }
+
+        /* Insights */
+        .insights {
+            background: linear-gradient(135deg, #FEF3C7, #FDE68A);
+            border: 1px solid #FCD34D;
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+        }
+
+        .insights-title {
+            font-weight: 600;
+            margin-bottom: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .insight-item {
+            display: flex;
+            align-items: start;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+            font-size: 0.875rem;
+        }
+
+        .insight-icon {
+            color: var(--primary-blue);
+            margin-top: 2px;
+        }
+
+        /* Share Actions */
+        .share-actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+        }
+
+        .share-btn {
+            flex: 1;
+            padding: 0.75rem;
+            border: 2px solid var(--gray-300);
+            background: var(--white);
+            border-radius: 0.5rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .share-btn:hover {
+            border-color: var(--primary-blue);
+            background: rgba(59, 130, 246, 0.05);
+        }
+
+        /* Responsive */
+        @media (max-width: 1024px) {
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .input-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .share-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div class="logo">💹 IPODhan</div>
+            <nav style="display: flex; gap: 2rem;">
+                <a href="mockup-dashboard.html" style="color: var(--gray-700); text-decoration: none;">Dashboard</a>
+                <a href="mockup-broker-comparison.html" style="color: var(--gray-700); text-decoration: none;">Brokers</a>
+                <a href="#" style="color: var(--primary-blue); text-decoration: none; font-weight: 600;">Tools</a>
+                <a href="mockup-portfolio.html" style="color: var(--gray-700); text-decoration: none;">Portfolio</a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Page Header -->
+    <div class="page-header">
+        <div class="page-header-content">
+            <h1 class="page-title">IPO Returns Calculator</h1>
+            <p class="page-subtitle">Calculate your potential profits and losses from IPO investments</p>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+        <div class="content-grid">
+            <!-- Calculator Input -->
+            <div class="calculator-card">
+                <h2 class="card-title">
+                    <span>📊</span> Enter IPO Details
+                </h2>
+
+                <!-- IPO Selector -->
+                <div class="ipo-selector">
+                    <label class="select-label">Select IPO</label>
+                    <select class="ipo-select">
+                        <option>TechVista Solutions - ₹280-300</option>
+                        <option>HealthCore Pharma - ₹450-480</option>
+                        <option>GreenEnergy Solar - ₹150-165</option>
+                        <option>Custom IPO (Enter manually)</option>
+                    </select>
+                </div>
+
+                <!-- Input Fields -->
+                <div class="input-grid">
+                    <div class="input-group">
+                        <label class="input-label">Issue Price</label>
+                        <div class="input-wrapper">
+                            <span class="input-prefix">₹</span>
+                            <input type="number" class="input-field with-prefix auto-filled" value="300" readonly>
+                        </div>
+                    </div>
+                    <div class="input-group">
+                        <label class="input-label">Current GMP</label>
+                        <div class="input-wrapper">
+                            <span class="input-prefix">+₹</span>
+                            <input type="number" class="input-field with-prefix auto-filled" value="45" readonly>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="input-grid">
+                    <div class="input-group">
+                        <label class="input-label">Lot Size</label>
+                        <input type="number" class="input-field auto-filled" value="50" readonly>
+                    </div>
+                    <div class="input-group">
+                        <label class="input-label">Expected Listing Price</label>
+                        <div class="input-wrapper">
+                            <span class="input-prefix">₹</span>
+                            <input type="number" class="input-field with-prefix" value="345" placeholder="Or use GMP">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Lots Selector -->
+                <div class="lots-selector">
+                    <label class="input-label">Number of Lots Applied</label>
+                    <div class="lots-buttons">
+                        <button class="lot-btn">1 Lot</button>
+                        <button class="lot-btn">2 Lots</button>
+                        <button class="lot-btn active">3 Lots</button>
+                        <button class="lot-btn">5 Lots</button>
+                        <button class="lot-btn">Custom</button>
+                    </div>
+                </div>
+
+                <!-- Calculate Button -->
+                <button class="calculate-btn">Calculate Returns</button>
+            </div>
+
+            <!-- Results Display -->
+            <div class="results-card">
+                <h2 class="card-title">
+                    <span>💰</span> Potential Returns
+                </h2>
+
+                <!-- Scenario Tabs -->
+                <div class="scenario-tabs">
+                    <button class="scenario-tab pessimistic">Pessimistic (-10%)</button>
+                    <button class="scenario-tab expected active">Expected (+15%)</button>
+                    <button class="scenario-tab optimistic">Optimistic (+30%)</button>
+                </div>
+
+                <!-- Result Summary -->
+                <div class="result-summary">
+                    <div class="result-label">Expected Profit (if allotted)</div>
+                    <div class="result-value profit">+₹6,750</div>
+                    <div class="result-percentage profit">+15.00%</div>
+                </div>
+
+                <!-- Results Table -->
+                <div class="results-table">
+                    <div class="table-row">
+                        <span class="table-label">Listing Price</span>
+                        <span class="table-value">₹345</span>
+                    </div>
+                    <div class="table-row">
+                        <span class="table-label">Total Investment</span>
+                        <span class="table-value">₹45,000</span>
+                    </div>
+                    <div class="table-row">
+                        <span class="table-label">Shares Applied</span>
+                        <span class="table-value">150 (3 lots)</span>
+                    </div>
+                    <div class="table-row">
+                        <span class="table-label">If Allotted 1 Lot</span>
+                        <span class="table-value profit">+₹2,250</span>
+                    </div>
+                    <div class="table-row">
+                        <span class="table-label">If Allotted 2 Lots</span>
+                        <span class="table-value profit">+₹4,500</span>
+                    </div>
+                    <div class="table-row">
+                        <span class="table-label">If Allotted 3 Lots</span>
+                        <span class="table-value profit">+₹6,750</span>
+                    </div>
+                </div>
+
+                <!-- Chart -->
+                <div class="chart-container">
+                    <div class="chart-title">Returns Visualization</div>
+                    <div class="chart">
+                        <div class="chart-axis"></div>
+                        <div class="bar negative" style="height: 20%;">
+                            <span class="bar-label">-₹4,500</span>
+                        </div>
+                        <div class="bar" style="height: 0;">
+                            <span class="bar-label">₹0</span>
+                        </div>
+                        <div class="bar" style="height: 45%;">
+                            <span class="bar-label">+₹6,750</span>
+                        </div>
+                        <div class="bar" style="height: 80%;">
+                            <span class="bar-label">+₹13,500</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: space-around; margin-top: 1rem; font-size: 0.75rem; color: var(--gray-600);">
+                        <span>-10%</span>
+                        <span>0%</span>
+                        <span>+15%</span>
+                        <span>+30%</span>
+                    </div>
+                </div>
+
+                <!-- Insights -->
+                <div class="insights">
+                    <div class="insights-title">
+                        <span>💡</span> Key Insights
+                    </div>
+                    <div class="insight-item">
+                        <span class="insight-icon">📈</span>
+                        <span>GMP suggests 15% listing gain (₹45 premium on ₹300)</span>
+                    </div>
+                    <div class="insight-item">
+                        <span class="insight-icon">🎯</span>
+                        <span>Break-even at listing price of ₹300 (issue price)</span>
+                    </div>
+                    <div class="insight-item">
+                        <span class="insight-icon">📊</span>
+                        <span>Similar IPOs in this sector listed at average +18%</span>
+                    </div>
+                    <div class="insight-item">
+                        <span class="insight-icon">⚠️</span>
+                        <span>Maximum loss if not allotted: ₹0 (full refund)</span>
+                    </div>
+                </div>
+
+                <!-- Share Actions -->
+                <div class="share-actions">
+                    <button class="share-btn">📥 Download Report</button>
+                    <button class="share-btn">📤 Share Analysis</button>
+                    <button class="share-btn">🔄 Reset</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Scenario tab switching
+        const scenarioTabs = document.querySelectorAll('.scenario-tab');
+        const resultValue = document.querySelector('.result-value');
+        const resultPercentage = document.querySelector('.result-percentage');
+
+        const scenarios = {
+            'pessimistic': { value: '-₹4,500', percentage: '-10.00%', class: 'loss' },
+            'expected': { value: '+₹6,750', percentage: '+15.00%', class: 'profit' },
+            'optimistic': { value: '+₹13,500', percentage: '+30.00%', class: 'profit' }
+        };
+
+        scenarioTabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                scenarioTabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+
+                const scenario = tab.classList[1];
+                const data = scenarios[scenario];
+
+                resultValue.textContent = data.value;
+                resultPercentage.textContent = data.percentage;
+
+                resultValue.classList.remove('profit', 'loss');
+                resultPercentage.classList.remove('profit', 'loss');
+                resultValue.classList.add(data.class);
+                resultPercentage.classList.add(data.class);
+            });
+        });
+
+        // Lot buttons
+        const lotButtons = document.querySelectorAll('.lot-btn');
+        lotButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                lotButtons.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>
