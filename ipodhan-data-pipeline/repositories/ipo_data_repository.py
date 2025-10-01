@@ -368,10 +368,12 @@ class IPODataRepository:
                     # Update consecutive failures
                     if status == 'SUCCESS':
                         consecutive_failures = 0
-                        last_success_at = 'NOW()'
+                        last_success_value = 'NOW()'
+                        on_conflict_last_success = 'EXCLUDED.last_success_at'
                     else:
                         consecutive_failures = current_failures + 1
-                        last_success_at = 'last_success_at'
+                        last_success_value = '(SELECT last_success_at FROM pipeline_status WHERE source = %s AND pipeline_type = %s)'
+                        on_conflict_last_success = 'pipeline_status.last_success_at'
 
                     cursor.execute(
                         f"""
@@ -380,13 +382,16 @@ class IPODataRepository:
                             consecutive_failures, records_processed, records_inserted,
                             records_updated, execution_time_ms, error_message, error_details
                         ) VALUES (
-                            %s, %s, %s, %s, NOW(), {last_success_at}, %s, %s, %s, %s, %s, %s, %s
+                            %s, %s, %s, %s, NOW(), {last_success_value if status == 'SUCCESS' else 'NULL'}, %s, %s, %s, %s, %s, %s, %s
                         )
                         ON CONFLICT (source, pipeline_type)
                         DO UPDATE SET
                             status = EXCLUDED.status,
                             last_run_at = EXCLUDED.last_run_at,
-                            last_success_at = {last_success_at},
+                            last_success_at = CASE
+                                WHEN EXCLUDED.status = 'SUCCESS' THEN EXCLUDED.last_success_at
+                                ELSE pipeline_status.last_success_at
+                            END,
                             consecutive_failures = EXCLUDED.consecutive_failures,
                             records_processed = EXCLUDED.records_processed,
                             records_inserted = EXCLUDED.records_inserted,
