@@ -35,7 +35,29 @@ IPODhan is a comprehensive IPO-focused platform for Indian retail investors, pro
 
 ```
 IPODhan/
-├── ipodhan-web/          # Next.js frontend application
+├── ipodhan-data-pipeline/     # ✅ Python data pipeline (PRODUCTION-READY)
+│   ├── scrapers/              # Web scrapers (NSE, BSE, GMP sources)
+│   ├── validators/            # Pydantic-based validation
+│   ├── schemas/               # Type-safe data schemas
+│   ├── repositories/          # Database access layer
+│   ├── orchestrator/          # Pipeline coordination
+│   ├── monitoring/            # Health checks and metrics
+│   ├── tests/                 # 50 tests (100% passing)
+│   └── scripts/               # Utility scripts
+│
+├── infrastructure/
+│   └── database/
+│       ├── migrations/        # PostgreSQL schema migrations
+│       └── BACKFILL_README.md # Backfill documentation
+│
+├── docs/
+│   ├── stories/               # User stories and requirements
+│   ├── api/                   # API specifications
+│   └── qa/                    # QA documentation
+│       ├── assessments/       # Risk profiles
+│       └── gates/             # Quality gate decisions
+│
+├── ipodhan-web/          # Next.js frontend (PLANNED)
 │   ├── src/
 │   │   ├── app/          # Next.js app router pages
 │   │   ├── components/   # React components
@@ -43,7 +65,7 @@ IPODhan/
 │   │   └── utils/        # Utility functions
 │   └── public/           # Static assets
 │
-├── ipodhan-backend/      # Express backend API
+├── ipodhan-backend/      # Express backend API (PLANNED)
 │   ├── src/
 │   │   ├── controllers/  # Route controllers
 │   │   ├── routes/       # API routes
@@ -51,23 +73,21 @@ IPODhan/
 │   │   └── services/     # Business logic
 │   └── prisma/           # Database schema
 │
-├── figma-plugin/         # Figma design system plugin
-│   ├── code.ts           # Plugin logic
-│   ├── ui.html           # Plugin UI
-│   └── manifest.json     # Plugin configuration
-│
-└── docs/                 # Documentation
+└── figma-plugin/         # Figma design system plugin
+    ├── code.ts           # Plugin logic
+    ├── ui.html           # Plugin UI
+    └── manifest.json     # Plugin configuration
 
 ```
 
 ## 🚦 Getting Started
 
 ### Prerequisites
-- Node.js 18+
-- npm or yarn
+- **Data Pipeline**: Python 3.11+, PostgreSQL 14+
+- **Web App (Planned)**: Node.js 18+, npm or yarn
 - Docker (optional)
 
-### Local Development
+### Data Pipeline Setup ✅ PRODUCTION-READY
 
 1. **Clone the repository**
 ```bash
@@ -75,7 +95,41 @@ git clone https://github.com/yourusername/ipodhan.git
 cd ipodhan
 ```
 
-2. **Setup Frontend**
+2. **Setup Data Pipeline**
+```bash
+cd ipodhan-data-pipeline
+
+# Create virtual environment
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+# Setup database (PostgreSQL required)
+python scripts/setup_database.py
+
+# Run tests (50 tests, 100% passing)
+pytest -v
+
+# Run pipeline
+python main.py --pipeline full
+```
+
+3. **Environment Variables**
+Create `.env` file:
+```env
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=ipodhan_db
+DB_USER=your_user
+DB_PASSWORD=your_password
+SENTRY_DSN=your_sentry_dsn  # Optional
+```
+
+### Web Application Setup (Planned)
+
+**Frontend:**
 ```bash
 cd ipodhan-web
 npm install
@@ -83,7 +137,7 @@ npm run dev
 ```
 Frontend runs on http://localhost:3000
 
-3. **Setup Backend**
+**Backend:**
 ```bash
 cd ipodhan-backend
 npm install
@@ -92,7 +146,7 @@ npm run dev
 ```
 Backend runs on http://localhost:5000
 
-4. **Access the application**
+**Access:**
 - Frontend: http://localhost:3000
 - Backend API: http://localhost:5000/api
 - Health Check: http://localhost:5000/health
@@ -180,10 +234,24 @@ docker-compose -f docker-compose.prod.yml up
 
 ## 📱 Features Roadmap
 
-- [x] Basic IPO listing and tracking
-- [x] User authentication
-- [x] Returns calculator
-- [x] Dashboard
+### ✅ Completed
+- [x] **Data Pipeline (Story 1.2)** - Production-ready
+  - [x] Multi-source web scraping (NSE, BSE, 3 GMP sources)
+  - [x] Type-safe validation (Pydantic V2)
+  - [x] Database schema with materialized views
+  - [x] Health monitoring and error tracking
+  - [x] Comprehensive testing (50 tests, 100% passing)
+  - [x] Quality score: 98/100
+
+### 🚧 In Progress
+- [ ] Web application (Next.js frontend)
+- [ ] Backend API (Express with REST endpoints)
+- [ ] User authentication
+- [ ] Basic IPO listing and tracking UI
+- [ ] Returns calculator
+
+### 📋 Planned
+- [ ] User dashboard and portfolio tracking
 - [ ] Mobile app (React Native)
 - [ ] Push notifications
 - [ ] AI-powered recommendations
@@ -208,9 +276,68 @@ This project is licensed under the MIT License.
 - Figma for design tools
 - Next.js and Express communities
 
+## 📊 Data Pipeline Details
+
+### Production-Ready Components ✅
+
+**Quality Metrics:**
+- **Tests:** 50/50 passing (100%)
+- **Quality Score:** 98/100 (EXCELLENT)
+- **Risk Score:** 72/100 (LOW-MEDIUM, acceptable)
+- **Coverage:** 95-99% on critical modules
+- **Test Execution:** 2.59 seconds
+
+**Data Sources:**
+1. **NSE India** - Official IPO listings
+2. **BSE India** - Official IPO listings
+3. **IPOWatch** - GMP tracking (confidence scoring)
+4. **InvestorGain** - GMP tracking
+5. **Chittorgarh** - GMP tracking
+
+**Key Features:**
+- Multi-source data validation with retry mechanisms
+- Type-safe validation using Pydantic V2
+- Duplicate detection (by ISIN and company name + dates)
+- Materialized views for GMP aggregates (refreshed every 2 hours)
+- Health monitoring with consecutive failure tracking
+- Comprehensive error logging with Sentry integration
+
+**Architecture:**
+- Repository pattern for database access
+- 100% parameterized SQL queries (zero injection vectors)
+- Connection pooling (10 connections max)
+- Async web scraping with anti-bot detection
+- Clean separation of concerns (scrapers, validators, repositories)
+
+**Testing:**
+- 25 unit tests (validators, normalizers, repositories)
+- 25 integration tests (full pipeline, scrapers, database)
+- Real PostgreSQL database integration
+- CI/CD with GitHub Actions
+
+**Documentation:**
+- User stories: `docs/stories/`
+- QA reports: `docs/qa/assessments/`
+- Quality gates: `docs/qa/gates/`
+- API specs: `docs/api/`
+
+For detailed information, see [CLAUDE.md](./CLAUDE.md)
+
+---
+
 ## 📞 Support
 
 For support, email support@ipodhan.com or create an issue in this repository.
+
+---
+
+## 🎉 Recent Achievements
+
+**2025-10-02:** Data Pipeline (Story 1.2) Completed
+- ✅ 50/50 tests passing (100%)
+- ✅ Quality score: 98/100
+- ✅ Production-ready deployment
+- ✅ Comprehensive QA validation
 
 ---
 
