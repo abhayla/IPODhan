@@ -118,6 +118,22 @@ class NSEScraper(BaseScraper):
 
                     logger.info(f"Successfully navigated to {self.url}")
 
+                    # DEBUG: Save page screenshot and HTML for analysis
+                    import os
+                    debug_dir = os.path.join(os.path.dirname(__file__), '..', 'debug')
+                    os.makedirs(debug_dir, exist_ok=True)
+
+                    screenshot_path = os.path.join(debug_dir, 'nse_page.png')
+                    html_path = os.path.join(debug_dir, 'nse_page.html')
+
+                    await page.screenshot(path=screenshot_path, full_page=True)
+                    logger.info(f"Screenshot saved to: {screenshot_path}")
+
+                    html_content = await page.content()
+                    with open(html_path, 'w', encoding='utf-8') as f:
+                        f.write(html_content)
+                    logger.info(f"HTML saved to: {html_path}")
+
                     # Extract IPO data
                     ipo_data = await self._extract_ipo_data(page)
 
@@ -151,50 +167,289 @@ class NSEScraper(BaseScraper):
 
     async def _extract_ipo_data(self, page: Page) -> List[Dict[str, Any]]:
         """
-        Extract IPO data from NSE page
-        AC5: Parse HTML tables and extract IPO data fields
+        Extract IPO data from NSE page using two-step approach:
+        1. Parse main listing page for company list and detail URLs
+        2. Visit each detail page to get complete IPO data
         """
         ipo_list = []
 
         try:
-            # NSE uses multiple tabs: Mainboard IPOs, SME IPOs, etc.
-            # Check for different table structures
+            # Step 1: Get company list from main page
+            companies = await self._parse_main_listing_page(page)
+            logger.info(f"Found {len(companies)} companies on NSE main page")
 
-            # Try to find tables with IPO data
-            tables = await page.query_selector_all("table")
+            # Step 2: Visit each detail page
+            for idx, company in enumerate(companies):
+                try:
+                    logger.info(f"Processing {idx+1}/{len(companies)}: {company['company_name']}")
 
-            if not tables:
-                logger.warning("No tables found on NSE page")
-                return []
+                    # Navigate to detail page
+                    detail_data = await self._scrape_ipo_detail_page(
+                        page,
+                        company['symbol'],
+                        company['series'],
+                        company['issue_type']
+                    )
 
-            for table in tables:
-                rows = await table.query_selector_all("tbody tr")
+                    if detail_data:
+                        # Merge main page data + detail page data
+                        ipo_data = {**company, **detail_data}
 
-                for row in rows:
-                    try:
-                        cells = await row.query_selector_all("td")
-
-                        if len(cells) < 5:  # Minimum expected columns
-                            continue
-
-                        # Extract data from table cells
-                        # Note: Actual column indices depend on NSE table structure
-                        # This is a generic implementation that needs adjustment based on actual table
-                        ipo_data = await self._parse_table_row(cells)
-
-                        if ipo_data and self.validate(ipo_data):
+                        # Validate
+                        if self.validate(ipo_data):
                             ipo_data['data_source'] = 'NSE'
                             ipo_data['exchange'] = 'NSE'
                             ipo_list.append(ipo_data)
+                            logger.info(f"  ✓ Extracted: {company['company_name']}")
+                        else:
+                            logger.warning(f"  ⊘ Validation failed: {company['company_name']}")
+                    else:
+                        logger.warning(f"  ⊘ No detail data: {company['company_name']}")
 
-                    except Exception as e:
-                        logger.warning(f"Error parsing row: {str(e)}")
-                        continue
+                    # Rate limiting: 2 seconds between requests
+                    await asyncio.sleep(2)
+
+                except Exception as e:
+                    logger.error(f"  ✗ Error processing {company['company_name']}: {str(e)}")
+                    continue
 
         except Exception as e:
             logger.error(f"Error extracting IPO data: {str(e)}", exc_info=True)
 
         return ipo_list
+
+    async def _parse_main_listing_page(self, page: Page) -> List[Dict[str, Any]]:
+        """
+        Parse main NSE listing page to extract company list and detail URLs
+        Returns list of dicts with: company_name, symbol, series, issue_type, status, dates
+        """
+        companies = []
+
+        try:
+            # Find all tables
+            tables = await page.query_selector_all("table")
+
+            if len(tables) < 2:
+                logger.warning(f"Expected at least 2 tables, found {len(tables)}")
+                return []
+
+            # Table 2 (index 1) has the IPO data
+            ipo_table = tables[1]
+            rows = await ipo_table.query_selector_all("tbody tr")
+
+            if not rows:
+                rows = await ipo_table.query_selector_all("tr")
+
+            logger.info(f"Found {len(rows)} rows in IPO table")
+
+            for row in rows:
+                try:
+                    cells = await row.query_selector_all("td")
+
+                    if len(cells) < 5:  # Need at least 5 columns
+                        continue
+
+                    # Column 0: Company Name with link
+                    company_cell = cells[0]
+                    company_name = await self._get_cell_text(cells, 0)
+
+                    # Extract detail page URL from link
+                    link = await company_cell.query_selector("a")
+                    if not link:
+                        logger.warning(f"No link found for {company_name}")
+                        continue
+
+                    href = await link.get_attribute("href")
+                    if not href:
+                        continue
+
+                    # Parse URL: /market-data/issue-information?symbol=ADVANCE&series=EQ&type=Active
+                    params = self._parse_detail_url(href)
+                    if not params:
+                        continue
+
+                    # Extract other fields
+                    security_type = await self._get_cell_text(cells, 1)
+                    open_date = await self._get_cell_text(cells, 2)
+                    close_date = await self._get_cell_text(cells, 3)
+                    status = await self._get_cell_text(cells, 4)
+
+                    company_data = {
+                        'company_name': company_name,
+                        'symbol': params['symbol'],
+                        'series': params['series'],
+                        'issue_type': params['type'],
+                        'open_date': open_date,
+                        'close_date': close_date,
+                        'status': self._normalize_status(status),
+                        'detail_url': href
+                    }
+
+                    companies.append(company_data)
+
+                except Exception as e:
+                    logger.warning(f"Error parsing row: {str(e)}")
+                    continue
+
+        except Exception as e:
+            logger.error(f"Error parsing main listing page: {str(e)}", exc_info=True)
+
+        return companies
+
+    def _parse_detail_url(self, url: str) -> Optional[Dict[str, str]]:
+        """
+        Parse NSE detail page URL to extract parameters
+        URL format: /market-data/issue-information?symbol=ADVANCE&series=EQ&type=Active
+        """
+        try:
+            from urllib.parse import urlparse, parse_qs
+
+            parsed = urlparse(url)
+            params = parse_qs(parsed.query)
+
+            return {
+                'symbol': params.get('symbol', [''])[0],
+                'series': params.get('series', [''])[0],
+                'type': params.get('type', [''])[0]
+            }
+        except Exception as e:
+            logger.warning(f"Error parsing detail URL '{url}': {str(e)}")
+            return None
+
+    async def _scrape_ipo_detail_page(
+        self,
+        page: Page,
+        symbol: str,
+        series: str,
+        issue_type: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Scrape individual IPO detail page to extract complete information
+        URL: /market-data/issue-information?symbol=X&series=Y&type=Z
+
+        Returns dict with:
+        - price_band_low, price_band_high
+        - lot_size
+        - issue_size, fresh_issue_size, offer_for_sale
+        - listing_date
+        - lead_managers
+        - registrar
+        - isin
+        """
+        detail_url = f"https://www.nseindia.com/market-data/issue-information?symbol={symbol}&series={series}&type={issue_type}"
+
+        try:
+            logger.debug(f"  Navigating to detail page: {detail_url}")
+            await page.goto(detail_url, wait_until="domcontentloaded", timeout=30000)
+            await asyncio.sleep(2)  # Rate limiting
+
+            # Wait for content
+            await page.wait_for_load_state("networkidle", timeout=20000)
+
+            # Extract data from detail page
+            detail_data = {}
+
+            # Try to find all tables
+            tables = await page.query_selector_all("table")
+
+            for table in tables:
+                rows = await table.query_selector_all("tr")
+
+                for row in rows:
+                    cells = await row.query_selector_all("td, th")
+
+                    if len(cells) == 2:
+                        key = await cells[0].inner_text()
+                        value = await cells[1].inner_text()
+
+                        key = key.strip().lower()
+                        value = value.strip()
+
+                        # Map keys to fields
+                        if 'price band' in key or 'issue price' in key:
+                            price_low, price_high = self._parse_price_band(value)
+                            detail_data['price_band_low'] = price_low
+                            detail_data['price_band_high'] = price_high
+
+                        elif 'lot size' in key or 'minimum lot' in key:
+                            detail_data['lot_size'] = self._parse_number(value)
+
+                        elif 'issue size' in key:
+                            detail_data['issue_size'] = self._parse_amount(value)
+
+                        elif 'fresh issue' in key:
+                            detail_data['fresh_issue_size'] = self._parse_amount(value)
+
+                        elif 'offer for sale' in key or 'ofs' in key:
+                            detail_data['offer_for_sale'] = self._parse_amount(value)
+
+                        elif 'listing date' in key or 'tentative listing' in key:
+                            detail_data['listing_date'] = value
+
+                        elif 'lead manager' in key or 'book running' in key:
+                            detail_data['lead_managers'] = value
+
+                        elif 'registrar' in key:
+                            detail_data['registrar'] = value
+
+                        elif 'isin' in key:
+                            detail_data['isin'] = value
+
+            # Save debug info for first few detail pages if no data extracted
+            if len(detail_data) == 0:
+                import os
+                debug_dir = os.path.join(os.path.dirname(__file__), '..', 'debug')
+                os.makedirs(debug_dir, exist_ok=True)
+
+                screenshot_path = os.path.join(debug_dir, f'nse_detail_{symbol}.png')
+                html_path = os.path.join(debug_dir, f'nse_detail_{symbol}.html')
+
+                await page.screenshot(path=screenshot_path)
+                html_content = await page.content()
+                with open(html_path, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+
+                logger.warning(f"  No data extracted from detail page. Debug files saved: {screenshot_path}")
+
+            return detail_data if detail_data else None
+
+        except PlaywrightTimeoutError as e:
+            logger.warning(f"  Timeout loading detail page for {symbol}: {str(e)}")
+            return None
+        except Exception as e:
+            logger.error(f"  Error scraping detail page for {symbol}: {str(e)}", exc_info=True)
+            return None
+
+    def _normalize_status(self, status_text: str) -> str:
+        """Normalize NSE status to our standard statuses"""
+        if not status_text:
+            return 'UPCOMING'
+
+        status_lower = status_text.lower()
+
+        if 'open' in status_lower or 'live' in status_lower:
+            return 'LIVE'
+        elif 'closed' in status_lower or 'completed' in status_lower:
+            return 'CLOSED'
+        elif 'upcoming' in status_lower or 'forthcoming' in status_lower:
+            return 'UPCOMING'
+        else:
+            return 'UPCOMING'
+
+    def _parse_number(self, number_str: Optional[str]) -> Optional[int]:
+        """Parse integer from string"""
+        if not number_str:
+            return None
+
+        try:
+            import re
+            match = re.search(r'\d+', number_str.replace(',', ''))
+            if match:
+                return int(match.group())
+        except Exception as e:
+            logger.warning(f"Error parsing number '{number_str}': {str(e)}")
+
+        return None
 
     async def _parse_table_row(self, cells: List[Any]) -> Optional[Dict[str, Any]]:
         """
