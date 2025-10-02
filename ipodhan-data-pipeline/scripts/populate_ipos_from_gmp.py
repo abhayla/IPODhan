@@ -24,28 +24,27 @@ from validators.normalizer import DataNormalizer
 import logging
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
 
 def generate_symbol(company_name: str) -> str:
     """Generate unique symbol from company name"""
-    symbol = ''.join(c for c in company_name.upper() if c.isalnum())[:10]
-    return symbol or 'UNKNOWN'
+    symbol = "".join(c for c in company_name.upper() if c.isalnum())[:10]
+    return symbol or "UNKNOWN"
 
 
 def detect_category(company_name: str) -> str:
     """Detect if IPO is MAINBOARD or SME based on company name"""
     name_lower = company_name.lower()
-    sme_indicators = ['sme', 'small', 'micro', 'emerge']
+    sme_indicators = ["sme", "small", "micro", "emerge"]
 
     for indicator in sme_indicators:
         if indicator in name_lower:
-            return 'SME'
+            return "SME"
 
-    return 'MAINBOARD'
+    return "MAINBOARD"
 
 
 def estimate_price_band(expected_listing_price: float) -> tuple:
@@ -68,11 +67,11 @@ def determine_status(open_date, close_date):
     today = datetime.now().date()
 
     if today < open_date:
-        return 'UPCOMING'
+        return "UPCOMING"
     elif today > close_date:
-        return 'CLOSED'
+        return "CLOSED"
     else:
-        return 'LIVE'
+        return "LIVE"
 
 
 async def main():
@@ -101,7 +100,7 @@ async def main():
     # Extract unique companies
     companies = {}  # company_name -> gmp_record
     for record in gmp_data:
-        company_name = record.get('company_name')
+        company_name = record.get("company_name")
         if company_name and company_name not in companies:
             companies[company_name] = record
 
@@ -130,7 +129,7 @@ async def main():
         category = detect_category(company_name)
 
         # Estimate price band from expected listing price
-        expected_price = gmp_record.get('expected_listing_price', 0)
+        expected_price = gmp_record.get("expected_listing_price", 0)
         price_low, price_high = estimate_price_band(expected_price)
 
         # Estimate dates (assume current/upcoming IPOs)
@@ -140,26 +139,28 @@ async def main():
 
         # Create IPO record
         ipo_data = {
-            'symbol': symbol,
-            'company_name': normalized_name,
-            'exchange': 'NSE',  # Default
-            'open_date': open_date,
-            'close_date': close_date,
-            'listing_date': listing_date,
-            'price_band_low': price_low,
-            'price_band_high': price_high,
-            'lot_size': 1,  # Default - needs manual update
-            'issue_size': None,  # Unknown
-            'status': determine_status(open_date, close_date),
-            'category': category,
-            'registrar': None,
-            'data_source': 'GMP_DERIVED',
-            'issue_type': 'BOOK_BUILDING'  # Most common type for IPOs
+            "symbol": symbol,
+            "company_name": normalized_name,
+            "exchange": "NSE",  # Default
+            "open_date": open_date,
+            "close_date": close_date,
+            "listing_date": listing_date,
+            "price_band_low": price_low,
+            "price_band_high": price_high,
+            "lot_size": 1,  # Default - needs manual update
+            "issue_size": None,  # Unknown
+            "status": determine_status(open_date, close_date),
+            "category": category,
+            "registrar": None,
+            "data_source": "GMP_DERIVED",
+            "issue_type": "BOOK_BUILDING",  # Most common type for IPOs
         }
 
         try:
             ipo_id = repository.upsert_ipo_details(ipo_data)
-            logger.info(f"✓ Created IPO record: {company_name} ({symbol}) - ID: {ipo_id}")
+            logger.info(
+                f"✓ Created IPO record: {company_name} ({symbol}) - ID: {ipo_id}"
+            )
             created_count += 1
         except Exception as e:
             logger.error(f"✗ Error creating {company_name}: {str(e)}")
@@ -174,18 +175,25 @@ async def main():
     logger.info(f"\nStep 5: Re-running GMP scraper to link data...")
     try:
         from orchestrator.pipeline_orchestrator import PipelineOrchestrator
+
         orchestrator = PipelineOrchestrator()
         results = await orchestrator.run_gmp_pipeline()
 
         logger.info(f"\n{'=' * 60}")
         logger.info(f"✓ Pipeline complete!")
-        logger.info(f"  GMP records processed: {results.get('summary', {}).get('total_records', 0)}")
-        logger.info(f"  Successfully saved: {results.get('summary', {}).get('saved_count', 0)}")
+        logger.info(
+            f"  GMP records processed: {results.get('summary', {}).get('total_records', 0)}"
+        )
+        logger.info(
+            f"  Successfully saved: {results.get('summary', {}).get('saved_count', 0)}"
+        )
         logger.info(f"{'=' * 60}\n")
     except Exception as e:
         logger.warning(f"\n✓ IPO records created successfully!")
         logger.warning(f"  (Skipping GMP pipeline re-run due to: {str(e)})")
-        logger.warning(f"  You can run 'python main.py run-gmp' manually to link GMP data\n")
+        logger.warning(
+            f"  You can run 'python main.py run-gmp' manually to link GMP data\n"
+        )
 
 
 if __name__ == "__main__":

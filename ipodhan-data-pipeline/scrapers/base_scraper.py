@@ -1,6 +1,7 @@
 """
 Base scraper class for all web scrapers
 """
+
 from abc import ABC, abstractmethod
 from typing import Dict, List, Any
 import logging

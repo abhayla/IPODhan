@@ -25,13 +25,17 @@ class PipelineScheduler:
         self.pipeline = DataPipeline()
 
         # Load configuration from environment
-        self.ipo_interval = int(os.getenv('IPO_SCRAPE_INTERVAL', 15))  # minutes
-        self.gmp_interval_market = int(os.getenv('GMP_SCRAPE_INTERVAL_MARKET', 30))  # minutes
-        self.gmp_interval_offhours = int(os.getenv('GMP_SCRAPE_INTERVAL_OFFHOURS', 60))  # minutes
+        self.ipo_interval = int(os.getenv("IPO_SCRAPE_INTERVAL", 15))  # minutes
+        self.gmp_interval_market = int(
+            os.getenv("GMP_SCRAPE_INTERVAL_MARKET", 30)
+        )  # minutes
+        self.gmp_interval_offhours = int(
+            os.getenv("GMP_SCRAPE_INTERVAL_OFFHOURS", 60)
+        )  # minutes
 
         # Market hours (IST)
-        market_start = os.getenv('MARKET_HOURS_START', '09:00')
-        market_end = os.getenv('MARKET_HOURS_END', '17:00')
+        market_start = os.getenv("MARKET_HOURS_START", "09:00")
+        market_end = os.getenv("MARKET_HOURS_END", "17:00")
 
         self.market_start = self._parse_time(market_start)
         self.market_end = self._parse_time(market_end)
@@ -47,7 +51,7 @@ class PipelineScheduler:
     def _parse_time(self, time_str: str) -> dt_time:
         """Parse time string HH:MM to datetime.time"""
         try:
-            hour, minute = map(int, time_str.split(':'))
+            hour, minute = map(int, time_str.split(":"))
             return dt_time(hour=hour, minute=minute)
         except Exception as e:
             logger.error(f"Error parsing time '{time_str}': {str(e)}")
@@ -85,7 +89,11 @@ class PipelineScheduler:
                     await self.pipeline.run_ipo_pipeline()
 
                 # GMP pipeline (interval depends on market hours)
-                gmp_interval = self.gmp_interval_market if is_market_hours else self.gmp_interval_offhours
+                gmp_interval = (
+                    self.gmp_interval_market
+                    if is_market_hours
+                    else self.gmp_interval_offhours
+                )
 
                 if gmp_counter % gmp_interval == 0:
                     logger.info("Triggering GMP pipeline")
@@ -131,14 +139,15 @@ async def main():
 
     # Check if running in manual mode
     import sys
+
     if len(sys.argv) > 1:
         mode = sys.argv[1]
 
-        if mode == 'ipo':
+        if mode == "ipo":
             await scheduler.run_ipo_pipeline_once()
-        elif mode == 'gmp':
+        elif mode == "gmp":
             await scheduler.run_gmp_pipeline_once()
-        elif mode == 'full':
+        elif mode == "full":
             await scheduler.run_full_pipeline_once()
         else:
             logger.error(f"Unknown mode: {mode}. Use: ipo, gmp, or full")
@@ -151,7 +160,7 @@ if __name__ == "__main__":
     # Configure logging
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
 
     # Run scheduler

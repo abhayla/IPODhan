@@ -16,7 +16,7 @@ from schemas.ipo_schema import (
     GMPTrackingSchema,
     ValidationResult,
     IPOStatus,
-    IPOCategory
+    IPOCategory,
 )
 
 logger = logging.getLogger(__name__)
@@ -30,12 +30,12 @@ class IPODataValidator:
 
     def __init__(self):
         self.required_fields = [
-            'company_name',
-            'price_band_low',
-            'price_band_high',
-            'lot_size',
-            'open_date',
-            'close_date'
+            "company_name",
+            "price_band_low",
+            "price_band_high",
+            "lot_size",
+            "open_date",
+            "close_date",
         ]
 
     def validate_ipo_data(self, raw_data: Dict[str, Any]) -> ValidationResult:
@@ -56,7 +56,9 @@ class IPODataValidator:
             missing_fields = self._check_required_fields(raw_data)
             if missing_fields:
                 errors.append(f"Missing required fields: {', '.join(missing_fields)}")
-                return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
+                return ValidationResult(
+                    is_valid=False, errors=errors, warnings=warnings
+                )
 
             # 2. Validate date logic
             date_errors = self._validate_date_logic(raw_data)
@@ -86,11 +88,11 @@ class IPODataValidator:
                         is_valid=True,
                         errors=[],
                         warnings=warnings,
-                        data=validated_data.model_dump()
+                        data=validated_data.model_dump(),
                     )
                 except ValidationError as e:
                     for error in e.errors():
-                        field = '.'.join(str(loc) for loc in error['loc'])
+                        field = ".".join(str(loc) for loc in error["loc"])
                         errors.append(f"{field}: {error['msg']}")
 
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
@@ -115,12 +117,18 @@ class IPODataValidator:
 
         try:
             # Validate ISIN format if present
-            if 'isin' in raw_data and raw_data['isin']:
-                if not self._validate_isin(raw_data['isin']):
+            if "isin" in raw_data and raw_data["isin"]:
+                if not self._validate_isin(raw_data["isin"]):
                     errors.append("ISIN must be 12 alphanumeric characters")
 
             # Validate positive amounts
-            amount_fields = ['fresh_issue', 'ofs_issue', 'cut_off_price', 'face_value', 'min_investment']
+            amount_fields = [
+                "fresh_issue",
+                "ofs_issue",
+                "cut_off_price",
+                "face_value",
+                "min_investment",
+            ]
             for field in amount_fields:
                 if field in raw_data and raw_data[field] is not None:
                     try:
@@ -138,17 +146,19 @@ class IPODataValidator:
                         is_valid=True,
                         errors=[],
                         warnings=warnings,
-                        data=validated_data.model_dump()
+                        data=validated_data.model_dump(),
                     )
                 except ValidationError as e:
                     for error in e.errors():
-                        field = '.'.join(str(loc) for loc in error['loc'])
+                        field = ".".join(str(loc) for loc in error["loc"])
                         errors.append(f"{field}: {error['msg']}")
 
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
         except Exception as e:
-            logger.error(f"Unexpected error during details validation: {str(e)}", exc_info=True)
+            logger.error(
+                f"Unexpected error during details validation: {str(e)}", exc_info=True
+            )
             errors.append(f"Validation error: {str(e)}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
@@ -167,22 +177,36 @@ class IPODataValidator:
 
         try:
             # Check required GMP fields
-            required_gmp_fields = ['ipo_id', 'gmp_amount', 'gmp_percentage', 'source', 'confidence_score']
-            missing = [f for f in required_gmp_fields if f not in raw_data or raw_data[f] is None]
+            required_gmp_fields = [
+                "ipo_id",
+                "gmp_amount",
+                "gmp_percentage",
+                "source",
+                "confidence_score",
+            ]
+            missing = [
+                f
+                for f in required_gmp_fields
+                if f not in raw_data or raw_data[f] is None
+            ]
             if missing:
                 errors.append(f"Missing required GMP fields: {', '.join(missing)}")
-                return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
+                return ValidationResult(
+                    is_valid=False, errors=errors, warnings=warnings
+                )
 
             # Validate confidence score range
-            if 'confidence_score' in raw_data:
-                score = raw_data['confidence_score']
+            if "confidence_score" in raw_data:
+                score = raw_data["confidence_score"]
                 if not isinstance(score, int) or score < 1 or score > 100:
-                    errors.append("confidence_score must be an integer between 1 and 100")
+                    errors.append(
+                        "confidence_score must be an integer between 1 and 100"
+                    )
 
             # Validate positive GMP amount
-            if 'gmp_amount' in raw_data:
+            if "gmp_amount" in raw_data:
                 try:
-                    gmp_amount = Decimal(str(raw_data['gmp_amount']))
+                    gmp_amount = Decimal(str(raw_data["gmp_amount"]))
                     if gmp_amount < 0:
                         errors.append("gmp_amount must be non-negative")
                 except (InvalidOperation, ValueError):
@@ -196,17 +220,19 @@ class IPODataValidator:
                         is_valid=True,
                         errors=[],
                         warnings=warnings,
-                        data=validated_data.model_dump()
+                        data=validated_data.model_dump(),
                     )
                 except ValidationError as e:
                     for error in e.errors():
-                        field = '.'.join(str(loc) for loc in error['loc'])
+                        field = ".".join(str(loc) for loc in error["loc"])
                         errors.append(f"{field}: {error['msg']}")
 
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
         except Exception as e:
-            logger.error(f"Unexpected error during GMP validation: {str(e)}", exc_info=True)
+            logger.error(
+                f"Unexpected error during GMP validation: {str(e)}", exc_info=True
+            )
             errors.append(f"Validation error: {str(e)}")
             return ValidationResult(is_valid=False, errors=errors, warnings=warnings)
 
@@ -214,7 +240,7 @@ class IPODataValidator:
         """Check for missing required fields"""
         missing = []
         for field in self.required_fields:
-            if field not in data or data[field] is None or data[field] == '':
+            if field not in data or data[field] is None or data[field] == "":
                 missing.append(field)
         return missing
 
@@ -226,9 +252,13 @@ class IPODataValidator:
         errors = []
 
         try:
-            open_date = self._parse_date(data.get('open_date'))
-            close_date = self._parse_date(data.get('close_date'))
-            listing_date = self._parse_date(data.get('listing_date')) if data.get('listing_date') else None
+            open_date = self._parse_date(data.get("open_date"))
+            close_date = self._parse_date(data.get("close_date"))
+            listing_date = (
+                self._parse_date(data.get("listing_date"))
+                if data.get("listing_date")
+                else None
+            )
 
             if open_date and close_date:
                 if close_date <= open_date:
@@ -251,8 +281,8 @@ class IPODataValidator:
         errors = []
 
         try:
-            price_low = Decimal(str(data.get('price_band_low', 0)))
-            price_high = Decimal(str(data.get('price_band_high', 0)))
+            price_low = Decimal(str(data.get("price_band_low", 0)))
+            price_high = Decimal(str(data.get("price_band_high", 0)))
 
             if price_low <= 0:
                 errors.append("price_band_low must be positive")
@@ -276,7 +306,7 @@ class IPODataValidator:
         errors = []
 
         try:
-            lot_size = data.get('lot_size')
+            lot_size = data.get("lot_size")
             if not isinstance(lot_size, int) or lot_size <= 0:
                 errors.append("lot_size must be a positive integer")
         except (TypeError, ValueError):
@@ -291,9 +321,9 @@ class IPODataValidator:
         """
         errors = []
 
-        if 'issue_size' in data and data['issue_size'] is not None:
+        if "issue_size" in data and data["issue_size"] is not None:
             try:
-                issue_size = Decimal(str(data['issue_size']))
+                issue_size = Decimal(str(data["issue_size"]))
                 if issue_size <= 0:
                     errors.append("issue_size must be positive")
             except (InvalidOperation, ValueError):
@@ -312,7 +342,8 @@ class IPODataValidator:
         elif isinstance(date_value, str):
             # Try parsing common date formats
             from datetime import datetime
-            for fmt in ['%Y-%m-%d', '%d-%m-%Y', '%d/%m/%Y']:
+
+            for fmt in ["%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y"]:
                 try:
                     return datetime.strptime(date_value, fmt).date()
                 except ValueError:

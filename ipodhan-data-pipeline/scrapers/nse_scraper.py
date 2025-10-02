@@ -7,7 +7,11 @@ import asyncio
 import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import (
+    async_playwright,
+    Page,
+    TimeoutError as PlaywrightTimeoutError,
+)
 
 from scrapers.base_scraper import BaseScraper
 
@@ -43,39 +47,40 @@ class NSEScraper(BaseScraper):
                     browser = await p.chromium.launch(
                         headless=False,  # Non-headless mode to avoid detection
                         args=[
-                            '--disable-blink-features=AutomationControlled',
-                            '--no-sandbox',
-                            '--disable-dev-shm-usage',
-                            '--disable-web-security',
-                            '--disable-features=IsolateOrigins,site-per-process'
-                        ]
+                            "--disable-blink-features=AutomationControlled",
+                            "--no-sandbox",
+                            "--disable-dev-shm-usage",
+                            "--disable-web-security",
+                            "--disable-features=IsolateOrigins,site-per-process",
+                        ],
                     )
 
                     # Create context with realistic browser fingerprint
                     context = await browser.new_context(
-                        user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
-                        viewport={'width': 1920, 'height': 1080},
-                        locale='en-US',
-                        timezone_id='Asia/Kolkata',
+                        user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+                        viewport={"width": 1920, "height": 1080},
+                        locale="en-US",
+                        timezone_id="Asia/Kolkata",
                         extra_http_headers={
-                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-                            'Accept-Language': 'en-US,en;q=0.9',
-                            'Accept-Encoding': 'gzip, deflate, br',
-                            'Connection': 'keep-alive',
-                            'Upgrade-Insecure-Requests': '1',
-                            'Sec-Fetch-Dest': 'document',
-                            'Sec-Fetch-Mode': 'navigate',
-                            'Sec-Fetch-Site': 'none',
-                            'Sec-Fetch-User': '?1',
-                            'Cache-Control': 'max-age=0'
-                        }
+                            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
+                            "Accept-Language": "en-US,en;q=0.9",
+                            "Accept-Encoding": "gzip, deflate, br",
+                            "Connection": "keep-alive",
+                            "Upgrade-Insecure-Requests": "1",
+                            "Sec-Fetch-Dest": "document",
+                            "Sec-Fetch-Mode": "navigate",
+                            "Sec-Fetch-Site": "none",
+                            "Sec-Fetch-User": "?1",
+                            "Cache-Control": "max-age=0",
+                        },
                     )
 
                     page = await context.new_page()
                     page.set_default_timeout(self.timeout)
 
                     # Remove webdriver detection
-                    await page.add_init_script("""
+                    await page.add_init_script(
+                        """
                         Object.defineProperty(navigator, 'webdriver', {
                             get: () => undefined
                         });
@@ -95,22 +100,29 @@ class NSEScraper(BaseScraper):
                                 Promise.resolve({ state: Notification.permission }) :
                                 originalQuery(parameters)
                         );
-                    """)
+                    """
+                    )
 
                     # First visit NSE homepage to establish session
                     logger.info("Establishing session with NSE homepage...")
-                    await page.goto("https://www.nseindia.com", wait_until="domcontentloaded")
+                    await page.goto(
+                        "https://www.nseindia.com", wait_until="domcontentloaded"
+                    )
                     await asyncio.sleep(2)  # Wait for cookies/session to be set
 
                     # Navigate to NSE IPO page with realistic user behavior
                     logger.info(f"Navigating to IPO page: {self.url}")
-                    await page.goto(self.url, wait_until="domcontentloaded", timeout=60000)
+                    await page.goto(
+                        self.url, wait_until="domcontentloaded", timeout=60000
+                    )
 
                     # Simulate human-like behavior
                     await asyncio.sleep(3)
 
                     # Scroll down slowly like a human
-                    await page.evaluate("window.scrollTo(0, document.body.scrollHeight/4)")
+                    await page.evaluate(
+                        "window.scrollTo(0, document.body.scrollHeight/4)"
+                    )
                     await asyncio.sleep(1)
 
                     # Wait for content to load
@@ -120,17 +132,18 @@ class NSEScraper(BaseScraper):
 
                     # DEBUG: Save page screenshot and HTML for analysis
                     import os
-                    debug_dir = os.path.join(os.path.dirname(__file__), '..', 'debug')
+
+                    debug_dir = os.path.join(os.path.dirname(__file__), "..", "debug")
                     os.makedirs(debug_dir, exist_ok=True)
 
-                    screenshot_path = os.path.join(debug_dir, 'nse_page.png')
-                    html_path = os.path.join(debug_dir, 'nse_page.html')
+                    screenshot_path = os.path.join(debug_dir, "nse_page.png")
+                    html_path = os.path.join(debug_dir, "nse_page.html")
 
                     await page.screenshot(path=screenshot_path, full_page=True)
                     logger.info(f"Screenshot saved to: {screenshot_path}")
 
                     html_content = await page.content()
-                    with open(html_path, 'w', encoding='utf-8') as f:
+                    with open(html_path, "w", encoding="utf-8") as f:
                         f.write(html_content)
                     logger.info(f"HTML saved to: {html_path}")
 
@@ -146,7 +159,7 @@ class NSEScraper(BaseScraper):
                 logger.warning(f"Timeout on attempt {self.retry_count}: {str(e)}")
                 if attempt < self.max_retries - 1:
                     # Exponential backoff: 1s, 2s, 4s
-                    wait_time = 2 ** attempt
+                    wait_time = 2**attempt
                     logger.info(f"Retrying in {wait_time} seconds...")
                     await asyncio.sleep(wait_time)
                 else:
@@ -154,9 +167,11 @@ class NSEScraper(BaseScraper):
                     raise
 
             except Exception as e:
-                logger.error(f"Error on attempt {self.retry_count}: {str(e)}", exc_info=True)
+                logger.error(
+                    f"Error on attempt {self.retry_count}: {str(e)}", exc_info=True
+                )
                 if attempt < self.max_retries - 1:
-                    wait_time = 2 ** attempt
+                    wait_time = 2**attempt
                     logger.info(f"Retrying in {wait_time} seconds...")
                     await asyncio.sleep(wait_time)
                 else:
@@ -181,14 +196,16 @@ class NSEScraper(BaseScraper):
             # Step 2: Visit each detail page
             for idx, company in enumerate(companies):
                 try:
-                    logger.info(f"Processing {idx+1}/{len(companies)}: {company['company_name']}")
+                    logger.info(
+                        f"Processing {idx+1}/{len(companies)}: {company['company_name']}"
+                    )
 
                     # Navigate to detail page
                     detail_data = await self._scrape_ipo_detail_page(
                         page,
-                        company['symbol'],
-                        company['series'],
-                        company['issue_type']
+                        company["symbol"],
+                        company["series"],
+                        company["issue_type"],
                     )
 
                     if detail_data:
@@ -197,12 +214,14 @@ class NSEScraper(BaseScraper):
 
                         # Validate
                         if self.validate(ipo_data):
-                            ipo_data['data_source'] = 'NSE'
-                            ipo_data['exchange'] = 'NSE'
+                            ipo_data["data_source"] = "NSE"
+                            ipo_data["exchange"] = "NSE"
                             ipo_list.append(ipo_data)
                             logger.info(f"  ✓ Extracted: {company['company_name']}")
                         else:
-                            logger.warning(f"  ⊘ Validation failed: {company['company_name']}")
+                            logger.warning(
+                                f"  ⊘ Validation failed: {company['company_name']}"
+                            )
                     else:
                         logger.warning(f"  ⊘ No detail data: {company['company_name']}")
 
@@ -210,7 +229,9 @@ class NSEScraper(BaseScraper):
                     await asyncio.sleep(2)
 
                 except Exception as e:
-                    logger.error(f"  ✗ Error processing {company['company_name']}: {str(e)}")
+                    logger.error(
+                        f"  ✗ Error processing {company['company_name']}: {str(e)}"
+                    )
                     continue
 
         except Exception as e:
@@ -275,14 +296,14 @@ class NSEScraper(BaseScraper):
                     status = await self._get_cell_text(cells, 4)
 
                     company_data = {
-                        'company_name': company_name,
-                        'symbol': params['symbol'],
-                        'series': params['series'],
-                        'issue_type': params['type'],
-                        'open_date': open_date,
-                        'close_date': close_date,
-                        'status': self._normalize_status(status),
-                        'detail_url': href
+                        "company_name": company_name,
+                        "symbol": params["symbol"],
+                        "series": params["series"],
+                        "issue_type": params["type"],
+                        "open_date": open_date,
+                        "close_date": close_date,
+                        "status": self._normalize_status(status),
+                        "detail_url": href,
                     }
 
                     companies.append(company_data)
@@ -308,20 +329,16 @@ class NSEScraper(BaseScraper):
             params = parse_qs(parsed.query)
 
             return {
-                'symbol': params.get('symbol', [''])[0],
-                'series': params.get('series', [''])[0],
-                'type': params.get('type', [''])[0]
+                "symbol": params.get("symbol", [""])[0],
+                "series": params.get("series", [""])[0],
+                "type": params.get("type", [""])[0],
             }
         except Exception as e:
             logger.warning(f"Error parsing detail URL '{url}': {str(e)}")
             return None
 
     async def _scrape_ipo_detail_page(
-        self,
-        page: Page,
-        symbol: str,
-        series: str,
-        issue_type: str
+        self, page: Page, symbol: str, series: str, issue_type: str
     ) -> Optional[Dict[str, Any]]:
         """
         Scrape individual IPO detail page to extract complete information
@@ -366,50 +383,53 @@ class NSEScraper(BaseScraper):
                         value = value.strip()
 
                         # Map keys to fields
-                        if 'price band' in key or 'issue price' in key:
+                        if "price band" in key or "issue price" in key:
                             price_low, price_high = self._parse_price_band(value)
-                            detail_data['price_band_low'] = price_low
-                            detail_data['price_band_high'] = price_high
+                            detail_data["price_band_low"] = price_low
+                            detail_data["price_band_high"] = price_high
 
-                        elif 'lot size' in key or 'minimum lot' in key:
-                            detail_data['lot_size'] = self._parse_number(value)
+                        elif "lot size" in key or "minimum lot" in key:
+                            detail_data["lot_size"] = self._parse_number(value)
 
-                        elif 'issue size' in key:
-                            detail_data['issue_size'] = self._parse_amount(value)
+                        elif "issue size" in key:
+                            detail_data["issue_size"] = self._parse_amount(value)
 
-                        elif 'fresh issue' in key:
-                            detail_data['fresh_issue_size'] = self._parse_amount(value)
+                        elif "fresh issue" in key:
+                            detail_data["fresh_issue_size"] = self._parse_amount(value)
 
-                        elif 'offer for sale' in key or 'ofs' in key:
-                            detail_data['offer_for_sale'] = self._parse_amount(value)
+                        elif "offer for sale" in key or "ofs" in key:
+                            detail_data["offer_for_sale"] = self._parse_amount(value)
 
-                        elif 'listing date' in key or 'tentative listing' in key:
-                            detail_data['listing_date'] = value
+                        elif "listing date" in key or "tentative listing" in key:
+                            detail_data["listing_date"] = value
 
-                        elif 'lead manager' in key or 'book running' in key:
-                            detail_data['lead_managers'] = value
+                        elif "lead manager" in key or "book running" in key:
+                            detail_data["lead_managers"] = value
 
-                        elif 'registrar' in key:
-                            detail_data['registrar'] = value
+                        elif "registrar" in key:
+                            detail_data["registrar"] = value
 
-                        elif 'isin' in key:
-                            detail_data['isin'] = value
+                        elif "isin" in key:
+                            detail_data["isin"] = value
 
             # Save debug info for first few detail pages if no data extracted
             if len(detail_data) == 0:
                 import os
-                debug_dir = os.path.join(os.path.dirname(__file__), '..', 'debug')
+
+                debug_dir = os.path.join(os.path.dirname(__file__), "..", "debug")
                 os.makedirs(debug_dir, exist_ok=True)
 
-                screenshot_path = os.path.join(debug_dir, f'nse_detail_{symbol}.png')
-                html_path = os.path.join(debug_dir, f'nse_detail_{symbol}.html')
+                screenshot_path = os.path.join(debug_dir, f"nse_detail_{symbol}.png")
+                html_path = os.path.join(debug_dir, f"nse_detail_{symbol}.html")
 
                 await page.screenshot(path=screenshot_path)
                 html_content = await page.content()
-                with open(html_path, 'w', encoding='utf-8') as f:
+                with open(html_path, "w", encoding="utf-8") as f:
                     f.write(html_content)
 
-                logger.warning(f"  No data extracted from detail page. Debug files saved: {screenshot_path}")
+                logger.warning(
+                    f"  No data extracted from detail page. Debug files saved: {screenshot_path}"
+                )
 
             return detail_data if detail_data else None
 
@@ -417,24 +437,26 @@ class NSEScraper(BaseScraper):
             logger.warning(f"  Timeout loading detail page for {symbol}: {str(e)}")
             return None
         except Exception as e:
-            logger.error(f"  Error scraping detail page for {symbol}: {str(e)}", exc_info=True)
+            logger.error(
+                f"  Error scraping detail page for {symbol}: {str(e)}", exc_info=True
+            )
             return None
 
     def _normalize_status(self, status_text: str) -> str:
         """Normalize NSE status to our standard statuses"""
         if not status_text:
-            return 'UPCOMING'
+            return "UPCOMING"
 
         status_lower = status_text.lower()
 
-        if 'open' in status_lower or 'live' in status_lower:
-            return 'LIVE'
-        elif 'closed' in status_lower or 'completed' in status_lower:
-            return 'CLOSED'
-        elif 'upcoming' in status_lower or 'forthcoming' in status_lower:
-            return 'UPCOMING'
+        if "open" in status_lower or "live" in status_lower:
+            return "LIVE"
+        elif "closed" in status_lower or "completed" in status_lower:
+            return "CLOSED"
+        elif "upcoming" in status_lower or "forthcoming" in status_lower:
+            return "UPCOMING"
         else:
-            return 'UPCOMING'
+            return "UPCOMING"
 
     def _parse_number(self, number_str: Optional[str]) -> Optional[int]:
         """Parse integer from string"""
@@ -443,7 +465,8 @@ class NSEScraper(BaseScraper):
 
         try:
             import re
-            match = re.search(r'\d+', number_str.replace(',', ''))
+
+            match = re.search(r"\d+", number_str.replace(",", ""))
             if match:
                 return int(match.group())
         except Exception as e:
@@ -466,7 +489,9 @@ class NSEScraper(BaseScraper):
             close_date = await self._get_cell_text(cells, 2)
             price_band = await self._get_cell_text(cells, 3)  # Format: "100-110"
             issue_size = await self._get_cell_text(cells, 4)
-            listing_date = await self._get_cell_text(cells, 5) if len(cells) > 5 else None
+            listing_date = (
+                await self._get_cell_text(cells, 5) if len(cells) > 5 else None
+            )
 
             if not company_name:
                 return None
@@ -478,17 +503,17 @@ class NSEScraper(BaseScraper):
             status = self._determine_status(open_date, close_date)
 
             ipo_data = {
-                'company_name': company_name,
-                'symbol': self._extract_symbol(company_name),
-                'open_date': open_date,
-                'close_date': close_date,
-                'listing_date': listing_date,
-                'price_band_low': price_low,
-                'price_band_high': price_high,
-                'issue_size': self._parse_amount(issue_size),
-                'status': status,
-                'category': 'MAINBOARD',  # NSE default, may need to detect SME
-                'lot_size': 1  # Default, actual value needs to be scraped from detail page
+                "company_name": company_name,
+                "symbol": self._extract_symbol(company_name),
+                "open_date": open_date,
+                "close_date": close_date,
+                "listing_date": listing_date,
+                "price_band_low": price_low,
+                "price_band_high": price_high,
+                "issue_size": self._parse_amount(issue_size),
+                "status": status,
+                "category": "MAINBOARD",  # NSE default, may need to detect SME
+                "lot_size": 1,  # Default, actual value needs to be scraped from detail page
             }
 
             return ipo_data
@@ -514,10 +539,12 @@ class NSEScraper(BaseScraper):
 
         try:
             # Remove currency symbols and 'to' words
-            price_band = price_band.replace('₹', '').replace('Rs', '').replace('to', '-')
+            price_band = (
+                price_band.replace("₹", "").replace("Rs", "").replace("to", "-")
+            )
 
             # Split by dash or hyphen
-            parts = price_band.split('-')
+            parts = price_band.split("-")
 
             if len(parts) == 2:
                 price_low = float(parts[0].strip())
@@ -540,11 +567,12 @@ class NSEScraper(BaseScraper):
 
         try:
             # Remove currency symbols and text
-            amount_str = amount_str.replace('₹', '').replace('Rs', '').replace(',', '')
+            amount_str = amount_str.replace("₹", "").replace("Rs", "").replace(",", "")
 
             # Extract number
             import re
-            match = re.search(r'[\d.]+', amount_str)
+
+            match = re.search(r"[\d.]+", amount_str)
             if match:
                 return float(match.group())
 
@@ -556,10 +584,12 @@ class NSEScraper(BaseScraper):
     def _extract_symbol(self, company_name: str) -> str:
         """Extract or generate stock symbol from company name"""
         # Generate symbol from first few characters (actual symbol would come from detail page)
-        symbol = ''.join(c for c in company_name.upper() if c.isalnum())[:10]
-        return symbol or 'UNKNOWN'
+        symbol = "".join(c for c in company_name.upper() if c.isalnum())[:10]
+        return symbol or "UNKNOWN"
 
-    def _determine_status(self, open_date: Optional[str], close_date: Optional[str]) -> str:
+    def _determine_status(
+        self, open_date: Optional[str], close_date: Optional[str]
+    ) -> str:
         """Determine IPO status based on dates"""
         try:
             from datetime import datetime
@@ -567,28 +597,28 @@ class NSEScraper(BaseScraper):
             today = datetime.now().date()
 
             if open_date:
-                open_dt = datetime.strptime(open_date, '%d %b %Y').date()
+                open_dt = datetime.strptime(open_date, "%d %b %Y").date()
                 if today < open_dt:
-                    return 'UPCOMING'
+                    return "UPCOMING"
 
             if close_date:
-                close_dt = datetime.strptime(close_date, '%d %b %Y').date()
+                close_dt = datetime.strptime(close_date, "%d %b %Y").date()
                 if today > close_dt:
-                    return 'CLOSED'
+                    return "CLOSED"
                 elif today >= open_dt:
-                    return 'LIVE'
+                    return "LIVE"
 
         except Exception as e:
             logger.debug(f"Error determining status: {str(e)}")
 
-        return 'UPCOMING'
+        return "UPCOMING"
 
     def validate(self, data: Dict[str, Any]) -> bool:
         """
         Validate scraped IPO data
         Basic validation - comprehensive validation happens in IPODataValidator
         """
-        required_fields = ['company_name', 'price_band_low', 'price_band_high']
+        required_fields = ["company_name", "price_band_low", "price_band_high"]
 
         for field in required_fields:
             if field not in data or not data[field]:

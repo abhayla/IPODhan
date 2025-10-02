@@ -8,7 +8,7 @@ from .ipo_schema import (
     IPODetailsSchema,
     IPOFinancialsSchema,
     GMPTrackingSchema,
-    ValidationResult
+    ValidationResult,
 )
 
 __all__ = [
@@ -16,5 +16,5 @@ __all__ = [
     "IPODetailsSchema",
     "IPOFinancialsSchema",
     "GMPTrackingSchema",
-    "ValidationResult"
+    "ValidationResult",
 ]

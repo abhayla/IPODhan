@@ -18,8 +18,7 @@ from orchestrator.pipeline import DataPipeline
 from repositories.ipo_data_repository import IPODataRepository
 
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
@@ -34,12 +33,12 @@ class HistoricalDataBackfill:
         self.pipeline = DataPipeline()
         self.repository = IPODataRepository()
         self.backfill_start_date = datetime.now() - timedelta(days=730)  # 2 years
-        self.progress_file = 'backfill_progress.txt'
+        self.progress_file = "backfill_progress.txt"
 
     def save_progress(self, checkpoint: str):
         """Save progress checkpoint for resumability"""
         try:
-            with open(self.progress_file, 'w') as f:
+            with open(self.progress_file, "w") as f:
                 f.write(f"{checkpoint}\n{datetime.now().isoformat()}")
             logger.info(f"Progress saved: {checkpoint}")
         except Exception as e:
@@ -49,7 +48,7 @@ class HistoricalDataBackfill:
         """Load last checkpoint"""
         try:
             if os.path.exists(self.progress_file):
-                with open(self.progress_file, 'r') as f:
+                with open(self.progress_file, "r") as f:
                     checkpoint = f.readline().strip()
                     logger.info(f"Resuming from checkpoint: {checkpoint}")
                     return checkpoint
@@ -64,7 +63,9 @@ class HistoricalDataBackfill:
         AC8: Scrape historical IPOs (last 2 years)
         """
         logger.info("Starting IPO historical data backfill")
-        logger.info(f"Backfill period: {self.backfill_start_date.strftime('%Y-%m-%d')} to present")
+        logger.info(
+            f"Backfill period: {self.backfill_start_date.strftime('%Y-%m-%d')} to present"
+        )
 
         checkpoint = self.load_progress()
 
@@ -118,9 +119,9 @@ class HistoricalDataBackfill:
         Run complete backfill process
         AC8: Backfill historical data with progress tracking
         """
-        logger.info("="* 60)
+        logger.info("=" * 60)
         logger.info("Starting Historical Data Backfill")
-        logger.info("="* 60)
+        logger.info("=" * 60)
 
         start_time = datetime.now()
 
@@ -141,9 +142,11 @@ class HistoricalDataBackfill:
             await self._print_backfill_statistics()
 
             execution_time = (datetime.now() - start_time).total_seconds()
-            logger.info("="* 60)
-            logger.info(f"Backfill completed successfully in {execution_time:.2f} seconds")
-            logger.info("="* 60)
+            logger.info("=" * 60)
+            logger.info(
+                f"Backfill completed successfully in {execution_time:.2f} seconds"
+            )
+            logger.info("=" * 60)
 
         except Exception as e:
             logger.error(f"Backfill failed: {str(e)}", exc_info=True)
@@ -164,11 +167,13 @@ class HistoricalDataBackfill:
                 with conn.cursor(cursor_factory=RealDictCursor) as cursor:
                     # Count GMP records
                     cursor.execute("SELECT COUNT(*) as count FROM gmp_tracking")
-                    gmp_count = cursor.fetchone()['count']
+                    gmp_count = cursor.fetchone()["count"]
 
                     # Count IPOs with GMP data
-                    cursor.execute("SELECT COUNT(DISTINCT ipo_id) as count FROM gmp_tracking")
-                    ipos_with_gmp = cursor.fetchone()['count']
+                    cursor.execute(
+                        "SELECT COUNT(DISTINCT ipo_id) as count FROM gmp_tracking"
+                    )
+                    ipos_with_gmp = cursor.fetchone()["count"]
 
                     logger.info(f"Total GMP records: {gmp_count}")
                     logger.info(f"IPOs with GMP data: {ipos_with_gmp}")
@@ -187,7 +192,7 @@ async def main():
     """Main entry point for backfill script"""
 
     # Parse command line arguments
-    reset = '--reset' in sys.argv
+    reset = "--reset" in sys.argv
 
     backfill = HistoricalDataBackfill()
 
@@ -201,6 +206,7 @@ async def main():
 if __name__ == "__main__":
     # Load environment variables
     from dotenv import load_dotenv
+
     load_dotenv()
 
     # Run backfill
