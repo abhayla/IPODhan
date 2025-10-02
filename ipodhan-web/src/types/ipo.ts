@@ -1,6 +1,9 @@
 /**
- * IPO Model Interface
+ * Core IPO Types for Web Application
+ * These types mirror ipodhan-shared but are local to avoid workspace dependency issues during build
  */
+
+// Core IPO Model
 export interface IPO {
   id: string;
   symbol: string;
@@ -24,9 +27,7 @@ export interface IPO {
   updatedAt: Date;
 }
 
-/**
- * IPO Score Model Interface
- */
+// IPO Score Model
 export interface IPOScore {
   id: string;
   ipoId: string;
@@ -44,9 +45,7 @@ export interface IPOScore {
   calculatedAt: Date;
 }
 
-/**
- * GMP History Model Interface
- */
+// GMP History Model
 export interface GMPHistory {
   id: string;
   ipoId: string;
@@ -59,9 +58,7 @@ export interface GMPHistory {
   recordedAt: Date;
 }
 
-/**
- * Subscription Data Model Interface
- */
+// Subscription Data Model
 export interface SubscriptionData {
   id: string;
   ipoId: string;
@@ -74,9 +71,7 @@ export interface SubscriptionData {
   recordedAt: Date;
 }
 
-/**
- * Search Filters Interface
- */
+// Search Filters
 export interface SearchFilters {
   status?: 'LIVE' | 'UPCOMING' | 'CLOSED' | null;
   category?: 'MAINBOARD' | 'SME' | null;
@@ -95,9 +90,7 @@ export interface SearchFilters {
   };
 }
 
-/**
- * Search Result Interface
- */
+// Search Result
 export interface SearchResult {
   id: string;
   companyName: string;
@@ -107,32 +100,24 @@ export interface SearchResult {
   relevance?: number;
 }
 
-/**
- * Sort Options
- */
+// Sort Options
 export type SortOption = 'score' | 'closingDate' | 'gmp' | 'size' | 'relevance';
 
-/**
- * IPO Filter Options
- */
+// IPO Filter Options
 export interface IPOFilterOptions {
   scoreRanges: Array<{ label: string; min: number; max: number }>;
   categories: Array<{ label: string; value: 'MAINBOARD' | 'SME' | 'BOTH' }>;
   issueSizes: Array<{ label: string; min?: number; max?: number }>;
 }
 
-/**
- * Pagination Interface
- */
+// Pagination
 export interface PaginationParams {
   page: number;
   limit: number;
   total?: number;
 }
 
-/**
- * Verdict Display
- */
+// Verdict Display
 export type VerdictDisplay = {
   label: 'Strong Buy' | 'Consider' | 'Risky' | 'Avoid';
   color: string;
@@ -140,7 +125,59 @@ export type VerdictDisplay = {
   borderColor: string;
 };
 
-/**
- * Score Range for filtering
- */
+// Score Range
 export type ScoreRange = '70+' | '50-70' | '30-50' | '<30';
+
+// Tab Type for homepage
+export type TabType = {
+  id: string;
+  label: string;
+  status?: 'LIVE' | 'UPCOMING' | 'CLOSED';
+  count?: number;
+};
+
+// Frontend-specific Component Props
+export interface IPOCardProps {
+  ipo: IPO;
+  score?: IPOScore;
+  showSubscription?: boolean;
+  onClick?: () => void;
+}
+
+export interface IPOListProps {
+  ipos: IPO[];
+  scores: Record<string, IPOScore>;
+  loading: boolean;
+  error: string | null;
+}
+
+export interface IPOFilterProps {
+  filters: SearchFilters;
+  onFilterChange: (filters: Partial<SearchFilters>) => void;
+  onClearFilters: () => void;
+}
+
+export interface PaginationProps {
+  currentPage: number;
+  totalPages: number;
+  onPageChange: (page: number) => void;
+}
+
+// API Response Types
+export interface GetIPOsResponse {
+  data: IPO[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+export interface GetIPOsParams {
+  status?: 'LIVE' | 'UPCOMING' | 'CLOSED';
+  category?: 'MAINBOARD' | 'SME';
+  page?: number;
+  limit?: number;
+}
+
+export interface GetGMPHistoryParams {
+  days?: number;
+}

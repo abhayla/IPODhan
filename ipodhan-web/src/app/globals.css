@@ -1,48 +1,10 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-  }
-
-  * {
-    @apply border-border;
-  }
-
-  body {
-    @apply bg-background text-foreground;
-  }
+* {
+  border-color: #e5e7eb;
 }
 
-@layer components {
-  .container {
-    @apply mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl;
-  }
-
-  .btn-primary {
-    @apply bg-primary-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-primary-700 transition-colors duration-200;
-  }
-
-  .btn-secondary {
-    @apply bg-white text-gray-700 px-6 py-3 rounded-lg font-semibold border-2 border-gray-200 hover:bg-gray-50 transition-colors duration-200;
-  }
-
-  .card {
-    @apply bg-white rounded-xl shadow-sm border border-gray-100 p-6;
-  }
-
-  .badge-live {
-    @apply bg-success text-white px-3 py-1 rounded-full text-xs font-semibold animate-pulse;
-  }
-
-  .badge-upcoming {
-    @apply bg-primary-600 text-white px-3 py-1 rounded-full text-xs font-semibold;
-  }
-
-  .badge-closed {
-    @apply bg-gray-500 text-white px-3 py-1 rounded-full text-xs font-semibold;
-  }
+body {
+  background-color: white;
+  color: #111827;
 }
