@@ -442,6 +442,22 @@ class IPODataRepository:
             logger.error(f"Error getting IPO by company name: {str(e)}", exc_info=True)
             return None
 
+    def get_ipo_by_symbol(self, symbol: str) -> Optional[Dict[str, Any]]:
+        """Get IPO record by symbol"""
+        try:
+            with get_db_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cursor:
+                    cursor.execute(
+                        "SELECT * FROM ipos WHERE symbol = %s",
+                        (symbol,)
+                    )
+                    result = cursor.fetchone()
+                    return dict(result) if result else None
+
+        except Exception as e:
+            logger.error(f"Error getting IPO by symbol: {str(e)}", exc_info=True)
+            return None
+
     def get_all_active_ipos(self) -> List[Dict[str, Any]]:
         """Get all active (UPCOMING, LIVE) IPOs"""
         try:

@@ -22,7 +22,7 @@ class BSEScraper(BaseScraper):
 
     def __init__(self, timeout: int = 30000, max_retries: int = 3):
         super().__init__("BSE")
-        self.url = "https://www.bseindia.com/markets/PublicIssues/IPOIssues.aspx"
+        self.url = "https://www.bseindia.com/publicissue.html"
         self.timeout = timeout  # 30 seconds default
         self.max_retries = max_retries
         self.retry_count = 0
@@ -52,6 +52,32 @@ class BSEScraper(BaseScraper):
 
                     # Wait for content to load
                     await page.wait_for_load_state("networkidle")
+
+                    # DEBUG: Save page screenshot and HTML for analysis
+                    import os
+                    debug_dir = os.path.join(os.path.dirname(__file__), '..', 'debug')
+                    os.makedirs(debug_dir, exist_ok=True)
+
+                    screenshot_path = os.path.join(debug_dir, 'bse_page.png')
+                    html_path = os.path.join(debug_dir, 'bse_page.html')
+
+                    await page.screenshot(path=screenshot_path, full_page=True)
+                    logger.info(f"Screenshot saved to: {screenshot_path}")
+
+                    html_content = await page.content()
+                    with open(html_path, 'w', encoding='utf-8') as f:
+                        f.write(html_content)
+                    logger.info(f"HTML saved to: {html_path}")
+
+                    # Log page structure
+                    page_title = await page.title()
+                    logger.info(f"Page title: {page_title}")
+
+                    tables = await page.query_selector_all("table")
+                    logger.info(f"Found {len(tables)} tables")
+
+                    divs = await page.query_selector_all("div.table, div[id*='ipo'], div[class*='ipo']")
+                    logger.info(f"Found {len(divs)} potential IPO divs")
 
                     # Handle pagination if present
                     ipo_data = await self._extract_all_pages(page)
