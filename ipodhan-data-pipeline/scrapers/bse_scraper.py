@@ -7,7 +7,11 @@ import asyncio
 import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import (
+    async_playwright,
+    Page,
+    TimeoutError as PlaywrightTimeoutError,
+)
 
 from scrapers.base_scraper import BaseScraper
 
@@ -55,17 +59,18 @@ class BSEScraper(BaseScraper):
 
                     # DEBUG: Save page screenshot and HTML for analysis
                     import os
-                    debug_dir = os.path.join(os.path.dirname(__file__), '..', 'debug')
+
+                    debug_dir = os.path.join(os.path.dirname(__file__), "..", "debug")
                     os.makedirs(debug_dir, exist_ok=True)
 
-                    screenshot_path = os.path.join(debug_dir, 'bse_page.png')
-                    html_path = os.path.join(debug_dir, 'bse_page.html')
+                    screenshot_path = os.path.join(debug_dir, "bse_page.png")
+                    html_path = os.path.join(debug_dir, "bse_page.html")
 
                     await page.screenshot(path=screenshot_path, full_page=True)
                     logger.info(f"Screenshot saved to: {screenshot_path}")
 
                     html_content = await page.content()
-                    with open(html_path, 'w', encoding='utf-8') as f:
+                    with open(html_path, "w", encoding="utf-8") as f:
                         f.write(html_content)
                     logger.info(f"HTML saved to: {html_path}")
 
@@ -76,7 +81,9 @@ class BSEScraper(BaseScraper):
                     tables = await page.query_selector_all("table")
                     logger.info(f"Found {len(tables)} tables")
 
-                    divs = await page.query_selector_all("div.table, div[id*='ipo'], div[class*='ipo']")
+                    divs = await page.query_selector_all(
+                        "div.table, div[id*='ipo'], div[class*='ipo']"
+                    )
                     logger.info(f"Found {len(divs)} potential IPO divs")
 
                     # Handle pagination if present
@@ -91,7 +98,7 @@ class BSEScraper(BaseScraper):
                 logger.warning(f"Timeout on attempt {self.retry_count}: {str(e)}")
                 if attempt < self.max_retries - 1:
                     # Exponential backoff: 1s, 2s, 4s
-                    wait_time = 2 ** attempt
+                    wait_time = 2**attempt
                     logger.info(f"Retrying in {wait_time} seconds...")
                     await asyncio.sleep(wait_time)
                 else:
@@ -99,9 +106,11 @@ class BSEScraper(BaseScraper):
                     raise
 
             except Exception as e:
-                logger.error(f"Error on attempt {self.retry_count}: {str(e)}", exc_info=True)
+                logger.error(
+                    f"Error on attempt {self.retry_count}: {str(e)}", exc_info=True
+                )
                 if attempt < self.max_retries - 1:
-                    wait_time = 2 ** attempt
+                    wait_time = 2**attempt
                     logger.info(f"Retrying in {wait_time} seconds...")
                     await asyncio.sleep(wait_time)
                 else:
@@ -132,7 +141,9 @@ class BSEScraper(BaseScraper):
                     break
 
                 # Check for next page button
-                next_button = await page.query_selector("a.next-page, button.next-page, a[title='Next']")
+                next_button = await page.query_selector(
+                    "a.next-page, button.next-page, a[title='Next']"
+                )
 
                 if not next_button:
                     logger.info("No next page button found")
@@ -152,10 +163,14 @@ class BSEScraper(BaseScraper):
                 current_page += 1
 
             except Exception as e:
-                logger.warning(f"Error during pagination at page {current_page}: {str(e)}")
+                logger.warning(
+                    f"Error during pagination at page {current_page}: {str(e)}"
+                )
                 break
 
-        logger.info(f"Extracted total {len(all_ipo_data)} IPOs from {current_page} pages")
+        logger.info(
+            f"Extracted total {len(all_ipo_data)} IPOs from {current_page} pages"
+        )
         return all_ipo_data
 
     async def _extract_ipo_data(self, page: Page) -> List[Dict[str, Any]]:
@@ -168,7 +183,9 @@ class BSEScraper(BaseScraper):
         try:
             # BSE typically uses a specific table ID or class for IPO data
             # Try multiple selectors
-            tables = await page.query_selector_all("table.tablesorter, table#ContentPlaceHolder1_gvIPO, table")
+            tables = await page.query_selector_all(
+                "table.tablesorter, table#ContentPlaceHolder1_gvIPO, table"
+            )
 
             if not tables:
                 logger.warning("No tables found on BSE page")
@@ -192,8 +209,8 @@ class BSEScraper(BaseScraper):
                         ipo_data = await self._parse_table_row(cells)
 
                         if ipo_data and self.validate(ipo_data):
-                            ipo_data['data_source'] = 'BSE'
-                            ipo_data['exchange'] = 'BSE'
+                            ipo_data["data_source"] = "BSE"
+                            ipo_data["exchange"] = "BSE"
                             ipo_list.append(ipo_data)
 
                     except Exception as e:
@@ -233,17 +250,17 @@ class BSEScraper(BaseScraper):
             category = self._determine_category(issue_type)
 
             ipo_data = {
-                'company_name': company_name,
-                'symbol': self._extract_symbol(company_name),
-                'open_date': open_date,
-                'close_date': close_date,
-                'price_band_low': price_low,
-                'price_band_high': price_high,
-                'issue_size': self._parse_amount(issue_size),
-                'status': ipo_status,
-                'category': category,
-                'lot_size': 1,  # Default, actual value needs to be scraped from detail page
-                'issue_type': issue_type
+                "company_name": company_name,
+                "symbol": self._extract_symbol(company_name),
+                "open_date": open_date,
+                "close_date": close_date,
+                "price_band_low": price_low,
+                "price_band_high": price_high,
+                "issue_size": self._parse_amount(issue_size),
+                "status": ipo_status,
+                "category": category,
+                "lot_size": 1,  # Default, actual value needs to be scraped from detail page
+                "issue_type": issue_type,
             }
 
             return ipo_data
@@ -269,18 +286,23 @@ class BSEScraper(BaseScraper):
 
         try:
             # Remove currency symbols and 'to' words
-            price_band = price_band.replace('₹', '').replace('Rs', '').replace('to', '-').replace('/', '-')
+            price_band = (
+                price_band.replace("₹", "")
+                .replace("Rs", "")
+                .replace("to", "-")
+                .replace("/", "-")
+            )
 
             # Split by dash or hyphen
-            parts = [p.strip() for p in price_band.split('-') if p.strip()]
+            parts = [p.strip() for p in price_band.split("-") if p.strip()]
 
             if len(parts) == 2:
-                price_low = float(parts[0].replace(',', ''))
-                price_high = float(parts[1].replace(',', ''))
+                price_low = float(parts[0].replace(",", ""))
+                price_high = float(parts[1].replace(",", ""))
                 return (price_low, price_high)
             elif len(parts) == 1:
                 # Fixed price
-                price = float(parts[0].replace(',', ''))
+                price = float(parts[0].replace(",", ""))
                 return (price, price)
 
         except Exception as e:
@@ -295,11 +317,12 @@ class BSEScraper(BaseScraper):
 
         try:
             # Remove currency symbols and text
-            amount_str = amount_str.replace('₹', '').replace('Rs', '').replace(',', '')
+            amount_str = amount_str.replace("₹", "").replace("Rs", "").replace(",", "")
 
             # Extract number
             import re
-            match = re.search(r'[\d.]+', amount_str)
+
+            match = re.search(r"[\d.]+", amount_str)
             if match:
                 return float(match.group())
 
@@ -311,22 +334,24 @@ class BSEScraper(BaseScraper):
     def _extract_symbol(self, company_name: str) -> str:
         """Extract or generate stock symbol from company name"""
         # Generate symbol from first few characters (actual symbol would come from detail page)
-        symbol = ''.join(c for c in company_name.upper() if c.isalnum())[:10]
-        return symbol or 'UNKNOWN'
+        symbol = "".join(c for c in company_name.upper() if c.isalnum())[:10]
+        return symbol or "UNKNOWN"
 
-    def _determine_status(self, open_date: Optional[str], close_date: Optional[str], status: Optional[str]) -> str:
+    def _determine_status(
+        self, open_date: Optional[str], close_date: Optional[str], status: Optional[str]
+    ) -> str:
         """Determine IPO status based on dates or status column"""
         # If status is provided in table, use it
         if status:
             status_upper = status.upper()
-            if 'UPCOMING' in status_upper or 'FORTHCOMING' in status_upper:
-                return 'UPCOMING'
-            elif 'OPEN' in status_upper or 'LIVE' in status_upper:
-                return 'LIVE'
-            elif 'CLOSED' in status_upper or 'COMPLETED' in status_upper:
-                return 'CLOSED'
-            elif 'LISTED' in status_upper:
-                return 'LISTED'
+            if "UPCOMING" in status_upper or "FORTHCOMING" in status_upper:
+                return "UPCOMING"
+            elif "OPEN" in status_upper or "LIVE" in status_upper:
+                return "LIVE"
+            elif "CLOSED" in status_upper or "COMPLETED" in status_upper:
+                return "CLOSED"
+            elif "LISTED" in status_upper:
+                return "LISTED"
 
         # Otherwise, determine from dates
         try:
@@ -338,28 +363,28 @@ class BSEScraper(BaseScraper):
                 # Try multiple date formats
                 open_dt = self._parse_date(open_date)
                 if open_dt and today < open_dt:
-                    return 'UPCOMING'
+                    return "UPCOMING"
 
             if close_date:
                 close_dt = self._parse_date(close_date)
                 if close_dt:
                     if today > close_dt:
-                        return 'CLOSED'
+                        return "CLOSED"
                     elif open_dt and today >= open_dt:
-                        return 'LIVE'
+                        return "LIVE"
 
         except Exception as e:
             logger.debug(f"Error determining status: {str(e)}")
 
-        return 'UPCOMING'
+        return "UPCOMING"
 
     def _parse_date(self, date_str: str) -> Optional[datetime]:
         """Parse date from various formats"""
         date_formats = [
-            '%d %b %Y',      # 01 Oct 2025
-            '%d-%m-%Y',      # 01-10-2025
-            '%d/%m/%Y',      # 01/10/2025
-            '%d %B %Y',      # 01 October 2025
+            "%d %b %Y",  # 01 Oct 2025
+            "%d-%m-%Y",  # 01-10-2025
+            "%d/%m/%Y",  # 01/10/2025
+            "%d %B %Y",  # 01 October 2025
         ]
 
         for fmt in date_formats:
@@ -374,17 +399,17 @@ class BSEScraper(BaseScraper):
         """Determine IPO category from issue type"""
         if issue_type:
             issue_type_upper = issue_type.upper()
-            if 'SME' in issue_type_upper:
-                return 'SME'
+            if "SME" in issue_type_upper:
+                return "SME"
 
-        return 'MAINBOARD'
+        return "MAINBOARD"
 
     def validate(self, data: Dict[str, Any]) -> bool:
         """
         Validate scraped IPO data
         Basic validation - comprehensive validation happens in IPODataValidator
         """
-        required_fields = ['company_name', 'price_band_low', 'price_band_high']
+        required_fields = ["company_name", "price_band_low", "price_band_high"]
 
         for field in required_fields:
             if field not in data or not data[field]:

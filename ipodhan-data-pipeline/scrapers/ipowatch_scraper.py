@@ -7,7 +7,11 @@ import asyncio
 import logging
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import (
+    async_playwright,
+    Page,
+    TimeoutError as PlaywrightTimeoutError,
+)
 
 from scrapers.base_scraper import BaseScraper
 
@@ -22,7 +26,9 @@ class IPOWatchScraper(BaseScraper):
 
     def __init__(self, timeout: int = 30000, max_retries: int = 3):
         super().__init__("IPOWATCH")
-        self.url = "https://www.ipowatch.in/p/ipo-grey-market-premium-latest-live-gmp.html"
+        self.url = (
+            "https://www.ipowatch.in/p/ipo-grey-market-premium-latest-live-gmp.html"
+        )
         self.timeout = timeout
         self.max_retries = max_retries
         self.retry_count = 0
@@ -35,7 +41,9 @@ class IPOWatchScraper(BaseScraper):
         for attempt in range(self.max_retries):
             try:
                 self.retry_count = attempt + 1
-                logger.info(f"IPOWatch scrape attempt {self.retry_count}/{self.max_retries}")
+                logger.info(
+                    f"IPOWatch scrape attempt {self.retry_count}/{self.max_retries}"
+                )
 
                 async with async_playwright() as p:
                     browser = await p.chromium.launch(headless=True)
@@ -64,7 +72,7 @@ class IPOWatchScraper(BaseScraper):
             except PlaywrightTimeoutError as e:
                 logger.warning(f"Timeout on attempt {self.retry_count}: {str(e)}")
                 if attempt < self.max_retries - 1:
-                    wait_time = 2 ** attempt
+                    wait_time = 2**attempt
                     logger.info(f"Retrying in {wait_time} seconds...")
                     await asyncio.sleep(wait_time)
                 else:
@@ -72,9 +80,11 @@ class IPOWatchScraper(BaseScraper):
                     raise
 
             except Exception as e:
-                logger.error(f"Error on attempt {self.retry_count}: {str(e)}", exc_info=True)
+                logger.error(
+                    f"Error on attempt {self.retry_count}: {str(e)}", exc_info=True
+                )
                 if attempt < self.max_retries - 1:
-                    wait_time = 2 ** attempt
+                    wait_time = 2**attempt
                     logger.info(f"Retrying in {wait_time} seconds...")
                     await asyncio.sleep(wait_time)
                 else:
@@ -112,9 +122,9 @@ class IPOWatchScraper(BaseScraper):
                         gmp_data = await self._parse_gmp_row(cells)
 
                         if gmp_data and self.validate(gmp_data):
-                            gmp_data['source'] = 'IPOWATCH'
-                            gmp_data['source_url'] = self.url
-                            gmp_data['recorded_at'] = datetime.now()
+                            gmp_data["source"] = "IPOWATCH"
+                            gmp_data["source_url"] = self.url
+                            gmp_data["recorded_at"] = datetime.now()
                             gmp_list.append(gmp_data)
 
                     except Exception as e:
@@ -135,7 +145,9 @@ class IPOWatchScraper(BaseScraper):
             company_name = await self._get_cell_text(cells, 0)
             gmp_text = await self._get_cell_text(cells, 1)
             expected_price_text = await self._get_cell_text(cells, 2)
-            kostak_text = await self._get_cell_text(cells, 3) if len(cells) > 3 else None
+            kostak_text = (
+                await self._get_cell_text(cells, 3) if len(cells) > 3 else None
+            )
             sauda_text = await self._get_cell_text(cells, 4) if len(cells) > 4 else None
 
             if not company_name or not gmp_text:
@@ -157,13 +169,13 @@ class IPOWatchScraper(BaseScraper):
             )
 
             gmp_data = {
-                'company_name': company_name,
-                'gmp_amount': gmp_amount,
-                'gmp_percentage': gmp_percentage,
-                'expected_listing_price': expected_price,
-                'kostak_rate': kostak_rate,
-                'subject_to_sauda': sauda_rate,
-                'confidence_score': confidence_score
+                "company_name": company_name,
+                "gmp_amount": gmp_amount,
+                "gmp_percentage": gmp_percentage,
+                "expected_listing_price": expected_price,
+                "kostak_rate": kostak_rate,
+                "subject_to_sauda": sauda_rate,
+                "confidence_score": confidence_score,
             }
 
             return gmp_data
@@ -194,14 +206,14 @@ class IPOWatchScraper(BaseScraper):
             import re
 
             # Remove currency symbols
-            gmp_text = gmp_text.replace('₹', '').replace('Rs', '')
+            gmp_text = gmp_text.replace("₹", "").replace("Rs", "")
 
             # Extract amount
-            amount_match = re.search(r'[+-]?\d+\.?\d*', gmp_text)
+            amount_match = re.search(r"[+-]?\d+\.?\d*", gmp_text)
             gmp_amount = float(amount_match.group()) if amount_match else 0
 
             # Extract percentage
-            pct_match = re.search(r'\(([+-]?\d+\.?\d*)%\)', gmp_text)
+            pct_match = re.search(r"\(([+-]?\d+\.?\d*)%\)", gmp_text)
             gmp_percentage = float(pct_match.group(1)) if pct_match else 0
 
             return (abs(gmp_amount), gmp_percentage)
@@ -217,11 +229,12 @@ class IPOWatchScraper(BaseScraper):
 
         try:
             import re
+
             # Remove currency symbols and commas
-            price_text = price_text.replace('₹', '').replace('Rs', '').replace(',', '')
+            price_text = price_text.replace("₹", "").replace("Rs", "").replace(",", "")
 
             # Extract number
-            match = re.search(r'\d+\.?\d*', price_text)
+            match = re.search(r"\d+\.?\d*", price_text)
             if match:
                 return float(match.group())
 
@@ -230,8 +243,13 @@ class IPOWatchScraper(BaseScraper):
 
         return None
 
-    def _calculate_confidence(self, gmp_amount: float, expected_price: Optional[float],
-                             kostak: Optional[float], sauda: Optional[float]) -> int:
+    def _calculate_confidence(
+        self,
+        gmp_amount: float,
+        expected_price: Optional[float],
+        kostak: Optional[float],
+        sauda: Optional[float],
+    ) -> int:
         """
         Calculate confidence score (1-100) based on data completeness
         AC4: Confidence scoring requirement
@@ -264,7 +282,7 @@ class IPOWatchScraper(BaseScraper):
         Validate scraped GMP data
         Basic validation - comprehensive validation happens in IPODataValidator
         """
-        required_fields = ['company_name', 'gmp_amount']
+        required_fields = ["company_name", "gmp_amount"]
 
         for field in required_fields:
             if field not in data or data[field] is None:

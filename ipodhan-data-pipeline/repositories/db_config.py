@@ -18,11 +18,11 @@ _connection_pool: Optional[pool.SimpleConnectionPool] = None
 def get_db_config() -> dict:
     """Get database configuration from environment variables"""
     return {
-        'host': os.getenv('DB_HOST', 'localhost'),
-        'port': int(os.getenv('DB_PORT', 5432)),
-        'database': os.getenv('DB_NAME', 'ipodhan'),
-        'user': os.getenv('DB_USER', 'postgres'),
-        'password': os.getenv('DB_PASSWORD', 'postgres'),
+        "host": os.getenv("DB_HOST", "localhost"),
+        "port": int(os.getenv("DB_PORT", 5432)),
+        "database": os.getenv("DB_NAME", "ipodhan"),
+        "user": os.getenv("DB_USER", "postgres"),
+        "password": os.getenv("DB_PASSWORD", "postgres"),
     }
 
 
@@ -36,21 +36,23 @@ def get_db_pool() -> pool.SimpleConnectionPool:
     if _connection_pool is None:
         try:
             config = get_db_config()
-            min_conn = int(os.getenv('DB_POOL_MIN', 1))
-            max_conn = int(os.getenv('DB_POOL_MAX', 10))
+            min_conn = int(os.getenv("DB_POOL_MIN", 1))
+            max_conn = int(os.getenv("DB_POOL_MAX", 10))
 
-            logger.info(f"Creating database connection pool (min={min_conn}, max={max_conn})")
+            logger.info(
+                f"Creating database connection pool (min={min_conn}, max={max_conn})"
+            )
 
             _connection_pool = pool.SimpleConnectionPool(
-                minconn=min_conn,
-                maxconn=max_conn,
-                **config
+                minconn=min_conn, maxconn=max_conn, **config
             )
 
             logger.info("Database connection pool created successfully")
 
         except Exception as e:
-            logger.error(f"Failed to create database connection pool: {str(e)}", exc_info=True)
+            logger.error(
+                f"Failed to create database connection pool: {str(e)}", exc_info=True
+            )
             raise
 
     return _connection_pool
@@ -93,7 +95,9 @@ def close_db_pool():
         logger.info("Database connection pool closed")
 
 
-def execute_query(query: str, params: tuple = None, fetch_one: bool = False, fetch_all: bool = False):
+def execute_query(
+    query: str, params: tuple = None, fetch_one: bool = False, fetch_all: bool = False
+):
     """
     Execute a database query with connection pooling
 

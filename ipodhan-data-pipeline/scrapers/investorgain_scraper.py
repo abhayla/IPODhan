@@ -8,7 +8,11 @@ import logging
 import re
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from playwright.async_api import async_playwright, Page, TimeoutError as PlaywrightTimeoutError
+from playwright.async_api import (
+    async_playwright,
+    Page,
+    TimeoutError as PlaywrightTimeoutError,
+)
 
 from scrapers.base_scraper import BaseScraper
 
@@ -28,7 +32,9 @@ class InvestorGainScraper(BaseScraper):
         """Scrape GMP data with retry mechanism"""
         for attempt in range(self.max_retries):
             try:
-                logger.info(f"InvestorGain scrape attempt {attempt + 1}/{self.max_retries}")
+                logger.info(
+                    f"InvestorGain scrape attempt {attempt + 1}/{self.max_retries}"
+                )
 
                 async with async_playwright() as p:
                     browser = await p.chromium.launch(headless=True)
@@ -50,7 +56,7 @@ class InvestorGainScraper(BaseScraper):
             except Exception as e:
                 logger.error(f"Error on attempt {attempt + 1}: {str(e)}")
                 if attempt < self.max_retries - 1:
-                    await asyncio.sleep(2 ** attempt)
+                    await asyncio.sleep(2**attempt)
                 else:
                     self.log_error(e)
                     raise
@@ -73,9 +79,9 @@ class InvestorGainScraper(BaseScraper):
 
                     gmp_data = await self._parse_gmp_row(cells)
                     if gmp_data and self.validate(gmp_data):
-                        gmp_data['source'] = 'INVESTORGAIN'
-                        gmp_data['source_url'] = self.url
-                        gmp_data['recorded_at'] = datetime.now()
+                        gmp_data["source"] = "INVESTORGAIN"
+                        gmp_data["source_url"] = self.url
+                        gmp_data["recorded_at"] = datetime.now()
                         gmp_list.append(gmp_data)
 
         except Exception as e:
@@ -97,11 +103,11 @@ class InvestorGainScraper(BaseScraper):
             expected_price = self._parse_price(expected_price_text)
 
             return {
-                'company_name': company_name,
-                'gmp_amount': gmp_amount,
-                'gmp_percentage': gmp_percentage,
-                'expected_listing_price': expected_price,
-                'confidence_score': 75  # Medium confidence for InvestorGain
+                "company_name": company_name,
+                "gmp_amount": gmp_amount,
+                "gmp_percentage": gmp_percentage,
+                "expected_listing_price": expected_price,
+                "confidence_score": 75,  # Medium confidence for InvestorGain
             }
 
         except Exception as e:
@@ -122,11 +128,11 @@ class InvestorGainScraper(BaseScraper):
         if not gmp_text:
             return (0, 0)
         try:
-            amount_match = re.search(r'[+-]?\d+\.?\d*', gmp_text)
-            pct_match = re.search(r'\(([+-]?\d+\.?\d*)%\)', gmp_text)
+            amount_match = re.search(r"[+-]?\d+\.?\d*", gmp_text)
+            pct_match = re.search(r"\(([+-]?\d+\.?\d*)%\)", gmp_text)
             return (
                 float(amount_match.group()) if amount_match else 0,
-                float(pct_match.group(1)) if pct_match else 0
+                float(pct_match.group(1)) if pct_match else 0,
             )
         except:
             return (0, 0)
@@ -136,11 +142,11 @@ class InvestorGainScraper(BaseScraper):
         if not price_text:
             return None
         try:
-            match = re.search(r'\d+\.?\d*', price_text.replace(',', ''))
+            match = re.search(r"\d+\.?\d*", price_text.replace(",", ""))
             return float(match.group()) if match else None
         except:
             return None
 
     def validate(self, data: Dict[str, Any]) -> bool:
         """Validate GMP data"""
-        return 'company_name' in data and 'gmp_amount' in data
+        return "company_name" in data and "gmp_amount" in data
