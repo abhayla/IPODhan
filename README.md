@@ -166,6 +166,11 @@ docker-compose down
 
 ## 📊 Database Setup
 
+### Production VPS Details
+- **Server**: Windows Server 2022
+- **IP**: 103.118.16.189
+- **Database**: PostgreSQL 15.x
+
 ### Development (SQLite)
 ```bash
 cd ipodhan-backend
@@ -173,10 +178,19 @@ npx prisma migrate dev
 npx prisma studio  # Visual database browser
 ```
 
-### Production (PostgreSQL)
+### Production (PostgreSQL on Windows Server 2022)
 Update DATABASE_URL in .env:
 ```
-DATABASE_URL="postgresql://user:password@localhost:5432/ipodhan_db"
+DATABASE_URL="postgresql://postgres:Papa3Monu@1234@103.118.16.189:5432/ipodhan"
+```
+
+Or use individual environment variables:
+```
+DB_HOST=103.118.16.189
+DB_PORT=5432
+DB_NAME=ipodhan
+DB_USER=postgres
+DB_PASSWORD=Papa3Monu@1234
 ```
 
 ## 🎨 Figma Design System
