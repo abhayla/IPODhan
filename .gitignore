@@ -435,6 +435,21 @@ ipo-data-*.json
 gmp-cache-*.json
 temp-*.csv
 
+# Data pipeline debug outputs
+ipodhan-data-pipeline/debug/
+ipodhan-data-pipeline/*.html
+ipodhan-data-pipeline/screenshots/
+
+# Playwright browsers cache
+.ms-playwright/
+playwright/.cache/
+
+# Score engine cache
+ipodhan-score-engine/.redis-cache/
+
+# Python logs
+*.log.*
+
 # Backup and migration files
 migrations/*.backup.sql
 backups/
@@ -550,7 +565,7 @@ lerna-debug.log
 .mvn/
 target/
 
-# Python virtual environments (for any Python scripts)
+# Python virtual environments and artifacts
 venv/
 env/
 ENV/
@@ -558,6 +573,24 @@ ENV/
 .pyenv/
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+*.egg-info/
+dist-python/
+*.egg
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.hypothesis/
+*.mo
+*.pot
+celerybeat-schedule
+celerybeat.pid
 
 # Ruby (if using any Ruby tools)
 .bundle/
