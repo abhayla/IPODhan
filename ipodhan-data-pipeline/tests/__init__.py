@@ -1,3 +1,0 @@
-"""
-IPODhan Data Pipeline Tests
-"""
