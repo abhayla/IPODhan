@@ -40,7 +40,7 @@ export const logger = pino({
  * const requestLogger = createLogger({ requestId: '123', userId: 'abc' });
  * requestLogger.info('Processing request');
  */
-export function createLogger(context: Record<string, any>) {
+export function createLogger(context: Record<string, unknown>) {
   return logger.child(context);
 }
 
