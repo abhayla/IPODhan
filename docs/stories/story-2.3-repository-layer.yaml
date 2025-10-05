@@ -1,0 +1,120 @@
+id: story-2.3
+epic: epic-2-data-layer
+title: Create Repository Layer with Cache-Aside Pattern
+type: technical
+priority: critical
+points: 8
+
+user_story:
+  as_a: Backend Developer
+  i_want: Type-safe repository interfaces for data access
+  so_that: API routes have clean abstraction over database queries and caching
+
+acceptance_criteria:
+  database_repositories:
+    - IPORepository class created in lib/repositories/ipo-repository.ts
+    - IPORepository methods implemented:
+      - findAll(filters IPOFilters) returns IPO[] with pagination
+      - findBySlug(slug string) returns IPO | null with all relations
+      - search(query string, limit number) returns IPO[] using pg_trgm
+      - create(data CreateIPODTO) returns IPO
+      - update(id string, data UpdateIPODTO) returns IPO
+    - SubscriptionRepository class created in lib/repositories/subscription-repository.ts
+    - SubscriptionRepository methods:
+      - findByIPO(ipoId string) returns Subscription[] ordered by timestamp desc
+      - findLatest(ipoId string) returns Subscription | null (most recent)
+      - createSnapshot(ipoId string, data SubscriptionDTO) returns Subscription
+    - GMPRepository class created in lib/repositories/gmp-repository.ts
+    - GMPRepository methods:
+      - findByIPO(ipoId string, days number = 7) returns GMPRecord[] last N days
+      - findLatest(ipoId string) returns GMPRecord | null
+      - create(ipoId string, data GMPRecordDTO) returns GMPRecord
+
+  caching_layer:
+    - Cache-aside pattern implemented for all READ operations
+    - Redis checked before PostgreSQL on every findBySlug, findAll query
+    - Cache populated on miss with appropriate TTL (15min detail, 5min list)
+    - Cache keys follow pattern "entity:identifier" (e.g., "ipo:paytm-ipo-2021")
+    - Explicit cache invalidation methods:
+      - invalidateIPO(slug string) deletes cache key
+      - invalidateIPOList() deletes all list cache keys
+      - invalidateSubscription(ipoId string) deletes subscription cache
+    - Cache connection error handling (graceful fallback to DB if Redis down)
+
+  type_safety:
+    - All DTOs defined in packages/shared/src/types/
+    - Zod schemas for runtime validation of external data
+    - TypeScript interfaces exported from shared package
+    - No any types used (strict TypeScript)
+
+  testing:
+    - Unit tests for each repository method using mock database
+    - Test cache hit scenario (returns cached data, no DB query)
+    - Test cache miss scenario (queries DB, populates cache)
+    - Test error handling: DB down returns error, Redis down falls back to DB
+    - Test coverage greater than 85%
+    - Integration tests with real PostgreSQL + Redis using test containers
+    - All tests pass in CI pipeline
+
+  performance:
+    - findBySlug with cache HIT responds in less than 10ms
+    - findBySlug with cache MISS responds in less than 100ms
+    - findAll with filters responds in less than 200ms
+    - All queries use proper database indexes (verified with EXPLAIN)
+    - No N+1 query problems (use Drizzle relational queries for joins)
+
+technical_dependencies:
+  requires:
+    - story-2.1: Database schema must exist (tables created)
+    - story-2.2: Drizzle migrations must be run successfully
+    - story-1.3: Drizzle ORM and ioredis packages must be installed
+    - story-1.2: PostgreSQL and Redis must be running and accessible
+  blocks:
+    - story-3.2: GET /api/ipos route cannot be built without IPORepository
+    - story-4.1: IPO detail API depends on IPORepository.findBySlug method
+    - story-7.1: NSE scraper needs repositories to save scraped data
+    - story-7.2: BSE scraper needs repositories to save scraped data
+  optional: []
+
+implementation_notes:
+  - Use Drizzle's relational queries for joins (avoid manual SQL joins)
+  - Implement repository interface pattern for future mock testing
+  - Redis TTL configuration: 15 minutes for IPO detail, 5 minutes for listings
+  - Log all cache misses to monitor cache hit rate (target 80%+ hit rate)
+  - PostgreSQL connection pool: max 20 connections, idle timeout 30s
+  - Redis connection pool: max 10 connections
+  - Use transactions for multi-table operations (create IPO + financials)
+  - Add database query timeout (5 seconds) to prevent hanging requests
+
+files_to_create:
+  - web/lib/repositories/ipo-repository.ts
+  - web/lib/repositories/subscription-repository.ts
+  - web/lib/repositories/gmp-repository.ts
+  - web/lib/repositories/financial-repository.ts
+  - web/lib/repositories/base-repository.ts (shared cache logic)
+  - web/lib/cache/redis-client.ts (Redis connection)
+  - web/lib/cache/cache-keys.ts (cache key utilities)
+  - web/tests/unit/repositories/ipo-repository.test.ts
+  - web/tests/integration/repositories/ipo-repository.integration.test.ts
+
+definition_of_done:
+  - All repository classes created and exported
+  - All methods implemented with correct signatures
+  - Cache-aside pattern working (verified with manual test)
+  - Unit tests passing with greater than 85% coverage
+  - Integration tests passing with real DB + Redis
+  - No TypeScript errors or warnings
+  - Code reviewed and approved by senior developer
+  - Performance benchmarks met (tested with 100+ IPO records)
+  - Documentation added to README with usage examples
+  - Merged to main branch via PR
+
+estimate_hours: 8
+actual_hours: null
+status: pending
+assigned_to: null
+sprint: week-2
+labels:
+  - critical-path
+  - technical-foundation
+  - performance-critical
