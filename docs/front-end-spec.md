@@ -66,6 +66,9 @@ Zero advertisements ensures fast loads, clean interface, and user trust. This is
 | 2025-10-05 | 1.4 | Added 2 MVP enhancement screens (Valuation Calculator, Allotment Tips); Added Phase 2/3 roadmap | Sally (UX Expert) |
 | 2025-10-05 | 1.5 | Added 5 critical missing features (IPO Comparison, Enhanced Calendar/Archive/Forms, Registrar Directory); Total 26 screens | Sally (UX Expert) |
 | 2025-10-05 | 1.6 | **Production-Ready Refinements:** Added complete Design System Foundation (color palette, typography, spacing, breakpoints, component library, accessibility standards, icon system, animations, loading states, empty states), SEO Optimization Strategy (URL structure, meta tags, structured data, technical SEO), Success Metrics & KPIs (performance, engagement, feature adoption, traffic, conversions) | Sally (UX Expert) |
+| 2025-10-05 | 1.7 | **Documentation Reconciliation:** Aligned with Architecture v1.1 - Confirmed React Context for state management, GA4 for analytics, flexible email provider decision, enhanced GMP data fields, MVP phase markers for new features (Market Holidays, Registrar Directory, Lot Calculator, IPO Comparison basic, Broker Affiliates simple), Phase 2 for IPO News | Sally (UX Expert) |
+| 2025-10-05 | 1.8 | **Final MVP Scope Alignment:** Updated to Architecture v1.2 - Removed Email Alerts and IPO News from MVP (Phase 2), Fixed Zustand reference to React Context, Confirmed full peer comparison metrics for MVP | Sally (UX Expert) |
+| 2025-10-05 | 1.9 | **Phase 2 Marker Cleanup:** Added explicit 🟢 Phase 2 markers to all remaining email/newsletter references for absolute clarity | Winston (Architect) |
 
 ## Information Architecture (IA)
 
@@ -306,8 +309,8 @@ graph TD
 **User Goal:** Make final decision on application quantity based on latest subscription numbers
 
 **Entry Points:**
-- Email alert: "IPO closing tomorrow"
-- Saved bookmark/watchlist (Phase 2)
+- Email alert: "IPO closing tomorrow" 🟢 **(Phase 2)**
+- Saved bookmark/watchlist 🟢 **(Phase 2)**
 - Direct navigation from homepage
 
 **Success Criteria:**
@@ -320,7 +323,7 @@ graph TD
 
 ```mermaid
 graph TD
-    A[User receives email alert] --> B[Tap link in email]
+    A[User receives email alert - PHASE 2] --> B[Tap link in email]
     B --> C[IPO Detail: Overview tab]
     C --> D[Check final subscription status]
     D --> E{Oversubscribed?}
@@ -351,7 +354,7 @@ graph TD
 - **High oversubscription:** Allotment calculator shows realistic expectations (e.g., "87x oversubscribed - expect partial allotment or lottery-based allocation")
 
 **Notes:**
-- Email must include current subscription status + delta from previous day (e.g., "Subscription increased from 3.2x to 5.7x")
+- 🟢 **(Phase 2)** Email must include current subscription status + delta from previous day (e.g., "Subscription increased from 3.2x to 5.7x")
 - Subscription updates: Hourly during market hours (9 AM - 5 PM), matches Chittorgarh frequency
 - "Lot size calculator" widget: Input investment amount, show suggested lots
 - **Allotment probability feature:** Shows expected allotment chances based on subscription level and category (Retail/HNI)
@@ -671,7 +674,7 @@ graph TD
 - **Suggestions:** "Try searching for 'IPO', 'GMP', or 'Subscription'"
 - **CTA:** [Suggest a Term] link to feedback form
 
-**News (No Articles):**
+**News (No Articles):** 🟢 **(Phase 2)**
 - **Message:** "No news articles available for this category"
 - **CTA:** [View All News] or [Subscribe to Newsletter]
 
@@ -1347,7 +1350,7 @@ graph TD
   - Live search within headlines and content
 - **Pagination / Infinite Scroll:**
   - Load more news as user scrolls
-- **Newsletter Signup (bottom):**
+- **Newsletter Signup (bottom):** 🟢 **(Phase 2)**
   - "Get daily IPO news in your inbox"
   - Email input + [Subscribe] button
 
@@ -2220,7 +2223,7 @@ Sitemap: https://ipodhan.com/sitemap.xml
 - Forum participation: Reddit r/IndiaInvestments, Twitter FinTwit
 
 **Content Marketing:**
-- Weekly IPO roundup emails (newsletter)
+- Weekly IPO roundup emails (newsletter) 🟢 **(Phase 2)**
 - YouTube explainer videos (IPO basics, application guide)
 - Infographics (shareable on social media)
 
@@ -2360,7 +2363,7 @@ Sitemap: https://ipodhan.com/sitemap.xml
 - **Measurement:** Track "broker_link_click" events
 - **Revenue Target:** ₹3 lakhs/month from 1000 account openings × ₹300 commission
 
-**Email Newsletter Signups:**
+**Email Newsletter Signups:** 🟢 **(Phase 2)**
 - **Target:** 10% conversion on newsletter CTAs
 - **Measurement:** Track "newsletter_signup" events
 - **Success Criteria:** ✅ 10% of homepage visitors subscribe

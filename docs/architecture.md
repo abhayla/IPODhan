@@ -1,6 +1,6 @@
 # IPODhan Fullstack Architecture Document
 
-**Version:** 1.0
+**Version:** 1.2
 **Last Updated:** 2025-10-05
 **Author:** Winston (Architect)
 
@@ -44,6 +44,20 @@ Based on analysis of the repository:
 | Date | Version | Description | Author |
 |------|---------|-------------|--------|
 | 2025-10-05 | 1.0 | Initial architecture document created from PRD, brief, and front-end spec | Winston (Architect) |
+| 2025-10-05 | 1.1 | Documentation reconciliation: Updated tech stack (React Context, flexible email provider), added new data models (MarketHoliday, Registrar, PeerCompany, BrokerAffiliate, IPONews), enhanced GMP fields, added MVP phase markers throughout | Winston (Architect) |
+| 2025-10-05 | 1.2 | Final MVP scope alignment: Moved Email Alerts and IPO News to Phase 2, confirmed full peer comparison metrics for MVP, clarified 4 core tools as MVP features | Winston (Architect) |
+
+---
+
+### Phase Legend
+
+Throughout this document, features and components are marked with phase indicators:
+
+- 🔵 **MVP** - Must be implemented for initial launch
+- 🟢 **Phase 2** - Post-MVP enhancements (3-6 months after launch)
+- 🟣 **Phase 3** - Future considerations (6+ months after launch)
+
+Unmarked items are foundational infrastructure required for MVP.
 
 ---
 
@@ -64,7 +78,7 @@ IPODhan employs a **monolithic Next.js fullstack architecture** deployed on Wind
 - **CDN/Edge**: Cloudflare (DNS, SSL/TLS, caching, DDoS protection)
 - **Web Scraping**: Puppeteer (headless browser for NSE/BSE scraping)
 - **Task Scheduler**: Node-cron (scheduled data updates)
-- **Email Service**: Resend (transactional emails)
+- **Email Service**: Not required for MVP (Phase 2 feature)
 
 **Deployment Host and Regions:**
 - Primary: VPS location (to be configured)
@@ -165,7 +179,7 @@ This is the **DEFINITIVE technology selection** for IPODhan. All development mus
 | **Frontend Language** | TypeScript | 5.3+ | Type-safe frontend development | Prevents runtime errors, improves IDE support, enforces data model contracts |
 | **Frontend Framework** | Next.js | 14.2+ | React framework with SSR/SSG | App Router for modern patterns, built-in API routes, excellent SEO, React Server Components |
 | **UI Component Library** | shadcn/ui | Latest | Headless UI components | Already integrated, Radix UI primitives (accessibility), Tailwind-native styling |
-| **State Management** | Zustand | 4.5+ | Lightweight client state | Simple API, <1KB bundle size, perfect for IPO filters/watchlists, TypeScript-first |
+| **State Management** | React Context | Built-in | Client state management | 🔵 **MVP** - Built-in solution, no extra dependencies, sufficient for filters/search/UI state |
 | **Backend Language** | TypeScript (Node.js) | 5.3+ (Node 20 LTS) | Type-safe backend development | Same language as frontend enables code sharing, async I/O, Windows Server compatible |
 | **Backend Framework** | Next.js API Routes | 14.2+ | RESTful API endpoints | Co-located with frontend, shared middleware, automatic TypeScript types |
 | **API Style** | REST | - | HTTP API design | Simple, widely understood, HTTP caching support (critical for performance) |
@@ -185,7 +199,7 @@ This is the **DEFINITIVE technology selection** for IPODhan. All development mus
 | **Scheduled Jobs** | Node-cron | 3.0+ | Cron-based task scheduling | Simple syntax, in-process scheduling, lightweight |
 | **API Client** | Native Fetch | Built-in Node 20+ | HTTP requests | No axios dependency needed, standard Web API |
 | **Data Validation** | Zod | 3.22+ | Runtime type validation | Parse external API responses safely, validate user input, integrates with Drizzle ORM |
-| **Email Service** | Resend | Latest | Transactional emails | Modern API, generous free tier (3k emails/month), React Email template support |
+| **Email Service** | TBD (Resend/SendGrid/SES) | Latest | Transactional emails | 🟢 **Phase 2** - Email alerts for IPO notifications; evaluate Resend (3k/mo free), SendGrid (100/day), or AWS SES when implementing |
 | **Analytics** | Google Analytics 4 | Latest (GA4) | Web analytics and user tracking | Industry standard, free tier unlimited, comprehensive event tracking, Google Search Console integration |
 | **Error Tracking** | Sentry | Latest | Error monitoring | Free tier (5k events/month), source map support, performance monitoring |
 | **Code Quality** | ESLint + Prettier | Latest | Linting and formatting | Next.js includes ESLint config, Prettier for consistent formatting |
@@ -318,9 +332,16 @@ export interface Subscription {
 }
 ```
 
-### GMPRecord
+### GMPRecord 🔵 **MVP**
 
-**Purpose:** Grey Market Premium historical tracking for trend visualization.
+**Purpose:** Grey Market Premium historical tracking for trend visualization with enhanced grey market data.
+
+**Key Attributes:**
+- Current GMP and estimated listing price
+- Subject rate (unofficial grey market lot rate)
+- Kostak rate (selling allotment rights rate)
+- Sauda details (grey market trading information)
+- Historical tracking for 7-day trend charts
 
 #### TypeScript Interface
 
@@ -331,10 +352,18 @@ export interface GMPRecord {
   id: string;
   ipoId: string;
   timestamp: Date;
+
+  // Core GMP data
   gmp: number;
   expectedListingPrice: number;
-  subject2SafaltyKostak: number | null;
-  source: string;
+
+  // Enhanced grey market data 🔵 MVP
+  subjectRate: number | null;        // Subject/Safalya rate
+  kostakRate: number | null;         // Kostak rate (allotment rights)
+  saudaDetails: string | null;       // Additional grey market trading info
+
+  // Metadata
+  source: string;                    // Data source attribution
 }
 ```
 
@@ -417,9 +446,9 @@ export interface Document {
 }
 ```
 
-### EmailSubscriber
+### EmailSubscriber 🟢 **Phase 2**
 
-**Purpose:** Email alert subscriptions for IPO notifications.
+**Purpose:** Email alert subscriptions for IPO notifications (deferred to Phase 2).
 
 #### TypeScript Interface
 
@@ -443,6 +472,179 @@ export interface EmailSubscriber {
 }
 ```
 
+### MarketHoliday 🔵 **MVP**
+
+**Purpose:** Store NSE/BSE trading holidays for IPO calendar and timeline calculations.
+
+**Key Attributes:**
+- Holiday date and description
+- Exchange applicability (NSE, BSE, or both)
+- Holiday type (trading, settlement)
+
+#### TypeScript Interface
+
+```typescript
+// packages/shared/src/types/holiday.ts
+
+export enum Exchange {
+  NSE = 'NSE',
+  BSE = 'BSE',
+  BOTH = 'BOTH'
+}
+
+export enum HolidayType {
+  TRADING = 'TRADING',           // No trading on this day
+  SETTLEMENT = 'SETTLEMENT',     // Settlement holiday only
+  BOTH = 'BOTH'                  // Both trading and settlement
+}
+
+export interface MarketHoliday {
+  id: string;
+  date: Date;
+  description: string;             // e.g., "Republic Day", "Diwali"
+  exchange: Exchange;              // NSE, BSE, or BOTH
+  type: HolidayType;
+  year: number;                    // For filtering by year
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+### Registrar 🔵 **MVP**
+
+**Purpose:** Store IPO registrar contact information for allotment checking and investor queries.
+
+**Key Attributes:**
+- Registrar company details
+- Contact information (email, phone, website)
+- Allotment check URL pattern
+
+#### TypeScript Interface
+
+```typescript
+// packages/shared/src/types/registrar.ts
+
+export interface Registrar {
+  id: string;
+  name: string;                    // e.g., "Link Intime India Pvt Ltd"
+  shortName: string;               // e.g., "Link Intime"
+  email: string;                   // Contact email for IPO queries
+  phone: string | null;
+  website: string;
+  allotmentCheckUrl: string | null; // URL pattern for allotment status
+  address: string | null;
+  logoUrl: string | null;
+  active: boolean;                 // Is registrar currently active?
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+### PeerCompany 🔵 **MVP** (Full Metrics)
+
+**Purpose:** Store peer company financial data for IPO comparison analysis.
+
+**Key Attributes:**
+- Company identification and sector
+- Full financial metrics for comprehensive comparison (MVP decision: include all metrics)
+
+#### TypeScript Interface
+
+```typescript
+// packages/shared/src/types/peer.ts
+
+export interface PeerCompany {
+  id: string;
+  ipoId: string;                   // Associated IPO for comparison
+  companyName: string;
+  sector: string;
+  isListed: boolean;
+
+  // 🔵 MVP - Full financial metrics for comprehensive peer comparison
+  peRatio: number | null;          // Price-to-Earnings ratio
+  eps: number | null;              // Earnings Per Share (Basic)
+  dilutedEps: number | null;       // Diluted EPS
+  ronw: number | null;             // Return on Net Worth %
+  nav: number | null;              // Net Asset Value per share
+  pbvRatio: number | null;         // Price-to-Book Value ratio
+  financialStatementType: 'CONSOLIDATED' | 'STANDALONE' | null;
+
+  // Metadata
+  dataSource: string;              // Source of peer data
+  lastUpdated: Date;
+  createdAt: Date;
+}
+```
+
+### BrokerAffiliate 🔵 **MVP** (Simple Links - No Tracking)
+
+**Purpose:** Store broker affiliate partnership information for IPO application links.
+
+**Key Attributes:**
+- Broker details and affiliate URL
+- Phase 2 will add click tracking and conversion analytics
+
+#### TypeScript Interface
+
+```typescript
+// packages/shared/src/types/affiliate.ts
+
+export interface BrokerAffiliate {
+  id: string;
+  brokerName: string;              // e.g., "Zerodha", "AngelOne"
+  brokerLogo: string | null;
+  affiliateUrl: string;            // Affiliate link URL
+  displayText: string;             // CTA text (e.g., "Open Demat Account")
+  active: boolean;
+  displayOrder: number;            // Order in UI
+
+  // 🟢 Phase 2 - Analytics
+  // clickCount: number;
+  // conversionCount: number;
+  // lastClickedAt: Date;
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+### IPONews 🟢 **Phase 2** (Post-MVP)
+
+**Purpose:** Store IPO-specific news, updates, and announcements.
+
+**Key Attributes:**
+- News content and metadata
+- Association with specific IPO
+- News categorization (Announcement, Update, Allotment, Listing)
+
+#### TypeScript Interface
+
+```typescript
+// packages/shared/src/types/news.ts
+
+export enum NewsType {
+  ANNOUNCEMENT = 'ANNOUNCEMENT',
+  UPDATE = 'UPDATE',
+  ANALYSIS = 'ANALYSIS',
+  ALLOTMENT = 'ALLOTMENT',
+  LISTING = 'LISTING'
+}
+
+export interface IPONews {
+  id: string;
+  ipoId: string;
+  title: string;
+  content: string;                 // Full news content (markdown supported)
+  excerpt: string;                 // Short summary for listing
+  type: NewsType;
+  source: string;                  // Source attribution (e.g., "NSE", "IPODhan Editorial")
+  externalUrl: string | null;      // Link to original article if external
+  publishedAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
 ---
 
 ## API Specification
@@ -460,21 +662,47 @@ No authentication required for MVP (all endpoints public, read-only). Phase 2 wi
 
 ### Key Endpoints
 
-**IPO Endpoints:**
+**IPO Endpoints:** 🔵 **MVP**
 - `GET /api/ipos` - List IPOs with filtering and pagination
 - `GET /api/ipos/{slug}` - Get detailed IPO information
 - `GET /api/ipos/{slug}/subscription` - Get subscription history
-- `GET /api/ipos/{slug}/gmp` - Get GMP history
+- `GET /api/ipos/{slug}/gmp` - Get GMP history (enhanced with Subject/Kostak rates)
+- `GET /api/ipos/{slug}/peers` - Get peer comparison data (full metrics: P/E, EPS, Diluted EPS, RoNW, NAV, P/BV)
+- `POST /api/ipos/compare` - Compare multiple IPOs side-by-side
 
-**Search:**
+**Search:** 🔵 **MVP**
 - `GET /api/search` - Search IPOs by company name
 
-**Email Subscription:**
+**Email Subscription:** 🟢 **Phase 2**
 - `POST /api/subscribers` - Subscribe to email alerts
 - `GET /api/subscribers/verify` - Verify email subscription
 - `POST /api/subscribers/unsubscribe` - Unsubscribe from alerts
 
-**Health Check:**
+**Market Holidays:** 🔵 **MVP**
+- `GET /api/holidays` - Get market holidays (query params: year, exchange)
+- `GET /api/holidays/upcoming` - Get next 5 upcoming holidays
+
+**Registrar Directory:** 🔵 **MVP**
+- `GET /api/registrars` - List all active registrars
+- `GET /api/registrars/{id}` - Get registrar details
+- `GET /api/registrars/search` - Search registrars by name
+
+**Tools & Calculators:** 🔵 **MVP**
+- `POST /api/tools/lot-calculator` - Calculate lot size based on investment amount
+  - Body: `{ ipoSlug: string, investmentAmount: number }`
+  - Returns: `{ lots: number, totalShares: number, totalAmount: number }`
+- `POST /api/tools/compare` - Compare multiple IPOs side-by-side
+  - Body: `{ ipoSlugs: string[] }`
+  - Returns: Comparison data for selected IPOs
+
+**Broker Affiliates:** 🔵 **MVP**
+- `GET /api/affiliates` - Get active broker affiliate links (simple, no tracking)
+
+**IPO News:** 🟢 **Phase 2**
+- `GET /api/ipos/{slug}/news` - Get news for specific IPO
+- `GET /api/news` - Get all IPO news (paginated, filterable by type)
+
+**Health Check:** 🔵 **MVP**
 - `GET /api/health` - Service health status
 
 ### Caching Strategy
@@ -506,9 +734,9 @@ The system is composed of the following major logical components across the full
 - Server Components: Render IPO listings, detail pages with Tier 1 data (SSR)
 - Client Components: Interactive UI (filters, tabs, tooltips, modals)
 - API Client Service: Fetch data from Next.js API routes
-- State Management: Zustand stores for filters, search state
+- State Management: React Context for filters, search state, UI state 🔵 **MVP**
 
-**Technology Stack:** Next.js 14 App Router, React Server Components, TypeScript, Tailwind CSS, Zustand
+**Technology Stack:** Next.js 14 App Router, React Server Components, TypeScript, Tailwind CSS, React Context
 
 ### API Routes (Next.js Backend)
 
@@ -547,15 +775,15 @@ The system is composed of the following major logical components across the full
 
 **Technology Stack:** Node.js, TypeScript, Puppeteer, Node-cron, Axios
 
-### Email Service (Alert System)
+### Email Service (Alert System) 🟢 **Phase 2**
 
-**Responsibility:** Send transactional emails for subscription verification and IPO alerts.
+**Responsibility:** Send transactional emails for subscription verification and IPO alerts (deferred to Phase 2).
 
 **Key Interfaces:**
 - `sendVerificationEmail(email, token)`
 - `sendIPOAlert(subscribers, ipo, alertType)`
 
-**Technology Stack:** Resend SDK, React Email
+**Technology Stack:** TBD (Resend/SendGrid/AWS SES), React Email
 
 ### Shared Types Package
 
@@ -695,7 +923,9 @@ sequenceDiagram
     end
 ```
 
-### Workflow 3: User Subscribes to Email Alerts
+### Workflow 3: User Subscribes to Email Alerts 🟢 **Phase 2**
+
+*(This workflow will be implemented in Phase 2 when email alert functionality is added)*
 
 ```mermaid
 sequenceDiagram
@@ -731,7 +961,7 @@ The following PostgreSQL schema implements the data models defined earlier.
 - **financial_data** - Company financial metrics (one-to-one with ipos)
 - **documents** - DRHP, RHP, prospectus documents
 - **listing_performance** - Post-listing performance metrics
-- **email_subscribers** - Email alert subscriptions
+- **email_subscribers** - Email alert subscriptions (Phase 2)
 
 ### Important Indexes
 
@@ -768,13 +998,13 @@ web/src/
 │   ├── repositories/              # Data access layer
 │   ├── services/                  # Business logic
 │   └── db/                        # Database client + schema
-├── stores/                        # Zustand state management
+├── contexts/                      # React Context state management
 └── hooks/                         # Custom React hooks
 ```
 
 ### State Management Architecture
 
-**Client State (Zustand):**
+**Client State (React Context):**
 - Filter preferences (status, category, sector, sort)
 - Search query
 - UI state (mobile menu open/closed)
@@ -982,7 +1212,7 @@ npm run build:scraper
 **Frontend (.env.local):**
 - `DATABASE_URL` - PostgreSQL connection string
 - `REDIS_URL` - Redis connection string
-- `RESEND_API_KEY` - Email service API key
+- ~~`RESEND_API_KEY`~~ - Email service API key (Phase 2 only)
 - `NEXT_PUBLIC_GA_MEASUREMENT_ID` - Google Analytics
 - `NEXT_PUBLIC_SENTRY_DSN` - Error tracking
 - `JWT_SECRET` - Email verification tokens
@@ -992,7 +1222,7 @@ npm run build:scraper
 - `REDIS_URL` - Redis connection string
 - `IPO_ALERTS_API_KEY` - IPO Alerts API
 - `SCRAPER_SCHEDULE` - Cron expression
-- `RESEND_API_KEY` - Email service
+- ~~`RESEND_API_KEY`~~ - Email service (Phase 2 only)
 
 ---
 
@@ -1085,11 +1315,14 @@ module.exports = {
 - **Image Optimization:** next/image for all images
 - **Font Optimization:** next/font for Google Fonts
 
-**Lighthouse Targets:**
-- Performance Score: >90
-- LCP: <2.5s
-- FID: <100ms
-- CLS: <0.1
+**Performance Targets:** 🔵 **MVP**
+- **Aspirational Goal:** <2 seconds total page load time
+- **Minimum Requirement (Web Vitals):**
+  - Performance Score: >90
+  - LCP (Largest Contentful Paint): <2.5s
+  - FID (First Input Delay): <100ms
+  - CLS (Cumulative Layout Shift): <0.1
+- **Rationale:** Target 2s as aggressive goal for competitive advantage, use LCP <2.5s as measurable success metric aligned with industry standards
 
 **Backend Performance:**
 - **Response Time Target:** <500ms (p95)
@@ -1164,7 +1397,7 @@ module.exports = {
 | Components | PascalCase | `IPOCard.tsx` |
 | Hooks | camelCase with 'use' | `useIPOFilters.ts` |
 | API Routes | kebab-case | `/api/ipos/[slug]` |
-| Database Tables | snake_case | `ipos`, `email_subscribers` |
+| Database Tables | snake_case | `ipos`, `subscriptions`, `gmp_records` |
 | TypeScript Interfaces | PascalCase | `IPO`, `Subscription` |
 
 ---
