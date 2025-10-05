@@ -192,32 +192,44 @@ IPODhan becomes the go-to platform for Indian retail investors researching IPOs 
 
 - **Responsive Design**: Mobile-first interface that works seamlessly across devices
 
-- **Email Alert System**: Users can subscribe to receive notifications for:
+- ~~**Email Alert System**~~: *(Phase 2 feature)* Users can subscribe to receive notifications for:
   - New IPO announcements
   - Subscription opening/closing reminders
   - Allotment/listing date alerts
 
-### Out of Scope for MVP
+- **Market Holidays Calendar**: NSE/BSE trading holidays for IPO timeline planning
 
-- User accounts and personalized portfolios
-- Social features (comments, ratings, community forums)
-- Advanced charting and technical analysis tools
-- IPO application integration with brokers
-- News aggregation from multiple sources
-- Video content or webinars
-- Regional language support (English only for MVP)
-- SME IPO coverage (focus on mainboard first)
-- Mobile apps (web-only for MVP)
+- **Registrar Directory**: Searchable directory of IPO registrars with contact information
+
+- **Lot Calculator**: Calculate lot size and total investment based on user input
+
+- **IPO Comparison Tool**: Side-by-side comparison with comprehensive metrics (P/E, EPS, Diluted EPS, RoNW, NAV, P/BV, Statement Type) for 3-5 peer companies
+
+- **Broker Affiliate Links** (Simple): Zerodha & AngelOne affiliate links without complex tracking (tracking added in Phase 2)
+
+### Out of Scope for MVP (Phase 2+)
+
+- **Email Alert System**: Subscription verification and IPO alerts (Phase 2)
+- **IPO News & Updates**: Chronological news feed for each IPO (Phase 2)
+- User accounts and personalized portfolios (Phase 2)
+- Social features (comments, ratings, community forums) (Phase 2)
+- Advanced charting and technical analysis tools (Phase 2)
+- IPO application integration with brokers (Phase 2)
+- Broker affiliate click tracking and analytics (Phase 2)
+- Video content or webinars (Phase 3)
+- Regional language support (Phase 3)
+- Mobile apps (Phase 3)
 
 ### MVP Success Criteria
 
 The MVP will be considered successful when:
 1. Platform displays accurate, up-to-date data for 100% of mainboard IPOs
-2. Page load times consistently under 2 seconds
+2. Page load times consistently under 2 seconds (LCP <2.5s minimum)
 3. 100+ organic visitors per week within first month
-4. 500+ email alert subscribers within first 2 months
+4. ~~500+ email alert subscribers within first 2 months~~ *(Moved to Phase 2)*
 5. Zero critical bugs or data accuracy issues reported
 6. Positive user feedback indicating it's "better than Chittorgarh/InvestorGain"
+7. All 4 core tools functional: Market Holidays, Registrar Directory, Lot Calculator, IPO Comparison
 
 ## Post-MVP Vision
 
@@ -258,10 +270,13 @@ Transform IPODhan into the most trusted IPO research platform in India, known fo
   - Mobile: iOS Safari 14+, Android Chrome 90+
   - No legacy IE support required
 - **Performance Requirements**:
-  - Time to First Byte (TTFB) < 500ms
-  - Largest Contentful Paint (LCP) < 2.5s
-  - First Input Delay (FID) < 100ms
-  - Cumulative Layout Shift (CLS) < 0.1
+  - **Aspirational Goal:** < 2 seconds total page load time
+  - **Minimum Requirements (Web Vitals):**
+    - Time to First Byte (TTFB) < 500ms
+    - Largest Contentful Paint (LCP) < 2.5s
+    - First Input Delay (FID) < 100ms
+    - Cumulative Layout Shift (CLS) < 0.1
+  - Performance Score (Lighthouse) > 90
 
 ### Technology Preferences
 
@@ -297,9 +312,14 @@ Transform IPODhan into the most trusted IPO research platform in India, known fo
 
 - **Integration Requirements**:
   - NSE/BSE APIs or web scraping for official IPO data
-  - Third-party sources for GMP data (manual curation initially, API if available)
-  - Email service provider (SendGrid, AWS SES, or self-hosted SMTP)
-  - Google Analytics or self-hosted analytics (Plausible, Umami)
+  - Third-party sources for enhanced GMP data (manual curation for MVP):
+    - Current GMP, estimated listing price
+    - Subject rate (unofficial grey market lot rate)
+    - Kostak rate (selling allotment rights rate)
+    - Sauda details (grey market trading info)
+  - Email service provider: **Decision deferred to implementation** (Options: Resend, SendGrid, AWS SES, or self-hosted SMTP)
+  - Analytics: **Google Analytics 4 (GA4)** - confirmed for MVP
+  - State Management: **React Context** (built-in, no external library needed)
 
 - **Security/Compliance**:
   - HTTPS enforced across entire site

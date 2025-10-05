@@ -1,9 +1,20 @@
 # Product Requirements Document (PRD): IPODhan
 
-**Version:** 1.1
+**Version:** 1.3
 **Date:** January 2025
-**Status:** Draft
+**Last Updated:** 2025-10-05
+**Status:** Production Ready
 **Owner:** Development Team
+
+**Reconciliation Note:** This PRD has been updated to align with Architecture v1.2 final scope decisions:
+- State management: React Context (not Zustand)
+- Email alerts: **Phase 2 feature** (removed from MVP)
+- Analytics: Google Analytics 4 (GA4) confirmed
+- Enhanced GMP data fields added (Subject rate, Kostak rate, Sauda details)
+- MVP features: Market Holidays (FR-8), Registrar Directory (FR-9), Lot Calculator (FR-10), IPO Comparison (FR-11), Broker Affiliates (FR-6)
+- Phase 2 features: IPO News & Updates, Email Alert System
+- Peer comparison: **Full metrics** in MVP (P/E, EPS, Diluted EPS, RoNW, NAV, P/BV, Statement Type)
+- Performance targets: 2s aspirational, LCP <2.5s minimum
 
 ---
 
@@ -82,7 +93,9 @@ IPODhan will become the trusted, go-to platform for Indian retail IPO investors�
 
 | KPI | Target | Baseline (Competitors) |
 |-----|--------|----------------------|
-| Page Load Time | < 2 seconds | 5-10 seconds |
+| Page Load Time (Aspirational) | < 2 seconds total load | 5-10 seconds |
+| LCP - Largest Contentful Paint (Minimum) | < 2.5s | 3-5 seconds |
+| Performance Score (Lighthouse) | > 90 | 50-70 |
 | Uptime | 99.5%+ during IPO periods | Variable |
 | Data Freshness | Updated within 15 minutes | 30-60 minutes |
 | Search Ranking | Page 1 for "upcoming IPO India" | N/A |
@@ -351,15 +364,7 @@ Provide comprehensive, well-organized information about a specific IPO on a dedi
     - Key concerns/risks (bullet points)
     - Simple, jargon-free language targeting novice investors
 
-12. **IPO News & Updates**
-    - Chronological feed of news, updates, and announcements for the IPO
-    - News types: Announcements, Updates, Analysis, Allotment, Listing
-    - Display: Title, content excerpt, timestamp, source
-    - Link to full article (if external source)
-    - IPODhan team can add editorial analysis and insights
-    - Auto-update when new announcements from NSE/BSE/Registrar
-
-13. **Enhanced GMP Details**
+12. **Enhanced GMP Details**
     - Current GMP (₹)
     - Subject rate (unofficial grey market lot rate)
     - Kostak rate (selling allotment rights rate)
@@ -367,7 +372,7 @@ Provide comprehensive, well-organized information about a specific IPO on a dedi
     - Sauda details/grey market trading info (if available)
     - Disclaimer about unofficial nature of GMP data
 
-14. **Company Operational Metrics**
+13. **Company Operational Metrics**
     - Active products count (e.g., "72 active ANDA/NDA products")
     - Commercialized products count
     - Revenue growth % (year-over-year)
@@ -1201,7 +1206,160 @@ Allow users to subscribe to email notifications for IPO events.
 
 ---
 
-### FR-8: Admin Interface (Internal)
+### FR-8: Market Holidays Calendar
+
+**Priority:** P0 (Must Have for MVP)
+
+**Description:**
+Display NSE/BSE trading holidays to help users plan IPO applications and understand market closures that affect IPO timelines.
+
+**User Stories:**
+- As a user, I want to see upcoming market holidays so I can plan my IPO applications accordingly
+- As a user, I want to know if market holidays will delay allotment or listing dates
+- As a user, I want to filter holidays by exchange (NSE/BSE) and year
+
+**Acceptance Criteria:**
+- Dedicated Market Holidays page accessible from main navigation
+- Display holidays in chronological order (upcoming first)
+- Show for each holiday:
+  - Date (DD MMM YYYY format)
+  - Holiday name/description (e.g., "Republic Day", "Diwali")
+  - Exchange(s) affected (NSE, BSE, or Both)
+  - Holiday type (Trading holiday, Settlement holiday, or Both)
+- Year selector dropdown (current year ± 1 year)
+- "Next upcoming holiday" banner at top
+- Mobile-responsive card layout
+- Export/download holidays as PDF or iCal (Phase 2)
+
+**Data Requirements:**
+- `market_holidays` table: id, date, description, exchange (NSE/BSE/BOTH), type (TRADING/SETTLEMENT/BOTH), year
+
+**Technical Notes:**
+- Route: `/market-holidays`
+- Data seeded from official NSE/BSE holiday calendars
+- Updated annually (manual entry acceptable for MVP)
+
+---
+
+### FR-9: Registrar Directory
+
+**Priority:** P0 (Must Have for MVP)
+
+**Description:**
+Comprehensive searchable directory of IPO registrars with contact information to help users check allotment status and contact support.
+
+**User Stories:**
+- As a user, I want to find registrar contact details quickly so I can check my allotment status
+- As a user, I want to access registrar websites directly from IPODhan
+- As a user, I want to search registrars by name
+
+**Acceptance Criteria:**
+- Dedicated Registrar Directory page accessible from Tools menu
+- Display registrars in alphabetical order
+- Show for each registrar:
+  - Registrar name (full and short name)
+  - Contact email
+  - Phone number (if available)
+  - Website link (opens in new tab)
+  - Allotment check URL (if available)
+  - Address (optional)
+  - Logo (if available)
+- Search bar to filter registrars by name
+- Click on registrar card to view full details
+- Mobile-responsive card/list layout
+- Direct "Check Allotment Status" button linking to registrar's portal
+
+**Data Requirements:**
+- `registrars` table: id, name, short_name, email, phone, website, allotment_check_url, address, logo_url, active
+
+**Technical Notes:**
+- Route: `/registrars`
+- SSG with ISR (data rarely changes)
+- Seed with top 10-15 registrars (Link Intime, KFin Technologies, etc.)
+
+---
+
+### FR-10: Lot Size Calculator
+
+**Priority:** P0 (Must Have for MVP)
+
+**Description:**
+Simple tool to calculate how many lots a user can apply for based on their investment amount.
+
+**User Stories:**
+- As a user, I want to enter my investment amount and see how many lots I can apply for
+- As a user, I want to know the exact total investment required for suggested lots
+- As a user, I want this calculator accessible on every IPO detail page
+
+**Acceptance Criteria:**
+- Calculator widget on IPO detail page (below key details)
+- Input fields:
+  - Investment amount (₹)
+  - Auto-populated lot size and price band from IPO data
+- On input:
+  - Calculate: `lots = floor(investment_amount / (lot_size * max_price))`
+  - Display suggested lots
+  - Display total shares (lots × lot_size)
+  - Display exact investment required (lots × lot_size × max_price)
+- Real-time calculation (no submit button needed)
+- Clear error messages if investment < minimum lot amount
+- Example: "With ₹15,000, you can apply for 1 lot (150 shares) = ₹14,850"
+
+**Data Requirements:**
+- Uses existing IPO data: lot_size, price_max
+
+**Technical Notes:**
+- Client-side calculation (no API needed)
+- Also available as standalone tool at `/tools/lot-calculator` with IPO selector dropdown
+
+---
+
+### FR-11: IPO Comparison Tool
+
+**Priority:** P0 (Must Have for MVP)
+
+**Description:**
+Side-by-side comparison of multiple IPOs to help users evaluate and choose between opportunities.
+
+**User Stories:**
+- As a user, I want to compare 2-3 current IPOs side-by-side to decide which to apply for
+- As a user, I want to see key metrics (price band, subscription, GMP, rating) in one view
+- As a user, I want to select IPOs from a list and generate comparison
+
+**Acceptance Criteria:**
+- Accessible from Tools menu: `/tools/compare`
+- IPO selection:
+  - Dropdown/checkboxes to select 2-4 IPOs (limit 4 for readability)
+  - Filter by status (Current, Upcoming)
+- Comparison table showing:
+  - Company name
+  - Price band
+  - Lot size
+  - Issue size
+  - Subscription status (if current)
+  - GMP (if available)
+  - IPODhan rating
+  - Listing date
+  - Sector
+- Visual indicators:
+  - Highlight best values (highest rating, best GMP, etc.) in green
+  - Color-coded badges for status
+- "View Details" link for each IPO
+- Mobile: Convert table to stacked cards (one IPO per card)
+- Print/export comparison (Phase 2)
+
+**Data Requirements:**
+- Uses existing IPO data
+
+**Technical Notes:**
+- Route: `/tools/compare`
+- API endpoint: `POST /api/tools/compare` with body `{ ipoSlugs: string[] }`
+- Client-side rendering after API fetch
+- Share comparison via URL params (Phase 2): `/tools/compare?ipos=ipo-slug-1,ipo-slug-2`
+
+---
+
+### FR-12: Admin Interface (Internal)
 
 **Priority:** P2 (Nice to Have for MVP, but useful for data management)
 
@@ -3191,7 +3349,9 @@ Open Date        Close Date      Allotment      Listing
 
 ---
 
-#### 8. IPO News & Updates Feed
+#### 8. IPO News & Updates Feed 🟢 **Phase 2**
+
+**Note:** This feature has been moved to Phase 2 to simplify MVP scope.
 
 **Desktop & Mobile:**
 ```
@@ -3422,7 +3582,7 @@ Update the existing GMP component to include Subject/Kostak rates:
 │ │ IPO Peer Comparison (Table)                              │ │
 │ └──────────────────────────────────────────────────────────┘ │
 │ ┌──────────────────────────────────────────────────────────┐ │
-│ │ IPO News & Updates (Feed)                                │ │
+│ │ IPO News & Updates (Feed) - PHASE 2                      │ │
 │ └──────────────────────────────────────────────────────────┘ │
 │ ┌──────────────────────────────────────────────────────────┐ │
 │ │ Allotment Status Checker (Form - after close date)      │ │
@@ -3736,32 +3896,35 @@ Update the existing GMP component to include Subject/Kostak rates:
 ### Post-MVP: Phase 2 Features (Months 4-6)
 
 **Priority Features:**
-1. **Email Alert System** ✉️ **(MOVED FROM MVP)**
+1. **Email Alert System** ✉️ **(MOVED FROM MVP - See FR-7)**
    - Email subscription (no login required)
    - New IPO announcements
    - IPO closing reminders
-   - Weekly digest of upcoming IPOs
    - Allotment and listing date alerts
-   - Double opt-in, easy unsubscribe
-   - Email service: Mailgun (5K/month free) or AWS SES ($0.10/1K)
 
-2. **User Accounts & Portfolios**
+2. **IPO News & Updates** 📰 **(MOVED FROM MVP)**
+   - Chronological news feed on each IPO detail page
+   - News types: Announcements, Updates, Analysis, Allotment, Listing
+   - Editorial insights from IPODhan team
+   - Integration with NSE/BSE announcements
+
+3. **User Accounts & Portfolios**
    - User registration and login
    - Personal IPO watchlists
    - Track applied IPOs and allotment status
    - Portfolio performance tracking
 
-3. **SME IPO Coverage**
+4. **SME IPO Coverage**
    - Expand database to include SME IPOs
    - Add SME-specific risk warnings
    - Separate SME section on dashboard
 
-4. **Advanced Filtering & Comparison**
+5. **Advanced Filtering**
    - Side-by-side IPO comparison tool
    - Custom filter builder
    - Save filter preferences
 
-5. **Enhanced Analytics**
+6. **Enhanced Analytics**
    - Sector-wise IPO performance trends
    - Subscription pattern insights
    - Historical comparison charts
