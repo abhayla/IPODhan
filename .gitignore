@@ -55,11 +55,14 @@ nul
 Thumbs.db
 .DS_Store
 
-# BMAD Core (development tools)
+# BMAD Core (development tools - exclude from repo)
 .bmad-core/
 .bmad-infrastructure-devops/
 .claude/
 .playwright-mcp/
+
+# AI Debug logs
+.ai/
 
 # Web bundles (generated files)
 web-bundles/
