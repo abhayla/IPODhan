@@ -1,0 +1,109 @@
+# IPODhan User Story Template
+
+# Copy this template to create new stories. Follow the format exactly.
+# File naming: story-{epic}.{number}-{short-name}.yaml
+# Example: story-2.3-repository-layer.yaml
+
+id: story-X.Y  # Epic number . Story number
+epic: epic-N-name  # Reference to epic file
+title: Brief Story Title (5-8 words)
+type: feature | technical | bug | enhancement
+priority: critical | high | medium | low
+points: 1 | 2 | 3 | 5 | 8 | 13  # Fibonacci scale
+
+user_story:
+  as_a: User Role or Developer Type
+  i_want: Capability or feature description
+  so_that: Business value or user benefit
+
+acceptance_criteria:
+  # Group criteria by concern (functionality, performance, testing, etc.)
+  functionality:
+    - Specific, testable criterion 1
+    - Specific, testable criterion 2
+    - Use "must", "will", "includes" language
+
+  performance:
+    - Response time < Xms
+    - Page load < Xs
+    - Query execution < Xms
+
+  testing:
+    - Unit tests written and passing
+    - Integration tests for critical paths
+    - E2E test for user journey (if applicable)
+    - Test coverage > X%
+
+  ui_ux:  # If frontend story
+    - Responsive on mobile, tablet, desktop
+    - Accessibility: WCAG 2.1 AA compliance
+    - Loading and error states handled
+
+  seo:  # If public-facing page
+    - Meta tags (title, description) unique
+    - Structured data (JSON-LD) if applicable
+    - Canonical URL set
+
+  security:  # If handling data or auth
+    - Input validation with Zod
+    - XSS prevention (sanitize user input)
+    - Rate limiting applied (if API)
+
+technical_dependencies:
+  requires:
+    - story-X.Y: Reason why this story blocks current story
+    - story-A.B: Another blocker with reason
+  blocks:
+    - story-M.N: Reason why current story blocks this one
+    - story-P.Q: Another blocked story
+  optional:
+    - story-R.S: Can work in parallel, but helpful if completed
+
+implementation_notes:
+  - Use X pattern or library for Y
+  - Follow Z architectural decision
+  - Performance consideration: ...
+  - Edge case handling: ...
+  - Security consideration: ...
+  - Accessibility note: ...
+
+files_to_create:
+  - path/to/file1.ts
+  - path/to/file2.tsx
+  - path/to/test1.test.ts
+
+files_to_modify:
+  - path/to/existing-file.ts (add X, update Y)
+
+definition_of_done:
+  - All acceptance criteria verified (manual or automated)
+  - Code reviewed and approved by [senior dev/peer]
+  - All tests passing in CI pipeline
+  - No TypeScript errors or warnings (strict mode)
+  - No ESLint errors (warnings acceptable if documented)
+  - Documentation updated (README, API docs, inline comments)
+  - Performance benchmarks met (if applicable)
+  - Accessibility checked (if UI component)
+  - Merged to main branch via approved PR
+  - Deployed to staging (if applicable)
+  - PO acceptance (if user-facing feature)
+
+estimate_hours: X  # Initial estimate
+actual_hours: null  # Fill after completion
+status: pending | in_progress | blocked | completed | deferred
+assigned_to: null | developer-name
+sprint: week-N | sprint-N
+labels:
+  - critical-path  # If on critical path
+  - user-facing    # If visible to end users
+  - technical-foundation  # If infrastructure/foundation
+  - seo-important  # If impacts SEO
+  - performance-critical  # If performance-sensitive
+  - quick-win      # If < 4 hours, high value
+
+# Optional: Add notes during implementation
+notes: |
+  - Implementation started: YYYY-MM-DD
+  - Blocker encountered: Description
+  - Blocker resolved: How it was fixed
+  - Lessons learned: For future stories
