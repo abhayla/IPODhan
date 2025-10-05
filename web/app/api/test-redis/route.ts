@@ -51,13 +51,13 @@ export async function GET() {
       },
       retrievedValue: retrieved,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     logger.error({ error }, 'Redis test failed');
     return NextResponse.json(
       {
         success: false,
         error: 'Redis test failed',
-        message: error?.message || 'Unknown error',
+        message: error instanceof Error ? error.message : 'Unknown error',
         hint: 'Make sure Redis is running: redis-server',
       },
       { status: 500 }
