@@ -4,6 +4,7 @@ import { IPO } from '@/lib/api-client';
 import { IPOGrid } from '@/components/ipo/IPOGrid';
 import { Pagination } from '@/components/ui/pagination';
 import { ViewToggle } from '@/components/ui/view-toggle';
+import { FilterBar } from '@/components/dashboard/FilterBar';
 
 interface DashboardContentProps {
   initialIPOs: IPO[];
@@ -44,6 +45,9 @@ export function DashboardContent({
           <ViewToggle currentView={view} />
         </div>
       </div>
+
+      {/* Filter Bar */}
+      <FilterBar />
 
       {/* IPO Grid */}
       <IPOGrid ipos={initialIPOs} view={view} />
