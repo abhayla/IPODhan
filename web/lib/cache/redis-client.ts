@@ -20,12 +20,18 @@ export function getRedisClient(): Redis {
       port: parseInt(process.env.REDIS_PORT || '6379'),
       password: process.env.REDIS_PASSWORD,
       retryStrategy: (times: number) => {
+        // Stop retrying after 3 attempts in development to prevent hanging
+        if (times > 3) {
+          console.error('[Redis] Max retries reached, stopping reconnection attempts');
+          return null;
+        }
         const delay = Math.min(times * 50, 2000);
         return delay;
       },
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
       lazyConnect: false,
+      connectTimeout: 5000, // 5 second timeout for connection
     });
 
     // Handle connection events
