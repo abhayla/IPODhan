@@ -25,8 +25,15 @@ export abstract class BaseRepository {
     ttl?: number
   ): Promise<T> {
     try {
-      // Try to get from cache first
-      const cached = await this.redis.get(cacheKey);
+      // Try to get from cache first with timeout protection
+      const cacheTimeout = new Promise<null>((_, reject) =>
+        setTimeout(() => reject(new Error('Redis get timeout')), 2000)
+      );
+
+      const cached = await Promise.race([
+        this.redis.get(cacheKey),
+        cacheTimeout,
+      ]);
 
       if (cached) {
         console.log(`[Cache] HIT: ${cacheKey}`);
@@ -45,8 +52,19 @@ export abstract class BaseRepository {
     // Cache miss or error - query database
     const data = await dbQuery();
 
-    // Try to set cache (non-blocking)
-    this.setCache(cacheKey, data, ttl).catch((error) => {
+    // Try to set cache (non-blocking with timeout)
+    const setCacheWithTimeout = async () => {
+      const cacheTimeout = new Promise<void>((_, reject) =>
+        setTimeout(() => reject(new Error('Redis set timeout')), 2000)
+      );
+
+      await Promise.race([
+        this.setCache(cacheKey, data, ttl),
+        cacheTimeout,
+      ]);
+    };
+
+    setCacheWithTimeout().catch((error) => {
       console.error(
         `[Cache] Error setting key ${cacheKey}:`,
         error instanceof Error ? error.message : error
