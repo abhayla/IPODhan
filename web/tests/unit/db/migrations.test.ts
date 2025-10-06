@@ -212,7 +212,7 @@ describe('Database Migrations', () => {
       // Try to create tables (will skip if already exist)
       try {
         await pool.query(migration);
-      } catch (error) {
+      } catch {
         // Tables might already exist, that's ok
       }
 

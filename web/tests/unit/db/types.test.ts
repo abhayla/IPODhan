@@ -1,27 +1,16 @@
 import { describe, it, expect, expectTypeOf } from 'vitest';
-// Note: Some types imported but not used directly in variables are used in type assertions
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 import type {
   IPO,
   NewIPO,
   Subscription,
-  NewSubscription,
   GMPRecord,
-  NewGMPRecord,
   FinancialData,
-  NewFinancialData,
   Document,
-  NewDocument,
   ListingPerformance,
-  NewListingPerformance,
   MarketHoliday,
-  NewMarketHoliday,
   Registrar,
-  NewRegistrar,
   PeerCompany,
-  NewPeerCompany,
   BrokerAffiliate,
-  NewBrokerAffiliate,
   IPOCategory,
   IPOStatus,
   DocumentType,
