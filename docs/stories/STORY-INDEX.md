@@ -39,7 +39,7 @@
 
 | ID | Story | Priority | Points | Dependencies | Status |
 |----|-------|----------|--------|--------------|--------|
-| 3.1 | API Client Service | Critical | 3 | 1.3 | Pending |
+| 3.1 | API Client Service | Critical | 3 | 1.3 | 📝 Ready |
 | 3.2 | GET /api/ipos Route | Critical | 5 | 2.3 | Pending |
 | 3.3 | IPO Card Component | Critical | 5 | 1.4 | Pending |
 | 3.4 | Dashboard Page ⭐ | Critical | 8 | 3.1, 3.2, 3.3 | Pending |
