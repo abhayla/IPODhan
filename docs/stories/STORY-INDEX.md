@@ -28,7 +28,7 @@
 | 2.1 | Database Schema Creation | Critical | 5 | 1.2, 1.3 | ✅ Done |
 | 2.2 | Drizzle Migration Setup | Critical | 3 | 2.1 | ✅ Done |
 | 2.3 | Repository Layer ⭐ | Critical | 8 | 2.2 | ✅ Done |
-| 2.4 | Seed Data Script | High | 3 | 2.3 | 📝 Ready |
+| 2.4 | Seed Data Script | High | 3 | 2.3 | ✅ Done |
 
 **Week:** 2-3
 **⭐ Critical Path Story**
@@ -162,9 +162,9 @@ These stories were NOT in the original roadmap but ARE in the PRD:
 
 | Status | Count | Percentage |
 |--------|-------|------------|
-| ✅ Done | 6 | 15% |
+| ✅ Done | 10 | 25% |
 | 🟡 In Progress | 0 | 0% |
-| ⏳ Pending | 34 | 85% |
+| ⏳ Pending | 30 | 75% |
 | **Total** | **40** | **100%** |
 
 ---
