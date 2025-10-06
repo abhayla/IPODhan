@@ -28,7 +28,7 @@
 | 2.1 | Database Schema Creation | Critical | 5 | 1.2, 1.3 | ✅ Done |
 | 2.2 | Drizzle Migration Setup | Critical | 3 | 2.1 | ✅ Done |
 | 2.3 | Repository Layer ⭐ | Critical | 8 | 2.2 | ✅ Done |
-| 2.4 | Seed Data Script | High | 3 | 2.3 | Pending |
+| 2.4 | Seed Data Script | High | 3 | 2.3 | 📝 Ready |
 
 **Week:** 2-3
 **⭐ Critical Path Story**

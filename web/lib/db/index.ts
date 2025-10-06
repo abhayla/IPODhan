@@ -2,13 +2,34 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema';
 
+// Debug: Log environment variable status at module load time
+const hasEnvVars = !!(process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD);
+if (!hasEnvVars && !process.env.DATABASE_URL) {
+  console.warn('⚠️  WARNING: No database configuration found in environment variables!');
+  console.warn('Make sure DATABASE_URL or individual DATABASE_* vars are set');
+}
+
 // Create PostgreSQL connection pool
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 20, // Maximum number of clients in the pool
-  idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-  connectionTimeoutMillis: 2000, // Timeout connection attempts after 2 seconds
-});
+// Use individual parameters if DATABASE_URL has special characters, otherwise use connectionString
+const pool = new Pool(
+  process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
+    ? {
+        host: process.env.DATABASE_HOST,
+        port: parseInt(process.env.DATABASE_PORT || '5432'),
+        database: process.env.DATABASE_NAME || 'ipodhan',
+        user: process.env.DATABASE_USER || 'postgres',
+        password: process.env.DATABASE_PASSWORD,
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 2000,
+      }
+    : {
+        connectionString: process.env.DATABASE_URL,
+        max: 20,
+        idleTimeoutMillis: 30000,
+        connectionTimeoutMillis: 2000,
+      }
+);
 
 // Handle pool errors
 pool.on('error', (err) => {

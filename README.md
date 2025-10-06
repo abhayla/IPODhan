@@ -89,7 +89,31 @@ Expected response:
 }
 ```
 
-### 6. Run Development Server
+### 6. Run Database Migrations
+```bash
+cd web
+npm run db:migrate
+```
+
+This will create all necessary database tables and schema.
+
+### 7. Seed Database with Sample Data
+```bash
+cd web
+npm run seed
+```
+
+This will populate the database with:
+- 20+ sample IPOs (MAINBOARD, SME, RIGHTS, NCD)
+- Complete IPO relationships (financials, subscriptions, GMP records, documents)
+- 10+ registrars
+- 15+ market holidays for 2025
+- Broker affiliate links
+- Peer comparison data
+
+**Note:** The seed script is idempotent - it will skip seeding if data already exists. To re-seed, truncate tables first.
+
+### 8. Run Development Server
 ```bash
 cd web
 npm run dev
@@ -99,11 +123,19 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ## Available Scripts
 
-- `npm run dev` - Start development server
+- `npm run dev` - Start development server with Turbopack
 - `npm run build` - Build production bundle
 - `npm run start` - Start production server
 - `npm run lint` - Run ESLint
-- `npm run type-check` - Run TypeScript compiler check
+- `npm run test:unit` - Run unit tests with Vitest
+- `npm run test:integration` - Run integration tests
+- `npm run test:coverage` - Run tests with coverage report
+- `npm run test:e2e` - Run end-to-end tests with Playwright
+- `npm run db:generate` - Generate Drizzle migrations
+- `npm run db:migrate` - Run database migrations
+- `npm run db:push` - Push schema changes to database
+- `npm run db:studio` - Open Drizzle Studio (database GUI)
+- `npm run seed` - Seed database with sample data
 
 ## Project Structure
 ```
