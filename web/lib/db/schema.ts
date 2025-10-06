@@ -83,8 +83,8 @@ export const ipos = pgTable(
   (table) => ({
     statusIdx: index('idx_ipos_status').on(table.status),
     slugIdx: index('idx_ipos_slug').on(table.slug),
-    // Note: trigram index will be created in migration (Story 2.2)
-    // companyNameTrgramIdx: index('idx_ipos_company_name_trgm').on(table.companyName),
+    // Note: Trigram index for fuzzy company name search created in migration 0000_initial_schema.sql
+    // CREATE INDEX idx_ipos_company_name_trgm ON ipos USING gin(company_name gin_trgm_ops);
   })
 );
 
