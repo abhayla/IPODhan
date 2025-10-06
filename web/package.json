@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:unit": "vitest",
+    "test:integration": "vitest --config vitest.integration.config.ts",
     "test:coverage": "vitest --coverage",
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",

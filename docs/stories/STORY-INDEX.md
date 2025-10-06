@@ -11,11 +11,11 @@
 | ID | Story | Priority | Points | Dependencies | Status |
 |----|-------|----------|--------|--------------|--------|
 | 1.1 | Next.js Project Setup | Critical | 2 | None | ✅ Done |
-| 1.2 | Database Infrastructure | Critical | 3 | 1.1 | Pending |
-| 1.3 | Core Dependencies Installation | Critical | 2 | 1.1 | Pending |
-| 1.4 | shadcn/ui Component Library | High | 3 | 1.1 | Pending |
-| 1.5 | Testing Infrastructure | Critical | 5 | 1.1 | Pending |
-| 1.6 | CI/CD Pipeline | High | 3 | 1.5 | Pending |
+| 1.2 | Database Infrastructure | Critical | 3 | 1.1 | ✅ Done |
+| 1.3 | Core Dependencies Installation | Critical | 2 | 1.1 | ✅ Done |
+| 1.4 | shadcn/ui Component Library | High | 3 | 1.1 | ✅ Done |
+| 1.5 | Testing Infrastructure | Critical | 5 | 1.1 | ✅ Done |
+| 1.6 | CI/CD Pipeline | High | 3 | 1.5 | ✅ Done |
 
 **Week:** 1-2
 
@@ -25,9 +25,9 @@
 
 | ID | Story | Priority | Points | Dependencies | Status |
 |----|-------|----------|--------|--------------|--------|
-| 2.1 | Database Schema Creation | Critical | 5 | 1.2, 1.3 | Pending |
-| 2.2 | Drizzle Migration Setup | Critical | 3 | 2.1 | Pending |
-| 2.3 | Repository Layer ⭐ | Critical | 8 | 2.2 | Pending |
+| 2.1 | Database Schema Creation | Critical | 5 | 1.2, 1.3 | ✅ Done |
+| 2.2 | Drizzle Migration Setup | Critical | 3 | 2.1 | ✅ Done |
+| 2.3 | Repository Layer ⭐ | Critical | 8 | 2.2 | ✅ Done |
 | 2.4 | Seed Data Script | High | 3 | 2.3 | Pending |
 
 **Week:** 2-3
@@ -162,9 +162,9 @@ These stories were NOT in the original roadmap but ARE in the PRD:
 
 | Status | Count | Percentage |
 |--------|-------|------------|
-| ✅ Done | 1 | 2.5% |
+| ✅ Done | 6 | 15% |
 | 🟡 In Progress | 0 | 0% |
-| ⏳ Pending | 39 | 97.5% |
+| ⏳ Pending | 34 | 85% |
 | **Total** | **40** | **100%** |
 
 ---
