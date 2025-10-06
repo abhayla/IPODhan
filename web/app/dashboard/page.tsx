@@ -34,6 +34,7 @@ interface DashboardPageProps {
     view?: string;
     status?: string;
     category?: string;
+    sector?: string;
   };
 }
 
@@ -42,11 +43,13 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const view = searchParams.view || 'grid';
   const status = searchParams.status || 'OPEN';
   const category = searchParams.category;
+  const sector = searchParams.sector;
 
   try {
     const response = await apiClient.getIPOs({
       status: status as 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED',
       category: category as 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD' | undefined,
+      sector: sector,
       page,
       limit: 12
     });

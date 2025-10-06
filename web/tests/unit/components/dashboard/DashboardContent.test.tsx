@@ -6,7 +6,8 @@ import { IPO } from '@/lib/api-client';
 // Mock Next.js navigation hooks
 vi.mock('next/navigation', () => ({
   useRouter: vi.fn(() => ({ push: vi.fn() })),
-  useSearchParams: vi.fn(() => new URLSearchParams())
+  useSearchParams: vi.fn(() => new URLSearchParams()),
+  usePathname: vi.fn(() => '/dashboard')
 }));
 
 // Mock child components
@@ -30,6 +31,14 @@ vi.mock('@/components/ui/view-toggle', () => ({
   ViewToggle: ({ currentView }: { currentView: string }) => (
     <div data-testid="view-toggle" data-view={currentView}>
       View Toggle
+    </div>
+  )
+}));
+
+vi.mock('@/components/dashboard/FilterBar', () => ({
+  FilterBar: () => (
+    <div data-testid="filter-bar">
+      Filter Bar
     </div>
   )
 }));
