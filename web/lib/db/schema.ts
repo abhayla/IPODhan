@@ -1,0 +1,397 @@
+import {
+  pgTable,
+  uuid,
+  varchar,
+  text,
+  integer,
+  numeric,
+  date,
+  timestamp,
+  boolean,
+  jsonb,
+  bigint,
+  index,
+  pgEnum,
+} from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
+
+// ==================== ENUMS ====================
+
+export const ipoCategoryEnum = pgEnum('ipo_category', [
+  'MAINBOARD',
+  'SME',
+  'RIGHTS',
+  'NCD',
+]);
+
+export const ipoStatusEnum = pgEnum('ipo_status', [
+  'UPCOMING',
+  'OPEN',
+  'CLOSED',
+  'LISTED',
+]);
+
+export const documentTypeEnum = pgEnum('document_type', [
+  'DRHP',
+  'RHP',
+  'PROSPECTUS',
+  'ADDENDUM',
+]);
+
+export const exchangeEnum = pgEnum('exchange', ['NSE', 'BSE', 'BOTH']);
+
+export const holidayTypeEnum = pgEnum('holiday_type', [
+  'TRADING',
+  'SETTLEMENT',
+  'BOTH',
+]);
+
+export const financialStatementTypeEnum = pgEnum('financial_statement_type', [
+  'CONSOLIDATED',
+  'STANDALONE',
+]);
+
+// ==================== TABLE 1: IPOS (Core Entity) ====================
+
+export const ipos = pgTable(
+  'ipos',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    companyName: varchar('company_name', { length: 255 }).notNull(),
+    slug: varchar('slug', { length: 255 }).notNull().unique(),
+    category: ipoCategoryEnum('category').notNull(),
+    sector: varchar('sector', { length: 100 }),
+    issueSize: numeric('issue_size', { precision: 10, scale: 2 }), // in INR crores
+    priceRangeMin: integer('price_range_min'), // min price per share
+    priceRangeMax: integer('price_range_max'), // max price per share
+    lotSize: integer('lot_size'),
+    status: ipoStatusEnum('status').notNull(),
+    openDate: date('open_date'),
+    closeDate: date('close_date'),
+    allotmentDate: date('allotment_date'),
+    listingDate: date('listing_date'),
+    companyDescription: text('company_description'),
+    faceValue: integer('face_value'),
+    listingExchanges: jsonb('listing_exchanges').$type<('NSE' | 'BSE')[]>(),
+    registrar: varchar('registrar', { length: 255 }),
+    leadManagers: jsonb('lead_managers').$type<string[]>(),
+    rating: integer('rating'), // 1-5 stars
+    ratingRationale: text('rating_rationale'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    statusIdx: index('idx_ipos_status').on(table.status),
+    slugIdx: index('idx_ipos_slug').on(table.slug),
+    // Note: trigram index will be created in migration (Story 2.2)
+    // companyNameTrgramIdx: index('idx_ipos_company_name_trgm').on(table.companyName),
+  })
+);
+
+// ==================== TABLE 2: SUBSCRIPTIONS (Time-series) ====================
+
+export const subscriptions = pgTable(
+  'subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    timestamp: timestamp('timestamp').notNull(),
+
+    // High-level categories
+    qibSubscription: numeric('qib_subscription', { precision: 10, scale: 2 }),
+    niiSubscription: numeric('nii_subscription', { precision: 10, scale: 2 }),
+    retailSubscription: numeric('retail_subscription', {
+      precision: 10,
+      scale: 2,
+    }),
+    totalSubscription: numeric('total_subscription', {
+      precision: 10,
+      scale: 2,
+    }),
+    employeeSubscription: numeric('employee_subscription', {
+      precision: 10,
+      scale: 2,
+    }),
+    othersSubscription: numeric('others_subscription', {
+      precision: 10,
+      scale: 2,
+    }),
+
+    // Granular breakdown
+    anchorInvestorSubscription: numeric('anchor_investor_subscription', {
+      precision: 10,
+      scale: 2,
+    }),
+    retailHNISubscription: numeric('retail_hni_subscription', {
+      precision: 10,
+      scale: 2,
+    }),
+    retailOthersSubscription: numeric('retail_others_subscription', {
+      precision: 10,
+      scale: 2,
+    }),
+    bNIISubscription: numeric('b_nii_subscription', {
+      precision: 10,
+      scale: 2,
+    }),
+    sNIISubscription: numeric('s_nii_subscription', {
+      precision: 10,
+      scale: 2,
+    }),
+
+    // Additional metrics
+    totalApplications: integer('total_applications'),
+    totalSharesBid: bigint('total_shares_bid', { mode: 'number' }),
+    sharesOffered: bigint('shares_offered', { mode: 'number' }),
+  },
+  (table) => ({
+    ipoTimestampIdx: index('idx_subscriptions_ipo_timestamp').on(
+      table.ipoId,
+      table.timestamp
+    ),
+  })
+);
+
+// ==================== TABLE 3: GMP_RECORDS (Time-series) ====================
+
+export const gmpRecords = pgTable(
+  'gmp_records',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    timestamp: timestamp('timestamp').notNull(),
+    gmp: integer('gmp').notNull(), // grey market premium in INR
+    expectedListingPrice: integer('expected_listing_price'),
+    subjectRate: integer('subject_rate'), // subject/safalya rate
+    kostakRate: integer('kostak_rate'), // kostak rate
+    saudaDetails: text('sauda_details'), // trading info
+    source: varchar('source', { length: 100 }).notNull(),
+  },
+  (table) => ({
+    ipoTimestampIdx: index('idx_gmp_records_ipo_timestamp').on(
+      table.ipoId,
+      table.timestamp
+    ),
+  })
+);
+
+// ==================== TABLE 4: FINANCIAL_DATA (One-to-One) ====================
+
+export const financialData = pgTable('financial_data', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ipoId: uuid('ipo_id')
+    .notNull()
+    .unique()
+    .references(() => ipos.id, { onDelete: 'cascade' }),
+
+  // Revenue by fiscal year (in INR crores)
+  revenueFy2022: numeric('revenue_fy2022', { precision: 12, scale: 2 }),
+  revenueFy2023: numeric('revenue_fy2023', { precision: 12, scale: 2 }),
+  revenueFy2024: numeric('revenue_fy2024', { precision: 12, scale: 2 }),
+
+  // Profit by fiscal year (in INR crores)
+  profitFy2022: numeric('profit_fy2022', { precision: 12, scale: 2 }),
+  profitFy2023: numeric('profit_fy2023', { precision: 12, scale: 2 }),
+  profitFy2024: numeric('profit_fy2024', { precision: 12, scale: 2 }),
+
+  // Other financial metrics
+  netWorth: numeric('net_worth', { precision: 12, scale: 2 }),
+  peRatio: numeric('pe_ratio', { precision: 10, scale: 2 }),
+  eps: numeric('eps', { precision: 10, scale: 2 }),
+  roe: numeric('roe', { precision: 5, scale: 2 }), // percentage
+  debtToEquity: numeric('debt_to_equity', { precision: 10, scale: 2 }),
+  reservesAndSurplus: numeric('reserves_and_surplus', {
+    precision: 12,
+    scale: 2,
+  }),
+  totalAssets: numeric('total_assets', { precision: 12, scale: 2 }),
+  totalBorrowing: numeric('total_borrowing', { precision: 12, scale: 2 }),
+});
+
+// ==================== TABLE 5: DOCUMENTS (One-to-Many) ====================
+
+export const documents = pgTable('documents', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ipoId: uuid('ipo_id')
+    .notNull()
+    .references(() => ipos.id, { onDelete: 'cascade' }),
+  type: documentTypeEnum('type').notNull(),
+  title: varchar('title', { length: 255 }).notNull(),
+  url: text('url').notNull(), // file path or external URL
+  fileSize: bigint('file_size', { mode: 'number' }), // in bytes
+  uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
+});
+
+// ==================== TABLE 6: LISTING_PERFORMANCE (One-to-One) ====================
+
+export const listingPerformance = pgTable('listing_performance', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ipoId: uuid('ipo_id')
+    .notNull()
+    .unique()
+    .references(() => ipos.id, { onDelete: 'cascade' }),
+  listingPrice: integer('listing_price').notNull(),
+  issuePrice: integer('issue_price').notNull(),
+  listingGainPercent: numeric('listing_gain_percent', {
+    precision: 5,
+    scale: 2,
+  }).notNull(),
+  currentPrice: integer('current_price'),
+  currentGainPercent: numeric('current_gain_percent', {
+    precision: 5,
+    scale: 2,
+  }),
+  lastUpdated: timestamp('last_updated').defaultNow().notNull(),
+});
+
+// ==================== TABLE 7: MARKET_HOLIDAYS (Utility) ====================
+
+export const marketHolidays = pgTable(
+  'market_holidays',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    date: date('date').notNull(),
+    description: varchar('description', { length: 255 }).notNull(),
+    exchange: exchangeEnum('exchange').notNull(),
+    type: holidayTypeEnum('type').notNull(),
+    year: integer('year').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    dateIdx: index('idx_market_holidays_date').on(table.date),
+    yearIdx: index('idx_market_holidays_year').on(table.year),
+  })
+);
+
+// ==================== TABLE 8: REGISTRARS (Utility) ====================
+
+export const registrars = pgTable('registrars', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: varchar('name', { length: 255 }).notNull(),
+  shortName: varchar('short_name', { length: 100 }),
+  email: varchar('email', { length: 255 }),
+  phone: varchar('phone', { length: 20 }),
+  website: text('website'),
+  allotmentCheckUrl: text('allotment_check_url'),
+  address: text('address'),
+  logoUrl: text('logo_url'),
+  active: boolean('active').default(true).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
+// ==================== TABLE 9: PEER_COMPANIES (One-to-Many) ====================
+
+export const peerCompanies = pgTable('peer_companies', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ipoId: uuid('ipo_id')
+    .notNull()
+    .references(() => ipos.id, { onDelete: 'cascade' }),
+  companyName: varchar('company_name', { length: 255 }).notNull(),
+  sector: varchar('sector', { length: 100 }),
+  isListed: boolean('is_listed').notNull(),
+
+  // Financial metrics
+  peRatio: numeric('pe_ratio', { precision: 10, scale: 2 }),
+  eps: numeric('eps', { precision: 10, scale: 2 }),
+  dilutedEps: numeric('diluted_eps', { precision: 10, scale: 2 }),
+  ronw: numeric('ronw', { precision: 5, scale: 2 }), // return on net worth %
+  nav: numeric('nav', { precision: 10, scale: 2 }), // net asset value
+  pbvRatio: numeric('pbv_ratio', { precision: 10, scale: 2 }), // price-to-book value
+  financialStatementType: financialStatementTypeEnum('financial_statement_type'),
+
+  // Metadata
+  dataSource: varchar('data_source', { length: 100 }),
+  lastUpdated: timestamp('last_updated'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+});
+
+// ==================== TABLE 10: BROKER_AFFILIATES (One-to-Many) ====================
+
+export const brokerAffiliates = pgTable(
+  'broker_affiliates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    brokerName: varchar('broker_name', { length: 255 }).notNull(),
+    brokerLogo: text('broker_logo'),
+    affiliateUrl: text('affiliate_url').notNull(),
+    displayText: varchar('display_text', { length: 100 }),
+    active: boolean('active').default(true).notNull(),
+    displayOrder: integer('display_order').default(0).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    activeOrderIdx: index('idx_broker_affiliates_active_order').on(
+      table.active,
+      table.displayOrder
+    ),
+  })
+);
+
+// ==================== RELATIONS ====================
+
+export const iposRelations = relations(ipos, ({ many, one }) => ({
+  subscriptions: many(subscriptions),
+  gmpRecords: many(gmpRecords),
+  documents: many(documents),
+  peerCompanies: many(peerCompanies),
+  financialData: one(financialData, {
+    fields: [ipos.id],
+    references: [financialData.ipoId],
+  }),
+  listingPerformance: one(listingPerformance, {
+    fields: [ipos.id],
+    references: [listingPerformance.ipoId],
+  }),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [subscriptions.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const gmpRecordsRelations = relations(gmpRecords, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [gmpRecords.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const financialDataRelations = relations(financialData, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [financialData.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const documentsRelations = relations(documents, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [documents.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const listingPerformanceRelations = relations(
+  listingPerformance,
+  ({ one }) => ({
+    ipo: one(ipos, {
+      fields: [listingPerformance.ipoId],
+      references: [ipos.id],
+    }),
+  })
+);
+
+export const peerCompaniesRelations = relations(peerCompanies, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [peerCompanies.ipoId],
+    references: [ipos.id],
+  }),
+}));
