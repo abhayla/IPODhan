@@ -21,6 +21,7 @@ import { KeyMetricsCards } from '@/components/ipo/KeyMetricsCards';
 import { InfoSection } from '@/components/ipo/InfoSection';
 import { IPODetailTabs } from '@/components/ipo/IPODetailTabs';
 import { AllotmentCheckerCard } from '@/components/ipo/AllotmentCheckerCard';
+import { LotCalculator } from '@/components/tools/LotCalculator';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import type { IPODetailResponse } from '@/lib/db/types';
 
@@ -258,6 +259,22 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* IPO Information Section */}
             <InfoSection ipo={ipo} />
+
+            {/* Lot Size Calculator (Story 5.1) */}
+            {ipo.priceRangeMax && ipo.lotSize && (
+              <LotCalculator
+                mode="embedded"
+                ipoData={{
+                  id: ipo.id,
+                  companyName: ipo.companyName,
+                  slug: ipo.slug,
+                  priceRangeMax: ipo.priceRangeMax,
+                  lotSize: ipo.lotSize,
+                }}
+                title="Calculate Your Investment"
+                description="Find out how many lots you can buy with your investment amount"
+              />
+            )}
 
             {/* Allotment Status Checker (Story 4.6) */}
             {(ipo.status === 'CLOSED' || ipo.status === 'LISTED') && (
