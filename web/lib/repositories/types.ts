@@ -137,6 +137,13 @@ export interface PaginatedResponse<T> {
 // ==================== REPOSITORY INTERFACES ====================
 
 /**
+ * IPO with peer financial data
+ */
+export type IPOPeer = IPO & {
+  financialData?: FinancialData | null;
+};
+
+/**
  * IPO Repository Interface
  */
 export interface IIPORepository {
@@ -147,6 +154,11 @@ export interface IIPORepository {
   create(ipo: IPOInsert): Promise<IPO>;
   update(id: string, data: Partial<IPOInsert>): Promise<IPO>;
   delete(id: string): Promise<void>;
+  findPeers(
+    ipoId: string,
+    sector: string | null,
+    limit?: number
+  ): Promise<IPOPeer[]>;
 }
 
 /**

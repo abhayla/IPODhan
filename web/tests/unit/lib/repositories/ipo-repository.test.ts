@@ -69,7 +69,7 @@ describe('IPORepository', () => {
       expect(result).toEqual(mockIPO);
       expect(mockRedis.setex).toHaveBeenCalledWith(
         `ipo:id:${mockIPO.id}`,
-        1800,
+        900,
         JSON.stringify(mockIPO)
       );
     });
@@ -354,6 +354,151 @@ describe('IPORepository', () => {
       await expect(repository.delete('non-existent-id')).rejects.toThrow(
         'IPO not found'
       );
+    });
+  });
+
+  describe('findPeers', () => {
+    const mockPeerIPOs = [
+      {
+        id: 'peer-1',
+        slug: 'peer-ipo-1',
+        companyName: 'Peer Company 1',
+        category: 'MAINBOARD',
+        sector: 'Technology',
+        status: 'OPEN',
+      },
+      {
+        id: 'peer-2',
+        slug: 'peer-ipo-2',
+        companyName: 'Peer Company 2',
+        category: 'MAINBOARD',
+        sector: 'Technology',
+        status: 'UPCOMING',
+      },
+    ];
+
+    const mockFinancialData = {
+      id: 'fin-1',
+      ipoId: 'peer-1',
+      peRatio: '25.5',
+      eps: '45.2',
+    };
+
+    it('should return peer IPOs in the same sector with financial data', async () => {
+      const mockIpoSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue(mockPeerIPOs),
+      };
+
+      const mockFinancialSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([mockFinancialData]),
+      };
+
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(mockIpoSelect)
+        .mockReturnValue(mockFinancialSelect);
+
+      const result = await repository.findPeers('current-ipo-id', 'Technology', 8);
+
+      expect(result).toHaveLength(2);
+      expect(result[0].sector).toBe('Technology');
+      expect(result[0].financialData).toBeDefined();
+    });
+
+    it('should exclude current IPO from peer results', async () => {
+      const currentIpoId = 'current-ipo-id';
+      const mockIpoSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue(mockPeerIPOs),
+      };
+
+      const mockFinancialSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(mockIpoSelect)
+        .mockReturnValue(mockFinancialSelect);
+
+      const result = await repository.findPeers(currentIpoId, 'Technology', 8);
+
+      expect(result.every((peer) => peer.id !== currentIpoId)).toBe(true);
+    });
+
+    it('should return empty array when no sector provided', async () => {
+      const result = await repository.findPeers('current-ipo-id', null, 8);
+
+      expect(result).toEqual([]);
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
+    it('should limit peer results to specified limit', async () => {
+      const mockIpoSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue(mockPeerIPOs.slice(0, 5)),
+      };
+
+      const mockFinancialSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(mockIpoSelect)
+        .mockReturnValue(mockFinancialSelect);
+
+      const result = await repository.findPeers('current-ipo-id', 'Technology', 5);
+
+      expect(result.length).toBeLessThanOrEqual(5);
+    });
+
+    it('should handle peers with no financial data', async () => {
+      const mockIpoSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([mockPeerIPOs[0]]),
+      };
+
+      const mockFinancialSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(mockIpoSelect)
+        .mockReturnValue(mockFinancialSelect);
+
+      const result = await repository.findPeers('current-ipo-id', 'Technology', 8);
+
+      expect(result).toHaveLength(1);
+      expect(result[0].financialData).toBeNull();
+    });
+
+    it('should throw DatabaseError on query failure', async () => {
+      const mockIpoSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockRejectedValue(new Error('Database connection failed')),
+      };
+
+      mockDb.select = vi.fn().mockReturnValue(mockIpoSelect);
+
+      await expect(
+        repository.findPeers('current-ipo-id', 'Technology', 8)
+      ).rejects.toThrow('Failed to fetch peer IPOs for sector: Technology');
     });
   });
 });
