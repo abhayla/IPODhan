@@ -59,3 +59,30 @@ export type DocumentType = Document['type'];
 export type Exchange = MarketHoliday['exchange'];
 export type HolidayType = MarketHoliday['type'];
 export type FinancialStatementType = NonNullable<PeerCompany['financialStatementType']>;
+
+// ==================== API RESPONSE TYPES ====================
+
+/**
+ * IPO with peer financial data (for peer comparison)
+ */
+export type IPOPeer = IPO & {
+  financialData: FinancialData | null;
+};
+
+/**
+ * IPO Detail Response
+ * Complete IPO data with all relations for detail page (Story 4.1)
+ */
+export interface IPODetailResponse {
+  ipo: IPO;
+  financialData: FinancialData | null;
+  documents: Document[];
+  subscriptions: Subscription[];
+  gmpRecords: GMPRecord[];
+  listingPerformance: ListingPerformance | null;
+  peerCompanies: PeerCompany[];
+  peers: IPOPeer[];
+  metadata: {
+    lastUpdated: string;
+  };
+}

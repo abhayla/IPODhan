@@ -12,7 +12,7 @@ import crypto from 'crypto';
  */
 export const CacheTTL = {
   IPO_LIST: 900, // 15 minutes
-  IPO_DETAIL: 1800, // 30 minutes
+  IPO_DETAIL: 900, // 15 minutes (Story 4.1 requirement)
   SUBSCRIPTION_LATEST: 300, // 5 minutes
   GMP_LATEST: 600, // 10 minutes
   HISTORICAL_DATA: 3600, // 1 hour
@@ -26,6 +26,13 @@ export const CacheTTL = {
  */
 export function getIPOBySlugKey(slug: string): string {
   return `ipo:slug:${slug}`;
+}
+
+/**
+ * Generate cache key for IPO detail endpoint (with all relations)
+ */
+export function getIPODetailKey(slug: string): string {
+  return `ipo:detail:${slug}`;
 }
 
 /**
