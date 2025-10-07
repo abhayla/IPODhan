@@ -16,6 +16,7 @@ export const CacheTTL = {
   SUBSCRIPTION_LATEST: 300, // 5 minutes
   GMP_LATEST: 600, // 10 minutes
   HISTORICAL_DATA: 3600, // 1 hour
+  HISTORICAL_IPOS: 86400, // 24 hours (Story 6.1 requirement)
   FINANCIAL_DATA: 1800, // 30 minutes
   DOCUMENTS: 3600, // 1 hour
   LISTING_PERFORMANCE: 600, // 10 minutes
@@ -149,4 +150,38 @@ export function getGMPInvalidationKeys(ipoId: string): string[] {
     `gmp:latest:${ipoId}`,
     `gmp:history:${ipoId}:*`,
   ];
+}
+
+/**
+ * Generate cache key for historical IPOs with filters
+ * Pattern: ipos:history:{year}:{sector}:{performance}:{sort}:{sortOrder}:{page}:{limit}
+ */
+export function getHistoricalIPOsKey(filters: {
+  year?: string;
+  sector?: string;
+  performance?: string;
+  sort?: string;
+  sortOrder?: string;
+  page?: number;
+  limit?: number;
+}): string {
+  const {
+    year = 'All',
+    sector = 'All',
+    performance = 'All',
+    sort = 'listing_date',
+    sortOrder = 'desc',
+    page = 1,
+    limit = 20,
+  } = filters;
+
+  return `ipos:history:${year}:${sector}:${performance}:${sort}:${sortOrder}:${page}:${limit}`;
+}
+
+/**
+ * Get all cache key patterns for historical IPO invalidation
+ * Should be called when scraper updates IPO data
+ */
+export function getHistoricalIPOInvalidationKeys(): string[] {
+  return ['ipos:history:*'];
 }
