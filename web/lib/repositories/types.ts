@@ -76,6 +76,7 @@ export interface IPOFilters {
   status?: string | string[];
   category?: string | string[];
   sector?: string;
+  search?: string;
   minIssueSize?: number;
   maxIssueSize?: number;
   openDateFrom?: Date;

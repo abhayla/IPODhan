@@ -88,6 +88,7 @@ const QueryParamsSchema = z.object({
       return Array.isArray(val) ? val : [val];
     }),
   sector: z.string().optional(),
+  search: z.string().optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   sortBy: SortFieldSchema.default('createdAt'),
@@ -138,6 +139,9 @@ function parseQueryParams(searchParams: URLSearchParams): Record<string, unknown
   // Handle single-value parameters
   const sector = searchParams.get('sector');
   if (sector) params.sector = sector;
+
+  const search = searchParams.get('search');
+  if (search) params.search = search;
 
   const page = searchParams.get('page');
   if (page) params.page = page;
@@ -235,6 +239,7 @@ export async function GET(request: NextRequest) {
       status?: string[];
       category?: string[];
       sector?: string;
+      search?: string;
       page: number;
       limit: number;
       sortBy: 'openDate' | 'closeDate' | 'listingDate' | 'issueSize' | 'createdAt';
@@ -243,6 +248,7 @@ export async function GET(request: NextRequest) {
       status: validatedParams.status,
       category: validatedParams.category,
       sector: validatedParams.sector,
+      search: validatedParams.search,
       page: validatedParams.page,
       limit: validatedParams.limit,
       sortBy: validatedParams.sortBy,

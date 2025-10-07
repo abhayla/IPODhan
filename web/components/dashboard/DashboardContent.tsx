@@ -5,6 +5,7 @@ import { IPOGrid } from '@/components/ipo/IPOGrid';
 import { Pagination } from '@/components/ui/pagination';
 import { ViewToggle } from '@/components/ui/view-toggle';
 import { FilterBar } from '@/components/dashboard/FilterBar';
+import { SearchBar } from '@/components/dashboard/SearchBar';
 
 interface DashboardContentProps {
   initialIPOs: IPO[];
@@ -17,12 +18,14 @@ interface DashboardContentProps {
   initialView: string;
   initialStatus?: string;
   initialCategory?: string;
+  initialSearch?: string;
 }
 
 export function DashboardContent({
   initialIPOs,
   initialPagination,
-  initialView
+  initialView,
+  initialSearch
 }: DashboardContentProps) {
   const view = (initialView === 'list' ? 'list' : 'grid') as 'grid' | 'list';
 
@@ -46,11 +49,16 @@ export function DashboardContent({
         </div>
       </div>
 
+      {/* Search Bar */}
+      <div className="mb-6">
+        <SearchBar />
+      </div>
+
       {/* Filter Bar */}
       <FilterBar />
 
       {/* IPO Grid */}
-      <IPOGrid ipos={initialIPOs} view={view} />
+      <IPOGrid ipos={initialIPOs} view={view} searchQuery={initialSearch} />
 
       {/* Pagination */}
       {totalPages > 1 && (
