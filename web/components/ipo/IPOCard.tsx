@@ -6,9 +6,11 @@ import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { Star } from 'lucide-react';
+import { HighlightedText } from '@/components/search/HighlightedText';
 
 interface IPOCardProps {
   ipo: IPO;
+  searchQuery?: string;
   onClick?: () => void;
 }
 
@@ -66,7 +68,7 @@ const RatingStars = ({ rating }: { rating: number | null }) => {
   );
 };
 
-export function IPOCard({ ipo, onClick }: IPOCardProps) {
+export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
   const statusConfig = getStatusConfig(ipo.status);
 
   const handleClick = () => {
@@ -86,7 +88,7 @@ export function IPOCard({ ipo, onClick }: IPOCardProps) {
           {/* Header: Company Name and Status */}
           <div className="flex items-start justify-between gap-2">
             <h3 className="text-lg font-bold leading-tight line-clamp-2 flex-1">
-              {ipo.companyName}
+              <HighlightedText text={ipo.companyName} query={searchQuery || ''} />
             </h3>
             <Badge className={statusConfig.color}>{statusConfig.label}</Badge>
           </div>
@@ -97,7 +99,9 @@ export function IPOCard({ ipo, onClick }: IPOCardProps) {
               {ipo.category}
             </Badge>
             {ipo.sector && (
-              <span className="text-xs text-muted-foreground">{ipo.sector}</span>
+              <span className="text-xs text-muted-foreground">
+                <HighlightedText text={ipo.sector} query={searchQuery || ''} />
+              </span>
             )}
           </div>
 

@@ -2,22 +2,37 @@
 
 import { IPO } from '@/lib/api-client';
 import { IPOCard } from '@/components/ipo/IPOCard';
-import { Inbox } from 'lucide-react';
+import { Inbox, Search as SearchIcon } from 'lucide-react';
 
 interface IPOGridProps {
   ipos: IPO[];
   view: 'grid' | 'list';
+  searchQuery?: string;
 }
 
-export function IPOGrid({ ipos, view }: IPOGridProps) {
+export function IPOGrid({ ipos, view, searchQuery }: IPOGridProps) {
   if (ipos.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="empty-state">
-        <Inbox className="h-16 w-16 text-muted-foreground mb-4" />
-        <h3 className="text-xl font-semibold mb-2">No IPOs found</h3>
-        <p className="text-muted-foreground">
-          Try adjusting your filters or check back later for new IPO listings.
-        </p>
+      <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="no-results">
+        {searchQuery ? (
+          <>
+            <SearchIcon className="h-16 w-16 text-muted-foreground mb-4" />
+            <h3 className="text-xl font-semibold mb-2">
+              No IPOs found for &quot;{searchQuery}&quot;
+            </h3>
+            <p className="text-muted-foreground">
+              Try different keywords or clear your search to see all IPOs.
+            </p>
+          </>
+        ) : (
+          <>
+            <Inbox className="h-16 w-16 text-muted-foreground mb-4" />
+            <h3 className="text-xl font-semibold mb-2">No IPOs found</h3>
+            <p className="text-muted-foreground">
+              Try adjusting your filters or check back later for new IPO listings.
+            </p>
+          </>
+        )}
       </div>
     );
   }
@@ -32,7 +47,7 @@ export function IPOGrid({ ipos, view }: IPOGridProps) {
       data-testid="ipo-container"
     >
       {ipos.map((ipo) => (
-        <IPOCard key={ipo.id} ipo={ipo} />
+        <IPOCard key={ipo.id} ipo={ipo} searchQuery={searchQuery} />
       ))}
     </div>
   );

@@ -51,6 +51,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       status,
       category,
       sector,
+      search,
       minIssueSize,
       maxIssueSize,
       openDateFrom,
@@ -92,6 +93,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
 
           if (sector) {
             conditions.push(eq(ipos.sector, sector));
+          }
+
+          if (search) {
+            // Search by company name OR sector (case-insensitive, partial match)
+            conditions.push(
+              sql`(${ipos.companyName} ILIKE ${`%${search}%`} OR ${ipos.sector} ILIKE ${`%${search}%`})`
+            );
           }
 
           if (minIssueSize) {

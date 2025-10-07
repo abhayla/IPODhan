@@ -104,6 +104,7 @@ export interface GetIPOsParams {
   status?: 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED';
   category?: 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD';
   sector?: string;
+  search?: string;
   page?: number;
   limit?: number;
 }
@@ -544,6 +545,7 @@ export async function getIPOs(
   if (params.status) searchParams.append('status', params.status);
   if (params.category) searchParams.append('category', params.category);
   if (params.sector) searchParams.append('sector', params.sector);
+  if (params.search) searchParams.append('search', params.search);
   if (params.page) searchParams.append('page', params.page.toString());
   if (params.limit) searchParams.append('limit', params.limit.toString());
 
