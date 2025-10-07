@@ -67,6 +67,32 @@ export function trackPageView(url: string, title: string): void {
 }
 
 /**
+ * Tracks an allotment status check in Google Analytics
+ * Story 4.6: Allotment Status Checker
+ *
+ * @param companyName - Name of the IPO company being checked
+ * @param registrar - Name of the registrar company
+ *
+ * @example
+ * trackAllotmentCheck('TechCorp', 'Link Intime')
+ * // Sends GA4 event: { event: 'allotment_check', company_name: 'TechCorp', registrar: 'Link Intime', category: 'ipo_tools' }
+ */
+export function trackAllotmentCheck(companyName: string, registrar: string): void {
+  if (typeof window !== 'undefined' && window.gtag) {
+    try {
+      window.gtag('event', 'allotment_check', {
+        company_name: companyName,
+        registrar: registrar,
+        category: 'ipo_tools',
+      });
+    } catch (error) {
+      // Fail silently - don't break user experience if analytics fails
+      console.error('Failed to track allotment check event:', error);
+    }
+  }
+}
+
+/**
  * Tracks a custom event in Google Analytics
  *
  * @param eventName - Name of the event

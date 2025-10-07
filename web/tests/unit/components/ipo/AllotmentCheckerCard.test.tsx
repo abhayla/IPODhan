@@ -1,12 +1,22 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { AllotmentCheckerCard } from '@/components/ipo/AllotmentCheckerCard';
+import * as gtag from '@/lib/analytics/gtag';
 
 // Mock window.open
 const mockWindowOpen = vi.fn();
 global.window.open = mockWindowOpen;
 
+// Mock gtag module
+vi.mock('@/lib/analytics/gtag', () => ({
+  trackAllotmentCheck: vi.fn(),
+}));
+
 describe('AllotmentCheckerCard', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('should not render for UPCOMING status', () => {
     const { container } = render(
       <AllotmentCheckerCard
@@ -156,5 +166,70 @@ describe('AllotmentCheckerCard', () => {
     expect(
       screen.getByText(/Registrar website URL is not available/)
     ).toBeInTheDocument();
+  });
+
+  it('should track analytics event on valid submission', async () => {
+    render(
+      <AllotmentCheckerCard
+        status="CLOSED"
+        registrar="Link Intime"
+        registrarUrl="https://example.com"
+        companyName="TechCorp"
+      />
+    );
+
+    const input = screen.getByPlaceholderText('ABCDE1234F');
+    fireEvent.change(input, { target: { value: 'ABCDE1234F' } });
+
+    const button = screen.getByRole('button', { name: /Check Status/ });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(gtag.trackAllotmentCheck).toHaveBeenCalledWith('TechCorp', 'Link Intime');
+    });
+  });
+
+  it('should not track analytics when companyName is missing', async () => {
+    render(
+      <AllotmentCheckerCard
+        status="CLOSED"
+        registrar="Link Intime"
+        registrarUrl="https://example.com"
+      />
+    );
+
+    const input = screen.getByPlaceholderText('ABCDE1234F');
+    fireEvent.change(input, { target: { value: 'ABCDE1234F' } });
+
+    const button = screen.getByRole('button', { name: /Check Status/ });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(gtag.trackAllotmentCheck).not.toHaveBeenCalled();
+    });
+  });
+
+  it('should redirect to registrar URL with PAN parameter', async () => {
+    render(
+      <AllotmentCheckerCard
+        status="CLOSED"
+        registrar="Link Intime"
+        registrarUrl="https://example.com/check"
+        companyName="TechCorp"
+      />
+    );
+
+    const input = screen.getByPlaceholderText('ABCDE1234F');
+    fireEvent.change(input, { target: { value: 'ABCDE1234F' } });
+
+    const button = screen.getByRole('button', { name: /Check Status/ });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(mockWindowOpen).toHaveBeenCalledWith(
+        'https://example.com/check?pan=ABCDE1234F',
+        '_blank'
+      );
+    });
   });
 });

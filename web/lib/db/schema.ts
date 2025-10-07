@@ -74,6 +74,7 @@ export const ipos = pgTable(
     faceValue: integer('face_value'),
     listingExchanges: jsonb('listing_exchanges').$type<('NSE' | 'BSE')[]>(),
     registrar: varchar('registrar', { length: 255 }),
+    registrarId: uuid('registrar_id').references(() => registrars.id),
     leadManagers: jsonb('lead_managers').$type<string[]>(),
     rating: integer('rating'), // 1-5 stars
     ratingRationale: text('rating_rationale'),
@@ -349,6 +350,10 @@ export const iposRelations = relations(ipos, ({ many, one }) => ({
   listingPerformance: one(listingPerformance, {
     fields: [ipos.id],
     references: [listingPerformance.ipoId],
+  }),
+  registrarRelation: one(registrars, {
+    fields: [ipos.registrarId],
+    references: [registrars.id],
   }),
 }));
 

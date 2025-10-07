@@ -66,6 +66,7 @@ const mockIPO: IPO = {
   faceValue: 10,
   listingExchanges: ['NSE', 'BSE'],
   registrar: 'Link Intime',
+  registrarId: null,
   leadManagers: ['ICICI Securities'],
   rating: 4,
   ratingRationale: 'Good fundamentals',

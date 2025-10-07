@@ -43,6 +43,7 @@ const mockIPO = (overrides?: Partial<IPO>): IPO => ({
   faceValue: 10,
   listingExchanges: ['NSE', 'BSE'],
   registrar: 'Link Intime',
+  registrarId: null,
   leadManagers: ['ICICI Securities', 'HDFC Securities'],
   rating: 4,
   ratingRationale: 'Strong fundamentals',
