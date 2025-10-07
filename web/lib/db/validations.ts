@@ -174,3 +174,31 @@ export const validateIPODates = z
       message: 'Open date must be before close date',
     }
   );
+
+// ==================== HISTORICAL IPO VALIDATION SCHEMAS ====================
+
+/**
+ * Historical IPO Query Parameters Validation Schema
+ * Used for /api/ipos/history endpoint
+ */
+export const historicalIPOQueryParamsSchema = z.object({
+  year: z
+    .string()
+    .optional()
+    .refine(
+      (val) => {
+        if (!val || val === 'All') return true;
+        const yearNum = parseInt(val, 10);
+        return yearNum >= 2020 && yearNum <= 2025;
+      },
+      {
+        message: 'Year must be between 2020 and 2025, or "All"',
+      }
+    ),
+  sector: z.string().max(100).optional(),
+  performance: z.enum(['Positive', 'Negative', 'All']).optional(),
+  sort: z.enum(['listing_date', 'listing_gain', 'subscription']).optional(),
+  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
