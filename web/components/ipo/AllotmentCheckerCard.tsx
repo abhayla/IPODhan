@@ -2,11 +2,12 @@
 
 import { useState } from 'react';
 import { IPOStatus } from '@/lib/db/types';
+import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ExternalLink, Shield } from 'lucide-react';
+import { ExternalLink, Shield, Building2 } from 'lucide-react';
 import { trackAllotmentCheck } from '@/lib/analytics/gtag';
 
 interface AllotmentCheckerCardProps {
@@ -90,10 +91,20 @@ export function AllotmentCheckerCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Check Allotment Status</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Check your IPO allotment status on {registrar} website
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <CardTitle>Check Allotment Status</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Check your IPO allotment status on {registrar} website
+            </p>
+          </div>
+          <Button variant="ghost" size="sm" asChild>
+            <Link href="/registrars" className="flex items-center gap-1">
+              <Building2 className="h-4 w-4" />
+              <span className="hidden sm:inline">All Registrars</span>
+            </Link>
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="space-y-2">

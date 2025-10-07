@@ -3,19 +3,20 @@
  *
  * Handles database operations for Registrar entities with Redis caching.
  * Story 4.6: Allotment Status Checker
+ * Story 5.3: Registrar Directory - Added search functionality
  */
 
-import { eq } from 'drizzle-orm';
+import { eq, or, ilike, asc } from 'drizzle-orm';
 import { BaseRepository } from './base-repository';
 import { registrars } from '../db/schema';
 import type { Registrar } from '../db/types';
 
 export class RegistrarRepository extends BaseRepository {
-  private readonly CACHE_TTL = 86400; // 24 hours in seconds
+  private readonly CACHE_TTL = 604800; // 7 days in seconds (as per Story 5.3 requirements)
 
   /**
    * Find registrar by ID
-   * Uses Redis cache with 24-hour TTL
+   * Uses Redis cache with 7-day TTL
    */
   async findById(id: string): Promise<Registrar | null> {
     const cacheKey = `registrar:${id}`;
@@ -43,7 +44,7 @@ export class RegistrarRepository extends BaseRepository {
 
   /**
    * Find registrar by name
-   * Uses Redis cache with 24-hour TTL
+   * Uses Redis cache with 7-day TTL
    */
   async findByName(name: string): Promise<Registrar | null> {
     const cacheKey = `registrar:name:${name}`;
@@ -70,8 +71,9 @@ export class RegistrarRepository extends BaseRepository {
   }
 
   /**
-   * Find all registrars
+   * Find all registrars ordered alphabetically
    * @param activeOnly - If true, only return active registrars (default: true)
+   * Uses Redis cache with 7-day TTL
    */
   async findAll(activeOnly: boolean = true): Promise<Registrar[]> {
     const cacheKey = `registrars:all:${activeOnly ? 'active' : 'all'}`;
@@ -88,9 +90,57 @@ export class RegistrarRepository extends BaseRepository {
               query = query.where(eq(registrars.active, true)) as typeof query;
             }
 
-            return await query;
+            // Order alphabetically by name (Story 5.3 requirement)
+            return await query.orderBy(asc(registrars.name));
           },
           { activeOnly }
+        );
+      },
+      this.CACHE_TTL
+    );
+  }
+
+  /**
+   * Search registrars by name (fuzzy search)
+   * @param query - Search query string
+   * @param activeOnly - If true, only search active registrars (default: true)
+   * Uses Redis cache with 7-day TTL
+   * Story 5.3: Registrar Directory
+   */
+  async search(query: string, activeOnly: boolean = true): Promise<Registrar[]> {
+    if (!query || query.trim() === '') {
+      return this.findAll(activeOnly);
+    }
+
+    const normalizedQuery = query.trim();
+    const cacheKey = `registrars:search:${normalizedQuery.toLowerCase()}:${activeOnly ? 'active' : 'all'}`;
+
+    return this.getFromCache(
+      cacheKey,
+      async () => {
+        return this.executeQuery(
+          'searchRegistrars',
+          async () => {
+            const searchPattern = `%${normalizedQuery}%`;
+
+            const nameCondition = or(
+              ilike(registrars.name, searchPattern),
+              ilike(registrars.shortName, searchPattern)
+            );
+
+            let query = this.db.select().from(registrars);
+
+            if (activeOnly) {
+              // Combine both active filter and name search
+              query = query.where(eq(registrars.active, true)) as typeof query;
+              query = query.where(nameCondition) as typeof query;
+            } else {
+              query = query.where(nameCondition) as typeof query;
+            }
+
+            return await query.orderBy(asc(registrars.name));
+          },
+          { query: normalizedQuery, activeOnly }
         );
       },
       this.CACHE_TTL

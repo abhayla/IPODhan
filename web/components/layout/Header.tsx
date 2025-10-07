@@ -14,7 +14,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, Calculator, Scale } from 'lucide-react';
+import { Menu, X, Calculator, Scale, Building2 } from 'lucide-react';
 
 // ==================== COMPONENT ====================
 
@@ -100,6 +100,18 @@ export function Header() {
                     </p>
                   </div>
                 </Link>
+                <Link
+                  href="/registrars"
+                  className="flex items-center space-x-2 rounded-sm px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Building2 className="h-4 w-4" />
+                  <div>
+                    <p className="font-medium">Registrars</p>
+                    <p className="text-xs text-muted-foreground">
+                      Find registrar contact information
+                    </p>
+                  </div>
+                </Link>
               </div>
             </div>
           </nav>
@@ -151,6 +163,14 @@ export function Header() {
                 >
                   <Scale className="h-4 w-4" />
                   <span>Compare IPOs</span>
+                </Link>
+                <Link
+                  href="/registrars"
+                  className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Building2 className="h-4 w-4" />
+                  <span>Registrars</span>
                 </Link>
               </div>
             </nav>

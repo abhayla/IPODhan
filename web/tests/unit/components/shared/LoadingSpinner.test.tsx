@@ -29,7 +29,9 @@ describe('LoadingSpinner', () => {
 
   it('displays custom label when provided', () => {
     render(<LoadingSpinner label="Loading IPOs..." />);
-    expect(screen.getByText('Loading IPOs...')).toBeInTheDocument();
+    const labels = screen.getAllByText('Loading IPOs...');
+    expect(labels).toHaveLength(2); // One visible, one for screen readers
+    expect(labels[0]).toBeInTheDocument();
   });
 
   it('has spin animation', () => {
