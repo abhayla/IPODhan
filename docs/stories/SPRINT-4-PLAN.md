@@ -22,7 +22,7 @@
 | 4.3 | 8 | ✅ READY | 9.5/10 | IPO Detail Page Assembly - Story drafted and approved |
 | 4.4 | 5 | ✅ READY | 9.5/10 | Rating System Implementation - Story drafted and approved |
 | 4.5 | 2 | ✅ READY | 9.7/10 | Social Share Integration - Story drafted and approved |
-| 4.6 | 5 | 📋 PLANNED | - | Allotment Status Checker |
+| 4.6 | 5 | ✅ READY | 9.0/10 | Allotment Status Checker - Story drafted and approved |
 
 **Points Complete:** 0/33 (0%)
 **Stories Complete:** 0/6 (0%)
@@ -346,7 +346,7 @@ Subscription: {subscription}x
 ### Story 4.6: Allotment Status Checker
 **Priority:** High
 **Points:** 5
-**Status:** 📋 PLANNED
+**Status:** ✅ READY (Story created and approved by PO)
 **Dependencies:** 4.3
 **File:** `docs/stories/4.6.allotment-checker.story.md`
 

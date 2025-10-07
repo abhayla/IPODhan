@@ -3,6 +3,7 @@
  *
  * All reusable components for displaying IPO detail information.
  * Created as part of Story 4.2: Detail Page Components
+ * Enhanced in Story 4.3: IPO Detail Page Assembly
  */
 
 // Main Components
@@ -18,6 +19,9 @@ export { CompanyOverview } from './CompanyOverview';
 export { RatingDisplay } from './RatingDisplay';
 export { ShareButtons } from './ShareButtons';
 export { AllotmentCheckerCard } from './AllotmentCheckerCard';
+
+// Detail Page Components (Story 4.3)
+export { IPODetailTabs } from './IPODetailTabs';
 
 // Existing Components
 export { IPOCard } from './IPOCard';
