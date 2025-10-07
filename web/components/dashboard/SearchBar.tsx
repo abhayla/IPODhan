@@ -19,6 +19,7 @@ import { Search, X, Clock } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { saveSearch, getRecentSearches } from '@/lib/search-history';
 import { Input } from '@/components/ui/input';
+import { LoadingSpinner } from '@/components/shared/LoadingSpinner';
 
 export function SearchBar() {
   const router = useRouter();
@@ -184,7 +185,7 @@ export function SearchBar() {
         {/* Loading Indicator */}
         {isSearching && (
           <div className="absolute right-10 top-1/2 -translate-y-1/2">
-            <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full" />
+            <LoadingSpinner size="sm" />
           </div>
         )}
       </div>

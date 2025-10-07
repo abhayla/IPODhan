@@ -1,24 +1,31 @@
-import { IPOCardSkeleton } from '@/components/ipo/IPOCardSkeleton';
+import { IPOGridSkeleton } from '@/components/shared/IPOGridSkeleton';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export default function Loading() {
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8" aria-busy="true" aria-live="polite">
+      <div className="sr-only">Loading IPO dashboard...</div>
+
       {/* Header skeleton */}
       <div className="mb-8 space-y-4">
-        <div className="h-10 w-64 bg-gray-200 rounded animate-pulse" />
-        <div className="h-6 w-96 bg-gray-200 rounded animate-pulse" />
+        <Skeleton className="h-10 w-64" />
+        <Skeleton className="h-6 w-96" />
+      </div>
+
+      {/* Filter bar skeleton */}
+      <div className="mb-6 flex flex-wrap gap-4">
+        <Skeleton className="h-10 w-32" />
+        <Skeleton className="h-10 w-32" />
+        <Skeleton className="h-10 w-32" />
+        <Skeleton className="h-10 w-48" />
       </div>
 
       {/* Grid of loading skeletons */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {Array.from({ length: 12 }).map((_, i) => (
-          <IPOCardSkeleton key={i} />
-        ))}
-      </div>
+      <IPOGridSkeleton count={12} />
 
       {/* Pagination skeleton */}
       <div className="mt-8 flex justify-center">
-        <div className="h-10 w-64 bg-gray-200 rounded animate-pulse" />
+        <Skeleton className="h-10 w-64" />
       </div>
     </div>
   );

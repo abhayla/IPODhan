@@ -3,6 +3,8 @@
 import { IPO } from '@/lib/api-client';
 import { IPOCard } from '@/components/ipo/IPOCard';
 import { Inbox, Search as SearchIcon } from 'lucide-react';
+import { EmptyState } from '@/components/shared/EmptyState';
+import { useRouter } from 'next/navigation';
 
 interface IPOGridProps {
   ipos: IPO[];
@@ -11,29 +13,33 @@ interface IPOGridProps {
 }
 
 export function IPOGrid({ ipos, view, searchQuery }: IPOGridProps) {
+  const router = useRouter();
+
   if (ipos.length === 0) {
+    if (searchQuery) {
+      return (
+        <EmptyState
+          icon={SearchIcon}
+          title={`No IPOs found for "${searchQuery}"`}
+          description="Try different keywords or clear your search to see all IPOs."
+          action={{
+            label: 'Clear Search',
+            onClick: () => router.push('/dashboard'),
+          }}
+        />
+      );
+    }
+
     return (
-      <div className="flex flex-col items-center justify-center py-16 text-center" data-testid="no-results">
-        {searchQuery ? (
-          <>
-            <SearchIcon className="h-16 w-16 text-muted-foreground mb-4" />
-            <h3 className="text-xl font-semibold mb-2">
-              No IPOs found for &quot;{searchQuery}&quot;
-            </h3>
-            <p className="text-muted-foreground">
-              Try different keywords or clear your search to see all IPOs.
-            </p>
-          </>
-        ) : (
-          <>
-            <Inbox className="h-16 w-16 text-muted-foreground mb-4" />
-            <h3 className="text-xl font-semibold mb-2">No IPOs found</h3>
-            <p className="text-muted-foreground">
-              Try adjusting your filters or check back later for new IPO listings.
-            </p>
-          </>
-        )}
-      </div>
+      <EmptyState
+        icon={Inbox}
+        title="No IPOs found"
+        description="Try adjusting your filters or check back later for new IPO listings."
+        action={{
+          label: 'Clear Filters',
+          onClick: () => router.push('/dashboard'),
+        }}
+      />
     );
   }
 
