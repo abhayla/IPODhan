@@ -121,6 +121,17 @@ export function IPODetailTabs({
   // Share URL for social sharing
   const shareUrl = `https://ipodhan.com/ipos/${slug}`;
 
+  // Prepare key metrics for share text
+  const latestSubscription = subscriptions?.[0];
+  const latestGMP = gmpRecords?.[0];
+  const keyMetrics = {
+    subscription: latestSubscription?.totalSubscription
+      ? Number(latestSubscription.totalSubscription)
+      : null,
+    gmp: latestGMP?.gmp ?? null,
+    issueSize: ipo.issueSize ? Number(ipo.issueSize) : null,
+  };
+
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
       {/* Tab List */}
@@ -162,6 +173,7 @@ export function IPODetailTabs({
             companyName={ipo.companyName}
             rating={ipo.rating}
             url={shareUrl}
+            keyMetrics={keyMetrics}
           />
         </Suspense>
       </TabsContent>

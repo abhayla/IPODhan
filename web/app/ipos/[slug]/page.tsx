@@ -63,29 +63,43 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     // Format price range
     const priceRange = `₹${ipo.priceRangeMin} - ₹${ipo.priceRangeMax}`;
 
-    // Calculate GMP percentage if available
-    const latestGMP = data.gmpRecords?.[0];
-    const gmpPercent = latestGMP && ipo.priceRangeMax
-      ? ((latestGMP.gmp / ipo.priceRangeMax) * 100).toFixed(2)
-      : 'N/A';
+    // Get rating for description
+    const rating = ipo.rating ? ` Rating: ${ipo.rating.toFixed(1)}/5,` : '';
 
-    // Construct description
-    const description = `${ipo.companyName} IPO details including subscription, GMP, financials, and documents. Issue size: ₹${ipo.issueSize} Crores, Price range: ${priceRange}, GMP: ${gmpPercent}%.`;
+    // Construct description with key metrics
+    const description = `${ipo.companyName} IPO -${rating} Issue Size: ₹${ipo.issueSize} Cr, Price: ${priceRange}. Complete IPO information on IPODhan.`;
+
+    // OG/Twitter description (shorter version)
+    const socialDescription = `${ipo.companyName} IPO - Issue Size: ₹${ipo.issueSize} Cr${rating}. Get complete IPO information on IPODhan.`;
+
+    // Use default OG image (company logo not stored in IPO table)
+    const imageUrl = 'https://ipodhan.com/og-image-default.svg';
+    const absoluteImageUrl = imageUrl;
 
     return {
       title: `${ipo.companyName} IPO Details | IPODhan`,
       description,
       openGraph: {
-        title: `${ipo.companyName} IPO Details`,
-        description,
+        title: `${ipo.companyName} IPO Details | IPODhan`,
+        description: socialDescription,
         type: 'website',
         url: `https://ipodhan.com/ipos/${slug}`,
         siteName: 'IPODhan',
+        images: [
+          {
+            url: absoluteImageUrl,
+            width: 1200,
+            height: 630,
+            alt: `${ipo.companyName} IPO`,
+          },
+        ],
       },
       twitter: {
         card: 'summary_large_image',
-        title: `${ipo.companyName} IPO Details`,
-        description,
+        title: `${ipo.companyName} IPO | IPODhan`,
+        description: socialDescription,
+        images: [absoluteImageUrl],
+        creator: '@ipodhan',
       },
       alternates: {
         canonical: `https://ipodhan.com/ipos/${slug}`,

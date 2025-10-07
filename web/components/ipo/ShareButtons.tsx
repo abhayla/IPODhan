@@ -4,39 +4,65 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Share2, Copy, Check } from 'lucide-react';
 import { useToast } from '@/hooks/useToast';
+import { generateShareUrl, createShareText } from '@/lib/utils/url-utils';
+import { trackShare } from '@/lib/analytics/gtag';
+
+interface KeyMetrics {
+  subscription?: number | null;
+  gmp?: number | null;
+  issueSize?: number | null;
+}
 
 interface ShareButtonsProps {
   companyName: string;
   rating: number | null;
   url?: string;
+  keyMetrics?: KeyMetrics;
 }
 
 /**
  * ShareButtons component provides social sharing functionality
  * Includes WhatsApp, Twitter, and Copy Link buttons
  * Uses native Web Share API on mobile when available
+ * Tracks share events with Google Analytics
  */
-export function ShareButtons({ companyName, rating, url }: ShareButtonsProps) {
+export function ShareButtons({ companyName, rating, url, keyMetrics }: ShareButtonsProps) {
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
 
-  // Get current URL if not provided
-  const shareUrl = url || (typeof window !== 'undefined' ? window.location.href : '');
+  // Get current URL if not provided (without UTM params initially)
+  const baseUrl = url || (typeof window !== 'undefined' ? window.location.href.split('?')[0] : '');
 
-  const shareText = `Check out ${companyName} IPO${rating ? ` (Rating: ${rating}/5)` : ''} on IPODhan`;
+  // Create share text with key metrics
+  const shareText = createShareText(
+    companyName,
+    rating,
+    keyMetrics?.subscription,
+    keyMetrics?.gmp,
+    keyMetrics?.issueSize
+  );
 
   const handleWhatsAppShare = () => {
+    const shareUrl = generateShareUrl(baseUrl, 'whatsapp');
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(`${shareText}\n${shareUrl}`)}`;
     window.open(whatsappUrl, '_blank');
+
+    // Track share event
+    trackShare('whatsapp', companyName);
   };
 
   const handleTwitterShare = () => {
+    const shareUrl = generateShareUrl(baseUrl, 'twitter');
     const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`;
     window.open(twitterUrl, '_blank');
+
+    // Track share event
+    trackShare('twitter', companyName);
   };
 
   const handleCopyLink = async () => {
     try {
+      const shareUrl = generateShareUrl(baseUrl, 'copy');
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       toast({
@@ -44,6 +70,9 @@ export function ShareButtons({ companyName, rating, url }: ShareButtonsProps) {
         description: 'IPO link has been copied to clipboard',
       });
       setTimeout(() => setCopied(false), 2000);
+
+      // Track share event
+      trackShare('copy', companyName);
     } catch {
       toast({
         title: 'Failed to copy',
@@ -56,11 +85,15 @@ export function ShareButtons({ companyName, rating, url }: ShareButtonsProps) {
   const handleNativeShare = async () => {
     if (navigator.share) {
       try {
+        const shareUrl = generateShareUrl(baseUrl, 'native');
         await navigator.share({
           title: `${companyName} IPO`,
           text: shareText,
           url: shareUrl,
         });
+
+        // Track share event
+        trackShare('native', companyName);
       } catch (error) {
         // User cancelled share or error occurred
         console.error('Share failed:', error);
