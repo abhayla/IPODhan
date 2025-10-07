@@ -41,6 +41,7 @@ describe('Database Types', () => {
         faceValue: 10,
         listingExchanges: ['NSE', 'BSE'],
         registrar: 'Test Registrar',
+        registrarId: null,
         leadManagers: ['Manager 1'],
         rating: 4,
         ratingRationale: 'Good fundamentals',

@@ -20,6 +20,7 @@ import { IPOHeader } from '@/components/ipo/IPOHeader';
 import { KeyMetricsCards } from '@/components/ipo/KeyMetricsCards';
 import { InfoSection } from '@/components/ipo/InfoSection';
 import { IPODetailTabs } from '@/components/ipo/IPODetailTabs';
+import { AllotmentCheckerCard } from '@/components/ipo/AllotmentCheckerCard';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import type { IPODetailResponse } from '@/lib/db/types';
 
@@ -257,6 +258,16 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* IPO Information Section */}
             <InfoSection ipo={ipo} />
+
+            {/* Allotment Status Checker (Story 4.6) */}
+            {(ipo.status === 'CLOSED' || ipo.status === 'LISTED') && (
+              <AllotmentCheckerCard
+                status={ipo.status}
+                registrar={ipo.registrarRelation?.shortName || ipo.registrar || 'Registrar'}
+                registrarUrl={ipo.registrarRelation?.allotmentCheckUrl || null}
+                companyName={ipo.companyName}
+              />
+            )}
 
             {/* Tier 2: Below Fold Content (Client-Side Tabs) */}
             <IPODetailTabs
