@@ -34,6 +34,7 @@ import {
   type ComparisonResponse,
   type IPOComparison,
 } from '@/lib/types/comparison';
+import type { FinancialData } from '@/lib/repositories/types';
 
 // ==================== ERROR RESPONSE TYPE ====================
 
@@ -48,21 +49,24 @@ interface ErrorResponse {
 /**
  * Calculate revenue growth percentage from yearly financial data
  */
-function calculateRevenueGrowth(financialData: { revenue?: { fy1?: number; fy2?: number; fy3?: number } } | null): number | null {
-  if (!financialData?.revenue) return null;
+function calculateRevenueGrowth(financialData: FinancialData | null): number | null {
+  if (!financialData) return null;
 
-  const { fy1, fy2, fy3 } = financialData.revenue;
+  // Parse revenue values from string to number
+  const fy2022 = financialData.revenueFy2022 ? parseFloat(financialData.revenueFy2022) : null;
+  const fy2023 = financialData.revenueFy2023 ? parseFloat(financialData.revenueFy2023) : null;
+  const fy2024 = financialData.revenueFy2024 ? parseFloat(financialData.revenueFy2024) : null;
 
   // Calculate CAGR if we have 3 years of data
-  if (fy1 && fy3) {
-    const years = 2; // From FY1 to FY3
-    const growth = ((fy3 / fy1) ** (1 / years) - 1) * 100;
+  if (fy2022 && fy2024) {
+    const years = 2; // From FY2022 to FY2024
+    const growth = ((fy2024 / fy2022) ** (1 / years) - 1) * 100;
     return Math.round(growth * 100) / 100; // Round to 2 decimal places
   }
 
   // Calculate single-year growth if we only have 2 years
-  if (fy1 && fy2) {
-    const growth = ((fy2 - fy1) / fy1) * 100;
+  if (fy2022 && fy2023) {
+    const growth = ((fy2023 - fy2022) / fy2022) * 100;
     return Math.round(growth * 100) / 100;
   }
 
@@ -93,7 +97,7 @@ async function fetchIPOComparisonData(
   // Fetch related data in parallel
   const [latestSubscription, gmpRecords, financialData] = await Promise.all([
     subscriptionRepo.findLatest(ipo.id).catch(() => null),
-    gmpRepo.findByIPO(ipo.id, 1).catch(() => []),
+    gmpRepo.findByIPO({ ipoId: ipo.id, limit: 1 }).catch(() => []),
     financialRepo.findByIPO(ipo.id).catch(() => null),
   ]);
 
@@ -105,23 +109,23 @@ async function fetchIPOComparisonData(
     slug: ipo.slug,
     companyName: ipo.companyName,
     priceRange: {
-      min: ipo.minPrice,
-      max: ipo.maxPrice,
+      min: ipo.priceRangeMin ?? 0,
+      max: ipo.priceRangeMax ?? 0,
     },
-    lotSize: ipo.lotSize,
+    lotSize: ipo.lotSize ?? 0,
     status: ipo.status,
     subscription: {
-      qib: latestSubscription?.qibSubscription ?? null,
-      nii: latestSubscription?.niiSubscription ?? null,
-      retail: latestSubscription?.retailSubscription ?? null,
-      total: latestSubscription?.totalSubscription ?? null,
+      qib: latestSubscription?.qibSubscription ? parseFloat(String(latestSubscription.qibSubscription)) : null,
+      nii: latestSubscription?.niiSubscription ? parseFloat(String(latestSubscription.niiSubscription)) : null,
+      retail: latestSubscription?.retailSubscription ? parseFloat(String(latestSubscription.retailSubscription)) : null,
+      total: latestSubscription?.totalSubscription ? parseFloat(String(latestSubscription.totalSubscription)) : null,
     },
     gmp: latestGMP,
     financials: {
-      peRatio: financialData?.peRatio ?? null,
-      roe: financialData?.roe ?? null,
+      peRatio: financialData?.peRatio ? parseFloat(financialData.peRatio) : null,
+      roe: financialData?.roe ? parseFloat(financialData.roe) : null,
       revenueGrowth: calculateRevenueGrowth(financialData),
-      eps: financialData?.eps ?? null,
+      eps: financialData?.eps ? parseFloat(financialData.eps) : null,
     },
     rating: ipo.rating ?? null,
     ratingRationale: ipo.ratingRationale ?? null,
@@ -148,14 +152,14 @@ export async function POST(request: NextRequest): Promise<NextResponse<Compariso
       logger.warn({
         msg: 'Invalid comparison request',
         requestId,
-        errors: validationResult.error.errors,
+        errors: validationResult.error.issues,
       });
 
       return NextResponse.json(
         {
           error: 'Validation Error',
-          message: validationResult.error.errors[0].message,
-          details: validationResult.error.errors,
+          message: validationResult.error.issues[0].message,
+          details: validationResult.error.issues,
         },
         { status: 400 }
       );

@@ -139,8 +139,8 @@ export function IPOSelector({
                   <div className="flex flex-col">
                     <span className="font-medium">{ipo.companyName}</span>
                     <span className="text-xs text-muted-foreground">
-                      {ipo.status} • Lot Size: {ipo.lotSize} • ₹
-                      {ipo.minPrice}-{ipo.maxPrice}
+                      {ipo.status} • Lot Size: {ipo.lotSize ?? 'N/A'} • ₹
+                      {ipo.priceRangeMin ?? 'N/A'}-{ipo.priceRangeMax ?? 'N/A'}
                     </span>
                   </div>
                 </SelectItem>

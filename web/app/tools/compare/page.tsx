@@ -15,6 +15,7 @@
 'use client';
 
 import * as React from 'react';
+import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { IPOSelector } from '@/components/tools/IPOSelector';
@@ -28,7 +29,7 @@ const SESSION_STORAGE_KEY = 'comparisonIPOs';
 
 // ==================== PAGE COMPONENT ====================
 
-export default function CompareIPOsPage() {
+function CompareIPOsContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -273,5 +274,15 @@ export default function CompareIPOsPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ==================== EXPORTED PAGE WITH SUSPENSE ====================
+
+export default function CompareIPOsPage() {
+  return (
+    <Suspense fallback={<div className="container mx-auto px-4 py-8">Loading comparison tool...</div>}>
+      <CompareIPOsContent />
+    </Suspense>
   );
 }
