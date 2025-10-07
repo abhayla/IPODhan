@@ -501,4 +501,321 @@ describe('IPORepository', () => {
       ).rejects.toThrow('Failed to fetch peer IPOs for sector: Technology');
     });
   });
+
+  describe('findHistorical', () => {
+    const mockHistoricalIPO = {
+      id: '123e4567-e89b-12d3-a456-426614174000',
+      slug: 'test-ipo',
+      companyName: 'Test Company',
+      category: 'MAINBOARD' as const,
+      sector: 'Technology',
+      status: 'LISTED' as const,
+      listingDate: '2024-01-15',
+      issueSize: '500',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    const mockListingPerformance = {
+      listingPrice: 150,
+      issuePrice: 100,
+      listingGainPercent: '50.00',
+    };
+
+    it('should return historical IPOs from cache if available', async () => {
+      const cachedData = {
+        data: [
+          {
+            ...mockHistoricalIPO,
+            listingClose: 150,
+            issuePrice: 100,
+            listingGainPercent: 50.0,
+            year: 2024,
+          },
+        ],
+        meta: {
+          total: 1,
+          page: 1,
+          limit: 20,
+          totalPages: 1,
+          hasNext: false,
+          hasPrev: false,
+        },
+      };
+
+      mockRedis.get = vi.fn().mockResolvedValue(JSON.stringify(cachedData));
+
+      const result = await repository.findHistorical({
+        year: '2024',
+        page: 1,
+        limit: 20,
+      });
+
+      expect(mockRedis.get).toHaveBeenCalled();
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].year).toBe(2024);
+      expect(mockDb.select).not.toHaveBeenCalled();
+    });
+
+    it('should query database on cache miss with year filter', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const mockCountSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([{ count: 1 }]),
+      };
+
+      const mockDataSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockResolvedValue([
+          {
+            ipo: mockHistoricalIPO,
+            ...mockListingPerformance,
+          },
+        ]),
+      };
+
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(mockCountSelect)
+        .mockReturnValueOnce(mockDataSelect);
+
+      const result = await repository.findHistorical({
+        year: '2024',
+        page: 1,
+        limit: 20,
+      });
+
+      expect(mockDb.select).toHaveBeenCalled();
+      expect(result.data).toHaveLength(1);
+      expect(result.data[0].year).toBe(2024);
+      expect(result.meta.total).toBe(1);
+    });
+
+    it('should filter by sector', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const mockCountSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([{ count: 1 }]),
+      };
+
+      const mockDataSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockResolvedValue([
+          {
+            ipo: mockHistoricalIPO,
+            ...mockListingPerformance,
+          },
+        ]),
+      };
+
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(mockCountSelect)
+        .mockReturnValueOnce(mockDataSelect);
+
+      const result = await repository.findHistorical({
+        sector: 'Technology',
+        page: 1,
+        limit: 20,
+      });
+
+      expect(result.data[0].sector).toBe('Technology');
+    });
+
+    it('should filter by positive performance', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const mockCountSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([{ count: 2 }]),
+      };
+
+      const positiveIPO = {
+        ipo: { ...mockHistoricalIPO, companyName: 'Positive IPO' },
+        listingPrice: 150,
+        issuePrice: 100,
+        listingGainPercent: '50.00',
+      };
+
+      const negativeIPO = {
+        ipo: { ...mockHistoricalIPO, companyName: 'Negative IPO' },
+        listingPrice: 80,
+        issuePrice: 100,
+        listingGainPercent: '-20.00',
+      };
+
+      const mockDataSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockResolvedValue([positiveIPO, negativeIPO]),
+      };
+
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(mockCountSelect)
+        .mockReturnValueOnce(mockDataSelect);
+
+      const result = await repository.findHistorical({
+        performance: 'Positive',
+        page: 1,
+        limit: 20,
+      });
+
+      // Performance filter is applied after fetching
+      expect(result.data.every((ipo) => ipo.listingGainPercent! > 0)).toBe(true);
+    });
+
+    it('should sort by listing_date descending by default', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const mockCountSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([{ count: 1 }]),
+      };
+
+      const mockDataSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockResolvedValue([
+          {
+            ipo: mockHistoricalIPO,
+            ...mockListingPerformance,
+          },
+        ]),
+      };
+
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(mockCountSelect)
+        .mockReturnValueOnce(mockDataSelect);
+
+      await repository.findHistorical({
+        sort: 'listing_date',
+        sortOrder: 'desc',
+        page: 1,
+        limit: 20,
+      });
+
+      expect(mockDataSelect.orderBy).toHaveBeenCalled();
+    });
+
+    it('should handle pagination correctly', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const mockCountSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([{ count: 50 }]),
+      };
+
+      const mockDataSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockResolvedValue([
+          {
+            ipo: mockHistoricalIPO,
+            ...mockListingPerformance,
+          },
+        ]),
+      };
+
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(mockCountSelect)
+        .mockReturnValueOnce(mockDataSelect);
+
+      const result = await repository.findHistorical({
+        page: 2,
+        limit: 20,
+      });
+
+      expect(result.meta.page).toBe(2);
+      expect(result.meta.limit).toBe(20);
+      expect(result.meta.total).toBe(50);
+      expect(result.meta.totalPages).toBe(3);
+      expect(result.meta.hasNext).toBe(true);
+      expect(result.meta.hasPrev).toBe(true);
+    });
+
+    it('should compute year from listing_date', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const mockCountSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([{ count: 1 }]),
+      };
+
+      const mockDataSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockResolvedValue([
+          {
+            ipo: { ...mockHistoricalIPO, listingDate: '2024-06-15' },
+            ...mockListingPerformance,
+          },
+        ]),
+      };
+
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(mockCountSelect)
+        .mockReturnValueOnce(mockDataSelect);
+
+      const result = await repository.findHistorical({
+        page: 1,
+        limit: 20,
+      });
+
+      expect(result.data[0].year).toBe(2024);
+    });
+
+    it('should throw DatabaseError on query failure', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+
+      const mockCountSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockRejectedValue(new Error('Database connection failed')),
+      };
+
+      mockDb.select = vi.fn().mockReturnValue(mockCountSelect);
+
+      await expect(
+        repository.findHistorical({ page: 1, limit: 20 })
+      ).rejects.toThrow('Failed to fetch historical IPO list');
+    });
+  });
 });
