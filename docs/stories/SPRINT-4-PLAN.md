@@ -20,8 +20,8 @@
 | 4.1 | 5 | ✅ READY | 9.5/10 | GET /api/ipos/[slug] Route - Story drafted and approved |
 | 4.2 | 8 | ✅ READY | 9.5/10 | Detail Page Components - Story drafted and approved |
 | 4.3 | 8 | ✅ READY | 9.5/10 | IPO Detail Page Assembly - Story drafted and approved |
-| 4.4 | 5 | 📋 PLANNED | - | Rating System Implementation |
-| 4.5 | 2 | 📋 PLANNED | - | Social Share Integration |
+| 4.4 | 5 | ✅ READY | 9.5/10 | Rating System Implementation - Story drafted and approved |
+| 4.5 | 2 | ✅ READY | 9.7/10 | Social Share Integration - Story drafted and approved |
 | 4.6 | 5 | 📋 PLANNED | - | Allotment Status Checker |
 
 **Points Complete:** 0/33 (0%)
@@ -303,7 +303,7 @@ Output: { rating: 4.5, rationale: "Strong subscription..." }
 ### Story 4.5: Social Share Integration
 **Priority:** Medium
 **Points:** 2
-**Status:** 📋 PLANNED
+**Status:** ✅ READY (Story created and approved by PO)
 **Dependencies:** 4.3
 **File:** `docs/stories/4.5.social-share.story.md`
 
