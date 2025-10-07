@@ -2,9 +2,9 @@
 
 **Epic ID:** epic-6
 **Priority:** Medium
-**Story Points:** 13
+**Story Points:** 14
 **Timeline:** Week 7 (parallel with Epic 5)
-**Status:** 📋 PLANNED
+**Status:** ✅ STORIES READY
 **Dependencies:** Epic 3 (IPO Listing - IPO Card Component reuse)
 
 ---
@@ -32,8 +32,8 @@ Build historical IPO archive allowing users to research past IPO performance, le
 ### Story 6.1: Historical IPOs API
 **Priority:** High
 **Points:** 4
-**Status:** 📋 PLANNED
-**File:** To be created
+**Status:** ✅ READY (Story created and approved)
+**File:** `docs/stories/6.1.historical-ipos-api.story.md`
 
 **Description:**
 API endpoint to fetch closed IPOs with listing performance data, supporting filters and sorting.
@@ -114,8 +114,8 @@ API endpoint to fetch closed IPOs with listing performance data, supporting filt
 ### Story 6.2: Historical IPOs Page
 **Priority:** High
 **Points:** 6
-**Status:** 📋 PLANNED
-**File:** To be created
+**Status:** ✅ READY (Story created and approved)
+**File:** `docs/stories/6.2.historical-ipos-page.story.md`
 
 **Description:**
 User-facing page displaying historical IPOs in table/card view with filtering, sorting, and search.
@@ -197,8 +197,8 @@ User-facing page displaying historical IPOs in table/card view with filtering, s
 ### Story 6.3: Listing Performance Display
 **Priority:** Medium
 **Points:** 4
-**Status:** 📋 PLANNED
-**File:** To be created
+**Status:** ✅ READY (Story created and approved)
+**File:** `docs/stories/6.3.listing-performance.story.md`
 
 **Description:**
 Enhanced display of listing day performance with color-coded gains, performance badges, and historical context.
@@ -428,7 +428,7 @@ Each story must meet:
 **Day 3 (parallel with Epic 5 Story 5.2):**
 - Story 6.3: Listing Performance Display (4 points)
 
-**Note:** Epic 6 runs in parallel with Epic 5. Total Week 7: 19 (Epic 5) + 13 (Epic 6) = 32 points
+**Note:** Epic 6 runs in parallel with Epic 5. Total Week 7: 24 (Epic 5) + 14 (Epic 6) = 38 points
 
 ---
 
@@ -469,5 +469,5 @@ To complete Epic 6, seed historical IPO data:
 
 ---
 
-**Epic Status:** 📋 PLANNED - Ready to start in parallel with Epic 5
+**Epic Status:** ✅ STORIES READY - All 3 stories approved, ready for Sprint 5 implementation
 **Next Epic:** Epic 7 - Data Pipeline (27 points, Weeks 9-10)
