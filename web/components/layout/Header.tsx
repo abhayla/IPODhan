@@ -14,7 +14,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, Calculator } from 'lucide-react';
+import { Menu, X, Calculator, Scale } from 'lucide-react';
 
 // ==================== COMPONENT ====================
 
@@ -88,6 +88,18 @@ export function Header() {
                     </p>
                   </div>
                 </Link>
+                <Link
+                  href="/tools/compare"
+                  className="flex items-center space-x-2 rounded-sm px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Scale className="h-4 w-4" />
+                  <div>
+                    <p className="font-medium">Compare IPOs</p>
+                    <p className="text-xs text-muted-foreground">
+                      Compare up to 3 IPOs side-by-side
+                    </p>
+                  </div>
+                </Link>
               </div>
             </div>
           </nav>
@@ -131,6 +143,14 @@ export function Header() {
                 >
                   <Calculator className="h-4 w-4" />
                   <span>Lot Size Calculator</span>
+                </Link>
+                <Link
+                  href="/tools/compare"
+                  className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Scale className="h-4 w-4" />
+                  <span>Compare IPOs</span>
                 </Link>
               </div>
             </nav>

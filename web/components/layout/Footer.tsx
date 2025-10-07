@@ -12,7 +12,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Calculator } from 'lucide-react';
+import { Calculator, Scale } from 'lucide-react';
 
 // ==================== COMPONENT ====================
 
@@ -78,6 +78,15 @@ export function Footer() {
                 >
                   <Calculator className="h-4 w-4" />
                   <span>Lot Size Calculator</span>
+                </Link>
+              </li>
+              <li>
+                <Link
+                  href="/tools/compare"
+                  className="flex items-center space-x-2 text-sm text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <Scale className="h-4 w-4" />
+                  <span>Compare IPOs</span>
                 </Link>
               </li>
             </ul>
