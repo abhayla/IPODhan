@@ -23,6 +23,7 @@ import { IPODetailTabs } from '@/components/ipo/IPODetailTabs';
 import { AllotmentCheckerCard } from '@/components/ipo/AllotmentCheckerCard';
 import { LotCalculator } from '@/components/tools/LotCalculator';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
+import { AffiliateSection } from '@/components/affiliate/AffiliateSection';
 import type { IPODetailResponse } from '@/lib/db/types';
 
 // ==================== TYPES ====================
@@ -259,6 +260,14 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* IPO Information Section */}
             <InfoSection ipo={ipo} />
+
+            {/* Apply for IPO Section (Story 5.5) */}
+            {(ipo.status === 'OPEN' || ipo.status === 'UPCOMING') && (
+              <AffiliateSection
+                ipoId={ipo.id}
+                companyName={ipo.companyName}
+              />
+            )}
 
             {/* Lot Size Calculator (Story 5.1) */}
             {ipo.priceRangeMax && ipo.lotSize && (
