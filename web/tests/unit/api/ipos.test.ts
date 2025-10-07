@@ -69,6 +69,7 @@ const mockIPO: IPO = {
   leadManagers: ['ICICI Securities'],
   rating: 4,
   ratingRationale: 'Good fundamentals',
+  ratingOverride: false,
   createdAt: new Date('2025-01-05T10:30:00.000Z'),
   updatedAt: new Date('2025-01-05T10:30:00.000Z'),
 };

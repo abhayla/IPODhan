@@ -77,6 +77,7 @@ export const ipos = pgTable(
     leadManagers: jsonb('lead_managers').$type<string[]>(),
     rating: integer('rating'), // 1-5 stars
     ratingRationale: text('rating_rationale'),
+    ratingOverride: boolean('rating_override').default(false), // Manual override flag for admin
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

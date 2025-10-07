@@ -470,4 +470,51 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       );
     }
   }
+
+  /**
+   * Update IPO rating and rationale
+   * Used by the rating calculation script to store calculated ratings
+   *
+   * @param ipoId - IPO ID
+   * @param rating - Calculated rating (1-5 stars, 0.5 increments)
+   * @param rationale - Human-readable explanation of the rating
+   */
+  async updateRating(
+    ipoId: string,
+    rating: number | null,
+    rationale: string
+  ): Promise<IPO> {
+    try {
+      const [ipo] = await this.db
+        .update(ipos)
+        .set({
+          rating,
+          ratingRationale: rationale,
+          updatedAt: new Date(),
+        })
+        .where(eq(ipos.id, ipoId))
+        .returning();
+
+      if (!ipo) {
+        throw new EntityNotFoundError('IPO', ipoId);
+      }
+
+      // Invalidate cache for this IPO
+      await this.invalidateCache(
+        [getIPOByIdKey(ipoId), getIPOBySlugKey(ipo.slug)],
+        ['ipo:list:*', 'ipo:search:*', `ipo:detail:${ipo.slug}`]
+      );
+
+      return ipo;
+    } catch (error) {
+      if (error instanceof EntityNotFoundError) {
+        throw error;
+      }
+      throw new DatabaseError(
+        `Failed to update rating for IPO: ${ipoId}`,
+        undefined,
+        error
+      );
+    }
+  }
 }

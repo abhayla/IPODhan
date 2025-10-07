@@ -65,6 +65,7 @@ const mockIPO = (): IPO => ({
   leadManagers: [],
   rating: 4,
   ratingRationale: null,
+  ratingOverride: false,
   createdAt: new Date(),
   updatedAt: new Date()
 });

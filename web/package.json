@@ -15,7 +15,8 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "seed": "node scripts/seed.js"
+    "seed": "node scripts/seed.js",
+    "calculate-ratings": "tsx lib/scripts/calculate-ratings.ts"
   },
   "dependencies": {
     "@radix-ui/react-accordion": "^1.2.12",
