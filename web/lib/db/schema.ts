@@ -336,6 +336,25 @@ export const brokerAffiliates = pgTable(
   })
 );
 
+// ==================== TABLE 11: AFFILIATE_CLICKS (Time-series) ====================
+
+export const affiliateClicks = pgTable(
+  'affiliate_clicks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id').references(() => ipos.id, { onDelete: 'set null' }),
+    broker: varchar('broker', { length: 50 }).notNull(), // 'zerodha' or 'angelone'
+    source: varchar('source', { length: 50 }).notNull(), // 'ipo_detail' or 'homepage'
+    userSession: varchar('user_session', { length: 255 }), // Session identifier for analytics
+    clickedAt: timestamp('clicked_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    brokerIdx: index('idx_affiliate_clicks_broker').on(table.broker),
+    clickedAtIdx: index('idx_affiliate_clicks_clicked_at').on(table.clickedAt),
+    ipoIdIdx: index('idx_affiliate_clicks_ipo_id').on(table.ipoId),
+  })
+);
+
 // ==================== RELATIONS ====================
 
 export const iposRelations = relations(ipos, ({ many, one }) => ({
@@ -398,6 +417,13 @@ export const listingPerformanceRelations = relations(
 export const peerCompaniesRelations = relations(peerCompanies, ({ one }) => ({
   ipo: one(ipos, {
     fields: [peerCompanies.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const affiliateClicksRelations = relations(affiliateClicks, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [affiliateClicks.ipoId],
     references: [ipos.id],
   }),
 }));

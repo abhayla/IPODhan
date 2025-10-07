@@ -361,7 +361,8 @@ Achieve <2s page load and >90 Lighthouse performance score through bundle optimi
 ### Story 8.4: Production Deployment
 **Priority:** Critical
 **Points:** 5
-**Status:** 📋 PENDING
+**Status:** ✅ READY (Story created and approved)
+**File:** `docs/stories/8.4.production-deployment.story.md`
 **Dependencies:** Story 8.1, 8.2, 8.3
 
 **Description:**
@@ -414,7 +415,8 @@ Deploy to Windows VPS with PM2, configure Cloudflare, set up SSL, and ensure pro
 ### Story 8.5: Monitoring & Alerts
 **Priority:** High
 **Points:** 3
-**Status:** 📋 PENDING
+**Status:** ✅ READY (Story created and approved)
+**File:** `docs/stories/8.5.monitoring-alerts.story.md`
 **Dependencies:** Story 8.4 (Production Deployment)
 
 **Description:**
