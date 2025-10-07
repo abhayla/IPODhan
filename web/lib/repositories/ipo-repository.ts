@@ -28,6 +28,7 @@ import {
   getIPOByIdKey,
   getIPOListKey,
   getIPOSearchKey,
+  getHistoricalIPOsKey,
 } from '../cache/cache-keys';
 import { EntityNotFoundError, DatabaseError } from '../errors/repository-errors';
 import type {
@@ -38,6 +39,8 @@ import type {
   PaginatedResponse,
   IIPORepository,
   FinancialData,
+  HistoricalIPO,
+  HistoricalIPOQueryParams,
 } from './types';
 
 export class IPORepository extends BaseRepository implements IIPORepository {
@@ -527,5 +530,179 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         error
       );
     }
+  }
+
+  /**
+   * Find historical IPOs with filtering, sorting, and computed fields
+   * Used for /api/ipos/history endpoint (Story 6.1)
+   *
+   * Filters:
+   * - status: LISTED (fixed)
+   * - listing_date: NOT NULL (fixed)
+   * - year: Extracted from listing_date (2020-2025, All)
+   * - sector: Optional sector filter
+   * - performance: Positive/Negative/All based on listing gain
+   *
+   * Computed fields:
+   * - listingGainPercent: ((listing_close - issue_price) / issue_price) * 100
+   * - year: EXTRACT(YEAR FROM listing_date)
+   *
+   * Sorting:
+   * - listing_date: Sort by listing date
+   * - listing_gain: Sort by listing gain percentage
+   * - subscription: Sort by total subscription (requires join)
+   */
+  async findHistorical(
+    filters: HistoricalIPOQueryParams
+  ): Promise<PaginatedResponse<HistoricalIPO>> {
+    const {
+      year,
+      sector,
+      performance,
+      sort = 'listing_date',
+      sortOrder = 'desc',
+      page = 1,
+      limit = 20,
+    } = filters;
+
+    const cacheKey = getHistoricalIPOsKey(filters);
+
+    return this.getFromCache(
+      cacheKey,
+      async () => {
+        try {
+          // Build base conditions: status='LISTED' AND listing_date IS NOT NULL
+          const conditions = [
+            eq(ipos.status, 'LISTED'),
+            sql`${ipos.listingDate} IS NOT NULL`,
+          ];
+
+          // Add year filter (extract year from listing_date)
+          if (year && year !== 'All') {
+            const yearNum = parseInt(year, 10);
+            conditions.push(
+              sql`EXTRACT(YEAR FROM ${ipos.listingDate}) = ${yearNum}`
+            );
+          }
+
+          // Add sector filter
+          if (sector) {
+            conditions.push(eq(ipos.sector, sector));
+          }
+
+          const whereClause = and(...conditions);
+
+          // Get total count
+          const [{ count }] = await this.db
+            .select({ count: sql<number>`count(*)::int` })
+            .from(ipos)
+            .leftJoin(
+              listingPerformance,
+              eq(ipos.id, listingPerformance.ipoId)
+            )
+            .where(whereClause);
+
+          // Build the query with computed fields
+          const offset = (page - 1) * limit;
+
+          // Determine sort column
+          let orderByClause;
+          if (sort === 'listing_date') {
+            orderByClause =
+              sortOrder === 'asc'
+                ? asc(ipos.listingDate)
+                : desc(ipos.listingDate);
+          } else if (sort === 'listing_gain') {
+            // Sort by computed listing_gain_percent
+            orderByClause =
+              sortOrder === 'asc'
+                ? asc(listingPerformance.listingGainPercent)
+                : desc(listingPerformance.listingGainPercent);
+          } else if (sort === 'subscription') {
+            // Sort by max total subscription
+            // This requires a subquery to get the latest subscription
+            orderByClause =
+              sortOrder === 'asc'
+                ? sql`(SELECT MAX(total_subscription) FROM subscriptions WHERE ipo_id = ${ipos.id}) ASC NULLS LAST`
+                : sql`(SELECT MAX(total_subscription) FROM subscriptions WHERE ipo_id = ${ipos.id}) DESC NULLS LAST`;
+          } else {
+            // Default to listing_date desc
+            orderByClause = desc(ipos.listingDate);
+          }
+
+          // Fetch data with joins
+          const results = await this.db
+            .select({
+              ipo: ipos,
+              listingClose: listingPerformance.listingPrice,
+              issuePrice: listingPerformance.issuePrice,
+              listingGainPercent: listingPerformance.listingGainPercent,
+            })
+            .from(ipos)
+            .leftJoin(
+              listingPerformance,
+              eq(ipos.id, listingPerformance.ipoId)
+            )
+            .where(whereClause)
+            .orderBy(orderByClause)
+            .limit(limit)
+            .offset(offset);
+
+          // Transform results to include computed year and filter by performance
+          let data = results.map((row) => {
+            const year = row.ipo.listingDate
+              ? new Date(row.ipo.listingDate).getFullYear()
+              : 0;
+
+            return {
+              ...row.ipo,
+              listingClose: row.listingClose,
+              issuePrice: row.issuePrice,
+              listingGainPercent: row.listingGainPercent
+                ? Number(row.listingGainPercent)
+                : null,
+              year,
+            };
+          });
+
+          // Apply performance filter after fetching (since it depends on computed field)
+          if (performance && performance !== 'All') {
+            data = data.filter((ipo) => {
+              if (performance === 'Positive') {
+                return (
+                  ipo.listingGainPercent !== null && ipo.listingGainPercent > 0
+                );
+              } else if (performance === 'Negative') {
+                return (
+                  ipo.listingGainPercent !== null && ipo.listingGainPercent < 0
+                );
+              }
+              return true;
+            });
+          }
+
+          const totalPages = Math.ceil(count / limit);
+
+          return {
+            data,
+            meta: {
+              total: count,
+              page,
+              limit,
+              totalPages,
+              hasNext: page < totalPages,
+              hasPrev: page > 1,
+            },
+          };
+        } catch (error) {
+          throw new DatabaseError(
+            'Failed to fetch historical IPO list',
+            undefined,
+            error
+          );
+        }
+      },
+      CacheTTL.HISTORICAL_IPOS
+    );
   }
 }

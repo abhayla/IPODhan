@@ -160,6 +160,9 @@ export interface IIPORepository {
     sector: string | null,
     limit?: number
   ): Promise<IPOPeer[]>;
+  findHistorical(
+    filters: HistoricalIPOQueryParams
+  ): Promise<PaginatedResponse<HistoricalIPO>>;
 }
 
 /**
@@ -208,4 +211,42 @@ export interface IListingPerformanceRepository {
   findByIPO(ipoId: string): Promise<ListingPerformance | null>;
   upsert(data: ListingPerformanceInsert): Promise<ListingPerformance>;
   delete(ipoId: string): Promise<void>;
+}
+
+// ==================== HISTORICAL IPO TYPES ====================
+
+/**
+ * Historical IPO with computed fields
+ */
+export type HistoricalIPO = IPO & {
+  listingClose?: number | null;
+  issuePrice?: number | null;
+  listingGainPercent?: number | null;
+  year: number;
+};
+
+/**
+ * Filters for historical IPO queries
+ */
+export interface HistoricalIPOQueryParams {
+  year?: string;
+  sector?: string;
+  performance?: 'Positive' | 'Negative' | 'All';
+  sort?: 'listing_date' | 'listing_gain' | 'subscription';
+  sortOrder?: 'asc' | 'desc';
+  page?: number;
+  limit?: number;
+}
+
+/**
+ * Historical IPO API Response
+ */
+export interface HistoricalIPOResponse {
+  data: HistoricalIPO[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
+  };
 }
