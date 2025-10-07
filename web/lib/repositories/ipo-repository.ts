@@ -36,6 +36,7 @@ import type {
   IPOFilters,
   PaginatedResponse,
   IIPORepository,
+  FinancialData,
 } from './types';
 
 export class IPORepository extends BaseRepository implements IIPORepository {
@@ -416,6 +417,54 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       }
       throw new DatabaseError(
         `Failed to delete IPO: ${id}`,
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
+   * Find peer IPOs in the same sector with financial data
+   * Used for peer comparison on IPO detail page
+   */
+  async findPeers(
+    ipoId: string,
+    sector: string | null,
+    limit = 8
+  ): Promise<Array<IPO & { financialData: FinancialData | null }>> {
+    try {
+      // If no sector specified, return empty array
+      if (!sector) {
+        return [];
+      }
+
+      // Query IPOs in the same sector, excluding the current IPO
+      const peerIpos = await this.db
+        .select()
+        .from(ipos)
+        .where(and(eq(ipos.sector, sector), sql`${ipos.id} != ${ipoId}`))
+        .limit(limit);
+
+      // Fetch financial data for each peer IPO
+      const peersWithFinancials = await Promise.all(
+        peerIpos.map(async (peer) => {
+          const [financial] = await this.db
+            .select()
+            .from(financialData)
+            .where(eq(financialData.ipoId, peer.id))
+            .limit(1);
+
+          return {
+            ...peer,
+            financialData: financial || null,
+          };
+        })
+      );
+
+      return peersWithFinancials;
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to fetch peer IPOs for sector: ${sector}`,
         undefined,
         error
       );
