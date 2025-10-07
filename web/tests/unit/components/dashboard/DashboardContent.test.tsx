@@ -62,6 +62,7 @@ const mockIPO = (): IPO => ({
   faceValue: 10,
   listingExchanges: ['NSE', 'BSE'],
   registrar: 'Link Intime',
+  registrarId: null,
   leadManagers: [],
   rating: 4,
   ratingRationale: null,

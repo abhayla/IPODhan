@@ -11,6 +11,7 @@ export { GMPRepository } from './gmp-repository';
 export { FinancialDataRepository } from './financial-data-repository';
 export { DocumentRepository } from './document-repository';
 export { ListingPerformanceRepository } from './listing-performance-repository';
+export { RegistrarRepository } from './registrar-repository';
 
 // Base Repository
 export { BaseRepository } from './base-repository';

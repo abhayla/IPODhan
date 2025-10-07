@@ -1,0 +1,2 @@
+ALTER TABLE "ipos" ADD COLUMN "registrar_id" uuid;--> statement-breakpoint
+ALTER TABLE "ipos" ADD CONSTRAINT "ipos_registrar_id_registrars_id_fk" FOREIGN KEY ("registrar_id") REFERENCES "public"."registrars"("id") ON DELETE no action ON UPDATE no action;

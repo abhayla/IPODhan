@@ -74,7 +74,9 @@ export type IPOPeer = IPO & {
  * Complete IPO data with all relations for detail page (Story 4.1)
  */
 export interface IPODetailResponse {
-  ipo: IPO;
+  ipo: IPO & {
+    registrarRelation?: Registrar | null;
+  };
   financialData: FinancialData | null;
   documents: Document[];
   subscriptions: Subscription[];

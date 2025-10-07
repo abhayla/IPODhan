@@ -65,6 +65,7 @@ export type IPOWithRelations = IPO & {
   gmpRecords?: GMPRecord[];
   listingPerformance?: ListingPerformance | null;
   peerCompanies?: PeerCompany[];
+  registrarRelation?: Registrar | null;
 };
 
 // ==================== FILTER TYPES ====================
