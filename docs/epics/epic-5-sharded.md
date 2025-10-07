@@ -2,9 +2,9 @@
 
 **Epic ID:** epic-5
 **Priority:** High
-**Story Points:** 19
+**Story Points:** 24
 **Timeline:** Week 7 (1 week)
-**Status:** 📋 PLANNED
+**Status:** ✅ STORIES READY
 **Dependencies:** Epic 4 (IPO Detail Page)
 
 ---
@@ -148,8 +148,8 @@ Side-by-side comparison of 2-3 IPOs to help users evaluate and choose between op
 ### Story 5.3: Registrar Directory
 **Priority:** Medium
 **Points:** 4
-**Status:** 📋 PLANNED
-**File:** To be created
+**Status:** ✅ READY (Story created and approved)
+**File:** `docs/stories/5.3.registrar-directory.story.md`
 
 **Description:**
 Comprehensive searchable directory of IPO registrars with contact information.
@@ -213,8 +213,8 @@ Comprehensive searchable directory of IPO registrars with contact information.
 ### Story 5.4: Market Holidays Calendar
 **Priority:** Medium
 **Points:** 4
-**Status:** 📋 PLANNED
-**File:** To be created
+**Status:** ✅ READY (Story created and approved)
+**File:** `docs/stories/5.4.market-holidays.story.md`
 
 **Description:**
 Display NSE/BSE trading holidays to help users plan IPO applications and understand market closures affecting IPO timelines.
@@ -273,8 +273,8 @@ Display NSE/BSE trading holidays to help users plan IPO applications and underst
 ### Story 5.5: Broker Affiliate Integration
 **Priority:** Medium
 **Points:** 6
-**Status:** 📋 PLANNED
-**File:** To be created
+**Status:** ✅ READY (Story created and approved)
+**File:** `docs/stories/5.5.broker-affiliates.story.md`
 
 **Description:**
 Integrate affiliate links for Zerodha and AngelOne brokers to enable revenue generation while helping users apply for IPOs.
@@ -516,7 +516,7 @@ Each story must meet:
 
 ## Sprint Planning
 
-**Sprint 5 Assignment:** Week 7 (19 points)
+**Sprint 5 Assignment:** Week 7 (24 points)
 
 **Day-by-Day Breakdown:**
 
@@ -557,5 +557,5 @@ Each story must meet:
 
 ---
 
-**Epic Status:** 📋 PLANNED - Ready to start after Epic 4 complete
-**Next Epic:** Epic 6 - Historical IPO Performance (13 points, Week 7 parallel)
+**Epic Status:** ✅ STORIES READY - All 5 stories approved, ready for Sprint 5 implementation
+**Next Epic:** Epic 6 - Historical IPO Performance (14 points, Week 7 parallel)
