@@ -26,6 +26,15 @@ if (typeof Element !== 'undefined') {
   }
 }
 
+// Mock ResizeObserver (needed for chart components like GMPChart)
+ 
+global.ResizeObserver = class ResizeObserver {
+  constructor(callback: ResizeObserverCallback) {}
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+};
+
 // Cleanup after each test
 afterEach(() => {
   cleanup();
