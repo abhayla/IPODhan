@@ -17,9 +17,9 @@
 
 | Story | Points | Status | Quality | Notes |
 |-------|--------|--------|---------|-------|
-| 4.1 | 5 | 📋 PLANNED | - | GET /api/ipos/[slug] Route |
-| 4.2 | 8 | 📋 PLANNED | - | Detail Page Components |
-| 4.3 | 8 | 📋 PLANNED | - | IPO Detail Page Assembly |
+| 4.1 | 5 | ✅ READY | 9.5/10 | GET /api/ipos/[slug] Route - Story drafted and approved |
+| 4.2 | 8 | ✅ READY | 9.5/10 | Detail Page Components - Story drafted and approved |
+| 4.3 | 8 | ✅ READY | 9.5/10 | IPO Detail Page Assembly - Story drafted and approved |
 | 4.4 | 5 | 📋 PLANNED | - | Rating System Implementation |
 | 4.5 | 2 | 📋 PLANNED | - | Social Share Integration |
 | 4.6 | 5 | 📋 PLANNED | - | Allotment Status Checker |
@@ -64,9 +64,9 @@ Deliver the comprehensive IPO detail page - the **core decision-making hub** whe
 ### Story 4.1: GET /api/ipos/[slug] Route
 **Priority:** Critical
 **Points:** 5
-**Status:** 📋 PLANNED
+**Status:** ✅ READY (Story created and approved by PO)
 **Dependencies:** 2.3 ✅
-**File:** `docs/stories/4.1.api-ipos-slug-route.story.md`
+**File:** `docs/stories/4.1.get-ipo-detail-route.story.md`
 
 **Description:**
 Create Next.js API route to fetch complete IPO details by slug, including all related data (financials, subscriptions, GMP history, documents, peers).
@@ -139,7 +139,7 @@ Create Next.js API route to fetch complete IPO details by slug, including all re
 ### Story 4.2: Detail Page Components
 **Priority:** Critical
 **Points:** 8
-**Status:** 📋 PLANNED
+**Status:** ✅ READY (Story created and approved by PO)
 **Dependencies:** 1.4 ✅
 **File:** `docs/stories/4.2.detail-page-components.story.md`
 
@@ -190,9 +190,9 @@ Build reusable React components for IPO detail page sections using shadcn/ui and
 ### Story 4.3: IPO Detail Page Assembly
 **Priority:** Critical
 **Points:** 8
-**Status:** 📋 PLANNED
-**Dependencies:** 3.1 ✅, 4.1, 4.2
-**File:** `docs/stories/4.3.ipo-detail-page.story.md`
+**Status:** ✅ READY (Story created and approved by PO)
+**Dependencies:** 3.1 ✅, 4.1 ✅, 4.2 ✅
+**File:** `docs/stories/4.3.ipo-detail-page-assembly.story.md`
 
 **Description:**
 Assemble all components into main IPO detail page with progressive loading, SSR for above-fold content, and client-side tabs.
