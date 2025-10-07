@@ -7,11 +7,13 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { ExternalLink, Shield } from 'lucide-react';
+import { trackAllotmentCheck } from '@/lib/analytics/gtag';
 
 interface AllotmentCheckerCardProps {
   status: IPOStatus;
   registrar: string;
   registrarUrl?: string | null;
+  companyName?: string;
 }
 
 /**
@@ -23,6 +25,7 @@ export function AllotmentCheckerCard({
   status,
   registrar,
   registrarUrl,
+  companyName,
 }: AllotmentCheckerCardProps) {
   const [pan, setPan] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -71,6 +74,11 @@ export function AllotmentCheckerCard({
     if (!registrarUrl) {
       setError('Registrar website URL not available');
       return;
+    }
+
+    // Track analytics event
+    if (companyName) {
+      trackAllotmentCheck(companyName, registrar);
     }
 
     // Redirect to registrar website with PAN as query parameter

@@ -17,6 +17,7 @@ import {
   gmpRecords,
   listingPerformance,
   peerCompanies,
+  registrars,
   type ipoStatusEnum,
   type ipoCategoryEnum,
 } from '../db/schema';
@@ -206,6 +207,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             gmps,
             listing,
             peers,
+            registrarData,
           ] = await Promise.all([
             this.db
               .select()
@@ -239,6 +241,14 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               .select()
               .from(peerCompanies)
               .where(eq(peerCompanies.ipoId, ipo.id)),
+            ipo.registrarId
+              ? this.db
+                  .select()
+                  .from(registrars)
+                  .where(eq(registrars.id, ipo.registrarId))
+                  .limit(1)
+                  .then((r) => r[0] || null)
+              : Promise.resolve(null),
           ]);
 
           return {
@@ -249,6 +259,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             gmpRecords: gmps,
             listingPerformance: listing,
             peerCompanies: peers,
+            registrarRelation: registrarData,
           };
         } catch (error) {
           throw new DatabaseError(

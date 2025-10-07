@@ -39,6 +39,7 @@ function createMockIPO(overrides?: Partial<IPO>): IPO {
     faceValue: 10,
     listingExchanges: ['NSE', 'BSE'],
     registrar: 'Test Registrar',
+    registrarId: null,
     leadManagers: ['Test Manager'],
     rating: null,
     ratingRationale: null,

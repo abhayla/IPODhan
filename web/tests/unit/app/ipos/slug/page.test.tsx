@@ -82,6 +82,7 @@ const mockIPO: IPO = {
   faceValue: 10,
   listingExchanges: ['NSE', 'BSE'],
   registrar: 'KFin Technologies',
+  registrarId: null,
   leadManagers: ['ICICI Securities', 'Kotak Mahindra'],
   companyDescription: 'Leading technology company in India',
   rating: 4,
