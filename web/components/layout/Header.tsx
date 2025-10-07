@@ -14,7 +14,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, Calculator, Scale, Building2 } from 'lucide-react';
+import { Menu, X, Calculator, Scale, Building2, Calendar } from 'lucide-react';
 
 // ==================== COMPONENT ====================
 
@@ -112,6 +112,18 @@ export function Header() {
                     </p>
                   </div>
                 </Link>
+                <Link
+                  href="/market-holidays"
+                  className="flex items-center space-x-2 rounded-sm px-3 py-2 text-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Calendar className="h-4 w-4" />
+                  <div>
+                    <p className="font-medium">Market Holidays</p>
+                    <p className="text-xs text-muted-foreground">
+                      NSE & BSE trading holidays
+                    </p>
+                  </div>
+                </Link>
               </div>
             </div>
           </nav>
@@ -171,6 +183,14 @@ export function Header() {
                 >
                   <Building2 className="h-4 w-4" />
                   <span>Registrars</span>
+                </Link>
+                <Link
+                  href="/market-holidays"
+                  className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Calendar className="h-4 w-4" />
+                  <span>Market Holidays</span>
                 </Link>
               </div>
             </nav>
