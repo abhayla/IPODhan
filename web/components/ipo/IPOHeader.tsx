@@ -3,6 +3,7 @@
 import { IPO, IPOStatus } from '@/lib/db/types';
 import { Badge } from '@/components/ui/badge';
 import { RatingDisplay } from './RatingDisplay';
+import { AddToCompareButton } from '@/components/tools/AddToCompareButton';
 import { Building2 } from 'lucide-react';
 
 interface IPOHeaderProps {
@@ -82,6 +83,16 @@ export function IPOHeader({ ipo }: IPOHeaderProps) {
                 rationale={ipo.ratingRationale}
                 showRationale={true}
                 size="lg"
+              />
+            </div>
+
+            {/* Add to Compare Button */}
+            <div className="pt-4">
+              <AddToCompareButton
+                slug={ipo.slug}
+                companyName={ipo.companyName}
+                status={ipo.status}
+                size="default"
               />
             </div>
           </div>
