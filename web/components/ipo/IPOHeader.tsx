@@ -80,7 +80,7 @@ export function IPOHeader({ ipo }: IPOHeaderProps) {
               <RatingDisplay
                 rating={ipo.rating}
                 rationale={ipo.ratingRationale}
-                showRationale={false}
+                showRationale={true}
                 size="lg"
               />
             </div>

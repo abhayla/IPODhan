@@ -44,6 +44,7 @@ describe('Database Types', () => {
         leadManagers: ['Manager 1'],
         rating: 4,
         ratingRationale: 'Good fundamentals',
+        ratingOverride: false,
         createdAt: new Date(),
         updatedAt: new Date(),
       };

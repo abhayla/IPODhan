@@ -46,6 +46,7 @@ const mockIPO = (overrides?: Partial<IPO>): IPO => ({
   leadManagers: ['ICICI Securities', 'HDFC Securities'],
   rating: 4,
   ratingRationale: 'Strong fundamentals',
+  ratingOverride: false,
   createdAt: new Date('2025-01-01'),
   updatedAt: new Date('2025-01-01'),
   ...overrides,

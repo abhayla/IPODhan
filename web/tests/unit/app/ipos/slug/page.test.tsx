@@ -86,6 +86,7 @@ const mockIPO: IPO = {
   companyDescription: 'Leading technology company in India',
   rating: 4,
   ratingRationale: 'Strong fundamentals and growth potential',
+  ratingOverride: false,
   createdAt: new Date('2025-10-01'),
   updatedAt: new Date('2025-10-05'),
 };

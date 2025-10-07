@@ -25,6 +25,7 @@ const mockIPO: IPO = {
   leadManagers: ['Manager 1', 'Manager 2'],
   rating: 4.5,
   ratingRationale: 'Strong fundamentals',
+  ratingOverride: false,
   createdAt: new Date(),
   updatedAt: new Date(),
 };

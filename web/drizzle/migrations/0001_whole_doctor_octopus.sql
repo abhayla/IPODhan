@@ -1,0 +1,1 @@
+ALTER TABLE "ipos" ADD COLUMN "rating_override" boolean DEFAULT false;
