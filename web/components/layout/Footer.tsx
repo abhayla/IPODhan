@@ -12,7 +12,8 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Calculator, Scale } from 'lucide-react';
+import { Calculator, Scale, Info } from 'lucide-react';
+import { affiliateConfig } from '@/lib/config/affiliate-links';
 
 // ==================== COMPONENT ====================
 
@@ -124,8 +125,18 @@ export function Footer() {
           </div>
         </div>
 
+        {/* Affiliate Disclaimer */}
+        <div className="mt-8 border-t pt-6">
+          <div className="flex items-start gap-2 rounded-lg bg-muted/50 p-4">
+            <Info className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+            <p className="text-xs text-muted-foreground">
+              {affiliateConfig.disclaimer.text}
+            </p>
+          </div>
+        </div>
+
         {/* Copyright */}
-        <div className="mt-8 border-t pt-8">
+        <div className="mt-6 pt-6 border-t">
           <p className="text-center text-sm text-muted-foreground">
             &copy; {currentYear} IPODhan. All rights reserved.
           </p>
