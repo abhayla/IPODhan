@@ -222,6 +222,7 @@ export type HistoricalIPO = IPO & {
   listingClose?: number | null;
   issuePrice?: number | null;
   listingGainPercent?: number | null;
+  subscription?: number | null;
   year: number;
 };
 

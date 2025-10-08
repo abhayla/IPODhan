@@ -637,6 +637,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               listingClose: listingPerformance.listingPrice,
               issuePrice: listingPerformance.issuePrice,
               listingGainPercent: listingPerformance.listingGainPercent,
+              subscription: sql<number | null>`(SELECT MAX(total_subscription) FROM subscriptions WHERE ipo_id = ${ipos.id})`,
             })
             .from(ipos)
             .leftJoin(
@@ -661,6 +662,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               listingGainPercent: row.listingGainPercent
                 ? Number(row.listingGainPercent)
                 : null,
+              subscription: row.subscription ? Number(row.subscription) : null,
               year,
             };
           });
