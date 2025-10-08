@@ -16,6 +16,7 @@
 
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
+import Script from 'next/script';
 import { IPOHeader } from '@/components/ipo/IPOHeader';
 import { KeyMetricsCards } from '@/components/ipo/KeyMetricsCards';
 import { InfoSection } from '@/components/ipo/InfoSection';
@@ -27,6 +28,16 @@ import { AffiliateSection } from '@/components/affiliate/AffiliateSection';
 import { ListingPerformance } from '@/components/ipo/ListingPerformance';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
 import type { IPODetailResponse } from '@/lib/db/types';
+import {
+  generateIPODetailMetadata,
+  ipoToMetadataParams,
+} from '@/lib/seo/metadata';
+import {
+  generateFinancialProductSchema,
+  generateBreadcrumbSchema,
+  generateIPODetailBreadcrumbs,
+  toJsonLdScript,
+} from '@/lib/seo/structured-data';
 
 // ==================== TYPES ====================
 
@@ -43,7 +54,7 @@ interface PageProps {
 
 /**
  * Generate dynamic metadata for SEO
- * Includes Open Graph tags, Twitter Card, and JSON-LD structured data
+ * Uses centralized SEO utilities for consistency
  */
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
@@ -65,51 +76,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     const data: IPODetailResponse = await response.json();
     const { ipo } = data;
 
-    // Format price range
-    const priceRange = `₹${ipo.priceRangeMin} - ₹${ipo.priceRangeMax}`;
-
-    // Get rating for description
-    const rating = ipo.rating ? ` Rating: ${ipo.rating.toFixed(1)}/5,` : '';
-
-    // Construct description with key metrics
-    const description = `${ipo.companyName} IPO -${rating} Issue Size: ₹${ipo.issueSize} Cr, Price: ${priceRange}. Complete IPO information on IPODhan.`;
-
-    // OG/Twitter description (shorter version)
-    const socialDescription = `${ipo.companyName} IPO - Issue Size: ₹${ipo.issueSize} Cr${rating}. Get complete IPO information on IPODhan.`;
-
-    // Use default OG image (company logo not stored in IPO table)
-    const imageUrl = 'https://ipodhan.com/og-image-default.svg';
-    const absoluteImageUrl = imageUrl;
-
-    return {
-      title: `${ipo.companyName} IPO Details | IPODhan`,
-      description,
-      openGraph: {
-        title: `${ipo.companyName} IPO Details | IPODhan`,
-        description: socialDescription,
-        type: 'website',
-        url: `https://ipodhan.com/ipos/${slug}`,
-        siteName: 'IPODhan',
-        images: [
-          {
-            url: absoluteImageUrl,
-            width: 1200,
-            height: 630,
-            alt: `${ipo.companyName} IPO`,
-          },
-        ],
-      },
-      twitter: {
-        card: 'summary_large_image',
-        title: `${ipo.companyName} IPO | IPODhan`,
-        description: socialDescription,
-        images: [absoluteImageUrl],
-        creator: '@ipodhan',
-      },
-      alternates: {
-        canonical: `https://ipodhan.com/ipos/${slug}`,
-      },
-    };
+    // Convert IPO to metadata params and generate metadata
+    const metadataParams = ipoToMetadataParams(ipo);
+    return generateIPODetailMetadata(metadataParams);
   } catch (error) {
     console.error('Error generating metadata:', error);
     return {
@@ -170,93 +139,27 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     ? await getSectorAverage(ipo.sector)
     : null;
 
-  // Generate JSON-LD structured data for SEO
-  const jsonLd: Record<string, unknown> = {
-    '@context': 'https://schema.org',
-    '@type': 'FinancialProduct',
-    name: `${ipo.companyName} IPO`,
-    description: ipo.companyDescription || `IPO offering from ${ipo.companyName}`,
-    provider: {
-      '@type': 'Organization',
-      name: ipo.companyName,
-    },
-    category: ipo.category,
-    offers: {
-      '@type': 'Offer',
-      priceSpecification: {
-        '@type': 'PriceSpecification',
-        minPrice: ipo.priceRangeMin ?? 0,
-        maxPrice: ipo.priceRangeMax ?? 0,
-        priceCurrency: 'INR',
-      },
-      availability:
-        ipo.status === 'OPEN'
-          ? 'https://schema.org/InStock'
-          : 'https://schema.org/PreOrder',
-    },
-    datePublished: ipo.openDate || undefined,
-  };
-
-  // Add listing performance data to JSON-LD for historical IPOs
-  if (ipo.status === 'LISTED' && ipo.listingDate && listingPerformance) {
-    jsonLd.listingDate = ipo.listingDate;
-    jsonLd.performanceMetrics = {
-      '@type': 'QuantitativeValue',
-      name: 'Listing Day Return',
-      value: parseFloat(listingPerformance.listingGainPercent),
-      unitCode: 'P1', // Percentage
-      description: `Listing day return of ${listingPerformance.listingGainPercent}% from issue price ₹${listingPerformance.issuePrice} to listing price ₹${listingPerformance.listingPrice}`,
-    };
-
-    // Add current performance if available
-    if (listingPerformance.currentPrice && listingPerformance.currentGainPercent) {
-      jsonLd.currentPerformance = {
-        '@type': 'QuantitativeValue',
-        name: 'Overall Return',
-        value: parseFloat(listingPerformance.currentGainPercent),
-        unitCode: 'P1', // Percentage
-        price: listingPerformance.currentPrice,
-        priceCurrency: 'INR',
-      };
-    }
-  }
-
-  // Breadcrumb structured data
-  const breadcrumbJsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'BreadcrumbList',
-    itemListElement: [
-      {
-        '@type': 'ListItem',
-        position: 1,
-        name: 'Home',
-        item: 'https://ipodhan.com',
-      },
-      {
-        '@type': 'ListItem',
-        position: 2,
-        name: 'IPOs',
-        item: 'https://ipodhan.com/ipos',
-      },
-      {
-        '@type': 'ListItem',
-        position: 3,
-        name: ipo.companyName,
-        item: `https://ipodhan.com/ipos/${slug}`,
-      },
-    ],
-  };
+  // Generate structured data using SEO utilities
+  const financialProductSchema = generateFinancialProductSchema(ipo);
+  const breadcrumbItems = generateIPODetailBreadcrumbs(ipo.companyName, slug);
+  const breadcrumbSchema = generateBreadcrumbSchema(breadcrumbItems);
 
   return (
     <>
-      {/* Structured Data */}
-      <script
+      {/* Structured Data for SEO */}
+      <Script
+        id="financial-product-schema"
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{
+          __html: toJsonLdScript(financialProductSchema),
+        }}
       />
-      <script
+      <Script
+        id="breadcrumb-schema"
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+        dangerouslySetInnerHTML={{
+          __html: toJsonLdScript(breadcrumbSchema),
+        }}
       />
 
       {/* Page Content */}
