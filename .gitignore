@@ -1,17 +1,16 @@
-# Dependencies
+# Dependencies (install on VPS)
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
 
-# Next.js
+# Build outputs (build on VPS)
 .next/
 out/
 build/
 dist/
 
-# Environment variables
+# Environment variables (configure on VPS)
 .env
 .env.local
 .env.development.local
@@ -19,15 +18,14 @@ dist/
 .env.production
 .env.production.local
 
-# IDE
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
-.DS_Store
 
-# Database
+# Database files
 *.db
 *.sqlite
 *.sqlite3
@@ -35,9 +33,6 @@ dist/
 # Logs
 logs/
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 
@@ -45,30 +40,25 @@ lerna-debug.log*
 coverage/
 .nyc_output/
 
-# Misc
+# Temporary files
 .cache/
 temp/
 tmp/
 *.tmp
 nul
 
-# OS
+# OS files
 Thumbs.db
 .DS_Store
-
-# BMAD Core (development tools - exclude from repo)
-.bmad-core/
-.bmad-infrastructure-devops/
-.claude/
-.playwright-mcp/
-
-# AI Debug logs
-.ai/
-
-# Web bundles (generated files)
-web-bundles/
-
-# Backup files
 *.bak
 *.backup
-*~
+
+# Development tools - NOW TRACKED FOR VPS DEPLOYMENT
+# .bmad-core/ - tracked for deployment
+# .bmad-infrastructure-devops/ - tracked for deployment
+
+# Still ignore these development files
+.claude/
+.playwright-mcp/
+.ai/
+web-bundles/
