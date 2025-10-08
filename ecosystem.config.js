@@ -20,7 +20,7 @@ module.exports = {
       exec_mode: 'cluster',
       env: {
         NODE_ENV: 'production',
-        PORT: 3000,
+        PORT: 3001,
       },
       max_memory_restart: '500M',
       error_file: './logs/web-error.log',
@@ -38,7 +38,8 @@ module.exports = {
     // IPO Scraper Service
     {
       name: 'ipodhan-scraper',
-      script: 'dist/index.js',
+      script: 'node_modules/tsx/dist/cli.mjs',
+      args: 'src/index.ts',
       cwd: './scraper',
       instances: 1,
       exec_mode: 'fork',
