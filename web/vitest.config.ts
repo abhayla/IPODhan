@@ -13,7 +13,7 @@ export default defineConfig({
     exclude: ['tests/e2e/**', 'node_modules/**', '.next/**'],
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'json', 'html'],
+      reporter: ['text', 'json', 'html', 'lcov'],
       exclude: [
         'node_modules/',
         'vitest.setup.ts',
@@ -23,7 +23,21 @@ export default defineConfig({
         '**/*.d.ts',
         'tests/**',
         '.next/**',
+        'drizzle/**',
+        'scripts/**',
       ],
+      thresholds: {
+        lines: 80,
+        functions: 80,
+        branches: 80,
+        statements: 80,
+        'lib/repositories/**/*.ts': {
+          lines: 90,
+          functions: 90,
+          branches: 90,
+          statements: 90,
+        },
+      },
     },
   },
   resolve: {
