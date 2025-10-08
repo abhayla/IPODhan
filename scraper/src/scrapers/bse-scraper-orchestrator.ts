@@ -1,7 +1,7 @@
-import { IPORepository } from '@web/lib/repositories/ipo-repository';
-import { SubscriptionRepository } from '@web/lib/repositories/subscription-repository';
-import { db } from '@web/lib/db/index';
-import { getRedisClient } from '@web/lib/cache/redis-client';
+import { IPORepository } from '../../web/lib/repositories/ipo-repository.js';
+import { SubscriptionRepository } from '../../web/lib/repositories/subscription-repository.js';
+import { db } from '../../web/lib/db/index.js';
+import { getRedisClient } from '../../web/lib/cache/redis-client.js';
 import logger from '../utils/logger.js';
 import { scrapeBSEIPOs } from './bse-scraper.js';
 import { validateIPOData, validateSubscriptionData, generateSlug } from '../utils/validators.js';

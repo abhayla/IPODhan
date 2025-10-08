@@ -1,6 +1,6 @@
-import type { IPORepository } from '@web/lib/repositories/ipo-repository';
-import type { SubscriptionRepository } from '@web/lib/repositories/subscription-repository';
-import type { IPOInsert, SubscriptionInsert } from '@web/lib/repositories/types';
+import type { IPORepository } from '../../web/lib/repositories/ipo-repository.js';
+import type { SubscriptionRepository } from '../../web/lib/repositories/subscription-repository.js';
+import type { IPOInsert, SubscriptionInsert } from '../../web/lib/repositories/types.js';
 import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';

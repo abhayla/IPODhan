@@ -4,8 +4,8 @@ import { upsertIPO } from '../services/data-persister.js';
 import { invalidateIPOCaches } from '../services/cache-invalidator.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { ipoAlertsClient } from '../services/ipo-alerts-client.js';
-import { getRedisClient } from '@web/lib/cache/redis-client';
-import type { IPORepository } from '@web/lib/repositories/ipo-repository';
+import { getRedisClient } from '../../web/lib/cache/redis-client.js';
+import type { IPORepository } from '../../web/lib/repositories/ipo-repository.js';
 import type { ScrapedIPO } from '../utils/validators.js';
 
 // ==================== TYPES ====================

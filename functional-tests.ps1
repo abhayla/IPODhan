@@ -12,8 +12,8 @@ Write-Host "========================================`n" -ForegroundColor Cyan
 # Test 1: Homepage
 Write-Host "1. Testing Homepage..." -ForegroundColor Yellow
 try {
-    $home = Invoke-WebRequest -Uri "$domain" -UseBasicParsing -TimeoutSec 10
-    if ($home.StatusCode -eq 200 -and $home.Content -match "FIRE Karo") {
+    $homePage = Invoke-WebRequest -Uri "$domain" -UseBasicParsing -TimeoutSec 10
+    if ($homePage.StatusCode -eq 200 -and $homePage.Content -match "FIRE Karo") {
         Write-Host "   [PASS] Homepage loads successfully" -ForegroundColor Green
         $passed++
     } else {
