@@ -169,6 +169,7 @@ describe('API Client', () => {
             ratingOverride: false,
             createdAt: new Date(),
             updatedAt: new Date(),
+            lastScrapedAt: null,
           },
         ],
         pagination: {
@@ -228,6 +229,7 @@ describe('API Client', () => {
           ratingOverride: false,
           createdAt: new Date(),
           updatedAt: new Date(),
+          lastScrapedAt: null,
         },
         subscription: [],
         gmp: [],
@@ -349,6 +351,7 @@ describe('API Client', () => {
             ratingOverride: false,
             createdAt: new Date(),
             updatedAt: new Date(),
+            lastScrapedAt: null,
           },
         ],
         total: 1,

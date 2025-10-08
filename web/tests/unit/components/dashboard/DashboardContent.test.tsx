@@ -68,7 +68,8 @@ const mockIPO = (): IPO => ({
   ratingRationale: null,
   ratingOverride: false,
   createdAt: new Date(),
-  updatedAt: new Date()
+  updatedAt: new Date(),
+  lastScrapedAt: null
 });
 
 describe('DashboardContent', () => {

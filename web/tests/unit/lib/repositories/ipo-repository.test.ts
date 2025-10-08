@@ -37,6 +37,7 @@ describe('IPORepository', () => {
       status: 'OPEN',
       createdAt: new Date(),
       updatedAt: new Date(),
+      lastScrapedAt: null,
     };
 
     it('should return IPO from cache if available', async () => {
@@ -115,6 +116,7 @@ describe('IPORepository', () => {
       status: 'OPEN',
       createdAt: new Date(),
       updatedAt: new Date(),
+      lastScrapedAt: null,
     };
 
     it('should return IPO with relations from database', async () => {
@@ -514,6 +516,7 @@ describe('IPORepository', () => {
       issueSize: '500',
       createdAt: new Date(),
       updatedAt: new Date(),
+      lastScrapedAt: null,
     };
 
     const mockListingPerformance = {

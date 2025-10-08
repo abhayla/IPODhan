@@ -79,6 +79,7 @@ export const ipos = pgTable(
     rating: integer('rating'), // 1-5 stars
     ratingRationale: text('rating_rationale'),
     ratingOverride: boolean('rating_override').default(false), // Manual override flag for admin
+    lastScrapedAt: timestamp('last_scraped_at'), // Timestamp of last successful scrape
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },

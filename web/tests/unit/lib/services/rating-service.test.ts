@@ -46,6 +46,7 @@ function createMockIPO(overrides?: Partial<IPO>): IPO {
     ratingOverride: false,
     createdAt: new Date(),
     updatedAt: new Date(),
+    lastScrapedAt: null,
     ...overrides,
   };
 }

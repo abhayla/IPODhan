@@ -34,6 +34,7 @@ const mockIPO: HistoricalIPO = {
   updatedAt: new Date(),
   issueSize: null,
   listingClose: null,
+  lastScrapedAt: null,
 };
 
 describe('HistoricalIPOCardList', () => {

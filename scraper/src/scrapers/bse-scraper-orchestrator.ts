@@ -7,6 +7,7 @@ import { scrapeBSEIPOs } from './bse-scraper.js';
 import { validateIPOData, validateSubscriptionData, generateSlug } from '../utils/validators.js';
 import { upsertIPO, createSubscriptionSnapshot } from '../services/data-persister.js';
 import { invalidateIPOCaches, invalidateSubscriptionCache } from '../services/cache-invalidator.js';
+import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { runIPOAlertsFallback } from './ipo-alerts-fallback-orchestrator.js';
 
@@ -52,6 +53,10 @@ export async function runBSEScraper(): Promise<ScraperResult> {
     const redis = getRedisClient();
     const ipoRepository = new IPORepository(db, redis);
     const subscriptionRepository = new SubscriptionRepository(db, redis);
+    const cacheInvalidator = new CacheInvalidator(redis);
+
+    // Track all updated IPO slugs for comprehensive cache invalidation
+    const updatedIPOSlugs: string[] = [];
 
     // Step 1: Scrape BSE data
     const { ipos: scrapedIPOs, subscriptions: scrapedSubscriptions, smeCount, mainboardCount } = await scrapeBSEIPOs();
@@ -106,6 +111,9 @@ export async function runBSEScraper(): Promise<ScraperResult> {
 
         result.iposProcessed++;
 
+        // Track updated IPO slug for comprehensive cache invalidation
+        updatedIPOSlugs.push(slug);
+
         // Step 3: Process subscription data for OPEN IPOs
         if (validatedIPO.status === 'OPEN') {
           const relatedSubscription = scrapedSubscriptions.find(
@@ -123,8 +131,7 @@ export async function runBSEScraper(): Promise<ScraperResult> {
               );
               result.subscriptionsCreated++;
 
-              // Invalidate subscription cache
-              await invalidateSubscriptionCache(redis, ipoId);
+              // Note: Subscription cache invalidation will be handled by comprehensive invalidation
             } else {
               logger.warn(
                 {
@@ -137,8 +144,7 @@ export async function runBSEScraper(): Promise<ScraperResult> {
           }
         }
 
-        // Step 4: Invalidate IPO caches
-        await invalidateIPOCaches(redis, slug);
+        // Note: Individual cache invalidation removed - will use comprehensive invalidation
 
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -149,6 +155,11 @@ export async function runBSEScraper(): Promise<ScraperResult> {
         result.iposFailed++;
         result.errors.push(`Failed to process ${scrapedIPO.companyName}: ${errorMsg}`);
       }
+    }
+
+    // Step 4: Comprehensive cache invalidation after successful scraper run
+    if (updatedIPOSlugs.length > 0) {
+      await cacheInvalidator.invalidateAfterScrape('BSE', updatedIPOSlugs);
     }
 
     const duration = Date.now() - startTime;

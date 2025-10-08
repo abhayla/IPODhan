@@ -2,6 +2,7 @@ import logger from '../utils/logger.js';
 import { scrapeIPOAlertsAPIWithRetry } from './ipo-alerts-fallback.js';
 import { upsertIPO } from '../services/data-persister.js';
 import { invalidateIPOCaches } from '../services/cache-invalidator.js';
+import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { ipoAlertsClient } from '../services/ipo-alerts-client.js';
 import { getRedisClient } from '@web/lib/cache/redis-client';
 import type { IPORepository } from '@web/lib/repositories/ipo-repository';
@@ -47,8 +48,12 @@ export async function runIPOAlertsFallback(
   let iposSkipped = 0;
   let iposFailed = 0;
 
-  // Initialize Redis client
+  // Initialize Redis client and cache invalidator
   const redis = getRedisClient();
+  const cacheInvalidator = new CacheInvalidator(redis);
+
+  // Track all updated IPO slugs for comprehensive cache invalidation
+  const updatedIPOSlugs: string[] = [];
 
   try {
     logger.info(
@@ -125,6 +130,9 @@ export async function runIPOAlertsFallback(
           const ipoId = await upsertIPO(ipoRepository, scrapedIPO, 'NSE'); // Use NSE as default source
           iposInserted++;
 
+          // Track updated IPO slug for comprehensive cache invalidation
+          updatedIPOSlugs.push(slug);
+
           logger.info(
             {
               slug,
@@ -135,8 +143,7 @@ export async function runIPOAlertsFallback(
             'New IPO created from API fallback'
           );
 
-          // Invalidate caches for this IPO
-          await invalidateIPOCaches(redis, slug);
+          // Note: Individual cache invalidation removed - will use comprehensive invalidation
         }
 
       } catch (error) {
@@ -152,6 +159,11 @@ export async function runIPOAlertsFallback(
           'Failed to upsert IPO from API fallback'
         );
       }
+    }
+
+    // Comprehensive cache invalidation after successful scraper run
+    if (updatedIPOSlugs.length > 0) {
+      await cacheInvalidator.invalidateAfterScrape('API_FALLBACK', updatedIPOSlugs);
     }
 
     // Get rate limit status after completion

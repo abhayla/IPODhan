@@ -111,6 +111,7 @@ export async function upsertIPO(
         registrar: scrapedIPO.registrar,
         leadManagers: scrapedIPO.leadManagers,
         listingExchanges,
+        lastScrapedAt: new Date(), // Track last successful scrape time (Story 7.4)
         updatedAt: new Date()
       };
 
