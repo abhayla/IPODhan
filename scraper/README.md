@@ -6,8 +6,11 @@ Automated data scraping service for extracting IPO data and subscription informa
 
 - **NSE Scraper**: Extracts IPO data from NSE India public issues page
 - **BSE Scraper**: Extracts IPO data from BSE India public issues page (including SME IPOs)
+- **IPO Alerts API Fallback**: Automatic fallback to API when NSE/BSE scrapers fail
 - **Dual-Listed IPO Support**: Automatically merges data for IPOs listed on both NSE and BSE
 - **SME IPO Coverage**: Comprehensive coverage of SME IPOs from BSE
+- **Failure Tracking**: Monitors consecutive scraper failures and triggers fallback automatically
+- **Rate Limiting**: Enforces 100 requests/hour limit for API fallback
 - **Data Validation**: Zod schema validation for all scraped data
 - **Retry Logic**: Exponential backoff (1s, 2s, 4s) for resilient scraping
 - **Database Persistence**: Upserts IPO data and creates subscription snapshots
@@ -45,6 +48,14 @@ SCRAPER_TIMEOUT=30000
 RETRY_ATTEMPTS=3
 RETRY_DELAYS=1000,2000,4000
 
+# IPO Alerts API Fallback (Story 7.3)
+IPO_ALERTS_API_URL=https://api.ipoalerts.in
+IPO_ALERTS_API_KEY=your_api_key_here
+
+# Rate Limiting (Story 7.3)
+RATE_LIMIT_MAX_REQUESTS=100
+RATE_LIMIT_WINDOW=3600000
+
 # Logging
 LOG_LEVEL=info
 NODE_ENV=development
@@ -66,6 +77,11 @@ npm run start:bse
 # Run both scrapers (NSE first, then BSE)
 npm run start:all
 
+# Run IPO Alerts API fallback scraper (Story 7.3)
+npm run start:fallback
+# or
+npm run start:api
+
 # Development mode (watch for changes)
 npm run dev
 ```
@@ -76,11 +92,13 @@ The scraper CLI supports a `--source` flag to control which scraper(s) to run:
 
 - `--source=nse` (default): Run NSE scraper only
 - `--source=bse`: Run BSE scraper only
-- `--source=all`: Run both scrapers sequentially (NSE first, then BSE)
+- `--source=fallback` or `--source=api`: Run IPO Alerts API fallback only (Story 7.3)
+- `--source=all`: Run all scrapers sequentially (NSE, BSE, and fallback)
 
-Example:
+Examples:
 ```bash
 tsx src/index.ts --source=bse
+tsx src/index.ts --source=fallback
 ```
 
 ### Expected Output
@@ -108,10 +126,14 @@ scraper/
 │   │   ├── nse-scraper.ts              # NSE scraping logic
 │   │   ├── nse-scraper-orchestrator.ts # NSE orchestration
 │   │   ├── bse-scraper.ts              # BSE scraping logic (Story 7.2)
-│   │   └── bse-scraper-orchestrator.ts # BSE orchestration (Story 7.2)
+│   │   ├── bse-scraper-orchestrator.ts # BSE orchestration (Story 7.2)
+│   │   ├── ipo-alerts-fallback.ts      # API fallback scraper (Story 7.3)
+│   │   └── ipo-alerts-fallback-orchestrator.ts # API fallback orchestration (Story 7.3)
 │   ├── services/
 │   │   ├── data-persister.ts           # Database upsert with retry & merge logic
-│   │   └── cache-invalidator.ts        # Redis cache invalidation
+│   │   ├── cache-invalidator.ts        # Redis cache invalidation
+│   │   ├── ipo-alerts-client.ts        # IPO Alerts API client with rate limiting (Story 7.3)
+│   │   └── scraper-failure-tracker.ts  # Failure tracking for automatic fallback (Story 7.3)
 │   ├── utils/
 │   │   ├── browser.ts                  # Puppeteer utilities
 │   │   ├── logger.ts                   # Pino logger
@@ -119,9 +141,10 @@ scraper/
 │   ├── config.ts                       # Configuration loader
 │   └── index.ts                        # CLI entry point (multi-source support)
 ├── tests/
-│   ├── unit/                           # Unit tests (>85% coverage)
+│   ├── unit/                           # Unit tests (>90% coverage)
 │   ├── integration/                    # Integration tests
-│   └── e2e/                            # E2E tests with performance validation
+│   ├── e2e/                            # E2E tests with performance validation
+│   └── fixtures/                       # Test fixtures (API responses, mock data)
 ├── package.json
 ├── tsconfig.json
 ├── .env.example
@@ -222,12 +245,169 @@ Example log output:
 {"level":"info","msg":"IPO tata-capital-limited updated with BSE listing (dual-listed)","slug":"tata-capital-limited","exchanges":["NSE","BSE"]}
 ```
 
-## Future Enhancements (Not in Story 7.1/7.2)
+## IPO Alerts API Fallback (Story 7.3)
+
+### Overview
+
+The scraper includes an automatic fallback mechanism that uses the IPO Alerts API when primary scrapers (NSE/BSE) fail. This ensures 95%+ data availability even during scraper failures.
+
+### Fallback Trigger
+
+The fallback is triggered automatically when:
+- NSE scraper fails 3 consecutive times
+- BSE scraper fails 3 consecutive times
+- Manual execution via `npm run start:fallback`
+
+### How It Works
+
+1. **Failure Tracking**: Each scraper failure is tracked in memory
+2. **Threshold Check**: After 3 consecutive failures, fallback is triggered
+3. **API Fetch**: IPO Alerts API is called to fetch open and upcoming IPOs
+4. **Data Transformation**: API data (underscore_case) is transformed to IPODhan format (camelCase)
+5. **Validation**: All API data is validated with Zod schemas
+6. **Merge Logic**:
+   - If IPO does NOT exist: Create new IPO from API data
+   - If IPO exists (from NSE/BSE): DO NOT overwrite NSE/BSE data (more authoritative)
+   - Log data discrepancies for monitoring
+7. **Persistence**: Upsert validated data to database
+8. **Cache Invalidation**: Delete relevant Redis cache keys
+
+### Rate Limiting
+
+- **Limit**: 100 requests per hour (API provider constraint)
+- **Tracking**: In-memory request timestamp tracking
+- **Warning**: Log warning at 80% threshold (80 requests)
+- **Enforcement**: Reject requests when limit reached
+- **Reset**: Rate limit window resets after 1 hour
+
+### Data Merge Behavior
+
+**NSE/BSE data is ALWAYS authoritative**. API fallback is supplementary only.
+
+**When IPO exists with NSE/BSE data:**
+- DO NOT overwrite: company name, issue size, price range, dates, description, registrar, lead managers
+- DO merge: listing exchanges (additive only)
+- Log discrepancies for monitoring (e.g., "API reports issue size: 500 crores, NSE reports: 450 crores")
+
+**When IPO does not exist:**
+- Create new IPO with all fields from API data
+- Track source: `source='IPO_ALERTS_API'`
+
+### Environment Variables
+
+Required environment variables for API fallback:
+
+```bash
+# IPO Alerts API Configuration
+IPO_ALERTS_API_URL=https://api.ipoalerts.in  # API base URL
+IPO_ALERTS_API_KEY=your_api_key_here         # Get from IPO Alerts provider
+
+# Rate Limiting
+RATE_LIMIT_MAX_REQUESTS=100                   # Max requests per hour
+RATE_LIMIT_WINDOW=3600000                     # Rate limit window (1 hour in ms)
+```
+
+### Manual Execution
+
+Run API fallback manually for testing:
+
+```bash
+# Using npm script
+npm run start:fallback
+
+# Or using tsx directly
+tsx src/index.ts --source=fallback
+```
+
+### Troubleshooting
+
+#### API Authentication Failed (401)
+
+**Issue**: API rejects requests with 401 Unauthorized
+
+**Solution**:
+1. Verify `IPO_ALERTS_API_KEY` is set correctly in `.env`
+2. Contact API provider to verify API key validity
+3. Check if API key has been rotated or expired
+4. Test API key with curl:
+   ```bash
+   curl -H "Authorization: Bearer YOUR_API_KEY" https://api.ipoalerts.in/ipos?status=open
+   ```
+
+#### Rate Limit Exceeded (429)
+
+**Issue**: API returns 429 Too Many Requests
+
+**Solution**:
+1. Check rate limit status in logs (remaining requests)
+2. Wait until rate limit resets (logged reset time)
+3. Reduce scraper execution frequency
+4. Consider upgrading API plan for higher limits (if available)
+
+#### API Endpoint Not Found (404)
+
+**Issue**: API returns 404 Not Found
+
+**Solution**:
+1. Verify `IPO_ALERTS_API_URL` in `.env` is correct
+2. Check API documentation for endpoint changes
+3. Test API endpoint availability:
+   ```bash
+   curl https://api.ipoalerts.in/ipos?status=open
+   ```
+
+#### No Data Returned from API
+
+**Issue**: API returns empty data array
+
+**Solution**:
+- This is expected when no IPOs are currently open/upcoming
+- Logs will show "0 IPOs fetched from API"
+- Not an error, fallback completed successfully
+
+#### API Response Format Changed
+
+**Issue**: Zod validation fails for API responses
+
+**Solution**:
+1. Check logs for validation error details
+2. Update Zod schemas in `src/utils/validators.ts` to match new API format
+3. Update `transformIPOAlertsData()` function if field names changed
+4. Re-run tests to verify: `npm run test:unit`
+
+### Monitoring
+
+API fallback logs include:
+
+```json
+{
+  "level": "info",
+  "msg": "API fallback scrape successful",
+  "scraper": "ipo_alerts_api",
+  "triggerReason": "nse_failure",
+  "iposFetched": 15,
+  "iposInserted": 2,
+  "iposSkipped": 13,
+  "iposFailed": 0,
+  "rateLimitUsed": 5,
+  "rateLimitRemaining": 95,
+  "duration": 12000
+}
+```
+
+### Performance
+
+- **Target**: < 30 seconds for typical API response (10-20 IPOs)
+- **API Request Time**: < 5 seconds per request
+- **No Browser Overhead**: Uses native `fetch` API (faster than web scraping)
+- **Transformation**: < 10ms per IPO
+
+## Future Enhancements (Not in Story 7.1/7.2/7.3)
 
 - Scheduled execution (Story 7.4 - node-cron)
-- IPO Alerts API fallback (Story 7.3)
+- Persistent rate limit tracking (Story 7.5 - Redis or database)
 - Sentry error tracking (Story 7.5)
-- Real-time page structure monitoring for both NSE and BSE
+- Real-time page structure monitoring for NSE, BSE, and API
 
 ## Troubleshooting
 
