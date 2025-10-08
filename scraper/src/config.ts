@@ -17,11 +17,17 @@ export const config = {
   scraper: {
     nseUrl: process.env.NSE_URL || 'https://www.nseindia.com/market-data/public-issues',
     bseUrl: process.env.BSE_URL || 'https://www.bseindia.com/publicissue.html',
+    ipoAlertsApiUrl: process.env.IPO_ALERTS_API_URL || 'https://api.ipoalerts.in',
+    ipoAlertsApiKey: process.env.IPO_ALERTS_API_KEY || '',
     timeout: parseInt(process.env.SCRAPER_TIMEOUT || '30000'),
     retryAttempts: parseInt(process.env.RETRY_ATTEMPTS || '3'),
     retryDelays: (process.env.RETRY_DELAYS || '1000,2000,4000')
       .split(',')
       .map(Number)
+  },
+  rateLimit: {
+    maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
+    window: parseInt(process.env.RATE_LIMIT_WINDOW || '3600000')
   },
   logging: {
     level: process.env.LOG_LEVEL || 'info'

@@ -1,0 +1,208 @@
+{
+  "openIPOs": {
+    "success": true,
+    "data": [
+      {
+        "id": "ipo-001",
+        "company_name": "Tech Innovations Private Limited",
+        "issue_size": 750,
+        "price_range": {
+          "min": 200,
+          "max": 250
+        },
+        "open_date": "2025-10-15",
+        "close_date": "2025-10-18",
+        "status": "OPEN",
+        "category": "MAINBOARD",
+        "exchange": "NSE",
+        "sector": "Information Technology",
+        "lot_size": 60,
+        "face_value": 10,
+        "allotment_date": "2025-10-23",
+        "listing_date": "2025-10-25",
+        "company_description": "Leading provider of enterprise software solutions with focus on cloud computing and AI.",
+        "registrar": "Link Intime India Private Limited",
+        "lead_managers": [
+          "ICICI Securities Limited",
+          "Kotak Mahindra Capital Company Limited"
+        ]
+      },
+      {
+        "id": "ipo-002",
+        "company_name": "Green Energy Solutions Ltd",
+        "issue_size": 1200,
+        "price_range": {
+          "min": 350,
+          "max": 400
+        },
+        "open_date": "2025-10-16",
+        "close_date": "2025-10-19",
+        "status": "OPEN",
+        "category": "MAINBOARD",
+        "exchange": "BOTH",
+        "sector": "Renewable Energy",
+        "lot_size": 40,
+        "face_value": 10,
+        "allotment_date": "2025-10-24",
+        "listing_date": "2025-10-26",
+        "company_description": "Renewable energy company specializing in solar and wind power generation.",
+        "registrar": "KFin Technologies Limited",
+        "lead_managers": [
+          "Axis Capital Limited",
+          "JM Financial Limited"
+        ]
+      }
+    ],
+    "count": 2,
+    "rate_limit": {
+      "remaining": 95,
+      "reset_time": "2025-10-08T12:00:00Z"
+    }
+  },
+  "upcomingIPOs": {
+    "success": true,
+    "data": [
+      {
+        "id": "ipo-003",
+        "company_name": "Digital Payment Systems Pvt Ltd",
+        "issue_size": 900,
+        "price_range": {
+          "min": 180,
+          "max": 220
+        },
+        "open_date": "2025-10-22",
+        "close_date": "2025-10-25",
+        "status": "UPCOMING",
+        "category": "MAINBOARD",
+        "exchange": "NSE",
+        "sector": "Fintech",
+        "lot_size": 75,
+        "face_value": 10,
+        "allotment_date": "2025-10-30",
+        "listing_date": "2025-11-01",
+        "company_description": "Digital payment platform with UPI and wallet solutions.",
+        "registrar": "Karvy Computershare Private Limited",
+        "lead_managers": [
+          "Edelweiss Financial Services Limited"
+        ]
+      },
+      {
+        "id": "ipo-004",
+        "company_name": "Advanced Manufacturing Corp",
+        "issue_size": 450,
+        "price_range": {
+          "min": 120,
+          "max": 150
+        },
+        "open_date": "2025-10-28",
+        "close_date": "2025-10-31",
+        "status": "UPCOMING",
+        "category": "SME",
+        "exchange": "BSE",
+        "sector": "Manufacturing",
+        "lot_size": 100,
+        "face_value": 10,
+        "company_description": "Precision engineering and manufacturing company.",
+        "registrar": "Bigshare Services Private Limited"
+      },
+      {
+        "id": "ipo-005",
+        "company_name": "HealthCare Innovations Limited",
+        "issue_size": 1500,
+        "price_range": {
+          "min": 450,
+          "max": 500
+        },
+        "open_date": "2025-11-05",
+        "close_date": "2025-11-08",
+        "status": "UPCOMING",
+        "category": "MAINBOARD",
+        "exchange": "NSE",
+        "sector": "Healthcare",
+        "lot_size": 30,
+        "face_value": 10,
+        "allotment_date": "2025-11-13",
+        "listing_date": "2025-11-15",
+        "company_description": "Healthcare technology company providing hospital management systems and telemedicine solutions.",
+        "registrar": "Link Intime India Private Limited",
+        "lead_managers": [
+          "HDFC Bank Limited",
+          "SBI Capital Markets Limited"
+        ]
+      }
+    ],
+    "count": 3,
+    "rate_limit": {
+      "remaining": 94,
+      "reset_time": "2025-10-08T12:00:00Z"
+    }
+  },
+  "singleIPO": {
+    "success": true,
+    "data": {
+      "id": "ipo-001",
+      "company_name": "Tech Innovations Private Limited",
+      "issue_size": 750,
+      "price_range": {
+        "min": 200,
+        "max": 250
+      },
+      "open_date": "2025-10-15",
+      "close_date": "2025-10-18",
+      "status": "OPEN",
+      "category": "MAINBOARD",
+      "exchange": "NSE",
+      "sector": "Information Technology",
+      "lot_size": 60,
+      "face_value": 10,
+      "allotment_date": "2025-10-23",
+      "listing_date": "2025-10-25",
+      "company_description": "Leading provider of enterprise software solutions with focus on cloud computing and AI. The company has a strong presence in the domestic market and is expanding internationally.",
+      "registrar": "Link Intime India Private Limited",
+      "lead_managers": [
+        "ICICI Securities Limited",
+        "Kotak Mahindra Capital Company Limited"
+      ]
+    },
+    "count": 1,
+    "rate_limit": {
+      "remaining": 93,
+      "reset_time": "2025-10-08T12:00:00Z"
+    }
+  },
+  "emptyResponse": {
+    "success": true,
+    "data": [],
+    "count": 0,
+    "rate_limit": {
+      "remaining": 92,
+      "reset_time": "2025-10-08T12:00:00Z"
+    }
+  },
+  "errorResponses": {
+    "notFound": {
+      "success": false,
+      "error": "Endpoint not found",
+      "status": 404
+    },
+    "unauthorized": {
+      "success": false,
+      "error": "Invalid API key",
+      "status": 401
+    },
+    "rateLimitExceeded": {
+      "success": false,
+      "error": "Rate limit exceeded",
+      "status": 429,
+      "rate_limit": {
+        "remaining": 0,
+        "reset_time": "2025-10-08T12:00:00Z"
+      }
+    },
+    "serverError": {
+      "success": false,
+      "error": "Internal server error",
+      "status": 500
+    }
+  }
+}
