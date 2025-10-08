@@ -2,15 +2,21 @@
 
 import { runNSEScraper } from './scrapers/nse-scraper-orchestrator.js';
 import { runBSEScraper } from './scrapers/bse-scraper-orchestrator.js';
+import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrator.js';
+import { IPORepository } from '@web/lib/repositories/ipo-repository';
+import { db } from '@web/lib/db/index';
+import { getRedisClient } from '@web/lib/cache/redis-client';
 import logger from './utils/logger.js';
 
 /**
  * CLI entry point for IPO scrapers
- * Supports NSE, BSE, and combined scraping via --source flag
+ * Supports NSE, BSE, API fallback, and combined scraping via --source flag
  * Usage:
- *   npm start              (defaults to NSE)
- *   npm run start:bse      (BSE only)
- *   npm run start:all      (NSE + BSE sequentially)
+ *   npm start                    (defaults to NSE)
+ *   npm run start:bse            (BSE only)
+ *   npm run start:fallback       (IPO Alerts API fallback)
+ *   npm run start:api            (alias for fallback)
+ *   npm run start:all            (NSE + BSE + API fallback sequentially)
  */
 async function main() {
   try {
@@ -21,8 +27,8 @@ async function main() {
     logger.info({ source }, 'IPO Scraper CLI started');
 
     // Validate source
-    if (!['nse', 'bse', 'all'].includes(source)) {
-      logger.error({ source }, 'Invalid source. Must be: nse, bse, or all');
+    if (!['nse', 'bse', 'fallback', 'api', 'all'].includes(source)) {
+      logger.error({ source }, 'Invalid source. Must be: nse, bse, fallback, api, or all');
       process.exit(1);
     }
 
@@ -92,6 +98,36 @@ async function main() {
           iposFailed: bseResult.iposFailed
         },
         'BSE scraper completed'
+      );
+    }
+
+    // Run IPO Alerts API fallback scraper
+    if (source === 'fallback' || source === 'api' || source === 'all') {
+      logger.info('Running IPO Alerts API fallback scraper (manual execution)');
+
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
+      const fallbackResult = await runIPOAlertsFallback(ipoRepository, 'manual');
+
+      combinedResult.success = combinedResult.success && fallbackResult.success;
+      combinedResult.iposProcessed += fallbackResult.iposProcessed;
+      combinedResult.iposInserted += fallbackResult.iposInserted;
+      combinedResult.iposUpdated += fallbackResult.iposUpdated;
+      combinedResult.iposFailed += fallbackResult.iposFailed;
+      combinedResult.errors.push(...fallbackResult.errors);
+
+      logger.info(
+        {
+          success: fallbackResult.success,
+          iposFetched: fallbackResult.iposFetched,
+          iposInserted: fallbackResult.iposInserted,
+          iposSkipped: fallbackResult.iposSkipped,
+          iposFailed: fallbackResult.iposFailed,
+          rateLimitUsed: fallbackResult.rateLimitUsed,
+          rateLimitRemaining: fallbackResult.rateLimitRemaining
+        },
+        'IPO Alerts API fallback scraper completed'
       );
     }
 

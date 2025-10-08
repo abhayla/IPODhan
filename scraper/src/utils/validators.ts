@@ -159,3 +159,113 @@ export function generateSlug(companyName: string): string {
     .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
     .slice(0, 255); // Limit length
 }
+
+// ==================== IPO ALERTS API SCHEMAS ====================
+
+/**
+ * IPO Alerts API Response Schema
+ * Note: API uses underscore_case field naming
+ */
+export const IPOAlertsAPIIPOSchema = z.object({
+  id: z.string().min(1, 'API IPO ID is required'),
+  company_name: z.string().min(1, 'Company name is required'),
+  issue_size: z.number().positive('Issue size must be positive'),
+  price_range: z.object({
+    min: z.number().positive('Price range min must be positive'),
+    max: z.number().positive('Price range max must be positive')
+  }).refine(
+    (data) => data.max >= data.min,
+    {
+      message: 'Price range max must be greater than or equal to min',
+      path: ['max']
+    }
+  ),
+  open_date: z.string().refine(
+    (date) => !isNaN(Date.parse(date)),
+    'Open date must be a valid date string'
+  ),
+  close_date: z.string().refine(
+    (date) => !isNaN(Date.parse(date)),
+    'Close date must be a valid date string'
+  ),
+  status: z.enum(['OPEN', 'UPCOMING', 'CLOSED', 'LISTED'], {
+    errorMap: () => ({ message: 'Invalid IPO status' })
+  }),
+  category: z.enum(['MAINBOARD', 'SME', 'RIGHTS', 'NCD'], {
+    errorMap: () => ({ message: 'Invalid IPO category' })
+  }),
+  exchange: z.enum(['NSE', 'BSE', 'BOTH'], {
+    errorMap: () => ({ message: 'Invalid exchange' })
+  }),
+  sector: z.string().max(100).optional(),
+  lot_size: z.number().int().positive().optional(),
+  face_value: z.number().int().positive().optional(),
+  allotment_date: z.string().optional().refine(
+    (date) => !date || !isNaN(Date.parse(date)),
+    'Allotment date must be a valid date string'
+  ),
+  listing_date: z.string().optional().refine(
+    (date) => !date || !isNaN(Date.parse(date)),
+    'Listing date must be a valid date string'
+  ),
+  company_description: z.string().optional(),
+  registrar: z.string().max(255).optional(),
+  lead_managers: z.array(z.string()).optional()
+}).refine(
+  (data) => new Date(data.close_date) >= new Date(data.open_date),
+  {
+    message: 'Close date must be after or equal to open date',
+    path: ['close_date']
+  }
+);
+
+export type IPOAlertsAPIIPO = z.infer<typeof IPOAlertsAPIIPOSchema>;
+
+/**
+ * Validate IPO Alerts API response data
+ * @param data - Raw API response data
+ * @returns Validation result with parsed data or error
+ */
+export function validateIPOAlertsIPOData(data: unknown): {
+  success: boolean;
+  data?: IPOAlertsAPIIPO;
+  error?: z.ZodError;
+} {
+  try {
+    const parsed = IPOAlertsAPIIPOSchema.parse(data);
+    return { success: true, data: parsed };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { success: false, error };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Transform IPO Alerts API data to IPODhan ScrapedIPO format
+ * Converts API underscore_case to camelCase and maps fields
+ * @param apiData - Validated IPO Alerts API data
+ * @returns Transformed ScrapedIPO data
+ */
+export function transformIPOAlertsData(apiData: IPOAlertsAPIIPO): ScrapedIPO {
+  return {
+    companyName: sanitizeCompanyName(apiData.company_name),
+    issueSize: apiData.issue_size,
+    priceRangeMin: apiData.price_range.min,
+    priceRangeMax: apiData.price_range.max,
+    openDate: apiData.open_date,
+    closeDate: apiData.close_date,
+    listingExchange: apiData.exchange,
+    category: apiData.category,
+    sector: apiData.sector,
+    status: apiData.status,
+    lotSize: apiData.lot_size,
+    faceValue: apiData.face_value,
+    allotmentDate: apiData.allotment_date,
+    listingDate: apiData.listing_date,
+    companyDescription: apiData.company_description,
+    registrar: apiData.registrar,
+    leadManagers: apiData.lead_managers
+  };
+}
