@@ -1,0 +1,160 @@
+import { IPORepository } from '@web/lib/repositories/ipo-repository';
+import { SubscriptionRepository } from '@web/lib/repositories/subscription-repository';
+import { db } from '@web/lib/db/index';
+import { getRedisClient } from '@web/lib/cache/redis-client';
+import logger from '../utils/logger.js';
+import { scrapeNSEIPOs } from './nse-scraper.js';
+import { validateIPOData, validateSubscriptionData, generateSlug } from '../utils/validators.js';
+import { upsertIPO, createSubscriptionSnapshot } from '../services/data-persister.js';
+import { invalidateIPOCaches, invalidateSubscriptionCache } from '../services/cache-invalidator.js';
+
+export interface ScraperResult {
+  success: boolean;
+  iposProcessed: number;
+  iposInserted: number;
+  iposUpdated: number;
+  iposFailed: number;
+  subscriptionsCreated: number;
+  errors: string[];
+}
+
+/**
+ * Run NSE scraper workflow
+ * Orchestrates the full scraping, validation, persistence, and cache invalidation process
+ * @returns Promise<ScraperResult> - Summary of scraper execution
+ */
+export async function runNSEScraper(): Promise<ScraperResult> {
+  const startTime = Date.now();
+
+  const result: ScraperResult = {
+    success: false,
+    iposProcessed: 0,
+    iposInserted: 0,
+    iposUpdated: 0,
+    iposFailed: 0,
+    subscriptionsCreated: 0,
+    errors: []
+  };
+
+  try {
+    logger.info('NSE scraper orchestrator started');
+
+    // Initialize repositories
+    const redis = getRedisClient();
+    const ipoRepository = new IPORepository(db, redis);
+    const subscriptionRepository = new SubscriptionRepository(db, redis);
+
+    // Step 1: Scrape NSE data
+    const { ipos: scrapedIPOs, subscriptions: scrapedSubscriptions } = await scrapeNSEIPOs();
+
+    logger.info({ totalIPOs: scrapedIPOs.length }, 'Scraped data received from NSE');
+
+    // Step 2: Validate and process IPOs
+    for (const scrapedIPO of scrapedIPOs) {
+      try {
+        // Validate IPO data
+        const validation = validateIPOData(scrapedIPO);
+
+        if (!validation.success) {
+          logger.warn(
+            {
+              companyName: scrapedIPO.companyName,
+              errors: validation.error?.errors
+            },
+            'IPO validation failed, skipping'
+          );
+          result.iposFailed++;
+          result.errors.push(`Validation failed for ${scrapedIPO.companyName}`);
+          continue;
+        }
+
+        const validatedIPO = validation.data!;
+
+        // Check if IPO already exists (to track insert vs update)
+        const slug = generateSlug(validatedIPO.companyName);
+        const existingIPO = await ipoRepository.findBySlug(slug);
+
+        // Upsert IPO to database
+        const ipoId = await upsertIPO(ipoRepository, validatedIPO);
+
+        if (existingIPO) {
+          result.iposUpdated++;
+        } else {
+          result.iposInserted++;
+        }
+
+        result.iposProcessed++;
+
+        // Step 3: Process subscription data for OPEN IPOs
+        if (validatedIPO.status === 'OPEN') {
+          const relatedSubscription = scrapedSubscriptions.find(
+            sub => sub.ipoCompanyName === validatedIPO.companyName
+          );
+
+          if (relatedSubscription) {
+            const subscriptionValidation = validateSubscriptionData(relatedSubscription);
+
+            if (subscriptionValidation.success) {
+              await createSubscriptionSnapshot(
+                subscriptionRepository,
+                ipoId,
+                subscriptionValidation.data!
+              );
+              result.subscriptionsCreated++;
+
+              // Invalidate subscription cache
+              await invalidateSubscriptionCache(redis, ipoId);
+            } else {
+              logger.warn(
+                {
+                  companyName: validatedIPO.companyName,
+                  errors: subscriptionValidation.error?.errors
+                },
+                'Subscription validation failed, skipping'
+              );
+            }
+          }
+        }
+
+        // Step 4: Invalidate IPO caches
+        await invalidateIPOCaches(redis, slug);
+
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.error(
+          { companyName: scrapedIPO.companyName, error: errorMsg },
+          'Failed to process IPO'
+        );
+        result.iposFailed++;
+        result.errors.push(`Failed to process ${scrapedIPO.companyName}: ${errorMsg}`);
+      }
+    }
+
+    const duration = Date.now() - startTime;
+    result.success = result.iposFailed < result.iposProcessed; // Success if majority processed
+
+    logger.info(
+      {
+        ...result,
+        duration
+      },
+      'NSE scraper orchestrator completed'
+    );
+
+    return result;
+
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    const duration = Date.now() - startTime;
+
+    logger.error(
+      { error: errorMsg, duration },
+      'NSE scraper orchestrator failed'
+    );
+
+    result.success = false;
+    result.errors.push(`Orchestrator error: ${errorMsg}`);
+
+    return result;
+  }
+}
