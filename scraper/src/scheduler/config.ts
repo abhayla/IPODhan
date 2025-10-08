@@ -26,6 +26,7 @@ export interface SchedulerConfig {
     bse: JobSchedule;
     healthCheck: JobSchedule;
     dailySummary: JobSchedule;
+    logCleanup: JobSchedule;
   };
 }
 
@@ -59,6 +60,11 @@ const PROD_SCHEDULES = {
     enabled: true,
     schedule: '0 8 * * *',                 // 8 AM daily
     timezone: 'Asia/Kolkata'
+  },
+  logCleanup: {
+    enabled: true,
+    schedule: '0 2 * * *',                 // 2 AM daily
+    timezone: 'Asia/Kolkata'
   }
 };
 
@@ -90,6 +96,11 @@ const DEV_SCHEDULES = {
     enabled: false,                        // Disable daily summary in dev (can trigger manually)
     schedule: '0 8 * * *',                 // 8 AM daily
     timezone: 'Asia/Kolkata'
+  },
+  logCleanup: {
+    enabled: false,                        // Disable log cleanup in dev (can trigger manually)
+    schedule: '0 2 * * *',                 // 2 AM daily
+    timezone: 'Asia/Kolkata'
   }
 };
 
@@ -110,5 +121,6 @@ export const schedulerConfig: SchedulerConfig = {
 export const LOCK_TTL = {
   scraper: 300,      // 5 minutes for NSE/BSE scrapers
   healthCheck: 60,   // 1 minute for health check
-  dailySummary: 120  // 2 minutes for daily summary
+  dailySummary: 120, // 2 minutes for daily summary
+  logCleanup: 300    // 5 minutes for log cleanup
 } as const;

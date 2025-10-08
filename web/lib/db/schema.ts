@@ -51,6 +51,18 @@ export const financialStatementTypeEnum = pgEnum('financial_statement_type', [
   'STANDALONE',
 ]);
 
+export const scraperSourceEnum = pgEnum('scraper_source', [
+  'NSE',
+  'BSE',
+  'API_FALLBACK',
+]);
+
+export const scraperStatusEnum = pgEnum('scraper_status', [
+  'SUCCESS',
+  'FAILURE',
+  'PARTIAL',
+]);
+
 // ==================== TABLE 1: IPOS (Core Entity) ====================
 
 export const ipos = pgTable(
@@ -428,3 +440,28 @@ export const affiliateClicksRelations = relations(affiliateClicks, ({ one }) => 
     references: [ipos.id],
   }),
 }));
+
+// ==================== TABLE 12: SCRAPER_LOGS (Monitoring) ====================
+
+export const scraperLogs = pgTable(
+  'scraper_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    source: text('source').notNull(), // 'NSE' | 'BSE' | 'API_FALLBACK'
+    status: text('status').notNull(), // 'SUCCESS' | 'FAILURE' | 'PARTIAL'
+    recordsProcessed: integer('records_processed').default(0),
+    recordsFailed: integer('records_failed').default(0),
+    durationMs: integer('duration_ms').notNull(),
+    errorMessage: text('error_message'),
+    errorStack: text('error_stack'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    createdAtIdx: index('idx_scraper_logs_created_at').on(table.createdAt),
+    sourceCreatedAtIdx: index('idx_scraper_logs_source_created_at').on(
+      table.source,
+      table.createdAt
+    ),
+    statusIdx: index('idx_scraper_logs_status').on(table.status),
+  })
+);

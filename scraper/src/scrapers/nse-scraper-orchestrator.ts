@@ -1,5 +1,6 @@
 import { IPORepository } from '@web/lib/repositories/ipo-repository';
 import { SubscriptionRepository } from '@web/lib/repositories/subscription-repository';
+import { ScraperLogRepository } from '@web/lib/repositories/scraper-log-repository';
 import { db } from '@web/lib/db/index';
 import { getRedisClient } from '@web/lib/cache/redis-client';
 import logger from '../utils/logger.js';
@@ -10,6 +11,8 @@ import { invalidateIPOCaches, invalidateSubscriptionCache } from '../services/ca
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { runIPOAlertsFallback } from './ipo-alerts-fallback-orchestrator.js';
+import { ScraperMetricsTracker } from '../services/scraper-metrics-tracker.js';
+import { AlertingService } from '../services/alerting-service.js';
 
 export interface ScraperResult {
   success: boolean;
@@ -42,11 +45,14 @@ export async function runNSEScraper(): Promise<ScraperResult> {
   try {
     logger.info('NSE scraper orchestrator started');
 
-    // Initialize repositories
+    // Initialize repositories and services
     const redis = getRedisClient();
     const ipoRepository = new IPORepository(db, redis);
     const subscriptionRepository = new SubscriptionRepository(db, redis);
+    const scraperLogRepository = new ScraperLogRepository(db, redis);
     const cacheInvalidator = new CacheInvalidator(redis);
+    const metricsTracker = new ScraperMetricsTracker(redis);
+    const alertingService = new AlertingService();
 
     // Track all updated IPO slugs for comprehensive cache invalidation
     const updatedIPOSlugs: string[] = [];
@@ -149,6 +155,20 @@ export async function runNSEScraper(): Promise<ScraperResult> {
     // Record success in failure tracker
     scraperFailureTracker.recordSuccess('NSE');
 
+    // Log execution to database (Story 7.5)
+    await scraperLogRepository.create({
+      source: 'NSE',
+      status: 'SUCCESS',
+      recordsProcessed: result.iposProcessed,
+      recordsFailed: result.iposFailed,
+      durationMs: duration,
+      errorMessage: null,
+      errorStack: null,
+    });
+
+    // Record success metrics in Redis (Story 7.5)
+    await metricsTracker.recordSuccess('NSE');
+
     logger.info(
       {
         ...result,
@@ -161,6 +181,7 @@ export async function runNSEScraper(): Promise<ScraperResult> {
 
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : undefined;
     const duration = Date.now() - startTime;
 
     logger.error(
@@ -173,6 +194,54 @@ export async function runNSEScraper(): Promise<ScraperResult> {
 
     // Record failure in failure tracker
     scraperFailureTracker.recordFailure('NSE', error instanceof Error ? error : new Error(errorMsg));
+
+    // Log failure to database (Story 7.5)
+    try {
+      const redis = getRedisClient();
+      const scraperLogRepository = new ScraperLogRepository(db, redis);
+      const metricsTracker = new ScraperMetricsTracker(redis);
+      const alertingService = new AlertingService();
+
+      await scraperLogRepository.create({
+        source: 'NSE',
+        status: 'FAILURE',
+        recordsProcessed: result.iposProcessed,
+        recordsFailed: result.iposFailed,
+        durationMs: duration,
+        errorMessage: errorMsg,
+        errorStack: errorStack || null,
+      });
+
+      // Record failure metrics in Redis (Story 7.5)
+      await metricsTracker.recordFailure('NSE');
+
+      // Check if alert should be sent (Story 7.5)
+      const { sendAlert, reason } = await metricsTracker.shouldSendAlert('NSE');
+      if (sendAlert && reason) {
+        const metrics = await metricsTracker.getMetrics('NSE');
+        const consecutiveFailures = await metricsTracker.getConsecutiveFailures('NSE');
+        const recentLogs = await scraperLogRepository.getRecentLogs('NSE', 24);
+        const recentErrors = alertingService.getRecentErrors(recentLogs);
+
+        await alertingService.sendAlert({
+          source: 'NSE',
+          severity: consecutiveFailures >= 3 ? 'ERROR' : 'WARN',
+          reason,
+          consecutiveFailures,
+          successRate: metrics.rate,
+          recentErrors,
+          timestamp: new Date(),
+        });
+
+        // Mark alert as sent to prevent spam
+        await metricsTracker.markAlertSent('NSE');
+      }
+    } catch (loggingError) {
+      logger.error(
+        { error: loggingError instanceof Error ? loggingError.message : String(loggingError) },
+        'Failed to log scraper failure'
+      );
+    }
 
     // Check if fallback should be triggered
     if (scraperFailureTracker.shouldTriggerFallback('NSE')) {

@@ -51,6 +51,11 @@ export type NewPeerCompany = InferInsertModel<typeof schema.peerCompanies>;
 export type BrokerAffiliate = InferSelectModel<typeof schema.brokerAffiliates>;
 export type NewBrokerAffiliate = InferInsertModel<typeof schema.brokerAffiliates>;
 
+// ==================== SCRAPER LOG TYPES ====================
+
+export type ScraperLog = InferSelectModel<typeof schema.scraperLogs>;
+export type NewScraperLog = InferInsertModel<typeof schema.scraperLogs>;
+
 // ==================== ENUM TYPES ====================
 
 export type IPOCategory = IPO['category'];
@@ -59,6 +64,8 @@ export type DocumentType = Document['type'];
 export type Exchange = MarketHoliday['exchange'];
 export type HolidayType = MarketHoliday['type'];
 export type FinancialStatementType = NonNullable<PeerCompany['financialStatementType']>;
+export type ScraperSource = 'NSE' | 'BSE' | 'API_FALLBACK';
+export type ScraperStatus = 'SUCCESS' | 'FAILURE' | 'PARTIAL';
 
 // ==================== API RESPONSE TYPES ====================
 

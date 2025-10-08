@@ -5,6 +5,7 @@ import { schedulerConfig, LOCK_TTL } from './config.js';
 import { JobLockManager } from './job-lock.js';
 import { runHealthCheck } from './jobs/health-check.js';
 import { runDailySummary } from './jobs/daily-summary.js';
+import { runLogCleanup } from './jobs/log-cleanup.js';
 import { runNSEScraper } from '../scrapers/nse-scraper-orchestrator.js';
 import { runBSEScraper } from '../scrapers/bse-scraper-orchestrator.js';
 
@@ -58,7 +59,8 @@ export class SchedulerService {
         nse: schedulerConfig.jobs.nse.enabled,
         bse: schedulerConfig.jobs.bse.enabled,
         healthCheck: schedulerConfig.jobs.healthCheck.enabled,
-        dailySummary: schedulerConfig.jobs.dailySummary.enabled
+        dailySummary: schedulerConfig.jobs.dailySummary.enabled,
+        logCleanup: schedulerConfig.jobs.logCleanup.enabled
       }
     }, 'Scheduler configuration loaded');
 
@@ -152,6 +154,17 @@ export class SchedulerService {
         () => runDailySummary(this.redis),
         LOCK_TTL.dailySummary,
         schedulerConfig.jobs.dailySummary.timezone
+      );
+    }
+
+    // Register log cleanup job (runs at 2 AM daily - Story 7.5)
+    if (schedulerConfig.jobs.logCleanup.enabled) {
+      this.registerJob(
+        'log-cleanup',
+        schedulerConfig.jobs.logCleanup.schedule!,
+        () => runLogCleanup(),
+        LOCK_TTL.logCleanup,
+        schedulerConfig.jobs.logCleanup.timezone
       );
     }
 
