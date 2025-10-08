@@ -11,11 +11,15 @@ import { generateHomepageMetadata } from "@/lib/seo/metadata";
 const geistSans = Geist({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  display: "swap", // Prevent FOIT (Flash of Invisible Text)
+  preload: true, // Preload critical font
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
+  preload: true,
 });
 
 export const metadata: Metadata = generateHomepageMetadata();

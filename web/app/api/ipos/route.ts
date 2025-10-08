@@ -282,11 +282,14 @@ export async function GET(request: NextRequest) {
       'IPO list fetched successfully'
     );
 
-    // Return response with cache headers
+    // Return response with stale-while-revalidate cache headers
+    // Story 8.3: Performance Optimization - AC#2
+    // s-maxage=300 (5min cache), stale-while-revalidate=600 (serve stale for 10min)
     return NextResponse.json(response, {
       status: 200,
       headers: {
-        'Cache-Control': 'public, max-age=300', // 5 minutes TTL
+        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+        'CDN-Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
       },
     });
   } catch (error) {
