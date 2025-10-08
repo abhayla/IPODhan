@@ -1,32 +1,10 @@
 import { Metadata } from 'next';
 import { apiClient, IPO } from '@/lib/api-client';
 import { DashboardContent } from '@/components/dashboard/DashboardContent';
+import { generateIPOListingMetadata } from '@/lib/seo/metadata';
 
-// SEO Metadata
-export const metadata: Metadata = {
-  title: 'IPO Dashboard - Current IPOs | IPODhan',
-  description: 'Browse current and upcoming IPO listings in India. View IPO details, subscription status, GMP, ratings, and more. Stay updated with real-time IPO information.',
-  openGraph: {
-    title: 'IPO Dashboard - Current IPOs | IPODhan',
-    description: 'Browse current and upcoming IPO listings in India',
-    url: 'https://ipodhan.com/dashboard',
-    type: 'website',
-    images: [
-      {
-        url: 'https://ipodhan.com/og-dashboard.jpg',
-        width: 1200,
-        height: 630,
-        alt: 'IPODhan Dashboard'
-      }
-    ]
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'IPO Dashboard - Current IPOs | IPODhan',
-    description: 'Browse current and upcoming IPO listings in India',
-    images: ['https://ipodhan.com/og-dashboard.jpg']
-  }
-};
+// SEO Metadata - Using centralized SEO utilities
+export const metadata: Metadata = generateIPOListingMetadata();
 
 interface DashboardPageProps {
   searchParams: {
@@ -40,12 +18,13 @@ interface DashboardPageProps {
 }
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
-  const page = searchParams.page ? parseInt(searchParams.page) : 1;
-  const view = searchParams.view || 'grid';
-  const status = searchParams.status || 'OPEN';
-  const category = searchParams.category;
-  const sector = searchParams.sector;
-  const search = searchParams.search;
+  const params = await searchParams;
+  const page = params.page ? parseInt(params.page) : 1;
+  const view = params.view || 'grid';
+  const status = params.status || 'OPEN';
+  const category = params.category;
+  const sector = params.sector;
+  const search = params.search;
 
   try {
     const response = await apiClient.getIPOs({

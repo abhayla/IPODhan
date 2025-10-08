@@ -1,0 +1,22 @@
+# Robots.txt for IPODhan
+# https://ipodhan.com/robots.txt
+
+# Allow all crawlers
+User-agent: *
+Allow: /
+
+# Block API routes (no SEO value, prevent indexing of API responses)
+Disallow: /api/
+
+# Block admin routes (if any admin panel is added in future)
+Disallow: /admin/
+
+# Block private/internal routes
+Disallow: /_next/
+Disallow: /private/
+
+# Sitemap location
+Sitemap: https://ipodhan.com/sitemap.xml
+
+# Crawl-delay (optional, helpful for rate limiting aggressive bots)
+# Crawl-delay: 1

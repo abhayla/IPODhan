@@ -15,34 +15,11 @@ interface HistoricalIPOResponse {
   };
 }
 
+import { generateHistoricalIPOsMetadata } from '@/lib/seo/metadata';
+
 // Generate metadata for SEO
 export async function generateMetadata(): Promise<Metadata> {
-  return {
-    title: 'Historical IPOs - Past Performance & Analysis | IPODhan',
-    description:
-      'Browse historical IPO data with comprehensive performance metrics. Filter by year, sector, and listing performance. Analyze past IPO trends to make informed investment decisions.',
-    keywords: [
-      'historical IPOs',
-      'past IPO performance',
-      'IPO listing gains',
-      'IPO returns',
-      'IPO database India',
-      'stock market history',
-    ],
-    openGraph: {
-      title: 'Historical IPOs - Past Performance & Analysis',
-      description:
-        'Complete database of historical IPOs with listing performance, subscription data, and sector-wise analysis.',
-      type: 'website',
-      url: 'https://ipodhan.com/history',
-    },
-    twitter: {
-      card: 'summary_large_image',
-      title: 'Historical IPOs - Past Performance & Analysis',
-      description:
-        'Browse historical IPO data with comprehensive performance metrics and filters.',
-    },
-  };
+  return generateHistoricalIPOsMetadata();
 }
 
 async function fetchHistoricalIPOs(searchParams: {

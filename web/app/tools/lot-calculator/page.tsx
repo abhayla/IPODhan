@@ -15,40 +15,11 @@
 import { Metadata } from 'next';
 import { LotCalculator } from '@/components/tools/LotCalculator';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
+import { generateLotCalculatorMetadata } from '@/lib/seo/metadata';
 
 // ==================== METADATA ====================
 
-export const metadata: Metadata = {
-  title: 'Lot Size Calculator | IPODhan - Calculate IPO Lots',
-  description:
-    'Calculate how many lots you can buy with your investment amount. Free IPO lot size calculator for Indian IPOs. Find total shares and investment amount instantly.',
-  keywords: [
-    'IPO lot calculator',
-    'lot size calculator',
-    'IPO investment calculator',
-    'calculate IPO lots',
-    'IPO shares calculator',
-    'India IPO calculator',
-  ],
-  openGraph: {
-    title: 'IPO Lot Size Calculator | IPODhan',
-    description:
-      'Calculate how many IPO lots you can buy with your investment amount. Free tool for Indian IPO investors.',
-    type: 'website',
-    url: 'https://ipodhan.com/tools/lot-calculator',
-    siteName: 'IPODhan',
-  },
-  twitter: {
-    card: 'summary_large_image',
-    title: 'IPO Lot Size Calculator | IPODhan',
-    description:
-      'Calculate how many IPO lots you can buy. Free tool for Indian IPO investors.',
-    creator: '@ipodhan',
-  },
-  alternates: {
-    canonical: 'https://ipodhan.com/tools/lot-calculator',
-  },
-};
+export const metadata: Metadata = generateLotCalculatorMetadata();
 
 // ==================== PAGE COMPONENT ====================
 

@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
+import { generateHomepageMetadata } from "@/lib/seo/metadata";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -17,10 +18,7 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-export const metadata: Metadata = {
-  title: "IPODhan - IPO Information Platform",
-  description: "Track and analyze IPO listings in India",
-};
+export const metadata: Metadata = generateHomepageMetadata();
 
 export default function RootLayout({
   children,
