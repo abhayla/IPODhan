@@ -48,6 +48,7 @@ describe('Database Types', () => {
         ratingOverride: false,
         createdAt: new Date(),
         updatedAt: new Date(),
+        lastScrapedAt: null,
       };
 
       expect(mockIPO).toBeDefined();

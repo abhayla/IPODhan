@@ -45,6 +45,7 @@ const mockIPOs: IPO[] = [
     ratingOverride: false,
     createdAt: new Date(),
     updatedAt: new Date(),
+    lastScrapedAt: null,
   },
   {
     id: 'ipo-2',
@@ -72,6 +73,7 @@ const mockIPOs: IPO[] = [
     ratingOverride: false,
     createdAt: new Date(),
     updatedAt: new Date(),
+    lastScrapedAt: null,
   },
   {
     id: 'ipo-3',
@@ -99,6 +101,7 @@ const mockIPOs: IPO[] = [
     ratingOverride: false,
     createdAt: new Date(),
     updatedAt: new Date(),
+    lastScrapedAt: null,
   },
   {
     id: 'ipo-4',
@@ -126,6 +129,7 @@ const mockIPOs: IPO[] = [
     ratingOverride: false,
     createdAt: new Date(),
     updatedAt: new Date(),
+    lastScrapedAt: null,
   },
 ];
 

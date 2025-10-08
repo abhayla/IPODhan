@@ -73,6 +73,7 @@ const mockIPO: IPO = {
   ratingOverride: false,
   createdAt: new Date('2025-01-05T10:30:00.000Z'),
   updatedAt: new Date('2025-01-05T10:30:00.000Z'),
+  lastScrapedAt: null,
 };
 
 const mockPaginatedResponse: PaginatedResponse<IPO> = {

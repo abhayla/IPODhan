@@ -29,6 +29,7 @@ const mockIPO: IPO = {
   ratingOverride: false,
   createdAt: new Date(),
   updatedAt: new Date(),
+  lastScrapedAt: null,
 };
 
 describe('IPOHeader', () => {

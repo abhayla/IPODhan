@@ -30,6 +30,7 @@ const mockIPO = (overrides?: Partial<IPO>): IPO => ({
   ratingOverride: false,
   createdAt: new Date(),
   updatedAt: new Date(),
+  lastScrapedAt: null,
   ...overrides
 });
 
