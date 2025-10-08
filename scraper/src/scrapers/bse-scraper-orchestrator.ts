@@ -7,6 +7,8 @@ import { scrapeBSEIPOs } from './bse-scraper.js';
 import { validateIPOData, validateSubscriptionData, generateSlug } from '../utils/validators.js';
 import { upsertIPO, createSubscriptionSnapshot } from '../services/data-persister.js';
 import { invalidateIPOCaches, invalidateSubscriptionCache } from '../services/cache-invalidator.js';
+import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
+import { runIPOAlertsFallback } from './ipo-alerts-fallback-orchestrator.js';
 
 export interface ScraperResult {
   success: boolean;
@@ -152,6 +154,9 @@ export async function runBSEScraper(): Promise<ScraperResult> {
     const duration = Date.now() - startTime;
     result.success = result.iposFailed < result.iposProcessed; // Success if majority processed
 
+    // Record success in failure tracker
+    scraperFailureTracker.recordSuccess('BSE');
+
     logger.info(
       {
         ...result,
@@ -173,6 +178,45 @@ export async function runBSEScraper(): Promise<ScraperResult> {
 
     result.success = false;
     result.errors.push(`Orchestrator error: ${errorMsg}`);
+
+    // Record failure in failure tracker
+    scraperFailureTracker.recordFailure('BSE', error instanceof Error ? error : new Error(errorMsg));
+
+    // Check if fallback should be triggered
+    if (scraperFailureTracker.shouldTriggerFallback('BSE')) {
+      logger.warn('BSE scraper failed 3 consecutive times, triggering API fallback');
+
+      try {
+        // Initialize repositories for fallback
+        const redis = getRedisClient();
+        const ipoRepository = new IPORepository(db, redis);
+
+        // Trigger API fallback
+        const fallbackResult = await runIPOAlertsFallback(ipoRepository, 'bse_failure');
+
+        if (fallbackResult.success) {
+          logger.info(
+            {
+              iposInserted: fallbackResult.iposInserted,
+              iposSkipped: fallbackResult.iposSkipped,
+              rateLimitRemaining: fallbackResult.rateLimitRemaining
+            },
+            'API fallback completed successfully after BSE failure'
+          );
+        } else {
+          logger.error(
+            { errors: fallbackResult.errors },
+            'API fallback also failed after BSE failure'
+          );
+        }
+      } catch (fallbackError) {
+        const fallbackErrorMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+        logger.error(
+          { error: fallbackErrorMsg },
+          'Failed to trigger API fallback after BSE failure'
+        );
+      }
+    }
 
     return result;
   }
