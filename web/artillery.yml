@@ -1,0 +1,139 @@
+# Artillery Load Testing Configuration
+# Story 8.1: Comprehensive Testing Suite - Load Testing
+# Target: 1000 concurrent users with p95 response time < 500ms
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    # Warm-up phase: Ramp up to 100 users
+    - duration: 60
+      arrivalRate: 5
+      name: "Warm-up"
+    # Ramp-up phase: Gradually increase to 500 users
+    - duration: 120
+      arrivalRate: 10
+      rampTo: 50
+      name: "Ramp-up"
+    # Sustained load: 1000 concurrent users
+    - duration: 300
+      arrivalRate: 100
+      name: "Sustained load - 1000 concurrent users"
+    # Spike test: Sudden increase to test resilience
+    - duration: 60
+      arrivalRate: 200
+      name: "Spike test"
+    # Cool-down: Gradual decrease
+    - duration: 60
+      arrivalRate: 100
+      rampTo: 10
+      name: "Cool-down"
+  plugins:
+    expect: {}
+    metrics-by-endpoint: {}
+  ensure:
+    # Performance targets
+    p95: 500  # 95th percentile response time must be < 500ms
+    p99: 1000 # 99th percentile response time must be < 1000ms
+    maxErrorRate: 1  # Max 1% error rate
+  http:
+    timeout: 10  # 10 seconds timeout for HTTP requests
+  defaults:
+    headers:
+      User-Agent: "Artillery Load Test - Story 8.1"
+      Accept: "application/json"
+
+scenarios:
+  # Scenario 1: Browse IPOs with filters
+  - name: "Browse IPOs with filters"
+    weight: 30
+    flow:
+      - get:
+          url: "/api/ipos"
+          expect:
+            - statusCode: 200
+            - contentType: json
+            - hasProperty: "ipos"
+      - think: 2
+      - get:
+          url: "/api/ipos?status=OPEN"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - get:
+          url: "/api/ipos?category=MAINBOARD&sector=Technology"
+          expect:
+            - statusCode: 200
+      - think: 2
+
+  # Scenario 2: Search IPOs
+  - name: "Search IPOs"
+    weight: 25
+    flow:
+      - get:
+          url: "/"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - get:
+          url: "/api/ipos?search=tech"
+          expect:
+            - statusCode: 200
+      - think: 2
+      - get:
+          url: "/api/ipos?search=infra"
+          expect:
+            - statusCode: 200
+      - think: 1
+
+  # Scenario 3: View IPO detail page
+  - name: "View IPO detail page"
+    weight: 20
+    flow:
+      - get:
+          url: "/api/ipos"
+          expect:
+            - statusCode: 200
+          capture:
+            json: "$.ipos[0].slug"
+            as: "ipoSlug"
+      - think: 1
+      - get:
+          url: "/api/ipos/{{ ipoSlug }}"
+          expect:
+            - statusCode: [200, 404]
+      - think: 3
+
+  # Scenario 4: Use lot calculator
+  - name: "Use lot calculator"
+    weight: 15
+    flow:
+      - get:
+          url: "/tools/lot-calculator"
+          expect:
+            - statusCode: 200
+      - think: 2
+      - get:
+          url: "/api/tools/lot-calculator"
+          expect:
+            - statusCode: 200
+      - think: 2
+
+  # Scenario 5: Compare IPOs
+  - name: "Compare IPOs"
+    weight: 10
+    flow:
+      - get:
+          url: "/tools/compare"
+          expect:
+            - statusCode: 200
+      - think: 2
+      - get:
+          url: "/api/ipos"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - get:
+          url: "/api/tools/compare?slugs=ipo1,ipo2"
+          expect:
+            - statusCode: [200, 400]
+      - think: 3
