@@ -3,11 +3,19 @@
   "version": "1.0.0",
   "description": "",
   "main": "test-db-connection.js",
+  "workspaces": [
+    "web",
+    "scraper",
+    "packages/*"
+  ],
   "directories": {
     "doc": "docs"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "npm run dev --workspace=web",
+    "dev:scraper": "npm run dev --workspace=scraper",
+    "scraper:nse": "npm start --workspace=scraper"
   },
   "repository": {
     "type": "git",
