@@ -1,50 +1,126 @@
 #!/usr/bin/env node
 
 import { runNSEScraper } from './scrapers/nse-scraper-orchestrator.js';
+import { runBSEScraper } from './scrapers/bse-scraper-orchestrator.js';
 import logger from './utils/logger.js';
 
 /**
- * CLI entry point for NSE scraper
- * Runs the scraper and exits with appropriate status code
+ * CLI entry point for IPO scrapers
+ * Supports NSE, BSE, and combined scraping via --source flag
+ * Usage:
+ *   npm start              (defaults to NSE)
+ *   npm run start:bse      (BSE only)
+ *   npm run start:all      (NSE + BSE sequentially)
  */
 async function main() {
   try {
-    logger.info('NSE Scraper CLI started');
-
-    // Parse CLI arguments (future: add --source flag for BSE support)
+    // Parse CLI arguments
     const args = process.argv.slice(2);
     const source = args.find(arg => arg.startsWith('--source='))?.split('=')[1] || 'nse';
 
-    if (source !== 'nse') {
-      logger.error({ source }, 'Invalid source. Only NSE is supported in this story.');
+    logger.info({ source }, 'IPO Scraper CLI started');
+
+    // Validate source
+    if (!['nse', 'bse', 'all'].includes(source)) {
+      logger.error({ source }, 'Invalid source. Must be: nse, bse, or all');
       process.exit(1);
     }
 
-    // Run NSE scraper
-    const result = await runNSEScraper();
+    let combinedResult = {
+      success: true,
+      iposProcessed: 0,
+      iposInserted: 0,
+      iposUpdated: 0,
+      iposMerged: 0,
+      iposFailed: 0,
+      smeCount: 0,
+      mainboardCount: 0,
+      subscriptionsCreated: 0,
+      errors: [] as string[]
+    };
 
-    // Log final result
+    // Run NSE scraper
+    if (source === 'nse' || source === 'all') {
+      logger.info('Running NSE scraper');
+      const nseResult = await runNSEScraper();
+
+      combinedResult.success = combinedResult.success && nseResult.success;
+      combinedResult.iposProcessed += nseResult.iposProcessed;
+      combinedResult.iposInserted += nseResult.iposInserted;
+      combinedResult.iposUpdated += nseResult.iposUpdated;
+      combinedResult.iposFailed += nseResult.iposFailed;
+      combinedResult.subscriptionsCreated += nseResult.subscriptionsCreated;
+      combinedResult.errors.push(...nseResult.errors);
+
+      logger.info(
+        {
+          success: nseResult.success,
+          iposProcessed: nseResult.iposProcessed,
+          iposInserted: nseResult.iposInserted,
+          iposUpdated: nseResult.iposUpdated,
+          iposFailed: nseResult.iposFailed
+        },
+        'NSE scraper completed'
+      );
+    }
+
+    // Run BSE scraper
+    if (source === 'bse' || source === 'all') {
+      logger.info('Running BSE scraper');
+      const bseResult = await runBSEScraper();
+
+      combinedResult.success = combinedResult.success && bseResult.success;
+      combinedResult.iposProcessed += bseResult.iposProcessed;
+      combinedResult.iposInserted += bseResult.iposInserted;
+      combinedResult.iposUpdated += bseResult.iposUpdated;
+      combinedResult.iposMerged += bseResult.iposMerged;
+      combinedResult.iposFailed += bseResult.iposFailed;
+      combinedResult.smeCount += bseResult.smeCount;
+      combinedResult.mainboardCount += bseResult.mainboardCount;
+      combinedResult.subscriptionsCreated += bseResult.subscriptionsCreated;
+      combinedResult.errors.push(...bseResult.errors);
+
+      logger.info(
+        {
+          success: bseResult.success,
+          iposProcessed: bseResult.iposProcessed,
+          iposInserted: bseResult.iposInserted,
+          iposUpdated: bseResult.iposUpdated,
+          iposMerged: bseResult.iposMerged,
+          smeCount: bseResult.smeCount,
+          mainboardCount: bseResult.mainboardCount,
+          iposFailed: bseResult.iposFailed
+        },
+        'BSE scraper completed'
+      );
+    }
+
+    // Log final combined result
     logger.info(
       {
-        success: result.success,
-        iposProcessed: result.iposProcessed,
-        iposInserted: result.iposInserted,
-        iposUpdated: result.iposUpdated,
-        iposFailed: result.iposFailed,
-        subscriptionsCreated: result.subscriptionsCreated,
-        errorCount: result.errors.length
+        source,
+        success: combinedResult.success,
+        iposProcessed: combinedResult.iposProcessed,
+        iposInserted: combinedResult.iposInserted,
+        iposUpdated: combinedResult.iposUpdated,
+        iposMerged: combinedResult.iposMerged,
+        smeCount: combinedResult.smeCount,
+        mainboardCount: combinedResult.mainboardCount,
+        iposFailed: combinedResult.iposFailed,
+        subscriptionsCreated: combinedResult.subscriptionsCreated,
+        errorCount: combinedResult.errors.length
       },
       'Scraper execution completed'
     );
 
     // Exit with appropriate code
-    if (result.success) {
+    if (combinedResult.success) {
       logger.info('Scraper completed successfully');
       process.exit(0);
     } else {
       logger.error('Scraper completed with errors');
-      if (result.errors.length > 0) {
-        logger.error({ errors: result.errors }, 'Error details');
+      if (combinedResult.errors.length > 0) {
+        logger.error({ errors: combinedResult.errors }, 'Error details');
       }
       process.exit(1);
     }

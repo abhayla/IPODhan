@@ -3,7 +3,7 @@ import { SubscriptionRepository } from '@web/lib/repositories/subscription-repos
 import { db } from '@web/lib/db/index';
 import { getRedisClient } from '@web/lib/cache/redis-client';
 import logger from '../utils/logger.js';
-import { scrapeNSEIPOs } from './nse-scraper.js';
+import { scrapeBSEIPOs } from './bse-scraper.js';
 import { validateIPOData, validateSubscriptionData, generateSlug } from '../utils/validators.js';
 import { upsertIPO, createSubscriptionSnapshot } from '../services/data-persister.js';
 import { invalidateIPOCaches, invalidateSubscriptionCache } from '../services/cache-invalidator.js';
@@ -13,17 +13,21 @@ export interface ScraperResult {
   iposProcessed: number;
   iposInserted: number;
   iposUpdated: number;
+  iposMerged: number;
   iposFailed: number;
+  smeCount: number;
+  mainboardCount: number;
   subscriptionsCreated: number;
   errors: string[];
 }
 
 /**
- * Run NSE scraper workflow
+ * Run BSE scraper workflow
  * Orchestrates the full scraping, validation, persistence, and cache invalidation process
+ * Handles dual-listed IPO merge logic
  * @returns Promise<ScraperResult> - Summary of scraper execution
  */
-export async function runNSEScraper(): Promise<ScraperResult> {
+export async function runBSEScraper(): Promise<ScraperResult> {
   const startTime = Date.now();
 
   const result: ScraperResult = {
@@ -31,23 +35,32 @@ export async function runNSEScraper(): Promise<ScraperResult> {
     iposProcessed: 0,
     iposInserted: 0,
     iposUpdated: 0,
+    iposMerged: 0,
     iposFailed: 0,
+    smeCount: 0,
+    mainboardCount: 0,
     subscriptionsCreated: 0,
     errors: []
   };
 
   try {
-    logger.info('NSE scraper orchestrator started');
+    logger.info('BSE scraper orchestrator started');
 
     // Initialize repositories
     const redis = getRedisClient();
     const ipoRepository = new IPORepository(db, redis);
     const subscriptionRepository = new SubscriptionRepository(db, redis);
 
-    // Step 1: Scrape NSE data
-    const { ipos: scrapedIPOs, subscriptions: scrapedSubscriptions } = await scrapeNSEIPOs();
+    // Step 1: Scrape BSE data
+    const { ipos: scrapedIPOs, subscriptions: scrapedSubscriptions, smeCount, mainboardCount } = await scrapeBSEIPOs();
 
-    logger.info({ totalIPOs: scrapedIPOs.length }, 'Scraped data received from NSE');
+    logger.info(
+      { totalIPOs: scrapedIPOs.length, smeCount, mainboardCount },
+      'Scraped data received from BSE'
+    );
+
+    result.smeCount = smeCount;
+    result.mainboardCount = mainboardCount;
 
     // Step 2: Validate and process IPOs
     for (const scrapedIPO of scrapedIPOs) {
@@ -70,14 +83,20 @@ export async function runNSEScraper(): Promise<ScraperResult> {
 
         const validatedIPO = validation.data!;
 
-        // Check if IPO already exists (to track insert vs update)
+        // Check if IPO already exists (to track insert vs update vs merge)
         const slug = generateSlug(validatedIPO.companyName);
         const existingIPO = await ipoRepository.findBySlug(slug);
 
-        // Upsert IPO to database
-        const ipoId = await upsertIPO(ipoRepository, validatedIPO, 'NSE');
+        // Track if this is a merge operation (dual-listed IPO)
+        const isMerge = existingIPO && !(existingIPO.listingExchanges as string[]).includes('BSE');
 
-        if (existingIPO) {
+        // Upsert IPO to database with BSE source (handles merge logic)
+        const ipoId = await upsertIPO(ipoRepository, validatedIPO, 'BSE');
+
+        if (isMerge) {
+          result.iposMerged++;
+          result.iposUpdated++;
+        } else if (existingIPO) {
           result.iposUpdated++;
         } else {
           result.iposInserted++;
@@ -138,7 +157,7 @@ export async function runNSEScraper(): Promise<ScraperResult> {
         ...result,
         duration
       },
-      'NSE scraper orchestrator completed'
+      'BSE scraper orchestrator completed'
     );
 
     return result;
@@ -149,7 +168,7 @@ export async function runNSEScraper(): Promise<ScraperResult> {
 
     logger.error(
       { error: errorMsg, duration },
-      'NSE scraper orchestrator failed'
+      'BSE scraper orchestrator failed'
     );
 
     result.success = false;
