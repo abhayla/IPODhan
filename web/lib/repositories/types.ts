@@ -116,6 +116,14 @@ export interface GMPFilters {
 // ==================== PAGINATION TYPES ====================
 
 /**
+ * Pagination parameters for queries
+ */
+export interface PaginationParams {
+  page: number;
+  limit: number;
+}
+
+/**
  * Pagination metadata
  */
 export interface PaginationMeta {

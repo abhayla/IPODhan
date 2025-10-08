@@ -13,6 +13,7 @@ export { DocumentRepository } from './document-repository';
 export { ListingPerformanceRepository } from './listing-performance-repository';
 export { RegistrarRepository } from './registrar-repository';
 export { MarketHolidayRepository } from './market-holiday-repository';
+export { ScraperLogRepository } from './scraper-log-repository';
 
 // Base Repository
 export { BaseRepository } from './base-repository';
