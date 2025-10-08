@@ -192,6 +192,225 @@ See `docs/stories/SPRINT-1-PLAN.md` for detailed implementation plan.
 ## Contributing
 This is an MVP project under active development. See `docs/stories/` for planned features and current sprint progress.
 
+## Production Deployment
+
+### Prerequisites for Production
+
+- Windows Server 2022 VPS (103.118.16.189)
+- Node.js 20 LTS
+- PostgreSQL 16+
+- Redis 7.2+
+- PM2 (process manager)
+- Git
+
+### Deployment Steps
+
+#### 1. Build Deployment Package
+
+On your local development machine:
+
+```powershell
+# Using PowerShell (Windows)
+.\scripts\create-deployment-package.ps1
+
+# Or using Bash (Git Bash/WSL)
+./scripts/create-deployment-package.sh
+```
+
+This will create `ipodhan-deployment-{timestamp}.zip` containing:
+- Built Next.js web application
+- Built scraper service
+- PM2 configuration
+- Environment template
+- Deployment documentation
+
+#### 2. Transfer to VPS
+
+```powershell
+# Using RDP: Copy the .zip file via Remote Desktop
+# Or using SCP:
+scp ipodhan-deployment-*.zip user@103.118.16.189:C:\deployments\
+```
+
+#### 3. Extract and Setup on VPS
+
+```powershell
+# Extract deployment package
+Expand-Archive ipodhan-deployment-*.zip
+
+# Navigate to deployment folder
+cd ipodhan-deployment-*
+
+# Install production dependencies
+cd web
+npm ci --production
+cd ..
+
+cd scraper
+npm ci --production
+cd ..
+```
+
+#### 4. Configure Environment
+
+```powershell
+# Copy environment template
+Copy-Item .env.production.template .env.production
+
+# Edit with production values
+notepad .env.production
+```
+
+Required environment variables:
+- `DATABASE_HOST=103.118.16.189`
+- `DATABASE_PASSWORD=<production-password>`
+- `REDIS_HOST=103.118.16.189`
+- `REDIS_PASSWORD=<redis-password>`
+- `NEXT_PUBLIC_GA_MEASUREMENT_ID=<google-analytics-id>`
+
+See `.env.production.template` for complete list.
+
+#### 5. Start Services with PM2
+
+```powershell
+# Install PM2 globally (if not installed)
+npm install -g pm2
+
+# Start all services
+pm2 start ecosystem.config.js
+
+# Save PM2 process list
+pm2 save
+
+# Setup PM2 to start on system boot
+pm2 startup
+
+# Verify services are running
+pm2 status
+```
+
+Expected output:
+```
+┌─────┬────────────────────┬─────────┬─────────┬──────────┐
+│ id  │ name               │ mode    │ status  │ memory   │
+├─────┼────────────────────┼─────────┼─────────┼──────────┤
+│ 0   │ ipodhan-web        │ cluster │ online  │ 150M     │
+│ 1   │ ipodhan-web        │ cluster │ online  │ 145M     │
+│ 2   │ ipodhan-scraper    │ fork    │ online  │ 80M      │
+└─────┴────────────────────┴─────────┴─────────┴──────────┘
+```
+
+#### 6. Verify Deployment
+
+```powershell
+# Test health endpoint
+curl http://localhost:3000/api/health
+
+# Expected response:
+# {
+#   "status": "healthy",
+#   "timestamp": "...",
+#   "services": {
+#     "database": "healthy",
+#     "redis": "healthy"
+#   }
+# }
+
+# Test application in browser
+# http://103.118.16.189:3000
+```
+
+### Monitoring & Maintenance
+
+#### PM2 Commands
+
+```powershell
+# View logs
+pm2 logs
+
+# View logs for specific app
+pm2 logs ipodhan-web
+pm2 logs ipodhan-scraper
+
+# Monitor real-time metrics
+pm2 monit
+
+# Restart services
+pm2 restart all
+pm2 restart ipodhan-web
+pm2 restart ipodhan-scraper
+
+# Stop services
+pm2 stop all
+
+# Delete from PM2
+pm2 delete all
+```
+
+#### Log Files
+
+PM2 logs are stored in:
+- `./logs/web-error.log` - Web application errors
+- `./logs/web-out.log` - Web application output
+- `./logs/scraper-error.log` - Scraper errors
+- `./logs/scraper-out.log` - Scraper output
+
+#### Health Checks
+
+Monitor application health:
+- **Endpoint:** `GET /api/health`
+- **Success:** Returns `200` with `status: "healthy"`
+- **Failure:** Returns `503` with service-specific errors
+
+Setup UptimeRobot or similar service to monitor:
+- URL: `http://103.118.16.189:3000/api/health`
+- Interval: Every 5 minutes
+- Alert: Email on 3 consecutive failures
+
+### Rollback Procedure
+
+See `docs/deployment/ROLLBACK.md` for detailed rollback steps.
+
+Quick rollback:
+```powershell
+# Stop current deployment
+pm2 stop all
+
+# Restore previous deployment
+cd ..\ipodhan-deployment-{previous-timestamp}
+pm2 start ecosystem.config.js
+pm2 save
+```
+
+### Troubleshooting
+
+#### Application Won't Start
+1. Check PM2 logs: `pm2 logs`
+2. Verify environment variables in `.env.production`
+3. Test database connection: `psql -h 103.118.16.189 -U postgres -d ipodhan`
+4. Test Redis connection: `redis-cli -h 103.118.16.189 ping`
+
+#### High Memory Usage
+1. Check PM2 status: `pm2 status`
+2. Restart services: `pm2 restart all`
+3. Review `max_memory_restart` in `ecosystem.config.js`
+
+#### Scraper Not Running
+1. Check scraper logs: `pm2 logs ipodhan-scraper`
+2. Verify cron schedule: `0 3 * * *` (3 AM daily)
+3. Manual trigger: `pm2 restart ipodhan-scraper`
+
+#### Database Connection Errors
+1. Verify PostgreSQL is running
+2. Check firewall allows port 5432
+3. Test connection: `curl http://localhost:3000/api/health`
+
+### Deployment Checklist
+
+See `docs/deployment/DEPLOYMENT-CHECKLIST.md` for complete pre-deployment checklist.
+
+---
+
 ## License
 Proprietary - All rights reserved
 
