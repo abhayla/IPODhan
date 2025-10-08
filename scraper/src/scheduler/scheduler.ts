@@ -1,5 +1,5 @@
 import cron, { type ScheduledTask } from 'node-cron';
-import { getRedisClient } from '@web/lib/cache/redis-client';
+import { getRedisClient } from '../../web/lib/cache/redis-client.js';
 import logger from '../utils/logger.js';
 import { schedulerConfig, LOCK_TTL } from './config.js';
 import { JobLockManager } from './job-lock.js';

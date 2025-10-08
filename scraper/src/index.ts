@@ -3,9 +3,9 @@
 import { runNSEScraper } from './scrapers/nse-scraper-orchestrator.js';
 import { runBSEScraper } from './scrapers/bse-scraper-orchestrator.js';
 import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrator.js';
-import { IPORepository } from '@web/lib/repositories/ipo-repository';
-import { db } from '@web/lib/db/index';
-import { getRedisClient } from '@web/lib/cache/redis-client';
+import { IPORepository } from '../../web/lib/repositories/ipo-repository.js';
+import { db } from '../../web/lib/db/index.js';
+import { getRedisClient } from '../../web/lib/cache/redis-client.js';
 import logger from './utils/logger.js';
 
 /**
