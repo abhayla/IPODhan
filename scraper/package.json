@@ -4,6 +4,8 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
+    "start:bse": "tsx src/index.ts --source=bse",
+    "start:all": "tsx src/index.ts --source=all",
     "dev": "tsx watch src/index.ts",
     "build": "tsc && tsc-alias",
     "test": "vitest",

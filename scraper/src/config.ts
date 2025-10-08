@@ -16,6 +16,7 @@ export const config = {
   },
   scraper: {
     nseUrl: process.env.NSE_URL || 'https://www.nseindia.com/market-data/public-issues',
+    bseUrl: process.env.BSE_URL || 'https://www.bseindia.com/publicissue.html',
     timeout: parseInt(process.env.SCRAPER_TIMEOUT || '30000'),
     retryAttempts: parseInt(process.env.RETRY_ATTEMPTS || '3'),
     retryDelays: (process.env.RETRY_DELAYS || '1000,2000,4000')
