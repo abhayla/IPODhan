@@ -1,15 +1,18 @@
 'use client';
 
-import { IPO, IPOStatus } from '@/lib/db/types';
+import { IPO, IPOStatus, ListingPerformance } from '@/lib/db/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { Star } from 'lucide-react';
 import { HighlightedText } from '@/components/search/HighlightedText';
+import { ListingPerformanceBadge } from './ListingPerformanceBadge';
 
 interface IPOCardProps {
-  ipo: IPO;
+  ipo: IPO & {
+    listingPerformance?: ListingPerformance | null;
+  };
   searchQuery?: string;
   onClick?: () => void;
 }
@@ -83,14 +86,28 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
       onClick={handleClick}
       className="block transition-all duration-200 hover:scale-[1.02]"
     >
-      <Card className="h-full cursor-pointer border-2 border-border hover:border-primary hover:shadow-lg transition-all duration-200">
+      <Card
+        data-testid="ipo-card"
+        className="h-full cursor-pointer border-2 border-border hover:border-primary hover:shadow-lg transition-all duration-200"
+      >
         <CardContent className="p-6 space-y-4">
           {/* Header: Company Name and Status */}
           <div className="flex items-start justify-between gap-2">
             <h3 className="text-lg font-bold leading-tight line-clamp-2 flex-1">
               <HighlightedText text={ipo.companyName} query={searchQuery || ''} />
             </h3>
-            <Badge className={statusConfig.color}>{statusConfig.label}</Badge>
+            <div className="flex flex-col gap-2 items-end">
+              <Badge className={statusConfig.color}>{statusConfig.label}</Badge>
+              {/* Listing Performance Badge for LISTED IPOs */}
+              {ipo.status === 'LISTED' &&
+               ipo.listingPerformance &&
+               ipo.listingDate && (
+                <ListingPerformanceBadge
+                  listingGainPercent={parseFloat(ipo.listingPerformance.listingGainPercent)}
+                  variant="compact"
+                />
+              )}
+            </div>
           </div>
 
           {/* Category and Sector */}

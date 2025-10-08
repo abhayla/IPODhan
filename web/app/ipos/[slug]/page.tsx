@@ -24,6 +24,8 @@ import { AllotmentCheckerCard } from '@/components/ipo/AllotmentCheckerCard';
 import { LotCalculator } from '@/components/tools/LotCalculator';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { AffiliateSection } from '@/components/affiliate/AffiliateSection';
+import { ListingPerformance } from '@/components/ipo/ListingPerformance';
+import { getSectorAverage } from '@/lib/utils/sector-averages';
 import type { IPODetailResponse } from '@/lib/db/types';
 
 // ==================== TYPES ====================
@@ -147,7 +149,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     notFound();
   }
 
-  const { ipo, gmpRecords, subscriptions } = data;
+  const { ipo, gmpRecords, subscriptions, listingPerformance } = data;
 
   // Calculate metrics for KeyMetricsCards
   const latestSubscription = subscriptions?.[0];
@@ -163,8 +165,13 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   const subscriptionTrend: 'up' | 'down' | 'neutral' =
     subscriptionValue !== null && Number(subscriptionValue) > 1 ? 'up' : 'neutral';
 
+  // Fetch sector average for listing performance comparison
+  const sectorAverage = ipo.status === 'LISTED' && ipo.listingDate && listingPerformance
+    ? await getSectorAverage(ipo.sector)
+    : null;
+
   // Generate JSON-LD structured data for SEO
-  const jsonLd = {
+  const jsonLd: Record<string, unknown> = {
     '@context': 'https://schema.org',
     '@type': 'FinancialProduct',
     name: `${ipo.companyName} IPO`,
@@ -189,6 +196,30 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     },
     datePublished: ipo.openDate || undefined,
   };
+
+  // Add listing performance data to JSON-LD for historical IPOs
+  if (ipo.status === 'LISTED' && ipo.listingDate && listingPerformance) {
+    jsonLd.listingDate = ipo.listingDate;
+    jsonLd.performanceMetrics = {
+      '@type': 'QuantitativeValue',
+      name: 'Listing Day Return',
+      value: parseFloat(listingPerformance.listingGainPercent),
+      unitCode: 'P1', // Percentage
+      description: `Listing day return of ${listingPerformance.listingGainPercent}% from issue price ₹${listingPerformance.issuePrice} to listing price ₹${listingPerformance.listingPrice}`,
+    };
+
+    // Add current performance if available
+    if (listingPerformance.currentPrice && listingPerformance.currentGainPercent) {
+      jsonLd.currentPerformance = {
+        '@type': 'QuantitativeValue',
+        name: 'Overall Return',
+        value: parseFloat(listingPerformance.currentGainPercent),
+        unitCode: 'P1', // Percentage
+        price: listingPerformance.currentPrice,
+        priceCurrency: 'INR',
+      };
+    }
+  }
 
   // Breadcrumb structured data
   const breadcrumbJsonLd = {
@@ -292,6 +323,23 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 registrar={ipo.registrarRelation?.shortName || ipo.registrar || 'Registrar'}
                 registrarUrl={ipo.registrarRelation?.allotmentCheckUrl || null}
                 companyName={ipo.companyName}
+              />
+            )}
+
+            {/* Listing Performance (Story 6.3) */}
+            {ipo.status === 'LISTED' && ipo.listingDate && listingPerformance && (
+              <ListingPerformance
+                data={{
+                  issuePrice: listingPerformance.issuePrice,
+                  listingPrice: listingPerformance.listingPrice,
+                  listingGainPercent: parseFloat(listingPerformance.listingGainPercent),
+                  currentPrice: listingPerformance.currentPrice,
+                  currentGainPercent: listingPerformance.currentGainPercent
+                    ? parseFloat(listingPerformance.currentGainPercent)
+                    : null,
+                }}
+                sector={ipo.sector}
+                sectorAverage={sectorAverage}
               />
             )}
 
