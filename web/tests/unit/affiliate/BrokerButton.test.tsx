@@ -61,8 +61,8 @@ describe('BrokerButton', () => {
     const user = userEvent.setup();
     render(<BrokerButton broker={mockBroker} source="homepage" />);
 
-    const link = screen.getByRole('link');
-    await user.click(link);
+    const button = screen.getByRole('button');
+    await user.click(button);
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
@@ -89,8 +89,8 @@ describe('BrokerButton', () => {
       <BrokerButton broker={mockBroker} source="ipo_detail" ipoId={ipoId} />
     );
 
-    const link = screen.getByRole('link');
-    await user.click(link);
+    const button = screen.getByRole('button');
+    await user.click(button);
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(
@@ -113,8 +113,8 @@ describe('BrokerButton', () => {
     const user = userEvent.setup();
     render(<BrokerButton broker={mockBroker} source="homepage" />);
 
-    const link = screen.getByRole('link');
-    await user.click(link);
+    const button = screen.getByRole('button');
+    await user.click(button);
 
     await waitFor(() => {
       expect(mockGtag).toHaveBeenCalledWith('event', 'affiliate_click', {
@@ -134,8 +134,8 @@ describe('BrokerButton', () => {
     const user = userEvent.setup();
     render(<BrokerButton broker={mockBroker} source="homepage" />);
 
-    const link = screen.getByRole('link');
-    await user.click(link);
+    const button = screen.getByRole('button');
+    await user.click(button);
 
     await waitFor(() => {
       expect(consoleError).toHaveBeenCalledWith(
@@ -151,12 +151,12 @@ describe('BrokerButton', () => {
     const user = userEvent.setup();
     render(<BrokerButton broker={mockBroker} source="homepage" />);
 
-    const link = screen.getByRole('link');
+    const button = screen.getByRole('button');
 
     // Click multiple times rapidly
-    await user.click(link);
-    await user.click(link);
-    await user.click(link);
+    await user.click(button);
+    await user.click(button);
+    await user.click(button);
 
     // Should only track once
     await waitFor(() => {
