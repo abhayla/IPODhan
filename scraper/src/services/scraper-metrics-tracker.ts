@@ -210,7 +210,7 @@ export class ScraperMetricsTracker {
    * Get all metrics for all sources
    */
   async getAllMetrics(): Promise<Record<ScraperSource, ScraperMetrics>> {
-    const sources: ScraperSource[] = ['NSE', 'BSE', 'API_FALLBACK'];
+    const sources: ScraperSource[] = ['NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH', 'API_FALLBACK'];
     const metrics: Record<string, ScraperMetrics> = {};
 
     for (const source of sources) {

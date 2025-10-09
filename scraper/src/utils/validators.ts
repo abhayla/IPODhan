@@ -18,14 +18,14 @@ export const ScrapedIPOSchema = z.object({
     'Close date must be a valid ISO 8601 date string'
   ),
   listingExchange: z.enum(['NSE', 'BSE', 'BOTH'], {
-    errorMap: () => ({ message: 'Invalid listing exchange' })
+    message: 'Invalid listing exchange'
   }),
   category: z.enum(['MAINBOARD', 'SME', 'RIGHTS', 'NCD'], {
-    errorMap: () => ({ message: 'Invalid IPO category' })
+    message: 'Invalid IPO category'
   }),
   sector: z.string().max(100).optional(),
   status: z.enum(['UPCOMING', 'LIVE', 'CLOSED', 'LISTED'], {
-    errorMap: () => ({ message: 'Invalid IPO status - must be UPCOMING, LIVE, CLOSED, or LISTED' })
+    message: 'Invalid IPO status - must be UPCOMING, LIVE, CLOSED, or LISTED'
   }),
   lotSize: z.number().int().positive().optional(),
   faceValue: z.number().int().positive().optional(),
@@ -39,7 +39,8 @@ export const ScrapedIPOSchema = z.object({
   ),
   companyDescription: z.string().optional(),
   registrar: z.string().max(255).optional(),
-  leadManagers: z.array(z.string()).optional()
+  leadManagers: z.array(z.string()).optional(),
+  symbol: z.string().optional() // NSE/BSE stock symbol
 }).refine(
   (data) => new Date(data.closeDate) >= new Date(data.openDate),
   {
@@ -56,10 +57,98 @@ export const ScrapedIPOSchema = z.object({
 
 export type ScrapedIPO = z.infer<typeof ScrapedIPOSchema>;
 
+// ==================== MONEYCONTROL IPO SCHEMA ====================
+
+export const MoneycontrolIPOSchema = ScrapedIPOSchema.merge(z.object({
+  dataSource: z.literal('MONEYCONTROL'),
+  rating: z.number().min(0).max(5).optional(), // Moneycontrol's IPO rating (0-5 stars)
+  listingGains: z.number().optional(), // Expected listing gains percentage
+}));
+
+export type MoneycontrolIPO = z.infer<typeof MoneycontrolIPOSchema>;
+
+/**
+ * Validate Moneycontrol scraped IPO data
+ * @param data - Raw scraped Moneycontrol data
+ * @returns Validation result with parsed data or error
+ */
+export function validateMoneycontrolIPOData(data: unknown): {
+  success: boolean;
+  data?: MoneycontrolIPO;
+  error?: z.ZodError;
+} {
+  try {
+    const parsed = MoneycontrolIPOSchema.parse(data);
+    return { success: true, data: parsed };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { success: false, error };
+    }
+    throw error;
+  }
+}
+
+// ==================== CHITTORGARH IPO SCHEMA ====================
+
+export const ChittorgarhIPOSchema = ScrapedIPOSchema.merge(z.object({
+  dataSource: z.literal('CHITTORGARH'),
+  gmp: z.number().optional(), // Grey Market Premium in INR
+  gmpPercentage: z.number().optional(), // GMP as percentage of issue price
+  gmpUpdatedAt: z.string().optional().refine(
+    (date) => !date || !isNaN(Date.parse(date)),
+    'GMP updated date must be a valid ISO 8601 date string'
+  ),
+}));
+
+export type ChittorgarhIPO = z.infer<typeof ChittorgarhIPOSchema>;
+
+/**
+ * Validate Chittorgarh scraped IPO data
+ * @param data - Raw scraped Chittorgarh data
+ * @returns Validation result with parsed data or error
+ */
+export function validateChittorgarhIPOData(data: unknown): {
+  success: boolean;
+  data?: ChittorgarhIPO;
+  error?: z.ZodError;
+} {
+  try {
+    const parsed = ChittorgarhIPOSchema.parse(data);
+    return { success: true, data: parsed };
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return { success: false, error };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Validate GMP (Grey Market Premium) value
+ * Ensures GMP is within reasonable bounds relative to issue price
+ * @param gmp - GMP value in INR
+ * @param issuePrice - Issue price in INR
+ * @returns true if GMP is valid
+ */
+export function validateGMP(gmp: number, issuePrice: number): boolean {
+  if (!gmp || !issuePrice) return true; // Allow missing GMP
+
+  const gmpPercentage = (gmp / issuePrice) * 100;
+
+  // Reject unrealistic GMP values
+  // GMP typically ranges from -50% to +200% of issue price
+  if (gmpPercentage > 200 || gmpPercentage < -50) {
+    return false;
+  }
+
+  return true;
+}
+
 // ==================== SCRAPED SUBSCRIPTION SCHEMA ====================
 
 export const ScrapedSubscriptionSchema = z.object({
   ipoCompanyName: z.string().min(1, 'IPO company name is required'),
+  ipoSymbol: z.string().optional(), // NSE/BSE stock symbol
   qibSubscription: z.number().min(0, 'QIB subscription must be non-negative'),
   niiSubscription: z.number().min(0, 'NII subscription must be non-negative'),
   retailSubscription: z.number().min(0, 'Retail subscription must be non-negative'),
@@ -189,13 +278,13 @@ export const IPOAlertsAPIIPOSchema = z.object({
     'Close date must be a valid date string'
   ),
   status: z.enum(['OPEN', 'UPCOMING', 'CLOSED', 'LISTED'], {
-    errorMap: () => ({ message: 'Invalid IPO status' })
+    message: 'Invalid IPO status'
   }),
   category: z.enum(['MAINBOARD', 'SME', 'RIGHTS', 'NCD'], {
-    errorMap: () => ({ message: 'Invalid IPO category' })
+    message: 'Invalid IPO category'
   }),
   exchange: z.enum(['NSE', 'BSE', 'BOTH'], {
-    errorMap: () => ({ message: 'Invalid exchange' })
+    message: 'Invalid exchange'
   }),
   sector: z.string().max(100).optional(),
   lot_size: z.number().int().positive().optional(),
@@ -249,6 +338,9 @@ export function validateIPOAlertsIPOData(data: unknown): {
  * @returns Transformed ScrapedIPO data
  */
 export function transformIPOAlertsData(apiData: IPOAlertsAPIIPO): ScrapedIPO {
+  // Map API status 'OPEN' to 'LIVE' (our internal status for active IPOs)
+  const status = apiData.status === 'OPEN' ? 'LIVE' : apiData.status;
+
   return {
     companyName: sanitizeCompanyName(apiData.company_name),
     issueSize: apiData.issue_size,
@@ -259,7 +351,7 @@ export function transformIPOAlertsData(apiData: IPOAlertsAPIIPO): ScrapedIPO {
     listingExchange: apiData.exchange,
     category: apiData.category,
     sector: apiData.sector,
-    status: apiData.status,
+    status,
     lotSize: apiData.lot_size,
     faceValue: apiData.face_value,
     allotmentDate: apiData.allotment_date,
