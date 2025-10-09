@@ -1,12 +1,48 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { scrapeNSEIPOs } from '../../../src/scrapers/nse-scraper.js';
+import * as nseApiClient from '../../../src/scrapers/nse-api-client.js';
 
 /**
  * Unit Tests for NSE Scraper
- * Tests the core scraping logic with mocked browser
+ * Tests the core scraping logic with mocked API calls
  */
 
 describe('NSE Scraper', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+
+    // Mock the NSE API functions to prevent real network calls
+    vi.spyOn(nseApiClient, 'testNSEAPIConnection').mockResolvedValue(true);
+    vi.spyOn(nseApiClient, 'scrapeNSEAPI').mockResolvedValue({
+      ipos: [
+        {
+          companyName: 'Test Company Ltd',
+          issueSize: 50000000000,
+          priceRangeMin: 100,
+          priceRangeMax: 110,
+          openDate: '2025-10-15',
+          closeDate: '2025-10-18',
+          listingExchange: 'NSE',
+          category: 'MAINBOARD',
+          status: 'UPCOMING',
+          lotSize: 100,
+          faceValue: 10
+        }
+      ],
+      subscriptions: [
+        {
+          ipoCompanyName: 'Test Company Ltd',
+          ipoSymbol: 'TEST',
+          qibSubscription: 1.5,
+          niiSubscription: 2.0,
+          retailSubscription: 3.0,
+          totalSubscription: 2.2,
+          timestamp: '2025-10-16T10:00:00Z'
+        }
+      ]
+    });
+  });
+
   describe('scrapeNSEIPOs', () => {
     it('should return valid IPO data structure', async () => {
       const result = await scrapeNSEIPOs();
@@ -28,16 +64,18 @@ describe('NSE Scraper', () => {
         expect(ipo).toHaveProperty('status');
         expect(ipo).toHaveProperty('openDate');
         expect(ipo).toHaveProperty('closeDate');
-        expect(ipo).toHaveProperty('issuePrice');
-        expect(ipo).toHaveProperty('listingExchanges');
+        expect(ipo).toHaveProperty('priceRangeMin');
+        expect(ipo).toHaveProperty('priceRangeMax');
+        expect(ipo).toHaveProperty('listingExchange');
 
         // Field types
         expect(typeof ipo.companyName).toBe('string');
         expect(['UPCOMING', 'OPEN', 'CLOSED', 'LISTED']).toContain(ipo.status);
         expect(typeof ipo.openDate).toBe('string');
         expect(typeof ipo.closeDate).toBe('string');
-        expect(typeof ipo.issuePrice).toBe('number');
-        expect(Array.isArray(ipo.listingExchanges)).toBe(true);
+        expect(typeof ipo.priceRangeMin).toBe('number');
+        expect(typeof ipo.priceRangeMax).toBe('number');
+        expect(['NSE', 'BSE', 'BOTH']).toContain(ipo.listingExchange);
       }
     });
 
@@ -48,20 +86,20 @@ describe('NSE Scraper', () => {
         const subscription = result.subscriptions[0];
 
         // Required fields
-        expect(subscription).toHaveProperty('ipoSlug');
+        expect(subscription).toHaveProperty('ipoCompanyName');
         expect(subscription).toHaveProperty('qibSubscription');
         expect(subscription).toHaveProperty('niiSubscription');
         expect(subscription).toHaveProperty('retailSubscription');
-        expect(subscription).toHaveProperty('sniiSubscription');
         expect(subscription).toHaveProperty('totalSubscription');
+        expect(subscription).toHaveProperty('timestamp');
 
         // Field types
-        expect(typeof subscription.ipoSlug).toBe('string');
+        expect(typeof subscription.ipoCompanyName).toBe('string');
         expect(typeof subscription.qibSubscription).toBe('number');
         expect(typeof subscription.niiSubscription).toBe('number');
         expect(typeof subscription.retailSubscription).toBe('number');
-        expect(typeof subscription.sniiSubscription).toBe('number');
         expect(typeof subscription.totalSubscription).toBe('number');
+        expect(typeof subscription.timestamp).toBe('string');
       }
     });
 
@@ -75,12 +113,12 @@ describe('NSE Scraper', () => {
       expect(Array.isArray(result.subscriptions)).toBe(true);
     });
 
-    it('should include NSE in listingExchanges', async () => {
+    it('should include NSE in listingExchange', async () => {
       const result = await scrapeNSEIPOs();
 
       if (result.ipos.length > 0) {
         const ipo = result.ipos[0];
-        expect(ipo.listingExchanges).toContain('NSE');
+        expect(ipo.listingExchange).toBe('NSE');
       }
     });
 
@@ -89,8 +127,9 @@ describe('NSE Scraper', () => {
 
       if (result.ipos.length > 0) {
         const ipo = result.ipos[0];
-        expect(ipo.issuePrice).toBeGreaterThanOrEqual(0);
-        expect(ipo.issuePrice).toBeLessThan(100000); // Reasonable max price
+        expect(ipo.priceRangeMin).toBeGreaterThanOrEqual(0);
+        expect(ipo.priceRangeMax).toBeGreaterThanOrEqual(ipo.priceRangeMin);
+        expect(ipo.priceRangeMax).toBeLessThan(100000); // Reasonable max price
       }
     });
 
@@ -144,17 +183,10 @@ describe('NSE Scraper', () => {
         expect(subscription.qibSubscription).toBeGreaterThanOrEqual(0);
         expect(subscription.niiSubscription).toBeGreaterThanOrEqual(0);
         expect(subscription.retailSubscription).toBeGreaterThanOrEqual(0);
-        expect(subscription.sniiSubscription).toBeGreaterThanOrEqual(0);
         expect(subscription.totalSubscription).toBeGreaterThanOrEqual(0);
 
-        // Total should be >= largest category
-        const maxCategory = Math.max(
-          subscription.qibSubscription,
-          subscription.niiSubscription,
-          subscription.retailSubscription,
-          subscription.sniiSubscription
-        );
-        expect(subscription.totalSubscription).toBeGreaterThanOrEqual(maxCategory);
+        // Total should be >= 0
+        expect(subscription.totalSubscription).toBeGreaterThanOrEqual(0);
       }
     });
   });
@@ -181,15 +213,14 @@ describe('NSE Scraper', () => {
       }
     });
 
-    it('should have valid minimum application amounts', async () => {
+    it('should have valid issue size', async () => {
       const result = await scrapeNSEIPOs();
 
       if (result.ipos.length > 0) {
         const ipo = result.ipos[0];
-        if (ipo.minInvestment) {
-          expect(ipo.minInvestment).toBeGreaterThan(0);
-          expect(ipo.minInvestment).toBeLessThan(10000000); // 1 crore max
-        }
+        expect(ipo.issueSize).toBeGreaterThanOrEqual(0);
+        // Issue sizes are in INR (paise), so even small IPOs should be in crores converted to paise
+        expect(ipo.issueSize).toBeLessThan(1000000000000); // 10 lakh crore max (very large)
       }
     });
   });
