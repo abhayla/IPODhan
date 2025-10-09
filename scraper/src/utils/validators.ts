@@ -4,11 +4,11 @@ import { z } from 'zod';
 
 export const ScrapedIPOSchema = z.object({
   companyName: z.string().min(1, 'Company name is required').max(255),
-  issueSize: z.number().positive('Issue size must be positive'),
-  priceRangeMin: z.number().positive('Price range min must be positive'),
+  issueSize: z.number().nonnegative('Issue size must be non-negative'),
+  priceRangeMin: z.number().nonnegative('Price range min must be non-negative'),
   priceRangeMax: z
     .number()
-    .positive('Price range max must be positive'),
+    .nonnegative('Price range max must be non-negative'),
   openDate: z.string().refine(
     (date) => !isNaN(Date.parse(date)),
     'Open date must be a valid ISO 8601 date string'
@@ -24,8 +24,8 @@ export const ScrapedIPOSchema = z.object({
     errorMap: () => ({ message: 'Invalid IPO category' })
   }),
   sector: z.string().max(100).optional(),
-  status: z.enum(['UPCOMING', 'OPEN', 'CLOSED', 'LISTED'], {
-    errorMap: () => ({ message: 'Invalid IPO status' })
+  status: z.enum(['UPCOMING', 'LIVE', 'CLOSED', 'LISTED'], {
+    errorMap: () => ({ message: 'Invalid IPO status - must be UPCOMING, LIVE, CLOSED, or LISTED' })
   }),
   lotSize: z.number().int().positive().optional(),
   faceValue: z.number().int().positive().optional(),

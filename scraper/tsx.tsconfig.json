@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "moduleResolution": "node16",
+    "module": "Node16",
+    "target": "ES2022",
+    "baseUrl": ".",
+    "paths": {
+      "@web/*": ["../web/*"],
+      "@shared/*": ["../packages/shared/src/*"],
+      "@scraper/*": ["./src/*"]
+    }
+  },
+  "ts-node": {
+    "transpileOnly": true,
+    "compilerOptions": {
+      "module": "commonjs"
+    }
+  }
+}

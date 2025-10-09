@@ -8,7 +8,7 @@
 
 import { logger } from '../utils/logger';
 import type { ScraperAlert, ScraperSource } from './types';
-import type { ScraperLog } from '../../../web/lib/db/types';
+import type { ScraperLog } from '@ipodhan/shared';
 
 /**
  * Configuration for email alerting
@@ -76,26 +76,37 @@ export class AlertingService {
    */
   private async sendEmailAlert(alert: ScraperAlert): Promise<void> {
     try {
-      // Email sending would be implemented here using Nodemailer
-      // For now, we'll log that email would be sent
+      // Dynamically import nodemailer to avoid bundling if not used
+      const nodemailer = await import('nodemailer');
+
+      // Create SMTP transporter
+      const transporter = nodemailer.createTransport({
+        host: this.emailConfig.smtpHost || process.env.SMTP_HOST || 'smtp.gmail.com',
+        port: this.emailConfig.smtpPort || parseInt(process.env.SMTP_PORT || '587'),
+        secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+        auth: {
+          user: this.emailConfig.smtpUser || process.env.SMTP_USER,
+          pass: this.emailConfig.smtpPassword || process.env.SMTP_PASSWORD
+        }
+      });
+
+      // Send email
+      await transporter.sendMail({
+        from: this.emailConfig.smtpUser || process.env.SMTP_USER,
+        to: this.emailConfig.adminEmail || process.env.ADMIN_EMAIL,
+        subject: `[IPODhan Alert] Scraper ${alert.source} ${alert.severity}: ${alert.reason}`,
+        html: this.generateEmailHtml(alert)
+      });
+
       logger.info({
-        alert: 'email_would_be_sent',
         source: alert.source,
         severity: alert.severity,
-        recipient: this.emailConfig.adminEmail,
-      }, `Email alert would be sent to ${this.emailConfig.adminEmail}`);
+        recipient: this.emailConfig.adminEmail || process.env.ADMIN_EMAIL
+      }, `Email alert sent successfully to ${this.emailConfig.adminEmail || process.env.ADMIN_EMAIL}`);
 
-      // TODO: Implement actual email sending with Nodemailer
-      // const transporter = nodemailer.createTransporter({...});
-      // await transporter.sendMail({
-      //   from: this.emailConfig.smtpUser,
-      //   to: this.emailConfig.adminEmail,
-      //   subject: `[IPODhan Alert] Scraper ${alert.source} ${alert.severity}`,
-      //   html: this.generateEmailHtml(alert),
-      // });
     } catch (error) {
       logger.error({
-        error,
+        error: error instanceof Error ? error.message : String(error),
         source: alert.source,
       }, `Failed to send email alert for ${alert.source}`);
       // Don't throw - email failure shouldn't crash the alerting system
