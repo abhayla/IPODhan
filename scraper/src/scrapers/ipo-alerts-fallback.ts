@@ -80,7 +80,7 @@ export async function scrapeIPOAlertsAPI(): Promise<ScrapedIPO[]> {
           logger.warn(
             {
               companyName: rawIPO?.company_name || 'Unknown',
-              validationErrors: validationResult.error?.errors
+              validationErrors: validationResult.error?.issues
             },
             'IPO validation failed, skipping'
           );

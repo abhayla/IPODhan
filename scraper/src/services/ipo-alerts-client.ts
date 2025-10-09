@@ -115,6 +115,7 @@ export class IPOAlertsClient {
   private readonly apiKey: string;
   private readonly rateLimiter: RateLimiter;
   private readonly timeout: number;
+  private readonly maxRequests: number;
 
   constructor(
     baseUrl: string = IPO_ALERTS_BASE_URL,
@@ -124,6 +125,7 @@ export class IPOAlertsClient {
   ) {
     this.baseUrl = baseUrl;
     this.apiKey = apiKey;
+    this.maxRequests = maxRequests;
     this.rateLimiter = new RateLimiter(maxRequests, windowMs);
     this.timeout = REQUEST_TIMEOUT;
   }
@@ -144,17 +146,17 @@ export class IPOAlertsClient {
       const resetMinutes = Math.ceil(resetTime / 60000);
       throw new RateLimitExceededError(
         `Rate limit exceeded. Reset in ${resetMinutes} minutes. ` +
-        `(${this.rateLimiter.getRequestCount()}/${RATE_LIMIT_MAX_REQUESTS} requests used)`
+        `(${this.rateLimiter.getRequestCount()}/${this.maxRequests} requests used)`
       );
     }
 
     // Log warning at 80% threshold
     const requestCount = this.rateLimiter.getRequestCount();
-    if (requestCount >= RATE_LIMIT_MAX_REQUESTS * 0.8) {
+    if (requestCount >= this.maxRequests * 0.8) {
       logger.warn(
         {
           requestCount,
-          maxRequests: RATE_LIMIT_MAX_REQUESTS,
+          maxRequests: this.maxRequests,
           remaining: this.rateLimiter.getRemainingRequests()
         },
         'Rate limit warning: 80% threshold reached'
