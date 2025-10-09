@@ -1,5 +1,6 @@
 import type Redis from 'ioredis';
 import logger from '../utils/logger.js';
+import type { ScraperSource } from '../services/types.js';
 
 /**
  * Cache Invalidator Service
@@ -15,11 +16,11 @@ export class CacheInvalidator {
 
   /**
    * Invalidate all cache keys after successful scraper run
-   * @param source - Scraper source (NSE, BSE, API_FALLBACK)
+   * @param source - Scraper source (NSE, BSE, MONEYCONTROL, CHITTORGARH, API_FALLBACK)
    * @param updatedIPOs - Array of IPO slugs that were updated
    */
   async invalidateAfterScrape(
-    source: 'NSE' | 'BSE' | 'API_FALLBACK',
+    source: ScraperSource | 'ALL',
     updatedIPOs: string[]
   ): Promise<void> {
     const startTime = Date.now();

@@ -3,19 +3,22 @@ import { launchBrowser, createPage, closeBrowser, navigateToUrl, waitForSelector
 import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
+import { scrapeNSEAPI, testNSEAPIConnection } from './nse-api-client.js';
 
 const NSE_URL = config.scraper.nseUrl;
 
 export interface NSEScrapeResult {
   ipos: ScrapedIPO[];
   subscriptions: ScrapedSubscription[];
+  source?: 'api' | 'browser';
 }
 
 /**
- * Scrape IPO data from NSE India website
+ * Scrape IPO data from NSE using browser automation (fallback method)
+ * This is used when the API approach fails
  * @returns Promise<NSEScrapeResult> - Scraped IPO and subscription data
  */
-export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
+async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
   const startTime = Date.now();
   let browser: Browser | null = null;
 
@@ -242,7 +245,7 @@ export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
       'NSE scrape completed successfully'
     );
 
-    return extractedData;
+    return { ...extractedData, source: 'browser' as const };
 
   } catch (error) {
     logger.error(
@@ -250,7 +253,7 @@ export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
         error: error instanceof Error ? error.message : String(error),
         url: NSE_URL
       },
-      'NSE scrape failed'
+      'NSE browser scrape failed'
     );
 
     // Ensure browser is closed on error
@@ -259,6 +262,87 @@ export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
     }
 
     throw error;
+  }
+}
+
+/**
+ * Main function to scrape NSE IPO data
+ * Uses API-first approach, falls back to browser automation if needed
+ * @returns Promise<NSEScrapeResult> - Scraped IPO and subscription data
+ */
+export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
+  const startTime = Date.now();
+
+  try {
+    // First, test if API is accessible
+    const apiAvailable = await testNSEAPIConnection();
+
+    if (apiAvailable) {
+      logger.info('NSE API is available, using API-first approach');
+
+      try {
+        // Try to scrape using the API
+        const apiResult = await scrapeNSEAPI();
+
+        if (apiResult.ipos.length > 0) {
+          const duration = Date.now() - startTime;
+          logger.info(
+            {
+              iposFound: apiResult.ipos.length,
+              subscriptionsFound: apiResult.subscriptions.length,
+              source: 'api',
+              duration
+            },
+            'NSE scrape completed successfully using API'
+          );
+
+          return {
+            ipos: apiResult.ipos,
+            subscriptions: apiResult.subscriptions,
+            source: 'api'
+          };
+        }
+      } catch (apiError) {
+        logger.warn(
+          { error: apiError instanceof Error ? apiError.message : String(apiError) },
+          'NSE API scraping failed, falling back to browser automation'
+        );
+      }
+    }
+
+    // Fall back to browser automation if API fails or returns no data
+    logger.info('Using browser automation for NSE scraping');
+    const browserResult = await scrapeNSEWithBrowser();
+
+    const duration = Date.now() - startTime;
+    logger.info(
+      {
+        iposFound: browserResult.ipos.length,
+        subscriptionsFound: browserResult.subscriptions.length,
+        source: 'browser',
+        duration
+      },
+      'NSE scrape completed using browser automation'
+    );
+
+    return browserResult;
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    logger.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+        duration
+      },
+      'NSE scraping failed completely (both API and browser methods)'
+    );
+
+    // Return empty result instead of throwing
+    return {
+      ipos: [],
+      subscriptions: [],
+      source: undefined
+    };
   }
 }
 

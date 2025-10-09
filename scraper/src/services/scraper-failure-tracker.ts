@@ -1,8 +1,7 @@
 import logger from '../utils/logger.js';
+import type { ScraperType } from './types.js';
 
 // ==================== TYPES ====================
-
-export type ScraperType = 'NSE' | 'BSE';
 
 interface FailureRecord {
   count: number;
@@ -25,18 +24,14 @@ export class ScraperFailureTracker {
     this.fallbackThreshold = fallbackThreshold;
 
     // Initialize failure records for each scraper type
-    this.failures.set('NSE', {
-      count: 0,
-      timestamps: [],
-      lastError: null,
-      lastFailureTime: null
-    });
-
-    this.failures.set('BSE', {
-      count: 0,
-      timestamps: [],
-      lastError: null,
-      lastFailureTime: null
+    const scraperTypes: ScraperType[] = ['NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH', 'API_FALLBACK'];
+    scraperTypes.forEach(type => {
+      this.failures.set(type, {
+        count: 0,
+        timestamps: [],
+        lastError: null,
+        lastFailureTime: null
+      });
     });
   }
 
@@ -162,10 +157,11 @@ export class ScraperFailureTracker {
    * @returns Failure statistics object
    */
   getAllFailures(): Record<ScraperType, FailureRecord> {
-    return {
-      NSE: this.failures.get('NSE')!,
-      BSE: this.failures.get('BSE')!
-    };
+    const result = {} as Record<ScraperType, FailureRecord>;
+    this.failures.forEach((record, type) => {
+      result[type] = record;
+    });
+    return result;
   }
 
   /**

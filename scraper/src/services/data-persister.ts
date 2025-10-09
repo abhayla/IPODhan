@@ -3,6 +3,7 @@ import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { generateSlug, sanitizeCompanyName } from '../utils/validators.js';
+import type { ScraperSource } from './types.js';
 
 /**
  * Retry an async operation with exponential backoff
@@ -70,7 +71,7 @@ function mergeListingExchanges(
 export async function upsertIPO(
   ipoRepository: IPORepository,
   scrapedIPO: ScrapedIPO,
-  source: 'NSE' | 'BSE' = 'NSE'
+  source: ScraperSource = 'NSE'
 ): Promise<string> {
   const startTime = Date.now();
   const slug = generateSlug(scrapedIPO.companyName);
@@ -91,7 +92,7 @@ export async function upsertIPO(
       }
 
       // Map status to legacy values if needed (old DB might use different enum)
-      const legacyStatus = scrapedIPO.status === 'OPEN' ? 'ACTIVE' : scrapedIPO.status;
+      const legacyStatus = scrapedIPO.status === 'LIVE' ? 'ACTIVE' : scrapedIPO.status;
 
       const ipoData: Partial<IPOInsert> = {
         companyName: sanitizeCompanyName(scrapedIPO.companyName),
@@ -122,8 +123,12 @@ export async function upsertIPO(
 
       if (existingIPO) {
         // MERGE LOGIC for dual-listed IPOs
-        const currentExchange = scrapedIPO.listingExchange === 'BOTH' ? source : scrapedIPO.listingExchange;
-        const mergedExchanges = mergeListingExchanges(existingIPO.listingExchanges as ('NSE' | 'BSE')[], currentExchange);
+        // Only merge exchanges for actual exchange sources (NSE/BSE), not for aggregator sources
+        let mergedExchanges = existingIPO.listingExchanges as ('NSE' | 'BSE')[];
+        if (source === 'NSE' || source === 'BSE') {
+          const currentExchange = scrapedIPO.listingExchange === 'BOTH' ? source : scrapedIPO.listingExchange;
+          mergedExchanges = mergeListingExchanges(mergedExchanges, currentExchange);
+        }
 
         // Check for data discrepancies
         if (existingIPO.issueSize !== ipoData.issueSize && source === 'BSE') {

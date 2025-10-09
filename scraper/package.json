@@ -5,6 +5,8 @@
   "scripts": {
     "start": "tsx --tsconfig tsx.tsconfig.json src/index.ts",
     "start:bse": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=bse",
+    "start:moneycontrol": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=moneycontrol",
+    "start:chittorgarh": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=chittorgarh",
     "start:fallback": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=fallback",
     "start:api": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=api",
     "start:all": "tsx --tsconfig tsx.tsconfig.json src/index.ts --source=all",
@@ -23,12 +25,14 @@
     "@ipodhan/shared": "*",
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^7.0.2",
+    "cheerio": "^1.1.2",
     "dotenv": "^16.4.0",
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.9",
     "pino": "^8.19.0",
     "pino-pretty": "^11.0.0",
     "puppeteer": "^22.0.0",
+    "rss-parser": "^3.13.0",
     "zod": "^4.1.11"
   },
   "devDependencies": {
