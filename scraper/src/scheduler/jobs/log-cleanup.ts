@@ -5,9 +5,7 @@
  * Story 7.5: Error Handling & Monitoring
  */
 
-import { db } from '../../../web/lib/db.js';
-import { getRedisClient } from '../../../web/lib/cache/redis-client.js';
-import { ScraperLogRepository } from '../../../web/lib/repositories/scraper-log-repository.js';
+import { db, getRedisClient, ScraperLogRepository } from '@ipodhan/shared';
 import { logger } from '../../utils/logger';
 
 /**

@@ -10,7 +10,7 @@ export async function launchBrowser(): Promise<Browser> {
   logger.debug('Launching browser...');
 
   const browser = await puppeteer.launch({
-    headless: true,
+    headless: 'new', // Use new headless mode
     args: [
       '--no-sandbox',
       '--disable-setuid-sandbox',
@@ -18,8 +18,12 @@ export async function launchBrowser(): Promise<Browser> {
       '--disable-accelerated-2d-canvas',
       '--no-first-run',
       '--no-zygote',
-      '--disable-gpu'
+      '--disable-gpu',
+      '--disable-blink-features=AutomationControlled', // Hide automation
+      '--disable-features=IsolateOrigins,site-per-process',
+      '--window-size=1920,1080'
     ],
+    ignoreDefaultArgs: ['--enable-automation'],
     timeout: 30000
   });
 
@@ -47,6 +51,13 @@ export async function createPage(browser: Browser): Promise<Page> {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
   );
 
+  // Hide webdriver property
+  await page.evaluateOnNewDocument(() => {
+    Object.defineProperty(navigator, 'webdriver', {
+      get: () => false,
+    });
+  });
+
   // Enable request interception to block unnecessary resources
   await page.setRequestInterception(true);
 
@@ -54,7 +65,7 @@ export async function createPage(browser: Browser): Promise<Page> {
     const resourceType = request.resourceType();
 
     // Block images, fonts, and stylesheets for performance
-    if (['image', 'font', 'stylesheet'].includes(resourceType)) {
+    if (['image', 'font'].includes(resourceType)) {
       request.abort();
     } else {
       request.continue();
