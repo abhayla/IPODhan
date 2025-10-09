@@ -6,7 +6,12 @@
 /**
  * Scraper source types
  */
-export type ScraperSource = 'NSE' | 'BSE' | 'API_FALLBACK';
+export type ScraperSource = 'NSE' | 'BSE' | 'MONEYCONTROL' | 'CHITTORGARH' | 'API_FALLBACK';
+
+/**
+ * Scraper type (alias for ScraperSource for compatibility)
+ */
+export type ScraperType = ScraperSource;
 
 /**
  * Scraper status types

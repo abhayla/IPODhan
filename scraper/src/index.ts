@@ -12,18 +12,22 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 import { runNSEScraper } from './scrapers/nse-scraper-orchestrator.js';
 import { runBSEScraper } from './scrapers/bse-scraper-orchestrator.js';
 import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrator.js';
+import { runMoneycontrolScraper } from './scrapers/moneycontrol-orchestrator.js';
+import { runChittorgarhScraper } from './scrapers/chittorgarh-orchestrator.js';
 import { IPORepository, db, getRedisClient } from '@ipodhan/shared';
 import logger from './utils/logger.js';
 
 /**
  * CLI entry point for IPO scrapers
- * Supports NSE, BSE, API fallback, and combined scraping via --source flag
+ * Supports NSE, BSE, Moneycontrol, Chittorgarh, API fallback, and combined scraping via --source flag
  * Usage:
- *   npm start                    (defaults to NSE)
- *   npm run start:bse            (BSE only)
- *   npm run start:fallback       (IPO Alerts API fallback)
- *   npm run start:api            (alias for fallback)
- *   npm run start:all            (NSE + BSE + API fallback sequentially)
+ *   npm start                         (defaults to NSE)
+ *   npm run start:bse                 (BSE only)
+ *   npm run start:moneycontrol        (Moneycontrol only)
+ *   npm run start:chittorgarh         (Chittorgarh only)
+ *   npm run start:fallback            (IPO Alerts API fallback)
+ *   npm run start:api                 (alias for fallback)
+ *   npm run start:all                 (NSE + BSE + Moneycontrol + Chittorgarh + API fallback sequentially)
  */
 async function main() {
   try {
@@ -34,8 +38,8 @@ async function main() {
     logger.info({ source }, 'IPO Scraper CLI started');
 
     // Validate source
-    if (!['nse', 'bse', 'fallback', 'api', 'all'].includes(source)) {
-      logger.error({ source }, 'Invalid source. Must be: nse, bse, fallback, api, or all');
+    if (!['nse', 'bse', 'moneycontrol', 'chittorgarh', 'fallback', 'api', 'all'].includes(source)) {
+      logger.error({ source }, 'Invalid source. Must be: nse, bse, moneycontrol, chittorgarh, fallback, api, or all');
       process.exit(1);
     }
 
@@ -105,6 +109,54 @@ async function main() {
           iposFailed: bseResult.iposFailed
         },
         'BSE scraper completed'
+      );
+    }
+
+    // Run Moneycontrol scraper
+    if (source === 'moneycontrol' || source === 'all') {
+      logger.info('Running Moneycontrol scraper');
+      const moneycontrolResult = await runMoneycontrolScraper();
+
+      combinedResult.success = combinedResult.success && moneycontrolResult.success;
+      combinedResult.iposProcessed += moneycontrolResult.iposProcessed;
+      combinedResult.iposInserted += moneycontrolResult.iposInserted;
+      combinedResult.iposUpdated += moneycontrolResult.iposUpdated;
+      combinedResult.iposFailed += moneycontrolResult.iposFailed;
+      combinedResult.errors.push(...moneycontrolResult.errors);
+
+      logger.info(
+        {
+          success: moneycontrolResult.success,
+          iposProcessed: moneycontrolResult.iposProcessed,
+          iposInserted: moneycontrolResult.iposInserted,
+          iposUpdated: moneycontrolResult.iposUpdated,
+          iposFailed: moneycontrolResult.iposFailed
+        },
+        'Moneycontrol scraper completed'
+      );
+    }
+
+    // Run Chittorgarh scraper
+    if (source === 'chittorgarh' || source === 'all') {
+      logger.info('Running Chittorgarh scraper');
+      const chittorgarhResult = await runChittorgarhScraper();
+
+      combinedResult.success = combinedResult.success && chittorgarhResult.success;
+      combinedResult.iposProcessed += chittorgarhResult.iposProcessed;
+      combinedResult.iposInserted += chittorgarhResult.iposInserted;
+      combinedResult.iposUpdated += chittorgarhResult.iposUpdated;
+      combinedResult.iposFailed += chittorgarhResult.iposFailed;
+      combinedResult.errors.push(...chittorgarhResult.errors);
+
+      logger.info(
+        {
+          success: chittorgarhResult.success,
+          iposProcessed: chittorgarhResult.iposProcessed,
+          iposInserted: chittorgarhResult.iposInserted,
+          iposUpdated: chittorgarhResult.iposUpdated,
+          iposFailed: chittorgarhResult.iposFailed
+        },
+        'Chittorgarh scraper completed'
       );
     }
 
