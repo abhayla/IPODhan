@@ -1,6 +1,4 @@
-import type { IPORepository } from '../../web/lib/repositories/ipo-repository.js';
-import type { SubscriptionRepository } from '../../web/lib/repositories/subscription-repository.js';
-import type { IPOInsert, SubscriptionInsert } from '../../web/lib/repositories/types.js';
+import type { IPORepository, SubscriptionRepository, IPOInsert, SubscriptionInsert } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
@@ -92,6 +90,9 @@ export async function upsertIPO(
         listingExchanges = [scrapedIPO.listingExchange];
       }
 
+      // Map status to legacy values if needed (old DB might use different enum)
+      const legacyStatus = scrapedIPO.status === 'OPEN' ? 'ACTIVE' : scrapedIPO.status;
+
       const ipoData: Partial<IPOInsert> = {
         companyName: sanitizeCompanyName(scrapedIPO.companyName),
         slug,
@@ -102,7 +103,7 @@ export async function upsertIPO(
         priceRangeMax: scrapedIPO.priceRangeMax,
         lotSize: scrapedIPO.lotSize,
         faceValue: scrapedIPO.faceValue,
-        status: scrapedIPO.status,
+        status: legacyStatus as any,
         openDate: scrapedIPO.openDate,
         closeDate: scrapedIPO.closeDate,
         allotmentDate: scrapedIPO.allotmentDate,
@@ -112,8 +113,12 @@ export async function upsertIPO(
         leadManagers: scrapedIPO.leadManagers,
         listingExchanges,
         lastScrapedAt: new Date(), // Track last successful scrape time (Story 7.4)
-        updatedAt: new Date()
-      };
+        updatedAt: new Date(),
+        // LEGACY: Old database columns (keep for backwards compatibility)
+        symbol: slug.toUpperCase().replace(/-/g, '').substring(0, 20), // Limit to 20 chars
+        priceBandLow: scrapedIPO.priceRangeMin || 0,
+        priceBandHigh: scrapedIPO.priceRangeMax || 0
+      } as any;
 
       if (existingIPO) {
         // MERGE LOGIC for dual-listed IPOs

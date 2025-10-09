@@ -1,11 +1,18 @@
 #!/usr/bin/env node
 
+// CRITICAL: Load environment variables FIRST before any imports that use them
+import dotenv from 'dotenv';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+dotenv.config({ path: join(__dirname, '..', '.env') });
+
 import { runNSEScraper } from './scrapers/nse-scraper-orchestrator.js';
 import { runBSEScraper } from './scrapers/bse-scraper-orchestrator.js';
 import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrator.js';
-import { IPORepository } from '../../web/lib/repositories/ipo-repository.js';
-import { db } from '../../web/lib/db/index.js';
-import { getRedisClient } from '../../web/lib/cache/redis-client.js';
+import { IPORepository, db, getRedisClient } from '@ipodhan/shared';
 import logger from './utils/logger.js';
 
 /**

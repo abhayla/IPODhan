@@ -58,7 +58,8 @@ describe('IPOAlertsClient', () => {
         data: [
           { id: '1', company_name: 'Test IPO 1', status: 'OPEN' },
           { id: '2', company_name: 'Test IPO 2', status: 'OPEN' }
-        ]
+        ],
+        count: 2
       };
 
       mockFetch.mockResolvedValueOnce({

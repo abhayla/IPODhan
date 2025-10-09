@@ -1,8 +1,4 @@
-import { IPORepository } from '../../web/lib/repositories/ipo-repository.js';
-import { SubscriptionRepository } from '../../web/lib/repositories/subscription-repository.js';
-import { ScraperLogRepository } from '../../web/lib/repositories/scraper-log-repository.js';
-import { db } from '../../web/lib/db/index.js';
-import { getRedisClient } from '../../web/lib/cache/redis-client.js';
+import { IPORepository, SubscriptionRepository, ScraperLogRepository, db, getRedisClient } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { scrapeNSEIPOs } from './nse-scraper.js';
 import { validateIPOData, validateSubscriptionData, generateSlug } from '../utils/validators.js';
@@ -72,7 +68,7 @@ export async function runNSEScraper(): Promise<ScraperResult> {
           logger.warn(
             {
               companyName: scrapedIPO.companyName,
-              errors: validation.error?.errors
+              errors: validation.error?.issues
             },
             'IPO validation failed, skipping'
           );
@@ -123,7 +119,7 @@ export async function runNSEScraper(): Promise<ScraperResult> {
               logger.warn(
                 {
                   companyName: validatedIPO.companyName,
-                  errors: subscriptionValidation.error?.errors
+                  errors: subscriptionValidation.error?.issues
                 },
                 'Subscription validation failed, skipping'
               );

@@ -1,7 +1,4 @@
-import { IPORepository } from '../../web/lib/repositories/ipo-repository.js';
-import { SubscriptionRepository } from '../../web/lib/repositories/subscription-repository.js';
-import { db } from '../../web/lib/db/index.js';
-import { getRedisClient } from '../../web/lib/cache/redis-client.js';
+import { IPORepository, SubscriptionRepository, db, getRedisClient } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { scrapeBSEIPOs } from './bse-scraper.js';
 import { validateIPOData, validateSubscriptionData, generateSlug } from '../utils/validators.js';
@@ -79,7 +76,7 @@ export async function runBSEScraper(): Promise<ScraperResult> {
           logger.warn(
             {
               companyName: scrapedIPO.companyName,
-              errors: validation.error?.errors
+              errors: validation.error?.issues
             },
             'IPO validation failed, skipping'
           );
@@ -136,7 +133,7 @@ export async function runBSEScraper(): Promise<ScraperResult> {
               logger.warn(
                 {
                   companyName: validatedIPO.companyName,
-                  errors: subscriptionValidation.error?.errors
+                  errors: subscriptionValidation.error?.issues
                 },
                 'Subscription validation failed, skipping'
               );
