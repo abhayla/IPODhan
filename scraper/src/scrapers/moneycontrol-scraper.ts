@@ -88,7 +88,8 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
         const dateText = $row.find('td:contains("Open"), .PA7:contains("Open")')
           .next()
           .text();
-        const dates = dateText.split('-').map(d => d.trim());
+        // Split on ' - ' (with spaces) or ' to ' to avoid splitting date components
+        const dates = dateText.split(/\s+-\s+|\s+to\s+/i).map(d => d.trim());
 
         let openDate = '';
         let closeDate = '';
@@ -98,14 +99,14 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
         }
 
         // Determine status based on dates
-        let status: 'UPCOMING' | 'LIVE' | 'CLOSED' | 'LISTED' = 'UPCOMING';
+        let status: 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' = 'UPCOMING';
         const now = new Date();
         if (openDate && closeDate) {
           const open = new Date(openDate);
           const close = new Date(closeDate);
 
           if (now >= open && now <= close) {
-            status = 'LIVE';
+            status = 'OPEN';
           } else if (now > close) {
             status = 'CLOSED';
           }

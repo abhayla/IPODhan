@@ -24,6 +24,8 @@ export interface SchedulerConfig {
   jobs: {
     nse: JobSchedule;
     bse: JobSchedule;
+    moneycontrol: JobSchedule;
+    chittorgarh: JobSchedule;
     healthCheck: JobSchedule;
     dailySummary: JobSchedule;
     logCleanup: JobSchedule;
@@ -49,6 +51,16 @@ const PROD_SCHEDULES = {
     marketHours: '*/15 9-17 * * 1-5',      // Every 15 min, 9 AM-5 PM, Mon-Fri
     afterHours: '*/30 0-8,18-23 * * 1-5',  // Every 30 min, off hours, Mon-Fri
     weekends: '0 */1 * * 0,6',             // Every hour, Sat-Sun
+    timezone: 'Asia/Kolkata'
+  },
+  moneycontrol: {
+    enabled: true,
+    schedule: '*/30 * * * *',              // Every 30 minutes, 24/7 (Story 7.6b)
+    timezone: 'Asia/Kolkata'
+  },
+  chittorgarh: {
+    enabled: true,
+    schedule: '*/45 * * * *',              // Every 45 minutes, 24/7 (Story 7.6b - includes GMP data)
     timezone: 'Asia/Kolkata'
   },
   healthCheck: {
@@ -85,6 +97,16 @@ const DEV_SCHEDULES = {
     marketHours: '*/30 9-17 * * 1-5',      // Every 30 min (slower for dev)
     afterHours: '0 */2 0-8,18-23 * * 1-5', // Every 2 hours (slower for dev)
     weekends: '0 */2 * * 0,6',             // Every 2 hours
+    timezone: 'Asia/Kolkata'
+  },
+  moneycontrol: {
+    enabled: true,
+    schedule: '0 */1 * * *',               // Every hour (slower for dev)
+    timezone: 'Asia/Kolkata'
+  },
+  chittorgarh: {
+    enabled: true,
+    schedule: '15 */1 * * *',              // Every hour at 15 mins past (slower for dev, offset from moneycontrol)
     timezone: 'Asia/Kolkata'
   },
   healthCheck: {

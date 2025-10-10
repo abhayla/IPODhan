@@ -91,20 +91,18 @@ export async function upsertIPO(
         listingExchanges = [scrapedIPO.listingExchange];
       }
 
-      // Map status to legacy values if needed (old DB might use different enum)
-      const legacyStatus = scrapedIPO.status === 'LIVE' ? 'ACTIVE' : scrapedIPO.status;
-
       const ipoData: Partial<IPOInsert> = {
         companyName: sanitizeCompanyName(scrapedIPO.companyName),
         slug,
         category: scrapedIPO.category,
         sector: scrapedIPO.sector,
         issueSize: scrapedIPO.issueSize.toString(),
-        priceRangeMin: scrapedIPO.priceRangeMin,
-        priceRangeMax: scrapedIPO.priceRangeMax,
-        lotSize: scrapedIPO.lotSize,
-        faceValue: scrapedIPO.faceValue,
-        status: legacyStatus as any,
+        // Round price values to integers for INTEGER fields in database
+        priceRangeMin: scrapedIPO.priceRangeMin ? Math.round(scrapedIPO.priceRangeMin) : undefined,
+        priceRangeMax: scrapedIPO.priceRangeMax ? Math.round(scrapedIPO.priceRangeMax) : undefined,
+        lotSize: scrapedIPO.lotSize || 1, // Default to 1 if not provided (NSE doesn't always provide)
+        faceValue: scrapedIPO.faceValue || 10, // Default to 10 if not provided
+        status: scrapedIPO.status as any,
         openDate: scrapedIPO.openDate,
         closeDate: scrapedIPO.closeDate,
         allotmentDate: scrapedIPO.allotmentDate,

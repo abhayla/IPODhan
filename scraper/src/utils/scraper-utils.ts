@@ -150,7 +150,7 @@ export function normalizeCompanyName(name: string): string {
   return name
     .toLowerCase()
     .replace(/\s+/g, ' ') // Standardize whitespace
-    .replace(/\blimited\b|\bltd\b|\binc\b|\bincorporated\b|\bpvt\b|\bprivate\b/gi, '') // Remove suffixes
+    .replace(/\blimited\b|\bltd\b|\binc\b|\bincorporated\b|\bcorp\b|\bcorporation\b|\bpvt\b|\bprivate\b/gi, '') // Remove suffixes
     .replace(/[^\w\s]/g, '') // Remove special characters
     .trim();
 }

@@ -8,6 +8,8 @@ import { runDailySummary } from './jobs/daily-summary.js';
 import { runLogCleanup } from './jobs/log-cleanup.js';
 import { runNSEScraper } from '../scrapers/nse-scraper-orchestrator.js';
 import { runBSEScraper } from '../scrapers/bse-scraper-orchestrator.js';
+import { runMoneycontrolScraper } from '../scrapers/moneycontrol-orchestrator.js';
+import { runChittorgarhScraper } from '../scrapers/chittorgarh-orchestrator.js';
 
 /**
  * Job handler function type
@@ -58,6 +60,8 @@ export class SchedulerService {
       jobsEnabled: {
         nse: schedulerConfig.jobs.nse.enabled,
         bse: schedulerConfig.jobs.bse.enabled,
+        moneycontrol: schedulerConfig.jobs.moneycontrol.enabled,
+        chittorgarh: schedulerConfig.jobs.chittorgarh.enabled,
         healthCheck: schedulerConfig.jobs.healthCheck.enabled,
         dailySummary: schedulerConfig.jobs.dailySummary.enabled,
         logCleanup: schedulerConfig.jobs.logCleanup.enabled
@@ -132,6 +136,28 @@ export class SchedulerService {
         () => runBSEScraper(),
         LOCK_TTL.scraper,
         schedulerConfig.jobs.bse.timezone
+      );
+    }
+
+    // Register Moneycontrol scraper job (runs 24/7 every 30 min - Story 7.6b)
+    if (schedulerConfig.jobs.moneycontrol.enabled) {
+      this.registerJob(
+        'moneycontrol',
+        schedulerConfig.jobs.moneycontrol.schedule!,
+        () => runMoneycontrolScraper(),
+        LOCK_TTL.scraper,
+        schedulerConfig.jobs.moneycontrol.timezone
+      );
+    }
+
+    // Register Chittorgarh scraper job (runs 24/7 every 45 min - Story 7.6b - includes GMP)
+    if (schedulerConfig.jobs.chittorgarh.enabled) {
+      this.registerJob(
+        'chittorgarh',
+        schedulerConfig.jobs.chittorgarh.schedule!,
+        () => runChittorgarhScraper(),
+        LOCK_TTL.scraper,
+        schedulerConfig.jobs.chittorgarh.timezone
       );
     }
 

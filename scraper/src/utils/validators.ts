@@ -24,8 +24,8 @@ export const ScrapedIPOSchema = z.object({
     message: 'Invalid IPO category'
   }),
   sector: z.string().max(100).optional(),
-  status: z.enum(['UPCOMING', 'LIVE', 'CLOSED', 'LISTED'], {
-    message: 'Invalid IPO status - must be UPCOMING, LIVE, CLOSED, or LISTED'
+  status: z.enum(['UPCOMING', 'OPEN', 'CLOSED', 'LISTED'], {
+    message: 'Invalid IPO status - must be UPCOMING, OPEN, CLOSED, or LISTED'
   }),
   lotSize: z.number().int().positive().optional(),
   faceValue: z.number().int().positive().optional(),
@@ -338,9 +338,6 @@ export function validateIPOAlertsIPOData(data: unknown): {
  * @returns Transformed ScrapedIPO data
  */
 export function transformIPOAlertsData(apiData: IPOAlertsAPIIPO): ScrapedIPO {
-  // Map API status 'OPEN' to 'LIVE' (our internal status for active IPOs)
-  const status = apiData.status === 'OPEN' ? 'LIVE' : apiData.status;
-
   return {
     companyName: sanitizeCompanyName(apiData.company_name),
     issueSize: apiData.issue_size,
@@ -351,7 +348,7 @@ export function transformIPOAlertsData(apiData: IPOAlertsAPIIPO): ScrapedIPO {
     listingExchange: apiData.exchange,
     category: apiData.category,
     sector: apiData.sector,
-    status,
+    status: apiData.status,
     lotSize: apiData.lot_size,
     faceValue: apiData.face_value,
     allotmentDate: apiData.allotment_date,

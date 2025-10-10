@@ -410,7 +410,7 @@ describe('alternative-sources-integration', () => {
         closeDate: '2025-12-03',
         listingExchange: 'NSE',
         category: 'MAINBOARD',
-        status: 'LIVE' // Different status
+        status: 'OPEN' // Different status
       };
 
       const merged = mergeIPOData(apiIPO, nseIPO, 'NSE');
@@ -418,7 +418,7 @@ describe('alternative-sources-integration', () => {
       // NSE data should override API_FALLBACK (higher priority)
       expect(merged.issueSize).toBe(320000000);
       expect(merged.priceRangeMin).toBe(85);
-      expect(merged.status).toBe('LIVE');
+      expect(merged.status).toBe('OPEN');
 
       expect(merged.dataSources).toContain('NSE');
       expect(merged.dataSources).toContain('API_FALLBACK');
@@ -434,7 +434,7 @@ describe('alternative-sources-integration', () => {
         closeDate: '2025-12-03',
         listingExchange: 'NSE',
         category: 'MAINBOARD',
-        status: 'LIVE',
+        status: 'OPEN',
         dataSources: ['NSE']
       };
 
@@ -459,7 +459,7 @@ describe('alternative-sources-integration', () => {
       // NSE core data should be preserved
       expect(merged.issueSize).toBe(1000000000);
       expect(merged.priceRangeMin).toBe(200);
-      expect(merged.status).toBe('LIVE');
+      expect(merged.status).toBe('OPEN');
 
       // GMP data should be added
       expect(merged.gmp).toBe(40);

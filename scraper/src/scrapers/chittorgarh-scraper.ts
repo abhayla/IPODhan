@@ -75,7 +75,8 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
 
         // Extract open and close dates
         const dateText = sanitizeText($(cells[3]).text());
-        const dateParts = dateText.split(/\s*-\s*|\s+to\s+/i);
+        // Split on ' - ' (with spaces) or ' to ' to avoid splitting date components
+        const dateParts = dateText.split(/\s+-\s+|\s+to\s+/i);
         let openDate = '';
         let closeDate = '';
         if (dateParts.length >= 2) {
@@ -124,14 +125,14 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
         }
 
         // Determine status based on dates
-        let status: 'UPCOMING' | 'LIVE' | 'CLOSED' | 'LISTED' = 'UPCOMING';
+        let status: 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' = 'UPCOMING';
         if (openDate && closeDate) {
           const now = new Date();
           const open = new Date(openDate);
           const close = new Date(closeDate);
 
           if (now >= open && now <= close) {
-            status = 'LIVE';
+            status = 'OPEN';
           } else if (now > close) {
             status = 'CLOSED';
           }
