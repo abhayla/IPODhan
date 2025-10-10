@@ -95,7 +95,10 @@ export function InfoSection({ ipo }: InfoSectionProps) {
                   : 'N/A'
               }
             />
-            <InfoRow label="Registrar" value={ipo.registrar} />
+            <InfoRow
+              label="Registrar"
+              value={ipo.registrar || 'N/A'}
+            />
             <InfoRow
               label="Lead Managers"
               value={
