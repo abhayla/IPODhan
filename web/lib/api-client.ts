@@ -202,13 +202,34 @@ interface APIClientConfig {
  */
 function getBaseURL(): string {
   if (typeof window !== 'undefined') {
-    // Client-side: Use NEXT_PUBLIC_API_BASE_URL or default
-    return (
-      process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000/api'
-    );
+    // Client-side: Use relative URL to avoid port conflicts
+    // This automatically uses the same origin as the browser
+    return process.env.NEXT_PUBLIC_API_BASE_URL || '/api';
   }
-  // Server-side: Use same default
-  return process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000/api';
+
+  // Server-side: Use NEXT_PUBLIC_API_BASE_URL or construct from environment
+  // In server-side rendering, we need absolute URLs
+  if (process.env.NEXT_PUBLIC_API_BASE_URL) {
+    return process.env.NEXT_PUBLIC_API_BASE_URL;
+  }
+
+  // Server-side fallback: construct from environment
+  const protocol = process.env.NODE_ENV === 'production' ? 'https' : 'http';
+
+  // Try to detect the actual running port from various sources
+  let host = 'localhost:3000'; // final fallback
+
+  if (process.env.VERCEL_URL) {
+    host = process.env.VERCEL_URL;
+  } else if (process.env.NEXT_PUBLIC_APP_URL) {
+    // Extract host from full URL if needed
+    host = process.env.NEXT_PUBLIC_APP_URL.replace(/^https?:\/\//, '');
+  } else if (process.env.PORT) {
+    host = `localhost:${process.env.PORT}`;
+  }
+
+  const baseUrl = `${protocol}://${host}`;
+  return `${baseUrl}/api`;
 }
 
 /**
