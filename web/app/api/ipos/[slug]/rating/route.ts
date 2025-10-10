@@ -1,11 +1,11 @@
 /**
- * GET /api/ipos/[slug] API Route
+ * GET /api/ipos/[slug]/rating API Route
  *
- * Returns detailed IPO information including all relationships
+ * Returns the calculated rating for a specific IPO based on available data
  *
- * @route GET /api/ipos/[slug]
+ * @route GET /api/ipos/[slug]/rating
  * @param {string} slug - IPO URL slug
- * @returns {IPODetailResponse} Comprehensive IPO data with relationships
+ * @returns {RatingResponse} Rating with breakdown and rationale
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -15,20 +15,35 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { EntityNotFoundError, DatabaseError } from '@/lib/errors/repository-errors';
 import { logger } from '@/lib/logger';
-import type { IPODetailResponse } from '@/lib/db/types';
+import { calculateIPORating } from '@/lib/utils/rating-calculator';
+
+// ==================== TYPES ====================
+
+interface RatingResponse {
+  ipoId: string;
+  ipoSlug: string;
+  companyName: string;
+  rating: number | null; // 1-5 stars
+  score: number; // 0-100 overall score
+  rationale: string;
+  confidence: number; // 0-100 based on data completeness
+  breakdown: {
+    financialScore: number;
+    marketScore: number;
+    subscriptionScore: number;
+    gmpScore: number;
+    fundamentalScore: number;
+  };
+  lastCalculated: string;
+  message?: string;
+}
 
 // ==================== HELPER FUNCTIONS ====================
 
-/**
- * Generate unique request ID for tracing
- */
 function generateRequestId(): string {
   return `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
-/**
- * Create standardized error response
- */
 function createErrorResponse(
   code: string,
   message: string,
@@ -53,7 +68,7 @@ function createErrorResponse(
 // ==================== API ROUTE HANDLER ====================
 
 /**
- * GET /api/ipos/[slug] - Fetch IPO details with all relationships
+ * GET /api/ipos/[slug]/rating - Calculate and return IPO rating
  */
 export async function GET(
   request: NextRequest,
@@ -62,13 +77,12 @@ export async function GET(
   const requestId = generateRequestId();
   const startTime = Date.now();
 
-  // Create request-scoped logger
   const requestLogger = logger.child({ requestId });
 
   try {
     const { slug } = await context.params;
 
-    requestLogger.info({ slug }, 'Processing IPO detail request');
+    requestLogger.info({ slug }, 'Processing rating calculation request');
 
     // Validate slug
     if (!slug || typeof slug !== 'string') {
@@ -80,13 +94,12 @@ export async function GET(
       );
     }
 
-    // Initialize repository with optional Redis
+    // Initialize Redis (with fallback)
     let redis;
     try {
       redis = getRedisClient();
     } catch {
       requestLogger.warn('Redis unavailable - continuing without cache');
-      // Create a mock Redis client for repositories
       redis = {
         get: async () => null,
         set: async () => 'OK',
@@ -97,10 +110,25 @@ export async function GET(
 
     const ipoRepository = new IPORepository(db, redis);
 
-    // Fetch IPO with all relationships
-    const ipoWithRelations = await ipoRepository.findBySlug(slug);
+    // Check Redis cache first (30 minute TTL for ratings)
+    const cacheKey = `rating:${slug}`;
+    const cachedData = await redis.get(cacheKey);
 
-    if (!ipoWithRelations) {
+    if (cachedData) {
+      requestLogger.info({ slug, cached: true }, 'Returning cached rating');
+      return NextResponse.json(JSON.parse(cachedData as string), {
+        status: 200,
+        headers: {
+          'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=3600',
+          'X-Cache': 'HIT',
+        },
+      });
+    }
+
+    // Fetch IPO with all relationships needed for rating
+    const ipo = await ipoRepository.findBySlug(slug);
+
+    if (!ipo) {
       requestLogger.warn({ slug }, 'IPO not found');
       return createErrorResponse(
         'NOT_FOUND',
@@ -110,74 +138,53 @@ export async function GET(
       );
     }
 
-    // Transform to API response format
-    const response: IPODetailResponse = {
-      ipo: {
-        id: ipoWithRelations.id,
-        companyName: ipoWithRelations.companyName,
-        slug: ipoWithRelations.slug,
-        category: ipoWithRelations.category,
-        sector: ipoWithRelations.sector,
-        issueSize: ipoWithRelations.issueSize,
-        priceRangeMin: ipoWithRelations.priceRangeMin,
-        priceRangeMax: ipoWithRelations.priceRangeMax,
-        lotSize: ipoWithRelations.lotSize,
-        status: ipoWithRelations.status,
-        openDate: ipoWithRelations.openDate,
-        closeDate: ipoWithRelations.closeDate,
-        allotmentDate: ipoWithRelations.allotmentDate,
-        listingDate: ipoWithRelations.listingDate,
-        companyDescription: ipoWithRelations.companyDescription,
-        faceValue: ipoWithRelations.faceValue,
-        listingExchanges: ipoWithRelations.listingExchanges,
-        registrar: ipoWithRelations.registrar,
-        registrarId: ipoWithRelations.registrarId,
-        leadManagers: ipoWithRelations.leadManagers,
-        rating: ipoWithRelations.rating,
-        ratingRationale: ipoWithRelations.ratingRationale,
-        ratingOverride: ipoWithRelations.ratingOverride,
-        lastScrapedAt: ipoWithRelations.lastScrapedAt,
-        createdAt: ipoWithRelations.createdAt,
-        updatedAt: ipoWithRelations.updatedAt,
-      },
-      financialData: ipoWithRelations.financialData ?? null,
-      documents: ipoWithRelations.documents || [],
-      subscriptions: ipoWithRelations.subscriptions || [],
-      gmpRecords: ipoWithRelations.gmpRecords || [],
-      listingPerformance: ipoWithRelations.listingPerformance ?? null,
-      peerCompanies: ipoWithRelations.peerCompanies || [],
-      peers: [],
-      metadata: {
-        lastUpdated: new Date().toISOString(),
-      },
+    // Calculate rating using all available data
+    const ratingResult = calculateIPORating(
+      ipo,
+      ipo.financialData || null,
+      ipo.subscriptions || null,
+      ipo.gmpRecords || null
+    );
+
+    // Prepare response
+    const response: RatingResponse = {
+      ipoId: ipo.id,
+      ipoSlug: ipo.slug,
+      companyName: ipo.companyName,
+      rating: ratingResult.rating,
+      score: ratingResult.score,
+      rationale: ratingResult.rationale,
+      confidence: ratingResult.confidence,
+      breakdown: ratingResult.factors,
+      lastCalculated: new Date().toISOString(),
+      message:
+        ratingResult.confidence < 50
+          ? 'Rating confidence is low due to limited data availability'
+          : undefined,
     };
 
-    // Log successful response
+    // Cache the response (30 minutes)
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 1800);
+
     const duration = Date.now() - startTime;
     requestLogger.info(
       {
         duration,
         slug,
-        status: ipoWithRelations.status,
-        hasFinancials: !!ipoWithRelations.financialData,
-        subscriptionCount: ipoWithRelations.subscriptions?.length || 0,
-        gmpCount: ipoWithRelations.gmpRecords?.length || 0,
+        rating: ratingResult.rating,
+        confidence: ratingResult.confidence,
       },
-      'IPO details fetched successfully'
+      'Rating calculated successfully'
     );
 
-    // Return response with cache headers
-    // Story 8.3: Performance Optimization - AC#2
-    // s-maxage=300 (5min cache), stale-while-revalidate=600 (serve stale for 10min)
     return NextResponse.json(response, {
       status: 200,
       headers: {
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
-        'CDN-Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+        'Cache-Control': 'public, s-maxage=1800, stale-while-revalidate=3600',
+        'X-Cache': 'MISS',
       },
     });
   } catch (error) {
-    // Log error with context
     const duration = Date.now() - startTime;
     requestLogger.error(
       {
@@ -185,21 +192,14 @@ export async function GET(
         stack: error instanceof Error ? error.stack : undefined,
         duration,
       },
-      'Failed to fetch IPO details'
+      'Failed to calculate rating'
     );
 
-    // Handle specific errors
     if (error instanceof EntityNotFoundError) {
-      return createErrorResponse(
-        'NOT_FOUND',
-        error.message,
-        requestId,
-        404
-      );
+      return createErrorResponse('NOT_FOUND', error.message, requestId, 404);
     }
 
     if (error instanceof DatabaseError) {
-      // Report to Sentry in production
       if (process.env.NODE_ENV === 'production') {
         Sentry.captureException(error, {
           tags: {
@@ -208,7 +208,7 @@ export async function GET(
           },
           contexts: {
             api: {
-              route: '/api/ipos/[slug]',
+              route: '/api/ipos/[slug]/rating',
               method: 'GET',
               duration,
             },
@@ -218,13 +218,12 @@ export async function GET(
 
       return createErrorResponse(
         'DATABASE_ERROR',
-        'Failed to fetch IPO details',
+        'Failed to calculate rating',
         requestId,
         500
       );
     }
 
-    // Handle unknown errors
     if (process.env.NODE_ENV === 'production') {
       Sentry.captureException(error, {
         tags: {
@@ -233,7 +232,7 @@ export async function GET(
         },
         contexts: {
           api: {
-            route: '/api/ipos/[slug]',
+            route: '/api/ipos/[slug]/rating',
             method: 'GET',
             duration,
           },
