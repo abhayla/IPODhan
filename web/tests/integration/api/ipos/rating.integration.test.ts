@@ -147,7 +147,6 @@ async function seedTestData() {
       profitFy2024: '1500.00',
       peRatio: '22.00',
       eps: '12.50',
-      ronw: '25.00',
       debtToEquity: '0.30',
     });
 
@@ -162,7 +161,6 @@ async function seedTestData() {
       profitFy2024: '-100.00',
       peRatio: '45.00',
       eps: '-8.50',
-      ronw: '-5.00',
       debtToEquity: '2.50',
     });
 
