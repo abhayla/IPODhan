@@ -7,14 +7,14 @@ import { generateIPOListingMetadata } from '@/lib/seo/metadata';
 export const metadata: Metadata = generateIPOListingMetadata();
 
 interface DashboardPageProps {
-  searchParams: {
+  searchParams: Promise<{
     page?: string;
     view?: string;
     status?: string;
     category?: string;
     sector?: string;
     search?: string;
-  };
+  }>;
 }
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {

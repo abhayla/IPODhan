@@ -71,7 +71,7 @@ export function Pagination({ currentPage, totalPages, hasMore, isLoading = false
 
   return (
     <nav
-      className="flex items-center justify-center gap-2 mt-8"
+      className="flex items-center justify-center gap-2 mt-8 p-4 rounded-xl bg-gradient-to-r from-muted/30 to-muted/50 backdrop-blur-sm border border-border/50 animate-in fade-in slide-in-from-bottom-3 duration-500"
       aria-label="Page navigation"
       data-testid="pagination"
     >
@@ -82,9 +82,9 @@ export function Pagination({ currentPage, totalPages, hasMore, isLoading = false
         onClick={() => handlePageChange(currentPage - 1)}
         disabled={isPrevDisabled}
         aria-label="Previous page"
-        className="gap-1"
+        className="gap-1 transition-all duration-200 hover:scale-105 hover:border-primary disabled:opacity-50"
       >
-        <ChevronLeft className="h-4 w-4" />
+        <ChevronLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-1" />
         <span className="hidden sm:inline">Previous</span>
       </Button>
 
@@ -111,7 +111,11 @@ export function Pagination({ currentPage, totalPages, hasMore, isLoading = false
               disabled={isLoading}
               aria-label={`Page ${pageNum}`}
               aria-current={isActive ? 'page' : undefined}
-              className="w-9"
+              className={`w-9 transition-all duration-200 ${
+                isActive
+                  ? 'scale-110 shadow-md ring-2 ring-primary/20'
+                  : 'hover:scale-105 hover:border-primary'
+              }`}
             >
               {pageNum}
             </Button>
@@ -120,7 +124,7 @@ export function Pagination({ currentPage, totalPages, hasMore, isLoading = false
       </div>
 
       {/* Mobile page indicator */}
-      <div className="md:hidden px-3 py-1 text-sm text-muted-foreground">
+      <div className="md:hidden px-4 py-2 text-sm font-medium text-primary bg-primary/10 rounded-lg border border-primary/20">
         Page {currentPage} of {totalPages}
       </div>
 
@@ -131,10 +135,10 @@ export function Pagination({ currentPage, totalPages, hasMore, isLoading = false
         onClick={() => handlePageChange(currentPage + 1)}
         disabled={isNextDisabled}
         aria-label="Next page"
-        className="gap-1"
+        className="gap-1 transition-all duration-200 hover:scale-105 hover:border-primary disabled:opacity-50"
       >
         <span className="hidden sm:inline">Next</span>
-        <ChevronRight className="h-4 w-4" />
+        <ChevronRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
       </Button>
     </nav>
   );

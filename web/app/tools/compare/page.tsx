@@ -205,15 +205,15 @@ function CompareIPOsContent() {
       <Breadcrumbs items={breadcrumbItems} />
 
       {/* Page Header */}
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold">IPO Comparison Tool</h1>
+      <div className="space-y-2 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <h1 className="text-3xl font-bold bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">IPO Comparison Tool</h1>
         <p className="text-muted-foreground">
           Compare multiple IPOs side-by-side to make informed investment decisions
         </p>
       </div>
 
       {/* IPO Selector */}
-      <div className="bg-card border rounded-lg p-6">
+      <div className="bg-card border rounded-lg p-6 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150 hover:shadow-lg transition-shadow">
         <IPOSelector
           selectedSlugs={selectedSlugs}
           onSelectionChange={handleSelectionChange}
@@ -224,7 +224,7 @@ function CompareIPOsContent() {
 
       {/* Comparison Table */}
       {selectedSlugs.length >= 2 && (
-        <div className="bg-card border rounded-lg p-6">
+        <div className="bg-card border rounded-lg p-6 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300 hover:shadow-lg transition-shadow">
           <ComparisonTable
             comparisonData={comparisonData}
             isLoading={isLoadingComparison}
@@ -234,7 +234,7 @@ function CompareIPOsContent() {
       )}
 
       {/* Info Section */}
-      <div className="bg-muted/50 border rounded-lg p-6 space-y-4">
+      <div className="bg-muted/50 border rounded-lg p-6 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-450 hover:shadow-lg transition-all hover:border-primary/50">
         <h2 className="text-lg font-semibold">How to Use This Tool</h2>
         <div className="space-y-3 text-sm text-muted-foreground">
           <div>

@@ -59,8 +59,8 @@ export default function LotCalculatorPage() {
             <Breadcrumbs
               items={[
                 { label: 'Home', href: '/' },
-                { label: 'Tools', href: '/tools/lot-calculator' },
-                { label: 'Lot Calculator', href: '/tools/lot-calculator' },
+                { label: 'Tools', href: '/tools' },
+                { label: 'Lot Calculator' },
               ]}
             />
           </div>
@@ -69,11 +69,11 @@ export default function LotCalculatorPage() {
         {/* Page Header */}
         <div className="border-b bg-gradient-to-r from-primary/10 to-primary/5">
           <div className="container mx-auto px-4 py-12">
-            <div className="max-w-3xl">
-              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
+            <div className="max-w-3xl animate-in fade-in slide-in-from-bottom-4 duration-700">
+              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
                 IPO Lot Size Calculator
               </h1>
-              <p className="mt-4 text-lg text-muted-foreground">
+              <p className="mt-4 text-lg text-muted-foreground animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
                 Calculate how many lots you can buy with your investment amount.
                 Select an IPO, enter your investment, and get instant results with
                 total shares and amount breakdown.
@@ -88,32 +88,32 @@ export default function LotCalculatorPage() {
             <LotCalculator mode="standalone" />
 
             {/* Help Section */}
-            <div className="mt-12 space-y-6">
+            <div className="mt-12 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300">
               <h2 className="text-2xl font-bold">How to Use</h2>
               <div className="grid gap-6 sm:grid-cols-2">
-                <div className="rounded-lg border p-6">
-                  <h3 className="font-semibold">Step 1: Select IPO</h3>
+                <div className="group rounded-lg border p-6 transition-all duration-300 hover:shadow-lg hover:scale-105 hover:border-primary/50">
+                  <h3 className="font-semibold group-hover:text-primary transition-colors duration-300">Step 1: Select IPO</h3>
                   <p className="mt-2 text-sm text-muted-foreground">
                     Choose an IPO from the dropdown menu. The calculator shows
                     active and recent IPOs with available pricing information.
                   </p>
                 </div>
-                <div className="rounded-lg border p-6">
-                  <h3 className="font-semibold">Step 2: Enter Amount</h3>
+                <div className="group rounded-lg border p-6 transition-all duration-300 hover:shadow-lg hover:scale-105 hover:border-primary/50">
+                  <h3 className="font-semibold group-hover:text-primary transition-colors duration-300">Step 2: Enter Amount</h3>
                   <p className="mt-2 text-sm text-muted-foreground">
                     Enter your investment amount in rupees. The calculator will
                     automatically format it with comma separators.
                   </p>
                 </div>
-                <div className="rounded-lg border p-6">
-                  <h3 className="font-semibold">Step 3: View Results</h3>
+                <div className="group rounded-lg border p-6 transition-all duration-300 hover:shadow-lg hover:scale-105 hover:border-primary/50">
+                  <h3 className="font-semibold group-hover:text-primary transition-colors duration-300">Step 3: View Results</h3>
                   <p className="mt-2 text-sm text-muted-foreground">
                     See the number of lots you can buy, total shares, and exact
                     investment amount rounded to lot size.
                   </p>
                 </div>
-                <div className="rounded-lg border p-6">
-                  <h3 className="font-semibold">Understanding Lots</h3>
+                <div className="group rounded-lg border p-6 transition-all duration-300 hover:shadow-lg hover:scale-105 hover:border-primary/50">
+                  <h3 className="font-semibold group-hover:text-primary transition-colors duration-300">Understanding Lots</h3>
                   <p className="mt-2 text-sm text-muted-foreground">
                     A lot is the minimum number of shares you can apply for in an
                     IPO. You must buy shares in multiples of the lot size.

@@ -33,32 +33,42 @@ export function DashboardContent({
   const totalPages = Math.ceil(initialPagination.total / initialPagination.limit);
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8 animate-in fade-in duration-500">
       {/* Header */}
-      <div className="mb-8">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight mb-2">
+      <div className="mb-10 animate-in slide-in-from-top-3 duration-500">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-4">
+          <div className="space-y-2">
+            <h1 className="text-4xl font-bold tracking-tight bg-gradient-to-r from-foreground via-foreground/90 to-foreground/70 bg-clip-text">
               IPO Dashboard
             </h1>
-            <p className="text-muted-foreground">
-              Browse current and upcoming IPOs. {initialPagination.total} IPOs found.
+            <p className="text-muted-foreground text-lg flex items-center gap-2">
+              Browse current and upcoming IPOs.
+              <span className="inline-flex items-center px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-semibold border border-primary/20 animate-in zoom-in duration-300 delay-100">
+                {initialPagination.total} IPOs
+              </span>
             </p>
           </div>
-          <ViewToggle currentView={view} />
+          <div className="animate-in slide-in-from-right duration-500 delay-100">
+            <ViewToggle currentView={view} />
+          </div>
         </div>
       </div>
 
       {/* Search Bar */}
-      <div className="mb-6">
+      <div className="mb-8 animate-in slide-in-from-left duration-500 delay-150">
         <SearchBar />
       </div>
 
       {/* Filter Bar */}
-      <FilterBar />
+      <div className="animate-in slide-in-from-right duration-500 delay-200">
+        <FilterBar />
+      </div>
 
-      {/* IPO Grid */}
-      <IPOGrid ipos={initialIPOs} view={view} searchQuery={initialSearch} />
+      {/* IPO Listings Section */}
+      <div className="mt-10">
+        <h2 className="sr-only">IPO Listings</h2>
+        <IPOGrid ipos={initialIPOs} view={view} searchQuery={initialSearch} />
+      </div>
 
       {/* Pagination */}
       {totalPages > 1 && (

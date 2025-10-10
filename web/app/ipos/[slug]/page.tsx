@@ -61,7 +61,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
   try {
     // Fetch IPO data for metadata
-    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000/api';
+    // Use NEXT_PUBLIC_API_BASE_URL if set, otherwise construct from PORT or default to 3000
+    const port = process.env.PORT || '3000';
+    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || `http://localhost:${port}/api`;
     const response = await fetch(`${baseUrl}/ipos/${slug}`, {
       next: { revalidate: 900 }, // 15 minutes
     });
@@ -99,7 +101,9 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   const { tab } = await searchParams;
 
   // Fetch IPO data server-side
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000/api';
+  // Use NEXT_PUBLIC_API_BASE_URL if set, otherwise construct from PORT or default to 3000
+  const port = process.env.PORT || '3000';
+  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || `http://localhost:${port}/api`;
 
   let data: IPODetailResponse;
   try {

@@ -108,8 +108,8 @@ function HistoricalIPOsContent({
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Page Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl md:text-4xl font-bold mb-2">Historical IPOs</h1>
+      <div className="mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        <h1 className="text-3xl md:text-4xl font-bold mb-2 bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">Historical IPOs</h1>
         <p className="text-muted-foreground text-lg">
           Browse past IPO performance with comprehensive metrics and analysis
         </p>

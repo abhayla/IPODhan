@@ -47,13 +47,19 @@ export function IPOGrid({ ipos, view, searchQuery }: IPOGridProps) {
     <div
       className={
         view === 'grid'
-          ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6'
-          : 'flex flex-col gap-4'
+          ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in duration-500'
+          : 'flex flex-col gap-4 animate-in fade-in duration-500'
       }
       data-testid="ipo-container"
     >
-      {ipos.map((ipo) => (
-        <IPOCard key={ipo.id} ipo={ipo} searchQuery={searchQuery} />
+      {ipos.map((ipo, index) => (
+        <div
+          key={ipo.id}
+          className="animate-in fade-in slide-in-from-bottom-4 duration-500"
+          style={{ animationDelay: `${index * 50}ms` }}
+        >
+          <IPOCard ipo={ipo} searchQuery={searchQuery} />
+        </div>
       ))}
     </div>
   );

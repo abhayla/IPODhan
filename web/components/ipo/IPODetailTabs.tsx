@@ -30,6 +30,7 @@ import {
   GMPChartSkeleton,
   DocumentListSkeleton,
 } from './skeletons';
+import { TabErrorBoundary } from './TabErrorBoundary';
 
 // Lazy load tab components for code-splitting
 const CompanyOverview = lazy(() =>
@@ -65,6 +66,9 @@ interface IPODetailTabsProps {
 
 type TabValue = 'overview' | 'financials' | 'subscription' | 'gmp' | 'documents';
 
+// Valid tab values for validation
+const VALID_TABS: TabValue[] = ['overview', 'financials', 'subscription', 'gmp', 'documents'];
+
 // ==================== COMPONENT ====================
 
 /**
@@ -81,10 +85,14 @@ export function IPODetailTabs({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // Get active tab from URL or use initial tab
-  const urlTab = searchParams.get('tab') as TabValue | null;
+  // Get active tab from URL or use initial tab (with validation)
+  const urlTab = searchParams.get('tab');
+  const validatedTab = urlTab && VALID_TABS.includes(urlTab as TabValue)
+    ? (urlTab as TabValue)
+    : null;
+
   const [activeTab, setActiveTab] = useState<TabValue>(
-    (urlTab as TabValue) || (initialTab as TabValue)
+    validatedTab || (initialTab as TabValue)
   );
 
   // Update URL when tab changes
@@ -135,109 +143,123 @@ export function IPODetailTabs({
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
       {/* Tab List */}
-      <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid">
-        <TabsTrigger value="overview">Overview</TabsTrigger>
-        <TabsTrigger value="financials">Financials</TabsTrigger>
-        <TabsTrigger value="subscription">Subscription</TabsTrigger>
-        <TabsTrigger value="gmp">GMP</TabsTrigger>
-        <TabsTrigger value="documents">Documents</TabsTrigger>
+      <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid shadow-sm">
+        <TabsTrigger value="overview" className="touch-manipulation">Overview</TabsTrigger>
+        <TabsTrigger value="financials" className="touch-manipulation">Financials</TabsTrigger>
+        <TabsTrigger value="subscription" className="touch-manipulation">Subscription</TabsTrigger>
+        <TabsTrigger value="gmp" className="touch-manipulation">GMP</TabsTrigger>
+        <TabsTrigger value="documents" className="touch-manipulation">Documents</TabsTrigger>
       </TabsList>
 
       {/* Tab Contents */}
 
       {/* Overview Tab */}
       <TabsContent value="overview" className="space-y-6 mt-6">
-        <Suspense fallback={<CompanyOverviewSkeleton />}>
-          <CompanyOverview
-            companyDescription={ipo.companyDescription || 'No description available.'}
-            riskFactors={[]} // TODO: Add risk factors when available
-          />
-        </Suspense>
+        <TabErrorBoundary tabName="Overview">
+          <Suspense fallback={<CompanyOverviewSkeleton />}>
+            <CompanyOverview
+              companyDescription={ipo.companyDescription || 'No description available.'}
+              riskFactors={[]} // TODO: Add risk factors when available
+            />
+          </Suspense>
+        </TabErrorBoundary>
 
         {/* Rating Section */}
-        <Suspense fallback={<div className="h-32 animate-pulse rounded-lg bg-muted" />}>
-          <div className="rounded-lg border bg-card p-6">
-            <h3 className="mb-4 text-lg font-semibold">IPODhan Rating</h3>
-            <RatingDisplay
-              rating={ipo.rating}
-              rationale={ipo.ratingRationale}
-              showRationale={true}
-              size="lg"
-            />
-          </div>
-        </Suspense>
+        <TabErrorBoundary tabName="Rating">
+          <Suspense fallback={<div className="h-32 animate-pulse rounded-lg bg-muted" />}>
+            <div className="rounded-lg border bg-card p-6">
+              <h3 className="mb-4 text-lg font-semibold">IPODhan Rating</h3>
+              <RatingDisplay
+                rating={ipo.rating}
+                rationale={ipo.ratingRationale}
+                showRationale={true}
+                size="lg"
+              />
+            </div>
+          </Suspense>
+        </TabErrorBoundary>
 
         {/* Share Buttons */}
-        <Suspense fallback={<div className="h-24 animate-pulse rounded-lg bg-muted" />}>
-          <ShareButtons
-            companyName={ipo.companyName}
-            rating={ipo.rating}
-            url={shareUrl}
-            keyMetrics={keyMetrics}
-          />
-        </Suspense>
+        <TabErrorBoundary tabName="Share">
+          <Suspense fallback={<div className="h-24 animate-pulse rounded-lg bg-muted" />}>
+            <ShareButtons
+              companyName={ipo.companyName}
+              rating={ipo.rating}
+              url={shareUrl}
+              keyMetrics={keyMetrics}
+            />
+          </Suspense>
+        </TabErrorBoundary>
       </TabsContent>
 
       {/* Financials Tab */}
       <TabsContent value="financials" className="mt-6">
-        <Suspense fallback={<FinancialTableSkeleton />}>
-          {financialData ? (
-            <FinancialTable financialData={financialData} />
-          ) : (
-            <div className="rounded-lg border bg-card p-8 text-center">
-              <p className="text-muted-foreground">
-                Financial data not available yet.
-              </p>
-            </div>
-          )}
-        </Suspense>
+        <TabErrorBoundary tabName="Financials">
+          <Suspense fallback={<FinancialTableSkeleton />}>
+            {financialData ? (
+              <FinancialTable financialData={financialData} />
+            ) : (
+              <div className="rounded-lg border bg-card p-8 text-center">
+                <p className="text-muted-foreground">
+                  Financial data not available yet.
+                </p>
+              </div>
+            )}
+          </Suspense>
+        </TabErrorBoundary>
       </TabsContent>
 
       {/* Subscription Tab */}
       <TabsContent value="subscription" className="mt-6">
-        <Suspense fallback={<SubscriptionBreakdownSkeleton />}>
-          {subscriptions && subscriptions.length > 0 ? (
-            <SubscriptionBreakdown subscription={subscriptions[0]} />
-          ) : (
-            <div className="rounded-lg border bg-card p-8 text-center">
-              <p className="text-muted-foreground">
-                Subscription data will be available once the IPO opens for bidding.
-              </p>
-            </div>
-          )}
-        </Suspense>
+        <TabErrorBoundary tabName="Subscription">
+          <Suspense fallback={<SubscriptionBreakdownSkeleton />}>
+            {subscriptions && subscriptions.length > 0 ? (
+              <SubscriptionBreakdown subscription={subscriptions[0]} />
+            ) : (
+              <div className="rounded-lg border bg-card p-8 text-center">
+                <p className="text-muted-foreground">
+                  Subscription data will be available once the IPO opens for bidding.
+                </p>
+              </div>
+            )}
+          </Suspense>
+        </TabErrorBoundary>
       </TabsContent>
 
       {/* GMP Tab */}
       <TabsContent value="gmp" className="mt-6">
-        <Suspense fallback={<GMPChartSkeleton />}>
-          {gmpRecords && gmpRecords.length > 0 ? (
-            <GMPChart
-              gmpRecords={gmpRecords}
-            />
-          ) : (
-            <div className="rounded-lg border bg-card p-8 text-center">
-              <p className="text-muted-foreground">
-                GMP data not available yet. Grey Market Premium will be tracked closer to the IPO opening.
-              </p>
-            </div>
-          )}
-        </Suspense>
+        <TabErrorBoundary tabName="GMP">
+          <Suspense fallback={<GMPChartSkeleton />}>
+            {gmpRecords && gmpRecords.length > 0 ? (
+              <GMPChart
+                gmpRecords={gmpRecords}
+              />
+            ) : (
+              <div className="rounded-lg border bg-card p-8 text-center">
+                <p className="text-muted-foreground">
+                  GMP data not available yet. Grey Market Premium will be tracked closer to the IPO opening.
+                </p>
+              </div>
+            )}
+          </Suspense>
+        </TabErrorBoundary>
       </TabsContent>
 
       {/* Documents Tab */}
       <TabsContent value="documents" className="mt-6">
-        <Suspense fallback={<DocumentListSkeleton />}>
-          {documents && documents.length > 0 ? (
-            <DocumentList documents={documents} />
-          ) : (
-            <div className="rounded-lg border bg-card p-8 text-center">
-              <p className="text-muted-foreground">
-                IPO documents (DRHP, RHP, Prospectus) will be added once available.
-              </p>
-            </div>
-          )}
-        </Suspense>
+        <TabErrorBoundary tabName="Documents">
+          <Suspense fallback={<DocumentListSkeleton />}>
+            {documents && documents.length > 0 ? (
+              <DocumentList documents={documents} />
+            ) : (
+              <div className="rounded-lg border bg-card p-8 text-center">
+                <p className="text-muted-foreground">
+                  IPO documents (DRHP, RHP, Prospectus) will be added once available.
+                </p>
+              </div>
+            )}
+          </Suspense>
+        </TabErrorBoundary>
       </TabsContent>
     </Tabs>
   );
