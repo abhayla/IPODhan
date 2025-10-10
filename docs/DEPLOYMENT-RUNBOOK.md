@@ -410,7 +410,9 @@ REDIS_PASSWORD=your_redis_password_here
 
 # Application
 NODE_ENV=production
+PORT=3000  # Port for Next.js server (used for server-side API calls)
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
+# Optional: NEXT_PUBLIC_API_BASE_URL=/api (auto-detected if not set)
 
 # Sentry (Error Tracking)
 SENTRY_DSN=your_sentry_dsn_here
@@ -435,6 +437,20 @@ BACKUP_RETENTION_DAYS=30
 BACKUP_CLOUD_BUCKET=your-s3-bucket
 BACKUP_CLOUD_PROVIDER=s3
 ```
+
+**💡 Port Configuration Best Practices:**
+
+The application now uses dynamic port detection to eliminate port conflicts:
+
+- **Client-side requests:** Automatically use relative URLs (`/api`) which inherit the browser's current port
+- **Server-side requests:** Detect port from `process.env.PORT` environment variable
+- **Fallback chain:** `PORT` → `NEXT_PUBLIC_APP_URL` → `VERCEL_URL` → `localhost:3000`
+
+This means:
+✅ No hardcoded ports in code
+✅ Works on any available port (3000, 3007, etc.)
+✅ No configuration needed for local development
+✅ Production-ready for any hosting environment
 
 ### Step 4: Build Application
 
