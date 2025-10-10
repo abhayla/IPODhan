@@ -29,7 +29,7 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "seed": "node scripts/seed.js",
-    "calculate-ratings": "tsx lib/scripts/calculate-ratings.ts",
+    "calculate-ratings": "tsx scripts/calculate-ratings.ts",
     "analyze": "ANALYZE=true npm run build",
     "perf:test": "lhci autorun",
     "perf:ci": "npm run build && lhci autorun"

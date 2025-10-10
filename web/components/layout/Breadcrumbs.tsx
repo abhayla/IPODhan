@@ -22,7 +22,7 @@ import { ChevronRight, Home } from 'lucide-react';
 
 export interface BreadcrumbItem {
   label: string;
-  href: string;
+  href?: string;
 }
 
 interface BreadcrumbsProps {
@@ -50,7 +50,7 @@ export function Breadcrumbs({ items, className = '' }: BreadcrumbsProps) {
           const isFirst = index === 0;
 
           return (
-            <li key={item.href} className="flex items-center gap-2">
+            <li key={item.href || item.label} className="flex items-center gap-2">
               {/* Separator (except for first item) */}
               {!isFirst && (
                 <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -75,7 +75,7 @@ export function Breadcrumbs({ items, className = '' }: BreadcrumbsProps) {
               ) : (
                 // Intermediate items - links
                 <Link
-                  href={item.href}
+                  href={item.href || '#'}
                   className="text-muted-foreground transition-colors hover:text-foreground"
                 >
                   {/* Show home icon for first breadcrumb if it's home */}

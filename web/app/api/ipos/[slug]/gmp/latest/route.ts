@@ -1,11 +1,11 @@
 /**
- * GET /api/ipos/[slug] API Route
+ * GET /api/ipos/[slug]/gmp/latest API Route
  *
- * Returns detailed IPO information including all relationships
+ * Returns the latest Grey Market Premium data for a specific IPO
  *
- * @route GET /api/ipos/[slug]
+ * @route GET /api/ipos/[slug]/gmp/latest
  * @param {string} slug - IPO URL slug
- * @returns {IPODetailResponse} Comprehensive IPO data with relationships
+ * @returns {GMPResponse} Latest GMP data with timestamp and trend
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -15,20 +15,34 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { EntityNotFoundError, DatabaseError } from '@/lib/errors/repository-errors';
 import { logger } from '@/lib/logger';
-import type { IPODetailResponse } from '@/lib/db/types';
+import { gmpRecords } from '@/lib/db/schema';
+import { desc, eq } from 'drizzle-orm';
+
+// ==================== TYPES ====================
+
+interface GMPResponse {
+  ipoId: string;
+  ipoSlug: string;
+  companyName: string;
+  issuePrice: number | null;
+  latestGMP: {
+    timestamp: string;
+    gmp: number;
+    gmpPercentage: number;
+    expectedListingPrice: number | null;
+    source: string;
+    trend: 'up' | 'down' | 'stable' | null;
+  } | null;
+  message?: string;
+  disclaimer: string;
+}
 
 // ==================== HELPER FUNCTIONS ====================
 
-/**
- * Generate unique request ID for tracing
- */
 function generateRequestId(): string {
   return `req_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 }
 
-/**
- * Create standardized error response
- */
 function createErrorResponse(
   code: string,
   message: string,
@@ -53,7 +67,7 @@ function createErrorResponse(
 // ==================== API ROUTE HANDLER ====================
 
 /**
- * GET /api/ipos/[slug] - Fetch IPO details with all relationships
+ * GET /api/ipos/[slug]/gmp/latest - Fetch latest GMP data
  */
 export async function GET(
   request: NextRequest,
@@ -62,13 +76,12 @@ export async function GET(
   const requestId = generateRequestId();
   const startTime = Date.now();
 
-  // Create request-scoped logger
   const requestLogger = logger.child({ requestId });
 
   try {
     const { slug } = await context.params;
 
-    requestLogger.info({ slug }, 'Processing IPO detail request');
+    requestLogger.info({ slug }, 'Processing GMP data request');
 
     // Validate slug
     if (!slug || typeof slug !== 'string') {
@@ -80,13 +93,12 @@ export async function GET(
       );
     }
 
-    // Initialize repository with optional Redis
+    // Initialize Redis (with fallback)
     let redis;
     try {
       redis = getRedisClient();
     } catch {
       requestLogger.warn('Redis unavailable - continuing without cache');
-      // Create a mock Redis client for repositories
       redis = {
         get: async () => null,
         set: async () => 'OK',
@@ -97,10 +109,25 @@ export async function GET(
 
     const ipoRepository = new IPORepository(db, redis);
 
-    // Fetch IPO with all relationships
-    const ipoWithRelations = await ipoRepository.findBySlug(slug);
+    // Check Redis cache first (15 minute TTL for GMP - updates less frequently)
+    const cacheKey = `gmp:latest:${slug}`;
+    const cachedData = await redis.get(cacheKey);
 
-    if (!ipoWithRelations) {
+    if (cachedData) {
+      requestLogger.info({ slug, cached: true }, 'Returning cached GMP data');
+      return NextResponse.json(JSON.parse(cachedData as string), {
+        status: 200,
+        headers: {
+          'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=1800',
+          'X-Cache': 'HIT',
+        },
+      });
+    }
+
+    // Fetch IPO by slug
+    const ipo = await ipoRepository.findBySlug(slug);
+
+    if (!ipo) {
       requestLogger.warn({ slug }, 'IPO not found');
       return createErrorResponse(
         'NOT_FOUND',
@@ -110,74 +137,77 @@ export async function GET(
       );
     }
 
-    // Transform to API response format
-    const response: IPODetailResponse = {
-      ipo: {
-        id: ipoWithRelations.id,
-        companyName: ipoWithRelations.companyName,
-        slug: ipoWithRelations.slug,
-        category: ipoWithRelations.category,
-        sector: ipoWithRelations.sector,
-        issueSize: ipoWithRelations.issueSize,
-        priceRangeMin: ipoWithRelations.priceRangeMin,
-        priceRangeMax: ipoWithRelations.priceRangeMax,
-        lotSize: ipoWithRelations.lotSize,
-        status: ipoWithRelations.status,
-        openDate: ipoWithRelations.openDate,
-        closeDate: ipoWithRelations.closeDate,
-        allotmentDate: ipoWithRelations.allotmentDate,
-        listingDate: ipoWithRelations.listingDate,
-        companyDescription: ipoWithRelations.companyDescription,
-        faceValue: ipoWithRelations.faceValue,
-        listingExchanges: ipoWithRelations.listingExchanges,
-        registrar: ipoWithRelations.registrar,
-        registrarId: ipoWithRelations.registrarId,
-        leadManagers: ipoWithRelations.leadManagers,
-        rating: ipoWithRelations.rating,
-        ratingRationale: ipoWithRelations.ratingRationale,
-        ratingOverride: ipoWithRelations.ratingOverride,
-        lastScrapedAt: ipoWithRelations.lastScrapedAt,
-        createdAt: ipoWithRelations.createdAt,
-        updatedAt: ipoWithRelations.updatedAt,
-      },
-      financialData: ipoWithRelations.financialData ?? null,
-      documents: ipoWithRelations.documents || [],
-      subscriptions: ipoWithRelations.subscriptions || [],
-      gmpRecords: ipoWithRelations.gmpRecords || [],
-      listingPerformance: ipoWithRelations.listingPerformance ?? null,
-      peerCompanies: ipoWithRelations.peerCompanies || [],
-      peers: [],
-      metadata: {
-        lastUpdated: new Date().toISOString(),
-      },
+    // Fetch latest 2 GMP records to calculate trend
+    const gmpData = await db
+      .select()
+      .from(gmpRecords)
+      .where(eq(gmpRecords.ipoId, ipo.id))
+      .orderBy(desc(gmpRecords.timestamp))
+      .limit(2);
+
+    const latestGMP = gmpData[0];
+    const previousGMP = gmpData[1];
+
+    // Calculate trend
+    let trend: 'up' | 'down' | 'stable' | null = null;
+    if (latestGMP && previousGMP) {
+      const diff = latestGMP.gmp - previousGMP.gmp;
+      if (diff > 5) trend = 'up';
+      else if (diff < -5) trend = 'down';
+      else trend = 'stable';
+    }
+
+    // Calculate GMP percentage
+    const issuePrice = ipo.priceRangeMax || ipo.priceRangeMin;
+    const gmpPercentage =
+      latestGMP && issuePrice
+        ? (latestGMP.gmp / issuePrice) * 100
+        : 0;
+
+    // Prepare response
+    const response: GMPResponse = {
+      ipoId: ipo.id,
+      ipoSlug: ipo.slug,
+      companyName: ipo.companyName,
+      issuePrice: issuePrice,
+      latestGMP: latestGMP
+        ? {
+            timestamp: latestGMP.timestamp.toISOString(),
+            gmp: latestGMP.gmp,
+            gmpPercentage: parseFloat(gmpPercentage.toFixed(2)),
+            expectedListingPrice: latestGMP.expectedListingPrice,
+            source: latestGMP.source,
+            trend,
+          }
+        : null,
+      message: latestGMP ? undefined : 'GMP data not yet available',
+      disclaimer:
+        'Grey Market Premium (GMP) is unofficial and indicative. GMP can be volatile and should not be the sole basis for investment decisions.',
     };
 
-    // Log successful response
+    // Cache the response (15 minutes)
+    await redis.set(cacheKey, JSON.stringify(response), 'EX', 900);
+
     const duration = Date.now() - startTime;
     requestLogger.info(
       {
         duration,
         slug,
-        status: ipoWithRelations.status,
-        hasFinancials: !!ipoWithRelations.financialData,
-        subscriptionCount: ipoWithRelations.subscriptions?.length || 0,
-        gmpCount: ipoWithRelations.gmpRecords?.length || 0,
+        hasData: !!latestGMP,
+        gmp: latestGMP?.gmp,
+        trend,
       },
-      'IPO details fetched successfully'
+      'GMP data fetched successfully'
     );
 
-    // Return response with cache headers
-    // Story 8.3: Performance Optimization - AC#2
-    // s-maxage=300 (5min cache), stale-while-revalidate=600 (serve stale for 10min)
     return NextResponse.json(response, {
       status: 200,
       headers: {
-        'Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
-        'CDN-Cache-Control': 'public, s-maxage=300, stale-while-revalidate=600',
+        'Cache-Control': 'public, s-maxage=900, stale-while-revalidate=1800',
+        'X-Cache': 'MISS',
       },
     });
   } catch (error) {
-    // Log error with context
     const duration = Date.now() - startTime;
     requestLogger.error(
       {
@@ -185,21 +215,14 @@ export async function GET(
         stack: error instanceof Error ? error.stack : undefined,
         duration,
       },
-      'Failed to fetch IPO details'
+      'Failed to fetch GMP data'
     );
 
-    // Handle specific errors
     if (error instanceof EntityNotFoundError) {
-      return createErrorResponse(
-        'NOT_FOUND',
-        error.message,
-        requestId,
-        404
-      );
+      return createErrorResponse('NOT_FOUND', error.message, requestId, 404);
     }
 
     if (error instanceof DatabaseError) {
-      // Report to Sentry in production
       if (process.env.NODE_ENV === 'production') {
         Sentry.captureException(error, {
           tags: {
@@ -208,7 +231,7 @@ export async function GET(
           },
           contexts: {
             api: {
-              route: '/api/ipos/[slug]',
+              route: '/api/ipos/[slug]/gmp/latest',
               method: 'GET',
               duration,
             },
@@ -218,13 +241,12 @@ export async function GET(
 
       return createErrorResponse(
         'DATABASE_ERROR',
-        'Failed to fetch IPO details',
+        'Failed to fetch GMP data',
         requestId,
         500
       );
     }
 
-    // Handle unknown errors
     if (process.env.NODE_ENV === 'production') {
       Sentry.captureException(error, {
         tags: {
@@ -233,7 +255,7 @@ export async function GET(
         },
         contexts: {
           api: {
-            route: '/api/ipos/[slug]',
+            route: '/api/ipos/[slug]/gmp/latest',
             method: 'GET',
             duration,
           },
