@@ -81,13 +81,17 @@ export function FilterBar() {
       <div className="lg:hidden mb-4">
         <Button
           variant="outline"
-          className="w-full"
+          className="w-full transition-all duration-200 hover:scale-[1.02] hover:border-primary"
           onClick={() => setIsFiltersOpen(!isFiltersOpen)}
           aria-label="Toggle filters"
           aria-expanded={isFiltersOpen}
         >
-          <Filter className="mr-2 h-4 w-4" />
-          Filters {activeFilterCount > 0 && `(${activeFilterCount})`}
+          <Filter className={`mr-2 h-4 w-4 transition-transform duration-300 ${isFiltersOpen ? 'rotate-180' : ''}`} />
+          Filters {activeFilterCount > 0 && (
+            <span className="ml-1 px-2 py-0.5 bg-primary text-primary-foreground text-xs rounded-full animate-in fade-in zoom-in duration-200">
+              {activeFilterCount}
+            </span>
+          )}
         </Button>
       </div>
 
@@ -95,9 +99,10 @@ export function FilterBar() {
       <div
         data-testid="filter-bar"
         className={`
-          flex flex-col gap-3
+          flex flex-col gap-3 p-4 rounded-lg bg-gradient-to-r from-muted/30 to-muted/50 backdrop-blur-sm border border-border/50
           lg:flex lg:flex-row lg:items-center lg:gap-4
-          ${isFiltersOpen ? 'block' : 'hidden lg:flex'}
+          transition-all duration-300 ease-in-out
+          ${isFiltersOpen ? 'animate-in slide-in-from-top-2 fade-in' : 'hidden lg:flex'}
         `}
       >
         <StatusFilter

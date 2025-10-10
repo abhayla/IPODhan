@@ -21,27 +21,39 @@ export function ViewToggle({ currentView }: ViewToggleProps) {
   };
 
   return (
-    <div className="flex gap-2" role="group" aria-label="View toggle">
+    <div className="flex gap-1 p-1 bg-muted/50 rounded-lg border border-border/50 backdrop-blur-sm" role="group" aria-label="View toggle">
       <Button
-        variant={currentView === 'grid' ? 'default' : 'outline'}
+        variant={currentView === 'grid' ? 'default' : 'ghost'}
         size="sm"
         onClick={() => handleViewChange('grid')}
         aria-label="Grid view"
         aria-pressed={currentView === 'grid'}
-        className="gap-2"
+        className={`gap-2 transition-all duration-200 ${
+          currentView === 'grid'
+            ? 'scale-105 shadow-md'
+            : 'hover:bg-background hover:scale-105'
+        }`}
       >
-        <Grid className="h-4 w-4" />
+        <Grid className={`h-4 w-4 transition-transform duration-200 ${
+          currentView === 'grid' ? 'rotate-0' : 'group-hover:rotate-12'
+        }`} />
         <span className="hidden sm:inline">Grid</span>
       </Button>
       <Button
-        variant={currentView === 'list' ? 'default' : 'outline'}
+        variant={currentView === 'list' ? 'default' : 'ghost'}
         size="sm"
         onClick={() => handleViewChange('list')}
         aria-label="List view"
         aria-pressed={currentView === 'list'}
-        className="gap-2"
+        className={`gap-2 transition-all duration-200 ${
+          currentView === 'list'
+            ? 'scale-105 shadow-md'
+            : 'hover:bg-background hover:scale-105'
+        }`}
       >
-        <List className="h-4 w-4" />
+        <List className={`h-4 w-4 transition-transform duration-200 ${
+          currentView === 'list' ? 'rotate-0' : 'group-hover:rotate-12'
+        }`} />
         <span className="hidden sm:inline">List</span>
       </Button>
     </div>

@@ -46,32 +46,38 @@ export function RatingDisplay({
       {[...Array(fullStars)].map((_, i) => (
         <Star
           key={`full-${i}`}
-          className={`${starSize} fill-yellow-400 text-yellow-400`}
+          className={`${starSize} fill-yellow-400 text-yellow-400 transition-all duration-300 hover:scale-125 hover:rotate-12 animate-in zoom-in duration-300`}
+          style={{ animationDelay: `${i * 50}ms` }}
         />
       ))}
       {hasHalfStar && (
         <StarHalf
-          className={`${starSize} fill-yellow-400 text-yellow-400`}
+          className={`${starSize} fill-yellow-400 text-yellow-400 transition-all duration-300 hover:scale-125 animate-in zoom-in duration-300`}
+          style={{ animationDelay: `${fullStars * 50}ms` }}
         />
       )}
       {[...Array(emptyStars)].map((_, i) => (
-        <Star key={`empty-${i}`} className={`${starSize} text-gray-300`} />
+        <Star
+          key={`empty-${i}`}
+          className={`${starSize} text-gray-300 dark:text-gray-600 transition-all duration-300 hover:scale-110 animate-in fade-in duration-300`}
+          style={{ animationDelay: `${(fullStars + (hasHalfStar ? 1 : 0) + i) * 50}ms` }}
+        />
       ))}
-      <span className="ml-1 text-sm text-muted-foreground">
+      <span className="ml-2 text-sm font-semibold text-muted-foreground bg-muted px-2 py-0.5 rounded-full">
         {rating.toFixed(1)}
       </span>
     </div>
   );
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <div>{stars}</div>
+            <div className="cursor-help">{stars}</div>
           </TooltipTrigger>
-          <TooltipContent className="max-w-xs">
-            <p className="text-sm">
+          <TooltipContent className="max-w-xs shadow-lg">
+            <p className="text-sm font-medium">
               IPODhan rating based on financials, valuation, business model, and
               management quality.
             </p>
@@ -80,7 +86,9 @@ export function RatingDisplay({
       </TooltipProvider>
 
       {showRationale && rationale && (
-        <p className="text-sm text-muted-foreground">{rationale}</p>
+        <div className="p-3 rounded-lg bg-muted/50 border border-muted-foreground/10 animate-in fade-in slide-in-from-bottom-1 duration-500 delay-100">
+          <p className="text-sm text-muted-foreground leading-relaxed">{rationale}</p>
+        </div>
       )}
     </div>
   );

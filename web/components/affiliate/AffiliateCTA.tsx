@@ -20,15 +20,16 @@ import { BrokerButton } from './BrokerButton';
 import { affiliateConfig } from '@/lib/config/affiliate-links';
 
 export function AffiliateCTA() {
-  const [isVisible, setIsVisible] = useState(false);
+  // Initialize state by checking cookie immediately (client-side only now)
+  const [isVisible, setIsVisible] = useState(() => {
+    // This runs only on client since component is dynamically imported with ssr: false
+    if (typeof window === 'undefined') return true;
 
-  useEffect(() => {
-    // Check if banner was previously dismissed
     const isDismissed = document.cookie.includes(
       `${affiliateConfig.homepage.banner.cookieKey}=true`
     );
-    setIsVisible(!isDismissed);
-  }, []);
+    return !isDismissed;
+  });
 
   const handleDismiss = () => {
     // Set cookie to persist dismissal for 30 days

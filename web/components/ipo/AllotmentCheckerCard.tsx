@@ -89,16 +89,16 @@ export function AllotmentCheckerCard({
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <div>
-            <CardTitle>Check Allotment Status</CardTitle>
-            <p className="text-sm text-muted-foreground">
+    <Card className="border-l-4 border-l-indigo-500 transition-all duration-300 hover:shadow-lg">
+      <CardHeader className="bg-gradient-to-r from-background to-muted/20">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+            <CardTitle className="text-xl font-bold tracking-tight">Check Allotment Status</CardTitle>
+            <p className="text-sm text-muted-foreground font-medium">
               Check your IPO allotment status on {registrar} website
             </p>
           </div>
-          <Button variant="ghost" size="sm" asChild>
+          <Button variant="ghost" size="sm" asChild className="transition-all duration-300 hover:scale-105 hover:bg-muted">
             <Link href="/registrars" className="flex items-center gap-1">
               <Building2 className="h-4 w-4" />
               <span className="hidden sm:inline">All Registrars</span>
@@ -106,9 +106,9 @@ export function AllotmentCheckerCard({
           </Button>
         </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4 pt-6">
         <div className="space-y-2">
-          <label htmlFor="pan" className="text-sm font-medium">
+          <label htmlFor="pan" className="text-sm font-semibold uppercase tracking-wide">
             Enter your PAN Number
           </label>
           <Input
@@ -118,34 +118,34 @@ export function AllotmentCheckerCard({
             value={pan}
             onChange={handlePanChange}
             maxLength={10}
-            className="uppercase"
+            className="uppercase transition-all duration-300 focus:ring-2 focus:ring-indigo-500"
             aria-label="PAN number input"
           />
           {error && (
-            <p className="text-sm text-destructive">{error}</p>
+            <p className="text-sm text-destructive font-medium animate-in fade-in slide-in-from-top-1 duration-300">{error}</p>
           )}
         </div>
 
         <Button
           onClick={handleCheckStatus}
           disabled={pan.length !== 10 || !!error || !registrarUrl}
-          className="w-full"
+          className="w-full transition-all duration-300 hover:shadow-md hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800"
         >
-          <ExternalLink className="mr-2 h-4 w-4" />
+          <ExternalLink className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
           Check Status on {registrar}
         </Button>
 
-        <Alert>
-          <Shield className="h-4 w-4" />
-          <AlertDescription className="text-sm">
+        <Alert className="border-indigo-200 bg-indigo-50 dark:bg-indigo-950/20 dark:border-indigo-800">
+          <Shield className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+          <AlertDescription className="text-sm font-medium text-indigo-900 dark:text-indigo-100">
             Your PAN is not stored. You will be redirected to the official
             registrar website to check your allotment status.
           </AlertDescription>
         </Alert>
 
         {!registrarUrl && (
-          <Alert variant="destructive">
-            <AlertDescription className="text-sm">
+          <Alert variant="destructive" className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <AlertDescription className="text-sm font-medium">
               Registrar website URL is not available. Please visit the
               registrar website directly to check allotment status.
             </AlertDescription>

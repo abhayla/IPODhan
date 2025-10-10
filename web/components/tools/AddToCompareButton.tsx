@@ -129,25 +129,25 @@ export function AddToCompareButton({
   const canAddMore = comparisonCount < MAX_COMPARISON;
 
   return (
-    <div className={cn('flex items-center gap-2', className)}>
+    <div className={cn('flex items-center gap-2 flex-wrap', className)}>
       {/* Add/Remove Button */}
       <Button
         variant={isAdded ? 'outline' : 'secondary'}
         size={size}
         onClick={handleAddToCompare}
         className={cn(
-          'gap-2',
-          isAdded && 'border-green-500 text-green-700 dark:text-green-400'
+          'gap-2 transition-all duration-300 hover:shadow-md hover:scale-105',
+          isAdded && 'border-green-500 text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/20'
         )}
       >
         {isAdded ? (
           <>
-            <Check className="h-4 w-4" />
+            <Check className="h-4 w-4 animate-in zoom-in duration-300" />
             <span>Added to Compare</span>
           </>
         ) : (
           <>
-            <Scale className="h-4 w-4" />
+            <Scale className="h-4 w-4 transition-transform duration-300 group-hover:rotate-12" />
             <span>Add to Compare</span>
           </>
         )}
@@ -155,10 +155,10 @@ export function AddToCompareButton({
 
       {/* Comparison Count Badge */}
       {comparisonCount > 0 && (
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="gap-1">
-            <Scale className="h-3 w-3" />
-            <span>{comparisonCount}</span>
+        <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-3 duration-300">
+          <Badge variant="secondary" className="gap-1 transition-all duration-300 hover:scale-110 shadow-sm">
+            <Scale className="h-3 w-3 transition-transform duration-300 group-hover:rotate-12" />
+            <span className="font-semibold">{comparisonCount}</span>
           </Badge>
 
           {/* View Comparison Button (when at least 2 IPOs) */}
@@ -167,8 +167,9 @@ export function AddToCompareButton({
               variant="default"
               size={size}
               onClick={handleViewComparison}
-              className="gap-2"
+              className="gap-2 transition-all duration-300 hover:shadow-lg hover:scale-105 bg-gradient-to-r from-primary to-primary/80 animate-in fade-in slide-in-from-right-2 duration-300 delay-100"
             >
+              <Scale className="h-4 w-4" />
               View Comparison
             </Button>
           )}
@@ -177,7 +178,7 @@ export function AddToCompareButton({
 
       {/* Max limit reached message */}
       {!canAddMore && !isAdded && (
-        <span className="text-xs text-muted-foreground">
+        <span className="text-xs text-muted-foreground font-medium animate-in fade-in duration-300">
           (Max {MAX_COMPARISON} IPOs)
         </span>
       )}

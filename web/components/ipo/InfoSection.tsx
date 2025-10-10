@@ -2,7 +2,7 @@
 
 import { IPO } from '@/lib/db/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { format } from 'date-fns';
+import { formatIPODate, getAccessibleDate, getISODate } from '@/lib/utils/date-formatter';
 
 interface InfoSectionProps {
   ipo: IPO;
@@ -13,15 +13,6 @@ interface InfoSectionProps {
  * Includes dates, price range, lot size, face value, exchanges, and lead managers
  */
 export function InfoSection({ ipo }: InfoSectionProps) {
-  const formatDate = (date: string | null) => {
-    if (!date) return 'TBA';
-    try {
-      return format(new Date(date), 'dd MMM yyyy');
-    } catch {
-      return 'TBA';
-    }
-  };
-
   const formatCurrency = (amount: number | null) => {
     if (amount === null) return 'N/A';
     return new Intl.NumberFormat('en-IN', {
@@ -34,32 +25,48 @@ export function InfoSection({ ipo }: InfoSectionProps) {
   const InfoRow = ({
     label,
     value,
+    isDate,
+    dateValue,
   }: {
     label: string;
     value: string | null;
+    isDate?: boolean;
+    dateValue?: string | null;
   }) => (
-    <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4">
-      <span className="text-sm font-medium text-muted-foreground">{label}</span>
-      <span className="text-sm font-semibold">{value || 'N/A'}</span>
+    <div className="group flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4 p-2 rounded-md transition-all duration-200 hover:bg-muted/30">
+      <span className="text-sm font-medium text-muted-foreground uppercase tracking-wide">{label}</span>
+      {isDate && dateValue ? (
+        <time
+          dateTime={getISODate(dateValue) || undefined}
+          aria-label={getAccessibleDate(dateValue)}
+          className="text-sm font-bold transition-colors duration-200 group-hover:text-primary"
+        >
+          {value || 'N/A'}
+        </time>
+      ) : (
+        <span className="text-sm font-bold transition-colors duration-200 group-hover:text-primary">{value || 'N/A'}</span>
+      )}
     </div>
   );
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>IPO Details</CardTitle>
+    <Card className="transition-all duration-300 hover:shadow-lg border-t-4 border-t-primary/20">
+      <CardHeader className="bg-gradient-to-r from-background to-muted/20">
+        <CardTitle className="text-xl font-bold tracking-tight">IPO Details</CardTitle>
       </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+      <CardContent className="pt-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8">
           {/* Left Column */}
-          <div className="space-y-3">
-            <InfoRow label="Open Date" value={formatDate(ipo.openDate)} />
-            <InfoRow label="Close Date" value={formatDate(ipo.closeDate)} />
+          <div className="space-y-2 animate-in fade-in slide-in-from-left-4 duration-500">
+            <InfoRow label="Open Date" value={formatIPODate(ipo.openDate)} isDate dateValue={ipo.openDate} />
+            <InfoRow label="Close Date" value={formatIPODate(ipo.closeDate)} isDate dateValue={ipo.closeDate} />
             <InfoRow
               label="Allotment Date"
-              value={formatDate(ipo.allotmentDate)}
+              value={formatIPODate(ipo.allotmentDate)}
+              isDate
+              dateValue={ipo.allotmentDate}
             />
-            <InfoRow label="Listing Date" value={formatDate(ipo.listingDate)} />
+            <InfoRow label="Listing Date" value={formatIPODate(ipo.listingDate)} isDate dateValue={ipo.listingDate} />
             <InfoRow
               label="Price Range"
               value={`${formatCurrency(ipo.priceRangeMin)} - ${formatCurrency(ipo.priceRangeMax)}`}
@@ -71,7 +78,7 @@ export function InfoSection({ ipo }: InfoSectionProps) {
           </div>
 
           {/* Right Column */}
-          <div className="space-y-3">
+          <div className="space-y-2 animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
             <InfoRow
               label="Lot Size"
               value={ipo.lotSize ? `${ipo.lotSize} shares` : null}
