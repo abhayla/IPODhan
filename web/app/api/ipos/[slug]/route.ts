@@ -16,6 +16,7 @@ import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { EntityNotFoundError, DatabaseError } from '@/lib/errors/repository-errors';
 import { logger } from '@/lib/logger';
 import type { IPODetailResponse } from '@/lib/db/types';
+import { readHeavyRateLimiter } from '@/lib/middleware/rate-limiter';
 
 // ==================== HELPER FUNCTIONS ====================
 
@@ -59,6 +60,12 @@ export async function GET(
   request: NextRequest,
   context: { params: Promise<{ slug: string }> }
 ) {
+  // Apply rate limiting
+  const rateLimitResponse = await readHeavyRateLimiter(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   const requestId = generateRequestId();
   const startTime = Date.now();
 

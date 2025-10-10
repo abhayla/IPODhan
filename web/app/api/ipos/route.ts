@@ -40,6 +40,7 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { DatabaseError } from '@/lib/errors/repository-errors';
 import { logger } from '@/lib/logger';
+import { readHeavyRateLimiter } from '@/lib/middleware/rate-limiter';
 
 // ==================== VALIDATION SCHEMAS ====================
 
@@ -196,6 +197,12 @@ function createErrorResponse(
  * - Request logging with request ID
  */
 export async function GET(request: NextRequest) {
+  // Apply rate limiting
+  const rateLimitResponse = await readHeavyRateLimiter(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   const requestId = generateRequestId();
   const startTime = Date.now();
 

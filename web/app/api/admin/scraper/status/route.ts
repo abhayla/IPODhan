@@ -11,6 +11,7 @@ import { db } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { ScraperLogRepository } from '@/lib/repositories/scraper-log-repository';
 import type { ScraperSource } from '@/lib/db/types';
+import { adminRateLimiter } from '@/lib/middleware/rate-limiter';
 
 /**
  * Health status calculation
@@ -99,6 +100,12 @@ async function getRecordsProcessed24h(
 }
 
 export async function GET(request: NextRequest) {
+  // Apply admin rate limiting
+  const rateLimitResponse = await adminRateLimiter(request);
+  if (rateLimitResponse) {
+    return rateLimitResponse;
+  }
+
   try {
     const redis = getRedisClient();
     const scraperLogRepository = new ScraperLogRepository(db, redis);
