@@ -109,8 +109,14 @@ sudo systemctl status nginx
 cd /var/www/ipodhan/web
 nano .env.production
 
-# Update URL
+# Update URL and port
 NEXT_PUBLIC_APP_URL=https://yourdomain.com
+PORT=3000
+
+# Note: The application uses dynamic port detection
+# - Client-side: Uses relative URLs (/api) automatically
+# - Server-side: Detects port from PORT environment variable
+# No need to set NEXT_PUBLIC_API_BASE_URL unless using custom configuration
 ```
 
 **Step 7: Verify SSL Grade**
@@ -181,6 +187,9 @@ BACKUP_RETENTION_DAYS=30
 BACKUP_CLOUD_BUCKET=your-s3-bucket-name
 BACKUP_CLOUD_PROVIDER=s3  # or gcs, azure
 BACKUP_NOTIFY_EMAIL=admin@yourdomain.com
+
+# Note: PORT variable is also used by the API client for server-side requests
+PORT=3000
 ```
 
 **Step 3: Create Backup Directory**
