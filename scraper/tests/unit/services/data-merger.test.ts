@@ -177,7 +177,7 @@ describe('data-merger', () => {
         closeDate: '2025-10-12',
         listingExchange: 'NSE',
         category: 'MAINBOARD',
-        status: 'LIVE'
+        status: 'OPEN'
       };
 
       const result = mergeIPOData(apiIPO, nseData, 'NSE');
@@ -186,7 +186,7 @@ describe('data-merger', () => {
       expect(result.companyName).toBe('ABC Company Limited');
       expect(result.issueSize).toBe(1000000000);
       expect(result.priceRangeMin).toBe(250);
-      expect(result.status).toBe('LIVE');
+      expect(result.status).toBe('OPEN');
 
       expect(result.dataSources).toContain('NSE');
       expect(result.dataSources).toContain('API_FALLBACK');

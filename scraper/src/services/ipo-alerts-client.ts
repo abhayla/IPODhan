@@ -362,7 +362,7 @@ export class IPOAlertsClient {
     return {
       used: this.rateLimiter.getRequestCount(),
       remaining: this.rateLimiter.getRemainingRequests(),
-      limit: RATE_LIMIT_MAX_REQUESTS,
+      limit: this.maxRequests,
       resetInMs: this.rateLimiter.getTimeUntilReset()
     };
   }

@@ -111,8 +111,8 @@ export async function runBSEScraper(): Promise<ScraperResult> {
         // Track updated IPO slug for comprehensive cache invalidation
         updatedIPOSlugs.push(slug);
 
-        // Step 3: Process subscription data for LIVE (active/open) IPOs
-        if (validatedIPO.status === 'LIVE') {
+        // Step 3: Process subscription data for OPEN (active) IPOs
+        if (validatedIPO.status === 'OPEN') {
           const relatedSubscription = scrapedSubscriptions.find(
             sub => sub.ipoCompanyName === validatedIPO.companyName
           );

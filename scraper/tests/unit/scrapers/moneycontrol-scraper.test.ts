@@ -184,7 +184,7 @@ describe('moneycontrol-scraper', () => {
       const result = await scrapeMoneycontrolIPOs();
 
       expect(result.ipos).toHaveLength(1);
-      expect(result.ipos[0].status).toBe('LIVE');
+      expect(result.ipos[0].status).toBe('OPEN');
     });
 
     it('should determine status as UPCOMING for future IPOs', async () => {

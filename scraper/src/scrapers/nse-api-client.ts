@@ -45,6 +45,35 @@ export interface NSEAPIResult {
   timestamp: string;
 }
 
+// Cookie jar to store NSE session cookies
+let nseSessionCookies: string[] = [];
+
+/**
+ * Initialize NSE session by visiting homepage to get cookies
+ */
+async function initNSESession(): Promise<void> {
+  try {
+    // Visit NSE homepage to get session cookies
+    const response = await fetch(BASE_URL, {
+      method: 'GET',
+      headers: {
+        'User-Agent': DEFAULT_HEADERS['User-Agent'],
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      }
+    });
+
+    // Extract cookies from response
+    const setCookieHeaders = response.headers.getSetCookie?.() || [];
+    if (setCookieHeaders.length > 0) {
+      nseSessionCookies = setCookieHeaders.map(cookie => cookie.split(';')[0]);
+      logger.debug({ cookieCount: nseSessionCookies.length }, 'NSE session cookies obtained');
+    }
+  } catch (error) {
+    logger.warn('Failed to initialize NSE session cookies');
+  }
+}
+
 /**
  * Make API request with proper headers and error handling
  */
@@ -58,11 +87,55 @@ async function makeRequest(endpoint: string, params?: Record<string, string>): P
     });
   }
 
+  // Initialize session if no cookies yet
+  if (nseSessionCookies.length === 0) {
+    await initNSESession();
+  }
+
   try {
+    const headers = {
+      ...DEFAULT_HEADERS,
+      ...(nseSessionCookies.length > 0 && { 'Cookie': nseSessionCookies.join('; ') })
+    };
+
     const response = await fetch(url.toString(), {
       method: 'GET',
-      headers: DEFAULT_HEADERS
+      headers
     });
+
+    // If 401/403, try refreshing session cookies
+    if (response.status === 401 || response.status === 403) {
+      logger.warn('NSE API returned auth error, refreshing session cookies');
+      nseSessionCookies = []; // Clear old cookies
+      await initNSESession();
+
+      // Retry request with new cookies
+      const retryHeaders = {
+        ...DEFAULT_HEADERS,
+        ...(nseSessionCookies.length > 0 && { 'Cookie': nseSessionCookies.join('; ') })
+      };
+
+      const retryResponse = await fetch(url.toString(), {
+        method: 'GET',
+        headers: retryHeaders
+      });
+
+      if (!retryResponse.ok) {
+        throw new Error(`NSE API returned ${retryResponse.status}: ${retryResponse.statusText}`);
+      }
+
+      const contentType = retryResponse.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        return await retryResponse.json();
+      } else {
+        const text = await retryResponse.text();
+        try {
+          return JSON.parse(text);
+        } catch {
+          throw new Error('NSE API returned non-JSON response');
+        }
+      }
+    }
 
     if (!response.ok) {
       throw new Error(`NSE API returned ${response.status}: ${response.statusText}`);
@@ -157,11 +230,11 @@ function parsePriceRange(priceStr: string | null | undefined): { min: number; ma
  * Determine IPO status from NSE data
  * Maps NSE status to IPODhan schema (NSE 'OPEN' -> IPODhan 'LIVE')
  */
-function determineStatus(statusStr: string | null | undefined, startDate: string, endDate: string): 'UPCOMING' | 'LIVE' | 'CLOSED' | 'LISTED' {
+function determineStatus(statusStr: string | null | undefined, startDate: string, endDate: string): 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' {
   if (statusStr) {
     const status = statusStr.toUpperCase();
     if (status.includes('ACTIVE') || status.includes('OPEN') || status.includes('LIVE')) {
-      return 'LIVE'; // NSE 'OPEN' maps to 'LIVE'
+      return 'OPEN';
     }
     if (status.includes('CLOSED')) {
       return 'CLOSED';
@@ -179,7 +252,7 @@ function determineStatus(statusStr: string | null | undefined, startDate: string
   if (today < startDate) {
     return 'UPCOMING';
   } else if (today >= startDate && today <= endDate) {
-    return 'LIVE'; // Active IPO period maps to 'LIVE'
+    return 'OPEN';
   } else {
     return 'CLOSED';
   }
@@ -338,24 +411,26 @@ export async function fetchAllIPOs(category: 'ipo' | 'ofs' | 'rights' | 'tender'
     const data = await makeRequest(ENDPOINTS.ALL_IPOS, { category });
 
     if (Array.isArray(data)) {
+      logger.info({ count: data.length }, `NSE API returned ${data.length} items`);
+
       for (const item of data) {
         try {
           const ipo = transformIPOData(item);
           ipos.push(ipo);
+          logger.debug({ companyName: ipo.companyName }, 'Transformed IPO successfully');
 
-          // Try to fetch detailed subscription data for active IPOs
-          if (item.symbol && (item.status === 'Active' || item.status === 'Open')) {
-            try {
-              const detailData = await fetchIPODetail(item.symbol);
-              if (detailData.subscriptions.length > 0) {
-                subscriptions.push(...detailData.subscriptions);
-              }
-            } catch {
-              // Silently ignore detail fetch failures
+          // Skip detailed subscription fetch - it requires 401 auth
+          // We'll get subscription data from the main listing if available
+          if (item.noOfTime) {
+            // Extract subscription from main data
+            const sub = transformSubscriptionData(item, item.symbol);
+            if (sub) {
+              sub.ipoCompanyName = ipo.companyName;
+              subscriptions.push(sub);
             }
           }
         } catch (error) {
-          logger.warn({ item, error }, 'Failed to transform IPO data');
+          logger.warn({ item, error: error instanceof Error ? error.message : String(error) }, 'Failed to transform IPO data');
         }
       }
     }
@@ -432,24 +507,32 @@ export async function scrapeNSEAPI(): Promise<NSEAPIResult> {
     // Try to fetch all IPO categories
     const allIPOs = await fetchAllIPOs('ipo');
 
-    // Also fetch rights issues if needed
-    const rightsData = await fetchAllIPOs('rights');
-    if (rightsData.ipos.length > 0) {
-      allIPOs.ipos.push(...rightsData.ipos);
+    // Also fetch rights issues if needed (non-blocking)
+    try {
+      const rightsData = await fetchAllIPOs('rights');
+      if (rightsData.ipos.length > 0) {
+        allIPOs.ipos.push(...rightsData.ipos);
+      }
+    } catch (error) {
+      logger.warn('Failed to fetch rights issues, continuing with IPO data only');
     }
 
-    // Fetch current issues for subscription data
-    const currentData = await fetchCurrentIPOs();
+    // Fetch current issues for subscription data (non-blocking)
+    try {
+      const currentData = await fetchCurrentIPOs();
 
-    // Merge subscription data
-    if (currentData.subscriptions.length > 0) {
-      // Add subscriptions that don't already exist
-      const existingSymbols = new Set(allIPOs.subscriptions.map(s => s.ipoSymbol));
-      for (const sub of currentData.subscriptions) {
-        if (!existingSymbols.has(sub.ipoSymbol)) {
-          allIPOs.subscriptions.push(sub);
+      // Merge subscription data
+      if (currentData.subscriptions.length > 0) {
+        // Add subscriptions that don't already exist
+        const existingSymbols = new Set(allIPOs.subscriptions.map(s => s.ipoSymbol));
+        for (const sub of currentData.subscriptions) {
+          if (!existingSymbols.has(sub.ipoSymbol)) {
+            allIPOs.subscriptions.push(sub);
+          }
         }
       }
+    } catch (error) {
+      logger.warn('Failed to fetch current IPO subscriptions');
     }
 
     const duration = Date.now() - startTime;
@@ -462,7 +545,7 @@ export async function scrapeNSEAPI(): Promise<NSEAPIResult> {
     return allIPOs;
 
   } catch (error) {
-    logger.error({ error }, 'NSE API scraping failed');
+    logger.error({ error: error instanceof Error ? error.message : String(error) }, 'NSE API scraping failed');
 
     // Return empty result on failure
     return {
@@ -481,9 +564,18 @@ export async function testNSEAPIConnection(): Promise<boolean> {
   try {
     logger.info('Testing NSE API connection');
 
-    const response = await fetch(BASE_URL + ENDPOINTS.CURRENT_IPOS, {
-      method: 'HEAD',
-      headers: DEFAULT_HEADERS
+    // Initialize session first
+    await initNSESession();
+
+    // Test with actual GET request
+    const headers = {
+      ...DEFAULT_HEADERS,
+      ...(nseSessionCookies.length > 0 && { 'Cookie': nseSessionCookies.join('; ') })
+    };
+
+    const response = await fetch(BASE_URL + ENDPOINTS.ALL_IPOS + '?category=ipo', {
+      method: 'GET',
+      headers
     });
 
     const isOk = response.ok || response.status === 200;

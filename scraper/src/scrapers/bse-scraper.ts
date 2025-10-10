@@ -66,11 +66,11 @@ function extractCategory(platform: string): 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NC
  * @param issueStatus - Issue status string from BSE
  * @returns IPO status enum value
  */
-function extractStatus(issueStatus: string): 'UPCOMING' | 'LIVE' | 'CLOSED' | 'LISTED' {
+function extractStatus(issueStatus: string): 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' {
   const normalized = issueStatus.trim().toUpperCase();
 
   if (normalized.includes('LIVE') || normalized.includes('OPEN')) {
-    return 'LIVE'; // Database expects 'LIVE' not 'OPEN'
+    return 'OPEN';
   } else if (normalized.includes('FORTHCOMING') || normalized.includes('UPCOMING')) {
     return 'UPCOMING';
   } else if (normalized.includes('CLOSED')) {

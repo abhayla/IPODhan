@@ -332,7 +332,7 @@ describe('chittorgarh-scraper', () => {
       const result = await scrapeChittorgarhIPOs();
 
       expect(result.ipos).toHaveLength(1);
-      expect(result.ipos[0].status).toBe('LIVE');
+      expect(result.ipos[0].status).toBe('OPEN');
     });
 
     it('should identify SME category when mentioned', async () => {
