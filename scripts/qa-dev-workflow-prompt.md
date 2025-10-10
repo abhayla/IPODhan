@@ -8,12 +8,48 @@ This automated workflow performs iterative UI/UX testing, issue resolution, and 
 - NO ALTERNATIVE ROUTES: Follow the exact process for every screen
 - NO STOPPING MIDWAY: Continue until all screens are tested, fixed, and improved
 - MANDATORY UX REVIEW: Every screen gets UX improvements before moving to the next
+- USE BROWSER AUTOMATION: Use Playwright or similar tools to actually navigate and test pages
+- TRACK PROGRESS: Use TodoWrite tool to maintain a clear list of completed and pending items
 
 ## Agent References
 This workflow uses the following specialized BMAD agents:
 - **QA Agent**: `D:\Abhay\VibeCoding\IPODhan\.bmad-core\agents\qa.md` (Quinn - Test Architect)
 - **Dev Agent**: `D:\Abhay\VibeCoding\IPODhan\.bmad-core\agents\dev.md` (James - Full Stack Developer)
 - **UX Expert Agent**: `D:\Abhay\VibeCoding\IPODhan\.bmad-core\agents\ux-expert.md` (Sally - UX Expert)
+
+## Lessons Learned from Previous Runs
+
+### Common Pitfalls to Avoid
+1. **DO NOT skip non-UI testing** - API endpoints must be tested even if they don't have a UI
+2. **DO NOT assume completion** - Verify each category is actually tested
+3. **DO NOT focus only on main pages** - Test ALL categories including:
+   - API endpoints (use fetch/curl to test)
+   - All responsive breakpoints (use browser resize)
+   - Error pages (both 404 and 500)
+   - Component test pages
+   - Accessibility features
+
+### Testing Strategy Improvements
+1. **Use Browser Automation** - Navigate to each URL using Playwright/Puppeteer
+2. **Track Progress Systematically** - Use TodoWrite tool with clear categories:
+   ```
+   - [ ] Main Pages (9 pages)
+   - [ ] API Endpoints (12 endpoints)
+   - [ ] Responsive Testing (5 breakpoints × all pages)
+   - [ ] Error Pages (404, 500, error states)
+   - [ ] Accessibility Testing (keyboard, screen reader, ARIA)
+   ```
+3. **Verify Actually Working** - Don't just fix code, verify it works in browser
+4. **Test Data Availability** - If no data, note it but still test page structure
+5. **Document What Was NOT Tested** - Be transparent about incomplete items
+
+### Required Testing Categories Checklist
+Before marking workflow complete, ENSURE all these are tested:
+- [ ] 9 Main UI Pages (Landing, Dashboard, IPO Details, History, Calculator, Compare, Registrars, Holidays, Components Test)
+- [ ] 12 API Endpoints (test with actual HTTP requests)
+- [ ] 5 Responsive Breakpoints per page (320px, 768px, 1024px, 1440px, 2560px)
+- [ ] 2 Error Pages (404 and 500)
+- [ ] 5 Accessibility Features (keyboard nav, screen reader, focus management, skip links, ARIA)
 
 ## Core Process
 
@@ -218,20 +254,57 @@ Screen Order for IPODhan:
    - Component variations display
    - Interactive component testing
 
-## API Endpoints (for functional testing)
-10. **API Routes**
+## API Endpoints (MANDATORY functional testing)
+10. **API Routes** - TEST WITH ACTUAL HTTP REQUESTS
+    Testing approach: Use fetch() or Playwright's page.evaluate() to test each endpoint
+
     - `/api/ipos` - IPO listings
+      * Test: GET request, check response structure
+      * Verify: Status 200, data array, pagination info
+
     - `/api/ipos/[slug]` - Individual IPO data
+      * Test: GET with valid/invalid slug
+      * Verify: Status 200/404, IPO object structure
+
     - `/api/ipos/history` - Historical data
+      * Test: GET with filters (year, sector, performance)
+      * Verify: Filtered results, sorting works
+
     - `/api/sectors` - Sector data
+      * Test: GET request
+      * Verify: Array of sector strings
+
     - `/api/registrars` - Registrar information
+      * Test: GET request
+      * Verify: Registrar objects with contact info
+
     - `/api/market-holidays` - Holiday data
+      * Test: GET with year parameter
+      * Verify: Holiday array with dates
+
     - `/api/tools/lot-calculator` - Lot calculations
+      * Test: POST with investment amount
+      * Verify: Calculation results
+
     - `/api/tools/compare` - Comparison data
+      * Test: POST with IPO slugs array
+      * Verify: Comparison data structure
+
     - `/api/affiliate/track` - Affiliate tracking
+      * Test: POST with tracking data
+      * Verify: Success response
+
     - `/api/admin/scraper/status` - Scraper status
+      * Test: GET request (may need auth)
+      * Verify: Status object
+
     - `/api/admin/scraper/logs` - Scraper logs
+      * Test: GET request (may need auth)
+      * Verify: Logs array
+
     - `/api/health` - Health check
+      * Test: GET request
+      * Verify: Status 200, health status object
 
 ## Common Components (tested across all pages)
 11. **Layout Components**
@@ -252,12 +325,53 @@ Screen Order for IPODhan:
     - Search bars
     - Filter dropdowns
 
-## Responsive Breakpoints (test each page at)
-13. **Device Viewports**
-    - Mobile: 320px, 375px, 414px
-    - Tablet: 768px, 834px
-    - Desktop: 1024px, 1280px, 1440px, 1920px
-    - Ultra-wide: 2560px
+## Responsive Breakpoints (MANDATORY - test each page at)
+13. **Device Viewports** - USE BROWSER RESIZE
+    Testing approach: Use Playwright's page.setViewportSize() for each breakpoint
+
+    **Mobile Viewports:**
+    - 320px × 568px (iPhone SE)
+      * Test: Navigation menu becomes hamburger
+      * Verify: Content stacks vertically, touch-friendly buttons
+
+    - 375px × 667px (iPhone 6/7/8)
+      * Test: Cards display in single column
+      * Verify: Text remains readable, no horizontal scroll
+
+    - 414px × 896px (iPhone XR/11)
+      * Test: Forms are usable, filters accessible
+      * Verify: Modals fit screen, dropdowns work
+
+    **Tablet Viewports:**
+    - 768px × 1024px (iPad Portrait)
+      * Test: Grid layouts adjust to 2 columns
+      * Verify: Sidebar becomes collapsible
+
+    - 834px × 1194px (iPad Pro Portrait)
+      * Test: Tables remain readable
+      * Verify: Charts/graphs scale properly
+
+    **Desktop Viewports:**
+    - 1024px × 768px (Small Desktop)
+      * Test: Full navigation visible
+      * Verify: Multi-column layouts work
+
+    - 1280px × 720px (HD Desktop)
+      * Test: Optimal content width
+      * Verify: No excessive whitespace
+
+    - 1440px × 900px (Standard Desktop)
+      * Test: All features accessible
+      * Verify: Images not stretched
+
+    - 1920px × 1080px (Full HD)
+      * Test: Content remains centered
+      * Verify: Max-width constraints work
+
+    **Ultra-wide:**
+    - 2560px × 1440px (2K/4K)
+      * Test: Layout doesn't break
+      * Verify: Content has maximum width limits
 
 ## Error Handling Pages
 14. **Error Pages**
@@ -549,3 +663,82 @@ Before allowing code check-in:
 - [ ] Full regression tests passed
 - [ ] No console errors on any screen
 - [ ] Mobile responsiveness verified
+
+## Final Report Template (MANDATORY)
+```markdown
+# QA/Dev/UX Workflow Final Report
+
+## Executive Summary
+- Total Screens Tested: X/15
+- Total Issues Found: X
+- Total Issues Fixed: X
+- UX Enhancements Applied: X
+
+## Detailed Testing Coverage
+
+### ✅ Main Pages (9 total)
+- [ ] Landing Page (/)
+- [ ] Dashboard (/dashboard)
+- [ ] IPO Details (/ipos/[slug])
+- [ ] History (/history)
+- [ ] Lot Calculator (/tools/lot-calculator)
+- [ ] Compare Tool (/tools/compare)
+- [ ] Registrars (/registrars)
+- [ ] Market Holidays (/market-holidays)
+- [ ] Components Test (/components-test)
+
+### ✅ API Endpoints (12 total)
+- [ ] GET /api/ipos
+- [ ] GET /api/ipos/[slug]
+- [ ] GET /api/ipos/history
+- [ ] GET /api/sectors
+- [ ] GET /api/registrars
+- [ ] GET /api/market-holidays
+- [ ] POST /api/tools/lot-calculator
+- [ ] POST /api/tools/compare
+- [ ] POST /api/affiliate/track
+- [ ] GET /api/admin/scraper/status
+- [ ] GET /api/admin/scraper/logs
+- [ ] GET /api/health
+
+### ✅ Responsive Testing (10 breakpoints)
+- [ ] 320px (Mobile - iPhone SE)
+- [ ] 375px (Mobile - iPhone 8)
+- [ ] 414px (Mobile - iPhone 11)
+- [ ] 768px (Tablet - iPad)
+- [ ] 834px (Tablet - iPad Pro)
+- [ ] 1024px (Desktop - Small)
+- [ ] 1280px (Desktop - HD)
+- [ ] 1440px (Desktop - Standard)
+- [ ] 1920px (Desktop - Full HD)
+- [ ] 2560px (Ultra-wide)
+
+### ✅ Error Pages (2 total)
+- [ ] 404 Page
+- [ ] 500 Page
+
+### ✅ Accessibility (5 features)
+- [ ] Keyboard Navigation
+- [ ] Screen Reader Support
+- [ ] Focus Management
+- [ ] Skip Links
+- [ ] ARIA Labels
+
+## Issues Fixed Per Screen
+[List each screen with issues found and fixed]
+
+## UX Enhancements Applied
+[List each screen with UX improvements]
+
+## What Was NOT Tested (Be Transparent)
+[List any items that could not be tested and why]
+
+## Verification Method
+- Browser Automation Tool: [Playwright/Puppeteer]
+- Manual Testing: [Yes/No]
+- API Testing Tool: [fetch/curl/Postman]
+
+## Final Status
+- Workflow Complete: [Yes/No]
+- Ready for Production: [Yes/No]
+```
