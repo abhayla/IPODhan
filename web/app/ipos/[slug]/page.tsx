@@ -27,6 +27,7 @@ import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { AffiliateSection } from '@/components/affiliate/AffiliateSection';
 import { ListingPerformance } from '@/components/ipo/ListingPerformance';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
+import { apiClient } from '@/lib/api-client';
 import type { IPODetailResponse } from '@/lib/db/types';
 import {
   generateIPODetailMetadata,
@@ -60,22 +61,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const { slug } = await params;
 
   try {
-    // Fetch IPO data for metadata
-    // Use relative URL for API calls from server components
-    // This ensures it uses the same host and port as the Next.js server
-    const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3005/api';
-    const response = await fetch(`${baseUrl}/ipos/${slug}`, {
-      next: { revalidate: 900 }, // 15 minutes
-    });
-
-    if (!response.ok) {
-      return {
-        title: 'IPO Not Found | IPODhan',
-        description: 'The requested IPO could not be found.',
-      };
-    }
-
-    const data: IPODetailResponse = await response.json();
+    // Fetch IPO data for metadata using the API client
+    // This ensures dynamic port detection and consistent API calls
+    const data = await apiClient.getIPOBySlug(slug) as unknown as IPODetailResponse;
     const { ipo } = data;
 
     // Convert IPO to metadata params and generate metadata
@@ -100,23 +88,11 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   const { slug } = await params;
   const { tab } = await searchParams;
 
-  // Fetch IPO data server-side
-  // Use relative URL for API calls from server components
-  // This ensures it uses the same host and port as the Next.js server
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3005/api';
-
+  // Fetch IPO data server-side using the API client
+  // This ensures dynamic port detection and consistent API calls
   let data: IPODetailResponse;
   try {
-    const response = await fetch(`${baseUrl}/ipos/${slug}`, {
-      next: { revalidate: 900 }, // 15 minutes cache
-    });
-
-    if (!response.ok) {
-      // Invalid slug - show 404
-      notFound();
-    }
-
-    data = await response.json();
+    data = await apiClient.getIPOBySlug(slug) as unknown as IPODetailResponse;
   } catch (error) {
     console.error('Error fetching IPO data:', error);
     notFound();

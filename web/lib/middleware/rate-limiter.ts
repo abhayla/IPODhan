@@ -170,7 +170,7 @@ async function checkRateLimit(
     };
   } catch (error) {
     // If Redis fails, log error and allow request (fail open)
-    logger.error('Rate limit check failed', { error, ip, endpoint });
+    logger.error({ error, ip, endpoint }, 'Rate limit check failed');
 
     // Return permissive response on Redis failure
     return {
@@ -204,7 +204,7 @@ export function rateLimiter(config: RateLimitConfig) {
     const ip = getClientIP(request);
     const endpoint = new URL(request.url).pathname;
 
-    logger.debug('Rate limit check', { ip, endpoint });
+    logger.debug({ ip, endpoint }, 'Rate limit check');
 
     // Check rate limit
     const result = await checkRateLimit(ip, endpoint, config);
@@ -216,7 +216,7 @@ export function rateLimiter(config: RateLimitConfig) {
     headers.set('X-RateLimit-Reset', result.reset.toString());
 
     if (!result.allowed) {
-      logger.warn('Rate limit exceeded', { ip, endpoint, limit: config.maxRequests });
+      logger.warn({ ip, endpoint, limit: config.maxRequests }, 'Rate limit exceeded');
 
       // Return 429 Too Many Requests
       return NextResponse.json(

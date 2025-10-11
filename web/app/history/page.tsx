@@ -109,11 +109,14 @@ async function fetchFilterOptions(): Promise<{
 export default async function HistoricalIPOsPage({
   searchParams,
 }: {
-  searchParams: { [key: string]: string | string[] | undefined };
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
+  // Await searchParams (Next.js 15 change)
+  const resolvedSearchParams = await searchParams;
+
   // Fetch data in parallel
   const [ipoData, filterOptions] = await Promise.all([
-    fetchHistoricalIPOs(searchParams),
+    fetchHistoricalIPOs(resolvedSearchParams),
     fetchFilterOptions(),
   ]);
 
@@ -123,7 +126,7 @@ export default async function HistoricalIPOsPage({
       initialData={ipoData}
       availableSectors={filterOptions.sectors}
       availableYears={filterOptions.years}
-      searchParams={searchParams}
+      searchParams={resolvedSearchParams}
     />
   );
 }
