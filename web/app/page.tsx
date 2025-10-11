@@ -2,16 +2,45 @@ import Image from "next/image";
 import Script from "next/script";
 import type { Metadata } from "next";
 import { AffiliateCTAWrapper } from "@/components/affiliate/AffiliateCTAWrapper";
+import { HomeIPOTablesSection } from "@/components/home/HomeIPOTablesSection";
+import { IPOTableSkeleton } from "@/components/home/IPOTableSkeleton";
+import { AsyncErrorBoundary } from "@/components/error/AsyncErrorBoundary";
 import {
   generateOrganizationSchema,
+  generateIPOListingSchema,
   toJsonLdScript,
 } from "@/lib/seo/structured-data";
 import { generateHomepageMetadata } from "@/lib/seo/metadata";
+import {
+  getMainboardIPOs,
+  getSMEIPOs,
+  getUpcomingMainboardIPOs,
+  getUpcomingSMEIPOs,
+} from "@/lib/services/home-ipo-service";
 
 export const metadata: Metadata = generateHomepageMetadata();
 
-export default function Home() {
+// Enable ISR with 5-minute revalidation
+export const revalidate = 300;
+
+export default async function Home() {
   const organizationSchema = generateOrganizationSchema();
+
+  // Fetch all IPO data in parallel for performance
+  const [mainboardIPOs, smeIPOs, upcomingMainboardIPOs, upcomingSMEIPOs] = await Promise.all([
+    getMainboardIPOs(),
+    getSMEIPOs(),
+    getUpcomingMainboardIPOs(),
+    getUpcomingSMEIPOs(),
+  ]).catch((error) => {
+    console.error("Failed to fetch IPO data for home page:", error);
+    // Return empty arrays as fallback
+    return [[], [], [], []];
+  });
+
+  // Generate IPO listings schema for SEO (combine all IPOs)
+  const allIPOs = [...mainboardIPOs, ...smeIPOs, ...upcomingMainboardIPOs, ...upcomingSMEIPOs];
+  const ipoListingSchema = generateIPOListingSchema(allIPOs);
 
   return (
     <>
@@ -23,6 +52,17 @@ export default function Home() {
           __html: toJsonLdScript(organizationSchema),
         }}
       />
+
+      {/* IPO Listings Schema for SEO */}
+      {allIPOs.length > 0 && (
+        <Script
+          id="ipo-listings-schema"
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: toJsonLdScript(ipoListingSchema),
+          }}
+        />
+      )}
 
       <div className="flex flex-col">
         <AffiliateCTAWrapper />
@@ -56,6 +96,32 @@ export default function Home() {
                 </svg>
               </a>
             </div>
+          </div>
+        </section>
+
+        {/* IPO Tables Section */}
+        <section className="border-t bg-gradient-to-b from-background to-muted/30 py-16 md:py-24">
+          <div className="container mx-auto px-4">
+            <h2 className="mb-12 text-center text-3xl font-extrabold tracking-tight sm:text-4xl animate-in fade-in slide-in-from-bottom-3 duration-700">
+              Latest IPO Updates
+            </h2>
+            <AsyncErrorBoundary
+              loadingFallback={<IPOTableSkeleton />}
+              fallback={
+                <div className="text-center py-12">
+                  <p className="text-muted-foreground">
+                    Unable to load IPO data at this time. Please try refreshing the page.
+                  </p>
+                </div>
+              }
+            >
+              <HomeIPOTablesSection
+                mainboardIPOs={mainboardIPOs}
+                smeIPOs={smeIPOs}
+                upcomingMainboardIPOs={upcomingMainboardIPOs}
+                upcomingSMEIPOs={upcomingSMEIPOs}
+              />
+            </AsyncErrorBoundary>
           </div>
         </section>
 
