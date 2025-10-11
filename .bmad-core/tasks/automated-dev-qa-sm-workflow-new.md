@@ -46,6 +46,30 @@ Complete end-to-end workflow for story implementation and quality assurance with
 
 ### 2. Story Implementation
 
+**Pre-Implementation Component Check:**
+
+Before spawning Dev agent, check if story involves table components:
+
+```javascript
+// Extract story details
+const storyDetails = extractStoryDetails(story_id);
+const involvesTable = checkIfInvolvesTable(storyDetails);
+
+if (involvesTable) {
+  // Load DataTable architecture and requirements
+  loadComponentRequirements([
+    'docs/components/REUSABLE-COMPONENTS-REQUIREMENTS.md',
+    'docs/components/DATATABLE-USAGE-EXAMPLES.md',
+    'docs/components/TABLE-COMPONENT-USAGE-PATTERNS.md'
+  ]);
+}
+```
+
+**Detect Table Requirements:**
+- Story mentions: "table", "listing", "grid", "data display", "performance tracker", "reviews", "prospectus"
+- Epic 9 stories (9.1-9.17)
+- Any page with tabular data presentation
+
 **Spawn Dev Agent for Implementation:**
 
 Use the Task tool to spawn Dev agent with prompt:
@@ -57,20 +81,65 @@ Then implement Story {story_id}:
 
 {Full story details including all acceptance criteria}
 
-Requirements:
+**COMPONENT ARCHITECTURE REQUIREMENTS (CRITICAL):**
+
+{IF story involves table components, include this section:}
+
+⚠️ MANDATORY: Use Enhanced DataTable Component
+
+**Component Location:** web/components/shared/DataTable.tsx
+
+**Architecture Decision (Approved 2025-10-11):**
+- Use ONE enhanced DataTable component for ALL table use cases
+- Features are opt-in via props (enableColumnSearch, enableYearFilter, enablePagination, enableMinimizeToggle)
+- DO NOT create new table components - use existing DataTable with appropriate props
+
+**Required Reading Before Implementation:**
+1. Component Architecture: docs/components/REUSABLE-COMPONENTS-REQUIREMENTS.md
+2. Usage Examples: docs/components/DATATABLE-USAGE-EXAMPLES.md
+3. Usage Patterns: docs/components/TABLE-COMPONENT-USAGE-PATTERNS.md
+
+**Feature Matrix Reference:**
+Based on your story type, enable ONLY these features:
+- Home page tables (Stories 9.1-9.3): Sorting only
+- Landing page sections (Stories 9.15-9.16): Sorting only
+- Landing page detailed table (Stories 9.15-9.16): Sorting + Column Search + Year Filter + Minimize Toggle
+- IPO Listings (Story 9.17): Sorting + Year Filter + Pagination
+- Performance Tracker (Stories 9.7a, 9.11): Sorting + Year Filter + Pagination
+- Prospectus (Stories 9.8a, 9.12): Sorting + Column Search + Year Filter + Pagination
+- Reviews (Stories 9.10a, 9.14): Sorting + Column Search + Year Filter + Pagination
+- Rights/OFS/NCD (Stories 9.4-9.6): Sorting + Column Search + Year Filter + Pagination
+
+**Validation Checklist:**
+- [ ] Used existing DataTable component (not created new component)
+- [ ] Enabled ONLY approved features per story type
+- [ ] Followed usage examples from documentation
+- [ ] Defined proper column configurations
+- [ ] Implemented render functions for custom cells
+- [ ] Used renderFunctions utilities for formatting (date, currency, percentage)
+- [ ] Configured feature props correctly (yearFilterConfig, paginationConfig, etc.)
+
+{END IF table component section}
+
+**General Requirements:**
 - Create feature branch: feature/story-{story_id}
-- Implement all acceptance criteria
+- Implement all acceptance criteria (100% - no partial implementations)
 - Write comprehensive tests (unit + E2E)
+  - Unit test coverage ≥80% for new code
+  - E2E tests for all UI interactions
+  - Test all optional features enabled for tables
 - Ensure code quality (lint, types, formatting)
 - Update documentation as needed
 - Create progress report in docs/stories/progress-reports/
 - Do NOT commit yet - QA validation required first
 
 Return detailed summary of:
-- What was implemented
+- What was implemented (with component usage details if tables involved)
 - Files created/modified
-- Tests added
+- DataTable feature configuration used (if applicable)
+- Tests added (including component feature tests)
 - Any blockers or decisions made
+- Component architecture compliance confirmation
 ```
 
 **Agent Configuration:**
@@ -334,7 +403,194 @@ npm run build
 - ✅ Warnings reviewed and documented
 - ❌ Build failure = workflow HALT
 
-#### 4.6 Acceptance Criteria Validation (PROGRAMMATIC - NEW in v3.0)
+#### 4.6 Component Architecture Validation (NEW - For Table Components)
+
+**CRITICAL:** Validate proper DataTable component usage
+
+**ONLY IF story involves table components:**
+
+**Validation Checks:**
+
+1. **Component Usage Validation:**
+   ```bash
+   # Check that DataTable component is imported
+   grep -r "from '@/components/shared/DataTable'" web/
+
+   # Check that NO new table components were created
+   find web/components -name "*Table*.tsx" -newer feature_branch_start
+   ```
+
+   **Pass Criteria:**
+   - ✅ DataTable imported from web/components/shared/DataTable.tsx
+   - ✅ No new custom table components created (except Calendar components for Stories 9.9a, 9.13)
+   - ❌ Creating new table components = workflow HALT
+
+2. **Feature Configuration Validation:**
+
+   Parse component usage and verify correct features enabled:
+
+   ```typescript
+   // Extract DataTable usage from code
+   const tableUsages = extractDataTableUsages(changedFiles);
+
+   for (const usage of tableUsages) {
+     const storyType = determineStoryType(story_id);
+     const expectedFeatures = getExpectedFeatures(storyType);
+     const actualFeatures = usage.enabledFeatures;
+
+     // Validate features match approved matrix
+     validateFeaturesMatch(expectedFeatures, actualFeatures);
+   }
+   ```
+
+   **Feature Matrix Validation:**
+   ```markdown
+   Story Type: {detected type}
+   Expected Features: {list from approved matrix}
+   Actual Features: {list from code}
+
+   Validation:
+   - [ ] enableColumnSearch matches requirement
+   - [ ] enableYearFilter matches requirement
+   - [ ] enablePagination matches requirement
+   - [ ] enableMinimizeToggle matches requirement
+   - [ ] No unapproved features enabled
+
+   Result: PASS | FAIL
+   ```
+
+3. **Render Functions Usage:**
+
+   Check that common render functions are used for formatting:
+
+   ```bash
+   # Check for renderFunctions usage
+   grep -r "renderFunctions\." web/app/ web/components/
+
+   # Check for manual date/currency formatting (anti-pattern)
+   grep -r "toLocaleString\|Intl.NumberFormat" web/app/ web/components/ --exclude="*DataTable.tsx"
+   ```
+
+   **Pass Criteria:**
+   - ✅ Uses renderFunctions.date() for dates
+   - ✅ Uses renderFunctions.currency() for currency
+   - ✅ Uses renderFunctions.percentWithColor() for percentages
+   - ✅ Uses renderFunctions.number() for numbers
+   - ❌ Manual formatting in table columns = workflow WARN (not HALT, but document)
+
+4. **Props Configuration Validation:**
+
+   Verify required configuration objects are provided:
+
+   ```typescript
+   // If enableYearFilter=true, yearFilterConfig must be provided
+   if (usage.enableYearFilter && !usage.yearFilterConfig) {
+     FAIL("yearFilterConfig missing but enableYearFilter=true");
+   }
+
+   // If enablePagination=true, paginationConfig must be provided
+   if (usage.enablePagination && !usage.paginationConfig) {
+     FAIL("paginationConfig missing but enablePagination=true");
+   }
+
+   // If enableColumnSearch=true, columnSearchConfig recommended
+   if (usage.enableColumnSearch && !usage.columnSearchConfig) {
+     WARN("columnSearchConfig recommended for enableColumnSearch=true");
+   }
+   ```
+
+5. **Column Definition Validation:**
+
+   Check that column definitions follow best practices:
+
+   ```typescript
+   for (const column of usage.columns) {
+     // Check required fields
+     if (!column.key || !column.header) {
+       FAIL("Column missing required key or header");
+     }
+
+     // Check searchable columns have render functions
+     if (column.searchable && !column.render) {
+       WARN("Searchable column should have render function");
+     }
+
+     // Check alignment for numeric columns
+     if (isNumericColumn(column) && column.align !== 'right') {
+       WARN("Numeric columns should have align='right'");
+     }
+   }
+   ```
+
+6. **Generate Component Validation Report:**
+
+   **File:** `docs/stories/qa-reports/story-{story_id}-component-validation.md`
+
+   ```markdown
+   # Component Architecture Validation Report
+
+   **Story:** {story_id}
+   **Date:** {timestamp}
+   **Component Type:** DataTable
+   **Status:** {PASS|FAIL}
+
+   ## Component Usage
+
+   | File | Component | Features Enabled | Status |
+   |------|-----------|------------------|--------|
+   | .../page.tsx | DataTable | Sorting, Pagination | ✅ VALID |
+   | ... |
+
+   ## Feature Validation
+
+   **Story Type:** {detected type}
+   **Expected Configuration:** {from matrix}
+   **Actual Configuration:** {from code}
+
+   ✅ Feature configuration matches approved matrix
+
+   ## Render Functions Usage
+
+   - ✅ Uses renderFunctions.date() for dates
+   - ✅ Uses renderFunctions.currency() for currency
+   - ✅ Uses renderFunctions.percentWithColor() for percentages
+
+   ## Issues Found
+
+   {List any violations or warnings}
+
+   ## Final Decision
+
+   **Status:** {APPROVED | REJECTED}
+   **Reason:** {explanation}
+   ```
+
+**On Component Validation Failure:**
+
+```markdown
+❌ COMPONENT ARCHITECTURE VIOLATION
+
+**Issue:** {description}
+
+**Expected:**
+{What should have been done}
+
+**Actual:**
+{What was done}
+
+**Fix Required:**
+1. {Action 1}
+2. {Action 2}
+
+**Workflow Status:** HALTED
+**Next Step:** Return to Fix Loop (Step 5)
+```
+
+**HALT WORKFLOW** - Return to Step 5 with component fix requirements
+
+---
+
+#### 4.7 Acceptance Criteria Validation (PROGRAMMATIC - NEW in v3.0)
 
 **CRITICAL:** Programmatic validation of each acceptance criterion
 
@@ -442,6 +698,7 @@ npm run build
 - Note performance metrics (build time, test duration)
 - Identify regressions with git blame
 - **Store coverage reports** for historical tracking
+- **Generate component validation report** (if table components involved)
 - **Generate AC validation report** (mandatory)
 
 ---
@@ -1308,7 +1565,219 @@ This workflow document is now v3.0. When running the workflow:
 - Existing partial stories must be completed or split
 - No migration path for "approved with pending work"
 
-**Version:** 3.0
-**Last Updated:** 2025-10-07
-**Breaking Changes:** Yes (completion enforcement)
+**Version:** 3.1
+**Last Updated:** 2025-10-11
+**Breaking Changes:** Yes (completion enforcement + component architecture enforcement)
 **Upgrade Required:** Immediate (no partial merges allowed)
+
+---
+
+## Version 3.1 Changes (Component Architecture Enforcement)
+
+### What's New in v3.1
+
+**Added: Component Architecture Validation (Step 4.6)**
+
+v3.1 adds mandatory validation of component architecture decisions to ensure consistency and prevent duplicate implementations.
+
+**Problem Solved:**
+- Dev agents might create custom table components instead of using enhanced DataTable
+- Inconsistent feature usage across similar table implementations
+- Missing or incorrect prop configurations
+- Not following approved component architecture decisions
+
+**Solution:**
+- Pre-implementation component check detects table requirements
+- Dev agent receives explicit DataTable usage instructions
+- Component architecture validation step (4.6) before AC validation
+- Feature matrix verification against approved configurations
+- Render functions usage validation
+- Props configuration validation
+- Component validation report generation
+
+### Component Architecture Requirements
+
+**For Epic 9 Stories (Table Components):**
+
+When implementing Epic 9 stories (9.1-9.17) or ANY story involving tabular data:
+
+1. **MUST use enhanced DataTable component**
+   - Location: `web/components/shared/DataTable.tsx`
+   - No custom table components allowed (except Calendar for 9.9a, 9.13)
+
+2. **MUST follow approved feature matrix**
+   - Only enable features approved for specific story type
+   - Feature matrix documented in: `docs/components/REUSABLE-COMPONENTS-REQUIREMENTS.md`
+
+3. **MUST use common render functions**
+   - `renderFunctions.date()` for dates
+   - `renderFunctions.currency()` for currency
+   - `renderFunctions.percentWithColor()` for percentages
+   - `renderFunctions.number()` for numbers
+
+4. **MUST provide required configuration objects**
+   - `yearFilterConfig` when `enableYearFilter=true`
+   - `paginationConfig` when `enablePagination=true`
+   - `columnSearchConfig` when `enableColumnSearch=true`
+
+5. **MUST follow column definition best practices**
+   - Required fields: `key`, `header`
+   - Numeric columns: `align='right'`
+   - Searchable columns: should have `render` function
+
+### Component Validation Workflow
+
+**Step 2: Pre-Implementation Check**
+```
+Story Extracted → Check if involves tables → Load component docs → Include in Dev prompt
+```
+
+**Step 4.6: Component Architecture Validation**
+```
+If table components:
+  → Check DataTable usage
+  → Validate feature configuration
+  → Verify render functions
+  → Check props configuration
+  → Validate column definitions
+  → Generate validation report
+  → HALT if violations found
+```
+
+**Step 5: Fix Loop (if violations)**
+```
+Component violations → Dev agent fixes → Re-validate → Continue or HALT
+```
+
+### Feature Matrix Reference (Epic 9)
+
+| Story | Type | Sorting | Search | Year | Pagination | Minimize |
+|-------|------|---------|--------|------|------------|----------|
+| 9.1-9.3 | Home tables | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 9.15-9.16 | Landing sections | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 9.15-9.16 | Landing detailed | ✅ | ✅ | ✅ | ❌ | ✅ |
+| 9.17 | IPO Listings | ✅ | ❌ | ✅ | ✅ | ❌ |
+| 9.7a, 9.11 | Performance | ✅ | ❌ | ✅ | ✅ | ❌ |
+| 9.8a, 9.12 | Prospectus | ✅ | ✅ | ✅ | ✅ | ❌ |
+| 9.10a, 9.14 | Reviews | ✅ | ✅ | ✅ | ✅ | ❌ |
+| 9.4-9.6 | Rights/OFS/NCD | ✅ | ✅ | ✅ | ✅ | ❌ |
+
+### Required Documentation Files
+
+**Component Architecture:**
+1. `docs/components/REUSABLE-COMPONENTS-REQUIREMENTS.md` - Component specs and architecture decision
+2. `docs/components/DATATABLE-USAGE-EXAMPLES.md` - Practical usage examples for all scenarios
+3. `docs/components/TABLE-COMPONENT-USAGE-PATTERNS.md` - Pattern guidance for different layouts
+
+**Implementation Reference:**
+- `web/components/shared/DataTable.tsx` - Enhanced component implementation
+
+**Generated Reports:**
+- `docs/stories/qa-reports/story-{id}-component-validation.md` - Component validation results
+
+### Exit Conditions Updated (v3.1)
+
+**Added to exit conditions:**
+
+✓ **Component Architecture Compliance** (NEW in v3.1)
+- **For table components:** DataTable component used (no custom tables)
+- **Feature configuration:** Matches approved matrix for story type
+- **Render functions:** Common utilities used for formatting
+- **Props configuration:** Required configs provided for enabled features
+- **Column definitions:** Follow best practices (key, header, alignment)
+- **Component validation report:** Generated and PASS status
+
+### Workflow Failures Updated (v3.1)
+
+**Added failure condition:**
+
+❌ **Component Architecture Violations (Step 4.6)**
+- Custom table components created (not using DataTable)
+- Features enabled not matching approved matrix
+- Missing required configuration objects
+- Column definitions missing required fields
+
+### Upgrade Notes (v3.0 → v3.1)
+
+**Changes for Epic 9 Implementation:**
+
+1. **Dev agents MUST:**
+   - Read component documentation before implementing
+   - Use DataTable component (no custom tables)
+   - Follow approved feature matrix
+   - Use common render functions
+   - Provide required configuration objects
+
+2. **QA agents MUST:**
+   - Run component architecture validation (Step 4.6)
+   - Generate component validation report
+   - HALT workflow on component violations
+   - Verify feature configuration matches matrix
+
+3. **SM agents MUST:**
+   - Review component validation report
+   - Confirm component architecture compliance
+   - Reject approvals with component violations
+
+**Backward Compatibility:**
+- v3.1 is backward compatible with v3.0 for non-table stories
+- Epic 9 stories REQUIRE v3.1 component validation
+- Existing table implementations should be audited
+
+### Best Practices for v3.1
+
+**For Epic 9 Implementation:**
+
+1. **Always start with documentation:**
+   ```bash
+   # Read these files before implementing any Epic 9 story
+   docs/components/REUSABLE-COMPONENTS-REQUIREMENTS.md
+   docs/components/DATATABLE-USAGE-EXAMPLES.md
+   docs/components/TABLE-COMPONENT-USAGE-PATTERNS.md
+   ```
+
+2. **Use the feature matrix:**
+   - Find your story type in the matrix
+   - Enable ONLY the features listed for that type
+   - Don't enable extra features "just in case"
+
+3. **Copy from examples:**
+   - DATATABLE-USAGE-EXAMPLES.md has examples for all Epic 9 scenarios
+   - Copy the example closest to your story
+   - Modify the columns and data, keep the feature configuration
+
+4. **Test component features:**
+   - Test sorting on all sortable columns
+   - Test column search on all searchable columns (if enabled)
+   - Test year filter with different years (if enabled)
+   - Test pagination navigation (if enabled)
+   - Test minimize/maximize toggle (if enabled)
+
+### Migration Guide (v3.0 → v3.1)
+
+**If implementing Epic 9 stories:**
+
+1. **Update workflow file:**
+   - Replace automated-dev-qa-sm-workflow-new.md with v3.1
+   - Includes component architecture validation
+
+2. **Read component documentation:**
+   - Required reading before any Epic 9 implementation
+   - Ensures compliance from the start
+
+3. **Run component validation:**
+   - New Step 4.6 runs automatically for table components
+   - Generates validation report
+
+**If using v3.0 workflow:**
+- Non-Epic-9 stories: Continue using v3.0 (no changes needed)
+- Epic 9 stories: MUST upgrade to v3.1 for component validation
+- Mixed sprint: Use v3.1 for all stories (backward compatible)
+
+---
+
+**Version:** 3.1
+**Last Updated:** 2025-10-11
+**Breaking Changes:** Yes (completion enforcement + component architecture enforcement)
+**Upgrade Required:** Immediate for Epic 9 stories
+**Backward Compatible:** Yes for non-table components

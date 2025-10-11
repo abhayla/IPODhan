@@ -97,12 +97,16 @@ export function SearchBar() {
 
   /**
    * Handle clear button click
+   * Optimistically clear UI immediately and bypass debounce for instant feedback
    */
   const handleClear = () => {
+    // Immediate UI update for instant user feedback
     setSearchInput('');
     setIsSearching(false);
-    updateSearchParam('');
     setShowRecent(false);
+
+    // Immediately update URL (bypass debounce)
+    updateSearchParam('');
   };
 
   /**

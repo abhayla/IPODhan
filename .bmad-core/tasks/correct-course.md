@@ -48,25 +48,39 @@
   - If in "Incremental Mode," discuss and refine these proposed edits for each artifact or small group of related artifacts with the user as they are drafted.
   - If in "YOLO Mode," compile all drafted edits for presentation in the next step.
 
-### 4. Generate "Sprint Change Proposal" with Edits
+### 4. Document Changes and Generate Summary
 
-- Synthesize the complete change-checklist analysis (covering findings from Sections 1-4) and all the agreed-upon proposed edits (from Instruction 3) into a single document titled "Sprint Change Proposal." This proposal should align with the structure suggested by Section 5 of the change-checklist.
-- The proposal must clearly present:
-  - **Analysis Summary:** A concise overview of the original issue, its analyzed impact (on epics, artifacts, MVP scope), and the rationale for the chosen path forward.
-  - **Specific Proposed Edits:** For each affected artifact, clearly show or describe the exact changes (e.g., "Change Story X.Y from: [old text] To: [new text]", "Add new Acceptance Criterion to Story A.B: [new AC]", "Update Section 3.2 of Architecture Document as follows: [new/modified text or diagram description]").
-- Present the complete draft of the "Sprint Change Proposal" to the user for final review and feedback. Incorporate any final adjustments requested by the user.
+- **CRITICAL RULE:** Do NOT create separate "Sprint Change Proposal" files. All changes must be documented directly in the affected artifact files.
+- For story changes:
+  - Apply all edits directly to the story file
+  - Document changes in the story's Change Log section with:
+    - Date, new version number, description of changes, author
+    - Example: `| 2025-10-11 | 1.1 | PO review changes: (1) Fixed task sequencing, (2) Added icon imports | Bob (Scrum Master) |`
+- For epic/PRD/architecture changes:
+  - Apply edits directly to those files
+  - Add version/change log entries if those files have them
+- Synthesize a brief summary analysis (for the user only, not as a separate file) that includes:
+  - **Analysis Summary:** Concise overview of the issue, impact analysis, and rationale for changes
+  - **Changes Applied:** List of which files were edited and what was changed
+  - **Verification:** Confirmation that all checklist items were addressed
+- Present this summary to the user for final review. The summary is for communication only - all actual changes should already be in the artifact files.
 
 ### 5. Finalize & Determine Next Steps
 
-- Obtain explicit user approval for the "Sprint Change Proposal," including all the specific edits documented within it.
-- Provide the finalized "Sprint Change Proposal" document to the user.
+- Obtain explicit user approval for the changes applied to project artifacts.
+- Confirm that all changes are documented in the appropriate change logs.
 - **Based on the nature of the approved changes:**
-  - **If the approved edits sufficiently address the change and can be implemented directly or organized by a PO/SM:** State that the "Correct Course Task" is complete regarding analysis and change proposal, and the user can now proceed with implementing or logging these changes (e.g., updating actual project documents, backlog items). Suggest handoff to a PO/SM agent for backlog organization if appropriate.
-  - **If the analysis and proposed path (as per checklist Section 4 and potentially Section 6) indicate that the change requires a more fundamental replan (e.g., significant scope change, major architectural rework):** Clearly state this conclusion. Advise the user that the next step involves engaging the primary PM or Architect agents, using the "Sprint Change Proposal" as critical input and context for that deeper replanning effort.
+  - **If the approved edits sufficiently address the change and are already applied:** State that the "Correct Course Task" is complete. All changes are documented in the artifact files' change logs. Story status can be updated as needed (e.g., from "Draft" to "Ready").
+  - **If the analysis indicates a more fundamental replan is needed (e.g., significant scope change, major architectural rework):** Clearly state this conclusion. Advise the user that the next step involves engaging the primary PM or Architect agents, using the summary analysis as context for that deeper replanning effort.
 
 ## Output Deliverables
 
-- **Primary:** A "Sprint Change Proposal" document (in markdown format). This document will contain:
-  - A summary of the change-checklist analysis (issue, impact, rationale for the chosen path).
-  - Specific, clearly drafted proposed edits for all affected project artifacts.
+- **Primary:** Updated project artifact files (stories, epics, PRD, architecture docs) with:
+  - All changes applied directly to the files
+  - Change log entries documenting what changed, when, and why
+  - Version numbers incremented appropriately
+- **Secondary:** A verbal/textual summary analysis (presented to user, not saved as separate file) containing:
+  - Summary of the change-checklist analysis (issue, impact, rationale)
+  - List of files modified and changes applied
+  - Verification that all checklist items were addressed
 - **Implicit:** An annotated change-checklist (or the record of its completion) reflecting the discussions, findings, and decisions made during the process.

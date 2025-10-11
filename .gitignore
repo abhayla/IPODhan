@@ -77,3 +77,13 @@ scraper/drop-legacy-constraints.ts
 scraper/fix-schema.ts
 scraper/fix-symbol-column.ts
 scraper/vitest-resolve-plugin.ts
+
+# Temporary test reports and documentation
+*-TEST-REPORT.md
+*-TESTING-REPORT.md
+*-INSTRUCTIONS.md
+*-testing-guide.md
+*-test-execution-report*.md
+*-test-results*.md
+test-results.md
+dashboard-test*.md
