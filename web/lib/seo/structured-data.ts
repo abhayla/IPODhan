@@ -72,6 +72,29 @@ export interface BreadcrumbListSchema {
 }
 
 /**
+ * ItemList schema (JSON-LD) for listing pages
+ * Implements schema.org/ItemList
+ */
+export interface ItemListSchema {
+  '@context': 'https://schema.org';
+  '@type': 'ItemList';
+  name: string;
+  description?: string;
+  numberOfItems: number;
+  itemListElement: Array<{
+    '@type': 'ListItem';
+    position: number;
+    item: {
+      '@type': 'FinancialProduct';
+      name: string;
+      description?: string;
+      url?: string;
+      category?: string;
+    };
+  }>;
+}
+
+/**
  * Generate Organization schema for homepage
  */
 export function generateOrganizationSchema(): OrganizationSchema {
@@ -176,10 +199,45 @@ export function generateBreadcrumbSchema(
 }
 
 /**
+ * Minimal IPO data required for listing schema
+ */
+export interface MinimalIPOForSchema {
+  companyName: string;
+  slug: string;
+  category: string;
+  companyDescription?: string | null;
+}
+
+/**
+ * Generate ItemList schema for IPO listings on homepage
+ * Accepts minimal IPO data (compatible with HomeIPOTableData)
+ */
+export function generateIPOListingSchema(ipos: MinimalIPOForSchema[]): ItemListSchema {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: 'Latest IPO Updates',
+    description: 'Current and upcoming Initial Public Offerings in Indian stock markets',
+    numberOfItems: ipos.length,
+    itemListElement: ipos.map((ipo, index) => ({
+      '@type': 'ListItem',
+      position: index + 1,
+      item: {
+        '@type': 'FinancialProduct',
+        name: `${ipo.companyName} IPO`,
+        description: ipo.companyDescription || `IPO of ${ipo.companyName}`,
+        url: `${BASE_URL}/ipos/${ipo.slug}`,
+        category: ipo.category,
+      },
+    })),
+  };
+}
+
+/**
  * Convert structured data to JSON-LD script tag content
  */
 export function toJsonLdScript(
-  schema: OrganizationSchema | FinancialProductSchema | BreadcrumbListSchema,
+  schema: OrganizationSchema | FinancialProductSchema | BreadcrumbListSchema | ItemListSchema,
 ): string {
   return JSON.stringify(schema);
 }
