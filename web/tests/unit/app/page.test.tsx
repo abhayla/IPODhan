@@ -61,6 +61,9 @@ const mockMainboardIPOs = [
     status: 'OPEN',
     openDate: '2025-10-15',
     closeDate: '2025-10-17',
+    issuePrice: 150,
+    issueSize: '500',
+    listingDate: null,
   },
   {
     id: '2',
@@ -70,6 +73,9 @@ const mockMainboardIPOs = [
     status: 'UPCOMING',
     openDate: '2025-10-20',
     closeDate: '2025-10-22',
+    issuePrice: 200,
+    issueSize: '750',
+    listingDate: null,
   },
 ];
 
@@ -82,6 +88,9 @@ const mockSMEIPOs = [
     status: 'OPEN',
     openDate: '2025-10-16',
     closeDate: '2025-10-18',
+    issuePrice: 100,
+    issueSize: '50',
+    listingDate: null,
   },
 ];
 
@@ -94,6 +103,9 @@ const mockUpcomingMainboard = [
     status: 'UPCOMING',
     openDate: '2025-11-01',
     closeDate: '2025-11-03',
+    issuePrice: 250,
+    issueSize: '1000',
+    listingDate: null,
   },
 ];
 
@@ -106,6 +118,9 @@ const mockUpcomingSME = [
     status: 'UPCOMING',
     openDate: '2025-11-05',
     closeDate: '2025-11-07',
+    issuePrice: 80,
+    issueSize: '30',
+    listingDate: null,
   },
 ];
 

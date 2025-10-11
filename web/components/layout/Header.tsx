@@ -15,7 +15,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, Calculator, Scale, Building2, Calendar } from 'lucide-react';
+import { Menu, X, Calculator, Scale, Building2, Calendar, TrendingUp } from 'lucide-react';
 import styles from './Header.module.css';
 
 // ==================== COMPONENT ====================
@@ -74,6 +74,17 @@ export function Header() {
               }`}
             >
               Dashboard
+            </Link>
+
+            <Link
+              href="/rights-issues"
+              className={`relative text-sm font-medium ${styles.navLink} ${
+                isActive('/rights-issues')
+                  ? 'text-foreground after:absolute after:bottom-[-4px] after:left-0 after:h-0.5 after:w-full after:bg-primary'
+                  : 'text-muted-foreground'
+              }`}
+            >
+              Rights Issues
             </Link>
 
             <div className="group relative">
@@ -192,6 +203,19 @@ export function Header() {
                 onClick={() => setMobileMenuOpen(false)}
               >
                 Dashboard
+              </Link>
+
+              <Link
+                href="/rights-issues"
+                className={`flex items-center space-x-2 text-sm font-medium transition-colors hover:text-primary ${
+                  isActive('/rights-issues')
+                    ? 'text-foreground'
+                    : 'text-muted-foreground'
+                }`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <TrendingUp className="h-4 w-4" />
+                <span>Rights Issues</span>
               </Link>
 
               <div className="space-y-2">
