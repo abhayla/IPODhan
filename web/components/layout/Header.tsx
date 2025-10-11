@@ -104,7 +104,7 @@ export function Header() {
               </button>
 
               {/* Dropdown Menu */}
-              <div className={`absolute left-0 top-full mt-2 w-56 rounded-xl border bg-popover p-2 text-popover-foreground shadow-2xl ${styles.dropdown} ${
+              <div className={`absolute right-0 top-full mt-2 w-64 rounded-xl border bg-popover p-2 text-popover-foreground shadow-2xl ${styles.dropdown} ${
                 desktopToolsOpen ? 'visible opacity-100 translate-y-0' : 'invisible opacity-0 -translate-y-2'
               } group-hover:visible group-hover:opacity-100 group-hover:translate-y-0`}>
                 <Link
