@@ -232,15 +232,28 @@ workflow: automated-story-creation-workflow
 
 ---
 
-### 6. Git Commit (Optional - if requested)
+### 6. Git Commit (Mandatory)
 
-**Only execute if user requests automatic commit**
+**Commit all files created during the workflow**
+
+**Stage all workflow-generated files:**
+
+```bash
+# Add story file
+git add {story_file_path}
+
+# Add sprint plan if it was updated
+if [ -f "{sprint_plan_path}" ]; then
+  git add {sprint_plan_path}
+fi
+
+# Add workflow report (will be created in Step 7)
+git add {workflow_report_path}
+```
 
 **Create commit with standardized format:**
 
 ```bash
-git add {story_file_path}
-
 git commit -m "$(cat <<'EOF'
 docs(story): Add new story {story_id} - {story_title}
 
@@ -248,6 +261,11 @@ docs(story): Add new story {story_id} - {story_title}
 - Validated by Product Owner (Sarah)
 - All acceptance criteria defined
 - Ready for implementation
+
+Files committed:
+- Story: {story_file_path}
+- Sprint Plan: {sprint_plan_path} (if updated)
+- Workflow Report: {workflow_report_path}
 
 Story: {story_id}
 Status: Ready
@@ -260,11 +278,13 @@ EOF
 )"
 ```
 
-**Push to remote (if requested):**
+**Push to remote (if requested by user):**
 
 ```bash
 git push origin main
 ```
+
+**Note:** This step is mandatory and will commit all files created during the workflow execution. The workflow report from Step 7 should be generated before this commit is created.
 
 ---
 
