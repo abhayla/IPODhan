@@ -1,7 +1,7 @@
 # Automated Story Implementation and QA Workflow
 
 **Task ID:** automated-dev-qa-sm-workflow
-**Version:** 3.0
+**Version:** 3.2
 **Agent:** QA (Quinn) & Dev (James)
 **Elicit:** false
 
@@ -15,7 +15,14 @@ Complete end-to-end workflow for story implementation and quality assurance with
 5. **Acceptance criteria validation** (NEW in v3.0)
 6. Final validation and commit
 
-**Key v3.0 Changes:**
+**Key v3.2 Changes (NEW - Git Branch Isolation):**
+- ✅ Mandatory feature branch creation and isolation
+- ✅ All commits happen on feature branch only
+- ✅ QA validation commit on feature branch before merge
+- ✅ Parallel story work fully supported
+- ✅ Clean merge-only commits to main branch
+
+**Previous v3.0 Changes:**
 - ✅ Mandatory 100% task completion enforcement
 - ✅ Programmatic acceptance criteria validation
 - ✅ Test coverage requirements enforced
@@ -29,18 +36,59 @@ Complete end-to-end workflow for story implementation and quality assurance with
 
 ## Workflow Steps
 
-### 1. Story Extraction
+### 1. Story Extraction and Feature Branch Setup
 
 **Actions:**
-- Parse story identifier from input parameters
-- Read full story details from `docs/stories/SPRINT-N-PLAN.md`
-- Extract all acceptance criteria and requirements
-- Load story-specific files if they exist
+
+1. **Parse Story Details:**
+   - Parse story identifier from input parameters
+   - Read full story details from `docs/stories/SPRINT-N-PLAN.md`
+   - Extract all acceptance criteria and requirements
+   - Load story-specific files if they exist
+
+2. **Feature Branch Creation/Verification (NEW in v3.2):**
+   ```bash
+   # Check if feature branch already exists
+   git fetch origin
+   git branch -a | grep "feature/story-{story_id}"
+
+   if [ $? -eq 0 ]; then
+     # Branch exists - checkout and update
+     git checkout feature/story-{story_id}
+     git pull origin feature/story-{story_id}
+     echo "✅ Switched to existing feature branch"
+   else
+     # Create new feature branch from latest main
+     git checkout main
+     git pull origin main
+     git checkout -b feature/story-{story_id}
+     git push -u origin feature/story-{story_id}
+     echo "✅ Created new feature branch: feature/story-{story_id}"
+   fi
+   ```
+
+3. **Branch Isolation Verification:**
+   ```bash
+   # Verify we're on the correct feature branch
+   current_branch=$(git branch --show-current)
+   if [ "$current_branch" != "feature/story-{story_id}" ]; then
+     echo "❌ ERROR: Not on feature branch!"
+     exit 1
+   fi
+
+   # Confirm parallel branches exist (informational only)
+   echo "📋 Active feature branches:"
+   git branch -a | grep "feature/" | grep -v "feature/story-{story_id}"
+   echo "⚠️  Note: Other feature branches are active. Stay isolated to your branch."
+   ```
 
 **Output:**
 - Story context loaded
 - Acceptance criteria list created
 - Requirements documented
+- **Feature branch created or verified (NEW in v3.2)**
+- **Branch isolation confirmed (NEW in v3.2)**
+- **Parallel branches acknowledged (NEW in v3.2)**
 
 ---
 
@@ -122,7 +170,10 @@ Based on your story type, enable ONLY these features:
 {END IF table component section}
 
 **General Requirements:**
-- Create feature branch: feature/story-{story_id}
+- ⚠️ **CRITICAL:** Work ONLY on feature branch: feature/story-{story_id} (v3.2)
+- ⚠️ **CRITICAL:** Create commits on feature branch during implementation (v3.2)
+- ⚠️ **CRITICAL:** Never switch to main branch during implementation (v3.2)
+- ⚠️ **CRITICAL:** Assume parallel feature branches exist - stay isolated (v3.2)
 - Implement all acceptance criteria (100% - no partial implementations)
 - Write comprehensive tests (unit + E2E)
   - Unit test coverage ≥80% for new code
@@ -131,7 +182,8 @@ Based on your story type, enable ONLY these features:
 - Ensure code quality (lint, types, formatting)
 - Update documentation as needed
 - Create progress report in docs/stories/progress-reports/
-- Do NOT commit yet - QA validation required first
+- **Commit implementation work to feature branch** (v3.2 - changed from "Do NOT commit")
+- **Push feature branch to remote regularly** (v3.2 - NEW)
 
 Return detailed summary of:
 - What was implemented (with component usage details if tables involved)
@@ -155,10 +207,11 @@ Return detailed summary of:
 - Validate all requirements addressed
 
 **Output:**
-- Feature branch created
-- Code implemented
-- Tests written
-- Progress report generated
+- Feature branch active with all implementation commits
+- Code implemented and committed to feature branch (v3.2)
+- Tests written and committed to feature branch (v3.2)
+- Progress report generated and committed to feature branch (v3.2)
+- Feature branch pushed to remote (v3.2)
 - Ready for **MANDATORY** completion validation
 
 ---
@@ -282,33 +335,61 @@ Return detailed summary of:
 
 ---
 
-### 3. Initial Verification (UPDATED in v3.0)
+### 3. Initial Verification (UPDATED in v3.2)
 
 **PREREQUISITE:** Step 2.5 completion validation must PASS
 
 **Actions:**
-- Verify feature branch exists: `feature/story-{story_id}`
-- Confirm implementation commits present
-- Review commit history for story-related changes
-- **Check 100% task completion** (enforced by Step 2.5)
-- **Check 100% AC implementation** (enforced by Step 2.5)
-- Verify progress report created
-- **Verify test files exist for ALL new code**
+
+1. **Branch Isolation Check (NEW in v3.2):**
+   ```bash
+   # Verify we're still on feature branch
+   current_branch=$(git branch --show-current)
+   if [ "$current_branch" != "feature/story-{story_id}" ]; then
+     echo "❌ ERROR: Switched branches during workflow!"
+     echo "Expected: feature/story-{story_id}"
+     echo "Actual: $current_branch"
+     exit 1
+   fi
+
+   # Verify no uncommitted changes
+   if ! git diff-index --quiet HEAD --; then
+     echo "⚠️  WARNING: Uncommitted changes detected"
+     echo "All implementation should be committed on feature branch"
+   fi
+   ```
+
+2. **Feature Branch Validation:**
+   - Verify feature branch exists: `feature/story-{story_id}`
+   - Confirm implementation commits present on feature branch (v3.2)
+   - Review commit history for story-related changes on feature branch (v3.2)
+   - **Verify NO commits on main branch** (v3.2 - NEW)
+   - **Check 100% task completion** (enforced by Step 2.5)
+   - **Check 100% AC implementation** (enforced by Step 2.5)
+   - Verify progress report created and committed (v3.2)
+   - **Verify test files exist for ALL new code**
 
 **Strict Validation:**
-- ✓ On feature branch
-- ✓ Implementation commits found
+- ✓ On feature branch (feature/story-{story_id}) (v3.2 - enforced)
+- ✓ Implementation commits found on feature branch (v3.2)
+- ✓ Main branch untouched (v3.2 - NEW)
+- ✓ All changes committed to feature branch (v3.2 - NEW)
 - ✓ **ALL tasks marked complete (100%)**
 - ✓ **ALL acceptance criteria implemented (100%)**
 - ✓ **Test files exist for all new functionality**
-- ✓ Progress report exists
+- ✓ Progress report exists and committed (v3.2)
 - ✓ **Zero TODO/pending markers** (or documented as tech debt)
 
 ---
 
-### 4. Comprehensive Testing (UPDATED in v3.0)
+### 4. Comprehensive Testing (UPDATED in v3.2)
 
 **PREREQUISITE:** Step 3 initial verification must PASS
+
+**Branch Context (v3.2):**
+- ⚠️ **All tests run on feature branch ONLY**
+- ⚠️ **Never switch to main during testing**
+- ⚠️ **Parallel feature branches may be active - ignore them**
 
 **Execute all quality checks with MANDATORY coverage requirements:**
 
@@ -730,11 +811,14 @@ Then fix issues in Story {story_id}:
 {Detailed issue list from QA findings}
 
 Requirements:
+- ⚠️ **CRITICAL:** Work ONLY on feature branch: feature/story-{story_id} (v3.2)
+- ⚠️ **CRITICAL:** Commit all fixes to feature branch (v3.2)
+- ⚠️ **CRITICAL:** Never switch to main branch (v3.2)
 - Fix all listed issues
 - Maintain existing functionality
 - Update tests if needed
 - Run full test suite to verify fixes
-- Do NOT commit changes yet
+- **Commit fixes to feature branch after verification** (v3.2 - changed from "Do NOT commit")
 
 Return detailed summary of:
 - What was fixed
@@ -924,31 +1008,24 @@ Return detailed review with:
 
 ---
 
-### 7. Merge to Main Branch
+### 7. Final Validation on Feature Branch (UPDATED in v3.2)
 
-**After Scrum Master approval:**
+**PREREQUISITE:** SM approval received (Step 6)
+
+**Branch Context (v3.2):**
+- ⚠️ **Still on feature branch: feature/story-{story_id}**
+- ⚠️ **Do NOT merge yet - validation first**
+
+**Comprehensive Validation on Feature Branch:**
 
 ```bash
-# Ensure on feature branch
-git checkout feature/story-{story_id}
-
-# Merge to main
-git checkout main
-git pull origin main
-git merge --no-ff feature/story-{story_id} -m "Merge Story {story_id}: {Story Title}"
+# Verify we're still on feature branch
+current_branch=$(git branch --show-current)
+if [ "$current_branch" != "feature/story-{story_id}" ]; then
+  echo "❌ ERROR: Not on feature branch!"
+  exit 1
+fi
 ```
-
-**Validation:**
-- ✓ Main branch updated
-- ✓ Feature branch merged
-- ✓ No merge conflicts
-- ✓ All commits preserved
-
----
-
-### 8. Final Validation (only when all tests pass)
-
-**Comprehensive Validation:**
 
 ✅ **Acceptance Criteria**
 - [ ] All criteria from story plan verified
@@ -971,21 +1048,44 @@ git merge --no-ff feature/story-{story_id} -m "Merge Story {story_id}: {Story Ti
 - [ ] API documentation updated (if applicable)
 - [ ] README updated (if needed)
 
+✅ **Git State (NEW in v3.2)**
+- [ ] All work committed on feature branch
+- [ ] Feature branch pushed to remote
+- [ ] Main branch untouched
+- [ ] Clean working directory
+
 **Validation Output:**
 - Final test summary
 - Coverage report
 - Quality metrics
 - Sign-off checklist
+- **Feature branch ready for merge** (v3.2)
 
 ---
 
-### 9. Git Commit (only if zero issues and SM approved)
+### 8. QA Validation Commit on Feature Branch (NEW in v3.2)
 
-**Create commit with standardized format:**
+**CRITICAL:** This step creates the final QA validation commit on the feature branch BEFORE merging.
+
+**Branch Context:**
+- ⚠️ **Must be on feature branch: feature/story-{story_id}**
+- ⚠️ **This is the LAST commit before merge**
+- ⚠️ **Do NOT commit on main**
+
+**Create QA validation commit on feature branch:**
 
 ```bash
+# Verify we're on feature branch
+current_branch=$(git branch --show-current)
+if [ "$current_branch" != "feature/story-{story_id}" ]; then
+  echo "❌ ERROR: Must be on feature branch!"
+  exit 1
+fi
+
+# Stage any remaining changes (QA reports, etc.)
 git add .
 
+# Create QA validation commit
 git commit -m "$(cat <<'EOF'
 test(story-{story_id}): QA validation passed
 
@@ -993,6 +1093,7 @@ test(story-{story_id}): QA validation passed
 - Test coverage: {coverage}%
 - Zero defects found
 - Ready for production
+- SM approved
 
 Story: {story_id}
 QA Status: ✓ Passed
@@ -1003,18 +1104,124 @@ Iterations: {iteration_count}
 Co-Authored-By: Claude <noreply@anthropic.com>
 EOF
 )"
+
+# Push feature branch with QA validation
+git push origin feature/story-{story_id}
 ```
 
-**Push to remote:**
+**Validation:**
+- ✓ QA commit created on feature branch
+- ✓ Feature branch pushed to remote
+- ✓ All commits preserved on feature branch
+- ✓ Main branch still untouched
+- ✓ Feature branch contains complete history
+
+**Output:**
+- QA validation commit hash
+- Feature branch fully validated and ready to merge
+- Complete feature history on branch
+
+---
+
+### 9. Merge Feature Branch to Main (UPDATED in v3.2)
+
+**PREREQUISITE:** QA validation commit created on feature branch (Step 8)
+
+**Branch Context:**
+- ⚠️ **Starting on feature branch: feature/story-{story_id}**
+- ⚠️ **Will merge to main and create merge commit ONLY**
+- ⚠️ **No new commits on main - only merge commit**
+
+**Merge Steps:**
 
 ```bash
+# Step 1: Verify we're on feature branch with QA commit
+current_branch=$(git branch --show-current)
+if [ "$current_branch" != "feature/story-{story_id}" ]; then
+  echo "❌ ERROR: Must start merge from feature branch!"
+  exit 1
+fi
+
+# Step 2: Verify feature branch has QA validation commit
+if ! git log -1 --pretty=%B | grep -q "QA validation passed"; then
+  echo "❌ ERROR: QA validation commit not found!"
+  echo "Expected last commit to contain 'QA validation passed'"
+  exit 1
+fi
+
+# Step 3: Fetch latest main and check for conflicts
+git fetch origin main
+git checkout main
+git pull origin main
+
+# Step 4: Check for potential merge conflicts BEFORE merging
+echo "🔍 Checking for merge conflicts..."
+if git merge-tree $(git merge-base main feature/story-{story_id}) main feature/story-{story_id} | grep -q "^[<=>]"; then
+  echo "⚠️  WARNING: Merge conflicts detected!"
+  echo "Resolve conflicts before proceeding"
+  exit 1
+fi
+
+# Step 5: Merge feature branch with no-fast-forward (creates merge commit)
+git merge --no-ff feature/story-{story_id} -m "$(cat <<'EOF'
+Merge feature/story-{story_id}: {Story Title}
+
+Story {story_id} - Complete Implementation
+
+✅ All acceptance criteria met
+✅ Test coverage: {coverage}%
+✅ All tests passing
+✅ QA validation passed
+✅ SM approved
+✅ Zero defects
+
+Feature branch: feature/story-{story_id}
+QA Iterations: {iteration_count}
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+
+# Step 6: Push main with the merge commit
 git push origin main
+
+# Step 7: Verify merge succeeded
+if [ $? -eq 0 ]; then
+  echo "✅ Successfully merged feature/story-{story_id} to main"
+  echo "📦 Merge commit created on main"
+  echo "🚀 Main branch pushed to remote"
+else
+  echo "❌ ERROR: Failed to push to main"
+  exit 1
+fi
 ```
 
-**Sync verification:**
-- Confirm push succeeded
-- Verify remote is up to date
+**Validation:**
+- ✓ Merged from feature branch to main
+- ✓ Merge commit created (--no-ff ensures this)
+- ✓ All feature commits preserved in history
+- ✓ Main branch updated with merge commit only
+- ✓ Feature branch commits visible in git log
+- ✓ No direct commits on main (only merge commit)
+- ✓ Main pushed to remote successfully
+
+**Git History After Merge (v3.2):**
+```
+main branch:
+└── Merge commit: "Merge feature/story-{story_id}: {Story Title}"
+    ↑
+    └─── feature/story-{story_id} branch:
+         ├── commit: Initial implementation
+         ├── commit: Add tests
+         ├── commit: Fix QA issues
+         └── commit: QA validation passed ✅
+```
+
+**Sync Verification:**
+- Confirm merge succeeded
+- Verify main pushed to remote
 - Check CI/CD pipeline triggered (if applicable)
+- Confirm feature branch history preserved
 
 ---
 
@@ -1199,11 +1406,14 @@ The workflow completes successfully when **ALL** of the following are true (**MA
 - **SM sign-off documented** (in QA report and review)
 - **Zero unresolved concerns** (all feedback addressed)
 
-✓ **Code committed to main branch**
-- **Commit created with proper format** (follows convention)
-- **Pushed to remote successfully** (no conflicts)
+✓ **Code committed and merged properly** (UPDATED in v3.2)
+- **All implementation commits on feature branch** (v3.2 - NEW)
+- **QA validation commit on feature branch** (v3.2 - NEW)
+- **Feature branch merged to main with --no-ff** (v3.2 - enforced)
+- **Only merge commit on main** (v3.2 - NEW)
+- **Main pushed to remote successfully** (no conflicts)
 - **Branch synced** (main up to date)
-- **Feature branch merged** (using --no-ff)
+- **Feature branch history preserved** (v3.2 - NEW)
 
 ✓ **QA report generated** (ENHANCED in v3.0)
 - **Report file created** (docs/stories/qa-reports/story-{id}-qa-report.md)
@@ -1324,17 +1534,17 @@ User: "Implement and test story 1.3"
 *automated-dev-qa-sm-workflow story_id=1.3
 ```
 
-**Workflow will:**
-1. Load Story 1.3 from sprint plan
-2. Spawn Dev agent to implement story on feature branch
-3. Wait for implementation completion
+**Workflow will (v3.2 - Updated Git Flow):**
+1. Load Story 1.3 from sprint plan and create/verify feature branch
+2. Spawn Dev agent to implement story on feature branch (with commits)
+3. Wait for implementation completion on feature branch
 4. Run all tests on feature branch
-5. If issues found: Spawn Dev agent to fix
+5. If issues found: Spawn Dev agent to fix on feature branch (with commits)
 6. Re-run tests until all pass
 7. Spawn Scrum Master (Bob) for story review
-8. If SM requests changes: Return to fix loop
-9. If SM approves: Merge feature branch to main
-10. Commit with QA validation message on main
+8. If SM requests changes: Return to fix loop on feature branch
+9. If SM approves: Create QA validation commit on feature branch
+10. Merge feature branch to main (creates merge commit only)
 11. Generate comprehensive QA report
 12. Report final status to user
 
@@ -1367,14 +1577,16 @@ User: "Implement and test story 1.3"
 - Dev and SM agent spawning uses the Task tool with `general-purpose` subagent
 - All git operations assume proper repository setup
 - Test commands should be run from the appropriate project directory (check package.json for available scripts)
-- Feature branch workflow: `feature/story-{story_id}` → SM review → merge to `main`
-- SM review acts as final gate before merge to main branch
-- If SM requests changes, workflow returns to fix loop (Step 5)
+- **Feature branch workflow (v3.2):** `feature/story-{story_id}` (all commits) → QA commit → merge to `main` (merge commit only)
+- **Branch isolation (v3.2):** All work stays on feature branch until merge; main only receives merge commits
+- **Parallel development (v3.2):** Multiple feature branches can coexist; each story isolated to its branch
+- SM review acts as final gate before QA commit and merge to main branch
+- If SM requests changes, workflow returns to fix loop (Step 5) on feature branch
 - Report generation preserves complete audit trail
 - Self-healing loop has safety limit to prevent infinite iterations
-- All file modifications are tracked in change log
-- Progress reports created during implementation phase
-- QA reports created after final validation and SM approval
+- All file modifications are tracked in change log and committed to feature branch
+- Progress reports created during implementation phase on feature branch
+- QA reports created after final validation and SM approval on feature branch
 
 ---
 
@@ -1385,12 +1597,14 @@ When this task completes, you will receive:
 3. Final QA status (PASSED/FAILED)
 4. **Acceptance criteria validation report** (NEW in v3.0)
 5. Scrum Master review and approval status
-6. Path to progress report (from implementation)
-7. Path to QA report (from testing)
-8. Git commit hash (if committed)
-9. Summary of fix iterations and issues resolved
-10. Feature branch merge status
-11. **Test coverage metrics for new code** (NEW in v3.0)
+6. Path to progress report (from implementation on feature branch)
+7. Path to QA report (from testing on feature branch)
+8. **QA validation commit hash on feature branch** (v3.2 - NEW)
+9. **Merge commit hash on main branch** (v3.2 - NEW)
+10. Summary of fix iterations and issues resolved
+11. Feature branch merge status
+12. **Test coverage metrics for new code** (NEW in v3.0)
+13. **Feature branch name and commit count** (v3.2 - NEW)
 
 ---
 
@@ -1776,8 +1990,288 @@ Component violations → Dev agent fixes → Re-validate → Continue or HALT
 
 ---
 
-**Version:** 3.1
-**Last Updated:** 2025-10-11
-**Breaking Changes:** Yes (completion enforcement + component architecture enforcement)
-**Upgrade Required:** Immediate for Epic 9 stories
-**Backward Compatible:** Yes for non-table components
+---
+
+## Version 3.2 Changes (Git Branch Isolation & Parallel Development)
+
+### What's New in v3.2
+
+**Added: Complete Feature Branch Isolation**
+
+v3.2 fundamentally changes the git workflow to enforce proper feature branch isolation and support parallel story development.
+
+**Problem Solved:**
+- Commits were happening on main after merge (v3.1 and earlier)
+- No clear separation between implementation and merge commits
+- Parallel story work could interfere with each other
+- No explicit feature branch creation/verification step
+- Difficult to track complete feature history
+
+**Solution:**
+- **Step 1:** Mandatory feature branch creation/verification
+- **Steps 2-6:** All work (implementation, testing, fixes) on feature branch with commits
+- **Step 7:** Final validation on feature branch
+- **Step 8:** QA validation commit on feature branch (NEW step)
+- **Step 9:** Merge to main with merge commit ONLY (no new work commits on main)
+- Branch isolation checks throughout workflow
+- Parallel branch awareness
+
+### Git Workflow Changes (v3.1 → v3.2)
+
+**v3.1 Git Flow (OLD - Problematic):**
+```
+1. Create feature branch
+2. Implement on feature branch (no commits mentioned)
+3-6. Tests and fixes (no git guidance)
+7. Merge feature → main
+8. Final validation on main
+9. Commit QA validation on main ❌ WRONG
+10. Push main
+```
+
+**v3.2 Git Flow (NEW - Best Practice):**
+```
+1. Create/verify feature branch + isolation check ✅
+2. Implement on feature branch + commit regularly ✅
+3-6. Tests and fixes on feature branch + commit fixes ✅
+7. Final validation on feature branch ✅
+8. QA validation commit on feature branch ✅
+9. Merge feature → main (merge commit only) ✅
+10. Push main ✅
+```
+
+### Key Differences
+
+| Aspect | v3.1 (OLD) | v3.2 (NEW) |
+|--------|------------|------------|
+| **Branch Creation** | Mentioned, not enforced | Step 1 - enforced with verification |
+| **Implementation Commits** | "Do NOT commit" | Commit on feature branch during work |
+| **Fix Commits** | "Do NOT commit" | Commit fixes on feature branch |
+| **QA Validation Commit** | On main after merge ❌ | On feature branch before merge ✅ |
+| **Main Branch** | Receives work commits | Receives merge commit ONLY |
+| **Parallel Development** | Not addressed | Explicitly supported |
+| **Branch Isolation** | Not enforced | Checked at multiple steps |
+| **Git History** | Mixed commits on main | Clean: all work on feature, merges on main |
+
+### Step-by-Step Changes
+
+**Step 1 - Story Extraction (NEW in v3.2):**
+- Added: Feature branch creation/verification script
+- Added: Branch isolation verification
+- Added: Parallel branch awareness check
+
+**Step 2 - Story Implementation (UPDATED in v3.2):**
+- Changed: "Do NOT commit" → "Commit implementation work to feature branch"
+- Added: "Push feature branch to remote regularly"
+- Added: CRITICAL warnings about branch isolation
+- Added: Assumption that parallel branches exist
+
+**Step 3 - Initial Verification (UPDATED in v3.2):**
+- Added: Branch isolation check script
+- Added: Verify NO commits on main branch
+- Added: Verify all changes committed to feature branch
+- Changed: Validation now checks feature branch commits specifically
+
+**Step 4 - Comprehensive Testing (UPDATED in v3.2):**
+- Added: Branch context warnings (tests run on feature branch only)
+- Added: Parallel branch isolation reminders
+
+**Step 5 - Automated Fix Loop (UPDATED in v3.2):**
+- Changed: "Do NOT commit" → "Commit fixes to feature branch after verification"
+- Added: CRITICAL warnings about staying on feature branch
+
+**Step 6 - Scrum Master Review (No changes in v3.2):**
+- Same as v3.1
+
+**Step 7 - Final Validation (MOVED from Step 8, UPDATED in v3.2):**
+- Moved from after merge to before merge
+- Now happens on feature branch
+- Added: Branch isolation checks
+- Added: Git state validation
+
+**Step 8 - QA Validation Commit (NEW in v3.2):**
+- **Completely new step**
+- Creates QA validation commit on feature branch
+- Last commit before merge
+- Contains final QA sign-off
+- Pushed to remote before merge
+
+**Step 9 - Merge to Main (COMPLETELY REWRITTEN in v3.2):**
+- Changed: From "commit on main after merge" to "merge only"
+- Added: Comprehensive merge script with conflict detection
+- Added: Verification that QA commit exists on feature branch
+- Added: Merge commit message includes all validation info
+- Main branch now receives only merge commit (no work commits)
+
+**Step 10 - QA Report Generation (No structural changes):**
+- Same as v3.1
+
+### Branch Isolation Philosophy
+
+**v3.2 Philosophy:**
+> "Feature branches contain all work commits. Main branch receives only merge commits of validated features."
+
+**v3.1 Philosophy (deprecated):**
+> "Feature branches for development. Main can receive direct commits after merge."
+
+**Why This Matters:**
+- **Clean History:** Main branch history shows only complete features
+- **Easy Rollback:** Revert merge commit to remove entire feature
+- **Parallel Work:** Multiple teams can work simultaneously without interference
+- **CI/CD Friendly:** Feature branches can be tested independently
+- **Code Review:** Complete feature history available on one branch
+
+### Parallel Development Support
+
+**v3.2 explicitly supports parallel story development:**
+
+```
+Repository State During Sprint:
+├── main (protected - merge commits only)
+├── feature/story-9.9a (Team A working)
+├── feature/story-9.10a (Team B working)
+├── feature/story-9.11 (Team C working)
+└── feature/story-9.12 (Team D working)
+
+Each team:
+- Works independently on their feature branch
+- Commits regularly to their branch
+- Tests on their branch
+- Merges to main when QA approved
+- Never interferes with other teams
+```
+
+**Isolation Guarantees:**
+1. Each story has its own feature branch
+2. All commits stay on feature branch until merge
+3. Merge conflicts detected before merge
+4. Main branch always deployable (only receives validated features)
+5. Other feature branches never touched by your workflow
+
+### Exit Conditions Updated (v3.2)
+
+**Added to exit conditions:**
+
+✓ **Proper Git Workflow** (NEW in v3.2)
+- **Feature branch created/verified:** feature/story-{story_id} exists
+- **All implementation commits on feature branch:** No work commits on main
+- **QA validation commit on feature branch:** Final commit before merge
+- **Merge commit on main:** Single merge commit that brings in feature
+- **Feature branch history preserved:** All commits visible in git log
+- **Main branch clean:** Only merge commits, no direct work commits
+- **Parallel branches unaffected:** Other feature branches untouched
+
+### Workflow Failures Updated (v3.2)
+
+**Added failure conditions:**
+
+❌ **Git Branch Violations (Multiple Steps)**
+- Workflow not on feature branch when expected
+- Commits made directly on main branch
+- Feature branch not created/verified (Step 1)
+- QA validation commit missing on feature branch (Step 9)
+- Merge conflicts detected (Step 9)
+
+### Migration Guide (v3.1 → v3.2)
+
+**If you have v3.1 workflows in progress:**
+
+1. **Stories currently in development:**
+   - If no commits yet: Start with v3.2 (proper branch creation)
+   - If commits exist: Continue on v3.1, upgrade for next story
+   - **Do NOT retrofit v3.2 to in-progress v3.1 stories**
+
+2. **Commit history differences:**
+   - v3.1: Work commits might be on main
+   - v3.2: Work commits only on feature branches
+   - This is normal - no action needed for old stories
+
+3. **New stories (use v3.2):**
+   ```bash
+   # Workflow automatically handles:
+   - Feature branch creation/verification (Step 1)
+   - Commits on feature branch (Steps 2-6)
+   - QA commit on feature branch (Step 8)
+   - Merge to main (Step 9)
+   ```
+
+4. **Parallel development:**
+   - v3.2 fully supports multiple teams working simultaneously
+   - Each story isolated to its feature branch
+   - No interference between stories
+   - Main branch stays clean and deployable
+
+### Best Practices for v3.2
+
+**For Dev Agents:**
+- Always commit your work on feature branch (don't wait for QA)
+- Commit frequently with meaningful messages
+- Never switch to main branch during implementation
+- Assume other feature branches exist - stay isolated
+- Push feature branch regularly for backup
+
+**For QA Agents:**
+- Verify feature branch exists (Step 1)
+- Run all tests on feature branch (Step 4)
+- Create QA validation commit on feature branch (Step 8)
+- Merge to main only after QA commit (Step 9)
+- Never commit directly on main
+
+**For All Agents:**
+- Feature branch = all work commits
+- Main branch = merge commits only
+- Parallel stories = ignore other branches
+- Clean history = easier debugging and rollback
+
+### Upgrade Requirements
+
+**Immediate Upgrade Required:**
+- All new stories MUST use v3.2 workflow
+- v3.2 is NOT backward compatible with v3.1 git workflow
+- Running v3.1 workflow will create commits on main (anti-pattern)
+
+**Backward Compatibility:**
+- Story implementation logic: 100% compatible
+- QA testing logic: 100% compatible
+- SM review logic: 100% compatible
+- Git workflow: NOT compatible (fundamentally different)
+
+### Verification Commands
+
+**Check if story followed v3.2 workflow:**
+
+```bash
+# 1. Check feature branch exists
+git branch -a | grep "feature/story-{story_id}"
+
+# 2. Count commits on feature branch
+git log main..feature/story-{story_id} --oneline | wc -l
+# Should show multiple commits (implementation + QA)
+
+# 3. Check last commit on feature branch is QA validation
+git log feature/story-{story_id} -1 --pretty=%B | grep "QA validation passed"
+
+# 4. Check main only has merge commit
+git log main -1 --pretty=%B | grep "Merge feature/story-{story_id}"
+
+# 5. Verify no direct commits on main for this story
+git log main --all --grep="story-{story_id}" --oneline | grep -v "Merge"
+# Should return nothing or only merge commits
+```
+
+**Expected Output (v3.2 Compliant):**
+```
+✅ Feature branch exists: feature/story-9.9a
+✅ Feature branch has 12 commits
+✅ Last feature commit: "test(story-9.9a): QA validation passed"
+✅ Main has merge commit: "Merge feature/story-9.9a: ..."
+✅ No direct work commits on main for story-9.9a
+```
+
+---
+
+**Version:** 3.2
+**Last Updated:** 2025-01-12
+**Breaking Changes:** Yes (git workflow fundamentally changed)
+**Upgrade Required:** Immediate for all new stories
+**Backward Compatible:** No (git workflow is different)
