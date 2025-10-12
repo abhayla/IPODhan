@@ -15,7 +15,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, Calculator, Scale, Building2, Calendar, TrendingUp } from 'lucide-react';
+import { Menu, X, Calculator, Scale, Building2, Calendar, TrendingUp, FileText, Star } from 'lucide-react';
 import styles from './Header.module.css';
 
 // ==================== COMPONENT ====================
@@ -24,6 +24,7 @@ export function Header() {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [desktopToolsOpen, setDesktopToolsOpen] = useState(false);
+  const [desktopMainboardIPOsOpen, setDesktopMainboardIPOsOpen] = useState(false);
 
   const isActive = (path: string) => {
     return pathname === path || pathname.startsWith(path);
@@ -38,12 +39,22 @@ export function Header() {
     }
   };
 
-  // Handle ESC key to close mobile menu and desktop tools dropdown
+  const handleMainboardIPOsKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setDesktopMainboardIPOsOpen(!desktopMainboardIPOsOpen);
+    } else if (e.key === 'Escape') {
+      setDesktopMainboardIPOsOpen(false);
+    }
+  };
+
+  // Handle ESC key to close mobile menu and desktop dropdowns
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setMobileMenuOpen(false);
         setDesktopToolsOpen(false);
+        setDesktopMainboardIPOsOpen(false);
       }
     };
 
@@ -97,6 +108,92 @@ export function Header() {
             >
               OFS
             </Link>
+
+            <div className="group relative">
+              <button
+                className={`relative flex items-center space-x-1 text-sm font-medium ${styles.navLink} ${
+                  isActive('/mainboard-ipo')
+                    ? 'text-foreground after:absolute after:bottom-[-4px] after:left-0 after:h-0.5 after:w-full after:bg-primary'
+                    : 'text-muted-foreground'
+                }`}
+                onClick={() => setDesktopMainboardIPOsOpen(!desktopMainboardIPOsOpen)}
+                onKeyDown={handleMainboardIPOsKeyDown}
+                aria-haspopup="true"
+                aria-expanded={desktopMainboardIPOsOpen}
+              >
+                <span>Mainboard IPOs</span>
+                <svg
+                  className={`h-4 w-4 ${styles.chevron} ${desktopMainboardIPOsOpen ? 'rotate-180' : ''}`}
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </button>
+
+              {/* Mainboard IPOs Dropdown Menu */}
+              <div className={`absolute right-0 top-full mt-2 w-64 rounded-xl border bg-popover p-2 text-popover-foreground shadow-2xl ${styles.dropdown} ${
+                desktopMainboardIPOsOpen ? 'visible opacity-100 translate-y-0' : 'invisible opacity-0 -translate-y-2'
+              } group-hover:visible group-hover:opacity-100 group-hover:translate-y-0`}>
+                <Link
+                  href="/mainboard-ipo-performance-tracker"
+                  className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
+                  onClick={() => setDesktopMainboardIPOsOpen(false)}
+                >
+                  <TrendingUp className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <div>
+                    <p className="font-semibold">Mainboard IPO Performance Tracker</p>
+                    <p className="text-xs text-muted-foreground">
+                      Track post-listing performance
+                    </p>
+                  </div>
+                </Link>
+                <Link
+                  href="/mainboard-ipo-prospectus"
+                  className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
+                  onClick={() => setDesktopMainboardIPOsOpen(false)}
+                >
+                  <FileText className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <div>
+                    <p className="font-semibold">Mainboard IPO Prospectus</p>
+                    <p className="text-xs text-muted-foreground">
+                      View IPO prospectus documents
+                    </p>
+                  </div>
+                </Link>
+                <Link
+                  href="/mainboard-ipo-calendar"
+                  className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
+                  onClick={() => setDesktopMainboardIPOsOpen(false)}
+                >
+                  <Calendar className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <div>
+                    <p className="font-semibold">Mainboard IPO Calendar</p>
+                    <p className="text-xs text-muted-foreground">
+                      View upcoming IPO schedules
+                    </p>
+                  </div>
+                </Link>
+                <Link
+                  href="/mainboard-ipo-reviews"
+                  className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
+                  onClick={() => setDesktopMainboardIPOsOpen(false)}
+                >
+                  <Star className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <div>
+                    <p className="font-semibold">Mainboard IPO Reviews</p>
+                    <p className="text-xs text-muted-foreground">
+                      Read expert IPO analysis
+                    </p>
+                  </div>
+                </Link>
+              </div>
+            </div>
 
             <div className="group relative">
               <button
@@ -241,6 +338,42 @@ export function Header() {
                 <TrendingUp className="h-4 w-4" />
                 <span>OFS</span>
               </Link>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground">Mainboard IPOs</p>
+                <Link
+                  href="/mainboard-ipo-performance-tracker"
+                  className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <TrendingUp className="h-4 w-4" />
+                  <span>Mainboard IPO Performance Tracker</span>
+                </Link>
+                <Link
+                  href="/mainboard-ipo-prospectus"
+                  className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <FileText className="h-4 w-4" />
+                  <span>Mainboard IPO Prospectus</span>
+                </Link>
+                <Link
+                  href="/mainboard-ipo-calendar"
+                  className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Calendar className="h-4 w-4" />
+                  <span>Mainboard IPO Calendar</span>
+                </Link>
+                <Link
+                  href="/mainboard-ipo-reviews"
+                  className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Star className="h-4 w-4" />
+                  <span>Mainboard IPO Reviews</span>
+                </Link>
+              </div>
 
               <div className="space-y-2">
                 <p className="text-sm font-medium text-muted-foreground">Tools</p>
