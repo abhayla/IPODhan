@@ -72,7 +72,7 @@ export async function getMainboardIPOReviews(
     }
 
     if (filters?.recommendation) {
-      conditions.push(eq(ipoReviews.recommendation, filters.recommendation));
+      conditions.push(eq(ipoReviews.recommendation, filters.recommendation as any));
     }
 
     // Query with JOIN to ipos table
