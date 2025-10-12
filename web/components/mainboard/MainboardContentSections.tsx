@@ -58,9 +58,11 @@ function formatCurrency(amount: number | null): string {
 /**
  * Format issue size
  */
-function formatIssueSize(amount: number | null): string {
+function formatIssueSize(amount: string | null): string {
   if (!amount) return 'N/A';
-  return `₹${(amount / 100).toFixed(0)} Cr`;
+  const numAmount = parseFloat(amount);
+  if (isNaN(numAmount)) return 'N/A';
+  return `₹${(numAmount / 100).toFixed(0)} Cr`;
 }
 
 /**
