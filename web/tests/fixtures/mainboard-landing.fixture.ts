@@ -17,6 +17,7 @@ import type {
 
 /**
  * Sample Mainboard IPO data with various statuses
+ * Note: These are partial IPO objects for testing - missing fields are not required for the tests
  */
 export const mainboardIPOFixtures: IPO[] = [
   // OPEN Status IPOs (Current)
@@ -31,10 +32,10 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: null,
     priceRangeMin: 300,
     priceRangeMax: 350,
-    issueSize: 2500,
+    issueSize: "2500",
     lotSize: 42,
     sector: 'Technology',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
   {
     id: 'mb-ipo-2',
@@ -47,10 +48,10 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: null,
     priceRangeMin: 450,
     priceRangeMax: 500,
-    issueSize: 3000,
+    issueSize: "3000",
     lotSize: 30,
     sector: 'Healthcare',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
   {
     id: 'mb-ipo-3',
@@ -63,10 +64,10 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: null,
     priceRangeMin: 600,
     priceRangeMax: 650,
-    issueSize: 5000,
+    issueSize: "5000",
     lotSize: 23,
     sector: 'Energy',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
 
   // UPCOMING Status IPOs
@@ -81,10 +82,10 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: null,
     priceRangeMin: 400,
     priceRangeMax: 450,
-    issueSize: 2000,
+    issueSize: "2000",
     lotSize: 33,
     sector: 'Financial Services',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
   {
     id: 'mb-ipo-5',
@@ -97,10 +98,10 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: null,
     priceRangeMin: 550,
     priceRangeMax: 600,
-    issueSize: 4000,
+    issueSize: "4000",
     lotSize: 25,
     sector: 'Manufacturing',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
   {
     id: 'mb-ipo-6',
@@ -113,10 +114,10 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: null,
     priceRangeMin: 250,
     priceRangeMax: 280,
-    issueSize: 1500,
+    issueSize: "1500",
     lotSize: 53,
     sector: 'Retail',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
 
   // LISTED Status IPOs (Recently Listed)
@@ -131,10 +132,10 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: '2025-09-15',
     priceRangeMin: 700,
     priceRangeMax: 750,
-    issueSize: 3500,
+    issueSize: "3500",
     lotSize: 20,
     sector: 'Automobile',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
   {
     id: 'mb-ipo-8',
@@ -147,10 +148,10 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: '2025-08-30',
     priceRangeMin: 850,
     priceRangeMax: 900,
-    issueSize: 4500,
+    issueSize: "4500",
     lotSize: 17,
     sector: 'Pharmaceuticals',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
   {
     id: 'mb-ipo-9',
@@ -163,10 +164,10 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: '2025-08-18',
     priceRangeMin: 1000,
     priceRangeMax: 1100,
-    issueSize: 6000,
+    issueSize: "6000",
     lotSize: 14,
     sector: 'Infrastructure',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
   {
     id: 'mb-ipo-10',
@@ -179,10 +180,10 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: '2025-07-25',
     priceRangeMin: 500,
     priceRangeMax: 550,
-    issueSize: 2800,
+    issueSize: "2800",
     lotSize: 27,
     sector: 'IT Services',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
   {
     id: 'mb-ipo-11',
@@ -195,10 +196,10 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: '2025-07-18',
     priceRangeMin: 320,
     priceRangeMax: 360,
-    issueSize: 2200,
+    issueSize: "2200",
     lotSize: 41,
     sector: 'Telecom',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
   {
     id: 'mb-ipo-12',
@@ -211,10 +212,10 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: '2025-06-30',
     priceRangeMin: 280,
     priceRangeMax: 320,
-    issueSize: 1800,
+    issueSize: "1800",
     lotSize: 46,
     sector: 'FMCG',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
 
   // CLOSED Status IPOs
@@ -229,10 +230,10 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: null,
     priceRangeMin: 400,
     priceRangeMax: 450,
-    issueSize: 2600,
+    issueSize: "2600",
     lotSize: 33,
     sector: 'Logistics',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
   {
     id: 'mb-ipo-14',
@@ -245,10 +246,10 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: null,
     priceRangeMin: 600,
     priceRangeMax: 650,
-    issueSize: 4200,
+    issueSize: "4200",
     lotSize: 23,
     sector: 'Real Estate',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
 
   // Additional LISTED IPOs for performance calculations
@@ -263,12 +264,12 @@ export const mainboardIPOFixtures: IPO[] = [
     listingDate: '2025-05-15',
     priceRangeMin: 450,
     priceRangeMax: 500,
-    issueSize: 3200,
+    issueSize: "3200",
     lotSize: 30,
     sector: 'Chemicals',
-    exchange: ['NSE', 'BSE'],
+    listingExchanges: ['NSE', 'BSE'],
   },
-];
+] as IPO[];
 
 // ==================== SUMMARY METRICS FIXTURES ====================
 
@@ -514,10 +515,12 @@ export function searchByCompany(searchTerm: string): IPO[] {
 export function createMockAPIResponse(data: IPO[]) {
   return {
     data,
-    total: data.length,
-    page: 1,
-    limit: data.length,
-    totalPages: 1,
+    pagination: {
+      page: 1,
+      limit: data.length,
+      total: data.length,
+      hasMore: false,
+    },
   };
 }
 
