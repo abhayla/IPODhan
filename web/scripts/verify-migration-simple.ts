@@ -41,7 +41,7 @@ async function verifyMigration() {
 
     const hasBS = colCheck.rows.some(r => r.column_name === 'current_price_bse');
     const hasNSE = colCheck.rows.some(r => r.column_name === 'current_price_nse');
-    console.log(`   ✅ current_price_bse present: ${hasBSE ? 'YES' : 'NO'}`);
+    console.log(`   ✅ current_price_bse present: ${hasBS ? 'YES' : 'NO'}`);
     console.log(`   ✅ current_price_nse present: ${hasNSE ? 'YES' : 'NO'}\n`);
 
     // Check comments
