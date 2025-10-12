@@ -15,7 +15,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, Calculator, Scale, Building2, Calendar, TrendingUp, FileText, Star } from 'lucide-react';
+import { Menu, X, Calculator, Scale, Building2, Calendar, TrendingUp, FileText, Star, List } from 'lucide-react';
 import styles from './Header.module.css';
 
 // ==================== COMPONENT ====================
@@ -120,6 +120,17 @@ export function Header() {
               OFS
             </Link>
 
+            <Link
+              href="/fpo-listings"
+              className={`relative text-sm font-medium ${styles.navLink} ${
+                isActive('/fpo-listings')
+                  ? 'text-foreground after:absolute after:bottom-[-4px] after:left-0 after:h-0.5 after:w-full after:bg-primary'
+                  : 'text-muted-foreground'
+              }`}
+            >
+              FPO
+            </Link>
+
             <div className="group relative">
               <Link
                 href="/mainboard-ipos"
@@ -156,6 +167,19 @@ export function Header() {
                 } group-hover:visible group-hover:opacity-100 group-hover:translate-y-0`}
                 onMouseLeave={() => setDesktopMainboardIPOsOpen(false)}
               >
+                <Link
+                  href="/mainboard-ipo-listings"
+                  className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
+                  onClick={() => setDesktopMainboardIPOsOpen(false)}
+                >
+                  <List className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <div>
+                    <p className="font-semibold">Mainboard IPO Listings</p>
+                    <p className="text-xs text-muted-foreground">
+                      Comprehensive post-listing data
+                    </p>
+                  </div>
+                </Link>
                 <Link
                   href="/mainboard-ipo-performance-tracker"
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
@@ -247,6 +271,19 @@ export function Header() {
                 } group-hover:visible group-hover:opacity-100 group-hover:translate-y-0`}
                 onMouseLeave={() => setDesktopSMEIPOsOpen(false)}
               >
+                <Link
+                  href="/sme-ipo-listings"
+                  className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
+                  onClick={() => setDesktopSMEIPOsOpen(false)}
+                >
+                  <List className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <div>
+                    <p className="font-semibold">SME IPO Listings</p>
+                    <p className="text-xs text-muted-foreground">
+                      Comprehensive SME post-listing data
+                    </p>
+                  </div>
+                </Link>
                 <Link
                   href="/sme-ipo-performance-tracker"
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
@@ -446,6 +483,19 @@ export function Header() {
                 <span>OFS</span>
               </Link>
 
+              <Link
+                href="/fpo-listings"
+                className={`flex items-center space-x-2 text-sm font-medium transition-colors hover:text-primary ${
+                  isActive('/fpo-listings')
+                    ? 'text-foreground'
+                    : 'text-muted-foreground'
+                }`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <List className="h-4 w-4" />
+                <span>FPO Listings</span>
+              </Link>
+
               <div className="space-y-2">
                 <Link
                   href="/mainboard-ipos"
@@ -457,6 +507,14 @@ export function Header() {
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   Mainboard IPOs
+                </Link>
+                <Link
+                  href="/mainboard-ipo-listings"
+                  className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <List className="h-4 w-4" />
+                  <span>Mainboard IPO Listings</span>
                 </Link>
                 <Link
                   href="/mainboard-ipo-performance-tracker"
@@ -503,6 +561,14 @@ export function Header() {
                   onClick={() => setMobileMenuOpen(false)}
                 >
                   SME IPOs
+                </Link>
+                <Link
+                  href="/sme-ipo-listings"
+                  className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <List className="h-4 w-4" />
+                  <span>SME IPO Listings</span>
                 </Link>
                 <Link
                   href="/sme-ipo-performance-tracker"

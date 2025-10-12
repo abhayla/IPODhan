@@ -1,7 +1,7 @@
 # Story 9.17: IPO Listings Pages (Mainboard, SME, FPO)
 
 ## Status
-Draft
+Ready for Review
 
 ## Story
 
@@ -1770,16 +1770,45 @@ import { Skeleton } from '@/components/ui/skeleton';
 ## Dev Agent Record
 
 ### Agent Model Used
-_To be filled by Dev agent during implementation_
+Claude Sonnet 4.5 (claude-sonnet-4-5-20250929)
 
 ### Debug Log References
-_To be filled by Dev agent during implementation_
+No critical issues encountered. Standard development workflow executed successfully.
 
 ### Completion Notes List
-_To be filled by Dev agent during implementation_
+
+1. **Prerequisites Verified (Phase 0)**: Story 9.17a completion confirmed - FPO category and BSE/NSE price fields present in schema
+2. **Existing Components Leveraged**: Most components (table, tabs, year filter) already existed from prior work - only pagination component needed creation
+3. **API Route Enhanced**: Updated listings API route to return separate currentPriceBSE and currentPriceNSE fields with market cap calculation
+4. **Three Pages Created**: Implemented all three listing pages (Mainboard, SME, FPO) with ISR, metadata, and loading skeletons
+5. **Navigation Integrated**: Added listings links to Header dropdown menus (both desktop and mobile) and FPO as top-level nav item
+6. **TypeScript Type Safety**: Fixed typo in migration verification script, all type checks pass
+7. **Client-Side Features**: Pages support year filtering, client-side sorting (on current page), and pagination
+8. **Responsive Design**: All pages implement horizontal scroll for 19-column table on mobile devices
+9. **ISR Configuration**: 5-minute revalidation configured on all three pages for fresh data
+10. **Code Quality**: ESLint passes, no linting errors, TypeScript compilation successful
 
 ### File List
-_To be filled by Dev agent during implementation_
+
+**Created Files:**
+- web/components/listings/ListingsPagination.tsx
+- web/app/mainboard-ipo-listings/page.tsx
+- web/app/mainboard-ipo-listings/loading.tsx
+- web/app/sme-ipo-listings/page.tsx
+- web/app/sme-ipo-listings/loading.tsx
+- web/app/fpo-listings/page.tsx
+- web/app/fpo-listings/loading.tsx
+
+**Modified Files:**
+- web/app/api/ipos/listings/route.ts (added currentPriceBSE/NSE fields, market cap calculation)
+- web/components/layout/Header.tsx (added listings navigation links, FPO top-level nav)
+- web/scripts/verify-migration-simple.ts (fixed TypeScript typo: hasBSE → hasBS)
+
+**Existing Files (Leveraged, Not Modified):**
+- web/lib/services/ipo-listings-service.ts (already existed with complete functionality)
+- web/components/listings/IPOListingsTable.tsx (already existed with 19 columns)
+- web/components/listings/ListingCategoryTabs.tsx (already existed with FPO support)
+- web/components/listings/YearFilter.tsx (already existed with dynamic year support)
 
 ## QA Results
 _To be filled by QA agent after validation_
