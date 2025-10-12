@@ -158,6 +158,8 @@ export async function GET(request: NextRequest) {
         listingPrice: listingPerformance.listingPrice,
         listingGainPercent: listingPerformance.listingGainPercent,
         currentPrice: listingPerformance.currentPrice,
+        currentPriceBSE: listingPerformance.currentPriceBSE,
+        currentPriceNSE: listingPerformance.currentPriceNSE,
         currentGainPercent: listingPerformance.currentGainPercent,
       })
       .from(ipos)
@@ -243,10 +245,13 @@ export async function GET(request: NextRequest) {
         // Listing performance
         listingDayClosePrice: ipo.listingPrice || null,
         listingDayGainPercent: ipo.listingGainPercent ? Number(ipo.listingGainPercent) : null,
-        currentPriceBSE: ipo.currentPrice || null,
-        currentPriceNSE: ipo.currentPrice || null,
+        currentPriceBSE: ipo.currentPriceBSE || null,
+        currentPriceNSE: ipo.currentPriceNSE || null,
         currentGainPercent: ipo.currentGainPercent ? Number(ipo.currentGainPercent) : null,
-        marketCap: null, // TODO: Calculate market cap
+        // Calculate market cap estimate: issueSize * (currentPrice / issuePrice)
+        marketCap: ipo.issueSize && ipo.issuePrice && (ipo.currentPriceBSE || ipo.currentPriceNSE)
+          ? Number(ipo.issueSize) * ((ipo.currentPriceBSE || ipo.currentPriceNSE!) / Number(ipo.issuePrice))
+          : null,
       };
     });
 
