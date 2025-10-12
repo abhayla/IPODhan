@@ -12,9 +12,23 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
 
+  // Exclude server-only packages from browser bundle
+  serverExternalPackages: ['pg', 'pg-pool', 'pgpass'],
+
   // Performance: Optimize package imports
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
+    // Turbopack configuration
+    turbo: {
+      resolveAlias: {
+        // Prevent Node.js built-ins from being bundled in browser
+        fs: false,
+        net: false,
+        tls: false,
+        dns: false,
+        child_process: false,
+      },
+    },
   },
 
   // Performance: Browser caching headers for static assets
@@ -44,6 +58,19 @@ const nextConfig: NextConfig = {
   // Performance: Webpack optimizations for code splitting
   webpack: (config, { isServer }) => {
     if (!isServer) {
+      // Exclude Node.js built-ins from browser bundle (fixes pg module issues)
+      config.resolve = config.resolve || {};
+      config.resolve.fallback = {
+        ...config.resolve.fallback,
+        fs: false,
+        net: false,
+        tls: false,
+        dns: false,
+        child_process: false,
+        'utf-8-validate': false,
+        'bufferutil': false,
+      };
+
       config.optimization = {
         ...config.optimization,
         splitChunks: {
