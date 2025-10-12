@@ -20,7 +20,7 @@ import {
   getSubscription,
   getGMP,
   searchIPOs,
-  getHolidays,
+  getMarketHolidays,
   getRegistrars,
   addRequestInterceptor,
   addResponseInterceptor,
@@ -374,7 +374,7 @@ describe('API Client', () => {
 
     it('should fetch market holidays', async () => {
       const mockResponse: HolidaysResponse = {
-        data: [
+        holidays: [
           {
             id: '1',
             date: '2025-01-26',
@@ -386,7 +386,7 @@ describe('API Client', () => {
             updatedAt: new Date(),
           },
         ],
-        year: 2025,
+        fetchedAt: '2025-01-01T00:00:00Z',
       };
 
       mockFetch.mockResolvedValueOnce({
@@ -394,11 +394,11 @@ describe('API Client', () => {
         json: async () => mockResponse,
       });
 
-      const result = await getHolidays({ year: 2025, exchange: 'NSE' });
+      const result = await getMarketHolidays({ year: 2025, exchange: 'NSE' });
 
       expect(result).toEqual(mockResponse);
       expect(mockFetch).toHaveBeenCalledWith(
-        expect.stringContaining('/holidays?year=2025&exchange=NSE'),
+        expect.stringContaining('/market-holidays?year=2025&exchange=NSE'),
         expect.any(Object)
       );
     });
@@ -838,7 +838,7 @@ describe('API Client', () => {
       expect(apiClient.getSubscription).toBeDefined();
       expect(apiClient.getGMP).toBeDefined();
       expect(apiClient.searchIPOs).toBeDefined();
-      expect(apiClient.getHolidays).toBeDefined();
+      expect(apiClient.getMarketHolidays).toBeDefined();
       expect(apiClient.getRegistrars).toBeDefined();
     });
 
