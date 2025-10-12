@@ -232,39 +232,36 @@ workflow: automated-story-creation-workflow
 
 ---
 
-### 6. Git Commit (Optional - if requested)
+### 6. Story File Ready (No Git Commit)
 
-**Only execute if user requests automatic commit**
+**Story file has been created and is ready for implementation**
 
-**Create commit with standardized format:**
+**Actions Completed:**
+- ✓ Story file finalized at: `{story_file_path}`
+- ✓ Story status set to "Ready"
+- ✓ All approvals documented in Change Log
+- ✓ Story validation complete
 
-```bash
-git add {story_file_path}
+**Important:** Story file is **NOT committed to git** at this stage. It will be committed together with the implementation code when the story development is complete.
 
-git commit -m "$(cat <<'EOF'
-docs(story): Add new story {story_id} - {story_title}
+**Git Commit Strategy:**
+- Story documentation files remain uncommitted during the story creation workflow
+- Dev Agent will commit the story file along with implementation code on the feature branch
+- Both story documentation and implementation will be merged to `main` via Pull Request after QA validation
+- This ensures story requirements and implementation stay together as one cohesive unit of work
 
-- Story drafted by Scrum Master (Bob)
-- Validated by Product Owner (Sarah)
-- All acceptance criteria defined
-- Ready for implementation
+**Rationale:**
+- ✅ Story and implementation are versioned together
+- ✅ No branch-switching complexity during story creation
+- ✅ Simpler workflow - everything committed at once
+- ✅ Pull Request reviews can see both requirements and implementation side-by-side
 
-Story: {story_id}
-Status: Ready
-Workflow: automated-story-creation-workflow
-
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude <noreply@anthropic.com>
-EOF
-)"
-```
-
-**Push to remote (if requested):**
-
-```bash
-git push origin main
-```
+**Next Steps:**
+1. Workflow continues to Step 7 (Workflow Summary Report)
+2. After workflow completion, assign story to Dev Agent for implementation
+3. Dev Agent creates feature branch and implements story
+4. Dev Agent commits story file + implementation code together
+5. Feature branch merged to `main` via PR after QA approval
 
 ---
 
@@ -305,7 +302,7 @@ git push origin main
 ### Step 4: Final Documentation
 - **Story Status:** Ready
 - **Sprint Plan Updated:** {YES / NO}
-- **Git Committed:** {YES / NO}
+- **Story File Ready:** YES (not committed - will be committed with implementation)
 
 ## Story Details
 
@@ -509,4 +506,5 @@ When this task completes, you will receive:
 4. Workflow execution report
 5. Story readiness confirmation
 6. Next steps recommendation (ready for dev implementation)
-7. Git commit hash (if auto-commit enabled)
+
+**Note:** Story file is created but NOT committed to git. It will be committed together with implementation code by the Dev Agent.

@@ -158,11 +158,14 @@ function PerformanceTrackerSkeleton() {
 export default async function MainboardPerformanceTrackerPage({
   searchParams,
 }: {
-  searchParams: { year?: string };
+  searchParams: Promise<{ year?: string }>;
 }) {
+  // Await searchParams
+  const params = await searchParams;
+
   // AC#3: Determine year from URL params with default to current year
   const currentYear = new Date().getFullYear().toString();
-  const year = searchParams.year || currentYear;
+  const year = params.year || currentYear;
 
   // Generate structured data schemas
   const organizationSchema = generateOrganizationSchema();

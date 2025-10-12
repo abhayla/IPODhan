@@ -63,6 +63,13 @@ export const scraperStatusEnum = pgEnum('scraper_status', [
   'PARTIAL',
 ]);
 
+export const reviewRecommendationEnum = pgEnum('review_recommendation', [
+  'May apply',
+  'Subscribe',
+  'Avoid',
+  'Not Recommended',
+]);
+
 // ==================== TABLE 1: IPOS (Core Entity) ====================
 
 export const ipos = pgTable(
@@ -368,6 +375,63 @@ export const affiliateClicks = pgTable(
   })
 );
 
+// ==================== TABLE 12: SCRAPER_LOGS (Monitoring) ====================
+
+export const scraperLogs = pgTable(
+  'scraper_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    source: text('source').notNull(), // 'NSE' | 'BSE' | 'API_FALLBACK'
+    status: text('status').notNull(), // 'SUCCESS' | 'FAILURE' | 'PARTIAL'
+    recordsProcessed: integer('records_processed').default(0),
+    recordsFailed: integer('records_failed').default(0),
+    durationMs: integer('duration_ms').notNull(),
+    errorMessage: text('error_message'),
+    errorStack: text('error_stack'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    createdAtIdx: index('idx_scraper_logs_created_at').on(table.createdAt),
+    sourceCreatedAtIdx: index('idx_scraper_logs_source_created_at').on(
+      table.source,
+      table.createdAt
+    ),
+    statusIdx: index('idx_scraper_logs_status').on(table.status),
+  })
+);
+
+// ==================== TABLE 13: IPO_REVIEWS (One-to-Many) ====================
+
+export const ipoReviews = pgTable(
+  'ipo_reviews',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    reviewTitle: varchar('review_title', { length: 500 }).notNull(),
+    author: varchar('author', { length: 255 }).notNull(),
+    recommendation: reviewRecommendationEnum('recommendation').notNull(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    publishedDate: timestamp('published_date').notNull(),
+    year: integer('year').notNull(),
+    category: ipoCategoryEnum('category').notNull(),
+    reviewUrl: text('review_url'),
+    reviewContent: text('review_content'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoIdIdx: index('idx_ipo_reviews_ipo_id').on(table.ipoId),
+    yearIdx: index('idx_ipo_reviews_year').on(table.year),
+    categoryIdx: index('idx_ipo_reviews_category').on(table.category),
+    categoryYearPublishedIdx: index('idx_ipo_reviews_category_year_published').on(
+      table.category,
+      table.year,
+      table.publishedDate
+    ),
+  })
+);
+
 // ==================== RELATIONS ====================
 
 export const iposRelations = relations(ipos, ({ many, one }) => ({
@@ -375,6 +439,7 @@ export const iposRelations = relations(ipos, ({ many, one }) => ({
   gmpRecords: many(gmpRecords),
   documents: many(documents),
   peerCompanies: many(peerCompanies),
+  ipoReviews: many(ipoReviews),
   financialData: one(financialData, {
     fields: [ipos.id],
     references: [financialData.ipoId],
@@ -441,27 +506,9 @@ export const affiliateClicksRelations = relations(affiliateClicks, ({ one }) => 
   }),
 }));
 
-// ==================== TABLE 12: SCRAPER_LOGS (Monitoring) ====================
-
-export const scraperLogs = pgTable(
-  'scraper_logs',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    source: text('source').notNull(), // 'NSE' | 'BSE' | 'API_FALLBACK'
-    status: text('status').notNull(), // 'SUCCESS' | 'FAILURE' | 'PARTIAL'
-    recordsProcessed: integer('records_processed').default(0),
-    recordsFailed: integer('records_failed').default(0),
-    durationMs: integer('duration_ms').notNull(),
-    errorMessage: text('error_message'),
-    errorStack: text('error_stack'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    createdAtIdx: index('idx_scraper_logs_created_at').on(table.createdAt),
-    sourceCreatedAtIdx: index('idx_scraper_logs_source_created_at').on(
-      table.source,
-      table.createdAt
-    ),
-    statusIdx: index('idx_scraper_logs_status').on(table.status),
-  })
-);
+export const ipoReviewsRelations = relations(ipoReviews, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [ipoReviews.ipoId],
+    references: [ipos.id],
+  }),
+}));
