@@ -87,6 +87,17 @@ export function Header() {
               Rights Issues
             </Link>
 
+            <Link
+              href="/ofs"
+              className={`relative text-sm font-medium ${styles.navLink} ${
+                isActive('/ofs')
+                  ? 'text-foreground after:absolute after:bottom-[-4px] after:left-0 after:h-0.5 after:w-full after:bg-primary'
+                  : 'text-muted-foreground'
+              }`}
+            >
+              OFS
+            </Link>
+
             <div className="group relative">
               <button
                 className={`relative flex items-center space-x-1 text-sm font-medium ${styles.navLink} ${
@@ -216,6 +227,19 @@ export function Header() {
               >
                 <TrendingUp className="h-4 w-4" />
                 <span>Rights Issues</span>
+              </Link>
+
+              <Link
+                href="/ofs"
+                className={`flex items-center space-x-2 text-sm font-medium transition-colors hover:text-primary ${
+                  isActive('/ofs')
+                    ? 'text-foreground'
+                    : 'text-muted-foreground'
+                }`}
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                <TrendingUp className="h-4 w-4" />
+                <span>OFS</span>
               </Link>
 
               <div className="space-y-2">
