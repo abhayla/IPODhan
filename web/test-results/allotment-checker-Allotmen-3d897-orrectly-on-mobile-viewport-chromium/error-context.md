@@ -1,0 +1,111 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - generic [ref=e6] [cursor=pointer]:
+    - button "Open Next.js Dev Tools" [ref=e7]:
+      - img [ref=e8]
+    - generic [ref=e11]:
+      - button "Open issues overlay" [ref=e12]:
+        - generic [ref=e13]:
+          - generic [ref=e14]: "1"
+          - generic [ref=e15]: "2"
+        - generic [ref=e16]:
+          - text: Issue
+          - generic [ref=e17]: s
+      - button "Collapse issues badge" [ref=e18]:
+        - img [ref=e19]
+  - link "Skip to main content" [ref=e21] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e22]:
+    - banner [ref=e23]:
+      - generic [ref=e25]:
+        - link "IPODhan - Home" [ref=e26] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e28]: I
+          - generic [ref=e29]: IPODhan
+        - button "Open navigation menu" [ref=e30]:
+          - img [ref=e31]
+    - main [ref=e32]:
+      - generic [ref=e34]:
+        - img [ref=e36]
+        - heading "IPO Not Found" [level=1] [ref=e39]
+        - paragraph [ref=e40]: The IPO you're looking for doesn't exist or has been removed.
+        - generic [ref=e41]:
+          - link "Browse All IPOs" [ref=e42] [cursor=pointer]:
+            - /url: /dashboard
+            - img
+            - text: Browse All IPOs
+          - link "Go to Homepage" [ref=e43] [cursor=pointer]:
+            - /url: /
+        - paragraph [ref=e44]:
+          - text: If you believe this is an error, please
+          - link "contact support" [ref=e45] [cursor=pointer]:
+            - /url: /contact
+          - text: .
+    - contentinfo [ref=e46]:
+      - generic [ref=e47]:
+        - generic [ref=e48]:
+          - generic [ref=e49]:
+            - link "IPODhan - Home" [ref=e50] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e52]: I
+              - generic [ref=e53]: IPODhan
+            - paragraph [ref=e54]: Your trusted platform for IPO information and analysis.
+          - generic [ref=e55]:
+            - heading "Quick Links" [level=3] [ref=e56]
+            - list [ref=e57]:
+              - listitem [ref=e58]:
+                - link "→ Dashboard" [ref=e59] [cursor=pointer]:
+                  - /url: /dashboard
+                  - generic [ref=e60]: →
+                  - text: Dashboard
+              - listitem [ref=e61]:
+                - link "→ Active IPOs" [ref=e62] [cursor=pointer]:
+                  - /url: /dashboard?status=OPEN
+                  - generic [ref=e63]: →
+                  - text: Active IPOs
+              - listitem [ref=e64]:
+                - link "→ Upcoming IPOs" [ref=e65] [cursor=pointer]:
+                  - /url: /dashboard?status=UPCOMING
+                  - generic [ref=e66]: →
+                  - text: Upcoming IPOs
+          - generic [ref=e67]:
+            - heading "Tools" [level=3] [ref=e68]
+            - list [ref=e69]:
+              - listitem [ref=e70]:
+                - link "Lot Size Calculator" [ref=e71] [cursor=pointer]:
+                  - /url: /tools/lot-calculator
+                  - img [ref=e72]
+                  - generic [ref=e74]: Lot Size Calculator
+              - listitem [ref=e75]:
+                - link "Compare IPOs" [ref=e76] [cursor=pointer]:
+                  - /url: /tools/compare
+                  - img [ref=e77]
+                  - generic [ref=e81]: Compare IPOs
+          - generic [ref=e82]:
+            - heading "Legal" [level=3] [ref=e83]
+            - list [ref=e84]:
+              - listitem [ref=e85]:
+                - link "→ Privacy Policy" [ref=e86] [cursor=pointer]:
+                  - /url: /privacy
+                  - generic [ref=e87]: →
+                  - text: Privacy Policy
+              - listitem [ref=e88]:
+                - link "→ Terms of Service" [ref=e89] [cursor=pointer]:
+                  - /url: /terms
+                  - generic [ref=e90]: →
+                  - text: Terms of Service
+              - listitem [ref=e91]:
+                - link "→ Disclaimer" [ref=e92] [cursor=pointer]:
+                  - /url: /disclaimer
+                  - generic [ref=e93]: →
+                  - text: Disclaimer
+        - generic [ref=e95]:
+          - img [ref=e96]
+          - paragraph [ref=e98]: IPODhan may earn a commission when you open an account through our affiliate links. This helps us keep the platform free for all users.
+        - paragraph [ref=e100]: © 2025 IPODhan. All rights reserved.
+  - region "Notifications (F8)":
+    - list
+  - alert [ref=e101]
+```
