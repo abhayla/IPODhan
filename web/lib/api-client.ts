@@ -102,7 +102,7 @@ export interface APIErrorResponse {
  */
 export interface GetIPOsParams {
   status?: 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED';
-  category?: 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD';
+  category?: 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD' | 'OFS'; // Added 'OFS' for Story 9.5
   sector?: string;
   search?: string;
   page?: number;
