@@ -45,6 +45,7 @@ web/src/
 - `/upcoming` → Upcoming IPOs
 - `/closed` → Closed/Listed IPOs
 - `/sme` → SME IPOs
+- `/mainboard-ipos` → Mainboard IPOs Landing Page (Story 9.15)
 - `/search` → Search results
 - `/subscribe` → Email subscription
 
@@ -62,5 +63,36 @@ web/src/
 - Type-safe `APIError` class with status codes
 - Automatic error boundary integration
 - User-friendly error messages
+
+## Landing Pages Architecture (Story 9.15)
+
+**Mainboard IPOs Landing Page (`/mainboard-ipos`):**
+- **Purpose:** Comprehensive hub for all Mainboard IPO information
+- **Components:**
+  - `MainboardSummaryMetrics` - 6 metric cards (total, gains, losses, upcoming, AOT metrics)
+  - `MainboardContentSections` - 6 content sections (current, upcoming, listed, reviews, performance, subscriptions)
+  - `MainboardNavigationCards` - 4 navigation cards to dedicated pages
+  - `MainboardDetailedTableClient` - Detailed IPO table with filters
+- **Service Layer:** `mainboard-landing-service.ts`
+  - 9 data fetching functions with Redis caching (5-min TTL)
+  - Filters: category=MAINBOARD throughout
+  - Functions: metrics, current, upcoming, listed, reviews, performance, subscriptions, detailed list
+- **State Management:**
+  - URL query params: year, companySearch (shareable, bookmarkable)
+  - Server-side data fetching with ISR (5-min revalidation)
+  - Client-side UI state for minimize/maximize toggle
+- **Caching Strategy:**
+  - Redis cache with 5-minute TTL for all data
+  - Cache keys: `mainboard:landing:*`
+  - ISR with 5-minute revalidation at page level
+- **Responsive Design:**
+  - Summary metrics: 1 col (mobile) → 2 cols (tablet) → 3 cols (desktop)
+  - Content sections: 1 col (mobile) → 2 cols (tablet) → 3 cols (desktop)
+  - Navigation cards: 1 col (mobile) → 2 cols (tablet) → 4 cols (desktop)
+  - Detailed table: cards (mobile) → full table (desktop)
+- **Testing:**
+  - Unit tests: Service layer (>90% coverage), Components (>80% coverage)
+  - Integration tests: Page rendering with mock data
+  - E2E tests: Complete user workflows (navigation, filters, interactions)
 
 ---

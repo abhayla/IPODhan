@@ -129,6 +129,10 @@ export function Header() {
                     : 'text-muted-foreground'
                 }`}
                 onMouseEnter={() => setDesktopMainboardIPOsOpen(true)}
+                onFocus={() => setDesktopMainboardIPOsOpen(true)}
+                onKeyDown={handleMainboardIPOsKeyDown}
+                aria-haspopup="true"
+                aria-expanded={desktopMainboardIPOsOpen}
               >
                 <span>Mainboard IPOs</span>
                 <svg
