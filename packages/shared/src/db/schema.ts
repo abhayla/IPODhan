@@ -22,6 +22,7 @@ export const ipoCategoryEnum = pgEnum('ipo_category', [
   'SME',
   'RIGHTS',
   'NCD',
+  'OFS', // Added for Story 9.5: Offer for Sale page
 ]);
 
 export const ipoStatusEnum = pgEnum('ipo_status', [
