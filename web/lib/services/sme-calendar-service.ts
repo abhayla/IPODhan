@@ -1,0 +1,275 @@
+/**
+ * SME Calendar Service
+ *
+ * Service layer for fetching and aggregating SME IPO calendar data.
+ * Generates monthly calendar grid with IPO events and market holidays.
+ *
+ * Story 9.13: SME IPO Calendar Page
+ */
+
+import { apiClient, type IPO, type MarketHoliday } from '@/lib/api-client';
+
+// ==================== TYPES ====================
+
+/**
+ * Calendar event types
+ */
+export type CalendarEventType = 'OPENS' | 'CLOSES' | 'ALLOTMENT' | 'LISTS' | 'HOLIDAY';
+
+/**
+ * Calendar event data structure
+ */
+export interface CalendarEvent {
+  date: Date;
+  eventType: CalendarEventType;
+  ipo?: IPO;
+  description: string;
+  slug?: string;
+}
+
+/**
+ * Calendar day data structure (represents one cell in calendar grid)
+ */
+export interface CalendarDay {
+  date: Date;
+  events: CalendarEvent[];
+  isCurrentMonth: boolean;
+  isToday: boolean;
+  isWeekend: boolean;
+}
+
+// ==================== HELPER FUNCTIONS ====================
+
+/**
+ * Check if two dates are the same day
+ */
+function isSameDay(date1: Date, date2: Date): boolean {
+  return (
+    date1.getFullYear() === date2.getFullYear() &&
+    date1.getMonth() === date2.getMonth() &&
+    date1.getDate() === date2.getDate()
+  );
+}
+
+/**
+ * Check if date is in specified month/year
+ */
+function isSameMonth(date: Date, year: number, month: number): boolean {
+  return date.getFullYear() === year && date.getMonth() === month - 1;
+}
+
+/**
+ * Find day index in calendar grid for a given date
+ */
+function findDayIndex(calendarDays: CalendarDay[], targetDate: Date): number {
+  return calendarDays.findIndex((day) => isSameDay(day.date, targetDate));
+}
+
+/**
+ * Get month name from month number (1-12)
+ */
+export function getMonthName(month: number): string {
+  const monthNames = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
+  ];
+  return monthNames[month - 1] || 'Unknown';
+}
+
+/**
+ * Parse date string to Date object (handles both ISO strings and date-only strings)
+ */
+function parseDate(dateString: string | null | undefined): Date | null {
+  if (!dateString) return null;
+
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return null;
+    return date;
+  } catch {
+    return null;
+  }
+}
+
+// ==================== MAIN SERVICE FUNCTION ====================
+
+/**
+ * Get SME IPO events for a specific month/year
+ *
+ * Fetches SME IPOs and market holidays, then builds a 42-day calendar grid (6 weeks × 7 days)
+ * with all IPO events (opens, closes, allotment, listing) and holidays aggregated by date.
+ *
+ * @param month - Month number (1-12)
+ * @param year - Year (e.g., 2025)
+ * @returns Array of 42 CalendarDay objects representing the calendar grid
+ */
+export async function getSMEIPOEvents(
+  month: number,
+  year: number
+): Promise<CalendarDay[]> {
+  try {
+    // Calculate month boundaries
+    const firstDayOfMonth = new Date(year, month - 1, 1);
+    const lastDayOfMonth = new Date(year, month, 0);
+    const firstDayOfWeek = firstDayOfMonth.getDay(); // 0=Sunday, 6=Saturday
+
+    // Calculate grid start date (may be in previous month to fill first week)
+    const startDate = new Date(firstDayOfMonth);
+    startDate.setDate(startDate.getDate() - firstDayOfWeek);
+
+    // Build 42-day calendar grid (6 weeks × 7 days)
+    const calendarDays: CalendarDay[] = [];
+    const today = new Date();
+
+    for (let i = 0; i < 42; i++) {
+      const currentDate = new Date(startDate);
+      currentDate.setDate(currentDate.getDate() + i);
+
+      calendarDays.push({
+        date: currentDate,
+        events: [],
+        isCurrentMonth: currentDate.getMonth() === month - 1,
+        isToday: isSameDay(currentDate, today),
+        isWeekend: currentDate.getDay() === 0 || currentDate.getDay() === 6,
+      });
+    }
+
+    // Fetch SME IPOs with category filter
+    // Note: We fetch all SME IPOs and filter client-side for events in the calendar range
+    // This is more efficient than multiple API calls for date ranges
+    const ipoResponse = await apiClient.getIPOs({
+      category: 'SME', // ⭐ SME filter - critical for this page
+      limit: 1000, // Get all SME IPOs (assumption: < 1000 SME IPOs exist)
+    });
+
+    const smeIPOs = ipoResponse.data;
+
+    // Fetch market holidays for the calendar year
+    const holidaysResponse = await apiClient.getMarketHolidays({
+      year,
+      exchange: 'BOTH', // Include holidays for both NSE and BSE
+    });
+
+    const holidays = holidaysResponse.holidays;
+
+    // Aggregate IPO events by date
+    smeIPOs.forEach((ipo) => {
+      // Parse dates from IPO
+      const openDate = parseDate(ipo.openDate);
+      const closeDate = parseDate(ipo.closeDate);
+      const allotmentDate = parseDate(ipo.allotmentDate);
+      const listingDate = parseDate(ipo.listingDate);
+
+      // Add "Opens" event
+      if (openDate && isSameMonth(openDate, year, month)) {
+        const dayIndex = findDayIndex(calendarDays, openDate);
+        if (dayIndex >= 0) {
+          calendarDays[dayIndex].events.push({
+            date: openDate,
+            eventType: 'OPENS',
+            ipo,
+            description: `${ipo.companyName} IPO Opens`,
+            slug: ipo.slug,
+          });
+        }
+      }
+
+      // Add "Closes" event
+      if (closeDate && isSameMonth(closeDate, year, month)) {
+        const dayIndex = findDayIndex(calendarDays, closeDate);
+        if (dayIndex >= 0) {
+          calendarDays[dayIndex].events.push({
+            date: closeDate,
+            eventType: 'CLOSES',
+            ipo,
+            description: `${ipo.companyName} IPO Closes`,
+            slug: ipo.slug,
+          });
+        }
+      }
+
+      // Add "Allotment" event
+      if (allotmentDate && isSameMonth(allotmentDate, year, month)) {
+        const dayIndex = findDayIndex(calendarDays, allotmentDate);
+        if (dayIndex >= 0) {
+          calendarDays[dayIndex].events.push({
+            date: allotmentDate,
+            eventType: 'ALLOTMENT',
+            ipo,
+            description: `${ipo.companyName} Allotment Status`,
+            slug: ipo.slug,
+          });
+        }
+      }
+
+      // Add "Lists" event
+      if (listingDate && isSameMonth(listingDate, year, month)) {
+        const dayIndex = findDayIndex(calendarDays, listingDate);
+        if (dayIndex >= 0) {
+          calendarDays[dayIndex].events.push({
+            date: listingDate,
+            eventType: 'LISTS',
+            ipo,
+            description: `${ipo.companyName} Lists`,
+            slug: ipo.slug,
+          });
+        }
+      }
+    });
+
+    // Add holiday events
+    holidays.forEach((holiday) => {
+      const holidayDate = parseDate(holiday.date);
+
+      if (holidayDate && isSameMonth(holidayDate, year, month)) {
+        const dayIndex = findDayIndex(calendarDays, holidayDate);
+        if (dayIndex >= 0) {
+          calendarDays[dayIndex].events.push({
+            date: holidayDate,
+            eventType: 'HOLIDAY',
+            description: `Holiday - ${holiday.description}`,
+          });
+        }
+      }
+    });
+
+    return calendarDays;
+  } catch (error) {
+    // Graceful degradation - return empty calendar on error
+    console.error('Error fetching SME calendar events:', error);
+
+    // Still return calendar grid structure with no events
+    const firstDayOfMonth = new Date(year, month - 1, 1);
+    const firstDayOfWeek = firstDayOfMonth.getDay();
+    const startDate = new Date(firstDayOfMonth);
+    startDate.setDate(startDate.getDate() - firstDayOfWeek);
+
+    const emptyCalendarDays: CalendarDay[] = [];
+    const today = new Date();
+
+    for (let i = 0; i < 42; i++) {
+      const currentDate = new Date(startDate);
+      currentDate.setDate(currentDate.getDate() + i);
+
+      emptyCalendarDays.push({
+        date: currentDate,
+        events: [],
+        isCurrentMonth: currentDate.getMonth() === month - 1,
+        isToday: isSameDay(currentDate, today),
+        isWeekend: currentDate.getDay() === 0 || currentDate.getDay() === 6,
+      });
+    }
+
+    return emptyCalendarDays;
+  }
+}
