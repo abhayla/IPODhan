@@ -1,0 +1,141 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e6]:
+        - link "IPODhan - Home" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e9]: I
+          - generic [ref=e10]: IPODhan
+        - navigation [ref=e11]:
+          - link "Dashboard" [ref=e12] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Rights Issues" [ref=e13] [cursor=pointer]:
+            - /url: /rights-issues
+          - link "OFS" [ref=e14] [cursor=pointer]:
+            - /url: /ofs
+          - button "Mainboard IPOs" [ref=e16]:
+            - generic [ref=e17]: Mainboard IPOs
+            - img [ref=e18]
+          - button "SME IPOs" [ref=e21]:
+            - generic [ref=e22]: SME IPOs
+            - img [ref=e23]
+          - button "Tools" [ref=e26]:
+            - generic [ref=e27]: Tools
+            - img [ref=e28]
+    - main [ref=e30]:
+      - generic [ref=e31]:
+        - navigation "Breadcrumb" [ref=e32]:
+          - list [ref=e33]:
+            - listitem [ref=e34]:
+              - link "Home" [ref=e35] [cursor=pointer]:
+                - /url: /
+                - img [ref=e36]
+                - text: Home
+            - listitem [ref=e39]:
+              - img [ref=e40]
+              - link "Tools" [ref=e42] [cursor=pointer]:
+                - /url: /tools
+            - listitem [ref=e43]:
+              - img [ref=e44]
+              - generic [ref=e46]: Market Holidays
+        - generic [ref=e47]:
+          - heading "Market Holidays Calendar" [level=1] [ref=e48]
+          - paragraph [ref=e49]: NSE and BSE trading holidays for 2024-2026. Plan your IPO applications around market closures.
+        - generic [ref=e53]:
+          - generic [ref=e54]:
+            - text: Year
+            - combobox "Year" [ref=e55]:
+              - img
+            - combobox [ref=e56]
+          - generic [ref=e57]:
+            - text: Exchange
+            - combobox "Exchange" [ref=e58]:
+              - img
+            - combobox [ref=e59]
+          - generic [ref=e60]:
+            - switch "Upcoming only" [ref=e61] [cursor=pointer]
+            - checkbox
+            - generic [ref=e62] [cursor=pointer]: Upcoming only
+        - alert [ref=e66]:
+          - img [ref=e67]
+          - generic [ref=e69]: Data Source
+          - generic [ref=e70]:
+            - paragraph [ref=e71]: "Market holiday data sourced from official NSE and BSE calendars:"
+            - list [ref=e72]:
+              - listitem [ref=e73]:
+                - link "NSE Trading Holidays" [ref=e74] [cursor=pointer]:
+                  - /url: https://www.nseindia.com/regulations/trading-holidays
+              - listitem [ref=e75]:
+                - link "BSE Market Holidays" [ref=e76] [cursor=pointer]:
+                  - /url: https://www.bseindia.com/static/about/Market_Holidays.aspx
+            - paragraph [ref=e77]: "Last updated: 12 Oct 2025"
+    - contentinfo [ref=e78]:
+      - generic [ref=e79]:
+        - generic [ref=e80]:
+          - generic [ref=e81]:
+            - link "IPODhan - Home" [ref=e82] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e84]: I
+              - generic [ref=e85]: IPODhan
+            - paragraph [ref=e86]: Your trusted platform for IPO information and analysis.
+          - generic [ref=e87]:
+            - heading "Quick Links" [level=3] [ref=e88]
+            - list [ref=e89]:
+              - listitem [ref=e90]:
+                - link "→ Dashboard" [ref=e91] [cursor=pointer]:
+                  - /url: /dashboard
+                  - generic [ref=e92]: →
+                  - text: Dashboard
+              - listitem [ref=e93]:
+                - link "→ Active IPOs" [ref=e94] [cursor=pointer]:
+                  - /url: /dashboard?status=OPEN
+                  - generic [ref=e95]: →
+                  - text: Active IPOs
+              - listitem [ref=e96]:
+                - link "→ Upcoming IPOs" [ref=e97] [cursor=pointer]:
+                  - /url: /dashboard?status=UPCOMING
+                  - generic [ref=e98]: →
+                  - text: Upcoming IPOs
+          - generic [ref=e99]:
+            - heading "Tools" [level=3] [ref=e100]
+            - list [ref=e101]:
+              - listitem [ref=e102]:
+                - link "Lot Size Calculator" [ref=e103] [cursor=pointer]:
+                  - /url: /tools/lot-calculator
+                  - img [ref=e104]
+                  - generic [ref=e106]: Lot Size Calculator
+              - listitem [ref=e107]:
+                - link "Compare IPOs" [ref=e108] [cursor=pointer]:
+                  - /url: /tools/compare
+                  - img [ref=e109]
+                  - generic [ref=e113]: Compare IPOs
+          - generic [ref=e114]:
+            - heading "Legal" [level=3] [ref=e115]
+            - list [ref=e116]:
+              - listitem [ref=e117]:
+                - link "→ Privacy Policy" [ref=e118] [cursor=pointer]:
+                  - /url: /privacy
+                  - generic [ref=e119]: →
+                  - text: Privacy Policy
+              - listitem [ref=e120]:
+                - link "→ Terms of Service" [ref=e121] [cursor=pointer]:
+                  - /url: /terms
+                  - generic [ref=e122]: →
+                  - text: Terms of Service
+              - listitem [ref=e123]:
+                - link "→ Disclaimer" [ref=e124] [cursor=pointer]:
+                  - /url: /disclaimer
+                  - generic [ref=e125]: →
+                  - text: Disclaimer
+        - generic [ref=e127]:
+          - img [ref=e128]
+          - paragraph [ref=e130]: IPODhan may earn a commission when you open an account through our affiliate links. This helps us keep the platform free for all users.
+        - paragraph [ref=e132]: © 2025 IPODhan. All rights reserved.
+  - region "Notifications (F8)":
+    - list
+```
