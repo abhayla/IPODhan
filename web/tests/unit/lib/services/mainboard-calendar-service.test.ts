@@ -22,7 +22,7 @@ import {
 vi.mock('@/lib/api-client', () => ({
   apiClient: {
     getIPOs: vi.fn(),
-    getHolidays: vi.fn(),
+    getMarketHolidays: vi.fn(),
   },
 }));
 
@@ -41,9 +41,9 @@ describe('Mainboard Calendar Service', () => {
         pagination: { page: 1, limit: 500, total: 3, hasMore: false },
       });
 
-      vi.mocked(apiClient.apiClient.getHolidays).mockResolvedValue({
-        data: mockMarketHolidays as any[],
-        year: 2025,
+      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
+        holidays: mockMarketHolidays as any[],
+        fetchedAt: '2025-01-01T00:00:00Z',
       });
 
       const result = await getMainboardIPOEvents(10, 2025);
@@ -61,9 +61,9 @@ describe('Mainboard Calendar Service', () => {
         pagination: { page: 1, limit: 500, total: 0, hasMore: false },
       });
 
-      vi.mocked(apiClient.apiClient.getHolidays).mockResolvedValue({
-        data: [],
-        year: 2025,
+      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
+        holidays: [],
+        fetchedAt: '2025-01-01T00:00:00Z',
       });
 
       const result = await getMainboardIPOEvents(10, 2025);
@@ -77,9 +77,9 @@ describe('Mainboard Calendar Service', () => {
         pagination: { page: 1, limit: 500, total: 3, hasMore: false },
       });
 
-      vi.mocked(apiClient.apiClient.getHolidays).mockResolvedValue({
-        data: mockMarketHolidays as any[],
-        year: 2025,
+      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
+        holidays: mockMarketHolidays as any[],
+        fetchedAt: '2025-01-01T00:00:00Z',
       });
 
       const result = await getMainboardIPOEvents(10, 2025);
@@ -112,9 +112,9 @@ describe('Mainboard Calendar Service', () => {
         pagination: { page: 1, limit: 500, total: 1, hasMore: false },
       });
 
-      vi.mocked(apiClient.apiClient.getHolidays).mockResolvedValue({
-        data: [],
-        year: 2025,
+      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
+        holidays: [],
+        fetchedAt: '2025-01-01T00:00:00Z',
       });
 
       const result = await getMainboardIPOEvents(10, 2025);
@@ -133,9 +133,9 @@ describe('Mainboard Calendar Service', () => {
         pagination: { page: 1, limit: 500, total: 0, hasMore: false },
       });
 
-      vi.mocked(apiClient.apiClient.getHolidays).mockResolvedValue({
-        data: mockMarketHolidays as any[],
-        year: 2025,
+      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
+        holidays: mockMarketHolidays as any[],
+        fetchedAt: '2025-01-01T00:00:00Z',
       });
 
       const result = await getMainboardIPOEvents(10, 2025);
@@ -158,7 +158,7 @@ describe('Mainboard Calendar Service', () => {
         pagination: { page: 1, limit: 500, total: 3, hasMore: false },
       });
 
-      vi.mocked(apiClient.apiClient.getHolidays).mockRejectedValue(
+      vi.mocked(apiClient.apiClient.getMarketHolidays).mockRejectedValue(
         new Error('Holiday API failed')
       );
 
@@ -177,9 +177,9 @@ describe('Mainboard Calendar Service', () => {
         pagination: { page: 1, limit: 500, total: 0, hasMore: false },
       });
 
-      vi.mocked(apiClient.apiClient.getHolidays).mockResolvedValue({
-        data: [],
-        year: 2025,
+      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
+        holidays: [],
+        fetchedAt: '2025-01-01T00:00:00Z',
       });
 
       // Invalid month
@@ -194,9 +194,9 @@ describe('Mainboard Calendar Service', () => {
         new Error('API failed')
       );
 
-      vi.mocked(apiClient.apiClient.getHolidays).mockResolvedValue({
-        data: [],
-        year: 2025,
+      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
+        holidays: [],
+        fetchedAt: '2025-01-01T00:00:00Z',
       });
 
       const result = await getMainboardIPOEvents(10, 2025);
@@ -215,9 +215,9 @@ describe('Mainboard Calendar Service', () => {
         pagination: { page: 1, limit: 500, total: 3, hasMore: false },
       });
 
-      vi.mocked(apiClient.apiClient.getHolidays).mockResolvedValue({
-        data: [],
-        year: 2025,
+      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
+        holidays: [],
+        fetchedAt: '2025-01-01T00:00:00Z',
       });
 
       const result = await searchCalendarEvents(10, 2025, 'Tech');
@@ -235,9 +235,9 @@ describe('Mainboard Calendar Service', () => {
         pagination: { page: 1, limit: 500, total: 3, hasMore: false },
       });
 
-      vi.mocked(apiClient.apiClient.getHolidays).mockResolvedValue({
-        data: [],
-        year: 2025,
+      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
+        holidays: [],
+        fetchedAt: '2025-01-01T00:00:00Z',
       });
 
       const result = await searchCalendarEvents(10, 2025, '');
@@ -251,9 +251,9 @@ describe('Mainboard Calendar Service', () => {
         pagination: { page: 1, limit: 500, total: 3, hasMore: false },
       });
 
-      vi.mocked(apiClient.apiClient.getHolidays).mockResolvedValue({
-        data: [],
-        year: 2025,
+      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
+        holidays: [],
+        fetchedAt: '2025-01-01T00:00:00Z',
       });
 
       const resultLower = await searchCalendarEvents(10, 2025, 'tech');
@@ -270,9 +270,9 @@ describe('Mainboard Calendar Service', () => {
         pagination: { page: 1, limit: 500, total: 3, hasMore: false },
       });
 
-      vi.mocked(apiClient.apiClient.getHolidays).mockResolvedValue({
-        data: mockMarketHolidays as any[],
-        year: 2025,
+      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
+        holidays: mockMarketHolidays as any[],
+        fetchedAt: '2025-01-01T00:00:00Z',
       });
 
       const counts = await getEventCounts(10, 2025);
@@ -296,9 +296,9 @@ describe('Mainboard Calendar Service', () => {
         pagination: { page: 1, limit: 500, total: 0, hasMore: false },
       });
 
-      vi.mocked(apiClient.apiClient.getHolidays).mockResolvedValue({
-        data: mockMarketHolidays as any[],
-        year: 2025,
+      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
+        holidays: mockMarketHolidays as any[],
+        fetchedAt: '2025-01-01T00:00:00Z',
       });
 
       const counts = await getEventCounts(10, 2025);
