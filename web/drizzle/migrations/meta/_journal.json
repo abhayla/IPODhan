@@ -43,6 +43,13 @@
       "when": 1760253198826,
       "tag": "0005_short_the_initiative",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1760288836584,
+      "tag": "0006_secret_supreme_intelligence",
+      "breakpoints": true
     }
   ]
 }

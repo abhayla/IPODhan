@@ -21,7 +21,7 @@ import { ipos, listingPerformance, subscriptions, gmpRecords } from '@/lib/db/sc
 import { eq, and, gte, lte, desc, asc, sql, inArray } from 'drizzle-orm';
 
 // Validation schemas - match database schema enum
-const CategorySchema = z.enum(['MAINBOARD', 'SME', 'RIGHTS', 'NCD']);
+const CategorySchema = z.enum(['MAINBOARD', 'SME', 'RIGHTS', 'NCD', 'FPO']);
 const SortFieldSchema = z.enum(['listingDate', 'listingDayGain', 'currentGain', 'issueSize', 'companyName']);
 const SortOrderSchema = z.enum(['asc', 'desc']);
 
