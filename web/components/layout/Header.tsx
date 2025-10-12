@@ -263,6 +263,19 @@ export function Header() {
                     </p>
                   </div>
                 </Link>
+                <Link
+                  href="/sme-ipo-calendar"
+                  className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
+                  onClick={() => setDesktopSMEIPOsOpen(false)}
+                >
+                  <Calendar className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <div>
+                    <p className="font-semibold">SME IPO Calendar</p>
+                    <p className="text-xs text-muted-foreground">
+                      View SME IPO event schedules
+                    </p>
+                  </div>
+                </Link>
               </div>
             </div>
 
@@ -463,6 +476,14 @@ export function Header() {
                 >
                   <FileText className="h-4 w-4" />
                   <span>SME IPO Prospectus</span>
+                </Link>
+                <Link
+                  href="/sme-ipo-calendar"
+                  className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  <Calendar className="h-4 w-4" />
+                  <span>SME IPO Calendar</span>
                 </Link>
               </div>
 

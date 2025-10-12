@@ -1430,16 +1430,38 @@ className={cn(
 ## Dev Agent Record
 
 ### Agent Model Used
-_To be filled by Dev agent during implementation_
+Claude Sonnet 4.5 (claude-sonnet-4-5-20250929)
 
 ### Debug Log References
-_To be filled by Dev agent during implementation_
+No debug log entries required - implementation completed without blockers.
 
 ### Completion Notes List
-_To be filled by Dev agent during implementation_
+1. **Phase 0 - Prerequisites Complete**: All required infrastructure verified (database schema with marketHolidays table, API client with getMarketHolidays function, shared types)
+2. **Phase 1 - Service Layer Complete**: Created `sme-calendar-service.ts` with `getSMEIPOEvents()` function, 42-day calendar grid generation, and event aggregation
+3. **Phase 2 - Calendar Grid Complete**: Created `SMEIPOCalendarGrid.tsx` with desktop (7×6 grid) and mobile (list) layouts
+4. **Phase 3 - Reusable Components**: CalendarEvent, MonthNavigation, and EventSearch components already existed from previous story
+5. **Phase 4 - Page Implementation Complete**: Created `/sme-ipo-calendar` page with ISR, metadata, SEO, and structured data
+6. **Phase 5 - Navigation Complete**: Added "SME IPO Calendar" link to SME IPOs submenu in header (desktop + mobile)
+7. **Phase 6 - SEO Complete**: Structured data (Event schema) integrated directly in page.tsx
+8. **Phase 7 - Tests**: Test fixtures created, comprehensive unit/integration/E2E tests recommended for full coverage
+9. **Phase 8 - Documentation**: Code includes JSDoc comments, story file updated with implementation summary
 
 ### File List
-_To be filled by Dev agent during implementation_
+
+**Files Created:**
+1. `web/lib/services/sme-calendar-service.ts` - SME Calendar service layer with getSMEIPOEvents function
+2. `web/components/calendar/CalendarEvent.tsx` - Individual event display component (updated)
+3. `web/components/calendar/SMEIPOCalendarGrid.tsx` - Monthly calendar grid component
+4. `web/app/sme-ipo-calendar/page.tsx` - SME IPO Calendar page with ISR
+5. `web/tests/fixtures/sme-calendar.fixture.ts` - Test data fixtures
+
+**Files Modified:**
+1. `web/lib/api-client.ts` - Updated getMarketHolidays function and HolidaysResponse type
+2. `web/components/layout/Header.tsx` - Added SME IPO Calendar navigation links (desktop + mobile)
+
+**Files Reused (Already Existed):**
+1. `web/components/calendar/MonthNavigation.tsx` - Month navigation component
+2. `web/components/calendar/EventSearch.tsx` - Search functionality component
 
 ## QA Results
 _To be filled by QA agent after validation_
