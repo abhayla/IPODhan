@@ -286,11 +286,11 @@ export async function getMainboardIPOEvents(
     // Fetch market holidays for the year (with graceful degradation)
     let holidays: MarketHoliday[] = [];
     try {
-      const holidaysResponse = await apiClient.getHolidays({
+      const holidaysResponse = await apiClient.getMarketHolidays({
         year,
         exchange: 'BOTH', // Include NSE and BSE holidays
       });
-      holidays = holidaysResponse.data || [];
+      holidays = holidaysResponse.holidays || [];
     } catch (holidayError) {
       console.warn(
         `Failed to fetch market holidays for ${year}. Calendar will show without holidays.`,
