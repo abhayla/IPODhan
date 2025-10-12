@@ -506,4 +506,5 @@ When this task completes, you will receive:
 4. Workflow execution report
 5. Story readiness confirmation
 6. Next steps recommendation (ready for dev implementation)
-7. Git commit hash (if auto-commit enabled)
+
+**Note:** Story file is created but NOT committed to git. It will be committed together with implementation code by the Dev Agent.
