@@ -44,19 +44,22 @@ export const metadata: Metadata = {
 // ==================== PAGE COMPONENT ====================
 
 interface PageProps {
-  searchParams: {
+  searchParams: Promise<{
     month?: string;
     year?: string;
     search?: string;
-  };
+  }>;
 }
 
 export default async function MainboardIPOCalendarPage({ searchParams }: PageProps) {
+  // Await searchParams
+  const params = await searchParams;
+
   // Parse month/year from URL or default to current month
   const now = new Date();
-  const currentMonth = parseInt(searchParams.month || String(now.getMonth() + 1), 10);
-  const currentYear = parseInt(searchParams.year || String(now.getFullYear()), 10);
-  const searchQuery = searchParams.search || '';
+  const currentMonth = parseInt(params.month || String(now.getMonth() + 1), 10);
+  const currentYear = parseInt(params.year || String(now.getFullYear()), 10);
+  const searchQuery = params.search || '';
 
   // Validate month/year
   const month = currentMonth >= 1 && currentMonth <= 12 ? currentMonth : now.getMonth() + 1;

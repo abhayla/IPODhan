@@ -18,17 +18,6 @@ const nextConfig: NextConfig = {
   // Performance: Optimize package imports
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
-    // Turbopack configuration
-    turbo: {
-      resolveAlias: {
-        // Prevent Node.js built-ins from being bundled in browser
-        fs: false,
-        net: false,
-        tls: false,
-        dns: false,
-        child_process: false,
-      },
-    },
   },
 
   // Performance: Browser caching headers for static assets
