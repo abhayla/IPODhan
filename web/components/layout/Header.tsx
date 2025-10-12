@@ -212,13 +212,15 @@ export function Header() {
             </div>
 
             <div className="group relative">
-              <button
+              <Link
+                href="/sme-ipos"
                 className={`relative flex items-center space-x-1 text-sm font-medium ${styles.navLink} ${
                   isActive('/sme-ipo')
                     ? 'text-foreground after:absolute after:bottom-[-4px] after:left-0 after:h-0.5 after:w-full after:bg-primary'
                     : 'text-muted-foreground'
                 }`}
-                onClick={() => setDesktopSMEIPOsOpen(!desktopSMEIPOsOpen)}
+                onMouseEnter={() => setDesktopSMEIPOsOpen(true)}
+                onFocus={() => setDesktopSMEIPOsOpen(true)}
                 onKeyDown={handleSMEIPOsKeyDown}
                 aria-haspopup="true"
                 aria-expanded={desktopSMEIPOsOpen}
@@ -236,12 +238,15 @@ export function Header() {
                     clipRule="evenodd"
                   />
                 </svg>
-              </button>
+              </Link>
 
               {/* SME IPOs Dropdown Menu */}
-              <div className={`absolute right-0 top-full mt-2 w-64 rounded-xl border bg-popover p-2 text-popover-foreground shadow-2xl ${styles.dropdown} ${
-                desktopSMEIPOsOpen ? 'visible opacity-100 translate-y-0' : 'invisible opacity-0 -translate-y-2'
-              } group-hover:visible group-hover:opacity-100 group-hover:translate-y-0`}>
+              <div
+                className={`absolute right-0 top-full mt-2 w-64 rounded-xl border bg-popover p-2 text-popover-foreground shadow-2xl ${styles.dropdown} ${
+                  desktopSMEIPOsOpen ? 'visible opacity-100 translate-y-0' : 'invisible opacity-0 -translate-y-2'
+                } group-hover:visible group-hover:opacity-100 group-hover:translate-y-0`}
+                onMouseLeave={() => setDesktopSMEIPOsOpen(false)}
+              >
                 <Link
                   href="/sme-ipo-performance-tracker"
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
@@ -488,7 +493,17 @@ export function Header() {
               </div>
 
               <div className="space-y-2">
-                <p className="text-sm font-medium text-muted-foreground">SME IPOs</p>
+                <Link
+                  href="/sme-ipos"
+                  className={`text-sm font-medium transition-colors hover:text-primary ${
+                    isActive('/sme-ipos')
+                      ? 'text-foreground'
+                      : 'text-muted-foreground'
+                  }`}
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  SME IPOs
+                </Link>
                 <Link
                   href="/sme-ipo-performance-tracker"
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
