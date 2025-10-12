@@ -22,6 +22,7 @@ export const ipoCategoryEnum = pgEnum('ipo_category', [
   'SME',
   'RIGHTS',
   'NCD',
+  'FPO',
 ]);
 
 export const ipoStatusEnum = pgEnum('ipo_status', [
@@ -262,7 +263,9 @@ export const listingPerformance = pgTable('listing_performance', {
     precision: 5,
     scale: 2,
   }).notNull(),
-  currentPrice: integer('current_price'),
+  currentPrice: integer('current_price'), // @deprecated Use currentPriceBSE or currentPriceNSE
+  currentPriceBSE: integer('current_price_bse'),
+  currentPriceNSE: integer('current_price_nse'),
   currentGainPercent: numeric('current_gain_percent', {
     precision: 5,
     scale: 2,
