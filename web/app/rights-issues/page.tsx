@@ -149,10 +149,13 @@ function RightsIssuesPageSkeleton() {
 export default async function RightsIssuesPage({
   searchParams,
 }: {
-  searchParams: { tab?: string };
+  searchParams: Promise<{ tab?: string }>;
 }) {
+  // Await searchParams
+  const params = await searchParams;
+
   // Determine initial tab from URL params (AC#4)
-  const initialTab = searchParams.tab === 'live' ? 'live' : 'upcoming';
+  const initialTab = params.tab === 'live' ? 'live' : 'upcoming';
 
   // Generate structured data schemas
   const organizationSchema = generateOrganizationSchema();

@@ -21,12 +21,13 @@ import { ArrowLeft, FileText, TrendingUp, Building2, DollarSign, BarChart3, Aler
 import { getReviewById } from '@/lib/services/mainboard-reviews-service';
 
 interface Props {
-  params: { reviewId: string };
+  params: Promise<{ reviewId: string }>;
 }
 
 export default async function ReviewDetailPage({ params }: Props) {
   // Fetch review data
-  const review = await getReviewById(params.reviewId);
+  const { reviewId } = await params;
+  const review = await getReviewById(reviewId);
 
   // Show 404 if review not found
   if (!review) {
@@ -231,7 +232,8 @@ export default async function ReviewDetailPage({ params }: Props) {
 
 // SEO metadata
 export async function generateMetadata({ params }: Props) {
-  const review = await getReviewById(params.reviewId);
+  const { reviewId } = await params;
+  const review = await getReviewById(reviewId);
 
   if (!review) {
     return {
