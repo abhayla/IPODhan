@@ -19,16 +19,8 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
     // Turbopack configuration
-    turbo: {
-      resolveAlias: {
-        // Prevent Node.js built-ins from being bundled in browser
-        fs: false,
-        net: false,
-        tls: false,
-        dns: false,
-        child_process: false,
-      },
-    },
+    // Note: Turbopack resolveAlias doesn't support boolean values like webpack's resolve.fallback
+    // The webpack fallback configuration below handles these for production builds
   },
 
   // Performance: Browser caching headers for static assets

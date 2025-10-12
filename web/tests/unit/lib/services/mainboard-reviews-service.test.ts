@@ -51,16 +51,23 @@ function createMockReviews(count: number): Review[] {
 
 // ==================== MOCK DATABASE ====================
 
-// Mock Drizzle ORM db instance
-vi.mock('@/lib/db', () => ({
-  db: {
-    select: vi.fn().mockReturnThis(),
-    selectDistinct: vi.fn().mockReturnThis(),
+// Create a mock query builder that returns itself for chaining
+const createMockQueryBuilder = () => {
+  const mockBuilder: any = {
     from: vi.fn().mockReturnThis(),
     innerJoin: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     orderBy: vi.fn().mockReturnThis(),
     limit: vi.fn().mockReturnThis(),
+  };
+  return mockBuilder;
+};
+
+// Mock Drizzle ORM db instance
+vi.mock('@/lib/db', () => ({
+  db: {
+    select: vi.fn(() => createMockQueryBuilder()),
+    selectDistinct: vi.fn(() => createMockQueryBuilder()),
   },
 }));
 
@@ -102,11 +109,9 @@ describe('Mainboard Reviews Service', () => {
         const { db } = await import('@/lib/db');
 
         // Mock the database query chain
-        vi.mocked(db.select).mockReturnValue(db as any);
-        vi.mocked(db.from).mockReturnValue(db as any);
-        vi.mocked(db.innerJoin).mockReturnValue(db as any);
-        vi.mocked(db.where).mockReturnValue(db as any);
-        vi.mocked(db.orderBy).mockResolvedValue(mockReviews);
+        const mockQueryBuilder = createMockQueryBuilder();
+        mockQueryBuilder.orderBy.mockResolvedValue(mockReviews);
+        vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
         const result = await getMainboardIPOReviews(2025);
 
@@ -118,11 +123,9 @@ describe('Mainboard Reviews Service', () => {
       it('should return empty array when no reviews found', async () => {
         const { db } = await import('@/lib/db');
 
-        vi.mocked(db.select).mockReturnValue(db as any);
-        vi.mocked(db.from).mockReturnValue(db as any);
-        vi.mocked(db.innerJoin).mockReturnValue(db as any);
-        vi.mocked(db.where).mockReturnValue(db as any);
-        vi.mocked(db.orderBy).mockResolvedValue([]);
+        const mockQueryBuilder = createMockQueryBuilder();
+        mockQueryBuilder.orderBy.mockResolvedValue([]);
+        vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
         const result = await getMainboardIPOReviews(2030);
 
@@ -134,15 +137,13 @@ describe('Mainboard Reviews Service', () => {
         const mockReviews = createMockReviews(5);
         const { db } = await import('@/lib/db');
 
-        vi.mocked(db.select).mockReturnValue(db as any);
-        vi.mocked(db.from).mockReturnValue(db as any);
-        vi.mocked(db.innerJoin).mockReturnValue(db as any);
-        vi.mocked(db.where).mockReturnValue(db as any);
-        vi.mocked(db.orderBy).mockResolvedValue(mockReviews);
+        const mockQueryBuilder = createMockQueryBuilder();
+        mockQueryBuilder.orderBy.mockResolvedValue(mockReviews);
+        vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
         const result = await getMainboardIPOReviews(2025);
 
-        expect(db.where).toHaveBeenCalled();
+        expect(mockQueryBuilder.where).toHaveBeenCalled();
         expect(result.reviews).toHaveLength(5);
       });
     });
@@ -154,11 +155,9 @@ describe('Mainboard Reviews Service', () => {
         );
         const { db } = await import('@/lib/db');
 
-        vi.mocked(db.select).mockReturnValue(db as any);
-        vi.mocked(db.from).mockReturnValue(db as any);
-        vi.mocked(db.innerJoin).mockReturnValue(db as any);
-        vi.mocked(db.where).mockReturnValue(db as any);
-        vi.mocked(db.orderBy).mockResolvedValue(mockReviews);
+        const mockQueryBuilder = createMockQueryBuilder();
+        mockQueryBuilder.orderBy.mockResolvedValue(mockReviews);
+        vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
         const filters: ReviewFilters = {
           reviewTitle: 'review',
@@ -166,7 +165,7 @@ describe('Mainboard Reviews Service', () => {
         const result = await getMainboardIPOReviews(2025, filters);
 
         expect(result.reviews.length).toBeGreaterThan(0);
-        expect(db.where).toHaveBeenCalled();
+        expect(mockQueryBuilder.where).toHaveBeenCalled();
       });
 
       it('should filter by author (exact match)', async () => {
@@ -175,11 +174,9 @@ describe('Mainboard Reviews Service', () => {
         );
         const { db } = await import('@/lib/db');
 
-        vi.mocked(db.select).mockReturnValue(db as any);
-        vi.mocked(db.from).mockReturnValue(db as any);
-        vi.mocked(db.innerJoin).mockReturnValue(db as any);
-        vi.mocked(db.where).mockReturnValue(db as any);
-        vi.mocked(db.orderBy).mockResolvedValue(mockReviews);
+        const mockQueryBuilder = createMockQueryBuilder();
+        mockQueryBuilder.orderBy.mockResolvedValue(mockReviews);
+        vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
         const filters: ReviewFilters = {
           author: 'Analyst A',
@@ -195,11 +192,9 @@ describe('Mainboard Reviews Service', () => {
         );
         const { db } = await import('@/lib/db');
 
-        vi.mocked(db.select).mockReturnValue(db as any);
-        vi.mocked(db.from).mockReturnValue(db as any);
-        vi.mocked(db.innerJoin).mockReturnValue(db as any);
-        vi.mocked(db.where).mockReturnValue(db as any);
-        vi.mocked(db.orderBy).mockResolvedValue(mockReviews);
+        const mockQueryBuilder = createMockQueryBuilder();
+        mockQueryBuilder.orderBy.mockResolvedValue(mockReviews);
+        vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
         const filters: ReviewFilters = {
           recommendation: 'Subscribe',
@@ -213,11 +208,9 @@ describe('Mainboard Reviews Service', () => {
         const allReviews = createMockReviews(10);
         const { db } = await import('@/lib/db');
 
-        vi.mocked(db.select).mockReturnValue(db as any);
-        vi.mocked(db.from).mockReturnValue(db as any);
-        vi.mocked(db.innerJoin).mockReturnValue(db as any);
-        vi.mocked(db.where).mockReturnValue(db as any);
-        vi.mocked(db.orderBy).mockResolvedValue(allReviews);
+        const mockQueryBuilder = createMockQueryBuilder();
+        mockQueryBuilder.orderBy.mockResolvedValue(allReviews);
+        vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
         const filters: ReviewFilters = {
           ipoName: 'Company',
@@ -235,11 +228,9 @@ describe('Mainboard Reviews Service', () => {
         const mockReviews = createMockReviews(10);
         const { db } = await import('@/lib/db');
 
-        vi.mocked(db.select).mockReturnValue(db as any);
-        vi.mocked(db.from).mockReturnValue(db as any);
-        vi.mocked(db.innerJoin).mockReturnValue(db as any);
-        vi.mocked(db.where).mockReturnValue(db as any);
-        vi.mocked(db.orderBy).mockResolvedValue(mockReviews);
+        const mockQueryBuilder = createMockQueryBuilder();
+        mockQueryBuilder.orderBy.mockResolvedValue(mockReviews);
+        vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
         const filters: ReviewFilters = {
           reviewTitle: 'analysis',
@@ -248,7 +239,7 @@ describe('Mainboard Reviews Service', () => {
         };
         const result = await getMainboardIPOReviews(2025, filters);
 
-        expect(db.where).toHaveBeenCalled();
+        expect(mockQueryBuilder.where).toHaveBeenCalled();
         expect(result.reviews).toBeDefined();
       });
     });
@@ -260,15 +251,13 @@ describe('Mainboard Reviews Service', () => {
         mockReviews.reverse();
         const { db } = await import('@/lib/db');
 
-        vi.mocked(db.select).mockReturnValue(db as any);
-        vi.mocked(db.from).mockReturnValue(db as any);
-        vi.mocked(db.innerJoin).mockReturnValue(db as any);
-        vi.mocked(db.where).mockReturnValue(db as any);
-        vi.mocked(db.orderBy).mockResolvedValue(mockReviews);
+        const mockQueryBuilder = createMockQueryBuilder();
+        mockQueryBuilder.orderBy.mockResolvedValue(mockReviews);
+        vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
         const result = await getMainboardIPOReviews(2025);
 
-        expect(db.orderBy).toHaveBeenCalled();
+        expect(mockQueryBuilder.orderBy).toHaveBeenCalled();
         expect(result.reviews[0].publishedDate.getTime()).toBeGreaterThan(
           result.reviews[result.reviews.length - 1].publishedDate.getTime()
         );
@@ -280,11 +269,9 @@ describe('Mainboard Reviews Service', () => {
         const mockReviews = createMockReviews(100);
         const { db } = await import('@/lib/db');
 
-        vi.mocked(db.select).mockReturnValue(db as any);
-        vi.mocked(db.from).mockReturnValue(db as any);
-        vi.mocked(db.innerJoin).mockReturnValue(db as any);
-        vi.mocked(db.where).mockReturnValue(db as any);
-        vi.mocked(db.orderBy).mockResolvedValue(mockReviews);
+        const mockQueryBuilder = createMockQueryBuilder();
+        mockQueryBuilder.orderBy.mockResolvedValue(mockReviews);
+        vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
         const result = await getMainboardIPOReviews(2025);
 
@@ -296,11 +283,9 @@ describe('Mainboard Reviews Service', () => {
         const mockReviews = createMockReviews(100);
         const { db } = await import('@/lib/db');
 
-        vi.mocked(db.select).mockReturnValue(db as any);
-        vi.mocked(db.from).mockReturnValue(db as any);
-        vi.mocked(db.innerJoin).mockReturnValue(db as any);
-        vi.mocked(db.where).mockReturnValue(db as any);
-        vi.mocked(db.orderBy).mockResolvedValue(mockReviews);
+        const mockQueryBuilder = createMockQueryBuilder();
+        mockQueryBuilder.orderBy.mockResolvedValue(mockReviews);
+        vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
         const filters: ReviewFilters = {
           page: 2,
@@ -316,11 +301,9 @@ describe('Mainboard Reviews Service', () => {
         const mockReviews = createMockReviews(75);
         const { db } = await import('@/lib/db');
 
-        vi.mocked(db.select).mockReturnValue(db as any);
-        vi.mocked(db.from).mockReturnValue(db as any);
-        vi.mocked(db.innerJoin).mockReturnValue(db as any);
-        vi.mocked(db.where).mockReturnValue(db as any);
-        vi.mocked(db.orderBy).mockResolvedValue(mockReviews);
+        const mockQueryBuilder = createMockQueryBuilder();
+        mockQueryBuilder.orderBy.mockResolvedValue(mockReviews);
+        vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
         const filters: ReviewFilters = {
           page: 2,
@@ -335,11 +318,9 @@ describe('Mainboard Reviews Service', () => {
         const mockReviews = createMockReviews(10);
         const { db } = await import('@/lib/db');
 
-        vi.mocked(db.select).mockReturnValue(db as any);
-        vi.mocked(db.from).mockReturnValue(db as any);
-        vi.mocked(db.innerJoin).mockReturnValue(db as any);
-        vi.mocked(db.where).mockReturnValue(db as any);
-        vi.mocked(db.orderBy).mockResolvedValue(mockReviews);
+        const mockQueryBuilder = createMockQueryBuilder();
+        mockQueryBuilder.orderBy.mockResolvedValue(mockReviews);
+        vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
         const filters: ReviewFilters = {
           page: 3,
@@ -355,11 +336,9 @@ describe('Mainboard Reviews Service', () => {
       it('should throw error when database query fails', async () => {
         const { db } = await import('@/lib/db');
 
-        vi.mocked(db.select).mockReturnValue(db as any);
-        vi.mocked(db.from).mockReturnValue(db as any);
-        vi.mocked(db.innerJoin).mockReturnValue(db as any);
-        vi.mocked(db.where).mockReturnValue(db as any);
-        vi.mocked(db.orderBy).mockRejectedValue(new Error('Database error'));
+        const mockQueryBuilder = createMockQueryBuilder();
+        mockQueryBuilder.orderBy.mockRejectedValue(new Error('Database error'));
+        vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
         await expect(getMainboardIPOReviews(2025)).rejects.toThrow(
           'Failed to fetch Mainboard IPO reviews'
@@ -377,10 +356,9 @@ describe('Mainboard Reviews Service', () => {
       ];
       const { db } = await import('@/lib/db');
 
-      vi.mocked(db.selectDistinct).mockReturnValue(db as any);
-      vi.mocked(db.from).mockReturnValue(db as any);
-      vi.mocked(db.where).mockReturnValue(db as any);
-      vi.mocked(db.orderBy).mockResolvedValue(mockAuthors);
+      const mockQueryBuilder = createMockQueryBuilder();
+      mockQueryBuilder.orderBy.mockResolvedValue(mockAuthors);
+      vi.mocked(db.selectDistinct).mockReturnValue(mockQueryBuilder);
 
       const result = await getUniqueAuthors(2025);
 
@@ -391,10 +369,9 @@ describe('Mainboard Reviews Service', () => {
     it('should return empty array when no authors found', async () => {
       const { db } = await import('@/lib/db');
 
-      vi.mocked(db.selectDistinct).mockReturnValue(db as any);
-      vi.mocked(db.from).mockReturnValue(db as any);
-      vi.mocked(db.where).mockReturnValue(db as any);
-      vi.mocked(db.orderBy).mockResolvedValue([]);
+      const mockQueryBuilder = createMockQueryBuilder();
+      mockQueryBuilder.orderBy.mockResolvedValue([]);
+      vi.mocked(db.selectDistinct).mockReturnValue(mockQueryBuilder);
 
       const result = await getUniqueAuthors(2030);
 
@@ -404,10 +381,9 @@ describe('Mainboard Reviews Service', () => {
     it('should return empty array on database error', async () => {
       const { db } = await import('@/lib/db');
 
-      vi.mocked(db.selectDistinct).mockReturnValue(db as any);
-      vi.mocked(db.from).mockReturnValue(db as any);
-      vi.mocked(db.where).mockReturnValue(db as any);
-      vi.mocked(db.orderBy).mockRejectedValue(new Error('Database error'));
+      const mockQueryBuilder = createMockQueryBuilder();
+      mockQueryBuilder.orderBy.mockRejectedValue(new Error('Database error'));
+      vi.mocked(db.selectDistinct).mockReturnValue(mockQueryBuilder);
 
       const result = await getUniqueAuthors(2025);
 
@@ -420,11 +396,9 @@ describe('Mainboard Reviews Service', () => {
       const mockReview = createMockReview();
       const { db } = await import('@/lib/db');
 
-      vi.mocked(db.select).mockReturnValue(db as any);
-      vi.mocked(db.from).mockReturnValue(db as any);
-      vi.mocked(db.innerJoin).mockReturnValue(db as any);
-      vi.mocked(db.where).mockReturnValue(db as any);
-      vi.mocked(db.limit).mockResolvedValue([mockReview]);
+      const mockQueryBuilder = createMockQueryBuilder();
+      mockQueryBuilder.limit.mockResolvedValue([mockReview]);
+      vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
       const result = await getReviewById('test-review-id');
 
@@ -435,11 +409,9 @@ describe('Mainboard Reviews Service', () => {
     it('should return null when review not found', async () => {
       const { db } = await import('@/lib/db');
 
-      vi.mocked(db.select).mockReturnValue(db as any);
-      vi.mocked(db.from).mockReturnValue(db as any);
-      vi.mocked(db.innerJoin).mockReturnValue(db as any);
-      vi.mocked(db.where).mockReturnValue(db as any);
-      vi.mocked(db.limit).mockResolvedValue([]);
+      const mockQueryBuilder = createMockQueryBuilder();
+      mockQueryBuilder.limit.mockResolvedValue([]);
+      vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
       const result = await getReviewById('nonexistent-id');
 
@@ -449,11 +421,9 @@ describe('Mainboard Reviews Service', () => {
     it('should return null on database error', async () => {
       const { db } = await import('@/lib/db');
 
-      vi.mocked(db.select).mockReturnValue(db as any);
-      vi.mocked(db.from).mockReturnValue(db as any);
-      vi.mocked(db.innerJoin).mockReturnValue(db as any);
-      vi.mocked(db.where).mockReturnValue(db as any);
-      vi.mocked(db.limit).mockRejectedValue(new Error('Database error'));
+      const mockQueryBuilder = createMockQueryBuilder();
+      mockQueryBuilder.limit.mockRejectedValue(new Error('Database error'));
+      vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
       const result = await getReviewById('test-review-id');
 
@@ -466,11 +436,9 @@ describe('Mainboard Reviews Service', () => {
       const mockReviews = createMockReviews(1);
       const { db } = await import('@/lib/db');
 
-      vi.mocked(db.select).mockReturnValue(db as any);
-      vi.mocked(db.from).mockReturnValue(db as any);
-      vi.mocked(db.innerJoin).mockReturnValue(db as any);
-      vi.mocked(db.where).mockReturnValue(db as any);
-      vi.mocked(db.orderBy).mockResolvedValue(mockReviews);
+      const mockQueryBuilder = createMockQueryBuilder();
+      mockQueryBuilder.orderBy.mockResolvedValue(mockReviews);
+      vi.mocked(db.select).mockReturnValue(mockQueryBuilder);
 
       const result = await getMainboardIPOReviews(2025);
       const review = result.reviews[0];
