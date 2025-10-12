@@ -78,9 +78,8 @@ export interface SearchResponse {
 }
 
 export interface HolidaysResponse {
-  data: MarketHoliday[];
-  year: number;
-  exchange?: string;
+  holidays: MarketHoliday[];
+  fetchedAt: string;
 }
 
 export interface RegistrarsResponse {
@@ -637,7 +636,7 @@ export async function searchIPOs(
 /**
  * Get market holidays
  */
-export async function getHolidays(
+export async function getMarketHolidays(
   params: GetHolidaysParams,
   signal?: AbortSignal
 ): Promise<HolidaysResponse> {
@@ -645,7 +644,7 @@ export async function getHolidays(
   searchParams.append('year', params.year.toString());
   if (params.exchange) searchParams.append('exchange', params.exchange);
 
-  const endpoint = `/holidays?${searchParams.toString()}`;
+  const endpoint = `/market-holidays?${searchParams.toString()}`;
   return fetchWithRetry<HolidaysResponse>(endpoint, { method: 'GET' }, defaultConfig, signal);
 }
 
@@ -667,7 +666,7 @@ export const apiClient = {
   getSubscription,
   getGMP,
   searchIPOs,
-  getHolidays,
+  getMarketHolidays,
   getRegistrars,
 };
 
