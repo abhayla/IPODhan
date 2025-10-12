@@ -87,17 +87,68 @@ export default async function MainboardIPOsLandingPage({ searchParams }: PagePro
     ]);
 
     return (
-      <div className="container mx-auto px-4 py-8">
-        {/* AC#18: Educational Header */}
-        <header className="mb-8">
-          <h1 className="text-3xl font-bold mb-3 text-gray-900">Mainboard IPOs</h1>
-          <p className="text-gray-600 leading-relaxed">
-            Mainboard IPOs are public offerings listed on NSE and BSE main boards. These are
-            typically large companies with higher minimum investment requirements compared to SME
-            IPOs. Access comprehensive information on current, upcoming, and listed Mainboard IPOs
-            including performance metrics, expert reviews, prospectus documents, and event calendar.
-          </p>
-        </header>
+      <>
+        {/* AC#22: Structured Data (JSON-LD) */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              '@context': 'https://schema.org',
+              '@type': 'CollectionPage',
+              name: 'Mainboard IPOs 2025 - Complete Hub',
+              description:
+                'Comprehensive Mainboard IPO information hub with current, upcoming, and listed IPOs',
+              url: 'https://ipodhan.com/mainboard-ipos',
+              mainEntity: {
+                '@type': 'ItemList',
+                numberOfItems: metrics.totalIPOs,
+                itemListElement: currentIPOs.slice(0, 10).map((ipo, index) => ({
+                  '@type': 'ListItem',
+                  position: index + 1,
+                  item: {
+                    '@type': 'FinancialProduct',
+                    name: `${ipo.companyName} IPO`,
+                    category: 'Mainboard IPO',
+                    description: ipo.companyDescription || `Mainboard IPO for ${ipo.companyName}`,
+                  },
+                })),
+              },
+              breadcrumb: {
+                '@type': 'BreadcrumbList',
+                itemListElement: [
+                  {
+                    '@type': 'ListItem',
+                    position: 1,
+                    item: {
+                      '@id': 'https://ipodhan.com',
+                      name: 'Home',
+                    },
+                  },
+                  {
+                    '@type': 'ListItem',
+                    position: 2,
+                    item: {
+                      '@id': 'https://ipodhan.com/mainboard-ipos',
+                      name: 'Mainboard IPOs',
+                    },
+                  },
+                ],
+              },
+            }),
+          }}
+        />
+
+        <div className="container mx-auto px-4 py-8">
+          {/* AC#18: Educational Header */}
+          <header className="mb-8">
+            <h1 className="text-3xl font-bold mb-3 text-gray-900">Mainboard IPOs</h1>
+            <p className="text-gray-600 leading-relaxed">
+              Mainboard IPOs are public offerings listed on NSE and BSE main boards. These are
+              typically large companies with higher minimum investment requirements compared to SME
+              IPOs. Access comprehensive information on current, upcoming, and listed Mainboard IPOs
+              including performance metrics, expert reviews, prospectus documents, and event calendar.
+            </p>
+          </header>
 
         {/* AC#3: Summary Metrics Section */}
         <section className="mb-12">
@@ -136,7 +187,8 @@ export default async function MainboardIPOsLandingPage({ searchParams }: PagePro
             initialYear={currentYear}
           />
         </section>
-      </div>
+        </div>
+      </>
     );
   } catch (error) {
     console.error('Error loading Mainboard IPOs landing page:', error);
