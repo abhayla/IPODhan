@@ -18,9 +18,6 @@ const nextConfig: NextConfig = {
   // Performance: Optimize package imports
   experimental: {
     optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
-    // Turbopack configuration
-    // Note: Turbopack resolveAlias doesn't support boolean values like webpack's resolve.fallback
-    // The webpack fallback configuration below handles these for production builds
   },
 
   // Performance: Browser caching headers for static assets
