@@ -52,7 +52,7 @@ const IPOStatusSchema = z.enum(['UPCOMING', 'OPEN', 'CLOSED', 'LISTED']);
 /**
  * IPO Category Enum Schema
  */
-const IPOCategorySchema = z.enum(['MAINBOARD', 'SME', 'RIGHTS', 'NCD']);
+const IPOCategorySchema = z.enum(['MAINBOARD', 'SME', 'RIGHTS', 'NCD', 'FPO']);
 
 /**
  * Sort Field Schema

@@ -169,12 +169,16 @@ describe('Database Types', () => {
         issuePrice: 100,
         listingGainPercent: '50.00',
         currentPrice: 160,
+        currentPriceBSE: 158,
+        currentPriceNSE: 162,
         currentGainPercent: '60.00',
         lastUpdated: new Date(),
       };
 
       expect(mockListingPerformance).toBeDefined();
       expectTypeOf(mockListingPerformance.listingPrice).toBeNumber();
+      expectTypeOf(mockListingPerformance.currentPriceBSE).toEqualTypeOf<number | null>();
+      expectTypeOf(mockListingPerformance.currentPriceNSE).toEqualTypeOf<number | null>();
     });
   });
 
@@ -268,7 +272,9 @@ describe('Database Types', () => {
 
   describe('Enum Types', () => {
     it('should have correct enum type definitions', () => {
-      expectTypeOf<IPOCategory>().toMatchTypeOf<'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD'>();
+      expectTypeOf<IPOCategory>().toMatchTypeOf<
+        'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD' | 'FPO'
+      >();
       expectTypeOf<IPOStatus>().toMatchTypeOf<
         'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED'
       >();
