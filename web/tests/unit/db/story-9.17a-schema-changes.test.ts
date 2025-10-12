@@ -65,7 +65,7 @@ describe('Story 9.17a: Schema Migration Tests', () => {
 
     it('should export ipoCategoryEnum with FPO', () => {
       expect(schema.ipoCategoryEnum).toBeDefined();
-      expect(typeof schema.ipoCategoryEnum).toBe('object');
+      expect(typeof schema.ipoCategoryEnum).toBe('function');
     });
   });
 
