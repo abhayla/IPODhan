@@ -1,0 +1,445 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - link "Skip to main content" [ref=e2] [cursor=pointer]:
+    - /url: "#main-content"
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e6]:
+        - link "IPODhan - Home" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - generic [ref=e9]: I
+          - generic [ref=e10]: IPODhan
+        - navigation [ref=e11]:
+          - link "Dashboard" [ref=e12] [cursor=pointer]:
+            - /url: /dashboard
+          - link "Rights Issues" [ref=e13] [cursor=pointer]:
+            - /url: /rights-issues
+          - link "OFS" [ref=e14] [cursor=pointer]:
+            - /url: /ofs
+          - button "Mainboard IPOs" [ref=e16]:
+            - generic [ref=e17]: Mainboard IPOs
+            - img [ref=e18]
+          - button "SME IPOs" [ref=e21]:
+            - generic [ref=e22]: SME IPOs
+            - img [ref=e23]
+          - button "Tools" [ref=e26]:
+            - generic [ref=e27]: Tools
+            - img [ref=e28]
+    - main [ref=e30]:
+      - generic [ref=e31]:
+        - generic [ref=e33]:
+          - generic [ref=e34]:
+            - heading "IPO Dashboard" [level=1] [ref=e35]
+            - paragraph [ref=e36]:
+              - text: Browse current and upcoming IPOs.
+              - generic [ref=e37]: 22 IPOs
+          - group "View toggle" [ref=e39]:
+            - button "Grid view" [pressed] [ref=e40]:
+              - img
+              - generic [ref=e41]: Grid
+            - button "List view" [ref=e42]:
+              - img
+              - generic [ref=e43]: List
+        - generic [ref=e46]:
+          - img [ref=e47]
+          - searchbox "Search IPOs by company or sector" [ref=e50]
+        - generic "IPO Filters" [ref=e52]:
+          - generic [ref=e53]:
+            - combobox "Filter IPOs by status (Open, Closed, Upcoming, Listed)" [ref=e55]:
+              - img
+              - generic: Open
+              - img
+            - combobox "Filter IPOs by category (Mainboard, SME, Rights, NCD)" [ref=e57]:
+              - img
+              - generic: All Categories
+              - img
+            - combobox "Filter IPOs by sector" [ref=e59]:
+              - img
+              - generic: All Sectors
+              - img
+            - button "Clear all filters" [disabled]:
+              - img
+              - text: Clear Filters
+        - generic [ref=e60]:
+          - heading "IPO Listings" [level=2] [ref=e61]
+          - generic [ref=e62]:
+            - link "View details for DECCAN BEARINGS LTD IPO" [ref=e64] [cursor=pointer]:
+              - /url: /ipos/deccan-bearings-ltd
+              - generic [ref=e66]:
+                - generic [ref=e67]:
+                  - heading "DECCAN BEARINGS LTD" [level=3] [ref=e68]
+                  - generic [ref=e70]: Open
+                - generic [ref=e72]: MAINBOARD
+                - generic [ref=e73]:
+                  - paragraph [ref=e74]: Price Range
+                  - paragraph [ref=e75]: ₹10 - ₹10
+                - generic [ref=e76]:
+                  - paragraph [ref=e77]: Lot Size
+                  - paragraph [ref=e78]: 100 shares
+                - generic [ref=e79]:
+                  - paragraph [ref=e80]: IPO Dates
+                  - generic [ref=e81]:
+                    - generic [ref=e82]:
+                      - generic [ref=e83]: "Open:"
+                      - time [ref=e84]: 10 Oct 2025
+                    - generic [ref=e85]:
+                      - generic [ref=e86]: "Close:"
+                      - time [ref=e87]: 27 Oct 2025
+                - generic [ref=e88]:
+                  - paragraph [ref=e89]: IPODhan Rating
+                  - generic [ref=e90]: Not Rated
+            - link "View details for BHAIRAV ENTERPRISES LIMITED IPO" [ref=e92] [cursor=pointer]:
+              - /url: /ipos/bhairav-enterprises-limited
+              - generic [ref=e94]:
+                - generic [ref=e95]:
+                  - heading "BHAIRAV ENTERPRISES LIMITED" [level=3] [ref=e96]
+                  - generic [ref=e98]: Open
+                - generic [ref=e100]: MAINBOARD
+                - generic [ref=e101]:
+                  - paragraph [ref=e102]: Price Range
+                  - paragraph [ref=e103]: ₹19 - ₹19
+                - generic [ref=e104]:
+                  - paragraph [ref=e105]: Lot Size
+                  - paragraph [ref=e106]: 100 shares
+                - generic [ref=e107]:
+                  - paragraph [ref=e108]: IPO Dates
+                  - generic [ref=e109]:
+                    - generic [ref=e110]:
+                      - generic [ref=e111]: "Open:"
+                      - time [ref=e112]: 09 Oct 2025
+                    - generic [ref=e113]:
+                      - generic [ref=e114]: "Close:"
+                      - time [ref=e115]: 24 Oct 2025
+                - generic [ref=e116]:
+                  - paragraph [ref=e117]: IPODhan Rating
+                  - generic [ref=e118]: Not Rated
+            - link "View details for CDG PETCHEM LTD IPO" [ref=e120] [cursor=pointer]:
+              - /url: /ipos/cdg-petchem-ltd
+              - generic [ref=e122]:
+                - generic [ref=e123]:
+                  - heading "CDG PETCHEM LTD" [level=3] [ref=e124]
+                  - generic [ref=e126]: Open
+                - generic [ref=e128]: MAINBOARD
+                - generic [ref=e129]:
+                  - paragraph [ref=e130]: Price Range
+                  - paragraph [ref=e131]: ₹41 - ₹41
+                - generic [ref=e132]:
+                  - paragraph [ref=e133]: Lot Size
+                  - paragraph [ref=e134]: 100 shares
+                - generic [ref=e135]:
+                  - paragraph [ref=e136]: IPO Dates
+                  - generic [ref=e137]:
+                    - generic [ref=e138]:
+                      - generic [ref=e139]: "Open:"
+                      - time [ref=e140]: 10 Oct 2025
+                    - generic [ref=e141]:
+                      - generic [ref=e142]: "Close:"
+                      - time [ref=e143]: 27 Oct 2025
+                - generic [ref=e144]:
+                  - paragraph [ref=e145]: IPODhan Rating
+                  - generic [ref=e146]: Not Rated
+            - link "View details for YASH TRADING FINANCE LTD IPO" [ref=e148] [cursor=pointer]:
+              - /url: /ipos/yash-trading-finance-ltd
+              - generic [ref=e150]:
+                - generic [ref=e151]:
+                  - heading "YASH TRADING FINANCE LTD" [level=3] [ref=e152]
+                  - generic [ref=e154]: Open
+                - generic [ref=e156]: MAINBOARD
+                - generic [ref=e157]:
+                  - paragraph [ref=e158]: Price Range
+                  - paragraph [ref=e159]: ₹12 - ₹12
+                - generic [ref=e160]:
+                  - paragraph [ref=e161]: Lot Size
+                  - paragraph [ref=e162]: 100 shares
+                - generic [ref=e163]:
+                  - paragraph [ref=e164]: IPO Dates
+                  - generic [ref=e165]:
+                    - generic [ref=e166]:
+                      - generic [ref=e167]: "Open:"
+                      - time [ref=e168]: 07 Oct 2025
+                    - generic [ref=e169]:
+                      - generic [ref=e170]: "Close:"
+                      - time [ref=e171]: 20 Oct 2025
+                - generic [ref=e172]:
+                  - paragraph [ref=e173]: IPODhan Rating
+                  - generic [ref=e174]: Not Rated
+            - link "View details for PACE AUTOMATION LIMITED IPO" [ref=e176] [cursor=pointer]:
+              - /url: /ipos/pace-automation-limited
+              - generic [ref=e178]:
+                - generic [ref=e179]:
+                  - heading "PACE AUTOMATION LIMITED" [level=3] [ref=e180]
+                  - generic [ref=e182]: Open
+                - generic [ref=e184]: MAINBOARD
+                - generic [ref=e185]:
+                  - paragraph [ref=e186]: Price Range
+                  - paragraph [ref=e187]: ₹13 - ₹13
+                - generic [ref=e188]:
+                  - paragraph [ref=e189]: Lot Size
+                  - paragraph [ref=e190]: 100 shares
+                - generic [ref=e191]:
+                  - paragraph [ref=e192]: IPO Dates
+                  - generic [ref=e193]:
+                    - generic [ref=e194]:
+                      - generic [ref=e195]: "Open:"
+                      - time [ref=e196]: 03 Oct 2025
+                    - generic [ref=e197]:
+                      - generic [ref=e198]: "Close:"
+                      - time [ref=e199]: 16 Oct 2025
+                - generic [ref=e200]:
+                  - paragraph [ref=e201]: IPODhan Rating
+                  - generic [ref=e202]: Not Rated
+            - link "View details for ANTARIKSH INDUSTRIES LTD IPO" [ref=e204] [cursor=pointer]:
+              - /url: /ipos/antariksh-industries-ltd
+              - generic [ref=e206]:
+                - generic [ref=e207]:
+                  - heading "ANTARIKSH INDUSTRIES LTD" [level=3] [ref=e208]
+                  - generic [ref=e210]: Open
+                - generic [ref=e212]: MAINBOARD
+                - generic [ref=e213]:
+                  - paragraph [ref=e214]: Price Range
+                  - paragraph [ref=e215]: ₹96 - ₹96
+                - generic [ref=e216]:
+                  - paragraph [ref=e217]: Lot Size
+                  - paragraph [ref=e218]: 100 shares
+                - generic [ref=e219]:
+                  - paragraph [ref=e220]: IPO Dates
+                  - generic [ref=e221]:
+                    - generic [ref=e222]:
+                      - generic [ref=e223]: "Open:"
+                      - time [ref=e224]: 03 Oct 2025
+                    - generic [ref=e225]:
+                      - generic [ref=e226]: "Close:"
+                      - time [ref=e227]: 16 Oct 2025
+                - generic [ref=e228]:
+                  - paragraph [ref=e229]: IPODhan Rating
+                  - generic [ref=e230]: Not Rated
+            - link "View details for GSB FINANCE LTD IPO" [ref=e232] [cursor=pointer]:
+              - /url: /ipos/gsb-finance-ltd
+              - generic [ref=e234]:
+                - generic [ref=e235]:
+                  - heading "GSB FINANCE LTD" [level=3] [ref=e236]
+                  - generic [ref=e238]: Open
+                - generic [ref=e240]: MAINBOARD
+                - generic [ref=e241]:
+                  - paragraph [ref=e242]: Price Range
+                  - paragraph [ref=e243]: ₹21 - ₹21
+                - generic [ref=e244]:
+                  - paragraph [ref=e245]: Lot Size
+                  - paragraph [ref=e246]: 100 shares
+                - generic [ref=e247]:
+                  - paragraph [ref=e248]: IPO Dates
+                  - generic [ref=e249]:
+                    - generic [ref=e250]:
+                      - generic [ref=e251]: "Open:"
+                      - time [ref=e252]: 30 Sept 2025
+                    - generic [ref=e253]:
+                      - generic [ref=e254]: "Close:"
+                      - time [ref=e255]: 14 Oct 2025
+                - generic [ref=e256]:
+                  - paragraph [ref=e257]: IPODhan Rating
+                  - generic [ref=e258]: Not Rated
+            - link "View details for CMX HOLDINGS LTD IPO" [ref=e260] [cursor=pointer]:
+              - /url: /ipos/cmx-holdings-ltd
+              - generic [ref=e262]:
+                - generic [ref=e263]:
+                  - heading "CMX HOLDINGS LTD" [level=3] [ref=e264]
+                  - generic [ref=e266]: Open
+                - generic [ref=e268]: MAINBOARD
+                - generic [ref=e269]:
+                  - paragraph [ref=e270]: Price Range
+                  - paragraph [ref=e271]: ₹10 - ₹10
+                - generic [ref=e272]:
+                  - paragraph [ref=e273]: Lot Size
+                  - paragraph [ref=e274]: 100 shares
+                - generic [ref=e275]:
+                  - paragraph [ref=e276]: IPO Dates
+                  - generic [ref=e277]:
+                    - generic [ref=e278]:
+                      - generic [ref=e279]: "Open:"
+                      - time [ref=e280]: 30 Sept 2025
+                    - generic [ref=e281]:
+                      - generic [ref=e282]: "Close:"
+                      - time [ref=e283]: 14 Oct 2025
+                - generic [ref=e284]:
+                  - paragraph [ref=e285]: IPODhan Rating
+                  - generic [ref=e286]: Not Rated
+            - link "View details for HEALTHY LIFE AGRITEC LTD IPO" [ref=e288] [cursor=pointer]:
+              - /url: /ipos/healthy-life-agritec-ltd
+              - generic [ref=e290]:
+                - generic [ref=e291]:
+                  - heading "HEALTHY LIFE AGRITEC LTD" [level=3] [ref=e292]
+                  - generic [ref=e294]: Open
+                - generic [ref=e296]: SME
+                - generic [ref=e297]:
+                  - paragraph [ref=e298]: Price Range
+                  - paragraph [ref=e299]: ₹10 - ₹10
+                - generic [ref=e300]:
+                  - paragraph [ref=e301]: Lot Size
+                  - paragraph [ref=e302]: 100 shares
+                - generic [ref=e303]:
+                  - paragraph [ref=e304]: IPO Dates
+                  - generic [ref=e305]:
+                    - generic [ref=e306]:
+                      - generic [ref=e307]: "Open:"
+                      - time [ref=e308]: 07 Oct 2025
+                    - generic [ref=e309]:
+                      - generic [ref=e310]: "Close:"
+                      - time [ref=e311]: 31 Oct 2025
+                - generic [ref=e312]:
+                  - paragraph [ref=e313]: IPODhan Rating
+                  - generic [ref=e314]: Not Rated
+            - link "View details for 3I INFOTECH LTD IPO" [ref=e316] [cursor=pointer]:
+              - /url: /ipos/3i-infotech-ltd
+              - generic [ref=e318]:
+                - generic [ref=e319]:
+                  - heading "3I INFOTECH LTD" [level=3] [ref=e320]
+                  - generic [ref=e322]: Open
+                - generic [ref=e324]: MAINBOARD
+                - generic [ref=e325]:
+                  - paragraph [ref=e326]: Price Range
+                  - paragraph [ref=e327]: ₹17 - ₹17
+                - generic [ref=e328]:
+                  - paragraph [ref=e329]: Lot Size
+                  - paragraph [ref=e330]: 100 shares
+                - generic [ref=e331]:
+                  - paragraph [ref=e332]: IPO Dates
+                  - generic [ref=e333]:
+                    - generic [ref=e334]:
+                      - generic [ref=e335]: "Open:"
+                      - time [ref=e336]: 07 Oct 2025
+                    - generic [ref=e337]:
+                      - generic [ref=e338]: "Close:"
+                      - time [ref=e339]: 27 Oct 2025
+                - generic [ref=e340]:
+                  - paragraph [ref=e341]: IPODhan Rating
+                  - generic [ref=e342]: Not Rated
+            - link "View details for WARDWIZARD INNOVATIONS MOBILITY LTD IPO" [ref=e344] [cursor=pointer]:
+              - /url: /ipos/wardwizard-innovations-mobility-ltd
+              - generic [ref=e346]:
+                - generic [ref=e347]:
+                  - heading "WARDWIZARD INNOVATIONS MOBILITY LTD" [level=3] [ref=e348]
+                  - generic [ref=e350]: Open
+                - generic [ref=e352]: MAINBOARD
+                - generic [ref=e353]:
+                  - paragraph [ref=e354]: Price Range
+                  - paragraph [ref=e355]: ₹11 - ₹11
+                - generic [ref=e356]:
+                  - paragraph [ref=e357]: Lot Size
+                  - paragraph [ref=e358]: 100 shares
+                - generic [ref=e359]:
+                  - paragraph [ref=e360]: IPO Dates
+                  - generic [ref=e361]:
+                    - generic [ref=e362]:
+                      - generic [ref=e363]: "Open:"
+                      - time [ref=e364]: 26 Sept 2025
+                    - generic [ref=e365]:
+                      - generic [ref=e366]: "Close:"
+                      - time [ref=e367]: 24 Oct 2025
+                - generic [ref=e368]:
+                  - paragraph [ref=e369]: IPODhan Rating
+                  - generic [ref=e370]: Not Rated
+            - link "View details for SUNSHIELD CHEMICALS LTD IPO" [ref=e372] [cursor=pointer]:
+              - /url: /ipos/sunshield-chemicals-ltd
+              - generic [ref=e374]:
+                - generic [ref=e375]:
+                  - heading "SUNSHIELD CHEMICALS LTD" [level=3] [ref=e376]
+                  - generic [ref=e378]: Open
+                - generic [ref=e380]: MAINBOARD
+                - generic [ref=e381]:
+                  - paragraph [ref=e382]: Price Range
+                  - paragraph [ref=e383]: ₹901 - ₹901
+                - generic [ref=e384]:
+                  - paragraph [ref=e385]: Lot Size
+                  - paragraph [ref=e386]: 100 shares
+                - generic [ref=e387]:
+                  - paragraph [ref=e388]: IPO Dates
+                  - generic [ref=e389]:
+                    - generic [ref=e390]:
+                      - generic [ref=e391]: "Open:"
+                      - time [ref=e392]: 30 Sept 2025
+                    - generic [ref=e393]:
+                      - generic [ref=e394]: "Close:"
+                      - time [ref=e395]: 24 Oct 2025
+                - generic [ref=e396]:
+                  - paragraph [ref=e397]: IPODhan Rating
+                  - generic [ref=e398]: Not Rated
+        - navigation "Page navigation" [ref=e399]:
+          - button "Previous page" [disabled]:
+            - img
+            - generic: Previous
+          - generic [ref=e400]:
+            - button "Page 1" [ref=e401]: "1"
+            - button "Page 2" [ref=e402]: "2"
+          - button "Next page" [ref=e403]:
+            - generic [ref=e404]: Next
+            - img
+    - contentinfo [ref=e405]:
+      - generic [ref=e406]:
+        - generic [ref=e407]:
+          - generic [ref=e408]:
+            - link "IPODhan - Home" [ref=e409] [cursor=pointer]:
+              - /url: /
+              - generic [ref=e411]: I
+              - generic [ref=e412]: IPODhan
+            - paragraph [ref=e413]: Your trusted platform for IPO information and analysis.
+          - generic [ref=e414]:
+            - heading "Quick Links" [level=3] [ref=e415]
+            - list [ref=e416]:
+              - listitem [ref=e417]:
+                - link "→ Dashboard" [ref=e418] [cursor=pointer]:
+                  - /url: /dashboard
+                  - generic [ref=e419]: →
+                  - text: Dashboard
+              - listitem [ref=e420]:
+                - link "→ Active IPOs" [ref=e421] [cursor=pointer]:
+                  - /url: /dashboard?status=OPEN
+                  - generic [ref=e422]: →
+                  - text: Active IPOs
+              - listitem [ref=e423]:
+                - link "→ Upcoming IPOs" [ref=e424] [cursor=pointer]:
+                  - /url: /dashboard?status=UPCOMING
+                  - generic [ref=e425]: →
+                  - text: Upcoming IPOs
+          - generic [ref=e426]:
+            - heading "Tools" [level=3] [ref=e427]
+            - list [ref=e428]:
+              - listitem [ref=e429]:
+                - link "Lot Size Calculator" [ref=e430] [cursor=pointer]:
+                  - /url: /tools/lot-calculator
+                  - img [ref=e431]
+                  - generic [ref=e433]: Lot Size Calculator
+              - listitem [ref=e434]:
+                - link "Compare IPOs" [ref=e435] [cursor=pointer]:
+                  - /url: /tools/compare
+                  - img [ref=e436]
+                  - generic [ref=e440]: Compare IPOs
+          - generic [ref=e441]:
+            - heading "Legal" [level=3] [ref=e442]
+            - list [ref=e443]:
+              - listitem [ref=e444]:
+                - link "→ Privacy Policy" [ref=e445] [cursor=pointer]:
+                  - /url: /privacy
+                  - generic [ref=e446]: →
+                  - text: Privacy Policy
+              - listitem [ref=e447]:
+                - link "→ Terms of Service" [ref=e448] [cursor=pointer]:
+                  - /url: /terms
+                  - generic [ref=e449]: →
+                  - text: Terms of Service
+              - listitem [ref=e450]:
+                - link "→ Disclaimer" [ref=e451] [cursor=pointer]:
+                  - /url: /disclaimer
+                  - generic [ref=e452]: →
+                  - text: Disclaimer
+        - generic [ref=e454]:
+          - img [ref=e455]
+          - paragraph [ref=e457]: IPODhan may earn a commission when you open an account through our affiliate links. This helps us keep the platform free for all users.
+        - paragraph [ref=e459]: © 2025 IPODhan. All rights reserved.
+  - region "Notifications (F8)":
+    - list
+  - button "Open Next.js Dev Tools" [ref=e465] [cursor=pointer]:
+    - img [ref=e466]
+  - alert [ref=e469]
+```
