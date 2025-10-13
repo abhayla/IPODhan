@@ -137,6 +137,34 @@ if (typeof window === 'undefined' && !process.env.NEXT_RUNTIME) {
 4. Prospectus scraper → Add document links
 5. Reviews scraper → Add review data
 
+### 3. BSE Scraper Puppeteer Bug
+**Problem:** TypeError at `scraper/src/utils/browser.ts:81` when `pageerror` event handler tried to access `error.message` on undefined error objects.
+
+**Root Cause:** Puppeteer's `pageerror` event can pass error objects without a `.message` property, causing crashes.
+
+**Solution Applied:**
+```typescript
+page.on('pageerror', (error) => {
+  logger.warn({
+    error: error?.message || String(error) || 'Unknown error',
+    errorType: typeof error
+  }, 'Page error (console error)');
+});
+```
+
+**Impact:** BSE scraper now handles console errors gracefully without crashing. Tested successfully with 25 IPOs found.
+
+### 4. NSE Scraper Status
+**Finding:** NSE scraper is functional and using API-first approach.
+
+**Test Results:**
+- Successfully connected to NSE API
+- Found 4 IPOs via `/api/all-upcoming-issues` endpoint
+- Auth cookies may need refresh for "rights" issues endpoint
+- Database upserts working correctly
+
+**Status:** ✅ OPERATIONAL (not 0 IPOs as initially reported)
+
 ---
 
 ## Next Steps
@@ -205,6 +233,14 @@ if (typeof window === 'undefined' && !process.env.NEXT_RUNTIME) {
 **12:33 PM** - Created verification script
 **12:34 PM** - Verified database - Confirmed ISS-001 (only 28 IPOs)
 **12:35 PM** - Documented session and next steps
+
+**[Session Continued]**
+**13:00 PM** - Cleaned up testing artifacts from previous sessions
+**13:00 PM** - Fixed BSE scraper Puppeteer bug (browser.ts:81)
+**13:01 PM** - Tested BSE scraper - SUCCESS (25 IPOs found, bug fixed)
+**13:01 PM** - Tested NSE scraper - SUCCESS (4 IPOs found via API)
+**13:02 PM** - Verified database count - 28 IPOs total
+**13:02 PM** - Updated session summary with scraper testing results
 
 ---
 
