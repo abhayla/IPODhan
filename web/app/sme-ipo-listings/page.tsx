@@ -1,9 +1,10 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { ListingCategoryTabs } from '@/components/listings/ListingCategoryTabs';
-import { YearFilter, CURRENT_YEAR } from '@/components/listings/YearFilter';
-import { IPOListingsTable } from '@/components/listings/IPOListingsTable';
-import { ListingsPagination } from '@/components/listings/ListingsPagination';
+import { CURRENT_YEAR } from '@/components/listings/YearFilter';
+import { YearFilterClient } from '@/components/listings/YearFilterClient';
+import { IPOListingsTableClient } from '@/components/listings/IPOListingsTableClient';
+import { ListingsPaginationClient } from '@/components/listings/ListingsPaginationClient';
 import { fetchIPOListings, fetchAvailableYears } from '@/lib/services/ipo-listings-service';
 import { Skeleton } from '@/components/ui/skeleton';
 
@@ -90,15 +91,9 @@ export default async function SMEIPOListingsPage({ searchParams }: Props) {
       {/* Filters and Stats */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 my-6">
         <div className="flex items-center gap-4">
-          <YearFilter
+          <YearFilterClient
             availableYears={availableYears}
             selectedYear={selectedYear}
-            onYearChange={(year) => {
-              const url = new URL(window.location.href);
-              url.searchParams.set('year', year);
-              url.searchParams.delete('page'); // Reset to page 1
-              window.location.href = url.toString();
-            }}
           />
         </div>
         {stats.totalIPOs > 0 && (
@@ -134,28 +129,18 @@ export default async function SMEIPOListingsPage({ searchParams }: Props) {
       {data.length > 0 ? (
         <>
           <Suspense fallback={<TableSkeleton />}>
-            <IPOListingsTable
+            <IPOListingsTableClient
               data={data}
-              onSort={(field, order) => {
-                const url = new URL(window.location.href);
-                url.searchParams.set('sortBy', field);
-                url.searchParams.set('sortOrder', order);
-                window.location.href = url.toString();
-              }}
-              currentSort={{ field: sortBy, order: sortOrder }}
+              sortBy={sortBy}
+              sortOrder={sortOrder}
             />
           </Suspense>
 
-          <ListingsPagination
+          <ListingsPaginationClient
             currentPage={pagination.page}
             totalPages={Math.ceil(pagination.total / pagination.limit)}
             totalRecords={pagination.total}
             recordsPerPage={pagination.limit}
-            onPageChange={(page) => {
-              const url = new URL(window.location.href);
-              url.searchParams.set('page', String(page));
-              window.location.href = url.toString();
-            }}
           />
         </>
       ) : (
