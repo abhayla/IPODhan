@@ -296,7 +296,7 @@ export class ProspectusScraper extends BaseScraper<MatchedDocument[]> {
   private validateDocument(doc: unknown): ProspectusDocument | null {
     const result = ProspectusDocumentSchema.safeParse(doc);
     if (!result.success) {
-      this.logError(`Validation failed: ${JSON.stringify(result.error.errors)}`);
+      this.logError(`Validation failed: ${JSON.stringify(result.error.issues)}`);
       return null;
     }
     return result.data;
@@ -499,7 +499,7 @@ export class ProspectusScraper extends BaseScraper<MatchedDocument[]> {
             type: doc.documentType,
             title: doc.title,
             url: doc.url,
-            fileSize: doc.fileSize ? BigInt(doc.fileSize) : null,
+            fileSize: doc.fileSize,
             uploadedAt: doc.uploadedAt || new Date(),
             exchange: doc.exchange,
           })
