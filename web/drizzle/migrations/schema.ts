@@ -296,7 +296,7 @@ export const ipos = pgTable("ipos", {
 	updatedAt: timestamp("updated_at", { mode: 'string' }).default(sql`CURRENT_TIMESTAMP`),
 	registrarId: uuid("registrar_id"),
 	ratingOverride: boolean("rating_override").default(false),
-	slug: varchar({ length: 255 }).default(').notNull(),
+	slug: varchar("slug", { length: 255 }).notNull(),
 	sector: varchar({ length: 100 }),
 	priceRangeMin: integer("price_range_min"),
 	priceRangeMax: integer("price_range_max"),
