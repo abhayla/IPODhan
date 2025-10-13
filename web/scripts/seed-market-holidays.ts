@@ -10,9 +10,9 @@
  * - Idempotent (safe to run multiple times)
  * - Clear progress logging
  *
- * Data Sources:
- * - NSE: https://www.nseindia.com/regulations/trading-holidays
- * - BSE: https://www.bseindia.com/static/about/Market_Holidays.aspx
+ * Data Sources (see docs/URLs-Tracker.md for current URLs):
+ * - NSE: https://www.nseindia.com/api/holiday-master?type=trading
+ * - BSE: No working URL (deprecated - manual data collection)
  *
  * Usage: npx tsx web/scripts/seed-market-holidays.ts
  */

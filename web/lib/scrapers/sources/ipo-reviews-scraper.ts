@@ -76,7 +76,8 @@ export class IPOReviewsScraper extends BaseScraper<IPOReview[]> {
    * Scrape Mainboard IPO reviews from Chittorgarh
    */
   private async scrapeChittorgarhMainboard(): Promise<IPOReview[]> {
-    const url = 'https://www.chittorgarh.com/ipo/ipo-reviews-recommendations/81/';
+    // URL Source: docs/URLs-Tracker.md - IPO Reviews Mainboard
+    const url = 'https://www.chittorgarh.com/report/ipo-review/102/mainboard/';
     const $ = await this.fetchHTML(url);
     const reviews: IPOReview[] = [];
 
@@ -133,7 +134,8 @@ export class IPOReviewsScraper extends BaseScraper<IPOReview[]> {
    * Scrape SME IPO reviews
    */
   private async scrapeChittorgarhSME(): Promise<IPOReview[]> {
-    const url = 'https://www.chittorgarh.com/ipo/sme-ipo-reviews/';
+    // URL Source: docs/URLs-Tracker.md - IPO Reviews SME
+    const url = 'https://www.chittorgarh.com/report/ipo-review/102/sme/';
     const $ = await this.fetchHTML(url);
     const reviews: IPOReview[] = [];
 
