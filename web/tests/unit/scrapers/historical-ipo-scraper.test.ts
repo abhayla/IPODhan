@@ -23,9 +23,9 @@ describe('HistoricalIPOScraper', () => {
   // ==================== COMPANY NAME NORMALIZATION TESTS ====================
 
   describe('normalizeCompanyName', () => {
-    it('should normalize "Tech Corp Limited" to "tech corp"', () => {
+    it('should normalize "Tech Corp Limited" to "tech"', () => {
       const normalized = (scraper as any).normalizeCompanyName('Tech Corp Limited');
-      expect(normalized).toBe('tech corp');
+      expect(normalized).toBe('tech');
     });
 
     it('should normalize "ABC Pvt. Ltd." to "abc"', () => {
@@ -40,12 +40,12 @@ describe('HistoricalIPOScraper', () => {
 
     it('should remove special characters', () => {
       const normalized = (scraper as any).normalizeCompanyName('Tech-Corp (India) Pvt. Ltd.');
-      expect(normalized).toBe('techindia');
+      expect(normalized).toBe('techcorp india');
     });
 
     it('should normalize multiple spaces', () => {
       const normalized = (scraper as any).normalizeCompanyName('Tech   Corp    Limited');
-      expect(normalized).toBe('tech corp');
+      expect(normalized).toBe('tech');
     });
   });
 

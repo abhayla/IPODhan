@@ -283,8 +283,13 @@ export class HistoricalIPOScraper extends BaseScraper<MatchedIPOData[]> {
       return null;
     }
 
-    // Remove currency symbols, commas, and other characters
-    const cleaned = text.replace(/[�Rs.,\s]/g, '').trim();
+    // Remove currency symbols (₹, Rs.), commas, and spaces, but preserve decimal points
+    const cleaned = text
+      .replace(/₹/g, '')
+      .replace(/Rs\.?/gi, '')
+      .replace(/,/g, '')
+      .replace(/\s/g, '')
+      .trim();
     const num = parseFloat(cleaned);
 
     return isNaN(num) ? null : num;
@@ -369,9 +374,9 @@ export class HistoricalIPOScraper extends BaseScraper<MatchedIPOData[]> {
     return name
       .toLowerCase()
       // Remove special characters first
-      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/[^a-z0-9\s]/g, '')
       // Then remove company suffixes
-      .replace(/\b(limited|ltd|inc|pvt|private|corporation|company)\b/gi, '')
+      .replace(/\b(limited|ltd|inc|pvt|private|corporation|corp|company)\b/gi, '')
       // Normalize multiple spaces
       .replace(/\s+/g, ' ')
       .trim();
