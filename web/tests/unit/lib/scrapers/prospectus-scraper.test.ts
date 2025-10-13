@@ -206,9 +206,9 @@ describe('ProspectusScraper - URL Validation Edge Cases', () => {
   it('should handle URL validation timeout', async () => {
     const scraper = new ProspectusScraper();
 
-    // Mock a slow URL that will timeout
+    // Mock a slow URL that will timeout (longer than 10 second AbortController timeout)
     vi.spyOn(global, 'fetch').mockImplementation(() =>
-      new Promise((resolve) => setTimeout(resolve, 15000))
+      new Promise((resolve) => setTimeout(resolve, 11000))
     );
 
     // @ts-ignore
@@ -218,7 +218,7 @@ describe('ProspectusScraper - URL Validation Edge Cases', () => {
     expect(result.error).toBeDefined();
 
     vi.restoreAllMocks();
-  }, 15000);
+  }, 12000);
 
   it('should handle 404 errors', async () => {
     const scraper = new ProspectusScraper();
@@ -283,16 +283,16 @@ describe('ProspectusScraper - Retry Logic', () => {
     const scraper = new ProspectusScraper();
 
     let attempts = 0;
-    vi.spyOn(global, 'fetch').mockImplementation(() => {
+    vi.spyOn(global, 'fetch').mockImplementation(async () => {
       attempts++;
-      if (attempts < 3) {
-        return Promise.reject(new Error('Network error'));
+      if (attempts <= 2) {
+        throw new Error('Network error');
       }
-      return Promise.resolve({
+      return {
         ok: true,
         status: 200,
         headers: new Headers({ 'content-type': 'application/pdf' }),
-      } as Response);
+      } as Response;
     });
 
     // @ts-ignore
