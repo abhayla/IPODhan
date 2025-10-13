@@ -237,17 +237,26 @@ export const financialData = pgTable('financial_data', {
 
 // ==================== TABLE 5: DOCUMENTS (One-to-Many) ====================
 
-export const documents = pgTable('documents', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  ipoId: uuid('ipo_id')
-    .notNull()
-    .references(() => ipos.id, { onDelete: 'cascade' }),
-  type: documentTypeEnum('type').notNull(),
-  title: varchar('title', { length: 255 }).notNull(),
-  url: text('url').notNull(), // file path or external URL
-  fileSize: bigint('file_size', { mode: 'number' }), // in bytes
-  uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
-});
+export const documents = pgTable(
+  'documents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    type: documentTypeEnum('type').notNull(),
+    title: varchar('title', { length: 255 }).notNull(),
+    url: text('url').notNull().unique(), // file path or external URL - unique constraint added
+    fileSize: bigint('file_size', { mode: 'number' }), // in bytes
+    uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
+    exchange: varchar('exchange', { length: 10 }), // 'NSE' | 'BSE' - source exchange
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    exchangeIdx: index('idx_documents_exchange').on(table.exchange),
+  })
+);
 
 // ==================== TABLE 6: LISTING_PERFORMANCE (One-to-One) ====================
 

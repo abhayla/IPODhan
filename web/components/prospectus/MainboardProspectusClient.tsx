@@ -17,10 +17,39 @@ import { useState, useEffect } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { ColumnSearch } from './ColumnSearch';
 import { MainboardProspectusTable } from './MainboardProspectusTable';
-import type {
-  ProspectusResponse,
-} from '@/lib/services/mainboard-prospectus-service';
-import { getMainboardProspectusDocuments, formatExchanges } from '@/lib/services/mainboard-prospectus-service';
+import { formatExchanges } from '@/lib/services/mainboard-prospectus-service';
+
+export interface MainboardProspectusData {
+  ipo: {
+    id: string;
+    companyName: string;
+    slug: string;
+    category: string;
+    listingExchanges: ('NSE' | 'BSE')[] | null;
+  };
+  drhpDocument: {
+    id: string;
+    title: string;
+    url: string;
+    fileSize: number | null;
+    uploadedAt: Date;
+  } | null;
+  rhpDocument: {
+    id: string;
+    title: string;
+    url: string;
+    fileSize: number | null;
+    uploadedAt: Date;
+  } | null;
+}
+
+export interface ProspectusResponse {
+  data: MainboardProspectusData[];
+  total: number;
+  page: number;
+  limit: number;
+  hasMore: boolean;
+}
 
 // ==================== COMPONENT ====================
 
@@ -54,14 +83,22 @@ export function MainboardProspectusClient() {
       setError(null);
 
       try {
-        const response = await getMainboardProspectusDocuments({
-          companyName,
-          exchange,
-          page,
-          limit: 50,
+        const params = new URLSearchParams({
+          page: page.toString(),
+          limit: '50',
         });
 
-        setData(response);
+        if (companyName) params.append('companyName', companyName);
+        if (exchange && exchange !== 'All') params.append('exchange', exchange);
+
+        const response = await fetch(`/api/prospectus/mainboard?${params.toString()}`);
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch prospectus documents');
+        }
+
+        const result = await response.json();
+        setData(result);
       } catch (err) {
         console.error('Error fetching prospectus data:', err);
         setError('Failed to load prospectus documents. Please try again later.');
