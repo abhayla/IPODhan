@@ -32,6 +32,9 @@
     "calculate-ratings": "tsx scripts/calculate-ratings.ts",
     "scrape:historical": "tsx scripts/run-historical-scraper.ts",
     "scrape:historical:incremental": "tsx scripts/run-historical-scraper.ts --incremental",
+    "seed:database": "tsx scripts/seed-database.ts",
+    "seed:force": "tsx scripts/seed-database.ts --force",
+    "verify:seed": "tsx scripts/verify-seed.ts",
     "analyze": "ANALYZE=true npm run build",
     "perf:test": "lhci autorun",
     "perf:ci": "npm run build && lhci autorun"
