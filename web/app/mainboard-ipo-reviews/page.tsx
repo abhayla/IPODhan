@@ -16,10 +16,19 @@ import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DataTable, ColumnDef, renderFunctions } from '@/components/shared/DataTable';
 import Link from 'next/link';
-import {
-  getMainboardIPOReviews,
-  type Review,
-} from '@/lib/services/mainboard-reviews-service';
+
+export interface Review {
+  id: string;
+  reviewTitle: string;
+  author: string;
+  recommendation: string;
+  ipoId: string;
+  ipoName: string;
+  ipoSlug: string;
+  publishedDate: Date;
+  year: number;
+  reviewUrl?: string | null;
+}
 
 // ===== EDUCATIONAL HEADER COMPONENT =====
 
@@ -120,14 +129,23 @@ export default function MainboardIPOReviewsPage() {
       setError(null);
 
       try {
-        const result = await getMainboardIPOReviews(Number(year), {
-          reviewTitle: searches.reviewTitle,
-          author: searches.author,
-          recommendation: searches.recommendation,
-          ipoName: searches.ipoName,
-          page,
+        const params = new URLSearchParams({
+          year: year.toString(),
+          page: page.toString(),
         });
 
+        if (searches.reviewTitle) params.append('reviewTitle', searches.reviewTitle);
+        if (searches.author) params.append('author', searches.author);
+        if (searches.recommendation) params.append('recommendation', searches.recommendation);
+        if (searches.ipoName) params.append('ipoName', searches.ipoName);
+
+        const response = await fetch(`/api/reviews/mainboard?${params.toString()}`);
+
+        if (!response.ok) {
+          throw new Error('Failed to fetch reviews');
+        }
+
+        const result = await response.json();
         setData(result.reviews);
         setTotalCount(result.totalCount);
       } catch (err) {

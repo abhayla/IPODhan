@@ -13,7 +13,7 @@ const nextConfig: NextConfig = {
   },
 
   // Exclude server-only packages from browser bundle
-  serverExternalPackages: ['pg', 'pg-pool', 'pgpass'],
+  serverExternalPackages: ['pg', 'pg-pool', 'pgpass', 'drizzle-orm'],
 
   // Performance: Optimize package imports
   experimental: {
