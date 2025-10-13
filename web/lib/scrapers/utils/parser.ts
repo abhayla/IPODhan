@@ -23,10 +23,10 @@ export function cleanText(text: string): string {
 }
 
 /**
- * Extract number from text (e.g., "¹1,234.56 Cr" -> 1234.56)
+ * Extract number from text (e.g., "ï¿½1,234.56 Cr" -> 1234.56)
  */
 export function extractNumber(text: string): number | null {
-  const cleaned = text.replace(/[¹,\s]/g, '');
+  const cleaned = text.replace(/[ï¿½,\s]/g, '');
   const match = cleaned.match(/[\d.]+/);
   return match ? parseFloat(match[0]) : null;
 }
@@ -168,7 +168,7 @@ export function extractMeta($: CheerioAPI, name: string): string | null {
  */
 export function stripHTML(html: string): string {
   const $ = parseHTML(html);
-  return cleanText($.text());
+  return cleanText($('body').text() || $.root().text());
 }
 
 /**

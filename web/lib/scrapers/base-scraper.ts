@@ -84,7 +84,7 @@ export abstract class BaseScraper<T> {
    */
   protected createErrorResult(error: string | Error): ScraperResult<T> {
     const errorMessage = error instanceof Error ? error.message : error;
-    logger.error(`[${this.config.name}] Scraping failed:`, errorMessage);
+    logger.error(`[${this.config.name}] Scraping failed: ${errorMessage}`);
 
     return {
       success: false,
@@ -127,6 +127,6 @@ export abstract class BaseScraper<T> {
    */
   protected logError(error: string | Error): void {
     const errorMessage = error instanceof Error ? error.message : error;
-    logger.error(`[${this.config.name}] Error:`, errorMessage);
+    logger.error(`[${this.config.name}] Error: ${errorMessage}`);
   }
 }

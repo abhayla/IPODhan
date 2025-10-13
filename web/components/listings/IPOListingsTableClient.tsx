@@ -6,7 +6,7 @@ import { IPOListingsTable } from './IPOListingsTable';
 interface IPOListingsTableClientProps {
   data: any[];
   sortBy: string;
-  sortOrder: string;
+  sortOrder: 'asc' | 'desc';
 }
 
 export function IPOListingsTableClient({ data, sortBy, sortOrder }: IPOListingsTableClientProps) {

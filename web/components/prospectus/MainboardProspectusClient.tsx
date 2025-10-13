@@ -17,7 +17,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { ColumnSearch } from './ColumnSearch';
 import { MainboardProspectusTable } from './MainboardProspectusTable';
-import { formatExchanges } from '@/lib/services/mainboard-prospectus-service';
+import { formatExchanges } from '@/lib/utils/prospectus-utils';
 
 export interface MainboardProspectusData {
   ipo: {
