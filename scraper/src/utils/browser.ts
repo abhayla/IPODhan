@@ -74,11 +74,17 @@ export async function createPage(browser: Browser): Promise<Page> {
 
   // Add error handlers
   page.on('error', (error) => {
-    logger.error({ error: error.message }, 'Page crashed');
+    logger.error({
+      error: error?.message || String(error) || 'Unknown error',
+      errorType: typeof error
+    }, 'Page crashed');
   });
 
   page.on('pageerror', (error) => {
-    logger.warn({ error: error.message }, 'Page error (console error)');
+    logger.warn({
+      error: error?.message || String(error) || 'Unknown error',
+      errorType: typeof error
+    }, 'Page error (console error)');
   });
 
   logger.debug('Page created with optimized settings');
