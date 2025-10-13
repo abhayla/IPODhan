@@ -33,6 +33,7 @@ import {
   type HolidaysResponse,
   type RegistrarsResponse,
 } from '@/lib/api-client';
+import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -144,6 +145,7 @@ describe('API Client', () => {
       const mockResponse: IPOListResponse = {
         data: [
           {
+            ...DEFAULT_HISTORICAL_FIELDS,
             id: '123',
             companyName: 'Test Company',
             slug: 'test-company',
@@ -204,6 +206,7 @@ describe('API Client', () => {
     it('should fetch IPO by slug', async () => {
       const mockResponse: IPODetailResponse = {
         ipo: {
+          ...DEFAULT_HISTORICAL_FIELDS,
           id: '123',
           companyName: 'Test Company',
           slug: 'test-company',
@@ -326,6 +329,7 @@ describe('API Client', () => {
       const mockResponse: SearchResponse = {
         results: [
           {
+            ...DEFAULT_HISTORICAL_FIELDS,
             id: '123',
             companyName: 'Test Company',
             slug: 'test-company',

@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { DashboardContent } from '@/components/dashboard/DashboardContent';
 import { IPO } from '@/lib/api-client';
+import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
 // Mock Next.js navigation hooks
 vi.mock('next/navigation', () => ({
@@ -44,6 +45,7 @@ vi.mock('@/components/dashboard/FilterBar', () => ({
 }));
 
 const mockIPO = (): IPO => ({
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: '123',
   companyName: 'Test Company',
   slug: 'test-company',

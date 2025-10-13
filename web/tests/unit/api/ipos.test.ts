@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NextRequest } from 'next/server';
 import { GET } from '@/app/api/ipos/route';
 import type { PaginatedResponse, IPO } from '@/lib/repositories/types';
+import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
 // Mock dependencies
 vi.mock('@/lib/db', () => ({
@@ -48,6 +49,7 @@ vi.mock('@/lib/repositories/ipo-repository', () => {
 // ==================== TEST DATA ====================
 
 const mockIPO: IPO = {
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: '123e4567-e89b-12d3-a456-426614174000',
   companyName: 'Test Corp',
   slug: 'test-corp',

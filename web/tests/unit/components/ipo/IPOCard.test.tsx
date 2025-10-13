@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IPOCard } from '@/components/ipo/IPOCard';
-import { IPO, IPOStatus, IPOCategory } from '@/lib/db/types';
+import { IPO, IPOStatus, IPOCategory, DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
 // Mock Next.js Link component
 vi.mock('next/link', () => ({
@@ -25,6 +25,7 @@ vi.mock('next/link', () => ({
 
 // Helper function to create mock IPO data
 const mockIPO = (overrides?: Partial<IPO>): IPO => ({
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: '123e4567-e89b-12d3-a456-426614174000',
   companyName: 'Example Corp',
   slug: 'example-corp',

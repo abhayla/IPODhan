@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { HistoricalIPOsPageClient } from '@/app/history/page-client';
 import type { HistoricalIPO } from '@/lib/repositories/types';
+import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
 // Mock Next.js router
 vi.mock('next/navigation', () => ({
@@ -16,6 +17,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 const mockIPO: HistoricalIPO = {
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: '1',
   companyName: 'Reliance Industries',
   slug: 'reliance-industries',

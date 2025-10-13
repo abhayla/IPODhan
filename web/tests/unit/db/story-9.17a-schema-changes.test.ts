@@ -5,6 +5,7 @@
 
 import { describe, it, expect, expectTypeOf } from 'vitest';
 import type { IPO, NewIPO, ListingPerformance, IPOCategory } from '../../../lib/db/types';
+import { DEFAULT_HISTORICAL_FIELDS } from '../../../lib/db/types';
 import * as schema from '../../../lib/db/schema';
 
 describe('Story 9.17a: Schema Migration Tests', () => {
@@ -18,6 +19,7 @@ describe('Story 9.17a: Schema Migration Tests', () => {
 
     it('should allow FPO category in IPO type', () => {
       const mockFPOIpo: IPO = {
+        ...DEFAULT_HISTORICAL_FIELDS,
         id: '123e4567-e89b-12d3-a456-426614174000',
         companyName: 'Test FPO Company',
         slug: 'test-fpo-company',
@@ -156,6 +158,7 @@ describe('Story 9.17a: Schema Migration Tests', () => {
     it('should allow FPO IPO with separate exchange prices', () => {
       // Test combining FPO category with separate exchange prices
       const mockFPOIpo: IPO = {
+        ...DEFAULT_HISTORICAL_FIELDS,
         id: '123e4567-e89b-12d3-a456-426614174000',
         companyName: 'FPO Company with Listing',
         slug: 'fpo-company-with-listing',
