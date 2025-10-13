@@ -100,6 +100,35 @@ export const ipos = pgTable(
     ratingRationale: text('rating_rationale'),
     ratingOverride: boolean('rating_override').default(false), // Manual override flag for admin
     lastScrapedAt: timestamp('last_scraped_at'), // Timestamp of last successful scrape
+
+    // Historical IPO Performance Data (Story 7.10)
+    // Subscription data
+    subscriptionRetail: numeric('subscription_retail', { precision: 10, scale: 2 }), // Retail investor subscription multiple
+    subscriptionHni: numeric('subscription_hni', { precision: 10, scale: 2 }), // HNI subscription multiple
+    subscriptionQib: numeric('subscription_qib', { precision: 10, scale: 2 }), // QIB subscription multiple
+    subscriptionTotal: numeric('subscription_total', { precision: 10, scale: 2 }), // Total subscription multiple
+
+    // GMP (Grey Market Premium) data
+    gmpPrice: numeric('gmp_price', { precision: 10, scale: 2 }), // GMP absolute value in rupees
+    gmpPercentageHistorical: numeric('gmp_percentage_historical', { precision: 5, scale: 2 }), // GMP as percentage
+    gmpUpdatedAtHistorical: timestamp('gmp_updated_at_historical'), // Last GMP update timestamp
+
+    // Listing performance
+    listingPriceHistorical: numeric('listing_price_historical', { precision: 10, scale: 2 }), // Listing price
+    listingGainPercentage: numeric('listing_gain_percentage', { precision: 5, scale: 2 }), // Listing gain %
+    listingGainAmount: numeric('listing_gain_amount', { precision: 10, scale: 2 }), // Listing gain amount
+    listingDateHistorical: date('listing_date_historical'), // Date when IPO listed
+
+    // Current price tracking
+    currentPrice: numeric('current_price', { precision: 10, scale: 2 }), // Current market price
+    currentGainPercentage: numeric('current_gain_percentage', { precision: 5, scale: 2 }), // Current gain %
+    currentGainAmount: numeric('current_gain_amount', { precision: 10, scale: 2 }), // Current gain amount
+    currentPriceUpdatedAt: timestamp('current_price_updated_at'), // Last current price update
+
+    // Metadata
+    historicalDataSource: varchar('historical_data_source', { length: 100 }), // e.g., 'Chittorgarh'
+    historicalDataScrapedAt: timestamp('historical_data_scraped_at'), // Last historical scrape timestamp
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
