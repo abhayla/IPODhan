@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { IPOHeader } from '@/components/ipo/IPOHeader';
 import type { IPO } from '@/lib/db/types';
+import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
 const mockIPO: IPO = {
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: '1',
   companyName: 'Test Company Ltd',
   slug: 'test-company',

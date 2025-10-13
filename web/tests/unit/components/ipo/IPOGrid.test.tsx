@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { IPOGrid } from '@/components/ipo/IPOGrid';
 import { IPO } from '@/lib/api-client';
+import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
 // Mock IPO data
 const mockIPO = (overrides?: Partial<IPO>): IPO => ({
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: '123e4567-e89b-12d3-a456-426614174000',
   companyName: 'Test Company Ltd',
   slug: 'test-company-ltd',

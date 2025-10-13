@@ -15,11 +15,12 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IPOSelector } from '@/components/tools/IPOSelector';
 import type { IPO } from '@/lib/repositories/types';
+import { mockIPO } from '@/lib/db/types';
 
 // ==================== TEST DATA ====================
 
 const mockIPOs: IPO[] = [
-  {
+  mockIPO({
     id: 'ipo-1',
     companyName: 'Alpha Tech IPO',
     slug: 'alpha-tech-ipo',
@@ -46,8 +47,8 @@ const mockIPOs: IPO[] = [
     createdAt: new Date(),
     updatedAt: new Date(),
     lastScrapedAt: null,
-  },
-  {
+  }),
+  mockIPO({
     id: 'ipo-2',
     companyName: 'Beta Finance IPO',
     slug: 'beta-finance-ipo',
@@ -74,8 +75,8 @@ const mockIPOs: IPO[] = [
     createdAt: new Date(),
     updatedAt: new Date(),
     lastScrapedAt: null,
-  },
-  {
+  }),
+  mockIPO({
     id: 'ipo-3',
     companyName: 'Gamma Industries IPO',
     slug: 'gamma-industries-ipo',
@@ -102,8 +103,8 @@ const mockIPOs: IPO[] = [
     createdAt: new Date(),
     updatedAt: new Date(),
     lastScrapedAt: null,
-  },
-  {
+  }),
+  mockIPO({
     id: 'ipo-4',
     companyName: 'Delta Energy IPO',
     slug: 'delta-energy-ipo',
@@ -130,7 +131,7 @@ const mockIPOs: IPO[] = [
     createdAt: new Date(),
     updatedAt: new Date(),
     lastScrapedAt: null,
-  },
+  }),
 ];
 
 // ==================== TESTS ====================
