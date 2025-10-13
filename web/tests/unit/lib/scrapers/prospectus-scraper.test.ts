@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { ProspectusScraper } from '../sources/prospectus-scraper';
+import { ProspectusScraper } from '@/lib/scrapers/sources/prospectus-scraper';
 
 describe('ProspectusScraper - Fuzzy Matching', () => {
   let scraper: ProspectusScraper;
