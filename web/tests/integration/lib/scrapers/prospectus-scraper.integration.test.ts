@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
-import { ProspectusScraper } from '../../sources/prospectus-scraper';
+import { ProspectusScraper } from '@/lib/scrapers/sources/prospectus-scraper';
 import { db } from '@/lib/db';
 import { ipos, documents } from '@/lib/db/schema';
 import { eq } from 'drizzle-orm';
