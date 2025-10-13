@@ -153,6 +153,9 @@ describe('Database Types', () => {
         url: 'https://example.com/drhp.pdf',
         fileSize: 1024000,
         uploadedAt: new Date(),
+        exchange: 'NSE',
+        createdAt: new Date(),
+        updatedAt: new Date(),
       };
 
       expect(mockDocument).toBeDefined();

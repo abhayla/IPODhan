@@ -33,7 +33,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { SMEProspectusData } from '@/lib/services/sme-prospectus-service';
-import { formatExchanges } from '@/lib/services/sme-prospectus-service';
+import { formatExchanges } from '@/lib/utils/prospectus-utils';
 
 // ==================== TYPES ====================
 
