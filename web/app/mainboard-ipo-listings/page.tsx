@@ -47,15 +47,16 @@ interface SearchParams {
 }
 
 interface Props {
-  searchParams: SearchParams;
+  searchParams: Promise<SearchParams>;
 }
 
 export default async function MainboardIPOListingsPage({ searchParams }: Props) {
   // Parse search params with dynamic current year
-  const selectedYear = searchParams.year || CURRENT_YEAR;
-  const currentPage = parseInt(searchParams.page || '1', 10);
-  const sortBy = searchParams.sortBy || 'listingDate';
-  const sortOrder = searchParams.sortOrder || 'desc';
+  const params = await searchParams;
+  const selectedYear = params.year || CURRENT_YEAR;
+  const currentPage = parseInt(params.page || '1', 10);
+  const sortBy = params.sortBy || 'listingDate';
+  const sortOrder = params.sortOrder || 'desc';
 
   // Fetch data
   const [listingsResponse, availableYears] = await Promise.all([

@@ -39,6 +39,13 @@ lerna-debug.log*
 # Testing
 coverage/
 .nyc_output/
+test-results/
+playwright-report/
+*.spec.ts.snap
+web/test-results/
+web/playwright-report/
+web/coverage/
+.env.test
 
 # Temporary files
 .cache/

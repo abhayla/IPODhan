@@ -12,7 +12,8 @@ describe('IPOCardSkeleton', () => {
     const { container } = render(<IPOCardSkeleton />);
 
     // Check for skeleton elements (using class selector since Skeleton doesn't have semantic meaning)
-    const skeletons = container.querySelectorAll('[class*="animate-pulse"]');
+    // Component uses animate-in classes, not animate-pulse
+    const skeletons = container.querySelectorAll('[class*="animate-in"]');
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
