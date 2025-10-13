@@ -17,7 +17,7 @@ import { useState, useEffect } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { ColumnSearch } from './ColumnSearch';
 import { SMEProspectusTable } from './SMEProspectusTable';
-import { formatExchanges } from '@/lib/services/sme-prospectus-service';
+import { formatExchanges } from '@/lib/utils/prospectus-utils';
 
 export interface SMEProspectusData {
   ipo: {

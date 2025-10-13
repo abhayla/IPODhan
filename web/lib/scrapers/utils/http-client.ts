@@ -147,8 +147,9 @@ class HttpClient {
           url: response.url,
         };
       } catch (error) {
-        logger.error(`Failed to fetch ${url}:`, error);
-        throw new Error(`HTTP request failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+        logger.error(`Failed to fetch ${url}: ${errorMessage}`);
+        throw new Error(`HTTP request failed: ${errorMessage}`);
       } finally {
         clearTimeout(timeoutId);
       }

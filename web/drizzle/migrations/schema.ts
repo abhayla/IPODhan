@@ -1,5 +1,12 @@
-import { pgTable, index, foreignKey, uuid, varchar, timestamp, integer, text, unique, check, jsonb, boolean, bigint, date, numeric, pgView, doublePrecision, pgMaterializedView, pgEnum } from "drizzle-orm/pg-core"
+import { pgTable, index, foreignKey, uuid, varchar, timestamp, integer, text, unique, check, jsonb, boolean, bigint, date, numeric, pgView, doublePrecision, pgMaterializedView, pgEnum, customType } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
+
+// Custom type for PostgreSQL OID (Object Identifier)
+const oid = customType<{ data: number }>({
+  dataType() {
+    return 'oid';
+  },
+});
 
 export const documentType = pgEnum("document_type", ['DRHP', 'RHP', 'PROSPECTUS', 'ADDENDUM'])
 export const exchange = pgEnum("exchange", ['NSE', 'BSE', 'BOTH'])
@@ -606,9 +613,9 @@ export const pgStatStatementsInfo = pgView("pg_stat_statements_info", {	// You c
 }).as(sql`SELECT dealloc, stats_reset FROM pg_stat_statements_info() pg_stat_statements_info(dealloc, stats_reset)`);
 
 export const pgStatStatements = pgView("pg_stat_statements", {	// TODO: failed to parse database type 'oid'
-	userid: unknown("userid"),
+	userid: oid("userid"),
 	// TODO: failed to parse database type 'oid'
-	dbid: unknown("dbid"),
+	dbid: oid("dbid"),
 	toplevel: boolean(),
 	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
 	queryid: bigint({ mode: "number" }),
