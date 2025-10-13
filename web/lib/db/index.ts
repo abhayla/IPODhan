@@ -1,3 +1,15 @@
+// Load environment variables if running from scripts (not Next.js)
+// Next.js automatically loads .env files, but standalone scripts need this
+if (typeof window === 'undefined' && !process.env.NEXT_RUNTIME) {
+  try {
+    const { config } = require('dotenv');
+    const { resolve } = require('path');
+    config({ path: resolve(process.cwd(), '.env.local') });
+  } catch (error) {
+    // Dotenv might not be available in all contexts, that's okay
+  }
+}
+
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as schema from './schema';
@@ -7,6 +19,8 @@ const hasEnvVars = !!(process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
 if (!hasEnvVars && !process.env.DATABASE_URL) {
   console.warn('⚠️  WARNING: No database configuration found in environment variables!');
   console.warn('Make sure DATABASE_URL or individual DATABASE_* vars are set');
+  console.warn('Current directory:', process.cwd());
+  console.warn('Available env keys:', Object.keys(process.env).filter(k => k.includes('DATABASE')).join(', '));
 }
 
 // Create PostgreSQL connection pool
