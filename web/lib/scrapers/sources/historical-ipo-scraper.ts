@@ -352,7 +352,7 @@ export class HistoricalIPOScraper extends BaseScraper<MatchedIPOData[]> {
         scraper: 'historical-ipo',
         phase: 'validation',
         ipoName: (data as any).ipoName,
-        errors: result.error.errors,
+        errors: result.error.issues,
       }, 'Validation failed for IPO');
       return null;
     }
@@ -551,7 +551,7 @@ export class HistoricalIPOScraper extends BaseScraper<MatchedIPOData[]> {
             listingPriceHistorical: data.listingPrice?.toString(),
             listingGainPercentage: data.listingGainPercentage?.toString(),
             listingGainAmount: data.listingGainAmount?.toString(),
-            listingDateHistorical: data.listingDate,
+            listingDateHistorical: data.listingDate ? data.listingDate.toISOString().split('T')[0] : null,
             currentPrice: data.currentPrice?.toString(),
             currentGainPercentage: data.currentGainPercentage?.toString(),
             currentGainAmount: data.currentGainAmount?.toString(),

@@ -6,6 +6,38 @@ import * as schema from './schema';
 export type IPO = InferSelectModel<typeof schema.ipos>;
 export type NewIPO = InferInsertModel<typeof schema.ipos>;
 
+// Default historical field values (Story 7.10) for test fixtures
+export const DEFAULT_HISTORICAL_FIELDS = {
+  subscriptionRetail: null,
+  subscriptionHni: null,
+  subscriptionQib: null,
+  subscriptionTotal: null,
+  gmpPrice: null,
+  gmpPercentageHistorical: null,
+  gmpUpdatedAtHistorical: null,
+  listingPriceHistorical: null,
+  listingGainPercentage: null,
+  listingGainAmount: null,
+  listingDateHistorical: null,
+  currentPrice: null,
+  currentGainPercentage: null,
+  currentGainAmount: null,
+  currentPriceUpdatedAt: null,
+  historicalDataSource: null,
+  historicalDataScrapedAt: null,
+} as const;
+
+/**
+ * Helper function to create test fixtures with historical fields
+ * Story 7.10: Adds historical IPO performance fields as null by default
+ */
+export function mockIPO(data: Partial<IPO>): IPO {
+  return {
+    ...DEFAULT_HISTORICAL_FIELDS,
+    ...data,
+  } as IPO;
+}
+
 // ==================== SUBSCRIPTION TYPES ====================
 
 export type Subscription = InferSelectModel<typeof schema.subscriptions>;

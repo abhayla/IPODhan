@@ -8,6 +8,7 @@
 import type { IPO } from '@/lib/api-client';
 import type { MarketHoliday } from '@/lib/api-client';
 import type { CalendarDay } from '@/lib/services/sme-calendar-service';
+import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
 // ==================== SME IPO FIXTURES ====================
 
@@ -16,6 +17,7 @@ import type { CalendarDay } from '@/lib/services/sme-calendar-service';
  */
 export const smeIPOFixtures: IPO[] = [
   {
+    ...DEFAULT_HISTORICAL_FIELDS,
     id: '1',
     companyName: 'ABC SME Limited',
     slug: 'abc-sme-limited',
@@ -44,6 +46,7 @@ export const smeIPOFixtures: IPO[] = [
     updatedAt: new Date('2025-10-01T00:00:00Z'),
   },
   {
+    ...DEFAULT_HISTORICAL_FIELDS,
     id: '2',
     companyName: 'XYZ SME Corp',
     slug: 'xyz-sme-corp',
@@ -72,6 +75,7 @@ export const smeIPOFixtures: IPO[] = [
     updatedAt: new Date('2025-10-01T00:00:00Z'),
   },
   {
+    ...DEFAULT_HISTORICAL_FIELDS,
     id: '3',
     companyName: 'PQR SME Industries',
     slug: 'pqr-sme-industries',

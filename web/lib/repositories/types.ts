@@ -18,11 +18,15 @@ import type {
   registrars,
   brokerAffiliates,
 } from '../db/schema';
+// Import IPO type and helper from db/types (Story 7.10)
+import type { IPO, NewIPO } from '../db/types';
+import { DEFAULT_HISTORICAL_FIELDS, mockIPO } from '../db/types';
 
-// ==================== ENTITY TYPES ====================
+// ====================ENTITY TYPES ====================
 
-export type IPO = InferSelectModel<typeof ipos>;
-export type IPOInsert = InferInsertModel<typeof ipos>;
+export type { IPO };
+export type IPOInsert = NewIPO;
+export { DEFAULT_HISTORICAL_FIELDS, mockIPO };
 
 export type Subscription = InferSelectModel<typeof subscriptions>;
 export type SubscriptionInsert = InferInsertModel<typeof subscriptions>;
