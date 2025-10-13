@@ -26,10 +26,12 @@ import {
 } from '@/lib/services/home-ipo-service';
 import * as apiClient from '@/lib/api-client';
 import * as redisClient from '@/lib/cache/redis-client';
+import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
 // ==================== MOCK DATA ====================
 
 const mockMainboardOpenIPO = {
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: 'mb-1',
   companyName: 'Mainboard Company Open',
   slug: 'mainboard-company-open',
@@ -59,6 +61,7 @@ const mockMainboardOpenIPO = {
 };
 
 const mockMainboardClosedRecentIPO = {
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: 'mb-2',
   companyName: 'Mainboard Company Recently Closed',
   slug: 'mainboard-company-closed',
@@ -88,6 +91,7 @@ const mockMainboardClosedRecentIPO = {
 };
 
 const mockMainboardClosedOldIPO = {
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: 'mb-3',
   companyName: 'Mainboard Company Old Closed',
   slug: 'mainboard-company-old-closed',
@@ -117,6 +121,7 @@ const mockMainboardClosedOldIPO = {
 };
 
 const mockSMEOpenIPO = {
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: 'sme-1',
   companyName: 'SME Company Open',
   slug: 'sme-company-open',
@@ -146,6 +151,7 @@ const mockSMEOpenIPO = {
 };
 
 const mockMainboardUpcomingIPO = {
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: 'mb-up-1',
   companyName: 'Mainboard Upcoming Company',
   slug: 'mainboard-upcoming',
@@ -175,6 +181,7 @@ const mockMainboardUpcomingIPO = {
 };
 
 const mockSMEUpcomingIPO = {
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: 'sme-up-1',
   companyName: 'SME Upcoming Company',
   slug: 'sme-upcoming',

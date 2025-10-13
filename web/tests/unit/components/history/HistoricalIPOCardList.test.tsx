@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { HistoricalIPOCardList } from '@/components/history/HistoricalIPOCardList';
 import type { HistoricalIPO } from '@/lib/repositories/types';
+import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
 const mockIPO: HistoricalIPO = {
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: '1',
   companyName: 'Reliance Industries',
   slug: 'reliance-industries',

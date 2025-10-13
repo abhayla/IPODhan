@@ -12,6 +12,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { IPO, IPODetailResponse } from '@/lib/db/types';
+import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
 // Mock Next.js modules
 vi.mock('next/navigation', () => ({
@@ -65,6 +66,7 @@ vi.mock('@/components/layout/Breadcrumbs', () => ({
 // ==================== TEST DATA ====================
 
 const mockIPO: IPO = {
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: '123',
   companyName: 'Test Company IPO',
   slug: 'test-company-ipo',

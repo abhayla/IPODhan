@@ -18,11 +18,13 @@ import type {
   HolidayType,
   FinancialStatementType,
 } from '../../../lib/db/types';
+import { DEFAULT_HISTORICAL_FIELDS } from '../../../lib/db/types';
 
 describe('Database Types', () => {
   describe('IPO Types', () => {
     it('should have correct IPO select type', () => {
       const mockIPO: IPO = {
+        ...DEFAULT_HISTORICAL_FIELDS,
         id: '123e4567-e89b-12d3-a456-426614174000',
         companyName: 'Test Company',
         slug: 'test-company',

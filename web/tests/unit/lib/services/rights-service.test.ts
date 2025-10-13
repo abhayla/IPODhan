@@ -17,6 +17,7 @@ import {
 } from '@/lib/services/rights-service';
 import * as apiClient from '@/lib/api-client';
 import * as redisClient from '@/lib/cache/redis-client';
+import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
 // ==================== MOCKS ====================
 
@@ -37,6 +38,7 @@ vi.mock('@/lib/cache/redis-client', () => ({
 // ==================== TEST DATA ====================
 
 const mockUpcomingRightsIPO: apiClient.IPO = {
+  ...DEFAULT_HISTORICAL_FIELDS,
   id: '1',
   companyName: 'Test Company Rights',
   slug: 'test-company-rights',

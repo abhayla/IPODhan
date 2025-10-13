@@ -13,6 +13,7 @@ import type {
   PeerCompany,
   FinancialData,
 } from '@/lib/db/types';
+import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
 // ==================== MOCK DATA HELPERS ====================
 
@@ -21,6 +22,7 @@ import type {
  */
 function createMockIPO(overrides?: Partial<IPO>): IPO {
   return {
+    ...DEFAULT_HISTORICAL_FIELDS,
     id: 'test-ipo-id',
     companyName: 'Test Company Ltd',
     slug: 'test-company',
