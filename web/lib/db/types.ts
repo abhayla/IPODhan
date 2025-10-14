@@ -1,5 +1,5 @@
 import { InferSelectModel, InferInsertModel } from 'drizzle-orm';
-import * as schema from './schema';
+import * as schema from '../../../packages/shared/src/db/schema';
 
 // ==================== IPO TYPES ====================
 

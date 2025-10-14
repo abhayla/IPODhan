@@ -21,7 +21,7 @@ const envPath = resolve(__dirname, '../.env.local');
 config({ path: envPath });
 
 import { db, closePool } from '../lib/db/index';
-import { ipos, listingPerformance } from '../lib/db/schema';
+import { ipos, listingPerformance } from '../lib/db';
 import { count, sql } from 'drizzle-orm';
 
 // ==================== CONFIGURATION ====================

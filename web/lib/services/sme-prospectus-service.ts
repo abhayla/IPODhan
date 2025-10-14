@@ -8,7 +8,7 @@
  */
 
 import { db } from '@/lib/db';
-import { ipos, documents } from '@/lib/db/schema';
+import { ipos, documents } from '@/lib/db';
 import { eq, and, ilike, sql } from 'drizzle-orm';
 
 // ==================== TYPES ====================

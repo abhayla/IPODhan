@@ -17,7 +17,7 @@ import type {
   marketHolidays,
   registrars,
   brokerAffiliates,
-} from '../db/schema';
+} from '../db';
 // Import IPO type and helper from db/types (Story 7.10)
 import type { IPO, NewIPO } from '../db/types';
 import { DEFAULT_HISTORICAL_FIELDS, mockIPO } from '../db/types';

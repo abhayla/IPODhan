@@ -20,7 +20,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
-import { ipos, subscriptions } from '@/lib/db/schema';
+import { ipos, subscriptions } from '@/lib/db';
 import { GET } from '@/app/api/ipos/[slug]/subscriptions/latest/route';
 import { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';

@@ -6,7 +6,7 @@
 import { describe, it, expect, expectTypeOf } from 'vitest';
 import type { IPO, NewIPO, ListingPerformance, IPOCategory } from '../../../lib/db/types';
 import { DEFAULT_HISTORICAL_FIELDS } from '../../../lib/db/types';
-import * as schema from '../../../lib/db/schema';
+import * as schema from '../../../lib/db';
 
 describe('Story 9.17a: Schema Migration Tests', () => {
   describe('FPO Category Enum', () => {

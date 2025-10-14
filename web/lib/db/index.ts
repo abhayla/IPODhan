@@ -1,6 +1,6 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
-import * as schema from './schema';
+import * as sharedSchema from '../../../packages/shared/src/db/schema';
 
 // Debug: Log environment variable status at module load time
 const hasEnvVars = !!(process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD);
@@ -36,8 +36,8 @@ pool.on('error', (err) => {
   console.error('Unexpected error on idle PostgreSQL client', err);
 });
 
-// Initialize Drizzle ORM with schema
-export const db = drizzle(pool, { schema });
+// Initialize Drizzle ORM with schema from shared package
+export const db = drizzle(pool, { schema: sharedSchema });
 
 // Export the pool for direct access if needed
 export { pool };
@@ -65,3 +65,13 @@ export async function testConnection(): Promise<boolean> {
     return false;
   }
 }
+
+// ==================== SCHEMA RE-EXPORTS ====================
+// Re-export all tables, enums, and relations from shared schema
+// This allows: import { ipos, ipoStatusEnum } from '@/lib/db'
+
+// Re-export everything from shared schema
+export * from '../../../packages/shared/src/db/schema';
+
+// Also export the namespace for type compatibility
+export { sharedSchema as schema };

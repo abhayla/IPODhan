@@ -13,7 +13,7 @@ import { SubscriptionRepository } from '@/lib/repositories/subscription-reposito
 import { GMPRepository } from '@/lib/repositories/gmp-repository';
 import { FinancialDataRepository } from '@/lib/repositories/financial-data-repository';
 import { calculateIPORating } from '@/lib/services/rating-service';
-import * as schema from '@/lib/db/schema';
+import * as schema from '@/lib/db';
 import { eq } from 'drizzle-orm';
 
 // ==================== TEST SETUP ====================

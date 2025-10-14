@@ -17,7 +17,7 @@
 import { BaseScraper, type ScraperResult } from '../base-scraper';
 import { extractTable, parseDate, cleanText } from '../utils/parser';
 import { db } from '@/lib/db';
-import { marketHolidays } from '@/lib/db/schema';
+import { marketHolidays } from '@/lib/db';
 import { eq, and } from 'drizzle-orm';
 
 export interface MarketHoliday {

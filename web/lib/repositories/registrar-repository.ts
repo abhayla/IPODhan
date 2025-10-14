@@ -8,7 +8,7 @@
 
 import { eq, or, ilike, asc } from 'drizzle-orm';
 import { BaseRepository } from './base-repository';
-import { registrars } from '../db/schema';
+import { registrars } from '../db';
 import type { Registrar } from '../db/types';
 
 export class RegistrarRepository extends BaseRepository {

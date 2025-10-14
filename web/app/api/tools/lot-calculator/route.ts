@@ -10,7 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/index';
-import { ipos } from '@/lib/db/schema';
+import { ipos } from '@/lib/db';
 import { eq, or, ilike, desc } from 'drizzle-orm';
 
 // ==================== TYPES ====================

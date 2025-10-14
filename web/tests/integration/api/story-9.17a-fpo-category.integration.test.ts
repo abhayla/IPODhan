@@ -5,7 +5,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { db } from '../../../lib/db/index';
-import { ipos, listingPerformance } from '../../../lib/db/schema';
+import { ipos, listingPerformance } from '../../../lib/db';
 import { eq } from 'drizzle-orm';
 
 describe('Story 9.17a: FPO Category API Integration Tests', () => {

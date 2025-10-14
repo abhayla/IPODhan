@@ -16,7 +16,7 @@
 import { BaseScraper, type ScraperResult } from '../base-scraper';
 import { cleanText, parseDate, extractLinks } from '../utils/parser';
 import { db } from '@/lib/db';
-import { ipoReviews, ipos } from '@/lib/db/schema';
+import { ipoReviews, ipos } from '@/lib/db';
 import { eq, and, like } from 'drizzle-orm';
 
 export interface IPOReview {

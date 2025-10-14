@@ -7,7 +7,9 @@
     "paths": {
       "@web/*": ["../web/*"],
       "@shared/*": ["../packages/shared/src/*"],
-      "@scraper/*": ["./src/*"]
+      "@scraper/*": ["./src/*"],
+      "@ipodhan/shared": ["../packages/shared/src/index.ts"],
+      "@ipodhan/shared/*": ["../packages/shared/src/*"]
     },
     "allowImportingTsExtensions": true,
     "esModuleInterop": true,
@@ -21,5 +23,8 @@
     "sourceMap": false
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "tests"]
+  "exclude": ["node_modules", "dist", "tests"],
+  "references": [
+    { "path": "../packages/shared" }
+  ]
 }

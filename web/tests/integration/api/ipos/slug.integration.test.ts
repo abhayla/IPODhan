@@ -29,7 +29,7 @@ import {
   documents,
   listingPerformance,
   peerCompanies,
-} from '@/lib/db/schema';
+} from '@/lib/db';
 import { GET } from '@/app/api/ipos/[slug]/route';
 import { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';

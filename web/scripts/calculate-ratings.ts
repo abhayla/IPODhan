@@ -22,7 +22,7 @@ import {
   FinancialDataRepository,
 } from '@/lib/repositories';
 import { calculateIPORating } from '@/lib/utils/rating-calculator';
-import { ipos } from '@/lib/db/schema';
+import { ipos } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 
 async function calculateAllRatings() {

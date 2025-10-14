@@ -7,7 +7,7 @@
 
 import { desc, eq, gte, lte, and, sql, count } from 'drizzle-orm';
 import { BaseRepository } from './base-repository';
-import { scraperLogs } from '../db/schema';
+import { scraperLogs } from '../db';
 import type { ScraperLog, NewScraperLog, ScraperSource } from '../db/types';
 import type {
   PaginationParams,

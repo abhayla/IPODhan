@@ -20,7 +20,7 @@
 import { BaseScraper, type ScraperResult } from '../base-scraper';
 import { cleanText, parseDate } from '../utils/parser';
 import { db } from '@/lib/db';
-import { documents, ipos } from '@/lib/db/schema';
+import { documents, ipos } from '@/lib/db';
 import { eq, sql } from 'drizzle-orm';
 import { distance } from 'fastest-levenshtein';
 import { z } from 'zod';

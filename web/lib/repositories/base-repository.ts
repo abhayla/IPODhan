@@ -8,7 +8,7 @@
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { CacheError } from '../errors/repository-errors';
-import type * as schema from '../db/schema';
+import * as schema from '@ipodhan/shared/db/schema';
 
 export abstract class BaseRepository {
   constructor(

@@ -9,8 +9,8 @@ import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { BaseRepository } from './base-repository';
-import { listingPerformance } from '../db/schema';
-import type * as schema from '../db/schema';
+import { listingPerformance } from '../db';
+import * as schema from '@ipodhan/shared/db/schema';
 import { CacheTTL, getListingPerformanceKey } from '../cache/cache-keys';
 import { DatabaseError } from '../errors/repository-errors';
 import type {

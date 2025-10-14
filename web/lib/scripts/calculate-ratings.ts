@@ -21,7 +21,7 @@ import { GMPRepository } from '../repositories/gmp-repository';
 import { FinancialDataRepository } from '../repositories/financial-data-repository';
 import { calculateIPORating } from '../services/rating-service';
 import { logger } from '../logger';
-import * as schema from '../db/schema';
+import * as schema from '@ipodhan/shared/db/schema';
 import { eq, inArray } from 'drizzle-orm';
 
 // ==================== TYPES ====================

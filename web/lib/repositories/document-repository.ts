@@ -9,8 +9,8 @@ import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { BaseRepository } from './base-repository';
-import { documents } from '../db/schema';
-import type * as schema from '../db/schema';
+import { documents } from '../db';
+import * as schema from '@ipodhan/shared/db/schema';
 import { CacheTTL, getDocumentsKey } from '../cache/cache-keys';
 import { DatabaseError, EntityNotFoundError } from '../errors/repository-errors';
 import type {
