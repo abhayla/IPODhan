@@ -88,6 +88,11 @@ export type NewBrokerAffiliate = InferInsertModel<typeof schema.brokerAffiliates
 export type ScraperLog = InferSelectModel<typeof schema.scraperLogs>;
 export type NewScraperLog = InferInsertModel<typeof schema.scraperLogs>;
 
+// ==================== IPO SCORE TYPES (Story 4.7) ====================
+
+export type IPOScore = InferSelectModel<typeof schema.ipoScores>;
+export type NewIPOScore = InferInsertModel<typeof schema.ipoScores>;
+
 // ==================== ENUM TYPES ====================
 
 export type IPOCategory = IPO['category'];
@@ -98,6 +103,8 @@ export type HolidayType = MarketHoliday['type'];
 export type FinancialStatementType = NonNullable<PeerCompany['financialStatementType']>;
 export type ScraperSource = 'NSE' | 'BSE' | 'API_FALLBACK';
 export type ScraperStatus = 'SUCCESS' | 'FAILURE' | 'PARTIAL';
+export type IPOVerdict = IPOScore['verdict'];
+export type ConfidenceLevel = IPOScore['confidence'];
 
 // ==================== API RESPONSE TYPES ====================
 
@@ -110,7 +117,7 @@ export type IPOPeer = IPO & {
 
 /**
  * IPO Detail Response
- * Complete IPO data with all relations for detail page (Story 4.1)
+ * Complete IPO data with all relations for detail page (Story 4.1, 4.7)
  */
 export interface IPODetailResponse {
   ipo: IPO & {
@@ -123,6 +130,7 @@ export interface IPODetailResponse {
   listingPerformance: ListingPerformance | null;
   peerCompanies: PeerCompany[];
   peers: IPOPeer[];
+  ipoScore: IPOScore | null; // Story 4.7
   metadata: {
     lastUpdated: string;
   };
