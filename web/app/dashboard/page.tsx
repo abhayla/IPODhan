@@ -29,21 +29,22 @@ export const metadata: Metadata = {
 };
 
 interface DashboardPageProps {
-  searchParams: {
+  searchParams: Promise<{
     page?: string;
     view?: string;
     status?: string;
     category?: string;
     sector?: string;
-  };
+  }>;
 }
 
 export default async function DashboardPage({ searchParams }: DashboardPageProps) {
-  const page = searchParams.page ? parseInt(searchParams.page) : 1;
-  const view = searchParams.view || 'grid';
-  const status = searchParams.status || 'OPEN';
-  const category = searchParams.category;
-  const sector = searchParams.sector;
+  const params = await searchParams;
+  const page = params.page ? parseInt(params.page) : 1;
+  const view = params.view || 'grid';
+  const status = params.status || 'OPEN';
+  const category = params.category;
+  const sector = params.sector;
 
   try {
     const response = await apiClient.getIPOs({
