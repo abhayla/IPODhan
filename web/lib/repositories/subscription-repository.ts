@@ -9,8 +9,8 @@ import { eq, and, gte, lte, desc } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { BaseRepository } from './base-repository';
-import { subscriptions } from '../db/schema';
-import type * as schema from '../db/schema';
+import { subscriptions } from '../db';
+import * as schema from '@ipodhan/shared/db/schema';
 import {
   CacheTTL,
   getLatestSubscriptionKey,

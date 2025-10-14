@@ -1,7 +1,7 @@
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import * as schema from './schema.js';
+import * as schema from './schema';
 
 // Lazy initialization to ensure environment variables are loaded first
 let _pool: Pool | undefined;
@@ -91,3 +91,6 @@ export async function testConnection(): Promise<boolean> {
     return false;
   }
 }
+
+// Re-export all schema tables, enums, and relations for convenient imports
+export * from './schema';

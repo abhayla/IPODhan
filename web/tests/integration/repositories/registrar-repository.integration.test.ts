@@ -14,7 +14,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { RegistrarRepository } from '@/lib/repositories/registrar-repository';
 import { db } from '@/lib/db/index';
 import { getRedisClient, closeRedisClient } from '@/lib/cache/redis-client';
-import { registrars } from '@/lib/db/schema';
+import { registrars } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 import type { NewRegistrar } from '@/lib/db/types';
 

@@ -36,7 +36,7 @@ console.log('✓ Environment variables loaded successfully');
 console.log('Database URL configured:', process.env.DATABASE_URL?.substring(0, 30) + '...');
 
 import { db } from '../lib/db/index';
-import { registrars } from '../lib/db/schema';
+import { registrars } from '../lib/db';
 import { eq } from 'drizzle-orm';
 import type { NewRegistrar } from '../lib/db/types';
 

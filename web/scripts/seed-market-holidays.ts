@@ -39,7 +39,7 @@ console.log('✓ Environment variables loaded successfully');
 console.log('Database URL configured:', process.env.DATABASE_URL?.substring(0, 30) + '...');
 
 import { db } from '../lib/db/index';
-import { marketHolidays } from '../lib/db/schema';
+import { marketHolidays } from '../lib/db';
 import { eq, and } from 'drizzle-orm';
 import type { NewMarketHoliday } from '../lib/db/types';
 

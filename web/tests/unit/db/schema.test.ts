@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import * as schema from '../../../lib/db/schema';
+import * as schema from '../../../lib/db';
 
 describe('Database Schema', () => {
   describe('Schema Structure', () => {

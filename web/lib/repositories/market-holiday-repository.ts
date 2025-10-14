@@ -7,7 +7,7 @@
 
 import { eq, and, gte, lte, or, asc } from 'drizzle-orm';
 import { BaseRepository } from './base-repository';
-import { marketHolidays } from '../db/schema';
+import { marketHolidays } from '../db';
 import type { MarketHoliday, Exchange } from '../db/types';
 
 export interface HolidayFilters {

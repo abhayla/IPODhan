@@ -17,7 +17,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db/index';
-import { ipos, listingPerformance, subscriptions, gmpRecords } from '@/lib/db/schema';
+import { ipos, listingPerformance, subscriptions, gmpRecords } from '@/lib/db';
 import { eq, and, gte, lte, desc, asc, sql, inArray } from 'drizzle-orm';
 
 // Validation schemas - match database schema enum

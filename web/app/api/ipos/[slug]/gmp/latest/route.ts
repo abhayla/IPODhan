@@ -15,7 +15,7 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { EntityNotFoundError, DatabaseError } from '@/lib/errors/repository-errors';
 import { logger } from '@/lib/logger';
-import { gmpRecords } from '@/lib/db/schema';
+import { gmpRecords } from '@/lib/db';
 import { desc, eq } from 'drizzle-orm';
 
 // ==================== TYPES ====================

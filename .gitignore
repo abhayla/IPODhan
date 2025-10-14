@@ -94,3 +94,11 @@ scraper/vitest-resolve-plugin.ts
 *-test-results*.md
 test-results.md
 dashboard-test*.md
+TEST_ISSUES.json
+TEST_PROGRESS.md
+
+# TypeScript build info files
+*.tsbuildinfo
+
+# Legacy/backup files
+*.legacy

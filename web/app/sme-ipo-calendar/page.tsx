@@ -59,11 +59,11 @@ export const metadata: Metadata = {
 // ==================== TYPES ====================
 
 interface SMECalendarPageProps {
-  searchParams: {
+  searchParams: Promise<{
     month?: string;
     year?: string;
     search?: string;
-  };
+  }>;
 }
 
 // ==================== HELPER FUNCTIONS ====================
@@ -129,11 +129,14 @@ function filterCalendarDaysBySearch(
 export default async function SMECalendarPage({
   searchParams,
 }: SMECalendarPageProps) {
+  // Await searchParams (Next.js 15 requirement)
+  const params = await searchParams;
+
   // Parse current month/year from URL or use current date
-  const { month, year } = getCurrentMonthYear(searchParams);
+  const { month, year } = getCurrentMonthYear(params);
 
   // Get search query from URL
-  const searchQuery = searchParams.search || '';
+  const searchQuery = params.search || '';
 
   // Fetch SME IPO calendar events (server-side with ISR)
   let calendarDays = await getSMEIPOEvents(month, year);

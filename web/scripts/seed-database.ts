@@ -35,7 +35,7 @@ if (!process.env.DATABASE_URL && !process.env.DATABASE_HOST) {
 console.log('✓ Environment variables loaded successfully\n');
 
 import { db, closePool } from '../lib/db/index';
-import { ipos, listingPerformance } from '../lib/db/schema';
+import { ipos, listingPerformance } from '../lib/db';
 import { count, sql } from 'drizzle-orm';
 import type { IPOStatus, IPOCategory } from '../lib/db/types';
 

@@ -22,7 +22,7 @@ import type {
   listingPerformance,
   marketHolidays,
   registrars,
-} from '@/lib/db/schema';
+} from '@/lib/db';
 
 // ==================== TYPES ====================
 

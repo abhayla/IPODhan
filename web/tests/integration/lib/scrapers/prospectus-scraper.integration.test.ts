@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { ProspectusScraper } from '@/lib/scrapers/sources/prospectus-scraper';
 import { db } from '@/lib/db';
-import { ipos, documents } from '@/lib/db/schema';
+import { ipos, documents } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 
 describe('ProspectusScraper - Integration Tests', () => {

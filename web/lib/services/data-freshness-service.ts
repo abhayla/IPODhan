@@ -9,7 +9,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { ScraperLogRepository } from '../repositories/scraper-log-repository';
 import { IPORepository } from '../repositories/ipo-repository';
-import type * as schema from '../db/schema';
+import * as schema from '@ipodhan/shared/db/schema';
 import type { ScraperSource } from '../db/types';
 
 /**

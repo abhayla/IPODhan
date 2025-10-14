@@ -12,7 +12,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { db } from '@/lib/db/index';
-import { affiliateClicks } from '@/lib/db/schema';
+import { affiliateClicks } from '@/lib/db';
 import { logger } from '@/lib/logger';
 
 // Request validation schema

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { db } from '@/lib/db/index';
 import { getRedisClient, closeRedisClient } from '@/lib/cache/redis-client';
-import { ipos } from '@/lib/db/schema';
+import { ipos } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 
 /**

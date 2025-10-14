@@ -6,7 +6,7 @@
  */
 
 import { db } from '@/lib/db';
-import { ipos, ipoReviews } from '@/lib/db/schema';
+import { ipos, ipoReviews } from '@/lib/db';
 import { eq, and, like, desc, sql } from 'drizzle-orm';
 
 // ===== TYPE DEFINITIONS =====

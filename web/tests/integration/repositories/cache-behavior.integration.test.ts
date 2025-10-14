@@ -6,7 +6,7 @@ import {
 } from '@/lib/repositories';
 import { db } from '@/lib/db/index';
 import { getRedisClient, closeRedisClient } from '@/lib/cache/redis-client';
-import { ipos, subscriptions, gmpRecords } from '@/lib/db/schema';
+import { ipos, subscriptions, gmpRecords } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 
 /**

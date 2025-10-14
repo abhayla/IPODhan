@@ -57,7 +57,7 @@ import {
   marketHolidays,
   peerCompanies,
   brokerAffiliates,
-} from '@/lib/db/schema';
+} from '@/lib/db';
 import { count } from 'drizzle-orm';
 
 // ==================== TYPES ====================

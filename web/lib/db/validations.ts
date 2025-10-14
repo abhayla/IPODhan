@@ -1,6 +1,6 @@
 import { createInsertSchema, createSelectSchema } from 'drizzle-zod';
 import { z } from 'zod';
-import * as schema from './schema';
+import * as schema from '../../../packages/shared/src/db/schema';
 
 // ==================== IPO SCHEMAS ====================
 

@@ -20,8 +20,8 @@ import {
   registrars,
   type ipoStatusEnum,
   type ipoCategoryEnum,
-} from '../db/schema';
-import type * as schema from '../db/schema';
+} from '../db';
+import * as schema from '@ipodhan/shared/db/schema';
 import {
   CacheTTL,
   getIPOBySlugKey,

@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { NextRequest } from 'next/server';
 import { POST } from '@/app/api/affiliate/track/route';
 import { db } from '@/lib/db/index';
-import { affiliateClicks } from '@/lib/db/schema';
+import { affiliateClicks } from '@/lib/db';
 
 // Mock database
 vi.mock('@/lib/db/index', () => ({

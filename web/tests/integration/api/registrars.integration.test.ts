@@ -9,7 +9,7 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
-import { registrars } from '@/lib/db/schema';
+import { registrars } from '@/lib/db';
 import { GET } from '@/app/api/registrars/route';
 import { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';

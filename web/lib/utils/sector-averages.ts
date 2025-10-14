@@ -6,7 +6,7 @@
  */
 
 import { db } from '@/lib/db/index';
-import { ipos, listingPerformance } from '@/lib/db/schema';
+import { ipos, listingPerformance } from '@/lib/db';
 import { eq, and, isNotNull, sql } from 'drizzle-orm';
 import { safeGet, safeSet } from '@/lib/cache/redis-client';
 

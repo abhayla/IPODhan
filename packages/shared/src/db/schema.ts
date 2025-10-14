@@ -22,7 +22,7 @@ export const ipoCategoryEnum = pgEnum('ipo_category', [
   'SME',
   'RIGHTS',
   'NCD',
-  'OFS', // Added for Story 9.5: Offer for Sale page
+  'FPO',
 ]);
 
 export const ipoStatusEnum = pgEnum('ipo_status', [
@@ -64,6 +64,13 @@ export const scraperStatusEnum = pgEnum('scraper_status', [
   'PARTIAL',
 ]);
 
+export const reviewRecommendationEnum = pgEnum('review_recommendation', [
+  'May apply',
+  'Subscribe',
+  'Avoid',
+  'Not Recommended',
+]);
+
 // ==================== TABLE 1: IPOS (Core Entity) ====================
 
 export const ipos = pgTable(
@@ -77,10 +84,6 @@ export const ipos = pgTable(
     issueSize: numeric('issue_size', { precision: 10, scale: 2 }), // in INR crores
     priceRangeMin: integer('price_range_min'), // min price per share
     priceRangeMax: integer('price_range_max'), // max price per share
-    // LEGACY: Old database columns (keep for backwards compatibility)
-    priceBandLow: integer('price_band_low'),
-    priceBandHigh: integer('price_band_high'),
-    symbol: varchar('symbol', { length: 100 }),
     lotSize: integer('lot_size'),
     status: ipoStatusEnum('status').notNull(),
     openDate: date('open_date'),
@@ -97,6 +100,35 @@ export const ipos = pgTable(
     ratingRationale: text('rating_rationale'),
     ratingOverride: boolean('rating_override').default(false), // Manual override flag for admin
     lastScrapedAt: timestamp('last_scraped_at'), // Timestamp of last successful scrape
+
+    // Historical IPO Performance Data (Story 7.10)
+    // Subscription data
+    subscriptionRetail: numeric('subscription_retail', { precision: 10, scale: 2 }), // Retail investor subscription multiple
+    subscriptionHni: numeric('subscription_hni', { precision: 10, scale: 2 }), // HNI subscription multiple
+    subscriptionQib: numeric('subscription_qib', { precision: 10, scale: 2 }), // QIB subscription multiple
+    subscriptionTotal: numeric('subscription_total', { precision: 10, scale: 2 }), // Total subscription multiple
+
+    // GMP (Grey Market Premium) data
+    gmpPrice: numeric('gmp_price', { precision: 10, scale: 2 }), // GMP absolute value in rupees
+    gmpPercentageHistorical: numeric('gmp_percentage_historical', { precision: 5, scale: 2 }), // GMP as percentage
+    gmpUpdatedAtHistorical: timestamp('gmp_updated_at_historical'), // Last GMP update timestamp
+
+    // Listing performance
+    listingPriceHistorical: numeric('listing_price_historical', { precision: 10, scale: 2 }), // Listing price
+    listingGainPercentage: numeric('listing_gain_percentage', { precision: 5, scale: 2 }), // Listing gain %
+    listingGainAmount: numeric('listing_gain_amount', { precision: 10, scale: 2 }), // Listing gain amount
+    listingDateHistorical: date('listing_date_historical'), // Date when IPO listed
+
+    // Current price tracking
+    currentPrice: numeric('current_price', { precision: 10, scale: 2 }), // Current market price
+    currentGainPercentage: numeric('current_gain_percentage', { precision: 5, scale: 2 }), // Current gain %
+    currentGainAmount: numeric('current_gain_amount', { precision: 10, scale: 2 }), // Current gain amount
+    currentPriceUpdatedAt: timestamp('current_price_updated_at'), // Last current price update
+
+    // Metadata
+    historicalDataSource: varchar('historical_data_source', { length: 100 }), // e.g., 'Chittorgarh'
+    historicalDataScrapedAt: timestamp('historical_data_scraped_at'), // Last historical scrape timestamp
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -234,17 +266,26 @@ export const financialData = pgTable('financial_data', {
 
 // ==================== TABLE 5: DOCUMENTS (One-to-Many) ====================
 
-export const documents = pgTable('documents', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  ipoId: uuid('ipo_id')
-    .notNull()
-    .references(() => ipos.id, { onDelete: 'cascade' }),
-  type: documentTypeEnum('type').notNull(),
-  title: varchar('title', { length: 255 }).notNull(),
-  url: text('url').notNull(), // file path or external URL
-  fileSize: bigint('file_size', { mode: 'number' }), // in bytes
-  uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
-});
+export const documents = pgTable(
+  'documents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    type: documentTypeEnum('type').notNull(),
+    title: varchar('title', { length: 255 }).notNull(),
+    url: text('url').notNull().unique(), // file path or external URL - unique constraint added
+    fileSize: bigint('file_size', { mode: 'number' }), // in bytes
+    uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
+    exchange: varchar('exchange', { length: 10 }), // 'NSE' | 'BSE' - source exchange
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    exchangeIdx: index('idx_documents_exchange').on(table.exchange),
+  })
+);
 
 // ==================== TABLE 6: LISTING_PERFORMANCE (One-to-One) ====================
 
@@ -260,7 +301,9 @@ export const listingPerformance = pgTable('listing_performance', {
     precision: 5,
     scale: 2,
   }).notNull(),
-  currentPrice: integer('current_price'),
+  currentPrice: integer('current_price'), // @deprecated Use currentPriceBSE or currentPriceNSE
+  currentPriceBSE: integer('current_price_bse'),
+  currentPriceNSE: integer('current_price_nse'),
   currentGainPercent: numeric('current_gain_percent', {
     precision: 5,
     scale: 2,
@@ -373,6 +416,63 @@ export const affiliateClicks = pgTable(
   })
 );
 
+// ==================== TABLE 12: SCRAPER_LOGS (Monitoring) ====================
+
+export const scraperLogs = pgTable(
+  'scraper_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    source: text('source').notNull(), // 'NSE' | 'BSE' | 'API_FALLBACK'
+    status: text('status').notNull(), // 'SUCCESS' | 'FAILURE' | 'PARTIAL'
+    recordsProcessed: integer('records_processed').default(0),
+    recordsFailed: integer('records_failed').default(0),
+    durationMs: integer('duration_ms').notNull(),
+    errorMessage: text('error_message'),
+    errorStack: text('error_stack'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    createdAtIdx: index('idx_scraper_logs_created_at').on(table.createdAt),
+    sourceCreatedAtIdx: index('idx_scraper_logs_source_created_at').on(
+      table.source,
+      table.createdAt
+    ),
+    statusIdx: index('idx_scraper_logs_status').on(table.status),
+  })
+);
+
+// ==================== TABLE 13: IPO_REVIEWS (One-to-Many) ====================
+
+export const ipoReviews = pgTable(
+  'ipo_reviews',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    reviewTitle: varchar('review_title', { length: 500 }).notNull(),
+    author: varchar('author', { length: 255 }).notNull(),
+    recommendation: reviewRecommendationEnum('recommendation').notNull(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    publishedDate: timestamp('published_date').notNull(),
+    year: integer('year').notNull(),
+    category: ipoCategoryEnum('category').notNull(),
+    reviewUrl: text('review_url'),
+    reviewContent: text('review_content'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoIdIdx: index('idx_ipo_reviews_ipo_id').on(table.ipoId),
+    yearIdx: index('idx_ipo_reviews_year').on(table.year),
+    categoryIdx: index('idx_ipo_reviews_category').on(table.category),
+    categoryYearPublishedIdx: index('idx_ipo_reviews_category_year_published').on(
+      table.category,
+      table.year,
+      table.publishedDate
+    ),
+  })
+);
+
 // ==================== RELATIONS ====================
 
 export const iposRelations = relations(ipos, ({ many, one }) => ({
@@ -380,6 +480,7 @@ export const iposRelations = relations(ipos, ({ many, one }) => ({
   gmpRecords: many(gmpRecords),
   documents: many(documents),
   peerCompanies: many(peerCompanies),
+  ipoReviews: many(ipoReviews),
   financialData: one(financialData, {
     fields: [ipos.id],
     references: [financialData.ipoId],
@@ -446,27 +547,9 @@ export const affiliateClicksRelations = relations(affiliateClicks, ({ one }) => 
   }),
 }));
 
-// ==================== TABLE 12: SCRAPER_LOGS (Monitoring) ====================
-
-export const scraperLogs = pgTable(
-  'scraper_logs',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    source: text('source').notNull(), // 'NSE' | 'BSE' | 'API_FALLBACK'
-    status: text('status').notNull(), // 'SUCCESS' | 'FAILURE' | 'PARTIAL'
-    recordsProcessed: integer('records_processed').default(0),
-    recordsFailed: integer('records_failed').default(0),
-    durationMs: integer('duration_ms').notNull(),
-    errorMessage: text('error_message'),
-    errorStack: text('error_stack'),
-    createdAt: timestamp('created_at').defaultNow().notNull(),
-  },
-  (table) => ({
-    createdAtIdx: index('idx_scraper_logs_created_at').on(table.createdAt),
-    sourceCreatedAtIdx: index('idx_scraper_logs_source_created_at').on(
-      table.source,
-      table.createdAt
-    ),
-    statusIdx: index('idx_scraper_logs_status').on(table.status),
-  })
-);
+export const ipoReviewsRelations = relations(ipoReviews, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [ipoReviews.ipoId],
+    references: [ipos.id],
+  }),
+}));
