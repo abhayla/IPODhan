@@ -91,10 +91,10 @@ describe('IPOCard', () => {
 
   describe('Status Badge', () => {
     it.each([
-      ['UPCOMING', 'Upcoming', 'bg-blue-500'],
-      ['OPEN', 'Open', 'bg-green-500'],
-      ['CLOSED', 'Closed', 'bg-gray-500'],
-      ['LISTED', 'Listed', 'bg-purple-500'],
+      ['UPCOMING', 'Upcoming', 'bg-blue-600'],
+      ['OPEN', 'Open', 'bg-green-600'],
+      ['CLOSED', 'Closed', 'bg-gray-600'],
+      ['LISTED', 'Listed', 'bg-purple-600'],
     ])('should render %s status with %s label and %s color', (status, label, colorClass) => {
       const ipo = mockIPO({ status: status as IPOStatus });
       render(<IPOCard ipo={ipo} />);
@@ -247,19 +247,17 @@ describe('IPOCard', () => {
       const ipo = mockIPO();
       const { container } = render(<IPOCard ipo={ipo} />);
 
-      const link = screen.getByRole('link');
-      expect(link).toHaveClass('hover:scale-[1.02]');
-
-      const card = container.querySelector('[data-slot="card"]');
+      const card = container.querySelector('[data-testid="ipo-card"]');
       expect(card).toHaveClass('hover:border-primary');
-      expect(card).toHaveClass('hover:shadow-lg');
+      expect(card).toHaveClass('hover:shadow-xl');
+      expect(card).toHaveClass('group-hover:scale-[1.03]');
     });
 
     it('should have cursor pointer on card', () => {
       const ipo = mockIPO();
       const { container } = render(<IPOCard ipo={ipo} />);
 
-      const card = container.querySelector('[data-slot="card"]');
+      const card = container.querySelector('[data-testid="ipo-card"]');
       expect(card).toHaveClass('cursor-pointer');
     });
 
@@ -267,12 +265,9 @@ describe('IPOCard', () => {
       const ipo = mockIPO();
       const { container } = render(<IPOCard ipo={ipo} />);
 
-      const link = screen.getByRole('link');
-      expect(link).toHaveClass('transition-all');
-      expect(link).toHaveClass('duration-200');
-
-      const card = container.querySelector('[data-slot="card"]');
+      const card = container.querySelector('[data-testid="ipo-card"]');
       expect(card).toHaveClass('transition-all');
+      expect(card).toHaveClass('duration-300');
     });
   });
 
@@ -354,7 +349,7 @@ describe('IPOCard', () => {
       const ipo = mockIPO({ companyName: longName });
       render(<IPOCard ipo={ipo} />);
 
-      const heading = screen.getByText(longName);
+      const heading = screen.getByRole('heading', { level: 3 });
       expect(heading).toHaveClass('line-clamp-2');
     });
 
