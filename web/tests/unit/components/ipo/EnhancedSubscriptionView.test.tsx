@@ -7,20 +7,23 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { EnhancedSubscriptionView } from '@/components/ipo/EnhancedSubscriptionView';
 import type { Subscription } from '@ipodhan/shared/db/types';
 
-// Mock the localStorage functions
-const mockGetViewPreference = vi.fn();
-const mockSaveViewPreference = vi.fn();
+// Mock the localStorage functions using vi.hoisted
+const { mockGetViewPreference, mockSaveViewPreference } = vi.hoisted(() => ({
+  mockGetViewPreference: vi.fn(() => 'simple'),
+  mockSaveViewPreference: vi.fn(),
+}));
 
-vi.mock('@/lib/utils/subscription-utils', async () => {
-  const actual = await vi.importActual('@/lib/utils/subscription-utils');
+vi.mock('@/lib/utils/subscription-utils', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/utils/subscription-utils')>();
   return {
     ...actual,
-    getViewPreference: () => mockGetViewPreference(),
-    saveViewPreference: (view: string) => mockSaveViewPreference(view),
+    getViewPreference: mockGetViewPreference,
+    saveViewPreference: mockSaveViewPreference,
   };
 });
 
@@ -74,20 +77,30 @@ describe('EnhancedSubscriptionView', () => {
 
     it('should display 3 main categories in simple view', () => {
       const subscription = createMockSubscription();
-      render(<EnhancedSubscriptionView subscription={subscription} />);
+      const { container } = render(<EnhancedSubscriptionView subscription={subscription} />);
 
-      expect(screen.getByText(/QIB.*Qualified Institutional Buyers/i)).toBeInTheDocument();
-      expect(screen.getByText(/NII.*Non-Institutional Investors/i)).toBeInTheDocument();
-      expect(screen.getByText(/Retail Individual Investors/i)).toBeInTheDocument();
+      // Query within desktop view only (hidden on mobile)
+      const desktopView = container.querySelector('.hidden.md\\:block');
+      expect(desktopView).toBeInTheDocument();
+
+      // Check for categories in desktop view
+      expect(desktopView?.textContent).toMatch(/QIB.*Qualified Institutional Buyers/i);
+      expect(desktopView?.textContent).toMatch(/NII.*Non-Institutional Investors/i);
+      expect(desktopView?.textContent).toMatch(/Retail Individual Investors/i);
     });
 
     it('should display correct subscription values', () => {
       const subscription = createMockSubscription();
-      render(<EnhancedSubscriptionView subscription={subscription} />);
+      const { container } = render(<EnhancedSubscriptionView subscription={subscription} />);
 
-      expect(screen.getByText(/5.20x/i)).toBeInTheDocument(); // QIB
-      expect(screen.getByText(/3.80x/i)).toBeInTheDocument(); // NII
-      expect(screen.getByText(/1.50x/i)).toBeInTheDocument(); // Retail
+      // Query within desktop view only to avoid duplicates from mobile view
+      const desktopView = container.querySelector('.hidden.md\\:block');
+      expect(desktopView).toBeInTheDocument();
+
+      // Check for subscription values in desktop view
+      expect(desktopView?.textContent).toMatch(/5.20x/i); // QIB
+      expect(desktopView?.textContent).toMatch(/3.80x/i); // NII
+      expect(desktopView?.textContent).toMatch(/1.50x/i); // Retail
     });
 
     it('should show last updated timestamp', () => {
@@ -125,35 +138,37 @@ describe('EnhancedSubscriptionView', () => {
       expect(screen.queryByText(/Simple View/i)).not.toBeInTheDocument();
     });
 
-    it('should display granular NII breakdown', () => {
+    it('should display granular NII breakdown', async () => {
       const subscription = createMockSubscription();
-      render(<EnhancedSubscriptionView subscription={subscription} />);
+      const { container } = render(<EnhancedSubscriptionView subscription={subscription} />);
 
       // Switch to detailed view
-      const detailedTab = screen.getByText(/Detailed View/i);
+      const detailedTab = screen.getByRole('tab', { name: /Detailed View/i });
       fireEvent.click(detailedTab);
 
-      waitFor(() => {
-        expect(screen.getByText(/Big NII/i)).toBeInTheDocument();
-        expect(screen.getByText(/Small NII/i)).toBeInTheDocument();
-        expect(screen.getByText(/4.50x/i)).toBeInTheDocument(); // bNII
-        expect(screen.getByText(/2.10x/i)).toBeInTheDocument(); // sNII
+      await waitFor(() => {
+        const desktopView = container.querySelector('.hidden.md\\:block');
+        expect(desktopView?.textContent).toMatch(/Big NII/i);
+        expect(desktopView?.textContent).toMatch(/Small NII/i);
+        expect(desktopView?.textContent).toMatch(/4.50x/i); // bNII
+        expect(desktopView?.textContent).toMatch(/2.10x/i); // sNII
       });
     });
 
-    it('should display granular Retail breakdown', () => {
+    it('should display granular Retail breakdown', async () => {
       const subscription = createMockSubscription();
-      render(<EnhancedSubscriptionView subscription={subscription} />);
+      const { container } = render(<EnhancedSubscriptionView subscription={subscription} />);
 
       // Switch to detailed view
-      const detailedTab = screen.getByText(/Detailed View/i);
+      const detailedTab = screen.getByRole('tab', { name: /Detailed View/i });
       fireEvent.click(detailedTab);
 
-      waitFor(() => {
-        expect(screen.getByText(/Retail HNI/i)).toBeInTheDocument();
-        expect(screen.getByText(/Retail Others/i)).toBeInTheDocument();
-        expect(screen.getByText(/2.00x/i)).toBeInTheDocument(); // HNI
-        expect(screen.getByText(/1.20x/i)).toBeInTheDocument(); // Others
+      await waitFor(() => {
+        const desktopView = container.querySelector('.hidden.md\\:block');
+        expect(desktopView?.textContent).toMatch(/Retail HNI/i);
+        expect(desktopView?.textContent).toMatch(/Retail Others/i);
+        expect(desktopView?.textContent).toMatch(/2.00x/i); // HNI
+        expect(desktopView?.textContent).toMatch(/1.20x/i); // Others
       });
     });
   });
@@ -245,16 +260,29 @@ describe('EnhancedSubscriptionView', () => {
     });
 
     it('should save view preference when changed', async () => {
+      const user = userEvent.setup();
       const subscription = createMockSubscription();
       render(<EnhancedSubscriptionView subscription={subscription} />);
 
-      // Switch to detailed view
-      const detailedTab = screen.getByText(/Detailed View/i);
-      fireEvent.click(detailedTab);
+      // Initially, simple view should be active
+      const simpleTab = screen.getByRole('tab', { name: /Simple View/i });
+      expect(simpleTab).toHaveAttribute('data-state', 'active');
 
+      // Clear any calls from initial render
+      mockSaveViewPreference.mockClear();
+
+      // Switch to detailed view - use userEvent for more realistic interaction
+      const detailedTab = screen.getByRole('tab', { name: /Detailed View/i });
+      await user.click(detailedTab);
+
+      // Wait for state update and the preference to be saved
       await waitFor(() => {
-        expect(mockSaveViewPreference).toHaveBeenCalledWith('detailed');
+        expect(detailedTab).toHaveAttribute('data-state', 'active');
       });
+
+      // Verify save was called
+      expect(mockSaveViewPreference).toHaveBeenCalledWith('detailed');
+      expect(mockSaveViewPreference).toHaveBeenCalledTimes(1);
     });
   });
 
