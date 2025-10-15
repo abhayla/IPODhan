@@ -1225,7 +1225,302 @@ main branch:
 
 ---
 
-### 10. QA Report Generation
+### 10. Story Status Update (NEW in v3.3)
+
+**CRITICAL:** Update story status and metadata to reflect completion.
+
+**Branch Context:**
+- ⚠️ **Must be on main branch** (just merged from feature branch)
+- ⚠️ **This creates a status update commit on main**
+- ⚠️ **Final step before QA report generation**
+
+**Status Update Actions:**
+
+#### 10.1. Update Sprint Plan Status
+
+**File:** `docs/stories/SPRINT-N-PLAN.md`
+
+```bash
+# Locate the story entry in sprint plan
+story_line=$(grep -n "Story ${story_id}:" docs/stories/SPRINT-*.md | cut -d: -f1)
+
+# Update story status from "In Progress" to "Done"
+# Update format depends on sprint plan structure
+# Common patterns:
+# - "Status: In Progress" → "Status: Done"
+# - "- [ ] Story X.Y" → "- [x] Story X.Y"
+# - "Story X.Y | In Progress" → "Story X.Y | Done"
+```
+
+**Status Update Fields:**
+```yaml
+Status: Done
+Completed Date: {YYYY-MM-DD}
+QA Status: Passed
+SM Approval: Yes
+Merged Commit: {merge_commit_hash}
+Test Coverage: {coverage}%
+QA Iterations: {iteration_count}
+```
+
+**Example Update:**
+
+Before:
+```markdown
+### Story 5.6: Enhanced Subscription Data Display
+**Status:** In Progress
+**Assigned To:** Dev Team
+**Priority:** High
+```
+
+After:
+```markdown
+### Story 5.6: Enhanced Subscription Data Display
+**Status:** Done ✅
+**Assigned To:** Dev Team
+**Priority:** High
+**Completed:** 2025-01-15
+**QA Status:** Passed
+**SM Approval:** Approved
+**Test Coverage:** 87%
+**QA Iterations:** 2
+**Merge Commit:** abc1234
+```
+
+#### 10.2. Update Individual Story File (if exists)
+
+**File:** `docs/stories/{story_id}.*.story.md`
+
+Check if individual story file exists:
+```bash
+# Find story file
+story_file=$(find docs/stories -name "${story_id}.*.story.md" -o -name "story-${story_id}.md")
+
+if [ -n "$story_file" ]; then
+  echo "📝 Found individual story file: $story_file"
+  # Update status in story file
+fi
+```
+
+**Add Completion Metadata Section:**
+
+```markdown
+---
+
+## Implementation Complete ✅
+
+**Completion Date:** {YYYY-MM-DD HH:MM:SS}
+**QA Status:** Passed
+**SM Approval:** Approved by Bob (Scrum Master)
+**Test Coverage:** {coverage}%
+**QA Iterations:** {iteration_count}
+
+### Git References
+- **Feature Branch:** feature/story-{story_id}
+- **Merge Commit:** {merge_commit_hash}
+- **Commits Count:** {commit_count}
+
+### Quality Metrics
+- **Lint Errors:** 0
+- **Type Errors:** 0
+- **Unit Tests:** {unit_test_count} passing
+- **E2E Tests:** {e2e_test_count} passing
+- **Build Status:** Success
+
+### Acceptance Criteria Status
+{For each AC:}
+- ✅ AC{number}: {description} - Fully implemented and tested
+
+### Reports Generated
+- Progress Report: `docs/stories/progress-reports/story-{story_id}-progress.md`
+- QA Report: `docs/stories/qa-reports/story-{story_id}-qa-report.md`
+- Component Validation: `docs/stories/qa-reports/story-{story_id}-component-validation.md` (if applicable)
+- AC Validation: `docs/stories/qa-reports/story-{story_id}-ac-validation.md`
+
+### Timeline
+- **Started:** {start_timestamp}
+- **Implementation Complete:** {dev_complete_timestamp}
+- **QA Complete:** {qa_complete_timestamp}
+- **SM Approved:** {sm_approval_timestamp}
+- **Merged to Main:** {merge_timestamp}
+- **Total Duration:** {duration}
+
+---
+```
+
+#### 10.3. Create Story Completion Tracking File
+
+**File:** `docs/stories/.completed/story-{story_id}-completion.json`
+
+Create machine-readable completion metadata:
+
+```json
+{
+  "story_id": "{story_id}",
+  "story_title": "{story_title}",
+  "completion_status": "done",
+  "timestamps": {
+    "started": "{iso_timestamp}",
+    "implementation_complete": "{iso_timestamp}",
+    "qa_complete": "{iso_timestamp}",
+    "sm_approved": "{iso_timestamp}",
+    "merged_to_main": "{iso_timestamp}",
+    "status_updated": "{iso_timestamp}"
+  },
+  "quality_metrics": {
+    "test_coverage_percent": {coverage},
+    "qa_iterations": {iteration_count},
+    "lint_errors": 0,
+    "type_errors": 0,
+    "unit_tests_passing": {unit_test_count},
+    "e2e_tests_passing": {e2e_test_count},
+    "build_status": "success"
+  },
+  "git_references": {
+    "feature_branch": "feature/story-{story_id}",
+    "merge_commit": "{merge_commit_hash}",
+    "commit_count": {commit_count}
+  },
+  "acceptance_criteria": {
+    "total": {total_ac},
+    "completed": {completed_ac},
+    "completion_percent": 100
+  },
+  "approvals": {
+    "qa_approved": true,
+    "qa_agent": "Quinn",
+    "sm_approved": true,
+    "sm_agent": "Bob"
+  },
+  "reports": {
+    "progress_report": "docs/stories/progress-reports/story-{story_id}-progress.md",
+    "qa_report": "docs/stories/qa-reports/story-{story_id}-qa-report.md",
+    "component_validation": "docs/stories/qa-reports/story-{story_id}-component-validation.md",
+    "ac_validation": "docs/stories/qa-reports/story-{story_id}-ac-validation.md"
+  },
+  "workflow_version": "3.3"
+}
+```
+
+#### 10.4. Update Sprint Progress Dashboard (if exists)
+
+**File:** `docs/stories/SPRINT-{N}-DASHBOARD.md` (create if doesn't exist)
+
+Update sprint-level metrics:
+
+```markdown
+# Sprint {N} Dashboard
+
+**Last Updated:** {timestamp}
+
+## Sprint Progress
+
+- **Total Stories:** {total}
+- **Completed:** {completed} ✅
+- **In Progress:** {in_progress}
+- **Not Started:** {not_started}
+- **Completion Rate:** {percentage}%
+
+## Recently Completed Stories
+
+- ✅ Story {story_id}: {story_title} - Completed {date}
+  - Test Coverage: {coverage}%
+  - QA Iterations: {iteration_count}
+  - Duration: {duration}
+
+{List other completed stories...}
+
+## Quality Metrics
+
+| Metric | Average | Target | Status |
+|--------|---------|--------|--------|
+| Test Coverage | {avg}% | 80% | {PASS/FAIL} |
+| QA Iterations | {avg} | ≤3 | {PASS/FAIL} |
+| Time to Complete | {avg} hrs | TBD | - |
+```
+
+#### 10.5. Commit Status Updates to Main
+
+**Create status update commit on main:**
+
+```bash
+# Verify we're on main branch
+current_branch=$(git branch --show-current)
+if [ "$current_branch" != "main" ]; then
+  echo "❌ ERROR: Must be on main branch for status update!"
+  exit 1
+fi
+
+# Create directory for completion tracking if needed
+mkdir -p docs/stories/.completed
+
+# Stage all status update files
+git add docs/stories/SPRINT-*.md
+git add docs/stories/${story_id}.*.story.md 2>/dev/null || true
+git add docs/stories/.completed/story-{story_id}-completion.json
+git add docs/stories/SPRINT-*-DASHBOARD.md 2>/dev/null || true
+
+# Create status update commit
+git commit -m "$(cat <<'EOF'
+docs(story-{story_id}): Update story status to Done
+
+Story {story_id} - {Story Title}
+
+Status Changes:
+- Sprint Plan: In Progress → Done ✅
+- Story File: Added completion metadata
+- Completion Tracking: Created story-{story_id}-completion.json
+- Sprint Dashboard: Updated progress metrics
+
+Completion Summary:
+- ✅ All acceptance criteria met (100%)
+- ✅ Test coverage: {coverage}%
+- ✅ QA validation: Passed ({iteration_count} iterations)
+- ✅ SM approval: Approved
+- ✅ Merged: {merge_commit_hash}
+
+Reports:
+- Progress: docs/stories/progress-reports/story-{story_id}-progress.md
+- QA: docs/stories/qa-reports/story-{story_id}-qa-report.md
+- Component: docs/stories/qa-reports/story-{story_id}-component-validation.md
+- AC Validation: docs/stories/qa-reports/story-{story_id}-ac-validation.md
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+EOF
+)"
+
+# Push status update to remote
+git push origin main
+
+# Verify push succeeded
+if [ $? -eq 0 ]; then
+  echo "✅ Story status updated and pushed to remote"
+  echo "📊 Sprint plan, story file, and completion tracking updated"
+else
+  echo "❌ ERROR: Failed to push status update"
+  exit 1
+fi
+```
+
+**Validation:**
+- ✓ Sprint plan status updated to "Done"
+- ✓ Individual story file updated (if exists)
+- ✓ Completion tracking JSON created
+- ✓ Sprint dashboard updated (if exists)
+- ✓ Status update committed to main
+- ✓ Main pushed to remote successfully
+
+**Output:**
+- Story status officially marked as complete
+- All tracking metadata updated
+- Sprint progress metrics current
+- Status update commit hash
+
+---
+
+### 11. QA Report Generation
 
 **Generate comprehensive report:**
 
@@ -1366,7 +1661,7 @@ main branch:
 
 ---
 
-## Exit Conditions (UPDATED in v3.0)
+## Exit Conditions (UPDATED in v3.3)
 
 The workflow completes successfully when **ALL** of the following are true (**MANDATORY - No Exceptions**):
 
@@ -1386,7 +1681,7 @@ The workflow completes successfully when **ALL** of the following are true (**MA
 - **Test Coverage: ≥80%** for new code (lines, functions, branches ≥75%)
 
 ✓ **All acceptance criteria validated** (NEW in v3.0)
-- **Each criterion programmatically validated** (Step 4.6)
+- **Each criterion programmatically validated** (Step 4.7)
 - **Test coverage for each AC** (positive, negative, edge cases)
 - **AC validation report generated** (docs/stories/qa-reports/)
 - **100% AC validation pass rate** (no partial, no "mostly done")
@@ -1414,6 +1709,15 @@ The workflow completes successfully when **ALL** of the following are true (**MA
 - **Main pushed to remote successfully** (no conflicts)
 - **Branch synced** (main up to date)
 - **Feature branch history preserved** (v3.2 - NEW)
+
+✓ **Story status updated** (NEW in v3.3)
+- **Sprint plan status:** Updated to "Done" (docs/stories/SPRINT-N-PLAN.md)
+- **Individual story file:** Completion metadata added (if file exists)
+- **Completion tracking:** JSON file created (docs/stories/.completed/story-{id}-completion.json)
+- **Sprint dashboard:** Progress metrics updated (if dashboard exists)
+- **Status update committed:** Commit created on main branch
+- **Status update pushed:** Remote repository updated
+- **All tracking current:** No outdated status information
 
 ✓ **QA report generated** (ENHANCED in v3.0)
 - **Report file created** (docs/stories/qa-reports/story-{id}-qa-report.md)
@@ -1534,7 +1838,7 @@ User: "Implement and test story 1.3"
 *automated-dev-qa-sm-workflow story_id=1.3
 ```
 
-**Workflow will (v3.2 - Updated Git Flow):**
+**Workflow will (v3.3 - Updated with Status Tracking):**
 1. Load Story 1.3 from sprint plan and create/verify feature branch
 2. Spawn Dev agent to implement story on feature branch (with commits)
 3. Wait for implementation completion on feature branch
@@ -1545,8 +1849,9 @@ User: "Implement and test story 1.3"
 8. If SM requests changes: Return to fix loop on feature branch
 9. If SM approves: Create QA validation commit on feature branch
 10. Merge feature branch to main (creates merge commit only)
-11. Generate comprehensive QA report
-12. Report final status to user
+11. Update story status in sprint plan, story file, and completion tracking (NEW in v3.3)
+12. Generate comprehensive QA report
+13. Report final status to user
 
 ---
 
@@ -1601,10 +1906,15 @@ When this task completes, you will receive:
 7. Path to QA report (from testing on feature branch)
 8. **QA validation commit hash on feature branch** (v3.2 - NEW)
 9. **Merge commit hash on main branch** (v3.2 - NEW)
-10. Summary of fix iterations and issues resolved
-11. Feature branch merge status
-12. **Test coverage metrics for new code** (NEW in v3.0)
-13. **Feature branch name and commit count** (v3.2 - NEW)
+10. **Status update commit hash on main branch** (v3.3 - NEW)
+11. **Sprint plan update confirmation** (v3.3 - NEW)
+12. **Story file update confirmation** (v3.3 - NEW)
+13. **Completion tracking JSON path** (v3.3 - NEW)
+14. **Sprint dashboard update confirmation** (v3.3 - NEW)
+15. Summary of fix iterations and issues resolved
+16. Feature branch merge status
+17. **Test coverage metrics for new code** (NEW in v3.0)
+18. **Feature branch name and commit count** (v3.2 - NEW)
 
 ---
 
