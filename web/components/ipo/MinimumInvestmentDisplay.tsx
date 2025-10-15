@@ -9,7 +9,7 @@ import React from 'react';
 import { AlertTriangle } from 'lucide-react';
 
 interface MinimumInvestmentDisplayProps {
-  minInvestment: number | null | undefined;
+  minInvestment: string | number | null | undefined;
   className?: string;
 }
 

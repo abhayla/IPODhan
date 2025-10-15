@@ -11,8 +11,8 @@ import React from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 interface IssueBreakdownChartProps {
-  freshIssue: number | null | undefined;
-  ofsIssue: number | null | undefined;
+  freshIssue: string | number | null | undefined;
+  ofsIssue: string | number | null | undefined;
   className?: string;
 }
 
@@ -57,7 +57,7 @@ export function IssueBreakdownChart({
   ].filter((item) => item.value > 0); // Only show non-zero values
 
   // Custom label renderer to show percentages
-  const renderLabel = (entry: { name: string; percentage: string }) => {
+  const renderLabel = (entry: any) => {
     return `${entry.percentage}%`;
   };
 
