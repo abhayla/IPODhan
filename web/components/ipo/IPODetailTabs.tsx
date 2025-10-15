@@ -12,6 +12,7 @@
  * Tabs:
  * - Overview: Company description, rating, share buttons
  * - Financials: 3-year financial data table
+ * - Peer Comparison: Compare with peer companies (Story 4.8)
  * - Subscription: Subscription breakdown by category
  * - GMP: Grey Market Premium chart
  * - Documents: DRHP, RHP, Prospectus links
@@ -45,6 +46,9 @@ const ShareButtons = lazy(() =>
 const FinancialTable = lazy(() =>
   import('./FinancialTable').then((mod) => ({ default: mod.FinancialTable }))
 );
+const PeerComparisonTab = lazy(() =>
+  import('./PeerComparisonTab').then((mod) => ({ default: mod.PeerComparisonTab }))
+);
 const SubscriptionBreakdown = lazy(() =>
   import('./SubscriptionBreakdown').then((mod) => ({ default: mod.SubscriptionBreakdown }))
 );
@@ -64,10 +68,10 @@ interface IPODetailTabsProps {
   initialTab?: string;
 }
 
-type TabValue = 'overview' | 'financials' | 'subscription' | 'gmp' | 'documents';
+type TabValue = 'overview' | 'financials' | 'peercomparison' | 'subscription' | 'gmp' | 'documents';
 
 // Valid tab values for validation
-const VALID_TABS: TabValue[] = ['overview', 'financials', 'subscription', 'gmp', 'documents'];
+const VALID_TABS: TabValue[] = ['overview', 'financials', 'peercomparison', 'subscription', 'gmp', 'documents'];
 
 // ==================== COMPONENT ====================
 
@@ -124,7 +128,10 @@ export function IPODetailTabs({
   }, [searchParams, activeTab]);
 
   // Extract data for tabs
-  const { financialData, documents, subscriptions, gmpRecords } = ipoData;
+  const { financialData, documents, subscriptions, gmpRecords, peerCompanies } = ipoData;
+
+  // Check if peer comparison data exists
+  const hasPeerData = peerCompanies && peerCompanies.length > 0;
 
   // Share URL for social sharing
   const shareUrl = `https://ipodhan.com/ipos/${slug}`;
@@ -143,9 +150,12 @@ export function IPODetailTabs({
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
       {/* Tab List */}
-      <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:inline-grid shadow-sm">
+      <TabsList className={`grid w-full ${hasPeerData ? 'grid-cols-6' : 'grid-cols-5'} lg:w-auto lg:inline-grid shadow-sm`}>
         <TabsTrigger value="overview" className="touch-manipulation">Overview</TabsTrigger>
         <TabsTrigger value="financials" className="touch-manipulation">Financials</TabsTrigger>
+        {hasPeerData && (
+          <TabsTrigger value="peercomparison" className="touch-manipulation">Peers</TabsTrigger>
+        )}
         <TabsTrigger value="subscription" className="touch-manipulation">Subscription</TabsTrigger>
         <TabsTrigger value="gmp" className="touch-manipulation">GMP</TabsTrigger>
         <TabsTrigger value="documents" className="touch-manipulation">Documents</TabsTrigger>
@@ -208,6 +218,17 @@ export function IPODetailTabs({
           </Suspense>
         </TabErrorBoundary>
       </TabsContent>
+
+      {/* Peer Comparison Tab (Story 4.8) */}
+      {hasPeerData && (
+        <TabsContent value="peercomparison" className="mt-6">
+          <TabErrorBoundary tabName="Peer Comparison">
+            <Suspense fallback={<div className="h-64 animate-pulse rounded-lg bg-muted" />}>
+              <PeerComparisonTab ipoData={ipoData} />
+            </Suspense>
+          </TabErrorBoundary>
+        </TabsContent>
+      )}
 
       {/* Subscription Tab */}
       <TabsContent value="subscription" className="mt-6">
