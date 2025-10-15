@@ -83,6 +83,12 @@ export const confidenceLevelEnum = pgEnum('confidence_level', [
   'LOW',
 ]);
 
+export const issueTypeEnum = pgEnum('issue_type', [
+  'BOOK_BUILDING',
+  'FIXED_PRICE',
+  'HYBRID',
+]);
+
 // ==================== TABLE 1: IPOS (Core Entity) ====================
 
 export const ipos = pgTable(
@@ -557,6 +563,46 @@ export const ipoScores = pgTable('ipo_scores', {
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
 
+// ==================== TABLE 16: IPO_DETAILS (One-to-One) ====================
+
+export const ipoDetails = pgTable(
+  'ipo_details',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .unique()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+
+    // Issue structure fields (Story 4.11)
+    issueType: issueTypeEnum('issue_type'),
+    freshIssue: numeric('fresh_issue', { precision: 12, scale: 2 }),
+    ofsIssue: numeric('ofs_issue', { precision: 12, scale: 2 }),
+    cutOffPrice: numeric('cut_off_price', { precision: 10, scale: 2 }),
+    minInvestment: numeric('min_investment', { precision: 12, scale: 2 }),
+    registrarLink: varchar('registrar_link', { length: 500 }),
+
+    // Other fields
+    isin: varchar('isin', { length: 12 }),
+    faceValue: numeric('face_value', { precision: 10, scale: 2 }),
+    basisOfAllotmentDate: date('basis_of_allotment_date'),
+    initiationOfRefundsDate: date('initiation_of_refunds_date'),
+    creditOfSharesDate: date('credit_of_shares_date'),
+    leadManagers: text('lead_managers').array(),
+    exchanges: text('exchanges').array(),
+    companyDescription: text('company_description'),
+    dataSource: varchar('data_source', { length: 50 }).notNull(),
+    lastVerifiedAt: timestamp('last_verified_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoIdIdx: index('idx_ipo_details_ipo_id').on(table.ipoId),
+    dataSourceIdx: index('idx_ipo_details_data_source').on(table.dataSource),
+    isinIdx: index('idx_ipo_details_isin').on(table.isin),
+  })
+);
+
 // ==================== RELATIONS ====================
 
 export const iposRelations = relations(ipos, ({ many, one }) => ({
@@ -580,6 +626,10 @@ export const iposRelations = relations(ipos, ({ many, one }) => ({
   ipoScore: one(ipoScores, {
     fields: [ipos.id],
     references: [ipoScores.ipoId],
+  }),
+  ipoDetails: one(ipoDetails, {
+    fields: [ipos.id],
+    references: [ipoDetails.ipoId],
   }),
   registrarRelation: one(registrars, {
     fields: [ipos.registrarId],
@@ -656,6 +706,13 @@ export const ipoScoresRelations = relations(ipoScores, ({ one }) => ({
 export const ipoFinancialsRelations = relations(ipoFinancials, ({ one }) => ({
   ipo: one(ipos, {
     fields: [ipoFinancials.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const ipoDetailsRelations = relations(ipoDetails, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [ipoDetails.ipoId],
     references: [ipos.id],
   }),
 }));

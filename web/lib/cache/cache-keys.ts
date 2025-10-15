@@ -20,6 +20,7 @@ export const CacheTTL = {
   HISTORICAL_IPOS: 86400, // 24 hours (Story 6.1 requirement)
   FINANCIAL_DATA: 1800, // 30 minutes
   IPO_FINANCIALS: 1800, // 30 minutes (Story 4.10 requirement)
+  IPO_DETAILS: 1800, // 30 minutes (Story 4.11 requirement)
   DOCUMENTS: 3600, // 1 hour
   LISTING_PERFORMANCE: 600, // 10 minutes
 } as const;
@@ -108,6 +109,13 @@ export function getFinancialDataKey(ipoId: string): string {
  */
 export function getIpoFinancialsKey(ipoId: string): string {
   return `financials:enhanced:${ipoId}`;
+}
+
+/**
+ * Generate cache key for IPO details (Story 4.11)
+ */
+export function getIpoDetailsKey(ipoId: string): string {
+  return `details:${ipoId}`;
 }
 
 /**
