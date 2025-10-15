@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ExternalLink, Mail, Phone, MapPin } from 'lucide-react';
+import { RegistrarLogo } from './RegistrarLogo';
 import type { Registrar } from '@/lib/db/types';
 
 interface RegistrarCardProps {
@@ -13,15 +14,25 @@ interface RegistrarCardProps {
  * Displays registrar information in a card format for mobile devices.
  * Shows contact details, website, and allotment check URL.
  * Story 5.3: Registrar Directory
+ * Story 5.8: Added registrar logo display
  */
 export function RegistrarCard({ registrar }: RegistrarCardProps) {
   return (
     <Card className="h-full">
       <CardHeader>
-        <CardTitle className="text-lg">{registrar.shortName || registrar.name}</CardTitle>
-        {registrar.shortName && (
-          <p className="text-sm text-muted-foreground">{registrar.name}</p>
-        )}
+        <div className="flex items-center gap-4">
+          <RegistrarLogo
+            logoUrl={registrar.logoUrl}
+            registrarName={registrar.name}
+            size={80}
+          />
+          <div className="flex-1">
+            <CardTitle className="text-lg">{registrar.shortName || registrar.name}</CardTitle>
+            {registrar.shortName && (
+              <p className="text-sm text-muted-foreground">{registrar.name}</p>
+            )}
+          </div>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {/* Contact Information */}
