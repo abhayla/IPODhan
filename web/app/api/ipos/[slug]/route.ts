@@ -170,6 +170,7 @@ export async function GET(
       },
       financialData: ipoWithRelations.financialData ?? null,
       ipoFinancials: ipoWithRelations.ipoFinancials ?? null, // Story 4.10
+      ipoDetails: ipoWithRelations.ipoDetails ?? null, // Story 4.11
       documents: ipoWithRelations.documents || [],
       subscriptions: ipoWithRelations.subscriptions || [],
       gmpRecords: ipoWithRelations.gmpRecords || [],
@@ -191,6 +192,7 @@ export async function GET(
         status: ipoWithRelations.status,
         hasFinancials: !!ipoWithRelations.financialData,
         hasEnhancedFinancials: !!ipoWithRelations.ipoFinancials, // Story 4.10
+        hasIssueDetails: !!ipoWithRelations.ipoDetails, // Story 4.11
         subscriptionCount: ipoWithRelations.subscriptions?.length || 0,
         gmpCount: ipoWithRelations.gmpRecords?.length || 0,
       },
