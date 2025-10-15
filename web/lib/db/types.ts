@@ -56,6 +56,11 @@ export type NewGMPRecord = InferInsertModel<typeof schema.gmpRecords>;
 export type FinancialData = InferSelectModel<typeof schema.financialData>;
 export type NewFinancialData = InferInsertModel<typeof schema.financialData>;
 
+// ==================== IPO FINANCIALS TYPES (Story 4.10 - Enhanced) ====================
+
+export type IpoFinancials = InferSelectModel<typeof schema.ipoFinancials>;
+export type NewIpoFinancials = InferInsertModel<typeof schema.ipoFinancials>;
+
 // ==================== DOCUMENT TYPES ====================
 
 export type Document = InferSelectModel<typeof schema.documents>;
@@ -120,13 +125,14 @@ export type IPOPeer = IPO & {
 
 /**
  * IPO Detail Response
- * Complete IPO data with all relations for detail page (Story 4.1, 4.7)
+ * Complete IPO data with all relations for detail page (Story 4.1, 4.7, 4.10)
  */
 export interface IPODetailResponse {
   ipo: IPO & {
     registrarRelation?: Registrar | null;
   };
   financialData: FinancialData | null;
+  ipoFinancials: IpoFinancials | null; // Story 4.10: Enhanced financial metrics
   documents: Document[];
   subscriptions: Subscription[];
   gmpRecords: GMPRecord[];

@@ -146,12 +146,20 @@ export function ComparisonTable({
   const roes = comparisonData.map((c) => c.financials.roe);
   const gmps = comparisonData.map((c) => c.gmp);
   const totalSubs = comparisonData.map((c) => c.subscription.total);
+  // Story 4.10: Enhanced financial metrics
+  const pbRatios = comparisonData.map((c) => c.ipoFinancials?.pbRatio ?? null);
+  const roces = comparisonData.map((c) => c.ipoFinancials?.rocePercentage ?? null);
+  const industryPEs = comparisonData.map((c) => c.ipoFinancials?.industryPe ?? null);
 
   const bestRating = findBestValue(ratings, true);
   const bestPE = findBestValue(peRatios, false); // Lower is better
   const bestROE = findBestValue(roes, true);
   const bestGMP = findBestValue(gmps, true);
   const bestSub = findBestValue(totalSubs, true);
+  // Story 4.10: Best values for new metrics
+  const bestPB = findBestValue(pbRatios, false); // Lower is better
+  const bestROCE = findBestValue(roces, true); // Higher is better
+  const bestIndustryPE = findBestValue(industryPEs, false); // Lower is better (but informational)
 
   return (
     <div className="space-y-4">
@@ -331,6 +339,69 @@ export function ComparisonTable({
                   )}
                 </TableCell>
               ))}
+            </TableRow>
+
+            {/* Story 4.10: P/B Ratio (Highlighted - lower is better) */}
+            <TableRow>
+              <TableCell className="sticky left-0 bg-background font-medium">
+                Price-to-Book (P/B) Ratio
+              </TableCell>
+              {comparisonData.map((ipo, idx) => {
+                const pbRatio = ipo.ipoFinancials?.pbRatio ?? null;
+                return (
+                  <TableCell
+                    key={ipo.slug}
+                    className={cn(
+                      'text-center',
+                      idx === bestPB && pbRatio !== null && 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 font-medium'
+                    )}
+                  >
+                    {pbRatio !== null ? pbRatio.toFixed(2) : 'N/A'}
+                    {idx === bestPB && pbRatio !== null && (
+                      <TrendingDown className="inline-block ml-1 h-3 w-3" />
+                    )}
+                  </TableCell>
+                );
+              })}
+            </TableRow>
+
+            {/* Story 4.10: ROCE % (Highlighted - higher is better) */}
+            <TableRow>
+              <TableCell className="sticky left-0 bg-background font-medium">
+                Return on Capital Employed (ROCE)
+              </TableCell>
+              {comparisonData.map((ipo, idx) => {
+                const roce = ipo.ipoFinancials?.rocePercentage ?? null;
+                return (
+                  <TableCell
+                    key={ipo.slug}
+                    className={cn(
+                      'text-center',
+                      idx === bestROCE && roce !== null && 'bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 font-medium'
+                    )}
+                  >
+                    {formatPercentage(roce)}
+                    {idx === bestROCE && roce !== null && (
+                      <TrendingUp className="inline-block ml-1 h-3 w-3" />
+                    )}
+                  </TableCell>
+                );
+              })}
+            </TableRow>
+
+            {/* Story 4.10: Industry P/E (Informational) */}
+            <TableRow>
+              <TableCell className="sticky left-0 bg-background font-medium">
+                Industry P/E (Avg)
+              </TableCell>
+              {comparisonData.map((ipo) => {
+                const industryPE = ipo.ipoFinancials?.industryPe ?? null;
+                return (
+                  <TableCell key={ipo.slug} className="text-center">
+                    {industryPE !== null ? industryPE.toFixed(2) : 'N/A'}
+                  </TableCell>
+                );
+              })}
             </TableRow>
 
             {/* Revenue Growth */}

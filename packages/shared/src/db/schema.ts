@@ -279,6 +279,47 @@ export const financialData = pgTable('financial_data', {
   totalBorrowing: numeric('total_borrowing', { precision: 12, scale: 2 }),
 });
 
+// ==================== TABLE 15: IPO_FINANCIALS (One-to-One - Enhanced) ====================
+
+export const ipoFinancials = pgTable(
+  'ipo_financials',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .unique()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+
+    // Revenue by fiscal year (in INR crores)
+    revenueFy1: numeric('revenue_fy1', { precision: 12, scale: 2 }),
+    revenueFy2: numeric('revenue_fy2', { precision: 12, scale: 2 }),
+    revenueFy3: numeric('revenue_fy3', { precision: 12, scale: 2 }),
+
+    // Profit by fiscal year
+    profitFy1: numeric('profit_fy1', { precision: 12, scale: 2 }),
+    profitFy2: numeric('profit_fy2', { precision: 12, scale: 2 }),
+    profitFy3: numeric('profit_fy3', { precision: 12, scale: 2 }),
+
+    // Existing metrics
+    peRatio: numeric('pe_ratio', { precision: 8, scale: 2 }),
+    roePercentage: numeric('roe_percentage', { precision: 5, scale: 2 }),
+    debtToEquity: numeric('debt_to_equity', { precision: 8, scale: 2 }),
+
+    // NEW METRICS (Story 4.10)
+    pbRatio: numeric('pb_ratio', { precision: 8, scale: 2 }), // Price-to-Book ratio
+    rocePercentage: numeric('roce_percentage', { precision: 5, scale: 2 }), // Return on Capital Employed %
+    industryPe: numeric('industry_pe', { precision: 8, scale: 2 }), // Industry average P/E
+    peerCompanies: text('peer_companies').array(), // Peer company names
+    financialYearEnd: varchar('financial_year_end', { length: 10 }), // FY end date
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoIdIdx: index('idx_ipo_financials_ipo_id').on(table.ipoId),
+  })
+);
+
 // ==================== TABLE 5: DOCUMENTS (One-to-Many) ====================
 
 export const documents = pgTable(
@@ -528,6 +569,10 @@ export const iposRelations = relations(ipos, ({ many, one }) => ({
     fields: [ipos.id],
     references: [financialData.ipoId],
   }),
+  ipoFinancials: one(ipoFinancials, {
+    fields: [ipos.id],
+    references: [ipoFinancials.ipoId],
+  }),
   listingPerformance: one(listingPerformance, {
     fields: [ipos.id],
     references: [listingPerformance.ipoId],
@@ -604,6 +649,13 @@ export const ipoReviewsRelations = relations(ipoReviews, ({ one }) => ({
 export const ipoScoresRelations = relations(ipoScores, ({ one }) => ({
   ipo: one(ipos, {
     fields: [ipoScores.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const ipoFinancialsRelations = relations(ipoFinancials, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [ipoFinancials.ipoId],
     references: [ipos.id],
   }),
 }));

@@ -35,7 +35,7 @@ if (!process.env.DATABASE_URL && !process.env.DATABASE_HOST) {
 console.log('✓ Environment variables loaded successfully\n');
 
 import { db, closePool } from '../lib/db/index';
-import { ipos, listingPerformance } from '../lib/db';
+import { ipos, listingPerformance, ipoFinancials } from '../lib/db'; // Story 4.10: Added ipoFinancials
 import { count, sql } from 'drizzle-orm';
 import type { IPOStatus, IPOCategory } from '../lib/db/types';
 
@@ -116,6 +116,25 @@ const STOCK_SYMBOLS = [
   'HINDALCO', 'TATASTEEL', 'BAJAJFINSV', 'VEDL', 'SHREECEM', 'APOLLOHOSP', 'TATACONSUM',
   'BPCL', 'IOC', 'GAIL', 'HINDALCO', 'ZOMATO', 'PAYTM', 'POLICYBZR', 'NYKAA',
 ];
+
+// Story 4.10: Peer companies by sector for enhanced financial metrics
+const PEER_COMPANIES_BY_SECTOR: Record<string, string[]> = {
+  'Technology': ['Infosys', 'TCS', 'Wipro', 'HCL Technologies', 'Tech Mahindra', 'Mphasis', 'LTI Mindtree'],
+  'Pharmaceuticals': ['Sun Pharma', 'Dr Reddy\'s', 'Cipla', 'Lupin', 'Aurobindo Pharma', 'Divis Labs'],
+  'Infrastructure': ['L&T', 'Larsen & Toubro Infotech', 'KEI Industries', 'KNR Constructions'],
+  'Automobile': ['Maruti Suzuki', 'Tata Motors', 'Mahindra & Mahindra', 'Bajaj Auto', 'Hero MotoCorp'],
+  'Renewable Energy': ['Adani Green Energy', 'Tata Power', 'NTPC', 'Power Grid Corporation'],
+  'Financial Services': ['HDFC Bank', 'ICICI Bank', 'Axis Bank', 'Kotak Mahindra', 'SBI', 'IndusInd Bank'],
+  'Hospitality': ['Indian Hotels', 'Lemon Tree Hotels', 'EIH Ltd', 'Chalet Hotels'],
+  'Manufacturing': ['Hindustan Unilever', 'ITC', 'Nestle India', 'Britannia Industries'],
+  'Retail': ['Avenue Supermarts (D-Mart)', 'Future Retail', 'Trent', 'Shoppers Stop'],
+  'Food Processing': ['ITC', 'Britannia', 'Nestle India', 'Marico', 'Dabur', 'Godrej Consumer'],
+  'Electronics': ['Dixon Technologies', 'Amber Enterprises', 'Bharat Electronics', 'V-Guard Industries'],
+  'Education Technology': ['NIIT', 'Aptech', 'Career Point', 'Tree House Education'],
+  'Herbal Products': ['Dabur', 'Himalaya Herbal', 'Patanjali', 'Emami'],
+  'Microfinance': ['Bandhan Bank', 'Ujjivan Small Finance Bank', 'Equitas Small Finance Bank'],
+  'Packaging': ['Uflex', 'Max India', 'TCPL Packaging', 'Huhtamaki India'],
+};
 
 // ==================== HELPER FUNCTIONS ====================
 
@@ -298,6 +317,16 @@ function generateDescription(companyName: string, sector: string, category: IPOC
     : ' Well-established company with proven track record.';
 
   return randomChoice(descriptions) + categoryInfo;
+}
+
+/**
+ * Get peer companies for a sector (Story 4.10)
+ * Returns 3-5 peer companies from the sector
+ */
+function getPeerCompaniesForSector(sector: string): string[] {
+  const peers = PEER_COMPANIES_BY_SECTOR[sector] || PEER_COMPANIES_BY_SECTOR['Technology'];
+  const count = randomInt(3, Math.min(5, peers.length));
+  return randomChoices(peers, count);
 }
 
 /**
@@ -501,7 +530,7 @@ async function seedDatabase() {
 
   try {
     // Check existing data (AC: 9 - Idempotency)
-    console.log('[1/5] Checking existing data...');
+    console.log('[1/6] Checking existing data...');
     const result = await db.select({ count: count() }).from(ipos);
     const existingCount = Number(result[0]?.count || 0);
 
@@ -526,7 +555,7 @@ async function seedDatabase() {
     }
 
     // Calculate distributions (AC: 2, 5)
-    console.log('[2/5] Calculating data distributions...');
+    console.log('[2/6] Calculating data distributions...');
     const statusCounts = calculateStatusDistribution(SEED_CONFIG.totalIPOs);
     const mainboardCount = Math.round((SEED_CONFIG.totalIPOs * SEED_CONFIG.categoryDistribution.MAINBOARD) / 100);
     const smeCount = SEED_CONFIG.totalIPOs - mainboardCount;
@@ -543,7 +572,7 @@ async function seedDatabase() {
     console.log(`     └─ SME: ${smeCount} (${SEED_CONFIG.categoryDistribution.SME}%)\n`);
 
     // Generate IPO data (AC: 1, 3, 4, 6, 11)
-    console.log('[3/5] Generating IPO data...');
+    console.log('[3/6] Generating IPO data...');
     const ipoData: Array<ReturnType<typeof generateIPOData>> = [];
     const existingNames = new Set<string>();
     const existingSlugs = new Set<string>();
@@ -572,7 +601,7 @@ async function seedDatabase() {
     console.log(`✓ Generated ${ipoData.length} IPO records\n`);
 
     // Insert IPOs in batches (AC: 8, 12)
-    console.log('[4/5] Inserting IPOs into database...');
+    console.log('[4/6] Inserting IPOs into database...');
     const totalBatches = Math.ceil(ipoData.length / SEED_CONFIG.batchSize);
     let insertedCount = 0;
     let failedCount = 0;
@@ -595,7 +624,7 @@ async function seedDatabase() {
     console.log(`\n✓ Insertion complete: ${insertedCount} succeeded, ${failedCount} failed\n`);
 
     // Populate listing performance for LISTED IPOs (AC: 7)
-    console.log('[5/5] Populating historical data for LISTED IPOs...');
+    console.log('[5/6] Populating historical data for LISTED IPOs...');
     const listedIPOs = await db.select().from(ipos).where(sql`${ipos.status} = 'LISTED'`);
     console.log(`  Found ${listedIPOs.length} LISTED IPOs`);
 
@@ -625,6 +654,58 @@ async function seedDatabase() {
     }
 
     console.log(`  ✓ Created ${listingPerfCount} listing performance records\n`);
+
+    // Story 4.10: Populate enhanced financial metrics (ipo_financials table)
+    console.log('[6/6] Populating enhanced financial metrics for all IPOs...');
+    const allIPOs = await db.select().from(ipos);
+    console.log(`  Found ${allIPOs.length} total IPOs`);
+
+    let ipoFinancialsCount = 0;
+    for (const ipo of allIPOs) {
+      try {
+        // Generate industry PE based on sector (realistic ranges)
+        const industryPeRanges: Record<string, {min: number, max: number}> = {
+          'Technology': {min: 20, max: 50},
+          'Pharmaceuticals': {min: 25, max: 45},
+          'Infrastructure': {min: 15, max: 30},
+          'Automobile': {min: 18, max: 35},
+          'Renewable Energy': {min: 22, max: 40},
+          'Financial Services': {min: 12, max: 25},
+          'Hospitality': {min: 15, max: 28},
+          'Manufacturing': {min: 18, max: 32},
+          'Retail': {min: 20, max: 40},
+          'Food Processing': {min: 25, max: 45},
+        };
+
+        const sectorRange = industryPeRanges[ipo.sector || 'Technology'] || {min: 15, max: 35};
+        const industryPe = randomDecimal(sectorRange.min, sectorRange.max);
+
+        await db.insert(ipoFinancials).values({
+          ipoId: ipo.id,
+          revenueFy1: randomDecimal(1000, 6000), // 1000-6000 Cr
+          revenueFy2: randomDecimal(800, 4000),
+          revenueFy3: randomDecimal(600, 3000),
+          profitFy1: randomDecimal(50, 500),
+          profitFy2: randomDecimal(40, 400),
+          profitFy3: randomDecimal(30, 300),
+          peRatio: randomDecimal(10, 50), // 10-50
+          roePercentage: randomDecimal(5, 25), // 5-25%
+          debtToEquity: randomDecimal(0, 2), // 0-2
+          // Story 4.10: Enhanced metrics
+          pbRatio: randomDecimal(1.5, 4.0), // 1.5-4.0
+          rocePercentage: randomDecimal(10, 25), // 10-25%
+          industryPe: industryPe,
+          peerCompanies: getPeerCompaniesForSector(ipo.sector || 'Technology'),
+          financialYearEnd: '31-Mar-2024', // Most Indian companies end FY on March 31
+        });
+
+        ipoFinancialsCount++;
+      } catch (error) {
+        console.error(`  ✗ Failed to create ipo_financials for ${ipo.companyName}:`, error);
+      }
+    }
+
+    console.log(`  ✓ Created ${ipoFinancialsCount} enhanced financial metrics records\n`);
 
     // Final summary
     const finalCount = await db.select({ count: count() }).from(ipos);
@@ -659,7 +740,8 @@ async function seedDatabase() {
     console.log(`    ├─ MAINBOARD: ${actualCategoryCounts.MAINBOARD} (${((actualCategoryCounts.MAINBOARD / finalIPOCount) * 100).toFixed(1)}%)`);
     console.log(`    └─ SME: ${actualCategoryCounts.SME} (${((actualCategoryCounts.SME / finalIPOCount) * 100).toFixed(1)}%)`);
     console.log('\n  Historical Data:');
-    console.log(`    └─ Listing Performance Records: ${listingPerfCount}`);
+    console.log(`    ├─ Listing Performance Records: ${listingPerfCount}`);
+    console.log(`    └─ Enhanced Financial Metrics Records: ${ipoFinancialsCount} (Story 4.10)`);
     console.log(`\n  Execution Time: ${elapsedTime}s`);
     console.log('\n' + '='.repeat(70));
     console.log('\nNext Steps:');

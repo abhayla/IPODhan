@@ -1,6 +1,6 @@
 'use client';
 
-import { FinancialData } from '@/lib/db/types';
+import { FinancialData, IpoFinancials } from '@/lib/db/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -11,16 +11,23 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { FinancialYearEndDisplay } from './FinancialYearEndDisplay';
+import { PBRatioDisplay } from './PBRatioDisplay';
+import { ROCEDisplay } from './ROCEDisplay';
+import { IndustryPEComparison } from './IndustryPEComparison';
+import { PeerCompaniesList } from './PeerCompaniesList';
 
 interface FinancialTableProps {
   financialData: FinancialData | null;
+  ipoFinancials?: IpoFinancials | null;
 }
 
 /**
  * FinancialTable component displays 3-year financial data in table format
  * Shows revenue, profit, EPS, P/E ratio, ROE, and NAV with trend indicators
+ * Story 4.10: Enhanced with P/B Ratio, ROCE, Industry P/E, and Peer Companies
  */
-export function FinancialTable({ financialData }: FinancialTableProps) {
+export function FinancialTable({ financialData, ipoFinancials }: FinancialTableProps) {
   if (!financialData) {
     return (
       <Card>
@@ -124,6 +131,12 @@ export function FinancialTable({ financialData }: FinancialTableProps) {
         <p className="text-sm text-muted-foreground">
           3-year financial data (in INR Crores)
         </p>
+        {/* Story 4.10: Financial Year End Display at TOP */}
+        {ipoFinancials?.financialYearEnd && (
+          <div className="mt-3">
+            <FinancialYearEndDisplay financialYearEnd={ipoFinancials.financialYearEnd} />
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto">
@@ -174,6 +187,42 @@ export function FinancialTable({ financialData }: FinancialTableProps) {
             </div>
           </div>
         </div>
+
+        {/* Story 4.10: Enhanced Financial Metrics Section */}
+        {ipoFinancials && (
+          <div className="mt-6 border-t pt-6 space-y-4">
+            <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+              Enhanced Metrics
+            </h3>
+
+            {/* P/B Ratio and ROCE in a row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="rounded-lg border p-4 bg-muted/30">
+                <PBRatioDisplay pbRatio={ipoFinancials.pbRatio} />
+              </div>
+              <div className="rounded-lg border p-4 bg-muted/30">
+                <ROCEDisplay roce={ipoFinancials.rocePercentage} />
+              </div>
+            </div>
+
+            {/* Industry P/E Comparison */}
+            {ipoFinancials.industryPe && (
+              <div className="rounded-lg border p-4 bg-muted/30">
+                <IndustryPEComparison
+                  companyPE={financialData.peRatio}
+                  industryPE={ipoFinancials.industryPe}
+                />
+              </div>
+            )}
+
+            {/* Peer Companies List at BOTTOM */}
+            {ipoFinancials.peerCompanies && ipoFinancials.peerCompanies.length > 0 && (
+              <div className="rounded-lg border p-4 bg-muted/30">
+                <PeerCompaniesList peerCompanies={ipoFinancials.peerCompanies} />
+              </div>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );
