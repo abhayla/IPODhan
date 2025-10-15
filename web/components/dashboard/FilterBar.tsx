@@ -5,6 +5,7 @@ import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { StatusFilter } from '@/components/filters/StatusFilter';
 import { CategoryFilter } from '@/components/filters/CategoryFilter';
 import { SectorFilter } from '@/components/filters/SectorFilter';
+import { ScoreRangeFilter } from '@/components/filters/ScoreRangeFilter';
 import { ClearFiltersButton } from '@/components/filters/ClearFiltersButton';
 import { Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,12 +20,14 @@ export function FilterBar() {
   const status = searchParams.get('status') || 'OPEN';
   const category = searchParams.get('category') || 'ALL';
   const sector = searchParams.get('sector') || 'ALL';
+  const scoreRange = searchParams.get('scoreRange') || 'all';
 
   // Count active filters (non-default)
   const activeFilterCount = [
     status !== 'OPEN' ? 1 : 0,
     category !== 'ALL' ? 1 : 0,
     sector !== 'ALL' ? 1 : 0,
+    scoreRange !== 'all' ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
   /**
@@ -61,6 +64,7 @@ export function FilterBar() {
     params.delete('status');
     params.delete('category');
     params.delete('sector');
+    params.delete('scoreRange');
 
     // Set default status
     params.set('status', 'OPEN');
@@ -73,7 +77,7 @@ export function FilterBar() {
   /**
    * Check if filters are at default values
    */
-  const isDefaultFilters = status === 'OPEN' && category === 'ALL' && sector === 'ALL';
+  const isDefaultFilters = status === 'OPEN' && category === 'ALL' && sector === 'ALL' && scoreRange === 'all';
 
   return (
     <div className="mb-6" aria-label="IPO Filters">
@@ -118,6 +122,11 @@ export function FilterBar() {
         <SectorFilter
           value={sector}
           onChange={(value) => updateFilter('sector', value)}
+        />
+
+        <ScoreRangeFilter
+          value={scoreRange}
+          onChange={(value) => updateFilter('scoreRange', value)}
         />
 
         <ClearFiltersButton

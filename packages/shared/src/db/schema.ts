@@ -71,6 +71,18 @@ export const reviewRecommendationEnum = pgEnum('review_recommendation', [
   'Not Recommended',
 ]);
 
+export const ipoVerdictEnum = pgEnum('ipo_verdict', [
+  'APPLY',
+  'CONSIDER',
+  'SKIP',
+]);
+
+export const confidenceLevelEnum = pgEnum('confidence_level', [
+  'HIGH',
+  'MEDIUM',
+  'LOW',
+]);
+
 // ==================== TABLE 1: IPOS (Core Entity) ====================
 
 export const ipos = pgTable(
@@ -473,6 +485,34 @@ export const ipoReviews = pgTable(
   })
 );
 
+// ==================== TABLE 14: IPO_SCORES (One-to-One) ====================
+
+export const ipoScores = pgTable('ipo_scores', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  ipoId: uuid('ipo_id')
+    .notNull()
+    .unique()
+    .references(() => ipos.id, { onDelete: 'cascade' }),
+
+  // Score components (each 0-25, total 0-100)
+  totalScore: integer('total_score').notNull(), // 0-100
+  fundamentalScore: integer('fundamental_score').notNull(), // 0-25
+  sentimentScore: integer('sentiment_score').notNull(), // 0-25
+  subscriptionScore: integer('subscription_score').notNull(), // 0-25
+  sectorScore: integer('sector_score').notNull(), // 0-25
+
+  // Verdict and confidence
+  verdict: ipoVerdictEnum('verdict').notNull(),
+  confidence: confidenceLevelEnum('confidence').notNull(),
+  reasoning: text('reasoning'),
+
+  // Metadata
+  calculatedAt: timestamp('calculated_at').defaultNow().notNull(),
+  algorithmVersion: varchar('algorithm_version', { length: 50 }).notNull(),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+});
+
 // ==================== RELATIONS ====================
 
 export const iposRelations = relations(ipos, ({ many, one }) => ({
@@ -488,6 +528,10 @@ export const iposRelations = relations(ipos, ({ many, one }) => ({
   listingPerformance: one(listingPerformance, {
     fields: [ipos.id],
     references: [listingPerformance.ipoId],
+  }),
+  ipoScore: one(ipoScores, {
+    fields: [ipos.id],
+    references: [ipoScores.ipoId],
   }),
   registrarRelation: one(registrars, {
     fields: [ipos.registrarId],
@@ -550,6 +594,13 @@ export const affiliateClicksRelations = relations(affiliateClicks, ({ one }) => 
 export const ipoReviewsRelations = relations(ipoReviews, ({ one }) => ({
   ipo: one(ipos, {
     fields: [ipoReviews.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const ipoScoresRelations = relations(ipoScores, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [ipoScores.ipoId],
     references: [ipos.id],
   }),
 }));

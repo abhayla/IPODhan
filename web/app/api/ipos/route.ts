@@ -90,6 +90,7 @@ const QueryParamsSchema = z.object({
     }),
   sector: z.string().optional(),
   search: z.string().optional(),
+  scoreRange: z.string().optional(), // Story 4.7: Filter by score range (e.g., "76-100", "all")
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   sortBy: SortFieldSchema.default('createdAt'),
@@ -155,6 +156,9 @@ function parseQueryParams(searchParams: URLSearchParams): Record<string, unknown
 
   const sortOrder = searchParams.get('sortOrder');
   if (sortOrder) params.sortOrder = sortOrder;
+
+  const scoreRange = searchParams.get('scoreRange');
+  if (scoreRange) params.scoreRange = scoreRange;
 
   return params;
 }
