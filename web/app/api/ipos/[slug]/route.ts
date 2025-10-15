@@ -146,6 +146,9 @@ export async function GET(
         lastScrapedAt: ipoWithRelations.lastScrapedAt,
         createdAt: ipoWithRelations.createdAt,
         updatedAt: ipoWithRelations.updatedAt,
+        // Story 4.9: Stock identifiers
+        symbol: ipoWithRelations.symbol,
+        isin: ipoWithRelations.isin,
         // Story 7.10: Historical data fields
         subscriptionRetail: ipoWithRelations.subscriptionRetail,
         subscriptionHni: ipoWithRelations.subscriptionHni,
