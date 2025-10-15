@@ -26,6 +26,7 @@ import { LotCalculator } from '@/components/tools/LotCalculator';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { AffiliateSection } from '@/components/affiliate/AffiliateSection';
 import { ListingPerformance } from '@/components/ipo/ListingPerformance';
+import { IPOScoreSection } from '@/components/ipo/IPOScoreSection';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
 import { apiClient } from '@/lib/api-client';
 import type { IPODetailResponse } from '@/lib/db/types';
@@ -98,7 +99,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     notFound();
   }
 
-  const { ipo, gmpRecords, subscriptions, listingPerformance } = data;
+  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore } = data;
 
   // Calculate metrics for KeyMetricsCards
   const latestSubscription = subscriptions?.[0];
@@ -174,6 +175,9 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* IPO Information Section */}
             <InfoSection ipo={ipo} />
+
+            {/* IPO Score Section (Story 4.7) */}
+            <IPOScoreSection score={ipoScore || null} />
 
             {/* Apply for IPO Section (Story 5.5) */}
             {(ipo.status === 'OPEN' || ipo.status === 'UPCOMING') && (
