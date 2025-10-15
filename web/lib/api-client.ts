@@ -106,6 +106,7 @@ export interface GetIPOsParams {
   search?: string;
   page?: number;
   limit?: number;
+  scoreRange?: string; // Story 4.7: IPO Score filtering
 }
 
 export interface GetSubscriptionParams {
@@ -568,6 +569,7 @@ export async function getIPOs(
   if (params.search) searchParams.append('search', params.search);
   if (params.page) searchParams.append('page', params.page.toString());
   if (params.limit) searchParams.append('limit', params.limit.toString());
+  if (params.scoreRange) searchParams.append('scoreRange', params.scoreRange);
 
   const endpoint = `/ipos${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
   return fetchWithRetry<IPOListResponse>(endpoint, { method: 'GET' }, defaultConfig, signal);

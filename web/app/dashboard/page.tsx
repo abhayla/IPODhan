@@ -14,6 +14,7 @@ interface DashboardPageProps {
     category?: string;
     sector?: string;
     search?: string;
+    scoreRange?: string;
   }>;
 }
 
@@ -25,6 +26,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const category = params.category;
   const sector = params.sector;
   const search = params.search;
+  const scoreRange = params.scoreRange;
 
   try {
     const response = await apiClient.getIPOs({
@@ -33,7 +35,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       sector: sector,
       search: search,
       page,
-      limit: 12
+      limit: 12,
+      scoreRange: scoreRange
     });
 
     // Generate JSON-LD structured data

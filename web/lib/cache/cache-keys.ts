@@ -13,6 +13,7 @@ import crypto from 'crypto';
 export const CacheTTL = {
   IPO_LIST: 900, // 15 minutes
   IPO_DETAIL: 900, // 15 minutes (Story 4.1 requirement)
+  IPO_SCORE: 900, // 15 minutes (Story 4.7 requirement)
   SUBSCRIPTION_LATEST: 300, // 5 minutes
   GMP_LATEST: 600, // 10 minutes
   HISTORICAL_DATA: 3600, // 1 hour
@@ -116,6 +117,13 @@ export function getListingPerformanceKey(ipoId: string): string {
 }
 
 /**
+ * Generate cache key for IPO score (Story 4.7)
+ */
+export function getIPOScoreKey(ipoId: string): string {
+  return `score:${ipoId}`;
+}
+
+/**
  * Get all cache key patterns for IPO invalidation
  */
 export function getIPOInvalidationKeys(ipoId: string, slug?: string): string[] {
@@ -149,6 +157,16 @@ export function getGMPInvalidationKeys(ipoId: string): string[] {
   return [
     `gmp:latest:${ipoId}`,
     `gmp:history:${ipoId}:*`,
+  ];
+}
+
+/**
+ * Get all cache key patterns for IPO score invalidation (Story 4.7)
+ */
+export function getIPOScoreInvalidationKeys(ipoId: string): string[] {
+  return [
+    `score:${ipoId}`,
+    `ipo:detail:*`, // Invalidate detail pages that include score
   ];
 }
 

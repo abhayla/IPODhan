@@ -18,6 +18,7 @@ import {
   listingPerformance,
   peerCompanies,
   registrars,
+  ipoScores,
   type ipoStatusEnum,
   type ipoCategoryEnum,
 } from '../db';
@@ -148,18 +149,28 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             .from(ipos)
             .where(whereClause);
 
-          // Get paginated data
+          // Get paginated data with ipoScore join (Story 4.7)
           const offset = (page - 1) * limit;
           const sortColumn = ipos[sortBy] || ipos.createdAt;
           const orderBy = sortOrder === 'asc' ? asc(sortColumn) : desc(sortColumn);
 
-          const data = await this.db
-            .select()
+          const results = await this.db
+            .select({
+              ipo: ipos,
+              ipoScore: ipoScores,
+            })
             .from(ipos)
+            .leftJoin(ipoScores, eq(ipos.id, ipoScores.ipoId))
             .where(whereClause)
             .orderBy(orderBy)
             .limit(limit)
             .offset(offset);
+
+          // Transform results to include ipoScore as a property
+          const data = results.map(row => ({
+            ...row.ipo,
+            ipoScore: row.ipoScore || null,
+          }));
 
           const totalPages = Math.ceil(count / limit);
 
@@ -202,7 +213,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             return null;
           }
 
-          // Fetch related data
+          // Fetch related data (Story 4.7: added ipoScore)
           const [
             financials,
             docs,
@@ -211,6 +222,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             listing,
             peers,
             registrarData,
+            ipoScore,
           ] = await Promise.all([
             this.db
               .select()
@@ -252,6 +264,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
                   .limit(1)
                   .then((r) => r[0] || null)
               : Promise.resolve(null),
+            this.db
+              .select()
+              .from(ipoScores)
+              .where(eq(ipoScores.ipoId, ipo.id))
+              .limit(1)
+              .then((r) => r[0] || null),
           ]);
 
           return {
@@ -263,6 +281,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             listingPerformance: listing,
             peerCompanies: peers,
             registrarRelation: registrarData,
+            ipoScore: ipoScore, // Story 4.7
           };
         } catch (error) {
           throw new DatabaseError(
