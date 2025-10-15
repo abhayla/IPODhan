@@ -9,6 +9,8 @@ export { IPORepository } from './ipo-repository';
 export { SubscriptionRepository } from './subscription-repository';
 export { GMPRepository } from './gmp-repository';
 export { FinancialDataRepository } from './financial-data-repository';
+export { IpoFinancialsRepository } from './ipo-financials-repository';
+export { IpoDetailsRepository } from './ipo-details-repository';
 export { DocumentRepository } from './document-repository';
 export { ListingPerformanceRepository } from './listing-performance-repository';
 export { RegistrarRepository } from './registrar-repository';
