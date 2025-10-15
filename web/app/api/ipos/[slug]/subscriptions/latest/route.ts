@@ -26,13 +26,23 @@ interface SubscriptionResponse {
   status: string;
   latestSubscription: {
     timestamp: string;
+    // High-level categories
     qib: string | null;
     nii: string | null;
     retail: string | null;
     total: string | null;
     employee: string | null;
     others: string | null;
+    // Granular breakdown (Story 5.6)
+    anchorInvestor: string | null;
+    retailHNI: string | null;
+    retailOthers: string | null;
+    bNII: string | null;
+    sNII: string | null;
+    // Additional metrics
     totalApplications: number | null;
+    totalSharesBid: number | null;
+    sharesOffered: number | null;
   } | null;
   message?: string;
 }
@@ -141,7 +151,7 @@ export async function GET(
     // Fetch latest subscription data
     const latestSubscription = await subscriptionRepository.findLatest(ipo.id);
 
-    // Prepare response
+    // Prepare response (Story 5.6: Include all 7 granular fields)
     const response: SubscriptionResponse = {
       ipoId: ipo.id,
       ipoSlug: ipo.slug,
@@ -150,13 +160,23 @@ export async function GET(
       latestSubscription: latestSubscription
         ? {
             timestamp: latestSubscription.timestamp.toISOString(),
+            // High-level categories
             qib: latestSubscription.qibSubscription,
             nii: latestSubscription.niiSubscription,
             retail: latestSubscription.retailSubscription,
             total: latestSubscription.totalSubscription,
             employee: latestSubscription.employeeSubscription,
             others: latestSubscription.othersSubscription,
+            // Granular breakdown (Story 5.6)
+            anchorInvestor: latestSubscription.anchorInvestorSubscription,
+            retailHNI: latestSubscription.retailHNISubscription,
+            retailOthers: latestSubscription.retailOthersSubscription,
+            bNII: latestSubscription.bNIISubscription,
+            sNII: latestSubscription.sNIISubscription,
+            // Additional metrics
             totalApplications: latestSubscription.totalApplications,
+            totalSharesBid: latestSubscription.totalSharesBid,
+            sharesOffered: latestSubscription.sharesOffered,
           }
         : null,
       message: latestSubscription
