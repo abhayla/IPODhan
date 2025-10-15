@@ -49,8 +49,8 @@ const FinancialTable = lazy(() =>
 const PeerComparisonTab = lazy(() =>
   import('./PeerComparisonTab').then((mod) => ({ default: mod.PeerComparisonTab }))
 );
-const SubscriptionBreakdown = lazy(() =>
-  import('./SubscriptionBreakdown').then((mod) => ({ default: mod.SubscriptionBreakdown }))
+const EnhancedSubscriptionView = lazy(() =>
+  import('./EnhancedSubscriptionView').then((mod) => ({ default: mod.EnhancedSubscriptionView }))
 );
 const GMPChart = lazy(() =>
   import('./GMPChart').then((mod) => ({ default: mod.GMPChart }))
@@ -233,12 +233,15 @@ export function IPODetailTabs({
         </TabsContent>
       )}
 
-      {/* Subscription Tab */}
+      {/* Subscription Tab (Story 5.6: Enhanced with 7 categories) */}
       <TabsContent value="subscription" className="mt-6">
         <TabErrorBoundary tabName="Subscription">
           <Suspense fallback={<SubscriptionBreakdownSkeleton />}>
             {subscriptions && subscriptions.length > 0 ? (
-              <SubscriptionBreakdown subscription={subscriptions[0]} />
+              <EnhancedSubscriptionView
+                subscription={subscriptions[0]}
+                issueSize={ipo.issueSize}
+              />
             ) : (
               <div className="rounded-lg border bg-card p-8 text-center">
                 <p className="text-muted-foreground">
