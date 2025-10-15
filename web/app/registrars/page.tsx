@@ -18,6 +18,7 @@
 import * as React from 'react';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { RegistrarCard } from '@/components/registrars/RegistrarCard';
+import { RegistrarLogo } from '@/components/registrars/RegistrarLogo';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import {
@@ -187,11 +188,18 @@ export default function RegistrarsPage() {
                 {filteredRegistrars.map((registrar) => (
                   <TableRow key={registrar.id}>
                     <TableCell className="font-medium">
-                      <div>
-                        <div className="font-semibold">{registrar.shortName || registrar.name}</div>
-                        {registrar.shortName && (
-                          <div className="text-xs text-muted-foreground">{registrar.name}</div>
-                        )}
+                      <div className="flex items-center gap-3">
+                        <RegistrarLogo
+                          logoUrl={registrar.logoUrl}
+                          registrarName={registrar.name}
+                          size={40}
+                        />
+                        <div>
+                          <div className="font-semibold">{registrar.shortName || registrar.name}</div>
+                          {registrar.shortName && (
+                            <div className="text-xs text-muted-foreground">{registrar.name}</div>
+                          )}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
