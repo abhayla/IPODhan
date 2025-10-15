@@ -17,9 +17,10 @@ import type {
   marketHolidays,
   registrars,
   brokerAffiliates,
+  ipoScores,
 } from '../db';
-// Import IPO type and helper from db/types (Story 7.10)
-import type { IPO, NewIPO } from '../db/types';
+// Import IPO type and helper from db/types (Story 7.10, 4.7)
+import type { IPO, NewIPO, IPOScore } from '../db/types';
 import { DEFAULT_HISTORICAL_FIELDS, mockIPO } from '../db/types';
 
 // ====================ENTITY TYPES ====================
@@ -61,6 +62,7 @@ export type BrokerAffiliateInsert = InferInsertModel<typeof brokerAffiliates>;
 
 /**
  * IPO with all related data (financials, documents, etc.)
+ * Story 4.7: Added ipoScore
  */
 export type IPOWithRelations = IPO & {
   financialData?: FinancialData | null;
@@ -70,6 +72,7 @@ export type IPOWithRelations = IPO & {
   listingPerformance?: ListingPerformance | null;
   peerCompanies?: PeerCompany[];
   registrarRelation?: Registrar | null;
+  ipoScore?: IPOScore | null;
 };
 
 // ==================== FILTER TYPES ====================

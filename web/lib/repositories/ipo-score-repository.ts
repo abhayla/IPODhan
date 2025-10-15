@@ -3,7 +3,7 @@
  * Data access layer for IPO scoring system with caching
  */
 
-import { eq, and, gte, lte, desc } from 'drizzle-orm';
+import { eq, and, gte, lte, desc, inArray } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import * as schema from '@ipodhan/shared/db/schema';
@@ -216,7 +216,7 @@ export class IPOScoreRepository extends BaseRepository {
           .select()
           .from(schema.ipoScores)
           .where(
-            schema.ipoScores.ipoId.$in(ipoIds)
+            inArray(schema.ipoScores.ipoId, ipoIds)
           );
 
         // Convert to map for easy lookup

@@ -3,7 +3,7 @@
  * Business logic layer for IPO scoring system
  */
 
-import { getDb } from '@/lib/db';
+import { db } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPOScoreRepository } from '@/lib/repositories/ipo-score-repository';
 import type { IPOScore, NewIPOScore, IPOVerdict } from '@/lib/db/types';
@@ -14,7 +14,6 @@ import { isScoreInRange } from '@/lib/utils/score-utils';
  * Get IPO score by IPO ID
  */
 export async function getIPOScore(ipoId: string): Promise<IPOScore | null> {
-  const db = await getDb();
   const redis = getRedisClient();
   const repository = new IPOScoreRepository(db, redis);
 
@@ -27,7 +26,6 @@ export async function getIPOScore(ipoId: string): Promise<IPOScore | null> {
 export async function getBatchIPOScores(
   ipoIds: string[]
 ): Promise<Map<string, IPOScore>> {
-  const db = await getDb();
   const redis = getRedisClient();
   const repository = new IPOScoreRepository(db, redis);
 
@@ -43,7 +41,6 @@ export async function getFilteredScores(filters?: {
   limit?: number;
   offset?: number;
 }): Promise<IPOScore[]> {
-  const db = await getDb();
   const redis = getRedisClient();
   const repository = new IPOScoreRepository(db, redis);
 
@@ -72,7 +69,6 @@ export async function getFilteredScores(filters?: {
 export async function upsertIPOScore(
   data: NewIPOScore
 ): Promise<IPOScore> {
-  const db = await getDb();
   const redis = getRedisClient();
   const repository = new IPOScoreRepository(db, redis);
 
@@ -89,7 +85,6 @@ export async function getScoreStatistics(): Promise<{
   count: number;
   verdictCounts: Record<string, number>;
 }> {
-  const db = await getDb();
   const redis = getRedisClient();
   const repository = new IPOScoreRepository(db, redis);
 
@@ -108,7 +103,6 @@ export async function getScoreStatistics(): Promise<{
  * Delete IPO score
  */
 export async function deleteIPOScore(ipoId: string): Promise<void> {
-  const db = await getDb();
   const redis = getRedisClient();
   const repository = new IPOScoreRepository(db, redis);
 

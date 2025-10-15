@@ -132,7 +132,7 @@ async function main() {
           sectorScore: config.sectorScore,
           verdict: config.verdict,
           confidence: config.confidence,
-          aiReasoning: reasoning,
+          reasoning: reasoning,
           algorithmVersion: '1.0.0',
         });
 
