@@ -23,6 +23,7 @@ export const CacheTTL = {
   IPO_DETAILS: 1800, // 30 minutes (Story 4.11 requirement)
   DOCUMENTS: 3600, // 1 hour
   LISTING_PERFORMANCE: 600, // 10 minutes
+  BROKER_AFFILIATES: 1800, // 30 minutes (Story 5.7 requirement)
 } as const;
 
 /**
