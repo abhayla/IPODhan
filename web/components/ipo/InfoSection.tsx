@@ -4,9 +4,19 @@ import { IPO } from '@/lib/db/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatIPODate, getAccessibleDate, getISODate } from '@/lib/utils/date-formatter';
 import { ISINDisplay } from './ISINDisplay';
+import { RegistrarLogo } from '@/components/registrars/RegistrarLogo';
 
 interface InfoSectionProps {
-  ipo: IPO;
+  ipo: IPO & {
+    registrarRelation?: {
+      id: string;
+      name: string;
+      shortName: string | null;
+      logoUrl: string | null;
+      website: string | null;
+      allotmentCheckUrl: string | null;
+    } | null;
+  };
 }
 
 /**
@@ -100,10 +110,39 @@ export function InfoSection({ ipo }: InfoSectionProps) {
                   : 'N/A'
               }
             />
-            <InfoRow
-              label="Registrar"
-              value={ipo.registrar || 'N/A'}
-            />
+            {/* Registrar with Logo (Story 5.8) */}
+            <div className="group flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4 p-2 rounded-md transition-all duration-200 hover:bg-muted/30">
+              <span className="text-sm font-medium text-muted-foreground uppercase tracking-wide">Registrar</span>
+              <div className="flex items-center gap-2">
+                {ipo.registrarRelation ? (
+                  <>
+                    <RegistrarLogo
+                      logoUrl={ipo.registrarRelation.logoUrl}
+                      registrarName={ipo.registrarRelation.name}
+                      size={40}
+                    />
+                    {ipo.registrarRelation.website ? (
+                      <a
+                        href={ipo.registrarRelation.website}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sm font-bold transition-colors duration-200 hover:text-primary hover:underline"
+                      >
+                        {ipo.registrarRelation.shortName || ipo.registrarRelation.name}
+                      </a>
+                    ) : (
+                      <span className="text-sm font-bold transition-colors duration-200 group-hover:text-primary">
+                        {ipo.registrarRelation.shortName || ipo.registrarRelation.name}
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-sm font-bold transition-colors duration-200 group-hover:text-primary">
+                    {ipo.registrar || 'N/A'}
+                  </span>
+                )}
+              </div>
+            </div>
             <InfoRow
               label="Lead Managers"
               value={
