@@ -106,6 +106,17 @@ const LEAD_MANAGERS = [
   'IIFL Securities',
 ];
 
+// Stock symbols for seeding (realistic Indian stock symbols)
+const STOCK_SYMBOLS = [
+  'RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'HDFC', 'SBIN', 'BHARTIARTL',
+  'KOTAKBANK', 'ITC', 'LT', 'AXISBANK', 'ASIANPAINT', 'HCLTECH', 'MARUTI', 'WIPRO',
+  'TITAN', 'ULTRACEMCO', 'BAJFINANCE', 'SUNPHARMA', 'NESTLEIND', 'POWERGRID', 'NTPC',
+  'ONGC', 'COALINDIA', 'DRREDDY', 'INDUSINDBK', 'TECHM', 'TATAMOTORS', 'GRASIM',
+  'CIPLA', 'DIVISLAB', 'ADANIPORTS', 'EICHERMOT', 'HEROMOTOCO', 'JSWSTEEL', 'BRITANNIA',
+  'HINDALCO', 'TATASTEEL', 'BAJAJFINSV', 'VEDL', 'SHREECEM', 'APOLLOHOSP', 'TATACONSUM',
+  'BPCL', 'IOC', 'GAIL', 'HINDALCO', 'ZOMATO', 'PAYTM', 'POLICYBZR', 'NYKAA',
+];
+
 // ==================== HELPER FUNCTIONS ====================
 
 /**
@@ -212,6 +223,63 @@ function generateSlug(companyName: string, existingSlugs: Set<string>): string {
 
   existingSlugs.add(uniqueSlug);
   return uniqueSlug;
+}
+
+/**
+ * Generate stock symbol - UPCOMING IPOs may not have symbols yet
+ */
+function generateSymbol(status: IPOStatus, existingSymbols: Set<string>): string | null {
+  // UPCOMING IPOs don't have symbols yet (30% chance of null)
+  if (status === 'UPCOMING' && Math.random() < 0.3) {
+    return null;
+  }
+
+  // Try to generate unique symbol
+  let symbol: string;
+  let attempts = 0;
+  do {
+    symbol = randomChoice(STOCK_SYMBOLS);
+    // Add suffix for uniqueness if needed
+    if (existingSymbols.has(symbol) && attempts < 3) {
+      symbol = `${symbol}${randomInt(1, 9)}`;
+    }
+    attempts++;
+  } while (existingSymbols.has(symbol) && attempts < 10);
+
+  // If still not unique, append random 3-digit number
+  if (existingSymbols.has(symbol)) {
+    symbol = `${symbol.substring(0, 10)}${randomInt(100, 999)}`;
+  }
+
+  existingSymbols.add(symbol);
+  return symbol;
+}
+
+/**
+ * Generate ISIN code - Format: IN + 10 alphanumeric characters
+ */
+function generateISIN(status: IPOStatus, existingISINs: Set<string>): string | null {
+  // UPCOMING IPOs may not have ISIN yet (20% chance of null)
+  if (status === 'UPCOMING' && Math.random() < 0.2) {
+    return null;
+  }
+
+  // Generate unique ISIN
+  let isin: string;
+  let attempts = 0;
+  do {
+    // Format: IN + 10 alphanumeric (letters + numbers)
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    let code = '';
+    for (let i = 0; i < 10; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    isin = `IN${code}`;
+    attempts++;
+  } while (existingISINs.has(isin) && attempts < 100);
+
+  existingISINs.add(isin);
+  return isin;
 }
 
 /**
@@ -322,10 +390,14 @@ function generateIPOData(
   status: IPOStatus,
   category: IPOCategory,
   existingNames: Set<string>,
-  existingSlugs: Set<string>
+  existingSlugs: Set<string>,
+  existingSymbols: Set<string>,
+  existingISINs: Set<string>
 ) {
   const companyName = generateCompanyName(existingNames);
   const slug = generateSlug(companyName, existingSlugs);
+  const symbol = generateSymbol(status, existingSymbols);
+  const isin = generateISIN(status, existingISINs);
   const sector = randomChoice(SECTORS);
   const dates = generateDates(status);
 
@@ -366,6 +438,8 @@ function generateIPOData(
   return {
     companyName,
     slug,
+    symbol,
+    isin,
     category,
     sector,
     issueSize,
@@ -473,6 +547,8 @@ async function seedDatabase() {
     const ipoData: Array<ReturnType<typeof generateIPOData>> = [];
     const existingNames = new Set<string>();
     const existingSlugs = new Set<string>();
+    const existingSymbols = new Set<string>();
+    const existingISINs = new Set<string>();
 
     // Generate for each status
     for (const [status, targetCount] of Object.entries(statusCounts)) {
@@ -484,12 +560,12 @@ async function seedDatabase() {
 
       // Generate MAINBOARD IPOs
       for (let i = 0; i < mainboardForStatus; i++) {
-        ipoData.push(generateIPOData(statusTyped, 'MAINBOARD', existingNames, existingSlugs));
+        ipoData.push(generateIPOData(statusTyped, 'MAINBOARD', existingNames, existingSlugs, existingSymbols, existingISINs));
       }
 
       // Generate SME IPOs
       for (let i = 0; i < smeForStatus; i++) {
-        ipoData.push(generateIPOData(statusTyped, 'SME', existingNames, existingSlugs));
+        ipoData.push(generateIPOData(statusTyped, 'SME', existingNames, existingSlugs, existingSymbols, existingISINs));
       }
     }
 

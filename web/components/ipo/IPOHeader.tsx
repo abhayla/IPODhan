@@ -4,6 +4,7 @@ import { IPO, IPOStatus } from '@/lib/db/types';
 import { Badge } from '@/components/ui/badge';
 import { RatingDisplay } from './RatingDisplay';
 import { AddToCompareButton } from '@/components/tools/AddToCompareButton';
+import { StockSymbol } from './StockSymbol';
 import { Building2 } from 'lucide-react';
 
 interface IPOHeaderProps {
@@ -57,6 +58,17 @@ export function IPOHeader({ ipo }: IPOHeaderProps) {
                 {statusConfig.label}
               </Badge>
             </div>
+
+            {/* Stock Symbol (Story 4.9) */}
+            {ipo.symbol && (
+              <div className="animate-in fade-in slide-in-from-bottom-2 duration-500 delay-75">
+                <StockSymbol
+                  symbol={ipo.symbol}
+                  exchange="NSE"
+                  size="md"
+                />
+              </div>
+            )}
 
             {/* Category and Sector */}
             <div className="flex flex-wrap items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100">

@@ -91,6 +91,8 @@ export const ipos = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     companyName: varchar('company_name', { length: 255 }).notNull(),
     slug: varchar('slug', { length: 255 }).notNull().unique(),
+    symbol: varchar('symbol', { length: 20 }), // Stock ticker symbol (nullable - upcoming IPOs may not have symbols yet)
+    isin: varchar('isin', { length: 12 }), // International Securities Identification Number (nullable)
     category: ipoCategoryEnum('category').notNull(),
     sector: varchar('sector', { length: 100 }),
     issueSize: numeric('issue_size', { precision: 10, scale: 2 }), // in INR crores
@@ -147,6 +149,7 @@ export const ipos = pgTable(
   (table) => ({
     statusIdx: index('idx_ipos_status').on(table.status),
     slugIdx: index('idx_ipos_slug').on(table.slug),
+    symbolIdx: index('idx_ipos_symbol').on(table.symbol), // Index for symbol search performance
     // Note: Trigram index for fuzzy company name search created in migration 0000_initial_schema.sql
     // CREATE INDEX idx_ipos_company_name_trgm ON ipos USING gin(company_name gin_trgm_ops);
   })
