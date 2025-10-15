@@ -94,7 +94,8 @@ test.describe('Peer Comparison Tab', () => {
 
     // Verify table has rows (IPO + peers + industry average)
     const tableRows = page.locator('.hidden.md\\:block table tbody tr');
-    await expect(tableRows).toHaveCount({ gte: 2 }); // At least IPO row + industry average
+    const rowCount = await tableRows.count();
+    expect(rowCount).toBeGreaterThanOrEqual(2); // At least IPO row + industry average
 
     // Verify IPO row is highlighted
     const ipoRow = page.locator('.hidden.md\\:block table tbody tr.bg-blue-50').first();
@@ -214,7 +215,8 @@ test.describe('Peer Comparison Tab - Mobile', () => {
 
     // Verify multiple cards exist (IPO + peers + average)
     const allCards = page.locator('.md\\:hidden .rounded-lg.border');
-    await expect(allCards).toHaveCount({ gte: 2 }); // At least IPO + industry average
+    const cardCount = await allCards.count();
+    expect(cardCount).toBeGreaterThanOrEqual(2); // At least IPO + industry average
   });
 
   test('should display industry average card on mobile', async ({ page }) => {
@@ -267,7 +269,7 @@ test.describe('Peer Comparison Tab - Mobile', () => {
 test.describe('Peer Comparison Tab - Empty State', () => {
   test.beforeEach(async ({ page }) => {
     // Set viewport for desktop testing
-    await page.setViewportSize({ width: 1280, height 720 });
+    await page.setViewportSize({ width: 1280, height: 720 });
   });
 
   test('should display empty state message when no peer data', async ({ page }) => {
