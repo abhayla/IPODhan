@@ -49,6 +49,10 @@ describe('validateSubscriptionTotals', () => {
       niiSubscription: '6.60',
       bNIISubscription: '4.50',
       sNIISubscription: '2.10',
+      // Clear retail values to isolate NII validation
+      retailSubscription: null,
+      retailHNISubscription: null,
+      retailOthersSubscription: null,
     });
 
     const result = validateSubscriptionTotals(sub);
@@ -61,6 +65,10 @@ describe('validateSubscriptionTotals', () => {
       retailSubscription: '3.20',
       retailHNISubscription: '2.00',
       retailOthersSubscription: '1.20',
+      // Clear NII values to isolate Retail validation
+      niiSubscription: null,
+      bNIISubscription: null,
+      sNIISubscription: null,
     });
 
     const result = validateSubscriptionTotals(sub);
@@ -73,6 +81,10 @@ describe('validateSubscriptionTotals', () => {
       niiSubscription: '10.00',
       bNIISubscription: '4.50',
       sNIISubscription: '2.10',
+      // Clear retail values to isolate NII validation
+      retailSubscription: null,
+      retailHNISubscription: null,
+      retailOthersSubscription: null,
     });
 
     const result = validateSubscriptionTotals(sub);
@@ -86,6 +98,10 @@ describe('validateSubscriptionTotals', () => {
       retailSubscription: '10.00',
       retailHNISubscription: '2.00',
       retailOthersSubscription: '1.20',
+      // Clear NII values to isolate Retail validation
+      niiSubscription: null,
+      bNIISubscription: null,
+      sNIISubscription: null,
     });
 
     const result = validateSubscriptionTotals(sub);
@@ -110,6 +126,9 @@ describe('validateSubscriptionTotals', () => {
       niiSubscription: null,
       bNIISubscription: null,
       sNIISubscription: null,
+      retailSubscription: null,
+      retailHNISubscription: null,
+      retailOthersSubscription: null,
     });
 
     const result = validateSubscriptionTotals(sub);
