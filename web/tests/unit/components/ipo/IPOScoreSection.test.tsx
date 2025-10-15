@@ -18,8 +18,9 @@ describe('IPOScoreSection', () => {
     sectorScore: 85,
     verdict: 'APPLY',
     confidence: 'HIGH',
-    aiReasoning: 'Strong fundamentals and positive market sentiment',
+    reasoning: 'Strong fundamentals and positive market sentiment',
     algorithmVersion: '1.0.0',
+    calculatedAt: new Date(),
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -37,7 +38,10 @@ describe('IPOScoreSection', () => {
 
   it('should display AI reasoning', () => {
     render(<IPOScoreSection score={mockScore} />);
-    expect(screen.getByText(mockScore.aiReasoning)).toBeInTheDocument();
+    const reasoning = mockScore.reasoning;
+    if (reasoning) {
+      expect(screen.getByText(reasoning)).toBeInTheDocument();
+    }
   });
 
   it('should show Score Pending when score is null', () => {

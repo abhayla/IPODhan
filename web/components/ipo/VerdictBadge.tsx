@@ -41,17 +41,20 @@ export function VerdictBadge({
     lg: 'text-base px-4 py-1.5',
   };
 
-  const verdictText = {
+  const verdictText: Record<IPOVerdict, string> = {
     APPLY: 'Apply',
     CONSIDER: 'Consider',
     SKIP: 'Skip',
   };
 
-  const verdictDescriptions = {
+  const verdictDescriptions: Record<IPOVerdict, string> = {
     APPLY: 'Strong fundamentals and good subscription potential. Recommended for application.',
     CONSIDER: 'Mixed signals. Review details carefully before deciding.',
     SKIP: 'Weak fundamentals or poor valuation. Not recommended.',
   };
+
+  const verdictLabel: string = verdictText[verdict];
+  const verdictDescription: string = verdictDescriptions[verdict];
 
   const badge = (
     <div
@@ -64,7 +67,7 @@ export function VerdictBadge({
         ${className}
       `}
     >
-      <span>{verdictText[verdict]}</span>
+      <span>{verdictLabel}</span>
     </div>
   );
 
@@ -80,10 +83,10 @@ export function VerdictBadge({
         </TooltipTrigger>
         <TooltipContent className="max-w-xs shadow-lg">
           <p className="text-sm font-medium">
-            Verdict: {verdictText[verdict]}
+            Verdict: {verdictLabel}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            {verdictDescriptions[verdict]}
+            {verdictDescription}
           </p>
         </TooltipContent>
       </Tooltip>

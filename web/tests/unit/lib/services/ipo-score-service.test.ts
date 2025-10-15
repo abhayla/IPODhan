@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getScoreByIPOId, getAllScores } from '@/lib/services/ipo-score-service';
+import { getIPOScore, getFilteredScores } from '@/lib/services/ipo-score-service';
 
 // Mock dependencies
 vi.mock('@/lib/db/index', () => ({
@@ -21,29 +21,29 @@ vi.mock('@/lib/cache/redis-client', () => ({
 }));
 
 describe('IPOScoreService', () => {
-  describe('getScoreByIPOId', () => {
+  describe('getIPOScore', () => {
     it('should be a function', () => {
-      expect(typeof getScoreByIPOId).toBe('function');
+      expect(typeof getIPOScore).toBe('function');
     });
 
     it('should accept ipoId parameter', () => {
-      expect(getScoreByIPOId).toHaveLength(1);
+      expect(getIPOScore).toHaveLength(1);
     });
   });
 
-  describe('getAllScores', () => {
+  describe('getFilteredScores', () => {
     it('should be a function', () => {
-      expect(typeof getAllScores).toBe('function');
+      expect(typeof getFilteredScores).toBe('function');
     });
 
     it('should accept optional filters parameter', () => {
-      expect(getAllScores).toHaveLength(1);
+      expect(getFilteredScores).toHaveLength(1);
     });
   });
 
   // Additional service functions can be tested similarly
   it('should export all required service functions', () => {
-    expect(getScoreByIPOId).toBeDefined();
-    expect(getAllScores).toBeDefined();
+    expect(getIPOScore).toBeDefined();
+    expect(getFilteredScores).toBeDefined();
   });
 });

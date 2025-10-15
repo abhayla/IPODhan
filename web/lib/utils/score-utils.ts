@@ -25,30 +25,30 @@ export function getScoreColor(score: number): string {
  * Get Tailwind CSS classes for score badge background
  */
 export function getScoreBgClass(score: number): string {
-  if (score <= 25) return 'bg-red-100 dark:bg-red-900/20';
-  if (score <= 50) return 'bg-orange-100 dark:bg-orange-900/20';
-  if (score <= 75) return 'bg-yellow-100 dark:bg-yellow-900/20';
-  return 'bg-green-100 dark:bg-green-900/20';
+  if (score >= 76) return 'bg-green-100 dark:bg-green-900/20';
+  if (score >= 51) return 'bg-yellow-100 dark:bg-yellow-900/20';
+  if (score >= 26) return 'bg-orange-100 dark:bg-orange-900/20';
+  return 'bg-red-100 dark:bg-red-900/20';
 }
 
 /**
  * Get Tailwind CSS classes for score badge text
  */
 export function getScoreTextClass(score: number): string {
-  if (score <= 25) return 'text-red-700 dark:text-red-300';
-  if (score <= 50) return 'text-orange-700 dark:text-orange-300';
-  if (score <= 75) return 'text-yellow-700 dark:text-yellow-300';
-  return 'text-green-700 dark:text-green-300';
+  if (score >= 76) return 'text-green-700 dark:text-green-300';
+  if (score >= 51) return 'text-yellow-700 dark:text-yellow-300';
+  if (score >= 26) return 'text-orange-700 dark:text-orange-300';
+  return 'text-red-700 dark:text-red-300';
 }
 
 /**
  * Get Tailwind CSS classes for score badge border
  */
 export function getScoreBorderClass(score: number): string {
-  if (score <= 25) return 'border-red-300 dark:border-red-700';
-  if (score <= 50) return 'border-orange-300 dark:border-orange-700';
-  if (score <= 75) return 'border-yellow-300 dark:border-yellow-700';
-  return 'border-green-300 dark:border-green-700';
+  if (score >= 76) return 'border-green-300 dark:border-green-700';
+  if (score >= 51) return 'border-yellow-300 dark:border-yellow-700';
+  if (score >= 26) return 'border-orange-300 dark:border-orange-700';
+  return 'border-red-300 dark:border-red-700';
 }
 
 /**
