@@ -61,11 +61,13 @@ export function validateSubscriptionTotals(
   };
 
   // Check NII breakdown (bNII + sNII should equal NII)
+  // Only validate if we have the parent total (nii)
   const bNII = toNum(sub.bNIISubscription);
   const sNII = toNum(sub.sNIISubscription);
   const nii = toNum(sub.niiSubscription);
 
-  if (bNII > 0 && sNII > 0 && nii > 0) {
+  // Only validate if parent total exists and at least one child value exists
+  if (nii > 0 && (bNII > 0 || sNII > 0)) {
     const niiSum = bNII + sNII;
     const niiDiff = Math.abs(niiSum - nii);
     if (niiDiff > tolerance) {
@@ -76,11 +78,13 @@ export function validateSubscriptionTotals(
   }
 
   // Check Retail breakdown (HNI + Others should equal Retail)
+  // Only validate if we have the parent total (retail)
   const retailHNI = toNum(sub.retailHNISubscription);
   const retailOthers = toNum(sub.retailOthersSubscription);
   const retail = toNum(sub.retailSubscription);
 
-  if (retailHNI > 0 && retailOthers > 0 && retail > 0) {
+  // Only validate if parent total exists and at least one child value exists
+  if (retail > 0 && (retailHNI > 0 || retailOthers > 0)) {
     const retailSum = retailHNI + retailOthers;
     const retailDiff = Math.abs(retailSum - retail);
     if (retailDiff > tolerance) {
