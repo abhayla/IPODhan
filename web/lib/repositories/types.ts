@@ -11,6 +11,7 @@ import type {
   subscriptions,
   gmpRecords,
   financialData,
+  ipoFinancials,
   documents,
   listingPerformance,
   peerCompanies,
@@ -38,6 +39,9 @@ export type GMPRecordInsert = InferInsertModel<typeof gmpRecords>;
 export type FinancialData = InferSelectModel<typeof financialData>;
 export type FinancialDataInsert = InferInsertModel<typeof financialData>;
 
+export type IpoFinancials = InferSelectModel<typeof ipoFinancials>;
+export type IpoFinancialsInsert = InferInsertModel<typeof ipoFinancials>;
+
 export type Document = InferSelectModel<typeof documents>;
 export type DocumentInsert = InferInsertModel<typeof documents>;
 
@@ -63,9 +67,11 @@ export type BrokerAffiliateInsert = InferInsertModel<typeof brokerAffiliates>;
 /**
  * IPO with all related data (financials, documents, etc.)
  * Story 4.7: Added ipoScore
+ * Story 4.10: Added ipoFinancials
  */
 export type IPOWithRelations = IPO & {
   financialData?: FinancialData | null;
+  ipoFinancials?: IpoFinancials | null;
   documents?: Document[];
   subscriptions?: Subscription[];
   gmpRecords?: GMPRecord[];
@@ -206,6 +212,15 @@ export interface IGMPRepository {
 export interface IFinancialDataRepository {
   findByIPO(ipoId: string): Promise<FinancialData | null>;
   upsert(data: FinancialDataInsert): Promise<FinancialData>;
+  delete(ipoId: string): Promise<void>;
+}
+
+/**
+ * IPO Financials Repository Interface (Enhanced - Story 4.10)
+ */
+export interface IIpoFinancialsRepository {
+  findByIPO(ipoId: string): Promise<IpoFinancials | null>;
+  upsert(data: IpoFinancialsInsert): Promise<IpoFinancials>;
   delete(ipoId: string): Promise<void>;
 }
 

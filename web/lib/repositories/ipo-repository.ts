@@ -12,6 +12,7 @@ import { BaseRepository } from './base-repository';
 import {
   ipos,
   financialData,
+  ipoFinancials,
   documents,
   subscriptions,
   gmpRecords,
@@ -213,9 +214,10 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             return null;
           }
 
-          // Fetch related data (Story 4.7: added ipoScore)
+          // Fetch related data (Story 4.7: added ipoScore, Story 4.10: added ipoFinancials)
           const [
             financials,
+            enhancedFinancials,
             docs,
             subs,
             gmps,
@@ -228,6 +230,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               .select()
               .from(financialData)
               .where(eq(financialData.ipoId, ipo.id))
+              .limit(1)
+              .then((r) => r[0] || null),
+            this.db
+              .select()
+              .from(ipoFinancials)
+              .where(eq(ipoFinancials.ipoId, ipo.id))
               .limit(1)
               .then((r) => r[0] || null),
             this.db
@@ -275,6 +283,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           return {
             ...ipo,
             financialData: financials,
+            ipoFinancials: enhancedFinancials, // Story 4.10
             documents: docs,
             subscriptions: subs,
             gmpRecords: gmps,
