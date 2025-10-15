@@ -7,7 +7,10 @@ export type IPO = InferSelectModel<typeof schema.ipos>;
 export type NewIPO = InferInsertModel<typeof schema.ipos>;
 
 // Default historical field values (Story 7.10) for test fixtures
+// Story 4.9: Added symbol and isin fields
 export const DEFAULT_HISTORICAL_FIELDS = {
+  symbol: null,
+  isin: null,
   subscriptionRetail: null,
   subscriptionHni: null,
   subscriptionQib: null,
