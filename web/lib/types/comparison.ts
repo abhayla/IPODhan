@@ -11,6 +11,7 @@ import { z } from 'zod';
 
 /**
  * Single IPO comparison data with all metrics
+ * Story 4.10: Added ipoFinancials for enhanced metrics
  */
 export interface IPOComparison {
   slug: string;
@@ -34,6 +35,12 @@ export interface IPOComparison {
     revenueGrowth: number | null;
     eps: number | null;
   };
+  // Story 4.10: Enhanced financial metrics from ipo_financials table
+  ipoFinancials?: {
+    pbRatio: number | null;
+    rocePercentage: number | null;
+    industryPe: number | null;
+  } | null;
   rating: number | null;
   ratingRationale: string | null;
 }

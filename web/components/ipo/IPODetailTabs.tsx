@@ -127,8 +127,8 @@ export function IPODetailTabs({
     }
   }, [searchParams, activeTab]);
 
-  // Extract data for tabs
-  const { financialData, documents, subscriptions, gmpRecords, peerCompanies } = ipoData;
+  // Extract data for tabs (Story 4.10: Added ipoFinancials)
+  const { financialData, ipoFinancials, documents, subscriptions, gmpRecords, peerCompanies } = ipoData;
 
   // Check if peer comparison data exists
   const hasPeerData = peerCompanies && peerCompanies.length > 0;
@@ -202,12 +202,15 @@ export function IPODetailTabs({
         </TabErrorBoundary>
       </TabsContent>
 
-      {/* Financials Tab */}
+      {/* Financials Tab (Story 4.10: Pass ipoFinancials) */}
       <TabsContent value="financials" className="mt-6">
         <TabErrorBoundary tabName="Financials">
           <Suspense fallback={<FinancialTableSkeleton />}>
             {financialData ? (
-              <FinancialTable financialData={financialData} />
+              <FinancialTable
+                financialData={financialData}
+                ipoFinancials={ipoFinancials}
+              />
             ) : (
               <div className="rounded-lg border bg-card p-8 text-center">
                 <p className="text-muted-foreground">

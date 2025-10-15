@@ -169,6 +169,7 @@ export async function GET(
         historicalDataScrapedAt: ipoWithRelations.historicalDataScrapedAt,
       },
       financialData: ipoWithRelations.financialData ?? null,
+      ipoFinancials: ipoWithRelations.ipoFinancials ?? null, // Story 4.10
       documents: ipoWithRelations.documents || [],
       subscriptions: ipoWithRelations.subscriptions || [],
       gmpRecords: ipoWithRelations.gmpRecords || [],
@@ -189,6 +190,7 @@ export async function GET(
         slug,
         status: ipoWithRelations.status,
         hasFinancials: !!ipoWithRelations.financialData,
+        hasEnhancedFinancials: !!ipoWithRelations.ipoFinancials, // Story 4.10
         subscriptionCount: ipoWithRelations.subscriptions?.length || 0,
         gmpCount: ipoWithRelations.gmpRecords?.length || 0,
       },
