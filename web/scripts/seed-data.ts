@@ -829,7 +829,7 @@ async function seedDatabase() {
         console.log(`  ✓ Created ${subCount} subscription snapshots`);
       }
 
-      // Create GMP data for OPEN/CLOSED/LISTED IPOs
+      // Create GMP data for OPEN/CLOSED/LISTED IPOs (Story 4.13: Added advanced metrics)
       if (['OPEN', 'CLOSED', 'LISTED'].includes(ipoData.status)) {
         const gmpCount = randomInRange(5, 7);
         for (let g = 0; g < gmpCount; g++) {
@@ -837,15 +837,26 @@ async function seedDatabase() {
           const timestamp = new Date(ipoData.openDate.getTime() + dayOffset * 24 * 60 * 60 * 1000);
           const gmpValue = randomInRange(10, 150);
 
+          // Add advanced GMP metrics (kostak rate, subject rate, sauda details) for latest record only
+          const isLatestRecord = g === gmpCount - 1;
+          const kostakRate = isLatestRecord ? randomInRange(50, 200) : null;
+          const subjectRate = isLatestRecord ? randomInRange(100, 500) : null;
+          const saudaDetails = isLatestRecord
+            ? `Grey market trading active. Kostak trading at ₹${kostakRate ? kostakRate - 20 : 0}-₹${kostakRate ? kostakRate + 20 : 0} per lot. Subject rate varies based on market sentiment and allotment probability. Current demand is ${randomInRange(2, 5)}x supply. Trading volumes are ${['moderate', 'high', 'very high'][randomInRange(0, 2)]}.`
+            : null;
+
           await gmpRepo.create({
             ipoId: ipo.id,
             timestamp,
             gmp: gmpValue,
             expectedListingPrice: ipoData.priceRangeMax + gmpValue,
+            kostakRate,
+            subjectRate,
+            saudaDetails,
             source: 'IPO Central',
           });
         }
-        console.log(`  ✓ Created ${gmpCount} GMP records`);
+        console.log(`  ✓ Created ${gmpCount} GMP records (with advanced metrics)`);
       }
 
       // Create listing performance for LISTED IPOs
