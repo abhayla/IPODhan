@@ -20,6 +20,12 @@ export { RatingDisplay } from './RatingDisplay';
 export { ShareButtons } from './ShareButtons';
 export { AllotmentCheckerCard } from './AllotmentCheckerCard';
 
+// Issue Structure Components (Story 4.11)
+export { IssueStructureSection } from './IssueStructureSection';
+export { IssueTypeBadge } from './IssueTypeBadge';
+export { IssueBreakdownChart } from './IssueBreakdownChart';
+export { MinimumInvestmentDisplay } from './MinimumInvestmentDisplay';
+
 // Detail Page Components (Story 4.3)
 export { IPODetailTabs } from './IPODetailTabs';
 

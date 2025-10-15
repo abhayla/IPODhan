@@ -20,6 +20,7 @@ import Script from 'next/script';
 import { IPOHeader } from '@/components/ipo/IPOHeader';
 import { KeyMetricsCards } from '@/components/ipo/KeyMetricsCards';
 import { InfoSection } from '@/components/ipo/InfoSection';
+import { IssueStructureSection } from '@/components/ipo/IssueStructureSection';
 import { IPODetailTabs } from '@/components/ipo/IPODetailTabs';
 import { AllotmentCheckerCard } from '@/components/ipo/AllotmentCheckerCard';
 import { LotCalculator } from '@/components/tools/LotCalculator';
@@ -99,7 +100,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     notFound();
   }
 
-  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore } = data;
+  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails } = data;
 
   // Calculate metrics for KeyMetricsCards
   const latestSubscription = subscriptions?.[0];
@@ -172,6 +173,9 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               gmp={gmpValue}
               gmpPercent={gmpPercent}
             />
+
+            {/* Issue Structure Section (Story 4.11) */}
+            <IssueStructureSection ipoDetails={ipoDetails || null} />
 
             {/* IPO Information Section */}
             <InfoSection ipo={ipo} />
