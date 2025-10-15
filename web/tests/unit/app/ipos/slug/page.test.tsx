@@ -98,6 +98,8 @@ const mockIPO: IPO = {
 const mockIPODetailResponse: IPODetailResponse = {
   ipo: mockIPO,
   financialData: null,
+  ipoFinancials: null,
+  ipoDetails: null,
   documents: [],
   subscriptions: [],
   gmpRecords: [],

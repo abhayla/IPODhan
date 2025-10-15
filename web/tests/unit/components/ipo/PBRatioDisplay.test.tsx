@@ -78,7 +78,7 @@ describe('PBRatioDisplay Component', () => {
     });
 
     it('displays "N/A" for undefined P/B ratio', () => {
-      render(<PBRatioDisplay pbRatio={undefined} />);
+      render(<PBRatioDisplay pbRatio={null} />);
       expect(screen.getByText('N/A')).toBeInTheDocument();
     });
 

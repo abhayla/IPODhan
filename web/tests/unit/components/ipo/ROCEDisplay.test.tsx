@@ -127,7 +127,7 @@ describe('ROCEDisplay Component', () => {
     });
 
     it('displays "N/A" for undefined ROCE', () => {
-      render(<ROCEDisplay roce={undefined} />);
+      render(<ROCEDisplay roce={null} />);
       expect(screen.getByText('N/A')).toBeInTheDocument();
     });
 
