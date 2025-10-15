@@ -1,17 +1,20 @@
 'use client';
 
-import { IPO, IPOStatus, ListingPerformance } from '@/lib/db/types';
+import { IPO, IPOStatus, ListingPerformance, IPOScore } from '@/lib/db/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { Star } from 'lucide-react';
 import { HighlightedText } from '@/components/search/HighlightedText';
 import { ListingPerformanceBadge } from './ListingPerformanceBadge';
+import { ScoreBadge } from './ScoreBadge';
+import { VerdictBadge } from './VerdictBadge';
 import { formatIPODate, getAccessibleDate, getISODate } from '@/lib/utils/date-formatter';
 
 interface IPOCardProps {
   ipo: IPO & {
     listingPerformance?: ListingPerformance | null;
+    ipoScore?: IPOScore | null;
   };
   searchQuery?: string;
   onClick?: () => void;
@@ -97,6 +100,14 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
             </h3>
             <div className="flex flex-col gap-2 items-end">
               <Badge className={`${statusConfig.color} transition-all duration-200 group-hover:scale-110`}>{statusConfig.label}</Badge>
+              {/* IPO Score Badge (Story 4.7) */}
+              {ipo.ipoScore ? (
+                <ScoreBadge score={ipo.ipoScore.totalScore} size="sm" />
+              ) : (
+                <Badge variant="outline" className="text-xs bg-gray-100 text-gray-600 border-gray-300">
+                  Score Pending
+                </Badge>
+              )}
               {/* Listing Performance Badge for LISTED IPOs */}
               {ipo.status === 'LISTED' &&
                ipo.listingPerformance &&
@@ -109,7 +120,7 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
             </div>
           </div>
 
-          {/* Category and Sector */}
+          {/* Category, Sector, and Verdict */}
           <div className="flex items-center gap-2 flex-wrap">
             <Badge variant="outline" className="text-xs">
               {ipo.category}
@@ -118,6 +129,10 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
               <span className="text-xs text-muted-foreground">
                 <HighlightedText text={ipo.sector} query={searchQuery || ''} />
               </span>
+            )}
+            {/* IPO Verdict Badge (Story 4.7) */}
+            {ipo.ipoScore && (
+              <VerdictBadge verdict={ipo.ipoScore.verdict} size="sm" />
             )}
           </div>
 

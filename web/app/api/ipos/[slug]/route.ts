@@ -172,6 +172,7 @@ export async function GET(
       listingPerformance: ipoWithRelations.listingPerformance ?? null,
       peerCompanies: ipoWithRelations.peerCompanies || [],
       peers: [],
+      ipoScore: ipoWithRelations.ipoScore ?? null, // Story 4.7
       metadata: {
         lastUpdated: new Date().toISOString(),
       },
