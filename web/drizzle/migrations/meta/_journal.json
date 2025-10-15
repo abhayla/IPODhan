@@ -57,6 +57,13 @@
       "when": 1760465685716,
       "tag": "0007_ancient_roulette",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1760507421223,
+      "tag": "0008_empty_redwing",
+      "breakpoints": true
     }
   ]
 }
