@@ -104,6 +104,7 @@ const mockIPODetailResponse: IPODetailResponse = {
   listingPerformance: null,
   peerCompanies: [],
   peers: [],
+  ipoScore: null,
   metadata: {
     lastUpdated: '2025-10-07T10:00:00Z',
   },

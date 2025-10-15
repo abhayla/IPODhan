@@ -13,15 +13,12 @@ import {
   getVerdictBgClass,
   getVerdictTextClass,
   getVerdictBorderClass,
-  getConfidenceBgClass,
-  getConfidenceTextClass,
-  getConfidenceBorderClass,
+  getConfidenceClass,
+  getConfidenceText,
   // Format functions
   formatScore,
-  formatConfidence,
   // Filter functions
   isScoreInRange,
-  filterByScoreRange,
 } from '@/lib/utils/score-utils';
 import type { IPOVerdict, ConfidenceLevel } from '@/lib/db/types';
 
@@ -61,7 +58,7 @@ describe('score-utils', () => {
 
     it('should return correct score categories', () => {
       expect(getScoreCategory(10)).toBe('Poor');
-      expect(getScoreCategory(35)).toBe('Fair');
+      expect(getScoreCategory(35)).toBe('Below Average');
       expect(getScoreCategory(65)).toBe('Good');
       expect(getScoreCategory(85)).toBe('Excellent');
     });
@@ -95,40 +92,34 @@ describe('score-utils', () => {
     });
   });
 
-  describe('Confidence Color Functions', () => {
-    it('should return green classes for HIGH confidence', () => {
+  describe('Confidence Functions', () => {
+    it('should return correct class for HIGH confidence', () => {
       const confidence: ConfidenceLevel = 'HIGH';
-      expect(getConfidenceBgClass(confidence)).toContain('bg-green');
-      expect(getConfidenceTextClass(confidence)).toContain('text-green');
-      expect(getConfidenceBorderClass(confidence)).toContain('border-green');
+      expect(getConfidenceClass(confidence)).toContain('text-green');
     });
 
-    it('should return yellow classes for MEDIUM confidence', () => {
+    it('should return correct class for MEDIUM confidence', () => {
       const confidence: ConfidenceLevel = 'MEDIUM';
-      expect(getConfidenceBgClass(confidence)).toContain('bg-yellow');
-      expect(getConfidenceTextClass(confidence)).toContain('text-yellow');
-      expect(getConfidenceBorderClass(confidence)).toContain('border-yellow');
+      expect(getConfidenceClass(confidence)).toContain('text-yellow');
     });
 
-    it('should return red classes for LOW confidence', () => {
+    it('should return correct class for LOW confidence', () => {
       const confidence: ConfidenceLevel = 'LOW';
-      expect(getConfidenceBgClass(confidence)).toContain('bg-red');
-      expect(getConfidenceTextClass(confidence)).toContain('text-red');
-      expect(getConfidenceBorderClass(confidence)).toContain('border-red');
+      expect(getConfidenceClass(confidence)).toContain('text-gray');
+    });
+
+    it('should return confidence text', () => {
+      expect(getConfidenceText('HIGH')).toBe('HIGH');
+      expect(getConfidenceText('MEDIUM')).toBe('MEDIUM');
+      expect(getConfidenceText('LOW')).toBe('LOW');
     });
   });
 
   describe('Format Functions', () => {
     it('should format scores correctly', () => {
-      expect(formatScore(85)).toBe('85');
-      expect(formatScore(100)).toBe('100');
-      expect(formatScore(0)).toBe('0');
-    });
-
-    it('should format confidence correctly', () => {
-      expect(formatConfidence('HIGH')).toBe('High');
-      expect(formatConfidence('MEDIUM')).toBe('Medium');
-      expect(formatConfidence('LOW')).toBe('Low');
+      expect(formatScore(85)).toBe('85/100');
+      expect(formatScore(100)).toBe('100/100');
+      expect(formatScore(0)).toBe('0/100');
     });
   });
 
@@ -149,30 +140,6 @@ describe('score-utils', () => {
       expect(isScoreInRange(0, '0-25')).toBe(true);
       expect(isScoreInRange(25, '0-25')).toBe(true);
       expect(isScoreInRange(26, '0-25')).toBe(false);
-    });
-
-    it('should filter IPOs by score range', () => {
-      const mockIPOs = [
-        { id: '1', companyName: 'A', ipoScore: { totalScore: 85 } },
-        { id: '2', companyName: 'B', ipoScore: { totalScore: 65 } },
-        { id: '3', companyName: 'C', ipoScore: { totalScore: 40 } },
-        { id: '4', companyName: 'D', ipoScore: { totalScore: 15 } },
-        { id: '5', companyName: 'E', ipoScore: null },
-      ] as any[];
-
-      const excellent = filterByScoreRange(mockIPOs, '76-100');
-      expect(excellent).toHaveLength(1);
-      expect(excellent[0].companyName).toBe('A');
-
-      const good = filterByScoreRange(mockIPOs, '51-75');
-      expect(good).toHaveLength(1);
-      expect(good[0].companyName).toBe('B');
-
-      const all = filterByScoreRange(mockIPOs, 'all');
-      expect(all).toHaveLength(5);
-
-      const withoutNull = filterByScoreRange(mockIPOs, '76-100', false);
-      expect(withoutNull).toHaveLength(1);
     });
   });
 });

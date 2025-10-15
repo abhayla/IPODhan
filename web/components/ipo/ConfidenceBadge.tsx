@@ -41,11 +41,13 @@ export function ConfidenceBadge({
     lg: 'text-base px-3 py-1.5',
   };
 
-  const confidenceDescriptions = {
+  const confidenceDescriptions: Record<ConfidenceLevel, string> = {
     HIGH: 'High data availability and quality. Score is highly reliable.',
     MEDIUM: 'Moderate data availability. Score is reasonably reliable.',
     LOW: 'Limited data available. Score should be used as indicative only.',
   };
+
+  const confidenceDescription: string = confidenceDescriptions[confidence];
 
   const badge = (
     <div
@@ -77,7 +79,7 @@ export function ConfidenceBadge({
             Confidence: {getConfidenceText(confidence)}
           </p>
           <p className="text-xs text-muted-foreground mt-1">
-            {confidenceDescriptions[confidence]}
+            {confidenceDescription}
           </p>
         </TooltipContent>
       </Tooltip>
