@@ -34,6 +34,7 @@
     "scrape:historical:incremental": "tsx scripts/run-historical-scraper.ts --incremental",
     "seed:database": "tsx scripts/seed-database.ts",
     "seed:force": "tsx scripts/seed-database.ts --force",
+    "seed:scores": "tsx scripts/seed-ipo-scores.ts",
     "verify:seed": "tsx scripts/verify-seed.ts",
     "analyze": "ANALYZE=true npm run build",
     "perf:test": "lhci autorun",
