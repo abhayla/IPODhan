@@ -26,6 +26,7 @@ import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { SubscriptionRepository } from '@/lib/repositories/subscription-repository';
 import { GMPRepository } from '@/lib/repositories/gmp-repository';
 import { FinancialDataRepository } from '@/lib/repositories/financial-data-repository';
+import { IpoFinancialsRepository } from '@/lib/repositories/ipo-financials-repository'; // Story 4.10
 import { DatabaseError, EntityNotFoundError } from '@/lib/errors/repository-errors';
 import { logger } from '@/lib/logger';
 import {
@@ -75,13 +76,15 @@ function calculateRevenueGrowth(financialData: FinancialData | null): number | n
 
 /**
  * Fetch comparison data for a single IPO
+ * Story 4.10: Added ipoFinancialsRepo parameter and ipoFinancials field
  */
 async function fetchIPOComparisonData(
   slug: string,
   ipoRepo: IPORepository,
   subscriptionRepo: SubscriptionRepository,
   gmpRepo: GMPRepository,
-  financialRepo: FinancialDataRepository
+  financialRepo: FinancialDataRepository,
+  ipoFinancialsRepo: IpoFinancialsRepository
 ): Promise<IPOComparison> {
   // Fetch IPO data
   const ipo = await ipoRepo.findBySlug(slug);
@@ -94,11 +97,12 @@ async function fetchIPOComparisonData(
     throw new Error(`IPO "${ipo.companyName}" has invalid status "${ipo.status}" for comparison. Only OPEN, UPCOMING, and CLOSED IPOs can be compared.`);
   }
 
-  // Fetch related data in parallel
-  const [latestSubscription, gmpRecords, financialData] = await Promise.all([
+  // Fetch related data in parallel (Story 4.10: Added ipoFinancials)
+  const [latestSubscription, gmpRecords, financialData, ipoFinancialsData] = await Promise.all([
     subscriptionRepo.findLatest(ipo.id).catch(() => null),
     gmpRepo.findByIPO({ ipoId: ipo.id, limit: 1 }).catch(() => []),
     financialRepo.findByIPO(ipo.id).catch(() => null),
+    ipoFinancialsRepo.findByIPO(ipo.id).catch(() => null),
   ]);
 
   // Extract GMP value
@@ -127,6 +131,14 @@ async function fetchIPOComparisonData(
       revenueGrowth: calculateRevenueGrowth(financialData),
       eps: financialData?.eps ? parseFloat(financialData.eps) : null,
     },
+    // Story 4.10: Enhanced financial metrics
+    ipoFinancials: ipoFinancialsData
+      ? {
+          pbRatio: ipoFinancialsData.pbRatio ? parseFloat(String(ipoFinancialsData.pbRatio)) : null,
+          rocePercentage: ipoFinancialsData.rocePercentage ? parseFloat(String(ipoFinancialsData.rocePercentage)) : null,
+          industryPe: ipoFinancialsData.industryPe ? parseFloat(String(ipoFinancialsData.industryPe)) : null,
+        }
+      : null,
     rating: ipo.rating ?? null,
     ratingRationale: ipo.ratingRationale ?? null,
   };
@@ -173,17 +185,18 @@ export async function POST(request: NextRequest): Promise<NextResponse<Compariso
       slugs: ipoSlugs,
     });
 
-    // Initialize repositories
+    // Initialize repositories (Story 4.10: Added ipoFinancialsRepo)
     const redis = getRedisClient();
     const ipoRepo = new IPORepository(db, redis);
     const subscriptionRepo = new SubscriptionRepository(db, redis);
     const gmpRepo = new GMPRepository(db, redis);
     const financialRepo = new FinancialDataRepository(db, redis);
+    const ipoFinancialsRepo = new IpoFinancialsRepository(db, redis);
 
     // Fetch comparison data for all IPOs in parallel
     const comparisons = await Promise.all(
       ipoSlugs.map((slug) =>
-        fetchIPOComparisonData(slug, ipoRepo, subscriptionRepo, gmpRepo, financialRepo)
+        fetchIPOComparisonData(slug, ipoRepo, subscriptionRepo, gmpRepo, financialRepo, ipoFinancialsRepo)
       )
     );
 
