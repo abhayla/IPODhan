@@ -1,7 +1,7 @@
 # Story 9.16: SME IPOs Landing Page
 
 ## Status
-Ready
+Done ✅
 
 ## Story
 

@@ -1,7 +1,7 @@
 # Story 9.12: SME IPO Prospectus PDF Download Page
 
 ## Status
-Ready
+Done ✅
 
 ## Story
 
