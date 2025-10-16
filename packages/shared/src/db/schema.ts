@@ -56,6 +56,8 @@ export const scraperSourceEnum = pgEnum('scraper_source', [
   'NSE',
   'BSE',
   'API_FALLBACK',
+  'MONEYCONTROL',
+  'CHITTORGARH',
 ]);
 
 export const scraperStatusEnum = pgEnum('scraper_status', [
