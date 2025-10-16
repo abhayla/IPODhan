@@ -1,7 +1,7 @@
 # Automated Story Implementation and QA Workflow
 
 **Task ID:** automated-dev-qa-sm-workflow
-**Version:** 3.2
+**Version:** 3.3
 **Agent:** QA (Quinn) & Dev (James)
 **Elicit:** false
 
@@ -1701,7 +1701,7 @@ The workflow completes successfully when **ALL** of the following are true (**MA
 - **SM sign-off documented** (in QA report and review)
 - **Zero unresolved concerns** (all feedback addressed)
 
-✓ **Code committed and merged properly** (UPDATED in v3.2)
+✓ **Code committed and merged properly** (UPDATED in v3.3)
 - **All implementation commits on feature branch** (v3.2 - NEW)
 - **QA validation commit on feature branch** (v3.2 - NEW)
 - **Feature branch merged to main with --no-ff** (v3.2 - enforced)
@@ -1709,6 +1709,19 @@ The workflow completes successfully when **ALL** of the following are true (**MA
 - **Main pushed to remote successfully** (no conflicts)
 - **Branch synced** (main up to date)
 - **Feature branch history preserved** (v3.2 - NEW)
+
+✓ **Conflict Resolution Completed** (NEW in v3.3 - if conflicts occurred)
+- **Conflicts detected and resolved:** Step 9.1 procedures followed
+- **Resolution method documented:** Manual, rebase, or user decision
+- **Post-resolution validation passed:** Tests pass after conflict resolution
+- **Merge completed successfully:** No remaining conflicts on main
+- **Conflict resolution noted in merge commit** (if applicable)
+
+✓ **Feature Branch Managed Properly** (NEW in v3.3)
+- **30-day retention tag created:** Tag includes deletion date marker
+- **Branch not immediately deleted:** Preserved for 30 days post-merge
+- **Retention marker pushed to remote:** Tag available for cleanup automation
+- **Cleanup script available:** `.bmad-core/scripts/cleanup-merged-branches.sh` exists
 
 ✓ **Story status updated** (NEW in v3.3)
 - **Sprint plan status:** Updated to "Done" (docs/stories/SPRINT-N-PLAN.md)
@@ -2580,8 +2593,8 @@ git log main --all --grep="story-{story_id}" --oneline | grep -v "Merge"
 
 ---
 
-**Version:** 3.2
-**Last Updated:** 2025-01-12
-**Breaking Changes:** Yes (git workflow fundamentally changed)
-**Upgrade Required:** Immediate for all new stories
-**Backward Compatible:** No (git workflow is different)
+**Version:** 3.3
+**Last Updated:** 2025-10-16
+**Breaking Changes:** No (additive changes to v3.2 - fully backward compatible)
+**Upgrade Required:** Optional (recommended for improved conflict handling and branch management)
+**Backward Compatible:** Yes (v3.3 is fully compatible with v3.2 workflows)
