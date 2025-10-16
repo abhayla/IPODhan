@@ -335,6 +335,240 @@ Return detailed summary of:
 
 ---
 
+### 2.6. Update Story Status to "Implemented" (NEW in v3.3)
+
+**CRITICAL:** Update story status to reflect implementation completion before proceeding to testing.
+
+**Branch Context:**
+- ⚠️ **Must be on feature branch: feature/story-{story_id}**
+- ⚠️ **This creates a status update commit on feature branch**
+- ⚠️ **Executed immediately after implementation completion validation**
+
+**Timing:**
+- ⚠️ **Use CURRENT date and time** for all timestamps in this step
+- Format: `YYYY-MM-DD HH:MM:SS` for display timestamps
+- Format: ISO 8601 (`YYYY-MM-DDTHH:mm:ss.sssZ`) for JSON timestamps
+- Timezone: Use local timezone or UTC (be consistent)
+
+**Status Update Actions:**
+
+#### 2.6.1. Update Sprint Plan Status
+
+**File:** `docs/stories/SPRINT-N-PLAN.md`
+
+```bash
+# Locate the story entry in sprint plan
+story_line=$(grep -n "Story ${story_id}:" docs/stories/SPRINT-*.md | cut -d: -f1)
+
+# Update story status from "In Progress" to "Implemented"
+# Common patterns:
+# - "Status: In Progress" → "Status: Implemented"
+# - "- [ ] Story X.Y" → "- [~] Story X.Y" (strikethrough indicates implemented, not tested)
+# - "Story X.Y | In Progress" → "Story X.Y | Implemented"
+```
+
+**Status Update Fields:**
+```yaml
+Status: Implemented
+Implementation Date: {CURRENT_DATE in YYYY-MM-DD format}
+Implementation Time: {CURRENT_TIME in HH:MM:SS format}
+Implementation Status: Complete
+Testing Status: Pending
+```
+
+**Example Update:**
+
+Before:
+```markdown
+### Story 9.9a: Mainboard IPO Calendar
+**Status:** In Progress
+**Assigned To:** Dev Team
+**Priority:** High
+```
+
+After (using current date/time at execution):
+```markdown
+### Story 9.9a: Mainboard IPO Calendar
+**Status:** Implemented ⚙️
+**Assigned To:** Dev Team
+**Priority:** High
+**Implementation Completed:** 2025-10-16 14:30:45  ⚠️ Use actual current date/time when executing
+**Testing Status:** Pending QA
+```
+
+#### 2.6.2. Update Individual Story File (if exists)
+
+**File:** `docs/stories/{story_id}.*.story.md`
+
+Check if individual story file exists:
+```bash
+# Find story file
+story_file=$(find docs/stories -name "${story_id}.*.story.md" -o -name "story-${story_id}.md" -o -name "*${story_id}*.story.md")
+
+if [ -n "$story_file" ]; then
+  echo "📝 Found individual story file: $story_file"
+  # Update status in story file
+fi
+```
+
+**Add Implementation Metadata Section:**
+
+⚠️ **Use current date and time when creating this section**
+
+```markdown
+---
+
+## Implementation Status ⚙️
+
+**Implementation Date:** {CURRENT_DATE_TIME in YYYY-MM-DD HH:MM:SS format}
+**Implementation Status:** Complete
+**Testing Status:** Pending QA Validation
+
+### Implementation Summary
+- ✅ All tasks completed (100%)
+- ✅ All acceptance criteria implemented (100%)
+- ✅ Code committed to feature branch
+- ⏳ Awaiting QA testing and validation
+
+### Git References
+- **Feature Branch:** feature/story-{story_id}
+- **Implementation Commits:** {commit_count}
+- **Last Implementation Commit:** {last_commit_hash}
+
+### Next Steps
+1. Initial Verification (Step 3)
+2. Comprehensive Testing (Step 4)
+3. QA Validation
+4. SM Review
+5. Merge to Main
+
+---
+```
+
+#### 2.6.3. Create Implementation Tracking File
+
+**File:** `docs/stories/.implemented/story-{story_id}-implementation.json`
+
+Create machine-readable implementation metadata:
+
+⚠️ **All timestamps MUST use current date/time in ISO 8601 format**
+
+```json
+{
+  "story_id": "{story_id}",
+  "story_title": "{story_title}",
+  "implementation_status": "implemented",
+  "testing_status": "pending",
+  "timestamps": {
+    "started": "{ACTUAL_START_TIME in ISO 8601}",
+    "implementation_complete": "{CURRENT_DATE_TIME in ISO 8601}",
+    "next_phase": "initial_verification"
+  },
+  "implementation_metrics": {
+    "task_completion_percent": 100,
+    "ac_completion_percent": 100,
+    "files_created": {files_created_count},
+    "files_modified": {files_modified_count},
+    "feature_branch_commits": {commit_count}
+  },
+  "git_references": {
+    "feature_branch": "feature/story-{story_id}",
+    "last_commit": "{last_commit_hash}",
+    "commit_count": {commit_count}
+  },
+  "completion_validation": {
+    "tasks_complete": true,
+    "acceptance_criteria_complete": true,
+    "tests_written": true,
+    "progress_report_generated": true
+  },
+  "workflow_version": "3.3",
+  "workflow_step": "2.6"
+}
+```
+
+#### 2.6.4. Commit Status Update to Feature Branch
+
+**Create status update commit on feature branch:**
+
+```bash
+# Verify we're on feature branch
+current_branch=$(git branch --show-current)
+if [ "$current_branch" != "feature/story-{story_id}" ]; then
+  echo "❌ ERROR: Must be on feature branch for status update!"
+  exit 1
+fi
+
+# Create directory for implementation tracking if needed
+mkdir -p docs/stories/.implemented
+
+# Stage all status update files
+git add docs/stories/SPRINT-*.md
+git add docs/stories/${story_id}.*.story.md 2>/dev/null || true
+git add docs/stories/*${story_id}*.story.md 2>/dev/null || true
+git add docs/stories/.implemented/story-{story_id}-implementation.json
+
+# Create status update commit
+git commit -m "$(cat <<'EOF'
+docs(story-{story_id}): Update story status to Implemented
+
+Story {story_id} - {Story Title}
+
+Status Changes:
+- Sprint Plan: In Progress → Implemented ⚙️
+- Story File: Added implementation metadata
+- Implementation Tracking: Created story-{story_id}-implementation.json
+
+Implementation Summary:
+- ✅ All tasks completed (100%)
+- ✅ All acceptance criteria implemented (100%)
+- ✅ Code committed to feature branch
+- ✅ Tests written
+- ⏳ Awaiting QA validation
+
+Next Steps:
+- Initial Verification (Step 3)
+- Comprehensive Testing (Step 4)
+- QA Validation & SM Review
+- Merge to Main upon approval
+
+Implementation Date: {CURRENT_DATE_TIME in YYYY-MM-DD HH:MM:SS format}
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+EOF
+)"
+
+# Push status update to remote
+git push origin feature/story-{story_id}
+
+# Verify push succeeded
+if [ $? -eq 0 ]; then
+  echo "✅ Story status updated to 'Implemented' and pushed to remote"
+  echo "📊 Sprint plan, story file, and implementation tracking updated"
+else
+  echo "❌ ERROR: Failed to push status update"
+  exit 1
+fi
+```
+
+**Validation:**
+- ✓ Sprint plan status updated to "Implemented"
+- ✓ Individual story file updated (if exists)
+- ✓ Implementation tracking JSON created
+- ✓ Status update committed to feature branch
+- ✓ Feature branch pushed to remote successfully
+
+**Output:**
+- Story status officially marked as "Implemented"
+- Implementation timestamp recorded
+- All tracking metadata updated
+- Status update commit hash
+- Ready for initial verification and testing
+
+---
+
 ### 3. Initial Verification (UPDATED in v3.2)
 
 **PREREQUISITE:** Step 2.5 completion validation must PASS
@@ -1867,16 +2101,17 @@ User: "Implement and test story 1.3"
 1. Load Story 1.3 from sprint plan and create/verify feature branch
 2. Spawn Dev agent to implement story on feature branch (with commits)
 3. Wait for implementation completion on feature branch
-4. Run all tests on feature branch
-5. If issues found: Spawn Dev agent to fix on feature branch (with commits)
-6. Re-run tests until all pass
-7. Spawn Scrum Master (Bob) for story review
-8. If SM requests changes: Return to fix loop on feature branch
-9. If SM approves: Create QA validation commit on feature branch
-10. Merge feature branch to main (creates merge commit only)
-11. Update story status in sprint plan, story file, and completion tracking (NEW in v3.3)
-12. Generate comprehensive QA report
-13. Report final status to user
+4. **Update story status to "Implemented" with timestamp** (NEW in v3.3 Step 2.6)
+5. Run all tests on feature branch
+6. If issues found: Spawn Dev agent to fix on feature branch (with commits)
+7. Re-run tests until all pass
+8. Spawn Scrum Master (Bob) for story review
+9. If SM requests changes: Return to fix loop on feature branch
+10. If SM approves: Create QA validation commit on feature branch
+11. Merge feature branch to main (creates merge commit only)
+12. **Update story status to "Done" with completion metadata** (NEW in v3.3 Step 10)
+13. Generate comprehensive QA report
+14. Report final status to user
 
 ---
 
@@ -1924,22 +2159,24 @@ User: "Implement and test story 1.3"
 When this task completes, you will receive:
 1. Implementation summary from Dev agent
 2. **Completion validation results** (100% confirmation - NEW in v3.0)
-3. Final QA status (PASSED/FAILED)
-4. **Acceptance criteria validation report** (NEW in v3.0)
-5. Scrum Master review and approval status
-6. Path to progress report (from implementation on feature branch)
-7. Path to QA report (from testing on feature branch)
-8. **QA validation commit hash on feature branch** (v3.2 - NEW)
-9. **Merge commit hash on main branch** (v3.2 - NEW)
-10. **Status update commit hash on main branch** (v3.3 - NEW)
-11. **Sprint plan update confirmation** (v3.3 - NEW)
-12. **Story file update confirmation** (v3.3 - NEW)
-13. **Completion tracking JSON path** (v3.3 - NEW)
-14. **Sprint dashboard update confirmation** (v3.3 - NEW)
-15. Summary of fix iterations and issues resolved
-16. Feature branch merge status
-17. **Test coverage metrics for new code** (NEW in v3.0)
-18. **Feature branch name and commit count** (v3.2 - NEW)
+3. **Implementation status update confirmation** (v3.3 Step 2.6 - NEW)
+4. **Implementation timestamp and tracking JSON path** (v3.3 Step 2.6 - NEW)
+5. Final QA status (PASSED/FAILED)
+6. **Acceptance criteria validation report** (NEW in v3.0)
+7. Scrum Master review and approval status
+8. Path to progress report (from implementation on feature branch)
+9. Path to QA report (from testing on feature branch)
+10. **QA validation commit hash on feature branch** (v3.2 - NEW)
+11. **Merge commit hash on main branch** (v3.2 - NEW)
+12. **Status update commit hash on main branch** (v3.3 Step 10 - NEW)
+13. **Sprint plan update confirmation** (v3.3 - NEW)
+14. **Story file update confirmation** (v3.3 - NEW)
+15. **Completion tracking JSON path** (v3.3 - NEW)
+16. **Sprint dashboard update confirmation** (v3.3 - NEW)
+17. Summary of fix iterations and issues resolved
+18. Feature branch merge status
+19. **Test coverage metrics for new code** (NEW in v3.0)
+20. **Feature branch name and commit count** (v3.2 - NEW)
 
 ---
 
