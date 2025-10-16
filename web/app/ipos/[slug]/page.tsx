@@ -28,6 +28,7 @@ import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { AffiliateSection } from '@/components/affiliate/AffiliateSection';
 import { ListingPerformance } from '@/components/ipo/ListingPerformance';
 import { IPOScoreSection } from '@/components/ipo/IPOScoreSection';
+import { SectorAverageComparison } from '@/components/ipo/SectorAverageComparison';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
 import { apiClient } from '@/lib/api-client';
 import type { IPODetailResponse } from '@/lib/db/types';
@@ -116,10 +117,11 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   const subscriptionTrend: 'up' | 'down' | 'neutral' =
     subscriptionValue !== null && Number(subscriptionValue) > 1 ? 'up' : 'neutral';
 
-  // Fetch sector average for listing performance comparison
-  const sectorAverage = ipo.status === 'LISTED' && ipo.listingDate && listingPerformance
-    ? await getSectorAverage(ipo.sector)
-    : null;
+  // Fetch sector average for listed IPOs (Story 6.3)
+  const sectorAverageGain =
+    ipo.status === 'LISTED' && ipo.sector
+      ? await getSectorAverage(ipo.sector)
+      : null;
 
   // Generate structured data using SEO utilities
   const financialProductSchema = generateFinancialProductSchema(ipo);
@@ -183,6 +185,31 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             {/* IPO Score Section (Story 4.7) */}
             <IPOScoreSection score={ipoScore || null} />
 
+            {/* Listing Performance Section (Story 6.3) */}
+            {ipo.status === 'LISTED' &&
+              ipo.listingDate &&
+              listingPerformance &&
+              listingPerformance.issuePrice &&
+              listingPerformance.listingPrice && (
+                <div className="space-y-4">
+                  <ListingPerformance
+                    issuePrice={listingPerformance.issuePrice}
+                    listingOpen={listingPerformance.listingPrice}
+                    listingHigh={listingPerformance.listingPrice}
+                    listingClose={listingPerformance.listingPrice}
+                    listingDate={new Date(ipo.listingDate)}
+                    listingGainPercent={Number(listingPerformance.listingGainPercent)}
+                  />
+                  {sectorAverageGain !== null && ipo.sector && (
+                    <SectorAverageComparison
+                      listingGainPercent={Number(listingPerformance.listingGainPercent)}
+                      sectorAverageGain={sectorAverageGain}
+                      sector={ipo.sector}
+                    />
+                  )}
+                </div>
+              )}
+
             {/* Apply for IPO Section (Story 5.5) */}
             {(ipo.status === 'OPEN' || ipo.status === 'UPCOMING') && (
               <AffiliateSection
@@ -214,23 +241,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 registrar={ipo.registrarRelation?.shortName || ipo.registrar || 'Registrar'}
                 registrarUrl={ipo.registrarRelation?.allotmentCheckUrl || null}
                 companyName={ipo.companyName}
-              />
-            )}
-
-            {/* Listing Performance (Story 6.3) */}
-            {ipo.status === 'LISTED' && ipo.listingDate && listingPerformance && (
-              <ListingPerformance
-                data={{
-                  issuePrice: listingPerformance.issuePrice,
-                  listingPrice: listingPerformance.listingPrice,
-                  listingGainPercent: parseFloat(listingPerformance.listingGainPercent),
-                  currentPrice: listingPerformance.currentPrice,
-                  currentGainPercent: listingPerformance.currentGainPercent
-                    ? parseFloat(listingPerformance.currentGainPercent)
-                    : null,
-                }}
-                sector={ipo.sector}
-                sectorAverage={sectorAverage}
               />
             )}
 

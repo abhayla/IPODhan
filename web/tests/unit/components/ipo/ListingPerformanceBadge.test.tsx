@@ -1,13 +1,8 @@
 /**
- * Unit Tests for ListingPerformanceBadge Component
+ * Unit Tests: ListingPerformanceBadge Component
  *
- * Tests:
- * - Renders positive gain with green styling
- * - Renders negative loss with red styling
- * - Renders zero gain correctly
- * - Shows correct icon for trend
- * - Compact variant styling
- * - Accessibility (screen reader text)
+ * Tests for the listing performance badge component (Story 6.3)
+ * Coverage: Badge rendering, color coding, icon display, size variants
  */
 
 import { describe, it, expect } from 'vitest';
@@ -15,91 +10,163 @@ import { render, screen } from '@testing-library/react';
 import { ListingPerformanceBadge } from '@/components/ipo/ListingPerformanceBadge';
 
 describe('ListingPerformanceBadge', () => {
-  it('renders positive gain with green styling and trending up icon', () => {
-    render(<ListingPerformanceBadge listingGainPercent={25.5} />);
+  describe('Rendering', () => {
+    it('renders with positive gain (+13.3%)', () => {
+      render(<ListingPerformanceBadge listingGainPercent={13.33} />);
 
-    const badge = screen.getByText('+25.5%');
-    expect(badge).toBeInTheDocument();
-    expect(badge.parentElement).toHaveClass('text-green-700');
-    expect(badge.parentElement).toHaveClass('bg-green-100');
-    expect(badge.parentElement).toHaveClass('border-green-500');
+      // Check if badge displays correct percentage
+      expect(screen.getByText('+13.33%')).toBeInTheDocument();
+    });
 
-    // Check for screen reader text
-    expect(screen.getByText(/Listing day gain of 25.5 percent/i)).toBeInTheDocument();
+    it('renders with negative loss (-5.2%)', () => {
+      render(<ListingPerformanceBadge listingGainPercent={-5.2} />);
+
+      // Check if badge displays correct percentage
+      expect(screen.getByText('-5.20%')).toBeInTheDocument();
+    });
+
+    it('does not render if listingGainPercent is null', () => {
+      const { container } = render(
+        <ListingPerformanceBadge listingGainPercent={null as unknown as number} />
+      );
+
+      expect(container.firstChild).toBeNull();
+    });
+
+    it('does not render if listingGainPercent is undefined', () => {
+      const { container } = render(
+        <ListingPerformanceBadge
+          listingGainPercent={undefined as unknown as number}
+        />
+      );
+
+      expect(container.firstChild).toBeNull();
+    });
   });
 
-  it('renders negative loss with red styling and trending down icon', () => {
-    render(<ListingPerformanceBadge listingGainPercent={-15.3} />);
+  describe('Color Coding', () => {
+    it('displays green color for positive gains', () => {
+      const { container } = render(
+        <ListingPerformanceBadge listingGainPercent={13.33} />
+      );
 
-    const badge = screen.getByText('-15.3%');
-    expect(badge).toBeInTheDocument();
-    expect(badge.parentElement).toHaveClass('text-red-700');
-    expect(badge.parentElement).toHaveClass('bg-red-100');
-    expect(badge.parentElement).toHaveClass('border-red-500');
+      const badge = container.querySelector('span[data-slot="badge"]');
+      expect(badge).toHaveClass('bg-green-100');
+      expect(badge).toHaveClass('text-green-700');
+      expect(badge).toHaveClass('border-green-500');
+    });
 
-    // Check for screen reader text
-    expect(screen.getByText(/Listing day loss of 15.3 percent/i)).toBeInTheDocument();
+    it('displays red color for negative losses', () => {
+      const { container } = render(
+        <ListingPerformanceBadge listingGainPercent={-5.2} />
+      );
+
+      const badge = container.querySelector('span[data-slot="badge"]');
+      expect(badge).toHaveClass('bg-red-100');
+      expect(badge).toHaveClass('text-red-700');
+      expect(badge).toHaveClass('border-red-500');
+    });
   });
 
-  it('renders zero gain correctly', () => {
-    render(<ListingPerformanceBadge listingGainPercent={0} />);
+  describe('Icon Display', () => {
+    it('displays TrendingUp icon for positive gains', () => {
+      const { container } = render(
+        <ListingPerformanceBadge listingGainPercent={13.33} showIcon={true} />
+      );
 
-    const badge = screen.getByText('+0.0%');
-    expect(badge).toBeInTheDocument();
-    // Zero is treated as positive (green)
-    expect(badge.parentElement).toHaveClass('text-green-700');
+      // Check for SVG icon presence
+      const icon = container.querySelector('svg');
+      expect(icon).toBeInTheDocument();
+    });
+
+    it('displays TrendingDown icon for negative losses', () => {
+      const { container } = render(
+        <ListingPerformanceBadge listingGainPercent={-5.2} showIcon={true} />
+      );
+
+      // Check for SVG icon presence
+      const icon = container.querySelector('svg');
+      expect(icon).toBeInTheDocument();
+    });
+
+    it('does not display icon when showIcon is false', () => {
+      const { container } = render(
+        <ListingPerformanceBadge listingGainPercent={13.33} showIcon={false} />
+      );
+
+      const icon = container.querySelector('svg');
+      expect(icon).not.toBeInTheDocument();
+    });
   });
 
-  it('formats percentage to one decimal place', () => {
-    render(<ListingPerformanceBadge listingGainPercent={12.456} />);
+  describe('Size Variants', () => {
+    it('renders small size variant', () => {
+      const { container } = render(
+        <ListingPerformanceBadge listingGainPercent={13.33} size="small" />
+      );
 
-    expect(screen.getByText('+12.5%')).toBeInTheDocument();
+      const badge = container.querySelector('span[data-slot="badge"]');
+      expect(badge).toHaveClass('text-sm');
+    });
+
+    it('renders medium size variant (default)', () => {
+      const { container } = render(
+        <ListingPerformanceBadge listingGainPercent={13.33} />
+      );
+
+      const badge = container.querySelector('span[data-slot="badge"]');
+      expect(badge).toHaveClass('text-base');
+    });
+
+    it('renders large size variant', () => {
+      const { container } = render(
+        <ListingPerformanceBadge listingGainPercent={13.33} size="large" />
+      );
+
+      const badge = container.querySelector('span[data-slot="badge"]');
+      expect(badge).toHaveClass('text-2xl');
+    });
   });
 
-  it('renders compact variant with smaller styling', () => {
-    render(<ListingPerformanceBadge listingGainPercent={20} variant="compact" />);
+  describe('Percentage Formatting', () => {
+    it('formats percentage with 2 decimal places', () => {
+      render(<ListingPerformanceBadge listingGainPercent={13.3} />);
 
-    const badge = screen.getByText('+20.0%');
-    expect(badge.parentElement).toHaveClass('text-xs');
-    expect(badge.parentElement).toHaveClass('px-2');
-    expect(badge.parentElement).toHaveClass('py-0.5');
+      expect(screen.getByText('+13.30%')).toBeInTheDocument();
+    });
 
-    // Compact variant should not show icon (only text)
-    const svgElements = badge.parentElement?.querySelectorAll('svg');
-    expect(svgElements?.length).toBe(0);
+    it('adds + sign for positive gains', () => {
+      render(<ListingPerformanceBadge listingGainPercent={13.33} />);
+
+      const text = screen.getByText('+13.33%');
+      expect(text).toBeInTheDocument();
+      expect(text.textContent).toContain('+');
+    });
+
+    it('does not add + sign for negative losses', () => {
+      render(<ListingPerformanceBadge listingGainPercent={-5.2} />);
+
+      const text = screen.getByText('-5.20%');
+      expect(text).toBeInTheDocument();
+      expect(text.textContent).not.toContain('+-'); // Should not have double sign
+    });
+
+    it('handles zero gain correctly', () => {
+      render(<ListingPerformanceBadge listingGainPercent={0} />);
+
+      // Zero is technically not positive, so it should have red styling
+      expect(screen.getByText('0.00%')).toBeInTheDocument();
+    });
   });
 
-  it('renders default variant with icon', () => {
-    const { container } = render(
-      <ListingPerformanceBadge listingGainPercent={15} variant="default" />
-    );
+  describe('Accessibility', () => {
+    it('has aria-hidden on icon', () => {
+      const { container } = render(
+        <ListingPerformanceBadge listingGainPercent={13.33} showIcon={true} />
+      );
 
-    // Default variant should show icon
-    const svgElements = container.querySelectorAll('svg');
-    expect(svgElements.length).toBeGreaterThan(0);
-  });
-
-  it('applies custom className', () => {
-    render(
-      <ListingPerformanceBadge
-        listingGainPercent={10}
-        className="custom-class"
-      />
-    );
-
-    const badge = screen.getByText('+10.0%');
-    expect(badge.parentElement).toHaveClass('custom-class');
-  });
-
-  it('handles large positive values', () => {
-    render(<ListingPerformanceBadge listingGainPercent={150.75} />);
-
-    expect(screen.getByText('+150.8%')).toBeInTheDocument();
-  });
-
-  it('handles large negative values', () => {
-    render(<ListingPerformanceBadge listingGainPercent={-85.25} />);
-
-    expect(screen.getByText('-85.2%')).toBeInTheDocument();
+      const icon = container.querySelector('svg');
+      expect(icon).toHaveAttribute('aria-hidden', 'true');
+    });
   });
 });

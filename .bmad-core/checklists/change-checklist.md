@@ -132,33 +132,27 @@ Be honest about trade-offs. There's rarely a perfect solution.]]
   - [ ] **Extreme Case:** Does the issue necessitate a fundamental replan or potentially a new PRD V2 (to be handled by PM)?
 - [ ] **Select Recommended Path:** Based on the evaluation, agree on the most viable path forward.
 
-## 5. Change Documentation & Application
+## 5. Sprint Change Proposal Components
 
-[[LLM: CRITICAL - Apply changes directly to artifact files, NOT separate proposal documents. Ensure:
+[[LLM: The proposal must be actionable and clear. Ensure:
 
-1. All edits are applied to the actual artifact files (stories, epics, PRD, architecture)
-2. Change logs in affected files are updated with version numbers, dates, and descriptions
-3. A summary analysis is prepared for user communication (not saved as separate file)
-4. The issue is explained in plain language
-5. Impacts are quantified where possible
-6. The recommended path has clear rationale
-7. Next steps are specific and assigned
-8. Success criteria for the change are defined
+1. The issue is explained in plain language
+2. Impacts are quantified where possible
+3. The recommended path has clear rationale
+4. Next steps are specific and assigned
+5. Success criteria for the change are defined
 
-NO separate "Sprint Change Proposal" files should be created. All changes live in the artifact files themselves.]]
+This proposal guides all subsequent work.]]
 
-(Ensure all agreed-upon changes from previous sections are applied directly to artifact files)
+(Ensure all agreed-upon points from previous sections are captured in the proposal)
 
-- [ ] **Apply Changes to Artifact Files:** Edit story files, epic files, PRD, architecture docs directly
-- [ ] **Update Change Logs:** Add entries to each modified file's change log (date, version, description, author)
-- [ ] **Prepare Summary Analysis (for user only):** Include:
-  - [ ] **Identified Issue Summary:** Clear, concise problem statement
-  - [ ] **Epic Impact Summary:** How epics are affected
-  - [ ] **Files Modified:** List of documents changed and what was updated
-  - [ ] **Recommended Path Forward:** Chosen solution with rationale
-  - [ ] **PRD MVP Impact:** Changes to scope/goals (if any)
-  - [ ] **High-Level Action Plan:** Next steps for stories/updates
-  - [ ] **Agent Handoff Plan:** Identify roles needed (PM, Arch, Design Arch, PO)
+- [ ] **Identified Issue Summary:** Clear, concise problem statement.
+- [ ] **Epic Impact Summary:** How epics are affected.
+- [ ] **Artifact Adjustment Needs:** List of documents to change.
+- [ ] **Recommended Path Forward:** Chosen solution with rationale.
+- [ ] **PRD MVP Impact:** Changes to scope/goals (if any).
+- [ ] **High-Level Action Plan:** Next steps for stories/updates.
+- [ ] **Agent Handoff Plan:** Identify roles needed (PM, Arch, Design Arch, PO).
 
 ## 6. Final Review & Handoff
 
@@ -172,19 +166,19 @@ NO separate "Sprint Change Proposal" files should be created. All changes live i
 
 Get explicit approval - implicit agreement causes problems.
 
-FINAL SUMMARY:
-After completing the checklist, provide a concise summary to the user:
+FINAL REPORT:
+After completing the checklist, provide a concise summary:
 
-- What changed and why (list of files modified)
-- What was done about it (changes applied directly to artifacts)
-- Who needs to do what next
+- What changed and why
+- What we're doing about it
+- Who needs to do what
 - When we'll know if it worked
 
-Keep it action-oriented and forward-looking. Remember: changes are already applied to files, this is just a recap.]]
+Keep it action-oriented and forward-looking.]]
 
 - [ ] **Review Checklist:** Confirm all relevant items were discussed.
-- [ ] **Verify Changes Applied:** Ensure all edits are in the artifact files with proper change log entries.
-- [ ] **User Approval:** Obtain explicit user approval for the changes applied.
+- [ ] **Review Sprint Change Proposal:** Ensure it accurately reflects the discussion and decisions.
+- [ ] **User Approval:** Obtain explicit user approval for the proposal.
 - [ ] **Confirm Next Steps:** Reiterate the handoff plan and the next actions to be taken by specific agents.
 
 ---

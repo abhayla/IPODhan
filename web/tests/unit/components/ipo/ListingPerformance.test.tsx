@@ -1,14 +1,8 @@
 /**
- * Unit Tests for ListingPerformance Component
+ * Unit Tests: ListingPerformance Component
  *
- * Tests:
- * - Renders issue price and listing price correctly
- * - Shows listing day return badge
- * - Displays current price and overall return when available
- * - Shows sector average comparison section
- * - Hides sector comparison when unavailable
- * - Formats currency values correctly
- * - Renders disclaimer text
+ * Tests for the listing performance detail component (Story 6.3)
+ * Coverage: Metric display, percentage calculations, color coding, date formatting
  */
 
 import { describe, it, expect } from 'vitest';
@@ -16,223 +10,247 @@ import { render, screen } from '@testing-library/react';
 import { ListingPerformance } from '@/components/ipo/ListingPerformance';
 
 describe('ListingPerformance', () => {
-  const mockDataMinimal = {
-    issuePrice: 100,
-    listingPrice: 125,
-    listingGainPercent: 25.0,
+  const mockProps = {
+    issuePrice: 300,
+    listingOpen: 315,
+    listingHigh: 350,
+    listingClose: 340,
+    listingDate: new Date('2024-12-15'),
+    listingGainPercent: 13.33,
   };
 
-  const mockDataComplete = {
-    issuePrice: 100,
-    listingPrice: 125,
-    listingGainPercent: 25.0,
-    currentPrice: 150,
-    currentGainPercent: 50.0,
-  };
+  describe('Rendering', () => {
+    it('renders with complete listing data', () => {
+      render(<ListingPerformance {...mockProps} />);
 
-  it('renders issue price and listing price', () => {
-    render(
-      <ListingPerformance
-        data={mockDataMinimal}
-        sector="Technology"
-        sectorAverage={null}
-      />
-    );
+      expect(screen.getByText('Listing Day Performance')).toBeInTheDocument();
+      expect(screen.getByText(/Listing Date:/)).toBeInTheDocument();
+    });
 
-    expect(screen.getByText('Issue Price')).toBeInTheDocument();
-    expect(screen.getByText('Listing Price')).toBeInTheDocument();
-    expect(screen.getByText('₹100')).toBeInTheDocument();
-    expect(screen.getByText('₹125')).toBeInTheDocument();
+    it('does not render if listingDate is null', () => {
+      const { container } = render(
+        <ListingPerformance {...mockProps} listingDate={null as unknown as Date} />
+      );
+
+      expect(container.firstChild).toBeNull();
+    });
   });
 
-  it('displays listing day return badge', () => {
-    render(
-      <ListingPerformance
-        data={mockDataMinimal}
-        sector="Technology"
-        sectorAverage={null}
-      />
-    );
+  describe('Price Display', () => {
+    it('displays issue price', () => {
+      render(<ListingPerformance {...mockProps} />);
 
-    expect(screen.getByText('Listing Day Return')).toBeInTheDocument();
-    expect(screen.getByText('+25.0%')).toBeInTheDocument();
+      expect(screen.getByText('Issue Price')).toBeInTheDocument();
+      expect(screen.getByText('₹300')).toBeInTheDocument();
+    });
+
+    it('displays listing open price', () => {
+      render(<ListingPerformance {...mockProps} />);
+
+      expect(screen.getByText('Listing Open')).toBeInTheDocument();
+      expect(screen.getByText('₹315')).toBeInTheDocument();
+    });
+
+    it('displays listing high price', () => {
+      render(<ListingPerformance {...mockProps} />);
+
+      expect(screen.getByText('Listing High')).toBeInTheDocument();
+      expect(screen.getByText('₹350')).toBeInTheDocument();
+    });
+
+    it('displays listing close price', () => {
+      render(<ListingPerformance {...mockProps} />);
+
+      expect(screen.getByText('Listing Close')).toBeInTheDocument();
+      expect(screen.getByText('₹340')).toBeInTheDocument();
+    });
+
+    it('formats currency with comma separators for large numbers', () => {
+      render(
+        <ListingPerformance
+          {...mockProps}
+          issuePrice={1500}
+          listingClose={2000}
+        />
+      );
+
+      expect(screen.getByText('₹1,500')).toBeInTheDocument();
+      expect(screen.getByText('₹2,000')).toBeInTheDocument();
+    });
   });
 
-  it('shows current price and overall return when available', () => {
-    render(
-      <ListingPerformance
-        data={mockDataComplete}
-        sector="Technology"
-        sectorAverage={null}
-      />
-    );
+  describe('Percentage Gain Calculations', () => {
+    it('calculates open gain correctly', () => {
+      render(<ListingPerformance {...mockProps} />);
 
-    expect(screen.getByText('Current Price')).toBeInTheDocument();
-    expect(screen.getByText('Overall Return')).toBeInTheDocument();
-    expect(screen.getByText('₹150')).toBeInTheDocument();
-    expect(screen.getByText('+50.0%')).toBeInTheDocument();
+      // Open gain: ((315 - 300) / 300) * 100 = 5%
+      expect(screen.getByText('+5.00%')).toBeInTheDocument();
+    });
+
+    it('calculates high gain correctly', () => {
+      render(<ListingPerformance {...mockProps} />);
+
+      // High gain: ((350 - 300) / 300) * 100 = 16.67%
+      expect(screen.getByText('+16.67%')).toBeInTheDocument();
+    });
+
+    it('calculates close gain correctly', () => {
+      render(<ListingPerformance {...mockProps} />);
+
+      // Close gain: ((340 - 300) / 300) * 100 = 13.33%
+      expect(screen.getByText('+13.33%')).toBeInTheDocument();
+    });
+
+    it('displays day return prominently', () => {
+      render(<ListingPerformance {...mockProps} />);
+
+      expect(screen.getByText('Day Return')).toBeInTheDocument();
+      // Day return should appear at least twice (desktop table + mobile)
+      const dayReturns = screen.getAllByText('+13.33%');
+      expect(dayReturns.length).toBeGreaterThanOrEqual(2);
+    });
   });
 
-  it('hides current price section when not available', () => {
-    render(
-      <ListingPerformance
-        data={mockDataMinimal}
-        sector="Technology"
-        sectorAverage={null}
-      />
-    );
+  describe('Color Coding', () => {
+    it('color-codes positive gains as green', () => {
+      const { container } = render(<ListingPerformance {...mockProps} />);
 
-    expect(screen.queryByText('Current Price')).not.toBeInTheDocument();
-    expect(screen.queryByText('Overall Return')).not.toBeInTheDocument();
+      // Find elements with text-green-600 class
+      const greenElements = container.querySelectorAll('.text-green-600');
+      expect(greenElements.length).toBeGreaterThan(0);
+    });
+
+    it('color-codes negative losses as red', () => {
+      const { container } = render(
+        <ListingPerformance
+          {...mockProps}
+          listingOpen={280}
+          listingHigh={290}
+          listingClose={285}
+          listingGainPercent={-5.0}
+        />
+      );
+
+      // Find elements with text-red-600 class
+      const redElements = container.querySelectorAll('.text-red-600');
+      expect(redElements.length).toBeGreaterThan(0);
+    });
   });
 
-  it('shows sector average comparison when available', () => {
-    render(
-      <ListingPerformance
-        data={mockDataMinimal}
-        sector="Technology"
-        sectorAverage={20.0}
-      />
-    );
+  describe('Date Formatting', () => {
+    it('displays listing date in DD MMM YYYY format', () => {
+      render(<ListingPerformance {...mockProps} />);
 
-    expect(screen.getByText('Above Average')).toBeInTheDocument();
-    expect(screen.getByText('Technology')).toBeInTheDocument();
-    expect(screen.getByText(/sector average/i)).toBeInTheDocument();
+      expect(screen.getByText('15 Dec 2024')).toBeInTheDocument();
+    });
+
+    it('handles different date formats correctly', () => {
+      render(
+        <ListingPerformance {...mockProps} listingDate={new Date('2023-01-05')} />
+      );
+
+      expect(screen.getByText('05 Jan 2023')).toBeInTheDocument();
+    });
   });
 
-  it('hides sector comparison when sector average is null', () => {
-    render(
-      <ListingPerformance
-        data={mockDataMinimal}
-        sector="Technology"
-        sectorAverage={null}
-      />
-    );
+  describe('Percentage Formatting', () => {
+    it('formats percentages with + sign for gains', () => {
+      render(<ListingPerformance {...mockProps} />);
 
-    expect(screen.queryByText('Above Average')).not.toBeInTheDocument();
-    expect(screen.queryByText('Below Average')).not.toBeInTheDocument();
+      expect(screen.getByText('+5.00%')).toBeInTheDocument();
+      expect(screen.getByText('+16.67%')).toBeInTheDocument();
+    });
+
+    it('formats percentages with - sign for losses', () => {
+      render(
+        <ListingPerformance
+          {...mockProps}
+          listingOpen={280}
+          listingHigh={290}
+          listingClose={285}
+          listingGainPercent={-5.0}
+        />
+      );
+
+      expect(screen.getByText('-6.67%')).toBeInTheDocument();
+      expect(screen.getByText('-3.33%')).toBeInTheDocument();
+      expect(screen.getByText('-5.00%')).toBeInTheDocument();
+    });
+
+    it('formats percentages with 2 decimal places', () => {
+      render(<ListingPerformance {...mockProps} />);
+
+      // Check that all percentages have 2 decimal places
+      const percentages = screen.getAllByText(/[+-]?\d+\.\d{2}%/);
+      expect(percentages.length).toBeGreaterThan(0);
+    });
   });
 
-  it('hides sector comparison when sector is null', () => {
-    render(
-      <ListingPerformance
-        data={mockDataMinimal}
-        sector={null}
-        sectorAverage={20.0}
-      />
-    );
+  describe('Responsive Design', () => {
+    it('renders desktop table layout', () => {
+      const { container } = render(<ListingPerformance {...mockProps} />);
 
-    expect(screen.queryByText('Above Average')).not.toBeInTheDocument();
-    expect(screen.queryByText('Below Average')).not.toBeInTheDocument();
+      // Check for table elements (visible on md and above)
+      const table = container.querySelector('table');
+      expect(table).toBeInTheDocument();
+    });
+
+    it('renders mobile stacked layout', () => {
+      const { container } = render(<ListingPerformance {...mockProps} />);
+
+      // Check for mobile layout divs
+      const mobileLayout = container.querySelector('.md\\:hidden');
+      expect(mobileLayout).toBeInTheDocument();
+    });
   });
 
-  it('renders disclaimer text', () => {
-    render(
-      <ListingPerformance
-        data={mockDataMinimal}
-        sector="Technology"
-        sectorAverage={null}
-      />
-    );
+  describe('Edge Cases', () => {
+    it('handles zero gain correctly', () => {
+      render(
+        <ListingPerformance
+          {...mockProps}
+          issuePrice={300}
+          listingOpen={300}
+          listingHigh={300}
+          listingClose={300}
+          listingGainPercent={0}
+        />
+      );
 
-    expect(
-      screen.getByText(/Listing performance is calculated based on the difference/i)
-    ).toBeInTheDocument();
-  });
+      // Zero should be displayed without sign
+      expect(screen.getByText('0.00%')).toBeInTheDocument();
+    });
 
-  it('handles negative listing gain', () => {
-    const negativeData = {
-      issuePrice: 100,
-      listingPrice: 85,
-      listingGainPercent: -15.0,
-    };
+    it('handles very large gains', () => {
+      render(
+        <ListingPerformance
+          {...mockProps}
+          listingOpen={600}
+          listingHigh={900}
+          listingClose={750}
+          listingGainPercent={150.0}
+        />
+      );
 
-    render(
-      <ListingPerformance
-        data={negativeData}
-        sector="Technology"
-        sectorAverage={null}
-      />
-    );
+      expect(screen.getByText('+100.00%')).toBeInTheDocument(); // Open gain
+      expect(screen.getByText('+200.00%')).toBeInTheDocument(); // High gain
+      expect(screen.getByText('+150.00%')).toBeInTheDocument(); // Close/day return
+    });
 
-    expect(screen.getByText('-15.0%')).toBeInTheDocument();
-  });
+    it('handles very small gains', () => {
+      render(
+        <ListingPerformance
+          {...mockProps}
+          listingOpen={300.5}
+          listingHigh={301}
+          listingClose={300.75}
+          listingGainPercent={0.25}
+        />
+      );
 
-  it('applies custom className', () => {
-    const { container } = render(
-      <ListingPerformance
-        data={mockDataMinimal}
-        sector="Technology"
-        sectorAverage={null}
-        className="custom-card"
-      />
-    );
-
-    const card = container.querySelector('.custom-card');
-    expect(card).toBeInTheDocument();
-  });
-
-  it('shows below average badge when underperforming sector', () => {
-    render(
-      <ListingPerformance
-        data={{ ...mockDataMinimal, listingGainPercent: 10.0 }}
-        sector="Technology"
-        sectorAverage={25.0}
-      />
-    );
-
-    expect(screen.getByText('Below Average')).toBeInTheDocument();
-  });
-
-  it('formats large currency values correctly', () => {
-    const largeData = {
-      issuePrice: 10000,
-      listingPrice: 15000,
-      listingGainPercent: 50.0,
-    };
-
-    render(
-      <ListingPerformance
-        data={largeData}
-        sector="Technology"
-        sectorAverage={null}
-      />
-    );
-
-    expect(screen.getByText('₹10,000')).toBeInTheDocument();
-    expect(screen.getByText('₹15,000')).toBeInTheDocument();
-  });
-
-  it('handles current price of 0', () => {
-    const zeroCurrentPrice = {
-      issuePrice: 100,
-      listingPrice: 125,
-      listingGainPercent: 25.0,
-      currentPrice: 0,
-      currentGainPercent: -100.0,
-    };
-
-    render(
-      <ListingPerformance
-        data={zeroCurrentPrice}
-        sector="Technology"
-        sectorAverage={null}
-      />
-    );
-
-    // Should not show current price when it's 0
-    expect(screen.queryByText('Current Price')).not.toBeInTheDocument();
-  });
-
-  it('renders card title', () => {
-    render(
-      <ListingPerformance
-        data={mockDataMinimal}
-        sector="Technology"
-        sectorAverage={null}
-      />
-    );
-
-    expect(screen.getByText('Listing Performance')).toBeInTheDocument();
+      expect(screen.getByText('+0.17%')).toBeInTheDocument(); // Open gain
+      expect(screen.getByText('+0.33%')).toBeInTheDocument(); // High gain
+      expect(screen.getByText('+0.25%')).toBeInTheDocument(); // Close/day return
+    });
   });
 });

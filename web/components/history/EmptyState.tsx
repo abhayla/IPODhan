@@ -1,26 +1,37 @@
 'use client';
 
+/**
+ * Empty State Component
+ *
+ * Displays a message when no historical IPOs match the current filters
+ * Provides a "Clear Filters" button to reset filter state
+ */
+
+import React from 'react';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileX2 } from 'lucide-react';
+import { SearchX } from 'lucide-react';
+import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
 
-interface EmptyStateProps {
-  onClearFilters: () => void;
-}
+export function EmptyState() {
+  const { clearFilters, hasActiveFilters } = useHistoricalFilters();
 
-export function EmptyState({ onClearFilters }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
-      <div className="rounded-full bg-muted p-6 mb-6">
-        <FileX2 className="h-12 w-12 text-muted-foreground" />
-      </div>
-      <h3 className="text-xl font-semibold mb-2">No IPOs Found</h3>
-      <p className="text-muted-foreground mb-6 max-w-md">
-        We couldn&apos;t find any historical IPOs matching your current filters.
-        Try adjusting your search criteria or clear all filters to see all results.
-      </p>
-      <Button onClick={onClearFilters} variant="default">
-        Clear All Filters
-      </Button>
-    </div>
+    <Card className="border-2 border-dashed">
+      <CardContent className="flex flex-col items-center justify-center py-12 px-6 text-center">
+        <SearchX className="h-16 w-16 text-muted-foreground mb-4" />
+        <h3 className="text-lg font-semibold mb-2">No Historical IPOs Found</h3>
+        <p className="text-sm text-muted-foreground mb-6 max-w-md">
+          {hasActiveFilters
+            ? 'No historical IPOs match your current filters. Try adjusting your search criteria or clearing filters.'
+            : 'There are no historical IPOs available at the moment.'}
+        </p>
+        {hasActiveFilters && (
+          <Button onClick={clearFilters} variant="outline">
+            Clear Filters
+          </Button>
+        )}
+      </CardContent>
+    </Card>
   );
 }

@@ -1,132 +1,97 @@
-import { Metadata } from 'next';
-import { HistoricalIPOsPageClient } from './page-client';
-import type { HistoricalIPO } from '@/lib/repositories/types';
+/**
+ * Historical IPOs Page
+ *
+ * Displays historical IPO performance with filtering, sorting, and search
+ * Route: /history
+ * Story: 6.2 - Historical IPOs Page
+ */
 
-// Revalidate every hour (3600 seconds)
+import React, { Suspense } from 'react';
+import { Metadata } from 'next';
+import { HistoricalFiltersProvider } from '@/contexts/HistoricalFiltersContext';
+import { HistoricalIPOsContent } from './HistoricalIPOsContent';
+
+// SEO Metadata
+export const metadata: Metadata = {
+  title: 'IPO History - Past IPO Performance | IPODhan',
+  description:
+    'Research historical IPO performance in India. View listing gains, subscription data, and learn from past IPO trends.',
+  keywords: [
+    'IPO history',
+    'past IPO performance',
+    'listing gains',
+    'IPO trends',
+    'historical IPO data India',
+  ],
+  openGraph: {
+    title: 'IPO History - Past IPO Performance | IPODhan',
+    description: 'Research historical IPO performance in India.',
+    url: 'https://ipodhan.com/history',
+    type: 'website',
+    siteName: 'IPODhan',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'IPO History - Past IPO Performance | IPODhan',
+    description: 'Research historical IPO performance in India.',
+  },
+};
+
+// ISR with 1-hour revalidation
 export const revalidate = 3600;
 
-interface HistoricalIPOResponse {
-  data: HistoricalIPO[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    hasMore: boolean;
+interface HistoricalIPOsPageProps {
+  searchParams: Promise<{
+    year?: string;
+    sector?: string;
+    performance?: string;
+    sort?: string;
+    sortOrder?: string;
+    search?: string;
+    page?: string;
+  }>;
+}
+
+export default async function HistoricalIPOsPage({ searchParams }: HistoricalIPOsPageProps) {
+  const params = await searchParams;
+
+  // Structured data (JSON-LD) for SEO
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@type': 'CollectionPage',
+    name: 'IPO History - Past IPO Performance',
+    description: 'Research historical IPO performance in India',
+    url: 'https://ipodhan.com/history',
+    mainEntity: {
+      '@type': 'ItemList',
+      name: 'Historical IPOs',
+      description: 'List of past IPOs with performance data',
+    },
   };
-}
 
-import { generateHistoricalIPOsMetadata } from '@/lib/seo/metadata';
-
-// Generate metadata for SEO
-export async function generateMetadata(): Promise<Metadata> {
-  return generateHistoricalIPOsMetadata();
-}
-
-async function fetchHistoricalIPOs(searchParams: {
-  [key: string]: string | string[] | undefined;
-}): Promise<HistoricalIPOResponse> {
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
-  // Build query string from search params
-  const params = new URLSearchParams();
-
-  if (searchParams.year) params.set('year', String(searchParams.year));
-  if (searchParams.sector) params.set('sector', String(searchParams.sector));
-  if (searchParams.performance) params.set('performance', String(searchParams.performance));
-  if (searchParams.search) params.set('search', String(searchParams.search));
-  if (searchParams.sort) params.set('sort', String(searchParams.sort));
-  if (searchParams.sortOrder) params.set('sortOrder', String(searchParams.sortOrder));
-  if (searchParams.page) params.set('page', String(searchParams.page));
-  if (searchParams.limit) params.set('limit', String(searchParams.limit));
-
-  const queryString = params.toString();
-  const url = `${baseUrl}/api/ipos/history${queryString ? `?${queryString}` : ''}`;
-
-  try {
-    const response = await fetch(url, {
-      cache: 'no-store', // Server-side fetching with ISR
-    });
-
-    if (!response.ok) {
-      throw new Error(`Failed to fetch historical IPOs: ${response.statusText}`);
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Error fetching historical IPOs:', error);
-    // Return empty data on error
-    return {
-      data: [],
-      pagination: {
-        page: 1,
-        limit: 20,
-        total: 0,
-        hasMore: false,
-      },
-    };
-  }
-}
-
-async function fetchFilterOptions(): Promise<{
-  sectors: string[];
-  years: string[];
-}> {
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
-  try {
-    // Fetch all listed IPOs to extract unique sectors and years
-    const response = await fetch(`${baseUrl}/api/ipos/history?limit=1000`, {
-      cache: 'no-store',
-    });
-
-    if (!response.ok) {
-      return { sectors: [], years: [] };
-    }
-
-    const data: HistoricalIPOResponse = await response.json();
-
-    // Extract unique sectors and years
-    const sectorsSet = new Set<string>();
-    const yearsSet = new Set<number>();
-
-    data.data.forEach((ipo) => {
-      if (ipo.sector) sectorsSet.add(ipo.sector);
-      if (ipo.year) yearsSet.add(ipo.year);
-    });
-
-    const sectors = Array.from(sectorsSet).sort();
-    const years = Array.from(yearsSet)
-      .sort((a, b) => b - a)
-      .map(String);
-
-    return { sectors, years };
-  } catch (error) {
-    console.error('Error fetching filter options:', error);
-    return { sectors: [], years: [] };
-  }
-}
-
-export default async function HistoricalIPOsPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
-}) {
-  // Await searchParams (Next.js 15 change)
-  const resolvedSearchParams = await searchParams;
-
-  // Fetch data in parallel
-  const [ipoData, filterOptions] = await Promise.all([
-    fetchHistoricalIPOs(resolvedSearchParams),
-    fetchFilterOptions(),
-  ]);
-
-  // Pass data to client component
   return (
-    <HistoricalIPOsPageClient
-      initialData={ipoData}
-      availableSectors={filterOptions.sectors}
-      availableYears={filterOptions.years}
-      searchParams={resolvedSearchParams}
-    />
+    <>
+      {/* JSON-LD Structured Data */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
+
+      <HistoricalFiltersProvider
+        initialFilters={{
+          year: params.year || 'All',
+          sector: params.sector || 'All',
+          performance: (params.performance as 'All' | 'Positive' | 'Negative') || 'All',
+          sort: (params.sort as 'listing_date' | 'listing_gain' | 'subscription') || 'listing_date',
+          sortOrder: (params.sortOrder as 'ASC' | 'DESC') || 'DESC',
+          searchQuery: params.search || '',
+          page: params.page ? parseInt(params.page, 10) : 1,
+        }}
+      >
+        <Suspense fallback={<div>Loading...</div>}>
+          <HistoricalIPOsContent />
+        </Suspense>
+      </HistoricalFiltersProvider>
+    </>
   );
 }

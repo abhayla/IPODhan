@@ -1,71 +1,62 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, TrendingDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface SectorAverageComparisonProps {
   listingGainPercent: number;
-  sectorAverage: number | null;
+  sectorAverageGain: number;
   sector: string;
-  className?: string;
 }
+
+/**
+ * Format percentage with + or - sign
+ */
+const formatPercentage = (percent: number): string => {
+  const sign = percent > 0 ? '+' : '';
+  return `${sign}${percent.toFixed(2)}%`;
+};
 
 /**
  * SectorAverageComparison Component
  *
- * Displays comparison of IPO listing performance against sector average.
- * Shows "Above Average" or "Below Average" badge with sector context.
+ * Displays comparison of IPO's listing gain against sector average
+ * - Shows sector average listing gain percentage
+ * - Badge: "Above average" (green) or "Below average" (red)
+ * - Helps investors understand relative performance
  *
- * @param listingGainPercent - IPO's listing day gain percentage
- * @param sectorAverage - Sector average listing gain percentage
- * @param sector - IPO sector name
- * @param className - Additional CSS classes
+ * @param listingGainPercent - IPO's listing gain percentage
+ * @param sectorAverageGain - Sector's average listing gain percentage
+ * @param sector - Sector name (e.g., "Technology", "Healthcare")
  */
 export function SectorAverageComparison({
   listingGainPercent,
-  sectorAverage,
+  sectorAverageGain,
   sector,
-  className,
 }: SectorAverageComparisonProps) {
-  // Don't render if sector average is not available
-  if (sectorAverage === null) {
-    return null;
-  }
-
-  const isAboveAverage = listingGainPercent >= sectorAverage;
-  const difference = Math.abs(listingGainPercent - sectorAverage);
-
-  const badgeStyles = isAboveAverage
-    ? 'bg-green-100 text-green-700 border-green-500'
-    : 'bg-red-100 text-red-700 border-red-500';
-
-  const TrendIcon = isAboveAverage ? TrendingUp : TrendingDown;
+  // Determine if IPO performed above or below sector average
+  const isAboveAverage = listingGainPercent > sectorAverageGain;
 
   return (
-    <div className={cn('space-y-2', className)}>
-      <div className="flex items-center gap-2 flex-wrap">
-        <Badge variant="outline" className={cn(badgeStyles, 'font-semibold border')}>
-          <TrendIcon className="mr-1 h-3 w-3" aria-hidden="true" />
-          {isAboveAverage ? 'Above Average' : 'Below Average'}
+    <div className="mt-6 p-4 rounded-lg bg-muted/30 border">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="flex-1">
+          <p className="text-sm text-muted-foreground mb-1">Historical Context</p>
+          <p className="text-base font-medium">
+            {sector} sector average listing gain:{' '}
+            <span className="font-semibold">{formatPercentage(sectorAverageGain)}</span>
+          </p>
+        </div>
+        <Badge
+          className={cn(
+            'inline-flex items-center gap-1 font-semibold border-2 px-3 py-1 text-sm',
+            isAboveAverage
+              ? 'bg-green-100 text-green-700 border-green-500'
+              : 'bg-red-100 text-red-700 border-red-500'
+          )}
+        >
+          {isAboveAverage ? 'Above average' : 'Below average'}
         </Badge>
-      </div>
-
-      <div className="text-sm text-muted-foreground">
-        <p>
-          <span className="font-medium">{sector}</span> sector average:{' '}
-          <span className="font-semibold">
-            {sectorAverage >= 0 ? '+' : ''}
-            {sectorAverage.toFixed(1)}%
-          </span>
-        </p>
-        <p className="mt-1">
-          This IPO performed{' '}
-          <span className={cn('font-semibold', isAboveAverage ? 'text-green-700' : 'text-red-700')}>
-            {difference.toFixed(1)}%
-          </span>{' '}
-          {isAboveAverage ? 'better' : 'worse'} than sector average
-        </p>
       </div>
     </div>
   );

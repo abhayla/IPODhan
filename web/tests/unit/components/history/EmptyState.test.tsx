@@ -1,39 +1,67 @@
+/**
+ * Unit Tests for EmptyState Component
+ *
+ * Tests empty state display and clear filters functionality
+ */
+
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { EmptyState } from '@/components/history/EmptyState';
+import { HistoricalFiltersProvider } from '@/contexts/HistoricalFiltersContext';
+
+// Mock Next.js router
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+  }),
+  useSearchParams: () => ({
+    get: vi.fn(() => null),
+    toString: vi.fn(() => ''),
+  }),
+  usePathname: () => '/history',
+}));
+
+const renderWithProvider = (component: React.ReactElement, initialFilters = {}) => {
+  return render(
+    <HistoricalFiltersProvider initialFilters={initialFilters}>
+      {component}
+    </HistoricalFiltersProvider>
+  );
+};
 
 describe('EmptyState', () => {
   it('renders empty state message', () => {
-    const onClearFilters = vi.fn();
-    render(<EmptyState onClearFilters={onClearFilters} />);
+    renderWithProvider(<EmptyState />);
 
-    expect(screen.getByText('No IPOs Found')).toBeInTheDocument();
-    expect(screen.getByText(/We couldn't find any historical IPOs/)).toBeInTheDocument();
+    expect(screen.getByText('No Historical IPOs Found')).toBeDefined();
   });
 
-  it('displays clear filters button', () => {
-    const onClearFilters = vi.fn();
-    render(<EmptyState onClearFilters={onClearFilters} />);
+  it('shows different message when filters are active', () => {
+    renderWithProvider(<EmptyState />, { year: '2024' });
 
-    const button = screen.getByRole('button', { name: /Clear All Filters/i });
-    expect(button).toBeInTheDocument();
+    const message = screen.getByText(/No historical IPOs match your current filters/);
+    expect(message).toBeDefined();
   });
 
-  it('calls onClearFilters when button is clicked', () => {
-    const onClearFilters = vi.fn();
-    render(<EmptyState onClearFilters={onClearFilters} />);
+  it('shows "Clear Filters" button when filters are active', () => {
+    renderWithProvider(<EmptyState />, { year: '2024' });
 
-    const button = screen.getByRole('button', { name: /Clear All Filters/i });
-    fireEvent.click(button);
-
-    expect(onClearFilters).toHaveBeenCalledTimes(1);
+    const clearButton = screen.getByText('Clear Filters');
+    expect(clearButton).toBeDefined();
   });
 
-  it('renders icon', () => {
-    const onClearFilters = vi.fn();
-    const { container } = render(<EmptyState onClearFilters={onClearFilters} />);
+  it('does not show "Clear Filters" button when no filters are active', () => {
+    renderWithProvider(<EmptyState />);
 
-    const icon = container.querySelector('svg');
-    expect(icon).toBeInTheDocument();
+    const clearButton = screen.queryByText('Clear Filters');
+    expect(clearButton).toBeNull();
+  });
+
+  it('displays search icon', () => {
+    renderWithProvider(<EmptyState />);
+
+    const icon = document.querySelector('svg');
+    expect(icon).toBeDefined();
   });
 });
