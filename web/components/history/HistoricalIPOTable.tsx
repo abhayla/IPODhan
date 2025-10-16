@@ -1,7 +1,15 @@
 'use client';
 
+/**
+ * Historical IPO Table Component
+ *
+ * Desktop table view for displaying historical IPOs with sortable columns
+ * Shows listing performance data with color-coded gains/losses
+ */
+
+import React from 'react';
 import Link from 'next/link';
-import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
 import {
   Table,
   TableBody,
@@ -10,20 +18,16 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { format } from 'date-fns';
-import type { HistoricalIPO } from '@/lib/repositories/types';
+import { Badge } from '@/components/ui/badge';
+import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { HistoricalIPO } from '@/lib/types/historical-ipo';
+import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
 
 interface HistoricalIPOTableProps {
   ipos: HistoricalIPO[];
-  sortColumn?: 'listing_date' | 'listing_gain' | 'subscription';
-  sortOrder?: 'asc' | 'desc';
-  onSort: (column: 'listing_date' | 'listing_gain' | 'subscription') => void;
 }
 
-const formatCurrency = (amount: number | null) => {
-  if (amount === null) return 'N/A';
+const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
     currency: 'INR',
@@ -31,127 +35,115 @@ const formatCurrency = (amount: number | null) => {
   }).format(amount);
 };
 
-const formatDate = (date: string | null) => {
-  if (!date) return 'N/A';
+const formatDate = (date: Date | string) => {
   return format(new Date(date), 'dd MMM yyyy');
 };
 
-const formatGainPercent = (percent: number | null) => {
-  if (percent === null) return 'N/A';
-  const sign = percent >= 0 ? '+' : '';
-  return `${sign}${percent.toFixed(2)}%`;
+const formatSubscription = (value: number) => {
+  return `${value.toFixed(1)}x`;
 };
 
-const getGainColor = (percent: number | null) => {
-  if (percent === null) return 'text-muted-foreground';
-  return percent >= 0 ? 'text-green-600 font-semibold' : 'text-red-600 font-semibold';
+const formatListingGain = (gain: number) => {
+  const isPositive = gain >= 0;
+  const color = isPositive ? 'text-green-600' : 'text-red-600';
+  const icon = isPositive ? (
+    <ArrowUp className="h-3 w-3 inline" />
+  ) : (
+    <ArrowDown className="h-3 w-3 inline" />
+  );
+  const sign = isPositive ? '+' : '';
+
+  return (
+    <span className={`font-semibold ${color} flex items-center gap-1`}>
+      {icon}
+      {sign}
+      {gain.toFixed(2)}%
+    </span>
+  );
 };
 
-export function HistoricalIPOTable({
-  ipos,
-  sortColumn,
-  sortOrder,
-  onSort,
-}: HistoricalIPOTableProps) {
-  const SortIcon = ({ column }: { column: 'listing_date' | 'listing_gain' | 'subscription' }) => {
-    if (sortColumn !== column) {
-      return <ArrowUpDown className="ml-2 h-4 w-4" />;
+export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
+  const { filters, setSort } = useHistoricalFilters();
+
+  const handleSort = (column: 'listing_date' | 'listing_gain' | 'subscription') => {
+    // Toggle sort order if clicking the same column
+    const newSortOrder =
+      filters.sort === column && filters.sortOrder === 'DESC' ? 'ASC' : 'DESC';
+    setSort(column, newSortOrder);
+  };
+
+  const getSortIcon = (column: 'listing_date' | 'listing_gain' | 'subscription') => {
+    if (filters.sort !== column) {
+      return <ArrowUpDown className="h-4 w-4 ml-1 inline opacity-40" />;
     }
-    return sortOrder === 'asc' ? (
-      <ArrowUp className="ml-2 h-4 w-4" />
+    return filters.sortOrder === 'DESC' ? (
+      <ArrowDown className="h-4 w-4 ml-1 inline" />
     ) : (
-      <ArrowDown className="ml-2 h-4 w-4" />
+      <ArrowUp className="h-4 w-4 ml-1 inline" />
     );
   };
 
   return (
-    <div className="rounded-md border bg-card">
+    <div className="border rounded-lg overflow-hidden">
       <Table>
         <TableHeader>
-          <TableRow>
-            <TableHead className="w-[250px]">Company</TableHead>
-            <TableHead>Sector</TableHead>
-            <TableHead className="text-right">Issue Price</TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onSort('listing_date')}
-                className="h-8 -ml-3 hover:bg-transparent"
-              >
-                Listing Date
-                <SortIcon column="listing_date" />
-              </Button>
+          <TableRow className="bg-muted/50">
+            <TableHead className="font-semibold">Company Name</TableHead>
+            <TableHead className="font-semibold">Sector</TableHead>
+            <TableHead
+              className="font-semibold cursor-pointer hover:bg-muted/80 transition-colors"
+              onClick={() => handleSort('listing_date')}
+            >
+              Listing Date
+              {getSortIcon('listing_date')}
             </TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onSort('listing_gain')}
-                className="h-8 -ml-3 hover:bg-transparent"
-              >
-                Listing Gain
-                <SortIcon column="listing_gain" />
-              </Button>
+            <TableHead className="font-semibold text-right">Issue Price</TableHead>
+            <TableHead className="font-semibold text-right">Listing Price</TableHead>
+            <TableHead
+              className="font-semibold cursor-pointer hover:bg-muted/80 transition-colors text-right"
+              onClick={() => handleSort('listing_gain')}
+            >
+              Listing Gain %
+              {getSortIcon('listing_gain')}
             </TableHead>
-            <TableHead>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onSort('subscription')}
-                className="h-8 -ml-3 hover:bg-transparent"
-              >
-                Subscription
-                <SortIcon column="subscription" />
-              </Button>
+            <TableHead
+              className="font-semibold cursor-pointer hover:bg-muted/80 transition-colors text-right"
+              onClick={() => handleSort('subscription')}
+            >
+              Subscription
+              {getSortIcon('subscription')}
             </TableHead>
+            <TableHead className="font-semibold">Status</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {ipos.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                No historical IPOs found.
+          {ipos.map((ipo) => (
+            <TableRow key={ipo.id} className="hover:bg-muted/30 transition-colors">
+              <TableCell>
+                <Link
+                  href={`/ipos/${ipo.slug}`}
+                  className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                >
+                  {ipo.companyName}
+                </Link>
+              </TableCell>
+              <TableCell>
+                <span className="text-sm text-muted-foreground">{ipo.sector}</span>
+              </TableCell>
+              <TableCell>{formatDate(ipo.listingDate)}</TableCell>
+              <TableCell className="text-right">{formatCurrency(ipo.issuePrice)}</TableCell>
+              <TableCell className="text-right">{formatCurrency(ipo.listingClose)}</TableCell>
+              <TableCell className="text-right">
+                {formatListingGain(ipo.listingGainPercent)}
+              </TableCell>
+              <TableCell className="text-right">
+                {formatSubscription(ipo.subscriptionOverall)}
+              </TableCell>
+              <TableCell>
+                <Badge className="bg-purple-500 text-white">LISTED</Badge>
               </TableCell>
             </TableRow>
-          ) : (
-            ipos.map((ipo) => (
-              <TableRow key={ipo.id} className="hover:bg-muted/50">
-                <TableCell>
-                  <Link
-                    href={`/ipos/${ipo.slug}`}
-                    className="font-medium hover:underline text-primary"
-                  >
-                    {ipo.companyName}
-                  </Link>
-                  <div className="mt-1">
-                    <Badge variant="outline" className="text-xs">
-                      {ipo.category}
-                    </Badge>
-                  </div>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  {ipo.sector || 'N/A'}
-                </TableCell>
-                <TableCell className="text-right font-medium">
-                  {formatCurrency(ipo.issuePrice || null)}
-                </TableCell>
-                <TableCell>
-                  {formatDate(ipo.listingDate)}
-                </TableCell>
-                <TableCell className={getGainColor(ipo.listingGainPercent || null)}>
-                  {formatGainPercent(ipo.listingGainPercent || null)}
-                </TableCell>
-                <TableCell>
-                  {ipo.subscription ? (
-                    <span className="font-medium">{ipo.subscription.toFixed(2)}x</span>
-                  ) : (
-                    <span className="text-muted-foreground">N/A</span>
-                  )}
-                </TableCell>
-              </TableRow>
-            ))
-          )}
+          ))}
         </TableBody>
       </Table>
     </div>

@@ -1,185 +1,177 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+/**
+ * Historical Filters Component
+ *
+ * Provides filtering controls for historical IPOs
+ * Desktop: Renders as left sidebar
+ * Mobile: Renders as drawer/sheet triggered by button
+ */
+
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
+import { Select } from '@/components/ui/select';
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from '@/components/ui/sheet';
 import { Filter, X } from 'lucide-react';
 import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
+import {
+  YEAR_OPTIONS,
+  SECTOR_OPTIONS,
+  PERFORMANCE_OPTIONS,
+} from '@/lib/types/historical-filters';
 
-interface HistoricalFiltersProps {
-  availableSectors: string[];
-  availableYears: string[];
-}
+export function HistoricalFilters() {
+  const {
+    filters,
+    setYear,
+    setSector,
+    setPerformance,
+    clearFilters,
+    hasActiveFilters,
+  } = useHistoricalFilters();
 
-function FiltersContent({ availableSectors, availableYears }: HistoricalFiltersProps) {
-  const { filters, setYear, setSector, setPerformance, clearFilters, updateURL } = useHistoricalFilters();
-  const [localFilters, setLocalFilters] = useState({
-    year: filters.year || 'All',
-    sector: filters.sector || 'All',
-    performance: filters.performance || 'All',
-  });
+  const [isOpen, setIsOpen] = useState(false);
 
-  // Update local state when filters change
-  useEffect(() => {
-    setLocalFilters({
-      year: filters.year || 'All',
-      sector: filters.sector || 'All',
-      performance: filters.performance || 'All',
-    });
-  }, [filters]);
-
-  const handleYearChange = (value: string) => {
-    setLocalFilters((prev) => ({ ...prev, year: value }));
-    setYear(value === 'All' ? undefined : value);
-  };
-
-  const handleSectorChange = (value: string) => {
-    setLocalFilters((prev) => ({ ...prev, sector: value }));
-    setSector(value === 'All' ? undefined : value);
-  };
-
-  const handlePerformanceChange = (value: string) => {
-    const perfValue = value as 'Positive' | 'Negative' | 'All';
-    setLocalFilters((prev) => ({ ...prev, performance: perfValue }));
-    setPerformance(perfValue === 'All' ? undefined : perfValue);
-  };
-
-  const handleClearFilters = () => {
-    setLocalFilters({ year: 'All', sector: 'All', performance: 'All' });
-    clearFilters();
-  };
-
-  const hasActiveFilters = localFilters.year !== 'All' || localFilters.sector !== 'All' || localFilters.performance !== 'All';
-
-  return (
+  const FilterContent = () => (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold">Filters</h3>
-        {hasActiveFilters && (
+      {/* Clear Filters Button */}
+      {hasActiveFilters && (
+        <div className="pb-4 border-b">
           <Button
-            variant="ghost"
+            variant="outline"
             size="sm"
-            onClick={handleClearFilters}
-            className="h-8 px-2 text-muted-foreground hover:text-foreground"
+            onClick={clearFilters}
+            className="w-full"
           >
-            <X className="h-4 w-4 mr-1" />
-            Clear
+            <X className="h-4 w-4 mr-2" />
+            Clear All Filters
           </Button>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* Year Filter */}
       <div className="space-y-3">
-        <Label className="text-sm font-medium">Year</Label>
-        <Select value={localFilters.year} onValueChange={handleYearChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select year" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="All">All Years</SelectItem>
-            {availableYears.map((year) => (
-              <SelectItem key={year} value={year}>
+        <Label className="text-base font-semibold">Year</Label>
+        <div className="space-y-2">
+          {YEAR_OPTIONS.map((year) => (
+            <div key={year} className="flex items-center space-x-2">
+              <Checkbox
+                id={`year-${year}`}
+                checked={filters.year === year}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    setYear(year);
+                  }
+                }}
+              />
+              <Label
+                htmlFor={`year-${year}`}
+                className="text-sm font-normal cursor-pointer"
+              >
                 {year}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+              </Label>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* Sector Filter */}
       <div className="space-y-3">
-        <Label className="text-sm font-medium">Sector</Label>
-        <Select value={localFilters.sector} onValueChange={handleSectorChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Select sector" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="All">All Sectors</SelectItem>
-            {availableSectors.map((sector) => (
-              <SelectItem key={sector} value={sector}>
+        <Label className="text-base font-semibold">Sector</Label>
+        <div className="space-y-2">
+          {SECTOR_OPTIONS.map((sector) => (
+            <div key={sector} className="flex items-center space-x-2">
+              <Checkbox
+                id={`sector-${sector}`}
+                checked={filters.sector === sector}
+                onCheckedChange={(checked) => {
+                  if (checked) {
+                    setSector(sector);
+                  }
+                }}
+              />
+              <Label
+                htmlFor={`sector-${sector}`}
+                className="text-sm font-normal cursor-pointer"
+              >
                 {sector}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
-      {/* Listing Performance Filter */}
-      <div className="space-y-3">
-        <Label className="text-sm font-medium">Listing Performance</Label>
-        <RadioGroup value={localFilters.performance} onValueChange={handlePerformanceChange}>
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="All" id="perf-all" />
-            <Label htmlFor="perf-all" className="font-normal cursor-pointer">
-              All
-            </Label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="Positive" id="perf-positive" />
-            <Label htmlFor="perf-positive" className="font-normal cursor-pointer">
-              Positive Gains
-            </Label>
-          </div>
-          <div className="flex items-center space-x-2">
-            <RadioGroupItem value="Negative" id="perf-negative" />
-            <Label htmlFor="perf-negative" className="font-normal cursor-pointer">
-              Negative Gains
-            </Label>
-          </div>
-        </RadioGroup>
-      </div>
-
-      {/* Apply button (visible on mobile only) */}
-      <Button onClick={updateURL} className="w-full md:hidden">
-        Apply Filters
-      </Button>
-    </div>
-  );
-}
-
-export function HistoricalFilters({ availableSectors, availableYears }: HistoricalFiltersProps) {
-  const { updateURL } = useHistoricalFilters();
-
-  // Auto-update URL on filter changes (desktop)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      updateURL();
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [updateURL]);
-
-  return (
-    <>
-      {/* Desktop Sidebar */}
-      <div className="hidden md:block w-64 flex-shrink-0">
-        <div className="sticky top-6 bg-background border rounded-lg p-6">
-          <FiltersContent availableSectors={availableSectors} availableYears={availableYears} />
+              </Label>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Mobile Drawer */}
-      <div className="md:hidden">
-        <Sheet>
+      {/* Performance Filter */}
+      <div className="space-y-3">
+        <Label className="text-base font-semibold">Listing Performance</Label>
+        <RadioGroup
+          value={filters.performance}
+          onValueChange={(value) =>
+            setPerformance(value as 'All' | 'Positive' | 'Negative')
+          }
+        >
+          {PERFORMANCE_OPTIONS.map((option) => (
+            <div key={option.value} className="flex items-center space-x-2">
+              <RadioGroupItem value={option.value} id={`perf-${option.value}`} />
+              <Label
+                htmlFor={`perf-${option.value}`}
+                className="text-sm font-normal cursor-pointer"
+              >
+                {option.label}
+              </Label>
+            </div>
+          ))}
+        </RadioGroup>
+      </div>
+    </div>
+  );
+
+  return (
+    <>
+      {/* Mobile: Sheet/Drawer */}
+      <div className="lg:hidden">
+        <Sheet open={isOpen} onOpenChange={setIsOpen}>
           <SheetTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-2">
-              <Filter className="h-4 w-4" />
+            <Button variant="outline" className="w-full sm:w-auto">
+              <Filter className="h-4 w-4 mr-2" />
               Filters
+              {hasActiveFilters && (
+                <span className="ml-2 bg-blue-500 text-white text-xs rounded-full px-2 py-0.5">
+                  Active
+                </span>
+              )}
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" className="w-[300px] sm:w-[400px]">
+          <SheetContent side="left" className="w-[300px] sm:w-[400px] overflow-y-auto">
             <SheetHeader>
               <SheetTitle>Filter Historical IPOs</SheetTitle>
+              <SheetDescription>
+                Refine your search by year, sector, and performance
+              </SheetDescription>
             </SheetHeader>
             <div className="mt-6">
-              <FiltersContent availableSectors={availableSectors} availableYears={availableYears} />
+              <FilterContent />
             </div>
           </SheetContent>
         </Sheet>
+      </div>
+
+      {/* Desktop: Sidebar */}
+      <div className="hidden lg:block w-64 border-r pr-6 shrink-0">
+        <div className="sticky top-4">
+          <h2 className="text-lg font-semibold mb-6">Filters</h2>
+          <FilterContent />
+        </div>
       </div>
     </>
   );

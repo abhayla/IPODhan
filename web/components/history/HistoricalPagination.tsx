@@ -1,30 +1,39 @@
 'use client';
 
-import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+/**
+ * Historical Pagination Component
+ *
+ * Provides pagination controls for navigating through historical IPO pages
+ * Responsive design with fewer page numbers on mobile
+ */
+
+import React from 'react';
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+  PaginationEllipsis,
+} from '@/components/ui/pagination';
+import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
 
 interface HistoricalPaginationProps {
-  currentPage: number;
   totalPages: number;
-  hasNext: boolean;
-  hasPrev: boolean;
-  onPageChange: (page: number) => void;
 }
 
-export function HistoricalPagination({
-  currentPage,
-  totalPages,
-  hasNext,
-  hasPrev,
-  onPageChange,
-}: HistoricalPaginationProps) {
+export function HistoricalPagination({ totalPages }: HistoricalPaginationProps) {
+  const { filters, setPage } = useHistoricalFilters();
+  const currentPage = filters.page;
+
   // Generate page numbers to display
   const getPageNumbers = () => {
     const pages: (number | 'ellipsis')[] = [];
-    const maxVisible = 7; // Max page numbers to show
+    const maxVisible = 7; // Maximum page numbers to show
 
     if (totalPages <= maxVisible) {
-      // Show all pages
+      // Show all pages if total is less than max
       for (let i = 1; i <= totalPages; i++) {
         pages.push(i);
       }
@@ -32,105 +41,86 @@ export function HistoricalPagination({
       // Always show first page
       pages.push(1);
 
-      if (currentPage <= 3) {
-        // Near the beginning
-        for (let i = 2; i <= 5; i++) {
-          pages.push(i);
-        }
+      if (currentPage > 3) {
         pages.push('ellipsis');
-        pages.push(totalPages);
-      } else if (currentPage >= totalPages - 2) {
-        // Near the end
-        pages.push('ellipsis');
-        for (let i = totalPages - 4; i <= totalPages; i++) {
-          pages.push(i);
-        }
-      } else {
-        // In the middle
-        pages.push('ellipsis');
-        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
-          pages.push(i);
-        }
-        pages.push('ellipsis');
-        pages.push(totalPages);
       }
+
+      // Show pages around current page
+      const start = Math.max(2, currentPage - 1);
+      const end = Math.min(totalPages - 1, currentPage + 1);
+
+      for (let i = start; i <= end; i++) {
+        pages.push(i);
+      }
+
+      if (currentPage < totalPages - 2) {
+        pages.push('ellipsis');
+      }
+
+      // Always show last page
+      pages.push(totalPages);
     }
 
     return pages;
   };
 
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setPage(page);
+      // Scroll to top of page
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const pageNumbers = getPageNumbers();
+
   if (totalPages <= 1) {
     return null;
   }
 
-  const pageNumbers = getPageNumbers();
-
   return (
-    <nav
-      className="flex items-center justify-center gap-2 mt-8"
-      aria-label="Page navigation"
-      data-testid="pagination"
-    >
-      {/* Previous button */}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => hasPrev && onPageChange(currentPage - 1)}
-        disabled={!hasPrev}
-        aria-label="Previous page"
-        className="gap-1"
-      >
-        <ChevronLeft className="h-4 w-4" />
-        <span className="hidden sm:inline">Previous</span>
-      </Button>
+    <Pagination>
+      <PaginationContent>
+        <PaginationItem>
+          <PaginationPrevious
+            onClick={() => handlePageChange(currentPage - 1)}
+            className={
+              currentPage === 1
+                ? 'pointer-events-none opacity-50'
+                : 'cursor-pointer'
+            }
+            aria-disabled={currentPage === 1}
+          />
+        </PaginationItem>
 
-      {/* Page numbers */}
-      <div className="hidden md:flex items-center gap-1">
-        {pageNumbers.map((page, index) => {
-          if (page === 'ellipsis') {
-            return (
-              <span key={`ellipsis-${index}`} className="px-2">
-                ...
-              </span>
-            );
-          }
+        {pageNumbers.map((page, index) => (
+          <PaginationItem key={`page-${index}`}>
+            {page === 'ellipsis' ? (
+              <PaginationEllipsis />
+            ) : (
+              <PaginationLink
+                onClick={() => handlePageChange(page)}
+                isActive={currentPage === page}
+                className="cursor-pointer"
+              >
+                {page}
+              </PaginationLink>
+            )}
+          </PaginationItem>
+        ))}
 
-          const pageNum = page as number;
-          const isActive = pageNum === currentPage;
-
-          return (
-            <Button
-              key={pageNum}
-              variant={isActive ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => onPageChange(pageNum)}
-              aria-label={`Page ${pageNum}`}
-              aria-current={isActive ? 'page' : undefined}
-              className="w-9"
-            >
-              {pageNum}
-            </Button>
-          );
-        })}
-      </div>
-
-      {/* Mobile page indicator */}
-      <div className="md:hidden px-3 py-1 text-sm text-muted-foreground">
-        Page {currentPage} of {totalPages}
-      </div>
-
-      {/* Next button */}
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => hasNext && onPageChange(currentPage + 1)}
-        disabled={!hasNext}
-        aria-label="Next page"
-        className="gap-1"
-      >
-        <span className="hidden sm:inline">Next</span>
-        <ChevronRight className="h-4 w-4" />
-      </Button>
-    </nav>
+        <PaginationItem>
+          <PaginationNext
+            onClick={() => handlePageChange(currentPage + 1)}
+            className={
+              currentPage === totalPages
+                ? 'pointer-events-none opacity-50'
+                : 'cursor-pointer'
+            }
+            aria-disabled={currentPage === totalPages}
+          />
+        </PaginationItem>
+      </PaginationContent>
+    </Pagination>
   );
 }

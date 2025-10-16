@@ -1,28 +1,38 @@
 'use client';
 
+/**
+ * Results Count Component
+ *
+ * Displays the total number of historical IPOs matching current filters
+ * Shows different messages for filtered vs. unfiltered results
+ */
+
+import React from 'react';
+import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
+
 interface ResultsCountProps {
   total: number;
-  showing: number;
-  page: number;
-  limit: number;
+  loading?: boolean;
 }
 
-export function ResultsCount({ total, page, limit }: ResultsCountProps) {
-  const startIndex = (page - 1) * limit + 1;
-  const endIndex = Math.min(page * limit, total);
+export function ResultsCount({ total, loading = false }: ResultsCountProps) {
+  const { hasActiveFilters } = useHistoricalFilters();
 
-  if (total === 0) {
+  if (loading) {
     return (
-      <p className="text-sm text-muted-foreground">
-        No results found
-      </p>
+      <div className="text-sm text-muted-foreground">
+        Loading results...
+      </div>
     );
   }
 
+  const formattedTotal = total.toLocaleString('en-IN');
+
   return (
-    <p className="text-sm text-muted-foreground">
-      Showing <span className="font-medium text-foreground">{startIndex}-{endIndex}</span> of{' '}
-      <span className="font-medium text-foreground">{total}</span> historical IPOs
-    </p>
+    <div className="text-sm text-muted-foreground">
+      Showing <span className="font-semibold text-foreground">{formattedTotal}</span>{' '}
+      {total === 1 ? 'IPO' : 'IPOs'}
+      {hasActiveFilters && <span className="text-blue-600"> (filtered)</span>}
+    </div>
   );
 }

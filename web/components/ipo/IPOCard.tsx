@@ -10,6 +10,7 @@ import { ListingPerformanceBadge } from './ListingPerformanceBadge';
 import { ScoreBadge } from './ScoreBadge';
 import { VerdictBadge } from './VerdictBadge';
 import { formatIPODate, getAccessibleDate, getISODate } from '@/lib/utils/date-formatter';
+import { cn } from '@/lib/utils';
 
 interface IPOCardProps {
   ipo: IPO & {
@@ -78,6 +79,19 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
     }
   };
 
+  // Get listing gain percentage for badge and border color
+  const listingGainPercent = ipo.listingPerformance?.listingGainPercent
+    ? Number(ipo.listingPerformance.listingGainPercent)
+    : null;
+
+  // Determine border color based on listing performance
+  const borderColorClass =
+    ipo.status === 'LISTED' && listingGainPercent !== null
+      ? listingGainPercent > 0
+        ? 'border-green-500'
+        : 'border-red-500'
+      : 'border-border';
+
   return (
     <Link
       href={`/ipos/${ipo.slug}`}
@@ -87,13 +101,16 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
     >
       <Card
         data-testid="ipo-card"
-        className="h-full cursor-pointer border-2 border-border hover:border-primary hover:shadow-xl transition-all duration-300 ease-out group-hover:scale-[1.03] group-hover:-translate-y-1 overflow-hidden relative"
+        className={cn(
+          'h-full cursor-pointer border-2 hover:border-primary hover:shadow-xl transition-all duration-300 ease-out group-hover:scale-[1.03] group-hover:-translate-y-1 overflow-hidden relative',
+          borderColorClass
+        )}
       >
         {/* Gradient overlay on hover */}
         <div className="absolute inset-0 bg-gradient-to-br from-primary/5 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
 
         <CardContent className="p-6 space-y-4 relative z-10">
-          {/* Header: Company Name and Status */}
+          {/* Header: Company Name, Status, and Listing Badge */}
           <div className="flex items-start justify-between gap-2">
             <h3 className="text-lg font-bold leading-tight line-clamp-2 flex-1 group-hover:text-primary transition-colors duration-200">
               <HighlightedText text={ipo.companyName} query={searchQuery || ''} />
@@ -108,13 +125,12 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
                   Score Pending
                 </Badge>
               )}
-              {/* Listing Performance Badge for LISTED IPOs */}
-              {ipo.status === 'LISTED' &&
-               ipo.listingPerformance &&
-               ipo.listingDate && (
+              {/* Listing Performance Badge for LISTED IPOs (Story 6.3) */}
+              {ipo.status === 'LISTED' && listingGainPercent !== null && (
                 <ListingPerformanceBadge
-                  listingGainPercent={parseFloat(ipo.listingPerformance.listingGainPercent)}
-                  variant="compact"
+                  listingGainPercent={listingGainPercent}
+                  size="small"
+                  showIcon={true}
                 />
               )}
             </div>

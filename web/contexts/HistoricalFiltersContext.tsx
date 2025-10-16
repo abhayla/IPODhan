@@ -1,134 +1,195 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+/**
+ * Historical IPO Filters Context
+ *
+ * Manages filter state for the Historical IPOs page (Story 6.2)
+ * Syncs filter state with URL query parameters for shareable links
+ */
 
-export interface HistoricalFilters {
-  year?: string;
-  sector?: string;
-  performance?: 'Positive' | 'Negative' | 'All';
-  search?: string;
-  sort?: 'listing_date' | 'listing_gain' | 'subscription';
-  sortOrder?: 'asc' | 'desc';
-  page: number;
-  limit: number;
-}
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import {
+  HistoricalFiltersState,
+  defaultFiltersState,
+} from '@/lib/types/historical-filters';
 
-interface HistoricalFiltersContextType {
-  filters: HistoricalFilters;
-  setYear: (year: string | undefined) => void;
-  setSector: (sector: string | undefined) => void;
-  setPerformance: (performance: 'Positive' | 'Negative' | 'All' | undefined) => void;
-  setSearch: (search: string | undefined) => void;
-  setSort: (sort: 'listing_date' | 'listing_gain' | 'subscription' | undefined) => void;
-  setSortOrder: (sortOrder: 'asc' | 'desc' | undefined) => void;
+interface HistoricalFiltersContextValue {
+  filters: HistoricalFiltersState;
+  setYear: (year: string) => void;
+  setSector: (sector: string) => void;
+  setPerformance: (performance: 'All' | 'Positive' | 'Negative') => void;
+  setSort: (sort: string, sortOrder: 'ASC' | 'DESC') => void;
+  setSearchQuery: (query: string) => void;
   setPage: (page: number) => void;
-  setLimit: (limit: number) => void;
   clearFilters: () => void;
-  updateURL: () => void;
+  hasActiveFilters: boolean;
 }
 
-const HistoricalFiltersContext = createContext<HistoricalFiltersContextType | undefined>(
+const HistoricalFiltersContext = createContext<HistoricalFiltersContextValue | undefined>(
   undefined
 );
 
-const DEFAULT_FILTERS: HistoricalFilters = {
-  page: 1,
-  limit: 20,
-  sort: 'listing_date',
-  sortOrder: 'desc',
-};
-
 interface HistoricalFiltersProviderProps {
-  children: ReactNode;
-  initialFilters?: Partial<HistoricalFilters>;
+  children: React.ReactNode;
+  initialFilters?: Partial<HistoricalFiltersState>;
 }
 
 export function HistoricalFiltersProvider({
   children,
-  initialFilters = {},
+  initialFilters,
 }: HistoricalFiltersProviderProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // Initialize filters from URL params or defaults
-  const [filters, setFilters] = useState<HistoricalFilters>(() => {
+  // Initialize state from URL params or defaults
+  const [filters, setFilters] = useState<HistoricalFiltersState>(() => {
+    const urlYear = searchParams.get('year');
+    const urlSector = searchParams.get('sector');
+    const urlPerformance = searchParams.get('performance');
+    const urlSort = searchParams.get('sort');
+    const urlSortOrder = searchParams.get('sortOrder');
+    const urlSearch = searchParams.get('search');
+    const urlPage = searchParams.get('page');
+
     return {
-      year: searchParams.get('year') || initialFilters.year,
-      sector: searchParams.get('sector') || initialFilters.sector,
-      performance: (searchParams.get('performance') as 'Positive' | 'Negative' | 'All') || initialFilters.performance,
-      search: searchParams.get('search') || initialFilters.search,
-      sort: (searchParams.get('sort') as 'listing_date' | 'listing_gain' | 'subscription') || initialFilters.sort || DEFAULT_FILTERS.sort,
-      sortOrder: (searchParams.get('sortOrder') as 'asc' | 'desc') || initialFilters.sortOrder || DEFAULT_FILTERS.sortOrder,
-      page: Number(searchParams.get('page')) || initialFilters.page || DEFAULT_FILTERS.page,
-      limit: Number(searchParams.get('limit')) || initialFilters.limit || DEFAULT_FILTERS.limit,
+      year: urlYear || initialFilters?.year || defaultFiltersState.year,
+      sector: urlSector || initialFilters?.sector || defaultFiltersState.sector,
+      performance:
+        (urlPerformance as 'All' | 'Positive' | 'Negative') ||
+        initialFilters?.performance ||
+        defaultFiltersState.performance,
+      sort:
+        (urlSort as 'listing_date' | 'listing_gain' | 'subscription') ||
+        initialFilters?.sort ||
+        defaultFiltersState.sort,
+      sortOrder:
+        (urlSortOrder as 'ASC' | 'DESC') ||
+        initialFilters?.sortOrder ||
+        defaultFiltersState.sortOrder,
+      searchQuery: urlSearch || initialFilters?.searchQuery || defaultFiltersState.searchQuery,
+      page: urlPage ? parseInt(urlPage, 10) : initialFilters?.page || defaultFiltersState.page,
     };
   });
 
-  const updateURL = useCallback(() => {
-    const params = new URLSearchParams();
+  // Sync filters to URL
+  const updateURL = useCallback(
+    (newFilters: HistoricalFiltersState) => {
+      const params = new URLSearchParams();
 
-    if (filters.year) params.set('year', filters.year);
-    if (filters.sector) params.set('sector', filters.sector);
-    if (filters.performance) params.set('performance', filters.performance);
-    if (filters.search) params.set('search', filters.search);
-    if (filters.sort && filters.sort !== DEFAULT_FILTERS.sort) params.set('sort', filters.sort);
-    if (filters.sortOrder && filters.sortOrder !== DEFAULT_FILTERS.sortOrder) params.set('sortOrder', filters.sortOrder);
-    if (filters.page !== DEFAULT_FILTERS.page) params.set('page', filters.page.toString());
-    if (filters.limit !== DEFAULT_FILTERS.limit) params.set('limit', filters.limit.toString());
+      // Only add non-default values to URL
+      if (newFilters.year !== defaultFiltersState.year) {
+        params.set('year', newFilters.year);
+      }
+      if (newFilters.sector !== defaultFiltersState.sector) {
+        params.set('sector', newFilters.sector);
+      }
+      if (newFilters.performance !== defaultFiltersState.performance) {
+        params.set('performance', newFilters.performance);
+      }
+      if (newFilters.sort !== defaultFiltersState.sort) {
+        params.set('sort', newFilters.sort);
+      }
+      if (newFilters.sortOrder !== defaultFiltersState.sortOrder) {
+        params.set('sortOrder', newFilters.sortOrder);
+      }
+      if (newFilters.searchQuery) {
+        params.set('search', newFilters.searchQuery);
+      }
+      if (newFilters.page > 1) {
+        params.set('page', newFilters.page.toString());
+      }
 
-    const queryString = params.toString();
-    router.push(`/history${queryString ? `?${queryString}` : ''}`, { scroll: false });
-  }, [filters, router]);
+      const queryString = params.toString();
+      const newURL = queryString ? `${pathname}?${queryString}` : pathname;
+      router.push(newURL, { scroll: false });
+    },
+    [pathname, router]
+  );
 
-  const setYear = useCallback((year: string | undefined) => {
-    setFilters((prev) => ({ ...prev, year, page: 1 }));
-  }, []);
+  // Update filter methods
+  const setYear = useCallback(
+    (year: string) => {
+      const newFilters = { ...filters, year, page: 1 };
+      setFilters(newFilters);
+      updateURL(newFilters);
+    },
+    [filters, updateURL]
+  );
 
-  const setSector = useCallback((sector: string | undefined) => {
-    setFilters((prev) => ({ ...prev, sector, page: 1 }));
-  }, []);
+  const setSector = useCallback(
+    (sector: string) => {
+      const newFilters = { ...filters, sector, page: 1 };
+      setFilters(newFilters);
+      updateURL(newFilters);
+    },
+    [filters, updateURL]
+  );
 
-  const setPerformance = useCallback((performance: 'Positive' | 'Negative' | 'All' | undefined) => {
-    setFilters((prev) => ({ ...prev, performance, page: 1 }));
-  }, []);
+  const setPerformance = useCallback(
+    (performance: 'All' | 'Positive' | 'Negative') => {
+      const newFilters = { ...filters, performance, page: 1 };
+      setFilters(newFilters);
+      updateURL(newFilters);
+    },
+    [filters, updateURL]
+  );
 
-  const setSearch = useCallback((search: string | undefined) => {
-    setFilters((prev) => ({ ...prev, search, page: 1 }));
-  }, []);
+  const setSort = useCallback(
+    (sort: string, sortOrder: 'ASC' | 'DESC') => {
+      const newFilters = {
+        ...filters,
+        sort: sort as 'listing_date' | 'listing_gain' | 'subscription',
+        sortOrder,
+        page: 1,
+      };
+      setFilters(newFilters);
+      updateURL(newFilters);
+    },
+    [filters, updateURL]
+  );
 
-  const setSort = useCallback((sort: 'listing_date' | 'listing_gain' | 'subscription' | undefined) => {
-    setFilters((prev) => ({ ...prev, sort, page: 1 }));
-  }, []);
+  const setSearchQuery = useCallback(
+    (query: string) => {
+      const newFilters = { ...filters, searchQuery: query, page: 1 };
+      setFilters(newFilters);
+      updateURL(newFilters);
+    },
+    [filters, updateURL]
+  );
 
-  const setSortOrder = useCallback((sortOrder: 'asc' | 'desc' | undefined) => {
-    setFilters((prev) => ({ ...prev, sortOrder, page: 1 }));
-  }, []);
-
-  const setPage = useCallback((page: number) => {
-    setFilters((prev) => ({ ...prev, page }));
-  }, []);
-
-  const setLimit = useCallback((limit: number) => {
-    setFilters((prev) => ({ ...prev, limit, page: 1 }));
-  }, []);
+  const setPage = useCallback(
+    (page: number) => {
+      const newFilters = { ...filters, page };
+      setFilters(newFilters);
+      updateURL(newFilters);
+    },
+    [filters, updateURL]
+  );
 
   const clearFilters = useCallback(() => {
-    setFilters(DEFAULT_FILTERS);
-  }, []);
+    setFilters(defaultFiltersState);
+    updateURL(defaultFiltersState);
+  }, [updateURL]);
 
-  const value: HistoricalFiltersContextType = {
+  // Check if there are active filters
+  const hasActiveFilters =
+    filters.year !== defaultFiltersState.year ||
+    filters.sector !== defaultFiltersState.sector ||
+    filters.performance !== defaultFiltersState.performance ||
+    filters.searchQuery !== defaultFiltersState.searchQuery;
+
+  const value: HistoricalFiltersContextValue = {
     filters,
     setYear,
     setSector,
     setPerformance,
-    setSearch,
     setSort,
-    setSortOrder,
+    setSearchQuery,
     setPage,
-    setLimit,
     clearFilters,
-    updateURL,
+    hasActiveFilters,
   };
 
   return (
