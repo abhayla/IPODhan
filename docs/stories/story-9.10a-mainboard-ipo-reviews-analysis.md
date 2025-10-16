@@ -3,9 +3,10 @@
 ## Status
 Ready
 
-**Created Date:** 2025-10-12
+**Created Date:** 2025-10-12 15:00:00
+**Last Updated:** 2025-10-12 15:30:00
 **Approved By:** Sarah (Product Owner)
-**Approved Date:** 2025-10-12
+**Approved Date:** 2025-10-12 15:30:00
 **Workflow:** automated-story-creation-workflow-sm-po-new
 
 ## Story
@@ -621,9 +622,9 @@ The `ipoReviews` table is a new addition to the schema. It must be created via D
 
 | Date | Version | Description | Author |
 |------|---------|-------------|--------|
-| 2025-10-12 | 1.0 | Initial story created for Story 9.10a (Mainboard IPO Reviews & Analysis Page) | Bob (Scrum Master) |
-| 2025-10-12 | 1.1 | Story validated and approved by Product Owner (Implementation Readiness Score: 9.5/10) | Sarah (Product Owner) |
-| 2025-10-12 | 1.2 | Story status updated to "Ready" - approved for development | Workflow Automation |
+| 2025-10-12 15:00:00 | 1.0 | Initial story created for Story 9.10a (Mainboard IPO Reviews & Analysis Page) | Bob (Scrum Master) |
+| 2025-10-12 15:15:00 | 1.1 | Story validated and approved by Product Owner (Implementation Readiness Score: 9.5/10) | Sarah (Product Owner) |
+| 2025-10-12 15:30:00 | 1.2 | Story status updated to "Ready" - approved for development | Workflow Automation |
 
 ## Dev Agent Record
 
