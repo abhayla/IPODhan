@@ -24,6 +24,9 @@ import { AllotmentCheckerCard } from '@/components/ipo/AllotmentCheckerCard';
 import { LotCalculator } from '@/components/tools/LotCalculator';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { AffiliateSection } from '@/components/affiliate/AffiliateSection';
+import { ListingPerformance } from '@/components/ipo/ListingPerformance';
+import { SectorAverageComparison } from '@/components/ipo/SectorAverageComparison';
+import { getSectorAverage } from '@/lib/utils/sector-averages';
 import type { IPODetailResponse } from '@/lib/db/types';
 
 // ==================== TYPES ====================
@@ -147,7 +150,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     notFound();
   }
 
-  const { ipo, gmpRecords, subscriptions } = data;
+  const { ipo, gmpRecords, subscriptions, listingPerformance } = data;
 
   // Calculate metrics for KeyMetricsCards
   const latestSubscription = subscriptions?.[0];
@@ -162,6 +165,12 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   // Determine subscription trend (simplified - in real app, compare with previous day)
   const subscriptionTrend: 'up' | 'down' | 'neutral' =
     subscriptionValue !== null && Number(subscriptionValue) > 1 ? 'up' : 'neutral';
+
+  // Fetch sector average for listed IPOs (Story 6.3)
+  const sectorAverageGain =
+    ipo.status === 'LISTED' && ipo.sector
+      ? await getSectorAverage(ipo.sector)
+      : null;
 
   // Generate JSON-LD structured data for SEO
   const jsonLd = {
@@ -188,6 +197,27 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
           : 'https://schema.org/PreOrder',
     },
     datePublished: ipo.openDate || undefined,
+    // Story 6.3: Add listing performance data for historical IPOs
+    ...(ipo.status === 'LISTED' &&
+      listingPerformance && {
+        additionalProperty: [
+          {
+            '@type': 'PropertyValue',
+            name: 'Listing Gain',
+            value: `${Number(listingPerformance.listingGainPercent).toFixed(2)}%`,
+          },
+          {
+            '@type': 'PropertyValue',
+            name: 'Listing Date',
+            value: ipo.listingDate || undefined,
+          },
+          {
+            '@type': 'PropertyValue',
+            name: 'Listing Price',
+            value: listingPerformance.listingPrice?.toString(),
+          },
+        ],
+      }),
   };
 
   // Breadcrumb structured data
@@ -260,6 +290,31 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* IPO Information Section */}
             <InfoSection ipo={ipo} />
+
+            {/* Listing Performance Section (Story 6.3) */}
+            {ipo.status === 'LISTED' &&
+              ipo.listingDate &&
+              listingPerformance &&
+              listingPerformance.issuePrice &&
+              listingPerformance.listingPrice && (
+                <div className="space-y-4">
+                  <ListingPerformance
+                    issuePrice={listingPerformance.issuePrice}
+                    listingOpen={listingPerformance.listingPrice}
+                    listingHigh={listingPerformance.listingPrice}
+                    listingClose={listingPerformance.listingPrice}
+                    listingDate={new Date(ipo.listingDate)}
+                    listingGainPercent={Number(listingPerformance.listingGainPercent)}
+                  />
+                  {sectorAverageGain !== null && ipo.sector && (
+                    <SectorAverageComparison
+                      listingGainPercent={Number(listingPerformance.listingGainPercent)}
+                      sectorAverageGain={sectorAverageGain}
+                      sector={ipo.sector}
+                    />
+                  )}
+                </div>
+              )}
 
             {/* Apply for IPO Section (Story 5.5) */}
             {(ipo.status === 'OPEN' || ipo.status === 'UPCOMING') && (
