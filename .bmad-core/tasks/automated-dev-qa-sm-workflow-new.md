@@ -1234,6 +1234,12 @@ main branch:
 - ⚠️ **This creates a status update commit on main**
 - ⚠️ **Final step before QA report generation**
 
+**Timing:**
+- ⚠️ **Use CURRENT date and time** for all timestamps in this step
+- Format: `YYYY-MM-DD HH:MM:SS` for display timestamps
+- Format: ISO 8601 (`YYYY-MM-DDTHH:mm:ss.sssZ`) for JSON timestamps
+- Timezone: Use local timezone or UTC (be consistent)
+
 **Status Update Actions:**
 
 #### 10.1. Update Sprint Plan Status
@@ -1255,7 +1261,7 @@ story_line=$(grep -n "Story ${story_id}:" docs/stories/SPRINT-*.md | cut -d: -f1
 **Status Update Fields:**
 ```yaml
 Status: Done
-Completed Date: {YYYY-MM-DD}
+Completed Date: {CURRENT_DATE in YYYY-MM-DD format}
 QA Status: Passed
 SM Approval: Yes
 Merged Commit: {merge_commit_hash}
@@ -1273,13 +1279,13 @@ Before:
 **Priority:** High
 ```
 
-After:
+After (using current date/time at execution):
 ```markdown
 ### Story 5.6: Enhanced Subscription Data Display
 **Status:** Done ✅
 **Assigned To:** Dev Team
 **Priority:** High
-**Completed:** 2025-01-15
+**Completed:** 2025-10-16  ⚠️ Use actual current date when executing
 **QA Status:** Passed
 **SM Approval:** Approved
 **Test Coverage:** 87%
@@ -1304,12 +1310,14 @@ fi
 
 **Add Completion Metadata Section:**
 
+⚠️ **Use current date and time when creating this section**
+
 ```markdown
 ---
 
 ## Implementation Complete ✅
 
-**Completion Date:** {YYYY-MM-DD HH:MM:SS}
+**Completion Date:** {CURRENT_DATE_TIME in YYYY-MM-DD HH:MM:SS format}
 **QA Status:** Passed
 **SM Approval:** Approved by Bob (Scrum Master)
 **Test Coverage:** {coverage}%
@@ -1354,18 +1362,20 @@ fi
 
 Create machine-readable completion metadata:
 
+⚠️ **All timestamps MUST use current date/time in ISO 8601 format**
+
 ```json
 {
   "story_id": "{story_id}",
   "story_title": "{story_title}",
   "completion_status": "done",
   "timestamps": {
-    "started": "{iso_timestamp}",
-    "implementation_complete": "{iso_timestamp}",
-    "qa_complete": "{iso_timestamp}",
-    "sm_approved": "{iso_timestamp}",
-    "merged_to_main": "{iso_timestamp}",
-    "status_updated": "{iso_timestamp}"
+    "started": "{ACTUAL_START_TIME in ISO 8601}",
+    "implementation_complete": "{ACTUAL_DEV_COMPLETE_TIME in ISO 8601}",
+    "qa_complete": "{ACTUAL_QA_COMPLETE_TIME in ISO 8601}",
+    "sm_approved": "{ACTUAL_SM_APPROVAL_TIME in ISO 8601}",
+    "merged_to_main": "{ACTUAL_MERGE_TIME in ISO 8601}",
+    "status_updated": "{CURRENT_DATE_TIME in ISO 8601}"
   },
   "quality_metrics": {
     "test_coverage_percent": {coverage},
@@ -1408,10 +1418,12 @@ Create machine-readable completion metadata:
 
 Update sprint-level metrics:
 
+⚠️ **Update "Last Updated" with current date/time**
+
 ```markdown
 # Sprint {N} Dashboard
 
-**Last Updated:** {timestamp}
+**Last Updated:** {CURRENT_DATE_TIME in YYYY-MM-DD HH:MM:SS format}
 
 ## Sprint Progress
 
@@ -1423,7 +1435,7 @@ Update sprint-level metrics:
 
 ## Recently Completed Stories
 
-- ✅ Story {story_id}: {story_title} - Completed {date}
+- ✅ Story {story_id}: {story_title} - Completed {CURRENT_DATE in YYYY-MM-DD}
   - Test Coverage: {coverage}%
   - QA Iterations: {iteration_count}
   - Duration: {duration}
