@@ -174,32 +174,6 @@ function CompareIPOsContent() {
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-8">
-      {/* JSON-LD Structured Data */}
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'WebApplication',
-            name: 'IPO Comparison Tool',
-            description:
-              'Compare 2-3 Indian IPOs side-by-side with detailed metrics including subscription, GMP, financials, and ratings',
-            applicationCategory: 'FinanceApplication',
-            offers: {
-              '@type': 'Offer',
-              price: '0',
-              priceCurrency: 'INR',
-            },
-            featureList: [
-              'Compare up to 3 IPOs simultaneously',
-              'Subscription status comparison',
-              'GMP and financial metrics',
-              'Rating and analysis comparison',
-              'Shareable comparison URLs',
-            ],
-          }),
-        }}
-      />
 
       {/* Breadcrumbs */}
       <Breadcrumbs items={breadcrumbItems} />
