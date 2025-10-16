@@ -1,7 +1,7 @@
 # Story 9.15: Mainboard IPOs Landing Page
 
 ## Status
-Ready for Review
+Done ✅
 
 ## Story
 
