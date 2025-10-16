@@ -1,15 +1,19 @@
 'use client';
 
-import { IPO, IPOStatus } from '@/lib/db/types';
+import { IPO, IPOStatus, ListingPerformance } from '@/lib/db/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { Star } from 'lucide-react';
 import { HighlightedText } from '@/components/search/HighlightedText';
+import { ListingPerformanceBadge } from './ListingPerformanceBadge';
+import { cn } from '@/lib/utils';
 
 interface IPOCardProps {
-  ipo: IPO;
+  ipo: IPO & {
+    listingPerformance?: ListingPerformance | null;
+  };
   searchQuery?: string;
   onClick?: () => void;
 }
@@ -77,20 +81,47 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
     }
   };
 
+  // Get listing gain percentage for badge and border color
+  const listingGainPercent = ipo.listingPerformance?.listingGainPercent
+    ? Number(ipo.listingPerformance.listingGainPercent)
+    : null;
+
+  // Determine border color based on listing performance
+  const borderColorClass =
+    ipo.status === 'LISTED' && listingGainPercent !== null
+      ? listingGainPercent > 0
+        ? 'border-green-500'
+        : 'border-red-500'
+      : 'border-border';
+
   return (
     <Link
       href={`/ipos/${ipo.slug}`}
       onClick={handleClick}
       className="block transition-all duration-200 hover:scale-[1.02]"
     >
-      <Card className="h-full cursor-pointer border-2 border-border hover:border-primary hover:shadow-lg transition-all duration-200">
+      <Card
+        className={cn(
+          'h-full cursor-pointer border-2 hover:border-primary hover:shadow-lg transition-all duration-200',
+          borderColorClass
+        )}
+      >
         <CardContent className="p-6 space-y-4">
-          {/* Header: Company Name and Status */}
+          {/* Header: Company Name, Status, and Listing Badge */}
           <div className="flex items-start justify-between gap-2">
             <h3 className="text-lg font-bold leading-tight line-clamp-2 flex-1">
               <HighlightedText text={ipo.companyName} query={searchQuery || ''} />
             </h3>
-            <Badge className={statusConfig.color}>{statusConfig.label}</Badge>
+            <div className="flex items-center gap-2 flex-wrap justify-end">
+              <Badge className={statusConfig.color}>{statusConfig.label}</Badge>
+              {ipo.status === 'LISTED' && listingGainPercent !== null && (
+                <ListingPerformanceBadge
+                  listingGainPercent={listingGainPercent}
+                  size="small"
+                  showIcon={true}
+                />
+              )}
+            </div>
           </div>
 
           {/* Category and Sector */}
