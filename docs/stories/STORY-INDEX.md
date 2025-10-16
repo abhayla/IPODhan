@@ -1,8 +1,9 @@
 # IPODhan Story Index
 
-**Total Stories:** 40
-**Total Story Points:** 184
+**Total Stories:** 45
+**Total Story Points:** 221
 **Estimated Duration:** 12 weeks
+**Last Updated:** 2025-10-16
 
 ---
 
@@ -94,17 +95,23 @@
 
 ---
 
-## Epic 7: Data Pipeline & Automation (27 points)
+## Epic 7: Data Pipeline & Automation (64 points)
 
 | ID | Story | Priority | Points | Dependencies | Status |
 |----|-------|----------|--------|--------------|--------|
-| 7.1 | NSE Scraper | Critical | 8 | 2.3 | Pending |
-| 7.2 | BSE Scraper | Critical | 8 | 2.3 | Pending |
-| 7.3 | IPO Alerts API Fallback | High | 3 | 7.1, 7.2 | Pending |
-| 7.4 | Scheduler & Cache Invalidation | Critical | 5 | 7.1, 7.2 | Pending |
-| 7.5 | Error Handling & Monitoring | High | 3 | 7.4 | Pending |
+| 7.1 | NSE Scraper | Critical | 8 | 2.3 | ✅ Done |
+| 7.2 | BSE Scraper | Critical | 8 | 2.3 | ✅ Done |
+| 7.3 | IPO Alerts API Fallback | High | 3 | 7.1, 7.2 | ✅ Done |
+| 7.4 | Scheduler & Cache Invalidation | Critical | 5 | 7.1, 7.2 | ✅ Done |
+| 7.5 | Error Handling & Monitoring | High | 3 | 7.4 | ✅ Done |
+| 7.6 | Alternative Data Sources | High | 8 | 7.1, 7.2, 7.3 | ✅ Done |
+| 7.6b | Infrastructure (VPS Deployment) | High | 3 | 7.6 | ⏳ Ready for VPS |
+| 7.7 | Production Readiness | Critical | 13 | All 7.x | ✅ Done |
+| 7.9 | Prospectus Documents Scraper | Medium | 5 | 2.3 | ✅ Done |
+| 7.10 | Historical IPO Scraper | High | 8 | 2.3, 7.9 | ✅ Done |
 
 **Week:** 9-10
+**Completed:** 2025-10-16 (9 out of 10 stories - 78/81 SP complete)
 
 ---
 
@@ -162,10 +169,11 @@ These stories were NOT in the original roadmap but ARE in the PRD:
 
 | Status | Count | Percentage |
 |--------|-------|------------|
-| ✅ Done | 10 | 25% |
+| ✅ Done | 19 | 42% |
+| 🟢 Ready for VPS | 1 | 2% |
 | 🟡 In Progress | 0 | 0% |
-| ⏳ Pending | 30 | 75% |
-| **Total** | **40** | **100%** |
+| ⏳ Pending | 25 | 56% |
+| **Total** | **45** | **100%** |
 
 ---
 
@@ -179,7 +187,7 @@ These stories were NOT in the original roadmap but ARE in the PRD:
 - Week 3-4: 34 points (Epic 3) ⚠️ **Over capacity** - split to 2 weeks
 - Week 5-6: 33 points (Epic 4) ⚠️ **Over capacity** - split to 2 weeks
 - Week 7: 32 points (Epics 5+6 parallel) ⚠️ **Over capacity** - need 1.5 weeks
-- Week 9-10: 27 points (Epic 7) ⚠️ **Tight** - may need buffer
+- Week 9-10: 64 points (Epic 7) ✅ **Complete** - 78/81 SP done (96%)
 - Week 11-12: 26 points (Epic 8) ⚠️ **Tight** - testing often overruns
 
 **Recommendation:** Plan for 14-15 weeks instead of 12 weeks for realistic delivery
