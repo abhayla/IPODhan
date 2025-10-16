@@ -1,7 +1,7 @@
 # Story 9.17a: Schema Migration - FPO Category and Separate BSE/NSE Prices
 
 ## Status
-Ready for Review
+Done ✅
 
 ## Story
 

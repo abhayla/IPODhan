@@ -1,7 +1,7 @@
 # Story 9.13: SME IPO Calendar Page
 
 ## Status
-Ready
+Done ✅
 
 ## Story
 
