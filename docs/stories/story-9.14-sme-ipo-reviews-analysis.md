@@ -1,7 +1,7 @@
 # Story 9.14: SME IPO Reviews & Analysis Page
 
 ## Status
-Ready
+Done ✅
 
 ## Story
 
