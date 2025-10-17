@@ -32,6 +32,7 @@
     "calculate-ratings": "tsx scripts/calculate-ratings.ts",
     "scrape:historical": "tsx scripts/run-historical-scraper.ts",
     "scrape:historical:incremental": "tsx scripts/run-historical-scraper.ts --incremental",
+    "scrape:gmp": "tsx scripts/test-gmp-scraper.ts",
     "seed:database": "tsx scripts/seed-database.ts",
     "seed:force": "tsx scripts/seed-database.ts --force",
     "seed:scores": "tsx scripts/seed-ipo-scores.ts",
