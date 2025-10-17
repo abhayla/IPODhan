@@ -220,24 +220,11 @@ export async function GET(
     };
 
     // Fetch data from repository with NO limit
-    // We'll use findAll but with a very high limit to get all records
-    const result = await ipoRepository.findAll({
+    // Story 4.12: Use findAllWithDetails to include ipoDetails for extended timeline dates
+    let filteredIPOs = await ipoRepository.findAllWithDetails({
       category: [category],
-      page: 1,
-      limit: 10000, // Very high limit to get all records (calendar use case)
-      sortBy: 'openDate',
-      sortOrder: 'asc',
+      year: validatedParams.year,
     });
-
-    // Filter by year if specified (client-side filter for now)
-    let filteredIPOs = result.data;
-    if (validatedParams.year) {
-      filteredIPOs = filteredIPOs.filter((ipo) => {
-        if (!ipo.openDate) return false;
-        const openYear = new Date(ipo.openDate).getFullYear();
-        return openYear === validatedParams.year;
-      });
-    }
 
     // Filter by date range if specified
     if (validatedParams.startDate && validatedParams.endDate) {
