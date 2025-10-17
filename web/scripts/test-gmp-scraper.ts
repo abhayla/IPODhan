@@ -137,7 +137,7 @@ async function main() {
   console.log('----------------------------------------\n');
 
   const db = await getDb();
-  const matchedData = result.data.filter(d => d.ipoId);
+  const matchedData = result.data ? result.data.filter(d => d.ipoId) : [];
 
   if (matchedData.length === 0) {
     console.log('No matched IPOs to verify in database.');
@@ -175,19 +175,23 @@ async function main() {
   console.log('   Summary');
   console.log('========================================\n');
 
-  const successRate = result.data.length > 0
-    ? ((result.data.filter(d => d.ipoId).length / result.data.length) * 100).toFixed(1)
+  const dataLength = result.data?.length ?? 0;
+  const matchedCount = result.data?.filter(d => d.ipoId).length ?? 0;
+  const unmatchedCount = result.data?.filter(d => !d.ipoId).length ?? 0;
+
+  const successRate = dataLength > 0
+    ? ((matchedCount / dataLength) * 100).toFixed(1)
     : '0';
 
-  console.log(`Total GMP records: ${result.data.length}`);
-  console.log(`Matched IPOs: ${result.data.filter(d => d.ipoId).length}`);
-  console.log(`Unmatched IPOs: ${result.data.filter(d => !d.ipoId).length}`);
+  console.log(`Total GMP records: ${dataLength}`);
+  console.log(`Matched IPOs: ${matchedCount}`);
+  console.log(`Unmatched IPOs: ${unmatchedCount}`);
   console.log(`Success Rate: ${successRate}%`);
   console.log(`Target Success Rate: 90%+ (AC: 6)`);
   console.log(`Status: ${parseFloat(successRate) >= 90 ? '✅ PASSED' : '⚠️ BELOW TARGET'}\n`);
 
   // Unmatched IPOs (for manual review)
-  const unmatchedIPOs = result.data.filter(d => !d.ipoId);
+  const unmatchedIPOs = result.data?.filter(d => !d.ipoId) ?? [];
   if (unmatchedIPOs.length > 0) {
     console.log('Unmatched IPOs (for manual review):');
     for (const ipo of unmatchedIPOs) {
