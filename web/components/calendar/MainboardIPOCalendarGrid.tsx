@@ -26,6 +26,7 @@ interface MainboardIPOCalendarGridProps {
 
 /**
  * Get event icon and color based on event type
+ * Story 4.12: Added extended timeline event types
  */
 function getEventDisplay(type: CalendarEventType): {
   icon: string;
@@ -39,8 +40,12 @@ function getEventDisplay(type: CalendarEventType): {
       return { icon: '🔒', label: 'Close', color: 'text-red-600' };
     case EventType.ALLOTMENT:
       return { icon: '🎯', label: 'Allotment', color: 'text-blue-600' };
+    case EventType.BASIS_OF_ALLOTMENT:
+      return { icon: '📊', label: 'Basis of Allotment', color: 'text-indigo-600' }; // Story 4.12
     case EventType.REFUND:
-      return { icon: '💰', label: 'Refund', color: 'text-purple-600' };
+      return { icon: '💰', label: 'Refunds Initiated', color: 'text-purple-600' }; // Story 4.12
+    case EventType.CREDIT_OF_SHARES:
+      return { icon: '💳', label: 'Shares Credited', color: 'text-teal-600' }; // Story 4.12
     case EventType.LISTING:
       return { icon: '🎉', label: 'Listing', color: 'text-amber-600' };
     case EventType.HOLIDAY:

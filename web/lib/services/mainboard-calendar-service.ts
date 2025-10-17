@@ -27,12 +27,15 @@ import {
 
 /**
  * Calendar event types for Mainboard IPOs
+ * Story 4.12: Added extended timeline events
  */
 export enum CalendarEventType {
   OPEN = 'OPEN',
   CLOSE = 'CLOSE',
   ALLOTMENT = 'ALLOTMENT',
-  REFUND = 'REFUND',
+  BASIS_OF_ALLOTMENT = 'BASIS_OF_ALLOTMENT', // Story 4.12
+  REFUND = 'REFUND', // Story 4.12: Initiation of Refunds
+  CREDIT_OF_SHARES = 'CREDIT_OF_SHARES', // Story 4.12
   LISTING = 'LISTING',
   HOLIDAY = 'HOLIDAY',
 }
@@ -124,8 +127,9 @@ function createHolidayEvent(
 
 /**
  * Extract all events from an IPO's dates
+ * Story 4.12: Added extended timeline dates from ipoDetails
  */
-function extractIPOEvents(ipo: IPO): CalendarEvent[] {
+function extractIPOEvents(ipo: IPO & { ipoDetails?: { basisOfAllotmentDate?: string | null; initiationOfRefundsDate?: string | null; creditOfSharesDate?: string | null } | null }): CalendarEvent[] {
   const events: CalendarEvent[] = [];
 
   // Open date
@@ -152,13 +156,35 @@ function extractIPOEvents(ipo: IPO): CalendarEvent[] {
   );
   if (allotmentEvent) events.push(allotmentEvent);
 
-  // Refund date (Note: refundDate not in schema, skip for now)
-  // const refundEvent = createIPOEvent(
-  //   ipo,
-  //   CalendarEventType.REFUND,
-  //   ipo.refundDate
-  // );
-  // if (refundEvent) events.push(refundEvent);
+  // Story 4.12: Basis of Allotment Date
+  if (ipo.ipoDetails?.basisOfAllotmentDate) {
+    const basisOfAllotmentEvent = createIPOEvent(
+      ipo,
+      CalendarEventType.BASIS_OF_ALLOTMENT,
+      ipo.ipoDetails.basisOfAllotmentDate
+    );
+    if (basisOfAllotmentEvent) events.push(basisOfAllotmentEvent);
+  }
+
+  // Story 4.12: Initiation of Refunds Date
+  if (ipo.ipoDetails?.initiationOfRefundsDate) {
+    const refundEvent = createIPOEvent(
+      ipo,
+      CalendarEventType.REFUND,
+      ipo.ipoDetails.initiationOfRefundsDate
+    );
+    if (refundEvent) events.push(refundEvent);
+  }
+
+  // Story 4.12: Credit of Shares Date
+  if (ipo.ipoDetails?.creditOfSharesDate) {
+    const creditEvent = createIPOEvent(
+      ipo,
+      CalendarEventType.CREDIT_OF_SHARES,
+      ipo.ipoDetails.creditOfSharesDate
+    );
+    if (creditEvent) events.push(creditEvent);
+  }
 
   // Listing date
   const listingEvent = createIPOEvent(
@@ -442,7 +468,9 @@ export async function getEventCounts(
     [CalendarEventType.OPEN]: 0,
     [CalendarEventType.CLOSE]: 0,
     [CalendarEventType.ALLOTMENT]: 0,
+    [CalendarEventType.BASIS_OF_ALLOTMENT]: 0, // Story 4.12
     [CalendarEventType.REFUND]: 0,
+    [CalendarEventType.CREDIT_OF_SHARES]: 0, // Story 4.12
     [CalendarEventType.LISTING]: 0,
     [CalendarEventType.HOLIDAY]: 0,
   };

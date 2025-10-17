@@ -584,6 +584,60 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Find all IPOs with ipoDetails for calendar view
+   * Story 4.12: Extended timeline dates need ipoDetails relation
+   *
+   * @param filters - Category and optional year filters
+   * @returns All IPOs with ipoDetails (no pagination)
+   */
+  async findAllWithDetails(filters: {
+    category: string[];
+    year?: number;
+  }): Promise<Array<IPO & { ipoDetails: typeof ipoDetails.$inferSelect | null }>> {
+    try {
+      // Build where conditions
+      const conditions = [];
+
+      if (filters.category && filters.category.length > 0) {
+        conditions.push(inArray(ipos.category, filters.category as (typeof ipoCategoryEnum.enumValues)[number][]));
+      }
+
+      if (filters.year) {
+        // Filter by year based on openDate
+        conditions.push(
+          sql`EXTRACT(YEAR FROM ${ipos.openDate}) = ${filters.year}`
+        );
+      }
+
+      const whereClause =
+        conditions.length > 0 ? and(...conditions) : undefined;
+
+      // Fetch IPOs with ipoDetails relation
+      const results = await this.db
+        .select({
+          ipo: ipos,
+          ipoDetails: ipoDetails,
+        })
+        .from(ipos)
+        .leftJoin(ipoDetails, eq(ipos.id, ipoDetails.ipoId))
+        .where(whereClause)
+        .orderBy(asc(ipos.openDate));
+
+      // Transform results to include ipoDetails as property
+      return results.map(row => ({
+        ...row.ipo,
+        ipoDetails: row.ipoDetails || null,
+      }));
+    } catch (error) {
+      throw new DatabaseError(
+        'Failed to fetch IPOs with details for calendar',
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
    * Find historical IPOs with filtering, sorting, and computed fields
    * Used for /api/ipos/history endpoint (Story 6.1)
    *
