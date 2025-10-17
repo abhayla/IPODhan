@@ -1,0 +1,31 @@
+{
+  "story_id": "11.2",
+  "story_title": "Database Schema Fixes & Scraper Reliability Improvements",
+  "status": "ready",
+  "timestamps": {
+    "workflow_started": "2025-10-17T20:25:00.000Z",
+    "drafting_completed": "2025-10-17T20:30:00.000Z",
+    "validation_completed": "2025-10-17T20:45:00.000Z",
+    "correction_completed": null,
+    "ready_status_set": "2025-10-17T20:50:00.000Z",
+    "total_duration_minutes": 25
+  },
+  "workflow_metrics": {
+    "validation_iterations": 0,
+    "correction_iterations": 0,
+    "total_commits": 3
+  },
+  "approvals": {
+    "sm_drafted": true,
+    "po_approved": true,
+    "sm_corrected": false
+  },
+  "files": {
+    "story_file": "docs/stories/11.2.database-schema-fixes-scraper-reliability.md",
+    "epic_reference": "docs/epics/epic-11-sharded.md",
+    "architecture_reference": "docs/architecture/index.md",
+    "sprint_plan": null
+  },
+  "workflow_version": "2.0",
+  "workflow_step": "6"
+}
