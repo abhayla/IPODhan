@@ -41,8 +41,8 @@ export interface SchedulerConfig {
 const PROD_SCHEDULES = {
   nse: {
     enabled: true,
-    marketHours: '*/15 9-17 * * 1-5',      // Every 15 min, 9 AM-5 PM, Mon-Fri
-    afterHours: '*/30 0-8,18-23 * * 1-5',  // Every 30 min, off hours, Mon-Fri
+    marketHours: '*/30 9-15 * * 1-5',      // Every 30 min, 9:15 AM-3:30 PM trading hours, Mon-Fri (Story 11.2)
+    afterHours: '*/30 0-8,16-23 * * 1-5',  // Every 30 min, off hours, Mon-Fri
     weekends: '0 */1 * * 0,6',             // Every hour, Sat-Sun
     timezone: 'Asia/Kolkata'
   },
