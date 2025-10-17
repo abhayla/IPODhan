@@ -58,6 +58,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       category,
       sector,
       search,
+      scoreRange,
       minIssueSize,
       maxIssueSize,
       openDateFrom,
@@ -138,6 +139,19 @@ export class IPORepository extends BaseRepository implements IIPORepository {
 
           if (listingDateTo) {
             conditions.push(lte(ipos.listingDate, listingDateTo.toISOString()));
+          }
+
+          // Story 4.7: Score range filter
+          if (scoreRange && scoreRange !== 'all') {
+            const [minScore, maxScore] = scoreRange.split('-').map(Number);
+            conditions.push(
+              sql`EXISTS (
+                SELECT 1 FROM ipo_scores
+                WHERE ipo_scores.ipo_id = ${ipos.id}
+                AND ipo_scores.total_score >= ${minScore}
+                AND ipo_scores.total_score <= ${maxScore}
+              )`
+            );
           }
 
           const whereClause =

@@ -67,6 +67,44 @@ export type FinancialStatementType = NonNullable<PeerCompany['financialStatement
 export type ScraperSource = 'NSE' | 'BSE' | 'MONEYCONTROL' | 'CHITTORGARH' | 'API_FALLBACK';
 export type ScraperStatus = 'SUCCESS' | 'FAILURE' | 'PARTIAL';
 
+// ==================== IPO SCORE TYPES ====================
+
+export type IPOScore = InferSelectModel<typeof schema.ipoScores>;
+export type NewIPOScore = InferInsertModel<typeof schema.ipoScores>;
+
+export type IPOVerdict = IPOScore['verdict'];
+export type ConfidenceLevel = IPOScore['confidence'];
+
+// Score range type for filtering
+export type ScoreRange = '0-25' | '26-50' | '51-75' | '76-100' | null;
+
+// Score badge variant based on score value
+export type ScoreBadgeVariant = 'destructive' | 'warning' | 'secondary' | 'success';
+
+/**
+ * Get badge variant based on score value
+ */
+export function getScoreBadgeVariant(score: number): ScoreBadgeVariant {
+  if (score >= 76) return 'success';
+  if (score >= 51) return 'secondary';
+  if (score >= 26) return 'warning';
+  return 'destructive';
+}
+
+/**
+ * Get verdict badge variant based on verdict
+ */
+export function getVerdictBadgeVariant(verdict: IPOVerdict): ScoreBadgeVariant {
+  switch (verdict) {
+    case 'APPLY':
+      return 'success';
+    case 'CONSIDER':
+      return 'warning';
+    case 'SKIP':
+      return 'destructive';
+  }
+}
+
 // ==================== API RESPONSE TYPES ====================
 
 /**
@@ -78,7 +116,7 @@ export type IPOPeer = IPO & {
 
 /**
  * IPO Detail Response
- * Complete IPO data with all relations for detail page (Story 4.1)
+ * Complete IPO data with all relations for detail page (Story 4.1, 4.7)
  */
 export interface IPODetailResponse {
   ipo: IPO & {
@@ -91,6 +129,7 @@ export interface IPODetailResponse {
   listingPerformance: ListingPerformance | null;
   peerCompanies: PeerCompany[];
   peers: IPOPeer[];
+  ipoScore: IPOScore | null;
   metadata: {
     lastUpdated: string;
   };

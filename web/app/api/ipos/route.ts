@@ -251,6 +251,7 @@ export async function GET(request: NextRequest) {
       category?: string[];
       sector?: string;
       search?: string;
+      scoreRange?: string;
       page: number;
       limit: number;
       sortBy: 'openDate' | 'closeDate' | 'listingDate' | 'issueSize' | 'createdAt';
@@ -260,6 +261,7 @@ export async function GET(request: NextRequest) {
       category: validatedParams.category,
       sector: validatedParams.sector,
       search: validatedParams.search,
+      scoreRange: validatedParams.scoreRange,
       page: validatedParams.page,
       limit: validatedParams.limit,
       sortBy: validatedParams.sortBy,
