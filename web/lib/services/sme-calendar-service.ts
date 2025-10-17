@@ -13,8 +13,9 @@ import { apiClient, type IPO, type MarketHoliday } from '@/lib/api-client';
 
 /**
  * Calendar event types
+ * Story 4.12: Added extended timeline event types
  */
-export type CalendarEventType = 'OPENS' | 'CLOSES' | 'ALLOTMENT' | 'LISTS' | 'HOLIDAY';
+export type CalendarEventType = 'OPENS' | 'CLOSES' | 'ALLOTMENT' | 'BASIS_OF_ALLOTMENT' | 'REFUNDS' | 'CREDIT_OF_SHARES' | 'LISTS' | 'HOLIDAY';
 
 /**
  * Calendar event data structure
@@ -168,6 +169,12 @@ export async function getSMEIPOEvents(
       const allotmentDate = parseDate(ipo.allotmentDate);
       const listingDate = parseDate(ipo.listingDate);
 
+      // Story 4.12: Parse extended timeline dates from ipoDetails
+      const ipoWithDetails = ipo as typeof ipo & { ipoDetails?: { basisOfAllotmentDate?: string | null; initiationOfRefundsDate?: string | null; creditOfSharesDate?: string | null } | null };
+      const basisOfAllotmentDate = parseDate(ipoWithDetails.ipoDetails?.basisOfAllotmentDate);
+      const refundsDate = parseDate(ipoWithDetails.ipoDetails?.initiationOfRefundsDate);
+      const creditOfSharesDate = parseDate(ipoWithDetails.ipoDetails?.creditOfSharesDate);
+
       // Add "Opens" event
       if (openDate && isSameMonth(openDate, year, month)) {
         const dayIndex = findDayIndex(calendarDays, openDate);
@@ -205,6 +212,48 @@ export async function getSMEIPOEvents(
             eventType: 'ALLOTMENT',
             ipo,
             description: `${ipo.companyName} Allotment Status`,
+            slug: ipo.slug,
+          });
+        }
+      }
+
+      // Story 4.12: Add "Basis of Allotment" event
+      if (basisOfAllotmentDate && isSameMonth(basisOfAllotmentDate, year, month)) {
+        const dayIndex = findDayIndex(calendarDays, basisOfAllotmentDate);
+        if (dayIndex >= 0) {
+          calendarDays[dayIndex].events.push({
+            date: basisOfAllotmentDate,
+            eventType: 'BASIS_OF_ALLOTMENT',
+            ipo,
+            description: `${ipo.companyName} Basis of Allotment`,
+            slug: ipo.slug,
+          });
+        }
+      }
+
+      // Story 4.12: Add "Refunds Initiated" event
+      if (refundsDate && isSameMonth(refundsDate, year, month)) {
+        const dayIndex = findDayIndex(calendarDays, refundsDate);
+        if (dayIndex >= 0) {
+          calendarDays[dayIndex].events.push({
+            date: refundsDate,
+            eventType: 'REFUNDS',
+            ipo,
+            description: `${ipo.companyName} Refunds Initiated`,
+            slug: ipo.slug,
+          });
+        }
+      }
+
+      // Story 4.12: Add "Credit of Shares" event
+      if (creditOfSharesDate && isSameMonth(creditOfSharesDate, year, month)) {
+        const dayIndex = findDayIndex(calendarDays, creditOfSharesDate);
+        if (dayIndex >= 0) {
+          calendarDays[dayIndex].events.push({
+            date: creditOfSharesDate,
+            eventType: 'CREDIT_OF_SHARES',
+            ipo,
+            description: `${ipo.companyName} Shares Credited`,
             slug: ipo.slug,
           });
         }

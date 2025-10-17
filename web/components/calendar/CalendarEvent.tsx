@@ -20,8 +20,9 @@ export interface CalendarEventProps {
 
 /**
  * CalendarEvent component displays a single event in the calendar
+ * Story 4.12: Added extended timeline event types
  *
- * - IPO events (OPENS, CLOSES, ALLOTMENT, LISTS): Rendered as clickable links with icon
+ * - IPO events (OPENS, CLOSES, ALLOTMENT, BASIS_OF_ALLOTMENT, REFUNDS, CREDIT_OF_SHARES, LISTS): Rendered as clickable links with icon
  * - Holiday events: Rendered as plain text with italic styling
  *
  * @param event - Calendar event data
@@ -51,6 +52,9 @@ export function CalendarEvent({ event }: CalendarEventProps) {
           {event.eventType === 'OPENS' && 'Opens'}
           {event.eventType === 'CLOSES' && 'Closes'}
           {event.eventType === 'ALLOTMENT' && 'Allotment'}
+          {event.eventType === 'BASIS_OF_ALLOTMENT' && 'Basis of Allotment'} {/* Story 4.12 */}
+          {event.eventType === 'REFUNDS' && 'Refunds Initiated'} {/* Story 4.12 */}
+          {event.eventType === 'CREDIT_OF_SHARES' && 'Shares Credited'} {/* Story 4.12 */}
           {event.eventType === 'LISTS' && 'Lists'}
         </div>
       </div>
