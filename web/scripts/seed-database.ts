@@ -53,7 +53,7 @@ const SEED_CONFIG = {
     MAINBOARD: 70,  // 70%
     SME: 30,        // 30%
   },
-  batchSize: 50,  // Process 50 IPOs per batch
+  batchSize: 10,  // Process 10 IPOs per batch
 };
 
 const SECTORS = [
