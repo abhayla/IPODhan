@@ -54,13 +54,16 @@ export const metadata: Metadata = {
 // ===== PAGE COMPONENT =====
 
 interface PageProps {
-  searchParams?: { [key: string]: string | string[] | undefined };
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
 export default async function MainboardIPOsLandingPage({ searchParams }: PageProps) {
+  // Await searchParams (Next.js 15 requirement)
+  const params = searchParams ? await searchParams : {};
+
   // Parse query parameters
   const currentYear = parseInt(
-    (searchParams?.year as string) || String(new Date().getFullYear()),
+    (params?.year as string) || String(new Date().getFullYear()),
     10
   );
 

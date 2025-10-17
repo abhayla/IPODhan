@@ -6,7 +6,33 @@ import { generateSlug, sanitizeCompanyName } from '../utils/validators.js';
 import type { ScraperSource } from './types.js';
 
 /**
+ * PostgreSQL error codes (Story 11.2 - Enhanced error logging)
+ */
+const PG_ERROR_CODES = {
+  UNIQUE_VIOLATION: '23505',      // Duplicate key (e.g., duplicate slug)
+  NOT_NULL_VIOLATION: '23502',    // Missing required field
+  NUMERIC_OVERFLOW: '22003',      // Numeric field overflow
+  FOREIGN_KEY_VIOLATION: '23503', // Invalid foreign key
+  CONNECTION_ERROR: '08000',      // Connection exception (transient)
+  CONNECTION_FAILURE: '08006',    // Connection failure (transient)
+};
+
+/**
+ * Check if PostgreSQL error should skip retry (permanent errors)
+ */
+function shouldSkipRetry(error: any): boolean {
+  const pgCode = error?.code;
+  return [
+    PG_ERROR_CODES.UNIQUE_VIOLATION,
+    PG_ERROR_CODES.NOT_NULL_VIOLATION,
+    PG_ERROR_CODES.NUMERIC_OVERFLOW,
+    PG_ERROR_CODES.FOREIGN_KEY_VIOLATION,
+  ].includes(pgCode);
+}
+
+/**
  * Retry an async operation with exponential backoff
+ * Enhanced with PostgreSQL error code detection (Story 11.2)
  */
 async function retryWithBackoff<T>(
   operation: () => Promise<T>,
@@ -14,13 +40,47 @@ async function retryWithBackoff<T>(
   maxAttempts: number = config.scraper.retryAttempts,
   delays: number[] = config.scraper.retryDelays
 ): Promise<T> {
-  let lastError: Error | null = null;
+  let lastError: any = null;
 
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     try {
       return await operation();
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
+    } catch (error: any) {
+      lastError = error;
+
+      // Enhanced error logging (Story 11.2)
+      const pgErrorDetails = {
+        message: error?.message,
+        code: error?.code,
+        constraint: error?.constraint,
+        column: error?.column,
+        detail: error?.detail,
+        hint: error?.hint,
+        table: error?.table,
+      };
+
+      logger.error(
+        {
+          ...pgErrorDetails,
+          attempt: attempt + 1,
+          maxAttempts,
+          operation: operationName,
+        },
+        'Database operation failed - PostgreSQL error details'
+      );
+
+      // Skip retry for permanent errors (Story 11.2)
+      if (shouldSkipRetry(error)) {
+        logger.error(
+          {
+            code: error?.code,
+            constraint: error?.constraint,
+            operation: operationName,
+          },
+          'Permanent database error detected - skipping retry'
+        );
+        throw error; // Don't retry constraint violations
+      }
 
       if (attempt < maxAttempts - 1) {
         const delay = delays[attempt] || delays[delays.length - 1];
@@ -29,10 +89,10 @@ async function retryWithBackoff<T>(
             attempt: attempt + 1,
             maxAttempts,
             delay,
-            error: lastError.message,
+            error: error?.message,
             operation: operationName
           },
-          'Operation failed, retrying with exponential backoff'
+          'Transient error - retrying with exponential backoff'
         );
         await new Promise(resolve => setTimeout(resolve, delay));
       }
@@ -113,10 +173,8 @@ export async function upsertIPO(
         listingExchanges,
         lastScrapedAt: new Date(), // Track last successful scrape time (Story 7.4)
         updatedAt: new Date(),
-        // LEGACY: Old database columns (keep for backwards compatibility)
-        symbol: slug.toUpperCase().replace(/-/g, '').substring(0, 20), // Limit to 20 chars
-        priceBandLow: scrapedIPO.priceRangeMin || 0,
-        priceBandHigh: scrapedIPO.priceRangeMax || 0
+        // Symbol: Only set if scraper explicitly provides it (NSE/BSE have symbols, upcoming IPOs may not)
+        symbol: scrapedIPO.symbol || undefined
       } as any;
 
       if (existingIPO) {
