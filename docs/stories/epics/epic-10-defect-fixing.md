@@ -1,9 +1,10 @@
 # Epic 10: Defect Fixing
 
 **Epic ID**: EPIC-10
-**Status**: 🔴 CRITICAL - In Progress
+**Status**: 🟡 IN PROGRESS (67% Complete - 4/6 stories done)
 **Priority**: P0 - BLOCKER
 **Created**: 2025-10-13
+**Updated**: 2025-10-17
 **Source**: Phase 1 Testing - Iteration 1 Discovery
 
 ---
@@ -16,18 +17,18 @@ Comprehensive defect fixing initiative discovered during Phase 1 testing of the 
 
 ## Business Impact
 
-### Critical Issues Blocking Production (Updated 2025-10-14)
-- **Redis Infrastructure Failure** (ISS-001): Rate limiting and caching broken across all API endpoints - ⏳ **OPEN**
-- ~~**Broken Listing Pages** (ISS-002, ISS-004)~~: Next.js 15 breaking changes - ✅ **RESOLVED** (SME calendar fixed, component errors verified)
-- **Documentation Mismatch** (ISS-003): Testing plan references non-existent GMP scraper - ⏳ **OPEN** (fast fix: update docs)
-- **Missing IPO Data** (ISS-005): Financials, subscriptions not populated - ⏳ **OPEN** (run historical scraper)
-- **Calendar API Limits** (ISS-006): Calendar pages return 400 errors - ✅ **APPROVED** (ready for development)
+### Critical Issues Blocking Production (Updated 2025-10-17)
+- ~~**Redis Infrastructure Failure** (ISS-001)~~: ✅ **RESOLVED** (2025-10-16) - Redis installed and operational
+- ~~**Broken Listing Pages** (ISS-002, ISS-004)~~: ✅ **RESOLVED** - Next.js 15 components already properly configured
+- **Documentation Mismatch** (ISS-003): Testing plan references non-existent GMP scraper - ⏳ **OPEN** (fast fix: update docs, 2 hours)
+- **Missing IPO Data** (ISS-005): Financials, subscriptions not populated - ⚠️ **PARTIALLY RESOLVED** (need schema fix + seed data, 4-8 hours)
+- ~~**Calendar API Limits** (ISS-006)~~: ✅ **RESOLVED** (2025-10-16) - Dedicated calendar endpoint implemented
 
-### Impact Assessment (Post-Quick Wins)
-- **User Experience**: 🟠 DEGRADED (was 🔴) - Main listing pages now working, calendar pages still broken
-- **Performance**: 🟠 DEGRADED (was 🔴) - No caching, but rate limiting has graceful degradation (fail-open)
-- **Data Completeness**: 🟠 INCOMPLETE - Missing financials, subscriptions (GMP deferred to Epic 11)
-- **Production Readiness**: 🟠 PARTIALLY BLOCKED - 2 of 6 issues resolved, 4 remaining (12-18 hours estimated)
+### Impact Assessment (Updated 2025-10-17)
+- **User Experience**: 🟢 GOOD - All critical pages working (listings, calendars)
+- **Performance**: 🟢 GOOD - Redis caching operational, rate limiting functional
+- **Data Completeness**: 🟡 PARTIAL - Subscription data present, financials missing (needs seed/scraper)
+- **Production Readiness**: 🟡 NEAR READY - 4 of 6 critical issues resolved, 2 remaining (6-10 hours estimated)
 
 ---
 
@@ -46,15 +47,15 @@ Comprehensive defect fixing initiative discovered during Phase 1 testing of the 
 
 ## Stories in Epic
 
-### 🔴 CRITICAL Issues (3)
-1. **Story 10.1**: Fix Redis Connection Failure (ISS-001) - Status: Draft
-2. **Story 10.2**: Fix Next.js 15 Async SearchParams (ISS-002) - Status: ✅ Partially Fixed (SME calendar)
-3. **Story 10.3**: Resolve GMP Scraper Documentation Gap (ISS-003) - Status: Draft
+### ✅ COMPLETED Stories (4/6)
+1. **Story 10.1**: Fix Redis Connection Failure (ISS-001) - Status: ✅ **Done** (2025-10-16)
+2. **Story 10.2**: Fix Next.js 15 Async SearchParams (ISS-002) - Status: ✅ **Done** (Already Fixed)
+3. **Story 10.4**: Fix Next.js Component Errors (ISS-004) - Status: ✅ **Done** (Already Fixed)
+4. **Story 10.6**: Fix API Limit Validation for Calendar Pages (ISS-006) - Status: ✅ **Done** (2025-10-16)
 
-### 🟠 MAJOR Issues (3)
-4. **Story 10.4**: Fix Next.js Component Errors (ISS-004) - Status: ✅ Verified Fixed
-5. **Story 10.5**: Populate Missing IPO Data (ISS-005) - Status: Draft
-6. **Story 10.6**: Fix API Limit Validation for Calendar Pages (ISS-006) - Status: ✅ **Approved by PO** (upgraded from P2-MINOR)
+### ⏳ IN PROGRESS Stories (2/6)
+5. **Story 10.3**: Resolve GMP Scraper Documentation Gap (ISS-003) - Status: 📝 **Draft** (P0-CRITICAL, 2 hours)
+6. **Story 10.5**: Populate Missing IPO Data (ISS-005) - Status: ⚠️ **Partially Complete** (P1-MAJOR, 4-8 hours)
 
 ### ❌ REJECTED Stories (1)
 7. **Story 10.7**: Implement GMP API Scraper - Status: ❌ **Rejected by PO** (moved to Epic 11)
@@ -217,10 +218,13 @@ Product Owner (Bob) conducted comprehensive review of Stories 10.6 and 10.7 agai
 - [x] **Discovery Complete**: 2025-10-13 ✅
 - [x] **PO Review Complete**: 2025-10-14 ✅ (Stories 10.6 approved, 10.7 rejected)
 - [x] **Quick Wins Completed**: 2025-10-14 ✅ (ISS-002 SME fix, ISS-004 verified)
-- [ ] **CRITICAL Issues Fixed**: Target 2025-10-14 (10.1 Redis, 10.3 Documentation)
-- [ ] **MAJOR Issues Fixed**: Target 2025-10-15 (10.5 Data, 10.6 API Limits)
-- [ ] **All Tests Passing**: Target 2025-10-15
-- [ ] **Epic Closed**: Target 2025-10-16
+- [x] **Redis Infrastructure Fixed**: 2025-10-16 ✅ (Story 10.1)
+- [x] **Calendar API Fixed**: 2025-10-16 ✅ (Story 10.6)
+- [x] **Component Validation Complete**: 2025-10-16 ✅ (Stories 10.2, 10.4)
+- [ ] **Documentation Fixed**: Target 2025-10-17 (Story 10.3 - 2 hours)
+- [ ] **Data Population Complete**: Target 2025-10-17 (Story 10.5 - 4-8 hours)
+- [ ] **All Tests Passing**: Target 2025-10-17
+- [ ] **Epic Closed**: Target 2025-10-18
 
 ---
 
@@ -258,5 +262,6 @@ Product Owner (Bob) conducted comprehensive review of Stories 10.6 and 10.7 agai
 
 **Epic Owner**: Scrum Master (Bob)
 **Product Owner**: Bob (Review completed 2025-10-14)
-**Last Updated**: 2025-10-14
-**Status**: 🟠 ACTIVE - IN PROGRESS (2 quick wins completed, PO review done, 4 stories remaining)
+**Last Updated**: 2025-10-17
+**Status**: 🟡 ACTIVE - IN PROGRESS (4 of 6 stories completed, 2 remaining: 10.3 + 10.5)
+**Completion**: 67% (4/6 stories done)
