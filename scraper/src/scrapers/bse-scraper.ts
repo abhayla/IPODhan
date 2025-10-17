@@ -29,6 +29,14 @@ import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { scrapeBSEIPODetails, type BSEDetailPageData } from './bse-detail-scraper.js';
+import {
+  enrichRightsIssuesFromChittorgarh,
+  enrichDebtIssuesFromChittorgarh,
+} from './rights-debt-enrichment-scraper.js';
+import {
+  fetchRightsIssuesFromChittorgarh,
+  fetchDebtIssuesFromChittorgarh,
+} from './chittorgarh-rights-debt-adapter.js';
 
 const BSE_URL = config.scraper.bseUrl;
 
@@ -430,11 +438,109 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
       logger.warn('No detail page URLs found, skipping detail scraping');
     }
 
+    // Phase 2B: Rights/Debt Issue Enrichment from Chittorgarh
+    logger.info('Phase 2B: Starting Rights/Debt issue enrichment from Chittorgarh');
+
+    const rightsIPOs = scrapedIPOs.filter(ipo =>
+      ipo.category === 'RIGHTS' && ipo.issueSize === 0
+    );
+    const debtIPOs = scrapedIPOs.filter(ipo =>
+      ipo.category === 'NCD' && ipo.issueSize === 0
+    );
+
+    logger.info({
+      rightsCount: rightsIPOs.length,
+      debtCount: debtIPOs.length,
+    }, 'Found Rights/Debt IPOs needing enrichment');
+
+    let rightsEnrichedCount = 0;
+    let debtEnrichedCount = 0;
+
+    // Enrich Rights Issues
+    if (rightsIPOs.length > 0) {
+      try {
+        logger.info('Fetching Rights Issue data from Chittorgarh');
+        const rightsData = await fetchRightsIssuesFromChittorgarh();
+        logger.info({ dataCount: rightsData.length }, 'Rights Issue data fetched');
+
+        if (rightsData.length > 0) {
+          const rightsResult = await enrichRightsIssuesFromChittorgarh(rightsIPOs, rightsData);
+
+          // Replace original Rights IPOs with enriched ones
+          for (let i = 0; i < scrapedIPOs.length; i++) {
+            const ipo = scrapedIPOs[i];
+            if (ipo.category === 'RIGHTS' && ipo.issueSize === 0) {
+              const enriched = rightsResult.enriched.find(
+                e => e.companyName === ipo.companyName
+              );
+              if (enriched) {
+                scrapedIPOs[i] = enriched;
+              }
+            }
+          }
+
+          rightsEnrichedCount = rightsResult.stats.enrichedCount;
+          logger.info({
+            enrichedCount: rightsResult.stats.enrichedCount,
+            failedMatches: rightsResult.stats.failedMatches,
+            errors: rightsResult.errors.length,
+          }, 'Rights Issue enrichment completed');
+        } else {
+          logger.warn('No Rights Issue data available from Chittorgarh');
+        }
+      } catch (error) {
+        logger.error({
+          error: error instanceof Error ? error.message : String(error),
+        }, 'Failed to enrich Rights Issues');
+      }
+    }
+
+    // Enrich Debt Issues
+    if (debtIPOs.length > 0) {
+      try {
+        logger.info('Fetching Debt Issue data from Chittorgarh');
+        const debtData = await fetchDebtIssuesFromChittorgarh();
+        logger.info({ dataCount: debtData.length }, 'Debt Issue data fetched');
+
+        if (debtData.length > 0) {
+          const debtResult = await enrichDebtIssuesFromChittorgarh(debtIPOs, debtData);
+
+          // Replace original Debt IPOs with enriched ones
+          for (let i = 0; i < scrapedIPOs.length; i++) {
+            const ipo = scrapedIPOs[i];
+            if (ipo.category === 'NCD' && ipo.issueSize === 0) {
+              const enriched = debtResult.enriched.find(
+                e => e.companyName === ipo.companyName
+              );
+              if (enriched) {
+                scrapedIPOs[i] = enriched;
+              }
+            }
+          }
+
+          debtEnrichedCount = debtResult.stats.enrichedCount;
+          logger.info({
+            enrichedCount: debtResult.stats.enrichedCount,
+            failedMatches: debtResult.stats.failedMatches,
+            errors: debtResult.errors.length,
+          }, 'Debt Issue enrichment completed');
+        } else {
+          logger.warn('No Debt Issue data available from Chittorgarh');
+        }
+      } catch (error) {
+        logger.error({
+          error: error instanceof Error ? error.message : String(error),
+        }, 'Failed to enrich Debt Issues');
+      }
+    }
+
     const duration = Date.now() - startTime;
     logger.info(
       {
         iposFound: scrapedIPOs.length,
         detailsEnriched: detailDataMap.size,
+        rightsEnriched: rightsEnrichedCount,
+        debtEnriched: debtEnrichedCount,
         smeCount,
         mainboardCount,
         subscriptionsFound: extractedData.subscriptions.length,
