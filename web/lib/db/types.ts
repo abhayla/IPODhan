@@ -6,8 +6,7 @@ import * as schema from '../../../packages/shared/src/db/schema';
 export type IPO = InferSelectModel<typeof schema.ipos>;
 export type NewIPO = InferInsertModel<typeof schema.ipos>;
 
-// Default historical field values (Story 7.10) for test fixtures
-// Story 4.9: Added symbol and isin fields
+// Default historical field values (Story 7.10, 4.7, 4.9) for test fixtures
 export const DEFAULT_HISTORICAL_FIELDS = {
   symbol: null,
   isin: null,

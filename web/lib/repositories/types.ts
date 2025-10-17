@@ -91,12 +91,14 @@ export type IPOWithRelations = IPO & {
 
 /**
  * Filters for IPO list queries
+ * Story 4.7: Added scoreRange filter
  */
 export interface IPOFilters {
   status?: string | string[];
   category?: string | string[];
   sector?: string;
   search?: string;
+  scoreRange?: string; // "0-25" | "26-50" | "51-75" | "76-100" | "all"
   minIssueSize?: number;
   maxIssueSize?: number;
   openDateFrom?: Date;
