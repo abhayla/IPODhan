@@ -58,7 +58,7 @@ function HistoricalIPOsContent({
         if (filters.year) params.set('year', filters.year);
         if (filters.sector) params.set('sector', filters.sector);
         if (filters.performance) params.set('performance', filters.performance);
-        if (filters.search) params.set('search', filters.search);
+        if (filters.searchQuery) params.set('search', filters.searchQuery);
         if (filters.sort) params.set('sort', filters.sort);
         if (filters.sortOrder) params.set('sortOrder', filters.sortOrder);
         params.set('page', filters.page.toString());
@@ -86,11 +86,10 @@ function HistoricalIPOsContent({
   const handleSort = (column: 'listing_date' | 'listing_gain' | 'subscription') => {
     if (filters.sort === column) {
       // Toggle sort order
-      setSortOrder(filters.sortOrder === 'asc' ? 'desc' : 'asc');
+      setSortOrder(filters.sortOrder === 'ASC' ? 'DESC' : 'ASC');
     } else {
       // Set new sort column with default desc order
-      setSort(column);
-      setSortOrder('desc');
+      setSort(column, 'DESC');
     }
   };
 
@@ -123,18 +122,10 @@ function HistoricalIPOsContent({
         <div className="flex-1 space-y-6">
           {/* Search Bar and Results Count */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <HistoricalSearchBar
-              value={filters.search}
-              onSearch={(query) => {
-                setSearch(query);
-                updateURL();
-              }}
-            />
+            <HistoricalSearchBar />
             <ResultsCount
               total={data.pagination.total}
-              showing={data.data.length}
-              page={data.pagination.page}
-              limit={data.pagination.limit}
+              loading={isLoading}
             />
           </div>
 
@@ -142,17 +133,12 @@ function HistoricalIPOsContent({
           {isLoading ? (
             <LoadingSkeleton />
           ) : data.data.length === 0 ? (
-            <EmptyState onClearFilters={handleClearFilters} />
+            <EmptyState />
           ) : (
             <>
               {/* Desktop Table View */}
               <div className="hidden md:block">
-                <HistoricalIPOTable
-                  ipos={data.data}
-                  sortColumn={filters.sort}
-                  sortOrder={filters.sortOrder}
-                  onSort={handleSort}
-                />
+                <HistoricalIPOTable ipos={data.data} />
               </div>
 
               {/* Mobile Card View */}
@@ -216,9 +202,10 @@ export function HistoricalIPOsPageClient(props: HistoricalIPOsPageClientProps) {
         year: props.searchParams.year as string | undefined,
         sector: props.searchParams.sector as string | undefined,
         performance: props.searchParams.performance as 'Positive' | 'Negative' | 'All' | undefined,
+        searchQuery: props.searchParams.search as string | undefined,
         search: props.searchParams.search as string | undefined,
         sort: props.searchParams.sort as 'listing_date' | 'listing_gain' | 'subscription' | undefined,
-        sortOrder: props.searchParams.sortOrder as 'asc' | 'desc' | undefined,
+        sortOrder: props.searchParams.sortOrder as 'ASC' | 'DESC' | undefined,
         page: props.searchParams.page ? Number(props.searchParams.page) : 1,
         limit: props.searchParams.limit ? Number(props.searchParams.limit) : 20,
       }}

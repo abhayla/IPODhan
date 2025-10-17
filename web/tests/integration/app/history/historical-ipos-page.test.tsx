@@ -27,7 +27,10 @@ const mockIPO: HistoricalIPO = {
   issuePrice: 100,
   listingDate: '2024-01-15',
   listingGainPercent: 25.5,
-  subscription: 45.5,
+  subscriptionOverall: 45.5,
+  listingOpen: 120,
+  listingHigh: 130,
+  listingClose: 125.5,
   year: 2024,
   priceRangeMin: 95,
   priceRangeMax: 105,
@@ -47,7 +50,6 @@ const mockIPO: HistoricalIPO = {
   createdAt: new Date(),
   updatedAt: new Date(),
   issueSize: null,
-  listingClose: null,
   lastScrapedAt: null,
 };
 

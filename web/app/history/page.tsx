@@ -85,11 +85,13 @@ export default async function HistoricalIPOsPage({ searchParams }: HistoricalIPO
           sort: (params.sort as 'listing_date' | 'listing_gain' | 'subscription') || 'listing_date',
           sortOrder: (params.sortOrder as 'ASC' | 'DESC') || 'DESC',
           searchQuery: params.search || '',
+          search: params.search || '',
           page: params.page ? parseInt(params.page, 10) : 1,
+          limit: 20,
         }}
       >
         <Suspense fallback={<div>Loading...</div>}>
-          <HistoricalIPOsContent />
+          <HistoricalIPOsContent availableSectors={[]} availableYears={[]} />
         </Suspense>
       </HistoricalFiltersProvider>
     </>

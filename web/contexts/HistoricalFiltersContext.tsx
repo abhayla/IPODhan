@@ -20,9 +20,12 @@ interface HistoricalFiltersContextValue {
   setSector: (sector: string) => void;
   setPerformance: (performance: 'All' | 'Positive' | 'Negative') => void;
   setSort: (sort: string, sortOrder: 'ASC' | 'DESC') => void;
+  setSortOrder: (sortOrder: 'ASC' | 'DESC') => void;
   setSearchQuery: (query: string) => void;
+  setSearch: (query: string) => void;
   setPage: (page: number) => void;
   clearFilters: () => void;
+  updateURL: () => void;
   hasActiveFilters: boolean;
 }
 
@@ -52,6 +55,9 @@ export function HistoricalFiltersProvider({
     const urlSortOrder = searchParams.get('sortOrder');
     const urlSearch = searchParams.get('search');
     const urlPage = searchParams.get('page');
+    const urlLimit = searchParams.get('limit');
+
+    const searchQuery = urlSearch || initialFilters?.searchQuery || defaultFiltersState.searchQuery;
 
     return {
       year: urlYear || initialFilters?.year || defaultFiltersState.year,
@@ -68,8 +74,10 @@ export function HistoricalFiltersProvider({
         (urlSortOrder as 'ASC' | 'DESC') ||
         initialFilters?.sortOrder ||
         defaultFiltersState.sortOrder,
-      searchQuery: urlSearch || initialFilters?.searchQuery || defaultFiltersState.searchQuery,
+      searchQuery,
+      search: searchQuery, // Alias for compatibility
       page: urlPage ? parseInt(urlPage, 10) : initialFilters?.page || defaultFiltersState.page,
+      limit: urlLimit ? parseInt(urlLimit, 10) : initialFilters?.limit || defaultFiltersState.limit,
     };
   });
 
@@ -168,10 +176,24 @@ export function HistoricalFiltersProvider({
     [filters, updateURL]
   );
 
+  const setSortOrder = useCallback(
+    (sortOrder: 'ASC' | 'DESC') => {
+      const newFilters = { ...filters, sortOrder, page: 1 };
+      setFilters(newFilters);
+      updateURL(newFilters);
+    },
+    [filters, updateURL]
+  );
+
   const clearFilters = useCallback(() => {
     setFilters(defaultFiltersState);
     updateURL(defaultFiltersState);
   }, [updateURL]);
+
+  // Wrapper method to call updateURL with current filters
+  const updateURLWithCurrentFilters = useCallback(() => {
+    updateURL(filters);
+  }, [filters, updateURL]);
 
   // Check if there are active filters
   const hasActiveFilters =
@@ -186,9 +208,12 @@ export function HistoricalFiltersProvider({
     setSector,
     setPerformance,
     setSort,
+    setSortOrder,
     setSearchQuery,
+    setSearch: setSearchQuery, // Alias for compatibility
     setPage,
     clearFilters,
+    updateURL: updateURLWithCurrentFilters,
     hasActiveFilters,
   };
 

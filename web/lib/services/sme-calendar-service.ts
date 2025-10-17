@@ -144,15 +144,13 @@ export async function getSMEIPOEvents(
       });
     }
 
-    // Fetch SME IPOs with category filter
-    // Note: We fetch all SME IPOs and filter client-side for events in the calendar range
-    // This is more efficient than multiple API calls for date ranges
-    const ipoResponse = await apiClient.getIPOs({
+    // Fetch SME IPOs using dedicated calendar endpoint
+    // This endpoint returns ALL SME IPOs without pagination limits
+    const ipoResponse = await apiClient.getCalendarIPOs({
       category: 'SME', // ⭐ SME filter - critical for this page
-      limit: 1000, // Get all SME IPOs (assumption: < 1000 SME IPOs exist)
     });
 
-    const smeIPOs = ipoResponse.data;
+    const smeIPOs = ipoResponse.ipos;
 
     // Fetch market holidays for the calendar year
     const holidaysResponse = await apiClient.getMarketHolidays({

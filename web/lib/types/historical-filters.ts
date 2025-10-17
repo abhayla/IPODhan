@@ -27,8 +27,14 @@ export interface HistoricalFiltersState {
   /** Search query for company name */
   searchQuery: string;
 
+  /** Search query alias for compatibility */
+  search?: string;
+
   /** Current page number */
   page: number;
+
+  /** Items per page */
+  limit: number;
 }
 
 /**
@@ -41,7 +47,9 @@ export const defaultFiltersState: HistoricalFiltersState = {
   sort: 'listing_date',
   sortOrder: 'DESC',
   searchQuery: '',
+  search: '',
   page: 1,
+  limit: 20,
 };
 
 /**

@@ -6,8 +6,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { db } from '@/lib/db';
-import { ipos, listingPerformance } from '@/lib/db/schema';
+import { db, ipos, listingPerformance } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
 
 /**
@@ -36,14 +35,14 @@ function getSectorAverageCacheKey(sector: string): string {
  * - sector = {sector}
  * - listing_date IS NOT NULL
  *
- * @param sector - Sector name (e.g., "Technology", "Healthcare")
- * @returns Average listing gain percentage for the sector (or 0 if no data)
+ * @param sector - Sector name (e.g., "Technology", "Healthcare") or null
+ * @returns Average listing gain percentage for the sector (or 0 if no data/null)
  *
  * @example
  * const avgGain = await getSectorAverage('Technology');
  * // Returns: 15.75 (representing 15.75% average listing gain)
  */
-export async function getSectorAverage(sector: string): Promise<number> {
+export async function getSectorAverage(sector: string | null): Promise<number> {
   // Return 0 for empty or invalid sector
   if (!sector || sector.trim() === '') {
     return 0;

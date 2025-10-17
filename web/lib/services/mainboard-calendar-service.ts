@@ -259,15 +259,13 @@ export async function getMainboardIPOEvents(
     const monthEnd = endOfMonth(monthStart);
     const monthName = format(monthStart, 'MMMM yyyy');
 
-    // Fetch Mainboard IPOs within date range
-    // Note: We fetch all Mainboard IPOs and filter client-side for dates in range
-    // This ensures we catch IPOs with any date falling in the month
-    const iposResponse = await apiClient.getIPOs({
+    // Fetch Mainboard IPOs using dedicated calendar endpoint
+    // This endpoint returns ALL IPOs without pagination limits
+    const iposResponse = await apiClient.getCalendarIPOs({
       category: CATEGORY_MAINBOARD,
-      limit: 500, // Fetch all Mainboard IPOs (adjust if needed)
     });
 
-    const ipos = iposResponse.data || [];
+    const ipos = iposResponse.ipos || [];
 
     // Extract all events from IPOs
     let allEvents: CalendarEvent[] = [];

@@ -30,7 +30,12 @@ import {
   PERFORMANCE_OPTIONS,
 } from '@/lib/types/historical-filters';
 
-export function HistoricalFilters() {
+interface HistoricalFiltersProps {
+  availableSectors: string[];
+  availableYears: string[];
+}
+
+export function HistoricalFilters({ availableSectors, availableYears }: HistoricalFiltersProps) {
   const {
     filters,
     setYear,

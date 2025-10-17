@@ -62,9 +62,9 @@ describe('getSectorAverage', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns null when sector is null', async () => {
+  it('returns 0 when sector is null', async () => {
     const result = await getSectorAverage(null);
-    expect(result).toBeNull();
+    expect(result).toBe(0);
     expect(mockSafeGet).not.toHaveBeenCalled();
   });
 
