@@ -92,7 +92,7 @@ export async function scrapeWithCheerio(url: string): Promise<cheerio.CheerioAPI
     const $ = cheerio.load(html);
 
     logger.debug({ url }, 'Successfully scraped with Cheerio');
-    return $;
+    return $ as cheerio.CheerioAPI;
 
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -127,7 +127,7 @@ export async function scrapeWithPuppeteer(url: string, timeout: number = 10000):
     const $ = cheerio.load(html);
 
     logger.debug({ url }, 'Successfully scraped with Puppeteer');
-    return $;
+    return $ as cheerio.CheerioAPI;
 
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
