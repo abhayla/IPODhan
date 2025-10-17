@@ -69,12 +69,12 @@ describe('Historical IPOs Page Integration Tests', () => {
   });
 
   it('renders page at /history route', () => {
-    renderWithProvider(<HistoricalIPOsContent />);
+    renderWithProvider(<HistoricalIPOsContent availableSectors={[]} availableYears={[]} />);
     expect(screen.getByText('IPO History')).toBeDefined();
   });
 
   it('fetches and displays historical IPOs on initial load', async () => {
-    renderWithProvider(<HistoricalIPOsContent />);
+    renderWithProvider(<HistoricalIPOsContent availableSectors={[]} availableYears={[]} />);
 
     await waitFor(() => {
       expect(screen.getByText('Tech Corp')).toBeDefined();
@@ -86,7 +86,7 @@ describe('Historical IPOs Page Integration Tests', () => {
   });
 
   it('shows loading state during data fetch', () => {
-    renderWithProvider(<HistoricalIPOsContent />);
+    renderWithProvider(<HistoricalIPOsContent availableSectors={[]} availableYears={[]} />);
 
     const loadingElement = screen.getByText(/Loading results/i);
     expect(loadingElement).toBeDefined();
@@ -103,7 +103,7 @@ describe('Historical IPOs Page Integration Tests', () => {
       }),
     });
 
-    renderWithProvider(<HistoricalIPOsContent />);
+    renderWithProvider(<HistoricalIPOsContent availableSectors={[]} availableYears={[]} />);
 
     await waitFor(() => {
       expect(screen.getByText('No Historical IPOs Found')).toBeDefined();
@@ -113,7 +113,7 @@ describe('Historical IPOs Page Integration Tests', () => {
   it('handles API errors gracefully', async () => {
     (global.fetch as any).mockRejectedValueOnce(new Error('API Error'));
 
-    renderWithProvider(<HistoricalIPOsContent />);
+    renderWithProvider(<HistoricalIPOsContent availableSectors={[]} availableYears={[]} />);
 
     await waitFor(() => {
       expect(
@@ -123,7 +123,7 @@ describe('Historical IPOs Page Integration Tests', () => {
   });
 
   it('calls API with correct query parameters', async () => {
-    renderWithProvider(<HistoricalIPOsContent />);
+    renderWithProvider(<HistoricalIPOsContent availableSectors={[]} availableYears={[]} />);
 
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledWith(

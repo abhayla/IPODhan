@@ -262,12 +262,15 @@ export interface IListingPerformanceRepository {
 
 /**
  * Historical IPO with computed fields
+ * Extends IPO with listing performance and computed metrics
  */
 export type HistoricalIPO = IPO & {
+  listingOpen?: number | null;
+  listingHigh?: number | null;
   listingClose?: number | null;
   issuePrice?: number | null;
   listingGainPercent?: number | null;
-  subscription?: number | null;
+  subscriptionOverall?: number | null;
   year: number;
 };
 

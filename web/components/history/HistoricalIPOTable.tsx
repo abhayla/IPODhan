@@ -20,7 +20,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
-import { HistoricalIPO } from '@/lib/types/historical-ipo';
+import type { HistoricalIPO } from '@/lib/repositories/types';
 import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
 
 interface HistoricalIPOTableProps {
@@ -130,14 +130,18 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
               <TableCell>
                 <span className="text-sm text-muted-foreground">{ipo.sector}</span>
               </TableCell>
-              <TableCell>{formatDate(ipo.listingDate)}</TableCell>
-              <TableCell className="text-right">{formatCurrency(ipo.issuePrice)}</TableCell>
-              <TableCell className="text-right">{formatCurrency(ipo.listingClose)}</TableCell>
+              <TableCell>{ipo.listingDate ? formatDate(ipo.listingDate) : 'N/A'}</TableCell>
               <TableCell className="text-right">
-                {formatListingGain(ipo.listingGainPercent)}
+                {ipo.issuePrice !== null && ipo.issuePrice !== undefined ? formatCurrency(ipo.issuePrice) : 'N/A'}
               </TableCell>
               <TableCell className="text-right">
-                {formatSubscription(ipo.subscriptionOverall)}
+                {ipo.listingClose !== null && ipo.listingClose !== undefined ? formatCurrency(ipo.listingClose) : 'N/A'}
+              </TableCell>
+              <TableCell className="text-right">
+                {ipo.listingGainPercent !== null && ipo.listingGainPercent !== undefined ? formatListingGain(ipo.listingGainPercent) : 'N/A'}
+              </TableCell>
+              <TableCell className="text-right">
+                {ipo.subscriptionOverall !== null && ipo.subscriptionOverall !== undefined ? formatSubscription(ipo.subscriptionOverall) : 'N/A'}
               </TableCell>
               <TableCell>
                 <Badge className="bg-purple-500 text-white">LISTED</Badge>

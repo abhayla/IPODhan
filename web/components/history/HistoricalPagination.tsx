@@ -9,7 +9,6 @@
 
 import React from 'react';
 import {
-  Pagination,
   PaginationContent,
   PaginationItem,
   PaginationLink,
@@ -17,15 +16,22 @@ import {
   PaginationPrevious,
   PaginationEllipsis,
 } from '@/components/ui/pagination';
-import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
 
 interface HistoricalPaginationProps {
+  currentPage: number;
   totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+  onPageChange: (page: number) => void;
 }
 
-export function HistoricalPagination({ totalPages }: HistoricalPaginationProps) {
-  const { filters, setPage } = useHistoricalFilters();
-  const currentPage = filters.page;
+export function HistoricalPagination({
+  currentPage,
+  totalPages,
+  hasNext,
+  hasPrev,
+  onPageChange
+}: HistoricalPaginationProps) {
 
   // Generate page numbers to display
   const getPageNumbers = () => {
@@ -66,9 +72,7 @@ export function HistoricalPagination({ totalPages }: HistoricalPaginationProps) 
 
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {
-      setPage(page);
-      // Scroll to top of page
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      onPageChange(page);
     }
   };
 
@@ -79,17 +83,17 @@ export function HistoricalPagination({ totalPages }: HistoricalPaginationProps) 
   }
 
   return (
-    <Pagination>
+    <nav role="navigation" aria-label="pagination" className="mx-auto flex w-full justify-center">
       <PaginationContent>
         <PaginationItem>
           <PaginationPrevious
             onClick={() => handlePageChange(currentPage - 1)}
             className={
-              currentPage === 1
+              !hasPrev
                 ? 'pointer-events-none opacity-50'
                 : 'cursor-pointer'
             }
-            aria-disabled={currentPage === 1}
+            aria-disabled={!hasPrev}
           />
         </PaginationItem>
 
@@ -113,14 +117,14 @@ export function HistoricalPagination({ totalPages }: HistoricalPaginationProps) 
           <PaginationNext
             onClick={() => handlePageChange(currentPage + 1)}
             className={
-              currentPage === totalPages
+              !hasNext
                 ? 'pointer-events-none opacity-50'
                 : 'cursor-pointer'
             }
-            aria-disabled={currentPage === totalPages}
+            aria-disabled={!hasNext}
           />
         </PaginationItem>
       </PaginationContent>
-    </Pagination>
+    </nav>
   );
 }

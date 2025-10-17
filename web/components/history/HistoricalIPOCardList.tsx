@@ -13,7 +13,7 @@ import { format } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ArrowUp, ArrowDown } from 'lucide-react';
-import { HistoricalIPO } from '@/lib/types/historical-ipo';
+import type { HistoricalIPO } from '@/lib/repositories/types';
 
 interface HistoricalIPOCardListProps {
   ipos: HistoricalIPO[];
@@ -39,7 +39,8 @@ export function HistoricalIPOCardList({ ipos }: HistoricalIPOCardListProps) {
   return (
     <div className="space-y-4">
       {ipos.map((ipo) => {
-        const isPositiveGain = ipo.listingGainPercent >= 0;
+        const gainPercent = ipo.listingGainPercent ?? 0;
+        const isPositiveGain = gainPercent >= 0;
         const borderColor = isPositiveGain ? 'border-green-500' : 'border-red-500';
         const gainColor = isPositiveGain ? 'bg-green-500' : 'bg-red-500';
         const gainSign = isPositiveGain ? '+' : '';
@@ -65,7 +66,7 @@ export function HistoricalIPOCardList({ ipos }: HistoricalIPOCardListProps) {
                   <Badge className={`${gainColor} text-white text-base font-bold px-3 py-1`}>
                     <GainIcon className="h-4 w-4 inline mr-1" />
                     {gainSign}
-                    {ipo.listingGainPercent.toFixed(2)}%
+                    {gainPercent.toFixed(2)}%
                   </Badge>
                 </div>
 
@@ -79,18 +80,24 @@ export function HistoricalIPOCardList({ ipos }: HistoricalIPOCardListProps) {
                 {/* Listing Date */}
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Listing Date</p>
-                  <p className="text-base font-semibold">{formatDate(ipo.listingDate)}</p>
+                  <p className="text-base font-semibold">
+                    {ipo.listingDate ? formatDate(ipo.listingDate) : 'N/A'}
+                  </p>
                 </div>
 
                 {/* Prices */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Issue Price</p>
-                    <p className="text-base font-semibold">{formatCurrency(ipo.issuePrice)}</p>
+                    <p className="text-base font-semibold">
+                      {ipo.issuePrice !== null && ipo.issuePrice !== undefined ? formatCurrency(ipo.issuePrice) : 'N/A'}
+                    </p>
                   </div>
                   <div className="space-y-1">
                     <p className="text-sm text-muted-foreground">Listing Price</p>
-                    <p className="text-base font-semibold">{formatCurrency(ipo.listingClose)}</p>
+                    <p className="text-base font-semibold">
+                      {ipo.listingClose !== null && ipo.listingClose !== undefined ? formatCurrency(ipo.listingClose) : 'N/A'}
+                    </p>
                   </div>
                 </div>
 
@@ -98,7 +105,7 @@ export function HistoricalIPOCardList({ ipos }: HistoricalIPOCardListProps) {
                 <div className="space-y-1">
                   <p className="text-sm text-muted-foreground">Subscription</p>
                   <p className="text-base font-semibold">
-                    {formatSubscription(ipo.subscriptionOverall)}
+                    {ipo.subscriptionOverall !== null && ipo.subscriptionOverall !== undefined ? formatSubscription(ipo.subscriptionOverall) : 'N/A'}
                   </p>
                 </div>
               </CardContent>

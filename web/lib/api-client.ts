@@ -127,6 +127,24 @@ export interface GetHolidaysParams {
   exchange?: 'NSE' | 'BSE' | 'BOTH';
 }
 
+export interface GetCalendarIPOsParams {
+  category: 'MAINBOARD' | 'SME';
+  year?: number;
+  startDate?: string;
+  endDate?: string;
+}
+
+export interface CalendarIPOsResponse {
+  ipos: IPO[];
+  count: number;
+  category: string;
+  filters?: {
+    year?: number;
+    startDate?: string;
+    endDate?: string;
+  };
+}
+
 // ==================== ERROR HANDLING ====================
 
 /**
@@ -657,6 +675,31 @@ export async function getRegistrars(signal?: AbortSignal): Promise<RegistrarsRes
   return fetchWithRetry<RegistrarsResponse>(`/registrars`, { method: 'GET' }, defaultConfig, signal);
 }
 
+/**
+ * Get all IPOs for calendar view (no pagination)
+ *
+ * Dedicated endpoint for calendar pages that returns ALL IPOs for a category
+ * without artificial limits. Supports optional year filtering.
+ *
+ * @param params - Calendar parameters including category and optional filters
+ * @param signal - Optional abort signal for cancellation
+ * @returns Calendar IPOs response with all IPOs for category
+ */
+export async function getCalendarIPOs(
+  params: GetCalendarIPOsParams,
+  signal?: AbortSignal
+): Promise<CalendarIPOsResponse> {
+  const { category, year, startDate, endDate } = params;
+  const searchParams = new URLSearchParams();
+
+  if (year) searchParams.append('year', year.toString());
+  if (startDate) searchParams.append('startDate', startDate);
+  if (endDate) searchParams.append('endDate', endDate);
+
+  const endpoint = `/calendar/${category}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
+  return fetchWithRetry<CalendarIPOsResponse>(endpoint, { method: 'GET' }, defaultConfig, signal);
+}
+
 // ==================== DEFAULT EXPORT ====================
 
 /**
@@ -670,6 +713,7 @@ export const apiClient = {
   searchIPOs,
   getMarketHolidays,
   getRegistrars,
+  getCalendarIPOs,
 };
 
 // ==================== LOGGING INTERCEPTORS (Default) ====================

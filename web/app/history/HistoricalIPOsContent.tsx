@@ -9,7 +9,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
-import { HistoricalIPO, HistoricalIPOResponse } from '@/lib/types/historical-ipo';
+import type { HistoricalIPO } from '@/lib/repositories/types';
 import { HistoricalFilters } from '@/components/history/HistoricalFilters';
 import { HistoricalSearchBar } from '@/components/history/HistoricalSearchBar';
 import { ResultsCount } from '@/components/history/ResultsCount';
@@ -21,7 +21,24 @@ import { LoadingSkeleton } from '@/components/history/LoadingSkeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 
-export function HistoricalIPOsContent() {
+interface HistoricalIPOResponse {
+  data: {
+    ipos: HistoricalIPO[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+    };
+  };
+}
+
+interface HistoricalIPOsContentProps {
+  availableSectors: string[];
+  availableYears: string[];
+}
+
+export function HistoricalIPOsContent({ availableSectors, availableYears }: HistoricalIPOsContentProps) {
   const { filters } = useHistoricalFilters();
   const [ipos, setIpos] = useState<HistoricalIPO[]>([]);
   const [pagination, setPagination] = useState({
@@ -85,7 +102,7 @@ export function HistoricalIPOsContent() {
         {/* Main Content Layout */}
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Filters Sidebar (Desktop) / Drawer (Mobile) */}
-          <HistoricalFilters />
+          <HistoricalFilters availableSectors={availableSectors} availableYears={availableYears} />
 
           {/* Main Content Area */}
           <div className="flex-1 space-y-6">
@@ -123,7 +140,16 @@ export function HistoricalIPOsContent() {
 
                 {/* Pagination */}
                 <div className="flex justify-center mt-8">
-                  <HistoricalPagination totalPages={pagination.totalPages} />
+                  <HistoricalPagination
+                    currentPage={pagination.page}
+                    totalPages={pagination.totalPages}
+                    hasNext={pagination.page < pagination.totalPages}
+                    hasPrev={pagination.page > 1}
+                    onPageChange={(page) => {
+                      // The context will handle page changes
+                      window.scrollTo({ top: 0, behavior: 'smooth' });
+                    }}
+                  />
                 </div>
               </>
             )}
