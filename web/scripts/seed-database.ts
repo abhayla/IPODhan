@@ -35,7 +35,7 @@ if (!process.env.DATABASE_URL && !process.env.DATABASE_HOST) {
 console.log('✓ Environment variables loaded successfully\n');
 
 import { db, closePool } from '../lib/db/index';
-import { ipos, listingPerformance, ipoFinancials } from '../lib/db'; // Story 4.10: Added ipoFinancials
+import { ipos, listingPerformance, ipoFinancials, ipoDetails } from '../lib/db'; // Story 4.10: Added ipoFinancials, Story 4.11: Added ipoDetails
 import { count, sql } from 'drizzle-orm';
 import type { IPOStatus, IPOCategory } from '../lib/db/types';
 
@@ -656,7 +656,7 @@ async function seedDatabase() {
     console.log(`  ✓ Created ${listingPerfCount} listing performance records\n`);
 
     // Story 4.10: Populate enhanced financial metrics (ipo_financials table)
-    console.log('[6/6] Populating enhanced financial metrics for all IPOs...');
+    console.log('[6/7] Populating enhanced financial metrics for all IPOs...');
     const allIPOs = await db.select().from(ipos);
     console.log(`  Found ${allIPOs.length} total IPOs`);
 
@@ -707,6 +707,77 @@ async function seedDatabase() {
 
     console.log(`  ✓ Created ${ipoFinancialsCount} enhanced financial metrics records\n`);
 
+    // Story 4.11: Populate ipo_details with issue structure data
+    console.log('[7/7] Populating issue structure details for all IPOs...');
+    let ipoDetailsCount = 0;
+    const issueTypes: Array<'BOOK_BUILDING' | 'FIXED_PRICE' | 'HYBRID'> = ['BOOK_BUILDING', 'FIXED_PRICE', 'HYBRID'];
+    const registrarLinks = [
+      'https://www.kfintech.com/ipostatus',
+      'https://linkintime.co.in/ipostatus',
+      'https://www.karvy.com/ipostatus',
+      'https://www.bigshareonline.com/ipostatus',
+      'https://www.cameoindia.com/ipostatus',
+    ];
+
+    for (const ipo of allIPOs) {
+      try {
+        const issueType = randomChoice(issueTypes);
+        const totalIssueSize = parseFloat(ipo.issueSize || '0');
+
+        // Fresh Issue: 60-100% of total issue size
+        // OFS: 0-40% of total issue size
+        const ofsPercentage = Math.random() < 0.3 ? randomInt(0, 40) : randomInt(0, 20); // 30% chance of high OFS
+        const ofsIssue = randomDecimal(totalIssueSize * ofsPercentage / 100, totalIssueSize * ofsPercentage / 100);
+        const freshIssue = randomDecimal(totalIssueSize - parseFloat(ofsIssue), totalIssueSize - parseFloat(ofsIssue));
+
+        // Cut-off price only applicable for BOOK_BUILDING
+        const cutOffPrice = issueType === 'BOOK_BUILDING' && Math.random() < 0.7
+          ? randomDecimal(ipo.priceRangeMin || 100, ipo.priceRangeMax || 200)
+          : null;
+
+        // Minimum investment = lot size × price band low
+        const minInvestment = randomDecimal(
+          (ipo.lotSize || 100) * (ipo.priceRangeMin || 100),
+          (ipo.lotSize || 100) * (ipo.priceRangeMin || 100)
+        );
+
+        // Registrar link (80% of IPOs have it)
+        const registrarLink = Math.random() < 0.8 ? randomChoice(registrarLinks) : null;
+
+        await db.insert(ipoDetails).values({
+          ipoId: ipo.id,
+          issueType: issueType as 'BOOK_BUILDING' | 'FIXED_PRICE' | 'HYBRID',
+          freshIssue: freshIssue,
+          ofsIssue: ofsIssue,
+          cutOffPrice: cutOffPrice,
+          minInvestment: minInvestment,
+          registrarLink: registrarLink,
+          isin: ipo.isin, // Use same ISIN from ipos table
+          faceValue: ipo.faceValue ? ipo.faceValue.toString() : '10',
+          basisOfAllotmentDate: ipo.status === 'LISTED' || ipo.status === 'CLOSED'
+            ? getRelativeDate(randomInt(-5, -2))
+            : null,
+          initiationOfRefundsDate: ipo.status === 'LISTED' || ipo.status === 'CLOSED'
+            ? getRelativeDate(randomInt(-4, -1))
+            : null,
+          creditOfSharesDate: ipo.status === 'LISTED'
+            ? getRelativeDate(randomInt(-3, 0))
+            : null,
+          leadManagers: ipo.leadManagers as string[],
+          exchanges: ipo.listingExchanges,
+          companyDescription: ipo.companyDescription,
+          dataSource: 'SEED_SCRIPT',
+          lastVerifiedAt: new Date(),
+        });
+
+        ipoDetailsCount++;
+      } catch (error) {
+        console.error(`  ✗ Failed to create ipo_details for ${ipo.companyName}:`, error);
+      }
+    }
+
+    console.log(`  ✓ Created ${ipoDetailsCount} issue structure detail records\n`);
+
     // Final summary
     const finalCount = await db.select({ count: count() }).from(ipos);
     const finalIPOCount = Number(finalCount[0]?.count || 0);
@@ -741,7 +812,8 @@ async function seedDatabase() {
     console.log(`    └─ SME: ${actualCategoryCounts.SME} (${((actualCategoryCounts.SME / finalIPOCount) * 100).toFixed(1)}%)`);
     console.log('\n  Historical Data:');
     console.log(`    ├─ Listing Performance Records: ${listingPerfCount}`);
-    console.log(`    └─ Enhanced Financial Metrics Records: ${ipoFinancialsCount} (Story 4.10)`);
+    console.log(`    ├─ Enhanced Financial Metrics Records: ${ipoFinancialsCount} (Story 4.10)`);
+    console.log(`    └─ Issue Structure Detail Records: ${ipoDetailsCount} (Story 4.11)`);
     console.log(`\n  Execution Time: ${elapsedTime}s`);
     console.log('\n' + '='.repeat(70));
     console.log('\nNext Steps:');
