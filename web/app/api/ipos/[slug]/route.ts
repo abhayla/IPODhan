@@ -118,55 +118,13 @@ export async function GET(
     }
 
     // Transform to API response format
+    // Extract IPO data without relations for the ipo field
+    const { financialData: _, ipoFinancials: __, ipoDetails: ___, documents: ____, subscriptions: _____, gmpRecords: ______, listingPerformance: _______, peerCompanies: ________, registrarRelation, ipoScore: _________, ...ipoData } = ipoWithRelations;
+
     const response: IPODetailResponse = {
       ipo: {
-        id: ipoWithRelations.id,
-        companyName: ipoWithRelations.companyName,
-        slug: ipoWithRelations.slug,
-        category: ipoWithRelations.category,
-        sector: ipoWithRelations.sector,
-        issueSize: ipoWithRelations.issueSize,
-        priceRangeMin: ipoWithRelations.priceRangeMin,
-        priceRangeMax: ipoWithRelations.priceRangeMax,
-        lotSize: ipoWithRelations.lotSize,
-        status: ipoWithRelations.status,
-        openDate: ipoWithRelations.openDate,
-        closeDate: ipoWithRelations.closeDate,
-        allotmentDate: ipoWithRelations.allotmentDate,
-        listingDate: ipoWithRelations.listingDate,
-        companyDescription: ipoWithRelations.companyDescription,
-        faceValue: ipoWithRelations.faceValue,
-        listingExchanges: ipoWithRelations.listingExchanges,
-        registrar: ipoWithRelations.registrar,
-        registrarId: ipoWithRelations.registrarId,
-        leadManagers: ipoWithRelations.leadManagers,
-        rating: ipoWithRelations.rating,
-        ratingRationale: ipoWithRelations.ratingRationale,
-        ratingOverride: ipoWithRelations.ratingOverride,
-        lastScrapedAt: ipoWithRelations.lastScrapedAt,
-        createdAt: ipoWithRelations.createdAt,
-        updatedAt: ipoWithRelations.updatedAt,
-        // Story 4.9: Stock identifiers
-        symbol: ipoWithRelations.symbol,
-        isin: ipoWithRelations.isin,
-        // Story 7.10: Historical data fields
-        subscriptionRetail: ipoWithRelations.subscriptionRetail,
-        subscriptionHni: ipoWithRelations.subscriptionHni,
-        subscriptionQib: ipoWithRelations.subscriptionQib,
-        subscriptionTotal: ipoWithRelations.subscriptionTotal,
-        gmpPrice: ipoWithRelations.gmpPrice,
-        gmpPercentageHistorical: ipoWithRelations.gmpPercentageHistorical,
-        gmpUpdatedAtHistorical: ipoWithRelations.gmpUpdatedAtHistorical,
-        listingPriceHistorical: ipoWithRelations.listingPriceHistorical,
-        listingGainPercentage: ipoWithRelations.listingGainPercentage,
-        listingGainAmount: ipoWithRelations.listingGainAmount,
-        listingDateHistorical: ipoWithRelations.listingDateHistorical,
-        currentPrice: ipoWithRelations.currentPrice,
-        currentGainPercentage: ipoWithRelations.currentGainPercentage,
-        currentGainAmount: ipoWithRelations.currentGainAmount,
-        currentPriceUpdatedAt: ipoWithRelations.currentPriceUpdatedAt,
-        historicalDataSource: ipoWithRelations.historicalDataSource,
-        historicalDataScrapedAt: ipoWithRelations.historicalDataScrapedAt,
+        ...ipoData,
+        registrarRelation,
       },
       financialData: ipoWithRelations.financialData ?? null,
       ipoFinancials: ipoWithRelations.ipoFinancials ?? null, // Story 4.10
