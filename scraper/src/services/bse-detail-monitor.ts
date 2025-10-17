@@ -13,6 +13,8 @@ export interface BSEDetailScrapingMetrics {
   detailsScraped: number;
   enrichedIPOs: number;
   failedIPOs: number;
+  rightsEnriched?: number; // Rights Issue enrichment count
+  debtEnriched?: number; // Debt Issue enrichment count
   errors: string[];
   timestamp: string;
 }
@@ -108,6 +110,12 @@ export function logBSEDetailHealthReport(health: BSEDetailHealthStatus): void {
   console.log(`  Detail URLs Found: ${metrics.detailUrlsFound} (${((metrics.detailUrlsFound/metrics.totalIPOs)*100).toFixed(1)}%)`);
   console.log(`  Details Scraped: ${metrics.detailsScraped}`);
   console.log(`  IPOs Enriched: ${metrics.enrichedIPOs} (${((metrics.enrichedIPOs/metrics.totalIPOs)*100).toFixed(1)}%)`);
+  if (metrics.rightsEnriched !== undefined && metrics.rightsEnriched > 0) {
+    console.log(`  Rights Issues Enriched: ${metrics.rightsEnriched} (Chittorgarh)`);
+  }
+  if (metrics.debtEnriched !== undefined && metrics.debtEnriched > 0) {
+    console.log(`  Debt Issues Enriched: ${metrics.debtEnriched} (Chittorgarh)`);
+  }
   console.log(`  Failed IPOs: ${metrics.failedIPOs}`);
   console.log(`  Errors: ${metrics.errors.length}\n`);
 
