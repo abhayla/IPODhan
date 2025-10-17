@@ -102,3 +102,17 @@ TEST_PROGRESS.md
 
 # Legacy/backup files
 *.legacy
+
+# Database backups and SQL dumps
+backup_*.sql
+*.backup.sql
+
+# API test output files
+api_test_*.json
+
+# Scraper temporary files
+scrape_start_timestamp.txt
+scraper/scraper_execution_log.txt
+
+# Verification phase reports (temporary)
+phase*.md

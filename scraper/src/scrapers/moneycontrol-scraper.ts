@@ -1,9 +1,21 @@
+/**
+ * Moneycontrol IPO Scraper - Rewritten for new React/Next.js page (2025-10-17)
+ *
+ * Page Structure Changes:
+ * - Old: Static HTML with .pcorporate and .bl_12 classes
+ * - New: JavaScript-rendered React app with CSS Modules
+ * - Requires: Puppeteer (not Cheerio) due to client-side rendering
+ * - Sections: Closed IPO, Listed IPO, Draft IPO (each in separate tables)
+ * - Dynamic: "Show More" buttons load additional IPOs
+ */
+
+import type { Browser, Page } from 'puppeteer';
+import { launchBrowser, createPage, closeBrowser, navigateToUrl } from '../utils/browser.js';
 import logger from '../utils/logger.js';
-import { scrapeWithAutoDetection, parseIndianCurrency, parseDate, sanitizeText, retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import type { MoneycontrolIPO } from '../utils/validators.js';
+import { sanitizeText } from '../utils/scraper-utils.js';
 
 const MONEYCONTROL_URL = 'https://www.moneycontrol.com/ipo/';
-const TEST_SELECTOR = '.pcorporate'; // Main IPO table container
 
 export interface MoneycontrolScraperResult {
   ipos: MoneycontrolIPO[];
@@ -11,9 +23,52 @@ export interface MoneycontrolScraperResult {
 }
 
 /**
- * Scrape IPO data from Moneycontrol
- * Uses Cheerio first (static HTML), falls back to Puppeteer if needed
- * @returns Array of scraped IPO data with Moneycontrol-specific fields
+ * Parse Indian currency format (₹ 2,517.50 Cr)
+ */
+function parseMoneycontrolCurrency(text: string): number {
+  if (!text || text === '-') return 0;
+
+  const cleaned = text.replace(/[₹,\s]/g, '').toLowerCase();
+  const match = cleaned.match(/([\d.]+)(cr|crore|lakh)?/);
+
+  if (!match) return 0;
+
+  const num = parseFloat(match[1]);
+  const unit = match[2];
+
+  if (unit === 'cr' || unit === 'crore') {
+    return num * 10000000; // 1 Crore = 10 Million
+  } else if (unit === 'lakh') {
+    return num * 100000; // 1 Lakh = 100 Thousand
+  }
+
+  return num;
+}
+
+/**
+ * Parse Moneycontrol date format (17 Oct 25)
+ */
+function parseMoneycontrolDate(text: string): string {
+  if (!text || text === '-') return '';
+
+  try {
+    // Format: "17 Oct 25"
+    const cleaned = text.trim();
+    const date = new Date(cleaned);
+
+    if (isNaN(date.getTime())) {
+      return '';
+    }
+
+    return date.toISOString().split('T')[0];
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Scrape IPO data from Moneycontrol using Puppeteer
+ * Handles new React/Next.js page with dynamic loading
  */
 export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResult> {
   const result: MoneycontrolScraperResult = {
@@ -21,175 +76,225 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
     errors: []
   };
 
+  let browser: Browser | null = null;
+
   try {
-    logger.info({ url: MONEYCONTROL_URL }, 'Starting Moneycontrol IPO scraper');
+    logger.info({ url: MONEYCONTROL_URL }, 'Starting Moneycontrol IPO scraper (new Puppeteer version)');
 
-    // Scrape with auto-detection (Cheerio first, Puppeteer fallback)
-    const $ = await retryWithExponentialBackoff(
-      () => scrapeWithAutoDetection({
-        url: MONEYCONTROL_URL,
-        testSelector: TEST_SELECTOR,
-        timeout: 15000
-      }),
-      3,
-      1000
-    );
+    browser = await launchBrowser();
+    const page = await createPage(browser);
 
-    // Extract IPO listings
-    const ipoRows = $('.pcorporate .bl_12').toArray();
+    await navigateToUrl(page, MONEYCONTROL_URL);
 
-    if (ipoRows.length === 0) {
-      logger.warn('No IPO rows found on Moneycontrol page');
-      result.errors.push('No IPO data found');
-      return result;
+    // Wait for tables to load
+    await page.waitForSelector('table', { timeout: 15000 });
+    logger.debug('Tables loaded on Moneycontrol page');
+
+    // Click all "Show More" buttons to load all IPOs
+    try {
+      const showMoreButtons = await page.$$('button[class*="showMoreBtn"]');
+      logger.info({ buttonCount: showMoreButtons.length }, 'Found Show More buttons');
+
+      for (const button of showMoreButtons) {
+        await button.click();
+        await page.waitForTimeout(500); // Wait for data to load
+      }
+
+      if (showMoreButtons.length > 0) {
+        logger.info('Clicked all Show More buttons, waiting for data');
+        await page.waitForTimeout(1000); // Final wait for all data
+      }
+    } catch (error) {
+      logger.warn('No Show More buttons found or error clicking them');
     }
 
-    logger.info({ rowCount: ipoRows.length }, 'Found IPO rows on Moneycontrol');
+    // Extract IPO data from page
+    const extractedData = await page.evaluate(() => {
+      const ipos: any[] = [];
 
-    // Parse each IPO row
-    for (const row of ipoRows) {
-      try {
-        const $row = $(row);
+      // Find all tables
+      const tables = document.querySelectorAll('table');
 
-        // Extract company name
-        const companyNameEl = $row.find('a[href*="/company/"]').first();
-        const companyName = sanitizeText(companyNameEl.text());
+      for (const table of Array.from(tables)) {
+        // Find section heading to identify table type
+        const section = table.closest('section');
+        const heading = section?.querySelector('h2')?.textContent?.trim() || '';
 
-        if (!companyName) {
-          logger.debug('Skipping row with no company name');
+        // Skip non-IPO tables
+        if (!heading.includes('IPO')) {
           continue;
         }
 
-        // Extract IPO details - Moneycontrol layout varies, so we check multiple selectors
-        const cells = $row.find('td, .PA7').toArray();
+        const tableType = heading.includes('Closed') ? 'CLOSED' :
+                         heading.includes('Listed') ? 'LISTED' :
+                         heading.includes('Draft') ? 'DRAFT' : 'UNKNOWN';
 
-        // Parse issue size
-        let issueSize = 0;
-        const issueSizeText = $row.find('td:contains("Issue Size"), .PA7:contains("Issue Size")')
-          .next()
-          .text();
-        if (issueSizeText) {
-          issueSize = parseIndianCurrency(issueSizeText);
-        }
+        console.log(`Processing ${tableType} IPO table`);
 
-        // Parse price range
-        let priceRangeMin = 0;
-        let priceRangeMax = 0;
-        const priceText = $row.find('td:contains("Price Range"), .PA7:contains("Price Range")')
-          .next()
-          .text();
-        const priceMatch = priceText.match(/(\d+)\s*-\s*(\d+)/);
-        if (priceMatch) {
-          priceRangeMin = parseInt(priceMatch[1], 10);
-          priceRangeMax = parseInt(priceMatch[2], 10);
-        }
+        const rows = table.querySelectorAll('tbody tr');
 
-        // Parse dates
-        const dateText = $row.find('td:contains("Open"), .PA7:contains("Open")')
-          .next()
-          .text();
-        // Split on ' - ' (with spaces) or ' to ' to avoid splitting date components
-        const dates = dateText.split(/\s+-\s+|\s+to\s+/i).map(d => d.trim());
+        for (const row of Array.from(rows)) {
+          try {
+            const cells = row.querySelectorAll('td');
 
-        let openDate = '';
-        let closeDate = '';
-        if (dates.length >= 2) {
-          openDate = parseDate(dates[0]);
-          closeDate = parseDate(dates[1]);
-        }
+            if (cells.length === 0) continue;
 
-        // Determine status based on dates
-        let status: 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' = 'UPCOMING';
-        const now = new Date();
-        if (openDate && closeDate) {
-          const open = new Date(openDate);
-          const close = new Date(closeDate);
+            // Extract company name and link (always in first cell)
+            const companyLink = cells[0]?.querySelector('a');
+            const companyName = companyLink?.textContent?.trim() || '';
+            const companyUrl = companyLink?.getAttribute('href') || '';
 
-          if (now >= open && now <= close) {
-            status = 'OPEN';
-          } else if (now > close) {
-            status = 'CLOSED';
+            if (!companyName) continue;
+
+            // Extract category (second cell)
+            const category = cells[1]?.textContent?.trim().toUpperCase() || '';
+
+            let ipoData: any = {
+              companyName,
+              companyUrl,
+              category: category.includes('SME') ? 'SME' : 'MAINBOARD',
+              tableType
+            };
+
+            // Parse based on table type
+            if (tableType === 'CLOSED') {
+              // Closed IPO Table columns:
+              // 0: Company, 1: Category, 2: Issue Price, 3: QIB, 4: NII, 5: Retail,
+              // 6: Total Subscription, 7: Allotment Date, 8: Refund Date,
+              // 9: Demat Credit, 10: Listing Date, 11: Allotment Status
+              ipoData.issuePrice = cells[2]?.textContent?.trim() || '';
+              ipoData.qibSubscription = cells[3]?.textContent?.trim() || '';
+              ipoData.niiSubscription = cells[4]?.textContent?.trim() || '';
+              ipoData.retailSubscription = cells[5]?.textContent?.trim() || '';
+              ipoData.totalSubscription = cells[6]?.textContent?.trim() || '';
+              ipoData.allotmentDate = cells[7]?.textContent?.trim() || '';
+              ipoData.listingDate = cells[10]?.textContent?.trim() || '';
+              ipoData.status = 'CLOSED';
+            } else if (tableType === 'LISTED') {
+              // Listed IPO Table columns:
+              // 0: Company, 1: Category, 2: Listing Date, 3: Issue Price, 4: Total Subscription,
+              // 5: Listing Open, 6: Listing Close, 7: Listing Gain %, 8: LTP, 9: Current Gain,
+              // 10: Issue Size
+              ipoData.listingDate = cells[2]?.textContent?.trim() || '';
+              ipoData.issuePrice = cells[3]?.textContent?.trim() || '';
+              ipoData.totalSubscription = cells[4]?.textContent?.trim() || '';
+              ipoData.listingGain = cells[7]?.textContent?.trim() || '';
+              ipoData.issueSize = cells[10]?.textContent?.trim() || '';
+              ipoData.status = 'LISTED';
+            } else if (tableType === 'DRAFT') {
+              // Draft IPO table (if present) - structure TBD
+              ipoData.status = 'UPCOMING';
+            }
+
+            ipos.push(ipoData);
+
+          } catch (error) {
+            console.error('Error parsing row:', error);
           }
         }
+      }
 
-        // Extract rating (Moneycontrol's IPO rating)
-        let rating: number | undefined;
-        const ratingEl = $row.find('.star-rating, [class*="rating"]');
-        const ratingText = ratingEl.text().trim();
-        const ratingMatch = ratingText.match(/([\d.]+)/);
-        if (ratingMatch) {
-          rating = parseFloat(ratingMatch[1]);
-          if (rating < 0 || rating > 5) rating = undefined;
-        }
+      return ipos;
+    });
 
-        // Extract listing gains expectation
-        let listingGains: number | undefined;
-        const gainsText = $row.find('td:contains("Listing Gains"), .PA7:contains("Listing Gains")')
-          .next()
-          .text();
-        const gainsMatch = gainsText.match(/([-+]?[\d.]+)%?/);
-        if (gainsMatch) {
-          listingGains = parseFloat(gainsMatch[1]);
-        }
+    logger.info({ extractedCount: extractedData.length }, 'Extracted IPOs from Moneycontrol');
 
-        // Extract subscription data
-        let totalSubscription = 0;
-        const subscriptionText = $row.find('td:contains("Subscription"), .PA7:contains("Subscription")')
-          .next()
-          .text();
-        const subscriptionMatch = subscriptionText.match(/([\d.]+)x?/i);
-        if (subscriptionMatch) {
-          totalSubscription = parseFloat(subscriptionMatch[1]);
-        }
+    // Transform extracted data to MoneycontrolIPO format
+    for (const raw of extractedData) {
+      try {
+        // Parse issue price (₹ 106)
+        const issuePriceMatch = raw.issuePrice?.match(/([\d.]+)/);
+        const issuePrice = issuePriceMatch ? parseFloat(issuePriceMatch[1]) : 0;
 
-        // Determine exchange - default to BOTH for Moneycontrol aggregates
-        const listingExchange: 'NSE' | 'BSE' | 'BOTH' = 'BOTH';
+        // Parse issue size (₹ 2,517.50 Cr)
+        const issueSize = parseMoneycontrolCurrency(raw.issueSize || '');
 
-        // Determine category - default to MAINBOARD
-        let category: 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD' = 'MAINBOARD';
-        const categoryText = $row.text().toLowerCase();
-        if (categoryText.includes('sme')) {
-          category = 'SME';
-        } else if (categoryText.includes('rights')) {
-          category = 'RIGHTS';
-        } else if (categoryText.includes('ncd') || categoryText.includes('bond')) {
-          category = 'NCD';
-        }
+        // Parse subscription (2.29x or 2.29)
+        const subscriptionMatch = raw.totalSubscription?.match(/([\d.]+)/);
+        const totalSubscription = subscriptionMatch ? parseFloat(subscriptionMatch[1]) : 0;
 
-        // Validate required fields
-        if (!companyName || !openDate || !closeDate || issueSize === 0) {
-          logger.debug(
-            { companyName, issueSize, openDate, closeDate },
-            'Skipping IPO with missing required fields'
-          );
-          continue;
+        // Parse dates
+        const listingDate = parseMoneycontrolDate(raw.listingDate);
+        const allotmentDate = parseMoneycontrolDate(raw.allotmentDate);
+
+        // Parse listing gain (percentage)
+        const listingGainMatch = raw.listingGain?.match(/([-+]?[\d.]+)/);
+        const listingGains = listingGainMatch ? parseFloat(listingGainMatch[1]) : undefined;
+
+        // Determine status
+        let status: 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' = raw.status || 'UPCOMING';
+
+        // Calculate open/close dates if not available (for LISTED/CLOSED IPOs)
+        // Use listingDate to estimate: closeDate = listingDate - 3 days, openDate = closeDate - 7 days
+        let openDate = '';
+        let closeDate = '';
+
+        if (listingDate) {
+          const listingDateObj = new Date(listingDate);
+
+          // Estimate closeDate as 3 days before listing
+          const closeDateObj = new Date(listingDateObj);
+          closeDateObj.setDate(closeDateObj.getDate() - 3);
+          closeDate = closeDateObj.toISOString().split('T')[0];
+
+          // Estimate openDate as 7 days before closeDate (typical IPO duration)
+          const openDateObj = new Date(closeDateObj);
+          openDateObj.setDate(openDateObj.getDate() - 7);
+          openDate = openDateObj.toISOString().split('T')[0];
+        } else if (allotmentDate) {
+          // If no listingDate but have allotmentDate, use that
+          const allotmentDateObj = new Date(allotmentDate);
+
+          // Estimate closeDate as 2 days before allotment
+          const closeDateObj = new Date(allotmentDateObj);
+          closeDateObj.setDate(closeDateObj.getDate() - 2);
+          closeDate = closeDateObj.toISOString().split('T')[0];
+
+          // Estimate openDate as 7 days before closeDate
+          const openDateObj = new Date(closeDateObj);
+          openDateObj.setDate(openDateObj.getDate() - 7);
+          openDate = openDateObj.toISOString().split('T')[0];
+        } else {
+          // No dates available - use current date as fallback
+          const now = new Date();
+          closeDate = now.toISOString().split('T')[0];
+
+          const sevenDaysAgo = new Date(now);
+          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+          openDate = sevenDaysAgo.toISOString().split('T')[0];
         }
 
         const ipo: MoneycontrolIPO = {
-          companyName: sanitizeText(companyName),
+          companyName: sanitizeText(raw.companyName),
           issueSize,
-          priceRangeMin: priceRangeMin || 0,
-          priceRangeMax: priceRangeMax || priceRangeMin || 0,
+          priceRangeMin: issuePrice,
+          priceRangeMax: issuePrice,
           openDate,
           closeDate,
-          listingExchange,
-          category,
+          listingExchange: 'BOTH', // Moneycontrol aggregates both exchanges
+          category: raw.category === 'SME' ? 'SME' : 'MAINBOARD',
           status,
           dataSource: 'MONEYCONTROL',
-          rating,
           listingGains,
         };
 
         result.ipos.push(ipo);
 
-        logger.debug({ companyName: ipo.companyName }, 'Successfully parsed Moneycontrol IPO');
+        logger.debug({
+          companyName: ipo.companyName,
+          status: ipo.status,
+          issueSize: ipo.issueSize
+        }, 'Successfully parsed Moneycontrol IPO');
 
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        logger.warn({ error: errorMsg }, 'Failed to parse Moneycontrol IPO row');
-        result.errors.push(`Row parsing error: ${errorMsg}`);
+        logger.warn({ companyName: raw.companyName, error: errorMsg }, 'Failed to transform Moneycontrol IPO');
+        result.errors.push(`Transform error for ${raw.companyName}: ${errorMsg}`);
       }
     }
+
+    await closeBrowser(browser);
+    browser = null;
 
     logger.info(
       { iposScraped: result.ipos.length, errors: result.errors.length },
@@ -202,6 +307,11 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
     const errorMsg = error instanceof Error ? error.message : String(error);
     logger.error({ error: errorMsg }, 'Moneycontrol scraper failed');
     result.errors.push(`Scraper error: ${errorMsg}`);
+
+    if (browser) {
+      await closeBrowser(browser);
+    }
+
     return result;
   }
 }

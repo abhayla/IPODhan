@@ -28,6 +28,7 @@ import { launchBrowser, createPage, closeBrowser, navigateToUrl, waitForSelector
 import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
+import { scrapeBSEIPODetails, type BSEDetailPageData } from './bse-detail-scraper.js';
 
 const BSE_URL = config.scraper.bseUrl;
 
@@ -229,6 +230,17 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
           const typeOfIssue = cells[6]?.textContent?.trim() || '';
           const issueStatus = cells[7]?.textContent?.trim() || '';
 
+          // Extract detail page URL from company name link
+          const nameCell = cells[0];
+          const detailLink = nameCell?.querySelector('a');
+          let detailUrl: string | null = null;
+          if (detailLink) {
+            const href = detailLink.getAttribute('href');
+            if (href && href.includes('DisplayIPO.aspx')) {
+              detailUrl = `https://www.bseindia.com${href.startsWith('/') ? '' : '/'}${href}`;
+            }
+          }
+
           // Skip if no company name
           if (!companyName || companyName.includes('Security Name')) {
             continue;
@@ -260,7 +272,8 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
             faceValue: faceValue && faceValue !== '--' ? faceValue : '10',
             typeOfIssue,
             issueStatus,
-            category
+            category,
+            detailUrl
           });
 
         } catch (error) {
@@ -301,7 +314,7 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
           sector: '', // Not available in BSE main table
           status,
           lotSize: 100, // Default, would need detail page
-          faceValue: parseFloat(rawIPO.faceValue) || 10
+          faceValue: parseInt(rawIPO.faceValue, 10) || 10 // Integer face value
         };
 
         scrapedIPOs.push(ipoData);
@@ -313,10 +326,115 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
     await closeBrowser(browser);
     browser = null;
 
+    // Phase 2: Scrape detail pages for additional data
+    logger.info('Phase 2: Starting BSE detail page scraping');
+
+    const detailUrls = extractedData.ipos
+      .map((ipo: any) => ipo.detailUrl)
+      .filter((url: string | null) => url !== null) as string[];
+
+    logger.info(
+      { detailUrlsFound: detailUrls.length, totalIPOs: scrapedIPOs.length },
+      'Found detail page URLs'
+    );
+
+    let detailDataMap: Map<string, BSEDetailPageData> = new Map();
+
+    if (detailUrls.length > 0) {
+      const detailResult = await scrapeBSEIPODetails(detailUrls, 2000);
+
+      // Create URL-to-detail mapping for matching
+      const urlToDetailMap = new Map<string, BSEDetailPageData>();
+      for (let i = 0; i < detailUrls.length; i++) {
+        urlToDetailMap.set(detailUrls[i], detailResult.details[i]);
+      }
+
+      logger.info(
+        {
+          detailsScraped: detailResult.details.length,
+          errors: detailResult.errors.length
+        },
+        'Detail page scraping completed'
+      );
+
+      // Merge detail data with scraped IPOs
+      // Strategy: Match by URL (detailUrls are in same order as scrapedIPOs)
+      let enrichedCount = 0;
+
+      for (let i = 0; i < scrapedIPOs.length; i++) {
+        const ipo = scrapedIPOs[i];
+        const rawIPO = extractedData.ipos[i];
+
+        // Skip if no detail URL
+        if (!rawIPO.detailUrl) {
+          logger.debug({ companyName: ipo.companyName }, 'No detail URL available');
+          continue;
+        }
+
+        // Find matching detail data by URL
+        const detailData = urlToDetailMap.get(rawIPO.detailUrl);
+
+        if (detailData) {
+          logger.debug(
+            {
+              companyName: ipo.companyName,
+              symbol: detailData.symbol,
+              detailUrl: rawIPO.detailUrl
+            },
+            'Merging detail data'
+          );
+
+          // Update with detail page data
+          if (detailData.issueSize > 0) {
+            ipo.issueSize = detailData.issueSize;
+          }
+          if (detailData.lotSize > 0) {
+            ipo.lotSize = detailData.lotSize;
+          }
+          if (detailData.faceValue > 0) {
+            ipo.faceValue = detailData.faceValue;
+          }
+          if (detailData.priceRangeMin > 0 && detailData.priceRangeMax > 0) {
+            ipo.priceRangeMin = detailData.priceRangeMin;
+            ipo.priceRangeMax = detailData.priceRangeMax;
+          }
+          if (detailData.openDate) {
+            ipo.openDate = detailData.openDate;
+          }
+          if (detailData.closeDate) {
+            ipo.closeDate = detailData.closeDate;
+          }
+
+          // Additional fields for ipo_details table (stored in ScrapedIPO for now)
+          (ipo as any).registrar = detailData.registrar;
+          (ipo as any).leadManagers = detailData.leadManagers;
+          (ipo as any).sponsorBanks = detailData.sponsorBanks;
+          (ipo as any).symbol = detailData.symbol;
+
+          // Store in map for final log (only if symbol exists)
+          if (detailData.symbol) {
+            detailDataMap.set(detailData.symbol.toUpperCase(), detailData);
+          }
+
+          enrichedCount++;
+        } else {
+          logger.debug(
+            { companyName: ipo.companyName },
+            'No matching detail data found'
+          );
+        }
+      }
+
+      logger.info({ enrichedCount, totalIPOs: scrapedIPOs.length }, 'Detail data merged');
+    } else {
+      logger.warn('No detail page URLs found, skipping detail scraping');
+    }
+
     const duration = Date.now() - startTime;
     logger.info(
       {
         iposFound: scrapedIPOs.length,
+        detailsEnriched: detailDataMap.size,
         smeCount,
         mainboardCount,
         subscriptionsFound: extractedData.subscriptions.length,
