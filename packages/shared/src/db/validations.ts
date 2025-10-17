@@ -12,7 +12,18 @@ export const insertIPOSchema = createInsertSchema(schema.ipos, {
     .max(255)
     .regex(/^[a-z0-9-]+$/, 'Slug must be lowercase alphanumeric with hyphens'),
   sector: z.string().max(100).optional(),
-  issueSize: z.string().optional(), // numeric stored as string in Drizzle
+  issueSize: z.string()
+    .optional()
+    .refine(
+      (val) => {
+        if (!val) return true; // Optional field
+        const num = parseFloat(val);
+        return !isNaN(num) && num >= 0 && num <= 999999.99; // Max ₹999,999 crores (NUMERIC(15,2))
+      },
+      {
+        message: 'Issue size must be between 0 and ₹999,999 crores',
+      }
+    ),
   priceRangeMin: z.number().int().positive().optional(),
   priceRangeMax: z.number().int().positive().optional(),
   lotSize: z.number().int().positive().optional(),

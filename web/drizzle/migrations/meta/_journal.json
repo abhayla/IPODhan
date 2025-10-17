@@ -64,6 +64,13 @@
       "when": 1760507421223,
       "tag": "0008_empty_redwing",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1760714842531,
+      "tag": "0009_far_northstar",
+      "breakpoints": true
     }
   ]
 }

@@ -103,7 +103,7 @@ export const ipos = pgTable(
     isin: varchar('isin', { length: 12 }), // International Securities Identification Number (nullable)
     category: ipoCategoryEnum('category').notNull(),
     sector: varchar('sector', { length: 100 }),
-    issueSize: numeric('issue_size', { precision: 10, scale: 2 }), // in INR crores
+    issueSize: numeric('issue_size', { precision: 15, scale: 2 }), // in INR crores (max ₹999,999 crores = ₹9,999.99 billion)
     priceRangeMin: integer('price_range_min'), // min price per share
     priceRangeMax: integer('price_range_max'), // max price per share
     lotSize: integer('lot_size'),
