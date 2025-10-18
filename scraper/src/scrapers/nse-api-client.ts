@@ -585,9 +585,8 @@ export async function fetchAllIPOs(category: 'ipo' | 'ofs' | 'rights' | 'tender'
           // We'll get subscription data from the main listing if available
           if (item.noOfTime) {
             // Extract subscription from main data
-            const sub = transformSubscriptionData(item, item.symbol);
+            const sub = transformSubscriptionData(item, item.symbol, ipo.companyName);
             if (sub) {
-              sub.ipoCompanyName = ipo.companyName;
               subscriptions.push(sub);
             }
           }

@@ -10,7 +10,7 @@ const NSE_URL = config.scraper.nseUrl;
 export interface NSEScrapeResult {
   ipos: ScrapedIPO[];
   subscriptions: ScrapedSubscription[];
-  source?: 'api' | 'browser';
+  source?: 'api' | 'browser' | 'fallback';
 }
 
 /**
