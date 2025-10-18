@@ -43,7 +43,7 @@
 
 **Command Used:**
 ```bash
-psql -h 103.118.16.189 -U postgres -d ipodhan -f scripts/clear-database.sql
+psql -h 103.118.16.189 -U postgres -d ipodhan -f database/scripts/clear-database.sql
 ```
 
 ---

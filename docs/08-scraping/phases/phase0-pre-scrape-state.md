@@ -37,7 +37,7 @@
 5. **Category Split**: ~70% Mainboard, ~30% SME
 
 ## Backup Status
-- Backup file: `backup_pre_scrape_20251017_135823.sql`
+- Backup file: `database/backups/backup_pre_scrape_20251017_135823.sql`
 - Backup initiated at: 2025-10-17 13:58:23
 - Database: ipodhan @ 103.118.16.189:5432
 

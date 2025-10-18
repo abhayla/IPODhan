@@ -935,20 +935,20 @@ listing_performance: 0 orphaned
 ## SQL Queries Used
 
 All SQL queries are stored in:
-- `D:\Abhay\VibeCoding\IPODhan\verification_queries\01_sample_selection.sql`
-- `D:\Abhay\VibeCoding\IPODhan\verification_queries\02_duplicate_detection.sql`
-- `D:\Abhay\VibeCoding\IPODhan\verification_queries\03_data_quality.sql`
-- `D:\Abhay\VibeCoding\IPODhan\verification_queries\04_scraper_field_validation.sql`
-- `D:\Abhay\VibeCoding\IPODhan\verification_queries\05_field_by_source.sql`
-- `D:\Abhay\VibeCoding\IPODhan\verification_queries\06_conflict_resolution.sql`
-- `D:\Abhay\VibeCoding\IPODhan\verification_queries\07_timeseries_validation.sql`
-- `D:\Abhay\VibeCoding\IPODhan\verification_queries\08_cache_validation.sql`
-- `D:\Abhay\VibeCoding\IPODhan\verification_queries\09_scraper_logs.sql`
-- `D:\Abhay\VibeCoding\IPODhan\verification_queries\10_core_field_verification.sql`
-- `D:\Abhay\VibeCoding\IPODhan\verification_queries\11_related_tables.sql`
+- `docs/08-scraping/verification_queries/01_sample_selection.sql`
+- `docs/08-scraping/verification_queries/02_duplicate_detection.sql`
+- `docs/08-scraping/verification_queries/03_data_quality.sql`
+- `docs/08-scraping/verification_queries/04_scraper_field_validation.sql`
+- `docs/08-scraping/verification_queries/05_field_by_source.sql`
+- `docs/08-scraping/verification_queries/06_conflict_resolution.sql`
+- `docs/08-scraping/verification_queries/07_timeseries_validation.sql`
+- `docs/08-scraping/verification_queries/08_cache_validation.sql`
+- `docs/08-scraping/verification_queries/09_scraper_logs.sql`
+- `docs/08-scraping/verification_queries/10_core_field_verification.sql`
+- `docs/08-scraping/verification_queries/11_related_tables.sql`
 
 Query results stored in:
-- `D:\Abhay\VibeCoding\IPODhan\verification_results\*.txt`
+- `temp/scraper/verification-results.sql` (moved from root)
 
 ---
 

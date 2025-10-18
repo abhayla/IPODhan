@@ -42,7 +42,7 @@
 ### Phase 0: Database Backup ✅
 - **Duration:** 10 minutes
 - **Status:** Success
-- **Backup File:** `backup_pre_scrape_20251017_135823.sql`
+- **Backup File:** `database/backups/backup_pre_scrape_20251017_135823.sql`
 - **Pre-Scrape State:**
   - Total IPOs: 150
   - OPEN: 19 | CLOSED: 34 | LISTED: 78 | UPCOMING: 19
