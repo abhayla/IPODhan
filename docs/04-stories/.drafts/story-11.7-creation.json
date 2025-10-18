@@ -1,0 +1,30 @@
+{
+  "story_id": "11.7",
+  "story_title": "Update Validation Schema for Rights/Debt IPOs",
+  "creation_status": "fast_tracked",
+  "timestamps": {
+    "workflow_started": "2025-10-18T18:20:00.000Z",
+    "drafting_completed": "2025-10-18T18:25:00.000Z",
+    "marked_ready": "2025-10-18T18:25:00.000Z"
+  },
+  "creation_context": {
+    "epic_path": "docs/03-epics/epic-11-sharded.md",
+    "destination_path": "docs/04-stories/",
+    "complements_story": "11.5 (Task 5 - Validation Schema Update)"
+  },
+  "agents": {
+    "drafted_by": "Bob (Scrum Master)",
+    "fast_tracked_reason": "Single file change, clear requirements, overlaps with Story 11.5 Task 5"
+  },
+  "finalization": {
+    "status": "READY",
+    "ready_for_implementation": true,
+    "implementation_readiness_score": "9.5/10",
+    "confidence_level": "HIGH",
+    "fast_tracked": true,
+    "finalized_at": "2025-10-18T18:25:00.000Z"
+  },
+  "workflow_version": "2.0",
+  "workflow_step": "fast_tracked",
+  "workflow_complete": true
+}
