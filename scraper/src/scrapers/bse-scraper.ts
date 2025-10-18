@@ -99,10 +99,10 @@ function extractStatus(issueStatus: string): 'UPCOMING' | 'OPEN' | 'CLOSED' | 'L
  */
 function parseBSEDate(dateStr: string): string {
   try {
-    // BSE format: "06-10-2025" or "06/Oct/2025"
+    // BSE format: "16-10-2025" (DD-MM-YYYY) or "06/Oct/2025"
     const cleaned = dateStr.trim();
 
-    // Handle DD-MM-YYYY format
+    // Handle DD-MM-YYYY format (e.g., "16-10-2025")
     if (cleaned.match(/^\d{2}-\d{2}-\d{4}$/)) {
       const [day, month, year] = cleaned.split('-');
       return `${year}-${month}-${day}`;
@@ -220,8 +220,10 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
       for (const row of Array.from(rows)) {
         const cells = row.querySelectorAll('td');
 
-        // Skip header rows and empty rows
-        if (cells.length < 7) continue;
+        // Skip header rows, empty rows, and the giant merged cell row (194 cells)
+        // BSE table has exactly 8 columns: Security Name, Exchange Platform, Start Date, End Date,
+        // Offer Price, Face Value, Type Of Issue, Issue Status
+        if (cells.length !== 8) continue;
 
         try {
           // Extract data from cells

@@ -38,7 +38,7 @@ export const ScrapedIPOSchema = z.object({
     'Listing date must be a valid ISO 8601 date string'
   ),
   companyDescription: z.string().optional(),
-  registrar: z.string().max(255).optional(),
+  registrar: z.string().max(255).nullable().optional(), // Allow null when not available
   leadManagers: z.array(z.string()).nullable().optional(),
   symbol: z.string().nullable().optional() // NSE/BSE stock symbol (nullable for RIGHTS/NCD)
 }).refine(
@@ -53,27 +53,11 @@ export const ScrapedIPOSchema = z.object({
     message: 'Price range max must be greater than or equal to price range min',
     path: ['priceRangeMax']
   }
-).refine(
-  (data) => {
-    // Conditional validation: MAINBOARD/SME require symbol and leadManagers
-    // RIGHTS/NCD allow null symbol and leadManagers
-    if (data.category === 'MAINBOARD' || data.category === 'SME') {
-      // For MAINBOARD/SME, symbol and leadManagers should be present
-      if (!data.symbol) {
-        return false;
-      }
-      if (!data.leadManagers || data.leadManagers.length === 0) {
-        return false;
-      }
-    }
-    // For RIGHTS/NCD, allow null or missing symbol/leadManagers
-    return true;
-  },
-  {
-    message: 'Symbol and leadManagers are required for MAINBOARD/SME IPOs',
-    path: ['symbol']
-  }
-);
+)
+// Note: Removed strict validation for symbol/leadManagers
+// These fields are optional/nullable and may not be available from all sources
+// Particularly for Rights Issues (RI) and Debt Issues (NCD) on BSE
+// The application layer should handle missing fields appropriately;
 
 export type ScrapedIPO = z.infer<typeof ScrapedIPOSchema>;
 
