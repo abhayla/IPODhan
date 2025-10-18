@@ -24,7 +24,7 @@ import logger from '../utils/logger.js';
 import { fetchPastIPOs } from '../scrapers/nse-api-client.js';
 import { transformPastIPOs } from '../utils/transform-past-ipo.js';
 import { batchMatchIPOs, generateUnmatchedReport } from '../utils/match-ipo.js';
-import { getDb } from '@ipodhan/shared/db';
+import { db } from '@ipodhan/shared/db';
 import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
 import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
 import type { TransformedPastIPO } from '../utils/transform-past-ipo.js';
@@ -166,14 +166,13 @@ export async function backfillHistoricalIPOs(options: BackfillOptions): Promise<
     hideCursor: true,
   });
 
-  let db: Awaited<ReturnType<typeof getDb>> | null = null;
   let redis: ReturnType<typeof getRedisClient> | null = null;
   let checkpoint: Checkpoint | null = null;
 
   try {
     // Step 1: Initialize connections
     logger.info('Initializing database and Redis connections');
-    db = await getDb();
+    // db is already initialized via lazy proxy from @ipodhan/shared/db
     redis = getRedisClient();
 
     // Step 2: Load checkpoint if resuming (AC7)
@@ -234,12 +233,12 @@ export async function backfillHistoricalIPOs(options: BackfillOptions): Promise<
     for (const [pastIPO, matchResult] of matches.entries()) {
       const record: ListingPerformanceInsert = {
         ipoId: matchResult.ipoId || null, // NULL for unmatched (AC3)
-        symbol: pastIPO.symbol,
+        symbol: pastIPO.symbol || null,
         companyName: pastIPO.companyName,
-        listingDate: pastIPO.listingDate,
+        listingDate: pastIPO.listingDate || null,
         listingPrice: pastIPO.listingPrice ? Math.round(pastIPO.listingPrice) : null,
         issuePrice: pastIPO.issuePrice ? Math.round(pastIPO.issuePrice) : null,
-        listingGainPercent: pastIPO.listingGainPercent,
+        listingGainPercent: pastIPO.listingGainPercent?.toString() || null,
         currentPrice: pastIPO.currentPrice ? Math.round(pastIPO.currentPrice) : null,
         dataSource: 'NSE_PAST_API',
       };
@@ -306,8 +305,11 @@ export async function backfillHistoricalIPOs(options: BackfillOptions): Promise<
         const batch = batches[i];
 
         try {
-          const upserted = await repository.batchUpsert(batch, options.batchSize);
-          totalUpserted += upserted;
+          // Batch upsert: insert each record individually since repo doesn't have batchUpsert
+          for (const record of batch) {
+            await repository.upsert(record);
+            totalUpserted++;
+          }
           batchesProcessed++;
 
           // Update progress bar

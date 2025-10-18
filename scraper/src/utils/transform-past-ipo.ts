@@ -269,7 +269,7 @@ export function transformPastIPO(nseResponse: NSEPastIPOResponse): TransformedPa
       logger.warn({
         companyName,
         symbol,
-        errors: validationResult.error.errors
+        errors: validationResult.error.issues
       }, 'Zod validation failed for transformed past IPO (AC2)');
       return null;
     }
