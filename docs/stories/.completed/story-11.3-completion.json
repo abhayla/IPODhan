@@ -1,0 +1,25 @@
+{
+  "story_id": "11.3",
+  "story_title": "Fix NSE Subscription Data Collection",
+  "status": "done",
+  "timestamps": {
+    "started": "2025-10-18T13:30:00.000Z",
+    "implementation_complete": "2025-10-18T13:54:08.000Z",
+    "qa_passed": "2025-10-18T14:08:25.000Z",
+    "completed": "2025-10-18T14:09:00.000Z"
+  },
+  "completion_metrics": {
+    "task_completion_percent": 100,
+    "ac_completion_percent": 100,
+    "test_coverage_percent": 85,
+    "qa_iterations": 1
+  },
+  "approvals": {
+    "sm_approved": true,
+    "sm_approved_at": "2025-10-18T14:08:30.000Z",
+    "qa_passed": true,
+    "qa_passed_at": "2025-10-18T14:08:25.000Z"
+  },
+  "workflow_version": "4.0",
+  "workflow_step": "9.3"
+}
