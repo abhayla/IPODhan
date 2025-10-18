@@ -1,0 +1,38 @@
+{
+  "story_id": "11.3",
+  "story_title": "Fix NSE Subscription Data Collection",
+  "status": "ready",
+  "timestamps": {
+    "workflow_started": "2025-10-18T00:00:00.000Z",
+    "drafting_completed": "2025-10-18T00:30:00.000Z",
+    "validation_completed": "2025-10-18T00:45:00.000Z",
+    "ready_status_set": "2025-10-18T00:50:00.000Z",
+    "total_duration_minutes": 50
+  },
+  "workflow_metrics": {
+    "validation_iterations": 0,
+    "correction_iterations": 0,
+    "total_commits": 3
+  },
+  "approvals": {
+    "sm_drafted": true,
+    "po_approved": true,
+    "sm_corrected": false
+  },
+  "files": {
+    "story_file": "docs/04-stories/11.3.nse-subscription-data-fix.md",
+    "epic_reference": "docs/03-epics/epic-11-sharded.md",
+    "architecture_reference": "docs/02-architecture/",
+    "sprint_plan": null
+  },
+  "quality_metrics": {
+    "implementation_readiness_score": 9.5,
+    "confidence_level": "HIGH",
+    "quality_grade": "A+ (95%)",
+    "critical_issues": 0,
+    "should_fix_issues": 0,
+    "nice_to_have_improvements": 4
+  },
+  "workflow_version": "2.0",
+  "workflow_step": "6"
+}
