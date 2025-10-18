@@ -455,6 +455,154 @@ try {
 
 ---
 
+### Story 11.3: Fix NSE Subscription Data Collection
+**Priority:** P0 - CRITICAL
+**Points:** 8
+**Status:** 📋 NEXT TO BE DRAFTED
+**Estimated Effort:** 11-15 hours total
+**Source:** NSE Scraping Comprehensive Analysis (2025-10-18)
+
+**Description:**
+Fix critical NSE scraper authentication and subscription data collection failure that blocks real-time subscription tracking - a core platform differentiator.
+
+**Current Issue:**
+- **Subscription coverage**: 0% (0 out of 37 OPEN IPOs have data)
+- **NSE API**: Returns 401 Unauthorized errors
+- **Browser fallback**: Finds 0 IPOs (selector issues)
+- **Root cause**: Insufficient cookie management + missing required headers
+- **Business impact**: Real-time subscription tracking completely non-functional
+
+**Goal:** Restore NSE subscription data collection to 100% for OPEN IPOs
+
+**Technical Problem:**
+```
+Error: NSE API returned 401 Unauthorized
+Error: read ECONNRESET (connection closed by NSE server)
+Root Cause: NSE anti-bot detection triggered by:
+1. Insufficient cookies (only 1-2 obtained, need 4+: nsit, nseappid, bm_sv, ak_bmsc)
+2. Missing required headers (Referer, Accept-Encoding, Sec-Fetch-*)
+3. No delay between requests (bot-like behavior)
+4. Wrong endpoint priority (using bulk endpoint instead of detailed one)
+```
+
+**Acceptance Criteria:**
+
+1. **AC1: Enhanced Cookie Management**
+   - [ ] Visit homepage + market-data page to collect all required cookies
+   - [ ] Extract minimum 3 cookies (nsit, nseappid, bm_sv)
+   - [ ] Add 1-2 second delays between page visits (human-like behavior)
+   - [ ] Validate cookies before making API requests
+   - [ ] Log cookie extraction success with count and names
+
+2. **AC2: NSE API Authentication Success**
+   - [ ] `/api/ipo-current-issue` endpoint returns 200 OK (not 401)
+   - [ ] All required headers included (Referer, Accept-Encoding, Sec-Fetch-*)
+   - [ ] Cookie refresh logic works on 401/403 responses
+   - [ ] No ECONNRESET errors during API calls
+   - [ ] Successful API response logged with subscription data presence
+
+3. **AC3: Subscription Data Extraction**
+   - [ ] QIB subscription extracted from NSE API response
+   - [ ] NII subscription extracted from NSE API response
+   - [ ] Retail subscription extracted from NSE API response
+   - [ ] Total subscription extracted from NSE API response
+   - [ ] Optional fields extracted if available (Employee, Anchor, bNII, sNII)
+   - [ ] Data validated against Zod schema before persistence
+
+4. **AC4: Subscription Data Persistence**
+   - [ ] New subscription record created for each scraper run
+   - [ ] Timestamp set to current date/time (ISO 8601 format)
+   - [ ] Foreign key constraint satisfied (linked to IPO via ipo_id)
+   - [ ] No duplicate records (time-series data accumulates)
+   - [ ] Database insert errors logged with full PostgreSQL details
+
+5. **AC5: Browser Fallback Implementation**
+   - [ ] Browser scraping activates if API fails 3 consecutive times
+   - [ ] Navigate to NSE IPO detail pages (all tabs: Current, Past, Upcoming)
+   - [ ] Extract subscription table from HTML using correct selectors
+   - [ ] Tab navigation logic implemented (click tabs, wait for load)
+   - [ ] Subscription data validated and persisted same as API data
+
+6. **AC6: Coverage Target Met**
+   - [ ] 100% of OPEN IPOs have subscription data (currently 37 IPOs)
+   - [ ] `subscriptions` table grows with each NSE scraper run
+   - [ ] Latest subscription timestamp < 1 hour old
+   - [ ] Subscription coverage monitored and logged
+
+7. **AC7: Monitoring & Logging**
+   - [ ] Debug logging shows cookie extraction details
+   - [ ] Info logging shows subscription creation count per run
+   - [ ] Error logging captures authentication failures with full context
+   - [ ] Scraper logs table updated with subscription metrics
+   - [ ] Performance metrics tracked (duration, success rate)
+
+**Prerequisites:**
+- ✅ NSE scraper infrastructure exists (nse-scraper.ts, nse-api-client.ts)
+- ✅ Database schema has `subscriptions` table
+- ✅ Subscription repository and data persister implemented
+- ✅ Browser automation utilities available (Puppeteer)
+
+**Technical Approach:**
+
+**Fix 1: Enhanced Cookie Management**
+```typescript
+// Multi-page visit to collect all required cookies
+async function initNSESession(): Promise<void> {
+  // Visit homepage
+  const homepageResponse = await fetch('https://www.nseindia.com', { headers });
+  await delay(1500); // Human-like delay
+
+  // Visit market-data page
+  const marketResponse = await fetch(
+    'https://www.nseindia.com/market-data/all-upcoming-issues-ipo',
+    { headers: { ...headers, 'Referer': 'https://www.nseindia.com/' } }
+  );
+
+  // Combine all cookies from both pages
+  const allCookies = new Set([
+    ...homepageResponse.headers.getSetCookie?.() || [],
+    ...marketResponse.headers.getSetCookie?.() || []
+  ]);
+
+  nseSessionCookies = Array.from(allCookies).map(c => c.split(';')[0]);
+  logger.info({ cookieCount: nseSessionCookies.length }, 'NSE session initialized');
+}
+```
+
+**Fix 2: Complete Headers for API Requests**
+```typescript
+const DEFAULT_HEADERS = {
+  'Accept': 'application/json, text/plain, */*',
+  'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'gzip, deflate, br',  // NEW
+  'Connection': 'keep-alive',               // NEW
+  'Referer': 'https://www.nseindia.com/market-data/all-upcoming-issues-ipo', // NEW
+  'Sec-Fetch-Dest': 'empty',               // NEW
+  'Sec-Fetch-Mode': 'cors',                // NEW
+  'Sec-Fetch-Site': 'same-origin',         // NEW
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36...'
+};
+```
+
+**Fix 3: Browser Fallback with Tab Navigation**
+```typescript
+// Click each tab to load all IPOs
+const tabs = ['tab-1', 'tab-2', 'tab-3'];  // Current, Past, Upcoming
+for (const tabId of tabs) {
+  await page.click(`[data-tabid="${tabId}"]`);
+  await delay(2000);  // Wait for content load
+  const tabIPOs = await extractIPOsFromTab(page, tabId);
+  allIPOs.push(...tabIPOs);
+}
+```
+
+**Success Metrics:**
+- Subscription coverage: 0% → 100% (0/37 → 37/37 OPEN IPOs)
+- API success rate: 0% → >95%
+- NSE scraper reliability: BROKEN → OPERATIONAL
+
+---
+
 ## Dependencies
 
 **This Epic Requires:**
@@ -568,14 +716,27 @@ try {
 **Epic Owner**: Scrum Master (Bob)
 **Product Owner**: Bob
 **Created**: 2025-10-17
-**Last Updated**: 2025-10-17 (Story 11.2 Added)
+**Last Updated**: 2025-10-18 (Story 11.3 Added)
 **Status**: 🟢 IN PROGRESS
-**Story Count**: 3 (1 Complete, 2 Planned)
-**Completion**: 33%
+**Story Count**: 4 (1 Complete, 1 Ready, 2 Planned)
+**Completion**: 25% (1/4 complete, 1/4 ready)
 
 ---
 
 ## Changelog
+
+### 2025-10-18 - Story 11.3 Added to Sharded Epic
+- **Story 11.3** added based on NSE Scraping Comprehensive Analysis (2025-10-18)
+- **Priority**: P0 - CRITICAL (NSE subscription data collection completely broken)
+- **Business Impact**: Real-time subscription tracking non-functional (core differentiator)
+- **Root Cause**: NSE API authentication failure (401 errors) + insufficient cookie management
+- **Goal**: Restore 100% subscription coverage for OPEN IPOs (currently 0%)
+- **Acceptance Criteria**: 7 comprehensive ACs covering auth, extraction, persistence, fallback, coverage, monitoring
+- **Estimated Effort**: 11-15 hours
+- **Technical Fixes**: Enhanced cookie management, complete headers, browser fallback with tab navigation
+- **Success Metrics**: 0% → 100% coverage, 0% → >95% API success rate
+- Epic now at 25% completion (1 complete, 1 ready, 2 planned out of 4 stories)
+- Story 11.3 marked as "NEXT TO BE DRAFTED"
 
 ### 2025-10-17 - Story 11.2 Added to Sharded Epic
 - **Story 11.2** added based on comprehensive scraping test findings
