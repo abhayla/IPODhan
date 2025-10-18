@@ -64,7 +64,7 @@ export type DocumentType = Document['type'];
 export type Exchange = MarketHoliday['exchange'];
 export type HolidayType = MarketHoliday['type'];
 export type FinancialStatementType = NonNullable<PeerCompany['financialStatementType']>;
-export type ScraperSource = 'NSE' | 'BSE' | 'MONEYCONTROL' | 'CHITTORGARH' | 'API_FALLBACK';
+export type ScraperSource = 'NSE' | 'BSE' | 'MONEYCONTROL' | 'CHITTORGARH' | 'API_FALLBACK' | 'INVESTORGAIN_GMP';
 export type ScraperStatus = 'SUCCESS' | 'FAILURE' | 'PARTIAL';
 
 // ==================== API RESPONSE TYPES ====================

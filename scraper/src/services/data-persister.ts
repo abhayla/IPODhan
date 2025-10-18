@@ -1,4 +1,4 @@
-import type { IPORepository, SubscriptionRepository, IPOInsert, SubscriptionInsert } from '@ipodhan/shared';
+import type { IPORepository, SubscriptionRepository, GMPRepository, IPOInsert, SubscriptionInsert, GMPRecordInsert } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
@@ -285,6 +285,48 @@ export async function createSubscriptionSnapshot(
   logger.info(
     { ipoId, subscriptionId: result, duration },
     'Subscription snapshot created successfully'
+  );
+
+  return result;
+}
+
+/**
+ * Create GMP (Grey Market Premium) record with retry logic
+ * @param gmpRepository - GMP repository instance
+ * @param ipoId - IPO ID to associate GMP record with
+ * @param gmp - GMP value in rupees
+ * @param timestamp - Optional timestamp (defaults to now)
+ * @returns GMP record ID on success
+ */
+export async function createGMPRecord(
+  gmpRepository: GMPRepository,
+  ipoId: string,
+  gmp: number,
+  timestamp: Date = new Date()
+): Promise<string> {
+  const startTime = Date.now();
+
+  logger.debug({ ipoId, gmp, timestamp }, 'Creating GMP record');
+
+  const result = await retryWithBackoff(
+    async () => {
+      const gmpData: GMPRecordInsert = {
+        ipoId,
+        gmp: Math.round(gmp), // Round to integer as per schema
+        timestamp,
+        source: 'INVESTORGAIN_GMP',
+      };
+
+      const gmpRecord = await gmpRepository.create(gmpData);
+      return gmpRecord.id;
+    },
+    `Create GMP record for IPO: ${ipoId}`
+  );
+
+  const duration = Date.now() - startTime;
+  logger.info(
+    { ipoId, gmpRecordId: result, gmp, duration },
+    'GMP record created successfully'
   );
 
   return result;

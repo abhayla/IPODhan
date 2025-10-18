@@ -218,18 +218,18 @@ export async function scrapeBSEIPODetail(url: string): Promise<BSEDetailPageData
     const $ = cheerio.load(html);
 
     // Extract all fields using helper function
-    const symbol = extractFieldValue($, 'Symbol');
-    const issuePeriod = extractFieldValue($, 'Issue Period');
-    const priceBand = extractFieldValue($, 'Price Band');
-    const issueSharesStr = extractFieldValue($, 'Issue Size – No. of Shares') ||
-                            extractFieldValue($, 'Issue Size');
-    const faceValueStr = extractFieldValue($, 'Face Value');
-    const lotSizeStr = extractFieldValue($, 'Market Lot') ||
-                       extractFieldValue($, 'Lot Size');
-    const registrar = extractFieldValue($, 'Registrar');
-    const leadManagersStr = extractFieldValue($, 'Book Running Lead Manager') ||
-                            extractFieldValue($, 'Lead Manager');
-    const sponsorBanksStr = extractFieldValue($, 'Sponsor Bank');
+    const symbol = extractFieldValue($ as cheerio.CheerioAPI, 'Symbol');
+    const issuePeriod = extractFieldValue($ as cheerio.CheerioAPI, 'Issue Period');
+    const priceBand = extractFieldValue($ as cheerio.CheerioAPI, 'Price Band');
+    const issueSharesStr = extractFieldValue($ as cheerio.CheerioAPI, 'Issue Size – No. of Shares') ||
+                            extractFieldValue($ as cheerio.CheerioAPI, 'Issue Size');
+    const faceValueStr = extractFieldValue($ as cheerio.CheerioAPI, 'Face Value');
+    const lotSizeStr = extractFieldValue($ as cheerio.CheerioAPI, 'Market Lot') ||
+                       extractFieldValue($ as cheerio.CheerioAPI, 'Lot Size');
+    const registrar = extractFieldValue($ as cheerio.CheerioAPI, 'Registrar');
+    const leadManagersStr = extractFieldValue($ as cheerio.CheerioAPI, 'Book Running Lead Manager') ||
+                            extractFieldValue($ as cheerio.CheerioAPI, 'Lead Manager');
+    const sponsorBanksStr = extractFieldValue($ as cheerio.CheerioAPI, 'Sponsor Bank');
 
     // Parse dates
     const { openDate, closeDate } = parseIssuePeriod(issuePeriod);

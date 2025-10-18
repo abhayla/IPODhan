@@ -6,7 +6,7 @@
 /**
  * Scraper source types
  */
-export type ScraperSource = 'NSE' | 'BSE' | 'MONEYCONTROL' | 'CHITTORGARH' | 'API_FALLBACK';
+export type ScraperSource = 'NSE' | 'BSE' | 'MONEYCONTROL' | 'CHITTORGARH' | 'API_FALLBACK' | 'INVESTORGAIN_GMP';
 
 /**
  * Scraper type (alias for ScraperSource for compatibility)

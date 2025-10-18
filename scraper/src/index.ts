@@ -14,20 +14,22 @@ import { runBSEScraper } from './scrapers/bse-scraper-orchestrator.js';
 import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrator.js';
 import { runMoneycontrolScraper } from './scrapers/moneycontrol-orchestrator.js';
 import { runChittorgarhScraper } from './scrapers/chittorgarh-orchestrator.js';
+import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator.js';
 import { IPORepository, db, getRedisClient } from '@ipodhan/shared';
 import logger from './utils/logger.js';
 
 /**
  * CLI entry point for IPO scrapers
- * Supports NSE, BSE, Moneycontrol, Chittorgarh, API fallback, and combined scraping via --source flag
+ * Supports NSE, BSE, Moneycontrol, Chittorgarh, GMP, API fallback, and combined scraping via --source flag
  * Usage:
  *   npm start                         (defaults to NSE)
  *   npm run start:bse                 (BSE only)
  *   npm run start:moneycontrol        (Moneycontrol only)
  *   npm run start:chittorgarh         (Chittorgarh only)
+ *   npm run start:gmp                 (Investorgain GMP only)
  *   npm run start:fallback            (IPO Alerts API fallback)
  *   npm run start:api                 (alias for fallback)
- *   npm run start:all                 (NSE + BSE + Moneycontrol + Chittorgarh + API fallback sequentially)
+ *   npm run start:all                 (NSE + BSE + Moneycontrol + Chittorgarh + API fallback + GMP sequentially)
  */
 async function main() {
   try {
@@ -38,8 +40,8 @@ async function main() {
     logger.info({ source }, 'IPO Scraper CLI started');
 
     // Validate source
-    if (!['nse', 'bse', 'moneycontrol', 'chittorgarh', 'fallback', 'api', 'all'].includes(source)) {
-      logger.error({ source }, 'Invalid source. Must be: nse, bse, moneycontrol, chittorgarh, fallback, api, or all');
+    if (!['nse', 'bse', 'moneycontrol', 'chittorgarh', 'gmp', 'fallback', 'api', 'all'].includes(source)) {
+      logger.error({ source }, 'Invalid source. Must be: nse, bse, moneycontrol, chittorgarh, gmp, fallback, api, or all');
       process.exit(1);
     }
 
@@ -187,6 +189,26 @@ async function main() {
           rateLimitRemaining: fallbackResult.rateLimitRemaining
         },
         'IPO Alerts API fallback scraper completed'
+      );
+    }
+
+    // Run Investorgain GMP scraper (populates gmp_records table)
+    if (source === 'gmp' || source === 'all') {
+      logger.info('Running Investorgain GMP scraper');
+      const gmpResult = await runInvestorgainGMPScraper();
+
+      combinedResult.success = combinedResult.success && gmpResult.success;
+      combinedResult.errors.push(...gmpResult.errors);
+
+      logger.info(
+        {
+          success: gmpResult.success,
+          gmpsProcessed: gmpResult.gmpsProcessed,
+          gmpsCreated: gmpResult.gmpsCreated,
+          gmpsSkipped: gmpResult.gmpsSkipped,
+          gmpsFailed: gmpResult.gmpsFailed
+        },
+        'Investorgain GMP scraper completed'
       );
     }
 

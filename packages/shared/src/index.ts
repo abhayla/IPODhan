@@ -3,6 +3,7 @@ export * from './db/index.js';
 export * from './cache/redis-client.js';
 export * from './repositories/ipo-repository.js';
 export * from './repositories/subscription-repository.js';
+export * from './repositories/gmp-repository.js';
 export * from './repositories/scraper-log-repository.js';
 // Export repository interfaces and pagination types only
 export type {
@@ -23,7 +24,8 @@ export type {
   HistoricalIPOQueryParams,
   HistoricalIPOResponse,
   IPOInsert,
-  SubscriptionInsert
+  SubscriptionInsert,
+  GMPRecordInsert
 } from './repositories/types.js';
 // Export all types (includes entity types and domain types)
 export * from './types/index.js';

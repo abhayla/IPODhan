@@ -53,6 +53,8 @@ let nseSessionCookies: string[] = [];
  */
 async function initNSESession(): Promise<void> {
   try {
+    logger.debug('Initializing NSE session by visiting homepage');
+
     // Visit NSE homepage to get session cookies
     const response = await fetch(BASE_URL, {
       method: 'GET',
@@ -63,14 +65,21 @@ async function initNSESession(): Promise<void> {
       }
     });
 
-    // Extract cookies from response
+    // Extract cookies from response - use getSetCookie() method
     const setCookieHeaders = response.headers.getSetCookie?.() || [];
     if (setCookieHeaders.length > 0) {
       nseSessionCookies = setCookieHeaders.map(cookie => cookie.split(';')[0]);
-      logger.debug({ cookieCount: nseSessionCookies.length }, 'NSE session cookies obtained');
+      logger.info({
+        cookieCount: nseSessionCookies.length,
+        cookies: nseSessionCookies.join('; ').substring(0, 100) + '...'
+      }, 'NSE session cookies obtained successfully');
+    } else {
+      logger.warn('No cookies received from NSE homepage');
     }
   } catch (error) {
-    logger.warn('Failed to initialize NSE session cookies');
+    logger.error({
+      error: error instanceof Error ? error.message : String(error)
+    }, 'Failed to initialize NSE session cookies');
   }
 }
 
@@ -564,26 +573,22 @@ export async function testNSEAPIConnection(): Promise<boolean> {
   try {
     logger.info('Testing NSE API connection');
 
-    // Initialize session first
-    await initNSESession();
+    // Use makeRequest which handles session initialization and retries
+    const data = await makeRequest(ENDPOINTS.ALL_IPOS, { category: 'ipo' });
 
-    // Test with actual GET request
-    const headers = {
-      ...DEFAULT_HEADERS,
-      ...(nseSessionCookies.length > 0 && { 'Cookie': nseSessionCookies.join('; ') })
-    };
+    // Check if we got valid data
+    const isValid = Array.isArray(data) && data.length >= 0;
 
-    const response = await fetch(BASE_URL + ENDPOINTS.ALL_IPOS + '?category=ipo', {
-      method: 'GET',
-      headers
-    });
+    logger.info({
+      success: isValid,
+      recordCount: Array.isArray(data) ? data.length : 0
+    }, 'NSE API connection test completed');
 
-    const isOk = response.ok || response.status === 200;
-    logger.info({ status: response.status, ok: isOk }, 'NSE API connection test result');
-
-    return isOk;
+    return isValid;
   } catch (error) {
-    logger.error({ error }, 'NSE API connection test failed');
+    logger.error({
+      error: error instanceof Error ? error.message : String(error)
+    }, 'NSE API connection test failed');
     return false;
   }
 }

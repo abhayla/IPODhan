@@ -110,9 +110,29 @@ backup_*.sql
 # API test output files
 api_test_*.json
 
-# Scraper temporary files
-scrape_start_timestamp.txt
+# Scraper temporary files (root directory only)
+/scrape_start_timestamp.txt
+/scraper_execution_log*.txt
+/gmp_scraper_test.log
 scraper/scraper_execution_log.txt
+scraper/scraper_verification_log.txt
+scraper/src/scripts/test-*.ts
+scraper/src/scripts/clear-cache.ts
 
-# Verification phase reports (temporary)
-phase*.md
+# Temporary files
+temp_*.sql
+temp_*.html
+pgpass.txt
+*.ps1
+chittorgarh_detail_sample.html
+verification_results/
+P0-*_*.md
+scraper_test_issues_*.md
+
+# Verification phase reports (temporary - root directory only)
+/phase*.md
+/pre_scrape_state*.md
+/post_scrape_state*.md
+
+# BUT: Allow docs/scraping/ directory (permanent documentation)
+!docs/scraping/**

@@ -97,12 +97,12 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
 
       for (const button of showMoreButtons) {
         await button.click();
-        await page.waitForTimeout(500); // Wait for data to load
+        await new Promise(resolve => setTimeout(resolve, 500)); // Wait for data to load
       }
 
       if (showMoreButtons.length > 0) {
         logger.info('Clicked all Show More buttons, waiting for data');
-        await page.waitForTimeout(1000); // Final wait for all data
+        await new Promise(resolve => setTimeout(resolve, 1000)); // Final wait for all data
       }
     } catch (error) {
       logger.warn('No Show More buttons found or error clicking them');
