@@ -74,6 +74,9 @@ web-bundles/
 check-db.js
 list-ipos.js
 test-scrapers.bat
+test-*.mjs
+test-*.js
+update-*.sh
 scraper/test-*.js
 scraper/test-*.ts
 scraper/add-sector-column.ts
