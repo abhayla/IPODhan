@@ -71,6 +71,13 @@
       "when": 1760714842531,
       "tag": "0009_far_northstar",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1760777063408,
+      "tag": "0010_medical_viper",
+      "breakpoints": true
     }
   ]
 }

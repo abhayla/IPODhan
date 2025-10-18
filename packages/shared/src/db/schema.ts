@@ -60,6 +60,12 @@ export const scraperSourceEnum = pgEnum('scraper_source', [
   'CHITTORGARH',
 ]);
 
+export const dataSourceEnum = pgEnum('data_source', [
+  'MANUAL',
+  'SCRAPER',
+  'NSE_PAST_API',
+]);
+
 export const scraperStatusEnum = pgEnum('scraper_status', [
   'SUCCESS',
   'FAILURE',
@@ -356,15 +362,17 @@ export const documents = pgTable(
 export const listingPerformance = pgTable('listing_performance', {
   id: uuid('id').primaryKey().defaultRandom(),
   ipoId: uuid('ipo_id')
-    .notNull()
     .unique()
     .references(() => ipos.id, { onDelete: 'cascade' }),
-  listingPrice: integer('listing_price').notNull(),
-  issuePrice: integer('issue_price').notNull(),
+  symbol: varchar('symbol', { length: 20 }),
+  companyName: varchar('company_name', { length: 255 }),
+  listingDate: date('listing_date'),
+  listingPrice: integer('listing_price'),
+  issuePrice: integer('issue_price'),
   listingGainPercent: numeric('listing_gain_percent', {
     precision: 5,
     scale: 2,
-  }).notNull(),
+  }),
   currentPrice: integer('current_price'), // @deprecated Use currentPriceBSE or currentPriceNSE
   currentPriceBSE: integer('current_price_bse'),
   currentPriceNSE: integer('current_price_nse'),
@@ -372,7 +380,10 @@ export const listingPerformance = pgTable('listing_performance', {
     precision: 5,
     scale: 2,
   }),
-  lastUpdated: timestamp('last_updated').defaultNow().notNull(),
+  dataSource: dataSourceEnum('data_source').default('MANUAL'),
+  createdAt: timestamp('created_at').defaultNow().notNull(),
+  updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  lastUpdated: timestamp('last_updated').defaultNow().notNull(), // @deprecated Use updatedAt
 });
 
 // ==================== TABLE 7: MARKET_HOLIDAYS (Utility) ====================
