@@ -18,6 +18,13 @@ import * as cheerio from 'cheerio';
 import logger from '../utils/logger.js';
 import { sanitizeText, retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 
+/**
+ * BSE Detail Page Types
+ * - ACQDisp: MAINBOARD and SME IPOs (On The Board)
+ * - DisplayIPO: Rights Issues and Debt Issues (NCD)
+ */
+export type BSEDetailPageType = 'ACQDisp' | 'DisplayIPO';
+
 export interface BSEDetailPageData {
   symbol: string | null;
   openDate: string | null;
@@ -185,6 +192,159 @@ function parseCommaSeparatedList(value: string | null): string[] | null {
 }
 
 /**
+ * Detect BSE detail page type from URL
+ * @param url - BSE detail page URL
+ * @returns Page type: 'ACQDisp' or 'DisplayIPO'
+ */
+export function detectBSEDetailPageType(url: string): BSEDetailPageType {
+  try {
+    const urlLower = url.toLowerCase();
+
+    // ACQDisp.aspx pattern: /PublicIssues/ACQDisp.aspx?...Type=OTB
+    if (urlLower.includes('/acqdisp.aspx')) {
+      return 'ACQDisp';
+    }
+
+    // DisplayIPO.aspx pattern: /publicIssues/DisplayIPO.aspx?...type=RI|DPI
+    if (urlLower.includes('/displayipo.aspx')) {
+      return 'DisplayIPO';
+    }
+
+    // Default to ACQDisp for unknown patterns (backward compatibility)
+    logger.warn({ url }, 'Unknown BSE detail page type, defaulting to ACQDisp');
+    return 'ACQDisp';
+  } catch (error) {
+    logger.error({ url, error }, 'Error detecting BSE detail page type');
+    return 'ACQDisp'; // Fail-safe default
+  }
+}
+
+/**
+ * Parse ACQDisp.aspx page (MAINBOARD/SME IPOs)
+ * This is the original parsing logic for OTB (On The Board) IPOs
+ * @param $ - Cheerio loaded HTML
+ * @returns Parsed BSE detail data
+ */
+function parseACQDispPage($: cheerio.CheerioAPI): BSEDetailPageData {
+  // Extract all fields using helper function
+  const symbol = extractFieldValue($, 'Symbol');
+  const issuePeriod = extractFieldValue($, 'Issue Period');
+  const priceBand = extractFieldValue($, 'Price Band');
+  const issueSharesStr = extractFieldValue($, 'Issue Size – No. of Shares') ||
+                          extractFieldValue($, 'Issue Size');
+  const faceValueStr = extractFieldValue($, 'Face Value');
+  const lotSizeStr = extractFieldValue($, 'Market Lot') ||
+                     extractFieldValue($, 'Lot Size');
+  const registrar = extractFieldValue($, 'Registrar');
+  const leadManagersStr = extractFieldValue($, 'Book Running Lead Manager') ||
+                          extractFieldValue($, 'Lead Manager');
+  const sponsorBanksStr = extractFieldValue($, 'Sponsor Bank');
+
+  // Parse dates
+  const { openDate, closeDate } = parseIssuePeriod(issuePeriod);
+
+  // Parse price band
+  const { min: priceRangeMin, max: priceRangeMax } = parsePriceBand(priceBand);
+
+  // Parse share count
+  const issueShares = parseShareCount(issueSharesStr);
+
+  // Calculate issue size
+  const issueSize = calculateIssueSize(issueShares, priceRangeMax);
+
+  // Parse numeric fields
+  const faceValue = faceValueStr ? parseInt(parseFloat(faceValueStr).toString(), 10) : 10;
+  const lotSize = lotSizeStr ? parseInt(lotSizeStr, 10) : 100;
+
+  // Parse lists
+  const leadManagers = parseCommaSeparatedList(leadManagersStr);
+  const sponsorBanks = parseCommaSeparatedList(sponsorBanksStr);
+
+  return {
+    symbol,
+    openDate,
+    closeDate,
+    priceRangeMin,
+    priceRangeMax,
+    issueSize,
+    lotSize,
+    faceValue,
+    registrar,
+    leadManagers,
+    sponsorBanks,
+    issueShares,
+  };
+}
+
+/**
+ * Parse DisplayIPO.aspx page (RIGHTS/NCD IPOs)
+ * Different HTML structure with optional symbol and lead managers
+ * @param $ - Cheerio loaded HTML
+ * @returns Parsed BSE detail data
+ */
+function parseDisplayIPOPage($: cheerio.CheerioAPI): BSEDetailPageData {
+  // Symbol: OPTIONAL (often missing for RIGHTS/NCD)
+  const symbol = extractFieldValue($, 'Symbol') || null;
+
+  // Lead Managers: Try multiple label variations, allow null
+  const leadManagersStr =
+    extractFieldValue($, 'Lead Manager') ||
+    extractFieldValue($, 'Book Running Lead Manager') ||
+    extractFieldValue($, 'Manager') ||
+    null;
+
+  // Price: Single value instead of range for RIGHTS/NCD
+  const issuePriceStr = extractFieldValue($, 'Issue Price') ||
+                        extractFieldValue($, 'Price');
+  const issuePrice = issuePriceStr ? parseFloat(issuePriceStr) : 0;
+  const priceRangeMin = issuePrice;
+  const priceRangeMax = issuePrice;
+
+  // Lot Size: Different label
+  const lotSizeStr = extractFieldValue($, 'Lot Size') ||
+                     extractFieldValue($, 'Market Lot');
+  const lotSize = lotSizeStr ? parseInt(lotSizeStr, 10) : 100;
+
+  // Issue Shares: Try multiple approaches
+  const issueSharesStr = extractFieldValue($, 'Issue Size – No. of Shares') ||
+                         extractFieldValue($, 'Issue Size') ||
+                         extractFieldValue($, 'No. of Shares');
+  const issueShares = parseShareCount(issueSharesStr);
+
+  // Common fields (same extraction logic as ACQDisp)
+  const issuePeriod = extractFieldValue($, 'Issue Period');
+  const { openDate, closeDate } = parseIssuePeriod(issuePeriod);
+
+  const faceValueStr = extractFieldValue($, 'Face Value');
+  const faceValue = faceValueStr ? parseInt(parseFloat(faceValueStr).toString(), 10) : 10;
+
+  const registrar = extractFieldValue($, 'Registrar');
+  const sponsorBanksStr = extractFieldValue($, 'Sponsor Bank');
+
+  // Calculate issue size
+  const issueSize = calculateIssueSize(issueShares, priceRangeMax);
+
+  // Parse lists
+  const leadManagers = parseCommaSeparatedList(leadManagersStr);
+  const sponsorBanks = parseCommaSeparatedList(sponsorBanksStr);
+
+  return {
+    symbol,
+    openDate,
+    closeDate,
+    priceRangeMin,
+    priceRangeMax,
+    issueSize,
+    lotSize,
+    faceValue,
+    registrar,
+    leadManagers,
+    sponsorBanks,
+    issueShares,
+  };
+}
+
+/**
  * Scrape BSE IPO detail page
  * @param url - Full BSE detail page URL
  * @returns Parsed IPO detail data
@@ -217,56 +377,26 @@ export async function scrapeBSEIPODetail(url: string): Promise<BSEDetailPageData
     const html = await response.text();
     const $ = cheerio.load(html);
 
-    // Extract all fields using helper function
-    const symbol = extractFieldValue($ as cheerio.CheerioAPI, 'Symbol');
-    const issuePeriod = extractFieldValue($ as cheerio.CheerioAPI, 'Issue Period');
-    const priceBand = extractFieldValue($ as cheerio.CheerioAPI, 'Price Band');
-    const issueSharesStr = extractFieldValue($ as cheerio.CheerioAPI, 'Issue Size – No. of Shares') ||
-                            extractFieldValue($ as cheerio.CheerioAPI, 'Issue Size');
-    const faceValueStr = extractFieldValue($ as cheerio.CheerioAPI, 'Face Value');
-    const lotSizeStr = extractFieldValue($ as cheerio.CheerioAPI, 'Market Lot') ||
-                       extractFieldValue($ as cheerio.CheerioAPI, 'Lot Size');
-    const registrar = extractFieldValue($ as cheerio.CheerioAPI, 'Registrar');
-    const leadManagersStr = extractFieldValue($ as cheerio.CheerioAPI, 'Book Running Lead Manager') ||
-                            extractFieldValue($ as cheerio.CheerioAPI, 'Lead Manager');
-    const sponsorBanksStr = extractFieldValue($ as cheerio.CheerioAPI, 'Sponsor Bank');
+    // Detect page type and route to appropriate parser
+    const pageType = detectBSEDetailPageType(url);
+    logger.debug({ url, pageType }, 'Detected BSE detail page type');
 
-    // Parse dates
-    const { openDate, closeDate } = parseIssuePeriod(issuePeriod);
+    let result: BSEDetailPageData;
 
-    // Parse price band
-    const { min: priceRangeMin, max: priceRangeMax } = parsePriceBand(priceBand);
+    if (pageType === 'DisplayIPO') {
+      // Rights Issues and Debt Issues
+      result = parseDisplayIPOPage($ as cheerio.CheerioAPI);
+    } else {
+      // MAINBOARD and SME IPOs (ACQDisp)
+      result = parseACQDispPage($ as cheerio.CheerioAPI);
+    }
 
-    // Parse share count
-    const issueShares = parseShareCount(issueSharesStr);
-
-    // Calculate issue size
-    const issueSize = calculateIssueSize(issueShares, priceRangeMax);
-
-    // Parse numeric fields
-    const faceValue = faceValueStr ? parseInt(parseFloat(faceValueStr).toString(), 10) : 10; // Default face value (integer)
-    const lotSize = lotSizeStr ? parseInt(lotSizeStr, 10) : 100; // Default lot size
-
-    // Parse lists
-    const leadManagers = parseCommaSeparatedList(leadManagersStr);
-    const sponsorBanks = parseCommaSeparatedList(sponsorBanksStr);
-
-    const result: BSEDetailPageData = {
-      symbol,
-      openDate,
-      closeDate,
-      priceRangeMin,
-      priceRangeMax,
-      issueSize,
-      lotSize,
-      faceValue,
-      registrar,
-      leadManagers,
-      sponsorBanks,
-      issueShares,
-    };
-
-    logger.debug({ symbol, issueSize, lotSize }, 'Successfully scraped BSE detail page');
+    logger.debug({
+      pageType,
+      symbol: result.symbol,
+      issueSize: result.issueSize,
+      lotSize: result.lotSize
+    }, 'Successfully scraped BSE detail page');
 
     return result;
 
@@ -340,6 +470,8 @@ export async function scrapeBSEIPODetails(
 
 /**
  * Validate BSE detail page data before database insertion
+ * Note: Symbol and leadManagers are optional for RIGHTS/NCD issues
+ * Category-specific validation happens in validators.ts
  */
 export function validateBSEDetailData(data: BSEDetailPageData): {
   isValid: boolean;
@@ -347,11 +479,10 @@ export function validateBSEDetailData(data: BSEDetailPageData): {
 } {
   const errors: string[] = [];
 
-  // Required fields
-  if (!data.symbol) {
-    errors.push('Missing required field: symbol');
-  }
+  // Symbol and leadManagers are optional (may be null for RIGHTS/NCD)
+  // Category-specific validation handled in main validator
 
+  // Required fields
   if (!data.openDate) {
     errors.push('Missing required field: openDate');
   }
@@ -364,8 +495,9 @@ export function validateBSEDetailData(data: BSEDetailPageData): {
     errors.push('Invalid price band: min or max is zero');
   }
 
-  if (data.priceRangeMin >= data.priceRangeMax) {
-    errors.push('Invalid price band: min >= max');
+  // Allow min == max for RIGHTS/NCD (single price), but fail if min > max
+  if (data.priceRangeMin > data.priceRangeMax) {
+    errors.push('Invalid price band: min > max');
   }
 
   if (data.openDate && data.closeDate && data.openDate >= data.closeDate) {
