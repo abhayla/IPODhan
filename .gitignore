@@ -79,6 +79,8 @@ test-*.js
 update-*.sh
 scraper/test-*.js
 scraper/test-*.ts
+scraper/debug-*.ts
+scraper/verify-*.ts
 scraper/add-sector-column.ts
 scraper/check-schema.ts
 scraper/check-status-enum.ts
@@ -87,6 +89,8 @@ scraper/drop-legacy-constraints.ts
 scraper/fix-schema.ts
 scraper/fix-symbol-column.ts
 scraper/vitest-resolve-plugin.ts
+verify-scraper-results.mjs
+web/check-scraper.sql
 
 # Temporary test reports and documentation (root and web/ only, docs/ is tracked)
 /*-TEST-REPORT.md

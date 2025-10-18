@@ -65,16 +65,23 @@ export interface NSEAPIResult {
 
 /**
  * Story 11.4: Historical IPO response from NSE Past Endpoints
+ * ✅ Updated Oct 2025 to match NSE's actual API response fields
  */
 export interface NSEPastIPOResponse {
-  symbol: string;
-  companyName: string;
-  listingDate: string;
-  listingPrice: number | string;
-  issuePrice: number | string;
+  company: string;              // Company name (field name changed from companyName)
+  symbol: string;               // Stock symbol (e.g., "CANHLIFE")
+  htmSym: string;               // HTML symbol (lowercase, e.g., "canhlife")
+  ipoStartDate: string;         // IPO start date (e.g., "10-OCT-2025")
+  ipoEndDate: string;           // IPO end date (e.g., "14-OCT-2025")
+  linkRemovalDate: string;      // Link removal date
+  priceRange: string;           // Price range (e.g., "Rs.100 to Rs.106")
+  issuePrice: string;           // Issue price (e.g., "   106")
+  listingDate: string;          // Listing date (e.g., "17-OCT-2025")
+  securityType: string;         // Security type: 'EQ', 'DEBT', 'SME', etc.
+
+  // Optional fields (may be added in future or for specific IPOs)
+  listingPrice?: number | string;
   currentPrice?: number | string;
-  securityType?: string; // 'Equity', 'Debt', etc.
-  series?: string;
   isin?: string;
 }
 
@@ -799,26 +806,40 @@ export async function fetchPastIPOs(): Promise<PastIPOsResult> {
     logger.info('Fetching past IPOs from NSE /api/public-past-issues (Story 11.4, AC1)');
 
     // Use makeRequest which handles session initialization, cookies, and retry logic
-    const data = await makeRequest(ENDPOINTS.PUBLIC_PAST_ISSUES);
+    const response = await makeRequest(ENDPOINTS.PUBLIC_PAST_ISSUES);
 
-    // Validate response
-    if (!Array.isArray(data)) {
+    // ✅ NSE API Format Update (Oct 2025): Response changed from direct array to { data: [...] }
+    // Old format: [{ company, symbol, ... }]
+    // New format: { data: [{ company, symbol, ... }] }
+    let pastIPOsArray: any[];
+
+    if (Array.isArray(response)) {
+      // Legacy format (direct array)
+      pastIPOsArray = response;
+      logger.info('NSE past API using legacy format (direct array)');
+    } else if (response && typeof response === 'object' && Array.isArray(response.data)) {
+      // New format (wrapped in data property)
+      pastIPOsArray = response.data;
+      logger.info('NSE past API using new format (data wrapper)');
+    } else {
       logger.error({
-        dataType: typeof data,
-        hasData: !!data
-      }, 'NSE public-past-issues returned non-array response (AC1)');
+        responseType: typeof response,
+        isArray: Array.isArray(response),
+        hasDataKey: response && typeof response === 'object' && 'data' in response,
+        keys: response && typeof response === 'object' ? Object.keys(response) : []
+      }, 'NSE public-past-issues returned unexpected response format (AC1)');
       throw new Error('Invalid response format from NSE public-past-issues endpoint');
     }
 
     const duration = Date.now() - startTime;
     logger.info({
-      pastIPOsCount: data.length,
+      pastIPOsCount: pastIPOsArray.length,
       duration,
       endpoint: ENDPOINTS.PUBLIC_PAST_ISSUES
     }, 'NSE past IPOs fetched successfully (AC1, AC5 - Target: 200+ records)');
 
     return {
-      pastIPOs: data as NSEPastIPOResponse[],
+      pastIPOs: pastIPOsArray as NSEPastIPOResponse[],
       source: 'NSE_PAST_API',
       timestamp: new Date().toISOString(),
       endpoint: ENDPOINTS.PUBLIC_PAST_ISSUES
