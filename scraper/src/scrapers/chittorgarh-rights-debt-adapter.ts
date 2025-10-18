@@ -2,17 +2,28 @@
  * Chittorgarh Rights & Debt Issue Data Adapter
  *
  * Story: 11.1 - Implement Rights/Debt IPO Detail Scraper
+ * Updated: 2025-10-18 (Story 11.6 - Fix NCD API Integration)
  * Created: 2025-10-17
  *
  * Purpose:
  * - Fetch Rights Issue data from Chittorgarh API (REIT/InvIT category)
- * - Fetch Debt Issue data from Chittorgarh API (NCD/BOND category)
+ * - Fetch Debt Issue data from Chittorgarh API (all category, filtered for NCDs)
  * - Transform to RightsDebtEnrichmentData format for enrichment
  *
  * API Details:
  * - Base URL: https://webnodejs.chittorgarh.com/cloud/report/data-read/82/...
- * - Categories: "reit", "invit", "ncd", "bond"
+ * - Categories: "reit", "invit", "all", "mainboard", "sme", "mainboard-fpo", "sme-fpo"
  * - Returns: IPO list with issue size, price, dates, lead managers
+ * - Limits: perPage ≤ 10 (API enforced), pagination required for full dataset
+ * - Version: v=20-47 (as of Oct 2025, subject to change)
+ *
+ * IMPORTANT: 'ncd' is NOT a valid category. NCDs are part of 'all' category.
+ * Error format: "Invalid API Call{YEAR}-{PERPAGE}-{CODE}" indicates parameter validation failure.
+ *
+ * Troubleshooting:
+ * - If API returns "Invalid API Call2025-100-01", perPage limit is exceeded (max 10)
+ * - If API returns "No params data found", category is invalid
+ * - If version parameter is outdated, inspect network traffic on chittorgarh.com for current version
  */
 
 import logger from '../utils/logger.js';
@@ -181,15 +192,30 @@ function parseLeadManagers(leadManagerStr: string): string[] | null {
 
 /**
  * Fetch Rights/Debt issues from Chittorgarh API
+ *
+ * IMPORTANT: perPage is limited to 10 by the API. Requests with perPage > 10
+ * will return error: "Invalid API Call{YEAR}-{PERPAGE}-01"
+ *
+ * @param page - Page number (1-indexed)
+ * @param perPage - Records per page (max 10, enforced by API)
+ * @param category - IPO category filter
+ * @returns API response with reportTableData array
  */
 async function fetchChittorgarhAPI(
   page: number = 1,
-  perPage: number = 100,
-  category: 'reit' | 'invit' | 'ncd' | 'bond' = 'reit'
+  perPage: number = 10, // Changed from 100 to 10 (API limit)
+  category: 'reit' | 'invit' | 'all' | 'mainboard' | 'sme' | 'mainboard-fpo' | 'sme-fpo' = 'reit'
 ): Promise<ChittorgarhAPIResponse> {
-  const url = `${CHITTORGARH_API_BASE}/${REPORT_ID}/${page}/${perPage}/${CURRENT_YEAR}/${YEAR_RANGE}/0/${category}/0?search=&v=15-11`;
+  // Enforce API perPage limit
+  if (perPage > 10) {
+    logger.warn({ perPage, requestedPerPage: perPage }, 'perPage exceeds API limit (10), clamping to 10');
+    perPage = 10;
+  }
 
-  logger.info({ url, category }, 'Fetching Chittorgarh API');
+  // Updated version parameter (v=20-47 as of Oct 2025)
+  const url = `${CHITTORGARH_API_BASE}/${REPORT_ID}/${page}/${perPage}/${CURRENT_YEAR}/${YEAR_RANGE}/0/${category}/0?search=&v=20-47`;
+
+  logger.info({ url, category, page, perPage }, 'Fetching Chittorgarh API');
 
   const response = await fetch(url, {
     headers: {
@@ -204,10 +230,38 @@ async function fetchChittorgarhAPI(
 
   const data = (await response.json()) as ChittorgarhAPIResponse;
 
+  // Enhanced error logging
+  if (data.error) {
+    logger.error({
+      error: data.error,
+      url,
+      category,
+      page,
+      perPage,
+      year: CURRENT_YEAR,
+      yearRange: YEAR_RANGE,
+    }, 'Chittorgarh API returned error');
+
+    // Parse error format: "Invalid API Call{YEAR}-{PERPAGE}-{CODE}"
+    const errorMatch = data.error.match(/Invalid API Call(\d+)-(\d+)-(\d+)/);
+    if (errorMatch) {
+      const [, errorYear, errorPerPage, errorCode] = errorMatch;
+      logger.error({
+        parsedError: {
+          year: errorYear,
+          perPage: errorPerPage,
+          code: errorCode,
+        },
+      }, 'API parameter validation failed - see parsed error details');
+    }
+  }
+
   logger.debug({
     category,
+    page,
     msg: data.msg,
     recordCount: data.reportTableData?.length || 0,
+    hasError: !!data.error,
   }, 'Chittorgarh API response received');
 
   return data;
@@ -305,9 +359,9 @@ export async function fetchRightsIssuesFromChittorgarh(): Promise<RightsDebtEnri
   logger.info('Fetching Rights Issues from Chittorgarh API');
 
   try {
-    // Fetch REIT data
+    // Fetch REIT data (perPage changed from 100 to 10 due to API limit)
     const reitData = await retryWithExponentialBackoff(
-      () => fetchChittorgarhAPI(1, 100, 'reit'),
+      () => fetchChittorgarhAPI(1, 10, 'reit'),
       3,
       1000
     );
@@ -324,9 +378,9 @@ export async function fetchRightsIssuesFromChittorgarh(): Promise<RightsDebtEnri
       logger.info({ count: results.length }, 'Fetched REIT data');
     }
 
-    // Fetch InvIT data
+    // Fetch InvIT data (perPage changed from 100 to 10 due to API limit)
     const invitData = await retryWithExponentialBackoff(
-      () => fetchChittorgarhAPI(1, 100, 'invit'),
+      () => fetchChittorgarhAPI(1, 10, 'invit'),
       3,
       1000
     );
@@ -354,7 +408,13 @@ export async function fetchRightsIssuesFromChittorgarh(): Promise<RightsDebtEnri
 
 /**
  * Fetch Debt Issue data from Chittorgarh API
- * Uses NCD category (bond category may also be available)
+ *
+ * IMPORTANT: 'ncd' is NOT a valid category. NCDs are part of the 'all' category.
+ * This function fetches ALL IPOs and filters for Debt/NCD issues based on company name patterns.
+ *
+ * Since perPage is limited to 10, this function implements pagination to fetch all records.
+ *
+ * @returns Array of NCD enrichment data
  */
 export async function fetchDebtIssuesFromChittorgarh(): Promise<RightsDebtEnrichmentData[]> {
   const results: RightsDebtEnrichmentData[] = [];
@@ -362,30 +422,72 @@ export async function fetchDebtIssuesFromChittorgarh(): Promise<RightsDebtEnrich
   logger.info('Fetching Debt Issues from Chittorgarh API');
 
   try {
-    // Fetch NCD data
-    const ncdData = await retryWithExponentialBackoff(
-      () => fetchChittorgarhAPI(1, 100, 'ncd'),
-      3,
-      1000
-    );
+    // Fetch data from 'all' category with pagination (perPage limit = 10)
+    let page = 1;
+    let hasMore = true;
+    let totalFetched = 0;
 
-    if (ncdData.error) {
-      logger.error({ error: ncdData.error }, 'Chittorgarh API error (NCD)');
-    } else if (ncdData.reportTableData && ncdData.reportTableData.length > 0) {
-      for (const record of ncdData.reportTableData) {
-        const transformed = transformChittorgarhRecord(record, 'NCD');
-        if (transformed) {
-          results.push(transformed);
-        }
+    while (hasMore) {
+      const pageData = await retryWithExponentialBackoff(
+        () => fetchChittorgarhAPI(page, 10, 'all'),
+        3,
+        1000
+      );
+
+      if (pageData.error) {
+        logger.error({ error: pageData.error, page }, 'Chittorgarh API error on page');
+        break; // Stop pagination on error
       }
-      logger.info({ count: results.length }, 'Fetched NCD data');
+
+      if (pageData.reportTableData && pageData.reportTableData.length > 0) {
+        totalFetched += pageData.reportTableData.length;
+
+        // Filter for NCD/Debt issues (company name contains NCD, Bond, Debt, etc.)
+        for (const record of pageData.reportTableData) {
+          const companyName = record['Company'] || '';
+
+          // Check if this is a Debt/NCD issue based on naming patterns
+          const isDebtIssue =
+            companyName.toLowerCase().includes('ncd') ||
+            companyName.toLowerCase().includes('bond') ||
+            companyName.toLowerCase().includes('debt') ||
+            companyName.toLowerCase().includes('debenture');
+
+          if (isDebtIssue) {
+            const transformed = transformChittorgarhRecord(record, 'NCD');
+            if (transformed) {
+              results.push(transformed);
+            }
+          }
+        }
+
+        // Check if there are more pages
+        hasMore = pageData.reportTableData.length === 10; // If < 10, we've reached the end
+        if (hasMore) {
+          page++;
+          logger.debug({ page: page - 1, recordsOnPage: pageData.reportTableData.length }, 'Fetching next page');
+        }
+      } else {
+        hasMore = false;
+      }
+
+      // Safety limit: stop after 50 pages (500 records total)
+      if (page > 50) {
+        logger.warn({ page }, 'Reached safety limit of 50 pages, stopping pagination');
+        break;
+      }
     }
 
-    logger.info({ totalDebtIssues: results.length }, 'Debt Issue data fetched from Chittorgarh');
+    logger.info({
+      totalDebtIssues: results.length,
+      totalFetched,
+      pagesProcessed: page,
+    }, 'Debt Issue data fetched from Chittorgarh');
+
     return results;
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     logger.error({ error: errorMsg }, 'Failed to fetch Debt Issues from Chittorgarh');
-    return results; // Return partial results
+    return results; // Return partial results (graceful degradation)
   }
 }
