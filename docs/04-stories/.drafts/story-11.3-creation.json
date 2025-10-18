@@ -1,0 +1,23 @@
+{
+  "story_id": "11.3",
+  "story_title": "Fix NSE Subscription Data Collection",
+  "creation_status": "drafted",
+  "validation_status": "pending",
+  "timestamps": {
+    "workflow_started": "2025-10-18T00:00:00.000Z",
+    "drafting_started": "2025-10-18T00:05:00.000Z",
+    "drafting_completed": "2025-10-18T00:30:00.000Z",
+    "next_phase": "po_validation"
+  },
+  "creation_context": {
+    "epic_path": "docs/03-epics/epic-11-sharded.md",
+    "architecture_path": "docs/02-architecture/",
+    "destination_path": "docs/04-stories/"
+  },
+  "agents": {
+    "drafted_by": "Bob (Scrum Master)",
+    "drafted_via": "sm.md *draft command via automated workflow"
+  },
+  "workflow_version": "2.0",
+  "workflow_step": "2.5"
+}
