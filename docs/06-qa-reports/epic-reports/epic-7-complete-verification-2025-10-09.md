@@ -41,7 +41,7 @@ All 6 stories in Epic 7 have been **fully implemented, tested, and verified**. A
 ## Story 7.1 - NSE Scraper Implementation
 
 **Status: ✅ COMPLETE (100%)**
-**QA Report:** `docs/stories/qa-reports/story-7.1-qa-report.md`
+**QA Report:** `docs/06-qa-reports/sprint-reports/story-7.1-qa-report.md`
 
 ### Acceptance Criteria Validation
 
@@ -72,7 +72,7 @@ All 6 stories in Epic 7 have been **fully implemented, tested, and verified**. A
 ## Story 7.2 - BSE Scraper Implementation
 
 **Status: ✅ COMPLETE (100%)**
-**QA Report:** `docs/stories/qa-reports/story-7.2-qa-report.md`
+**QA Report:** `docs/06-qa-reports/sprint-reports/story-7.2-qa-report.md`
 
 ### Acceptance Criteria Validation
 
@@ -102,7 +102,7 @@ All 6 stories in Epic 7 have been **fully implemented, tested, and verified**. A
 ## Story 7.3 - IPO Alerts API Fallback
 
 **Status: ✅ COMPLETE (100%)**
-**QA Report:** `docs/stories/qa-reports/story-7.3-qa-report.md`
+**QA Report:** `docs/06-qa-reports/sprint-reports/story-7.3-qa-report.md`
 
 ### Acceptance Criteria Validation
 
@@ -131,7 +131,7 @@ All 6 stories in Epic 7 have been **fully implemented, tested, and verified**. A
 ## Story 7.4 - Scheduler & Cache Invalidation
 
 **Status: ✅ COMPLETE (100%)**
-**QA Report:** `docs/stories/qa-reports/story-7.4-qa-report.md`
+**QA Report:** `docs/06-qa-reports/sprint-reports/story-7.4-qa-report.md`
 
 ### Acceptance Criteria Validation
 
@@ -167,7 +167,7 @@ All 6 stories in Epic 7 have been **fully implemented, tested, and verified**. A
 ## Story 7.5 - Error Handling & Monitoring
 
 **Status: ✅ COMPLETE (100%)**
-**QA Report:** `docs/stories/qa-reports/story-7.5-qa-report.md`
+**QA Report:** `docs/06-qa-reports/sprint-reports/story-7.5-qa-report.md`
 
 ### Acceptance Criteria Validation
 
@@ -202,7 +202,7 @@ All 6 stories in Epic 7 have been **fully implemented, tested, and verified**. A
 ## Story 7.6a - Alternative Data Sources (Core Implementation)
 
 **Status: ✅ COMPLETE (100%)**
-**QA Report:** `docs/stories/qa-reports/story-7.6a-qa-report.md`
+**QA Report:** `docs/06-qa-reports/sprint-reports/story-7.6a-qa-report.md`
 
 ### Acceptance Criteria Validation
 

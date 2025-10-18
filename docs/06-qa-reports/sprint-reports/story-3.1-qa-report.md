@@ -268,7 +268,7 @@ All 7 methods fully tested with unit tests ✅
 3. **`docs/stories/progress-reports/story-3.1-progress.md`**
    - Dev agent implementation report
 
-4. **`docs/stories/qa-reports/story-3.1-qa-report.md`** (this file)
+4. **`docs/06-qa-reports/sprint-reports/story-3.1-qa-report.md`** (this file)
    - Comprehensive QA validation report
 
 ### Modified (5 files)

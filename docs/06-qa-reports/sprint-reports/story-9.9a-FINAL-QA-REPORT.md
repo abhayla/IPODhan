@@ -67,7 +67,7 @@ Story 9.9a has been **successfully implemented, tested, and merged to main**. Al
 
 ### Manual Testing
 **Status:** 📋 Checklist Created (Recommended for final validation)
-**Location:** `docs/stories/qa-reports/story-9.9a-MANUAL-TEST-CHECKLIST.md`
+**Location:** `docs/06-qa-reports/sprint-reports/story-9.9a-MANUAL-TEST-CHECKLIST.md`
 
 **Recommendation from SM (Bob):**
 > "Story 9.9a code is production-ready. Manual testing via dev server at `http://localhost:3000/mainboard-ipo-calendar` is recommended but not mandatory for merge approval."
@@ -388,7 +388,7 @@ export async function getMainboardIPOEvents(month: number, year: number) {
 **Priority:** Medium
 **Effort:** 30-45 minutes
 
-Execute manual test checklist at `docs/stories/qa-reports/story-9.9a-MANUAL-TEST-CHECKLIST.md` to verify:
+Execute manual test checklist at `docs/06-qa-reports/sprint-reports/story-9.9a-MANUAL-TEST-CHECKLIST.md` to verify:
 - Browser rendering and visual design
 - User interactions and navigation
 - Search functionality with real data
@@ -491,7 +491,7 @@ Implementation completed following v3.2 workflow with feature branch isolation. 
 ### Documentation Files
 - `docs/stories/9.9a.mainboard-ipo-calendar.story.md`
 - `docs/stories/progress-reports/story-9.9a-IMPLEMENTATION-REPORT.md`
-- `docs/stories/qa-reports/story-9.9a-MANUAL-TEST-CHECKLIST.md`
+- `docs/06-qa-reports/sprint-reports/story-9.9a-MANUAL-TEST-CHECKLIST.md`
 - `docs/stories/infrastructure-1.turbopack-pg-bundling-fix.story.md`
 
 ### Configuration Files Modified

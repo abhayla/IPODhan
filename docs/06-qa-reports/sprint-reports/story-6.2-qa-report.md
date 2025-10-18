@@ -527,10 +527,10 @@ d4232e9 Merge Story 6.1: Historical IPOs API
 
 **Documentation (2):**
 - `docs/stories/progress-reports/story-6.2-progress-report.md`
-- `docs/stories/qa-reports/story-6.2-qa-report.md` (this file)
+- `docs/06-qa-reports/sprint-reports/story-6.2-qa-report.md` (this file)
 
 **Other (1):**
-- `docs/stories/qa-reports/story-5.5-qa-report.md` (bonus file from Story 5.5)
+- `docs/06-qa-reports/sprint-reports/story-5.5-qa-report.md` (bonus file from Story 5.5)
 
 ### Modified Files (5 files)
 

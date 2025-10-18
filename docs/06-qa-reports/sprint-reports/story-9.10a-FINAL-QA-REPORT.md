@@ -216,7 +216,7 @@ Story 9.10a has been **successfully implemented, validated, and merged to main**
 ### Story Documentation (4)
 
 1. `docs/stories/story-9.10a-mainboard-ipo-reviews-analysis.md` - Story file
-2. `docs/stories/qa-reports/story-9.9a-FINAL-QA-REPORT.md` - Reference
+2. `docs/06-qa-reports/sprint-reports/story-9.9a-FINAL-QA-REPORT.md` - Reference
 3. `docs/stories/9.11-sme-ipo-performance-tracker.md` - Next story
 4. `docs/stories/story-9.12-sme-ipo-prospectus.md` - Future story
 

@@ -377,7 +377,7 @@ git push origin main
 
 **Generate comprehensive report:**
 
-**File Location:** `docs/stories/qa-reports/story-{story_id}-qa-report.md`
+**File Location:** `docs/06-qa-reports/sprint-reports/story-{story_id}-qa-report.md`
 
 **Report Structure:**
 

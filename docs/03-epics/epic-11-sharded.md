@@ -523,7 +523,7 @@ try {
 ### Story 10.7 Documentation
 - **Story File**: `docs/stories/10.7.implement-gmp-api-scraper.md`
 - **Progress Report**: `docs/stories/progress-reports/story-10.7-progress.md`
-- **QA Report**: `docs/stories/qa-reports/story-10.7-qa-report.md`
+- **QA Report**: `docs/06-qa-reports/sprint-reports/story-10.7-qa-report.md`
 
 ### Story 11.1 Documentation
 - **Story File**: `docs/stories/11.1.implement-rights-debt-ipo-scraper.md`

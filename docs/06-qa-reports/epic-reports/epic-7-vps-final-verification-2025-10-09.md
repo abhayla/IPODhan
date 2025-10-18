@@ -151,7 +151,7 @@ redis-cli ping  # Verify: should return PONG
 ### Issue #3: Alternative Sources Parse No Data ⚠️ NON-BLOCKING
 **Impact:** LOW - Primary sources (BSE) working
 **Status:** Story 7.6a (core implementation) complete, Story 7.6b (infrastructure) pending
-**QA Report:** docs/stories/qa-reports/story-7.6a-qa-report.md documents 21 test failures in mock HTML
+**QA Report:** docs/06-qa-reports/sprint-reports/story-7.6a-qa-report.md documents 21 test failures in mock HTML
 
 **Workaround:** BSE provides sufficient IPO data
 **Resolution:** Future work in Story 7.6b

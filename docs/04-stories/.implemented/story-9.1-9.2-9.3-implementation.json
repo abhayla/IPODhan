@@ -31,7 +31,7 @@
     "type_safety": "PASS",
     "linting": "PASS",
     "progress_report_generated": true,
-    "qa_validation_report": "docs/stories/qa-reports/stories-9.1-9.2-9.3-validation.md"
+    "qa_validation_report": "docs/06-qa-reports/sprint-reports/stories-9.1-9.2-9.3-validation.md"
   },
   "files_created": [
     "web/lib/services/home-ipo-service.ts",

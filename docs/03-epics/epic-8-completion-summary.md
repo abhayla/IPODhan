@@ -61,7 +61,7 @@ The IPODhan project already had an **exceptional testing infrastructure**:
 - ✅ CI/CD pipeline with automated tests
 
 ### Files Created/Modified
-- `docs/stories/qa-reports/story-8.1-implementation-summary.md` - Comprehensive analysis
+- `docs/06-qa-reports/sprint-reports/story-8.1-implementation-summary.md` - Comprehensive analysis
 
 ---
 
@@ -363,7 +363,7 @@ This story requires manual access to Windows VPS at 103.118.16.189 to:
 ### Epic 8 Documentation (7,000+ Total Lines)
 
 1. **Story 8.1: Testing**
-   - `docs/stories/qa-reports/story-8.1-implementation-summary.md` (1,600+ lines)
+   - `docs/06-qa-reports/sprint-reports/story-8.1-implementation-summary.md` (1,600+ lines)
 
 2. **Story 8.2: SEO**
    - `docs/seo/SEO-IMPLEMENTATION-GUIDE.md` (1,600+ lines)

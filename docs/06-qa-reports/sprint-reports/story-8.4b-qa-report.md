@@ -97,7 +97,7 @@ Story 8.4b has **PASSED QA validation** with 100% completion of all acceptance c
 - **Validated:** 10
 - **Failed:** 0
 - **Coverage:** 100%
-- **Report:** docs/stories/qa-reports/story-8.4b-ac-validation.md
+- **Report:** docs/06-qa-reports/sprint-reports/story-8.4b-ac-validation.md
 
 **Step 4 Overall Status:** ✅ PASS
 
@@ -302,7 +302,7 @@ Story 8.4b has **PASSED QA validation** with 100% completion of all acceptance c
    - All decisions documented
    - Blockers and resolutions
 
-10. **docs/stories/qa-reports/story-8.4b-ac-validation.md** (299 lines)
+10. **docs/06-qa-reports/sprint-reports/story-8.4b-ac-validation.md** (299 lines)
     - 100% AC coverage validation
     - Testing approach documented
     - Evidence for each AC
@@ -448,7 +448,7 @@ docs/deployment/phase5-rollback-testing.md (486 lines)
 docs/deployment/phase6-post-deployment.md (735 lines)
 scripts/setup-production-database.ps1 (458 lines)
 docs/stories/progress-reports/story-8.4b-progress-report.md (682 lines)
-docs/stories/qa-reports/story-8.4b-ac-validation.md (299 lines)
+docs/06-qa-reports/sprint-reports/story-8.4b-ac-validation.md (299 lines)
 ```
 
 ### Git History

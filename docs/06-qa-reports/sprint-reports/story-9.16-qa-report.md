@@ -42,7 +42,7 @@ Story 9.16 (SME IPOs Landing Page) has been successfully completed and merged to
 | Responsive Design | AC #20 | ✅ PASS (1/1) |
 | Loading & Nav Link | AC #21, 23 | ✅ PASS (2/2) |
 
-**All acceptance criteria documented in:** `docs/stories/qa-reports/story-9.16-qa-validation.md`
+**All acceptance criteria documented in:** `docs/06-qa-reports/sprint-reports/story-9.16-qa-validation.md`
 
 ### Test Suite Results
 
@@ -146,8 +146,8 @@ Story 9.16 (SME IPOs Landing Page) has been successfully completed and merged to
 #### Documentation:
 10. **`docs/stories/progress-reports/story-9.16-progress-report.md`** (380 lines)
 11. **`docs/stories/story-9.16-testing-phase-report.md`** (228 lines)
-12. **`docs/stories/qa-reports/story-9.16-qa-validation.md`** (187 lines)
-13. **`docs/stories/qa-reports/story-9.16-qa-report.md`** (This file)
+12. **`docs/06-qa-reports/sprint-reports/story-9.16-qa-validation.md`** (187 lines)
+13. **`docs/06-qa-reports/sprint-reports/story-9.16-qa-report.md`** (This file)
 
 ### Files Modified (1 file):
 1. **`web/components/layout/Header.tsx`**

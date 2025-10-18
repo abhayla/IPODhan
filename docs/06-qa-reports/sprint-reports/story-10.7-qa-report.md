@@ -262,7 +262,7 @@ Branches: 92.85% (13/14)
 
 ### Documentation Files (3)
 1. `docs/stories/10.7.implement-gmp-api-scraper.md` (updated with completion status)
-2. `docs/stories/qa-reports/story-10.7-ac-validation.md` (213 lines)
+2. `docs/06-qa-reports/sprint-reports/story-10.7-ac-validation.md` (213 lines)
 3. `docs/stories/.completed/story-10.7-completion.json` (40 lines)
 
 **Total Lines Added:** ~1,541 lines

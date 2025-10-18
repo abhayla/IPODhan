@@ -177,7 +177,7 @@ Story 9.17 is 100% complete and approved for production. All 23 acceptance crite
 6. `web/app/fpo-listings/page.tsx` - FPO page
 7. `web/app/fpo-listings/loading.tsx` - Loading skeleton
 8. `docs/stories/progress-reports/story-9.17-progress.md` - Progress report
-9. `docs/stories/qa-reports/story-9.17-qa-report.md` - This QA report
+9. `docs/06-qa-reports/sprint-reports/story-9.17-qa-report.md` - This QA report
 10-11. Story file updates with Dev Agent Record
 
 ### Files Modified (3)

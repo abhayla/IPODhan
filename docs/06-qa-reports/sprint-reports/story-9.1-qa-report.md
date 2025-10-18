@@ -247,7 +247,7 @@ Story 9.1 implementation has been completed successfully with all 6 acceptance c
    - AC verification
    - Integration guidance for Story 9.2
 
-4. **`docs/stories/qa-reports/story-9.1-qa-report.md`** (this file)
+4. **`docs/06-qa-reports/sprint-reports/story-9.1-qa-report.md`** (this file)
    - Comprehensive QA validation
    - Test results documentation
    - Issue tracking
@@ -524,7 +524,7 @@ home-ipo-service.ts    | 99.41% | 76.92% | 100%   | 99.41% |
 - `web/lib/services/home-ipo-service.ts`
 - `web/tests/unit/lib/services/home-ipo-service.test.ts`
 - `docs/stories/progress-reports/story-9.1-progress.md`
-- `docs/stories/qa-reports/story-9.1-qa-report.md`
+- `docs/06-qa-reports/sprint-reports/story-9.1-qa-report.md`
 
 **Modified Files:** None (AC#6 compliance)
 

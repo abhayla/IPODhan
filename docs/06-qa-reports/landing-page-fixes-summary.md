@@ -2,7 +2,7 @@
 
 **Date:** 2025-10-10
 **Developer:** James (Full Stack Developer)
-**QA Report Reference:** D:\Abhay\VibeCoding\IPODhan\qa-reports\landing-page-comprehensive-test-report.md
+**QA Report Reference:** `landing-page-comprehensive-test-report.md`
 
 ---
 

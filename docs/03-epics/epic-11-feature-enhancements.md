@@ -79,8 +79,8 @@ Feature enhancement epic for implementing new functionality that was deferred du
      - 100% test coverage of core functionality
    - **Reports**:
      - Progress: `docs/stories/progress-reports/story-10.7-progress.md`
-     - QA: `docs/stories/qa-reports/story-10.7-qa-report.md`
-     - AC Validation: `docs/stories/qa-reports/story-10.7-ac-validation.md`
+     - QA: `docs/06-qa-reports/sprint-reports/story-10.7-qa-report.md`
+     - AC Validation: `docs/06-qa-reports/sprint-reports/story-10.7-ac-validation.md`
    - **Compliance**: Legal review required before production (Chittorgarh.com TOS)
    - **Next Steps**: Manual testing, compliance review, staging deployment
 
