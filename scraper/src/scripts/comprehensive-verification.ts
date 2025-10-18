@@ -31,7 +31,7 @@ async function comprehensiveVerification() {
     console.log('═══════════════════════════════════════════════════════\n');
 
     // 1. Total IPO counts
-    const allIPOs: IPO[] = await db.select().from(schema.ipos as any);
+    const allIPOs = (await db.select().from(schema.ipos as any)) as IPO[];
     const bseIPOs = allIPOs.filter(ipo => ipo.listingExchanges?.includes('BSE'));
     const nseIPOs = allIPOs.filter(ipo => ipo.listingExchanges?.includes('NSE'));
 

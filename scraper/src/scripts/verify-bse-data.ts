@@ -28,11 +28,11 @@ async function verifyBSEData() {
     logger.info('Verifying BSE detail page data in database');
 
     // Check MIDWEST LIMITED (should have all detail page fields)
-    const midwestIPO: IPO[] = await db
+    const midwestIPO = (await db
       .select()
       .from(schema.ipos as any)
       .where(ilike(schema.ipos.companyName as any, '%midwest%'))
-      .limit(1);
+      .limit(1)) as IPO[];
 
     if (midwestIPO.length > 0) {
       const ipo = midwestIPO[0];
@@ -71,9 +71,9 @@ async function verifyBSEData() {
     }
 
     // Count BSE IPOs with issue_size > 0
-    const bseIPOs: IPO[] = await db
+    const bseIPOs = (await db
       .select()
-      .from(schema.ipos as any);
+      .from(schema.ipos as any)) as IPO[];
 
     // Filter BSE IPOs
     const bseFilteredIPOs = bseIPOs.filter(ipo => ipo.listingExchanges?.includes('BSE'));
