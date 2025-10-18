@@ -18,7 +18,7 @@
  */
 
 import logger from '../utils/logger.js';
-import { getDb } from '@ipodhan/shared/db';
+import { db } from '@ipodhan/shared/db';
 import { sql } from 'drizzle-orm';
 import fs from 'fs/promises';
 import path from 'path';
@@ -41,9 +41,9 @@ interface ValidationReport {
 /**
  * AC6.1: Field validation - Check for NULL in required fields
  */
-async function validateRequiredFields(db: Awaited<ReturnType<typeof getDb>>): Promise<ValidationResult> {
+async function validateRequiredFields(dbClient: typeof db): Promise<ValidationResult> {
   try {
-    const result = await db.execute(sql`
+    const result = await dbClient.execute(sql`
       SELECT
         id,
         symbol,
@@ -80,9 +80,9 @@ async function validateRequiredFields(db: Awaited<ReturnType<typeof getDb>>): Pr
 /**
  * AC6.2: Date range validation - Check dates between 2015-01-01 and TODAY
  */
-async function validateDateRange(db: Awaited<ReturnType<typeof getDb>>): Promise<ValidationResult> {
+async function validateDateRange(dbClient: typeof db): Promise<ValidationResult> {
   try {
-    const result = await db.execute(sql`
+    const result = await dbClient.execute(sql`
       SELECT
         id,
         symbol,
@@ -119,9 +119,9 @@ async function validateDateRange(db: Awaited<ReturnType<typeof getDb>>): Promise
 /**
  * AC6.3: Price validation - Check prices > 0
  */
-async function validatePriceRanges(db: Awaited<ReturnType<typeof getDb>>): Promise<ValidationResult> {
+async function validatePriceRanges(dbClient: typeof db): Promise<ValidationResult> {
   try {
-    const result = await db.execute(sql`
+    const result = await dbClient.execute(sql`
       SELECT
         id,
         symbol,
@@ -158,9 +158,9 @@ async function validatePriceRanges(db: Awaited<ReturnType<typeof getDb>>): Promi
 /**
  * AC6.4: Listing gain validation - Check range -100% to 1000%
  */
-async function validateListingGain(db: Awaited<ReturnType<typeof getDb>>): Promise<ValidationResult> {
+async function validateListingGain(dbClient: typeof db): Promise<ValidationResult> {
   try {
-    const result = await db.execute(sql`
+    const result = await dbClient.execute(sql`
       SELECT
         id,
         symbol,
@@ -197,9 +197,9 @@ async function validateListingGain(db: Awaited<ReturnType<typeof getDb>>): Promi
 /**
  * AC6.5: Referential integrity - Check valid ipo_id foreign keys
  */
-async function validateReferentialIntegrity(db: Awaited<ReturnType<typeof getDb>>): Promise<ValidationResult> {
+async function validateReferentialIntegrity(dbClient: typeof db): Promise<ValidationResult> {
   try {
-    const result = await db.execute(sql`
+    const result = await dbClient.execute(sql`
       SELECT
         lp.id,
         lp.symbol,
@@ -235,9 +235,9 @@ async function validateReferentialIntegrity(db: Awaited<ReturnType<typeof getDb>
 /**
  * AC6.6: Duplicate prevention - Check for duplicate ipo_id
  */
-async function validateNoDuplicateIPOIds(db: Awaited<ReturnType<typeof getDb>>): Promise<ValidationResult> {
+async function validateNoDuplicateIPOIds(dbClient: typeof db): Promise<ValidationResult> {
   try {
-    const result = await db.execute(sql`
+    const result = await dbClient.execute(sql`
       SELECT
         ipo_id,
         COUNT(*) as duplicate_count,
@@ -271,9 +271,9 @@ async function validateNoDuplicateIPOIds(db: Awaited<ReturnType<typeof getDb>>):
 /**
  * AC6.7: Duplicate prevention - Check for duplicate symbol + listing_date
  */
-async function validateNoDuplicateSymbolDate(db: Awaited<ReturnType<typeof getDb>>): Promise<ValidationResult> {
+async function validateNoDuplicateSymbolDate(dbClient: typeof db): Promise<ValidationResult> {
   try {
-    const result = await db.execute(sql`
+    const result = await dbClient.execute(sql`
       SELECT
         symbol,
         listing_date,
@@ -310,10 +310,10 @@ async function validateNoDuplicateSymbolDate(db: Awaited<ReturnType<typeof getDb
  * AC6.8: Calculate quality score
  * Formula: (recordsWithAllRequired * 0.4 + recordsWithCurrentPrice * 0.3 + matchedRecords * 0.3) * 100
  */
-async function calculateQualityScore(db: Awaited<ReturnType<typeof getDb>>): Promise<number> {
+async function calculateQualityScore(dbClient: typeof db): Promise<number> {
   try {
     // Count records with all required fields
-    const requiredResult = await db.execute(sql`
+    const requiredResult = await dbClient.execute(sql`
       SELECT COUNT(*) as count
       FROM listing_performance
       WHERE symbol IS NOT NULL
@@ -324,7 +324,7 @@ async function calculateQualityScore(db: Awaited<ReturnType<typeof getDb>>): Pro
     const recordsWithAllRequired = Number(requiredResult.rows[0]?.count || 0);
 
     // Count records with current price
-    const currentPriceResult = await db.execute(sql`
+    const currentPriceResult = await dbClient.execute(sql`
       SELECT COUNT(*) as count
       FROM listing_performance
       WHERE current_price IS NOT NULL
@@ -332,7 +332,7 @@ async function calculateQualityScore(db: Awaited<ReturnType<typeof getDb>>): Pro
     const recordsWithCurrentPrice = Number(currentPriceResult.rows[0]?.count || 0);
 
     // Count matched records (non-NULL ipo_id)
-    const matchedResult = await db.execute(sql`
+    const matchedResult = await dbClient.execute(sql`
       SELECT COUNT(*) as count
       FROM listing_performance
       WHERE ipo_id IS NOT NULL
@@ -340,7 +340,7 @@ async function calculateQualityScore(db: Awaited<ReturnType<typeof getDb>>): Pro
     const matchedRecords = Number(matchedResult.rows[0]?.count || 0);
 
     // Get total records
-    const totalResult = await db.execute(sql`
+    const totalResult = await dbClient.execute(sql`
       SELECT COUNT(*) as count
       FROM listing_performance
     `);
@@ -430,7 +430,7 @@ async function generateFailuresReport(validationResults: Record<string, Validati
 async function validateBackfill(): Promise<ValidationReport> {
   logger.info('Starting backfill data quality validation (AC6)');
 
-  const db = await getDb();
+  // db is already initialized via lazy proxy from @ipodhan/shared/db
 
   // Get total records
   const totalResult = await db.execute(sql`

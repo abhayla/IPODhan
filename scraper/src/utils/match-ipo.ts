@@ -65,29 +65,29 @@ export async function matchIPOBySymbol(
   try {
     logger.debug({ symbol }, 'Attempting symbol match (AC3 - Primary)');
 
-    const result = await db
-      .select({
-        id: schema.ipos.id,
-        companyName: schema.ipos.companyName,
-        symbol: schema.ipos.symbol
-      })
-      .from(schema.ipos)
-      .where(eq(schema.ipos.symbol, symbol))
-      .limit(1);
+    // Use raw SQL to avoid Drizzle version mismatch issues
+    const result = await db.execute(sql`
+      SELECT id, company_name, symbol
+      FROM ipos
+      WHERE symbol = ${symbol}
+      LIMIT 1
+    `);
 
-    if (result.length > 0) {
+    if (result.rows.length > 0) {
+      const row = result.rows[0] as { id: string; company_name: string; symbol: string | null };
+
       logger.info({
         symbol,
-        ipoId: result[0].id,
-        companyName: result[0].companyName
+        ipoId: row.id,
+        companyName: row.company_name
       }, 'Symbol match found with 100% confidence (AC3)');
 
       return {
-        ipoId: result[0].id,
+        ipoId: row.id,
         confidence: 100,
         method: 'SYMBOL',
-        matchedCompanyName: result[0].companyName,
-        matchedSymbol: result[0].symbol
+        matchedCompanyName: row.company_name,
+        matchedSymbol: row.symbol || undefined
       };
     }
 
@@ -306,19 +306,20 @@ export async function validateMatchByDate(
   }
 
   try {
-    const result = await db
-      .select({
-        listingDate: schema.ipos.listingDate
-      })
-      .from(schema.ipos)
-      .where(eq(schema.ipos.id, ipoId))
-      .limit(1);
+    // Use raw SQL to avoid Drizzle version mismatch issues
+    const result = await db.execute(sql`
+      SELECT listing_date
+      FROM ipos
+      WHERE id = ${ipoId}
+      LIMIT 1
+    `);
 
-    if (result.length === 0) {
+    if (result.rows.length === 0) {
       return false;
     }
 
-    const dbListingDate = result[0].listingDate;
+    const row = result.rows[0] as { listing_date: string | null };
+    const dbListingDate = row.listing_date;
 
     if (!dbListingDate) {
       // DB has no listing date - allow match
@@ -366,19 +367,20 @@ export async function detectConflict(
   ipoId: string
 ): Promise<boolean> {
   try {
-    const result = await db
-      .select({
-        id: schema.listingPerformance.id,
-        dataSource: schema.listingPerformance.dataSource
-      })
-      .from(schema.listingPerformance)
-      .where(eq(schema.listingPerformance.ipoId, ipoId))
-      .limit(1);
+    // Use raw SQL to avoid Drizzle version mismatch issues
+    const result = await db.execute(sql`
+      SELECT id, data_source
+      FROM listing_performance
+      WHERE ipo_id = ${ipoId}
+      LIMIT 1
+    `);
 
-    if (result.length > 0) {
+    if (result.rows.length > 0) {
+      const row = result.rows[0] as { id: string; data_source: string | null };
+
       logger.warn({
         ipoId,
-        existingDataSource: result[0].dataSource
+        existingDataSource: row.data_source
       }, 'Conflict detected - listing_performance already exists (AC3)');
       return true;
     }
