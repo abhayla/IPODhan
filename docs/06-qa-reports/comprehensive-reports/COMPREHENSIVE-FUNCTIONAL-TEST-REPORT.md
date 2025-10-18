@@ -211,7 +211,7 @@ Successfully completed comprehensive functional testing of the IPODhan platform 
 2. `/web/app/api/reviews/sme/route.ts`
 3. `/web/app/api/prospectus/mainboard/route.ts`
 4. `/web/app/api/prospectus/sme/route.ts`
-5. `/web/create_ipo_reviews.sql`
+5. `database/scripts/create_ipo_reviews.sql`
 
 **Files Modified:**
 1. `/web/app/mainboard-ipo-reviews/page.tsx`

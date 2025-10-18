@@ -66,10 +66,10 @@ Sequential execution, aggregating results at the end.
 1. **Create database backup**
    ```bash
    # PostgreSQL backup
-   pg_dump -h localhost -U postgres -d ipodhan > backup_pre_scrape_$(date +%Y%m%d_%H%M%S).sql
+   pg_dump -h localhost -U postgres -d ipodhan > database/backups/backup_pre_scrape_$(date +%Y%m%d_%H%M%S).sql
 
    # Verify backup created
-   ls -lh backup_pre_scrape_*.sql
+   ls -lh database/backups/backup_pre_scrape_*.sql
    ```
 
 2. **Document current state**
@@ -97,7 +97,7 @@ Sequential execution, aggregating results at the end.
    ```bash
    # Test restore to temporary database
    createdb ipodhan_backup_test
-   psql -h localhost -U postgres -d ipodhan_backup_test < backup_pre_scrape_*.sql
+   psql -h localhost -U postgres -d ipodhan_backup_test < database/backups/backup_pre_scrape_*.sql
    dropdb ipodhan_backup_test
    ```
 
@@ -692,10 +692,10 @@ WHERE i.status = 'LISTED';
 #### Test IPO List Endpoint
 ```bash
 # Test IPO list API
-curl -s http://localhost:3000/api/ipos | jq '.' > api_test_ipos_list.json
+curl -s http://localhost:3000/api/ipos | jq '.' > temp/api-tests/api_test_ipos_list.json
 
 # Verify response structure
-cat api_test_ipos_list.json | jq '{
+cat temp/api-tests/api_test_ipos_list.json | jq '{
   success: .success,
   data_count: (.data | length),
   has_meta: (.meta != null),
@@ -736,10 +736,10 @@ cat api_test_ipos_list.json | jq '{
 SLUG=$(psql -U postgres -d ipodhan -t -c "SELECT slug FROM ipos LIMIT 1" | xargs)
 
 # Test detail API
-curl -s http://localhost:3000/api/ipos/$SLUG | jq '.' > api_test_ipo_detail.json
+curl -s http://localhost:3000/api/ipos/$SLUG | jq '.' > temp/api-tests/api_test_ipo_detail.json
 
 # Verify nested relationships
-cat api_test_ipo_detail.json | jq '{
+cat temp/api-tests/api_test_ipo_detail.json | jq '{
   has_ipo_data: (.data.ipo != null),
   has_financials: (.data.financials != null),
   has_subscriptions: (.data.subscriptions != null),
@@ -1543,7 +1543,7 @@ If critical issues found during testing:
 
 ```bash
 # Restore from backup
-psql -h localhost -U postgres -d ipodhan < backup_pre_scrape_YYYYMMDD_HHMMSS.sql
+psql -h localhost -U postgres -d ipodhan < database/backups/backup_pre_scrape_YYYYMMDD_HHMMSS.sql
 
 # Verify restoration
 psql -U postgres -d ipodhan -c "SELECT COUNT(*) FROM ipos;"

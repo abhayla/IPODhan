@@ -427,7 +427,7 @@ None identified yet.
 If critical issues arise:
 ```bash
 # Restore from backup
-psql -h 103.118.16.189 -U postgres -d ipodhan < backup_pre_scrape_20251017_191800.sql
+psql -h 103.118.16.189 -U postgres -d ipodhan < database/backups/backup_pre_scrape_20251017_191800.sql
 
 # Verify restoration
 psql -U postgres -d ipodhan -c "SELECT COUNT(*) FROM ipos;"

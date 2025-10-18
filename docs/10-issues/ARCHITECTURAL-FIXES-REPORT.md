@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
 
 ### 3. Database Table Creation Script
 
-#### `/web/create_ipo_reviews.sql`
+#### `database/scripts/create_ipo_reviews.sql`
 **Purpose:** Manually create the missing `ipo_reviews` table
 
 **Why Created:** Database migration would have been destructive (26 tables in DB vs 13 in schema.ts)

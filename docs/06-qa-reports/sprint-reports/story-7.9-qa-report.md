@@ -546,7 +546,7 @@ Story 7.9 is 100% complete and approved for production. All 12 acceptance criter
 
 6. `web/drizzle/migrations/relations.ts` (generated)
 7. `web/drizzle/migrations/schema.ts` (generated)
-8. `web/create_ipo_reviews.sql` (utility script)
+8. `database/scripts/create_ipo_reviews.sql` (utility script)
 
 ### Files Modified (12)
 

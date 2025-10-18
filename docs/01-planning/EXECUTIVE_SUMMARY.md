@@ -321,7 +321,7 @@ This increases limit to ₹9,999,999,999,999.99 (₹999,999 crores / ₹9,999.99
 4. ✅ `scraper/src/scripts/clear-cache.ts` - New cache clearing utility
 
 ### Database Artifacts
-1. ✅ `backup_pre_scrape_20251017_191800.sql` (404KB)
+1. ✅ `database/backups/backup_pre_scrape_20251017_191800.sql` (404KB)
 2. ⏳ Migration file pending: `increase-issue-size-limit`
 
 ### Screenshots
@@ -436,7 +436,7 @@ This increases limit to ₹9,999,999,999,999.99 (₹999,999 crores / ₹9,999.99
 **For Questions or Issues**:
 - Review detailed reports in project root
 - Check scraper logs: `scraper/scraper_verification_log.txt`
-- Database backup: `backup_pre_scrape_20251017_191800.sql`
+- Database backup: `database/backups/backup_pre_scrape_20251017_191800.sql`
 
 ---
 
