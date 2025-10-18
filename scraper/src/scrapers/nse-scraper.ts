@@ -48,23 +48,38 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
       logger.warn('Tab content not found within timeout, attempting to scrape anyway');
     }
 
-    // Extract IPO data using page.evaluate()
-    const extractedData = await page.evaluate(() => {
-      const ipos: any[] = [];
-      const subscriptions: any[] = [];
+    // Task 8: Tab Navigation Implementation (AC5)
+    // NSE All Upcoming Issues page has 3 tabs: CURRENT, PAST, UPCOMING
+    const allIPOs: any[] = [];
 
-      // NSE All Upcoming Issues page has 3 tabs:
-      // 1. CURRENT ISSUES (tab-1)
-      // 2. PAST ISSUES (tab-2)
-      // 3. UPCOMING ISSUES (tab-3)
+    logger.info('Starting tab navigation for NSE IPO scraping (AC5, Task 8)');
 
-      // Find all tables in the page
-      const tables = document.querySelectorAll('table');
+    // Iterate through all tabs (tab-1, tab-2, tab-3)
+    for (let tabIndex = 1; tabIndex <= 3; tabIndex++) {
+      try {
+        logger.debug({ tabIndex }, `Clicking tab ${tabIndex}`);
 
-      console.log(`Found ${tables.length} tables on NSE page`);
+        // Click the tab
+        await page.click(`[data-tabid="tab-${tabIndex}"]`).catch(() => {
+          logger.warn({ tabIndex }, `Tab ${tabIndex} not found, trying alternative selector`);
+        });
 
-      // Process each table (each tab might have its own table)
-      for (const table of Array.from(tables)) {
+        // Wait for tab content to load (2 seconds as per story requirements)
+        await new Promise(resolve => setTimeout(resolve, 2000));
+
+        logger.debug({ tabIndex }, `Extracting IPOs from tab ${tabIndex}`);
+
+        // Extract IPO data from current tab
+        const tabIPOs = await page.evaluate(() => {
+          const ipos: any[] = [];
+
+          // Find all tables in the active tab
+          const tables = document.querySelectorAll('table');
+
+          console.log(`Found ${tables.length} tables in current tab`);
+
+          // Process each table
+          for (const table of Array.from(tables)) {
         const rows = table.querySelectorAll('tbody tr');
 
         if (rows.length === 0) continue;
@@ -225,12 +240,48 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
         }
       }
 
-      // Note: Subscription data for NSE is typically on a separate page or requires interaction
-      // For now, returning empty subscriptions array
-      // Future enhancement: Navigate to individual IPO pages to extract subscription data
+          return ipos;
+        });
 
-      return { ipos, subscriptions };
-    });
+        // Add IPOs from this tab to the master list
+        allIPOs.push(...tabIPOs);
+        logger.info({ tabIndex, iposFound: tabIPOs.length }, `Tab ${tabIndex} scraped successfully (AC5)`);
+
+      } catch (error) {
+        logger.error({
+          tabIndex,
+          error: error instanceof Error ? error.message : String(error)
+        }, `Failed to scrape tab ${tabIndex}`);
+      }
+    }
+
+    logger.info({ totalIPOs: allIPOs.length }, 'All tabs scraped, combining results (AC5, Task 8)');
+
+    // Task 10: Browser Fallback Integration - Extract subscriptions for OPEN IPOs (AC5)
+    const subscriptions: ScrapedSubscription[] = [];
+    const openIPOs = allIPOs.filter(ipo => ipo.status === 'OPEN');
+
+    logger.info({ openIPOCount: openIPOs.length }, 'Extracting subscription data for OPEN IPOs (AC5, Task 10)');
+
+    for (const ipo of openIPOs) {
+      if (!ipo.symbol) {
+        logger.warn({ companyName: ipo.companyName }, 'IPO missing symbol, skipping subscription extraction');
+        continue;
+      }
+
+      try {
+        const subscription = await scrapeNSESubscriptions(browser, ipo.symbol, ipo.companyName);
+        if (subscription) {
+          subscriptions.push(subscription);
+        }
+      } catch (error) {
+        logger.error({
+          symbol: ipo.symbol,
+          companyName: ipo.companyName,
+          error: error instanceof Error ? error.message : String(error)
+        }, 'Failed to extract subscription data for IPO');
+      }
+    }
 
     await closeBrowser(browser);
     browser = null;
@@ -238,14 +289,15 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
     const duration = Date.now() - startTime;
     logger.info(
       {
-        iposFound: extractedData.ipos.length,
-        subscriptionsFound: extractedData.subscriptions.length,
+        iposFound: allIPOs.length,
+        subscriptionsFound: subscriptions.length,
+        openIPOs: openIPOs.length,
         duration
       },
-      'NSE scrape completed successfully'
+      'NSE browser scrape completed successfully (AC5, Task 10)'
     );
 
-    return { ...extractedData, source: 'browser' as const };
+    return { ipos: allIPOs, subscriptions, source: 'browser' as const };
 
   } catch (error) {
     logger.error(
@@ -265,8 +317,13 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
   }
 }
 
+// Track consecutive API failures for fallback trigger (Task 11, AC2, AC5)
+let consecutiveAPIFailures = 0;
+const MAX_CONSECUTIVE_FAILURES = 3;
+
 /**
  * Main function to scrape NSE IPO data
+ * Enhanced for Story 11.3 - automatic browser fallback after 3 API failures (AC2, AC5, AC6, AC7, Task 11, Task 13)
  * Uses API-first approach, falls back to browser automation if needed
  * @returns Promise<NSEScrapeResult> - Scraped IPO and subscription data
  */
@@ -274,6 +331,36 @@ export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
   const startTime = Date.now();
 
   try {
+    // Task 11: Check if browser fallback should be triggered (AC2, AC5)
+    if (consecutiveAPIFailures >= MAX_CONSECUTIVE_FAILURES) {
+      logger.warn({
+        consecutiveFailures: consecutiveAPIFailures,
+        maxFailures: MAX_CONSECUTIVE_FAILURES
+      }, 'API failure threshold reached, activating browser fallback (AC5, Task 11)');
+
+      // Fall back to browser immediately
+      const browserResult = await scrapeNSEWithBrowser();
+
+      const duration = Date.now() - startTime;
+      const coverage = calculateSubscriptionCoverage(browserResult);
+
+      // Task 13: Log monitoring metrics (AC6, AC7)
+      logger.info(
+        {
+          iposFound: browserResult.ipos.length,
+          subscriptionsFound: browserResult.subscriptions.length,
+          openIPOs: browserResult.ipos.filter(ipo => ipo.status === 'OPEN').length,
+          coverage: `${coverage.percentage.toFixed(2)}%`,
+          source: 'browser',
+          duration,
+          fallbackTriggered: true
+        },
+        'NSE scrape completed using browser fallback (AC6, AC7, Task 13)'
+      );
+
+      return browserResult;
+    }
+
     // First, test if API is accessible
     const apiAvailable = await testNSEAPIConnection();
 
@@ -285,15 +372,25 @@ export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
         const apiResult = await scrapeNSEAPI();
 
         if (apiResult.ipos.length > 0) {
+          // Reset failure count on successful API call (Task 11, AC2, AC5)
+          consecutiveAPIFailures = 0;
+
           const duration = Date.now() - startTime;
+          const coverage = calculateSubscriptionCoverage(apiResult);
+
+          // Task 13: Log monitoring metrics (AC6, AC7)
           logger.info(
             {
               iposFound: apiResult.ipos.length,
               subscriptionsFound: apiResult.subscriptions.length,
+              openIPOs: apiResult.ipos.filter(ipo => ipo.status === 'OPEN').length,
+              coverage: `${coverage.percentage.toFixed(2)}%`,
+              coverageTarget: '100%',
               source: 'api',
-              duration
+              duration,
+              consecutiveFailures: consecutiveAPIFailures
             },
-            'NSE scrape completed successfully using API'
+            'NSE scrape completed successfully using API (AC6, AC7, Task 13)'
           );
 
           return {
@@ -303,11 +400,26 @@ export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
           };
         }
       } catch (apiError) {
+        // Increment failure counter (Task 11, AC2, AC5)
+        consecutiveAPIFailures++;
+
         logger.warn(
-          { error: apiError instanceof Error ? apiError.message : String(apiError) },
-          'NSE API scraping failed, falling back to browser automation'
+          {
+            error: apiError instanceof Error ? apiError.message : String(apiError),
+            consecutiveFailures: consecutiveAPIFailures,
+            maxFailures: MAX_CONSECUTIVE_FAILURES,
+            willTriggerFallback: consecutiveAPIFailures >= MAX_CONSECUTIVE_FAILURES
+          },
+          'NSE API scraping failed, falling back to browser automation (AC5, Task 11)'
         );
       }
+    } else {
+      // Increment failure counter if API not available
+      consecutiveAPIFailures++;
+      logger.warn({
+        consecutiveFailures: consecutiveAPIFailures,
+        maxFailures: MAX_CONSECUTIVE_FAILURES
+      }, 'NSE API not available (AC2)');
     }
 
     // Fall back to browser automation if API fails or returns no data
@@ -315,26 +427,36 @@ export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
     const browserResult = await scrapeNSEWithBrowser();
 
     const duration = Date.now() - startTime;
+    const coverage = calculateSubscriptionCoverage(browserResult);
+
+    // Task 13: Log monitoring metrics (AC6, AC7)
     logger.info(
       {
         iposFound: browserResult.ipos.length,
         subscriptionsFound: browserResult.subscriptions.length,
+        openIPOs: browserResult.ipos.filter(ipo => ipo.status === 'OPEN').length,
+        coverage: `${coverage.percentage.toFixed(2)}%`,
         source: 'browser',
-        duration
+        duration,
+        consecutiveAPIFailures
       },
-      'NSE scrape completed using browser automation'
+      'NSE scrape completed using browser automation (AC6, AC7, Task 13)'
     );
 
     return browserResult;
 
   } catch (error) {
+    // Increment failure counter on complete failure
+    consecutiveAPIFailures++;
+
     const duration = Date.now() - startTime;
     logger.error(
       {
         error: error instanceof Error ? error.message : String(error),
-        duration
+        duration,
+        consecutiveFailures: consecutiveAPIFailures
       },
-      'NSE scraping failed completely (both API and browser methods)'
+      'NSE scraping failed completely (both API and browser methods) (AC7)'
     );
 
     // Return empty result instead of throwing
@@ -347,10 +469,157 @@ export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
 }
 
 /**
- * Extract subscription data for OPEN IPOs
- * This function would parse subscription tables from NSE
- * @param page - Puppeteer page instance
- * @returns Promise<ScrapedSubscription[]>
+ * Calculate subscription coverage percentage
+ * Task 13: Monitoring metrics (AC6, AC7)
+ * @param result - Scrape result with IPOs and subscriptions
+ * @returns Coverage statistics
  */
-// NOTE: This is a helper function that will be implemented when actual NSE scraping is done
-// For now, it's not used as the mock data doesn't include OPEN IPOs with subscriptions
+function calculateSubscriptionCoverage(result: NSEScrapeResult): {
+  openIPOs: number;
+  withSubscriptions: number;
+  percentage: number;
+} {
+  const openIPOs = result.ipos.filter(ipo => ipo.status === 'OPEN');
+  const openIPOCount = openIPOs.length;
+  const subscriptionsCount = result.subscriptions.length;
+
+  const percentage = openIPOCount > 0 ? (subscriptionsCount / openIPOCount) * 100 : 0;
+
+  return {
+    openIPOs: openIPOCount,
+    withSubscriptions: subscriptionsCount,
+    percentage
+  };
+}
+
+/**
+ * Extract subscription data for a specific IPO from NSE detail page
+ * Enhanced for Story 11.3 - browser fallback for subscription data (AC5, Task 9)
+ * @param browser - Puppeteer browser instance
+ * @param symbol - IPO symbol
+ * @param companyName - IPO company name
+ * @returns Promise<ScrapedSubscription | null>
+ */
+async function scrapeNSESubscriptions(
+  browser: Browser,
+  symbol: string,
+  companyName: string
+): Promise<ScrapedSubscription | null> {
+  try {
+    logger.debug({ symbol, companyName }, 'Scraping subscription data from NSE detail page (AC5)');
+
+    const page = await createPage(browser);
+
+    // Navigate to NSE IPO detail page
+    const detailUrl = `https://www.nseindia.com/companies-listing/corporate-filings-ipo-detail?symbol=${symbol}`;
+    await navigateToUrl(page, detailUrl);
+
+    // Wait for subscription table to load
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    // Extract subscription data from HTML table
+    const subscriptionData = await page.evaluate((compName, sym) => {
+      // Find subscription table (look for table with subscription data)
+      const tables = document.querySelectorAll('table');
+      let subscriptionTable: Element | null = null;
+
+      for (const table of Array.from(tables)) {
+        const tableText = table.textContent || '';
+        if (tableText.includes('QIB') || tableText.includes('NII') || tableText.includes('Retail') ||
+            tableText.includes('Qualified Institutional') || tableText.includes('Non Institutional')) {
+          subscriptionTable = table;
+          break;
+        }
+      }
+
+      if (!subscriptionTable) {
+        console.log('No subscription table found');
+        return null;
+      }
+
+      // Initialize subscription object
+      const subscription: any = {
+        ipoCompanyName: compName,
+        ipoSymbol: sym,
+        qibSubscription: 0,
+        niiSubscription: 0,
+        retailSubscription: 0,
+        totalSubscription: 0,
+        timestamp: new Date().toISOString()
+      };
+
+      // Parse table rows
+      const rows = subscriptionTable.querySelectorAll('tbody tr');
+      for (const row of Array.from(rows)) {
+        const cells = row.querySelectorAll('td');
+        if (cells.length < 2) continue;
+
+        const category = cells[0]?.textContent?.trim().toUpperCase() || '';
+        const subscriptionText = cells[cells.length - 1]?.textContent?.trim() || '';
+
+        // Parse "times subscribed" value (e.g., "5.23x" or "5.23 times")
+        const subscriptionMatch = subscriptionText.match(/([\d.]+)/);
+        if (!subscriptionMatch) continue;
+
+        const timesSubscribed = parseFloat(subscriptionMatch[1]);
+        if (isNaN(timesSubscribed)) continue;
+
+        // Map category to subscription fields (AC5)
+        if (category.includes('QIB') || category.includes('QUALIFIED INSTITUTIONAL')) {
+          subscription.qibSubscription = timesSubscribed;
+        } else if (category.includes('NII') || category.includes('NON-INSTITUTIONAL') || category.includes('NON INSTITUTIONAL')) {
+          subscription.niiSubscription = timesSubscribed;
+        } else if (category.includes('RETAIL') || category.includes('RII') || category.includes('INDIVIDUAL')) {
+          subscription.retailSubscription = timesSubscribed;
+        } else if (category.includes('EMPLOYEE')) {
+          subscription.employeeSubscription = timesSubscribed;
+        } else if (category.includes('TOTAL') || category.includes('OVERALL')) {
+          subscription.totalSubscription = timesSubscribed;
+        }
+      }
+
+      // Calculate total if not found
+      if (subscription.totalSubscription === 0) {
+        subscription.totalSubscription = Math.max(
+          subscription.qibSubscription,
+          subscription.niiSubscription,
+          subscription.retailSubscription
+        );
+      }
+
+      // Return null if no valid data found
+      if (subscription.qibSubscription === 0 &&
+          subscription.niiSubscription === 0 &&
+          subscription.retailSubscription === 0) {
+        return null;
+      }
+
+      return subscription;
+    }, companyName, symbol);
+
+    await page.close();
+
+    if (!subscriptionData) {
+      logger.warn({ symbol, companyName }, 'No subscription data found on NSE detail page');
+      return null;
+    }
+
+    logger.debug({
+      symbol,
+      qib: subscriptionData.qibSubscription,
+      nii: subscriptionData.niiSubscription,
+      retail: subscriptionData.retailSubscription,
+      total: subscriptionData.totalSubscription
+    }, 'Subscription data scraped from browser (AC5)');
+
+    return subscriptionData as ScrapedSubscription;
+
+  } catch (error) {
+    logger.error({
+      symbol,
+      companyName,
+      error: error instanceof Error ? error.message : String(error)
+    }, 'Failed to scrape subscription data from NSE detail page');
+    return null;
+  }
+}

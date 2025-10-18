@@ -8,18 +8,20 @@
 ## Overview
 
 Complete end-to-end workflow for story creation and validation with **date/time tracking** and **main branch workflow**. This task orchestrates:
-1. Story drafting by spawning Scrum Master agent
-2. Story validation by spawning Product Owner agent
-3. Story correction and approval by spawning Scrum Master agent (with iteration limits)
-4. Final documentation with timestamps and changelog
-5. Commits to main branch at each stage
-6. Machine-readable tracking metadata
+1. **Epic update** - Story is added to epic-*-sharded.md FIRST (Step 1.5)
+2. Story drafting by spawning Scrum Master agent
+3. Story validation by spawning Product Owner agent
+4. Story correction and approval by spawning Scrum Master agent (with iteration limits)
+5. Final documentation with timestamps and changelog
+6. Commits to main branch at each stage
+7. Machine-readable tracking metadata
 
 **Key v2.0 Changes:**
+- ✅ **Epic-first workflow: Story added to epic-*-sharded.md BEFORE drafting (Step 1.5)**
 - ✅ All work happens directly on main branch
 - ✅ Date/time tracking for all workflow stages
-- ✅ Changelog maintained at all key stages
-- ✅ Commits created after each major step
+- ✅ Changelog maintained at all key stages (including epic changelog)
+- ✅ Commits created after each major step (including epic update)
 - ✅ JSON tracking files for automation
 - ✅ Maximum 3 PO-SM correction iterations
 - ✅ Simplified git workflow (no delayed commits)
@@ -75,13 +77,129 @@ Complete end-to-end workflow for story creation and validation with **date/time 
 - ✅ Destination confirmed
 - ✅ Tracking directory created
 - ✅ Workflow start time recorded
-- Ready for story drafting
+- Ready for epic update (Step 1.5)
+
+---
+
+### 1.5. Add Story to Epic (PREREQUISITE)
+
+**CRITICAL:** Before drafting the story, ensure it is added to the epic-*-sharded.md file first.
+
+**PREREQUISITE:** Step 1 complete, on main branch
+
+**Timing:**
+- ⚠️ **Capture epic update start time** when beginning epic update
+- ⚠️ **Capture epic update complete time** when epic update finishes
+
+**Actions:**
+
+1. **Open Epic File:**
+   - Load the epic file from `epic_path`
+   - Review the epic structure and existing stories
+   - Identify the next story slot or section where new story should be added
+
+2. **Add Story Entry to Epic:**
+   - Add story entry to the appropriate section in epic-*-sharded.md
+   - Include story placeholder with basic metadata:
+     ```markdown
+     ### Story {next_story_id}: {Story Title}
+
+     **Priority:** {High/Medium/Low}
+     **Estimated Effort:** {S/M/L/XL}
+     **Status:** Planning
+
+     **Description:**
+     {Brief description of what this story should accomplish}
+
+     **Key Requirements:**
+     - {Requirement 1}
+     - {Requirement 2}
+     - {Requirement 3}
+     ```
+
+3. **Update Epic Metadata:**
+   - Update story count in epic header
+   - Update last modified timestamp
+   - Add changelog entry to epic file:
+     ```markdown
+     ## Epic Changelog
+
+     ### {CURRENT_DATE_TIME in YYYY-MM-DD HH:MM:SS}
+     - Added Story {story_id}: {Story Title}
+     - Status: Planning
+     - Ready for detailed story drafting
+     ```
+
+4. **Commit Epic Update:**
+   ```bash
+   # Verify we are on main branch
+   current_branch=$(git branch --show-current)
+   if [ "$current_branch" != "main" ]; then
+     echo "❌ ERROR: Must be on main branch!"
+     exit 1
+   fi
+
+   # Stage epic file
+   git add {epic_path}
+
+   # Create epic update commit
+   git commit -m "$(cat <<'EOF'
+docs(epic): Add Story {story_id} to Epic
+
+Epic: {epic_path}
+Story: {story_id} - {Story Title}
+
+Epic Update:
+- ✅ Story {story_id} added to epic
+- ✅ Story priority and effort estimated
+- ✅ Epic metadata updated
+- ⏳ Ready for detailed story drafting
+
+Updated: {CURRENT_DATE_TIME in YYYY-MM-DD HH:MM:SS}
+
+Next Steps:
+- Draft detailed story (Step 2)
+- Story validation (Step 3)
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+EOF
+   )"
+
+   # Push to main
+   git push origin main
+
+   # Verify push succeeded
+   if [ $? -eq 0 ]; then
+     echo "✅ Epic updated and pushed to main branch"
+     echo "📄 Epic file: {epic_path}"
+     echo "📝 Story added: {story_id}"
+   else
+     echo "❌ ERROR: Failed to push epic update"
+     exit 1
+   fi
+   ```
+
+**Validation:**
+- ✓ Story entry exists in epic file
+- ✓ Epic metadata updated
+- ✓ Epic changelog includes new entry
+- ✓ Epic update committed to main branch
+- ✓ Main branch pushed to remote successfully
+
+**Output:**
+- ✅ Story {story_id} added to epic
+- ✅ Epic file updated and committed
+- ✅ Epic changelog includes addition
+- ✅ Commit pushed to main branch
+- Ready for story drafting (Step 2)
 
 ---
 
 ### 2. Story Drafting (Scrum Master Agent)
 
-**PREREQUISITE:** Step 1 complete, on main branch
+**PREREQUISITE:** Step 1.5 complete, story added to epic-*-sharded.md, on main branch
 
 **Timing:**
 - ⚠️ **Capture drafting start time** when SM agent begins work
@@ -952,6 +1070,7 @@ fi
 | Phase | Start | End | Duration |
 |-------|-------|-----|----------|
 | Workflow Started | {workflow_start} | - | - |
+| Epic Update | {epic_update_start} | {epic_update_end} | {epic_update_duration} |
 | Story Drafting | {draft_start} | {draft_end} | {draft_duration} |
 | PO Validation | {validation_start} | {validation_end} | {validation_duration} |
 | SM Corrections | {correction_start or N/A} | {correction_end or N/A} | {correction_duration or N/A} |
@@ -964,6 +1083,13 @@ fi
 - **Status:** ✓ Completed
 - **Branch:** main
 - **Tracking Directory:** docs/stories/.drafts/
+
+### Step 1.5: Add Story to Epic
+- **Status:** ✓ Completed
+- **Epic File:** {epic_path}
+- **Story Added:** {story_id}
+- **Commit Hash:** {epic_update_commit_hash}
+- **Timestamp:** {epic_update_timestamp}
 
 ### Step 2: Story Drafting
 - **Agent:** Bob (Scrum Master)
@@ -1014,19 +1140,23 @@ fi
 
 ## Git Commit History
 
-1. **Draft Commit:** {draft_commit_hash}
+1. **Epic Update Commit:** {epic_update_commit_hash}
+   - Message: "docs(epic): Add Story {story_id} to Epic"
+   - Timestamp: {epic_update_timestamp}
+
+2. **Draft Commit:** {draft_commit_hash}
    - Message: "docs(story-{story_id}): Create story draft"
    - Timestamp: {draft_timestamp}
 
-2. **Validation Commit:** {validation_commit_hash}
+3. **Validation Commit:** {validation_commit_hash}
    - Message: "docs(story-{story_id}): PO validation {passed/changes required}"
    - Timestamp: {validation_timestamp}
 
-3. **Correction Commit:** {correction_commit_hash or N/A}
+4. **Correction Commit:** {correction_commit_hash or N/A}
    - Message: "docs(story-{story_id}): Apply PO review corrections"
    - Timestamp: {correction_timestamp or N/A}
 
-4. **Ready Commit:** {ready_commit_hash}
+5. **Ready Commit:** {ready_commit_hash}
    - Message: "docs(story-{story_id}): Set story status to Ready"
    - Timestamp: {ready_timestamp}
 
@@ -1240,18 +1370,21 @@ User: "Draft and validate a new story"
 
 **Workflow will:**
 1. Verify on main branch and pull latest
-2. Spawn Scrum Master (Bob) to draft story
-3. Commit draft to main branch (Step 2.5)
-4. Spawn Product Owner (Sarah) to validate story
-5. Commit validation results to main branch (Step 3.5)
-6. If changes required: Spawn Scrum Master (Bob) to apply corrections
-7. If corrections applied: Commit corrections to main branch (Step 4.5)
-8. Finalize story and update sprint plan
-9. Commit final Ready status to main branch (Step 6)
-10. Generate comprehensive workflow summary report
-11. Report completion to user
+2. **Add story to epic-*-sharded.md file FIRST (Step 1.5)**
+3. **Commit epic update to main branch**
+4. Spawn Scrum Master (Bob) to draft story
+5. Commit draft to main branch (Step 2.5)
+6. Spawn Product Owner (Sarah) to validate story
+7. Commit validation results to main branch (Step 3.5)
+8. If changes required: Spawn Scrum Master (Bob) to apply corrections
+9. If corrections applied: Commit corrections to main branch (Step 4.5)
+10. Finalize story and update sprint plan
+11. Commit final Ready status to main branch (Step 6)
+12. Generate comprehensive workflow summary report
+13. Report completion to user
 
 **All work tracked on main branch with timestamps and changelog.**
+**CRITICAL: Epic is always updated BEFORE story drafting begins.**
 
 ---
 
@@ -1273,6 +1406,7 @@ User: "Draft and validate a new story"
 
 ## Notes
 
+- **CRITICAL: Epic-first workflow** - Story is ALWAYS added to epic-*-sharded.md BEFORE drafting (Step 1.5)
 - This task orchestrates story creation, validation, and approval phases
 - Either PO or SM agent can initiate this workflow
 - SM agent (Bob) is spawned for drafting and corrections
@@ -1286,9 +1420,10 @@ User: "Draft and validate a new story"
 - Workflow is designed for AI-assisted story creation pipeline
 - Can be integrated into larger sprint planning workflows
 - Report generation preserves complete audit trail with timestamps
-- Story status progression: Draft → Validated → {Corrected} → Ready
+- Story status progression: Epic Entry → Draft → Validated → {Corrected} → Ready
 - No feature branches required - simplified git workflow
 - Date/time tracking at every stage for full accountability
+- Epic changelog includes all story additions with timestamps
 
 ---
 

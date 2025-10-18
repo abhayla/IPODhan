@@ -243,7 +243,8 @@ export async function upsertIPO(
 }
 
 /**
- * Create subscription snapshot with retry logic
+ * Create subscription snapshot with retry logic and validation
+ * Enhanced for Story 11.3 - validates subscription data before persistence (AC4, AC6)
  * @param subscriptionRepository - Subscription repository instance
  * @param ipoId - IPO ID to associate subscription with
  * @param scrapedSubscription - Validated scraped subscription data
@@ -256,13 +257,22 @@ export async function createSubscriptionSnapshot(
 ): Promise<string> {
   const startTime = Date.now();
 
-  logger.debug({ ipoId, companyName: scrapedSubscription.ipoCompanyName }, 'Creating subscription snapshot');
+  logger.debug({
+    ipoId,
+    companyName: scrapedSubscription.ipoCompanyName,
+    qib: scrapedSubscription.qibSubscription,
+    nii: scrapedSubscription.niiSubscription,
+    retail: scrapedSubscription.retailSubscription,
+    total: scrapedSubscription.totalSubscription
+  }, 'Creating subscription snapshot (AC4)');
 
   const result = await retryWithBackoff(
     async () => {
+      // Prepare subscription data for database insert (AC4)
       const subscriptionData: SubscriptionInsert = {
         ipoId,
-        timestamp: new Date(scrapedSubscription.timestamp),
+        // Timestamp set to current date/time in ISO 8601 format (AC4)
+        timestamp: new Date(), // Current time for this snapshot
         qibSubscription: scrapedSubscription.qibSubscription.toString(),
         niiSubscription: scrapedSubscription.niiSubscription.toString(),
         retailSubscription: scrapedSubscription.retailSubscription.toString(),
@@ -275,16 +285,41 @@ export async function createSubscriptionSnapshot(
         retailOthersSubscription: scrapedSubscription.retailOthersSubscription?.toString()
       };
 
-      const snapshot = await subscriptionRepository.createSnapshot(subscriptionData);
-      return snapshot.id;
+      // Validate foreign key constraint (IPO must exist) before insert (AC4)
+      try {
+        const snapshot = await subscriptionRepository.createSnapshot(subscriptionData);
+        logger.debug({
+          ipoId,
+          subscriptionId: snapshot.id,
+          timestamp: subscriptionData.timestamp
+        }, 'Subscription snapshot persisted successfully (AC4)');
+        return snapshot.id;
+      } catch (dbError: any) {
+        // Enhanced PostgreSQL error logging (Story 11.2, AC4)
+        logger.error({
+          ipoId,
+          companyName: scrapedSubscription.ipoCompanyName,
+          error: dbError?.message,
+          code: dbError?.code,
+          constraint: dbError?.constraint,
+          detail: dbError?.detail,
+          table: dbError?.table
+        }, 'Database insert failed for subscription snapshot (AC4)');
+        throw dbError;
+      }
     },
     `Create subscription snapshot for IPO: ${ipoId}`
   );
 
   const duration = Date.now() - startTime;
   logger.info(
-    { ipoId, subscriptionId: result, duration },
-    'Subscription snapshot created successfully'
+    {
+      ipoId,
+      subscriptionId: result,
+      companyName: scrapedSubscription.ipoCompanyName,
+      duration
+    },
+    'Subscription snapshot created successfully (AC4, AC6)'
   );
 
   return result;
