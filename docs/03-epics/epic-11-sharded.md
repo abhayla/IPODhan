@@ -862,6 +862,137 @@ npm run backfill:historical
 
 ---
 
+### Story 11.5: Fix BSE Rights/Debt Detail Page Parser
+**Priority:** P0 - CRITICAL
+**Points:** 5
+**Status:** 📋 PLANNING
+**Source:** BSE Scraper Comprehensive Test (2025-10-18)
+
+**Description:**
+Fix BSE detail page parser to handle Rights Issues (RI) and Debt Issues (DPI) that have different HTML structure than regular IPO/OTB pages, currently causing 48% validation failure rate.
+
+**Current Issue:**
+- **Validation Failure Rate**: 48% (11 out of 23 BSE IPOs)
+- **Root Cause**: Parser designed for ACQDisp.aspx (OTB pages), fails on DisplayIPO.aspx (RI/DPI pages)
+- **Missing Fields**: symbol, leadManagers not extracted from RI/DPI detail pages
+- **Business Impact**: 11 BSE IPOs cannot be persisted to database
+
+**Affected IPO Types:**
+- Rights Issues (RI): 8 IPOs failing
+- Debt Issues (DPI): 3 IPOs failing
+
+**Failed IPOs List:**
+1. SMC Global Securities Limited (DPI)
+2. Indel Money Limited (DPI)
+3. Chemmanur Credits and Investments Limited (DPI)
+4. SUNSHIELD CHEMICALS LTD (RI)
+5. WARDWIZARD INNOVATIONS MOBILITY LTD (RI)
+6. 3I INFOTECH LTD (RI)
+7. HEALTHY LIFE AGRITEC LTD (RI)
+8. ASHNISHA INDUSTRIES LTD (RI)
+9. STAR HOUSING FINANCE LTD (RI)
+10. SURAJ INDUSTRIES LTD (RI)
+11. CAPITAL TRUST LTD (RI)
+
+**Goal:** Improve BSE validation success rate from 52% to 100% (23/23 IPOs)
+
+**Acceptance Criteria:**
+1. [ ] Inspect HTML structure of DisplayIPO.aspx RI and DPI pages
+2. [ ] Add conditional parsing logic based on page type (ACQDisp vs DisplayIPO)
+3. [ ] Extract symbol field correctly from RI/DPI pages
+4. [ ] Extract leadManagers field correctly from RI/DPI pages
+5. [ ] All 11 previously-failed IPOs validate successfully
+6. [ ] No regressions to existing 12 OTB IPO scraping
+7. [ ] Test with all BSE IPO types: MAINBOARD, SME, RIGHTS, NCD
+
+**Priority:** 🔴 P0 - CRITICAL (Blocks 48% of BSE IPOs)
+**Estimated Effort:** 4-6 hours
+
+---
+
+### Story 11.6: Fix Chittorgarh NCD API Integration
+**Priority:** P1 - HIGH
+**Points:** 3
+**Status:** 📋 PLANNING
+**Source:** BSE Scraper Comprehensive Test (2025-10-18)
+
+**Description:**
+Fix Chittorgarh NCD (Debt Issues) API integration that's returning `"Invalid API Call2025-100-01"` error, preventing enrichment of 3 Debt IPOs with missing issue size data.
+
+**Current Issue:**
+- **API Error**: `"Invalid API Call2025-100-01"`
+- **Impact**: 3 Debt IPOs cannot be enriched from Chittorgarh
+- **Root Cause**: Unknown - API parameter mismatch or API endpoint change
+- **Current API Call**:
+  ```
+  https://webnodejs.chittorgarh.com/cloud/report/data-read/82/1/100/2025/2025-26/0/ncd/0?search=&v=15-11
+  ```
+
+**Affected IPOs:**
+- SMC Global Securities Limited (DPI)
+- Indel Money Limited (DPI)
+- Chemmanur Credits and Investments Limited (DPI)
+
+**Goal:** Restore Chittorgarh NCD API functionality for Debt IPO enrichment
+
+**Acceptance Criteria:**
+1. [ ] Investigate Chittorgarh NCD API parameters and endpoint format
+2. [ ] Debug API call and identify correct parameter format
+3. [ ] Update API call to match Chittorgarh's current API specification
+4. [ ] Successful API response received (200 OK, not error)
+5. [ ] NCD data extracted and validated
+6. [ ] 3 Debt IPOs enriched with issue_size from Chittorgarh
+7. [ ] Add comprehensive error handling for API failures
+8. [ ] Add fallback enrichment source if Chittorgarh unavailable
+
+**Priority:** 🟡 P1 - HIGH (Blocks Rights/Debt enrichment)
+**Estimated Effort:** 2-3 hours
+
+---
+
+### Story 11.7: Update Validation Schema for Rights/Debt IPOs
+**Priority:** P1 - HIGH
+**Points:** 2
+**Status:** 📋 PLANNING
+**Source:** BSE Scraper Comprehensive Test (2025-10-18)
+
+**Description:**
+Update Zod validation schema to make `symbol` and `leadManagers` fields optional for RIGHTS and NCD categories, preventing valid Rights/Debt IPOs from being rejected.
+
+**Current Issue:**
+- **Validation Schema Too Strict**: Requires `symbol` and `leadManagers` as mandatory
+- **Impact**: Valid Rights/Debt IPOs rejected even if other data is complete
+- **Root Cause**: Rights/Debt IPOs may not have symbol or lead managers on BSE detail pages
+- **Business Impact**: Valid IPO data discarded unnecessarily
+
+**Technical Problem:**
+```typescript
+// Current validation (too strict)
+symbol: z.string(),  // ❌ Fails for Rights/Debt without symbol
+leadManagers: z.array(z.string()),  // ❌ Fails for Rights/Debt without lead managers
+
+// Should be conditional based on category
+symbol: z.string().optional(),  // ✅ For RIGHTS/NCD
+leadManagers: z.array(z.string()).optional(),  // ✅ For RIGHTS/NCD
+```
+
+**Goal:** Allow Rights/Debt IPOs to validate with missing optional fields
+
+**Acceptance Criteria:**
+1. [ ] Update Zod validation schema in `scraper/src/utils/validators.ts`
+2. [ ] Make `symbol` optional for RIGHTS and NCD categories
+3. [ ] Make `leadManagers` optional for RIGHTS and NCD categories
+4. [ ] Keep `symbol` and `leadManagers` required for MAINBOARD and SME
+5. [ ] Add conditional validation logic based on IPO category
+6. [ ] Update tests to cover optional field scenarios
+7. [ ] All 11 previously-failed Rights/Debt IPOs now validate successfully
+8. [ ] No regressions to MAINBOARD/SME validation requirements
+
+**Priority:** 🟡 P1 - HIGH (Data quality improvement)
+**Estimated Effort:** 2 hours
+
+---
+
 ## Dependencies
 
 **This Epic Requires:**
@@ -990,14 +1121,59 @@ npm run backfill:historical
 **Epic Owner**: Scrum Master (Bob)
 **Product Owner**: Bob
 **Created**: 2025-10-17
-**Last Updated**: 2025-10-18 (Epic Complete)
-**Status**: ✅ COMPLETE
-**Story Count**: 5 (All Complete)
-**Completion**: 100% (5/5 stories complete)
+**Last Updated**: 2025-10-18 (Epic Reopened - Critical BSE Issues Found)
+**Status**: 🔄 REOPENED
+**Story Count**: 8 (5 Complete, 3 New - Critical BSE Fixes)
+**Completion**: 62.5% (5/8 stories complete)
 
 ---
 
 ## Changelog
+
+### 2025-10-18 - Epic 11 REOPENED 🔄 - Critical BSE Issues Discovered
+- **Epic Status**: COMPLETE → REOPENED 🔄
+- **Reason**: BSE scraper comprehensive test revealed 3 critical issues
+- **Test Date**: 2025-10-18 15:37:10 UTC
+- **Test Duration**: 96.67 seconds (23 IPOs scraped)
+- **Critical Finding**: 48% validation failure rate (11/23 BSE IPOs failed)
+
+**New Stories Added**:
+1. ✏️ **Story 11.5**: Fix BSE Rights/Debt Detail Page Parser
+   - **Priority**: P0 - CRITICAL
+   - **Status**: Planning
+   - **Issue**: 48% validation failure (11/23 IPOs)
+   - **Root Cause**: Parser doesn't handle DisplayIPO.aspx (RI/DPI pages)
+   - **Impact**: 11 BSE IPOs (8 Rights, 3 Debt) cannot be persisted
+   - **Estimated Effort**: 4-6 hours
+
+2. ✏️ **Story 11.6**: Fix Chittorgarh NCD API Integration
+   - **Priority**: P1 - HIGH
+   - **Status**: Planning
+   - **Issue**: API returns `"Invalid API Call2025-100-01"` error
+   - **Impact**: 3 Debt IPOs cannot be enriched from Chittorgarh
+   - **Estimated Effort**: 2-3 hours
+
+3. ✏️ **Story 11.7**: Update Validation Schema for Rights/Debt IPOs
+   - **Priority**: P1 - HIGH
+   - **Status**: Planning
+   - **Issue**: Validation schema too strict (requires symbol/leadManagers)
+   - **Impact**: Valid Rights/Debt IPOs rejected unnecessarily
+   - **Estimated Effort**: 2 hours
+
+**Epic Metrics Updated**:
+- Story Count: 5 → 8 stories
+- Completion: 100% → 62.5% (5/8 complete)
+- New Work: 8-11 hours estimated
+
+**Test Results Summary**:
+- IPOs Found: 23 (MAINBOARD: 19, SME: 1, RIGHTS: 8, NCD: 3)
+- Phase 1 Success: 100% (23/23 listing page extraction)
+- Phase 2 Success: 52% (12/23 detail page enrichment)
+- Phase 2B Failure: Chittorgarh NCD API error
+- Validation Success: 52% (12/23 IPOs)
+- Database Persistence: 100% (12/12 valid IPOs)
+
+**Action Required**: Immediate fix for Story 11.5 (P0 - CRITICAL)
 
 ### 2025-10-18 - Epic 11 COMPLETE ✅
 - **Epic Status**: IN PROGRESS → COMPLETE ✅
