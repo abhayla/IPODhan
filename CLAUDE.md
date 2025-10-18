@@ -79,6 +79,12 @@ import { ipos } from '@/lib/db/schema';
 12. `scraperLogs` - Scraper monitoring
 13. `ipoReviews` - IPO reviews from analysts
 
+**⚠️ CRITICAL: Schema Management Workflow**
+- See `docs/16-database/SCHEMA_MANAGEMENT.md` for complete workflow documentation
+- NEVER manually alter database schema
+- ALWAYS go through: Schema → Migration → Database
+- Incident: 2025-10-18 - Schema drift caused scraper failure (documented)
+
 ### 2. Repository Pattern with Caching
 
 All repositories extend `BaseRepository` which implements the **cache-aside pattern**:
@@ -491,7 +497,7 @@ DEBUG=* npm run test:integration
 
 ## UI-Database Field Mapping
 
-**⚠️ CRITICAL REFERENCE: `screen-table-database-field-mapping.md`**
+**⚠️ CRITICAL REFERENCE: `docs/16-database/screen-table-database-field-mapping.md`**
 
 This comprehensive document (1600+ lines) maps every UI screen to database tables and scrape sources. It's essential for:
 

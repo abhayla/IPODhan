@@ -218,8 +218,8 @@ Deprecated or superseded documentation files.
 
 ### For Data Engineers
 1. **08-scraping/** - Data scraping documentation
-2. **02-architecture/database-schema.md** - Database schema
-3. **01-planning/screen-table-database-field-mapping.md** - UI to DB mapping
+2. **16-database/database-schema.md** - Database schema
+3. **16-database/screen-table-database-field-mapping.md** - UI to DB mapping
 4. **03-epics/epic-7-data-pipeline.md** - Data pipeline epic
 
 ---

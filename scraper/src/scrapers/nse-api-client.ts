@@ -4,13 +4,18 @@
  * This client uses NSE's hidden API endpoints discovered through research.
  * These endpoints bypass bot detection and provide direct JSON responses.
  *
- * Discovered Endpoints:
- * - /api/ipo-current-issue - Current/active IPOs with subscription data
- * - /api/all-upcoming-issues?category=ipo - All IPO issues
+ * ✅ WORKING ENDPOINTS (Tested & Validated):
+ * - /api/ipo-current-issue - Current/active IPOs with subscription data (1 record)
+ * - /api/all-upcoming-issues?category=ipo - All upcoming IPOs (2 records: active + closed)
+ * - /api/public-past-issues - Historical IPOs with listing performance (1,268 records)
  * - /api/ipo-detail?symbol={SYMBOL} - Detailed IPO information
- * - /json/liveMarket/public-issues-current.json - Current issues in JSON
  *
- * Success Rate: 95%+ (Direct API access, no bot detection)
+ * ❌ DEPRECATED/NON-FUNCTIONAL ENDPOINTS:
+ * - /api/ipo-past-security-type - Returns 401 Unauthorized (deprecated by NSE)
+ * - /json/liveMarket/public-issues-current.json - Returns column metadata only (not IPO data)
+ *
+ * Success Rate: 95%+ for working endpoints
+ * Last Tested: Oct 2025
  */
 
 import logger from '../utils/logger.js';
@@ -20,15 +25,21 @@ const BASE_URL = 'https://www.nseindia.com';
 
 // NSE API Endpoints
 const ENDPOINTS = {
-  CURRENT_IPOS: '/api/ipo-current-issue',
-  ALL_IPOS: '/api/all-upcoming-issues',
-  IPO_DETAIL: '/api/ipo-detail',
-  LIVE_MARKET: '/json/liveMarket/public-issues-current.json',
+  // ✅ Story 11.3: Current/Upcoming IPOs (WORKING - Tested Oct 2025)
+  CURRENT_IPOS: '/api/ipo-current-issue',              // 1 active IPO
+  ALL_IPOS: '/api/all-upcoming-issues',                // 2 IPOs (active + closed)
+  IPO_DETAIL: '/api/ipo-detail',                       // Detailed IPO info
+
+  // ✅ Story 11.4: Historical IPO Data (WORKING - Tested Oct 2025)
+  PUBLIC_PAST_ISSUES: '/api/public-past-issues',       // 1,268 historical IPOs
+
+  // ❌ DEPRECATED: These endpoints are no longer functional
+  IPO_PAST_SECURITY_TYPE: '/api/ipo-past-security-type', // Returns 401 - Use PUBLIC_PAST_ISSUES instead
+  LIVE_MARKET: '/json/liveMarket/public-issues-current.json', // Returns metadata only, not IPO data
+
+  // ⚠️ UNTESTED: May or may not work
   PAST_IPOS: '/api/past-issues',
   UPCOMING_IPOS: '/api/upcoming-issues',
-  // Story 11.4: Historical IPO Data Endpoints
-  PUBLIC_PAST_ISSUES: '/api/public-past-issues',
-  IPO_PAST_SECURITY_TYPE: '/api/ipo-past-security-type'
 };
 
 // Required headers to bypass NSE's bot detection (Story 11.3)
@@ -776,7 +787,10 @@ export async function testNSEAPIConnection(): Promise<boolean> {
  * This endpoint returns all past IPOs with listing performance data
  * Reuses NSE session initialization from Story 11.3
  *
- * @returns Past IPO data with listing performance
+ * ✅ RECOMMENDED: This is the primary endpoint for historical IPO data
+ * Tested Oct 2025: Returns 1,268 historical IPOs with complete data
+ *
+ * @returns Past IPO data with listing performance (1,268 records)
  */
 export async function fetchPastIPOs(): Promise<PastIPOsResult> {
   const startTime = Date.now();
@@ -825,10 +839,18 @@ export async function fetchPastIPOs(): Promise<PastIPOsResult> {
  * Story 11.4: Fetch past IPOs by security type (Equity, Debt, etc.)
  * Secondary endpoint for cross-validation
  *
+ * ⚠️ DEPRECATED: This endpoint returns 401 Unauthorized (tested Oct 2025)
+ * Use fetchPastIPOs() instead which uses /api/public-past-issues (1,268 records)
+ *
+ * @deprecated Use fetchPastIPOs() - this endpoint no longer works
  * @param securityType - Security type to filter (e.g., 'Equity')
  * @returns Past IPO data for specified security type
  */
 export async function fetchPastIPOsByType(securityType: string = 'Equity'): Promise<PastIPOsResult> {
+  logger.warn({
+    endpoint: ENDPOINTS.IPO_PAST_SECURITY_TYPE,
+    securityType
+  }, '⚠️ DEPRECATED: fetchPastIPOsByType() uses a deprecated endpoint that returns 401. Use fetchPastIPOs() instead.');
   const startTime = Date.now();
 
   try {
@@ -876,3 +898,58 @@ export async function fetchPastIPOsByType(securityType: string = 'Equity'): Prom
     throw error;
   }
 }
+
+/**
+ * ═══════════════════════════════════════════════════════════════════════════
+ * NSE API ENDPOINT TESTING SUMMARY (Oct 2025)
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * ✅ WORKING ENDPOINTS (Stories 11.3 & 11.4):
+ *
+ * 1. /api/ipo-current-issue
+ *    - Status: 200 OK
+ *    - Data: 1 active IPO (includes subscription data)
+ *    - Auth: 2-page cookie collection (homepage + market-data)
+ *    - Use: Live subscription tracking
+ *
+ * 2. /api/all-upcoming-issues?category=ipo
+ *    - Status: 200 OK
+ *    - Data: 2 IPOs (active + recently closed)
+ *    - Auth: 2-page cookie collection
+ *    - Use: Broader upcoming IPO coverage
+ *
+ * 3. /api/public-past-issues
+ *    - Status: 200 OK
+ *    - Data: 1,268 historical IPOs with listing performance
+ *    - Auth: 3-page cookie collection (homepage + market-data + past-issues page)
+ *    - Use: Historical data analysis (RECOMMENDED for Story 11.4)
+ *    - Types: EQ (Equity), SME, DEBT, IV (InvIT), BE
+ *
+ * ❌ DEPRECATED ENDPOINTS:
+ *
+ * 4. /api/ipo-past-security-type?securityType=Equity
+ *    - Status: 401 Unauthorized (all retry attempts failed)
+ *    - Reason: Endpoint deprecated or requires additional authentication
+ *    - Alternative: Use /api/public-past-issues instead
+ *
+ * 5. /json/liveMarket/public-issues-current.json
+ *    - Status: 200 OK
+ *    - Data: Column metadata only (UI table config, not IPO data)
+ *    - Reason: Returns table structure, not actual IPO records
+ *    - Alternative: Use /api/ipo-current-issue for actual data
+ *
+ * 📝 AUTHENTICATION NOTES:
+ * - Multi-page cookie collection is REQUIRED (not just referer header)
+ * - Minimum 5 cookies needed for current/upcoming endpoints
+ * - Minimum 8 cookies needed for historical endpoints
+ * - Cookie names: AKA_A2, nsit, nseappid, _abck, ak_bmsc, bm_mi, bm_sz, bm_sv
+ * - Human-like delays (1.5s) improve success rate
+ *
+ * 🎯 RECOMMENDATIONS:
+ * - Story 11.3: Use /api/ipo-current-issue + /api/all-upcoming-issues
+ * - Story 11.4: Use /api/public-past-issues (avoid ipo-past-security-type)
+ * - Remove LIVE_MARKET endpoint from active use
+ * - Consider removing fetchPastIPOsByType() in future cleanup
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ */
