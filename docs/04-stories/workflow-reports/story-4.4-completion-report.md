@@ -68,7 +68,7 @@ Story 4.4 successfully implements a comprehensive IPO rating system that evaluat
   - Example calculations
   - ~700 lines
 
-- **QA Report** (`docs/stories/qa-reports/story-4.4-qa-report.md`)
+- **QA Report** (`docs/06-qa-reports/sprint-reports/story-4.4-qa-report.md`)
   - Complete verification
   - 10/10 score
   - All ACs verified
@@ -390,7 +390,7 @@ Implementation proceeded smoothly with no major issues.
 
 - [Story 4.4 Specification](../4.4.rating-system.story.md)
 - [Rating Methodology](../../rating-methodology.md)
-- [QA Report](../qa-reports/story-4.4-qa-report.md)
+- [QA Report](../../06-qa-reports/sprint-reports/story-4.4-qa-report.md)
 - [Epic 4: IPO Detail Page](../../epics/epic-4-sharded.md)
 - [API Specification](../../architecture/api-specification.md)
 
@@ -440,12 +440,13 @@ web/
 └── package.json                           (MODIFIED - added script)
 
 docs/
-├── rating-methodology.md                  (NEW - 700 lines)
-└── stories/
-    ├── qa-reports/
-    │   └── story-4.4-qa-report.md         (NEW)
-    └── workflow-reports/
-        └── story-4.4-completion-report.md (THIS FILE)
+├── 04-stories/
+│   └── workflow-reports/
+│       └── story-4.4-completion-report.md (THIS FILE)
+├── 06-qa-reports/
+│   └── sprint-reports/
+│       └── story-4.4-qa-report.md         (NEW)
+└── rating-methodology.md                  (NEW - 700 lines)
 ```
 
 **Total New Files:** 6

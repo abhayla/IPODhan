@@ -401,7 +401,7 @@ Tests  109 passed | 3 failed | 1 skipped (113)
 
 **Created (13 files):**
 1. docs/stories/progress-reports/story-7.3-progress.md
-2. docs/stories/qa-reports/story-7.3-qa-report.md
+2. docs/06-qa-reports/sprint-reports/story-7.3-qa-report.md
 3. scraper/src/services/ipo-alerts-client.ts
 4. scraper/src/services/scraper-failure-tracker.ts
 5. scraper/src/scrapers/ipo-alerts-fallback.ts

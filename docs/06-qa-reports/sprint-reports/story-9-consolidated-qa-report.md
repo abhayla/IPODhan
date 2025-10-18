@@ -286,8 +286,8 @@ Story 9 consolidates the data layer (Story 9.1) and UI components (Story 9.2) in
 
 #### Documentation
 10. **`docs/stories/progress-reports/story-9.1-progress.md`** (443 lines)
-11. **`docs/stories/qa-reports/story-9.1-qa-report.md`** (previous QA report)
-12. **`docs/stories/qa-reports/story-9-consolidated-qa-report.md`** (this file)
+11. **`docs/06-qa-reports/sprint-reports/story-9.1-qa-report.md`** (previous QA report)
+12. **`docs/06-qa-reports/sprint-reports/story-9-consolidated-qa-report.md`** (this file)
 
 ### Files Modified
 

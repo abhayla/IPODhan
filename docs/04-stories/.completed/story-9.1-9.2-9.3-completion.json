@@ -54,7 +54,7 @@
     "web/lib/cache/cache-keys.ts"
   ],
   "documentation": {
-    "qa_validation_report": "docs/stories/qa-reports/stories-9.1-9.2-9.3-validation.md",
+    "qa_validation_report": "docs/06-qa-reports/sprint-reports/stories-9.1-9.2-9.3-validation.md",
     "implementation_tracking": "docs/stories/.implemented/story-9.1-9.2-9.3-implementation.json",
     "completion_tracking": "docs/stories/.completed/story-9.1-9.2-9.3-completion.json"
   },

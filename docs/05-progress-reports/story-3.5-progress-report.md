@@ -440,7 +440,7 @@ Successfully implemented all 10 acceptance criteria for Story 3.5: Filter Logic.
 3. Verify responsive behavior on real devices
 4. Test cross-browser compatibility
 5. Validate accessibility with screen readers
-6. Create QA validation report in `docs/stories/qa-reports/story-3.5-qa-report.md`
+6. Create QA validation report in `docs/06-qa-reports/sprint-reports/story-3.5-qa-report.md`
 
 ### For Product Owner
 1. Review implementation against acceptance criteria

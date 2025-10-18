@@ -270,7 +270,7 @@ All 7 GMPChart tests now passing
 ### Documentation (4 files)
 8. `docs/stories/progress-reports/story-5.3-progress-report.md` - Implementation notes
 9. `docs/stories/progress-reports/story-5.3-correction-report.md` - QA fixes documentation
-10. `docs/stories/qa-reports/story-5.3-qa-report.md` - This QA report
+10. `docs/06-qa-reports/sprint-reports/story-5.3-qa-report.md` - This QA report
 11. Build output: `/registrars` route in production bundle
 
 ---

@@ -425,7 +425,7 @@ const pathname = usePathname();
 
 **QA Lead:** Quinn (Test Architect)
 **Report Date:** 2025-10-10
-**Report Location:** `docs/stories/qa-reports/landing-page-qa-report.md`
+**Report Location:** `docs/06-qa-reports/sprint-reports/landing-page-qa-report.md`
 
 For questions or clarifications, please refer to the full QA report or contact the QA team.
 

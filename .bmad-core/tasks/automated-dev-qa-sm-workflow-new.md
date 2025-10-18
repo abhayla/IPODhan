@@ -822,7 +822,7 @@ npm run build
 
 6. **Generate Component Validation Report:**
 
-   **File:** `docs/stories/qa-reports/story-{story_id}-component-validation.md`
+   **File:** `docs/06-qa-reports/sprint-reports/story-{story_id}-component-validation.md`
 
    ```markdown
    # Component Architecture Validation Report
@@ -963,7 +963,7 @@ npm run build
 
 5. **Generate AC Validation Report:**
 
-   **File:** `docs/stories/qa-reports/story-{story_id}-ac-validation.md`
+   **File:** `docs/06-qa-reports/sprint-reports/story-{story_id}-ac-validation.md`
 
    ```markdown
    # Acceptance Criteria Validation Report
@@ -1675,9 +1675,9 @@ fi
 
 ### Reports Generated
 - Progress Report: `docs/stories/progress-reports/story-{story_id}-progress.md`
-- QA Report: `docs/stories/qa-reports/story-{story_id}-qa-report.md`
-- Component Validation: `docs/stories/qa-reports/story-{story_id}-component-validation.md` (if applicable)
-- AC Validation: `docs/stories/qa-reports/story-{story_id}-ac-validation.md`
+- QA Report: `docs/06-qa-reports/sprint-reports/story-{story_id}-qa-report.md`
+- Component Validation: `docs/06-qa-reports/sprint-reports/story-{story_id}-component-validation.md` (if applicable)
+- AC Validation: `docs/06-qa-reports/sprint-reports/story-{story_id}-ac-validation.md`
 
 ### Timeline
 - **Started:** {start_timestamp}
@@ -1738,9 +1738,9 @@ Create machine-readable completion metadata:
   },
   "reports": {
     "progress_report": "docs/stories/progress-reports/story-{story_id}-progress.md",
-    "qa_report": "docs/stories/qa-reports/story-{story_id}-qa-report.md",
-    "component_validation": "docs/stories/qa-reports/story-{story_id}-component-validation.md",
-    "ac_validation": "docs/stories/qa-reports/story-{story_id}-ac-validation.md"
+    "qa_report": "docs/06-qa-reports/sprint-reports/story-{story_id}-qa-report.md",
+    "component_validation": "docs/06-qa-reports/sprint-reports/story-{story_id}-component-validation.md",
+    "ac_validation": "docs/06-qa-reports/sprint-reports/story-{story_id}-ac-validation.md"
   },
   "workflow_version": "3.3"
 }
@@ -1827,9 +1827,9 @@ Completion Summary:
 
 Reports:
 - Progress: docs/stories/progress-reports/story-{story_id}-progress.md
-- QA: docs/stories/qa-reports/story-{story_id}-qa-report.md
-- Component: docs/stories/qa-reports/story-{story_id}-component-validation.md
-- AC Validation: docs/stories/qa-reports/story-{story_id}-ac-validation.md
+- QA: docs/06-qa-reports/sprint-reports/story-{story_id}-qa-report.md
+- Component: docs/06-qa-reports/sprint-reports/story-{story_id}-component-validation.md
+- AC Validation: docs/06-qa-reports/sprint-reports/story-{story_id}-ac-validation.md
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 
@@ -1870,7 +1870,7 @@ fi
 
 **Generate comprehensive report:**
 
-**File Location:** `docs/stories/qa-reports/story-{story_id}-qa-report.md`
+**File Location:** `docs/06-qa-reports/sprint-reports/story-{story_id}-qa-report.md`
 
 **Report Structure:**
 
@@ -2029,7 +2029,7 @@ The workflow completes successfully when **ALL** of the following are true (**MA
 ✓ **All acceptance criteria validated** (NEW in v3.0)
 - **Each criterion programmatically validated** (Step 4.7)
 - **Test coverage for each AC** (positive, negative, edge cases)
-- **AC validation report generated** (docs/stories/qa-reports/)
+- **AC validation report generated** (docs/06-qa-reports/sprint-reports/)
 - **100% AC validation pass rate** (no partial, no "mostly done")
 - Edge cases tested for each AC
 - Error scenarios verified for each AC
@@ -2079,7 +2079,7 @@ The workflow completes successfully when **ALL** of the following are true (**MA
 - **All tracking current:** No outdated status information
 
 ✓ **QA report generated** (ENHANCED in v3.0)
-- **Report file created** (docs/stories/qa-reports/story-{id}-qa-report.md)
+- **Report file created** (docs/06-qa-reports/sprint-reports/story-{id}-qa-report.md)
 - **All sections completed** (no placeholders, no TBDs)
 - **Evidence documented** (test outputs, coverage reports, screenshots)
 - **AC validation report included** (NEW in v3.0)
@@ -2559,7 +2559,7 @@ Component violations → Dev agent fixes → Re-validate → Continue or HALT
 - `web/components/shared/DataTable.tsx` - Enhanced component implementation
 
 **Generated Reports:**
-- `docs/stories/qa-reports/story-{id}-component-validation.md` - Component validation results
+- `docs/06-qa-reports/sprint-reports/story-{id}-component-validation.md` - Component validation results
 
 ### Exit Conditions Updated (v3.1)
 

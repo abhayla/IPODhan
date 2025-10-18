@@ -144,7 +144,7 @@ All must pass:
 - ✅ Test coverage ≥ 80%
 
 ### 4. Automated Reporting
-Generated at: `docs/stories/qa-reports/story-{X.Y}-qa-report.md`
+Generated at: `docs/06-qa-reports/sprint-reports/story-{X.Y}-qa-report.md`
 
 Includes:
 - Executive summary
@@ -247,7 +247,7 @@ Workflow exits when:
 - Spawned Dev agent (not used in this case, fixed manually)
 - All tests passed
 - Commit created: `962fa5e`
-- Report generated: `docs/stories/qa-reports/story-1.3-qa-report.md`
+- Report generated: `docs/06-qa-reports/sprint-reports/story-1.3-qa-report.md`
 
 ### Future Story Testing
 ```bash

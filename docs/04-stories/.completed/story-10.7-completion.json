@@ -38,7 +38,7 @@
   },
   "reports": {
     "progress_report": "docs/stories/progress-reports/story-10.7-progress.md",
-    "ac_validation": "docs/stories/qa-reports/story-10.7-ac-validation.md"
+    "ac_validation": "docs/06-qa-reports/sprint-reports/story-10.7-ac-validation.md"
   },
   "workflow_version": "4.0"
 }

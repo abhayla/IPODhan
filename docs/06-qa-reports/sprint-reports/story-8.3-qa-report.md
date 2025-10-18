@@ -168,7 +168,7 @@ Shared chunks: 163 KB
    - 70+ subtasks completion status
    - Implementation challenges and solutions
 
-4. **`docs/stories/qa-reports/story-8.3-ac-validation.md`** (202 lines)
+4. **`docs/06-qa-reports/sprint-reports/story-8.3-ac-validation.md`** (202 lines)
    - Detailed AC validation with evidence
    - Positive, negative, edge case coverage
    - Test quality assessment

@@ -552,7 +552,7 @@ Overall                                 | 98.57   | 96.00    | 100.00  | 98.23  
 7. `web/tests/unit/components/ipo/EnhancedSubscriptionView.test.tsx` (349 lines, 21 tests)
 8. `web/tests/integration/api/enhanced-subscription.integration.test.ts` (252 lines, 14 tests)
 9. `web/tests/e2e/enhanced-subscription-view.spec.ts` (414 lines, 16 tests - deferred)
-10. `docs/stories/qa-reports/story-5.6-qa-report.md` (this file)
+10. `docs/06-qa-reports/sprint-reports/story-5.6-qa-report.md` (this file)
 
 ### Modified Files (2)
 

@@ -75,4 +75,4 @@ ESC key closes dropdown correctly
 
 ---
 
-**Report:** D:\Abhay\VibeCoding\IPODhan\qa-reports\verification-test-ipo-details-page.md
+**Report:** `verification-test-ipo-details-page.md`

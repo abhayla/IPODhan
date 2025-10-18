@@ -96,7 +96,7 @@ This will:
    ```
 
 7. **QA Report Generation**
-   - Saved to: `docs/stories/qa-reports/story-X.Y-qa-report.md`
+   - Saved to: `docs/06-qa-reports/sprint-reports/story-X.Y-qa-report.md`
    - Includes: test results, coverage, iterations, timeline
 
 ## Exit Conditions
@@ -192,7 +192,7 @@ Workflow completes when ALL true:
    ✅ Pushed to origin/main
 
 7. 📊 QA Report Generated
-   - Path: docs/stories/qa-reports/story-1.3-qa-report.md
+   - Path: docs/06-qa-reports/sprint-reports/story-1.3-qa-report.md
 
 ✅ AUTOMATED QA COMPLETE
 - Status: PASSED
@@ -265,7 +265,7 @@ The workflow runs all tests by design. If you need custom testing:
 - **Solution:** Workflow will HALT, preserve context
 
 ### Report Not Generated
-- **Check:** `docs/stories/qa-reports/` exists
+- **Check:** `docs/06-qa-reports/sprint-reports/` exists
 - **Check:** File permissions
 - **Fallback:** Workflow outputs report content to console
 
@@ -280,7 +280,7 @@ The workflow runs all tests by design. If you need custom testing:
 ## Files Created/Modified
 
 ### Created by Workflow
-- `docs/stories/qa-reports/story-{X.Y}-qa-report.md` - QA report
+- `docs/06-qa-reports/sprint-reports/story-{X.Y}-qa-report.md` - QA report
 
 ### Modified by Workflow
 - Source files (via Dev agent fixes)
@@ -314,7 +314,7 @@ The workflow runs all tests by design. If you need custom testing:
 - QA Agent: `.claude/commands/BMad/agents/qa.md`
 - Task File: `.bmad-core/tasks/automated-qa-workflow.md`
 - Sprint Plans: `docs/stories/SPRINT-*-PLAN.md`
-- QA Reports: `docs/stories/qa-reports/`
+- QA Reports: `docs/06-qa-reports/sprint-reports/`
 
 ---
 
