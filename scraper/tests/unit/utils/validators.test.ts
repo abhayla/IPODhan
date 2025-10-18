@@ -596,7 +596,7 @@ import {
 
 describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => {
   describe('MAINBOARD/SME Category Validation', () => {
-    it('should fail when MAINBOARD IPO missing symbol', () => {
+    it('should pass when MAINBOARD IPO missing symbol (now allowed)', () => {
       const mainboardIPO = {
         companyName: 'MIDWEST GOLD LIMITED',
         issueSize: 33200000,
@@ -609,20 +609,15 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         status: 'UPCOMING' as const,
         lotSize: 14,
         faceValue: 10,
-        symbol: null, // Missing for MAINBOARD
+        symbol: null, // Now allowed for MAINBOARD when not available
         leadManagers: ['Beeline Capital Advisors Pvt. Ltd.']
       };
 
       const result = ScrapedIPOSchema.safeParse(mainboardIPO);
-      expect(result.success).toBe(false);
-
-      if (!result.success) {
-        const errorMessage = result.error.issues[0].message;
-        expect(errorMessage).toContain('Symbol and leadManagers are required for MAINBOARD/SME IPOs');
-      }
+      expect(result.success).toBe(true);
     });
 
-    it('should fail when MAINBOARD IPO missing lead managers', () => {
+    it('should pass when MAINBOARD IPO missing lead managers (now allowed)', () => {
       const mainboardIPO = {
         companyName: 'MIDWEST GOLD LIMITED',
         issueSize: 33200000,
@@ -636,19 +631,14 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         lotSize: 14,
         faceValue: 10,
         symbol: 'MIDWESTLTD',
-        leadManagers: null // Missing for MAINBOARD
+        leadManagers: null // Now allowed for MAINBOARD when not available
       };
 
       const result = ScrapedIPOSchema.safeParse(mainboardIPO);
-      expect(result.success).toBe(false);
-
-      if (!result.success) {
-        const errorMessage = result.error.issues[0].message;
-        expect(errorMessage).toContain('Symbol and leadManagers are required for MAINBOARD/SME IPOs');
-      }
+      expect(result.success).toBe(true);
     });
 
-    it('should fail when SME IPO missing symbol', () => {
+    it('should pass when SME IPO missing symbol (now allowed)', () => {
       const smeIPO = {
         companyName: 'KRN HEAT EXCHANGER AND REFRIGERATION LIMITED',
         issueSize: 50000000,
@@ -661,17 +651,12 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         status: 'UPCOMING' as const,
         lotSize: 500,
         faceValue: 10,
-        symbol: null, // Missing for SME
+        symbol: null, // Now allowed for SME when not available
         leadManagers: ['Test Lead Manager']
       };
 
       const result = ScrapedIPOSchema.safeParse(smeIPO);
-      expect(result.success).toBe(false);
-
-      if (!result.success) {
-        const errorMessage = result.error.issues[0].message;
-        expect(errorMessage).toContain('Symbol and leadManagers are required for MAINBOARD/SME IPOs');
-      }
+      expect(result.success).toBe(true);
     });
 
     it('should pass when MAINBOARD IPO has symbol and lead managers', () => {
@@ -802,7 +787,7 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
       expect(result.success).toBe(true);
     });
 
-    it('should fail when MAINBOARD has empty lead managers array', () => {
+    it('should pass when MAINBOARD has empty lead managers array (now allowed)', () => {
       const mainboardIPO = {
         companyName: 'TEST MAINBOARD LIMITED',
         issueSize: 100000000,
@@ -816,16 +801,11 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         lotSize: 25,
         faceValue: 10,
         symbol: 'TESTMB',
-        leadManagers: [] // Empty array should fail for MAINBOARD
+        leadManagers: [] // Now allowed for MAINBOARD when not available
       };
 
       const result = ScrapedIPOSchema.safeParse(mainboardIPO);
-      expect(result.success).toBe(false);
-
-      if (!result.success) {
-        const errorMessage = result.error.issues[0].message;
-        expect(errorMessage).toContain('Symbol and leadManagers are required for MAINBOARD/SME IPOs');
-      }
+      expect(result.success).toBe(true);
     });
   });
 
