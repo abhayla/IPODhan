@@ -2,12 +2,14 @@
   "story_id": "11.5",
   "story_title": "Fix BSE Rights/Debt Detail Page Parser",
   "creation_status": "drafted",
-  "validation_status": "pending",
+  "validation_status": "changes_required",
   "timestamps": {
     "workflow_started": "2025-10-18T15:43:00.000Z",
     "drafting_started": "2025-10-18T15:45:00.000Z",
     "drafting_completed": "2025-10-18T15:48:00.000Z",
-    "next_phase": "po_validation"
+    "validation_started": "2025-10-18T15:50:00.000Z",
+    "validation_completed": "2025-10-18T16:30:00.000Z",
+    "next_phase": "sm_corrections"
   },
   "creation_context": {
     "epic_path": "docs/03-epics/epic-11-sharded.md",
@@ -18,6 +20,18 @@
     "drafted_by": "Bob (Scrum Master)",
     "drafted_via": "sm.md *draft command"
   },
+  "validation": {
+    "validated_by": "Sarah (Product Owner)",
+    "validated_via": "po.md *validate-story-draft command",
+    "status": "CHANGES REQUIRED",
+    "issues_count": 7,
+    "critical_issues": 2,
+    "should_fix_issues": 5,
+    "nice_to_have_issues": 3,
+    "implementation_readiness_score": "7.5/10",
+    "confidence_level": "MEDIUM",
+    "validated_at": "2025-10-18T16:30:00.000Z"
+  },
   "workflow_version": "2.0",
-  "workflow_step": "2.5"
+  "workflow_step": "3"
 }
