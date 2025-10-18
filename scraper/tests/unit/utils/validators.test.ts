@@ -20,11 +20,13 @@ describe('validators', () => {
         openDate: '2025-10-15',
         closeDate: '2025-10-18',
         listingExchange: 'NSE',
-        category: 'MAINBOARD',
+        category: 'MAINBOARD' as const,
         sector: 'Technology',
-        status: 'UPCOMING',
+        status: 'UPCOMING' as const,
         lotSize: 100,
-        faceValue: 10
+        faceValue: 10,
+        symbol: 'TESTCO',
+        leadManagers: ['Test Lead Manager']
       };
 
       const result = ScrapedIPOSchema.safeParse(validIPO);
@@ -151,8 +153,10 @@ describe('validators', () => {
         openDate: '2025-10-15',
         closeDate: '2025-10-18',
         listingExchange: 'NSE',
-        category: 'MAINBOARD',
-        status: 'UPCOMING'
+        category: 'MAINBOARD' as const,
+        status: 'UPCOMING' as const,
+        symbol: 'TESTCO',
+        leadManagers: ['Test Lead Manager']
       };
 
       const result = validateIPOData(validIPO);
@@ -569,7 +573,7 @@ describe('validators', () => {
         open_date: '2025-10-20',
         close_date: '2025-10-23',
         status: 'UPCOMING' as const,
-        category: 'MAINBOARD' as const,
+        category: 'RIGHTS' as const, // Changed to RIGHTS (doesn't require symbol/leadManagers)
         exchange: 'NSE' as const
       };
 
@@ -587,3 +591,286 @@ import {
   validateIPOAlertsIPOData,
   transformIPOAlertsData
 } from '../../../src/utils/validators';
+
+// ==================== BSE DETAIL CONDITIONAL VALIDATION TESTS ====================
+
+describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => {
+  describe('MAINBOARD/SME Category Validation', () => {
+    it('should fail when MAINBOARD IPO missing symbol', () => {
+      const mainboardIPO = {
+        companyName: 'MIDWEST GOLD LIMITED',
+        issueSize: 33200000,
+        priceRangeMin: 1014,
+        priceRangeMax: 1065,
+        openDate: '2025-10-15',
+        closeDate: '2025-10-17',
+        listingExchange: 'BSE',
+        category: 'MAINBOARD' as const,
+        status: 'UPCOMING' as const,
+        lotSize: 14,
+        faceValue: 10,
+        symbol: null, // Missing for MAINBOARD
+        leadManagers: ['Beeline Capital Advisors Pvt. Ltd.']
+      };
+
+      const result = ScrapedIPOSchema.safeParse(mainboardIPO);
+      expect(result.success).toBe(false);
+
+      if (!result.success) {
+        const errorMessage = result.error.issues[0].message;
+        expect(errorMessage).toContain('Symbol and leadManagers are required for MAINBOARD/SME IPOs');
+      }
+    });
+
+    it('should fail when MAINBOARD IPO missing lead managers', () => {
+      const mainboardIPO = {
+        companyName: 'MIDWEST GOLD LIMITED',
+        issueSize: 33200000,
+        priceRangeMin: 1014,
+        priceRangeMax: 1065,
+        openDate: '2025-10-15',
+        closeDate: '2025-10-17',
+        listingExchange: 'BSE',
+        category: 'MAINBOARD' as const,
+        status: 'UPCOMING' as const,
+        lotSize: 14,
+        faceValue: 10,
+        symbol: 'MIDWESTLTD',
+        leadManagers: null // Missing for MAINBOARD
+      };
+
+      const result = ScrapedIPOSchema.safeParse(mainboardIPO);
+      expect(result.success).toBe(false);
+
+      if (!result.success) {
+        const errorMessage = result.error.issues[0].message;
+        expect(errorMessage).toContain('Symbol and leadManagers are required for MAINBOARD/SME IPOs');
+      }
+    });
+
+    it('should fail when SME IPO missing symbol', () => {
+      const smeIPO = {
+        companyName: 'KRN HEAT EXCHANGER AND REFRIGERATION LIMITED',
+        issueSize: 50000000,
+        priceRangeMin: 200,
+        priceRangeMax: 220,
+        openDate: '2024-03-25',
+        closeDate: '2024-03-27',
+        listingExchange: 'BSE',
+        category: 'SME' as const,
+        status: 'UPCOMING' as const,
+        lotSize: 500,
+        faceValue: 10,
+        symbol: null, // Missing for SME
+        leadManagers: ['Test Lead Manager']
+      };
+
+      const result = ScrapedIPOSchema.safeParse(smeIPO);
+      expect(result.success).toBe(false);
+
+      if (!result.success) {
+        const errorMessage = result.error.issues[0].message;
+        expect(errorMessage).toContain('Symbol and leadManagers are required for MAINBOARD/SME IPOs');
+      }
+    });
+
+    it('should pass when MAINBOARD IPO has symbol and lead managers', () => {
+      const mainboardIPO = {
+        companyName: 'MIDWEST GOLD LIMITED',
+        issueSize: 33200000,
+        priceRangeMin: 1014,
+        priceRangeMax: 1065,
+        openDate: '2025-10-15',
+        closeDate: '2025-10-17',
+        listingExchange: 'BSE',
+        category: 'MAINBOARD' as const,
+        status: 'UPCOMING' as const,
+        lotSize: 14,
+        faceValue: 10,
+        symbol: 'MIDWESTLTD',
+        leadManagers: ['Beeline Capital Advisors Pvt. Ltd.', 'Narnolia Financial Advisors Ltd.']
+      };
+
+      const result = ScrapedIPOSchema.safeParse(mainboardIPO);
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe('RIGHTS/NCD Category Validation', () => {
+    it('should pass when RIGHTS IPO missing symbol', () => {
+      const rightsIPO = {
+        companyName: 'SUNSHIELD CHEMICALS LTD',
+        issueSize: 45000000,
+        priceRangeMin: 100,
+        priceRangeMax: 100,
+        openDate: '2024-01-15',
+        closeDate: '2024-01-22',
+        listingExchange: 'BSE',
+        category: 'RIGHTS' as const,
+        status: 'UPCOMING' as const,
+        lotSize: 150,
+        faceValue: 10,
+        symbol: null, // Allowed for RIGHTS
+        leadManagers: null
+      };
+
+      const result = ScrapedIPOSchema.safeParse(rightsIPO);
+      expect(result.success).toBe(true);
+    });
+
+    it('should pass when RIGHTS IPO missing lead managers', () => {
+      const rightsIPO = {
+        companyName: 'WARDWIZARD INNOVATIONS MOBILITY LTD',
+        issueSize: 50000000,
+        priceRangeMin: 75,
+        priceRangeMax: 75,
+        openDate: '2024-02-01',
+        closeDate: '2024-02-08',
+        listingExchange: 'BSE',
+        category: 'RIGHTS' as const,
+        status: 'UPCOMING' as const,
+        lotSize: 200,
+        faceValue: 10,
+        symbol: 'WARDWIZ', // Can have symbol
+        leadManagers: null // Allowed for RIGHTS
+      };
+
+      const result = ScrapedIPOSchema.safeParse(rightsIPO);
+      expect(result.success).toBe(true);
+    });
+
+    it('should pass when NCD missing both symbol and lead managers', () => {
+      const ncdIPO = {
+        companyName: 'SMC Global Securities Limited',
+        issueSize: 50000000,
+        priceRangeMin: 1000,
+        priceRangeMax: 1000,
+        openDate: '2024-01-10',
+        closeDate: '2024-01-17',
+        listingExchange: 'BSE',
+        category: 'NCD' as const,
+        status: 'UPCOMING' as const,
+        lotSize: 10,
+        faceValue: 1000,
+        symbol: null, // Allowed for NCD
+        leadManagers: null // Allowed for NCD
+      };
+
+      const result = ScrapedIPOSchema.safeParse(ncdIPO);
+      expect(result.success).toBe(true);
+    });
+
+    it('should pass when NCD has symbol and lead managers (optional)', () => {
+      const ncdIPO = {
+        companyName: 'Indel Money Limited',
+        issueSize: 75000000,
+        priceRangeMin: 1000,
+        priceRangeMax: 1000,
+        openDate: '2024-01-20',
+        closeDate: '2024-01-27',
+        listingExchange: 'BSE',
+        category: 'NCD' as const,
+        status: 'UPCOMING' as const,
+        lotSize: 10,
+        faceValue: 1000,
+        symbol: 'INDELMONEY',
+        leadManagers: ['XYZ Capital']
+      };
+
+      const result = ScrapedIPOSchema.safeParse(ncdIPO);
+      expect(result.success).toBe(true);
+    });
+
+    it('should pass when RIGHTS has empty lead managers array', () => {
+      const rightsIPO = {
+        companyName: '3I INFOTECH LTD',
+        issueSize: 30000000,
+        priceRangeMin: 50,
+        priceRangeMax: 50,
+        openDate: '2024-02-10',
+        closeDate: '2024-02-17',
+        listingExchange: 'BSE',
+        category: 'RIGHTS' as const,
+        status: 'UPCOMING' as const,
+        lotSize: 100,
+        faceValue: 10,
+        symbol: null,
+        leadManagers: [] // Empty array should fail for MAINBOARD but pass for RIGHTS
+      };
+
+      const result = ScrapedIPOSchema.safeParse(rightsIPO);
+      expect(result.success).toBe(true);
+    });
+
+    it('should fail when MAINBOARD has empty lead managers array', () => {
+      const mainboardIPO = {
+        companyName: 'TEST MAINBOARD LIMITED',
+        issueSize: 100000000,
+        priceRangeMin: 500,
+        priceRangeMax: 550,
+        openDate: '2024-05-01',
+        closeDate: '2024-05-03',
+        listingExchange: 'NSE',
+        category: 'MAINBOARD' as const,
+        status: 'UPCOMING' as const,
+        lotSize: 25,
+        faceValue: 10,
+        symbol: 'TESTMB',
+        leadManagers: [] // Empty array should fail for MAINBOARD
+      };
+
+      const result = ScrapedIPOSchema.safeParse(mainboardIPO);
+      expect(result.success).toBe(false);
+
+      if (!result.success) {
+        const errorMessage = result.error.issues[0].message;
+        expect(errorMessage).toContain('Symbol and leadManagers are required for MAINBOARD/SME IPOs');
+      }
+    });
+  });
+
+  describe('Edge Cases - Conditional Validation', () => {
+    it('should handle MAINBOARD with symbol but empty string leadManagers', () => {
+      const mainboardIPO = {
+        companyName: 'EDGE CASE LIMITED',
+        issueSize: 80000000,
+        priceRangeMin: 300,
+        priceRangeMax: 350,
+        openDate: '2024-06-01',
+        closeDate: '2024-06-03',
+        listingExchange: 'NSE',
+        category: 'MAINBOARD' as const,
+        status: 'UPCOMING' as const,
+        lotSize: 30,
+        faceValue: 10,
+        symbol: 'EDGECASE',
+        leadManagers: [''] // Array with empty string
+      };
+
+      const result = ScrapedIPOSchema.safeParse(mainboardIPO);
+      // Should pass schema validation (array exists, has length)
+      expect(result.success).toBe(true);
+    });
+
+    it('should handle price range where min equals max (valid for RIGHTS/NCD)', () => {
+      const rightsIPO = {
+        companyName: 'PRICE EQUALITY RIGHTS',
+        issueSize: 20000000,
+        priceRangeMin: 100,
+        priceRangeMax: 100, // Equal prices (valid for RIGHTS/NCD)
+        openDate: '2024-03-01',
+        closeDate: '2024-03-08',
+        listingExchange: 'BSE',
+        category: 'RIGHTS' as const,
+        status: 'UPCOMING' as const,
+        lotSize: 50,
+        faceValue: 10,
+        symbol: null,
+        leadManagers: null
+      };
+
+      const result = ScrapedIPOSchema.safeParse(rightsIPO);
+      expect(result.success).toBe(true);
+    });
+  });
+});
