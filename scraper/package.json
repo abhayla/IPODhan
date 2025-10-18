@@ -15,6 +15,9 @@
     "scheduler": "tsx src/scheduler/index.ts",
     "scheduler:dev": "tsx watch src/scheduler/index.ts",
     "scheduler:test": "NODE_ENV=test SCRAPER_INTERVAL_MODE=dev tsx src/scheduler/index.ts",
+    "backfill": "tsx src/scripts/backfill-historical-ipos.ts",
+    "backfill:dry": "tsx src/scripts/backfill-historical-ipos.ts --dry-run",
+    "validate:backfill": "tsx src/scripts/validate-backfill.ts",
     "build": "tsc && tsc-alias",
     "test": "vitest",
     "test:unit": "vitest --config vitest.config.ts",
@@ -27,6 +30,8 @@
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^7.0.2",
     "cheerio": "^1.1.2",
+    "cli-progress": "^3.12.0",
+    "commander": "^9.5.0",
     "dotenv": "^16.4.0",
     "node-cron": "^4.2.1",
     "nodemailer": "^7.0.9",
@@ -37,6 +42,7 @@
     "zod": "^4.1.11"
   },
   "devDependencies": {
+    "@types/cli-progress": "^3.11.6",
     "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^1.3.0",
     "drizzle-orm": "^0.30.0",
