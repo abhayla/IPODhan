@@ -1,0 +1,38 @@
+{
+  "story_id": "11.6",
+  "story_title": "Fix Chittorgarh NCD API Integration",
+  "status": "done",
+  "timestamps": {
+    "started": "2025-10-18T00:00:00.000Z",
+    "implementation_complete": "2025-10-18T23:55:00.000Z",
+    "qa_passed": "2025-10-18T23:55:00.000Z",
+    "completed": "2025-10-18T23:55:00.000Z"
+  },
+  "completion_metrics": {
+    "task_completion_percent": 100,
+    "ac_completion_percent": 100,
+    "test_coverage_percent": 100,
+    "qa_iterations": 1
+  },
+  "approvals": {
+    "sm_approved": true,
+    "sm_approved_at": "2025-10-18T23:55:00.000Z",
+    "qa_passed": true,
+    "qa_passed_at": "2025-10-18T23:55:00.000Z"
+  },
+  "test_metrics": {
+    "total_tests": 10,
+    "tests_passing": 10,
+    "unit_tests": 10,
+    "integration_tests": 0,
+    "pass_rate_percent": 100
+  },
+  "success_metrics": {
+    "api_error_rate_before": 100,
+    "api_error_rate_after": 0,
+    "improvement_percent": 100,
+    "debt_ipos_fixed": 3
+  },
+  "workflow_version": "4.0",
+  "workflow_step": "9.3"
+}
