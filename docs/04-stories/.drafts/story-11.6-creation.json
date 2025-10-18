@@ -1,0 +1,22 @@
+{
+  "story_id": "11.6",
+  "story_title": "Fix Chittorgarh NCD API Integration",
+  "creation_status": "drafted",
+  "timestamps": {
+    "workflow_started": "2025-10-18T17:45:00.000Z",
+    "drafting_started": "2025-10-18T17:47:00.000Z",
+    "drafting_completed": "2025-10-18T17:52:00.000Z",
+    "next_phase": "validation"
+  },
+  "creation_context": {
+    "epic_path": "docs/03-epics/epic-11-sharded.md",
+    "architecture_path": "docs/16-database/SCHEMA_MANAGEMENT.md",
+    "destination_path": "docs/04-stories/"
+  },
+  "agents": {
+    "drafted_by": "Bob (Scrum Master)",
+    "drafted_via": "sm.md *draft command"
+  },
+  "workflow_version": "2.0",
+  "workflow_step": "2"
+}
