@@ -865,8 +865,9 @@ npm run backfill:historical
 ### Story 11.5: Fix BSE Rights/Debt Detail Page Parser
 **Priority:** P0 - CRITICAL
 **Points:** 5
-**Status:** 📋 PLANNING
+**Status:** ✅ READY (Finalized - v1.3)
 **Source:** BSE Scraper Comprehensive Test (2025-10-18)
+**File:** `docs/04-stories/11.5.fix-bse-rights-debt-parser.md`
 
 **Description:**
 Fix BSE detail page parser to handle Rights Issues (RI) and Debt Issues (DPI) that have different HTML structure than regular IPO/OTB pages, currently causing 48% validation failure rate.
@@ -1121,14 +1122,33 @@ leadManagers: z.array(z.string()).optional(),  // ✅ For RIGHTS/NCD
 **Epic Owner**: Scrum Master (Bob)
 **Product Owner**: Bob
 **Created**: 2025-10-17
-**Last Updated**: 2025-10-18 (Epic Reopened - Critical BSE Issues Found)
+**Last Updated**: 2025-10-18 (Story 11.5 Finalized)
 **Status**: 🔄 REOPENED
-**Story Count**: 8 (5 Complete, 3 New - Critical BSE Fixes)
+**Story Count**: 8 (5 Complete, 1 Ready, 2 Planning)
 **Completion**: 62.5% (5/8 stories complete)
 
 ---
 
 ## Changelog
+
+### 2025-10-18 17:35 UTC - Story 11.5 Finalized ✅
+- **Story**: 11.5 - Fix BSE Rights/Debt Detail Page Parser
+- **Status**: PLANNING → READY (Finalized - v1.3) ✅
+- **Workflow**: Automated Story Creation v2.0
+- **Steps Completed**:
+  - ✅ Step 1.5: Epic updated and committed
+  - ✅ Step 2: Story drafted by SM (Bob)
+  - ✅ Step 2.5: Draft committed to main
+  - ✅ Step 3: PO validation (Sarah) - 7 issues found
+  - ✅ Step 3.5: Validation committed
+  - ✅ Step 4: SM corrections applied - All 7 issues fixed
+  - ✅ Step 4.5: Corrections committed
+  - ✅ Step 5: Final documentation updated
+- **Readiness Score**: 7.5/10 → 9.8/10 (Excellent)
+- **Implementation**: Ready for Dev Agent
+- **Priority**: P0 - CRITICAL (48% BSE validation failure)
+- **Estimated Effort**: 4-6 hours
+- **Story File**: `docs/04-stories/11.5.fix-bse-rights-debt-parser.md`
 
 ### 2025-10-18 - Epic 11 REOPENED 🔄 - Critical BSE Issues Discovered
 - **Epic Status**: COMPLETE → REOPENED 🔄
@@ -1138,13 +1158,15 @@ leadManagers: z.array(z.string()).optional(),  // ✅ For RIGHTS/NCD
 - **Critical Finding**: 48% validation failure rate (11/23 BSE IPOs failed)
 
 **New Stories Added**:
-1. ✏️ **Story 11.5**: Fix BSE Rights/Debt Detail Page Parser
+1. ✅ **Story 11.5**: Fix BSE Rights/Debt Detail Page Parser
    - **Priority**: P0 - CRITICAL
-   - **Status**: Planning
+   - **Status**: READY (Finalized - v1.3) ✅
    - **Issue**: 48% validation failure (11/23 IPOs)
    - **Root Cause**: Parser doesn't handle DisplayIPO.aspx (RI/DPI pages)
    - **Impact**: 11 BSE IPOs (8 Rights, 3 Debt) cannot be persisted
    - **Estimated Effort**: 4-6 hours
+   - **Story File**: `docs/04-stories/11.5.fix-bse-rights-debt-parser.md`
+   - **Readiness Score**: 9.8/10
 
 2. ✏️ **Story 11.6**: Fix Chittorgarh NCD API Integration
    - **Priority**: P1 - HIGH
