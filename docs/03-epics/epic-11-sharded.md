@@ -603,6 +603,253 @@ for (const tabId of tabs) {
 
 ---
 
+### Story 11.4: Historical IPO Data Backfill from NSE Past Endpoints
+**Priority:** P3 - LOW
+**Points:** 5
+**Status:** 📋 NEXT TO BE DRAFTED
+**Estimated Effort:** 4-6 hours total
+**Source:** NSE API endpoint analysis (2025-10-18)
+
+**Description:**
+Backfill historical IPO data from NSE past endpoints to enrich existing IPO records with listing performance metrics and improve data completeness for CLOSED/LISTED IPOs.
+
+**Business Value:**
+- **Historical Analysis**: Users can analyze past IPO performance trends
+- **Data Completeness**: Fill gaps in listing performance data for 100+ historical IPOs
+- **Research Capability**: Enable historical research and comparison features
+
+**Current Gap:**
+- `listing_performance` table has limited historical data
+- Past IPO records missing listing price, listing gains, first-day performance
+- No systematic backfill process for historical IPO data
+
+**Goal:** Backfill listing performance data for 100+ historical IPOs from NSE past endpoints
+
+**Data Sources:**
+1. **Primary**: `/api/public-past-issues` - Public past issues with listing performance
+2. **Secondary**: `/api/ipo-past-security-type` - Past IPOs filtered by security type
+3. **Validation**: Cross-reference with existing `ipos` table data
+
+**Technical Approach:**
+
+**NSE Past Endpoints:**
+```
+GET /api/public-past-issues
+- Returns: Past/closed IPO data with listing performance
+- Fields: listing_price, listing_date, listing_gains, performance_metrics
+
+GET /api/ipo-past-security-type
+- Returns: Past IPOs filtered by security type (equity, debt, etc.)
+- Fields: security_type, issue_details, status, performance
+```
+
+**Data Extraction Process:**
+```typescript
+// Fetch past IPOs from NSE
+async function fetchPastIPOs() {
+  // Step 1: Get public past issues
+  const pastIssues = await makeRequest('/api/public-past-issues');
+
+  // Step 2: Get past issues by security type for additional coverage
+  const equityPast = await makeRequest('/api/ipo-past-security-type', { type: 'equity' });
+
+  // Step 3: Merge and deduplicate
+  const allPastIPOs = mergePastIPOData(pastIssues, equityPast);
+
+  return allPastIPOs;
+}
+```
+
+**Listing Performance Data Structure:**
+```typescript
+interface ListingPerformance {
+  ipo_id: string;              // FK to ipos table
+  listing_date: Date;          // Date of listing
+  listing_price: number;       // Opening price on listing day
+  issue_price: number;         // IPO issue price (for gain calculation)
+  listing_gain_percent: number;// (listing_price - issue_price) / issue_price * 100
+  first_day_close: number;     // Closing price on listing day
+  first_day_high: number;      // Highest price on listing day
+  first_day_low: number;       // Lowest price on listing day
+  first_day_volume: number;    // Trading volume on listing day
+  current_price: number | null;// Current market price (optional)
+  current_gain_percent: number | null; // Current gain from issue price
+}
+```
+
+**Acceptance Criteria:**
+
+1. **AC1: NSE Past Endpoints Integration**
+   - [ ] Fetch data from `/api/public-past-issues` successfully
+   - [ ] Fetch data from `/api/ipo-past-security-type` successfully
+   - [ ] Handle authentication using existing NSE cookie management
+   - [ ] Parse response JSON correctly
+   - [ ] Log API call success/failure
+
+2. **AC2: Data Extraction & Transformation**
+   - [ ] Extract listing date from NSE response
+   - [ ] Extract listing price from NSE response
+   - [ ] Calculate listing gain percentage
+   - [ ] Extract first-day performance metrics (high, low, close, volume)
+   - [ ] Map NSE IPO identifiers to existing `ipos` table records
+   - [ ] Handle missing data gracefully (null for optional fields)
+
+3. **AC3: Data Matching & Validation**
+   - [ ] Match NSE past IPOs to existing `ipos` table by company name
+   - [ ] Validate IPO exists in database before creating listing performance record
+   - [ ] Check for duplicate listing performance records (avoid re-inserting)
+   - [ ] Validate listing date is after IPO close date
+   - [ ] Validate listing price > 0
+   - [ ] Log matching success rate
+
+4. **AC4: Listing Performance Persistence**
+   - [ ] Insert new records into `listing_performance` table
+   - [ ] Update existing records if better data available
+   - [ ] Maintain foreign key constraint (ipo_id → ipos.id)
+   - [ ] Log successful insertions count
+   - [ ] Log failed insertions with error details
+   - [ ] Handle database constraint violations gracefully
+
+5. **AC5: Backfill Coverage Target**
+   - [ ] Backfill listing performance for minimum 80% of CLOSED/LISTED IPOs
+   - [ ] Track backfill coverage percentage
+   - [ ] Generate backfill report (IPOs processed, success count, failure count)
+   - [ ] Log IPOs with missing listing performance after backfill
+
+6. **AC6: Data Quality Validation**
+   - [ ] Verify listing gains calculated correctly
+   - [ ] Verify listing dates are valid (not in future, after IPO close date)
+   - [ ] Verify no data corruption in existing records
+   - [ ] Cross-validate sample of backfilled data with source
+   - [ ] Generate data quality report
+
+7. **AC7: Operational Requirements**
+   - [ ] Run as one-time backfill script (not recurring scheduler)
+   - [ ] Provide dry-run mode (preview without persisting)
+   - [ ] Log progress (every 10 IPOs processed)
+   - [ ] Handle interruption gracefully (resume capability)
+   - [ ] Complete backfill within 30 minutes for 100+ IPOs
+
+**Prerequisites:**
+- ✅ Story 11.3 (NSE Subscription Fix) completed - enhanced cookie management reusable
+- ✅ `listing_performance` table exists in database schema
+- ✅ NSE API client infrastructure exists (nse-api-client.ts)
+
+**Technical Implementation:**
+
+**File Locations:**
+- New script: `scraper/src/scripts/backfill-historical-ipos.ts`
+- Update: `scraper/src/scrapers/nse-api-client.ts` (add past endpoint methods)
+- Repository: `web/lib/repositories/listing-performance-repository.ts` (if not exists)
+- Testing: `scraper/tests/integration/historical-backfill.integration.test.ts`
+
+**Backfill Script Pattern:**
+```typescript
+// scraper/src/scripts/backfill-historical-ipos.ts
+async function backfillHistoricalIPOs(dryRun: boolean = false) {
+  logger.info('Starting historical IPO backfill...');
+
+  // Fetch past IPOs from NSE
+  const pastIPOs = await fetchPastIPOs();
+  logger.info({ count: pastIPOs.length }, 'Fetched past IPOs from NSE');
+
+  let processed = 0;
+  let inserted = 0;
+  let failed = 0;
+
+  for (const pastIPO of pastIPOs) {
+    try {
+      // Match to existing IPO
+      const existingIPO = await matchIPOByName(pastIPO.companyName);
+
+      if (!existingIPO) {
+        logger.warn({ companyName: pastIPO.companyName }, 'IPO not found in database');
+        failed++;
+        continue;
+      }
+
+      // Extract listing performance
+      const listingPerf = transformListingPerformance(pastIPO, existingIPO.id);
+
+      // Persist (if not dry-run)
+      if (!dryRun) {
+        await upsertListingPerformance(listingPerf);
+        inserted++;
+      }
+
+      processed++;
+
+      if (processed % 10 === 0) {
+        logger.info({ processed, inserted, failed }, 'Backfill progress');
+      }
+
+    } catch (error) {
+      logger.error({ error, ipo: pastIPO.companyName }, 'Failed to backfill IPO');
+      failed++;
+    }
+  }
+
+  logger.info({
+    total: pastIPOs.length,
+    processed,
+    inserted,
+    failed,
+    coverage: (inserted / pastIPOs.length * 100).toFixed(2) + '%'
+  }, 'Backfill complete');
+}
+
+// Run backfill
+if (require.main === module) {
+  const dryRun = process.argv.includes('--dry-run');
+  backfillHistoricalIPOs(dryRun)
+    .then(() => process.exit(0))
+    .catch((error) => {
+      logger.error({ error }, 'Backfill failed');
+      process.exit(1);
+    });
+}
+```
+
+**Usage:**
+```bash
+# Dry-run (preview without persisting)
+npm run backfill:historical -- --dry-run
+
+# Actual backfill
+npm run backfill:historical
+
+# Expected output:
+# Fetched past IPOs from NSE: 152
+# Backfill progress: { processed: 10, inserted: 9, failed: 1 }
+# ...
+# Backfill complete: { total: 152, processed: 152, inserted: 128, failed: 24, coverage: 84.21% }
+```
+
+**Success Metrics:**
+- Historical IPO coverage: 0% → 80%+ (100+ IPOs backfilled)
+- Listing performance data availability: Limited → Comprehensive
+- Data quality: 100% valid (no corrupt data)
+- Execution time: < 30 minutes
+
+**Risks & Mitigation:**
+- **Risk**: NSE past endpoints require different authentication
+  - **Mitigation**: Reuse enhanced cookie management from Story 11.3
+- **Risk**: Company name matching fails (spelling variations)
+  - **Mitigation**: Implement fuzzy matching, manual review of unmatched IPOs
+- **Risk**: NSE data format different for past IPOs
+  - **Mitigation**: Add comprehensive validation, log parse errors
+
+**Dependencies:**
+- **Story 11.3**: Reuse enhanced NSE authentication (cookie management, headers)
+- **Story 11.2**: Database schema must support listing_performance table
+
+**Future Enhancements** (not in scope):
+- Periodic refresh of historical data (quarterly)
+- Backfill from BSE past endpoints
+- Backfill from Moneycontrol historical data
+
+---
+
 ## Dependencies
 
 **This Epic Requires:**
@@ -716,14 +963,27 @@ for (const tabId of tabs) {
 **Epic Owner**: Scrum Master (Bob)
 **Product Owner**: Bob
 **Created**: 2025-10-17
-**Last Updated**: 2025-10-18 (Story 11.3 Added)
+**Last Updated**: 2025-10-18 (Story 11.4 Added)
 **Status**: 🟢 IN PROGRESS
-**Story Count**: 4 (1 Complete, 1 Ready, 2 Planned)
-**Completion**: 25% (1/4 complete, 1/4 ready)
+**Story Count**: 5 (1 Complete, 2 Ready, 2 Planned)
+**Completion**: 20% (1/5 complete, 2/5 ready)
 
 ---
 
 ## Changelog
+
+### 2025-10-18 - Story 11.4 Added to Sharded Epic
+- **Story 11.4** added for historical IPO data backfill from NSE past endpoints
+- **Priority**: P3 - LOW (nice-to-have, not critical)
+- **Business Value**: Historical analysis, data completeness, research capability
+- **Data Sources**: `/api/public-past-issues`, `/api/ipo-past-security-type`
+- **Goal**: Backfill listing performance data for 100+ historical IPOs (80%+ coverage)
+- **Acceptance Criteria**: 7 comprehensive ACs covering endpoints, extraction, matching, persistence, coverage, quality, operations
+- **Estimated Effort**: 4-6 hours
+- **Technical Approach**: One-time backfill script with dry-run mode, reuses Story 11.3 auth
+- **Success Metrics**: 0% → 80%+ historical coverage, execution < 30 minutes
+- Epic now at 20% completion (1 complete, 2 ready, 2 planned out of 5 stories)
+- Story 11.4 marked as "NEXT TO BE DRAFTED"
 
 ### 2025-10-18 - Story 11.3 Added to Sharded Epic
 - **Story 11.3** added based on NSE Scraping Comprehensive Analysis (2025-10-18)
