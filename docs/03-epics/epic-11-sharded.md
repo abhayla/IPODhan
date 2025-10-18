@@ -954,8 +954,10 @@ Fix Chittorgarh NCD (Debt Issues) API integration that's returning `"Invalid API
 ### Story 11.7: Update Validation Schema for Rights/Debt IPOs
 **Priority:** P1 - HIGH
 **Points:** 2
-**Status:** 📋 PLANNING
+**Status:** ✅ READY (Fast-tracked - v1.0)
 **Source:** BSE Scraper Comprehensive Test (2025-10-18)
+**File:** `docs/04-stories/11.7.update-validation-schema-rights-debt.md`
+**Note:** Complements Story 11.5 Task 5
 
 **Description:**
 Update Zod validation schema to make `symbol` and `leadManagers` fields optional for RIGHTS and NCD categories, preventing valid Rights/Debt IPOs from being rejected.
