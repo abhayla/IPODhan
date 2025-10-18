@@ -1,0 +1,53 @@
+{
+  "story_id": "11.4",
+  "story_title": "Historical IPO Data Backfill from NSE Past Endpoints",
+  "creation_status": "validated",
+  "validation_status": "approved_with_recommendations",
+  "timestamps": {
+    "workflow_started": "2025-10-18T00:00:00.000Z",
+    "drafting_started": "2025-10-18T00:05:00.000Z",
+    "drafting_completed": "2025-10-18T00:30:00.000Z",
+    "validation_started": "2025-10-18T00:31:00.000Z",
+    "validation_completed": "2025-10-18T01:15:00.000Z",
+    "next_phase": "finalization"
+  },
+  "creation_context": {
+    "epic_path": "docs/03-epics/epic-11-sharded.md",
+    "architecture_path": "docs/02-architecture/",
+    "destination_path": "docs/04-stories/"
+  },
+  "agents": {
+    "drafted_by": "Bob (Scrum Master)",
+    "drafted_via": "sm.md workflow via automated Story 11.4 creation"
+  },
+  "validation": {
+    "validated_by": "Sarah (Product Owner)",
+    "validated_via": "po.md workflow - 5-criteria comprehensive evaluation",
+    "status": "APPROVED_WITH_RECOMMENDATIONS",
+    "implementation_readiness_score": 8.8,
+    "confidence_level": "HIGH",
+    "quality_grade": "A- (91%)",
+    "issues_count": {
+      "critical": 0,
+      "should_fix": 5,
+      "nice_to_have": 4
+    },
+    "critical_issues": [],
+    "should_fix_issues": [
+      "Matching Accuracy Validation Missing",
+      "Database Schema data_source Enum Not Validated",
+      "Cache Warming De-Prioritized",
+      "Post-Backfill UI Verification Not Explicit",
+      "NPM Package Installation Not Explicit"
+    ],
+    "nice_to_have_improvements": [
+      "SEO Metrics",
+      "Data Reconciliation Script",
+      "Historical Data Refresh Strategy",
+      "Matching Algorithm Unit Tests for Edge Cases"
+    ],
+    "validated_at": "2025-10-18T01:15:00.000Z"
+  },
+  "workflow_version": "2.0",
+  "workflow_step": "3"
+}
