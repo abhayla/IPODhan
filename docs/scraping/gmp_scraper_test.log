@@ -1,0 +1,81 @@
+
+> scraper@1.0.0 start:gmp
+> tsx --tsconfig tsx.tsconfig.json src/index.ts --source=gmp
+
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+[03:44:17 UTC] [32mINFO[39m: [36mIPO Scraper CLI started[39m
+    source: "gmp"
+[03:44:17 UTC] [32mINFO[39m: [36mRunning Investorgain GMP scraper[39m
+[03:44:17 UTC] [32mINFO[39m: [36mInvestorgain GMP scraper orchestrator started[39m
+[03:44:17 UTC] [32mINFO[39m: [36mStarting Investorgain GMP scraper (API version)[39m
+    url: "https://webnodejs.investorgain.com/cloud/report/data-read"
+[03:44:17 UTC] [32mINFO[39m: [36mFetching Investorgain API with parameters[39m
+    url: "https://webnodejs.investorgain.com/cloud/report/data-read/331/1/100/2025/2025-26/0/ipo?search=&v=18-09"
+    page: 1
+    perPage: 100
+    category: "ipo"
+    currentYear: 2025
+    yearRange: "2025-26"
+    reportId: "331"
+    version: "18-09"
+[03:44:17 UTC] [32mINFO[39m: [36mAPI response structure[39m
+    page: 1
+    hasData: true
+    hasReportTableData: false
+    isArray: false
+    error: "Invalid API Call2025-100-01"
+[03:44:17 UTC] [31mERROR[39m: [36mInvestorgain API error: Invalid API Call2025-100-01[39m
+    error: "Invalid API Call2025-100-01"
+[03:44:17 UTC] [32mINFO[39m: [36mInvestorgain GMP scraper completed[39m
+    gmpsScraped: 0
+    errors: 1
+    pagesFetched: 1
+[03:44:17 UTC] [32mINFO[39m: [36mScraped GMP data received from Investorgain[39m
+    totalGMPs: 0
+[03:44:17 UTC] [31mERROR[39m: [36mInvalid scraper type[39m
+    scraperType: "INVESTORGAIN_GMP"
+[DB] scraper_log.create - 376ms { source: 'INVESTORGAIN_GMP', status: 'SUCCESS' }
+[03:44:18 UTC] [32mINFO[39m: [36mScraper INVESTORGAIN_GMP success recorded[39m
+    metric: "scraper_success"
+    source: "INVESTORGAIN_GMP"
+[03:44:18 UTC] [32mINFO[39m: [36mInvestorgain GMP scraper orchestrator completed[39m
+    success: false
+    gmpsProcessed: 0
+    gmpsCreated: 0
+    gmpsSkipped: 0
+    gmpsFailed: 0
+    errors: [
+      "Investorgain API error: Invalid API Call2025-100-01"
+    ]
+    duration: 414
+[03:44:18 UTC] [32mINFO[39m: [36mInvestorgain GMP scraper completed[39m
+    success: false
+    gmpsProcessed: 0
+    gmpsCreated: 0
+    gmpsSkipped: 0
+    gmpsFailed: 0
+[03:44:18 UTC] [32mINFO[39m: [36mScraper execution completed[39m
+    source: "gmp"
+    success: false
+    iposProcessed: 0
+    iposInserted: 0
+    iposUpdated: 0
+    iposMerged: 0
+    smeCount: 0
+    mainboardCount: 0
+    iposFailed: 0
+    subscriptionsCreated: 0
+    errorCount: 1
+[03:44:18 UTC] [31mERROR[39m: [36mScraper completed with errors[39m
+[03:44:18 UTC] [31mERROR[39m: [36mError details[39m
+    errors: [
+      "Investorgain API error: Invalid API Call2025-100-01"
+    ]
+npm error Lifecycle script `start:gmp` failed with error:
+npm error code 1
+npm error path D:\Abhay\VibeCoding\IPODhan\scraper
+npm error workspace scraper@1.0.0
+npm error location D:\Abhay\VibeCoding\IPODhan\scraper
+npm error command failed
+npm error command C:\WINDOWS\system32\cmd.exe /d /s /c tsx --tsconfig tsx.tsconfig.json src/index.ts --source=gmp

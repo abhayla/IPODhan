@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '../../.env') });
 
-import { db } from '@ipodhan/shared';
+import { db, getRedisClient } from '@ipodhan/shared';
 import { IPORepository } from '@ipodhan/shared';
 import { upsertIPO } from '../services/data-persister.js';
 import type { ScrapedIPO } from '../utils/validators.js';
@@ -54,7 +54,8 @@ async function scrapeNSEDirect() {
     // Step 3: Transform and save
     console.log('3. Transforming and saving to database...\n');
 
-    const ipoRepository = new IPORepository(db);
+    const redis = getRedisClient();
+    const ipoRepository = new IPORepository(db, redis);
     let successCount = 0;
     let failCount = 0;
 

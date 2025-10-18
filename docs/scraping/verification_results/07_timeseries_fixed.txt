@@ -1,0 +1,144 @@
+=== Subscription Records Overview ===
+ total_subscription_records | unique_ipos_with_subscriptions |     earliest_record     |      latest_record      
+----------------------------+--------------------------------+-------------------------+-------------------------
+                          2 |                              2 | 2025-10-17 14:09:25.503 | 2025-10-17 14:09:25.503
+(1 row)
+
+
+=== Duplicate Subscription Timestamps ===
+ ipo_id | timestamp | duplicate_count | subscription_ids 
+--------+-----------+-----------------+------------------
+(0 rows)
+
+
+=== Future Subscription Timestamps ===
+ERROR:  column s.subscription_total does not exist
+LINE 6:     s.subscription_total
+            ^
+HINT:  Perhaps you meant to reference the column "i.subscription_total".
+
+=== Subscription Records by IPO ===
+                  id                  |                   slug                   |               company_name                | status | subscription_count |      first_record       |       last_record       
+--------------------------------------+------------------------------------------+-------------------------------------------+--------+--------------------+-------------------------+-------------------------
+ 95d6ba8a-c8b2-4712-b221-f87ae81e1cee | midwest-limited                          | Midwest Limited                           | OPEN   |                  1 | 2025-10-17 14:09:25.503 | 2025-10-17 14:09:25.503
+ 6e06baba-4339-4398-8fb6-0d102c6ec515 | smc-global-securities-limited            | SMC Global Securities Limited             | OPEN   |                  1 | 2025-10-17 14:09:25.503 | 2025-10-17 14:09:25.503
+ 27ad0a74-15f4-4159-906d-5f01af9f142a | kvs-castings-ltd-ipo                     | KVS Castings Ltd. IPO                     | LISTED |                  0 |                         | 
+ f8aa85a9-b794-43c9-b411-d44ccbd20b92 | healthy-life-agritec-ltd                 | HEALTHY LIFE AGRITEC LTD                  | OPEN   |                  0 |                         | 
+ bdca945b-1378-4026-9037-0480386189e5 | royal-financial-services                 | Royal Financial Services Ltd              | LISTED |                  0 |                         | 
+ d015533e-8897-4cc1-adb0-53f088c5cf6d | shreenath-paper-products-ltd-ipo         | Shreenath Paper Products Ltd. IPO         | LISTED |                  0 |                         | 
+ f3eb5eab-7a9b-4b50-bed3-49be747303fa | food-processing-group                    | Food Processing Group Ltd                 | LISTED |                  0 |                         | 
+ 40d64dfd-3fe3-498c-8e89-16334bee193b | tech-technology-partners                 | Tech Technology Partners Ltd              | CLOSED |                  0 |                         | 
+ 7191b272-cc98-4ad5-83fd-d861ed901111 | national-solutions                       | National Solutions Ltd                    | CLOSED |                  0 |                         | 
+ 70e305bf-a4d8-448f-bd92-95787bc7868a | taurian-mps-ltd-ipo                      | Taurian MPS Ltd. IPO                      | LISTED |                  0 |                         | 
+ 30ba8272-21c4-4cb0-b6d4-550a0250d98f | earkart-ltd-ipo                          | Earkart Ltd. IPO                          | LISTED |                  0 |                         | 
+ 281d0c91-a647-4754-a942-2cca9eb9a060 | spunweb-nonwoven-ltd-ipo                 | Spunweb Nonwoven Ltd. IPO                 | LISTED |                  0 |                         | 
+ 6250bbfc-3ab5-4a60-9c0f-672edda601b1 | progressive-pharmaceuticals              | Progressive Pharmaceuticals Ltd           | LISTED |                  0 |                         | 
+ 742df23f-3545-4005-9bb5-c5d8dff6b324 | standard-glass-lining-technology-ltd-ipo | Standard Glass Lining Technology Ltd. IPO | LISTED |                  0 |                         | 
+ 9e12b774-8536-4460-afb6-e946e0ccafaa | herbal-products-services                 | Herbal Products Services Ltd              | CLOSED |                  0 |                         | 
+ 214fa200-dd62-451e-89f5-8a1c7fcae542 | flysbs-aviation-ltd-ipo                  | Flysbs Aviation Ltd. IPO                  | LISTED |                  0 |                         | 
+ 13ac3981-7cc3-47f9-a5f2-b45e4a88e600 | pro-fx-tech-ltd-ipo                      | PRO FX Tech Ltd. IPO                      | LISTED |                  0 |                         | 
+ a1454afa-ccec-4860-b285-e250a41151ac | infonative-solutions-ltd-ipo             | Infonative Solutions Ltd. IPO             | LISTED |                  0 |                         | 
+ bfc76007-3c5e-4325-b002-0680a43e8a33 | travel-food-services-ltd-ipo             | Travel Food Services Ltd. IPO             | LISTED |                  0 |                         | 
+ 1b7a2eef-67d8-4dce-aaf3-a229315d488e | chiraharit-ltd-ipo                       | Chiraharit Ltd. IPO                       | LISTED |                  0 |                         | 
+(20 rows)
+
+
+=== OPEN IPOs Without Subscription Records ===
+                  id                  |                   slug                    |               company_name                | status | category  | open_date  | close_date | subscription_count 
+--------------------------------------+-------------------------------------------+-------------------------------------------+--------+-----------+------------+------------+--------------------
+ 8302586b-cee2-41f7-95ed-ee4f20953d63 | new-infrastructure-corporation            | New Infrastructure Corporation Ltd        | OPEN   | MAINBOARD | 2025-10-17 | 2025-10-19 |                  0
+ 95d20da6-d514-4a0f-8bd1-94c1126ecf01 | urban-solutions                           | Urban Solutions Ltd                       | OPEN   | MAINBOARD | 2025-10-17 | 2025-10-18 |                  0
+ 67ec882f-57d0-4f76-b250-2571709f186f | eco-systems                               | Eco Systems Ltd                           | OPEN   | MAINBOARD | 2025-10-17 | 2025-10-19 |                  0
+ 65bb07e7-7b14-4ecc-a475-5510bcbad281 | green-automobile-services                 | Green Automobile Services Ltd             | OPEN   | MAINBOARD | 2025-10-17 | 2025-10-19 |                  0
+ 77e479f1-8e71-463c-88a7-f50064be0b11 | advanced-technologies                     | Advanced Technologies Ltd                 | OPEN   | MAINBOARD | 2025-10-17 | 2025-10-19 |                  0
+ 218e462e-7c12-41b5-80ab-779993a6159f | advanced-automobile-associates            | Advanced Automobile Associates Ltd        | OPEN   | MAINBOARD | 2025-10-17 | 2025-10-20 |                  0
+ 131d937c-fb31-4671-bc5a-299e80b628f7 | chemmanur-credits-and-investments-limited | Chemmanur Credits and Investments Limited | OPEN   | NCD       | 2025-10-17 | 2025-11-03 |                  0
+ c4a918b7-f4c4-4c22-a935-16c1342b24ad | innovative-solutions                      | Innovative Solutions Ltd                  | OPEN   | SME       | 2025-10-17 | 2025-10-18 |                  0
+ 59129827-ed5b-4ca3-9cce-247299983aa2 | packaging-corporation                     | Packaging Corporation Ltd                 | OPEN   | MAINBOARD | 2025-10-17 | 2025-10-19 |                  0
+ c236c02c-6a6d-40fc-a815-e6e297fdbc04 | apex-automobile-systems                   | Apex Automobile Systems Ltd               | OPEN   | SME       | 2025-10-17 | 2025-10-19 |                  0
+ 36028c56-ba6b-426e-a000-a6d96fb2f0a3 | tech-group                                | Tech Group Ltd                            | OPEN   | MAINBOARD | 2025-10-16 | 2025-10-19 |                  0
+ 17dbd639-c715-4c1d-a6cd-14094b8a4ccc | green-technologies                        | Green Technologies Ltd                    | OPEN   | SME       | 2025-10-16 | 2025-10-20 |                  0
+ ec262c46-0a2e-49c6-851a-bdced0b4883f | progressive-systems                       | Progressive Systems Ltd                   | OPEN   | SME       | 2025-10-16 | 2025-10-20 |                  0
+ e14c015d-5d02-46f6-a980-ca09e8ccea19 | pharmaceuticals-systems                   | Pharmaceuticals Systems Ltd               | OPEN   | MAINBOARD | 2025-10-16 | 2025-10-20 |                  0
+ 31d84971-0eed-4f73-89b7-90ecdfc60417 | supreme-manufacturing                     | Supreme Manufacturing Ltd                 | OPEN   | SME       | 2025-10-16 | 2025-10-20 |                  0
+ 1c03692e-87e9-427b-82f3-9e3eb5a8306e | integrated-food-processing-holdings       | Integrated Food Processing Holdings Ltd   | OPEN   | SME       | 2025-10-16 | 2025-10-19 |                  0
+ 5336410c-cd12-495c-8b52-899021201334 | eco-renewable-energy                      | Eco Renewable Energy Ltd                  | OPEN   | MAINBOARD | 2025-10-16 | 2025-10-19 |                  0
+ fbbd956c-259e-40a7-b29d-b1753591b410 | royal-technology-enterprises              | Royal Technology Enterprises Ltd          | OPEN   | MAINBOARD | 2025-10-15 | 2025-10-20 |                  0
+ bfb564ff-4da3-4ad3-8024-a5f368cccd7a | new-herbal-products-industries            | New Herbal Products Industries Ltd        | OPEN   | MAINBOARD | 2025-10-15 | 2025-10-20 |                  0
+ d9b712da-7497-415c-a062-a1fad6d5e8fe | hari-govind-international-ltd             | HARI GOVIND INTERNATIONAL LTD             | OPEN   | MAINBOARD | 2025-10-15 | 2025-10-30 |                  0
+ a6a882f8-4cee-46f9-81e6-a91971940637 | green-holdings                            | Green Holdings Ltd                        | OPEN   | MAINBOARD | 2025-10-15 | 2025-10-18 |                  0
+ fb6240af-081b-44ce-bf88-9284c13ac443 | ashnisha-industries-ltd                   | ASHNISHA INDUSTRIES LTD                   | OPEN   | MAINBOARD | 2025-10-14 | 2025-11-03 |                  0
+ 1780eeef-acf6-4c0f-99d7-9ccf80747740 | indel-money-limited                       | Indel Money Limited                       | OPEN   | NCD       | 2025-10-13 | 2025-10-28 |                  0
+ 4d19c4bf-c243-4527-9267-7332196edadd | anka-india-limited                        | ANKA INDIA LIMITED                        | OPEN   | MAINBOARD | 2025-10-13 | 2025-10-28 |                  0
+ fa65fcd6-4b75-4086-a7d2-8993f7db713e | lords-mark-india-ltd                      | LORDS MARK INDIA LTD                      | OPEN   | MAINBOARD | 2025-10-12 | 2025-10-27 |                  0
+ 9f133613-bbd7-4760-a60c-3921c4a931b6 | lake-shore-realty-ltd                     | LAKE SHORE REALTY LTD                     | OPEN   | MAINBOARD | 2025-10-12 | 2025-10-27 |                  0
+ d3468e64-204e-4f29-95df-fb2785f39683 | deccan-bearings-ltd                       | DECCAN BEARINGS LTD                       | OPEN   | MAINBOARD | 2025-10-09 | 2025-10-26 |                  0
+ 378fbac8-4bd4-4892-b9c6-7054dbfd1fa0 | cdg-petchem-ltd                           | CDG PETCHEM LTD                           | OPEN   | MAINBOARD | 2025-10-09 | 2025-10-26 |                  0
+ ef2bad23-6036-476b-af91-b45ba3166a0c | bhairav-enterprises-limited               | BHAIRAV ENTERPRISES LIMITED               | OPEN   | MAINBOARD | 2025-10-08 | 2025-10-23 |                  0
+ 2291f939-92a1-409c-a9af-18b3ce0a6e8e | 3i-infotech-ltd                           | 3I INFOTECH LTD                           | OPEN   | MAINBOARD | 2025-10-07 | 2025-10-27 |                  0
+ f8aa85a9-b794-43c9-b411-d44ccbd20b92 | healthy-life-agritec-ltd                  | HEALTHY LIFE AGRITEC LTD                  | OPEN   | SME       | 2025-10-07 | 2025-10-31 |                  0
+ 03ed2f8e-dd45-436f-881b-5bcf8581fe25 | yash-trading-finance-ltd                  | YASH TRADING  FINANCE LTD                 | OPEN   | MAINBOARD | 2025-10-06 | 2025-10-19 |                  0
+ eb8eb0bf-f41e-4554-b861-064d0679b632 | sunshield-chemicals-ltd                   | SUNSHIELD CHEMICALS LTD                   | OPEN   | MAINBOARD | 2025-09-30 | 2025-10-24 |                  0
+ 75d3357b-2add-4579-8fc3-b7dd901f8c26 | mehai-technology-ltd                      | MEHAI TECHNOLOGY LTD                      | OPEN   | MAINBOARD | 2025-09-26 | 2025-10-17 |                  0
+ b596fbb2-70f0-4e83-ab88-106b97c8fd78 | wardwizard-innovations-mobility-ltd       | WARDWIZARD INNOVATIONS  MOBILITY LTD      | OPEN   | MAINBOARD | 2025-09-26 | 2025-10-24 |                  0
+(35 rows)
+
+
+=== GMP Records Overview ===
+ total_gmp_records | unique_ipos_with_gmp | earliest_record | latest_record 
+-------------------+----------------------+-----------------+---------------
+                 0 |                    0 |                 | 
+(1 row)
+
+
+=== Duplicate GMP Timestamps ===
+ ipo_id | timestamp | duplicate_count | gmp_record_ids | gmps 
+--------+-----------+-----------------+----------------+------
+(0 rows)
+
+
+=== Future GMP Timestamps ===
+ id | ipo_id | company_name | timestamp | gmp 
+----+--------+--------------+-----------+-----
+(0 rows)
+
+
+=== GMP Records by IPO ===
+                  id                  |                   slug                   |               company_name                | status | gmp_price | gmp_record_count | first_record | last_record | latest_gmp_from_records 
+--------------------------------------+------------------------------------------+-------------------------------------------+--------+-----------+------------------+--------------+-------------+-------------------------
+ 2d416a7a-6398-4f6f-8aaf-7a6ff3c3a4d9 | ameenji-rubber-ltd-ipo                   | Ameenji Rubber Ltd. IPO                   | LISTED |           |                0 |              |             |                        
+ 27ad0a74-15f4-4159-906d-5f01af9f142a | kvs-castings-ltd-ipo                     | KVS Castings Ltd. IPO                     | LISTED |           |                0 |              |             |                        
+ 1b7a2eef-67d8-4dce-aaf3-a229315d488e | chiraharit-ltd-ipo                       | Chiraharit Ltd. IPO                       | LISTED |           |                0 |              |             |                        
+ f8aa85a9-b794-43c9-b411-d44ccbd20b92 | healthy-life-agritec-ltd                 | HEALTHY LIFE AGRITEC LTD                  | OPEN   |           |                0 |              |             |                        
+ bdca945b-1378-4026-9037-0480386189e5 | royal-financial-services                 | Royal Financial Services Ltd              | LISTED |           |                0 |              |             |                        
+ d015533e-8897-4cc1-adb0-53f088c5cf6d | shreenath-paper-products-ltd-ipo         | Shreenath Paper Products Ltd. IPO         | LISTED |           |                0 |              |             |                        
+ 214fa200-dd62-451e-89f5-8a1c7fcae542 | flysbs-aviation-ltd-ipo                  | Flysbs Aviation Ltd. IPO                  | LISTED |           |                0 |              |             |                        
+ f3eb5eab-7a9b-4b50-bed3-49be747303fa | food-processing-group                    | Food Processing Group Ltd                 | LISTED |           |                0 |              |             |                        
+ 7191b272-cc98-4ad5-83fd-d861ed901111 | national-solutions                       | National Solutions Ltd                    | CLOSED |           |                0 |              |             |                        
+ 70e305bf-a4d8-448f-bd92-95787bc7868a | taurian-mps-ltd-ipo                      | Taurian MPS Ltd. IPO                      | LISTED |           |                0 |              |             |                        
+ 30ba8272-21c4-4cb0-b6d4-550a0250d98f | earkart-ltd-ipo                          | Earkart Ltd. IPO                          | LISTED |           |                0 |              |             |                        
+ 281d0c91-a647-4754-a942-2cca9eb9a060 | spunweb-nonwoven-ltd-ipo                 | Spunweb Nonwoven Ltd. IPO                 | LISTED |           |                0 |              |             |                        
+ 6250bbfc-3ab5-4a60-9c0f-672edda601b1 | progressive-pharmaceuticals              | Progressive Pharmaceuticals Ltd           | LISTED |           |                0 |              |             |                        
+ 742df23f-3545-4005-9bb5-c5d8dff6b324 | standard-glass-lining-technology-ltd-ipo | Standard Glass Lining Technology Ltd. IPO | LISTED |           |                0 |              |             |                        
+ 9e12b774-8536-4460-afb6-e946e0ccafaa | herbal-products-services                 | Herbal Products Services Ltd              | CLOSED |           |                0 |              |             |                        
+ 40d64dfd-3fe3-498c-8e89-16334bee193b | tech-technology-partners                 | Tech Technology Partners Ltd              | CLOSED |           |                0 |              |             |                        
+ 13ac3981-7cc3-47f9-a5f2-b45e4a88e600 | pro-fx-tech-ltd-ipo                      | PRO FX Tech Ltd. IPO                      | LISTED |           |                0 |              |             |                        
+ a1454afa-ccec-4860-b285-e250a41151ac | infonative-solutions-ltd-ipo             | Infonative Solutions Ltd. IPO             | LISTED |           |                0 |              |             |                        
+ bfc76007-3c5e-4325-b002-0680a43e8a33 | travel-food-services-ltd-ipo             | Travel Food Services Ltd. IPO             | LISTED |           |                0 |              |             |                        
+ 5fe3a4b7-440d-4e4f-a2f4-b1a3639a1460 | herbal-products-systems                  | Herbal Products Systems Ltd               | CLOSED |           |                0 |              |             |                        
+(20 rows)
+
+
+=== IPOs with GMP Field but No GMP Records ===
+ id | slug | company_name | status | gmp_price | gmp_record_count 
+----+------+--------------+--------+-----------+------------------
+(0 rows)
+
+
+=== Time-Series Data Summary ===
+  table_name   | total_records | unique_ipos | future_timestamps | duplicate_timestamps 
+---------------+---------------+-------------+-------------------+----------------------
+ Subscriptions |             2 |           2 |                 0 |                    0
+ GMP Records   |             0 |           0 |                 0 |                    0
+(2 rows)
+

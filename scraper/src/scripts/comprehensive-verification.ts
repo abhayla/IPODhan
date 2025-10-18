@@ -3,13 +3,15 @@
  * Shows before/after metrics for Issue #2 (BSE detail pages)
  */
 
-import { drizzle } from 'drizzle-orm/node-postgres';
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { eq, isNull, and, gte } from 'drizzle-orm';
 import pg from 'pg';
 import * as schema from '@ipodhan/shared/db/schema';
 import logger from '../utils/logger.js';
 
 const { Pool } = pg;
+
+type IPO = typeof schema.ipos.$inferSelect;
 
 async function comprehensiveVerification() {
   const pool = new Pool({
@@ -29,9 +31,9 @@ async function comprehensiveVerification() {
     console.log('═══════════════════════════════════════════════════════\n');
 
     // 1. Total IPO counts
-    const allIPOs = await db.select().from(schema.ipos);
-    const bseIPOs = allIPOs.filter(ipo => ipo.listingExchange === 'BSE');
-    const nseIPOs = allIPOs.filter(ipo => ipo.listingExchange === 'NSE');
+    const allIPOs: IPO[] = await db.select().from(schema.ipos as any);
+    const bseIPOs = allIPOs.filter(ipo => ipo.listingExchanges?.includes('BSE'));
+    const nseIPOs = allIPOs.filter(ipo => ipo.listingExchanges?.includes('NSE'));
 
     console.log('📊 OVERALL IPO STATISTICS');
     console.log('─────────────────────────────────────────────────────\n');
@@ -40,9 +42,9 @@ async function comprehensiveVerification() {
     console.log(`  • BSE IPOs: ${bseIPOs.length}\n`);
 
     // 2. BSE Data Completeness (Before/After Issue #2)
-    const bseWithIssueSize = bseIPOs.filter(ipo => ipo.issueSize > 0);
-    const bseWithLotSize = bseIPOs.filter(ipo => ipo.lotSize > 0);
-    const bseWithFaceValue = bseIPOs.filter(ipo => ipo.faceValue > 0);
+    const bseWithIssueSize = bseIPOs.filter(ipo => ipo.issueSize && parseFloat(ipo.issueSize) > 0);
+    const bseWithLotSize = bseIPOs.filter(ipo => ipo.lotSize && ipo.lotSize > 0);
+    const bseWithFaceValue = bseIPOs.filter(ipo => ipo.faceValue && ipo.faceValue > 0);
     const bseWithRegistrar = bseIPOs.filter(ipo => ipo.registrar !== null && ipo.registrar !== '');
 
     console.log('🔍 BSE DATA COMPLETENESS (ISSUE #2 IMPACT)');
@@ -54,14 +56,14 @@ async function comprehensiveVerification() {
 
     // 3. Sample enriched IPOs
     const enrichedIPOs = bseIPOs.filter(ipo =>
-      ipo.issueSize > 0 && ipo.lotSize > 0 && ipo.registrar
+      ipo.issueSize && parseFloat(ipo.issueSize) > 0 && ipo.lotSize && ipo.lotSize > 0 && ipo.registrar
     ).slice(0, 5);
 
     console.log('✅ SAMPLE ENRICHED IPOs (FROM DETAIL PAGES)');
     console.log('─────────────────────────────────────────────────────\n');
     enrichedIPOs.forEach(ipo => {
       console.log(`${ipo.companyName}`);
-      console.log(`  Issue Size: ₹${(ipo.issueSize / 10000000).toFixed(2)} Cr`);
+      console.log(`  Issue Size: ₹${(parseFloat(ipo.issueSize || '0') / 10000000).toFixed(2)} Cr`);
       console.log(`  Lot Size: ${ipo.lotSize}`);
       console.log(`  Face Value: ₹${ipo.faceValue}`);
       console.log(`  Registrar: ${ipo.registrar || 'N/A'}`);
@@ -69,7 +71,7 @@ async function comprehensiveVerification() {
     });
 
     // 4. Data quality issues
-    const issuesWithZeroSize = bseIPOs.filter(ipo => ipo.issueSize === 0);
+    const issuesWithZeroSize = bseIPOs.filter(ipo => !ipo.issueSize || parseFloat(ipo.issueSize) === 0);
     const issuesWithDefaultLot = bseIPOs.filter(ipo => ipo.lotSize === 100);
 
     console.log('⚠️  DATA QUALITY NOTES');

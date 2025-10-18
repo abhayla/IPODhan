@@ -244,7 +244,8 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
           let detailUrl: string | null = null;
           if (detailLink) {
             const href = detailLink.getAttribute('href');
-            if (href && href.includes('DisplayIPO.aspx')) {
+            // Include both DisplayIPO.aspx (regular IPOs/RI/DPI) and ACQDisp.aspx (OTB - Offer To Buy)
+            if (href && (href.includes('DisplayIPO.aspx') || href.includes('ACQDisp.aspx'))) {
               detailUrl = `https://www.bseindia.com${href.startsWith('/') ? '' : '/'}${href}`;
             }
           }

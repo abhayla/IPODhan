@@ -12,7 +12,7 @@ dotenv.config({ path: join(__dirname, '../../.env') });
 
 import { scrapeNSEAPI } from '../scrapers/nse-api-client.js';
 import { upsertIPO } from '../services/data-persister.js';
-import { db } from '@ipodhan/shared';
+import { db, getRedisClient } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 
 async function testNSE() {
@@ -44,7 +44,8 @@ async function testNSE() {
     console.log('=== SAVING TO DATABASE ===\n');
 
     const { IPORepository } = await import('@ipodhan/shared');
-    const ipoRepository = new IPORepository(db);
+    const redis = getRedisClient();
+    const ipoRepository = new IPORepository(db, redis);
 
     let successCount = 0;
     let failCount = 0;

@@ -306,6 +306,38 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Find IPOs by date range (for GMP matching)
+   * Used to match external GMP data to database IPOs by dates
+   */
+  async findByDates(params: {
+    openDate: string;
+    closeDate?: string;
+  }): Promise<IPO[]> {
+    try {
+      const conditions = [eq(ipos.openDate, params.openDate)];
+
+      if (params.closeDate) {
+        conditions.push(eq(ipos.closeDate, params.closeDate));
+      }
+
+      const whereClause = and(...conditions);
+
+      const results = await this.db
+        .select()
+        .from(ipos)
+        .where(whereClause);
+
+      return results;
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to find IPOs by dates: ${params.openDate}`,
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
    * Search IPOs by company name using trigram fuzzy search
    */
   async search(query: string, limit = 10): Promise<IPO[]> {

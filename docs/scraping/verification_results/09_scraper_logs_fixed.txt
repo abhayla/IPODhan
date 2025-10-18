@@ -1,0 +1,92 @@
+=== Recent Scraper Runs (Last 24 Hours) ===
+                  id                  |    source    | status  |         created_at         | duration_ms | duration_seconds | records_processed | records_failed | error_message 
+--------------------------------------+--------------+---------+----------------------------+-------------+------------------+-------------------+----------------+---------------
+ 2139848f-973b-42a0-bc67-c3744b293a6f | CHITTORGARH  | SUCCESS | 2025-10-17 21:51:54.22056  |       40774 |            40.77 |               303 |              2 | 
+ 864ffe71-0030-4dd9-a3bb-963dec2b86e4 | MONEYCONTROL | SUCCESS | 2025-10-17 21:51:13.34526  |        5055 |             5.06 |                 6 |              0 | 
+ d75f3214-2f51-4112-874e-22b03a09317e | NSE          | SUCCESS | 2025-10-17 21:51:04.994726 |        7915 |             7.92 |                 0 |              0 | 
+ 5f72c36e-2feb-43b1-938a-020c7711094e | CHITTORGARH  | SUCCESS | 2025-10-17 19:43:53.546628 |      158052 |           158.05 |               276 |             29 | 
+ 22d8a60e-bfdf-4061-a1ef-7818d21c181c | MONEYCONTROL | SUCCESS | 2025-10-17 19:41:15.387783 |       11215 |            11.22 |                 4 |              2 | 
+ 441b4718-df6b-4e0e-9e20-8b73c0c8ca77 | NSE          | SUCCESS | 2025-10-17 19:41:01.386601 |        3550 |             3.55 |                 2 |              0 | 
+ d18bd9fe-9989-4fed-bb76-6fedbe8e0ddc | NSE          | SUCCESS | 2025-10-17 19:39:28.078251 |        3049 |             3.05 |                 2 |              0 | 
+ 44457ec5-11ae-4e04-821e-a707251d13d1 | NSE          | SUCCESS | 2025-10-17 19:39:11.145779 |        2504 |             2.50 |                 2 |              0 | 
+ 95929e5f-d9f1-4005-b9c0-8e38c0a8f971 | NSE          | SUCCESS | 2025-10-17 19:38:13.388173 |        2842 |             2.84 |                 2 |              0 | 
+ 676ab0b0-f9d8-41c0-acdb-3cf1177be4d1 | NSE          | SUCCESS | 2025-10-17 19:37:57.979921 |        2852 |             2.85 |                 2 |              0 | 
+ 45e0e3b6-2a6a-4584-af2a-c7b57160d4ef | NSE          | SUCCESS | 2025-10-17 19:36:42.837917 |        5595 |             5.60 |                 0 |              0 | 
+ daeb08ce-2491-4b80-9f90-5cffec83aa78 | CHITTORGARH  | SUCCESS | 2025-10-17 19:24:21.079444 |      155401 |           155.40 |               276 |             29 | 
+ fbdd34ea-50f3-403d-b12c-529e2d8e96a0 | MONEYCONTROL | SUCCESS | 2025-10-17 19:21:45.564036 |       11824 |            11.82 |                 4 |              2 | 
+ 6d07ee60-e1c9-47b6-aae3-d0088790d450 | NSE          | SUCCESS | 2025-10-17 19:21:29.385858 |        7117 |             7.12 |                 0 |              0 | 
+ d1e0d7f9-4494-4feb-9a6d-576d593df086 | CHITTORGARH  | SUCCESS | 2025-10-17 15:33:33.15111  |      124702 |           124.70 |               276 |             29 | 
+ 6dde3569-5363-463d-a575-291a7918d0e8 | CHITTORGARH  | SUCCESS | 2025-10-17 15:31:03.553327 |        1168 |             1.17 |                 0 |              0 | 
+ b3d22433-2bc0-4d29-9958-77cc47861a15 | CHITTORGARH  | SUCCESS | 2025-10-17 15:30:38.76785  |         607 |             0.61 |                 0 |              0 | 
+ d4e1ed29-ed1e-4333-aed0-7a4028bd278c | CHITTORGARH  | SUCCESS | 2025-10-17 15:30:03.995475 |         611 |             0.61 |                 0 |              0 | 
+ f6d07b02-aeee-4e76-9be7-6f490ab2c2dd | CHITTORGARH  | SUCCESS | 2025-10-17 15:29:37.077058 |         649 |             0.65 |                 0 |              0 | 
+ 30bc4749-c30f-4de8-811d-a77bf4e85a9a | CHITTORGARH  | SUCCESS | 2025-10-17 15:29:10.188358 |         524 |             0.52 |                 0 |              0 | 
+ 8f763980-05e2-49a2-9632-6633a029fb56 | CHITTORGARH  | SUCCESS | 2025-10-17 15:27:29.76076  |        1515 |             1.52 |                 0 |              0 | 
+ 9c93e6c8-c194-497c-b328-b1cd9b2124dd | CHITTORGARH  | SUCCESS | 2025-10-17 15:26:58.750013 |        1784 |             1.78 |                 0 |              0 | 
+ ad4eeab7-8b02-49dc-8b1b-191be87c2d66 | CHITTORGARH  | SUCCESS | 2025-10-17 15:23:52.36505  |        1758 |             1.76 |                 0 |              0 | 
+ 25197234-15f4-4f12-bbdb-5881d1ceaa7f | CHITTORGARH  | SUCCESS | 2025-10-17 15:21:25.182301 |        1266 |             1.27 |                 0 |              0 | 
+ 9d746cce-a8e3-4b9c-90c0-b8fa75aae3f4 | MONEYCONTROL | SUCCESS | 2025-10-17 15:17:17.194571 |       10525 |            10.53 |                 4 |              2 | 
+ 49147124-ff41-4e0c-ba76-f3eb905ed621 | MONEYCONTROL | SUCCESS | 2025-10-17 15:15:41.68019  |        1966 |             1.97 |                 0 |              6 | 
+ 236ebdde-93ca-44a7-bd0c-b3c63fdecb1f | CHITTORGARH  | SUCCESS | 2025-10-17 14:04:05.441268 |        2041 |             2.04 |                 0 |              0 | 
+ 21953652-574d-4447-8382-50e86c9b3807 | MONEYCONTROL | SUCCESS | 2025-10-17 14:04:03.357279 |        3123 |             3.12 |                 0 |              0 | 
+ 84ab4600-f5a1-4685-923f-7189a07b496d | NSE          | SUCCESS | 2025-10-17 14:03:51.924884 |        3818 |             3.82 |                 2 |              0 | 
+ 6a46c296-e5b3-44ed-b94c-1172356597c5 | NSE          | SUCCESS | 2025-10-17 11:21:48.574516 |        6455 |             6.46 |                 0 |              0 | 
+ 20bb5bee-53e6-4434-a704-ada0ee5bd052 | NSE          | SUCCESS | 2025-10-17 03:00:39.807332 |        6101 |             6.10 |                 0 |              0 | 
+ 026adb23-df4b-4399-94e3-caf2b739b050 | NSE          | SUCCESS | 2025-10-17 03:00:31.776452 |        6423 |             6.42 |                 0 |              0 | 
+ c6dba007-8819-4c58-88e2-477b64a26449 | NSE          | SUCCESS | 2025-10-17 03:00:23.472674 |        6377 |             6.38 |                 0 |              0 | 
+ b3469221-1f33-4617-b911-e41600558229 | NSE          | SUCCESS | 2025-10-17 03:00:15.06635  |        9132 |             9.13 |                 0 |              0 | 
+ 0a1595b6-5173-4693-afa9-5b0bad502f01 | NSE          | SUCCESS | 2025-10-17 03:00:03.718272 |         923 |             0.92 |                 2 |              0 | 
+(35 rows)
+
+
+=== Failed Scraper Runs ===
+ id | source | status | created_at | duration_ms | records_processed | records_failed | error_message | error_stack 
+----+--------+--------+------------+-------------+-------------------+----------------+---------------+-------------
+(0 rows)
+
+
+=== Scraper Error Summary ===
+    source    | total_runs | successful_runs | failed_runs | partial_runs | success_rate | total_records_processed | total_records_failed | avg_duration_seconds 
+--------------+------------+-----------------+-------------+--------------+--------------+-------------------------+----------------------+----------------------
+ CHITTORGARH  |         39 |              39 |           0 |            0 |       100.00 |                    1131 |                   89 |                12.97
+ MONEYCONTROL |         31 |              31 |           0 |            0 |       100.00 |                      18 |                   12 |                 7.89
+ NSE          |         82 |              82 |           0 |            0 |       100.00 |                     102 |                    0 |                 6.25
+(3 rows)
+
+
+=== Error Message Patterns ===
+ source | error_message | occurrence_count | first_occurrence | last_occurrence 
+--------+---------------+------------------+------------------+-----------------
+(0 rows)
+
+
+=== Scraper Performance Metrics ===
+    source    | successful_runs | avg_duration_seconds | min_duration_seconds | max_duration_seconds | avg_records_processed | avg_records_failed 
+--------------+-----------------+----------------------+----------------------+----------------------+-----------------------+--------------------
+ CHITTORGARH  |              39 |                12.97 |                 0.08 |               158.05 |                 29.00 |               2.28
+ MONEYCONTROL |              31 |                 7.89 |                 1.97 |                45.72 |                  0.58 |               0.39
+ NSE          |              82 |                 6.25 |                 0.61 |                50.54 |                  1.24 |               0.00
+(3 rows)
+
+
+=== Last Run by Scraper ===
+    source    | status  |         created_at         | duration_ms | records_processed | records_failed | error_message 
+--------------+---------+----------------------------+-------------+-------------------+----------------+---------------
+ CHITTORGARH  | SUCCESS | 2025-10-17 21:51:54.22056  |       40774 |               303 |              2 | 
+ MONEYCONTROL | SUCCESS | 2025-10-17 21:51:13.34526  |        5055 |                 6 |              0 | 
+ NSE          | SUCCESS | 2025-10-17 21:51:04.994726 |        7915 |                 0 |              0 | 
+(3 rows)
+
+
+=== Scrapers with High Failure Rate ===
+ source | total_runs | failed_runs | failure_rate 
+--------+------------+-------------+--------------
+(0 rows)
+
+
+=== Scraper Logs Table Statistics ===
+ total_log_entries | unique_scrapers |        earliest_run        |        latest_run         | total_successes | total_failures | total_partial 
+-------------------+-----------------+----------------------------+---------------------------+-----------------+----------------+---------------
+               152 |               3 | 2025-10-09 19:30:46.110834 | 2025-10-17 21:51:54.22056 |             152 |              0 |             0
+(1 row)
+

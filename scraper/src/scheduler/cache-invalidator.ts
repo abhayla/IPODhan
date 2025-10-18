@@ -128,6 +128,32 @@ export class CacheInvalidator {
   }
 
   /**
+   * Invalidate GMP caches for specific IPO ID
+   * @param ipoId - IPO ID (UUID)
+   */
+  async invalidateGMPCache(ipoId: string): Promise<void> {
+    try {
+      let keysDeleted = 0;
+
+      // Delete latest GMP cache
+      keysDeleted += await this.redis.del(`gmp:latest:${ipoId}`);
+
+      // Delete GMP history caches (pattern matching)
+      keysDeleted += await this.deleteKeysByPattern(`gmp:history:${ipoId}:*`);
+
+      logger.debug({
+        ipoId,
+        keysDeleted
+      }, 'GMP cache invalidated for IPO');
+    } catch (error) {
+      logger.error({
+        error: error instanceof Error ? error.message : String(error),
+        ipoId
+      }, 'Failed to invalidate GMP cache');
+    }
+  }
+
+  /**
    * Invalidate dashboard statistics cache
    */
   async invalidateDashboardStats(): Promise<number> {

@@ -2,13 +2,15 @@
  * Verify BSE detail page data in database
  */
 
-import { drizzle } from 'drizzle-orm/node-postgres';
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { eq, ilike } from 'drizzle-orm';
 import pg from 'pg';
 import * as schema from '@ipodhan/shared/db/schema';
 import logger from '../utils/logger.js';
 
 const { Pool } = pg;
+
+type IPO = typeof schema.ipos.$inferSelect;
 
 async function verifyBSEData() {
   // Create database connection
@@ -26,10 +28,10 @@ async function verifyBSEData() {
     logger.info('Verifying BSE detail page data in database');
 
     // Check MIDWEST LIMITED (should have all detail page fields)
-    const midwestIPO = await db
+    const midwestIPO: IPO[] = await db
       .select()
-      .from(schema.ipos)
-      .where(ilike(schema.ipos.companyName, '%midwest%'))
+      .from(schema.ipos as any)
+      .where(ilike(schema.ipos.companyName as any, '%midwest%'))
       .limit(1);
 
     if (midwestIPO.length > 0) {
@@ -42,15 +44,15 @@ async function verifyBSEData() {
         faceValue: ipo.faceValue,
         registrar: ipo.registrar,
         symbol: ipo.symbol,
-        priceMin: ipo.priceMin,
-        priceMax: ipo.priceMax,
+        priceRangeMin: ipo.priceRangeMin,
+        priceRangeMax: ipo.priceRangeMax,
       }, null, 2));
 
       // Validation checks
       const checks = {
-        'Issue size > 0': ipo.issueSize > 0,
-        'Lot size populated': ipo.lotSize > 0,
-        'Face value populated': ipo.faceValue > 0,
+        'Issue size > 0': ipo.issueSize ? parseFloat(ipo.issueSize) > 0 : false,
+        'Lot size populated': ipo.lotSize ? ipo.lotSize > 0 : false,
+        'Face value populated': ipo.faceValue ? ipo.faceValue > 0 : false,
         'Registrar exists': !!ipo.registrar,
         'Symbol exists': !!ipo.symbol,
       };
@@ -69,23 +71,24 @@ async function verifyBSEData() {
     }
 
     // Count BSE IPOs with issue_size > 0
-    const bseIPOs = await db
+    const bseIPOs: IPO[] = await db
       .select()
-      .from(schema.ipos)
-      .where(eq(schema.ipos.listingExchange, 'BSE'));
+      .from(schema.ipos as any);
 
-    const iposWithIssueSize = bseIPOs.filter(ipo => ipo.issueSize > 0);
+    // Filter BSE IPOs
+    const bseFilteredIPOs = bseIPOs.filter(ipo => ipo.listingExchanges?.includes('BSE'));
+    const iposWithIssueSize = bseFilteredIPOs.filter(ipo => ipo.issueSize && parseFloat(ipo.issueSize) > 0);
 
     console.log('\n=== BSE IPO Statistics ===');
     console.log({
-      totalBSEIPOs: bseIPOs.length,
+      totalBSEIPOs: bseFilteredIPOs.length,
       iposWithIssueSize: iposWithIssueSize.length,
-      iposWithoutIssueSize: bseIPOs.length - iposWithIssueSize.length,
-      percentageComplete: ((iposWithIssueSize.length / bseIPOs.length) * 100).toFixed(1) + '%',
+      iposWithoutIssueSize: bseFilteredIPOs.length - iposWithIssueSize.length,
+      percentageComplete: ((iposWithIssueSize.length / bseFilteredIPOs.length) * 100).toFixed(1) + '%',
     });
 
     // Show sample of enriched IPOs
-    const enrichedIPOs = bseIPOs.filter(ipo => ipo.issueSize > 0).slice(0, 5);
+    const enrichedIPOs = bseFilteredIPOs.filter(ipo => ipo.issueSize && parseFloat(ipo.issueSize) > 0).slice(0, 5);
     console.log('\n=== Sample Enriched IPOs ===');
     enrichedIPOs.forEach(ipo => {
       console.log({
