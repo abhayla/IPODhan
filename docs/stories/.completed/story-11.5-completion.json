@@ -1,0 +1,38 @@
+{
+  "story_id": "11.5",
+  "story_title": "Fix BSE Rights/Debt Detail Page Parser",
+  "status": "done",
+  "timestamps": {
+    "started": "2025-10-18T00:00:00.000Z",
+    "implementation_complete": "2025-10-18T17:57:46.000Z",
+    "qa_passed": "2025-10-18T18:09:00.000Z",
+    "completed": "2025-10-18T18:11:00.000Z"
+  },
+  "completion_metrics": {
+    "task_completion_percent": 100,
+    "ac_completion_percent": 100,
+    "test_coverage_percent": 90,
+    "qa_iterations": 1
+  },
+  "approvals": {
+    "sm_approved": true,
+    "sm_approved_at": "2025-10-18T18:09:00.000Z",
+    "qa_passed": true,
+    "qa_passed_at": "2025-10-18T18:09:00.000Z"
+  },
+  "test_metrics": {
+    "total_tests": 75,
+    "tests_passing": 75,
+    "unit_tests": 25,
+    "validation_tests": 50,
+    "pass_rate_percent": 100
+  },
+  "success_metrics": {
+    "validation_rate_before": 52,
+    "validation_rate_after": 100,
+    "improvement_percent": 48,
+    "ipos_fixed": 11
+  },
+  "workflow_version": "4.0",
+  "workflow_step": "9.3"
+}
