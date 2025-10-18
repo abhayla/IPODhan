@@ -28,13 +28,17 @@ const ENDPOINTS = {
   UPCOMING_IPOS: '/api/upcoming-issues'
 };
 
-// Required headers to bypass NSE's basic checks
+// Required headers to bypass NSE's bot detection (Story 11.3)
 const DEFAULT_HEADERS = {
   'Accept': 'application/json, text/plain, */*',
   'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Connection': 'keep-alive',
   'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
   'Referer': 'https://www.nseindia.com/market-data/all-upcoming-issues-ipo',
-  'Accept-Encoding': 'gzip, deflate, br',
+  'Sec-Fetch-Dest': 'empty',
+  'Sec-Fetch-Mode': 'cors',
+  'Sec-Fetch-Site': 'same-origin',
   'Cache-Control': 'no-cache'
 };
 
@@ -49,14 +53,18 @@ export interface NSEAPIResult {
 let nseSessionCookies: string[] = [];
 
 /**
- * Initialize NSE session by visiting homepage to get cookies
+ * Initialize NSE session by visiting multiple pages to collect all required cookies
+ * Enhanced implementation for Story 11.3 - fixes 401 authentication issues
+ * Required cookies: nsit, nseappid, bm_sv, ak_bmsc (minimum 3)
  */
 async function initNSESession(): Promise<void> {
   try {
-    logger.debug('Initializing NSE session by visiting homepage');
+    logger.debug('Initializing NSE session with multi-page visit strategy');
+    const allCookies: string[] = [];
 
-    // Visit NSE homepage to get session cookies
-    const response = await fetch(BASE_URL, {
+    // Step 1: Visit NSE homepage to get initial cookies
+    logger.debug('Step 1: Visiting NSE homepage');
+    const homepageResponse = await fetch(BASE_URL, {
       method: 'GET',
       headers: {
         'User-Agent': DEFAULT_HEADERS['User-Agent'],
@@ -65,16 +73,72 @@ async function initNSESession(): Promise<void> {
       }
     });
 
-    // Extract cookies from response - use getSetCookie() method
-    const setCookieHeaders = response.headers.getSetCookie?.() || [];
-    if (setCookieHeaders.length > 0) {
-      nseSessionCookies = setCookieHeaders.map(cookie => cookie.split(';')[0]);
+    // Extract cookies from homepage
+    const homepageCookies = homepageResponse.headers.getSetCookie?.() || [];
+    if (homepageCookies.length > 0) {
+      allCookies.push(...homepageCookies.map(cookie => cookie.split(';')[0]));
+      logger.debug({
+        cookieCount: homepageCookies.length,
+        cookies: homepageCookies.map(c => c.split('=')[0]).join(', ')
+      }, 'Cookies from homepage');
+    }
+
+    // Step 2: Wait 1-2 seconds (human-like behavior)
+    await new Promise(resolve => setTimeout(resolve, 1500));
+
+    // Step 3: Visit market-data page to get additional cookies
+    logger.debug('Step 2: Visiting market-data page');
+    const marketDataUrl = `${BASE_URL}/market-data/all-upcoming-issues-ipo`;
+    const marketDataResponse = await fetch(marketDataUrl, {
+      method: 'GET',
+      headers: {
+        'User-Agent': DEFAULT_HEADERS['User-Agent'],
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Referer': BASE_URL,
+        // Send cookies from homepage
+        ...(allCookies.length > 0 && { 'Cookie': allCookies.join('; ') })
+      }
+    });
+
+    // Extract cookies from market-data page
+    const marketDataCookies = marketDataResponse.headers.getSetCookie?.() || [];
+    if (marketDataCookies.length > 0) {
+      allCookies.push(...marketDataCookies.map(cookie => cookie.split(';')[0]));
+      logger.debug({
+        cookieCount: marketDataCookies.length,
+        cookies: marketDataCookies.map(c => c.split('=')[0]).join(', ')
+      }, 'Cookies from market-data page');
+    }
+
+    // Deduplicate cookies (keep latest value for each cookie name)
+    const cookieMap = new Map<string, string>();
+    for (const cookie of allCookies) {
+      const [name, value] = cookie.split('=');
+      if (name && value) {
+        cookieMap.set(name, cookie);
+      }
+    }
+    nseSessionCookies = Array.from(cookieMap.values());
+
+    // Extract cookie names for validation
+    const cookieNames = nseSessionCookies.map(c => c.split('=')[0]);
+
+    // Log success with cookie details
+    if (nseSessionCookies.length >= 3) {
       logger.info({
         cookieCount: nseSessionCookies.length,
-        cookies: nseSessionCookies.join('; ').substring(0, 100) + '...'
-      }, 'NSE session cookies obtained successfully');
+        cookieNames: cookieNames.join(', '),
+        hasNsit: cookieNames.includes('nsit'),
+        hasNseappid: cookieNames.includes('nseappid'),
+        hasBmSv: cookieNames.includes('bm_sv')
+      }, 'NSE session cookies obtained successfully (AC1)');
     } else {
-      logger.warn('No cookies received from NSE homepage');
+      logger.warn({
+        cookieCount: nseSessionCookies.length,
+        cookieNames: cookieNames.join(', '),
+        expected: 'Minimum 3 cookies (nsit, nseappid, bm_sv)'
+      }, 'Insufficient cookies obtained - may face authentication issues');
     }
   } catch (error) {
     logger.error({
@@ -84,9 +148,11 @@ async function initNSESession(): Promise<void> {
 }
 
 /**
- * Make API request with proper headers and error handling
+ * Make API request with proper headers, cookie management, and retry logic
+ * Enhanced for Story 11.3 - handles 401/403 authentication errors with automatic cookie refresh
  */
-async function makeRequest(endpoint: string, params?: Record<string, string>): Promise<any> {
+async function makeRequest(endpoint: string, params?: Record<string, string>, retryCount: number = 0): Promise<any> {
+  const MAX_RETRIES = 3;
   const url = new URL(BASE_URL + endpoint);
 
   // Add query parameters if provided
@@ -112,58 +178,95 @@ async function makeRequest(endpoint: string, params?: Record<string, string>): P
       headers
     });
 
-    // If 401/403, try refreshing session cookies
+    // Handle authentication errors (401/403) with retry logic
     if (response.status === 401 || response.status === 403) {
-      logger.warn('NSE API returned auth error, refreshing session cookies');
-      nseSessionCookies = []; // Clear old cookies
+      if (retryCount >= MAX_RETRIES) {
+        logger.error({
+          endpoint,
+          status: response.status,
+          retryCount,
+          cookieCount: nseSessionCookies.length
+        }, 'NSE API authentication failed after maximum retries (AC2)');
+        throw new Error(`NSE API returned ${response.status} Unauthorized after ${MAX_RETRIES} attempts`);
+      }
+
+      logger.warn({
+        endpoint,
+        status: response.status,
+        retryCount: retryCount + 1,
+        maxRetries: MAX_RETRIES
+      }, 'NSE API returned auth error, refreshing session cookies (AC3)');
+
+      // Clear old cookies and refresh session
+      nseSessionCookies = [];
       await initNSESession();
 
-      // Retry request with new cookies
-      const retryHeaders = {
-        ...DEFAULT_HEADERS,
-        ...(nseSessionCookies.length > 0 && { 'Cookie': nseSessionCookies.join('; ') })
-      };
+      // Add delay before retry (human-like behavior)
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
-      const retryResponse = await fetch(url.toString(), {
-        method: 'GET',
-        headers: retryHeaders
-      });
-
-      if (!retryResponse.ok) {
-        throw new Error(`NSE API returned ${retryResponse.status}: ${retryResponse.statusText}`);
-      }
-
-      const contentType = retryResponse.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        return await retryResponse.json();
-      } else {
-        const text = await retryResponse.text();
-        try {
-          return JSON.parse(text);
-        } catch {
-          throw new Error('NSE API returned non-JSON response');
-        }
-      }
+      // Recursive retry with incremented counter
+      return await makeRequest(endpoint, params, retryCount + 1);
     }
 
+    // Handle connection reset errors
     if (!response.ok) {
+      logger.error({
+        endpoint,
+        status: response.status,
+        statusText: response.statusText,
+        cookieCount: nseSessionCookies.length
+      }, 'NSE API request failed with non-2xx status (AC2, AC7)');
       throw new Error(`NSE API returned ${response.status}: ${response.statusText}`);
     }
 
+    // Parse response
     const contentType = response.headers.get('content-type');
+    let data;
     if (contentType && contentType.includes('application/json')) {
-      return await response.json();
+      data = await response.json();
     } else {
       const text = await response.text();
-      // Try to parse as JSON even if content-type is wrong
       try {
-        return JSON.parse(text);
+        data = JSON.parse(text);
       } catch {
         throw new Error('NSE API returned non-JSON response');
       }
     }
-  } catch (error) {
-    logger.error({ endpoint, error }, 'NSE API request failed');
+
+    // Log successful API response (AC2)
+    logger.info({
+      endpoint,
+      status: response.status,
+      hasData: !!data,
+      dataType: Array.isArray(data) ? 'array' : typeof data,
+      itemCount: Array.isArray(data) ? data.length : 'N/A'
+    }, 'NSE API request successful (AC2)');
+
+    return data;
+
+  } catch (error: any) {
+    // Enhanced error logging for ECONNRESET and other connection issues (AC7, AC12)
+    const errorCode = error?.code;
+    if (errorCode === 'ECONNRESET') {
+      logger.error({
+        endpoint,
+        error: error?.message,
+        code: errorCode,
+        possibleCauses: [
+          'NSE server closed connection (rate limiting)',
+          'Insufficient cookies (missing nsit/nseappid/bm_sv)',
+          'Missing required headers (Sec-Fetch-*, Referer)',
+          'Bot detection triggered'
+        ]
+      }, 'ECONNRESET: Connection closed by NSE server (AC2, AC7)');
+    } else {
+      logger.error({
+        endpoint,
+        error: error?.message,
+        code: errorCode,
+        retryCount
+      }, 'NSE API request failed (AC7)');
+    }
     throw error;
   }
 }
@@ -306,52 +409,94 @@ function transformIPOData(data: any): ScrapedIPO {
 }
 
 /**
- * Transform subscription data from NSE API
+ * Transform subscription data from NSE API response
+ * Enhanced for Story 11.3 - extracts all subscription categories (AC3, AC5)
+ * @param bidDetails - Array of bid details from NSE API (multiple categories)
+ * @param symbol - IPO symbol
+ * @param companyName - IPO company name
+ * @returns Complete subscription data with all categories
  */
-function transformSubscriptionData(data: any, symbol: string): ScrapedSubscription | null {
-  // Check if we have valid subscription data
-  if (!data.noOfSharesOffered || !data.noOfsharesBid) {
+function transformSubscriptionData(bidDetails: any[], symbol: string, companyName: string): ScrapedSubscription | null {
+  if (!bidDetails || !Array.isArray(bidDetails) || bidDetails.length === 0) {
     return null;
   }
 
-  const timesSubscribed = parseFloat(data.noOfTime) || 0;
-  const category = data.category || 'Total';
-
-  // Map NSE category names to our format
-  let categoryMapped: 'QIB' | 'NII' | 'RII' | 'EMPLOYEE' | 'OTHERS' | 'TOTAL' = 'TOTAL';
-  const catUpper = category.toUpperCase();
-  if (catUpper.includes('QIB') || catUpper.includes('INSTITUTIONAL')) {
-    categoryMapped = 'QIB';
-  } else if (catUpper.includes('NII') || catUpper.includes('NON-INSTITUTIONAL')) {
-    categoryMapped = 'NII';
-  } else if (catUpper.includes('RII') || catUpper.includes('RETAIL')) {
-    categoryMapped = 'RII';
-  } else if (catUpper.includes('EMPLOYEE')) {
-    categoryMapped = 'EMPLOYEE';
-  } else if (catUpper === 'TOTAL') {
-    categoryMapped = 'TOTAL';
-  } else {
-    categoryMapped = 'OTHERS';
-  }
-
-  // Map category-specific subscription to standard format
-  // Default all to 0, then set the specific category based on mapping
-  const subscriptionData: ScrapedSubscription = {
-    ipoCompanyName: '', // Will be filled by caller
+  // Initialize subscription data with all fields set to 0
+  const subscription: ScrapedSubscription = {
+    ipoCompanyName: companyName,
     ipoSymbol: symbol,
-    qibSubscription: categoryMapped === 'QIB' ? timesSubscribed : 0,
-    niiSubscription: categoryMapped === 'NII' ? timesSubscribed : 0,
-    retailSubscription: categoryMapped === 'RII' ? timesSubscribed : 0,
-    totalSubscription: categoryMapped === 'TOTAL' ? timesSubscribed : 0,
-    employeeSubscription: categoryMapped === 'EMPLOYEE' ? timesSubscribed : undefined,
+    qibSubscription: 0,
+    niiSubscription: 0,
+    retailSubscription: 0,
+    totalSubscription: 0,
+    employeeSubscription: undefined,
+    anchorInvestorSubscription: undefined,
+    bNIISubscription: undefined,
+    sNIISubscription: undefined,
     timestamp: new Date().toISOString()
   };
 
-  return subscriptionData;
+  // Extract subscription for each category from bid details array
+  for (const bid of bidDetails) {
+    const category = (bid.category || bid.investorCategory || '').toUpperCase();
+    const timesSubscribed = parseFloat(bid.noOfTime || bid.timesSubscribed || bid.subscription || 0);
+
+    // Skip invalid data
+    if (!category || isNaN(timesSubscribed)) {
+      continue;
+    }
+
+    // Map NSE category names to our schema fields (AC3)
+    if (category.includes('QIB') || category.includes('QUALIFIED INSTITUTIONAL')) {
+      subscription.qibSubscription = timesSubscribed;
+    } else if (category.includes('NII') || category.includes('NON-INSTITUTIONAL') || category.includes('NON INSTITUTIONAL')) {
+      subscription.niiSubscription = timesSubscribed;
+    } else if (category.includes('RETAIL') || category.includes('RII') || category.includes('INDIVIDUAL')) {
+      subscription.retailSubscription = timesSubscribed;
+    } else if (category.includes('EMPLOYEE')) {
+      subscription.employeeSubscription = timesSubscribed;
+    } else if (category.includes('ANCHOR')) {
+      subscription.anchorInvestorSubscription = timesSubscribed;
+    } else if (category.includes('BNII') || category.includes('BIG NII') || category.includes('B-NII')) {
+      subscription.bNIISubscription = timesSubscribed;
+    } else if (category.includes('SNII') || category.includes('SMALL NII') || category.includes('S-NII')) {
+      subscription.sNIISubscription = timesSubscribed;
+    } else if (category === 'TOTAL' || category.includes('OVERALL')) {
+      subscription.totalSubscription = timesSubscribed;
+    }
+  }
+
+  // Calculate total if not provided (AC3)
+  if (subscription.totalSubscription === 0) {
+    subscription.totalSubscription = Math.max(
+      subscription.qibSubscription,
+      subscription.niiSubscription,
+      subscription.retailSubscription
+    );
+  }
+
+  // Return null if no valid subscription data found
+  if (subscription.qibSubscription === 0 &&
+      subscription.niiSubscription === 0 &&
+      subscription.retailSubscription === 0 &&
+      subscription.totalSubscription === 0) {
+    return null;
+  }
+
+  logger.debug({
+    symbol,
+    qib: subscription.qibSubscription,
+    nii: subscription.niiSubscription,
+    retail: subscription.retailSubscription,
+    total: subscription.totalSubscription
+  }, 'Subscription data extracted successfully (AC3)');
+
+  return subscription;
 }
 
 /**
- * Fetch current/active IPOs from NSE API
+ * Fetch current/active IPOs from NSE API with detailed subscription data
+ * Enhanced for Story 11.3 - prioritizes /api/ipo-current-issue endpoint (AC4)
  */
 export async function fetchCurrentIPOs(): Promise<NSEAPIResult> {
   const startTime = Date.now();
@@ -359,28 +504,36 @@ export async function fetchCurrentIPOs(): Promise<NSEAPIResult> {
   const subscriptions: ScrapedSubscription[] = [];
 
   try {
-    logger.info('Fetching current IPOs from NSE API');
+    logger.info('Fetching current IPOs from NSE API (Priority: /api/ipo-current-issue)');
 
-    // Fetch current issues
+    // PRIMARY: Fetch current issues with detailed subscription data
     const currentData = await makeRequest(ENDPOINTS.CURRENT_IPOS);
 
     if (Array.isArray(currentData)) {
+      logger.info({ count: currentData.length }, 'NSE API returned current issues');
+
       for (const item of currentData) {
         try {
           // Transform IPO data
           const ipo = transformIPOData(item);
           ipos.push(ipo);
 
-          // Extract subscription data if available
-          if (item.symbol) {
-            const subscription = transformSubscriptionData(item, item.symbol);
+          // Extract subscription data from bidDetails array (AC3, AC5)
+          if (item.symbol && item.bidDetails && Array.isArray(item.bidDetails)) {
+            const subscription = transformSubscriptionData(item.bidDetails, item.symbol, ipo.companyName);
             if (subscription) {
-              subscription.ipoCompanyName = ipo.companyName; // Fill in company name
               subscriptions.push(subscription);
+              logger.debug({
+                symbol: item.symbol,
+                qib: subscription.qibSubscription,
+                nii: subscription.niiSubscription,
+                retail: subscription.retailSubscription,
+                total: subscription.totalSubscription
+              }, 'Subscription data extracted from /api/ipo-current-issue (AC3)');
             }
           }
         } catch (error) {
-          logger.warn({ item, error }, 'Failed to transform IPO data');
+          logger.warn({ item, error }, 'Failed to transform IPO data from current issues');
         }
       }
     }
@@ -390,7 +543,7 @@ export async function fetchCurrentIPOs(): Promise<NSEAPIResult> {
       iposFound: ipos.length,
       subscriptionsFound: subscriptions.length,
       duration
-    }, 'NSE API fetch completed');
+    }, 'NSE API fetch completed (AC4)');
 
     return {
       ipos,
@@ -467,6 +620,7 @@ export async function fetchAllIPOs(category: 'ipo' | 'ofs' | 'rights' | 'tender'
 
 /**
  * Fetch detailed IPO information including subscription data
+ * Enhanced for Story 11.3 - proper subscription extraction (AC3, AC5)
  */
 export async function fetchIPODetail(symbol: string): Promise<{ ipo?: ScrapedIPO; subscriptions: ScrapedSubscription[] }> {
   const subscriptions: ScrapedSubscription[] = [];
@@ -476,13 +630,13 @@ export async function fetchIPODetail(symbol: string): Promise<{ ipo?: ScrapedIPO
 
     const data = await makeRequest(ENDPOINTS.IPO_DETAIL, { symbol });
 
-    // Extract bid details for subscription data
+    const companyName = data.companyName || data.metaInfo?.companyName || symbol;
+
+    // Extract bid details for subscription data (AC3)
     if (data.bidDetails && Array.isArray(data.bidDetails)) {
-      for (const bid of data.bidDetails) {
-        const subscription = transformSubscriptionData(bid, symbol);
-        if (subscription) {
-          subscriptions.push(subscription);
-        }
+      const subscription = transformSubscriptionData(data.bidDetails, symbol, companyName);
+      if (subscription) {
+        subscriptions.push(subscription);
       }
     }
 
@@ -491,7 +645,7 @@ export async function fetchIPODetail(symbol: string): Promise<{ ipo?: ScrapedIPO
     if (data.metaInfo || data.companyName) {
       ipo = transformIPOData({
         ...data.metaInfo,
-        companyName: data.companyName,
+        companyName,
         symbol
       });
     }
