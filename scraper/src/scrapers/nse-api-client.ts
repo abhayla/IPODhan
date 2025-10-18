@@ -25,7 +25,10 @@ const ENDPOINTS = {
   IPO_DETAIL: '/api/ipo-detail',
   LIVE_MARKET: '/json/liveMarket/public-issues-current.json',
   PAST_IPOS: '/api/past-issues',
-  UPCOMING_IPOS: '/api/upcoming-issues'
+  UPCOMING_IPOS: '/api/upcoming-issues',
+  // Story 11.4: Historical IPO Data Endpoints
+  PUBLIC_PAST_ISSUES: '/api/public-past-issues',
+  IPO_PAST_SECURITY_TYPE: '/api/ipo-past-security-type'
 };
 
 // Required headers to bypass NSE's bot detection (Story 11.3)
@@ -47,6 +50,28 @@ export interface NSEAPIResult {
   subscriptions: ScrapedSubscription[];
   source: 'api' | 'fallback';
   timestamp: string;
+}
+
+/**
+ * Story 11.4: Historical IPO response from NSE Past Endpoints
+ */
+export interface NSEPastIPOResponse {
+  symbol: string;
+  companyName: string;
+  listingDate: string;
+  listingPrice: number | string;
+  issuePrice: number | string;
+  currentPrice?: number | string;
+  securityType?: string; // 'Equity', 'Debt', etc.
+  series?: string;
+  isin?: string;
+}
+
+export interface PastIPOsResult {
+  pastIPOs: NSEPastIPOResponse[];
+  source: 'NSE_PAST_API';
+  timestamp: string;
+  endpoint: string;
 }
 
 // Cookie jar to store NSE session cookies
@@ -743,5 +768,111 @@ export async function testNSEAPIConnection(): Promise<boolean> {
       error: error instanceof Error ? error.message : String(error)
     }, 'NSE API connection test failed');
     return false;
+  }
+}
+
+/**
+ * Story 11.4: Fetch historical/past IPOs from NSE public-past-issues endpoint
+ * This endpoint returns all past IPOs with listing performance data
+ * Reuses NSE session initialization from Story 11.3
+ *
+ * @returns Past IPO data with listing performance
+ */
+export async function fetchPastIPOs(): Promise<PastIPOsResult> {
+  const startTime = Date.now();
+
+  try {
+    logger.info('Fetching past IPOs from NSE /api/public-past-issues (Story 11.4, AC1)');
+
+    // Use makeRequest which handles session initialization, cookies, and retry logic
+    const data = await makeRequest(ENDPOINTS.PUBLIC_PAST_ISSUES);
+
+    // Validate response
+    if (!Array.isArray(data)) {
+      logger.error({
+        dataType: typeof data,
+        hasData: !!data
+      }, 'NSE public-past-issues returned non-array response (AC1)');
+      throw new Error('Invalid response format from NSE public-past-issues endpoint');
+    }
+
+    const duration = Date.now() - startTime;
+    logger.info({
+      pastIPOsCount: data.length,
+      duration,
+      endpoint: ENDPOINTS.PUBLIC_PAST_ISSUES
+    }, 'NSE past IPOs fetched successfully (AC1, AC5 - Target: 200+ records)');
+
+    return {
+      pastIPOs: data as NSEPastIPOResponse[],
+      source: 'NSE_PAST_API',
+      timestamp: new Date().toISOString(),
+      endpoint: ENDPOINTS.PUBLIC_PAST_ISSUES
+    };
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    logger.error({
+      error: error instanceof Error ? error.message : String(error),
+      duration,
+      endpoint: ENDPOINTS.PUBLIC_PAST_ISSUES
+    }, 'Failed to fetch past IPOs from NSE (AC1, AC7)');
+    throw error;
+  }
+}
+
+/**
+ * Story 11.4: Fetch past IPOs by security type (Equity, Debt, etc.)
+ * Secondary endpoint for cross-validation
+ *
+ * @param securityType - Security type to filter (e.g., 'Equity')
+ * @returns Past IPO data for specified security type
+ */
+export async function fetchPastIPOsByType(securityType: string = 'Equity'): Promise<PastIPOsResult> {
+  const startTime = Date.now();
+
+  try {
+    logger.info({
+      securityType,
+      endpoint: ENDPOINTS.IPO_PAST_SECURITY_TYPE
+    }, 'Fetching past IPOs by security type from NSE (Story 11.4, AC1)');
+
+    // Use makeRequest with query parameter
+    const data = await makeRequest(ENDPOINTS.IPO_PAST_SECURITY_TYPE, { securityType });
+
+    // Validate response
+    if (!Array.isArray(data)) {
+      logger.error({
+        dataType: typeof data,
+        hasData: !!data,
+        securityType
+      }, 'NSE ipo-past-security-type returned non-array response (AC1)');
+      throw new Error(`Invalid response format from NSE ipo-past-security-type endpoint for ${securityType}`);
+    }
+
+    const duration = Date.now() - startTime;
+    logger.info({
+      pastIPOsCount: data.length,
+      securityType,
+      duration,
+      endpoint: ENDPOINTS.IPO_PAST_SECURITY_TYPE
+    }, 'NSE past IPOs by type fetched successfully (AC1 - Secondary endpoint)');
+
+    return {
+      pastIPOs: data as NSEPastIPOResponse[],
+      source: 'NSE_PAST_API',
+      timestamp: new Date().toISOString(),
+      endpoint: `${ENDPOINTS.IPO_PAST_SECURITY_TYPE}?securityType=${securityType}`
+    };
+
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    logger.error({
+      error: error instanceof Error ? error.message : String(error),
+      securityType,
+      duration,
+      endpoint: ENDPOINTS.IPO_PAST_SECURITY_TYPE
+    }, 'Failed to fetch past IPOs by type from NSE (AC1, AC7)');
+    throw error;
   }
 }

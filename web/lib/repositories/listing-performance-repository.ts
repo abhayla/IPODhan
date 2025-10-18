@@ -105,4 +105,123 @@ export class ListingPerformanceRepository
       );
     }
   }
+
+  /**
+   * Story 11.4 (AC4): Batch upsert listing performance records
+   * Processes records in batches with transaction safety
+   *
+   * @param records - Array of listing performance records to upsert
+   * @param batchSize - Number of records per batch (default: 50)
+   * @returns Number of records successfully upserted
+   */
+  async batchUpsert(
+    records: ListingPerformanceInsert[],
+    batchSize: number = 50
+  ): Promise<number> {
+    if (records.length === 0) {
+      return 0;
+    }
+
+    let totalUpserted = 0;
+    const batches: ListingPerformanceInsert[][] = [];
+
+    // Split records into batches (AC4)
+    for (let i = 0; i < records.length; i += batchSize) {
+      batches.push(records.slice(i, i + batchSize));
+    }
+
+    console.log(
+      `[ListingPerformanceRepository] Batch upsert: ${records.length} records in ${batches.length} batches (AC4)`
+    );
+
+    // Process each batch in a transaction (AC4)
+    for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+      const batch = batches[batchIndex];
+
+      try {
+        // Execute batch upsert in transaction (AC4 - transaction safety)
+        await this.db.transaction(async (tx) => {
+          for (const record of batch) {
+            await tx
+              .insert(listingPerformance)
+              .values(record)
+              .onConflictDoUpdate({
+                target: listingPerformance.ipoId,
+                set: {
+                  ...record,
+                  updatedAt: new Date(),
+                },
+              });
+
+            // Invalidate cache for this IPO (AC4)
+            if (record.ipoId) {
+              await this.deleteCache(getListingPerformanceKey(record.ipoId));
+            }
+          }
+        });
+
+        totalUpserted += batch.length;
+
+        console.log(
+          `[ListingPerformanceRepository] Batch ${batchIndex + 1}/${batches.length} completed: ${batch.length} records (AC4)`
+        );
+      } catch (error) {
+        console.error(
+          `[ListingPerformanceRepository] Batch ${batchIndex + 1} failed - rolling back (AC4):`,
+          error instanceof Error ? error.message : error
+        );
+
+        // Transaction automatically rolled back on error (AC4)
+        throw new DatabaseError(
+          `Failed to upsert batch ${batchIndex + 1} of listing performance records`,
+          undefined,
+          error
+        );
+      }
+    }
+
+    console.log(
+      `[ListingPerformanceRepository] Batch upsert completed: ${totalUpserted}/${records.length} records (AC4)`
+    );
+
+    return totalUpserted;
+  }
+
+  /**
+   * Story 11.4 (AC4): Upsert listing performance for unmatched record (NULL ipo_id)
+   * Stores historical data for IPOs not yet in our database
+   *
+   * @param data - Listing performance data with NULL ipo_id
+   * @returns Inserted listing performance record
+   */
+  async upsertUnmatched(
+    data: Omit<ListingPerformanceInsert, 'ipoId'>
+  ): Promise<ListingPerformance> {
+    try {
+      const [result] = await this.db
+        .insert(listingPerformance)
+        .values({
+          ...data,
+          ipoId: null, // Explicitly set NULL for unmatched records (AC4)
+        })
+        .onConflictDoNothing() // Skip if already exists
+        .returning();
+
+      if (!result) {
+        throw new Error('Failed to insert unmatched listing performance record');
+      }
+
+      console.log(
+        `[ListingPerformanceRepository] Unmatched record stored: ${data.companyName} (AC4)`
+      );
+
+      return result;
+    } catch (error) {
+      throw new DatabaseError(
+        'Failed to upsert unmatched listing performance',
+        undefined,
+        error
+      );
+    }
+  }
 }
