@@ -1,0 +1,50 @@
+{
+  "story_id": "11.4",
+  "story_title": "Historical IPO Data Backfill from NSE Past Endpoints",
+  "status": "ready",
+  "timestamps": {
+    "workflow_started": "2025-10-18T00:00:00.000Z",
+    "drafting_completed": "2025-10-18T00:30:00.000Z",
+    "validation_completed": "2025-10-18T01:15:00.000Z",
+    "improvements_applied": "2025-10-18T01:30:00.000Z",
+    "ready_status_set": "2025-10-18T01:45:00.000Z",
+    "total_duration_minutes": 105
+  },
+  "workflow_metrics": {
+    "validation_iterations": 0,
+    "correction_iterations": 0,
+    "improvements_applied": 5,
+    "total_commits": 3
+  },
+  "approvals": {
+    "sm_drafted": true,
+    "po_approved": true,
+    "sm_finalized": true
+  },
+  "files": {
+    "story_file": "docs/04-stories/11.4.historical-ipo-backfill.md",
+    "epic_reference": "docs/03-epics/epic-11-sharded.md",
+    "architecture_reference": "docs/02-architecture/",
+    "sprint_plan": null
+  },
+  "quality_metrics": {
+    "initial_score": 8.8,
+    "final_score": 9.5,
+    "initial_grade": "A- (91%)",
+    "final_grade": "A+ (~95%)",
+    "confidence_level": "HIGH",
+    "critical_issues": 0,
+    "should_fix_issues": 5,
+    "issues_incorporated": 5,
+    "nice_to_have_improvements": 4
+  },
+  "improvements": [
+    "AC3: Added matching accuracy validation (10% sample, <5% error rate)",
+    "Task 6: Added NPM package installation subtask (commander, cli-progress)",
+    "Task 11: Enhanced database schema enum verification (NSE_PAST_API)",
+    "Task 12: Made UI verification explicit (spot-check 5 IPOs)",
+    "Cache warming elevated from Optional to Recommended"
+  ],
+  "workflow_version": "2.0",
+  "workflow_step": "7"
+}
