@@ -2,12 +2,14 @@
   "story_id": "11.8",
   "story_title": "Restructure Category Field into Segment + Offering Type",
   "creation_status": "drafted",
-  "validation_status": "pending",
+  "validation_status": "approved",
   "timestamps": {
     "workflow_started": "2025-10-19T09:02:00.000Z",
     "drafting_started": "2025-10-19T09:07:30.000Z",
     "drafting_completed": "2025-10-19T09:08:00.000Z",
-    "next_phase": "po_validation"
+    "validation_started": "2025-10-19T09:12:00.000Z",
+    "validation_completed": "2025-10-19T09:15:00.000Z",
+    "next_phase": "finalization"
   },
   "creation_context": {
     "epic_path": "docs/03-epics/epic-11-sharded.md",
@@ -19,6 +21,18 @@
     "drafted_by": "Bob (Scrum Master)",
     "drafted_via": "sm.md *draft command"
   },
+  "validation": {
+    "validated_by": "Sarah (Product Owner)",
+    "validated_via": "po.md *validate-story-draft command",
+    "status": "APPROVED",
+    "readiness_score": "9.2/10",
+    "confidence_level": "HIGH",
+    "issues_count": 0,
+    "critical_issues": 0,
+    "should_fix_issues": 0,
+    "nice_to_have_improvements": 3,
+    "validated_at": "2025-10-19T09:15:00.000Z"
+  },
   "workflow_version": "2.0",
-  "workflow_step": "2.5"
+  "workflow_step": "3.5"
 }
