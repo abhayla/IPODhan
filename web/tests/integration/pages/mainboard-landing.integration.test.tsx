@@ -264,7 +264,7 @@ describe('Mainboard Landing Page Integration', () => {
 
       // Assert
       result.forEach((ipo) => {
-        expect(ipo.category).toBe('MAINBOARD');
+        expect(ipo.segment).toBe('MAINBOARD');
       });
     });
 

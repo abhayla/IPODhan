@@ -32,7 +32,8 @@ describe('NCD Service', () => {
           id: '1',
           companyName: 'Test Company NCD',
           slug: 'test-company-ncd',
-          category: 'NCD' as const,
+          segment: 'MAINBOARD' as const,
+  offeringType: 'NCD' as const,
           status: 'UPCOMING' as const,
           openDate: '2025-03-15',
           closeDate: '2025-03-20',
@@ -59,7 +60,8 @@ describe('NCD Service', () => {
 
       // Assertions
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'NCD',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'NCD' as const,
         limit: 100,
       });
 
@@ -84,7 +86,8 @@ describe('NCD Service', () => {
       // Assertions - should not throw, return empty array
       expect(result).toEqual([]);
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'NCD',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'NCD' as const,
         limit: 100,
       });
     });
@@ -96,7 +99,8 @@ describe('NCD Service', () => {
           id: '1',
           companyName: 'NCD March',
           slug: 'ncd-march',
-          category: 'NCD' as const,
+          segment: 'MAINBOARD' as const,
+  offeringType: 'NCD' as const,
           status: 'UPCOMING' as const,
           openDate: '2025-03-15',
           closeDate: '2025-03-20',
@@ -107,7 +111,8 @@ describe('NCD Service', () => {
           id: '2',
           companyName: 'NCD January',
           slug: 'ncd-january',
-          category: 'NCD' as const,
+          segment: 'MAINBOARD' as const,
+  offeringType: 'NCD' as const,
           status: 'UPCOMING' as const,
           openDate: '2025-01-10',
           closeDate: '2025-01-15',
@@ -118,7 +123,8 @@ describe('NCD Service', () => {
           id: '3',
           companyName: 'NCD February',
           slug: 'ncd-february',
-          category: 'NCD' as const,
+          segment: 'MAINBOARD' as const,
+  offeringType: 'NCD' as const,
           status: 'UPCOMING' as const,
           openDate: '2025-02-20',
           closeDate: '2025-02-25',
@@ -183,7 +189,8 @@ describe('NCD Service', () => {
           id: '1',
           companyName: 'NCD With Dates',
           slug: 'ncd-with-dates',
-          category: 'NCD' as const,
+          segment: 'MAINBOARD' as const,
+  offeringType: 'NCD' as const,
           status: 'UPCOMING' as const,
           openDate: '2025-03-15',
           closeDate: '2025-03-20',
@@ -194,7 +201,8 @@ describe('NCD Service', () => {
           id: '2',
           companyName: 'NCD Without Dates',
           slug: 'ncd-without-dates',
-          category: 'NCD' as const,
+          segment: 'MAINBOARD' as const,
+  offeringType: 'NCD' as const,
           status: 'UPCOMING' as const,
           openDate: null,
           closeDate: null,

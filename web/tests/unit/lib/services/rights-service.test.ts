@@ -42,7 +42,8 @@ const mockUpcomingRightsIPO: apiClient.IPO = {
   id: '1',
   companyName: 'Test Company Rights',
   slug: 'test-company-rights',
-  category: 'RIGHTS',
+  segment: 'MAINBOARD' as const,
+  offeringType: 'RIGHTS' as const,
   status: 'UPCOMING',
   openDate: '2025-03-01',
   closeDate: '2025-03-10',
@@ -119,7 +120,8 @@ describe('Rights Service', () => {
 
       // Assert
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'RIGHTS',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'RIGHTS' as const,
         status: 'UPCOMING',
         limit: 100,
       });
@@ -217,7 +219,8 @@ describe('Rights Service', () => {
 
       // Assert
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'RIGHTS',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'RIGHTS' as const,
         status: 'OPEN',
         limit: 100,
       });
@@ -274,7 +277,8 @@ describe('Rights Service', () => {
 
       // Assert
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'RIGHTS',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'RIGHTS' as const,
         status: 'UPCOMING',
         limit: 100,
       });
@@ -291,7 +295,8 @@ describe('Rights Service', () => {
 
       // Assert
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'RIGHTS',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'RIGHTS' as const,
         status: 'OPEN',
         limit: 100,
       });

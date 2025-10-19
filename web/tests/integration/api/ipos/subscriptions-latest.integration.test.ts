@@ -30,7 +30,8 @@ import { eq } from 'drizzle-orm';
 const testIPO = {
   companyName: 'Test Company IPO',
   slug: 'test-company-subscription-api',
-  category: 'MAINBOARD' as const,
+  segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
   sector: 'Technology',
   issueSize: '1000.00',
   priceRangeMin: 100,
@@ -47,7 +48,8 @@ const testIPO = {
 const testIPONoSubscription = {
   companyName: 'Test Company No Subscription',
   slug: 'test-company-no-subscription',
-  category: 'MAINBOARD' as const,
+  segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
   sector: 'Technology',
   issueSize: '500.00',
   priceRangeMin: 50,

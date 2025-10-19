@@ -21,7 +21,8 @@ describe('ProspectusScraper - Integration Tests', () => {
       .values({
         companyName: 'Test IPO Company Limited',
         slug: 'test-ipo-company-integration',
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
         status: 'UPCOMING',
       })
       .returning();

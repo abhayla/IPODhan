@@ -11,7 +11,6 @@ import type {
   Registrar,
   PeerCompany,
   BrokerAffiliate,
-  IPOCategory,
   IPOStatus,
   DocumentType,
   Exchange,
@@ -28,7 +27,8 @@ describe('Database Types', () => {
         id: '123e4567-e89b-12d3-a456-426614174000',
         companyName: 'Test Company',
         slug: 'test-company',
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
         sector: 'Technology',
         issueSize: '100.00',
         priceRangeMin: 100,
@@ -55,7 +55,6 @@ describe('Database Types', () => {
 
       expect(mockIPO).toBeDefined();
       expectTypeOf(mockIPO.id).toBeString();
-      expectTypeOf(mockIPO.category).toMatchTypeOf<IPOCategory>();
       expectTypeOf(mockIPO.status).toMatchTypeOf<IPOStatus>();
     });
 
@@ -63,7 +62,8 @@ describe('Database Types', () => {
       const mockNewIPO: NewIPO = {
         companyName: 'New Company',
         slug: 'new-company',
-        category: 'SME',
+        segment: 'SME' as const,
+  offeringType: 'IPO' as const,
         status: 'UPCOMING',
       };
 
@@ -151,6 +151,9 @@ describe('Database Types', () => {
         id: '123e4567-e89b-12d3-a456-426614174000',
         ipoId: '123e4567-e89b-12d3-a456-426614174001',
         type: 'DRHP',
+        mediaType: 'PDF',
+        sequenceNumber: 1,
+        isActive: true,
         title: 'Draft Prospectus',
         url: 'https://example.com/drhp.pdf',
         fileSize: 1024000,
@@ -170,6 +173,9 @@ describe('Database Types', () => {
       const mockListingPerformance: ListingPerformance = {
         id: '123e4567-e89b-12d3-a456-426614174000',
         ipoId: '123e4567-e89b-12d3-a456-426614174001',
+        symbol: 'TEST',
+        companyName: 'Test Company',
+        listingDate: '2025-01-10',
         listingPrice: 150,
         issuePrice: 100,
         listingGainPercent: '50.00',
@@ -177,11 +183,14 @@ describe('Database Types', () => {
         currentPriceBSE: 158,
         currentPriceNSE: 162,
         currentGainPercent: '60.00',
+        dataSource: 'MANUAL',
+        createdAt: new Date(),
+        updatedAt: new Date(),
         lastUpdated: new Date(),
       };
 
       expect(mockListingPerformance).toBeDefined();
-      expectTypeOf(mockListingPerformance.listingPrice).toBeNumber();
+      expectTypeOf(mockListingPerformance.listingPrice).toEqualTypeOf<number | null>();
       expectTypeOf(mockListingPerformance.currentPriceBSE).toEqualTypeOf<number | null>();
       expectTypeOf(mockListingPerformance.currentPriceNSE).toEqualTypeOf<number | null>();
     });
@@ -277,14 +286,11 @@ describe('Database Types', () => {
 
   describe('Enum Types', () => {
     it('should have correct enum type definitions', () => {
-      expectTypeOf<IPOCategory>().toMatchTypeOf<
-        'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD' | 'FPO'
-      >();
       expectTypeOf<IPOStatus>().toMatchTypeOf<
         'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED'
       >();
       expectTypeOf<DocumentType>().toMatchTypeOf<
-        'DRHP' | 'RHP' | 'PROSPECTUS' | 'ADDENDUM'
+        'DRHP' | 'RHP' | 'PROSPECTUS' | 'BASIS_OF_ALLOTMENT' | 'ADDENDUM'
       >();
       expectTypeOf<Exchange>().toMatchTypeOf<'NSE' | 'BSE' | 'BOTH'>();
       expectTypeOf<HolidayType>().toMatchTypeOf<'TRADING' | 'SETTLEMENT' | 'BOTH'>();

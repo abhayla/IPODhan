@@ -19,7 +19,8 @@ const testHistoricalIPOs = [
   {
     companyName: 'Historical Corp 2024',
     slug: 'historical-corp-2024-test',
-    category: 'MAINBOARD' as const,
+    segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
     sector: 'Technology',
     issueSize: '500.00',
     priceRangeMin: 100,
@@ -41,7 +42,8 @@ const testHistoricalIPOs = [
   {
     companyName: 'Historical Corp 2023',
     slug: 'historical-corp-2023-test',
-    category: 'MAINBOARD' as const,
+    segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
     sector: 'Finance',
     issueSize: '300.00',
     priceRangeMin: 80,

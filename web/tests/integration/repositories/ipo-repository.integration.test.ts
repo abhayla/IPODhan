@@ -46,7 +46,8 @@ describe('IPORepository Integration Tests', () => {
       const ipoData = {
         slug: 'test-integration-ipo',
         companyName: 'Test Integration Company',
-        category: 'MAINBOARD' as const,
+        segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
         status: 'UPCOMING' as const,
         sector: 'Technology',
         issueSize: '500',
@@ -86,7 +87,8 @@ describe('IPORepository Integration Tests', () => {
       const ipoData = {
         slug: 'test-integration-ipo',
         companyName: 'Test Integration Company',
-        category: 'MAINBOARD' as const,
+        segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
         status: 'OPEN' as const,
       };
 
@@ -108,7 +110,8 @@ describe('IPORepository Integration Tests', () => {
       const ipoData = {
         slug: 'test-integration-ipo',
         companyName: 'Test Integration Company',
-        category: 'SME' as const,
+        segment: 'SME' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
         status: 'UPCOMING' as const,
       };
 
@@ -132,7 +135,8 @@ describe('IPORepository Integration Tests', () => {
       const ipoData = {
         slug: 'test-integration-ipo',
         companyName: 'Test Integration Company',
-        category: 'MAINBOARD' as const,
+        segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
         status: 'UPCOMING' as const,
       };
 
@@ -158,7 +162,8 @@ describe('IPORepository Integration Tests', () => {
       const ipoData = {
         slug: 'test-integration-ipo',
         companyName: 'Reliance Power Limited',
-        category: 'MAINBOARD' as const,
+        segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
         status: 'LISTED' as const,
       };
 

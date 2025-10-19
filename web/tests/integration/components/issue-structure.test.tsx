@@ -22,7 +22,8 @@ describe('Issue Structure Integration Tests', () => {
     const [testIPO] = await db.insert(ipos).values({
       companyName: 'Test Issue Structure IPO Ltd',
       slug: 'test-issue-structure-ipo',
-      category: 'MAINBOARD',
+      segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
       status: 'OPEN',
       openDate: '2025-01-15',
       closeDate: '2025-01-17',
@@ -164,7 +165,8 @@ describe('Issue Structure Integration Tests', () => {
       const [nullIPO] = await db.insert(ipos).values({
         companyName: 'No Details IPO Ltd',
         slug: 'no-details-ipo',
-        category: 'SME',
+        segment: 'SME' as const,
+  offeringType: 'IPO' as const,
         status: 'UPCOMING',
         openDate: '2025-02-01',
         closeDate: '2025-02-03',

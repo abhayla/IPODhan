@@ -20,7 +20,8 @@ describe('Database Validation Schemas', () => {
       const validIPO = {
         companyName: 'Test Company',
         slug: 'test-company',
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
         status: 'UPCOMING',
       };
 
@@ -32,7 +33,8 @@ describe('Database Validation Schemas', () => {
       const invalidIPO = {
         companyName: 'Test Company',
         slug: 'Test Company!', // Invalid characters
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
         status: 'UPCOMING',
       };
 
@@ -44,7 +46,8 @@ describe('Database Validation Schemas', () => {
       const invalidIPO = {
         companyName: 'Test Company',
         slug: 'test-company',
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
         status: 'UPCOMING',
         rating: 6, // Rating must be 1-5
       };
@@ -57,7 +60,8 @@ describe('Database Validation Schemas', () => {
       const validIPO = {
         companyName: 'Test Company',
         slug: 'test-company',
-        category: 'SME',
+        segment: 'SME' as const,
+  offeringType: 'IPO' as const,
         status: 'OPEN',
         sector: 'Technology',
         issueSize: '100.50',

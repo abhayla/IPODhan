@@ -48,7 +48,7 @@ const testIPOs = [
   {
     companyName: 'Test Corp Alpha',
     slug: 'test-corp-alpha-integration',
-    segment: 'MAINBOARD',
+    segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
     offeringType: 'IPO' as const,
     sector: 'Technology',
     issueSize: '500.00',
@@ -71,7 +71,7 @@ const testIPOs = [
   {
     companyName: 'Test Corp Beta',
     slug: 'test-corp-beta-integration',
-    segment: 'SME',
+    segment: 'SME' as 'MAINBOARD' | 'SME',
     offeringType: 'IPO' as const,
     sector: 'Finance',
     issueSize: '200.00',
@@ -94,7 +94,7 @@ const testIPOs = [
   {
     companyName: 'Test Corp Gamma',
     slug: 'test-corp-gamma-integration',
-    segment: 'MAINBOARD',
+    segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
     offeringType: 'IPO' as const,
     sector: 'Technology',
     issueSize: '750.00',

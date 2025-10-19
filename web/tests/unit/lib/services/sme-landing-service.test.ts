@@ -75,7 +75,8 @@ describe('SME Landing Service', () => {
 
       // Verify API called with correct params
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'SME',
+        segment: 'SME' as const,
+  offeringType: 'IPO' as const,
         limit: 1000,
       });
     });
@@ -162,12 +163,13 @@ describe('SME Landing Service', () => {
       expect(result).toHaveLength(currentIPOs.length);
       result.forEach((ipo) => {
         expect(ipo.status).toBe('OPEN');
-        expect(ipo.category).toBe('SME');
+        expect(ipo.segment).toBe('SME');
       });
 
       // Verify API called with correct filters
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'SME',
+        segment: 'SME' as const,
+  offeringType: 'IPO' as const,
         status: 'OPEN',
         limit: 6,
       });
@@ -247,12 +249,13 @@ describe('SME Landing Service', () => {
       expect(result).toHaveLength(upcomingIPOs.length);
       result.forEach((ipo) => {
         expect(ipo.status).toBe('UPCOMING');
-        expect(ipo.category).toBe('SME');
+        expect(ipo.segment).toBe('SME');
       });
 
       // Verify API called with correct filters
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'SME',
+        segment: 'SME' as const,
+  offeringType: 'IPO' as const,
         status: 'UPCOMING',
         limit: 6,
       });
@@ -319,12 +322,13 @@ describe('SME Landing Service', () => {
       expect(result).toHaveLength(listedIPOs.length);
       result.forEach((ipo) => {
         expect(ipo.status).toBe('LISTED');
-        expect(ipo.category).toBe('SME');
+        expect(ipo.segment).toBe('SME');
       });
 
       // Verify API called with correct filters
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'SME',
+        segment: 'SME' as const,
+  offeringType: 'IPO' as const,
         status: 'LISTED',
         limit: 6,
       });
@@ -487,7 +491,8 @@ describe('SME Landing Service', () => {
 
       // Assert
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'SME',
+        segment: 'SME' as const,
+  offeringType: 'IPO' as const,
         status: 'LISTED',
         limit: 50,
       });
@@ -520,7 +525,8 @@ describe('SME Landing Service', () => {
 
       // Verify API called with correct params
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'SME',
+        segment: 'SME' as const,
+  offeringType: 'IPO' as const,
         status: 'OPEN',
         limit: 6,
       });
@@ -577,7 +583,8 @@ describe('SME Landing Service', () => {
       expect(result.data).toBeInstanceOf(Array);
       expect(result.totalCount).toBe(smeIPOFixtures.length);
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'SME',
+        segment: 'SME' as const,
+  offeringType: 'IPO' as const,
         limit: 1000,
       });
     });

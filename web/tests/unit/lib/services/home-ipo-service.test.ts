@@ -35,7 +35,8 @@ const mockMainboardOpenIPO = {
   id: 'mb-1',
   companyName: 'Mainboard Company Open',
   slug: 'mainboard-company-open',
-  category: 'MAINBOARD' as const,
+  segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
   openDate: '2025-10-01',
   closeDate: '2025-10-03',
   priceRangeMin: 90,
@@ -65,7 +66,8 @@ const mockMainboardClosedRecentIPO = {
   id: 'mb-2',
   companyName: 'Mainboard Company Recently Closed',
   slug: 'mainboard-company-closed',
-  category: 'MAINBOARD' as const,
+  segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
   openDate: '2025-09-20',
   closeDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 10 days ago
   priceRangeMin: 180,
@@ -95,7 +97,8 @@ const mockMainboardClosedOldIPO = {
   id: 'mb-3',
   companyName: 'Mainboard Company Old Closed',
   slug: 'mainboard-company-old-closed',
-  category: 'MAINBOARD' as const,
+  segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
   openDate: '2025-08-01',
   closeDate: new Date(Date.now() - 35 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 35 days ago
   priceRangeMin: 140,
@@ -125,7 +128,8 @@ const mockSMEOpenIPO = {
   id: 'sme-1',
   companyName: 'SME Company Open',
   slug: 'sme-company-open',
-  category: 'SME' as const,
+  segment: 'SME' as const,
+  offeringType: 'IPO' as const,
   openDate: '2025-10-05',
   closeDate: '2025-10-07',
   priceRangeMin: 45,
@@ -155,7 +159,8 @@ const mockMainboardUpcomingIPO = {
   id: 'mb-up-1',
   companyName: 'Mainboard Upcoming Company',
   slug: 'mainboard-upcoming',
-  category: 'MAINBOARD' as const,
+  segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
   openDate: '2025-10-15',
   closeDate: '2025-10-18',
   priceRangeMin: 280,
@@ -185,7 +190,8 @@ const mockSMEUpcomingIPO = {
   id: 'sme-up-1',
   companyName: 'SME Upcoming Company',
   slug: 'sme-upcoming',
-  category: 'SME' as const,
+  segment: 'SME' as const,
+  offeringType: 'IPO' as const,
   openDate: '2025-10-20',
   closeDate: '2025-10-22',
   priceRangeMin: 75,
@@ -264,18 +270,21 @@ describe('Home IPO Service', () => {
         id: 'mb-1',
         companyName: 'Mainboard Company Open',
         slug: 'mainboard-company-open',
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
         status: 'OPEN',
       });
 
       // Verify API calls
       expect(mockGetIPOs).toHaveBeenCalledWith({
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
         status: 'OPEN',
         limit: 10,
       });
       expect(mockGetIPOs).toHaveBeenCalledWith({
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
         status: 'CLOSED',
         limit: 50,
       });
@@ -356,7 +365,8 @@ describe('Home IPO Service', () => {
           id: 'cached-1',
           companyName: 'Cached Mainboard IPO',
           slug: 'cached-mainboard',
-          category: 'MAINBOARD',
+          segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
           openDate: '2025-10-01',
           closeDate: '2025-10-03',
           issuePrice: 100,
@@ -434,11 +444,12 @@ describe('Home IPO Service', () => {
       const result = await getSMEIPOs();
 
       expect(result).toHaveLength(1);
-      expect(result[0].category).toBe('SME');
+      expect(result[0].segment).toBe('SME');
       expect(result[0].status).toBe('OPEN');
 
       expect(mockGetIPOs).toHaveBeenCalledWith({
-        category: 'SME',
+        segment: 'SME' as const,
+  offeringType: 'IPO' as const,
         status: 'OPEN',
         limit: 10,
       });
@@ -514,11 +525,12 @@ describe('Home IPO Service', () => {
       const result = await getUpcomingMainboardIPOs();
 
       expect(result).toHaveLength(1);
-      expect(result[0].category).toBe('MAINBOARD');
+      expect(result[0].segment).toBe('MAINBOARD');
       expect(result[0].status).toBe('UPCOMING');
 
       expect(mockGetIPOs).toHaveBeenCalledWith({
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
         status: 'UPCOMING',
         limit: 10,
       });
@@ -610,11 +622,12 @@ describe('Home IPO Service', () => {
       const result = await getUpcomingSMEIPOs();
 
       expect(result).toHaveLength(1);
-      expect(result[0].category).toBe('SME');
+      expect(result[0].segment).toBe('SME');
       expect(result[0].status).toBe('UPCOMING');
 
       expect(mockGetIPOs).toHaveBeenCalledWith({
-        category: 'SME',
+        segment: 'SME' as const,
+  offeringType: 'IPO' as const,
         status: 'UPCOMING',
         limit: 10,
       });
