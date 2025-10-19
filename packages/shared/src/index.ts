@@ -5,6 +5,7 @@ export * from './repositories/ipo-repository.js';
 export * from './repositories/subscription-repository.js';
 export * from './repositories/gmp-repository.js';
 export * from './repositories/scraper-log-repository.js';
+export * from './repositories/document-repository.js';
 // Export repository interfaces and pagination types only
 export type {
   IIPORepository,

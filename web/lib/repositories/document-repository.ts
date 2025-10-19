@@ -125,4 +125,102 @@ export class DocumentRepository
       );
     }
   }
+
+  /**
+   * Upsert a single document
+   * - If URL exists: Update timestamp and set isActive=true
+   * - If new document of existing type: Get next sequence number
+   * - If new document type: Start sequence at 1
+   */
+  async upsertDocument(data: DocumentInsert): Promise<Document> {
+    try {
+      const { sql, and, max } = await import('drizzle-orm');
+
+      // Check if URL already exists
+      const existing = await this.db
+        .select()
+        .from(documents)
+        .where(eq(documents.url, data.url))
+        .limit(1);
+
+      if (existing.length > 0) {
+        // URL exists - update timestamp and set active
+        const [updated] = await this.db
+          .update(documents)
+          .set({
+            updatedAt: new Date(),
+            isActive: true,
+          })
+          .where(eq(documents.url, data.url))
+          .returning();
+
+        // Invalidate cache
+        await this.deleteCache(getDocumentsKey(data.ipoId));
+
+        return updated;
+      }
+
+      // Get next sequence number for this document type + mediaType + exchange combination
+      const sequenceResult = await this.db
+        .select({ maxSequence: max(documents.sequenceNumber) })
+        .from(documents)
+        .where(
+          and(
+            eq(documents.ipoId, data.ipoId),
+            eq(documents.type, data.type),
+            eq(documents.mediaType, data.mediaType || 'PDF'),
+            eq(documents.exchange, data.exchange || 'BSE')
+          )
+        );
+
+      const currentMax = sequenceResult[0]?.maxSequence ?? 0;
+      const nextSequence = currentMax + 1;
+
+      // Insert new document with sequence number
+      const [newDocument] = await this.db
+        .insert(documents)
+        .values({
+          ...data,
+          sequenceNumber: nextSequence,
+        })
+        .returning();
+
+      // Invalidate cache
+      await this.deleteCache(getDocumentsKey(data.ipoId));
+
+      return newDocument;
+    } catch (error) {
+      throw new DatabaseError(
+        'Failed to upsert document',
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
+   * Upsert multiple documents in batch
+   * Returns success and failure counts
+   */
+  async upsertDocuments(
+    docs: DocumentInsert[]
+  ): Promise<{ success: number; failed: number; errors: string[] }> {
+    let success = 0;
+    let failed = 0;
+    const errors: string[] = [];
+
+    for (const doc of docs) {
+      try {
+        await this.upsertDocument(doc);
+        success++;
+      } catch (error) {
+        failed++;
+        const errorMsg =
+          error instanceof Error ? error.message : String(error);
+        errors.push(`${doc.title}: ${errorMsg}`);
+      }
+    }
+
+    return { success, failed, errors };
+  }
 }

@@ -12,6 +12,7 @@ import {
   bigint,
   index,
   pgEnum,
+  unique,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
@@ -36,6 +37,7 @@ export const documentTypeEnum = pgEnum('document_type', [
   'DRHP',
   'RHP',
   'PROSPECTUS',
+  'BASIS_OF_ALLOTMENT',
   'ADDENDUM',
 ]);
 
@@ -344,8 +346,14 @@ export const documents = pgTable(
       .notNull()
       .references(() => ipos.id, { onDelete: 'cascade' }),
     type: documentTypeEnum('type').notNull(),
+
+    // Media type and sequencing fields for handling multiple documents
+    mediaType: varchar('media_type', { length: 20 }).default('PDF').notNull(), // 'PDF' or 'VIDEO'
+    sequenceNumber: integer('sequence_number').default(1).notNull(), // For multiple documents of same type (addendums, etc.)
+    isActive: boolean('is_active').default(true).notNull(), // Track superseded documents
+
     title: varchar('title', { length: 255 }).notNull(),
-    url: text('url').notNull().unique(), // file path or external URL - unique constraint added
+    url: text('url').notNull(), // file path or external URL
     fileSize: bigint('file_size', { mode: 'number' }), // in bytes
     uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
     exchange: varchar('exchange', { length: 10 }), // 'NSE' | 'BSE' - source exchange
@@ -354,6 +362,21 @@ export const documents = pgTable(
   },
   (table) => ({
     exchangeIdx: index('idx_documents_exchange').on(table.exchange),
+
+    // Composite unique constraint: one document per (IPO + type + mediaType + exchange + sequence)
+    // Allows multiple documents of same type (e.g., Addendum 1, 2, 3)
+    // Distinguishes PDF vs VIDEO versions
+    // Supports documents from both NSE and BSE
+    uniqueDocPerIpo: unique('unique_doc_per_ipo').on(
+      table.ipoId,
+      table.type,
+      table.mediaType,
+      table.exchange,
+      table.sequenceNumber
+    ),
+
+    // Keep URL unique globally to prevent exact duplicates
+    uniqueUrl: unique('unique_url').on(table.url),
   })
 );
 
