@@ -9,6 +9,7 @@
  * - Extracts detailed IPO information from BSE detail pages
  * - Populates ipo_details and ipo_financials tables
  * - Fixes 20 BSE-only IPOs with missing issue_size data
+ * - Extracts IPO documents (DRHP, RHP, Prospectus, etc.) - Story 11.8
  *
  * URL Pattern:
  * https://www.bseindia.com/markets/publicIssues/DisplayIPO.aspx?id={id}&type=IPO&idtype=1&status={status}&IPONo={ipoNo}&startdt={startDate}
@@ -17,6 +18,9 @@
 import * as cheerio from 'cheerio';
 import logger from '../utils/logger.js';
 import { sanitizeText, retryWithExponentialBackoff } from '../utils/scraper-utils.js';
+import { scrapeBSEDocuments, type DocumentLink } from './bse-document-scraper.js';
+import { detectDocumentType } from '../utils/document-type-mapper.js';
+import type { DocumentInsert } from '@ipodhan/shared';
 
 /**
  * BSE Detail Page Types
@@ -43,6 +47,11 @@ export interface BSEDetailPageData {
 export interface BSEDetailScraperResult {
   details: BSEDetailPageData[];
   errors: string[];
+}
+
+export interface BSEDetailWithDocuments {
+  details: BSEDetailPageData;
+  documents: DocumentInsert[];
 }
 
 /**
@@ -512,4 +521,92 @@ export function validateBSEDetailData(data: BSEDetailPageData): {
     isValid: errors.length === 0,
     errors,
   };
+}
+
+/**
+ * Scrape BSE IPO detail page with documents (Story 11.8)
+ * Extracts both detail data and document links in a single call
+ *
+ * @param url - Full BSE detail page URL
+ * @param ipoId - IPO ID for associating documents
+ * @returns Detail data and documents
+ */
+export async function scrapeBSEIPODetailWithDocuments(
+  url: string,
+  ipoId: string
+): Promise<BSEDetailWithDocuments> {
+  logger.info({ url, ipoId }, 'Scraping BSE IPO detail page with documents');
+
+  try {
+    // Fetch HTML once (reuse for both detail and documents)
+    const response = await retryWithExponentialBackoff(
+      async () => {
+        const res = await fetch(url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Accept': 'text/html',
+          },
+          signal: AbortSignal.timeout(10000), // 10 second timeout
+        });
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+        }
+
+        return res;
+      },
+      3,
+      1000
+    );
+
+    const html = await response.text();
+    const $ = cheerio.load(html);
+
+    // Extract detail data (existing logic)
+    const pageType = detectBSEDetailPageType(url);
+    let details: BSEDetailPageData;
+
+    if (pageType === 'DisplayIPO') {
+      details = parseDisplayIPOPage($ as cheerio.CheerioAPI);
+    } else {
+      details = parseACQDispPage($ as cheerio.CheerioAPI);
+    }
+
+    // Extract documents (Story 11.8)
+    const documentLinks = scrapeBSEDocuments(html);
+
+    // Map document links to DocumentInsert format
+    const documents: DocumentInsert[] = documentLinks.map((doc: DocumentLink) => {
+      const { type, mediaType } = detectDocumentType(doc.title);
+
+      return {
+        ipoId,
+        type,
+        mediaType,
+        title: doc.title,
+        url: doc.url,
+        exchange: 'BSE',
+        isActive: true,
+        // sequenceNumber will be calculated by repository
+      };
+    });
+
+    logger.info(
+      {
+        ipoId,
+        detailExtracted: true,
+        documentsExtracted: documents.length,
+      },
+      'Successfully scraped BSE detail page with documents'
+    );
+
+    return { details, documents };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    logger.error(
+      { url, ipoId, error: errorMsg },
+      'Failed to scrape BSE detail page with documents'
+    );
+    throw error;
+  }
 }

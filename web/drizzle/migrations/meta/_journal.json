@@ -78,6 +78,13 @@
       "when": 1760777063408,
       "tag": "0010_medical_viper",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1760849220186,
+      "tag": "0011_naive_fixer",
+      "breakpoints": true
     }
   ]
 }
