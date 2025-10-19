@@ -161,7 +161,8 @@ export default async function OFSPage() {
     ofsIssues.map((ofs) => ({
       companyName: ofs.companyName,
       slug: ofs.slug,
-      category: 'OFS',
+      segment: 'MAINBOARD',
+      offeringType: 'OFS',
       companyDescription: `Offer for Sale by ${ofs.companyName}`,
     }))
   );

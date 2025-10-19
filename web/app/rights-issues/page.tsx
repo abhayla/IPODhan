@@ -177,7 +177,8 @@ export default async function RightsIssuesPage({
     allRights.map((r) => ({
       companyName: r.companyName,
       slug: r.slug,
-      category: 'RIGHTS',
+      segment: 'MAINBOARD',
+      offeringType: 'RIGHTS',
       companyDescription: `Rights Issue of ${r.companyName}`,
     }))
   );

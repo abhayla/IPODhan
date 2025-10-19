@@ -22,7 +22,8 @@ import {
   registrars,
   ipoScores,
   type ipoStatusEnum,
-  type ipoCategoryEnum,
+  type segmentEnum,
+  type offeringTypeEnum,
 } from '../db';
 import * as schema from '@ipodhan/shared/db/schema';
 import {
@@ -57,7 +58,8 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   async findAll(filters: IPOFilters = {}): Promise<PaginatedResponse<IPO>> {
     const {
       status,
-      category,
+      segment,
+      offeringType,
       sector,
       search,
       scoreRange,
@@ -92,11 +94,19 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             }
           }
 
-          if (category) {
-            if (Array.isArray(category)) {
-              conditions.push(inArray(ipos.category, category as (typeof ipoCategoryEnum.enumValues)[number][]));
+          if (segment) {
+            if (Array.isArray(segment)) {
+              conditions.push(inArray(ipos.segment, segment as (typeof segmentEnum.enumValues)[number][]));
             } else {
-              conditions.push(eq(ipos.category, category as (typeof ipoCategoryEnum.enumValues)[number]));
+              conditions.push(eq(ipos.segment, segment as (typeof segmentEnum.enumValues)[number]));
+            }
+          }
+
+          if (offeringType) {
+            if (Array.isArray(offeringType)) {
+              conditions.push(inArray(ipos.offeringType, offeringType as (typeof offeringTypeEnum.enumValues)[number][]));
+            } else {
+              conditions.push(eq(ipos.offeringType, offeringType as (typeof offeringTypeEnum.enumValues)[number]));
             }
           }
 
@@ -599,7 +609,11 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       const conditions = [];
 
       if (filters.category && filters.category.length > 0) {
-        conditions.push(inArray(ipos.category, filters.category as (typeof ipoCategoryEnum.enumValues)[number][]));
+        // Map old category to segment
+        const segments = filters.category.filter(c => c === 'MAINBOARD' || c === 'SME');
+        if (segments.length > 0) {
+          conditions.push(inArray(ipos.segment, segments as (typeof segmentEnum.enumValues)[number][]));
+        }
       }
 
       if (filters.year) {

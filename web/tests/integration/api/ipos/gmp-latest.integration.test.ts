@@ -30,7 +30,8 @@ import { eq } from 'drizzle-orm';
 const testIPOWithGMP = {
   companyName: 'Test Company With GMP',
   slug: 'test-company-gmp-api',
-  category: 'MAINBOARD' as const,
+  segment: 'MAINBOARD',
+    offeringType: 'IPO' as const,
   sector: 'Technology',
   issueSize: '1000.00',
   priceRangeMin: 100,
@@ -45,7 +46,8 @@ const testIPOWithGMP = {
 const testIPONoGMP = {
   companyName: 'Test Company No GMP',
   slug: 'test-company-no-gmp',
-  category: 'MAINBOARD' as const,
+  segment: 'MAINBOARD',
+    offeringType: 'IPO' as const,
   sector: 'Technology',
   issueSize: '500.00',
   priceRangeMin: 50,
@@ -60,7 +62,8 @@ const testIPONoGMP = {
 const testIPONegativeGMP = {
   companyName: 'Test Company Negative GMP',
   slug: 'test-company-negative-gmp',
-  category: 'SME' as const,
+  segment: 'SME',
+    offeringType: 'IPO' as const,
   sector: 'Finance',
   issueSize: '200.00',
   priceRangeMin: 80,
@@ -518,7 +521,8 @@ describe('GET /api/ipos/[slug]/gmp/latest Integration Tests', () => {
       const singleGMPIPO = {
         companyName: 'Single GMP Test',
         slug: 'single-gmp-test',
-        category: 'MAINBOARD' as const,
+        segment: 'MAINBOARD',
+    offeringType: 'IPO' as const,
         sector: 'Technology',
         issueSize: '300.00',
         priceRangeMin: 60,
@@ -563,7 +567,8 @@ describe('GET /api/ipos/[slug]/gmp/latest Integration Tests', () => {
       const stableGMPIPO = {
         companyName: 'Stable GMP Test',
         slug: 'stable-gmp-test',
-        category: 'MAINBOARD' as const,
+        segment: 'MAINBOARD',
+    offeringType: 'IPO' as const,
         sector: 'Technology',
         issueSize: '400.00',
         priceRangeMin: 70,

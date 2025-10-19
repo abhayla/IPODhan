@@ -136,10 +136,15 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
             </div>
           </div>
 
-          {/* Category, Sector, and Verdict */}
+          {/* Segment, Offering Type, Sector, and Verdict */}
           <div className="flex items-center gap-2 flex-wrap">
-            <Badge variant="outline" className="text-xs">
-              {ipo.category}
+            {/* Story 11.8: Display segment badge */}
+            <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300">
+              {ipo.segment}
+            </Badge>
+            {/* Story 11.8: Display offering type badge */}
+            <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300">
+              {ipo.offeringType}
             </Badge>
             {ipo.sector && (
               <span className="text-xs text-muted-foreground">
@@ -151,7 +156,6 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
               <VerdictBadge verdict={ipo.ipoScore.verdict} size="sm" />
             )}
           </div>
-
           {/* Price Range */}
           <div className="space-y-1 p-3 rounded-lg bg-muted/50 group-hover:bg-muted transition-colors duration-200">
             <p className="text-sm text-muted-foreground">Price Range</p>

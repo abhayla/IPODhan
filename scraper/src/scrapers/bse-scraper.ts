@@ -37,6 +37,7 @@ import {
   fetchRightsIssuesFromChittorgarh,
   fetchDebtIssuesFromChittorgarh,
 } from './chittorgarh-rights-debt-adapter.js';
+import { detectOfferingType, detectSegmentFromExchange } from '../utils/detect-offering-type.js';
 
 const BSE_URL = config.scraper.bseUrl;
 
@@ -47,28 +48,7 @@ export interface BSEScrapeResult {
   mainboardCount: number;
 }
 
-/**
- * Extract IPO platform/category from BSE table row
- * BSE displays platform as: "MainBoard" or "SME" or "Debt"
- * @param platform - Platform string from BSE table
- * @returns IPO category enum value
- */
-function extractCategory(platform: string): 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD' {
-  const normalized = platform.trim().toUpperCase();
-
-  if (normalized.includes('SME')) {
-    return 'SME';
-  } else if (normalized.includes('MAINBOARD') || normalized.includes('MAIN')) {
-    return 'MAINBOARD';
-  } else if (normalized.includes('RIGHTS') || normalized.includes('RI')) {
-    return 'RIGHTS';
-  } else if (normalized.includes('DEBT') || normalized.includes('NCD') || normalized.includes('DPI')) {
-    return 'NCD';
-  }
-
-  // Default to MAINBOARD for unrecognized platforms
-  return 'MAINBOARD';
-}
+// Story 11.8: Removed extractCategory function - now using detectSegmentFromExchange and detectOfferingType
 
 /**
  * Extract IPO status from BSE issue status field
@@ -257,21 +237,15 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
             continue;
           }
 
-          // Determine category based on platform
-          let category: string = platform.trim().toUpperCase().includes('SME') ? 'SME' : 'MAINBOARD';
+          // Story 11.8: Determine segment (SME vs MAINBOARD) from platform
+          const isSME = platform.trim().toUpperCase().includes('SME');
+          const segment = isSME ? 'SME' : 'MAINBOARD';
 
           // Count SME vs MAINBOARD
-          if (category === 'SME') {
+          if (segment === 'SME') {
             smeCount++;
-          } else if (category === 'MAINBOARD') {
+          } else {
             mainboardCount++;
-          }
-
-          // For Rights Issues and Debt, map to appropriate categories
-          if (typeOfIssue && typeOfIssue.toUpperCase().includes('RI')) {
-            category = 'RIGHTS';
-          } else if (typeOfIssue && (typeOfIssue.toUpperCase().includes('DPI') || typeOfIssue.toUpperCase().includes('DEBT'))) {
-            category = 'NCD';
           }
 
           ipos.push({
@@ -283,7 +257,7 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
             faceValue: faceValue && faceValue !== '--' ? faceValue : '10',
             typeOfIssue,
             issueStatus,
-            category,
+            segment, // Story 11.8: Store segment instead of category
             detailUrl
           });
 
@@ -302,14 +276,22 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
 
     for (const rawIPO of extractedData.ipos) {
       try {
-        const category = extractCategory(rawIPO.platform);
         const status = extractStatus(rawIPO.issueStatus);
         const priceRange = parsePriceRange(rawIPO.offerPrice);
 
+        // Story 11.8: Detect segment and offering type
+        const listingExchanges = [rawIPO.platform]; // Use platform as exchange indicator
+        const segment = detectSegmentFromExchange(listingExchanges);
+        const offeringType = detectOfferingType({
+          symbol: rawIPO.companyName, // Use company name as fallback
+          bseType: rawIPO.typeOfIssue, // BSE type field (RI, DPI, IPO, etc.)
+          issueType: undefined
+        });
+
         // Count categories
-        if (category === 'SME') {
+        if (segment === 'SME') {
           smeCount++;
-        } else if (category === 'MAINBOARD') {
+        } else if (segment === 'MAINBOARD') {
           mainboardCount++;
         }
 
@@ -321,7 +303,8 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
           openDate: parseBSEDate(rawIPO.startDate),
           closeDate: parseBSEDate(rawIPO.endDate),
           listingExchange: 'BSE',
-          category,
+          segment: segment as 'MAINBOARD' | 'SME',
+          offeringType: offeringType as 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | 'NCD' | 'BONDS',
           sector: '', // Not available in BSE main table
           status,
           lotSize: 100, // Default, would need detail page
@@ -445,10 +428,10 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
     logger.info('Phase 2B: Starting Rights/Debt issue enrichment from Chittorgarh');
 
     const rightsIPOs = scrapedIPOs.filter(ipo =>
-      ipo.category === 'RIGHTS' && ipo.issueSize === 0
+      ipo.offeringType === 'RIGHTS' && ipo.issueSize === 0
     );
     const debtIPOs = scrapedIPOs.filter(ipo =>
-      ipo.category === 'NCD' && ipo.issueSize === 0
+      ipo.offeringType === 'NCD' && ipo.issueSize === 0
     );
 
     logger.info({
@@ -472,7 +455,7 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
           // Replace original Rights IPOs with enriched ones
           for (let i = 0; i < scrapedIPOs.length; i++) {
             const ipo = scrapedIPOs[i];
-            if (ipo.category === 'RIGHTS' && ipo.issueSize === 0) {
+            if (ipo.offeringType === 'RIGHTS' && ipo.issueSize === 0) {
               const enriched = rightsResult.enriched.find(
                 e => e.companyName === ipo.companyName
               );
@@ -511,7 +494,7 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
           // Replace original Debt IPOs with enriched ones
           for (let i = 0; i < scrapedIPOs.length; i++) {
             const ipo = scrapedIPOs[i];
-            if (ipo.category === 'NCD' && ipo.issueSize === 0) {
+            if (ipo.offeringType === 'NCD' && ipo.issueSize === 0) {
               const enriched = debtResult.enriched.find(
                 e => e.companyName === ipo.companyName
               );

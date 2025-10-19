@@ -115,7 +115,8 @@ export async function getOFSIssues(): Promise<OFSData[]> {
   return getCachedOrFetch(CACHE_KEY, async () => {
     try {
       const response = await getIPOs({
-        category: 'OFS',
+        segment: 'MAINBOARD',
+        offeringType: 'OFS',
         limit: 100, // Get all OFS issues
       });
 

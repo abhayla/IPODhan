@@ -31,7 +31,8 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   try {
     const response = await apiClient.getIPOs({
       status: status as 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED',
-      category: category as 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD' | undefined,
+      segment: category === 'MAINBOARD' || category === 'SME' ? category : undefined,
+      offeringType: category && !['MAINBOARD', 'SME'].includes(category) ? category : undefined,
       sector: sector,
       search: search,
       page,

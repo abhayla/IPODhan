@@ -101,7 +101,8 @@ export interface APIErrorResponse {
  */
 export interface GetIPOsParams {
   status?: 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED';
-  category?: 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD' | 'OFS'; // Added 'OFS' for Story 9.5
+  segment?: 'MAINBOARD' | 'SME' | string | string[]; // Story 11.8: Segment (exchange platform)
+  offeringType?: 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'IPP' | 'QIP' | 'PREFERENTIAL' | 'NCD' | 'BONDS' | 'INVITS' | 'REITS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | string | string[]; // Story 11.8: Offering type
   sector?: string;
   search?: string;
   page?: number;
@@ -582,7 +583,25 @@ export async function getIPOs(
 ): Promise<IPOListResponse> {
   const searchParams = new URLSearchParams();
   if (params.status) searchParams.append('status', params.status);
-  if (params.category) searchParams.append('category', params.category);
+
+  // Story 11.8: Support segment parameter (single or array)
+  if (params.segment) {
+    if (Array.isArray(params.segment)) {
+      params.segment.forEach(s => searchParams.append('segment', s));
+    } else {
+      searchParams.append('segment', params.segment);
+    }
+  }
+
+  // Story 11.8: Support offeringType parameter (single or array)
+  if (params.offeringType) {
+    if (Array.isArray(params.offeringType)) {
+      params.offeringType.forEach(t => searchParams.append('offeringType', t));
+    } else {
+      searchParams.append('offeringType', params.offeringType);
+    }
+  }
+
   if (params.sector) searchParams.append('sector', params.sector);
   if (params.search) searchParams.append('search', params.search);
   if (params.page) searchParams.append('page', params.page.toString());

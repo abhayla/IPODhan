@@ -157,9 +157,9 @@ function calculateMarketScore(ipo: IPO): number {
     score += 0;
   }
 
-  // IPO category bonus
-  if (ipo.category === 'MAINBOARD') score += 10;
-  else if (ipo.category === 'SME') score -= 5;
+  // IPO segment bonus
+  if (ipo.segment === 'MAINBOARD') score += 10;
+  else if (ipo.segment === 'SME') score -= 5;
 
   // Issue size consideration (larger is generally safer)
   const issueSize = Number(ipo.issueSize);
@@ -367,12 +367,12 @@ function generateRationale(
     rationale += `Concerns: ${weaknesses.join(', ')}. `;
   }
 
-  // Add category-specific advice
-  if (ipo.category === 'SME') {
+  // Add segment-specific advice
+  if (ipo.segment === 'SME') {
     considerations.push('SME IPOs carry higher risk');
   }
 
-  if (ipo.category === 'NCD') {
+  if (ipo.offeringType === 'NCD') {
     considerations.push('NCDs are debt instruments with fixed returns');
   }
 

@@ -239,12 +239,13 @@ export class IPOReviewsScraper extends BaseScraper<IPOReview[]> {
   private async matchIPO(companyName: string, category: 'MAINBOARD' | 'SME'): Promise<string | null> {
     try {
       // Fuzzy matching - try exact match first
+      const segment = category === 'MAINBOARD' || category === 'SME' ? category : 'MAINBOARD';
       let matchedIPOs = await db.select()
         .from(ipos)
         .where(
           and(
             eq(ipos.companyName, companyName),
-            eq(ipos.category, category)
+            eq(ipos.segment, segment)
           )
         )
         .limit(1);
@@ -259,7 +260,7 @@ export class IPOReviewsScraper extends BaseScraper<IPOReview[]> {
         .where(
           and(
             like(ipos.companyName, `%${companyName}%`),
-            eq(ipos.category, category)
+            eq(ipos.segment, segment)
           )
         )
         .limit(1);
@@ -315,6 +316,7 @@ export class IPOReviewsScraper extends BaseScraper<IPOReview[]> {
             .where(eq(ipoReviews.id, existing[0].id));
         } else {
           // Insert new
+          const reviewSegment = review.category === 'MAINBOARD' || review.category === 'SME' ? review.category : 'MAINBOARD';
           await db.insert(ipoReviews).values({
             reviewTitle: review.reviewTitle,
             author: review.author,
@@ -322,7 +324,7 @@ export class IPOReviewsScraper extends BaseScraper<IPOReview[]> {
             ipoId: review.ipoId,
             publishedDate: review.publishedDate,
             year: review.year,
-            category: review.category,
+            segment: reviewSegment,
             reviewUrl: review.reviewUrl,
             reviewContent: review.reviewContent,
           });

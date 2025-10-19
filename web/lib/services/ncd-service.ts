@@ -100,7 +100,8 @@ export async function getNCDIssues(): Promise<NCDData[]> {
   return getCachedOrFetch(CACHE_KEY, async () => {
     try {
       const response = await getIPOs({
-        category: 'NCD',
+        segment: 'MAINBOARD',
+        offeringType: 'NCD',
         limit: 100, // Get all NCD issues
       });
 

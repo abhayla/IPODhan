@@ -82,9 +82,13 @@ export async function GET(request: NextRequest) {
     // Build where conditions
     const whereConditions = [];
 
-    // Filter by category
+    // Filter by category (now using segment)
     if (validatedParams.category) {
-      whereConditions.push(eq(ipos.category, validatedParams.category));
+      // Map old category to segment
+      const segment = validatedParams.category === 'MAINBOARD' || validatedParams.category === 'SME'
+        ? validatedParams.category
+        : 'MAINBOARD';
+      whereConditions.push(eq(ipos.segment, segment));
     }
 
     // Filter by year
@@ -145,7 +149,8 @@ export async function GET(request: NextRequest) {
         id: ipos.id,
         companyName: ipos.companyName,
         slug: ipos.slug,
-        category: ipos.category,
+        segment: ipos.segment,
+        offeringType: ipos.offeringType,
         openDate: ipos.openDate,
         closeDate: ipos.closeDate,
         listingDate: ipos.listingDate,
@@ -224,7 +229,8 @@ export async function GET(request: NextRequest) {
         id: ipo.id,
         companyName: ipo.companyName,
         slug: ipo.slug,
-        category: ipo.category,
+        segment: ipo.segment,
+        offeringType: ipo.offeringType,
         openDate: ipo.openDate,
         closeDate: ipo.closeDate,
         listingDate: ipo.listingDate,

@@ -759,10 +759,13 @@ async function seedDatabase() {
       console.log(`\n${progress} ${ipoData.companyName} (${ipoData.category}, ${ipoData.status})`);
 
       // Create IPO
+      const segment = ipoData.category === 'MAINBOARD' || ipoData.category === 'SME' ? ipoData.category : 'MAINBOARD';
+      const offeringType = !['MAINBOARD', 'SME'].includes(ipoData.category) ? ipoData.category : 'IPO';
       const ipo = await ipoRepo.create({
         companyName: ipoData.companyName,
         slug: ipoData.slug,
-        category: ipoData.category,
+        segment: segment,
+        offeringType: offeringType as any,
         sector: ipoData.sector,
         issueSize: ipoData.issueSize,
         priceRangeMin: ipoData.priceRangeMin,

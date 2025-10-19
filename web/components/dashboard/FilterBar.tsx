@@ -3,7 +3,8 @@
 import { useState } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { StatusFilter } from '@/components/filters/StatusFilter';
-import { CategoryFilter } from '@/components/filters/CategoryFilter';
+import { SegmentFilter } from '@/components/filters/SegmentFilter';
+import { OfferingTypeFilter } from '@/components/filters/OfferingTypeFilter';
 import { SectorFilter } from '@/components/filters/SectorFilter';
 import { ScoreRangeFilter } from '@/components/filters/ScoreRangeFilter';
 import { ClearFiltersButton } from '@/components/filters/ClearFiltersButton';
@@ -18,20 +19,25 @@ export function FilterBar() {
 
   // Read current filter values from URL
   const status = searchParams.get('status') || 'OPEN';
-  const category = searchParams.get('category') || 'ALL';
+  const segment = searchParams.get('segment') || 'ALL';
   const sector = searchParams.get('sector') || 'ALL';
   const scoreRange = searchParams.get('scoreRange') || 'all';
+
+  // Story 11.8: offeringType as comma-separated string, default to IPO+FPO to hide TENDER
+  const offeringTypeParam = searchParams.get('offeringType');
+  const offeringTypes = offeringTypeParam ? offeringTypeParam.split(',') : ['IPO', 'FPO'];
 
   // Count active filters (non-default)
   const activeFilterCount = [
     status !== 'OPEN' ? 1 : 0,
-    category !== 'ALL' ? 1 : 0,
+    segment !== 'ALL' ? 1 : 0,
     sector !== 'ALL' ? 1 : 0,
     scoreRange !== 'all' ? 1 : 0,
+    offeringTypes.length !== 2 || !offeringTypes.includes('IPO') || !offeringTypes.includes('FPO') ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
   /**
-   * Update URL with new filter value
+   * Update URL with new filter value (single value filters)
    * Resets page to 1 when filters change
    */
   const updateFilter = (key: string, value: string) => {
@@ -55,6 +61,26 @@ export function FilterBar() {
   };
 
   /**
+   * Update offeringType filter (multi-select)
+   * Story 11.8: Handles array of offering types
+   */
+  const updateOfferingTypes = (types: string[]) => {
+    const params = new URLSearchParams(searchParams);
+
+    if (types.length === 0) {
+      params.delete('offeringType');
+    } else {
+      params.set('offeringType', types.join(','));
+    }
+
+    // Reset pagination when filters change
+    params.set('page', '1');
+
+    // Navigate to updated URL
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
+  /**
    * Clear all filters and reset to defaults
    */
   const clearFilters = () => {
@@ -62,12 +88,14 @@ export function FilterBar() {
 
     // Remove all filter params
     params.delete('status');
-    params.delete('category');
+    params.delete('segment');
+    params.delete('offeringType');
     params.delete('sector');
     params.delete('scoreRange');
 
-    // Set default status
+    // Set default status and offeringType
     params.set('status', 'OPEN');
+    params.set('offeringType', 'IPO,FPO'); // Default to IPO+FPO
     params.set('page', '1');
 
     // Navigate to reset URL
@@ -77,7 +105,14 @@ export function FilterBar() {
   /**
    * Check if filters are at default values
    */
-  const isDefaultFilters = status === 'OPEN' && category === 'ALL' && sector === 'ALL' && scoreRange === 'all';
+  const isDefaultFilters =
+    status === 'OPEN' &&
+    segment === 'ALL' &&
+    sector === 'ALL' &&
+    scoreRange === 'all' &&
+    offeringTypes.length === 2 &&
+    offeringTypes.includes('IPO') &&
+    offeringTypes.includes('FPO');
 
   return (
     <div className="mb-6" aria-label="IPO Filters">
@@ -114,9 +149,14 @@ export function FilterBar() {
           onChange={(value) => updateFilter('status', value)}
         />
 
-        <CategoryFilter
-          value={category}
-          onChange={(value) => updateFilter('category', value)}
+        <SegmentFilter
+          value={segment}
+          onChange={(value) => updateFilter('segment', value)}
+        />
+
+        <OfferingTypeFilter
+          value={offeringTypes}
+          onChange={updateOfferingTypes}
         />
 
         <SectorFilter

@@ -70,10 +70,13 @@ export function IPOHeader({ ipo }: IPOHeaderProps) {
               </div>
             )}
 
-            {/* Category and Sector */}
+            {/* Segment and Sector */}
             <div className="flex flex-wrap items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-100">
               <Badge variant="outline" className="text-xs font-medium transition-all duration-200 hover:bg-muted hover:scale-105">
-                {ipo.category}
+                {ipo.segment}
+              </Badge>
+              <Badge variant="outline" className="text-xs font-medium transition-all duration-200 hover:bg-muted hover:scale-105">
+                {ipo.offeringType}
               </Badge>
               {ipo.sector && (
                 <span className="text-sm text-muted-foreground">•</span>

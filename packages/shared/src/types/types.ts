@@ -58,7 +58,8 @@ export type NewScraperLog = InferInsertModel<typeof schema.scraperLogs>;
 
 // ==================== ENUM TYPES ====================
 
-export type IPOCategory = IPO['category'];
+export type Segment = IPO['segment'];
+export type OfferingType = IPO['offeringType'];
 export type IPOStatus = IPO['status'];
 export type DocumentType = Document['type'];
 export type Exchange = MarketHoliday['exchange'];

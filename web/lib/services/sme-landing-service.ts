@@ -139,8 +139,8 @@ function calculateGainPercent(issuePrice: number, currentPrice: number): number 
 export async function getSMESummaryMetrics(): Promise<SMESummaryMetrics> {
   return getCachedOrFetch(CACHE_KEYS.SUMMARY_METRICS, async () => {
     try {
-      // Fetch all SME IPOs
-      const response = await getIPOs({ category: 'SME', limit: 1000 });
+      // Fetch all SME IPOs (only IPO offering type)
+      const response = await getIPOs({ segment: 'SME', offeringType: 'IPO', limit: 1000 });
       const ipos = response.data;
 
       // Calculate totalIPOs
@@ -199,7 +199,8 @@ export async function getSMECurrentIPOs(): Promise<IPO[]> {
   return getCachedOrFetch(CACHE_KEYS.CURRENT_IPOS, async () => {
     try {
       const response = await getIPOs({
-        category: 'SME',
+        segment: 'SME',
+        offeringType: 'IPO',
         status: 'OPEN',
         limit: CONTENT_LIMIT,
       });
@@ -226,7 +227,8 @@ export async function getSMEUpcomingIPOs(): Promise<IPO[]> {
   return getCachedOrFetch(CACHE_KEYS.UPCOMING_IPOS, async () => {
     try {
       const response = await getIPOs({
-        category: 'SME',
+        segment: 'SME',
+        offeringType: 'IPO',
         status: 'UPCOMING',
         limit: CONTENT_LIMIT,
       });
@@ -253,7 +255,8 @@ export async function getSMERecentlyListedIPOs(): Promise<IPO[]> {
   return getCachedOrFetch(CACHE_KEYS.RECENTLY_LISTED, async () => {
     try {
       const response = await getIPOs({
-        category: 'SME',
+        segment: 'SME',
+        offeringType: 'IPO',
         status: 'LISTED',
         limit: CONTENT_LIMIT,
       });
@@ -306,7 +309,8 @@ export async function getSMEPerformanceHighlights(): Promise<{
     try {
       // Fetch listed SME IPOs
       const response = await getIPOs({
-        category: 'SME',
+        segment: 'SME',
+        offeringType: 'IPO',
         status: 'LISTED',
         limit: 50,
       });
@@ -358,7 +362,8 @@ export async function getSMESubscriptionStatus(): Promise<SubscriptionStatusData
     try {
       // Fetch current (OPEN) SME IPOs
       const response = await getIPOs({
-        category: 'SME',
+        segment: 'SME',
+        offeringType: 'IPO',
         status: 'OPEN',
         limit: CONTENT_LIMIT,
       });
@@ -396,7 +401,8 @@ export async function getSMEDetailedList(
     try {
       // Fetch all SME IPOs (will be filtered by year)
       const response = await getIPOs({
-        category: 'SME',
+        segment: 'SME',
+        offeringType: 'IPO',
         limit: 1000,
       });
 

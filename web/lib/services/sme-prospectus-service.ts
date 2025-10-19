@@ -25,7 +25,8 @@ export interface SMEProspectusData {
     id: string;
     companyName: string;
     slug: string;
-    category: string;
+    segment: 'MAINBOARD' | 'SME';
+    offeringType: string;
     listingExchanges: ('NSE' | 'BSE')[] | null;
   };
   drhpDocument: {
@@ -71,8 +72,8 @@ export async function getSMEProspectusDocuments(
     const companyName = filters?.companyName?.trim() || '';
     const exchange = filters?.exchange || 'All';
 
-    // Build WHERE conditions - CRITICAL: Filter for SME category only
-    const conditions = [eq(ipos.category, 'SME')];
+    // Build WHERE conditions - CRITICAL: Filter for SME segment only
+    const conditions = [eq(ipos.segment, 'SME')];
 
     // Add company name filter (case-insensitive partial match)
     if (companyName) {
@@ -101,7 +102,8 @@ export async function getSMEProspectusDocuments(
           id: ipos.id,
           companyName: ipos.companyName,
           slug: ipos.slug,
-          category: ipos.category,
+          segment: ipos.segment,
+          offeringType: ipos.offeringType,
           listingExchanges: ipos.listingExchanges,
         },
         document: {

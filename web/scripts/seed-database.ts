@@ -37,7 +37,10 @@ console.log('✓ Environment variables loaded successfully\n');
 import { db, closePool } from '../lib/db/index';
 import { ipos, listingPerformance, ipoFinancials, ipoDetails } from '../lib/db'; // Story 4.10: Added ipoFinancials, Story 4.11: Added ipoDetails
 import { count, sql } from 'drizzle-orm';
-import type { IPOStatus, IPOCategory } from '../lib/db/types';
+import type { IPOStatus } from '../lib/db/types';
+
+// Local type for seeding purposes (maps to segment field)
+type IPOCategory = 'MAINBOARD' | 'SME';
 
 // ==================== CONFIGURATION ====================
 
@@ -464,12 +467,17 @@ function generateIPOData(
   // Explicit timestamp values (don't rely on Drizzle defaults)
   const now = new Date();
 
+  // Map category to segment and offeringType
+  const segment = category === 'MAINBOARD' || category === 'SME' ? category : 'MAINBOARD';
+  const offeringType = (Math.random() > 0.5 ? 'IPO' : 'FPO') as 'IPO' | 'FPO';
+
   return {
     companyName,
     slug,
     symbol,
     isin,
-    category,
+    segment,
+    offeringType,
     sector,
     issueSize,
     priceRangeMin,
@@ -791,8 +799,8 @@ async function seedDatabase() {
     };
 
     const actualCategoryCounts = {
-      MAINBOARD: await db.select({ count: count() }).from(ipos).where(sql`${ipos.category} = 'MAINBOARD'`).then(r => Number(r[0]?.count || 0)),
-      SME: await db.select({ count: count() }).from(ipos).where(sql`${ipos.category} = 'SME'`).then(r => Number(r[0]?.count || 0)),
+      MAINBOARD: await db.select({ count: count() }).from(ipos).where(sql`${ipos.segment} = 'MAINBOARD'`).then(r => Number(r[0]?.count || 0)),
+      SME: await db.select({ count: count() }).from(ipos).where(sql`${ipos.segment} = 'SME'`).then(r => Number(r[0]?.count || 0)),
     };
 
     const elapsedTime = ((Date.now() - startTime) / 1000).toFixed(2);

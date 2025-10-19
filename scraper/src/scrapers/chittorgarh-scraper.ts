@@ -126,26 +126,23 @@ function parseChittorgarhAmount(amountStr: string): number {
 }
 
 /**
- * Determine listing exchange and category from "Listing at" field
+ * Determine listing exchange and segment from "Listing at" field
+ * Story 11.8: Returns segment instead of category
  * @param listingAt - "BSE, NSE" or "NSE SME" or "BSE SME"
- * @returns {exchange, category}
+ * @returns {exchange, segment}
  */
 function parseListingInfo(listingAt: string): {
   exchange: 'NSE' | 'BSE' | 'BOTH';
-  category: 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD';
+  segment: 'MAINBOARD' | 'SME';
 } {
   const normalized = listingAt.toUpperCase().trim();
 
-  let category: 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD' = 'MAINBOARD';
+  let segment: 'MAINBOARD' | 'SME' = 'MAINBOARD';
   let exchange: 'NSE' | 'BSE' | 'BOTH' = 'BOTH';
 
-  // Determine category
+  // Determine segment
   if (normalized.includes('SME')) {
-    category = 'SME';
-  } else if (normalized.includes('REIT') || normalized.includes('INVIT')) {
-    category = 'RIGHTS'; // Map REIT/InvIT to RIGHTS for now
-  } else if (normalized.includes('NCD') || normalized.includes('BOND')) {
-    category = 'NCD';
+    segment = 'SME';
   }
 
   // Determine exchange
@@ -160,7 +157,7 @@ function parseListingInfo(listingAt: string): {
     exchange = 'BSE';
   }
 
-  return { exchange, category };
+  return { exchange, segment };
 }
 
 /**
@@ -345,7 +342,7 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
           record['Total Issue Amount (Incl.Firm reservations) (Rs.cr.)']
         );
 
-        // Parse listing info (exchange + category)
+        // Parse listing info (exchange + segment)
         const listingInfo = parseListingInfo(record['Listing at']);
 
         // Determine status
@@ -354,6 +351,7 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
         // Extract lead manager (optional)
         const leadManager = extractTextFromAnchor(record['Lead Manager']);
 
+        // Story 11.8: Default to IPO offering type for Chittorgarh data
         const ipo: ChittorgarhIPO = {
           companyName: sanitizeText(companyName),
           issueSize,
@@ -363,7 +361,8 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
           closeDate: effectiveCloseDate,
           listingDate,
           listingExchange: listingInfo.exchange,
-          category: listingInfo.category,
+          segment: listingInfo.segment,
+          offeringType: 'IPO', // Chittorgarh API primarily returns IPOs
           status,
           leadManagers: leadManager ? [leadManager] : undefined,
           dataSource: 'CHITTORGARH',
@@ -381,7 +380,8 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
             companyName: ipo.companyName,
             status: ipo.status,
             exchange: ipo.listingExchange,
-            category: ipo.category
+            segment: ipo.segment,
+            offeringType: ipo.offeringType
           },
           'Successfully parsed Chittorgarh IPO'
         );
