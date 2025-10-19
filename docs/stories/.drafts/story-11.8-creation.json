@@ -1,0 +1,24 @@
+{
+  "story_id": "11.8",
+  "story_title": "Restructure Category Field into Segment + Offering Type",
+  "creation_status": "drafted",
+  "validation_status": "pending",
+  "timestamps": {
+    "workflow_started": "2025-10-19T09:02:00.000Z",
+    "drafting_started": "2025-10-19T09:07:30.000Z",
+    "drafting_completed": "2025-10-19T09:08:00.000Z",
+    "next_phase": "po_validation"
+  },
+  "creation_context": {
+    "epic_path": "docs/03-epics/epic-11-sharded.md",
+    "architecture_path": "docs/02-architecture/high-level-architecture.md",
+    "planning_path": "docs/01-planning/segment-offeringType-change.md",
+    "destination_path": "docs/04-stories/"
+  },
+  "agents": {
+    "drafted_by": "Bob (Scrum Master)",
+    "drafted_via": "sm.md *draft command"
+  },
+  "workflow_version": "2.0",
+  "workflow_step": "2.5"
+}
