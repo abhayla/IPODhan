@@ -70,22 +70,23 @@ function extractTextFromAnchor(html: string): string {
 
 /**
  * Parse Chittorgarh API date format to ISO 8601
+ * Returns undefined for missing/invalid dates to ensure proper database handling
  */
-function parseChittorgarhDate(displayDate: string, isoDate?: string): string {
+function parseChittorgarhDate(displayDate: string, isoDate?: string): string | undefined {
   if (isoDate) {
     return isoDate.split('T')[0];
   }
 
-  if (!displayDate || displayDate.trim() === '') return '';
+  if (!displayDate || displayDate.trim() === '') return undefined;
 
   try {
     const date = new Date(displayDate);
     if (isNaN(date.getTime())) {
-      return '';
+      return undefined;
     }
     return date.toISOString().split('T')[0];
   } catch {
-    return '';
+    return undefined;
   }
 }
 

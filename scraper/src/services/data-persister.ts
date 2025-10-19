@@ -165,10 +165,11 @@ export async function upsertIPO(
         status: scrapedIPO.status as any,
         openDate: scrapedIPO.openDate,
         closeDate: scrapedIPO.closeDate,
-        allotmentDate: scrapedIPO.allotmentDate,
-        listingDate: scrapedIPO.listingDate,
-        companyDescription: scrapedIPO.companyDescription,
-        registrar: scrapedIPO.registrar,
+        // Convert empty strings to undefined for date fields (Story 11.7 - Fix Chittorgarh date handling)
+        allotmentDate: scrapedIPO.allotmentDate || undefined,
+        listingDate: scrapedIPO.listingDate || undefined,
+        companyDescription: scrapedIPO.companyDescription || undefined,
+        registrar: scrapedIPO.registrar || undefined,
         leadManagers: scrapedIPO.leadManagers,
         listingExchanges,
         lastScrapedAt: new Date(), // Track last successful scrape time (Story 7.4)

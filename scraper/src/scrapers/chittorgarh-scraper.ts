@@ -59,24 +59,25 @@ function extractTextFromAnchor(html: string): string {
 /**
  * Parse Chittorgarh API date format to ISO 8601
  * Prefers metadata ISO date, falls back to display date parsing
+ * Returns undefined for missing/invalid dates to ensure proper database handling
  */
-function parseChittorgarhDate(displayDate: string, isoDate?: string): string {
+function parseChittorgarhDate(displayDate: string, isoDate?: string): string | undefined {
   // Prefer ISO date from metadata (already in correct format)
   if (isoDate) {
     return isoDate.split('T')[0]; // "2025-10-07T00:00:00.000Z" → "2025-10-07"
   }
 
   // Fallback: parse display date "Tue, Oct 07, 2025"
-  if (!displayDate || displayDate.trim() === '') return '';
+  if (!displayDate || displayDate.trim() === '') return undefined;
 
   try {
     const date = new Date(displayDate);
     if (isNaN(date.getTime())) {
-      return '';
+      return undefined;
     }
     return date.toISOString().split('T')[0];
   } catch {
-    return '';
+    return undefined;
   }
 }
 
