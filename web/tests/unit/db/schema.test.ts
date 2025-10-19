@@ -17,7 +17,7 @@ describe('Database Schema', () => {
     });
 
     it('should export all enum types', () => {
-      expect(schema.ipoCategoryEnum).toBeDefined();
+// DEPRECATED:       expect(schema.ipoCategoryEnum).toBeDefined();
       expect(schema.ipoStatusEnum).toBeDefined();
       expect(schema.documentTypeEnum).toBeDefined();
       expect(schema.exchangeEnum).toBeDefined();

@@ -86,7 +86,7 @@ vi.mock('@/lib/db/schema', () => ({
     ipoId: 'ipo_reviews.ipo_id',
     publishedDate: 'ipo_reviews.published_date',
     year: 'ipo_reviews.year',
-    category: 'ipo_reviews.category',
+    category: 'ipo_reviews.segment',
     reviewUrl: 'ipo_reviews.review_url',
   },
 }));

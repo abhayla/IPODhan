@@ -32,7 +32,8 @@ import { eq } from 'drizzle-orm';
 const highRatedIPO = {
   companyName: 'High Rated Tech Company',
   slug: 'high-rated-tech-ipo',
-  category: 'MAINBOARD' as const,
+  segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
   sector: 'Technology',
   issueSize: '2000.00',
   priceRangeMin: 100,
@@ -48,7 +49,8 @@ const highRatedIPO = {
 const lowRatedIPO = {
   companyName: 'Low Rated Company',
   slug: 'low-rated-ipo',
-  category: 'SME' as const,
+  segment: 'SME' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
   sector: 'Real Estate',
   issueSize: '50.00',
   priceRangeMin: 50,
@@ -64,7 +66,8 @@ const lowRatedIPO = {
 const insufficientDataIPO = {
   companyName: 'Insufficient Data Company',
   slug: 'insufficient-data-ipo',
-  category: 'MAINBOARD' as const,
+  segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
   sector: 'Manufacturing',
   issueSize: '300.00',
   priceRangeMin: 70,

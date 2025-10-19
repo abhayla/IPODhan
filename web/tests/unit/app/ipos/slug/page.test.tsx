@@ -70,7 +70,8 @@ const mockIPO: IPO = {
   id: '123',
   companyName: 'Test Company IPO',
   slug: 'test-company-ipo',
-  category: 'MAINBOARD',
+  segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
   sector: 'Technology',
   issueSize: '500',
   priceRangeMin: 100,
@@ -192,7 +193,7 @@ describe('IPO Detail Page', () => {
         '@type': 'Organization',
         name: ipo.companyName,
       },
-      category: ipo.category,
+      category: ipo.segment,
       offers: {
         '@type': 'Offer',
         priceSpecification: {

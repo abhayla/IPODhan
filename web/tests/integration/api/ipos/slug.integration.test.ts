@@ -40,7 +40,8 @@ import type { IPODetailResponse } from '@/lib/db/types';
 const testIPO = {
   companyName: 'Swiggy Test IPO',
   slug: 'swiggy-test-ipo-integration',
-  category: 'MAINBOARD' as const,
+  segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
   sector: 'Food Delivery',
   issueSize: '11000.00',
   priceRangeMin: 371,
@@ -63,7 +64,8 @@ const testIPO = {
 const peerIPO1 = {
   companyName: 'Zomato Test',
   slug: 'zomato-test-integration',
-  category: 'MAINBOARD' as const,
+  segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
   sector: 'Food Delivery',
   issueSize: '9375.00',
   priceRangeMin: 72,
@@ -78,7 +80,8 @@ const peerIPO1 = {
 const peerIPO2 = {
   companyName: 'Delivery Hero Test',
   slug: 'delivery-hero-test-integration',
-  category: 'MAINBOARD' as const,
+  segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
   sector: 'Food Delivery',
   issueSize: '5000.00',
   priceRangeMin: 100,
@@ -360,7 +363,7 @@ describe('GET /api/ipos/[slug] Integration Tests', () => {
 
       expect(data.ipo.companyName).toBe(testIPO.companyName);
       expect(data.ipo.slug).toBe(testIPO.slug);
-      expect(data.ipo.category).toBe(testIPO.category);
+      expect(data.ipo.segment).toBe(testIPO.segment);
       expect(data.ipo.sector).toBe(testIPO.sector);
       expect(data.ipo.status).toBe(testIPO.status);
     });

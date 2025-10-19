@@ -59,7 +59,8 @@ async function createTestIPO(status: 'OPEN' | 'CLOSED' = 'OPEN') {
     .values({
       companyName: 'Test Rating Company',
       slug: `test-rating-company-${Date.now()}`,
-      category: 'MAINBOARD',
+      segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
       sector: 'Technology',
       issueSize: '500',
       priceRangeMin: 100,
@@ -209,7 +210,8 @@ describe('Calculate Ratings Script - Integration Tests', () => {
         .values({
           companyName: 'Test Update Rating Company',
           slug: `test-update-${Date.now()}`,
-          category: 'MAINBOARD',
+          segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
           sector: 'Technology',
           issueSize: '500',
           priceRangeMin: 100,
@@ -354,7 +356,8 @@ describe('Calculate Ratings Script - Integration Tests', () => {
         .values({
           companyName: 'Test Override Company',
           slug: `test-override-${Date.now()}`,
-          category: 'MAINBOARD',
+          segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
           sector: 'Technology',
           issueSize: '500',
           priceRangeMin: 100,

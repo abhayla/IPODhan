@@ -32,7 +32,8 @@ describe('OFS Service', () => {
           id: '1',
           companyName: 'Test Company OFS',
           slug: 'test-company-ofs',
-          category: 'OFS' as const,
+          segment: 'MAINBOARD' as const,
+  offeringType: 'OFS' as const,
           status: 'UPCOMING' as const,
           openDate: '2025-03-15',
           closeDate: '2025-03-16',
@@ -59,7 +60,8 @@ describe('OFS Service', () => {
 
       // Assertions
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'OFS',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'OFS' as const,
         limit: 100,
       });
 
@@ -84,7 +86,8 @@ describe('OFS Service', () => {
       // Assertions - should not throw, return empty array
       expect(result).toEqual([]);
       expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        category: 'OFS',
+        segment: 'MAINBOARD' as const,
+  offeringType: 'OFS' as const,
         limit: 100,
       });
     });
@@ -96,7 +99,8 @@ describe('OFS Service', () => {
           id: '1',
           companyName: 'OFS March',
           slug: 'ofs-march',
-          category: 'OFS' as const,
+          segment: 'MAINBOARD' as const,
+  offeringType: 'OFS' as const,
           status: 'UPCOMING' as const,
           openDate: '2025-03-15',
           closeDate: '2025-03-16',
@@ -107,7 +111,8 @@ describe('OFS Service', () => {
           id: '2',
           companyName: 'OFS January',
           slug: 'ofs-january',
-          category: 'OFS' as const,
+          segment: 'MAINBOARD' as const,
+  offeringType: 'OFS' as const,
           status: 'UPCOMING' as const,
           openDate: '2025-01-10',
           closeDate: '2025-01-11',
@@ -118,7 +123,8 @@ describe('OFS Service', () => {
           id: '3',
           companyName: 'OFS February',
           slug: 'ofs-february',
-          category: 'OFS' as const,
+          segment: 'MAINBOARD' as const,
+  offeringType: 'OFS' as const,
           status: 'UPCOMING' as const,
           openDate: '2025-02-20',
           closeDate: '2025-02-21',
@@ -185,7 +191,8 @@ describe('OFS Service', () => {
           id: '1',
           companyName: 'OFS With Dates',
           slug: 'ofs-with-dates',
-          category: 'OFS' as const,
+          segment: 'MAINBOARD' as const,
+  offeringType: 'OFS' as const,
           status: 'UPCOMING' as const,
           openDate: '2025-03-15',
           closeDate: '2025-03-16',
@@ -196,7 +203,8 @@ describe('OFS Service', () => {
           id: '2',
           companyName: 'OFS Without Dates',
           slug: 'ofs-without-dates',
-          category: 'OFS' as const,
+          segment: 'MAINBOARD' as const,
+  offeringType: 'OFS' as const,
           status: 'UPCOMING' as const,
           openDate: null,
           closeDate: null,

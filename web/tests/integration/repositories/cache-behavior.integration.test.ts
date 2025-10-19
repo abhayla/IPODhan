@@ -34,7 +34,8 @@ describe('Cache Behavior Integration Tests', () => {
       .values({
         slug: 'cache-test-ipo',
         companyName: 'Cache Test Company',
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
         status: 'OPEN',
       })
       .returning();
@@ -178,7 +179,8 @@ describe('Cache Behavior Integration Tests', () => {
       await ipoRepo.create({
         slug: 'new-test-ipo',
         companyName: 'New Test Company',
-        category: 'SME',
+        segment: 'SME' as 'MAINBOARD' | 'SME',
+  offeringType: 'IPO' as const,
         status: 'UPCOMING',
       });
 

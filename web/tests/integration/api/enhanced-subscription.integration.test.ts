@@ -30,7 +30,7 @@ describe('Enhanced Subscription Integration Tests', () => {
     const testIPO: IPOInsert = {
       companyName: 'Test Enhanced Subscription Co',
       slug: 'test-enhanced-sub-ipo',
-      segment: 'MAINBOARD',
+      segment: 'MAINBOARD' as 'MAINBOARD' | 'SME',
     offeringType: 'IPO',
       status: 'OPEN',
       issueSize: '1000',

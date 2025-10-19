@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IPOCard } from '@/components/ipo/IPOCard';
-import { IPO, IPOStatus, IPOCategory, DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
+import type { IPO, IPOStatus } from '@/lib/db/types';
+import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
 // Mock Next.js Link component
 vi.mock('next/link', () => ({
@@ -29,7 +30,8 @@ const mockIPO = (overrides?: Partial<IPO>): IPO => ({
   id: '123e4567-e89b-12d3-a456-426614174000',
   companyName: 'Example Corp',
   slug: 'example-corp',
-  category: 'MAINBOARD' as IPOCategory,
+  segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
   sector: 'Technology',
   issueSize: '500',
   priceRangeMin: 100,
@@ -105,19 +107,18 @@ describe('IPOCard', () => {
     });
   });
 
-  describe('Category Badge', () => {
-    it.each([
-      ['MAINBOARD'],
-      ['SME'],
-      ['RIGHTS'],
-      ['NCD'],
-    ])('should render %s category', (category) => {
-      const ipo = mockIPO({ category: category as IPOCategory });
-      render(<IPOCard ipo={ipo} />);
-
-      expect(screen.getByText(category)).toBeInTheDocument();
-    });
-  });
+  // DEPRECATED (Story 11.8):   describe('Category Badge', () => {
+  // DEPRECATED (Story 11.8):     it.each([
+  // DEPRECATED (Story 11.8):       ['MAINBOARD'],
+  // DEPRECATED (Story 11.8):       ['SME'],
+  // DEPRECATED (Story 11.8):       ['RIGHTS'],
+  // DEPRECATED (Story 11.8):       ['NCD'],
+  // DEPRECATED (Story 11.8):     ])('should render %s category', (category) => {
+  // DEPRECATED (Story 11.8):       render(<IPOCard ipo={ipo} />);
+  // DEPRECATED (Story 11.8): 
+  // DEPRECATED (Story 11.8):       expect(screen.getByText(category)).toBeInTheDocument();
+  // DEPRECATED (Story 11.8):     });
+  // DEPRECATED (Story 11.8): });
 
   describe('Price Formatting', () => {
     it('should format price range with ₹ symbol', () => {

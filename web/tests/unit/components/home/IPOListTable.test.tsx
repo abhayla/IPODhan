@@ -18,7 +18,8 @@ const mockOpenIPO: HomeIPOTableData = {
   id: 'open-1',
   companyName: 'Currently Open IPO',
   slug: 'currently-open-ipo',
-  category: 'MAINBOARD',
+  segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
   openDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Started 1 day ago
   closeDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Closes in 5 days (not closing soon)
   issuePrice: 100,
@@ -31,7 +32,8 @@ const mockClosingSoonIPO: HomeIPOTableData = {
   id: 'closing-soon-1',
   companyName: 'Closing Soon IPO',
   slug: 'closing-soon-ipo',
-  category: 'MAINBOARD',
+  segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
   openDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Started 3 days ago
   closeDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Closes in 1 day
   issuePrice: 200,
@@ -44,7 +46,8 @@ const mockClosedIPO: HomeIPOTableData = {
   id: 'closed-1',
   companyName: 'Recently Closed IPO',
   slug: 'recently-closed-ipo',
-  category: 'MAINBOARD',
+  segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
   openDate: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Started 20 days ago
   closeDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Closed 10 days ago
   issuePrice: 150,
@@ -57,7 +60,8 @@ const mockIPOWithNullDates: HomeIPOTableData = {
   id: 'null-dates-1',
   companyName: 'IPO with Null Dates',
   slug: 'ipo-null-dates',
-  category: 'SME',
+  segment: 'SME' as const,
+  offeringType: 'IPO' as const,
   openDate: null,
   closeDate: null,
   issuePrice: null,
