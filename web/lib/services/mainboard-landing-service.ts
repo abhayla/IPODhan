@@ -138,8 +138,8 @@ function calculateGainPercent(issuePrice: number, currentPrice: number): number 
 export async function getMainboardSummaryMetrics(): Promise<MainboardSummaryMetrics> {
   return getCachedOrFetch(CACHE_KEYS.SUMMARY_METRICS, async () => {
     try {
-      // Fetch all Mainboard IPOs
-      const response = await getIPOs({ category: 'MAINBOARD', limit: 1000 });
+      // Fetch all Mainboard IPOs (only IPO offering type, exclude TENDER/BUYBACK)
+      const response = await getIPOs({ segment: 'MAINBOARD', offeringType: 'IPO', limit: 1000 });
       const ipos = response.data;
 
       // Calculate totalIPOs
@@ -197,7 +197,8 @@ export async function getMainboardCurrentIPOs(): Promise<IPO[]> {
   return getCachedOrFetch(CACHE_KEYS.CURRENT_IPOS, async () => {
     try {
       const response = await getIPOs({
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD',
+        offeringType: 'IPO',
         status: 'OPEN',
         limit: CONTENT_LIMIT,
       });
@@ -223,7 +224,8 @@ export async function getMainboardUpcomingIPOs(): Promise<IPO[]> {
   return getCachedOrFetch(CACHE_KEYS.UPCOMING_IPOS, async () => {
     try {
       const response = await getIPOs({
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD',
+        offeringType: 'IPO',
         status: 'UPCOMING',
         limit: CONTENT_LIMIT,
       });
@@ -249,7 +251,8 @@ export async function getMainboardRecentlyListedIPOs(): Promise<IPO[]> {
   return getCachedOrFetch(CACHE_KEYS.RECENTLY_LISTED, async () => {
     try {
       const response = await getIPOs({
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD',
+        offeringType: 'IPO',
         status: 'LISTED',
         limit: CONTENT_LIMIT,
       });
@@ -300,7 +303,8 @@ export async function getMainboardPerformanceHighlights(): Promise<{
     try {
       // Fetch listed Mainboard IPOs
       const response = await getIPOs({
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD',
+        offeringType: 'IPO',
         status: 'LISTED',
         limit: 50,
       });
@@ -351,7 +355,8 @@ export async function getMainboardSubscriptionStatus(): Promise<SubscriptionStat
     try {
       // Fetch current (OPEN) Mainboard IPOs
       const response = await getIPOs({
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD',
+        offeringType: 'IPO',
         status: 'OPEN',
         limit: CONTENT_LIMIT,
       });
@@ -389,7 +394,8 @@ export async function getMainboardDetailedList(
     try {
       // Fetch all Mainboard IPOs (will be filtered by year)
       const response = await getIPOs({
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD',
+        offeringType: 'IPO',
         limit: 1000,
       });
 

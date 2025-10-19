@@ -50,7 +50,8 @@ export interface CalendarEvent {
   ipoId?: string;
   companyName?: string;
   slug?: string;
-  category?: string;
+  segment?: string;
+  offeringType?: string;
   holidayName?: string;
   exchange?: string;
 }
@@ -103,7 +104,8 @@ function createIPOEvent(
     ipoId: ipo.id,
     companyName: ipo.companyName,
     slug: ipo.slug,
-    category: ipo.category,
+    segment: ipo.segment,
+    offeringType: ipo.offeringType,
   };
 }
 

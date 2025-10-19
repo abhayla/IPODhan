@@ -19,7 +19,8 @@ import {
   peerCompanies,
   registrars,
   type ipoStatusEnum,
-  type ipoCategoryEnum,
+  type segmentEnum,
+  type offeringTypeEnum,
 } from '../db/schema.js';
 import type * as schema from '../db/schema.js';
 import {
@@ -54,7 +55,8 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   async findAll(filters: IPOFilters = {}): Promise<PaginatedResponse<IPO>> {
     const {
       status,
-      category,
+      segment,
+      offeringType,
       sector,
       search,
       minIssueSize,
@@ -88,11 +90,19 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             }
           }
 
-          if (category) {
-            if (Array.isArray(category)) {
-              conditions.push(inArray(ipos.category, category as (typeof ipoCategoryEnum.enumValues)[number][]));
+          if (segment) {
+            if (Array.isArray(segment)) {
+              conditions.push(inArray(ipos.segment, segment as (typeof segmentEnum.enumValues)[number][]));
             } else {
-              conditions.push(eq(ipos.category, category as (typeof ipoCategoryEnum.enumValues)[number]));
+              conditions.push(eq(ipos.segment, segment as (typeof segmentEnum.enumValues)[number]));
+            }
+          }
+
+          if (offeringType) {
+            if (Array.isArray(offeringType)) {
+              conditions.push(inArray(ipos.offeringType, offeringType as (typeof offeringTypeEnum.enumValues)[number][]));
+            } else {
+              conditions.push(eq(ipos.offeringType, offeringType as (typeof offeringTypeEnum.enumValues)[number]));
             }
           }
 

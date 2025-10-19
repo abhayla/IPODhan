@@ -6,7 +6,8 @@
  * @route GET /api/ipos
  *
  * @queryparam {string} [status] - Filter by IPO status (UPCOMING, OPEN, CLOSED, LISTED) - supports multiple values
- * @queryparam {string} [category] - Filter by IPO category (MAINBOARD, SME, RIGHTS, NCD) - supports multiple values
+ * @queryparam {string} [segment] - Filter by exchange segment (MAINBOARD, SME) - supports multiple values
+ * @queryparam {string} [offeringType] - Filter by offering type (IPO, FPO, RIGHTS, TENDER, etc.) - supports multiple values
  * @queryparam {string} [sector] - Filter by sector name (exact match)
  * @queryparam {number} [page=1] - Page number for pagination (min: 1)
  * @queryparam {number} [limit=20] - Results per page (min: 1, max: 100)
@@ -21,7 +22,7 @@
  *
  * @example
  * // Get mainboard IPOs, paginated
- * GET /api/ipos?category=MAINBOARD&page=2&limit=10
+ * GET /api/ipos?segment=MAINBOARD&offeringType=IPO&page=2&limit=10
  *
  * @example
  * // Get multiple statuses
@@ -50,9 +51,29 @@ import { readHeavyRateLimiter } from '@/lib/middleware/rate-limiter';
 const IPOStatusSchema = z.enum(['UPCOMING', 'OPEN', 'CLOSED', 'LISTED']);
 
 /**
- * IPO Category Enum Schema
+ * Segment Enum Schema (Story 11.8)
  */
-const IPOCategorySchema = z.enum(['MAINBOARD', 'SME', 'RIGHTS', 'NCD', 'FPO']);
+const SegmentSchema = z.enum(['MAINBOARD', 'SME']);
+
+/**
+ * Offering Type Enum Schema (Story 11.8)
+ */
+const OfferingTypeSchema = z.enum([
+  'IPO',
+  'FPO',
+  'RIGHTS',
+  'OFS',
+  'IPP',
+  'QIP',
+  'PREFERENTIAL',
+  'NCD',
+  'BONDS',
+  'INVITS',
+  'REITS',
+  'BUYBACK',
+  'DELISTING',
+  'TENDER',
+]);
 
 /**
  * Sort Field Schema
@@ -81,8 +102,15 @@ const QueryParamsSchema = z.object({
       if (!val) return undefined;
       return Array.isArray(val) ? val : [val];
     }),
-  category: z
-    .union([IPOCategorySchema, z.array(IPOCategorySchema)])
+  segment: z
+    .union([SegmentSchema, z.array(SegmentSchema)])
+    .optional()
+    .transform((val) => {
+      if (!val) return undefined;
+      return Array.isArray(val) ? val : [val];
+    }),
+  offeringType: z
+    .union([OfferingTypeSchema, z.array(OfferingTypeSchema)])
     .optional()
     .transform((val) => {
       if (!val) return undefined;
@@ -126,16 +154,22 @@ function generateRequestId(): string {
 function parseQueryParams(searchParams: URLSearchParams): Record<string, unknown> {
   const params: Record<string, unknown> = {};
 
-  // Handle array parameters (status, category)
+  // Handle array parameters (status, segment, offeringType)
   const statusValues = searchParams.getAll('status');
   if (statusValues.length > 0) {
     params.status = statusValues.length === 1 ? statusValues[0] : statusValues;
   }
 
-  const categoryValues = searchParams.getAll('category');
-  if (categoryValues.length > 0) {
-    params.category =
-      categoryValues.length === 1 ? categoryValues[0] : categoryValues;
+  const segmentValues = searchParams.getAll('segment');
+  if (segmentValues.length > 0) {
+    params.segment =
+      segmentValues.length === 1 ? segmentValues[0] : segmentValues;
+  }
+
+  const offeringTypeValues = searchParams.getAll('offeringType');
+  if (offeringTypeValues.length > 0) {
+    params.offeringType =
+      offeringTypeValues.length === 1 ? offeringTypeValues[0] : offeringTypeValues;
   }
 
   // Handle single-value parameters
@@ -193,7 +227,7 @@ function createErrorResponse(
  * GET /api/ipos - Fetch paginated and filtered IPO listings
  *
  * Features:
- * - Filtering by status, category, sector
+ * - Filtering by status, segment, offeringType, sector
  * - Pagination with configurable page size
  * - Sorting by multiple fields
  * - Redis caching (managed by repository layer)
@@ -245,10 +279,11 @@ export async function GET(request: NextRequest) {
     const redis = getRedisClient();
     const ipoRepository = new IPORepository(db, redis);
 
-    // Build filters for repository
+    // Build filters for repository (Story 11.8: Updated to use segment + offeringType)
     const filters: {
       status?: string[];
-      category?: string[];
+      segment?: string[];
+      offeringType?: string[];
       sector?: string;
       search?: string;
       scoreRange?: string;
@@ -258,7 +293,8 @@ export async function GET(request: NextRequest) {
       sortOrder: 'asc' | 'desc';
     } = {
       status: validatedParams.status,
-      category: validatedParams.category,
+      segment: validatedParams.segment,
+      offeringType: validatedParams.offeringType,
       sector: validatedParams.sector,
       search: validatedParams.search,
       scoreRange: validatedParams.scoreRange,

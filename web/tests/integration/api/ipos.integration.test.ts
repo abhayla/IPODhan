@@ -19,7 +19,8 @@ interface IPOData {
   id: string;
   companyName: string;
   slug: string;
-  category: 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD';
+  segment: 'MAINBOARD' | 'SME';
+  offeringType: 'IPO' | 'FPO' | 'RIGHTS' | 'NCD';
   sector: string | null;
   issueSize: string | null;
   priceRangeMin: number | null;
@@ -47,7 +48,8 @@ const testIPOs = [
   {
     companyName: 'Test Corp Alpha',
     slug: 'test-corp-alpha-integration',
-    category: 'MAINBOARD' as const,
+    segment: 'MAINBOARD',
+    offeringType: 'IPO' as const,
     sector: 'Technology',
     issueSize: '500.00',
     priceRangeMin: 100,
@@ -69,7 +71,8 @@ const testIPOs = [
   {
     companyName: 'Test Corp Beta',
     slug: 'test-corp-beta-integration',
-    category: 'SME' as const,
+    segment: 'SME',
+    offeringType: 'IPO' as const,
     sector: 'Finance',
     issueSize: '200.00',
     priceRangeMin: 50,
@@ -91,7 +94,8 @@ const testIPOs = [
   {
     companyName: 'Test Corp Gamma',
     slug: 'test-corp-gamma-integration',
-    category: 'MAINBOARD' as const,
+    segment: 'MAINBOARD',
+    offeringType: 'IPO' as const,
     sector: 'Technology',
     issueSize: '750.00',
     priceRangeMin: 150,
@@ -193,7 +197,8 @@ describe('GET /api/ipos Integration Tests', () => {
       expect(firstIPO).toHaveProperty('id');
       expect(firstIPO).toHaveProperty('companyName');
       expect(firstIPO).toHaveProperty('slug');
-      expect(firstIPO).toHaveProperty('category');
+      expect(firstIPO).toHaveProperty('segment');
+      expect(firstIPO).toHaveProperty('offeringType');
       expect(firstIPO).toHaveProperty('status');
       expect(firstIPO).toHaveProperty('createdAt');
       expect(firstIPO).toHaveProperty('updatedAt');
@@ -255,7 +260,7 @@ describe('GET /api/ipos Integration Tests', () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.data.every((ipo: IPOData) => ipo.category === 'MAINBOARD')).toBe(
+      expect(data.data.every((ipo: IPOData) => ipo.segment === 'MAINBOARD')).toBe(
         true
       );
       expect(data.data.length).toBeGreaterThanOrEqual(2);
@@ -269,7 +274,7 @@ describe('GET /api/ipos Integration Tests', () => {
       const data = await response.json();
 
       expect(response.status).toBe(200);
-      expect(data.data.every((ipo: IPOData) => ipo.category === 'SME')).toBe(true);
+      expect(data.data.every((ipo: IPOData) => ipo.segment === 'SME')).toBe(true);
       expect(
         data.data.some((ipo: IPOData) => ipo.slug === 'test-corp-beta-integration')
       ).toBe(true);
@@ -301,7 +306,7 @@ describe('GET /api/ipos Integration Tests', () => {
         data.data.every(
           (ipo: IPOData) =>
             ipo.status === 'OPEN' &&
-            ipo.category === 'MAINBOARD' &&
+            ipo.segment === 'MAINBOARD' &&
             ipo.sector === 'Technology'
         )
       ).toBe(true);

@@ -19,7 +19,8 @@ interface LotCalculatorIPO {
   id: string;
   companyName: string;
   slug: string;
-  category: string;
+  segment: 'MAINBOARD' | 'SME';
+  offeringType: string;
   status: string;
   priceRangeMin: number | null;
   priceRangeMax: number | null;
@@ -46,7 +47,8 @@ export async function GET(request: NextRequest) {
         id: ipos.id,
         companyName: ipos.companyName,
         slug: ipos.slug,
-        category: ipos.category,
+        segment: ipos.segment,
+        offeringType: ipos.offeringType,
         status: ipos.status,
         priceRangeMin: ipos.priceRangeMin,
         priceRangeMax: ipos.priceRangeMax,

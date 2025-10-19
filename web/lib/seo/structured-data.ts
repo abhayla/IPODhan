@@ -204,7 +204,8 @@ export function generateBreadcrumbSchema(
 export interface MinimalIPOForSchema {
   companyName: string;
   slug: string;
-  category: string;
+  segment: string;
+  offeringType: string;
   companyDescription?: string | null;
 }
 
@@ -227,7 +228,7 @@ export function generateIPOListingSchema(ipos: MinimalIPOForSchema[]): ItemListS
         name: `${ipo.companyName} IPO`,
         description: ipo.companyDescription || `IPO of ${ipo.companyName}`,
         url: `${BASE_URL}/ipos/${ipo.slug}`,
-        category: ipo.category,
+        category: `${ipo.segment} ${ipo.offeringType}`,
       },
     })),
   };

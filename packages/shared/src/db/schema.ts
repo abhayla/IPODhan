@@ -18,12 +18,25 @@ import { relations } from 'drizzle-orm';
 
 // ==================== ENUMS ====================
 
-export const ipoCategoryEnum = pgEnum('ipo_category', [
-  'MAINBOARD',
-  'SME',
-  'RIGHTS',
-  'NCD',
-  'FPO',
+// Exchange segment where IPO is listed
+export const segmentEnum = pgEnum('segment', ['MAINBOARD', 'SME']);
+
+// Type of offering (what it is)
+export const offeringTypeEnum = pgEnum('offering_type', [
+  'IPO',          // Initial Public Offering
+  'FPO',          // Follow-on Public Offering
+  'RIGHTS',       // Rights Issue
+  'OFS',          // Offer for Sale
+  'IPP',          // Institutional Placement Program
+  'QIP',          // Qualified Institutional Placement
+  'PREFERENTIAL', // Preferential Allotment
+  'NCD',          // Non-Convertible Debentures
+  'BONDS',        // Corporate Bonds
+  'INVITS',       // Infrastructure Investment Trusts
+  'REITS',        // Real Estate Investment Trusts
+  'BUYBACK',      // Share Buyback
+  'DELISTING',    // Delisting from Exchange
+  'TENDER',       // Tender Offer
 ]);
 
 export const ipoStatusEnum = pgEnum('ipo_status', [
@@ -109,7 +122,8 @@ export const ipos = pgTable(
     slug: varchar('slug', { length: 255 }).notNull().unique(),
     symbol: varchar('symbol', { length: 20 }), // Stock ticker symbol (nullable - upcoming IPOs may not have symbols yet)
     isin: varchar('isin', { length: 12 }), // International Securities Identification Number (nullable)
-    category: ipoCategoryEnum('category').notNull(),
+    segment: segmentEnum('segment').notNull(), // Exchange segment (MAINBOARD | SME)
+    offeringType: offeringTypeEnum('offering_type').notNull(), // Type of offering (IPO, RIGHTS, TENDER, etc.)
     sector: varchar('sector', { length: 100 }),
     issueSize: numeric('issue_size', { precision: 15, scale: 2 }), // in INR crores (max ₹999,999 crores = ₹9,999.99 billion)
     priceRangeMin: integer('price_range_min'), // min price per share
@@ -166,6 +180,9 @@ export const ipos = pgTable(
     statusIdx: index('idx_ipos_status').on(table.status),
     slugIdx: index('idx_ipos_slug').on(table.slug),
     symbolIdx: index('idx_ipos_symbol').on(table.symbol), // Index for symbol search performance
+    segmentIdx: index('idx_ipos_segment').on(table.segment),
+    offeringTypeIdx: index('idx_ipos_offering_type').on(table.offeringType),
+    segmentOfferingTypeIdx: index('idx_ipos_segment_offering_type').on(table.segment, table.offeringType),
     // Note: Trigram index for fuzzy company name search created in migration 0000_initial_schema.sql
     // CREATE INDEX idx_ipos_company_name_trgm ON ipos USING gin(company_name gin_trgm_ops);
   })
@@ -553,7 +570,7 @@ export const ipoReviews = pgTable(
       .references(() => ipos.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
     publishedDate: timestamp('published_date').notNull(),
     year: integer('year').notNull(),
-    category: ipoCategoryEnum('category').notNull(),
+    segment: segmentEnum('segment').notNull(), // Changed from category to segment
     reviewUrl: text('review_url'),
     reviewContent: text('review_content'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
@@ -562,9 +579,9 @@ export const ipoReviews = pgTable(
   (table) => ({
     ipoIdIdx: index('idx_ipo_reviews_ipo_id').on(table.ipoId),
     yearIdx: index('idx_ipo_reviews_year').on(table.year),
-    categoryIdx: index('idx_ipo_reviews_category').on(table.category),
-    categoryYearPublishedIdx: index('idx_ipo_reviews_category_year_published').on(
-      table.category,
+    segmentIdx: index('idx_ipo_reviews_segment').on(table.segment),
+    segmentYearPublishedIdx: index('idx_ipo_reviews_segment_year_published').on(
+      table.segment,
       table.year,
       table.publishedDate
     ),

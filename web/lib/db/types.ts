@@ -107,7 +107,8 @@ export type NewIPOScore = InferInsertModel<typeof schema.ipoScores>;
 
 // ==================== ENUM TYPES ====================
 
-export type IPOCategory = IPO['category'];
+export type IPOSegment = IPO['segment'];
+export type IPOOfferingType = IPO['offeringType'];
 export type IPOStatus = IPO['status'];
 export type DocumentType = Document['type'];
 export type Exchange = MarketHoliday['exchange'];

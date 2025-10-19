@@ -58,7 +58,7 @@ function formatDate(dateString: string | null): string {
 }
 
 /**
- * Get status text based on category
+ * Get status text based on segment
  *
  * Logic:
  * - MAINBOARD → "Filed with SEBI"
@@ -66,8 +66,8 @@ function formatDate(dateString: string | null): string {
  *
  * AC#1: Components render correctly with proper data
  */
-function getStatusText(category: string): string {
-  return category === 'MAINBOARD' ? 'Filed with SEBI' : 'Filed with Exchange';
+function getStatusText(segment: string): string {
+  return segment === 'MAINBOARD' ? 'Filed with SEBI' : 'Filed with Exchange';
 }
 
 // ==================== COMPONENT ====================
@@ -152,7 +152,7 @@ export function UpcomingIPOTable({
                   </Link>
                 </TableCell>
                 <TableCell className="text-muted-foreground text-sm md:text-base">
-                  {getStatusText(ipo.category)}
+                  {getStatusText(ipo.segment)}
                 </TableCell>
                 <TableCell className="text-sm md:text-base">
                   {formatDate(ipo.openDate)}

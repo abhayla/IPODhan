@@ -4,6 +4,7 @@ import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { scrapeNSEAPI, testNSEAPIConnection } from './nse-api-client.js';
+import { detectOfferingType, detectSegmentFromExchange } from '../utils/detect-offering-type.js';
 
 const NSE_URL = config.scraper.nseUrl;
 
@@ -206,16 +207,14 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
           // Parse issue size (in crores)
           const issueSize = parseFloat(issueSizeStr.trim().replace(/[^0-9.]/g, '')) || 0;
 
-          // Determine category from issue type
-          let category: 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD' = 'MAINBOARD';
-          const issueTypeUpper = issueType.toUpperCase();
-          if (issueTypeUpper.includes('SME')) {
-            category = 'SME';
-          } else if (issueTypeUpper.includes('RIGHTS')) {
-            category = 'RIGHTS';
-          } else if (issueTypeUpper.includes('DEBT') || issueTypeUpper.includes('NCD')) {
-            category = 'NCD';
-          }
+          // Story 11.8: Detect segment and offering type
+          const listingExchanges = ['NSE']; // NSE scraper always returns NSE listings
+          const segment = detectSegmentFromExchange(listingExchanges);
+          const offeringType = detectOfferingType({
+            symbol: companyName, // Use company name as fallback if symbol not available
+            bseType: undefined,
+            issueType: issueType
+          });
 
           // Create IPO object
           const ipo = {
@@ -227,7 +226,8 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
             closeDate: closeDate,
             listingDate: listingDate,
             listingExchange: 'NSE' as const,
-            category: category,
+            segment: segment as 'MAINBOARD' | 'SME',
+            offeringType: offeringType as 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | 'NCD' | 'BONDS',
             status: status,
             lotSize: undefined, // NSE doesn't always show lot size in listing
             faceValue: 10 // NSE default face value

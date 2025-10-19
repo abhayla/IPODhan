@@ -21,7 +21,8 @@ export interface HomeIPOTableData {
   id: string;
   companyName: string;
   slug: string;
-  category: string;
+  segment: string;
+  offeringType: string;
   openDate: string | null;
   closeDate: string | null;
   issuePrice: number | null; // Computed from priceRangeMax
@@ -53,7 +54,8 @@ function transformIPOData(ipo: IPO): HomeIPOTableData {
     id: ipo.id,
     companyName: ipo.companyName,
     slug: ipo.slug,
-    category: ipo.category,
+    segment: ipo.segment,
+    offeringType: ipo.offeringType,
     openDate: ipo.openDate,
     closeDate: ipo.closeDate,
     issuePrice: ipo.priceRangeMax, // Use max price from range
@@ -124,14 +126,16 @@ export async function getMainboardIPOs(): Promise<HomeIPOTableData[]> {
     try {
       // Fetch OPEN mainboard IPOs
       const openIPOsResponse = await getIPOs({
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD',
+        offeringType: 'IPO',
         status: 'OPEN',
         limit: RESULT_LIMIT,
       });
 
       // Fetch CLOSED mainboard IPOs
       const closedIPOsResponse = await getIPOs({
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD',
+        offeringType: 'IPO',
         status: 'CLOSED',
         limit: 50, // Get more to filter by date
       });
@@ -180,14 +184,16 @@ export async function getSMEIPOs(): Promise<HomeIPOTableData[]> {
     try {
       // Fetch OPEN SME IPOs
       const openIPOsResponse = await getIPOs({
-        category: 'SME',
+        segment: 'SME',
+        offeringType: 'IPO',
         status: 'OPEN',
         limit: RESULT_LIMIT,
       });
 
       // Fetch CLOSED SME IPOs
       const closedIPOsResponse = await getIPOs({
-        category: 'SME',
+        segment: 'SME',
+        offeringType: 'IPO',
         status: 'CLOSED',
         limit: 50, // Get more to filter by date
       });
@@ -235,7 +241,8 @@ export async function getUpcomingMainboardIPOs(): Promise<HomeIPOTableData[]> {
   return getCachedOrFetch(CACHE_KEYS.MAINBOARD_UPCOMING, async () => {
     try {
       const response = await getIPOs({
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD',
+        offeringType: 'IPO',
         status: 'UPCOMING',
         limit: RESULT_LIMIT,
       });
@@ -270,7 +277,8 @@ export async function getUpcomingSMEIPOs(): Promise<HomeIPOTableData[]> {
   return getCachedOrFetch(CACHE_KEYS.SME_UPCOMING, async () => {
     try {
       const response = await getIPOs({
-        category: 'SME',
+        segment: 'SME',
+        offeringType: 'IPO',
         status: 'UPCOMING',
         limit: RESULT_LIMIT,
       });

@@ -74,7 +74,9 @@ export class ListingPerformanceRepository
         .returning();
 
       // Invalidate cache
-      await this.deleteCache(getListingPerformanceKey(data.ipoId));
+      if (data.ipoId) {
+        await this.deleteCache(getListingPerformanceKey(data.ipoId));
+      }
 
       return result;
     } catch (error) {

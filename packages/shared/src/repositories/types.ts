@@ -75,7 +75,8 @@ export type IPOWithRelations = IPO & {
  */
 export interface IPOFilters {
   status?: string | string[];
-  category?: string | string[];
+  segment?: string | string[];
+  offeringType?: string | string[];
   sector?: string;
   search?: string;
   minIssueSize?: number;

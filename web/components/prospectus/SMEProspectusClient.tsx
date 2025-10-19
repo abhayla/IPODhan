@@ -24,7 +24,8 @@ export interface SMEProspectusData {
     id: string;
     companyName: string;
     slug: string;
-    category: string;
+    segment: 'MAINBOARD' | 'SME';
+    offeringType: string;
     listingExchanges: ('NSE' | 'BSE')[] | null;
   };
   drhpDocument: {

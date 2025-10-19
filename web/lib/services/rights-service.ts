@@ -114,7 +114,8 @@ export async function getUpcomingRightsIssues(): Promise<RightsIssueData[]> {
   return getCachedOrFetch(CACHE_KEYS.RIGHTS_UPCOMING, async () => {
     try {
       const response = await getIPOs({
-        category: 'RIGHTS',
+        segment: 'MAINBOARD',
+        offeringType: 'RIGHTS',
         status: 'UPCOMING',
         limit: 100, // Get all upcoming rights issues
       });
@@ -147,7 +148,8 @@ export async function getLiveRightsIssues(): Promise<RightsIssueData[]> {
   return getCachedOrFetch(CACHE_KEYS.RIGHTS_LIVE, async () => {
     try {
       const response = await getIPOs({
-        category: 'RIGHTS',
+        segment: 'MAINBOARD',
+        offeringType: 'RIGHTS',
         status: 'OPEN',
         limit: 100, // Get all live rights issues
       });

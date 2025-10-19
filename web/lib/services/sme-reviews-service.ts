@@ -58,7 +58,7 @@ export async function getSMEIPOReviews(
   try {
     // Build WHERE conditions
     const conditions = [
-      eq(ipoReviews.category, 'SME'),  // ⭐ SME filter (different from mainboard)
+      eq(ipoReviews.segment, 'SME'),  // ⭐ SME filter (different from mainboard)
       eq(ipoReviews.year, year),
     ];
 
@@ -133,7 +133,7 @@ export async function getUniqueAuthors(year: number): Promise<string[]> {
       .selectDistinct({ author: ipoReviews.author })
       .from(ipoReviews)
       .where(
-        and(eq(ipoReviews.category, 'SME'), eq(ipoReviews.year, year))
+        and(eq(ipoReviews.segment, 'SME'), eq(ipoReviews.year, year))
       )
       .orderBy(ipoReviews.author);
 

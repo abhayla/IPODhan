@@ -149,11 +149,11 @@ async function verifySeeding() {
       );
     }
 
-    // Test 3: Category distribution (AC: 5)
-    console.log('[3/7] Verifying category distribution...');
+    // Test 3: Segment distribution (AC: 5)
+    console.log('[3/7] Verifying segment distribution...');
     const categoryCounts = {
-      MAINBOARD: await db.select({ count: count() }).from(ipos).where(sql`${ipos.category} = 'MAINBOARD'`).then(r => Number(r[0]?.count || 0)),
-      SME: await db.select({ count: count() }).from(ipos).where(sql`${ipos.category} = 'SME'`).then(r => Number(r[0]?.count || 0)),
+      MAINBOARD: await db.select({ count: count() }).from(ipos).where(sql`${ipos.segment} = 'MAINBOARD'`).then(r => Number(r[0]?.count || 0)),
+      SME: await db.select({ count: count() }).from(ipos).where(sql`${ipos.segment} = 'SME'`).then(r => Number(r[0]?.count || 0)),
     };
 
     const categoryPercentages = {

@@ -20,8 +20,12 @@ export const ScrapedIPOSchema = z.object({
   listingExchange: z.enum(['NSE', 'BSE', 'BOTH'], {
     message: 'Invalid listing exchange'
   }),
-  category: z.enum(['MAINBOARD', 'SME', 'RIGHTS', 'NCD'], {
-    message: 'Invalid IPO category'
+  // Story 11.8: Replaced category with segment + offeringType
+  segment: z.enum(['MAINBOARD', 'SME'], {
+    message: 'Invalid segment - must be MAINBOARD or SME'
+  }),
+  offeringType: z.enum(['IPO', 'FPO', 'RIGHTS', 'OFS', 'BUYBACK', 'DELISTING', 'TENDER', 'NCD', 'BONDS'], {
+    message: 'Invalid offering type'
   }),
   sector: z.string().max(100).optional(),
   status: z.enum(['UPCOMING', 'OPEN', 'CLOSED', 'LISTED'], {

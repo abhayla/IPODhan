@@ -25,7 +25,8 @@ export interface MainboardProspectusData {
     id: string;
     companyName: string;
     slug: string;
-    category: string;
+    segment: 'MAINBOARD' | 'SME';
+    offeringType: string;
     listingExchanges: ('NSE' | 'BSE')[] | null;
   };
   drhpDocument: {
@@ -72,7 +73,7 @@ export async function getMainboardProspectusDocuments(
     const exchange = filters?.exchange || 'All';
 
     // Build WHERE conditions
-    const conditions = [eq(ipos.category, 'MAINBOARD')];
+    const conditions = [eq(ipos.segment, 'MAINBOARD')];
 
     // Add company name filter (case-insensitive partial match)
     if (companyName) {
@@ -101,7 +102,8 @@ export async function getMainboardProspectusDocuments(
           id: ipos.id,
           companyName: ipos.companyName,
           slug: ipos.slug,
-          category: ipos.category,
+          segment: ipos.segment,
+          offeringType: ipos.offeringType,
           listingExchanges: ipos.listingExchanges,
         },
         document: {
