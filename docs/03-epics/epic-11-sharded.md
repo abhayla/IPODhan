@@ -996,6 +996,59 @@ leadManagers: z.array(z.string()).optional(),  // ✅ For RIGHTS/NCD
 
 ---
 
+### Story 11.8: Restructure Category Field into Segment + Offering Type
+**Priority:** P0 - CRITICAL (Breaking Change)
+**Points:** 13
+**Status:** 📋 PLANNING
+**Created:** 2025-10-19
+**Source:** Planning document `docs/01-planning/segment-offeringType-change.md`
+
+**Description:**
+Replace single `category` field with TWO separate fields (`segment` + `offeringType`) to properly model the distinction between exchange segment and offering type, fixing data model confusion that causes duplicate IPO listings.
+
+**Business Problem:**
+- **Duplicate IPO Cards**: "3i Infotech" appears twice on dashboard (1 IPO + 1 TENDER offer)
+- **Data Model Confusion**: Current `category` field conflates exchange segment (MAINBOARD/SME) with offering type (IPO/RIGHTS/NCD/TENDER)
+- **User Impact**: Confusing UX with duplicate entries, no way to filter TENDER/BUYBACK offers
+
+**Current Issue:**
+```typescript
+category: 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD' | 'FPO'
+// This mixes two concepts:
+// - Where it's listed: MAINBOARD, SME
+// - What it is: IPO, FPO, RIGHTS, NCD, TENDER, BUYBACK
+```
+
+**Proposed Solution:**
+```typescript
+segment: 'MAINBOARD' | 'SME'
+offeringType: 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'TENDER' | /* 15 types total */
+```
+
+**Key Requirements:**
+- Database schema migration (new enums, data migration, drop old column)
+- Update all TypeScript code (repositories, services, API routes, API client)
+- Update scrapers (NSE, BSE, Chittorgarh) with offering type detection
+- Update UI components (filters, badges, default filtering)
+- Comprehensive test updates (fixtures, repositories, API, E2E)
+- Migration safety (backup, rollback plan, testing)
+
+**Expected Outcome:**
+- **Before**: "3i Infotech" shows 2 cards (IPO + TENDER)
+- **After**: Default view shows only IPO, TENDER hidden unless explicitly filtered
+
+**Breaking Change Impact:**
+- ⚠️ Database schema (column rename + enum changes)
+- ⚠️ API contracts (query parameters + response fields)
+- ⚠️ UI components (filter dropdowns, URL parameters)
+- ⚠️ Scraper output (both fields required)
+- ⚠️ All test fixtures
+
+**Priority:** 🔴 P0 - CRITICAL (Breaking change, data model fix)
+**Estimated Effort:** 19-24 hours (2.5-3 days)
+
+---
+
 ## Dependencies
 
 **This Epic Requires:**
@@ -1124,14 +1177,29 @@ leadManagers: z.array(z.string()).optional(),  // ✅ For RIGHTS/NCD
 **Epic Owner**: Scrum Master (Bob)
 **Product Owner**: Bob
 **Created**: 2025-10-17
-**Last Updated**: 2025-10-18 (Story 11.5 Finalized)
+**Last Updated**: 2025-10-19 (Story 11.8 Added)
 **Status**: 🔄 REOPENED
-**Story Count**: 8 (5 Complete, 1 Ready, 2 Planning)
-**Completion**: 62.5% (5/8 stories complete)
+**Story Count**: 9 (5 Complete, 1 Ready, 3 Planning)
+**Completion**: 55.6% (5/9 stories complete)
 
 ---
 
 ## Changelog
+
+### 2025-10-19 - Story 11.8 Added to Epic 📋
+- **Story**: 11.8 - Restructure Category Field into Segment + Offering Type
+- **Status**: PLANNING
+- **Priority**: P0 - CRITICAL (Breaking Change)
+- **Source**: Planning document `docs/01-planning/segment-offeringType-change.md`
+- **Business Impact**: Fixes duplicate IPO listings (e.g., "3i Infotech" showing twice)
+- **Scope**: Database schema migration + full codebase update
+- **Breaking Changes**: Database, API contracts, UI components, scrapers, tests
+- **Estimated Effort**: 19-24 hours (2.5-3 days)
+- **Epic Metrics Updated**:
+  - Story Count: 8 → 9 stories
+  - Completion: 62.5% → 55.6% (5/9 complete)
+  - New Planning Work: 19-24 hours
+- **Action Required**: Story ready for automated workflow drafting (Step 2)
 
 ### 2025-10-18 17:35 UTC - Story 11.5 Finalized ✅
 - **Story**: 11.5 - Fix BSE Rights/Debt Detail Page Parser
