@@ -663,88 +663,64 @@ UNION ALL SELECT 'financial_data', COUNT(*) FROM financial_data;
 
 ---
 
-### ISS-008: LISTED IPO - Incorrect Tab Messaging for Already-Listed IPOs
+### ISS-008: LISTED IPO - Incorrect Tab Messaging for Already-Listed IPOs ✅ RESOLVED
 
 **Severity**: MAJOR
 **Discovered**: 2025-10-19 (Phase 2, LISTED IPO Testing)
-**Status**: 🔴 OPEN
+**Resolved**: 2025-10-20T11:00:00+05:30
+**Status**: ✅ **RESOLVED**
 
 **Description**:
-Tab content on LISTED IPO detail pages shows incorrect messaging that refers to future events, even though the IPO has already been listed on the stock exchange. This creates a confusing user experience.
+Tab content on LISTED IPO detail pages showed incorrect messaging that referred to future events, even though the IPO had already been listed on the stock exchange. This created a confusing user experience.
 
 **Impact**:
 - Confusing user experience for investors
-- Makes the platform look outdated or poorly maintained
-- Reduces trust in data accuracy
-- Affects user understanding of IPO timeline
-- Impacts all LISTED IPOs (388 IPOs)
+- Made the platform look outdated or poorly maintained
+- Reduced trust in data accuracy
+- Affected user understanding of IPO timeline
+- Impacted all LISTED IPOs (388 IPOs)
 
-**Examples of Incorrect Messaging**:
+**Root Cause** ✅:
+Tab content components used static messages that were not aware of the IPO status. The messaging was designed for OPEN/UPCOMING IPOs but was also shown for LISTED IPOs.
 
-1. **Subscription Tab**:
-   - Current Message: "Subscription data will be available once the IPO opens for bidding."
-   - Problem: IPO is already LISTED - it won't "open for bidding" again
-   - Should Say: "Historical subscription data for this IPO is not available." OR show actual subscription data if available
+**Fix Applied** ✅:
+Implemented status-aware conditional messaging with helper functions in `web/components/ipo/IPODetailTabs.tsx`:
 
-2. **GMP Tab**:
-   - Current Message: "Grey Market Premium will be tracked closer to the IPO opening."
-   - Problem: IPO is already LISTED - opening has passed
-   - Should Say: "Grey Market Premium data is no longer tracked after listing." OR "GMP data for this IPO is not available."
+1. **Added Helper Functions** (Lines 76-132):
+   - `getSubscriptionMessage()` - Returns status-appropriate subscription messages
+   - `getGMPMessage()` - Returns status-appropriate GMP messages
+   - `getDocumentsMessage()` - Returns status-appropriate documents messages
 
-**Root Cause**:
-Tab content components use static messages that are not aware of the IPO status. The messaging was designed for OPEN/UPCOMING IPOs but is also shown for LISTED IPOs.
+2. **Updated Tab Messages**:
+   - Subscription Tab (Line 306): Now uses `getSubscriptionMessage(ipo.status)`
+   - GMP Tab (Line 325): Now uses `getGMPMessage(ipo.status)`
+   - Documents Tab (Line 342): Now uses `getDocumentsMessage(ipo.status)`
 
-**Affected Components**:
-- Subscription tab content component
-- GMP tab content component
-- Possibly other tabs with status-specific messaging
-- Files: Tab content components in IPO detail page
+**Message Matrix by Status**:
 
-**Recommended Fix**:
-Implement status-aware conditional messaging:
+| Status | Subscription Message | GMP Message |
+|--------|---------------------|-------------|
+| LISTED | "Historical subscription data for this IPO is not available." | "Grey Market Premium is no longer tracked after listing. Check the listing performance section..." |
+| OPEN | "Subscription data is being tracked and will be updated in real-time..." | "Grey Market Premium is being tracked and updated regularly..." |
+| UPCOMING | "Subscription data will be available once the IPO opens for bidding." | "Grey Market Premium will be tracked closer to the IPO opening." |
+| CLOSED | "Subscription data for this IPO is not available." | "Grey Market Premium data for this IPO is not available." |
 
-```typescript
-// Subscription Tab
-{status === 'LISTED'
-  ? "Historical subscription data for this IPO is not available."
-  : status === 'UPCOMING'
-    ? "Subscription data will be available once the IPO opens for bidding."
-    : "Subscription data will be updated in real-time during the IPO period."
-}
+**Verification** ✅:
+After fix:
+- LISTED IPOs show past-tense messages (no longer tracked, historical data)
+- OPEN IPOs show present continuous messages (being tracked, in real-time)
+- UPCOMING IPOs show future-tense messages (will be available, will be tracked)
+- CLOSED IPOs show neutral messages (not available)
+- All 4 IPO statuses covered with appropriate messaging
 
-// GMP Tab
-{status === 'LISTED'
-  ? "Grey Market Premium is no longer tracked after listing. Check current market price instead."
-  : status === 'UPCOMING'
-    ? "Grey Market Premium will be tracked closer to the IPO opening."
-    : "Grey Market Premium data is being tracked and updated regularly."
-}
-```
+**Files Modified**:
+- `web/components/ipo/IPODetailTabs.tsx` - Added 3 helper functions and updated 3 tab messages (+61 lines, -3 lines)
 
-**Alternative Fix**:
-Create status-specific tab content components:
-- `SubscriptionTabOpen.tsx`
-- `SubscriptionTabUpcoming.tsx`
-- `SubscriptionTabListed.tsx`
-- `SubscriptionTabClosed.tsx`
+**Commit**: 7414bcf
 
-**Test Cases**:
-1. OPEN IPO → Message should mention "real-time updates"
-2. UPCOMING IPO → Message should mention "will be available"
-3. LISTED IPO → Message should mention past tense or "no longer tracked"
-4. CLOSED IPO → Message should handle appropriately
+**Time to Resolution**: ~2 hours (implementation + testing across all statuses)
 
-**Verification Steps**:
-1. Navigate to LISTED IPO (Ather Energy Ltd)
-2. Click on "Subscription" tab
-3. Verify message is appropriate for LISTED status
-4. Click on "GMP" tab
-5. Verify message is appropriate for LISTED status
-6. Repeat for OPEN and UPCOMING IPOs to ensure all statuses work
-
-**Estimated Fix Time**: 4-6 hours (implement conditional logic + test all statuses + all tabs)
-
-**Priority**: 🟠 P1 - HIGH (UX issue, not blocking but important for quality)
+**Priority**: ✅ **RESOLVED** (Was P1 - High Priority)
 
 ---
 
