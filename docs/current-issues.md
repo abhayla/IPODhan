@@ -748,111 +748,89 @@ Create status-specific tab content components:
 
 ---
 
-### ISS-012: Lot Calculator - Decimal Input Treated as Comma Separator
+### ISS-012: Lot Calculator - Decimal Input Treated as Comma Separator ✅ RESOLVED
 
 **Severity**: MAJOR
 **Discovered**: 2025-10-19 (Phase 3, Lot Calculator Testing)
-**Status**: 🔴 OPEN
+**Resolved**: 2025-10-20T10:30:00+05:30
+**Status**: ✅ **RESOLVED**
 
 **Description**:
-When users enter decimal values (e.g., "15000.50") in the Lot Calculator's Investment Amount field, the decimal point is incorrectly interpreted as a comma separator in the Indian numbering system, resulting in the value being parsed as "15,00,050" (15 lakh 50) instead of "15,000.50" (15 thousand and 50 paise).
+When users enter decimal values (e.g., "15000.50") in the Lot Calculator's Investment Amount field, the decimal point was incorrectly interpreted as a comma separator in the Indian numbering system, resulting in the value being parsed as "15,00,050" (15 lakh 50) instead of "15,000.50" (15 thousand and 50 paise).
 
 **Impact**:
-- **MAJOR**: Users expecting to enter decimals will get completely wrong calculations
-- Confusing user experience - decimal becomes a multiplier
-- Example: User enters ₹15000.50 → System interprets as ₹15,00,050 (100x larger)
+- **MAJOR**: Users expecting to enter decimals got completely wrong calculations
+- Confusing user experience - decimal became a multiplier
+- Example: User enters ₹15000.50 → System interpreted as ₹15,00,050 (100x larger)
 - Could lead to investment amount miscalculations
-- Affects all users of the Lot Calculator tool
+- Affected all users of the Lot Calculator tool
 
-**Reproduction Steps**:
-1. Navigate to `/tools/lot-calculator`
-2. Enter "15000.50" in the Investment Amount field
-3. Observe the field displays "15,00,050"
-4. Calculator performs calculation with ₹15,00,050 instead of ₹15,000.50
+**Root Cause** ✅:
+The input field auto-formatting logic immediately formatted numbers with Indian comma separators using `Intl.NumberFormat('en-IN')`, which removed decimal points. When users typed decimal values character-by-character, each keystroke triggered reformatting, stripping the decimal point before subsequent characters could be typed.
 
-**Root Cause**:
-The input field auto-formatting logic treats the decimal point (.) as a comma separator in the Indian numbering system (lakhs/crores). The formatter likely uses:
-- Pattern: `##,##,###` (Indian number format)
-- Decimal point gets interpreted as a digit separator
-- No validation to prevent or handle decimal input
+**Fix Applied** ✅:
+Implemented Option 2 (Better UX) - Accept decimals, round to nearest rupee, provide clear user feedback
 
-**Affected Component**:
-- Page: `/tools/lot-calculator`
-- Component: Investment Amount input field
-- File: Likely `web/app/tools/lot-calculator/page.tsx` or related input component
+Updated `web/components/tools/LotCalculator.tsx`:
 
-**Expected Behavior**:
-Either:
-1. **Option 1**: Block decimal input entirely (since IPO investments are in whole rupees)
-2. **Option 2**: Accept decimals and format correctly (₹15,000.50)
-3. **Option 3**: Show validation message: "Please enter whole rupee amounts only"
+1. **Added State Tracking** (Line 158):
+   ```typescript
+   const [hasDecimal, setHasDecimal] = useState<boolean>(false);
+   ```
 
-**Recommended Fix**:
+2. **Modified Input Handler** (Lines 274-332):
+   ```typescript
+   const handleInvestmentChange = (value: string) => {
+     const cleanValue = value.replace(/[^0-9.]/g, '');
+     const containsDecimal = cleanValue.includes('.');
 
-**Option 1** (Recommended - Simplest):
-```typescript
-// Block decimal input
-const handleInputChange = (value: string) => {
-  // Remove all non-digit characters except leading digits
-  const cleanValue = value.replace(/[^\d]/g, '');
-  setInvestmentAmount(cleanValue);
-};
+     if (containsDecimal) {
+       // Preserve decimal point during typing - show raw value
+       displayValue = cleanValue;
+       const floatValue = parseFloat(cleanValue);
+       numericValue = Math.round(floatValue); // Round for calculation
+       setHasDecimal(true);
+     } else {
+       // No decimal - format with Indian commas
+       numericValue = Number(cleanValue);
+       displayValue = formatNumber(numericValue);
+       setHasDecimal(false);
+     }
+   };
+   ```
 
-// Add helper text
-<p className="text-sm text-gray-500 mt-1">
-  Enter amount in whole rupees (decimals not allowed)
-</p>
-```
+3. **Added User Feedback** (Lines 431-440):
+   ```tsx
+   {hasDecimal && (
+     <p className="text-sm text-amber-600">
+       Amount rounded to nearest rupee (IPO investments must be in whole rupees)
+     </p>
+   )}
+   ```
 
-**Option 2** (Better UX):
-```typescript
-// Accept decimals, round to nearest rupee
-const handleInputChange = (value: string) => {
-  const numericValue = parseFloat(value.replace(/,/g, ''));
-  if (!isNaN(numericValue)) {
-    setInvestmentAmount(Math.round(numericValue));
-  }
-};
+**Verification** ✅:
+After fix:
+- Input "15000.50" → Displays as "15000.50", calculates with 15,001, shows amber rounding message
+- Input "14999.99" → Displays as "14999.99", calculates with 15,000, shows rounding message
+- Input "15000" → Displays as "15,000", calculates with 15,000, shows helper text
+- All 25 unit tests passing (16 existing + 9 new decimal handling tests)
 
-// Show validation message
-{hasDecimal && (
-  <p className="text-sm text-amber-600 mt-1">
-    Amount rounded to nearest rupee
-  </p>
-)}
-```
+**Behavioral Changes**:
+| Input | Before | After |
+|-------|--------|-------|
+| "15000.50" | Displayed as "15,00,050"<br/>Calculated with 1,500,050 | Displays as "15000.50"<br/>Calculates with 15,001<br/>Shows amber rounding message |
+| "15000" | Displayed as "15,000"<br/>Calculated with 15,000 | Displayed as "15,000"<br/>Calculated with 15,000<br/>Shows helper text |
+| "14999.99" | Displayed as "14,99,990"<br/>Calculated with 1,499,990 | Displays as "14999.99"<br/>Calculates with 15,000<br/>Shows amber rounding message |
 
-**Option 3** (Most User-Friendly):
-```typescript
-// Validate and show error
-const handleInputChange = (value: string) => {
-  if (value.includes('.')) {
-    setError('Please enter whole rupee amounts only');
-    return;
-  }
-  // Process normally
-};
-```
+**Files Modified**:
+- `web/components/tools/LotCalculator.tsx` - Fixed input handler and added user feedback (+56 lines)
+- `web/tests/unit/components/tools/LotCalculator.test.tsx` - Added 9 comprehensive tests (+334 lines)
 
-**Test Cases After Fix**:
-1. Enter "15000" → Should accept and format correctly
-2. Enter "15000.50" → Should either block, round, or show error
-3. Enter "15,000" → Should handle comma correctly
-4. Enter "15.000" → Should handle European format appropriately
-5. Enter "abc" → Should reject non-numeric input
+**Commit**: 64b867e
 
-**Verification Steps**:
-1. Navigate to Lot Calculator
-2. Attempt to enter "15000.50"
-3. Verify one of the following:
-   - Decimal blocked (Option 1)
-   - Amount rounded with message (Option 2)
-   - Error message shown (Option 3)
-4. Verify calculation uses correct amount
+**Time to Resolution**: ~2 hours (implementation + comprehensive testing)
 
-**Estimated Fix Time**: 2-3 hours (implement validation + test + update UI/messaging)
-
-**Priority**: 🟠 P1 - HIGH (Affects calculation accuracy - critical for a calculator tool)
+**Priority**: ✅ **RESOLVED** (Was P1 - High Priority)
 
 ---
 
