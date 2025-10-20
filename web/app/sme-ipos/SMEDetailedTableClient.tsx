@@ -15,8 +15,8 @@
 
 'use client';
 
-import { useState } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { DataTable, type ColumnDef, DEFAULT_IPO_YEARS_EXPORT } from '@/components/shared/DataTable';
 import { Badge } from '@/components/ui/badge';
@@ -137,9 +137,18 @@ export function SMEDetailedTableClient({
 }: SMEDetailedTableClientProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [year, setYear] = useState(String(initialYear));
   const [searches, setSearches] = useState<Record<string, string>>({});
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+
+  // ISS-026 Fix: Initialize status filter from URL parameters
+  useEffect(() => {
+    const urlStatus = searchParams.get('status');
+    if (urlStatus && ['UPCOMING', 'OPEN', 'CLOSED', 'LISTED'].includes(urlStatus)) {
+      setStatusFilter(urlStatus);
+    }
+  }, [searchParams]);
 
   // Handle year change with URL update
   // AC#10, AC#11: Year navigation updates URL
