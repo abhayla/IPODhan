@@ -78,7 +78,7 @@ export function OfferingTypeFilter({ value, onChange }: OfferingTypeFilterProps)
     <div className="w-full lg:w-auto relative" ref={dropdownRef}>
       <Button
         variant="outline"
-        className="w-full lg:w-[200px] justify-between transition-all duration-200 hover:border-primary hover:bg-muted/50"
+        className="w-full lg:w-[200px] md:h-12 justify-between transition-all duration-200 hover:border-primary hover:bg-muted/50"
         aria-label="Filter IPOs by offering type"
         onClick={() => setIsOpen(!isOpen)}
       >
