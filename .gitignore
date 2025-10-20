@@ -106,6 +106,21 @@ web/check-scraper.sql
 TEST_ISSUES.json
 web/TEST_PROGRESS.md
 
+# Testing session temporary files
+/CATEGORY_LISTING_PAGES_INVENTORY.txt
+/SESSION_HANDOFF.md
+/TESTING_PLAN_UPDATES.md
+/TESTING_SESSION_SUMMARY.md
+/TEST_PROGRESS.md
+/PHASE_1_PROGRESS.md
+web/test-screenshots/
+web/3i-search-results.json
+web/compare-ipos-test-output.txt
+web/query-3i.js
+web/apply-migration-*.js
+web/fix-*.sh
+web/web/
+
 # TypeScript build info files
 *.tsbuildinfo
 

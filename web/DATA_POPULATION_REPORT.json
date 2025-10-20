@@ -1,0 +1,54 @@
+{
+  "timestamp": "2025-10-19T13:11:47.977Z",
+  "totalIPOs": 495,
+  "coverage": {
+    "ipos": 495,
+    "scraper_logs": 180,
+    "ipo_details": 150,
+    "ipo_financials": 150,
+    "market_holidays": 81,
+    "listing_performance": 77,
+    "pipeline_status": 7,
+    "subscriptions": 5,
+    "registrars": 4,
+    "financial_data": 0,
+    "broker_affiliates": 0,
+    "affiliate_clicks": 0,
+    "users": 0,
+    "user_watchlist": 0,
+    "score_history": 0,
+    "score_performance": 0,
+    "ab_experiments": 0,
+    "api_keys": 0,
+    "ipo_reviews": 0,
+    "ipo_scores": 0,
+    "documents": 0,
+    "gmp_tracking": 0,
+    "gmp_records": 0,
+    "gmp_history": 0,
+    "subscription_data": 0,
+    "peer_companies": 0
+  },
+  "relationships": {
+    "detailsCoverage": 30.3,
+    "financialsCoverage": 30.3,
+    "listingPerformanceCoverage": 19.85,
+    "gmpCoverage": 0
+  },
+  "issues": [
+    {
+      "severity": "MAJOR",
+      "table": "listing_performance",
+      "issue": "Some LISTED IPOs missing listing performance data",
+      "expected": "388 records",
+      "actual": "77 records"
+    },
+    {
+      "severity": "MAJOR",
+      "table": "ipos",
+      "issue": "Some OPEN IPOs missing GMP data",
+      "expected": "38 with GMP",
+      "actual": "0 with GMP"
+    }
+  ]
+}
