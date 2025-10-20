@@ -35,13 +35,15 @@ const pool = new Pool(
         password: process.env.DATABASE_PASSWORD,
         max: 20,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 2000,
+        connectionTimeoutMillis: 10000, // ✅ FIXED: Increased from 2s to 10s for VPS connection
+        ssl: false, // ✅ ADDED: Explicitly disable SSL (VPS doesn't require it)
       }
     : {
         connectionString: process.env.DATABASE_URL,
         max: 20,
         idleTimeoutMillis: 30000,
-        connectionTimeoutMillis: 2000,
+        connectionTimeoutMillis: 10000, // ✅ FIXED: Increased from 2s to 10s for VPS connection
+        ssl: false, // ✅ ADDED: Explicitly disable SSL
       }
 );
 

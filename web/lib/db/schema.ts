@@ -79,7 +79,7 @@ export const ipos = pgTable(
     id: uuid('id').primaryKey().defaultRandom(),
     companyName: varchar('company_name', { length: 255 }).notNull(),
     slug: varchar('slug', { length: 255 }).notNull().unique(),
-    category: ipoCategoryEnum('category').notNull(),
+    category: ipoCategoryEnum('segment').notNull(), // VPS DB uses 'segment' column name
     sector: varchar('sector', { length: 100 }),
     issueSize: numeric('issue_size', { precision: 10, scale: 2 }), // in INR crores
     priceRangeMin: integer('price_range_min'), // min price per share
@@ -455,7 +455,7 @@ export const ipoReviews = pgTable(
       .references(() => ipos.id, { onDelete: 'cascade', onUpdate: 'cascade' }),
     publishedDate: timestamp('published_date').notNull(),
     year: integer('year').notNull(),
-    category: ipoCategoryEnum('category').notNull(),
+    category: ipoCategoryEnum('segment').notNull(), // VPS DB uses 'segment' column name
     reviewUrl: text('review_url'),
     reviewContent: text('review_content'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
