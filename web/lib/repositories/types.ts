@@ -287,6 +287,7 @@ export interface HistoricalIPOQueryParams {
   performance?: 'Positive' | 'Negative' | 'All';
   sort?: 'listing_date' | 'listing_gain' | 'subscription';
   sortOrder?: 'asc' | 'desc';
+  search?: string; // Search by company name
   page?: number;
   limit?: number;
 }

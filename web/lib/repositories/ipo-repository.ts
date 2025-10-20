@@ -678,6 +678,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       year,
       sector,
       performance,
+      search,
       sort = 'listing_date',
       sortOrder = 'desc',
       page = 1,
@@ -708,6 +709,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           // Add sector filter
           if (sector) {
             conditions.push(eq(ipos.sector, sector));
+          }
+
+          // Add search filter (case-insensitive company name search)
+          if (search && search.trim()) {
+            conditions.push(
+              sql`${ipos.companyName} ILIKE ${`%${search.trim()}%`}`
+            );
           }
 
           const whereClause = and(...conditions);

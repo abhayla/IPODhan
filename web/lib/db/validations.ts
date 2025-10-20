@@ -199,6 +199,7 @@ export const historicalIPOQueryParamsSchema = z.object({
   performance: z.enum(['Positive', 'Negative', 'All']).optional(),
   sort: z.enum(['listing_date', 'listing_gain', 'subscription']).optional(),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  search: z.string().max(200).optional(), // Search by company name
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
