@@ -158,7 +158,7 @@ function extractSlug(urlFolder: string): string {
  */
 async function fetchInvestorgainAPI(
   page: number = 1,
-  perPage: number = 100,
+  perPage: number = 10,
   category: string = 'ipo'
 ): Promise<InvestorgainAPIResponse> {
   // Generate cache-busting version (format: "DD-HH")
@@ -167,7 +167,7 @@ async function fetchInvestorgainAPI(
   const hour = String(now.getHours()).padStart(2, '0');
   const version = `${day}-${hour}`;
 
-  const url = `${INVESTORGAIN_API_BASE}/${REPORT_ID}/${page}/${perPage}/${CURRENT_YEAR}/${YEAR_RANGE}/0/${category}?search=&v=${version}`;
+  const url = `${INVESTORGAIN_API_BASE}/${REPORT_ID}/${page}/${perPage}/${CURRENT_YEAR}/${YEAR_RANGE}/0/${category}`;
 
   logger.info({
     url,
@@ -221,47 +221,39 @@ export async function scrapeInvestorgainGMPs(): Promise<InvestorgainGMPScraperRe
     logger.info({ url: INVESTORGAIN_API_BASE }, 'Starting Investorgain GMP scraper (API version)');
 
     let page = 1;
-    const perPage = 100;
+    const perPage = 10; // API only accepts 10, returns all records regardless (ignores pagination)
     let hasMorePages = true;
 
-    // Fetch all pages
-    while (hasMorePages) {
-      // Fetch data with retry logic
-      const apiData = await retryWithExponentialBackoff(
-        () => fetchInvestorgainAPI(page, perPage, 'ipo'),
-        3,
-        1000
-      );
+    // Note: API does NOT support pagination - it returns all records regardless of page parameter
+    // We only need to fetch once
+    const apiData = await retryWithExponentialBackoff(
+      () => fetchInvestorgainAPI(1, perPage, 'ipo'),
+      3,
+      1000
+    );
 
+    logger.info(
+      {
+        hasData: !!apiData,
+        hasReportTableData: !!apiData.reportTableData,
+        isArray: Array.isArray(apiData.reportTableData),
+        length: apiData.reportTableData?.length,
+        msg: apiData.msg,
+        error: (apiData as any).error,
+      },
+      'API response structure'
+    );
+
+    // Check for API error
+    if ((apiData as any).error) {
+      const errorMsg = `Investorgain API error: ${(apiData as any).error}`;
+      logger.error({ error: (apiData as any).error }, errorMsg);
+      result.errors.push(errorMsg);
+    } else if (!apiData.reportTableData || apiData.reportTableData.length === 0) {
+      logger.info('No IPO data returned from API');
+    } else {
       logger.info(
-        {
-          page,
-          hasData: !!apiData,
-          hasReportTableData: !!apiData.reportTableData,
-          isArray: Array.isArray(apiData.reportTableData),
-          length: apiData.reportTableData?.length,
-          msg: apiData.msg,
-          error: (apiData as any).error,
-        },
-        'API response structure'
-      );
-
-      // Check for API error
-      if ((apiData as any).error) {
-        const errorMsg = `Investorgain API error: ${(apiData as any).error}`;
-        logger.error({ error: (apiData as any).error }, errorMsg);
-        result.errors.push(errorMsg);
-        break;
-      }
-
-      if (!apiData.reportTableData || apiData.reportTableData.length === 0) {
-        logger.info({ page }, 'No more IPO data - stopping pagination');
-        hasMorePages = false;
-        break;
-      }
-
-      logger.info(
-        { page, recordCount: apiData.reportTableData.length },
+        { recordCount: apiData.reportTableData.length },
         'Received GMP data from Investorgain API'
       );
 
@@ -334,17 +326,10 @@ export async function scrapeInvestorgainGMPs(): Promise<InvestorgainGMPScraperRe
           result.errors.push(`Record parsing error: ${errorMsg}`);
         }
       }
-
-      // Check if there are more pages (if we got full page, likely more exist)
-      if (apiData.reportTableData.length < perPage) {
-        hasMorePages = false;
-      } else {
-        page++;
-      }
     }
 
     logger.info(
-      { gmpsScraped: result.gmps.length, errors: result.errors.length, pagesFetched: page },
+      { gmpsScraped: result.gmps.length, errors: result.errors.length },
       'Investorgain GMP scraper completed'
     );
 
