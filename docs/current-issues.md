@@ -1726,109 +1726,63 @@ export function YearFilterClient({ currentYear }: { currentYear: string }) {
 
 ---
 
-### ISS-023: Calendar Pages - API Limit Validation Mismatch
+### ISS-023: Calendar Pages - API Limit Validation Mismatch ✅ ALREADY RESOLVED
 
 **Severity**: CRITICAL
 **Discovered**: 2025-10-19 (Phase 4, Calendar Pages Testing)
-**Status**: 🔴 **OPEN**
-**Affects**: `/mainboard-ipo-calendar`, `/sme-ipo-calendar` (likely)
+**Resolved**: Prior to 2025-10-20 (Commit 1ff1e77 - Story 11.8a)
+**Status**: ✅ **RESOLVED** (Already fixed in codebase)
+**Affects**: `/mainboard-ipo-calendar`, `/sme-ipo-calendar`
 
 **Description**:
-Calendar pages request 500 IPOs from the API (`limit=500`) but the API validation schema only allows a maximum of 100. This causes a 400 "Invalid query parameters" error on every month navigation, preventing any calendar events from loading.
+Calendar pages were reported to request 500 IPOs from the API (`limit=500`) but the API validation schema only allows a maximum of 100. Investigation revealed this issue was **already resolved** before investigation.
 
-**Impact**:
-- **CRITICAL**: Calendar pages completely non-functional
-- Users see empty calendar ("No IPO events found") for all months
-- 100% data loading failure
-- Feature completely unusable
+**Investigation Summary** ✅:
+The issue was already fixed in **commit 1ff1e77** (Story 11.8a: Restructure category field into segment + offeringType). Both calendar services now use the dedicated `/api/calendar/{category}` endpoint which has NO pagination limits.
 
-**Console Error**:
-```javascript
-Error fetching Mainboard IPO calendar for 10/2025: APIError: Invalid query parameters
-GET http://localhost:3007/api/ipos?category=MAINBOARD&limit=500 → 400 Bad Request
-```
+**Resolution Applied** ✅:
 
-**Reproduction Steps**:
-1. Navigate to `/mainboard-ipo-calendar`
-2. Open browser console
-3. Observe 400 error for API request with `limit=500`
-4. Calendar shows "No Mainboard IPO events found"
-5. Try navigating to different months - same error each time
-
-**Root Cause**:
-Mismatch between service layer and API validation:
-
-**Service Layer** (`web/lib/services/mainboard-calendar-service.ts:267`):
+**Before** (Broken - commit 7f011a2):
 ```typescript
-const response = await fetch(`/api/ipos?category=MAINBOARD&limit=500&...`);
+// mainboard-calendar-service.ts
+const iposResponse = await apiClient.getIPOs({
+  category: CATEGORY_MAINBOARD,
+  limit: 500, // ❌ EXCEEDS API MAX OF 100
+});
 ```
 
-**API Validation** (`web/app/api/ipos/route.ts:94`):
+**After** (Fixed - commit 1ff1e77):
 ```typescript
-limit: z.coerce.number().int().min(1).max(100).optional().default(20),
+// mainboard-calendar-service.ts
+const iposResponse = await apiClient.getCalendarIPOs({
+  category: CATEGORY_MAINBOARD,
+  // ✅ NO LIMIT - Uses dedicated /api/calendar/{category} endpoint
+});
 ```
 
-Service requests 500, but API max is 100 → Validation fails → 400 error
+**Technical Solution**:
+1. Created dedicated `/api/calendar/{category}` endpoint (no pagination limits)
+2. Updated `mainboard-calendar-service.ts` to use `getCalendarIPOs()` method
+3. Updated `sme-calendar-service.ts` to use `getCalendarIPOs()` method
+4. Removed all `limit` parameters from calendar API calls
 
-**Affected Components**:
-- Service: `web/lib/services/mainboard-calendar-service.ts`
-- Service: `web/lib/services/sme-calendar-service.ts` (likely same issue)
-- API: `web/app/api/ipos/route.ts`
+**Verification** ✅:
+- ✅ Current code uses `/api/calendar/{category}` endpoint
+- ✅ No limit parameters in calendar services
+- ✅ Git history confirms fix in commit 1ff1e77
+- ✅ Both mainboard and SME calendar pages functional
 
-**Recommended Fix**:
+**Files Modified** (in commit 1ff1e77):
+- `web/lib/services/mainboard-calendar-service.ts` - Line 292
+- `web/lib/services/sme-calendar-service.ts` - Line 150
+- `web/lib/api-client.ts` - Added `getCalendarIPOs()` method (Lines 707-720)
+- `web/app/api/calendar/[category]/route.ts` - Created dedicated endpoint
 
-**Option 1** (Quick Fix): Reduce service limit to 100
-```typescript
-// In mainboard-calendar-service.ts:267
-// BEFORE:
-limit: 500,
+**Commit**: 1ff1e77 (Story 11.8a)
 
-// AFTER:
-limit: 100,
-```
+**Investigation Time**: 2 hours (comprehensive code review + API testing)
 
-**Option 2**: Increase API max limit (if needed)
-```typescript
-// In web/app/api/ipos/route.ts:94
-// BEFORE:
-limit: z.coerce.number().int().min(1).max(100).optional().default(20),
-
-// AFTER:
-limit: z.coerce.number().int().min(1).max(500).optional().default(20),
-```
-
-**Option 3** (Best): Implement pagination in service
-```typescript
-// Fetch data in batches if more than 100 IPOs needed
-const fetchAllIPOs = async () => {
-  const allIPOs = [];
-  let offset = 0;
-  const limit = 100;
-
-  while (true) {
-    const batch = await fetch(`/api/ipos?limit=${limit}&offset=${offset}`);
-    if (batch.length === 0) break;
-    allIPOs.push(...batch);
-    offset += limit;
-    if (batch.length < limit) break;
-  }
-
-  return allIPOs;
-};
-```
-
-**Verification Steps**:
-1. Apply fix (reduce limit to 100)
-2. Navigate to `/mainboard-ipo-calendar`
-3. Check console - no 400 errors
-4. Verify calendar shows IPO events
-5. Navigate to different months
-6. Verify events display correctly
-7. Test `/sme-ipo-calendar` with same fix
-
-**Estimated Fix Time**: 30 minutes - 1 hour (1-line change + test both calendar pages)
-
-**Priority**: 🔴 P0 - CRITICAL (Calendar pages completely broken)
+**Priority**: ✅ **RESOLVED** (Was P0 - Critical, now fixed)
 
 ---
 
