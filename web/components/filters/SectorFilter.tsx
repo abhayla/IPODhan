@@ -49,7 +49,7 @@ export function SectorFilter({ value, onChange }: SectorFilterProps) {
     <div className="w-full lg:w-auto">
       <Select value={value} onValueChange={onChange} disabled={isLoading}>
         <SelectTrigger
-          className="w-full lg:w-[180px] transition-all duration-200 hover:border-primary hover:bg-muted/50 disabled:opacity-50"
+          className="w-full lg:w-[180px] md:h-12 transition-all duration-200 hover:border-primary hover:bg-muted/50 disabled:opacity-50"
           aria-label="Filter IPOs by sector"
           aria-disabled={isLoading}
           tabIndex={isLoading ? -1 : 0}

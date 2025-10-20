@@ -42,7 +42,7 @@ export function ScoreRangeFilter({
 }: ScoreRangeFilterProps) {
   return (
     <Select value={value} onValueChange={onChange}>
-      <SelectTrigger className={`w-[200px] ${className}`}>
+      <SelectTrigger className={`w-[200px] md:h-12 ${className}`}>
         <SelectValue placeholder="Select score range" />
       </SelectTrigger>
       <SelectContent>

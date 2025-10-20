@@ -17,7 +17,7 @@ export function SegmentFilter({ value, onChange }: SegmentFilterProps) {
     <div className="w-full lg:w-auto">
       <Select value={value} onValueChange={onChange}>
         <SelectTrigger
-          className="w-full lg:w-[180px] transition-all duration-200 hover:border-primary hover:bg-muted/50"
+          className="w-full lg:w-[180px] md:h-12 transition-all duration-200 hover:border-primary hover:bg-muted/50"
           aria-label="Filter IPOs by segment (Mainboard or SME)"
         >
           <Building2 className="mr-2 h-4 w-4 transition-colors duration-200 group-hover:text-primary" />
