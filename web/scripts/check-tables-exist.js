@@ -1,6 +1,7 @@
 // Direct check if tables exist in database
 const { Pool } = require('pg');
-require('dotenv/config');
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env.local') });
 
 async function checkTables() {
   const pool = new Pool({
