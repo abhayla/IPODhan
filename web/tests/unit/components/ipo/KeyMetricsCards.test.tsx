@@ -29,6 +29,7 @@ describe('KeyMetricsCards', () => {
     );
 
     expect(screen.getByText('₹500 Crores')).toBeInTheDocument();
+    expect(screen.getByText('Total Issue Size')).toBeInTheDocument();
   });
 
   it('should format subscription with times subscribed', () => {
@@ -110,5 +111,33 @@ describe('KeyMetricsCards', () => {
 
     const gmpValue = container.querySelector('.text-red-600');
     expect(gmpValue).toBeInTheDocument();
+  });
+
+  it('should format large issue size with Indian number formatting', () => {
+    render(
+      <KeyMetricsCards
+        issueSize={29807600000}
+        subscription={null}
+        gmp={null}
+        gmpPercent={null}
+      />
+    );
+
+    // Verify large number is displayed with proper formatting (e.g., 29,80,76,00,000)
+    expect(screen.getByText(/₹29,80,76,00,000 Crores/i)).toBeInTheDocument();
+  });
+
+  it('should format issue size with decimals correctly', () => {
+    render(
+      <KeyMetricsCards
+        issueSize={3690.6}
+        subscription={null}
+        gmp={null}
+        gmpPercent={null}
+      />
+    );
+
+    // Verify decimal number is displayed (e.g., ₹3,690.6 Crores)
+    expect(screen.getByText(/₹3,690\.6 Crores/i)).toBeInTheDocument();
   });
 });
