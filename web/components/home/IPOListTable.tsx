@@ -151,17 +151,17 @@ export function IPOListTable({
       <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
 
       {/* AC#3: Tables are responsive and match reference design */}
-      <div className="rounded-md border bg-card">
-        <Table aria-label={title}>
+      <div className="rounded-md border bg-card overflow-x-auto">
+        <Table aria-label={title} className="min-w-full">
           <TableHeader>
             <TableRow>
-              <TableHead scope="col" className="w-[40%]">
+              <TableHead scope="col" className="w-[40%] sm:w-auto">
                 Issuer Company
               </TableHead>
-              <TableHead scope="col" className="w-[30%]">
+              <TableHead scope="col" className="w-[30%] sm:w-auto whitespace-nowrap">
                 Open
               </TableHead>
-              <TableHead scope="col" className="w-[30%]">
+              <TableHead scope="col" className="w-[30%] sm:w-auto whitespace-nowrap">
                 Close
               </TableHead>
             </TableRow>
