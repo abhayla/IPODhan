@@ -26,6 +26,12 @@ export function Header() {
   const [desktopToolsOpen, setDesktopToolsOpen] = useState(false);
   const [desktopMainboardIPOsOpen, setDesktopMainboardIPOsOpen] = useState(false);
   const [desktopSMEIPOsOpen, setDesktopSMEIPOsOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Prevent hydration mismatch by only rendering interactive elements after mount
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const isActive = (path: string) => {
     return pathname === path || pathname.startsWith(path);
@@ -161,6 +167,7 @@ export function Header() {
               </Link>
 
               {/* Mainboard IPOs Dropdown Menu */}
+              {mounted && (
               <div
                 className={`absolute right-0 top-full mt-2 w-64 rounded-xl border bg-popover p-2 text-popover-foreground shadow-2xl ${styles.dropdown} ${
                   desktopMainboardIPOsOpen ? 'visible opacity-100 translate-y-0' : 'invisible opacity-0 -translate-y-2'
@@ -233,6 +240,7 @@ export function Header() {
                   </div>
                 </Link>
               </div>
+              )}
             </div>
 
             <div className="group relative">
@@ -265,6 +273,7 @@ export function Header() {
               </Link>
 
               {/* SME IPOs Dropdown Menu */}
+              {mounted && (
               <div
                 className={`absolute right-0 top-full mt-2 w-64 rounded-xl border bg-popover p-2 text-popover-foreground shadow-2xl ${styles.dropdown} ${
                   desktopSMEIPOsOpen ? 'visible opacity-100 translate-y-0' : 'invisible opacity-0 -translate-y-2'
@@ -337,6 +346,7 @@ export function Header() {
                   </div>
                 </Link>
               </div>
+              )}
             </div>
 
             <div className="group relative">
@@ -367,6 +377,7 @@ export function Header() {
               </button>
 
               {/* Dropdown Menu */}
+              {mounted && (
               <div className={`absolute right-0 top-full mt-2 w-64 rounded-xl border bg-popover p-2 text-popover-foreground shadow-2xl ${styles.dropdown} ${
                 desktopToolsOpen ? 'visible opacity-100 translate-y-0' : 'invisible opacity-0 -translate-y-2'
               } group-hover:visible group-hover:opacity-100 group-hover:translate-y-0`}>
@@ -423,6 +434,7 @@ export function Header() {
                   </div>
                 </Link>
               </div>
+              )}
             </div>
           </nav>
 
