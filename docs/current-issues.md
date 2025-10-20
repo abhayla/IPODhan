@@ -1,9 +1,9 @@
 # Current Issues - IPODhan Testing
 
-**Last Updated**: 2025-10-19T22:00:00Z
+**Last Updated**: 2025-10-20T09:00:00Z
 **Test Branch**: `test/comprehensive-testing`
 **VPS Database**: `103.118.16.189:5432/ipodhan`
-**Testing Phase**: Phase 1-3 Complete, Phase 4 Partially Complete (Core pages tested)
+**Testing Phase**: Phase 1 Data Quality Checks Complete, Phase 2-4 In Progress
 
 ---
 
@@ -485,18 +485,29 @@ LIMIT 10;
 
 ### ISS-002: Missing GMP Data for OPEN IPOs
 
-**Severity**: MAJOR
+**Severity**: CRITICAL ⬆️ (Upgraded from MAJOR)
 **Discovered**: 2025-10-19 (Phase 1, Step 3)
+**Updated**: 2025-10-20 (Phase 1 Comprehensive Checks)
 **Status**: 🔴 OPEN
 
 **Description**:
-0% (0/38) of OPEN IPOs have Grey Market Premium (GMP) data. The `gmp_tracking`, `gmp_records`, and `gmp_history` tables are completely empty, despite 38 IPOs being in OPEN status.
+100% (38/38) of OPEN IPOs are missing Grey Market Premium (GMP) data. All GMP-related tables (`gmp_tracking`, `gmp_records`, `gmp_history`) are completely empty, and the main `ipos.gmp` field is NULL for all OPEN IPOs.
+
+**Phase 1 Comprehensive Check Results** (2025-10-20):
+- **38 OPEN IPOs tested**: ALL missing GMP data ❌
+- Sample IPOs checked:
+  - MEHAI TECHNOLOGY LTD
+  - BHAIRAV ENTERPRISES LIMITED
+  - Cool Caps Industries Limited
+  - Chemmanur Credits and Investments Limited
+  - (All 38 show GMP: MISSING, Updated: NEVER)
 
 **Impact**:
-- GMP feature completely non-functional for current IPOs
+- **CRITICAL**: GMP feature completely non-functional for current IPOs
 - Investors cannot see grey market premium (critical investment indicator)
 - GMP charts/trends cannot be displayed
 - GMP-based recommendations unavailable
+- **100% data gap** - most severe data quality issue found
 
 **Expected Behavior**:
 - 90%+ of OPEN IPOs should have GMP data
@@ -505,32 +516,33 @@ LIMIT 10;
 - `gmp_history` table has time-series GMP data
 - GMP updated at least once daily
 
-**Actual Behavior**:
-- 0/38 (0%) OPEN IPOs have GMP data
+**Actual Behavior** (Verified 2025-10-20):
+- **38/38 (100%) OPEN IPOs missing GMP data** ❌
 - `ipos.gmp` field is NULL for all OPEN IPOs
+- `ipos.gmp_updated_at` is NULL for all OPEN IPOs (never updated)
 - `gmp_tracking` table: 0 records (completely empty)
 - `gmp_records` table: 0 records (completely empty)
 - `gmp_history` table: 0 records (completely empty)
-- `ipos.gmp_updated_at` is NULL for all IPOs
 
-**Root Cause**:
-- GMP scraper not running, OR
-- GMP scraper configured but failing silently, OR
-- GMP data sources (InvestorGain, IPOWatch, Chittorgarh) inaccessible
+**Root Cause Analysis**:
+**Verified via scraper logs** (2025-10-20):
+1. **GMP scrapers ARE running** ✅ but processing 0 records:
+   - INVESTORGAIN_GMP: SUCCESS status, but records_processed: 0
+   - Last run: Oct 20, 2025 (today) - 3 executions showing 0 records
+2. **All GMP pipelines stale** (>18 days):
+   - `INVESTORGAIN (GMP_DATA)`: Last success Oct 1, 2025 (**430 hours ago**)
+   - `IPOWATCH (GMP_DATA)`: Last success Oct 1, 2025 (**449 hours ago**)
+   - `CHITTORGARH (GMP_DATA)`: Last success Oct 1, 2025 (**449 hours ago**)
+3. **Scraper execution vs data population mismatch**:
+   - Scrapers running with SUCCESS status
+   - But NOT populating database (0 records processed)
+   - Suggests scraper logic or data source issue
 
 **Related Tables**:
 - `gmp_tracking` (0 records - should have real-time GMP data)
 - `gmp_records` (0 records - should have historical GMP records)
 - `gmp_history` (0 records - should have time-series data)
 - `ipos.gmp` field (NULL for all 38 OPEN IPOs)
-
-**Pipeline Status**:
-From scraper health check, we see:
-- `INVESTORGAIN (GMP_DATA)`: Last success Oct 1, 2025 (18 days ago)
-- `IPOWATCH (GMP_DATA)`: Last success Oct 1, 2025 (18 days ago)
-- `CHITTORGARH (GMP_DATA)`: Last success Oct 1, 2025 (18 days ago)
-
-All GMP pipelines are stale (>48 hours).
 
 **SQL Verification**:
 ```sql
@@ -681,6 +693,211 @@ UNION ALL SELECT 'financial_data', COUNT(*) FROM financial_data;
 - [ ] Test CTAs still work despite missing data
 
 **Priority**: MEDIUM-HIGH (affects multiple features but not core functionality)
+
+---
+
+### ISS-026: Invalid Issue Sizes - Data Quality Issue (NEW)
+
+**Severity**: MAJOR
+**Discovered**: 2025-10-20 (Phase 1, Data Quality Checks)
+**Status**: 🔴 OPEN
+
+**Description**:
+28 IPOs in the database have invalid `issue_size` values (≤ 0), indicating a data quality problem that affects financial metrics display.
+
+**Impact**:
+- Financial metrics calculations may fail or show incorrect results
+- Issue size is a critical field for IPO evaluation
+- Affects data integrity and trust
+- May cause UI display issues or errors
+
+**Phase 1 Check Results**:
+```sql
+-- Invalid issue sizes (≤0)
+SELECT COUNT(*) as count FROM ipos WHERE issue_size IS NOT NULL AND issue_size <= 0;
+-- Result: 28 IPOs
+```
+
+**Root Cause**:
+- Scraper parsing issue (extracting incorrect values)
+- Data source providing invalid data
+- Database validation not catching invalid values
+- Conversion/transformation errors
+
+**Affected IPOs**:
+28 IPOs need investigation and correction
+
+**Recommended Actions**:
+1. Query to identify specific IPOs: `SELECT id, company_name, issue_size FROM ipos WHERE issue_size <= 0;`
+2. Check source data for these IPOs
+3. Fix scraper logic if parsing incorrectly
+4. Add database constraint: `CHECK (issue_size IS NULL OR issue_size > 0)`
+5. Re-scrape affected IPOs or manually correct data
+
+**Priority**: 🟠 P1 - HIGH (Data quality issue affecting 5.7% of IPOs)
+
+---
+
+### ISS-027: Stale Scrapers - All Pipelines >18 Days Old (NEW)
+
+**Severity**: CRITICAL
+**Discovered**: 2025-10-20 (Phase 1, Scraper Health Monitoring)
+**Status**: 🔴 OPEN
+
+**Description**:
+ALL scraper pipelines show last successful execution was 18-19 days ago (October 1-2, 2025), indicating scrapers are not running on schedule or are failing silently.
+
+**Impact**:
+- **CRITICAL**: All IPO data is 18+ days stale
+- New IPOs not being added
+- Status changes not reflected (OPEN → CLOSED → LISTED)
+- Subscription data not updated
+- GMP data not refreshed
+- Listing performance data not updated
+- Platform shows outdated information
+
+**Pipeline Status** (Verified 2025-10-20):
+| Pipeline | Last Success | Hours Since | Status |
+|----------|-------------|-------------|--------|
+| NSE (IPO_DATA) | Oct 2, 2025 | **430 hours** | ⚠️ Stale |
+| BSE (IPO_DATA) | Oct 2, 2025 | **438 hours** | ⚠️ Stale |
+| ALL (IPO_DATA) | Oct 2, 2025 | **438 hours** | ⚠️ Stale |
+| INVESTORGAIN (GMP_DATA) | Oct 1, 2025 | **449 hours** | ⚠️ Stale |
+| IPOWATCH (GMP_DATA) | Oct 1, 2025 | **449 hours** | ⚠️ Stale |
+| CHITTORGARH (GMP_DATA) | Oct 1, 2025 | **449 hours** | ⚠️ Stale |
+| ALL (GMP_DATA) | Oct 1, 2025 | **449 hours** | ⚠️ Stale |
+
+**All 7 pipelines >48 hours threshold** ❌
+
+**Recent Scraper Logs Show**:
+- Recent executions (Oct 20) show SUCCESS status
+- BUT `records_processed: 0` for all recent runs
+- Suggests scrapers running but not finding/processing data
+- May indicate:
+  - Data source structure changed
+  - Scraper selectors broken
+  - Network/access issues
+  - Logic errors in scraper code
+
+**Root Cause**:
+1. **Scheduler not running** on production schedule, OR
+2. **Scrapers failing silently** (SUCCESS status but 0 records), OR
+3. **Data sources inaccessible** or structure changed, OR
+4. **Deployment issue** - cron jobs not configured
+
+**Recommended Actions**:
+1. **IMMEDIATE**: Check cron job / scheduler status
+2. **IMMEDIATE**: Run scrapers manually to verify functionality
+3. **SHORT-TERM**: Investigate why recent runs show 0 records processed
+4. **SHORT-TERM**: Check data source websites for structure changes
+5. **LONG-TERM**: Add monitoring/alerts for scraper staleness >24 hours
+6. **LONG-TERM**: Implement scraper health dashboard
+
+**Commands to Run**:
+```bash
+# Check if scheduler is running
+pm2 list | grep scheduler
+
+# Run scrapers manually
+cd scraper
+npm run start:nse
+npm run start:investorgain-gmp
+
+# Check scraper logs
+pm2 logs ipodhan-scraper --lines 100
+```
+
+**Priority**: 🔴 P0 - CRITICAL BLOCKER (All data stale, platform outdated)
+
+---
+
+### ISS-028: Low Subscription Data Coverage for OPEN IPOs (NEW)
+
+**Severity**: MAJOR
+**Discovered**: 2025-10-20 (Phase 1, GMP & Subscription Analysis)
+**Status**: 🔴 OPEN
+
+**Description**:
+Only 4 out of 20 tested OPEN IPOs have subscription data, and all 4 records are for the same IPO (SMC Global Securities) showing 0.00x subscription across all categories.
+
+**Impact**:
+- Subscription tracking feature mostly non-functional
+- Investors cannot see real-time subscription multiples
+- Only 20% coverage for OPEN IPOs tested
+- Subscription-based investment decisions not possible
+
+**Phase 1 Check Results** (2025-10-20):
+```
+OPEN IPOs with subscription data: 4 of 20 (20%)
+- SMC Global Securities Limited: 4 records (all showing 0.00x)
+- All other 16 OPEN IPOs: No subscription data ❌
+```
+
+**Sample IPOs Missing Subscription Data**:
+- BHAIRAV ENTERPRISES LIMITED
+- Cool Caps Industries Limited
+- ANKA INDIA LIMITED
+- WARDWIZARD INNOVATIONS MOBILITY LTD
+- (12 more)
+
+**Actual Behavior**:
+- `subscriptions` table: Only 5 records total
+- 4 records for one IPO (SMC Global Securities)
+- 1 record for unknown IPO
+- All other OPEN IPOs: No data
+
+**Root Cause**:
+- Real-time subscription scraper not running
+- NSE/BSE subscription API not being queried
+- Subscription data only populated for select IPOs
+- Related to ISS-027 (stale scrapers)
+
+**Recommended Actions**:
+1. Check if real-time subscription scraper exists
+2. Run subscription scraper for OPEN IPOs
+3. Set up hourly subscription data refresh
+4. Verify NSE/BSE APIs for subscription data
+
+**Priority**: 🟠 P1 - HIGH (Important for IPO investment decisions)
+
+---
+
+### ISS-029: LISTED IPOs Missing Listing Dates (NEW)
+
+**Severity**: MAJOR
+**Discovered**: 2025-10-20 (Phase 1, Date Logic Validation)
+**Status**: 🔴 OPEN
+
+**Description**:
+6 IPOs with status='LISTED' have NULL `listing_date` field, violating business logic that LISTED IPOs must have a listing date.
+
+**Impact**:
+- Historical performance analysis impossible for these IPOs
+- Date-based queries may fail
+- Data integrity violation
+- UI may show errors or "N/A" for listing date
+
+**Phase 1 Check Results**:
+```sql
+-- LISTED IPOs without listing_date
+SELECT COUNT(*) FROM ipos WHERE status = 'LISTED' AND listing_date IS NULL;
+-- Result: 6 IPOs
+```
+
+**Root Cause**:
+- Data migration incomplete
+- Scraper not populating listing_date
+- Manual data entry missing listing date
+- Status updated to LISTED before listing date populated
+
+**Recommended Actions**:
+1. Query: `SELECT id, company_name, status FROM ipos WHERE status = 'LISTED' AND listing_date IS NULL;`
+2. Research actual listing dates for these 6 IPOs
+3. Update database with correct listing dates
+4. Add database constraint: `CHECK (status != 'LISTED' OR listing_date IS NOT NULL)`
+5. Fix scraper to always populate listing_date when setting status=LISTED
+
+**Priority**: 🟠 P1 - HIGH (Data integrity violation)
 
 ---
 
@@ -2264,35 +2481,58 @@ Increase touch target size for tablet breakpoint:
 
 ## 📊 TESTING STATUS SUMMARY
 
-### Phase 1 Progress
+### Phase 1 Progress (Updated 2025-10-20)
 - ✅ **Step 1**: Database Schema Verification (COMPLETE)
 - ✅ **Step 2**: Scraper Health Monitoring (COMPLETE)
 - ✅ **Step 3**: Data Population Verification (COMPLETE)
-- ⏳ **Step 4**: Field Coverage Analysis (PENDING)
+- ✅ **Step 4**: Data Integrity Checks (COMPLETE)
+- ✅ **Step 5**: GMP & Subscription Analysis (COMPLETE)
+- ✅ **Step 6**: Historical Data Completeness Check (COMPLETE)
+- ⏳ **Step 7**: Field Coverage Analysis (IN PROGRESS)
 - ⏳ **Remaining Steps**: See TESTING_PLAN.md
 
-### Issues Summary
+**Phase 1 Status**: 85% Complete (6 of 7 major checks done)
+
+### Issues Summary (Updated 2025-10-20)
 | Severity | Count | Open | Resolved | Status |
 |----------|-------|------|----------|--------|
-| 🔴 CRITICAL | 3 | 2 | 1 | ISS-004 ✅ RESOLVED, ISS-006 🔴 OPEN, ISS-007 🔴 OPEN |
-| 🟠 MAJOR | 4 | 4 | 0 | ISS-001, ISS-002, ISS-003, ISS-008 (all open) |
-| 🟡 MINOR | 4 | 4 | 0 | ISS-005, ISS-009, ISS-010, ISS-011 (all open) |
-| **Total** | **11** | **10 open** | **1 resolved** | **Phase 1-2 testing complete** |
+| 🔴 CRITICAL | 8 | 7 | 1 | ISS-004 ✅, ISS-002 ⬆️, ISS-027 NEW |
+| 🟠 MAJOR | 13 | 13 | 0 | ISS-001, ISS-003, ISS-008, ISS-012, +5 NEW |
+| 🟡 MINOR | 4 | 4 | 0 | ISS-005, ISS-009, ISS-010, ISS-011 |
+| **Total** | **25** | **24 open** | **1 resolved** | **Phase 1 data checks 85% complete** |
 
-### Critical Issues Requiring Immediate Attention
-1. **ISS-006**: LISTED IPO Issue Size calculation error (2-4 hours to fix)
-2. **ISS-007**: LISTED IPO Allotment Checker button disabled (2-3 hours to fix)
-3. **ISS-008**: LISTED IPO incorrect tab messaging (4-6 hours to fix)
+### New Issues from Phase 1 Comprehensive Checks (2025-10-20)
+1. **ISS-026**: Invalid Issue Sizes (28 IPOs with issue_size ≤ 0) 🟠 MAJOR
+2. **ISS-027**: Stale Scrapers (All pipelines >18 days old) 🔴 CRITICAL
+3. **ISS-028**: Low Subscription Data Coverage (20% for OPEN IPOs) 🟠 MAJOR
+4. **ISS-029**: Missing Listing Dates (6 LISTED IPOs) 🟠 MAJOR
 
-**Total Critical Fix Time**: 8-13 hours
+### Top Priority Issues Requiring Immediate Attention
+1. **ISS-027**: Stale Scrapers (🔴 CRITICAL) - All data 18+ days old
+   - Run scrapers manually
+   - Check scheduler configuration
+   - Investigate why recent runs show 0 records processed
+
+2. **ISS-002**: Missing GMP Data (🔴 CRITICAL) - 38/38 OPEN IPOs missing GMP
+   - Related to ISS-027 (stale scrapers)
+   - GMP scrapers showing SUCCESS but 0 records processed
+   - Critical for IPO investor decisions
+
+3. **ISS-001**: Missing Listing Performance (🔴 CRITICAL) - 311/388 LISTED IPOs (80% gap)
+   - Only 19.85% coverage
+   - Run listing performance scraper
+   - Target >95% coverage
+
+**Total Critical Fix Time**: Investigation + scraper fixes (~8-12 hours)
 
 ### Next Actions
-1. ✅ Document all 5 issues (this file)
-2. ✅ Complete Phase 2 initial testing with Playwright
-3. ✅ **CRITICAL**: Fix ISS-004 (Next.js database connection) - **RESOLVED**
-4. ✅ Verify fix with homepage test (40 IPOs displayed successfully)
-5. 🟢 **READY**: Resume Phase 2 testing (dashboard, detail pages, mobile)
-6. ⏳ Continue auto-improvement cycle
+1. ✅ Complete Phase 1 Data Quality Checks
+2. ✅ Document all findings in current-issues.md
+3. ✅ Update PHASE_1_PROGRESS.md with detailed results
+4. 🔄 **IN PROGRESS**: Generate field coverage analysis
+5. ⏳ **NEXT**: Commit Phase 1 results
+6. ⏳ **NEXT**: Run scrapers to refresh stale data (ISS-027)
+7. ⏳ **NEXT**: Continue Phase 2 testing after data refresh
 
 ---
 
