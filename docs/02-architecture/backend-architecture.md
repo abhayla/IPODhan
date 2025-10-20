@@ -1,41 +1,554 @@
 # Backend Architecture
 
+**Single Source of Truth for Backend Patterns**
+**Implementation**: `web/lib/repositories/`, `web/lib/services/`
+
+---
+
+## Architecture Overview
+
+IPODhan follows a **3-layer backend architecture**:
+
+```
+API Routes (Next.js)
+    ↓ (orchestration)
+Service Layer
+    ↓ (business logic)
+Repository Layer
+    ↓ (data access + caching)
+Database (PostgreSQL) + Cache (Redis)
+```
+
+**Separation of Concerns:**
+- **API Routes**: HTTP handling, validation, response formatting
+- **Services**: Business logic, cross-repository orchestration
+- **Repositories**: Data access, caching, query optimization
+
+---
+
 ## Service Architecture
 
-**Controller/Route Organization:**
-- `app/api/ipos/route.ts` - GET /api/ipos
-- `app/api/ipos/[slug]/route.ts` - GET /api/ipos/[slug]
-- `app/api/ipos/[slug]/subscription/route.ts` - GET subscription data
-- `app/api/search/route.ts` - GET search
-- `app/api/subscribers/route.ts` - POST subscribe
+### API Route Organization
+
+**Pattern**: Next.js App Router file-based routing
+
+```
+app/api/
+├── ipos/
+│   ├── route.ts                    # GET /api/ipos (list)
+│   ├── [slug]/
+│   │   ├── route.ts               # GET /api/ipos/[slug] (detail)
+│   │   ├── subscription/route.ts  # GET subscription data
+│   │   └── gmp/route.ts           # GET GMP history
+│   └── history/route.ts           # GET historical IPOs
+├── search/route.ts                 # GET search
+├── registrars/route.ts             # GET registrar directory
+├── tools/
+│   ├── lot-calculator/route.ts    # POST calculator
+│   └── compare/route.ts           # POST comparison
+└── health/route.ts                 # GET health check
+```
+
+### Service Layer Pattern
+
+**Location**: `web/lib/services/`
+
+Services orchestrate **multiple repositories** and implement **business logic**.
+
+**Example Services**:
+- `mainboard-landing-service.ts` - Dashboard data aggregation
+- `ipo-score-service.ts` - IPO rating calculation
+- `peer-comparison-service.ts` - Peer analysis
+- `broker-affiliate-service.ts` - Affiliate link management
+
+**Service Structure**:
+```typescript
+// Service = Business logic + Multi-repository coordination
+export async function getMainboardLandingData() {
+  const db = await getDb();
+  const redis = getRedisClient();
+
+  // Instantiate repositories
+  const ipoRepository = new IPORepository(db, redis);
+  const subscriptionRepository = new SubscriptionRepository(db, redis);
+  const gmpRepository = new GMPRepository(db, redis);
+
+  // Business logic: Fetch and combine data
+  const [upcoming, open, recent] = await Promise.all([
+    ipoRepository.findUpcoming({ segment: 'MAINBOARD', limit: 10 }),
+    ipoRepository.findOpen({ segment: 'MAINBOARD', limit: 5 }),
+    ipoRepository.findRecent({ segment: 'MAINBOARD', limit: 5 })
+  ]);
+
+  // Calculate metrics
+  const metrics = calculateDashboardMetrics(upcoming, open, recent);
+
+  return { upcoming, open, recent, metrics };
+}
+```
+
+**Key Principle**: Services **never** directly access database - always through repositories.
+
+---
 
 ## Repository Pattern Implementation
 
-**IPORepository:**
-- `findAll(filters)` - Query with filters and pagination
-- `findBySlug(slug)` - Get IPO with relations
-- `search(query)` - Fuzzy search by company name
+### Base Repository Pattern
 
-**SubscriptionRepository:**
-- `findByIPO(ipoId)` - Get subscription history
-- `findLatest(ipoId)` - Get latest snapshot
-- `createSnapshot(ipoId, data)` - Insert new subscription data
+**Location**: `web/lib/repositories/base-repository.ts`
 
-**Cache-Aside Pattern:**
-- Check Redis before PostgreSQL
-- Populate cache on miss with TTL
-- Explicit invalidation on data updates
+**All repositories extend BaseRepository** which provides:
+1. Cache-aside pattern (`getFromCache`)
+2. Cache population (`setCache`)
+3. Cache invalidation (`deleteCache`, `deleteCachePattern`)
+4. Query logging (`executeQuery`)
+
+**Repository Hierarchy**:
+```
+BaseRepository (abstract)
+  ├─ IPORepository
+  ├─ SubscriptionRepository
+  ├─ GMPRepository
+  ├─ FinancialDataRepository
+  ├─ DocumentRepository
+  ├─ ListingPerformanceRepository
+  ├─ MarketHolidayRepository
+  ├─ RegistrarRepository
+  ├─ BrokerAffiliateRepository
+  └─ ScraperLogRepository
+```
+
+### Repository Type Requirements
+
+**CRITICAL**: All repository constructors MUST use this exact type signature:
+
+```typescript
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import type Redis from 'ioredis';
+import * as schema from '@ipodhan/shared/db/schema';
+
+export class IPORepository extends BaseRepository {
+  constructor(
+    protected db: NodePgDatabase<typeof schema>,  // ← Exact type required
+    protected redis: Redis
+  ) {
+    super(db, redis);
+  }
+}
+```
+
+**Why this matters:**
+- `schema` must be from `@ipodhan/shared/db/schema` (single source of truth)
+- Ensures type compatibility across the monorepo
+- TypeScript Project References require this pattern
+
+### Standard Repository Methods
+
+**Naming Convention**:
+```typescript
+// Query methods (read operations)
+async findAll(filters?: Filters): Promise<Entity[]>
+async findById(id: string): Promise<Entity | null>
+async findBySlug(slug: string): Promise<Entity | null>
+async findOne(conditions): Promise<Entity | null>
+async search(query: string): Promise<Entity[]>
+
+// Mutation methods (write operations)
+async create(data: NewEntity): Promise<Entity>
+async update(id: string, data: Partial<Entity>): Promise<Entity>
+async upsert(data: NewEntity): Promise<Entity>
+async delete(id: string): Promise<void>
+
+// Aggregate methods
+async count(filters?: Filters): Promise<number>
+async exists(conditions): Promise<boolean>
+```
+
+### Cache-Aside Implementation Pattern
+
+**From BaseRepository**:
+
+```typescript
+// All find* methods use this pattern
+async findBySlug(slug: string): Promise<IPO | null> {
+  const cacheKey = getIPOBySlugKey(slug);
+
+  return this.getFromCache(
+    cacheKey,
+    async () => {
+      // Database query
+      return this.executeQuery('findBySlug', async () => {
+        const result = await this.db.select().from(ipos)
+          .where(eq(ipos.slug, slug));
+        return result[0] || null;
+      }, { slug });
+    },
+    CacheTTL.IPO_DETAIL
+  );
+}
+```
+
+**Flow**:
+1. Generate cache key using generator function
+2. Try cache with `getFromCache`
+3. On cache miss, execute DB query
+4. Populate cache automatically (non-blocking)
+5. Return result
+
+### Mutation Pattern with Cache Invalidation
+
+```typescript
+async upsert(data: IPOInsert): Promise<IPO> {
+  // 1. Perform database mutation
+  const result = await this.executeQuery('upsert', async () => {
+    return this.db.insert(ipos).values(data)
+      .onConflictDoUpdate({
+        target: ipos.id,
+        set: data
+      })
+      .returning();
+  }, { ipoId: data.id });
+
+  // 2. Invalidate related caches
+  await this.invalidateCache(
+    getIPOInvalidationKeys(data.id, data.slug)
+  );
+
+  return result[0];
+}
+```
+
+**Critical Rule**: **Every mutation MUST invalidate cache** or data becomes stale.
+
+---
+
+## Error Handling Strategy
+
+### Custom Error Classes
+
+**Location**: `web/lib/errors/repository-errors.ts`
+
+```typescript
+class EntityNotFoundError extends Error
+class DatabaseError extends Error
+class CacheError extends Error
+class ValidationError extends Error
+```
+
+### Error Handling in Repositories
+
+```typescript
+async findBySlug(slug: string): Promise<IPO> {
+  const result = await this.findOne({ slug });
+
+  if (!result) {
+    throw new EntityNotFoundError(`IPO not found: ${slug}`, 'IPO', { slug });
+  }
+
+  return result;
+}
+```
+
+### Error Handling in API Routes
+
+```typescript
+// app/api/ipos/[slug]/route.ts
+export async function GET(request: NextRequest, { params }: { params: { slug: string } }) {
+  try {
+    const ipo = await repository.findBySlug(params.slug);
+    return NextResponse.json({ success: true, data: ipo });
+  } catch (error) {
+    if (error instanceof EntityNotFoundError) {
+      return NextResponse.json(
+        { error: 'IPO not found', details: error.message },
+        { status: 404 }
+      );
+    }
+
+    console.error('[API Error]', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+```
+
+---
+
+## Type Safety Patterns
+
+### Drizzle Type Inference
+
+**All types inferred from schema** - never manually define database types:
+
+```typescript
+// From: web/lib/db/types.ts
+import { InferSelectModel, InferInsertModel } from 'drizzle-orm';
+import * as schema from '@ipodhan/shared/db/schema';
+
+export type IPO = InferSelectModel<typeof schema.ipos>;
+export type NewIPO = InferInsertModel<typeof schema.ipos>;
+```
+
+**Benefits**:
+- Schema changes automatically update types
+- Compile-time safety for all DB operations
+- No manual type maintenance
+
+### Repository Interface Pattern
+
+**Location**: `web/lib/repositories/types.ts`
+
+```typescript
+export interface IIPORepository {
+  findAll(filters?: IPOFilters): Promise<PaginatedResponse<IPO>>;
+  findById(id: string): Promise<IPO | null>;
+  findBySlug(slug: string): Promise<IPO | null>;
+  create(data: NewIPO): Promise<IPO>;
+  update(id: string, data: Partial<IPO>): Promise<IPO>;
+}
+```
+
+**Usage**: Enables mocking in tests and dependency injection.
+
+---
 
 ## Database Architecture
 
-**Drizzle ORM Schema:**
-- Type-safe schema definitions in `lib/db/schema.ts`
-- Relations for type-safe joins
-- Migration-based schema management
+### Drizzle ORM Configuration
 
-**Connection Pooling:**
-- Max 20 connections
-- Idle timeout: 30 seconds
-- Connection timeout: 2 seconds
+**Schema Location**: `packages/shared/src/db/schema.ts` (single source of truth)
+
+**Connection**: `web/lib/db/index.ts`
+
+```typescript
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
+import * as schema from '@ipodhan/shared/db/schema';
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 20,               // Connection pool size
+  idleTimeoutMillis: 30000,
+  connectionTimeoutMillis: 2000,
+});
+
+export const db = drizzle(pool, { schema });
+```
+
+### Connection Pooling Strategy
+
+| Parameter | Value | Rationale |
+|-----------|-------|-----------|
+| `max` | 20 | Handle concurrent requests |
+| `idleTimeoutMillis` | 30000 | Release idle connections |
+| `connectionTimeoutMillis` | 2000 | Fast failure for connection issues |
+
+**Deployment Notes**:
+- Development: 5-10 connections sufficient
+- Production (VPS): 20 connections for 1000 concurrent users
+- Scale up if seeing connection timeout errors
+
+### Query Optimization Patterns
+
+**1. Select Only Required Columns**:
+```typescript
+// ❌ WRONG - Fetches all columns
+const ipos = await db.select().from(ipos);
+
+// ✅ CORRECT - Fetch only needed columns
+const ipos = await db.select({
+  id: ipos.id,
+  companyName: ipos.companyName,
+  slug: ipos.slug
+}).from(ipos);
+```
+
+**2. Use Relations for Joins**:
+```typescript
+// Define relations in schema
+export const iposRelations = relations(ipos, ({ one, many }) => ({
+  financialData: one(financialData, { ... }),
+  subscriptions: many(subscriptions, { ... })
+}));
+
+// Query with relations
+const ipoWithData = await db.query.ipos.findFirst({
+  where: eq(ipos.slug, slug),
+  with: {
+    financialData: true,
+    subscriptions: { limit: 10 }
+  }
+});
+```
+
+**3. Batch Operations**:
+```typescript
+// ✅ Batch insert (1 query)
+await db.insert(subscriptions).values(subscriptionArray);
+
+// ❌ Loop with individual inserts (N queries)
+for (const sub of subscriptionArray) {
+  await db.insert(subscriptions).values(sub);
+}
+```
 
 ---
+
+## Testing Strategy
+
+### Repository Testing Pattern
+
+**Unit Tests** (`tests/unit/lib/repositories/`):
+- Mock Redis and Database
+- Test cache hit/miss scenarios
+- Test error handling
+
+**Integration Tests** (`tests/integration/repositories/`):
+- Real PostgreSQL + Redis
+- Test actual queries
+- Test cache behavior end-to-end
+
+**Example Unit Test**:
+```typescript
+import { describe, it, expect, vi } from 'vitest';
+import { IPORepository } from '@/lib/repositories/ipo-repository';
+
+describe('IPORepository', () => {
+  it('should return cached IPO on cache hit', async () => {
+    const mockRedis = {
+      get: vi.fn().mockResolvedValue(JSON.stringify(mockIPO)),
+      setex: vi.fn()
+    };
+
+    const repo = new IPORepository(mockDb, mockRedis as any);
+    const result = await repo.findBySlug('test-ipo');
+
+    expect(mockRedis.get).toHaveBeenCalledWith('ipo:slug:test-ipo');
+    expect(result).toEqual(mockIPO);
+  });
+});
+```
+
+**Test Fixture Helpers** (`web/lib/db/types.ts`):
+```typescript
+import { mockIPO, DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
+
+const testIPO = mockIPO({
+  id: 'test-id',
+  companyName: 'Test Company',
+  slug: 'test-company-ipo',
+  status: 'OPEN'
+});
+// All historical fields automatically set to null
+```
+
+---
+
+## Performance Optimization
+
+### Repository-Level Optimizations
+
+1. **Always use pagination** for list queries:
+   ```typescript
+   async findAll(filters: { page: 1, limit: 20 }) {
+     const offset = (page - 1) * limit;
+     return db.select().from(ipos).limit(limit).offset(offset);
+   }
+   ```
+
+2. **Implement cursor-based pagination** for large datasets:
+   ```typescript
+   async findAfter(cursor: string, limit: 20) {
+     return db.select().from(ipos)
+       .where(gt(ipos.createdAt, cursor))
+       .limit(limit);
+   }
+   ```
+
+3. **Use EXISTS for conditional checks**:
+   ```typescript
+   // ✅ CORRECT - Faster
+   const exists = await db.select({ exists: sql`1` })
+     .from(ipos).where(eq(ipos.slug, slug)).limit(1);
+
+   // ❌ WRONG - Fetches all data
+   const ipo = await db.select().from(ipos).where(eq(ipos.slug, slug));
+   const exists = ipo.length > 0;
+   ```
+
+### Query Performance Targets
+
+| Query Type | Target (p95) | Monitoring |
+|------------|-------------|-----------|
+| Single row lookup | < 10ms | `executeQuery` logs |
+| List with filters | < 50ms | `executeQuery` logs |
+| Complex joins (3+ tables) | < 100ms | `executeQuery` logs |
+| Full-text search | < 200ms | `executeQuery` logs |
+
+**Alert on**: Queries consistently exceeding 2x target time.
+
+---
+
+## Architectural Rules (ESLint TODO)
+
+### Code Enforcement Rules
+
+1. ❌ **Never access database directly in API routes**
+   ```typescript
+   // WRONG - API route with direct DB access
+   export async function GET() {
+     const ipos = await db.select().from(ipos);  // ❌
+   }
+
+   // CORRECT - Use repository
+   export async function GET() {
+     const repo = new IPORepository(db, redis);
+     const ipos = await repo.findAll();  // ✅
+   }
+   ```
+
+2. ❌ **Never skip cache invalidation after mutations**
+   ```typescript
+   // WRONG
+   await db.insert(ipos).values(data);  // Cache now stale!
+
+   // CORRECT
+   await repository.upsert(data);  // Handles invalidation
+   ```
+
+3. ❌ **Never use hardcoded cache keys**
+   ```typescript
+   // WRONG
+   await redis.get('ipo:slug:xyz');
+
+   // CORRECT
+   await redis.get(getIPOBySlugKey('xyz'));
+   ```
+
+4. ✅ **Always extend BaseRepository for new repositories**
+   ```typescript
+   // CORRECT
+   export class NewRepository extends BaseRepository {
+     constructor(db: NodePgDatabase<typeof schema>, redis: Redis) {
+       super(db, redis);
+     }
+   }
+   ```
+
+---
+
+## Related Documentation
+
+- **Cache Strategy**: `docs/05-caching/CACHING_STRATEGY.md`
+- **Database Schema**: `docs/16-database/SCHEMA_MANAGEMENT.md`
+- **API Specification**: `docs/02-architecture/api-specification.md`
+- **Error Handling**: `docs/02-architecture/error-handling-strategy.md`
+- **Testing Strategy**: `docs/02-architecture/testing-strategy.md`
+
+---
+
+**Last Updated**: 2025-10-20
+**Maintained By**: Backend team
+**Review Frequency**: After major refactors or pattern changes

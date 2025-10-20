@@ -176,6 +176,81 @@ export const CacheTTL = {
 };
 ```
 
+## Architecture Documentation
+
+**⚠️ CRITICAL: Before making code changes, consult these architecture documents:**
+
+These documents serve as **single sources of truth** for their respective areas. Always reference them before modifying code to ensure architectural consistency.
+
+### Core Architecture Documents
+
+1. **[Cache Strategy](docs/05-caching/CACHING_STRATEGY.md)** - Redis caching patterns
+   - Cache-aside pattern implementation
+   - Cache key conventions and TTL strategy
+   - Invalidation patterns and graceful degradation
+   - Performance targets and monitoring
+
+2. **[Backend Architecture](docs/02-architecture/backend-architecture.md)** - Repository and service patterns
+   - 3-layer architecture (API → Service → Repository)
+   - BaseRepository pattern with cache-aside
+   - Repository type requirements and naming conventions
+   - Service layer orchestration patterns
+   - Query optimization and performance targets
+
+3. **[Testing Strategy](docs/02-architecture/testing-strategy.md)** - Complete testing pyramid
+   - Test organization and naming conventions
+   - Unit, integration, and E2E testing patterns
+   - Coverage targets (80% overall, 90% repositories)
+   - Test fixture patterns and database seeding
+   - Performance targets per test type
+
+4. **[Security & Performance](docs/02-architecture/security-and-performance.md)** - Measurable targets
+   - API response time targets (p95 < 500ms, p99 < 1000ms)
+   - Core Web Vitals targets (LCP < 2.5s, FID < 100ms)
+   - Database query performance by type
+   - Security requirements (infrastructure, application, API)
+   - Monitoring & observability strategy
+
+### Database Documentation
+
+5. **[Schema Management](docs/16-database/SCHEMA_MANAGEMENT.md)** - Database schema workflow
+   - Single source of truth: `packages/shared/src/db/schema.ts`
+   - Migration workflow (Schema → Migration → Database)
+   - Schema drift prevention and incident log
+
+6. **[UI-Database Mapping](docs/16-database/screen-table-database-field-mapping.md)** - Comprehensive field mapping
+   - 32 screens mapped to database tables
+   - Scrape source priority and data flow
+   - Gap analysis and unmapped features
+
+### Scraper Documentation
+
+7. **[Scraper Architecture](scraper/README.md)** - Scraper implementation
+   - NSE, BSE, Moneycontrol, Chittorgarh scrapers
+   - Retry logic and rate limiting
+   - Failure tracking and fallback strategies
+
+8. **[Scraping Strategy](scraper/docs/SCRAPING_STRATEGY.md)** - NSE API discovery
+   - Hidden NSE API endpoints (95%+ success rate)
+   - Multi-source scraping strategy
+   - Error handling and monitoring
+
+### Other Architecture
+
+9. **[API Specification](docs/02-architecture/api-specification.md)** - REST API patterns
+10. **[Deployment Architecture](docs/02-architecture/deployment-architecture.md)** - VPS deployment
+11. **[VPS Configuration](docs/vps-server-configuration.md)** - Server setup
+
+### Architectural Rules Enforcement
+
+**TODO: ESLint rules** to be added in `.eslintrc.js`:
+- Never hardcode cache keys (use generator functions)
+- Never skip cache invalidation after mutations
+- Always extend BaseRepository for new repositories
+- Never access database directly in API routes
+
+---
+
 ## Common Development Commands
 
 ### Web Application (Next.js)
