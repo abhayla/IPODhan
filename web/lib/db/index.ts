@@ -1,3 +1,15 @@
+// Load environment variables if running from scripts (not Next.js)
+// Next.js automatically loads .env files, but standalone scripts need this
+if (typeof window === 'undefined' && !process.env.NEXT_RUNTIME) {
+  try {
+    const { config } = require('dotenv');
+    const { resolve } = require('path');
+    config({ path: resolve(process.cwd(), '.env.local') });
+  } catch (error) {
+    // Dotenv might not be available in all contexts, that's okay
+  }
+}
+
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as sharedSchema from '../../../packages/shared/src/db/schema';
@@ -33,13 +45,15 @@ function getPool(): Pool {
             password: process.env.DATABASE_PASSWORD,
             max: 20,
             idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 2000,
+            connectionTimeoutMillis: 10000, // ✅ FIXED: Increased from 2s to 10s for VPS connection
+            ssl: false, // ✅ ADDED: Explicitly disable SSL (VPS doesn't require it)
           }
         : {
             connectionString: process.env.DATABASE_URL,
             max: 20,
             idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 2000,
+            connectionTimeoutMillis: 10000, // ✅ FIXED: Increased from 2s to 10s for VPS connection
+            ssl: false, // ✅ ADDED: Explicitly disable SSL
           }
     );
 

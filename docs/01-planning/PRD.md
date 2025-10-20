@@ -1,10 +1,11 @@
 # Product Requirements Document (PRD): IPODhan
 
-**Version:** 1.3
+**Version:** 1.4
 **Date:** January 2025
-**Last Updated:** 2025-10-05
+**Last Updated:** 2025-10-13
 **Status:** Production Ready
 **Owner:** Development Team
+**URLs Reference:** [URLs-Tracker.md](./URLs-Tracker.md) (Single source of truth for all scraper URLs)
 
 **Reconciliation Note:** This PRD has been updated to align with Architecture v1.2 final scope decisions:
 - State management: React Context (not Zustand)
@@ -2539,10 +2540,14 @@ Display "Last updated" timestamp on:
 
 ### Data Sources
 
+> **📌 IMPORTANT:** All scraper URLs are maintained in a central location.
+> **See:** [URLs-Tracker.md](./URLs-Tracker.md) for current, verified URLs.
+> **DO NOT** hardcode URLs in scrapers - always reference URLs-Tracker.md
+
 #### Primary Source: NSE/BSE Websites (Web Scraping)
 
 **NSE India:**
-- URL: `https://www.nseindia.com/market-data/forthcoming-issues-ipo`
+- **URL Reference:** See [URLs-Tracker.md](./URLs-Tracker.md#nse-india-exchange-source)
 - Data Available:
   - Company name
   - Open and close dates
@@ -2557,7 +2562,7 @@ Display "Last updated" timestamp on:
 - Error Handling: Log failures, fallback to BSE scraper, send Telegram alert after 3+ failures
 
 **BSE India:**
-- URL: `https://www.bseindia.com/publicissue.html`
+- **URL Reference:** See [URLs-Tracker.md](./URLs-Tracker.md#bse-india-exchange-source)
 - Similar approach to NSE
 - Cross-reference data between NSE and BSE for accuracy
 
@@ -2567,14 +2572,20 @@ Display "Last updated" timestamp on:
 - Parse category-wise subscription figures (QIB, NII, RII)
 - Update database every 1 hour
 
-#### Secondary Source: Chittorgarh/InvestorGain (Grey Market Premium)
+#### Secondary Source: Chittorgarh/InvestorGain (Grey Market Premium & Reviews)
 
-- **Chittorgarh:** `https://www.chittorgarh.com/ipo/ipo_grey_market_premium.asp`
-- **InvestorGain:** `https://www.investorgain.com/report/live-ipo-gmp/331/`
+- **Chittorgarh URLs:** See [URLs-Tracker.md](./URLs-Tracker.md#chittorgarh-primary-source)
+  - Historical IPO Performance
+  - IPO Reviews (Mainboard & SME)
+- **InvestorGain URLs:** See [URLs-Tracker.md](./URLs-Tracker.md#investorgain-gmp-data-source)
+  - Live GMP data (Mainboard, SME, All categories)
+  - Active GMP tracking
 - Scrape GMP data using Puppeteer
 - Frequency: Every 1 hour
 - Update via `scripts/scrapers/gmp-scraper.js`
 - Manual override available via admin panel: `/admin/gmp/[id]`
+
+**Note:** Chittorgarh redirects GMP queries to InvestorGain (sister site). Use InvestorGain for all GMP data.
 
 #### Tertiary Source: Manual Admin Entry
 

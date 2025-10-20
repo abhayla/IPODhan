@@ -10,6 +10,29 @@
  * AC: 13 - CLI execution support
  */
 
+// CRITICAL: Load environment variables BEFORE any other imports
+// This ensures the database module gets the correct configuration
+import { config } from 'dotenv';
+import { resolve } from 'path';
+
+// Load .env.local file from the web directory
+const envPath = resolve(process.cwd(), '.env.local');
+const result = config({ path: envPath });
+
+if (result.error) {
+  console.error('Failed to load .env.local file:', result.error);
+  process.exit(1);
+}
+
+// Verify critical environment variables are loaded
+if (!process.env.DATABASE_URL && !process.env.DATABASE_HOST) {
+  console.error('ERROR: DATABASE_URL or DATABASE_HOST not found in environment');
+  console.error('Loaded env file from:', envPath);
+  console.error('Available vars:', Object.keys(result.parsed || {}).join(', '));
+  process.exit(1);
+}
+
+// Now import modules that depend on environment variables
 import { historicalIPOScraper } from '@/lib/scrapers/sources/historical-ipo-scraper';
 import { logger } from '@/lib/logger';
 
