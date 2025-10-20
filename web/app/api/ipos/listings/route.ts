@@ -82,13 +82,16 @@ export async function GET(request: NextRequest) {
     // Build where conditions
     const whereConditions = [];
 
-    // Filter by category (now using segment)
+    // Filter by category - map to segment OR offeringType based on category
     if (validatedParams.category) {
-      // Map old category to segment
-      const segment = validatedParams.category === 'MAINBOARD' || validatedParams.category === 'SME'
-        ? validatedParams.category
-        : 'MAINBOARD';
-      whereConditions.push(eq(ipos.segment, segment));
+      if (validatedParams.category === 'MAINBOARD' || validatedParams.category === 'SME') {
+        // MAINBOARD and SME are segments - filter by segment AND offeringType=IPO
+        whereConditions.push(eq(ipos.segment, validatedParams.category));
+        whereConditions.push(eq(ipos.offeringType, 'IPO'));
+      } else {
+        // FPO, RIGHTS, NCD are offering types - filter by offeringType
+        whereConditions.push(eq(ipos.offeringType, validatedParams.category));
+      }
     }
 
     // Filter by year
