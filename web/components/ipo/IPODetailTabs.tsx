@@ -73,6 +73,64 @@ type TabValue = 'overview' | 'financials' | 'peercomparison' | 'subscription' | 
 // Valid tab values for validation
 const VALID_TABS: TabValue[] = ['overview', 'financials', 'peercomparison', 'subscription', 'gmp', 'documents'];
 
+// ==================== HELPER FUNCTIONS ====================
+
+/**
+ * Get status-aware message for Subscription tab
+ * Returns appropriate message based on IPO status
+ */
+function getSubscriptionMessage(status: string): string {
+  switch (status) {
+    case 'LISTED':
+      return 'Historical subscription data for this IPO is not available.';
+    case 'CLOSED':
+      return 'Subscription data for this IPO is not available.';
+    case 'UPCOMING':
+      return 'Subscription data will be available once the IPO opens for bidding.';
+    case 'OPEN':
+      return 'Subscription data is being tracked and will be updated in real-time during the IPO period.';
+    default:
+      return 'Subscription data not available.';
+  }
+}
+
+/**
+ * Get status-aware message for GMP tab
+ * Returns appropriate message based on IPO status
+ */
+function getGMPMessage(status: string): string {
+  switch (status) {
+    case 'LISTED':
+      return 'Grey Market Premium is no longer tracked after listing. Check the listing performance section for current market data.';
+    case 'CLOSED':
+      return 'Grey Market Premium data for this IPO is not available.';
+    case 'UPCOMING':
+      return 'Grey Market Premium will be tracked closer to the IPO opening.';
+    case 'OPEN':
+      return 'Grey Market Premium is being tracked and updated regularly during the IPO period.';
+    default:
+      return 'GMP data not available.';
+  }
+}
+
+/**
+ * Get status-aware message for Documents tab
+ * Returns appropriate message based on IPO status
+ */
+function getDocumentsMessage(status: string): string {
+  switch (status) {
+    case 'LISTED':
+      return 'IPO documents (DRHP, RHP, Prospectus) for this listed company are not available in our database.';
+    case 'CLOSED':
+      return 'IPO documents (DRHP, RHP, Prospectus) for this IPO are not available in our database.';
+    case 'UPCOMING':
+    case 'OPEN':
+      return 'IPO documents (DRHP, RHP, Prospectus) will be added once available.';
+    default:
+      return 'IPO documents not available.';
+  }
+}
+
 // ==================== COMPONENT ====================
 
 /**
@@ -245,7 +303,7 @@ export function IPODetailTabs({
             ) : (
               <div className="rounded-lg border bg-card p-8 text-center">
                 <p className="text-muted-foreground">
-                  Subscription data will be available once the IPO opens for bidding.
+                  {getSubscriptionMessage(ipo.status)}
                 </p>
               </div>
             )}
@@ -264,7 +322,7 @@ export function IPODetailTabs({
             ) : (
               <div className="rounded-lg border bg-card p-8 text-center">
                 <p className="text-muted-foreground">
-                  GMP data not available yet. Grey Market Premium will be tracked closer to the IPO opening.
+                  {getGMPMessage(ipo.status)}
                 </p>
               </div>
             )}
@@ -281,7 +339,7 @@ export function IPODetailTabs({
             ) : (
               <div className="rounded-lg border bg-card p-8 text-center">
                 <p className="text-muted-foreground">
-                  IPO documents (DRHP, RHP, Prospectus) will be added once available.
+                  {getDocumentsMessage(ipo.status)}
                 </p>
               </div>
             )}
