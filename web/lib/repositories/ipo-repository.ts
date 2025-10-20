@@ -690,10 +690,11 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       cacheKey,
       async () => {
         try {
-          // Build base conditions: status='LISTED' AND listing_date IS NOT NULL
+          // Build base conditions: status='LISTED' AND listing_date IS NOT NULL AND listing_date < CURRENT_DATE
           const conditions = [
             eq(ipos.status, 'LISTED'),
             sql`${ipos.listingDate} IS NOT NULL`,
+            sql`${ipos.listingDate} < CURRENT_DATE`, // Only past listings, not future dates
           ];
 
           // Add year filter (extract year from listing_date)
