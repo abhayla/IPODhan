@@ -27,7 +27,7 @@ interface HistoricalIPOData {
 /**
  * Fetch HTML from URL
  */
-async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
+async function fetchHTML(url: string): Promise<cheerio.Root> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -184,16 +184,15 @@ async function createIPO(data: HistoricalIPOData, skipExisting: boolean = true):
       }
     }
 
-    const category = inferCategory(data.ipoName);
+    const segment = inferCategory(data.ipoName);
     const status = data.listedOn ? 'LISTED' : 'CLOSED';
 
     const newIPO: NewIPO = {
       id: nanoid(),
       companyName: data.ipoName,
       slug,
-      category,
+      segment,
       status,
-      exchange: 'BOTH',
 
       // Pricing
       priceBandLow: data.issuePrice?.toString(),

@@ -113,6 +113,11 @@ async function main() {
     let reviewsCreated = 0;
 
     for (const ipo of recentIPOs) {
+      // Skip IPOs without segment (RIGHTS/InvITs/REITs offerings)
+      if (!ipo.segment) {
+        continue;
+      }
+
       try {
         // Create 1-2 reviews per IPO
         const numReviews = 1 + Math.floor(Math.random() * 2); // 1 or 2 reviews

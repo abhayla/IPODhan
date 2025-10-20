@@ -24,7 +24,7 @@ export interface MainboardProspectusData {
     id: string;
     companyName: string;
     slug: string;
-    segment: 'MAINBOARD' | 'SME';
+    segment: 'MAINBOARD' | 'SME' | null;
     offeringType: string;
     listingExchanges: ('NSE' | 'BSE')[] | null;
   };

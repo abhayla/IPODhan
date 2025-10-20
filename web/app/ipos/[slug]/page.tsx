@@ -28,6 +28,7 @@ import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { AffiliateSection } from '@/components/affiliate/AffiliateSection';
 import { ListingPerformance } from '@/components/ipo/ListingPerformance';
 import { IPOScoreSection } from '@/components/ipo/IPOScoreSection';
+import { PeerComparisonSection } from '@/components/ipo/PeerComparisonSection';
 import { SectorAverageComparison } from '@/components/ipo/SectorAverageComparison';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
 import { apiClient } from '@/lib/api-client';
@@ -101,7 +102,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     notFound();
   }
 
-  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails } = data;
+  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails, peerCompanies } = data;
 
   // Calculate metrics for KeyMetricsCards
   const latestSubscription = subscriptions?.[0];
@@ -184,6 +185,14 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* IPO Score Section (Story 4.7) */}
             <IPOScoreSection score={ipoScore || null} />
+
+            {/* Peer Comparison Section */}
+            {peerCompanies && peerCompanies.length > 0 && (
+              <PeerComparisonSection
+                peerCompanies={peerCompanies}
+                companyName={ipo.companyName}
+              />
+            )}
 
             {/* Listing Performance Section (Story 6.3) */}
             {ipo.status === 'LISTED' &&

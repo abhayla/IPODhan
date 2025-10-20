@@ -303,8 +303,8 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
           openDate: parseBSEDate(rawIPO.startDate),
           closeDate: parseBSEDate(rawIPO.endDate),
           listingExchange: 'BSE',
-          segment: segment as 'MAINBOARD' | 'SME',
-          offeringType: offeringType as 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | 'NCD' | 'BONDS',
+          segment: segment as 'MAINBOARD' | 'SME' | null | undefined,
+          offeringType: offeringType as 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | 'NCD' | 'BONDS' | 'INVITS' | 'REITS' | 'IPP' | 'QIP' | 'PREFERENTIAL',
           sector: '', // Not available in BSE main table
           status,
           lotSize: 100, // Default, would need detail page

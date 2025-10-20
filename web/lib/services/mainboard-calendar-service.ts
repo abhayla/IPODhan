@@ -50,7 +50,7 @@ export interface CalendarEvent {
   ipoId?: string;
   companyName?: string;
   slug?: string;
-  segment?: string;
+  segment?: string | null;
   offeringType?: string;
   holidayName?: string;
   exchange?: string;

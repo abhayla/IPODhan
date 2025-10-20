@@ -140,7 +140,7 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
           <div className="flex items-center gap-2 flex-wrap">
             {/* Story 11.8: Display segment badge */}
             <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300">
-              {ipo.segment}
+              {ipo.segment || 'N/A'}
             </Badge>
             {/* Story 11.8: Display offering type badge */}
             <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300">

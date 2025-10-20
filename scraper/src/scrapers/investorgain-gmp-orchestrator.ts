@@ -26,8 +26,35 @@ export interface InvestorgainGMPResult {
 }
 
 /**
- * Match Investorgain GMP to database IPO by dates
+ * Calculate string similarity score (0-1) using simple character matching
+ * Higher score = more similar
+ */
+function calculateSimilarity(str1: string, str2: string): number {
+  const s1 = str1.toLowerCase().trim();
+  const s2 = str2.toLowerCase().trim();
+
+  // Exact match
+  if (s1 === s2) return 1.0;
+
+  // One contains the other
+  if (s1.includes(s2) || s2.includes(s1)) {
+    return 0.9;
+  }
+
+  // Calculate character overlap
+  const set1 = new Set(s1.replace(/\s+/g, ''));
+  const set2 = new Set(s2.replace(/\s+/g, ''));
+
+  const intersection = new Set([...set1].filter(x => set2.has(x)));
+  const union = new Set([...set1, ...set2]);
+
+  return intersection.size / union.size;
+}
+
+/**
+ * Match Investorgain GMP to database IPO by dates + company name similarity
  * Primary: Exact match on open_date and close_date
+ * Enhancement (ISS-001 fix): Use company name similarity when multiple date matches exist
  * Fallback: Match on open_date within ±1 day tolerance
  */
 async function matchIPOByDates(
@@ -49,20 +76,49 @@ async function matchIPOByDates(
     }
 
     if (exactMatches.length > 1) {
-      // Multiple matches - log warning and skip
+      // ISS-001 Fix: Multiple matches - use company name similarity
+      const matchesWithSimilarity = exactMatches.map(ipo => ({
+        ...ipo,
+        similarity: calculateSimilarity(companyName, ipo.companyName)
+      }));
+
+      // Sort by similarity (highest first)
+      matchesWithSimilarity.sort((a, b) => b.similarity - a.similarity);
+
+      const bestMatch = matchesWithSimilarity[0];
+
+      // Accept match if similarity > 0.6 (60%)
+      if (bestMatch.similarity > 0.6) {
+        logger.info(
+          {
+            gmpCompanyName: companyName,
+            matchedCompanyName: bestMatch.companyName,
+            similarity: bestMatch.similarity.toFixed(2),
+            openDate,
+            closeDate,
+            matchedId: bestMatch.id,
+            totalCandidates: exactMatches.length
+          },
+          'Found best match using company name similarity'
+        );
+        return bestMatch.id;
+      }
+
+      // Similarity too low - skip
       logger.warn(
         {
           companyName,
           openDate,
           closeDate,
           matchCount: exactMatches.length,
-          matches: exactMatches.map(ipo => ({
+          bestSimilarity: bestMatch.similarity.toFixed(2),
+          matches: matchesWithSimilarity.slice(0, 3).map(ipo => ({
             id: ipo.id,
-            slug: ipo.slug,
-            companyName: ipo.companyName
+            companyName: ipo.companyName,
+            similarity: ipo.similarity.toFixed(2)
           }))
         },
-        'Multiple IPOs found with same dates - skipping GMP'
+        'Multiple IPOs found but no good similarity match - skipping GMP'
       );
       return null;
     }

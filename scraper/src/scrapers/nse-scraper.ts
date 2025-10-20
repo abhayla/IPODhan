@@ -216,6 +216,15 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
             issueType: issueType
           });
 
+          // DEBUG: Log offering type detection
+          console.log(`[NSE DEBUG] ${companyName}:`, {
+            rawIssueType: issueType,
+            detectedSegment: segment,
+            detectedOfferingType: offeringType,
+            priceRange: `${priceRange.min}-${priceRange.max}`,
+            status: status
+          });
+
           // Create IPO object
           const ipo = {
             companyName: companyName,
@@ -226,8 +235,8 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
             closeDate: closeDate,
             listingDate: listingDate,
             listingExchange: 'NSE' as const,
-            segment: segment as 'MAINBOARD' | 'SME',
-            offeringType: offeringType as 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | 'NCD' | 'BONDS',
+            segment: segment as 'MAINBOARD' | 'SME' | null | undefined,
+            offeringType: offeringType as 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | 'NCD' | 'BONDS' | 'INVITS' | 'REITS' | 'IPP' | 'QIP' | 'PREFERENTIAL',
             status: status,
             lotSize: undefined, // NSE doesn't always show lot size in listing
             faceValue: 10 // NSE default face value

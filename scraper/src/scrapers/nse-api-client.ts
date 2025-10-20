@@ -415,6 +415,7 @@ function determineStatus(statusStr: string | null | undefined, startDate: string
 
 /**
  * Transform NSE API response to ScrapedIPO format
+ * Updated to use segment + offeringType (Story 11.8)
  */
 function transformIPOData(data: any): ScrapedIPO {
   const priceRange = parsePriceRange(data.issuePrice);
@@ -422,16 +423,43 @@ function transformIPOData(data: any): ScrapedIPO {
   const closeDate = parseNSEDate(data.issueEndDate);
   const status = determineStatus(data.status, openDate, closeDate);
 
-  // Determine category from series or other fields
-  let category: 'MAINBOARD' | 'SME' | 'RIGHTS' | 'NCD' = 'MAINBOARD';
+  // Detect segment (MAINBOARD vs SME) from series/platform
   const series = (data.series || '').toUpperCase();
-  if (series === 'SME' || (data.platform && data.platform.toUpperCase().includes('SME'))) {
-    category = 'SME';
-  } else if (series === 'DEBT' || series === 'NCD') {
-    category = 'NCD';
-  } else if (series === 'RI' || series === 'RIGHTS') {
-    category = 'RIGHTS';
+  const platform = (data.platform || '').toUpperCase();
+  let segment: 'MAINBOARD' | 'SME' | null = null;
+
+  if (series === 'SME' || platform.includes('SME') || platform.includes('EMERGE')) {
+    segment = 'SME';
+  } else if (series === 'EQ' || platform.includes('MAIN')) {
+    segment = 'MAINBOARD';
   }
+  // segment remains null for RIGHTS/NCD/other offerings
+
+  // Detect offering type from series/type
+  let offeringType: string = 'IPO'; // Default to IPO
+
+  if (series === 'DEBT' || series === 'NCD' || data.issueType?.toUpperCase().includes('NCD')) {
+    offeringType = 'NCD';
+  } else if (series === 'RI' || series === 'RIGHTS' || data.issueType?.toUpperCase().includes('RIGHTS')) {
+    offeringType = 'RIGHTS';
+  } else if (data.issueType?.toUpperCase().includes('FPO')) {
+    offeringType = 'FPO';
+  } else if (data.issueType?.toUpperCase().includes('INVIT')) {
+    offeringType = 'INVITS';
+  } else if (data.issueType?.toUpperCase().includes('REIT')) {
+    offeringType = 'REITS';
+  }
+
+  // DEBUG: Log offering type detection
+  logger.debug({
+    companyName: data.companyName || data.company,
+    rawSeries: data.series,
+    rawPlatform: data.platform,
+    rawIssueType: data.issueType,
+    detectedSegment: segment,
+    detectedOfferingType: offeringType,
+    status
+  }, '[NSE API DEBUG] Transformed IPO data');
 
   return {
     companyName: data.companyName || data.company || '',
@@ -442,7 +470,8 @@ function transformIPOData(data: any): ScrapedIPO {
     closeDate,
     listingDate: data.listingDate ? parseNSEDate(data.listingDate) : undefined,
     listingExchange: 'NSE',
-    category,
+    segment,
+    offeringType: offeringType as 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | 'NCD' | 'BONDS' | 'INVITS' | 'REITS' | 'IPP' | 'QIP' | 'PREFERENTIAL',
     sector: data.sector || '',
     status,
     lotSize: parseInt(data.lotSize) || undefined,

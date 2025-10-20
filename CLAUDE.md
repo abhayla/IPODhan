@@ -66,6 +66,8 @@ import { ipos } from '@/lib/db/schema';
 
 **Database Tables (13 total):**
 1. `ipos` - Core IPO entity with historical performance fields
+   - **IMPORTANT**: `segment` field is nullable ('MAINBOARD' | 'SME' | null) to support RIGHTS/InvITs/REITs offerings
+   - Always use null coalescing in UI display: `{ipo.segment || 'N/A'}`
 2. `subscriptions` - Time-series subscription data
 3. `gmpRecords` - Time-series GMP tracking
 4. `financialData` - One-to-one financial metrics
@@ -73,7 +75,7 @@ import { ipos } from '@/lib/db/schema';
 6. `listingPerformance` - One-to-one listing data
 7. `marketHolidays` - Trading holidays calendar
 8. `registrars` - Registrar information
-9. `peerCompanies` - Peer comparison data
+9. `peerCompanies` - Peer comparison data (✅ UI implemented 2025-10-20)
 10. `brokerAffiliates` - Affiliate links
 11. `affiliateClicks` - Click tracking
 12. `scraperLogs` - Scraper monitoring

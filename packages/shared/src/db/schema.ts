@@ -122,7 +122,7 @@ export const ipos = pgTable(
     slug: varchar('slug', { length: 255 }).notNull().unique(),
     symbol: varchar('symbol', { length: 20 }), // Stock ticker symbol (nullable - upcoming IPOs may not have symbols yet)
     isin: varchar('isin', { length: 12 }), // International Securities Identification Number (nullable)
-    segment: segmentEnum('segment').notNull(), // Exchange segment (MAINBOARD | SME)
+    segment: segmentEnum('segment'), // Exchange segment (MAINBOARD | SME) - nullable for RIGHTS/InvITs/REITs
     offeringType: offeringTypeEnum('offering_type').notNull(), // Type of offering (IPO, RIGHTS, TENDER, etc.)
     sector: varchar('sector', { length: 100 }),
     issueSize: numeric('issue_size', { precision: 15, scale: 2 }), // in INR crores (max ₹999,999 crores = ₹9,999.99 billion)
