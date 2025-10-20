@@ -8,7 +8,9 @@
  */
 
 import { getRedisClient, safeGet, safeSet } from '@/lib/cache/redis-client';
-import { getIPOs, type IPO } from '@/lib/api-client';
+import { type IPO } from '@/lib/api-client';
+import { db } from '@/lib/db';
+import { IPORepository } from '@/lib/repositories/ipo-repository';
 
 // ==================== TYPES ====================
 
@@ -138,8 +140,19 @@ function calculateGainPercent(issuePrice: number, currentPrice: number): number 
 export async function getMainboardSummaryMetrics(): Promise<MainboardSummaryMetrics> {
   return getCachedOrFetch(CACHE_KEYS.SUMMARY_METRICS, async () => {
     try {
+      // Initialize repository
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
       // Fetch all Mainboard IPOs (only IPO offering type, exclude TENDER/BUYBACK)
-      const response = await getIPOs({ segment: 'MAINBOARD', offeringType: 'IPO', limit: 1000 });
+      const response = await ipoRepository.findAll({
+        segment: ['MAINBOARD'],
+        offeringType: ['IPO'],
+        limit: 1000,
+        page: 1,
+        sortBy: 'createdAt',
+        sortOrder: 'desc'
+      });
       const ipos = response.data;
 
       // Calculate totalIPOs
@@ -196,11 +209,17 @@ export async function getMainboardSummaryMetrics(): Promise<MainboardSummaryMetr
 export async function getMainboardCurrentIPOs(): Promise<IPO[]> {
   return getCachedOrFetch(CACHE_KEYS.CURRENT_IPOS, async () => {
     try {
-      const response = await getIPOs({
-        segment: 'MAINBOARD',
-        offeringType: 'IPO',
-        status: 'OPEN',
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
+      const response = await ipoRepository.findAll({
+        segment: ['MAINBOARD'],
+        offeringType: ['IPO'],
+        status: ['OPEN'],
         limit: CONTENT_LIMIT,
+        page: 1,
+        sortBy: 'createdAt',
+        sortOrder: 'desc'
       });
 
       // Sort by closeDate ascending (closing soonest first)
@@ -223,11 +242,17 @@ export async function getMainboardCurrentIPOs(): Promise<IPO[]> {
 export async function getMainboardUpcomingIPOs(): Promise<IPO[]> {
   return getCachedOrFetch(CACHE_KEYS.UPCOMING_IPOS, async () => {
     try {
-      const response = await getIPOs({
-        segment: 'MAINBOARD',
-        offeringType: 'IPO',
-        status: 'UPCOMING',
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
+      const response = await ipoRepository.findAll({
+        segment: ['MAINBOARD'],
+        offeringType: ['IPO'],
+        status: ['UPCOMING'],
         limit: CONTENT_LIMIT,
+        page: 1,
+        sortBy: 'createdAt',
+        sortOrder: 'desc'
       });
 
       // Sort by openDate ascending (opening soonest first)
@@ -250,11 +275,17 @@ export async function getMainboardUpcomingIPOs(): Promise<IPO[]> {
 export async function getMainboardRecentlyListedIPOs(): Promise<IPO[]> {
   return getCachedOrFetch(CACHE_KEYS.RECENTLY_LISTED, async () => {
     try {
-      const response = await getIPOs({
-        segment: 'MAINBOARD',
-        offeringType: 'IPO',
-        status: 'LISTED',
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
+      const response = await ipoRepository.findAll({
+        segment: ['MAINBOARD'],
+        offeringType: ['IPO'],
+        status: ['LISTED'],
         limit: CONTENT_LIMIT,
+        page: 1,
+        sortBy: 'createdAt',
+        sortOrder: 'desc'
       });
 
       // Sort by listingDate descending (newest first)
@@ -301,12 +332,18 @@ export async function getMainboardPerformanceHighlights(): Promise<{
 }> {
   return getCachedOrFetch(CACHE_KEYS.PERFORMANCE, async () => {
     try {
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
       // Fetch listed Mainboard IPOs
-      const response = await getIPOs({
-        segment: 'MAINBOARD',
-        offeringType: 'IPO',
-        status: 'LISTED',
+      const response = await ipoRepository.findAll({
+        segment: ['MAINBOARD'],
+        offeringType: ['IPO'],
+        status: ['LISTED'],
         limit: 50,
+        page: 1,
+        sortBy: 'createdAt',
+        sortOrder: 'desc'
       });
 
       // Mock performance data (replace with actual listingPerformance API)
@@ -353,12 +390,18 @@ export async function getMainboardPerformanceHighlights(): Promise<{
 export async function getMainboardSubscriptionStatus(): Promise<SubscriptionStatusData[]> {
   return getCachedOrFetch(CACHE_KEYS.SUBSCRIPTION, async () => {
     try {
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
       // Fetch current (OPEN) Mainboard IPOs
-      const response = await getIPOs({
-        segment: 'MAINBOARD',
-        offeringType: 'IPO',
-        status: 'OPEN',
+      const response = await ipoRepository.findAll({
+        segment: ['MAINBOARD'],
+        offeringType: ['IPO'],
+        status: ['OPEN'],
         limit: CONTENT_LIMIT,
+        page: 1,
+        sortBy: 'createdAt',
+        sortOrder: 'desc'
       });
 
       // Transform to subscription data (mock - replace with actual subscription API)
@@ -392,11 +435,17 @@ export async function getMainboardDetailedList(
 
   return getCachedOrFetch(cacheKey, async () => {
     try {
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
       // Fetch all Mainboard IPOs (will be filtered by year)
-      const response = await getIPOs({
-        segment: 'MAINBOARD',
-        offeringType: 'IPO',
+      const response = await ipoRepository.findAll({
+        segment: ['MAINBOARD'],
+        offeringType: ['IPO'],
         limit: 1000,
+        page: 1,
+        sortBy: 'createdAt',
+        sortOrder: 'desc'
       });
 
       let filteredData = response.data;

@@ -7,9 +7,12 @@
 
 import * as cheerio from 'cheerio';
 import { db } from '@/lib/db';
-import { ipos, type NewIPO } from '@/lib/db/schema';
+import { ipos } from '@/lib/db';
+import { type InferInsertModel } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { sql } from 'drizzle-orm';
+
+type NewIPO = InferInsertModel<typeof ipos>;
 
 interface HistoricalIPOData {
   ipoName: string;

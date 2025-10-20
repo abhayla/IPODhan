@@ -78,11 +78,15 @@ export async function GET(request: NextRequest) {
     // Initialize repository
     const ipoRepository = new IPORepository(db, redis);
 
-    // Fetch performance data
-    const result = await ipoRepository.findMainboardPerformance({
-      year,
+    // Fetch performance data for Mainboard IPOs
+    const result = await ipoRepository.findAll({
+      segment: ['MAINBOARD'],
+      offeringType: ['IPO'],
+      status: ['LISTED'],
       page,
       limit,
+      sortBy: 'listingDate',
+      sortOrder: 'desc',
     });
 
     // Return success response
