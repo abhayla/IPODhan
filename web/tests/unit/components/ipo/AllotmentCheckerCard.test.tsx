@@ -72,11 +72,11 @@ describe('AllotmentCheckerCard', () => {
 
     const input = screen.getByPlaceholderText('ABCDE1234F');
 
-    // Invalid PAN - too short
+    // Invalid PAN - too short (no error shown during typing)
     fireEvent.change(input, { target: { value: 'ABC12' } });
-    expect(screen.getByText('PAN must be 10 characters')).toBeInTheDocument();
+    expect(screen.queryByText('PAN must be 10 characters')).not.toBeInTheDocument();
 
-    // Invalid PAN - wrong format
+    // Invalid PAN - wrong format (error shown when 10 characters)
     fireEvent.change(input, { target: { value: '1234567890' } });
     expect(
       screen.getByText('Invalid PAN format (e.g., ABCDE1234F)')
@@ -166,6 +166,50 @@ describe('AllotmentCheckerCard', () => {
     expect(
       screen.getByText(/Registrar website URL is not available/)
     ).toBeInTheDocument();
+  });
+
+  it('should enable button even when registrarUrl is null but PAN is valid (ISS-007)', () => {
+    render(
+      <AllotmentCheckerCard
+        status="LISTED"
+        registrar="N/A"
+        registrarUrl={null}
+      />
+    );
+
+    const input = screen.getByPlaceholderText('ABCDE1234F');
+    fireEvent.change(input, { target: { value: 'ABCDE1234F' } });
+
+    const button = screen.getByRole('button', { name: /Check Status/ });
+    expect(button).not.toBeDisabled();
+  });
+
+  it('should show informative error when button is clicked without registrarUrl', async () => {
+    render(
+      <AllotmentCheckerCard
+        status="LISTED"
+        registrar="N/A"
+        registrarUrl={null}
+        companyName="Ather Energy Ltd"
+      />
+    );
+
+    const input = screen.getByPlaceholderText('ABCDE1234F');
+    fireEvent.change(input, { target: { value: 'ABCDE1234F' } });
+
+    const button = screen.getByRole('button', { name: /Check Status/ });
+    fireEvent.click(button);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          /Registrar information not available. Please check allotment status directly on the NSE\/BSE website or contact the registrar./
+        )
+      ).toBeInTheDocument();
+    });
+
+    // Window.open should NOT be called
+    expect(mockWindowOpen).not.toHaveBeenCalled();
   });
 
   it('should track analytics event on valid submission', async () => {

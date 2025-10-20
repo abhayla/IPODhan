@@ -72,8 +72,11 @@ export function AllotmentCheckerCard({
       return;
     }
 
+    // Show informative message if registrar URL is not available
     if (!registrarUrl) {
-      setError('Registrar website URL not available');
+      setError(
+        'Registrar information not available. Please check allotment status directly on the NSE/BSE website or contact the registrar.'
+      );
       return;
     }
 
@@ -128,7 +131,7 @@ export function AllotmentCheckerCard({
 
         <Button
           onClick={handleCheckStatus}
-          disabled={pan.length !== 10 || !!error || !registrarUrl}
+          disabled={pan.length !== 10 || !!error}
           className="w-full transition-all duration-300 hover:shadow-md hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800"
         >
           <ExternalLink className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
