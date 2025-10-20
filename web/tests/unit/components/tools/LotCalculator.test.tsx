@@ -539,6 +539,388 @@ describe('LotCalculator Component', () => {
     });
   });
 
+  describe('Decimal Input Handling (ISS-012 Fix)', () => {
+    it('should round decimal input to nearest rupee', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <LotCalculator
+          mode="embedded"
+          ipoData={{
+            id: 'ipo-1',
+            companyName: 'Test Company A',
+            slug: 'test-company-a',
+            priceRangeMax: 350,
+            lotSize: 40,
+          }}
+        />
+      );
+
+      const input = screen.getByPlaceholderText(/Enter amount/i);
+
+      // Enter decimal amount
+      await user.type(input, '15000.50');
+
+      // Should show the decimal value as-is while typing (UX: preserve decimal point)
+      await waitFor(
+        () => {
+          expect(input).toHaveValue('15000.50');
+        },
+        { timeout: 2000 }
+      );
+
+      // Should show rounding message
+      await waitFor(
+        () => {
+          expect(
+            screen.getByText(/Amount rounded to nearest rupee/i)
+          ).toBeInTheDocument();
+        },
+        { timeout: 2000 }
+      );
+
+      // Calculation should use rounded value (15001)
+      // Wait for debounced calculation
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      });
+
+      // Should calculate with rounded amount
+      await waitFor(
+        () => {
+          expect(screen.getByText('Number of Lots')).toBeInTheDocument();
+        },
+        { timeout: 2000 }
+      );
+
+      // Verify results: 1 lot (floor(15001 / (350 × 40)) = floor(15001 / 14000) = 1)
+      expect(screen.getByText('1')).toBeInTheDocument();
+      expect(screen.getByText('40')).toBeInTheDocument();
+      expect(screen.getByText('₹14,000')).toBeInTheDocument();
+    });
+
+    it('should handle decimal with .99 and round up', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <LotCalculator
+          mode="embedded"
+          ipoData={{
+            id: 'ipo-1',
+            companyName: 'Test Company A',
+            slug: 'test-company-a',
+            priceRangeMax: 350,
+            lotSize: 40,
+          }}
+        />
+      );
+
+      const input = screen.getByPlaceholderText(/Enter amount/i);
+
+      // Enter 14999.99 (should show as-is, but calculate with 15000)
+      await user.type(input, '14999.99');
+
+      await waitFor(
+        () => {
+          expect(input).toHaveValue('14999.99');
+        },
+        { timeout: 2000 }
+      );
+
+      // Should show rounding message
+      await waitFor(
+        () => {
+          expect(
+            screen.getByText(/Amount rounded to nearest rupee/i)
+          ).toBeInTheDocument();
+        },
+        { timeout: 2000 }
+      );
+    });
+
+    it('should handle decimal with .49 and round down', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <LotCalculator
+          mode="embedded"
+          ipoData={{
+            id: 'ipo-1',
+            companyName: 'Test Company A',
+            slug: 'test-company-a',
+            priceRangeMax: 350,
+            lotSize: 40,
+          }}
+        />
+      );
+
+      const input = screen.getByPlaceholderText(/Enter amount/i);
+
+      // Enter 15000.49 (should show as-is, but calculate with 15000)
+      await user.type(input, '15000.49');
+
+      await waitFor(
+        () => {
+          expect(input).toHaveValue('15000.49');
+        },
+        { timeout: 2000 }
+      );
+
+      // Should show rounding message
+      await waitFor(
+        () => {
+          expect(
+            screen.getByText(/Amount rounded to nearest rupee/i)
+          ).toBeInTheDocument();
+        },
+        { timeout: 2000 }
+      );
+    });
+
+    it('should handle European format (15.000) as 15', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <LotCalculator
+          mode="embedded"
+          ipoData={{
+            id: 'ipo-1',
+            companyName: 'Test Company A',
+            slug: 'test-company-a',
+            priceRangeMax: 350,
+            lotSize: 40,
+          }}
+        />
+      );
+
+      const input = screen.getByPlaceholderText(/Enter amount/i);
+
+      // Enter 15.000 (parseFloat handles this as 15.0)
+      await user.type(input, '15.000');
+
+      // Should show the raw value while typing
+      await waitFor(
+        () => {
+          expect(input).toHaveValue('15.000');
+        },
+        { timeout: 2000 }
+      );
+
+      // Should show rounding message (decimal detected)
+      await waitFor(
+        () => {
+          expect(
+            screen.getByText(/Amount rounded to nearest rupee/i)
+          ).toBeInTheDocument();
+        },
+        { timeout: 2000 }
+      );
+    });
+
+    it('should perform calculation with rounded amount', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <LotCalculator
+          mode="embedded"
+          ipoData={{
+            id: 'ipo-1',
+            companyName: 'Test Company A',
+            slug: 'test-company-a',
+            priceRangeMax: 350,
+            lotSize: 40,
+          }}
+        />
+      );
+
+      const input = screen.getByPlaceholderText(/Enter amount/i);
+
+      // Enter 15000.50 (rounds to 15001)
+      // Calculation: floor(15001 / (350 × 40)) = floor(15001 / 14000) = 1 lot
+      await user.type(input, '15000.50');
+
+      // Wait for debounced calculation
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      });
+
+      // Wait for result
+      await waitFor(
+        () => {
+          expect(screen.getByText('Number of Lots')).toBeInTheDocument();
+        },
+        { timeout: 2000 }
+      );
+
+      // Verify results: 1 lot, 40 shares, ₹14,000
+      expect(screen.getByText('1')).toBeInTheDocument();
+      expect(screen.getByText('40')).toBeInTheDocument();
+      expect(screen.getByText('₹14,000')).toBeInTheDocument();
+    });
+
+    it('should show helper text for whole rupee amounts', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <LotCalculator
+          mode="embedded"
+          ipoData={{
+            id: 'ipo-1',
+            companyName: 'Test Company A',
+            slug: 'test-company-a',
+            priceRangeMax: 350,
+            lotSize: 40,
+          }}
+        />
+      );
+
+      const input = screen.getByPlaceholderText(/Enter amount/i);
+
+      // Enter whole rupee amount
+      await user.type(input, '15000');
+
+      // Should show helper text (not rounding message)
+      await waitFor(
+        () => {
+          expect(
+            screen.getByText(/Enter amount in whole rupees \(decimals will be rounded\)/i)
+          ).toBeInTheDocument();
+        },
+        { timeout: 2000 }
+      );
+
+      // Should NOT show rounding message
+      expect(
+        screen.queryByText(/Amount rounded to nearest rupee/i)
+      ).not.toBeInTheDocument();
+    });
+
+    it('should not show helper text when validation error exists', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <LotCalculator
+          mode="embedded"
+          ipoData={{
+            id: 'ipo-1',
+            companyName: 'Test Company A',
+            slug: 'test-company-a',
+            priceRangeMax: 350,
+            lotSize: 40,
+          }}
+        />
+      );
+
+      const input = screen.getByPlaceholderText(/Enter amount/i);
+
+      // Enter amount below minimum
+      await user.type(input, '1000');
+
+      // Wait for debounced calculation
+      await act(async () => {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      });
+
+      // Should show validation error
+      await waitFor(
+        () => {
+          expect(screen.getByText(/Minimum investment is ₹14,000/i)).toBeInTheDocument();
+        },
+        { timeout: 2000 }
+      );
+
+      // Should NOT show helper text when validation error exists
+      expect(
+        screen.queryByText(/Enter amount in whole rupees/i)
+      ).not.toBeInTheDocument();
+    });
+
+    it('should handle multiple decimal points gracefully', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <LotCalculator
+          mode="embedded"
+          ipoData={{
+            id: 'ipo-1',
+            companyName: 'Test Company A',
+            slug: 'test-company-a',
+            priceRangeMax: 350,
+            lotSize: 40,
+          }}
+        />
+      );
+
+      const input = screen.getByPlaceholderText(/Enter amount/i);
+
+      // Enter 15.000.50 (invalid format - parseFloat treats as 15)
+      await user.type(input, '15.000.50');
+
+      // Should show the raw value as typed
+      await waitFor(
+        () => {
+          expect(input).toHaveValue('15.000.50');
+        },
+        { timeout: 2000 }
+      );
+
+      // Should show rounding message (decimal detected)
+      await waitFor(
+        () => {
+          expect(
+            screen.getByText(/Amount rounded to nearest rupee/i)
+          ).toBeInTheDocument();
+        },
+        { timeout: 2000 }
+      );
+    });
+
+    it('should clear rounding message when input is cleared', async () => {
+      const user = userEvent.setup();
+
+      render(
+        <LotCalculator
+          mode="embedded"
+          ipoData={{
+            id: 'ipo-1',
+            companyName: 'Test Company A',
+            slug: 'test-company-a',
+            priceRangeMax: 350,
+            lotSize: 40,
+          }}
+        />
+      );
+
+      const input = screen.getByPlaceholderText(/Enter amount/i);
+
+      // Enter decimal amount
+      await user.type(input, '15000.50');
+
+      // Should show rounding message
+      await waitFor(
+        () => {
+          expect(
+            screen.getByText(/Amount rounded to nearest rupee/i)
+          ).toBeInTheDocument();
+        },
+        { timeout: 2000 }
+      );
+
+      // Clear input
+      await user.clear(input);
+
+      // Rounding message should disappear
+      await waitFor(
+        () => {
+          expect(
+            screen.queryByText(/Amount rounded to nearest rupee/i)
+          ).not.toBeInTheDocument();
+        },
+        { timeout: 2000 }
+      );
+    });
+  });
+
   describe('Error Handling', () => {
     beforeEach(() => {
       // Clear any previous mocks
