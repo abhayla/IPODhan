@@ -10,6 +10,7 @@ import { runNSEScraper } from '../scrapers/nse-scraper-orchestrator.js';
 import { runBSEScraper } from '../scrapers/bse-scraper-orchestrator.js';
 import { runMoneycontrolScraper } from '../scrapers/moneycontrol-orchestrator.js';
 import { runChittorgarhScraper } from '../scrapers/chittorgarh-orchestrator.js';
+import { updateListingPerformance } from '../scrapers/listing-performance-updater.js';
 
 /**
  * Job handler function type
@@ -62,6 +63,7 @@ export class SchedulerService {
         bse: schedulerConfig.jobs.bse.enabled,
         moneycontrol: schedulerConfig.jobs.moneycontrol.enabled,
         chittorgarh: schedulerConfig.jobs.chittorgarh.enabled,
+        listingPerformanceUpdate: schedulerConfig.jobs.listingPerformanceUpdate.enabled,
         healthCheck: schedulerConfig.jobs.healthCheck.enabled,
         dailySummary: schedulerConfig.jobs.dailySummary.enabled,
         logCleanup: schedulerConfig.jobs.logCleanup.enabled
@@ -158,6 +160,33 @@ export class SchedulerService {
         () => runChittorgarhScraper(),
         LOCK_TTL.scraper,
         schedulerConfig.jobs.chittorgarh.timezone
+      );
+    }
+
+    // Register Listing Performance Update job (ISS-001 Fix - market hours, after hours, weekends)
+    if (schedulerConfig.jobs.listingPerformanceUpdate.enabled) {
+      this.registerJob(
+        'listing-performance-market-hours',
+        schedulerConfig.jobs.listingPerformanceUpdate.marketHours!,
+        () => updateListingPerformance(),
+        LOCK_TTL.scraper,
+        schedulerConfig.jobs.listingPerformanceUpdate.timezone
+      );
+
+      this.registerJob(
+        'listing-performance-after-hours',
+        schedulerConfig.jobs.listingPerformanceUpdate.afterHours!,
+        () => updateListingPerformance(),
+        LOCK_TTL.scraper,
+        schedulerConfig.jobs.listingPerformanceUpdate.timezone
+      );
+
+      this.registerJob(
+        'listing-performance-weekends',
+        schedulerConfig.jobs.listingPerformanceUpdate.weekends!,
+        () => updateListingPerformance(),
+        LOCK_TTL.scraper,
+        schedulerConfig.jobs.listingPerformanceUpdate.timezone
       );
     }
 

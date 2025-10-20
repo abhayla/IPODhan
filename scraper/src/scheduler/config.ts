@@ -26,6 +26,7 @@ export interface SchedulerConfig {
     bse: JobSchedule;
     moneycontrol: JobSchedule;
     chittorgarh: JobSchedule;
+    listingPerformanceUpdate: JobSchedule; // ISS-001 Fix: Current price updates
     healthCheck: JobSchedule;
     dailySummary: JobSchedule;
     logCleanup: JobSchedule;
@@ -61,6 +62,13 @@ const PROD_SCHEDULES = {
   chittorgarh: {
     enabled: true,
     schedule: '*/45 * * * *',              // Every 45 minutes, 24/7 (Story 7.6b - includes GMP data)
+    timezone: 'Asia/Kolkata'
+  },
+  listingPerformanceUpdate: {
+    enabled: true,
+    marketHours: '*/30 9-17 * * 1-5',      // Every 30 min during market hours (ISS-001 Fix)
+    afterHours: '0 */2 0-8,18-23 * * 1-5', // Every 2 hours after hours
+    weekends: '0 */4 * * 0,6',             // Every 4 hours on weekends
     timezone: 'Asia/Kolkata'
   },
   healthCheck: {
@@ -107,6 +115,13 @@ const DEV_SCHEDULES = {
   chittorgarh: {
     enabled: true,
     schedule: '15 */1 * * *',              // Every hour at 15 mins past (slower for dev, offset from moneycontrol)
+    timezone: 'Asia/Kolkata'
+  },
+  listingPerformanceUpdate: {
+    enabled: true,
+    marketHours: '0 */1 9-17 * * 1-5',     // Every hour during market hours (dev mode - ISS-001 Fix)
+    afterHours: '0 */4 0-8,18-23 * * 1-5', // Every 4 hours after hours (dev)
+    weekends: '0 */6 * * 0,6',             // Every 6 hours on weekends (dev)
     timezone: 'Asia/Kolkata'
   },
   healthCheck: {
