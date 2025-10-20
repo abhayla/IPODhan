@@ -155,6 +155,7 @@ export function LotCalculator({
   const [error, setError] = useState<string>('');
   const [validationError, setValidationError] = useState<string>('');
   const [result, setResult] = useState<CalculationResult | null>(null);
+  const [hasDecimal, setHasDecimal] = useState<boolean>(false);
 
   // Debounce timer ref
   const debounceTimerRef = React.useRef<NodeJS.Timeout | null>(null);
@@ -271,18 +272,54 @@ export function LotCalculator({
   // ==================== HANDLE INPUT CHANGE (DEBOUNCED) ====================
 
   const handleInvestmentChange = (value: string) => {
-    // Allow only numbers and format with commas
-    const numericValue = value.replace(/[^0-9]/g, '');
+    // Remove all characters except digits and decimal point
+    const cleanValue = value.replace(/[^0-9.]/g, '');
 
-    if (numericValue === '') {
+    if (cleanValue === '') {
       setInvestmentAmount('');
       setResult(null);
       setValidationError('');
+      setHasDecimal(false);
       return;
     }
 
-    const formatted = formatNumber(Number(numericValue));
-    setInvestmentAmount(formatted);
+    // Check if input contains a decimal point
+    const containsDecimal = cleanValue.includes('.');
+
+    // For display: If user is typing a decimal (ends with . or has decimal digits),
+    // show the clean value without formatting to allow decimal entry
+    // Otherwise, format with commas
+    let displayValue: string;
+    let numericValue: number;
+
+    if (containsDecimal) {
+      // Check if this is a complete decimal or user is still typing
+      const decimalParts = cleanValue.split('.');
+
+      // If ends with "." or has decimal digits, keep the raw format to allow typing
+      if (cleanValue.endsWith('.') || (decimalParts.length === 2 && decimalParts[1].length > 0)) {
+        // User is typing a decimal - show unformatted to preserve the decimal point
+        displayValue = cleanValue;
+
+        // Parse as float for calculation
+        const floatValue = parseFloat(cleanValue);
+        numericValue = isNaN(floatValue) ? 0 : Math.round(floatValue);
+        setHasDecimal(true);
+      } else {
+        // Just a decimal point with nothing after - treat as the number before decimal
+        const floatValue = parseFloat(cleanValue);
+        numericValue = isNaN(floatValue) ? 0 : Math.round(floatValue);
+        displayValue = cleanValue;
+        setHasDecimal(true);
+      }
+    } else {
+      // No decimal - format with commas
+      numericValue = Number(cleanValue);
+      displayValue = formatNumber(numericValue);
+      setHasDecimal(false);
+    }
+
+    setInvestmentAmount(displayValue);
 
     // Debounce calculation
     if (debounceTimerRef.current) {
@@ -290,7 +327,7 @@ export function LotCalculator({
     }
 
     debounceTimerRef.current = setTimeout(() => {
-      performCalculation(formatted);
+      performCalculation(formatNumber(numericValue));
     }, 300);
   };
 
@@ -398,6 +435,16 @@ export function LotCalculator({
               </div>
               {validationError && (
                 <p className="text-sm text-destructive">{validationError}</p>
+              )}
+              {hasDecimal && !validationError && (
+                <p className="text-sm text-amber-600">
+                  Amount rounded to nearest rupee (IPO investments must be in whole rupees)
+                </p>
+              )}
+              {!validationError && !hasDecimal && investmentAmount && (
+                <p className="text-sm text-muted-foreground">
+                  Enter amount in whole rupees (decimals will be rounded)
+                </p>
               )}
             </div>
 
