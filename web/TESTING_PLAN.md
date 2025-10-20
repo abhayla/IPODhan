@@ -1,5 +1,81 @@
 # IPODhan Self-Improving Comprehensive Testing Plan
 
+## ⚠️ CRITICAL: VPS DATABASE CONNECTION PRE-REQUISITES
+
+**BEFORE STARTING ANY TESTING PHASE**, you MUST verify VPS database connection.
+
+### Step 1: Verify Environment Variables
+
+**Check `web/.env.local` has VPS database credentials:**
+```bash
+# VPS PostgreSQL Database (PRODUCTION DATA)
+DATABASE_URL=postgresql://postgres:Papa3Monu%401234@103.118.16.189:5432/ipodhan
+
+# Individual fields (for scripts that parse separately)
+DATABASE_HOST=103.118.16.189
+DATABASE_PORT=5432
+DATABASE_NAME=ipodhan
+DATABASE_USER=postgres
+DATABASE_PASSWORD=Papa3Monu@1234  # Note: @ symbol NOT URL-encoded here
+```
+
+**⚠️ CRITICAL**:
+- `DATABASE_URL` must have URL-encoded password (`%40` for `@`)
+- `DATABASE_PASSWORD` field must have raw password (with `@` not encoded)
+- These must point to VPS server at `103.118.16.189`
+
+### Step 2: Test Database Connection
+
+**Before ANY testing phase, run:**
+```bash
+cd web
+node scripts/check-tables-exist.js
+```
+
+**Expected Output:**
+```
+🔍 Checking database tables...
+Connected to: 103.118.16.189:5432/ipodhan
+✓ ipos exists
+✓ ipo_details exists
+✓ ipo_financials exists
+[... all tables should show ✓]
+```
+
+**If you see errors:**
+- `undefined:undefined/undefined` → DATABASE_URL not loaded
+- `SASL: SCRAM-SERVER-FIRST-MESSAGE` → Password encoding issue
+- `Connection timeout` → VPS server not reachable
+
+**Fix:**
+1. Verify `.env.local` exists in `web/` directory (NOT root)
+2. Check password encoding (URL vs raw)
+3. Restart dev server: `npm run dev`
+4. Test connection again
+
+### Step 3: Verify Data Exists
+
+```bash
+cd web
+node scripts/check-db-data.js
+```
+
+**Expected Output:**
+```
+📊 Checking database data...
+ipos: X records
+subscriptions: Y records
+gmp_records: Z records
+[... should show actual counts, NOT "ERROR"]
+```
+
+### Step 4: Only After Connection Verified
+
+✅ Once you see successful connection and data counts → Proceed to testing phases
+❌ If connection fails → STOP and fix database connection first
+
+---
+
 ## Current Implementation Status
 
 **Recent Implementation Updates** (as of 2025-10-13):
@@ -52,26 +128,54 @@ main (production)
 
 **Concept**: Before starting any testing phase, create a dedicated test branch from the completed feature branch. This separates QA activities from development and provides a clean testing environment.
 
-**Commands**:
+**Scenario 1: You have a feature branch and need to create a test branch**
 ```bash
 # Step 1: Verify you're on main branch
 git checkout main
 git pull origin main
 
-# Step 2: Checkout the feature branch (if exists, otherwise skip to Step 4)
+# Step 2: Checkout the feature branch
 git checkout feature/story-[number]
 
 # Step 3: Create test branch from feature branch
 git checkout -b test/story-[number]
 
-# Step 4: If no feature branch exists, create test branch from main
-# (Only if testing main branch directly)
-git checkout main
-git checkout -b test/story-[number]
-
-# Step 5: Push test branch to remote
+# Step 4: Push test branch to remote
 git push -u origin test/story-[number]
 ```
+
+**Scenario 2: No feature branch exists, create test branch from main**
+```bash
+# Only if testing main branch directly
+git checkout main
+git checkout -b test/story-[number]
+git push -u origin test/story-[number]
+```
+
+**Scenario 3: You're ALREADY on a test branch (YOUR CURRENT SITUATION)**
+```bash
+# Check current branch
+git branch
+# Output shows: * test/comprehensive-testing
+
+# You're good to go! Just ensure:
+# 1. Branch is up to date
+git pull origin test/comprehensive-testing
+
+# 2. Verify you're on the test branch
+git status
+# Output should show: On branch test/comprehensive-testing
+
+# 3. Start testing from Phase 1 (after VPS database connection verified)
+```
+
+**Important Notes for Scenario 3:**
+- ✅ You can proceed with testing immediately (after database connection verified)
+- ✅ There might not be a separate feature branch - that's OK
+- ✅ The test branch may have been created directly from main
+- ✅ All testing work continues on this `test/comprehensive-testing` branch
+- ✅ After all phases complete, this test branch will merge to `main`
+- ✅ No feature branch cleanup needed (since it doesn't exist)
 
 **Example**:
 ```bash
@@ -285,25 +389,40 @@ git push origin main
 
 ### Post-Merge Cleanup
 
-**Concept**: After successful merge to main, clean up both the test branch and feature branch to keep the repository tidy and prevent confusion.
+**Concept**: After successful merge to main, clean up the test branch (and feature branch if it exists) to keep the repository tidy and prevent confusion.
 
 **Commands**:
 ```bash
 # Step 1: Delete local test branch
-git branch -d test/story-[number]
+git branch -d test/comprehensive-testing  # Or your test branch name
 
 # Step 2: Delete remote test branch
-git push origin --delete test/story-[number]
+git push origin --delete test/comprehensive-testing
 
-# Step 3: Delete local feature branch (if it exists)
+# Step 3: Check if feature branch exists
+git branch -a | grep feature/
+
+# Step 4: Delete local feature branch (ONLY if it exists)
+# If you see a feature branch from Step 3:
 git branch -d feature/story-[number]
 
-# Step 4: Delete remote feature branch (if it exists)
+# Step 5: Delete remote feature branch (ONLY if it exists)
+# If you see a remote feature branch from Step 3:
 git push origin --delete feature/story-[number]
 
-# Step 5: Verify cleanup
+# Step 6: Verify cleanup
 git branch -a
 # Should NOT show deleted branches
+```
+
+**For your current situation (test/comprehensive-testing):**
+```bash
+# Since you likely don't have a feature branch, just delete the test branch:
+git branch -d test/comprehensive-testing
+git push origin --delete test/comprehensive-testing
+
+# Verify
+git branch -a  # Should only show main and other active branches
 ```
 
 **Example**:
@@ -503,6 +622,32 @@ Track issue patterns:
 
 ## PHASE 1: DATA SCRAPING & VALIDATION (CRITICAL)
 
+**⚠️ MANDATORY PRE-REQUISITE: VPS Database Connection Verified**
+
+**Before starting Phase 1, you MUST complete these checks:**
+```bash
+# 1. Navigate to web directory
+cd web
+
+# 2. Verify VPS database connection
+node scripts/check-tables-exist.js
+# Expected: Connected to: 103.118.16.189:5432/ipodhan
+# Expected: All tables show ✓
+
+# 3. Verify data exists in VPS database
+node scripts/check-db-data.js
+# Expected: Shows actual record counts (NOT "ERROR")
+
+# 4. If either fails → STOP and fix connection (see VPS DATABASE CONNECTION PRE-REQUISITES above)
+```
+
+**✅ Only proceed after seeing:**
+- ✅ Connected to VPS server `103.118.16.189:5432/ipodhan`
+- ✅ All tables exist
+- ✅ Record counts displayed (not errors)
+
+---
+
 **Base Loop:** Test ALL → Document → Fix ALL → Re-test → Verify → Gate
 
 ### 🔄 ENHANCED LOOP WITH AUTO-IMPROVEMENT:
@@ -529,16 +674,44 @@ ITERATION N:
 
 ### ITERATION 1: Initial Scraping + Issue Discovery
 
-**1. Database Schema Verification**
-- Verify connection to PostgreSQL
-- Check all tables exist per `drizzle/migrations/schema.ts`:
-  - ipos, ipo_details, ipo_financials, ipo_reviews, ipo_scores
-  - market_holidays, registrars, documents
-  - gmp_history, gmp_records, gmp_tracking, subscription_data, subscriptions
-  - listing_performance, peer_companies, financial_data
-  - broker_affiliates, scraper_logs, pipeline_status
-- Verify indexes and foreign keys
-- Document any missing tables
+**1. Database Schema Verification (VPS PostgreSQL)**
+
+**⚠️ CRITICAL: All queries MUST execute against VPS database `103.118.16.189:5432/ipodhan`**
+
+```bash
+# Verify you're connected to VPS database (NOT local)
+node scripts/check-tables-exist.js
+# Output MUST show: Connected to: 103.118.16.189:5432/ipodhan
+```
+
+**Check all tables exist per `drizzle/migrations/schema.ts`:**
+
+Using `psql` or database query tool connected to VPS:
+```bash
+# Option 1: Use psql directly
+PGPASSWORD="Papa3Monu@1234" psql -h 103.118.16.189 -p 5432 -U postgres -d ipodhan -c "\dt"
+
+# Option 2: Use the provided script (ensures VPS connection)
+node scripts/check-tables-exist.js
+```
+
+**Expected tables (from schema):**
+- Core: ipos, ipo_details, ipo_financials, ipo_reviews, ipo_scores
+- Supporting: market_holidays, registrars, documents
+- GMP & Subscription: gmp_history, gmp_records, gmp_tracking, subscription_data, subscriptions
+- Performance: listing_performance, peer_companies, financial_data
+- System: broker_affiliates, scraper_logs, pipeline_status
+
+**Verify indexes and foreign keys:**
+```sql
+-- Run against VPS database
+SELECT tablename, indexname
+FROM pg_indexes
+WHERE schemaname = 'public'
+ORDER BY tablename, indexname;
+```
+
+**Document any missing tables or indexes**
 
 **2. Run All Scrapers**
 ```bash

@@ -82,7 +82,11 @@ const HistoricalIPODataSchema = z.object({
   currentGainAmount: z.number().nullable(),
   openDate: z.date().nullable(),
   closeDate: z.date().nullable(),
-});
+}).refine(
+  // At least one performance metric must be present
+  (data) => data.listingGainPercentage !== null || data.currentGainPercentage !== null || data.issuePrice !== null,
+  { message: 'At least one performance metric is required' }
+);
 
 // ==================== SCRAPER CLASS ====================
 
@@ -185,62 +189,122 @@ export class HistoricalIPOScraper extends BaseScraper<MatchedIPOData[]> {
   /**
    * Scrape Chittorgarh IPO performance tracker for a specific year
    * AC: 1, 2, 3, 4, 5, 6
+   *
+   * NOTE: The website structure has changed as of 2025.
+   * - For current year (2025): Only summary table available with limited data
+   * - For past years (2020-2024): Detailed table should be available
    */
   private async scrapeChittorgarh(year: number): Promise<HistoricalIPOData[]> {
-    const url = `${this.config.baseUrl}/ipo/ipo-performance-tracker/`;
+    // URL Source: docs/URLs-Tracker.md - Historical IPO Performance
+    const url = `${this.config.baseUrl}/ipo/ipo_perf_tracker.asp`;
 
     const $ = await this.fetchHTML(url);
     const ipoData: HistoricalIPOData[] = [];
 
-    // Find the IPO performance table
-    // Note: This selector may need adjustment based on actual website structure
-    const tableRows = $('table.table-ipo-perf tbody tr, table#performance-tracker tbody tr, .ipo-table tbody tr').toArray();
+    // Try multiple table selection strategies
+    // Strategy 1: Look for tables with specific headers
+    let tableRows = $('table').filter((_, table) => {
+      const headers = $(table).find('th, td').first().text();
+      return headers.includes('Company Name') || headers.includes('IPO Name');
+    }).find('tbody tr').toArray();
+
+    // Strategy 2: If no rows found, look for any table with data rows
+    if (tableRows.length === 0) {
+      $('table').each((_, table) => {
+        const $table = $(table);
+        const rows = $table.find('tbody tr, tr').toArray();
+        // Filter out header rows and empty rows
+        const dataRows = rows.filter(row => {
+          const $row = $(row);
+          const cells = $row.find('td');
+          return cells.length >= 3 && !$row.find('th').length;
+        });
+        if (dataRows.length > tableRows.length) {
+          tableRows = dataRows;
+        }
+      });
+    }
+
+    logger.info({
+      scraper: 'historical-ipo',
+      phase: 'table-detection',
+      year,
+      rowsFound: tableRows.length,
+    }, `Found ${tableRows.length} table rows for year ${year}`);
 
     for (const row of tableRows) {
       try {
         const $row = $(row);
         const cells = $row.find('td').toArray();
 
-        if (cells.length < 10) continue; // Skip rows with insufficient data
+        // Skip rows without enough data or "No Record Found" messages
+        if (cells.length < 3) continue;
+        const firstCellText = $(cells[0]).text().trim();
+        if (!firstCellText || firstCellText.toLowerCase().includes('no record')) continue;
 
-        // Extract data from table cells
-        const ipoName = $(cells[0]).text().trim();
-        if (!ipoName) continue;
+        const ipoName = firstCellText;
 
-        // Parse numeric values
-        const issuePrice = this.parseNumber($(cells[1]).text());
-        const openDateText = $(cells[2]).text().trim();
-        const closeDateText = $(cells[3]).text().trim();
+        // Detect table structure based on column count
+        let issuePrice: number | null = null;
+        let subscriptionRetail: number | null = null;
+        let subscriptionHni: number | null = null;
+        let subscriptionQib: number | null = null;
+        let subscriptionTotal: number | null = null;
+        let gmpPrice: number | null = null;
+        let gmpPercentage: number | null = null;
+        let listingPrice: number | null = null;
+        let listingGainPercentage: number | null = null;
+        let listingGainAmount: number | null = null;
+        let listingDate: Date | null = null;
+        let currentPrice: number | null = null;
+        let currentGainPercentage: number | null = null;
+        let currentGainAmount: number | null = null;
+        let openDate: Date | null = null;
+        let closeDate: Date | null = null;
 
-        // Subscription data (remove 'x' suffix)
-        const subscriptionRetail = this.parseSubscription($(cells[4]).text());
-        const subscriptionHni = this.parseSubscription($(cells[5]).text());
-        const subscriptionQib = this.parseSubscription($(cells[6]).text());
-        const subscriptionTotal = this.parseSubscription($(cells[7]).text());
+        if (cells.length >= 10) {
+          // Full detailed table structure (10+ columns)
+          issuePrice = this.parseNumber($(cells[1]).text());
+          const openDateText = $(cells[2]).text().trim();
+          const closeDateText = $(cells[3]).text().trim();
+          subscriptionRetail = this.parseSubscription($(cells[4]).text());
+          subscriptionHni = this.parseSubscription($(cells[5]).text());
+          subscriptionQib = this.parseSubscription($(cells[6]).text());
+          subscriptionTotal = this.parseSubscription($(cells[7]).text());
+          gmpPrice = this.parseNumber($(cells[8]).text());
+          gmpPercentage = this.parsePercentage($(cells[9]).text());
 
-        // GMP data
-        const gmpPrice = this.parseNumber($(cells[8]).text());
-        const gmpPercentage = this.parsePercentage($(cells[9]).text());
+          const listingDateText = cells.length > 10 ? $(cells[10]).text().trim() : null;
+          listingPrice = cells.length > 11 ? this.parseNumber($(cells[11]).text()) : null;
+          listingGainPercentage = cells.length > 12 ? this.parsePercentage($(cells[12]).text()) : null;
+          currentPrice = cells.length > 13 ? this.parseNumber($(cells[13]).text()) : null;
+          currentGainPercentage = cells.length > 14 ? this.parsePercentage($(cells[14]).text()) : null;
 
-        // Listing performance
-        const listingDateText = cells.length > 10 ? $(cells[10]).text().trim() : null;
-        const listingPrice = cells.length > 11 ? this.parseNumber($(cells[11]).text()) : null;
-        const listingGainPercentage = cells.length > 12 ? this.parsePercentage($(cells[12]).text()) : null;
+          listingGainAmount = issuePrice && listingPrice ? listingPrice - issuePrice : null;
+          currentGainAmount = issuePrice && currentPrice ? currentPrice - issuePrice : null;
+          openDate = this.parseDate(openDateText);
+          closeDate = this.parseDate(closeDateText);
+          listingDate = listingDateText ? this.parseDate(listingDateText) : null;
+        } else if (cells.length >= 7) {
+          // Medium table structure (7-9 columns)
+          const listedOnText = $(cells[1]).text().trim();
+          issuePrice = this.parseNumber($(cells[2]).text());
+          listingPrice = this.parseNumber($(cells[3]).text());
+          listingGainPercentage = this.parsePercentage($(cells[4]).text());
+          currentPrice = cells.length > 5 ? this.parseNumber($(cells[5]).text()) : null;
+          currentGainPercentage = cells.length > 6 ? this.parsePercentage($(cells[6]).text()) : null;
 
-        // Current price
-        const currentPrice = cells.length > 13 ? this.parseNumber($(cells[13]).text()) : null;
-        const currentGainPercentage = cells.length > 14 ? this.parsePercentage($(cells[14]).text()) : null;
-
-        // Calculate listing gain amount
-        const listingGainAmount = issuePrice && listingPrice ? listingPrice - issuePrice : null;
-
-        // Calculate current gain amount
-        const currentGainAmount = issuePrice && currentPrice ? currentPrice - issuePrice : null;
-
-        // Parse dates
-        const openDate = this.parseDate(openDateText);
-        const closeDate = this.parseDate(closeDateText);
-        const listingDate = listingDateText ? this.parseDate(listingDateText) : null;
+          listingDate = this.parseDate(listedOnText);
+          listingGainAmount = issuePrice && listingPrice ? listingPrice - issuePrice : null;
+          currentGainAmount = issuePrice && currentPrice ? currentPrice - issuePrice : null;
+        } else if (cells.length === 3) {
+          // Simple summary table structure (3 columns: Name, Listing Gain %, Current Gain %)
+          listingGainPercentage = this.parsePercentage($(cells[1]).text());
+          currentGainPercentage = this.parsePercentage($(cells[2]).text());
+        } else {
+          // Unknown structure, skip
+          continue;
+        }
 
         ipoData.push({
           ipoName,

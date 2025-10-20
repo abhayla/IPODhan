@@ -3,9 +3,9 @@
  *
  * Scrapes IPO prospectus document metadata from NSE and BSE
  *
- * Sources:
- * - NSE: https://www.nseindia.com/market-data/upcoming-ipo
- * - BSE: https://www.bseindia.com/markets/PublicIssues/IPOIssueTracker.aspx
+ * Sources (see docs/URLs-Tracker.md for current URLs):
+ * - NSE: https://www.nseindia.com/market-data/all-upcoming-issues-ipo
+ * - BSE: https://www.bseindia.com/publicissue.html
  *
  * Features:
  * - Scrapes document metadata (DRHP, RHP, Prospectus, Addendum)
@@ -126,11 +126,11 @@ export class ProspectusScraper extends BaseScraper<MatchedDocument[]> {
 
   /**
    * Scrape prospectus documents from NSE
-   * URL: https://www.nseindia.com/market-data/upcoming-ipo
+   * URL Source: docs/URLs-Tracker.md - NSE All Upcoming IPOs
    */
   private async scrapeNSE(): Promise<ProspectusDocument[]> {
     try {
-      const url = 'https://www.nseindia.com/market-data/upcoming-ipo';
+      const url = 'https://www.nseindia.com/market-data/all-upcoming-issues-ipo';
       const $ = await this.fetchHTML(url, {
         headers: {
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -208,11 +208,11 @@ export class ProspectusScraper extends BaseScraper<MatchedDocument[]> {
 
   /**
    * Scrape prospectus documents from BSE
-   * URL: https://www.bseindia.com/markets/PublicIssues/IPOIssueTracker.aspx
+   * URL Source: docs/URLs-Tracker.md - BSE Public Issues
    */
   private async scrapeBSE(): Promise<ProspectusDocument[]> {
     try {
-      const url = 'https://www.bseindia.com/markets/PublicIssues/IPOIssueTracker.aspx';
+      const url = 'https://www.bseindia.com/publicissue.html';
       const $ = await this.fetchHTML(url, {
         headers: {
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',

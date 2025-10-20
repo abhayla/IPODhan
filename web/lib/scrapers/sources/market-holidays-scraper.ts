@@ -3,9 +3,9 @@
  *
  * Scrapes market holiday data from NSE and BSE official websites
  *
- * Sources:
- * - NSE: https://www.nseindia.com/regulations/trading-holidays
- * - BSE: https://www.bseindia.com/static/about/Market_Holidays.aspx
+ * Sources (see docs/URLs-Tracker.md for current URLs):
+ * - NSE: https://www.nseindia.com/api/holiday-master?type=trading (WORKING)
+ * - BSE: No working URL found (deprecated, returns 404)
  *
  * Features:
  * - Scrapes both trading and settlement holidays
@@ -151,9 +151,13 @@ export class MarketHolidaysScraper extends BaseScraper<MarketHoliday[]> {
 
   /**
    * Scrape BSE holidays
+   * NOTE: BSE URL is currently deprecated (404) - see docs/URLs-Tracker.md
+   * This method will return empty array until a new BSE URL is found
    */
   private async scrapeBSE(year: number): Promise<MarketHoliday[]> {
     try {
+      // DEPRECATED: This URL returns 404 as of 2025 - no replacement found
+      // Alternative: Use NSE API only
       const url = 'https://www.bseindia.com/static/about/Market_Holidays.aspx';
       const $ = await this.fetchHTML(url);
       const holidays: MarketHoliday[] = [];
