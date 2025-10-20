@@ -93,7 +93,8 @@ export function BrokerButton({
           alt={`${broker.name} logo`}
           width={24}
           height={24}
-          className="object-contain h-6 w-auto"
+          className="object-contain"
+          style={{ height: '24px', width: '24px' }}
         />
         <span>{broker.cta}</span>
         <ExternalLink className="h-4 w-4" />
