@@ -127,6 +127,27 @@ export function detectOfferingTypeFromBSEType(bseIpoType: string): string {
     return 'OFS';
   }
 
+  // ISS-011 Fix: Add missing offering types
+  if (typeUpper.includes('INVIT') || typeUpper.includes('INV IT') || typeUpper.includes('INFRASTRUCTURE INVESTMENT TRUST')) {
+    return 'INVITS';
+  }
+
+  if (typeUpper.includes('REIT') || typeUpper.includes('REAL ESTATE INVESTMENT TRUST')) {
+    return 'REITS';
+  }
+
+  if (typeUpper.includes('IPP') || typeUpper.includes('INSTITUTIONAL PLACEMENT PROGRAMME')) {
+    return 'IPP';
+  }
+
+  if (typeUpper.includes('QIP') || typeUpper.includes('QUALIFIED INSTITUTIONAL PLACEMENT')) {
+    return 'QIP';
+  }
+
+  if (typeUpper.includes('PREFERENTIAL')) {
+    return 'PREFERENTIAL';
+  }
+
   // Default to IPO
   return 'IPO';
 }

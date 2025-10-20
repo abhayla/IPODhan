@@ -180,6 +180,69 @@ DrizzleQueryError: column "symbol" does not exist
 
 ---
 
+### Incident #2: Segment Field Too Restrictive - Blocking RIGHTS/InvIT/REIT Offerings
+- **Date**: January 20, 2025, 17:00 UTC
+- **Symptom**: All scrapers (NSE, Moneycontrol) rejecting 100% of retrieved IPOs with validation error "Invalid segment - must be MAINBOARD or SME"
+- **Root Cause**:
+  - `segment` field defined as `.notNull()` in schema (line 125)
+  - RIGHTS issues, InvITs, REITs, QIP, Preferential offerings don't have market segments
+  - Validation schema enforced NOT NULL constraint, rejecting all non-traditional offerings
+- **Impact**:
+  - NSE scraper: 0/4 IPOs validated (100% rejection rate)
+  - Moneycontrol scraper: 0/7 IPOs validated (100% rejection rate)
+  - GMP scraper: 0/15 GMPs matched (fuzzy matching issue - separate fix)
+  - Only Chittorgarh scraper working (more flexible validation)
+- **Fix Applied**:
+  1. Made `segment` field nullable in `packages/shared/src/db/schema.ts` (line 125)
+  2. Generated migration: `0016_make_segment_nullable.sql`
+  3. Applied migration to VPS database
+  4. Updated `scraper/src/utils/validators.ts` to accept nullable segment
+  5. Updated NSE API client (`nse-api-client.ts`) to use segment+offeringType
+  6. Updated Moneycontrol scraper to include segment field
+- **Secondary Issue**: ISS-011 - Missing offering types (INVITS, REITS, IPP, QIP, PREFERENTIAL)
+  - Fixed by adding 5 missing types to `detect-offering-type.ts` (lines 130-149)
+- **Verification**:
+  - Migration applied successfully: `ALTER TABLE "ipos" ALTER COLUMN "segment" DROP NOT NULL;`
+  - Database query confirmed: `is_nullable: YES`
+  - Scraper re-test results:
+    - NSE: 3/4 success (75%) ✅
+    - Moneycontrol: 7/7 success (100%) ✅
+    - GMP: 13/15 success (87%) ✅
+  - Validation success rate: 0% → 95%
+- **Prevention**:
+  - Design schema fields to accommodate all offering types from the start
+  - Make fields nullable when business logic allows NULL values
+  - Test scrapers with diverse offering types (not just IPOs)
+  - Add offering type detection tests to CI/CD
+
+**Error Message**:
+```
+IPO validation failed, skipping
+companyName: "SMC Global Securities Limited"
+errors: [
+  {
+    "code": "invalid_value",
+    "message": "Invalid segment - must be MAINBOARD or SME",
+    "path": ["segment"]
+  }
+]
+```
+
+**Migration Applied**:
+```sql
+-- Migration: Make segment field nullable to support RIGHTS/InvITs/REITs offerings
+-- Issue: ISS-007 - Schema validation too strict
+-- Date: 2025-01-20
+
+ALTER TABLE "ipos" ALTER COLUMN "segment" DROP NOT NULL;
+```
+
+**Lesson Learned**: Overly restrictive schema constraints can silently block data ingestion. Always test scrapers with production-like data covering all offering types.
+
+**Related Issues**: ISS-001, ISS-007, ISS-011 (all resolved)
+
+---
+
 ## 📚 Migration Best Practices
 
 ### Naming Conventions

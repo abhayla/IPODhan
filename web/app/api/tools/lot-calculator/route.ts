@@ -19,7 +19,7 @@ interface LotCalculatorIPO {
   id: string;
   companyName: string;
   slug: string;
-  segment: 'MAINBOARD' | 'SME';
+  segment: 'MAINBOARD' | 'SME' | null; // Nullable for RIGHTS/InvITs/REITs
   offeringType: string;
   status: string;
   priceRangeMin: number | null;

@@ -21,10 +21,9 @@ export const ScrapedIPOSchema = z.object({
     message: 'Invalid listing exchange'
   }),
   // Story 11.8: Replaced category with segment + offeringType
-  segment: z.enum(['MAINBOARD', 'SME'], {
-    message: 'Invalid segment - must be MAINBOARD or SME'
-  }),
-  offeringType: z.enum(['IPO', 'FPO', 'RIGHTS', 'OFS', 'BUYBACK', 'DELISTING', 'TENDER', 'NCD', 'BONDS'], {
+  // NOTE: segment is nullable for RIGHTS/InvITs/REITs/NCDs (they don't have market segments)
+  segment: z.enum(['MAINBOARD', 'SME']).nullable().optional(),
+  offeringType: z.enum(['IPO', 'FPO', 'RIGHTS', 'OFS', 'BUYBACK', 'DELISTING', 'TENDER', 'NCD', 'BONDS', 'INVITS', 'REITS', 'IPP', 'QIP', 'PREFERENTIAL'], {
     message: 'Invalid offering type'
   }),
   sector: z.string().max(100).optional(),

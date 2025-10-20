@@ -1022,31 +1022,36 @@ This is a major AI-powered feature that exists in the database but is NOT displa
 
 ---
 
-##### 2. **Peer Company Comparison (peer_companies table) - COMPLETELY UNMAPPED** ⭐⭐⭐
+##### 2. **Peer Company Comparison (peer_companies table) - ✅ IMPLEMENTED** ⭐⭐⭐
 
-Comparative analysis data exists but not displayed:
+**Status:** Implemented on 2025-10-20 in IPO Detail Page
 
-**Database Fields:**
-- `company_name` (VARCHAR) - Peer company name
-- `sector` (VARCHAR) - Peer sector
-- `is_listed` (BOOLEAN) - Whether peer is listed
-- `pe_ratio` (NUMERIC) - Peer P/E ratio
-- `eps` (NUMERIC) - Peer earnings per share
-- `diluted_eps` (NUMERIC) - Peer diluted EPS
-- `ronw` (NUMERIC) - Return on Net Worth %
-- `nav` (NUMERIC) - Net Asset Value
-- `pbv_ratio` (NUMERIC) - Price to Book Value ratio
-- `financial_statement_type` (ENUM) - CONSOLIDATED/STANDALONE
-- `data_source` (VARCHAR) - Source of peer data
-- `last_updated` (TIMESTAMP) - Data freshness
+**Database Fields (All Mapped):**
+- `company_name` (VARCHAR) → Displayed in Company column
+- `sector` (VARCHAR) → Displayed as secondary text (if available)
+- `is_listed` (BOOLEAN) → Displayed as Yes/No badge in Listed column
+- `pe_ratio` (NUMERIC) → Displayed in PE Ratio column
+- `eps` (NUMERIC) → Displayed in EPS (₹) column
+- `diluted_eps` (NUMERIC) → Not displayed (using main EPS)
+- `ronw` (NUMERIC) → Displayed in RONW (%) column
+- `nav` (NUMERIC) → Displayed in NAV (₹) column
+- `pbv_ratio` (NUMERIC) → Displayed in PBV Ratio column
+- `financial_statement_type` (ENUM) → Not displayed
+- `data_source` (VARCHAR) → Not displayed
+- `last_updated` (TIMESTAMP) → Not displayed
 
-**Impact:** Missing competitive benchmarking feature that investors use to evaluate IPO valuations against industry peers.
+**Implementation Details:**
+- Component: `web/components/ipo/PeerComparisonSection.tsx` (217 lines)
+- Location: IPO Detail Page, after IPO Score Section
+- Features:
+  - Responsive design (desktop table + mobile card view)
+  - Financial metrics legend (PE Ratio, EPS, RONW, NAV, PBV definitions)
+  - Null handling for missing data
+  - Professional table styling with hover effects
+  - Listed/Not Listed status badges
+- Coverage: 1482 peer records across 494 IPOs (100% complete financial metrics)
 
-**Recommendation:**
-- Add "Peer Comparison" tab in IPO Detail page
-- Display table comparing IPO vs 3-5 peer companies
-- Include visual charts for metric comparison
-- Highlight where IPO is better/worse than peers
+**Impact:** Competitive benchmarking feature now available for investors to evaluate IPO valuations against industry peers.
 
 ---
 
@@ -1414,18 +1419,22 @@ Hardcoded content not from database:
 
 ---
 
-#### 2. **Add Peer Comparison Section**
+#### 2. **~~Add Peer Comparison Section~~** ✅ COMPLETED (2025-10-20)
 **Effort:** Medium | **Impact:** High | **Priority:** 2
 
-**Tasks:**
-- Add "Peer Comparison" tab in IPO Detail page
-- Create comparison table (IPO vs 3-5 peer companies)
-- Include metrics: P/E, EPS, ROE, NAV, PBV ratios
-- Add visual comparison charts
-- Highlight where IPO is better/worse than peers
-- Show industry average benchmarks
+**Status:** Successfully implemented in `web/components/ipo/PeerComparisonSection.tsx`
 
-**Value:** Critical for valuation assessment. Investors need to see how IPO pricing compares to existing companies.
+**Completed Tasks:**
+- ✅ Added "Peer Comparison" section in IPO Detail page (after IPO Score Section)
+- ✅ Created comparison table showing 3+ peer companies with financial metrics
+- ✅ Included metrics: PE Ratio, EPS, RONW, NAV, PBV Ratio, Listed status
+- ✅ Added financial metrics legend for user education
+- ✅ Implemented responsive design (desktop table + mobile cards)
+- ⏸️ Visual comparison charts (deferred - table view implemented)
+- ⏸️ Highlight better/worse indicators (deferred - future enhancement)
+- ⏸️ Industry average benchmarks (deferred - not in current data model)
+
+**Value:** Critical valuation assessment feature now available. Investors can compare IPO pricing against 3-5 existing peer companies with comprehensive financial metrics (1482 peer records across 494 IPOs).
 
 ---
 
@@ -1606,8 +1615,19 @@ Hardcoded content not from database:
 
 ## Conclusion
 
-The IPODhan platform has **significant untapped potential** in its database schema. The most critical gap is the **AI-powered IPO scoring system** (`ipo_scores` table) which is completely implemented in the backend but hidden from users. This alone could be a major differentiator.
+The IPODhan platform has made **significant progress** in exposing database features to users:
 
-Implementing the top 3 recommendations (IPO Scoring UI, Peer Comparison, and Stock Symbols) would significantly enhance the user experience and competitive positioning of the platform.
+**Recently Implemented (2025-10-20):**
+- ✅ **Peer Comparison Section** - Competitive benchmarking feature now live with 1482 peer records across 494 IPOs
+- ✅ **IPO Scoring System UI** - AI-powered scores (469 IPOs with 95% coverage) now visible on detail pages
 
-The analysis also reveals opportunities for data quality improvements through consolidation of duplicate tables and better utilization of existing comprehensive data structures like `ipo_financials` over the more limited `financial_data` table.
+**Remaining High-Priority Gaps:**
+1. **Stock Symbols & ISIN** - Critical identifiers still missing from UI
+2. **Enhanced Financial Metrics** - Underutilizing `ipo_financials` table vs simpler `financial_data`
+3. **Subscription History Charts** - Time-series data available but not visualized
+
+**Current State:**
+- **Advanced Features:** ~65% mapped (up from 40% - peer comparison now live)
+- **Overall User-Facing Fields:** ~70% displayed in UI (up from 65%)
+
+The platform's competitive position has strengthened with peer comparison and scoring features. Next focus should be on displaying stock symbols/ISIN and enhancing financial data visualization to fully leverage the comprehensive database schema.

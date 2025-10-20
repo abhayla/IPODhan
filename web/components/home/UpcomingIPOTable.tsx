@@ -63,10 +63,12 @@ function formatDate(dateString: string | null): string {
  * Logic:
  * - MAINBOARD → "Filed with SEBI"
  * - SME → "Filed with Exchange"
+ * - null → "N/A" (for RIGHTS/InvITs/REITs offerings)
  *
  * AC#1: Components render correctly with proper data
  */
-function getStatusText(segment: string): string {
+function getStatusText(segment: string | null): string {
+  if (!segment) return 'N/A';
   return segment === 'MAINBOARD' ? 'Filed with SEBI' : 'Filed with Exchange';
 }
 

@@ -264,6 +264,12 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
           openDate = sevenDaysAgo.toISOString().split('T')[0];
         }
 
+        // Detect segment (MAINBOARD vs SME)
+        const segment = raw.category === 'SME' ? 'SME' : 'MAINBOARD';
+
+        // Detect offering type (default to IPO for Moneycontrol data)
+        const offeringType = 'IPO'; // Moneycontrol primarily lists equity IPOs
+
         const ipo: MoneycontrolIPO = {
           companyName: sanitizeText(raw.companyName),
           issueSize,
@@ -272,7 +278,8 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
           openDate,
           closeDate,
           listingExchange: 'BOTH', // Moneycontrol aggregates both exchanges
-          category: raw.category === 'SME' ? 'SME' : 'MAINBOARD',
+          segment: segment as 'MAINBOARD' | 'SME',
+          offeringType: offeringType as 'IPO',
           status,
           dataSource: 'MONEYCONTROL',
           listingGains,
@@ -280,11 +287,15 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
 
         result.ipos.push(ipo);
 
+        // DEBUG: Log parsed IPO with offering type
         logger.debug({
           companyName: ipo.companyName,
           status: ipo.status,
-          issueSize: ipo.issueSize
-        }, 'Successfully parsed Moneycontrol IPO');
+          issueSize: ipo.issueSize,
+          segment: ipo.segment,
+          offeringType: ipo.offeringType,
+          rawCategory: raw.category
+        }, '[MONEYCONTROL DEBUG] Successfully parsed IPO');
 
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);

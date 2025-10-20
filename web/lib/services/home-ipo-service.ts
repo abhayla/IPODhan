@@ -21,7 +21,7 @@ export interface HomeIPOTableData {
   id: string;
   companyName: string;
   slug: string;
-  segment: string;
+  segment: string | null; // Nullable for RIGHTS/InvITs/REITs offerings
   offeringType: string;
   openDate: string | null;
   closeDate: string | null;

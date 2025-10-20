@@ -21,7 +21,7 @@ interface HistoricalIPOData {
 /**
  * Fetch HTML from URL
  */
-async function fetchHTML(url: string): Promise<cheerio.CheerioAPI> {
+async function fetchHTML(url: string): Promise<cheerio.Root> {
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
