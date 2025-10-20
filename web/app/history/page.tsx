@@ -10,6 +10,9 @@ import React, { Suspense } from 'react';
 import { Metadata } from 'next';
 import { HistoricalFiltersProvider } from '@/contexts/HistoricalFiltersContext';
 import { HistoricalIPOsContent } from './HistoricalIPOsContent';
+import { db } from '@/lib/db';
+import { ipos } from '@/lib/db';
+import { sql, eq, and } from 'drizzle-orm';
 
 // SEO Metadata
 export const metadata: Metadata = {
@@ -55,6 +58,47 @@ interface HistoricalIPOsPageProps {
 export default async function HistoricalIPOsPage({ searchParams }: HistoricalIPOsPageProps) {
   const params = await searchParams;
 
+  // Fetch available sectors and years from database for filter options
+  // Query for distinct sectors from historical (LISTED, past-dated) IPOs
+  const sectorsQuery = await db
+    .selectDistinct({ sector: ipos.sector })
+    .from(ipos)
+    .where(
+      and(
+        eq(ipos.status, 'LISTED'),
+        sql`${ipos.listingDate} IS NOT NULL`,
+        sql`${ipos.listingDate} < CURRENT_DATE`,
+        sql`${ipos.sector} IS NOT NULL`
+      )
+    )
+    .execute();
+
+  const availableSectors = sectorsQuery
+    .map((row) => row.sector)
+    .filter((sector): sector is string => sector !== null)
+    .sort();
+
+  // Query for distinct years from historical IPOs
+  const yearsQuery = await db
+    .select({
+      year: sql<number>`EXTRACT(YEAR FROM ${ipos.listingDate})::integer`,
+    })
+    .from(ipos)
+    .where(
+      and(
+        eq(ipos.status, 'LISTED'),
+        sql`${ipos.listingDate} IS NOT NULL`,
+        sql`${ipos.listingDate} < CURRENT_DATE`
+      )
+    )
+    .groupBy(sql`EXTRACT(YEAR FROM ${ipos.listingDate})`)
+    .orderBy(sql`EXTRACT(YEAR FROM ${ipos.listingDate}) DESC`)
+    .execute();
+
+  const availableYears = yearsQuery
+    .map((row) => row.year.toString())
+    .filter((year): year is string => year !== null);
+
   // Structured data (JSON-LD) for SEO
   const structuredData = {
     '@context': 'https://schema.org',
@@ -91,7 +135,7 @@ export default async function HistoricalIPOsPage({ searchParams }: HistoricalIPO
         }}
       >
         <Suspense fallback={<div>Loading...</div>}>
-          <HistoricalIPOsContent availableSectors={[]} availableYears={[]} />
+          <HistoricalIPOsContent availableSectors={availableSectors} availableYears={availableYears} />
         </Suspense>
       </HistoricalFiltersProvider>
     </>
