@@ -21,6 +21,7 @@ import Link from 'next/link';
 import { DataTable, type ColumnDef, DEFAULT_IPO_YEARS_EXPORT } from '@/components/shared/DataTable';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
 import type { IPO } from '@/lib/api-client';
 
 interface SMEDetailedTableClientProps {
@@ -138,6 +139,7 @@ export function SMEDetailedTableClient({
   const pathname = usePathname();
   const [year, setYear] = useState(String(initialYear));
   const [searches, setSearches] = useState<Record<string, string>>({});
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
   // Handle year change with URL update
   // AC#10, AC#11: Year navigation updates URL
@@ -164,6 +166,25 @@ export function SMEDetailedTableClient({
 
     router.push(`${pathname}?${params.toString()}`);
   };
+
+  // Handle status filter change with URL update
+  const handleStatusChange = (newStatus: string) => {
+    setStatusFilter(newStatus);
+    const params = new URLSearchParams(window.location.search);
+
+    if (newStatus === 'ALL') {
+      params.delete('status');
+    } else {
+      params.set('status', newStatus);
+    }
+
+    router.push(`${pathname}?${params.toString()}`);
+  };
+
+  // Filter data by status
+  const filteredData = statusFilter === 'ALL'
+    ? data
+    : data.filter(ipo => ipo.status === statusFilter);
 
   // Define table columns
   // AC#8: All 9 columns
@@ -274,16 +295,63 @@ export function SMEDetailedTableClient({
 
   return (
     <div className="space-y-4">
+      {/* Status Filter */}
+      <div className="flex flex-wrap items-center gap-2 p-4 bg-gray-50 rounded-lg border border-gray-200">
+        <span className="text-sm font-medium text-gray-700">Filter by Status:</span>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant={statusFilter === 'ALL' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => handleStatusChange('ALL')}
+          >
+            All
+          </Button>
+          <Button
+            variant={statusFilter === 'UPCOMING' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => handleStatusChange('UPCOMING')}
+          >
+            Upcoming
+          </Button>
+          <Button
+            variant={statusFilter === 'OPEN' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => handleStatusChange('OPEN')}
+          >
+            Open
+          </Button>
+          <Button
+            variant={statusFilter === 'CLOSED' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => handleStatusChange('CLOSED')}
+          >
+            Closed
+          </Button>
+          <Button
+            variant={statusFilter === 'LISTED' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => handleStatusChange('LISTED')}
+          >
+            Listed
+          </Button>
+        </div>
+      </div>
+
       {/* AC#14: Total records count */}
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-600">Total Records: {totalCount}</p>
+        <p className="text-sm text-gray-600">
+          {statusFilter === 'ALL'
+            ? `Total Records: ${totalCount}`
+            : `Showing ${filteredData.length} of ${totalCount} records (${statusFilter})`
+          }
+        </p>
       </div>
 
       {/* AC#7-17: DataTable with all features */}
       <DataTable
-        data={data}
+        data={filteredData}
         columns={columns}
-        emptyMessage="No SME IPOs found for this year"
+        emptyMessage={`No ${statusFilter === 'ALL' ? '' : statusFilter + ' '}SME IPOs found for this year`}
         // AC#13: Sortable columns
         // AC#9: Column-level search boxes
         // AC#10, AC#11: Year navigation
