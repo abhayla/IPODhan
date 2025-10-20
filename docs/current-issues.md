@@ -138,11 +138,12 @@ After fix:
 
 ---
 
-### ISS-007: LISTED IPO - Allotment Status Checker Button Always Disabled
+### ISS-007: LISTED IPO - Allotment Status Checker Button Always Disabled ✅ RESOLVED
 
 **Severity**: CRITICAL
 **Discovered**: 2025-10-19 (Phase 2, LISTED IPO Testing)
-**Status**: 🔴 **OPEN**
+**Resolved**: 2025-10-20T09:15:00+05:30
+**Status**: ✅ **RESOLVED**
 
 **Description**:
 The "Check Status on Registrar" button in the Allotment Status Checker widget remains permanently disabled, even when a valid PAN number is entered (e.g., ABCDE1234F). This makes the entire feature unusable.
@@ -153,33 +154,18 @@ The "Check Status on Registrar" button in the Allotment Status Checker widget re
 - Feature advertised but unusable - poor user experience
 - Affects all LISTED IPOs with the Allotment Status Checker widget
 
-**Root Cause**:
-The button's `disabled` condition in `web/app/components/AllotmentCheckerCard.tsx` line ~131 checks for three conditions:
+**Root Cause** ✅:
+The button's `disabled` condition in `web/components/ipo/AllotmentCheckerCard.tsx` line 134 checks for three conditions:
 ```typescript
 disabled={pan.length !== 10 || !!error || !registrarUrl}
 ```
 
 **Problem**: When the registrar information is missing ("N/A"), `registrarUrl` is `null`, which keeps the button permanently disabled even with a valid 10-character PAN.
 
-**Why This Happens**:
-- Many IPOs have incomplete registrar data (from ISS-001)
-- When registrar is "N/A", registrarUrl is null
-- The condition `!registrarUrl` evaluates to `true`
-- Button stays disabled regardless of PAN validity
+**Fix Applied** ✅:
+Updated `web/components/ipo/AllotmentCheckerCard.tsx`:
 
-**Test Case - Button Should Enable**:
-- PAN Input: `ABCDE1234F` (valid format - 5 letters, 4 digits, 1 letter)
-- Expected: Button enables
-- Actual: Button remains disabled (due to `!registrarUrl`)
-
-**Affected Component**:
-- File: `web/app/components/AllotmentCheckerCard.tsx`
-- Line: ~131
-- Condition: `disabled={pan.length !== 10 || !!error || !registrarUrl}`
-
-**Recommended Fix**:
-
-**Option 1** (Quick Fix): Remove registrarUrl check
+1. **Line 134** - Removed `!registrarUrl` check from disabled condition:
 ```typescript
 // BEFORE:
 disabled={pan.length !== 10 || !!error || !registrarUrl}
@@ -187,31 +173,33 @@ disabled={pan.length !== 10 || !!error || !registrarUrl}
 // AFTER:
 disabled={pan.length !== 10 || !!error}
 ```
-Then show an informative modal when registrarUrl is missing: "Registrar information not available. Please check allotment status directly on the exchange website."
 
-**Option 2** (Better UX): Provide fallback
+2. **Lines 75-79** - Enhanced error message in click handler:
 ```typescript
-// Enable button always when PAN is valid
-disabled={pan.length !== 10 || !!error}
-
-// In click handler:
 if (!registrarUrl) {
-  showModal("Registrar website link not available. Please visit NSE/BSE website to check allotment status.");
-} else {
-  window.open(registrarUrl);
+  setError(
+    'Registrar information not available. Please check allotment status directly on the NSE/BSE website or contact the registrar.'
+  );
+  return;
 }
 ```
 
-**Verification Steps**:
-1. Navigate to LISTED IPO (Ather Energy Ltd)
-2. Scroll to "Check Allotment Status" widget
-3. Enter valid PAN: ABCDE1234F
-4. Verify button becomes enabled
-5. Click button and verify appropriate action/message
+**Verification** ✅:
+After fix:
+- Button enables when valid PAN (ABCDE1234F) is entered, even if registrarUrl is null
+- Informative error message shown when button is clicked without registrarUrl
+- Graceful degradation with helpful user guidance
+- All 16 unit tests passing (including 2 new tests for ISS-007)
 
-**Estimated Fix Time**: 2-3 hours (code change + testing + UX considerations)
+**Files Modified**:
+- `web/components/ipo/AllotmentCheckerCard.tsx` - Fixed button disabled logic and error message
+- `web/tests/unit/components/ipo/AllotmentCheckerCard.test.tsx` - Added comprehensive tests
 
-**Priority**: 🔴 P0 - URGENT (Feature completely broken)
+**Commit**: abd3d85587f81afcd86fddf36fdc459fe657200e
+
+**Time to Resolution**: ~1 hour (code change + testing + UX enhancements)
+
+**Priority**: ✅ **RESOLVED** (Was P0 - Critical Blocker)
 
 ---
 
