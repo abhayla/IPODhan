@@ -26,7 +26,7 @@ export interface PeerCompany {
   ronw: string | null;
   nav: string | null;
   pbvRatio: string | null;
-  financialStatementType: string | null;
+  financialStatementType: 'CONSOLIDATED' | 'STANDALONE' | null;
   dataSource: string | null;
   lastUpdated: Date | null;
   createdAt: Date;
@@ -43,7 +43,7 @@ export interface PeerCompanyInsert {
   ronw?: string;
   nav?: string;
   pbvRatio?: string;
-  financialStatementType?: string;
+  financialStatementType?: 'CONSOLIDATED' | 'STANDALONE';
   dataSource?: string;
   lastUpdated?: Date;
 }
