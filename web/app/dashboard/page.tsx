@@ -11,7 +11,7 @@ interface DashboardPageProps {
     page?: string;
     view?: string;
     status?: string;
-    category?: string;
+    segment?: string;
     sector?: string;
     search?: string;
     scoreRange?: string;
@@ -23,7 +23,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const page = params.page ? parseInt(params.page) : 1;
   const view = params.view || 'grid';
   const status = params.status || 'OPEN';
-  const category = params.category;
+  const segment = params.segment;
   const sector = params.sector;
   const search = params.search;
   const scoreRange = params.scoreRange;
@@ -31,8 +31,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   try {
     const response = await apiClient.getIPOs({
       status: status as 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED',
-      segment: category === 'MAINBOARD' || category === 'SME' ? category : undefined,
-      offeringType: category && !['MAINBOARD', 'SME'].includes(category) ? category : undefined,
+      segment: segment === 'MAINBOARD' || segment === 'SME' ? segment : undefined,
       sector: sector,
       search: search,
       page,
@@ -72,7 +71,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
           initialPagination={response.pagination}
           initialView={view}
           initialStatus={status}
-          initialCategory={category}
+          initialSegment={segment}
           initialSearch={search}
         />
       </>
