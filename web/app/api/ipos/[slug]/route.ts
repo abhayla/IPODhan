@@ -17,6 +17,7 @@ import { EntityNotFoundError, DatabaseError } from '@/lib/errors/repository-erro
 import { logger } from '@/lib/logger';
 import type { IPODetailResponse } from '@/lib/db/types';
 import { readHeavyRateLimiter } from '@/lib/middleware/rate-limiter';
+import { SEARCH_CONFIG } from '@/lib/config/search';
 
 // ==================== HELPER FUNCTIONS ====================
 
@@ -104,10 +105,54 @@ export async function GET(
 
     const ipoRepository = new IPORepository(db, redis);
 
-    // Fetch IPO with all relationships
-    const ipoWithRelations = await ipoRepository.findBySlug(slug);
+    // ISS-027: Try exact match first, fallback to fuzzy if enabled
+    const ipoWithRelations = await ipoRepository.findBySlugWithFallback(slug, {
+      enableFuzzy: SEARCH_CONFIG.fallback.enabled,
+      similarityThreshold: SEARCH_CONFIG.fuzzyMatch.similarityThreshold,
+    });
 
     if (!ipoWithRelations) {
+      // ISS-027: Provide helpful suggestions when IPO not found
+      if (SEARCH_CONFIG.suggestions.enabled) {
+        try {
+          const suggestions = await ipoRepository.searchByName(
+            slug.replace(/-/g, ' '),
+            {
+              limit: SEARCH_CONFIG.suggestions.maxSuggestions,
+              threshold: SEARCH_CONFIG.suggestions.minSimilarity,
+            }
+          );
+
+          requestLogger.warn(
+            { slug, suggestionCount: suggestions.length },
+            'IPO not found, returning suggestions'
+          );
+
+          return createErrorResponse(
+            'NOT_FOUND',
+            `No IPO found with slug '${slug}'`,
+            requestId,
+            404,
+            {
+              suggestions: suggestions.map(s => ({
+                companyName: s.ipo.companyName,
+                slug: s.ipo.slug,
+                similarity: s.similarity,
+                status: s.ipo.status,
+                openDate: s.ipo.openDate,
+                closeDate: s.ipo.closeDate,
+              })),
+            }
+          );
+        } catch (suggestionError) {
+          // If suggestion generation fails, just return basic 404
+          requestLogger.error(
+            { slug, error: suggestionError },
+            'Failed to generate suggestions'
+          );
+        }
+      }
+
       requestLogger.warn({ slug }, 'IPO not found');
       return createErrorResponse(
         'NOT_FOUND',

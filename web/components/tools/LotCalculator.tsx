@@ -36,6 +36,7 @@ import {
 } from '@/components/ui/select';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Badge } from '@/components/ui/badge';
 
 // ==================== TYPES ====================
 
@@ -44,6 +45,7 @@ interface IPOOption {
   companyName: string;
   slug: string;
   category: string;
+  segment: string | null;
   status: string;
   priceRangeMin: number | null;
   priceRangeMax: number | null;
@@ -398,7 +400,39 @@ export function LotCalculator({
                   <SelectContent>
                     {ipoOptions.map((ipo) => (
                       <SelectItem key={ipo.id} value={ipo.id}>
-                        {ipo.companyName} ({ipo.segment || 'N/A'})
+                        <div className="flex items-center justify-between w-full gap-3">
+                          <div className="flex flex-col flex-1 min-w-0">
+                            <span className="font-medium truncate">
+                              {ipo.companyName}
+                            </span>
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                              <span>({ipo.segment || 'N/A'})</span>
+                              {ipo.priceRangeMin && ipo.priceRangeMax && (
+                                <span className="font-medium text-foreground">
+                                  ₹{ipo.priceRangeMin}-{ipo.priceRangeMax}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <Badge
+                            variant={
+                              ipo.status === 'OPEN'
+                                ? 'default'
+                                : ipo.status === 'UPCOMING'
+                                ? 'secondary'
+                                : 'outline'
+                            }
+                            className={
+                              ipo.status === 'OPEN'
+                                ? 'bg-green-500 hover:bg-green-600 text-white'
+                                : ipo.status === 'UPCOMING'
+                                ? 'bg-amber-500 hover:bg-amber-600 text-white'
+                                : ''
+                            }
+                          >
+                            {ipo.status}
+                          </Badge>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
