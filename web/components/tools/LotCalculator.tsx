@@ -398,7 +398,7 @@ export function LotCalculator({
                   <SelectContent>
                     {ipoOptions.map((ipo) => (
                       <SelectItem key={ipo.id} value={ipo.id}>
-                        {ipo.companyName} ({ipo.category})
+                        {ipo.companyName} ({ipo.segment || 'N/A'})
                       </SelectItem>
                     ))}
                   </SelectContent>
