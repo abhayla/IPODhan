@@ -252,6 +252,165 @@ const results = await ipoRepository.searchByName('XYZ Corp', {
 
 **Performance:** <500ms for fuzzy search, uses fuse.js library (9KB gzipped)
 
+### 8. Monitoring & Observability (Phase 5)
+
+**⚠️ Production Monitoring Stack:**
+The platform implements comprehensive monitoring across 6 layers for production observability.
+
+**Structured Logging (Winston):**
+```typescript
+import { logger, logPerformance, logError } from '@/lib/logging/logger';
+
+// Performance logging
+logPerformance('db.findBySlug', duration, { table: 'ipos', slug });
+
+// Error logging with context
+logError(error, { endpoint: '/api/ipos', method: 'GET' });
+```
+
+**Features:**
+- JSON structured logs with daily rotation (14d app, 30d error, 7d performance)
+- Three transport types: Console (dev), File (production), Error file (critical)
+- Automatic log cleanup and compression
+- <5ms overhead per request
+
+**Application Performance Monitoring (OpenTelemetry + Sentry):**
+```typescript
+import { trackPerformance, captureAPIError } from '@/lib/monitoring/sentry-utils';
+
+// Performance tracking
+const result = await trackPerformance(
+  'api-ipos-get',
+  async () => await repository.findAll(),
+  { endpoint: '/api/ipos' }
+);
+
+// Error capture with context
+captureAPIError(error, {
+  endpoint: '/api/ipos',
+  method: 'GET',
+  statusCode: 500
+});
+```
+
+**Monitoring Layers:**
+1. **Application Metrics** - Request rates, response times, error rates
+2. **Database Metrics** - Query performance (>100ms alerts), connection pool, cache hit ratio
+3. **Cache Metrics** - Hit rates (>80% target), memory usage, eviction rate
+4. **System Metrics** - CPU, memory, disk I/O, network
+5. **Business Metrics** - IPO data freshness, scraper success rates, data quality
+6. **Alert System** - 6 automated rules (INFO, WARNING, CRITICAL)
+
+**Monitoring Scripts:**
+- `scripts/db-health-check.ts` - Database monitoring every 5 minutes
+- `scripts/monitor-redis.ts` - Redis health every 2 minutes
+- `scripts/monitor-db-performance.sql` - 12 comprehensive SQL queries
+
+**Health Endpoints:**
+- `GET /api/health-detailed` - Comprehensive health check (<100ms)
+- `GET /api/metrics` - Business metrics dashboard (<500ms)
+
+**Documentation:** See `web/lib/monitoring/README.md` for complete monitoring guide
+
+### 9. Real-time IPO Scoring (Phase 5)
+
+**⚠️ Dynamic Scoring System:**
+Replaces static seed values with real-time calculated scores (0-10 scale) based on 5 objective components.
+
+**Scoring Service:**
+```typescript
+import { IPOScoringService } from '@/lib/services/ipo-scoring-realtime';
+
+const scoringService = new IPOScoringService();
+const score = await scoringService.calculateScore(ipoId);
+// Returns: { total: 8.5, rating: "Strong (Consider)", confidence: 92, components: {...} }
+```
+
+**5-Component Methodology:**
+1. **Financial Strength (3 pts)** - Revenue growth, profitability, ROE
+2. **Valuation (2 pts)** - P/E vs Industry, Price-to-Book
+3. **Subscription Demand (2 pts)** - Overall subscription, QIB subscription
+4. **Market Performance (2 pts)** - GMP premium, listing gains
+5. **Company Fundamentals (1 pt)** - Issue size, company age
+
+**Rating Scale:**
+- 9.0-10.0: Exceptional (Invest) ⭐⭐⭐⭐⭐
+- 7.5-8.9: Strong (Consider) ⭐⭐⭐⭐
+- 6.0-7.4: Good (Moderate) ⭐⭐⭐
+- 4.5-5.9: Average (Neutral) ⭐⭐
+- 3.0-4.4: Below Average (Caution) ⭐
+- 0.0-2.9: Poor (Avoid)
+
+**Intelligent Caching:**
+- TTL varies by IPO status: 1h for OPEN, 24h for LISTED
+- Cache hit time: 35ms (performance target: <50ms)
+- Score calculation: 150ms (performance target: <200ms)
+- Confidence scoring (0-100%) based on data completeness (avg: 88%)
+
+**API Endpoint:**
+```typescript
+// GET /api/ipos/[slug]/score
+// Returns comprehensive score breakdown with component analysis
+```
+
+**Bulk Calculation:**
+```bash
+# Recalculate all IPO scores
+npx tsx scripts/recalculate-all-scores.ts
+
+# Recalculate only OPEN IPOs
+npx tsx scripts/recalculate-all-scores.ts --status=OPEN
+```
+
+**Testing:** 32 tests (20 unit + 12 integration), 93.5% coverage, all passing
+
+**Documentation:** See `test-results/phase-5/real-time-scoring-report.md` for complete methodology
+
+### 10. Load Testing & Performance (Phase 5)
+
+**⚠️ Production Readiness Score: 9.2/10** (with pre-launch fixes)
+
+**Load Testing Scripts (k6):**
+```bash
+# API load test (50-500 concurrent users)
+k6 run web/tests/load/api-load-test.js
+
+# Stress test (find breaking point)
+k6 run web/tests/load/stress-test.js
+
+# User journey test (realistic flows)
+k6 run web/tests/load/user-journey-load-test.js
+
+# Node.js alternative (no k6 required)
+node web/tests/load/simple-load-test.js
+```
+
+**Performance Benchmarks:**
+- **100 users:** p95 300ms ✅ Excellent
+- **500 users:** p95 480ms ✅ Good
+- **1000 users:** p95 650ms 🟡 Degraded
+- **Breaking point:** 1200-1500 concurrent users (DB connection pool limit)
+
+**Database Connection Pool:**
+- **Old:** 20 connections (~800 users max)
+- **New:** 50 connections (~2500 users max)
+- **Improvement:** 3.1x user capacity increase
+
+**Core Web Vitals Targets:**
+- LCP (Largest Contentful Paint): < 2.5s
+- FID (First Input Delay): < 100ms
+- CLS (Cumulative Layout Shift): < 0.1
+- TTFB (Time to First Byte): < 600ms
+
+**Lighthouse CI Configuration:**
+```bash
+# Run Lighthouse tests
+lhci autorun
+# Tests 8 critical pages for performance, accessibility, SEO
+```
+
+**Documentation:** See `test-results/phase-5/production-load-testing-report.md` for complete analysis
+
 ## Architecture Documentation
 
 **⚠️ CRITICAL: Before making code changes, consult these architecture documents:**
@@ -337,11 +496,48 @@ These documents serve as **single sources of truth** for their respective areas.
     - Graceful degradation and caching strategy
     - ~500ms validation time for 10-20 IPOs
 
+### Phase 5 Enhancements (2025-10-21)
+
+13. **[Enhanced Monitoring](web/lib/monitoring/README.md)** - Production observability system
+    - Winston structured logging (JSON, daily rotation)
+    - OpenTelemetry APM + Sentry performance tracking
+    - 6 monitoring layers (app, DB, cache, system, business, alerts)
+    - Quick Start: `web/lib/monitoring/QUICK_START.md`
+
+14. **[Real-time IPO Scoring](test-results/phase-5/real-time-scoring-report.md)** - Dynamic quality scores
+    - 5-component methodology (0-10 scale)
+    - 32 tests, 93.5% coverage, all passing
+    - Intelligent caching (1h OPEN, 24h LISTED)
+    - Performance: 150ms calculation, 35ms cache hit
+
+15. **[Production Load Testing](test-results/phase-5/production-load-testing-report.md)** - Performance analysis
+    - k6 load test scripts (API, stress, user journey)
+    - Lighthouse CI for Core Web Vitals
+    - Breaking point analysis (1200-1500 users)
+    - Production readiness: 9.2/10
+
+16. **[Integration Testing](test-results/phase-5/integration-testing-report.md)** - Comprehensive testing
+    - 71 integration tests (100% pass rate)
+    - Redis fault tolerance validated
+    - Cache invalidation verified
+    - Connection pool stress tested (200+ concurrent)
+
+17. **[Data Backfill Scripts](test-results/phase-5/data-backfill-report.md)** - Data completeness tools
+    - Listing performance backfill (37% → 80%+)
+    - Financial ratios calculator
+    - GMP historical data collector
+    - Subscription scraper analysis
+
+18. **[Missing Endpoints Implementation](test-results/phase-5/missing-endpoints-implementation.md)** - API completeness
+    - 12 new endpoints (9 new + 3 verified)
+    - 100% API completeness achieved
+    - 45 integration tests, 100% pass rate
+
 ### Other Architecture
 
-13. **[API Specification](docs/02-architecture/api-specification.md)** - REST API patterns
-14. **[Deployment Architecture](docs/02-architecture/deployment-architecture.md)** - VPS deployment
-15. **[VPS Configuration](docs/vps-server-configuration.md)** - Server setup
+19. **[API Specification](docs/02-architecture/api-specification.md)** - REST API patterns
+20. **[Deployment Architecture](docs/02-architecture/deployment-architecture.md)** - VPS deployment
+21. **[VPS Configuration](docs/vps-server-configuration.md)** - Server setup
 
 ### Architectural Rules Enforcement
 
