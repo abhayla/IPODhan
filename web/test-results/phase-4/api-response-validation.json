@@ -1,0 +1,101 @@
+{
+  "timestamp": "2025-10-21T09:52:05.781Z",
+  "baseUrl": "http://localhost:3000",
+  "summary": {
+    "totalTests": 6,
+    "passed": 0,
+    "failed": 6,
+    "totalViolations": 6,
+    "crossContamination": "DETECTED"
+  },
+  "apiTests": [
+    {
+      "endpoint": "/api/ipos?category=MAINBOARD&status=all&limit=100",
+      "totalIPOs": 0,
+      "expectedSegment": "MAINBOARD",
+      "violations": [
+        {
+          "error": "request to http://localhost:3000/api/ipos?category=MAINBOARD&status=all&limit=100 failed, reason: read ECONNRESET"
+        }
+      ],
+      "status": "FAIL"
+    },
+    {
+      "endpoint": "/api/ipos?category=MAINBOARD&status=open&limit=50",
+      "totalIPOs": 0,
+      "expectedSegment": "MAINBOARD",
+      "violations": [
+        {
+          "error": "request to http://localhost:3000/api/ipos?category=MAINBOARD&status=open&limit=50 failed, reason: "
+        }
+      ],
+      "status": "FAIL"
+    },
+    {
+      "endpoint": "/api/ipos?category=MAINBOARD&status=upcoming&limit=50",
+      "totalIPOs": 0,
+      "expectedSegment": "MAINBOARD",
+      "violations": [
+        {
+          "error": "request to http://localhost:3000/api/ipos?category=MAINBOARD&status=upcoming&limit=50 failed, reason: "
+        }
+      ],
+      "status": "FAIL"
+    },
+    {
+      "endpoint": "/api/ipos?category=SME&status=all&limit=100",
+      "totalIPOs": 0,
+      "expectedSegment": "SME",
+      "violations": [
+        {
+          "error": "request to http://localhost:3000/api/ipos?category=SME&status=all&limit=100 failed, reason: "
+        }
+      ],
+      "status": "FAIL"
+    },
+    {
+      "endpoint": "/api/ipos?category=SME&status=open&limit=50",
+      "totalIPOs": 0,
+      "expectedSegment": "SME",
+      "violations": [
+        {
+          "error": "request to http://localhost:3000/api/ipos?category=SME&status=open&limit=50 failed, reason: "
+        }
+      ],
+      "status": "FAIL"
+    },
+    {
+      "endpoint": "/api/ipos?category=SME&status=upcoming&limit=50",
+      "totalIPOs": 0,
+      "expectedSegment": "SME",
+      "violations": [
+        {
+          "error": "request to http://localhost:3000/api/ipos?category=SME&status=upcoming&limit=50 failed, reason: "
+        }
+      ],
+      "status": "FAIL"
+    }
+  ],
+  "specialCategories": {
+    "OFS": {
+      "exists": false,
+      "status": 0,
+      "error": "request to http://localhost:3000/ofs-ipos failed, reason: "
+    },
+    "NCD": {
+      "exists": false,
+      "status": 0,
+      "error": "request to http://localhost:3000/ncd-ipos failed, reason: "
+    },
+    "Rights": {
+      "exists": false,
+      "status": 0,
+      "error": "request to http://localhost:3000/rights-issues failed, reason: "
+    },
+    "FPO": {
+      "exists": false,
+      "status": 0,
+      "error": "request to http://localhost:3000/fpo-ipos failed, reason: "
+    }
+  }
+}
