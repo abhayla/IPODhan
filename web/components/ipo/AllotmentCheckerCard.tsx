@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ExternalLink, Shield, Building2 } from 'lucide-react';
+import { ExternalLink, Shield, Building2, Loader2 } from 'lucide-react';
 import { trackAllotmentCheck } from '@/lib/analytics/gtag';
 
 interface AllotmentCheckerCardProps {
@@ -30,6 +30,7 @@ export function AllotmentCheckerCard({
 }: AllotmentCheckerCardProps) {
   const [pan, setPan] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [isChecking, setIsChecking] = useState(false);
 
   // Only show for CLOSED or LISTED status
   if (status !== 'CLOSED' && status !== 'LISTED') {
@@ -60,14 +61,11 @@ export function AllotmentCheckerCard({
   const handlePanChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.toUpperCase();
     setPan(value);
-    if (value.length === 10) {
-      validatePan(value);
-    } else {
-      setError(null);
-    }
+    // Validate on every change to provide immediate feedback
+    validatePan(value);
   };
 
-  const handleCheckStatus = () => {
+  const handleCheckStatus = async () => {
     if (!validatePan(pan)) {
       return;
     }
@@ -80,6 +78,12 @@ export function AllotmentCheckerCard({
       return;
     }
 
+    // Show loading state
+    setIsChecking(true);
+
+    // Add slight delay for UX (allows user to see the loading state)
+    await new Promise(resolve => setTimeout(resolve, 300));
+
     // Track analytics event
     if (companyName) {
       trackAllotmentCheck(companyName, registrar);
@@ -89,6 +93,9 @@ export function AllotmentCheckerCard({
     const url = new URL(registrarUrl);
     url.searchParams.set('pan', pan);
     window.open(url.toString(), '_blank');
+
+    // Reset loading state
+    setIsChecking(false);
   };
 
   return (
@@ -131,11 +138,20 @@ export function AllotmentCheckerCard({
 
         <Button
           onClick={handleCheckStatus}
-          disabled={pan.length !== 10 || !!error}
+          disabled={pan.length !== 10 || !!error || isChecking}
           className="w-full transition-all duration-300 hover:shadow-md hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800"
         >
-          <ExternalLink className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
-          Check Status on {registrar}
+          {isChecking ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Opening Registrar Site...
+            </>
+          ) : (
+            <>
+              <ExternalLink className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+              Check Status on {registrar}
+            </>
+          )}
         </Button>
 
         <Alert className="border-indigo-200 bg-indigo-50 dark:bg-indigo-950/20 dark:border-indigo-800">

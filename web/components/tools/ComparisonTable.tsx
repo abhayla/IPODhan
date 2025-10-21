@@ -15,7 +15,7 @@
 'use client';
 
 import * as React from 'react';
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import { TrendingUp, TrendingDown, Info } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -26,6 +26,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import type { IPOComparison } from '@/lib/types/comparison';
 import { cn } from '@/lib/utils';
 
@@ -169,6 +170,16 @@ export function ComparisonTable({
         <p className="text-sm text-muted-foreground">
           Side-by-side comparison of key metrics
         </p>
+      </div>
+
+      {/* Mobile Scroll Indicator */}
+      <div className="md:hidden">
+        <Alert className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          <AlertDescription className="text-sm text-blue-900 dark:text-blue-100">
+            Scroll horizontally to see all comparison data
+          </AlertDescription>
+        </Alert>
       </div>
 
       {/* Responsive Table Container */}

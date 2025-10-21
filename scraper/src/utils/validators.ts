@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { generateIPOSlug } from '@ipodhan/shared/utils/slug';
 
 // ==================== SCRAPED IPO SCHEMA ====================
 
@@ -244,16 +245,16 @@ export function sanitizeSubscriptionNumber(value: any): number {
 }
 
 /**
- * Generate slug from company name
+ * Generate slug from company name (using canonical slug utility)
+ *
+ * @deprecated Import directly from '@ipodhan/shared/utils/slug' instead
+ * This re-export is provided for backward compatibility
+ *
  * @param companyName - Company name to slugify
  * @returns URL-friendly slug
  */
 export function generateSlug(companyName: string): string {
-  return companyName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-') // Replace non-alphanumeric with hyphens
-    .replace(/^-+|-+$/g, '') // Remove leading/trailing hyphens
-    .slice(0, 255); // Limit length
+  return generateIPOSlug(companyName);
 }
 
 // ==================== IPO ALERTS API SCHEMAS ====================

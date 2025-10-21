@@ -8,14 +8,18 @@
  * - Selected IPO badge display
  * - Clear all functionality
  * - Callback invocation on selection change
+ * - Slug validation (ISS-027)
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IPOSelector } from '@/components/tools/IPOSelector';
 import type { IPO } from '@/lib/repositories/types';
 import { mockIPO } from '@/lib/db/types';
+
+// Mock global fetch
+global.fetch = vi.fn();
 
 // ==================== TEST DATA ====================
 
@@ -145,9 +149,17 @@ describe('IPOSelector Component', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // Mock successful validation by default
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+    } as Response);
   });
 
-  it('should render with empty state when no IPOs selected', () => {
+  afterEach(() => {
+    vi.resetAllMocks();
+  });
+
+  it('should render with empty state when no IPOs selected', async () => {
     render(
       <IPOSelector
         selectedSlugs={[]}
@@ -155,6 +167,11 @@ describe('IPOSelector Component', () => {
         availableIPOs={mockIPOs}
       />
     );
+
+    // Wait for validation to complete
+    await waitFor(() => {
+      expect(global.fetch).toHaveBeenCalled();
+    });
 
     expect(screen.getByText(/Select IPOs to Compare/i)).toBeInTheDocument();
     expect(
@@ -359,5 +376,241 @@ describe('IPOSelector Component', () => {
     );
 
     expect(screen.getByText(/Select IPOs to Compare/i)).toBeInTheDocument();
+  });
+
+  // ==================== VALIDATION TESTS (ISS-027) ====================
+
+  describe('Slug Validation', () => {
+    it('should validate IPO slugs on mount', async () => {
+      render(
+        <IPOSelector
+          selectedSlugs={[]}
+          onSelectionChange={mockOnSelectionChange}
+          availableIPOs={mockIPOs}
+        />
+      );
+
+      // Wait for validation to complete
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledTimes(mockIPOs.length);
+      });
+
+      // Verify HEAD requests were made for each IPO
+      mockIPOs.forEach((ipo) => {
+        expect(global.fetch).toHaveBeenCalledWith(
+          `/api/ipos/${ipo.slug}`,
+          { method: 'HEAD' }
+        );
+      });
+    });
+
+    it('should filter out invalid IPOs from dropdown', async () => {
+      const user = userEvent.setup();
+
+      // Mock fetch to return 404 for specific slug
+      (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+        if (url.includes('alpha-tech-ipo')) {
+          return Promise.resolve({ ok: false, status: 404 } as Response);
+        }
+        return Promise.resolve({ ok: true } as Response);
+      });
+
+      render(
+        <IPOSelector
+          selectedSlugs={[]}
+          onSelectionChange={mockOnSelectionChange}
+          availableIPOs={mockIPOs}
+        />
+      );
+
+      // Wait for validation to complete
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalled();
+      });
+
+      // Open dropdown
+      const trigger = screen.getByRole('combobox');
+      await user.click(trigger);
+
+      // Alpha Tech IPO should not be in dropdown (invalid slug)
+      await waitFor(() => {
+        expect(screen.queryByText(/Alpha Tech IPO/)).not.toBeInTheDocument();
+        // Other IPOs should still be available
+        expect(screen.getByText(/Beta Finance IPO/)).toBeInTheDocument();
+      });
+    });
+
+    it('should display warning alert when IPOs are filtered', async () => {
+      // Mock fetch to return 404 for 2 IPOs
+      (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+        if (url.includes('alpha-tech-ipo') || url.includes('beta-finance-ipo')) {
+          return Promise.resolve({ ok: false, status: 404 } as Response);
+        }
+        return Promise.resolve({ ok: true } as Response);
+      });
+
+      render(
+        <IPOSelector
+          selectedSlugs={[]}
+          onSelectionChange={mockOnSelectionChange}
+          availableIPOs={mockIPOs}
+        />
+      );
+
+      // Wait for validation and alert to appear
+      await waitFor(() => {
+        expect(screen.getByText(/2 IPOs filtered due to invalid slugs/i)).toBeInTheDocument();
+      });
+
+      // Alert should have destructive variant styling
+      const alert = screen.getByRole('alert');
+      expect(alert).toBeInTheDocument();
+    });
+
+    it('should use cached validation results', async () => {
+      const { rerender } = render(
+        <IPOSelector
+          selectedSlugs={[]}
+          onSelectionChange={mockOnSelectionChange}
+          availableIPOs={mockIPOs}
+        />
+      );
+
+      // Wait for initial validation
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalledTimes(mockIPOs.length);
+      });
+
+      const initialCallCount = (global.fetch as ReturnType<typeof vi.fn>).mock.calls.length;
+
+      // Re-render with same IPOs
+      rerender(
+        <IPOSelector
+          selectedSlugs={[]}
+          onSelectionChange={mockOnSelectionChange}
+          availableIPOs={mockIPOs}
+        />
+      );
+
+      // Wait a bit to ensure no new calls are made
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      // Fetch should use cached results (no additional calls)
+      expect((global.fetch as ReturnType<typeof vi.fn>).mock.calls.length).toBe(initialCallCount);
+    });
+
+    it('should handle validation errors gracefully', async () => {
+      // Mock fetch to throw error
+      (global.fetch as ReturnType<typeof vi.fn>).mockRejectedValue(
+        new Error('Network error')
+      );
+
+      const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      render(
+        <IPOSelector
+          selectedSlugs={[]}
+          onSelectionChange={mockOnSelectionChange}
+          availableIPOs={mockIPOs}
+        />
+      );
+
+      // Wait for validation to complete
+      await waitFor(() => {
+        expect(global.fetch).toHaveBeenCalled();
+      });
+
+      // Should show all IPOs as fallback (fail-safe behavior)
+      const user = userEvent.setup();
+      const trigger = screen.getByRole('combobox');
+      await user.click(trigger);
+
+      await waitFor(() => {
+        expect(screen.getByText(/Alpha Tech IPO/)).toBeInTheDocument();
+      });
+
+      consoleErrorSpy.mockRestore();
+    });
+
+    it('should show loading state during validation', async () => {
+      // Mock fetch with delay
+      (global.fetch as ReturnType<typeof vi.fn>).mockImplementation(() => {
+        return new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({ ok: true } as Response);
+          }, 100);
+        });
+      });
+
+      render(
+        <IPOSelector
+          selectedSlugs={[]}
+          onSelectionChange={mockOnSelectionChange}
+          availableIPOs={mockIPOs}
+        />
+      );
+
+      // Should show loading placeholder
+      const trigger = screen.getByRole('combobox');
+      expect(trigger).toHaveTextContent(/Validating IPOs.../i);
+
+      // Wait for validation to complete
+      await waitFor(() => {
+        expect(trigger).not.toHaveTextContent(/Validating IPOs.../i);
+      });
+    });
+
+    it('should log warning for invalid slugs to console', async () => {
+      const consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      // Mock fetch to return 404 for one IPO
+      (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+        if (url.includes('alpha-tech-ipo')) {
+          return Promise.resolve({ ok: false, status: 404 } as Response);
+        }
+        return Promise.resolve({ ok: true } as Response);
+      });
+
+      render(
+        <IPOSelector
+          selectedSlugs={[]}
+          onSelectionChange={mockOnSelectionChange}
+          availableIPOs={mockIPOs}
+        />
+      );
+
+      // Wait for validation
+      await waitFor(() => {
+        expect(consoleWarnSpy).toHaveBeenCalledWith(
+          expect.stringContaining('[IPO Compare] Invalid slug detected: alpha-tech-ipo')
+        );
+      });
+
+      consoleWarnSpy.mockRestore();
+    });
+
+    it('should handle single invalid slug alert correctly', async () => {
+      // Mock fetch to return 404 for one IPO
+      (global.fetch as ReturnType<typeof vi.fn>).mockImplementation((url: string) => {
+        if (url.includes('alpha-tech-ipo')) {
+          return Promise.resolve({ ok: false, status: 404 } as Response);
+        }
+        return Promise.resolve({ ok: true } as Response);
+      });
+
+      render(
+        <IPOSelector
+          selectedSlugs={[]}
+          onSelectionChange={mockOnSelectionChange}
+          availableIPOs={mockIPOs}
+        />
+      );
+
+      // Wait for validation and alert
+      await waitFor(() => {
+        // Should use singular "IPO" not "IPOs"
+        expect(screen.getByText(/1 IPO filtered due to invalid slugs/i)).toBeInTheDocument();
+      });
+    });
   });
 });

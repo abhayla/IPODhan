@@ -68,6 +68,20 @@ export function getIPOSearchKey(query: string): string {
 }
 
 /**
+ * Generate cache key for fuzzy search results
+ * ISS-027: Fuzzy matching for IPO lookups
+ */
+export function getFuzzySearchKey(
+  query: string,
+  limit: number,
+  threshold: number
+): string {
+  const searchParams = `${query}:${limit}:${threshold}`;
+  const queryHash = crypto.createHash('md5').update(searchParams).digest('hex');
+  return `ipo:fuzzy:${queryHash}`;
+}
+
+/**
  * Generate cache key for latest subscription snapshot
  */
 export function getLatestSubscriptionKey(ipoId: string): string {

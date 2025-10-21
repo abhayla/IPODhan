@@ -8,6 +8,7 @@
 import { eq, and, gte, lte, sql, desc, asc, inArray, like } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
+import Fuse from 'fuse.js';
 import { BaseRepository } from './base-repository';
 import {
   ipos,
@@ -33,8 +34,10 @@ import {
   getIPOListKey,
   getIPOSearchKey,
   getHistoricalIPOsKey,
+  getFuzzySearchKey,
 } from '../cache/cache-keys';
 import { EntityNotFoundError, DatabaseError } from '../errors/repository-errors';
+import { logger } from '../logger';
 import type {
   IPO,
   IPOInsert,
@@ -833,6 +836,145 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         }
       },
       CacheTTL.HISTORICAL_IPOS
+    );
+  }
+
+  /**
+   * Find IPO by slug with fallback to fuzzy matching
+   * ISS-027: Provides better UX when exact slug match fails
+   *
+   * @param slug - IPO slug to search for
+   * @param options - Search options
+   * @returns IPO with relations if found, null otherwise
+   */
+  async findBySlugWithFallback(
+    slug: string,
+    options: {
+      enableFuzzy?: boolean;
+      similarityThreshold?: number;
+    } = {}
+  ): Promise<IPOWithRelations | null> {
+    const {
+      enableFuzzy = true,
+      similarityThreshold = 0.6,
+    } = options;
+
+    // Try exact match first (uses cache)
+    const exactMatch = await this.findBySlug(slug);
+    if (exactMatch) {
+      return exactMatch;
+    }
+
+    // If exact match fails and fuzzy is disabled, return null
+    if (!enableFuzzy) {
+      return null;
+    }
+
+    logger.info({ slug }, '[IPO Repository] Exact slug match failed, trying fuzzy match');
+
+    // Convert slug to search term (remove -ipo suffix and replace hyphens)
+    const searchTerm = slug
+      .replace(/-ipo$/i, '')
+      .replace(/-/g, ' ')
+      .toLowerCase();
+
+    // Fetch all IPOs for fuzzy matching (minimal fields)
+    const allIPOs = await this.executeQuery(
+      'findAllForFuzzyMatch',
+      async () => {
+        return await this.db.select({
+          id: ipos.id,
+          companyName: ipos.companyName,
+          slug: ipos.slug,
+        }).from(ipos);
+      }
+    );
+
+    // Configure Fuse.js for fuzzy matching
+    const fuse = new Fuse(allIPOs, {
+      keys: [
+        { name: 'companyName', weight: 0.7 },
+        { name: 'slug', weight: 0.3 },
+      ],
+      threshold: 1 - similarityThreshold, // Fuse uses 0 (exact) to 1 (no match)
+      includeScore: true,
+    });
+
+    const results = fuse.search(searchTerm);
+
+    if (results.length === 0) {
+      logger.warn({ slug, searchTerm }, '[IPO Repository] No fuzzy matches found');
+      return null;
+    }
+
+    const bestMatch = results[0];
+
+    logger.info(
+      {
+        slug,
+        matchedSlug: bestMatch.item.slug,
+        companyName: bestMatch.item.companyName,
+        score: bestMatch.score,
+        similarity: Math.round((1 - (bestMatch.score || 0)) * 100),
+      },
+      '[IPO Repository] Fuzzy match found'
+    );
+
+    // Fetch full IPO details for best match (uses cache)
+    return await this.findBySlug(bestMatch.item.slug);
+  }
+
+  /**
+   * Search IPOs by company name using fuzzy matching
+   * ISS-027: Returns multiple suggestions with similarity scores
+   *
+   * @param query - Search query
+   * @param options - Search options
+   * @returns Array of matching IPOs with similarity scores
+   */
+  async searchByName(
+    query: string,
+    options: {
+      limit?: number;
+      threshold?: number;
+    } = {}
+  ): Promise<Array<{ ipo: IPO; score: number; similarity: number }>> {
+    const { limit = 10, threshold = 0.4 } = options;
+
+    const cacheKey = getFuzzySearchKey(query, limit, threshold);
+
+    return this.getFromCache(
+      cacheKey,
+      async () => {
+        // Fetch all IPOs
+        const allIPOs = await this.executeQuery(
+          'searchByName',
+          async () => {
+            return await this.db.select().from(ipos);
+          }
+        );
+
+        // Configure Fuse.js
+        const fuse = new Fuse(allIPOs, {
+          keys: [
+            { name: 'companyName', weight: 0.7 },
+            { name: 'slug', weight: 0.3 },
+          ],
+          threshold: 1 - threshold,
+          includeScore: true,
+        });
+
+        const results = fuse.search(query);
+
+        return results
+          .slice(0, limit)
+          .map(result => ({
+            ipo: result.item,
+            score: result.score || 0,
+            similarity: Math.round((1 - (result.score || 0)) * 100),
+          }));
+      },
+      CacheTTL.IPO_LIST // 5 minutes
     );
   }
 }
