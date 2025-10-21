@@ -23,9 +23,11 @@ This is a **TypeScript workspace monorepo** with project references:
 
 ```
 IPODhan/
-├── packages/shared/          # SINGLE SOURCE OF TRUTH for DB schema
+├── packages/shared/          # SINGLE SOURCE OF TRUTH for DB schema + utilities
 │   └── src/
 │       ├── db/schema.ts      # ⚠️ All database tables, enums, relations
+│       ├── utils/            # Shared utilities (slug generation, etc.)
+│       ├── docs/             # Shared package documentation
 │       └── index.ts
 ├── web/                      # Next.js application
 │   ├── app/                  # App Router pages & API routes
@@ -33,12 +35,17 @@ IPODhan/
 │   │   ├── db/              # Database connection + schema re-exports
 │   │   ├── repositories/    # Data access layer with caching
 │   │   ├── services/        # Business logic layer
+│   │   ├── config/          # Configuration (search, validation, etc.)
 │   │   └── cache/           # Redis client & cache utilities
-│   └── components/          # React components
+│   ├── components/          # React components
+│   ├── docs/                # Web-specific documentation
+│   └── scripts/             # Migration & utility scripts
 ├── scraper/                 # Data scraping service (separate process)
-│   └── src/
-│       ├── scrapers/        # NSE, BSE, Moneycontrol, Chittorgarh
-│       └── scheduler/       # Cron-based scheduler
+│   ├── src/
+│   │   ├── scrapers/        # NSE, BSE, Moneycontrol, Chittorgarh
+│   │   ├── scheduler/       # Cron-based scheduler
+│   │   └── utils/           # Scraper utilities & validators
+│   └── docs/                # Scraper documentation
 └── tsconfig.json            # Root with project references
 ```
 
@@ -178,6 +185,73 @@ export const CacheTTL = {
 };
 ```
 
+### 6. Canonical Slug Generation (Phase 3)
+
+All slug generation uses the canonical utility in `packages/shared/src/utils/slug.ts`:
+
+```typescript
+import { generateIPOSlug, validateSlug, generateUniqueSlug } from '@ipodhan/shared/utils/slug';
+
+// Generate canonical slug
+const slug = generateIPOSlug('XYZ Corporation Ltd');
+// Returns: 'xyz-corporation-ltd'
+
+// Validate slug format
+const isValid = validateSlug(slug);
+
+// Generate unique slug (checks against existing slugs)
+const uniqueSlug = generateUniqueSlug('XYZ Corporation', existingSlugs);
+// Returns: 'xyz-corporation-ipo' or 'xyz-corporation-ipo-2' if collision
+```
+
+**Key Features:**
+- Handles 13+ legal entity types (Ltd, Limited, Pvt, Inc, LLC, etc.)
+- Supports 8 currency/special symbols (₹, $, &, etc.)
+- Enforces maximum length (100 chars default)
+- Guarantees uniqueness with collision detection
+- 100% test coverage (81 tests passing)
+
+**IMPORTANT:** All scrapers and frontend components MUST use `generateIPOSlug()` - never create custom slug logic.
+
+### 7. API Fuzzy Matching & Fallback (Phase 3)
+
+When exact slug/ID lookup fails, the repository layer implements intelligent fuzzy matching:
+
+```typescript
+// Repository pattern with fuzzy fallback
+const ipo = await ipoRepository.findBySlugWithFallback(slug, {
+  enableFuzzy: true,
+  similarityThreshold: 0.6,  // 60% similarity required
+});
+
+// Returns exact match if found, otherwise best fuzzy match, or null
+
+// Search with similarity scores
+const results = await ipoRepository.searchByName('XYZ Corp', {
+  limit: 5,
+  threshold: 0.3,  // 30% minimum similarity
+});
+// Returns: Array<{ ipo: IPO, score: number }>
+```
+
+**Configuration:** Centralized in `web/lib/config/search.ts`
+
+**API 404 Response Pattern:**
+```json
+{
+  "error": "IPO not found",
+  "suggestions": [
+    {
+      "companyName": "XYZ Corporation",
+      "slug": "xyz-corporation-ipo",
+      "similarity": 87
+    }
+  ]
+}
+```
+
+**Performance:** <500ms for fuzzy search, uses fuse.js library (9KB gzipped)
+
 ## Architecture Documentation
 
 **⚠️ CRITICAL: Before making code changes, consult these architecture documents:**
@@ -237,11 +311,37 @@ These documents serve as **single sources of truth** for their respective areas.
    - Multi-source scraping strategy
    - Error handling and monitoring
 
+9. **[Lot Size Data Quality](scraper/docs/LOT_SIZE_EXECUTIVE_SUMMARY.md)** - Critical data quality fix (Phase 3)
+   - Root cause: 68.89% of IPOs had lot_size = 1
+   - Scraper fixes and validation utilities
+   - Database migration and fix strategy
+   - See also: LOT_SIZE_FIX.md (1,600+ lines technical analysis)
+
+### Phase 3 Enhancements (2025-10-21)
+
+10. **[Slug Generation](packages/shared/docs/SLUG_GENERATION.md)** - Canonical slug utilities
+    - Single source of truth for slug generation
+    - 5 core functions with 81 tests (100% passing)
+    - Prevents slug inconsistency issues
+    - Migration script: `web/scripts/regenerate-slugs.ts`
+
+11. **[Fuzzy Matching](web/docs/FUZZY_MATCHING.md)** - Intelligent search & fallback
+    - API fallback strategy when exact match fails
+    - fuse.js integration with similarity scoring
+    - Configuration and performance tuning
+    - <500ms response time target
+
+12. **[IPO Compare Validation](web/docs/IPO_COMPARE_VALIDATION.md)** - Dropdown validation
+    - Client-side slug validation with HEAD requests
+    - Prevents 404 errors in IPO comparison tool
+    - Graceful degradation and caching strategy
+    - ~500ms validation time for 10-20 IPOs
+
 ### Other Architecture
 
-9. **[API Specification](docs/02-architecture/api-specification.md)** - REST API patterns
-10. **[Deployment Architecture](docs/02-architecture/deployment-architecture.md)** - VPS deployment
-11. **[VPS Configuration](docs/vps-server-configuration.md)** - Server setup
+13. **[API Specification](docs/02-architecture/api-specification.md)** - REST API patterns
+14. **[Deployment Architecture](docs/02-architecture/deployment-architecture.md)** - VPS deployment
+15. **[VPS Configuration](docs/vps-server-configuration.md)** - Server setup
 
 ### Architectural Rules Enforcement
 
