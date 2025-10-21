@@ -1,0 +1,49 @@
+{
+  "ci": {
+    "collect": {
+      "url": [
+        "http://localhost:3000",
+        "http://localhost:3000/ipos",
+        "http://localhost:3000/ipos/upcoming",
+        "http://localhost:3000/ipos/mainboard",
+        "http://localhost:3000/ipos/sme",
+        "http://localhost:3000/calendar",
+        "http://localhost:3000/gmp",
+        "http://localhost:3000/subscription"
+      ],
+      "numberOfRuns": 3,
+      "settings": {
+        "preset": "desktop",
+        "throttling": {
+          "rttMs": 40,
+          "throughputKbps": 10240,
+          "cpuSlowdownMultiplier": 1
+        },
+        "onlyCategories": [
+          "performance",
+          "accessibility",
+          "best-practices",
+          "seo"
+        ]
+      }
+    },
+    "assert": {
+      "assertions": {
+        "categories:performance": ["error", {"minScore": 0.9}],
+        "categories:accessibility": ["warn", {"minScore": 0.9}],
+        "categories:best-practices": ["warn", {"minScore": 0.9}],
+        "categories:seo": ["warn", {"minScore": 0.9}],
+        "largest-contentful-paint": ["error", {"maxNumericValue": 2500}],
+        "first-contentful-paint": ["warn", {"maxNumericValue": 1800}],
+        "speed-index": ["warn", {"maxNumericValue": 3400}],
+        "interactive": ["warn", {"maxNumericValue": 3800}],
+        "total-blocking-time": ["error", {"maxNumericValue": 300}],
+        "cumulative-layout-shift": ["error", {"maxNumericValue": 0.1}]
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": "test-results/phase-5/lighthouse-reports"
+    }
+  }
+}

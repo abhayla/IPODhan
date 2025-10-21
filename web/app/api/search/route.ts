@@ -162,7 +162,7 @@ export async function GET(request: NextRequest) {
     const allIPOs = await ipoRepository.findAll();
 
     // Configure Fuse.js for fuzzy matching
-    const fuse = new Fuse(allIPOs, {
+    const fuse = new Fuse(allIPOs.data, {
       keys: [
         { name: 'companyName', weight: 0.7 },
         { name: 'symbol', weight: 0.3 },
