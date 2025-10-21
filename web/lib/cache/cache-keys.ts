@@ -252,8 +252,22 @@ export function getReferenceKey(type: string): string {
 }
 
 /**
+ * Generate cache key for peer companies by IPO ID
+ */
+export function getPeerCompaniesKey(ipoId: string): string {
+  return `peers:${ipoId}`;
+}
+
+/**
  * Get all cache key patterns for calendar invalidation
  */
 export function getCalendarInvalidationKeys(): string[] {
   return ['calendar:*'];
+}
+
+/**
+ * Get all cache key patterns for peer companies invalidation
+ */
+export function getPeerCompaniesInvalidationKeys(ipoId: string): string[] {
+  return [`peers:${ipoId}`];
 }
