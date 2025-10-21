@@ -1,0 +1,154 @@
+{
+  "summary": {
+    "total": 26,
+    "passed": 23,
+    "failed": 3
+  },
+  "results": [
+    {
+      "testName": "Visibility - CLOSED IPO",
+      "status": "PASS",
+      "details": "Allotment checker visible on CLOSED IPO: true",
+      "screenshot": "closed-ipo-visibility-1761028325129.png"
+    },
+    {
+      "testName": "Visibility - LISTED IPO",
+      "status": "PASS",
+      "details": "Allotment checker visible on LISTED IPO: true",
+      "screenshot": "listed-ipo-visibility-1761028328858.png"
+    },
+    {
+      "testName": "Visibility - UPCOMING IPO (Should NOT show)",
+      "status": "PASS",
+      "details": "Allotment checker visible on UPCOMING IPO: false (should be false)",
+      "screenshot": "upcoming-ipo-no-checker-1761028331637.png"
+    },
+    {
+      "testName": "Valid PAN - ABCDE1234F",
+      "status": "PASS",
+      "details": "Error visible: false, Button disabled: false",
+      "screenshot": "valid-pan-1761028335144.png"
+    },
+    {
+      "testName": "Invalid PAN - Too short (abc123)",
+      "status": "FAIL",
+      "details": "Error visible: false, Button disabled: true",
+      "screenshot": "invalid-short-1761028335787.png"
+    },
+    {
+      "testName": "Invalid PAN - Wrong format (ABCDE12345)",
+      "status": "PASS",
+      "details": "Error visible: true, Button disabled: true",
+      "screenshot": "invalid-format-1-1761028336410.png"
+    },
+    {
+      "testName": "Invalid PAN - All numbers (1234567890)",
+      "status": "PASS",
+      "details": "Error visible: true, Button disabled: true",
+      "screenshot": "invalid-all-numbers-1761028337199.png"
+    },
+    {
+      "testName": "Invalid PAN - All letters (ABCDEFGHIJ)",
+      "status": "PASS",
+      "details": "Error visible: true, Button disabled: true",
+      "screenshot": "invalid-all-letters-1761028337902.png"
+    },
+    {
+      "testName": "Invalid PAN - Special characters (ABC@E1234F)",
+      "status": "PASS",
+      "details": "Error visible: true, Button disabled: true",
+      "screenshot": "invalid-special-chars-1761028338602.png"
+    },
+    {
+      "testName": "Auto-uppercase conversion",
+      "status": "PASS",
+      "details": "Input value: ABCDE1234F, Expected: ABCDE1234F",
+      "screenshot": "uppercase-conversion-1761028339231.png"
+    },
+    {
+      "testName": "Empty field state",
+      "status": "PASS",
+      "details": "Error visible: false, Button disabled: true",
+      "screenshot": "empty-field-1761028339852.png"
+    },
+    {
+      "testName": "Allotment Checker Card Visible",
+      "status": "PASS",
+      "details": "Card visible: true"
+    },
+    {
+      "testName": "Input Field Attributes",
+      "status": "PASS",
+      "details": "Placeholder: ABCDE1234F, MaxLength: 10, Has uppercase class: true"
+    },
+    {
+      "testName": "Descriptive Label",
+      "status": "PASS",
+      "details": "Label text: Enter your PAN Number"
+    },
+    {
+      "testName": "Button Text Includes Registrar",
+      "status": "PASS",
+      "details": "Button text: Check Status on Link Intime"
+    },
+    {
+      "testName": "Security Notice Visible",
+      "status": "PASS",
+      "details": "Security notice visible: true",
+      "screenshot": "security-notice-1761028342647.png"
+    },
+    {
+      "testName": "Link to Registrars Page",
+      "status": "FAIL",
+      "details": "Registrars link visible: false"
+    },
+    {
+      "testName": "Label-Input Association",
+      "status": "FAIL",
+      "details": "Label for: investment-amount, Input id: pan"
+    },
+    {
+      "testName": "Input ARIA Label",
+      "status": "PASS",
+      "details": "ARIA label: PAN number input"
+    },
+    {
+      "testName": "Keyboard Navigation - Input Focus",
+      "status": "PASS",
+      "details": "Input focused via keyboard: true"
+    },
+    {
+      "testName": "Keyboard Navigation - Tab to Button",
+      "status": "PASS",
+      "details": "Button/Link focused via Tab: true"
+    },
+    {
+      "testName": "Responsive Layout - Desktop",
+      "status": "PASS",
+      "details": "Card: true, Input: true, Button: true",
+      "screenshot": "responsive-desktop-1761028349303.png"
+    },
+    {
+      "testName": "Responsive Layout - Tablet",
+      "status": "PASS",
+      "details": "Card: true, Input: true, Button: true",
+      "screenshot": "responsive-tablet-1761028352572.png"
+    },
+    {
+      "testName": "Responsive Layout - Mobile",
+      "status": "PASS",
+      "details": "Card: true, Input: true, Button: true",
+      "screenshot": "responsive-mobile-1761028356231.png"
+    },
+    {
+      "testName": "Form Submission - Redirect to Registrar",
+      "status": "PASS",
+      "details": "Redirected to: https://linkintime.co.in/MIPO/Ipoallotment.html?pan=ABCDE1234F, Has expected URL: true"
+    },
+    {
+      "testName": "Form Submission - PAN Parameter Passed",
+      "status": "PASS",
+      "details": "URL: https://linkintime.co.in/MIPO/Ipoallotment.html?pan=ABCDE1234F, PAN parameter present: true"
+    }
+  ]
+}
