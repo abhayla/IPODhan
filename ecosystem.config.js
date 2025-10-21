@@ -33,6 +33,9 @@ module.exports = {
       min_uptime: '10s',
       listen_timeout: 3000,
       kill_timeout: 5000,
+      // Log rotation handled by pm2-logrotate module
+      // Install: pm2 install pm2-logrotate
+      // Configure: See scripts/setup-log-rotation.ps1
     },
 
     // IPO Scraper Service
@@ -57,6 +60,9 @@ module.exports = {
       max_restarts: 5,
       min_uptime: '30s',
       kill_timeout: 10000,
+      // Log rotation handled by pm2-logrotate module
+      // Install: pm2 install pm2-logrotate
+      // Configure: See scripts/setup-log-rotation.ps1
     },
   ],
 };

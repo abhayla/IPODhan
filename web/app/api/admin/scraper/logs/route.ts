@@ -4,15 +4,22 @@
  * GET /api/admin/scraper/logs?source=NSE&status=FAILURE&page=1&limit=50
  * Returns paginated scraper execution logs with filters
  * Story 7.5: Error Handling & Monitoring
+ *
+ * SECURITY: Requires admin authentication
+ * Include header: Authorization: Bearer <ADMIN_API_TOKEN>
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { ScraperLogRepository } from '@/lib/repositories/scraper-log-repository';
+import { requireAdminAuth } from '@/lib/auth/admin-auth';
 import type { ScraperSource } from '@/lib/db/types';
 
 export async function GET(request: NextRequest) {
+  // Require admin authentication
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   try {
     const searchParams = request.nextUrl.searchParams;
 

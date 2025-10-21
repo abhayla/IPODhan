@@ -24,6 +24,8 @@ export const CacheTTL = {
   DOCUMENTS: 3600, // 1 hour
   LISTING_PERFORMANCE: 600, // 10 minutes
   BROKER_AFFILIATES: 1800, // 30 minutes (Story 5.7 requirement)
+  CALENDAR: 86400, // 24 hours - calendar data doesn't change frequently
+  REFERENCE: 604800, // 7 days - registrars, holidays, sectors (static data)
 } as const;
 
 /**
@@ -233,4 +235,25 @@ export function getHistoricalIPOsKey(filters: {
  */
 export function getHistoricalIPOInvalidationKeys(): string[] {
   return ['ipos:history:*'];
+}
+
+/**
+ * Generate cache key for calendar data by category
+ */
+export function getCalendarKey(category: string): string {
+  return `calendar:${category.toLowerCase()}:all`;
+}
+
+/**
+ * Generate cache key for reference data (registrars, market holidays, sectors)
+ */
+export function getReferenceKey(type: string): string {
+  return `reference:${type}`;
+}
+
+/**
+ * Get all cache key patterns for calendar invalidation
+ */
+export function getCalendarInvalidationKeys(): string[] {
+  return ['calendar:*'];
 }

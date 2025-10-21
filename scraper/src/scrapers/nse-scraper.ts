@@ -201,11 +201,18 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
             }
           }
 
-          // Parse price range
+          // Parse price range (Phase 5 Fix: Ensure price band data is captured)
           const priceRange = parsePriceRange(priceRangeStr);
 
           // Parse issue size (in crores)
           const issueSize = parseFloat(issueSizeStr.trim().replace(/[^0-9.]/g, '')) || 0;
+
+          // DEBUG: Log price range extraction (Phase 5 Fix)
+          if (priceRange.min > 0 && priceRange.max > 0) {
+            console.log(`[NSE Price Band] ${companyName}: ₹${priceRange.min}-₹${priceRange.max}`);
+          } else {
+            console.warn(`[NSE Price Band] ${companyName}: Missing price band (raw: "${priceRangeStr}")`);
+          }
 
           // Story 11.8: Detect segment and offering type
           const listingExchanges = ['NSE']; // NSE scraper always returns NSE listings
