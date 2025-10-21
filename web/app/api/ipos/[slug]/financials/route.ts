@@ -102,7 +102,7 @@ export async function GET(
     }
 
     // Fetch financial data
-    const financialData = await financialRepository.findByIPOId(ipo.id);
+    const financialData = await financialRepository.findByIPO(ipo.id);
 
     if (!financialData) {
       requestLogger.warn({ slug, ipoId: ipo.id }, 'Financial data not found');
