@@ -3,11 +3,19 @@
  *
  * Provides structured logging with daily rotation, JSON formatting,
  * and separate error logs for production monitoring.
+ *
+ * NOTE: This module is Node.js-only and should not be imported in Edge Runtime.
  */
 
 import winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import path from 'path';
+import fs from 'fs';
+
+// Ensure we're in Node.js runtime
+if (typeof process === 'undefined' || !process.cwd) {
+  throw new Error('Logger requires Node.js runtime');
+}
 
 // Log format with timestamp and JSON structure
 const logFormat = winston.format.combine(
@@ -28,6 +36,12 @@ const consoleFormat = winston.format.combine(
     return msg;
   })
 );
+
+// Create logs directory if it doesn't exist
+const logsDir = path.join(process.cwd(), 'logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
 
 // Create logger instance
 export const logger = winston.createLogger({
@@ -72,13 +86,6 @@ export const logger = winston.createLogger({
     }),
   ],
 });
-
-// Create logs directory if it doesn't exist
-import fs from 'fs';
-const logsDir = path.join(process.cwd(), 'logs');
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
-}
 
 /**
  * Log performance metrics

@@ -8,7 +8,6 @@
 import { NodeSDK } from '@opentelemetry/sdk-node';
 import { getNodeAutoInstrumentations } from '@opentelemetry/auto-instrumentations-node';
 import { PrometheusExporter } from '@opentelemetry/exporter-prometheus';
-import { PeriodicExportingMetricReader } from '@opentelemetry/sdk-metrics';
 import { logger } from '../logging/logger';
 
 // Configure Prometheus exporter for metrics
@@ -27,10 +26,7 @@ const prometheusExporter = new PrometheusExporter(
 
 // Configure OpenTelemetry SDK
 export const sdk = new NodeSDK({
-  metricReader: new PeriodicExportingMetricReader({
-    exporter: prometheusExporter,
-    exportIntervalMillis: 10000, // Export every 10 seconds
-  }),
+  metricReader: prometheusExporter, // PrometheusExporter is a MetricReader itself
   instrumentations: [
     getNodeAutoInstrumentations({
       // Disable file system instrumentation (too noisy)

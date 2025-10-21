@@ -12,6 +12,7 @@ import { sql } from 'drizzle-orm';
 import { logger } from '@/lib/logging/logger';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs'; // Required for logger (uses Node.js APIs)
 
 interface DetailedHealthResponse {
   status: 'healthy' | 'degraded' | 'unhealthy';

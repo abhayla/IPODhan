@@ -39,6 +39,7 @@
     "seed:broker-affiliates": "tsx scripts/seed-broker-affiliates.ts",
     "seed:broker-affiliates:force": "tsx scripts/seed-broker-affiliates.ts --force",
     "verify:seed": "tsx scripts/verify-seed.ts",
+    "validate:sentry": "tsx scripts/validate-sentry-setup.ts",
     "analyze": "ANALYZE=true npm run build",
     "perf:test": "lhci autorun",
     "perf:ci": "npm run build && lhci autorun"

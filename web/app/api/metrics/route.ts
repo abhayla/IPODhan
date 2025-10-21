@@ -13,6 +13,7 @@ import { logger } from '@/lib/logging/logger';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
+export const runtime = 'nodejs'; // Required for logger (uses Node.js APIs)
 
 /**
  * GET /api/metrics

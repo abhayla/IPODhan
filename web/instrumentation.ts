@@ -10,9 +10,10 @@
 export async function register() {
   // Only run in Node.js runtime (not Edge runtime)
   if (process.env.NEXT_RUNTIME === 'nodejs') {
-    // Import and start OpenTelemetry instrumentation
-    const { startInstrumentation } = await import('./lib/monitoring/instrumentation');
-    startInstrumentation();
+    // TEMPORARILY DISABLED: OpenTelemetry instrumentation causing build issues
+    // const { startInstrumentation } = await import('./lib/monitoring/instrumentation');
+    // startInstrumentation();
+    console.log('[Instrumentation] OpenTelemetry disabled for load testing');
   }
 }
 
@@ -20,10 +21,16 @@ export async function register() {
  * Optional: Called when the instrumentation is torn down
  */
 export async function onRequestError(error: Error) {
-  // Log unhandled errors
-  const { logger } = await import('./lib/logging/logger');
-  logger.error('Unhandled request error', {
-    message: error.message,
-    stack: error.stack,
-  });
+  // Only run in Node.js runtime (not Edge runtime)
+  if (process.env.NEXT_RUNTIME === 'nodejs') {
+    // Log unhandled errors
+    const { logger } = await import('./lib/logging/logger');
+    logger.error('Unhandled request error', {
+      message: error.message,
+      stack: error.stack,
+    });
+  } else {
+    // Fallback for Edge runtime
+    console.error('Unhandled request error:', error.message);
+  }
 }
