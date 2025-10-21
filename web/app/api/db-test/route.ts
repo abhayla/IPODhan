@@ -1,7 +1,21 @@
+/**
+ * Database Connection Test Endpoint (Admin Only)
+ *
+ * GET /api/db-test
+ * Tests database connectivity and returns PostgreSQL version
+ *
+ * SECURITY: Requires admin authentication
+ * Include header: Authorization: Bearer <ADMIN_API_TOKEN>
+ */
+
 import { NextResponse } from 'next/server';
 import { Pool } from 'pg';
+import { requireAdminAuth } from '@/lib/auth/admin-auth';
 
 export async function GET() {
+  // Require admin authentication
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
   });

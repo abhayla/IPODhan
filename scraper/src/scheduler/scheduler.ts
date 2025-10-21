@@ -6,6 +6,7 @@ import { JobLockManager } from './job-lock.js';
 import { runHealthCheck } from './jobs/health-check.js';
 import { runDailySummary } from './jobs/daily-summary.js';
 import { runLogCleanup } from './jobs/log-cleanup.js';
+import { runStatusUpdater } from './jobs/update-statuses.js';
 import { runNSEScraper } from '../scrapers/nse-scraper-orchestrator.js';
 import { runBSEScraper } from '../scrapers/bse-scraper-orchestrator.js';
 import { runMoneycontrolScraper } from '../scrapers/moneycontrol-orchestrator.js';
@@ -64,6 +65,7 @@ export class SchedulerService {
         moneycontrol: schedulerConfig.jobs.moneycontrol.enabled,
         chittorgarh: schedulerConfig.jobs.chittorgarh.enabled,
         listingPerformanceUpdate: schedulerConfig.jobs.listingPerformanceUpdate.enabled,
+        statusUpdater: schedulerConfig.jobs.statusUpdater.enabled,
         healthCheck: schedulerConfig.jobs.healthCheck.enabled,
         dailySummary: schedulerConfig.jobs.dailySummary.enabled,
         logCleanup: schedulerConfig.jobs.logCleanup.enabled
@@ -187,6 +189,17 @@ export class SchedulerService {
         () => updateListingPerformance(),
         LOCK_TTL.scraper,
         schedulerConfig.jobs.listingPerformanceUpdate.timezone
+      );
+    }
+
+    // Register Status Updater job (Phase 5 Fix - runs 24/7)
+    if (schedulerConfig.jobs.statusUpdater.enabled) {
+      this.registerJob(
+        'status-updater',
+        schedulerConfig.jobs.statusUpdater.schedule!,
+        () => runStatusUpdater(),
+        LOCK_TTL.statusUpdater,
+        schedulerConfig.jobs.statusUpdater.timezone
       );
     }
 

@@ -27,6 +27,7 @@ export interface SchedulerConfig {
     moneycontrol: JobSchedule;
     chittorgarh: JobSchedule;
     listingPerformanceUpdate: JobSchedule; // ISS-001 Fix: Current price updates
+    statusUpdater: JobSchedule;        // Phase 5 Fix: Auto-update IPO statuses based on dates
     healthCheck: JobSchedule;
     dailySummary: JobSchedule;
     logCleanup: JobSchedule;
@@ -69,6 +70,11 @@ const PROD_SCHEDULES = {
     marketHours: '*/30 9-17 * * 1-5',      // Every 30 min during market hours (ISS-001 Fix)
     afterHours: '0 */2 0-8,18-23 * * 1-5', // Every 2 hours after hours
     weekends: '0 */4 * * 0,6',             // Every 4 hours on weekends
+    timezone: 'Asia/Kolkata'
+  },
+  statusUpdater: {
+    enabled: true,
+    schedule: '0 * * * *',                 // Every hour, 24/7 (Phase 5 Fix)
     timezone: 'Asia/Kolkata'
   },
   healthCheck: {
@@ -124,6 +130,11 @@ const DEV_SCHEDULES = {
     weekends: '0 */6 * * 0,6',             // Every 6 hours on weekends (dev)
     timezone: 'Asia/Kolkata'
   },
+  statusUpdater: {
+    enabled: true,
+    schedule: '0 */2 * * *',               // Every 2 hours in dev mode (Phase 5 Fix)
+    timezone: 'Asia/Kolkata'
+  },
   healthCheck: {
     enabled: true,
     schedule: '*/10 * * * *',              // Every 10 minutes (slower for dev)
@@ -156,8 +167,9 @@ export const schedulerConfig: SchedulerConfig = {
  * Determines how long a job lock is held before automatic expiration
  */
 export const LOCK_TTL = {
-  scraper: 300,      // 5 minutes for NSE/BSE scrapers
-  healthCheck: 60,   // 1 minute for health check
-  dailySummary: 120, // 2 minutes for daily summary
-  logCleanup: 300    // 5 minutes for log cleanup
+  scraper: 300,        // 5 minutes for NSE/BSE scrapers
+  statusUpdater: 60,   // 1 minute for status updater (fast operation)
+  healthCheck: 60,     // 1 minute for health check
+  dailySummary: 120,   // 2 minutes for daily summary
+  logCleanup: 300      // 5 minutes for log cleanup
 } as const;

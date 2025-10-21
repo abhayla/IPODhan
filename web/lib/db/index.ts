@@ -43,23 +43,51 @@ function getPool(): Pool {
             database: process.env.DATABASE_NAME || 'ipodhan',
             user: process.env.DATABASE_USER || 'postgres',
             password: process.env.DATABASE_PASSWORD,
-            max: 20,
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 10000, // ✅ FIXED: Increased from 2s to 10s for VPS connection
-            ssl: false, // ✅ ADDED: Explicitly disable SSL (VPS doesn't require it)
+            // ==================== CONNECTION POOL OPTIMIZATION ====================
+            // Phase 5 Performance: Optimized for production workload
+            max: 20, // Maximum pool size - handles concurrent requests
+            min: 5, // Keep minimum connections ready (warm pool)
+            idleTimeoutMillis: 30000, // Close idle connections after 30s
+            connectionTimeoutMillis: 10000, // 10s timeout for new connections
+            // ==================== QUERY PERFORMANCE ====================
+            // Prevent slow queries from blocking the application
+            statement_timeout: 10000, // 10s max per query (prevents hanging)
+            query_timeout: 10000, // Alternative query timeout (fallback)
+            // ==================== CONNECTION HEALTH ====================
+            ssl: false, // Disabled for VPS (internal network)
+            allowExitOnIdle: false, // Keep pool alive
           }
         : {
             connectionString: process.env.DATABASE_URL,
             max: 20,
+            min: 5,
             idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 10000, // ✅ FIXED: Increased from 2s to 10s for VPS connection
-            ssl: false, // ✅ ADDED: Explicitly disable SSL
+            connectionTimeoutMillis: 10000,
+            statement_timeout: 10000,
+            query_timeout: 10000,
+            ssl: false,
+            allowExitOnIdle: false,
           }
     );
 
     // Handle pool errors
     poolInstance.on('error', (err) => {
       console.error('Unexpected error on idle PostgreSQL client', err);
+    });
+
+    // ==================== POOL MONITORING ====================
+    // Monitor pool health for performance optimization
+    poolInstance.on('connect', () => {
+      console.log('[DB Pool] New client connected');
+    });
+
+    poolInstance.on('acquire', () => {
+      // Uncomment for detailed monitoring:
+      // console.log('[DB Pool] Client acquired from pool');
+    });
+
+    poolInstance.on('remove', () => {
+      console.log('[DB Pool] Client removed from pool');
     });
   }
 

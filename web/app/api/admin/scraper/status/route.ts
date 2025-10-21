@@ -4,12 +4,16 @@
  * GET /api/admin/scraper/status
  * Returns current status and health of all scrapers
  * Story 7.5: Error Handling & Monitoring
+ *
+ * SECURITY: Requires admin authentication
+ * Include header: Authorization: Bearer <ADMIN_API_TOKEN>
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { ScraperLogRepository } from '@/lib/repositories/scraper-log-repository';
+import { requireAdminAuth } from '@/lib/auth/admin-auth';
 import type { ScraperSource } from '@/lib/db/types';
 import { adminRateLimiter } from '@/lib/middleware/rate-limiter';
 
@@ -100,6 +104,10 @@ async function getRecordsProcessed24h(
 }
 
 export async function GET(request: NextRequest) {
+  // Require admin authentication
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
+
   // Apply admin rate limiting
   const rateLimitResponse = await adminRateLimiter(request);
   if (rateLimitResponse) {
