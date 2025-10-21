@@ -17,7 +17,7 @@ interface DashboardContentProps {
   };
   initialView: string;
   initialStatus?: string;
-  initialCategory?: string;
+  initialSegment?: string;
   initialSearch?: string;
 }
 
