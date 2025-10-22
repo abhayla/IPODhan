@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useAdminAuth } from '@/lib/context/AdminAuthContext';
+import { adminGet } from '@/lib/admin/admin-api-client';
 
 interface BlockedNotification {
   ipoId: string;
@@ -24,7 +24,6 @@ interface NotificationData {
 }
 
 export default function AdminNotificationsPage() {
-  const { token } = useAdminAuth();
   const [data, setData] = useState<NotificationData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [limit, setLimit] = useState(50);
@@ -34,20 +33,10 @@ export default function AdminNotificationsPage() {
   }, [limit]);
 
   const fetchNotifications = async () => {
-    if (!token) return;
-
     try {
       setIsLoading(true);
-      const response = await fetch(`/api/admin/protection/notifications?limit=${limit}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        setData(result.data);
-      }
+      const result = await adminGet(`/api/admin/protection/notifications?limit=${limit}`);
+      setData(result.data);
     } catch (error) {
       console.error('Failed to fetch notifications:', error);
     } finally {

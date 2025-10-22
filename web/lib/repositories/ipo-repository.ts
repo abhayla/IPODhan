@@ -655,6 +655,129 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Count IPOs with optional filters
+   * Used for getting total count without fetching all data
+   *
+   * @param filters - Optional filters (same as findAll)
+   * @returns Total count of IPOs matching the filters
+   */
+  async count(filters: Partial<IPOFilters> = {}): Promise<number> {
+    try {
+      const {
+        status,
+        segment,
+        offeringType,
+        sector,
+        search,
+        scoreRange,
+        minIssueSize,
+        maxIssueSize,
+        openDateFrom,
+        openDateTo,
+        closeDateFrom,
+        closeDateTo,
+        listingDateFrom,
+        listingDateTo,
+      } = filters;
+
+      // Build where conditions (same logic as findAll)
+      const conditions = [];
+
+      if (status) {
+        if (Array.isArray(status)) {
+          conditions.push(inArray(ipos.status, status as (typeof ipoStatusEnum.enumValues)[number][]));
+        } else {
+          conditions.push(eq(ipos.status, status as (typeof ipoStatusEnum.enumValues)[number]));
+        }
+      }
+
+      if (segment) {
+        if (Array.isArray(segment)) {
+          conditions.push(inArray(ipos.segment, segment as (typeof segmentEnum.enumValues)[number][]));
+        } else {
+          conditions.push(eq(ipos.segment, segment as (typeof segmentEnum.enumValues)[number]));
+        }
+      }
+
+      if (offeringType) {
+        if (Array.isArray(offeringType)) {
+          conditions.push(inArray(ipos.offeringType, offeringType as (typeof offeringTypeEnum.enumValues)[number][]));
+        } else {
+          conditions.push(eq(ipos.offeringType, offeringType as (typeof offeringTypeEnum.enumValues)[number]));
+        }
+      }
+
+      if (sector) {
+        conditions.push(eq(ipos.sector, sector));
+      }
+
+      if (search) {
+        conditions.push(
+          sql`(${ipos.companyName} ILIKE ${`%${search}%`} OR ${ipos.sector} ILIKE ${`%${search}%`})`
+        );
+      }
+
+      if (minIssueSize) {
+        conditions.push(gte(ipos.issueSize, minIssueSize.toString()));
+      }
+
+      if (maxIssueSize) {
+        conditions.push(lte(ipos.issueSize, maxIssueSize.toString()));
+      }
+
+      if (openDateFrom) {
+        conditions.push(gte(ipos.openDate, openDateFrom.toISOString()));
+      }
+
+      if (openDateTo) {
+        conditions.push(lte(ipos.openDate, openDateTo.toISOString()));
+      }
+
+      if (closeDateFrom) {
+        conditions.push(gte(ipos.closeDate, closeDateFrom.toISOString()));
+      }
+
+      if (closeDateTo) {
+        conditions.push(lte(ipos.closeDate, closeDateTo.toISOString()));
+      }
+
+      if (listingDateFrom) {
+        conditions.push(gte(ipos.listingDate, listingDateFrom.toISOString()));
+      }
+
+      if (listingDateTo) {
+        conditions.push(lte(ipos.listingDate, listingDateTo.toISOString()));
+      }
+
+      // Score range filter
+      if (scoreRange && scoreRange !== 'all') {
+        const [minScore, maxScore] = scoreRange.split('-').map(Number);
+        conditions.push(
+          sql`EXISTS (
+            SELECT 1 FROM ipo_scores
+            WHERE ipo_scores.ipo_id = ${ipos.id}
+            AND ipo_scores.total_score >= ${minScore}
+            AND ipo_scores.total_score <= ${maxScore}
+          )`
+        );
+      }
+
+      const whereClause =
+        conditions.length > 0 ? and(...conditions) : undefined;
+
+      // Get total count
+      const [{ count }] = await this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(ipos)
+        .where(whereClause);
+
+      return count;
+    } catch (error) {
+      throw new DatabaseError('Failed to count IPOs', undefined, error);
+    }
+  }
+
+  /**
    * Find historical IPOs with filtering, sorting, and computed fields
    * Used for /api/ipos/history endpoint (Story 6.1)
    *

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { adminGet, adminFetch } from '@/lib/admin/admin-api-client';
 
 interface AuditLog {
   id: string;
@@ -72,12 +73,7 @@ export default function AuditLogPage() {
       if (filters.adminUser) params.append('adminUser', filters.adminUser);
       if (filters.actionType) params.append('actionType', filters.actionType);
 
-      const response = await fetch(`/api/admin/audit?${params.toString()}`);
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch audit logs');
-      }
+      const data = await adminGet(`/api/admin/audit?${params.toString()}`);
 
       setLogs(data.data);
       setPagination(data.pagination);
@@ -127,7 +123,7 @@ export default function AuditLogPage() {
       if (filters.adminUser) params.append('adminUser', filters.adminUser);
       if (filters.actionType) params.append('actionType', filters.actionType);
 
-      const response = await fetch(`/api/admin/audit/export?${params.toString()}`);
+      const response = await adminFetch(`/api/admin/audit/export?${params.toString()}`);
 
       if (!response.ok) {
         throw new Error('Failed to export audit logs');

@@ -73,6 +73,103 @@ function createErrorResponse(
 }
 
 /**
+ * GET /api/admin/ipos - List all IPOs (admin view)
+ */
+export async function GET(request: NextRequest) {
+  // MUST check admin auth first
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
+
+  const requestId = generateRequestId();
+  const startTime = Date.now();
+
+  const requestLogger = logger.child({ requestId });
+
+  try {
+    requestLogger.info('Processing admin IPO list request');
+
+    // Get query parameters
+    const searchParams = request.nextUrl.searchParams;
+    const search = searchParams.get('search') || '';
+    const status = searchParams.get('status') || '';
+    const segment = searchParams.get('segment') || '';
+    const limit = parseInt(searchParams.get('limit') || '100');
+    const offset = parseInt(searchParams.get('offset') || '0');
+
+    // Initialize Redis client with fallback
+    let redis;
+    try {
+      redis = getRedisClient();
+    } catch {
+      requestLogger.warn('Redis unavailable - continuing without cache');
+      redis = {
+        get: async () => null,
+        set: async () => 'OK',
+        del: async () => 1,
+        flushdb: async () => 'OK',
+      } as any;
+    }
+
+    const ipoRepository = new IPORepository(db, redis);
+
+    // Build query filters (convert offset to page for repository)
+    const page = Math.floor(offset / limit) + 1;
+    const filters: any = { page, limit };
+    if (status) filters.status = status;
+    if (segment) filters.segment = segment;
+    if (search) filters.search = search;
+
+    // Get IPOs with pagination using findAll (returns PaginatedResponse)
+    const response = await ipoRepository.findAll(filters);
+
+    const duration = Date.now() - startTime;
+    requestLogger.info(
+      {
+        duration,
+        resultCount: response.data.length,
+        total: response.meta.total,
+        filters,
+      },
+      'Admin IPO list fetched successfully'
+    );
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: response.data,
+        meta: {
+          total: response.meta.total,
+          limit,
+          offset,
+          hasMore: offset + response.data.length < response.meta.total,
+        },
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    requestLogger.error(
+      {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        duration,
+      },
+      'Failed to fetch admin IPO list'
+    );
+
+    return createErrorResponse(
+      'INTERNAL_ERROR',
+      'Failed to fetch IPO list',
+      requestId,
+      500,
+      process.env.NODE_ENV === 'development'
+        ? { error: error instanceof Error ? error.message : String(error) }
+        : undefined
+    );
+  }
+}
+
+/**
  * POST /api/admin/ipos - Create new IPO
  */
 export async function POST(request: NextRequest) {

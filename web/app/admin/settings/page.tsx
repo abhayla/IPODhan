@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { adminGet, adminPost, adminFetch } from '@/lib/admin/admin-api-client';
 
 interface CacheStats {
   totalKeys: number;
@@ -73,8 +74,7 @@ export default function AdminSettingsPage() {
   const fetchCacheStats = async () => {
     try {
       setIsLoadingStats(true);
-      const response = await fetch('/api/admin/cache/clear');
-      const data = await response.json();
+      const data = await adminGet('/api/admin/cache/clear');
 
       if (data.success) {
         setCacheStats(data.data);
@@ -83,7 +83,7 @@ export default function AdminSettingsPage() {
       }
     } catch (error) {
       console.error('Failed to fetch cache stats:', error);
-      showNotification('error', 'Failed to load cache statistics');
+      showNotification('error', error instanceof Error ? error.message : 'Failed to load cache statistics');
     } finally {
       setIsLoadingStats(false);
     }
@@ -115,16 +115,10 @@ export default function AdminSettingsPage() {
   const handleClearCache = async () => {
     try {
       setIsClearing(true);
-      const response = await fetch('/api/admin/cache/clear', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          pattern: confirmDialog.pattern,
-          clearAll: confirmDialog.clearAll,
-        }),
+      const data = await adminPost('/api/admin/cache/clear', {
+        pattern: confirmDialog.pattern,
+        clearAll: confirmDialog.clearAll,
       });
-
-      const data = await response.json();
 
       if (data.success) {
         showNotification('success', data.message);
@@ -134,7 +128,7 @@ export default function AdminSettingsPage() {
       }
     } catch (error) {
       console.error('Failed to clear cache:', error);
-      showNotification('error', 'Failed to clear cache');
+      showNotification('error', error instanceof Error ? error.message : 'Failed to clear cache');
     } finally {
       setIsClearing(false);
       closeConfirmDialog();
@@ -145,8 +139,7 @@ export default function AdminSettingsPage() {
   const fetchNotificationSettings = async () => {
     try {
       setIsLoadingNotifications(true);
-      const response = await fetch('/api/admin/settings/notifications');
-      const data = await response.json();
+      const data = await adminGet('/api/admin/settings/notifications');
 
       if (data.success) {
         setNotificationConfig(data.data);
@@ -155,7 +148,7 @@ export default function AdminSettingsPage() {
       }
     } catch (error) {
       console.error('Failed to fetch notification settings:', error);
-      showNotification('error', 'Failed to load notification settings');
+      showNotification('error', error instanceof Error ? error.message : 'Failed to load notification settings');
     } finally {
       setIsLoadingNotifications(false);
     }
@@ -167,13 +160,7 @@ export default function AdminSettingsPage() {
 
     try {
       setIsSavingNotifications(true);
-      const response = await fetch('/api/admin/settings/notifications', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(notificationConfig),
-      });
-
-      const data = await response.json();
+      const data = await adminPost('/api/admin/settings/notifications', notificationConfig);
 
       if (data.success) {
         showNotification('success', 'Notification settings saved successfully');
@@ -182,7 +169,7 @@ export default function AdminSettingsPage() {
       }
     } catch (error) {
       console.error('Failed to save notification settings:', error);
-      showNotification('error', 'Failed to save notification settings');
+      showNotification('error', error instanceof Error ? error.message : 'Failed to save notification settings');
     } finally {
       setIsSavingNotifications(false);
     }
@@ -197,13 +184,7 @@ export default function AdminSettingsPage() {
 
     try {
       setIsTesting(type);
-      const response = await fetch('/api/admin/notifications/test', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type, email: testEmail }),
-      });
-
-      const data = await response.json();
+      const data = await adminPost('/api/admin/notifications/test', { type, email: testEmail });
 
       if (data.success) {
         showNotification('success', `Test ${type} notification sent successfully`);
@@ -212,7 +193,7 @@ export default function AdminSettingsPage() {
       }
     } catch (error) {
       console.error('Failed to send test notification:', error);
-      showNotification('error', 'Failed to send test notification');
+      showNotification('error', error instanceof Error ? error.message : 'Failed to send test notification');
     } finally {
       setIsTesting(null);
     }
