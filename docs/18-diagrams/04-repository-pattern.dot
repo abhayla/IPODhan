@@ -1,0 +1,118 @@
+digraph Repository_Pattern {
+  rankdir=TB;
+  node [shape=box, style="rounded,filled", fontname="Arial"];
+  graph [fontname="Arial", fontsize=12, label="Repository Pattern with Cache-Aside\nweb/lib/repositories/", labelloc=t, fontsize=14];
+
+  // Base Repository
+  subgraph cluster_base {
+    label="BaseRepository (Abstract)";
+    style="filled,rounded";
+    fillcolor="#E3F2FD";
+
+    base_class [label="BaseRepository\n<abstract class>", fillcolor="#90CAF9", shape=component];
+
+    subgraph cluster_base_methods {
+      label="Protected Methods";
+      style="filled,rounded";
+      fillcolor="#BBDEFB";
+
+      base_cache_get [label="getFromCache<T>(\n  cacheKey,\n  dbQuery,\n  ttl\n)\nCache-first retrieval", fillcolor="#64B5F6"];
+
+      base_cache_set [label="setCache<T>(\n  cacheKey,\n  data,\n  ttl\n)\nCache population", fillcolor="#64B5F6"];
+
+      base_cache_del [label="deleteCache(\n  key | keys[]\n)\nCache invalidation", fillcolor="#64B5F6"];
+
+      base_cache_pattern [label="deleteCachePattern(\n  pattern\n)\nPattern-based delete", fillcolor="#64B5F6"];
+
+      base_query [label="executeQuery<T>(\n  queryName,\n  query,\n  context\n)\nQuery logging", fillcolor="#64B5F6"];
+    }
+
+    base_class -> base_cache_get [style=dashed];
+    base_class -> base_cache_set [style=dashed];
+    base_class -> base_cache_del [style=dashed];
+    base_class -> base_cache_pattern [style=dashed];
+    base_class -> base_query [style=dashed];
+  }
+
+  // Concrete Repositories
+  subgraph cluster_concrete {
+    label="Concrete Repositories";
+    style="filled,rounded";
+    fillcolor="#E8F5E9";
+
+    ipo_repo [label="IPORepository\n<extends BaseRepository>", fillcolor="#81C784", shape=component];
+    sub_repo [label="SubscriptionRepository\n<extends BaseRepository>", fillcolor="#81C784", shape=component];
+    gmp_repo [label="GMPRepository\n<extends BaseRepository>", fillcolor="#81C784", shape=component];
+    fin_repo [label="FinancialRepository\n<extends BaseRepository>", fillcolor="#81C784", shape=component];
+
+    subgraph cluster_ipo_methods {
+      label="IPORepository Methods";
+      style="filled,rounded";
+      fillcolor="#C8E6C9";
+
+      ipo_find_slug [label="findBySlug(slug)\nCache: 15min", fillcolor="#66BB6A"];
+      ipo_find_all [label="findAll(filters)\nCache: 5min", fillcolor="#66BB6A"];
+      ipo_find_open [label="findOpen()\nCache: 3min", fillcolor="#66BB6A"];
+      ipo_update [label="update(id, data)\nInvalidates cache", fillcolor="#66BB6A"];
+    }
+
+    ipo_repo -> ipo_find_slug [style=dashed];
+    ipo_repo -> ipo_find_all [style=dashed];
+    ipo_repo -> ipo_find_open [style=dashed];
+    ipo_repo -> ipo_update [style=dashed];
+  }
+
+  // Inheritance
+  base_class -> ipo_repo [label="extends", color="#1976D2", penwidth=2, arrowhead=onormal];
+  base_class -> sub_repo [label="extends", color="#1976D2", penwidth=2, arrowhead=onormal];
+  base_class -> gmp_repo [label="extends", color="#1976D2", penwidth=2, arrowhead=onormal];
+  base_class -> fin_repo [label="extends", color="#1976D2", penwidth=2, arrowhead=onormal];
+
+  // External dependencies
+  db [label="PostgreSQL\nDrizzle ORM\nNodePgDatabase", shape=cylinder, fillcolor="#F48FB1"];
+  redis [label="Redis\nioredis Client\nCache Layer", shape=cylinder, fillcolor="#CE93D8"];
+
+  base_class -> db [label="protected db", color="#E91E63", penwidth=2];
+  base_class -> redis [label="protected redis", color="#9C27B0", penwidth=2];
+
+  // Cache-aside pattern flow
+  subgraph cluster_pattern {
+    label="Cache-Aside Pattern Flow";
+    style="filled,rounded";
+    fillcolor="#FFF9C4";
+    rank=same;
+
+    step1 [label="1. Check Cache\ngetFromCache()", fillcolor="#FFF59D"];
+    step2a [label="2a. Cache HIT\nReturn cached data", fillcolor="#AED581"];
+    step2b [label="2b. Cache MISS\nExecute DB query", fillcolor="#FFB74D"];
+    step3 [label="3. Set Cache\nsetCache(key, data, ttl)", fillcolor="#FFF59D"];
+    step4 [label="4. Return Data", fillcolor="#AED581"];
+
+    step1 -> step2a [label="HIT", color="#388E3C", penwidth=2];
+    step1 -> step2b [label="MISS", color="#F57C00", penwidth=2];
+    step2b -> step3 [color="#1976D2"];
+    step3 -> step4 [color="#1976D2"];
+    step2a -> step4 [style=dashed, color="#388E3C"];
+  }
+
+  // Cache invalidation flow
+  subgraph cluster_invalidation {
+    label="Cache Invalidation (on mutations)";
+    style="filled,rounded";
+    fillcolor="#FFEBEE";
+    rank=same;
+
+    inv_step1 [label="1. Mutation\nINSERT/UPDATE/DELETE", fillcolor="#EF9A9A"];
+    inv_step2 [label="2. Delete Cache\ndeleteCache(key)", fillcolor="#EF9A9A"];
+    inv_step3 [label="3. Pattern Delete\ndeleteCachePattern('ipo:*')", fillcolor="#EF9A9A"];
+
+    inv_step1 -> inv_step2 [color="#D32F2F", penwidth=2];
+    inv_step2 -> inv_step3 [color="#D32F2F", style=dashed];
+  }
+
+  // Performance targets
+  perf [label="Performance Targets\n━━━━━━━━━━━━━━━━━\nCache Hit Ratio: > 80%\nCache Hit Time: < 50ms\nDB Query Time: < 100ms\nTotal p95: < 500ms", shape=note, fillcolor="#E0F2F1"];
+
+  // Type safety
+  types [label="Type Safety\n━━━━━━━━━━━\nNodePgDatabase<typeof schema>\nschema from @ipodhan/shared", shape=note, fillcolor="#F3E5F5"];
+}

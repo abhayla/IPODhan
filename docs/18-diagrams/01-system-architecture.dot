@@ -1,0 +1,91 @@
+digraph IPODhan_System_Architecture {
+  rankdir=TB;
+  node [shape=box, style="rounded,filled", fontname="Arial"];
+  graph [fontname="Arial", fontsize=12, label="IPODhan System Architecture\nMonorepo with TypeScript Project References", labelloc=t, fontsize=14];
+
+  // Color scheme
+  node [fillcolor="#E8F4F8"];
+
+  // Monorepo root
+  subgraph cluster_monorepo {
+    label="IPODhan Monorepo";
+    style=dashed;
+
+    // Shared package
+    subgraph cluster_shared {
+      label="packages/shared";
+      fillcolor="#D4E8F0";
+      style="filled,rounded";
+
+      shared_schema [label="db/schema.ts\n(Single Source of Truth)\n13 Tables", fillcolor="#90CAF9"];
+      shared_utils [label="utils/\nSlug Generation\nValidation", fillcolor="#90CAF9"];
+
+      shared_schema -> shared_utils [style=dashed, label="uses"];
+    }
+
+    // Web application
+    subgraph cluster_web {
+      label="web/ (Next.js 15.5.4)";
+      fillcolor="#C8E6C9";
+      style="filled,rounded";
+
+      web_app [label="app/\nApp Router\nPages & API Routes", fillcolor="#81C784"];
+      web_components [label="components/\nReact 19", fillcolor="#81C784"];
+      web_lib [label="lib/\nRepositories\nServices\nCache Utils", fillcolor="#81C784"];
+
+      web_app -> web_components [label="renders"];
+      web_app -> web_lib [label="uses"];
+    }
+
+    // Scraper service
+    subgraph cluster_scraper {
+      label="scraper/ (Separate Process)";
+      fillcolor="#FFE0B2";
+      style="filled,rounded";
+
+      scraper_sources [label="scrapers/\nNSE\nBSE\nMoneycontrol\nChittorgarh", fillcolor="#FFB74D"];
+      scraper_scheduler [label="scheduler/\nCron Jobs", fillcolor="#FFB74D"];
+
+      scraper_scheduler -> scraper_sources [label="triggers"];
+    }
+
+    shared_schema -> web_lib [label="imports", color="#1976D2", penwidth=2];
+    shared_schema -> scraper_sources [label="imports", color="#1976D2", penwidth=2];
+    shared_utils -> web_lib [label="imports", color="#1976D2"];
+    shared_utils -> scraper_sources [label="imports", color="#1976D2"];
+  }
+
+  // External systems
+  subgraph cluster_external {
+    label="External Systems";
+    style=dashed;
+
+    postgres [label="PostgreSQL 16\n13 Tables\nDrizzle ORM", shape=cylinder, fillcolor="#F48FB1"];
+    redis [label="Redis 7.2+\nioredis Client\nCache Layer", shape=cylinder, fillcolor="#CE93D8"];
+
+    nse [label="NSE API\n(Hidden Endpoints)", shape=ellipse, fillcolor="#FFF59D"];
+    bse [label="BSE Website", shape=ellipse, fillcolor="#FFF59D"];
+    mc [label="Moneycontrol", shape=ellipse, fillcolor="#FFF59D"];
+    chit [label="Chittorgarh", shape=ellipse, fillcolor="#FFF59D"];
+  }
+
+  // Data flow connections
+  nse -> scraper_sources [label="scrapes", color="#FF6F00", penwidth=2];
+  bse -> scraper_sources [label="scrapes", color="#FF6F00", penwidth=2];
+  mc -> scraper_sources [label="scrapes", color="#FF6F00", penwidth=2];
+  chit -> scraper_sources [label="scrapes", color="#FF6F00", penwidth=2];
+
+  scraper_sources -> postgres [label="writes\n(via Drizzle)", color="#388E3C", penwidth=2];
+
+  web_lib -> postgres [label="reads/writes\n(via Drizzle)", color="#1976D2", penwidth=2];
+  web_lib -> redis [label="cache-aside\npattern", color="#7B1FA2", penwidth=2];
+
+  // Client
+  client [label="Browser Client\n(Next.js SSR/CSR)", shape=ellipse, fillcolor="#B39DDB"];
+  client -> web_app [label="HTTP/HTTPS", color="#0097A7", penwidth=2];
+
+  // Deployment
+  deployment [label="Windows Server 2022 VPS\nPM2 Process Manager", shape=note, fillcolor="#FFCCBC"];
+  deployment -> web_app [style=dashed, label="hosts"];
+  deployment -> scraper_scheduler [style=dashed, label="hosts"];
+}

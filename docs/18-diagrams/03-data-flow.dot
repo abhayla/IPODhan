@@ -1,0 +1,134 @@
+digraph IPODhan_Data_Flow {
+  rankdir=LR;
+  node [shape=box, style="rounded,filled", fontname="Arial"];
+  graph [fontname="Arial", fontsize=12, label="IPODhan Data Flow\nScraper → Database → Cache → API → Frontend", labelloc=t, fontsize=14];
+
+  // Data sources
+  subgraph cluster_sources {
+    label="External Data Sources";
+    style="filled,rounded";
+    fillcolor="#FFF9C4";
+
+    nse [label="NSE API\nHidden Endpoints\n95%+ Success", fillcolor="#FFEB3B"];
+    bse [label="BSE Website\nFallback Source", fillcolor="#FFEB3B"];
+    mc [label="Moneycontrol\nFinancial Data", fillcolor="#FFEB3B"];
+    chit [label="Chittorgarh\nHistorical GMP", fillcolor="#FFEB3B"];
+  }
+
+  // Scraper layer
+  subgraph cluster_scraper {
+    label="Scraper Service (Separate Process)";
+    style="filled,rounded";
+    fillcolor="#FFE0B2";
+
+    scraper_nse [label="NSE Scraper\nIPO List, Subscriptions", fillcolor="#FFB74D"];
+    scraper_bse [label="BSE Scraper\nIPO Details", fillcolor="#FFB74D"];
+    scraper_mc [label="Moneycontrol Scraper\nFinancials, Documents", fillcolor="#FFB74D"];
+    scraper_chit [label="Chittorgarh Scraper\nGMP Historical Data", fillcolor="#FFB74D"];
+
+    validator [label="Data Validator\nSchema Validation\nLot Size Check", fillcolor="#FF9800"];
+    transformer [label="Data Transformer\nSlug Generation\nNormalization", fillcolor="#FF9800"];
+  }
+
+  // Database
+  db [label="PostgreSQL 16\nDrizzle ORM\n13 Tables", shape=cylinder, fillcolor="#90CAF9"];
+
+  // Web application layer
+  subgraph cluster_web {
+    label="Web Application (Next.js)";
+    style="filled,rounded";
+    fillcolor="#C8E6C9";
+
+    subgraph cluster_repo {
+      label="Repository Layer";
+      style="filled,rounded";
+      fillcolor="#A5D6A7";
+
+      repo_ipo [label="IPORepository\nfindAll()\nfindBySlug()", fillcolor="#81C784"];
+      repo_sub [label="SubscriptionRepository\ngetLatest()", fillcolor="#81C784"];
+      repo_gmp [label="GMPRepository\ngetLatest()", fillcolor="#81C784"];
+    }
+
+    cache [label="Redis 7.2+\nCache-Aside Pattern\nTTL: 3min - 24hr", shape=cylinder, fillcolor="#CE93D8"];
+
+    subgraph cluster_service {
+      label="Service Layer";
+      style="filled,rounded";
+      fillcolor="#A5D6A7";
+
+      service_landing [label="Landing Page Service\nOrchestrates Repos", fillcolor="#66BB6A"];
+      service_detail [label="IPO Detail Service\nAggregates Data", fillcolor="#66BB6A"];
+      service_scoring [label="Scoring Service\nReal-time Calculation", fillcolor="#66BB6A"];
+    }
+
+    subgraph cluster_api {
+      label="API Routes";
+      style="filled,rounded";
+      fillcolor="#A5D6A7";
+
+      api_ipos [label="GET /api/ipos\nPaginated List", fillcolor="#4CAF50"];
+      api_detail [label="GET /api/ipos/[slug]\nFuzzy Fallback", fillcolor="#4CAF50"];
+      api_sub [label="GET /api/subscriptions\nTime-series Data", fillcolor="#4CAF50"];
+    }
+  }
+
+  // Frontend
+  frontend [label="Frontend\nServer Components\nClient Components\nCore Web Vitals < 2.5s", shape=ellipse, fillcolor="#B39DDB"];
+
+  // Browser
+  browser [label="User Browser", shape=doubleoctagon, fillcolor="#E1BEE7"];
+
+  // Data flow connections
+  nse -> scraper_nse [label="HTTP\nscrapes", color="#FF6F00", penwidth=2];
+  bse -> scraper_bse [label="HTTP\nscrapes", color="#FF6F00", penwidth=2];
+  mc -> scraper_mc [label="HTTP\nscrapes", color="#FF6F00", penwidth=2];
+  chit -> scraper_chit [label="HTTP\nscrapes", color="#FF6F00", penwidth=2];
+
+  scraper_nse -> validator [color="#F57C00", penwidth=2];
+  scraper_bse -> validator [color="#F57C00", penwidth=2];
+  scraper_mc -> validator [color="#F57C00", penwidth=2];
+  scraper_chit -> validator [color="#F57C00", penwidth=2];
+
+  validator -> transformer [label="validated", color="#F57C00", penwidth=2];
+  transformer -> db [label="INSERT/UPDATE\nvia Drizzle", color="#388E3C", penwidth=3];
+
+  // Repository cache-aside pattern
+  repo_ipo -> cache [label="1. Check cache", color="#7B1FA2", style=dashed];
+  cache -> repo_ipo [label="2a. Cache HIT\nreturn data", color="#7B1FA2", style=dashed];
+  repo_ipo -> db [label="2b. Cache MISS\nquery DB", color="#1976D2", penwidth=2];
+  db -> repo_ipo [label="3. Return data", color="#1976D2", penwidth=2];
+  repo_ipo -> cache [label="4. Set cache\nTTL: 15min", color="#7B1FA2", style=dashed];
+
+  repo_sub -> cache [label="cache-aside", color="#7B1FA2", style=dashed];
+  repo_sub -> db [color="#1976D2"];
+
+  repo_gmp -> cache [label="cache-aside", color="#7B1FA2", style=dashed];
+  repo_gmp -> db [color="#1976D2"];
+
+  // Service orchestration
+  service_landing -> repo_ipo [label="uses"];
+  service_landing -> repo_sub [label="uses"];
+  service_landing -> repo_gmp [label="uses"];
+
+  service_detail -> repo_ipo [label="uses"];
+  service_detail -> repo_sub [label="uses"];
+  service_detail -> repo_gmp [label="uses"];
+
+  service_scoring -> repo_ipo [label="uses"];
+
+  // API to Service
+  api_ipos -> service_landing [label="calls"];
+  api_detail -> service_detail [label="calls"];
+  api_sub -> repo_sub [label="calls"];
+
+  // Frontend to API
+  frontend -> api_ipos [label="fetch()", color="#0097A7", penwidth=2];
+  frontend -> api_detail [label="fetch()", color="#0097A7", penwidth=2];
+  frontend -> api_sub [label="fetch()", color="#0097A7", penwidth=2];
+
+  // Browser to Frontend
+  browser -> frontend [label="HTTP/HTTPS\nSSR/CSR", color="#5E35B1", penwidth=2];
+
+  // Cache invalidation (reverse flow)
+  transformer -> cache [label="INVALIDATE\non mutation", color="#D32F2F", style=dashed, dir=back];
+}
