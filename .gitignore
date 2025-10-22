@@ -77,6 +77,9 @@ list-ipos.js
 test-scrapers.bat
 test-*.mjs
 test-*.js
+test-*.bat
+test-*.json
+test-*.txt
 update-*.sh
 scraper/test-*.js
 scraper/test-*.ts
@@ -121,6 +124,9 @@ web/query-3i.js
 web/apply-migration-*.js
 web/fix-*.sh
 web/web/
+web/temp-*.sql
+web/temp-*.txt
+web/*-output.txt
 
 # TypeScript build info files
 *.tsbuildinfo

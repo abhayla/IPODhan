@@ -1,0 +1,68 @@
+digraph IPODhan_Database_Schema {
+  rankdir=TB;
+  node [shape=record, fontname="Arial"];
+  graph [fontname="Arial", fontsize=12, label="IPODhan Database Schema\n13 Tables - packages/shared/src/db/schema.ts", labelloc=t, fontsize=14];
+
+  // Core IPO entity
+  ipos [label="{<f0> ipos|<f1> id (PK)\lcompanyName\lslug (UNIQUE)\lsegment (nullable)\lcategory\lstatus\l...\lhistorical performance fields\l}", fillcolor="#90CAF9", style=filled];
+
+  // Time-series data
+  subscriptions [label="{<f0> subscriptions|<f1> id (PK)\lipoId (FK)\ltimestamp\loverallSubscription\lqibSubscription\l...\l}", fillcolor="#A5D6A7", style=filled];
+
+  gmpRecords [label="{<f0> gmpRecords|<f1> id (PK)\lipoId (FK)\ldate\lgmpValue\lgmpPremium\lestListing\l}", fillcolor="#A5D6A7", style=filled];
+
+  // One-to-one relationships
+  financialData [label="{<f0> financialData|<f1> id (PK)\lipoId (FK) UNIQUE\lrevenue\lprofit\lroe\lpe\l...\l}", fillcolor="#FFE082", style=filled];
+
+  listingPerformance [label="{<f0> listingPerformance|<f1> id (PK)\lipoId (FK) UNIQUE\llistingDate\llistingPrice\lgainPercent\l...\l}", fillcolor="#FFE082", style=filled];
+
+  // One-to-many relationships
+  documents [label="{<f0> documents|<f1> id (PK)\lipoId (FK)\ltitle\ldocumentType\lurl\l}", fillcolor="#CE93D8", style=filled];
+
+  ipoReviews [label="{<f0> ipoReviews|<f1> id (PK)\lipoId (FK)\lanalyst\lrating\lrecommendation\l...\l}", fillcolor="#CE93D8", style=filled];
+
+  peerCompanies [label="{<f0> peerCompanies|<f1> id (PK)\lipoId (FK)\lpeerName\lpe\lmarketCap\l...\l}", fillcolor="#CE93D8", style=filled];
+
+  // Reference data
+  registrars [label="{<f0> registrars|<f1> id (PK)\lname\lcontactInfo\lwebsite\l}", fillcolor="#F48FB1", style=filled];
+
+  marketHolidays [label="{<f0> marketHolidays|<f1> id (PK)\ldate\ldescription\lmarket\l}", fillcolor="#F48FB1", style=filled];
+
+  // Affiliate tracking
+  brokerAffiliates [label="{<f0> brokerAffiliates|<f1> id (PK)\lbrokerName\laffiliateLink\lcommission\l}", fillcolor="#BCAAA4", style=filled];
+
+  affiliateClicks [label="{<f0> affiliateClicks|<f1> id (PK)\laffiliateId (FK)\lclickedAt\luserAgent\l...\l}", fillcolor="#BCAAA4", style=filled];
+
+  // Monitoring
+  scraperLogs [label="{<f0> scraperLogs|<f1> id (PK)\lsource\lstatus\lerrorMessage\ltimestamp\l}", fillcolor="#B0BEC5", style=filled];
+
+  // Relationships
+  ipos:f1 -> subscriptions:f1 [label="1:N", color="#388E3C", penwidth=2];
+  ipos:f1 -> gmpRecords:f1 [label="1:N", color="#388E3C", penwidth=2];
+  ipos:f1 -> financialData:f1 [label="1:1", color="#1976D2", penwidth=2];
+  ipos:f1 -> listingPerformance:f1 [label="1:1", color="#1976D2", penwidth=2];
+  ipos:f1 -> documents:f1 [label="1:N", color="#7B1FA2", penwidth=2];
+  ipos:f1 -> ipoReviews:f1 [label="1:N", color="#7B1FA2", penwidth=2];
+  ipos:f1 -> peerCompanies:f1 [label="1:N", color="#7B1FA2", penwidth=2];
+
+  ipos:f1 -> registrars:f1 [label="N:1", color="#F57C00", style=dashed];
+
+  brokerAffiliates:f1 -> affiliateClicks:f1 [label="1:N", color="#5D4037"];
+
+  // Legend
+  subgraph cluster_legend {
+    label="Legend";
+    style=dashed;
+    rank=sink;
+
+    legend_core [label="Core Entity", fillcolor="#90CAF9", style=filled];
+    legend_timeseries [label="Time-Series Data", fillcolor="#A5D6A7", style=filled];
+    legend_onetoone [label="One-to-One", fillcolor="#FFE082", style=filled];
+    legend_onetomany [label="One-to-Many", fillcolor="#CE93D8", style=filled];
+    legend_reference [label="Reference Data", fillcolor="#F48FB1", style=filled];
+    legend_affiliate [label="Affiliate Tracking", fillcolor="#BCAAA4", style=filled];
+    legend_monitoring [label="Monitoring", fillcolor="#B0BEC5", style=filled];
+
+    legend_core -> legend_timeseries -> legend_onetoone -> legend_onetomany -> legend_reference -> legend_affiliate -> legend_monitoring [style=invis];
+  }
+}

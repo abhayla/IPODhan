@@ -1,0 +1,138 @@
+digraph Testing_Pyramid {
+  rankdir=BT;
+  node [shape=box, style="rounded,filled", fontname="Arial"];
+  graph [fontname="Arial", fontsize=12, label="IPODhan Testing Strategy\nPyramid: 70% Unit, 20% Integration, 10% E2E", labelloc=t, fontsize=14];
+
+  // E2E Tests (Top - 10%)
+  subgraph cluster_e2e {
+    label="E2E Tests (10%) - Playwright";
+    style="filled,rounded";
+    fillcolor="#FFCDD2";
+    rank=max;
+
+    e2e_coverage [label="Coverage: 10%\nSpeed: Slowest (30-60s)\nCost: Highest", fillcolor="#EF5350"];
+
+    e2e_mainboard [label="Mainboard Landing\nUser Journey", fillcolor="#E57373"];
+    e2e_sme [label="SME Landing\nUser Journey", fillcolor="#E57373"];
+    e2e_detail [label="IPO Detail Page\nFull Flow", fillcolor="#E57373"];
+    e2e_compare [label="IPO Comparison\nMulti-select", fillcolor="#E57373"];
+    e2e_subscription [label="Subscription Tracking\nReal-time Updates", fillcolor="#E57373"];
+
+    e2e_coverage -> e2e_mainboard [style=dashed];
+    e2e_coverage -> e2e_sme [style=dashed];
+    e2e_coverage -> e2e_detail [style=dashed];
+    e2e_coverage -> e2e_compare [style=dashed];
+    e2e_coverage -> e2e_subscription [style=dashed];
+  }
+
+  subgraph cluster_e2e_browsers {
+    label="Browser Matrix";
+    style="filled,rounded";
+    fillcolor="#FFEBEE";
+
+    chrome [label="Chromium\nDesktop + Mobile", fillcolor="#F8BBD0"];
+    firefox [label="Firefox\nDesktop", fillcolor="#F8BBD0"];
+    edge_browser [label="Edge\nDesktop", fillcolor="#F8BBD0"];
+
+    chrome -> firefox -> edge_browser [style=invis];
+  }
+
+  // Integration Tests (Middle - 20%)
+  subgraph cluster_integration {
+    label="Integration Tests (20%) - Vitest";
+    style="filled,rounded";
+    fillcolor="#FFF9C4";
+    rank=same;
+
+    int_coverage [label="Coverage: 20%\nSpeed: Medium (5-15s)\nCost: Medium", fillcolor="#FFD54F"];
+
+    int_api [label="API Routes\nReal DB/Redis", fillcolor="#FFF176"];
+    int_repo [label="Repositories\nPostgreSQL + Redis", fillcolor="#FFF176"];
+    int_cache [label="Cache Layer\nRedis Integration", fillcolor="#FFF176"];
+    int_scraper [label="Scraper Service\nDB Write Validation", fillcolor="#FFF176"];
+    int_service [label="Service Layer\nMulti-repo Orchestration", fillcolor="#FFF176"];
+
+    int_coverage -> int_api [style=dashed];
+    int_coverage -> int_repo [style=dashed];
+    int_coverage -> int_cache [style=dashed];
+    int_coverage -> int_scraper [style=dashed];
+    int_coverage -> int_service [style=dashed];
+  }
+
+  subgraph cluster_int_fixtures {
+    label="Test Infrastructure";
+    style="filled,rounded";
+    fillcolor="#FFFDE7";
+
+    db_fixture [label="Test Database\nPostgreSQL", fillcolor="#F0F4C3"];
+    redis_fixture [label="Test Redis\nioredis", fillcolor="#F0F4C3"];
+    seed_data [label="Seed Data\nmockIPO() helpers", fillcolor="#F0F4C3"];
+
+    db_fixture -> redis_fixture -> seed_data [style=invis];
+  }
+
+  // Unit Tests (Bottom - 70%)
+  subgraph cluster_unit {
+    label="Unit Tests (70%) - Vitest";
+    style="filled,rounded";
+    fillcolor="#C8E6C9";
+    rank=min;
+
+    unit_coverage [label="Coverage: 70%\nSpeed: Fast (<10s)\nCost: Lowest\nTarget: 80%+ coverage", fillcolor="#66BB6A"];
+
+    unit_components [label="React Components\nMocked Props", fillcolor="#81C784"];
+    unit_utils [label="Utilities\nSlug Generation\nValidation", fillcolor="#81C784"];
+    unit_services [label="Service Functions\nMocked Repos", fillcolor="#81C784"];
+    unit_cache [label="Cache Utils\nMocked Redis", fillcolor="#81C784"];
+    unit_validators [label="Schema Validators\nData Quality", fillcolor="#81C784"];
+    unit_transformers [label="Data Transformers\nNormalization", fillcolor="#81C784"];
+
+    unit_coverage -> unit_components [style=dashed];
+    unit_coverage -> unit_utils [style=dashed];
+    unit_coverage -> unit_services [style=dashed];
+    unit_coverage -> unit_cache [style=dashed];
+    unit_coverage -> unit_validators [style=dashed];
+    unit_coverage -> unit_transformers [style=dashed];
+  }
+
+  subgraph cluster_unit_mocks {
+    label="Mocking Strategy";
+    style="filled,rounded";
+    fillcolor="#E8F5E9";
+
+    mock_db [label="Mock Database\nvi.mock('drizzle')", fillcolor="#A5D6A7"];
+    mock_redis [label="Mock Redis\nvi.mock('ioredis')", fillcolor="#A5D6A7"];
+    mock_fetch [label="Mock Fetch\nvi.mock('fetch')", fillcolor="#A5D6A7"];
+
+    mock_db -> mock_redis -> mock_fetch [style=invis];
+  }
+
+  // Pyramid structure
+  e2e_coverage -> int_coverage [label="builds on", color="#D32F2F", penwidth=3];
+  int_coverage -> unit_coverage [label="builds on", color="#388E3C", penwidth=3];
+
+  // Test commands
+  subgraph cluster_commands {
+    label="Test Commands";
+    style="filled,rounded";
+    fillcolor="#E1F5FE";
+    rank=sink;
+
+    cmd_unit [label="npm run test:unit", fillcolor="#81D4FA"];
+    cmd_int [label="npm run test:integration", fillcolor="#81D4FA"];
+    cmd_e2e [label="npm run test:e2e", fillcolor="#81D4FA"];
+    cmd_all [label="npm run test", fillcolor="#4FC3F7"];
+    cmd_cov [label="npm run test:coverage", fillcolor="#4FC3F7"];
+
+    cmd_all -> cmd_unit [style=dashed];
+    cmd_all -> cmd_int [style=dashed];
+    cmd_cov -> cmd_unit [style=dashed];
+    cmd_cov -> cmd_int [style=dashed];
+  }
+
+  // Coverage targets
+  coverage [label="Coverage Targets\n━━━━━━━━━━━━━━━━━\nOverall: 80%+\nRepositories: 90%+\nServices: 85%+\nUtilities: 95%+\nComponents: 75%+", shape=note, fillcolor="#F3E5F5"];
+
+  // Performance targets
+  perf [label="Performance Targets\n━━━━━━━━━━━━━━━━━━━\nUnit Tests: < 10s\nIntegration: < 30s\nE2E Suite: < 5min\nFull Suite: < 6min", shape=note, fillcolor="#E0F2F1"];
+}
