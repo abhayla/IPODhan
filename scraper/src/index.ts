@@ -9,13 +9,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '..', '.env') });
 
-import { runNSEScraper } from './scrapers/nse-scraper-orchestrator.js';
-import { runBSEScraper } from './scrapers/bse-scraper-orchestrator.js';
-import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrator.js';
-import { runMoneycontrolScraper } from './scrapers/moneycontrol-orchestrator.js';
-import { runChittorgarhScraper } from './scrapers/chittorgarh-orchestrator.js';
-import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator.js';
-import { IPORepository, db, getRedisClient } from '@ipodhan/shared';
+import { runNSEScraper } from './scrapers/nse-scraper-orchestrator-v2.js';
+import { runBSEScraper } from './scrapers/bse-scraper-orchestrator-v2.js';
+import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrator-v2.js';
+import { runMoneycontrolScraper } from './scrapers/moneycontrol-orchestrator-v2.js';
+import { runChittorgarhScraper } from './scrapers/chittorgarh-orchestrator-v2.js';
+import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator-v2.js';
 import logger from './utils/logger.js';
 
 /**
@@ -166,10 +165,7 @@ async function main() {
     if (source === 'fallback' || source === 'api' || source === 'all') {
       logger.info('Running IPO Alerts API fallback scraper (manual execution)');
 
-      const redis = getRedisClient();
-      const ipoRepository = new IPORepository(db, redis);
-
-      const fallbackResult = await runIPOAlertsFallback(ipoRepository, 'manual');
+      const fallbackResult = await runIPOAlertsFallback('manual');
 
       combinedResult.success = combinedResult.success && fallbackResult.success;
       combinedResult.iposProcessed += fallbackResult.iposProcessed;
@@ -181,12 +177,13 @@ async function main() {
       logger.info(
         {
           success: fallbackResult.success,
-          iposFetched: fallbackResult.iposFetched,
+          iposProcessed: fallbackResult.iposProcessed,
           iposInserted: fallbackResult.iposInserted,
           iposSkipped: fallbackResult.iposSkipped,
           iposFailed: fallbackResult.iposFailed,
           rateLimitUsed: fallbackResult.rateLimitUsed,
-          rateLimitRemaining: fallbackResult.rateLimitRemaining
+          rateLimitRemaining: fallbackResult.rateLimitRemaining,
+          triggerReason: fallbackResult.triggerReason
         },
         'IPO Alerts API fallback scraper completed'
       );

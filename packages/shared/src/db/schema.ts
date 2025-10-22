@@ -145,6 +145,11 @@ export const ipos = pgTable(
     ratingOverride: boolean('rating_override').default(false), // Manual override flag for admin
     lastScrapedAt: timestamp('last_scraped_at'), // Timestamp of last successful scrape
 
+    // Manual Data Management (Phase 6)
+    scraperLocked: boolean('scraper_locked').default(false), // IPO-level protection flag (master lock)
+    scraperLockNote: text('scraper_lock_note'), // Admin note explaining why IPO is locked
+    lastManualEditAt: timestamp('last_manual_edit_at'), // Last time admin manually edited any field
+
     // Historical IPO Performance Data (Story 7.10)
     // Subscription data
     subscriptionRetail: numeric('subscription_retail', { precision: 10, scale: 2 }), // Retail investor subscription multiple
@@ -656,6 +661,116 @@ export const ipoDetails = pgTable(
   })
 );
 
+// ==================== TABLE 17: FIELD_PROTECTION_METADATA (Manual Data Management) ====================
+
+export const fieldProtectionMetadata = pgTable(
+  'field_protection_metadata',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    tableName: varchar('table_name', { length: 100 }).notNull(),
+    fieldName: varchar('field_name', { length: 100 }).notNull(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+
+    // Protection flags
+    isProtected: boolean('is_protected').default(false).notNull(),
+    autoProtected: boolean('auto_protected').default(false).notNull(), // Auto-locked after manual edit
+
+    // Manual edit tracking
+    manuallyEditedAt: timestamp('manually_edited_at'),
+    manuallyEditedBy: varchar('manually_edited_by', { length: 255 }),
+    editNote: text('edit_note'), // Admin note explaining the edit
+
+    // Metadata
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoIdIdx: index('idx_field_protection_ipo_id').on(table.ipoId),
+    tableNameIdx: index('idx_field_protection_table_name').on(table.tableName),
+    isProtectedIdx: index('idx_field_protection_is_protected').on(table.isProtected),
+
+    // Composite unique constraint: one protection record per (table + field + IPO)
+    uniqueFieldPerIpo: unique('unique_field_per_ipo').on(
+      table.tableName,
+      table.fieldName,
+      table.ipoId
+    ),
+  })
+);
+
+// ==================== TABLE 18: ADMIN_SETTINGS (Configuration) ====================
+
+export const adminSettings = pgTable(
+  'admin_settings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    settingKey: varchar('setting_key', { length: 100 }).notNull().unique(),
+    settingValue: text('setting_value'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    settingKeyIdx: index('idx_admin_settings_key').on(table.settingKey),
+  })
+);
+
+// ==================== TABLE 19: AUDIT_LOGS ====================
+// Activity audit log for admin actions (immutable)
+
+export const auditLogs = pgTable(
+  'audit_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    // Timestamp
+    timestamp: timestamp('timestamp').defaultNow().notNull(),
+
+    // Admin identity
+    adminUser: varchar('admin_user', { length: 255 }).notNull(),
+
+    // Action information
+    actionType: varchar('action_type', { length: 100 }).notNull(), // Field Updated, IPO Locked, Protection Enabled, etc.
+
+    // Related IPO (nullable - some actions may not be IPO-specific)
+    ipoId: uuid('ipo_id').references(() => ipos.id, { onDelete: 'set null' }),
+
+    // Field-level information
+    tableName: varchar('table_name', { length: 100 }),
+    fieldName: varchar('field_name', { length: 100 }),
+    oldValue: text('old_value'),
+    newValue: text('new_value'),
+
+    // Additional context
+    details: jsonb('details'), // Structured data about the action
+
+    // Request metadata
+    ipAddress: varchar('ip_address', { length: 45 }), // IPv4 max 15, IPv6 max 45
+    userAgent: text('user_agent'),
+
+    // Execution status
+    success: boolean('success').default(true).notNull(),
+    errorMessage: text('error_message'),
+
+    // Created timestamp (immutable)
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    // Performance indexes for filtering
+    timestampIdx: index('idx_audit_logs_timestamp').on(table.timestamp.desc()),
+    adminUserIdx: index('idx_audit_logs_admin_user').on(table.adminUser),
+    ipoIdIdx: index('idx_audit_logs_ipo_id').on(table.ipoId),
+    actionTypeIdx: index('idx_audit_logs_action_type').on(table.actionType),
+
+    // Composite index for common query patterns
+    timestampAdminIdx: index('idx_audit_logs_timestamp_admin').on(
+      table.timestamp.desc(),
+      table.adminUser
+    ),
+  })
+);
+
 // ==================== RELATIONS ====================
 
 export const iposRelations = relations(ipos, ({ many, one }) => ({
@@ -664,6 +779,7 @@ export const iposRelations = relations(ipos, ({ many, one }) => ({
   documents: many(documents),
   peerCompanies: many(peerCompanies),
   ipoReviews: many(ipoReviews),
+  fieldProtections: many(fieldProtectionMetadata),
   financialData: one(financialData, {
     fields: [ipos.id],
     references: [financialData.ipoId],
@@ -766,6 +882,23 @@ export const ipoFinancialsRelations = relations(ipoFinancials, ({ one }) => ({
 export const ipoDetailsRelations = relations(ipoDetails, ({ one }) => ({
   ipo: one(ipos, {
     fields: [ipoDetails.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const fieldProtectionMetadataRelations = relations(
+  fieldProtectionMetadata,
+  ({ one }) => ({
+    ipo: one(ipos, {
+      fields: [fieldProtectionMetadata.ipoId],
+      references: [ipos.id],
+    }),
+  })
+);
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [auditLogs.ipoId],
     references: [ipos.id],
   }),
 }));
