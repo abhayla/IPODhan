@@ -9,7 +9,8 @@
     "./db/schema": "./src/db/schema.ts",
     "./repositories": "./src/repositories/index.ts",
     "./cache": "./src/cache/index.ts",
-    "./types": "./src/types/index.ts"
+    "./types": "./src/types/index.ts",
+    "./utils/slug": "./src/utils/slug.ts"
   },
   "scripts": {
     "build": "tsc",
