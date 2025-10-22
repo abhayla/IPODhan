@@ -27,8 +27,10 @@ export default function AdminDashboardPage() {
   const [lockFilter, setLockFilter] = useState('ALL');
 
   useEffect(() => {
-    fetchIPOs();
-  }, []);
+    if (token) {
+      fetchIPOs();
+    }
+  }, [token]);
 
   useEffect(() => {
     applyFilters();
@@ -37,7 +39,19 @@ export default function AdminDashboardPage() {
   const fetchIPOs = async () => {
     try {
       setIsLoading(true);
-      const response = await fetch('/api/ipos?limit=100');
+
+      if (!token) {
+        console.error('No admin token available');
+        return;
+      }
+
+      const response = await fetch('/api/admin/ipos?limit=100', {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
       const data = await response.json();
 
       if (data.success) {

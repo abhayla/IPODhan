@@ -4,21 +4,14 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAdminAuth } from '@/lib/context/AdminAuthContext';
 import Link from 'next/link';
-
-interface IPO {
-  id: string;
-  companyName: string;
-  slug: string;
-  status: string;
-  segment: string | null;
-  scraperLocked: boolean;
-  scraperLockNote: string | null;
-  lotSize: number | null;
-  priceRangeMin: number | null;
-  priceRangeMax: number | null;
-  openDate: string | null;
-  closeDate: string | null;
-}
+import { adminGet, adminPost, adminPatch, adminDelete } from '@/lib/admin/admin-api-client';
+import type {
+  IPO,
+  FinancialData,
+  Subscription,
+  GMPRecord,
+  Document
+} from '@/lib/db/types';
 
 interface FieldProtection {
   id: string;
@@ -29,63 +22,6 @@ interface FieldProtection {
   editNote: string | null;
   createdAt: string;
   updatedAt: string;
-}
-
-interface FinancialData {
-  id: string;
-  ipoId: string;
-  revenue: number | null;
-  profit: number | null;
-  netWorth: number | null;
-  totalAssets: number | null;
-  operatingRevenue: number | null;
-  revenueGrowth: number | null;
-  profitGrowth: number | null;
-  roe: number | null;
-  roa: number | null;
-  debtToEquity: number | null;
-  peRatio: number | null;
-  eps: number | null;
-  bookValue: number | null;
-}
-
-interface Subscription {
-  id: string;
-  ipoId: string;
-  overallSubscription: number | null;
-  qibSubscription: number | null;
-  niiSubscription: number | null;
-  retailSubscription: number | null;
-  employeeSubscription: number | null;
-  othersSubscription: number | null;
-  totalApplications: number | null;
-  snapshotTime: string;
-}
-
-interface GMP {
-  id: string;
-  ipoId: string;
-  gmp: number | null; // Schema field name
-  timestamp: string; // Schema field name
-  expectedListingPrice: number | null; // Schema field name
-  subjectRate: number | null; // Schema field name
-  kostakRate: number | null; // Schema field name
-  saudaDetails: string | null; // Schema field name
-  source: string | null;
-}
-
-interface Document {
-  id: string;
-  ipoId: string;
-  type: 'DRHP' | 'RHP' | 'PROSPECTUS' | 'BASIS_OF_ALLOTMENT' | 'ADDENDUM';
-  mediaType: string;
-  sequenceNumber: number;
-  isActive: boolean;
-  title: string;
-  url: string;
-  fileSize: number | null;
-  uploadedAt: string;
-  exchange: string | null;
 }
 
 export default function AdminEditIPOPage() {
@@ -104,12 +40,12 @@ export default function AdminEditIPOPage() {
   const [isLoadingProtections, setIsLoadingProtections] = useState(false);
   const [financialData, setFinancialData] = useState<FinancialData | null>(null);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [gmpRecords, setGmpRecords] = useState<GMP[]>([]);
+  const [gmpRecords, setGmpRecords] = useState<GMPRecord[]>([]);
   const [documents, setDocuments] = useState<Document[]>([]);
   const [editedFinancials, setEditedFinancials] = useState<Partial<FinancialData>>({});
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
   const [showGMPModal, setShowGMPModal] = useState(false);
-  const [editingGMP, setEditingGMP] = useState<GMP | null>(null);
+  const [editingGMP, setEditingGMP] = useState<GMPRecord | null>(null);
   const [gmpFormData, setGmpFormData] = useState({
     gmpPrice: '',
     gmpPercentage: '',
@@ -166,53 +102,36 @@ export default function AdminEditIPOPage() {
   };
 
   const handleToggleIPOLock = async () => {
-    if (!ipo || !token) return;
+    if (!ipo) return;
 
     const newLockState = !ipo.scraperLocked;
 
     try {
       setIsSaving(true);
-      const response = await fetch(`/api/admin/protection/ipo/${ipo.id}`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          scraperLocked: newLockState,
-          scraperLockNote: newLockState ? 'Manually locked via admin panel' : null
-        })
+      await adminPatch(`/api/admin/protection/ipo/${ipo.id}`, {
+        scraperLocked: newLockState,
+        scraperLockNote: newLockState ? 'Manually locked via admin panel' : null
       });
 
-      if (response.ok) {
-        setIpo({ ...ipo, scraperLocked: newLockState });
-        setSuccessMessage(newLockState ? 'IPO locked successfully' : 'IPO unlocked successfully');
-        setTimeout(() => setSuccessMessage(''), 3000);
-      }
+      setIpo({ ...ipo, scraperLocked: newLockState });
+      setSuccessMessage(newLockState ? 'IPO locked successfully' : 'IPO unlocked successfully');
+      setTimeout(() => setSuccessMessage(''), 3000);
     } catch (error) {
       console.error('Failed to toggle IPO lock:', error);
+      setSuccessMessage('Error: Failed to toggle IPO lock');
+      setTimeout(() => setSuccessMessage(''), 3000);
     } finally {
       setIsSaving(false);
     }
   };
 
   const fetchProtectedFields = async () => {
-    if (!ipo || !token) return;
+    if (!ipo) return;
 
     try {
       setIsLoadingProtections(true);
-      // Note: This endpoint may return connection timeout due to DB issues
-      // but the code fix is working. For now, we'll handle gracefully.
-      const response = await fetch(`/api/admin/protection/fields/${ipo.id}`, {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setProtectedFields(data.data?.protections || []);
-      }
+      const data = await adminGet(`/api/admin/protection/fields/${ipo.id}`);
+      setProtectedFields(data.data?.protections || []);
     } catch (error) {
       console.error('Failed to fetch protected fields:', error);
       // Gracefully handle - show empty list
@@ -223,31 +142,24 @@ export default function AdminEditIPOPage() {
   };
 
   const handleToggleFieldProtection = async (tableName: string, fieldName: string, currentlyProtected: boolean) => {
-    if (!ipo || !token) return;
+    if (!ipo) return;
 
     try {
       setIsSaving(true);
-      const response = await fetch(`/api/admin/protection/fields/${ipo.id}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          tableName,
-          fieldName,
-          isProtected: !currentlyProtected,
-          editNote: !currentlyProtected ? 'Manually protected via admin panel' : 'Protection removed via admin panel'
-        })
+      await adminPost(`/api/admin/protection/fields/${ipo.id}`, {
+        tableName,
+        fieldName,
+        isProtected: !currentlyProtected,
+        editNote: !currentlyProtected ? 'Manually protected via admin panel' : 'Protection removed via admin panel'
       });
 
-      if (response.ok) {
-        setSuccessMessage(`Field ${fieldName} ${!currentlyProtected ? 'protected' : 'unprotected'} successfully`);
-        setTimeout(() => setSuccessMessage(''), 3000);
-        await fetchProtectedFields(); // Refresh protections
-      }
+      setSuccessMessage(`Field ${fieldName} ${!currentlyProtected ? 'protected' : 'unprotected'} successfully`);
+      setTimeout(() => setSuccessMessage(''), 3000);
+      await fetchProtectedFields(); // Refresh protections
     } catch (error) {
       console.error('Failed to toggle field protection:', error);
+      setSuccessMessage('Error: Failed to toggle field protection');
+      setTimeout(() => setSuccessMessage(''), 3000);
     } finally {
       setIsSaving(false);
     }
@@ -306,32 +218,25 @@ export default function AdminEditIPOPage() {
   };
 
   const handleBulkProtect = async (protect: boolean) => {
-    if (!ipo || !token || selectedFields.length === 0) return;
+    if (!ipo || selectedFields.length === 0) return;
 
     try {
       setIsSaving(true);
-      const response = await fetch(`/api/admin/protection/fields/bulk`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ipoId: ipo.id,
-          tableName: 'ipos',
-          fieldNames: selectedFields,
-          isProtected: protect
-        })
+      await adminPost(`/api/admin/protection/fields/bulk`, {
+        ipoId: ipo.id,
+        tableName: 'ipos',
+        fieldNames: selectedFields,
+        isProtected: protect
       });
 
-      if (response.ok) {
-        setSuccessMessage(`${selectedFields.length} fields ${protect ? 'protected' : 'unprotected'} successfully`);
-        setTimeout(() => setSuccessMessage(''), 3000);
-        setSelectedFields([]);
-        await fetchProtectedFields(); // Refresh protections
-      }
+      setSuccessMessage(`${selectedFields.length} fields ${protect ? 'protected' : 'unprotected'} successfully`);
+      setTimeout(() => setSuccessMessage(''), 3000);
+      setSelectedFields([]);
+      await fetchProtectedFields(); // Refresh protections
     } catch (error) {
       console.error('Failed to bulk protect fields:', error);
+      setSuccessMessage('Error: Failed to bulk protect fields');
+      setTimeout(() => setSuccessMessage(''), 3000);
     } finally {
       setIsSaving(false);
     }
@@ -355,40 +260,28 @@ export default function AdminEditIPOPage() {
   };
 
   const handleSaveField = async (tableName: string, fieldName: string, value: any, autoProtect: boolean = true, recordId?: string) => {
-    if (!ipo || !token) return;
+    if (!ipo) return;
 
     try {
       setIsSaving(true);
-      const response = await fetch('/api/admin/update-field', {
-        method: 'PATCH',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ipoId: ipo.id,
-          tableName,
-          fieldName,
-          value,
-          recordId, // For subscription records
-          autoProtect,
-          editNote: `Updated via admin panel`
-        })
+      await adminPatch('/api/admin/update-field', {
+        ipoId: ipo.id,
+        tableName,
+        fieldName,
+        value,
+        recordId, // For subscription records
+        autoProtect,
+        editNote: `Updated via admin panel`
       });
 
-      if (response.ok) {
-        setSuccessMessage(`Field ${fieldName} updated successfully`);
-        setTimeout(() => setSuccessMessage(''), 3000);
-        await fetchIPO(); // Refresh data
-        await fetchProtectedFields(); // Refresh protections
-      } else {
-        const errorData = await response.json();
-        setSuccessMessage(`Error: ${errorData.error || 'Failed to update field'}`);
-        setTimeout(() => setSuccessMessage(''), 5000);
-      }
+      setSuccessMessage(`Field ${fieldName} updated successfully`);
+      setTimeout(() => setSuccessMessage(''), 3000);
+      await fetchIPO(); // Refresh data
+      await fetchProtectedFields(); // Refresh protections
     } catch (error) {
       console.error('Failed to save field:', error);
-      setSuccessMessage('Error: Failed to save field');
+      const errorMsg = error instanceof Error ? error.message : 'Failed to save field';
+      setSuccessMessage(`Error: ${errorMsg}`);
       setTimeout(() => setSuccessMessage(''), 5000);
     } finally {
       setIsSaving(false);
@@ -400,7 +293,7 @@ export default function AdminEditIPOPage() {
       const latestSubscription = subscriptions[0];
       setEditedSubscription({
         id: latestSubscription.id,
-        overallSubscription: latestSubscription.overallSubscription,
+        totalSubscription: latestSubscription.totalSubscription,
         qibSubscription: latestSubscription.qibSubscription,
         niiSubscription: latestSubscription.niiSubscription,
         retailSubscription: latestSubscription.retailSubscription,
@@ -417,9 +310,11 @@ export default function AdminEditIPOPage() {
     setEditedSubscription({});
   };
 
-  const validateSubscriptionChange = (original: number | null, updated: number | null): boolean => {
+  const validateSubscriptionChange = (original: string | number | null, updated: string | number | null): boolean => {
     if (original === null || updated === null) return true;
-    const percentChange = Math.abs(((updated - original) / original) * 100);
+    const origNum = typeof original === 'string' ? Number(original) : original;
+    const updatedNum = typeof updated === 'string' ? Number(updated) : updated;
+    const percentChange = Math.abs(((updatedNum - origNum) / origNum) * 100);
     return percentChange <= 500; // Max 500% change warning threshold
   };
 
@@ -441,7 +336,7 @@ export default function AdminEditIPOPage() {
 
     // Check for significant changes
     const hasSignificantChange =
-      !validateSubscriptionChange(latestSubscription.overallSubscription, editedSubscription.overallSubscription ?? null) ||
+      !validateSubscriptionChange(latestSubscription.totalSubscription, editedSubscription.totalSubscription ?? null) ||
       !validateSubscriptionChange(latestSubscription.qibSubscription, editedSubscription.qibSubscription ?? null) ||
       !validateSubscriptionChange(latestSubscription.niiSubscription, editedSubscription.niiSubscription ?? null) ||
       !validateSubscriptionChange(latestSubscription.retailSubscription, editedSubscription.retailSubscription ?? null);
@@ -459,9 +354,9 @@ export default function AdminEditIPOPage() {
       const updatePromises = [];
 
       // Update each field that has changed
-      if (editedSubscription.overallSubscription !== latestSubscription.overallSubscription) {
+      if (editedSubscription.totalSubscription !== latestSubscription.totalSubscription) {
         updatePromises.push(
-          handleSaveField('subscriptions', 'overallSubscription', editedSubscription.overallSubscription, autoProtectSubscription, editedSubscription.id)
+          handleSaveField('subscriptions', 'totalSubscription', editedSubscription.totalSubscription, autoProtectSubscription, editedSubscription.id)
         );
       }
       if (editedSubscription.qibSubscription !== latestSubscription.qibSubscription) {
@@ -526,7 +421,7 @@ export default function AdminEditIPOPage() {
     setShowGMPModal(true);
   };
 
-  const handleOpenEditGMP = (gmp: GMP) => {
+  const handleOpenEditGMP = (gmp: GMPRecord) => {
     setEditingGMP(gmp);
     setGmpFormData({
       gmpPrice: gmp.gmp?.toString() || '',
@@ -555,7 +450,7 @@ export default function AdminEditIPOPage() {
   };
 
   const handleSaveGMP = async () => {
-    if (!ipo || !token) return;
+    if (!ipo) return;
 
     // Validation
     if (!gmpFormData.gmpPrice || parseFloat(gmpFormData.gmpPrice) < 0) {
@@ -584,39 +479,21 @@ export default function AdminEditIPOPage() {
         editNote: editingGMP ? `Updated GMP record` : `New GMP record created`,
       };
 
-      const url = editingGMP
-        ? `/api/admin/gmp/${ipo.id}`
-        : `/api/admin/gmp/${ipo.id}`;
-
-      const method = editingGMP ? 'PATCH' : 'POST';
-
       if (editingGMP) {
         (requestBody as any).recordId = editingGMP.id;
-      }
-
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setSuccessMessage(editingGMP ? 'GMP record updated successfully' : 'GMP record created successfully');
-        setTimeout(() => setSuccessMessage(''), 3000);
-        await fetchGMPData(); // Refresh GMP data
-        handleCloseGMPModal();
+        await adminPatch(`/api/admin/gmp/${ipo.id}`, requestBody);
       } else {
-        setSuccessMessage(`Error: ${data.error || 'Failed to save GMP record'}`);
-        setTimeout(() => setSuccessMessage(''), 5000);
+        await adminPost(`/api/admin/gmp/${ipo.id}`, requestBody);
       }
+
+      setSuccessMessage(editingGMP ? 'GMP record updated successfully' : 'GMP record created successfully');
+      setTimeout(() => setSuccessMessage(''), 3000);
+      await fetchGMPData(); // Refresh GMP data
+      handleCloseGMPModal();
     } catch (error) {
       console.error('Failed to save GMP record:', error);
-      setSuccessMessage('Error: Failed to save GMP record');
+      const errorMsg = error instanceof Error ? error.message : 'Failed to save GMP record';
+      setSuccessMessage(`Error: ${errorMsg}`);
       setTimeout(() => setSuccessMessage(''), 5000);
     } finally {
       setIsSaving(false);
@@ -624,34 +501,22 @@ export default function AdminEditIPOPage() {
   };
 
   const handleDeleteGMP = async (gmpId: string) => {
-    if (!ipo || !token) return;
+    if (!ipo) return;
 
     const confirmed = window.confirm('Are you sure you want to delete this GMP record?');
     if (!confirmed) return;
 
     try {
       setIsSaving(true);
+      await adminDelete(`/api/admin/gmp/${ipo.id}?recordId=${gmpId}`);
 
-      const response = await fetch(`/api/admin/gmp/${ipo.id}?recordId=${gmpId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        setSuccessMessage('GMP record deleted successfully');
-        setTimeout(() => setSuccessMessage(''), 3000);
-        await fetchGMPData(); // Refresh GMP data
-      } else {
-        setSuccessMessage(`Error: ${data.error || 'Failed to delete GMP record'}`);
-        setTimeout(() => setSuccessMessage(''), 5000);
-      }
+      setSuccessMessage('GMP record deleted successfully');
+      setTimeout(() => setSuccessMessage(''), 3000);
+      await fetchGMPData(); // Refresh GMP data
     } catch (error) {
       console.error('Failed to delete GMP record:', error);
-      setSuccessMessage('Error: Failed to delete GMP record');
+      const errorMsg = error instanceof Error ? error.message : 'Failed to delete GMP record';
+      setSuccessMessage(`Error: ${errorMsg}`);
       setTimeout(() => setSuccessMessage(''), 5000);
     } finally {
       setIsSaving(false);
@@ -847,7 +712,7 @@ export default function AdminEditIPOPage() {
                       type="number"
                       step="0.01"
                       value={editedFinancials.revenueFy2022 ?? financialData?.revenueFy2022 ?? ''}
-                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, revenueFy2022: e.target.value ? Number(e.target.value) : null }))}
+                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, revenueFy2022: e.target.value || null }))}
                       className="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <button
@@ -866,7 +731,7 @@ export default function AdminEditIPOPage() {
                       type="number"
                       step="0.01"
                       value={editedFinancials.revenueFy2023 ?? financialData?.revenueFy2023 ?? ''}
-                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, revenueFy2023: e.target.value ? Number(e.target.value) : null }))}
+                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, revenueFy2023: e.target.value || null }))}
                       className="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <button
@@ -885,7 +750,7 @@ export default function AdminEditIPOPage() {
                       type="number"
                       step="0.01"
                       value={editedFinancials.profitFy2022 ?? financialData?.profitFy2022 ?? ''}
-                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, profitFy2022: e.target.value ? Number(e.target.value) : null }))}
+                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, profitFy2022: e.target.value || null }))}
                       className="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <button
@@ -904,7 +769,7 @@ export default function AdminEditIPOPage() {
                       type="number"
                       step="0.01"
                       value={editedFinancials.profitFy2023 ?? financialData?.profitFy2023 ?? ''}
-                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, profitFy2023: e.target.value ? Number(e.target.value) : null }))}
+                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, profitFy2023: e.target.value || null }))}
                       className="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <button
@@ -923,7 +788,7 @@ export default function AdminEditIPOPage() {
                       type="number"
                       step="0.01"
                       value={editedFinancials.peRatio ?? financialData?.peRatio ?? ''}
-                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, peRatio: e.target.value ? Number(e.target.value) : null }))}
+                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, peRatio: e.target.value || null }))}
                       className="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <button
@@ -942,7 +807,7 @@ export default function AdminEditIPOPage() {
                       type="number"
                       step="0.01"
                       value={editedFinancials.roe ?? financialData?.roe ?? ''}
-                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, roe: e.target.value ? Number(e.target.value) : null }))}
+                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, roe: e.target.value || null }))}
                       className="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <button
@@ -961,7 +826,7 @@ export default function AdminEditIPOPage() {
                       type="number"
                       step="0.01"
                       value={editedFinancials.debtToEquity ?? financialData?.debtToEquity ?? ''}
-                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, debtToEquity: e.target.value ? Number(e.target.value) : null }))}
+                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, debtToEquity: e.target.value || null }))}
                       className="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <button
@@ -980,7 +845,7 @@ export default function AdminEditIPOPage() {
                       type="number"
                       step="0.01"
                       value={editedFinancials.netWorth ?? financialData?.netWorth ?? ''}
-                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, netWorth: e.target.value ? Number(e.target.value) : null }))}
+                      onChange={(e) => setEditedFinancials(prev => ({ ...prev, netWorth: e.target.value || null }))}
                       className="w-full px-4 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     <button
@@ -1029,12 +894,12 @@ export default function AdminEditIPOPage() {
                             Editing Latest Snapshot
                           </h4>
                           <span className="text-xs text-gray-400">
-                            {new Date(subscriptions[0].snapshotTime).toLocaleString()}
+                            {new Date(subscriptions[0].timestamp).toLocaleString()}
                           </span>
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                          {/* Overall Subscription */}
+                          {/* Total Subscription */}
                           <div>
                             <label className="block text-xs font-medium text-gray-400 mb-1">
                               Overall Subscription (x)
@@ -1043,10 +908,10 @@ export default function AdminEditIPOPage() {
                               type="number"
                               step="0.01"
                               min="0"
-                              value={editedSubscription.overallSubscription ?? ''}
+                              value={editedSubscription.totalSubscription ?? ''}
                               onChange={(e) => setEditedSubscription(prev => ({
                                 ...prev,
-                                overallSubscription: e.target.value ? Number(e.target.value) : null
+                                totalSubscription: e.target.value || null
                               }))}
                               className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                               placeholder="e.g., 2.45"
@@ -1065,7 +930,7 @@ export default function AdminEditIPOPage() {
                               value={editedSubscription.qibSubscription ?? ''}
                               onChange={(e) => setEditedSubscription(prev => ({
                                 ...prev,
-                                qibSubscription: e.target.value ? Number(e.target.value) : null
+                                qibSubscription: e.target.value || null
                               }))}
                               className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                               placeholder="e.g., 3.20"
@@ -1084,7 +949,7 @@ export default function AdminEditIPOPage() {
                               value={editedSubscription.niiSubscription ?? ''}
                               onChange={(e) => setEditedSubscription(prev => ({
                                 ...prev,
-                                niiSubscription: e.target.value ? Number(e.target.value) : null
+                                niiSubscription: e.target.value || null
                               }))}
                               className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                               placeholder="e.g., 1.85"
@@ -1103,7 +968,7 @@ export default function AdminEditIPOPage() {
                               value={editedSubscription.retailSubscription ?? ''}
                               onChange={(e) => setEditedSubscription(prev => ({
                                 ...prev,
-                                retailSubscription: e.target.value ? Number(e.target.value) : null
+                                retailSubscription: e.target.value || null
                               }))}
                               className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                               placeholder="e.g., 2.10"
@@ -1122,7 +987,7 @@ export default function AdminEditIPOPage() {
                               value={editedSubscription.employeeSubscription ?? ''}
                               onChange={(e) => setEditedSubscription(prev => ({
                                 ...prev,
-                                employeeSubscription: e.target.value ? Number(e.target.value) : null
+                                employeeSubscription: e.target.value || null
                               }))}
                               className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                               placeholder="e.g., 0.50"
@@ -1141,7 +1006,7 @@ export default function AdminEditIPOPage() {
                               value={editedSubscription.othersSubscription ?? ''}
                               onChange={(e) => setEditedSubscription(prev => ({
                                 ...prev,
-                                othersSubscription: e.target.value ? Number(e.target.value) : null
+                                othersSubscription: e.target.value || null
                               }))}
                               className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                               placeholder="e.g., 1.00"
@@ -1219,38 +1084,38 @@ export default function AdminEditIPOPage() {
                             {index === 0 && <span className="ml-2 text-xs text-blue-400">(Latest)</span>}
                           </h4>
                           <span className="text-xs text-gray-400">
-                            {new Date(sub.snapshotTime).toLocaleString()}
+                            {new Date(sub.timestamp).toLocaleString()}
                           </span>
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                           <div>
                             <div className="text-xs text-gray-400">Overall</div>
-                            <div className="text-sm font-medium text-white">{sub.overallSubscription?.toFixed(2) ?? 'N/A'}x</div>
+                            <div className="text-sm font-medium text-white">{sub.totalSubscription ? Number(sub.totalSubscription).toFixed(2) : 'N/A'}x</div>
                           </div>
                           <div>
                             <div className="text-xs text-gray-400">QIB</div>
-                            <div className="text-sm font-medium text-white">{sub.qibSubscription?.toFixed(2) ?? 'N/A'}x</div>
+                            <div className="text-sm font-medium text-white">{sub.qibSubscription ? Number(sub.qibSubscription).toFixed(2) : 'N/A'}x</div>
                           </div>
                           <div>
                             <div className="text-xs text-gray-400">NII</div>
-                            <div className="text-sm font-medium text-white">{sub.niiSubscription?.toFixed(2) ?? 'N/A'}x</div>
+                            <div className="text-sm font-medium text-white">{sub.niiSubscription ? Number(sub.niiSubscription).toFixed(2) : 'N/A'}x</div>
                           </div>
                           <div>
                             <div className="text-xs text-gray-400">Retail</div>
-                            <div className="text-sm font-medium text-white">{sub.retailSubscription?.toFixed(2) ?? 'N/A'}x</div>
+                            <div className="text-sm font-medium text-white">{sub.retailSubscription ? Number(sub.retailSubscription).toFixed(2) : 'N/A'}x</div>
                           </div>
                           {(sub.employeeSubscription || sub.othersSubscription || sub.totalApplications) && (
                             <>
                               {sub.employeeSubscription && (
                                 <div>
                                   <div className="text-xs text-gray-400">Employee</div>
-                                  <div className="text-sm font-medium text-white">{sub.employeeSubscription.toFixed(2)}x</div>
+                                  <div className="text-sm font-medium text-white">{Number(sub.employeeSubscription).toFixed(2)}x</div>
                                 </div>
                               )}
                               {sub.othersSubscription && (
                                 <div>
                                   <div className="text-xs text-gray-400">Others</div>
-                                  <div className="text-sm font-medium text-white">{sub.othersSubscription.toFixed(2)}x</div>
+                                  <div className="text-sm font-medium text-white">{Number(sub.othersSubscription).toFixed(2)}x</div>
                                 </div>
                               )}
                               {sub.totalApplications && (
