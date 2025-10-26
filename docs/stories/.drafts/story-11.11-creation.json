@@ -1,0 +1,23 @@
+{
+  "story_id": "11.11",
+  "story_title": "Implement KPI Highlight Section for IPO Detail Page",
+  "creation_status": "drafted",
+  "validation_status": "pending",
+  "timestamps": {
+    "workflow_started": "2025-10-26T15:45:00.000Z",
+    "drafting_started": "2025-10-26T15:50:00.000Z",
+    "drafting_completed": "2025-10-26T16:05:00.000Z",
+    "next_phase": "po_validation"
+  },
+  "creation_context": {
+    "epic_path": "docs/03-epics/epic-11-sharded.md",
+    "architecture_path": "docs/02-architecture/backend-architecture.md",
+    "destination_path": "docs/stories/"
+  },
+  "agents": {
+    "drafted_by": "Bob (Scrum Master)",
+    "drafted_via": "Automated Story Creation Workflow v2.0"
+  },
+  "workflow_version": "2.0",
+  "workflow_step": "2.5"
+}
