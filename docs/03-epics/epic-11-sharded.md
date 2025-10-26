@@ -1400,14 +1400,28 @@ offeringType: 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'TENDER' | /* 15 types total */
 **Epic Owner**: Scrum Master (Bob)
 **Product Owner**: Bob
 **Created**: 2025-10-17
-**Last Updated**: 2025-10-26 (Story 11.11 Added)
+**Last Updated**: 2025-10-26 (Story 11.12 Added)
 **Status**: 🔄 REOPENED
-**Story Count**: 12 (5 Complete, 1 Ready, 6 Planning)
-**Completion**: 41.7% (5/12 stories complete)
+**Story Count**: 13 (5 Complete, 1 Ready, 7 Planning)
+**Completion**: 38.5% (5/13 stories complete)
 
 ---
 
 ## Changelog
+
+### 2025-10-26 18:30:00 - Story 11.12 Added to Epic 📋
+- **Story**: 11.12 - Enhance Financial Metrics Display with EBITDA and Multi-Period View
+- **Status**: PLANNING
+- **Priority**: P1 - HIGH (Priority 2)
+- **Source**: Missing Features Documentation (`docs/19-ui/ipo-detail-page/MISSING_FEATURES_SUMMARY.md`, `CHITTORGARH_GAP_ANALYSIS.md`)
+- **Business Impact**: Closes 55% → 100% coverage gap for financial metrics (critical for comprehensive IPO analysis)
+- **Scope**: Database migration (10 columns to `financial_data`) + enhance FinancialsTab + multi-period view
+- **Estimated Effort**: 3-4 days (8 story points)
+- **Epic Metrics Updated**:
+  - Story Count: 12 → 13 stories
+  - Completion: 41.7% → 38.5% (5/13 complete)
+  - New Planning Work: 3-4 days
+- **Action Required**: Story ready for automated workflow drafting (Step 2)
 
 ### 2025-10-26 15:45:00 - Story 11.11 Added to Epic 📋
 - **Story**: 11.11 - Implement KPI Highlight Section for IPO Detail Page
