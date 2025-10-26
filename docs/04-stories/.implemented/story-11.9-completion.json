@@ -1,0 +1,35 @@
+{
+  "story_id": "11.9",
+  "story_title": "Implement Promoter Holding Display for IPO Detail Page",
+  "status": "done",
+  "timestamps": {
+    "started": "2025-10-26T21:30:00.000Z",
+    "implementation_complete": "2025-10-26T21:45:00.000Z",
+    "qa_passed": "2025-10-26T22:15:00.000Z",
+    "completed": "2025-10-26T22:15:00.000Z"
+  },
+  "completion_metrics": {
+    "task_completion_percent": 100,
+    "ac_completion_percent": 100,
+    "test_coverage_percent": 100,
+    "qa_iterations": 1,
+    "quality_score": 9.8
+  },
+  "approvals": {
+    "sm_approved": true,
+    "sm_approved_at": "2025-10-26T22:15:00.000Z",
+    "sm_reviewer": "Bob (Scrum Master)",
+    "qa_passed": true,
+    "qa_passed_at": "2025-10-26T22:15:00.000Z"
+  },
+  "test_results": {
+    "total_tests": 22,
+    "unit_tests": 17,
+    "integration_tests": 5,
+    "tests_passing": 22,
+    "lint_errors": 0,
+    "type_errors": 0
+  },
+  "workflow_version": "4.0",
+  "workflow_step": "9.3"
+}
