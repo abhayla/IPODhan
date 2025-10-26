@@ -1,0 +1,31 @@
+{
+  "story_id": "11.13",
+  "story_title": "Implement IPO Objectives Section for IPO Detail Page",
+  "status": "ready",
+  "timestamps": {
+    "workflow_started": "2025-10-26T15:00:00.000Z",
+    "drafting_completed": "2025-10-26T15:00:00.000Z",
+    "validation_completed": "2025-10-26T15:15:00.000Z",
+    "correction_completed": null,
+    "ready_status_set": "2025-10-26T15:20:00.000Z",
+    "total_duration_minutes": 20
+  },
+  "workflow_metrics": {
+    "validation_iterations": 1,
+    "correction_iterations": 0,
+    "total_commits": 3
+  },
+  "approvals": {
+    "sm_drafted": true,
+    "po_approved": true,
+    "sm_corrected": false
+  },
+  "files": {
+    "story_file": "docs/stories/11.13.implement-ipo-objectives-section.md",
+    "epic_reference": "docs/03-epics/epic-11-sharded.md",
+    "architecture_reference": "docs/02-architecture/backend-architecture.md",
+    "sprint_plan": null
+  },
+  "workflow_version": "2.0",
+  "workflow_step": "6"
+}
