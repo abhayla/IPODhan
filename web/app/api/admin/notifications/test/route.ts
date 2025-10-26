@@ -16,7 +16,7 @@ import {
  *
  * Body: { type: 'email' | 'telegram' | 'both', email?: string }
  */
-export const POST = withAdminAuth(async (request: NextRequest) => {
+export const POST = withAdminAuth(async (request: NextRequest, adminContext) => {
   try {
     const body = await request.json();
     const { type, email } = body;

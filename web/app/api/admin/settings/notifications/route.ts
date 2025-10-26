@@ -17,7 +17,7 @@ import {
  * GET /api/admin/settings/notifications
  * Retrieve current notification configuration with masked sensitive data
  */
-export const GET = withAdminAuth(async () => {
+export const GET = withAdminAuth(async (request: NextRequest, adminContext) => {
   try {
     const config = await getNotificationConfig();
 
@@ -53,7 +53,7 @@ export const GET = withAdminAuth(async () => {
  * POST /api/admin/settings/notifications
  * Save notification configuration
  */
-export const POST = withAdminAuth(async (request: NextRequest) => {
+export const POST = withAdminAuth(async (request: NextRequest, adminContext) => {
   try {
     const body = await request.json();
 
