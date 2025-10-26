@@ -16,7 +16,7 @@ Complete end-to-end workflow for story implementation and quality assurance with
 ## Input Parameters
 
 - `story_id`: Story identifier (e.g., "1.3", "2.1")
-- `sprint_plan`: Path to sprint plan file (default: `docs/stories/SPRINT-{N}-PLAN.md`)
+- `sprint_plan`: Path to sprint plan file (default: `docs/04-stories/SPRINT-{N}-PLAN.md`)
 
 ## Workflow Steps
 
@@ -24,7 +24,7 @@ Complete end-to-end workflow for story implementation and quality assurance with
 
 **Actions:**
 - Parse story identifier from input parameters
-- Read full story details from `docs/stories/SPRINT-N-PLAN.md`
+- Read full story details from `docs/04-stories/SPRINT-N-PLAN.md`
 - Extract all acceptance criteria and requirements
 - Load story-specific files if they exist
 
@@ -54,7 +54,7 @@ Requirements:
 - Write comprehensive tests (unit + E2E)
 - Ensure code quality (lint, types, formatting)
 - Update documentation as needed
-- Create progress report in docs/stories/progress-reports/
+- Create progress report in docs/04-stories/progress-reports/
 - Do NOT commit yet - QA validation required first
 
 Return detailed summary of:
@@ -506,7 +506,7 @@ git push origin main
 ```
 
 **Report Generation Steps:**
-1. Create report directory if needed: `mkdir -p docs/stories/qa-reports`
+1. Create report directory if needed: `mkdir -p docs/04-stories/qa-reports`
 2. Generate report using template above
 3. Fill in all placeholders with actual data
 4. Save to designated location
