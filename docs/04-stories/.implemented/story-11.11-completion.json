@@ -1,0 +1,30 @@
+{
+  "story_id": "11.11",
+  "story_title": "Implement KPI Highlight Section for IPO Detail Page",
+  "status": "done",
+  "timestamps": {
+    "started": "2025-10-27T00:00:00.000Z",
+    "implementation_complete": "2025-10-27T00:15:00.000Z",
+    "sm_approved": "2025-10-27T00:15:00.000Z",
+    "completed": "2025-10-27T00:15:00.000Z"
+  },
+  "completion_metrics": {
+    "task_completion_percent": 100,
+    "ac_completion_percent": 100,
+    "test_coverage_percent": 95,
+    "quality_score": 9.7,
+    "story_points": 5
+  },
+  "approvals": {
+    "sm_approved": true,
+    "sm_approved_at": "2025-10-27T00:15:00.000Z",
+    "qa_passed": true
+  },
+  "test_results": {
+    "total_tests": 76,
+    "tests_passing": 76,
+    "calculation_tests": 44,
+    "formatter_tests": 32
+  },
+  "workflow_version": "4.0"
+}
