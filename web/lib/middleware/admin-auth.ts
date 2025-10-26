@@ -51,14 +51,14 @@ export function verifyAdminAuth(request: NextRequest): AdminAuthContext | null {
 /**
  * Middleware wrapper for API routes requiring admin auth
  */
-export function withAdminAuth<T = any>(
+export function withAdminAuth(
   handler: (
     request: NextRequest,
     adminContext: AdminAuthContext,
     ...args: any[]
-  ) => Promise<NextResponse<T>>
+  ) => Promise<NextResponse<any>>
 ) {
-  return async (request: NextRequest, ...args: any[]): Promise<NextResponse<T>> => {
+  return async (request: NextRequest, ...args: any[]): Promise<NextResponse<any>> => {
     // Verify authentication
     const adminContext = verifyAdminAuth(request);
 
@@ -69,7 +69,7 @@ export function withAdminAuth<T = any>(
           message: 'Admin authentication required',
         },
         { status: 401 }
-      ) as NextResponse<T>;
+      );
     }
 
     // Call the handler with admin context

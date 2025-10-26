@@ -24,7 +24,7 @@ import {
  * - page: Page number (default: 1)
  * - limit: Items per page (default: 50, max: 200)
  */
-export const GET = withAdminAuth(async (request: NextRequest) => {
+export const GET = withAdminAuth(async (request: NextRequest, adminContext) => {
   try {
     const { searchParams } = new URL(request.url);
 
