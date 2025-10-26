@@ -97,17 +97,34 @@ export class AnchorInvestorRepository
    */
   async upsert(data: AnchorInvestorInsert): Promise<AnchorInvestor> {
     try {
-      const [result] = await this.db
-        .insert(anchorInvestors)
-        .values(data)
-        .onConflictDoUpdate({
-          target: anchorInvestors.ipoId,
-          set: {
+      // Check if record exists
+      const [existing] = await this.db
+        .select()
+        .from(anchorInvestors)
+        .where(eq(anchorInvestors.ipoId, data.ipoId))
+        .limit(1);
+
+      let result: AnchorInvestor;
+
+      if (existing) {
+        // Update existing record
+        const [updated] = await this.db
+          .update(anchorInvestors)
+          .set({
             ...data,
             updatedAt: new Date(),
-          },
-        })
-        .returning();
+          })
+          .where(eq(anchorInvestors.ipoId, data.ipoId))
+          .returning();
+        result = updated;
+      } else {
+        // Insert new record
+        const [inserted] = await this.db
+          .insert(anchorInvestors)
+          .values(data)
+          .returning();
+        result = inserted;
+      }
 
       // Invalidate cache
       await this.deleteCachePattern(
