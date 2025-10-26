@@ -801,9 +801,9 @@ export interface IndividualInvestor {
 }
 
 export interface IPOObjective {
-  serial: number;
-  description: string;
-  amount: number; // in ₹ Crores
+  sno: number;                  // Serial number (1, 2, 3...)
+  description: string;          // Objective description
+  amount: number | null;        // Amount in crores (null for unallocated)
 }
 
 // ==================== TABLE 20: AUDIT_LOGS ====================
