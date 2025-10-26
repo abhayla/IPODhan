@@ -30,7 +30,7 @@ Complete end-to-end workflow for story creation and validation with **date/time 
 
 - `epic_path`: Path to sharded epic file (e.g., `docs/epics/epic-1-sharded.md`)
 - `architecture_path`: Path to architecture documentation (e.g., `docs/architecture/system-design.md`)
-- `destination_path`: Path where the story will be saved (default: `docs/stories/`)
+- `destination_path`: Path where the story will be saved (default: `docs/04-stories/`)
 
 ## Workflow Steps
 
@@ -62,7 +62,7 @@ Complete end-to-end workflow for story creation and validation with **date/time 
 3. **Create Tracking Directory:**
    ```bash
    # Create directory for story creation tracking if needed
-   mkdir -p docs/stories/.drafts
+   mkdir -p docs/04-stories/.drafts
    ```
 
 4. **Record Workflow Start Time:**
@@ -311,7 +311,7 @@ echo "✅ Story file validated"
 
 #### 2.5.1. Create Draft Tracking File
 
-**File:** `docs/stories/.drafts/story-{story_id}-creation.json`
+**File:** `docs/04-stories/.drafts/story-{story_id}-creation.json`
 
 ⚠️ **All timestamps MUST use current date/time in ISO 8601 format**
 
@@ -367,7 +367,7 @@ fi
 
 # Stage story file and tracking metadata
 git add {story_file_path}
-git add docs/stories/.drafts/story-{story_id}-creation.json
+git add docs/04-stories/.drafts/story-{story_id}-creation.json
 
 # Create story draft commit
 git commit -m "$(cat <<'EOF'
@@ -405,7 +405,7 @@ git push origin main
 if [ $? -eq 0 ]; then
   echo "✅ Story draft committed and pushed to main branch"
   echo "📄 Story file: {story_file_path}"
-  echo "📊 Tracking: docs/stories/.drafts/story-{story_id}-creation.json"
+  echo "📊 Tracking: docs/04-stories/.drafts/story-{story_id}-creation.json"
 else
   echo "❌ ERROR: Failed to push story draft"
   exit 1
@@ -503,7 +503,7 @@ Return:
    ```
 
 2. **Update Draft Tracking JSON:**
-   Update `docs/stories/.drafts/story-{story_id}-creation.json`:
+   Update `docs/04-stories/.drafts/story-{story_id}-creation.json`:
    ```json
    {
      "validation_status": "{approved | changes_required}",
@@ -563,7 +563,7 @@ fi
 
 # Stage story file with updated changelog and tracking JSON
 git add {story_file_path}
-git add docs/stories/.drafts/story-{story_id}-creation.json
+git add docs/04-stories/.drafts/story-{story_id}-creation.json
 
 # Create validation commit with appropriate message
 if [ "{validation_status}" == "APPROVED" ]; then
@@ -623,7 +623,7 @@ git push origin main
 if [ $? -eq 0 ]; then
   echo "✅ Validation results committed and pushed to main branch"
   echo "📄 Story file: {story_file_path}"
-  echo "📊 Tracking: docs/stories/.drafts/story-{story_id}-creation.json"
+  echo "📊 Tracking: docs/04-stories/.drafts/story-{story_id}-creation.json"
   echo "✓ Validation Status: {validation_status}"
 else
   echo "❌ ERROR: Failed to push validation results"
@@ -728,7 +728,7 @@ Return:
    ```
 
 2. **Update Draft Tracking JSON:**
-   Update `docs/stories/.drafts/story-{story_id}-creation.json`:
+   Update `docs/04-stories/.drafts/story-{story_id}-creation.json`:
    ```json
    {
      "timestamps": {
@@ -792,7 +792,7 @@ fi
 
 # Stage story file with corrections and tracking JSON
 git add {story_file_path}
-git add docs/stories/.drafts/story-{story_id}-creation.json
+git add docs/04-stories/.drafts/story-{story_id}-creation.json
 
 # Create correction commit
 git commit -m "$(cat <<'EOF'
@@ -828,7 +828,7 @@ git push origin main
 if [ $? -eq 0 ]; then
   echo "✅ Corrections committed and pushed to main branch"
   echo "📄 Story file: {story_file_path}"
-  echo "📊 Tracking: docs/stories/.drafts/story-{story_id}-creation.json"
+  echo "📊 Tracking: docs/04-stories/.drafts/story-{story_id}-creation.json"
   echo "✓ Iteration: {iteration_count} of 3"
 else
   echo "❌ ERROR: Failed to push corrections"
@@ -864,7 +864,7 @@ fi
 If story is part of a sprint plan, update the sprint plan file to include the new story.
 
 **Actions:**
-1. **Locate relevant sprint plan file** (e.g., `docs/stories/SPRINT-N-PLAN.md`)
+1. **Locate relevant sprint plan file** (e.g., `docs/04-stories/SPRINT-N-PLAN.md`)
 2. **Add story to sprint backlog** with metadata
 3. **Update story status to "Ready"**
 4. **Link to story file**
@@ -935,7 +935,7 @@ validation_iterations: {iteration_count}
 
 #### 6.1. Create Final Tracking File
 
-**File:** `docs/stories/.drafts/story-{story_id}-ready.json`
+**File:** `docs/04-stories/.drafts/story-{story_id}-ready.json`
 
 ⚠️ **All timestamps MUST use current date/time in ISO 8601 format**
 
@@ -985,8 +985,8 @@ fi
 
 # Stage all final files
 git add {story_file_path}
-git add docs/stories/SPRINT-*.md 2>/dev/null || true
-git add docs/stories/.drafts/story-{story_id}-ready.json
+git add docs/04-stories/SPRINT-*.md 2>/dev/null || true
+git add docs/04-stories/.drafts/story-{story_id}-ready.json
 
 # Create final status commit
 git commit -m "$(cat <<'EOF'
@@ -1028,7 +1028,7 @@ git push origin main
 if [ $? -eq 0 ]; then
   echo "✅ Story status set to 'Ready' and pushed to main branch"
   echo "📄 Story file: {story_file_path}"
-  echo "📊 Final tracking: docs/stories/.drafts/story-{story_id}-ready.json"
+  echo "📊 Final tracking: docs/04-stories/.drafts/story-{story_id}-ready.json"
   echo "📅 Ready at: {CURRENT_DATE_TIME}"
 else
   echo "❌ ERROR: Failed to push final status"
@@ -1082,7 +1082,7 @@ fi
 ### Step 1: Story Context Preparation
 - **Status:** ✓ Completed
 - **Branch:** main
-- **Tracking Directory:** docs/stories/.drafts/
+- **Tracking Directory:** docs/04-stories/.drafts/
 
 ### Step 1.5: Add Story to Epic
 - **Status:** ✓ Completed
@@ -1193,8 +1193,8 @@ fi
 
 ## Tracking Files
 
-- **Draft Tracking:** docs/stories/.drafts/story-{story_id}-creation.json
-- **Final Tracking:** docs/stories/.drafts/story-{story_id}-ready.json
+- **Draft Tracking:** docs/04-stories/.drafts/story-{story_id}-creation.json
+- **Final Tracking:** docs/04-stories/.drafts/story-{story_id}-ready.json
 
 ---
 
@@ -1209,7 +1209,7 @@ Story {story_id} is ready for sprint planning and implementation.
 1. Generate report using template above
 2. Fill in all placeholders with actual workflow data
 3. Display report to user
-4. Save to `docs/stories/workflow-reports/story-{story_id}-creation-report.md`
+4. Save to `docs/04-stories/workflow-reports/story-{story_id}-creation-report.md`
 
 **Final Output:**
 - ✅ Comprehensive workflow report generated

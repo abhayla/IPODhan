@@ -31,7 +31,7 @@ Complete end-to-end workflow for story implementation and quality assurance with
 ## Input Parameters
 
 - `story_id`: Story identifier (e.g., "1.3", "2.1")
-- `sprint_plan`: Path to sprint plan file (default: `docs/stories/SPRINT-{N}-PLAN.md`)
+- `sprint_plan`: Path to sprint plan file (default: `docs/04-stories/SPRINT-{N}-PLAN.md`)
 
 ## Workflow Steps
 
@@ -41,7 +41,7 @@ Complete end-to-end workflow for story implementation and quality assurance with
 
 1. **Parse Story Details:**
    - Parse story identifier from input parameters
-   - Read full story details from `docs/stories/SPRINT-N-PLAN.md`
+   - Read full story details from `docs/04-stories/SPRINT-N-PLAN.md`
    - Extract all acceptance criteria and requirements
    - Load story-specific files if they exist
 
@@ -166,7 +166,7 @@ Based on your story type, enable ONLY these features:
   - Test all optional features enabled for tables
 - Ensure code quality (lint, types, formatting)
 - Update documentation as needed
-- Create progress report in docs/stories/progress-reports/
+- Create progress report in docs/04-stories/progress-reports/
 - Commit implementation work to main branch regularly
 - Push main branch to remote after completing implementation
 
@@ -339,11 +339,11 @@ Return detailed summary of:
 
 #### 2.6.1. Update Sprint Plan Status
 
-**File:** `docs/stories/SPRINT-N-PLAN.md`
+**File:** `docs/04-stories/SPRINT-N-PLAN.md`
 
 ```bash
 # Locate the story entry in sprint plan
-story_line=$(grep -n "Story ${story_id}:" docs/stories/SPRINT-*.md | cut -d: -f1)
+story_line=$(grep -n "Story ${story_id}:" docs/04-stories/SPRINT-*.md | cut -d: -f1)
 
 # Update story status from "In Progress" to "Implemented"
 # Common patterns:
@@ -383,7 +383,7 @@ After (using current date/time at execution):
 
 #### 2.6.2. Update Individual Story File (if exists)
 
-**File:** `docs/stories/{story_id}.*.story.md`
+**File:** `docs/04-stories/{story_id}.*.story.md`
 
 Check if individual story file exists:
 ```bash
@@ -432,7 +432,7 @@ fi
 
 #### 2.6.3. Create Implementation Tracking File
 
-**File:** `docs/stories/.implemented/story-{story_id}-implementation.json`
+**File:** `docs/04-stories/.implemented/story-{story_id}-implementation.json`
 
 Create machine-readable implementation metadata:
 
@@ -485,13 +485,13 @@ if [ "$current_branch" != "main" ]; then
 fi
 
 # Create directory for implementation tracking if needed
-mkdir -p docs/stories/.implemented
+mkdir -p docs/04-stories/.implemented
 
 # Stage all status update files
-git add docs/stories/SPRINT-*.md
-git add docs/stories/${story_id}.*.story.md 2>/dev/null || true
-git add docs/stories/*${story_id}*.story.md 2>/dev/null || true
-git add docs/stories/.implemented/story-{story_id}-implementation.json
+git add docs/04-stories/SPRINT-*.md
+git add docs/04-stories/${story_id}.*.story.md 2>/dev/null || true
+git add docs/04-stories/*${story_id}*.story.md 2>/dev/null || true
+git add docs/04-stories/.implemented/story-{story_id}-implementation.json
 
 # Create status update commit
 git commit -m "$(cat <<'EOF'
@@ -1409,11 +1409,11 @@ git push origin main
 
 #### 9.1. Update Sprint Plan Status
 
-**File:** `docs/stories/SPRINT-N-PLAN.md`
+**File:** `docs/04-stories/SPRINT-N-PLAN.md`
 
 ```bash
 # Locate the story entry in sprint plan
-story_line=$(grep -n "Story ${story_id}:" docs/stories/SPRINT-*.md | cut -d: -f1)
+story_line=$(grep -n "Story ${story_id}:" docs/04-stories/SPRINT-*.md | cut -d: -f1)
 
 # Update story status to "Done"
 # Common patterns:
@@ -1452,7 +1452,7 @@ Add final changelog entry with current date/time:
 
 #### 9.3. Create Completion Tracking File
 
-**File:** `docs/stories/.completed/story-{story_id}-completion.json`
+**File:** `docs/04-stories/.completed/story-{story_id}-completion.json`
 
 ⚠️ **All timestamps MUST use current date/time**
 
@@ -1495,13 +1495,13 @@ if [ "$current_branch" != "main" ]; then
 fi
 
 # Create directory for completion tracking if needed
-mkdir -p docs/stories/.completed
+mkdir -p docs/04-stories/.completed
 
 # Stage all status update files
-git add docs/stories/SPRINT-*.md
-git add docs/stories/${story_id}.*.story.md 2>/dev/null || true
-git add docs/stories/*${story_id}*.story.md 2>/dev/null || true
-git add docs/stories/.completed/story-{story_id}-completion.json
+git add docs/04-stories/SPRINT-*.md
+git add docs/04-stories/${story_id}.*.story.md 2>/dev/null || true
+git add docs/04-stories/*${story_id}*.story.md 2>/dev/null || true
+git add docs/04-stories/.completed/story-{story_id}-completion.json
 
 # Create final status update commit
 git commit -m "$(cat <<'EOF'
@@ -1578,11 +1578,11 @@ fi
 
 #### 10.1. Update Sprint Plan Status
 
-**File:** `docs/stories/SPRINT-N-PLAN.md`
+**File:** `docs/04-stories/SPRINT-N-PLAN.md`
 
 ```bash
 # Locate the story entry in sprint plan
-story_line=$(grep -n "Story ${story_id}:" docs/stories/SPRINT-*.md | cut -d: -f1)
+story_line=$(grep -n "Story ${story_id}:" docs/04-stories/SPRINT-*.md | cut -d: -f1)
 
 # Update story status from "In Progress" to "Done"
 # Update format depends on sprint plan structure
@@ -1629,7 +1629,7 @@ After (using current date/time at execution):
 
 #### 10.2. Update Individual Story File (if exists)
 
-**File:** `docs/stories/{story_id}.*.story.md`
+**File:** `docs/04-stories/{story_id}.*.story.md`
 
 Check if individual story file exists:
 ```bash
@@ -1674,7 +1674,7 @@ fi
 - ✅ AC{number}: {description} - Fully implemented and tested
 
 ### Reports Generated
-- Progress Report: `docs/stories/progress-reports/story-{story_id}-progress.md`
+- Progress Report: `docs/04-stories/progress-reports/story-{story_id}-progress.md`
 - QA Report: `docs/06-qa-reports/sprint-reports/story-{story_id}-qa-report.md`
 - Component Validation: `docs/06-qa-reports/sprint-reports/story-{story_id}-component-validation.md` (if applicable)
 - AC Validation: `docs/06-qa-reports/sprint-reports/story-{story_id}-ac-validation.md`
@@ -1692,7 +1692,7 @@ fi
 
 #### 10.3. Create Story Completion Tracking File
 
-**File:** `docs/stories/.completed/story-{story_id}-completion.json`
+**File:** `docs/04-stories/.completed/story-{story_id}-completion.json`
 
 Create machine-readable completion metadata:
 
@@ -1737,7 +1737,7 @@ Create machine-readable completion metadata:
     "sm_agent": "Bob"
   },
   "reports": {
-    "progress_report": "docs/stories/progress-reports/story-{story_id}-progress.md",
+    "progress_report": "docs/04-stories/progress-reports/story-{story_id}-progress.md",
     "qa_report": "docs/06-qa-reports/sprint-reports/story-{story_id}-qa-report.md",
     "component_validation": "docs/06-qa-reports/sprint-reports/story-{story_id}-component-validation.md",
     "ac_validation": "docs/06-qa-reports/sprint-reports/story-{story_id}-ac-validation.md"
@@ -1748,7 +1748,7 @@ Create machine-readable completion metadata:
 
 #### 10.4. Update Sprint Progress Dashboard (if exists)
 
-**File:** `docs/stories/SPRINT-{N}-DASHBOARD.md` (create if doesn't exist)
+**File:** `docs/04-stories/SPRINT-{N}-DASHBOARD.md` (create if doesn't exist)
 
 Update sprint-level metrics:
 
@@ -1798,13 +1798,13 @@ if [ "$current_branch" != "main" ]; then
 fi
 
 # Create directory for completion tracking if needed
-mkdir -p docs/stories/.completed
+mkdir -p docs/04-stories/.completed
 
 # Stage all status update files
-git add docs/stories/SPRINT-*.md
-git add docs/stories/${story_id}.*.story.md 2>/dev/null || true
-git add docs/stories/.completed/story-{story_id}-completion.json
-git add docs/stories/SPRINT-*-DASHBOARD.md 2>/dev/null || true
+git add docs/04-stories/SPRINT-*.md
+git add docs/04-stories/${story_id}.*.story.md 2>/dev/null || true
+git add docs/04-stories/.completed/story-{story_id}-completion.json
+git add docs/04-stories/SPRINT-*-DASHBOARD.md 2>/dev/null || true
 
 # Create status update commit
 git commit -m "$(cat <<'EOF'
@@ -1826,7 +1826,7 @@ Completion Summary:
 - ✅ Merged: {merge_commit_hash}
 
 Reports:
-- Progress: docs/stories/progress-reports/story-{story_id}-progress.md
+- Progress: docs/04-stories/progress-reports/story-{story_id}-progress.md
 - QA: docs/06-qa-reports/sprint-reports/story-{story_id}-qa-report.md
 - Component: docs/06-qa-reports/sprint-reports/story-{story_id}-component-validation.md
 - AC Validation: docs/06-qa-reports/sprint-reports/story-{story_id}-ac-validation.md
@@ -1999,7 +1999,7 @@ fi
 ```
 
 **Report Generation Steps:**
-1. Create report directory if needed: `mkdir -p docs/stories/qa-reports`
+1. Create report directory if needed: `mkdir -p docs/04-stories/qa-reports`
 2. Generate report using template above
 3. Fill in all placeholders with actual data
 4. Save to designated location
@@ -2070,9 +2070,9 @@ The workflow completes successfully when **ALL** of the following are true (**MA
 - **Cleanup script available:** `.bmad-core/scripts/cleanup-merged-branches.sh` exists
 
 ✓ **Story status updated** (NEW in v3.3)
-- **Sprint plan status:** Updated to "Done" (docs/stories/SPRINT-N-PLAN.md)
+- **Sprint plan status:** Updated to "Done" (docs/04-stories/SPRINT-N-PLAN.md)
 - **Individual story file:** Completion metadata added (if file exists)
-- **Completion tracking:** JSON file created (docs/stories/.completed/story-{id}-completion.json)
+- **Completion tracking:** JSON file created (docs/04-stories/.completed/story-{id}-completion.json)
 - **Sprint dashboard:** Progress metrics updated (if dashboard exists)
 - **Status update committed:** Commit created on main branch
 - **Status update pushed:** Remote repository updated

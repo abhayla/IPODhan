@@ -17,7 +17,7 @@ Complete end-to-end workflow for story creation and validation. This task orches
 
 - `epic_path`: Path to sharded epic file (e.g., `docs/epics/epic-1-sharded.md`)
 - `architecture_path`: Path to architecture documentation (e.g., `docs/architecture/system-design.md`)
-- `destination_path`: Path where the story will be saved (default: `docs/stories/`)
+- `destination_path`: Path where the story will be saved (default: `docs/04-stories/`)
 
 ## Workflow Steps
 
@@ -207,7 +207,7 @@ Return:
 If story is part of a sprint plan, update the sprint plan file to include the new story.
 
 **Actions:**
-- Locate relevant sprint plan file (e.g., `docs/stories/SPRINT-N-PLAN.md`)
+- Locate relevant sprint plan file (e.g., `docs/04-stories/SPRINT-N-PLAN.md`)
 - Add story to sprint backlog
 - Update story status to "Ready"
 - Link to story file
@@ -343,7 +343,7 @@ Story {story_id} is ready for sprint planning and implementation.
 1. Generate report using template above
 2. Fill in all placeholders with actual workflow data
 3. Display report to user
-4. Optionally save to `docs/stories/workflow-reports/story-{story_id}-creation-report.md`
+4. Optionally save to `docs/04-stories/workflow-reports/story-{story_id}-creation-report.md`
 
 ---
 
