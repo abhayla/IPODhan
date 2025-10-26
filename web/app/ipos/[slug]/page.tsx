@@ -30,6 +30,7 @@ import { ListingPerformance } from '@/components/ipo/ListingPerformance';
 import { IPOScoreSection } from '@/components/ipo/IPOScoreSection';
 import { PeerComparisonSection } from '@/components/ipo/PeerComparisonSection';
 import { SectorAverageComparison } from '@/components/ipo/SectorAverageComparison';
+import { PromoterHoldingSection } from '@/components/ipo/PromoterHoldingSection';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
 import { apiClient } from '@/lib/api-client';
 import type { IPODetailResponse } from '@/lib/db/types';
@@ -102,7 +103,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     notFound();
   }
 
-  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails, peerCompanies } = data;
+  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails, peerCompanies, financialData } = data;
 
   // Calculate metrics for KeyMetricsCards
   const latestSubscription = subscriptions?.[0];
@@ -185,6 +186,12 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* IPO Score Section (Story 4.7) */}
             <IPOScoreSection score={ipoScore || null} />
+
+            {/* Promoter Holding Section (Story 11.9) */}
+            <PromoterHoldingSection
+              promoterHoldingPreIssue={financialData?.promoterHoldingPreIssue ? Number(financialData.promoterHoldingPreIssue) : null}
+              promoterHoldingPostIssue={financialData?.promoterHoldingPostIssue ? Number(financialData.promoterHoldingPostIssue) : null}
+            />
 
             {/* Peer Comparison Section */}
             {peerCompanies && peerCompanies.length > 0 && (
