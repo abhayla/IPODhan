@@ -752,6 +752,27 @@ async function seedDatabase() {
         // Registrar link (80% of IPOs have it)
         const registrarLink = Math.random() < 0.8 ? randomChoice(registrarLinks) : null;
 
+        // Story 11.15: Category reservation data
+        // Calculate total shares from issue size (approximate)
+        const totalShares = Math.round((totalIssueSize * 10000000) / (ipo.priceRangeMax || 100)); // Total shares = issue size (crores) / price
+
+        // Standard SEBI allocation percentages (with some variation)
+        const qibPercentage = randomInt(48, 51); // 48-51% for QIB
+        const niiPercentage = randomInt(14, 16); // 14-16% for NII
+        const retailPercentage = randomInt(33, 36); // 33-36% for Retail
+        const employeePercentage = Math.random() < 0.3 ? randomInt(0, 2) : 0; // 30% chance of employee reservation (0-2%)
+        const anchorPercentage = Math.random() < 0.6 ? randomInt(25, 35) : 0; // 60% chance of anchor investors (25-35%)
+
+        // Calculate shares offered per category
+        const qibShares = Math.round(totalShares * qibPercentage / 100);
+        const niiShares = Math.round(totalShares * niiPercentage / 100);
+        const retailShares = Math.round(totalShares * retailPercentage / 100);
+        const employeeShares = employeePercentage > 0 ? Math.round(totalShares * employeePercentage / 100) : null;
+        const anchorShares = anchorPercentage > 0 ? Math.round(totalShares * anchorPercentage / 100) : null;
+
+        // Calculate max retail allottees (shares / lot size)
+        const retailMaxAllottees = Math.round(retailShares / (ipo.lotSize || 100));
+
         await db.insert(ipoDetails).values({
           ipoId: ipo.id,
           issueType: issueType as 'BOOK_BUILDING' | 'FIXED_PRICE' | 'HYBRID',
@@ -776,6 +797,13 @@ async function seedDatabase() {
           companyDescription: ipo.companyDescription,
           dataSource: 'SEED_SCRIPT',
           lastVerifiedAt: new Date(),
+          // Story 11.15: Category Reservation Fields
+          qibSharesOffered: qibShares,
+          niiSharesOffered: niiShares,
+          retailSharesOffered: retailShares,
+          retailMaxAllottees: retailMaxAllottees,
+          employeeSharesOffered: employeeShares,
+          anchorSharesOffered: anchorShares,
         });
 
         ipoDetailsCount++;
