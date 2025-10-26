@@ -1063,6 +1063,89 @@ Implement Promoter Holding section to display pre-IPO and post-IPO promoter shar
 - Follow component patterns from existing IPO detail page
 - Cache TTL: 24 hours (static data)
 
+---
+
+### Story 11.10: Implement Anchor Investors Details Section for IPO Detail Page
+**Priority:** P1 - HIGH (Key institutional confidence signal)
+**Points:** 8
+**Status:** Planning
+**Created:** 2025-10-26
+**Source:** Missing Features Documentation (`docs/19-ui/ipo-detail-page/MISSING_FEATURES_SUMMARY.md`)
+
+**Description:**
+Implement Anchor Investors section to display anchor investor allocation data - a CRITICAL indicator of institutional confidence in an IPO. Currently 0% implemented - a major competitive gap.
+
+**Business Impact:**
+- **Current Coverage**: 0% (NOT IMPLEMENTED)
+- **Competitive Gap**: Major gap vs Chittorgarh and other IPO platforms
+- **Investor Value**: Critical signal of institutional confidence and demand
+
+**Key Requirements:**
+- Display aggregate anchor investor data (total shares, amount, bid date, lock-in periods)
+- Display individual anchor investor list with allocation details
+- Show total number of anchor investors
+- Link to anchor investor allocation document
+
+**Database Requirements:**
+- Create new table `anchor_investors`:
+  - `id` UUID PRIMARY KEY
+  - `ipo_id` UUID REFERENCES ipos(id)
+  - `bid_date` DATE
+  - `total_shares_offered` BIGINT
+  - `total_amount_raised` NUMERIC(12,2) -- in crores
+  - `anchor_investors_count` INTEGER
+  - `lock_in_50_percent_date` DATE -- 30 days from bid
+  - `lock_in_remaining_date` DATE -- 90 days from bid
+  - `investor_list` JSONB -- [{name, type, shares, amount, percent}, ...]
+  - `created_at` TIMESTAMP
+  - `updated_at` TIMESTAMP
+- Database migration required
+
+**UI Requirements:**
+- New component: `AnchorInvestorsSection.tsx`
+- Display sections:
+  1. Aggregate Summary Card (bid date, shares, amount, investor count)
+  2. Lock-in Dates (50% at 30 days, remaining at 90 days)
+  3. Investor List Table (if data available)
+- Place below Promoter Holding section or in dedicated tab
+- Empty state: "Anchor data not available yet"
+
+**Data Source:**
+- Scrape from NSE/BSE anchor allocation announcements (PDF)
+- Fallback: Manual entry in admin panel
+- Data typically published 1 day before IPO opens
+
+**Estimated Effort:** 3-4 days (includes new table + scraper)
+**Story Points:** 8 points
+
+**Acceptance Criteria:**
+1. Database migration creates `anchor_investors` table with all fields
+2. AnchorInvestorsSection component created
+3. Component displays aggregate anchor data
+4. Component displays lock-in period dates
+5. Component displays investor list table (if data exists)
+6. Empty state handled ("Anchor data not available yet")
+7. Component integrated into IPO detail page
+8. Unit tests for component (>80% coverage)
+9. Integration test for database table
+10. Admin panel allows manual anchor data entry
+
+**Technical Notes:**
+- Follow repository pattern from backend-architecture.md
+- Use Drizzle ORM for schema changes
+- investor_list JSONB format: `[{name, type, shares, amount, percentOfIssue}]`
+- Cache TTL: 24 hours (static data after allocation)
+- Consider future scraper enhancement for PDF parsing
+
+---
+
+### Story 11.8: Restructure Category Field into Segment + Offering Type
+**Priority:** P0 - CRITICAL (Breaking Change)
+**Points:** 13
+**Status:** 📋 PLANNING
+**Created:** 2025-10-19
+**Source:** Planning document `docs/01-planning/segment-offeringType-change.md`
+
 **Description:**
 Replace single `category` field with TWO separate fields (`segment` + `offeringType`) to properly model the distinction between exchange segment and offering type, fixing data model confusion that causes duplicate IPO listings.
 
@@ -1237,14 +1320,28 @@ offeringType: 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'TENDER' | /* 15 types total */
 **Epic Owner**: Scrum Master (Bob)
 **Product Owner**: Bob
 **Created**: 2025-10-17
-**Last Updated**: 2025-10-26 (Story 11.9 Added)
+**Last Updated**: 2025-10-26 (Story 11.10 Added)
 **Status**: 🔄 REOPENED
-**Story Count**: 10 (5 Complete, 1 Ready, 4 Planning)
-**Completion**: 50.0% (5/10 stories complete)
+**Story Count**: 11 (5 Complete, 1 Ready, 5 Planning)
+**Completion**: 45.5% (5/11 stories complete)
 
 ---
 
 ## Changelog
+
+### 2025-10-26 14:30:00 - Story 11.10 Added to Epic 📋
+- **Story**: 11.10 - Implement Anchor Investors Details Section for IPO Detail Page
+- **Status**: PLANNING
+- **Priority**: P1 - HIGH (Key institutional confidence signal)
+- **Source**: Missing Features Documentation (`docs/19-ui/ipo-detail-page/MISSING_FEATURES_SUMMARY.md`)
+- **Business Impact**: Closes 0% → 100% coverage gap for anchor investor data (major competitive gap)
+- **Scope**: Database migration (new table `anchor_investors`) + new UI component + integration + admin panel
+- **Estimated Effort**: 3-4 days (8 story points)
+- **Epic Metrics Updated**:
+  - Story Count: 10 → 11 stories
+  - Completion: 50.0% → 45.5% (5/11 complete)
+  - New Planning Work: 3-4 days
+- **Action Required**: Story ready for automated workflow drafting (Step 2)
 
 ### 2025-10-26 - Story 11.9 Added to Epic 📋
 - **Story**: 11.9 - Implement Promoter Holding Display for IPO Detail Page
