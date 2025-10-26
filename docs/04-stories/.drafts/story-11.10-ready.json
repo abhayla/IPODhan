@@ -1,0 +1,38 @@
+{
+  "story_id": "11.10",
+  "story_title": "Implement Anchor Investors Details Section for IPO Detail Page",
+  "status": "ready",
+  "timestamps": {
+    "workflow_started": "2025-10-26T14:30:00.000Z",
+    "drafting_completed": "2025-10-26T14:35:00.000Z",
+    "validation_completed": "2025-10-26T14:40:00.000Z",
+    "correction_completed": null,
+    "ready_status_set": "2025-10-26T14:42:00.000Z",
+    "total_duration_minutes": 12
+  },
+  "workflow_metrics": {
+    "validation_iterations": 1,
+    "correction_iterations": 0,
+    "total_commits": 3
+  },
+  "approvals": {
+    "sm_drafted": true,
+    "po_approved": true,
+    "sm_corrected": false
+  },
+  "files": {
+    "story_file": "docs/04-stories/11.10.implement-anchor-investors-section.md",
+    "epic_reference": "docs/03-epics/epic-11-sharded.md",
+    "architecture_reference": "docs/02-architecture/backend-architecture.md",
+    "sprint_plan": null
+  },
+  "quality_metrics": {
+    "readiness_score": 8.5,
+    "confidence_level": "HIGH",
+    "critical_issues": 0,
+    "should_fix_issues": 2,
+    "nice_to_have_issues": 3
+  },
+  "workflow_version": "2.0",
+  "workflow_step": "6"
+}
