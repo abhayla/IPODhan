@@ -1139,6 +1139,86 @@ Implement Anchor Investors section to display anchor investor allocation data - 
 
 ---
 
+### Story 11.11: Implement KPI Highlight Section for IPO Detail Page
+**Priority:** P2 - HIGH (Priority 2)
+**Points:** 5
+**Status:** 📋 PLANNING
+**Created:** 2025-10-26
+**Source:** Missing Features Documentation (`docs/19-ui/ipo-detail-page/MISSING_FEATURES_SUMMARY.md`)
+
+**Description:**
+Implement dedicated KPI (Key Performance Indicators) highlight section on IPO detail page to display critical financial metrics for quick investor insights. Currently metrics are scattered across page (40% complete).
+
+**Business Impact:**
+- **Current Coverage**: 40% (Metrics scattered across page, no dedicated section)
+- **Competitive Gap**: Chittorgarh shows dedicated KPI section prominently
+- **Investor Value**: Quick access to critical financial metrics for investment decisions
+
+**Key Requirements:**
+- Display 6-8 key metrics in dedicated card/section:
+  - Market Capitalization (₹ Crores)
+  - ROE (Return on Equity) %
+  - RoNW (Return on Net Worth) %
+  - Price-to-Book Value (P/BV) ratio
+  - Pre-IPO vs Post-IPO EPS comparison
+  - Pre-IPO vs Post-IPO P/E ratio comparison
+- Professional card layout with icons
+- Tooltips explaining each metric
+- Place prominently near top of page (below key metrics or as prominent section)
+
+**Database Requirements:**
+- Add to `financial_data` table:
+  - `market_cap` NUMERIC(15,2) -- in crores
+  - `pre_ipo_eps` NUMERIC(10,2)
+  - `post_ipo_eps` NUMERIC(10,2)
+  - `ronw` NUMERIC(5,2) -- return on net worth %
+- Note: ROE, P/BV ratio already exist in DB
+- Database migration required
+
+**UI Requirements:**
+- New component: `KPIHighlightSection.tsx`
+- Grid layout with 6-8 KPI cards
+- Each card shows: Icon, Metric Name, Value, Tooltip
+- Pre/Post comparison shows both values + change %
+- Color coding for good/bad metrics (green for positive, red for negative)
+
+**Data Calculations:**
+- Market Cap = Post-issue shares × Issue price
+- Pre-IPO P/E = (Issue price × Pre-issue shares) / Annual profit
+- Post-IPO P/E = (Issue price × Post-issue shares) / Annual profit
+- RoNW = (Net Profit / Net Worth) × 100
+
+**Data Source:**
+- Calculated from existing financial data + DRHP
+
+**Estimated Effort:** 2 days
+**Story Points:** 5 points
+
+**Acceptance Criteria:**
+1. Database migration adds KPI fields (market_cap, pre_ipo_eps, post_ipo_eps, ronw)
+2. KPIHighlightSection component created with grid layout
+3. All 6 key metrics displayed with proper formatting
+4. Pre/Post EPS comparison functional with change %
+5. Pre/Post P/E comparison functional with change %
+6. Tooltips explain each metric clearly
+7. Component integrated prominently on IPO detail page
+8. Unit tests for component (>80% coverage)
+9. Integration tests for database fields
+10. Color coding for good/bad metrics implemented
+
+**Technical Notes:**
+- Follow repository pattern from backend-architecture.md
+- Use Drizzle ORM for schema changes
+- Follow component patterns from existing IPO detail page
+- Cache TTL: 15 minutes (financial data)
+- Use existing financial data repository pattern
+
+**References:**
+- Missing Features: `docs/19-ui/ipo-detail-page/MISSING_FEATURES_SUMMARY.md` (lines 152-173)
+- Gap Analysis: `docs/19-ui/ipo-detail-page/CHITTORGARH_GAP_ANALYSIS.md` (lines 432-489)
+
+---
+
 ### Story 11.8: Restructure Category Field into Segment + Offering Type
 **Priority:** P0 - CRITICAL (Breaking Change)
 **Points:** 13
@@ -1320,14 +1400,28 @@ offeringType: 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'TENDER' | /* 15 types total */
 **Epic Owner**: Scrum Master (Bob)
 **Product Owner**: Bob
 **Created**: 2025-10-17
-**Last Updated**: 2025-10-26 (Story 11.10 Added)
+**Last Updated**: 2025-10-26 (Story 11.11 Added)
 **Status**: 🔄 REOPENED
-**Story Count**: 11 (5 Complete, 1 Ready, 5 Planning)
-**Completion**: 45.5% (5/11 stories complete)
+**Story Count**: 12 (5 Complete, 1 Ready, 6 Planning)
+**Completion**: 41.7% (5/12 stories complete)
 
 ---
 
 ## Changelog
+
+### 2025-10-26 15:45:00 - Story 11.11 Added to Epic 📋
+- **Story**: 11.11 - Implement KPI Highlight Section for IPO Detail Page
+- **Status**: PLANNING
+- **Priority**: P2 - HIGH (Priority 2)
+- **Source**: Missing Features Documentation (`docs/19-ui/ipo-detail-page/MISSING_FEATURES_SUMMARY.md`)
+- **Business Impact**: Closes 40% → 100% coverage gap for KPI highlight section (scattered metrics → dedicated section)
+- **Scope**: Database migration (4 new columns) + new UI component + integration
+- **Estimated Effort**: 2 days (5 story points)
+- **Epic Metrics Updated**:
+  - Story Count: 11 → 12 stories
+  - Completion: 45.5% → 41.7% (5/12 complete)
+  - New Planning Work: 2 days
+- **Action Required**: Story ready for automated workflow drafting (Step 2)
 
 ### 2025-10-26 14:30:00 - Story 11.10 Added to Epic 📋
 - **Story**: 11.10 - Implement Anchor Investors Details Section for IPO Detail Page
