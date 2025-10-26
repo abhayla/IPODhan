@@ -33,6 +33,10 @@ import { SectorAverageComparison } from '@/components/ipo/SectorAverageCompariso
 import { PromoterHoldingSection } from '@/components/ipo/PromoterHoldingSection';
 import { AnchorInvestorsSection } from '@/components/ipo/AnchorInvestorsSection';
 import { KPIHighlightSection } from '@/components/ipo-detail/KPIHighlightSection';
+import { EnhancedFinancialMetricsSection } from '@/components/ipo-detail/EnhancedFinancialMetricsSection';
+import { IPOObjectivesSection } from '@/components/ipo-detail/IPOObjectivesSection';
+import { CompanyContactSection } from '@/components/ipo-detail/CompanyContactSection';
+import { CategoryReservationSection } from '@/components/ipo-detail/CategoryReservationSection';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
 import { apiClient } from '@/lib/api-client';
 import type { IPODetailResponse } from '@/lib/db/types';
@@ -220,6 +224,58 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 priceRangeMax: ipo.priceRangeMax,
                 issueSize: ipo.issueSize ? Number(ipo.issueSize) : null,
               }}
+            />
+
+            {/* Enhanced Financial Metrics Section (Story 11.12) */}
+            <EnhancedFinancialMetricsSection
+              financialData={financialData ? {
+                revenueFy2022: financialData.revenueFy2022 ? Number(financialData.revenueFy2022) : null,
+                revenueFy2023: financialData.revenueFy2023 ? Number(financialData.revenueFy2023) : null,
+                revenueFy2024: financialData.revenueFy2024 ? Number(financialData.revenueFy2024) : null,
+                profitFy2022: financialData.profitFy2022 ? Number(financialData.profitFy2022) : null,
+                profitFy2023: financialData.profitFy2023 ? Number(financialData.profitFy2023) : null,
+                profitFy2024: financialData.profitFy2024 ? Number(financialData.profitFy2024) : null,
+                ebitdaFy2022: financialData.ebitdaFy2022 ? Number(financialData.ebitdaFy2022) : null,
+                ebitdaFy2023: financialData.ebitdaFy2023 ? Number(financialData.ebitdaFy2023) : null,
+                ebitdaFy2024: financialData.ebitdaFy2024 ? Number(financialData.ebitdaFy2024) : null,
+                totalIncomeFy2022: financialData.totalIncomeFy2022 ? Number(financialData.totalIncomeFy2022) : null,
+                totalIncomeFy2023: financialData.totalIncomeFy2023 ? Number(financialData.totalIncomeFy2023) : null,
+                totalIncomeFy2024: financialData.totalIncomeFy2024 ? Number(financialData.totalIncomeFy2024) : null,
+                totalBorrowings: financialData.totalBorrowings ? Number(financialData.totalBorrowings) : null,
+                currentRatio: financialData.currentRatio ? Number(financialData.currentRatio) : null,
+                quickRatio: financialData.quickRatio ? Number(financialData.quickRatio) : null,
+                inventoryTurnover: financialData.inventoryTurnover ? Number(financialData.inventoryTurnover) : null,
+              } : null}
+            />
+
+            {/* IPO Objectives Section (Story 11.13) */}
+            <IPOObjectivesSection objectives={ipo.objectives ?? null} />
+
+            {/* Company Contact Section (Story 11.14) */}
+            <CompanyContactSection
+              contactData={ipoDetails ? {
+                companyAddress: ipoDetails.companyAddress ?? null,
+                companyPhone: ipoDetails.companyPhone ?? null,
+                companyEmail: ipoDetails.companyEmail ?? null,
+                companyCity: ipoDetails.companyCity ?? null,
+                companyState: ipoDetails.companyState ?? null,
+                companyPincode: ipoDetails.companyPincode ?? null,
+                complianceOfficer: ipoDetails.complianceOfficer ?? null,
+                complianceOfficerPhone: ipoDetails.complianceOfficerPhone ?? null,
+                complianceOfficerEmail: ipoDetails.complianceOfficerEmail ?? null,
+              } : null}
+            />
+
+            {/* Category Reservation Section (Story 11.15) */}
+            <CategoryReservationSection
+              reservationData={ipoDetails ? {
+                qibSharesOffered: ipoDetails.qibSharesOffered ? Number(ipoDetails.qibSharesOffered) : null,
+                niiSharesOffered: ipoDetails.niiSharesOffered ? Number(ipoDetails.niiSharesOffered) : null,
+                retailSharesOffered: ipoDetails.retailSharesOffered ? Number(ipoDetails.retailSharesOffered) : null,
+                retailMaxAllottees: ipoDetails.retailMaxAllottees ?? null,
+                employeeSharesOffered: ipoDetails.employeeSharesOffered ? Number(ipoDetails.employeeSharesOffered) : null,
+                anchorSharesOffered: ipoDetails.anchorSharesOffered ? Number(ipoDetails.anchorSharesOffered) : null,
+              } : null}
             />
 
             {/* Peer Comparison Section */}
