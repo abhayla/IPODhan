@@ -1652,3 +1652,95 @@ offeringType: 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'TENDER' | /* 15 types total */
 - Epic 11 created from deferred Story 10.7
 - Infrastructure validation confirmed (80% complete)
 - Prerequisites documented
+
+## STORY ADDITION (2025-10-26 06:50:34 UTC)
+
+### Story 11.12: Implement Company Contact Information Section for IPO Detail Page
+**Priority:** MEDIUM-HIGH (Priority 1)
+**Points:** 3
+**Status:** Planning
+**Created:** 2025-10-26 06:50:34 UTC
+**Source:** Missing Features Documentation (`docs/19-ui/ipo-detail-page/MISSING_FEATURES_SUMMARY.md`, `CHITTORGARH_GAP_ANALYSIS.md`)
+
+**Description:**
+Implement Company Contact Information section to provide investor relations contact details. Currently 0% implemented.
+
+**Business Context:**
+Provides investor relations contact information for IPO inquiries. Critical for investor transparency.
+
+**What to Implement:**
+1. Display company contact card with:
+   - Company full name
+   - Registered office address (full with city, state, pincode)
+   - Corporate office address (if different)
+   - Phone number (clickable tel: link)
+   - Email address (clickable mailto: link)
+   - Company website (already in DB as `ipos.website`)
+2. Compliance officer name and contact (if available)
+
+**Database Requirements:**
+- Add to `ipo_details` table:
+  - `company_address` TEXT
+  - `company_phone` VARCHAR(50)
+  - `company_email` VARCHAR(255)
+  - `company_city` VARCHAR(100)
+  - `company_state` VARCHAR(100)
+  - `company_pincode` VARCHAR(10)
+  - `compliance_officer` VARCHAR(255)
+  - `compliance_officer_phone` VARCHAR(50)
+  - `compliance_officer_email` VARCHAR(255)
+- Migration required (ALTER TABLE)
+
+**UI Requirements:**
+- Component: `CompanyContactCard.tsx`
+- Display in card/section format
+- Icons for phone (📞), email (✉️), location (📍)
+- Clickable phone (tel:) and email (mailto:) links
+- Map link for address (optional enhancement)
+- Place in Overview tab or footer section
+- Empty state: "Contact information not available"
+
+**Data Source:**
+- DRHP company information section (manual entry initially)
+- RHP registered/corporate office details
+- No scraper required for Phase 1 (admin panel entry)
+
+**Implementation Effort:** 1-2 days
+**Story Points:** 3 points
+
+**Acceptance Criteria:**
+1. Database migration adds contact fields to `ipo_details` table
+2. CompanyContactCard component created
+3. Component displays all available contact information
+4. Clickable phone (tel:) and email (mailto:) links work correctly
+5. Empty state handled gracefully for missing data
+6. Component integrated into IPO detail page (Overview tab or footer)
+7. Admin panel allows editing contact information
+8. Unit tests for component (>70% coverage)
+9. Integration test for database fields
+10. Website link already working (use existing `ipos.website` field)
+
+**Technical Notes:**
+- Follow repository pattern from backend-architecture.md
+- Use Drizzle ORM for schema changes (ALTER TABLE migration)
+- Follow component patterns from existing IPO detail page components
+- Cache TTL: 24 hours (static company data)
+- No scraper required initially (manual entry via admin panel)
+
+**References:**
+- Missing Features: `docs/19-ui/ipo-detail-page/MISSING_FEATURES_SUMMARY.md` (lines 76-99)
+- Gap Analysis: `docs/19-ui/ipo-detail-page/CHITTORGARH_GAP_ANALYSIS.md` (lines 706-744)
+
+---
+
+## Epic Changelog
+
+### 2025-10-26 12:22:45
+- Added Story 11.12: Implement Company Contact Information Section for IPO Detail Page
+- Status: Planning
+- Priority: MEDIUM-HIGH (Priority 1)
+- Story Points: 3
+- Ready for detailed story drafting
+- Epic now has 12 stories (5 complete, 1 ready, 6 planning)
+- Completion: 41.7% (5/12 stories complete)
+
