@@ -1,0 +1,32 @@
+{
+  "story_id": "11.10",
+  "story_title": "Implement Anchor Investors Details Section for IPO Detail Page",
+  "status": "done",
+  "timestamps": {
+    "started": "2025-10-26T22:00:00.000Z",
+    "implementation_complete": "2025-10-26T23:30:00.000Z",
+    "sm_approved": "2025-10-26T23:40:00.000Z",
+    "completed": "2025-10-26T23:40:00.000Z"
+  },
+  "completion_metrics": {
+    "task_completion_percent": 100,
+    "ac_completion_percent": 100,
+    "test_coverage_percent": 100,
+    "quality_score": 9.5,
+    "story_points": 8
+  },
+  "approvals": {
+    "sm_approved": true,
+    "sm_approved_at": "2025-10-26T23:40:00.000Z",
+    "sm_reviewer": "Bob (Scrum Master)",
+    "qa_passed": true
+  },
+  "test_results": {
+    "total_tests": 54,
+    "unit_tests": 35,
+    "integration_tests": 19,
+    "tests_passing": 54,
+    "admin_panel": "Fully functional"
+  },
+  "workflow_version": "4.0"
+}
