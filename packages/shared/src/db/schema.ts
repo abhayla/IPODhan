@@ -315,6 +315,16 @@ export const financialData = pgTable('financial_data', {
   }),
   totalAssets: numeric('total_assets', { precision: 12, scale: 2 }),
   totalBorrowing: numeric('total_borrowing', { precision: 12, scale: 2 }),
+
+  // Promoter Holding Fields (Story 11.9)
+  promoterHoldingPreIssue: numeric('promoter_holding_pre_issue', {
+    precision: 5,
+    scale: 2,
+  }), // percentage (e.g., 77.00)
+  promoterHoldingPostIssue: numeric('promoter_holding_post_issue', {
+    precision: 5,
+    scale: 2,
+  }), // percentage (e.g., 62.00)
 });
 
 // ==================== TABLE 15: IPO_FINANCIALS (One-to-One - Enhanced) ====================
