@@ -1,14 +1,12 @@
 {
   "story_id": "11.12",
-  "story_title": "Implement Company Contact Information Section for IPO Detail Page",
+  "story_title": "Enhance Financial Metrics Display with EBITDA and Multi-Period View",
   "creation_status": "drafted",
   "validation_status": "pending",
   "timestamps": {
-    "workflow_started": "2025-10-26T06:50:34.000Z",
-    "epic_update_started": "2025-10-26T06:50:34.000Z",
-    "epic_update_completed": "2025-10-26T06:52:45.000Z",
-    "drafting_started": "2025-10-26T06:52:45.000Z",
-    "drafting_completed": "2025-10-26T06:55:43.000Z",
+    "workflow_started": "2025-10-26T18:30:00.000Z",
+    "drafting_started": "2025-10-26T18:35:00.000Z",
+    "drafting_completed": "2025-10-26T19:15:00.000Z",
     "next_phase": "po_validation"
   },
   "creation_context": {
@@ -18,7 +16,7 @@
   },
   "agents": {
     "drafted_by": "Bob (Scrum Master)",
-    "drafted_via": "Manual story creation with Claude Code"
+    "drafted_via": "sm.md *draft command"
   },
   "workflow_version": "2.0",
   "workflow_step": "2.5"
