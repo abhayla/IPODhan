@@ -87,6 +87,10 @@ scraper/debug-*.ts
 scraper/verify-*.ts
 scraper/show-*.ts
 scraper/query-*.ts
+web/scripts/check-*.ts
+web/scripts/find-*.ts
+web/scripts/get-*.ts
+web/scripts/test-*.ts
 scraper/add-sector-column.ts
 scraper/check-schema.ts
 scraper/check-status-enum.ts
