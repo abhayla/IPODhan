@@ -57,7 +57,7 @@ Implement Grey Market Premium (GMP) data scraper from Chittorgarh.com API to pro
 **Points:** 8
 **Status:** ✅ COMPLETED (2025-10-18)
 **QA Score:** 9.8/10 (EXCELLENT)
-**File:** `docs/stories/11.1.implement-rights-debt-ipo-scraper.md`
+**File:** `docs/04-stories/11.1.implement-rights-debt-ipo-scraper.md`
 
 **Description:**
 Close 48% BSE data gap by implementing scraper for Rights Issues (RI) and Debt Issues (DPI) that lack BSE detail pages.
@@ -1358,7 +1358,7 @@ offeringType: 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'TENDER' | /* 15 types total */
 - **QA Report**: `docs/06-qa-reports/sprint-reports/story-10.7-qa-report.md`
 
 ### Story 11.1 Documentation
-- **Story File**: `docs/stories/11.1.implement-rights-debt-ipo-scraper.md`
+- **Story File**: `docs/04-stories/11.1.implement-rights-debt-ipo-scraper.md`
 - **Issue #2 Summary**: `ISSUE-2-FINAL-SUMMARY.md`
 - **BSE Action Plan**: `docs/bse-detail-action-plan.md`
 
@@ -1670,7 +1670,7 @@ offeringType: 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'TENDER' | /* 15 types total */
 - **Story 11.1** created from Issue #2 findings
 - Addresses 48% BSE data gap (12 Rights/Debt IPOs)
 - Target: 80%+ BSE enrichment
-- Story file: `docs/stories/11.1.implement-rights-debt-ipo-scraper.md`
+- Story file: `docs/04-stories/11.1.implement-rights-debt-ipo-scraper.md`
 
 ### 2025-10-17 - Story 10.7 Completed
 - **Story 10.7** validated and approved for staging
@@ -1837,7 +1837,7 @@ Provides transparency into how IPO shares are distributed across investor catego
 **References:**
 - Missing Features: `docs/19-ui/ipo-detail-page/MISSING_FEATURES_SUMMARY.md` (lines 102-120)
 - Gap Analysis: `docs/19-ui/ipo-detail-page/CHITTORGARH_GAP_ANALYSIS.md` (lines 260-316)
-- Story File: `docs/stories/11.15.implement-category-reservation-display.md`
+- Story File: `docs/04-stories/11.15.implement-category-reservation-display.md`
 
 ---
 
