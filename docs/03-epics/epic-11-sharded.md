@@ -1686,7 +1686,7 @@ offeringType: 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'TENDER' | /* 15 types total */
 
 ## STORY ADDITION (2025-10-26 06:50:34 UTC)
 
-### Story 11.12: Implement Company Contact Information Section for IPO Detail Page
+### Story 11.14: Implement Company Contact Information Section for IPO Detail Page
 **Priority:** MEDIUM-HIGH (Priority 1)
 **Points:** 3
 **Status:** Planning
@@ -1767,7 +1767,7 @@ Provides investor relations contact information for IPO inquiries. Critical for 
 ## Epic Changelog
 
 ### 2025-10-26 12:22:45
-- Added Story 11.12: Implement Company Contact Information Section for IPO Detail Page
+- Added Story 11.14: Implement Company Contact Information Section for IPO Detail Page
 - Status: Planning
 - Priority: MEDIUM-HIGH (Priority 1)
 - Story Points: 3
