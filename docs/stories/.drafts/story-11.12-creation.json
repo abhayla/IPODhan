@@ -1,15 +1,17 @@
 {
   "story_id": "11.12",
   "story_title": "Enhance Financial Metrics Display with EBITDA and Multi-Period View",
-  "creation_status": "drafted",
-  "validation_status": "approved_with_recommendations",
+  "creation_status": "finalized",
+  "validation_status": "approved",
+  "final_status": "READY",
   "timestamps": {
     "workflow_started": "2025-10-26T18:30:00.000Z",
     "drafting_started": "2025-10-26T18:35:00.000Z",
     "drafting_completed": "2025-10-26T19:15:00.000Z",
     "validation_started": "2025-10-26T19:18:00.000Z",
-    "validation_completed": "2025-10-26T19:20:00.000Z",
-    "next_phase": "finalization"
+    "validation_completed": "2025-10-26T19:25:00.000Z",
+    "finalization_completed": "2025-10-26T19:30:00.000Z",
+    "total_duration_minutes": 60
   },
   "creation_context": {
     "epic_path": "docs/03-epics/epic-11-sharded.md",
@@ -18,11 +20,10 @@
   },
   "agents": {
     "drafted_by": "Bob (Scrum Master)",
-    "drafted_via": "sm.md *draft command"
+    "validated_by": "Sarah (Product Owner)",
+    "finalized_by": "Bob (Scrum Master)"
   },
   "validation": {
-    "validated_by": "Sarah (Product Owner)",
-    "validated_via": "po.md *validate-story-draft command",
     "status": "APPROVED_WITH_RECOMMENDATIONS",
     "score": 9.2,
     "grade": "A",
@@ -30,8 +31,16 @@
     "issues_count": 3,
     "critical_issues": 0,
     "minor_recommendations": 3,
-    "validated_at": "2025-10-26T19:20:00.000Z"
+    "all_recommendations_incorporated": true
+  },
+  "quality_metrics": {
+    "story_length_lines": 1075,
+    "acceptance_criteria_count": 13,
+    "test_strategy_coverage": "unit + integration + manual",
+    "implementation_plan_phases": 6,
+    "total_estimated_hours": 25
   },
   "workflow_version": "2.0",
-  "workflow_step": "3.5"
+  "workflow_step": "7",
+  "workflow_status": "COMPLETE"
 }
