@@ -178,6 +178,9 @@ export const ipos = pgTable(
     historicalDataSource: varchar('historical_data_source', { length: 100 }), // e.g., 'Chittorgarh'
     historicalDataScrapedAt: timestamp('historical_data_scraped_at'), // Last historical scrape timestamp
 
+    // IPO Objectives (Story 11.13)
+    objectives: jsonb('objectives').$type<IPOObjective[]>(), // Array of {serial, description, amount}
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -331,6 +334,18 @@ export const financialData = pgTable('financial_data', {
   preIpoEps: numeric('pre_ipo_eps', { precision: 10, scale: 2 }), // Pre-IPO Earnings Per Share
   postIpoEps: numeric('post_ipo_eps', { precision: 10, scale: 2 }), // Post-IPO Earnings Per Share
   ronw: numeric('ronw', { precision: 5, scale: 2 }), // Return on Net Worth %
+
+  // Enhanced Financial Metrics (Story 11.12)
+  ebitdaFy2022: numeric('ebitda_fy2022', { precision: 12, scale: 2 }), // EBITDA for FY2022 in ₹ crores
+  ebitdaFy2023: numeric('ebitda_fy2023', { precision: 12, scale: 2 }), // EBITDA for FY2023 in ₹ crores
+  ebitdaFy2024: numeric('ebitda_fy2024', { precision: 12, scale: 2 }), // EBITDA for FY2024 in ₹ crores
+  totalIncomeFy2022: numeric('total_income_fy2022', { precision: 12, scale: 2 }), // Total Income for FY2022 in ₹ crores
+  totalIncomeFy2023: numeric('total_income_fy2023', { precision: 12, scale: 2 }), // Total Income for FY2023 in ₹ crores
+  totalIncomeFy2024: numeric('total_income_fy2024', { precision: 12, scale: 2 }), // Total Income for FY2024 in ₹ crores
+  totalBorrowings: numeric('total_borrowings', { precision: 12, scale: 2 }), // Total borrowings in ₹ crores
+  currentRatio: numeric('current_ratio', { precision: 5, scale: 2 }), // Current Ratio (current assets / current liabilities)
+  quickRatio: numeric('quick_ratio', { precision: 5, scale: 2 }), // Quick Ratio (quick assets / current liabilities)
+  inventoryTurnover: numeric('inventory_turnover', { precision: 5, scale: 2 }), // Inventory Turnover Ratio
 });
 
 // ==================== TABLE 15: IPO_FINANCIALS (One-to-One - Enhanced) ====================
@@ -667,6 +682,26 @@ export const ipoDetails = pgTable(
     companyDescription: text('company_description'),
     dataSource: varchar('data_source', { length: 50 }).notNull(),
     lastVerifiedAt: timestamp('last_verified_at'),
+
+    // Company Contact Information (Story 11.14)
+    companyAddress: text('company_address'),
+    companyPhone: varchar('company_phone', { length: 50 }),
+    companyEmail: varchar('company_email', { length: 255 }),
+    companyCity: varchar('company_city', { length: 100 }),
+    companyState: varchar('company_state', { length: 100 }),
+    companyPincode: varchar('company_pincode', { length: 10 }),
+    complianceOfficer: varchar('compliance_officer', { length: 255 }),
+    complianceOfficerPhone: varchar('compliance_officer_phone', { length: 50 }),
+    complianceOfficerEmail: varchar('compliance_officer_email', { length: 255 }),
+
+    // Category Reservation (Story 11.15)
+    qibSharesOffered: bigint('qib_shares_offered', { mode: 'number' }),
+    niiSharesOffered: bigint('nii_shares_offered', { mode: 'number' }),
+    retailSharesOffered: bigint('retail_shares_offered', { mode: 'number' }),
+    retailMaxAllottees: integer('retail_max_allottees'),
+    employeeSharesOffered: bigint('employee_shares_offered', { mode: 'number' }),
+    anchorSharesOffered: bigint('anchor_shares_offered', { mode: 'number' }),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -763,6 +798,12 @@ export interface IndividualInvestor {
   shares: number;
   amount: number; // in ₹ Crores
   percentOfIssue: number;
+}
+
+export interface IPOObjective {
+  serial: number;
+  description: string;
+  amount: number; // in ₹ Crores
 }
 
 // ==================== TABLE 20: AUDIT_LOGS ====================
