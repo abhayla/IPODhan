@@ -30,6 +30,8 @@ export default function AdminEditIPOPage() {
   const { token } = useAdminAuth();
   const slug = params.slug as string;
 
+  console.log('[AdminEditIPOPage] Rendering component for slug:', slug);
+
   const [ipo, setIpo] = useState<IPO | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -60,7 +62,13 @@ export default function AdminEditIPOPage() {
   const [autoProtectSubscription, setAutoProtectSubscription] = useState(true);
 
   useEffect(() => {
-    fetchIPO();
+    console.log('[AdminEditIPOPage] useEffect triggered for slug:', slug);
+    if (slug) {
+      console.log('[AdminEditIPOPage] Fetching IPO data...');
+      fetchIPO();
+    } else {
+      console.log('[AdminEditIPOPage] Slug is undefined, skipping fetchIPO');
+    }
   }, [slug]);
 
   useEffect(() => {
@@ -87,8 +95,24 @@ export default function AdminEditIPOPage() {
       const response = await fetch(`/api/ipos/${slug}`);
       const data = await response.json();
 
-      if (data.success) {
+      console.log('[Admin Edit Debug] API Response:', {
+        hasIpo: !!data.ipo,
+        hasSuccess: !!data.success,
+        hasError: !!data.error,
+        ipoCompanyName: data.ipo?.companyName,
+        dataKeys: Object.keys(data)
+      });
+
+      // API returns { ipo: {...}, financialData: {...}, ... }
+      if (data.ipo) {
+        console.log('[Admin Edit Debug] Setting IPO state:', data.ipo.companyName);
+        setIpo(data.ipo);
+      } else if (data.success) {
+        // Fallback for old format
+        console.log('[Admin Edit Debug] Using fallback format');
         setIpo(data.data);
+      } else {
+        console.log('[Admin Edit Debug] No IPO data found in response');
       }
     } catch (error) {
       console.error('Failed to fetch IPO:', error);
@@ -170,8 +194,9 @@ export default function AdminEditIPOPage() {
     try {
       const response = await fetch(`/api/ipos/${slug}`);
       const data = await response.json();
-      if (data.success && data.data.financials) {
-        setFinancialData(data.data.financials);
+      console.log('[Admin Edit Debug] Financial data response:', data.financialData);
+      if (data.financialData) {
+        setFinancialData(data.financialData);
       }
     } catch (error) {
       console.error('Failed to fetch financial data:', error);
@@ -183,8 +208,13 @@ export default function AdminEditIPOPage() {
     try {
       const response = await fetch(`/api/ipos/${slug}`);
       const data = await response.json();
-      if (data.success && data.data.subscriptions) {
-        setSubscriptions(data.data.subscriptions);
+      console.log('[Admin Edit Debug] Subscriptions response:', {
+        hasSubscriptions: !!data.subscriptions,
+        count: data.subscriptions?.length || 0,
+        subscriptions: data.subscriptions
+      });
+      if (data.subscriptions && data.subscriptions.length > 0) {
+        setSubscriptions(data.subscriptions);
       }
     } catch (error) {
       console.error('Failed to fetch subscription data:', error);
@@ -196,8 +226,12 @@ export default function AdminEditIPOPage() {
     try {
       const response = await fetch(`/api/ipos/${slug}`);
       const data = await response.json();
-      if (data.success && data.data.gmpRecords) {
-        setGmpRecords(data.data.gmpRecords);
+      console.log('[Admin Edit Debug] GMP data response:', {
+        hasGmpRecords: !!data.gmpRecords,
+        count: data.gmpRecords?.length || 0
+      });
+      if (data.gmpRecords && data.gmpRecords.length > 0) {
+        setGmpRecords(data.gmpRecords);
       }
     } catch (error) {
       console.error('Failed to fetch GMP data:', error);
@@ -209,8 +243,12 @@ export default function AdminEditIPOPage() {
     try {
       const response = await fetch(`/api/ipos/${slug}`);
       const data = await response.json();
-      if (data.success && data.data.documents) {
-        setDocuments(data.data.documents);
+      console.log('[Admin Edit Debug] Documents response:', {
+        hasDocuments: !!data.documents,
+        count: data.documents?.length || 0
+      });
+      if (data.documents && data.documents.length > 0) {
+        setDocuments(data.documents);
       }
     } catch (error) {
       console.error('Failed to fetch documents:', error);
