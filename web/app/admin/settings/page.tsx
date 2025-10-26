@@ -121,7 +121,7 @@ export default function AdminSettingsPage() {
       });
 
       if (data.success) {
-        showNotification('success', data.message);
+        showNotification('success', data.message || 'Cache cleared successfully');
         await fetchCacheStats(); // Refresh stats
       } else {
         showNotification('error', data.error || 'Failed to clear cache');
