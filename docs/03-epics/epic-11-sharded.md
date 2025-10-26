@@ -1400,7 +1400,7 @@ offeringType: 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'TENDER' | /* 15 types total */
 **Epic Owner**: Scrum Master (Bob)
 **Product Owner**: Bob
 **Created**: 2025-10-17
-**Last Updated**: 2025-10-26 (Story 11.12 Finalized)
+**Last Updated**: 2025-10-26 (Story 11.15 Added)
 **Status**: 🔄 REOPENED
 **Story Count**: 13 (5 Complete, 2 Ready, 6 Planning)
 **Completion**: 46.2% (6/13 stories ready or complete)
@@ -1764,7 +1764,91 @@ Provides investor relations contact information for IPO inquiries. Critical for 
 
 ---
 
+### Story 11.15: Implement Category-wise Reservation Display for IPO Detail Page
+**Priority:** MEDIUM (Priority 1)
+**Points:** 2
+**Status:** Draft
+**Created:** 2025-10-26 12:23:00 UTC
+**Source:** Missing Features Documentation (`docs/19-ui/ipo-detail-page/MISSING_FEATURES_SUMMARY.md`, `CHITTORGARH_GAP_ANALYSIS.md`)
+
+**Description:**
+Implement Category-wise Reservation Details section to display exact allocation percentages and share counts per investor category. Currently 0% implemented.
+
+**Business Context:**
+Provides transparency into how IPO shares are distributed across investor categories (QIB, NII, Retail, Employee, Anchor). Critical for investment planning.
+
+**What to Implement:**
+1. Display category reservation table with:
+   - QIB (Qualified Institutional Buyers)
+   - NII (Non-Institutional Investors)
+   - Retail Individual Investors
+   - Employee (optional)
+   - Anchor Investors (optional)
+2. For each category show: Shares Offered, Percentage, Max Allottees (Retail only)
+3. Calculate totals row
+4. Fallback calculation from percentages if share counts not available
+
+**Database Requirements:**
+- Add to `ipo_details` table:
+  - `qib_shares_offered` BIGINT
+  - `nii_shares_offered` BIGINT
+  - `retail_shares_offered` BIGINT
+  - `retail_max_allottees` INTEGER
+  - `employee_shares_offered` BIGINT (nullable)
+  - `anchor_shares_offered` BIGINT (nullable)
+- Migration required (ALTER TABLE)
+
+**UI Requirements:**
+- Component: `CategoryReservationSection.tsx`
+- 4-column responsive table layout
+- Indian number formatting (1,00,000 style)
+- Conditional rendering for optional categories
+- Empty state handling
+- Place after "Issue Structure" section
+
+**Data Source:**
+- RHP/DRHP reservation details (manual entry initially)
+- No scraper required for Phase 1 (admin panel entry)
+
+**Implementation Effort:** 1 day (6 hours)
+**Story Points:** 2 points
+
+**Acceptance Criteria:**
+1. Database migration adds 6 reservation fields to `ipo_details` table
+2. CategoryReservationSection component created
+3. Component displays all categories with data
+4. Percentages and share counts both shown
+5. Total row calculated correctly
+6. Component integrated into IPO detail page
+7. Unit tests (10 tests, >90% coverage)
+8. Integration tests (4 tests)
+9. Fallback calculation works when share counts missing
+10. Empty state handled gracefully
+
+**Technical Notes:**
+- Follow repository pattern from backend-architecture.md
+- Use Drizzle ORM for schema changes (ALTER TABLE migration)
+- Follow component patterns from existing IPO detail page
+- Cache TTL: 15 minutes (static data)
+- Server-side rendering (Next.js App Router)
+
+**References:**
+- Missing Features: `docs/19-ui/ipo-detail-page/MISSING_FEATURES_SUMMARY.md` (lines 102-120)
+- Gap Analysis: `docs/19-ui/ipo-detail-page/CHITTORGARH_GAP_ANALYSIS.md` (lines 260-316)
+- Story File: `docs/stories/11.15.implement-category-reservation-display.md`
+
+---
+
 ## Epic Changelog
+
+### 2025-10-26 12:23:00
+- Added Story 11.15: Implement Category-wise Reservation Display for IPO Detail Page
+- Status: Draft
+- Priority: MEDIUM (Priority 1)
+- Story Points: 2
+- Ready for Product Owner validation (Step 3)
+- Epic now has 13 stories (5 complete, 1 ready, 7 planning)
+- Completion: 46.2% (6/13 stories complete - counting READY)
 
 ### 2025-10-26 12:22:45
 - Added Story 11.14: Implement Company Contact Information Section for IPO Detail Page
