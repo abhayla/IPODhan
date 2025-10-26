@@ -22,6 +22,7 @@ import {
   peerCompanies,
   registrars,
   ipoScores,
+  anchorInvestors,
   type ipoStatusEnum,
   type segmentEnum,
   type offeringTypeEnum,
@@ -242,7 +243,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             return null;
           }
 
-          // Fetch related data (Story 4.7: added ipoScore, Story 4.10: added ipoFinancials, Story 4.11: added ipoDetails)
+          // Fetch related data (Story 4.7: added ipoScore, Story 4.10: added ipoFinancials, Story 4.11: added ipoDetails, Story 11.10: added anchorInvestor)
           const [
             financials,
             enhancedFinancials,
@@ -254,6 +255,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             peers,
             registrarData,
             ipoScore,
+            anchorInvestor,
           ] = await Promise.all([
             this.db
               .select()
@@ -313,6 +315,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               .where(eq(ipoScores.ipoId, ipo.id))
               .limit(1)
               .then((r) => r[0] || null),
+            this.db
+              .select()
+              .from(anchorInvestors)
+              .where(eq(anchorInvestors.ipoId, ipo.id))
+              .limit(1)
+              .then((r) => r[0] || null),
           ]);
 
           return {
@@ -327,6 +335,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             peerCompanies: peers,
             registrarRelation: registrarData,
             ipoScore: ipoScore, // Story 4.7
+            anchorInvestor: anchorInvestor, // Story 11.10
           };
         } catch (error) {
           throw new DatabaseError(

@@ -26,6 +26,10 @@ export { IssueTypeBadge } from './IssueTypeBadge';
 export { IssueBreakdownChart } from './IssueBreakdownChart';
 export { MinimumInvestmentDisplay } from './MinimumInvestmentDisplay';
 
+// Promoter and Anchor Components
+export { PromoterHoldingSection } from './PromoterHoldingSection';
+export { AnchorInvestorsSection } from './AnchorInvestorsSection';
+
 // Detail Page Components (Story 4.3)
 export { IPODetailTabs } from './IPODetailTabs';
 

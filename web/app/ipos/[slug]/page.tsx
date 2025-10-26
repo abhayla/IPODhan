@@ -31,6 +31,7 @@ import { IPOScoreSection } from '@/components/ipo/IPOScoreSection';
 import { PeerComparisonSection } from '@/components/ipo/PeerComparisonSection';
 import { SectorAverageComparison } from '@/components/ipo/SectorAverageComparison';
 import { PromoterHoldingSection } from '@/components/ipo/PromoterHoldingSection';
+import { AnchorInvestorsSection } from '@/components/ipo/AnchorInvestorsSection';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
 import { apiClient } from '@/lib/api-client';
 import type { IPODetailResponse } from '@/lib/db/types';
@@ -103,7 +104,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     notFound();
   }
 
-  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails, peerCompanies, financialData } = data;
+  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails, peerCompanies, financialData, anchorInvestor } = data;
 
   // Calculate metrics for KeyMetricsCards
   const latestSubscription = subscriptions?.[0];
@@ -191,6 +192,17 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             <PromoterHoldingSection
               promoterHoldingPreIssue={financialData?.promoterHoldingPreIssue ? Number(financialData.promoterHoldingPreIssue) : null}
               promoterHoldingPostIssue={financialData?.promoterHoldingPostIssue ? Number(financialData.promoterHoldingPostIssue) : null}
+            />
+
+            {/* Anchor Investors Section (Story 11.10) */}
+            <AnchorInvestorsSection
+              bidDate={anchorInvestor?.bidDate || null}
+              totalSharesOffered={anchorInvestor?.totalSharesOffered ? Number(anchorInvestor.totalSharesOffered) : null}
+              totalAmountRaised={anchorInvestor?.totalAmountRaised ? Number(anchorInvestor.totalAmountRaised) : null}
+              anchorInvestorsCount={anchorInvestor?.anchorInvestorsCount || null}
+              lockIn50PercentDate={anchorInvestor?.lockIn50PercentDate || null}
+              lockInRemainingDate={anchorInvestor?.lockInRemainingDate || null}
+              investorList={anchorInvestor?.investorList || null}
             />
 
             {/* Peer Comparison Section */}
