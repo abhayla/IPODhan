@@ -24,6 +24,206 @@ interface FieldProtection {
   updatedAt: string;
 }
 
+interface IPOObjective {
+  sno: number;
+  description: string;
+  amount: number | null;
+}
+
+interface ObjectivesEditorProps {
+  objectives: IPOObjective[];
+  onSave: (objectives: IPOObjective[]) => Promise<void>;
+  isSaving: boolean;
+}
+
+/**
+ * Objectives Editor Component (Story 11.13)
+ * Allows admin to add, edit, and delete IPO objectives
+ */
+function ObjectivesEditor({ objectives, onSave, isSaving }: ObjectivesEditorProps) {
+  const [editedObjectives, setEditedObjectives] = useState<IPOObjective[]>(objectives);
+  const [hasChanges, setHasChanges] = useState(false);
+
+  useEffect(() => {
+    setEditedObjectives(objectives);
+    setHasChanges(false);
+  }, [objectives]);
+
+  const handleAddObjective = () => {
+    const newSno = editedObjectives.length > 0
+      ? Math.max(...editedObjectives.map(obj => obj.sno)) + 1
+      : 1;
+
+    setEditedObjectives([
+      ...editedObjectives,
+      { sno: newSno, description: '', amount: null }
+    ]);
+    setHasChanges(true);
+  };
+
+  const handleUpdateObjective = (index: number, field: keyof IPOObjective, value: any) => {
+    const updated = [...editedObjectives];
+    if (field === 'amount') {
+      updated[index][field] = value === '' || value === null ? null : Number(value);
+    } else {
+      updated[index][field] = value as never;
+    }
+    setEditedObjectives(updated);
+    setHasChanges(true);
+  };
+
+  const handleDeleteObjective = (index: number) => {
+    const updated = editedObjectives.filter((_, i) => i !== index);
+    // Re-number objectives
+    const renumbered = updated.map((obj, i) => ({ ...obj, sno: i + 1 }));
+    setEditedObjectives(renumbered);
+    setHasChanges(true);
+  };
+
+  const handleSave = async () => {
+    // Validate objectives
+    const invalidObjectives = editedObjectives.filter(
+      obj => !obj.description.trim() || obj.sno < 1
+    );
+
+    if (invalidObjectives.length > 0) {
+      alert('All objectives must have a description and valid serial number');
+      return;
+    }
+
+    await onSave(editedObjectives);
+    setHasChanges(false);
+  };
+
+  const handleReset = () => {
+    setEditedObjectives(objectives);
+    setHasChanges(false);
+  };
+
+  const totalAllocated = editedObjectives
+    .filter(obj => obj.amount !== null)
+    .reduce((sum, obj) => sum + (obj.amount || 0), 0);
+
+  return (
+    <div className="space-y-4">
+      {/* Objectives List */}
+      {editedObjectives.length > 0 ? (
+        <div className="space-y-3">
+          {editedObjectives.map((objective, index) => (
+            <div key={index} className="p-4 bg-gray-800 rounded-lg border border-gray-700 hover:border-gray-600 transition-colors">
+              <div className="grid grid-cols-12 gap-4 items-start">
+                {/* S.No */}
+                <div className="col-span-1">
+                  <label className="block text-xs font-medium text-gray-400 mb-2">S.No</label>
+                  <input
+                    type="number"
+                    value={objective.sno}
+                    onChange={(e) => handleUpdateObjective(index, 'sno', parseInt(e.target.value) || 1)}
+                    className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    min="1"
+                  />
+                </div>
+
+                {/* Description */}
+                <div className="col-span-7">
+                  <label className="block text-xs font-medium text-gray-400 mb-2">Description</label>
+                  <input
+                    type="text"
+                    value={objective.description}
+                    onChange={(e) => handleUpdateObjective(index, 'description', e.target.value)}
+                    placeholder="e.g., Repayment of debt, Working capital requirements"
+                    className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Amount */}
+                <div className="col-span-3">
+                  <label className="block text-xs font-medium text-gray-400 mb-2">Amount (₹ Cr)</label>
+                  <input
+                    type="number"
+                    value={objective.amount ?? ''}
+                    onChange={(e) => handleUpdateObjective(index, 'amount', e.target.value)}
+                    placeholder="Optional"
+                    step="0.01"
+                    className="w-full px-3 py-2 bg-gray-900 border border-gray-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                {/* Delete Button */}
+                <div className="col-span-1 flex items-end">
+                  <button
+                    onClick={() => handleDeleteObjective(index)}
+                    className="p-2 bg-red-600 hover:bg-red-700 text-white rounded transition-colors"
+                    title="Delete objective"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center py-8 text-gray-400 bg-gray-800 rounded-lg border border-gray-700">
+          <p className="text-sm">No objectives defined yet.</p>
+          <p className="text-xs mt-1">Click "Add Objective" to start defining fund utilization</p>
+        </div>
+      )}
+
+      {/* Total Display */}
+      {editedObjectives.length > 0 && (
+        <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+          <div className="flex justify-between items-center">
+            <span className="text-sm font-medium text-gray-300">Total Allocated:</span>
+            <span className="text-lg font-bold text-blue-400">₹{totalAllocated.toFixed(2)} Cr</span>
+          </div>
+        </div>
+      )}
+
+      {/* Action Buttons */}
+      <div className="flex items-center gap-3 pt-4 border-t border-gray-700">
+        <button
+          onClick={handleAddObjective}
+          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+        >
+          + Add Objective
+        </button>
+
+        {hasChanges && (
+          <>
+            <button
+              onClick={handleSave}
+              disabled={isSaving}
+              className="px-6 py-2 bg-green-600 hover:bg-green-700 text-white font-semibold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isSaving ? 'Saving...' : 'Save Changes'}
+            </button>
+
+            <button
+              onClick={handleReset}
+              disabled={isSaving}
+              className="px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Reset
+            </button>
+          </>
+        )}
+
+        {!hasChanges && editedObjectives.length > 0 && (
+          <span className="text-sm text-green-400 flex items-center gap-2">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+            </svg>
+            Saved
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AdminEditIPOPage() {
   const params = useParams();
   const router = useRouter();
@@ -619,6 +819,7 @@ export default function AdminEditIPOPage() {
             {[
               { key: 'basic', label: 'Basic Info' },
               { key: 'financials', label: 'Financials' },
+              { key: 'objectives', label: 'Objectives' },
               { key: 'subscriptions', label: 'Subscriptions' },
               { key: 'gmp', label: 'GMP' },
               { key: 'documents', label: 'Documents' },
@@ -1339,6 +1540,33 @@ export default function AdminEditIPOPage() {
                 <p className="text-sm text-gray-400">
                   <strong>Note:</strong> Documents are automatically scraped from NSE and BSE.
                   Document management features (upload, delete, edit) will be added in a future update.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Objectives Tab (Story 11.13) */}
+          {activeTab === 'objectives' && (
+            <div className="space-y-6">
+              <div className="bg-gray-900 p-6 rounded-lg border border-gray-700">
+                <h3 className="text-lg font-semibold text-white mb-4">Objects of the Issue</h3>
+                <p className="text-sm text-gray-400 mb-6">
+                  Define how the IPO proceeds will be utilized. Each objective should have a serial number, description, and allocated amount (in ₹ Crores).
+                </p>
+
+                {/* Objectives Editor */}
+                <ObjectivesEditor
+                  objectives={ipo.objectives || []}
+                  onSave={async (objectives) => {
+                    await handleSaveField('ipos', 'objectives', objectives);
+                  }}
+                  isSaving={isSaving}
+                />
+              </div>
+
+              <div className="bg-gray-900 p-4 rounded-lg border border-gray-700">
+                <p className="text-sm text-gray-400">
+                  <strong>Note:</strong> Leave amount as blank for "General Corporate Purposes" or unallocated funds. Amounts are in ₹ Crores.
                 </p>
               </div>
             </div>
