@@ -1,0 +1,33 @@
+{
+  "story_id": "11.13",
+  "story_title": "Implement IPO Objectives Section for IPO Detail Page",
+  "creation_status": "drafted",
+  "validation_status": "approved",
+  "timestamps": {
+    "workflow_started": "2025-10-26T15:00:00.000Z",
+    "drafting_started": "2025-10-26T15:00:00.000Z",
+    "drafting_completed": "2025-10-26T15:00:00.000Z",
+    "validation_started": "2025-10-26T15:10:00.000Z",
+    "validation_completed": "2025-10-26T15:15:00.000Z",
+    "next_phase": "finalization"
+  },
+  "creation_context": {
+    "epic_path": "docs/03-epics/epic-11-sharded.md",
+    "architecture_path": "docs/02-architecture/backend-architecture.md",
+    "destination_path": "docs/stories/"
+  },
+  "agents": {
+    "drafted_by": "Bob (Scrum Master)",
+    "drafted_via": "sm.md *draft command"
+  },
+  "validation": {
+    "validated_by": "Sarah (Product Owner)",
+    "validated_via": "po.md *validate-story-draft command",
+    "status": "APPROVED",
+    "validation_score": 95,
+    "issues_count": 0,
+    "validated_at": "2025-10-26T15:15:00.000Z"
+  },
+  "workflow_version": "2.0",
+  "workflow_step": "3"
+}
