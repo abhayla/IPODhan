@@ -1,0 +1,39 @@
+{
+  "story_id": "11.9",
+  "story_title": "Implement Promoter Holding Display for IPO Detail Page",
+  "status": "ready",
+  "timestamps": {
+    "workflow_started": "2025-10-26T19:30:00.000Z",
+    "drafting_completed": "2025-10-26T19:45:00.000Z",
+    "validation_completed": "2025-10-26T19:50:00.000Z",
+    "correction_completed": null,
+    "ready_status_set": "2025-10-26T19:55:00.000Z",
+    "total_duration_minutes": 25
+  },
+  "workflow_metrics": {
+    "validation_iterations": 1,
+    "correction_iterations": 0,
+    "total_commits": 4
+  },
+  "approvals": {
+    "sm_drafted": true,
+    "po_approved": true,
+    "sm_corrected": false
+  },
+  "files": {
+    "story_file": "docs/04-stories/11.9.implement-promoter-holding-display.md",
+    "epic_reference": "docs/03-epics/epic-11-sharded.md",
+    "architecture_reference": "docs/02-architecture/backend-architecture.md",
+    "sprint_plan": null
+  },
+  "validation_details": {
+    "score": 9.2,
+    "grade": "A",
+    "critical_issues": 0,
+    "should_fix_issues": 3,
+    "recommendations": 3,
+    "confidence_level": "HIGH (95%)"
+  },
+  "workflow_version": "2.0",
+  "workflow_step": "6"
+}
