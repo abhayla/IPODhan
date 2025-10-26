@@ -1003,6 +1003,66 @@ leadManagers: z.array(z.string()).optional(),  // ✅ For RIGHTS/NCD
 **Created:** 2025-10-19
 **Source:** Planning document `docs/01-planning/segment-offeringType-change.md`
 
+---
+
+### Story 11.9: Implement Promoter Holding Display for IPO Detail Page
+**Priority:** P1 - HIGH (Critical investor information)
+**Points:** 3-5
+**Status:** 📋 PLANNING
+**Created:** 2025-10-26
+**Source:** Missing Features Documentation (`docs/19-ui/ipo-detail-page/MISSING_FEATURES_SUMMARY.md`)
+
+**Description:**
+Implement Promoter Holding section to display pre-IPO and post-IPO promoter shareholding percentages - critical information for investment decisions. Currently 0% implemented, representing a major gap vs competitors like Chittorgarh.
+
+**Business Impact:**
+- **Current Coverage**: 0% (NOT IMPLEMENTED)
+- **Competitive Gap**: Chittorgarh shows this prominently
+- **Investor Value**: Critical for understanding ownership dilution and promoter commitment
+
+**Key Requirements:**
+- Display pre-IPO promoter holding percentage
+- Display post-IPO promoter holding percentage
+- Calculate and show equity dilution automatically
+- Create dedicated "Promoter Holding" section on IPO detail page
+
+**Database Requirements:**
+- Add 2 columns to `financial_data` table:
+  - `promoter_holding_pre_issue` NUMERIC(5,2) -- percentage
+  - `promoter_holding_post_issue` NUMERIC(5,2) -- percentage
+- Database migration required
+
+**UI Requirements:**
+- New component: `PromoterHoldingSection.tsx`
+- Display format:
+  - Promoter Holding Pre Issue: XX.XX%
+  - Promoter Holding Post Issue: XX.XX%
+  - Equity Dilution: XX.XX% (calculated: pre - post)
+- Place below IPO Score section or in Financials tab
+- Empty state: "Data not available" when fields are null
+
+**Data Source:**
+- Scrape from DRHP/RHP "Capital Structure" or "Shareholding Pattern" section
+- Manual entry initially, scraper enhancement later (out of scope for this story)
+
+**Estimated Effort:** 1-2 days
+**Story Points:** 3-5 points
+
+**Acceptance Criteria:**
+1. Database migration adds promoter holding fields
+2. PromoterHoldingSection component created
+3. Component displays pre/post holding with dilution calculation
+4. Empty state handled gracefully
+5. Component integrated into IPO detail page
+6. Unit tests for component
+7. Integration test for database fields
+
+**Technical Notes:**
+- Follow repository pattern from backend-architecture.md
+- Use Drizzle ORM for schema changes
+- Follow component patterns from existing IPO detail page
+- Cache TTL: 24 hours (static data)
+
 **Description:**
 Replace single `category` field with TWO separate fields (`segment` + `offeringType`) to properly model the distinction between exchange segment and offering type, fixing data model confusion that causes duplicate IPO listings.
 
@@ -1177,14 +1237,28 @@ offeringType: 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'TENDER' | /* 15 types total */
 **Epic Owner**: Scrum Master (Bob)
 **Product Owner**: Bob
 **Created**: 2025-10-17
-**Last Updated**: 2025-10-19 (Story 11.8 Added)
+**Last Updated**: 2025-10-26 (Story 11.9 Added)
 **Status**: 🔄 REOPENED
-**Story Count**: 9 (5 Complete, 1 Ready, 3 Planning)
-**Completion**: 55.6% (5/9 stories complete)
+**Story Count**: 10 (5 Complete, 1 Ready, 4 Planning)
+**Completion**: 50.0% (5/10 stories complete)
 
 ---
 
 ## Changelog
+
+### 2025-10-26 - Story 11.9 Added to Epic 📋
+- **Story**: 11.9 - Implement Promoter Holding Display for IPO Detail Page
+- **Status**: PLANNING
+- **Priority**: P1 - HIGH (Critical investor information)
+- **Source**: Missing Features Documentation (`docs/19-ui/ipo-detail-page/MISSING_FEATURES_SUMMARY.md`)
+- **Business Impact**: Closes 0% → 100% coverage gap for promoter holding data (major competitive gap vs Chittorgarh)
+- **Scope**: Database migration (2 columns) + new UI component + integration
+- **Estimated Effort**: 1-2 days (3-5 story points)
+- **Epic Metrics Updated**:
+  - Story Count: 9 → 10 stories
+  - Completion: 55.6% → 50.0% (5/10 complete)
+  - New Planning Work: 1-2 days
+- **Action Required**: Story ready for automated workflow drafting (Step 2)
 
 ### 2025-10-19 - Story 11.8 Added to Epic 📋
 - **Story**: 11.8 - Restructure Category Field into Segment + Offering Type
