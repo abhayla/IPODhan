@@ -105,6 +105,11 @@ export type NewScraperLog = InferInsertModel<typeof schema.scraperLogs>;
 export type IPOScore = InferSelectModel<typeof schema.ipoScores>;
 export type NewIPOScore = InferInsertModel<typeof schema.ipoScores>;
 
+// ==================== ANCHOR INVESTOR TYPES (Story 11.10) ====================
+
+export type AnchorInvestor = InferSelectModel<typeof schema.anchorInvestors>;
+export type NewAnchorInvestor = InferInsertModel<typeof schema.anchorInvestors>;
+
 // ==================== ENUM TYPES ====================
 
 export type IPOSegment = IPO['segment'];
@@ -130,7 +135,7 @@ export type IPOPeer = IPO & {
 
 /**
  * IPO Detail Response
- * Complete IPO data with all relations for detail page (Story 4.1, 4.7, 4.10, 4.11)
+ * Complete IPO data with all relations for detail page (Story 4.1, 4.7, 4.10, 4.11, 11.10)
  */
 export interface IPODetailResponse {
   ipo: IPO & {
@@ -146,6 +151,7 @@ export interface IPODetailResponse {
   peerCompanies: PeerCompany[];
   peers: IPOPeer[];
   ipoScore: IPOScore | null; // Story 4.7
+  anchorInvestor: AnchorInvestor | null; // Story 11.10: Anchor investor details
   metadata: {
     lastUpdated: string;
   };

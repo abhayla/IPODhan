@@ -26,6 +26,7 @@ export const CacheTTL = {
   BROKER_AFFILIATES: 1800, // 30 minutes (Story 5.7 requirement)
   CALENDAR: 86400, // 24 hours - calendar data doesn't change frequently
   REFERENCE: 604800, // 7 days - registrars, holidays, sectors (static data)
+  ANCHOR_INVESTOR: 86400, // 24 hours (Story 11.10 requirement)
 } as const;
 
 /**
@@ -270,4 +271,18 @@ export function getCalendarInvalidationKeys(): string[] {
  */
 export function getPeerCompaniesInvalidationKeys(ipoId: string): string[] {
   return [`peers:${ipoId}`];
+}
+
+/**
+ * Generate cache key for anchor investors by IPO ID (Story 11.10)
+ */
+export function getAnchorInvestorKey(ipoId: string): string {
+  return `anchor:${ipoId}`;
+}
+
+/**
+ * Get all cache key patterns for anchor investor invalidation (Story 11.10)
+ */
+export function getAnchorInvestorInvalidationKeys(ipoId: string): string[] {
+  return [`anchor:${ipoId}`];
 }

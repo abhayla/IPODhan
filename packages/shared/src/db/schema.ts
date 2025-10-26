@@ -726,7 +726,40 @@ export const adminSettings = pgTable(
   })
 );
 
-// ==================== TABLE 19: AUDIT_LOGS ====================
+// ==================== TABLE 19: ANCHOR_INVESTORS (One-to-One) ====================
+
+export const anchorInvestors = pgTable(
+  'anchor_investors',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    bidDate: date('bid_date').notNull(),
+    totalSharesOffered: bigint('total_shares_offered', { mode: 'number' }).notNull(),
+    totalAmountRaised: numeric('total_amount_raised', { precision: 12, scale: 2 }).notNull(),
+    anchorInvestorsCount: integer('anchor_investors_count').notNull(),
+    lockIn50PercentDate: date('lock_in_50_percent_date').notNull(),
+    lockInRemainingDate: date('lock_in_remaining_date').notNull(),
+    investorList: jsonb('investor_list').$type<IndividualInvestor[]>(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoIdIdx: index('idx_anchor_investors_ipo_id').on(table.ipoId),
+    bidDateIdx: index('idx_anchor_investors_bid_date').on(table.bidDate),
+  })
+);
+
+export interface IndividualInvestor {
+  name: string;
+  type: string; // e.g., "Mutual Fund", "FII", "Insurance"
+  shares: number;
+  amount: number; // in ₹ Crores
+  percentOfIssue: number;
+}
+
+// ==================== TABLE 20: AUDIT_LOGS ====================
 // Activity audit log for admin actions (immutable)
 
 export const auditLogs = pgTable(
@@ -809,6 +842,10 @@ export const iposRelations = relations(ipos, ({ many, one }) => ({
   ipoDetails: one(ipoDetails, {
     fields: [ipos.id],
     references: [ipoDetails.ipoId],
+  }),
+  anchorInvestor: one(anchorInvestors, {
+    fields: [ipos.id],
+    references: [anchorInvestors.ipoId],
   }),
   registrarRelation: one(registrars, {
     fields: [ipos.registrarId],
@@ -905,6 +942,13 @@ export const fieldProtectionMetadataRelations = relations(
     }),
   })
 );
+
+export const anchorInvestorsRelations = relations(anchorInvestors, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [anchorInvestors.ipoId],
+    references: [ipos.id],
+  }),
+}));
 
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
   ipo: one(ipos, {

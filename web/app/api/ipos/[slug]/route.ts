@@ -164,7 +164,7 @@ export async function GET(
 
     // Transform to API response format
     // Extract IPO data without relations for the ipo field
-    const { financialData: _, ipoFinancials: __, ipoDetails: ___, documents: ____, subscriptions: _____, gmpRecords: ______, listingPerformance: _______, peerCompanies: ________, registrarRelation, ipoScore: _________, ...ipoData } = ipoWithRelations;
+    const { financialData: _, ipoFinancials: __, ipoDetails: ___, documents: ____, subscriptions: _____, gmpRecords: ______, listingPerformance: _______, peerCompanies: ________, registrarRelation, ipoScore: _________, anchorInvestor: __________, ...ipoData } = ipoWithRelations;
 
     const response: IPODetailResponse = {
       ipo: {
@@ -181,6 +181,7 @@ export async function GET(
       peerCompanies: ipoWithRelations.peerCompanies || [],
       peers: [],
       ipoScore: ipoWithRelations.ipoScore ?? null, // Story 4.7
+      anchorInvestor: ipoWithRelations.anchorInvestor ?? null, // Story 11.10
       metadata: {
         lastUpdated: new Date().toISOString(),
       },
