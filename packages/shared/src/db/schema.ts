@@ -325,6 +325,12 @@ export const financialData = pgTable('financial_data', {
     precision: 5,
     scale: 2,
   }), // percentage (e.g., 62.00)
+
+  // KPI Highlight Fields (Story 11.11)
+  marketCap: numeric('market_cap', { precision: 15, scale: 2 }), // Market capitalization in ₹ crores
+  preIpoEps: numeric('pre_ipo_eps', { precision: 10, scale: 2 }), // Pre-IPO Earnings Per Share
+  postIpoEps: numeric('post_ipo_eps', { precision: 10, scale: 2 }), // Post-IPO Earnings Per Share
+  ronw: numeric('ronw', { precision: 5, scale: 2 }), // Return on Net Worth %
 });
 
 // ==================== TABLE 15: IPO_FINANCIALS (One-to-One - Enhanced) ====================

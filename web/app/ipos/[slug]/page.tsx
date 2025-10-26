@@ -32,6 +32,7 @@ import { PeerComparisonSection } from '@/components/ipo/PeerComparisonSection';
 import { SectorAverageComparison } from '@/components/ipo/SectorAverageComparison';
 import { PromoterHoldingSection } from '@/components/ipo/PromoterHoldingSection';
 import { AnchorInvestorsSection } from '@/components/ipo/AnchorInvestorsSection';
+import { KPIHighlightSection } from '@/components/ipo-detail/KPIHighlightSection';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
 import { apiClient } from '@/lib/api-client';
 import type { IPODetailResponse } from '@/lib/db/types';
@@ -203,6 +204,22 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               lockIn50PercentDate={anchorInvestor?.lockIn50PercentDate || null}
               lockInRemainingDate={anchorInvestor?.lockInRemainingDate || null}
               investorList={anchorInvestor?.investorList || null}
+            />
+
+            {/* KPI Highlight Section (Story 11.11) */}
+            <KPIHighlightSection
+              financialData={financialData ? {
+                marketCap: financialData.marketCap ? Number(financialData.marketCap) : null,
+                preIpoEps: financialData.preIpoEps ? Number(financialData.preIpoEps) : null,
+                postIpoEps: financialData.postIpoEps ? Number(financialData.postIpoEps) : null,
+                ronw: financialData.ronw ? Number(financialData.ronw) : null,
+                roe: financialData.roe ? Number(financialData.roe) : null,
+                netWorth: financialData.netWorth ? Number(financialData.netWorth) : null,
+              } : null}
+              ipoData={{
+                priceRangeMax: ipo.priceRangeMax,
+                issueSize: ipo.issueSize ? Number(ipo.issueSize) : null,
+              }}
             />
 
             {/* Peer Comparison Section */}
