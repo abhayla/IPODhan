@@ -1,5 +1,10 @@
 import * as Sentry from '@sentry/nextjs';
 
+// TEMPORARILY DISABLED: Sentry causing webpack module loading errors
+// TODO: Migrate to instrumentation-based setup per Next.js 15 recommendations
+const SENTRY_ENABLED = false;
+
+if (SENTRY_ENABLED) {
 Sentry.init({
   dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
 
@@ -82,3 +87,4 @@ Sentry.init({
   // Release tracking
   release: process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA || 'development',
 });
+}

@@ -37,6 +37,7 @@ import { EnhancedFinancialMetricsSection } from '@/components/ipo-detail/Enhance
 import { IPOObjectivesSection } from '@/components/ipo-detail/IPOObjectivesSection';
 import { CompanyContactSection } from '@/components/ipo-detail/CompanyContactSection';
 import { CategoryReservationSection } from '@/components/ipo-detail/CategoryReservationSection';
+import { RecommendationSummarySection } from '@/components/ipo-detail/RecommendationSummarySection';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
 import { apiClient } from '@/lib/api-client';
 import type { IPODetailResponse } from '@/lib/db/types';
@@ -109,7 +110,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     notFound();
   }
 
-  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails, peerCompanies, financialData, anchorInvestor } = data;
+  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails, peerCompanies, financialData, anchorInvestor, reviewSummary } = data;
 
   // Calculate metrics for KeyMetricsCards
   const latestSubscription = subscriptions?.[0];
@@ -265,6 +266,14 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 complianceOfficerEmail: ipoDetails.complianceOfficerEmail ?? null,
               } : null}
             />
+
+            {/* Recommendation Summary Section (Story 11.16) */}
+            {reviewSummary && (
+              <RecommendationSummarySection
+                reviewSummary={reviewSummary}
+                ipoSegment={ipo.segment || 'MAINBOARD'}
+              />
+            )}
 
             {/* Category Reservation Section (Story 11.15) */}
             <CategoryReservationSection

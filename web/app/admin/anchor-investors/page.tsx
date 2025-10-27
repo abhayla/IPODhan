@@ -23,7 +23,7 @@ import {
 import { Alert } from '@/components/ui/alert';
 import { Plus, Trash2, Save, RotateCcw, Search, Anchor, Lock, Calendar } from 'lucide-react';
 import type { IPO } from '@/lib/db/types';
-import type { IndividualInvestor } from '@ipodhan/shared/db/schema';
+import type { IndividualInvestor } from '@/lib/db';
 
 // ==================== TYPES ====================
 
