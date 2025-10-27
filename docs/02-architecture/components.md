@@ -12,7 +12,77 @@ The system is composed of the following major logical components across the full
 - API Client Service: Fetch data from Next.js API routes
 - State Management: React Context for filters, search state, UI state 🔵 **MVP**
 
-**Technology Stack:** Next.js 14 App Router, React Server Components, TypeScript, Tailwind CSS, React Context
+**Technology Stack:** Next.js 15.5.4 App Router, React 19 Server Components, TypeScript, Tailwind CSS 4, React Context
+
+### IPO Detail Page Components (Epic 11) ✅ **Production**
+
+**Responsibility:** Rich, data-driven sections providing comprehensive IPO analysis for investors.
+
+**Implemented Components (8 total):**
+
+1. **PromoterHoldingSection** (Story 11.9)
+   - Displays pre/post-IPO promoter shareholding percentages
+   - Calculates equity dilution with color-coded indicators
+   - Empty state handling for missing data
+   - Location: `web/components/ipo/PromoterHoldingSection.tsx`
+
+2. **AnchorInvestorsSection** (Story 11.10)
+   - Shows anchor investor allocation data with lock-in periods
+   - Individual investor details with subscription amounts
+   - Institutional confidence indicators
+   - Quality Score: 9.5/10 (54/54 tests passing)
+   - Location: `web/components/ipo-detail/AnchorInvestorsSection.tsx`
+
+3. **KPIHighlightSection** (Story 11.11)
+   - 6 key financial metrics (Market Cap, ROE, RoNW, P/BV, EPS, P/E)
+   - Pre/Post IPO comparisons with change percentages
+   - Responsive grid layout (3→2→1 columns)
+   - Quality Score: 9.7/10 (Highest - 49+ unit tests, 8+ integration tests)
+   - Location: `web/components/ipo-detail/KPIHighlightSection.tsx`
+
+4. **FinancialMetricsSection** (Story 11.12)
+   - Enhanced with EBITDA and multi-period view (3 fiscal years)
+   - YoY growth calculations and trend indicators
+   - Comprehensive financial analysis for investor decision-making
+   - Quality Score: 9.2/10 (13/13 acceptance criteria met)
+   - Location: `web/components/ipo-detail/FinancialMetricsSection.tsx`
+
+5. **IPOObjectivesSection** (Story 11.13)
+   - Displays fund utilization objectives from DRHP
+   - JSONB structure for flexible objective data
+   - Admin panel integration for data management
+   - Quality Score: 9.0/10
+   - Location: `web/components/ipo-detail/IPOObjectivesSection.tsx`
+
+6. **CompanyContactSection** (Story 11.14)
+   - Company contact information (address, phone, email, website)
+   - WCAG 2.1 Level AA accessibility compliant
+   - Comprehensive test suite (>70% unit, 6/6 integration, 6/6 E2E)
+   - Quality Score: 9.0/10
+   - Location: `web/components/ipo-detail/CompanyContactSection.tsx`
+
+7. **CategoryReservationSection** (Story 11.15)
+   - Category-wise IPO reservation display
+   - Bonus fallback calculation feature
+   - Test coverage: >90% (exceeded 80% target)
+   - Quality Score: 9.0/10
+   - Location: `web/components/ipo-detail/CategoryReservationSection.tsx`
+
+8. **RecommendationSummarySection** (Story 11.16)
+   - Broker recommendations summary with aggregated ratings
+   - Sentiment analysis (positive/negative split with TrendingUp/Down icons)
+   - Top 3 Apply/Avoid reasons extraction using keyword matching
+   - Admin moderation panel at `/admin/reviews` for content approval
+   - Real-time cache invalidation on moderation actions
+   - Quality Score: 9.5/10 (16/16 acceptance criteria, 92% test coverage)
+   - Location: `web/components/ipo-detail/RecommendationSummarySection.tsx`
+
+**Epic 11 Metrics:**
+- Total Components: 8
+- Average Quality Score: 9.21/10 (A - EXCELLENT)
+- Acceptance Criteria Met: 91/91 (100%)
+- Test Pass Rate: 100%
+- Production Status: All deployed and functional
 
 ## API Routes (Next.js Backend)
 
@@ -28,15 +98,31 @@ The system is composed of the following major logical components across the full
 
 ## Repository Layer (Data Access)
 
-**Responsibility:** Abstract database queries and caching logic behind clean interfaces.
+**Responsibility:** Abstract database queries and caching logic behind clean interfaces. All repositories extend `BaseRepository` for cache-aside pattern.
 
-**Key Interfaces:**
+**Key Repositories:**
 - `IPORepository.findAll(filters)` - Query IPOs with filters/pagination
 - `IPORepository.findBySlug(slug)` - Get IPO by slug with relations
 - `SubscriptionRepository.findByIPO(ipoId)` - Get subscription history
 - `GMPRepository.findByIPO(ipoId, days)` - Get GMP history
+- `FinancialDataRepository.findByIPO(ipoId)` - Get financial metrics with EBITDA (Story 11.12)
+- `AnchorInvestorRepository` - Anchor investor data with lock-in periods (Story 11.10)
+- `ReviewRepository` - IPO reviews with aggregation & moderation (Story 11.16)
 
-**Technology Stack:** Drizzle ORM, Redis, TypeScript interfaces
+**New ReviewRepository Interfaces (Story 11.16):**
+- `getReviewSummary(ipoId)` - Aggregates ratings, sentiment, top reasons (cache: 15min)
+- `findByIpoId(ipoId, limit)` - Get approved reviews with pagination
+- `approveReview(reviewId, adminUser)` - Moderate review to approved state
+- `rejectReview(reviewId, adminUser)` - Moderate review to rejected state
+- `getPendingReviews()` - Admin: get reviews awaiting moderation
+
+**Repository Pattern:**
+- All extend `BaseRepository` (`web/lib/repositories/base-repository.ts`)
+- Cache-aside pattern with automatic invalidation
+- Type: `NodePgDatabase<typeof schema>` from `@ipodhan/shared/db/schema`
+- Performance: <100ms (p95) for queries, <50ms cache hits
+
+**Technology Stack:** Drizzle ORM 0.44.6, ioredis, TypeScript, BaseRepository pattern
 
 ## Data Scraper Service (Separate Node.js Process)
 

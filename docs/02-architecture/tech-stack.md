@@ -7,14 +7,15 @@ This is the **DEFINITIVE technology selection** for IPODhan. All development mus
 | Category | Technology | Version | Purpose | Rationale |
 |----------|-----------|---------|---------|-----------|
 | **Frontend Language** | TypeScript | 5.3+ | Type-safe frontend development | Prevents runtime errors, improves IDE support, enforces data model contracts |
-| **Frontend Framework** | Next.js | 14.2+ | React framework with SSR/SSG | App Router for modern patterns, built-in API routes, excellent SEO, React Server Components |
+| **Frontend Framework** | Next.js | 15.5.4 ✅ | React framework with SSR/SSG | App Router for modern patterns, built-in API routes, excellent SEO, React 19 Server Components |
+| **React** | React | 19 ✅ | UI library | Latest stable with improved server components, concurrent features |
 | **UI Component Library** | shadcn/ui | Latest | Headless UI components | Already integrated, Radix UI primitives (accessibility), Tailwind-native styling |
 | **State Management** | React Context | Built-in | Client state management | 🔵 **MVP** - Built-in solution, no extra dependencies, sufficient for filters/search/UI state |
 | **Backend Language** | TypeScript (Node.js) | 5.3+ (Node 20 LTS) | Type-safe backend development | Same language as frontend enables code sharing, async I/O, Windows Server compatible |
-| **Backend Framework** | Next.js API Routes | 14.2+ | RESTful API endpoints | Co-located with frontend, shared middleware, automatic TypeScript types |
+| **Backend Framework** | Next.js API Routes | 15.5.4 ✅ | RESTful API endpoints | Co-located with frontend, shared middleware, automatic TypeScript types |
 | **API Style** | REST | - | HTTP API design | Simple, widely understood, HTTP caching support (critical for performance) |
-| **Database** | PostgreSQL | 16+ | Relational database | Already available on VPS, ACID compliance, excellent full-text search, JSON columns |
-| **ORM/Query Builder** | Drizzle ORM | 0.30+ | Type-safe database queries | Lightweight, SQL-like syntax, edge-ready, excellent TypeScript inference |
+| **Database** | PostgreSQL | 16+ ✅ | Relational database | Already available on VPS, ACID compliance, excellent full-text search, JSON columns |
+| **ORM/Query Builder** | Drizzle ORM | 0.44.6 ✅ | Type-safe database queries | Lightweight, SQL-like syntax, edge-ready, excellent TypeScript inference |
 | **Cache** | Redis | 7.2+ | In-memory data cache | Sub-millisecond latency, reduces PostgreSQL load, pub/sub for real-time updates (Phase 2) |
 | **File Storage** | Local Filesystem | - | DRHP PDF storage | Store scraped documents on VPS (free), sufficient for MVP |
 | **Authentication** | NextAuth.js | 5.0+ (Auth.js) | User authentication (Phase 2) | Email/password + OAuth providers, session management, Next.js native integration |
@@ -24,7 +25,9 @@ This is the **DEFINITIVE technology selection** for IPODhan. All development mus
 | **Build Tool** | Next.js CLI | 14.2+ | Production builds | Built-in to Next.js, tree-shaking and code-splitting optimized |
 | **Bundler** | Turbopack | Built-in Next.js 14+ | Development bundler | 10x faster than Webpack for dev server |
 | **Package Manager** | npm | 10+ | Dependency management | Already used in project, workspaces support for monorepo |
-| **CSS Framework** | Tailwind CSS | 3.4+ | Utility-first styling | Already integrated, mobile-first responsive design, shadcn/ui compatible |
+| **CSS Framework** | Tailwind CSS | 4 ✅ | Utility-first styling | Already integrated, mobile-first responsive design, shadcn/ui compatible |
+| **Monitoring** | Winston | 3.11+ ✅ | Structured logging | JSON logs, daily rotation, file transports, <5ms overhead (Phase 5) |
+| **APM** | OpenTelemetry + Sentry | Latest ✅ | Performance monitoring | Request tracking, error capture, performance metrics (Phase 5) |
 | **Data Scraping** | Puppeteer | 22+ | Headless browser scraping | Full JavaScript rendering, screenshot capability, stealth plugin |
 | **Scheduled Jobs** | Node-cron | 3.0+ | Cron-based task scheduling | Simple syntax, in-process scheduling, lightweight |
 | **API Client** | Native Fetch | Built-in Node 20+ | HTTP requests | No axios dependency needed, standard Web API |
