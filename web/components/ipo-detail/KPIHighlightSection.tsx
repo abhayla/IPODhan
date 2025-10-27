@@ -89,9 +89,9 @@ export function KPIHighlightSection({
   const { priceRangeMax, issueSize } = ipoData;
 
   // Calculate derived metrics
-  const preIPO_PE = calculatePreIPO_PE(priceRangeMax, preIpoEps);
-  const postIPO_PE = calculatePostIPO_PE(priceRangeMax, postIpoEps);
-  const epsChange = calculateEPSChange(preIpoEps, postIpoEps);
+  const preIPO_PE = calculatePreIPO_PE(priceRangeMax ?? null, preIpoEps ?? null);
+  const postIPO_PE = calculatePostIPO_PE(priceRangeMax ?? null, postIpoEps ?? null);
+  const epsChange = calculateEPSChange(preIpoEps ?? null, postIpoEps ?? null);
   const peChange = calculatePEChange(preIPO_PE, postIPO_PE);
 
   // Calculate P/BV (Price-to-Book Value)
@@ -100,7 +100,7 @@ export function KPIHighlightSection({
   const totalShares = issueSize && priceRangeMax
     ? (issueSize * 10000000) / priceRangeMax // Convert crores to shares
     : null;
-  const priceToBook = calculatePriceToBook(priceRangeMax, netWorth, totalShares);
+  const priceToBook = calculatePriceToBook(priceRangeMax ?? null, netWorth ?? null, totalShares);
 
   // Check if any data is available
   const hasAnyData =

@@ -71,6 +71,14 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
 
   try {
     body = await request.json();
+
+    if (!body) {
+      return NextResponse.json(
+        { error: 'Request body is required' },
+        { status: 400 }
+      );
+    }
+
     const { ipoId, tableName, fieldName, value, autoProtect = true, editNote } = body;
 
     // Validation
