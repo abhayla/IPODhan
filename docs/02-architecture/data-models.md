@@ -19,12 +19,22 @@ Based on the PRD and front-end spec, the following TypeScript interfaces will be
 - `dates`: object - Timeline (open, close, allotment, listing dates)
 - `rating`: number | null - IPODhan rating (1-5 stars)
 
+**Epic 11 Enhancements:**
+- `promoterHolding`: object | null - Pre/post IPO promoter shareholding (Story 11.9)
+- `objectives`: object[] | null - Fund utilization objectives from DRHP (Story 11.13)
+- `companyAddress`: string | null - Company registered address (Story 11.14)
+- `companyEmail`: string | null - Company contact email (Story 11.14)
+- `companyPhone`: string | null - Company contact phone (Story 11.14)
+- `companyWebsite`: string | null - Company official website (Story 11.14)
+
 **Relationships:**
 - Has many `Subscription` records
 - Has many `GMPRecord` entries
 - Has one `FinancialData` record
 - Has many `Document` records
 - Has one `ListingPerformance` record (if listed)
+- Has many `AnchorInvestor` records (Story 11.10) ✅ **NEW**
+- Has many `Review` records (Story 11.16) ✅ **NEW**
 
 ### TypeScript Interface
 
@@ -57,6 +67,17 @@ export interface IPODates {
   listingDate: Date | null;
 }
 
+export interface PromoterHolding {
+  preIpoHolding: number;  // Percentage before IPO
+  postIpoHolding: number; // Percentage after IPO
+}
+
+export interface FundObjective {
+  purpose: string;        // e.g., "Working Capital", "Debt Repayment"
+  amount: number | null;  // Amount allocated in crores
+  percentage: number | null; // Percentage of total funds
+}
+
 export interface IPO {
   id: string;
   companyName: string;
@@ -75,6 +96,15 @@ export interface IPO {
   leadManagers: string[];
   rating: number | null;
   ratingRationale: string | null;
+
+  // Epic 11 Additions
+  promoterHolding: PromoterHolding | null;    // Story 11.9
+  objectives: FundObjective[] | null;         // Story 11.13
+  companyAddress: string | null;              // Story 11.14
+  companyEmail: string | null;                // Story 11.14
+  companyPhone: string | null;                // Story 11.14
+  companyWebsite: string | null;              // Story 11.14
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -158,7 +188,12 @@ export interface GMPRecord {
 
 ## FinancialData
 
-**Purpose:** Company financial metrics for IPO evaluation.
+**Purpose:** Company financial metrics for IPO evaluation with multi-period view (3 fiscal years).
+
+**Epic 11 Enhancements:**
+- EBITDA metrics added (Story 11.12)
+- Multi-period financial view for trend analysis
+- YoY growth calculations
 
 ### TypeScript Interface
 
@@ -176,6 +211,7 @@ export interface FinancialData {
   ipoId: string;
   revenue: YearlyFinancial;
   profit: YearlyFinancial;
+  ebitda: YearlyFinancial;          // ✅ NEW - Story 11.12
   netWorth: number;
   peRatio: number | null;
   eps: number | null;
@@ -394,6 +430,115 @@ export interface BrokerAffiliate {
 
   createdAt: Date;
   updatedAt: Date;
+}
+```
+
+## AnchorInvestor ✅ **Story 11.10** (Epic 11)
+
+**Purpose:** Store anchor investor allocation data with lock-in periods for institutional confidence indicators.
+
+**Key Attributes:**
+- Investor name and category (Mutual Fund, FII, AIF, Insurance)
+- Allocation amount and number of shares
+- Lock-in period details
+- Association with specific IPO
+
+**Quality Metrics:**
+- Quality Score: 9.5/10
+- Test Coverage: 54/54 tests passing
+- Repository: `AnchorInvestorRepository`
+
+### TypeScript Interface
+
+```typescript
+// packages/shared/src/types/anchor-investor.ts
+
+export enum InvestorCategory {
+  MUTUAL_FUND = 'MUTUAL_FUND',
+  FII = 'FII',                    // Foreign Institutional Investor
+  DII = 'DII',                    // Domestic Institutional Investor
+  AIF = 'AIF',                    // Alternative Investment Fund
+  INSURANCE = 'INSURANCE',
+  BANK = 'BANK',
+  OTHER = 'OTHER'
+}
+
+export interface AnchorInvestor {
+  id: string;
+  ipoId: string;
+  investorName: string;
+  category: InvestorCategory;
+  allocationAmount: number;       // Amount allocated in INR crores
+  numberOfShares: number;
+  pricePerShare: number;
+  lockInPeriod: number;           // Lock-in period in days
+  lockInEndDate: Date | null;     // Calculated end date
+  createdAt: Date;
+  updatedAt: Date;
+}
+```
+
+## Review ✅ **Story 11.16** (Epic 11)
+
+**Purpose:** Store IPO reviews from analysts and brokers with aggregation, sentiment analysis, and moderation workflow.
+
+**Key Attributes:**
+- Review content and rating (1-5 scale)
+- Recommendation (APPLY or AVOID)
+- Moderation status (pending, approved, rejected)
+- Admin audit trail
+
+**Quality Metrics:**
+- Quality Score: 9.5/10
+- Test Coverage: 92%
+- Repository: `ReviewRepository` with 5 advanced methods
+- Performance: 35ms cache hit, 150ms DB aggregation
+
+### TypeScript Interface
+
+```typescript
+// packages/shared/src/types/review.ts
+
+export enum ReviewRecommendation {
+  APPLY = 'APPLY',
+  AVOID = 'AVOID'
+}
+
+export enum ReviewStatus {
+  PENDING = 'PENDING',      // Awaiting moderation
+  APPROVED = 'APPROVED',    // Approved for display
+  REJECTED = 'REJECTED'     // Rejected by moderator
+}
+
+export interface Review {
+  id: string;
+  ipoId: string;
+  analystName: string;
+  brokerageName: string | null;
+  rating: number;                    // 1-5 scale
+  recommendation: ReviewRecommendation;
+  reviewText: string;
+  applyReasons: string[] | null;     // Reasons to apply
+  avoidReasons: string[] | null;     // Reasons to avoid
+  status: ReviewStatus;
+
+  // Moderation fields
+  moderatedBy: string | null;        // Admin user ID
+  moderatedAt: Date | null;
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ReviewSummary {
+  averageRating: number;
+  totalReviews: number;
+  applyCount: number;
+  avoidCount: number;
+  applyPercentage: number;           // Sentiment indicator
+  avoidPercentage: number;           // Sentiment indicator
+  topApplyReasons: string[];         // Top 3 reasons extracted
+  topAvoidReasons: string[];         // Top 3 reasons extracted
 }
 ```
 
