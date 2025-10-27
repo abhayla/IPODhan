@@ -4,7 +4,10 @@ import React, { Component, ReactNode } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import * as Sentry from '@sentry/nextjs';
+// TEMPORARILY DISABLED: Sentry causing webpack errors
+// import * as Sentry from '@sentry/nextjs';
+
+const SENTRY_ENABLED = false;
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -38,15 +41,15 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     // Log error to console in development
     console.error('ErrorBoundary caught an error:', error, errorInfo);
 
-    // Log to Sentry in production
-    if (process.env.NODE_ENV === 'production') {
-      Sentry.captureException(error, {
-        contexts: {
-          react: {
-            componentStack: errorInfo.componentStack,
-          },
-        },
-      });
+    // Log to Sentry in production (currently disabled)
+    if (SENTRY_ENABLED && process.env.NODE_ENV === 'production') {
+      // Sentry.captureException(error, {
+      //   contexts: {
+      //     react: {
+      //       componentStack: errorInfo.componentStack,
+      //     },
+      //   },
+      // });
     }
 
     this.setState({

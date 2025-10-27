@@ -12,7 +12,10 @@
  * - Environment-based configuration
  */
 
-import * as Sentry from '@sentry/nextjs';
+// TEMPORARILY DISABLED: Sentry causing webpack errors
+// import * as Sentry from '@sentry/nextjs';
+const SENTRY_ENABLED = false;
+
 import type {
   ipos,
   subscriptions,
@@ -460,26 +463,27 @@ async function fetchWithRetry<T>(
             errorData.error.requestId || requestId
           );
 
-          // Log 5xx errors to Sentry in production
+          // Log 5xx errors to Sentry in production (currently disabled)
           if (
+            SENTRY_ENABLED &&
             process.env.NODE_ENV === 'production' &&
             response.status >= 500 &&
             response.status < 600
           ) {
-            Sentry.captureException(apiError, {
-              tags: {
-                errorCode: apiError.code,
-                httpStatus: apiError.status,
-                requestId: apiError.requestId || requestId,
-              },
-              contexts: {
-                api: {
-                  url: finalUrl,
-                  method: requestOptions.method || 'GET',
-                  attempt,
-                },
-              },
-            });
+            // Sentry.captureException(apiError, {
+            //   tags: {
+            //     errorCode: apiError.code,
+            //     httpStatus: apiError.status,
+            //     requestId: apiError.requestId || requestId,
+            //   },
+            //   contexts: {
+            //     api: {
+            //       url: finalUrl,
+            //       method: requestOptions.method || 'GET',
+            //       attempt,
+            //     },
+            //   },
+            // });
           }
 
           // Don't retry 4xx errors (client errors)

@@ -609,6 +609,10 @@ export const ipoReviews = pgTable(
     segment: segmentEnum('segment').notNull(), // Changed from category to segment
     reviewUrl: text('review_url'),
     reviewContent: text('review_content'),
+    // Moderation fields (Story 11.16)
+    isApproved: boolean('is_approved').default(false).notNull(),
+    moderatedBy: varchar('moderated_by', { length: 255 }),
+    moderatedAt: timestamp('moderated_at'),
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -621,6 +625,7 @@ export const ipoReviews = pgTable(
       table.year,
       table.publishedDate
     ),
+    approvedIdx: index('idx_ipo_reviews_approved').on(table.isApproved, table.ipoId),
   })
 );
 

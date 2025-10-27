@@ -50,15 +50,14 @@ export function verifyAdminAuth(request: NextRequest): AdminAuthContext | null {
 
 /**
  * Middleware wrapper for API routes requiring admin auth
+ *
+ * Note: Uses permissive typing to support handlers with different return types
+ * (e.g., NextResponse<Success> | NextResponse<Error>)
  */
 export function withAdminAuth(
-  handler: (
-    request: NextRequest,
-    adminContext: AdminAuthContext,
-    ...args: any[]
-  ) => Promise<NextResponse<any>>
-) {
-  return async (request: NextRequest, ...args: any[]): Promise<NextResponse<any>> => {
+  handler: (request: NextRequest, adminContext: AdminAuthContext, ...args: any[]) => Promise<any>
+): (request: NextRequest, ...args: any[]) => Promise<any> {
+  return async (request: NextRequest, ...args: any[]): Promise<any> => {
     // Verify authentication
     const adminContext = verifyAdminAuth(request);
 

@@ -27,6 +27,7 @@ export const CacheTTL = {
   CALENDAR: 86400, // 24 hours - calendar data doesn't change frequently
   REFERENCE: 604800, // 7 days - registrars, holidays, sectors (static data)
   ANCHOR_INVESTOR: 86400, // 24 hours (Story 11.10 requirement)
+  REVIEW_SUMMARY: 900, // 15 minutes (Story 11.16 requirement)
 } as const;
 
 /**
@@ -285,4 +286,32 @@ export function getAnchorInvestorKey(ipoId: string): string {
  */
 export function getAnchorInvestorInvalidationKeys(ipoId: string): string[] {
   return [`anchor:${ipoId}`];
+}
+
+/**
+ * Generate cache key for review summary by IPO ID (Story 11.16)
+ * Caches the aggregated review summary (average rating, count, distribution)
+ */
+export function getReviewSummaryKey(ipoId: string): string {
+  return `review:summary:${ipoId}`;
+}
+
+/**
+ * Generate cache key for review list by IPO ID (Story 11.16)
+ * Optional limit parameter for different page sizes
+ */
+export function getReviewListKey(ipoId: string, limit?: number): string {
+  return limit ? `reviews:ipo:${ipoId}:${limit}` : `reviews:ipo:${ipoId}`;
+}
+
+/**
+ * Get all cache key patterns for review invalidation (Story 11.16)
+ * Should be called when new reviews are added or updated
+ */
+export function getReviewInvalidationKeys(ipoId: string): string[] {
+  return [
+    getReviewSummaryKey(ipoId), // Review summary
+    `reviews:ipo:${ipoId}*`, // All review lists for this IPO (with any limit)
+    `ipo:slug:*`, // IPO detail pages that include reviews
+  ];
 }

@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
-import { withSentryConfig } from '@sentry/nextjs';
+// TEMPORARILY DISABLED: Sentry causing webpack errors
+// import { withSentryConfig } from '@sentry/nextjs';
 
 // Bundle analyzer configuration
 const withBundleAnalyzer = require('@next/bundle-analyzer')({
@@ -127,40 +128,8 @@ const nextConfig: NextConfig = {
 // Apply bundle analyzer
 const configWithAnalyzer = withBundleAnalyzer(nextConfig);
 
-// Apply Sentry configuration
-export default withSentryConfig(
-  configWithAnalyzer,
-  {
-    // Sentry webpack plugin options
-    silent: true, // Suppresses source map upload logs during build
-    org: process.env.SENTRY_ORG || 'ipodhan',
-    project: process.env.SENTRY_PROJECT || 'ipodhan-web',
+// TEMPORARILY DISABLED: Sentry configuration causing webpack module loading errors
+// TODO: Migrate to instrumentation-based Sentry setup per Next.js 15 recommendations
+// export default withSentryConfig(configWithAnalyzer, {...});
 
-    // Auth token for uploading source maps (optional in development)
-    authToken: process.env.SENTRY_AUTH_TOKEN,
-
-    // Only upload source maps in production builds
-    dryRun: process.env.NODE_ENV !== 'production',
-  },
-  {
-    // Sentry SDK configuration options
-
-    // Upload source maps for error tracking
-    widenClientFileUpload: true,
-
-    // Transpile SDK for better compatibility
-    transpileClientSDK: true,
-
-    // Route for Sentry requests (bypasses ad blockers)
-    tunnelRoute: '/monitoring',
-
-    // Hide source maps from public (security)
-    hideSourceMaps: true,
-
-    // Disable Sentry logger to reduce console noise
-    disableLogger: true,
-
-    // Automatically tree-shake Sentry code in production
-    automaticVercelMonitors: true,
-  }
-);
+export default configWithAnalyzer;

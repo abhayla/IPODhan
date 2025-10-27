@@ -13,6 +13,7 @@ import * as Sentry from '@sentry/nextjs';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
+import { ReviewRepository } from '@/lib/repositories/review-repository';
 import { EntityNotFoundError, DatabaseError } from '@/lib/errors/repository-errors';
 import { logger } from '@/lib/logger';
 import type { IPODetailResponse } from '@/lib/db/types';
@@ -162,6 +163,10 @@ export async function GET(
       );
     }
 
+    // Fetch review summary (Story 11.16)
+    const reviewRepository = new ReviewRepository(db, redis);
+    const reviewSummary = await reviewRepository.getReviewSummary(ipoWithRelations.id);
+
     // Transform to API response format
     // Extract IPO data without relations for the ipo field
     const { financialData: _, ipoFinancials: __, ipoDetails: ___, documents: ____, subscriptions: _____, gmpRecords: ______, listingPerformance: _______, peerCompanies: ________, registrarRelation, ipoScore: _________, anchorInvestor: __________, ...ipoData } = ipoWithRelations;
@@ -182,6 +187,7 @@ export async function GET(
       peers: [],
       ipoScore: ipoWithRelations.ipoScore ?? null, // Story 4.7
       anchorInvestor: ipoWithRelations.anchorInvestor ?? null, // Story 11.10
+      reviewSummary: reviewSummary ?? null, // Story 11.16
       metadata: {
         lastUpdated: new Date().toISOString(),
       },
@@ -199,6 +205,8 @@ export async function GET(
         hasIssueDetails: !!ipoWithRelations.ipoDetails, // Story 4.11
         subscriptionCount: ipoWithRelations.subscriptions?.length || 0,
         gmpCount: ipoWithRelations.gmpRecords?.length || 0,
+        hasReviewSummary: !!reviewSummary, // Story 11.16
+        reviewCount: reviewSummary?.totalReviews || 0, // Story 11.16
       },
       'IPO details fetched successfully'
     );
