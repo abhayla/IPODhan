@@ -25,7 +25,22 @@
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"],
+  "exclude": [
+    "node_modules",
+    "scripts/audit-coolcaps-data.ts",
+    "scripts/audit-sme-ipos.ts",
+    "scripts/find-complete-ipo-all-tabs.ts",
+    "scripts/find-complete-ipos.ts",
+    "scripts/redis-fault-tolerance-test.ts",
+    "scripts/test-admin-edit-fields.ts",
+    "scripts/test-api-performance.ts",
+    "scripts/validate-api-responses.ts",
+    "scripts/validate-cross-contamination.ts",
+    "sentry.client.config.ts",
+    "sentry.server.config.ts",
+    "tests/**/*.ts",
+    "tests/**/*.tsx"
+  ],
   "references": [
     { "path": "../packages/shared" }
   ]

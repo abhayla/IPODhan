@@ -79,9 +79,9 @@ export async function collectBusinessMetrics(): Promise<BusinessMetrics> {
     `);
 
     const dataFreshness = {
-      lastScraperRun: freshnessResult.rows[0]?.last_update ? new Date(freshnessResult.rows[0].last_update) : null,
+      lastScraperRun: freshnessResult.rows[0]?.last_update ? new Date(String(freshnessResult.rows[0].last_update)) : null,
       staleIPOs: Number(freshnessResult.rows[0]?.stale || 0),
-      oldestUpdate: freshnessResult.rows[0]?.oldest_update ? new Date(freshnessResult.rows[0].oldest_update) : null,
+      oldestUpdate: freshnessResult.rows[0]?.oldest_update ? new Date(String(freshnessResult.rows[0].oldest_update)) : null,
     };
 
     // Scraper health

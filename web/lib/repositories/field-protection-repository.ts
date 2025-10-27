@@ -163,7 +163,7 @@ export class FieldProtectionRepository extends BaseRepository {
           })
           .returning();
       },
-      input
+      input as unknown as Record<string, unknown>
     );
 
     // Invalidate caches

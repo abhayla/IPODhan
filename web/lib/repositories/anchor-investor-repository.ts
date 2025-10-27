@@ -78,7 +78,7 @@ export class AnchorInvestorRepository
         .returning();
 
       // Invalidate cache
-      await this.deleteCachePattern(
+      await this.deleteCache(
         getAnchorInvestorInvalidationKeys(data.ipoId)
       );
 
@@ -127,7 +127,7 @@ export class AnchorInvestorRepository
       }
 
       // Invalidate cache
-      await this.deleteCachePattern(
+      await this.deleteCache(
         getAnchorInvestorInvalidationKeys(data.ipoId)
       );
 
@@ -151,7 +151,7 @@ export class AnchorInvestorRepository
         .where(eq(anchorInvestors.ipoId, ipoId));
 
       // Invalidate cache
-      await this.deleteCachePattern(getAnchorInvestorInvalidationKeys(ipoId));
+      await this.deleteCache(getAnchorInvestorInvalidationKeys(ipoId));
     } catch (error) {
       throw new DatabaseError(
         `Failed to delete anchor investor data for IPO: ${ipoId}`,
