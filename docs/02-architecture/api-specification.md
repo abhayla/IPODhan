@@ -49,6 +49,34 @@ No authentication required for MVP (all endpoints public, read-only). Phase 2 wi
 **Broker Affiliates:** 🔵 **MVP**
 - `GET /api/affiliates` - Get active broker affiliate links (simple, no tracking)
 
+**IPO Detail Enhancements:** ✅ **Epic 11** (Stories 11.9-11.16)
+- `GET /api/ipos/{slug}/anchor-investors` - Get anchor investor allocation data (Story 11.10)
+  - Returns: List of anchor investors with allocation amounts, lock-in periods
+- `GET /api/ipos/{slug}/score` - Get real-time IPO quality score (Story 11.11)
+  - Returns: Score breakdown with 5 components (financial strength, valuation, subscription, market performance, fundamentals)
+- `GET /api/ipos/{slug}/reviews` - Get aggregated review summary (Story 11.16)
+  - Returns: Average rating, recommendation split, top reasons (apply/avoid)
+- `GET /api/ipos/{slug}/reviews/list` - Get approved reviews with pagination (Story 11.16)
+  - Query params: `limit` (default: 10)
+  - Returns: List of approved reviews
+
+**Admin Endpoints:** ✅ **Epic 11** (Authentication Required - Admin Only)
+- `GET /api/admin/reviews` - List pending reviews awaiting moderation (Story 11.16)
+  - Returns: Pending reviews ordered by creation date
+  - Cache: 5 minutes
+- `POST /api/admin/reviews/{id}/approve` - Approve a review for display (Story 11.16)
+  - Body: `{ adminUserId: string }`
+  - Returns: Updated review with approval metadata
+  - Invalidates: Review summary cache + pending reviews cache
+- `POST /api/admin/reviews/{id}/reject` - Reject a review (Story 11.16)
+  - Body: `{ adminUserId: string, reason?: string }`
+  - Returns: Updated review with rejection metadata
+  - Invalidates: Pending reviews cache
+- `POST /api/admin/update-field` - Update protected IPO field (Admin data management)
+  - Body: `{ ipoId: string, tableName: string, fieldName: string, value: any, editNote?: string }`
+  - Returns: Updated field with protection status
+  - Invalidates: Related IPO caches
+
 **IPO News:** 🟢 **Phase 2**
 - `GET /api/ipos/{slug}/news` - Get news for specific IPO
 - `GET /api/news` - Get all IPO news (paginated, filterable by type)
@@ -64,6 +92,10 @@ No authentication required for MVP (all endpoints public, read-only). Phase 2 wi
 | `GET /api/ipos/{slug}` (detail) | 15 minutes | On scraper update |
 | `GET /api/ipos/{slug}/subscription` | 10 minutes | On scraper update |
 | `GET /api/ipos/{slug}/gmp` | 30 minutes | On manual GMP entry |
+| `GET /api/ipos/{slug}/anchor-investors` | 15 minutes | On admin update (Epic 11) |
+| `GET /api/ipos/{slug}/score` | 1 hour (OPEN) / 24 hours (LISTED) | On financial data change (Epic 11) |
+| `GET /api/ipos/{slug}/reviews` | 15 minutes | On review approval/rejection (Epic 11) |
+| `GET /api/admin/reviews` | 5 minutes | On moderation action (Epic 11) |
 
 ## Rate Limiting
 
