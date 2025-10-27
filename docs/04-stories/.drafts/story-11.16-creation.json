@@ -1,0 +1,23 @@
+{
+  "story_id": "11.16",
+  "story_title": "IPO Recommendations Summary Section",
+  "creation_status": "drafted",
+  "validation_status": "pending",
+  "timestamps": {
+    "workflow_started": "2025-10-27T14:30:00.000Z",
+    "drafting_started": "2025-10-27T14:35:00.000Z",
+    "drafting_completed": "2025-10-27T14:45:00.000Z",
+    "next_phase": "po_validation"
+  },
+  "creation_context": {
+    "epic_path": "docs/epics/epic-11-ipo-detail-page-enhancements.md",
+    "architecture_path": "docs/02-architecture/backend-architecture.md",
+    "destination_path": "docs/04-stories/"
+  },
+  "agents": {
+    "drafted_by": "Bob (Scrum Master)",
+    "drafted_via": "sm.md *draft command"
+  },
+  "workflow_version": "2.0",
+  "workflow_step": "2.5"
+}
