@@ -1,0 +1,32 @@
+{
+  "story_id": "11.16",
+  "story_title": "IPO Recommendations Summary Section",
+  "status": "ready",
+  "timestamps": {
+    "workflow_started": "2025-10-27T14:30:00.000Z",
+    "epic_update_completed": "2025-10-27T14:32:00.000Z",
+    "drafting_completed": "2025-10-27T14:45:00.000Z",
+    "validation_completed": "2025-10-27T17:45:00.000Z",
+    "correction_completed": null,
+    "ready_status_set": "2025-10-27T17:50:00.000Z",
+    "total_duration_minutes": 200
+  },
+  "workflow_metrics": {
+    "validation_iterations": 1,
+    "correction_iterations": 0,
+    "total_commits": 4
+  },
+  "approvals": {
+    "sm_drafted": true,
+    "po_approved": true,
+    "sm_corrected": false
+  },
+  "files": {
+    "story_file": "docs/04-stories/story-11.16-ipo-recommendations-summary.md",
+    "epic_reference": "docs/epics/epic-11-ipo-detail-page-enhancements.md",
+    "architecture_reference": "docs/02-architecture/backend-architecture.md",
+    "sprint_plan": null
+  },
+  "workflow_version": "2.0",
+  "workflow_step": "6"
+}
