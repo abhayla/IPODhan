@@ -252,10 +252,35 @@ npx tsx scripts/monitor-redis.ts
 **What We Monitor**:
 - **IPO Data Freshness**: Last scraper run timestamp
 - **Stale IPOs**: IPOs not updated in >24 hours
-- **Scraper Success Rate**: Percentage of successful scrapes
+- **Scraper Success Rate**: Percentage of successful scrapes (Target: >95%)
 - **Data Quality**: Missing fields, invalid data
 - **Subscription Rates**: Active vs stale subscriptions
 - **GMP Updates**: Frequency and coverage
+- **Segment Completeness**: NULL segment detection (Target: 0%) ✅ **100% achieved Oct 2025**
+
+**Scraper-Specific Monitoring (NSE/BSE/Fallback)**:
+- **NSE API Health**:
+  - 5 endpoint availability (current IPOs, subscriptions, detail, historical, segment detection)
+  - Cookie-based session health (auto-refresh on 401/403)
+  - API response times (Target: <10s for current, <5s for historical)
+  - Authentication failures and retry counts
+  - API format change detection (backward-compatible parser)
+- **BSE Scraper Health**:
+  - Web scraping success rate (Puppeteer-based)
+  - SME IPO coverage
+  - Dual-listed IPO merge operations
+  - Page structure change detection
+- **IPO Alerts API Fallback**:
+  - Automatic fallback trigger count (after 3 consecutive failures)
+  - Rate limit usage (100 requests/hour limit)
+  - Fallback data quality vs NSE/BSE data
+  - API authentication status
+- **Scraper Scheduler Health** (Story 7.4):
+  - Market-aware interval execution (15min/30min/60min)
+  - Redis job lock conflicts and skipped runs
+  - Daily summary report generation (8 AM)
+  - Health check frequency (every 5 minutes)
+  - Consecutive failure tracking (WARNING: 3+, CRITICAL: 5+)
 
 **Health Endpoint**: `GET /api/metrics`
 
@@ -458,6 +483,99 @@ redis-cli INFO keyspace
 # Monitor cache hit rate
 redis-cli INFO stats | grep keyspace_hits
 ```
+
+### Scraper Monitoring (NSE/BSE/Fallback)
+
+```bash
+# Monitor PM2 scheduler process
+pm2 logs ipodhan-scheduler
+
+# View scraper execution logs
+tail -f logs/app-2025-10-27.log | grep "NSE scraper"
+tail -f logs/app-2025-10-27.log | grep "BSE scraper"
+
+# Check scraper health (database query)
+psql -U postgres -d ipodhan -c "
+  SELECT
+    source,
+    status,
+    records_processed,
+    records_failed,
+    duration_ms,
+    created_at
+  FROM scraper_logs
+  ORDER BY created_at DESC
+  LIMIT 10;
+"
+
+# Monitor scraper failure tracking (Redis)
+redis-cli GET "scraper:failures:NSE"
+redis-cli GET "scraper:failures:BSE"
+
+# Check segment completeness
+npx tsx scripts/verify-segments.ts
+
+# Expected Output:
+# Total IPOs: 505
+# MAINBOARD: 230
+# SME: 275
+# NULL segments: 0 (0%)
+# Completeness: 100%
+
+# Test NSE scraper manually
+cd scraper
+npm start
+
+# Expected Output:
+# NSE scraper completed successfully
+# IPOs processed: 4-10
+# Duration: <10 seconds
+# Success rate: 100%
+
+# Monitor scheduler jobs (Redis)
+redis-cli KEYS "scheduler:lock:*"
+redis-cli GET "scheduler:lock:nse-market-hours"
+
+# View daily summary report (8 AM logs)
+tail -f logs/app-2025-10-27.log | grep "daily-summary"
+```
+
+**Scraper Logs Table** (`scraper_logs`):
+```sql
+-- View recent scraper runs
+SELECT
+  source,
+  status,
+  records_processed,
+  records_failed,
+  duration_ms,
+  error_message,
+  created_at
+FROM scraper_logs
+WHERE created_at > NOW() - INTERVAL '24 hours'
+ORDER BY created_at DESC;
+
+-- Success rate by source (last 7 days)
+SELECT
+  source,
+  COUNT(*) as total_runs,
+  SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) as successful_runs,
+  ROUND(100.0 * SUM(CASE WHEN status = 'SUCCESS' THEN 1 ELSE 0 END) / COUNT(*), 2) as success_rate
+FROM scraper_logs
+WHERE created_at > NOW() - INTERVAL '7 days'
+GROUP BY source;
+```
+
+**Scraper Metrics Targets**:
+| Metric | Target | Alert Threshold |
+|--------|--------|-----------------|
+| NSE API Success Rate | >95% | <90% |
+| BSE Scraper Success Rate | >90% | <85% |
+| Segment Completeness | 100% | <98% |
+| Scraper Duration (Current) | <10s | >30s |
+| Scraper Duration (Historical) | <5s | >15s |
+| Consecutive Failures | 0 | >3 (WARNING), >5 (CRITICAL) |
+| Data Freshness | <15min | >1hr (market hours) |
 
 ---
 

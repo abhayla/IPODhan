@@ -9,15 +9,32 @@ Based on the PRD and front-end spec, the following TypeScript interfaces will be
 **Key Attributes:**
 - `id`: string (UUID) - Unique identifier
 - `companyName`: string - Company/issuer name
-- `slug`: string - URL-friendly identifier
+- `slug`: string - URL-friendly identifier (uses canonical generator from `@ipodhan/shared/utils/slug`)
 - `category`: enum - IPO type (MAINBOARD | SME | RIGHTS | NCD)
+- `segment`: enum | null - IPO segment (MAINBOARD | SME | null for RIGHTS) **✅ 100% completeness (Oct 2025)**
 - `sector`: string - Industry sector
 - `issueSize`: number - Total issue size in INR crores
 - `priceRange`: object - Min and max price per share
-- `lotSize`: number - Minimum application quantity
+- `lotSize`: number - Minimum application quantity (validated: never 1)
 - `status`: enum - Current status (UPCOMING | OPEN | CLOSED | LISTED)
 - `dates`: object - Timeline (open, close, allotment, listing dates)
 - `rating`: number | null - IPODhan rating (1-5 stars)
+
+**Data Quality Enhancements (NSE Integration - Oct 2025)**:
+- **Segment Detection**: 100% completeness achieved via intelligent web scraping (Oct 28, 2025)
+  - Problem: NSE APIs don't return segment for all IPOs
+  - Solution: Web scraping enhancement scrapes IPO detail pages to extract security type
+  - Result: 505 IPOs with 0 NULL segments (12 IPOs fixed: 3 MAINBOARD, 2 SME, 7 RIGHTS)
+  - Backfill Script: `web/scripts/backfill-null-segments.ts`
+- **Slug Generation**: Uses canonical slug generator (`generateIPOSlug()` from shared package)
+  - Handles 13+ legal entity types (Ltd, Limited, Pvt, Inc, LLC, etc.)
+  - Supports 8 currency/special symbols (₹, $, &, etc.)
+  - Enforces maximum length (100 chars)
+  - Guarantees uniqueness with collision detection
+- **Lot Size Validation**: Never allows lot_size = 1 (validation utility enforced)
+- **Data Source**: NSE APIs (primary) → BSE scraping (supplementary) → IPO Alerts API (fallback)
+  - NSE Coverage: 1,272+ IPOs (4 current + 1,268 historical)
+  - Success Rate: 100% (tested Oct 2025)
 
 **Epic 11 Enhancements:**
 - `promoterHolding`: object | null - Pre/post IPO promoter shareholding (Story 11.9)

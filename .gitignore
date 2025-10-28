@@ -53,6 +53,7 @@ temp/
 tmp/
 *.tmp
 nul
+=
 
 # OS files
 Thumbs.db
@@ -91,6 +92,13 @@ web/scripts/check-*.ts
 web/scripts/find-*.ts
 web/scripts/get-*.ts
 web/scripts/test-*.ts
+web/scripts/temp-*.ts
+web/scripts/simple-*.ts
+web/scripts/show-*.ts
+web/scripts/verify-*.ts
+web/scripts/run-*.ts
+web/scripts/fix-*.sql
+web/scripts/backfill-*.ts
 scraper/add-sector-column.ts
 scraper/check-schema.ts
 scraper/check-status-enum.ts
@@ -185,6 +193,7 @@ chittorgarh_detail_sample.html
 /*_SCRAPER_*_REPORT_*.md
 /*_SCRAPER_*_SUMMARY_*.md
 /*FIX_SUMMARY_REPORT_*.md
+/SCRAPER_RUN_REPORT_*.md
 
 # Explicitly track all organized documentation in docs/
 !docs/**
