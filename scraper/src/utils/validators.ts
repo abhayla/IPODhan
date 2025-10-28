@@ -224,6 +224,12 @@ export function validateSubscriptionData(data: unknown): {
  * Removes HTML tags, trims whitespace, limits length
  */
 export function sanitizeCompanyName(name: string): string {
+  // Add null/undefined check to prevent replace errors
+  if (!name) {
+    console.warn('[sanitizeCompanyName] Called with null/undefined name');
+    return '';
+  }
+
   return name
     .replace(/<\/?[a-z][a-z0-9]*[^>]*>/g, '') // Remove HTML tags (lowercase only)
     .replace(/[<>]/g, '') // Remove remaining angle brackets

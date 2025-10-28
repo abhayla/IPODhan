@@ -348,6 +348,11 @@ export class BaseScraperOrchestrator {
    * Generate slug from company name
    */
   private generateSlug(companyName: string): string {
+    // Add null check to prevent toLowerCase error
+    if (!companyName) {
+      logger.warn({ companyName }, 'generateSlug called with null/undefined company name');
+      return '';
+    }
     return companyName
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')

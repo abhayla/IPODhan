@@ -43,6 +43,12 @@ export function generateIPOSlug(
   companyName: string,
   options: SlugOptions = {}
 ): string {
+  // Add null/undefined check to prevent toLowerCase errors
+  if (!companyName) {
+    console.warn('[generateIPOSlug] Called with null/undefined company name');
+    return '';
+  }
+
   const { suffix = '', maxLength = 100 } = options;
 
   let slug = companyName
@@ -237,6 +243,12 @@ export function slugToCompanyName(slug: string): string {
  * ```
  */
 export function normalizeCompanyName(companyName: string): string {
+  // Add null/undefined check to prevent toLowerCase errors
+  if (!companyName) {
+    console.warn('[normalizeCompanyName] Called with null/undefined company name');
+    return '';
+  }
+
   return companyName
     .toLowerCase()
     .trim()
