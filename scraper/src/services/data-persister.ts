@@ -154,7 +154,14 @@ export async function upsertIPO(
       const ipoData: Partial<IPOInsert> = {
         companyName: sanitizeCompanyName(scrapedIPO.companyName),
         slug,
-        category: scrapedIPO.category,
+        // Map category to segment: MAINBOARD/SME map directly, RIGHTS/NCD map to null (non-exchange offerings)
+        segment: (scrapedIPO.category === 'MAINBOARD' || scrapedIPO.category === 'SME')
+          ? scrapedIPO.category
+          : null,
+        // Map category to offering_type: Determines the type of offering (required NOT NULL field)
+        offeringType: scrapedIPO.category === 'RIGHTS' ? 'RIGHTS' as const
+          : scrapedIPO.category === 'NCD' ? 'NCD' as const
+          : 'IPO' as const,
         sector: scrapedIPO.sector,
         issueSize: scrapedIPO.issueSize.toString(),
         // Round price values to integers for INTEGER fields in database

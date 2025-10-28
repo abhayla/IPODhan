@@ -23,11 +23,12 @@ import {
   ScraperLogRepository as ScraperLogRepositoryClass
 } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
+// Field protection functions from shared package (currently STUB implementations)
 import {
   isIPOLocked,
   isFieldProtected,
   filterProtectedFields
-} from '@web/lib/admin/field-protection-checker';
+} from '@ipodhan/shared';
 import { generateSlug } from '../utils/validators.js';
 import { upsertIPO, createSubscriptionSnapshot } from '../services/data-persister.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
@@ -305,12 +306,14 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       // Filter protected fields from the update data
       const originalFieldCount = Object.keys(validatedIPO).length;
 
-      filteredIPOData = await filterProtectedFields(
+      // FIX: Access .filtered property from the result
+      const filterResult = await filterProtectedFields(
         ipoId,
         'ipos',
         validatedIPO,
         scraperName
-      ) as typeof validatedIPO;
+      );
+      filteredIPOData = filterResult.filtered as typeof validatedIPO;
 
       const filteredFieldCount = Object.keys(filteredIPOData).length;
       const protectedCount = originalFieldCount - filteredFieldCount;
@@ -412,7 +415,8 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
 
     for (const field of criticalFields) {
       const protected_ = await isFieldProtected(ipoId, 'subscriptions', field);
-      if (protected_.protected) {
+      // FIX: Check isProtected property (not protected)
+      if (protected_.isProtected) {
         return true;
       }
     }

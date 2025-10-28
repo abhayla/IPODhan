@@ -8,6 +8,8 @@ export * from './repositories/scraper-log-repository.js';
 export * from './repositories/document-repository.js';
 // Export utility functions
 export * from './utils/slug.js';
+// Export field protection functions (TEMPORARY STUBS - see admin/field-protection-stub.ts)
+export * from './admin/field-protection-stub.js';
 // Export repository interfaces and pagination types only
 export type {
   IIPORepository,

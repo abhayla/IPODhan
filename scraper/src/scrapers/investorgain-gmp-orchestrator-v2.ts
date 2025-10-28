@@ -22,10 +22,11 @@ import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { ScraperMetricsTracker } from '../services/scraper-metrics-tracker.js';
 import { AlertingService } from '../services/alerting-service.js';
+// Field protection functions from shared package (currently STUB implementations)
 import {
   isIPOLocked,
   filterProtectedFields
-} from '@web/lib/admin/field-protection-checker';
+} from '@ipodhan/shared';
 
 export interface InvestorgainGMPResult {
   success: boolean;
@@ -42,6 +43,9 @@ export interface InvestorgainGMPResult {
  * Higher score = more similar
  */
 function calculateSimilarity(str1: string, str2: string): number {
+  // Add null checks to prevent toLowerCase error
+  if (!str1 || !str2) return 0;
+
   const s1 = str1.toLowerCase().trim();
   const s2 = str2.toLowerCase().trim();
 

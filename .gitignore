@@ -153,6 +153,10 @@ scraper/scraper_execution_log.txt
 scraper/scraper_verification_log.txt
 scraper/src/scripts/test-*.ts
 scraper/src/scripts/clear-cache.ts
+scraper/temp-*.ts
+scraper/temp-*.js
+scraper/temp-*.cjs
+scraper/temp-*.mjs
 
 # Recent scraper execution logs (root only)
 /COMPREHENSIVE_SCRAPING_TEST_RESULTS.md
@@ -178,6 +182,9 @@ chittorgarh_detail_sample.html
 /COMPREHENSIVE-SCRAPING-VERIFICATION-REPORT.md
 /comprehensive-scraping-plan.md
 /SCRAPER-FIX-SUMMARY-*.md
+/*_SCRAPER_*_REPORT_*.md
+/*_SCRAPER_*_SUMMARY_*.md
+/*FIX_SUMMARY_REPORT_*.md
 
 # Explicitly track all organized documentation in docs/
 !docs/**

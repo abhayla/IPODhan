@@ -411,11 +411,18 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       return ipo;
     } catch (error) {
       const err = error as any;
+      // Enhanced error logging - show full PostgreSQL error details
       console.error('[CREATE ERROR]', {
         company: data.companyName,
         message: err.message,
-        column: err.column,
-        constraint: err.constraint
+        code: err.code,              // PostgreSQL error code (e.g., '23505' for unique violation)
+        constraint: err.constraint,   // Constraint name that was violated
+        column: err.column,           // Column name that caused the error
+        detail: err.detail,           // Detailed error message from PostgreSQL
+        hint: err.hint,               // Hint for fixing the error
+        table: err.table,             // Table name where error occurred
+        where: err.where,             // Location in query where error occurred
+        position: err.position        // Character position in query
       });
       throw new DatabaseError('Failed to create IPO', undefined, error);
     }

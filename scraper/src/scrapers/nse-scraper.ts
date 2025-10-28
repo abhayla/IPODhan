@@ -105,7 +105,8 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
             const statusStr = cells[7]?.textContent?.trim() || '';
 
             // Skip header rows or empty data
-            if (!companyName || companyName.toLowerCase().includes('company') || companyName.toLowerCase().includes('name') || companyName === '-') {
+            const companyNameLower = companyName?.toLowerCase() || '';
+            if (!companyName || companyNameLower.includes('company') || companyNameLower.includes('name') || companyName === '-') {
               continue;
             }
 
