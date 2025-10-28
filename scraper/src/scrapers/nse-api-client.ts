@@ -20,6 +20,7 @@
 
 import logger from '../utils/logger.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
+import { scrapeSecurityTypeFromWebsite, batchScrapeSecurityTypes } from './nse-security-type-scraper.js';
 
 const BASE_URL = 'https://www.nseindia.com';
 
@@ -416,8 +417,12 @@ function determineStatus(statusStr: string | null | undefined, startDate: string
 /**
  * Transform NSE API response to ScrapedIPO format
  * Updated to use segment + offeringType (Story 11.8)
+ * Enhanced with endpoint category detection for better accuracy
+ *
+ * @param data - Raw NSE API response
+ * @param endpointCategory - Optional category from API endpoint ('ipo' | 'rights' | 'tender' etc.)
  */
-function transformIPOData(data: any): ScrapedIPO {
+function transformIPOData(data: any, endpointCategory?: 'ipo' | 'ofs' | 'rights' | 'tender' | 'ipp'): ScrapedIPO {
   const priceRange = parsePriceRange(data.issuePrice);
   const openDate = parseNSEDate(data.issueStartDate);
   const closeDate = parseNSEDate(data.issueEndDate);
@@ -433,26 +438,42 @@ function transformIPOData(data: any): ScrapedIPO {
   } else if (series === 'EQ' || platform.includes('MAIN')) {
     segment = 'MAINBOARD';
   }
-  // segment remains null for RIGHTS/NCD/other offerings
+  // segment remains null for RIGHTS/NCD/other offerings OR when fields are missing from API
 
-  // Detect offering type from series/type
+  // Detect offering type - prioritize endpoint category
   let offeringType: string = 'IPO'; // Default to IPO
 
-  if (series === 'DEBT' || series === 'NCD' || data.issueType?.toUpperCase().includes('NCD')) {
-    offeringType = 'NCD';
-  } else if (series === 'RI' || series === 'RIGHTS' || data.issueType?.toUpperCase().includes('RIGHTS')) {
+  // ENHANCED: Use endpoint category for better detection
+  if (endpointCategory === 'rights') {
     offeringType = 'RIGHTS';
-  } else if (data.issueType?.toUpperCase().includes('FPO')) {
-    offeringType = 'FPO';
-  } else if (data.issueType?.toUpperCase().includes('INVIT')) {
-    offeringType = 'INVITS';
-  } else if (data.issueType?.toUpperCase().includes('REIT')) {
-    offeringType = 'REITS';
+    segment = null;  // RIGHTS offerings don't have segments
+  } else if (endpointCategory === 'tender') {
+    offeringType = 'TENDER';
+    segment = null;
+  } else if (endpointCategory === 'ipp') {
+    offeringType = 'IPP';
+    segment = null;
+  } else if (endpointCategory === 'ofs') {
+    offeringType = 'OFS';
+  } else {
+    // Fallback to series/type detection
+    if (series === 'DEBT' || series === 'NCD' || data.issueType?.toUpperCase().includes('NCD')) {
+      offeringType = 'NCD';
+    } else if (series === 'RI' || series === 'RIGHTS' || data.issueType?.toUpperCase().includes('RIGHTS')) {
+      offeringType = 'RIGHTS';
+    } else if (data.issueType?.toUpperCase().includes('FPO')) {
+      offeringType = 'FPO';
+    } else if (data.issueType?.toUpperCase().includes('INVIT')) {
+      offeringType = 'INVITS';
+    } else if (data.issueType?.toUpperCase().includes('REIT')) {
+      offeringType = 'REITS';
+    }
   }
 
   // DEBUG: Log offering type detection
   logger.debug({
     companyName: data.companyName || data.company,
+    endpointCategory,
     rawSeries: data.series,
     rawPlatform: data.platform,
     rawIssueType: data.issueType,
@@ -649,7 +670,7 @@ export async function fetchAllIPOs(category: 'ipo' | 'ofs' | 'rights' | 'tender'
 
       for (const item of data) {
         try {
-          const ipo = transformIPOData(item);
+          const ipo = transformIPOData(item, category);
           ipos.push(ipo);
           logger.debug({ companyName: ipo.companyName }, 'Transformed IPO successfully');
 
@@ -767,6 +788,55 @@ export async function scrapeNSEAPI(): Promise<NSEAPIResult> {
       }
     } catch (error) {
       logger.warn('Failed to fetch current IPO subscriptions');
+    }
+
+    // PHASE 2 ENHANCEMENT: Web scraping for segment detection
+    // Filter IPOs that need segment detection (IPOs with null segment)
+    const needsSegment = allIPOs.ipos.filter(ipo =>
+      ipo.offeringType === 'IPO' && ipo.segment === null
+    );
+
+    if (needsSegment.length > 0) {
+      logger.info({ count: needsSegment.length }, '🔍 Enhancing IPOs with web-scraped security types');
+
+      try {
+        const results = await batchScrapeSecurityTypes(
+          needsSegment.map(ipo => ({
+            companyName: ipo.companyName,
+            symbol: ipo.symbol
+          })),
+          1000 // 1 second delay between requests for rate limiting
+        );
+
+        // Merge results back into IPOs
+        let enhancedCount = 0;
+        for (const result of results) {
+          if (result.securityType && result.segment) {
+            const ipo = allIPOs.ipos.find(i => i.companyName === result.companyName);
+            if (ipo) {
+              ipo.segment = result.segment;
+              enhancedCount++;
+              logger.debug({
+                companyName: ipo.companyName,
+                segment: result.segment,
+                source: result.source
+              }, '✅ Enhanced IPO with web-scraped segment');
+            }
+          }
+        }
+
+        logger.info({
+          attempted: needsSegment.length,
+          enhanced: enhancedCount,
+          successRate: `${((enhancedCount / needsSegment.length) * 100).toFixed(1)}%`
+        }, '✅ Web scraping enhancement completed');
+
+      } catch (error) {
+        logger.warn({
+          error: error instanceof Error ? error.message : String(error),
+          count: needsSegment.length
+        }, '⚠️  Web scraping enhancement failed, continuing with API data');
+      }
     }
 
     const duration = Date.now() - startTime;
