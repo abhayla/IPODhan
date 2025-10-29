@@ -44,7 +44,8 @@ export const ScrapedIPOSchema = z.object({
   companyDescription: z.string().optional(),
   registrar: z.string().max(255).nullable().optional(), // Allow null when not available
   leadManagers: z.array(z.string()).nullable().optional(),
-  symbol: z.string().nullable().optional() // NSE/BSE stock symbol (nullable for RIGHTS/NCD)
+  symbol: z.string().nullable().optional(), // NSE/BSE stock symbol (nullable for RIGHTS/NCD)
+  isin: z.string().length(12).nullable().optional() // ISIN code (12 characters, nullable when not available)
 }).refine(
   (data) => new Date(data.closeDate) >= new Date(data.openDate),
   {

@@ -196,6 +196,9 @@ chittorgarh_detail_sample.html
 /*FIX_SUMMARY_REPORT_*.md
 /SCRAPER_RUN_REPORT_*.md
 
+# Exception: Track important scraper execution reports (comprehensive session documentation)
+!/*_SCRAPER_EXECUTION_REPORT.md
+
 # Explicitly track all organized documentation in docs/
 !docs/**
 
