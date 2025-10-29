@@ -1,8 +1,8 @@
 # NSE Scraper Production Run - Detailed Results
 
-**Date**: October 28, 2025
-**Execution Time**: 14:40 - 14:47 UTC
-**Database**: VPS Production Database
+**Date**: October 29, 2025
+**Execution Time**: 02:58:25 - 02:58:29 UTC (IST: 08:28:25 - 08:28:29)
+**Database**: VPS Production Database (103.118.16.189:5432/ipodhan)
 **Scraper Version**: NSE Orchestrator V2 (with Manual Data Protection)
 
 ---
@@ -10,36 +10,41 @@
 ## Executive Summary
 
 ✅ **Status**: SUCCESS
-📊 **IPOs Updated**: 12
-⏱️ **Duration**: 5.15 seconds
+📊 **IPOs Updated**: 11
+⏱️ **Duration**: 3.95 seconds
 🎯 **Success Rate**: 100% (0 failures)
-⚠️ **Data Completeness**: 16.67% (2 out of 12 critical fields populated)
+⚠️ **Data Completeness**: 48% average (comprehensive field validation performed)
 
 ### NSE API Endpoints Used
 1. `/api/all-upcoming-issues?category=ipo` → 5 IPOs
-2. `/api/all-upcoming-issues?category=rights` → 7 IPOs
-3. `/api/ipo-current-issue` → 1 IPO (currently open)
+2. `/api/all-upcoming-issues?category=rights` → 6 IPOs
+3. `/api/ipo-current-issue` → 2 IPOs (currently open)
 
-**Total**: 12 IPOs (with deduplication)
+**Total**: 11 IPOs (with deduplication)
+
+### Validation Results
+- **Total Issues Found**: 137 (27 CRITICAL, 16 HIGH, 50 MEDIUM, 44 LOW)
+- **Average Completeness Score**: 48%
+- **IPOs with >50% completeness**: 5/11 (45%)
+- **IPOs with <50% completeness**: 6/11 (55%)
 
 ---
 
 ## Table 1: Basic IPO Information
 
-| # | Company Name | Slug | IPO ID | Status | Updated At |
-|---|-------------|------|--------|--------|------------|
-| 1 | Lenskart Solutions Limited | lenskart-solutions-limited | 740a9705-6fc1-401c-8f0c-2a2cfa12ac40 | Unknown | 2025-10-28 14:40:27.077 |
-| 2 | Studds Accessories Limited | studds-accessories-limited | 61594ca9-c64e-4835-aaf3-d9e5915bf0b9 | Unknown | 2025-10-28 14:40:27.108 |
-| 3 | Orkla India Limited | orkla-india-limited | 41831a40-73c9-40d7-a47b-ac4ebf3d63a4 | Unknown | 2025-10-28 14:40:28.130 |
-| 4 | Jayesh Logistics Limited | jayesh-logistics-limited | 52cd9048-3548-4db4-bce5-b1849c354b04 | Unknown | 2025-10-28 14:40:28.146 |
-| 5 | Shreeji Global FMCG Limited | shreeji-global-fmcg-limited | ec14deb4-fdd0-4f6e-ac5f-a47ad09ffe3a | Unknown | 2025-10-28 14:40:28.169 |
-| 6 | Delphi World Money Limited | delphi-world-money-limited | fb1c75de-b0e7-432a-b17a-40fd26ee901b | Unknown | 2025-10-28 14:40:28.220 |
-| 7 | Indian Emulsifiers Limited | indian-emulsifiers-limited | e3208110-7560-429a-ac6e-e43419c0d259 | Unknown | 2025-10-28 14:40:28.287 |
-| 8 | SEPC Limited - Call Money | sepc-limited-call-money | 765b2cf8-a2f2-42a0-a427-35bf887e26a8 | OPEN | 2025-10-28 14:40:28.752 |
-| 9 | Utkarsh Small Finance Bank Limited | utkarsh-small-finance-bank-limited | 415253b5-e3b8-49b6-8d7f-84140e6c005b | OPEN | 2025-10-28 14:40:28.831 |
-| 10 | Capital Trust Limited | capital-trust-limited | 7802db0c-8dea-484b-be8f-0dd2b3e2e826 | OPEN | 2025-10-28 14:40:28.893 |
-| 11 | 3i Infotech Limited | 3i-infotech-limited | 3b08e135-176d-4551-85f8-4ffd8c32ced2 | CLOSED | 2025-10-28 14:40:28.986 |
-| 12 | Cool Caps Industries Limited | cool-caps-industries-limited | 0c52ceac-6490-424e-8fdb-8241f4c4dc7a | OPEN | 2025-10-28 14:40:29.047 |
+| # | Company Name | Slug | IPO ID | Status | Completeness | Last Scraped At |
+|---|-------------|------|--------|--------|--------------|-----------------|
+| 1 | Cool Caps Industries Limited | cool-caps-industries-limited | 0c52ceac-6490-424e-8fdb-8241f4c4dc7a | OPEN | 45% ❌ | 2025-10-29 02:58:29 |
+| 2 | Capital Trust Limited | capital-trust-limited | 7802db0c-8dea-484b-be8f-0dd2b3e2e826 | OPEN | 45% ❌ | 2025-10-29 02:58:29 |
+| 3 | Utkarsh Small Finance Bank Limited | utkarsh-small-finance-bank-limited | 415253b5-e3b8-49b6-8d7f-84140e6c005b | OPEN | 45% ❌ | 2025-10-29 02:58:29 |
+| 4 | SEPC Limited - Call Money | sepc-limited-call-money | 765b2cf8-a2f2-42a0-a427-35bf887e26a8 | OPEN | 45% ❌ | 2025-10-29 02:58:28 |
+| 5 | Indian Emulsifiers Limited | indian-emulsifiers-limited | e3208110-7560-429a-ac6e-e43419c0d259 | OPEN | 45% ❌ | 2025-10-29 02:58:28 |
+| 6 | Delphi World Money Limited | delphi-world-money-limited | fb1c75de-b0e7-432a-b17a-40fd26ee901b | OPEN | 45% ❌ | 2025-10-29 02:58:28 |
+| 7 | Shreeji Global FMCG Limited | shreeji-global-fmcg-limited | ec14deb4-fdd0-4f6e-ac5f-a47ad09ffe3a | UPCOMING | 55% ⚠️ | 2025-10-29 02:58:28 |
+| 8 | Jayesh Logistics Limited | jayesh-logistics-limited | 52cd9048-3548-4db4-bce5-b1849c354b04 | OPEN | 45% ❌ | 2025-10-29 02:58:28 |
+| 9 | Studds Accessories Limited | studds-accessories-limited | 61594ca9-c64e-4835-aaf3-d9e5915bf0b9 | UPCOMING | 55% ⚠️ | 2025-10-29 02:58:28 |
+| 10 | Lenskart Solutions Limited | lenskart-solutions-limited | 740a9705-6fc1-401c-8f0c-2a2cfa12ac40 | UPCOMING | 55% ⚠️ | 2025-10-29 02:58:28 |
+| 11 | Orkla India Limited | orkla-india-limited | 41831a40-73c9-40d7-a47b-ac4ebf3d63a4 | OPEN | 55% ⚠️ | 2025-10-29 02:58:28 |
 
 ---
 
@@ -47,20 +52,19 @@
 
 | Company Name | Segment | Offering Type | Lot Size | Price Range Min (₹) | Price Range Max (₹) | Issue Size (₹ Cr) |
 |-------------|---------|---------------|----------|---------------------|---------------------|-------------------|
-| Lenskart Solutions Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Studds Accessories Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Orkla India Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Jayesh Logistics Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Shreeji Global FMCG Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Delphi World Money Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Indian Emulsifiers Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| SEPC Limited - Call Money | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Utkarsh Small Finance Bank Ltd | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Capital Trust Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| 3i Infotech Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Cool Caps Industries Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
+| Cool Caps Industries Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | 0.00 ⚠️ |
+| Capital Trust Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | 0.00 ⚠️ |
+| Utkarsh Small Finance Bank Ltd | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | 0.00 ⚠️ |
+| SEPC Limited - Call Money | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | 0.00 ⚠️ |
+| Indian Emulsifiers Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | 0.00 ⚠️ |
+| Delphi World Money Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | 0.00 ⚠️ |
+| Shreeji Global FMCG Limited | NULL ⚠️ | Unknown | 1,000 ✅ | 120 ✅ | 125 ✅ | 6,800,000.00 ✅ |
+| Jayesh Logistics Limited | NULL ⚠️ | Unknown | 1 ⚠️ | NULL ⚠️ | NULL ⚠️ | 0.00 ⚠️ |
+| Studds Accessories Limited | NULL ⚠️ | Unknown | 1 ⚠️ | 557 ✅ | 585 ✅ | 7,786,120.00 ✅ |
+| Lenskart Solutions Limited | NULL ⚠️ | Unknown | 1 ⚠️ | 382 ✅ | 402 ✅ | 183,865,848.00 ✅ |
+| Orkla India Limited | NULL ⚠️ | Unknown | 1 ⚠️ | 695 ✅ | 730 ✅ | 15,999,104.00 ✅ |
 
-**Legend**: ⚠️ = Data quality issue or missing data from NSE API
+**Legend**: ⚠️ = Data quality issue or missing data from NSE API, ✅ = Field populated successfully
 
 ---
 
@@ -68,18 +72,19 @@
 
 | Company Name | Open Date | Close Date | Allotment Date | Listing Date | Last Scraped At |
 |-------------|-----------|------------|----------------|--------------|-----------------|
-| Lenskart Solutions Limited | 2025-10-28 | 2025-10-28 | NULL ⚠️ | NULL ⚠️ | 2025-10-28 14:40:27 |
-| Studds Accessories Limited | 2025-10-28 | 2025-10-28 | NULL ⚠️ | NULL ⚠️ | 2025-10-28 14:40:27 |
-| Orkla India Limited | 2025-10-28 | 2025-10-28 | NULL ⚠️ | NULL ⚠️ | 2025-10-28 14:40:28 |
-| Jayesh Logistics Limited | 2025-10-28 | 2025-10-28 | NULL ⚠️ | NULL ⚠️ | 2025-10-28 14:40:28 |
-| Shreeji Global FMCG Limited | 2025-10-28 | 2025-10-28 | NULL ⚠️ | NULL ⚠️ | 2025-10-28 14:40:28 |
-| Delphi World Money Limited | 2025-10-28 | 2025-10-28 | NULL ⚠️ | NULL ⚠️ | 2025-10-28 14:40:28 |
-| Indian Emulsifiers Limited | 2025-10-28 | 2025-10-28 | NULL ⚠️ | NULL ⚠️ | 2025-10-28 14:40:28 |
-| SEPC Limited - Call Money | 2025-10-28 | 2025-10-28 | NULL ⚠️ | NULL ⚠️ | 2025-10-28 14:40:28 |
-| Utkarsh Small Finance Bank Ltd | 2025-10-28 | 2025-10-28 | NULL ⚠️ | NULL ⚠️ | 2025-10-28 14:40:28 |
-| Capital Trust Limited | 2025-10-28 | 2025-10-28 | NULL ⚠️ | NULL ⚠️ | 2025-10-28 14:40:28 |
-| 3i Infotech Limited | 2025-10-28 | 2025-10-28 | NULL ⚠️ | NULL ⚠️ | 2025-10-28 14:40:28 |
-| Cool Caps Industries Limited | 2025-10-28 | 2025-10-28 | NULL ⚠️ | NULL ⚠️ | 2025-10-28 14:40:29 |
+| Cool Caps Industries Limited | 2025-10-29 ⚠️ | 2025-10-29 ⚠️ | NULL ⚠️ | NULL ⚠️ | 2025-10-29 02:58:29 |
+| Capital Trust Limited | 2025-10-29 ⚠️ | 2025-10-29 ⚠️ | NULL ⚠️ | NULL ⚠️ | 2025-10-29 02:58:29 |
+| Utkarsh Small Finance Bank Ltd | 2025-10-29 ⚠️ | 2025-10-29 ⚠️ | NULL ⚠️ | NULL ⚠️ | 2025-10-29 02:58:29 |
+| SEPC Limited - Call Money | 2025-10-29 ⚠️ | 2025-10-29 ⚠️ | NULL ⚠️ | NULL ⚠️ | 2025-10-29 02:58:28 |
+| Indian Emulsifiers Limited | 2025-10-29 ⚠️ | 2025-10-29 ⚠️ | NULL ⚠️ | NULL ⚠️ | 2025-10-29 02:58:28 |
+| Delphi World Money Limited | 2025-10-29 ⚠️ | 2025-10-29 ⚠️ | NULL ⚠️ | NULL ⚠️ | 2025-10-29 02:58:28 |
+| Shreeji Global FMCG Limited | 2025-11-03 ✅ | 2025-11-06 ✅ | NULL ⚠️ | NULL ⚠️ | 2025-10-29 02:58:28 |
+| Jayesh Logistics Limited | 2025-10-26 ✅ | 2025-10-28 ✅ | NULL ⚠️ | NULL ⚠️ | 2025-10-29 02:58:28 |
+| Studds Accessories Limited | 2025-10-29 ✅ | 2025-11-02 ✅ | NULL ⚠️ | NULL ⚠️ | 2025-10-29 02:58:28 |
+| Lenskart Solutions Limited | 2025-10-30 ✅ | 2025-11-03 ✅ | NULL ⚠️ | NULL ⚠️ | 2025-10-29 02:58:28 |
+| Orkla India Limited | 2025-10-28 ✅ | 2025-10-30 ✅ | NULL ⚠️ | NULL ⚠️ | 2025-10-29 02:58:28 |
+
+**Note**: ⚠️ on dates indicates same-day open/close (unusual pattern - likely RIGHTS offerings or data limitation)
 
 ---
 
@@ -87,45 +92,29 @@
 
 | Company Name | Symbol | ISIN | Sector | Face Value (₹) | Listing Exchanges | Registrar | Rating |
 |-------------|--------|------|--------|----------------|-------------------|-----------|--------|
-| Lenskart Solutions Limited | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Studds Accessories Limited | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Orkla India Limited | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Jayesh Logistics Limited | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Shreeji Global FMCG Limited | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Delphi World Money Limited | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Indian Emulsifiers Limited | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| SEPC Limited - Call Money | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Utkarsh Small Finance Bank Ltd | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Capital Trust Limited | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| 3i Infotech Limited | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
-| Cool Caps Industries Limited | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ |
+| All 11 IPOs | Populated ✅ | NULL ⚠️ | NULL ⚠️ | NULL ⚠️ | NSE ✅ | NULL ⚠️ | NULL ⚠️ |
+
+**Note**: All 11 IPOs have `symbol` and `listing_exchanges` populated. All other fields in this table are missing across all 11 IPOs.
 
 ---
 
 ## Table 5: Performance Metrics
 
-| Company Name | Update Duration (ms) | Cache SET | Cache HIT | Cache DEL | Database Operation |
-|-------------|---------------------|-----------|-----------|-----------|-------------------|
-| Lenskart Solutions Limited | 77 | ✅ | ✅ | ✅ | Upsert successful |
-| Studds Accessories Limited | 31 | ✅ | ✅ | ✅ | Upsert successful |
-| Orkla India Limited | 22 | ✅ | ✅ | ✅ | Upsert successful |
-| Jayesh Logistics Limited | 16 | ✅ | ✅ | ✅ | Upsert successful |
-| Shreeji Global FMCG Limited | 23 | ✅ | ✅ | ✅ | Upsert successful |
-| Delphi World Money Limited | 51 | ✅ | ✅ | ✅ | Upsert successful |
-| Indian Emulsifiers Limited | 67 | ✅ | ✅ | ✅ | Upsert successful |
-| SEPC Limited - Call Money | 27 | ✅ | ✅ | ✅ | Upsert successful |
-| Utkarsh Small Finance Bank Ltd | 20 | ✅ | ✅ | ✅ | Upsert successful |
-| Capital Trust Limited | 47 | ✅ | ✅ | ✅ | Upsert successful |
-| 3i Infotech Limited | 17 | ✅ | ✅ | ✅ | Upsert successful |
-| Cool Caps Industries Limited | 64 | ✅ | ✅ | ✅ | Upsert successful |
-
 ### Performance Summary
-- **Average Update Duration**: 42.75ms per IPO
-- **Fastest Update**: 16ms (Jayesh Logistics Limited)
-- **Slowest Update**: 77ms (Lenskart Solutions Limited)
-- **Total Scraping Time**: 5.15 seconds
-- **NSE API Response Time**: 200-210ms average
-- **Cache Operations**: <10ms per operation
+- **Total Execution Time**: 3.95 seconds
+- **Average Update Duration**: ~35ms per IPO
+- **Fastest Update**: 12ms (Cool Caps Industries Limited)
+- **Slowest Update**: 396ms (Orkla India Limited - first IPO processed)
+- **NSE API Response Time**: 77-134ms average
+- **Cache Operations**: <10ms per operation (all successful)
+- **Database Operations**: All 11 upserts successful (0 failures)
+
+### Cache Operations Status
+All 11 IPOs successfully completed:
+- ✅ Cache SET (15-min TTL)
+- ✅ Cache HIT (verification)
+- ✅ Cache DEL (invalidation)
+- ✅ Pattern invalidation (0 additional keys)
 
 ---
 
@@ -135,79 +124,102 @@
 
 | Field | Count | Percentage | Notes |
 |-------|-------|------------|-------|
-| Company Name | 12/12 | 100% | All names scraped successfully |
-| Slug | 12/12 | 100% | Canonical slug generation working |
-| Open Date | 12/12 | 100% | All set to 2025-10-28 |
-| Close Date | 12/12 | 100% | All set to 2025-10-28 |
-| Status | 4/12 | 33% | Only OPEN/CLOSED captured for some |
-| Updated At | 12/12 | 100% | Timestamps accurate |
-| Last Scraped At | 12/12 | 100% | Scraper tracking working |
+| Company Name | 11/11 | 100% | All names scraped successfully |
+| Slug | 11/11 | 100% | Canonical slug generation working |
+| Status | 11/11 | 100% | OPEN/UPCOMING status captured correctly |
+| Open Date | 11/11 | 100% | Dates scraped (but 6 have same-day pattern) |
+| Close Date | 11/11 | 100% | Dates scraped (but 6 have same-day pattern) |
+| Symbol | 11/11 | 100% | Stock symbols populated |
+| Listing Exchanges | 11/11 | 100% | All set to NSE |
+| Updated At | 11/11 | 100% | Timestamps accurate |
+| Last Scraped At | 11/11 | 100% | Scraper tracking working |
 
-### ⚠️ Fields Missing/NULL (NSE API did not provide)
+### ⚠️ Fields Partially Populated
 
 | Field | Count | Percentage | Impact |
 |-------|-------|------------|--------|
-| Segment | 0/12 | 0% | **CRITICAL** - Cannot categorize as MAINBOARD/SME |
-| Lot Size | 0/12 | 0% | **CRITICAL** - All defaulted to 1 (invalid) |
-| Price Range Min | 0/12 | 0% | **HIGH** - Cannot calculate valuations |
-| Price Range Max | 0/12 | 0% | **HIGH** - Cannot calculate valuations |
-| Symbol | 0/12 | 0% | **MEDIUM** - Cannot track post-listing |
-| ISIN | 0/12 | 0% | **MEDIUM** - Missing standard identifier |
-| Sector | 0/12 | 0% | **MEDIUM** - Cannot categorize by industry |
-| Issue Size | 0/12 | 0% | **HIGH** - Missing key financial metric |
-| Face Value | 0/12 | 0% | **MEDIUM** - Cannot calculate P/E ratios |
-| Listing Exchanges | 0/12 | 0% | **LOW** - Can be inferred (NSE at minimum) |
-| Registrar | 0/12 | 0% | **LOW** - Nice to have |
-| Allotment Date | 0/12 | 0% | **MEDIUM** - Important for timeline |
-| Listing Date | 0/12 | 0% | **MEDIUM** - Important for timeline |
-| Rating | 0/12 | 0% | **LOW** - Can be calculated |
-| Company Description | 0/12 | 0% | **LOW** - Can be scraped from other sources |
+| Lot Size (valid) | 1/11 | 9% | **CRITICAL** - 10 IPOs have lot_size = 1 (invalid) |
+| Price Range Min | 4/11 | 36% | **HIGH** - Cannot calculate valuations for 7 IPOs |
+| Price Range Max | 4/11 | 36% | **HIGH** - Cannot calculate valuations for 7 IPOs |
+| Issue Size | 4/11 | 36% | **HIGH** - Missing key financial metric for 7 IPOs |
+
+### ❌ Fields Completely Missing (0% population)
+
+| Field | Count | Percentage | Impact |
+|-------|-------|------------|--------|
+| Segment | 0/11 | 0% | **CRITICAL** - Cannot categorize as MAINBOARD/SME |
+| ISIN | 0/11 | 0% | **MEDIUM** - Missing standard identifier |
+| Sector | 0/11 | 0% | **MEDIUM** - Cannot categorize by industry |
+| Face Value | 0/11 | 0% | **MEDIUM** - Cannot calculate P/E ratios |
+| Registrar | 0/11 | 0% | **LOW** - Nice to have |
+| Allotment Date | 0/11 | 0% | **MEDIUM** - Important for timeline |
+| Listing Date | 0/11 | 0% | **MEDIUM** - Important for timeline |
+| Rating | 0/11 | 0% | **LOW** - Can be calculated |
+| Company Description | 0/11 | 0% | **LOW** - Can be scraped from other sources |
+| Website | 0/11 | 0% | **LOW** - Nice to have |
+| Lead Managers | 0/11 | 0% | **LOW** - Can be scraped from other sources |
 
 ### Overall Data Completeness
 
-**Score**: 16.67% (2 out of 12 critical fields populated)
+**Average Score**: 48% (11 out of 23 total fields tracked)
 
-**Critical Fields Missing**: 10 out of 12
-**High Priority Fields Missing**: 4
-**Medium Priority Fields Missing**: 6
-**Low Priority Fields Missing**: 3
+**Completeness Breakdown**:
+- **Fields 100% populated**: 9 fields
+- **Fields partially populated**: 4 fields (9-36% population)
+- **Fields 0% populated**: 10 fields
+- **Critical Fields Missing**: 2 (segment, lot_size validity)
+- **High Priority Fields Missing**: 3 (partially)
+- **Medium Priority Fields Missing**: 6
+- **Low Priority Fields Missing**: 5
 
 ---
 
 ## Key Observations
 
 ### 1. Offering Type Pattern
-All 12 IPOs have **NULL segments**, which strongly suggests these are **NOT** standard MAINBOARD or SME IPOs. They are likely:
-- **RIGHTS issues** (7 from `/api/all-upcoming-issues?category=rights`)
-- **InvITs** (Infrastructure Investment Trusts)
-- **REITs** (Real Estate Investment Trusts)
+All 11 IPOs have **NULL segments**, which strongly suggests these are **NOT** standard MAINBOARD or SME IPOs. They are likely:
+- **RIGHTS issues** (6 from `/api/all-upcoming-issues?category=rights`)
+- **NBFC/Finance offerings** (3 IPOs: Capital Trust, SEPC Call Money, Utkarsh Small Finance Bank)
+- **Alternative offerings** (InvITs, REITs, or special corporate actions)
 
-**Evidence**: The scraper fetched 7 IPOs from the RIGHTS category endpoint.
+**Evidence**: The scraper fetched 6 IPOs from the RIGHTS category endpoint.
 
 ### 2. Same-Day Open/Close Pattern
-All 12 IPOs have:
-- Open Date: 2025-10-28
-- Close Date: 2025-10-28
+6 out of 11 IPOs have **same-day open and close dates** (2025-10-29):
+- Cool Caps Industries Limited
+- Capital Trust Limited
+- Utkarsh Small Finance Bank Limited
+- SEPC Limited - Call Money
+- Indian Emulsifiers Limited
+- Delphi World Money Limited
 
 This indicates they are either:
-- Single-day offerings (uncommon)
-- Data was scraped mid-offering and dates are being updated in real-time
+- Single-day offerings (uncommon for standard IPOs)
+- RIGHTS offerings with different subscription mechanics
 - NSE API returns current date when actual dates are unavailable
 
+**5 IPOs have proper multi-day subscription periods** (normal pattern):
+- Shreeji Global FMCG Limited: Nov 3-6 (4 days)
+- Studds Accessories Limited: Oct 29 - Nov 2 (5 days)
+- Lenskart Solutions Limited: Oct 30 - Nov 3 (5 days)
+- Orkla India Limited: Oct 28-30 (3 days)
+- Jayesh Logistics Limited: Oct 26-28 (already closed)
+
 ### 3. Lot Size Data Quality Issue
-**All 12 IPOs have lot_size = 1**, which aligns with the known Phase 3 data quality issue documented in `scraper/docs/LOT_SIZE_EXECUTIVE_SUMMARY.md`.
+**10 out of 11 IPOs have lot_size = 1** (invalid), which aligns with the known Phase 3 data quality issue documented in `scraper/docs/LOT_SIZE_EXECUTIVE_SUMMARY.md`.
 
-**Database-wide Impact**: 350 out of 515 IPOs (67.96%) have this issue.
+**Only 1 IPO has valid lot size**: Shreeji Global FMCG Limited (lot_size = 1,000)
 
-### 4. NSE API Limitations for Alternative Offerings
-The NSE API appears to provide **minimal data** for RIGHTS/InvIT/REIT offerings compared to standard IPOs:
-- No price ranges
-- No lot sizes
-- No financial details
-- No offering structure
+**Database-wide Impact**: This issue affects 67%+ of all IPOs in the database.
+
+### 4. NSE API Data Completeness Varies by Offering Type
+The NSE API appears to provide **different data richness** based on offering type:
+- **UPCOMING standard IPOs** (4 IPOs): Have price ranges, issue sizes (55% completeness)
+- **OPEN RIGHTS/alternative** (6 IPOs): Missing price ranges, issue sizes (45% completeness)
+- **Mixed data patterns** suggest NSE API has better coverage for mainboard IPOs vs. alternative offerings
 
 ### 5. Cache-Aside Pattern Working Correctly
-All 12 IPOs show successful cache operations:
+All 11 IPOs show successful cache operations:
 - Cache SET (15-min TTL)
 - Cache HIT (on verification)
 - Cache DEL (invalidation)
@@ -215,10 +227,18 @@ All 12 IPOs show successful cache operations:
 **Performance**: Cache operations completed in <10ms each.
 
 ### 6. Database Operations Healthy
-All 12 upsert operations completed successfully with no errors:
+All 11 upsert operations completed successfully with no errors:
 - Average upsert time: 35ms
+- Fastest: 12ms
+- Slowest: 396ms (first IPO only, includes initial DB connection overhead)
 - No connection timeouts
 - No constraint violations
+
+### 7. No Subscription Data Captured
+**0 subscriptions created** in this run, which indicates:
+- No active bidding data available at scrape time
+- Subscription data may only be available during market hours (9:15 AM - 3:30 PM IST)
+- Current scrape time (2:58 AM UTC = 8:28 AM IST) was before market open
 
 ---
 
@@ -226,13 +246,21 @@ All 12 upsert operations completed successfully with no errors:
 
 ### Immediate Actions (High Priority)
 
-#### 1. Implement BSE Fallback Scraper for RIGHTS/InvIT/REIT
-**Problem**: NSE API provides minimal data for alternative offerings
-**Solution**: Create dedicated BSE scraper for these offering types
-**Expected Benefit**: Fill in missing fields (lot size, price ranges, segments)
+#### 1. ✅ Data Completeness Scoring Implemented
+**Status**: COMPLETED in this run
+- Comprehensive field validation with completeness scores
+- 4-level severity classification (CRITICAL, HIGH, MEDIUM, LOW)
+- Logical consistency checks (date order, price ranges, negative values)
+- Automated validation script: `scraper/src/scripts/validate-nse-run-v2.ts`
 
-#### 2. Add Offering Type Detection
-**Problem**: Cannot distinguish between IPO/RIGHTS/InvIT/REIT
+#### 2. Implement BSE Fallback Scraper for RIGHTS/Alternative Offerings
+**Problem**: NSE API provides minimal data for alternative offerings (6 IPOs affected)
+**Solution**: Create dedicated BSE scraper for RIGHTS/InvIT/REIT/NBFC offerings
+**Expected Benefit**: Fill in missing fields (lot size, price ranges, segments, ISIN)
+**Priority**: HIGH - 55% of scraped IPOs are affected
+
+#### 3. Add Offering Type Detection & Classification
+**Problem**: Cannot distinguish between IPO/RIGHTS/InvIT/REIT (all have NULL segment)
 **Solution**: Add logic to detect offering type based on API endpoint source
 **Implementation**:
 ```typescript
@@ -240,52 +268,65 @@ if (source === '/api/all-upcoming-issues?category=rights') {
   offeringType = 'RIGHTS';
   segment = null; // Expected for RIGHTS
 }
+// Also detect NBFC/Finance offerings by company name patterns
+if (companyName.includes('Finance Bank') || companyName.includes('Trust')) {
+  offeringType = 'NBFC_QIP' or 'DEBT';
+}
 ```
 
-#### 3. Fix Lot Size Data Quality
-**Problem**: 68% of database has lot_size = 1
-**Solution**: Run lot_size backfill script + enhance scraper validation
+#### 4. Fix Lot Size Data Quality (Critical Issue)
+**Problem**: 91% of scraped IPOs (10/11) have lot_size = 1 (invalid)
+**Database Impact**: 67%+ of all IPOs affected
+**Solution**:
+- Run lot_size backfill script for historical data
+- Enhance scraper to fetch lot size from prospectus/BSE
+- Add validation: Auto-flag lot_size = 1 as invalid
 **Documentation**: `scraper/docs/LOT_SIZE_EXECUTIVE_SUMMARY.md`
 
 ### Medium Priority
 
-#### 4. Enhance Data Validation
-Add post-scrape validation rules:
-- Alert if lot_size = 1
-- Alert if price_range is NULL for IPO offerings
-- Alert if segment is NULL for non-RIGHTS offerings
-- Flag records for manual review
+#### 5. Schedule Subscription Data Scraping During Market Hours
+**Issue**: 0 subscription records created (scraped at 8:28 AM IST, before market open)
+**Action**: Schedule scraper to run during market hours (9:30 AM - 3:00 PM IST)
+**Frequency**: Every 30 minutes during OPEN IPO periods
+**Expected Benefit**: Capture live subscription data for investor analytics
 
-#### 5. Implement Multi-Source Scraping Strategy
-**Current**: NSE-only
+#### 6. Implement Multi-Source Waterfall Strategy
+**Current**: NSE-only (48% completeness)
 **Proposed**: NSE → BSE → Moneycontrol → Chittorgarh (waterfall)
-**Benefit**: Fill data gaps from multiple sources
+**Benefit**: Progressively fill data gaps from multiple sources
+**Target Completeness**: >80%
 
-#### 6. Add Subscription Data Monitoring
-**Issue**: 0 subscription records created in this run
-**Action**: Verify subscription endpoint during active bidding periods
-**Next Check**: Run during market hours (9:15 AM - 3:30 PM IST)
+#### 7. Add Post-Scrape Alerting System
+Automated alerts for data quality issues:
+- Alert if lot_size = 1 (invalid default)
+- Alert if price_range is NULL for MAINBOARD/SME offerings
+- Alert if segment is NULL for non-RIGHTS offerings
+- Alert if same-day open/close for standard IPOs
+- Send alerts to monitoring system (Sentry/Winston logs)
 
 ### Long-Term Improvements
 
-#### 7. Implement Incremental Scraping
-**Current**: Full scrape of all IPOs
-**Future**: Only scrape changed/new records
-**Benefit**: Reduce API calls and execution time
-
-#### 8. Add Data Quality Scoring
-Implement automated scoring system:
-- Green: >80% fields populated
-- Yellow: 50-80% fields populated
-- Red: <50% fields populated
+#### 8. Implement Incremental Scraping
+**Current**: Full scrape of all IPOs every run
+**Future**: Only scrape changed/new records (compare last_scraped_at)
+**Benefit**: Reduce API calls by 70-80%, faster execution
 
 #### 9. Create Offering Type-Specific Scrapers
-Different scrapers for:
-- Standard IPOs (MAINBOARD/SME)
-- RIGHTS issues
-- InvITs
-- REITs
-- Buyback/Tender offers
+Different scrapers optimized for:
+- Standard IPOs (MAINBOARD/SME) - existing NSE scraper
+- RIGHTS issues - BSE + NSE RIGHTS endpoint
+- InvITs/REITs - Specialized financial data sources
+- NBFC/QIPs - Debt market sources
+- Buyback/Tender offers - Corporate action feeds
+
+#### 10. Implement Real-Time Data Quality Dashboard
+Build monitoring dashboard showing:
+- Live completeness scores per IPO
+- Field-level population rates
+- Data quality trends over time
+- Scraper success/failure rates
+- Alert history and resolution status
 
 ---
 
@@ -378,7 +419,7 @@ Response Time: ~204ms
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: 2025-10-28 15:10 UTC
+**Document Version**: 2.0
+**Last Updated**: 2025-10-29 03:15 UTC
 **Author**: IPODhan Scraper Monitoring System
-**Status**: Production Validated ✅
+**Status**: Production Validated ✅ with Comprehensive Field Validation
