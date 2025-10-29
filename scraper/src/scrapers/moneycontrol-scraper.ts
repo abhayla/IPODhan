@@ -283,6 +283,9 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
           status,
           dataSource: 'MONEYCONTROL',
           listingGains,
+          // Include parsed dates from Moneycontrol
+          allotmentDate: allotmentDate || undefined,
+          listingDate: listingDate || undefined,
         };
 
         result.ipos.push(ipo);

@@ -180,9 +180,15 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
       let ipoTable: Element | null = null;
 
       // Find table with IPO data (contains headers: Security Name, Exchange Platform, etc.)
-      for (const table of Array.from(tables)) {
+      for (let i = 0; i < tables.length; i++) {
+        const table = tables[i];
         const text = table.textContent || '';
-        if (text.includes('Security Name') && text.includes('Exchange Platform') && text.includes('Issue Status')) {
+
+        const hasSecurityName = text.includes('Security Name');
+        const hasExchangePlatform = text.includes('Exchange Platform');
+        const hasIssueStatus = text.includes('Issue Status');
+
+        if (hasSecurityName && hasExchangePlatform && hasIssueStatus) {
           ipoTable = table;
           break;
         }
@@ -203,7 +209,9 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
         // Skip header rows, empty rows, and the giant merged cell row (194 cells)
         // BSE table has exactly 8 columns: Security Name, Exchange Platform, Start Date, End Date,
         // Offer Price, Face Value, Type Of Issue, Issue Status
-        if (cells.length !== 8) continue;
+        if (cells.length !== 8) {
+          continue;
+        }
 
         try {
           // Extract data from cells
@@ -307,7 +315,7 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
           offeringType: offeringType as 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | 'NCD' | 'BONDS' | 'INVITS' | 'REITS' | 'IPP' | 'QIP' | 'PREFERENTIAL',
           sector: '', // Not available in BSE main table
           status,
-          lotSize: 100, // Default, would need detail page
+          lotSize: undefined, // Let detail page scraper populate this (don't default to 100)
           faceValue: parseInt(rawIPO.faceValue, 10) || 10 // Integer face value
         };
 

@@ -3,6 +3,7 @@ import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { generateSlug, sanitizeCompanyName } from '../utils/validators.js';
+import { validateLotSize } from '../utils/lot-size-validator.js';
 import type { ScraperSource } from './types.js';
 
 /**
@@ -154,20 +155,17 @@ export async function upsertIPO(
       const ipoData: Partial<IPOInsert> = {
         companyName: sanitizeCompanyName(scrapedIPO.companyName),
         slug,
-        // Map category to segment: MAINBOARD/SME map directly, RIGHTS/NCD map to null (non-exchange offerings)
-        segment: (scrapedIPO.category === 'MAINBOARD' || scrapedIPO.category === 'SME')
-          ? scrapedIPO.category
-          : null,
-        // Map category to offering_type: Determines the type of offering (required NOT NULL field)
-        offeringType: scrapedIPO.category === 'RIGHTS' ? 'RIGHTS' as const
-          : scrapedIPO.category === 'NCD' ? 'NCD' as const
-          : 'IPO' as const,
+        // Story 11.8: Use segment and offeringType from scraped data
+        // segment is nullable for RIGHTS/InvITs/REITs/NCDs (they don't have market segments)
+        segment: scrapedIPO.segment || null,
+        // offering_type: Determines the type of offering (required NOT NULL field)
+        offeringType: scrapedIPO.offeringType,
         sector: scrapedIPO.sector,
         issueSize: scrapedIPO.issueSize.toString(),
         // Round price values to integers for INTEGER fields in database
         priceRangeMin: scrapedIPO.priceRangeMin ? Math.round(scrapedIPO.priceRangeMin) : undefined,
         priceRangeMax: scrapedIPO.priceRangeMax ? Math.round(scrapedIPO.priceRangeMax) : undefined,
-        lotSize: scrapedIPO.lotSize || 1, // Default to 1 if not provided (NSE doesn't always provide)
+        lotSize: validateLotSize(scrapedIPO.lotSize, scrapedIPO.segment, scrapedIPO.companyName) ?? undefined, // Validate and reject lot_size = 1
         faceValue: scrapedIPO.faceValue || 10, // Default to 10 if not provided
         status: scrapedIPO.status as any,
         openDate: scrapedIPO.openDate,
@@ -182,7 +180,9 @@ export async function upsertIPO(
         lastScrapedAt: new Date(), // Track last successful scrape time (Story 7.4)
         updatedAt: new Date(),
         // Symbol: Only set if scraper explicitly provides it (NSE/BSE have symbols, upcoming IPOs may not)
-        symbol: scrapedIPO.symbol || undefined
+        symbol: scrapedIPO.symbol || undefined,
+        // ISIN: Only set if scraper provides it (NSE API / BSE Detail may have it)
+        isin: scrapedIPO.isin || undefined
       } as any;
 
       if (existingIPO) {

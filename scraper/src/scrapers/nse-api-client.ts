@@ -497,7 +497,8 @@ function transformIPOData(data: any, endpointCategory?: 'ipo' | 'ofs' | 'rights'
     status,
     lotSize: parseInt(data.lotSize) || undefined,
     faceValue: parseFloat(data.faceValue) || 10,
-    symbol: data.symbol
+    symbol: data.symbol,
+    isin: data.isin || undefined // Extract ISIN from NSE API
   };
 }
 
