@@ -13,7 +13,7 @@
 📊 **IPOs Updated**: 11
 ⏱️ **Duration**: 3.95 seconds
 🎯 **Success Rate**: 100% (0 failures)
-⚠️ **Data Completeness**: 48% average (comprehensive field validation performed)
+⚠️ **Data Completeness**: 52% average (comprehensive field validation performed - 10 fields 100% populated)
 
 ### NSE API Endpoints Used
 1. `/api/all-upcoming-issues?category=ipo` → 5 IPOs
@@ -23,8 +23,8 @@
 **Total**: 11 IPOs (with deduplication)
 
 ### Validation Results
-- **Total Issues Found**: 137 (27 CRITICAL, 16 HIGH, 50 MEDIUM, 44 LOW)
-- **Average Completeness Score**: 48%
+- **Total Issues Found**: 128 (24 CRITICAL, 16 HIGH, 44 MEDIUM, 44 LOW)
+- **Average Completeness Score**: 52% (improved from 48% with face_value discovery)
 - **IPOs with >50% completeness**: 5/11 (45%)
 - **IPOs with <50% completeness**: 6/11 (55%)
 
@@ -131,6 +131,7 @@ All 11 IPOs successfully completed:
 | Close Date | 11/11 | 100% | Dates scraped (but 6 have same-day pattern) |
 | Symbol | 11/11 | 100% | Stock symbols populated |
 | Listing Exchanges | 11/11 | 100% | All set to NSE |
+| Face Value | 11/11 | 100% | ✅ Face values populated for all IPOs |
 | Updated At | 11/11 | 100% | Timestamps accurate |
 | Last Scraped At | 11/11 | 100% | Scraper tracking working |
 
@@ -150,27 +151,25 @@ All 11 IPOs successfully completed:
 | Segment | 0/11 | 0% | **CRITICAL** - Cannot categorize as MAINBOARD/SME |
 | ISIN | 0/11 | 0% | **MEDIUM** - Missing standard identifier |
 | Sector | 0/11 | 0% | **MEDIUM** - Cannot categorize by industry |
-| Face Value | 0/11 | 0% | **MEDIUM** - Cannot calculate P/E ratios |
-| Registrar | 0/11 | 0% | **LOW** - Nice to have |
+| Registrar ID | 0/11 | 0% | **LOW** - Nice to have |
 | Allotment Date | 0/11 | 0% | **MEDIUM** - Important for timeline |
 | Listing Date | 0/11 | 0% | **MEDIUM** - Important for timeline |
 | Rating | 0/11 | 0% | **LOW** - Can be calculated |
 | Company Description | 0/11 | 0% | **LOW** - Can be scraped from other sources |
-| Website | 0/11 | 0% | **LOW** - Nice to have |
 | Lead Managers | 0/11 | 0% | **LOW** - Can be scraped from other sources |
 
 ### Overall Data Completeness
 
-**Average Score**: 48% (11 out of 23 total fields tracked)
+**Average Score**: 52% (12 out of 23 total fields tracked)
 
 **Completeness Breakdown**:
-- **Fields 100% populated**: 9 fields
+- **Fields 100% populated**: 10 fields (including face_value ✅)
 - **Fields partially populated**: 4 fields (9-36% population)
-- **Fields 0% populated**: 10 fields
+- **Fields 0% populated**: 9 fields
 - **Critical Fields Missing**: 2 (segment, lot_size validity)
 - **High Priority Fields Missing**: 3 (partially)
-- **Medium Priority Fields Missing**: 6
-- **Low Priority Fields Missing**: 5
+- **Medium Priority Fields Missing**: 4 (reduced from 6)
+- **Low Priority Fields Missing**: 4 (reduced from 5)
 
 ---
 
