@@ -59,6 +59,14 @@ const DocumentList = lazy(() =>
   import('./DocumentList').then((mod) => ({ default: mod.DocumentList }))
 );
 
+// NEW: Lazy load demand graph and UPI timer components
+const DemandGraphChart = lazy(() =>
+  import('../ipo-detail/DemandGraphChart').then((mod) => ({ default: mod.DemandGraphChart }))
+);
+const UPIDeadlineTimer = lazy(() =>
+  import('../ipo-detail/UPIDeadlineTimer').then((mod) => ({ default: mod.UPIDeadlineTimer }))
+);
+
 // ==================== TYPES ====================
 
 interface IPODetailTabsProps {
@@ -68,10 +76,10 @@ interface IPODetailTabsProps {
   initialTab?: string;
 }
 
-type TabValue = 'overview' | 'financials' | 'peercomparison' | 'subscription' | 'gmp' | 'documents';
+type TabValue = 'overview' | 'financials' | 'peercomparison' | 'subscription' | 'gmp' | 'documents' | 'demand';
 
 // Valid tab values for validation
-const VALID_TABS: TabValue[] = ['overview', 'financials', 'peercomparison', 'subscription', 'gmp', 'documents'];
+const VALID_TABS: TabValue[] = ['overview', 'financials', 'peercomparison', 'subscription', 'gmp', 'documents', 'demand'];
 
 // ==================== HELPER FUNCTIONS ====================
 
@@ -208,13 +216,14 @@ export function IPODetailTabs({
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
       {/* Tab List */}
-      <TabsList className={`grid w-full ${hasPeerData ? 'grid-cols-6' : 'grid-cols-5'} lg:w-auto lg:inline-grid shadow-sm`}>
+      <TabsList className={`grid w-full ${hasPeerData ? 'grid-cols-7' : 'grid-cols-6'} lg:w-auto lg:inline-grid shadow-sm`}>
         <TabsTrigger value="overview" className="touch-manipulation">Overview</TabsTrigger>
         <TabsTrigger value="financials" className="touch-manipulation">Financials</TabsTrigger>
         {hasPeerData && (
           <TabsTrigger value="peercomparison" className="touch-manipulation">Peers</TabsTrigger>
         )}
         <TabsTrigger value="subscription" className="touch-manipulation">Subscription</TabsTrigger>
+        <TabsTrigger value="demand" className="touch-manipulation">Demand</TabsTrigger>
         <TabsTrigger value="gmp" className="touch-manipulation">GMP</TabsTrigger>
         <TabsTrigger value="documents" className="touch-manipulation">Documents</TabsTrigger>
       </TabsList>
@@ -307,6 +316,23 @@ export function IPODetailTabs({
                 </p>
               </div>
             )}
+          </Suspense>
+        </TabErrorBoundary>
+      </TabsContent>
+
+      {/* Demand Tab - NEW: Price-wise demand visualization */}
+      <TabsContent value="demand" className="mt-6">
+        <TabErrorBoundary tabName="Demand Graph">
+          <Suspense fallback={
+            <div className="animate-pulse">
+              <div className="h-96 bg-muted rounded-lg" />
+            </div>
+          }>
+            <DemandGraphChart
+              ipoSlug={slug}
+              priceRangeMin={ipo.priceRangeMin}
+              priceRangeMax={ipo.priceRangeMax}
+            />
           </Suspense>
         </TabErrorBoundary>
       </TabsContent>

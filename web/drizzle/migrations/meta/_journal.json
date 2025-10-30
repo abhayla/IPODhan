@@ -92,6 +92,13 @@
       "when": 1729930000000,
       "tag": "0021_add_promoter_holding_fields",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1761833097516,
+      "tag": "0013_square_zaran",
+      "breakpoints": true
     }
   ]
 }

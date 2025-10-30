@@ -23,6 +23,7 @@ import {
   registrars,
   ipoScores,
   anchorInvestors,
+  ipoDemandGraph,
   type ipoStatusEnum,
   type segmentEnum,
   type offeringTypeEnum,
@@ -1107,6 +1108,197 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           }));
       },
       CacheTTL.IPO_LIST // 5 minutes
+    );
+  }
+
+  /**
+   * Save demand graph data for an IPO
+   * Stores price-wise cumulative demand data from NSE/BSE
+   */
+  async saveDemandGraph(
+    ipoId: string,
+    demandData: Array<{
+      pricePoint: number | null;
+      isCutOff: boolean;
+      cumulativeQuantity: number;
+      exchange: 'NSE' | 'BSE' | 'BOTH';
+      timestamp: string;
+    }>
+  ): Promise<void> {
+    try {
+      // Delete existing data for this IPO (keeping only latest snapshot)
+      await this.db
+        .delete(ipoDemandGraph)
+        .where(eq(ipoDemandGraph.ipoId, ipoId));
+
+      // Prepare records for insertion
+      const records = demandData.map(entry => ({
+        ipoId,
+        timestamp: new Date(entry.timestamp),
+        pricePoint: entry.pricePoint?.toString() || null,
+        isCutOff: entry.isCutOff,
+        cumulativeQuantity: entry.cumulativeQuantity,
+        exchange: entry.exchange as (typeof schema.exchangeEnum.enumValues)[number],
+      }));
+
+      // Insert new data
+      if (records.length > 0) {
+        await this.db.insert(ipoDemandGraph).values(records);
+      }
+
+      // Invalidate related caches
+      await this.deleteCache([
+        `demand:graph:${ipoId}:all`,
+        `demand:graph:${ipoId}:NSE`,
+        `demand:graph:${ipoId}:BSE`,
+        `demand:graph:${ipoId}:BOTH`,
+      ]);
+
+      logger.info({
+        ipoId,
+        recordCount: records.length,
+      }, 'Demand graph data saved successfully');
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to save demand graph for IPO: ${ipoId}`,
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
+   * Fetch demand graph data for an IPO
+   * Returns price-wise cumulative demand for charting
+   */
+  async getDemandGraph(
+    ipoId: string,
+    exchange?: 'NSE' | 'BSE' | 'BOTH'
+  ): Promise<Array<{
+    id: string;
+    ipoId: string;
+    timestamp: Date;
+    pricePoint: string | null;
+    isCutOff: boolean;
+    cumulativeQuantity: number;
+    exchange: 'NSE' | 'BSE' | 'BOTH';
+  }>> {
+    const cacheKey = `demand:graph:${ipoId}:${exchange || 'all'}`;
+
+    return this.getFromCache(
+      cacheKey,
+      async () => {
+        try {
+          const conditions = [eq(ipoDemandGraph.ipoId, ipoId)];
+
+          if (exchange) {
+            conditions.push(eq(ipoDemandGraph.exchange, exchange));
+          }
+
+          const results = await this.db
+            .select()
+            .from(ipoDemandGraph)
+            .where(and(...conditions))
+            .orderBy(
+              asc(ipoDemandGraph.exchange),
+              asc(ipoDemandGraph.pricePoint)
+            );
+
+          return results;
+        } catch (error) {
+          throw new DatabaseError(
+            `Failed to fetch demand graph for IPO: ${ipoId}`,
+            undefined,
+            error
+          );
+        }
+      },
+      CacheTTL.SUBSCRIPTION // 3 minutes for real-time data
+    );
+  }
+
+  /**
+   * Get latest demand graph snapshot for an IPO
+   * Returns the most recent demand data
+   */
+  async getLatestDemandSnapshot(ipoId: string): Promise<{
+    timestamp: Date;
+    totalCutOffBids: number;
+    pricePoints: number;
+  } | null> {
+    const cacheKey = `demand:snapshot:${ipoId}`;
+
+    return this.getFromCache(
+      cacheKey,
+      async () => {
+        try {
+          // Get the latest timestamp
+          const latestResult = await this.db
+            .select({
+              timestamp: sql<Date>`MAX(${ipoDemandGraph.timestamp})`,
+            })
+            .from(ipoDemandGraph)
+            .where(eq(ipoDemandGraph.ipoId, ipoId));
+
+          if (!latestResult[0]?.timestamp) {
+            return null;
+          }
+
+          const latestTimestamp = latestResult[0].timestamp;
+
+          // Get stats for latest snapshot
+          const stats = await this.db
+            .select({
+              totalCutOffBids: sql<number>`SUM(CASE WHEN ${ipoDemandGraph.isCutOff} = true THEN ${ipoDemandGraph.cumulativeQuantity} ELSE 0 END)`,
+              pricePoints: sql<number>`COUNT(DISTINCT ${ipoDemandGraph.pricePoint})`,
+            })
+            .from(ipoDemandGraph)
+            .where(
+              and(
+                eq(ipoDemandGraph.ipoId, ipoId),
+                eq(ipoDemandGraph.timestamp, latestTimestamp)
+              )
+            );
+
+          return {
+            timestamp: latestTimestamp,
+            totalCutOffBids: Number(stats[0]?.totalCutOffBids || 0),
+            pricePoints: Number(stats[0]?.pricePoints || 0),
+          };
+        } catch (error) {
+          throw new DatabaseError(
+            `Failed to fetch demand snapshot for IPO: ${ipoId}`,
+            undefined,
+            error
+          );
+        }
+      },
+      CacheTTL.SUBSCRIPTION // 3 minutes
+    );
+  }
+
+  /**
+   * Check if demand graph data exists for an IPO
+   */
+  async hasDemandGraphData(ipoId: string): Promise<boolean> {
+    const cacheKey = `demand:exists:${ipoId}`;
+
+    return this.getFromCache(
+      cacheKey,
+      async () => {
+        try {
+          const result = await this.db
+            .select({ count: sql<number>`COUNT(*)` })
+            .from(ipoDemandGraph)
+            .where(eq(ipoDemandGraph.ipoId, ipoId));
+
+          return Number(result[0]?.count || 0) > 0;
+        } catch (error) {
+          logger.error({ ipoId, error }, 'Failed to check demand graph existence');
+          return false;
+        }
+      },
+      CacheTTL.IPO_DETAIL // 15 minutes
     );
   }
 }

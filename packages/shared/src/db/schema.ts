@@ -52,6 +52,14 @@ export const documentTypeEnum = pgEnum('document_type', [
   'PROSPECTUS',
   'BASIS_OF_ALLOTMENT',
   'ADDENDUM',
+  // New NSE document types
+  'RATIOS_BASIS_ISSUE_PRICE',
+  'BIDDING_CENTERS',
+  'SAMPLE_APPLICATION_FORMS',
+  'SECURITY_PARAMS_PRE_ANCHOR',
+  'SECURITY_PARAMS_POST_ANCHOR',
+  'ANCHOR_ALLOCATION_REPORT',
+  'ASBA_PROCESSING_CIRCULAR',
 ]);
 
 export const exchangeEnum = pgEnum('exchange', ['NSE', 'BSE', 'BOTH']);
@@ -253,12 +261,68 @@ export const subscriptions = pgTable(
     totalApplications: integer('total_applications'),
     totalSharesBid: bigint('total_shares_bid', { mode: 'number' }),
     sharesOffered: bigint('shares_offered', { mode: 'number' }),
+
+    // NEW NSE FIELDS - Sub-category breakdowns
+    qibFiiSubscription: numeric('qib_fii_subscription', { precision: 10, scale: 2 }),
+    qibDomesticFiSubscription: numeric('qib_domestic_fi_subscription', { precision: 10, scale: 2 }),
+    qibMutualFundSubscription: numeric('qib_mutual_fund_subscription', { precision: 10, scale: 2 }),
+    qibOthersSubscription: numeric('qib_others_subscription', { precision: 10, scale: 2 }),
+
+    niiCorporatesSubscription: numeric('nii_corporates_subscription', { precision: 10, scale: 2 }),
+    niiIndividualsSubscription: numeric('nii_individuals_subscription', { precision: 10, scale: 2 }),
+    niiOthersSubscription: numeric('nii_others_subscription', { precision: 10, scale: 2 }),
+
+    retailCutOffShares: bigint('retail_cut_off_shares', { mode: 'number' }),
+    retailPriceBidShares: bigint('retail_price_bid_shares', { mode: 'number' }),
+
+    employeeCutOffShares: bigint('employee_cut_off_shares', { mode: 'number' }),
+    employeePriceBidShares: bigint('employee_price_bid_shares', { mode: 'number' }),
+
+    cutOffBidsTotal: bigint('cut_off_bids_total', { mode: 'number' }), // Total cut-off bids
+
+    // Exchange breakdown
+    totalBidsNSE: bigint('total_bids_nse', { mode: 'number' }),
+    totalBidsBSE: bigint('total_bids_bse', { mode: 'number' }),
+    totalBidsCombined: bigint('total_bids_combined', { mode: 'number' }),
   },
   (table) => ({
     ipoTimestampIdx: index('idx_subscriptions_ipo_timestamp').on(
       table.ipoId,
       table.timestamp
     ),
+  })
+);
+
+// ==================== NEW TABLE: IPO_DEMAND_GRAPH (Price-wise demand) ====================
+
+export const ipoDemandGraph = pgTable(
+  'ipo_demand_graph',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    timestamp: timestamp('timestamp').notNull(), // When data was captured
+
+    // Price point details
+    pricePoint: numeric('price_point', { precision: 10, scale: 2 }), // 695.00, 696.00, ..., 730.00, or null for "Cut-Off"
+    isCutOff: boolean('is_cut_off').default(false).notNull(), // true for cut-off price
+
+    // Demand data
+    cumulativeQuantity: bigint('cumulative_quantity', { mode: 'number' }).notNull(), // Total shares bid at this price and above
+
+    // Exchange breakdown
+    exchange: exchangeEnum('exchange').notNull(), // NSE, BSE, or BOTH (for combined)
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoExchangePriceIdx: index('idx_demand_ipo_exchange_price').on(
+      table.ipoId,
+      table.exchange,
+      table.pricePoint
+    ),
+    timestampIdx: index('idx_demand_timestamp').on(table.timestamp),
   })
 );
 
@@ -707,6 +771,30 @@ export const ipoDetails = pgTable(
     employeeSharesOffered: bigint('employee_shares_offered', { mode: 'number' }),
     anchorSharesOffered: bigint('anchor_shares_offered', { mode: 'number' }),
 
+    // NEW NSE FIELDS - Phase 1 (High Priority)
+    upiCutoffTime: varchar('upi_cutoff_time', { length: 50 }), // "5:00 PM on last day"
+    maxRetailSubscription: numeric('max_retail_subscription', { precision: 12, scale: 2 }), // 200000.00
+    maxEmployeeSubscription: numeric('max_employee_subscription', { precision: 12, scale: 2 }), // 500000.00
+    employeeDiscount: numeric('employee_discount', { precision: 10, scale: 2 }), // 69.00
+    sponsorBanks: text('sponsor_banks').array(), // ["ICICI Bank", "Kotak Mahindra Bank"]
+
+    // NEW NSE FIELDS - Phase 2 (Medium Priority)
+    tickSize: numeric('tick_size', { precision: 10, scale: 2 }), // 1.00
+    ipoMarketTimings: varchar('ipo_market_timings', { length: 50 }), // "10:00 AM - 5:00 PM"
+    categoryDetails: jsonb('category_details'), // Category codes object
+    subCategoriesUPI: text('sub_categories_upi').array(), // ["IND", "EMP"]
+
+    // NEW NSE FIELDS - Phase 3 (Low Priority)
+    remarks: text('remarks'), // IPO-specific notices
+    eFormLink: varchar('e_form_link', { length: 500 }),
+    scsbBranchesLink: varchar('scsb_branches_link', { length: 500 }),
+    graphLogicPdfLink: varchar('graph_logic_pdf_link', { length: 500 }),
+
+    // Educational resources
+    videoLinkUPI: varchar('video_link_upi', { length: 500 }),
+    videoLinkBHIM: varchar('video_link_bhim', { length: 500 }),
+    mobileAppsUPILink: varchar('mobile_apps_upi_link', { length: 500 }),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -875,6 +963,7 @@ export const iposRelations = relations(ipos, ({ many, one }) => ({
   peerCompanies: many(peerCompanies),
   ipoReviews: many(ipoReviews),
   fieldProtections: many(fieldProtectionMetadata),
+  ipoDemandGraph: many(ipoDemandGraph),
   financialData: one(financialData, {
     fields: [ipos.id],
     references: [financialData.ipoId],
@@ -908,6 +997,13 @@ export const iposRelations = relations(ipos, ({ many, one }) => ({
 export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
   ipo: one(ipos, {
     fields: [subscriptions.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const ipoDemandGraphRelations = relations(ipoDemandGraph, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [ipoDemandGraph.ipoId],
     references: [ipos.id],
   }),
 }));
