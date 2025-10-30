@@ -20,12 +20,15 @@ import {
   ipoReviews,
   ipoScores,
   ipoFinancials,
-  ipoDetails
+  ipoDetails,
+  anchorInvestors,
+  ipoDemandGraph
 } from '@ipodhan/shared/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { markFieldAsManuallyEdited } from '@/lib/admin/field-protection-checker';
 import { sql } from 'drizzle-orm';
 import { logAudit, AuditActionTypes, getClientIP, getUserAgent } from '@/lib/services/audit-log-service';
+import { getTableConfig, TableCategory } from '@/lib/admin/table-map-generator';
 
 interface UpdateFieldRequest {
   ipoId: string;
@@ -49,6 +52,8 @@ const TABLE_MAP: Record<string, any> = {
   ipo_scores: ipoScores,
   ipo_financials: ipoFinancials,
   ipo_details: ipoDetails,
+  anchor_investors: anchorInvestors,
+  ipo_demand_graph: ipoDemandGraph,
 };
 
 // Fields that should not be editable
@@ -89,14 +94,23 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
       );
     }
 
-    // Check if table exists
-    const table = TABLE_MAP[tableName];
-    if (!table) {
+    // Check if table exists and is editable
+    const tableConfig = getTableConfig(tableName);
+    if (!tableConfig) {
       return NextResponse.json(
         { error: `Unknown table: ${tableName}` },
         { status: 400 }
       );
     }
+
+    if (!tableConfig.editable) {
+      return NextResponse.json(
+        { error: `Table ${tableName} is not editable` },
+        { status: 400 }
+      );
+    }
+
+    const table = tableConfig.table;
 
     // Check if field is editable
     if (NON_EDITABLE_FIELDS.has(fieldName)) {
@@ -226,6 +240,39 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
         .update(gmpRecords)
         .set({ [fieldName]: value } as any)
         .where(eq(gmpRecords.id, latestGMP[0].id))
+        .returning();
+
+    } else if (tableName === 'anchor_investors') {
+      // Update anchor_investors (one-to-one with jsonb)
+      updateResult = await db
+        .update(anchorInvestors)
+        .set({
+          [fieldName]: value,
+          updatedAt: new Date(),
+        } as any)
+        .where(eq(anchorInvestors.ipoId, ipoId))
+        .returning();
+
+    } else if (tableName === 'ipo_demand_graph') {
+      // Update latest demand graph record (time-series)
+      const latestDemand = await db
+        .select()
+        .from(ipoDemandGraph)
+        .where(eq(ipoDemandGraph.ipoId, ipoId))
+        .orderBy(desc(ipoDemandGraph.timestamp))
+        .limit(1);
+
+      if (latestDemand.length === 0) {
+        return NextResponse.json(
+          { error: 'No demand graph record found for this IPO' },
+          { status: 404 }
+        );
+      }
+
+      updateResult = await db
+        .update(ipoDemandGraph)
+        .set({ [fieldName]: value } as any)
+        .where(eq(ipoDemandGraph.id, latestDemand[0].id))
         .returning();
 
     } else {
