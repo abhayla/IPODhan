@@ -7,11 +7,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 IPODhan is a comprehensive IPO (Initial Public Offering) information platform for Indian investors. The platform provides real-time IPO data, subscription tracking, GMP (Grey Market Premium) information, financial analysis, and investor tools.
 
 **Tech Stack:**
-- Frontend: Next.js 15.5.4 (App Router), React 19, TypeScript, Tailwind CSS 4
+- Frontend: Next.js 15.5.4 (App Router), React 19.1.0, TypeScript 5, Tailwind CSS 4
 - Database: PostgreSQL 16 with Drizzle ORM 0.44.6
-- Cache: Redis 7.2+ with ioredis
+- Cache: Redis 7.2+ with ioredis 5.8.0
 - Deployment: Windows Server 2022 VPS
-- Testing: Vitest (unit/integration), Playwright (E2E)
+- Testing: Vitest 3.2.4 (unit/integration), Playwright 1.55.1 (E2E)
+- Monitoring: Winston 3.18.3 (logging), Sentry 10.17+ (APM), OpenTelemetry 2.1+
 - Monorepo: npm workspaces with TypeScript Project References
 
 **⚠️ IMPORTANT - Database Schema Architecture:**
