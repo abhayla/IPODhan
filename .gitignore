@@ -84,6 +84,7 @@ test-*.txt
 update-*.sh
 scraper/test-*.js
 scraper/test-*.ts
+scraper/test-field-protection.ts
 scraper/debug-*.ts
 scraper/verify-*.ts
 scraper/show-*.ts

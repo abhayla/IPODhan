@@ -20,15 +20,11 @@ import {
   getRedisClient,
   IPORepository as IPORepositoryClass,
   SubscriptionRepository as SubscriptionRepositoryClass,
-  ScraperLogRepository as ScraperLogRepositoryClass
+  ScraperLogRepository as ScraperLogRepositoryClass,
+  createFieldProtectionService,
+  type FieldProtectionService
 } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
-// Field protection functions from shared package (currently STUB implementations)
-import {
-  isIPOLocked,
-  isFieldProtected,
-  filterProtectedFields
-} from '@ipodhan/shared';
 import { generateSlug } from '../utils/validators.js';
 import { upsertIPO, createSubscriptionSnapshot } from '../services/data-persister.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
@@ -97,6 +93,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
   protected cacheInvalidator!: CacheInvalidator;
   protected metricsTracker!: ScraperMetricsTracker;
   protected alertingService!: AlertingService;
+  protected fieldProtectionService!: FieldProtectionService;
 
   // Scraper name (e.g., 'NSE', 'BSE', 'MONEYCONTROL')
   protected abstract getScraperName(): ScraperSource;
@@ -290,7 +287,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     const ipoId = existingIPO?.id;
 
     // Step 3: PROTECTION CHECK - IPO-level lock
-    if (ipoId && await isIPOLocked(ipoId)) {
+    if (ipoId && await this.fieldProtectionService.isIPOLocked(ipoId)) {
       logger.warn(
         { scraperName, companyName: validatedIPO.companyName, ipoId },
         'IPO is locked - skipping entire IPO update'
@@ -307,7 +304,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       const originalFieldCount = Object.keys(validatedIPO).length;
 
       // FIX: Access .filtered property from the result
-      const filterResult = await filterProtectedFields(
+      const filterResult = await this.fieldProtectionService.filterProtectedFields(
         ipoId,
         'ipos',
         validatedIPO,
@@ -414,7 +411,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     ];
 
     for (const field of criticalFields) {
-      const protected_ = await isFieldProtected(ipoId, 'subscriptions', field);
+      const protected_ = await this.fieldProtectionService.isFieldProtected(ipoId, 'subscriptions', field);
       // FIX: Check isProtected property (not protected)
       if (protected_.isProtected) {
         return true;
@@ -437,6 +434,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     this.cacheInvalidator = new CacheInvalidator(redis);
     this.metricsTracker = new ScraperMetricsTracker(redis);
     this.alertingService = new AlertingService();
+    this.fieldProtectionService = createFieldProtectionService(db, redis);
   }
 
   /**
