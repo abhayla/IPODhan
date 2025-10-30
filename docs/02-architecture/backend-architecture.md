@@ -39,7 +39,14 @@ app/api/
 │   ├── [slug]/
 │   │   ├── route.ts               # GET /api/ipos/[slug] (detail)
 │   │   ├── subscription/route.ts  # GET subscription data
-│   │   └── gmp/route.ts           # GET GMP history
+│   │   ├── gmp/route.ts           # GET GMP history
+│   │   ├── demand-graph/route.ts  # GET price-wise demand (NEW Oct 2025)
+│   │   ├── documents/route.ts     # GET IPO documents
+│   │   ├── financials/route.ts    # GET financial data
+│   │   ├── listing-performance/route.ts # GET listing performance
+│   │   ├── peers/route.ts         # GET peer companies
+│   │   ├── rating/route.ts        # GET IPO rating
+│   │   └── score/route.ts         # GET real-time score
 │   └── history/route.ts           # GET historical IPOs
 ├── search/route.ts                 # GET search
 ├── registrars/route.ts             # GET registrar directory
@@ -107,11 +114,11 @@ export async function getMainboardLandingData() {
 **Repository Hierarchy**:
 ```
 BaseRepository (abstract)
-  ├─ IPORepository
-  ├─ SubscriptionRepository
+  ├─ IPORepository (Enhanced Oct 2025: +4 demand graph methods)
+  ├─ SubscriptionRepository (Enhanced Oct 2025: +15 sub-category fields)
   ├─ GMPRepository
   ├─ FinancialDataRepository (Enhanced in Story 11.12 - EBITDA + Multi-period)
-  ├─ DocumentRepository
+  ├─ DocumentRepository (Enhanced Oct 2025: +7 document types)
   ├─ ListingPerformanceRepository
   ├─ MarketHolidayRepository
   ├─ RegistrarRepository
@@ -126,6 +133,11 @@ BaseRepository (abstract)
 - **AnchorInvestorRepository**: Anchor investor data with lock-in periods (54/54 tests passing)
 - **ReviewRepository**: IPO reviews with aggregation, sentiment analysis & moderation (92% coverage)
 - **FieldProtectionRepository**: Admin field-level data protection
+
+**Oct 2025 NSE Enhancement (45+ fields):**
+- **IPORepository**: Added demand graph methods (`saveDemandGraph`, `getDemandGraph`, `getLatestDemandSnapshot`)
+- **New Data Model**: `ipo_demand_graph` table for price-wise demand visualization
+- **Enhanced Subscriptions**: Sub-category breakdowns (QIB: FII/DII/MF, NII: Corp/Individual)
 
 ### Repository Type Requirements
 
@@ -228,6 +240,57 @@ async upsert(data: IPOInsert): Promise<IPO> {
 ```
 
 **Critical Rule**: **Every mutation MUST invalidate cache** or data becomes stale.
+
+### Time-Series Data Pattern (NEW Oct 2025)
+
+**For Price-wise Demand Graph (`ipo_demand_graph` table)**:
+
+```typescript
+// IPORepository enhanced methods
+async saveDemandGraph(ipoId: string, demandData: DemandGraphEntry[]): Promise<void> {
+  // Batch insert for efficiency (100+ data points per IPO)
+  await this.executeQuery('saveDemandGraph', async () => {
+    await this.db.insert(ipoDemandGraph)
+      .values(demandData.map(entry => ({
+        ipoId,
+        timestamp: new Date(),
+        pricePoint: entry.price,
+        isCutOff: entry.isCutOff,
+        cumulativeQuantity: entry.quantity,
+        exchange: entry.exchange
+      })));
+  }, { ipoId, dataPoints: demandData.length });
+
+  // Invalidate demand graph cache
+  await this.deleteCache(getDemandGraphKey(ipoId));
+}
+
+async getDemandGraph(ipoId: string, exchange?: 'NSE' | 'BSE' | 'BOTH'): Promise<DemandGraphData[]> {
+  const cacheKey = getDemandGraphKey(ipoId, exchange);
+
+  return this.getFromCache(
+    cacheKey,
+    async () => {
+      const query = this.db.select().from(ipoDemandGraph)
+        .where(and(
+          eq(ipoDemandGraph.ipoId, ipoId),
+          exchange ? eq(ipoDemandGraph.exchange, exchange) : undefined
+        ))
+        .orderBy(asc(ipoDemandGraph.pricePoint));
+
+      return this.executeQuery('getDemandGraph', () => query, { ipoId, exchange });
+    },
+    CacheTTL.DEMAND_GRAPH // 5 minutes (volatile during IPO)
+  );
+}
+```
+
+**Key Patterns**:
+- **Batch Insert**: Process 48-96 data points per update efficiently
+- **Time-Series Query**: Order by price point for visualization
+- **Exchange Filtering**: Support NSE/BSE/Combined views
+- **Short Cache TTL**: 5 minutes for volatile bidding data
+- **Data Retention**: Consider partitioning by month, archive after 90 days
 
 ---
 
