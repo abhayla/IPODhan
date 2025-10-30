@@ -482,6 +482,12 @@ function transformIPOData(data: any, endpointCategory?: 'ipo' | 'ofs' | 'rights'
     status
   }, '[NSE API DEBUG] Transformed IPO data');
 
+  // Extract additional NSE fields if issueInfo is present
+  let additionalFields: any = {};
+  if (data.issueInfo) {
+    additionalFields = extractAdditionalNSEFields(data.issueInfo);
+  }
+
   return {
     companyName: data.companyName || data.company || '',
     issueSize: parseFloat(data.issueSize) || 0,
@@ -498,7 +504,8 @@ function transformIPOData(data: any, endpointCategory?: 'ipo' | 'ofs' | 'rights'
     lotSize: parseInt(data.lotSize) || undefined,
     faceValue: parseFloat(data.faceValue) || 10,
     symbol: data.symbol,
-    isin: data.isin || undefined // Extract ISIN from NSE API
+    isin: data.isin || undefined, // Extract ISIN from NSE API
+    ...additionalFields // Spread the additional NSE fields
   };
 }
 
@@ -541,14 +548,53 @@ function transformSubscriptionData(bidDetails: any[], symbol: string, companyNam
     }
 
     // Map NSE category names to our schema fields (AC3)
+    // Extract shares bid for sub-category tracking
+    const sharesBid = bid.noOfsharesBid ? parseInt(bid.noOfsharesBid.replace(/,/g, '')) : 0;
+
     if (category.includes('QIB') || category.includes('QUALIFIED INSTITUTIONAL')) {
       subscription.qibSubscription = timesSubscribed;
+
+      // Sub-category breakdowns within QIB
+      if (category.includes('FII') || category.includes('FOREIGN')) {
+        subscription.qibFiiSubscription = timesSubscribed;
+      } else if (category.includes('DOMESTIC') && category.includes('FI')) {
+        subscription.qibDomesticFiSubscription = timesSubscribed;
+      } else if (category.includes('MUTUAL') && category.includes('FUND')) {
+        subscription.qibMutualFundSubscription = timesSubscribed;
+      } else if (category.includes('OTHER') && category.includes('QIB')) {
+        subscription.qibOthersSubscription = timesSubscribed;
+      }
     } else if (category.includes('NII') || category.includes('NON-INSTITUTIONAL') || category.includes('NON INSTITUTIONAL')) {
       subscription.niiSubscription = timesSubscribed;
+
+      // Sub-category breakdowns within NII
+      if (category.includes('CORPORATE')) {
+        subscription.niiCorporatesSubscription = timesSubscribed;
+      } else if (category.includes('INDIVIDUAL') && !category.includes('RETAIL')) {
+        subscription.niiIndividualsSubscription = timesSubscribed;
+      } else if (category.includes('OTHER') && category.includes('NII')) {
+        subscription.niiOthersSubscription = timesSubscribed;
+      }
     } else if (category.includes('RETAIL') || category.includes('RII') || category.includes('INDIVIDUAL')) {
       subscription.retailSubscription = timesSubscribed;
+
+      // Track cut-off vs price bids for retail
+      if (bid.cutOffBids) {
+        subscription.retailCutOffShares = parseInt(bid.cutOffBids.replace(/,/g, ''));
+      }
+      if (bid.priceBids) {
+        subscription.retailPriceBidShares = parseInt(bid.priceBids.replace(/,/g, ''));
+      }
     } else if (category.includes('EMPLOYEE')) {
       subscription.employeeSubscription = timesSubscribed;
+
+      // Track cut-off vs price bids for employees
+      if (bid.cutOffBids) {
+        subscription.employeeCutOffShares = parseInt(bid.cutOffBids.replace(/,/g, ''));
+      }
+      if (bid.priceBids) {
+        subscription.employeePriceBidShares = parseInt(bid.priceBids.replace(/,/g, ''));
+      }
     } else if (category.includes('ANCHOR')) {
       subscription.anchorInvestorSubscription = timesSubscribed;
     } else if (category.includes('BNII') || category.includes('BIG NII') || category.includes('B-NII')) {
@@ -557,6 +603,18 @@ function transformSubscriptionData(bidDetails: any[], symbol: string, companyNam
       subscription.sNIISubscription = timesSubscribed;
     } else if (category === 'TOTAL' || category.includes('OVERALL')) {
       subscription.totalSubscription = timesSubscribed;
+
+      // Track total cut-off bids
+      if (bid.cutOffBidsTotal) {
+        subscription.cutOffBidsTotal = parseInt(bid.cutOffBidsTotal.replace(/,/g, ''));
+      }
+
+      // Track exchange-wise totals
+      if (bid.exchange === 'NSE') {
+        subscription.totalBidsNSE = sharesBid;
+      } else if (bid.exchange === 'BSE') {
+        subscription.totalBidsBSE = sharesBid;
+      }
     }
   }
 
@@ -586,6 +644,249 @@ function transformSubscriptionData(bidDetails: any[], symbol: string, companyNam
   }, 'Subscription data extracted successfully (AC3)');
 
   return subscription;
+}
+
+/**
+ * Extract additional NSE fields from issueInfo data
+ * New fields added to capture all NSE IPO detail page information
+ */
+function extractAdditionalNSEFields(issueInfo: any): any {
+  if (!issueInfo || !issueInfo.dataList) {
+    return {};
+  }
+
+  const fields: any = {};
+  const dataList = issueInfo.dataList;
+
+  // Process each field in the dataList
+  for (const item of dataList) {
+    const title = item.title || '';
+    const value = item.value || '';
+
+    // UPI Cut-off time
+    if (title.includes('Cut-off time for UPI')) {
+      const match = value.match(/upto (\d{1,2}:\d{2} [AP]M)/i);
+      fields.upiCutoffTime = match ? match[1] : value;
+    }
+
+    // Discount (employee)
+    if (title.includes('Discount')) {
+      const match = value.match(/Rs\.?\s*([\d,]+)/);
+      fields.employeeDiscount = match ? parseFloat(match[1].replace(/,/g, '')) : undefined;
+    }
+
+    // Maximum subscription amounts
+    if (title.includes('Maximum Subscription') && title.includes('Retail')) {
+      const match = value.match(/Rs\.?\s*([\d,]+)/);
+      fields.maxRetailSubscription = match ? parseFloat(match[1].replace(/,/g, '')) : undefined;
+    }
+    if (title.includes('Maximum Subscription') && title.includes('Employee')) {
+      const match = value.match(/Rs\.?\s*([\d,]+)/);
+      fields.maxEmployeeSubscription = match ? parseFloat(match[1].replace(/,/g, '')) : undefined;
+    }
+
+    // Sponsor banks
+    if (title.includes('Sponsor Bank')) {
+      fields.sponsorBanks = value.split(' and ').map((s: string) => s.trim());
+    }
+
+    // Tick size
+    if (title.includes('Tick Size')) {
+      const match = value.match(/([\d.]+)/);
+      fields.tickSize = match ? parseFloat(match[1]) : undefined;
+    }
+
+    // IPO Market Timings
+    if (title.includes('IPO Market Timings')) {
+      fields.ipoMarketTimings = value;
+    }
+
+    // Categories
+    if (title.includes('Categories')) {
+      fields.categoryDetails = {
+        codes: value.split(',').map((s: string) => s.trim()),
+        original: value
+      };
+    }
+
+    // Sub-categories for UPI
+    if (title.includes('Sub-Categories') && title.includes('UPI')) {
+      fields.subCategoriesUPI = value.split(',').map((s: string) => s.trim());
+    }
+
+    // Remarks
+    if (title.includes('Remark')) {
+      fields.remarks = value;
+    }
+
+    // Document links
+    if (title.includes('e-form link')) {
+      fields.eFormLink = value;
+    }
+    if (title.includes('SCSB Branches')) {
+      fields.scsbBranchesLink = value;
+    }
+    if (title.includes('Ratios') || title.includes('Basis of Issue Price')) {
+      fields.ratiosBasisIssuePriceLink = value;
+    }
+    if (title.includes('Red Herring Prospectus')) {
+      fields.rhpLink = value;
+    }
+    if (title.includes('Bidding Centers')) {
+      fields.biddingCentersLink = value;
+    }
+    if (title.includes('Sample Application Forms')) {
+      fields.sampleApplicationFormsLink = value;
+    }
+    if (title.includes('Security Parameters Pre-Anchor')) {
+      fields.securityParamsPreAnchorLink = value;
+    }
+    if (title.includes('Security Parameters Post-Anchor')) {
+      fields.securityParamsPostAnchorLink = value;
+    }
+    if (title.includes('Anchor Allocation Report')) {
+      fields.anchorAllocationReportLink = value;
+    }
+    if (title.includes('Graph Logic')) {
+      fields.graphLogicPdfLink = value;
+    }
+
+    // Educational resources
+    if (title.includes('Video') && title.includes('UPI')) {
+      fields.videoLinkUPI = value;
+    }
+    if (title.includes('Video') && title.includes('BHIM')) {
+      fields.videoLinkBHIM = value;
+    }
+    if (title.includes('Mobile apps') && title.includes('UPI')) {
+      fields.mobileAppsUPILink = value;
+    }
+  }
+
+  return fields;
+}
+
+/**
+ * Extract price-wise demand data from NSE API
+ * New function to capture demand graph data for visualization
+ */
+export function extractDemandGraphData(
+  demandGraph: any,
+  demandDataNSE: any[],
+  demandDataBSE: any[],
+  symbol: string
+): any[] {
+  const entries: any[] = [];
+
+  if (!demandGraph && !demandDataNSE && !demandDataBSE) {
+    return entries;
+  }
+
+  const timestamp = new Date().toISOString();
+
+  // Process NSE demand graph data
+  if (demandGraph && demandGraph.plotData) {
+    for (const [priceStr, quantityStr] of Object.entries(demandGraph.plotData)) {
+      const isCutOff = priceStr === 'Cut-Off' || priceStr === 'CUT-OFF';
+      const pricePoint = isCutOff ? null : parseFloat(priceStr);
+      const quantity = parseInt((quantityStr as string).replace(/,/g, ''));
+
+      entries.push({
+        symbol,
+        pricePoint,
+        isCutOff,
+        cumulativeQuantity: quantity,
+        exchange: 'NSE',
+        timestamp,
+      });
+    }
+  }
+
+  // Process detailed NSE price-wise data if available
+  if (demandDataNSE && Array.isArray(demandDataNSE)) {
+    for (const entry of demandDataNSE) {
+      const isCutOff = entry.price === 'Cut-Off' || entry.price === 'CUT-OFF';
+      const pricePoint = isCutOff ? null : parseFloat(entry.price);
+      const quantity = parseInt((entry.cumQty || entry.cumulativeQty || '0').replace(/,/g, ''));
+
+      // Only add if we don't already have this price point from plotData
+      const existing = entries.find(e =>
+        e.exchange === 'NSE' &&
+        e.pricePoint === pricePoint &&
+        e.isCutOff === isCutOff
+      );
+
+      if (!existing && quantity > 0) {
+        entries.push({
+          symbol,
+          pricePoint,
+          isCutOff,
+          cumulativeQuantity: quantity,
+          exchange: 'NSE',
+          timestamp: entry.timeStamp || timestamp,
+        });
+      }
+    }
+  }
+
+  // Process BSE data if available
+  if (demandDataBSE && Array.isArray(demandDataBSE)) {
+    for (const entry of demandDataBSE) {
+      const isCutOff = entry.price === 'Cut-Off' || entry.price === 'CUT-OFF';
+      const pricePoint = isCutOff ? null : parseFloat(entry.price);
+      const quantity = parseInt((entry.cumQty || entry.cumulativeQty || '0').replace(/,/g, ''));
+
+      if (quantity > 0) {
+        entries.push({
+          symbol,
+          pricePoint,
+          isCutOff,
+          cumulativeQuantity: quantity,
+          exchange: 'BSE',
+          timestamp: entry.timeStamp || timestamp,
+        });
+      }
+    }
+  }
+
+  // Calculate combined NSE+BSE totals
+  const nseByPrice = new Map();
+  const bseByPrice = new Map();
+
+  entries.forEach(entry => {
+    const key = entry.isCutOff ? 'CUT-OFF' : entry.pricePoint;
+    if (entry.exchange === 'NSE') {
+      nseByPrice.set(key, entry.cumulativeQuantity);
+    } else if (entry.exchange === 'BSE') {
+      bseByPrice.set(key, entry.cumulativeQuantity);
+    }
+  });
+
+  // Create combined entries
+  const allPrices = new Set([...nseByPrice.keys(), ...bseByPrice.keys()]);
+  allPrices.forEach(key => {
+    const nseQty = nseByPrice.get(key) || 0;
+    const bseQty = bseByPrice.get(key) || 0;
+
+    if (nseQty + bseQty > 0) {
+      entries.push({
+        symbol,
+        pricePoint: key === 'CUT-OFF' ? null : key,
+        isCutOff: key === 'CUT-OFF',
+        cumulativeQuantity: nseQty + bseQty,
+        exchange: 'BOTH',
+        timestamp,
+      });
+    }
+  });
+
+  logger.debug({
+    symbol,
+    entriesCount: entries.length,
+    exchanges: [...new Set(entries.map(e => e.exchange))],
+  }, 'Demand graph data extracted successfully');
+
+  return entries;
 }
 
 /**
@@ -715,8 +1016,13 @@ export async function fetchAllIPOs(category: 'ipo' | 'ofs' | 'rights' | 'tender'
  * Fetch detailed IPO information including subscription data
  * Enhanced for Story 11.3 - proper subscription extraction (AC3, AC5)
  */
-export async function fetchIPODetail(symbol: string): Promise<{ ipo?: ScrapedIPO; subscriptions: ScrapedSubscription[] }> {
+export async function fetchIPODetail(symbol: string): Promise<{
+  ipo?: ScrapedIPO;
+  subscriptions: ScrapedSubscription[];
+  demandGraph?: any[]; // NEW: Add demand graph data
+}> {
   const subscriptions: ScrapedSubscription[] = [];
+  let demandGraph: any[] = [];
 
   try {
     logger.debug({ symbol }, 'Fetching IPO detail from NSE API');
@@ -733,17 +1039,28 @@ export async function fetchIPODetail(symbol: string): Promise<{ ipo?: ScrapedIPO
       }
     }
 
-    // If we have metaInfo or company details, create IPO object
+    // NEW: Extract demand graph data
+    if (data.demandGraph || data.demandDataNSE || data.demandDataBSE) {
+      demandGraph = extractDemandGraphData(
+        data.demandGraph,
+        data.demandDataNSE,
+        data.demandDataBSE,
+        symbol
+      );
+    }
+
+    // If we have metaInfo or company details, create IPO object with additional fields
     let ipo: ScrapedIPO | undefined;
-    if (data.metaInfo || data.companyName) {
+    if (data.metaInfo || data.companyName || data.issueInfo) {
       ipo = transformIPOData({
         ...data.metaInfo,
         companyName,
-        symbol
+        symbol,
+        issueInfo: data.issueInfo // Pass issueInfo for additional fields extraction
       });
     }
 
-    return { ipo, subscriptions };
+    return { ipo, subscriptions, demandGraph };
 
   } catch (error) {
     logger.warn({ symbol, error }, 'Failed to fetch IPO detail from NSE API');

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { RatingDisplay } from './RatingDisplay';
 import { AddToCompareButton } from '@/components/tools/AddToCompareButton';
 import { StockSymbol } from './StockSymbol';
+import { UPIDeadlineTimer } from '@/components/ipo-detail/UPIDeadlineTimer';
 import { Building2 } from 'lucide-react';
 
 interface IPOHeaderProps {
@@ -100,6 +101,17 @@ export function IPOHeader({ ipo }: IPOHeaderProps) {
                 size="lg"
               />
             </div>
+
+            {/* UPI Deadline Timer - Display for OPEN IPOs */}
+            {ipo.status === 'OPEN' && ipo.closeDate && (
+              <div className="pt-4 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-250">
+                <UPIDeadlineTimer
+                  closeDate={ipo.closeDate}
+                  upiCutoffTime={ipo.ipoDetails?.upiCutoffTime || '5:00 PM'}
+                  status={ipo.status}
+                />
+              </div>
+            )}
 
             {/* Add to Compare Button */}
             <div className="pt-4 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-300">
