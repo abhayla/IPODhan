@@ -49,7 +49,7 @@ No authentication required for MVP (all endpoints public, read-only). Phase 2 wi
 **Broker Affiliates:** 🔵 **MVP**
 - `GET /api/affiliates` - Get active broker affiliate links (simple, no tracking)
 
-**IPO Detail Enhancements:** ✅ **Epic 11** (Stories 11.9-11.16)
+**IPO Detail Enhancements:** ✅ **Epic 11** (Stories 11.9-11.16) + **Oct 2025 NSE Enhancement**
 - `GET /api/ipos/{slug}/anchor-investors` - Get anchor investor allocation data (Story 11.10)
   - Returns: List of anchor investors with allocation amounts, lock-in periods
 - `GET /api/ipos/{slug}/score` - Get real-time IPO quality score (Story 11.11)
@@ -59,6 +59,47 @@ No authentication required for MVP (all endpoints public, read-only). Phase 2 wi
 - `GET /api/ipos/{slug}/reviews/list` - Get approved reviews with pagination (Story 11.16)
   - Query params: `limit` (default: 10)
   - Returns: List of approved reviews
+- `GET /api/ipos/{slug}/demand-graph` - Get price-wise demand visualization data (NEW Oct 2025)
+  - Query params: `exchange` (optional: NSE/BSE/BOTH)
+  - Returns: Array of price points with cumulative demand, statistics, and metadata
+  - Response format:
+    ```json
+    {
+      "success": true,
+      "data": {
+        "demandGraph": [
+          {
+            "pricePoint": "695",
+            "price": 695,
+            "isCutOff": false,
+            "quantity": 1234567,
+            "exchange": "NSE",
+            "timestamp": "2025-10-30T10:30:00Z"
+          },
+          {
+            "pricePoint": "Cut-off",
+            "price": null,
+            "isCutOff": true,
+            "quantity": 9876543,
+            "exchange": "NSE",
+            "timestamp": "2025-10-30T10:30:00Z"
+          }
+        ],
+        "stats": {
+          "totalDataPoints": 35,
+          "exchanges": ["NSE", "BSE"],
+          "priceRange": { "min": 695, "max": 729 },
+          "cutOffBids": 9876543,
+          "totalBids": 43253940
+        },
+        "snapshot": {
+          "timestamp": "2025-10-30T10:30:00Z",
+          "totalCutOffBids": 9876543,
+          "pricePoints": 35
+        }
+      }
+    }
+    ```
 
 **Admin Endpoints:** ✅ **Epic 11** (Authentication Required - Admin Only)
 - `GET /api/admin/reviews` - List pending reviews awaiting moderation (Story 11.16)
@@ -95,6 +136,7 @@ No authentication required for MVP (all endpoints public, read-only). Phase 2 wi
 | `GET /api/ipos/{slug}/anchor-investors` | 15 minutes | On admin update (Epic 11) |
 | `GET /api/ipos/{slug}/score` | 1 hour (OPEN) / 24 hours (LISTED) | On financial data change (Epic 11) |
 | `GET /api/ipos/{slug}/reviews` | 15 minutes | On review approval/rejection (Epic 11) |
+| `GET /api/ipos/{slug}/demand-graph` | 5 minutes | On scraper update (Oct 2025) |
 | `GET /api/admin/reviews` | 5 minutes | On moderation action (Epic 11) |
 
 ## Rate Limiting

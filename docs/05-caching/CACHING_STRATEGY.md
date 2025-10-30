@@ -37,6 +37,8 @@
 | `getIPOListKey(filters)` | `ipo:list:{md5hash}` | `ipo:list:a3d2f1...` | Filtered IPO lists |
 | `getLatestSubscriptionKey(id)` | `subscription:latest:{id}` | `subscription:latest:uuid-123` | Latest snapshot |
 | `getGMPHistoryKey(id, days)` | `gmp:history:{id}:{days}` | `gmp:history:uuid-123:7` | Historical data |
+| `getDemandGraphKey(id, exchange?)` | `demand:graph:{id}:{exchange}` | `demand:graph:uuid-123:NSE` | Price-wise demand (NEW Oct 2025) |
+| `getDemandSnapshotKey(id)` | `demand:snapshot:{id}` | `demand:snapshot:uuid-123` | Latest demand snapshot (NEW Oct 2025) |
 
 **Key Design Rules:**
 1. Use MD5 hash for complex filter objects
@@ -55,6 +57,8 @@
 | IPO List | 900s (15min) | Frequently changing | Scraper update |
 | IPO Detail | 900s (15min) | Moderate changes | Scraper update |
 | Subscription Latest | 300s (5min) | Real-time during bidding | Every scraper run |
+| Demand Graph | 300s (5min) | Volatile during IPO | Every 30min scraper run (NEW Oct 2025) |
+| Demand Snapshot | 300s (5min) | Real-time stats | Demand graph update (NEW Oct 2025) |
 | GMP Latest | 600s (10min) | Manual updates | Manual GMP entry |
 | Historical IPOs | 86400s (24h) | Static data | Listing performance update |
 | Financials | 1800s (30min) | Rarely changes | Manual correction |
@@ -132,6 +136,11 @@ getIPOInvalidationKeys(ipoId, slug?) → [
 getSubscriptionInvalidationKeys(ipoId) → [
   'subscription:latest:{ipoId}',
   'subscription:history:{ipoId}:*'
+]
+
+getDemandGraphInvalidationKeys(ipoId) → [  // NEW Oct 2025
+  'demand:graph:{ipoId}:*',     // All exchange variants
+  'demand:snapshot:{ipoId}'      // Latest snapshot
 ]
 
 getHistoricalIPOInvalidationKeys() → [
