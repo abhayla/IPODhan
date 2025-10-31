@@ -189,7 +189,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             <IssueStructureSection ipoDetails={ipoDetails || null} />
 
             {/* IPO Information Section */}
-            <InfoSection ipo={ipo} />
+            <InfoSection ipo={ipo} ipoDetails={ipoDetails || null} />
 
             {/* IPO Score Section (Story 4.7) */}
             <IPOScoreSection score={ipoScore || null} />

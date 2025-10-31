@@ -36,6 +36,10 @@ logs/
 pnpm-debug.log*
 lerna-debug.log*
 
+# Backfill execution outputs
+scraper/backfill-*.log
+web/backfill-*.log
+
 # Testing
 coverage/
 .nyc_output/

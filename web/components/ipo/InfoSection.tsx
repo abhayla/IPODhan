@@ -235,6 +235,52 @@ export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
                   : 'N/A'
               }
             />
+
+            {/* NSE-specific High Priority Fields */}
+            {ipoDetails?.sponsorBanks && ipoDetails.sponsorBanks.length > 0 && (
+              <InfoRow
+                label="Sponsor Banks"
+                value={ipoDetails.sponsorBanks.join(', ')}
+              />
+            )}
+            {ipoDetails?.maxRetailSubscription && (
+              <InfoRow
+                label="Max Retail Subscription"
+                value={formatCurrency(Number(ipoDetails.maxRetailSubscription))}
+              />
+            )}
+            {ipoDetails?.maxEmployeeSubscription && (
+              <InfoRow
+                label="Max Employee Subscription"
+                value={formatCurrency(Number(ipoDetails.maxEmployeeSubscription))}
+              />
+            )}
+            {ipoDetails?.employeeDiscount && (
+              <InfoRow
+                label="Employee Discount"
+                value={`${formatCurrency(Number(ipoDetails.employeeDiscount))} per share`}
+              />
+            )}
+            {ipoDetails?.tickSize && (
+              <InfoRow
+                label="Tick Size"
+                value={formatCurrency(Number(ipoDetails.tickSize))}
+              />
+            )}
+            {ipoDetails?.ipoMarketTimings && (
+              <InfoRow
+                label="Market Timings"
+                value={ipoDetails.ipoMarketTimings}
+              />
+            )}
+            {ipoDetails?.categoryDetails && (
+              <InfoRow
+                label="Category Details"
+                value={typeof ipoDetails.categoryDetails === 'object'
+                  ? JSON.stringify(ipoDetails.categoryDetails)
+                  : String(ipoDetails.categoryDetails)}
+              />
+            )}
           </div>
         </div>
       </CardContent>
