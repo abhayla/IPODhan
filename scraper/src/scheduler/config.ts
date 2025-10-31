@@ -28,6 +28,11 @@ export interface SchedulerConfig {
     chittorgarh: JobSchedule;
     listingPerformanceUpdate: JobSchedule; // ISS-001 Fix: Current price updates
     statusUpdater: JobSchedule;        // Phase 5 Fix: Auto-update IPO statuses based on dates
+    financialData: JobSchedule;        // NEW: Financial data scraper from DRHP PDFs
+    peerCompanies: JobSchedule;        // NEW: Peer companies scraper from Moneycontrol
+    anchorInvestors: JobSchedule;      // NEW: Anchor investors scraper from DRHP PDFs
+    ipoReviews: JobSchedule;           // NEW: IPO reviews aggregator from multiple sources
+    objectives: JobSchedule;           // NEW: Objectives scraper from DRHP PDFs
     healthCheck: JobSchedule;
     dailySummary: JobSchedule;
     logCleanup: JobSchedule;
@@ -75,6 +80,31 @@ const PROD_SCHEDULES = {
   statusUpdater: {
     enabled: true,
     schedule: '0 * * * *',                 // Every hour, 24/7 (Phase 5 Fix)
+    timezone: 'Asia/Kolkata'
+  },
+  financialData: {
+    enabled: true,
+    schedule: '0 3 * * *',                 // Daily at 3 AM (after BSE document scraper)
+    timezone: 'Asia/Kolkata'
+  },
+  peerCompanies: {
+    enabled: true,
+    schedule: '0 4 * * *',                 // Daily at 4 AM (after financial data scraper)
+    timezone: 'Asia/Kolkata'
+  },
+  anchorInvestors: {
+    enabled: true,
+    schedule: '0 5 * * *',                 // Daily at 5 AM (after peer companies scraper)
+    timezone: 'Asia/Kolkata'
+  },
+  ipoReviews: {
+    enabled: true,
+    schedule: '0 */6 * * *',               // Every 6 hours (reviews update less frequently)
+    timezone: 'Asia/Kolkata'
+  },
+  objectives: {
+    enabled: true,
+    schedule: '0 6 * * *',                 // Daily at 6 AM (after anchor investors scraper)
     timezone: 'Asia/Kolkata'
   },
   healthCheck: {
@@ -135,6 +165,31 @@ const DEV_SCHEDULES = {
     schedule: '0 */2 * * *',               // Every 2 hours in dev mode (Phase 5 Fix)
     timezone: 'Asia/Kolkata'
   },
+  financialData: {
+    enabled: false,                        // Disable in dev (can trigger manually)
+    schedule: '0 3 * * *',                 // Daily at 3 AM (manual trigger in dev)
+    timezone: 'Asia/Kolkata'
+  },
+  peerCompanies: {
+    enabled: false,                        // Disable in dev (can trigger manually)
+    schedule: '0 4 * * *',                 // Daily at 4 AM (manual trigger in dev)
+    timezone: 'Asia/Kolkata'
+  },
+  anchorInvestors: {
+    enabled: false,                        // Disable in dev (can trigger manually)
+    schedule: '0 5 * * *',                 // Daily at 5 AM (manual trigger in dev)
+    timezone: 'Asia/Kolkata'
+  },
+  ipoReviews: {
+    enabled: false,                        // Disable in dev (can trigger manually)
+    schedule: '0 */6 * * *',               // Every 6 hours (manual trigger in dev)
+    timezone: 'Asia/Kolkata'
+  },
+  objectives: {
+    enabled: false,                        // Disable in dev (can trigger manually)
+    schedule: '0 6 * * *',                 // Daily at 6 AM (manual trigger in dev)
+    timezone: 'Asia/Kolkata'
+  },
   healthCheck: {
     enabled: true,
     schedule: '*/10 * * * *',              // Every 10 minutes (slower for dev)
@@ -167,9 +222,14 @@ export const schedulerConfig: SchedulerConfig = {
  * Determines how long a job lock is held before automatic expiration
  */
 export const LOCK_TTL = {
-  scraper: 300,        // 5 minutes for NSE/BSE scrapers
-  statusUpdater: 60,   // 1 minute for status updater (fast operation)
-  healthCheck: 60,     // 1 minute for health check
-  dailySummary: 120,   // 2 minutes for daily summary
-  logCleanup: 300      // 5 minutes for log cleanup
+  scraper: 300,          // 5 minutes for NSE/BSE scrapers
+  statusUpdater: 60,     // 1 minute for status updater (fast operation)
+  financialData: 3600,   // 1 hour for financial data scraper (long-running PDF processing)
+  peerCompanies: 1800,   // 30 minutes for peer companies scraper (external API calls)
+  anchorInvestors: 2700, // 45 minutes for anchor investors scraper (long-running PDF processing)
+  ipoReviews: 3600,      // 1 hour for IPO reviews aggregator (scrapes 3 sources per IPO)
+  objectives: 1800,      // 30 minutes for objectives scraper (PDF processing)
+  healthCheck: 60,       // 1 minute for health check
+  dailySummary: 120,     // 2 minutes for daily summary
+  logCleanup: 300        // 5 minutes for log cleanup
 } as const;

@@ -6,6 +6,7 @@ export * from './repositories/subscription-repository.js';
 export * from './repositories/gmp-repository.js';
 export * from './repositories/scraper-log-repository.js';
 export * from './repositories/document-repository.js';
+export * from './repositories/financial-data-repository.js';
 // Export utility functions
 export * from './utils/slug.js';
 // Export field protection functions

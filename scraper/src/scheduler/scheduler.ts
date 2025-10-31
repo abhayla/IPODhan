@@ -12,6 +12,11 @@ import { runBSEScraper } from '../scrapers/bse-scraper-orchestrator.js';
 import { runMoneycontrolScraper } from '../scrapers/moneycontrol-orchestrator.js';
 import { runChittorgarhScraper } from '../scrapers/chittorgarh-orchestrator.js';
 import { updateListingPerformance } from '../scrapers/listing-performance-updater.js';
+import { runFinancialDataJob } from '../jobs/financial-data-job.js';
+import { runPeerCompaniesJob } from '../jobs/peer-companies-job.js';
+import { runAnchorInvestorsJob } from '../jobs/anchor-investors-job.js';
+import { runIPOReviewsJob } from '../jobs/ipo-reviews-job.js';
+import { runObjectivesJob } from '../jobs/objectives-job.js';
 
 /**
  * Job handler function type
@@ -66,6 +71,11 @@ export class SchedulerService {
         chittorgarh: schedulerConfig.jobs.chittorgarh.enabled,
         listingPerformanceUpdate: schedulerConfig.jobs.listingPerformanceUpdate.enabled,
         statusUpdater: schedulerConfig.jobs.statusUpdater.enabled,
+        financialData: schedulerConfig.jobs.financialData.enabled,
+        peerCompanies: schedulerConfig.jobs.peerCompanies.enabled,
+        anchorInvestors: schedulerConfig.jobs.anchorInvestors.enabled,
+        ipoReviews: schedulerConfig.jobs.ipoReviews.enabled,
+        objectives: schedulerConfig.jobs.objectives.enabled,
         healthCheck: schedulerConfig.jobs.healthCheck.enabled,
         dailySummary: schedulerConfig.jobs.dailySummary.enabled,
         logCleanup: schedulerConfig.jobs.logCleanup.enabled
@@ -200,6 +210,61 @@ export class SchedulerService {
         () => runStatusUpdater(),
         LOCK_TTL.statusUpdater,
         schedulerConfig.jobs.statusUpdater.timezone
+      );
+    }
+
+    // Register Financial Data Scraper job (Daily at 3 AM)
+    if (schedulerConfig.jobs.financialData.enabled) {
+      this.registerJob(
+        'financial-data-scraper',
+        schedulerConfig.jobs.financialData.schedule!,
+        () => runFinancialDataJob(),
+        LOCK_TTL.financialData,
+        schedulerConfig.jobs.financialData.timezone
+      );
+    }
+
+    // Register Peer Companies Scraper job (Daily at 4 AM)
+    if (schedulerConfig.jobs.peerCompanies.enabled) {
+      this.registerJob(
+        'peer-companies-scraper',
+        schedulerConfig.jobs.peerCompanies.schedule!,
+        () => runPeerCompaniesJob(),
+        LOCK_TTL.peerCompanies,
+        schedulerConfig.jobs.peerCompanies.timezone
+      );
+    }
+
+    // Register Anchor Investors Scraper job (Daily at 5 AM)
+    if (schedulerConfig.jobs.anchorInvestors.enabled) {
+      this.registerJob(
+        'anchor-investors-scraper',
+        schedulerConfig.jobs.anchorInvestors.schedule!,
+        () => runAnchorInvestorsJob(),
+        LOCK_TTL.anchorInvestors,
+        schedulerConfig.jobs.anchorInvestors.timezone
+      );
+    }
+
+    // Register IPO Reviews Aggregator job (Every 6 hours)
+    if (schedulerConfig.jobs.ipoReviews.enabled) {
+      this.registerJob(
+        'ipo-reviews-aggregator',
+        schedulerConfig.jobs.ipoReviews.schedule!,
+        () => runIPOReviewsJob(),
+        LOCK_TTL.ipoReviews,
+        schedulerConfig.jobs.ipoReviews.timezone
+      );
+    }
+
+    // Register objectives scraper job (daily at 6 AM)
+    if (schedulerConfig.jobs.objectives.enabled) {
+      this.registerJob(
+        'objectives',
+        schedulerConfig.jobs.objectives.schedule!,
+        () => runObjectivesJob(),
+        LOCK_TTL.objectives,
+        schedulerConfig.jobs.objectives.timezone
       );
     }
 

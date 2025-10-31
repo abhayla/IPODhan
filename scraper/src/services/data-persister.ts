@@ -1,10 +1,13 @@
-import type { IPORepository, SubscriptionRepository, GMPRepository, IPOInsert, SubscriptionInsert, GMPRecordInsert } from '@ipodhan/shared';
+import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDataRepository, IPOInsert, SubscriptionInsert, GMPRecordInsert, FinancialDataInsert } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { generateSlug, sanitizeCompanyName } from '../utils/validators.js';
 import { validateLotSize } from '../utils/lot-size-validator.js';
 import type { ScraperSource } from './types.js';
+import type { ScrapedFinancialData } from '../scrapers/financial-data-scraper.js';
+import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
+import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 
 /**
  * PostgreSQL error codes (Story 11.2 - Enhanced error logging)
@@ -373,4 +376,415 @@ export async function createGMPRecord(
   );
 
   return result;
+}
+
+/**
+ * Create or update financial data for an IPO with retry logic
+ * @param financialDataRepository - Financial data repository instance
+ * @param scrapedFinancialData - Scraped financial metrics from DRHP
+ * @returns Financial data ID on success
+ */
+export async function createFinancialData(
+  financialDataRepository: FinancialDataRepository,
+  scrapedFinancialData: ScrapedFinancialData
+): Promise<string> {
+  const startTime = Date.now();
+  const { ipoId } = scrapedFinancialData;
+
+  logger.debug({ ipoId }, 'Creating/updating financial data');
+
+  const result = await retryWithBackoff(
+    async () => {
+      // Prepare financial data insert object
+      const financialData: FinancialDataInsert = {
+        ipoId: scrapedFinancialData.ipoId,
+        // Revenue by fiscal year (in INR crores)
+        revenueFy2022: scrapedFinancialData.revenueFy2022?.toString(),
+        revenueFy2023: scrapedFinancialData.revenueFy2023?.toString(),
+        revenueFy2024: scrapedFinancialData.revenueFy2024?.toString(),
+        // Profit by fiscal year (in INR crores)
+        profitFy2022: scrapedFinancialData.profitFy2022?.toString(),
+        profitFy2023: scrapedFinancialData.profitFy2023?.toString(),
+        profitFy2024: scrapedFinancialData.profitFy2024?.toString(),
+        // EBITDA by fiscal year
+        ebitdaFy2022: scrapedFinancialData.ebitdaFy2022?.toString(),
+        ebitdaFy2023: scrapedFinancialData.ebitdaFy2023?.toString(),
+        ebitdaFy2024: scrapedFinancialData.ebitdaFy2024?.toString(),
+        // Total Income by fiscal year
+        totalIncomeFy2022: scrapedFinancialData.totalIncomeFy2022?.toString(),
+        totalIncomeFy2023: scrapedFinancialData.totalIncomeFy2023?.toString(),
+        totalIncomeFy2024: scrapedFinancialData.totalIncomeFy2024?.toString(),
+        // Financial ratios and metrics
+        netWorth: scrapedFinancialData.netWorth?.toString(),
+        peRatio: scrapedFinancialData.peRatio?.toString(),
+        eps: scrapedFinancialData.eps?.toString(),
+        roe: scrapedFinancialData.roe?.toString(),
+        ronw: scrapedFinancialData.ronw?.toString(),
+        debtToEquity: scrapedFinancialData.debtToEquity?.toString(),
+        reservesAndSurplus: scrapedFinancialData.reservesAndSurplus?.toString(),
+        totalAssets: scrapedFinancialData.totalAssets?.toString(),
+        totalBorrowing: scrapedFinancialData.totalBorrowing?.toString(),
+        // Promoter holding
+        promoterHoldingPreIssue: scrapedFinancialData.promoterHoldingPreIssue?.toString(),
+        promoterHoldingPostIssue: scrapedFinancialData.promoterHoldingPostIssue?.toString(),
+        // Additional metrics
+        marketCap: scrapedFinancialData.marketCap?.toString(),
+        preIpoEps: scrapedFinancialData.preIpoEps?.toString(),
+        postIpoEps: scrapedFinancialData.postIpoEps?.toString(),
+      };
+
+      // Upsert financial data (creates new or updates existing)
+      const result = await financialDataRepository.upsert(financialData);
+      return result.id;
+    },
+    `Create financial data for IPO: ${ipoId}`
+  );
+
+  const duration = Date.now() - startTime;
+
+  // Count how many fields were populated
+  const populatedFields = Object.values(scrapedFinancialData).filter(
+    (val) => val !== null && val !== undefined
+  ).length;
+
+  logger.info(
+    {
+      ipoId,
+      financialDataId: result,
+      duration,
+      fieldsPopulated: populatedFields,
+    },
+    'Financial data created/updated successfully'
+  );
+
+  return result;
+}
+
+/**
+ * Create or update peer companies for an IPO with retry logic
+ * Deletes existing peer companies and creates fresh data
+ *
+ * @param peerCompanyRepository - Peer company repository instance
+ * @param ipoId - IPO identifier
+ * @param scrapedPeers - Array of scraped peer companies
+ * @returns Number of peer companies created
+ */
+export async function createPeerCompanies(
+  peerCompanyRepository: PeerCompanyRepository,
+  ipoId: string,
+  scrapedPeers: ScrapedPeerCompany[]
+): Promise<number> {
+  const startTime = Date.now();
+
+  logger.debug({ ipoId, peerCount: scrapedPeers.length }, 'Creating peer companies');
+
+  if (scrapedPeers.length === 0) {
+    logger.warn({ ipoId }, 'No peer companies to create');
+    return 0;
+  }
+
+  const result = await retryWithBackoff(
+    async () => {
+      // Step 1: Delete existing peer companies for this IPO
+      const deletedCount = await peerCompanyRepository.deleteByIPOId(ipoId);
+      if (deletedCount > 0) {
+        logger.debug({ ipoId, deletedCount }, 'Deleted existing peer companies');
+      }
+
+      // Step 2: Prepare peer company data
+      const peerCompanyData = scrapedPeers.map((peer) => ({
+        ipoId,
+        companyName: peer.companyName,
+        sector: peer.sector || null,
+        isListed: peer.isListed,
+        peRatio: peer.peRatio?.toString() || null,
+        eps: peer.eps?.toString() || null,
+        dilutedEps: peer.dilutedEps?.toString() || null,
+        ronw: peer.ronw?.toString() || null,
+        nav: peer.nav?.toString() || null,
+        pbvRatio: peer.pbvRatio?.toString() || null,
+        financialStatementType: null, // Not available from Moneycontrol
+        dataSource: peer.dataSource || 'MONEYCONTROL',
+        lastUpdated: new Date(),
+      }));
+
+      // Step 3: Batch insert peer companies
+      const createdPeers = await peerCompanyRepository.batchCreate(peerCompanyData);
+
+      return createdPeers.length;
+    },
+    `Create peer companies for IPO: ${ipoId}`
+  );
+
+  const duration = Date.now() - startTime;
+
+  // Calculate metrics
+  const peersWithPE = scrapedPeers.filter((p) => p.peRatio !== undefined).length;
+  const peersWithEPS = scrapedPeers.filter((p) => p.eps !== undefined).length;
+  const peersWithRONW = scrapedPeers.filter((p) => p.ronw !== undefined).length;
+
+  logger.info(
+    {
+      ipoId,
+      peerCount: result,
+      duration,
+      metrics: {
+        withPE: peersWithPE,
+        withEPS: peersWithEPS,
+        withRONW: peersWithRONW,
+      },
+    },
+    'Peer companies created successfully'
+  );
+
+  return result;
+}
+
+/**
+ * Create anchor investor record with retry logic
+ *
+ * @param anchorInvestorRepository - Anchor investor repository instance
+ * @param ipoId - IPO ID to associate anchor investors with
+ * @param anchorData - Scraped anchor investor data
+ * @returns Anchor investor record ID on success
+ */
+export async function createAnchorInvestors(
+  anchorInvestorRepository: any, // AnchorInvestorRepository type
+  ipoId: string,
+  anchorData: {
+    bidDate: Date | null;
+    totalSharesOffered: number;
+    totalAmountRaised: number;
+    anchorInvestorsCount: number;
+    lockIn50PercentDate: Date | null;
+    lockInRemainingDate: Date | null;
+    investorList: any[];
+  }
+): Promise<string> {
+  const startTime = Date.now();
+
+  logger.debug({
+    ipoId,
+    anchorInvestorsCount: anchorData.anchorInvestorsCount,
+    totalAmountRaised: anchorData.totalAmountRaised
+  }, 'Creating anchor investor record');
+
+  const result = await retryWithBackoff(
+    async () => {
+      // Check if anchor data already exists
+      const existing = await anchorInvestorRepository.findByIPOId(ipoId);
+
+      if (existing) {
+        // Update existing record
+        await anchorInvestorRepository.update(existing.id, {
+          bidDate: anchorData.bidDate,
+          totalSharesOffered: anchorData.totalSharesOffered,
+          totalAmountRaised: anchorData.totalAmountRaised,
+          anchorInvestorsCount: anchorData.anchorInvestorsCount,
+          lockIn50PercentDate: anchorData.lockIn50PercentDate,
+          lockInRemainingDate: anchorData.lockInRemainingDate,
+          investorList: JSON.stringify(anchorData.investorList)
+        });
+
+        logger.info({ ipoId, anchorInvestorId: existing.id }, 'Updated anchor investor record');
+        return existing.id;
+      } else {
+        // Create new record
+        const anchorInvestor = await anchorInvestorRepository.create({
+          ipoId,
+          bidDate: anchorData.bidDate,
+          totalSharesOffered: anchorData.totalSharesOffered,
+          totalAmountRaised: anchorData.totalAmountRaised,
+          anchorInvestorsCount: anchorData.anchorInvestorsCount,
+          lockIn50PercentDate: anchorData.lockIn50PercentDate,
+          lockInRemainingDate: anchorData.lockInRemainingDate,
+          investorList: JSON.stringify(anchorData.investorList)
+        });
+
+        logger.info({ ipoId, anchorInvestorId: anchorInvestor.id }, 'Created anchor investor record');
+        return anchorInvestor.id;
+      }
+    },
+    `Create anchor investors for IPO: ${ipoId}`
+  );
+
+  const duration = Date.now() - startTime;
+
+  logger.info(
+    {
+      ipoId,
+      anchorInvestorId: result,
+      anchorInvestorsCount: anchorData.anchorInvestorsCount,
+      totalAmountRaised: anchorData.totalAmountRaised,
+      duration
+    },
+    'Anchor investor record persisted successfully'
+  );
+
+  return result;
+}
+
+// ==================== IPO REVIEWS ====================
+
+/**
+ * Create or update IPO reviews with retry logic
+ * @param reviewRepository - Review repository instance
+ * @param ipoId - IPO ID to associate reviews with
+ * @param segment - IPO segment (MAINBOARD/SME)
+ * @param scrapedReviews - Array of scraped reviews
+ * @returns Number of reviews created/updated
+ */
+export async function createIPOReviews(
+  reviewRepository: any, // ReviewRepository type
+  ipoId: string,
+  segment: 'MAINBOARD' | 'SME',
+  scrapedReviews: Array<{
+    source: string;
+    author: string;
+    reviewTitle: string;
+    recommendation: 'Subscribe' | 'May apply' | 'Avoid' | 'Not Recommended';
+    publishedDate: Date;
+    reviewContent: string;
+    reviewUrl?: string;
+  }>
+): Promise<number> {
+  const startTime = Date.now();
+
+  if (scrapedReviews.length === 0) {
+    logger.info({ ipoId }, 'No reviews to persist (empty array)');
+    return 0;
+  }
+
+  const result = await retryWithExponentialBackoff(
+    async () => {
+      let createdCount = 0;
+      let updatedCount = 0;
+
+      // Process each review with upsert logic (create or update if exists)
+      for (const review of scrapedReviews) {
+        const year = review.publishedDate.getFullYear();
+
+        // Check if review already exists (by IPO ID + author)
+        const existing = await reviewRepository.findByIPOIdAndAuthor(ipoId, review.author);
+
+        if (existing) {
+          // Update existing review
+          await reviewRepository.update(existing.id, {
+            reviewTitle: review.reviewTitle,
+            recommendation: review.recommendation,
+            reviewContent: review.reviewContent,
+            reviewUrl: review.reviewUrl,
+            publishedDate: review.publishedDate,
+            year,
+            segment,
+            isApproved: false, // Reset approval on update
+          });
+          updatedCount++;
+          logger.debug({ ipoId, author: review.author }, 'Updated existing review');
+        } else {
+          // Create new review
+          await reviewRepository.create({
+            ipoId,
+            reviewTitle: review.reviewTitle,
+            author: review.author,
+            recommendation: review.recommendation,
+            reviewContent: review.reviewContent,
+            reviewUrl: review.reviewUrl,
+            publishedDate: review.publishedDate,
+            year,
+            segment,
+            isApproved: false, // Requires moderation
+          });
+          createdCount++;
+          logger.debug({ ipoId, author: review.author }, 'Created new review');
+        }
+      }
+
+      logger.info(
+        { ipoId, created: createdCount, updated: updatedCount, total: scrapedReviews.length },
+        'IPO reviews persisted successfully'
+      );
+
+      return createdCount + updatedCount;
+    },
+    `Create IPO reviews for IPO: ${ipoId}`
+  );
+
+  const duration = Date.now() - startTime;
+
+  logger.info(
+    {
+      ipoId,
+      reviewsProcessed: result,
+      totalReviews: scrapedReviews.length,
+      duration
+    },
+    'IPO reviews persistence complete'
+  );
+
+  return result;
+}
+
+// ==================== IPO OBJECTIVES ====================
+
+/**
+ * Update IPO objectives (use of funds) with retry logic
+ * Updates the objectives field in the ipos table with parsed DRHP data
+ *
+ * @param ipoRepository - IPO repository instance
+ * @param ipoId - IPO ID to update
+ * @param objectives - Array of IPO objectives from DRHP
+ * @returns void on success
+ */
+export async function updateIPOObjectives(
+  ipoRepository: IPORepository,
+  ipoId: string,
+  objectives: Array<{
+    sno: number;
+    description: string;
+    amount: number | null;
+  }>
+): Promise<void> {
+  const startTime = Date.now();
+
+  if (objectives.length === 0) {
+    logger.warn({ ipoId }, 'No objectives to update (empty array)');
+    return;
+  }
+
+  logger.debug({
+    ipoId,
+    objectivesCount: objectives.length,
+    totalAmount: objectives.reduce((sum, obj) => sum + (obj.amount || 0), 0)
+  }, 'Updating IPO objectives');
+
+  await retryWithBackoff(
+    async () => {
+      // Update the objectives field (JSONB) in ipos table
+      await ipoRepository.update(ipoId, {
+        objectives: objectives as any, // Drizzle will serialize to JSONB
+        updatedAt: new Date()
+      });
+
+      logger.debug({ ipoId, objectivesCount: objectives.length }, 'IPO objectives updated');
+    },
+    `Update objectives for IPO: ${ipoId}`
+  );
+
+  const duration = Date.now() - startTime;
+
+  // Calculate metrics
+  const objectivesWithAmount = objectives.filter((obj) => obj.amount !== null).length;
+  const totalAmount = objectives.reduce((sum, obj) => sum + (obj.amount || 0), 0);
+
+  logger.info(
+    {
+      ipoId,
+      objectivesCount: objectives.length,
+      objectivesWithAmount,
+      totalAmount,
+      duration
+    },
+    'IPO objectives updated successfully'
+  );
 }
