@@ -19,7 +19,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import * as Sentry from '@sentry/nextjs';
+// TEMPORARILY DISABLED: Sentry causing module loading errors
+// import * as Sentry from '@sentry/nextjs';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
@@ -256,12 +257,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<Compariso
         error: error.message,
       });
 
-      Sentry.captureException(error, {
-        tags: {
-          route: '/api/tools/compare',
-          requestId,
-        },
-      });
+      // TEMPORARILY DISABLED: Sentry causing module loading errors
+      // Sentry.captureException(error, {
+      //   tags: {
+      //     route: '/api/tools/compare',
+      //     requestId,
+      //   },
+      // });
 
       return NextResponse.json(
         {
@@ -279,12 +281,13 @@ export async function POST(request: NextRequest): Promise<NextResponse<Compariso
       error: error instanceof Error ? error.message : String(error),
     });
 
-    Sentry.captureException(error, {
-      tags: {
-        route: '/api/tools/compare',
-        requestId,
-      },
-    });
+    // TEMPORARILY DISABLED: Sentry causing module loading errors
+    // Sentry.captureException(error, {
+    //   tags: {
+    //     route: '/api/tools/compare',
+    //     requestId,
+    //   },
+    // });
 
     return NextResponse.json(
       {

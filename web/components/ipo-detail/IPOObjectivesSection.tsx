@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Target, Info } from 'lucide-react';
+import { HiCursorArrowRays, HiInformationCircle } from 'react-icons/hi2';
 
 export interface IPOObjective {
   sno: number;                  // Serial number (1, 2, 3...)
@@ -48,13 +48,13 @@ export function IPOObjectivesSection({ objectives, totalIssueSize }: IPOObjectiv
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Target className="h-5 w-5 text-muted-foreground" />
+            <HiCursorArrowRays className="h-5 w-5 text-muted-foreground" />
             <CardTitle>Objects of the Issue</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
           <div className="flex items-center gap-3 p-6 bg-muted/30 rounded-lg border border-dashed">
-            <Info className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+            <HiInformationCircle className="h-5 w-5 text-muted-foreground flex-shrink-0" />
             <div>
               <p className="text-sm font-medium text-muted-foreground">
                 IPO objectives not available
@@ -81,7 +81,7 @@ export function IPOObjectivesSection({ objectives, totalIssueSize }: IPOObjectiv
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <Target className="h-5 w-5 text-primary" />
+          <HiCursorArrowRays className="h-5 w-5 text-primary" />
           <CardTitle>Objects of the Issue</CardTitle>
         </div>
         <p className="text-sm text-muted-foreground">

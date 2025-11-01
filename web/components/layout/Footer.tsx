@@ -12,7 +12,7 @@
 
 import React from 'react';
 import Link from 'next/link';
-import { Calculator, Scale, Info } from 'lucide-react';
+import { HiCalculator, HiScale, HiInformationCircle } from 'react-icons/hi2';
 import { affiliateConfig } from '@/lib/config/affiliate-links';
 
 // ==================== COMPONENT ====================
@@ -80,7 +80,7 @@ export function Footer() {
                   href="/tools/lot-calculator"
                   className="group flex items-center space-x-2 text-sm text-muted-foreground transition-all duration-300 hover:text-primary hover:translate-x-1"
                 >
-                  <Calculator className="h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
+                  <HiCalculator className="h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
                   <span>Lot Size Calculator</span>
                 </Link>
               </li>
@@ -89,7 +89,7 @@ export function Footer() {
                   href="/tools/compare"
                   className="group flex items-center space-x-2 text-sm text-muted-foreground transition-all duration-300 hover:text-primary hover:translate-x-1"
                 >
-                  <Scale className="h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
+                  <HiScale className="h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
                   <span>Compare IPOs</span>
                 </Link>
               </li>
@@ -134,7 +134,7 @@ export function Footer() {
         {/* Affiliate Disclaimer */}
         <div className="mt-8 border-t pt-6">
           <div className="flex items-start gap-2 rounded-md border border-muted bg-muted/30 p-4">
-            <Info className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+            <HiInformationCircle className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
             <p className="text-xs text-muted-foreground">
               {affiliateConfig.disclaimer.text}
             </p>

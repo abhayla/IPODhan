@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Skeleton } from '@/components/ui/skeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { InfoIcon, TrendingUpIcon, BarChart3Icon } from 'lucide-react';
+import { HiInformationCircle, HiArrowTrendingUp, HiChartBar } from 'react-icons/hi2';
 import {
   ResponsiveContainer,
   AreaChart,
@@ -120,13 +120,13 @@ export function DemandGraphChart({
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <BarChart3Icon className="h-5 w-5" />
+            <HiChartBar className="h-5 w-5" />
             Price-wise Demand Analysis
           </CardTitle>
         </CardHeader>
         <CardContent>
           <Alert>
-            <InfoIcon className="h-4 w-4" />
+            <HiInformationCircle className="h-4 w-4" />
             <AlertDescription>
               {error || 'No demand graph data available for this IPO'}
             </AlertDescription>
@@ -178,7 +178,7 @@ export function DemandGraphChart({
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
-            <BarChart3Icon className="h-5 w-5" />
+            <HiChartBar className="h-5 w-5" />
             Price-wise Demand Analysis
           </CardTitle>
           <div className="flex items-center gap-3">
@@ -291,7 +291,7 @@ export function DemandGraphChart({
             </ResponsiveContainer>
           ) : (
             <Alert>
-              <InfoIcon className="h-4 w-4" />
+              <HiInformationCircle className="h-4 w-4" />
               <AlertDescription>
                 No demand data available for the selected exchange
               </AlertDescription>
@@ -300,7 +300,7 @@ export function DemandGraphChart({
 
           {/* Info Note */}
           <Alert>
-            <TrendingUpIcon className="h-4 w-4" />
+            <HiArrowTrendingUp className="h-4 w-4" />
             <AlertDescription>
               <strong>How to read this chart:</strong> Higher demand at lower prices indicates strong investor interest.
               Cut-off bids ({cutOffPercentage}% of total) show investors willing to accept any price within the range.

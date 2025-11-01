@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { ChevronLeft, ChevronRight, MoreHorizontal } from 'lucide-react';
+import { HiChevronLeft, HiChevronRight, HiEllipsisHorizontal } from 'react-icons/hi2';
 import { Button } from '@/components/ui/button';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { cn } from '@/lib/utils';
@@ -77,7 +77,7 @@ const PaginationPrevious = ({
     className={cn('gap-1 pl-2.5', className)}
     {...props}
   >
-    <ChevronLeft className="h-4 w-4" />
+    <HiChevronLeft className="h-4 w-4" />
     <span>Previous</span>
   </PaginationLink>
 );
@@ -94,7 +94,7 @@ const PaginationNext = ({
     {...props}
   >
     <span>Next</span>
-    <ChevronRight className="h-4 w-4" />
+    <HiChevronRight className="h-4 w-4" />
   </PaginationLink>
 );
 PaginationNext.displayName = 'PaginationNext';
@@ -108,7 +108,7 @@ const PaginationEllipsis = ({
     className={cn('flex h-9 w-9 items-center justify-center', className)}
     {...props}
   >
-    <MoreHorizontal className="h-4 w-4" />
+    <HiEllipsisHorizontal className="h-4 w-4" />
     <span className="sr-only">More pages</span>
   </span>
 );
@@ -187,7 +187,7 @@ export function Pagination({ currentPage, totalPages, hasMore, isLoading = false
         aria-label="Previous page"
         className="gap-1 transition-all duration-200 hover:scale-105 hover:border-primary disabled:opacity-50"
       >
-        <ChevronLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-1" />
+        <HiChevronLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-1" />
         <span className="hidden sm:inline">Previous</span>
       </Button>
 
@@ -241,7 +241,7 @@ export function Pagination({ currentPage, totalPages, hasMore, isLoading = false
         className="gap-1 transition-all duration-200 hover:scale-105 hover:border-primary disabled:opacity-50"
       >
         <span className="hidden sm:inline">Next</span>
-        <ChevronRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
+        <HiChevronRight className="h-4 w-4 transition-transform duration-200 group-hover:translate-x-1" />
       </Button>
     </nav>
   );

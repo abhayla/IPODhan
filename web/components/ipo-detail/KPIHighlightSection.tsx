@@ -10,7 +10,7 @@
 
 'use client';
 
-import { Building2, TrendingUp, DollarSign, BarChart3, Coins, Activity, AlertCircle } from 'lucide-react';
+import { HiBuildingOffice2, HiArrowTrendingUp, HiCurrencyDollar, HiChartBar, HiBanknotes, HiSignal, HiExclamationCircle } from 'react-icons/hi2';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { KPICard } from './KPICard';
 import { KPIComparisonCard } from './KPIComparisonCard';
@@ -61,7 +61,7 @@ export function KPIHighlightSection({
       <Card className="border-dashed">
         <CardContent className="pt-6">
           <div className="flex flex-col items-center justify-center gap-3 text-center py-6">
-            <AlertCircle className="h-10 w-10 text-muted-foreground/50" />
+            <HiExclamationCircle className="h-10 w-10 text-muted-foreground/50" />
             <div>
               <h3 className="text-lg font-semibold text-foreground">
                 KPI Data Not Available
@@ -119,7 +119,7 @@ export function KPIHighlightSection({
       <Card className="border-dashed">
         <CardContent className="pt-6">
           <div className="flex flex-col items-center justify-center gap-3 text-center py-6">
-            <AlertCircle className="h-10 w-10 text-muted-foreground/50" />
+            <HiExclamationCircle className="h-10 w-10 text-muted-foreground/50" />
             <div>
               <h3 className="text-lg font-semibold text-foreground">
                 KPI Data Not Available
@@ -138,7 +138,7 @@ export function KPIHighlightSection({
     <Card className="border-2 border-primary/20 bg-gradient-to-br from-background to-muted/20">
       <CardHeader>
         <div className="flex items-center gap-2">
-          <BarChart3 className="h-6 w-6 text-primary" />
+          <HiChartBar className="h-6 w-6 text-primary" />
           <CardTitle className="text-xl">Key Performance Indicators</CardTitle>
         </div>
         <p className="text-sm text-muted-foreground mt-1">
@@ -149,7 +149,7 @@ export function KPIHighlightSection({
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {/* 1. Market Capitalization */}
           <KPICard
-            icon={Building2}
+            icon={HiBuildingOffice2}
             title="Market Capitalization"
             value={formatMarketCap(marketCap)}
             tooltip="Post-IPO market capitalization based on issue price. This represents the total market value of the company's outstanding shares after the IPO."
@@ -157,7 +157,7 @@ export function KPIHighlightSection({
 
           {/* 2. Return on Equity (ROE) */}
           <KPICard
-            icon={TrendingUp}
+            icon={HiArrowTrendingUp}
             title="Return on Equity (ROE)"
             value={formatPercentage(roe ? Number(roe) : null)}
             tooltip="Return on Equity - measures profitability relative to shareholder equity. Higher ROE indicates better efficiency in generating profits from investments."
@@ -166,7 +166,7 @@ export function KPIHighlightSection({
 
           {/* 3. Return on Net Worth (RoNW) */}
           <KPICard
-            icon={DollarSign}
+            icon={HiCurrencyDollar}
             title="Return on Net Worth (RoNW)"
             value={formatPercentage(ronw ? Number(ronw) : null)}
             tooltip="Return on Net Worth - net profit as percentage of net worth. Similar to ROE, it shows how effectively the company uses its net worth to generate profits."
@@ -175,7 +175,7 @@ export function KPIHighlightSection({
 
           {/* 4. Price-to-Book Value (P/BV) */}
           <KPICard
-            icon={Coins}
+            icon={HiBanknotes}
             title="Price-to-Book Value"
             value={formatRatio(priceToBook)}
             tooltip="Price-to-Book Value ratio - market price relative to book value. A ratio > 1 means the market values the company higher than its book value."
@@ -184,7 +184,7 @@ export function KPIHighlightSection({
 
           {/* 5. EPS Comparison (Pre vs Post) */}
           <KPIComparisonCard
-            icon={Activity}
+            icon={HiSignal}
             title="EPS Comparison"
             preLabel="Pre-IPO EPS"
             preValue={formatEPS(preIpoEps ? Number(preIpoEps) : null)}
@@ -197,7 +197,7 @@ export function KPIHighlightSection({
 
           {/* 6. P/E Ratio Comparison (Pre vs Post) */}
           <KPIComparisonCard
-            icon={BarChart3}
+            icon={HiChartBar}
             title="P/E Ratio Comparison"
             preLabel="Pre-IPO P/E"
             preValue={formatPE(preIPO_PE)}

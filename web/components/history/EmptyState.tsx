@@ -10,7 +10,7 @@
 import React from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { SearchX } from 'lucide-react';
+import { HiMagnifyingGlassCircle } from 'react-icons/hi2';
 import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
 
 export function EmptyState() {
@@ -19,7 +19,7 @@ export function EmptyState() {
   return (
     <Card className="border-2 border-dashed">
       <CardContent className="flex flex-col items-center justify-center py-12 px-6 text-center">
-        <SearchX className="h-16 w-16 text-muted-foreground mb-4" />
+        <HiMagnifyingGlassCircle className="h-16 w-16 text-muted-foreground mb-4" />
         <h3 className="text-lg font-semibold mb-2">No Historical IPOs Found</h3>
         <p className="text-sm text-muted-foreground mb-6 max-w-md">
           {hasActiveFilters

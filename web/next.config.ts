@@ -18,9 +18,10 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ['pg', 'pg-pool', 'pgpass', 'drizzle-orm'],
 
   // Performance: Optimize package imports
-  experimental: {
-    optimizePackageImports: ['lucide-react', '@radix-ui/react-icons'],
-  },
+  // DISABLED: Causes text replacement bugs in Next.js 15.5.4 (addEventListener → addEventHiListBulletener)
+  // experimental: {
+  //   optimizePackageImports: ['@radix-ui/react-icons'],
+  // },
 
   // Performance: Browser caching headers for static assets
   // Security: CORS configuration for API endpoints
@@ -70,7 +71,8 @@ const nextConfig: NextConfig = {
     ];
   },
 
-  // Performance: Webpack optimizations for code splitting
+  // Performance: Webpack optimizations
+  // NOTE: Removed custom splitChunks configuration as it caused module loading errors
   webpack: (config, { isServer }) => {
     if (!isServer) {
       // Exclude Node.js built-ins from browser bundle (fixes pg module issues)
@@ -84,41 +86,6 @@ const nextConfig: NextConfig = {
         child_process: false,
         'utf-8-validate': false,
         'bufferutil': false,
-      };
-
-      config.optimization = {
-        ...config.optimization,
-        splitChunks: {
-          chunks: 'all',
-          cacheGroups: {
-            default: false,
-            vendors: false,
-            // Framework chunk (react, react-dom, next)
-            framework: {
-              name: 'framework',
-              test: /[\\/]node_modules[\\/](react|react-dom|next)[\\/]/,
-              priority: 40,
-              enforce: true,
-            },
-            // Common components used across routes
-            commons: {
-              name: 'commons',
-              minChunks: 2,
-              priority: 20,
-            },
-            // Large libraries (charts, etc.)
-            lib: {
-              test: /[\\/]node_modules[\\/]/,
-              name(module: any) {
-                const packageName = module.context.match(
-                  /[\\/]node_modules[\\/](.*?)([\\/]|$)/
-                )?.[1];
-                return `npm.${packageName?.replace('@', '')}`;
-              },
-              priority: 10,
-            },
-          },
-        },
       };
     }
     return config;

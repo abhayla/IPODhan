@@ -1,6 +1,6 @@
 'use client';
 
-import { Copy, Check } from 'lucide-react';
+import { HiClipboard, HiCheck } from 'react-icons/hi2';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
@@ -98,9 +98,9 @@ export function ISINDisplay({ isin, className }: ISINDisplayProps) {
         aria-label="Copy ISIN to clipboard"
       >
         {copied ? (
-          <Check className="h-4 w-4 text-green-600" />
+          <HiCheck className="h-4 w-4 text-green-600" />
         ) : (
-          <Copy className="h-4 w-4" />
+          <HiClipboard className="h-4 w-4" />
         )}
       </Button>
     </div>

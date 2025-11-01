@@ -6,7 +6,8 @@
 
 'use client';
 
-import { LucideIcon, TrendingUp, TrendingDown, ArrowRight, Info } from 'lucide-react';
+import { IconType } from 'react-icons';
+import { HiArrowTrendingUp, HiArrowTrendingDown, HiArrowRight, HiInformationCircle } from 'react-icons/hi2';
 import {
   Tooltip,
   TooltipContent,
@@ -18,9 +19,9 @@ import { formatChange } from '@/lib/utils/kpi-formatters';
 
 export interface KPIComparisonCardProps {
   /**
-   * Icon component from lucide-react
+   * Icon component from react-icons
    */
-  icon: LucideIcon;
+  icon: IconType;
 
   /**
    * Title of the comparison (e.g., "EPS Comparison", "P/E Ratio Comparison")
@@ -72,9 +73,9 @@ export interface KPIComparisonCardProps {
  * Get arrow icon based on trend
  */
 function getTrendIcon(trend: 'up' | 'down' | 'neutral') {
-  if (trend === 'up') return TrendingUp;
-  if (trend === 'down') return TrendingDown;
-  return ArrowRight;
+  if (trend === 'up') return HiArrowTrendingUp;
+  if (trend === 'down') return HiArrowTrendingDown;
+  return HiArrowRight;
 }
 
 /**
@@ -123,7 +124,7 @@ export function KPIComparisonCard({
                 className="text-muted-foreground hover:text-foreground transition-colors"
                 aria-label={`Info about ${title}`}
               >
-                <Info className="h-4 w-4" />
+                <HiInformationCircle className="h-4 w-4" />
               </button>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
@@ -157,7 +158,7 @@ export function KPIComparisonCard({
           </div>
         ) : (
           <div className="flex flex-col items-center gap-1">
-            <ArrowRight className="h-5 w-5 text-muted-foreground" />
+            <HiArrowRight className="h-5 w-5 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">-</span>
           </div>
         )}

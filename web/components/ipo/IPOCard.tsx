@@ -4,7 +4,7 @@ import { IPO, IPOStatus, ListingPerformance, IPOScore } from '@/lib/db/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { Star } from 'lucide-react';
+import { HiStar } from 'react-icons/hi2';
 import { HighlightedText } from '@/components/search/HighlightedText';
 import { ListingPerformanceBadge } from './ListingPerformanceBadge';
 import { ScoreBadge } from './ScoreBadge';
@@ -45,25 +45,25 @@ const formatCurrency = (amount: number | null) => {
   }).format(amount);
 };
 
-const RatingStars = ({ rating }: { rating: number | null }) => {
+const RatingHiStars = ({ rating }: { rating: number | null }) => {
   if (rating === null) {
     return <span className="text-sm text-muted-foreground">Not Rated</span>;
   }
 
-  const fullStars = Math.floor(rating);
-  const hasHalfStar = rating % 1 >= 0.5;
-  const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+  const fullHiStars = Math.floor(rating);
+  const hasHalfHiStar = rating % 1 >= 0.5;
+  const emptyHiStars = 5 - fullHiStars - (hasHalfHiStar ? 1 : 0);
 
   return (
     <div className="flex items-center gap-1">
-      {[...Array(fullStars)].map((_, i) => (
-        <Star key={`full-${i}`} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+      {[...Array(fullHiStars)].map((_, i) => (
+        <HiStar key={`full-${i}`} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
       ))}
-      {hasHalfStar && (
-        <Star className="h-4 w-4 fill-yellow-400 text-yellow-400 opacity-50" />
+      {hasHalfHiStar && (
+        <HiStar className="h-4 w-4 fill-yellow-400 text-yellow-400 opacity-50" />
       )}
-      {[...Array(emptyStars)].map((_, i) => (
-        <Star key={`empty-${i}`} className="h-4 w-4 text-gray-300" />
+      {[...Array(emptyHiStars)].map((_, i) => (
+        <HiStar key={`empty-${i}`} className="h-4 w-4 text-gray-300" />
       ))}
       <span className="ml-1 text-sm text-muted-foreground">{rating.toFixed(1)}</span>
     </div>
@@ -138,9 +138,9 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
 
           {/* Segment, Offering Type, Sector, and Verdict */}
           <div className="flex items-center gap-2 flex-wrap">
-            {/* Story 11.8: Display segment badge */}
+            {/* Story 11.8: Display segment badge - For RIGHTS issues, show the type instead of N/A */}
             <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-300">
-              {ipo.segment || 'N/A'}
+              {ipo.segment || (ipo.offeringType === 'RIGHTS' ? 'RIGHTS' : 'N/A')}
             </Badge>
             {/* Story 11.8: Display offering type badge */}
             <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-300">
@@ -203,7 +203,7 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
           <div className="pt-3 border-t border-border group-hover:border-primary/30 transition-colors duration-200">
             <p className="text-sm text-muted-foreground mb-2">IPODhan Rating</p>
             <div className="group-hover:scale-105 transition-transform duration-200">
-              <RatingStars rating={ipo.rating} />
+              <RatingHiStars rating={ipo.rating} />
             </div>
           </div>
         </CardContent>

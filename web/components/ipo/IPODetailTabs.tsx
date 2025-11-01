@@ -330,8 +330,8 @@ export function IPODetailTabs({
           }>
             <DemandGraphChart
               ipoSlug={slug}
-              priceRangeMin={ipo.priceRangeMin}
-              priceRangeMax={ipo.priceRangeMax}
+              priceRangeMin={ipo.priceRangeMin ?? undefined}
+              priceRangeMax={ipo.priceRangeMax ?? undefined}
             />
           </Suspense>
         </TabErrorBoundary>

@@ -1,15 +1,17 @@
 'use client';
 
-import { IPO, IPOStatus } from '@/lib/db/types';
+import { IPO, IPOStatus, IpoDetails } from '@/lib/db/types';
 import { Badge } from '@/components/ui/badge';
 import { RatingDisplay } from './RatingDisplay';
 import { AddToCompareButton } from '@/components/tools/AddToCompareButton';
 import { StockSymbol } from './StockSymbol';
 import { UPIDeadlineTimer } from '@/components/ipo-detail/UPIDeadlineTimer';
-import { Building2 } from 'lucide-react';
+import { HiBuildingOffice2 } from 'react-icons/hi2';
 
 interface IPOHeaderProps {
-  ipo: IPO;
+  ipo: IPO & {
+    ipoDetails?: IpoDetails | null;
+  };
 }
 
 const getStatusConfig = (status: IPOStatus) => {
@@ -42,7 +44,7 @@ export function IPOHeader({ ipo }: IPOHeaderProps) {
           <div className="flex justify-center md:justify-start">
             <div className="group flex h-20 w-20 items-center justify-center rounded-xl border-2 border-border bg-white shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105 md:h-24 md:w-24 lg:h-32 lg:w-32">
               {/* TODO: In future, add actual company logo support */}
-              <Building2 className="h-10 w-10 text-muted-foreground transition-transform duration-300 group-hover:scale-110 md:h-12 md:w-12 lg:h-16 lg:w-16" />
+              <HiBuildingOffice2 className="h-10 w-10 text-muted-foreground transition-transform duration-300 group-hover:scale-110 md:h-12 md:w-12 lg:h-16 lg:w-16" />
             </div>
           </div>
 

@@ -7,7 +7,7 @@
  */
 
 import React from 'react';
-import { ExternalLink } from 'lucide-react';
+import { HiArrowTopRightOnSquare } from 'react-icons/hi2';
 import { IssueTypeBadge } from './IssueTypeBadge';
 import { IssueBreakdownChart } from './IssueBreakdownChart';
 import { MinimumInvestmentDisplay } from './MinimumInvestmentDisplay';
@@ -118,7 +118,7 @@ export function IssueStructureSection({
                 className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors duration-200 text-sm font-medium"
               >
                 <span>Check Allotment Status</span>
-                <ExternalLink className="w-4 h-4" />
+                <HiArrowTopRightOnSquare className="w-4 h-4" />
               </a>
               <p className="text-xs text-gray-500 mt-2">
                 Check your IPO application status on the registrar's website

@@ -1,7 +1,7 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, TrendingDown } from 'lucide-react';
+import { HiArrowTrendingUp, HiArrowTrendingDown } from 'react-icons/hi2';
 import { cn } from '@/lib/utils';
 
 interface ListingPerformanceBadgeProps {
@@ -33,7 +33,7 @@ export function ListingPerformanceBadge({
   }
 
   const isPositive = listingGainPercent > 0;
-  const Icon = isPositive ? TrendingUp : TrendingDown;
+  const Icon = isPositive ? HiArrowTrendingUp : HiArrowTrendingDown;
 
   // Size-specific styles
   const sizeClasses = {

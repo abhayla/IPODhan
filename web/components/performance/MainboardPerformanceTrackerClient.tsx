@@ -16,7 +16,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { DataTable, ColumnDef, renderFunctions } from '@/components/shared/DataTable';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { HiChevronDown, HiChevronRight } from 'react-icons/hi2';
 
 // ==================== TYPES ====================
 
@@ -55,9 +55,9 @@ function ExpandableCompanyCell({ companyName, slug }: { companyName: string; slu
       >
         {companyName}
         {expanded ? (
-          <ChevronDown className="h-4 w-4 flex-shrink-0" />
+          <HiChevronDown className="h-4 w-4 flex-shrink-0" />
         ) : (
-          <ChevronRight className="h-4 w-4 flex-shrink-0" />
+          <HiChevronRight className="h-4 w-4 flex-shrink-0" />
         )}
       </button>
       {expanded && (

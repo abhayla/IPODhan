@@ -14,7 +14,7 @@
 
 'use client';
 
-import { ArrowUp, ArrowDown, Minus } from 'lucide-react';
+import { HiArrowUp, HiArrowDown, HiMinus } from 'react-icons/hi2';
 import { cn } from '@/lib/utils';
 import {
   Tooltip,
@@ -110,21 +110,21 @@ export function ComparisonIndicator({
   if (result === 'no-data') {
     return (
       <span className={cn('inline-flex items-center gap-1 text-gray-600', className)}>
-        <Minus className="h-3 w-3" />
+        <HiMinus className="h-3 w-3" />
       </span>
     );
   }
 
   // Determine color and icon
   let colorClass = 'text-gray-600';
-  let Icon = Minus;
+  let Icon = HiMinus;
 
   if (result === 'better') {
     colorClass = 'text-green-600';
-    Icon = ArrowUp;
+    Icon = HiArrowUp;
   } else if (result === 'worse') {
     colorClass = 'text-red-600';
-    Icon = ArrowDown;
+    Icon = HiArrowDown;
   }
 
   return (

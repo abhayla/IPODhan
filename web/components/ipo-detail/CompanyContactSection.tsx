@@ -13,7 +13,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Building, Phone, Mail, MapPin, User } from 'lucide-react';
+import { HiBuildingOffice, HiPhone, HiEnvelope, HiMapPin, HiUser } from 'react-icons/hi2';
 
 interface CompanyContactData {
   companyAddress: string | null;
@@ -76,7 +76,7 @@ export function CompanyContactSection({ contactData }: CompanyContactSectionProp
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <Building className="h-5 w-5 text-primary" />
+          <HiBuildingOffice className="h-5 w-5 text-primary" />
           <CardTitle>Company Contact Information</CardTitle>
         </div>
         <p className="text-sm text-muted-foreground">
@@ -92,7 +92,7 @@ export function CompanyContactSection({ contactData }: CompanyContactSectionProp
               <div className="space-y-3">
                 {fullAddress && (
                   <div className="flex items-start gap-3">
-                    <MapPin className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <HiMapPin className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
                     <div>
                       <p className="text-sm text-muted-foreground mb-1">Address</p>
                       <p className="font-medium">{fullAddress}</p>
@@ -102,7 +102,7 @@ export function CompanyContactSection({ contactData }: CompanyContactSectionProp
 
                 {contactData.companyPhone && (
                   <div className="flex items-start gap-3">
-                    <Phone className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <HiPhone className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
                     <div>
                       <p className="text-sm text-muted-foreground mb-1">Phone</p>
                       <a
@@ -117,7 +117,7 @@ export function CompanyContactSection({ contactData }: CompanyContactSectionProp
 
                 {contactData.companyEmail && (
                   <div className="flex items-start gap-3">
-                    <Mail className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <HiEnvelope className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
                     <div>
                       <p className="text-sm text-muted-foreground mb-1">Email</p>
                       <a
@@ -137,7 +137,7 @@ export function CompanyContactSection({ contactData }: CompanyContactSectionProp
           {hasComplianceInfo && (
             <div className="border-t pt-6">
               <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <User className="h-5 w-5" />
+                <HiUser className="h-5 w-5" />
                 Compliance Officer
               </h3>
               <div className="space-y-3">

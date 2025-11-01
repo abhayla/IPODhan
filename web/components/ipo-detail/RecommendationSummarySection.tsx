@@ -20,7 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { Star, TrendingUp, TrendingDown, MessageSquare, Award } from 'lucide-react';
+import { HiStar, HiArrowTrendingUp, HiArrowTrendingDown, HiChatBubbleLeftRight, HiTrophy } from 'react-icons/hi2';
 import type { ReviewSummary } from '@/lib/repositories/review-repository';
 
 interface RecommendationSummarySectionProps {
@@ -43,21 +43,21 @@ function renderStarRating(rating: number): React.ReactElement[] {
   // Full stars
   for (let i = 0; i < fullStars; i++) {
     stars.push(
-      <Star key={`full-${i}`} className="h-5 w-5 fill-yellow-500 text-yellow-500" />
+      <HiStar key={`full-${i}`} className="h-5 w-5 fill-yellow-500 text-yellow-500" />
     );
   }
 
   // Half star
   if (hasHalfStar) {
     stars.push(
-      <Star key="half" className="h-5 w-5 fill-yellow-500/50 text-yellow-500" />
+      <HiStar key="half" className="h-5 w-5 fill-yellow-500/50 text-yellow-500" />
     );
   }
 
   // Empty stars
   for (let i = 0; i < emptyStars; i++) {
     stars.push(
-      <Star key={`empty-${i}`} className="h-5 w-5 text-gray-300" />
+      <HiStar key={`empty-${i}`} className="h-5 w-5 text-gray-300" />
     );
   }
 
@@ -138,13 +138,13 @@ function EmptyState() {
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <MessageSquare className="h-5 w-5 text-muted-foreground" />
+          <HiChatBubbleLeftRight className="h-5 w-5 text-muted-foreground" />
           <CardTitle>Broker Recommendations</CardTitle>
         </div>
       </CardHeader>
       <CardContent>
         <div className="text-center py-8">
-          <Award className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+          <HiTrophy className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
           <p className="text-lg font-medium text-muted-foreground mb-2">
             No broker reviews available yet
           </p>
@@ -187,11 +187,11 @@ export function RecommendationSummarySection({
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <MessageSquare className="h-5 w-5 text-primary" />
+          <HiChatBubbleLeftRight className="h-5 w-5 text-primary" />
           <CardTitle>Broker Recommendations</CardTitle>
         </div>
 
-        {/* Star Rating and Review Count */}
+        {/* HiStar Rating and Review Count */}
         <div className="mt-4 space-y-2">
           <div className="flex items-center gap-2">
             <div className="flex">{renderStarRating(averageRating)}</div>
@@ -244,7 +244,7 @@ export function RecommendationSummarySection({
               {/* Positive Sentiment */}
               <div className="bg-green-50 border border-green-200 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="h-5 w-5 text-green-600" />
+                  <HiArrowTrendingUp className="h-5 w-5 text-green-600" />
                   <span className="font-semibold text-green-900">Positive</span>
                 </div>
                 <p className="text-3xl font-bold text-green-600">
@@ -255,7 +255,7 @@ export function RecommendationSummarySection({
               {/* Negative Sentiment */}
               <div className="bg-red-50 border border-red-200 rounded-lg p-4">
                 <div className="flex items-center gap-2 mb-2">
-                  <TrendingDown className="h-5 w-5 text-red-600" />
+                  <HiArrowTrendingDown className="h-5 w-5 text-red-600" />
                   <span className="font-semibold text-red-900">Negative</span>
                 </div>
                 <p className="text-3xl font-bold text-red-600">
@@ -274,7 +274,7 @@ export function RecommendationSummarySection({
                 {topApplyReasons.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
-                      <TrendingUp className="h-4 w-4 text-green-600" />
+                      <HiArrowTrendingUp className="h-4 w-4 text-green-600" />
                       <h4 className="font-semibold text-green-900">Why Apply</h4>
                     </div>
                     <ul className="space-y-2">
@@ -294,7 +294,7 @@ export function RecommendationSummarySection({
                 {topAvoidReasons.length > 0 && (
                   <div>
                     <div className="flex items-center gap-2 mb-3">
-                      <TrendingDown className="h-4 w-4 text-red-600" />
+                      <HiArrowTrendingDown className="h-4 w-4 text-red-600" />
                       <h4 className="font-semibold text-red-900">Why Avoid</h4>
                     </div>
                     <ul className="space-y-2">

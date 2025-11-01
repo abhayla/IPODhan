@@ -4,7 +4,7 @@
  * Displays 4 navigation cards linking to SME IPO dedicated pages:
  * 1. SME IPO Performance Tracker
  * 2. SME IPO Prospectus
- * 3. SME IPO Calendar
+ * 3. SME IPO HiCalendar
  * 4. SME IPO Reviews
  *
  * Story 9.16: SME IPOs Landing Page
@@ -14,12 +14,12 @@
 
 import Link from 'next/link';
 import { Card, CardContent } from '@/components/ui/card';
-import { TrendingUp, FileText, Calendar, Star } from 'lucide-react';
+import { HiArrowTrendingUp, HiDocumentText, HiCalendar, HiStar } from 'react-icons/hi2';
 
 const navigationCards = [
   {
     id: 'performance-tracker',
-    icon: TrendingUp,
+    icon: HiArrowTrendingUp,
     title: 'Performance Tracker',
     description: 'Track post-listing performance of SME IPOs',
     href: '/sme-ipo-performance-tracker',
@@ -28,7 +28,7 @@ const navigationCards = [
   },
   {
     id: 'prospectus',
-    icon: FileText,
+    icon: HiDocumentText,
     title: 'IPO Prospectus',
     description: 'Download DRHP and RHP documents',
     href: '/sme-ipo-prospectus',
@@ -37,7 +37,7 @@ const navigationCards = [
   },
   {
     id: 'calendar',
-    icon: Calendar,
+    icon: HiCalendar,
     title: 'IPO Calendar',
     description: 'View SME IPO events and timelines',
     href: '/sme-ipo-calendar',
@@ -46,7 +46,7 @@ const navigationCards = [
   },
   {
     id: 'reviews',
-    icon: Star,
+    icon: HiStar,
     title: 'IPO Reviews & Analysis',
     description: 'Expert recommendations and analysis',
     href: '/sme-ipo-reviews',

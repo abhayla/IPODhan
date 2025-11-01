@@ -6,7 +6,7 @@
 'use client';
 
 import React from 'react';
-import { Phone, Mail, MapPin, ExternalLink } from 'lucide-react';
+import { HiPhone, HiEnvelope, HiMapPin, HiArrowTopRightOnSquare } from 'react-icons/hi2';
 import type { IpoDetails } from '@/lib/db/types';
 
 export interface CompanyContactCardProps {
@@ -84,7 +84,7 @@ export function CompanyContactCard({
         {ipoDetails.companyAddress && (
           <div>
             <div className="flex items-start gap-3">
-              <MapPin className="mt-1 h-5 w-5 text-primary flex-shrink-0" />
+              <HiMapPin className="mt-1 h-5 w-5 text-primary flex-shrink-0" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-muted-foreground mb-1">
                   Registered Office
@@ -100,7 +100,7 @@ export function CompanyContactCard({
                     className="mt-2 inline-flex items-center gap-1 text-sm text-primary hover:text-primary/80 transition-colors"
                   >
                     View on Google Maps
-                    <ExternalLink className="h-3 w-3" />
+                    <HiArrowTopRightOnSquare className="h-3 w-3" />
                   </a>
                 )}
               </div>
@@ -108,11 +108,11 @@ export function CompanyContactCard({
           </div>
         )}
 
-        {/* Phone */}
+        {/* HiPhone */}
         {ipoDetails.companyPhone && (
           <div>
             <div className="flex items-start gap-3">
-              <Phone className="mt-1 h-5 w-5 text-primary flex-shrink-0" />
+              <HiPhone className="mt-1 h-5 w-5 text-primary flex-shrink-0" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-muted-foreground mb-1">Phone</p>
                 <a
@@ -130,7 +130,7 @@ export function CompanyContactCard({
         {ipoDetails.companyEmail && (
           <div>
             <div className="flex items-start gap-3">
-              <Mail className="mt-1 h-5 w-5 text-primary flex-shrink-0" />
+              <HiEnvelope className="mt-1 h-5 w-5 text-primary flex-shrink-0" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-muted-foreground mb-1">
                   Email (Investor Relations)
@@ -150,7 +150,7 @@ export function CompanyContactCard({
         {website && (
           <div>
             <div className="flex items-start gap-3">
-              <ExternalLink className="mt-1 h-5 w-5 text-primary flex-shrink-0" />
+              <HiArrowTopRightOnSquare className="mt-1 h-5 w-5 text-primary flex-shrink-0" />
               <div className="flex-1">
                 <p className="text-sm font-medium text-muted-foreground mb-1">Website</p>
                 <a
@@ -179,7 +179,7 @@ export function CompanyContactCard({
 
               {ipoDetails.complianceOfficerPhone && (
                 <div className="flex items-center gap-3">
-                  <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  <HiPhone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                   <a
                     href={`tel:${ipoDetails.complianceOfficerPhone}`}
                     className="text-sm text-primary hover:text-primary/80 transition-colors font-medium"
@@ -191,7 +191,7 @@ export function CompanyContactCard({
 
               {ipoDetails.complianceOfficerEmail && (
                 <div className="flex items-center gap-3">
-                  <Mail className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                  <HiEnvelope className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                   <a
                     href={`mailto:${ipoDetails.complianceOfficerEmail}`}
                     className="text-sm text-primary hover:text-primary/80 transition-colors font-medium break-all"

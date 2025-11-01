@@ -12,7 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert } from '@/components/ui/alert';
-import { Check, X, AlertCircle, Loader2, MessageSquare, Calendar, User } from 'lucide-react';
+import { HiCheck, HiXMark, HiExclamationCircle, HiArrowPath, HiChatBubbleLeftRight, HiCalendar, HiUser } from 'react-icons/hi2';
 import { useToast } from '@/hooks/useToast';
 import type { IPOReview } from '@/lib/db/types';
 
@@ -79,11 +79,11 @@ function ReviewCard({ review, onApprove, onReject, isProcessing }: ReviewCardPro
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
           <div className="flex items-center gap-1.5">
-            <User className="h-4 w-4" />
+            <HiUser className="h-4 w-4" />
             {review.author}
           </div>
           <div className="flex items-center gap-1.5">
-            <Calendar className="h-4 w-4" />
+            <HiCalendar className="h-4 w-4" />
             {formatDate(review.publishedDate)}
           </div>
           <Badge variant="outline" className="text-xs">
@@ -118,9 +118,9 @@ function ReviewCard({ review, onApprove, onReject, isProcessing }: ReviewCardPro
           size="sm"
         >
           {isProcessing ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            <HiArrowPath className="h-4 w-4 mr-2 animate-spin" />
           ) : (
-            <Check className="h-4 w-4 mr-2" />
+            <HiCheck className="h-4 w-4 mr-2" />
           )}
           Approve
         </Button>
@@ -132,9 +132,9 @@ function ReviewCard({ review, onApprove, onReject, isProcessing }: ReviewCardPro
           className="flex-1"
         >
           {isProcessing ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            <HiArrowPath className="h-4 w-4 mr-2 animate-spin" />
           ) : (
-            <X className="h-4 w-4 mr-2" />
+            <HiXMark className="h-4 w-4 mr-2" />
           )}
           Reject
         </Button>
@@ -307,7 +307,7 @@ export default function ReviewModerationPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-foreground mb-2 flex items-center gap-3">
-              <MessageSquare className="h-8 w-8 text-primary" />
+              <HiChatBubbleLeftRight className="h-8 w-8 text-primary" />
               Review Moderation
             </h1>
             <p className="text-muted-foreground">
@@ -325,7 +325,7 @@ export default function ReviewModerationPage() {
       {/* Error Message */}
       {errorMessage && (
         <Alert className="mb-6 border-red-500 bg-red-50 dark:bg-red-950/20 text-red-800 dark:text-red-200">
-          <AlertCircle className="h-4 w-4" />
+          <HiExclamationCircle className="h-4 w-4" />
           <div className="ml-2">
             <p className="font-semibold">Error</p>
             <p className="text-sm">{errorMessage}</p>
@@ -347,7 +347,7 @@ export default function ReviewModerationPage() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <div className="rounded-full bg-muted p-6 mb-4">
-              <MessageSquare className="h-12 w-12 text-muted-foreground" />
+              <HiChatBubbleLeftRight className="h-12 w-12 text-muted-foreground" />
             </div>
             <h3 className="text-xl font-semibold mb-2">No pending reviews</h3>
             <p className="text-muted-foreground text-center max-w-md">

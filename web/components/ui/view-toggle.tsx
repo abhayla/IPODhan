@@ -1,6 +1,6 @@
 'use client';
 
-import { Grid, List } from 'lucide-react';
+import { HiSquares2X2, HiListBullet } from 'react-icons/hi2';
 import { Button } from '@/components/ui/button';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -34,7 +34,7 @@ export function ViewToggle({ currentView }: ViewToggleProps) {
             : 'hover:bg-background hover:scale-105'
         }`}
       >
-        <Grid className={`h-4 w-4 transition-transform duration-200 ${
+        <HiSquares2X2 className={`h-4 w-4 transition-transform duration-200 ${
           currentView === 'grid' ? 'rotate-0' : 'group-hover:rotate-12'
         }`} />
         <span className="hidden sm:inline">Grid</span>
@@ -51,7 +51,7 @@ export function ViewToggle({ currentView }: ViewToggleProps) {
             : 'hover:bg-background hover:scale-105'
         }`}
       >
-        <List className={`h-4 w-4 transition-transform duration-200 ${
+        <HiListBullet className={`h-4 w-4 transition-transform duration-200 ${
           currentView === 'list' ? 'rotate-0' : 'group-hover:rotate-12'
         }`} />
         <span className="hidden sm:inline">List</span>

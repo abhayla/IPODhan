@@ -15,7 +15,7 @@
  */
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, CheckCircle, XCircle, Bell, Activity } from 'lucide-react';
+import { HiArrowTrendingUp, HiArrowTrendingDown, HiCheckCircle, HiXCircle, HiBell, HiSignal } from 'react-icons/hi2';
 import type { MainboardSummaryMetrics } from '@/lib/services/mainboard-landing-service';
 
 interface MainboardSummaryMetricsProps {
@@ -31,7 +31,7 @@ export function MainboardSummaryMetrics({ metrics }: MainboardSummaryMetricsProp
       id: 'total-ipos',
       title: 'Total Mainboard IPOs',
       value: metrics.totalIPOs,
-      icon: Activity,
+      icon: HiSignal,
       iconColor: 'text-blue-600',
       bgColor: 'bg-blue-50',
       suffix: '',
@@ -40,7 +40,7 @@ export function MainboardSummaryMetrics({ metrics }: MainboardSummaryMetricsProp
       id: 'listed-gain',
       title: 'Listed in Gain',
       value: metrics.listedInGain,
-      icon: CheckCircle,
+      icon: HiCheckCircle,
       iconColor: 'text-green-600',
       bgColor: 'bg-green-50',
       valueColor: 'text-green-700',
@@ -50,7 +50,7 @@ export function MainboardSummaryMetrics({ metrics }: MainboardSummaryMetricsProp
       id: 'listed-loss',
       title: 'Listed in Loss',
       value: metrics.listedInLoss,
-      icon: XCircle,
+      icon: HiXCircle,
       iconColor: 'text-red-600',
       bgColor: 'bg-red-50',
       valueColor: 'text-red-700',
@@ -60,7 +60,7 @@ export function MainboardSummaryMetrics({ metrics }: MainboardSummaryMetricsProp
       id: 'upcoming-ongoing',
       title: 'Upcoming & OnGoing',
       value: metrics.upcomingAndOngoing,
-      icon: Bell,
+      icon: HiBell,
       iconColor: 'text-purple-600',
       bgColor: 'bg-purple-50',
       suffix: '',
@@ -69,7 +69,7 @@ export function MainboardSummaryMetrics({ metrics }: MainboardSummaryMetricsProp
       id: 'gain-aot',
       title: 'Gain (All Over Time)',
       value: metrics.gainAOT.toFixed(2),
-      icon: TrendingUp,
+      icon: HiArrowTrendingUp,
       iconColor: 'text-green-600',
       bgColor: 'bg-green-50',
       valueColor: 'text-green-700',
@@ -79,7 +79,7 @@ export function MainboardSummaryMetrics({ metrics }: MainboardSummaryMetricsProp
       id: 'loss-aot',
       title: 'Loss (All Over Time)',
       value: metrics.lossAOT.toFixed(2),
-      icon: TrendingDown,
+      icon: HiArrowTrendingDown,
       iconColor: 'text-red-600',
       bgColor: 'bg-red-50',
       valueColor: 'text-red-700',

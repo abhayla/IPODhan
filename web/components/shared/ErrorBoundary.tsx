@@ -1,7 +1,7 @@
 'use client';
 
 import React, { Component, ReactNode } from 'react';
-import { AlertTriangle } from 'lucide-react';
+import { HiExclamationTriangle } from 'react-icons/hi2';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 // TEMPORARILY DISABLED: Sentry causing webpack errors
@@ -77,7 +77,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
         <div className="container mx-auto px-4 py-8" role="alert" aria-live="assertive">
           <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
             <Alert variant="destructive" className="max-w-2xl">
-              <AlertTriangle className="h-5 w-5" />
+              <HiExclamationTriangle className="h-5 w-5" />
               <AlertTitle className="text-xl font-bold">Something went wrong</AlertTitle>
               <AlertDescription className="mt-2">
                 <p className="mb-4">

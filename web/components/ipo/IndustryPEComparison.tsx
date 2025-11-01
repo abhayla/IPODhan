@@ -4,7 +4,7 @@
  * Displays company P/E ratio compared to industry average with visual indicators.
  */
 
-import { ArrowDown, ArrowUp, InfoIcon } from 'lucide-react';
+import { HiArrowDown, HiArrowUp, HiInformationCircle } from 'react-icons/hi2';
 import {
   Tooltip,
   TooltipContent,
@@ -52,7 +52,7 @@ export function IndustryPEComparison({
     ? 'text-red-600 dark:text-red-400'
     : 'text-green-600 dark:text-green-400';
 
-  const Arrow = isOvervalued ? ArrowUp : ArrowDown;
+  const Arrow = isOvervalued ? HiArrowUp : HiArrowDown;
 
   return (
     <div className={`flex items-center gap-3 ${className}`}>
@@ -76,7 +76,7 @@ export function IndustryPEComparison({
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <InfoIcon className="h-4 w-4 text-muted-foreground cursor-help" />
+            <HiInformationCircle className="h-4 w-4 text-muted-foreground cursor-help" />
           </TooltipTrigger>
           <TooltipContent className="max-w-xs">
             <p className="text-sm">
