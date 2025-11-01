@@ -67,7 +67,7 @@ export function KeyMetricsCards({
         </CardHeader>
         <CardContent className="relative">
           <div className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent transition-all duration-300">
-            ₹{issueSize.toLocaleString('en-IN')} Crores
+            ₹{(issueSize / 10000000).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Crores
           </div>
           <p className="text-xs text-muted-foreground mt-1 font-medium">
             Total Issue Size
