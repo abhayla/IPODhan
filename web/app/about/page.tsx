@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import { Building2, Target, Users, Shield, TrendingUp, Award } from 'lucide-react';
+import { HiBuildingOffice2, HiCursorArrowRays, HiUsers, HiShieldCheck, HiArrowTrendingUp, HiTrophy } from 'react-icons/hi2';
 
 export const metadata: Metadata = {
   title: 'About Us - IPODhan',
@@ -56,17 +56,17 @@ export default function AboutPage() {
               </p>
               <div className="flex gap-4 mt-6">
                 <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-                  <Shield className="h-5 w-5" />
+                  <HiShieldCheck className="h-5 w-5" />
                   <span className="text-sm">Trusted Data</span>
                 </div>
                 <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400">
-                  <TrendingUp className="h-5 w-5" />
+                  <HiArrowTrendingUp className="h-5 w-5" />
                   <span className="text-sm">Real-time Updates</span>
                 </div>
               </div>
             </div>
             <div className="bg-gradient-to-br from-blue-100 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-2xl p-8 animate-in fade-in slide-in-from-right duration-700">
-              <Target className="h-12 w-12 text-blue-600 dark:text-blue-400 mb-4" />
+              <HiCursorArrowRays className="h-12 w-12 text-blue-600 dark:text-blue-400 mb-4" />
               <h3 className="text-xl font-semibold mb-3 text-gray-900 dark:text-gray-100">Our Vision</h3>
               <p className="text-gray-700 dark:text-gray-300">
                 To become India's leading platform for IPO investments, empowering millions
@@ -87,7 +87,7 @@ export default function AboutPage() {
             </h2>
             <div className="grid md:grid-cols-3 gap-8">
               <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm hover:shadow-lg transition-shadow duration-300">
-                <Building2 className="h-10 w-10 text-blue-600 dark:text-blue-400 mb-4" />
+                <HiBuildingOffice2 className="h-10 w-10 text-blue-600 dark:text-blue-400 mb-4" />
                 <h3 className="text-xl font-semibold mb-3 text-gray-900 dark:text-gray-100">
                   Comprehensive IPO Data
                 </h3>
@@ -97,7 +97,7 @@ export default function AboutPage() {
                 </p>
               </div>
               <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm hover:shadow-lg transition-shadow duration-300">
-                <TrendingUp className="h-10 w-10 text-green-600 dark:text-green-400 mb-4" />
+                <HiArrowTrendingUp className="h-10 w-10 text-green-600 dark:text-green-400 mb-4" />
                 <h3 className="text-xl font-semibold mb-3 text-gray-900 dark:text-gray-100">
                   Real-time Tracking
                 </h3>
@@ -107,7 +107,7 @@ export default function AboutPage() {
                 </p>
               </div>
               <div className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm hover:shadow-lg transition-shadow duration-300">
-                <Award className="h-10 w-10 text-purple-600 dark:text-purple-400 mb-4" />
+                <HiTrophy className="h-10 w-10 text-purple-600 dark:text-purple-400 mb-4" />
                 <h3 className="text-xl font-semibold mb-3 text-gray-900 dark:text-gray-100">
                   Expert Analysis
                 </h3>
@@ -172,7 +172,7 @@ export default function AboutPage() {
       <section className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 py-16">
         <div className="container mx-auto px-4">
           <div className="max-w-6xl mx-auto text-center">
-            <Users className="h-12 w-12 text-blue-600 dark:text-blue-400 mx-auto mb-6" />
+            <HiUsers className="h-12 w-12 text-blue-600 dark:text-blue-400 mx-auto mb-6" />
             <h2 className="text-3xl font-bold mb-6 text-gray-900 dark:text-gray-100">
               Built by Investors, for Investors
             </h2>

@@ -86,11 +86,11 @@ export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
         ) : (
           <span className="text-sm font-bold transition-colors duration-200 group-hover:text-primary">{value || 'N/A'}</span>
         )}
-        {timeDistance && (
+        {timeDistance ? (
           <span className="text-xs text-muted-foreground italic">
             {timeDistance}
           </span>
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -126,7 +126,7 @@ export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
               timeDistance={getTimeDistance(ipo.allotmentDate)}
             />
             {/* Story 4.12: Basis of Allotment Date */}
-            {(ipoDetails?.basisOfAllotmentDate || (ipo.status === 'CLOSED' || ipo.status === 'LISTED')) && (
+            {(ipoDetails?.basisOfAllotmentDate || (ipo.status === 'CLOSED' || ipo.status === 'LISTED')) ? (
               <InfoRow
                 label="Basis of Allotment"
                 value={ipoDetails?.basisOfAllotmentDate ? formatIPODate(ipoDetails.basisOfAllotmentDate) : 'TBD'}
@@ -134,9 +134,9 @@ export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
                 dateValue={ipoDetails?.basisOfAllotmentDate ?? null}
                 timeDistance={getTimeDistance(ipoDetails?.basisOfAllotmentDate ?? null)}
               />
-            )}
+            ) : null}
             {/* Story 4.12: Initiation of Refunds Date */}
-            {(ipoDetails?.initiationOfRefundsDate || (ipo.status === 'CLOSED' || ipo.status === 'LISTED')) && (
+            {(ipoDetails?.initiationOfRefundsDate || (ipo.status === 'CLOSED' || ipo.status === 'LISTED')) ? (
               <InfoRow
                 label="Refunds Initiated"
                 value={ipoDetails?.initiationOfRefundsDate ? formatIPODate(ipoDetails.initiationOfRefundsDate) : 'TBD'}
@@ -144,9 +144,9 @@ export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
                 dateValue={ipoDetails?.initiationOfRefundsDate ?? null}
                 timeDistance={getTimeDistance(ipoDetails?.initiationOfRefundsDate ?? null)}
               />
-            )}
+            ) : null}
             {/* Story 4.12: Credit of Shares Date */}
-            {(ipoDetails?.creditOfSharesDate || (ipo.status === 'CLOSED' || ipo.status === 'LISTED')) && (
+            {(ipoDetails?.creditOfSharesDate || (ipo.status === 'CLOSED' || ipo.status === 'LISTED')) ? (
               <InfoRow
                 label="Shares Credited"
                 value={ipoDetails?.creditOfSharesDate ? formatIPODate(ipoDetails.creditOfSharesDate) : 'TBD'}
@@ -154,7 +154,7 @@ export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
                 dateValue={ipoDetails?.creditOfSharesDate ?? null}
                 timeDistance={getTimeDistance(ipoDetails?.creditOfSharesDate ?? null)}
               />
-            )}
+            ) : null}
             <InfoRow
               label="Listing Date"
               value={formatIPODate(ipo.listingDate)}
@@ -237,50 +237,50 @@ export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
             />
 
             {/* NSE-specific High Priority Fields */}
-            {ipoDetails?.sponsorBanks && ipoDetails.sponsorBanks.length > 0 && (
+            {ipoDetails?.sponsorBanks && ipoDetails.sponsorBanks.length > 0 ? (
               <InfoRow
                 label="Sponsor Banks"
                 value={ipoDetails.sponsorBanks.join(', ')}
               />
-            )}
-            {ipoDetails?.maxRetailSubscription && (
+            ) : null}
+            {ipoDetails?.maxRetailSubscription ? (
               <InfoRow
                 label="Max Retail Subscription"
                 value={formatCurrency(Number(ipoDetails.maxRetailSubscription))}
               />
-            )}
-            {ipoDetails?.maxEmployeeSubscription && (
+            ) : null}
+            {ipoDetails?.maxEmployeeSubscription ? (
               <InfoRow
                 label="Max Employee Subscription"
                 value={formatCurrency(Number(ipoDetails.maxEmployeeSubscription))}
               />
-            )}
-            {ipoDetails?.employeeDiscount && (
+            ) : null}
+            {ipoDetails?.employeeDiscount ? (
               <InfoRow
                 label="Employee Discount"
                 value={`${formatCurrency(Number(ipoDetails.employeeDiscount))} per share`}
               />
-            )}
-            {ipoDetails?.tickSize && (
+            ) : null}
+            {ipoDetails?.tickSize ? (
               <InfoRow
                 label="Tick Size"
                 value={formatCurrency(Number(ipoDetails.tickSize))}
               />
-            )}
-            {ipoDetails?.ipoMarketTimings && (
+            ) : null}
+            {ipoDetails?.ipoMarketTimings ? (
               <InfoRow
                 label="Market Timings"
                 value={ipoDetails.ipoMarketTimings}
               />
-            )}
-            {ipoDetails?.categoryDetails && (
+            ) : null}
+            {ipoDetails?.categoryDetails ? (
               <InfoRow
                 label="Category Details"
                 value={typeof ipoDetails.categoryDetails === 'object'
                   ? JSON.stringify(ipoDetails.categoryDetails)
                   : String(ipoDetails.categoryDetails)}
               />
-            )}
+            ) : null}
           </div>
         </div>
       </CardContent>

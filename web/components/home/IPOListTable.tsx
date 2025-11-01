@@ -15,7 +15,7 @@
 
 import Link from 'next/link';
 import { format, isWithinInterval, differenceInDays } from 'date-fns';
-import { ArrowRight } from 'lucide-react';
+import { HiArrowRight } from 'react-icons/hi2';
 import {
   Table,
   TableBody,
@@ -199,7 +199,7 @@ export function IPOListTable({
           className="text-primary hover:text-primary/80 hover:underline font-medium flex items-center gap-1 justify-end"
         >
           {moreLinkText}
-          <ArrowRight className="h-4 w-4" />
+          <HiArrowRight className="h-4 w-4" />
         </Link>
       </div>
     </div>

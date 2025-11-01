@@ -4,7 +4,7 @@
  * Displays 4 navigation cards linking to dedicated Mainboard IPO pages:
  * 1. Mainboard IPO Performance Tracker
  * 2. Mainboard IPO Prospectus
- * 3. Mainboard IPO Calendar
+ * 3. Mainboard IPO HiCalendar
  * 4. Mainboard IPO Reviews
  *
  * Each card is fully clickable with hover effects.
@@ -15,7 +15,7 @@
 
 import Link from 'next/link';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingUp, FileText, Calendar, Star } from 'lucide-react';
+import { HiArrowTrendingUp, HiDocumentText, HiCalendar, HiStar } from 'react-icons/hi2';
 
 interface NavigationCard {
   id: string;
@@ -33,7 +33,7 @@ const navigationCards: NavigationCard[] = [
     title: 'Performance Tracker',
     description: 'Track post-listing performance of Mainboard IPOs',
     href: '/mainboard-ipo-performance-tracker',
-    icon: TrendingUp,
+    icon: HiArrowTrendingUp,
     iconColor: 'text-green-600',
     bgColor: 'bg-green-50',
   },
@@ -42,7 +42,7 @@ const navigationCards: NavigationCard[] = [
     title: 'IPO Prospectus',
     description: 'Download DRHP and RHP documents',
     href: '/mainboard-ipo-prospectus',
-    icon: FileText,
+    icon: HiDocumentText,
     iconColor: 'text-blue-600',
     bgColor: 'bg-blue-50',
   },
@@ -51,7 +51,7 @@ const navigationCards: NavigationCard[] = [
     title: 'IPO Calendar',
     description: 'View Mainboard IPO events and timelines',
     href: '/mainboard-ipo-calendar',
-    icon: Calendar,
+    icon: HiCalendar,
     iconColor: 'text-purple-600',
     bgColor: 'bg-purple-50',
   },
@@ -60,7 +60,7 @@ const navigationCards: NavigationCard[] = [
     title: 'IPO Reviews & Analysis',
     description: 'Expert recommendations and analysis',
     href: '/mainboard-ipo-reviews',
-    icon: Star,
+    icon: HiStar,
     iconColor: 'text-yellow-600',
     bgColor: 'bg-yellow-50',
   },

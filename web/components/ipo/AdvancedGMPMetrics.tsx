@@ -9,7 +9,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Info, ChevronDown, ChevronUp } from 'lucide-react';
+import { HiInformationCircle, HiChevronDown, HiChevronUp } from 'react-icons/hi2';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 
@@ -68,7 +68,7 @@ export function AdvancedGMPMetrics({ gmpRecords }: AdvancedGMPMetricsProps) {
             <TooltipProvider>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <Info className="h-4 w-4 text-muted-foreground cursor-help" />
+                  <HiInformationCircle className="h-4 w-4 text-muted-foreground cursor-help" />
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
                   <p className="text-sm">
@@ -86,7 +86,7 @@ export function AdvancedGMPMetrics({ gmpRecords }: AdvancedGMPMetricsProps) {
       <CardContent className="space-y-4">
         {/* Disclaimer */}
         <Alert>
-          <Info className="h-4 w-4" />
+          <HiInformationCircle className="h-4 w-4" />
           <AlertDescription className="text-xs">
             Grey market trading is unofficial and unregulated. These metrics are for informational purposes only and should not be considered as investment advice.
           </AlertDescription>
@@ -100,7 +100,7 @@ export function AdvancedGMPMetrics({ gmpRecords }: AdvancedGMPMetricsProps) {
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    <HiInformationCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <p className="text-sm">
@@ -125,7 +125,7 @@ export function AdvancedGMPMetrics({ gmpRecords }: AdvancedGMPMetricsProps) {
               <TooltipProvider>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Info className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
+                    <HiInformationCircle className="h-3.5 w-3.5 text-muted-foreground cursor-help" />
                   </TooltipTrigger>
                   <TooltipContent className="max-w-xs">
                     <p className="text-sm">
@@ -164,9 +164,9 @@ export function AdvancedGMPMetrics({ gmpRecords }: AdvancedGMPMetricsProps) {
             >
               <span className="text-sm font-medium">Grey Market Trading Details</span>
               {isDetailsExpanded ? (
-                <ChevronUp className="h-4 w-4" />
+                <HiChevronUp className="h-4 w-4" />
               ) : (
-                <ChevronDown className="h-4 w-4" />
+                <HiChevronDown className="h-4 w-4" />
               )}
             </Button>
 

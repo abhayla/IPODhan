@@ -10,7 +10,7 @@
 import { useState } from 'react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import { HiChevronDown, HiChevronUp } from 'react-icons/hi2';
 
 interface PeerCompaniesListProps {
   peerCompanies: string[] | null;
@@ -68,12 +68,12 @@ export function PeerCompaniesList({
         >
           {showAll ? (
             <>
-              <ChevronUp className="h-3 w-3 mr-1" />
+              <HiChevronUp className="h-3 w-3 mr-1" />
               Show less
             </>
           ) : (
             <>
-              <ChevronDown className="h-3 w-3 mr-1" />
+              <HiChevronDown className="h-3 w-3 mr-1" />
               See all {peerCompanies.length} peers
             </>
           )}

@@ -8,7 +8,7 @@ import { OfferingTypeFilter } from '@/components/filters/OfferingTypeFilter';
 import { SectorFilter } from '@/components/filters/SectorFilter';
 import { ScoreRangeFilter } from '@/components/filters/ScoreRangeFilter';
 import { ClearFiltersButton } from '@/components/filters/ClearFiltersButton';
-import { Filter } from 'lucide-react';
+import { HiFunnel } from 'react-icons/hi2';
 import { Button } from '@/components/ui/button';
 
 export function FilterBar() {
@@ -125,7 +125,7 @@ export function FilterBar() {
           aria-label="Toggle filters"
           aria-expanded={isFiltersOpen}
         >
-          <Filter className={`mr-2 h-4 w-4 transition-transform duration-300 ${isFiltersOpen ? 'rotate-180' : ''}`} />
+          <HiFunnel className={`mr-2 h-4 w-4 transition-transform duration-300 ${isFiltersOpen ? 'rotate-180' : ''}`} />
           Filters {activeFilterCount > 0 && (
             <span className="ml-1 px-2 py-0.5 bg-primary text-primary-foreground text-xs rounded-full animate-in fade-in zoom-in duration-200">
               {activeFilterCount}

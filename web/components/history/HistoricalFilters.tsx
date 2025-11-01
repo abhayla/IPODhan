@@ -22,7 +22,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet';
-import { Filter, X } from 'lucide-react';
+import { HiFunnel, HiXMark } from 'react-icons/hi2';
 import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
 import {
   YEAR_OPTIONS,
@@ -58,13 +58,13 @@ export function HistoricalFilters({ availableSectors, availableYears }: Historic
             onClick={clearFilters}
             className="w-full"
           >
-            <X className="h-4 w-4 mr-2" />
+            <HiXMark className="h-4 w-4 mr-2" />
             Clear All Filters
           </Button>
         </div>
       )}
 
-      {/* Year Filter */}
+      {/* Year HiFunnel */}
       <div className="space-y-3">
         <Label className="text-base font-semibold">Year</Label>
         <div className="space-y-2">
@@ -90,7 +90,7 @@ export function HistoricalFilters({ availableSectors, availableYears }: Historic
         </div>
       </div>
 
-      {/* Sector Filter */}
+      {/* Sector HiFunnel */}
       <div className="space-y-3">
         <Label className="text-base font-semibold">Sector</Label>
         <div className="space-y-2">
@@ -116,7 +116,7 @@ export function HistoricalFilters({ availableSectors, availableYears }: Historic
         </div>
       </div>
 
-      {/* Performance Filter */}
+      {/* Performance HiFunnel */}
       <div className="space-y-3">
         <Label className="text-base font-semibold">Listing Performance</Label>
         <RadioGroup
@@ -148,7 +148,7 @@ export function HistoricalFilters({ availableSectors, availableYears }: Historic
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
           <SheetTrigger asChild>
             <Button variant="outline" className="w-full sm:w-auto">
-              <Filter className="h-4 w-4 mr-2" />
+              <HiFunnel className="h-4 w-4 mr-2" />
               Filters
               {hasActiveFilters && (
                 <span className="ml-2 bg-blue-500 text-white text-xs rounded-full px-2 py-0.5">

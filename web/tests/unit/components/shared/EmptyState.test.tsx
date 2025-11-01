@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { EmptyState } from '@/components/shared/EmptyState';
-import { Search, Inbox } from 'lucide-react';
+import { HiMagnifyingGlass, HiInboxArrowDown } from 'react-icons/hi2';
 
 describe('EmptyState', () => {
   it('renders with title only', () => {

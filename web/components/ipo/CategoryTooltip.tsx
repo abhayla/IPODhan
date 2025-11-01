@@ -6,7 +6,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Info } from 'lucide-react';
+import { HiInformationCircle } from 'react-icons/hi2';
 
 interface CategoryTooltipProps {
   category: string;
@@ -35,7 +35,7 @@ export function CategoryTooltip({
               className="inline-flex items-center text-muted-foreground hover:text-foreground transition-colors"
               aria-label={`Information about ${category}`}
             >
-              <Info className="h-4 w-4" />
+              <HiInformationCircle className="h-4 w-4" />
             </button>
           )}
         </TooltipTrigger>

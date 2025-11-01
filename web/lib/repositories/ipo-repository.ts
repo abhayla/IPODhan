@@ -1213,7 +1213,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           );
         }
       },
-      CacheTTL.SUBSCRIPTION // 3 minutes for real-time data
+      CacheTTL.SUBSCRIPTION_LATEST // 3 minutes for real-time data
     );
   }
 
@@ -1273,7 +1273,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           );
         }
       },
-      CacheTTL.SUBSCRIPTION // 3 minutes
+      CacheTTL.SUBSCRIPTION_LATEST // 3 minutes
     );
   }
 

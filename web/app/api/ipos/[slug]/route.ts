@@ -9,7 +9,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import * as Sentry from '@sentry/nextjs';
+// TEMPORARILY DISABLED: Sentry causing module loading errors
+// import * as Sentry from '@sentry/nextjs';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
@@ -244,22 +245,23 @@ export async function GET(
     }
 
     if (error instanceof DatabaseError) {
+      // TEMPORARILY DISABLED: Sentry causing module loading errors
       // Report to Sentry in production
-      if (process.env.NODE_ENV === 'production') {
-        Sentry.captureException(error, {
-          tags: {
-            errorType: 'DatabaseError',
-            requestId,
-          },
-          contexts: {
-            api: {
-              route: '/api/ipos/[slug]',
-              method: 'GET',
-              duration,
-            },
-          },
-        });
-      }
+      // if (process.env.NODE_ENV === 'production') {
+      //   Sentry.captureException(error, {
+      //     tags: {
+      //       errorType: 'DatabaseError',
+      //       requestId,
+      //     },
+      //     contexts: {
+      //       api: {
+      //         route: '/api/ipos/[slug]',
+      //         method: 'GET',
+      //         duration,
+      //       },
+      //     },
+      //   });
+      // }
 
       return createErrorResponse(
         'DATABASE_ERROR',
@@ -270,21 +272,22 @@ export async function GET(
     }
 
     // Handle unknown errors
-    if (process.env.NODE_ENV === 'production') {
-      Sentry.captureException(error, {
-        tags: {
-          errorType: 'UnknownError',
-          requestId,
-        },
-        contexts: {
-          api: {
-            route: '/api/ipos/[slug]',
-            method: 'GET',
-            duration,
-          },
-        },
-      });
-    }
+    // TEMPORARILY DISABLED: Sentry causing module loading errors
+    // if (process.env.NODE_ENV === 'production') {
+    //   Sentry.captureException(error, {
+    //     tags: {
+    //       errorType: 'UnknownError',
+    //       requestId,
+    //     },
+    //     contexts: {
+    //       api: {
+    //         route: '/api/ipos/[slug]',
+    //         method: 'GET',
+    //         duration,
+    //       },
+    //     },
+    //   });
+    // }
 
     return createErrorResponse(
       'INTERNAL_ERROR',

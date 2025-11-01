@@ -7,7 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { ExternalLink, Shield, Building2, Loader2 } from 'lucide-react';
+import { HiArrowTopRightOnSquare, HiShieldCheck, HiBuildingOffice2, HiArrowPath } from 'react-icons/hi2';
 import { trackAllotmentCheck } from '@/lib/analytics/gtag';
 
 interface AllotmentCheckerCardProps {
@@ -110,7 +110,7 @@ export function AllotmentCheckerCard({
           </div>
           <Button variant="ghost" size="sm" asChild className="transition-all duration-300 hover:scale-105 hover:bg-muted">
             <Link href="/registrars" className="flex items-center gap-1">
-              <Building2 className="h-4 w-4" />
+              <HiBuildingOffice2 className="h-4 w-4" />
               <span className="hidden sm:inline">All Registrars</span>
             </Link>
           </Button>
@@ -143,19 +143,19 @@ export function AllotmentCheckerCard({
         >
           {isChecking ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              <HiArrowPath className="mr-2 h-4 w-4 animate-spin" />
               Opening Registrar Site...
             </>
           ) : (
             <>
-              <ExternalLink className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+              <HiArrowTopRightOnSquare className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
               Check Status on {registrar}
             </>
           )}
         </Button>
 
         <Alert className="border-indigo-200 bg-indigo-50 dark:bg-indigo-950/20 dark:border-indigo-800">
-          <Shield className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+          <HiShieldCheck className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
           <AlertDescription className="text-sm font-medium text-indigo-900 dark:text-indigo-100">
             Your PAN is not stored. You will be redirected to the official
             registrar website to check your allotment status.

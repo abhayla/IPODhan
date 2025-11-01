@@ -14,7 +14,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { HiXMark } from 'react-icons/hi2';
 import { Button } from '@/components/ui/button';
 import { BrokerButton } from './BrokerButton';
 import { affiliateConfig } from '@/lib/config/affiliate-links';
@@ -78,7 +78,7 @@ export function AffiliateCTA() {
               className="absolute right-2 top-2 text-white hover:bg-white/20 md:relative md:right-auto md:top-auto"
               aria-label="Dismiss banner"
             >
-              <X className="h-4 w-4" />
+              <HiXMark className="h-4 w-4" />
             </Button>
           )}
         </div>

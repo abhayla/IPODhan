@@ -14,7 +14,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { HiArrowTrendingUp, HiArrowTrendingDown, HiMinus } from 'react-icons/hi2';
 
 interface FinancialMetrics {
   // Multi-year revenue data
@@ -86,15 +86,15 @@ function formatRatio(value: number | null): string {
  */
 function GrowthIndicator({ growth }: { growth: number | null }) {
   if (growth === null) {
-    return <Minus className="h-4 w-4 text-muted-foreground" />;
+    return <HiMinus className="h-4 w-4 text-muted-foreground" />;
   }
   if (growth > 0) {
-    return <TrendingUp className="h-4 w-4 text-green-600" />;
+    return <HiArrowTrendingUp className="h-4 w-4 text-green-600" />;
   }
   if (growth < 0) {
-    return <TrendingDown className="h-4 w-4 text-red-600" />;
+    return <HiArrowTrendingDown className="h-4 w-4 text-red-600" />;
   }
-  return <Minus className="h-4 w-4 text-muted-foreground" />;
+  return <HiMinus className="h-4 w-4 text-muted-foreground" />;
 }
 
 /**

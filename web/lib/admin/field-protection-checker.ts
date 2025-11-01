@@ -23,7 +23,7 @@ export type { FieldProtectionStatus, FilterProtectedFieldsResult, BlockedUpdateN
 // Create notification service adapter for web
 class WebNotificationService implements NotificationService {
   async sendNotification(type: string, data: any): Promise<void> {
-    return sendNotification(type, data);
+    return sendNotification(type as any, data);
   }
 }
 

@@ -25,9 +25,17 @@ export function DashboardContent({
   initialIPOs,
   initialPagination,
   initialView,
+  initialStatus,
+  initialSegment,
   initialSearch
 }: DashboardContentProps) {
   const view = (initialView === 'list' ? 'list' : 'grid') as 'grid' | 'list';
+
+  // Format status for display
+  const getStatusLabel = (status?: string) => {
+    if (!status || status === 'ALL') return '';
+    return status.charAt(0) + status.slice(1).toLowerCase();
+  };
 
   // Calculate total pages
   const totalPages = Math.ceil(initialPagination.total / initialPagination.limit);
@@ -44,7 +52,7 @@ export function DashboardContent({
             <p className="text-muted-foreground text-lg flex items-center gap-2">
               Browse current and upcoming IPOs.
               <span className="inline-flex items-center px-3 py-1 rounded-full bg-primary/10 text-primary text-sm font-semibold border border-primary/20 animate-in zoom-in duration-300 delay-100">
-                {initialPagination.total} IPOs
+                {initialPagination.total} {getStatusLabel(initialStatus)} {initialSegment ? `${initialSegment} ` : ''}IPOs
               </span>
             </p>
           </div>

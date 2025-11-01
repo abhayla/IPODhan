@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
-import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
+import { HiExclamationTriangle, HiArrowPath, HiHome } from 'react-icons/hi2';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import * as Sentry from '@sentry/nextjs';
+// TEMPORARILY DISABLED: Sentry causing module loading errors
+// import * as Sentry from '@sentry/nextjs';
 
 export default function Error({
   error,
@@ -17,15 +18,16 @@ export default function Error({
     // Log error to console in development
     console.error('Dashboard error:', error);
 
+    // TEMPORARILY DISABLED: Sentry logging
     // Log to Sentry in production
-    if (process.env.NODE_ENV === 'production') {
-      Sentry.captureException(error, {
-        tags: {
-          errorDigest: error.digest,
-          page: 'dashboard',
-        },
-      });
-    }
+    // if (process.env.NODE_ENV === 'production') {
+    //   Sentry.captureException(error, {
+    //     tags: {
+    //       errorDigest: error.digest,
+    //       page: 'dashboard',
+    //     },
+    //   });
+    // }
   }, [error]);
 
   const getUserFriendlyMessage = () => {
@@ -42,7 +44,7 @@ export default function Error({
     <div className="container mx-auto px-4 py-8" role="alert" aria-live="assertive">
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
         <Alert variant="destructive" className="max-w-2xl">
-          <AlertTriangle className="h-5 w-5" />
+          <HiExclamationTriangle className="h-5 w-5" />
           <AlertTitle className="text-xl font-bold">Something went wrong!</AlertTitle>
           <AlertDescription className="mt-2">
             <p className="mb-4">
@@ -65,11 +67,11 @@ export default function Error({
             )}
             <div className="flex gap-2">
               <Button onClick={reset} variant="outline" className="gap-2">
-                <RefreshCw className="h-4 w-4" />
+                <HiArrowPath className="h-4 w-4" />
                 Try Again
               </Button>
               <Button onClick={() => (window.location.href = '/')} variant="ghost" className="gap-2">
-                <Home className="h-4 w-4" />
+                <HiHome className="h-4 w-4" />
                 Go Home
               </Button>
             </div>

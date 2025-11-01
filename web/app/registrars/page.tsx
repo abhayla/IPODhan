@@ -29,7 +29,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Search, ExternalLink, Mail, Phone } from 'lucide-react';
+import { HiMagnifyingGlass, HiArrowTopRightOnSquare, HiEnvelope, HiPhone } from 'react-icons/hi2';
 import type { Registrar } from '@/lib/db/types';
 
 // ==================== PAGE COMPONENT ====================
@@ -117,10 +117,10 @@ export default function RegistrarsPage() {
         </p>
       </div>
 
-      {/* Search Bar */}
+      {/* HiMagnifyingGlass Bar */}
       <div className="mb-6">
         <div className="relative max-w-md">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <HiMagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             type="text"
             placeholder="Search registrars by name..."
@@ -208,7 +208,7 @@ export default function RegistrarsPage() {
                           href={`mailto:${registrar.email}`}
                           className="text-primary hover:underline inline-flex items-center gap-1"
                         >
-                          <Mail className="h-3 w-3" />
+                          <HiEnvelope className="h-3 w-3" />
                           {registrar.email}
                         </a>
                       ) : (
@@ -221,7 +221,7 @@ export default function RegistrarsPage() {
                           href={`tel:${registrar.phone}`}
                           className="text-primary hover:underline inline-flex items-center gap-1"
                         >
-                          <Phone className="h-3 w-3" />
+                          <HiPhone className="h-3 w-3" />
                           {registrar.phone}
                         </a>
                       ) : (
@@ -237,7 +237,7 @@ export default function RegistrarsPage() {
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1"
                           >
-                            <ExternalLink className="h-3 w-3" />
+                            <HiArrowTopRightOnSquare className="h-3 w-3" />
                             Visit
                           </a>
                         </Button>
@@ -254,7 +254,7 @@ export default function RegistrarsPage() {
                             rel="noopener noreferrer"
                             className="inline-flex items-center gap-1"
                           >
-                            <ExternalLink className="h-3 w-3" />
+                            <HiArrowTopRightOnSquare className="h-3 w-3" />
                             Check
                           </a>
                         </Button>

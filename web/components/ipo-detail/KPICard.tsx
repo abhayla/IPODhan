@@ -6,20 +6,20 @@
 'use client';
 
 import { ReactNode } from 'react';
-import { LucideIcon } from 'lucide-react';
+import { IconType } from 'react-icons';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { Info } from 'lucide-react';
+import { HiInformationCircle } from 'react-icons/hi2';
 
 export interface KPICardProps {
   /**
-   * Icon component from lucide-react
+   * Icon component from react-icons
    */
-  icon: LucideIcon;
+  icon: IconType;
 
   /**
    * Title of the KPI metric
@@ -67,7 +67,7 @@ export function KPICard({
                 className="text-muted-foreground hover:text-foreground transition-colors"
                 aria-label={`Info about ${title}`}
               >
-                <Info className="h-4 w-4" />
+                <HiInformationCircle className="h-4 w-4" />
               </button>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">

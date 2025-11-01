@@ -9,7 +9,7 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { HiChevronLeft, HiChevronRight } from 'react-icons/hi2';
 
 interface ListingsPaginationProps {
   currentPage: number;
@@ -56,7 +56,7 @@ export function ListingsPagination({
           variant="outline"
           size="sm"
         >
-          <ChevronLeft className="h-4 w-4 mr-1" />
+          <HiChevronLeft className="h-4 w-4 mr-1" />
           Previous
         </Button>
         <Button
@@ -66,7 +66,7 @@ export function ListingsPagination({
           size="sm"
         >
           Next
-          <ChevronRight className="h-4 w-4 ml-1" />
+          <HiChevronRight className="h-4 w-4 ml-1" />
         </Button>
       </div>
       <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
@@ -84,7 +84,7 @@ export function ListingsPagination({
             variant="outline"
             size="sm"
           >
-            <ChevronLeft className="h-4 w-4 mr-1" />
+            <HiChevronLeft className="h-4 w-4 mr-1" />
             Previous
           </Button>
           <div className="text-sm text-gray-700">
@@ -98,7 +98,7 @@ export function ListingsPagination({
             size="sm"
           >
             Next
-            <ChevronRight className="h-4 w-4 ml-1" />
+            <HiChevronRight className="h-4 w-4 ml-1" />
           </Button>
         </div>
       </div>

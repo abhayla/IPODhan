@@ -33,13 +33,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  ArrowUpDown,
-  ArrowUp,
-  ArrowDown,
-  ChevronDown,
-  ChevronUp,
-  X,
-} from 'lucide-react';
+  HiArrowsUpDown,
+  HiArrowUp,
+  HiArrowDown,
+  HiChevronDown,
+  HiChevronUp,
+  HiXMark,
+} from 'react-icons/hi2';
 import { cn } from '@/lib/utils';
 
 // ===== TYPE DEFINITIONS =====
@@ -181,11 +181,11 @@ export function DataTable<T extends Record<string, any>>({
   // ===== RENDER HELPERS =====
 
   const SortIcon = ({ field }: { field: string }) => {
-    if (sortField !== field) return <ArrowUpDown className="h-4 w-4 opacity-50" />;
+    if (sortField !== field) return <HiArrowsUpDown className="h-4 w-4 opacity-50" />;
     return sortOrder === 'asc' ? (
-      <ArrowUp className="h-4 w-4" />
+      <HiArrowUp className="h-4 w-4" />
     ) : (
-      <ArrowDown className="h-4 w-4" />
+      <HiArrowDown className="h-4 w-4" />
     );
   };
 
@@ -210,7 +210,7 @@ export function DataTable<T extends Record<string, any>>({
           onClick={() => setIsMinimized(false)}
           className="flex items-center gap-2"
         >
-          <ChevronDown className="h-4 w-4" />
+          <HiChevronDown className="h-4 w-4" />
           <span>Show Table ({totalRecords} records)</span>
         </Button>
       </div>
@@ -255,7 +255,7 @@ export function DataTable<T extends Record<string, any>>({
             onClick={handleClearAllSearches}
             className="ml-auto"
           >
-            <X className="h-4 w-4 mr-2" />
+            <HiXMark className="h-4 w-4 mr-2" />
             Clear All Filters
           </Button>
         )}
@@ -268,7 +268,7 @@ export function DataTable<T extends Record<string, any>>({
             onClick={() => setIsMinimized(true)}
             className="ml-auto"
           >
-            <ChevronUp className="h-4 w-4 mr-2" />
+            <HiChevronUp className="h-4 w-4 mr-2" />
             Minimize
           </Button>
         )}
@@ -337,7 +337,7 @@ export function DataTable<T extends Record<string, any>>({
                               onClick={() => handleClearSearch(column.key)}
                               className="h-8 w-8 p-0"
                             >
-                              <X className="h-3 w-3" />
+                              <HiXMark className="h-3 w-3" />
                             </Button>
                           )}
                         </div>

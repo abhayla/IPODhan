@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Home, Search, TrendingUp } from 'lucide-react';
+import { HiHome, HiMagnifyingGlass, HiArrowTrendingUp } from 'react-icons/hi2';
 import { Button } from '@/components/ui/button';
 
 export default function NotFound() {
@@ -33,8 +33,8 @@ export default function NotFound() {
               size="lg"
               className="group min-w-[160px] transition-all duration-300 hover:shadow-lg hover:scale-105"
             >
-              <Home className="mr-2 h-4 w-4 transition-transform group-hover:scale-110" />
-              Go Home
+              <HiHome className="mr-2 h-4 w-4 transition-transform group-hover:scale-110" />
+              Go HiHome
             </Button>
           </Link>
           <Link href="/dashboard" passHref>
@@ -43,7 +43,7 @@ export default function NotFound() {
               variant="outline"
               className="group min-w-[160px] transition-all duration-300 hover:shadow-lg hover:scale-105 hover:border-primary/50"
             >
-              <TrendingUp className="mr-2 h-4 w-4 transition-transform group-hover:scale-110" />
+              <HiArrowTrendingUp className="mr-2 h-4 w-4 transition-transform group-hover:scale-110" />
               Browse IPOs
             </Button>
           </Link>

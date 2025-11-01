@@ -19,7 +19,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
+import { HiArrowUp, HiArrowDown, HiArrowsUpDown } from 'react-icons/hi2';
 import type { HistoricalIPO } from '@/lib/repositories/types';
 import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
 
@@ -47,9 +47,9 @@ const formatListingGain = (gain: number) => {
   const isPositive = gain >= 0;
   const color = isPositive ? 'text-green-600' : 'text-red-600';
   const icon = isPositive ? (
-    <ArrowUp className="h-3 w-3 inline" />
+    <HiArrowUp className="h-3 w-3 inline" />
   ) : (
-    <ArrowDown className="h-3 w-3 inline" />
+    <HiArrowDown className="h-3 w-3 inline" />
   );
   const sign = isPositive ? '+' : '';
 
@@ -74,12 +74,12 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
 
   const getSortIcon = (column: 'listing_date' | 'listing_gain' | 'subscription') => {
     if (filters.sort !== column) {
-      return <ArrowUpDown className="h-4 w-4 ml-1 inline opacity-40" />;
+      return <HiArrowsUpDown className="h-4 w-4 ml-1 inline opacity-40" />;
     }
     return filters.sortOrder === 'DESC' ? (
-      <ArrowDown className="h-4 w-4 ml-1 inline" />
+      <HiArrowDown className="h-4 w-4 ml-1 inline" />
     ) : (
-      <ArrowUp className="h-4 w-4 ml-1 inline" />
+      <HiArrowUp className="h-4 w-4 ml-1 inline" />
     );
   };
 

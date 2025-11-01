@@ -8,7 +8,8 @@
 
 import { ReactNode } from 'react';
 import { ErrorBoundary } from '@/components/error/ErrorBoundary';
-import * as Sentry from '@sentry/nextjs';
+// TEMPORARILY DISABLED: Sentry causing module loading errors
+// import * as Sentry from '@sentry/nextjs';
 
 interface ErrorBoundaryProviderProps {
   children: ReactNode;
@@ -25,15 +26,16 @@ export function ErrorBoundaryProvider({ children }: ErrorBoundaryProviderProps) 
       });
     }
 
+    // TEMPORARILY DISABLED: Sentry reporting
     // Report to Sentry in production
-    if (process.env.NODE_ENV === 'production') {
-      Sentry.withScope((scope) => {
-        scope.setContext('errorBoundary', {
-          componentStack: errorInfo.componentStack,
-        });
-        Sentry.captureException(error);
-      });
-    }
+    // if (process.env.NODE_ENV === 'production') {
+    //   Sentry.withScope((scope) => {
+    //     scope.setContext('errorBoundary', {
+    //       componentStack: errorInfo.componentStack,
+    //     });
+    //     Sentry.captureException(error);
+    //   });
+    // }
   };
 
   return (

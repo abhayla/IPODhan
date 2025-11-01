@@ -15,7 +15,7 @@
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, Calculator, Scale, Building2, Calendar, TrendingUp, FileText, Star, List } from 'lucide-react';
+import { HiBars3, HiXMark, HiCalculator, HiScale, HiBuildingOffice2, HiCalendar, HiArrowTrendingUp, HiDocumentText, HiStar, HiListBullet } from 'react-icons/hi2';
 import styles from './Header.module.css';
 
 // ==================== COMPONENT ====================
@@ -179,7 +179,7 @@ export function Header() {
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
                   onClick={() => setDesktopMainboardIPOsOpen(false)}
                 >
-                  <List className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <HiListBullet className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
                   <div>
                     <p className="font-semibold">Mainboard IPO Listings</p>
                     <p className="text-xs text-muted-foreground">
@@ -192,7 +192,7 @@ export function Header() {
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
                   onClick={() => setDesktopMainboardIPOsOpen(false)}
                 >
-                  <TrendingUp className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <HiArrowTrendingUp className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
                   <div>
                     <p className="font-semibold">Mainboard IPO Performance Tracker</p>
                     <p className="text-xs text-muted-foreground">
@@ -205,7 +205,7 @@ export function Header() {
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
                   onClick={() => setDesktopMainboardIPOsOpen(false)}
                 >
-                  <FileText className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <HiDocumentText className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
                   <div>
                     <p className="font-semibold">Mainboard IPO Prospectus</p>
                     <p className="text-xs text-muted-foreground">
@@ -218,7 +218,7 @@ export function Header() {
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
                   onClick={() => setDesktopMainboardIPOsOpen(false)}
                 >
-                  <Calendar className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <HiCalendar className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
                   <div>
                     <p className="font-semibold">Mainboard IPO Calendar</p>
                     <p className="text-xs text-muted-foreground">
@@ -231,7 +231,7 @@ export function Header() {
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
                   onClick={() => setDesktopMainboardIPOsOpen(false)}
                 >
-                  <Star className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <HiStar className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
                   <div>
                     <p className="font-semibold">Mainboard IPO Reviews</p>
                     <p className="text-xs text-muted-foreground">
@@ -285,7 +285,7 @@ export function Header() {
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
                   onClick={() => setDesktopSMEIPOsOpen(false)}
                 >
-                  <List className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <HiListBullet className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
                   <div>
                     <p className="font-semibold">SME IPO Listings</p>
                     <p className="text-xs text-muted-foreground">
@@ -298,7 +298,7 @@ export function Header() {
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
                   onClick={() => setDesktopSMEIPOsOpen(false)}
                 >
-                  <TrendingUp className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <HiArrowTrendingUp className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
                   <div>
                     <p className="font-semibold">SME IPO Performance Tracker</p>
                     <p className="text-xs text-muted-foreground">
@@ -311,7 +311,7 @@ export function Header() {
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
                   onClick={() => setDesktopSMEIPOsOpen(false)}
                 >
-                  <FileText className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <HiDocumentText className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
                   <div>
                     <p className="font-semibold">SME IPO Prospectus</p>
                     <p className="text-xs text-muted-foreground">
@@ -324,7 +324,7 @@ export function Header() {
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
                   onClick={() => setDesktopSMEIPOsOpen(false)}
                 >
-                  <Calendar className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <HiCalendar className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
                   <div>
                     <p className="font-semibold">SME IPO Calendar</p>
                     <p className="text-xs text-muted-foreground">
@@ -337,7 +337,7 @@ export function Header() {
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
                   onClick={() => setDesktopSMEIPOsOpen(false)}
                 >
-                  <Star className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <HiStar className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
                   <div>
                     <p className="font-semibold">SME IPO Reviews</p>
                     <p className="text-xs text-muted-foreground">
@@ -386,7 +386,7 @@ export function Header() {
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
                   onClick={() => setDesktopToolsOpen(false)}
                 >
-                  <Calculator className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <HiCalculator className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
                   <div>
                     <p className="font-semibold">Lot Size Calculator</p>
                     <p className="text-xs text-muted-foreground">
@@ -399,7 +399,7 @@ export function Header() {
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
                   onClick={() => setDesktopToolsOpen(false)}
                 >
-                  <Scale className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <HiScale className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
                   <div>
                     <p className="font-semibold">Compare IPOs</p>
                     <p className="text-xs text-muted-foreground">
@@ -412,7 +412,7 @@ export function Header() {
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
                   onClick={() => setDesktopToolsOpen(false)}
                 >
-                  <Building2 className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <HiBuildingOffice2 className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
                   <div>
                     <p className="font-semibold">Registrars</p>
                     <p className="text-xs text-muted-foreground">
@@ -425,7 +425,7 @@ export function Header() {
                   className={`group/item flex items-center space-x-3 rounded-lg px-4 py-3 text-sm hover:bg-accent hover:text-accent-foreground ${styles.dropdownItem}`}
                   onClick={() => setDesktopToolsOpen(false)}
                 >
-                  <Calendar className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
+                  <HiCalendar className={`h-5 w-5 ${styles.dropdownItemIcon}`} />
                   <div>
                     <p className="font-semibold">Market Holidays</p>
                     <p className="text-xs text-muted-foreground">
@@ -446,9 +446,9 @@ export function Header() {
             aria-expanded={mobileMenuOpen}
           >
             {mobileMenuOpen ? (
-              <X className={`h-6 w-6 ${styles.mobileMenuIcon} ${styles.menuIconOpen}`} />
+              <HiXMark className={`h-6 w-6 ${styles.mobileMenuIcon} ${styles.menuIconOpen}`} />
             ) : (
-              <Menu className={`h-6 w-6 ${styles.mobileMenuIcon} ${styles.menuIconClosed}`} />
+              <HiBars3 className={`h-6 w-6 ${styles.mobileMenuIcon} ${styles.menuIconClosed}`} />
             )}
           </button>
         </div>
@@ -478,7 +478,7 @@ export function Header() {
                 }`}
                 onClick={() => setMobileMenuOpen(false)}
               >
-                <TrendingUp className="h-4 w-4" />
+                <HiArrowTrendingUp className="h-4 w-4" />
                 <span>Rights Issues</span>
               </Link>
 
@@ -491,7 +491,7 @@ export function Header() {
                 }`}
                 onClick={() => setMobileMenuOpen(false)}
               >
-                <TrendingUp className="h-4 w-4" />
+                <HiArrowTrendingUp className="h-4 w-4" />
                 <span>OFS</span>
               </Link>
 
@@ -504,7 +504,7 @@ export function Header() {
                 }`}
                 onClick={() => setMobileMenuOpen(false)}
               >
-                <List className="h-4 w-4" />
+                <HiListBullet className="h-4 w-4" />
                 <span>FPO Listings</span>
               </Link>
 
@@ -525,7 +525,7 @@ export function Header() {
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <List className="h-4 w-4" />
+                  <HiListBullet className="h-4 w-4" />
                   <span>Mainboard IPO Listings</span>
                 </Link>
                 <Link
@@ -533,7 +533,7 @@ export function Header() {
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <TrendingUp className="h-4 w-4" />
+                  <HiArrowTrendingUp className="h-4 w-4" />
                   <span>Mainboard IPO Performance Tracker</span>
                 </Link>
                 <Link
@@ -541,7 +541,7 @@ export function Header() {
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <FileText className="h-4 w-4" />
+                  <HiDocumentText className="h-4 w-4" />
                   <span>Mainboard IPO Prospectus</span>
                 </Link>
                 <Link
@@ -549,7 +549,7 @@ export function Header() {
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <Calendar className="h-4 w-4" />
+                  <HiCalendar className="h-4 w-4" />
                   <span>Mainboard IPO Calendar</span>
                 </Link>
                 <Link
@@ -557,7 +557,7 @@ export function Header() {
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <Star className="h-4 w-4" />
+                  <HiStar className="h-4 w-4" />
                   <span>Mainboard IPO Reviews</span>
                 </Link>
               </div>
@@ -579,7 +579,7 @@ export function Header() {
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <List className="h-4 w-4" />
+                  <HiListBullet className="h-4 w-4" />
                   <span>SME IPO Listings</span>
                 </Link>
                 <Link
@@ -587,7 +587,7 @@ export function Header() {
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <TrendingUp className="h-4 w-4" />
+                  <HiArrowTrendingUp className="h-4 w-4" />
                   <span>SME IPO Performance Tracker</span>
                 </Link>
                 <Link
@@ -595,7 +595,7 @@ export function Header() {
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <FileText className="h-4 w-4" />
+                  <HiDocumentText className="h-4 w-4" />
                   <span>SME IPO Prospectus</span>
                 </Link>
                 <Link
@@ -603,7 +603,7 @@ export function Header() {
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <Calendar className="h-4 w-4" />
+                  <HiCalendar className="h-4 w-4" />
                   <span>SME IPO Calendar</span>
                 </Link>
                 <Link
@@ -611,7 +611,7 @@ export function Header() {
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <Star className="h-4 w-4" />
+                  <HiStar className="h-4 w-4" />
                   <span>SME IPO Reviews</span>
                 </Link>
               </div>
@@ -623,7 +623,7 @@ export function Header() {
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <Calculator className="h-4 w-4" />
+                  <HiCalculator className="h-4 w-4" />
                   <span>Lot Size Calculator</span>
                 </Link>
                 <Link
@@ -631,7 +631,7 @@ export function Header() {
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <Scale className="h-4 w-4" />
+                  <HiScale className="h-4 w-4" />
                   <span>Compare IPOs</span>
                 </Link>
                 <Link
@@ -639,7 +639,7 @@ export function Header() {
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <Building2 className="h-4 w-4" />
+                  <HiBuildingOffice2 className="h-4 w-4" />
                   <span>Registrars</span>
                 </Link>
                 <Link
@@ -647,7 +647,7 @@ export function Header() {
                   className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
                   onClick={() => setMobileMenuOpen(false)}
                 >
-                  <Calendar className="h-4 w-4" />
+                  <HiCalendar className="h-4 w-4" />
                   <span>Market Holidays</span>
                 </Link>
               </div>

@@ -4,7 +4,7 @@
  * Displays Return on Capital Employed percentage with color coding based on value.
  */
 
-import { InfoIcon } from 'lucide-react';
+import { HiInformationCircle } from 'react-icons/hi2';
 import {
   Tooltip,
   TooltipContent,
@@ -27,7 +27,7 @@ export function ROCEDisplay({ roce, className = '' }: ROCEDisplayProps) {
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
-              <InfoIcon className="h-4 w-4 text-muted-foreground cursor-help" />
+              <HiInformationCircle className="h-4 w-4 text-muted-foreground cursor-help" />
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
               <p className="text-sm">
@@ -70,7 +70,7 @@ export function ROCEDisplay({ roce, className = '' }: ROCEDisplayProps) {
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger asChild>
-            <InfoIcon className="h-4 w-4 text-muted-foreground cursor-help" />
+            <HiInformationCircle className="h-4 w-4 text-muted-foreground cursor-help" />
           </TooltipTrigger>
           <TooltipContent className="max-w-xs">
             <p className="text-sm">

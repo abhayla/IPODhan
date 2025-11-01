@@ -104,6 +104,12 @@ web/scripts/verify-*.ts
 web/scripts/run-*.ts
 web/scripts/fix-*.sql
 web/scripts/backfill-*.ts
+web/check-*.ts
+web/cleanup-*.ts
+web/app/test-calculator/
+web/components/**/*.simple.tsx
+web/components/**/*Basic.tsx
+web/components/**/*Simple.tsx
 scraper/add-sector-column.ts
 scraper/check-schema.ts
 scraper/check-status-enum.ts

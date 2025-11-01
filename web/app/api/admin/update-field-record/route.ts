@@ -96,7 +96,7 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
     // Get old value before update (for audit log)
     try {
       const existing = await db.select().from(table).where(eq(table.id, recordId)).limit(1);
-      oldValue = existing[0]?.[fieldName as keyof typeof existing[0]];
+      oldValue = existing[0] ? (existing[0] as any)[fieldName] : undefined;
 
       // Verify the record belongs to the specified IPO
       if (existing[0] && existing[0].ipoId !== ipoId) {

@@ -7,7 +7,7 @@
 'use client';
 
 import React, { ReactNode } from 'react';
-import { AlertCircle, RotateCcw } from 'lucide-react';
+import { HiExclamationCircle, HiArrowPath } from 'react-icons/hi2';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 
@@ -71,7 +71,7 @@ export class FormErrorBoundary extends React.Component<
     if (this.state.hasError) {
       return (
         <Alert variant="destructive" className="my-4">
-          <AlertCircle className="h-4 w-4" />
+          <HiExclamationCircle className="h-4 w-4" />
           <AlertTitle>Form Error</AlertTitle>
           <AlertDescription className="space-y-3">
             <p>
@@ -88,7 +88,7 @@ export class FormErrorBoundary extends React.Component<
               size="sm"
               className="mt-2"
             >
-              <RotateCcw className="mr-2 h-3 w-3" />
+              <HiArrowPath className="mr-2 h-3 w-3" />
               Try Again
             </Button>
           </AlertDescription>

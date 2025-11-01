@@ -20,7 +20,7 @@ import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
 import { HolidayCard } from '@/components/market-holidays/HolidayCard';
 import { HolidayFilters, type HolidayFilterState } from '@/components/market-holidays/HolidayFilters';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Info, AlertCircle } from 'lucide-react';
+import { HiInformationCircle, HiExclamationCircle } from 'react-icons/hi2';
 import type { MarketHoliday } from '@/lib/db/types';
 import { parseISO, isBefore, isAfter, addDays } from 'date-fns';
 
@@ -155,7 +155,7 @@ export default function MarketHolidaysPage() {
       {/* Error State */}
       {error && !isLoading && (
         <Alert variant="destructive">
-          <AlertCircle className="h-4 w-4" />
+          <HiExclamationCircle className="h-4 w-4" />
           <AlertTitle>Error</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
@@ -164,7 +164,7 @@ export default function MarketHolidaysPage() {
       {/* Empty State */}
       {!isLoading && !error && sortedHolidays.length === 0 && (
         <Alert>
-          <Info className="h-4 w-4" />
+          <HiInformationCircle className="h-4 w-4" />
           <AlertTitle>No holidays found</AlertTitle>
           <AlertDescription>
             {filters.upcoming
@@ -201,10 +201,10 @@ export default function MarketHolidaysPage() {
         </>
       )}
 
-      {/* Info Section */}
+      {/* HiInformationCircle Section */}
       <div className="mt-8 pt-6 border-t">
         <Alert>
-          <Info className="h-4 w-4" />
+          <HiInformationCircle className="h-4 w-4" />
           <AlertTitle>Data Source</AlertTitle>
           <AlertDescription>
             <p className="mb-2">

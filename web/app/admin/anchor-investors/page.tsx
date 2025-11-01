@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Alert } from '@/components/ui/alert';
-import { Plus, Trash2, Save, RotateCcw, Search, Anchor, Lock, Calendar } from 'lucide-react';
+import { HiPlus, HiTrash, HiCheckCircle, HiArrowPath, HiMagnifyingGlass, HiUsers as HiAnchor, HiLockClosed, HiCalendar } from 'react-icons/hi2';
 import type { IPO } from '@/lib/db/types';
 import type { IndividualInvestor } from '@/lib/db';
 
@@ -347,7 +347,7 @@ export default function AnchorInvestorsAdminPage() {
       {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-foreground mb-2 flex items-center gap-3">
-          <Anchor className="h-8 w-8 text-primary" />
+          <HiAnchor className="h-8 w-8 text-primary" />
           Anchor Investors Management
         </h1>
         <p className="text-muted-foreground">
@@ -372,12 +372,12 @@ export default function AnchorInvestorsAdminPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Search className="h-5 w-5" />
+                <HiMagnifyingGlass className="h-5 w-5" />
                 Select IPO
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {/* Search Bar */}
+              {/* HiMagnifyingGlass Bar */}
               <div className="mb-4">
                 <Label htmlFor="ipo-search">Search IPO</Label>
                 <Input
@@ -449,7 +449,7 @@ export default function AnchorInvestorsAdminPage() {
             <CardContent>
               {!selectedIPO ? (
                 <div className="text-center py-12 text-muted-foreground">
-                  <Anchor className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <HiAnchor className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>Please select an IPO to enter anchor investor details</p>
                 </div>
               ) : (
@@ -535,7 +535,7 @@ export default function AnchorInvestorsAdminPage() {
                   {/* Lock-in Dates (Auto-calculated, Display-only) */}
                   <div className="p-4 rounded-lg border bg-blue-50 dark:bg-blue-950/20">
                     <div className="flex items-start gap-3">
-                      <Lock className="h-5 w-5 mt-0.5 text-blue-600 dark:text-blue-400" />
+                      <HiLockClosed className="h-5 w-5 mt-0.5 text-blue-600 dark:text-blue-400" />
                       <div className="flex-1">
                         <p className="text-sm font-semibold text-foreground mb-3">
                           Lock-in Period (Auto-calculated)
@@ -546,7 +546,7 @@ export default function AnchorInvestorsAdminPage() {
                               50% Lock-in Expires (30 days)
                             </p>
                             <p className="text-sm font-medium text-foreground flex items-center gap-2">
-                              <Calendar className="h-4 w-4" />
+                              <HiCalendar className="h-4 w-4" />
                               {lockInDates.lockIn50}
                             </p>
                           </div>
@@ -555,7 +555,7 @@ export default function AnchorInvestorsAdminPage() {
                               Remaining 50% Lock-in Expires (90 days)
                             </p>
                             <p className="text-sm font-medium text-foreground flex items-center gap-2">
-                              <Calendar className="h-4 w-4" />
+                              <HiCalendar className="h-4 w-4" />
                               {lockInDates.lockIn90}
                             </p>
                           </div>
@@ -576,7 +576,7 @@ export default function AnchorInvestorsAdminPage() {
                         size="sm"
                         onClick={handleAddInvestor}
                       >
-                        <Plus className="h-4 w-4 mr-2" />
+                        <HiPlus className="h-4 w-4 mr-2" />
                         Add Investor
                       </Button>
                     </div>
@@ -602,7 +602,7 @@ export default function AnchorInvestorsAdminPage() {
                               onClick={() => handleRemoveInvestor(index)}
                               className="absolute top-2 right-2"
                             >
-                              <Trash2 className="h-4 w-4 text-red-600" />
+                              <HiTrash className="h-4 w-4 text-red-600" />
                             </Button>
 
                             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 pr-12">
@@ -740,7 +740,7 @@ export default function AnchorInvestorsAdminPage() {
                       disabled={isSaving || !selectedIPO}
                       className="flex-1 sm:flex-initial"
                     >
-                      <Save className="h-4 w-4 mr-2" />
+                      <HiCheckCircle className="h-4 w-4 mr-2" />
                       {isSaving ? 'Saving...' : 'Save Data'}
                     </Button>
 
@@ -750,7 +750,7 @@ export default function AnchorInvestorsAdminPage() {
                       onClick={handleClearForm}
                       disabled={isSaving}
                     >
-                      <RotateCcw className="h-4 w-4 mr-2" />
+                      <HiArrowPath className="h-4 w-4 mr-2" />
                       Clear Form
                     </Button>
 
@@ -760,7 +760,7 @@ export default function AnchorInvestorsAdminPage() {
                       onClick={handleDeleteAnchorData}
                       disabled={isSaving || !selectedIPO}
                     >
-                      <Trash2 className="h-4 w-4 mr-2" />
+                      <HiTrash className="h-4 w-4 mr-2" />
                       Delete Data
                     </Button>
                   </div>

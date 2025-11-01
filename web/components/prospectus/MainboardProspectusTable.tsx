@@ -15,7 +15,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ExternalLink, ArrowUp, ArrowDown } from 'lucide-react';
+import { HiArrowTopRightOnSquare, HiArrowUp, HiArrowDown } from 'react-icons/hi2';
 import {
   Table,
   TableBody,
@@ -128,9 +128,9 @@ export function MainboardProspectusTable({
                   Company Name
                   {sortColumn === 'companyName' && (
                     sortDirection === 'asc' ? (
-                      <ArrowUp className="h-4 w-4" />
+                      <HiArrowUp className="h-4 w-4" />
                     ) : (
-                      <ArrowDown className="h-4 w-4" />
+                      <HiArrowDown className="h-4 w-4" />
                     )
                   )}
                 </button>
@@ -145,9 +145,9 @@ export function MainboardProspectusTable({
                   Exchange
                   {sortColumn === 'exchange' && (
                     sortDirection === 'asc' ? (
-                      <ArrowUp className="h-4 w-4" />
+                      <HiArrowUp className="h-4 w-4" />
                     ) : (
-                      <ArrowDown className="h-4 w-4" />
+                      <HiArrowDown className="h-4 w-4" />
                     )
                   )}
                 </button>
@@ -183,7 +183,7 @@ export function MainboardProspectusTable({
                       download
                       className="flex items-center gap-1 text-blue-600 hover:underline"
                     >
-                      Download <ExternalLink className="h-4 w-4" />
+                      Download <HiArrowTopRightOnSquare className="h-4 w-4" />
                     </a>
                   ) : (
                     <span className="text-muted-foreground">Not Available</span>
@@ -200,7 +200,7 @@ export function MainboardProspectusTable({
                       download
                       className="flex items-center gap-1 text-blue-600 hover:underline"
                     >
-                      Download <ExternalLink className="h-4 w-4" />
+                      Download <HiArrowTopRightOnSquare className="h-4 w-4" />
                     </a>
                   ) : (
                     <span className="text-muted-foreground">Not Available</span>
@@ -242,7 +242,7 @@ export function MainboardProspectusTable({
                       download
                       className="flex items-center gap-1 text-blue-600 hover:underline"
                     >
-                      Download <ExternalLink className="h-3 w-3" />
+                      Download <HiArrowTopRightOnSquare className="h-3 w-3" />
                     </a>
                   ) : (
                     <span className="text-muted-foreground text-xs">Not Available</span>
@@ -258,7 +258,7 @@ export function MainboardProspectusTable({
                       download
                       className="flex items-center gap-1 text-blue-600 hover:underline"
                     >
-                      Download <ExternalLink className="h-3 w-3" />
+                      Download <HiArrowTopRightOnSquare className="h-3 w-3" />
                     </a>
                   ) : (
                     <span className="text-muted-foreground text-xs">Not Available</span>

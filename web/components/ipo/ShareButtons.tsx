@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Share2, Copy, Check } from 'lucide-react';
+import { HiShare, HiClipboard, HiCheck } from 'react-icons/hi2';
 import { useToast } from '@/hooks/useToast';
 import { generateShareUrl, createShareText } from '@/lib/utils/url-utils';
 import { trackShare } from '@/lib/analytics/gtag';
@@ -22,7 +22,7 @@ interface ShareButtonsProps {
 
 /**
  * ShareButtons component provides social sharing functionality
- * Includes WhatsApp, Twitter, and Copy Link buttons
+ * Includes WhatsApp, Twitter, and HiClipboard Link buttons
  * Uses native Web Share API on mobile when available
  * Tracks share events with Google Analytics
  */
@@ -106,7 +106,7 @@ export function ShareButtons({ companyName, rating, url, keyMetrics }: ShareButt
     }
   };
 
-  // Check if native Web Share API is available (mobile)
+  // HiCheck if native Web Share API is available (mobile)
   // Only check after component is mounted to avoid hydration mismatch
   const hasNativeShare = mounted && typeof navigator !== 'undefined' && navigator.share;
 
@@ -119,7 +119,7 @@ export function ShareButtons({ companyName, rating, url, keyMetrics }: ShareButt
           onClick={handleNativeShare}
           className="flex-1 sm:flex-none transition-all duration-300 hover:shadow-md hover:scale-105 hover:border-primary/50"
         >
-          <Share2 className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:rotate-12" />
+          <HiShare className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:rotate-12" />
           Share
         </Button>
       ) : (
@@ -176,13 +176,13 @@ export function ShareButtons({ companyName, rating, url, keyMetrics }: ShareButt
       >
         {copied ? (
           <>
-            <Check className="mr-2 h-4 w-4 animate-in zoom-in duration-300" />
+            <HiCheck className="mr-2 h-4 w-4 animate-in zoom-in duration-300" />
             Copied
           </>
         ) : (
           <>
-            <Copy className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
-            Copy Link
+            <HiClipboard className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
+            HiClipboard Link
           </>
         )}
       </Button>
