@@ -180,7 +180,7 @@ export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
             />
             <InfoRow
               label="Issue Size"
-              value={`₹${ipo.issueSize} Crores`}
+              value={ipo.issueSize ? `₹${(Number(ipo.issueSize) / 10000000).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Crores` : 'N/A'}
             />
             {/* ISIN Display (Story 4.9) */}
             <div className="group flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4 p-2 rounded-md transition-all duration-200 hover:bg-muted/30">
