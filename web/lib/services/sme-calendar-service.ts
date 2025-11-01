@@ -5,9 +5,17 @@
  * Generates monthly calendar grid with IPO events and market holidays.
  *
  * Story 9.13: SME IPO Calendar Page
+ *
+ * ⚠️ ARCHITECTURAL NOTE: Services should use repositories directly,
+ * not HTTP API calls. This follows the 3-layer architecture:
+ * Service → Repository (not Service → HTTP → API → Repository)
  */
 
-import { apiClient, type IPO, type MarketHoliday } from '@/lib/api-client';
+import { db } from '@/lib/db/index';
+import { getRedisClient } from '@/lib/cache/redis-client';
+import { IPORepository } from '@/lib/repositories/ipo-repository';
+import { MarketHolidayRepository } from '@/lib/repositories/market-holiday-repository';
+import type { IPO, MarketHoliday } from '@/lib/db/types';
 
 // ==================== TYPES ====================
 
@@ -145,21 +153,22 @@ export async function getSMEIPOEvents(
       });
     }
 
-    // Fetch SME IPOs using dedicated calendar endpoint
-    // This endpoint returns ALL SME IPOs without pagination limits
-    const ipoResponse = await apiClient.getCalendarIPOs({
-      category: 'SME', // ⭐ SME filter - critical for this page
+    // Initialize repositories (Services use repositories directly)
+    const redis = getRedisClient();
+    const ipoRepository = new IPORepository(db, redis);
+    const holidayRepository = new MarketHolidayRepository(db, redis);
+
+    // Fetch SME IPOs using repository pattern
+    const ipoResult = await ipoRepository.findAll({
+      segment: ['SME'], // ⭐ SME filter - critical for this page
+      limit: 1000, // Get all SME IPOs for calendar
+      page: 1,
     });
 
-    const smeIPOs = ipoResponse.ipos;
+    const smeIPOs = ipoResult.data;
 
     // Fetch market holidays for the calendar year
-    const holidaysResponse = await apiClient.getMarketHolidays({
-      year,
-      exchange: 'BOTH', // Include holidays for both NSE and BSE
-    });
-
-    const holidays = holidaysResponse.holidays;
+    const holidays = await holidayRepository.findByYear(year);
 
     // Aggregate IPO events by date
     smeIPOs.forEach((ipo) => {

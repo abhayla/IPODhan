@@ -5,11 +5,16 @@
  * Implements Redis caching with 5-minute TTL for optimal performance.
  *
  * Story 9.5: Offer for Sale (OFS) Page
+ *
+ * ⚠️ ARCHITECTURAL NOTE: Services should use repositories directly,
+ * not HTTP API calls. This follows the 3-layer architecture:
+ * Service → Repository (not Service → HTTP → API → Repository)
  */
 
 import { getRedisClient, safeGet, safeSet } from '@/lib/cache/redis-client';
-import { getIPOs } from '@/lib/api-client';
-import type { IPO } from '@/lib/api-client';
+import { db } from '@/lib/db/index';
+import { IPORepository } from '@/lib/repositories/ipo-repository';
+import type { IPO } from '@/lib/db/types';
 
 // ==================== TYPES ====================
 
@@ -114,20 +119,21 @@ async function getCachedOrFetch<T>(
 export async function getOFSIssues(): Promise<OFSData[]> {
   return getCachedOrFetch(CACHE_KEY, async () => {
     try {
-      const response = await getIPOs({
-        segment: 'MAINBOARD',
+      // Initialize repository (Services use repositories directly)
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
+      // Use repository pattern instead of HTTP API calls
+      const result = await ipoRepository.findAll({
+        segment: ['MAINBOARD'],
         offeringType: 'OFS',
-        limit: 100, // Get all OFS issues
+        limit: 100,
+        sortBy: 'openDate',
+        sortOrder: 'asc', // Soonest first (ascending)
+        page: 1,
       });
 
-      // Sort by expected nonRetailDate/openDate (soonest first)
-      const sortedData = response.data.sort((a, b) => {
-        const dateA = a.openDate ? new Date(a.openDate).getTime() : Infinity;
-        const dateB = b.openDate ? new Date(b.openDate).getTime() : Infinity;
-        return dateA - dateB;
-      });
-
-      return sortedData.map(transformOFSData);
+      return result.data.map(transformOFSData);
     } catch (error) {
       console.error('Error fetching OFS issues:', error);
       return []; // AC#11: Return empty array on error (graceful degradation)

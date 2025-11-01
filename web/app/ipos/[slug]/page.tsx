@@ -39,7 +39,11 @@ import { CompanyContactSection } from '@/components/ipo-detail/CompanyContactSec
 import { CategoryReservationSection } from '@/components/ipo-detail/CategoryReservationSection';
 import { RecommendationSummarySection } from '@/components/ipo-detail/RecommendationSummarySection';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
-import { apiClient } from '@/lib/api-client';
+import { db } from '@/lib/db/index';
+import { getRedisClient } from '@/lib/cache/redis-client';
+import { IPORepository } from '@/lib/repositories/ipo-repository';
+import { ReviewRepository } from '@/lib/repositories/review-repository';
+import { SEARCH_CONFIG } from '@/lib/config/search';
 import type { IPODetailResponse } from '@/lib/db/types';
 import {
   generateIPODetailMetadata,
@@ -68,15 +72,39 @@ interface PageProps {
 /**
  * Generate dynamic metadata for SEO
  * Uses centralized SEO utilities for consistency
+ *
+ * ⚠️ ARCHITECTURAL NOTE: Server Components should use repositories directly,
+ * not HTTP API calls. This follows the 3-layer architecture:
+ * Server Component → Repository (not Server Component → HTTP → API → Repository)
  */
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
 
   try {
-    // Fetch IPO data for metadata using the API client
-    // This ensures dynamic port detection and consistent API calls
-    const data = await apiClient.getIPOBySlug(slug) as unknown as IPODetailResponse;
-    const { ipo } = data;
+    // Initialize repository (Server Components use repositories directly)
+    const redis = getRedisClient();
+    const ipoRepository = new IPORepository(db, redis);
+
+    // Fetch IPO data using repository pattern (with fuzzy fallback)
+    const ipoWithRelations = await ipoRepository.findBySlugWithFallback(slug, {
+      enableFuzzy: SEARCH_CONFIG.fallback.enabled,
+      similarityThreshold: SEARCH_CONFIG.fuzzyMatch.similarityThreshold,
+    });
+
+    if (!ipoWithRelations) {
+      return {
+        title: 'IPO Not Found | IPODhan',
+        description: 'The requested IPO could not be found.',
+      };
+    }
+
+    // Extract IPO data without relations for metadata
+    const { financialData: _, ipoFinancials: __, ipoDetails: ___, documents: ____, subscriptions: _____, gmpRecords: ______, listingPerformance: _______, peerCompanies: ________, registrarRelation, ipoScore: _________, anchorInvestor: __________, ...ipoData } = ipoWithRelations;
+
+    const ipo = {
+      ...ipoData,
+      registrarRelation,
+    };
 
     // Convert IPO to metadata params and generate metadata
     const metadataParams = ipoToMetadataParams(ipo);
@@ -95,22 +123,60 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 /**
  * IPO Detail Page Component
  * Server-side rendered with progressive loading for tabs
+ *
+ * ⚠️ ARCHITECTURAL NOTE: Server Components should use repositories directly,
+ * not HTTP API calls. This follows the 3-layer architecture:
+ * Server Component → Repository (not Server Component → HTTP → API → Repository)
  */
 export default async function IPODetailPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   const { tab } = await searchParams;
 
-  // Fetch IPO data server-side using the API client
-  // This ensures dynamic port detection and consistent API calls
-  let data: IPODetailResponse;
-  try {
-    data = await apiClient.getIPOBySlug(slug) as unknown as IPODetailResponse;
-  } catch (error) {
-    console.error('Error fetching IPO data:', error);
+  // Initialize repositories (Server Components use repositories directly)
+  const redis = getRedisClient();
+  const ipoRepository = new IPORepository(db, redis);
+  const reviewRepository = new ReviewRepository(db, redis);
+
+  // Fetch IPO data using repository pattern (with fuzzy fallback)
+  const ipoWithRelations = await ipoRepository.findBySlugWithFallback(slug, {
+    enableFuzzy: SEARCH_CONFIG.fallback.enabled,
+    similarityThreshold: SEARCH_CONFIG.fuzzyMatch.similarityThreshold,
+  });
+
+  if (!ipoWithRelations) {
     notFound();
   }
 
-  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails, peerCompanies, financialData, anchorInvestor, reviewSummary } = data;
+  // Fetch review summary (Story 11.16)
+  const reviewSummary = await reviewRepository.getReviewSummary(ipoWithRelations.id);
+
+  // Transform to API response format (same as API route)
+  // Extract IPO data without relations for the ipo field
+  const { financialData: _, ipoFinancials: __, ipoDetails: ___, documents: ____, subscriptions: _____, gmpRecords: ______, listingPerformance: _______, peerCompanies: ________, registrarRelation, ipoScore: _________, anchorInvestor: __________, ...ipoData } = ipoWithRelations;
+
+  const data: IPODetailResponse = {
+    ipo: {
+      ...ipoData,
+      registrarRelation,
+    },
+    financialData: ipoWithRelations.financialData ?? null,
+    ipoFinancials: ipoWithRelations.ipoFinancials ?? null,
+    ipoDetails: ipoWithRelations.ipoDetails ?? null,
+    documents: ipoWithRelations.documents || [],
+    subscriptions: ipoWithRelations.subscriptions || [],
+    gmpRecords: ipoWithRelations.gmpRecords || [],
+    listingPerformance: ipoWithRelations.listingPerformance ?? null,
+    peerCompanies: ipoWithRelations.peerCompanies || [],
+    peers: [],
+    ipoScore: ipoWithRelations.ipoScore ?? null,
+    anchorInvestor: ipoWithRelations.anchorInvestor ?? null,
+    reviewSummary: reviewSummary ?? null,
+    metadata: {
+      lastUpdated: new Date().toISOString(),
+    },
+  };
+
+  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails, peerCompanies, financialData, anchorInvestor } = data;
 
   // Calculate metrics for KeyMetricsCards
   const latestSubscription = subscriptions?.[0];

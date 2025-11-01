@@ -8,8 +8,9 @@
  */
 
 import { getRedisClient, safeGet, safeSet } from '@/lib/cache/redis-client';
-import { getIPOs } from '@/lib/api-client';
-import type { IPO } from '@/lib/api-client';
+import { db } from '@/lib/db/index';
+import { IPORepository } from '@/lib/repositories/ipo-repository';
+import type { IPO } from '@/lib/db/types';
 
 // ==================== TYPES ====================
 
@@ -124,20 +125,28 @@ function isClosedWithinLast30Days(closeDate: string | null): boolean {
 export async function getMainboardIPOs(): Promise<HomeIPOTableData[]> {
   return getCachedOrFetch(CACHE_KEYS.MAINBOARD_ACTIVE, async () => {
     try {
-      // Fetch OPEN mainboard IPOs
-      const openIPOsResponse = await getIPOs({
-        segment: 'MAINBOARD',
-        offeringType: 'IPO',
-        status: 'OPEN',
+      // Initialize repository (Services use repositories directly)
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
+      // Fetch OPEN mainboard IPOs (include all offering types: IPO, FPO, RIGHTS, etc.)
+      const openIPOsResponse = await ipoRepository.findAll({
+        segment: ['MAINBOARD'],
+        status: ['OPEN'],
         limit: RESULT_LIMIT,
+        sortBy: 'openDate',
+        sortOrder: 'desc',
+        page: 1,
       });
 
       // Fetch CLOSED mainboard IPOs
-      const closedIPOsResponse = await getIPOs({
-        segment: 'MAINBOARD',
-        offeringType: 'IPO',
-        status: 'CLOSED',
+      const closedIPOsResponse = await ipoRepository.findAll({
+        segment: ['MAINBOARD'],
+        status: ['CLOSED'],
         limit: 50, // Get more to filter by date
+        sortBy: 'closeDate',
+        sortOrder: 'desc',
+        page: 1,
       });
 
       // Filter closed IPOs to only include those closed within last 30 days
@@ -182,20 +191,28 @@ export async function getMainboardIPOs(): Promise<HomeIPOTableData[]> {
 export async function getSMEIPOs(): Promise<HomeIPOTableData[]> {
   return getCachedOrFetch(CACHE_KEYS.SME_ACTIVE, async () => {
     try {
-      // Fetch OPEN SME IPOs
-      const openIPOsResponse = await getIPOs({
-        segment: 'SME',
-        offeringType: 'IPO',
-        status: 'OPEN',
+      // Initialize repository (Services use repositories directly)
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
+      // Fetch OPEN SME IPOs (include all offering types: IPO, FPO, RIGHTS, etc.)
+      const openIPOsResponse = await ipoRepository.findAll({
+        segment: ['SME'],
+        status: ['OPEN'],
         limit: RESULT_LIMIT,
+        sortBy: 'openDate',
+        sortOrder: 'desc',
+        page: 1,
       });
 
       // Fetch CLOSED SME IPOs
-      const closedIPOsResponse = await getIPOs({
-        segment: 'SME',
-        offeringType: 'IPO',
-        status: 'CLOSED',
+      const closedIPOsResponse = await ipoRepository.findAll({
+        segment: ['SME'],
+        status: ['CLOSED'],
         limit: 50, // Get more to filter by date
+        sortBy: 'closeDate',
+        sortOrder: 'desc',
+        page: 1,
       });
 
       // Filter closed IPOs to only include those closed within last 30 days
@@ -240,11 +257,17 @@ export async function getSMEIPOs(): Promise<HomeIPOTableData[]> {
 export async function getUpcomingMainboardIPOs(): Promise<HomeIPOTableData[]> {
   return getCachedOrFetch(CACHE_KEYS.MAINBOARD_UPCOMING, async () => {
     try {
-      const response = await getIPOs({
-        segment: 'MAINBOARD',
-        offeringType: 'IPO',
-        status: 'UPCOMING',
+      // Initialize repository (Services use repositories directly)
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
+      const response = await ipoRepository.findAll({
+        segment: ['MAINBOARD'],
+        status: ['UPCOMING'],
         limit: RESULT_LIMIT,
+        sortBy: 'openDate',
+        sortOrder: 'asc', // Soonest first
+        page: 1,
       });
 
       // Sort by expected openDate (soonest first)
@@ -276,11 +299,17 @@ export async function getUpcomingMainboardIPOs(): Promise<HomeIPOTableData[]> {
 export async function getUpcomingSMEIPOs(): Promise<HomeIPOTableData[]> {
   return getCachedOrFetch(CACHE_KEYS.SME_UPCOMING, async () => {
     try {
-      const response = await getIPOs({
-        segment: 'SME',
-        offeringType: 'IPO',
-        status: 'UPCOMING',
+      // Initialize repository (Services use repositories directly)
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
+      const response = await ipoRepository.findAll({
+        segment: ['SME'],
+        status: ['UPCOMING'],
         limit: RESULT_LIMIT,
+        sortBy: 'openDate',
+        sortOrder: 'asc', // Soonest first
+        page: 1,
       });
 
       // Sort by expected openDate (soonest first)

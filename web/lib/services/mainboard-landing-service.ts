@@ -8,7 +8,7 @@
  */
 
 import { getRedisClient, safeGet, safeSet } from '@/lib/cache/redis-client';
-import { type IPO } from '@/lib/api-client';
+import type { IPO } from '@/lib/db/types';
 import { db } from '@/lib/db';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 

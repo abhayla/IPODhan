@@ -5,11 +5,16 @@
  * Implements Redis caching with 5-minute TTL for optimal performance.
  *
  * Story 9.4: Rights Issue Page
+ *
+ * ⚠️ ARCHITECTURAL NOTE: Services should use repositories directly,
+ * not HTTP API calls. This follows the 3-layer architecture:
+ * Service → Repository (not Service → HTTP → API → Repository)
  */
 
 import { getRedisClient, safeGet, safeSet } from '@/lib/cache/redis-client';
-import { getIPOs } from '@/lib/api-client';
-import type { IPO } from '@/lib/api-client';
+import { db } from '@/lib/db/index';
+import { IPORepository } from '@/lib/repositories/ipo-repository';
+import type { IPO } from '@/lib/db/types';
 
 // ==================== TYPES ====================
 
@@ -113,21 +118,22 @@ async function getCachedOrFetch<T>(
 export async function getUpcomingRightsIssues(): Promise<RightsIssueData[]> {
   return getCachedOrFetch(CACHE_KEYS.RIGHTS_UPCOMING, async () => {
     try {
-      const response = await getIPOs({
-        segment: 'MAINBOARD',
+      // Initialize repository (Services use repositories directly)
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
+      // Use repository pattern instead of HTTP API calls
+      const result = await ipoRepository.findAll({
+        segment: ['MAINBOARD'],
         offeringType: 'RIGHTS',
-        status: 'UPCOMING',
-        limit: 100, // Get all upcoming rights issues
+        status: ['UPCOMING'],
+        limit: 100,
+        sortBy: 'openDate',
+        sortOrder: 'asc', // Soonest first
+        page: 1,
       });
 
-      // Sort by expected openDate (soonest first)
-      const sortedData = response.data.sort((a, b) => {
-        const dateA = a.openDate ? new Date(a.openDate).getTime() : Infinity;
-        const dateB = b.openDate ? new Date(b.openDate).getTime() : Infinity;
-        return dateA - dateB;
-      });
-
-      return sortedData.map(transformRightsData);
+      return result.data.map(transformRightsData);
     } catch (error) {
       console.error('Error fetching upcoming rights issues:', error);
       return []; // AC#4: Return empty array on error
@@ -147,21 +153,22 @@ export async function getUpcomingRightsIssues(): Promise<RightsIssueData[]> {
 export async function getLiveRightsIssues(): Promise<RightsIssueData[]> {
   return getCachedOrFetch(CACHE_KEYS.RIGHTS_LIVE, async () => {
     try {
-      const response = await getIPOs({
-        segment: 'MAINBOARD',
+      // Initialize repository (Services use repositories directly)
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
+      // Use repository pattern instead of HTTP API calls
+      const result = await ipoRepository.findAll({
+        segment: ['MAINBOARD'],
         offeringType: 'RIGHTS',
-        status: 'OPEN',
-        limit: 100, // Get all live rights issues
+        status: ['OPEN'],
+        limit: 100,
+        sortBy: 'openDate',
+        sortOrder: 'desc', // Most recent first
+        page: 1,
       });
 
-      // Sort by openDate (most recent first)
-      const sortedData = response.data.sort((a, b) => {
-        const dateA = a.openDate ? new Date(a.openDate).getTime() : 0;
-        const dateB = b.openDate ? new Date(b.openDate).getTime() : 0;
-        return dateB - dateA;
-      });
-
-      return sortedData.map(transformRightsData);
+      return result.data.map(transformRightsData);
     } catch (error) {
       console.error('Error fetching live rights issues:', error);
       return []; // AC#4: Return empty array on error

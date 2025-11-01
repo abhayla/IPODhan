@@ -5,11 +5,16 @@
  * Implements Redis caching with 5-minute TTL for optimal performance.
  *
  * Story 9.6: NCD Issue Page
+ *
+ * ⚠️ ARCHITECTURAL NOTE: Services should use repositories directly,
+ * not HTTP API calls. This follows the 3-layer architecture:
+ * Service → Repository (not Service → HTTP → API → Repository)
  */
 
 import { getRedisClient, safeGet, safeSet } from '@/lib/cache/redis-client';
-import { getIPOs } from '@/lib/api-client';
-import type { IPO } from '@/lib/api-client';
+import { db } from '@/lib/db/index';
+import { IPORepository } from '@/lib/repositories/ipo-repository';
+import type { IPO } from '@/lib/db/types';
 
 // ==================== TYPES ====================
 
@@ -99,20 +104,21 @@ async function getCachedOrFetch<T>(
 export async function getNCDIssues(): Promise<NCDData[]> {
   return getCachedOrFetch(CACHE_KEY, async () => {
     try {
-      const response = await getIPOs({
-        segment: 'MAINBOARD',
+      // Initialize repository (Services use repositories directly)
+      const redis = getRedisClient();
+      const ipoRepository = new IPORepository(db, redis);
+
+      // Use repository pattern instead of HTTP API calls
+      const result = await ipoRepository.findAll({
+        segment: ['MAINBOARD'],
         offeringType: 'NCD',
-        limit: 100, // Get all NCD issues
+        limit: 100,
+        sortBy: 'openDate',
+        sortOrder: 'desc', // AC#8: Newest first
+        page: 1,
       });
 
-      // Sort by openDate descending (newest first) - AC#8
-      const sortedData = response.data.sort((a, b) => {
-        const dateA = a.openDate ? new Date(a.openDate).getTime() : 0;
-        const dateB = b.openDate ? new Date(b.openDate).getTime() : 0;
-        return dateB - dateA; // Descending order (newest first)
-      });
-
-      return sortedData.map(transformNCDData);
+      return result.data.map(transformNCDData);
     } catch (error) {
       console.error('Error fetching NCD issues:', error);
       return []; // AC#12: Return empty array on error (graceful degradation)
