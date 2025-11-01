@@ -1,7 +1,10 @@
 import { Metadata } from 'next';
-import { apiClient, IPO } from '@/lib/api-client';
+import type { IPO } from '@/lib/api-client';
 import { DashboardContent } from '@/components/dashboard/DashboardContent';
 import { generateIPOListingMetadata } from '@/lib/seo/metadata';
+import { db } from '@/lib/db/index';
+import { getRedisClient } from '@/lib/cache/redis-client';
+import { IPORepository } from '@/lib/repositories/ipo-repository';
 
 // SEO Metadata - Using centralized SEO utilities
 export const metadata: Metadata = generateIPOListingMetadata();
@@ -29,15 +32,36 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
   const scoreRange = params.scoreRange;
 
   try {
-    const response = await apiClient.getIPOs({
-      status: status as 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED',
-      segment: segment === 'MAINBOARD' || segment === 'SME' ? segment : undefined,
-      sector: sector,
-      search: search,
+    // Server Components should use repositories directly, not HTTP API calls
+    const redis = getRedisClient();
+    const ipoRepository = new IPORepository(db, redis);
+
+    // Build filters for repository
+    const filters = {
+      status: status ? [status as 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED'] : undefined,
+      segment: segment === 'MAINBOARD' || segment === 'SME' ? [segment] : undefined,
+      sector,
+      search,
+      scoreRange,
       page,
       limit: 12,
-      scoreRange: scoreRange
-    });
+      sortBy: 'createdAt' as const,
+      sortOrder: 'desc' as const,
+    };
+
+    // Fetch data from repository (includes Redis caching)
+    const result = await ipoRepository.findAll(filters);
+
+    // Transform repository response to API format
+    const response = {
+      data: result.data as IPO[],
+      pagination: {
+        page: result.meta.page,
+        limit: result.meta.limit,
+        total: result.meta.total,
+        hasMore: result.meta.hasNext,
+      },
+    };
 
     // Generate JSON-LD structured data
     const structuredData = {

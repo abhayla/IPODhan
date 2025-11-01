@@ -10,10 +10,17 @@
  * - Market holiday integration with graceful degradation
  * - Redis caching with 5-minute TTL
  * - Type-safe event categorization
+ *
+ * ⚠️ ARCHITECTURAL NOTE: Services should use repositories directly,
+ * not HTTP API calls. This follows the 3-layer architecture:
+ * Service → Repository (not Service → HTTP → API → Repository)
  */
 
-import { apiClient } from '@/lib/api-client';
-import type { IPO, MarketHoliday } from '@/lib/api-client';
+import { db } from '@/lib/db/index';
+import { getRedisClient } from '@/lib/cache/redis-client';
+import { IPORepository } from '@/lib/repositories/ipo-repository';
+import { MarketHolidayRepository } from '@/lib/repositories/market-holiday-repository';
+import type { IPO, MarketHoliday } from '@/lib/db/types';
 import {
   startOfMonth,
   endOfMonth,
@@ -287,13 +294,18 @@ export async function getMainboardIPOEvents(
     const monthEnd = endOfMonth(monthStart);
     const monthName = format(monthStart, 'MMMM yyyy');
 
-    // Fetch Mainboard IPOs using dedicated calendar endpoint
-    // This endpoint returns ALL IPOs without pagination limits
-    const iposResponse = await apiClient.getCalendarIPOs({
-      category: CATEGORY_MAINBOARD,
+    // Initialize repositories (Services use repositories directly)
+    const redis = getRedisClient();
+    const ipoRepository = new IPORepository(db, redis);
+
+    // Fetch Mainboard IPOs using repository pattern
+    const iposResult = await ipoRepository.findAll({
+      segment: ['MAINBOARD'],
+      limit: 1000, // Get all Mainboard IPOs for calendar
+      page: 1,
     });
 
-    const ipos = iposResponse.ipos || [];
+    const ipos = iposResult.data || [];
 
     // Extract all events from IPOs
     let allEvents: CalendarEvent[] = [];
@@ -312,11 +324,9 @@ export async function getMainboardIPOEvents(
     // Fetch market holidays for the year (with graceful degradation)
     let holidays: MarketHoliday[] = [];
     try {
-      const holidaysResponse = await apiClient.getMarketHolidays({
-        year,
-        exchange: 'BOTH', // Include NSE and BSE holidays
-      });
-      holidays = holidaysResponse.holidays || [];
+      // Fetch market holidays using repository pattern
+      const holidayRepository = new MarketHolidayRepository(db, redis);
+      holidays = await holidayRepository.findByYear(year) || [];
     } catch (holidayError) {
       console.warn(
         `Failed to fetch market holidays for ${year}. Calendar will show without holidays.`,

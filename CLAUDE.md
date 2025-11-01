@@ -150,6 +150,52 @@ export async function getMainboardLandingData() {
 }
 ```
 
+**⚠️ CRITICAL: Services and Server Components MUST use repositories directly**
+
+Services and Server Components should NEVER make HTTP API calls. This violates the 3-layer architecture and fails in production builds.
+
+```typescript
+// ❌ WRONG: HTTP API calls from server-side code
+import { apiClient } from '@/lib/api-client';
+const data = await apiClient.getIPOs({ segment: 'MAINBOARD' });
+
+// ✅ CORRECT: Direct repository access
+import { db } from '@/lib/db/index';
+import { getRedisClient } from '@/lib/cache/redis-client';
+import { IPORepository } from '@/lib/repositories/ipo-repository';
+
+const redis = getRedisClient();
+const ipoRepository = new IPORepository(db, redis);
+const result = await ipoRepository.findAll({
+  segment: ['MAINBOARD'],
+  status: ['OPEN'],
+  limit: 10,
+  sortBy: 'openDate',
+  sortOrder: 'desc',
+  page: 1,
+});
+```
+
+**ESLint Architectural Enforcement:**
+
+ESLint automatically prevents architectural violations. If you try to import `@/lib/api-client` in services or Server Components, you'll get:
+
+```
+❌ ARCHITECTURAL VIOLATION: Services and Server Components must NOT use HTTP API calls.
+
+✅ CORRECT PATTERN (3-layer architecture):
+   Server Component/Service → Repository → Database
+
+❌ WRONG PATTERN:
+   Server Component/Service → HTTP → API Route → Repository
+```
+
+**Incident History:**
+- **2025-11-01**: Fixed 9 files violating this pattern (P0 CRITICAL)
+- Caused "Network request failed" errors in production builds
+- IPO detail page was completely broken (404)
+- See: `docs/07-testing/ui-tests/ARCHITECTURAL_FIXES_COMPLETE_NOV_1_2025.md`
+
 ### 4. Redis Connection Management
 
 **⚠️ Connection Resilience:**
@@ -354,14 +400,7 @@ const score = await scoringService.calculateScore(ipoId);
 // Returns comprehensive score breakdown with component analysis
 ```
 
-**Bulk Calculation:**
-```bash
-# Recalculate all IPO scores
-npx tsx scripts/recalculate-all-scores.ts
-
-# Recalculate only OPEN IPOs
-npx tsx scripts/recalculate-all-scores.ts --status=OPEN
-```
+**Bulk Calculation:** Available via utility scripts in `web/scripts/`
 
 **Testing:** 32 tests (20 unit + 12 integration), 93.5% coverage, all passing
 
@@ -371,20 +410,7 @@ npx tsx scripts/recalculate-all-scores.ts --status=OPEN
 
 **⚠️ Production Readiness Score: 9.2/10** (with pre-launch fixes)
 
-**Load Testing Scripts (k6):**
-```bash
-# API load test (50-500 concurrent users)
-k6 run web/tests/load/api-load-test.js
-
-# Stress test (find breaking point)
-k6 run web/tests/load/stress-test.js
-
-# User journey test (realistic flows)
-k6 run web/tests/load/user-journey-load-test.js
-
-# Node.js alternative (no k6 required)
-node web/tests/load/simple-load-test.js
-```
+**Load Testing Scripts:** Available in `web/tests/load/` directory (k6 and Node.js implementations)
 
 **Performance Benchmarks:**
 - **100 users:** p95 300ms ✅ Excellent
@@ -403,12 +429,7 @@ node web/tests/load/simple-load-test.js
 - CLS (Cumulative Layout Shift): < 0.1
 - TTFB (Time to First Byte): < 600ms
 
-**Lighthouse CI Configuration:**
-```bash
-# Run Lighthouse tests
-lhci autorun
-# Tests 8 critical pages for performance, accessibility, SEO
-```
+**Lighthouse CI:** Configured to test 8 critical pages for performance, accessibility, SEO
 
 **Documentation:** See `test-results/phase-5/production-load-testing-report.md` for complete analysis
 
@@ -542,86 +563,20 @@ These documents serve as **single sources of truth** for their respective areas.
 
 ### Architectural Rules Enforcement
 
-**TODO: ESLint rules** to be added in `.eslintrc.js`:
+**✅ IMPLEMENTED: ESLint rules** in `web/eslint.config.mjs`:
+
+**1. No HTTP API Calls in Services/Server Components** (ENFORCED)
+- Prevents import of `@/lib/api-client` in `lib/services/**` and `app/**` (except `app/api/**`)
+- Ensures 3-layer architecture: Component/Service → Repository → Database
+- Helpful error message with correct pattern example
+- **Incident**: 2025-11-01 - Caught 2 additional violations after initial fixes
+
+**TODO: Additional rules to implement**:
 - Never hardcode cache keys (use generator functions)
 - Never skip cache invalidation after mutations
 - Always extend BaseRepository for new repositories
-- Never access database directly in API routes
 
 ---
-
-## Common Development Commands
-
-### Web Application (Next.js)
-
-```bash
-cd web
-
-# Development
-npm run dev                    # Start dev server with Turbopack
-
-# Building
-npm run build                  # Production build (use --turbopack flag)
-npm start                      # Start production server
-
-# Database Operations
-npm run db:generate            # Generate migration from schema changes
-npm run db:migrate             # Apply migrations to database
-npm run db:push                # Push schema directly (dev only)
-npm run db:studio              # Open Drizzle Studio GUI
-
-# Seeding
-npm run seed:database          # Seed with test data (idempotent)
-npm run seed:force             # Force re-seed (truncates first)
-npm run verify:seed            # Verify seed data integrity
-
-# Testing
-npm run test                   # Run all tests (unit + integration)
-npm run test:unit              # Unit tests only
-npm run test:unit:watch        # Watch mode
-npm run test:integration       # Integration tests (needs PostgreSQL + Redis)
-npm run test:e2e               # E2E tests (Playwright)
-npm run test:coverage          # Generate coverage report
-
-# Specific test file
-npm run test:unit -- path/to/file.test.ts
-
-# Specific test name pattern
-npm run test:unit -- -t "IPORepository"
-
-# E2E by browser
-npm run test:e2e:chromium
-npm run test:e2e:firefox
-npm run test:e2e:edge
-```
-
-### Scraper Service
-
-```bash
-cd scraper
-
-# Run scrapers
-npm start                      # Default: NSE scraper
-npm run start:bse              # BSE scraper
-npm run start:moneycontrol     # Moneycontrol scraper
-npm run start:chittorgarh      # Chittorgarh historical data
-npm run start:all              # All scrapers sequentially
-
-# Scheduler (production)
-npm run scheduler              # Start cron scheduler
-npm run scheduler:dev          # Watch mode
-npm run scheduler:test         # Test mode with shorter intervals
-```
-
-### TypeScript Compilation
-
-```bash
-# Build shared package declarations (required before web build)
-npx tsc --build packages/shared
-
-# Check types without emitting
-npx tsc --noEmit
-```
 
 ## Testing Architecture
 
@@ -641,17 +596,7 @@ npx tsc --noEmit
 
 ### Running Integration Tests
 
-Integration tests require PostgreSQL and Redis:
-
-```bash
-# Option 1: Use VPS database (configured in .env.local)
-npm run test:integration
-
-# Option 2: Local with Docker
-docker-compose -f docker-compose.test.yml up -d
-npm run test:integration
-docker-compose -f docker-compose.test.yml down
-```
+Integration tests require PostgreSQL and Redis. Scripts available in `package.json`.
 
 ### Test Data Patterns
 
@@ -674,21 +619,10 @@ const testIPO = mockIPO({
 ### Creating a Migration
 
 1. **Modify schema** in `packages/shared/src/db/schema.ts`
-2. **Generate migration**:
-   ```bash
-   cd web
-   npm run db:generate
-   ```
+2. **Generate migration** using Drizzle Kit
 3. **Review generated SQL** in `web/drizzle/migrations/`
-4. **Apply migration**:
-   ```bash
-   npm run db:migrate
-   ```
-5. **Verify**:
-   ```bash
-   npm run db:studio  # Visual inspection
-   npm run verify:seed # Test data integrity
-   ```
+4. **Apply migration** using Drizzle Kit
+5. **Verify** using Drizzle Studio and seed verification scripts
 
 ### Migration Best Practices
 
@@ -787,39 +721,12 @@ SCRAPER_INTERVAL=daily
 
 ## Deployment
 
-### Production Build & Deployment
-
-```bash
-# Create deployment package
-./scripts/create-deployment-package.ps1  # Windows
-./scripts/create-deployment-package.sh   # Linux/Mac
-
-# Transfer to VPS and extract
-
-# Install dependencies (production only)
-cd web && npm ci --production
-
-# Start with PM2 (process manager)
-pm2 start ecosystem.config.js
-pm2 save
-pm2 status
-```
-
-### PM2 Process Management
-
-```bash
-# Monitor logs
-pm2 logs
-pm2 logs ipodhan-web
-pm2 logs ipodhan-scraper
-
-# Restart services
-pm2 restart all
-pm2 restart ipodhan-web
-
-# Health check
-curl http://localhost:3000/api/health
-```
+See `docs/02-architecture/deployment-architecture.md` for complete deployment workflow including:
+- Production build creation
+- VPS transfer and setup
+- PM2 process management
+- Health monitoring
+- Rollback procedures
 
 ## Common Troubleshooting
 
@@ -835,39 +742,21 @@ curl http://localhost:3000/api/health
 
 ### Database Connection Issues
 
-```bash
-# Test connection
-curl http://localhost:3000/api/db-test
-
-# Check environment variables
-echo $DATABASE_URL
-
-# Test PostgreSQL directly
-psql -h localhost -U postgres -d ipodhan
-```
+- Test connection via `/api/db-test` endpoint
+- Check environment variables in `.env.local`
+- Test PostgreSQL directly using psql
 
 ### Redis Connection Issues
 
-```bash
-# Test Redis
-redis-cli ping
-
-# Application falls back to database if Redis is unavailable
-# Check logs for "[Redis] Connection error" messages
-```
+- Application falls back to database if Redis is unavailable
+- Check logs for "[Redis] Connection error" messages
+- Test Redis using redis-cli
 
 ### Test Failures
 
-```bash
-# Clear test database
-psql -h localhost -U postgres -d ipodhan_test -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
-
-# Reinstall Playwright browsers
-npx playwright install --with-deps
-
-# Run tests with verbose logging
-DEBUG=* npm run test:integration
-```
+- Clear test database and reset schema
+- Reinstall Playwright browsers if E2E tests fail
+- Run tests with verbose logging for detailed error information
 
 ## UI-Database Field Mapping
 
