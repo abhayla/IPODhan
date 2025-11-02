@@ -21,6 +21,7 @@ import type {
   brokerAffiliates,
   ipoScores,
   anchorInvestors,
+  ipoDemandGraph,
 } from '../db';
 // Import IPO type and helper from db/types (Story 7.10, 4.7)
 import type { IPO, NewIPO, IPOScore } from '../db/types';
@@ -70,6 +71,9 @@ export type BrokerAffiliateInsert = InferInsertModel<typeof brokerAffiliates>;
 export type AnchorInvestor = InferSelectModel<typeof anchorInvestors>;
 export type AnchorInvestorInsert = InferInsertModel<typeof anchorInvestors>;
 
+export type IPODemandGraph = InferSelectModel<typeof ipoDemandGraph>;
+export type IPODemandGraphInsert = InferInsertModel<typeof ipoDemandGraph>;
+
 // ==================== COMPOSITE TYPES ====================
 
 /**
@@ -78,6 +82,7 @@ export type AnchorInvestorInsert = InferInsertModel<typeof anchorInvestors>;
  * Story 4.10: Added ipoFinancials
  * Story 4.11: Added ipoDetails
  * Story 11.10: Added anchorInvestor
+ * Phase 3B: Added ipoDemandGraph for DemandGraph component
  */
 export type IPOWithRelations = IPO & {
   financialData?: FinancialData | null;
@@ -91,6 +96,7 @@ export type IPOWithRelations = IPO & {
   registrarRelation?: Registrar | null;
   ipoScore?: IPOScore | null;
   anchorInvestor?: AnchorInvestor | null;
+  ipoDemandGraph?: IPODemandGraph[];
 };
 
 // ==================== FILTER TYPES ====================

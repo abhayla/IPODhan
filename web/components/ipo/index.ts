@@ -9,7 +9,10 @@
 // Main Components
 export { IPOHeader } from './IPOHeader';
 export { KeyMetricsCards } from './KeyMetricsCards';
+export { KeyMetricsCardsEnhanced } from './KeyMetricsCardsEnhanced';
 export { InfoSection } from './InfoSection';
+export { IPOTimelineWidget } from './IPOTimelineWidget';
+export { StickyDashboardLayout } from './StickyDashboardLayout';
 export { SubscriptionBreakdown } from './SubscriptionBreakdown';
 export { GMPChart } from './GMPChart';
 export { FinancialTable } from './FinancialTable';

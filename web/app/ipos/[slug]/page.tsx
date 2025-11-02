@@ -3,7 +3,8 @@
  *
  * Server-side rendered page displaying comprehensive IPO information
  * Features:
- * - SSR for Tier 1 data (above fold): IPOHeader, KeyMetricsCards, InfoSection
+ * - SSR for Tier 1 data (above fold): IPOHeader, StickyDashboardLayout, InfoSection
+ * - Phase 2: Sticky dashboard with timeline widget and enhanced metrics
  * - Client-side tabs for Tier 2 data (below fold)
  * - Dynamic SEO metadata with Open Graph and JSON-LD
  * - 404 handling for invalid slugs
@@ -18,7 +19,7 @@ import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Script from 'next/script';
 import { IPOHeader } from '@/components/ipo/IPOHeader';
-import { KeyMetricsCards } from '@/components/ipo/KeyMetricsCards';
+import { StickyDashboardLayout } from '@/components/ipo/StickyDashboardLayout';
 import { InfoSection } from '@/components/ipo/InfoSection';
 import { IssueStructureSection } from '@/components/ipo/IssueStructureSection';
 import { IPODetailTabs } from '@/components/ipo/IPODetailTabs';
@@ -33,11 +34,19 @@ import { SectorAverageComparison } from '@/components/ipo/SectorAverageCompariso
 import { PromoterHoldingSection } from '@/components/ipo/PromoterHoldingSection';
 import { AnchorInvestorsSection } from '@/components/ipo/AnchorInvestorsSection';
 import { KPIHighlightSection } from '@/components/ipo-detail/KPIHighlightSection';
-import { EnhancedFinancialMetricsSection } from '@/components/ipo-detail/EnhancedFinancialMetricsSection';
+import {
+  FinancialPerformanceCharts,
+  SubscriptionDashboard,
+  ListingPerformanceCharts,
+  DemandGraph,
+  GMPHistoryChart,
+} from '@/components/ipo/charts';
 import { IPOObjectivesSection } from '@/components/ipo-detail/IPOObjectivesSection';
 import { CompanyContactSection } from '@/components/ipo-detail/CompanyContactSection';
 import { CategoryReservationSection } from '@/components/ipo-detail/CategoryReservationSection';
 import { RecommendationSummarySection } from '@/components/ipo-detail/RecommendationSummarySection';
+import { CollapsibleSection } from '@/components/ui';
+import { IPODetailClientSections } from '@/components/ipo-detail/IPODetailClientSections';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
@@ -242,13 +251,22 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
         {/* Main Content */}
         <div className="container mx-auto px-4 py-8">
           <div className="space-y-8">
-            {/* Key Metrics Cards */}
-            <KeyMetricsCards
+            {/* Phase 2: Sticky Dashboard with Timeline & Enhanced Metrics */}
+            <StickyDashboardLayout
+              ipo={{
+                openDate: ipo.openDate,
+                closeDate: ipo.closeDate,
+                allotmentDate: ipo.allotmentDate,
+                listingDate: ipo.listingDate,
+                status: ipo.status,
+              }}
               issueSize={Number(ipo.issueSize)}
               subscription={subscriptionValue !== null ? Number(subscriptionValue) : null}
               subscriptionTrend={subscriptionTrend}
               gmp={gmpValue}
               gmpPercent={gmpPercent}
+              subscriptions={subscriptions}
+              gmpRecords={gmpRecords}
             />
 
             {/* Issue Structure Section (Story 4.11) */}
@@ -293,98 +311,20 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               }}
             />
 
-            {/* Enhanced Financial Metrics Section (Story 11.12) */}
-            <EnhancedFinancialMetricsSection
-              financialData={financialData ? {
-                revenueFy2022: financialData.revenueFy2022 ? Number(financialData.revenueFy2022) : null,
-                revenueFy2023: financialData.revenueFy2023 ? Number(financialData.revenueFy2023) : null,
-                revenueFy2024: financialData.revenueFy2024 ? Number(financialData.revenueFy2024) : null,
-                profitFy2022: financialData.profitFy2022 ? Number(financialData.profitFy2022) : null,
-                profitFy2023: financialData.profitFy2023 ? Number(financialData.profitFy2023) : null,
-                profitFy2024: financialData.profitFy2024 ? Number(financialData.profitFy2024) : null,
-                ebitdaFy2022: financialData.ebitdaFy2022 ? Number(financialData.ebitdaFy2022) : null,
-                ebitdaFy2023: financialData.ebitdaFy2023 ? Number(financialData.ebitdaFy2023) : null,
-                ebitdaFy2024: financialData.ebitdaFy2024 ? Number(financialData.ebitdaFy2024) : null,
-                totalIncomeFy2022: financialData.totalIncomeFy2022 ? Number(financialData.totalIncomeFy2022) : null,
-                totalIncomeFy2023: financialData.totalIncomeFy2023 ? Number(financialData.totalIncomeFy2023) : null,
-                totalIncomeFy2024: financialData.totalIncomeFy2024 ? Number(financialData.totalIncomeFy2024) : null,
-                totalBorrowings: financialData.totalBorrowings ? Number(financialData.totalBorrowings) : null,
-                currentRatio: financialData.currentRatio ? Number(financialData.currentRatio) : null,
-                quickRatio: financialData.quickRatio ? Number(financialData.quickRatio) : null,
-                inventoryTurnover: financialData.inventoryTurnover ? Number(financialData.inventoryTurnover) : null,
-              } : null}
+            {/* Phase 4: Client-side sections with global expand/collapse control */}
+            {/* All collapsible sections managed by IPODetailClientSections component */}
+            <IPODetailClientSections
+              ipo={ipo}
+              financialData={financialData}
+              ipoFinancials={data.ipoFinancials}
+              ipoDetails={ipoDetails}
+              reviewSummary={reviewSummary}
+              subscriptions={subscriptions}
+              latestSubscription={latestSubscription ?? null}
+              gmpRecords={gmpRecords}
+              listingPerformance={listingPerformance}
+              peerCompanies={peerCompanies}
             />
-
-            {/* IPO Objectives Section (Story 11.13) */}
-            <IPOObjectivesSection objectives={ipo.objectives ?? null} />
-
-            {/* Company Contact Section (Story 11.14) */}
-            <CompanyContactSection
-              contactData={ipoDetails ? {
-                companyAddress: ipoDetails.companyAddress ?? null,
-                companyPhone: ipoDetails.companyPhone ?? null,
-                companyEmail: ipoDetails.companyEmail ?? null,
-                companyCity: ipoDetails.companyCity ?? null,
-                companyState: ipoDetails.companyState ?? null,
-                companyPincode: ipoDetails.companyPincode ?? null,
-                complianceOfficer: ipoDetails.complianceOfficer ?? null,
-                complianceOfficerPhone: ipoDetails.complianceOfficerPhone ?? null,
-                complianceOfficerEmail: ipoDetails.complianceOfficerEmail ?? null,
-              } : null}
-            />
-
-            {/* Recommendation Summary Section (Story 11.16) */}
-            {reviewSummary && (
-              <RecommendationSummarySection
-                reviewSummary={reviewSummary}
-                ipoSegment={ipo.segment || 'MAINBOARD'}
-              />
-            )}
-
-            {/* Category Reservation Section (Story 11.15) */}
-            <CategoryReservationSection
-              reservationData={ipoDetails ? {
-                qibSharesOffered: ipoDetails.qibSharesOffered ? Number(ipoDetails.qibSharesOffered) : null,
-                niiSharesOffered: ipoDetails.niiSharesOffered ? Number(ipoDetails.niiSharesOffered) : null,
-                retailSharesOffered: ipoDetails.retailSharesOffered ? Number(ipoDetails.retailSharesOffered) : null,
-                retailMaxAllottees: ipoDetails.retailMaxAllottees ?? null,
-                employeeSharesOffered: ipoDetails.employeeSharesOffered ? Number(ipoDetails.employeeSharesOffered) : null,
-                anchorSharesOffered: ipoDetails.anchorSharesOffered ? Number(ipoDetails.anchorSharesOffered) : null,
-              } : null}
-            />
-
-            {/* Peer Comparison Section */}
-            {peerCompanies && peerCompanies.length > 0 && (
-              <PeerComparisonSection
-                peerCompanies={peerCompanies}
-                companyName={ipo.companyName}
-              />
-            )}
-
-            {/* Listing Performance Section (Story 6.3) */}
-            {ipo.status === 'LISTED' &&
-              ipo.listingDate &&
-              listingPerformance &&
-              listingPerformance.issuePrice &&
-              listingPerformance.listingPrice && (
-                <div className="space-y-4">
-                  <ListingPerformance
-                    issuePrice={listingPerformance.issuePrice}
-                    listingOpen={listingPerformance.listingPrice}
-                    listingHigh={listingPerformance.listingPrice}
-                    listingClose={listingPerformance.listingPrice}
-                    listingDate={new Date(ipo.listingDate)}
-                    listingGainPercent={Number(listingPerformance.listingGainPercent)}
-                  />
-                  {sectorAverageGain !== null && ipo.sector && (
-                    <SectorAverageComparison
-                      listingGainPercent={Number(listingPerformance.listingGainPercent)}
-                      sectorAverageGain={sectorAverageGain}
-                      sector={ipo.sector}
-                    />
-                  )}
-                </div>
-              )}
 
             {/* Apply for IPO Section (Story 5.5) */}
             {(ipo.status === 'OPEN' || ipo.status === 'UPCOMING') && (

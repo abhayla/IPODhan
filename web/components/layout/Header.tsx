@@ -104,38 +104,11 @@ export function Header() {
               Dashboard
             </Link>
 
-            <Link
-              href="/rights-issues"
-              className={`relative text-sm font-medium ${styles.navLink} ${
-                isActive('/rights-issues')
-                  ? 'text-foreground after:absolute after:bottom-[-4px] after:left-0 after:h-0.5 after:w-full after:bg-primary'
-                  : 'text-muted-foreground'
-              }`}
-            >
-              Rights Issues
-            </Link>
-
-            <Link
-              href="/ofs"
-              className={`relative text-sm font-medium ${styles.navLink} ${
-                isActive('/ofs')
-                  ? 'text-foreground after:absolute after:bottom-[-4px] after:left-0 after:h-0.5 after:w-full after:bg-primary'
-                  : 'text-muted-foreground'
-              }`}
-            >
-              OFS
-            </Link>
-
-            <Link
-              href="/fpo-listings"
-              className={`relative text-sm font-medium ${styles.navLink} ${
-                isActive('/fpo-listings')
-                  ? 'text-foreground after:absolute after:bottom-[-4px] after:left-0 after:h-0.5 after:w-full after:bg-primary'
-                  : 'text-muted-foreground'
-              }`}
-            >
-              FPO
-            </Link>
+            {/* HIDDEN: Rights Issues, OFS, FPO - Routes still accessible via direct URL
+            <Link href="/rights-issues">Rights Issues</Link>
+            <Link href="/ofs">OFS</Link>
+            <Link href="/fpo-listings">FPO</Link>
+            */}
 
             <div className="group relative">
               <Link
@@ -469,44 +442,11 @@ export function Header() {
                 Dashboard
               </Link>
 
-              <Link
-                href="/rights-issues"
-                className={`flex items-center space-x-2 text-sm font-medium transition-colors hover:text-primary ${
-                  isActive('/rights-issues')
-                    ? 'text-foreground'
-                    : 'text-muted-foreground'
-                }`}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <HiArrowTrendingUp className="h-4 w-4" />
-                <span>Rights Issues</span>
-              </Link>
-
-              <Link
-                href="/ofs"
-                className={`flex items-center space-x-2 text-sm font-medium transition-colors hover:text-primary ${
-                  isActive('/ofs')
-                    ? 'text-foreground'
-                    : 'text-muted-foreground'
-                }`}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <HiArrowTrendingUp className="h-4 w-4" />
-                <span>OFS</span>
-              </Link>
-
-              <Link
-                href="/fpo-listings"
-                className={`flex items-center space-x-2 text-sm font-medium transition-colors hover:text-primary ${
-                  isActive('/fpo-listings')
-                    ? 'text-foreground'
-                    : 'text-muted-foreground'
-                }`}
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                <HiListBullet className="h-4 w-4" />
-                <span>FPO Listings</span>
-              </Link>
+              {/* HIDDEN: Rights Issues, OFS, FPO - Routes still accessible via direct URL
+              <Link href="/rights-issues">Rights Issues</Link>
+              <Link href="/ofs">OFS</Link>
+              <Link href="/fpo-listings">FPO Listings</Link>
+              */}
 
               <div className="space-y-2">
                 <Link
