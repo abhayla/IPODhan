@@ -58,7 +58,8 @@ export function CategoryTabs({ tabs, ariaLabel = 'Navigation tabs' }: CategoryTa
 export const IPO_LISTING_TABS: CategoryTab[] = [
   { name: 'Mainboard IPOs', href: '/mainboard-ipo-listings', value: 'mainboard' },
   { name: 'SME IPOs', href: '/sme-ipo-listings', value: 'sme' },
-  { name: 'FPOs', href: '/fpo-listings', value: 'fpo' },
+  // HIDDEN: FPOs tab - Route still accessible via direct URL
+  // { name: 'FPOs', href: '/fpo-listings', value: 'fpo' },
 ];
 
 // Convenience component for IPO Listings tabs

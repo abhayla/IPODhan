@@ -216,6 +216,10 @@ chittorgarh_detail_sample.html
 # Temporary directory for ad-hoc files
 /temp/
 
+# Temp files with malformed paths
+D:*temp*.txt
+*temp_old_section.txt
+
 # Database backups (don't commit large SQL dumps)
 database/backups/*.sql
 

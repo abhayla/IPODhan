@@ -244,7 +244,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             return null;
           }
 
-          // Fetch related data (Story 4.7: added ipoScore, Story 4.10: added ipoFinancials, Story 4.11: added ipoDetails, Story 11.10: added anchorInvestor)
+          // Fetch related data (Story 4.7: added ipoScore, Story 4.10: added ipoFinancials, Story 4.11: added ipoDetails, Story 11.10: added anchorInvestor, Phase 3B: added demandGraph)
           const [
             financials,
             enhancedFinancials,
@@ -257,6 +257,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             registrarData,
             ipoScore,
             anchorInvestor,
+            demandGraph,
           ] = await Promise.all([
             this.db
               .select()
@@ -322,6 +323,11 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               .where(eq(anchorInvestors.ipoId, ipo.id))
               .limit(1)
               .then((r) => r[0] || null),
+            this.db
+              .select()
+              .from(ipoDemandGraph)
+              .where(eq(ipoDemandGraph.ipoId, ipo.id))
+              .orderBy(asc(ipoDemandGraph.exchange), asc(ipoDemandGraph.pricePoint)),
           ]);
 
           return {
@@ -337,6 +343,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             registrarRelation: registrarData,
             ipoScore: ipoScore, // Story 4.7
             anchorInvestor: anchorInvestor, // Story 11.10
+            ipoDemandGraph: demandGraph, // Phase 3B: DemandGraph component
           };
         } catch (error) {
           throw new DatabaseError(
