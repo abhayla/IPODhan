@@ -44,7 +44,7 @@ export default async function DashboardPage({ searchParams }: DashboardPageProps
       search,
       scoreRange,
       page,
-      limit: 12,
+      limit: 20,
       sortBy: 'createdAt' as const,
       sortOrder: 'desc' as const,
     };
