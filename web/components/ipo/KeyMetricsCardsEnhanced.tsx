@@ -105,10 +105,10 @@ export function KeyMetricsCardsEnhanced({
         </CardHeader>
         <CardContent className="relative">
           <div className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent transition-all duration-300">
-            ₹{(issueSize / 10000000).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Crores
+            {issueSize > 0 ? `₹${(issueSize / 10000000).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Crores` : 'N/A'}
           </div>
           <p className="text-xs text-muted-foreground mt-1 font-medium">
-            Total Issue Size
+            {issueSize > 0 ? 'Total Issue Size' : 'Not available'}
           </p>
         </CardContent>
       </Card>

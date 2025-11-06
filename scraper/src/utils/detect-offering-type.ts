@@ -179,28 +179,55 @@ export function detectOfferingType(params: {
 }): string {
   const { symbol, bseType, issueType } = params;
 
+  let result = 'IPO'; // Default
+
   // Priority 1: Symbol-based detection (catches TENDER, BUYBACK, DELISTING)
   const symbolType = detectOfferingTypeFromSymbol(symbol || '');
   if (symbolType !== 'IPO') {
-    return symbolType;
+    result = symbolType;
   }
 
   // Priority 2: BSE type field (if available)
-  if (bseType) {
+  if (result === 'IPO' && bseType) {
     const bseTypeResult = detectOfferingTypeFromBSEType(bseType);
     if (bseTypeResult !== 'IPO') {
-      return bseTypeResult;
+      result = bseTypeResult;
     }
   }
 
   // Priority 3: NSE issue type field (if available)
-  if (issueType) {
+  if (result === 'IPO' && issueType) {
     const issueTypeResult = detectOfferingTypeFromBSEType(issueType); // Reuse BSE logic as it's generic
     if (issueTypeResult !== 'IPO') {
-      return issueTypeResult;
+      result = issueTypeResult;
     }
   }
 
-  // Default: IPO
-  return 'IPO';
+  // Validate result is in allowed enum
+  if (!isValidOfferingType(result)) {
+    console.warn(`[detectOfferingType] Invalid offering type "${result}", defaulting to IPO. Symbol: ${symbol}, BSE Type: ${bseType}, Issue Type: ${issueType}`);
+    return 'IPO';
+  }
+
+  return result;
+}
+
+/**
+ * Valid offering types that match the database enum
+ *
+ * This list should match the offering_type_enum in packages/shared/src/db/schema.ts
+ */
+const VALID_OFFERING_TYPES = [
+  'IPO', 'FPO', 'RIGHTS', 'OFS', 'BUYBACK', 'DELISTING',
+  'TENDER', 'NCD', 'BONDS', 'INVITS', 'REITS', 'IPP', 'QIP', 'PREFERENTIAL'
+] as const;
+
+/**
+ * Validate that an offering type is valid according to the database schema
+ *
+ * @param offeringType - The offering type to validate
+ * @returns true if valid, false otherwise
+ */
+export function isValidOfferingType(offeringType: string): boolean {
+  return VALID_OFFERING_TYPES.includes(offeringType as any);
 }

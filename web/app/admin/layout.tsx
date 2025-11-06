@@ -40,6 +40,7 @@ function AdminLayoutContent({ children }: { children: React.ReactNode }) {
 
   const navigation = [
     { name: 'Dashboard', href: '/admin', icon: '📊' },
+    { name: 'Dynamic Admin', href: '/admin/dynamic/ipos/list', icon: '⚡' },
     { name: 'Notifications', href: '/admin/notifications', icon: '🔔' },
     { name: 'Settings', href: '/admin/settings', icon: '⚙️' },
     { name: 'Audit Log', href: '/admin/audit', icon: '📜' },

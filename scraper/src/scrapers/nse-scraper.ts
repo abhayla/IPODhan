@@ -143,12 +143,12 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
           };
 
           // Parse price range
-          const parsePriceRange = (priceStr: string): { min: number; max: number } => {
+          const parsePriceRange = (priceStr: string): { min: number | undefined; max: number | undefined } => {
             try {
               const cleaned = priceStr.trim().replace(/₹|Rs\.?|INR/gi, '').trim();
 
               if (cleaned === '--' || cleaned === '' || cleaned === 'N/A') {
-                return { min: 0, max: 0 };
+                return { min: undefined, max: undefined };
               }
 
               // Handle range format "100 - 120" or "100-120"
@@ -165,9 +165,9 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
                 return { min: price, max: price };
               }
 
-              return { min: 0, max: 0 };
+              return { min: undefined, max: undefined };
             } catch (error) {
-              return { min: 0, max: 0 };
+              return { min: undefined, max: undefined };
             }
           };
 

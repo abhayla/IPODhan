@@ -182,5 +182,8 @@ export function getPoolStats() {
 // Re-export everything from shared schema
 export * from '../../../packages/shared/src/db/schema';
 
+// Explicit export for extractionLogs (TypeScript workaround for wildcard re-export issue)
+export { extractionLogs } from '../../../packages/shared/src/db/schema';
+
 // Also export the namespace for type compatibility
 export { sharedSchema as schema };

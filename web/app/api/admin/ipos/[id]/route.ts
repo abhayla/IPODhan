@@ -1,13 +1,14 @@
 /**
- * PATCH /api/admin/ipos/[id] API Route
+ * /api/admin/ipos/[id] API Route
  *
- * Update existing IPO (admin only)
+ * GET: Fetch IPO by ID (admin only)
+ * PATCH: Update existing IPO (admin only)
  *
+ * @route GET /api/admin/ipos/[id]
  * @route PATCH /api/admin/ipos/[id]
  * @requires Authorization: Bearer <ADMIN_API_TOKEN>
  * @param {string} id - IPO UUID
- * @body {IPOUpdateRequest} Partial IPO data
- * @returns {IPOUpdateResponse} Updated IPO
+ * @returns {IPOResponse} IPO data
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -70,6 +71,106 @@ function createErrorResponse(
     },
     { status }
   );
+}
+
+/**
+ * GET /api/admin/ipos/[id] - Fetch IPO by ID
+ */
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  // MUST check admin auth first
+  const authError = await requireAdminAuth();
+  if (authError) return authError;
+
+  const requestId = generateRequestId();
+  const startTime = Date.now();
+
+  const requestLogger = logger.child({ requestId });
+
+  try {
+    const { id } = await context.params;
+
+    requestLogger.info({ ipoId: id }, 'Processing IPO fetch request');
+
+    // Validate ID
+    if (!id || typeof id !== 'string') {
+      return createErrorResponse(
+        'VALIDATION_ERROR',
+        'Invalid or missing id parameter',
+        requestId,
+        400
+      );
+    }
+
+    // Initialize Redis client with fallback
+    let redis;
+    try {
+      redis = getRedisClient();
+    } catch {
+      requestLogger.warn('Redis unavailable - continuing without cache');
+      redis = {
+        get: async () => null,
+        set: async () => 'OK',
+        del: async () => 1,
+        flushdb: async () => 'OK',
+      } as any;
+    }
+
+    const ipoRepository = new IPORepository(db, redis);
+
+    // Fetch IPO by ID
+    const ipo = await ipoRepository.findById(id);
+    if (!ipo) {
+      requestLogger.warn({ ipoId: id }, 'IPO not found');
+      return createErrorResponse(
+        'NOT_FOUND',
+        `IPO with id '${id}' not found`,
+        requestId,
+        404
+      );
+    }
+
+    const duration = Date.now() - startTime;
+    requestLogger.info(
+      {
+        duration,
+        ipoId: id,
+        slug: ipo.slug,
+        companyName: ipo.companyName,
+      },
+      'IPO fetched successfully'
+    );
+
+    return NextResponse.json(
+      {
+        success: true,
+        data: ipo,
+      },
+      { status: 200 }
+    );
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    requestLogger.error(
+      {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        duration,
+      },
+      'Failed to fetch IPO'
+    );
+
+    return createErrorResponse(
+      'INTERNAL_ERROR',
+      'Failed to fetch IPO',
+      requestId,
+      500,
+      process.env.NODE_ENV === 'development'
+        ? { error: error instanceof Error ? error.message : String(error) }
+        : undefined
+    );
+  }
 }
 
 /**

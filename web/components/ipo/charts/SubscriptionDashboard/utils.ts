@@ -14,6 +14,28 @@ import type {
 } from './types';
 
 /**
+ * Null-safe timestamp parser
+ * Returns null for invalid timestamps instead of creating fallback dates
+ *
+ * @param ts - Timestamp value (Date, string, or null/undefined)
+ * @returns Parsed Date or null if invalid
+ */
+function parseTimestamp(ts: Date | string | null | undefined): Date | null {
+  if (!ts) return null;
+
+  try {
+    if (ts instanceof Date) {
+      return isNaN(ts.getTime()) ? null : ts;
+    }
+    const parsed = parseISO(ts as string);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  } catch (error) {
+    console.error('[parseTimestamp] Invalid timestamp:', ts, error);
+    return null;
+  }
+}
+
+/**
  * Transform raw subscription data to time-series points
  */
 export function transformToTimeSeriesData(
@@ -23,15 +45,25 @@ export function transformToTimeSeriesData(
     return [];
   }
 
+  // Filter out records with invalid timestamps
+  const validSubscriptions = subscriptions.filter(sub => {
+    const date = parseTimestamp(sub.timestamp);
+    return date !== null;
+  });
+
+  if (validSubscriptions.length === 0) {
+    return [];
+  }
+
   // Sort by date (oldest first)
-  const sorted = [...subscriptions].sort((a, b) => {
-    const dateA = a.timestamp instanceof Date ? a.timestamp : (a.timestamp ? parseISO(a.timestamp as string) : new Date());
-    const dateB = b.timestamp instanceof Date ? b.timestamp : (b.timestamp ? parseISO(b.timestamp as string) : new Date());
+  const sorted = [...validSubscriptions].sort((a, b) => {
+    const dateA = parseTimestamp(a.timestamp)!;
+    const dateB = parseTimestamp(b.timestamp)!;
     return dateA.getTime() - dateB.getTime();
   });
 
   return sorted.map((sub) => {
-    const date = sub.timestamp instanceof Date ? sub.timestamp : (sub.timestamp ? parseISO(sub.timestamp as string) : new Date());
+    const date = parseTimestamp(sub.timestamp)!;
 
     return {
       date,
@@ -82,7 +114,7 @@ export function calculateSubscriptionStats(
     const total = sub.totalSubscription ? Number(sub.totalSubscription) : 0;
     if (total > peakSubscription) {
       peakSubscription = total;
-      peakDate = sub.timestamp instanceof Date ? sub.timestamp : (sub.timestamp ? parseISO(sub.timestamp as string) : null);
+      peakDate = parseTimestamp(sub.timestamp);
     }
   });
 
@@ -218,10 +250,20 @@ export function transformToHeatmapData(
     return [];
   }
 
+  // Filter out records with invalid timestamps
+  const validSubscriptions = subscriptions.filter(sub => {
+    const date = parseTimestamp(sub.timestamp);
+    return date !== null;
+  });
+
+  if (validSubscriptions.length === 0) {
+    return [];
+  }
+
   // Sort by date (oldest first)
-  const sorted = [...subscriptions].sort((a, b) => {
-    const dateA = a.timestamp instanceof Date ? a.timestamp : (a.timestamp ? parseISO(a.timestamp as string) : new Date());
-    const dateB = b.timestamp instanceof Date ? b.timestamp : (b.timestamp ? parseISO(b.timestamp as string) : new Date());
+  const sorted = [...validSubscriptions].sort((a, b) => {
+    const dateA = parseTimestamp(a.timestamp)!;
+    const dateB = parseTimestamp(b.timestamp)!;
     return dateA.getTime() - dateB.getTime();
   });
 
@@ -231,7 +273,7 @@ export function transformToHeatmapData(
   );
 
   return sorted.map((sub, index) => {
-    const date = sub.timestamp instanceof Date ? sub.timestamp : (sub.timestamp ? parseISO(sub.timestamp as string) : new Date());
+    const date = parseTimestamp(sub.timestamp)!;
     const subscription = sub.totalSubscription ? Number(sub.totalSubscription) : 0;
 
     return {
@@ -260,7 +302,9 @@ export function getCategoryTrend(
 
   return last7
     .map((sub) => {
-      const date = sub.timestamp instanceof Date ? sub.timestamp : (sub.timestamp ? parseISO(sub.timestamp as string) : new Date());
+      const date = parseTimestamp(sub.timestamp);
+      if (!date) return null;
+
       let value = 0;
 
       switch (category) {
@@ -285,7 +329,7 @@ export function getCategoryTrend(
 
       return { date, value };
     })
-    .filter((point) => point.value > 0);
+    .filter((point): point is { date: Date; value: number } => point !== null && point.value > 0);
 }
 
 /**

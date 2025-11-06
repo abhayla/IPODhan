@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useAdminAuth } from '@/lib/context/AdminAuthContext';
 import Link from 'next/link';
 import { adminGet, adminPost, adminPatch, adminDelete } from '@/lib/admin/admin-api-client';
+import ExtractionResultsViewer from '@/components/admin/ExtractionResultsViewer';
 import type {
   IPO,
   FinancialData,
@@ -246,6 +247,7 @@ export default function AdminEditIPOPage() {
   const [documents, setDocuments] = useState<Document[]>([]);
   const [editedFinancials, setEditedFinancials] = useState<Partial<FinancialData>>({});
   const [selectedFields, setSelectedFields] = useState<string[]>([]);
+  const [relatedDataDropdownOpen, setRelatedDataDropdownOpen] = useState(false);
   const [showGMPModal, setShowGMPModal] = useState(false);
   const [editingGMP, setEditingGMP] = useState<GMPRecord | null>(null);
   const [gmpFormData, setGmpFormData] = useState({
@@ -796,6 +798,103 @@ export default function AdminEditIPOPage() {
         </div>
 
         <div className="flex items-center space-x-4">
+          {/* Related Data Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setRelatedDataDropdownOpen(!relatedDataDropdownOpen)}
+              className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+            >
+              <span>⚡</span>
+              <span>Manage Related Data</span>
+              <svg
+                className={`w-4 h-4 transition-transform ${relatedDataDropdownOpen ? 'rotate-180' : ''}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {/* Dropdown Menu */}
+            {relatedDataDropdownOpen && (
+              <div className="absolute right-0 mt-2 w-64 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-50">
+                <div className="p-2">
+                  <div className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wide">
+                    Related Tables
+                  </div>
+
+                  <Link
+                    href={`/admin/dynamic/registrars/list?ipoId=${ipo.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between px-3 py-2 text-sm text-white hover:bg-gray-700 rounded transition-colors"
+                    onClick={() => setRelatedDataDropdownOpen(false)}
+                  >
+                    <span>📋 Registrars</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </Link>
+
+                  <Link
+                    href={`/admin/dynamic/peerCompanies/list?ipoId=${ipo.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between px-3 py-2 text-sm text-white hover:bg-gray-700 rounded transition-colors"
+                    onClick={() => setRelatedDataDropdownOpen(false)}
+                  >
+                    <span>🏢 Peer Companies</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </Link>
+
+                  <Link
+                    href={`/admin/dynamic/anchorInvestors/list?ipoId=${ipo.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between px-3 py-2 text-sm text-white hover:bg-gray-700 rounded transition-colors"
+                    onClick={() => setRelatedDataDropdownOpen(false)}
+                  >
+                    <span>⚓ Anchor Investors</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </Link>
+
+                  <Link
+                    href={`/admin/dynamic/documents/list?ipoId=${ipo.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between px-3 py-2 text-sm text-white hover:bg-gray-700 rounded transition-colors"
+                    onClick={() => setRelatedDataDropdownOpen(false)}
+                  >
+                    <span>📄 Documents</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </Link>
+
+                  <div className="border-t border-gray-700 my-2"></div>
+
+                  <Link
+                    href="/admin/dynamic/ipos/list"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between px-3 py-2 text-sm text-blue-400 hover:bg-gray-700 rounded transition-colors"
+                    onClick={() => setRelatedDataDropdownOpen(false)}
+                  >
+                    <span>⚡ All Dynamic Admin Tables</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </Link>
+                </div>
+              </div>
+            )}
+          </div>
+
           {ipo.scraperLocked && (
             <span className="inline-flex items-center space-x-1 text-red-400">
               <span>🔒</span>
@@ -941,6 +1040,29 @@ export default function AdminEditIPOPage() {
           {/* Financials Tab */}
           {activeTab === 'financials' && (
             <div className="space-y-6">
+              {/* DRHP Extraction Results */}
+              {ipo && (
+                <ExtractionResultsViewer
+                  ipoId={ipo.id}
+                  onCopyField={(fieldName, value) => {
+                    setEditedFinancials((prev) => ({
+                      ...prev,
+                      [fieldName]: value
+                    }));
+                    setSuccessMessage(`Copied ${fieldName} from extraction`);
+                    setTimeout(() => setSuccessMessage(''), 3000);
+                  }}
+                  onCopyAll={(fields) => {
+                    setEditedFinancials((prev) => ({
+                      ...prev,
+                      ...fields
+                    }));
+                    setSuccessMessage(`Copied all fields from extraction`);
+                    setTimeout(() => setSuccessMessage(''), 3000);
+                  }}
+                />
+              )}
+
               <div className="bg-gray-900 p-6 rounded-lg border border-gray-700">
                 <h3 className="text-lg font-semibold text-white mb-4">Financial Data</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

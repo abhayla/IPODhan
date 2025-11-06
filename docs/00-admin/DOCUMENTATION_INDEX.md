@@ -1,8 +1,8 @@
 # Admin System Documentation Index
 
-**Last Updated:** 2025-10-22
-**Status:** Phase 5 Complete - E2E Testing + TypeScript Fixes
-**Total Documents:** 12 files (~12,000+ lines)
+**Last Updated:** 2025-11-06
+**Status:** Phase 6 Testing & Implementation - Active
+**Total Documents:** 14 files (~20,000+ lines)
 
 ---
 
@@ -10,25 +10,37 @@
 
 ### 🎯 Start Here (Essential Reading)
 
-1. **[PHASE_2_COMPLETION_FINAL.md](#1-phase-2-completion-final)** ⭐ **READ FIRST**
+1. **[ADMIN_TESTING_PLAN.md](#14-admin-testing-plan)** ⭐⭐⭐ **ACTIVE TESTING PLAN** 🆕
+   - Comprehensive UI testing with Playwright MCP
+   - 12 test scenarios covering all admin features
+   - Iterative fix loop strategy
+   - **Time:** 10 minutes (4-6 hours for execution)
+
+2. **[Admin-IPO-Data-Flow.md](#13-admin-ipo-data-flow)** ⭐⭐⭐ **ENHANCEMENT PLAN**
+   - Complete roadmap from 80% to 100%
+   - 3-week implementation schedule
+   - Gap analysis & priorities
+   - **Time:** 20 minutes
+
+3. **[PHASE_2_COMPLETION_FINAL.md](#8-phase-2-completion-final)** ⭐ **Phase 2 Summary**
    - Complete Phase 2 summary
    - Final metrics and achievements
    - Deployment decision guide
    - **Time:** 15 minutes
 
-2. **[SESSION_SUMMARY.md](#2-session-summary)** ⭐ **Quick Overview**
+4. **[SESSION_SUMMARY.md](#9-session-summary)** ⭐ **Quick Overview**
    - High-level summary of all work
    - Key findings and links
    - **Time:** 5 minutes
 
-3. **[QUICK_START_ADMIN_API.md](#3-quick-start-admin-api)** ⭐ **Testing Guide**
+5. **[QUICK_START_ADMIN_API.md](#11-quick-start-admin-api)** ⭐ **Testing Guide**
    - How to test admin endpoints
    - Example workflows
    - **Time:** 10 minutes
 
 ---
 
-## 📖 All Documentation (11 Files)
+## 📖 All Documentation (14 Files)
 
 ### Planning & Design (Original)
 
@@ -347,6 +359,117 @@
 
 ---
 
+#### 14. ADMIN_TESTING_PLAN.md ⭐⭐⭐ 🆕
+**Size:** 5,000+ lines
+**Created:** 2025-11-06 (Today)
+**Status:** **ACTIVE - Testing in Progress**
+
+**Contents:**
+- Comprehensive admin UI testing strategy
+- 12 test scenarios covering all features
+- Playwright MCP headed mode testing
+- Iterative fix loop methodology
+- Known issues and fixes required
+- Performance targets and validation
+- Test results documentation format
+
+**When to Read:**
+- **BEFORE starting admin testing** - Essential reference
+- Understanding test coverage and priorities
+- Learning Playwright MCP testing patterns
+- Debugging test failures
+
+**Test Scenarios Covered:**
+1. Authentication & Access (15 min)
+2. Dashboard (search, filters, pagination) (20 min)
+3. Edit Page - All 9 Tabs (90 min)
+   - Basic Info, Financials, Objectives, Subscriptions
+   - GMP, Documents, Listing, Peers, Protection
+4. Notifications Page (15 min)
+5. Settings Page (15 min)
+6. Audit Log (20 min)
+7. Dynamic Admin (Self-Extending System) (30 min)
+8. DRHP Extraction (NEW - Week 3) (20 min)
+9. API Endpoints (30 min)
+10. Performance & Error Handling (20 min)
+11. Cross-Browser Testing (30 min)
+12. Data Integrity (20 min)
+
+**Known Issues to Fix:**
+- 🔴 Issue #3: DRHP Integration - Missing ipoId prop (P0)
+- ⚠️ Issue #5: Schema Introspector - HMR cache (P1)
+- ⚠️ Issue #2: Hyundai Motor India IPO missing (P1)
+
+**Testing Timeline:**
+- Phase 1: Setup & Fix Known Issues (30 min)
+- Phase 2: Playwright MCP Setup (15 min)
+- Phase 3: Comprehensive Testing (2-3 hours)
+- Phase 4: Iterative Fix Loop (1-2 hours)
+- Phase 5: Final Validation (30 min)
+- **Total: 4-6 hours**
+
+**Test Tools:**
+- Playwright MCP in headed mode
+- Browser automation with snapshots
+- API testing with curl commands
+- Performance measurement tools
+
+**Expected Outcomes:**
+- ✅ All 5 admin pages functional
+- ✅ All 9 edit tabs working
+- ✅ Protection system verified
+- ✅ DRHP extraction working
+- ✅ Dynamic admin functional
+- ✅ Performance targets met
+- ✅ Production readiness score >95%
+
+---
+
+### Phase 6: Enhancement Planning
+
+#### 13. Admin-IPO-Data-Flow.md ⭐⭐⭐
+**Size:** 3,100+ lines
+**Created:** 2025-11-05 (Today)
+**Status:** **Master Plan - 80% to 100% Enhancement**
+
+**Contents:**
+- Executive summary of current state (80% complete)
+- Phase 1-4 completion status
+- Comprehensive gap analysis (360 fields missing)
+- Implementation priorities and timeline
+- 3-week development schedule
+- Self-extending admin system design
+- DRHP parser integration plan
+- Schema updates and migrations
+- Testing strategy
+
+**When to Read:**
+- **NOW** - Complete enhancement roadmap
+- Understanding remaining 20% gaps
+- Planning implementation phases
+- Technical architecture decisions
+
+**Key Sections:**
+- Executive Summary: Current state analysis
+- Gap Analysis: 360 missing fields breakdown
+- Week 1: Schema updates & DRHP fixes
+- Week 2: Self-extending admin UI
+- Week 3: Additional features & testing
+
+**Implementation Priorities:**
+1. Self-extending admin system (critical original requirement)
+2. DRHP parser integration (PDF extraction UI)
+3. Missing 360 fields addition
+4. extraction_logs table creation
+5. isPermanent flag for field protection
+
+**Timeline:**
+- Week 1: Database & infrastructure (30% → 50%)
+- Week 2: Self-extending UI (50% → 80%)
+- Week 3: Polish & testing (80% → 100%)
+
+---
+
 ### Reference Guides
 
 #### 11. QUICK_START_ADMIN_API.md ⭐
@@ -414,11 +537,13 @@ curl -H "Authorization: Bearer $ADMIN_TOKEN" \
 ### For Testing/QA
 
 **Path:** Testing Focus
-1. `QUICK_START_ADMIN_API.md` (10 min) - Setup and workflows
-2. `PHASE_3_TEST_REPORT.md` (20 min) - UI test results
-3. `INVESTORGAIN_GMP_MIGRATION_COMPLETE.md` (15 min) - GMP testing
+1. **`ADMIN_TESTING_PLAN.md` (10 min)** 🆕 - Comprehensive testing strategy
+2. `QUICK_START_ADMIN_API.md` (10 min) - Setup and workflows
+3. `E2E_TESTING.md` (20 min) - Existing E2E test suite
+4. `PHASE_3_TEST_REPORT.md` (20 min) - UI test results
+5. `INVESTORGAIN_GMP_MIGRATION_COMPLETE.md` (15 min) - GMP testing
 
-**Total:** 45 minutes for testing prep
+**Total:** 75 minutes for testing prep + 4-6 hours for execution
 
 ---
 

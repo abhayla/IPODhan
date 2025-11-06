@@ -125,8 +125,47 @@ function mergeListingExchanges(
 }
 
 /**
+ * Normalize company name for fuzzy matching (Phase 11 Step 2)
+ * Strips legal entity suffixes and common variations to enable duplicate detection
+ *
+ * @param companyName - Raw company name
+ * @returns Normalized company name for matching
+ *
+ * @example
+ * normalizeCompanyNameForMatching('Midwest Ltd. IPO') // 'midwest'
+ * normalizeCompanyNameForMatching('Midwest Limited') // 'midwest'
+ */
+function normalizeCompanyNameForMatching(companyName: string): string {
+  if (!companyName) return '';
+
+  return companyName
+    .toLowerCase()
+    .trim()
+    // Remove common suffixes that create duplicates
+    .replace(/\s+ipo$/i, '')
+    .replace(/\s+fpo$/i, '')
+    .replace(/\s+limited$/i, '')
+    .replace(/\s+ltd\.?$/i, '')
+    .replace(/\s+private\s+limited$/i, '')
+    .replace(/\s+pvt\.?\s+ltd\.?$/i, '')
+    .replace(/\s+pvt\.?$/i, '')
+    .replace(/\s+private$/i, '')
+    .replace(/\s+inc\.?$/i, '')
+    .replace(/\s+incorporated$/i, '')
+    .replace(/\s+corp\.?$/i, '')
+    .replace(/\s+corporation$/i, '')
+    .replace(/\s+llc$/i, '')
+    .replace(/\s+llp$/i, '')
+    .replace(/\s+plc$/i, '')
+    // Remove extra whitespace
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * Upsert IPO data to database with retry logic
  * Handles merge logic for dual-listed IPOs (both NSE and BSE)
+ * Enhanced Phase 11 Step 2: Fuzzy company name matching to prevent duplicates
  * @param ipoRepository - IPO repository instance
  * @param scrapedIPO - Validated scraped IPO data
  * @param source - Source exchange ('NSE' | 'BSE') for merge logic
@@ -139,13 +178,33 @@ export async function upsertIPO(
 ): Promise<string> {
   const startTime = Date.now();
   const slug = generateSlug(scrapedIPO.companyName);
+  const normalizedName = normalizeCompanyNameForMatching(scrapedIPO.companyName);
 
-  logger.debug({ companyName: scrapedIPO.companyName, slug, source }, 'Upserting IPO');
+  logger.debug({
+    companyName: scrapedIPO.companyName,
+    normalizedName,
+    slug,
+    source
+  }, 'Upserting IPO (Phase 11: with fuzzy matching)');
 
   const result = await retryWithBackoff(
     async () => {
-      // Find existing IPO by slug
-      const existingIPO = await ipoRepository.findBySlug(slug);
+      // Phase 11 Step 2: Try fuzzy company name matching first
+      // This prevents duplicates when scrapers use different name variations
+      let existingIPO = await ipoRepository.findByNormalizedName(normalizedName);
+
+      if (!existingIPO) {
+        // Fallback to slug-based lookup (existing behavior)
+        existingIPO = await ipoRepository.findBySlug(slug);
+      } else {
+        logger.info({
+          companyName: scrapedIPO.companyName,
+          normalizedName,
+          existingCompanyName: existingIPO.companyName,
+          existingSlug: existingIPO.slug,
+          newSlug: slug
+        }, '[Phase 11] Found existing IPO via fuzzy name matching - preventing duplicate!');
+      }
 
       // Determine listing exchange(s)
       let listingExchanges: ('NSE' | 'BSE')[];
@@ -166,8 +225,13 @@ export async function upsertIPO(
         sector: scrapedIPO.sector,
         issueSize: scrapedIPO.issueSize.toString(),
         // Round price values to integers for INTEGER fields in database
-        priceRangeMin: scrapedIPO.priceRangeMin ? Math.round(scrapedIPO.priceRangeMin) : undefined,
-        priceRangeMax: scrapedIPO.priceRangeMax ? Math.round(scrapedIPO.priceRangeMax) : undefined,
+        // Use explicit check to avoid storing 0 (only store positive values or undefined)
+        priceRangeMin: scrapedIPO.priceRangeMin !== undefined && scrapedIPO.priceRangeMin > 0
+          ? Math.round(scrapedIPO.priceRangeMin)
+          : undefined,
+        priceRangeMax: scrapedIPO.priceRangeMax !== undefined && scrapedIPO.priceRangeMax > 0
+          ? Math.round(scrapedIPO.priceRangeMax)
+          : undefined,
         lotSize: validateLotSize(scrapedIPO.lotSize, scrapedIPO.segment, scrapedIPO.companyName) ?? undefined, // Validate and reject lot_size = 1
         faceValue: scrapedIPO.faceValue || 10, // Default to 10 if not provided
         status: scrapedIPO.status as any,

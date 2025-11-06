@@ -114,6 +114,14 @@ export const confidenceLevelEnum = pgEnum('confidence_level', [
   'LOW',
 ]);
 
+export const extractionStatusEnum = pgEnum('extraction_status', [
+  'PENDING',
+  'IN_PROGRESS',
+  'SUCCESS',
+  'PARTIAL',
+  'FAILED',
+]);
+
 export const issueTypeEnum = pgEnum('issue_type', [
   'BOOK_BUILDING',
   'FIXED_PRICE',
@@ -656,7 +664,68 @@ export const scraperLogs = pgTable(
   })
 );
 
-// ==================== TABLE 13: IPO_REVIEWS (One-to-Many) ====================
+// ==================== TABLE 13: EXTRACTION_LOGS (DRHP PDF Extraction Tracking) ====================
+
+export const extractionLogs = pgTable(
+  'extraction_logs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id').references(() => ipos.id, { onDelete: 'cascade' }),
+    companyName: varchar('company_name', { length: 255 }).notNull(),
+
+    // File Information
+    fileName: varchar('file_name', { length: 255 }).notNull(),
+    filePath: varchar('file_path', { length: 500 }),
+    fileSize: integer('file_size'), // in bytes
+    totalPages: integer('total_pages'),
+
+    // Extraction Status
+    status: extractionStatusEnum('status').notNull().default('PENDING'),
+    extractorVersion: varchar('extractor_version', { length: 20 }),
+    extractionMethod: varchar('extraction_method', { length: 50 }), // 'pdfplumber', 'pymupdf4llm', 'manual'
+
+    // Extracted Data Summary
+    fieldsExtracted: integer('fields_extracted').default(0),
+    totalFields: integer('total_fields').default(16),
+    extractedData: jsonb('extracted_data'), // JSON of extracted financial data
+
+    // Quality Metrics
+    confidenceScore: integer('confidence_score'), // 0-100
+    confidenceLevel: confidenceLevelEnum('confidence_level'),
+    dataIssues: jsonb('data_issues').$type<string[]>(), // Array of detected issues
+
+    // Processing Metrics
+    durationMs: integer('duration_ms'),
+    plPageNumber: integer('pl_page_number'), // Page where P&L was found
+    tablesProcessed: integer('tables_processed'),
+    unitDetected: varchar('unit_detected', { length: 20 }), // 'lakhs', 'crores', 'millions'
+
+    // Error Tracking
+    errorMessage: text('error_message'),
+    errorStack: text('error_stack'),
+    failureReason: text('failure_reason'),
+
+    // Admin Metadata
+    uploadedBy: varchar('uploaded_by', { length: 255 }), // Admin username
+    reviewedBy: varchar('reviewed_by', { length: 255 }),
+    reviewNotes: text('review_notes'),
+    isVerified: boolean('is_verified').default(false),
+
+    // Timestamps
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    processedAt: timestamp('processed_at'),
+    reviewedAt: timestamp('reviewed_at'),
+  },
+  (table) => ({
+    ipoIdIdx: index('idx_extraction_logs_ipo_id').on(table.ipoId),
+    statusIdx: index('idx_extraction_logs_status').on(table.status),
+    createdAtIdx: index('idx_extraction_logs_created_at').on(table.createdAt),
+    confidenceLevelIdx: index('idx_extraction_logs_confidence').on(table.confidenceLevel),
+    companyNameIdx: index('idx_extraction_logs_company').on(table.companyName),
+  })
+);
+
+// ==================== TABLE 14: IPO_REVIEWS (One-to-Many) ====================
 
 export const ipoReviews = pgTable(
   'ipo_reviews',
@@ -820,6 +889,7 @@ export const fieldProtectionMetadata = pgTable(
     // Protection flags
     isProtected: boolean('is_protected').default(false).notNull(),
     autoProtected: boolean('auto_protected').default(false).notNull(), // Auto-locked after manual edit
+    isPermanent: boolean('is_permanent').default(false).notNull(), // Permanent protection (never auto-remove)
 
     // Manual edit tracking
     manuallyEditedAt: timestamp('manually_edited_at'),
