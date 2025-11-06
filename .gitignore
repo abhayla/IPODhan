@@ -106,6 +106,17 @@ web/scripts/fix-*.sql
 web/scripts/backfill-*.ts
 web/check-*.ts
 web/cleanup-*.ts
+
+# Root-level temporary test/utility scripts
+/check-*.ts
+/test-*.ts
+/verify-*.ts
+/analyze-*.ts
+/fix-*.ts
+/get-*.ts
+/get-*.js
+temp_*.json
+ipo-api-test.json
 web/app/test-calculator/
 web/components/**/*.simple.tsx
 web/components/**/*Basic.tsx
@@ -132,6 +143,12 @@ web/check-scraper.sql
 /dashboard-test*.md
 TEST_ISSUES.json
 web/TEST_PROGRESS.md
+/ADMIN_BUG_FIX_PROMPT.md
+/Fix-Plan-for-Admin-Features.md
+/IMPLEMENTATION_COMPLETE.md
+/RESUME_TESTING_PROMPT.md
+/UI_VERIFICATION_STATUS.md
+/The Elegant Solution*.md
 
 # Testing session temporary files
 /CATEGORY_LISTING_PAGES_INVENTORY.txt
@@ -215,10 +232,16 @@ chittorgarh_detail_sample.html
 
 # Temporary directory for ad-hoc files
 /temp/
+/test-files/
+/pdf-parser-test/
+
+# Uploads directory (user-uploaded files)
+web/uploads/
 
 # Temp files with malformed paths
 D:*temp*.txt
 *temp_old_section.txt
+D:*temp*.json
 
 # Database backups (don't commit large SQL dumps)
 database/backups/*.sql

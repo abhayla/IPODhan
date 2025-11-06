@@ -34,6 +34,7 @@
     "scripts/redis-fault-tolerance-test.ts",
     "scripts/test-admin-edit-fields.ts",
     "scripts/test-api-performance.ts",
+    "scripts/test-week1-migrations.ts",
     "scripts/validate-api-responses.ts",
     "scripts/validate-cross-contamination.ts",
     "sentry.client.config.ts",

@@ -5,8 +5,27 @@
  * and volatility computations.
  */
 
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import type { GMPRecordDB, GMPChartPoint, GMPTrendAnalysis } from './types';
+
+/**
+ * Null-safe timestamp parser
+ * Returns null for invalid timestamps instead of creating fallback dates
+ */
+function parseTimestamp(ts: Date | string | null | undefined): Date | null {
+  if (!ts) return null;
+
+  try {
+    if (ts instanceof Date) {
+      return isNaN(ts.getTime()) ? null : ts;
+    }
+    const parsed = typeof ts === 'string' ? parseISO(ts) : new Date(ts);
+    return isNaN(parsed.getTime()) ? null : parsed;
+  } catch (error) {
+    console.error('[GMPHistoryChart] Invalid timestamp:', ts, error);
+    return null;
+  }
+}
 
 /**
  * Transform raw GMP records into chart-ready format with analytics
@@ -23,23 +42,36 @@ export function transformGMPData(
     return [];
   }
 
+  // Filter out records with invalid timestamps
+  const validRecords = records.filter(record => {
+    const date = parseTimestamp(record.timestamp);
+    return date !== null;
+  });
+
+  if (validRecords.length === 0) {
+    return [];
+  }
+
   // Sort by timestamp (ascending - oldest first)
-  const sorted = [...records].sort(
-    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
-  );
+  const sorted = [...validRecords].sort((a, b) => {
+    const dateA = parseTimestamp(a.timestamp)!;
+    const dateB = parseTimestamp(b.timestamp)!;
+    return dateA.getTime() - dateB.getTime();
+  });
 
   // Take last N days
   const limited = sorted.slice(-daysToShow);
 
   // Calculate moving averages and confidence bands
   const chartData: GMPChartPoint[] = limited.map((record, index) => {
+    const timestamp = parseTimestamp(record.timestamp)!;
     const gmp = record.gmp;
     const movingAvg7 = calculateMovingAverage(limited, index, 7);
     const volatility = calculateVolatility(limited, index);
 
     return {
-      date: format(new Date(record.timestamp), 'dd MMM'),
-      timestamp: new Date(record.timestamp),
+      date: format(timestamp, 'dd MMM'),
+      timestamp,
       gmp,
       gmpUpper: gmp * 1.1, // +10% confidence band
       gmpLower: gmp * 0.9, // -10% confidence band

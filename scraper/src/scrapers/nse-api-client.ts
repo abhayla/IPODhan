@@ -353,9 +353,9 @@ function parseNSEDate(dateStr: string | null | undefined): string {
 /**
  * Parse price range from NSE format
  */
-function parsePriceRange(priceStr: string | null | undefined): { min: number; max: number } {
+function parsePriceRange(priceStr: string | null | undefined): { min: number | undefined; max: number | undefined } {
   if (!priceStr) {
-    return { min: 0, max: 0 };
+    return { min: undefined, max: undefined };
   }
 
   try {
@@ -376,9 +376,9 @@ function parsePriceRange(priceStr: string | null | undefined): { min: number; ma
       return { min: price, max: price };
     }
 
-    return { min: 0, max: 0 };
+    return { min: undefined, max: undefined };
   } catch {
-    return { min: 0, max: 0 };
+    return { min: undefined, max: undefined };
   }
 }
 

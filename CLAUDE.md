@@ -2,6 +2,193 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Quick Start (New Developers)
+
+### First Time Setup
+```bash
+# 1. Install dependencies (monorepo root)
+npm install
+
+# 2. Setup environment (web)
+cd web
+cp .env.production.template .env.local
+# Edit .env.local with your local database credentials
+
+# 3. Run database migrations
+npm run db:migrate
+
+# 4. Seed database with sample data
+npm run seed
+
+# 5. Start development server
+npm run dev
+# Visit http://localhost:3000
+```
+
+### Common Development Commands
+
+**Web Application (from root):**
+```bash
+npm run dev                    # Start Next.js dev server (port 3000)
+npm run build                  # Build for production
+npm run start                  # Start production server
+npm run lint                   # Run ESLint
+```
+
+**Testing (from web/):**
+```bash
+npm run test                   # Run all tests (unit + integration)
+npm run test:unit              # Unit tests only (fast, <10s)
+npm run test:unit:watch        # Unit tests in watch mode
+npm run test:integration       # Integration tests (requires DB + Redis)
+npm run test:coverage          # Generate coverage report
+npm run test:e2e               # E2E tests with Playwright
+npm run test:e2e:headed        # E2E with browser UI
+npm run test:e2e:debug         # E2E with debugger
+npm run test:all               # Lint + Unit + Integration + E2E
+```
+
+**Database Management (from web/):**
+```bash
+npm run db:generate            # Generate migration from schema changes
+npm run db:migrate             # Apply pending migrations
+npm run db:push                # Push schema directly (dev only)
+npm run db:studio              # Open Drizzle Studio GUI (port 4983)
+npm run seed                   # Seed database with sample data
+npm run seed:force             # Re-seed (truncates existing data)
+npm run verify:seed            # Verify seed data integrity
+```
+
+**Scraper Service (from root):**
+```bash
+npm run dev:scraper            # Start scraper in dev mode
+npm run scraper:nse            # Run NSE scraper
+
+# From scraper/ directory:
+npm run start                  # Run default scraper (NSE)
+npm run start:bse              # BSE scraper only
+npm run start:moneycontrol     # Moneycontrol scraper only
+npm run start:chittorgarh      # Chittorgarh scraper only
+npm run start:gmp              # GMP scraper only
+npm run start:all              # Run all scrapers sequentially
+npm run scheduler              # Start cron scheduler (3 AM daily)
+npm run backfill               # Backfill historical IPO data
+npm run backfill:dry           # Dry run (no DB writes)
+```
+
+**Workspace Commands:**
+```bash
+# Run command in specific workspace
+npm run dev --workspace=web
+npm run test --workspace=scraper
+npm run build --workspace=packages/shared
+```
+
+**PDF Parser (Python, Optional):**
+```bash
+# For DRHP financial data extraction (experimental)
+cd pdf-parser-test
+python extraction_v3.py    # Extract financial data from DRHP markdown
+python test_extraction.py  # Run validation tests
+
+# See pdf-parser-test/README.md for Python dependencies and setup
+```
+
+**Running Single Tests:**
+```bash
+# From web/ directory
+npm run test:unit -- path/to/test.test.ts           # Run specific test file
+npm run test:unit:watch -- path/to/test.test.ts     # Watch single test
+npm run test:e2e -- --grep "test name"              # Run E2E test by name
+```
+
+**Debugging:**
+```bash
+# Debug Next.js server
+NODE_OPTIONS='--inspect' npm run dev
+
+# Debug tests
+npm run test:unit:watch    # Use Vitest UI
+npm run test:e2e:debug     # Playwright inspector
+
+# Check database state
+npm run db:studio          # Visual database browser
+
+# Monitor logs
+pm2 logs                   # Production logs (VPS only)
+```
+
+### Development Workflow
+
+**Making Schema Changes:**
+1. Edit `packages/shared/src/db/schema.ts` (single source of truth)
+2. Run `npm run db:generate` from `web/` to create migration
+3. Review generated SQL in `web/drizzle/migrations/`
+4. Run `npm run db:migrate` to apply
+5. Verify in Drizzle Studio: `npm run db:studio`
+
+**Adding New Repository:**
+1. Create in `web/lib/repositories/`
+2. Extend `BaseRepository` for automatic caching
+3. Import schema from `@ipodhan/shared/db/schema`
+4. Use `NodePgDatabase<typeof schema>` type
+5. Write integration tests in `web/tests/integration/repositories/`
+
+**Adding New API Endpoint:**
+1. Create route in `web/app/api/`
+2. Use repository directly (never HTTP calls from server)
+3. Follow standard response format (see API Route Patterns below)
+4. Add integration test in `web/tests/integration/api/`
+5. Update API documentation if public-facing
+
+### Key Files & Directories
+
+**Critical Configuration Files:**
+- `packages/shared/src/db/schema.ts` - **Single source of truth** for database schema (13 tables)
+- `web/lib/cache/cache-keys.ts` - Cache key generators and TTL definitions
+- `web/lib/config/search.ts` - Fuzzy search configuration
+- `web/eslint.config.mjs` - ESLint rules including architectural enforcement
+- `ecosystem.config.js` - PM2 configuration for production deployment
+
+**Core Backend Logic:**
+- `web/lib/repositories/` - Data access layer (extends BaseRepository)
+- `web/lib/repositories/base-repository.ts` - Cache-aside pattern implementation
+- `web/lib/services/` - Business logic layer (orchestrates repositories)
+- `web/lib/db/index.ts` - Database connection and schema re-exports
+- `web/lib/cache/redis-client.ts` - Redis singleton with fault tolerance
+
+**Monitoring & Logging:**
+- `web/lib/logging/logger.ts` - Winston structured logging
+- `web/lib/monitoring/sentry-utils.ts` - APM and error tracking
+- `web/scripts/db-health-check.ts` - Database monitoring script
+- `web/scripts/monitor-redis.ts` - Redis monitoring script
+
+**Scrapers (Data Collection):**
+- `scraper/src/scrapers/nse-scraper.ts` - NSE official API (primary source, 95%+ success)
+- `scraper/src/scrapers/bse-scraper.ts` - BSE scraper (secondary source)
+- `scraper/src/scrapers/moneycontrol-scraper.ts` - Moneycontrol fallback
+- `scraper/src/scrapers/chittorgarh-scraper.ts` - GMP data source
+- `scraper/src/scheduler/index.ts` - Cron scheduler (runs daily at 3 AM)
+
+**PDF Parser (Experimental):**
+- `pdf-parser-test/` - DRHP (Draft Red Herring Prospectus) PDF parser
+  - Python-based financial data extraction (94.1% accuracy)
+  - See `pdf-parser-test/README.md` for complete documentation
+
+**Testing:**
+- `web/tests/unit/` - Unit tests (70% of test pyramid)
+- `web/tests/integration/` - Integration tests with real DB/Redis (20%)
+- `web/tests/e2e/` - Playwright E2E tests (10%)
+- `web/vitest.config.ts` - Vitest configuration for unit tests
+- `web/playwright.config.ts` - Playwright configuration
+
+**Documentation (Must Read Before Coding):**
+- `docs/02-architecture/backend-architecture.md` - 3-layer architecture
+- `docs/05-caching/CACHING_STRATEGY.md` - Cache patterns and TTLs
+- `docs/16-database/SCHEMA_MANAGEMENT.md` - Schema change workflow
+- `docs/16-database/screen-table-database-field-mapping.md` - UI to DB mapping (1600+ lines)
+- `test-results/phase-5/` - Phase 5 reports (monitoring, scoring, load testing)
+
 ## Project Overview
 
 IPODhan is a comprehensive IPO (Initial Public Offering) information platform for Indian investors. The platform provides real-time IPO data, subscription tracking, GMP (Grey Market Premium) information, financial analysis, and investor tools.
@@ -739,6 +926,11 @@ See `docs/02-architecture/deployment-architecture.md` for complete deployment wo
 **"Type 'NodePgDatabase<typeof schema>' is not assignable"**
 - Repository constructors must import schema from `@ipodhan/shared/db/schema`
 - Update type annotation: `NodePgDatabase<typeof schema>` where schema is from shared
+
+**Zod version conflicts**
+- Zod is pinned to `^4.1.11` via npm overrides (see root `package.json`)
+- This ensures compatibility across all workspace packages
+- Do not upgrade Zod without testing all workspace packages first
 
 ### Database Connection Issues
 

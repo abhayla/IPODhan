@@ -115,13 +115,13 @@ function parseBSEDate(dateStr: string): string {
  * @param priceStr - Price string from BSE
  * @returns {min: number, max: number}
  */
-function parsePriceRange(priceStr: string): { min: number; max: number } {
+function parsePriceRange(priceStr: string): { min: number | undefined; max: number | undefined } {
   try {
     const cleaned = priceStr.trim();
 
     // Handle "--" (no price)
     if (cleaned === '--' || cleaned === '' || cleaned === 'N/A') {
-      return { min: 0, max: 0 };
+      return { min: undefined, max: undefined };
     }
 
     // Handle range format "310.00 - 326.00"
@@ -138,10 +138,10 @@ function parsePriceRange(priceStr: string): { min: number; max: number } {
       return { min: price, max: price };
     }
 
-    return { min: 0, max: 0 };
+    return { min: undefined, max: undefined };
   } catch (error) {
     logger.error({ priceStr, error }, 'Error parsing price range');
-    return { min: 0, max: 0 };
+    return { min: undefined, max: undefined };
   }
 }
 

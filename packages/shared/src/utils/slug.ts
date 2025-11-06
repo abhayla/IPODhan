@@ -55,12 +55,17 @@ export function generateIPOSlug(
     .toLowerCase()
     .trim()
 
+    // Remove common suffixes that create duplicates (Phase 11 fix)
+    .replace(/\s+ipo$/i, '')  // "Company IPO" → "Company"
+    .replace(/\s+fpo$/i, '')  // "Company FPO" → "Company"
+
     // Normalize common legal entity suffixes
     // These are placed at the end with a hyphen for better readability
-    .replace(/\s+ltd\.?$/i, '-ltd')
-    .replace(/\s+limited$/i, '-limited')
+    // IMPORTANT: "Limited" is normalized to "Ltd" for canonical slug consistency (Phase 11 fix)
+    .replace(/\s+limited$/i, '-ltd')  // "Company Limited" → "company-ltd" (CANONICAL)
+    .replace(/\s+ltd\.?$/i, '-ltd')   // "Company Ltd" → "company-ltd" (CANONICAL)
+    .replace(/\s+private\s+limited$/i, '-private-ltd')  // Normalize to "-private-ltd"
     .replace(/\s+pvt\.?\s+ltd\.?$/i, '-pvt-ltd')
-    .replace(/\s+private\s+limited$/i, '-private-limited')
     .replace(/\s+pvt\.?$/i, '-pvt')
     .replace(/\s+private$/i, '-private')
     .replace(/\s+inc\.?$/i, '-inc')

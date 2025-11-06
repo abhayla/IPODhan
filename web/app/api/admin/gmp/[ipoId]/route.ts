@@ -39,10 +39,10 @@ interface DeleteGMPRequest {
 export const POST = withAdminAuth(async (
   request: NextRequest,
   adminContext,
-  { params }: { params: { ipoId: string } }
+  { params }: { params: Promise<{ ipoId: string }> }
 ) => {
   try {
-    const { ipoId } = params;
+    const { ipoId } = await params;
     const body: CreateGMPRequest = await request.json();
     const {
       gmpPrice,
@@ -138,10 +138,10 @@ export const POST = withAdminAuth(async (
 export const PATCH = withAdminAuth(async (
   request: NextRequest,
   adminContext,
-  { params }: { params: { ipoId: string } }
+  { params }: { params: Promise<{ ipoId: string }> }
 ) => {
   try {
-    const { ipoId } = params;
+    const { ipoId } = await params;
     const body: UpdateGMPRequest = await request.json();
     const {
       recordId,
@@ -250,10 +250,10 @@ export const PATCH = withAdminAuth(async (
 export const DELETE = withAdminAuth(async (
   request: NextRequest,
   adminContext,
-  { params }: { params: { ipoId: string } }
+  { params }: { params: Promise<{ ipoId: string }> }
 ) => {
   try {
-    const { ipoId } = params;
+    const { ipoId } = await params;
     const { searchParams } = new URL(request.url);
     const recordId = searchParams.get('recordId');
 

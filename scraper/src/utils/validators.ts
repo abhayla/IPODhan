@@ -6,10 +6,8 @@ import { generateIPOSlug } from '@ipodhan/shared/utils/slug';
 export const ScrapedIPOSchema = z.object({
   companyName: z.string().min(1, 'Company name is required').max(255),
   issueSize: z.number().nonnegative('Issue size must be non-negative'),
-  priceRangeMin: z.number().nonnegative('Price range min must be non-negative'),
-  priceRangeMax: z
-    .number()
-    .nonnegative('Price range max must be non-negative'),
+  priceRangeMin: z.number().positive('Price range min must be positive').optional(),
+  priceRangeMax: z.number().positive('Price range max must be positive').optional(),
   openDate: z.string().refine(
     (date) => !isNaN(Date.parse(date)),
     'Open date must be a valid ISO 8601 date string'
@@ -53,7 +51,13 @@ export const ScrapedIPOSchema = z.object({
     path: ['closeDate']
   }
 ).refine(
-  (data) => data.priceRangeMax >= data.priceRangeMin,
+  (data) => {
+    // Only validate if both values are present (not undefined)
+    if (data.priceRangeMin === undefined || data.priceRangeMax === undefined) {
+      return true;
+    }
+    return data.priceRangeMax >= data.priceRangeMin;
+  },
   {
     message: 'Price range max must be greater than or equal to price range min',
     path: ['priceRangeMax']

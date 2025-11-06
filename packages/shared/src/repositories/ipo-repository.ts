@@ -287,6 +287,74 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Find IPO by normalized company name (Phase 11 Step 2)
+   * Used for fuzzy matching to prevent duplicate IPOs
+   *
+   * Normalizes company name by removing legal entity suffixes (Ltd, Limited, IPO, etc.)
+   * and matches against existing IPO company names using the same normalization
+   *
+   * @param normalizedName - Normalized company name (lowercase, stripped of suffixes)
+   * @returns Basic IPO record or null if not found
+   *
+   * @example
+   * // "Midwest Ltd" and "Midwest Limited" both normalize to "midwest"
+   * const ipo = await repository.findByNormalizedName('midwest');
+   */
+  async findByNormalizedName(normalizedName: string): Promise<IPO | null> {
+    if (!normalizedName) {
+      return null;
+    }
+
+    try {
+      // Use SQL to normalize company_name at query time and match
+      // This allows finding IPOs regardless of name variation (Ltd vs Limited, with/without IPO suffix)
+      const [ipo] = await this.db
+        .select()
+        .from(ipos)
+        .where(
+          sql`LOWER(
+            TRIM(
+              REGEXP_REPLACE(
+                REGEXP_REPLACE(
+                  REGEXP_REPLACE(
+                    REGEXP_REPLACE(
+                      REGEXP_REPLACE(
+                        REGEXP_REPLACE(
+                          REGEXP_REPLACE(
+                            REGEXP_REPLACE(
+                              ${ipos.companyName},
+                              ' (IPO|FPO)$', '', 'i'
+                            ),
+                            ' (Limited|Ltd\\.?)$', '', 'i'
+                          ),
+                          ' (Private Limited|Pvt\\.? Ltd\\.?)$', '', 'i'
+                        ),
+                        ' (Pvt\\.?|Private)$', '', 'i'
+                      ),
+                      ' (Inc\\.?|Incorporated)$', '', 'i'
+                    ),
+                    ' (Corp\\.?|Corporation)$', '', 'i'
+                  ),
+                  ' (LLC|LLP|PLC)$', '', 'i'
+                ),
+                '\\s+', ' ', 'g'
+              )
+            )
+          ) = ${normalizedName}`
+        )
+        .limit(1);
+
+      return ipo || null;
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to fetch IPO by normalized name: ${normalizedName}`,
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
    * Find IPO by ID with cache-aside pattern
    */
   async findById(id: string): Promise<IPO | null> {
