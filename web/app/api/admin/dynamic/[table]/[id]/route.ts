@@ -17,6 +17,7 @@ import { requireAdminAuth } from '@/lib/auth/admin-auth';
 import * as schema from '@ipodhan/shared/db/schema';
 import { eq, getTableColumns } from 'drizzle-orm';
 import { PgTable } from 'drizzle-orm/pg-core';
+import { validateRecord } from '@/lib/admin/dynamic-validation-rules';
 
 /**
  * Get the table object from schema by name
@@ -103,9 +104,19 @@ export async function GET(
       );
     }
 
+    // Convert camelCase keys to snake_case for form compatibility
+    // (Form expects snake_case field names from schema introspector)
+    const record = result[0];
+    const snakeCaseRecord: Record<string, any> = {};
+    for (const [key, value] of Object.entries(record)) {
+      // Convert camelCase to snake_case: companyName → company_name
+      const snakeKey = key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+      snakeCaseRecord[snakeKey] = value;
+    }
+
     return NextResponse.json({
       success: true,
-      data: result[0],
+      data: snakeCaseRecord,
       message: 'Record retrieved successfully'
     });
   } catch (error) {
@@ -145,14 +156,36 @@ export async function PATCH(
     // Parse request body
     const updates = await request.json();
 
+    // Convert snake_case keys to camelCase (Drizzle expects JS property names, not DB column names)
+    const camelCaseUpdates: Record<string, any> = {};
+    for (const [key, value] of Object.entries(updates)) {
+      // Convert snake_case to camelCase: company_name → companyName
+      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      camelCaseUpdates[camelKey] = value;
+    }
+
     // Remove system fields that shouldn't be updated manually
-    delete updates.id;
-    delete updates.createdAt;
+    delete camelCaseUpdates.id;
+    delete camelCaseUpdates.createdAt;
 
     // Add updatedAt if the table has it
     const columns = getTableColumns(table);
     if (columns.updatedAt) {
-      updates.updatedAt = new Date();
+      camelCaseUpdates.updatedAt = new Date();
+    }
+
+    // Add dataSource = MANUAL for tables that support it
+    if (columns.dataSource) {
+      // Only set to MANUAL if admin is actually changing data fields
+      // (not just system fields like updatedAt)
+      const isDataEdit = Object.keys(camelCaseUpdates).some(
+        key => !['updatedAt', 'createdAt', 'id'].includes(key)
+      );
+
+      if (isDataEdit) {
+        camelCaseUpdates.dataSource = 'MANUAL';
+        console.log(`[Dynamic Admin] Setting dataSource to MANUAL for admin edit`);
+      }
     }
 
     // Get primary key column
@@ -166,10 +199,43 @@ export async function PATCH(
       );
     }
 
+    // Fetch existing record for cross-field validation
+    const existingRecordResult = await db
+      .select()
+      .from(table)
+      .where(eq(primaryKeyColumn, id))
+      .limit(1);
+
+    const existingRecord = existingRecordResult[0] || {};
+
+    // Validate updates using business rules
+    // Merge existing record with updates for cross-field validation
+    const validationResult = validateRecord(tableName, {
+      ...existingRecord,
+      ...camelCaseUpdates,
+    });
+
+    if (!validationResult.valid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Validation failed',
+          validationErrors: validationResult.errors,
+          validationWarnings: validationResult.warnings,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Log warnings (non-blocking) if present
+    if (validationResult.warnings && Object.keys(validationResult.warnings).length > 0) {
+      console.warn('[Dynamic Admin] Validation warnings:', validationResult.warnings);
+    }
+
     // Update the record
     const result = await db
       .update(table)
-      .set(updates)
+      .set(camelCaseUpdates)
       .where(eq(primaryKeyColumn, id))
       .returning();
 
