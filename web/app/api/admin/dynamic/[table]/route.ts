@@ -15,8 +15,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { requireAdminAuth } from '@/lib/auth/admin-auth';
 import * as schema from '@ipodhan/shared/db/schema';
-import { desc, asc, like, and, or, sql, eq } from 'drizzle-orm';
+import { desc, asc, like, and, or, sql, eq, getTableColumns } from 'drizzle-orm';
 import { PgTable } from 'drizzle-orm/pg-core';
+import { validateRecord } from '@/lib/admin/dynamic-validation-rules';
 
 /**
  * Get the table object from schema by name
@@ -54,13 +55,48 @@ export async function POST(
     // Parse request body
     const data = await request.json();
 
+    // Convert snake_case keys to camelCase (Drizzle expects JS property names, not DB column names)
+    const camelCaseData: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      // Convert snake_case to camelCase: company_name → companyName
+      const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
+      camelCaseData[camelKey] = value;
+    }
+
     // Remove system fields that shouldn't be set manually
-    delete data.id;
-    delete data.createdAt;
-    delete data.updatedAt;
+    delete camelCaseData.id;
+    delete camelCaseData.createdAt;
+    delete camelCaseData.updatedAt;
+
+    // Set dataSource to MANUAL for new records created by admin
+    const columns = getTableColumns(table);
+    if (columns.dataSource) {
+      camelCaseData.dataSource = 'MANUAL';
+      console.log(`[Dynamic Admin] Setting dataSource to MANUAL for new record`);
+    }
+
+    // Validate data using business rules
+    const validationResult = validateRecord(tableName, camelCaseData);
+
+    if (!validationResult.valid) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Validation failed',
+          validationErrors: validationResult.errors,
+          validationWarnings: validationResult.warnings,
+        },
+        { status: 400 }
+      );
+    }
+
+    // Log warnings (non-blocking) if present
+    if (validationResult.warnings && Object.keys(validationResult.warnings).length > 0) {
+      console.warn('[Dynamic Admin] Validation warnings:', validationResult.warnings);
+    }
 
     // Insert record
-    const result = await db.insert(table).values(data).returning();
+    const result = await db.insert(table).values(camelCaseData).returning();
 
     if (!result || result.length === 0) {
       throw new Error('Failed to create record');
@@ -84,4 +120,25 @@ export async function POST(
       { status: 500 }
     );
   }
+}
+
+/**
+ * DELETE - DISABLED for bulk operations
+ *
+ * Bulk delete is not supported to prevent accidental mass data deletion.
+ * Use /api/admin/dynamic/[table]/[id] for single record deletion.
+ *
+ * This endpoint exists to explicitly reject bulk delete attempts and
+ * provide clear error messaging to admins.
+ */
+export async function DELETE(request: NextRequest) {
+  return NextResponse.json(
+    {
+      success: false,
+      error: 'Bulk delete is not supported',
+      message: 'Delete records individually via /api/admin/dynamic/[table]/[id] to prevent accidental data loss.',
+      hint: 'For mass deletions, use a dedicated batch script with proper safeguards.',
+    },
+    { status: 405 } // Method Not Allowed
+  );
 }
