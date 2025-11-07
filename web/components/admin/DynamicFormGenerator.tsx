@@ -19,6 +19,11 @@ interface DynamicFormGeneratorProps {
   onSubmit: (data: Record<string, any>) => Promise<void>;
   onCancel?: () => void;
   mode?: 'create' | 'edit';
+  // Field Protection Integration (Phase 1 Consolidation)
+  enableProtection?: boolean;
+  ipoId?: string;
+  protectedFields?: Set<string>;
+  onProtectField?: (fieldName: string, isProtected: boolean) => Promise<void>;
 }
 
 interface FieldComponentProps {
@@ -254,12 +259,17 @@ export function DynamicFormGenerator({
   initialData = {},
   onSubmit,
   onCancel,
-  mode = 'edit'
+  mode = 'edit',
+  enableProtection = false,
+  ipoId,
+  protectedFields = new Set(),
+  onProtectField
 }: DynamicFormGeneratorProps) {
   const [formData, setFormData] = useState<Record<string, any>>(initialData);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  const [protectingField, setProtectingField] = useState<string | null>(null);
 
   useEffect(() => {
     setFormData(initialData);
@@ -321,6 +331,21 @@ export function DynamicFormGenerator({
     setIsDirty(false);
   };
 
+  const handleProtectionToggle = async (fieldName: string) => {
+    if (!onProtectField || !ipoId) return;
+
+    try {
+      setProtectingField(fieldName);
+      const isCurrentlyProtected = protectedFields.has(fieldName);
+      await onProtectField(fieldName, !isCurrentlyProtected);
+    } catch (error) {
+      console.error('Failed to toggle field protection:', error);
+      alert('Failed to update field protection');
+    } finally {
+      setProtectingField(null);
+    }
+  };
+
   // Group columns by category for organized display
   const columnGroups = groupColumnsByCategory(tableMetadata.columns);
 
@@ -346,13 +371,41 @@ export function DynamicFormGenerator({
                 return null;
               }
 
+              const isProtected = protectedFields.has(column.name);
+              const isProtecting = protectingField === column.name;
+
               return (
                 <div key={column.name} className={column.fieldType === 'textarea' || column.fieldType === 'json' ? 'md:col-span-2' : ''}>
                   {column.fieldType !== 'hidden' && (
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      {column.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                      {!column.isNullable && <span className="text-red-500 ml-1">*</span>}
-                    </label>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="block text-sm font-medium text-gray-700">
+                        {column.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
+                        {!column.isNullable && <span className="text-red-500 ml-1">*</span>}
+                        {isProtected && (
+                          <span className="ml-2 inline-flex items-center text-xs text-yellow-600">
+                            <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                            </svg>
+                            Protected
+                          </span>
+                        )}
+                      </label>
+                      {enableProtection && onProtectField && mode === 'edit' && (
+                        <button
+                          type="button"
+                          onClick={() => handleProtectionToggle(column.name)}
+                          disabled={isProtecting || isSubmitting}
+                          className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+                            isProtected
+                              ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                          title={isProtected ? 'Click to unprotect field' : 'Click to protect field from scraper updates'}
+                        >
+                          {isProtecting ? '...' : isProtected ? '🔓 Unprotect' : '🔒 Protect'}
+                        </button>
+                      )}
+                    </div>
                   )}
                   <FieldComponent
                     column={column}

@@ -216,6 +216,7 @@ export class FieldProtectionRepository extends BaseRepository {
 
   /**
    * Bulk update protection status for multiple fields
+   * Uses upsert pattern to create records if they don't exist
    */
   async bulkUpdateProtectionStatus(
     ipoId: string,
@@ -223,33 +224,49 @@ export class FieldProtectionRepository extends BaseRepository {
     fieldNames: string[],
     isProtected: boolean
   ): Promise<number> {
-    const result = await this.executeQuery(
-      'bulkUpdateProtectionStatus',
-      async () => {
-        return await this.db
-          .update(fieldProtectionMetadata)
-          .set({
-            isProtected,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(fieldProtectionMetadata.ipoId, ipoId),
-              eq(fieldProtectionMetadata.tableName, tableName),
-              inArray(fieldProtectionMetadata.fieldName, fieldNames)
-            )
-          )
-          .returning();
-      },
-      { ipoId, tableName, fieldNames, isProtected }
-    );
+    const results = [];
 
-    // Invalidate caches for all updated fields
+    // Process each field with upsert
     for (const fieldName of fieldNames) {
-      await this.invalidateFieldProtectionCaches(ipoId, tableName, fieldName);
+      const result = await this.executeQuery(
+        'bulkUpdateProtectionStatus',
+        async () => {
+          return await this.db
+            .insert(fieldProtectionMetadata)
+            .values({
+              ipoId,
+              tableName,
+              fieldName,
+              isProtected,
+              autoProtected: false,
+              manuallyEditedAt: new Date(),
+              manuallyEditedBy: 'Admin',
+              editNote: null,
+            })
+            .onConflictDoUpdate({
+              target: [
+                fieldProtectionMetadata.tableName,
+                fieldProtectionMetadata.fieldName,
+                fieldProtectionMetadata.ipoId,
+              ],
+              set: {
+                isProtected,
+                updatedAt: new Date(),
+              },
+            })
+            .returning();
+        },
+        { ipoId, tableName, fieldName, isProtected }
+      );
+
+      if (result.length > 0) {
+        results.push(...result);
+        // Invalidate cache for this field
+        await this.invalidateFieldProtectionCaches(ipoId, tableName, fieldName);
+      }
     }
 
-    return result.length;
+    return results.length;
   }
 
   /**

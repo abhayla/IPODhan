@@ -13,7 +13,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAdminAuth } from '@/lib/context/AdminAuthContext';
@@ -21,6 +21,10 @@ import { DynamicFormGenerator } from '@/components/admin/DynamicFormGenerator';
 import { getTableMetadata, getAllTables } from '@/lib/admin/schema-introspector';
 import type { TableMetadata } from '@/lib/admin/schema-introspector';
 import { adminGet, adminPost, adminPatch, adminDelete } from '@/lib/admin/admin-api-client';
+import ExtractionResultsViewer from '@/components/admin/ExtractionResultsViewer';
+import { IPOContextBanner } from '@/components/admin/IPOContextBanner';
+import { Breadcrumb } from '@/components/admin/Breadcrumb';
+import { RelatedDataLinks } from '@/components/admin/RelatedDataLinks';
 
 export default function DynamicAdminPage() {
   const params = useParams();
@@ -36,6 +40,18 @@ export default function DynamicAdminPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [availableTables, setAvailableTables] = useState<string[]>([]);
+  const [protectedFields, setProtectedFields] = useState<Set<string>>(new Set());
+  const [formDataOverride, setFormDataOverride] = useState<Record<string, any> | null>(null);
+
+  // Compute enableProtection using useMemo to avoid timing issues
+  const computedIpoId = useMemo(() => {
+    if (isCreateMode || !recordData) return null;
+    return tableName === 'ipos' ? recordData.id : recordData.ipoId;
+  }, [tableName, isCreateMode, recordData]);
+
+  const enableProtection = useMemo(() => {
+    return !isCreateMode && !!computedIpoId;
+  }, [isCreateMode, computedIpoId]);
 
   // Load table metadata
   useEffect(() => {
@@ -88,6 +104,36 @@ export default function DynamicAdminPage() {
     loadRecord();
   }, [tableName, recordId, isCreateMode, tableMetadata]);
 
+  // Load field protection data
+  useEffect(() => {
+    const loadProtectedFields = async () => {
+      console.log('[Field Protection] useEffect triggered', { isCreateMode, hasComputedIpoId: !!computedIpoId, tableName });
+
+      if (!computedIpoId) {
+        console.log('[Field Protection] Skipping - no computed IPO ID');
+        return;
+      }
+
+      try {
+        console.log('[Field Protection] Fetching protection data for IPO:', computedIpoId);
+        const response = await adminGet(`/api/admin/protection/fields/${computedIpoId}`);
+        console.log('[Field Protection] Response:', response);
+
+        if (response.success && response.data && response.data.protections) {
+          const protectedFieldNames = response.data.protections
+            .filter((field: any) => field.tableName === tableName && field.isProtected)
+            .map((field: any) => field.fieldName);
+          console.log('[Field Protection] Protected fields:', protectedFieldNames);
+          setProtectedFields(new Set(protectedFieldNames));
+        }
+      } catch (err) {
+        console.error('[Field Protection] Failed to load protected fields:', err);
+      }
+    };
+
+    loadProtectedFields();
+  }, [tableName, computedIpoId]);
+
   // Handle form submission
   const handleSubmit = async (data: Record<string, any>) => {
     try {
@@ -118,6 +164,56 @@ export default function DynamicAdminPage() {
     } catch (err) {
       console.error('Form submission error:', err);
       alert(err instanceof Error ? err.message : 'Failed to save record');
+    }
+  };
+
+  // Handle copying extraction data to form
+  const handleCopyField = (fieldName: string, value: any) => {
+    setFormDataOverride(prev => ({
+      ...(prev || recordData || {}),
+      [fieldName]: value
+    }));
+  };
+
+  const handleCopyAllFields = (fields: Record<string, any>) => {
+    setFormDataOverride(prev => ({
+      ...(prev || recordData || {}),
+      ...fields
+    }));
+  };
+
+  // Handle field protection toggle
+  const handleProtectField = async (fieldName: string, isProtected: boolean) => {
+    if (!computedIpoId) {
+      alert('Cannot protect fields: IPO ID not found');
+      return;
+    }
+
+    try {
+      const response = await adminPost('/api/admin/protection/fields/bulk', {
+        ipoId: computedIpoId,
+        tableName: tableName,
+        fieldNames: [fieldName],
+        isProtected: isProtected
+      });
+
+      if (response.success) {
+        // Update local state
+        setProtectedFields(prev => {
+          const updated = new Set(prev);
+          if (isProtected) {
+            updated.add(fieldName);
+          } else {
+            updated.delete(fieldName);
+          }
+          return updated;
+        });
+      } else {
+        throw new Error(response.error || 'Failed to update field protection');
+      }
+    } catch (err) {
+      console.error('Protection toggle error:', err);
+      throw err;
     }
   };
 
@@ -175,7 +271,7 @@ export default function DynamicAdminPage() {
     );
   }
 
-  if (isLoading || !tableMetadata) {
+  if (isLoading || !tableMetadata || (!isCreateMode && !recordData)) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
         <div className="max-w-7xl mx-auto">
@@ -192,11 +288,28 @@ export default function DynamicAdminPage() {
     );
   }
 
+  // DEBUG: Log recordData to understand what's available
+  console.log('[DEBUG] recordData:', {
+    tableName,
+    isCreateMode,
+    hasRecordData: !!recordData,
+    recordDataKeys: recordData ? Object.keys(recordData).slice(0, 10) : [],
+    recordDataId: recordData?.id,
+    recordDataIpoId: recordData?.ipoId,
+    computedIpoId: tableName === 'ipos' ? recordData?.id : recordData?.ipoId,
+    enableProtectionCalc: !isCreateMode && !!(tableName === 'ipos' ? recordData?.id : recordData?.ipoId)
+  });
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-white shadow">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* Breadcrumb Navigation */}
+          <div className="mb-4">
+            <Breadcrumb />
+          </div>
+
           <div className="flex justify-between items-center">
             <div>
               <h1 className="text-2xl font-bold text-gray-900">
@@ -254,6 +367,14 @@ export default function DynamicAdminPage() {
                   >
                     Create New Record
                   </Link>
+                  {!isCreateMode && tableName === 'ipos' && recordId && (
+                    <Link
+                      href={`/admin/dynamic/ipos/${recordId}/objectives`}
+                      className="block px-3 py-2 text-sm text-purple-600 hover:bg-purple-50 rounded-md"
+                    >
+                      📋 Edit Objectives
+                    </Link>
+                  )}
                 </div>
               </div>
 
@@ -275,11 +396,31 @@ export default function DynamicAdminPage() {
                   </div>
                 </dl>
               </div>
+
+              {/* Related Data Links (IPO context) */}
+              {!isCreateMode && recordData?.ipoId && (
+                <div className="mt-6 pt-6 border-t border-gray-200">
+                  <RelatedDataLinks
+                    ipoId={recordData.ipoId}
+                    currentTable={tableName}
+                  />
+                </div>
+              )}
             </div>
           </aside>
 
           {/* Main Content - Dynamic Form */}
           <main className="flex-1">
+            {/* IPO Context Banner */}
+            {!isCreateMode && recordData?.ipoId && (
+              <div className="mb-6">
+                <IPOContextBanner
+                  ipoId={recordData.ipoId}
+                  currentPage={`${tableName.replace(/([A-Z])/g, ' $1').trim()} Data`}
+                />
+              </div>
+            )}
+
             <div className="bg-white rounded-lg shadow">
               <div className="p-6">
                 {/* Page Title */}
@@ -305,13 +446,28 @@ export default function DynamicAdminPage() {
                   </div>
                 )}
 
+                {/* DRHP Extraction Viewer (Financial Data Only) */}
+                {!isCreateMode && tableName === 'financialData' && recordData?.ipoId && (
+                  <div className="mb-6">
+                    <ExtractionResultsViewer
+                      ipoId={recordData.ipoId}
+                      onCopyField={handleCopyField}
+                      onCopyAll={handleCopyAllFields}
+                    />
+                  </div>
+                )}
+
                 {/* Dynamic Form */}
                 <DynamicFormGenerator
                   tableMetadata={tableMetadata}
-                  initialData={recordData || {}}
+                  initialData={formDataOverride || recordData || {}}
                   onSubmit={handleSubmit}
                   onCancel={() => router.back()}
                   mode={isCreateMode ? 'create' : 'edit'}
+                  enableProtection={enableProtection}
+                  ipoId={computedIpoId || undefined}
+                  protectedFields={protectedFields}
+                  onProtectField={handleProtectField}
                 />
               </div>
             </div>

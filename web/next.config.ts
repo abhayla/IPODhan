@@ -8,7 +8,7 @@ const withBundleAnalyzer = require('@next/bundle-analyzer')({
 });
 
 const nextConfig: NextConfig = {
-  // Enable Turbopack (Next.js 16 default)
+  // Turbopack is default in Next.js 16 - empty config to silence build warning
   turbopack: {},
 
   // Exclude server-only packages from browser bundle
