@@ -243,6 +243,15 @@ D:*temp*.txt
 *temp_old_section.txt
 D:*temp*.json
 
+# Malformed Windows absolute paths (special encoding)
+D\357\200\272*
+D:*
+
+# Additional test files
+test-mcp-*.json
+test-mcp-*.txt
+*investorgain*.html
+
 # Database backups (don't commit large SQL dumps)
 database/backups/*.sql
 

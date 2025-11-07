@@ -2,6 +2,49 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Quick Reference
+
+**Most Common Commands:**
+```bash
+# Development
+npm run dev                    # Start Next.js dev server (port 3000)
+npm run dev:scraper            # Start scraper in dev mode
+
+# Testing
+npm run test:unit              # Fast unit tests (<10s)
+npm run test:integration       # Integration tests (requires DB + Redis)
+npm run test:e2e               # E2E tests with Playwright
+
+# Database
+npm run db:migrate             # Apply migrations (from web/)
+npm run db:studio              # Open Drizzle Studio GUI (port 4983)
+npm run seed                   # Seed database with sample data
+
+# Code Quality
+npm run lint                   # Run ESLint
+npm run build                  # Build for production
+```
+
+**Critical Architecture Rules:**
+- ✅ **Schema**: Always edit `packages/shared/src/db/schema.ts` (single source of truth)
+- ✅ **Services**: Use repositories directly, NEVER HTTP API calls
+- ✅ **Repositories**: Extend `BaseRepository` for automatic caching
+- ✅ **Cache Keys**: Use generator functions from `web/lib/cache/cache-keys.ts`
+- ✅ **Slugs**: Use `generateIPOSlug()` from `@ipodhan/shared/utils/slug`
+
+**Must-Read Before Coding:**
+- `docs/02-architecture/backend-architecture.md` - 3-layer architecture
+- `docs/05-caching/CACHING_STRATEGY.md` - Cache patterns
+- `docs/16-database/SCHEMA_MANAGEMENT.md` - Schema workflow
+- `docs/16-database/screen-table-database-field-mapping.md` - UI to DB mapping
+
+**Emergency Troubleshooting:**
+- Build errors: Check imports use `@/lib/db` not `@/lib/db/schema`
+- Tests failing: `npm run db:migrate` and verify test DB connection
+- Redis down: App auto-falls back to database (check logs)
+
+---
+
 ## Quick Start (New Developers)
 
 ### First Time Setup
@@ -747,6 +790,48 @@ These documents serve as **single sources of truth** for their respective areas.
 19. **[API Specification](docs/02-architecture/api-specification.md)** - REST API patterns
 20. **[Deployment Architecture](docs/02-architecture/deployment-architecture.md)** - VPS deployment
 21. **[VPS Configuration](docs/vps-server-configuration.md)** - Server setup
+
+### Architecture Decision Records (ADRs)
+
+**⚠️ NOTE:** This project does not currently use formal Architecture Decision Records (ADRs).
+
+However, major architectural decisions are documented in the following locations:
+
+**Key Architectural Decisions Documented:**
+1. **Database Schema Consolidation** (2025-10-18)
+   - Location: `docs/16-database/SCHEMA_MANAGEMENT.md` (Incident Log section)
+   - Decision: Consolidate all schema to `packages/shared/src/db/schema.ts`
+   - Rationale: Prevent schema drift and ensure single source of truth
+
+2. **3-Layer Architecture Enforcement** (2025-11-01)
+   - Location: `docs/07-testing/ui-tests/ARCHITECTURAL_FIXES_COMPLETE_NOV_1_2025.md`
+   - Decision: Enforce repository pattern via ESLint rules
+   - Rationale: Prevent HTTP calls in services/server components (caused production bugs)
+
+3. **Cache-Aside Pattern** (Phase 2)
+   - Location: `docs/05-caching/CACHING_STRATEGY.md`
+   - Decision: Implement caching at repository level using BaseRepository
+   - Rationale: Consistent caching behavior with graceful degradation
+
+4. **Canonical Slug Generation** (Phase 3)
+   - Location: `packages/shared/docs/SLUG_GENERATION.md`
+   - Decision: Centralize slug generation in shared package
+   - Rationale: Prevent slug inconsistencies across scrapers and UI
+
+5. **Real-time IPO Scoring** (Phase 5)
+   - Location: `test-results/phase-5/real-time-scoring-report.md`
+   - Decision: Replace static scores with dynamic 5-component calculation
+   - Rationale: Provide objective, data-driven IPO quality assessment
+
+6. **Database Connection Pool Sizing** (Phase 5)
+   - Location: `test-results/phase-5/production-load-testing-report.md`
+   - Decision: Increase pool from 20 to 50 connections
+   - Rationale: Support 1000+ concurrent users (load testing showed bottleneck)
+
+**Future ADRs:**
+If the project adopts formal ADRs, they should be stored in `docs/adr/` using the format:
+- `NNNN-title.md` (e.g., `0001-use-drizzle-orm.md`)
+- Template: [MADR](https://adr.github.io/madr/)
 
 ### Architectural Rules Enforcement
 
