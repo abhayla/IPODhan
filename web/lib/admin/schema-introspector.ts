@@ -273,7 +273,6 @@ export function getAllTables(): Record<string, TableMetadata> {
     'scraperLogs',
     'ipoReviews',
     'fieldProtectionMetadata',
-    'protectedFields',
     'auditLogs',
     'extractionLogs'
   ];

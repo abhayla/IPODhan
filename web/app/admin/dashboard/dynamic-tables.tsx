@@ -38,7 +38,6 @@ const tableDescriptions: Record<string, { description: string; category: TableIn
   scraperLogs: { description: 'Data scraper execution logs', category: 'tracking' },
   ipoReviews: { description: 'Expert IPO reviews and ratings', category: 'core' },
   fieldProtectionMetadata: { description: 'Field protection configuration', category: 'system' },
-  protectedFields: { description: 'Protected field records', category: 'system' },
   auditLogs: { description: 'System audit trail', category: 'tracking' },
   extractionLogs: { description: 'DRHP extraction history', category: 'extraction' }
 };

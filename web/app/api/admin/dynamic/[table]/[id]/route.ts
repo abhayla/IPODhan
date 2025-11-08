@@ -250,7 +250,7 @@ export async function PATCH(
     console.log(`[Dynamic Admin] Updated record in ${tableName}:`, id);
 
     // If this is a field protection update, clear related caches
-    if (tableName === 'fieldProtectionMetadata' || tableName === 'protectedFields') {
+    if (tableName === 'fieldProtectionMetadata') {
       // TODO: Clear cache for field protection
     }
 
