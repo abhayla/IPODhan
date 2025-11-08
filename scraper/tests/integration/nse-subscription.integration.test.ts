@@ -247,8 +247,11 @@ describe('Story 11.3: NSE Subscription Data Collection - Integration Tests', () 
     it('should log subscription metrics', async () => {
       const result = await scrapeNSEIPOs();
 
-      // Should have timestamp indicating when data was scraped
-      expect(result).toHaveProperty('timestamp');
+      // Should return scraped data with IPOs and subscriptions
+      expect(result).toHaveProperty('ipos');
+      expect(result).toHaveProperty('subscriptions');
+      expect(Array.isArray(result.ipos)).toBe(true);
+      expect(Array.isArray(result.subscriptions)).toBe(true);
     });
 
     it('should aim for 100% subscription coverage of OPEN IPOs', async () => {
