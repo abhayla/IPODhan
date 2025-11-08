@@ -401,9 +401,35 @@ export class DataConsolidationService {
     let chosenValue: any;
     let resolutionReason: string;
 
-    // Time-based fields: newest wins
-    if (isTimeBased(fieldName)) {
-      // Compare timestamps if both are available
+    // CRITICAL: Check source priority FIRST (before time-based)
+    // This ensures ADMIN and other high-priority sources can never be overridden
+    // by lower-priority sources, even for time-based fields
+    const existingPriority = getSourcePriority(fieldName, existingSource);
+    const incomingPriority = getSourcePriority(fieldName, incomingSource);
+
+    // If sources have different priorities, use source priority
+    if (existingPriority !== incomingPriority) {
+      // Lower index = higher priority
+      if (
+        incomingPriority !== -1 &&
+        (existingPriority === -1 || incomingPriority < existingPriority)
+      ) {
+        chosenSource = incomingSource;
+        chosenValue = incomingValue;
+        resolutionReason = 'SOURCE_PRIORITY';
+      } else if (existingPriority !== -1) {
+        chosenSource = existingSource;
+        chosenValue = existingValue;
+        resolutionReason = 'SOURCE_PRIORITY';
+      } else {
+        // No priority defined, keep existing
+        chosenSource = existingSource;
+        chosenValue = existingValue;
+        resolutionReason = 'DEFAULT_KEEP_EXISTING';
+      }
+    } else if (isTimeBased(fieldName)) {
+      // Same source priority - use time-based resolution (newest wins)
+      // This allows updates from the SAME source to be time-based
       if (scrapedAt && existingUpdatedAt) {
         if (scrapedAt > existingUpdatedAt) {
           // Incoming data is newer
@@ -423,28 +449,10 @@ export class DataConsolidationService {
         resolutionReason = 'TIME_BASED_PRIORITY';
       }
     } else {
-      // Priority-based resolution
-      const existingPriority = getSourcePriority(fieldName, existingSource);
-      const incomingPriority = getSourcePriority(fieldName, incomingSource);
-
-      // Lower index = higher priority
-      if (
-        incomingPriority !== -1 &&
-        (existingPriority === -1 || incomingPriority < existingPriority)
-      ) {
-        chosenSource = incomingSource;
-        chosenValue = incomingValue;
-        resolutionReason = 'SOURCE_PRIORITY';
-      } else if (existingPriority !== -1) {
-        chosenSource = existingSource;
-        chosenValue = existingValue;
-        resolutionReason = 'SOURCE_PRIORITY';
-      } else {
-        // No priority defined, keep existing
-        chosenSource = existingSource;
-        chosenValue = existingValue;
-        resolutionReason = 'DEFAULT_KEEP_EXISTING';
-      }
+      // Same source priority, not time-based - keep existing
+      chosenSource = existingSource;
+      chosenValue = existingValue;
+      resolutionReason = 'DEFAULT_KEEP_EXISTING';
     }
 
     // Calculate conflict severity using normalized values for comparison

@@ -291,6 +291,15 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: 10, max: 100000 },
   },
 
+  // CamelCase (TypeScript field name) - consolidation service uses this
+  lotSize: {
+    sources: ['ADMIN', 'BSE', 'NSE', 'DRHP', 'MONEYCONTROL'],
+    normalization: 'number',
+    confidenceThreshold: 90,
+    description: 'Lot size (camelCase) - BSE data is more accurate historically',
+    validation: { min: 10, max: 100000 },
+  },
+
   min_investment: {
     sources: ['ADMIN', 'BSE', 'NSE', 'DRHP', 'MONEYCONTROL'],
     normalization: 'currency',
@@ -363,6 +372,27 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     ignoreDRHP: true,
     confidenceThreshold: 70,
     description: 'GMP percentage',
+    validation: { min: -100, max: 500 },
+  },
+
+  // CamelCase (TypeScript field names) - consolidation service uses these
+  gmpPrice: {
+    sources: ['ADMIN', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
+    normalization: 'number',
+    timeBased: true,
+    ignoreDRHP: true,
+    confidenceThreshold: 70,
+    description: 'Grey Market Premium (camelCase) - Chittorgarh is specialist',
+    validation: { min: -1000, max: 10000 },
+  },
+
+  gmpPercentageHistorical: {
+    sources: ['ADMIN', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
+    normalization: 'percentage',
+    timeBased: true,
+    ignoreDRHP: true,
+    confidenceThreshold: 70,
+    description: 'GMP Percentage Historical (camelCase) - Chittorgarh is specialist',
     validation: { min: -100, max: 500 },
   },
 
