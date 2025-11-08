@@ -3,11 +3,36 @@ import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { generateSlug, sanitizeCompanyName } from '../utils/validators.js';
+import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { validateLotSize } from '../utils/lot-size-validator.js';
 import type { ScraperSource } from './types.js';
 import type { ScrapedFinancialData } from '../scrapers/financial-data-scraper.js';
 import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
+// Phase 2: Shadow Mode - Data Consolidation Service
+import { DataConsolidationService } from './data-consolidation-service.js';
+import { FieldSourcesRepository, DataConflictsRepository } from '@ipodhan/shared/repositories';
+import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { db, getRedisClient } from '@ipodhan/shared';
+
+/**
+ * Phase 2: Lazy singleton for Data Consolidation Service
+ * Initialized once on first use to avoid overhead
+ */
+let consolidationServiceInstance: DataConsolidationService | null = null;
+
+async function getConsolidationService(): Promise<DataConsolidationService> {
+  if (!consolidationServiceInstance) {
+    const redis = getRedisClient();
+    const fieldSourcesRepo = new FieldSourcesRepository(db, redis);
+    const dataConflictsRepo = new DataConflictsRepository(db, redis);
+    consolidationServiceInstance = new DataConsolidationService(
+      fieldSourcesRepo,
+      dataConflictsRepo
+    );
+  }
+  return consolidationServiceInstance;
+}
 
 /**
  * PostgreSQL error codes (Story 11.2 - Enhanced error logging)
@@ -253,44 +278,127 @@ export async function upsertIPO(
       } as any;
 
       if (existingIPO) {
-        // MERGE LOGIC for dual-listed IPOs
-        // Only merge exchanges for actual exchange sources (NSE/BSE), not for aggregator sources
-        let mergedExchanges = existingIPO.listingExchanges as ('NSE' | 'BSE')[];
-        if (source === 'NSE' || source === 'BSE') {
-          const currentExchange = scrapedIPO.listingExchange === 'BOTH' ? source : scrapedIPO.listingExchange;
-          mergedExchanges = mergeListingExchanges(mergedExchanges, currentExchange);
-        }
+        // ========== PHASE 4: PRODUCTION CONSOLIDATION (100% ROLLOUT) ==========
+        // All IPO updates use intelligent data consolidation
+        if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
+          try {
+            const consolidationService = await getConsolidationService();
+            const consolidationStartTime = Date.now();
 
-        // Check for data discrepancies
-        if (existingIPO.issueSize !== ipoData.issueSize && source === 'BSE') {
-          logger.warn(
-            {
+            // Run consolidation service in production mode
+            const consolidationResult = await consolidationService.consolidateIPOData({
+              ipoId: existingIPO.id,
+              tableName: 'ipos',
+              incomingData: ipoData,
+              source: source,
+              existingData: existingIPO as any,
+              shadowMode: false, // Production mode - writes to database
+              scrapedAt: new Date(),
+            });
+
+            const consolidationDuration = Date.now() - consolidationStartTime;
+
+            // Merge exchanges (preserve exchange tracking logic)
+            let mergedExchanges = existingIPO.listingExchanges as ('NSE' | 'BSE')[];
+            if (source === 'NSE' || source === 'BSE') {
+              const currentExchange = scrapedIPO.listingExchange === 'BOTH' ? source : scrapedIPO.listingExchange;
+              mergedExchanges = mergeListingExchanges(mergedExchanges, currentExchange);
+            }
+
+            // Use consolidated data with merged exchanges
+            const finalData = {
+              ...consolidationResult.consolidatedData,
+              listingExchanges: mergedExchanges,
+              lastScrapedAt: new Date(),
+              updatedAt: new Date(),
+            };
+
+            // Update IPO with consolidated data
+            await ipoRepository.update(existingIPO.id, finalData);
+
+            // Track field sources for all updated fields
+            if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && consolidationResult.fieldResults.length > 0) {
+              const fieldSourcesRepo = new FieldSourcesRepository(db, getRedisClient());
+              const fieldsToTrack = consolidationResult.fieldResults
+                .filter(fr => fr.chosenSource === source) // Only track fields we provided
+                .map(fr => ({
+                  fieldName: fr.fieldName,
+                  source: source,
+                  confidence: 100,
+                  previousValue: fr.existingValue ? String(fr.existingValue) : null,
+                }));
+
+              if (fieldsToTrack.length > 0) {
+                await fieldSourcesRepo.bulkTrackFieldUpdates(
+                  existingIPO.id,
+                  'ipos',
+                  fieldsToTrack
+                );
+              }
+            }
+
+            // Log successful consolidation
+            logger.info({
+              ipoId: existingIPO.id,
               companyName: scrapedIPO.companyName,
-              nseIssueSize: existingIPO.issueSize,
-              bseIssueSize: ipoData.issueSize
-            },
-            'Data mismatch detected: NSE vs BSE issue size differs, prioritizing NSE data'
-          );
-          // Prioritize NSE data - don't overwrite issue size
-          delete ipoData.issueSize;
+              source,
+              fieldsUpdated: consolidationResult.fieldsUpdated,
+              conflictsDetected: consolidationResult.conflictsDetected,
+              performanceMs: consolidationDuration,
+            }, '[DataConsolidation] Updated IPO with consolidated data');
+
+            // Log performance warning if slow
+            if (consolidationDuration > 500) {
+              logger.warn({
+                ipoId: existingIPO.id,
+                source,
+                performanceMs: consolidationDuration,
+              }, '[DataConsolidation] Consolidation exceeded 500ms target');
+            }
+
+            // Log critical conflicts for review
+            if (consolidationResult.conflictsBySeverity.CRITICAL > 0) {
+              logger.error({
+                ipoId: existingIPO.id,
+                companyName: scrapedIPO.companyName,
+                source,
+                criticalConflicts: consolidationResult.conflictsBySeverity.CRITICAL,
+              }, '[DataConsolidation] ⚠️  CRITICAL CONFLICTS - Review priority matrix');
+            }
+
+            return existingIPO.id;
+
+          } catch (error: any) {
+            // Consolidation failure - fall back to simple update
+            logger.error({
+              ipoId: existingIPO.id,
+              source,
+              error: error?.message,
+              stack: error?.stack,
+            }, '[DataConsolidation] Consolidation failed - falling back to simple update');
+
+            // Fall through to fallback logic below
+          }
         }
+        // ========== END CONSOLIDATION ==========
 
-        // Update with merged exchanges
-        ipoData.listingExchanges = mergedExchanges;
+        // ========== PHASE 4: LEGACY MERGE REMOVED ==========
+        // All IPO updates now handled by consolidation service above.
+        // This code should never be reached with CONSOLIDATION_PERCENTAGE=100.
+        // If we reach here, consolidation failed and fallback already logged error.
+        logger.warn({
+          ipoId: existingIPO.id,
+          slug,
+          source,
+        }, '[LEGACY PATH] Reached unreachable code - consolidation should have handled this');
 
-        logger.debug(
-          { ipoId: existingIPO.id, slug, exchanges: mergedExchanges },
-          `Updating existing IPO with ${source} listing`
-        );
-        await ipoRepository.update(existingIPO.id, ipoData);
-
-        // Log merge operation
-        if (mergedExchanges.length > (existingIPO.listingExchanges as string[]).length) {
-          logger.info(
-            { slug, exchanges: mergedExchanges },
-            `IPO ${slug} updated with ${source} listing (dual-listed)`
-          );
-        }
+        // Fallback: Simple update without merge logic
+        // This is a safety net that should rarely/never execute
+        await ipoRepository.update(existingIPO.id, {
+          ...ipoData,
+          lastScrapedAt: new Date(),
+          updatedAt: new Date(),
+        });
 
         return existingIPO.id;
       } else {

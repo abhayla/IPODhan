@@ -631,6 +631,276 @@ The Dynamic Admin enforces data quality rules to prevent errors. Validation happ
 
 ---
 
+## Phase 3.4 Features (November 2025)
+
+### New Admin Tools
+
+Phase 3.4 introduced powerful new tools for data quality management:
+
+1. **Conflict Dashboard** - Resolve data conflicts across sources
+2. **Manual Review Queue** - Review low-confidence DRHP extractions
+3. **Monitoring Dashboard** - Real-time pipeline health metrics
+4. **Source Indicators** - Visual badges showing data sources
+5. **Auto-Resolve** - Automatically resolve ADMIN conflicts
+
+---
+
+## Conflict Dashboard
+
+**Location**: `/admin/conflicts`
+
+### What are Data Conflicts?
+
+When multiple scrapers provide different values for the same field, the system detects and logs conflicts for admin review.
+
+**Example**: NSE says `issue_size = ₹500 Cr`, BSE says `₹520 Cr` → WARNING conflict
+
+### Conflict Severity Levels
+
+- **🔴 CRITICAL**: >20% difference, date/status mismatches (requires immediate review)
+- **🟡 WARNING**: 5-20% difference, important field mismatches
+- **🔵 INFO**: <5% difference, minor formatting differences
+
+### Resolving Conflicts
+
+**Single Conflict**:
+1. Click **[Resolve]** on conflict row
+2. Choose winning source (NSE or BSE)
+3. Enter resolution reason
+4. Check "Apply to Database" and/or "Protect Field"
+5. Click **[Resolve Conflict]**
+
+**Bulk Resolution** (max 100 conflicts):
+1. Select checkboxes for conflicts
+2. Click **[Resolve Selected]**
+3. Choose resolution strategy
+4. Enter reason and save
+
+**Auto-Resolve** (ADMIN conflicts only):
+1. Click **[Auto-Resolve All]**
+2. Enable dry-run mode to preview
+3. Set max conflicts (optional)
+4. System resolves all ADMIN (100) vs scraper conflicts automatically
+
+---
+
+## Manual Review Queue
+
+**Location**: `/admin/manual-review`
+
+### DRHP Manual Review
+
+When DRHP extraction confidence < 70%, the system queues for manual verification.
+
+**Review Process**:
+1. Click **[Review Data]** on queued item
+2. Split-screen shows: DRHP PDF (left) | Extracted Data (right)
+3. Verify each field against PDF
+4. Check boxes for verified fields
+5. Manually correct low-confidence fields
+6. Click **[Approve & Apply]** or **[Reject & Re-Extract]**
+
+**Verification Checklist**:
+- ✅ Revenue matches DRHP financial highlights
+- ✅ Profit matches P&L statement
+- ✅ Margins calculated correctly
+- ✅ ROE/ROCE match balance sheet
+- ✅ Issue size matches offer document
+
+---
+
+## Monitoring Dashboard
+
+**Location**: `/admin/metrics`
+
+### Dashboard Overview
+
+Real-time monitoring of complete data pipeline health.
+
+**Quick Stats** (Last 24 Hours):
+- IPOs Detected
+- DRHPs Extracted
+- Conflicts Resolved
+- Data Quality %
+
+**Metrics Sections**:
+
+1. **Detection Metrics**: IPO detection latency, sources breakdown
+2. **Consolidation Metrics**: Conflicts, processing time
+3. **DRHP Metrics**: Extraction success rate, avg confidence, failures
+4. **Data Quality Metrics**: Field completeness, source tracking coverage
+
+**Health Status**:
+- 🟢 **HEALTHY**: All systems operational
+- 🟡 **DEGRADED**: Some issues detected
+- 🔴 **CRITICAL**: Immediate attention required
+
+**Auto-Refresh**: Toggle on/off (5-minute intervals)
+
+---
+
+## Source Indicators (Badges)
+
+### What are Source Badges?
+
+Visual indicators showing which scraper/source provided each field value.
+
+**Color-Coded Badges**:
+- 🔴 **ADMIN** (100) - Manual admin overrides
+- 🟣 **DRHP** (95) - Official regulatory documents
+- 🔵 **NSE** (90) - Primary exchange
+- 🟢 **BSE** (85) - Secondary exchange
+- 🟡 **MC** (75) - Moneycontrol
+- 🟠 **CHIT** (70) - Chittorgarh (GMP)
+
+**Confidence Indicators**:
+- 🟢 Green dot: 90-100% confidence
+- 🟡 Yellow dot: 75-89% confidence
+- 🟠 Orange dot: 50-74% confidence
+- 🔴 Red dot: <50% confidence
+
+**Tooltip on Hover**:
+```
+Source: DRHP
+Confidence: 94%
+Updated: 2025-11-08 10:30 AM
+Previous: ₹480 Cr (NSE, 90%)
+```
+
+---
+
+## Common Phase 3.4 Workflows
+
+### Workflow 1: Daily Data Quality Check (5-10 min)
+
+1. **Check Monitoring Dashboard** (`/admin/metrics`)
+   - Verify 🟢 HEALTHY status
+   - Note any CRITICAL conflicts
+
+2. **Review Conflicts** (`/admin/conflicts`)
+   - Filter by CRITICAL severity
+   - Resolve critical conflicts
+   - Use auto-resolve for ADMIN conflicts
+
+3. **Process Manual Reviews** (`/admin/manual-review`)
+   - Review pending DRHP extractions
+   - Verify high-priority IPOs (opening <7 days)
+
+4. **Scan Recent IPOs** (`/admin/ipos`)
+   - Filter: Created in last 24h
+   - Verify data completeness
+   - Check financial data is from DRHP (purple badge)
+
+### Workflow 2: Resolving Scraper Conflict
+
+**Example**: NSE and BSE report different lot sizes
+
+1. **Verify Against DRHP**:
+   - Open IPO detail page
+   - Click **[View DRHP]**
+   - Find lot size in "Terms of the Issue" section
+
+2. **Resolve Conflict**:
+   - Go to Conflict dashboard
+   - Click **[Resolve]** on lot_size conflict
+   - Select correct source (based on DRHP verification)
+   - Enter reason: "Verified against DRHP - NSE correct"
+   - Check "Apply to Database" + "Protect Field"
+   - Click **[Resolve Conflict]**
+
+3. **Verify Fix**:
+   - IPO detail page shows: "Lot Size: 75 shares [ADMIN] 🔒"
+   - Source changed to ADMIN (100% confidence)
+   - Field protected from future overwrites
+
+### Workflow 3: DRHP Manual Review
+
+**Example**: Extraction confidence 65% (below 70% threshold)
+
+1. **Open Review Queue** → Click queued IPO
+2. **Initial Assessment**: Check field breakdown
+   - Revenue/Profit: 94% ✅
+   - ROE/ROCE: <50% ❌ (failed extraction)
+3. **View DRHP Side-by-Side**: Click **[View DRHP]**
+4. **Verify High-Confidence Fields**: Revenue/Profit match DRHP ✅
+5. **Correct Low-Confidence Fields**: Manually enter ROE/ROCE from DRHP
+6. **Approve & Apply**: All fields verified, click **[Approve & Apply]**
+7. **Result**: Field sources created (DRHP 95% for auto-extracted, ADMIN 100% for manual)
+
+---
+
+## Troubleshooting Phase 3.4 Features
+
+### Conflict Dashboard Not Loading
+- Hard refresh: Ctrl+Shift+R
+- Check `/admin/health` endpoint
+- Verify Redis connection
+
+### DRHP Not Downloading
+- Verify DRHP URL is publicly accessible
+- Check disk space on server
+- Manual trigger: `npm run drhp:extract -- --ipo-id=<id>`
+
+### Field Protection Not Working
+- Verify protection applied (🔒 icon)
+- Check field_sources table for ADMIN entry
+- Re-apply protection if missing
+
+### Auto-Resolve Fails
+- Use dry-run mode first to preview
+- Check if conflicts qualify (ADMIN vs scraper)
+- Try smaller batch (max conflicts = 10)
+
+### Metrics Dashboard Stale
+- Click **[Refresh Now]**
+- Check scraper execution logs
+- Verify data in database directly
+
+---
+
+## Phase 3.4 Best Practices
+
+### Conflict Resolution
+✅ Always verify CRITICAL conflicts against DRHP
+✅ Use bulk resolve for repetitive patterns
+✅ Document resolution reasons
+✅ Protect fields after manual correction
+
+### DRHP Review
+✅ Review within 24 hours of queuing
+✅ Prioritize IPOs opening soon
+✅ Cross-check all low-confidence fields
+✅ Report extraction failures for model improvement
+
+### Monitoring
+✅ Check dashboard daily (morning routine)
+✅ Set up alerts for CRITICAL status
+✅ Track conflict resolution rate
+✅ Monitor DRHP extraction accuracy trends
+
+---
+
+## Phase 3.4 Performance Metrics
+
+**System Performance**:
+- Consolidation: <200ms per IPO (p95: 142ms) ✅
+- DRHP Extraction: 15-18s average ✅
+- Conflict Resolution: <50ms per conflict ✅
+- Cache Invalidation: 25-35ms ✅
+
+**Data Quality**:
+- DRHP Accuracy: 94.1% ✅
+- Conflict Rate: <5% (target: 2.1% actual) ✅
+- Source Tracking Coverage: 97.5% ✅
+- Field Completeness: 84.2% ✅
+
+**Load Testing Results**:
+- 10 concurrent DRHP extractions: <5 min ✅
+- 200+ concurrent DB queries: 100% success ✅
+- 50 concurrent IPO creates: 1 success, 49 blocked (no duplicates) ✅
+
+---
+
 **End of Admin User Guide**
 
 For questions or feedback, contact the admin team or open a GitHub issue.

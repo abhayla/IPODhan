@@ -1,4 +1,12 @@
-import { IPORepository, SubscriptionRepository, ScraperLogRepository, db, getRedisClient } from '@ipodhan/shared';
+import {
+  IPORepository,
+  SubscriptionRepository,
+  ScraperLogRepository,
+  FieldSourcesRepository,
+  DataConflictsRepository,
+  db,
+  getRedisClient,
+} from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { scrapeNSEIPOs } from './nse-scraper.js';
 import { validateIPOData, validateSubscriptionData, generateSlug } from '../utils/validators.js';
@@ -9,6 +17,13 @@ import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { runIPOAlertsFallback } from './ipo-alerts-fallback-orchestrator.js';
 import { ScraperMetricsTracker } from '../services/scraper-metrics-tracker.js';
 import { AlertingService } from '../services/alerting-service.js';
+import { DataConsolidationOrchestrator } from '../services/data-consolidation-orchestrator.js';
+import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { DRHPOrchestratorService } from '../services/drhp-orchestrator.js';
+import { DRHPDownloaderService } from '../services/drhp-downloader.js';
+import { DRHPExtractorService } from '../services/drhp-extractor.js';
+import { ManualReviewQueueService } from '../services/manual-review-queue.js';
+import { DataConsolidationService } from '../services/data-consolidation-service.js';
 
 export interface ScraperResult {
   success: boolean;
@@ -18,6 +33,11 @@ export interface ScraperResult {
   iposFailed: number;
   subscriptionsCreated: number;
   errors: string[];
+  // Phase 1 consolidation metrics
+  consolidationEnabled?: boolean;
+  conflictsDetected?: number;
+  fieldsConsolidated?: number;
+  avgConsolidationTimeMs?: number;
 }
 
 /**
@@ -35,7 +55,11 @@ export async function runNSEScraper(): Promise<ScraperResult> {
     iposUpdated: 0,
     iposFailed: 0,
     subscriptionsCreated: 0,
-    errors: []
+    errors: [],
+    consolidationEnabled: FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION,
+    conflictsDetected: 0,
+    fieldsConsolidated: 0,
+    avgConsolidationTimeMs: 0,
   };
 
   try {
@@ -49,6 +73,39 @@ export async function runNSEScraper(): Promise<ScraperResult> {
     const cacheInvalidator = new CacheInvalidator(redis);
     const metricsTracker = new ScraperMetricsTracker(redis);
     const alertingService = new AlertingService();
+
+    // Phase 1: Initialize consolidation infrastructure
+    const fieldSourcesRepository = new FieldSourcesRepository(db, redis);
+    const dataConflictsRepository = new DataConflictsRepository(db, redis);
+    const consolidationOrchestrator = new DataConsolidationOrchestrator(
+      ipoRepository,
+      fieldSourcesRepository,
+      dataConflictsRepository,
+      redis
+    );
+
+    // Phase 2: Initialize DRHP extraction pipeline (if enabled)
+    let drhpOrchestrator: DRHPOrchestratorService | null = null;
+    if (FEATURE_FLAGS.ENABLE_DRHP_EXTRACTION) {
+      const documentRepository = db; // Placeholder - needs actual DocumentRepository
+      const manualReviewQueue = new ManualReviewQueueService();
+      const drhpDownloader = new DRHPDownloaderService(documentRepository);
+      const drhpExtractor = new DRHPExtractorService(manualReviewQueue);
+      const consolidationService = new DataConsolidationService(
+        fieldSourcesRepository,
+        dataConflictsRepository
+      );
+
+      drhpOrchestrator = new DRHPOrchestratorService(
+        drhpDownloader,
+        drhpExtractor,
+        consolidationService,
+        documentRepository,
+        manualReviewQueue
+      );
+
+      logger.info('[Phase 2] DRHP extraction pipeline initialized');
+    }
 
     // Track all updated IPO slugs for comprehensive cache invalidation
     const updatedIPOSlugs: string[] = [];
@@ -78,18 +135,93 @@ export async function runNSEScraper(): Promise<ScraperResult> {
         }
 
         const validatedIPO = validation.data!;
-
-        // Check if IPO already exists (to track insert vs update)
         const slug = generateSlug(validatedIPO.companyName);
-        const existingIPO = await ipoRepository.findBySlug(slug);
 
-        // Upsert IPO to database
-        const ipoId = await upsertIPO(ipoRepository, validatedIPO, 'NSE');
+        // Phase 1: Use consolidation orchestrator if enabled
+        let ipoId: string;
+        if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
+          const consolidationResult = await consolidationOrchestrator.consolidatedUpsertIPO(
+            validatedIPO,
+            'NSE',
+            95 // NSE confidence score
+          );
 
-        if (existingIPO) {
-          result.iposUpdated++;
+          if (consolidationResult.skipped) {
+            logger.warn(
+              { slug, reason: consolidationResult.skipReason },
+              '[Phase 1] IPO consolidation skipped'
+            );
+            // Fallback to traditional upsert
+            const existingIPO = await ipoRepository.findBySlug(slug);
+            ipoId = await upsertIPO(ipoRepository, validatedIPO, 'NSE');
+            if (existingIPO) {
+              result.iposUpdated++;
+            } else {
+              result.iposInserted++;
+            }
+          } else {
+            ipoId = consolidationResult.ipoId;
+
+            // Track consolidation metrics
+            if (consolidationResult.consolidation) {
+              result.conflictsDetected = (result.conflictsDetected || 0) +
+                consolidationResult.consolidation.conflictsDetected;
+              result.fieldsConsolidated = (result.fieldsConsolidated || 0) +
+                consolidationResult.consolidation.fieldsUpdated;
+
+              // Update average consolidation time
+              const totalTime = (result.avgConsolidationTimeMs || 0) * result.iposProcessed;
+              result.avgConsolidationTimeMs =
+                (totalTime + consolidationResult.consolidation.performanceMs) / (result.iposProcessed + 1);
+            }
+
+            if (consolidationResult.isNew) {
+              result.iposInserted++;
+
+              // Phase 2: Trigger DRHP extraction pipeline for new IPOs (async, non-blocking)
+              if (drhpOrchestrator && validatedIPO.companyName) {
+                drhpOrchestrator.processIPO({
+                  ipoId,
+                  companyName: validatedIPO.companyName,
+                  isin: validatedIPO.isin,
+                }).catch((error) => {
+                  logger.warn(
+                    {
+                      companyName: validatedIPO.companyName,
+                      error: error instanceof Error ? error.message : String(error)
+                    },
+                    '[Phase 2] DRHP pipeline failed, continuing scraper'
+                  );
+                });
+
+                logger.info(
+                  { companyName: validatedIPO.companyName },
+                  '[Phase 2] DRHP extraction pipeline triggered (async)'
+                );
+              }
+            } else {
+              result.iposUpdated++;
+            }
+
+            if (FEATURE_FLAGS.DEBUG_DATA_FLOW) {
+              logger.debug({
+                slug,
+                ipoId,
+                isNew: consolidationResult.isNew,
+                conflictsDetected: consolidationResult.consolidation?.conflictsDetected,
+                fieldsUpdated: consolidationResult.consolidation?.fieldsUpdated,
+              }, '[Phase 1] IPO consolidated successfully');
+            }
+          }
         } else {
-          result.iposInserted++;
+          // Traditional upsert (no consolidation)
+          const existingIPO = await ipoRepository.findBySlug(slug);
+          ipoId = await upsertIPO(ipoRepository, validatedIPO, 'NSE');
+          if (existingIPO) {
+            result.iposUpdated++;
+          } else {
+            result.iposInserted++;
+          }
         }
 
         result.iposProcessed++;
@@ -165,13 +297,22 @@ export async function runNSEScraper(): Promise<ScraperResult> {
     // Record success metrics in Redis (Story 7.5)
     await metricsTracker.recordSuccess('NSE');
 
-    logger.info(
-      {
-        ...result,
-        duration
-      },
-      'NSE scraper orchestrator completed'
-    );
+    // Log completion with Phase 1 metrics
+    const logData: any = {
+      ...result,
+      duration,
+    };
+
+    if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
+      logData.phase1Metrics = {
+        consolidationEnabled: result.consolidationEnabled,
+        conflictsDetected: result.conflictsDetected,
+        fieldsConsolidated: result.fieldsConsolidated,
+        avgConsolidationTimeMs: result.avgConsolidationTimeMs?.toFixed(2),
+      };
+    }
+
+    logger.info(logData, 'NSE scraper orchestrator completed (Phase 1 integrated)');
 
     return result;
 

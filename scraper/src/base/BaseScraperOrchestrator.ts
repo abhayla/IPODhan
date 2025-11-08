@@ -1,10 +1,14 @@
 /**
- * Base Scraper Orchestrator - Phase 2: Scraper Integration
+ * Base Scraper Orchestrator - Phase 1 + Phase 2: Data Consolidation + Manual Protection
  *
- * Abstract base class that enforces manual data protection checks for all scrapers.
- * Uses Template Method pattern to ensure protection logic cannot be bypassed.
+ * Abstract base class that enforces:
+ * - Phase 1: Intelligent multi-source data consolidation with conflict detection
+ * - Phase 2: Manual data protection checks for scrapers
+ *
+ * Uses Template Method pattern to ensure neither protection nor consolidation can be bypassed.
  *
  * @module scraper/src/base/BaseScraperOrchestrator
+ * @see docs/08-scraping/PHASE_1_COMPLETION_FINAL.md - Phase 1
  * @see docs/00-admin/MANUAL_DATA_MANAGEMENT_PLAN.md - Phase 2
  * @see web/lib/admin/field-protection-checker.ts - Protection logic
  */
@@ -13,7 +17,9 @@ import type {
   IPORepository,
   SubscriptionRepository,
   ScraperLogRepository,
-  IPOInsert
+  IPOInsert,
+  FieldSourcesRepository,
+  DataConflictsRepository
 } from '@ipodhan/shared';
 import {
   db,
@@ -21,6 +27,8 @@ import {
   IPORepository as IPORepositoryClass,
   SubscriptionRepository as SubscriptionRepositoryClass,
   ScraperLogRepository as ScraperLogRepositoryClass,
+  FieldSourcesRepository as FieldSourcesRepositoryClass,
+  DataConflictsRepository as DataConflictsRepositoryClass,
   createFieldProtectionService,
   type FieldProtectionService
 } from '@ipodhan/shared';
@@ -32,6 +40,8 @@ import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { ScraperMetricsTracker } from '../services/scraper-metrics-tracker.js';
 import { AlertingService } from '../services/alerting-service.js';
 import type { ScraperSource } from '../services/types.js';
+import { DataConsolidationOrchestrator } from '../services/data-consolidation-orchestrator.js';
+import { FEATURE_FLAGS } from '../config/feature-flags.js';
 
 /**
  * Result interface for scraper execution
@@ -42,11 +52,16 @@ export interface ScraperResult {
   iposInserted: number;
   iposUpdated: number;
   iposFailed: number;
-  iposSkipped: number;          // NEW: IPOs skipped due to IPO-level lock
+  iposSkipped: number;          // Phase 2: IPOs skipped due to IPO-level lock
   subscriptionsCreated: number;
-  subscriptionsSkipped: number;  // NEW: Subscriptions skipped
-  fieldsProtected: number;       // NEW: Individual fields protected
+  subscriptionsSkipped: number;  // Phase 2: Subscriptions skipped
+  fieldsProtected: number;       // Phase 2: Individual fields protected
   errors: string[];
+  // Phase 1: Data consolidation metrics
+  consolidationEnabled?: boolean;
+  conflictsDetected?: number;
+  fieldsConsolidated?: number;
+  avgConsolidationTimeMs?: number;
 }
 
 /**
@@ -95,6 +110,11 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
   protected alertingService!: AlertingService;
   protected fieldProtectionService!: FieldProtectionService;
 
+  // Phase 1: Data consolidation services
+  protected fieldSourcesRepository!: FieldSourcesRepository;
+  protected dataConflictsRepository!: DataConflictsRepository;
+  protected consolidationOrchestrator!: DataConsolidationOrchestrator;
+
   // Scraper name (e.g., 'NSE', 'BSE', 'MONEYCONTROL')
   protected abstract getScraperName(): ScraperSource;
 
@@ -129,11 +149,16 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       subscriptionsCreated: 0,
       subscriptionsSkipped: 0,
       fieldsProtected: 0,
-      errors: []
+      errors: [],
+      // Phase 1: Consolidation metrics
+      consolidationEnabled: FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION,
+      conflictsDetected: 0,
+      fieldsConsolidated: 0,
+      avgConsolidationTimeMs: 0,
     };
 
     try {
-      logger.info(`${scraperName} scraper orchestrator started (with protection checks)`);
+      logger.info(`${scraperName} scraper orchestrator started (Phase 1 consolidation + Phase 2 protection)`);
 
       // Initialize repositories and services
       this.initializeServices();
@@ -194,10 +219,22 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       // Record success
       await this.logSuccess(result, duration);
 
-      logger.info(
-        { ...result, duration },
-        `${scraperName} scraper orchestrator completed`
-      );
+      // Log completion with Phase 1 + Phase 2 metrics
+      const logData: any = {
+        ...result,
+        duration,
+      };
+
+      if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
+        logData.phase1Metrics = {
+          consolidationEnabled: result.consolidationEnabled,
+          conflictsDetected: result.conflictsDetected,
+          fieldsConsolidated: result.fieldsConsolidated,
+          avgConsolidationTimeMs: result.avgConsolidationTimeMs?.toFixed(2),
+        };
+      }
+
+      logger.info(logData, `${scraperName} scraper orchestrator completed (Phase 1 + Phase 2 integrated)`);
 
       return result;
 
@@ -341,13 +378,71 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       }
     }
 
-    // Step 5: Upsert filtered IPO data
-    const upsertedIPOId = await upsertIPO(this.ipoRepository, filteredIPOData, scraperName);
+    // Step 5: Upsert filtered IPO data with Phase 1 consolidation (if enabled)
+    let upsertedIPOId: string;
 
-    if (existingIPO) {
-      processResult.updated = true;
+    if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
+      // Phase 1: Use consolidation orchestrator
+      const confidenceScore = this.getConfidenceScore(scraperName);
+      const consolidationResult = await this.consolidationOrchestrator.consolidatedUpsertIPO(
+        filteredIPOData,
+        scraperName,
+        confidenceScore
+      );
+
+      if (consolidationResult.skipped) {
+        logger.warn(
+          { slug, reason: consolidationResult.skipReason },
+          '[Phase 1] IPO consolidation skipped'
+        );
+        // Fallback to traditional upsert
+        upsertedIPOId = await upsertIPO(this.ipoRepository, filteredIPOData, scraperName);
+        if (existingIPO) {
+          processResult.updated = true;
+        } else {
+          processResult.inserted = true;
+        }
+      } else {
+        upsertedIPOId = consolidationResult.ipoId;
+
+        // Track consolidation metrics in parent result
+        if (consolidationResult.consolidation) {
+          result.conflictsDetected = (result.conflictsDetected || 0) +
+            consolidationResult.consolidation.conflictsDetected;
+          result.fieldsConsolidated = (result.fieldsConsolidated || 0) +
+            consolidationResult.consolidation.fieldsUpdated;
+
+          // Update average consolidation time
+          const totalTime = (result.avgConsolidationTimeMs || 0) * result.iposProcessed;
+          result.avgConsolidationTimeMs =
+            (totalTime + consolidationResult.consolidation.performanceMs) / (result.iposProcessed + 1);
+        }
+
+        if (consolidationResult.isNew) {
+          processResult.inserted = true;
+        } else {
+          processResult.updated = true;
+        }
+
+        if (FEATURE_FLAGS.DEBUG_DATA_FLOW) {
+          logger.debug({
+            slug,
+            ipoId: upsertedIPOId,
+            isNew: consolidationResult.isNew,
+            conflictsDetected: consolidationResult.consolidation?.conflictsDetected,
+            fieldsUpdated: consolidationResult.consolidation?.fieldsUpdated,
+          }, '[Phase 1] IPO consolidated successfully');
+        }
+      }
     } else {
-      processResult.inserted = true;
+      // Traditional upsert (no consolidation)
+      upsertedIPOId = await upsertIPO(this.ipoRepository, filteredIPOData, scraperName);
+
+      if (existingIPO) {
+        processResult.updated = true;
+      } else {
+        processResult.inserted = true;
+      }
     }
 
     processResult.processed = true;
@@ -396,6 +491,29 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
   }
 
   /**
+   * Get confidence score for a scraper source
+   * Used by Phase 1 consolidation to weight data from different sources
+   *
+   * @param source - Scraper source name
+   * @returns Confidence score (0-100)
+   */
+  private getConfidenceScore(source: ScraperSource): number {
+    // Confidence scores based on source reliability
+    const confidenceScores: Record<ScraperSource, number> = {
+      'ADMIN': 100,           // Manual admin overrides are always trusted (highest)
+      'DRHP': 100,            // Official regulatory document (when implemented)
+      'NSE': 95,              // Official exchange, most reliable
+      'BSE': 90,              // Official exchange, slightly less complete than NSE
+      'CHITTORGARH': 80,      // Specialized for GMP data
+      'MONEYCONTROL': 75,     // Reliable third-party aggregator
+      'INVESTORGAIN_GMP': 75, // InvestorGain GMP data
+      'API_FALLBACK': 70,     // Fallback API, less reliable
+    };
+
+    return confidenceScores[source] || 50; // Default to medium confidence
+  }
+
+  /**
    * Check if subscription data is protected
    * Helper method to check key subscription fields
    *
@@ -428,6 +546,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
   private initializeServices(): void {
     const redis = getRedisClient();
 
+    // Phase 2: Manual protection services
     this.ipoRepository = new IPORepositoryClass(db, redis);
     this.subscriptionRepository = new SubscriptionRepositoryClass(db, redis);
     this.scraperLogRepository = new ScraperLogRepositoryClass(db, redis);
@@ -435,6 +554,16 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     this.metricsTracker = new ScraperMetricsTracker(redis);
     this.alertingService = new AlertingService();
     this.fieldProtectionService = createFieldProtectionService(db, redis);
+
+    // Phase 1: Data consolidation services
+    this.fieldSourcesRepository = new FieldSourcesRepositoryClass(db, redis);
+    this.dataConflictsRepository = new DataConflictsRepositoryClass(db, redis);
+    this.consolidationOrchestrator = new DataConsolidationOrchestrator(
+      this.ipoRepository,
+      this.fieldSourcesRepository,
+      this.dataConflictsRepository,
+      redis
+    );
   }
 
   /**

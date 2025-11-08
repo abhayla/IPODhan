@@ -14,7 +14,7 @@ import {
   pgEnum,
   unique,
 } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, isNull } from 'drizzle-orm';
 
 // ==================== ENUMS ====================
 
@@ -76,6 +76,8 @@ export const financialStatementTypeEnum = pgEnum('financial_statement_type', [
 ]);
 
 export const scraperSourceEnum = pgEnum('scraper_source', [
+  'ADMIN',           // Manual admin edits (highest priority)
+  'DRHP',            // DRHP PDF extraction (authoritative for financials)
   'NSE',
   'BSE',
   'API_FALLBACK',
@@ -482,11 +484,20 @@ export const documents = pgTable(
     fileSize: bigint('file_size', { mode: 'number' }), // in bytes
     uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
     exchange: varchar('exchange', { length: 10 }), // 'NSE' | 'BSE' - source exchange
+
+    // DRHP extraction tracking (Phase 0: Data Flow Architecture)
+    extractionStatus: varchar('extraction_status', { length: 50 }).default('PENDING'), // PENDING|IN_PROGRESS|COMPLETED|FAILED|MANUAL_REVIEW
+    extractionConfidence: numeric('extraction_confidence', { precision: 5, scale: 2 }), // 0-100%
+    extractedAt: timestamp('extracted_at'),
+    extractionError: text('extraction_error'), // Error message if extraction failed
+    retryCount: integer('retry_count').default(0).notNull(), // Number of extraction attempts
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
   (table) => ({
     exchangeIdx: index('idx_documents_exchange').on(table.exchange),
+    extractionStatusIdx: index('idx_documents_extraction_status').on(table.extractionStatus),
 
     // Composite unique constraint: one document per (IPO + type + mediaType + exchange + sequence)
     // Allows multiple documents of same type (e.g., Addendum 1, 2, 3)
@@ -1024,6 +1035,110 @@ export const auditLogs = pgTable(
   })
 );
 
+// ==================== TABLE 21: FIELD_SOURCES (Phase 0: Data Flow Architecture) ====================
+// Tracks which scraper source provided each field value for audit trail
+
+export const fieldSources = pgTable(
+  'field_sources',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    tableName: varchar('table_name', { length: 100 }).notNull(), // e.g., 'ipos', 'financial_data'
+    fieldName: varchar('field_name', { length: 100 }).notNull(), // e.g., 'issueSize', 'revenue_fy2024'
+
+    // Source tracking
+    source: scraperSourceEnum('source').notNull(), // ADMIN|DRHP|NSE|BSE|etc.
+    confidence: integer('confidence').default(100).notNull(), // 0-100 (data quality score)
+
+    // Change history
+    previousValue: text('previous_value'), // Previous value (JSON stringified if needed)
+    previousSource: scraperSourceEnum('previous_source'), // What source provided previous value
+
+    // Data lineage (structured metadata)
+    dataLineage: jsonb('data_lineage'), // {method: 'API'|'SCRAPE', endpoint: '/xyz', confidence: 95}
+
+    // Timestamps
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+    updatedBy: varchar('updated_by', { length: 255 }), // Admin username or 'SYSTEM'
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    // Performance indexes
+    ipoIdIdx: index('idx_field_sources_ipo_id').on(table.ipoId),
+    tableNameIdx: index('idx_field_sources_table_name').on(table.tableName),
+    fieldNameIdx: index('idx_field_sources_field_name').on(table.fieldName),
+    sourceIdx: index('idx_field_sources_source').on(table.source),
+
+    // Composite index for common queries
+    ipoTableFieldIdx: index('idx_field_sources_ipo_table_field').on(
+      table.ipoId,
+      table.tableName,
+      table.fieldName
+    ),
+
+    // Unique constraint: one source record per field per IPO
+    uniqueFieldPerIpo: unique('unique_field_source_per_ipo').on(
+      table.ipoId,
+      table.tableName,
+      table.fieldName
+    ),
+  })
+);
+
+// ==================== TABLE 22: DATA_CONFLICTS (Phase 0: Data Flow Architecture) ====================
+// Logs detected conflicts between scraper sources for admin review
+
+export const dataConflicts = pgTable(
+  'data_conflicts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    tableName: varchar('table_name', { length: 100 }).notNull(),
+    fieldName: varchar('field_name', { length: 100 }).notNull(),
+
+    // Conflicting sources
+    source1: scraperSourceEnum('source1').notNull(), // e.g., NSE
+    value1: text('value1'), // Value from source1 (JSON stringified if needed)
+    source2: scraperSourceEnum('source2').notNull(), // e.g., BSE
+    value2: text('value2'), // Value from source2
+
+    // Resolution
+    resolvedSource: scraperSourceEnum('resolved_source'), // Which source won
+    resolutionReason: varchar('resolution_reason', { length: 100 }), // SOURCE_PRIORITY|ADMIN_CHOICE|CONFIDENCE_SCORE
+    severity: varchar('severity', { length: 20 }).default('INFO').notNull(), // INFO|WARNING|CRITICAL
+
+    // Admin resolution
+    adminNote: text('admin_note'), // Admin explanation for manual resolution
+    resolvedAt: timestamp('resolved_at'),
+    resolvedBy: varchar('resolved_by', { length: 255 }), // 'SYSTEM' or admin username
+
+    // Timestamps
+    detectedAt: timestamp('detected_at').defaultNow().notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    // Performance indexes
+    ipoIdIdx: index('idx_data_conflicts_ipo_id').on(table.ipoId),
+    fieldNameIdx: index('idx_data_conflicts_field_name').on(table.fieldName),
+    severityIdx: index('idx_data_conflicts_severity').on(table.severity),
+    detectedAtIdx: index('idx_data_conflicts_detected_at').on(table.detectedAt.desc()),
+
+    // Unresolved conflicts index (most important query)
+    unresolvedIdx: index('idx_data_conflicts_unresolved').on(table.resolvedAt)
+      .where(isNull(table.resolvedAt)),
+
+    // Composite index for conflict dashboard
+    ipoUnresolvedIdx: index('idx_data_conflicts_ipo_unresolved').on(
+      table.ipoId,
+      table.resolvedAt
+    ),
+  })
+);
+
 // ==================== RELATIONS ====================
 
 export const iposRelations = relations(ipos, ({ many, one }) => ({
@@ -1033,6 +1148,8 @@ export const iposRelations = relations(ipos, ({ many, one }) => ({
   peerCompanies: many(peerCompanies),
   ipoReviews: many(ipoReviews),
   fieldProtections: many(fieldProtectionMetadata),
+  fieldSources: many(fieldSources),
+  dataConflicts: many(dataConflicts),
   ipoDemandGraph: many(ipoDemandGraph),
   financialData: one(financialData, {
     fields: [ipos.id],
@@ -1171,6 +1288,20 @@ export const anchorInvestorsRelations = relations(anchorInvestors, ({ one }) => 
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
   ipo: one(ipos, {
     fields: [auditLogs.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const fieldSourcesRelations = relations(fieldSources, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [fieldSources.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const dataConflictsRelations = relations(dataConflicts, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [dataConflicts.ipoId],
     references: [ipos.id],
   }),
 }));

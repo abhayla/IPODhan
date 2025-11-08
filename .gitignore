@@ -194,6 +194,7 @@ scraper/temp-*.js
 scraper/temp-*.cjs
 scraper/temp-*.mjs
 scraper/temp-*.sql
+scraper/*-output.txt
 
 # Recent scraper execution logs (root only)
 /COMPREHENSIVE_SCRAPING_TEST_RESULTS.md

@@ -7,6 +7,8 @@ export * from './repositories/gmp-repository.js';
 export * from './repositories/scraper-log-repository.js';
 export * from './repositories/document-repository.js';
 export * from './repositories/financial-data-repository.js';
+export * from './repositories/field-sources-repository.js';
+export * from './repositories/data-conflicts-repository.js';
 // Export utility functions
 export * from './utils/slug.js';
 // Export field protection functions
