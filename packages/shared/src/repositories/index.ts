@@ -14,6 +14,8 @@ export { ListingPerformanceRepository } from './listing-performance-repository.j
 export { RegistrarRepository } from './registrar-repository.js';
 export { MarketHolidayRepository } from './market-holiday-repository.js';
 export { ScraperLogRepository } from './scraper-log-repository.js';
+export { FieldSourcesRepository } from './field-sources-repository.js';
+export { DataConflictsRepository } from './data-conflicts-repository.js';
 
 // Base Repository
 export { BaseRepository } from './base-repository.js';

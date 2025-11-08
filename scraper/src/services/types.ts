@@ -5,13 +5,14 @@
 
 /**
  * Scraper source types
+ * Re-exported from field-priority-matrix for consistency
  */
-export type ScraperSource = 'NSE' | 'BSE' | 'MONEYCONTROL' | 'CHITTORGARH' | 'API_FALLBACK' | 'INVESTORGAIN_GMP';
+export type { ScraperSource } from '../config/field-priority-matrix.js';
 
 /**
  * Scraper type (alias for ScraperSource for compatibility)
  */
-export type ScraperType = ScraperSource;
+export type ScraperType = import('../config/field-priority-matrix.js').ScraperSource;
 
 /**
  * Scraper status types

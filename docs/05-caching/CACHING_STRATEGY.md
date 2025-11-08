@@ -39,6 +39,12 @@
 | `getGMPHistoryKey(id, days)` | `gmp:history:{id}:{days}` | `gmp:history:uuid-123:7` | Historical data |
 | `getDemandGraphKey(id, exchange?)` | `demand:graph:{id}:{exchange}` | `demand:graph:uuid-123:NSE` | Price-wise demand (NEW Oct 2025) |
 | `getDemandSnapshotKey(id)` | `demand:snapshot:{id}` | `demand:snapshot:uuid-123` | Latest demand snapshot (NEW Oct 2025) |
+| `getDRHPExtractionKey(id)` | `drhp:extraction:{id}` | `drhp:extraction:uuid-123` | DRHP extraction results (NEW Nov 2025) |
+| `getDRHPDownloadKey(id)` | `drhp:download:{id}` | `drhp:download:uuid-123` | DRHP download status (NEW Nov 2025) |
+| `getManualReviewQueueKey()` | `manual-review-queue:pending` | `manual-review-queue:pending` | Pending manual reviews (NEW Nov 2025) |
+| `getConflictsUnresolvedKey()` | `conflicts:unresolved` | `conflicts:unresolved` | Unresolved conflicts list (NEW Nov 2025) |
+| `getConflictsStatsKey()` | `conflicts:stats` | `conflicts:stats` | Conflict statistics (NEW Nov 2025) |
+| `getPipelineMetricsKey()` | `metrics:pipeline` | `metrics:pipeline` | Pipeline health metrics (NEW Nov 2025) |
 
 **Key Design Rules:**
 1. Use MD5 hash for complex filter objects
@@ -63,6 +69,12 @@
 | Historical IPOs | 86400s (24h) | Static data | Listing performance update |
 | Financials | 1800s (30min) | Rarely changes | Manual correction |
 | Documents | 3600s (1h) | Static after upload | Document upload |
+| DRHP Extraction | 86400s (24h) | Extract once per IPO | DRHP re-extraction (NEW Nov 2025) |
+| DRHP Download | 3600s (1h) | Track download progress | DRHP download completion (NEW Nov 2025) |
+| Manual Review Queue | 300s (5min) | Real-time queue updates | New review item added (NEW Nov 2025) |
+| Conflicts Unresolved | 300s (5min) | Frequently changing | Conflict resolution (NEW Nov 2025) |
+| Conflicts Stats | 900s (15min) | Moderate changes | Conflict resolution/creation (NEW Nov 2025) |
+| Pipeline Metrics | 300s (5min) | Real-time monitoring | Scraper runs, data updates (NEW Nov 2025) |
 
 **TTL Selection Criteria:**
 - **< 5 min**: Real-time data (subscriptions during open IPO)
@@ -146,6 +158,25 @@ getDemandGraphInvalidationKeys(ipoId) → [  // NEW Oct 2025
 getHistoricalIPOInvalidationKeys() → [
   'ipos:history:*'     // All historical filters
 ]
+
+// NEW Nov 2025: Phase 3.4 - DRHP & Conflicts
+getDRHPInvalidationKeys(ipoId) → [
+  'drhp:extraction:{ipoId}',    // Extraction results
+  'drhp:download:{ipoId}'        // Download status
+]
+
+getConflictInvalidationKeys() → [
+  'conflicts:unresolved',        // Unresolved list
+  'conflicts:stats'              // Statistics
+]
+
+getManualReviewQueueInvalidationKeys() → [
+  'manual-review-queue:pending'  // Pending reviews
+]
+
+getPipelineMetricsInvalidationKeys() → [
+  'metrics:pipeline'             // Pipeline metrics
+]
 ```
 
 ### When to Invalidate
@@ -156,6 +187,10 @@ getHistoricalIPOInvalidationKeys() → [
 | Subscription snapshot | `subscription:latest:{id}`, `subscription:history:{id}:*` | After DB insert |
 | GMP manual entry | `gmp:latest:{id}`, `gmp:history:{id}:*` | Admin API route |
 | Listing performance | `ipos:history:*`, `listing:{id}` | Historical scraper |
+| DRHP extraction | `drhp:extraction:{id}`, `drhp:download:{id}`, `metrics:pipeline` | DRHP orchestrator (NEW Nov 2025) |
+| Conflict resolution | `conflicts:unresolved`, `conflicts:stats`, `metrics:pipeline` | Conflict API (NEW Nov 2025) |
+| Manual review approval | `manual-review-queue:pending`, `drhp:extraction:{id}` | Admin API (NEW Nov 2025) |
+| Data consolidation | `ipo:id:{id}`, `conflicts:*`, `metrics:pipeline` | Consolidation service (NEW Nov 2025) |
 
 ---
 

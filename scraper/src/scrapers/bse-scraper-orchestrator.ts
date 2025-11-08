@@ -1,4 +1,11 @@
-import { IPORepository, SubscriptionRepository, db, getRedisClient } from '@ipodhan/shared';
+import {
+  IPORepository,
+  SubscriptionRepository,
+  FieldSourcesRepository,
+  DataConflictsRepository,
+  db,
+  getRedisClient,
+} from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { scrapeBSEIPOs } from './bse-scraper.js';
 import { validateIPOData, validateSubscriptionData, generateSlug } from '../utils/validators.js';
@@ -7,6 +14,13 @@ import { invalidateIPOCaches, invalidateSubscriptionCache } from '../services/ca
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { runIPOAlertsFallback } from './ipo-alerts-fallback-orchestrator.js';
+import { DataConsolidationOrchestrator } from '../services/data-consolidation-orchestrator.js';
+import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { DRHPOrchestratorService } from '../services/drhp-orchestrator.js';
+import { DRHPDownloaderService } from '../services/drhp-downloader.js';
+import { DRHPExtractorService } from '../services/drhp-extractor.js';
+import { ManualReviewQueueService } from '../services/manual-review-queue.js';
+import { DataConsolidationService } from '../services/data-consolidation-service.js';
 
 export interface ScraperResult {
   success: boolean;
@@ -19,6 +33,11 @@ export interface ScraperResult {
   mainboardCount: number;
   subscriptionsCreated: number;
   errors: string[];
+  // Phase 1 consolidation metrics
+  consolidationEnabled?: boolean;
+  conflictsDetected?: number;
+  fieldsConsolidated?: number;
+  avgConsolidationTimeMs?: number;
 }
 
 /**
@@ -40,7 +59,11 @@ export async function runBSEScraper(): Promise<ScraperResult> {
     smeCount: 0,
     mainboardCount: 0,
     subscriptionsCreated: 0,
-    errors: []
+    errors: [],
+    consolidationEnabled: FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION,
+    conflictsDetected: 0,
+    fieldsConsolidated: 0,
+    avgConsolidationTimeMs: 0,
   };
 
   try {
@@ -51,6 +74,39 @@ export async function runBSEScraper(): Promise<ScraperResult> {
     const ipoRepository = new IPORepository(db, redis);
     const subscriptionRepository = new SubscriptionRepository(db, redis);
     const cacheInvalidator = new CacheInvalidator(redis);
+
+    // Phase 1: Initialize consolidation infrastructure
+    const fieldSourcesRepository = new FieldSourcesRepository(db, redis);
+    const dataConflictsRepository = new DataConflictsRepository(db, redis);
+    const consolidationOrchestrator = new DataConsolidationOrchestrator(
+      ipoRepository,
+      fieldSourcesRepository,
+      dataConflictsRepository,
+      redis
+    );
+
+    // Phase 2: Initialize DRHP extraction pipeline (if enabled)
+    let drhpOrchestrator: DRHPOrchestratorService | null = null;
+    if (FEATURE_FLAGS.ENABLE_DRHP_EXTRACTION) {
+      const documentRepository = db; // Placeholder - needs actual DocumentRepository
+      const manualReviewQueue = new ManualReviewQueueService();
+      const drhpDownloader = new DRHPDownloaderService(documentRepository);
+      const drhpExtractor = new DRHPExtractorService(manualReviewQueue);
+      const consolidationService = new DataConsolidationService(
+        fieldSourcesRepository,
+        dataConflictsRepository
+      );
+
+      drhpOrchestrator = new DRHPOrchestratorService(
+        drhpDownloader,
+        drhpExtractor,
+        consolidationService,
+        documentRepository,
+        manualReviewQueue
+      );
+
+      logger.info('[Phase 2] DRHP extraction pipeline initialized (BSE)');
+    }
 
     // Track all updated IPO slugs for comprehensive cache invalidation
     const updatedIPOSlugs: string[] = [];
@@ -86,24 +142,109 @@ export async function runBSEScraper(): Promise<ScraperResult> {
         }
 
         const validatedIPO = validation.data!;
-
-        // Check if IPO already exists (to track insert vs update vs merge)
         const slug = generateSlug(validatedIPO.companyName);
-        const existingIPO = await ipoRepository.findBySlug(slug);
 
-        // Track if this is a merge operation (dual-listed IPO)
-        const isMerge = existingIPO && !(existingIPO.listingExchanges as string[]).includes('BSE');
+        // Phase 1: Use consolidation orchestrator if enabled
+        let ipoId: string;
+        if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
+          const consolidationResult = await consolidationOrchestrator.consolidatedUpsertIPO(
+            validatedIPO,
+            'BSE',
+            90 // BSE confidence score (slightly lower than NSE's 95)
+          );
 
-        // Upsert IPO to database with BSE source (handles merge logic)
-        const ipoId = await upsertIPO(ipoRepository, validatedIPO, 'BSE');
+          if (consolidationResult.skipped) {
+            logger.warn(
+              { slug, reason: consolidationResult.skipReason },
+              '[Phase 1] IPO consolidation skipped'
+            );
+            // Fallback to traditional upsert
+            const existingIPO = await ipoRepository.findBySlug(slug);
+            const isMerge = existingIPO && !(existingIPO.listingExchanges as string[]).includes('BSE');
+            ipoId = await upsertIPO(ipoRepository, validatedIPO, 'BSE');
 
-        if (isMerge) {
-          result.iposMerged++;
-          result.iposUpdated++;
-        } else if (existingIPO) {
-          result.iposUpdated++;
+            if (isMerge) {
+              result.iposMerged++;
+              result.iposUpdated++;
+            } else if (existingIPO) {
+              result.iposUpdated++;
+            } else {
+              result.iposInserted++;
+            }
+          } else {
+            ipoId = consolidationResult.ipoId;
+
+            // Track consolidation metrics
+            if (consolidationResult.consolidation) {
+              result.conflictsDetected = (result.conflictsDetected || 0) +
+                consolidationResult.consolidation.conflictsDetected;
+              result.fieldsConsolidated = (result.fieldsConsolidated || 0) +
+                consolidationResult.consolidation.fieldsUpdated;
+
+              // Update average consolidation time
+              const totalTime = (result.avgConsolidationTimeMs || 0) * result.iposProcessed;
+              result.avgConsolidationTimeMs =
+                (totalTime + consolidationResult.consolidation.performanceMs) / (result.iposProcessed + 1);
+            }
+
+            // Track if this is a merge operation
+            if (consolidationResult.isMerged) {
+              result.iposMerged++;
+            }
+
+            if (consolidationResult.isNew) {
+              result.iposInserted++;
+
+              // Phase 2: Trigger DRHP extraction pipeline for new IPOs (async, non-blocking)
+              if (drhpOrchestrator && validatedIPO.companyName) {
+                drhpOrchestrator.processIPO({
+                  ipoId,
+                  companyName: validatedIPO.companyName,
+                  isin: validatedIPO.isin,
+                }).catch((error) => {
+                  logger.warn(
+                    {
+                      companyName: validatedIPO.companyName,
+                      error: error instanceof Error ? error.message : String(error)
+                    },
+                    '[Phase 2] DRHP pipeline failed (BSE), continuing scraper'
+                  );
+                });
+
+                logger.info(
+                  { companyName: validatedIPO.companyName },
+                  '[Phase 2] DRHP extraction pipeline triggered (BSE, async)'
+                );
+              }
+            } else {
+              result.iposUpdated++;
+            }
+
+            if (FEATURE_FLAGS.DEBUG_DATA_FLOW) {
+              logger.debug({
+                slug,
+                ipoId,
+                isNew: consolidationResult.isNew,
+                isMerged: consolidationResult.isMerged,
+                conflictsDetected: consolidationResult.consolidation?.conflictsDetected,
+                fieldsUpdated: consolidationResult.consolidation?.fieldsUpdated,
+              }, '[Phase 1] IPO consolidated successfully');
+            }
+          }
         } else {
-          result.iposInserted++;
+          // Traditional upsert (no consolidation)
+          const existingIPO = await ipoRepository.findBySlug(slug);
+          const isMerge = existingIPO && !(existingIPO.listingExchanges as string[]).includes('BSE');
+          ipoId = await upsertIPO(ipoRepository, validatedIPO, 'BSE');
+
+          if (isMerge) {
+            result.iposMerged++;
+            result.iposUpdated++;
+          } else if (existingIPO) {
+            result.iposUpdated++;
+          } else {
+            result.iposInserted++;
+          }
         }
 
         result.iposProcessed++;
@@ -165,13 +306,22 @@ export async function runBSEScraper(): Promise<ScraperResult> {
     // Record success in failure tracker
     scraperFailureTracker.recordSuccess('BSE');
 
-    logger.info(
-      {
-        ...result,
-        duration
-      },
-      'BSE scraper orchestrator completed'
-    );
+    // Log completion with Phase 1 metrics
+    const logData: any = {
+      ...result,
+      duration,
+    };
+
+    if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
+      logData.phase1Metrics = {
+        consolidationEnabled: result.consolidationEnabled,
+        conflictsDetected: result.conflictsDetected,
+        fieldsConsolidated: result.fieldsConsolidated,
+        avgConsolidationTimeMs: result.avgConsolidationTimeMs?.toFixed(2),
+      };
+    }
+
+    logger.info(logData, 'BSE scraper orchestrator completed (Phase 1 integrated)');
 
     return result;
 
