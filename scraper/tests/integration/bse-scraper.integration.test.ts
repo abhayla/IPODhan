@@ -84,7 +84,7 @@ describe('BSE Scraper Integration Tests', () => {
 
       // Verify SME category is correctly tagged
       expect(result.ipos).toHaveLength(1);
-      expect(result.ipos[0].category).toBe('SME');
+      expect(result.ipos[0].segment).toBe('SME');
       expect(result.ipos[0].listingExchange).toBe('BSE');
       expect(result.ipos[0].companyName).toBe('Test SME Company Ltd');
 
@@ -132,7 +132,7 @@ describe('BSE Scraper Integration Tests', () => {
 
       // Verify MAINBOARD category
       expect(result.ipos).toHaveLength(1);
-      expect(result.ipos[0].category).toBe('MAINBOARD');
+      expect(result.ipos[0].segment).toBe('MAINBOARD');
       expect(result.mainboardCount).toBe(1);
       expect(result.smeCount).toBe(0);
     });
@@ -190,8 +190,8 @@ describe('BSE Scraper Integration Tests', () => {
       const smeIPO = result.ipos.find(ipo => ipo.companyName === 'SME Company');
       const mainboardIPO = result.ipos.find(ipo => ipo.companyName === 'Mainboard Company');
 
-      expect(smeIPO?.category).toBe('SME');
-      expect(mainboardIPO?.category).toBe('MAINBOARD');
+      expect(smeIPO?.segment).toBe('SME');
+      expect(mainboardIPO?.segment).toBe('MAINBOARD');
     });
   });
 
