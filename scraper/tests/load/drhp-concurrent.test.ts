@@ -23,6 +23,8 @@ import { db } from '@ipodhan/shared';
 import { getRedisClient } from '@ipodhan/shared';
 import { IPORepository } from '@ipodhan/shared';
 import { DataConsolidationService } from '@scraper/services/data-consolidation-service.js';
+import { FieldSourcesRepository } from '@ipodhan/shared/repositories/field-sources-repository';
+import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
 import { generateIPOSlug } from '@ipodhan/shared/utils/slug';
 import { ipos, documents } from '@ipodhan/shared/db/schema';
 import { eq } from 'drizzle-orm';
@@ -64,7 +66,7 @@ describe('Load Test: 10 Concurrent DRHP Extractions', () => {
           slug,
           status: 'UPCOMING',
           segment: 'MAINBOARD',
-          category: 'MAINBOARD',
+          offeringType: 'IPO',
         });
 
         testIPOIds.push(ipo.id);
@@ -118,7 +120,12 @@ describe('Load Test: 10 Concurrent DRHP Extractions', () => {
  * Simulate DRHP extraction for an IPO
  */
 async function simulateDRHPExtraction(ipoId: string, index: number): Promise<void> {
-  const consolidationService = new DataConsolidationService(db, redis);
+  const fieldSourcesRepository = new FieldSourcesRepository(db, redis);
+  const dataConflictsRepository = new DataConflictsRepository(db, redis);
+  const consolidationService = new DataConsolidationService(
+    fieldSourcesRepository,
+    dataConflictsRepository
+  );
 
   // Simulate extraction delay (0.5 - 2 seconds)
   const delay = 500 + Math.random() * 1500;
@@ -133,11 +140,12 @@ async function simulateDRHPExtraction(ipoId: string, index: number): Promise<voi
   };
 
   // Consolidate data (tests distributed locking)
-  await consolidationService.consolidateIPOData(
+  await consolidationService.consolidateIPOData({
     ipoId,
-    extractedData,
-    'DRHP'
-  );
+    tableName: 'ipos',
+    incomingData: extractedData,
+    source: 'DRHP',
+  });
 }
 
 // ========================================
@@ -318,7 +326,7 @@ async function attemptIPOCreation(
       slug,
       status: 'ANNOUNCED',
       segment: null,
-      category: 'MAINBOARD',
+      offeringType: 'IPO',
     });
 
     return ipo.id;
@@ -337,7 +345,12 @@ describe('Load Test: Performance Benchmarks', () => {
     const slug = generateIPOSlug(testCompanyName);
 
     const ipoRepository = new IPORepository(db, redis);
-    const consolidationService = new DataConsolidationService(db, redis);
+    const fieldSourcesRepository = new FieldSourcesRepository(db, redis);
+    const dataConflictsRepository = new DataConflictsRepository(db, redis);
+    const consolidationService = new DataConsolidationService(
+      fieldSourcesRepository,
+      dataConflictsRepository
+    );
 
     // Create test IPO
     const ipo = await ipoRepository.create({
@@ -345,7 +358,7 @@ describe('Load Test: Performance Benchmarks', () => {
       slug,
       status: 'UPCOMING',
       segment: 'MAINBOARD',
-      category: 'MAINBOARD',
+      offeringType: 'IPO',
     });
 
     testIPOIds.push(ipo.id);
@@ -357,9 +370,14 @@ describe('Load Test: Performance Benchmarks', () => {
     for (let i = 0; i < iterations; i++) {
       const start = Date.now();
 
-      await consolidationService.consolidateIPOData(ipo.id, {
-        revenuefy2024: 1000000000 + i,
-      }, 'NSE');
+      await consolidationService.consolidateIPOData({
+        ipoId: ipo.id,
+        tableName: 'ipos',
+        incomingData: {
+          revenuefy2024: 1000000000 + i,
+        },
+        source: 'NSE',
+      });
 
       const end = Date.now();
       timings.push(end - start);
