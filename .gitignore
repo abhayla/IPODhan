@@ -43,13 +43,17 @@ web/backfill-*.log
 # Testing
 coverage/
 .nyc_output/
-test-results/
 playwright-report/
 *.spec.ts.snap
 web/test-results/
 web/playwright-report/
 web/coverage/
 .env.test
+
+# Test results - ignore temporary outputs but track documentation
+test-results/**/*.log
+test-results/**/*.tmp
+test-results/**/node_modules/
 
 # Temporary files
 .cache/
