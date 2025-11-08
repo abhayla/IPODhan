@@ -83,7 +83,7 @@ const tableCategories = {
   },
   system: {
     label: 'System',
-    tables: ['fieldProtectionMetadata', 'protectedFields', 'auditLogs'],
+    tables: ['fieldProtectionMetadata', 'auditLogs'],
     icon: '⚙️',
     color: 'text-gray-600'
   },
@@ -119,7 +119,7 @@ export function EnhancedDashboard() {
       const [iposResponse, extractionsResponse, protectedResponse] = await Promise.all([
         adminGet('/api/admin/dynamic/ipos/list?limit=1'),
         adminGet('/api/admin/dynamic/extractionLogs/list?limit=10'),
-        adminGet('/api/admin/dynamic/protectedFields/list?limit=1')
+        adminGet('/api/admin/dynamic/fieldProtectionMetadata/list?limit=1')
       ]);
 
       const extractionLogs = extractionsResponse.data?.records || [];
@@ -140,7 +140,7 @@ export function EnhancedDashboard() {
         totalIPOs: iposResponse.data?.total || 0,
         totalExtractions: extractionsResponse.data?.total || 0,
         pendingExtractions: pendingCount,
-        totalTables: 17,
+        totalTables: 16, // Updated from 17 (removed protectedFields table)
         totalFields: 450,
         protectedFields: protectedResponse.data?.total || 0,
         recentActivity
