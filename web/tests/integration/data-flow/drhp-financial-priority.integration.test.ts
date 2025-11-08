@@ -31,12 +31,13 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 
 describe('Category 4.1: DRHP Wins for Financial Data', () => {
   let consolidationService: DataConsolidationService;
+  let fieldSourcesRepo: FieldSourcesRepository;
   const testIPOIds: string[] = [];
 
   beforeAll(() => {
     // Initialize consolidation service with repositories
     const redis = getRedisClient();
-    const fieldSourcesRepo = new FieldSourcesRepository(db, redis);
+    fieldSourcesRepo = new FieldSourcesRepository(db, redis);
     const dataConflictsRepo = new DataConflictsRepository(db, redis);
     consolidationService = new DataConsolidationService(fieldSourcesRepo, dataConflictsRepo);
   });
@@ -106,6 +107,38 @@ describe('Category 4.1: DRHP Wins for Financial Data', () => {
     expect(drhpResult.consolidatedData!.profitFy2024).toBe(150000000);
     console.log('  ✅ DRHP values chosen in consolidatedData');
 
+    // ⚠️ IMPORTANT: In real production, DRHP field sources would be written to DB.
+    // But in shadow mode, they're not. So we need to create them manually for the test.
+    await db.insert(fieldSources).values([
+      {
+        id: uuidv4(),
+        ipoId: testIPO[0].id,
+        tableName: 'ipos',
+        fieldName: 'revenueFy2024',
+        value: 1000000000,  // Store as number, not string
+        source: 'DRHP',
+        confidence: 94,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: uuidv4(),
+        ipoId: testIPO[0].id,
+        tableName: 'ipos',
+        fieldName: 'profitFy2024',
+        value: 150000000,  // Store as number, not string
+        source: 'DRHP',
+        confidence: 94,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+    console.log('  📝 Created field source records for DRHP data (simulating production behavior)');
+
+    // Clear cache so consolidation service sees the new field sources
+    await fieldSourcesRepo.deleteCache(`field-sources:ipo:${testIPO[0].id}:all`);
+    console.log('  🔄 Cleared field sources cache');
+
     // NSE provides DIFFERENT values (should lose due to lower priority)
     const nseData = {
       revenueFy2024: 950000000,   // ₹950 Cr (5% lower than DRHP)
@@ -119,8 +152,8 @@ describe('Category 4.1: DRHP Wins for Financial Data', () => {
     // Simulate that DRHP data was applied (update existingData for next test)
     const currentIPO = {
       ...testIPO[0],
-      revenueFy2024: '1000000000.00',
-      profitFy2024: '150000000.00',
+      revenueFy2024: 1000000000,  // Number, not string
+      profitFy2024: 150000000,    // Number, not string
     };
 
     const nseResult = await consolidationService.consolidateIPOData({
@@ -300,11 +333,42 @@ describe('Category 4.1: DRHP Wins for Financial Data', () => {
     expect(bseResult.consolidatedData!.profitFy2024).toBe(95000000);
     console.log('  ✅ BSE values chosen in consolidatedData');
 
+    // ⚠️ Create field source records for BSE data (shadow mode doesn't persist)
+    await db.insert(fieldSources).values([
+      {
+        id: uuidv4(),
+        ipoId: testIPO[0].id,
+        tableName: 'ipos',
+        fieldName: 'profitFy2023',
+        value: 80000000,  // Store as number, not string
+        source: 'BSE',
+        confidence: 85,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+      {
+        id: uuidv4(),
+        ipoId: testIPO[0].id,
+        tableName: 'ipos',
+        fieldName: 'profitFy2024',
+        value: 95000000,  // Store as number, not string
+        source: 'BSE',
+        confidence: 85,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    ]);
+    console.log('  📝 Created field source records for BSE data (simulating production behavior)');
+
+    // Clear cache
+    await fieldSourcesRepo.deleteCache(`field-sources:ipo:${testIPO[0].id}:all`);
+    console.log('  🔄 Cleared field sources cache');
+
     // Simulate that BSE data was applied
     const currentIPO = {
       ...testIPO[0],
-      profitFy2023: '80000000.00',
-      profitFy2024: '95000000.00',
+      profitFy2023: 80000000,  // Number, not string
+      profitFy2024: 95000000,  // Number, not string
     };
 
     // DRHP provides DIFFERENT profit values (should win)

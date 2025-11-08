@@ -129,6 +129,49 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'Profit for fiscal year 3',
   },
 
+  // Specific fiscal year fields (camelCase - actual database fields)
+  revenueFy2022: {
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'currency',
+    confidenceThreshold: 80,
+    description: 'Revenue FY2022 - DRHP is most accurate',
+  },
+
+  revenueFy2023: {
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'currency',
+    confidenceThreshold: 80,
+    description: 'Revenue FY2023 - DRHP is most accurate',
+  },
+
+  revenueFy2024: {
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'currency',
+    confidenceThreshold: 80,
+    description: 'Revenue FY2024 - DRHP is most accurate',
+  },
+
+  profitFy2022: {
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'currency',
+    confidenceThreshold: 80,
+    description: 'Profit FY2022 - DRHP is most accurate',
+  },
+
+  profitFy2023: {
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'currency',
+    confidenceThreshold: 80,
+    description: 'Profit FY2023 - DRHP is most accurate',
+  },
+
+  profitFy2024: {
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'currency',
+    confidenceThreshold: 80,
+    description: 'Profit FY2024 - DRHP is most accurate',
+  },
+
   pe_ratio: {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'number',
