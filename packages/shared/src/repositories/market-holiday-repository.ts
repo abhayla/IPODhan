@@ -6,9 +6,9 @@
  */
 
 import { eq, and, gte, lte, or, asc } from 'drizzle-orm';
-import { BaseRepository } from './base-repository.js';
-import { marketHolidays } from '../db/schema.js';
-import type { MarketHoliday, Exchange } from '../db/types.js';
+import { BaseRepository } from './base-repository';
+import { marketHolidays } from '../db/schema';
+import type { MarketHoliday, Exchange } from '../db/types';
 
 export interface HolidayFilters {
   year?: number;

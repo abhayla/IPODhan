@@ -632,7 +632,7 @@ export default function ConflictsPage() {
 
                       <td className="px-4 py-3 text-sm">
                         <Link
-                          href={`/admin/edit/${conflict.ipoSlug}`}
+                          href={`/admin/dynamic/ipos/${conflict.ipoId}`}
                           className="text-blue-400 hover:text-blue-300 hover:underline"
                         >
                           {conflict.ipoName}

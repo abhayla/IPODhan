@@ -42,7 +42,17 @@
     "validate:sentry": "tsx scripts/validate-sentry-setup.ts",
     "analyze": "ANALYZE=true npm run build",
     "perf:test": "lhci autorun",
-    "perf:ci": "npm run build && lhci autorun"
+    "perf:ci": "npm run build && lhci autorun",
+    "data-quality-report": "tsx scripts/data-quality-report.ts",
+    "cleanup-test-data": "tsx scripts/cleanup-test-data.ts",
+    "cleanup-test-data:execute": "tsx scripts/cleanup-test-data.ts --execute",
+    "update-past-close-status": "tsx scripts/update-past-close-date-status.ts",
+    "update-past-close-status:execute": "tsx scripts/update-past-close-date-status.ts --execute",
+    "identify-missing-data": "tsx scripts/identify-missing-historical-data.ts",
+    "filter-priority-ipos": "tsx scripts/filter-priority-ipos.ts",
+    "update-priority-lot-sizes": "tsx scripts/update-priority-lot-sizes.ts",
+    "manual-entry": "tsx scripts/manual-data-entry-helper.ts",
+    "reclassify-corporate-actions": "tsx scripts/reclassify-corporate-actions.ts"
   },
   "dependencies": {
     "@heroicons/react": "^2.2.0",

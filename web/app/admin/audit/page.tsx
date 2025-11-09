@@ -384,10 +384,12 @@ export default function AuditLogPage() {
                       </td>
 
                       <td className="px-4 py-3 text-sm">
+                        {/* TODO: Update to use /admin/dynamic/ipos/{id} once audit log schema includes ipoId */}
                         {log.companyName && log.companySlug ? (
                           <Link
                             href={`/admin/edit/${log.companySlug}`}
                             className="text-blue-400 hover:text-blue-300 hover:underline"
+                            title="Legacy admin link (audit log schema needs ipoId field for Dynamic Admin)"
                           >
                             {log.companyName}
                           </Link>

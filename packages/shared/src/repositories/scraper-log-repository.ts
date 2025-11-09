@@ -6,13 +6,13 @@
  */
 
 import { desc, eq, gte, lte, and, sql, count } from 'drizzle-orm';
-import { BaseRepository } from './base-repository.js';
-import { scraperLogs } from '../db/schema.js';
-import type { ScraperLog, NewScraperLog, ScraperSource } from '../db/types.js';
+import { BaseRepository } from './base-repository';
+import { scraperLogs } from '../db/schema';
+import type { ScraperLog, NewScraperLog, ScraperSource } from '../db/types';
 import type {
   PaginationParams,
   PaginatedResponse,
-} from './types.js';
+} from './types';
 
 /**
  * Filters for querying scraper logs

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import type { IPO } from '../db/types.js';
+import type { IPO } from '../db/types';
 
 /**
  * Base URL for the application

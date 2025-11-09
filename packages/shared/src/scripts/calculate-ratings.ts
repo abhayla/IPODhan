@@ -13,15 +13,15 @@
  * @module calculate-ratings
  */
 
-import { db, closePool } from '../db/index.js';
-import { getRedisClient, closeRedisClient } from '../cache/redis-client.js';
-import { IPORepository } from '../repositories/ipo-repository.js';
-import { SubscriptionRepository } from '../repositories/subscription-repository.js';
-import { GMPRepository } from '../repositories/gmp-repository.js';
-import { FinancialDataRepository } from '../repositories/financial-data-repository.js';
-import { calculateIPORating } from '../services/rating-service.js';
-import { logger } from '../logger.js';
-import * as schema from '../db/schema.js';
+import { db, closePool } from '../db/index';
+import { getRedisClient, closeRedisClient } from '../cache/redis-client';
+import { IPORepository } from '../repositories/ipo-repository';
+import { SubscriptionRepository } from '../repositories/subscription-repository';
+import { GMPRepository } from '../repositories/gmp-repository';
+import { FinancialDataRepository } from '../repositories/financial-data-repository';
+import { calculateIPORating } from '../services/rating-service';
+import { logger } from '../logger';
+import * as schema from '../db/schema';
 import { eq, inArray } from 'drizzle-orm';
 
 // ==================== TYPES ====================

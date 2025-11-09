@@ -6,8 +6,8 @@
  * Usage: Call after scraper updates or manual data modifications
  */
 
-import { safeDelPattern, safeDel } from './redis-client.js';
-import { logger } from '../logger.js';
+import { safeDelPattern, safeDel } from './redis-client';
+import { logger } from '../logger';
 
 /**
  * Invalidate all cached data for a specific IPO

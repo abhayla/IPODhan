@@ -1,7 +1,7 @@
 import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
 
 // Re-export db from drizzle setup for repositories
-export { db } from './db/index.js';
+export { db } from './db/index';
 
 // Singleton pool instance
 let pool: Pool | null = null;

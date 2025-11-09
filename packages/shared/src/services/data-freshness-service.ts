@@ -7,10 +7,10 @@
 
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
-import { ScraperLogRepository } from '../repositories/scraper-log-repository.js';
-import { IPORepository } from '../repositories/ipo-repository.js';
-import type * as schema from '../db/schema.js';
-import type { ScraperSource } from '../db/types.js';
+import { ScraperLogRepository } from '../repositories/scraper-log-repository';
+import { IPORepository } from '../repositories/ipo-repository';
+import type * as schema from '../db/schema';
+import type { ScraperSource } from '../db/types';
 
 /**
  * Service for checking data freshness and scraper health

@@ -312,15 +312,6 @@ export default function AdminDashboardPage() {
                         >
                           Edit
                         </Link>
-
-                        {/* Secondary: Legacy Traditional Admin */}
-                        <Link
-                          href={`/admin/edit/${ipo.slug}`}
-                          className="text-xs text-gray-400 hover:text-gray-300 underline transition-colors"
-                          title="Legacy admin interface (being phased out)"
-                        >
-                          (Legacy)
-                        </Link>
                       </div>
                     </td>
                   </tr>

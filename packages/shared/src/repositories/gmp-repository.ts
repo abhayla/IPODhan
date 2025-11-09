@@ -8,22 +8,22 @@
 import { eq, and, gte, lte, desc } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
-import { BaseRepository } from './base-repository.js';
-import { gmpRecords } from '../db/schema.js';
-import type * as schema from '../db/schema.js';
+import { BaseRepository } from './base-repository';
+import { gmpRecords } from '../db/schema';
+import type * as schema from '../db/schema';
 import {
   CacheTTL,
   getLatestGMPKey,
   getGMPHistoryKey,
   getGMPInvalidationKeys,
-} from '../cache/cache-keys.js';
-import { DatabaseError } from '../errors/repository-errors.js';
+} from '../cache/cache-keys';
+import { DatabaseError } from '../errors/repository-errors';
 import type {
   GMPRecord,
   GMPRecordInsert,
   GMPFilters,
   IGMPRepository,
-} from './types.js';
+} from './types';
 
 export class GMPRepository extends BaseRepository implements IGMPRepository {
   constructor(db: NodePgDatabase<typeof schema>, redis: Redis) {

@@ -8,7 +8,7 @@
 import { eq, and, gte, lte, sql, desc, asc, inArray, like } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
-import { BaseRepository } from './base-repository.js';
+import { BaseRepository } from './base-repository';
 import {
   ipos,
   financialData,
@@ -21,8 +21,8 @@ import {
   type ipoStatusEnum,
   type segmentEnum,
   type offeringTypeEnum,
-} from '../db/schema.js';
-import type * as schema from '../db/schema.js';
+} from '../db/schema';
+import type * as schema from '../db/schema';
 import {
   CacheTTL,
   getIPOBySlugKey,
@@ -30,8 +30,8 @@ import {
   getIPOListKey,
   getIPOSearchKey,
   getHistoricalIPOsKey,
-} from '../cache/cache-keys.js';
-import { EntityNotFoundError, DatabaseError } from '../errors/repository-errors.js';
+} from '../cache/cache-keys';
+import { EntityNotFoundError, DatabaseError } from '../errors/repository-errors';
 import type {
   IPO,
   IPOInsert,
@@ -42,7 +42,7 @@ import type {
   FinancialData,
   HistoricalIPO,
   HistoricalIPOQueryParams,
-} from './types.js';
+} from './types';
 
 export class IPORepository extends BaseRepository implements IIPORepository {
   constructor(db: NodePgDatabase<typeof schema>, redis: Redis) {

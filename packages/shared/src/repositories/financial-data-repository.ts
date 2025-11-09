@@ -8,16 +8,16 @@
 import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
-import { BaseRepository } from './base-repository.js';
-import { financialData } from '../db/schema.js';
-import type * as schema from '../db/schema.js';
-import { CacheTTL, getFinancialDataKey } from '../cache/cache-keys.js';
-import { DatabaseError } from '../errors/repository-errors.js';
+import { BaseRepository } from './base-repository';
+import { financialData } from '../db/schema';
+import type * as schema from '../db/schema';
+import { CacheTTL, getFinancialDataKey } from '../cache/cache-keys';
+import { DatabaseError } from '../errors/repository-errors';
 import type {
   FinancialData,
   FinancialDataInsert,
   IFinancialDataRepository,
-} from './types.js';
+} from './types';
 
 export class FinancialDataRepository
   extends BaseRepository
