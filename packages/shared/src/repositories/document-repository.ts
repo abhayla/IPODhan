@@ -8,16 +8,16 @@
 import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
-import { BaseRepository } from './base-repository.js';
-import { documents } from '../db/schema.js';
-import type * as schema from '../db/schema.js';
-import { CacheTTL, getDocumentsKey } from '../cache/cache-keys.js';
-import { DatabaseError, EntityNotFoundError } from '../errors/repository-errors.js';
+import { BaseRepository } from './base-repository';
+import { documents } from '../db/schema';
+import type * as schema from '../db/schema';
+import { CacheTTL, getDocumentsKey } from '../cache/cache-keys';
+import { DatabaseError, EntityNotFoundError } from '../errors/repository-errors';
 import type {
   Document,
   DocumentInsert,
   IDocumentRepository,
-} from './types.js';
+} from './types';
 
 export class DocumentRepository
   extends BaseRepository

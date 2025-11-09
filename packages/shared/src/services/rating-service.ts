@@ -13,7 +13,7 @@ import type {
   GMPRecord,
   PeerCompany,
   FinancialData,
-} from '../db/types.js';
+} from '../db/types';
 
 // ==================== TYPES ====================
 

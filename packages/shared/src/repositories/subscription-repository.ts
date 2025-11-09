@@ -8,22 +8,22 @@
 import { eq, and, gte, lte, desc } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
-import { BaseRepository } from './base-repository.js';
-import { subscriptions } from '../db/schema.js';
-import type * as schema from '../db/schema.js';
+import { BaseRepository } from './base-repository';
+import { subscriptions } from '../db/schema';
+import type * as schema from '../db/schema';
 import {
   CacheTTL,
   getLatestSubscriptionKey,
   getSubscriptionHistoryKey,
   getSubscriptionInvalidationKeys,
-} from '../cache/cache-keys.js';
-import { DatabaseError } from '../errors/repository-errors.js';
+} from '../cache/cache-keys';
+import { DatabaseError } from '../errors/repository-errors';
 import type {
   Subscription,
   SubscriptionInsert,
   SubscriptionFilters,
   ISubscriptionRepository,
-} from './types.js';
+} from './types';
 
 export class SubscriptionRepository
   extends BaseRepository

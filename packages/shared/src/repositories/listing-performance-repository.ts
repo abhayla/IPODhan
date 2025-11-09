@@ -8,16 +8,16 @@
 import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
-import { BaseRepository } from './base-repository.js';
-import { listingPerformance } from '../db/schema.js';
-import type * as schema from '../db/schema.js';
-import { CacheTTL, getListingPerformanceKey } from '../cache/cache-keys.js';
-import { DatabaseError } from '../errors/repository-errors.js';
+import { BaseRepository } from './base-repository';
+import { listingPerformance } from '../db/schema';
+import type * as schema from '../db/schema';
+import { CacheTTL, getListingPerformanceKey } from '../cache/cache-keys';
+import { DatabaseError } from '../errors/repository-errors';
 import type {
   ListingPerformance,
   ListingPerformanceInsert,
   IListingPerformanceRepository,
-} from './types.js';
+} from './types';
 
 export class ListingPerformanceRepository
   extends BaseRepository

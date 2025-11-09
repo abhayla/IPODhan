@@ -12,6 +12,9 @@
 import React, { useState, useEffect } from 'react';
 import type { ColumnMetadata, TableMetadata } from '@/lib/admin/schema-introspector';
 import { validateField, isFieldEditable, groupColumnsByCategory } from '@/lib/admin/schema-introspector';
+import { getFieldLabel } from '@/lib/admin/field-labels';
+import { validateCustomField } from '@/lib/admin/dynamic-validation-rules';
+import { FieldTooltip } from './TooltipSystem';
 
 interface DynamicFormGeneratorProps {
   tableMetadata: TableMetadata;
@@ -30,17 +33,29 @@ interface FieldComponentProps {
   column: ColumnMetadata;
   value: any;
   onChange: (value: any) => void;
+  onBlur?: (value: any) => void; // Added for inline validation
   error?: string;
+  warning?: string; // Added for validation warnings
   disabled?: boolean;
+  tableName: string; // Added for field label lookup
 }
 
 /**
  * Renders an appropriate input component based on column type
  */
-function FieldComponent({ column, value, onChange, error, disabled }: FieldComponentProps) {
+function FieldComponent({ column, value, onChange, onBlur, error, warning, disabled, tableName }: FieldComponentProps) {
+  const fieldConfig = getFieldLabel(tableName, column.name);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const newValue = e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value;
     onChange(newValue);
+  };
+
+  const handleBlur = (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+    if (onBlur) {
+      const blurValue = e.target.type === 'checkbox' ? (e.target as HTMLInputElement).checked : e.target.value;
+      onBlur(blurValue);
+    }
   };
 
   switch (column.fieldType) {
@@ -50,18 +65,42 @@ function FieldComponent({ column, value, onChange, error, disabled }: FieldCompo
     case 'text':
       return (
         <div className="space-y-1">
-          <input
-            type="text"
-            value={value || ''}
-            onChange={handleChange}
-            disabled={disabled}
-            maxLength={column.maxLength}
-            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-              error ? 'border-red-500' : 'border-gray-300'
-            } ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
-            placeholder={column.isNullable ? '(Optional)' : ''}
-          />
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="flex items-center gap-2">
+            {fieldConfig.unit && fieldConfig.unit.startsWith('₹') && (
+              <span className="text-gray-600 font-medium">{fieldConfig.unit}</span>
+            )}
+            <input
+              type="text"
+              value={value || ''}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              disabled={disabled}
+              maxLength={column.maxLength}
+              className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                error ? 'border-red-500' : warning ? 'border-yellow-400' : 'border-gray-300'
+              } ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+              placeholder={fieldConfig.placeholder || (column.isNullable ? '(Optional)' : '')}
+            />
+            {fieldConfig.unit && !fieldConfig.unit.startsWith('₹') && (
+              <span className="text-gray-600 text-sm">{fieldConfig.unit}</span>
+            )}
+          </div>
+          {error && (
+            <p className="text-sm text-red-600 flex items-center gap-1">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              {error}
+            </p>
+          )}
+          {!error && warning && (
+            <p className="text-sm text-yellow-600 flex items-center gap-1">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              {warning}
+            </p>
+          )}
         </div>
       );
 
@@ -86,19 +125,43 @@ function FieldComponent({ column, value, onChange, error, disabled }: FieldCompo
     case 'number':
       return (
         <div className="space-y-1">
-          <input
-            type="number"
-            value={value || ''}
-            onChange={handleChange}
-            disabled={disabled}
-            min={column.validation?.min}
-            max={column.validation?.max}
-            className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
-              error ? 'border-red-500' : 'border-gray-300'
-            } ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
-            placeholder={column.isNullable ? '(Optional)' : ''}
-          />
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          <div className="flex items-center gap-2">
+            {fieldConfig.unit && fieldConfig.unit.startsWith('₹') && (
+              <span className="text-gray-600 font-medium">{fieldConfig.unit}</span>
+            )}
+            <input
+              type="number"
+              value={value || ''}
+              onChange={handleChange}
+              onBlur={handleBlur}
+              disabled={disabled}
+              min={column.validation?.min}
+              max={column.validation?.max}
+              className={`flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 ${
+                error ? 'border-red-500' : warning ? 'border-yellow-400' : 'border-gray-300'
+              } ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
+              placeholder={fieldConfig.placeholder || (column.isNullable ? '(Optional)' : '')}
+            />
+            {fieldConfig.unit && !fieldConfig.unit.startsWith('₹') && (
+              <span className="text-gray-600 text-sm">{fieldConfig.unit}</span>
+            )}
+          </div>
+          {error && (
+            <p className="text-sm text-red-600 flex items-center gap-1">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              {error}
+            </p>
+          )}
+          {!error && warning && (
+            <p className="text-sm text-yellow-600 flex items-center gap-1">
+              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+              </svg>
+              {warning}
+            </p>
+          )}
         </div>
       );
 
@@ -267,6 +330,7 @@ export function DynamicFormGenerator({
 }: DynamicFormGeneratorProps) {
   const [formData, setFormData] = useState<Record<string, any>>(initialData);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [warnings, setWarnings] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
   const [protectingField, setProtectingField] = useState<string | null>(null);
@@ -275,13 +339,14 @@ export function DynamicFormGenerator({
     setFormData(initialData);
     setIsDirty(false);
     setErrors({});
+    setWarnings({});
   }, [initialData]);
 
   const handleFieldChange = (fieldName: string, value: any) => {
     setFormData(prev => ({ ...prev, [fieldName]: value }));
     setIsDirty(true);
 
-    // Clear error for this field
+    // Clear error and warning for this field
     if (errors[fieldName]) {
       setErrors(prev => {
         const newErrors = { ...prev };
@@ -289,27 +354,75 @@ export function DynamicFormGenerator({
         return newErrors;
       });
     }
+    if (warnings[fieldName]) {
+      setWarnings(prev => {
+        const newWarnings = { ...prev };
+        delete newWarnings[fieldName];
+        return newWarnings;
+      });
+    }
+  };
+
+  const handleFieldBlur = (fieldName: string, value: any) => {
+    // Run custom validation on blur
+    const validationResult = validateCustomField({
+      tableName: tableMetadata.name,
+      fieldName,
+      value,
+      record: formData,
+    });
+
+    // Set error or warning based on validation result
+    if (!validationResult.valid && validationResult.error) {
+      setErrors(prev => ({ ...prev, [fieldName]: validationResult.error! }));
+    } else if (validationResult.warning) {
+      setWarnings(prev => ({ ...prev, [fieldName]: validationResult.warning! }));
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Validate all fields
+    // Validate all fields (both schema and custom validation)
     const newErrors: Record<string, string> = {};
+    const newWarnings: Record<string, string> = {};
     let hasErrors = false;
 
     for (const column of tableMetadata.columns) {
       if (!isFieldEditable(column)) continue;
 
-      const validation = validateField(column, formData[column.name]);
-      if (!validation.valid) {
-        newErrors[column.name] = validation.error!;
+      const fieldValue = formData[column.name];
+
+      // 1. Schema validation (type, required, etc.)
+      const schemaValidation = validateField(column, fieldValue);
+      if (!schemaValidation.valid) {
+        newErrors[column.name] = schemaValidation.error!;
         hasErrors = true;
+        continue; // Skip custom validation if schema validation fails
+      }
+
+      // 2. Custom business logic validation
+      const customValidation = validateCustomField({
+        tableName: tableMetadata.name,
+        fieldName: column.name,
+        value: fieldValue,
+        record: formData,
+      });
+
+      if (!customValidation.valid && customValidation.error) {
+        newErrors[column.name] = customValidation.error;
+        hasErrors = true;
+      } else if (customValidation.warning) {
+        newWarnings[column.name] = customValidation.warning;
       }
     }
 
+    // Update errors and warnings
+    setErrors(newErrors);
+    setWarnings(newWarnings);
+
+    // Block submission if there are errors (warnings are non-blocking)
     if (hasErrors) {
-      setErrors(newErrors);
       return;
     }
 
@@ -328,6 +441,7 @@ export function DynamicFormGenerator({
   const handleReset = () => {
     setFormData(initialData);
     setErrors({});
+    setWarnings({});
     setIsDirty(false);
   };
 
@@ -374,51 +488,81 @@ export function DynamicFormGenerator({
               const isProtected = protectedFields.has(column.name);
               const isProtecting = protectingField === column.name;
 
+              const fieldConfig = getFieldLabel(tableMetadata.name, column.name);
+
               return (
                 <div key={column.name} className={column.fieldType === 'textarea' || column.fieldType === 'json' ? 'md:col-span-2' : ''}>
                   {column.fieldType !== 'hidden' && (
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-sm font-medium text-gray-700">
-                        {column.name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                        {!column.isNullable && <span className="text-red-500 ml-1">*</span>}
-                        {isProtected && (
-                          <span className="ml-2 inline-flex items-center text-xs text-yellow-600">
-                            <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                              <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
-                            </svg>
-                            Protected
-                          </span>
+                    <>
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-1.5">
+                          <label className="block text-sm font-medium text-gray-700">
+                            {fieldConfig.label}
+                            {!column.isNullable && <span className="text-red-500 ml-1">*</span>}
+                          </label>
+                          {/* Enhanced tooltip with regulatory references */}
+                          <FieldTooltip
+                            tableName={tableMetadata.name}
+                            fieldName={column.name}
+                            position="right"
+                            trigger="hover"
+                          />
+                          {/* Fallback to simple tooltip if no enhanced content available */}
+                          {!fieldConfig.tooltip && fieldConfig.description && (
+                            <span
+                              className="inline-flex items-center text-gray-400 hover:text-gray-600 cursor-help"
+                              title={fieldConfig.description}
+                            >
+                              <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                              </svg>
+                            </span>
+                          )}
+                          {isProtected && (
+                            <span className="ml-2 inline-flex items-center text-xs text-yellow-600">
+                              <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd" />
+                              </svg>
+                              Protected
+                            </span>
+                          )}
+                        </div>
+                        {enableProtection && onProtectField && mode === 'edit' && (
+                          <button
+                            type="button"
+                            onClick={() => handleProtectionToggle(column.name)}
+                            disabled={isProtecting || isSubmitting}
+                            className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
+                              isProtected
+                                ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                                : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                            } disabled:opacity-50 disabled:cursor-not-allowed`}
+                            title={isProtected ? 'Click to unprotect field' : 'Click to protect field from scraper updates'}
+                          >
+                            {isProtecting ? '...' : isProtected ? '🔓 Unprotect' : '🔒 Protect'}
+                          </button>
                         )}
-                      </label>
-                      {enableProtection && onProtectField && mode === 'edit' && (
-                        <button
-                          type="button"
-                          onClick={() => handleProtectionToggle(column.name)}
-                          disabled={isProtecting || isSubmitting}
-                          className={`px-2 py-1 text-xs font-medium rounded transition-colors ${
-                            isProtected
-                              ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
-                              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-                          } disabled:opacity-50 disabled:cursor-not-allowed`}
-                          title={isProtected ? 'Click to unprotect field' : 'Click to protect field from scraper updates'}
-                        >
-                          {isProtecting ? '...' : isProtected ? '🔓 Unprotect' : '🔒 Protect'}
-                        </button>
+                      </div>
+                      {fieldConfig.description && (
+                        <p className="text-xs text-gray-500 mt-0.5 mb-1">
+                          {fieldConfig.description}
+                        </p>
                       )}
-                    </div>
+                    </>
                   )}
                   <FieldComponent
                     column={column}
                     value={formData[column.name]}
                     onChange={(value) => handleFieldChange(column.name, value)}
+                    onBlur={(value) => handleFieldBlur(column.name, value)}
                     error={errors[column.name]}
+                    warning={warnings[column.name]}
                     disabled={isSubmitting}
+                    tableName={tableMetadata.name}
                   />
-                  {column.fieldType !== 'hidden' && column.dataType && (
+                  {column.fieldType !== 'hidden' && fieldConfig.helpText && (
                     <p className="text-xs text-gray-500 mt-1">
-                      Type: {column.dataType}
-                      {column.maxLength && ` (max ${column.maxLength} chars)`}
-                      {column.precision && ` (${column.precision} digits)`}
+                      {fieldConfig.helpText}
                     </p>
                   )}
                 </div>

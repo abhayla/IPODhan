@@ -150,8 +150,8 @@ async function getDetectionMetrics(): Promise<DetectionMetrics> {
       companyName: ipos.companyName,
       createdAt: ipos.createdAt,
       openDate: ipos.openDate,
-      // Infer source from first update
-      fieldSources: ipos.fieldSources,
+      // Use historical data source if available
+      dataSource: ipos.historicalDataSource,
     })
     .from(ipos)
     .where(gte(ipos.createdAt, yesterday))
@@ -179,10 +179,9 @@ async function getDetectionMetrics(): Promise<DetectionMetrics> {
       }
     }
 
-    // Determine source (from field_sources if available)
-    if (ipo.fieldSources && typeof ipo.fieldSources === 'object') {
-      const sources = Object.values(ipo.fieldSources as Record<string, any>);
-      const firstSource = sources[0]?.source;
+    // Determine source (from dataSource if available)
+    if (ipo.dataSource && typeof ipo.dataSource === 'string') {
+      const firstSource = ipo.dataSource.toUpperCase();
 
       if (firstSource) {
         if (firstSource === 'SEBI') sourceCounts.SEBI++;
@@ -224,7 +223,7 @@ async function getConsolidationMetrics(): Promise<ConsolidationMetrics> {
 
   // Conflict rate
   const conflictRate = totalIPOs > 0
-    ? ((stats.totalUnresolved / totalIPOs) * 100).toFixed(2) + '%'
+    ? ((stats.unresolved / totalIPOs) * 100).toFixed(2) + '%'
     : '0%';
 
   // Lock timeouts (would need to track this in production - placeholder for now)
@@ -235,7 +234,7 @@ async function getConsolidationMetrics(): Promise<ConsolidationMetrics> {
 
   return {
     processed: totalIPOs,
-    conflicts: stats.totalUnresolved,
+    conflicts: stats.unresolved,
     conflictRate,
     avgLatencyMs,
     lockTimeouts,
@@ -270,7 +269,7 @@ async function getDRHPMetrics(): Promise<DRHPMetrics> {
     if (doc.extractionStatus === 'COMPLETED') {
       extracted++;
       if (doc.extractionConfidence !== null) {
-        totalConfidence += doc.extractionConfidence;
+        totalConfidence += Number(doc.extractionConfidence);
         confidenceCount++;
       }
     } else if (doc.extractionStatus === 'FAILED') {

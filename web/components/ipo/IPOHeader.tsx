@@ -29,12 +29,54 @@ const getStatusConfig = (status: IPOStatus) => {
   }
 };
 
+const getOfferingTypeConfig = (offeringType: string | null) => {
+  switch (offeringType) {
+    case 'IPO':
+      return {
+        color: 'bg-green-50 text-green-700 border-green-300',
+        label: 'IPO',
+        showWarning: false
+      };
+    case 'TENDER':
+      return {
+        color: 'bg-orange-50 text-orange-700 border-orange-300',
+        label: 'Open Offer',
+        showWarning: true
+      };
+    case 'RIGHTS':
+      return {
+        color: 'bg-purple-50 text-purple-700 border-purple-300',
+        label: 'Rights Issue',
+        showWarning: true
+      };
+    case 'OFS':
+      return {
+        color: 'bg-amber-50 text-amber-700 border-amber-300',
+        label: 'OFS',
+        showWarning: true
+      };
+    case 'FPO':
+      return {
+        color: 'bg-cyan-50 text-cyan-700 border-cyan-300',
+        label: 'FPO',
+        showWarning: false
+      };
+    default:
+      return {
+        color: 'bg-gray-50 text-gray-700 border-gray-300',
+        label: offeringType || 'N/A',
+        showWarning: false
+      };
+  }
+};
+
 /**
  * IPOHeader component displays the hero section with company information
  * Includes company name, logo (or placeholder), status badge, and rating
  */
 export function IPOHeader({ ipo }: IPOHeaderProps) {
   const statusConfig = getStatusConfig(ipo.status);
+  const offeringTypeConfig = getOfferingTypeConfig(ipo.offeringType);
 
   return (
     <div className="w-full border-b bg-gradient-to-br from-background via-background to-muted/30 py-8 md:py-12 transition-all duration-300">
@@ -78,8 +120,16 @@ export function IPOHeader({ ipo }: IPOHeaderProps) {
               <Badge variant="outline" className="text-xs font-medium transition-all duration-200 hover:bg-muted hover:scale-105">
                 {ipo.segment || 'N/A'}
               </Badge>
-              <Badge variant="outline" className="text-xs font-medium transition-all duration-200 hover:bg-muted hover:scale-105">
-                {ipo.offeringType}
+              {/* Enhanced: Display offering type badge with differentiated colors */}
+              <Badge
+                variant="outline"
+                className={`text-xs ${offeringTypeConfig.color} font-semibold transition-all duration-200 hover:scale-105 ${
+                  offeringTypeConfig.showWarning ? 'ring-2 ring-offset-2 ring-current' : ''
+                }`}
+                title={offeringTypeConfig.showWarning ? 'This is not a traditional IPO' : undefined}
+              >
+                {offeringTypeConfig.showWarning && <span className="mr-1">⚠️</span>}
+                {offeringTypeConfig.label}
               </Badge>
               {ipo.sector && (
                 <span className="text-sm text-muted-foreground">•</span>

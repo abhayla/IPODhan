@@ -598,7 +598,7 @@ export default function DRHPExtractionPage() {
             </Link>
             {selectedLog.ipoId && (
               <Link
-                href={`/admin/edit/${selectedLog.ipoId}`}
+                href={`/admin/dynamic/ipos/${selectedLog.ipoId}`}
                 className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 inline-block"
               >
                 Edit IPO

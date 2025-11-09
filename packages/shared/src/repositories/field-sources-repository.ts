@@ -7,9 +7,9 @@
 import { eq, and, desc } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
-import * as schema from '../db/schema.js';
-import { fieldSources } from '../db/schema.js';
-import { BaseRepository } from './base-repository.js';
+import * as schema from '../db/schema';
+import { fieldSources } from '../db/schema';
+import { BaseRepository } from './base-repository';
 
 export interface FieldSourceRecord {
   id: string;

@@ -121,8 +121,8 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
   // Scraper-specific data fetching logic
   protected abstract scrapeData(): Promise<ScrapedData<TIPO, TSubscription>>;
 
-  // Scraper-specific validation logic
-  protected abstract validateIPO(ipo: TIPO): { success: boolean; data?: any; error?: any };
+  // Scraper-specific validation logic (can be sync or async for backward compatibility)
+  protected abstract validateIPO(ipo: TIPO): { success: boolean; data?: any; error?: any } | Promise<{ success: boolean; data?: any; error?: any }>;
 
   // Optional: Subscription validation (not all scrapers have subscriptions)
   protected validateSubscription?(sub: TSubscription): { success: boolean; data?: any; error?: any };
@@ -298,8 +298,9 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       subscriptionSkipped: false,
     };
 
-    // Step 1: Validate IPO data
-    const validation = this.validateIPO(scrapedIPO);
+    // Step 1: Validate IPO data (support both sync and async validators)
+    const validationResult = this.validateIPO(scrapedIPO);
+    const validation = validationResult instanceof Promise ? await validationResult : validationResult;
 
     if (!validation.success) {
       logger.warn(

@@ -6,11 +6,11 @@
  * Usage: Run after scraper completes to warm cache for open IPOs
  */
 
-import { safeSet } from './redis-client.js';
-import { logger } from '../logger.js';
-import { db } from '../db.js';
-import { getRedisClient } from './redis-client.js';
-import { IPORepository } from '../repositories/ipo-repository.js';
+import { safeSet } from './redis-client';
+import { logger } from '../logger';
+import { db } from '../db';
+import { getRedisClient } from './redis-client';
+import { IPORepository } from '../repositories/ipo-repository';
 
 // Cache TTL constants (in seconds)
 export const CACHE_TTL = {

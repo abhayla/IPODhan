@@ -1,18 +1,18 @@
 // Shared package main export
-export * from './db/index.js';
-export * from './cache/redis-client.js';
-export * from './repositories/ipo-repository.js';
-export * from './repositories/subscription-repository.js';
-export * from './repositories/gmp-repository.js';
-export * from './repositories/scraper-log-repository.js';
-export * from './repositories/document-repository.js';
-export * from './repositories/financial-data-repository.js';
-export * from './repositories/field-sources-repository.js';
-export * from './repositories/data-conflicts-repository.js';
+export * from './db/index';
+export * from './cache/redis-client';
+export * from './repositories/ipo-repository';
+export * from './repositories/subscription-repository';
+export * from './repositories/gmp-repository';
+export * from './repositories/scraper-log-repository';
+export * from './repositories/document-repository';
+export * from './repositories/financial-data-repository';
+export * from './repositories/field-sources-repository';
+export * from './repositories/data-conflicts-repository';
 // Export utility functions
-export * from './utils/slug.js';
+export * from './utils/slug';
 // Export field protection functions
-export * from './admin/field-protection-checker.js';
+export * from './admin/field-protection-checker';
 // Export repository interfaces and pagination types only
 export type {
   IIPORepository,
@@ -34,6 +34,6 @@ export type {
   IPOInsert,
   SubscriptionInsert,
   GMPRecordInsert
-} from './repositories/types.js';
+} from './repositories/types';
 // Export all types (includes entity types and domain types)
-export * from './types/index.js';
+export * from './types/index';

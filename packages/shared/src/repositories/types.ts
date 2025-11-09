@@ -17,7 +17,7 @@ import type {
   marketHolidays,
   registrars,
   brokerAffiliates,
-} from '../db/schema.js';
+} from '../db/schema';
 
 // ==================== ENTITY TYPES ====================
 

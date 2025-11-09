@@ -7,9 +7,9 @@
  */
 
 import { eq, or, ilike, asc } from 'drizzle-orm';
-import { BaseRepository } from './base-repository.js';
-import { registrars } from '../db/schema.js';
-import type { Registrar } from '../db/types.js';
+import { BaseRepository } from './base-repository';
+import { registrars } from '../db/schema';
+import type { Registrar } from '../db/types';
 
 export class RegistrarRepository extends BaseRepository {
   private readonly CACHE_TTL = 604800; // 7 days in seconds (as per Story 5.3 requirements)

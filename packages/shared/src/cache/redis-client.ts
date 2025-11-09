@@ -6,7 +6,7 @@
  */
 
 import Redis from 'ioredis';
-import { CacheError } from '../errors/repository-errors.js';
+import { CacheError } from '../errors/repository-errors';
 
 let redisClient: Redis | null = null;
 

@@ -6,9 +6,9 @@
  * Pattern: Check cache → Cache miss → Fetch from DB → Populate cache → Return
  */
 
-import { safeGet, safeSet } from './redis-client.js';
-import { logger } from '../logger.js';
-import { CACHE_TTL } from './warm.js';
+import { safeGet, safeSet } from './redis-client';
+import { logger } from '../logger';
+import { CACHE_TTL } from './warm';
 
 /**
  * Cache-aside pattern with automatic JSON serialization

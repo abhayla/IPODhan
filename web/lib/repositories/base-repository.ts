@@ -3,12 +3,14 @@
  *
  * Provides shared caching logic and utilities for all repositories.
  * Implements the cache-aside pattern with fallback to database on cache failures.
+ * Includes automatic retry logic for transient database connection failures.
  */
 
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { CacheError } from '../errors/repository-errors';
 import * as schema from '@ipodhan/shared/db/schema';
+import { withRetry, trackRetry } from '../db/connection-retry';
 
 export abstract class BaseRepository {
   constructor(
@@ -49,8 +51,15 @@ export abstract class BaseRepository {
       );
     }
 
-    // Cache miss or error - query database
-    const data = await dbQuery();
+    // Cache miss or error - query database with retry logic
+    const data = await withRetry(
+      () => dbQuery(),
+      {
+        maxRetries: 3,
+        context: `cache-aside query for key: ${cacheKey}`,
+        onRetry: trackRetry,
+      }
+    );
 
     // Try to set cache (non-blocking with timeout)
     const setCacheWithTimeout = async () => {
@@ -162,7 +171,7 @@ export abstract class BaseRepository {
   }
 
   /**
-   * Execute a query with timing and error logging
+   * Execute a query with timing, error logging, and automatic retry on transient failures
    */
   protected async executeQuery<T>(
     queryName: string,
@@ -172,9 +181,23 @@ export abstract class BaseRepository {
     const startTime = Date.now();
 
     try {
-      const result = await query();
-      const executionTime = Date.now() - startTime;
+      const result = await withRetry(
+        () => query(),
+        {
+          maxRetries: 3,
+          context: queryName,
+          onRetry: (attempt, error, delay) => {
+            console.warn(
+              `[DB] ${queryName} retry ${attempt}/3 after ${delay}ms`,
+              context,
+              error instanceof Error ? error.message : String(error)
+            );
+            trackRetry(attempt, error, delay);
+          },
+        }
+      );
 
+      const executionTime = Date.now() - startTime;
       console.log(`[DB] ${queryName} - ${executionTime}ms`, context);
 
       return result;

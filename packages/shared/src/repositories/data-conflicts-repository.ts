@@ -7,9 +7,9 @@
 import { eq, and, isNull, desc, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
-import * as schema from '../db/schema.js';
-import { dataConflicts } from '../db/schema.js';
-import { BaseRepository } from './base-repository.js';
+import * as schema from '../db/schema';
+import { dataConflicts } from '../db/schema';
+import { BaseRepository } from './base-repository';
 
 export interface DataConflictRecord {
   id: string;

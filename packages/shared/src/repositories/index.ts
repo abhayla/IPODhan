@@ -5,20 +5,20 @@
  */
 
 // Repository Classes
-export { IPORepository } from './ipo-repository.js';
-export { SubscriptionRepository } from './subscription-repository.js';
-export { GMPRepository } from './gmp-repository.js';
-export { FinancialDataRepository } from './financial-data-repository.js';
-export { DocumentRepository } from './document-repository.js';
-export { ListingPerformanceRepository } from './listing-performance-repository.js';
-export { RegistrarRepository } from './registrar-repository.js';
-export { MarketHolidayRepository } from './market-holiday-repository.js';
-export { ScraperLogRepository } from './scraper-log-repository.js';
-export { FieldSourcesRepository } from './field-sources-repository.js';
-export { DataConflictsRepository } from './data-conflicts-repository.js';
+export { IPORepository } from './ipo-repository';
+export { SubscriptionRepository } from './subscription-repository';
+export { GMPRepository } from './gmp-repository';
+export { FinancialDataRepository } from './financial-data-repository';
+export { DocumentRepository } from './document-repository';
+export { ListingPerformanceRepository } from './listing-performance-repository';
+export { RegistrarRepository } from './registrar-repository';
+export { MarketHolidayRepository } from './market-holiday-repository';
+export { ScraperLogRepository } from './scraper-log-repository';
+export { FieldSourcesRepository } from './field-sources-repository';
+export { DataConflictsRepository } from './data-conflicts-repository';
 
 // Base Repository
-export { BaseRepository } from './base-repository.js';
+export { BaseRepository } from './base-repository';
 
 // Types and Interfaces
-export type * from './types.js';
+export type * from './types';

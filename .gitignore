@@ -213,6 +213,9 @@ temp_*.html
 pgpass.txt
 *.ps1
 chittorgarh_detail_sample.html
+scraper/*-page.html
+scraper/scripts/inspect-*.ts
+scraper/scripts/test-chittorgarh-*.ts
 /verification_results/
 /P0-*_*.md
 /scraper_test_issues_*.md

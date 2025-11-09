@@ -219,7 +219,7 @@ export default function DynamicListPage() {
                 </div>
               </div>
               <Link
-                href={`/admin/edit/${ipoContext.slug}`}
+                href={`/admin/dynamic/ipos/${ipoContext.id}`}
                 className="flex items-center space-x-2 px-4 py-2 bg-white text-blue-600 rounded-lg hover:bg-blue-50 font-medium transition-colors"
               >
                 <span>←</span>

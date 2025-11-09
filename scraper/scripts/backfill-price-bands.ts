@@ -16,7 +16,7 @@
  * @module scraper/scripts/backfill-price-bands
  */
 
-import { getDb } from '../../web/lib/db/index.js';
+import { db } from '@ipodhan/shared/db';
 import { ipos } from '@ipodhan/shared/db/schema';
 import { sql, isNull, or } from 'drizzle-orm';
 import logger from '../src/utils/logger.js';
@@ -184,8 +184,6 @@ async function backfillPriceBands() {
   console.log('========================================');
   console.log('Backfill Missing Price Bands');
   console.log('========================================\n');
-
-  const db = await getDb();
 
   try {
     // Step 1: Get IPOs with missing price bands
