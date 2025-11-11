@@ -10,6 +10,7 @@ import type { IPOScore } from '@/lib/db/types';
 import { ScoreBadge } from './ScoreBadge';
 import { VerdictBadge } from './VerdictBadge';
 import { ConfidenceBadge } from './ConfidenceBadge';
+import { ScoreBreakdown, type ScoreBreakdownData } from './ScoreBreakdown';
 import {
   formatComponentScore,
   getScorePercentage,
@@ -122,6 +123,27 @@ export function IPOScoreSection({ score }: IPOScoreSectionProps) {
           <ScoreBreakdownBar
             label="Sector Score"
             score={score.sectorScore}
+          />
+        </div>
+      </div>
+
+      {/* 5-Component Radar Chart (Phase 2: Data Intelligence) */}
+      <div className="space-y-4 pt-4 border-t">
+        <h4 className="text-sm font-semibold text-foreground">Component Analysis</h4>
+        <div className="flex justify-center">
+          <ScoreBreakdown
+            data={{
+              // Map existing 4-component scores (0-25 each) to 5-component system (0-10 total)
+              // Using proportional scaling for visualization
+              financialStrength: (score.fundamentalScore / 25) * 3, // 0-3
+              valuation: (score.sectorScore / 25) * 2, // 0-2
+              subscriptionDemand: (score.subscriptionScore / 25) * 2, // 0-2
+              marketPerformance: (score.sentimentScore / 25) * 2, // 0-2
+              fundamentals: (score.fundamentalScore / 25) * 1, // 0-1
+              total: score.totalScore / 10, // Convert 0-100 to 0-10
+              rating: score.verdict,
+              confidence: score.confidence === 'HIGH' ? 90 : score.confidence === 'MEDIUM' ? 70 : 50,
+            }}
           />
         </div>
       </div>

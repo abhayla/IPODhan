@@ -6,7 +6,7 @@ import { Pagination } from '@/components/ui/pagination';
 import { ViewToggle } from '@/components/ui/view-toggle';
 import { FilterBar } from '@/components/dashboard/FilterBar';
 import { SearchBar } from '@/components/dashboard/SearchBar';
-
+import { SmartDefaultFilters } from '@/components/intelligence/SmartDefaults';
 interface DashboardContentProps {
   initialIPOs: IPO[];
   initialPagination: {
@@ -30,6 +30,9 @@ export function DashboardContent({
   initialSearch
 }: DashboardContentProps) {
   const view = (initialView === 'list' ? 'list' : 'grid') as 'grid' | 'list';
+
+  // Note: Keyboard shortcuts are now handled globally by GlobalKeyboardShortcuts component
+  // in the root layout for better E2E test compatibility
 
   // Format status for display
   const getStatusLabel = (status?: string) => {
@@ -70,6 +73,11 @@ export function DashboardContent({
       {/* Filter Bar */}
       <div className="animate-in slide-in-from-right duration-500 delay-200">
         <FilterBar />
+      </div>
+
+      {/* Smart Default Filters (Phase 5: Personalization) */}
+      <div className="mt-6 animate-in slide-in-from-bottom duration-500 delay-250">
+        <SmartDefaultFilters autoApply={true} minProfileStrength={30} />
       </div>
 
       {/* IPO Listings Section */}

@@ -1,0 +1,161 @@
+{
+  "name": "IPODhan - IPO Investment Platform",
+  "short_name": "IPODhan",
+  "description": "Comprehensive IPO information platform for Indian investors with real-time data, subscription tracking, GMP information, and financial analysis.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0f766e",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "lang": "en-IN",
+  "dir": "ltr",
+  "categories": ["finance", "business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon-72x72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-96x96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-128x128.png",
+      "sizes": "128x128",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-144x144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-152x152.png",
+      "sizes": "152x152",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-384x384.png",
+      "sizes": "384x384",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/home-mobile.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "IPODhan Home Screen"
+    },
+    {
+      "src": "/screenshots/ipo-detail-mobile.png",
+      "sizes": "390x844",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "IPO Detail View"
+    },
+    {
+      "src": "/screenshots/dashboard-desktop.png",
+      "sizes": "1920x1080",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "IPODhan Dashboard"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Open IPOs",
+      "short_name": "Open",
+      "description": "View currently open IPOs",
+      "url": "/ipos?status=open",
+      "icons": [
+        {
+          "src": "/icons/shortcut-open.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Upcoming IPOs",
+      "short_name": "Upcoming",
+      "description": "View upcoming IPOs",
+      "url": "/ipos?status=upcoming",
+      "icons": [
+        {
+          "src": "/icons/shortcut-upcoming.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Compare IPOs",
+      "short_name": "Compare",
+      "description": "Compare multiple IPOs",
+      "url": "/tools/compare",
+      "icons": [
+        {
+          "src": "/icons/shortcut-compare.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Saved IPOs",
+      "short_name": "Saved",
+      "description": "View your saved IPOs",
+      "url": "/saved",
+      "icons": [
+        {
+          "src": "/icons/shortcut-saved.png",
+          "sizes": "96x96",
+          "type": "image/png"
+        }
+      ]
+    }
+  ],
+  "share_target": {
+    "action": "/share",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url"
+    }
+  },
+  "prefer_related_applications": false,
+  "related_applications": [],
+  "features": [
+    "Cross-Platform",
+    "Offline Support",
+    "Push Notifications",
+    "Real-time Updates",
+    "Background Sync"
+  ],
+  "iarc_rating_id": ""
+}
