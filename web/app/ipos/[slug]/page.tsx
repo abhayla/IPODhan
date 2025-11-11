@@ -34,6 +34,7 @@ import { SectorAverageComparison } from '@/components/ipo/SectorAverageCompariso
 import { PromoterHoldingSection } from '@/components/ipo/PromoterHoldingSection';
 import { AnchorInvestorsSection } from '@/components/ipo/AnchorInvestorsSection';
 import { KPIHighlightSection } from '@/components/ipo-detail/KPIHighlightSection';
+import { IPOViewTracker } from '@/components/ipo/IPOViewTracker';
 import {
   FinancialPerformanceCharts,
   SubscriptionDashboard,
@@ -228,6 +229,13 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
         dangerouslySetInnerHTML={{
           __html: toJsonLdScript(breadcrumbSchema),
         }}
+      />
+
+      {/* Track IPO view for personalization (Phase 5) */}
+      <IPOViewTracker
+        ipoId={ipo.id}
+        slug={slug}
+        companyName={ipo.companyName}
       />
 
       {/* Page Content */}
