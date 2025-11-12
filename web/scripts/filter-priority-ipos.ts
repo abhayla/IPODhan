@@ -70,10 +70,10 @@ async function filterPriorityIPOs() {
 
   priorityIPOs.forEach((ipo, idx) => {
     const openDateStr = ipo.openDate
-      ? (ipo.openDate instanceof Date ? ipo.openDate.toISOString().split('T')[0] : String(ipo.openDate).split('T')[0])
+      ? new Date(ipo.openDate).toISOString().split('T')[0]
       : 'N/A';
     const closeDateStr = ipo.closeDate
-      ? (ipo.closeDate instanceof Date ? ipo.closeDate.toISOString().split('T')[0] : String(ipo.closeDate).split('T')[0])
+      ? new Date(ipo.closeDate).toISOString().split('T')[0]
       : 'N/A';
 
     console.log(`\n${idx + 1}. ${ipo.companyName}`);
@@ -108,10 +108,10 @@ async function filterPriorityIPOs() {
 
   const rows = priorityIPOs.map((ipo) => {
     const openDateStr = ipo.openDate
-      ? (ipo.openDate instanceof Date ? ipo.openDate.toISOString().split('T')[0] : String(ipo.openDate).split('T')[0])
+      ? new Date(ipo.openDate).toISOString().split('T')[0]
       : '';
     const closeDateStr = ipo.closeDate
-      ? (ipo.closeDate instanceof Date ? ipo.closeDate.toISOString().split('T')[0] : String(ipo.closeDate).split('T')[0])
+      ? new Date(ipo.closeDate).toISOString().split('T')[0]
       : '';
 
     return [

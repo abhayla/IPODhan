@@ -6,8 +6,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-heading: var(--font-heading);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -45,76 +46,184 @@
 
 :root {
   --radius: 0.625rem;
-  /* Background & Foreground - Light Gray (#f3f4f6) and Dark Gray (#1f2937) from PRD */
-  --background: oklch(0.96 0.002 264.5); /* #f3f4f6 */
-  --foreground: oklch(0.27 0.02 264); /* #1f2937 */
-  --card: oklch(1 0 0); /* White cards */
-  --card-foreground: oklch(0.27 0.02 264); /* #1f2937 */
+
+  /* ========================================
+     IPODhan Gold Standard - Brand Colors
+     ======================================== */
+
+  /* Background & Foreground - Neutral Foundation */
+  --background: oklch(0.98 0.002 264.5); /* Light warm gray for reduced eye strain */
+  --foreground: oklch(0.27 0.02 264); /* #1f2937 - Dark Gray */
+  --card: oklch(1 0 0); /* Pure white cards */
+  --card-foreground: oklch(0.27 0.02 264);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.27 0.02 264);
-  /* Primary - Blue (#2563eb) from PRD */
-  --primary: oklch(0.55 0.22 264); /* #2563eb */
+
+  /* Primary - Deep Teal (#0f766e) - Trust, Stability, Finance */
+  --primary: oklch(0.52 0.09 193); /* Deep Teal - IPODhan signature color */
   --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.97 0.002 264.5);
-  --secondary-foreground: oklch(0.27 0.02 264);
-  /* Muted - Medium Gray (#6b7280) from PRD */
-  --muted: oklch(0.97 0.002 264.5);
+
+  /* Secondary - Warm Gold (#d97706) - Prosperity, "Dhan" */
+  --secondary: oklch(0.66 0.14 65); /* Warm Gold */
+  --secondary-foreground: oklch(0.15 0.02 264);
+
+  /* Success - Vibrant Green (#059669) - Growth, Gains */
+  --success: oklch(0.58 0.14 160); /* Vibrant Green */
+  --success-foreground: oklch(1 0 0);
+  --success-text: oklch(0.48 0.14 160); /* Darker for text: #047857, 4.8:1 contrast */
+
+  /* Danger - Rich Red (#dc2626) - Risk, Loss */
+  --danger: oklch(0.58 0.22 27); /* Rich Red */
+  --danger-foreground: oklch(1 0 0);
+  --danger-text: oklch(0.52 0.22 27); /* Darker for text: #b91c1c, 5.1:1 contrast */
+
+  /* Accent - Electric Blue (#0284c7) - Innovation, Tech */
+  --accent: oklch(0.58 0.14 230); /* Electric Blue */
+  --accent-foreground: oklch(1 0 0);
+  --accent-text: oklch(0.48 0.14 230); /* Darker for text: #0369a1, 4.9:1 contrast */
+
+  /* Muted - Subtle backgrounds */
+  --muted: oklch(0.97 0.004 193); /* Teal-tinted muted */
   --muted-foreground: oklch(0.54 0.02 264); /* #6b7280 */
-  --accent: oklch(0.97 0.002 264.5);
-  --accent-foreground: oklch(0.27 0.02 264);
-  /* Destructive - Red (#ef4444) from PRD */
-  --destructive: oklch(0.62 0.25 27); /* #ef4444 */
-  --border: oklch(0.89 0.005 264);
-  --input: oklch(0.89 0.005 264);
-  --ring: oklch(0.55 0.22 264); /* Primary blue */
-  /* Chart colors using PRD colors */
-  --chart-1: oklch(0.62 0.19 162); /* Success Green #10b981 */
-  --chart-2: oklch(0.55 0.22 264); /* Primary Blue #2563eb */
-  --chart-3: oklch(0.48 0.21 264); /* Dark Blue #1e40af */
-  --chart-4: oklch(0.72 0.19 84); /* Warning Yellow #f59e0b */
-  --chart-5: oklch(0.62 0.25 27); /* Danger Red #ef4444 */
+
+  /* Destructive - Alias for danger */
+  --destructive: oklch(0.58 0.22 27); /* Same as danger */
+
+  /* Border & Input - Subtle separation */
+  --border: oklch(0.89 0.01 193); /* Teal-tinted border */
+  --input: oklch(0.89 0.01 193);
+  --ring: oklch(0.52 0.09 193); /* Primary teal for focus rings */
+
+  /* Chart colors using IPODhan palette */
+  --chart-1: oklch(0.58 0.14 160); /* Success Green */
+  --chart-2: oklch(0.52 0.09 193); /* Primary Teal */
+  --chart-3: oklch(0.58 0.14 230); /* Accent Blue */
+  --chart-4: oklch(0.66 0.14 65); /* Secondary Gold */
+  --chart-5: oklch(0.58 0.22 27); /* Danger Red */
+
+  /* Sidebar */
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.27 0.02 264);
-  --sidebar-primary: oklch(0.55 0.22 264);
+  --sidebar-primary: oklch(0.52 0.09 193);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.97 0.002 264.5);
+  --sidebar-accent: oklch(0.97 0.004 193);
   --sidebar-accent-foreground: oklch(0.27 0.02 264);
-  --sidebar-border: oklch(0.89 0.005 264);
-  --sidebar-ring: oklch(0.55 0.22 264);
+  --sidebar-border: oklch(0.89 0.01 193);
+  --sidebar-ring: oklch(0.52 0.09 193);
+
+  /* ========================================
+     IPODhan Typography Scale
+     ======================================== */
+
+  /* Font sizes */
+  --text-hero: 96px;      /* Hero headlines - use sparingly */
+  --text-section: 48px;   /* Section headings */
+  --text-card: 20px;      /* Card titles */
+  --text-body: 16px;      /* Body text, UI */
+  --text-small: 14px;     /* Secondary text */
+  --text-micro: 12px;     /* Tertiary, badges */
+
+  /* Line heights */
+  --leading-tight: 1.2;   /* For headings */
+  --leading-normal: 1.5;  /* For UI elements */
+  --leading-relaxed: 1.6; /* For body text */
+
+  /* Letter spacing */
+  --tracking-hero: -0.02em;     /* Tight for large headings */
+  --tracking-heading: -0.01em;  /* Slight tight for headings */
+  --tracking-normal: 0;         /* Normal for body */
+  --tracking-wide: 0.01em;      /* Wide for small caps */
+
+  /* ========================================
+     IPODhan Gradient System
+     ======================================== */
+
+  /* Premium Gradient - Deep Teal to Warm Gold */
+  --gradient-premium: linear-gradient(135deg, #0f766e 0%, #d97706 100%);
+
+  /* Dark Gradient - Radial teal depths for backgrounds */
+  --gradient-dark: radial-gradient(circle at top left, #0f766e 0%, #064e3b 100%);
+
+  /* Shimmer Effect - Warm gold shimmer for data updates */
+  --gradient-shimmer: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(217, 119, 6, 0.3) 50%,
+    transparent 100%
+  );
+
+  /* Success Gradient - Vibrant green to light green */
+  --gradient-success: linear-gradient(135deg, #059669 0%, #10b981 100%);
+
+  /* Danger Gradient - Rich red fade */
+  --gradient-danger: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+
+  /* Hero Gradient - Premium with accent highlights */
+  --gradient-hero: linear-gradient(
+    135deg,
+    #0f766e 0%,
+    #0284c7 50%,
+    #d97706 100%
+  );
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
+  /* Dark mode - IPODhan Gold Standard */
+  --background: oklch(0.15 0.01 193); /* Deep teal-tinted black */
   --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
+  --card: oklch(0.22 0.015 193); /* Teal-tinted dark card */
   --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
+  --popover: oklch(0.22 0.015 193);
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
+
+  /* Primary - Lighter teal for dark mode */
+  --primary: oklch(0.68 0.12 193); /* Lighter deep teal */
+  --primary-foreground: oklch(0.15 0.01 193);
+
+  /* Secondary - Warm gold (maintained) */
+  --secondary: oklch(0.72 0.16 65); /* Brighter gold for dark */
+  --secondary-foreground: oklch(0.15 0.02 264);
+
+  /* Success - Vibrant green */
+  --success: oklch(0.65 0.16 160);
+  --success-foreground: oklch(0.15 0 0);
+
+  /* Danger - Rich red */
+  --danger: oklch(0.65 0.24 27);
+  --danger-foreground: oklch(1 0 0);
+
+  /* Accent - Electric blue */
+  --accent: oklch(0.65 0.16 230);
+  --accent-foreground: oklch(0.15 0 0);
+
+  /* Muted */
+  --muted: oklch(0.27 0.015 193);
   --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
+
+  /* Destructive */
+  --destructive: oklch(0.65 0.24 27);
+
+  /* Border & Input */
+  --border: oklch(1 0 0 / 12%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
+  --ring: oklch(0.68 0.12 193); /* Primary teal */
+
+  /* Chart colors */
+  --chart-1: oklch(0.65 0.16 160); /* Success Green */
+  --chart-2: oklch(0.68 0.12 193); /* Primary Teal */
+  --chart-3: oklch(0.65 0.16 230); /* Accent Blue */
+  --chart-4: oklch(0.72 0.16 65); /* Secondary Gold */
+  --chart-5: oklch(0.65 0.24 27); /* Danger Red */
+
+  /* Sidebar */
+  --sidebar: oklch(0.22 0.015 193);
   --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary: oklch(0.68 0.12 193);
   --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent: oklch(0.27 0.015 193);
   --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.68 0.12 193);
 }
 
 @layer base {
@@ -134,16 +243,95 @@
   * {
     -webkit-tap-highlight-color: transparent;
   }
+
+  /* Touch-action for better mobile responsiveness (Phase 4: UX Enhancement) */
+  button,
+  a[href],
+  [role="button"],
+  [data-testid="ipo-card"],
+  .clickable {
+    touch-action: manipulation;
+    user-select: none;
+  }
+
+  /* Horizontal scroll optimization for mobile (Phase 4) */
+  .overflow-x-auto,
+  [class*="overflow-x-"] {
+    touch-action: pan-x pan-y;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 @layer utilities {
   /* Custom animation utilities */
+  /* ========================================
+     IPODhan Data Update Animations
+     ======================================== */
+
+  /* Shimmer effect - 300ms for data updates (gold accent) */
   @keyframes shimmer {
     0% {
       background-position: -200% center;
     }
     100% {
       background-position: 200% center;
+    }
+  }
+
+  /* Data update flash - quick highlight */
+  @keyframes data-flash {
+    0%, 100% {
+      opacity: 1;
+      background-color: transparent;
+    }
+    50% {
+      opacity: 1;
+      background-color: rgba(217, 119, 6, 0.15); /* Warm gold flash */
+    }
+  }
+
+  /* Pulse glow for live updates */
+  @keyframes pulse-live {
+    0%, 100% {
+      box-shadow: 0 0 0 0 rgba(5, 150, 105, 0.4); /* Success green */
+    }
+    50% {
+      box-shadow: 0 0 0 8px rgba(5, 150, 105, 0);
+    }
+  }
+
+  /* Page transition morph - 400ms as per UX plan */
+  @keyframes page-morph-in {
+    0% {
+      opacity: 0;
+      transform: scale(0.98) translateY(10px);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+  }
+
+  @keyframes page-morph-out {
+    0% {
+      opacity: 1;
+      transform: scale(1) translateY(0);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(0.98) translateY(-10px);
+    }
+  }
+
+  /* Card to detail page morph */
+  @keyframes card-to-detail {
+    0% {
+      transform: scale(1);
+      border-radius: 0.5rem;
+    }
+    100% {
+      transform: scale(1.05);
+      border-radius: 0;
     }
   }
 
@@ -196,15 +384,61 @@
     }
   }
 
+  /* Shimmer animation - enhanced with gold accent (300ms trigger) */
   .animate-shimmer {
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgba(255, 255, 255, 0.1),
-      transparent
-    );
+    background: var(--gradient-shimmer);
     background-size: 200% 100%;
-    animation: shimmer 2s infinite;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  /* Quick shimmer for data updates */
+  .animate-shimmer-fast {
+    background: var(--gradient-shimmer);
+    background-size: 200% 100%;
+    animation: shimmer 0.8s ease-in-out;
+  }
+
+  /* Data update flash animation */
+  .animate-data-flash {
+    animation: data-flash 300ms ease-in-out;
+  }
+
+  /* Live update pulse */
+  .animate-pulse-live {
+    animation: pulse-live 2s ease-in-out infinite;
+  }
+
+  /* ========================================
+     IPODhan Page Transition Animations (400ms)
+     ======================================== */
+
+  /* Page enter animation */
+  .page-transition-enter {
+    animation: page-morph-in 400ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  /* Page exit animation */
+  .page-transition-exit {
+    animation: page-morph-out 400ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  /* Card morph transition */
+  .card-morph-transition {
+    animation: card-to-detail 400ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+
+  /* Reduce motion for accessibility */
+  @media (prefers-reduced-motion: reduce) {
+    .page-transition-enter,
+    .page-transition-exit,
+    .card-morph-transition,
+    .animate-shimmer,
+    .animate-shimmer-fast,
+    .animate-data-flash,
+    .animate-pulse-live {
+      animation: none !important;
+      transition: none !important;
+    }
   }
 
   .animate-pulse-glow {
@@ -232,9 +466,147 @@
     @apply ring-4 ring-primary/30 ring-offset-2 ring-offset-background outline-none;
   }
 
-  /* Smooth gradient text */
+  /* ========================================
+     IPODhan Typography Utilities
+     ======================================== */
+
+  /* Font families */
+  .font-heading {
+    font-family: var(--font-heading);
+  }
+
+  .font-sans {
+    font-family: var(--font-sans);
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
+  }
+
+  /* Typography scale */
+  .text-hero {
+    font-size: var(--text-hero);
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-hero);
+    font-family: var(--font-heading);
+    font-weight: 400;
+  }
+
+  .text-section {
+    font-size: var(--text-section);
+    line-height: var(--leading-tight);
+    letter-spacing: var(--tracking-heading);
+    font-family: var(--font-heading);
+    font-weight: 400;
+  }
+
+  .text-card-title {
+    font-size: var(--text-card);
+    line-height: var(--leading-normal);
+    letter-spacing: var(--tracking-heading);
+    font-weight: 700;
+  }
+
+  /* Responsive typography - Mobile-first scaling */
+
+  /* Tablet (768px and below) */
+  @media (max-width: 768px) {
+    .text-hero {
+      font-size: calc(var(--text-hero) * 0.5); /* 48px on tablet */
+    }
+
+    .text-section {
+      font-size: calc(var(--text-section) * 0.67); /* 32px on tablet */
+    }
+
+    .text-card {
+      font-size: calc(var(--text-card) * 0.9); /* 18px on tablet */
+    }
+  }
+
+  /* Mobile (480px and below) */
+  @media (max-width: 480px) {
+    .text-hero {
+      font-size: calc(var(--text-hero) * 0.42); /* 40px on small mobile */
+    }
+
+    .text-section {
+      font-size: calc(var(--text-section) * 0.5); /* 24px on small mobile */
+    }
+
+    .text-card {
+      font-size: calc(var(--text-card) * 0.85); /* 17px on small mobile */
+    }
+
+    .text-body {
+      font-size: 15px; /* Slightly smaller body text on small screens */
+    }
+  }
+
+  /* Extra small mobile (375px and below) */
+  @media (max-width: 375px) {
+    .text-hero {
+      font-size: calc(var(--text-hero) * 0.35); /* 34px on extra small mobile */
+    }
+
+    .text-section {
+      font-size: calc(var(--text-section) * 0.46); /* 22px on extra small mobile */
+    }
+
+    .text-card {
+      font-size: calc(var(--text-card) * 0.8); /* 16px on extra small mobile */
+    }
+  }
+
+  /* Large desktop (1920px and above) - Slightly larger for comfortable reading */
+  @media (min-width: 1920px) {
+    .text-hero {
+      font-size: calc(var(--text-hero) * 1.1); /* 106px on large desktop */
+    }
+
+    .text-section {
+      font-size: calc(var(--text-section) * 1.05); /* 50px on large desktop */
+    }
+  }
+
+  /* ========================================
+     IPODhan Gradient Utilities
+     ======================================== */
+
+  /* Gradient backgrounds */
+  .bg-gradient-premium {
+    background: var(--gradient-premium);
+  }
+
+  .bg-gradient-dark {
+    background: var(--gradient-dark);
+  }
+
+  .bg-gradient-success {
+    background: var(--gradient-success);
+  }
+
+  .bg-gradient-danger {
+    background: var(--gradient-danger);
+  }
+
+  .bg-gradient-hero {
+    background: var(--gradient-hero);
+  }
+
+  /* Gradient text */
   .gradient-text {
-    @apply bg-gradient-to-r from-primary via-primary/80 to-primary bg-clip-text text-transparent;
+    background: var(--gradient-premium);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .gradient-text-hero {
+    background: var(--gradient-hero);
+    background-clip: text;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
   }
 
   /* Glass morphism effect */
@@ -245,9 +617,34 @@
     border: 1px solid rgba(255, 255, 255, 0.1);
   }
 
-  /* Card hover effects */
+  /* ========================================
+     IPODhan Card Hover Effects - Magnetic Cursor
+     ======================================== */
+
+  /* Magnetic card hover - 200ms duration as per UX plan */
+  .card-hover-magnetic {
+    @apply transition-all duration-200 ease-out;
+    @apply hover:shadow-2xl hover:scale-[1.02] hover:-translate-y-2;
+    will-change: transform;
+  }
+
+  /* Legacy card hover effect (preserved for compatibility) */
   .card-hover-effect {
     @apply transition-all duration-300 ease-out hover:shadow-xl hover:scale-[1.02] hover:-translate-y-1;
+  }
+
+  /* Magnetic lift - more pronounced */
+  .card-hover-lift {
+    @apply transition-all duration-200 ease-out;
+    @apply hover:shadow-2xl hover:scale-[1.03] hover:-translate-y-3;
+    will-change: transform;
+  }
+
+  /* Subtle magnetic effect */
+  .card-hover-subtle {
+    @apply transition-all duration-200 ease-out;
+    @apply hover:shadow-lg hover:scale-[1.01] hover:-translate-y-1;
+    will-change: transform;
   }
 
   /* Interactive element states */
@@ -273,12 +670,139 @@
     @apply cursor-not-allowed opacity-50;
   }
 
-  /* Better touch targets for mobile */
+  /* Better touch targets for mobile - Phase 4: Mobile Excellence */
   @media (max-width: 768px) {
     button, a, [role="button"] {
       min-height: 44px;
       min-width: 44px;
     }
+
+    /* Ensure input fields are also accessible */
+    input, select, textarea {
+      min-height: 44px;
+      font-size: 16px; /* Prevents iOS zoom on focus */
+    }
+
+    /* Checkbox and radio buttons */
+    input[type="checkbox"], input[type="radio"] {
+      min-width: 24px;
+      min-height: 24px;
+    }
+
+    /* Touch-friendly spacing */
+    nav a, nav button {
+      padding: 12px 16px;
+    }
+
+    /* Prevent double-tap zoom on buttons */
+    button, a, [role="button"] {
+      touch-action: manipulation;
+    }
+
+    /* Improve tap highlight */
+    * {
+      -webkit-tap-highlight-color: rgba(15, 118, 110, 0.1);
+    }
+
+    /* Smooth scrolling on mobile */
+    html {
+      -webkit-overflow-scrolling: touch;
+    }
+
+    /* Prevent text resize on orientation change */
+    html {
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+    }
+  }
+
+  /* Mobile-specific performance optimizations */
+  @media (max-width: 768px) {
+    /* GPU acceleration for transforms */
+    .animate-transform {
+      will-change: transform;
+      transform: translateZ(0);
+    }
+
+    /* Reduce motion for accessibility */
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* Hide scrollbars on mobile for cleaner UI */
+    .hide-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    .hide-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    /* Improve font rendering on mobile */
+    body {
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+      text-rendering: optimizeLegibility;
+    }
+
+    /* Prevent horizontal scrolling */
+    body {
+      overflow-x: hidden;
+    }
+
+    /* Sticky header adjustment for mobile keyboards */
+    .sticky-mobile {
+      position: -webkit-sticky;
+      position: sticky;
+    }
+  }
+
+  /* Landscape mode optimizations */
+  @media (max-width: 768px) and (orientation: landscape) {
+    /* Reduce header height in landscape */
+    header {
+      min-height: 48px;
+    }
+
+    /* Adjust bottom nav for landscape */
+    .bottom-nav {
+      height: 48px;
+    }
+
+    /* Compact spacing in landscape */
+    .landscape-compact {
+      padding: 8px;
+    }
+  }
+
+  /* High-DPI screen optimizations */
+  @media (-webkit-min-device-pixel-ratio: 2), (min-resolution: 192dpi) {
+    /* Sharper borders */
+    .hairline-border {
+      border-width: 0.5px;
+    }
+  }
+
+  /* Safe area support for notched devices (Phase 4: Mobile Excellence) */
+  .safe-area-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .safe-area-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-area-left {
+    padding-left: env(safe-area-inset-left);
+  }
+
+  .safe-area-right {
+    padding-right: env(safe-area-inset-right);
   }
 
   /* Smooth image loading */

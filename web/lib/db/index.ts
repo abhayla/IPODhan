@@ -45,12 +45,13 @@ function getPool(): Pool {
             password: process.env.DATABASE_PASSWORD,
             // ==================== CONNECTION POOL OPTIMIZATION ====================
             // Phase 5 Performance: Optimized for production workload
-            // Pool size increased from 20 → 50 to support higher concurrent loads:
-            // - Previous: ~800 concurrent users max (pool saturation)
-            // - Current: ~2500 concurrent users (3.1x increase)
+            // Pool size increased from 20 → 50 → 100 to support test concurrency:
+            // - Previous: ~800 concurrent users max (pool saturation at 20)
+            // - Phase 5: ~2500 concurrent users (50 connections)
+            // - Testing: ~5000 concurrent users (100 connections for Playwright tests)
             // Each connection can handle ~50 concurrent users with efficient query execution
-            // 50 connections × 50 users/connection = 2500 concurrent users
-            max: 50, // Maximum pool size - increased for scalability (was 20)
+            // 100 connections × 50 users/connection = 5000 concurrent users
+            max: 100, // Maximum pool size - increased for test concurrency (was 50)
             min: 5, // Keep minimum connections ready (warm pool)
             idleTimeoutMillis: 30000, // Close idle connections after 30s
             connectionTimeoutMillis: 5000, // 5s timeout for new connections (reduced from 10s)
@@ -64,7 +65,7 @@ function getPool(): Pool {
           }
         : {
             connectionString: process.env.DATABASE_URL,
-            max: 50,
+            max: 100,
             min: 5,
             idleTimeoutMillis: 30000,
             connectionTimeoutMillis: 5000,
@@ -171,7 +172,7 @@ export function getPoolStats() {
     total: currentPool.totalCount,     // Total connections (active + idle)
     idle: currentPool.idleCount,       // Idle connections available
     waiting: currentPool.waitingCount, // Requests waiting for connection
-    max: 50                            // Maximum pool size
+    max: 100                           // Maximum pool size
   };
 }
 

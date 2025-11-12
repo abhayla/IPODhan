@@ -217,7 +217,7 @@ export async function sendSlowConsolidationAlert(p95Latency: number, details?: {
   }
 
   const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-  const severity = p95Latency > 2000 ? 'danger' : 'warning';
+  const severity = p95Latency > 2000 ? 'danger' as const : undefined;
   const emoji = p95Latency > 2000 ? '🔴' : '⚠️';
 
   const message: IncomingWebhookSendArguments = {
@@ -381,8 +381,7 @@ export async function sendHighConflictRateAlert(conflictRate: number, details?: 
               text: 'View Conflicts',
               emoji: true
             },
-            url: `${appUrl}/admin/conflicts`,
-            style: 'warning'
+            url: `${appUrl}/admin/conflicts`
           }
         ]
       },

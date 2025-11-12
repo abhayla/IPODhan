@@ -22,8 +22,6 @@ interface ValidationResult {
 const results: ValidationResult[] = [];
 
 test.describe('Phase 4: Cross-Contamination Validation', () => {
-  test.use({ headless: false }); // Headed mode for visibility
-
   test.beforeAll(async () => {
     // Ensure results directory exists
     const resultsDir = path.join(process.cwd(), 'test-results', 'phase-4');

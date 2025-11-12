@@ -23,13 +23,14 @@ interface MissingDataIPO {
   symbol: string | null;
   segment: string | null;
   status: string;
-  openDate: Date | null;
-  closeDate: Date | null;
+  openDate: string | null;
+  closeDate: string | null;
   lotSize: number | null;
   priceRangeMin: number | null;
   priceRangeMax: number | null;
   issueSize: number | null;
   isin: string | null;
+  slug: string;
   missingFields: string[];
   researchLinks: {
     nse?: string;
@@ -73,7 +74,7 @@ async function identifyMissingData() {
   console.log(`Found ${missingDataIPOs.length} IPOs with missing data\n`);
 
   // Categorize by missing fields
-  const results: MissingDataIPO[] = missingDataIPOs.map(ipo => {
+  const results = missingDataIPOs.map(ipo => {
     const missingFields: string[] = [];
 
     if (ipo.lotSize === null) {
@@ -133,16 +134,16 @@ async function identifyMissingData() {
   console.log();
 
   // Generate CSV worksheet
-  await generateCSVWorksheet(results);
+  await generateCSVWorksheet(results as MissingDataIPO[]);
 
   // Generate JSON report
-  await generateJSONReport(results);
+  await generateJSONReport(results as MissingDataIPO[]);
 
   // Display first 5 for preview
   console.log('📋 Preview (first 5 IPOs):');
   results.slice(0, 5).forEach((ipo, idx) => {
     const openDateStr = ipo.openDate
-      ? (ipo.openDate instanceof Date ? ipo.openDate.toISOString().split('T')[0] : String(ipo.openDate).split('T')[0])
+      ? new Date(ipo.openDate).toISOString().split('T')[0]
       : 'N/A';
 
     console.log(`\n${idx + 1}. ${ipo.companyName}`);
@@ -206,8 +207,8 @@ async function generateCSVWorksheet(ipos: MissingDataIPO[]) {
       ipo.symbol || '',
       ipo.segment || 'NULL',
       ipo.status,
-      ipo.openDate ? (ipo.openDate instanceof Date ? ipo.openDate.toISOString().split('T')[0] : String(ipo.openDate).split('T')[0]) : '',
-      ipo.closeDate ? (ipo.closeDate instanceof Date ? ipo.closeDate.toISOString().split('T')[0] : String(ipo.closeDate).split('T')[0]) : '',
+      ipo.openDate ? new Date(ipo.openDate).toISOString().split('T')[0] : '',
+      ipo.closeDate ? new Date(ipo.closeDate).toISOString().split('T')[0] : '',
       ipo.missingFields.join('+'),
       ipo.lotSize || '',
       ipo.priceRangeMin || '',

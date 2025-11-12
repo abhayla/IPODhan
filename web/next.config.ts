@@ -20,6 +20,12 @@ const nextConfig: NextConfig = {
   //   optimizePackageImports: ['@radix-ui/react-icons'],
   // },
 
+  // D3.js Code Splitting Strategy (Phase 2 - Data Intelligence Surface)
+  // - Use next/dynamic for all D3.js visualization components
+  // - D3.js automatically code-splits via dynamic imports (~200KB)
+  // - No custom webpack splitChunks needed (avoids module loading errors)
+  // - Components: ScoreBreakdown, SectorHeatMap, CorrelationMatrix, PredictiveMeter, TimeSeriesPlayback
+
   // Performance: Browser caching headers for static assets
   // Security: CORS configuration for API endpoints
   async headers() {

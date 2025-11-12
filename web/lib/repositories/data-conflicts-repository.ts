@@ -103,7 +103,7 @@ export class DataConflictsRepository extends BaseRepository {
       `conflicts:ipo:${input.ipoId}:unresolved`,
     ]);
 
-    return result[0];
+    return result[0] as DataConflictRecord;
   }
 
   /**
@@ -112,7 +112,7 @@ export class DataConflictsRepository extends BaseRepository {
   async findUnresolved(limit?: number): Promise<DataConflictRecord[]> {
     const cacheKey = `conflicts:unresolved:all${limit ? `:limit:${limit}` : ''}`;
 
-    return this.getFromCache(
+    return this.getFromCache<DataConflictRecord[]>(
       cacheKey,
       async () => {
         let query = this.db
@@ -126,7 +126,7 @@ export class DataConflictsRepository extends BaseRepository {
         }
 
         const results = await query;
-        return results;
+        return results as DataConflictRecord[];
       },
       300 // 5 minutes TTL (shorter for conflict dashboard)
     );
@@ -138,7 +138,7 @@ export class DataConflictsRepository extends BaseRepository {
   async findUnresolvedForIPO(ipoId: string): Promise<DataConflictRecord[]> {
     const cacheKey = `conflicts:ipo:${ipoId}:unresolved`;
 
-    return this.getFromCache(
+    return this.getFromCache<DataConflictRecord[]>(
       cacheKey,
       async () => {
         const results = await this.db
@@ -152,7 +152,7 @@ export class DataConflictsRepository extends BaseRepository {
           )
           .orderBy(desc(dataConflicts.detectedAt));
 
-        return results;
+        return results as DataConflictRecord[];
       },
       300 // 5 minutes TTL
     );
@@ -164,7 +164,7 @@ export class DataConflictsRepository extends BaseRepository {
   async findByIPOId(ipoId: string): Promise<DataConflictRecord[]> {
     const cacheKey = `conflicts:ipo:${ipoId}:all`;
 
-    return this.getFromCache(
+    return this.getFromCache<DataConflictRecord[]>(
       cacheKey,
       async () => {
         const results = await this.db
@@ -173,7 +173,7 @@ export class DataConflictsRepository extends BaseRepository {
           .where(eq(dataConflicts.ipoId, ipoId))
           .orderBy(desc(dataConflicts.detectedAt));
 
-        return results;
+        return results as DataConflictRecord[];
       },
       1800 // 30 minutes TTL
     );
@@ -188,7 +188,7 @@ export class DataConflictsRepository extends BaseRepository {
   ): Promise<DataConflictRecord[]> {
     const cacheKey = `conflicts:severity:${severity}:${onlyUnresolved ? 'unresolved' : 'all'}`;
 
-    return this.getFromCache(
+    return this.getFromCache<DataConflictRecord[]>(
       cacheKey,
       async () => {
         const conditions = [eq(dataConflicts.severity, severity)];
@@ -203,7 +203,7 @@ export class DataConflictsRepository extends BaseRepository {
           .where(and(...conditions))
           .orderBy(desc(dataConflicts.detectedAt));
 
-        return results;
+        return results as DataConflictRecord[];
       },
       300 // 5 minutes TTL
     );
@@ -219,7 +219,7 @@ export class DataConflictsRepository extends BaseRepository {
   ): Promise<DataConflictRecord[]> {
     const cacheKey = `conflicts:field:${tableName}:${fieldName}:${onlyUnresolved ? 'unresolved' : 'all'}`;
 
-    return this.getFromCache(
+    return this.getFromCache<DataConflictRecord[]>(
       cacheKey,
       async () => {
         const conditions = [
@@ -237,7 +237,7 @@ export class DataConflictsRepository extends BaseRepository {
           .where(and(...conditions))
           .orderBy(desc(dataConflicts.detectedAt));
 
-        return results;
+        return results as DataConflictRecord[];
       },
       600 // 10 minutes TTL
     );
@@ -271,7 +271,7 @@ export class DataConflictsRepository extends BaseRepository {
     if (result.length > 0) {
       // Invalidate all conflict caches
       await this.deleteCachePattern(`conflicts:*`);
-      return result[0];
+      return result[0] as DataConflictRecord;
     }
 
     return null;
@@ -322,7 +322,7 @@ export class DataConflictsRepository extends BaseRepository {
   async getConflictStats(ipoId?: string): Promise<ConflictStats> {
     const cacheKey = ipoId ? `conflicts:stats:${ipoId}` : `conflicts:stats:global`;
 
-    return this.getFromCache(
+    return this.getFromCache<ConflictStats>(
       cacheKey,
       async () => {
         const conditions = ipoId ? [eq(dataConflicts.ipoId, ipoId)] : [];
@@ -440,7 +440,11 @@ export class DataConflictsRepository extends BaseRepository {
   }>> {
     const cacheKey = `conflicts:problematic-fields:limit:${limit}`;
 
-    return this.getFromCache(
+    return this.getFromCache<Array<{
+      tableName: string;
+      fieldName: string;
+      conflictCount: number;
+    }>>(
       cacheKey,
       async () => {
         const result = await this.db

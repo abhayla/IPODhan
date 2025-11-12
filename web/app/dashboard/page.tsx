@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import type { IPO } from '@/lib/api-client';
+import type { IPO } from '@/lib/db/types';
 import { DashboardContent } from '@/components/dashboard/DashboardContent';
 import { generateIPOListingMetadata } from '@/lib/seo/metadata';
 import { db } from '@/lib/db/index';

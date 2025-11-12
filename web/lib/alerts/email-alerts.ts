@@ -71,7 +71,7 @@ function getTransporter(): nodemailer.Transporter | null {
   if (!config) return null;
 
   try {
-    transporterInstance = nodemailer.createTransporter({
+    transporterInstance = nodemailer.createTransport({
       host: config.host,
       port: config.port,
       secure: config.secure,

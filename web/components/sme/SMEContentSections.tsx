@@ -23,7 +23,7 @@ import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { HiArrowRight, HiArrowTrendingUp, HiArrowTrendingDown } from 'react-icons/hi2';
-import type { IPO } from '@/lib/api-client';
+import type { IPO } from '@/lib/db/types';
 import type {
   ReviewWithIPO,
   PerformanceHighlight,
