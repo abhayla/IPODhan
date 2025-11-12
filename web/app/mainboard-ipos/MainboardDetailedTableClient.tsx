@@ -20,7 +20,7 @@ import Link from 'next/link';
 import { DataTable, type ColumnDef, DEFAULT_IPO_YEARS_EXPORT } from '@/components/shared/DataTable';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import type { IPO } from '@/lib/api-client';
+import type { IPO } from '@/lib/db/types';
 
 interface MainboardDetailedTableClientProps {
   data: IPO[];

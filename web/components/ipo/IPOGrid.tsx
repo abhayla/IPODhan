@@ -1,6 +1,6 @@
 'use client';
 
-import { IPO } from '@/lib/api-client';
+import { IPO } from '@/lib/db/types';
 import { IPOCard } from '@/components/ipo/IPOCard';
 import { HiInbox, HiMagnifyingGlass as SearchIcon } from 'react-icons/hi2';
 import { EmptyState } from '@/components/shared/EmptyState';

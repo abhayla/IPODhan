@@ -104,9 +104,14 @@ export class ConflictResolutionService {
       limit?: number;
     }
   ): Promise<EnrichedConflict[]> {
-    const conflicts = filters?.severity
-      ? await this.conflictsRepo.findBySeverity(filters.severity, filters.limit)
+    const allConflicts = filters?.severity
+      ? await this.conflictsRepo.findBySeverity(filters.severity, true)
       : await this.conflictsRepo.findUnresolved(filters?.limit);
+
+    // Apply limit to severity-filtered results
+    const conflicts = filters?.limit && filters?.severity
+      ? allConflicts.slice(0, filters.limit)
+      : allConflicts;
 
     // Enrich with IPO details
     const enriched: EnrichedConflict[] = [];
@@ -205,12 +210,14 @@ export class ConflictResolutionService {
       // Protect field if requested
       let fieldProtected = false;
       if (options.protectField) {
-        await this.protectionRepo.protect({
+        await this.protectionRepo.upsert({
           ipoId: conflict.ipoId,
           tableName: conflict.tableName,
           fieldName: conflict.fieldName,
-          protectedBy: options.resolvedBy,
-          protectionReason: `Admin resolution: ${options.resolutionReason}`,
+          isProtected: true,
+          autoProtected: false,
+          manuallyEditedBy: options.resolvedBy,
+          editNote: `Admin resolution: ${options.resolutionReason}`,
         });
         fieldProtected = true;
       }
@@ -330,8 +337,8 @@ export class ConflictResolutionService {
       'employeeDiscount',
       'employeeReservation',
       'shareholderReservation',
-      'revenuefy2024',
-      'profitfy2024',
+      'revenueFy2024',
+      'profitFy2024',
       'roce',
       'roe',
     ];

@@ -22,7 +22,7 @@ import { DataTable, type ColumnDef, DEFAULT_IPO_YEARS_EXPORT } from '@/component
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
-import type { IPO } from '@/lib/api-client';
+import type { IPO } from '@/lib/db/types';
 
 interface SMEDetailedTableClientProps {
   data: IPO[];

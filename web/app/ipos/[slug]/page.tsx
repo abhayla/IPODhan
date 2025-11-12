@@ -3,8 +3,8 @@
  *
  * Server-side rendered page displaying comprehensive IPO information
  * Features:
- * - SSR for Tier 1 data (above fold): IPOHeader, StickyDashboardLayout, InfoSection
- * - Phase 2: Sticky dashboard with timeline widget and enhanced metrics
+ * - SSR for Tier 1 data (above fold): IPOHeader, Timeline, Metrics, InfoSection
+ * - Phase 2: Timeline widget and enhanced metrics cards
  * - Client-side tabs for Tier 2 data (below fold)
  * - Dynamic SEO metadata with Open Graph and JSON-LD
  * - 404 handling for invalid slugs
@@ -19,7 +19,9 @@ import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import Script from 'next/script';
 import { IPOHeader } from '@/components/ipo/IPOHeader';
-import { StickyDashboardLayout } from '@/components/ipo/StickyDashboardLayout';
+import { IPOTimelineWidget } from '@/components/ipo/IPOTimelineWidget';
+import { CompanyOverview } from '@/components/ipo/CompanyOverview';
+import { KeyMetricsCardsEnhanced } from '@/components/ipo/KeyMetricsCardsEnhanced';
 import { InfoSection } from '@/components/ipo/InfoSection';
 import { IssueStructureSection } from '@/components/ipo/IssueStructureSection';
 import { IPODetailTabs } from '@/components/ipo/IPODetailTabs';
@@ -44,10 +46,7 @@ import {
 } from '@/components/ipo/charts';
 import { IPOObjectivesSection } from '@/components/ipo-detail/IPOObjectivesSection';
 import { CompanyContactSection } from '@/components/ipo-detail/CompanyContactSection';
-import { CategoryReservationSection } from '@/components/ipo-detail/CategoryReservationSection';
 import { RecommendationSummarySection } from '@/components/ipo-detail/RecommendationSummarySection';
-import { CollapsibleSection } from '@/components/ui';
-import { IPODetailClientSections } from '@/components/ipo-detail/IPODetailClientSections';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
@@ -259,8 +258,8 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
         {/* Main Content */}
         <div className="container mx-auto px-4 py-8">
           <div className="space-y-8">
-            {/* Phase 2: Sticky Dashboard with Timeline & Enhanced Metrics */}
-            <StickyDashboardLayout
+            {/* 1. IPO Timeline Widget */}
+            <IPOTimelineWidget
               ipo={{
                 openDate: ipo.openDate,
                 closeDate: ipo.closeDate,
@@ -268,6 +267,16 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 listingDate: ipo.listingDate,
                 status: ipo.status,
               }}
+            />
+
+            {/* 2. About Company */}
+            <CompanyOverview
+              companyDescription={ipoDetails?.companyDescription || `Fast-growing ${ipo.sector} enterprise with diversified operations and strong fundamentals. Registered on ${ipo.segment} platform with growth potential.`}
+              riskFactors={ipoDetails?.riskFactors ? JSON.parse(ipoDetails.riskFactors) : []}
+            />
+
+            {/* 3. Key Metrics Cards */}
+            <KeyMetricsCardsEnhanced
               issueSize={Number(ipo.issueSize)}
               subscription={subscriptionValue !== null ? Number(subscriptionValue) : null}
               subscriptionTrend={subscriptionTrend}
@@ -277,22 +286,65 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               gmpRecords={gmpRecords}
             />
 
-            {/* Issue Structure Section (Story 4.11) */}
+            {/* 4. Issue Structure Section */}
             <IssueStructureSection ipoDetails={ipoDetails || null} />
 
-            {/* IPO Information Section */}
+            {/* 5. IPO Detail Tabs */}
+            <IPODetailTabs
+              slug={slug}
+              ipo={ipo}
+              ipoData={data}
+              initialTab={tab || 'overview'}
+            />
+
+            {/* 6. IPO Information Section */}
             <InfoSection ipo={ipo} ipoDetails={ipoDetails || null} />
 
-            {/* IPO Score Section (Story 4.7) */}
+            {/* 7. IPO Score Section */}
             <IPOScoreSection score={ipoScore || null} />
 
-            {/* Promoter Holding Section (Story 11.9) */}
+            {/* 8. GMP History Chart */}
+            <GMPHistoryChart
+              gmpRecords={gmpRecords || []}
+              companyName={ipo.companyName}
+              priceRangeMax={ipo.priceRangeMax}
+              openDate={ipo.openDate}
+              closeDate={ipo.closeDate}
+            />
+
+            {/* 9. Financial Performance Charts */}
+            <FinancialPerformanceCharts
+              financialData={financialData}
+              companyName={ipo.companyName}
+            />
+
+            {/* 10. Subscription Dashboard */}
+            <SubscriptionDashboard
+              subscriptions={subscriptions || []}
+              latestSubscription={latestSubscription ?? null}
+              companyName={ipo.companyName}
+              closeDate={ipo.closeDate}
+            />
+
+            {/* 11. Broker Recommendations */}
+            <RecommendationSummarySection
+              reviewSummary={reviewSummary}
+              ipoSegment={ipo.segment as 'MAINBOARD' | 'SME'}
+            />
+
+            {/* 12. IPO Objectives Section */}
+            <IPOObjectivesSection
+              objectives={ipoDetails?.objectives || null}
+              totalIssueSize={ipo.issueSize ? Number(ipo.issueSize) : undefined}
+            />
+
+            {/* 13. Promoter Holding Section */}
             <PromoterHoldingSection
               promoterHoldingPreIssue={financialData?.promoterHoldingPreIssue ? Number(financialData.promoterHoldingPreIssue) : null}
               promoterHoldingPostIssue={financialData?.promoterHoldingPostIssue ? Number(financialData.promoterHoldingPostIssue) : null}
             />
 
-            {/* Anchor Investors Section (Story 11.10) */}
+            {/* 14. Anchor Investors Section */}
             <AnchorInvestorsSection
               bidDate={anchorInvestor?.bidDate || null}
               totalSharesOffered={anchorInvestor?.totalSharesOffered ? Number(anchorInvestor.totalSharesOffered) : null}
@@ -303,7 +355,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               investorList={anchorInvestor?.investorList || null}
             />
 
-            {/* KPI Highlight Section (Story 11.11) */}
+            {/* 15. KPI Highlight Section */}
             <KPIHighlightSection
               financialData={financialData ? {
                 marketCap: financialData.marketCap ? Number(financialData.marketCap) : null,
@@ -319,22 +371,21 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               }}
             />
 
-            {/* Phase 4: Client-side sections with global expand/collapse control */}
-            {/* All collapsible sections managed by IPODetailClientSections component */}
-            <IPODetailClientSections
-              ipo={ipo}
-              financialData={financialData}
-              ipoFinancials={data.ipoFinancials}
-              ipoDetails={ipoDetails}
-              reviewSummary={reviewSummary}
-              subscriptions={subscriptions}
-              latestSubscription={latestSubscription ?? null}
-              gmpRecords={gmpRecords}
-              listingPerformance={listingPerformance}
+            {/* 16. Peer Comparison */}
+            <PeerComparisonSection
               peerCompanies={peerCompanies}
+              companyName={ipo.companyName}
             />
 
-            {/* Apply for IPO Section (Story 5.5) */}
+            {/* Post-Listing Performance - Conditional for LISTED IPOs */}
+            {ipo.status === 'LISTED' && listingPerformance && (
+              <ListingPerformanceCharts
+                listingPerformance={listingPerformance}
+                companyName={ipo.companyName}
+              />
+            )}
+
+            {/* 17. Apply for IPO Section (Affiliate) */}
             {(ipo.status === 'OPEN' || ipo.status === 'UPCOMING') && (
               <AffiliateSection
                 ipoId={ipo.id}
@@ -342,7 +393,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               />
             )}
 
-            {/* Lot Size Calculator (Story 5.1) */}
+            {/* 18. Lot Size Calculator */}
             {ipo.priceRangeMax && ipo.lotSize && (
               <LotCalculator
                 mode="embedded"
@@ -358,6 +409,17 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               />
             )}
 
+            {/* 19. Company Contact Section */}
+            <CompanyContactSection
+              contactData={{
+                registeredOffice: ipoDetails?.registeredAddress || null,
+                registrarEmail: ipo.registrarRelation?.email || null,
+                registrarPhone: ipo.registrarRelation?.phone || null,
+                complianceOfficer: ipoDetails?.complianceOfficer || null,
+                complianceOfficerEmail: ipoDetails?.complianceOfficerEmail || null,
+              }}
+            />
+
             {/* Allotment Status Checker (Story 4.6) */}
             {(ipo.status === 'CLOSED' || ipo.status === 'LISTED') && (
               <AllotmentCheckerCard
@@ -367,14 +429,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 companyName={ipo.companyName}
               />
             )}
-
-            {/* Tier 2: Below Fold Content (Client-Side Tabs) */}
-            <IPODetailTabs
-              slug={slug}
-              ipo={ipo}
-              ipoData={data}
-              initialTab={tab || 'overview'}
-            />
           </div>
         </div>
       </div>

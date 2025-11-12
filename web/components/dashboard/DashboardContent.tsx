@@ -1,6 +1,6 @@
 'use client';
 
-import { IPO } from '@/lib/api-client';
+import { IPO } from '@/lib/db/types';
 import { IPOGrid } from '@/components/ipo/IPOGrid';
 import { Pagination } from '@/components/ui/pagination';
 import { ViewToggle } from '@/components/ui/view-toggle';

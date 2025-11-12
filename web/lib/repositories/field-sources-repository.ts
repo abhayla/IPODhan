@@ -68,7 +68,7 @@ export class FieldSourcesRepository extends BaseRepository {
   ): Promise<FieldSourceRecord | null> {
     const cacheKey = `field-source:${ipoId}:${tableName}:${fieldName}`;
 
-    return this.getFromCache(
+    return this.getFromCache<FieldSourceRecord | null>(
       cacheKey,
       async () => {
         const results = await this.db
@@ -83,7 +83,7 @@ export class FieldSourcesRepository extends BaseRepository {
           )
           .limit(1);
 
-        return results[0] || null;
+        return (results[0] as FieldSourceRecord) || null;
       },
       3600 // 1 hour TTL
     );
@@ -95,7 +95,7 @@ export class FieldSourcesRepository extends BaseRepository {
   async findByIPOId(ipoId: string): Promise<FieldSourceRecord[]> {
     const cacheKey = `field-sources:ipo:${ipoId}:all`;
 
-    return this.getFromCache(
+    return this.getFromCache<FieldSourceRecord[]>(
       cacheKey,
       async () => {
         const results = await this.db
@@ -104,7 +104,7 @@ export class FieldSourcesRepository extends BaseRepository {
           .where(eq(fieldSources.ipoId, ipoId))
           .orderBy(desc(fieldSources.updatedAt));
 
-        return results;
+        return results as FieldSourceRecord[];
       },
       3600 // 1 hour TTL
     );
@@ -116,7 +116,7 @@ export class FieldSourcesRepository extends BaseRepository {
   async findByTable(ipoId: string, tableName: string): Promise<FieldSourceRecord[]> {
     const cacheKey = `field-sources:table:${ipoId}:${tableName}`;
 
-    return this.getFromCache(
+    return this.getFromCache<FieldSourceRecord[]>(
       cacheKey,
       async () => {
         const results = await this.db
@@ -130,7 +130,7 @@ export class FieldSourcesRepository extends BaseRepository {
           )
           .orderBy(desc(fieldSources.updatedAt));
 
-        return results;
+        return results as FieldSourceRecord[];
       },
       3600 // 1 hour TTL
     );
@@ -205,7 +205,7 @@ export class FieldSourcesRepository extends BaseRepository {
       input.fieldName
     );
 
-    return result[0];
+    return result[0] as FieldSourceRecord;
   }
 
   /**
@@ -254,7 +254,7 @@ export class FieldSourcesRepository extends BaseRepository {
   ): Promise<FieldSourceRecord[]> {
     const cacheKey = `field-sources:source:${ipoId}:${source}`;
 
-    return this.getFromCache(
+    return this.getFromCache<FieldSourceRecord[]>(
       cacheKey,
       async () => {
         const results = await this.db
@@ -268,7 +268,7 @@ export class FieldSourcesRepository extends BaseRepository {
           )
           .orderBy(desc(fieldSources.updatedAt));
 
-        return results;
+        return results as FieldSourceRecord[];
       },
       3600 // 1 hour TTL
     );

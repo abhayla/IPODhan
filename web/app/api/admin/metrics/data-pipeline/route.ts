@@ -25,7 +25,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { ipos, documents, subscriptions, gmpRecords, financialData, listingPerformance } from '@/lib/db';
+import { ipos, documents, subscriptions, gmpRecords, financialData, listingPerformance, fieldSources } from '@ipodhan/shared/db/schema';
 import { sql, gt, gte, eq, and, isNotNull } from 'drizzle-orm';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
@@ -305,38 +305,25 @@ async function getDataQualityMetrics(): Promise<DataQualityMetrics> {
     .from(ipos)
     .then((result) => Number(result[0]?.count || 0));
 
-  // IPOs with financial data
+  // IPOs with financial data (count distinct IPOs that have financial data records)
   const withFinancials = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(ipos)
-    .where(isNotNull(ipos.revenuefy2024))
+    .select({ count: sql<number>`count(distinct ${financialData.ipoId})` })
+    .from(financialData)
+    .where(isNotNull(financialData.revenueFy2024))
     .then((result) => Number(result[0]?.count || 0));
 
-  // IPOs with field_sources tracking
+  // IPOs with field_sources tracking (count distinct IPOs that have field source records)
   const withSourceTracking = await db
-    .select({ count: sql<number>`count(*)` })
-    .from(ipos)
-    .where(isNotNull(ipos.fieldSources))
+    .select({ count: sql<number>`count(distinct ${fieldSources.ipoId})` })
+    .from(fieldSources)
     .then((result) => Number(result[0]?.count || 0));
 
-  // Admin overrides (count IPOs with ADMIN as source in field_sources)
-  const withAdminSource = await db
-    .select({
-      id: ipos.id,
-      fieldSources: ipos.fieldSources,
-    })
-    .from(ipos)
-    .where(isNotNull(ipos.fieldSources))
-    .limit(10000);
-
-  let adminOverrides = 0;
-  for (const ipo of withAdminSource) {
-    if (ipo.fieldSources && typeof ipo.fieldSources === 'object') {
-      const sources = Object.values(ipo.fieldSources as Record<string, any>);
-      const hasAdmin = sources.some((s: any) => s.source === 'ADMIN');
-      if (hasAdmin) adminOverrides++;
-    }
-  }
+  // Admin overrides (count distinct IPOs with ADMIN as source in field_sources)
+  const adminOverrides = await db
+    .select({ count: sql<number>`count(distinct ${fieldSources.ipoId})` })
+    .from(fieldSources)
+    .where(eq(fieldSources.source, 'ADMIN'))
+    .then((result) => Number(result[0]?.count || 0));
 
   // Protected fields (would need field_protection_metadata table - placeholder)
   const protectedFields = 0; // TODO: Query field_protection_metadata table

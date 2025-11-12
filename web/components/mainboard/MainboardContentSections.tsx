@@ -2,9 +2,9 @@
  * Mainboard Content Sections Component
  *
  * Displays 6 content sections for Mainboard IPOs landing page:
- * 1. Current IPOs (4-6 cards)
- * 2. Upcoming IPOs (4-6 cards)
- * 3. Recently Listed IPOs (4-6 cards)
+ * 1. Current IPOs (4-6 cards) - USING IPOCardEnhanced (Phase 1)
+ * 2. Upcoming IPOs (4-6 cards) - USING IPOCardEnhanced (Phase 1)
+ * 3. Recently Listed IPOs (4-6 cards) - USING IPOCardEnhanced (Phase 1)
  * 4. Reviews (4-6 cards)
  * 5. Performance Highlights (top gainers/losers)
  * 6. Subscription Status (4-6 cards)
@@ -13,13 +13,15 @@
  * Server component with responsive card grids.
  *
  * Story 9.15 - AC#4, AC#5
+ * UX Phase 1 Integration: Uses IPOCardEnhanced for premium visual identity
  */
 
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { HiArrowRight, HiArrowTrendingUp, HiArrowTrendingDown } from 'react-icons/hi2';
-import type { IPO } from '@/lib/api-client';
+import { IPOCardEnhanced } from '@/components/ipo/IPOCardEnhanced';
+import type { IPO } from '@/lib/db/types';
 import type {
   ReviewWithIPO,
   PerformanceHighlight,
@@ -106,7 +108,7 @@ export function MainboardContentSections({
 }: MainboardContentSectionsProps) {
   return (
     <div className="space-y-12">
-      {/* Section 1: Current IPOs */}
+      {/* Section 1: Current IPOs - Using Phase 1 IPOCardEnhanced */}
       <section>
         <SectionHeader title="Current IPOs" viewAllHref="/mainboard-ipos?filter=current" />
         {currentIPOs.length === 0 ? (
@@ -114,44 +116,13 @@ export function MainboardContentSections({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {currentIPOs.slice(0, 6).map((ipo) => (
-              <Card key={ipo.id} className="hover:shadow-md transition-shadow">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <Link href={`/ipos/${ipo.slug}`} className="hover:underline">
-                      <CardTitle className="text-lg">{ipo.companyName}</CardTitle>
-                    </Link>
-                    <Badge className="bg-green-600">OPEN</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Opens:</span>
-                    <span className="font-medium">{formatDate(ipo.openDate)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Closes:</span>
-                    <span className="font-medium">{formatDate(ipo.closeDate)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Issue Size:</span>
-                    <span className="font-medium">{formatIssueSize(ipo.issueSize)}</span>
-                  </div>
-                  {ipo.priceRangeMin && ipo.priceRangeMax && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Price Range:</span>
-                      <span className="font-medium">
-                        ₹{ipo.priceRangeMin} - ₹{ipo.priceRangeMax}
-                      </span>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <IPOCardEnhanced key={ipo.id} ipo={ipo} />
             ))}
           </div>
         )}
       </section>
 
-      {/* Section 2: Upcoming IPOs */}
+      {/* Section 2: Upcoming IPOs - Using Phase 1 IPOCardEnhanced */}
       <section>
         <SectionHeader title="Upcoming IPOs" viewAllHref="/mainboard-ipos?filter=upcoming" />
         {upcomingIPOs.length === 0 ? (
@@ -159,88 +130,22 @@ export function MainboardContentSections({
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {upcomingIPOs.slice(0, 6).map((ipo) => (
-              <Card key={ipo.id} className="hover:shadow-md transition-shadow">
-                <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <Link href={`/ipos/${ipo.slug}`} className="hover:underline">
-                      <CardTitle className="text-lg">{ipo.companyName}</CardTitle>
-                    </Link>
-                    <Badge className="bg-blue-600">UPCOMING</Badge>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Opens:</span>
-                    <span className="font-medium text-blue-700">{formatDate(ipo.openDate)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-600">Issue Size:</span>
-                    <span className="font-medium">{formatIssueSize(ipo.issueSize)}</span>
-                  </div>
-                  {ipo.priceRangeMin && ipo.priceRangeMax && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Price Range:</span>
-                      <span className="font-medium">
-                        ₹{ipo.priceRangeMin} - ₹{ipo.priceRangeMax}
-                      </span>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+              <IPOCardEnhanced key={ipo.id} ipo={ipo} />
             ))}
           </div>
         )}
       </section>
 
-      {/* Section 3: Recently Listed IPOs */}
+      {/* Section 3: Recently Listed IPOs - Using Phase 1 IPOCardEnhanced */}
       <section>
         <SectionHeader title="Recently Listed IPOs" viewAllHref="/mainboard-ipos?filter=listed" />
         {recentlyListedIPOs.length === 0 ? (
           <EmptyState message="No recently listed Mainboard IPOs" />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {recentlyListedIPOs.slice(0, 6).map((ipo) => {
-              // Mock current price calculation for display
-              const issuePrice = ipo.priceRangeMax || 0;
-              const mockCurrentPrice = issuePrice * (1 + (Math.random() - 0.3) * 0.5);
-              const gainPercent = ((mockCurrentPrice - issuePrice) / issuePrice) * 100;
-
-              return (
-                <Card key={ipo.id} className="hover:shadow-md transition-shadow">
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <Link href={`/ipos/${ipo.slug}`} className="hover:underline">
-                        <CardTitle className="text-lg">{ipo.companyName}</CardTitle>
-                      </Link>
-                      <Badge variant="outline">LISTED</Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Listed:</span>
-                      <span className="font-medium">{formatDate(ipo.listingDate)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Issue Price:</span>
-                      <span className="font-medium">{formatCurrency(issuePrice)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-600">Current Price:</span>
-                      <span className="font-medium">{formatCurrency(mockCurrentPrice)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm items-center">
-                      <span className="text-gray-600">Return:</span>
-                      <span
-                        className={`font-bold flex items-center gap-1 ${gainPercent >= 0 ? 'text-green-600' : 'text-red-600'}`}
-                      >
-                        {gainPercent >= 0 ? <HiArrowTrendingUp className="h-4 w-4" /> : <HiArrowTrendingDown className="h-4 w-4" />}
-                        {gainPercent.toFixed(2)}%
-                      </span>
-                    </div>
-                  </CardContent>
-                </Card>
-              );
-            })}
+            {recentlyListedIPOs.slice(0, 6).map((ipo) => (
+              <IPOCardEnhanced key={ipo.id} ipo={ipo} />
+            ))}
           </div>
         )}
       </section>
