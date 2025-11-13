@@ -123,7 +123,7 @@ export function IPOCardEnhanced({ ipo, searchQuery, onClick }: IPOCardEnhancedPr
       aria-label={`View details for ${ipo.companyName} IPO`}
     >
       <Card
-        ref={magneticRef}
+        ref={magneticRef as React.RefObject<HTMLDivElement>}
         data-testid="ipo-card-enhanced"
         style={magneticStyle}
         className={cn(

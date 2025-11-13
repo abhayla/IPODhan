@@ -35,7 +35,7 @@ export interface GaugeChartBaseProps {
   /** Height of the chart in pixels (default: 200) */
   height?: number;
   /** Width of the chart (default: '100%') */
-  width?: string | number;
+  width?: number | `${number}%`;
   /** Label to display above the value */
   label?: string;
   /** Sub-label to display below the value */
