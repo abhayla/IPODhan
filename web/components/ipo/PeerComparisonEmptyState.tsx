@@ -8,7 +8,7 @@
 
 'use client';
 
-import { HiArrowTrendingUp } from 'react-icons/hi2';
+import { TrendingUp } from 'lucide-react';
 
 /**
  * PeerComparisonEmptyState component
@@ -19,7 +19,7 @@ export function PeerComparisonEmptyState() {
     <div className="rounded-lg border bg-card p-12 text-center">
       <div className="flex justify-center mb-4">
         <div className="rounded-full bg-muted p-4">
-          <HiArrowTrendingUp className="h-8 w-8 text-muted-foreground" />
+          <TrendingUp className="h-8 w-8 text-muted-foreground" />
         </div>
       </div>
       <h3 className="text-lg font-semibold text-gray-900 mb-2">

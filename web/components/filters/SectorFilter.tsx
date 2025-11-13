@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { HiMagnifyingGlass } from 'react-icons/hi2';
+import { Search } from 'lucide-react';
 
 interface SectorFilterProps {
   value: string;
@@ -48,7 +48,7 @@ export function SectorFilter({ value, onChange }: SectorFilterProps) {
   return (
     <div className="w-full lg:w-auto">
       <div className="relative">
-        <HiMagnifyingGlass className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10 transition-all duration-200 ${isLoading ? 'animate-pulse' : ''}`} />
+        <Search className={`absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10 transition-all duration-200 ${isLoading ? 'animate-pulse' : ''}`} />
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}

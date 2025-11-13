@@ -19,7 +19,7 @@ import { PeerComparisonTable } from './PeerComparisonTable';
 import { PeerComparisonEmptyState } from './PeerComparisonEmptyState';
 import { getPeerComparison } from '@/lib/services/peer-comparison-service';
 import type { IPODetailResponse } from '@/lib/db/types';
-import { HiInformationCircle } from 'react-icons/hi2';
+import { Info } from 'lucide-react';
 
 // ==================== TYPES ====================
 
@@ -95,7 +95,7 @@ export function PeerComparisonTab({ ipoData }: PeerComparisonTabProps) {
       {/* Data Attribution Section */}
       <div className="rounded-lg border bg-muted/30 p-4 space-y-3">
         <div className="flex items-start gap-2">
-          <HiInformationCircle className="h-4 w-4 text-muted-foreground mt-0.5" />
+          <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
           <div className="flex-1 space-y-2">
             <div className="text-sm">
               <span className="font-medium text-gray-900">Data Source:</span>{' '}

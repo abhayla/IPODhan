@@ -1,6 +1,6 @@
 'use client';
 
-import { HiArrowPath } from 'react-icons/hi2';
+import { RotateCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface LoadingSpinnerProps {
@@ -18,7 +18,7 @@ const sizeClasses = {
 export function LoadingSpinner({ size = 'md', className, label }: LoadingSpinnerProps) {
   return (
     <div className="flex items-center justify-center gap-2" role="status" aria-live="polite">
-      <HiArrowPath className={cn('animate-spin text-muted-foreground', sizeClasses[size], className)} />
+      <RotateCw className={cn('animate-spin text-muted-foreground', sizeClasses[size], className)} />
       {label && <span className="text-sm text-muted-foreground">{label}</span>}
       <span className="sr-only">{label || 'Loading...'}</span>
     </div>

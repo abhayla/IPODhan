@@ -3,7 +3,7 @@
 import { Document } from '@/lib/db/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { HiArrowDownTray, HiDocumentText } from 'react-icons/hi2';
+import { Download, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface DocumentListProps {
@@ -51,7 +51,7 @@ export function DocumentList({ documents }: DocumentListProps) {
       <CardHeader>
         <CardTitle>IPO Documents</CardTitle>
         <p className="text-sm text-muted-foreground">
-          HiArrowDownTray official IPO documents
+          Download official IPO documents
         </p>
       </CardHeader>
       <CardContent>
@@ -63,7 +63,7 @@ export function DocumentList({ documents }: DocumentListProps) {
             >
               <div className="flex items-start gap-3">
                 <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
-                  <HiDocumentText className="h-5 w-5 text-primary" />
+                  <FileText className="h-5 w-5 text-primary" />
                 </div>
                 <div className="flex-1">
                   <h4 className="font-semibold">{doc.title}</h4>
@@ -85,8 +85,8 @@ export function DocumentList({ documents }: DocumentListProps) {
                 className="w-full sm:w-auto"
                 onClick={() => window.open(doc.url, '_blank')}
               >
-                <HiArrowDownTray className="mr-2 h-4 w-4" />
-                HiArrowDownTray
+                <Download className="mr-2 h-4 w-4" />
+                Download
               </Button>
             </div>
           ))}

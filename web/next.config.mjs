@@ -1,30 +1,23 @@
-import type { NextConfig } from "next";
 // TEMPORARILY DISABLED: Sentry causing webpack errors
 // import { withSentryConfig } from '@sentry/nextjs';
+import bundleAnalyzer from '@next/bundle-analyzer';
 
 // Bundle analyzer configuration
-const withBundleAnalyzer = require('@next/bundle-analyzer')({
+const withBundleAnalyzer = bundleAnalyzer({
   enabled: process.env.ANALYZE === 'true',
 });
 
-const nextConfig: NextConfig = {
-  // Turbopack is default in Next.js 16 - empty config to silence build warning
-  turbopack: {},
-
-  // Exclude server-only packages from browser bundle
-  serverExternalPackages: ['pg', 'pg-pool', 'pgpass', 'drizzle-orm'],
-
-  // Performance: Optimize package imports
-  // DISABLED: Causes text replacement bugs in Next.js 15.5.4 (addEventListener → addEventHiListBulletener)
-  // experimental: {
-  //   optimizePackageImports: ['@radix-ui/react-icons'],
-  // },
-
+const nextConfig = {
   // D3.js Code Splitting Strategy (Phase 2 - Data Intelligence Surface)
   // - Use next/dynamic for all D3.js visualization components
   // - D3.js automatically code-splits via dynamic imports (~200KB)
   // - No custom webpack splitChunks needed (avoids module loading errors)
   // - Components: ScoreBreakdown, SectorHeatMap, CorrelationMatrix, PredictiveMeter, TimeSeriesPlayback
+
+  // Package transpilation (Session 5 Fix)
+  // ESM packages require transpilation for Next.js 15 webpack compatibility
+  // See: docs/08-troubleshooting/RECHARTS_WEBPACK_FIX.md
+  transpilePackages: ['recharts', 'react-icons', 'date-fns'],
 
   // Performance: Browser caching headers for static assets
   // Security: CORS configuration for API endpoints

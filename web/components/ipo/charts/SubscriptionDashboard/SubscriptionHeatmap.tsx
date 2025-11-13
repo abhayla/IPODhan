@@ -10,13 +10,13 @@
 import { formatSubscription } from './utils';
 import type { SubscriptionHeatmapProps } from './types';
 import { cn } from '@/lib/utils';
-import { HiCalendar } from 'react-icons/hi2';
+import { Calendar } from 'lucide-react';
 
 export function SubscriptionHeatmap({ data, className }: SubscriptionHeatmapProps) {
   if (data.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-muted-foreground/25 p-8 text-center">
-        <HiCalendar className="mx-auto h-12 w-12 text-muted-foreground/50" />
+        <Calendar className="mx-auto h-12 w-12 text-muted-foreground/50" />
         <p className="mt-2 text-sm text-muted-foreground">
           Heatmap data not available yet
         </p>

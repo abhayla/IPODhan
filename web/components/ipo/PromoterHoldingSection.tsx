@@ -6,7 +6,7 @@
 
 'use client';
 
-import { HiExclamationCircle, HiArrowTrendingDown, HiUsers } from 'react-icons/hi2';
+import { AlertCircle, TrendingDown, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 interface PromoterHoldingSectionProps {
@@ -59,7 +59,7 @@ export function PromoterHoldingSection({
       <Card className="border-dashed">
         <CardContent className="pt-6">
           <div className="flex flex-col items-center justify-center gap-3 text-center py-6">
-            <HiExclamationCircle className="h-10 w-10 text-muted-foreground/50" />
+            <AlertCircle className="h-10 w-10 text-muted-foreground/50" />
             <div>
               <h3 className="text-lg font-semibold text-foreground">
                 Promoter Holding Data Not Available
@@ -84,7 +84,7 @@ export function PromoterHoldingSection({
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <HiUsers className="h-5 w-5 text-primary" />
+          <Users className="h-5 w-5 text-primary" />
           <CardTitle>Promoter Holding Pattern</CardTitle>
         </div>
       </CardHeader>
@@ -131,7 +131,7 @@ export function PromoterHoldingSection({
               className={`p-4 rounded-lg border ${getDilutionBgClass(dilution)}`}
             >
               <div className="flex items-start gap-3">
-                <HiArrowTrendingDown 
+                <TrendingDown 
                   className={`h-5 w-5 mt-0.5 ${getDilutionColorClass(dilution)}`}
                 />
                 <div className="flex-1 space-y-2">

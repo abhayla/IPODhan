@@ -12,7 +12,7 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { HiArrowUp, HiArrowDown } from 'react-icons/hi2';
+import { ArrowUp, ArrowDown } from 'lucide-react';
 import type { HistoricalIPO } from '@/lib/repositories/types';
 
 interface HistoricalIPOCardListProps {
@@ -44,7 +44,7 @@ export function HistoricalIPOCardList({ ipos }: HistoricalIPOCardListProps) {
         const borderColor = isPositiveGain ? 'border-green-500' : 'border-red-500';
         const gainColor = isPositiveGain ? 'bg-green-500' : 'bg-red-500';
         const gainSign = isPositiveGain ? '+' : '';
-        const GainIcon = isPositiveGain ? HiArrowUp : HiArrowDown;
+        const GainIcon = isPositiveGain ? ArrowUp : ArrowDown;
 
         return (
           <Link key={ipo.id} href={`/ipos/${ipo.slug}`} className="block">

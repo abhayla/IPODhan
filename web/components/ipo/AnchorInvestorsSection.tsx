@@ -6,7 +6,7 @@
 
 'use client';
 
-import { HiExclamationCircle, HiUsers as HiAnchor, HiCalendar, HiLockClosed, HiArrowTrendingUp, HiUsers } from 'react-icons/hi2';
+import { AlertCircle, Users as HiAnchor, Calendar, Lock, TrendingUp, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -126,7 +126,7 @@ export function AnchorInvestorsSection({
             {/* Bid Date */}
             <div className="space-y-2 p-4 rounded-lg bg-muted/50">
               <div className="flex items-center gap-2">
-                <HiCalendar className="h-4 w-4 text-muted-foreground" />
+                <Calendar className="h-4 w-4 text-muted-foreground" />
                 <p className="text-sm font-medium text-muted-foreground">
                   Anchor Bid Date
                 </p>
@@ -139,7 +139,7 @@ export function AnchorInvestorsSection({
             {/* Shares Offered */}
             <div className="space-y-2 p-4 rounded-lg bg-muted/50">
               <div className="flex items-center gap-2">
-                <HiArrowTrendingUp className="h-4 w-4 text-muted-foreground" />
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
                 <p className="text-sm font-medium text-muted-foreground">
                   Shares Offered
                 </p>
@@ -152,7 +152,7 @@ export function AnchorInvestorsSection({
             {/* Anchor Portion Amount */}
             <div className="space-y-2 p-4 rounded-lg bg-muted/50">
               <div className="flex items-center gap-2">
-                <HiArrowTrendingUp className="h-4 w-4 text-muted-foreground" />
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
                 <p className="text-sm font-medium text-muted-foreground">
                   Anchor Portion
                 </p>
@@ -165,7 +165,7 @@ export function AnchorInvestorsSection({
             {/* Total Investors */}
             <div className="space-y-2 p-4 rounded-lg bg-muted/50">
               <div className="flex items-center gap-2">
-                <HiUsers className="h-4 w-4 text-muted-foreground" />
+                <Users className="h-4 w-4 text-muted-foreground" />
                 <p className="text-sm font-medium text-muted-foreground">
                   Total Investors
                 </p>
@@ -179,7 +179,7 @@ export function AnchorInvestorsSection({
           {/* Lock-in Period Section */}
           <div className="p-4 rounded-lg border bg-blue-50 dark:bg-blue-950/20">
             <div className="flex items-start gap-3">
-              <HiLockClosed className="h-5 w-5 mt-0.5 text-blue-600 dark:text-blue-400" />
+              <Lock className="h-5 w-5 mt-0.5 text-blue-600 dark:text-blue-400" />
               <div className="flex-1 space-y-3">
                 <div>
                   <p className="text-sm font-semibold text-foreground mb-2">
@@ -276,7 +276,7 @@ export function AnchorInvestorsSection({
           {!hasInvestorList && (
             <div className="p-4 rounded-lg border border-dashed">
               <div className="flex items-start gap-3">
-                <HiExclamationCircle className="h-5 w-5 mt-0.5 text-muted-foreground" />
+                <AlertCircle className="h-5 w-5 mt-0.5 text-muted-foreground" />
                 <div>
                   <p className="text-sm font-medium text-foreground">
                     Individual Investor Details Not Available

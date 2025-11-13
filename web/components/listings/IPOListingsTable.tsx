@@ -18,7 +18,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { HiArrowsUpDown, HiArrowUp, HiArrowDown } from 'react-icons/hi2';
+import { ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import type { IPOListingData } from '@/lib/services/ipo-listings-service';
 
 interface IPOListingsTableProps {
@@ -39,11 +39,11 @@ export function IPOListingsTable({ data, onSort, currentSort }: IPOListingsTable
   };
 
   const SortIcon = ({ field }: { field: string }) => {
-    if (sortField !== field) return <HiArrowsUpDown className="h-4 w-4 opacity-50" />;
+    if (sortField !== field) return <ArrowUpDown className="h-4 w-4 opacity-50" />;
     return sortOrder === 'asc' ? (
-      <HiArrowUp className="h-4 w-4" />
+      <ArrowUp className="h-4 w-4" />
     ) : (
-      <HiArrowDown className="h-4 w-4" />
+      <ArrowDown className="h-4 w-4" />
     );
   };
 

@@ -2,7 +2,7 @@
 
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { HiUsers as HiAnchor, HiArrowTrendingUp } from 'react-icons/hi2';
+import { Users as HiAnchor, TrendingUp } from 'lucide-react';
 import { CategoryTooltip } from './CategoryTooltip';
 import {
   calculateAnchorAllocationPercentage,
@@ -71,7 +71,7 @@ export function AnchorInvestorHighlight({
               />
               {isStrong && (
                 <Badge variant="default" className="bg-green-600 hover:bg-green-700">
-                  <HiArrowTrendingUp className="h-3 w-3 mr-1" />
+                  <TrendingUp className="h-3 w-3 mr-1" />
                   Strong Signal
                 </Badge>
               )}

@@ -1,6 +1,6 @@
 'use client';
 
-import { HiStar } from 'react-icons/hi2';
+import { Star } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
@@ -44,20 +44,20 @@ export function RatingDisplay({
   const stars = (
     <div className="flex items-center gap-1">
       {[...Array(fullStars)].map((_, i) => (
-        <HiStar 
+        <Star 
           key={`full-${i}`}
           className={`${starSize} fill-yellow-400 text-yellow-400 transition-all duration-300 hover:scale-125 hover:rotate-12 animate-in zoom-in duration-300`}
           style={{ animationDelay: `${i * 50}ms` }}
         />
       ))}
       {hasHalfStar && (
-        <HiStar
+        <Star
           className={`${starSize} fill-yellow-400 text-yellow-400 transition-all duration-300 hover:scale-125 animate-in zoom-in duration-300`}
           style={{ animationDelay: `${fullStars * 50}ms` }}
         />
       )}
       {[...Array(emptyStars)].map((_, i) => (
-        <HiStar 
+        <Star 
           key={`empty-${i}`}
           className={`${starSize} text-gray-300 dark:text-gray-600 transition-all duration-300 hover:scale-110 animate-in fade-in duration-300`}
           style={{ animationDelay: `${(fullStars + (hasHalfStar ? 1 : 0) + i) * 50}ms` }}

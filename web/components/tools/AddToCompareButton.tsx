@@ -15,7 +15,7 @@
 
 import * as React from 'react';
 import { useRouter } from 'next/navigation';
-import { HiScale, HiCheck } from 'react-icons/hi2';
+import { Scale, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -142,12 +142,12 @@ export function AddToCompareButton({
       >
         {isAdded ? (
           <>
-            <HiCheck className="h-4 w-4 animate-in zoom-in duration-300" />
+            <Check className="h-4 w-4 animate-in zoom-in duration-300" />
             <span>Added to Compare</span>
           </>
         ) : (
           <>
-            <HiScale className="h-4 w-4 transition-transform duration-300 group-hover:rotate-12" />
+            <Scale className="h-4 w-4 transition-transform duration-300 group-hover:rotate-12" />
             <span>Add to Compare</span>
           </>
         )}
@@ -157,7 +157,7 @@ export function AddToCompareButton({
       {comparisonCount > 0 && (
         <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-3 duration-300">
           <Badge variant="secondary" className="gap-1 transition-all duration-300 hover:scale-110 shadow-sm">
-            <HiScale className="h-3 w-3 transition-transform duration-300 group-hover:rotate-12" />
+            <Scale className="h-3 w-3 transition-transform duration-300 group-hover:rotate-12" />
             <span className="font-semibold">{comparisonCount}</span>
           </Badge>
 
@@ -169,7 +169,7 @@ export function AddToCompareButton({
               onClick={handleViewComparison}
               className="gap-2 transition-all duration-300 hover:shadow-lg hover:scale-105 bg-gradient-to-r from-primary to-primary/80 animate-in fade-in slide-in-from-right-2 duration-300 delay-100"
             >
-              <HiScale className="h-4 w-4" />
+              <Scale className="h-4 w-4" />
               View Comparison
             </Button>
           )}

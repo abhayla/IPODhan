@@ -19,7 +19,7 @@ import { HistoricalPagination } from '@/components/history/HistoricalPagination'
 import { EmptyState } from '@/components/history/EmptyState';
 import { LoadingSkeleton } from '@/components/history/LoadingSkeleton';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { HiExclamationCircle } from 'react-icons/hi2';
+import { AlertCircle } from 'lucide-react';
 
 interface HistoricalIPOResponse {
   data: {
@@ -115,7 +115,7 @@ export function HistoricalIPOsContent({ availableSectors, availableYears }: Hist
             {/* Error State */}
             {error && (
               <Alert variant="destructive">
-                <HiExclamationCircle className="h-4 w-4" />
+                <AlertCircle className="h-4 w-4" />
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}

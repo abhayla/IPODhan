@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { HiArrowTrendingUp, HiArrowTrendingDown, HiMinus } from 'react-icons/hi2';
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { FinancialYearEndDisplay } from './FinancialYearEndDisplay';
 import { PBRatioDisplay } from './PBRatioDisplay';
 import { ROCEDisplay } from './ROCEDisplay';
@@ -64,13 +64,13 @@ export function FinancialTable({ financialData, ipoFinancials }: FinancialTableP
   };
 
   const getTrendIcon = (current: string | number | null, previous: string | number | null) => {
-    if (current === null || previous === null) return <HiMinus className="h-4 w-4 text-muted-foreground" />;
+    if (current === null || previous === null) return <Minus className="h-4 w-4 text-muted-foreground" />;
     const currNum = typeof current === 'string' ? parseFloat(current) : current;
     const prevNum = typeof previous === 'string' ? parseFloat(previous) : previous;
-    if (isNaN(currNum) || isNaN(prevNum)) return <HiMinus className="h-4 w-4 text-muted-foreground" />;
-    if (currNum > prevNum) return <HiArrowTrendingUp className="h-4 w-4 text-green-600" />;
-    if (currNum < prevNum) return <HiArrowTrendingDown className="h-4 w-4 text-red-600" />;
-    return <HiMinus className="h-4 w-4 text-muted-foreground" />;
+    if (isNaN(currNum) || isNaN(prevNum)) return <Minus className="h-4 w-4 text-muted-foreground" />;
+    if (currNum > prevNum) return <TrendingUp className="h-4 w-4 text-green-600" />;
+    if (currNum < prevNum) return <TrendingDown className="h-4 w-4 text-red-600" />;
+    return <Minus className="h-4 w-4 text-muted-foreground" />;
   };
 
   const rows = [
@@ -99,28 +99,28 @@ export function FinancialTable({ financialData, ipoFinancials }: FinancialTableP
       fy2022: formatNumber(financialData.eps),
       fy2023: '-',
       fy2024: '-',
-      trend: <HiMinus className="h-4 w-4 text-muted-foreground" />,
+      trend: <Minus className="h-4 w-4 text-muted-foreground" />,
     },
     {
       metric: 'P/E Ratio',
       fy2022: formatNumber(financialData.peRatio),
       fy2023: '-',
       fy2024: '-',
-      trend: <HiMinus className="h-4 w-4 text-muted-foreground" />,
+      trend: <Minus className="h-4 w-4 text-muted-foreground" />,
     },
     {
       metric: 'ROE (%)',
       fy2022: formatNumber(financialData.roe),
       fy2023: '-',
       fy2024: '-',
-      trend: <HiMinus className="h-4 w-4 text-muted-foreground" />,
+      trend: <Minus className="h-4 w-4 text-muted-foreground" />,
     },
     {
       metric: 'NAV (₹)',
       fy2022: formatCurrency(financialData.netWorth),
       fy2023: '-',
       fy2024: '-',
-      trend: <HiMinus className="h-4 w-4 text-muted-foreground" />,
+      trend: <Minus className="h-4 w-4 text-muted-foreground" />,
     },
   ];
 

@@ -200,7 +200,7 @@ describe('EnhancedFinancialMetricsSection', () => {
 
       expect(screen.getByText('Additional Financial Ratios')).toBeInTheDocument();
       expect(screen.getByText('Total Borrowings')).toBeInTheDocument();
-      expect(screen.queryByText('Metric')).not.toBeInTheDocument(); // No table
+      expect(screen.queryByText('Metric')).toBeNull(); // No table
     });
   });
 

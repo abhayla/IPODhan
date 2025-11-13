@@ -22,7 +22,7 @@
 import Link from 'next/link';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { HiArrowRight, HiArrowTrendingUp, HiArrowTrendingDown } from 'react-icons/hi2';
+import { ArrowRight, TrendingUp, TrendingDown } from 'lucide-react';
 import type { IPO } from '@/lib/db/types';
 import type {
   ReviewWithIPO,
@@ -80,7 +80,7 @@ function SectionHeader({ title, viewAllHref }: { title: string; viewAllHref: str
         href={viewAllHref}
         className="flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline text-sm font-medium transition-colors"
       >
-        View All <HiArrowRight className="h-4 w-4" />
+        View All <ArrowRight className="h-4 w-4" />
       </Link>
     </div>
   );
@@ -237,7 +237,7 @@ export function SMEContentSections({
                       <span
                         className={`font-bold flex items-center gap-1 ${gainPercent >= 0 ? 'text-green-600' : 'text-red-600'}`}
                       >
-                        {gainPercent >= 0 ? <HiArrowTrendingUp className="h-4 w-4" /> : <HiArrowTrendingDown className="h-4 w-4" />}
+                        {gainPercent >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
                         {gainPercent.toFixed(2)}%
                       </span>
                     </div>
@@ -304,7 +304,7 @@ export function SMEContentSections({
             {/* Top Gainers */}
             <div>
               <h3 className="text-lg font-semibold mb-3 text-green-700 flex items-center gap-2">
-                <HiArrowTrendingUp className="h-5 w-5" />
+                <TrendingUp className="h-5 w-5" />
                 Top Gainers
               </h3>
               <div className="space-y-3">
@@ -332,7 +332,7 @@ export function SMEContentSections({
             {/* Top Losers */}
             <div>
               <h3 className="text-lg font-semibold mb-3 text-red-700 flex items-center gap-2">
-                <HiArrowTrendingDown className="h-5 w-5" />
+                <TrendingDown className="h-5 w-5" />
                 Top Losers
               </h3>
               <div className="space-y-3">

@@ -30,11 +30,11 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import {
-  HiChartBar,
-  HiInformationCircle,
-  HiChevronDown,
-  HiChevronUp,
-} from 'react-icons/hi2';
+  BarChart,
+  Info,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
 import { BarChartBase } from '../base/BarChartBase';
 import type { DemandGraphProps } from './types';
 import {
@@ -98,7 +98,7 @@ export function DemandGraph({
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <HiChartBar className="h-5 w-5 text-muted-foreground" />
+            <BarChart className="h-5 w-5 text-muted-foreground" />
             <CardTitle>Price-wise Demand Distribution</CardTitle>
           </div>
           <CardDescription>
@@ -122,13 +122,13 @@ export function DemandGraph({
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <HiChartBar className="h-5 w-5 text-muted-foreground" />
+            <BarChart className="h-5 w-5 text-muted-foreground" />
             <CardTitle>Price-wise Demand Distribution</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
           <Alert variant="destructive">
-            <HiInformationCircle className="h-4 w-4" />
+            <Info className="h-4 w-4" />
             <AlertDescription>
               Demand data is incomplete or invalid. Please check data integrity.
             </AlertDescription>
@@ -158,7 +158,7 @@ export function DemandGraph({
           <div className="flex items-start justify-between">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <HiChartBar className="h-5 w-5 text-muted-foreground" />
+                <BarChart className="h-5 w-5 text-muted-foreground" />
                 <CardTitle>Price-wise Demand Distribution</CardTitle>
               </div>
               <CardDescription>
@@ -176,12 +176,12 @@ export function DemandGraph({
             >
               {isExpanded ? (
                 <>
-                  <HiChevronUp className="mr-1 h-4 w-4" />
+                  <ChevronUp className="mr-1 h-4 w-4" />
                   Collapse
                 </>
               ) : (
                 <>
-                  <HiChevronDown className="mr-1 h-4 w-4" />
+                  <ChevronDown className="mr-1 h-4 w-4" />
                   Expand
                 </>
               )}
@@ -286,7 +286,7 @@ export function DemandGraph({
 
               {/* Info Note */}
               <Alert>
-                <HiInformationCircle className="h-4 w-4" />
+                <Info className="h-4 w-4" />
                 <AlertDescription className="text-xs">
                   <strong>How to read:</strong> Cumulative demand shows total shares bid at each price <strong>and above</strong>.
                   Higher bars indicate stronger demand at that price point. Cut-off price typically shows highest demand.

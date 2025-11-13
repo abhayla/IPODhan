@@ -15,7 +15,7 @@
  */
 
 import { Card, CardContent } from '@/components/ui/card';
-import { HiArrowTrendingUp, HiCheckCircle, HiXCircle, HiBell, HiArrowTrendingDown } from 'react-icons/hi2';
+import { TrendingUp, CheckCircle, XCircle, Bell, TrendingDown } from 'lucide-react';
 import type { SMESummaryMetrics } from '@/lib/services/sme-landing-service';
 
 interface SMESummaryMetricsProps {
@@ -26,7 +26,7 @@ export function SMESummaryMetrics({ metrics }: SMESummaryMetricsProps) {
   const metricCards = [
     {
       id: 'total-ipos',
-      icon: HiArrowTrendingUp,
+      icon: TrendingUp,
       iconColor: 'text-blue-600',
       bgColor: 'bg-blue-50',
       value: metrics.totalIPOs,
@@ -35,7 +35,7 @@ export function SMESummaryMetrics({ metrics }: SMESummaryMetricsProps) {
     },
     {
       id: 'listed-gain',
-      icon: HiCheckCircle,
+      icon: CheckCircle,
       iconColor: 'text-green-600',
       bgColor: 'bg-green-50',
       value: metrics.listedInGain,
@@ -44,7 +44,7 @@ export function SMESummaryMetrics({ metrics }: SMESummaryMetricsProps) {
     },
     {
       id: 'listed-loss',
-      icon: HiXCircle,
+      icon: XCircle,
       iconColor: 'text-red-600',
       bgColor: 'bg-red-50',
       value: metrics.listedInLoss,
@@ -53,7 +53,7 @@ export function SMESummaryMetrics({ metrics }: SMESummaryMetricsProps) {
     },
     {
       id: 'upcoming-ongoing',
-      icon: HiBell,
+      icon: Bell,
       iconColor: 'text-orange-600',
       bgColor: 'bg-orange-50',
       value: metrics.upcomingAndOngoing,
@@ -62,7 +62,7 @@ export function SMESummaryMetrics({ metrics }: SMESummaryMetricsProps) {
     },
     {
       id: 'gain-aot',
-      icon: HiArrowTrendingUp,
+      icon: TrendingUp,
       iconColor: 'text-green-600',
       bgColor: 'bg-green-50',
       value: `${metrics.gainAOT.toFixed(2)}%`,
@@ -71,7 +71,7 @@ export function SMESummaryMetrics({ metrics }: SMESummaryMetricsProps) {
     },
     {
       id: 'loss-aot',
-      icon: HiArrowTrendingDown,
+      icon: TrendingDown,
       iconColor: 'text-red-600',
       bgColor: 'bg-red-50',
       value: `${metrics.lossAOT.toFixed(2)}%`,

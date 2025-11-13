@@ -17,7 +17,7 @@
 import Image from 'next/image';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { HiArrowTopRightOnSquare } from 'react-icons/hi2';
+import { ExternalLink } from 'lucide-react';
 import type { BrokerConfig } from '@/lib/config/affiliate-links';
 
 interface BrokerButtonProps {
@@ -97,7 +97,7 @@ export function BrokerButton({
           style={{ height: '24px', width: '24px' }}
         />
         <span>{broker.cta}</span>
-        <HiArrowTopRightOnSquare className="h-4 w-4" />
+        <ExternalLink className="h-4 w-4" />
       </a>
     </Button>
   );

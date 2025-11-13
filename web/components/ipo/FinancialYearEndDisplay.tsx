@@ -4,7 +4,7 @@
  * Displays the financial year end date in a user-friendly format.
  */
 
-import { HiCalendar } from 'react-icons/hi2';
+import { Calendar } from 'lucide-react';
 
 interface FinancialYearEndDisplayProps {
   financialYearEnd: string | null;
@@ -63,7 +63,7 @@ export function FinancialYearEndDisplay({
 
   return (
     <div className={`flex items-center gap-2 text-sm ${className}`}>
-      <HiCalendar className="h-4 w-4 text-muted-foreground" />
+      <Calendar className="h-4 w-4 text-muted-foreground" />
       <span className="text-muted-foreground">FY ending</span>
       <span className="font-medium">{formattedDate}</span>
     </div>

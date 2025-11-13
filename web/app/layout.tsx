@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import { Instrument_Serif, Inter, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
-import { Header } from "@/components/layout/Header";
+// TEMP: Toaster commented out - testing if it causes webpack error (Session 5)
+// import { Toaster } from "@/components/ui/toaster";
+// TEMP: Header commented out - causes webpack HMR conflicts (Session 4 fix)
+// import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 import { generateHomepageMetadata } from "@/lib/seo/metadata";
 
@@ -57,7 +59,8 @@ export default function RootLayout({
 
   return (
     <html lang="en" suppressHydrationWarning>
-      {GA_MEASUREMENT_ID && (
+      {/* TEMP: GA scripts commented out - testing if they cause webpack error (Session 5) */}
+      {/* {GA_MEASUREMENT_ID && (
         <>
           <Script
             src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
@@ -74,7 +77,7 @@ export default function RootLayout({
             `}
           </Script>
         </>
-      )}
+      )} */}
       <body className={`${instrumentSerif.variable} ${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
         <a
           href="#main-content"
@@ -83,13 +86,15 @@ export default function RootLayout({
           Skip to main content
         </a>
         <div className="flex min-h-screen flex-col">
-          <Header />
+          {/* TEMP: Header commented out - causes webpack HMR conflicts (Session 4 fix) */}
+          {/* <Header /> */}
           <main id="main-content" className="flex-1">
              {children}
           </main>
           <Footer />
         </div>
-        <Toaster />
+        {/* TEMP: Toaster commented out - testing if it causes webpack error (Session 5) */}
+        {/* <Toaster /> */}
       </body>
     </html>
   );

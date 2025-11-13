@@ -10,7 +10,7 @@
 import { BarChartBase } from '../base/BarChartBase';
 import { formatPercent } from './utils';
 import type { SectorComparisonChartProps } from './types';
-import { HiCheckCircle, HiXCircle } from 'react-icons/hi2';
+import { CheckCircle, XCircle } from 'lucide-react';
 
 export function SectorComparisonChart({
   comparison,
@@ -74,12 +74,12 @@ export function SectorComparisonChart({
           </div>
           {comparison.outperformance ? (
             <div className="flex flex-col items-center gap-2">
-              <HiCheckCircle className="h-12 w-12 text-green-600" />
+              <CheckCircle className="h-12 w-12 text-green-600" />
               <span className="text-xs font-medium text-green-600">Above Average</span>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-2">
-              <HiXCircle className="h-12 w-12 text-orange-600" />
+              <XCircle className="h-12 w-12 text-orange-600" />
               <span className="text-xs font-medium text-orange-600">Below Average</span>
             </div>
           )}

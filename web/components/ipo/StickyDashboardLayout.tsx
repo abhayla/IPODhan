@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { IPOTimelineWidget } from './IPOTimelineWidget';
 import { KeyMetricsCardsEnhanced } from './KeyMetricsCardsEnhanced';
 import { cn } from '@/lib/utils';
-import { HiChevronDown, HiChevronUp } from 'react-icons/hi2';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import type { IPO } from '@/lib/db/types';
 import type { SubscriptionDataRaw, GMPRecordRaw } from '@/components/ipo/charts';
 
@@ -132,9 +132,9 @@ export function StickyDashboardLayout({
             >
               <span>{isCollapsed ? 'Show Dashboard' : 'Hide Dashboard'}</span>
               {isCollapsed ? (
-                <HiChevronDown className="h-4 w-4" />
+                <ChevronDown className="h-4 w-4" />
               ) : (
-                <HiChevronUp className="h-4 w-4" />
+                <ChevronUp className="h-4 w-4" />
               )}
             </button>
           )}

@@ -3,12 +3,12 @@
 import { TimelineBase, TimelineMilestone } from '@/components/ipo/charts';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import {
-  HiOutlineMegaphone,
-  HiOutlineCalendarDays,
-  HiOutlineCheckCircle,
-  HiOutlineUsers,
-  HiOutlineBanknotes
-} from 'react-icons/hi2';
+  Megaphone,
+  Calendar,
+  CheckCircle,
+  Users,
+  Banknote
+} from 'lucide-react';
 import type { IPO } from '@/lib/db/types';
 
 interface IPOTimelineWidgetProps {
@@ -71,7 +71,7 @@ export function IPOTimelineWidget({ ipo, compact = false, className }: IPOTimeli
       description: 'IPO announced',
       date: null, // Usually we don't have announcement date
       status: currentMilestone >= 1 ? 'completed' : 'upcoming',
-      icon: <HiOutlineMegaphone className="h-3 w-3" />,
+      icon: <Megaphone className="h-3 w-3" />,
     },
     {
       id: 'open',
@@ -79,7 +79,7 @@ export function IPOTimelineWidget({ ipo, compact = false, className }: IPOTimeli
       description: 'Subscription starts',
       date: ipo.openDate ? new Date(ipo.openDate) : null,
       status: currentMilestone >= 2 ? (currentMilestone === 2 ? 'current' : 'completed') : 'upcoming',
-      icon: <HiOutlineCalendarDays className="h-3 w-3" />,
+      icon: <Calendar className="h-3 w-3" />,
     },
     {
       id: 'close',
@@ -87,7 +87,7 @@ export function IPOTimelineWidget({ ipo, compact = false, className }: IPOTimeli
       description: 'Subscription ends',
       date: ipo.closeDate ? new Date(ipo.closeDate) : null,
       status: currentMilestone >= 3 ? (currentMilestone === 3 ? 'current' : 'completed') : 'upcoming',
-      icon: <HiOutlineCheckCircle className="h-3 w-3" />,
+      icon: <CheckCircle className="h-3 w-3" />,
     },
     {
       id: 'allotment',
@@ -95,7 +95,7 @@ export function IPOTimelineWidget({ ipo, compact = false, className }: IPOTimeli
       description: 'Shares allotted',
       date: ipo.allotmentDate ? new Date(ipo.allotmentDate) : null,
       status: currentMilestone >= 4 ? (currentMilestone === 4 ? 'current' : 'completed') : 'upcoming',
-      icon: <HiOutlineUsers className="h-3 w-3" />,
+      icon: <Users className="h-3 w-3" />,
     },
     {
       id: 'listing',
@@ -103,7 +103,7 @@ export function IPOTimelineWidget({ ipo, compact = false, className }: IPOTimeli
       description: 'Trading begins',
       date: ipo.listingDate ? new Date(ipo.listingDate) : null,
       status: currentMilestone >= 5 ? 'completed' : (currentMilestone === 4 ? 'upcoming' : 'upcoming'),
-      icon: <HiOutlineBanknotes className="h-3 w-3" />,
+      icon: <Banknote className="h-3 w-3" />,
     },
   ];
 
@@ -131,7 +131,7 @@ export function IPOTimelineWidget({ ipo, compact = false, className }: IPOTimeli
     <Card className={className}>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <HiOutlineCalendarDays className="h-5 w-5 text-blue-600" />
+          <Calendar className="h-5 w-5 text-blue-600" />
           IPO Timeline
         </CardTitle>
         <p className="text-sm text-muted-foreground mt-1">

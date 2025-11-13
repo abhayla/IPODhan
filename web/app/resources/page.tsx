@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import { HiBookOpen, HiDocumentText, HiVideoCamera, HiArrowDownTray, HiArrowTopRightOnSquare, HiCalculator, HiChartBar, HiNewspaper, HiAcademicCap } from 'react-icons/hi2';
+import { BookOpen, FileText, Video, Download, ExternalLink, Calculator, BarChart, Newspaper, GraduationCap } from 'lucide-react';
 
 export const metadata: Metadata = {
   title: 'Resources - IPODhan',
@@ -11,7 +11,7 @@ export default function ResourcesPage() {
     {
       title: 'IPO Basics: A Beginner\'s Guide',
       description: 'Everything you need to know about Initial Public Offerings',
-      icon: HiBookOpen,
+      icon: BookOpen,
       topics: ['What is an IPO?', 'Types of IPOs', 'IPO Process', 'How to Apply'],
       difficulty: 'Beginner',
       readTime: '15 min',
@@ -19,7 +19,7 @@ export default function ResourcesPage() {
     {
       title: 'Understanding IPO Financials',
       description: 'Learn how to analyze financial statements in DRHP',
-      icon: HiChartBar,
+      icon: BarChart,
       topics: ['Reading DRHP', 'Key Financial Metrics', 'Valuation Methods', 'Risk Analysis'],
       difficulty: 'Intermediate',
       readTime: '25 min',
@@ -27,7 +27,7 @@ export default function ResourcesPage() {
     {
       title: 'IPO Allotment Process',
       description: 'Complete guide to IPO allotment and listing',
-      icon: HiDocumentText,
+      icon: FileText,
       topics: ['Allotment Rules', 'Basis of Allotment', 'Checking Status', 'Listing Day Strategy'],
       difficulty: 'Beginner',
       readTime: '10 min',
@@ -35,7 +35,7 @@ export default function ResourcesPage() {
     {
       title: 'Advanced IPO Strategies',
       description: 'Professional techniques for IPO investments',
-      icon: HiAcademicCap,
+      icon: GraduationCap,
       topics: ['GMP Analysis', 'Subscription Patterns', 'Exit Strategies', 'Portfolio Management'],
       difficulty: 'Advanced',
       readTime: '30 min',
@@ -46,14 +46,14 @@ export default function ResourcesPage() {
     {
       title: 'Lot Size Calculator',
       description: 'Calculate how many lots you can buy with your investment amount',
-      icon: HiCalculator,
+      icon: Calculator,
       href: '/tools/lot-calculator',
       badge: 'Popular',
     },
     {
       title: 'IPO Comparison Tool',
       description: 'Compare multiple IPOs side-by-side',
-      icon: HiChartBar,
+      icon: BarChart,
       href: '/tools/compare',
       badge: 'New',
     },
@@ -137,7 +137,7 @@ export default function ResourcesPage() {
       <section className="container mx-auto px-4 py-16">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center gap-3 mb-8">
-            <HiBookOpen className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+            <BookOpen className="h-8 w-8 text-blue-600 dark:text-blue-400" />
             <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Educational Guides</h2>
           </div>
           <div className="grid md:grid-cols-2 gap-6">
@@ -182,7 +182,7 @@ export default function ResourcesPage() {
         <div className="container mx-auto px-4">
           <div className="max-w-6xl mx-auto">
             <div className="flex items-center gap-3 mb-8">
-              <HiCalculator className="h-8 w-8 text-green-600 dark:text-green-400" />
+              <Calculator className="h-8 w-8 text-green-600 dark:text-green-400" />
               <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">IPO Tools</h2>
             </div>
             <div className="grid md:grid-cols-2 gap-6">
@@ -206,7 +206,7 @@ export default function ResourcesPage() {
                     </h3>
                     <p className="text-gray-600 dark:text-gray-400">{tool.description}</p>
                   </div>
-                  <HiArrowTopRightOnSquare className="h-5 w-5 text-gray-400 group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors" />
+                  <ExternalLink className="h-5 w-5 text-gray-400 group-hover:text-green-600 dark:group-hover:text-green-400 transition-colors" />
                 </a>
               ))}
             </div>
@@ -218,7 +218,7 @@ export default function ResourcesPage() {
       <section className="container mx-auto px-4 py-16">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center gap-3 mb-8">
-            <HiArrowDownTray className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+            <Download className="h-8 w-8 text-purple-600 dark:text-purple-400" />
             <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Free Downloads</h2>
           </div>
           <div className="grid md:grid-cols-3 gap-6">
@@ -228,7 +228,7 @@ export default function ResourcesPage() {
                 className="bg-white dark:bg-gray-800 rounded-xl p-6 shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer group"
               >
                 <div className="flex items-start justify-between mb-4">
-                  <HiDocumentText className="h-8 w-8 text-purple-600 dark:text-purple-400" />
+                  <FileText className="h-8 w-8 text-purple-600 dark:text-purple-400" />
                   <span className="text-xs px-2 py-1 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 rounded">
                     {download.format}
                   </span>
@@ -239,7 +239,7 @@ export default function ResourcesPage() {
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">{download.description}</p>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-500 dark:text-gray-400">{download.size}</span>
-                  <HiArrowDownTray className="h-4 w-4 text-purple-600 dark:text-purple-400 group-hover:animate-bounce" />
+                  <Download className="h-4 w-4 text-purple-600 dark:text-purple-400 group-hover:animate-bounce" />
                 </div>
               </div>
             ))}
@@ -247,12 +247,12 @@ export default function ResourcesPage() {
         </div>
       </section>
 
-      {/* HiVideoCamera Tutorials */}
+      {/* Video Tutorials */}
       <section className="bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 py-16">
         <div className="container mx-auto px-4">
           <div className="max-w-6xl mx-auto">
             <div className="flex items-center gap-3 mb-8">
-              <HiVideoCamera className="h-8 w-8 text-red-600 dark:text-red-400" />
+              <Video className="h-8 w-8 text-red-600 dark:text-red-400" />
               <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Video Tutorials</h2>
             </div>
             <div className="grid md:grid-cols-3 gap-6">
@@ -263,7 +263,7 @@ export default function ResourcesPage() {
                 >
                   <div className="aspect-video bg-gradient-to-br from-red-100 to-pink-100 dark:from-red-900/30 dark:to-pink-900/30 flex items-center justify-center">
                     <div className="bg-white dark:bg-gray-700 rounded-full p-4 group-hover:scale-110 transition-transform duration-300">
-                      <HiVideoCamera className="h-8 w-8 text-red-600 dark:text-red-400" />
+                      <Video className="h-8 w-8 text-red-600 dark:text-red-400" />
                     </div>
                   </div>
                   <div className="p-4">
@@ -286,7 +286,7 @@ export default function ResourcesPage() {
       <section className="container mx-auto px-4 py-16">
         <div className="max-w-6xl mx-auto">
           <div className="flex items-center gap-3 mb-8">
-            <HiNewspaper className="h-8 w-8 text-orange-600 dark:text-orange-400" />
+            <Newspaper className="h-8 w-8 text-orange-600 dark:text-orange-400" />
             <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100">Latest IPO News</h2>
           </div>
           <div className="space-y-4">
@@ -306,7 +306,7 @@ export default function ResourcesPage() {
                     {item.title}
                   </h3>
                 </div>
-                <HiArrowTopRightOnSquare className="h-5 w-5 text-gray-400 group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors" />
+                <ExternalLink className="h-5 w-5 text-gray-400 group-hover:text-orange-600 dark:group-hover:text-orange-400 transition-colors" />
               </div>
             ))}
           </div>

@@ -10,7 +10,7 @@
 import { BarChartBase } from '../base/BarChartBase';
 import { formatSubscription, formatLargeNumber } from './utils';
 import type { CategoryBreakdownChartProps } from './types';
-import { HiCheckCircle, HiExclamationCircle, HiUserGroup } from 'react-icons/hi2';
+import { CheckCircle, AlertCircle, Users } from 'lucide-react';
 
 export function CategoryBreakdownChart({
   categories,
@@ -20,7 +20,7 @@ export function CategoryBreakdownChart({
   if (categories.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-muted-foreground/25 p-8 text-center">
-        <HiUserGroup className="mx-auto h-12 w-12 text-muted-foreground/50" />
+        <Users className="mx-auto h-12 w-12 text-muted-foreground/50" />
         <p className="mt-2 text-sm text-muted-foreground">
           Category breakdown not available yet
         </p>
@@ -89,13 +89,13 @@ export function CategoryBreakdownChart({
   const getSubscriptionStatus = (subscription: number) => {
     if (subscription >= 1) {
       return {
-        icon: HiCheckCircle,
+        icon: CheckCircle,
         color: 'text-green-600 dark:text-green-500',
         label: 'Subscribed',
       };
     }
     return {
-      icon: HiExclamationCircle,
+      icon: AlertCircle,
       color: 'text-orange-600 dark:text-orange-500',
       label: 'Under-subscribed',
     };
@@ -228,7 +228,7 @@ export function CategoryBreakdownChart({
                 {formatLargeNumber(stats.totalApplications)}
               </p>
             </div>
-            <HiUserGroup className="h-8 w-8 text-muted-foreground/50" />
+            <Users className="h-8 w-8 text-muted-foreground/50" />
           </div>
         </div>
       )}

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { HiOutlineChartBarSquare, HiOutlineExclamationTriangle } from 'react-icons/hi2';
+import { BarChart3, AlertTriangle } from 'lucide-react';
 
 /**
  * Props for ChartContainer component
@@ -112,7 +112,7 @@ export function ChartContainer({
 
     const ErrorContent = (
       <div className="flex flex-col items-center justify-center p-8 text-center">
-        <HiOutlineExclamationTriangle className="h-12 w-12 text-yellow-500 mb-4" />
+        <AlertTriangle className="h-12 w-12 text-yellow-500 mb-4" />
         <h3 className="text-lg font-semibold mb-2">Unable to load chart</h3>
         <p className="text-sm text-muted-foreground mb-4 max-w-md">
           {displayErrorMessage}
@@ -151,7 +151,7 @@ export function ChartContainer({
   if (isEmpty) {
     const EmptyContent = (
       <div className="flex flex-col items-center justify-center p-8 text-center">
-        <HiOutlineChartBarSquare className="h-12 w-12 text-muted-foreground mb-4" />
+        <BarChart3 className="h-12 w-12 text-muted-foreground mb-4" />
         <h3 className="text-lg font-semibold mb-2">No data available</h3>
         <p className="text-sm text-muted-foreground max-w-md">{emptyMessage}</p>
       </div>
@@ -271,7 +271,7 @@ export function ChartEmptyState({
 }) {
   return (
     <div className={cn('flex flex-col items-center justify-center p-8 text-center', className)}>
-      <HiOutlineChartBarSquare className="h-12 w-12 text-muted-foreground mb-4" />
+      <BarChart3 className="h-12 w-12 text-muted-foreground mb-4" />
       <p className="text-sm text-muted-foreground max-w-md">{message}</p>
     </div>
   );
@@ -304,7 +304,7 @@ export function ChartErrorState({
 
   return (
     <div className={cn('flex flex-col items-center justify-center p-8 text-center', className)}>
-      <HiOutlineExclamationTriangle className="h-12 w-12 text-yellow-500 mb-4" />
+      <AlertTriangle className="h-12 w-12 text-yellow-500 mb-4" />
       <h3 className="text-lg font-semibold mb-2">Unable to load chart</h3>
       <p className="text-sm text-muted-foreground mb-4 max-w-md">{errorMessage}</p>
       {onRetry && (
