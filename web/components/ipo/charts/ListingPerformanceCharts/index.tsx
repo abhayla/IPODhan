@@ -34,7 +34,7 @@ import {
 import type { ListingPerformanceChartsProps } from './types';
 import { ChartContainer } from '../ChartContainer';
 import { cn } from '@/lib/utils';
-import { HiChevronDown, HiChevronUp, HiChartBar } from 'react-icons/hi2';
+import { ChevronDown, ChevronUp, BarChart } from 'lucide-react';
 
 export function ListingPerformanceCharts({
   listingPerformance,
@@ -59,7 +59,7 @@ export function ListingPerformanceCharts({
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <HiChartBar className="h-6 w-6 text-muted-foreground" />
+              <BarChart className="h-6 w-6 text-muted-foreground" />
               <div>
                 <h3 className="text-lg font-semibold">Listing Performance</h3>
                 <p className="text-sm text-muted-foreground">
@@ -70,7 +70,7 @@ export function ListingPerformanceCharts({
           </div>
 
           <div className="rounded-lg border border-dashed border-muted-foreground/25 p-12 text-center">
-            <HiChartBar className="mx-auto h-16 w-16 text-muted-foreground/50 mb-4" />
+            <BarChart className="mx-auto h-16 w-16 text-muted-foreground/50 mb-4" />
             <p className="text-lg font-medium text-muted-foreground mb-2">
               No Listing Data Available
             </p>
@@ -136,7 +136,7 @@ export function ListingPerformanceCharts({
       <div className="p-6 border-b">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <HiChartBar className="h-6 w-6 text-primary" />
+            <BarChart className="h-6 w-6 text-primary" />
             <div>
               <h3 className="text-lg font-semibold">Listing Performance</h3>
               <p className="text-sm text-muted-foreground">
@@ -155,9 +155,9 @@ export function ListingPerformanceCharts({
               {isExpanded ? 'Collapse' : 'Expand'}
             </span>
             {isExpanded ? (
-              <HiChevronUp className="h-4 w-4" />
+              <ChevronUp className="h-4 w-4" />
             ) : (
-              <HiChevronDown className="h-4 w-4" />
+              <ChevronDown className="h-4 w-4" />
             )}
           </button>
         </div>

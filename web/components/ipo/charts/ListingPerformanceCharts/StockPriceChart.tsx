@@ -11,7 +11,7 @@ import { LineChartBase } from '../base/LineChartBase';
 import { formatCurrency, formatPercent, getGainColorClass } from './utils';
 import type { StockPriceChartProps, PerformancePeriod } from './types';
 import { cn } from '@/lib/utils';
-import { HiArrowTrendingUp, HiArrowTrendingDown, HiMinus } from 'react-icons/hi2';
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 export function StockPriceChart({
   priceData,
@@ -90,7 +90,7 @@ export function StockPriceChart({
           {periods.map((period) => {
             const isActive = selectedPeriod === period.period;
             const isPositive = (period.gainPercent || 0) >= 0;
-            const Icon = isPositive ? HiArrowTrendingUp : HiArrowTrendingDown;
+            const Icon = isPositive ? TrendingUp : TrendingDown;
 
             return (
               <button

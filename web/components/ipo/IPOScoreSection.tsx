@@ -5,7 +5,7 @@
 
 'use client';
 
-import { HiExclamationCircle, HiArrowTrendingUp } from 'react-icons/hi2';
+import { AlertCircle, TrendingUp } from 'lucide-react';
 import type { IPOScore } from '@/lib/db/types';
 import { ScoreBadge } from './ScoreBadge';
 import { VerdictBadge } from './VerdictBadge';
@@ -64,7 +64,7 @@ export function IPOScoreSection({ score }: IPOScoreSectionProps) {
     return (
       <div className="rounded-lg border border-dashed border-muted-foreground/30 p-8">
         <div className="flex flex-col items-center justify-center gap-3 text-center">
-          <HiExclamationCircle className="h-10 w-10 text-muted-foreground/50" />
+          <AlertCircle className="h-10 w-10 text-muted-foreground/50" />
           <div>
             <h3 className="text-lg font-semibold text-foreground">Score Pending</h3>
             <p className="text-sm text-muted-foreground mt-1">
@@ -82,7 +82,7 @@ export function IPOScoreSection({ score }: IPOScoreSectionProps) {
       <div className="flex items-start justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <HiArrowTrendingUp className="h-5 w-5 text-primary" />
+            <TrendingUp className="h-5 w-5 text-primary" />
             <h3 className="text-xl font-bold text-foreground">IPODhan Score</h3>
           </div>
           <p className="text-sm text-muted-foreground">

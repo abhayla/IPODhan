@@ -37,12 +37,12 @@ import type { SubscriptionDashboardProps } from './types';
 import { ChartContainer } from '../ChartContainer';
 import { cn } from '@/lib/utils';
 import {
-  HiChevronDown,
-  HiChevronUp,
-  HiChartBar,
-  HiCalendar,
-  HiUserGroup,
-} from 'react-icons/hi2';
+  ChevronDown,
+  ChevronUp,
+  BarChart,
+  Calendar,
+  Users,
+} from 'lucide-react';
 
 export function SubscriptionDashboard({
   subscriptions,
@@ -68,7 +68,7 @@ export function SubscriptionDashboard({
         <div className="p-6">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
-              <HiChartBar className="h-6 w-6 text-muted-foreground" />
+              <BarChart className="h-6 w-6 text-muted-foreground" />
               <div>
                 <h3 className="text-lg font-semibold">Subscription Dashboard</h3>
                 <p className="text-sm text-muted-foreground">
@@ -79,7 +79,7 @@ export function SubscriptionDashboard({
           </div>
 
           <div className="rounded-lg border border-dashed border-muted-foreground/25 p-12 text-center">
-            <HiChartBar className="mx-auto h-16 w-16 text-muted-foreground/50 mb-4" />
+            <BarChart className="mx-auto h-16 w-16 text-muted-foreground/50 mb-4" />
             <p className="text-lg font-medium text-muted-foreground mb-2">
               No Subscription Data Available
             </p>
@@ -106,10 +106,10 @@ export function SubscriptionDashboard({
 
   // View toggles
   const viewOptions = [
-    { value: 'all' as const, label: 'All Views', icon: HiChartBar },
-    { value: 'overview' as const, label: 'Overview', icon: HiChartBar },
-    { value: 'categories' as const, label: 'Categories', icon: HiUserGroup },
-    { value: 'heatmap' as const, label: 'Heatmap', icon: HiCalendar },
+    { value: 'all' as const, label: 'All Views', icon: BarChart },
+    { value: 'overview' as const, label: 'Overview', icon: BarChart },
+    { value: 'categories' as const, label: 'Categories', icon: Users },
+    { value: 'heatmap' as const, label: 'Heatmap', icon: Calendar },
   ];
 
   const shouldShowView = (view: 'overview' | 'categories' | 'heatmap'): boolean => {
@@ -122,7 +122,7 @@ export function SubscriptionDashboard({
       <div className="p-6 border-b">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <HiChartBar className="h-6 w-6 text-primary" />
+            <BarChart className="h-6 w-6 text-primary" />
             <div>
               <h3 className="text-lg font-semibold">Subscription Dashboard</h3>
               <p className="text-sm text-muted-foreground">
@@ -141,9 +141,9 @@ export function SubscriptionDashboard({
               {isExpanded ? 'Collapse' : 'Expand'}
             </span>
             {isExpanded ? (
-              <HiChevronUp className="h-4 w-4" />
+              <ChevronUp className="h-4 w-4" />
             ) : (
-              <HiChevronDown className="h-4 w-4" />
+              <ChevronDown className="h-4 w-4" />
             )}
           </button>
         </div>

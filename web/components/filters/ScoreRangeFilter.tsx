@@ -6,7 +6,7 @@
 
 'use client';
 
-import { HiStar } from 'react-icons/hi2';
+import { Star } from 'lucide-react';
 
 export interface ScoreRangeOption {
   label: string;
@@ -38,7 +38,7 @@ export function ScoreRangeFilter({
   return (
     <div className="w-full lg:w-auto">
       <div className="relative">
-        <HiStar className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
+        <Star className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}

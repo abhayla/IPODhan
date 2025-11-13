@@ -6,7 +6,7 @@
 
 'use client';
 
-import { HiExclamationCircle, HiArrowTrendingUp, HiBuildingOffice2 } from 'react-icons/hi2';
+import { AlertCircle, TrendingUp, Building2 } from 'lucide-react';
 import type { PeerCompany } from '@/lib/db/types';
 
 interface PeerComparisonSectionProps {
@@ -43,7 +43,7 @@ export function PeerComparisonSection({ peerCompanies, companyName }: PeerCompar
     return (
       <div className="rounded-lg border border-dashed border-muted-foreground/30 p-8">
         <div className="flex flex-col items-center justify-center gap-3 text-center">
-          <HiExclamationCircle className="h-10 w-10 text-muted-foreground/50" />
+          <AlertCircle className="h-10 w-10 text-muted-foreground/50" />
           <div>
             <h3 className="text-lg font-semibold text-foreground">No Peer Data Available</h3>
             <p className="text-sm text-muted-foreground mt-1">
@@ -60,7 +60,7 @@ export function PeerComparisonSection({ peerCompanies, companyName }: PeerCompar
       {/* Header */}
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <HiBuildingOffice2 className="h-5 w-5 text-primary" />
+          <Building2 className="h-5 w-5 text-primary" />
           <h3 className="text-xl font-bold text-foreground">Peer Comparison</h3>
         </div>
         <p className="text-sm text-muted-foreground">
@@ -190,7 +190,7 @@ export function PeerComparisonSection({ peerCompanies, companyName }: PeerCompar
       <div className="pt-4 border-t">
         <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-muted-foreground">
           <div className="flex items-center gap-1">
-            <HiArrowTrendingUp className="h-3 w-3" />
+            <TrendingUp className="h-3 w-3" />
             <span><strong>PE Ratio:</strong> Price-to-Earnings Ratio</span>
           </div>
           <div>

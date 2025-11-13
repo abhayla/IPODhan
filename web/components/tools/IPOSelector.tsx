@@ -16,7 +16,7 @@
 'use client';
 
 import * as React from 'react';
-import { HiXMark, HiExclamationCircle } from 'react-icons/hi2';
+import { X, AlertCircle } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -225,7 +225,7 @@ export function IPOSelector({
       {/* Validation Warning Alert */}
       {filteredCount > 0 && (
         <Alert variant="destructive">
-          <HiExclamationCircle className="h-4 w-4" />
+          <AlertCircle className="h-4 w-4" />
           <AlertDescription>
             {filteredCount} IPO{filteredCount > 1 ? 's' : ''} filtered due to
             invalid slugs. Contact support if you expected to see more IPOs.
@@ -301,7 +301,7 @@ export function IPOSelector({
                     className="hover:bg-muted rounded-full p-0.5 transition-colors"
                     aria-label={`Remove ${ipo.companyName}`}
                   >
-                    <HiXMark className="h-3 w-3" />
+                    <X className="h-3 w-3" />
                   </button>
                 </Badge>
               ))}

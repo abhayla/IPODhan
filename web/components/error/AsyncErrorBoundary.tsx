@@ -8,7 +8,7 @@
 
 import React, { ReactNode, Suspense } from 'react';
 import { ErrorBoundary } from './ErrorBoundary';
-import { HiArrowPath } from 'react-icons/hi2';
+import { RotateCw } from 'lucide-react';
 
 interface AsyncErrorBoundaryProps {
   children: ReactNode;
@@ -22,7 +22,7 @@ interface AsyncErrorBoundaryProps {
  */
 const DefaultLoadingFallback = () => (
   <div className="flex items-center justify-center p-8">
-    <HiArrowPath className="h-8 w-8 animate-spin text-primary" />
+    <RotateCw className="h-8 w-8 animate-spin text-primary" />
   </div>
 );
 

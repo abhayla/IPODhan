@@ -28,11 +28,11 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import {
-  HiArrowTrendingUp,
-  HiInformationCircle,
-  HiChevronDown,
-  HiChevronUp,
-} from 'react-icons/hi2';
+  TrendingUp,
+  Info,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
 import { AreaChartBase } from '../base/AreaChartBase';
 import type { GMPHistoryChartProps } from './types';
 import {
@@ -94,7 +94,7 @@ export function GMPHistoryChart({
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <HiArrowTrendingUp className="h-5 w-5 text-muted-foreground" />
+            <TrendingUp className="h-5 w-5 text-muted-foreground" />
             <CardTitle>GMP History & Trend Analysis</CardTitle>
           </div>
           <CardDescription>
@@ -118,13 +118,13 @@ export function GMPHistoryChart({
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <HiArrowTrendingUp className="h-5 w-5 text-muted-foreground" />
+            <TrendingUp className="h-5 w-5 text-muted-foreground" />
             <CardTitle>GMP History & Trend Analysis</CardTitle>
           </div>
         </CardHeader>
         <CardContent>
           <Alert variant="destructive">
-            <HiInformationCircle className="h-4 w-4" />
+            <Info className="h-4 w-4" />
             <AlertDescription>
               GMP data is incomplete or invalid. Please check data integrity.
             </AlertDescription>
@@ -222,7 +222,7 @@ export function GMPHistoryChart({
           <div className="flex items-start justify-between">
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <HiArrowTrendingUp className="h-5 w-5 text-muted-foreground" />
+                <TrendingUp className="h-5 w-5 text-muted-foreground" />
                 <CardTitle>GMP History & Trend Analysis</CardTitle>
               </div>
               <CardDescription>
@@ -240,12 +240,12 @@ export function GMPHistoryChart({
             >
               {isExpanded ? (
                 <>
-                  <HiChevronUp className="mr-1 h-4 w-4" />
+                  <ChevronUp className="mr-1 h-4 w-4" />
                   Collapse
                 </>
               ) : (
                 <>
-                  <HiChevronDown className="mr-1 h-4 w-4" />
+                  <ChevronDown className="mr-1 h-4 w-4" />
                   Expand
                 </>
               )}
@@ -341,7 +341,7 @@ export function GMPHistoryChart({
 
             {/* Info Note */}
             <Alert>
-              <HiInformationCircle className="h-4 w-4" />
+              <Info className="h-4 w-4" />
               <AlertDescription className="text-xs">
                 <strong>How to read:</strong> The shaded area shows GMP trend with ±10% confidence bands.
                 Dashed line represents 7-day moving average for smoothed trend. Grey market data is unofficial

@@ -11,7 +11,7 @@ import { AreaChartBase } from '../base/AreaChartBase';
 import { formatSubscription } from './utils';
 import type { OverallSubscriptionChartProps } from './types';
 import { format } from 'date-fns';
-import { HiArrowTrendingUp, HiCalendar, HiChartBar } from 'react-icons/hi2';
+import { TrendingUp, Calendar, BarChart } from 'lucide-react';
 
 export function OverallSubscriptionChart({
   data,
@@ -22,7 +22,7 @@ export function OverallSubscriptionChart({
   if (data.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-muted-foreground/25 p-8 text-center">
-        <HiChartBar className="mx-auto h-12 w-12 text-muted-foreground/50" />
+        <BarChart className="mx-auto h-12 w-12 text-muted-foreground/50" />
         <p className="mt-2 text-sm text-muted-foreground">
           No subscription data available yet
         </p>
@@ -149,7 +149,7 @@ export function OverallSubscriptionChart({
                 {formatSubscription(stats.total)}
               </p>
             </div>
-            <HiChartBar className="h-8 w-8 text-muted-foreground/50" />
+            <BarChart className="h-8 w-8 text-muted-foreground/50" />
           </div>
         </div>
 
@@ -167,7 +167,7 @@ export function OverallSubscriptionChart({
                 </p>
               )}
             </div>
-            <HiArrowTrendingUp className="h-8 w-8 text-muted-foreground/50" />
+            <TrendingUp className="h-8 w-8 text-muted-foreground/50" />
           </div>
         </div>
 
@@ -185,7 +185,7 @@ export function OverallSubscriptionChart({
                 </p>
               )}
             </div>
-            <HiCalendar className="h-8 w-8 text-muted-foreground/50" />
+            <Calendar className="h-8 w-8 text-muted-foreground/50" />
           </div>
         </div>
       </div>

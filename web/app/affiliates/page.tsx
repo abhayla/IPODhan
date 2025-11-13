@@ -1,5 +1,5 @@
 import { Metadata } from 'next';
-import { HiUsers, HiArrowTrendingUp, HiShieldCheck, HiBolt, HiTrophy, HiChartBar, HiArrowTopRightOnSquare, HiCheckCircle } from 'react-icons/hi2';
+import { Users, TrendingUp, ShieldCheck, Zap, Trophy, BarChart, ExternalLink, CheckCircle } from 'lucide-react';
 import { getActiveBrokers } from '@/lib/services/broker-affiliate-service';
 
 export const metadata: Metadata = {
@@ -35,22 +35,22 @@ export default async function AffiliatesPage() {
 
   const benefits = [
     {
-      icon: HiBolt,
+      icon: Zap,
       title: 'Quick Account Opening',
       description: 'Complete paperless KYC in under 10 minutes',
     },
     {
-      icon: HiShieldCheck,
+      icon: ShieldCheck,
       title: 'SEBI Registered',
       description: 'All partner brokers are SEBI registered and regulated',
     },
     {
-      icon: HiArrowTrendingUp,
+      icon: TrendingUp,
       title: 'IPO Applications',
       description: 'Apply for IPOs directly through your demat account',
     },
     {
-      icon: HiTrophy,
+      icon: Trophy,
       title: 'Special Offers',
       description: 'Exclusive benefits for IPODhan users',
     },
@@ -157,14 +157,14 @@ export default async function AffiliatesPage() {
                           </div>
                         </div>
                         <div className="w-16 h-16 bg-gray-100 dark:bg-gray-700 rounded-lg flex items-center justify-center">
-                          <HiUsers className="h-8 w-8 text-gray-400" />
+                          <Users className="h-8 w-8 text-gray-400" />
                         </div>
                       </div>
 
                       <div className="space-y-2 mb-4">
                         {broker.features.map((feature, idx) => (
                           <div key={idx} className="flex items-start gap-2 text-sm">
-                            <HiCheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
+                            <CheckCircle className="h-4 w-4 text-green-500 mt-0.5 flex-shrink-0" />
                             <span className="text-gray-600 dark:text-gray-400">{feature}</span>
                           </div>
                         ))}
@@ -190,7 +190,7 @@ export default async function AffiliatesPage() {
                         className="block w-full bg-gradient-to-r from-green-600 to-blue-600 text-white text-center py-3 rounded-lg hover:from-green-700 hover:to-blue-700 transition-all duration-300 font-semibold group-hover:scale-105"
                       >
                         {broker.ctaText}
-                        <HiArrowTopRightOnSquare className="inline-block ml-2 h-4 w-4" />
+                        <ExternalLink className="inline-block ml-2 h-4 w-4" />
                       </a>
                     </div>
                   </div>
@@ -225,16 +225,16 @@ export default async function AffiliatesPage() {
                     <tr key={index} className="border-b dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
                       <td className="p-4 text-gray-700 dark:text-gray-300">{feature}</td>
                       <td className="p-4 text-center">
-                        <HiCheckCircle className="h-5 w-5 text-green-500 mx-auto" />
+                        <CheckCircle className="h-5 w-5 text-green-500 mx-auto" />
                       </td>
                       <td className="p-4 text-center">
-                        <HiCheckCircle className="h-5 w-5 text-green-500 mx-auto" />
+                        <CheckCircle className="h-5 w-5 text-green-500 mx-auto" />
                       </td>
                       <td className="p-4 text-center">
-                        <HiCheckCircle className="h-5 w-5 text-green-500 mx-auto" />
+                        <CheckCircle className="h-5 w-5 text-green-500 mx-auto" />
                       </td>
                       <td className="p-4 text-center">
-                        <HiCheckCircle className="h-5 w-5 text-green-500 mx-auto" />
+                        <CheckCircle className="h-5 w-5 text-green-500 mx-auto" />
                       </td>
                     </tr>
                   ))}
@@ -293,7 +293,7 @@ export default async function AffiliatesPage() {
       {/* CTA Section */}
       <section className="container mx-auto px-4 py-16">
         <div className="max-w-4xl mx-auto text-center">
-          <HiChartBar className="h-12 w-12 text-green-600 dark:text-green-400 mx-auto mb-6" />
+          <BarChart className="h-12 w-12 text-green-600 dark:text-green-400 mx-auto mb-6" />
           <h2 className="text-3xl font-bold mb-6 text-gray-900 dark:text-gray-100">
             Start Your IPO Investment Journey Today
           </h2>

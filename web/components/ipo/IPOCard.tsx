@@ -4,7 +4,7 @@ import { IPO, IPOStatus, ListingPerformance, IPOScore } from '@/lib/db/types';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { HiStar } from 'react-icons/hi2';
+import { Star } from 'lucide-react';
 import { HighlightedText } from '@/components/search/HighlightedText';
 import { ListingPerformanceBadge } from './ListingPerformanceBadge';
 import { ScoreBadge } from './ScoreBadge';
@@ -98,13 +98,13 @@ const RatingHiStars = ({ rating }: { rating: number | null }) => {
   return (
     <div className="flex items-center gap-1">
       {[...Array(fullHiStars)].map((_, i) => (
-        <HiStar key={`full-${i}`} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+        <Star key={`full-${i}`} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
       ))}
       {hasHalfHiStar && (
-        <HiStar className="h-4 w-4 fill-yellow-400 text-yellow-400 opacity-50" />
+        <Star className="h-4 w-4 fill-yellow-400 text-yellow-400 opacity-50" />
       )}
       {[...Array(emptyHiStars)].map((_, i) => (
-        <HiStar key={`empty-${i}`} className="h-4 w-4 text-gray-300" />
+        <Star key={`empty-${i}`} className="h-4 w-4 text-gray-300" />
       ))}
       <span className="ml-1 text-sm text-muted-foreground">{rating.toFixed(1)}</span>
     </div>

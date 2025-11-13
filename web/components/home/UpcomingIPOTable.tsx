@@ -15,7 +15,7 @@
 
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { HiArrowRight } from 'react-icons/hi2';
+import { ArrowRight } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -172,7 +172,7 @@ export function UpcomingIPOTable({
           className="text-primary hover:text-primary/80 hover:underline font-medium flex items-center gap-1 justify-end"
         >
           {moreLinkText}
-          <HiArrowRight className="h-4 w-4" />
+          <ArrowRight className="h-4 w-4" />
         </Link>
       </div>
     </div>

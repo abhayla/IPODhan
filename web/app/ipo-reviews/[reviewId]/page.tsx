@@ -17,7 +17,7 @@
 
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { HiArrowLeft, HiDocumentText, HiArrowTrendingUp, HiBuildingOffice2, HiCurrencyDollar, HiChartBar, HiExclamationTriangle, HiUsers } from 'react-icons/hi2';
+import { ArrowLeft, FileText, TrendingUp, Building2, DollarSign, BarChart, AlertTriangle, Users } from 'lucide-react';
 import { getReviewById } from '@/lib/services/mainboard-reviews-service';
 
 interface Props {
@@ -41,7 +41,7 @@ export default async function ReviewDetailPage({ params }: Props) {
         href="/mainboard-ipo-reviews"
         className="inline-flex items-center gap-2 text-primary hover:underline mb-6"
       >
-        <HiArrowLeft className="h-4 w-4" />
+        <ArrowLeft className="h-4 w-4" />
         Back to Reviews
       </Link>
 
@@ -96,7 +96,7 @@ export default async function ReviewDetailPage({ params }: Props) {
           {/* Company Background */}
           <div className="border rounded-lg p-4 bg-gray-50">
             <div className="flex items-start gap-3">
-              <HiBuildingOffice2 className="h-5 w-5 text-blue-600 mt-1" />
+              <Building2 className="h-5 w-5 text-blue-600 mt-1" />
               <div>
                 <h3 className="font-semibold mb-1">Company Background</h3>
                 <p className="text-sm text-gray-600">
@@ -109,7 +109,7 @@ export default async function ReviewDetailPage({ params }: Props) {
           {/* Offer Details */}
           <div className="border rounded-lg p-4 bg-gray-50">
             <div className="flex items-start gap-3">
-              <HiDocumentText className="h-5 w-5 text-green-600 mt-1" />
+              <FileText className="h-5 w-5 text-green-600 mt-1" />
               <div>
                 <h3 className="font-semibold mb-1">Offer Details</h3>
                 <p className="text-sm text-gray-600">
@@ -122,7 +122,7 @@ export default async function ReviewDetailPage({ params }: Props) {
           {/* Company Valuation */}
           <div className="border rounded-lg p-4 bg-gray-50">
             <div className="flex items-start gap-3">
-              <HiCurrencyDollar className="h-5 w-5 text-purple-600 mt-1" />
+              <DollarSign className="h-5 w-5 text-purple-600 mt-1" />
               <div>
                 <h3 className="font-semibold mb-1">Company Valuation</h3>
                 <p className="text-sm text-gray-600">
@@ -135,7 +135,7 @@ export default async function ReviewDetailPage({ params }: Props) {
           {/* Capital Structure */}
           <div className="border rounded-lg p-4 bg-gray-50">
             <div className="flex items-start gap-3">
-              <HiChartBar className="h-5 w-5 text-indigo-600 mt-1" />
+              <BarChart className="h-5 w-5 text-indigo-600 mt-1" />
               <div>
                 <h3 className="font-semibold mb-1">Capital Structure</h3>
                 <p className="text-sm text-gray-600">
@@ -148,7 +148,7 @@ export default async function ReviewDetailPage({ params }: Props) {
           {/* Financial Performance */}
           <div className="border rounded-lg p-4 bg-gray-50">
             <div className="flex items-start gap-3">
-              <HiArrowTrendingUp className="h-5 w-5 text-emerald-600 mt-1" />
+              <TrendingUp className="h-5 w-5 text-emerald-600 mt-1" />
               <div>
                 <h3 className="font-semibold mb-1">Financial Performance</h3>
                 <p className="text-sm text-gray-600">
@@ -161,7 +161,7 @@ export default async function ReviewDetailPage({ params }: Props) {
           {/* Strengths & Risks */}
           <div className="border rounded-lg p-4 bg-gray-50">
             <div className="flex items-start gap-3">
-              <HiExclamationTriangle className="h-5 w-5 text-orange-600 mt-1" />
+              <AlertTriangle className="h-5 w-5 text-orange-600 mt-1" />
               <div>
                 <h3 className="font-semibold mb-1">Strengths & Risks</h3>
                 <p className="text-sm text-gray-600">
@@ -174,7 +174,7 @@ export default async function ReviewDetailPage({ params }: Props) {
           {/* Peer Comparison */}
           <div className="border rounded-lg p-4 bg-gray-50">
             <div className="flex items-start gap-3">
-              <HiUsers className="h-5 w-5 text-cyan-600 mt-1" />
+              <Users className="h-5 w-5 text-cyan-600 mt-1" />
               <div>
                 <h3 className="font-semibold mb-1">Peer Comparison</h3>
                 <p className="text-sm text-gray-600">
@@ -187,7 +187,7 @@ export default async function ReviewDetailPage({ params }: Props) {
           {/* Analyst Recommendation */}
           <div className="border rounded-lg p-4 bg-gray-50">
             <div className="flex items-start gap-3">
-              <HiDocumentText className="h-5 w-5 text-blue-600 mt-1" />
+              <FileText className="h-5 w-5 text-blue-600 mt-1" />
               <div>
                 <h3 className="font-semibold mb-1">Analyst Recommendation</h3>
                 <p className="text-sm text-gray-600">
@@ -222,7 +222,7 @@ export default async function ReviewDetailPage({ params }: Props) {
           href="/mainboard-ipo-reviews"
           className="inline-flex items-center gap-2 px-6 py-3 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
         >
-          <HiArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-4 w-4" />
           Browse More Reviews
         </Link>
       </div>

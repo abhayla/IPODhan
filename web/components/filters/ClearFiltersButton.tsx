@@ -1,7 +1,7 @@
 'use client';
 
 import { Button } from '@/components/ui/button';
-import { HiXMark } from 'react-icons/hi2';
+import { X } from 'lucide-react';
 
 interface ClearFiltersButtonProps {
   onClear: () => void;
@@ -21,7 +21,7 @@ export function ClearFiltersButton({ onClear, disabled }: ClearFiltersButtonProp
       className="w-full lg:w-auto lg:ml-auto transition-all duration-200 hover:scale-105 hover:border-destructive hover:text-destructive disabled:opacity-50 disabled:cursor-not-allowed"
       aria-label="Clear all filters"
     >
-      <HiXMark className="mr-2 h-4 w-4 transition-transform duration-200 group-hover:rotate-90" />
+      <X className="mr-2 h-4 w-4 transition-transform duration-200 group-hover:rotate-90" />
       Clear Filters
     </Button>
   );

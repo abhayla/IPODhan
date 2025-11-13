@@ -8,7 +8,7 @@
 'use client';
 
 import React, { ErrorInfo, ReactNode } from 'react';
-import { HiExclamationCircle, HiArrowPath, HiHome, HiBugAnt } from 'react-icons/hi2';
+import { AlertCircle, RotateCw, Home, Bug } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import Link from 'next/link';
@@ -101,7 +101,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
           <Card className="w-full max-w-lg shadow-xl border-destructive/20">
             <CardHeader className="text-center">
               <div className="mx-auto mb-4 p-3 bg-destructive/10 rounded-full w-fit">
-                <HiExclamationCircle className="h-8 w-8 text-destructive" />
+                <AlertCircle className="h-8 w-8 text-destructive" />
               </div>
               <CardTitle className="text-2xl">Oops! Something went wrong</CardTitle>
               <CardDescription>
@@ -113,7 +113,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
               {process.env.NODE_ENV === 'development' && this.state.error && (
                 <div className="p-4 bg-muted rounded-lg space-y-2">
                   <div className="flex items-center gap-2 text-sm font-medium">
-                    <HiBugAnt className="h-4 w-4" />
+                    <Bug className="h-4 w-4" />
                     <span>Error Details (Development Only)</span>
                   </div>
                   <pre className="text-xs overflow-auto p-2 bg-background rounded">
@@ -138,7 +138,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
                   variant="default"
                   className="w-full"
                 >
-                  <HiArrowPath className="mr-2 h-4 w-4" />
+                  <RotateCw className="mr-2 h-4 w-4" />
                   Try Again
                 </Button>
 
@@ -152,7 +152,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
 
                 <Link href="/" className="w-full">
                   <Button variant="ghost" className="w-full">
-                    <HiHome className="mr-2 h-4 w-4" />
+                    <Home className="mr-2 h-4 w-4" />
                     Go to Homepage
                   </Button>
                 </Link>

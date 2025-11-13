@@ -9,7 +9,7 @@
  *
  * @example
  * <Breadcrumbs items={[
- *   { label: 'HiHome', href: '/' },
+ *   { label: 'Home', href: '/' },
  *   { label: 'IPOs', href: '/ipos' },
  *   { label: 'Company Name', href: '/ipos/slug' }
  * ]} />
@@ -18,7 +18,7 @@
 'use client';
 
 import Link from 'next/link';
-import { HiChevronRight, HiHome } from 'react-icons/hi2';
+import { ChevronRight, Home } from 'lucide-react';
 
 export interface BreadcrumbItem {
   label: string;
@@ -32,7 +32,7 @@ interface BreadcrumbsProps {
 
 /**
  * Breadcrumbs component for navigation hierarchy
- * Displays: HiHome > IPOs > Company Name
+ * Displays: Home > IPOs > Company Name
  */
 export function Breadcrumbs({ items, className = '' }: BreadcrumbsProps) {
   if (!items || items.length === 0) {
@@ -53,7 +53,7 @@ export function Breadcrumbs({ items, className = '' }: BreadcrumbsProps) {
             <li key={item.href || item.label} className="flex items-center gap-2">
               {/* Separator (except for first item) */}
               {!isFirst && (
-                <HiChevronRight className="h-4 w-4 text-muted-foreground" />
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
               )}
 
               {/* Breadcrumb Link */}
@@ -65,7 +65,7 @@ export function Breadcrumbs({ items, className = '' }: BreadcrumbsProps) {
                 >
                   {/* Show home icon for first breadcrumb if it's home */}
                   {isFirst && item.label.toLowerCase() === 'home' && (
-                    <HiHome className="inline h-4 w-4" />
+                    <Home className="inline h-4 w-4" />
                   )}
                   {/* Hide text on mobile for non-last items */}
                   <span className={isFirst ? 'ml-1' : ''}>
@@ -80,7 +80,7 @@ export function Breadcrumbs({ items, className = '' }: BreadcrumbsProps) {
                 >
                   {/* Show home icon for first breadcrumb if it's home */}
                   {isFirst && item.label.toLowerCase() === 'home' && (
-                    <HiHome className="inline h-4 w-4" />
+                    <Home className="inline h-4 w-4" />
                   )}
                   {/* Hide text on mobile for first item (home) */}
                   <span

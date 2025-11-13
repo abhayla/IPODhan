@@ -15,7 +15,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { HiMagnifyingGlass, HiXMark, HiClock } from 'react-icons/hi2';
+import { Search, X, Clock } from 'lucide-react';
 import { useDebounce } from '@/hooks/useDebounce';
 import { saveSearch, getRecentSearches } from '@/lib/search-history';
 import { Input } from '@/components/ui/input';
@@ -163,7 +163,7 @@ export function SearchBar() {
     <div className="relative w-full group">
       {/* Search Input */}
       <div className="relative">
-        <HiMagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground transition-all duration-200 group-hover:text-primary group-focus-within:text-primary group-focus-within:scale-110" />
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground transition-all duration-200 group-hover:text-primary group-focus-within:text-primary group-focus-within:scale-110" />
 
         <Input
           type="search"
@@ -184,7 +184,7 @@ export function SearchBar() {
             aria-label="Clear search"
             className="absolute right-3 top-1/2 -translate-y-1/2 p-1.5 hover:bg-destructive/10 rounded-full transition-all duration-200 hover:scale-110 group/clear animate-in fade-in zoom-in"
           >
-            <HiXMark className="h-4 w-4 text-muted-foreground group-hover/clear:text-destructive transition-colors duration-200" />
+            <X className="h-4 w-4 text-muted-foreground group-hover/clear:text-destructive transition-colors duration-200" />
           </button>
         )}
 
@@ -208,7 +208,7 @@ export function SearchBar() {
               onClick={() => handleRecentSearchClick(query)}
               className="w-full text-left px-4 py-3 hover:bg-primary/5 transition-all duration-200 flex items-center gap-3 text-sm border-b border-border/50 last:border-0 group/item hover:pl-5"
             >
-              <HiClock className="h-4 w-4 text-muted-foreground group-hover/item:text-primary transition-colors duration-200" />
+              <Clock className="h-4 w-4 text-muted-foreground group-hover/item:text-primary transition-colors duration-200" />
               <span className="group-hover/item:text-primary transition-colors duration-200">{query}</span>
             </button>
           ))}

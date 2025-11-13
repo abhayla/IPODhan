@@ -14,7 +14,7 @@
 'use client';
 
 import React, { Component, ReactNode } from 'react';
-import { HiExclamationCircle, HiArrowPath } from 'react-icons/hi2';
+import { AlertCircle, RotateCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface TabErrorBoundaryProps {
@@ -89,7 +89,7 @@ export class TabErrorBoundary extends Component<
         <div className="rounded-lg border-2 border-destructive/50 bg-card p-8 text-center space-y-4">
           <div className="flex justify-center">
             <div className="rounded-full bg-destructive/10 p-3">
-              <HiExclamationCircle className="h-8 w-8 text-destructive" />
+              <AlertCircle className="h-8 w-8 text-destructive" />
             </div>
           </div>
 
@@ -120,7 +120,7 @@ export class TabErrorBoundary extends Component<
               size="default"
               className="gap-2"
             >
-              <HiArrowPath className="h-4 w-4" />
+              <RotateCw className="h-4 w-4" />
               Retry Loading
             </Button>
             <Button

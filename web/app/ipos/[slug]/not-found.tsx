@@ -9,7 +9,7 @@
 
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { HiQuestionMarkCircle, HiArrowLeft } from 'react-icons/hi2';
+import { HelpCircle, ArrowLeft } from 'lucide-react';
 
 /**
  * 404 Not Found Component
@@ -21,7 +21,7 @@ export default function NotFound() {
       <div className="text-center">
         {/* Icon */}
         <div className="mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-muted">
-          <HiQuestionMarkCircle className="h-12 w-12 text-muted-foreground" />
+          <HelpCircle className="h-12 w-12 text-muted-foreground" />
         </div>
 
         {/* Heading */}
@@ -38,7 +38,7 @@ export default function NotFound() {
         <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
           <Button asChild size="lg">
             <Link href="/dashboard">
-              <HiArrowLeft className="mr-2 h-4 w-4" />
+              <ArrowLeft className="mr-2 h-4 w-4" />
               Browse All IPOs
             </Link>
           </Button>

@@ -14,7 +14,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { HiUsers, HiChartPie } from 'react-icons/hi2';
+import { Users, PieChart } from 'lucide-react';
 
 interface CategoryReservationData {
   qibSharesOffered: number | null;
@@ -116,7 +116,7 @@ export function CategoryReservationSection({ reservationData }: CategoryReservat
     <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <HiChartPie className="h-5 w-5 text-primary" />
+          <PieChart className="h-5 w-5 text-primary" />
           <CardTitle>Category-wise Reservation</CardTitle>
         </div>
         <p className="text-sm text-muted-foreground">
@@ -128,7 +128,7 @@ export function CategoryReservationSection({ reservationData }: CategoryReservat
           {/* Total Shares Summary */}
           <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-1">
-              <HiUsers className="h-4 w-4 text-primary" />
+              <Users className="h-4 w-4 text-primary" />
               <p className="text-sm font-medium text-muted-foreground">Total Shares Offered</p>
             </div>
             <p className="text-2xl font-bold text-primary">{formatNumber(totalSharesOffered)}</p>

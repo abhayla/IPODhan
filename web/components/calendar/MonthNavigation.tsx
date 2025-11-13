@@ -12,7 +12,7 @@
 'use client';
 
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { HiChevronLeft, HiChevronRight } from 'react-icons/hi2';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 // ==================== TYPES ====================
@@ -113,7 +113,7 @@ export default function MonthNavigation({
         aria-label="Previous month"
         className="flex items-center gap-1"
       >
-        <HiChevronLeft className="h-4 w-4" />
+        <ChevronLeft className="h-4 w-4" />
         <span className="hidden sm:inline">Previous</span>
       </Button>
 
@@ -131,7 +131,7 @@ export default function MonthNavigation({
         className="flex items-center gap-1"
       >
         <span className="hidden sm:inline">Next</span>
-        <HiChevronRight className="h-4 w-4" />
+        <ChevronRight className="h-4 w-4" />
       </Button>
     </div>
   );

@@ -1,7 +1,7 @@
 'use client';
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { HiArrowTrendingUp, HiArrowTrendingDown, HiCurrencyDollar, HiUsers, HiChartBar } from 'react-icons/hi2';
+import { TrendingUp, TrendingDown, DollarSign, Users, BarChart } from 'lucide-react';
 
 interface KeyMetricsCardsProps {
   issueSize: number;
@@ -39,10 +39,10 @@ export function KeyMetricsCards({
 
   const getTrendIcon = () => {
     if (subscriptionTrend === 'up') {
-      return <HiArrowTrendingUp className="h-4 w-4 text-green-600" />;
+      return <TrendingUp className="h-4 w-4 text-green-600" />;
     }
     if (subscriptionTrend === 'down') {
-      return <HiArrowTrendingDown className="h-4 w-4 text-red-600" />;
+      return <TrendingDown className="h-4 w-4 text-red-600" />;
     }
     return null;
   };
@@ -62,7 +62,7 @@ export function KeyMetricsCards({
             Issue Size
           </CardTitle>
           <div className="rounded-full bg-blue-100 p-2 dark:bg-blue-900/30 transition-transform duration-300 group-hover:scale-110">
-            <HiCurrencyDollar className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+            <DollarSign className="h-4 w-4 text-blue-600 dark:text-blue-400" />
           </div>
         </CardHeader>
         <CardContent className="relative">
@@ -83,7 +83,7 @@ export function KeyMetricsCards({
             Subscription
           </CardTitle>
           <div className="rounded-full bg-purple-100 p-2 dark:bg-purple-900/30 transition-transform duration-300 group-hover:scale-110">
-            <HiUsers className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+            <Users className="h-4 w-4 text-purple-600 dark:text-purple-400" />
           </div>
         </CardHeader>
         <CardContent className="relative">
@@ -113,7 +113,7 @@ export function KeyMetricsCards({
             Grey Market Premium
           </CardTitle>
           <div className="rounded-full bg-emerald-100 p-2 dark:bg-emerald-900/30 transition-transform duration-300 group-hover:scale-110">
-            <HiChartBar className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+            <BarChart className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
           </div>
         </CardHeader>
         <CardContent className="relative">

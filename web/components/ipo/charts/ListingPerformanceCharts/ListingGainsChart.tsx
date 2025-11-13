@@ -9,7 +9,7 @@
 import { GaugeChartBase } from '../base/GaugeChartBase';
 import { formatCurrency, formatPercent, getPerformanceRating } from './utils';
 import type { ListingGainsChartProps } from './types';
-import { HiArrowTrendingUp, HiArrowTrendingDown } from 'react-icons/hi2';
+import { TrendingUp, TrendingDown } from 'lucide-react';
 
 export function ListingGainsChart({
   issuePrice,
@@ -60,9 +60,9 @@ export function ListingGainsChart({
               </p>
             </div>
             {isPositive ? (
-              <HiArrowTrendingUp className="h-8 w-8 text-green-600" />
+              <TrendingUp className="h-8 w-8 text-green-600" />
             ) : (
-              <HiArrowTrendingDown className="h-8 w-8 text-red-600" />
+              <TrendingDown className="h-8 w-8 text-red-600" />
             )}
           </div>
 
@@ -100,9 +100,9 @@ export function ListingGainsChart({
                 </p>
               </div>
               {(currentGainPercent ?? 0) >= 0 ? (
-                <HiArrowTrendingUp className="h-8 w-8 text-green-600" />
+                <TrendingUp className="h-8 w-8 text-green-600" />
               ) : (
-                <HiArrowTrendingDown className="h-8 w-8 text-red-600" />
+                <TrendingDown className="h-8 w-8 text-red-600" />
               )}
             </div>
 

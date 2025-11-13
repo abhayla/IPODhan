@@ -1,7 +1,7 @@
 'use client';
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { HiTag } from 'react-icons/hi2';
+import { Tag } from 'lucide-react';
 
 interface CategoryFilterProps {
   value: string;
@@ -20,7 +20,7 @@ export function CategoryFilter({ value, onChange }: CategoryFilterProps) {
           className="w-full lg:w-[180px] transition-all duration-200 hover:border-primary hover:bg-muted/50"
           aria-label="Filter IPOs by category (Mainboard, SME, Rights, NCD, FPO)"
         >
-          <HiTag className="mr-2 h-4 w-4 transition-colors duration-200 group-hover:text-primary" />
+          <Tag className="mr-2 h-4 w-4 transition-colors duration-200 group-hover:text-primary" />
           <SelectValue placeholder="Filter by category" />
         </SelectTrigger>
         <SelectContent>

@@ -7,7 +7,7 @@
 
 'use client';
 
-import { HiExclamationCircle } from 'react-icons/hi2';
+import { AlertCircle } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 export interface StaleDataBannerProps {
@@ -36,7 +36,7 @@ export function StaleDataBanner({
 
   return (
     <Alert variant={variant} className="mb-4">
-      <HiExclamationCircle className="h-4 w-4" />
+      <AlertCircle className="h-4 w-4" />
       <AlertTitle>
         {allScrapersFailing
           ? 'IPO Data Currently Unavailable'

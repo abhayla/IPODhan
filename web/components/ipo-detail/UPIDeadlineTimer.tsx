@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { differenceInSeconds, format, parseISO, set, isAfter, isBefore } from 'date-fns';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
-import { HiClock, HiExclamationTriangle, HiCheckCircle } from 'react-icons/hi2';
+import { Clock, AlertTriangle, CheckCircle } from 'lucide-react';
 
 interface UPIDeadlineTimerProps {
   closeDate: string; // IPO close date (ISO string)
@@ -125,11 +125,11 @@ export function UPIDeadlineTimer({
   const getIcon = () => {
     switch (urgencyLevel) {
       case 'critical':
-        return <HiExclamationTriangle className="h-4 w-4" />;
+        return <AlertTriangle className="h-4 w-4" />;
       case 'expired':
-        return <HiCheckCircle className="h-4 w-4" />;
+        return <CheckCircle className="h-4 w-4" />;
       default:
-        return <HiClock className="h-4 w-4" />;
+        return <Clock className="h-4 w-4" />;
     }
   };
 
@@ -321,7 +321,7 @@ export function UPIDeadlineTimerInline({
       }
       className="inline-flex items-center gap-1"
     >
-      <HiClock className="h-3 w-3" />
+      <Clock className="h-3 w-3" />
       UPI: {formatCompact()}
     </Badge>
   );

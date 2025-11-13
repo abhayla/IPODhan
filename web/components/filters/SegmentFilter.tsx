@@ -1,6 +1,6 @@
 'use client';
 
-import { HiBuildingOffice2 } from 'react-icons/hi2';
+import { Building2 } from 'lucide-react';
 
 interface SegmentFilterProps {
   value: string;
@@ -16,7 +16,7 @@ export function SegmentFilter({ value, onChange }: SegmentFilterProps) {
   return (
     <div className="w-full lg:w-auto">
       <div className="relative">
-        <HiBuildingOffice2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
+        <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}

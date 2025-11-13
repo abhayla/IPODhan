@@ -10,7 +10,7 @@
 import { LineChartBase } from '../base/LineChartBase';
 import { formatSubscription, getCategoryTrend } from './utils';
 import type { InvestorCategoryCardsProps } from './types';
-import { HiArrowTrendingUp, HiArrowTrendingDown, HiMinus } from 'react-icons/hi2';
+import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 export function InvestorCategoryCards({
   categories,
@@ -51,11 +51,11 @@ export function InvestorCategoryCards({
   const getTrendIcon = (direction: 'up' | 'down' | 'neutral') => {
     switch (direction) {
       case 'up':
-        return HiArrowTrendingUp;
+        return TrendingUp;
       case 'down':
-        return HiArrowTrendingDown;
+        return TrendingDown;
       default:
-        return HiMinus;
+        return Minus;
     }
   };
 

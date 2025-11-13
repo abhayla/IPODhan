@@ -1,6 +1,6 @@
 'use client';
 
-import { HiFunnel } from 'react-icons/hi2';
+import { Filter } from 'lucide-react';
 
 interface StatusFilterProps {
   value: string;
@@ -17,7 +17,7 @@ export function StatusFilter({ value, onChange }: StatusFilterProps) {
   return (
     <div className="w-full lg:w-auto">
       <div className="relative">
-        <HiFunnel className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
+        <Filter className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
         <select
           value={value}
           onChange={(e) => onChange(e.target.value)}

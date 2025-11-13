@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
-import { HiExclamationTriangle, HiArrowPath, HiHome } from 'react-icons/hi2';
+import { AlertTriangle, RotateCw, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 // TEMPORARILY DISABLED: Sentry causing module loading errors
@@ -44,7 +44,7 @@ export default function Error({
     <div className="container mx-auto px-4 py-8" role="alert" aria-live="assertive">
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
         <Alert variant="destructive" className="max-w-2xl">
-          <HiExclamationTriangle className="h-5 w-5" />
+          <AlertTriangle className="h-5 w-5" />
           <AlertTitle className="text-xl font-bold">Something went wrong!</AlertTitle>
           <AlertDescription className="mt-2">
             <p className="mb-4">
@@ -67,11 +67,11 @@ export default function Error({
             )}
             <div className="flex gap-2">
               <Button onClick={reset} variant="outline" className="gap-2">
-                <HiArrowPath className="h-4 w-4" />
+                <RotateCw className="h-4 w-4" />
                 Try Again
               </Button>
               <Button onClick={() => (window.location.href = '/')} variant="ghost" className="gap-2">
-                <HiHome className="h-4 w-4" />
+                <Home className="h-4 w-4" />
                 Go Home
               </Button>
             </div>

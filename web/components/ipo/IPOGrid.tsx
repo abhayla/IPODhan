@@ -2,7 +2,7 @@
 
 import { IPO } from '@/lib/db/types';
 import { IPOCard } from '@/components/ipo/IPOCard';
-import { HiInbox, HiMagnifyingGlass as SearchIcon } from 'react-icons/hi2';
+import { Inbox, Search as SearchIcon } from 'lucide-react';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useRouter } from 'next/navigation';
 
@@ -32,7 +32,7 @@ export function IPOGrid({ ipos, view, searchQuery }: IPOGridProps) {
 
     return (
       <EmptyState
-        icon={HiInbox}
+        icon={Inbox}
         title="No IPOs found"
         description="Try adjusting your filters or check back later for new IPO listings."
         action={{

@@ -15,7 +15,7 @@
 'use client';
 
 import * as React from 'react';
-import { HiArrowTrendingUp, HiArrowTrendingDown, HiInformationCircle } from 'react-icons/hi2';
+import { TrendingUp, TrendingDown, Info } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -175,7 +175,7 @@ export function ComparisonTable({
       {/* Mobile Scroll Indicator */}
       <div className="md:hidden">
         <Alert className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-          <HiInformationCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
           <AlertDescription className="text-sm text-blue-900 dark:text-blue-100">
             Scroll horizontally to see all comparison data
           </AlertDescription>
@@ -281,7 +281,7 @@ export function ComparisonTable({
                 >
                   {formatSubscription(ipo.subscription.total)}
                   {idx === bestSub && ipo.subscription.total !== null && (
-                    <HiArrowTrendingUp className="inline-block ml-1 h-3 w-3" />
+                    <TrendingUp className="inline-block ml-1 h-3 w-3" />
                   )}
                 </TableCell>
               ))}
@@ -302,7 +302,7 @@ export function ComparisonTable({
                 >
                   {formatCurrency(ipo.gmp)}
                   {idx === bestGMP && ipo.gmp !== null && (
-                    <HiArrowTrendingUp className="inline-block ml-1 h-3 w-3" />
+                    <TrendingUp className="inline-block ml-1 h-3 w-3" />
                   )}
                 </TableCell>
               ))}
@@ -325,7 +325,7 @@ export function ComparisonTable({
                     ? ipo.financials.peRatio.toFixed(2)
                     : 'N/A'}
                   {idx === bestPE && ipo.financials.peRatio !== null && (
-                    <HiArrowTrendingDown className="inline-block ml-1 h-3 w-3" />
+                    <TrendingDown className="inline-block ml-1 h-3 w-3" />
                   )}
                 </TableCell>
               ))}
@@ -346,7 +346,7 @@ export function ComparisonTable({
                 >
                   {formatPercentage(ipo.financials.roe)}
                   {idx === bestROE && ipo.financials.roe !== null && (
-                    <HiArrowTrendingUp className="inline-block ml-1 h-3 w-3" />
+                    <TrendingUp className="inline-block ml-1 h-3 w-3" />
                   )}
                 </TableCell>
               ))}
@@ -369,7 +369,7 @@ export function ComparisonTable({
                   >
                     {pbRatio !== null ? pbRatio.toFixed(2) : 'N/A'}
                     {idx === bestPB && pbRatio !== null && (
-                      <HiArrowTrendingDown className="inline-block ml-1 h-3 w-3" />
+                      <TrendingDown className="inline-block ml-1 h-3 w-3" />
                     )}
                   </TableCell>
                 );
@@ -393,7 +393,7 @@ export function ComparisonTable({
                   >
                     {formatPercentage(roce)}
                     {idx === bestROCE && roce !== null && (
-                      <HiArrowTrendingUp className="inline-block ml-1 h-3 w-3" />
+                      <TrendingUp className="inline-block ml-1 h-3 w-3" />
                     )}
                   </TableCell>
                 );
@@ -457,7 +457,7 @@ export function ComparisonTable({
                       <div className="flex items-center gap-1">
                         <span className="text-lg">{ipo.rating}/5</span>
                         {idx === bestRating && (
-                          <HiArrowTrendingUp className="h-3 w-3" />
+                          <TrendingUp className="h-3 w-3" />
                         )}
                       </div>
                       {ipo.ratingRationale && (

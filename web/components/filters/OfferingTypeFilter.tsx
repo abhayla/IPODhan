@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { HiDocumentText, HiChevronDown } from 'react-icons/hi2';
+import { FileText, ChevronDown } from 'lucide-react';
 
 interface OfferingTypeFilterProps {
   value: string[]; // Array of selected offering types
@@ -81,7 +81,7 @@ export function OfferingTypeFilter({ value, onChange }: OfferingTypeFilterProps)
         onClick={() => setIsOpen(!isOpen)}
       >
         <span className="flex items-center gap-2">
-          <HiDocumentText className="h-4 w-4 text-muted-foreground" />
+          <FileText className="h-4 w-4 text-muted-foreground" />
           <span>{displayText}</span>
         </span>
         <div className="flex items-center gap-2">
@@ -90,7 +90,7 @@ export function OfferingTypeFilter({ value, onChange }: OfferingTypeFilterProps)
               {selectedCount}
             </span>
           )}
-          <HiChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </div>
       </button>
 

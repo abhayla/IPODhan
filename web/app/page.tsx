@@ -1,10 +1,12 @@
 import Image from "next/image";
 import Script from "next/script";
 import type { Metadata } from "next";
-import { AffiliateCTAWrapper } from "@/components/affiliate/AffiliateCTAWrapper";
+// TEMP: AffiliateCTAWrapper commented out - causes webpack error (Session 5)
+// import { AffiliateCTAWrapper } from "@/components/affiliate/AffiliateCTAWrapper";
 import { HomeIPOTablesSection } from "@/components/home/HomeIPOTablesSection";
 import { IPOTableSkeleton } from "@/components/home/IPOTableSkeleton";
-import { AsyncErrorBoundary } from "@/components/error/AsyncErrorBoundary";
+// TEMP: AsyncErrorBoundary commented out - causes webpack error (Session 5)
+// import { AsyncErrorBoundary } from "@/components/error/AsyncErrorBoundary";
 import {
   generateOrganizationSchema,
   generateIPOListingSchema,
@@ -65,7 +67,8 @@ export default async function Home() {
       )}
 
       <div className="flex flex-col">
-        <AffiliateCTAWrapper />
+        {/* TEMP: AffiliateCTAWrapper commented out - causes webpack error (Session 5) */}
+        {/* <AffiliateCTAWrapper /> */}
 
         {/* Hero Section */}
         <section className="container mx-auto px-4 py-20 md:py-32">
@@ -105,7 +108,8 @@ export default async function Home() {
             <h2 className="mb-12 text-center text-3xl font-extrabold tracking-tight sm:text-4xl animate-in fade-in slide-in-from-bottom-3 duration-700">
               Latest IPO Updates
             </h2>
-            <AsyncErrorBoundary
+            {/* TEMP: AsyncErrorBoundary commented out - causes webpack error (Session 5) */}
+            {/* <AsyncErrorBoundary
               loadingFallback={<IPOTableSkeleton />}
               fallback={
                 <div className="text-center py-12">
@@ -114,14 +118,14 @@ export default async function Home() {
                   </p>
                 </div>
               }
-            >
+            > */}
               <HomeIPOTablesSection
                 mainboardIPOs={mainboardIPOs}
                 smeIPOs={smeIPOs}
                 upcomingMainboardIPOs={upcomingMainboardIPOs}
                 upcomingSMEIPOs={upcomingSMEIPOs}
               />
-            </AsyncErrorBoundary>
+            {/* </AsyncErrorBoundary> */}
           </div>
         </section>
 

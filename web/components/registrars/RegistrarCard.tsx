@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { HiArrowTopRightOnSquare, HiEnvelope, HiPhone, HiMapPin } from 'react-icons/hi2';
+import { ExternalLink, Mail, Phone, MapPin } from 'lucide-react';
 import { RegistrarLogo } from './RegistrarLogo';
 import type { Registrar } from '@/lib/db/types';
 
@@ -39,7 +39,7 @@ export function RegistrarCard({ registrar }: RegistrarCardProps) {
         <div className="space-y-2">
           {registrar.email && (
             <div className="flex items-start gap-2">
-              <HiEnvelope className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+              <Mail className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
               <a
                 href={`mailto:${registrar.email}`}
                 className="text-sm text-primary hover:underline break-all"
@@ -51,7 +51,7 @@ export function RegistrarCard({ registrar }: RegistrarCardProps) {
 
           {registrar.phone && (
             <div className="flex items-center gap-2">
-              <HiPhone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+              <Phone className="h-4 w-4 text-muted-foreground flex-shrink-0" />
               <a
                 href={`tel:${registrar.phone}`}
                 className="text-sm text-primary hover:underline"
@@ -63,7 +63,7 @@ export function RegistrarCard({ registrar }: RegistrarCardProps) {
 
           {registrar.address && (
             <div className="flex items-start gap-2">
-              <HiMapPin className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+              <MapPin className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
               <p className="text-sm text-muted-foreground">{registrar.address}</p>
             </div>
           )}
@@ -84,7 +84,7 @@ export function RegistrarCard({ registrar }: RegistrarCardProps) {
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2"
               >
-                <HiArrowTopRightOnSquare className="h-4 w-4" />
+                <ExternalLink className="h-4 w-4" />
                 Check Allotment Status
               </a>
             </Button>
@@ -103,7 +103,7 @@ export function RegistrarCard({ registrar }: RegistrarCardProps) {
                 rel="noopener noreferrer"
                 className="flex items-center justify-center gap-2"
               >
-                <HiArrowTopRightOnSquare className="h-4 w-4" />
+                <ExternalLink className="h-4 w-4" />
                 Visit Website
               </a>
             </Button>

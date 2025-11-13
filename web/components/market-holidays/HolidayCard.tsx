@@ -1,6 +1,6 @@
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { HiCalendar, HiBuildingOffice2 } from 'react-icons/hi2';
+import { Calendar, Building2 } from 'lucide-react';
 import type { MarketHoliday } from '@/lib/db/types';
 import { format, parseISO } from 'date-fns';
 
@@ -15,7 +15,7 @@ interface HolidayCardProps {
  *
  * Displays market holiday information in a card format.
  * Shows date, holiday name, exchange, and day of week.
- * Story 5.4: Market Holidays HiCalendar
+ * Story 5.4: Market Holidays Calendar
  *
  * Features:
  * - Displays date in DD MMM YYYY format (e.g., "26 Jan 2025")
@@ -58,7 +58,7 @@ export function HolidayCard({ holiday, isUpcoming, isPast }: HolidayCardProps) {
           <div className="flex-1 space-y-2">
             {/* Date and Day of Week */}
             <div className="flex items-center gap-2">
-              <HiCalendar className={`h-4 w-4 ${isPast ? 'text-muted-foreground' : 'text-primary'}`} />
+              <Calendar className={`h-4 w-4 ${isPast ? 'text-muted-foreground' : 'text-primary'}`} />
               <div>
                 <p className={`font-semibold ${isPast ? 'text-muted-foreground' : 'text-foreground'}`}>
                   {formattedDate}
@@ -91,7 +91,7 @@ export function HolidayCard({ holiday, isUpcoming, isPast }: HolidayCardProps) {
 
             {/* Exchange Badge */}
             <div className="flex items-center gap-1">
-              <HiBuildingOffice2 className="h-3 w-3 text-muted-foreground" />
+              <Building2 className="h-3 w-3 text-muted-foreground" />
               <Badge variant={exchangeBadge.variant}>
                 {exchangeBadge.text}
               </Badge>

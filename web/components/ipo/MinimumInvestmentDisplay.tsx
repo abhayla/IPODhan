@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { HiExclamationTriangle } from 'react-icons/hi2';
+import { AlertTriangle } from 'lucide-react';
 
 interface MinimumInvestmentDisplayProps {
   minInvestment: string | number | null | undefined;
@@ -39,7 +39,7 @@ export function MinimumInvestmentDisplay({
 
       {isHighInvestment && (
         <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 border border-amber-200 rounded-full">
-          <HiExclamationTriangle className="w-4 h-4 text-amber-600" />
+          <AlertTriangle className="w-4 h-4 text-amber-600" />
           <span className="text-xs font-medium text-amber-800">
             High Investment
           </span>
