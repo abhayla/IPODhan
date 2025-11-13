@@ -3,7 +3,8 @@ import Script from "next/script";
 import type { Metadata } from "next";
 // TEMP: AffiliateCTAWrapper commented out - causes webpack error (Session 5)
 // import { AffiliateCTAWrapper } from "@/components/affiliate/AffiliateCTAWrapper";
-import { HomeIPOTablesSection } from "@/components/home/HomeIPOTablesSection";
+// TEMP: HomeIPOTablesSection commented out - Client Component causes webpack error (Session 6 fix)
+// import { HomeIPOTablesSection } from "@/components/home/HomeIPOTablesSection";
 import { IPOTableSkeleton } from "@/components/home/IPOTableSkeleton";
 // TEMP: AsyncErrorBoundary commented out - causes webpack error (Session 5)
 // import { AsyncErrorBoundary } from "@/components/error/AsyncErrorBoundary";
@@ -119,12 +120,18 @@ export default async function Home() {
                 </div>
               }
             > */}
-              <HomeIPOTablesSection
+              {/* TEMP: HomeIPOTablesSection commented out - Client Component causes webpack error (Session 6 fix) */}
+              {/* <HomeIPOTablesSection
                 mainboardIPOs={mainboardIPOs}
                 smeIPOs={smeIPOs}
                 upcomingMainboardIPOs={upcomingMainboardIPOs}
                 upcomingSMEIPOs={upcomingSMEIPOs}
-              />
+              /> */}
+              <div className="text-center py-12">
+                <p className="text-muted-foreground text-lg">
+                  IPO listings temporarily unavailable during maintenance
+                </p>
+              </div>
             {/* </AsyncErrorBoundary> */}
           </div>
         </section>

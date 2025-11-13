@@ -3,7 +3,7 @@ import * as SwitchPrimitives from "@radix-ui/react-switch"
 
 import { cn } from "@/lib/utils"
 
-const Switch = React.forwardRef<
+const SwitchComponent = React.forwardRef<
   React.ElementRef<typeof SwitchPrimitives.Root>,
   React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root>
 >(({ className, ...props }, ref) => (
@@ -22,6 +22,9 @@ const Switch = React.forwardRef<
     />
   </SwitchPrimitives.Root>
 ))
-Switch.displayName = SwitchPrimitives.Root.displayName
+SwitchComponent.displayName = SwitchPrimitives.Root.displayName
+
+// React 19 compatibility: Export with any type cast to handle ForwardRefExoticComponent type issues
+const Switch = SwitchComponent as any
 
 export { Switch }

@@ -20,7 +20,8 @@
 
 'use client';
 
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+// Session 6: lazy and Suspense removed - no longer using lazy loading
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { IPODetailResponse, IPO } from '@/lib/db/types';
@@ -33,39 +34,50 @@ import {
 } from './skeletons';
 import { TabErrorBoundary } from './TabErrorBoundary';
 
-// Lazy load tab components for code-splitting
-const CompanyOverview = lazy(() =>
-  import('./CompanyOverview').then((mod) => ({ default: mod.CompanyOverview }))
-);
-const RatingDisplay = lazy(() =>
-  import('./RatingDisplay').then((mod) => ({ default: mod.RatingDisplay }))
-);
-const ShareButtons = lazy(() =>
-  import('./ShareButtons').then((mod) => ({ default: mod.ShareButtons }))
-);
-const FinancialTable = lazy(() =>
-  import('./FinancialTable').then((mod) => ({ default: mod.FinancialTable }))
-);
-const PeerComparisonTab = lazy(() =>
-  import('./PeerComparisonTab').then((mod) => ({ default: mod.PeerComparisonTab }))
-);
-const EnhancedSubscriptionView = lazy(() =>
-  import('./EnhancedSubscriptionView').then((mod) => ({ default: mod.EnhancedSubscriptionView }))
-);
-const GMPChart = lazy(() =>
-  import('./GMPChart').then((mod) => ({ default: mod.GMPChart }))
-);
-const DocumentList = lazy(() =>
-  import('./DocumentList').then((mod) => ({ default: mod.DocumentList }))
-);
+// Session 6: Lazy loading disabled - causes webpack errors with React 19 + Next.js 15
+// Direct imports used instead for stability
+import { CompanyOverview } from './CompanyOverview';
+import { RatingDisplay } from './RatingDisplay';
+import { ShareButtons } from './ShareButtons';
+import { FinancialTable } from './FinancialTable';
+import { PeerComparisonTab } from './PeerComparisonTab';
+import { EnhancedSubscriptionView } from './EnhancedSubscriptionView';
+import { GMPChart } from './GMPChart';
+import { DocumentList } from './DocumentList';
+import { DemandGraphChart } from '../ipo-detail/DemandGraphChart';
+import { UPIDeadlineTimer } from '../ipo-detail/UPIDeadlineTimer';
 
-// NEW: Lazy load demand graph and UPI timer components
-const DemandGraphChart = lazy(() =>
-  import('../ipo-detail/DemandGraphChart').then((mod) => ({ default: mod.DemandGraphChart }))
-);
-const UPIDeadlineTimer = lazy(() =>
-  import('../ipo-detail/UPIDeadlineTimer').then((mod) => ({ default: mod.UPIDeadlineTimer }))
-);
+// TEMP: Lazy loading commented out - React 19 + Next.js 15 webpack issues
+// const CompanyOverview = lazy(() =>
+//   import('./CompanyOverview').then((mod) => ({ default: mod.CompanyOverview }))
+// );
+// const RatingDisplay = lazy(() =>
+//   import('./RatingDisplay').then((mod) => ({ default: mod.RatingDisplay }))
+// );
+// const ShareButtons = lazy(() =>
+//   import('./ShareButtons').then((mod) => ({ default: mod.ShareButtons }))
+// );
+// const FinancialTable = lazy(() =>
+//   import('./FinancialTable').then((mod) => ({ default: mod.FinancialTable }))
+// );
+// const PeerComparisonTab = lazy(() =>
+//   import('./PeerComparisonTab').then((mod) => ({ default: mod.PeerComparisonTab }))
+// );
+// const EnhancedSubscriptionView = lazy(() =>
+//   import('./EnhancedSubscriptionView').then((mod) => ({ default: mod.EnhancedSubscriptionView }))
+// );
+// const GMPChart = lazy(() =>
+//   import('./GMPChart').then((mod) => ({ default: mod.GMPChart }))
+// );
+// const DocumentList = lazy(() =>
+//   import('./DocumentList').then((mod) => ({ default: mod.DocumentList }))
+// );
+// const DemandGraphChart = lazy(() =>
+//   import('../ipo-detail/DemandGraphChart').then((mod) => ({ default: mod.DemandGraphChart }))
+// );
+// const UPIDeadlineTimer = lazy(() =>
+//   import('../ipo-detail/UPIDeadlineTimer').then((mod) => ({ default: mod.UPIDeadlineTimer }))
+// );
 
 // ==================== TYPES ====================
 
@@ -233,59 +245,51 @@ export function IPODetailTabs({
       {/* Overview Tab */}
       <TabsContent value="overview" className="space-y-6 mt-6">
         <TabErrorBoundary tabName="Overview">
-          <Suspense fallback={<CompanyOverviewSkeleton />}>
-            <CompanyOverview
-              companyDescription={ipo.companyDescription || 'No description available.'}
-              riskFactors={[]} // TODO: Add risk factors when available
-            />
-          </Suspense>
+          <CompanyOverview
+            companyDescription={ipo.companyDescription || 'No description available.'}
+            riskFactors={[]} // TODO: Add risk factors when available
+          />
         </TabErrorBoundary>
 
         {/* Rating Section */}
         <TabErrorBoundary tabName="Rating">
-          <Suspense fallback={<div className="h-32 animate-pulse rounded-lg bg-muted" />}>
-            <div className="rounded-lg border bg-card p-6">
-              <h3 className="mb-4 text-lg font-semibold">IPODhan Rating</h3>
-              <RatingDisplay
-                rating={ipo.rating}
-                rationale={ipo.ratingRationale}
-                showRationale={true}
-                size="lg"
-              />
-            </div>
-          </Suspense>
+          <div className="rounded-lg border bg-card p-6">
+            <h3 className="mb-4 text-lg font-semibold">IPODhan Rating</h3>
+            <RatingDisplay
+              rating={ipo.rating}
+              rationale={ipo.ratingRationale}
+              showRationale={true}
+              size="lg"
+            />
+          </div>
         </TabErrorBoundary>
 
         {/* Share Buttons */}
         <TabErrorBoundary tabName="Share">
-          <Suspense fallback={<div className="h-24 animate-pulse rounded-lg bg-muted" />}>
-            <ShareButtons
-              companyName={ipo.companyName}
-              rating={ipo.rating}
-              url={shareUrl}
-              keyMetrics={keyMetrics}
-            />
-          </Suspense>
+          <ShareButtons
+            companyName={ipo.companyName}
+            rating={ipo.rating}
+            url={shareUrl}
+            keyMetrics={keyMetrics}
+          />
         </TabErrorBoundary>
       </TabsContent>
 
       {/* Financials Tab (Story 4.10: Pass ipoFinancials) */}
       <TabsContent value="financials" className="mt-6">
         <TabErrorBoundary tabName="Financials">
-          <Suspense fallback={<FinancialTableSkeleton />}>
-            {financialData ? (
-              <FinancialTable
-                financialData={financialData}
-                ipoFinancials={ipoFinancials}
-              />
-            ) : (
-              <div className="rounded-lg border bg-card p-8 text-center">
-                <p className="text-muted-foreground">
-                  Financial data not available yet.
-                </p>
-              </div>
-            )}
-          </Suspense>
+          {financialData ? (
+            <FinancialTable
+              financialData={financialData}
+              ipoFinancials={ipoFinancials}
+            />
+          ) : (
+            <div className="rounded-lg border bg-card p-8 text-center">
+              <p className="text-muted-foreground">
+                Financial data not available yet.
+              </p>
+            </div>
+          )}
         </TabErrorBoundary>
       </TabsContent>
 
@@ -293,9 +297,7 @@ export function IPODetailTabs({
       {hasPeerData && (
         <TabsContent value="peercomparison" className="mt-6">
           <TabErrorBoundary tabName="Peer Comparison">
-            <Suspense fallback={<div className="h-64 animate-pulse rounded-lg bg-muted" />}>
-              <PeerComparisonTab ipoData={ipoData} />
-            </Suspense>
+            <PeerComparisonTab ipoData={ipoData} />
           </TabErrorBoundary>
         </TabsContent>
       )}
@@ -303,73 +305,61 @@ export function IPODetailTabs({
       {/* Subscription Tab (Story 5.6: Enhanced with 7 categories) */}
       <TabsContent value="subscription" className="mt-6">
         <TabErrorBoundary tabName="Subscription">
-          <Suspense fallback={<SubscriptionBreakdownSkeleton />}>
-            {subscriptions && subscriptions.length > 0 ? (
-              <EnhancedSubscriptionView
-                subscription={subscriptions[0]}
-                issueSize={ipo.issueSize}
-              />
-            ) : (
-              <div className="rounded-lg border bg-card p-8 text-center">
-                <p className="text-muted-foreground">
-                  {getSubscriptionMessage(ipo.status)}
-                </p>
-              </div>
-            )}
-          </Suspense>
+          {subscriptions && subscriptions.length > 0 ? (
+            <EnhancedSubscriptionView
+              subscription={subscriptions[0]}
+              issueSize={ipo.issueSize}
+            />
+          ) : (
+            <div className="rounded-lg border bg-card p-8 text-center">
+              <p className="text-muted-foreground">
+                {getSubscriptionMessage(ipo.status)}
+              </p>
+            </div>
+          )}
         </TabErrorBoundary>
       </TabsContent>
 
       {/* Demand Tab - NEW: Price-wise demand visualization */}
       <TabsContent value="demand" className="mt-6">
         <TabErrorBoundary tabName="Demand Graph">
-          <Suspense fallback={
-            <div className="animate-pulse">
-              <div className="h-96 bg-muted rounded-lg" />
-            </div>
-          }>
-            <DemandGraphChart
-              ipoSlug={slug}
-              priceRangeMin={ipo.priceRangeMin ?? undefined}
-              priceRangeMax={ipo.priceRangeMax ?? undefined}
-            />
-          </Suspense>
+          <DemandGraphChart
+            ipoSlug={slug}
+            priceRangeMin={ipo.priceRangeMin ?? undefined}
+            priceRangeMax={ipo.priceRangeMax ?? undefined}
+          />
         </TabErrorBoundary>
       </TabsContent>
 
       {/* GMP Tab */}
       <TabsContent value="gmp" className="mt-6">
         <TabErrorBoundary tabName="GMP">
-          <Suspense fallback={<GMPChartSkeleton />}>
-            {gmpRecords && gmpRecords.length > 0 ? (
-              <GMPChart
-                gmpRecords={gmpRecords}
-              />
-            ) : (
-              <div className="rounded-lg border bg-card p-8 text-center">
-                <p className="text-muted-foreground">
-                  {getGMPMessage(ipo.status)}
-                </p>
-              </div>
-            )}
-          </Suspense>
+          {gmpRecords && gmpRecords.length > 0 ? (
+            <GMPChart
+              gmpRecords={gmpRecords}
+            />
+          ) : (
+            <div className="rounded-lg border bg-card p-8 text-center">
+              <p className="text-muted-foreground">
+                {getGMPMessage(ipo.status)}
+              </p>
+            </div>
+          )}
         </TabErrorBoundary>
       </TabsContent>
 
       {/* Documents Tab */}
       <TabsContent value="documents" className="mt-6">
         <TabErrorBoundary tabName="Documents">
-          <Suspense fallback={<DocumentListSkeleton />}>
-            {documents && documents.length > 0 ? (
-              <DocumentList documents={documents} />
-            ) : (
-              <div className="rounded-lg border bg-card p-8 text-center">
-                <p className="text-muted-foreground">
-                  {getDocumentsMessage(ipo.status)}
-                </p>
-              </div>
-            )}
-          </Suspense>
+          {documents && documents.length > 0 ? (
+            <DocumentList documents={documents} />
+          ) : (
+            <div className="rounded-lg border bg-card p-8 text-center">
+              <p className="text-muted-foreground">
+                {getDocumentsMessage(ipo.status)}
+              </p>
+            </div>
+          )}
         </TabErrorBoundary>
       </TabsContent>
     </Tabs>

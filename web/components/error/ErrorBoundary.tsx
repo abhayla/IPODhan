@@ -26,6 +26,11 @@ interface State {
 }
 
 export class ErrorBoundary extends React.Component<Props, State> {
+  // React 19 compatibility: Add refs property
+  refs: {
+    [key: string]: React.ReactInstance;
+  } = {};
+
   constructor(props: Props) {
     super(props);
     this.state = {
