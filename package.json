@@ -15,7 +15,8 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "npm run dev --workspace=web",
     "dev:scraper": "npm run dev --workspace=scraper",
-    "scraper:nse": "npm start --workspace=scraper"
+    "scraper:nse": "npm start --workspace=scraper",
+    "prepare": "husky"
   },
   "repository": {
     "type": "git",
@@ -30,9 +31,14 @@
   },
   "homepage": "https://github.com/abhayla/IPODhan#readme",
   "dependencies": {
+    "@pinojs/redact": "^0.4.0",
     "pg": "^8.16.3"
   },
   "overrides": {
     "zod": "^4.1.11"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.6"
   }
 }

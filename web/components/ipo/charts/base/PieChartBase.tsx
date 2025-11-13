@@ -31,7 +31,7 @@ export interface PieChartBaseProps {
   /** Height of the chart in pixels (default: 300) */
   height?: number;
   /** Width of the chart (default: '100%') */
-  width?: string | number;
+  width?: number | `${number}%`;
   /** Show legend (default: true) */
   showLegend?: boolean;
   /** Legend position (default: 'right') */

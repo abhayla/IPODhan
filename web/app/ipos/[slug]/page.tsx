@@ -272,7 +272,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             {/* 2. About Company */}
             <CompanyOverview
               companyDescription={ipoDetails?.companyDescription || `Fast-growing ${ipo.sector} enterprise with diversified operations and strong fundamentals. Registered on ${ipo.segment} platform with growth potential.`}
-              riskFactors={ipoDetails?.riskFactors ? JSON.parse(ipoDetails.riskFactors) : []}
+              riskFactors={[]}
             />
 
             {/* 3. Key Metrics Cards */}
@@ -308,8 +308,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               gmpRecords={gmpRecords || []}
               companyName={ipo.companyName}
               priceRangeMax={ipo.priceRangeMax}
-              openDate={ipo.openDate}
-              closeDate={ipo.closeDate}
             />
 
             {/* 9. Financial Performance Charts */}
@@ -323,7 +321,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               subscriptions={subscriptions || []}
               latestSubscription={latestSubscription ?? null}
               companyName={ipo.companyName}
-              closeDate={ipo.closeDate}
+              closeDate={ipo.closeDate ? new Date(ipo.closeDate) : null}
             />
 
             {/* 11. Broker Recommendations */}
@@ -334,7 +332,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* 12. IPO Objectives Section */}
             <IPOObjectivesSection
-              objectives={ipoDetails?.objectives || null}
+              objectives={null}
               totalIssueSize={ipo.issueSize ? Number(ipo.issueSize) : undefined}
             />
 
@@ -378,9 +376,26 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             />
 
             {/* Post-Listing Performance - Conditional for LISTED IPOs */}
-            {ipo.status === 'LISTED' && listingPerformance && (
+            {ipo.status === 'LISTED' &&
+             listingPerformance &&
+             listingPerformance.issuePrice !== null &&
+             listingPerformance.listingPrice !== null &&
+             listingPerformance.listingGainPercent !== null && (
               <ListingPerformanceCharts
-                listingPerformance={listingPerformance}
+                listingPerformance={{
+                  issuePrice: listingPerformance.issuePrice,
+                  listingPrice: listingPerformance.listingPrice,
+                  listingGainPercent: typeof listingPerformance.listingGainPercent === 'string'
+                    ? parseFloat(listingPerformance.listingGainPercent)
+                    : listingPerformance.listingGainPercent,
+                  currentPrice: listingPerformance.currentPrice,
+                  currentGainPercent: listingPerformance.currentGainPercent
+                    ? typeof listingPerformance.currentGainPercent === 'string'
+                      ? parseFloat(listingPerformance.currentGainPercent)
+                      : listingPerformance.currentGainPercent
+                    : null,
+                }}
+                issuePrice={listingPerformance.issuePrice}
                 companyName={ipo.companyName}
               />
             )}
@@ -412,11 +427,15 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             {/* 19. Company Contact Section */}
             <CompanyContactSection
               contactData={{
-                registeredOffice: ipoDetails?.registeredAddress || null,
-                registrarEmail: ipo.registrarRelation?.email || null,
-                registrarPhone: ipo.registrarRelation?.phone || null,
-                complianceOfficer: ipoDetails?.complianceOfficer || null,
-                complianceOfficerEmail: ipoDetails?.complianceOfficerEmail || null,
+                companyAddress: null,
+                companyPhone: null,
+                companyEmail: null,
+                companyCity: null,
+                companyState: null,
+                companyPincode: null,
+                complianceOfficer: null,
+                complianceOfficerPhone: null,
+                complianceOfficerEmail: null,
               }}
             />
 

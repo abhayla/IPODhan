@@ -3,11 +3,8 @@ import { Instrument_Serif, Inter, JetBrains_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
-import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
-import { GlobalKeyboardShortcuts } from "@/components/layout/GlobalKeyboardShortcuts";
-import { ServiceWorkerRegistration } from "@/components/pwa/ServiceWorkerRegistration";
 import { generateHomepageMetadata } from "@/lib/seo/metadata";
 
 // IPODhan Typography System
@@ -86,18 +83,13 @@ export default function RootLayout({
           Skip to main content
         </a>
         <div className="flex min-h-screen flex-col">
-          {/* TEMP: Header commented out due to HMR bug - will fix after tests pass */}
-          {/* <Header /> */}
+          <Header />
           <main id="main-content" className="flex-1">
-            <ErrorBoundary>
-              {children}
-            </ErrorBoundary>
+             {children}
           </main>
           <Footer />
         </div>
         <Toaster />
-        <GlobalKeyboardShortcuts />
-        <ServiceWorkerRegistration />
       </body>
     </html>
   );
