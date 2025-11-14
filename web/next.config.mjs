@@ -88,11 +88,12 @@ const nextConfig = {
   },
 };
 
-// Apply bundle analyzer
-const configWithAnalyzer = withBundleAnalyzer(nextConfig);
-
+// Apply bundle analyzer only when explicitly enabled
+// This prevents Turbopack warnings about webpack-specific configurations
 // TEMPORARILY DISABLED: Sentry configuration causing webpack module loading errors
 // TODO: Migrate to instrumentation-based Sentry setup per Next.js 15 recommendations
 // export default withSentryConfig(configWithAnalyzer, {...});
 
-export default configWithAnalyzer;
+export default process.env.ANALYZE === 'true'
+  ? withBundleAnalyzer(nextConfig)
+  : nextConfig;

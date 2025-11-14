@@ -269,13 +269,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               }}
             />
 
-            {/* 2. About Company */}
-            <CompanyOverview
-              companyDescription={ipoDetails?.companyDescription || `Fast-growing ${ipo.sector} enterprise with diversified operations and strong fundamentals. Registered on ${ipo.segment} platform with growth potential.`}
-              riskFactors={[]}
-            />
-
-            {/* 3. Key Metrics Cards */}
+            {/* 2. Key Metrics Cards */}
             <KeyMetricsCardsEnhanced
               issueSize={Number(ipo.issueSize)}
               subscription={subscriptionValue !== null ? Number(subscriptionValue) : null}
@@ -286,10 +280,10 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               gmpRecords={gmpRecords}
             />
 
-            {/* 4. Issue Structure Section */}
+            {/* 3. Issue Structure Section */}
             <IssueStructureSection ipoDetails={ipoDetails || null} />
 
-            {/* 5. IPO Detail Tabs */}
+            {/* 4. IPO Detail Tabs */}
             <IPODetailTabs
               slug={slug}
               ipo={ipo}
@@ -297,13 +291,13 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               initialTab={tab || 'overview'}
             />
 
-            {/* 6. IPO Information Section */}
+            {/* 5. IPO Information Section */}
             <InfoSection ipo={ipo} ipoDetails={ipoDetails || null} />
 
-            {/* 7. IPO Score Section */}
+            {/* 6. IPO Score Section */}
             <IPOScoreSection score={ipoScore || null} />
 
-            {/* 8. GMP History Chart */}
+            {/* 7. GMP History Chart */}
             <GMPHistoryChart
               gmpRecords={gmpRecords || []}
               companyName={ipo.companyName}
