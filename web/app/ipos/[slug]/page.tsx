@@ -52,7 +52,6 @@ import { LotDetailsSection } from '@/components/ipo-detail/LotDetailsSection';
 import { ListingDetailsSection } from '@/components/ipo-detail/ListingDetailsSection';
 import { LeadManagerSection } from '@/components/ipo-detail/LeadManagerSection';
 import { IPODetailsTable } from '@/components/ipo-detail/IPODetailsTable';
-import { ImportantDatesSection } from '@/components/ipo-detail/ImportantDatesSection';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
@@ -273,17 +272,15 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 listingDate: ipo.listingDate,
                 status: ipo.status,
               }}
-            />
-
-            {/* 1a. Important Dates Section */}
-            <ImportantDatesSection
-              openDate={ipo.openDate}
-              closeDate={ipo.closeDate}
-              allotmentDate={ipo.allotmentDate}
-              basisOfAllotmentDate={ipoDetails?.basisOfAllotmentDate ?? null}
-              initiationOfRefundsDate={ipoDetails?.initiationOfRefundsDate ?? null}
-              creditOfSharesDate={ipoDetails?.creditOfSharesDate ?? null}
-              listingDate={ipo.listingDate}
+              ipoDetails={
+                ipoDetails
+                  ? {
+                      basisOfAllotmentDate: ipoDetails.basisOfAllotmentDate,
+                      initiationOfRefundsDate: ipoDetails.initiationOfRefundsDate,
+                      creditOfSharesDate: ipoDetails.creditOfSharesDate,
+                    }
+                  : null
+              }
             />
 
             {/* 2. Key Metrics Cards */}
