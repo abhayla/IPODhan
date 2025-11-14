@@ -215,7 +215,7 @@ async function networkFirstWithOfflineFallback(request) {
         <head>
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Offline - IPODhan</title>
+          <title>Offline - IPO Dhan</title>
           <style>
             body {
               font-family: system-ui, -apple-system, sans-serif;
@@ -291,7 +291,7 @@ self.addEventListener('push', (event) => {
   console.log('[Service Worker] Push notification received');
 
   const options = {
-    body: event.data?.text() || 'New update from IPODhan',
+    body: event.data?.text() || 'New update from IPO Dhan',
     icon: '/icons/icon-192x192.png',
     badge: '/icons/icon-72x72.png',
     vibrate: [200, 100, 200],
@@ -312,7 +312,7 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification('IPODhan', options)
+    self.registration.showNotification('IPO Dhan', options)
   );
 });
 

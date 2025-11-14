@@ -1,21 +1,25 @@
 /**
- * Header Component (Server Component)
+ * Header Component (Client Component)
  *
- * Main navigation header with Server + Client islands pattern:
- * - Logo and static navigation (Server Component - fast SSR)
- * - Dropdowns and mobile menu (Client Components - interactivity)
+ * Main navigation header with coordinated dropdown state management:
+ * - Logo and static navigation
+ * - Dropdowns with single-open behavior (only one dropdown open at a time)
+ * - Mobile menu with Client-side interactivity
  *
- * This refactor resolves webpack module factory errors by properly
- * separating server and client concerns per Next.js 15 best practices.
+ * Manages shared dropdown state to ensure only one dropdown is open at a time.
  *
  * @component
  */
+'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { MobileMenu } from './MobileMenu';
 import { DesktopDropdown } from './DesktopDropdown';
 
 export function HeaderNew() {
+  // Shared state: track which dropdown is currently open (if any)
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   // Mainboard IPOs dropdown items
   const mainboardItems = [
     {
@@ -117,11 +121,11 @@ export function HeaderNew() {
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           {/* Logo (Server Component - static) */}
-          <Link href="/" className="group flex items-center space-x-2" aria-label="IPODhan - Home">
+          <Link href="/" className="group flex items-center space-x-2" aria-label="IPO Dhan - Home">
             <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground transition-transform group-hover:scale-105" aria-hidden="true">
               <span className="text-lg font-bold">I</span>
             </div>
-            <span className="text-xl font-bold transition-colors group-hover:text-primary">IPODhan</span>
+            <span className="text-xl font-bold transition-colors group-hover:text-primary">IPO Dhan</span>
           </Link>
 
           {/* Desktop Navigation (Server Component with Client islands) */}
@@ -138,6 +142,8 @@ export function HeaderNew() {
               label="Mainboard IPOs"
               items={mainboardItems}
               basePath="/mainboard-ipo"
+              isOpen={openDropdown === 'mainboard'}
+              onOpenChange={(open) => setOpenDropdown(open ? 'mainboard' : null)}
             />
 
             {/* SME IPOs Dropdown (Client Component) */}
@@ -145,12 +151,16 @@ export function HeaderNew() {
               label="SME IPOs"
               items={smeItems}
               basePath="/sme-ipo"
+              isOpen={openDropdown === 'sme'}
+              onOpenChange={(open) => setOpenDropdown(open ? 'sme' : null)}
             />
 
             {/* Tools Dropdown (Client Component) */}
             <DesktopDropdown
               label="Tools"
               items={toolsItems}
+              isOpen={openDropdown === 'tools'}
+              onOpenChange={(open) => setOpenDropdown(open ? 'tools' : null)}
             />
           </nav>
 

@@ -1,6 +1,6 @@
 {
-  "name": "IPODhan - IPO Investment Platform",
-  "short_name": "IPODhan",
+  "name": "IPO Dhan - IPO Investment Platform",
+  "short_name": "IPO Dhan",
   "description": "Comprehensive IPO information platform for Indian investors with real-time data, subscription tracking, GMP information, and financial analysis.",
   "start_url": "/",
   "display": "standalone",
@@ -67,7 +67,7 @@
       "sizes": "390x844",
       "type": "image/png",
       "form_factor": "narrow",
-      "label": "IPODhan Home Screen"
+      "label": "IPO Dhan Home Screen"
     },
     {
       "src": "/screenshots/ipo-detail-mobile.png",
@@ -81,7 +81,7 @@
       "sizes": "1920x1080",
       "type": "image/png",
       "form_factor": "wide",
-      "label": "IPODhan Dashboard"
+      "label": "IPO Dhan Dashboard"
     }
   ],
   "shortcuts": [
