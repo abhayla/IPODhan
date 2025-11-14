@@ -76,6 +76,7 @@ Thumbs.db
 # Still ignore these development files
 .claude/
 !.claude/commands/  # Exception: Track command documentation
+!.claude/skills/    # Exception: Track specialized skills for Claude Code
 .playwright-mcp/
 .ai/
 web-bundles/
