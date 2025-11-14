@@ -3,15 +3,21 @@
  *
  * Service for fetching IPO listing performance data for
  * Mainboard, SME, and FPO categories with comprehensive metrics.
+ *
+ * ⚠️ ARCHITECTURE: Services use repositories directly, NOT HTTP calls.
+ * This follows the 3-layer architecture: Server Component → Service → Repository
  */
 
-import type { IPO, ListingPerformance, Subscription, GMPRecord } from '@/lib/repositories/types';
+import { db } from '@/lib/db/index';
+import { getRedisClient } from '@/lib/cache/redis-client';
+import { IPORepository } from '@/lib/repositories/ipo-repository';
 
 export interface IPOListingData {
   id: string;
   companyName: string;
   slug: string;
-  category: string;
+  segment: string | null;
+  offeringType: string | null;
   openDate: string | null;
   closeDate: string | null;
   listingDate: string | null;
@@ -59,52 +65,40 @@ export interface IPOListingsFilters {
   year?: string;
   page?: number;
   limit?: number;
-  sortBy?: string;
+  sortBy?: 'listingDate' | 'listingDayGain' | 'currentGain' | 'issueSize' | 'companyName';
   sortOrder?: 'asc' | 'desc';
 }
 
 /**
  * Fetch IPO listings with performance data
+ * Uses repository directly for proper 3-layer architecture
  */
 export async function fetchIPOListings(
   filters: IPOListingsFilters = {}
 ): Promise<IPOListingsResponse> {
-  const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
-
-  // Build query params
-  const params = new URLSearchParams();
-
-  if (filters.category && filters.category !== 'ALL') {
-    params.set('category', filters.category);
-  }
-  if (filters.year) params.set('year', filters.year);
-  if (filters.page) params.set('page', String(filters.page));
-  if (filters.limit) params.set('limit', String(filters.limit));
-  if (filters.sortBy) params.set('sortBy', filters.sortBy);
-  if (filters.sortOrder) params.set('sortOrder', filters.sortOrder);
-
-  const queryString = params.toString();
-  const url = `${baseUrl}/api/ipos/listings${queryString ? `?${queryString}` : ''}`;
-
   try {
-    const response = await fetch(url, {
-      cache: 'no-store',
-      next: { revalidate: 300 }, // 5 minutes
+    const redis = getRedisClient();
+    const ipoRepository = new IPORepository(db, redis);
+
+    // Call repository method directly
+    const result = await ipoRepository.findListings({
+      category: filters.category,
+      year: filters.year,
+      page: filters.page,
+      limit: filters.limit,
+      sortBy: filters.sortBy,
+      sortOrder: filters.sortOrder,
     });
 
-    if (!response.ok) {
-      throw new Error(`Failed to fetch IPO listings: ${response.statusText}`);
-    }
-
-    return await response.json();
+    return result;
   } catch (error) {
     console.error('Error fetching IPO listings:', error);
     // Return empty data on error
     return {
       data: [],
       pagination: {
-        page: 1,
-        limit: 20,
+        page: filters.page || 1,
+        limit: filters.limit || 20,
         total: 0,
         hasMore: false,
       },

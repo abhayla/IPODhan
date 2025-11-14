@@ -20,7 +20,9 @@ import { db } from '@/lib/db/index';
 import { ipos, listingPerformance, subscriptions, gmpRecords } from '@/lib/db';
 import { eq, and, gte, lte, desc, asc, sql, inArray } from 'drizzle-orm';
 
-// Validation schemas - match database schema enum
+// Validation schemas
+// Note: Category accepts both segments (MAINBOARD, SME) and offering types (FPO, RIGHTS, NCD)
+// The filter logic (lines 87-94) correctly maps these to segment OR offeringType filters
 const CategorySchema = z.enum(['MAINBOARD', 'SME', 'RIGHTS', 'NCD', 'FPO']);
 const SortFieldSchema = z.enum(['listingDate', 'listingDayGain', 'currentGain', 'issueSize', 'companyName']);
 const SortOrderSchema = z.enum(['asc', 'desc']);
