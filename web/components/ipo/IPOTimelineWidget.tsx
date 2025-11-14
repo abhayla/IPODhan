@@ -7,13 +7,22 @@ import {
   Calendar,
   CheckCircle,
   Users,
-  Banknote
+  Banknote,
+  FileCheck,
+  DollarSign,
+  Download
 } from 'lucide-react';
 import type { IPO } from '@/lib/db/types';
 
 interface IPOTimelineWidgetProps {
   /** IPO data containing dates */
   ipo: Pick<IPO, 'openDate' | 'closeDate' | 'allotmentDate' | 'listingDate' | 'status'>;
+  /** Additional IPO details with intermediate dates */
+  ipoDetails?: {
+    basisOfAllotmentDate: Date | string | null;
+    initiationOfRefundsDate: Date | string | null;
+    creditOfSharesDate: Date | string | null;
+  } | null;
   /** Show in compact mode (smaller, horizontal only) */
   compact?: boolean;
   /** Custom class name */
@@ -23,33 +32,45 @@ interface IPOTimelineWidgetProps {
 /**
  * IPOTimelineWidget - Visual timeline of IPO lifecycle stages
  *
- * Shows 5 key milestones in the IPO process:
+ * Shows 8 key milestones in the IPO process:
  * 1. Announced - When IPO was announced
  * 2. Bidding Open - Open date
  * 3. Bidding Close - Close date
- * 4. Allotment - Allotment date
- * 5. Listing - Listing date
+ * 4. Basis of Allotment - When allotment is finalized
+ * 5. Allotment - Allotment date
+ * 6. Initiation of Refunds - When refunds are processed
+ * 7. Credit of Shares - When shares are credited to Demat
+ * 8. Listing - Listing date
  *
  * Automatically determines milestone status based on IPO status and dates.
  *
  * @example
  * ```tsx
- * <IPOTimelineWidget ipo={ipoData} />
+ * <IPOTimelineWidget ipo={ipoData} ipoDetails={detailsData} />
  * ```
  */
-export function IPOTimelineWidget({ ipo, compact = false, className }: IPOTimelineWidgetProps) {
+export function IPOTimelineWidget({ ipo, ipoDetails, compact = false, className }: IPOTimelineWidgetProps) {
   // Determine current milestone based on IPO status and dates
   const getCurrentMilestone = (): number => {
     const now = new Date();
 
     // If IPO is listed, all milestones are complete
-    if (ipo.status === 'LISTED') return 5;
+    if (ipo.status === 'LISTED') return 8;
 
     // If we have listing date and it's passed
-    if (ipo.listingDate && new Date(ipo.listingDate) <= now) return 5;
+    if (ipo.listingDate && new Date(ipo.listingDate) <= now) return 8;
+
+    // If we have credit of shares date and it's passed
+    if (ipoDetails?.creditOfSharesDate && new Date(ipoDetails.creditOfSharesDate) <= now) return 7;
+
+    // If we have initiation of refunds date and it's passed
+    if (ipoDetails?.initiationOfRefundsDate && new Date(ipoDetails.initiationOfRefundsDate) <= now) return 6;
 
     // If we have allotment date and it's passed
-    if (ipo.allotmentDate && new Date(ipo.allotmentDate) <= now) return 4;
+    if (ipo.allotmentDate && new Date(ipo.allotmentDate) <= now) return 5;
+
+    // If we have basis of allotment date and it's passed
+    if (ipoDetails?.basisOfAllotmentDate && new Date(ipoDetails.basisOfAllotmentDate) <= now) return 4;
 
     // If we have close date and it's passed (status would be CLOSED)
     if (ipo.closeDate && new Date(ipo.closeDate) <= now) return 3;
@@ -90,19 +111,43 @@ export function IPOTimelineWidget({ ipo, compact = false, className }: IPOTimeli
       icon: <CheckCircle className="h-3 w-3" />,
     },
     {
+      id: 'basis-allotment',
+      label: 'Basis of Allotment',
+      description: 'Allotment finalized',
+      date: ipoDetails?.basisOfAllotmentDate ? new Date(ipoDetails.basisOfAllotmentDate) : null,
+      status: currentMilestone >= 4 ? (currentMilestone === 4 ? 'current' : 'completed') : 'upcoming',
+      icon: <FileCheck className="h-3 w-3" />,
+    },
+    {
       id: 'allotment',
       label: 'Allotment',
       description: 'Shares allotted',
       date: ipo.allotmentDate ? new Date(ipo.allotmentDate) : null,
-      status: currentMilestone >= 4 ? (currentMilestone === 4 ? 'current' : 'completed') : 'upcoming',
+      status: currentMilestone >= 5 ? (currentMilestone === 5 ? 'current' : 'completed') : 'upcoming',
       icon: <Users className="h-3 w-3" />,
+    },
+    {
+      id: 'refunds',
+      label: 'Initiation of Refunds',
+      description: 'Refunds processed',
+      date: ipoDetails?.initiationOfRefundsDate ? new Date(ipoDetails.initiationOfRefundsDate) : null,
+      status: currentMilestone >= 6 ? (currentMilestone === 6 ? 'current' : 'completed') : 'upcoming',
+      icon: <DollarSign className="h-3 w-3" />,
+    },
+    {
+      id: 'credit-shares',
+      label: 'Credit of Shares',
+      description: 'Shares credited',
+      date: ipoDetails?.creditOfSharesDate ? new Date(ipoDetails.creditOfSharesDate) : null,
+      status: currentMilestone >= 7 ? (currentMilestone === 7 ? 'current' : 'completed') : 'upcoming',
+      icon: <Download className="h-3 w-3" />,
     },
     {
       id: 'listing',
       label: 'Listing',
       description: 'Trading begins',
       date: ipo.listingDate ? new Date(ipo.listingDate) : null,
-      status: currentMilestone >= 5 ? 'completed' : (currentMilestone === 4 ? 'upcoming' : 'upcoming'),
+      status: currentMilestone >= 8 ? 'completed' : (currentMilestone === 7 ? 'upcoming' : 'upcoming'),
       icon: <Banknote className="h-3 w-3" />,
     },
   ];
