@@ -43,7 +43,7 @@ export interface IPOMetadataParams {
  * Generate metadata for homepage
  */
 export function generateHomepageMetadata(): Metadata {
-  const title = 'IPODhan - Live IPO Updates, Analysis & Application Tools';
+  const title = 'IPO Dhan - Live IPO Updates, Analysis & Application Tools';
   const description =
     'Track live IPO subscriptions, analyze financials, compare IPOs, and apply through trusted brokers. Real-time data from NSE & BSE.';
 
@@ -62,9 +62,9 @@ export function generateHomepageMetadata(): Metadata {
       'mainboard IPO',
       'SME IPO',
     ],
-    authors: [{ name: 'IPODhan' }],
-    creator: 'IPODhan',
-    publisher: 'IPODhan',
+    authors: [{ name: 'IPO Dhan' }],
+    creator: 'IPO Dhan',
+    publisher: 'IPO Dhan',
     alternates: {
       canonical: BASE_URL,
     },
@@ -83,8 +83,8 @@ export function generateHomepageMetadata(): Metadata {
       type: 'website',
       locale: 'en_IN',
       url: BASE_URL,
-      siteName: 'IPODhan',
-      title: 'IPODhan - Your IPO Investment Companion',
+      siteName: 'IPO Dhan',
+      title: 'IPO Dhan - Your IPO Investment Companion',
       description:
         'Track live IPO subscriptions, analyze financials, compare IPOs, and apply through trusted brokers.',
       images: [
@@ -92,13 +92,13 @@ export function generateHomepageMetadata(): Metadata {
           url: DEFAULT_OG_IMAGE,
           width: 1200,
           height: 630,
-          alt: 'IPODhan - Live IPO Updates and Analysis',
+          alt: 'IPO Dhan - Live IPO Updates and Analysis',
         },
       ],
     },
     twitter: {
       card: 'summary_large_image',
-      title: 'IPODhan - Your IPO Investment Companion',
+      title: 'IPO Dhan - Your IPO Investment Companion',
       description:
         'Track live IPO subscriptions, analyze financials, compare IPOs, and apply through trusted brokers.',
       images: [DEFAULT_OG_IMAGE],
@@ -111,7 +111,7 @@ export function generateHomepageMetadata(): Metadata {
  * Generate metadata for IPO listing page
  */
 export function generateIPOListingMetadata(): Metadata {
-  const title = 'Current IPOs - Live Subscription Data | IPODhan';
+  const title = 'Current IPOs - Live Subscription Data | IPO Dhan';
   const description =
     'Browse all current and upcoming IPOs with live subscription data, GMP updates, and expert analysis. Updated in real-time.';
 
@@ -132,7 +132,7 @@ export function generateIPOListingMetadata(): Metadata {
       type: 'website',
       locale: 'en_IN',
       url: `${BASE_URL}/ipos`,
-      siteName: 'IPODhan',
+      siteName: 'IPO Dhan',
       title: 'Current IPOs - Live Subscription Data',
       description,
       images: [
@@ -140,7 +140,7 @@ export function generateIPOListingMetadata(): Metadata {
           url: DEFAULT_OG_IMAGE,
           width: 1200,
           height: 630,
-          alt: 'Current IPOs - IPODhan',
+          alt: 'Current IPOs - IPO Dhan',
         },
       ],
     },
@@ -172,7 +172,7 @@ export function generateIPODetailMetadata(params: IPOMetadataParams): Metadata {
       })
     : 'TBA';
 
-  const title = `${companyName} IPO - Live Subscription, GMP, Analysis | IPODhan`;
+  const title = `${companyName} IPO - Live Subscription, GMP, Analysis | IPO Dhan`;
 
   // Build meta description - include price range even when custom description is provided
   let metaDescription = description || `${companyName} IPO opens ${openDateStr}.`;
@@ -204,7 +204,7 @@ export function generateIPODetailMetadata(params: IPOMetadataParams): Metadata {
       type: 'website',
       locale: 'en_IN',
       url: `${BASE_URL}/ipos/${slug}`,
-      siteName: 'IPODhan',
+      siteName: 'IPO Dhan',
       title: `${companyName} IPO - Live Subscription & Analysis`,
       description: metaDescription,
       images: [
@@ -229,7 +229,7 @@ export function generateIPODetailMetadata(params: IPOMetadataParams): Metadata {
  * Generate metadata for lot calculator page
  */
 export function generateLotCalculatorMetadata(): Metadata {
-  const title = 'IPO Lot Size Calculator | IPODhan';
+  const title = 'IPO Lot Size Calculator | IPO Dhan';
   const description =
     'Calculate how many lots you can apply for based on your investment amount. Instant calculations for all current IPOs.';
 
@@ -249,7 +249,7 @@ export function generateLotCalculatorMetadata(): Metadata {
       type: 'website',
       locale: 'en_IN',
       url: `${BASE_URL}/tools/lot-calculator`,
-      siteName: 'IPODhan',
+      siteName: 'IPO Dhan',
       title,
       description,
       images: [
@@ -257,7 +257,7 @@ export function generateLotCalculatorMetadata(): Metadata {
           url: DEFAULT_OG_IMAGE,
           width: 1200,
           height: 630,
-          alt: 'IPO Lot Calculator - IPODhan',
+          alt: 'IPO Lot Calculator - IPO Dhan',
         },
       ],
     },
@@ -274,7 +274,7 @@ export function generateLotCalculatorMetadata(): Metadata {
  * Generate metadata for IPO comparison tool
  */
 export function generateComparisonToolMetadata(): Metadata {
-  const title = 'IPO Comparison Tool | IPODhan';
+  const title = 'IPO Comparison Tool | IPO Dhan';
   const description =
     'Compare multiple IPOs side-by-side. Analyze financials, subscription data, GMP, and listing performance to make informed investment decisions.';
 
@@ -294,7 +294,7 @@ export function generateComparisonToolMetadata(): Metadata {
       type: 'website',
       locale: 'en_IN',
       url: `${BASE_URL}/tools/compare`,
-      siteName: 'IPODhan',
+      siteName: 'IPO Dhan',
       title,
       description,
       images: [
@@ -302,7 +302,7 @@ export function generateComparisonToolMetadata(): Metadata {
           url: DEFAULT_OG_IMAGE,
           width: 1200,
           height: 630,
-          alt: 'IPO Comparison Tool - IPODhan',
+          alt: 'IPO Comparison Tool - IPO Dhan',
         },
       ],
     },
@@ -319,7 +319,7 @@ export function generateComparisonToolMetadata(): Metadata {
  * Generate metadata for registrars directory page
  */
 export function generateRegistrarsMetadata(): Metadata {
-  const title = 'IPO Registrars Directory | IPODhan';
+  const title = 'IPO Registrars Directory | IPO Dhan';
   const description =
     'Complete directory of IPO registrars in India. Find contact details, allotment status links, and registrar-wise IPO listings.';
 
@@ -340,7 +340,7 @@ export function generateRegistrarsMetadata(): Metadata {
       type: 'website',
       locale: 'en_IN',
       url: `${BASE_URL}/registrars`,
-      siteName: 'IPODhan',
+      siteName: 'IPO Dhan',
       title,
       description,
       images: [
@@ -348,7 +348,7 @@ export function generateRegistrarsMetadata(): Metadata {
           url: DEFAULT_OG_IMAGE,
           width: 1200,
           height: 630,
-          alt: 'IPO Registrars Directory - IPODhan',
+          alt: 'IPO Registrars Directory - IPO Dhan',
         },
       ],
     },
@@ -365,7 +365,7 @@ export function generateRegistrarsMetadata(): Metadata {
  * Generate metadata for market holidays page
  */
 export function generateMarketHolidaysMetadata(): Metadata {
-  const title = 'Market Holidays Calendar | IPODhan';
+  const title = 'Market Holidays Calendar | IPO Dhan';
   const description =
     'NSE and BSE market holidays calendar. Plan your IPO applications around trading holidays and market closures.';
 
@@ -386,7 +386,7 @@ export function generateMarketHolidaysMetadata(): Metadata {
       type: 'website',
       locale: 'en_IN',
       url: `${BASE_URL}/market-holidays`,
-      siteName: 'IPODhan',
+      siteName: 'IPO Dhan',
       title,
       description,
       images: [
@@ -394,7 +394,7 @@ export function generateMarketHolidaysMetadata(): Metadata {
           url: DEFAULT_OG_IMAGE,
           width: 1200,
           height: 630,
-          alt: 'Market Holidays Calendar - IPODhan',
+          alt: 'Market Holidays Calendar - IPO Dhan',
         },
       ],
     },
@@ -411,7 +411,7 @@ export function generateMarketHolidaysMetadata(): Metadata {
  * Generate metadata for historical IPOs page
  */
 export function generateHistoricalIPOsMetadata(): Metadata {
-  const title = 'Historical IPOs - Past IPO Performance | IPODhan';
+  const title = 'Historical IPOs - Past IPO Performance | IPO Dhan';
   const description =
     'Browse historical IPO data with listing performance, subscription statistics, and post-listing returns. Learn from past IPOs.';
 
@@ -432,7 +432,7 @@ export function generateHistoricalIPOsMetadata(): Metadata {
       type: 'website',
       locale: 'en_IN',
       url: `${BASE_URL}/history`,
-      siteName: 'IPODhan',
+      siteName: 'IPO Dhan',
       title,
       description,
       images: [
@@ -440,7 +440,7 @@ export function generateHistoricalIPOsMetadata(): Metadata {
           url: DEFAULT_OG_IMAGE,
           width: 1200,
           height: 630,
-          alt: 'Historical IPOs - IPODhan',
+          alt: 'Historical IPOs - IPO Dhan',
         },
       ],
     },

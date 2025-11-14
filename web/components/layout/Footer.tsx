@@ -26,11 +26,11 @@ export function Footer() {
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           {/* Brand */}
           <div className="space-y-4">
-            <Link href="/" className="group flex items-center space-x-2 transition-transform duration-300 hover:scale-105" aria-label="IPODhan - Home">
+            <Link href="/" className="group flex items-center space-x-2 transition-transform duration-300 hover:scale-105" aria-label="IPO Dhan - Home">
               <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground transition-all duration-300 group-hover:shadow-lg group-hover:shadow-primary/50" aria-hidden="true">
                 <span className="text-lg font-bold">I</span>
               </div>
-              <span className="text-xl font-bold transition-colors duration-300 group-hover:text-primary">IPODhan</span>
+              <span className="text-xl font-bold transition-colors duration-300 group-hover:text-primary">IPO Dhan</span>
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Your trusted platform for IPO information and analysis.
@@ -144,7 +144,7 @@ export function Footer() {
         {/* Copyright */}
         <div className="mt-6 pt-6 border-t">
           <p className="text-center text-sm text-muted-foreground">
-            &copy; {currentYear} IPODhan. All rights reserved.
+            &copy; {currentYear} IPO Dhan. All rights reserved.
           </p>
         </div>
       </div>

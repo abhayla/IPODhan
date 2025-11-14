@@ -4,8 +4,8 @@ import Script from "next/script";
 import "./globals.css";
 // TEMP: Toaster commented out - testing if it causes webpack error (Session 5)
 // import { Toaster } from "@/components/ui/toaster";
-// Session 6: Simple Client Component Header (industry-standard pragmatic approach)
-import { HeaderSimple } from "@/components/layout/HeaderSimple";
+// HeaderNew: Full-featured header with dropdown menus (lucide-react migration complete)
+import { HeaderNew } from "@/components/layout/HeaderNew";
 import { Footer } from "@/components/layout/Footer";
 import { generateHomepageMetadata } from "@/lib/seo/metadata";
 
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'IPODhan',
+    title: 'IPO Dhan',
   },
   formatDetection: {
     telephone: false,
@@ -86,8 +86,8 @@ export default function RootLayout({
           Skip to main content
         </a>
         <div className="flex min-h-screen flex-col">
-          {/* Session 6: Simple Client Component Header with React 19 */}
-          <HeaderSimple />
+          {/* HeaderNew: Full dropdown menus for Mainboard IPOs, SME IPOs, Tools */}
+          <HeaderNew />
           <main id="main-content" className="flex-1">
              {children}
           </main>
