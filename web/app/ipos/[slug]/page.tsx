@@ -47,6 +47,12 @@ import {
 import { IPOObjectivesSection } from '@/components/ipo-detail/IPOObjectivesSection';
 import { CompanyContactSection } from '@/components/ipo-detail/CompanyContactSection';
 import { RecommendationSummarySection } from '@/components/ipo-detail/RecommendationSummarySection';
+import { CategoryReservationSection } from '@/components/ipo-detail/CategoryReservationSection';
+import { LotDetailsSection } from '@/components/ipo-detail/LotDetailsSection';
+import { ListingDetailsSection } from '@/components/ipo-detail/ListingDetailsSection';
+import { LeadManagerSection } from '@/components/ipo-detail/LeadManagerSection';
+import { IPODetailsTable } from '@/components/ipo-detail/IPODetailsTable';
+import { ImportantDatesSection } from '@/components/ipo-detail/ImportantDatesSection';
 import { getSectorAverage } from '@/lib/utils/sector-averages';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
@@ -269,6 +275,17 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               }}
             />
 
+            {/* 1a. Important Dates Section */}
+            <ImportantDatesSection
+              openDate={ipo.openDate}
+              closeDate={ipo.closeDate}
+              allotmentDate={ipo.allotmentDate}
+              basisOfAllotmentDate={ipoDetails?.basisOfAllotmentDate ?? null}
+              initiationOfRefundsDate={ipoDetails?.initiationOfRefundsDate ?? null}
+              creditOfSharesDate={ipoDetails?.creditOfSharesDate ?? null}
+              listingDate={ipo.listingDate}
+            />
+
             {/* 2. Key Metrics Cards */}
             <KeyMetricsCardsEnhanced
               issueSize={Number(ipo.issueSize)}
@@ -280,8 +297,34 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               gmpRecords={gmpRecords}
             />
 
+            {/* 2a. IPO Details Table */}
+            <IPODetailsTable
+              issueSize={ipo.issueSize}
+              issueType={ipo.issueType}
+              openDate={ipo.openDate}
+              closeDate={ipo.closeDate}
+              allotmentDate={ipo.allotmentDate}
+              listingDate={ipo.listingDate}
+              priceRangeMin={ipo.priceRangeMin}
+              priceRangeMax={ipo.priceRangeMax}
+              lotSize={ipo.lotSize}
+              minBidQuantity={ipo.minBidQuantity}
+              faceValue={ipo.faceValue}
+              freshIssueSize={ipo.freshIssueSize}
+              offerForSaleSize={ipo.offerForSaleSize}
+            />
+
             {/* 3. Issue Structure Section */}
             <IssueStructureSection ipoDetails={ipoDetails || null} />
+
+            {/* 3a. Lot Details Section */}
+            <LotDetailsSection
+              lotSize={ipo.lotSize}
+              priceRangeMin={ipo.priceRangeMin}
+              priceRangeMax={ipo.priceRangeMax}
+              faceValue={ipo.faceValue}
+              minBidQuantity={ipo.minBidQuantity}
+            />
 
             {/* 4. IPO Detail Tabs */}
             <IPODetailTabs
@@ -326,15 +369,34 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* 12. IPO Objectives Section */}
             <IPOObjectivesSection
-              objectives={null}
+              objectives={ipo.objectives}
               totalIssueSize={ipo.issueSize ? Number(ipo.issueSize) : undefined}
             />
+
+            {/* 12a. Lead Managers Section */}
+            {ipoDetails?.leadManagers && (
+              <LeadManagerSection leadManagers={ipoDetails.leadManagers} />
+            )}
 
             {/* 13. Promoter Holding Section */}
             <PromoterHoldingSection
               promoterHoldingPreIssue={financialData?.promoterHoldingPreIssue ? Number(financialData.promoterHoldingPreIssue) : null}
               promoterHoldingPostIssue={financialData?.promoterHoldingPostIssue ? Number(financialData.promoterHoldingPostIssue) : null}
             />
+
+            {/* 13a. Category Reservation Section */}
+            {ipoDetails && (
+              <CategoryReservationSection
+                reservationData={{
+                  qibSharesOffered: ipoDetails.qibSharesOffered,
+                  niiSharesOffered: ipoDetails.niiSharesOffered,
+                  retailSharesOffered: ipoDetails.retailSharesOffered,
+                  retailMaxAllottees: ipoDetails.retailMaxAllottees,
+                  employeeSharesOffered: ipoDetails.employeeSharesOffered,
+                  anchorSharesOffered: ipoDetails.anchorSharesOffered,
+                }}
+              />
+            )}
 
             {/* 14. Anchor Investors Section */}
             <AnchorInvestorsSection
@@ -375,23 +437,37 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
              listingPerformance.issuePrice !== null &&
              listingPerformance.listingPrice !== null &&
              listingPerformance.listingGainPercent !== null && (
-              <ListingPerformanceCharts
-                listingPerformance={{
-                  issuePrice: listingPerformance.issuePrice,
-                  listingPrice: listingPerformance.listingPrice,
-                  listingGainPercent: typeof listingPerformance.listingGainPercent === 'string'
+              <>
+                <ListingPerformanceCharts
+                  listingPerformance={{
+                    issuePrice: listingPerformance.issuePrice,
+                    listingPrice: listingPerformance.listingPrice,
+                    listingGainPercent: typeof listingPerformance.listingGainPercent === 'string'
+                      ? parseFloat(listingPerformance.listingGainPercent)
+                      : listingPerformance.listingGainPercent,
+                    currentPrice: listingPerformance.currentPrice,
+                    currentGainPercent: listingPerformance.currentGainPercent
+                      ? typeof listingPerformance.currentGainPercent === 'string'
+                        ? parseFloat(listingPerformance.currentGainPercent)
+                        : listingPerformance.currentGainPercent
+                      : null,
+                  }}
+                  issuePrice={listingPerformance.issuePrice}
+                  companyName={ipo.companyName}
+                />
+
+                {/* 16a. Listing Details Section */}
+                <ListingDetailsSection
+                  listingDate={ipo.listingDate}
+                  symbol={ipo.symbol}
+                  issuePrice={listingPerformance.issuePrice}
+                  listingPrice={listingPerformance.listingPrice}
+                  listingGainPercent={typeof listingPerformance.listingGainPercent === 'string'
                     ? parseFloat(listingPerformance.listingGainPercent)
-                    : listingPerformance.listingGainPercent,
-                  currentPrice: listingPerformance.currentPrice,
-                  currentGainPercent: listingPerformance.currentGainPercent
-                    ? typeof listingPerformance.currentGainPercent === 'string'
-                      ? parseFloat(listingPerformance.currentGainPercent)
-                      : listingPerformance.currentGainPercent
-                    : null,
-                }}
-                issuePrice={listingPerformance.issuePrice}
-                companyName={ipo.companyName}
-              />
+                    : listingPerformance.listingGainPercent}
+                  listingGainAmount={listingPerformance.listingGainAmount}
+                />
+              </>
             )}
 
             {/* 17. Apply for IPO Section (Affiliate) */}
@@ -421,15 +497,15 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             {/* 19. Company Contact Section */}
             <CompanyContactSection
               contactData={{
-                companyAddress: null,
-                companyPhone: null,
-                companyEmail: null,
-                companyCity: null,
-                companyState: null,
-                companyPincode: null,
-                complianceOfficer: null,
-                complianceOfficerPhone: null,
-                complianceOfficerEmail: null,
+                companyAddress: ipoDetails?.companyAddress ?? null,
+                companyPhone: ipoDetails?.companyPhone ?? null,
+                companyEmail: ipoDetails?.companyEmail ?? null,
+                companyCity: ipoDetails?.companyCity ?? null,
+                companyState: ipoDetails?.companyState ?? null,
+                companyPincode: ipoDetails?.companyPincode ?? null,
+                complianceOfficer: ipoDetails?.complianceOfficer ?? null,
+                complianceOfficerPhone: ipoDetails?.complianceOfficerPhone ?? null,
+                complianceOfficerEmail: ipoDetails?.complianceOfficerEmail ?? null,
               }}
             />
 
