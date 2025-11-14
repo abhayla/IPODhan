@@ -657,6 +657,31 @@ export async function GET(request: NextRequest) {
 
 **Cross-references:** [Testing Architecture](#testing-architecture) | [Testing Strategy](docs/02-architecture/testing-strategy.md)
 
+### HMR "Module factory not available" Errors
+
+**Symptom**: Runtime error during Hot Module Replacement with Turbopack
+**Error**: "module factory is not available. It might have been deleted in an HMR update"
+
+**Root Cause**: Dual React versions in dependency tree
+- App uses React 19
+- Radix UI components use React 18
+- Turbopack detects conflict and invalidates modules during HMR
+
+**Permanent Fix**: Align to React 18
+1. Update `web/package.json` to React 18.3.1:
+   ```json
+   "react": "^18.3.1",
+   "react-dom": "^18.3.1",
+   "@types/react": "^18",
+   "@types/react-dom": "^18",
+   "react-is": "^18.3.1"
+   ```
+2. Clean install: `cd web && rm -rf node_modules package-lock.json && npm install`
+3. Restart dev server: `npm run dev`
+4. Verify single React version: `npm ls react react-dom`
+
+**Reference**: DEF-2025-003 (docs/07-testing/defect-reports/DEF-2025-003-HMR-React-Version-Mismatch.md)
+
 ---
 
 ## Performance Targets
