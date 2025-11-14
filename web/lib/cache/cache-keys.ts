@@ -12,6 +12,7 @@ import crypto from 'crypto';
  */
 export const CacheTTL = {
   IPO_LIST: 900, // 15 minutes
+  IPO_LISTINGS: 300, // 5 minutes - matches page ISR revalidation
   IPO_DETAIL: 900, // 15 minutes (Story 4.1 requirement)
   IPO_SCORE: 900, // 15 minutes (Story 4.7 requirement)
   SUBSCRIPTION_LATEST: 300, // 5 minutes
@@ -313,5 +314,15 @@ export function getReviewInvalidationKeys(ipoId: string): string[] {
     getReviewSummaryKey(ipoId), // Review summary
     `reviews:ipo:${ipoId}*`, // All review lists for this IPO (with any limit)
     `ipo:slug:*`, // IPO detail pages that include reviews
+  ];
+}
+
+/**
+ * Get all cache key patterns for IPO listings invalidation
+ * Should be called when IPO status changes to LISTED or listing data is updated
+ */
+export function getIPOListingsInvalidationKeys(): string[] {
+  return [
+    'ipo:listings:*', // All listings caches (MAINBOARD, SME, FPO, all years/pages)
   ];
 }

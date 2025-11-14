@@ -1,7 +1,6 @@
 import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { ListingCategoryTabs } from '@/components/listings/ListingCategoryTabs';
-import { CURRENT_YEAR } from '@/components/listings/YearFilter';
 import { YearFilterClient } from '@/components/listings/YearFilterClient';
 import { IPOListingsTableClient } from '@/components/listings/IPOListingsTableClient';
 import { ListingsPaginationClient } from '@/components/listings/ListingsPaginationClient';
@@ -53,10 +52,11 @@ interface Props {
 export default async function SMEIPOListingsPage({ searchParams }: Props) {
   // Parse search params with dynamic current year
   const params = await searchParams;
+  const CURRENT_YEAR = new Date().getFullYear().toString();
   const selectedYear = params.year || CURRENT_YEAR;
   const currentPage = parseInt(params.page || '1', 10);
-  const sortBy = params.sortBy || 'listingDate';
-  const sortOrder = params.sortOrder || 'desc';
+  const sortBy = (params.sortBy || 'listingDate') as 'listingDate' | 'listingDayGain' | 'currentGain' | 'issueSize' | 'companyName';
+  const sortOrder = (params.sortOrder || 'desc') as 'asc' | 'desc';
 
   // Fetch data
   const [listingsResponse, availableYears] = await Promise.all([

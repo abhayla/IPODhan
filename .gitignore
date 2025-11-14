@@ -100,6 +100,7 @@ scraper/query-*.ts
 web/scripts/check-*.ts
 web/scripts/find-*.ts
 web/scripts/get-*.ts
+!web/scripts/test-listings-query.ts  # Exception: Permanent utility for debugging listings
 web/scripts/test-*.ts
 web/scripts/temp-*.ts
 web/scripts/simple-*.ts
