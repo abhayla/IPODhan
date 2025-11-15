@@ -296,8 +296,8 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* 2a. IPO Details Table */}
             <IPODetailsTable
-              issueSize={ipo.issueSize}
-              issueType={ipo.issueType}
+              issueSize={ipo.issueSize ? Number(ipo.issueSize) : null}
+              issueType={ipoDetails?.issueType ?? null}
               openDate={ipo.openDate}
               closeDate={ipo.closeDate}
               allotmentDate={ipo.allotmentDate}
@@ -305,10 +305,10 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               priceRangeMin={ipo.priceRangeMin}
               priceRangeMax={ipo.priceRangeMax}
               lotSize={ipo.lotSize}
-              minBidQuantity={ipo.minBidQuantity}
+              minBidQuantity={null}
               faceValue={ipo.faceValue}
-              freshIssueSize={ipo.freshIssueSize}
-              offerForSaleSize={ipo.offerForSaleSize}
+              freshIssueSize={ipoDetails?.freshIssue ? Number(ipoDetails.freshIssue) : null}
+              offerForSaleSize={ipoDetails?.ofsIssue ? Number(ipoDetails.ofsIssue) : null}
             />
 
             {/* 3. Issue Structure Section */}
@@ -320,7 +320,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               priceRangeMin={ipo.priceRangeMin}
               priceRangeMax={ipo.priceRangeMax}
               faceValue={ipo.faceValue}
-              minBidQuantity={ipo.minBidQuantity}
+              minBidQuantity={null}
             />
 
             {/* 4. IPO Detail Tabs */}
@@ -462,7 +462,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                   listingGainPercent={typeof listingPerformance.listingGainPercent === 'string'
                     ? parseFloat(listingPerformance.listingGainPercent)
                     : listingPerformance.listingGainPercent}
-                  listingGainAmount={listingPerformance.listingGainAmount}
                 />
               </>
             )}

@@ -121,11 +121,11 @@ export function HeaderNew() {
       <div className="container mx-auto px-4">
         <div className="flex h-16 items-center justify-between">
           {/* Logo (Server Component - static) */}
-          <Link href="/" className="group flex items-center space-x-2" aria-label="IPO Dhan - Home">
+          <Link href="/" className="group flex items-center space-x-2" aria-label="IPODhan - Home">
             <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary text-primary-foreground transition-transform group-hover:scale-105" aria-hidden="true">
               <span className="text-lg font-bold">I</span>
             </div>
-            <span className="text-xl font-bold transition-colors group-hover:text-primary">IPO Dhan</span>
+            <span className="text-xl font-bold transition-colors group-hover:text-primary">IPODhan</span>
           </Link>
 
           {/* Desktop Navigation (Server Component with Client islands) */}

@@ -45,6 +45,8 @@
     "perf:test": "lhci autorun",
     "perf:ci": "npm run build && lhci autorun",
     "data-quality-report": "tsx scripts/data-quality-report.ts",
+    "fix-timeline-dates": "tsx scripts/fix-timeline-dates.ts",
+    "clear-calendar-cache": "tsx scripts/clear-calendar-cache.ts",
     "cleanup-test-data": "tsx scripts/cleanup-test-data.ts",
     "cleanup-test-data:execute": "tsx scripts/cleanup-test-data.ts --execute",
     "update-past-close-status": "tsx scripts/update-past-close-date-status.ts",

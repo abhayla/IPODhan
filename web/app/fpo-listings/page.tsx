@@ -55,7 +55,12 @@ export default async function FPOListingsPage({ searchParams }: Props) {
   const params = await searchParams;
   const selectedYear = params.year || CURRENT_YEAR;
   const currentPage = parseInt(params.page || '1', 10);
-  const sortBy = params.sortBy || 'listingDate';
+
+  // Type-safe sortBy validation
+  const validSortFields = ['listingDate', 'listingDayGain', 'currentGain', 'issueSize', 'companyName'] as const;
+  const sortBy = (params.sortBy && validSortFields.includes(params.sortBy as any))
+    ? params.sortBy as typeof validSortFields[number]
+    : 'listingDate' as const;
   const sortOrder = params.sortOrder || 'desc';
 
   // Fetch data

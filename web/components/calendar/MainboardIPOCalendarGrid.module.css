@@ -1,0 +1,25 @@
+/**
+ * Calendar Grid Responsive Styles
+ *
+ * Ensures only one view displays at a time:
+ * - Mobile (< 1024px): List view only
+ * - Desktop (≥ 1024px): Grid view only
+ */
+
+.calendar-desktop-grid {
+  display: none;
+}
+
+.calendar-mobile-list {
+  display: block;
+}
+
+@media (min-width: 1024px) {
+  .calendar-desktop-grid {
+    display: block !important;
+  }
+
+  .calendar-mobile-list {
+    display: none !important;
+  }
+}

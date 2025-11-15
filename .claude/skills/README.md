@@ -267,6 +267,27 @@ This directory contains specialized skills that enhance Claude Code's effectiven
 - Preventing vulnerabilities
 - Security code reviews
 
+### 16. **plan-before-implementation.md**
+**Domain:** Development Practice & Planning Workflow
+
+**Expertise:**
+- Formal planning document creation before implementation
+- Planning document versioning strategy (v1, v2, v3)
+- Standard plan structure (Executive Summary, Root Cause, Implementation, Testing)
+- Verification-first approach (prove current state before planning)
+- docs/01-planning/ directory organization
+- Task breakdown with time estimates and dependencies
+- Success metrics definition (before/after state)
+
+**When to use:**
+- In plan mode analyzing what needs to be done
+- Before significant code changes or refactoring
+- Planning multi-step feature implementations
+- Creating architecture change proposals
+- Debugging complex issues requiring root cause analysis
+- When user requests planning or verification of current state
+- Before making changes that affect multiple files or systems
+
 ---
 
 ## How to Use Skills
@@ -533,6 +554,37 @@ const data = await repo.findAll();
 This pattern was enforced after the Nov 2025 incident where 9 files violated this rule.
 ```
 
+### Example 4: Planning Multi-Step Implementation
+
+**User:** "In plan mode - analyze and plan fixing the calendar"
+
+**Without Skill:**
+```
+Claude: I'll create a plan:
+1. Fix calendar bugs
+2. Test calendar
+3. Deploy
+
+[Provides generic plan without verification or structure]
+```
+
+**With plan-before-implementation Skill:**
+```
+Claude: I'll create a formal planning document following the verification-first approach:
+
+1. First, let me verify current state with screenshots and code analysis
+2. Create plan document: docs/01-planning/Plan-Calendar-Fixes-2025-11-15-v1.md
+3. Include required sections:
+   - Executive Summary (what/why)
+   - Current State (Verified) - what's broken vs working
+   - Root Cause Analysis - WHY each problem exists
+   - Implementation Plan - specific tasks with time estimates
+   - Testing Checklist - acceptance criteria
+   - Success Metrics - before/after measurements
+
+[Creates detailed, structured plan with evidence and versioning]
+```
+
 ---
 
 ## Conclusion
@@ -549,9 +601,9 @@ Think of skills as the "muscle memory" that makes Claude Code an expert IPODhan 
 
 ---
 
-**Last Updated:** January 15, 2025
-**Total Skills:** 15
-**Total Lines:** ~8,500
+**Last Updated:** November 15, 2025
+**Total Skills:** 16
+**Total Lines:** ~8,700
 **Coverage:**
 - **Domain & Business:** IPO market knowledge, scoring algorithms
 - **Architecture & Patterns:** 3-layer architecture, repository pattern, caching strategies
@@ -561,3 +613,4 @@ Think of skills as the "muscle memory" that makes Claude Code an expert IPODhan 
 - **Security:** SQL injection, XSS, CSRF, authentication patterns
 - **Operations:** Windows deployment, PM2, monitoring, performance optimization
 - **API Design:** RESTful patterns, pagination, error handling
+- **Development Practice:** Planning workflow, verification-first approach, documentation standards

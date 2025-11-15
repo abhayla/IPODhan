@@ -8,18 +8,32 @@
  * - Event highlighting with type-based icons
  * - Multi-event detection (yellow background)
  * - Click-through links to IPO detail pages
+ * - Event count limiting to prevent excessive cell heights (Story 15.4)
+ *
+ * Responsive behavior: Uses CSS media queries to ensure only one view shows at a time
  */
 
 import Link from 'next/link';
 import { format, getDay } from 'date-fns';
-import type { CalendarDateEvents, CalendarEventType } from '@/lib/services/mainboard-calendar-service';
-import { CalendarEventType as EventType } from '@/lib/services/mainboard-calendar-service';
+import type { CalendarDateEvents, CalendarEventType } from '@/lib/services/mainboard-calendar-types';
+import { CalendarEventType as EventType } from '@/lib/services/mainboard-calendar-types';
+import CalendarEventGroup from './CalendarEventGroup';
+import styles from './MainboardIPOCalendarGrid.module.css';
+
+// ==================== CONSTANTS ====================
+
+/**
+ * Story 15.4: Event count limiting to prevent massive calendar cells
+ * Max events to show per group before requiring "show more" click
+ */
+const MAX_EVENTS_PER_GROUP = 3;
 
 // ==================== TYPES ====================
 
 interface MainboardIPOCalendarGridProps {
   dates: CalendarDateEvents[];
   monthName: string;
+  currentDate: string; // Format: 'yyyy-MM-dd' (from server to prevent hydration errors)
 }
 
 // ==================== EVENT STYLING ====================
@@ -27,6 +41,7 @@ interface MainboardIPOCalendarGridProps {
 /**
  * Get event icon and color based on event type
  * Story 4.12: Added extended timeline event types
+ * Story 15.1: Added continuous application period event types
  */
 function getEventDisplay(type: CalendarEventType): {
   icon: string;
@@ -34,10 +49,12 @@ function getEventDisplay(type: CalendarEventType): {
   color: string;
 } {
   switch (type) {
-    case EventType.OPEN:
-      return { icon: '📝', label: 'Open', color: 'text-green-600' };
-    case EventType.CLOSE:
-      return { icon: '🔒', label: 'Close', color: 'text-red-600' };
+    case EventType.OPENING_TODAY:
+      return { icon: '🟢', label: 'Opening', color: 'text-green-600' }; // Story 15.1
+    case EventType.CLOSING_TODAY:
+      return { icon: '🔴', label: 'Closing', color: 'text-red-600' }; // Story 15.1
+    case EventType.OPEN_FOR_APPLICATION:
+      return { icon: '📝', label: 'Open', color: 'text-blue-600' }; // Story 15.1
     case EventType.ALLOTMENT:
       return { icon: '🎯', label: 'Allotment', color: 'text-blue-600' };
     case EventType.BASIS_OF_ALLOTMENT:
@@ -59,11 +76,19 @@ function getEventDisplay(type: CalendarEventType): {
 
 /**
  * Single calendar cell (date) with events
+ * Story 15.1: Updated to render grouped events with section headers
+ * Story 15.4: Uses CalendarEventGroup client component for expand/collapse
  */
-function CalendarCell({ dateEvents }: { dateEvents: CalendarDateEvents }) {
+function CalendarCell({
+  dateEvents,
+  currentDate,
+}: {
+  dateEvents: CalendarDateEvents;
+  currentDate: string;
+}) {
   const dayNumber = format(dateEvents.date, 'd');
-  const isToday = format(new Date(), 'yyyy-MM-dd') === dateEvents.dateString;
-  const hasEvents = dateEvents.events.length > 0;
+  const isToday = currentDate === dateEvents.dateString;
+  const hasEvents = dateEvents.eventGroups.length > 0;
   const hasMultiple = dateEvents.hasMultipleEvents;
 
   return (
@@ -84,42 +109,18 @@ function CalendarCell({ dateEvents }: { dateEvents: CalendarDateEvents }) {
         {dayNumber}
       </div>
 
-      {/* Events list */}
+      {/* Event groups - Story 15.4: Using client component */}
       {hasEvents && (
-        <div className="space-y-1">
-          {dateEvents.events.map((event) => {
-            const display = getEventDisplay(event.type);
-
-            // Holiday event (no link)
-            if (event.type === EventType.HOLIDAY) {
-              return (
-                <div
-                  key={event.id}
-                  className={`text-xs ${display.color} flex items-start gap-1`}
-                >
-                  <span>{display.icon}</span>
-                  <span className="line-clamp-2">{event.holidayName}</span>
-                </div>
-              );
-            }
-
-            // IPO event (with link)
-            return (
-              <Link
-                key={event.id}
-                href={`/ipos/${event.slug}`}
-                className={`
-                  text-xs ${display.color} hover:underline flex items-start gap-1
-                  block
-                `}
-              >
-                <span>{display.icon}</span>
-                <span className="line-clamp-2">
-                  {event.companyName} - {display.label}
-                </span>
-              </Link>
-            );
-          })}
+        <div className="space-y-2">
+          {dateEvents.eventGroups.map((group) => (
+            <CalendarEventGroup
+              key={group.type}
+              group={group}
+              dateString={dateEvents.dateString}
+              maxEvents={MAX_EVENTS_PER_GROUP}
+              size="compact"
+            />
+          ))}
         </div>
       )}
     </div>
@@ -138,6 +139,7 @@ function CalendarCell({ dateEvents }: { dateEvents: CalendarDateEvents }) {
 export default function MainboardIPOCalendarGrid({
   dates,
   monthName,
+  currentDate,
 }: MainboardIPOCalendarGridProps) {
   // Organize dates into weeks for grid layout
   const weeks: CalendarDateEvents[][] = [];
@@ -146,11 +148,12 @@ export default function MainboardIPOCalendarGrid({
   // Fill empty cells before first day of month
   const firstDayOfWeek = getDay(dates[0]?.date || new Date());
   for (let i = 0; i < firstDayOfWeek; i++) {
-    // Push empty placeholder (we'll skip rendering these)
+    // Push empty placeholder (we'll skip rendering these) - Story 15.1: Added eventGroups
     currentWeek.push({
       date: new Date(),
       dateString: '',
       events: [],
+      eventGroups: [], // Story 15.1
       hasMultipleEvents: false,
       isHoliday: false,
     });
@@ -172,8 +175,8 @@ export default function MainboardIPOCalendarGrid({
 
   return (
     <>
-      {/* Desktop Grid View (7 columns) */}
-      <div className="hidden md:block">
+      {/* Desktop Grid View (7 columns) - Only shown on lg screens (≥1024px) */}
+      <div className={styles['calendar-desktop-grid']}>
         {/* Calendar header */}
         <div className="grid grid-cols-7 gap-2 mb-2">
           {weekDays.map((day) => (
@@ -196,20 +199,26 @@ export default function MainboardIPOCalendarGrid({
                   return <div key={`empty-${dayIndex}`} className="min-h-[100px]" />;
                 }
 
-                return <CalendarCell key={dateEvents.dateString} dateEvents={dateEvents} />;
+                return (
+                  <CalendarCell
+                    key={dateEvents.dateString}
+                    dateEvents={dateEvents}
+                    currentDate={currentDate}
+                  />
+                );
               })}
             </div>
           ))}
         </div>
       </div>
 
-      {/* Mobile List View */}
-      <div className="md:hidden space-y-3">
+      {/* Mobile List View - Story 15.1: Updated with grouped sections - Hidden on lg screens (≥1024px) */}
+      <div className={`${styles['calendar-mobile-list']} space-y-3`}>
         {dates
-          .filter((dateEvents) => dateEvents.events.length > 0)
+          .filter((dateEvents) => dateEvents.eventGroups.length > 0)
           .map((dateEvents) => {
             const dayLabel = format(dateEvents.date, 'EEE, MMM d');
-            const isToday = format(new Date(), 'yyyy-MM-dd') === dateEvents.dateString;
+            const isToday = currentDate === dateEvents.dateString;
 
             return (
               <div
@@ -222,44 +231,28 @@ export default function MainboardIPOCalendarGrid({
                 `}
               >
                 {/* Date header */}
-                <div className={`font-semibold mb-2 ${isToday ? 'text-blue-600' : 'text-gray-700'}`}>
+                <div className={`font-semibold mb-3 ${isToday ? 'text-blue-600' : 'text-gray-700'}`}>
                   {dayLabel}
                 </div>
 
-                {/* Events */}
-                <div className="space-y-2">
-                  {dateEvents.events.map((event) => {
-                    const display = getEventDisplay(event.type);
-
-                    if (event.type === EventType.HOLIDAY) {
-                      return (
-                        <div key={event.id} className={`text-sm ${display.color} flex items-center gap-2`}>
-                          <span>{display.icon}</span>
-                          <span>{event.holidayName}</span>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <Link
-                        key={event.id}
-                        href={`/ipos/${event.slug}`}
-                        className={`text-sm ${display.color} hover:underline flex items-center gap-2`}
-                      >
-                        <span>{display.icon}</span>
-                        <span>
-                          {event.companyName} - {display.label}
-                        </span>
-                      </Link>
-                    );
-                  })}
+                {/* Event groups - Story 15.4: Using client component */}
+                <div className="space-y-3">
+                  {dateEvents.eventGroups.map((group) => (
+                    <CalendarEventGroup
+                      key={group.type}
+                      group={group}
+                      dateString={dateEvents.dateString}
+                      maxEvents={MAX_EVENTS_PER_GROUP}
+                      size="normal"
+                    />
+                  ))}
                 </div>
               </div>
             );
           })}
 
         {/* Empty state for mobile */}
-        {dates.filter((d) => d.events.length > 0).length === 0 && (
+        {dates.filter((d) => d.eventGroups.length > 0).length === 0 && (
           <div className="text-center py-12 text-gray-500">
             <p>No events scheduled for {monthName}</p>
           </div>

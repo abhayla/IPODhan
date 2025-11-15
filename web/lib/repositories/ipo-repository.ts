@@ -5,7 +5,7 @@
  * Implements cache-aside pattern with Redis for optimized performance.
  */
 
-import { eq, and, gte, lte, sql, desc, asc, inArray, like } from 'drizzle-orm';
+import { eq, and, or, gte, lte, sql, desc, asc, inArray, like } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import Fuse from 'fuse.js';
@@ -617,13 +617,16 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   /**
    * Find all IPOs with ipoDetails for calendar view
    * Story 4.12: Extended timeline dates need ipoDetails relation
+   * Performance: Added date range filtering to avoid fetching all IPOs
    *
-   * @param filters - Category and optional year filters
+   * @param filters - Category, year, and optional date range filters
    * @returns All IPOs with ipoDetails (no pagination)
    */
   async findAllWithDetails(filters: {
     category: string[];
     year?: number;
+    dateFrom?: Date;
+    dateTo?: Date;
   }): Promise<Array<IPO & { ipoDetails: typeof ipoDetails.$inferSelect | null }>> {
     try {
       // Build where conditions
@@ -642,6 +645,21 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         conditions.push(
           sql`EXTRACT(YEAR FROM ${ipos.openDate}) = ${filters.year}`
         );
+      }
+
+      // Performance optimization: Filter by date range
+      // Only include IPOs where ANY of the 7 date fields fall within the target month
+      if (filters.dateFrom && filters.dateTo) {
+        const dateRangeConditions = [
+          and(gte(ipos.openDate, filters.dateFrom.toISOString()), lte(ipos.openDate, filters.dateTo.toISOString())),
+          and(gte(ipos.closeDate, filters.dateFrom.toISOString()), lte(ipos.closeDate, filters.dateTo.toISOString())),
+          and(gte(ipos.allotmentDate, filters.dateFrom.toISOString()), lte(ipos.allotmentDate, filters.dateTo.toISOString())),
+          and(gte(ipos.listingDate, filters.dateFrom.toISOString()), lte(ipos.listingDate, filters.dateTo.toISOString())),
+          and(gte(ipoDetails.basisOfAllotmentDate, filters.dateFrom.toISOString()), lte(ipoDetails.basisOfAllotmentDate, filters.dateTo.toISOString())),
+          and(gte(ipoDetails.initiationOfRefundsDate, filters.dateFrom.toISOString()), lte(ipoDetails.initiationOfRefundsDate, filters.dateTo.toISOString())),
+          and(gte(ipoDetails.creditOfSharesDate, filters.dateFrom.toISOString()), lte(ipoDetails.creditOfSharesDate, filters.dateTo.toISOString())),
+        ];
+        conditions.push(or(...dateRangeConditions));
       }
 
       const whereClause =
