@@ -13,8 +13,9 @@ import {
   index,
   pgEnum,
   unique,
+  check,
 } from 'drizzle-orm/pg-core';
-import { relations, isNull } from 'drizzle-orm';
+import { relations, isNull, sql } from 'drizzle-orm';
 
 // ==================== ENUMS ====================
 
@@ -882,6 +883,20 @@ export const ipoDetails = pgTable(
     ipoIdIdx: index('idx_ipo_details_ipo_id').on(table.ipoId),
     dataSourceIdx: index('idx_ipo_details_data_source').on(table.dataSource),
     isinIdx: index('idx_ipo_details_isin').on(table.isin),
+
+    // NOTE: Timeline date validation is enforced at the application level
+    // (in seed script, repositories, and scrapers) rather than database constraints.
+    // PostgreSQL doesn't support CHECK constraints with subqueries referencing other tables.
+    //
+    // Business Rules:
+    //   - Timeline dates must be >= close_date
+    //   - Timeline dates must be <= close_date + 30 days
+    //   - Standard: basis (+2d), refunds (+4d), credit (+6d) after close_date
+    //
+    // Implementation:
+    //   - Utility: web/lib/validation/timeline-dates.ts
+    //   - Documentation: docs/16-database/TIMELINE_DATE_BUSINESS_RULES.md
+    //   - Seed Script: web/scripts/seed-database.ts (lines 840-848)
   })
 );
 

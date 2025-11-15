@@ -11,10 +11,12 @@
  */
 
 import { Metadata } from 'next';
+import { format } from 'date-fns';
 import { getMainboardIPOEvents, searchCalendarEvents } from '@/lib/services/mainboard-calendar-service';
 import MainboardIPOCalendarGrid from '@/components/calendar/MainboardIPOCalendarGrid';
 import MonthNavigation from '@/components/calendar/MonthNavigation';
 import EventSearch from '@/components/calendar/EventSearch';
+import CalendarLegend from '@/components/calendar/CalendarLegend';
 
 // ==================== ISR CONFIGURATION ====================
 
@@ -93,6 +95,9 @@ export default async function MainboardIPOCalendarPage({ searchParams }: PagePro
 
   const hasEvents = calendarData.totalEvents > 0;
 
+  // Get current date on server (to prevent hydration errors)
+  const currentDate = format(now, 'yyyy-MM-dd');
+
   return (
     <main className="container mx-auto px-4 py-8 max-w-7xl">
       {/* Header */}
@@ -104,18 +109,8 @@ export default async function MainboardIPOCalendarPage({ searchParams }: PagePro
         </p>
       </div>
 
-      {/* Event Legend */}
-      <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-        <p className="text-sm font-semibold text-gray-700 mb-2">Event Types:</p>
-        <div className="flex flex-wrap gap-4 text-sm">
-          <span>📝 Open</span>
-          <span>🔒 Close</span>
-          <span>🎯 Allotment</span>
-          <span>💰 Refund</span>
-          <span>🎉 Listing</span>
-          <span>🏖️ Holiday</span>
-        </div>
-      </div>
+      {/* Comprehensive Event Legend */}
+      <CalendarLegend />
 
       {/* Search */}
       <div className="mb-6">
@@ -128,7 +123,11 @@ export default async function MainboardIPOCalendarPage({ searchParams }: PagePro
       {/* Calendar Grid */}
       {hasEvents ? (
         <div className="mt-6">
-          <MainboardIPOCalendarGrid dates={calendarData.dates} monthName={calendarData.monthName} />
+          <MainboardIPOCalendarGrid
+            dates={calendarData.dates}
+            monthName={calendarData.monthName}
+            currentDate={currentDate}
+          />
         </div>
       ) : (
         <div className="text-center py-12 text-gray-500">

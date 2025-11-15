@@ -22,8 +22,9 @@ import type { IPO, MarketHoliday } from '@/lib/db/types';
 /**
  * Calendar event types
  * Story 4.12: Added extended timeline event types
+ * Standardized to singular forms (consistent with Mainboard calendar)
  */
-export type CalendarEventType = 'OPENS' | 'CLOSES' | 'ALLOTMENT' | 'BASIS_OF_ALLOTMENT' | 'REFUNDS' | 'CREDIT_OF_SHARES' | 'LISTS' | 'HOLIDAY';
+export type CalendarEventType = 'OPEN' | 'CLOSE' | 'ALLOTMENT' | 'BASIS_OF_ALLOTMENT' | 'REFUND' | 'CREDIT_OF_SHARES' | 'LISTING' | 'HOLIDAY';
 
 /**
  * Calendar event data structure
@@ -190,7 +191,7 @@ export async function getSMEIPOEvents(
         if (dayIndex >= 0) {
           calendarDays[dayIndex].events.push({
             date: openDate,
-            eventType: 'OPENS',
+            eventType: 'OPEN',
             ipo,
             description: `${ipo.companyName} IPO Opens`,
             slug: ipo.slug,
@@ -204,7 +205,7 @@ export async function getSMEIPOEvents(
         if (dayIndex >= 0) {
           calendarDays[dayIndex].events.push({
             date: closeDate,
-            eventType: 'CLOSES',
+            eventType: 'CLOSE',
             ipo,
             description: `${ipo.companyName} IPO Closes`,
             slug: ipo.slug,
@@ -246,7 +247,7 @@ export async function getSMEIPOEvents(
         if (dayIndex >= 0) {
           calendarDays[dayIndex].events.push({
             date: refundsDate,
-            eventType: 'REFUNDS',
+            eventType: 'REFUND',
             ipo,
             description: `${ipo.companyName} Refunds Initiated`,
             slug: ipo.slug,
@@ -274,7 +275,7 @@ export async function getSMEIPOEvents(
         if (dayIndex >= 0) {
           calendarDays[dayIndex].events.push({
             date: listingDate,
-            eventType: 'LISTS',
+            eventType: 'LISTING',
             ipo,
             description: `${ipo.companyName} Lists`,
             slug: ipo.slug,

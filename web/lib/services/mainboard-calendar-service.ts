@@ -28,62 +28,32 @@ import {
   format,
   isSameDay,
   parseISO,
+  max,
+  min,
 } from 'date-fns';
 
 // ==================== TYPES ====================
 
-/**
- * Calendar event types for Mainboard IPOs
- * Story 4.12: Added extended timeline events
- */
-export enum CalendarEventType {
-  OPEN = 'OPEN',
-  CLOSE = 'CLOSE',
-  ALLOTMENT = 'ALLOTMENT',
-  BASIS_OF_ALLOTMENT = 'BASIS_OF_ALLOTMENT', // Story 4.12
-  REFUND = 'REFUND', // Story 4.12: Initiation of Refunds
-  CREDIT_OF_SHARES = 'CREDIT_OF_SHARES', // Story 4.12
-  LISTING = 'LISTING',
-  HOLIDAY = 'HOLIDAY',
-}
+// Import types for use within this file
+import { CalendarEventType } from './mainboard-calendar-types';
+import type {
+  CalendarEvent,
+  CalendarEventGroup,
+  CalendarDateEvents,
+  MonthCalendarData,
+} from './mainboard-calendar-types';
 
-/**
- * Individual calendar event with IPO details
- */
-export interface CalendarEvent {
-  id: string;
-  type: CalendarEventType;
-  date: Date;
-  ipoId?: string;
-  companyName?: string;
-  slug?: string;
-  segment?: string | null;
-  offeringType?: string;
-  holidayName?: string;
-  exchange?: string;
-}
+// Re-export types from separate file to avoid bundling server dependencies in client components
+export {
+  CalendarEventType,
+  type CalendarEvent,
+  type CalendarEventGroup,
+  type CalendarDateEvents,
+  type MonthCalendarData,
+} from './mainboard-calendar-types';
 
-/**
- * Aggregated events for a single calendar date
- */
-export interface CalendarDateEvents {
-  date: Date;
-  dateString: string; // Format: 'YYYY-MM-DD'
-  events: CalendarEvent[];
-  hasMultipleEvents: boolean; // True if >1 event on this date
-  isHoliday: boolean;
-}
-
-/**
- * Full calendar data for a month
- */
-export interface MonthCalendarData {
-  month: number; // 1-12
-  year: number;
-  monthName: string; // "October 2025"
-  dates: CalendarDateEvents[]; // All dates in month (even empty ones)
-  totalEvents: number;
-}
+// Type alias for backward compatibility
+export type EventGroup = CalendarEventGroup;
 
 // ==================== CONSTANTS ====================
 
@@ -98,11 +68,13 @@ const CATEGORY_MAINBOARD = 'MAINBOARD';
 function createIPOEvent(
   ipo: IPO,
   eventType: CalendarEventType,
-  date: Date | string | null
+  date: Date | string | null,
+  closeDate?: string | null
 ): CalendarEvent | null {
   if (!date) return null;
 
   const parsedDate = typeof date === 'string' ? parseISO(date) : date;
+  const parsedCloseDate = closeDate ? parseISO(closeDate) : undefined;
 
   return {
     id: `${ipo.id}-${eventType}-${format(parsedDate, 'yyyy-MM-dd')}`,
@@ -113,6 +85,7 @@ function createIPOEvent(
     slug: ipo.slug,
     segment: ipo.segment,
     offeringType: ipo.offeringType,
+    closeDate: parsedCloseDate, // Include close date for sorting
   };
 }
 
@@ -137,25 +110,74 @@ function createHolidayEvent(
 /**
  * Extract all events from an IPO's dates
  * Story 4.12: Added extended timeline dates from ipoDetails
+ * Story 15.1: Added continuous application period events
+ *
+ * @param ipo - IPO data with optional ipoDetails
+ * @param monthStart - Start of the month for filtering continuous events
+ * @param monthEnd - End of the month for filtering continuous events
+ * @returns Array of calendar events including continuous application period events
  */
-function extractIPOEvents(ipo: IPO & { ipoDetails?: { basisOfAllotmentDate?: string | null; initiationOfRefundsDate?: string | null; creditOfSharesDate?: string | null } | null }): CalendarEvent[] {
+function extractIPOEvents(
+  ipo: IPO & { ipoDetails?: { basisOfAllotmentDate?: string | null; initiationOfRefundsDate?: string | null; creditOfSharesDate?: string | null } | null },
+  monthStart: Date,
+  monthEnd: Date
+): CalendarEvent[] {
   const events: CalendarEvent[] = [];
 
-  // Open date
-  const openEvent = createIPOEvent(
-    ipo,
-    CalendarEventType.OPEN,
-    ipo.openDate
-  );
-  if (openEvent) events.push(openEvent);
+  // Story 15.1: CONTINUOUS EVENTS - Application Period (openDate to closeDate)
+  // IPO appears every day from opening to closing
+  if (ipo.openDate && ipo.closeDate) {
+    const openDate = parseISO(ipo.openDate);
+    const closeDate = parseISO(ipo.closeDate);
 
-  // Close date
-  const closeEvent = createIPOEvent(
-    ipo,
-    CalendarEventType.CLOSE,
-    ipo.closeDate
-  );
-  if (closeEvent) events.push(closeEvent);
+    // Generate events for EVERY day in the application period (within the month)
+    const periodStart = max([openDate, monthStart]);
+    const periodEnd = min([closeDate, monthEnd]);
+
+    // Only proceed if the period overlaps with the month
+    if (periodStart <= periodEnd) {
+      const daysInPeriod = eachDayOfInterval({
+        start: periodStart,
+        end: periodEnd,
+      });
+
+      daysInPeriod.forEach((date) => {
+        let eventType: CalendarEventType;
+
+        if (isSameDay(date, openDate)) {
+          // Opening day - special event type
+          eventType = CalendarEventType.OPENING_TODAY;
+        } else if (isSameDay(date, closeDate)) {
+          // Closing day - special event type
+          eventType = CalendarEventType.CLOSING_TODAY;
+        } else {
+          // Days in between - ongoing application period
+          eventType = CalendarEventType.OPEN_FOR_APPLICATION;
+        }
+
+        const event = createIPOEvent(ipo, eventType, date, ipo.closeDate);
+        if (event) events.push(event);
+      });
+    }
+  } else if (ipo.openDate && !ipo.closeDate) {
+    // If only openDate exists, create OPENING_TODAY event
+    const openEvent = createIPOEvent(
+      ipo,
+      CalendarEventType.OPENING_TODAY,
+      ipo.openDate
+    );
+    if (openEvent) events.push(openEvent);
+  } else if (!ipo.openDate && ipo.closeDate) {
+    // If only closeDate exists, create CLOSING_TODAY event
+    const closeEvent = createIPOEvent(
+      ipo,
+      CalendarEventType.CLOSING_TODAY,
+      ipo.closeDate
+    );
+    if (closeEvent) events.push(closeEvent);
+  }
+
+  // DISCRETE EVENTS - Post-application timeline events
 
   // Allotment date
   const allotmentEvent = createIPOEvent(
@@ -207,6 +229,125 @@ function extractIPOEvents(ipo: IPO & { ipoDetails?: { basisOfAllotmentDate?: str
 }
 
 /**
+ * Get event type priority for section ordering
+ * Story 15.1: Priority-based ordering (lower number = higher priority)
+ */
+function getEventTypePriority(type: CalendarEventType): number {
+  const priorities = {
+    [CalendarEventType.CLOSING_TODAY]: 1, // Most urgent
+    [CalendarEventType.OPENING_TODAY]: 2,
+    [CalendarEventType.OPEN_FOR_APPLICATION]: 3,
+    [CalendarEventType.LISTING]: 4, // Excitement factor
+    [CalendarEventType.ALLOTMENT]: 5,
+    [CalendarEventType.BASIS_OF_ALLOTMENT]: 6,
+    [CalendarEventType.REFUND]: 7,
+    [CalendarEventType.CREDIT_OF_SHARES]: 8,
+    [CalendarEventType.HOLIDAY]: 9, // Lowest priority
+  };
+  return priorities[type] ?? 99;
+}
+
+/**
+ * Get display label for event type section
+ * Story 15.1: Human-readable section headers
+ */
+function getEventGroupLabel(type: CalendarEventType): string {
+  const labels = {
+    [CalendarEventType.CLOSING_TODAY]: 'Closing Today',
+    [CalendarEventType.OPENING_TODAY]: 'Opening Today',
+    [CalendarEventType.OPEN_FOR_APPLICATION]: 'Open for Application',
+    [CalendarEventType.LISTING]: 'Listing',
+    [CalendarEventType.ALLOTMENT]: 'Allotment',
+    [CalendarEventType.BASIS_OF_ALLOTMENT]: 'Basis of Allotment',
+    [CalendarEventType.REFUND]: 'Refund Initiation',
+    [CalendarEventType.CREDIT_OF_SHARES]: 'Credit of Shares',
+    [CalendarEventType.HOLIDAY]: 'Market Holiday',
+  };
+  return labels[type] ?? 'Other Events';
+}
+
+/**
+ * Sort events within a group by priority
+ * Story 15.1: Within each event type, sort by relevance
+ */
+function sortEventsWithinGroup(
+  events: CalendarEvent[],
+  groupType: CalendarEventType
+): CalendarEvent[] {
+  if (events.length === 0) return events;
+
+  // For OPEN_FOR_APPLICATION and CLOSING_TODAY: Sort by close date proximity (sooner = higher)
+  if (
+    groupType === CalendarEventType.OPEN_FOR_APPLICATION ||
+    groupType === CalendarEventType.CLOSING_TODAY
+  ) {
+    return [...events].sort((a, b) => {
+      // Sort by close date (sooner = higher priority)
+      const closeDateA = a.closeDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
+      const closeDateB = b.closeDate?.getTime() ?? Number.MAX_SAFE_INTEGER;
+
+      if (closeDateA !== closeDateB) {
+        return closeDateA - closeDateB; // Earlier dates first
+      }
+
+      // If close dates are equal or missing, fall back to alphabetical by company name
+      const nameA = a.companyName?.toLowerCase() ?? '';
+      const nameB = b.companyName?.toLowerCase() ?? '';
+      return nameA.localeCompare(nameB);
+    });
+  }
+
+  // For LISTING: Sort by company name (alphabetical)
+  if (groupType === CalendarEventType.LISTING) {
+    return [...events].sort((a, b) => {
+      const nameA = a.companyName?.toLowerCase() ?? '';
+      const nameB = b.companyName?.toLowerCase() ?? '';
+      return nameA.localeCompare(nameB);
+    });
+  }
+
+  // Default: Keep original order
+  return events;
+}
+
+/**
+ * Group events by type and create EventGroup objects
+ * Story 15.1: Organize events into sections for better UX
+ */
+function groupEventsByType(events: CalendarEvent[]): EventGroup[] {
+  if (events.length === 0) return [];
+
+  // Group events by type
+  const eventsByType = events.reduce((acc, event) => {
+    const type = event.type;
+    if (!acc.has(type)) {
+      acc.set(type, []);
+    }
+    acc.get(type)!.push(event);
+    return acc;
+  }, new Map<CalendarEventType, CalendarEvent[]>());
+
+  // Convert to EventGroup array with priority and labels
+  const eventGroups: EventGroup[] = [];
+
+  eventsByType.forEach((groupEvents, type) => {
+    const sortedEvents = sortEventsWithinGroup(groupEvents, type);
+
+    eventGroups.push({
+      type,
+      priority: getEventTypePriority(type),
+      label: getEventGroupLabel(type),
+      events: sortedEvents,
+    });
+  });
+
+  // Sort groups by priority (lower number = higher priority)
+  eventGroups.sort((a, b) => a.priority - b.priority);
+
+  return eventGroups;
+}
+
+/**
  * Group events by date
  */
 function groupEventsByDate(
@@ -235,6 +376,7 @@ function groupEventsByDate(
 
 /**
  * Create CalendarDateEvents from grouped events
+ * Story 15.1: Added eventGroups for organized display
  */
 function createCalendarDateEvents(
   eventsByDate: Map<string, CalendarEvent[]>
@@ -245,10 +387,14 @@ function createCalendarDateEvents(
     const date = parseISO(dateString);
     const hasHoliday = events.some((e) => e.type === CalendarEventType.HOLIDAY);
 
+    // Story 15.1: Group events by type for organized display
+    const eventGroups = groupEventsByType(events);
+
     calendarDates.push({
       date,
       dateString,
-      events,
+      events, // Keep for backward compatibility
+      eventGroups, // Story 15.1: Grouped and sorted events
       hasMultipleEvents: events.length > 1,
       isHoliday: hasHoliday,
     });
@@ -298,27 +444,25 @@ export async function getMainboardIPOEvents(
     const redis = getRedisClient();
     const ipoRepository = new IPORepository(db, redis);
 
-    // Fetch Mainboard IPOs using repository pattern
-    const iposResult = await ipoRepository.findAll({
-      segment: ['MAINBOARD'],
-      limit: 1000, // Get all Mainboard IPOs for calendar
-      page: 1,
+    // Fetch Mainboard IPOs with ipoDetails using repository pattern
+    // Story 4.12: Use findAllWithDetails to get extended timeline dates
+    // (basisOfAllotmentDate, initiationOfRefundsDate, creditOfSharesDate)
+    // Performance optimization: Filter by date range at database level
+    const ipos = await ipoRepository.findAllWithDetails({
+      category: ['MAINBOARD'],
+      year: undefined, // Get all years
+      dateFrom: monthStart, // Only fetch IPOs with events in this month
+      dateTo: monthEnd,
     });
 
-    const ipos = iposResult.data || [];
-
     // Extract all events from IPOs
+    // Story 15.1: Pass monthStart/monthEnd for continuous event generation
+    // Performance: Repository filters IPOs, extractIPOEvents now handles month boundaries
     let allEvents: CalendarEvent[] = [];
     ipos.forEach((ipo) => {
-      const ipoEvents = extractIPOEvents(ipo);
-      // Filter events to only those in the target month
-      const monthEvents = ipoEvents.filter((event) => {
-        return (
-          event.date >= monthStart &&
-          event.date <= monthEnd
-        );
-      });
-      allEvents = [...allEvents, ...monthEvents];
+      const ipoEvents = extractIPOEvents(ipo, monthStart, monthEnd);
+      // Events are already filtered by extractIPOEvents for the target month
+      allEvents = [...allEvents, ...ipoEvents];
     });
 
     // Fetch market holidays for the year (with graceful degradation)
@@ -380,6 +524,7 @@ export async function getMainboardIPOEvents(
       date,
       dateString: format(date, 'yyyy-MM-dd'),
       events: [],
+      eventGroups: [],
       hasMultipleEvents: false,
       isHoliday: false,
     }));
@@ -477,8 +622,9 @@ export async function getEventCounts(
   const calendar = await getMainboardIPOEvents(month, year);
 
   const counts: Record<CalendarEventType, number> = {
-    [CalendarEventType.OPEN]: 0,
-    [CalendarEventType.CLOSE]: 0,
+    [CalendarEventType.OPENING_TODAY]: 0, // Story 15.1
+    [CalendarEventType.CLOSING_TODAY]: 0, // Story 15.1
+    [CalendarEventType.OPEN_FOR_APPLICATION]: 0, // Story 15.1
     [CalendarEventType.ALLOTMENT]: 0,
     [CalendarEventType.BASIS_OF_ALLOTMENT]: 0, // Story 4.12
     [CalendarEventType.REFUND]: 0,

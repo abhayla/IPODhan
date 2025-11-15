@@ -44,6 +44,14 @@ npm run test:e2e               # E2E tests with Playwright
 npm run db:migrate             # Apply migrations (from web/)
 npm run db:studio              # Open Drizzle Studio GUI (port 4983)
 npm run seed                   # Seed database with sample data
+npm run seed:force             # Force re-seed (truncates existing data)
+
+# Scraper & Data Management (from web/)
+npm run scrape:historical      # Run historical data scraper
+npm run scrape:gmp             # Test GMP scraper
+npm run calculate-ratings      # Calculate IPO ratings/scores
+npm run data-quality-report    # Generate data quality report
+npm run manual-entry           # Launch manual data entry helper
 
 # Code Quality
 npm run lint                   # Run ESLint
@@ -75,13 +83,14 @@ npm run build                  # Build for production
 IPODhan is a comprehensive IPO (Initial Public Offering) information platform for Indian investors. The platform provides real-time IPO data, subscription tracking, GMP (Grey Market Premium) information, financial analysis, and investor tools.
 
 **Tech Stack:**
-- Frontend: Next.js 15.5.4 (App Router), React 19.1.0, TypeScript 5, Tailwind CSS 4
+- Frontend: Next.js 15.5.4 (App Router), React 18.3.1, TypeScript 5, Tailwind CSS 4
 - Database: PostgreSQL 16 with Drizzle ORM 0.44.6
 - Cache: Redis 7.2+ with ioredis 5.8.0
 - Deployment: Windows Server 2022 VPS
 - Testing: Vitest 3.2.4 (unit/integration), Playwright 1.55.1 (E2E)
 - Monitoring: Winston 3.18.3 (logging), Sentry 10.17+ (APM), OpenTelemetry 2.1+
 - Monorepo: npm workspaces with TypeScript Project References
+- Data Processing: Cheerio 1.1.2 (HTML parsing), Fuse.js 7.1.0 (fuzzy search)
 
 **⚠️ IMPORTANT - Database Schema Architecture:**
 The database schema has been consolidated into a **single source of truth** at `packages/shared/src/db/schema.ts`. All files throughout the codebase successfully import from this unified schema through a re-export chain (`packages/shared/src/db/schema.ts` → `web/lib/db/index.ts` → application code). Never modify schema outside of the shared package. → [See full details](#1-database-schema-architecture-important)
@@ -124,6 +133,8 @@ IPODhan/
 - `web/lib/repositories/base-repository.ts` - Cache-aside pattern implementation
 - `web/lib/logging/logger.ts` - Winston structured logging
 - `web/lib/monitoring/` - APM and error tracking
+- `scraper/src/scrapers/` - NSE, BSE, Moneycontrol, Chittorgarh scrapers
+- `scraper/src/scheduler/` - Cron-based scheduling for automated scraping
 
 ---
 
@@ -663,22 +674,16 @@ export async function GET(request: NextRequest) {
 **Error**: "module factory is not available. It might have been deleted in an HMR update"
 
 **Root Cause**: Dual React versions in dependency tree
-- App uses React 19
 - Radix UI components use React 18
 - Turbopack detects conflict and invalidates modules during HMR
 
-**Permanent Fix**: Align to React 18
-1. Update `web/package.json` to React 18.3.1:
-   ```json
-   "react": "^18.3.1",
-   "react-dom": "^18.3.1",
-   "@types/react": "^18",
-   "@types/react-dom": "^18",
-   "react-is": "^18.3.1"
-   ```
-2. Clean install: `cd web && rm -rf node_modules package-lock.json && npm install`
-3. Restart dev server: `npm run dev`
-4. Verify single React version: `npm ls react react-dom`
+**Status**: ✅ RESOLVED - Project now uses React 18.3.1 consistently
+
+**If issue reoccurs**:
+1. Verify single React version: `npm ls react react-dom`
+2. Check for React 19 dependencies: `npm ls --all | grep react@19`
+3. Clean install: `cd web && rm -rf node_modules package-lock.json && npm install`
+4. Restart dev server: `npm run dev`
 
 **Reference**: DEF-2025-003 (docs/07-testing/defect-reports/DEF-2025-003-HMR-React-Version-Mismatch.md)
 

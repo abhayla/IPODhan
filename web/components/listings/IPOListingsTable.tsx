@@ -190,7 +190,7 @@ export function IPOListingsTable({ data, onSort, currentSort }: IPOListingsTable
                     {ipo.companyName}
                   </Link>
                   <Badge variant="outline" className="ml-2 text-xs">
-                    {ipo.category}
+                    {ipo.segment}
                   </Badge>
                 </TableCell>
                 <TableCell>{formatDate(ipo.openDate)}</TableCell>

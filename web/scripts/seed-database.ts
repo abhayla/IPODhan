@@ -181,6 +181,17 @@ function getRelativeDate(daysFromToday: number): string {
 }
 
 /**
+ * Add days to a specific date (not today)
+ * Used for calculating timeline dates relative to IPO close_date
+ */
+function addDaysToDate(baseDate: string | null, days: number): string | null {
+  if (!baseDate) return null;
+  const date = new Date(baseDate);
+  date.setDate(date.getDate() + days);
+  return date.toISOString().split('T')[0];
+}
+
+/**
  * Generate unique company name
  */
 function generateCompanyName(existingNames: Set<string>): string {
@@ -526,8 +537,49 @@ function generateIPOData(
 // ==================== MAIN SEED FUNCTION ====================
 
 async function seedDatabase() {
+  // ===== PRODUCTION SAFEGUARD =====
+  console.warn(`
+╔═══════════════════════════════════════════════════════════════╗
+║                    ⚠️  WARNING: TEST DATA ONLY  ⚠️             ║
+╚═══════════════════════════════════════════════════════════════╝
+
+This seed script generates FICTIONAL TEST DATA for development only.
+
+❌ DO NOT run this in production environment!
+❌ Production should ONLY use scrapers and manual entry!
+
+Data sources this script creates:
+  • ipo_details.data_source = 'SEED_SCRIPT'
+  • Fictional company names
+  • Relative dates (today ± X days)
+  • Random financial data
+
+Production data sources (REAL DATA):
+  • NSE_SCRAPER
+  • BSE_SCRAPER
+  • MONEYCONTROL
+  • MANUAL_ENTRY
+`);
+
+  // Block execution in production
+  if (process.env.NODE_ENV === 'production') {
+    console.error('❌ BLOCKED: Seed script cannot run in production environment!');
+    console.error('   Use scrapers or manual entry for production data.');
+    process.exit(1);
+  }
+
   const startTime = Date.now();
   const forceFlag = process.argv.includes('--force');
+
+  // Require explicit confirmation in staging/development
+  if (!forceFlag) {
+    console.warn('\n⚠️  This will create test data in your database.');
+    console.warn('   Use --force flag to confirm: npm run seed:force\n');
+    await closePool();
+    process.exit(0);
+  }
+
+  console.log('✓ Proceeding with test data generation...\n');
 
   console.log('='.repeat(70));
   console.log('DATABASE SEEDING FOR TESTING ENVIRONMENT');
@@ -783,14 +835,16 @@ async function seedDatabase() {
           registrarLink: registrarLink,
           isin: ipo.isin, // Use same ISIN from ipos table
           faceValue: ipo.faceValue ? ipo.faceValue.toString() : '10',
+          // Timeline dates are calculated relative to close_date (not today)
+          // Real-world IPO timeline: Close → Basis (+2d) → Refunds (+4d) → Credit (+6d)
           basisOfAllotmentDate: ipo.status === 'LISTED' || ipo.status === 'CLOSED'
-            ? getRelativeDate(randomInt(-5, -2))
+            ? addDaysToDate(ipo.closeDate, 2) // 2 days after close
             : null,
           initiationOfRefundsDate: ipo.status === 'LISTED' || ipo.status === 'CLOSED'
-            ? getRelativeDate(randomInt(-4, -1))
+            ? addDaysToDate(ipo.closeDate, 4) // 4 days after close
             : null,
           creditOfSharesDate: ipo.status === 'LISTED'
-            ? getRelativeDate(randomInt(-3, 0))
+            ? addDaysToDate(ipo.closeDate, 6) // 6 days after close
             : null,
           leadManagers: ipo.leadManagers as string[],
           exchanges: ipo.listingExchanges,

@@ -21,8 +21,9 @@ export interface CalendarEventProps {
 /**
  * CalendarEvent component displays a single event in the calendar
  * Story 4.12: Added extended timeline event types
+ * Standardized to singular forms: OPEN, CLOSE, LISTING, REFUND (consistent with Mainboard)
  *
- * - IPO events (OPENS, CLOSES, ALLOTMENT, BASIS_OF_ALLOTMENT, REFUNDS, CREDIT_OF_SHARES, LISTS): Rendered as clickable links with icon
+ * - IPO events (OPEN, CLOSE, ALLOTMENT, BASIS_OF_ALLOTMENT, REFUND, CREDIT_OF_SHARES, LISTING): Rendered as clickable links with icon
  * - Holiday events: Rendered as plain text with italic styling
  *
  * @param event - Calendar event data
@@ -49,13 +50,13 @@ export function CalendarEvent({ event }: CalendarEventProps) {
           {event.ipo?.companyName}
         </div>
         <div className="text-gray-600 text-[10px]">
-          {event.eventType === 'OPENS' && 'Opens'}
-          {event.eventType === 'CLOSES' && 'Closes'}
+          {event.eventType === 'OPEN' && 'Opens'}
+          {event.eventType === 'CLOSE' && 'Closes'}
           {event.eventType === 'ALLOTMENT' && 'Allotment'}
           {event.eventType === 'BASIS_OF_ALLOTMENT' && 'Basis of Allotment'} {/* Story 4.12 */}
-          {event.eventType === 'REFUNDS' && 'Refunds Initiated'} {/* Story 4.12 */}
+          {event.eventType === 'REFUND' && 'Refunds Initiated'} {/* Story 4.12 */}
           {event.eventType === 'CREDIT_OF_SHARES' && 'Shares Credited'} {/* Story 4.12 */}
-          {event.eventType === 'LISTS' && 'Lists'}
+          {event.eventType === 'LISTING' && 'Lists'}
         </div>
       </div>
     </Link>
