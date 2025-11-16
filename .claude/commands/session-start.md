@@ -60,6 +60,7 @@ After reading, provide a **brief summary** (keep it under 15 lines):
 9. **Load Testing** (Phase 5): Use k6 scripts in `web/tests/load/` for performance validation
 
 ### Critical Warnings:
+- **Plan Mode**: Create plan docs in `docs/01-planning/` (NEVER overwrite - use versioning)
 - Database schema: ONLY edit `packages/shared/src/db/schema.ts`
 - No direct DB access in API routes (always use repositories)
 - Cache keys: Use `getIPOBySlugKey(slug)` not `'ipo:slug:${slug}'`
@@ -71,6 +72,15 @@ After reading, provide a **brief summary** (keep it under 15 lines):
 Ask the user: **"What task are you working on in this session?"**
 
 Based on their response, automatically read relevant additional documentation:
+
+### If Plan Mode Active (PRIORITY):
+- **Planning workflow is already loaded** in CLAUDE.md Planning Workflow section
+- Remind: Create plan documents in `docs/01-planning/`
+- Naming: `Plan-[Feature-Name]-[YYYY-MM-DD]-vX.md`
+- Show: Required 7 sections (Header, Executive Summary, Current State, Root Cause, Implementation Plan, Testing Checklist, Success Metrics)
+- Critical: NEVER overwrite plans - always increment version number
+- Workflow: Research → Create Plan Doc → ExitPlanMode → Get Approval → Mark IN PROGRESS → Implement
+- Reference: Full skill at `.claude/skills/plan-before-implementation.md`
 
 ### If Database/Schema Work:
 - Read `docs/16-database/SCHEMA_MANAGEMENT.md` (workflow documentation)
