@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Table of Contents
 
 - [Quick Reference](#quick-reference)
+- [Planning Workflow](#planning-workflow)
 - [Project Overview](#project-overview)
 - [Monorepo Structure](#monorepo-structure)
 - [Critical Architecture Patterns](#critical-architecture-patterns)
@@ -75,6 +76,97 @@ npm run build                  # Build for production
 - Build errors: Check imports use `@/lib/db` not `@/lib/db/schema` → [See Troubleshooting](#common-troubleshooting)
 - Tests failing: `npm run db:migrate` and verify test DB connection
 - Redis down: App auto-falls back to database (check logs) → [See Redis Management](#4-redis-connection-management)
+
+---
+
+## Planning Workflow
+
+**When in Plan Mode:** Always create formal planning documents before implementation.
+
+### Document Location & Naming
+
+**All planning documents MUST be saved in:**
+```
+D:\Abhay\VibeCoding\IPODhan\docs\01-planning\
+```
+
+**Naming Convention:**
+```
+Plan-[Feature-Name]-[YYYY-MM-DD]-v1.md
+```
+
+**Examples:**
+- `Plan-Calendar-Fixes-2025-11-15-v1.md`
+- `Plan-API-Performance-2025-11-16-v1.md`
+- `Plan-Database-Migration-2025-11-17-v2.md`
+
+### Versioning Strategy
+
+- **NEVER overwrite existing plans** - Always create new versions
+- Increment version number for same feature/date: `-v1`, `-v2`, `-v3`
+- Keep old versions for historical reference
+- Create new version when scope changes or new information emerges
+
+### Required Plan Document Structure
+
+Every plan document MUST include these 7 sections:
+
+1. **Header Block**
+   ```markdown
+   # Plan: [Feature/Task Name]
+
+   **Date**: YYYY-MM-DD
+   **Version**: vX
+   **Status**: 🔴 AWAITING IMPLEMENTATION | 🟡 IN PROGRESS | ✅ COMPLETE
+   **Priority**: P0 CRITICAL | P1 HIGH | P2 MEDIUM | P3 LOW
+   **Estimated Time**: X hours
+   ```
+
+2. **Executive Summary** - 2-3 sentences: what needs to be done, why, what problem it solves
+
+3. **Current State (Verified)** - ❌ What's broken, ✅ What's working, Evidence (screenshots/logs)
+
+4. **Root Cause Analysis** - WHY each problem exists with evidence
+
+5. **Implementation Plan** - Task breakdown, time estimates, file changes, dependencies
+
+6. **Testing Checklist** - Specific test cases, acceptance criteria, verification steps
+
+7. **Success Metrics** - Before/after metrics
+
+### Planning Workflow in Plan Mode
+
+When plan mode is active:
+1. **Research & Verify** - Use Task/Plan agents to investigate current state
+2. **Create Plan Document** - Use Write tool to create plan in `docs/01-planning/`
+3. **Present Plan** - Use ExitPlanMode tool to get user approval
+4. **Mark In Progress** - Update plan status to 🟡 IN PROGRESS before implementing
+5. **Update on Completion** - Mark ✅ COMPLETE when all tasks verified
+
+### Critical Rules
+
+- ✅ **Verify before documenting** - Use screenshots, logs, code analysis
+- ✅ **Be specific** - Exact file paths, line numbers, function names
+- ✅ **Include code examples** - Show current vs proposed code
+- ✅ **Create new version if plan changes** - Don't overwrite
+- ❌ **Never make false claims** - Don't say "✅ COMPLETE" unless verified
+- ❌ **Don't skip verification** - Always check current state first
+
+### Example: Creating a Plan
+
+```bash
+# User enables plan mode and asks to fix calendar issues
+# Claude investigates and finds 3 bugs
+
+# Claude creates:
+docs/01-planning/Plan-Calendar-Fixes-2025-11-16-v1.md
+
+# User provides new screenshot showing different issue
+# Claude creates new version (doesn't overwrite):
+docs/01-planning/Plan-Calendar-Fixes-2025-11-16-v2.md
+```
+
+**Reference:** Full skill documentation at `.claude/skills/plan-before-implementation.md`
 
 ---
 
