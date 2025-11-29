@@ -1,0 +1,328 @@
+name: Deploy to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip tests (emergency deployment only)'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  quality-checks:
+    name: Quality Checks & Build
+    runs-on: ubuntu-latest
+    if: ${{ !inputs.skip_tests }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+        working-directory: ./web
+
+      - name: Run unit tests
+        run: npm run test:unit
+        working-directory: ./web
+        continue-on-error: true
+
+      - name: Production build test
+        run: npm run build
+        working-directory: ./web
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NEXT_PUBLIC_GA_MEASUREMENT_ID: ${{ secrets.NEXT_PUBLIC_GA_MEASUREMENT_ID }}
+          NEXT_PUBLIC_ZERODHA_AFFILIATE_LINK: ${{ secrets.NEXT_PUBLIC_ZERODHA_AFFILIATE_LINK }}
+          NEXT_PUBLIC_ANGELONE_AFFILIATE_LINK: ${{ secrets.NEXT_PUBLIC_ANGELONE_AFFILIATE_LINK }}
+
+  deploy:
+    name: Deploy to VPS
+    runs-on: self-hosted
+    needs: quality-checks
+    if: ${{ always() && (needs.quality-checks.result == 'success' || inputs.skip_tests) }}
+
+    env:
+      DEPLOY_DIR: C:\Apps\IPODhan\current
+      BACKUP_DIR: C:\Apps\IPODhan\backups
+      LOGS_DIR: C:\Apps\IPODhan\logs
+      APP_NAME: ipodhan-web
+      PM2_HOME: C:\actions-runner\.pm2
+      HOME: C:\actions-runner
+      USERPROFILE: C:\actions-runner
+      APPDATA: C:\actions-runner\AppData\Roaming
+
+    steps:
+      - name: Initialize environment
+        shell: powershell
+        run: |
+          Write-Host "[INFO] Initializing deployment environment..."
+          $directories = @($env:PM2_HOME, $env:APPDATA, $env:DEPLOY_DIR, $env:BACKUP_DIR, $env:LOGS_DIR)
+          foreach ($dir in $directories) {
+            if (-not (Test-Path $dir)) {
+              New-Item -ItemType Directory -Path $dir -Force | Out-Null
+              Write-Host "[OK] Created: $dir"
+            }
+          }
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Create backup
+        shell: powershell
+        run: |
+          $timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
+          $backupPath = "$env:BACKUP_DIR\backup-$timestamp"
+
+          if (Test-Path "$env:DEPLOY_DIR\web") {
+            Copy-Item -Path $env:DEPLOY_DIR -Destination $backupPath -Recurse -Force
+            Write-Host "[OK] Backup created: $backupPath"
+            echo "BACKUP_PATH=$backupPath" >> $env:GITHUB_ENV
+          } else {
+            Write-Host "[WARN] No existing deployment to backup"
+          }
+
+      - name: Install dependencies
+        run: npm ci --production=false
+
+      - name: Build shared package
+        run: npm run build
+        working-directory: ./packages/shared
+
+      - name: Build web application
+        run: npm run build
+        working-directory: ./web
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          NEXT_PUBLIC_GA_MEASUREMENT_ID: ${{ secrets.NEXT_PUBLIC_GA_MEASUREMENT_ID }}
+          NEXT_PUBLIC_ZERODHA_AFFILIATE_LINK: ${{ secrets.NEXT_PUBLIC_ZERODHA_AFFILIATE_LINK }}
+          NEXT_PUBLIC_ANGELONE_AFFILIATE_LINK: ${{ secrets.NEXT_PUBLIC_ANGELONE_AFFILIATE_LINK }}
+
+      - name: Create environment files
+        shell: powershell
+        run: |
+          # Web .env.local
+          $webEnv = @"
+          NODE_ENV=production
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
+          REDIS_URL=${{ secrets.REDIS_URL }}
+          ADMIN_API_TOKEN=${{ secrets.ADMIN_API_TOKEN }}
+          NEXT_PUBLIC_GA_MEASUREMENT_ID=${{ secrets.NEXT_PUBLIC_GA_MEASUREMENT_ID }}
+          NEXT_PUBLIC_ZERODHA_AFFILIATE_LINK=${{ secrets.NEXT_PUBLIC_ZERODHA_AFFILIATE_LINK }}
+          NEXT_PUBLIC_ANGELONE_AFFILIATE_LINK=${{ secrets.NEXT_PUBLIC_ANGELONE_AFFILIATE_LINK }}
+          "@
+          $webEnv | Out-File -FilePath "web\.env.local" -Encoding UTF8
+
+          # Scraper .env
+          $scraperEnv = @"
+          NODE_ENV=production
+          DATABASE_URL=${{ secrets.DATABASE_URL }}
+          REDIS_URL=${{ secrets.REDIS_URL }}
+          SCRAPER_ENABLED=true
+          SCRAPER_INTERVAL_MODE=prod
+          ENABLE_SOURCE_TRACKING=true
+          ENABLE_CONFLICT_DETECTION=true
+          ENABLE_DATA_CONSOLIDATION=true
+          "@
+          $scraperEnv | Out-File -FilePath "scraper\.env" -Encoding UTF8
+
+      - name: Deploy files
+        shell: powershell
+        run: |
+          Write-Host "[INFO] Deploying to: $env:DEPLOY_DIR"
+
+          # Copy web application
+          if (Test-Path "$env:DEPLOY_DIR\web") {
+            Remove-Item -Path "$env:DEPLOY_DIR\web" -Recurse -Force
+          }
+          Copy-Item -Path "web" -Destination "$env:DEPLOY_DIR\web" -Recurse -Force
+
+          # Copy shared packages
+          if (-not (Test-Path "$env:DEPLOY_DIR\packages")) {
+            New-Item -ItemType Directory -Path "$env:DEPLOY_DIR\packages" -Force | Out-Null
+          }
+          Copy-Item -Path "packages\shared" -Destination "$env:DEPLOY_DIR\packages\shared" -Recurse -Force
+
+          # Copy scraper
+          if (Test-Path "$env:DEPLOY_DIR\scraper") {
+            Remove-Item -Path "$env:DEPLOY_DIR\scraper" -Recurse -Force
+          }
+          Copy-Item -Path "scraper" -Destination "$env:DEPLOY_DIR\scraper" -Recurse -Force
+
+          # Copy root files
+          Copy-Item -Path "package.json" -Destination $env:DEPLOY_DIR -Force
+          Copy-Item -Path "package-lock.json" -Destination $env:DEPLOY_DIR -Force
+
+          Write-Host "[OK] Files deployed"
+
+      - name: Create ecosystem.config.js
+        shell: powershell
+        run: |
+          $ecosystemConfig = @"
+          module.exports = {
+            apps: [
+              // Web Application (Next.js) - Always running
+              {
+                name: 'ipodhan-web',
+                script: 'node_modules/next/dist/bin/next',
+                args: 'start -p 3001',
+                cwd: 'C:\\Apps\\IPODhan\\current\\web',
+                instances: 2,
+                exec_mode: 'cluster',
+                max_memory_restart: '500M',
+                env: {
+                  NODE_ENV: 'production',
+                  PORT: 3001
+                },
+                error_file: 'C:\\Apps\\IPODhan\\logs\\web-error.log',
+                out_file: 'C:\\Apps\\IPODhan\\logs\\web-out.log',
+                log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+                merge_logs: true,
+                time: true,
+                autorestart: true,
+                max_restarts: 10,
+                min_uptime: '10s',
+                listen_timeout: 5000,
+                kill_timeout: 5000
+              },
+              // Scraper Service - Runs every 6 hours (00:00, 06:00, 12:00, 18:00)
+              {
+                name: 'ipodhan-scraper',
+                script: 'node_modules/tsx/dist/cli.mjs',
+                args: 'src/index.ts --source=all',
+                cwd: 'C:\\Apps\\IPODhan\\current\\scraper',
+                instances: 1,
+                exec_mode: 'fork',
+                max_memory_restart: '300M',
+                cron_restart: '0 */6 * * *',
+                env: {
+                  NODE_ENV: 'production'
+                },
+                error_file: 'C:\\Apps\\IPODhan\\logs\\scraper-error.log',
+                out_file: 'C:\\Apps\\IPODhan\\logs\\scraper-out.log',
+                log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
+                merge_logs: true,
+                time: true,
+                autorestart: true,
+                max_restarts: 3,
+                min_uptime: '30s',
+                kill_timeout: 10000
+              }
+            ]
+          };
+          "@
+          $ecosystemConfig | Out-File -FilePath "$env:DEPLOY_DIR\ecosystem.config.js" -Encoding UTF8
+
+      - name: Run database migrations
+        shell: powershell
+        run: |
+          cd "$env:DEPLOY_DIR\web"
+          npm run db:migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+      - name: PM2 reload or start
+        shell: powershell
+        run: |
+          cd $env:DEPLOY_DIR
+
+          $webExists = & pm2 list 2>$null | Select-String "ipodhan-web"
+          $scraperExists = & pm2 list 2>$null | Select-String "ipodhan-scraper"
+
+          if ($webExists) {
+            Write-Host "[INFO] Reloading ipodhan-web..."
+            & pm2 reload ipodhan-web --update-env
+          }
+
+          if ($scraperExists) {
+            Write-Host "[INFO] Reloading ipodhan-scraper..."
+            & pm2 reload ipodhan-scraper --update-env
+          }
+
+          if (-not $webExists -or -not $scraperExists) {
+            Write-Host "[INFO] Starting PM2 processes..."
+            & pm2 start ecosystem.config.js
+          }
+
+          & pm2 save
+          Write-Host "[OK] PM2 processes updated (web + scraper every 6h)"
+
+      - name: Health check
+        shell: powershell
+        run: |
+          Start-Sleep -Seconds 8
+
+          $maxAttempts = 10
+          $healthy = $false
+
+          for ($i = 1; $i -le $maxAttempts; $i++) {
+            Write-Host "Health check attempt $i/$maxAttempts..."
+            try {
+              $response = Invoke-WebRequest -Uri "http://localhost:3001" -TimeoutSec 5 -UseBasicParsing
+              if ($response.StatusCode -eq 200) {
+                $healthy = $true
+                Write-Host "[OK] Health check passed"
+                break
+              }
+            } catch {
+              Start-Sleep -Seconds 3
+            }
+          }
+
+          if (-not $healthy) {
+            Write-Host "[ERROR] Health check failed"
+            exit 1
+          }
+
+      - name: Rollback on failure
+        if: failure()
+        shell: powershell
+        run: |
+          if ($env:BACKUP_PATH -and (Test-Path $env:BACKUP_PATH)) {
+            Write-Host "[INFO] Rolling back..."
+            Remove-Item -Path $env:DEPLOY_DIR -Recurse -Force
+            Copy-Item -Path $env:BACKUP_PATH -Destination $env:DEPLOY_DIR -Recurse -Force
+            pm2 restart ipodhan-web
+            Write-Host "[OK] Rollback complete"
+          }
+
+      - name: Clean old backups
+        if: success()
+        shell: powershell
+        run: |
+          $backups = Get-ChildItem -Path $env:BACKUP_DIR -Directory | Sort-Object LastWriteTime -Descending
+          if ($backups.Count -gt 5) {
+            $backups | Select-Object -Skip 5 | ForEach-Object {
+              Remove-Item -Path $_.FullName -Recurse -Force
+            }
+          }
+
+      - name: Deployment summary
+        if: always()
+        shell: powershell
+        run: |
+          Write-Host "`n=========================================="
+          Write-Host "DEPLOYMENT SUMMARY"
+          Write-Host "=========================================="
+          Write-Host "Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+          Write-Host "Deploy Dir: $env:DEPLOY_DIR"
+          Write-Host "`nPM2 Status:"
+          pm2 list
