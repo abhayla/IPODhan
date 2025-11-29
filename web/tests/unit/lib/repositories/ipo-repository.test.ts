@@ -179,12 +179,19 @@ describe('IPORepository', () => {
       mockRedis.get = vi.fn().mockResolvedValue(null);
       mockRedis.setex = vi.fn().mockResolvedValue('OK');
 
+      // The data query returns { ipo, ipoScore } structure due to leftJoin
+      const mockResultsWithJoin = mockIPOs.map(ipo => ({
+        ipo,
+        ipoScore: null, // No score data
+      }));
+
       const mockSelect = {
         from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(), // Added leftJoin for ipoScores
         where: vi.fn().mockReturnThis(),
         orderBy: vi.fn().mockReturnThis(),
         limit: vi.fn().mockReturnThis(),
-        offset: vi.fn().mockResolvedValue(mockIPOs),
+        offset: vi.fn().mockResolvedValue(mockResultsWithJoin),
       };
 
       const mockCountSelect = {

@@ -13,7 +13,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { ColumnSearch } from './ColumnSearch';
 import { MainboardProspectusTable } from './MainboardProspectusTable';
@@ -111,8 +111,8 @@ export function MainboardProspectusClient() {
     fetchData();
   }, [companyName, exchange, page]);
 
-  // Update URL when filters change
-  const updateURL = (newParams: Record<string, string>) => {
+  // Update URL when filters change (memoized to prevent infinite loops)
+  const updateURL = useCallback((newParams: Record<string, string>) => {
     const params = new URLSearchParams(searchParams);
 
     Object.entries(newParams).forEach(([key, value]) => {
@@ -129,22 +129,22 @@ export function MainboardProspectusClient() {
     }
 
     router.push(`${pathname}?${params.toString()}`);
-  };
+  }, [searchParams, pathname, router]);
 
-  // Handle company name search (AC#4, AC#8 - debounced)
-  const handleCompanyNameChange = (value: string) => {
+  // Handle company name search (AC#4, AC#8 - debounced, memoized)
+  const handleCompanyNameChange = useCallback((value: string) => {
     updateURL({ companyName: value });
-  };
+  }, [updateURL]);
 
-  // Handle exchange filter change (AC#4)
-  const handleExchangeChange = (value: string) => {
+  // Handle exchange filter change (AC#4, memoized)
+  const handleExchangeChange = useCallback((value: string) => {
     updateURL({ exchange: value === 'All' ? '' : value });
-  };
+  }, [updateURL]);
 
-  // Handle page change (AC#13)
-  const handlePageChange = (newPage: number) => {
+  // Handle page change (AC#13, memoized)
+  const handlePageChange = useCallback((newPage: number) => {
     updateURL({ page: newPage.toString() });
-  };
+  }, [updateURL]);
 
   // Handle sorting (AC#5 - client-side)
   const handleSort = (column: 'companyName' | 'exchange') => {
