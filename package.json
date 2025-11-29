@@ -16,6 +16,9 @@
     "dev": "npm run dev --workspace=web",
     "dev:scraper": "npm run dev --workspace=scraper",
     "scraper:nse": "npm start --workspace=scraper",
+    "lint": "npm run lint --workspace=web",
+    "build": "npm run build --workspace=web",
+    "test:unit": "npm run test:unit --workspace=web",
     "prepare": "husky"
   },
   "repository": {
