@@ -10,7 +10,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import {
   Select,
@@ -49,21 +49,31 @@ export function ColumnSearch({
 }: ColumnSearchProps) {
   const [localValue, setLocalValue] = useState(value);
 
+  // Store onChange in a ref to prevent dependency changes from triggering re-runs
+  // This prevents infinite loops when parent doesn't memoize the callback
+  const onChangeRef = useRef(onChange);
+
+  // Keep ref updated with latest callback
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
   // Sync local value with prop value when it changes externally
   useEffect(() => {
     setLocalValue(value);
   }, [value]);
 
   // Debounced onChange for text inputs (AC#8: 300ms debouncing)
+  // Uses ref instead of onChange in dependencies to prevent infinite loops
   useEffect(() => {
     if (type !== 'text') return;
 
     const timer = setTimeout(() => {
-      onChange(localValue);
+      onChangeRef.current(localValue);
     }, debounceMs);
 
     return () => clearTimeout(timer);
-  }, [localValue, onChange, debounceMs, type]);
+  }, [localValue, debounceMs, type]);
 
   // Text Input
   if (type === 'text') {
