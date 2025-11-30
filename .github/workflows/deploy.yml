@@ -66,17 +66,13 @@ jobs:
       BACKUP_DIR: C:\Apps\IPODhan\backups
       LOGS_DIR: C:\Apps\IPODhan\logs
       APP_NAME: ipodhan-web
-      PM2_HOME: C:\Apps\IPODhan\.pm2
-      HOME: C:\Apps\IPODhan
-      USERPROFILE: C:\Apps\IPODhan
-      APPDATA: C:\Apps\IPODhan\AppData\Roaming
 
     steps:
       - name: Initialize environment
         shell: powershell
         run: |
           Write-Host "[INFO] Initializing deployment environment..."
-          $directories = @($env:PM2_HOME, $env:APPDATA, $env:DEPLOY_DIR, $env:BACKUP_DIR, $env:LOGS_DIR)
+          $directories = @($env:DEPLOY_DIR, $env:BACKUP_DIR, $env:LOGS_DIR)
           foreach ($dir in $directories) {
             if (-not (Test-Path $dir)) {
               New-Item -ItemType Directory -Path $dir -Force | Out-Null
@@ -247,52 +243,30 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: Install PM2 globally
-        shell: powershell
-        run: |
-          # Get npm global prefix and add to PATH
-          $npmPrefix = npm config get prefix
-          $npmBin = Join-Path $npmPrefix "node_modules\.bin"
-          Write-Host "[INFO] npm prefix: $npmPrefix"
-          Write-Host "[INFO] npm bin: $npmBin"
-
-          # Add to PATH for subsequent steps
-          echo "$npmBin" >> $env:GITHUB_PATH
-          $env:Path = "$npmBin;$env:Path"
-
-          # Install PM2 if not present
-          npm install -g pm2
-          Write-Host "[OK] PM2 installed"
-
       - name: PM2 reload or start
         shell: powershell
         run: |
-          # Ensure npm global bin is in PATH
-          $npmPrefix = npm config get prefix
-          $npmBin = Join-Path $npmPrefix "node_modules\.bin"
-          $env:Path = "$npmBin;$env:Path"
-
           cd $env:DEPLOY_DIR
 
-          $webExists = & pm2 list 2>$null | Select-String "ipodhan-web"
-          $scraperExists = & pm2 list 2>$null | Select-String "ipodhan-scraper"
+          $webExists = pm2 list 2>$null | Select-String "ipodhan-web"
+          $scraperExists = pm2 list 2>$null | Select-String "ipodhan-scraper"
 
           if ($webExists) {
             Write-Host "[INFO] Reloading ipodhan-web..."
-            & pm2 reload ipodhan-web --update-env
+            pm2 reload ipodhan-web --update-env
           }
 
           if ($scraperExists) {
             Write-Host "[INFO] Reloading ipodhan-scraper..."
-            & pm2 reload ipodhan-scraper --update-env
+            pm2 reload ipodhan-scraper --update-env
           }
 
           if (-not $webExists -or -not $scraperExists) {
             Write-Host "[INFO] Starting PM2 processes..."
-            & pm2 start ecosystem.config.js
+            pm2 start ecosystem.config.js
           }
 
-          & pm2 save
+          pm2 save
           Write-Host "[OK] PM2 processes updated (web + scraper every 6h)"
 
       - name: Health check
@@ -328,12 +302,9 @@ jobs:
         run: |
           if ($env:BACKUP_PATH -and (Test-Path $env:BACKUP_PATH)) {
             Write-Host "[INFO] Rolling back..."
-            $npmPrefix = npm config get prefix
-            $npmBin = Join-Path $npmPrefix "node_modules\.bin"
-            $env:Path = "$npmBin;$env:Path"
             Remove-Item -Path $env:DEPLOY_DIR -Recurse -Force
             Copy-Item -Path $env:BACKUP_PATH -Destination $env:DEPLOY_DIR -Recurse -Force
-            & pm2 restart ipodhan-web
+            pm2 restart ipodhan-web
             Write-Host "[OK] Rollback complete"
           }
 
@@ -358,7 +329,4 @@ jobs:
           Write-Host "Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
           Write-Host "Deploy Dir: $env:DEPLOY_DIR"
           Write-Host "`nPM2 Status:"
-          $npmPrefix = npm config get prefix
-          $npmBin = Join-Path $npmPrefix "node_modules\.bin"
-          $env:Path = "$npmBin;$env:Path"
-          & pm2 list
+          pm2 list
