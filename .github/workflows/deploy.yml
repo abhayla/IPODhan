@@ -241,7 +241,7 @@ jobs:
         shell: powershell
         run: |
           cd "$env:DEPLOY_DIR\web"
-          npm run db:migrate
+          npx drizzle-kit migrate
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
@@ -250,25 +250,25 @@ jobs:
         run: |
           cd $env:DEPLOY_DIR
 
-          $webExists = & pm2 list 2>$null | Select-String "ipodhan-web"
-          $scraperExists = & pm2 list 2>$null | Select-String "ipodhan-scraper"
+          $webExists = & npx pm2 list 2>$null | Select-String "ipodhan-web"
+          $scraperExists = & npx pm2 list 2>$null | Select-String "ipodhan-scraper"
 
           if ($webExists) {
             Write-Host "[INFO] Reloading ipodhan-web..."
-            & pm2 reload ipodhan-web --update-env
+            & npx pm2 reload ipodhan-web --update-env
           }
 
           if ($scraperExists) {
             Write-Host "[INFO] Reloading ipodhan-scraper..."
-            & pm2 reload ipodhan-scraper --update-env
+            & npx pm2 reload ipodhan-scraper --update-env
           }
 
           if (-not $webExists -or -not $scraperExists) {
             Write-Host "[INFO] Starting PM2 processes..."
-            & pm2 start ecosystem.config.js
+            & npx pm2 start ecosystem.config.js
           }
 
-          & pm2 save
+          & npx pm2 save
           Write-Host "[OK] PM2 processes updated (web + scraper every 6h)"
 
       - name: Health check
@@ -306,7 +306,7 @@ jobs:
             Write-Host "[INFO] Rolling back..."
             Remove-Item -Path $env:DEPLOY_DIR -Recurse -Force
             Copy-Item -Path $env:BACKUP_PATH -Destination $env:DEPLOY_DIR -Recurse -Force
-            pm2 restart ipodhan-web
+            npx pm2 restart ipodhan-web
             Write-Host "[OK] Rollback complete"
           }
 
@@ -331,4 +331,4 @@ jobs:
           Write-Host "Timestamp: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
           Write-Host "Deploy Dir: $env:DEPLOY_DIR"
           Write-Host "`nPM2 Status:"
-          pm2 list
+          npx pm2 list
