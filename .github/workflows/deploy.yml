@@ -66,10 +66,10 @@ jobs:
       BACKUP_DIR: C:\Apps\IPODhan\backups
       LOGS_DIR: C:\Apps\IPODhan\logs
       APP_NAME: ipodhan-web
-      PM2_HOME: C:\actions-runner\.pm2
-      HOME: C:\actions-runner
-      USERPROFILE: C:\actions-runner
-      APPDATA: C:\actions-runner\AppData\Roaming
+      PM2_HOME: C:\Apps\IPODhan\.pm2
+      HOME: C:\Apps\IPODhan
+      USERPROFILE: C:\Apps\IPODhan
+      APPDATA: C:\Apps\IPODhan\AppData\Roaming
 
     steps:
       - name: Initialize environment
