@@ -18,8 +18,7 @@ import * as React from 'react';
 import { Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
-// TEMPORARY: Using basic selector to fix webpack issues with shadcn/ui
-import { IPOSelectorBasic as IPOSelector } from '@/components/tools/IPOSelectorBasic';
+import { IPOSelector } from '@/components/tools/IPOSelector';
 import { ComparisonTable } from '@/components/tools/ComparisonTable';
 import type { IPO } from '@/lib/repositories/types';
 import type { ComparisonResponse } from '@/lib/types/comparison';
