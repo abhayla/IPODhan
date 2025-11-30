@@ -52,6 +52,8 @@ jobs:
       - name: Run unit tests
         run: npm run test:unit
         working-directory: ./web
+        env:
+          NODE_OPTIONS: '--max-old-space-size=4096'
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
