@@ -28,6 +28,12 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Build shared package
+        run: |
+          rm -rf packages/shared/dist packages/shared/tsconfig.tsbuildinfo
+          cd packages/shared && npx tsc
+          test -f dist/db/schema.d.ts || (echo "FATAL: schema.d.ts not created!" && exit 1)
+
       - name: Run ESLint
         run: npm run lint
 
