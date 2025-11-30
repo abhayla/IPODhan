@@ -25,10 +25,21 @@ jobs:
 
       - name: Build shared package
         run: |
-          npm run build --workspace=@ipodhan/shared
-          # Verify the build succeeded
-          ls -la packages/shared/dist/
-          ls -la packages/shared/dist/db/
+          echo "=== Debug: Check typescript availability ==="
+          npx tsc --version
+          echo "=== Debug: Check shared package ==="
+          ls -la packages/shared/
+          cat packages/shared/package.json
+          echo "=== Debug: Check tsconfig ==="
+          cat packages/shared/tsconfig.json
+          echo "=== Debug: Remove any stale build artifacts ==="
+          rm -rf packages/shared/dist packages/shared/tsconfig.tsbuildinfo
+          echo "=== Building shared package ==="
+          cd packages/shared && npx tsc --diagnostics
+          echo "=== Verify the build succeeded ==="
+          ls -la dist/ || echo "ERROR: dist folder not created!"
+          ls -la dist/db/ || echo "ERROR: dist/db folder not created!"
+          test -f dist/db/schema.d.ts || (echo "FATAL: schema.d.ts not created!" && exit 1)
 
       - name: Run lint
         run: npm run lint
