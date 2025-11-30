@@ -50,10 +50,10 @@ jobs:
         working-directory: ./web
 
       - name: Run unit tests
-        run: npx vitest run --pool=forks --poolOptions.forks.singleFork
+        run: npx vitest run --reporter=basic --no-isolate
         working-directory: ./web
         env:
-          NODE_OPTIONS: '--max-old-space-size=4096'
+          NODE_OPTIONS: '--max-old-space-size=6144'
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
