@@ -50,7 +50,7 @@ jobs:
         working-directory: ./web
 
       - name: Run unit tests
-        run: npm run test:unit
+        run: npx vitest run --pool=forks --poolOptions.forks.singleFork
         working-directory: ./web
         env:
           NODE_OPTIONS: '--max-old-space-size=4096'
