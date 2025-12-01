@@ -151,13 +151,13 @@ jobs:
         run: |
           Write-Host "[INFO] Deploying to: $env:DEPLOY_DIR"
 
-          # Copy web application
+          # Copy web application (including .next build)
           if (Test-Path "$env:DEPLOY_DIR\web") {
             Remove-Item -Path "$env:DEPLOY_DIR\web" -Recurse -Force
           }
           Copy-Item -Path "web" -Destination "$env:DEPLOY_DIR\web" -Recurse -Force
 
-          # Copy shared packages
+          # Copy shared packages (built dist)
           if (-not (Test-Path "$env:DEPLOY_DIR\packages")) {
             New-Item -ItemType Directory -Path "$env:DEPLOY_DIR\packages" -Force | Out-Null
           }
@@ -169,11 +169,19 @@ jobs:
           }
           Copy-Item -Path "scraper" -Destination "$env:DEPLOY_DIR\scraper" -Recurse -Force
 
-          # Copy root files
+          # Copy root package files for monorepo
           Copy-Item -Path "package.json" -Destination $env:DEPLOY_DIR -Force
           Copy-Item -Path "package-lock.json" -Destination $env:DEPLOY_DIR -Force
 
           Write-Host "[OK] Files deployed"
+
+      - name: Install production dependencies
+        shell: powershell
+        run: |
+          cd $env:DEPLOY_DIR
+          Write-Host "[INFO] Installing production dependencies..."
+          npm ci --production=false
+          Write-Host "[OK] Dependencies installed"
 
       - name: Create ecosystem.config.js
         shell: powershell
@@ -182,9 +190,10 @@ jobs:
           module.exports = {
             apps: [
               // Web Application (Next.js) - Always running
+              // Uses npm workspace - node_modules resolved from root via NODE_PATH
               {
                 name: 'ipodhan-web',
-                script: 'node_modules/next/dist/bin/next',
+                script: 'C:\\Apps\\IPODhan\\current\\node_modules\\next\\dist\\bin\\next',
                 args: 'start -p 3001',
                 cwd: 'C:\\Apps\\IPODhan\\current\\web',
                 instances: 2,
@@ -192,7 +201,8 @@ jobs:
                 max_memory_restart: '500M',
                 env: {
                   NODE_ENV: 'production',
-                  PORT: 3001
+                  PORT: 3001,
+                  NODE_PATH: 'C:\\Apps\\IPODhan\\current\\node_modules'
                 },
                 error_file: 'C:\\Apps\\IPODhan\\logs\\web-error.log',
                 out_file: 'C:\\Apps\\IPODhan\\logs\\web-out.log',
@@ -206,9 +216,10 @@ jobs:
                 kill_timeout: 5000
               },
               // Scraper Service - Runs every 6 hours (00:00, 06:00, 12:00, 18:00)
+              // Uses npm workspace - node_modules resolved from root via NODE_PATH
               {
                 name: 'ipodhan-scraper',
-                script: 'node_modules/tsx/dist/cli.mjs',
+                script: 'C:\\Apps\\IPODhan\\current\\node_modules\\tsx\\dist\\cli.mjs',
                 args: 'src/index.ts --source=all',
                 cwd: 'C:\\Apps\\IPODhan\\current\\scraper',
                 instances: 1,
@@ -216,7 +227,8 @@ jobs:
                 max_memory_restart: '300M',
                 cron_restart: '0 */6 * * *',
                 env: {
-                  NODE_ENV: 'production'
+                  NODE_ENV: 'production',
+                  NODE_PATH: 'C:\\Apps\\IPODhan\\current\\node_modules'
                 },
                 error_file: 'C:\\Apps\\IPODhan\\logs\\scraper-error.log',
                 out_file: 'C:\\Apps\\IPODhan\\logs\\scraper-out.log',
