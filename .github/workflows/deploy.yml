@@ -283,19 +283,29 @@ jobs:
         run: |
           cd $env:DEPLOY_DIR
 
-          # The apps were deleted before file replacement, so start fresh from
-          # the ecosystem config. This (not `pm2 reload`) is what makes config
+          # The apps were deleted in the Stop step, so start fresh from the
+          # ecosystem config. This (not `pm2 reload`) is what makes config
           # changes — autorestart:false, cron_restart — actually take effect.
-          # Defensive: delete any lingering instances first so start is clean.
-          foreach ($app in @('ipodhan-web','ipodhan-scraper')) {
-            pm2 delete $app 2>$null | Out-Null
-          }
+          #
+          # CRITICAL: do NOT `pm2 delete` here. pm2 writes "Process not found"
+          # to stderr when the app is already gone, and PowerShell 5.1 under
+          # Actions (ErrorActionPreference=Stop) turns native-command stderr
+          # into a TERMINATING error — that aborts the step before `pm2 start`
+          # runs and leaves production with nothing started. Set Continue so a
+          # benign pm2 stderr line cannot fail the step, then gate on the real
+          # start exit code.
+          $ErrorActionPreference = 'Continue'
 
           pm2 start ecosystem.config.js
+          $startExit = $LASTEXITCODE
           pm2 save
-
-          Write-Host "[OK] PM2 started from ecosystem.config.js"
           pm2 list
+
+          if ($startExit -ne 0) {
+            Write-Host "[ERROR] pm2 start failed with exit $startExit"
+            exit 1
+          }
+          Write-Host "[OK] PM2 started from ecosystem.config.js"
 
       - name: Health check
         shell: powershell
@@ -328,6 +338,9 @@ jobs:
         if: failure()
         shell: powershell
         run: |
+          # Continue past benign pm2 stderr (PS 5.1 + Actions would otherwise
+          # turn "Process not found" into a terminating error mid-rollback).
+          $ErrorActionPreference = 'Continue'
           if ($env:BACKUP_PATH -and (Test-Path $env:BACKUP_PATH)) {
             Write-Host "[INFO] Rolling back..."
             # Delete PM2 apps first so they release file handles — otherwise
