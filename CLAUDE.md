@@ -22,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Quick Reference
 
-**Commands (run from root or web/):**
+**Commands (root proxies only dev/dev:scraper/lint/build/test:unit — the rest run from web/):**
 ```bash
 # Development
 npm run dev                    # Next.js dev server (port 3000)
@@ -30,8 +30,8 @@ npm run dev:scraper            # Scraper in dev mode
 
 # Testing
 npm run test:unit              # Unit tests (<10s)
-npm run test:integration       # Integration tests (requires DB + Redis)
-npm run test:e2e               # E2E tests with Playwright
+cd web && npm run test:integration   # Integration tests (requires DB + Redis; web/ only)
+cd web && npm run test:e2e           # E2E tests with Playwright (web/ only)
 
 # Single test
 cd web && npx vitest run tests/unit/path/to/test.test.ts
@@ -50,7 +50,7 @@ npm run lint && npm run build
 npm start                      # Run all enabled scrapers once
 npm run start:bse              # Single source: bse | moneycontrol | chittorgarh | gmp | fallback | api
 npm run scheduler              # Cron-based scheduler (production mode)
-cd scraper && npx vitest run src/tests/path/to/test.test.ts   # Single scraper test
+cd scraper && npx vitest run tests/unit/path/to/test.test.ts  # Single scraper test (tiers/configs: .claude/rules/scraper-test-layout.md)
 ```
 
 **Critical Rules:**
@@ -63,7 +63,7 @@ cd scraper && npx vitest run src/tests/path/to/test.test.ts   # Single scraper t
 
 ## Project Overview
 
-IPODhan is an IPO information platform for Indian investors. Tech stack: Next.js 15 (App Router), PostgreSQL 16 + Drizzle ORM, Redis, TypeScript, Tailwind CSS 4.
+IPODhan is an IPO information platform for Indian investors. Tech stack: Next.js 15 (App Router) + React 18, PostgreSQL 16 + Drizzle ORM, Redis, TypeScript, Tailwind CSS 4. (README.md is stale in places — it still says Next.js 14; package.json is authoritative.)
 
 **Monorepo Structure (npm workspaces: web, scraper, packages/*):**
 ```
@@ -245,6 +245,6 @@ export async function GET(request: NextRequest) {
 
 ## Claude Code Configuration
 
-The `.claude/` directory contains 113 skills, 16 agents, and 27 rules for Claude Code.
+The `.claude/` directory contains the project's skills, agents, and rules for Claude Code (browse `.claude/skills/`, `.claude/agents/`, `.claude/rules/` — counts drift, so they are not pinned here).
 
 <!-- hub:best-practices:end -->
