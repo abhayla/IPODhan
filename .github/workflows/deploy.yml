@@ -143,6 +143,8 @@ jobs:
           ENABLE_SOURCE_TRACKING=true
           ENABLE_CONFLICT_DETECTION=true
           ENABLE_DATA_CONSOLIDATION=true
+          ADMIN_API_TOKEN=${{ secrets.ADMIN_API_TOKEN }}
+          WEB_INTERNAL_URL=http://localhost:3001
           "@
           $scraperEnv | Out-File -FilePath "scraper\.env" -Encoding UTF8
 
