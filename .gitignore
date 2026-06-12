@@ -73,10 +73,25 @@ Thumbs.db
 # .bmad-core/ - tracked for deployment
 # .bmad-infrastructure-devops/ - tracked for deployment
 
-# Still ignore these development files
-.claude/
-!.claude/commands/  # Exception: Track command documentation
-!.claude/skills/    # Exception: Track specialized skills for Claude Code
+# Claude Code config: track shared patterns, ignore local/runtime state.
+# NOTE: gitignore does not support trailing comments on pattern lines, and a
+# dir-level exclude (".claude/") blocks re-inclusion of children — use
+# ".claude/*" with explicit negations instead.
+.claude/*
+!.claude/commands/
+!.claude/skills/
+!.claude/rules/
+!.claude/agents/
+!.claude/hooks/
+!.claude/config/
+!.claude/settings.json
+!.claude/synthesis-config.yml
+!.claude/sync-manifest.json
+.claude/settings.local.json
+.claude/.enhance-misses.log
+.claude/.keepgoing-count
+.claude/.overask-violations.log
+CLAUDE.local.md
 .playwright-mcp/
 .ai/
 web-bundles/
@@ -271,4 +286,3 @@ temp/api-tests/*.json
 # Production server temporary files (testing)
 prod-server*.log
 prod-server*.pid
-
