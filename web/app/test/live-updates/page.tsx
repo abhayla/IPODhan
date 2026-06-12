@@ -9,6 +9,7 @@ import { MarketPulse } from '@/components/dashboard/MarketPulse';
 import { HotRightNow } from '@/components/dashboard/HotRightNow';
 import { VisualFilterBuilder, type FilterValue } from '@/components/filters/VisualFilterBuilder';
 import { FilterPresets } from '@/components/filters/FilterPresets';
+import { notFound } from 'next/navigation';
 
 /**
  * Live Updates Test Page - Phase 3: Real-Time Experience
@@ -37,6 +38,9 @@ const DEFAULT_FILTERS: FilterValue = {
 };
 
 export default function LiveUpdatesTestPage() {
+  // Internal real-time test harness — never exposed in production (GitHub #11).
+  if (process.env.NODE_ENV === 'production') notFound();
+
   const { status, isConnected, reconnect, disconnect } = useConnectionStatus();
   const [filters, setFilters] = React.useState<FilterValue>(DEFAULT_FILTERS);
 

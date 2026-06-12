@@ -15,16 +15,37 @@ let pool: Pool | null = null;
  */
 export function getPool(): Pool {
   if (!pool) {
-    pool = new Pool({
-      host: process.env.DATABASE_HOST,
-      port: parseInt(process.env.DATABASE_PORT || '5432'),
-      database: process.env.DATABASE_NAME,
-      user: process.env.DATABASE_USER,
-      password: process.env.DATABASE_PASSWORD,
-      max: 20, // Maximum number of clients in the pool
-      idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-      connectionTimeoutMillis: 10000, // Timeout connection attempts after 10 seconds
-    });
+    // Prefer individual DATABASE_* vars; fall back to DATABASE_URL.
+    // Production sets only DATABASE_URL — without this fallback the pool was
+    // built with password=undefined, so every query threw
+    // "SASL: client password must be a string" (GitHub #10: /api/health
+    // falsely reported the database unhealthy).
+    const hasDiscreteVars = !!(process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD);
+    if (!hasDiscreteVars && !process.env.DATABASE_URL) {
+      throw new Error(
+        'Database configuration missing! Set DATABASE_URL or individual DATABASE_* environment variables.'
+      );
+    }
+
+    pool = new Pool(
+      hasDiscreteVars
+        ? {
+            host: process.env.DATABASE_HOST,
+            port: parseInt(process.env.DATABASE_PORT || '5432'),
+            database: process.env.DATABASE_NAME,
+            user: process.env.DATABASE_USER,
+            password: process.env.DATABASE_PASSWORD,
+            max: 20,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 10000,
+          }
+        : {
+            connectionString: process.env.DATABASE_URL,
+            max: 20,
+            idleTimeoutMillis: 30000,
+            connectionTimeoutMillis: 10000,
+          }
+    );
 
     // Handle pool errors
     pool.on('error', (err) => {
