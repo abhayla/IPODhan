@@ -1,0 +1,26 @@
+# .claude/synthesis-config.yml
+#
+# Synthesize Flywheel — consent configuration
+#
+# Sharing is bilateral: turn it ON to both contribute your synthesized
+# patterns to the hub AND receive new/improved patterns from the hub.
+# Turn it OFF (default) to keep everything local — synthesis still works,
+# but you won't receive hub updates.
+#
+# You can change this at any time. Changes take effect on the next scan cycle.
+
+allow_hub_sharing: false
+
+# Patterns listed here are NEVER shared, even when allow_hub_sharing is true.
+private_patterns:
+  - deploy-release
+
+# Project-specific details to strip from patterns before they leave.
+# Note: stripping is planned but not yet implemented in the hub scan pipeline.
+strip_before_sharing:
+  - file_paths
+  - class_names
+  - env_vars
+
+# Set to true to receive a .claude/scan-log.yml with full scan history.
+scan_log: false
