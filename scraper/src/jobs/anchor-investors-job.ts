@@ -16,8 +16,7 @@
  * @module jobs/anchor-investors-job
  */
 
-import { db } from '@ipodhan/shared';
-import { getRedisClient } from '../config/redis.js';
+import { db, getRedisClient } from '@ipodhan/shared';
 import { logger } from '../utils/logger.js';
 import { scrapeAnchorInvestors, batchScrapeAnchorInvestors } from '../scrapers/anchor-investors-scraper.js';
 import { AnchorInvestorRepository } from '../repositories/anchor-investor-repository.js';

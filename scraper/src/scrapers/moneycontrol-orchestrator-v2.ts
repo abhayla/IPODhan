@@ -52,7 +52,6 @@ import logger from '../utils/logger.js';
 export class MoneycontrolScraperOrchestratorV2 extends BaseScraperOrchestrator<any, never> {
 
   private validationPipeline: DataValidationPipeline;
-  private logger = require('../utils/logger.js').default;
 
   constructor() {
     super();
@@ -76,7 +75,7 @@ export class MoneycontrolScraperOrchestratorV2 extends BaseScraperOrchestrator<a
     // Log scrape-level errors
     if (errors.length > 0) {
       for (const error of errors) {
-        this.logger?.warn({ error }, 'Moneycontrol scrape error');
+        logger.warn({ error }, 'Moneycontrol scrape error');
       }
     }
 

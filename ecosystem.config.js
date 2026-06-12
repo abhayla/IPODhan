@@ -38,27 +38,30 @@ module.exports = {
       // Configure: See scripts/setup-log-rotation.ps1
     },
 
-    // IPO Scraper Service
+    // IPO Scraper Service — scheduled ONE-SHOT scrape.
+    // CRITICAL: autorestart MUST be false. src/index.ts scrapes once and exits;
+    // under autorestart:true PM2 restarts it instantly = a ~4s infinite loop
+    // (GitHub #2). With autorestart:false it exits cleanly and stays stopped;
+    // cron_restart fires it again on schedule (PM2 scheduled-one-shot pattern).
     {
       name: 'ipodhan-scraper',
       script: 'node_modules/tsx/dist/cli.mjs',
-      args: 'src/index.ts',
+      args: 'src/index.ts --source=all',
       cwd: './scraper',
       instances: 1,
       exec_mode: 'fork',
       env: {
         NODE_ENV: 'production',
+        SCRAPER_INTERVAL_MODE: 'prod',
       },
-      max_memory_restart: '300M',
+      max_memory_restart: '500M',
       error_file: './logs/scraper-error.log',
       out_file: './logs/scraper-out.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
       merge_logs: true,
-      autorestart: true,
+      autorestart: false,
       watch: false,
-      cron_restart: '0 3 * * *', // Daily at 3 AM
-      max_restarts: 5,
-      min_uptime: '30s',
+      cron_restart: '*/30 * * * *',
       kill_timeout: 10000,
       // Log rotation handled by pm2-logrotate module
       // Install: pm2 install pm2-logrotate

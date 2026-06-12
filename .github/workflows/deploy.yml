@@ -215,8 +215,14 @@ jobs:
                 listen_timeout: 5000,
                 kill_timeout: 5000
               },
-              // Scraper Service - Runs every 6 hours (00:00, 06:00, 12:00, 18:00)
-              // Uses npm workspace - node_modules resolved from root via NODE_PATH
+              // Scraper Service - scheduled ONE-SHOT scrape.
+              // CRITICAL: autorestart MUST be false. src/index.ts scrapes once
+              // and exits; under autorestart:true PM2 restarts it instantly =
+              // a ~4s infinite loop (GitHub #2). With autorestart:false the
+              // process exits cleanly and STAYS stopped; cron_restart fires it
+              // again on schedule. This is PM2's scheduled-one-shot pattern.
+              // (Adopting the richer src/scheduler/index.ts is tracked
+              // separately — that entrypoint has unrelated bit-rot to repair.)
               {
                 name: 'ipodhan-scraper',
                 script: 'C:\\Apps\\IPODhan\\current\\node_modules\\tsx\\dist\\cli.mjs',
@@ -224,10 +230,12 @@ jobs:
                 cwd: 'C:\\Apps\\IPODhan\\current\\scraper',
                 instances: 1,
                 exec_mode: 'fork',
-                max_memory_restart: '300M',
-                cron_restart: '0 */6 * * *',
+                max_memory_restart: '500M',
+                autorestart: false,
+                cron_restart: '*/30 * * * *',
                 env: {
                   NODE_ENV: 'production',
+                  SCRAPER_INTERVAL_MODE: 'prod',
                   NODE_PATH: 'C:\\Apps\\IPODhan\\current\\node_modules'
                 },
                 error_file: 'C:\\Apps\\IPODhan\\logs\\scraper-error.log',
@@ -235,9 +243,6 @@ jobs:
                 log_date_format: 'YYYY-MM-DD HH:mm:ss Z',
                 merge_logs: true,
                 time: true,
-                autorestart: true,
-                max_restarts: 3,
-                min_uptime: '30s',
                 kill_timeout: 10000
               }
             ]
