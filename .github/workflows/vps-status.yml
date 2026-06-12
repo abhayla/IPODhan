@@ -1,0 +1,32 @@
+name: VPS Status (read-only)
+
+# Read-only diagnostics: disk, memory, top processes, PM2 + health. No restarts,
+# no checkout, no build — minimal load. Used to assess the box before deciding
+# whether a deploy is safe. Manual dispatch only.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  status:
+    runs-on: self-hosted
+    steps:
+      - name: Report VPS status
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $c = Get-PSDrive C
+          Write-Host ("DISK C: free={0}GB total={1}GB" -f [math]::Round($c.Free/1GB,2), [math]::Round(($c.Used+$c.Free)/1GB,0))
+          $os = Get-CimInstance Win32_OperatingSystem
+          Write-Host ("MEM free={0}MB total={1}MB" -f [math]::Round($os.FreePhysicalMemory/1KB), [math]::Round($os.TotalVisibleMemorySize/1KB))
+          $b = 'C:\Apps\IPODhan\backups'
+          if (Test-Path $b) {
+            $bs = (Get-ChildItem $b -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+            Write-Host ("BACKUPS count={0} sizeGB={1}" -f (Get-ChildItem $b -Directory).Count, [math]::Round($bs/1GB,2))
+          }
+          Write-Host "=== TOP MEM ==="
+          Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 10 Name,@{N='MB';E={[math]::Round($_.WorkingSet64/1MB)}} | Format-Table -AutoSize | Out-String | Write-Host
+          Write-Host "=== PM2 ==="
+          pm2 list | Select-String 'ipodhan'
+          Write-Host "=== HEALTH ==="
+          try { (Invoke-WebRequest 'http://localhost:3001/api/health' -TimeoutSec 12 -UseBasicParsing).Content } catch { "health failed: $($_.Exception.Message)" }
