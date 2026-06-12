@@ -1,0 +1,71 @@
+name: VPS Recover (incident maintenance)
+
+# Lightweight incident-recovery for the production VPS: diagnoses disk/memory,
+# clears orphaned deploy processes, frees disk (old backups), restarts the
+# Postgres service and the ipodhan PM2 apps, and reports health. Does NO
+# checkout / npm ci / build, so it runs even when the box is too stressed for a
+# full deploy. Manual dispatch only.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  recover:
+    runs-on: self-hosted
+    steps:
+      - name: Diagnose and recover
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+
+          Write-Host "=== DISK ==="
+          $c = Get-PSDrive C
+          Write-Host ("C: free = {0} GB / total {1} GB" -f [math]::Round($c.Free/1GB,2), [math]::Round(($c.Used+$c.Free)/1GB,1))
+
+          Write-Host "=== TOP MEMORY PROCESSES ==="
+          Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 12 Name, Id, @{N='MB';E={[math]::Round($_.WorkingSet64/1MB)}} | Format-Table -AutoSize | Out-String | Write-Host
+
+          Write-Host "=== FREE DISK: prune old backups (keep newest 1) ==="
+          $bdir = 'C:\Apps\IPODhan\backups'
+          if (Test-Path $bdir) {
+            Get-ChildItem $bdir -Directory | Sort-Object LastWriteTime -Descending | Select-Object -Skip 1 |
+              ForEach-Object { Write-Host ("  removing " + $_.Name); Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+          }
+          # Clear the runner work temp (orphaned files from failed deploys)
+          $rtmp = 'C:\actions-runner-ipodhan\_work\_temp'
+          if (Test-Path $rtmp) { Get-ChildItem $rtmp -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue }
+
+          Write-Host "=== RESTART POSTGRES SERVICE ==="
+          $pg = Get-Service | Where-Object { $_.Name -like 'postgresql*' -or $_.DisplayName -like '*PostgreSQL*' }
+          if ($pg) {
+            foreach ($s in $pg) {
+              Write-Host ("  restarting service: " + $s.Name + " (was " + $s.Status + ")")
+              Restart-Service -Name $s.Name -Force -ErrorAction Continue
+            }
+          } else {
+            Write-Host "  [WARN] no postgresql service found by name"
+          }
+
+          Start-Sleep -Seconds 6
+
+          Write-Host "=== RESTART IPODHAN PM2 APPS ==="
+          pm2 restart ipodhan-web 2>$null
+          pm2 restart ipodhan-scraper 2>$null
+          pm2 save 2>$null
+
+          Start-Sleep -Seconds 8
+
+          Write-Host "=== POST-RECOVERY DISK ==="
+          $c2 = Get-PSDrive C
+          Write-Host ("C: free = {0} GB" -f [math]::Round($c2.Free/1GB,2))
+
+          Write-Host "=== HEALTH CHECK ==="
+          try {
+            $r = Invoke-WebRequest -Uri 'http://localhost:3001/api/health' -TimeoutSec 15 -UseBasicParsing
+            Write-Host ("  /api/health -> " + $r.StatusCode)
+            Write-Host $r.Content
+          } catch {
+            Write-Host ("  health check failed: " + $_.Exception.Message)
+          }
+
+          pm2 list | Select-String 'ipodhan'
