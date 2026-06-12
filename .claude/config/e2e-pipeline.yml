@@ -1,0 +1,337 @@
+# E2E pipeline configuration
+# Read by e2e-conductor-agent at runtime (standalone mode) or
+# by testing-pipeline-master-agent via the sub-orchestrator (dispatched mode).
+#
+# This config externalizes the pipeline DAG per agent-orchestration rule #4.
+# Modify queue ordering, retry limits, classification rules, and agent
+# settings here — not in the agent files.
+
+pipeline:
+  name: e2e-test-orchestration
+  version: "2.0.0"
+
+queue:
+  # longest-first reduces total wall time by front-loading slow tests
+  # Options: longest-first | shortest-first | alphabetical | dependency-order
+  ordering: longest-first
+  batch_size: 5
+  # Claude Code is single-threaded; 1 = sequential dispatch
+  max_concurrent_batches: 1
+
+retry:
+  # In dispatched mode, the T1 master passes remaining_budget via context
+  # and this local default is NOT used. In standalone mode, this is the
+  # conductor's total shared retry pool across all healing across all tests.
+  global_budget: 15
+  per_test_max_attempts: 3
+  per_stage_max:
+    test_scout: 3
+    visual_inspector: 2
+    test_healer: 3
+  # When true, test-pipeline-agent and e2e-conductor-agent inherit remaining_budget
+  # from the parent orchestrator rather than using the local default.
+  compose_across_tiers: true
+
+agents:
+  test_scout:
+    agent: test-scout-agent
+    # always: screenshot verdict is authoritative — must capture every test
+    screenshot_mode: always
+    capture_a11y_tree: true
+  visual_inspector:
+    agent: visual-inspector-agent
+    dual_signal: true
+    confidence_threshold: 0.8
+    aria_snapshot_format: yaml   # yaml (uses toMatchAriaSnapshot) | json (raw snapshot)
+    auto_generate_baseline: true # auto-create ARIA baselines on first run
+  test_healer:
+    agent: test-healer-agent
+    auto_fix_classifications:
+      - SELECTOR
+      - TIMING
+      - DATA
+      - FLAKY_TEST
+      - INFRASTRUCTURE
+      - TEST_POLLUTION
+    human_review_classifications:
+      - LOGIC_BUG
+      - VISUAL_REGRESSION
+
+# Confidence gate for healing — fixes below threshold are suggested but not applied.
+# Authoritative confidence comes from fix-loop's test-failure-analyzer-agent.
+healing:
+  confidence_threshold: 0.85
+  low_confidence_action: suggest  # suggest: log fix but don't apply | skip: discard
+  # Playwright MCP server provides live browser inspection during healing
+  # (browser_snapshot, browser_evaluate, console_messages, network_requests).
+  # HARD dependency — downstream projects must install @playwright/mcp in
+  # package.json devDependencies. Provisioning warns if missing.
+  use_playwright_mcp: true
+  mcp_package: "@playwright/mcp"
+
+# Deterministic pre-classification regex rules.
+# Read by test-failure-analyzer-agent BEFORE invoking the LLM classifier.
+# First-match-wins, ordered most-specific to most-general.
+# Clear-cut failures bypass the LLM — saves cost AND eliminates variance.
+#
+# Rule ORDER matters: more-specific rules MUST precede more-general ones.
+# Example: `playwright_locator_failure` runs before `playwright_timeout`
+# because Playwright's real locator errors include both "TimeoutError:" AND
+# "waiting for getByRole(...)" in the same message. If the generic timeout
+# rule ran first, every SELECTOR failure would misclassify as TIMEOUT.
+# (Runtime-verified 2026-04-23 against Playwright 1.49 output — see
+# scripts/tests/test_classification_rules.py for the real error strings.)
+classification_rules:
+  # --- Infrastructure (network / DB / upstream) ---------------------------
+  # Most-specific signatures — no ambiguity with higher-level failures.
+  - id: network_layer_failure
+    pattern: "\\b(ECONNREFUSED|ENOTFOUND|EHOSTUNREACH)\\b"
+    flags: i
+    category: INFRASTRUCTURE
+    confidence: 0.95
+    reason: "Network-layer connection failure"
+  - id: upstream_unavailable
+    pattern: "\\b503 (Service Unavailable|Service Temporarily Unavailable)\\b|\\bupstream unavailable\\b"
+    flags: i
+    category: INFRASTRUCTURE
+    confidence: 0.95
+    reason: "Upstream service returning 503"
+  - id: sql_missing_schema
+    pattern: "no such (table|column)|relation \"[^\"]+\" does not exist"
+    flags: i
+    category: MIGRATION_FAILURE
+    confidence: 0.95
+    reason: "SQL schema drift — table or column missing"
+
+  # --- Visual / UI (before generic timeouts) ------------------------------
+  - id: playwright_locator_failure
+    # Real Playwright 1.49 output captured 2026-04-23:
+    #   TimeoutError: locator.click: Timeout 5000ms exceeded.
+    #   Call log:
+    #     - waiting for getByRole('button', { name: 'Refresh' })
+    # The distinguishing feature is the Call-log "waiting for <locator>" line.
+    # MUST run before playwright_timeout — otherwise TimeoutError prefix wins
+    # and the SELECTOR failure misclassifies as TIMEOUT.
+    pattern: "waiting for (getByRole|getByLabel|getByText|getByTestId|getByPlaceholder|getByAltText|getByTitle|locator\\()"
+    flags: i
+    category: SELECTOR
+    confidence: 0.93
+    reason: "Playwright locator-resolution failure (waiting-for pattern)"
+  - id: selenium_detox_selector
+    pattern: "\\b(NoSuchElementException|ElementNotFound|ElementNotVisibleException)\\b"
+    flags: i
+    category: SELECTOR
+    confidence: 0.93
+    reason: "Selenium/Detox selector failure"
+  - id: screenshot_baseline_diff
+    # Real Playwright 1.49 output captured 2026-04-23:
+    #   Error: expect(locator).toHaveScreenshot(expected) failed
+    #     1769 pixels (ratio 0.06 of all image pixels) are different.
+    #     Snapshot: dashboard-heading.png
+    # The old pattern "Screenshot (differs from baseline|comparison failed)"
+    # matched nothing Playwright actually emits.
+    pattern: "toHaveScreenshot.*failed|\\d+ pixels.*(ratio [0-9.]+ of all image pixels)?.*are different|Snapshot:\\s+\\S+\\.png"
+    flags: i
+    category: VISUAL_REGRESSION
+    confidence: 0.95
+    reason: "Playwright screenshot baseline diff"
+
+  # --- Generic async timeouts (after specific locator/visual rules) -------
+  - id: wait_for_timeout
+    pattern: "waitFor(?:Selector)?\\b.*(exceeded|timed out)"
+    flags: i
+    category: TIMEOUT
+    confidence: 0.90
+    reason: "Explicit waitFor timeout"
+  - id: playwright_timeout
+    # Runs AFTER playwright_locator_failure so pure timeouts (e.g. page.goto)
+    # classify as TIMEOUT while locator.click timeouts with a waiting-for
+    # context classify as SELECTOR above.
+    pattern: "\\b(TimeoutError|playwright\\..*timeout)\\b"
+    flags: i
+    category: TIMEOUT
+    confidence: 0.90
+    reason: "Unambiguous async timeout"
+
+  # --- Other structural categories ---------------------------------------
+  - id: pact_mismatch
+    pattern: "Pact verification failed"
+    flags: i
+    category: CONTRACT_MISMATCH
+    confidence: 0.95
+    reason: "Consumer-driven contract mismatch"
+  - id: resource_leak_warning
+    pattern: "ResourceWarning:\\s+unclosed"
+    flags: i
+    category: RESOURCE_LEAK
+    confidence: 0.90
+    reason: "Unclosed resource detected at teardown"
+
+# Cross-run test history for flakiness detection, quarantine, and decay.
+# File persists across runs (not in cleanup list). Builds up naturally.
+history:
+  file: ".pipeline/test-history.json"
+  window_size: 10              # sliding window: keep last N results per test
+  flaky_threshold: 0.7         # score >= this → auto-quarantine (don't spend retry budget)
+  quarantine_flaky: true       # false to disable quarantine (still tracks scores)
+  decay_window: 3              # last N runs all PASSED → reset flakiness_score to 0
+  probe_interval: 5            # every N runs, force a probe-run through full healing cycle
+
+# Visual comparison settings — passed to verify-screenshots and applied in scout phase.
+visual:
+  threshold: 0.2                # Playwright default (YIQ perceptual diff, 0=strict, 1=lax)
+  max_diff_pixel_ratio: 0.01   # fail if >1% of pixels differ
+  animations: disabled          # disable CSS animations before screenshot capture
+  mask_selectors:               # hide dynamic content before capture (set visibility:hidden)
+    # - ".timestamp"
+    # - ".avatar"
+    # - "[data-testid='ad-banner']"
+  config_file: null             # path to visual.config.json (if project has one)
+  baseline_dir: "test-evidence/baselines"
+
+# State-file configuration. Dual-mode: standalone uses .pipeline/, dispatched
+# uses .workflows/testing-pipeline/. Agents detect mode and pick the right path.
+state:
+  schema_version: "1.0.0"       # MUST be first field of every state file
+  standalone_file: ".pipeline/e2e-state.json"
+  dispatched_file: ".workflows/testing-pipeline/e2e-state.json"
+  evidence_dir: "test-evidence"
+  results_dir: "test-results"
+  # Per-run state archive. After each pipeline completes, the canonical state
+  # file is COPIED (not moved) to {dir}/runs/{run_id}/e2e-state.json for audit.
+  # The canonical path stays unchanged — existing callers are unaffected.
+  # Operators get a durable cross-run trail; debugging a regression no longer
+  # depends on catching the state before the next run overwrites it.
+  archive_enabled: true
+  archive_max_runs: 10          # keep N most-recent runs/ subdirs; older pruned at INIT
+
+# Cross-stage contradiction handling. T1 master detects contradictions during
+# aggregation (e.g., auto-verify PASSED but contract-test FAILED).
+# - warn: surface in report but do not block the pipeline verdict (default)
+# - block: escalate to FAILED if any contradiction detected
+contradictions:
+  action: warn
+
+# Automatic GitHub Issue creation for known_issues with LOGIC_BUG or
+# VISUAL_REGRESSION classification. Requires `gh auth status` OK when enabled.
+# See testing-pipeline-master-agent.md for signature + dedup semantics.
+issue_creation:
+  enabled: true
+  labels:
+    - pipeline-auto
+  dedup_window_days: 30
+  # If true, pipeline fails fast when gh auth is missing AND enabled=true.
+  require_gh_auth: true
+  # If true, pipeline fails fast when no `origin` git remote exists AND
+  # enabled=true. Downstream projects with no GitHub remote (local-only,
+  # GitLab, Gitea) should set enabled=false rather than require_git_remote=false
+  # — the latter would silently skip issue creation with no audit trail.
+  require_git_remote: true
+
+# Historical duration hints for longest-first ordering.
+# Conductor uses these when no runtime data is available.
+# Auto-updated after each pipeline run (median of current + previous hint).
+duration_hints: {}
+  # example:
+  #   test_checkout_flow: 45000
+  #   test_login_flow: 12000
+
+# Healing state machine — read by test-healer-agent at runtime.
+# Per agent-orchestration rule #4, state transitions live in config, not inline.
+healing_state_machine:
+  states:
+    - fix_queue          # items awaiting healing
+    - test_queue         # healed items requeued for re-execution
+    - known_issues       # items that exhausted max attempts or hit pre-gate
+    - expected_changes   # intentional UI drift (requires user approval via --update-baselines)
+  transitions:
+    - from: fix_queue
+      to: test_queue
+      condition: "heal_succeeded AND confidence >= healing.confidence_threshold AND attempt < per_test_max_attempts"
+      action: "increment attempt, record fix in history, decrement remaining_budget"
+    - from: fix_queue
+      to: fix_queue
+      condition: "heal_succeeded AND confidence BETWEEN 0.5 AND 0.85 AND attempt < per_test_max_attempts"
+      action: "increment attempt, flag low_confidence_fix, try different strategy next pass"
+    - from: fix_queue
+      to: known_issues
+      condition: "heal_succeeded AND confidence < 0.5"
+      action: "revert fix, log suggestion, do not decrement budget for LOW-confidence failures"
+    - from: fix_queue
+      to: known_issues
+      condition: "attempt >= per_test_max_attempts"
+      action: "log full diagnosis history, recommended manual action"
+    - from: fix_queue
+      to: known_issues
+      condition: "classification IN (LOGIC_BUG, VISUAL_REGRESSION)"
+      action: "pre-gate routing — skip fix-loop entirely, flag human_review=true"
+    - from: fix_queue
+      to: known_issues
+      condition: "flakiness_score >= flaky_threshold AND NOT probe_run"
+      action: "quarantine as historically_flaky, preserve retry budget"
+    - from: known_issues
+      to: fix_queue
+      condition: "probe_runs_since_quarantine % probe_interval == 0"
+      action: "probe-run recovery — force one healing attempt through full cycle"
+
+# Ephemeral directories wiped at standalone-mode INIT.
+# In dispatched mode, the T1 master owns cleanup and this list is ignored.
+cleanup_standalone_only:
+  - ".pipeline/"
+  - "test-evidence/"
+  - "test-results/"
+
+# Enriched error-context schema. The analyzer agent (test-failure-analyzer-agent)
+# is a T3 leaf and MUST NOT call MCP tools directly. Instead, callers that have
+# MCP access (T2 sub-orchestrators like e2e-conductor-agent, or healer with
+# @playwright/mcp) capture live browser signals and embed them in the dispatch
+# prompt under the `enriched_context` key.
+#
+# The analyzer matches its regex rules against `test_output` PLUS any populated
+# fields in `enriched_context`. When enrichment is absent, the analyzer falls
+# back to test_output only — the enrichment is purely additive. This preserves
+# T3 leaf purity (no Agent() dispatch, no MCP tool grants) per
+# agent-orchestration.md rule #11 (mandatory context passing).
+error_context_enrichment:
+  schema_version: "1.0.0"
+  # Whether the dispatcher MUST populate enrichment before calling the analyzer.
+  # When required=false, enrichment is opt-in and analyzer falls back gracefully.
+  required: false
+  # Maximum bytes of each enrichment field to carry in the dispatch prompt.
+  # Prevents runaway prompt size when a test produces thousands of console lines.
+  max_field_bytes: 4096
+  # Fields the caller captures from live browser state (via @playwright/mcp or
+  # equivalent) and pastes into the analyzer's dispatch prompt.
+  captured_fields:
+    - console_messages   # browser_console_messages output, last N lines
+    - network_failures   # browser_network_requests filtered to non-2xx
+    - dom_snapshot       # browser_snapshot (ARIA YAML) at failure time
+    - last_url           # page.url() at failure time
+    - page_title         # page.title() at failure time
+  # Regex rules that match against enriched_context fields, in addition to the
+  # test_output rules above. Same first-match-wins semantics.
+  enriched_rules:
+    - id: console_cors_error
+      pattern: "has been blocked by CORS policy"
+      field: console_messages
+      category: INFRASTRUCTURE
+      confidence: 0.93
+      reason: "Browser blocked cross-origin request — server CORS config issue"
+    - id: console_csp_violation
+      pattern: "Refused to (load|execute|connect).*Content Security Policy"
+      field: console_messages
+      category: INFRASTRUCTURE
+      confidence: 0.92
+      reason: "CSP header blocked resource load"
+    - id: network_5xx
+      pattern: "\\b5\\d\\d\\b"
+      field: network_failures
+      category: INFRASTRUCTURE
+      confidence: 0.90
+      reason: "Upstream server returned 5xx during test run"
+    - id: network_401_403
+      pattern: "\\b(401|403)\\b"
+      field: network_failures
+      category: AUTH_ERROR
+      confidence: 0.90
+      reason: "Auth/permission failure during test run"

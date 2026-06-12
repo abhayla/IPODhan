@@ -1,3 +1,21 @@
+# 5 Wealths portfolio context — READ FIRST
+
+This repo is one project inside Abhay's 5 Wealths portfolio. Before doing any strategic, scoping, or governance work in this session, read the three files below in order. They explain the portfolio, the boundary rule, the immutable principles, and the glossary used across all of Abhay's projects.
+
+@./5W-CONTEXT.md
+@./5W-PRINCIPLES.md
+@./5W-GLOSSARY.md
+
+**If the @-import syntax is not honored by your client (e.g., not running inside Claude Code), use the Read tool to load the three files manually before proceeding:**
+
+- `./5W-CONTEXT.md` — what 5 Wealths is, where it lives, the L-042 boundary rule, cross-reference protocol
+- `./5W-PRINCIPLES.md` — the four immutable principles (productize, scale, automate, continuously update)
+- `./5W-GLOSSARY.md` — decoded shorthand (entities, regulators, sister projects, terms)
+
+**Boundary reminder (non-negotiable):** Never write into `D:\Abhay\VibeCoding\5Wealths\` from this repo. Strategic decisions surfaced here get captured as `TODO(5W):` notes; Abhay carries them across in a separate 5 Wealths session.
+
+---
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
@@ -27,6 +45,12 @@ npm run seed:force             # Seed database (truncates first)
 
 # Code Quality
 npm run lint && npm run build
+
+# Scraper (from scraper/)
+npm start                      # Run all enabled scrapers once
+npm run start:bse              # Single source: bse | moneycontrol | chittorgarh | gmp | fallback | api
+npm run scheduler              # Cron-based scheduler (production mode)
+cd scraper && npx vitest run src/tests/path/to/test.test.ts   # Single scraper test
 ```
 
 **Critical Rules:**
@@ -41,16 +65,18 @@ npm run lint && npm run build
 
 IPODhan is an IPO information platform for Indian investors. Tech stack: Next.js 15 (App Router), PostgreSQL 16 + Drizzle ORM, Redis, TypeScript, Tailwind CSS 4.
 
-**Monorepo Structure:**
+**Monorepo Structure (npm workspaces: web, scraper, packages/*):**
 ```
 IPODhan/
-├── packages/shared/src/db/schema.ts  # DB schema (13 tables) - SINGLE SOURCE OF TRUTH
+├── packages/shared/                  # @ipodhan/shared - used by both web & scraper
+│   └── src/db/schema.ts              # DB schema (24 tables) - SINGLE SOURCE OF TRUTH
+│       (also: repositories, services, utils, errors, types)
 ├── web/                              # Next.js app
 │   ├── app/                          # Pages & API routes
 │   ├── lib/repositories/             # Data access with caching
 │   ├── lib/services/                 # Business logic
 │   └── lib/cache/                    # Redis client & cache keys
-└── scraper/                          # Data scraping service
+└── scraper/                          # Multi-source data scraping service (ESM, tsx)
 ```
 
 ---
@@ -66,7 +92,7 @@ All schema in `packages/shared/src/db/schema.ts`. Re-exported via `web/lib/db/in
 import { ipos, ipoStatusEnum } from '@/lib/db';
 import * as schema from '@ipodhan/shared/db/schema';
 
-// ❌ Wrong - file doesn't exist
+// ❌ Wrong - web/lib/db/schema.ts is a STALE legacy duplicate. Never import or edit it.
 import { ipos } from '@/lib/db/schema';
 ```
 
@@ -117,13 +143,16 @@ ESLint enforces this rule automatically.
 
 ### 4. Cache Keys
 
-Defined in `web/lib/cache/cache-keys.ts`:
+Defined in `web/lib/cache/cache-keys.ts` (pattern: `{entity}:{operation}:{identifier}`):
 ```typescript
 export const CacheTTL = {
-  IPO_DETAIL: 900,    // 15 min
-  IPO_LIST: 300,      // 5 min
-  SUBSCRIPTION: 180,  // 3 min
-  GMP: 900,           // 15 min
+  IPO_DETAIL: 900,          // 15 min
+  IPO_LIST: 900,            // 15 min
+  IPO_LISTINGS: 300,        // 5 min - matches page ISR revalidation
+  SUBSCRIPTION_LATEST: 300, // 5 min
+  GMP_LATEST: 600,          // 10 min
+  REFERENCE: 604800,        // 7 days (registrars, holidays, sectors)
+  // ...see cache-keys.ts for the full list
 };
 ```
 
@@ -133,6 +162,15 @@ export const CacheTTL = {
 import { generateIPOSlug } from '@ipodhan/shared/utils/slug';
 const slug = generateIPOSlug('XYZ Corporation Ltd'); // 'xyz-corporation-ltd'
 ```
+
+### 6. Scraper Multi-Source Priority
+
+The scraper pulls from multiple sources (NSE, BSE, Moneycontrol, Chittorgarh, InvestorGain GMP, API fallback). When sources conflict, the **field priority matrix** (`scraper/src/config/field-priority-matrix.ts`) decides per-field which source wins:
+
+- Source priority order: `ADMIN` (manual override, always wins) > `DRHP` > `NSE` > `BSE` > `MONEYCONTROL` > `CHITTORGARH` > `INVESTORGAIN_GMP` > `API_FALLBACK`
+- Each field can specify normalization (currency/date/company_name), confidence thresholds, and time-based rules (newest wins for real-time data like GMP/subscription)
+- Each source has an **orchestrator** in `scraper/src/scrapers/` (prefer `*-v2.ts` versions); feature flags in `scraper/src/config/feature-flags.ts`
+- Never write scraped data directly to the DB bypassing the consolidation/priority logic
 
 ---
 
@@ -160,11 +198,20 @@ export async function GET(request: NextRequest) {
 
 | Error | Solution |
 |-------|----------|
-| `Can't resolve './schema'` | Use `@/lib/db` not `@/lib/db/schema` |
+| `Can't resolve './schema'` | Use `@/lib/db` not `@/lib/db/schema` (the latter is a stale legacy copy) |
+| Schema change has no effect | You edited `web/lib/db/schema.ts` (legacy duplicate) instead of `packages/shared/src/db/schema.ts` |
 | `NodePgDatabase type error` | Import schema from `@ipodhan/shared/db/schema` |
 | Zod version conflicts | Pinned to `^4.1.11` in root package.json overrides |
 | Redis down | App auto-falls back to database |
 | Tests failing | Run `npm run db:migrate`, check DB connection |
+
+---
+
+## Production & Deployment
+
+- **Target:** Windows Server 2022 VPS (`103.118.16.189`), processes managed by PM2 (`ecosystem.config.js`): `ipodhan-web` (cluster x2, **port 3001** in prod), `ipodhan-scraper` (fork)
+- **Deploy:** GitHub Actions `deploy.yml`, manual `workflow_dispatch` only (with optional `skip_tests` for emergencies)
+- **Shared package must be compiled before web/scraper builds:** `cd packages/shared && npx tsc` — CI verifies `dist/db/schema.d.ts` exists. If types from `@ipodhan/shared` seem stale locally, rebuild it.
 
 ---
 
@@ -184,3 +231,20 @@ export async function GET(request: NextRequest) {
 - DB queries p95 < 100ms
 - Cache hit rate > 80%
 - Support 1000 concurrent users
+
+<!-- hub:best-practices:start -->
+
+<!-- PROTECTED SECTION — managed by claude-best-practices hub. -->
+<!-- Do NOT condense, rewrite, reorganize, or remove.          -->
+<!-- Any /init or optimization request must SKIP this section.  -->
+
+## Rules for Claude
+
+1. **Bug Fixing**: Use `/fix-loop` or `/fix-github-issue`. Start by writing a test that reproduces the bug, then fix and prove with a passing test.
+2. **Rules**: Path-scoped rules live in `.claude/rules/` and auto-load via `globs:` frontmatter when matching files are opened. Browse with `ls .claude/rules/` — enumerating each rule here would cost ~4k tokens per session for zero enforcement benefit.
+
+## Claude Code Configuration
+
+The `.claude/` directory contains 113 skills, 16 agents, and 27 rules for Claude Code.
+
+<!-- hub:best-practices:end -->
