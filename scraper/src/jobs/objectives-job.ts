@@ -16,8 +16,7 @@
  * @module jobs/objectives-job
  */
 
-import { db } from '@ipodhan/shared';
-import { getRedisClient } from '../config/redis.js';
+import { db, getRedisClient } from '@ipodhan/shared';
 import { logger } from '../utils/logger.js';
 import { scrapeIPOObjectives, batchScrapeObjectives } from '../scrapers/objectives-scraper.js';
 import { updateIPOObjectives } from '../services/data-persister.js';

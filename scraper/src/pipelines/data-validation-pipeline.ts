@@ -279,7 +279,13 @@ export class PipelineFactory {
   ): DataValidationPipeline {
     return new DataValidationPipeline(db, {
       rejectOnCriticalErrors: true,
-      skipDuplicateDetection: false,
+      // Duplicate detection is intentionally OFF here: the persister
+      // (upsertIPO) is the single source of dedup+update truth — it matches an
+      // existing IPO by normalized name / slug and UPDATEs it. Using a
+      // symbol-exists check as a create gate rejected every already-known IPO,
+      // so open IPOs could never refresh their GMP / subscription / status
+      // (GitHub #3, the production zero-records bug).
+      skipDuplicateDetection: true,
       enableAutoFixes: true,
       enableLogging: true,
       duplicateConfidenceThreshold: 'MEDIUM',
