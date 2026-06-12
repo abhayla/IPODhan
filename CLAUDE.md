@@ -22,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Quick Reference
 
-**Commands (run from root or web/):**
+**Commands (from web/ unless noted — root proxies only dev, dev:scraper, lint, build, test:unit):**
 ```bash
 # Development
 npm run dev                    # Next.js dev server (port 3000)
@@ -47,10 +47,11 @@ npm run seed:force             # Seed database (truncates first)
 npm run lint && npm run build
 
 # Scraper (from scraper/)
-npm start                      # Run all enabled scrapers once
+npm start                      # NSE only (default --source=nse)
+npm run start:all              # All sources once
 npm run start:bse              # Single source: bse | moneycontrol | chittorgarh | gmp | fallback | api
 npm run scheduler              # Cron-based scheduler (production mode)
-cd scraper && npx vitest run src/tests/path/to/test.test.ts   # Single scraper test
+cd scraper && npx vitest run tests/unit/path/to/test.test.ts   # Single scraper test (tiers: tests/{unit,integration,e2e,load})
 ```
 
 **Critical Rules:**
@@ -245,6 +246,6 @@ export async function GET(request: NextRequest) {
 
 ## Claude Code Configuration
 
-The `.claude/` directory contains 113 skills, 16 agents, and 27 rules for Claude Code.
+The `.claude/` directory contains 116 skills, 17 agents, and 34 rules for Claude Code.
 
 <!-- hub:best-practices:end -->
