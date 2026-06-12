@@ -146,6 +146,21 @@ jobs:
           "@
           $scraperEnv | Out-File -FilePath "scraper\.env" -Encoding UTF8
 
+      - name: Stop PM2 processes (release file locks)
+        shell: powershell
+        run: |
+          # The web/scraper dirs cannot be replaced while PM2 holds open file
+          # handles on them (Remove-Item -> "being used by another process").
+          # Delete the apps (not just stop) so the subsequent `pm2 start
+          # ecosystem.config.js` re-reads the config — `pm2 reload` does NOT
+          # pick up ecosystem changes (autorestart/cron), so config edits would
+          # otherwise never take effect.
+          foreach ($app in @('ipodhan-web','ipodhan-scraper')) {
+            try { pm2 delete $app 2>$null | Out-Null; Write-Host "[OK] Deleted $app" }
+            catch { Write-Host "[INFO] $app not running" }
+          }
+          Start-Sleep -Seconds 3  # let the OS release the file handles
+
       - name: Deploy files
         shell: powershell
         run: |
@@ -157,10 +172,11 @@ jobs:
           }
           Copy-Item -Path "web" -Destination "$env:DEPLOY_DIR\web" -Recurse -Force
 
-          # Copy shared packages (built dist)
-          if (-not (Test-Path "$env:DEPLOY_DIR\packages")) {
-            New-Item -ItemType Directory -Path "$env:DEPLOY_DIR\packages" -Force | Out-Null
+          # Copy shared packages (built dist) — clean first to avoid nesting
+          if (Test-Path "$env:DEPLOY_DIR\packages\shared") {
+            Remove-Item -Path "$env:DEPLOY_DIR\packages\shared" -Recurse -Force
           }
+          New-Item -ItemType Directory -Path "$env:DEPLOY_DIR\packages" -Force | Out-Null
           Copy-Item -Path "packages\shared" -Destination "$env:DEPLOY_DIR\packages\shared" -Recurse -Force
 
           # Copy scraper
@@ -260,31 +276,24 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
-      - name: PM2 reload or start
+      - name: PM2 start from ecosystem config
         shell: powershell
         run: |
           cd $env:DEPLOY_DIR
 
-          $webExists = pm2 list 2>$null | Select-String "ipodhan-web"
-          $scraperExists = pm2 list 2>$null | Select-String "ipodhan-scraper"
-
-          if ($webExists) {
-            Write-Host "[INFO] Reloading ipodhan-web..."
-            pm2 reload ipodhan-web --update-env
+          # The apps were deleted before file replacement, so start fresh from
+          # the ecosystem config. This (not `pm2 reload`) is what makes config
+          # changes — autorestart:false, cron_restart — actually take effect.
+          # Defensive: delete any lingering instances first so start is clean.
+          foreach ($app in @('ipodhan-web','ipodhan-scraper')) {
+            pm2 delete $app 2>$null | Out-Null
           }
 
-          if ($scraperExists) {
-            Write-Host "[INFO] Reloading ipodhan-scraper..."
-            pm2 reload ipodhan-scraper --update-env
-          }
-
-          if (-not $webExists -or -not $scraperExists) {
-            Write-Host "[INFO] Starting PM2 processes..."
-            pm2 start ecosystem.config.js
-          }
-
+          pm2 start ecosystem.config.js
           pm2 save
-          Write-Host "[OK] PM2 processes updated (web + scraper every 6h)"
+
+          Write-Host "[OK] PM2 started from ecosystem.config.js"
+          pm2 list
 
       - name: Health check
         shell: powershell
@@ -319,9 +328,18 @@ jobs:
         run: |
           if ($env:BACKUP_PATH -and (Test-Path $env:BACKUP_PATH)) {
             Write-Host "[INFO] Rolling back..."
+            # Delete PM2 apps first so they release file handles — otherwise
+            # Remove-Item fails with "being used by another process" (the same
+            # lock that can break the deploy itself).
+            foreach ($app in @('ipodhan-web','ipodhan-scraper')) {
+              pm2 delete $app 2>$null | Out-Null
+            }
+            Start-Sleep -Seconds 3
             Remove-Item -Path $env:DEPLOY_DIR -Recurse -Force
             Copy-Item -Path $env:BACKUP_PATH -Destination $env:DEPLOY_DIR -Recurse -Force
-            pm2 restart ipodhan-web
+            cd $env:DEPLOY_DIR
+            pm2 start ecosystem.config.js
+            pm2 save
             Write-Host "[OK] Rollback complete"
           }
 
