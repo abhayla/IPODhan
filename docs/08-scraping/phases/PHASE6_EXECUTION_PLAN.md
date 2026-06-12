@@ -278,7 +278,7 @@ If any fix breaks existing functionality:
 
 ```bash
 # Restore from backup
-psql "postgresql://postgres:***REMOVED-CREDENTIAL***@103.118.16.189:5432/ipodhan" < database/backups/backup_pre_scrape_20251017_212423.sql
+psql process.env.DATABASE_URL < database/backups/backup_pre_scrape_20251017_212423.sql
 
 # Revert code changes
 git checkout scraper/src/scrapers/

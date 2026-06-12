@@ -267,7 +267,7 @@ FROM listing_performance;
 
 ### Connect to Database
 ```bash
-PGPASSWORD="***REMOVED-CREDENTIAL***" psql -h 103.118.16.189 -U postgres -d ipodhan
+PGPASSWORD="<db-password>" psql -h 103.118.16.189 -U postgres -d ipodhan
 ```
 
 ### Check Table Counts

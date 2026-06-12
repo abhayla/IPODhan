@@ -479,7 +479,7 @@ coverage: {
    DATABASE_URL=postgresql://postgres:password@localhost:5432/ipodhan_test
 
    # Or use existing database for testing
-   DATABASE_URL=postgresql://postgres:***REMOVED-CREDENTIAL***@103.118.16.189:5432/ipodhan
+   DATABASE_URL=postgresql://postgres:<db-password>@103.118.16.189:5432/ipodhan
    ```
 
 3. **Start Redis Server** (5 minutes)

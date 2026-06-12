@@ -5,7 +5,7 @@ const pool = new Pool({
   port: 5432,
   database: 'ipodhan',
   user: 'postgres',
-  password: '***REMOVED-CREDENTIAL***'
+  password: process.env.DB_PASSWORD
 });
 
 function randomDecimal(min, max) {

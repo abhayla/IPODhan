@@ -153,14 +153,14 @@ ALTER TABLE any_table ...;             -- Schema changes on production
 
 ```bash
 # VPS PostgreSQL Database (PRODUCTION DATA)
-DATABASE_URL=postgresql://postgres:***REMOVED-CREDENTIAL***@103.118.16.189:5432/ipodhan
+DATABASE_URL=postgresql://postgres:<db-password>@103.118.16.189:5432/ipodhan
 
 # Individual fields (for scripts that parse separately)
 DATABASE_HOST=103.118.16.189
 DATABASE_PORT=5432
 DATABASE_NAME=ipodhan
 DATABASE_USER=postgres
-DATABASE_PASSWORD=***REMOVED-CREDENTIAL***  # Note: @ symbol NOT URL-encoded here
+DATABASE_PASSWORD=<db-password>  # Note: @ symbol NOT URL-encoded here
 ```
 
 **⚠️ CRITICAL:**
