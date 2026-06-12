@@ -19,6 +19,7 @@
     "lint": "npm run lint --workspace=web",
     "build": "npm run build --workspace=web",
     "test:unit": "npm run test:unit --workspace=web",
+    "audit:prod": "node scripts/audit-prod.mjs",
     "prepare": "husky"
   },
   "repository": {
