@@ -1549,13 +1549,13 @@ node scripts/check-tables-exist.js
 
 **Option 1: Using psql**
 ```bash
-PGPASSWORD="Papa3Monu@1234" psql -h 103.118.16.189 -p 5432 -U postgres -d ipodhan -f query.sql
+PGPASSWORD="<db-password>" psql -h 103.118.16.189 -p 5432 -U postgres -d ipodhan -f query.sql
 ```
 
 **Option 2: Using database tool**
 - Connect to: `103.118.16.189:5432/ipodhan`
 - Username: `postgres`
-- Password: `Papa3Monu@1234`
+- Password: `<db-password>`
 
 ### Safety Guidelines
 

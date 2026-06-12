@@ -81,8 +81,8 @@ Missing `.env.test` file for test-specific environment variables.
 
 ```env
 # Test Environment Configuration
-DATABASE_URL=postgresql://postgres:Papa3Monu%401234@103.118.16.189:5432/ipodhan
-TEST_DATABASE_URL=postgresql://postgres:Papa3Monu%401234@103.118.16.189:5432/ipodhan_test
+DATABASE_URL=postgresql://postgres:<db-password>@103.118.16.189:5432/ipodhan
+TEST_DATABASE_URL=postgresql://postgres:<db-password>@103.118.16.189:5432/ipodhan_test
 
 NODE_ENV=test
 PORT=3002

@@ -3,7 +3,7 @@ const { Pool } = require('pg');
 
 async function checkDatabase() {
   const pool = new Pool({
-    connectionString: 'postgresql://postgres:Papa3Monu%401234@103.118.16.189:5432/ipodhan',
+    connectionString: process.env.DATABASE_URL,
   });
 
   try {

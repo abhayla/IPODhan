@@ -4,7 +4,7 @@ const client = new Client({
   host: '103.118.16.189',
   port: 5432,
   user: 'postgres',
-  password: 'Papa3Monu@1234',
+  password: process.env.DB_PASSWORD,
   database: 'ipodhan',
   connectionTimeoutMillis: 10000,
 });

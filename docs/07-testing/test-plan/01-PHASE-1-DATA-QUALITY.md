@@ -107,7 +107,7 @@ node scripts/check-tables-exist.js
 Using `psql` or database query tool connected to VPS:
 ```bash
 # Option 1: Use psql directly
-PGPASSWORD="Papa3Monu@1234" psql -h 103.118.16.189 -p 5432 -U postgres -d ipodhan -c "\dt"
+PGPASSWORD="<db-password>" psql -h 103.118.16.189 -p 5432 -U postgres -d ipodhan -c "\dt"
 
 # Option 2: Use the provided script (ensures VPS connection)
 node scripts/check-tables-exist.js

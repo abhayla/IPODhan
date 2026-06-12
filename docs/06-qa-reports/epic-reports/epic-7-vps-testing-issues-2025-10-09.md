@@ -276,7 +276,7 @@ NSE API requires specific headers and cookies. The scraper is correctly falling 
 2. **🔴 Update Database Schema (P0)**
    ```bash
    cd web
-   PGPASSWORD='Papa3Monu@1234' psql -h 103.118.16.189 -U postgres -d ipodhan -c "
+   PGPASSWORD='<db-password>' psql -h 103.118.16.189 -U postgres -d ipodhan -c "
    ALTER TABLE ipos DROP CONSTRAINT IF EXISTS ipos_status_check;
    ALTER TABLE ipos ADD CONSTRAINT ipos_status_check
      CHECK (status IN ('UPCOMING', 'OPEN', 'LIVE', 'CLOSED', 'LISTED'));

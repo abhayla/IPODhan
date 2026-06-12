@@ -3,10 +3,12 @@ import { Pool } from 'pg';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-// Test database connection
-const testDbUrl =
-  process.env.TEST_DATABASE_URL ||
-  'postgresql://postgres:Papa3Monu@1234@103.118.16.189:5432/ipodhan_test';
+// Test database connection — must be explicit: this suite runs down-migrations,
+// and pg's localhost fallback would aim them at an unintended database.
+const testDbUrl = process.env.TEST_DATABASE_URL;
+if (!testDbUrl) {
+  throw new Error('TEST_DATABASE_URL is required for migration tests');
+}
 
 describe('Database Migrations', () => {
   describe('Migration Application', () => {

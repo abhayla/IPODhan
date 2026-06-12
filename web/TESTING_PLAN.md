@@ -30,14 +30,14 @@
 **Check `web/.env.local` has VPS database credentials:**
 ```bash
 # VPS PostgreSQL Database (PRODUCTION DATA)
-DATABASE_URL=postgresql://postgres:Papa3Monu%401234@103.118.16.189:5432/ipodhan
+DATABASE_URL=postgresql://postgres:<db-password>@103.118.16.189:5432/ipodhan
 
 # Individual fields (for scripts that parse separately)
 DATABASE_HOST=103.118.16.189
 DATABASE_PORT=5432
 DATABASE_NAME=ipodhan
 DATABASE_USER=postgres
-DATABASE_PASSWORD=Papa3Monu@1234  # Note: @ symbol NOT URL-encoded here
+DATABASE_PASSWORD=<db-password>  # Note: @ symbol NOT URL-encoded here
 ```
 
 **⚠️ CRITICAL**:
@@ -603,7 +603,7 @@ node scripts/check-tables-exist.js
 Using `psql` or database query tool connected to VPS:
 ```bash
 # Option 1: Use psql directly
-PGPASSWORD="Papa3Monu@1234" psql -h 103.118.16.189 -p 5432 -U postgres -d ipodhan -c "\dt"
+PGPASSWORD="<db-password>" psql -h 103.118.16.189 -p 5432 -U postgres -d ipodhan -c "\dt"
 
 # Option 2: Use the provided script (ensures VPS connection)
 node scripts/check-tables-exist.js

@@ -6,7 +6,7 @@ const { Client } = pkg;
 
 async function getFieldStats() {
   const client = new Client({
-    connectionString: process.env.DATABASE_URL || 'postgresql://postgres:Papa3Monu%401234@103.118.16.189:5432/ipodhan'
+    connectionString: process.env.DATABASE_URL
   });
 
   try {

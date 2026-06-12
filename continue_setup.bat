@@ -1,5 +1,5 @@
 @echo off
-set PGPASSWORD=Papa3Monu@1234
+set PGPASSWORD=%DB_PASSWORD%
 set PG_BIN=C:\Program Files\PostgreSQL\16\bin
 
 echo [Step 7] Verifying database 'ipodhan' exists...

@@ -3,7 +3,7 @@ const { Client } = pkg;
 
 async function checkDualListed() {
   const client = new Client({
-    connectionString: 'postgresql://postgres:Papa3Monu%401234@103.118.16.189:5432/ipodhan'
+    connectionString: process.env.DATABASE_URL
   });
 
   await client.connect();

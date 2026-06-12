@@ -133,7 +133,7 @@ Status: Connected successfully
 
 **Test Connection:**
 ```bash
-node -e "const { Client } = require('pg'); const c = new Client({host: 'localhost', port: 5432, database: 'ipodhan', user: 'postgres', password: 'Papa3Monu@1234'}); c.connect().then(() => { console.log('DB OK'); return c.query('SELECT NOW()'); }).then(r => { console.log('Time:', r.rows[0].now); c.end(); }).catch(e => { console.error('Error:', e.message); process.exit(1); });"
+node -e "const { Client } = require('pg'); const c = new Client({host: 'localhost', port: 5432, database: 'ipodhan', user: 'postgres', password: process.env.DB_PASSWORD}); c.connect().then(() => { console.log('DB OK'); return c.query('SELECT NOW()'); }).then(r => { console.log('Time:', r.rows[0].now); c.end(); }).catch(e => { console.error('Error:', e.message); process.exit(1); });"
 ```
 
 Result: `DB OK` ✅

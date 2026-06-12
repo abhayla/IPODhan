@@ -64,7 +64,7 @@ DATABASE_URL=postgresql://ipodhan_user:your_password@localhost:5432/ipodhan
 Create or verify `web/.env.local` file:
 ```env
 # Database
-DATABASE_URL=postgresql://postgres:Papa3Monu@1234@103.118.16.189:5432/ipodhan
+DATABASE_URL=postgresql://<db-user>:<db-password>@103.118.16.189:5432/ipodhan
 
 # Application
 NODE_ENV=development
