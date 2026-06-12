@@ -209,6 +209,13 @@ async function main() {
       );
     }
 
+    // After scraping, apply time-based IPO status transitions (GitHub #4).
+    // Only for the full 'all' run (the scheduled production path). Non-fatal:
+    // a status-update failure must not fail the scrape.
+    if (source === 'all') {
+      await triggerStatusUpdate();
+    }
+
     // Log final combined result
     logger.info(
       {
@@ -245,6 +252,38 @@ async function main() {
       'Scraper CLI failed with unhandled error'
     );
     process.exit(1);
+  }
+}
+
+/**
+ * Trigger time-based IPO status transitions via the web admin API after a
+ * scrape run (GitHub #4). Kept as an HTTP call (not a direct import) so the
+ * status logic stays in the web app — its DB schema, cache keys, and the `@/`
+ * path alias all resolve there, and the scraper avoids a web/ boundary import.
+ */
+async function triggerStatusUpdate(): Promise<void> {
+  const baseUrl = process.env.WEB_INTERNAL_URL || 'http://localhost:3001';
+  const token = process.env.ADMIN_API_TOKEN;
+  if (!token) {
+    logger.warn('ADMIN_API_TOKEN not set — skipping IPO status update');
+    return;
+  }
+  try {
+    const res = await fetch(`${baseUrl}/api/admin/status/update`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      logger.error({ status: res.status }, 'IPO status update returned non-OK');
+      return;
+    }
+    const body = await res.json() as { data?: unknown };
+    logger.info({ result: body.data }, 'IPO status transitions applied');
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'IPO status update trigger failed (non-fatal)'
+    );
   }
 }
 
