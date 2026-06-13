@@ -91,31 +91,11 @@ jobs:
       - name: Create backup
         shell: powershell
         run: |
-          $ErrorActionPreference = 'Continue'
-
-          # Prune old backups FIRST so a series of failed deploys can't fill the
-          # disk (the old 'Clean old backups' step only ran on success). Keep the
-          # 2 most recent.
-          if (Test-Path $env:BACKUP_DIR) {
-            Get-ChildItem -Path $env:BACKUP_DIR -Directory |
-              Sort-Object LastWriteTime -Descending | Select-Object -Skip 2 |
-              ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
-          }
-
           $timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
           $backupPath = "$env:BACKUP_DIR\backup-$timestamp"
 
           if (Test-Path "$env:DEPLOY_DIR\web") {
-            # robocopy (not Copy-Item) excluding node_modules + .next: those are
-            # huge, hold file locks from the running processes (Copy-Item then
-            # fails), and are fully rebuilt by npm ci + build on rollback anyway.
-            # robocopy exit codes < 8 are success.
-            robocopy $env:DEPLOY_DIR $backupPath /E /XD node_modules .next /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
-            if ($LASTEXITCODE -ge 8) {
-              Write-Host "[ERROR] Backup failed (robocopy exit $LASTEXITCODE)"
-              exit 1
-            }
-            $global:LASTEXITCODE = 0
+            Copy-Item -Path $env:DEPLOY_DIR -Destination $backupPath -Recurse -Force
             Write-Host "[OK] Backup created: $backupPath"
             echo "BACKUP_PATH=$backupPath" >> $env:GITHUB_ENV
           } else {
@@ -327,6 +307,22 @@ jobs:
           }
           Write-Host "[OK] PM2 started from ecosystem.config.js"
 
+      - name: Ensure PM2 log rotation (prevent unbounded log growth)
+        shell: powershell
+        run: |
+          # Caps every PM2 app's logs so a chatty process (e.g. the scraper)
+          # can never fill the disk again. Idempotent: pm2 install is a no-op
+          # if the module is already present. 50M x (5 retained) per stream.
+          $ErrorActionPreference = 'Continue'
+          pm2 install pm2-logrotate
+          pm2 set pm2-logrotate:max_size 50M
+          pm2 set pm2-logrotate:retain 5
+          pm2 set pm2-logrotate:compress true
+          pm2 set pm2-logrotate:rotateInterval '0 0 * * *'
+          pm2 set pm2-logrotate:workerInterval 60
+          pm2 set pm2-logrotate:rotateModule true
+          Write-Host "[OK] pm2-logrotate configured (50M max, retain 5, compressed)"
+
       - name: Health check
         shell: powershell
         run: |
@@ -373,14 +369,20 @@ jobs:
             Remove-Item -Path $env:DEPLOY_DIR -Recurse -Force
             Copy-Item -Path $env:BACKUP_PATH -Destination $env:DEPLOY_DIR -Recurse -Force
             cd $env:DEPLOY_DIR
-            # The backup excludes node_modules/.next (see Create backup), so
-            # reinstall + rebuild before starting.
-            npm ci --production=false
-            cd packages\shared; npm run build; cd $env:DEPLOY_DIR
-            cd web; npm run build; cd $env:DEPLOY_DIR
             pm2 start ecosystem.config.js
             pm2 save
             Write-Host "[OK] Rollback complete"
+          }
+
+      - name: Clean old backups
+        if: success()
+        shell: powershell
+        run: |
+          $backups = Get-ChildItem -Path $env:BACKUP_DIR -Directory | Sort-Object LastWriteTime -Descending
+          if ($backups.Count -gt 5) {
+            $backups | Select-Object -Skip 5 | ForEach-Object {
+              Remove-Item -Path $_.FullName -Recurse -Force
+            }
           }
 
       - name: Deployment summary
