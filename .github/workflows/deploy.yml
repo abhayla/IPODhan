@@ -9,6 +9,12 @@ on:
         type: boolean
         default: false
 
+# Only one production deploy at a time; a newer dispatch cancels an in-progress
+# one instead of queueing another full ~20-min run behind it.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
+
 jobs:
   quality-checks:
     name: Quality Checks & Build
@@ -82,36 +88,77 @@ jobs:
 
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          # Keep gitignored build artifacts (node_modules, .next/cache) in the
+          # runner workspace between runs so installs + Next builds are
+          # incremental instead of from-scratch every deploy.
+          clean: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
       - name: Create backup
         shell: powershell
         run: |
+          $ErrorActionPreference = 'Continue'
+
+          # Prune FIRST so a run of failed deploys can't fill the disk: keep only
+          # the single most recent backup. (Also prune one-off db-backups.)
+          if (Test-Path $env:BACKUP_DIR) {
+            Get-ChildItem $env:BACKUP_DIR -Directory | Sort-Object LastWriteTime -Descending |
+              Select-Object -Skip 1 | ForEach-Object { Remove-Item $_.FullName -Recurse -Force -ErrorAction SilentlyContinue }
+          }
+          $dbBackups = 'C:\Apps\IPODhan\db-backups'
+          if (Test-Path $dbBackups) {
+            Get-ChildItem $dbBackups -File | Sort-Object LastWriteTime -Descending |
+              Select-Object -Skip 1 | ForEach-Object { Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue }
+          }
+
           $timestamp = Get-Date -Format "yyyy-MM-dd-HHmmss"
           $backupPath = "$env:BACKUP_DIR\backup-$timestamp"
 
           if (Test-Path "$env:DEPLOY_DIR\web") {
-            Copy-Item -Path $env:DEPLOY_DIR -Destination $backupPath -Recurse -Force
+            # robocopy excluding node_modules + .next: they are huge, lock-prone,
+            # and rebuilt by npm + build on rollback. robocopy exit < 8 = success.
+            robocopy $env:DEPLOY_DIR $backupPath /E /XD node_modules .next /NFL /NDL /NJH /NJS /NP /R:1 /W:1 | Out-Null
+            if ($LASTEXITCODE -ge 8) { Write-Host "[ERROR] backup robocopy exit $LASTEXITCODE"; exit 1 }
+            $global:LASTEXITCODE = 0
             Write-Host "[OK] Backup created: $backupPath"
             echo "BACKUP_PATH=$backupPath" >> $env:GITHUB_ENV
           } else {
             Write-Host "[WARN] No existing deployment to backup"
           }
 
-      - name: Install dependencies
-        run: npm ci --production=false
+      - name: Install dependencies (skip if lockfile unchanged)
+        shell: powershell
+        run: |
+          $hash = (Get-FileHash package-lock.json -Algorithm SHA256).Hash
+          $marker = "node_modules\.deploy-lockhash"
+          if ((Test-Path node_modules) -and (Test-Path $marker) -and ((Get-Content $marker -Raw).Trim() -eq $hash)) {
+            Write-Host "[OK] Dependencies unchanged — skipping install"
+          } else {
+            Write-Host "[INFO] Lockfile changed or node_modules missing — installing..."
+            npm ci --production=false
+            $hash | Out-File -FilePath $marker -Encoding ascii -NoNewline
+          }
 
       - name: Build shared package
         run: npm run build
         working-directory: ./packages/shared
 
-      - name: Build web application
-        run: npm run build
-        working-directory: ./web
+      - name: Build web application (incremental — keeps .next/cache)
+        shell: powershell
+        run: |
+          # Remove only the build OUTPUT, preserving .next/cache (the Next
+          # compiler cache) so the build is incremental, not from-scratch.
+          if (Test-Path web\.next) {
+            Get-ChildItem web\.next -Force | Where-Object { $_.Name -ne 'cache' } |
+              Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          }
+          cd web; npm run build
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           NEXT_PUBLIC_GA_MEASUREMENT_ID: ${{ secrets.NEXT_PUBLIC_GA_MEASUREMENT_ID }}
@@ -193,13 +240,19 @@ jobs:
 
           Write-Host "[OK] Files deployed"
 
-      - name: Install production dependencies
+      - name: Install production dependencies (skip if lockfile unchanged)
         shell: powershell
         run: |
           cd $env:DEPLOY_DIR
-          Write-Host "[INFO] Installing production dependencies..."
-          npm ci --production=false
-          Write-Host "[OK] Dependencies installed"
+          $hash = (Get-FileHash package-lock.json -Algorithm SHA256).Hash
+          $marker = "node_modules\.deploy-lockhash"
+          if ((Test-Path node_modules) -and (Test-Path $marker) -and ((Get-Content $marker -Raw).Trim() -eq $hash)) {
+            Write-Host "[OK] Dependencies unchanged — skipping install"
+          } else {
+            Write-Host "[INFO] Installing production dependencies..."
+            npm ci --production=false
+            $hash | Out-File -FilePath $marker -Encoding ascii -NoNewline
+          }
 
       - name: Create ecosystem.config.js
         shell: powershell
@@ -371,21 +424,18 @@ jobs:
             Remove-Item -Path $env:DEPLOY_DIR -Recurse -Force
             Copy-Item -Path $env:BACKUP_PATH -Destination $env:DEPLOY_DIR -Recurse -Force
             cd $env:DEPLOY_DIR
+            # Backup excludes node_modules/.next (see Create backup), so reinstall
+            # + rebuild the restored source before starting.
+            npm ci --production=false
+            cd packages\shared; npm run build; cd $env:DEPLOY_DIR
+            cd web; npm run build; cd $env:DEPLOY_DIR
             pm2 start ecosystem.config.js
             pm2 save
             Write-Host "[OK] Rollback complete"
           }
 
-      - name: Clean old backups
-        if: success()
-        shell: powershell
-        run: |
-          $backups = Get-ChildItem -Path $env:BACKUP_DIR -Directory | Sort-Object LastWriteTime -Descending
-          if ($backups.Count -gt 5) {
-            $backups | Select-Object -Skip 5 | ForEach-Object {
-              Remove-Item -Path $_.FullName -Recurse -Force
-            }
-          }
+      # Backup pruning moved to the start of "Create backup" (prune-first, keep 1)
+      # so failed deploys can't accumulate backups and fill the disk.
 
       - name: Deployment summary
         if: always()
