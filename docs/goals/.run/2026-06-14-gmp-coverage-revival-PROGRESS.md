@@ -11,12 +11,17 @@
 |---|---|---|---|
 | A1 scheduler job (flag OFF) + lock | **DONE** | 94699b75 | job-level lock (sibling pattern); per-IPO `ipo:${slug}` lock → DEFERRED note |
 | A2 SME category fetch | **DONE** | c79d6a25 | fetch ipo+sme, merge+dedupe by id |
-| A3 shared name-normalizer + ≥30-name JS↔SQL test | pending | | needs DB (integration tier); JS + SQL normalizers diverge-risk identified |
+| A3 shared name-normalizer + ≥30-name JS↔SQL test | **DONE** | b5ffab6d | shared util; 34-name agreement test green via tunnel; caught+fixed re-export bug |
 | A4 parse-rate guard (<50% → fail) | **DONE** | c79d6a25 | isParseRateHealthy + parseGMP <b>-drift fallback |
 | A5 success accounting | **DONE** | c79d6a25 | computeGMPRunOutcome; **deviation** ↓ |
 | A6 timestamp year-boundary | **DONE** | c79d6a25 | deterministic, Dec→Jan rollback, now injectable |
 | A7 priority-matrix INVESTORGAIN_GMP | **DONE** | 1deeafd5 | primary GMP source, ranked above Chittorgarh |
-| A8 backfill run (AC1) | pending | | needs A3 + live InvestorGain fetch + tunnel write (additive, allowed) |
+| A8 backfill run (AC1) | **DONE** | (data op) | ran via tunnel + name-match ON; 16 created/1 skipped/0 failed |
+
+### Stage A COMPLETE (9/9) — AC1 result
+- **Coverage: 3 → 17 distinct IPOs with gmp_records (5.6×); newest 2026-06-12 → 2026-06-14.** Verified by independent DB read-back via tunnel (rows 160→176).
+- **AC1 = 16/16 (100%)** of InvestorGain-listed current IPOs *present in our DB* now have a fresh GMP row. Listed-but-unmatched: **"Advit Jewels"** (gmp 91) — **absent from `ipos` table entirely** (never ingested), so cannot have GMP regardless → upstream ingestion gap, NOT a GMP-match failure. `TODO`: IPO ingestion misses some SME IPOs (Advit Jewels).
+- **Backfill infra finding (recorded):** the shared `db` pool uses individual `DATABASE_HOST`/`DATABASE_PORT` params when set (overrides DATABASE_URL). To route a scraper run through the tunnel you MUST set `DATABASE_HOST=localhost DATABASE_PORT=15432` (not just DATABASE_URL). Direct prod 5432 is firewalled. Run cmd: `cd scraper && DATABASE_HOST=localhost DATABASE_PORT=15432 ENABLE_GMP_NAME_MATCH=true npm run start:gmp`.
 
 **A5 deviation (recorded per dod-verbs.md):** contract §2.6 says `success = failed===0 && processed>0` AND "all-skipped → success=false". Those conflict when `processed` includes skipped. Implemented the version that satisfies the stated TEST outcomes: `processed = created+skipped+blocked`, `success = failed===0 && created>0`. An all-skipped run → success=false. ✅
 
