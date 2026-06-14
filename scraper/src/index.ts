@@ -15,7 +15,13 @@ import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrato
 import { runMoneycontrolScraper } from './scrapers/moneycontrol-orchestrator-v2.js';
 import { runChittorgarhScraper } from './scrapers/chittorgarh-orchestrator-v2.js';
 import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator-v2.js';
+import { db } from '@ipodhan/shared';
+import { scraperLogs } from '@ipodhan/shared/db/schema';
+import { lt } from 'drizzle-orm';
 import logger from './utils/logger.js';
+
+/** Days of scraper_logs history to retain. */
+const SCRAPER_LOG_RETENTION_DAYS = 30;
 
 /**
  * CLI entry point for IPO scrapers
@@ -214,6 +220,7 @@ async function main() {
     // a status-update failure must not fail the scrape.
     if (source === 'all') {
       await triggerStatusUpdate();
+      await pruneScraperLogs();
     }
 
     // Log final combined result
@@ -283,6 +290,26 @@ async function triggerStatusUpdate(): Promise<void> {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'IPO status update trigger failed (non-fatal)'
+    );
+  }
+}
+
+/**
+ * Prune scraper_logs to the retention window so the table can't regrow to the
+ * 515k-row / 115 MB bloat the crash-loop produced (GitHub #15 follow-up).
+ * Runs each full cycle; non-fatal.
+ */
+async function pruneScraperLogs(): Promise<void> {
+  try {
+    const cutoff = new Date(Date.now() - SCRAPER_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+    const deleted = await db.delete(scraperLogs).where(lt(scraperLogs.createdAt, cutoff)).returning({ id: scraperLogs.id });
+    if (deleted.length > 0) {
+      logger.info({ deleted: deleted.length, retentionDays: SCRAPER_LOG_RETENTION_DAYS }, 'Pruned old scraper_logs');
+    }
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'scraper_logs prune failed (non-fatal)'
     );
   }
 }
