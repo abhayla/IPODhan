@@ -26,10 +26,13 @@ function calculateHealthStatus(
   successRates: number[],
   lastRuns: (Date | null)[]
 ): HealthStatus {
-  // CRITICAL: Any scraper < 70% success rate OR down > 2 hours
+  // CRITICAL: Any scraper < 70% success rate OR ran-before-but-now-stale (>2h).
+  // A null lastRun means "never ran", NOT "stale" — API_FALLBACK only runs on
+  // demand and is legitimately null, so treating null as stale produced a
+  // permanent false CRITICAL even while NSE/BSE were ~100% (GitHub #3).
   const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
   const hasLowSuccessRate = successRates.some(rate => rate < 70);
-  const hasStaleData = lastRuns.some(date => !date || date < twoHoursAgo);
+  const hasStaleData = lastRuns.some(date => date != null && date < twoHoursAgo);
 
   if (hasLowSuccessRate || hasStaleData) {
     return 'CRITICAL';
