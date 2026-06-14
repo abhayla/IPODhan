@@ -144,7 +144,7 @@ export const ipos = pgTable(
     segment: segmentEnum('segment'), // Exchange segment (MAINBOARD | SME) - nullable for RIGHTS/InvITs/REITs
     offeringType: offeringTypeEnum('offering_type').notNull(), // Type of offering (IPO, RIGHTS, TENDER, etc.)
     sector: varchar('sector', { length: 100 }),
-    issueSize: numeric('issue_size', { precision: 15, scale: 2 }), // in INR crores (max ₹999,999 crores = ₹9,999.99 billion)
+    issueSize: numeric('issue_size', { precision: 15, scale: 2 }), // in INR RUPEES (normalizeCurrency stores rupees; render via formatIssueSizeCrores) - GitHub #9
     priceRangeMin: integer('price_range_min'), // min price per share
     priceRangeMax: integer('price_range_max'), // max price per share
     lotSize: integer('lot_size'),

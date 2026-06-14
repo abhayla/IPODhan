@@ -1,7 +1,7 @@
 'use client';
 
 import { IPO, FinancialData, ListingPerformance } from '@/lib/db/types';
-import { cn } from '@/lib/utils';
+import { cn, formatIssueSizeCrores } from '@/lib/utils';
 import { TrendingUp, TrendingDown, Minus } from 'lucide-react';
 
 interface QuickStatsGridProps {
@@ -51,7 +51,7 @@ export function QuickStatsGrid({ ipo, className }: QuickStatsGridProps) {
   if (ipo.issueSize) {
     stats.push({
       label: 'Issue Size',
-      value: formatCurrency(ipo.issueSize),
+      value: formatIssueSizeCrores(ipo.issueSize),
     });
   }
 

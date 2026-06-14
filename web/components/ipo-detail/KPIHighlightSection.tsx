@@ -98,7 +98,7 @@ export function KPIHighlightSection({
   // Note: This is a simplified calculation. Ideally, we'd need total shares
   // For now, we'll use issueSize and priceRangeMax as a proxy
   const totalShares = issueSize && priceRangeMax
-    ? (issueSize * 10000000) / priceRangeMax // Convert crores to shares
+    ? issueSize / priceRangeMax // issueSize is in rupees (GitHub #9); shares = size / price
     : null;
   const priceToBook = calculatePriceToBook(priceRangeMax ?? null, netWorth ?? null, totalShares);
 

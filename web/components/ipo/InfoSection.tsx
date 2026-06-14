@@ -1,6 +1,7 @@
 'use client';
 
 import { IPO, IpoDetails } from '@/lib/db/types';
+import { formatIssueSizeCrores } from '@/lib/utils';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatIPODate, getAccessibleDate, getISODate } from '@/lib/utils/date-formatter';
 import { ISINDisplay } from './ISINDisplay';
@@ -180,7 +181,7 @@ export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
             />
             <InfoRow
               label="Issue Size"
-              value={ipo.issueSize ? `₹${(Number(ipo.issueSize) / 10000000).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Crores` : 'N/A'}
+              value={formatIssueSizeCrores(ipo.issueSize)}
             />
             {/* ISIN Display (Story 4.9) */}
             <div className="group flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4 p-2 rounded-md transition-all duration-200 hover:bg-muted/30">

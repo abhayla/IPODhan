@@ -9,6 +9,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { format } from 'date-fns';
+import { formatIssueSizeCrores } from '@/lib/utils';
 import {
   Table,
   TableBody,
@@ -197,7 +198,7 @@ export function IPOListingsTable({ data, onSort, currentSort }: IPOListingsTable
                 <TableCell>{formatDate(ipo.closeDate)}</TableCell>
                 <TableCell>{formatDate(ipo.listingDate)}</TableCell>
                 <TableCell className="text-right">{formatNumber(ipo.issuePrice)}</TableCell>
-                <TableCell className="text-right">{formatNumber(ipo.issueSize)}</TableCell>
+                <TableCell className="text-right">{formatIssueSizeCrores(ipo.issueSize)}</TableCell>
                 <TableCell className="text-right">{formatNumber(ipo.lotSize)}</TableCell>
                 <TableCell className="text-right">
                   {ipo.subscriptionOverall ? `${ipo.subscriptionOverall.toFixed(2)}x` : '-'}
