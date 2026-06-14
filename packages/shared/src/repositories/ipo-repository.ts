@@ -322,7 +322,10 @@ export class IPORepository extends BaseRepository implements IIPORepository {
                         REGEXP_REPLACE(
                           REGEXP_REPLACE(
                             REGEXP_REPLACE(
-                              ${ipos.companyName},
+                              REGEXP_REPLACE(
+                                ${ipos.companyName},
+                                '(Ltd\\.?|Limited) [A-Za-z]{1,2}$', '\\1', 'i'
+                              ),
                               ' (IPO|FPO)$', '', 'i'
                             ),
                             ' (Limited|Ltd\\.?)$', '', 'i'

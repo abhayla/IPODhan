@@ -160,12 +160,18 @@ function mergeListingExchanges(
  * normalizeCompanyNameForMatching('Midwest Ltd. IPO') // 'midwest'
  * normalizeCompanyNameForMatching('Midwest Limited') // 'midwest'
  */
-function normalizeCompanyNameForMatching(companyName: string): string {
+export function normalizeCompanyNameForMatching(companyName: string): string {
   if (!companyName) return '';
 
   return companyName
     .toLowerCase()
     .trim()
+    // Strip a trailing 1-2 letter status/category code that some sources append
+    // AFTER the legal suffix (e.g. "Ltd. O", "Ltd. LT", "Ltd. CT", "Ltd. P").
+    // These are scrape artifacts (O=Open, LT=Listed, CT=Closed, P=…) that create
+    // duplicate/unmatchable rows (GitHub #16). Anchored to follow ltd/limited so
+    // real names ending in a short token are left alone.
+    .replace(/(\bltd\.?|\blimited)\s+[a-z]{1,2}$/i, '$1')
     // Remove common suffixes that create duplicates
     .replace(/\s+ipo$/i, '')
     .replace(/\s+fpo$/i, '')

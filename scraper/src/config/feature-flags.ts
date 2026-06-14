@@ -58,6 +58,23 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_EARLY_DETECTION: process.env.ENABLE_EARLY_DETECTION === 'true',
 
+  /**
+   * Enable normalized-company-name matching for InvestorGain GMP rows.
+   * When enabled, GMP rows resolve to an IPO by normalized company name FIRST,
+   * falling back to exact open/close-date matching. Lifts GMP coverage from the
+   * few date-exact matches to all current IPOs (incl. symbol-less SME). (#6/#8)
+   * Default: false
+   */
+  ENABLE_GMP_NAME_MATCH: process.env.ENABLE_GMP_NAME_MATCH === 'true',
+
+  /**
+   * Enable persisting Moneycontrol-scraped subscription %s into the
+   * subscriptions table, matched by normalized company name (covers SME IPOs
+   * that lack an NSE/BSE symbol). NSE/BSE symbol-based capture stays primary.
+   * Default: false
+   */
+  ENABLE_MONEYCONTROL_SUBSCRIPTION: process.env.ENABLE_MONEYCONTROL_SUBSCRIPTION === 'true',
+
   // ==================== ROLLOUT CONTROLS ====================
 
   /**

@@ -17,7 +17,8 @@
 import { IPORepository, GMPRepository, ScraperLogRepository, db, getRedisClient } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { scrapeInvestorgainGMPs } from './investorgain-gmp-scraper.js';
-import { createGMPRecord } from '../services/data-persister.js';
+import { createGMPRecord, normalizeCompanyNameForMatching } from '../services/data-persister.js';
+import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { ScraperMetricsTracker } from '../services/scraper-metrics-tracker.js';
@@ -293,24 +294,35 @@ export async function runInvestorgainGMPScraper(): Promise<InvestorgainGMPResult
     // Step 2: Match and persist GMPs (with protection checks)
     for (const scrapedGMP of scrapedGMPs) {
       try {
-        // Match IPO by dates
-        const ipoId = await matchIPOByDates(
-          ipoRepository,
-          scrapedGMP.openDate,
-          scrapedGMP.closeDate,
-          scrapedGMP.companyName
-        );
+        // Match IPO: prefer normalized company-name match (covers symbol-less SME
+        // IPOs that exact date-matching misses, #6/#8), fall back to date match.
+        let ipoId: string | null = null;
+        if (FEATURE_FLAGS.ENABLE_GMP_NAME_MATCH) {
+          const byName = await ipoRepository.findByNormalizedName(
+            normalizeCompanyNameForMatching(scrapedGMP.companyName)
+          );
+          if (byName) ipoId = byName.id;
+        }
+        if (!ipoId) {
+          ipoId = await matchIPOByDates(
+            ipoRepository,
+            scrapedGMP.openDate,
+            scrapedGMP.closeDate,
+            scrapedGMP.companyName
+          );
+        }
 
         if (!ipoId) {
           result.gmpsSkipped++;
-          logger.debug(
+          // INFO (not debug) so coverage gaps are visible in prod logs — no silent drop.
+          logger.info(
             {
               companyName: scrapedGMP.companyName,
               gmp: scrapedGMP.gmp,
               openDate: scrapedGMP.openDate,
               closeDate: scrapedGMP.closeDate
             },
-            'Skipping GMP - no matching IPO found'
+            'Skipping GMP - no matching IPO found (name+date match failed)'
           );
           continue;
         }
