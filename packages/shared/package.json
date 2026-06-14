@@ -12,7 +12,8 @@
     "./repositories/field-sources-repository": "./src/repositories/field-sources-repository.ts",
     "./cache": "./src/cache/index.ts",
     "./types": "./src/types/index.ts",
-    "./utils/slug": "./src/utils/slug.ts"
+    "./utils/slug": "./src/utils/slug.ts",
+    "./utils/company-name-normalizer": "./src/utils/company-name-normalizer.ts"
   },
   "scripts": {
     "build": "tsc",

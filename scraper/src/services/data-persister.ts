@@ -149,49 +149,12 @@ function mergeListingExchanges(
   return merged;
 }
 
-/**
- * Normalize company name for fuzzy matching (Phase 11 Step 2)
- * Strips legal entity suffixes and common variations to enable duplicate detection
- *
- * @param companyName - Raw company name
- * @returns Normalized company name for matching
- *
- * @example
- * normalizeCompanyNameForMatching('Midwest Ltd. IPO') // 'midwest'
- * normalizeCompanyNameForMatching('Midwest Limited') // 'midwest'
- */
-export function normalizeCompanyNameForMatching(companyName: string): string {
-  if (!companyName) return '';
-
-  return companyName
-    .toLowerCase()
-    .trim()
-    // Strip a trailing 1-2 letter status/category code that some sources append
-    // AFTER the legal suffix (e.g. "Ltd. O", "Ltd. LT", "Ltd. CT", "Ltd. P").
-    // These are scrape artifacts (O=Open, LT=Listed, CT=Closed, P=…) that create
-    // duplicate/unmatchable rows (GitHub #16). Anchored to follow ltd/limited so
-    // real names ending in a short token are left alone.
-    .replace(/(\bltd\.?|\blimited)\s+[a-z]{1,2}$/i, '$1')
-    // Remove common suffixes that create duplicates
-    .replace(/\s+ipo$/i, '')
-    .replace(/\s+fpo$/i, '')
-    .replace(/\s+limited$/i, '')
-    .replace(/\s+ltd\.?$/i, '')
-    .replace(/\s+private\s+limited$/i, '')
-    .replace(/\s+pvt\.?\s+ltd\.?$/i, '')
-    .replace(/\s+pvt\.?$/i, '')
-    .replace(/\s+private$/i, '')
-    .replace(/\s+inc\.?$/i, '')
-    .replace(/\s+incorporated$/i, '')
-    .replace(/\s+corp\.?$/i, '')
-    .replace(/\s+corporation$/i, '')
-    .replace(/\s+llc$/i, '')
-    .replace(/\s+llp$/i, '')
-    .replace(/\s+plc$/i, '')
-    // Remove extra whitespace
-    .replace(/\s+/g, ' ')
-    .trim();
-}
+// The canonical company-name normalizer now lives in the shared package so the
+// JS path (here) and the SQL path (ipo-repository) share ONE definition and stay
+// in lock-step (A3 / #6 #8 #16). Imported for local use in upsertIPO AND
+// re-exported for existing callers (e.g. the GMP orchestrator).
+import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
+export { normalizeCompanyNameForMatching };
 
 /**
  * Upsert IPO data to database with retry logic
