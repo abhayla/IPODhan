@@ -21,6 +21,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         PORT: 3001,
+        TZ: 'UTC',
       },
       max_memory_restart: '500M',
       error_file: './logs/web-error.log',
@@ -53,6 +54,7 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         SCRAPER_INTERVAL_MODE: 'prod',
+        TZ: 'UTC',
       },
       max_memory_restart: '500M',
       error_file: './logs/scraper-error.log',
