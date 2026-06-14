@@ -1,25 +1,21 @@
 /**
  * IPO Status Updater Service
  *
- * Automatically updates IPO statuses based on open_date and close_date
- * Fixes Phase 5 data quality issue: 29 IPOs with outdated status
- *
- * Status workflow:
- * - UPCOMING → OPEN (when open_date has passed)
- * - OPEN → CLOSED (when close_date has passed and no listing_date)
- * - CLOSED → LISTED (when listing_date is set)
+ * Automatically updates IPO statuses based on open_date / close_date /
+ * listing_date. The transition rules live in a single pure function,
+ * computeTargetStatus, so the full state machine is unit-testable and there is
+ * one source of truth.
  *
  * @module web/lib/services/status-updater-service
  */
 
 import { getDb } from '@/lib/db';
 import { ipos } from '@/lib/db';
-import { eq, and, lt, lte, gte, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { getRedisClient } from '@/lib/cache/redis-client';
 
-/**
- * Result of status update operation
- */
+export type IPOStatus = 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED';
+
 export interface StatusUpdateResult {
   upcomingToOpen: number;
   openToClosed: number;
@@ -34,14 +30,37 @@ export interface StatusUpdateResult {
 }
 
 /**
- * Update IPO statuses based on current dates
+ * Pure state machine: given an IPO's dates and today's date (YYYY-MM-DD),
+ * return the status the IPO SHOULD have, or null if there isn't enough date
+ * information to decide (leave the row as-is).
  *
- * This function implements the automatic status workflow:
- * 1. UPCOMING → OPEN: When current date >= open_date and < close_date
- * 2. OPEN → CLOSED: When current date > close_date and listing_date is NULL
- * 3. CLOSED → LISTED: When listing_date is set
+ * Precedence (highest first):
+ *  - LISTED   — listing_date has arrived (<= today)
+ *  - CLOSED   — bidding window has passed (close_date < today) and not yet listed
+ *  - OPEN     — within the bidding window (open_date <= today <= close_date)
+ *  - UPCOMING — open_date is still in the future
  *
- * @returns Promise<StatusUpdateResult> - Number of IPOs updated in each category
+ * This deliberately fixes the gaps the partial earlier logic had (GitHub #4/#6):
+ *  - a future listing_date no longer marks a row LISTED prematurely
+ *  - an UPCOMING whose whole window has passed transitions to CLOSED/LISTED
+ *  - an OPEN that already has a listing_date transitions to LISTED
+ */
+export function computeTargetStatus(
+  dates: { openDate: string | null; closeDate: string | null; listingDate: string | null },
+  today: string
+): IPOStatus | null {
+  const { openDate, closeDate, listingDate } = dates;
+
+  if (listingDate && listingDate <= today) return 'LISTED';
+  if (closeDate && closeDate < today) return 'CLOSED';
+  if (openDate && openDate <= today && (!closeDate || closeDate >= today)) return 'OPEN';
+  if (openDate && openDate > today) return 'UPCOMING';
+  return null;
+}
+
+/**
+ * Apply computeTargetStatus to every non-locked IPO, persist the rows whose
+ * status changed, and invalidate their caches.
  */
 export async function updateIPOStatuses(): Promise<StatusUpdateResult> {
   console.log('[Status Updater] Starting status update...');
@@ -49,159 +68,74 @@ export async function updateIPOStatuses(): Promise<StatusUpdateResult> {
   const db = await getDb();
   const redis = getRedisClient();
   const now = new Date();
-  const today = now.toISOString().split('T')[0]; // YYYY-MM-DD format
+  const today = now.toISOString().split('T')[0];
+
+  const rows = await db
+    .select({
+      id: ipos.id,
+      slug: ipos.slug,
+      companyName: ipos.companyName,
+      status: ipos.status,
+      openDate: ipos.openDate,
+      closeDate: ipos.closeDate,
+      listingDate: ipos.listingDate,
+      scraperLocked: ipos.scraperLocked,
+    })
+    .from(ipos);
 
   const updatedIPOs: StatusUpdateResult['updatedIPOs'] = [];
+  const changedSlugs: { slug: string; id: string }[] = [];
 
-  try {
-    // STEP 1: UPCOMING → OPEN (open_date has passed, close_date not yet passed)
-    const upcomingToOpen = await db.update(ipos)
-      .set({
-        status: 'OPEN',
-        updatedAt: now
-      })
-      .where(
-        and(
-          eq(ipos.status, 'UPCOMING'),
-          sql`${ipos.openDate} <= ${today}::date`,
-          sql`${ipos.closeDate} >= ${today}::date`
-        )
-      )
-      .returning({
-        id: ipos.id,
-        companyName: ipos.companyName,
-        slug: ipos.slug
-      });
+  for (const r of rows) {
+    if (r.scraperLocked) continue; // respect manual lock
+    const target = computeTargetStatus(
+      { openDate: r.openDate, closeDate: r.closeDate, listingDate: r.listingDate },
+      today
+    );
+    if (!target || target === r.status) continue;
 
-    upcomingToOpen.forEach(ipo => {
-      updatedIPOs.push({
-        id: ipo.id,
-        companyName: ipo.companyName,
-        oldStatus: 'UPCOMING',
-        newStatus: 'OPEN'
-      });
-      console.log(`[Status Updater] UPCOMING → OPEN: ${ipo.companyName}`);
-    });
+    await db.update(ipos).set({ status: target, updatedAt: now }).where(eq(ipos.id, r.id));
+    updatedIPOs.push({ id: r.id, companyName: r.companyName, oldStatus: r.status, newStatus: target });
+    changedSlugs.push({ slug: r.slug, id: r.id });
+    console.log(`[Status Updater] ${r.status} → ${target}: ${r.companyName}`);
+  }
 
-    console.log(`[Status Updater] UPCOMING → OPEN: ${upcomingToOpen.length} IPOs updated`);
-
-    // STEP 2: OPEN → CLOSED (close_date has passed, not yet listed)
-    const openToClosed = await db.update(ipos)
-      .set({
-        status: 'CLOSED',
-        updatedAt: now
-      })
-      .where(
-        and(
-          eq(ipos.status, 'OPEN'),
-          sql`${ipos.closeDate} < ${today}::date`,
-          // Only if not yet listed
-          sql`${ipos.listingDate} IS NULL`
-        )
-      )
-      .returning({
-        id: ipos.id,
-        companyName: ipos.companyName,
-        slug: ipos.slug
-      });
-
-    openToClosed.forEach(ipo => {
-      updatedIPOs.push({
-        id: ipo.id,
-        companyName: ipo.companyName,
-        oldStatus: 'OPEN',
-        newStatus: 'CLOSED'
-      });
-      console.log(`[Status Updater] OPEN → CLOSED: ${ipo.companyName}`);
-    });
-
-    console.log(`[Status Updater] OPEN → CLOSED: ${openToClosed.length} IPOs updated`);
-
-    // STEP 3: CLOSED → LISTED (listing_date is set)
-    const closedToListed = await db.update(ipos)
-      .set({
-        status: 'LISTED',
-        updatedAt: now
-      })
-      .where(
-        and(
-          eq(ipos.status, 'CLOSED'),
-          sql`${ipos.listingDate} IS NOT NULL`
-        )
-      )
-      .returning({
-        id: ipos.id,
-        companyName: ipos.companyName,
-        slug: ipos.slug
-      });
-
-    closedToListed.forEach(ipo => {
-      updatedIPOs.push({
-        id: ipo.id,
-        companyName: ipo.companyName,
-        oldStatus: 'CLOSED',
-        newStatus: 'LISTED'
-      });
-      console.log(`[Status Updater] CLOSED → LISTED: ${ipo.companyName}`);
-    });
-
-    console.log(`[Status Updater] CLOSED → LISTED: ${closedToListed.length} IPOs updated`);
-
-    // Invalidate cache for updated IPOs
-    const totalUpdated = upcomingToOpen.length + openToClosed.length + closedToListed.length;
-
-    if (totalUpdated > 0) {
-      console.log(`[Status Updater] Invalidating cache for ${totalUpdated} updated IPOs...`);
-
-      // Invalidate individual IPO caches
-      const allUpdated = [...upcomingToOpen, ...openToClosed, ...closedToListed];
-      for (const ipo of allUpdated) {
-        try {
-          await redis.del(`ipo:slug:${ipo.slug}`);
-          await redis.del(`ipo:id:${ipo.id}`);
-        } catch (error) {
-          console.error(`[Status Updater] Cache invalidation failed for ${ipo.slug}:`, error);
-        }
-      }
-
-      // Invalidate list caches (all filters)
+  // Invalidate caches for changed IPOs + the list caches
+  if (changedSlugs.length > 0) {
+    for (const { slug, id } of changedSlugs) {
       try {
-        const keys = await redis.keys('ipo:list:*');
-        if (keys.length > 0) {
-          await redis.del(...keys);
-          console.log(`[Status Updater] Invalidated ${keys.length} list cache keys`);
-        }
+        await redis.del(`ipo:slug:${slug}`);
+        await redis.del(`ipo:id:${id}`);
       } catch (error) {
-        console.error('[Status Updater] List cache invalidation failed:', error);
+        console.error(`[Status Updater] Cache invalidation failed for ${slug}:`, error);
       }
     }
-
-    const result: StatusUpdateResult = {
-      upcomingToOpen: upcomingToOpen.length,
-      openToClosed: openToClosed.length,
-      closedToListed: closedToListed.length,
-      total: totalUpdated,
-      updatedIPOs
-    };
-
-    console.log('[Status Updater] Status update completed successfully:', {
-      upcomingToOpen: result.upcomingToOpen,
-      openToClosed: result.openToClosed,
-      closedToListed: result.closedToListed,
-      total: result.total
-    });
-
-    return result;
-  } catch (error) {
-    console.error('[Status Updater] Error during status update:', error);
-    throw error;
+    try {
+      const keys = await redis.keys('ipo:list:*');
+      if (keys.length > 0) await redis.del(...keys);
+    } catch (error) {
+      console.error('[Status Updater] List cache invalidation failed:', error);
+    }
   }
+
+  const countTransition = (from: string, to: string) =>
+    updatedIPOs.filter((u) => u.oldStatus === from && u.newStatus === to).length;
+
+  const result: StatusUpdateResult = {
+    upcomingToOpen: countTransition('UPCOMING', 'OPEN'),
+    openToClosed: countTransition('OPEN', 'CLOSED'),
+    closedToListed: countTransition('CLOSED', 'LISTED'),
+    total: updatedIPOs.length,
+    updatedIPOs,
+  };
+
+  console.log('[Status Updater] Completed:', { total: result.total });
+  return result;
 }
 
 /**
- * Get count of IPOs with outdated statuses (for monitoring)
- *
- * @returns Promise<object> - Count of IPOs needing status updates
+ * Count IPOs whose stored status differs from their computed target status
+ * (i.e. how many updateIPOStatuses would change), for monitoring. Read-only.
  */
 export async function getOutdatedStatusCount(): Promise<{
   upcomingToOpen: number;
@@ -212,51 +146,33 @@ export async function getOutdatedStatusCount(): Promise<{
   const db = await getDb();
   const today = new Date().toISOString().split('T')[0];
 
-  try {
-    // Count UPCOMING IPOs that should be OPEN
-    const upcomingToOpenCount = await db.select({ count: sql<number>`count(*)` })
-      .from(ipos)
-      .where(
-        and(
-          eq(ipos.status, 'UPCOMING'),
-          sql`${ipos.openDate} <= ${today}::date`,
-          sql`${ipos.closeDate} >= ${today}::date`
-        )
-      );
+  const rows = await db
+    .select({
+      status: ipos.status,
+      openDate: ipos.openDate,
+      closeDate: ipos.closeDate,
+      listingDate: ipos.listingDate,
+      scraperLocked: ipos.scraperLocked,
+    })
+    .from(ipos);
 
-    // Count OPEN IPOs that should be CLOSED
-    const openToClosedCount = await db.select({ count: sql<number>`count(*)` })
-      .from(ipos)
-      .where(
-        and(
-          eq(ipos.status, 'OPEN'),
-          sql`${ipos.closeDate} < ${today}::date`,
-          sql`${ipos.listingDate} IS NULL`
-        )
-      );
+  let upcomingToOpen = 0;
+  let openToClosed = 0;
+  let closedToListed = 0;
+  let total = 0;
 
-    // Count CLOSED IPOs that should be LISTED
-    const closedToListedCount = await db.select({ count: sql<number>`count(*)` })
-      .from(ipos)
-      .where(
-        and(
-          eq(ipos.status, 'CLOSED'),
-          sql`${ipos.listingDate} IS NOT NULL`
-        )
-      );
-
-    const upcomingToOpen = Number(upcomingToOpenCount[0]?.count || 0);
-    const openToClosed = Number(openToClosedCount[0]?.count || 0);
-    const closedToListed = Number(closedToListedCount[0]?.count || 0);
-
-    return {
-      upcomingToOpen,
-      openToClosed,
-      closedToListed,
-      total: upcomingToOpen + openToClosed + closedToListed
-    };
-  } catch (error) {
-    console.error('[Status Updater] Error getting outdated status count:', error);
-    throw error;
+  for (const r of rows) {
+    if (r.scraperLocked) continue;
+    const target = computeTargetStatus(
+      { openDate: r.openDate, closeDate: r.closeDate, listingDate: r.listingDate },
+      today
+    );
+    if (!target || target === r.status) continue;
+    total++;
+    if (r.status === 'UPCOMING' && target === 'OPEN') upcomingToOpen++;
+    else if (r.status === 'OPEN' && target === 'CLOSED') openToClosed++;
+    else if (r.status === 'CLOSED' && target === 'LISTED') closedToListed++;
   }
+
+  return { upcomingToOpen, openToClosed, closedToListed, total };
 }
