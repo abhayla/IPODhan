@@ -36,6 +36,7 @@ import {
 import type { SubscriptionDashboardProps } from './types';
 import { ChartContainer } from '../ChartContainer';
 import { cn } from '@/lib/utils';
+import { ipoEmptyStateMessage } from '@/lib/utils/ipo-empty-state-copy';
 import {
   ChevronDown,
   ChevronUp,
@@ -49,6 +50,7 @@ export function SubscriptionDashboard({
   latestSubscription,
   companyName,
   closeDate,
+  status,
   className,
   showAdvanced = false,
   defaultExpanded = true,
@@ -84,7 +86,7 @@ export function SubscriptionDashboard({
               No Subscription Data Available
             </p>
             <p className="text-sm text-muted-foreground">
-              Subscription data will appear here once bidding begins for {companyName}
+              {ipoEmptyStateMessage('subscription', status, companyName)}
             </p>
           </div>
         </div>

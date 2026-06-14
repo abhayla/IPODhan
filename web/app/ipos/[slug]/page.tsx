@@ -348,6 +348,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             <FinancialPerformanceCharts
               financialData={financialData}
               companyName={ipo.companyName}
+              status={ipo.status}
             />
 
             {/* 10. Subscription Dashboard */}
@@ -356,6 +357,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               latestSubscription={latestSubscription ?? null}
               companyName={ipo.companyName}
               closeDate={ipo.closeDate ? new Date(ipo.closeDate) : null}
+              status={ipo.status}
             />
 
             {/* 11. Broker Recommendations */}

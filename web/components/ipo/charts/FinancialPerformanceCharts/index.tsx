@@ -19,6 +19,7 @@ import { RevenueChart } from './RevenueChart';
 import { ProfitabilityChart } from './ProfitabilityChart';
 import { EBITDAChart } from './EBITDAChart';
 import { FinancialRatiosGrid } from './FinancialRatiosGrid';
+import { ipoEmptyStateMessage } from '@/lib/utils/ipo-empty-state-copy';
 
 /**
  * FinancialPerformanceCharts - Comprehensive financial visualization suite
@@ -47,6 +48,7 @@ import { FinancialRatiosGrid } from './FinancialRatiosGrid';
 export default function FinancialPerformanceCharts({
   financialData,
   companyName,
+  status,
   industryBenchmarks,
   peerData,
   defaultExpanded = false,
@@ -71,8 +73,7 @@ export default function FinancialPerformanceCharts({
             Financial Performance Data Unavailable
           </h2>
           <p className="text-sm text-gray-600 dark:text-gray-400">
-            Comprehensive financial data (revenue, profit, EBITDA trends) is not yet available for
-            this IPO. Check back after the company files its prospectus.
+            {ipoEmptyStateMessage('financial', status, companyName)}
           </p>
         </div>
       </section>
