@@ -138,9 +138,9 @@ jobs:
           $hash = (Get-FileHash package-lock.json -Algorithm SHA256).Hash
           $marker = "node_modules\.deploy-lockhash"
           if ((Test-Path node_modules) -and (Test-Path $marker) -and ((Get-Content $marker -Raw).Trim() -eq $hash)) {
-            Write-Host "[OK] Dependencies unchanged — skipping install"
+            Write-Host "[OK] Dependencies unchanged - skipping install"
           } else {
-            Write-Host "[INFO] Lockfile changed or node_modules missing — installing..."
+            Write-Host "[INFO] Lockfile changed or node_modules missing - installing..."
             npm ci --production=false
             $hash | Out-File -FilePath $marker -Encoding ascii -NoNewline
           }
@@ -149,7 +149,7 @@ jobs:
         run: npm run build
         working-directory: ./packages/shared
 
-      - name: Build web application (incremental — keeps .next/cache)
+      - name: Build web application (incremental - keeps .next/cache)
         shell: powershell
         run: |
           # Remove only the build OUTPUT, preserving .next/cache (the Next
@@ -201,7 +201,7 @@ jobs:
           # The web/scraper dirs cannot be replaced while PM2 holds open file
           # handles on them (Remove-Item -> "being used by another process").
           # Delete the apps (not just stop) so the subsequent `pm2 start
-          # ecosystem.config.js` re-reads the config — `pm2 reload` does NOT
+          # ecosystem.config.js` re-reads the config - `pm2 reload` does NOT
           # pick up ecosystem changes (autorestart/cron), so config edits would
           # otherwise never take effect.
           foreach ($app in @('ipodhan-web','ipodhan-scraper')) {
@@ -221,7 +221,7 @@ jobs:
           }
           Copy-Item -Path "web" -Destination "$env:DEPLOY_DIR\web" -Recurse -Force
 
-          # Copy shared packages (built dist) — clean first to avoid nesting
+          # Copy shared packages (built dist) - clean first to avoid nesting
           if (Test-Path "$env:DEPLOY_DIR\packages\shared") {
             Remove-Item -Path "$env:DEPLOY_DIR\packages\shared" -Recurse -Force
           }
@@ -247,7 +247,7 @@ jobs:
           $hash = (Get-FileHash package-lock.json -Algorithm SHA256).Hash
           $marker = "node_modules\.deploy-lockhash"
           if ((Test-Path node_modules) -and (Test-Path $marker) -and ((Get-Content $marker -Raw).Trim() -eq $hash)) {
-            Write-Host "[OK] Dependencies unchanged — skipping install"
+            Write-Host "[OK] Dependencies unchanged - skipping install"
           } else {
             Write-Host "[INFO] Installing production dependencies..."
             npm ci --production=false
@@ -294,7 +294,7 @@ jobs:
               // process exits cleanly and STAYS stopped; cron_restart fires it
               // again on schedule. This is PM2's scheduled-one-shot pattern.
               // (Adopting the richer src/scheduler/index.ts is tracked
-              // separately — that entrypoint has unrelated bit-rot to repair.)
+              // separately - that entrypoint has unrelated bit-rot to repair.)
               {
                 name: 'ipodhan-scraper',
                 script: 'C:\\Apps\\IPODhan\\current\\node_modules\\tsx\\dist\\cli.mjs',
@@ -340,12 +340,12 @@ jobs:
 
           # The apps were deleted in the Stop step, so start fresh from the
           # ecosystem config. This (not `pm2 reload`) is what makes config
-          # changes — autorestart:false, cron_restart — actually take effect.
+          # changes - autorestart:false, cron_restart - actually take effect.
           #
           # CRITICAL: do NOT `pm2 delete` here. pm2 writes "Process not found"
           # to stderr when the app is already gone, and PowerShell 5.1 under
           # Actions (ErrorActionPreference=Stop) turns native-command stderr
-          # into a TERMINATING error — that aborts the step before `pm2 start`
+          # into a TERMINATING error - that aborts the step before `pm2 start`
           # runs and leaves production with nothing started. Set Continue so a
           # benign pm2 stderr line cannot fail the step, then gate on the real
           # start exit code.
@@ -414,7 +414,7 @@ jobs:
           $ErrorActionPreference = 'Continue'
           if ($env:BACKUP_PATH -and (Test-Path $env:BACKUP_PATH)) {
             Write-Host "[INFO] Rolling back..."
-            # Delete PM2 apps first so they release file handles — otherwise
+            # Delete PM2 apps first so they release file handles - otherwise
             # Remove-Item fails with "being used by another process" (the same
             # lock that can break the deploy itself).
             foreach ($app in @('ipodhan-web','ipodhan-scraper')) {
