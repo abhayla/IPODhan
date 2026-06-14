@@ -27,7 +27,7 @@
 
 **Verified (G-INDEPENDENT):** TDD red→green for every task; +32 new scraper unit tests green; true-baseline diff proves **0 regressions** (25 pre-existing non-GMP scraper failures unchanged — see DEFERRED). No `console.*` added. 2 pre-existing tsc errors in unchanged `isGMPProtected` confirmed not mine.
 
-**NOT yet done in Stage A:** A3 (normalizer JS↔SQL agreement — integration test, needs tunnel DB), A8 (backfill — runs live scraper + writes prod additively; gives AC1 coverage number). Both need a follow-up turn.
+**Stage A fully done.** Next: Stage B (schema — apply additive `gmp_percentage`; author destructive migrations UNAPPLIED) then Stage C (honest rendering + docs + Playwright). Tunnel note: single queries occasionally time out mid-session; restart with `ssh -i ~/.ssh/ipodhan_vps -N -L 15432:127.0.0.1:5432 administrator@103.118.16.189` if it drops.
 
 ## Stage B — schema consolidation (G10–G14)
 | Task | Status | SHA | Notes |
