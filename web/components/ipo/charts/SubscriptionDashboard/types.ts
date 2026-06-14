@@ -71,6 +71,8 @@ export interface SubscriptionDashboardProps {
   companyName: string;
   /** IPO close date for context */
   closeDate: Date | null;
+  /** IPO lifecycle status (UPCOMING/OPEN/CLOSED/LISTED) — drives status-aware empty-state copy */
+  status?: string;
   /** Custom className */
   className?: string;
   /** Show advanced view (default: false) */

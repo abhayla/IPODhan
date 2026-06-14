@@ -164,6 +164,9 @@ export interface FinancialPerformanceChartsProps {
   /** Company name for display */
   companyName: string;
 
+  /** IPO lifecycle status (UPCOMING/OPEN/CLOSED/LISTED) — drives status-aware empty-state copy */
+  status?: string;
+
   /** Industry benchmark data (optional) */
   industryBenchmarks?: IndustryBenchmarks;
 
