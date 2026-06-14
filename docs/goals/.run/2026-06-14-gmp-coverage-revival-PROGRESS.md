@@ -46,7 +46,7 @@
 | C3 delete fake Math.random GMP | pending | | |
 | C4 honest bands | pending | | |
 | C5 plausibility guard | pending | | |
-| C6 docs source correction | pending | | |
+| C6 docs source correction | **DONE** | (this commit) | Chittorgarh→InvestorGain in SCRAPING_STRATEGY + screen-db-mapping; fixed verification SQL recorded_at→timestamp; only a cross-ref link to Chittorgarh-as-scraper kept |
 | C7 component + e2e tests | pending | | |
 
 ## §GATE (needs Abhay)
