@@ -34,7 +34,7 @@ import {
 } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { generateSlug } from '../utils/validators.js';
-import { upsertIPO, createSubscriptionSnapshot } from '../services/data-persister.js';
+import { upsertIPO, createSubscriptionSnapshot, normalizeCompanyNameForMatching } from '../services/data-persister.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { ScraperMetricsTracker } from '../services/scraper-metrics-tracker.js';
@@ -448,10 +448,21 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
 
     processResult.processed = true;
 
-    // Step 6: Process subscription data for OPEN IPOs
-    if (validatedIPO.status === 'OPEN' && this.validateSubscription) {
+    // Step 6: Process subscription data for OPEN (live) and CLOSED (final) IPOs.
+    // NSE/BSE only supply subscriptions for OPEN IPOs, so they are unaffected;
+    // this lets name-addressable sources (Moneycontrol) persist final subscription
+    // multiples for CLOSED IPOs too (#8 — "subscribed X times" on closed IPOs).
+    if (
+      (validatedIPO.status === 'OPEN' || validatedIPO.status === 'CLOSED') &&
+      this.validateSubscription
+    ) {
+      // Match by normalized company name (keystone) so source name-variants
+      // (case/suffix/junk tokens) still resolve to the right IPO — not just exact equality.
+      const targetName = normalizeCompanyNameForMatching(validatedIPO.companyName);
       const relatedSubscription = subscriptions.find(
-        (sub: any) => sub.ipoCompanyName === validatedIPO.companyName
+        (sub: any) =>
+          sub.ipoCompanyName === validatedIPO.companyName ||
+          normalizeCompanyNameForMatching(sub.ipoCompanyName) === targetName
       );
 
       if (relatedSubscription) {
