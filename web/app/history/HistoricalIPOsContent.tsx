@@ -22,14 +22,12 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AlertCircle } from 'lucide-react';
 
 interface HistoricalIPOResponse {
-  data: {
-    ipos: HistoricalIPO[];
-    pagination: {
-      page: number;
-      limit: number;
-      total: number;
-      totalPages: number;
-    };
+  data: HistoricalIPO[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    hasMore: boolean;
   };
 }
 
@@ -45,7 +43,7 @@ export function HistoricalIPOsContent({ availableSectors, availableYears }: Hist
     page: 1,
     limit: 20,
     total: 0,
-    totalPages: 0,
+    hasMore: false,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,8 +73,13 @@ export function HistoricalIPOsContent({ availableSectors, availableYears }: Hist
         }
 
         const data: HistoricalIPOResponse = await response.json();
-        setIpos(data.data.ipos);
-        setPagination(data.data.pagination);
+        // Guard against shape drift: the API returns a flat { data: [], pagination }.
+        // A future contract change should surface as the error state, not a crash.
+        if (!Array.isArray(data?.data) || !data?.pagination) {
+          throw new Error('Unexpected response shape from /api/ipos/history');
+        }
+        setIpos(data.data);
+        setPagination(data.pagination);
       } catch (err) {
         console.error('Error fetching historical IPOs:', err);
         setError('Failed to load historical IPOs. Please try again later.');
@@ -142,8 +145,12 @@ export function HistoricalIPOsContent({ availableSectors, availableYears }: Hist
                 <div className="flex justify-center mt-8">
                   <HistoricalPagination
                     currentPage={pagination.page}
-                    totalPages={pagination.totalPages}
-                    hasNext={pagination.page < pagination.totalPages}
+                    totalPages={
+                      pagination.limit > 0
+                        ? Math.max(1, Math.ceil(pagination.total / pagination.limit))
+                        : 1
+                    }
+                    hasNext={pagination.hasMore}
                     hasPrev={pagination.page > 1}
                     onPageChange={(page) => {
                       // The context will handle page changes
