@@ -38,7 +38,7 @@ const ofsColumns: ColumnDef<OFSData>[] = [
     minWidth: '250px',
     render: (value, row) => (
       <Link
-        href={`/ipo/${row.slug}`}
+        href={`/ipos/${row.slug}`}
         className="text-primary hover:underline font-semibold"
       >
         {value}

@@ -143,7 +143,11 @@ export function Footer() {
 
         {/* Copyright */}
         <div className="mt-6 pt-6 border-t">
-          <p className="text-center text-sm text-muted-foreground">
+          {/* suppressHydrationWarning: this footer renders on statically
+              prerendered pages cached for up to a year, so the build-time year
+              can differ from the client's current year — without this, that
+              text mismatch throws React #418 on every cached page (GitHub #7). */}
+          <p className="text-center text-sm text-muted-foreground" suppressHydrationWarning>
             &copy; {currentYear} IPODhan. All rights reserved.
           </p>
         </div>
