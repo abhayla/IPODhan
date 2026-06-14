@@ -18,8 +18,9 @@
 
 import { BaseScraperOrchestrator, ScraperResult, ScrapedData } from '../base/BaseScraperOrchestrator.js';
 import { scrapeMoneycontrolIPOs } from './moneycontrol-scraper.js';
-import { validateMoneycontrolIPOData } from '../utils/validators.js';
+import { validateMoneycontrolIPOData, validateSubscriptionData, type ScrapedSubscription } from '../utils/validators.js';
 import { DataValidationPipeline, PipelineFactory } from '../pipelines/data-validation-pipeline.js';
+import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 
@@ -28,7 +29,9 @@ import logger from '../utils/logger.js';
  *
  * **Data Source:** Moneycontrol.com
  * **Focus:** IPO ratings, enrichment data
- * **No Subscriptions:** Moneycontrol doesn't provide subscription data
+ * **Subscriptions:** opt-in via ENABLE_MONEYCONTROL_SUBSCRIPTION — provides
+ *   name-addressable subscription %s for symbol-less SME IPOs (persisted for
+ *   OPEN IPOs by the base orchestrator)
  *
  * **Key Features:**
  * - IPO-level lock support (scraper_locked flag)
@@ -49,7 +52,7 @@ import logger from '../utils/logger.js';
  *
  * @extends BaseScraperOrchestrator<any, never>
  */
-export class MoneycontrolScraperOrchestratorV2 extends BaseScraperOrchestrator<any, never> {
+export class MoneycontrolScraperOrchestratorV2 extends BaseScraperOrchestrator<any, ScrapedSubscription> {
 
   private validationPipeline: DataValidationPipeline;
 
@@ -69,7 +72,7 @@ export class MoneycontrolScraperOrchestratorV2 extends BaseScraperOrchestrator<a
   /**
    * Scrape IPO data from Moneycontrol
    */
-  protected async scrapeData(): Promise<ScrapedData<any, never>> {
+  protected async scrapeData(): Promise<ScrapedData<any, ScrapedSubscription>> {
     const { ipos, errors } = await scrapeMoneycontrolIPOs();
 
     // Log scrape-level errors
@@ -79,10 +82,27 @@ export class MoneycontrolScraperOrchestratorV2 extends BaseScraperOrchestrator<a
       }
     }
 
-    return {
-      ipos,
-      subscriptions: []  // Moneycontrol doesn't provide subscriptions
-    };
+    // Build subscription snapshots from the scraped %s (name-addressable; covers
+    // symbol-less SME IPOs). The base orchestrator persists these for OPEN IPOs
+    // via createSubscriptionSnapshot, matched by company name. Gated, default OFF.
+    const subscriptions: ScrapedSubscription[] = FEATURE_FLAGS.ENABLE_MONEYCONTROL_SUBSCRIPTION
+      ? ipos
+          .filter((i: any) => (i.totalSubscription ?? 0) > 0)
+          .map((i: any) => ({
+            ipoCompanyName: i.companyName,
+            qibSubscription: i.qibSubscription ?? 0,
+            niiSubscription: i.niiSubscription ?? 0,
+            retailSubscription: i.retailSubscription ?? 0,
+            totalSubscription: i.totalSubscription ?? 0,
+            timestamp: new Date().toISOString(),
+          }))
+      : [];
+
+    if (subscriptions.length > 0) {
+      logger.info({ count: subscriptions.length }, '[MONEYCONTROL] Built subscription snapshots for persistence');
+    }
+
+    return { ipos, subscriptions };
   }
 
   /**
@@ -194,9 +214,15 @@ export class MoneycontrolScraperOrchestratorV2 extends BaseScraperOrchestrator<a
   }
 
   /**
-   * No subscription validation (Moneycontrol doesn't provide subscriptions)
+   * Validate a Moneycontrol-derived subscription snapshot (reuses the shared
+   * Zod validator). Presence of this method enables the base orchestrator's
+   * subscription-persistence path for OPEN IPOs.
    */
-  protected validateSubscription = undefined;
+  protected validateSubscription(
+    subscription: ScrapedSubscription
+  ): { success: boolean; data?: any; error?: any } {
+    return validateSubscriptionData(subscription);
+  }
 }
 
 /**
