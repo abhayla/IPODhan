@@ -55,6 +55,10 @@ module.exports = {
         NODE_ENV: 'production',
         SCRAPER_INTERVAL_MODE: 'prod',
         TZ: 'UTC',
+        // Data-coverage workstream (#6/#8/#16): match GMP/subscription to IPOs by
+        // normalized company name + persist Moneycontrol subscription %s.
+        ENABLE_GMP_NAME_MATCH: 'true',
+        ENABLE_MONEYCONTROL_SUBSCRIPTION: 'true',
       },
       max_memory_restart: '500M',
       error_file: './logs/scraper-error.log',
