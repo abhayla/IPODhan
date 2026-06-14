@@ -37,13 +37,13 @@ export const revalidate = 300; // 5 minutes in seconds
 // ===== SEO METADATA =====
 // AC#22: SEO metadata configured
 export const metadata: Metadata = {
-  title: 'Mainboard IPOs 2025 - Complete Hub | IPODhan',
+  title: `Mainboard IPOs ${new Date().getFullYear()} - Complete Hub | IPODhan`,
   description:
     'Access comprehensive Mainboard IPO information including current, upcoming, and listed IPOs. View performance metrics, reviews, prospectus documents, and IPO calendar.',
   keywords:
     'mainboard ipo, mainboard ipo 2025, nse ipo, bse ipo, ipo performance, ipo reviews, ipo calendar, India',
   openGraph: {
-    title: 'Mainboard IPOs 2025 - Complete Hub | IPODhan',
+    title: `Mainboard IPOs ${new Date().getFullYear()} - Complete Hub | IPODhan`,
     description:
       'Comprehensive Mainboard IPO hub with metrics, reviews, and detailed listings',
     type: 'website',

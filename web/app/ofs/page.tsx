@@ -43,7 +43,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://ipodhan.com';
 const DEFAULT_OG_IMAGE = `${BASE_URL}/og-image.jpg`;
 
 export const metadata: Metadata = {
-  title: 'Offer for Sale (OFS) 2025 - OFS Calendar India | IPODhan',
+  title: `Offer for Sale (OFS) ${new Date().getFullYear()} - OFS Calendar India | IPODhan`,
   description:
     'Track Offer for Sale (OFS) opportunities in India with Non-Retail and Retail dates. Stay updated on institutional and retail OFS schedules. Real-time data from NSE & BSE.',
   keywords: [
@@ -80,7 +80,7 @@ export const metadata: Metadata = {
     locale: 'en_IN',
     url: `${BASE_URL}/ofs`,
     siteName: 'IPODhan',
-    title: 'Offer for Sale (OFS) 2025 - OFS Calendar India | IPODhan',
+    title: `Offer for Sale (OFS) ${new Date().getFullYear()} - OFS Calendar India | IPODhan`,
     description:
       'Track Offer for Sale (OFS) opportunities in India with Non-Retail and Retail dates for institutional and retail investors.',
     images: [
@@ -94,7 +94,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Offer for Sale (OFS) 2025 - OFS Calendar India | IPODhan',
+    title: `Offer for Sale (OFS) ${new Date().getFullYear()} - OFS Calendar India | IPODhan`,
     description:
       'Track OFS opportunities in India with Non-Retail and Retail dates for institutional and retail investors.',
     images: [DEFAULT_OG_IMAGE],

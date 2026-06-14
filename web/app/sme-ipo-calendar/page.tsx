@@ -35,7 +35,7 @@ export const revalidate = 300; // 5 minutes in seconds
  * SEO Metadata for SME IPO Calendar page
  */
 export const metadata: Metadata = {
-  title: 'SME IPO Calendar 2025 - Monthly Event Schedule | IPODhan',
+  title: `SME IPO Calendar ${new Date().getFullYear()} - Monthly Event Schedule | IPODhan`,
   description:
     'View SME IPO calendar with monthly grid showing opening dates, closing dates, allotment status, and listing dates. Plan your SME IPO applications with our interactive calendar.',
   keywords: [
@@ -50,7 +50,7 @@ export const metadata: Metadata = {
     'sme ipo listing',
   ],
   openGraph: {
-    title: 'SME IPO Calendar 2025 - Monthly Event Schedule',
+    title: `SME IPO Calendar ${new Date().getFullYear()} - Monthly Event Schedule`,
     description: 'View SME IPO calendar with monthly grid showing all important dates',
     type: 'website',
   },
