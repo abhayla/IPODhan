@@ -36,13 +36,13 @@ export const revalidate = 300; // 5 minutes in seconds
 // ===== SEO METADATA =====
 // AC#22: SEO metadata configured
 export const metadata: Metadata = {
-  title: 'SME IPOs 2025 - Complete Hub | IPODhan',
+  title: `SME IPOs ${new Date().getFullYear()} - Complete Hub | IPODhan`,
   description:
     'Access comprehensive SME IPO information including current, upcoming, and listed IPOs on BSE SME and NSE Emerge platforms. View performance metrics, reviews, prospectus documents, and IPO calendar.',
   keywords:
     'sme ipo, sme ipo 2025, bse sme, nse emerge, sme platform, ipo performance, ipo reviews, ipo calendar, India',
   openGraph: {
-    title: 'SME IPOs 2025 - Complete Hub | IPODhan',
+    title: `SME IPOs ${new Date().getFullYear()} - Complete Hub | IPODhan`,
     description:
       'Comprehensive SME IPO hub with metrics, reviews, and detailed listings on BSE SME and NSE Emerge',
     type: 'website',

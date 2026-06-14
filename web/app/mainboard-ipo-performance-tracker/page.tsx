@@ -55,7 +55,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://ipodhan.com';
 const DEFAULT_OG_IMAGE = `${BASE_URL}/og-image.jpg`;
 
 export const metadata: Metadata = {
-  title: 'Mainboard IPO Performance Tracker 2025 - Post-Listing Analysis | IPODhan',
+  title: `Mainboard IPO Performance Tracker ${new Date().getFullYear()} - Post-Listing Analysis | IPODhan`,
   description:
     'Track Mainboard IPO post-listing performance with listing day gains and current profit/loss percentages. Analyze how Mainboard IPOs have performed since listing in India.',
   keywords: [
@@ -92,7 +92,7 @@ export const metadata: Metadata = {
     locale: 'en_IN',
     url: `${BASE_URL}/mainboard-ipo-performance-tracker`,
     siteName: 'IPODhan',
-    title: 'Mainboard IPO Performance Tracker 2025 - Post-Listing Analysis | IPODhan',
+    title: `Mainboard IPO Performance Tracker ${new Date().getFullYear()} - Post-Listing Analysis | IPODhan`,
     description:
       'Track Mainboard IPO performance with listing day gains and current profit/loss. Analyze how Mainboard IPOs have performed since listing.',
     images: [
@@ -106,7 +106,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Mainboard IPO Performance Tracker 2025 - Post-Listing Analysis | IPODhan',
+    title: `Mainboard IPO Performance Tracker ${new Date().getFullYear()} - Post-Listing Analysis | IPODhan`,
     description:
       'Track Mainboard IPO performance with listing day gains and current profit/loss percentages.',
     images: [DEFAULT_OG_IMAGE],

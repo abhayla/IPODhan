@@ -25,20 +25,20 @@ export const revalidate = 300; // 5 minutes
 // ==================== SEO METADATA ====================
 
 export const metadata: Metadata = {
-  title: 'Mainboard IPO Calendar 2025 - Event Schedule & Important Dates | IPODhan',
+  title: `Mainboard IPO Calendar ${new Date().getFullYear()} - Event Schedule & Important Dates | IPODhan`,
   description:
     'View the complete Mainboard IPO calendar with all important dates - open, close, allotment, refund, and listing dates. Plan your IPO investments with our comprehensive event schedule.',
   keywords:
     'mainboard ipo calendar, ipo schedule, ipo dates, ipo timeline, ipo events, listing dates, allotment dates, India',
   openGraph: {
-    title: 'Mainboard IPO Calendar 2025 - Event Schedule & Important Dates',
+    title: `Mainboard IPO Calendar ${new Date().getFullYear()} - Event Schedule & Important Dates`,
     description:
       'Complete Mainboard IPO calendar with open, close, allotment, refund, and listing dates',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Mainboard IPO Calendar 2025',
+    title: `Mainboard IPO Calendar ${new Date().getFullYear()}`,
     description: 'View all Mainboard IPO events and important dates in one calendar',
   },
 };

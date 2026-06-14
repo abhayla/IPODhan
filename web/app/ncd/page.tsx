@@ -36,7 +36,7 @@ const BASE_URL = process.env.NEXT_PUBLIC_BASE_URL || 'https://ipodhan.com';
 const DEFAULT_OG_IMAGE = `${BASE_URL}/og-image.jpg`;
 
 export const metadata: Metadata = {
-  title: 'NCD Issues 2025 - Non-Convertible Debentures India | IPODhan',
+  title: `NCD Issues ${new Date().getFullYear()} - Non-Convertible Debentures India | IPODhan`,
   description:
     'Track Non-Convertible Debenture (NCD) public issues in India with open and close dates. Stay updated on NCD opportunities for fixed-income investors seeking regular interest payments.',
   keywords: [
@@ -73,7 +73,7 @@ export const metadata: Metadata = {
     locale: 'en_IN',
     url: `${BASE_URL}/ncd`,
     siteName: 'IPODhan',
-    title: 'NCD Issues 2025 - Non-Convertible Debentures India | IPODhan',
+    title: `NCD Issues ${new Date().getFullYear()} - Non-Convertible Debentures India | IPODhan`,
     description:
       'Track Non-Convertible Debenture (NCD) public issues in India with open and close dates for fixed-income investors.',
     images: [
@@ -87,7 +87,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'NCD Issues 2025 - Non-Convertible Debentures India | IPODhan',
+    title: `NCD Issues ${new Date().getFullYear()} - Non-Convertible Debentures India | IPODhan`,
     description:
       'Track NCD public issues in India with open and close dates for fixed-income investors.',
     images: [DEFAULT_OG_IMAGE],
