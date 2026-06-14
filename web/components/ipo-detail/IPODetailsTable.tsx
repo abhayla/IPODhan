@@ -14,6 +14,7 @@
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileText } from 'lucide-react';
+import { formatIssueSizeCrores } from '@/lib/utils';
 
 interface IPODetailsTableProps {
   issueSize: number | null;
@@ -76,7 +77,7 @@ export function IPODetailsTable({
   const details = [
     {
       label: 'Issue Size',
-      value: issueSize ? formatCurrency(issueSize) : '-',
+      value: issueSize ? formatIssueSizeCrores(issueSize) : '-',
       highlight: true
     },
     {
@@ -85,7 +86,7 @@ export function IPODetailsTable({
     },
     {
       label: 'Fresh Issue',
-      value: freshIssueSize ? formatCurrency(freshIssueSize) : '-'
+      value: freshIssueSize ? formatIssueSizeCrores(freshIssueSize) : '-'
     },
     {
       label: 'Offer for Sale (OFS)',
