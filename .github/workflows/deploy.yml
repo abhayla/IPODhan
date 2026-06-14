@@ -220,6 +220,7 @@ jobs:
                 env: {
                   NODE_ENV: 'production',
                   PORT: 3001,
+                  TZ: 'UTC',
                   NODE_PATH: 'C:\\Apps\\IPODhan\\current\\node_modules'
                 },
                 error_file: 'C:\\Apps\\IPODhan\\logs\\web-error.log',
@@ -254,6 +255,7 @@ jobs:
                 env: {
                   NODE_ENV: 'production',
                   SCRAPER_INTERVAL_MODE: 'prod',
+                  TZ: 'UTC',
                   NODE_PATH: 'C:\\Apps\\IPODhan\\current\\node_modules'
                 },
                 error_file: 'C:\\Apps\\IPODhan\\logs\\scraper-error.log',
