@@ -76,6 +76,13 @@ export const MoneycontrolIPOSchema = ScrapedIPOSchema.merge(z.object({
   dataSource: z.literal('MONEYCONTROL'),
   rating: z.number().min(0).max(5).optional(), // Moneycontrol's IPO rating (0-5 stars)
   listingGains: z.number().optional(), // Expected listing gains percentage
+  // Subscription %s parsed from Moneycontrol's table, carried so the orchestrator
+  // can persist a subscription snapshot for symbol-less SME IPOs (optional —
+  // only present/populated for currently-bidding rows).
+  totalSubscription: z.number().min(0).optional(),
+  qibSubscription: z.number().min(0).optional(),
+  niiSubscription: z.number().min(0).optional(),
+  retailSubscription: z.number().min(0).optional(),
 }));
 
 export type MoneycontrolIPO = z.infer<typeof MoneycontrolIPOSchema>;

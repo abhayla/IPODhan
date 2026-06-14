@@ -209,9 +209,15 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
         // Parse issue size (₹ 2,517.50 Cr)
         const issueSize = parseMoneycontrolCurrency(raw.issueSize || '');
 
-        // Parse subscription (2.29x or 2.29)
-        const subscriptionMatch = raw.totalSubscription?.match(/([\d.]+)/);
-        const totalSubscription = subscriptionMatch ? parseFloat(subscriptionMatch[1]) : 0;
+        // Parse subscription (2.29x or 2.29) — category-wise where available
+        const parseSub = (s?: string): number => {
+          const m = s?.match(/([\d.]+)/);
+          return m ? parseFloat(m[1]) : 0;
+        };
+        const totalSubscription = parseSub(raw.totalSubscription);
+        const qibSubscription = parseSub(raw.qibSubscription);
+        const niiSubscription = parseSub(raw.niiSubscription);
+        const retailSubscription = parseSub(raw.retailSubscription);
 
         // Parse dates
         const listingDate = parseMoneycontrolDate(raw.listingDate);
@@ -283,6 +289,11 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
           status,
           dataSource: 'MONEYCONTROL',
           listingGains,
+          // Subscription %s (carried for the subscription-snapshot path)
+          totalSubscription,
+          qibSubscription,
+          niiSubscription,
+          retailSubscription,
           // Include parsed dates from Moneycontrol
           allotmentDate: allotmentDate || undefined,
           listingDate: listingDate || undefined,
