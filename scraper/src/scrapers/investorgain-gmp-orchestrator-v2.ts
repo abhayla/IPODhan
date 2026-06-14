@@ -40,6 +40,23 @@ export interface InvestorgainGMPResult {
 }
 
 /**
+ * Compute a GMP run's outcome (G6/A5). `processed` is every row we handled
+ * (created + skipped + blocked); `success` requires that at least one GMP row
+ * actually landed AND nothing failed — an all-skipped run (no GMP persisted) is
+ * NOT a success even though it had no failures.
+ */
+export function computeGMPRunOutcome(counts: {
+  created: number;
+  skipped: number;
+  blocked: number;
+  failed: number;
+}): { processed: number; success: boolean } {
+  const processed = counts.created + counts.skipped + counts.blocked;
+  const success = counts.failed === 0 && counts.created > 0;
+  return { processed, success };
+}
+
+/**
  * Calculate string similarity score (0-1) using simple character matching
  * Higher score = more similar
  */
@@ -361,7 +378,6 @@ export async function runInvestorgainGMPScraper(): Promise<InvestorgainGMPResult
         );
 
         result.gmpsCreated++;
-        result.gmpsProcessed++;
         updatedIPOIds.push(ipoId);
 
         logger.debug(
@@ -400,7 +416,21 @@ export async function runInvestorgainGMPScraper(): Promise<InvestorgainGMPResult
     }
 
     const duration = Date.now() - startTime;
-    result.success = result.gmpsFailed < result.gmpsProcessed;
+    const outcome = computeGMPRunOutcome({
+      created: result.gmpsCreated,
+      skipped: result.gmpsSkipped,
+      blocked: result.gmpsBlocked,
+      failed: result.gmpsFailed,
+    });
+    result.gmpsProcessed = outcome.processed;
+    result.success = outcome.success;
+
+    if (!outcome.success) {
+      logger.warn(
+        { created: result.gmpsCreated, skipped: result.gmpsSkipped, blocked: result.gmpsBlocked, failed: result.gmpsFailed },
+        'Investorgain GMP run did not land any new GMP rows (or had failures) — not counted as success'
+      );
+    }
 
     // Record success in failure tracker
     scraperFailureTracker.recordSuccess('INVESTORGAIN_GMP');
