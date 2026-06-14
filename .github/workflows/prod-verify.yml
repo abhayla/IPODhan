@@ -1,0 +1,48 @@
+name: Production Verification
+
+# Browser-level correctness sweep of every public route: no client error,
+# zero console errors, no failed same-origin requests, real content rendered.
+# Catches what HTTP-200 checks miss (blank pages, broken client fetches,
+# hydration errors). Run on demand or on a schedule.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'Target base URL'
+        required: false
+        default: 'https://ipodhan.com'
+  schedule:
+    - cron: '30 2 * * *' # daily 02:30 UTC
+
+concurrency:
+  group: prod-verify
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify every page (browser)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install deps + chromium
+        working-directory: ./web
+        run: |
+          npm ci --production=false
+          npx playwright install --with-deps chromium
+      - name: Run production verification
+        working-directory: ./web
+        env:
+          PROD_BASE_URL: ${{ inputs.base_url || 'https://ipodhan.com' }}
+        run: npm run test:prod-verify
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: prod-verify-report
+          path: web/playwright-report/
+          retention-days: 7
