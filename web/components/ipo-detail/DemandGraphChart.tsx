@@ -115,7 +115,18 @@ export function DemandGraphChart({
     );
   }
 
-  if (error || !data) {
+  // Guard the FULL shape, not just `data`: the API's no-data path returns
+  // { success: true, data: { ...no `stats` } }, so `!data` passes but
+  // `data.stats.totalBids` (below) would crash. Treat a response missing stats
+  // or with an empty demand graph as the empty state (GitHub #6 — Demand/GMP
+  // tab "Application error" on IPOs without demand data).
+  if (
+    error ||
+    !data ||
+    !data.stats ||
+    !Array.isArray(data.demandGraph) ||
+    data.demandGraph.length === 0
+  ) {
     return (
       <Card>
         <CardHeader>

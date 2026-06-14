@@ -41,7 +41,17 @@ export async function GET(
           companyName: ipo.companyName,
           exchange: exchange || 'ALL',
           demandGraph: [],
+          dataByExchange: { NSE: [], BSE: [], BOTH: [] },
           snapshot: null,
+          // Keep the shape self-consistent with the has-data branch: always
+          // include `stats` so consumers never read it off undefined (#6).
+          stats: {
+            totalDataPoints: 0,
+            exchanges: [],
+            priceRange: { min: 0, max: 0 },
+            cutOffBids: 0,
+            totalBids: 0,
+          },
           message: 'No demand graph data available for this IPO',
         },
       });
