@@ -66,11 +66,12 @@ export function HomeIPOTablesSection({
   upcomingSMEIPOs,
   isLoading = false,
 }: HomeIPOTablesSectionProps) {
+  const currentYear = new Date().getFullYear();
   return (
-    <section className="w-full py-8 px-4" aria-label="IPO 2025 Listings">
+    <section className="w-full py-8 px-4" aria-label={`IPO ${currentYear} Listings`}>
       {/* Section Heading */}
       <h1 className="text-2xl md:text-3xl font-bold mb-8 text-center">
-        IPO 2025 Listings
+        IPO {currentYear} Listings
       </h1>
 
       {/* 2x2 Grid Layout - AC#3: Responsive design */}
@@ -78,7 +79,7 @@ export function HomeIPOTablesSection({
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         {/* Top Left: Active Mainboard IPOs */}
         <IPOListTable
-          title="IPO 2025 List (Mainboard)"
+          title={`IPO ${currentYear} List (Mainboard)`}
           ipos={mainboardIPOs}
           moreLink="/dashboard?category=mainboard"
           moreLinkText="More Mainline IPO..."
@@ -87,7 +88,7 @@ export function HomeIPOTablesSection({
 
         {/* Top Right: Active SME IPOs */}
         <IPOListTable
-          title="SME IPO 2025 List"
+          title={`SME IPO ${currentYear} List`}
           ipos={smeIPOs}
           moreLink="/dashboard?category=sme"
           moreLinkText="More SME IPO..."
