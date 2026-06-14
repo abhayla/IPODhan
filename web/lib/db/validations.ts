@@ -189,16 +189,22 @@ export const historicalIPOQueryParamsSchema = z.object({
       (val) => {
         if (!val || val === 'All') return true;
         const yearNum = parseInt(val, 10);
-        return yearNum >= 2020 && yearNum <= 2025;
+        // Upper bound is the current year (was hardcoded to 2025 — rejected
+        // 2026+, 400ing the /history page). GitHub #7.
+        return yearNum >= 2020 && yearNum <= new Date().getFullYear();
       },
       {
-        message: 'Year must be between 2020 and 2025, or "All"',
+        message: 'Year must be between 2020 and the current year, or "All"',
       }
     ),
   sector: z.string().max(100).optional(),
   performance: z.enum(['Positive', 'Negative', 'All']).optional(),
   sort: z.enum(['listing_date', 'listing_gain', 'subscription']).optional(),
-  sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  // Accept sortOrder case-insensitively — the history UI sends 'DESC'/'ASC'
+  // while the API expects lowercase; the mismatch 400ed every fetch (#7).
+  sortOrder: z
+    .preprocess((v) => (typeof v === 'string' ? v.toLowerCase() : v), z.enum(['asc', 'desc']))
+    .default('desc'),
   search: z.string().max(200).optional(), // Search by company name
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
