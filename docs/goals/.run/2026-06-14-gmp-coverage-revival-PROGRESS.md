@@ -1,5 +1,15 @@
 # PROGRESS — GMP coverage revival (`/goal` run)
 
+> ## ✅ CLOSED 2026-06-15 — COMPLETE + DEPLOYED + VERIFIED
+> Coverage **3 → 19 IPOs** in prod, self-sustaining `*/30` cron, dup-free. All stages
+> (A/B/C), all DoD items, and all 3 §GATE destructive migrations (B3 drop-orphans ·
+> B4 dedup+UNIQUE 250→37 · B2 int→numeric) APPLIED to prod. Merged via PRs **#18**
+> (feature), **#20** (`next build` unblock), **#21** (Math.round drop); deployed 3×.
+> Remaining open = intentional/out-of-scope only (see DEFERRED: pre-existing non-GMP
+> test reds, per-IPO-lock refinement, Advit-Jewels ingestion gap, CI infra flake).
+> **Nothing pending on the contract.** (Sections below are the historical run trail.)
+
+
 **Branch:** `feat/gmp-coverage-revival` · **Started:** 2026-06-14 · **Baseline:** gmp_records 152 rows / 3 IPOs / newest 2026-06-12; 22 OPEN/UPCOMING IPOs; tunnel `localhost:15432` live.
 
 ## §0.2 Preflight
