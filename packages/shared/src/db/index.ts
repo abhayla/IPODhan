@@ -2,6 +2,10 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from './schema';
+import { configureUtcTimestampParsing, assertSessionTimezoneUtc } from './timezone-config';
+
+// Read every `timestamp without time zone` value as UTC regardless of process tz (#28).
+configureUtcTimestampParsing();
 
 // Lazy initialization to ensure environment variables are loaded first
 let _pool: Pool | undefined;
@@ -17,6 +21,8 @@ function initPool(): Pool {
 
   // Create PostgreSQL connection pool
   // Use individual parameters if DATABASE_HOST is set, otherwise use DATABASE_URL
+  // `-c timezone=UTC` forces the session to UTC so now()/defaultNow() write
+  // UTC-naive and naive<->timestamptz comparisons treat naive values as UTC (#28).
   _pool = new Pool(
     process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
       ? {
@@ -25,12 +31,14 @@ function initPool(): Pool {
           database: process.env.DATABASE_NAME || 'ipodhan',
           user: process.env.DATABASE_USER || 'postgres',
           password: process.env.DATABASE_PASSWORD,
+          options: '-c timezone=UTC',
           max: 20,
           idleTimeoutMillis: 30000,
           connectionTimeoutMillis: 2000,
         }
       : {
           connectionString: process.env.DATABASE_URL,
+          options: '-c timezone=UTC',
           max: 20,
           idleTimeoutMillis: 30000,
           connectionTimeoutMillis: 2000,
@@ -81,6 +89,7 @@ export async function closePool(): Promise<void> {
 export async function testConnection(): Promise<boolean> {
   try {
     const realPool = initPool();
+    await assertSessionTimezoneUtc(realPool);
     const client = await realPool.connect();
     const result = await client.query('SELECT NOW() as current_time');
     client.release();
@@ -94,3 +103,10 @@ export async function testConnection(): Promise<boolean> {
 
 // Re-export all schema tables, enums, and relations for convenient imports
 export * from './schema';
+
+// Timezone normalization helpers (#28)
+export {
+  parseNaiveTimestampAsUtc,
+  configureUtcTimestampParsing,
+  assertSessionTimezoneUtc,
+} from './timezone-config';
