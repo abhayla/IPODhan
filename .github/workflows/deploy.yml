@@ -316,6 +316,11 @@ jobs:
                   // name-match is what lifts coverage past the few date-exact matches.
                   ENABLE_GMP_NAME_MATCH: 'true',
                   ENABLE_MONEYCONTROL_SUBSCRIPTION: 'true',
+                  // BSE source rebuilt on the JSON API (the Puppeteer/HTML scraper
+                  // is dead — BSE migrated to a SPA). Switches the BSE orchestrator
+                  // from the dead scraper to scrapeBSEViaAPI (list IR_flag=IPO ->
+                  // detail + subscription) for the current board. PR #26.
+                  ENABLE_BSE_API: 'true',
                   NODE_PATH: 'C:\\Apps\\IPODhan\\current\\node_modules'
                 },
                 error_file: 'C:\\Apps\\IPODhan\\logs\\scraper-error.log',

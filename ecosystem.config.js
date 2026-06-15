@@ -59,6 +59,9 @@ module.exports = {
         // normalized company name + persist Moneycontrol subscription %s.
         ENABLE_GMP_NAME_MATCH: 'true',
         ENABLE_MONEYCONTROL_SUBSCRIPTION: 'true',
+        // BSE source rebuilt on the JSON API (SPA broke the HTML scraper). Switches
+        // the BSE orchestrator to scrapeBSEViaAPI (current board: detail + subscription). PR #26.
+        ENABLE_BSE_API: 'true',
       },
       max_memory_restart: '500M',
       error_file: './logs/scraper-error.log',
