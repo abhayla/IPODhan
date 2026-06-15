@@ -54,6 +54,13 @@
 ### Stage C COMPLETE (C1–C7). G-UI gate passed (screenshot + ARIA + console + e2e).
 Note: had to restart a 12h-old stale dev server (PID 13088, started 06-14) that wasn't hot-reloading — fresh server served the new code (`gmp-as-of` confirmed in HTML).
 
+## RUN COMPLETE — 2026-06-15
+- **Draft PR: https://github.com/abhayla/IPODhan/pull/18** (NOT merged).
+- Stages: **A 9/9 ✅ · B (B1/B3/B4/B5 done, B2 partial-deferred) · C 1–7 ✅**.
+- Final gates: `tsc` 0 errors · `npm run lint` exit 0 · `next build` compiles + 87/87 static pages (exits non-zero only on a pre-existing internal-ESLint config error — no config touched by me) · scraper GMP unit 36 ✅ · web component 3 ✅ · e2e 2 ✅ · shared dist ✅. G-UI verified live (screenshot + ARIA + 0 console errors).
+- Pre-existing blockers documented (none GMP-related): 25 unrelated scraper-suite reds; `db:generate` blocked by `extraction_status` enum drift; `next build` internal-ESLint options error.
+- **TODO(ingestion):** IPO scrapers miss some SME IPOs (e.g. "Advit Jewels") → they can't get GMP. Separate from this run.
+
 ## §GATE (needs Abhay)
 - [ ] Apply orphan-DROP migration to prod
 - [ ] Apply int→numeric ALTER to prod
