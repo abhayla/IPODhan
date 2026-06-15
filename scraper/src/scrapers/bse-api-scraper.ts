@@ -92,6 +92,24 @@ export function computeBSEIssueSize(shares: number, priceMax?: number): number {
   return Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
 }
 
+/**
+ * Derive IPO status from the open/close window. BSE's JSON `Status` is an opaque
+ * code ('L'), so the window is the reliable signal. `today`/`open`/`close` are
+ * 'YYYY-MM-DD' strings (lexicographic compare is correct for that format).
+ * LISTED needs a listing date this endpoint doesn't carry, so it is left to
+ * other sources / the time-based priority matrix to set.
+ */
+export function deriveBSEStatus(
+  open: string | null,
+  close: string | null,
+  today: string,
+): 'UPCOMING' | 'OPEN' | 'CLOSED' {
+  if (!open || !close) return 'UPCOMING';
+  if (today < open) return 'UPCOMING';
+  if (today > close) return 'CLOSED';
+  return 'OPEN';
+}
+
 /** Map a BSE list row + its detail row into a ScrapedIPO. */
 export function mapBSEToScrapedIPO(list: BSEListRow, detail: BSEDetailRow): ScrapedIPO {
   const band = parsePriceBand(detail.Price_Band || '');
@@ -100,14 +118,19 @@ export function mapBSEToScrapedIPO(list: BSEListRow, detail: BSEDetailRow): Scra
   const face = Math.round(parseFloat(String(detail.Face_Value || '0')));
   const registrar = detail.Registrar?.trim() || null;
   const leads = parseLeadManagers(detail.Book_Running_Lead_Manager, detail.Co_Book_Running_Lead_Manager);
+  const today = new Date().toISOString().split('T')[0];
+  const openDate = parseBSEDate(list.Start_Dt);
+  const closeDate = parseBSEDate(list.End_Dt);
 
   return {
     companyName: (list.Scrip_name || detail.ScripName || '').trim(),
     issueSize: computeBSEIssueSize(shares, band.max),
     priceRangeMin: band.min,
     priceRangeMax: band.max,
-    openDate: parseBSEDate(list.Start_Dt) || new Date().toISOString().split('T')[0],
-    closeDate: parseBSEDate(list.End_Dt) || new Date().toISOString().split('T')[0],
+    openDate: openDate || today,
+    closeDate: closeDate || today,
+    listingExchange: 'BSE',
+    status: deriveBSEStatus(openDate, closeDate, today),
     segment: 'MAINBOARD',
     offeringType: 'IPO',
     lotSize: lot > 0 ? lot : undefined,
@@ -116,6 +139,28 @@ export function mapBSEToScrapedIPO(list: BSEListRow, detail: BSEDetailRow): Scra
     leadManagers: leads.length ? leads : null,
     symbol: detail.Symbol?.trim() || null,
   };
+}
+
+export interface BSEApiSummary {
+  ipos: ScrapedIPO[];
+  subscriptions: never[];
+  smeCount: number;
+  mainboardCount: number;
+}
+
+/**
+ * Reduce an API scrape result into the orchestrator's ScrapedData shape plus
+ * segment counts. A null/blank segment counts as MAINBOARD (the BSE IPO board
+ * default). Subscriptions are not part of the core API scrape (Stage C).
+ */
+export function summarizeBSEApiResult(result: BSEApiScrapeResult): BSEApiSummary {
+  let smeCount = 0;
+  let mainboardCount = 0;
+  for (const ipo of result.ipos) {
+    if (ipo.segment === 'SME') smeCount++;
+    else mainboardCount++;
+  }
+  return { ipos: result.ipos, subscriptions: [], smeCount, mainboardCount };
 }
 
 async function fetchBSEJson<T>(path: string): Promise<T> {

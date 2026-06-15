@@ -18,6 +18,8 @@
 
 import { BaseScraperOrchestrator, ScraperResult, ScrapedData } from '../base/BaseScraperOrchestrator.js';
 import { scrapeBSEIPOs } from './bse-scraper.js';
+import { scrapeBSEViaAPI, summarizeBSEApiResult } from './bse-api-scraper.js';
+import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import {
   validateIPOData,
   validateSubscriptionData,
@@ -81,6 +83,26 @@ export class BSEScraperOrchestratorV2 extends BaseScraperOrchestrator<ScrapedIPO
    * @returns Promise<ScrapedData> - IPOs, subscriptions, and segment counts
    */
   protected async scrapeData(): Promise<ScrapedData<ScrapedIPO, ScrapedSubscription>> {
+    // BSE migrated to a SPA; the Puppeteer/HTML scraper is dead. When the flag is
+    // on, source the list+detail from BSE's JSON API instead (the SPA's backend).
+    if (FEATURE_FLAGS.ENABLE_BSE_API) {
+      const apiResult = await scrapeBSEViaAPI();
+      if (apiResult.errors.length > 0) {
+        logger.warn(
+          { errorCount: apiResult.errors.length, sample: apiResult.errors.slice(0, 3) },
+          '[BSE] JSON API scrape returned per-IPO errors'
+        );
+      }
+      const summary = summarizeBSEApiResult(apiResult);
+      this.smeCount = summary.smeCount;
+      this.mainboardCount = summary.mainboardCount;
+      logger.info(
+        { source: 'BSE_API', ipos: summary.ipos.length, mainboard: summary.mainboardCount, sme: summary.smeCount },
+        '[BSE] sourced IPOs from JSON API'
+      );
+      return { ipos: summary.ipos, subscriptions: summary.subscriptions };
+    }
+
     const { ipos, subscriptions, smeCount, mainboardCount } = await scrapeBSEIPOs();
 
     // Store counts for result

@@ -4,11 +4,15 @@ import {
   parseBSEDate,
   parseLeadManagers,
   computeBSEIssueSize,
+  deriveBSEStatus,
   mapBSEToScrapedIPO,
   scrapeBSEViaAPI,
+  summarizeBSEApiResult,
   type BSEListRow,
   type BSEDetailRow,
+  type BSEApiScrapeResult,
 } from '../../../src/scrapers/bse-api-scraper.js';
+import { validateIPOData } from '../../../src/utils/validators.js';
 
 /** Real-shaped fixtures from the live BSE JSON API (Susan Electricals, IPO_NO 7770). */
 const LIST_ROW: BSEListRow = {
@@ -78,11 +82,27 @@ describe('computeBSEIssueSize', () => {
   });
 });
 
+describe('deriveBSEStatus', () => {
+  it('UPCOMING before the window, OPEN inside, CLOSED after', () => {
+    expect(deriveBSEStatus('2026-06-11', '2026-06-15', '2026-06-10')).toBe('UPCOMING');
+    expect(deriveBSEStatus('2026-06-11', '2026-06-15', '2026-06-11')).toBe('OPEN');
+    expect(deriveBSEStatus('2026-06-11', '2026-06-15', '2026-06-13')).toBe('OPEN');
+    expect(deriveBSEStatus('2026-06-11', '2026-06-15', '2026-06-15')).toBe('OPEN');
+    expect(deriveBSEStatus('2026-06-11', '2026-06-15', '2026-06-16')).toBe('CLOSED');
+  });
+  it('defaults to UPCOMING when a date is missing', () => {
+    expect(deriveBSEStatus(null, '2026-06-15', '2026-06-13')).toBe('UPCOMING');
+    expect(deriveBSEStatus('2026-06-11', null, '2026-06-13')).toBe('UPCOMING');
+  });
+});
+
 describe('mapBSEToScrapedIPO', () => {
   it('maps the full Susan detail to a valid ScrapedIPO', () => {
     const ipo = mapBSEToScrapedIPO(LIST_ROW, DETAIL_ROW);
     expect(ipo.companyName).toBe('SUSAN ELECTRICALS INDIA LIMITED');
     expect(ipo.offeringType).toBe('IPO');
+    expect(ipo.listingExchange).toBe('BSE');
+    expect(ipo.status).toMatch(/UPCOMING|OPEN|CLOSED|LISTED/);
     expect(ipo.segment).toBe('MAINBOARD');
     expect(ipo.openDate).toBe('2026-06-11');
     expect(ipo.closeDate).toBe('2026-06-15');
@@ -94,6 +114,34 @@ describe('mapBSEToScrapedIPO', () => {
     expect(ipo.registrar).toBe('Bigshare Services Pvt Ltd');
     expect(ipo.leadManagers).toContain('Beeline Capital Advisors Pvt Ltd');
     expect(ipo.issueSize).toBe(510413000); // 4019000 × 127
+  });
+
+  it('produces a row the real ScrapedIPO validator accepts (persister gate)', () => {
+    const result = validateIPOData(mapBSEToScrapedIPO(LIST_ROW, DETAIL_ROW));
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('summarizeBSEApiResult — orchestrator ScrapedData shape + segment counts', () => {
+  const ipo = (segment: 'MAINBOARD' | 'SME'): any => ({ companyName: 'X', segment });
+
+  it('counts MAINBOARD and SME separately and carries an empty subscriptions array', () => {
+    const result: BSEApiScrapeResult = {
+      ipos: [ipo('MAINBOARD'), ipo('MAINBOARD'), ipo('SME')],
+      errors: [],
+    };
+    const s = summarizeBSEApiResult(result);
+    expect(s.mainboardCount).toBe(2);
+    expect(s.smeCount).toBe(1);
+    expect(s.ipos).toHaveLength(3);
+    expect(s.subscriptions).toEqual([]);
+  });
+
+  it('a null/blank segment counts as MAINBOARD (BSE IPO board default)', () => {
+    const result: BSEApiScrapeResult = { ipos: [{ companyName: 'Y', segment: null } as any], errors: [] };
+    const s = summarizeBSEApiResult(result);
+    expect(s.mainboardCount).toBe(1);
+    expect(s.smeCount).toBe(0);
   });
 });
 
