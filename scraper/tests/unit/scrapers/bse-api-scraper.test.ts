@@ -7,6 +7,7 @@ import {
   deriveBSEStatus,
   parseIssuePeriod,
   parseSubTimes,
+  parseBSERegistrar,
   mapBSEToScrapedIPO,
   mapBSEDetailToScrapedIPO,
   mapBSESubscription,
@@ -72,8 +73,28 @@ describe('parseLeadManagers', () => {
   it('combines BRLM + co-managers, splits, trims, dedups', () => {
     expect(parseLeadManagers('A Capital, B Securities', 'A Capital')).toEqual(['A Capital', 'B Securities']);
   });
+  it('strips the ^address|email blob BSE packs onto each name', () => {
+    expect(parseLeadManagers('Beeline Capital Advisors Pvt Ltd^4th Floor, ...||||x@y.com', '')).toEqual([
+      'Beeline Capital Advisors Pvt Ltd',
+    ]);
+  });
   it('returns [] when none', () => {
     expect(parseLeadManagers('', '')).toEqual([]);
+  });
+});
+
+describe('parseBSERegistrar — name only, capped to varchar(100)', () => {
+  it('extracts the name before the ^address|email blob', () => {
+    const raw = 'Mudra RTA Ventures Private Limited^B-117, 3rd Floor, DDA Shed,\nOkhla, New Delhi – 110020.||||||||ipo@mudrarta.com';
+    expect(parseBSERegistrar(raw)).toBe('Mudra RTA Ventures Private Limited');
+  });
+  it('passes a plain name through; null for blank', () => {
+    expect(parseBSERegistrar('Bigshare Services Pvt Ltd')).toBe('Bigshare Services Pvt Ltd');
+    expect(parseBSERegistrar('')).toBeNull();
+    expect(parseBSERegistrar(undefined)).toBeNull();
+  });
+  it('never exceeds 100 chars (column width)', () => {
+    expect(parseBSERegistrar('X'.repeat(250))!.length).toBeLessThanOrEqual(100);
   });
 });
 
