@@ -28,8 +28,8 @@ export interface GMPChartPoint {
   date: string; // Formatted date (e.g., "15 Oct")
   timestamp: Date; // Original timestamp
   gmp: number; // Actual GMP value
-  gmpUpper: number; // Upper confidence band (+10%)
-  gmpLower: number; // Lower confidence band (-10%)
+  gmpUpper: number; // Illustrative +10% range (NOT a statistical confidence band)
+  gmpLower: number; // Illustrative -10% range (NOT a statistical confidence band)
   movingAvg7: number | null; // 7-day moving average
   expectedListingPrice: number | null; // Expected listing price
   volatility: number; // Daily volatility %

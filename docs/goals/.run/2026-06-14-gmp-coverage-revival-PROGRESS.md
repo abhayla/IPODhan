@@ -43,13 +43,13 @@
 ## Stage C — honest rendering + docs + tests (G15–G23)
 | Task | Status | SHA | Notes |
 |---|---|---|---|
-| C1 staleness label | pending | | |
+| C1 staleness label | **DONE** | (this commit) | "as of <date>" on the live header card (KeyMetricsCardsEnhanced) from the NEWEST gmp record, order-agnostic, data-testid=gmp-as-of; legacy KeyMetricsCards also supports it. GMP tab charts already render dates on their axes. Caught: edited legacy KeyMetricsCards first, then found the page renders ...Enhanced |
 | C2 zero≠missing | **DONE** | (this commit) | web ipo-repository:1576 `gmp ?? null` (was `\|\| null` collapsing a real 0); sibling-swept (rating-calculator `gmp\|\|0` are math defaults, not display bugs) |
 | C3 delete fake Math.random GMP | **DONE** | (this commit) | deleted the test-only fabrication harness: /api/live-updates route + /test/live-updates page + LiveGMPTicker/HotRightNow/MarketPulse/LiveSubscriptionTracker/ViewerCount + use-live-updates hook + websocket/client (only consumer was the test page). 0 real source type errors |
-| C4 honest bands | pending | | |
+| C4 honest bands | **DONE** | (this commit) | relabeled the fabricated ±10% "confidence bands" → "illustrative ±10% range (not a forecast)" across GMPHistoryChart index/utils/types (contract-sanctioned relabel; no statistical veneer on a hardcoded ×1.1/×0.9) |
 | C5 plausibility guard | **DONE** | (this commit) | isFinite guard on gmp/issuePrice*100 in page.tsx + gmp/latest/route.ts (NaN/Infinity → null/0) |
 | C6 docs source correction | **DONE** | e1343a20 | Chittorgarh→InvestorGain in SCRAPING_STRATEGY + screen-db-mapping; fixed verification SQL recorded_at→timestamp; only a cross-ref link to Chittorgarh-as-scraper kept |
-| C7 component + e2e tests | pending | | |
+| C7 component + e2e tests | **PARTIAL** | (this commit) | component test (KeyMetricsCardsEnhanced) asserts staleness label from newest record + zero-as-value (C1/C2) — 3 green. Playwright e2e for the GMP tab PENDING (needs dev server + browser) |
 
 ## §GATE (needs Abhay)
 - [ ] Apply orphan-DROP migration to prod

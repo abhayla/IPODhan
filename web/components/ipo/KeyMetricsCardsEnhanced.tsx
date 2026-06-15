@@ -90,6 +90,20 @@ export function KeyMetricsCardsEnhanced({
     ? transformGMPData(gmpRecords).slice(-7) // Last 7 data points
     : [];
 
+  // "as of <date>" staleness label (C1/G15) — GMP can be days old; never show a
+  // bare figure as if it were live. Derive the newest record date, order-agnostic.
+  const gmpAsOfLabel = (() => {
+    if (gmp === null || gmpRecords.length === 0) return null;
+    const latest = gmpRecords.reduce<Date | null>((max, r) => {
+      const d = r.timestamp instanceof Date ? r.timestamp : new Date(r.timestamp);
+      if (isNaN(d.getTime())) return max;
+      return max === null || d > max ? d : max;
+    }, null);
+    return latest
+      ? latest.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' })
+      : null;
+  })();
+
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       {/* Issue Size Card */}
@@ -187,6 +201,11 @@ export function KeyMetricsCardsEnhanced({
               ? `${gmpPercent > 0 ? '+' : ''}${gmpPercent.toFixed(2)}%`
               : 'Not available'}
           </p>
+          {gmpAsOfLabel && (
+            <p className="text-[10px] mt-1 text-muted-foreground" data-testid="gmp-as-of">
+              as of {gmpAsOfLabel}
+            </p>
+          )}
 
           {/* Sparkline Chart */}
           {gmpChartData.length > 0 && (
