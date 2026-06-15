@@ -8,8 +8,45 @@ import {
   detectOfferingTypeFromSymbol,
   detectSegmentFromExchange,
   detectOfferingTypeFromBSEType,
+  detectOfferingTypeFromBSEIRFlag,
   detectOfferingType,
 } from '../../../src/utils/detect-offering-type';
+
+describe('detectOfferingTypeFromBSEIRFlag (authoritative BSE classification)', () => {
+  it('classifies a genuine public issue as IPO', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('IPO', 'Book Building')).toBe('IPO');
+  });
+
+  it('classifies a takeover open offer (OTB/Takeover) as TENDER — not IPO', () => {
+    // Real prod pollution: SARDA PROTEINS, RESTAURANT BRANDS, OXFORD INDUSTRIES, etc.
+    expect(detectOfferingTypeFromBSEIRFlag('OTB', 'Takeover')).toBe('TENDER');
+  });
+
+  it('classifies an OTB buyback (e.g. WIPRO) as BUYBACK — not IPO', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('OTB', 'Buyback - Tender Offer')).toBe('BUYBACK');
+  });
+
+  it('classifies a Debt Public Issue (DPI) as NCD', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('DPI', 'Debt Issue')).toBe('NCD');
+  });
+
+  it('classifies a Rights Issue (RI) as RIGHTS', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('RI', 'RI')).toBe('RIGHTS');
+  });
+
+  it('returns null for an unknown flag (e.g. CMN) — never guesses IPO', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('CMN', 'CMN')).toBeNull();
+  });
+
+  it('returns null for empty/missing flag', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('', '')).toBeNull();
+    expect(detectOfferingTypeFromBSEIRFlag(null, null)).toBeNull();
+  });
+
+  it('is case- and whitespace-insensitive', () => {
+    expect(detectOfferingTypeFromBSEIRFlag(' otb ', 'takeover')).toBe('TENDER');
+  });
+});
 
 describe('detectOfferingTypeFromSymbol', () => {
   describe('TENDER offer detection', () => {
