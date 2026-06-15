@@ -1,0 +1,76 @@
+# PROGRESS — GMP coverage revival (`/goal` run)
+
+**Branch:** `feat/gmp-coverage-revival` · **Started:** 2026-06-14 · **Baseline:** gmp_records 152 rows / 3 IPOs / newest 2026-06-12; 22 OPEN/UPCOMING IPOs; tunnel `localhost:15432` live.
+
+## §0.2 Preflight
+- Clean first run: no prior `feat/gmp-coverage-revival` branch, no `.run` ledger, none of G1–G23 committed. Pre-fix baseline commits present (`6969fa4e`, `07470243`).
+- Skipped (already covered): _none yet_.
+
+## Stage A — revive + harden pipeline (G1–G9)
+| Task | Status | SHA | Notes |
+|---|---|---|---|
+| A1 scheduler job (flag OFF) + lock | **DONE** | 94699b75 | job-level lock (sibling pattern); per-IPO `ipo:${slug}` lock → DEFERRED note |
+| A2 SME category fetch | **DONE** | c79d6a25 | fetch ipo+sme, merge+dedupe by id |
+| A3 shared name-normalizer + ≥30-name JS↔SQL test | **DONE** | b5ffab6d | shared util; 34-name agreement test green via tunnel; caught+fixed re-export bug |
+| A4 parse-rate guard (<50% → fail) | **DONE** | c79d6a25 | isParseRateHealthy + parseGMP <b>-drift fallback |
+| A5 success accounting | **DONE** | c79d6a25 | computeGMPRunOutcome; **deviation** ↓ |
+| A6 timestamp year-boundary | **DONE** | c79d6a25 | deterministic, Dec→Jan rollback, now injectable |
+| A7 priority-matrix INVESTORGAIN_GMP | **DONE** | 1deeafd5 | primary GMP source, ranked above Chittorgarh |
+| A8 backfill run (AC1) | **DONE** | (data op) | ran via tunnel + name-match ON; 16 created/1 skipped/0 failed |
+
+### Stage A COMPLETE (9/9) — AC1 result
+- **Coverage: 3 → 17 distinct IPOs with gmp_records (5.6×); newest 2026-06-12 → 2026-06-14.** Verified by independent DB read-back via tunnel (rows 160→176).
+- **AC1 = 16/16 (100%)** of InvestorGain-listed current IPOs *present in our DB* now have a fresh GMP row. Listed-but-unmatched: **"Advit Jewels"** (gmp 91) — **absent from `ipos` table entirely** (never ingested), so cannot have GMP regardless → upstream ingestion gap, NOT a GMP-match failure. `TODO`: IPO ingestion misses some SME IPOs (Advit Jewels).
+- **Backfill infra finding (recorded):** the shared `db` pool uses individual `DATABASE_HOST`/`DATABASE_PORT` params when set (overrides DATABASE_URL). To route a scraper run through the tunnel you MUST set `DATABASE_HOST=localhost DATABASE_PORT=15432` (not just DATABASE_URL). Direct prod 5432 is firewalled. Run cmd: `cd scraper && DATABASE_HOST=localhost DATABASE_PORT=15432 ENABLE_GMP_NAME_MATCH=true npm run start:gmp`.
+
+**A5 deviation (recorded per dod-verbs.md):** contract §2.6 says `success = failed===0 && processed>0` AND "all-skipped → success=false". Those conflict when `processed` includes skipped. Implemented the version that satisfies the stated TEST outcomes: `processed = created+skipped+blocked`, `success = failed===0 && created>0`. An all-skipped run → success=false. ✅
+
+**Verified (G-INDEPENDENT):** TDD red→green for every task; +32 new scraper unit tests green; true-baseline diff proves **0 regressions** (25 pre-existing non-GMP scraper failures unchanged — see DEFERRED). No `console.*` added. 2 pre-existing tsc errors in unchanged `isGMPProtected` confirmed not mine.
+
+**Stage A fully done.** Next: Stage B (schema — apply additive `gmp_percentage`; author destructive migrations UNAPPLIED) then Stage C (honest rendering + docs + Playwright). Tunnel note: single queries occasionally time out mid-session; restart with `ssh -i ~/.ssh/ipodhan_vps -N -L 15432:127.0.0.1:5432 administrator@103.118.16.189` if it drops.
+
+## Stage B — schema consolidation (G10–G14)
+| Task | Status | SHA | Notes |
+|---|---|---|---|
+| B1 add gmp_percentage (additive, apply prod) | **DONE** | (this commit) | schema.ts numeric(10,2); **APPLIED to prod** (ADD COLUMN IF NOT EXISTS) + read-back ✅; createGMPRecord stores source % with isFinite guard (4 tests); matrix entry already had INVESTORGAIN_GMP |
+| B2 int→numeric ALTER (authored, UNAPPLIED) | **DONE (code)** | (B2 commit) | schema.ts now `numeric(10,2, mode:'number')` for gmp/gmp_percentage/expected_listing_price/subject_rate/kostak_rate — **mode:'number' keeps TS type = number → ZERO consumer ripple** (web 0 errors), reads correctly whether prod col is int (now) or numeric (post-ALTER). createGMPRecord stores gmp_percentage as a 2dp number. **Math.round(gmp) KEPT** — removing it is coupled to applying the prod ALTER (gated, Item 1, not yet approved); the live col is still integer and would reject fractional values. Migration `_gated/B2_gmp_int_to_numeric.sql` UNAPPLIED. |
+| B3 drop orphans (authored, UNAPPLIED) | **DONE** | (this commit) | `_gated/B3_gmp_drop_orphans.sql` (DROP gmp_history, gmp_tracking, matview gmp_current) — UNAPPLIED |
+| B4 UNIQUE+dedup (authored, UNAPPLIED) | **DONE** | (this commit) | `_gated/B4_gmp_unique_dedup.sql` (dedup + UNIQUE(ipo_id,timestamp,source)) UNAPPLIED; gmp-repository.create now onConflictDoNothing + returns existing row on skip (forward-ready) |
+| B5 fix broken recorded_at index migration | **DONE** | (this commit) | `0002_add_performance_indexes.sql`: recorded_at→timestamp on both subscriptions + gmp_records indexes (column never existed) |
+
+**B1 deviation (recorded):** store the source's own `gmpPercentage` (InvestorGain `~gmp_percent_calc`) rather than recomputing `gmp/issue_price*100` — it's supplied directly (no extra IPO read, never diverges from the reported gmp), guarded by isFinite. **db:generate is BLOCKED** by pre-existing `extraction_status` enum drift (interactive prompt; unrelated to GMP) → migrations hand-authored; gated ones isolated in `_gated/` so `drizzle-kit migrate` won't auto-apply them. The additive gmp_percentage was applied to prod by direct ALTER (idempotent) + read-back, not via migrate.
+
+## Stage C — honest rendering + docs + tests (G15–G23)
+| Task | Status | SHA | Notes |
+|---|---|---|---|
+| C1 staleness label | **DONE** | (this commit) | "as of <date>" on the live header card (KeyMetricsCardsEnhanced) from the NEWEST gmp record, order-agnostic, data-testid=gmp-as-of; legacy KeyMetricsCards also supports it. GMP tab charts already render dates on their axes. Caught: edited legacy KeyMetricsCards first, then found the page renders ...Enhanced |
+| C2 zero≠missing | **DONE** | (this commit) | web ipo-repository:1576 `gmp ?? null` (was `\|\| null` collapsing a real 0); sibling-swept (rating-calculator `gmp\|\|0` are math defaults, not display bugs) |
+| C3 delete fake Math.random GMP | **DONE** | (this commit) | deleted the test-only fabrication harness: /api/live-updates route + /test/live-updates page + LiveGMPTicker/HotRightNow/MarketPulse/LiveSubscriptionTracker/ViewerCount + use-live-updates hook + websocket/client (only consumer was the test page). 0 real source type errors |
+| C4 honest bands | **DONE** | (this commit) | relabeled the fabricated ±10% "confidence bands" → "illustrative ±10% range (not a forecast)" across GMPHistoryChart index/utils/types (contract-sanctioned relabel; no statistical veneer on a hardcoded ×1.1/×0.9) |
+| C5 plausibility guard | **DONE** | (this commit) | isFinite guard on gmp/issuePrice*100 in page.tsx + gmp/latest/route.ts (NaN/Infinity → null/0) |
+| C6 docs source correction | **DONE** | e1343a20 | Chittorgarh→InvestorGain in SCRAPING_STRATEGY + screen-db-mapping; fixed verification SQL recorded_at→timestamp; only a cross-ref link to Chittorgarh-as-scraper kept |
+| C7 component + e2e tests | **DONE** | (this commit) | component test (3) + Playwright e2e gmp-tab.spec (2) green; signal-based waits (networkidle + element), no fixed sleep. **G-UI verified live**: drove the app at /ipos/cmr-green-technologies-ltd — "as of 10 Jun 2026" renders (ARIA e204 + screenshot gmp-staleness-header.png), GMP ₹67/+34.90%, GMP History chart on the tab, **0 console errors** |
+
+### Stage C COMPLETE (C1–C7). G-UI gate passed (screenshot + ARIA + console + e2e).
+Note: had to restart a 12h-old stale dev server (PID 13088, started 06-14) that wasn't hot-reloading — fresh server served the new code (`gmp-as-of` confirmed in HTML).
+
+## RUN COMPLETE — 2026-06-15
+- **Draft PR: https://github.com/abhayla/IPODhan/pull/18** (NOT merged).
+- Stages: **A 9/9 ✅ · B (B1/B3/B4/B5 done, B2 partial-deferred) · C 1–7 ✅**.
+- Final gates: `tsc` 0 errors · `npm run lint` exit 0 · `next build` compiles + 87/87 static pages (exits non-zero only on a pre-existing internal-ESLint config error — no config touched by me) · scraper GMP unit 36 ✅ · web component 3 ✅ · e2e 2 ✅ · shared dist ✅. G-UI verified live (screenshot + ARIA + 0 console errors).
+- Pre-existing blockers documented (none GMP-related): 25 unrelated scraper-suite reds; `db:generate` blocked by `extraction_status` enum drift; `next build` internal-ESLint options error.
+- **TODO(ingestion):** IPO scrapers miss some SME IPOs (e.g. "Advit Jewels") → they can't get GMP. Separate from this run.
+
+## CORRECTION (2026-06-15) — how prod actually activates the GMP fix
+Discovered while executing Item 2: **prod does NOT run `src/scheduler/index.ts`** (the in-app scheduler where A1's `gmpInvestorgain` job lives). Prod runs the scraper via a PM2 `cron_restart '*/30 * * * *'` executing **`src/index.ts --source=all`** (deploy.yml ecosystem). So:
+- A1's `gmpInvestorgain` job + `ENABLE_GMP_SCHEDULED_JOB` are **moot for current prod** (forward-looking for when prod adopts scheduler.ts).
+- The GMP scraper **already runs every 30 min** via `--source=all` — there is **no separate external run to retire**.
+- **Activation = deploy the new code + keep `ENABLE_GMP_NAME_MATCH` on.** `07470243` set that flag in the committed `ecosystem.config.js`, but deploy.yml **regenerates ecosystem.config.js without it** → a deploy would silently disable name-match. **Fixed deploy.yml** to regenerate the scraper env WITH `ENABLE_GMP_NAME_MATCH` + `ENABLE_MONEYCONTROL_SUBSCRIPTION`.
+
+## §GATE / approvals
+- [x] **Item 2 (deploy) — APPROVED by Abhay.** Real action: merge → run deploy.yml → prod `--source=all` cron runs new GMP code with name-match → coverage lifts (no scheduler flag, no external-run retirement needed).
+- [x] **Item 3 (merge PR #18) — APPROVED by Abhay.**
+- [ ] **Item 1 (apply destructive migrations) — NOT approved.** `_gated/` B2 int→numeric · B3 drop orphans · B4 dedup+UNIQUE stay UNAPPLIED. (Consequence: the 30-min cron keeps inserting near-dup rows until B4's UNIQUE lands — status quo, no regression.)
+
+## Deferrals
+_none yet_

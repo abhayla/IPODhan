@@ -77,15 +77,9 @@ test.describe('UX Integration: Complete User Journey', () => {
     });
 
     // STEP 3: Real-Time Monitoring (Phase 3)
-    test.step('Phase 3: Monitor real-time updates and use smart filters', async () => {
+    test.step('Phase 3: Use smart filters', async () => {
       await page.goto('/ipos');
       await page.waitForLoadState('networkidle');
-
-      // Check for MarketPulse dashboard
-      const marketPulse = page.locator('[data-testid="market-pulse"], .market-pulse').first();
-      if (await marketPulse.count() > 0) {
-        await expect(marketPulse).toBeVisible();
-      }
 
       // Apply visual filters
       const filterChip = page.locator('button:has-text("MAINBOARD"), button:has-text("Mainboard")').first();

@@ -176,16 +176,16 @@ SELECT
     'subscriptions' as table_name,
     COUNT(*) as total_records,
     COUNT(DISTINCT ipo_id) as unique_ipos,
-    MIN(recorded_at) as earliest_date,
-    MAX(recorded_at) as latest_date
+    MIN(timestamp) as earliest_date,
+    MAX(timestamp) as latest_date
 FROM subscriptions
 UNION ALL
 SELECT
     'gmp_records',
     COUNT(*),
     COUNT(DISTINCT ipo_id),
-    MIN(recorded_at),
-    MAX(recorded_at)
+    MIN(timestamp),
+    MAX(timestamp)
 FROM gmp_records
 UNION ALL
 SELECT

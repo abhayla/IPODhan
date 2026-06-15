@@ -75,6 +75,15 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_MONEYCONTROL_SUBSCRIPTION: process.env.ENABLE_MONEYCONTROL_SUBSCRIPTION === 'true',
 
+  /**
+   * Enable the in-app scheduled InvestorGain GMP job (runs the GMP writer every
+   * 6h so gmp_records stays fresh — the root-cause fix for frozen GMP coverage).
+   * GATED OFF by default; activation in prod is Abhay's call (it must be paired
+   * with retiring the external PM2 GMP run to avoid double-writes). (#6/#8)
+   * Default: false
+   */
+  ENABLE_GMP_SCHEDULED_JOB: process.env.ENABLE_GMP_SCHEDULED_JOB === 'true',
+
   // ==================== ROLLOUT CONTROLS ====================
 
   /**

@@ -26,6 +26,7 @@ export interface SchedulerConfig {
     bse: JobSchedule;
     moneycontrol: JobSchedule;
     chittorgarh: JobSchedule;
+    gmpInvestorgain: JobSchedule;      // GMP coverage revival: scheduled InvestorGain GMP writer (flag-gated OFF)
     listingPerformanceUpdate: JobSchedule; // ISS-001 Fix: Current price updates
     statusUpdater: JobSchedule;        // Phase 5 Fix: Auto-update IPO statuses based on dates
     financialData: JobSchedule;        // NEW: Financial data scraper from DRHP PDFs
@@ -68,6 +69,11 @@ const PROD_SCHEDULES = {
   chittorgarh: {
     enabled: true,
     schedule: '*/45 * * * *',              // Every 45 minutes, 24/7 (Story 7.6b - includes GMP data)
+    timezone: 'Asia/Kolkata'
+  },
+  gmpInvestorgain: {
+    enabled: process.env.ENABLE_GMP_SCHEDULED_JOB === 'true', // GATED OFF; Abhay enables in prod
+    schedule: '0 */6 * * *',               // Every 6 hours (GMP coverage revival #6/#8)
     timezone: 'Asia/Kolkata'
   },
   listingPerformanceUpdate: {
@@ -153,6 +159,11 @@ const DEV_SCHEDULES = {
     schedule: '15 */1 * * *',              // Every hour at 15 mins past (slower for dev, offset from moneycontrol)
     timezone: 'Asia/Kolkata'
   },
+  gmpInvestorgain: {
+    enabled: process.env.ENABLE_GMP_SCHEDULED_JOB === 'true', // GATED OFF (manual trigger in dev)
+    schedule: '0 */6 * * *',               // Every 6 hours (GMP coverage revival #6/#8)
+    timezone: 'Asia/Kolkata'
+  },
   listingPerformanceUpdate: {
     enabled: true,
     marketHours: '0 */1 9-17 * * 1-5',     // Every hour during market hours (dev mode - ISS-001 Fix)
@@ -223,6 +234,7 @@ export const schedulerConfig: SchedulerConfig = {
  */
 export const LOCK_TTL = {
   scraper: 300,          // 5 minutes for NSE/BSE scrapers
+  gmpInvestorgain: 600,  // 10 minutes for InvestorGain GMP job (fetch ipo+sme, match all current IPOs)
   statusUpdater: 60,     // 1 minute for status updater (fast operation)
   financialData: 3600,   // 1 hour for financial data scraper (long-running PDF processing)
   peerCompanies: 1800,   // 30 minutes for peer companies scraper (external API calls)

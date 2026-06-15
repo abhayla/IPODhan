@@ -1572,8 +1572,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
                 ? Number(subscription.retailSubscription)
                 : null,
 
-              // GMP data
-              gmp: gmpRecord?.gmp || null,
+              // GMP data — use ?? so a real GMP of 0 (flat grey market) is kept,
+              // not collapsed to null/'-' by ||  (C2/G16)
+              gmp: gmpRecord?.gmp ?? null,
 
               // Listing performance
               listingDayClosePrice: ipo.listingPrice || null,

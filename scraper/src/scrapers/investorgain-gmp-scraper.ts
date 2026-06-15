@@ -61,25 +61,63 @@ interface InvestorgainAPIRecord {
 }
 
 /**
- * Parse HTML-encoded GMP value
+ * Parse HTML-encoded GMP value, resilient to markup drift (G4).
  * Examples:
  *   "&#8377;<b>110</b> (10.33%)" → 110
  *   "&#8377;<b>-3</b> (-2.22%)" → -3
- *   "&#8377;<b>--</b> (0.00%)" → null
+ *   "&#8377;<b>--</b> (0.00%)" → null  (no active GMP)
+ *   "₹110 (10.33%)" → 110  (fallback when the <b> wrapper is gone — never the %)
  */
-function parseGMP(gmpHTML: string): number | null {
+export function parseGMP(gmpHTML: string): number | null {
   if (!gmpHTML) return null;
 
-  // Extract number from <b> tag
-  const match = gmpHTML.match(/<b>(-?\d+(?:\.\d+)?)<\/b>/);
-
-  if (!match || match[1] === '--') {
-    return null; // No active GMP
+  // Primary: the value lives inside the <b> tag.
+  const inBold = gmpHTML.match(/<b>\s*(-?\d+(?:\.\d+)?)\s*<\/b>/);
+  if (inBold) {
+    const value = parseFloat(inBold[1]);
+    return isNaN(value) ? null : value;
   }
 
-  const value = parseFloat(match[1]);
+  // Explicit "--" placeholder = no active GMP (whether or not it is bolded).
+  if (/(^|>)\s*--\s*(<|$)/.test(gmpHTML)) return null;
+
+  // Fallback (markup drift): drop the trailing "(xx%)" so the percentage can
+  // never be mistaken for the GMP, strip tags + HTML entities, take the first
+  // signed number that remains.
+  const withoutPercent = gmpHTML.replace(/\([^)]*%\)/g, ' ');
+  const text = withoutPercent.replace(/<\/?[^>]+(>|$)/g, ' ').replace(/&#?\w+;/g, ' ');
+  const num = text.match(/-?\d+(?:\.\d+)?/);
+  if (!num) return null;
+  const value = parseFloat(num[0]);
   return isNaN(value) ? null : value;
 }
+
+/**
+ * Fraction of fetched rows that yielded a GMP value MUST stay above this floor;
+ * below it the markup likely changed and the run reports failure (G4). An empty
+ * fetch is a different concern (no data ≠ broken parser) and is treated healthy.
+ */
+const PARSE_RATE_FLOOR = 0.5;
+
+/**
+ * Parse-rate guard (G4). The InvestorGain "live GMP" report lists IPOs that
+ * carry a GMP, so a healthy run parses the large majority of fetched rows; a
+ * sudden collapse means the markup drifted and we must fail loudly, not silently
+ * skip every row.
+ */
+export function isParseRateHealthy(fetched: number, parsed: number, floor: number = PARSE_RATE_FLOOR): boolean {
+  if (fetched <= 0) return true;
+  return parsed / fetched >= floor;
+}
+
+const MONTH_INDEX: Record<string, number> = {
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11,
+};
+
+// A source timestamp landing more than this far in the future means we guessed
+// the wrong (current) year across the Dec→Jan rollover; subtract a year.
+const FUTURE_SKEW_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Parse GMP percentage (already numeric in API)
@@ -92,31 +130,35 @@ function parseGMPPercentage(percentStr: string): number {
 }
 
 /**
- * Parse GMP update timestamp from HTML
+ * Parse a GMP update timestamp from HTML (G6).
  * Example: "<small style='...'><b>18-Oct 7:33</b></small>" → Date
+ *
+ * The source omits the year. We infer it deterministically instead of assuming
+ * the current year: a date that would land in the future (e.g. "31-Dec" parsed
+ * on "1-Jan") is rolled back to the previous year, fixing the Dec→Jan boundary.
+ * `now` is injectable for testing.
  */
-function parseGMPTimestamp(timestampHTML: string): Date {
-  if (!timestampHTML) return new Date();
+export function parseGMPTimestamp(timestampHTML: string, now: Date = new Date()): Date {
+  if (!timestampHTML) return now;
 
-  // Extract text from HTML tags
   const text = timestampHTML.replace(/<\/?[^>]+(>|$)/g, '').trim();
+  if (!text) return now;
 
-  if (!text) return new Date();
+  // e.g. "18-Oct 7:33" / "31-Dec 23:30"
+  const m = text.match(/^(\d{1,2})-([A-Za-z]{3,})\s+(\d{1,2}):(\d{2})/);
+  if (!m) return now;
 
-  try {
-    // Parse "18-Oct 7:33" format
-    // Assume current year if not specified
-    const dateStr = `${text} ${CURRENT_YEAR}`;
-    const date = new Date(dateStr);
+  const day = parseInt(m[1], 10);
+  const month = MONTH_INDEX[m[2].slice(0, 3).toLowerCase()];
+  if (month === undefined) return now;
+  const hour = parseInt(m[3], 10);
+  const minute = parseInt(m[4], 10);
 
-    if (isNaN(date.getTime())) {
-      return new Date(); // Fallback to current time
-    }
-
-    return date;
-  } catch {
-    return new Date();
+  let candidate = new Date(now.getFullYear(), month, day, hour, minute, 0, 0);
+  if (candidate.getTime() - now.getTime() > FUTURE_SKEW_MS) {
+    candidate = new Date(now.getFullYear() - 1, month, day, hour, minute, 0, 0);
   }
+  return candidate;
 }
 
 /**
@@ -220,116 +262,113 @@ export async function scrapeInvestorgainGMPs(): Promise<InvestorgainGMPScraperRe
   try {
     logger.info({ url: INVESTORGAIN_API_BASE }, 'Starting Investorgain GMP scraper (API version)');
 
-    let page = 1;
-    const perPage = 10; // API only accepts 10, returns all records regardless (ignores pagination)
-    let hasMorePages = true;
+    const perPage = 10; // API ignores pagination and returns all rows for the category.
 
-    // Note: API does NOT support pagination - it returns all records regardless of page parameter
-    // We only need to fetch once
-    const apiData = await retryWithExponentialBackoff(
-      () => fetchInvestorgainAPI(1, perPage, 'ipo'),
-      3,
-      1000
-    );
+    // G3: fetch BOTH mainboard ('ipo') AND SME so symbol-less SME IPOs are covered.
+    // The API does not support pagination, so one call per category suffices.
+    const categories = ['ipo', 'sme'] as const;
+    const allRecords: InvestorgainAPIRecord[] = [];
 
-    logger.info(
-      {
-        hasData: !!apiData,
-        hasReportTableData: !!apiData.reportTableData,
-        isArray: Array.isArray(apiData.reportTableData),
-        length: apiData.reportTableData?.length,
-        msg: apiData.msg,
-        error: (apiData as any).error,
-      },
-      'API response structure'
-    );
-
-    // Check for API error
-    if ((apiData as any).error) {
-      const errorMsg = `Investorgain API error: ${(apiData as any).error}`;
-      logger.error({ error: (apiData as any).error }, errorMsg);
-      result.errors.push(errorMsg);
-    } else if (!apiData.reportTableData || apiData.reportTableData.length === 0) {
-      logger.info('No IPO data returned from API');
-    } else {
-      logger.info(
-        { recordCount: apiData.reportTableData.length },
-        'Received GMP data from Investorgain API'
+    for (const category of categories) {
+      const apiData = await retryWithExponentialBackoff(
+        () => fetchInvestorgainAPI(1, perPage, category),
+        3,
+        1000
       );
 
-      // Parse each GMP record
-      for (const record of apiData.reportTableData) {
-        try {
-          // Parse GMP value
-          const gmp = parseGMP(record['GMP']);
+      if ((apiData as any).error) {
+        const errorMsg = `Investorgain API error (${category}): ${(apiData as any).error}`;
+        logger.error({ category, error: (apiData as any).error }, errorMsg);
+        result.errors.push(errorMsg);
+        continue;
+      }
+      if (!apiData.reportTableData || apiData.reportTableData.length === 0) {
+        logger.info({ category }, 'No GMP data returned from API for category');
+        continue;
+      }
+      logger.info(
+        { category, recordCount: apiData.reportTableData.length },
+        'Received GMP data from Investorgain API'
+      );
+      allRecords.push(...apiData.reportTableData);
+    }
 
-          // Skip if no active GMP
-          if (gmp === null) {
-            logger.debug(
-              { companyName: record['~ipo_name'], gmpHTML: record['GMP'] },
-              'Skipping IPO with no active GMP'
-            );
-            continue;
-          }
+    // Dedupe across categories by InvestorGain id (mainboard/SME shouldn't overlap,
+    // but guard against it so a row is never counted/parsed twice).
+    const seenIds = new Set<number>();
+    const fetchedRecords = allRecords.filter((r) => {
+      const id = r['~id'];
+      if (seenIds.has(id)) return false;
+      seenIds.add(id);
+      return true;
+    });
 
-          // Parse other fields
-          const gmpPercentage = parseGMPPercentage(record['~gmp_percent_calc']);
-          const gmpUpdatedAt = parseGMPTimestamp(record['Updated-On']);
-          const price = parsePrice(record['Price']);
+    let parsedWithGMP = 0; // rows that yielded a usable GMP value (for the parse-rate guard)
 
-          // Parse dates (prefer sortable ISO format)
-          const openDate = record['~Srt_Open'];
-          const closeDate = record['~Srt_Close'];
-          const listingDate = record['~Str_Listing'];
-
-          // Skip if missing essential dates
-          if (!openDate || !closeDate) {
-            logger.debug(
-              { companyName: record['~ipo_name'], openDate, closeDate },
-              'Skipping GMP with missing dates'
-            );
-            continue;
-          }
-
-          // Extract slug
-          const investorgainSlug = extractSlug(record['~urlrewrite_folder_name']);
-
-          const gmpData: InvestorgainGMP = {
-            companyName: sanitizeText(record['~ipo_name']),
-            gmp,
-            gmpPercentage,
-            gmpUpdatedAt,
-            openDate,
-            closeDate,
-            listingDate: listingDate || undefined,
-            price,
-            investorgainId: record['~id'],
-            investorgainSlug,
-          };
-
-          result.gmps.push(gmpData);
-
+    for (const record of fetchedRecords) {
+      try {
+        const gmp = parseGMP(record['GMP']);
+        if (gmp === null) {
           logger.debug(
-            {
-              companyName: gmpData.companyName,
-              gmp: gmpData.gmp,
-              gmpPercentage: gmpData.gmpPercentage,
-              openDate: gmpData.openDate,
-              investorgainId: gmpData.investorgainId
-            },
-            'Successfully parsed Investorgain GMP'
+            { companyName: record['~ipo_name'], gmpHTML: record['GMP'] },
+            'No active GMP for this row'
           );
-
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
-          logger.warn({ error: errorMsg }, 'Failed to parse Investorgain API record');
-          result.errors.push(`Record parsing error: ${errorMsg}`);
+          continue;
         }
+        parsedWithGMP++;
+
+        const gmpPercentage = parseGMPPercentage(record['~gmp_percent_calc']);
+        const gmpUpdatedAt = parseGMPTimestamp(record['Updated-On']);
+        const price = parsePrice(record['Price']);
+
+        const openDate = record['~Srt_Open'];
+        const closeDate = record['~Srt_Close'];
+        const listingDate = record['~Str_Listing'];
+
+        if (!openDate || !closeDate) {
+          logger.debug(
+            { companyName: record['~ipo_name'], openDate, closeDate },
+            'Skipping GMP with missing dates'
+          );
+          continue;
+        }
+
+        const investorgainSlug = extractSlug(record['~urlrewrite_folder_name']);
+
+        result.gmps.push({
+          companyName: sanitizeText(record['~ipo_name']),
+          gmp,
+          gmpPercentage,
+          gmpUpdatedAt,
+          openDate,
+          closeDate,
+          listingDate: listingDate || undefined,
+          price,
+          investorgainId: record['~id'],
+          investorgainSlug,
+        });
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        logger.warn({ error: errorMsg }, 'Failed to parse Investorgain API record');
+        result.errors.push(`Record parsing error: ${errorMsg}`);
       }
     }
 
+    // G4: parse-rate guard — a collapse means the markup drifted. Fail loudly so
+    // the run reports failure instead of silently skipping every row.
+    if (!isParseRateHealthy(fetchedRecords.length, parsedWithGMP)) {
+      const parseRateMsg =
+        `Investorgain GMP parse rate too low: ${parsedWithGMP}/${fetchedRecords.length} rows ` +
+        `yielded a GMP (< ${Math.round(PARSE_RATE_FLOOR * 100)}%) — markup likely changed`;
+      logger.error(
+        { fetched: fetchedRecords.length, parsedWithGMP, floor: PARSE_RATE_FLOOR },
+        parseRateMsg
+      );
+      result.errors.push(parseRateMsg);
+    }
+
     logger.info(
-      { gmpsScraped: result.gmps.length, errors: result.errors.length },
+      { gmpsScraped: result.gmps.length, fetched: fetchedRecords.length, parsedWithGMP, errors: result.errors.length },
       'Investorgain GMP scraper completed'
     );
 

@@ -114,10 +114,31 @@ export class GMPRepository extends BaseRepository implements IGMPRepository {
    */
   async create(data: GMPRecordInsert): Promise<GMPRecord> {
     try {
+      // onConflictDoNothing makes re-runs idempotent once the gated
+      // UNIQUE(ipo_id,timestamp,source) constraint (B4) is applied — without it
+      // there is no conflict target so this is a plain insert.
       const [gmpRecord] = await this.db
         .insert(gmpRecords)
         .values(data)
+        .onConflictDoNothing()
         .returning();
+
+      // Conflict skipped (duplicate) → no row returned; return the existing row
+      // so the caller's contract (always a GMPRecord) holds and no cache churn.
+      if (!gmpRecord) {
+        const [existing] = await this.db
+          .select()
+          .from(gmpRecords)
+          .where(
+            and(
+              eq(gmpRecords.ipoId, data.ipoId),
+              eq(gmpRecords.timestamp, data.timestamp),
+              eq(gmpRecords.source, data.source)
+            )
+          )
+          .limit(1);
+        return existing;
+      }
 
       // Invalidate cache for this IPO
       const invalidationKeys = getGMPInvalidationKeys(data.ipoId);

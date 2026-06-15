@@ -158,12 +158,11 @@ export async function GET(
       else trend = 'stable';
     }
 
-    // Calculate GMP percentage
+    // Calculate GMP percentage — guard NaN/Infinity from a zero/absent price (C5/G19)
     const issuePrice = ipo.priceRangeMax || ipo.priceRangeMin;
-    const gmpPercentage =
-      latestGMP && issuePrice
-        ? (latestGMP.gmp / issuePrice) * 100
-        : 0;
+    const rawGmpPct =
+      latestGMP && issuePrice ? (latestGMP.gmp / Number(issuePrice)) * 100 : null;
+    const gmpPercentage = rawGmpPct !== null && Number.isFinite(rawGmpPct) ? rawGmpPct : 0;
 
     // Prepare response
     const response: GMPResponse = {

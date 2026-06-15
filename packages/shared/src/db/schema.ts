@@ -347,10 +347,14 @@ export const gmpRecords = pgTable(
       .notNull()
       .references(() => ipos.id, { onDelete: 'cascade' }),
     timestamp: timestamp('timestamp').notNull(),
-    gmp: integer('gmp').notNull(), // grey market premium in INR
-    expectedListingPrice: integer('expected_listing_price'),
-    subjectRate: integer('subject_rate'), // subject/safalya rate
-    kostakRate: integer('kostak_rate'), // kostak rate
+    // B2/G14: numeric(10,2) so fractional GMP/rates aren't truncated. mode:'number'
+    // keeps the TS type as `number` (no consumer ripple) and reads correctly whether
+    // the prod column is still integer (pre-ALTER) or numeric (post-ALTER, gated).
+    gmp: numeric('gmp', { precision: 10, scale: 2, mode: 'number' }).notNull(), // grey market premium in INR
+    gmpPercentage: numeric('gmp_percentage', { precision: 10, scale: 2, mode: 'number' }), // GMP as % of issue price (B1/G11)
+    expectedListingPrice: numeric('expected_listing_price', { precision: 10, scale: 2, mode: 'number' }),
+    subjectRate: numeric('subject_rate', { precision: 10, scale: 2, mode: 'number' }), // subject/safalya rate
+    kostakRate: numeric('kostak_rate', { precision: 10, scale: 2, mode: 'number' }), // kostak rate
     saudaDetails: text('sauda_details'), // trading info
     source: varchar('source', { length: 100 }).notNull(),
   },
