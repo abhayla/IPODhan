@@ -13,6 +13,13 @@ if (typeof window === 'undefined' && !process.env.NEXT_RUNTIME) {
 import { drizzle, NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import * as sharedSchema from '../../../packages/shared/src/db/schema';
+import {
+  configureUtcTimestampParsing,
+  assertSessionTimezoneUtc,
+} from '../../../packages/shared/src/db/timezone-config';
+
+// Read every `timestamp without time zone` value as UTC regardless of process tz (#28).
+configureUtcTimestampParsing();
 
 // Lazy initialization: Pool and Drizzle DB are created only when first accessed
 // This allows environment variables to be loaded before database connection
@@ -43,6 +50,7 @@ function getPool(): Pool {
             database: process.env.DATABASE_NAME || 'ipodhan',
             user: process.env.DATABASE_USER || 'postgres',
             password: process.env.DATABASE_PASSWORD,
+            options: '-c timezone=UTC', // Force session UTC (#28)
             // ==================== CONNECTION POOL OPTIMIZATION ====================
             // Phase 5 Performance: Optimized for production workload
             // Pool size increased from 20 → 50 → 100 to support test concurrency:
@@ -65,6 +73,7 @@ function getPool(): Pool {
           }
         : {
             connectionString: process.env.DATABASE_URL,
+            options: '-c timezone=UTC', // Force session UTC (#28)
             max: 100,
             min: 5,
             idleTimeoutMillis: 30000,
@@ -147,6 +156,7 @@ export async function closePool(): Promise<void> {
 export async function testConnection(): Promise<boolean> {
   try {
     const currentPool = getPool();
+    await assertSessionTimezoneUtc(currentPool);
     const client = await currentPool.connect();
     const result = await client.query('SELECT NOW() as current_time');
     client.release();
