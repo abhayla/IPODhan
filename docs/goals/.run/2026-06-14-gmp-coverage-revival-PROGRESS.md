@@ -49,7 +49,10 @@
 | C4 honest bands | **DONE** | (this commit) | relabeled the fabricated ±10% "confidence bands" → "illustrative ±10% range (not a forecast)" across GMPHistoryChart index/utils/types (contract-sanctioned relabel; no statistical veneer on a hardcoded ×1.1/×0.9) |
 | C5 plausibility guard | **DONE** | (this commit) | isFinite guard on gmp/issuePrice*100 in page.tsx + gmp/latest/route.ts (NaN/Infinity → null/0) |
 | C6 docs source correction | **DONE** | e1343a20 | Chittorgarh→InvestorGain in SCRAPING_STRATEGY + screen-db-mapping; fixed verification SQL recorded_at→timestamp; only a cross-ref link to Chittorgarh-as-scraper kept |
-| C7 component + e2e tests | **PARTIAL** | (this commit) | component test (KeyMetricsCardsEnhanced) asserts staleness label from newest record + zero-as-value (C1/C2) — 3 green. Playwright e2e for the GMP tab PENDING (needs dev server + browser) |
+| C7 component + e2e tests | **DONE** | (this commit) | component test (3) + Playwright e2e gmp-tab.spec (2) green; signal-based waits (networkidle + element), no fixed sleep. **G-UI verified live**: drove the app at /ipos/cmr-green-technologies-ltd — "as of 10 Jun 2026" renders (ARIA e204 + screenshot gmp-staleness-header.png), GMP ₹67/+34.90%, GMP History chart on the tab, **0 console errors** |
+
+### Stage C COMPLETE (C1–C7). G-UI gate passed (screenshot + ARIA + console + e2e).
+Note: had to restart a 12h-old stale dev server (PID 13088, started 06-14) that wasn't hot-reloading — fresh server served the new code (`gmp-as-of` confirmed in HTML).
 
 ## §GATE (needs Abhay)
 - [ ] Apply orphan-DROP migration to prod
