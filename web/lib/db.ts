@@ -35,12 +35,14 @@ export function getPool(): Pool {
             database: process.env.DATABASE_NAME,
             user: process.env.DATABASE_USER,
             password: process.env.DATABASE_PASSWORD,
+            options: '-c timezone=UTC', // Force session UTC (#28)
             max: 20,
             idleTimeoutMillis: 30000,
             connectionTimeoutMillis: 10000,
           }
         : {
             connectionString: process.env.DATABASE_URL,
+            options: '-c timezone=UTC', // Force session UTC (#28)
             max: 20,
             idleTimeoutMillis: 30000,
             connectionTimeoutMillis: 10000,
