@@ -110,8 +110,38 @@ export function deriveBSEStatus(
   return 'OPEN';
 }
 
-/** Map a BSE list row + its detail row into a ScrapedIPO. */
-export function mapBSEToScrapedIPO(list: BSEListRow, detail: BSEDetailRow): ScrapedIPO {
+/**
+ * Parse BSE's `Issue_Period` ("01 Jun 2026 to 03 Jun 2026") into open/close
+ * 'YYYY-MM-DD' strings. A trailing "|extension note" (rights issues carry one)
+ * is dropped first. This is the date source for the detail-only (historical)
+ * path, where there is no list row to supply Start_Dt/End_Dt.
+ */
+export function parseIssuePeriod(period: string): { open: string | null; close: string | null } {
+  const MONTHS: Record<string, string> = {
+    jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+  };
+  const toIso = (d: string): string | null => {
+    const m = d.trim().match(/^(\d{1,2})\s+([A-Za-z]{3})[A-Za-z]*\s+(\d{4})$/);
+    if (!m) return null;
+    const mon = MONTHS[m[2].toLowerCase()];
+    if (!mon) return null;
+    return `${m[3]}-${mon}-${m[1].padStart(2, '0')}`;
+  };
+  if (!period) return { open: null, close: null };
+  const cleaned = period.split('|')[0];
+  const parts = cleaned.split(/\s+to\s+/i);
+  if (parts.length !== 2) return { open: null, close: null };
+  return { open: toIso(parts[0]), close: toIso(parts[1]) };
+}
+
+/** Shared field extraction for both the list+detail and detail-only mappers. */
+function buildScrapedIPO(
+  detail: BSEDetailRow,
+  companyName: string,
+  openDate: string | null,
+  closeDate: string | null,
+): ScrapedIPO {
   const band = parsePriceBand(detail.Price_Band || '');
   const shares = parseInt(String(detail.Issue_Size_No_of_shares || '0').replace(/[,\s]/g, ''), 10);
   const lot = parseInt(String(detail.Market_Lot || '0').replace(/[,\s]/g, ''), 10);
@@ -119,11 +149,9 @@ export function mapBSEToScrapedIPO(list: BSEListRow, detail: BSEDetailRow): Scra
   const registrar = detail.Registrar?.trim() || null;
   const leads = parseLeadManagers(detail.Book_Running_Lead_Manager, detail.Co_Book_Running_Lead_Manager);
   const today = new Date().toISOString().split('T')[0];
-  const openDate = parseBSEDate(list.Start_Dt);
-  const closeDate = parseBSEDate(list.End_Dt);
 
   return {
-    companyName: (list.Scrip_name || detail.ScripName || '').trim(),
+    companyName,
     issueSize: computeBSEIssueSize(shares, band.max),
     priceRangeMin: band.min,
     priceRangeMax: band.max,
@@ -139,6 +167,32 @@ export function mapBSEToScrapedIPO(list: BSEListRow, detail: BSEDetailRow): Scra
     leadManagers: leads.length ? leads : null,
     symbol: detail.Symbol?.trim() || null,
   };
+}
+
+/** Map a BSE list row + its detail row into a ScrapedIPO (current-board path). */
+export function mapBSEToScrapedIPO(list: BSEListRow, detail: BSEDetailRow): ScrapedIPO {
+  return buildScrapedIPO(
+    detail,
+    (list.Scrip_name || detail.ScripName || '').trim(),
+    parseBSEDate(list.Start_Dt),
+    parseBSEDate(list.End_Dt),
+  );
+}
+
+/**
+ * Map a detail row alone (no list row) into a ScrapedIPO — the historical
+ * backfill path (enumerate IPO_NO → detail). Returns null for archive rows that
+ * are NOT book-built equity IPOs (empty `Price_Band` → NCD / rights / OFS) or
+ * whose `Issue_Period` can't be parsed, so the backfill never imports non-IPOs.
+ */
+export function mapBSEDetailToScrapedIPO(detail: BSEDetailRow): ScrapedIPO | null {
+  const band = parsePriceBand(detail.Price_Band || '');
+  if (band.max === undefined) return null; // no price band → not a book-built IPO
+  const { open, close } = parseIssuePeriod(detail.Issue_Period || '');
+  if (!open || !close) return null;
+  const companyName = (detail.ScripName || '').trim();
+  if (!companyName) return null;
+  return buildScrapedIPO(detail, companyName, open, close);
 }
 
 export interface BSEApiSummary {

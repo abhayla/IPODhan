@@ -5,7 +5,9 @@ import {
   parseLeadManagers,
   computeBSEIssueSize,
   deriveBSEStatus,
+  parseIssuePeriod,
   mapBSEToScrapedIPO,
+  mapBSEDetailToScrapedIPO,
   scrapeBSEViaAPI,
   summarizeBSEApiResult,
   type BSEListRow,
@@ -119,6 +121,62 @@ describe('mapBSEToScrapedIPO', () => {
   it('produces a row the real ScrapedIPO validator accepts (persister gate)', () => {
     const result = validateIPOData(mapBSEToScrapedIPO(LIST_ROW, DETAIL_ROW));
     expect(result.success).toBe(true);
+  });
+});
+
+describe('parseIssuePeriod — detail-only date source (historical IPOs have no list row)', () => {
+  it('parses "DD Mon YYYY to DD Mon YYYY"', () => {
+    expect(parseIssuePeriod('01 Jun 2026 to 03 Jun 2026')).toEqual({ open: '2026-06-01', close: '2026-06-03' });
+    expect(parseIssuePeriod('17 Sep 2025 to 19 Sep 2025')).toEqual({ open: '2025-09-17', close: '2025-09-19' });
+  });
+  it('ignores a trailing "|extension note"', () => {
+    expect(parseIssuePeriod('20 Mar 2026 to 06 Apr 2026|Rights Issue extended...')).toEqual({
+      open: '2026-03-20',
+      close: '2026-04-06',
+    });
+  });
+  it('returns nulls for unparseable input', () => {
+    expect(parseIssuePeriod('')).toEqual({ open: null, close: null });
+    expect(parseIssuePeriod('whenever')).toEqual({ open: null, close: null });
+  });
+});
+
+describe('mapBSEDetailToScrapedIPO — build a ScrapedIPO from detail alone (backfill)', () => {
+  const MERRITRONIX: BSEDetailRow = {
+    IPO_NO: '7740',
+    ScripCode: '0',
+    ScripName: 'Merritronix Limited',
+    Symbol: 'MERRITRONIX',
+    Issue_Period: '01 Jun 2026 to 03 Jun 2026',
+    Issue_Size_No_of_shares: '3364000',
+    Price_Band: '141.00-149.00',
+    Face_Value: '10.00',
+    Market_Lot: '1000',
+    Registrar: 'Bigshare Services Pvt Ltd',
+    Book_Running_Lead_Manager: 'GYR Capital Advisors Pvt Ltd',
+  };
+
+  it('maps a book-built historical IPO to a valid ScrapedIPO that passes the Zod gate', () => {
+    const ipo = mapBSEDetailToScrapedIPO(MERRITRONIX);
+    expect(ipo).not.toBeNull();
+    expect(ipo!.companyName).toBe('Merritronix Limited');
+    expect(ipo!.openDate).toBe('2026-06-01');
+    expect(ipo!.closeDate).toBe('2026-06-03');
+    expect(ipo!.priceRangeMin).toBe(141);
+    expect(ipo!.priceRangeMax).toBe(149);
+    expect(ipo!.lotSize).toBe(1000);
+    expect(ipo!.issueSize).toBe(501236000); // 3364000 × 149
+    expect(ipo!.listingExchange).toBe('BSE');
+    expect(validateIPOData(ipo!).success).toBe(true);
+  });
+
+  it('returns null for a non-book-built archive row (empty band — NCD/rights/OFS, not an IPO)', () => {
+    const ncd: BSEDetailRow = { ...MERRITRONIX, Price_Band: '', Market_Lot: '1', ScripName: 'Some NCD Ltd' };
+    expect(mapBSEDetailToScrapedIPO(ncd)).toBeNull();
+  });
+
+  it('returns null when the issue period cannot be parsed', () => {
+    expect(mapBSEDetailToScrapedIPO({ ...MERRITRONIX, Issue_Period: '' })).toBeNull();
   });
 });
 
