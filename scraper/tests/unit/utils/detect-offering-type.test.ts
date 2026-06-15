@@ -10,7 +10,32 @@ import {
   detectOfferingTypeFromBSEType,
   detectOfferingTypeFromBSEIRFlag,
   detectOfferingType,
+  resolveOfferingTypeKeepingClassification,
 } from '../../../src/utils/detect-offering-type';
+
+describe('resolveOfferingTypeKeepingClassification (anti-repollution guard)', () => {
+  it('keeps an existing corporate-action type over an incoming generic IPO', () => {
+    // The cron re-pollution case: existing TENDER, scraper says IPO → keep TENDER
+    expect(resolveOfferingTypeKeepingClassification('TENDER', 'IPO')).toBe('TENDER');
+    expect(resolveOfferingTypeKeepingClassification('BUYBACK', 'IPO')).toBe('BUYBACK');
+    expect(resolveOfferingTypeKeepingClassification('RIGHTS', 'IPO')).toBe('RIGHTS');
+    expect(resolveOfferingTypeKeepingClassification('NCD', 'IPO')).toBe('NCD');
+  });
+
+  it('lets a more-specific incoming type override an existing IPO', () => {
+    expect(resolveOfferingTypeKeepingClassification('IPO', 'RIGHTS')).toBe('RIGHTS');
+  });
+
+  it('does not block IPO→IPO or a genuine non-IPO→non-IPO change', () => {
+    expect(resolveOfferingTypeKeepingClassification('IPO', 'IPO')).toBe('IPO');
+    expect(resolveOfferingTypeKeepingClassification('TENDER', 'BUYBACK')).toBe('BUYBACK');
+  });
+
+  it('uses incoming when there is no existing classification', () => {
+    expect(resolveOfferingTypeKeepingClassification(null, 'IPO')).toBe('IPO');
+    expect(resolveOfferingTypeKeepingClassification(undefined, 'RIGHTS')).toBe('RIGHTS');
+  });
+});
 
 describe('detectOfferingTypeFromBSEIRFlag (authoritative BSE classification)', () => {
   it('classifies a genuine public issue as IPO', () => {
