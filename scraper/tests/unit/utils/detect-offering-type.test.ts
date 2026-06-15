@@ -199,21 +199,21 @@ describe('detectOfferingTypeFromBSEType', () => {
 describe('detectOfferingType (comprehensive)', () => {
   it('should prioritize symbol detection over BSE type', () => {
     // Symbol says TENDER, BSE says something else → should be TENDER
-    expect(detectOfferingType('3IINFOLTDR', 'IPO')).toBe('TENDER');
+    expect(detectOfferingType({ symbol: '3IINFOLTDR', bseType: 'IPO' })).toBe('TENDER');
   });
 
   it('should use BSE type when symbol has no special suffix', () => {
-    expect(detectOfferingType('ACME', 'RIGHTS ISSUE')).toBe('RIGHTS');
+    expect(detectOfferingType({ symbol: 'ACME', bseType: 'RIGHTS ISSUE' })).toBe('RIGHTS');
   });
 
   it('should return IPO when neither symbol nor BSE type are special', () => {
-    expect(detectOfferingType('ACME', 'IPO')).toBe('IPO');
-    expect(detectOfferingType('ACME', null)).toBe('IPO');
+    expect(detectOfferingType({ symbol: 'ACME', bseType: 'IPO' })).toBe('IPO');
+    expect(detectOfferingType({ symbol: 'ACME', bseType: null })).toBe('IPO');
   });
 
   it('should handle edge cases', () => {
-    expect(detectOfferingType('', '')).toBe('IPO');
-    expect(detectOfferingType(null as any, null)).toBe('IPO');
+    expect(detectOfferingType({ symbol: '', bseType: '' })).toBe('IPO');
+    expect(detectOfferingType({ symbol: null as any, bseType: null })).toBe('IPO');
   });
 });
 
@@ -224,11 +224,11 @@ describe('Real-world test cases', () => {
   });
 
   it('should correctly identify normal IPO', () => {
-    expect(detectOfferingType('3IINFOTECHLTD', null)).toBe('IPO');
+    expect(detectOfferingType({ symbol: '3IINFOTECHLTD', bseType: null })).toBe('IPO');
   });
 
   it('should handle BSE Rights Issue', () => {
-    expect(detectOfferingType('COMPANY', 'Rights Issue')).toBe('RIGHTS');
+    expect(detectOfferingType({ symbol: 'COMPANY', bseType: 'Rights Issue' })).toBe('RIGHTS');
   });
 
   it('should detect SME from NSE EMERGE', () => {
