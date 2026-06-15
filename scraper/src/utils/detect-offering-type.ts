@@ -213,6 +213,51 @@ export function detectOfferingType(params: {
 }
 
 /**
+ * Detect offering type from BSE's authoritative `IR_flag` (and `IR_FLAG_FULL`)
+ * returned by the BSE public-issues JSON API (`IPO_HomePageDetail/w`).
+ *
+ * This is the AUTHORITATIVE classifier — BSE explicitly tags whether a current
+ * "issue" is a genuine public issue (IPO) or a corporate action (takeover open
+ * offer, buyback, rights, debt). Other sources (Moneycontrol/Chittorgarh/fallback)
+ * blindly default to 'IPO', which is how takeovers/buybacks pollute IPO listings
+ * (e.g. SARDA PROTEINS, WIPRO, RESTAURANT BRANDS — all OTB, not IPOs). Use this to
+ * correct the classification so non-IPO corporate actions are excluded from IPO views.
+ *
+ * BSE IR_flag values observed: IPO (Book Building), OTB (Offer To Buy — Takeover or
+ * Buyback), DPI (Debt Public Issue), RI (Rights Issue), CMN (unknown/other).
+ *
+ * @returns the mapped offering type, or `null` when the flag is unknown (caller
+ *          MUST log and leave the row unchanged rather than guess).
+ */
+export function detectOfferingTypeFromBSEIRFlag(
+  irFlag: string | null | undefined,
+  irFlagFull?: string | null | undefined
+): string | null {
+  if (!irFlag) return null;
+
+  const flag = irFlag.toUpperCase().trim();
+  const full = (irFlagFull || '').toUpperCase();
+
+  switch (flag) {
+    case 'IPO':
+      return 'IPO'; // genuine public issue (Book Building / Fixed Price)
+    case 'OTB':
+      // Offer To Buy: a takeover open offer or a buyback tender — NOT an IPO.
+      return full.includes('BUYBACK') ? 'BUYBACK' : 'TENDER';
+    case 'DPI':
+      return 'NCD'; // Debt Public Issue
+    case 'RI':
+      return 'RIGHTS';
+    case 'FPO':
+      return 'FPO';
+    case 'OFS':
+      return 'OFS';
+    default:
+      return null; // unknown (e.g. CMN) — do not guess; caller logs + leaves as-is
+  }
+}
+
+/**
  * Valid offering types that match the database enum
  *
  * This list should match the offering_type_enum in packages/shared/src/db/schema.ts

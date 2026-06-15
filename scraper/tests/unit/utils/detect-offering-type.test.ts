@@ -8,8 +8,45 @@ import {
   detectOfferingTypeFromSymbol,
   detectSegmentFromExchange,
   detectOfferingTypeFromBSEType,
+  detectOfferingTypeFromBSEIRFlag,
   detectOfferingType,
 } from '../../../src/utils/detect-offering-type';
+
+describe('detectOfferingTypeFromBSEIRFlag (authoritative BSE classification)', () => {
+  it('classifies a genuine public issue as IPO', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('IPO', 'Book Building')).toBe('IPO');
+  });
+
+  it('classifies a takeover open offer (OTB/Takeover) as TENDER — not IPO', () => {
+    // Real prod pollution: SARDA PROTEINS, RESTAURANT BRANDS, OXFORD INDUSTRIES, etc.
+    expect(detectOfferingTypeFromBSEIRFlag('OTB', 'Takeover')).toBe('TENDER');
+  });
+
+  it('classifies an OTB buyback (e.g. WIPRO) as BUYBACK — not IPO', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('OTB', 'Buyback - Tender Offer')).toBe('BUYBACK');
+  });
+
+  it('classifies a Debt Public Issue (DPI) as NCD', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('DPI', 'Debt Issue')).toBe('NCD');
+  });
+
+  it('classifies a Rights Issue (RI) as RIGHTS', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('RI', 'RI')).toBe('RIGHTS');
+  });
+
+  it('returns null for an unknown flag (e.g. CMN) — never guesses IPO', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('CMN', 'CMN')).toBeNull();
+  });
+
+  it('returns null for empty/missing flag', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('', '')).toBeNull();
+    expect(detectOfferingTypeFromBSEIRFlag(null, null)).toBeNull();
+  });
+
+  it('is case- and whitespace-insensitive', () => {
+    expect(detectOfferingTypeFromBSEIRFlag(' otb ', 'takeover')).toBe('TENDER');
+  });
+});
 
 describe('detectOfferingTypeFromSymbol', () => {
   describe('TENDER offer detection', () => {
@@ -162,21 +199,21 @@ describe('detectOfferingTypeFromBSEType', () => {
 describe('detectOfferingType (comprehensive)', () => {
   it('should prioritize symbol detection over BSE type', () => {
     // Symbol says TENDER, BSE says something else → should be TENDER
-    expect(detectOfferingType('3IINFOLTDR', 'IPO')).toBe('TENDER');
+    expect(detectOfferingType({ symbol: '3IINFOLTDR', bseType: 'IPO' })).toBe('TENDER');
   });
 
   it('should use BSE type when symbol has no special suffix', () => {
-    expect(detectOfferingType('ACME', 'RIGHTS ISSUE')).toBe('RIGHTS');
+    expect(detectOfferingType({ symbol: 'ACME', bseType: 'RIGHTS ISSUE' })).toBe('RIGHTS');
   });
 
   it('should return IPO when neither symbol nor BSE type are special', () => {
-    expect(detectOfferingType('ACME', 'IPO')).toBe('IPO');
-    expect(detectOfferingType('ACME', null)).toBe('IPO');
+    expect(detectOfferingType({ symbol: 'ACME', bseType: 'IPO' })).toBe('IPO');
+    expect(detectOfferingType({ symbol: 'ACME', bseType: null })).toBe('IPO');
   });
 
   it('should handle edge cases', () => {
-    expect(detectOfferingType('', '')).toBe('IPO');
-    expect(detectOfferingType(null as any, null)).toBe('IPO');
+    expect(detectOfferingType({ symbol: '', bseType: '' })).toBe('IPO');
+    expect(detectOfferingType({ symbol: null as any, bseType: null })).toBe('IPO');
   });
 });
 
@@ -187,11 +224,11 @@ describe('Real-world test cases', () => {
   });
 
   it('should correctly identify normal IPO', () => {
-    expect(detectOfferingType('3IINFOTECHLTD', null)).toBe('IPO');
+    expect(detectOfferingType({ symbol: '3IINFOTECHLTD', bseType: null })).toBe('IPO');
   });
 
   it('should handle BSE Rights Issue', () => {
-    expect(detectOfferingType('COMPANY', 'Rights Issue')).toBe('RIGHTS');
+    expect(detectOfferingType({ symbol: 'COMPANY', bseType: 'Rights Issue' })).toBe('RIGHTS');
   });
 
   it('should detect SME from NSE EMERGE', () => {

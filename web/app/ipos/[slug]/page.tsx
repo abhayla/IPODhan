@@ -161,6 +161,15 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     notFound();
   }
 
+  // Corporate actions (takeover open offers, buybacks, delistings) are NOT IPOs — e.g.
+  // an OTB/Takeover open offer of an already-listed company. They are excluded from IPO
+  // listings via offering_type; 404 the direct detail URL too so such a corporate action
+  // is never rendered as an IPO with empty fields.
+  const NON_IPO_CORPORATE_ACTIONS = ['TENDER', 'BUYBACK', 'DELISTING'];
+  if (ipoWithRelations.offeringType && NON_IPO_CORPORATE_ACTIONS.includes(ipoWithRelations.offeringType)) {
+    notFound();
+  }
+
   // Fetch review summary (Story 11.16)
   const reviewSummary = await reviewRepository.getReviewSummary(ipoWithRelations.id);
 
