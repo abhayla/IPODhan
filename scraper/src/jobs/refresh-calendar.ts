@@ -32,6 +32,7 @@ export async function refreshCalendarView(): Promise<void> {
   // Use the same DATABASE_URL as the main application
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
+    options: '-c timezone=UTC', // Force session UTC so the NOW() scraper_logs write is UTC-naive (#28)
     max: 2, // Small pool for background jobs
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,

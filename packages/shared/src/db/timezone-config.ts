@@ -25,6 +25,9 @@ import type { Pool } from 'pg';
  */
 
 const TIMESTAMP_OID = types.builtins.TIMESTAMP; // 1114 — timestamp without time zone
+// NOTE: `timestamptz` (OID 1184) is intentionally NOT overridden — pg's default
+// parser already returns a correct absolute instant for it; overriding would
+// double-shift. Only the naive `timestamp` (1114) needs UTC normalization.
 
 let configured = false;
 

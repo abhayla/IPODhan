@@ -18,6 +18,7 @@ export function getPool(): Pool {
       database: process.env.DATABASE_NAME,
       user: process.env.DATABASE_USER,
       password: process.env.DATABASE_PASSWORD,
+      options: '-c timezone=UTC', // Force session UTC so now()/defaultNow() write UTC-naive (#28)
       max: 20, // Maximum number of clients in the pool
       idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
       connectionTimeoutMillis: 10000, // Timeout connection attempts after 10 seconds
