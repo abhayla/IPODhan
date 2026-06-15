@@ -24,6 +24,7 @@ import type {
 import logger from '../utils/logger.js';
 import type { ScrapedIPO } from '../utils/validators.js';
 import { generateSlug } from '../utils/validators.js';
+import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { resolveOfferingTypeKeepingClassification } from '../utils/detect-offering-type.js';
 import type { ScraperSource } from '../config/field-priority-matrix';
 import { DataConsolidationService } from './data-consolidation-service.js';
@@ -115,8 +116,20 @@ export class DataConsolidationOrchestrator {
     }
 
     try {
-      // Fetch existing IPO data
-      const existingIPO = await this.ipoRepository.findBySlug(slug);
+      // Fetch existing IPO — match by NORMALIZED COMPANY NAME first (Phase 11 / #16)
+      // so name variants ("X Ltd. CT" / "X Limited" / "X IPO") resolve to the same
+      // row, then fall back to slug. This MUST stay in lock-step with
+      // data-persister.upsertIPO (which already does this): the consolidation path
+      // is the prod default (ENABLE_DATA_CONSOLIDATION), so a slug-only check here
+      // creates a NEW row for every name variant (different slug) — the duplicate
+      // rows + ipos_symbol_key collisions. Matching by name updates the existing row.
+      const normalizedName = normalizeCompanyNameForMatching(scrapedIPO.companyName);
+      let existingIPO = normalizedName
+        ? await this.ipoRepository.findByNormalizedName(normalizedName)
+        : null;
+      if (!existingIPO) {
+        existingIPO = await this.ipoRepository.findBySlug(slug);
+      }
       const isNew = !existingIPO;
 
       if (FEATURE_FLAGS.DEBUG_DATA_FLOW) {
