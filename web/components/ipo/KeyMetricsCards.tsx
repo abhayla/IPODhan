@@ -9,6 +9,8 @@ interface KeyMetricsCardsProps {
   subscriptionTrend?: 'up' | 'down' | 'neutral';
   gmp: number | null;
   gmpPercent: number | null;
+  /** Timestamp of the GMP record being shown — drives the "as of <date>" staleness label (C1). */
+  gmpAsOf?: string | Date | null;
 }
 
 /**
@@ -23,7 +25,14 @@ export function KeyMetricsCards({
   subscriptionTrend = 'neutral',
   gmp,
   gmpPercent,
+  gmpAsOf,
 }: KeyMetricsCardsProps) {
+  const gmpAsOfLabel = (() => {
+    if (gmp === null || !gmpAsOf) return null;
+    const d = gmpAsOf instanceof Date ? gmpAsOf : new Date(gmpAsOf);
+    if (isNaN(d.getTime())) return null;
+    return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+  })();
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-IN', {
       style: 'currency',
@@ -125,6 +134,11 @@ export function KeyMetricsCards({
               ? `${gmpPercent > 0 ? '+' : ''}${gmpPercent.toFixed(2)}%`
               : 'Not available'}
           </p>
+          {gmpAsOfLabel && (
+            <p className="text-[10px] mt-1 text-muted-foreground" data-testid="gmp-as-of">
+              as of {gmpAsOfLabel}
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

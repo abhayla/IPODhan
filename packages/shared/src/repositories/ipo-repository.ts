@@ -32,6 +32,7 @@ import {
   getHistoricalIPOsKey,
 } from '../cache/cache-keys';
 import { EntityNotFoundError, DatabaseError } from '../errors/repository-errors';
+import { normalizedCompanyNameSql } from '../utils/company-name-normalizer';
 import type {
   IPO,
   IPOInsert,
@@ -306,45 +307,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     }
 
     try {
-      // Use SQL to normalize company_name at query time and match
-      // This allows finding IPOs regardless of name variation (Ltd vs Limited, with/without IPO suffix)
+      // Normalize company_name at query time via the SHARED normalizer so the
+      // SQL path stays in lock-step with the JS path (company-name-normalizer.ts).
       const [ipo] = await this.db
         .select()
         .from(ipos)
-        .where(
-          sql`LOWER(
-            TRIM(
-              REGEXP_REPLACE(
-                REGEXP_REPLACE(
-                  REGEXP_REPLACE(
-                    REGEXP_REPLACE(
-                      REGEXP_REPLACE(
-                        REGEXP_REPLACE(
-                          REGEXP_REPLACE(
-                            REGEXP_REPLACE(
-                              REGEXP_REPLACE(
-                                ${ipos.companyName},
-                                '(Ltd\\.?|Limited) [A-Za-z]{1,2}$', '\\1', 'i'
-                              ),
-                              ' (IPO|FPO)$', '', 'i'
-                            ),
-                            ' (Limited|Ltd\\.?)$', '', 'i'
-                          ),
-                          ' (Private Limited|Pvt\\.? Ltd\\.?)$', '', 'i'
-                        ),
-                        ' (Pvt\\.?|Private)$', '', 'i'
-                      ),
-                      ' (Inc\\.?|Incorporated)$', '', 'i'
-                    ),
-                    ' (Corp\\.?|Corporation)$', '', 'i'
-                  ),
-                  ' (LLC|LLP|PLC)$', '', 'i'
-                ),
-                '\\s+', ' ', 'g'
-              )
-            )
-          ) = ${normalizedName}`
-        )
+        .where(sql`${normalizedCompanyNameSql(sql`${ipos.companyName}`)} = ${normalizedName}`)
         .limit(1);
 
       return ipo || null;

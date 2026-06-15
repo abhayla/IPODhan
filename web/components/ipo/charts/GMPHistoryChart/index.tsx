@@ -98,7 +98,7 @@ export function GMPHistoryChart({
             <CardTitle>GMP History & Trend Analysis</CardTitle>
           </div>
           <CardDescription>
-            {daysToShow}-day Grey Market Premium trend with confidence bands
+            {daysToShow}-day Grey Market Premium trend with an illustrative ±10% range
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -141,7 +141,7 @@ export function GMPHistoryChart({
       ? [
           {
             dataKey: 'gmpUpper',
-            name: 'Upper Band (+10%)',
+            name: 'Illustrative +10% (not a forecast)',
             color: 'hsl(var(--chart-1))',
             fillOpacity: 0,
             strokeWidth: 0,
@@ -171,7 +171,7 @@ export function GMPHistoryChart({
       ? [
           {
             dataKey: 'gmpLower',
-            name: 'Lower Band (-10%)',
+            name: 'Illustrative −10% (not a forecast)',
             color: 'hsl(var(--chart-1))',
             fillOpacity: 0,
             strokeWidth: 0,
@@ -293,7 +293,7 @@ export function GMPHistoryChart({
                   onCheckedChange={setShowConfidenceBands}
                 />
                 <Label htmlFor="confidence-bands" className="text-sm">
-                  Confidence Bands (±10%)
+                  Illustrative ±10% range
                 </Label>
               </div>
 

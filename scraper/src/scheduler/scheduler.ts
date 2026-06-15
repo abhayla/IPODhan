@@ -11,6 +11,7 @@ import { runNSEScraper } from '../scrapers/nse-scraper-orchestrator.js';
 import { runBSEScraper } from '../scrapers/bse-scraper-orchestrator.js';
 import { runMoneycontrolScraper } from '../scrapers/moneycontrol-orchestrator.js';
 import { runChittorgarhScraper } from '../scrapers/chittorgarh-orchestrator.js';
+import { runInvestorgainGMPScraper } from '../scrapers/investorgain-gmp-orchestrator-v2.js';
 import { updateListingPerformance } from '../scrapers/listing-performance-updater.js';
 import { runFinancialDataJob } from '../jobs/financial-data-job.js';
 import { runPeerCompaniesJob } from '../jobs/peer-companies-job.js';
@@ -172,6 +173,20 @@ export class SchedulerService {
         () => runChittorgarhScraper(),
         LOCK_TTL.scraper,
         schedulerConfig.jobs.chittorgarh.timezone
+      );
+    }
+
+    // Register InvestorGain GMP job (every 6h) — the root-cause fix for frozen
+    // GMP coverage: the gmp_records writer was never scheduled. GATED OFF via
+    // ENABLE_GMP_SCHEDULED_JOB; registerJob's job-level Redis lock prevents the
+    // job racing itself. (#6/#8 — GMP coverage revival)
+    if (schedulerConfig.jobs.gmpInvestorgain.enabled) {
+      this.registerJob(
+        'gmpInvestorgain',
+        schedulerConfig.jobs.gmpInvestorgain.schedule!,
+        () => runInvestorgainGMPScraper(),
+        LOCK_TTL.gmpInvestorgain,
+        schedulerConfig.jobs.gmpInvestorgain.timezone
       );
     }
 

@@ -26,7 +26,8 @@ When multiple sources provide conflicting data, the consolidation service uses c
 | **NSE** | 90 | Primary exchange, real-time subscription | Hourly (market hours) |
 | **BSE** | 85 | Secondary exchange, SME IPOs | Hourly (market hours) |
 | **Moneycontrol** | 75 | Reliable third-party aggregator | Daily |
-| **Chittorgarh** | 70 | GMP data specialist | Daily |
+| **Chittorgarh** | 70 | Rights/NCD details; GMP fallback only | Daily |
+| **InvestorGain** | 68 | Live GMP specialist (mainboard + SME) | Every 6h |
 | **API Fallback** | 50 | External API (last resort) | On scraper failure |
 
 ### Scraper Assignment by Data Category
@@ -38,7 +39,7 @@ Different data types use different primary sources:
 | **Financial Data** (revenue, profit, ROE) | DRHP | NSE | BSE | Official documents most accurate |
 | **Issue Details** (price, lot size, dates) | NSE | DRHP | BSE | Exchange data more current |
 | **Subscription Data** (QIB, NII, Retail) | NSE/BSE | - | - | Real-time, time-based priority |
-| **GMP Data** | Chittorgarh | - | - | Specialized GMP tracker |
+| **GMP Data** | InvestorGain | Chittorgarh (fallback) | - | InvestorGain live GMP API (mainboard + SME); writes gmp_records |
 | **Company Info** (description, sector) | ADMIN | DRHP | NSE | Manual verification ensures accuracy |
 | **Documents** (DRHP PDF, RHP, allotment) | SEBI/NSE | BSE | - | Official sources only |
 
@@ -63,7 +64,7 @@ Different data types use different primary sources:
    │  └─> Updates issue details (price, dates, lot size)
    │  └─> Monitors DRHP links for download triggers
    │
-   └─ GMP Monitor (Chittorgarh - Daily)
+   └─ GMP Monitor (InvestorGain - every 6h)
       └─> Tracks grey market premium
       └─> Updates GMP history (time-series)
 
@@ -246,9 +247,9 @@ Different data types use different primary sources:
 
 ## 🎲 GMP Tracking (Grey Market Premium)
 
-**Source**: Chittorgarh (specialized GMP tracker)
+**Source**: InvestorGain (live GMP API, report 331 — mainboard + SME); writes `gmp_records`. Chittorgarh GMP was abandoned as unscrapeable and is fallback-only.
 
-**Update Frequency**: Daily at 8 AM
+**Update Frequency**: Every 6h via the scheduled `gmpInvestorgain` job (gated behind `ENABLE_GMP_SCHEDULED_JOB`)
 
 **Data Collected**:
 - `gmpPrice` - Grey market premium (absolute)

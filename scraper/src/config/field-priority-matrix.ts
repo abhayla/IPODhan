@@ -353,51 +353,54 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: 0, max: 1000 },
   },
 
-  // ==================== GMP DATA (Chittorgarh specializes) ====================
+  // ==================== GMP DATA (InvestorGain is the live-GMP specialist) ====================
+  // G8: InvestorGain GMP is the real live source; Chittorgarh GMP was abandoned
+  // as unscrapeable. timeBased:true means newest-wins regardless, but InvestorGain
+  // is ranked first so source-priority tie-breaks favour it over Chittorgarh.
 
   gmp_price: {
-    sources: ['ADMIN', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
+    sources: ['ADMIN', 'INVESTORGAIN_GMP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
     normalization: 'number',
     timeBased: true,
     ignoreDRHP: true,
     confidenceThreshold: 70,
-    description: 'Grey Market Premium - Chittorgarh is specialist',
+    description: 'Grey Market Premium - InvestorGain is specialist',
     validation: { min: -1000, max: 10000 },
   },
 
   gmp_percentage: {
-    sources: ['ADMIN', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
+    sources: ['ADMIN', 'INVESTORGAIN_GMP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
     normalization: 'percentage',
     timeBased: true,
     ignoreDRHP: true,
     confidenceThreshold: 70,
-    description: 'GMP percentage',
+    description: 'GMP percentage - InvestorGain is specialist',
     validation: { min: -100, max: 500 },
   },
 
   // CamelCase (TypeScript field names) - consolidation service uses these
   gmpPrice: {
-    sources: ['ADMIN', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
+    sources: ['ADMIN', 'INVESTORGAIN_GMP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
     normalization: 'number',
     timeBased: true,
     ignoreDRHP: true,
     confidenceThreshold: 70,
-    description: 'Grey Market Premium (camelCase) - Chittorgarh is specialist',
+    description: 'Grey Market Premium (camelCase) - InvestorGain is specialist',
     validation: { min: -1000, max: 10000 },
   },
 
   gmpPercentageHistorical: {
-    sources: ['ADMIN', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
+    sources: ['ADMIN', 'INVESTORGAIN_GMP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
     normalization: 'percentage',
     timeBased: true,
     ignoreDRHP: true,
     confidenceThreshold: 70,
-    description: 'GMP Percentage Historical (camelCase) - Chittorgarh is specialist',
+    description: 'GMP Percentage Historical (camelCase) - InvestorGain is specialist',
     validation: { min: -100, max: 500 },
   },
 
   expected_listing_price: {
-    sources: ['ADMIN', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
+    sources: ['ADMIN', 'INVESTORGAIN_GMP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE', 'BSE'],
     normalization: 'number',
     timeBased: true,
     ignoreDRHP: true,

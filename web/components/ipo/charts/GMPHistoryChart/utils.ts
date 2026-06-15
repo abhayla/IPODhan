@@ -73,8 +73,8 @@ export function transformGMPData(
       date: format(timestamp, 'dd MMM'),
       timestamp,
       gmp,
-      gmpUpper: gmp * 1.1, // +10% confidence band
-      gmpLower: gmp * 0.9, // -10% confidence band
+      gmpUpper: gmp * 1.1, // illustrative +10% range — NOT a statistical confidence band
+      gmpLower: gmp * 0.9, // illustrative -10% range — NOT a statistical confidence band
       movingAvg7,
       expectedListingPrice: record.expectedListingPrice,
       volatility,

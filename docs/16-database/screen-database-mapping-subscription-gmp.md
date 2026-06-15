@@ -37,7 +37,7 @@ This document maps **time-series subscription and GMP (Grey Market Premium) data
 **GMP Data:**
 - **Update Frequency:** Daily (typically updated once per day from grey market)
 - **Retention:** 7-day history for charting
-- **Primary Source:** Chittorgarh(4) - 80%+ reliability
+- **Primary Source:** InvestorGain - 80%+ reliability
 - **Cache TTL:** 15 minutes
 - **Screen Usage:** 6+ screens display GMP data
 
@@ -360,12 +360,12 @@ export const gmpRecords = pgTable('gmp_records', {
 
 | UI Field Label | DB Source | Type | Scrape Sources | Display Format | Notes |
 |----------------|-----------|------|----------------|----------------|-------|
-| **Latest GMP** | `ipos.gmpPrice` | INTEGER | Chittorgarh(4) | "₹250" | Current grey market premium |
+| **Latest GMP** | `ipos.gmpPrice` | INTEGER | InvestorGain | "₹250" | Current grey market premium |
 | **GMP Percentage** | `ipos.gmpPercentageHistorical` | NUMERIC(5,2) | Calculated | "25.67%" | GMP as % of issue price |
-| **Expected Listing Price** | `gmpRecords.expectedListingPrice` | INTEGER | Chittorgarh(4) | "₹1,225" | issue_price + gmp |
-| **GMP History (7-day)** | `gmpRecords.gmp` | INTEGER | Chittorgarh(4) | Line chart | Time-series visualization |
-| **Last Updated** | `ipos.gmpUpdatedAt` | TIMESTAMP | Chittorgarh(4) | "2 hours ago" | Relative timestamp |
-| **Data Source** | `gmpRecords.source` | VARCHAR(100) | Chittorgarh(4) | "Chittorgarh" | Data attribution |
+| **Expected Listing Price** | `gmpRecords.expectedListingPrice` | INTEGER | InvestorGain | "₹1,225" | issue_price + gmp |
+| **GMP History (7-day)** | `gmpRecords.gmp` | INTEGER | InvestorGain | Line chart | Time-series visualization |
+| **Last Updated** | `gmpRecords.timestamp` | TIMESTAMP | InvestorGain | "2 hours ago" | Source update time |
+| **Data Source** | `gmpRecords.source` | VARCHAR(100) | InvestorGain | "INVESTORGAIN_GMP" | Data attribution |
 
 **Component Location:** `web/components/ipo/GMPTab.tsx` (estimated)
 
@@ -462,7 +462,7 @@ export const gmpRecords = pgTable('gmp_records', {
 
 **Database Field:** `kostakRate`
 **Type:** INTEGER
-**Scrape Sources:** Chittorgarh(4)
+**Scrape Sources:** InvestorGain
 
 **Definition:** Kostak rate is the premium paid for **unallocated applications** in the grey market. If investor doesn't get allotment, they can sell their application at kostak rate.
 
@@ -484,7 +484,7 @@ export const gmpRecords = pgTable('gmp_records', {
 
 **Database Field:** `subjectRate`
 **Type:** INTEGER
-**Scrape Sources:** Chittorgarh(4)
+**Scrape Sources:** InvestorGain
 
 **Definition:** Subject rate is the premium paid for **allotted shares** before listing (subject to allotment). If investor gets allotment, they can sell at subject rate.
 
@@ -506,7 +506,7 @@ export const gmpRecords = pgTable('gmp_records', {
 
 **Database Field:** `saudaDetails`
 **Type:** TEXT
-**Scrape Sources:** Chittorgarh(4)
+**Scrape Sources:** InvestorGain
 
 **Definition:** Free-text trading information from grey market sources. May include trading volumes, buyer/seller sentiments, or market commentary.
 
@@ -552,7 +552,7 @@ NSE/BSE API → Scraper (every 10 min during IPO open)
 ### GMP Data Flow
 
 ```
-Chittorgarh Website → Scraper (daily)
+InvestorGain API (report 331) → Scraper (every 6h)
                      ↓
   Database: INSERT INTO gmp_records (timestamp, ipoId, gmp, expected_listing_price)
            +UPDATE ipos SET gmp_price = :gmp, gmp_updated_at = NOW()
@@ -593,7 +593,7 @@ Chittorgarh Website → Scraper (daily)
 ### GMP Data
 
 **Reliability:** 🟡 80%+
-- **Source:** Chittorgarh (unofficial grey market aggregator)
+- **Source:** InvestorGain (live GMP API, report 331; mainboard + SME)
 - **Validation:** No official verification possible (grey market is unregulated)
 - **Issue:** Occasional stale data (1-2 days old)
 - **Disclaimer:** Always shown with "Unofficial estimates" warning
@@ -711,7 +711,7 @@ Applications: 1,23,456 | Shares Bid: 12,34,567 | Offered: 45,678
    - **Effort:** 2 hours
 
 2. **Add Data Source Attribution** to GMP Tab
-   - Show "Source: Chittorgarh" with timestamp
+   - Show "Source: InvestorGain" with timestamp
    - Add reliability indicator (80-95%)
    - **Impact:** Transparency, builds trust
    - **Effort:** 1 hour
@@ -807,7 +807,7 @@ Applications: 1,23,456 | Shares Bid: 12,34,567 | Offered: 45,678
     "percentage": 25.67,
     "expectedListingPrice": 1225,
     "lastUpdated": "2025-10-30T08:00:00Z",
-    "source": "Chittorgarh",
+    "source": "INVESTORGAIN_GMP",
     "history": [
       {
         "date": "2025-10-30",
