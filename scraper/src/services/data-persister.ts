@@ -247,6 +247,16 @@ export async function upsertIPO(
         isin: scrapedIPO.isin || undefined
       } as any;
 
+      // A scraper that returns `undefined` segment (e.g. BSE-API, whose JSON board
+      // carries both SME and mainboard IPOs with no segment field) cannot determine
+      // the classification and MUST NOT overwrite it. Drop the key entirely so the
+      // consolidation/update path never touches segment (otherwise rows with no
+      // field_sources hit the "no existing value -> accept incoming" path and get
+      // mis-classified). A deliberate `null` (RIGHTS/NCDs) is kept.
+      if (scrapedIPO.segment === undefined) {
+        delete (ipoData as any).segment;
+      }
+
       if (existingIPO) {
         // ========== PHASE 4: PRODUCTION CONSOLIDATION (100% ROLLOUT) ==========
         // All IPO updates use intelligent data consolidation
