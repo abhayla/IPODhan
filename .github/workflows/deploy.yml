@@ -309,6 +309,13 @@ jobs:
                   NODE_ENV: 'production',
                   SCRAPER_INTERVAL_MODE: 'prod',
                   TZ: 'UTC',
+                  // GMP/subscription coverage flags — MUST be regenerated here or a
+                  // deploy silently turns them off (they live in the committed
+                  // ecosystem.config.js per 07470243, but this step overwrites it).
+                  // The */30 --source=all cron is what runs the GMP scraper in prod;
+                  // name-match is what lifts coverage past the few date-exact matches.
+                  ENABLE_GMP_NAME_MATCH: 'true',
+                  ENABLE_MONEYCONTROL_SUBSCRIPTION: 'true',
                   NODE_PATH: 'C:\\Apps\\IPODhan\\current\\node_modules'
                 },
                 error_file: 'C:\\Apps\\IPODhan\\logs\\scraper-error.log',

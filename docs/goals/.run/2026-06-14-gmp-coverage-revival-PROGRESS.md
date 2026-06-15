@@ -61,12 +61,16 @@ Note: had to restart a 12h-old stale dev server (PID 13088, started 06-14) that 
 - Pre-existing blockers documented (none GMP-related): 25 unrelated scraper-suite reds; `db:generate` blocked by `extraction_status` enum drift; `next build` internal-ESLint options error.
 - **TODO(ingestion):** IPO scrapers miss some SME IPOs (e.g. "Advit Jewels") → they can't get GMP. Separate from this run.
 
-## §GATE (needs Abhay)
-- [ ] Apply orphan-DROP migration to prod
-- [ ] Apply int→numeric ALTER to prod
-- [ ] Apply UNIQUE+dedup migration to prod
-- [ ] Enable `ENABLE_GMP_SCHEDULED_JOB` + deploy to activate 6h job
-- [ ] Merge draft PR to main
+## CORRECTION (2026-06-15) — how prod actually activates the GMP fix
+Discovered while executing Item 2: **prod does NOT run `src/scheduler/index.ts`** (the in-app scheduler where A1's `gmpInvestorgain` job lives). Prod runs the scraper via a PM2 `cron_restart '*/30 * * * *'` executing **`src/index.ts --source=all`** (deploy.yml ecosystem). So:
+- A1's `gmpInvestorgain` job + `ENABLE_GMP_SCHEDULED_JOB` are **moot for current prod** (forward-looking for when prod adopts scheduler.ts).
+- The GMP scraper **already runs every 30 min** via `--source=all` — there is **no separate external run to retire**.
+- **Activation = deploy the new code + keep `ENABLE_GMP_NAME_MATCH` on.** `07470243` set that flag in the committed `ecosystem.config.js`, but deploy.yml **regenerates ecosystem.config.js without it** → a deploy would silently disable name-match. **Fixed deploy.yml** to regenerate the scraper env WITH `ENABLE_GMP_NAME_MATCH` + `ENABLE_MONEYCONTROL_SUBSCRIPTION`.
+
+## §GATE / approvals
+- [x] **Item 2 (deploy) — APPROVED by Abhay.** Real action: merge → run deploy.yml → prod `--source=all` cron runs new GMP code with name-match → coverage lifts (no scheduler flag, no external-run retirement needed).
+- [x] **Item 3 (merge PR #18) — APPROVED by Abhay.**
+- [ ] **Item 1 (apply destructive migrations) — NOT approved.** `_gated/` B2 int→numeric · B3 drop orphans · B4 dedup+UNIQUE stay UNAPPLIED. (Consequence: the 30-min cron keeps inserting near-dup rows until B4's UNIQUE lands — status quo, no regression.)
 
 ## Deferrals
 _none yet_
