@@ -10,11 +10,11 @@ function mockRepo() {
 }
 
 describe('createGMPRecord — gmp_percentage guard (B1)', () => {
-  it('stores a finite source percentage as a 2-decimal string', async () => {
+  it('stores a finite source percentage as a 2-decimal number', async () => {
     const repo = mockRepo();
     await createGMPRecord(repo, 'ipo-1', 110, new Date(), 10.333);
     expect(repo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ gmpPercentage: '10.33', gmp: 110 }),
+      expect.objectContaining({ gmpPercentage: 10.33, gmp: 110 }),
     );
   });
 

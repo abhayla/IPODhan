@@ -504,11 +504,13 @@ export async function createGMPRecord(
     async () => {
       const pct =
         gmpPercentage != null && Number.isFinite(gmpPercentage)
-          ? gmpPercentage.toFixed(2)
+          ? Math.round(gmpPercentage * 100) / 100 // 2dp number (column is numeric, mode:'number')
           : null;
       const gmpData: GMPRecordInsert = {
         ipoId,
-        gmp: Math.round(gmp), // Round to integer as per schema (int→numeric is B2, gated/unapplied)
+        // Math.round stays until the gated B2 int→numeric ALTER lands on prod —
+        // the live column is still integer and rejects fractional values.
+        gmp: Math.round(gmp),
         gmpPercentage: pct,
         timestamp,
         source: 'INVESTORGAIN_GMP',
