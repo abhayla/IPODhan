@@ -8,6 +8,15 @@ const withBundleAnalyzer = bundleAnalyzer({
 });
 
 const nextConfig = {
+  // ESLint runs as its own gate (`npm run lint` in CI + deploy). `next build`'s
+  // bundled ESLint pass errors with "Invalid Options: useEslintrc, extensions"
+  // (a flat-config/version incompatibility) and was blocking production builds,
+  // so disable the redundant in-build lint — linting is NOT skipped, just moved
+  // out of `next build`.
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+
   // D3.js Code Splitting Strategy (Phase 2 - Data Intelligence Surface)
   // - Use next/dynamic for all D3.js visualization components
   // - D3.js automatically code-splits via dynamic imports (~200KB)
