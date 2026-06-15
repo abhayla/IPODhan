@@ -84,6 +84,15 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_GMP_SCHEDULED_JOB: process.env.ENABLE_GMP_SCHEDULED_JOB === 'true',
 
+  /**
+   * Source the BSE IPO list+detail from BSE's JSON API (IPO_HomePageDetail/w +
+   * GetMkt_ISSUE_BBS_IPO/w) instead of the broken Puppeteer/HTML scrapers (BSE
+   * migrated to a SPA). Fills issue_size/lot/registrar/price-band/lead-managers.
+   * GATED OFF by default; activation in prod is Abhay's call (deploy). (#enrich)
+   * Default: false
+   */
+  ENABLE_BSE_API: process.env.ENABLE_BSE_API === 'true',
+
   // ==================== ROLLOUT CONTROLS ====================
 
   /**

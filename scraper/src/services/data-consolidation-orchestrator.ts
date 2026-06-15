@@ -24,6 +24,7 @@ import type {
 import logger from '../utils/logger.js';
 import type { ScrapedIPO } from '../utils/validators.js';
 import { generateSlug } from '../utils/validators.js';
+import { resolveOfferingTypeKeepingClassification } from '../utils/detect-offering-type.js';
 import type { ScraperSource } from '../config/field-priority-matrix';
 import { DataConsolidationService } from './data-consolidation-service.js';
 import type { ConsolidationResult } from './data-consolidation-service.js';
@@ -156,6 +157,21 @@ export class DataConsolidationOrchestrator {
         consolidationResult,
         scrapedIPO
       );
+
+      // Protect an authoritative corporate-action classification from being downgraded to a
+      // generic 'IPO' by a scraper that defaults to it (the */30 cron otherwise re-pollutes
+      // the IPO listings every run). A specific classification MUST win over a generic IPO.
+      const keptType = resolveOfferingTypeKeepingClassification(
+        existingIPO?.offeringType,
+        consolidatedIPOData.offeringType as string
+      );
+      if (existingIPO && keptType !== consolidatedIPOData.offeringType) {
+        logger.info(
+          { slug, source, kept: keptType },
+          '[DataConsolidation] Preserved corporate-action classification — scraper IPO downgrade blocked'
+        );
+        consolidatedIPOData.offeringType = keptType as any;
+      }
 
       let ipoId: string;
 

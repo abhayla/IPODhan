@@ -276,3 +276,21 @@ const VALID_OFFERING_TYPES = [
 export function isValidOfferingType(offeringType: string): boolean {
   return VALID_OFFERING_TYPES.includes(offeringType as any);
 }
+
+/**
+ * Guard against a scraper downgrading a specific corporate-action classification to the
+ * generic 'IPO'. Moneycontrol/Chittorgarh/fallback default offering_type='IPO' blindly, so
+ * without this the cron re-pollutes IPO listings (re-marking takeovers/buybacks/rights/debt
+ * as IPOs). A specific existing classification MUST win over an incoming generic 'IPO'.
+ *
+ * @returns the offering type to persist.
+ */
+export function resolveOfferingTypeKeepingClassification(
+  existing: string | null | undefined,
+  incoming: string
+): string {
+  if (existing && existing !== 'IPO' && incoming === 'IPO') {
+    return existing;
+  }
+  return incoming;
+}
