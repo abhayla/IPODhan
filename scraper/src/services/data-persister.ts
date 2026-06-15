@@ -508,9 +508,9 @@ export async function createGMPRecord(
           : null;
       const gmpData: GMPRecordInsert = {
         ipoId,
-        // Math.round stays until the gated B2 int→numeric ALTER lands on prod —
-        // the live column is still integer and rejects fractional values.
-        gmp: Math.round(gmp),
+        // gmp_records.gmp is numeric(10,2) (B2 applied to prod) — store the value
+        // as-is; Postgres rounds to 2dp. No Math.round (it truncated fractional GMP).
+        gmp,
         gmpPercentage: pct,
         timestamp,
         source: 'INVESTORGAIN_GMP',

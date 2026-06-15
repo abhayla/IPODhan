@@ -33,9 +33,9 @@ describe('createGMPRecord — gmp_percentage guard (B1)', () => {
     );
   });
 
-  it('rounds gmp to an integer (schema is still integer until B2)', async () => {
+  it('stores fractional gmp as-is now the column is numeric (no Math.round)', async () => {
     const repo = mockRepo();
     await createGMPRecord(repo, 'ipo-1', 110.7, new Date(), 5);
-    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ gmp: 111 }));
+    expect(repo.create).toHaveBeenCalledWith(expect.objectContaining({ gmp: 110.7 }));
   });
 });
