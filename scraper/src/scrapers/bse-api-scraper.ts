@@ -86,12 +86,36 @@ export function parseBSEDate(s: string): string | null {
   return m ? m[1] : null;
 }
 
-/** Combine BRLM + co-managers; split on , ; / newline; trim; drop empties; dedup. */
+/**
+ * BSE entity fields pack the NAME plus address/email as one blob, separated by
+ * `^` then `|`s ("Mudra RTA Ventures Private Limited^B-117, ...||||ipo@x.com").
+ * Keep only the name segment (before `^`/`|`/newline) and trim.
+ */
+function cleanBSEEntityName(raw: string): string {
+  return raw.split(/[\^|]/)[0].split('\n')[0].trim();
+}
+
+/** Registrar NAME only (BSE packs name^address|email); capped to the column width. */
+export function parseBSERegistrar(raw?: string): string | null {
+  if (!raw) return null;
+  const name = cleanBSEEntityName(raw);
+  if (!name) return null;
+  return name.length > 100 ? name.slice(0, 100).trim() : name;
+}
+
+/**
+ * Combine BRLM + co-managers into clean names. Each field is `Name^address|email`
+ * (the address itself contains commas), so strip the `^address` blob FIRST, then
+ * split the remaining name on , ; / for the rare multi-manager field; trim; dedup.
+ */
 export function parseLeadManagers(brlm?: string, co?: string): string[] {
-  const raw = [brlm, co].filter(Boolean).join(',');
   const out: string[] = [];
-  for (const name of raw.split(/[,;/\n]+/).map((x) => x.trim()).filter(Boolean)) {
-    if (!out.includes(name)) out.push(name);
+  for (const field of [brlm, co]) {
+    if (!field) continue;
+    const cleaned = cleanBSEEntityName(field);
+    for (const name of cleaned.split(/[,;/]+/).map((x) => x.trim()).filter(Boolean)) {
+      if (!out.includes(name)) out.push(name);
+    }
   }
   return out;
 }
@@ -157,7 +181,7 @@ function buildScrapedIPO(
   const shares = parseInt(String(detail.Issue_Size_No_of_shares || '0').replace(/[,\s]/g, ''), 10);
   const lot = parseInt(String(detail.Market_Lot || '0').replace(/[,\s]/g, ''), 10);
   const face = Math.round(parseFloat(String(detail.Face_Value || '0')));
-  const registrar = detail.Registrar?.trim() || null;
+  const registrar = parseBSERegistrar(detail.Registrar);
   const leads = parseLeadManagers(detail.Book_Running_Lead_Manager, detail.Co_Book_Running_Lead_Manager);
   const today = new Date().toISOString().split('T')[0];
 
