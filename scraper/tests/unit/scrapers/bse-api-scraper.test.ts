@@ -108,7 +108,10 @@ describe('mapBSEToScrapedIPO', () => {
     expect(ipo.offeringType).toBe('IPO');
     expect(ipo.listingExchange).toBe('BSE');
     expect(ipo.status).toMatch(/UPCOMING|OPEN|CLOSED|LISTED/);
-    expect(ipo.segment).toBe('MAINBOARD');
+    // BSE's JSON API can't determine SME vs MAINBOARD, so the mapper MUST NOT
+    // assert one (the board carries both) — it leaves segment undefined so the
+    // persister never overwrites an existing classification.
+    expect(ipo.segment).toBeUndefined();
     expect(ipo.openDate).toBe('2026-06-11');
     expect(ipo.closeDate).toBe('2026-06-15');
     expect(ipo.priceRangeMin).toBe(120);

@@ -170,7 +170,12 @@ function buildScrapedIPO(
     closeDate: closeDate || today,
     listingExchange: 'BSE',
     status: deriveBSEStatus(openDate, closeDate, today),
-    segment: 'MAINBOARD',
+    // BSE's JSON API exposes no segment field (the old HTML scraper read a
+    // `platform` column that no longer exists). The IR_flag=IPO board carries
+    // both SME and mainboard IPOs, so asserting a segment here mislabels them
+    // (e.g. an SME IPO -> MAINBOARD). Leave segment undefined: a source that
+    // can't determine a field must not overwrite it (data-persister drops it).
+    segment: undefined,
     offeringType: 'IPO',
     lotSize: lot > 0 ? lot : undefined,
     faceValue: face > 0 ? face : undefined,
