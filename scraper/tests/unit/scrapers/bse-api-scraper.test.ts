@@ -1,0 +1,119 @@
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import {
+  parsePriceBand,
+  parseBSEDate,
+  parseLeadManagers,
+  computeBSEIssueSize,
+  mapBSEToScrapedIPO,
+  scrapeBSEViaAPI,
+  type BSEListRow,
+  type BSEDetailRow,
+} from '../../../src/scrapers/bse-api-scraper.js';
+
+/** Real-shaped fixtures from the live BSE JSON API (Susan Electricals, IPO_NO 7770). */
+const LIST_ROW: BSEListRow = {
+  Scrip_name: 'SUSAN ELECTRICALS INDIA LIMITED',
+  Start_Dt: '2026-06-11T00:00:00',
+  End_Dt: '2026-06-15T00:00:00',
+  Status: 'L',
+  IR_flag: 'IPO',
+  IR_FLAG_FULL: 'Book Building',
+  IPO_NO: 7770,
+  Scrip_cd: 4627,
+};
+const DETAIL_ROW: BSEDetailRow = {
+  IPO_NO: '7770',
+  ScripCode: '4627',
+  ScripName: 'SUSAN ELECTRICALS INDIA LIMITED',
+  Symbol: 'SUSAN',
+  Issue_Period: '11 Jun 2026 to 15 Jun 2026',
+  Issue_Size_No_of_shares: '4019000',
+  Price_Band: '120.00-127.00',
+  Face_Value: '10.00',
+  Market_Lot: '1000',
+  Minimum_Bid_Quantity: '1000',
+  Registrar: 'Bigshare Services Pvt Ltd',
+  Book_Running_Lead_Manager: 'Beeline Capital Advisors Pvt Ltd',
+  Co_Book_Running_Lead_Manager: '',
+};
+
+describe('parsePriceBand', () => {
+  it('parses "120.00-127.00" → {min:120, max:127}', () => {
+    expect(parsePriceBand('120.00-127.00')).toEqual({ min: 120, max: 127 });
+  });
+  it('returns empty object for blank / fixed-price dash', () => {
+    expect(parsePriceBand('')).toEqual({});
+    expect(parsePriceBand('-')).toEqual({});
+  });
+  it('handles a single (fixed) price', () => {
+    expect(parsePriceBand('95.00')).toEqual({ min: 95, max: 95 });
+  });
+});
+
+describe('parseBSEDate', () => {
+  it('takes the date part of an ISO-ish BSE date', () => {
+    expect(parseBSEDate('2026-06-11T00:00:00')).toBe('2026-06-11');
+  });
+  it('returns null for empty', () => {
+    expect(parseBSEDate('')).toBeNull();
+  });
+});
+
+describe('parseLeadManagers', () => {
+  it('combines BRLM + co-managers, splits, trims, dedups', () => {
+    expect(parseLeadManagers('A Capital, B Securities', 'A Capital')).toEqual(['A Capital', 'B Securities']);
+  });
+  it('returns [] when none', () => {
+    expect(parseLeadManagers('', '')).toEqual([]);
+  });
+});
+
+describe('computeBSEIssueSize', () => {
+  it('shares × top-band price (in rupees), guarded', () => {
+    expect(computeBSEIssueSize(4019000, 127)).toBe(510413000);
+  });
+  it('0 when shares or price missing/zero', () => {
+    expect(computeBSEIssueSize(0, 127)).toBe(0);
+    expect(computeBSEIssueSize(4019000, undefined)).toBe(0);
+  });
+});
+
+describe('mapBSEToScrapedIPO', () => {
+  it('maps the full Susan detail to a valid ScrapedIPO', () => {
+    const ipo = mapBSEToScrapedIPO(LIST_ROW, DETAIL_ROW);
+    expect(ipo.companyName).toBe('SUSAN ELECTRICALS INDIA LIMITED');
+    expect(ipo.offeringType).toBe('IPO');
+    expect(ipo.segment).toBe('MAINBOARD');
+    expect(ipo.openDate).toBe('2026-06-11');
+    expect(ipo.closeDate).toBe('2026-06-15');
+    expect(ipo.priceRangeMin).toBe(120);
+    expect(ipo.priceRangeMax).toBe(127);
+    expect(ipo.lotSize).toBe(1000);
+    expect(ipo.faceValue).toBe(10);
+    expect(ipo.symbol).toBe('SUSAN');
+    expect(ipo.registrar).toBe('Bigshare Services Pvt Ltd');
+    expect(ipo.leadManagers).toContain('Beeline Capital Advisors Pvt Ltd');
+    expect(ipo.issueSize).toBe(510413000); // 4019000 × 127
+  });
+});
+
+describe('scrapeBSEViaAPI — fetch list + detail, map only IR_flag=IPO', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('fetches the list then a detail per IPO and returns mapped ScrapedIPOs', async () => {
+    vi.spyOn(global, 'fetch').mockImplementation(async (input: any) => {
+      const url = String(input);
+      if (url.includes('IPO_HomePageDetail')) {
+        return { ok: true, status: 200, json: async () => [LIST_ROW, { ...LIST_ROW, IR_flag: 'TO', Scrip_name: 'A Takeover Ltd' }] } as any;
+      }
+      // detail endpoint
+      return { ok: true, status: 200, json: async () => [DETAIL_ROW] } as any;
+    });
+
+    const res = await scrapeBSEViaAPI();
+    expect(res.ipos.length).toBe(1); // the takeover (IR_flag!=IPO) is excluded
+    expect(res.ipos[0].companyName).toBe('SUSAN ELECTRICALS INDIA LIMITED');
+    expect(res.ipos[0].issueSize).toBeGreaterThan(0);
+    expect(res.ipos[0].lotSize).toBe(1000);
+  });
+});
