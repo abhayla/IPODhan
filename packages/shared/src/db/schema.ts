@@ -348,6 +348,7 @@ export const gmpRecords = pgTable(
       .references(() => ipos.id, { onDelete: 'cascade' }),
     timestamp: timestamp('timestamp').notNull(),
     gmp: integer('gmp').notNull(), // grey market premium in INR
+    gmpPercentage: numeric('gmp_percentage', { precision: 10, scale: 2 }), // GMP as % of issue price (B1/G11)
     expectedListingPrice: integer('expected_listing_price'),
     subjectRate: integer('subject_rate'), // subject/safalya rate
     kostakRate: integer('kostak_rate'), // kostak rate

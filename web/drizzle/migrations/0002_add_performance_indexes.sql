@@ -59,7 +59,7 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_ipo_id
 -- Subscriptions: Composite index for latest snapshot queries
 -- Improves: Getting latest subscription per IPO
 CREATE INDEX IF NOT EXISTS idx_subscriptions_ipo_recorded
-  ON subscriptions(ipo_id, recorded_at DESC);
+  ON subscriptions(ipo_id, timestamp DESC);
 
 -- GMP Records: Index on ipo_id for JOIN optimization
 -- Improves: GMP history queries and latest GMP retrieval
@@ -69,7 +69,7 @@ CREATE INDEX IF NOT EXISTS idx_gmp_records_ipo_id
 -- GMP Records: Composite index for latest GMP queries
 -- Improves: Getting latest GMP per IPO
 CREATE INDEX IF NOT EXISTS idx_gmp_records_ipo_recorded
-  ON gmp_records(ipo_id, recorded_at DESC);
+  ON gmp_records(ipo_id, timestamp DESC);
 
 -- Listing Performance: Index on ipo_id (one-to-one relationship)
 -- Improves: Joining listing performance data

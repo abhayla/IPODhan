@@ -374,7 +374,8 @@ export async function runInvestorgainGMPScraper(): Promise<InvestorgainGMPResult
           gmpRepository,
           ipoId,
           scrapedGMP.gmp,
-          scrapedGMP.gmpUpdatedAt
+          scrapedGMP.gmpUpdatedAt,
+          scrapedGMP.gmpPercentage
         );
 
         result.gmpsCreated++;

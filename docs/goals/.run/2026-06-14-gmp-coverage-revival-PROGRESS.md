@@ -32,11 +32,13 @@
 ## Stage B — schema consolidation (G10–G14)
 | Task | Status | SHA | Notes |
 |---|---|---|---|
-| B1 add gmp_percentage (additive, apply prod) | pending | | |
-| B2 int→numeric ALTER (authored, UNAPPLIED) | pending | | |
-| B3 drop orphans (authored, UNAPPLIED) | pending | | |
-| B4 UNIQUE+dedup (authored, UNAPPLIED) | pending | | |
-| B5 fix broken recorded_at index migration | pending | | |
+| B1 add gmp_percentage (additive, apply prod) | **DONE** | (this commit) | schema.ts numeric(10,2); **APPLIED to prod** (ADD COLUMN IF NOT EXISTS) + read-back ✅; createGMPRecord stores source % with isFinite guard (4 tests); matrix entry already had INVESTORGAIN_GMP |
+| B2 int→numeric ALTER (authored, UNAPPLIED) | **PARTIAL** | (this commit) | migration authored in `_gated/B2_gmp_int_to_numeric.sql` (UNAPPLIED). schema.ts int→numeric type change + Math.round removal **DEFERRED to co-land with Stage C** — numeric returns string in drizzle, so the web rendering must change in lock-step to keep the build green. Recorded deviation. |
+| B3 drop orphans (authored, UNAPPLIED) | **DONE** | (this commit) | `_gated/B3_gmp_drop_orphans.sql` (DROP gmp_history, gmp_tracking, matview gmp_current) — UNAPPLIED |
+| B4 UNIQUE+dedup (authored, UNAPPLIED) | **DONE** | (this commit) | `_gated/B4_gmp_unique_dedup.sql` (dedup + UNIQUE(ipo_id,timestamp,source)) UNAPPLIED; gmp-repository.create now onConflictDoNothing + returns existing row on skip (forward-ready) |
+| B5 fix broken recorded_at index migration | **DONE** | (this commit) | `0002_add_performance_indexes.sql`: recorded_at→timestamp on both subscriptions + gmp_records indexes (column never existed) |
+
+**B1 deviation (recorded):** store the source's own `gmpPercentage` (InvestorGain `~gmp_percent_calc`) rather than recomputing `gmp/issue_price*100` — it's supplied directly (no extra IPO read, never diverges from the reported gmp), guarded by isFinite. **db:generate is BLOCKED** by pre-existing `extraction_status` enum drift (interactive prompt; unrelated to GMP) → migrations hand-authored; gated ones isolated in `_gated/` so `drizzle-kit migrate` won't auto-apply them. The additive gmp_percentage was applied to prod by direct ALTER (idempotent) + read-back, not via migrate.
 
 ## Stage C — honest rendering + docs + tests (G15–G23)
 | Task | Status | SHA | Notes |

@@ -483,13 +483,18 @@ export async function createSubscriptionSnapshot(
  * @param ipoId - IPO ID to associate GMP record with
  * @param gmp - GMP value in rupees
  * @param timestamp - Optional timestamp (defaults to now)
+ * @param gmpPercentage - GMP as % of issue price (from the source); stored only
+ *   when finite, else null (B1/G11). We persist the source's own figure rather
+ *   than recomputing from issue_price — InvestorGain supplies it directly, so it
+ *   never diverges from the gmp it reported and needs no extra IPO read.
  * @returns GMP record ID on success
  */
 export async function createGMPRecord(
   gmpRepository: GMPRepository,
   ipoId: string,
   gmp: number,
-  timestamp: Date = new Date()
+  timestamp: Date = new Date(),
+  gmpPercentage?: number | null
 ): Promise<string> {
   const startTime = Date.now();
 
@@ -497,9 +502,14 @@ export async function createGMPRecord(
 
   const result = await retryWithBackoff(
     async () => {
+      const pct =
+        gmpPercentage != null && Number.isFinite(gmpPercentage)
+          ? gmpPercentage.toFixed(2)
+          : null;
       const gmpData: GMPRecordInsert = {
         ipoId,
-        gmp: Math.round(gmp), // Round to integer as per schema
+        gmp: Math.round(gmp), // Round to integer as per schema (int→numeric is B2, gated/unapplied)
+        gmpPercentage: pct,
         timestamp,
         source: 'INVESTORGAIN_GMP',
       };
