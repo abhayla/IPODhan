@@ -5,6 +5,7 @@ import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { generateSlug, sanitizeCompanyName } from '../utils/validators.js';
 import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { validateLotSize } from '../utils/lot-size-validator.js';
+import { resolveOfferingTypeKeepingClassification } from '../utils/detect-offering-type.js';
 import type { ScraperSource } from './types.js';
 import type { ScrapedFinancialData } from '../scrapers/financial-data-scraper.js';
 import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
@@ -282,6 +283,16 @@ export async function upsertIPO(
               updatedAt: new Date(),
             };
 
+            // Never let a scraper's generic 'IPO' downgrade an existing specific
+            // classification (takeover/buyback/rights/debt) — otherwise the */30 cron
+            // re-pollutes the IPO listings every run. (See reclassify-corporate-actions.ts.)
+            if ((finalData as any).offeringType) {
+              (finalData as any).offeringType = resolveOfferingTypeKeepingClassification(
+                (existingIPO as any).offeringType,
+                (finalData as any).offeringType
+              );
+            }
+
             // Update IPO with consolidated data
             await ipoRepository.update(existingIPO.id, finalData);
 
@@ -363,11 +374,21 @@ export async function upsertIPO(
 
         // Fallback: Simple update without merge logic
         // This is a safety net that should rarely/never execute
-        await ipoRepository.update(existingIPO.id, {
+        const fallbackData: any = {
           ...ipoData,
           lastScrapedAt: new Date(),
           updatedAt: new Date(),
-        });
+        };
+        // Same classification guard as the consolidation path (above) — only
+        // applied when an offering_type is present, so the safety-net update
+        // never writes undefined to the NOT NULL offering_type column.
+        if (fallbackData.offeringType) {
+          fallbackData.offeringType = resolveOfferingTypeKeepingClassification(
+            (existingIPO as any).offeringType,
+            fallbackData.offeringType
+          );
+        }
+        await ipoRepository.update(existingIPO.id, fallbackData);
 
         return existingIPO.id;
       } else {
