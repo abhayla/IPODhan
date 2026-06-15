@@ -44,11 +44,11 @@
 | Task | Status | SHA | Notes |
 |---|---|---|---|
 | C1 staleness label | pending | | |
-| C2 zero≠missing | pending | | |
-| C3 delete fake Math.random GMP | pending | | |
+| C2 zero≠missing | **DONE** | (this commit) | web ipo-repository:1576 `gmp ?? null` (was `\|\| null` collapsing a real 0); sibling-swept (rating-calculator `gmp\|\|0` are math defaults, not display bugs) |
+| C3 delete fake Math.random GMP | **DONE** | (this commit) | deleted the test-only fabrication harness: /api/live-updates route + /test/live-updates page + LiveGMPTicker/HotRightNow/MarketPulse/LiveSubscriptionTracker/ViewerCount + use-live-updates hook + websocket/client (only consumer was the test page). 0 real source type errors |
 | C4 honest bands | pending | | |
-| C5 plausibility guard | pending | | |
-| C6 docs source correction | **DONE** | (this commit) | Chittorgarh→InvestorGain in SCRAPING_STRATEGY + screen-db-mapping; fixed verification SQL recorded_at→timestamp; only a cross-ref link to Chittorgarh-as-scraper kept |
+| C5 plausibility guard | **DONE** | (this commit) | isFinite guard on gmp/issuePrice*100 in page.tsx + gmp/latest/route.ts (NaN/Infinity → null/0) |
+| C6 docs source correction | **DONE** | e1343a20 | Chittorgarh→InvestorGain in SCRAPING_STRATEGY + screen-db-mapping; fixed verification SQL recorded_at→timestamp; only a cross-ref link to Chittorgarh-as-scraper kept |
 | C7 component + e2e tests | pending | | |
 
 ## §GATE (needs Abhay)

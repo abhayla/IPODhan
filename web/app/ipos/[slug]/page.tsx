@@ -198,9 +198,13 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
   const subscriptionValue = latestSubscription?.totalSubscription ?? null;
   const gmpValue = latestGMP?.gmp ?? null;
-  const gmpPercent = latestGMP && ipo.priceRangeMax
-    ? (latestGMP.gmp / ipo.priceRangeMax) * 100
-    : null;
+  // Guard against NaN/Infinity from a zero/absent price (C5/G19) — an absurd %
+  // must render as "no data", never a garbage number.
+  const gmpPercent = (() => {
+    if (!latestGMP || !ipo.priceRangeMax) return null;
+    const pct = (latestGMP.gmp / Number(ipo.priceRangeMax)) * 100;
+    return Number.isFinite(pct) ? pct : null;
+  })();
 
   // Determine subscription trend (simplified - in real app, compare with previous day)
   const subscriptionTrend: 'up' | 'down' | 'neutral' =
