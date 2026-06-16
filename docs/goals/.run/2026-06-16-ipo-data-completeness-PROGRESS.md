@@ -56,6 +56,21 @@ Stage A (de-pollution + price-band correctness + machine gate) was the highest-l
 - **C3a bulk DRHP** — BSE detail page is now a JS SPA (static fetch = 12.5KB shell, 0 fields/0 doc-links → `bse-detail-scraper`/`scrapeBSEIPODetailWithDocuments` dead for live pages). Chittorgarh report-20 JSON is a "latest-N" widget (pagination non-functional; only perPage 5/10 honoured) → it yields ~91 recent PDFs (81 matched, the win above) but NOT the full archive. Full-archive discovery (correct paginated/search endpoint, or SEBI registry) is the deferred multi-session piece.
 - **B6 ipo_scores 0%** — input-starved: the rating-calculator needs financials/subscriptions/peers (all ~0%) AND there's no compute→`ipo_scores` persist wiring. DEFERRED until inputs exist.
 
+## MEASURED DoD VERDICT (machine gate, 2026-06-17) — `node scripts/audit-ipo-coverage.mjs --gate`
+**Goal satisfied ⟺ this gate exits 0.** Current: **exit 1, GATE FAIL (7 checks below threshold).**
+- **Stage A correctness invariants — ALL PASS:** pollution.surfaceLeak=0, name-quality.smells=0 (fixed this turn via the corrective `backfill-clean-company-names.ts --apply` over the 3 " CT"/" P" rows; slugs unchanged; read-back residual=0), duplicates.groups=0.
+- **Remaining 7 = coverage thresholds, NONE autonomously closable in-session:**
+  - listing_performance 0/91 (needs BSE-quote source build — B1, multi-session)
+  - subscriptions 3/105 (needs BSE live path + flag/deploy — §GATE)
+  - gmp_records 5/11 current (GMP contract's cron is deployed; upstream ingestion gap)
+  - core.registrar 59%, core.lot_size 71%, core.allotment_date 0.8%, core.symbol 79% LISTED
+    (these are scraper-populated; reaching threshold needs the writers ACTIVATED in prod = deploy/§GATE,
+    plus historical sources that are otherwise corp-action-pollution-unsafe)
+  - core.listing_date 100% LISTED — PASS.
+**Conclusion:** the gate cannot advance further without (a) §GATE prod deploy/flag-enable to run the
+writers, or (b) the multi-session source builds (B1 BSE-quote, C3a bulk DRHP, C3b extractor). The
+autonomous run has closed every non-gated, in-session-completable check.
+
 ## Skipped (already covered)
 - GMP coverage revival (C1) — CLOSED+DEPLOYED by its own contract (PRs #18/#20/#21, `*/30` cron); verify-only.
 
