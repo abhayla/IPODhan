@@ -43,6 +43,19 @@ Stage A is highest-leverage + fully autonomous + no §GATE → execute fully thi
 ## Stages B / C / D — HANDED OFF (not started this session)
 Stage A (de-pollution + price-band correctness + machine gate) was the highest-leverage, fully-autonomous, no-§GATE slice and is delivered+verified+committed. B/C/D remain — most need a backfill RUN and/or are §GATE (flag-enable/deploy). Concrete next steps in the DEFERRED file. Notable: **B1 listing_performance 0/91** (backfill `scraper/src/scripts/backfill-listing-performance.ts` exists — diagnose dark-job vs matcher vs never-run, then run via tunnel like A4); **C1 GMP** verify-only (its contract is CLOSED+DEPLOYED); **C2 BSE** flag OFF + current-board backfill never run.
 
+## SESSION 2 (2026-06-16 PM, off `main` post Stage-A+BSE merge) — C3a documents DELIVERED + root-cause corrections
+
+**Re-measured coverage (tunnel, 263 genuine IPOs):** core fields improved post-BSE-merge (lot_size 71%, registrar 59%, symbol 68%, price 94%, issue_size 100%); child tables still ~0% except gmp 7.2%, subscriptions 1.1%. Pollution invariant holds (surfaceLeak=0). Name smells back to 3 — the create-time `sanitizeCompanyName` fix is MERGED but **not deployed** to the prod scraper (§GATE), so re-scrapes reintroduce " CT"/" P"; A4 backfill is only a temporary patch until deploy.
+
+**DELIVERED + VERIFIED — C3a documents (the keystone, 4-section unblocker):**
+- NEW `scraper/src/scrapers/chittorgarh-document-scraper.ts` (parse/classify DRHP/RHP/Prospectus + report-20 fetch) + 9 unit tests (TDD red→green) + `scraper/scripts/backfill-chittorgarh-documents.ts` (dry-run default, idempotent, matches isin→symbol→normalized-name, persists via `DocumentRepository.upsertDocuments`).
+- Applied additively via tunnel: **documents 0% → 30.8% (81/263 genuine IPOs)**, real prospectus PDF URLs (company sites, bsesme.com, nseindia archives), 74 PROSPECTUS + 7 RHP, extractionStatus PENDING. G-PERSIST (audit + pg read-back) + G-INDEPENDENT (substance: correct company↔URL) PASS. Unblocks the DISCOVERY half for objectives/peers/anchor jobs (their `findByIPO` now returns rows); PDF EXTRACTION (C3b) remains deferred.
+
+**ROOT-CAUSE CORRECTIONS (evidence-backed; the prior ledger's assumptions were wrong):**
+- **B1 listing_performance 0%** — NOT "backfill never run". The existing backfill's NSE path is *structurally incapable*: NSE `/api/public-past-issues` (1364 records, 48/91 of our candidates match by symbol) returns **ZERO `listingPrice` for any record** — the field NSE never populates. Needs a real listing-PRICE source (BSE quote via scrip-code, which we don't store). Diagnostic committed: `scraper/scripts/diagnose-listing-performance.ts`. → DEFERRED (see DEFERRED file).
+- **C3a bulk DRHP** — BSE detail page is now a JS SPA (static fetch = 12.5KB shell, 0 fields/0 doc-links → `bse-detail-scraper`/`scrapeBSEIPODetailWithDocuments` dead for live pages). Chittorgarh report-20 JSON is a "latest-N" widget (pagination non-functional; only perPage 5/10 honoured) → it yields ~91 recent PDFs (81 matched, the win above) but NOT the full archive. Full-archive discovery (correct paginated/search endpoint, or SEBI registry) is the deferred multi-session piece.
+- **B6 ipo_scores 0%** — input-starved: the rating-calculator needs financials/subscriptions/peers (all ~0%) AND there's no compute→`ipo_scores` persist wiring. DEFERRED until inputs exist.
+
 ## Skipped (already covered)
 - GMP coverage revival (C1) — CLOSED+DEPLOYED by its own contract (PRs #18/#20/#21, `*/30` cron); verify-only.
 
