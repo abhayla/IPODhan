@@ -2,6 +2,7 @@
 
 **Branch:** `feat/ipo-data-completeness` (off `docs/ipo-data-completeness-goal` @ `53bf6477`). **Owner:** this session (IPODhan162), started 2026-06-16.
 **Contract:** `docs/goals/2026-06-16-ipo-data-completeness.md`. **Tunnel:** `localhost:15432` UP.
+**Draft PR:** https://github.com/abhayla/IPODhan/pull/34 (Stage A; NOT merged — §GATE).
 
 ## §0.2 PREFLIGHT (done 2026-06-16)
 
