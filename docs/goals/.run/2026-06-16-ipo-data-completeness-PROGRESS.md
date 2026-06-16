@@ -25,23 +25,28 @@
 ## EXECUTION STRATEGY (honest, context-aware)
 Stage A is highest-leverage + fully autonomous + no §GATE → execute fully this session with TDD + G-UI/G-PERSIST/G-INDEPENDENT. Stages B/C/D: run cheap high-value deltas (e.g. listing-performance backfill if writer works), DEFER multi-day pipelines (DRHP financials) with reason + issue. Keep this ledger current; never fake-complete.
 
-## Stage A — de-pollute + normalize (IN PROGRESS)
-| Task | Status | Notes |
-|---|---|---|
-| A0 branch + ledger | DONE | this file |
-| A1 shared `isRealIPO()`/`REAL_IPO_OFFERING_TYPES` predicate (TDD) | pending | shared util |
-| A2 apply predicate to findAll/findAllWithDetails/getIPOListings default + detail 404 | pending | list↔detail parity |
-| A3 verify DuplicateDetectionService blocks already-listed re-creation (root cause) | pending | scrape-time |
-| A4 name normalizer: re-normalize 3 existing rows + slug re-derive (corrective backfill) | pending | JS↔SQL agreement test already green |
-| A5 registrar canonicalization | pending | consolidation layer |
-| A6 price band single-value render (kpi-formatters `formatPriceBand`) | pending | ₹174–₹174 → ₹174 |
-| A7 extend audit script → `--gate` (exit 1 on threshold miss) + fix industry/logo/description bug | pending | machine DoD |
+## Stage A — de-pollute + normalize (CORE DONE — A5 deferred)
+| Task | Status | SHA | Notes |
+|---|---|---|---|
+| A0 branch + ledger | DONE | — | this file |
+| A1 shared `isRealIPO()`/`REAL_IPO_OFFERING_TYPES` predicate (TDD) | **DONE** | f1b03e2b | shared util + exports map + index; 4 unit tests (incl. every-enum-value completeness) |
+| A2 apply predicate: findAll + count + findAllWithDetails(calendar) + getIPOListings(ALL) default IPO-only; detail page + generateMetadata 404 non-IPO | **DONE** | f1b03e2b | list↔detail parity. **G-UI proven**: OFS `bank-of-maharashtra` → 404; real IPOs → 200 |
+| A3 verify DuplicateDetectionService blocks already-listed re-creation | **DONE (verify — no code)** | — | FINDING: the prod pipeline *intentionally* disables the dedup symbol-gate (`createProductionPipeline` `skipDuplicateDetection:true`, data-validation-pipeline.ts:281) because it false-positived on every already-known IPO → GitHub #3 zero-records bug. The real scrape-time pollution guard is **offering_type protection (PR #25/#27, merged)** + normalized-name upsert matching. Re-enabling the blunt symbol-gate would regress #3 → NOT done (correct). Display predicate (A2) = safety net. |
+| A4 name normalizer: strip trailing status-code on create (`sanitizeCompanyName`) + corrective backfill of 3 prod rows | **DONE** | 105b86bf | TDD (strip + don't-over-strip); backfill via tunnel, read-back residual=0, slugs unchanged. Gate name-quality 3→0 |
+| A5 registrar canonicalization | **DEFERRED** | — | Bigger than the contract example: ~28 variants → ~8 real registrars (KFin ×6 spellings, Bigshare ×4 incl. typo "Servies", several with embedded address/contact junk e.g. `"…^Subramanian Building…"`, `"Tel.: +91…"`). Needs a canonical-mapping dictionary + consolidation-layer wiring + careful backfill (mis-map risk). See DEFERRED file. |
+| A6 price band single-value render (`formatPriceBand` SSOT) | **DONE** | f630e759, 6c599d4d | TDD; wired **6** render sites (InfoSection, IPOCard, IPOCardEnhanced, IPODetailsTable, LotDetailsSection, SMEContentSections×2, CSVExporter). **G-UI caught an incomplete first sweep** (3 sites missed) → fixed all. Proven: susan `₹127` everywhere, aequs `₹118 - ₹124`, 0 console errors |
+| A7 extend audit → `--gate` (exit 1 on miss) + fix non-existent column bug | **DONE** | f1b03e2b | real-IPO populations; `company_description` fix; exit codes verified (1 on FAIL, 0 report) |
 
-## Skipped (already covered) — running list
-- GMP coverage revival (C1) — CLOSED+DEPLOYED by its own contract; verify-only.
+**Stage A gate state (G-INDEPENDENT, reproduced):** ALL 3 Stage A invariants **PASS** — `pollution.surfaceLeak==0`, `name-quality.smells==0`, `duplicates.groups==0`. Coverage thresholds correctly FAIL (Stage B/C pending — honest). Evidence screenshot: `docs/goals/.run/2026-06-16-stageA-priceband-collapsed-susan.png`.
 
-## §GATE (needs Abhay) — running list
-- (none yet)
+## Stages B / C / D — HANDED OFF (not started this session)
+Stage A (de-pollution + price-band correctness + machine gate) was the highest-leverage, fully-autonomous, no-§GATE slice and is delivered+verified+committed. B/C/D remain — most need a backfill RUN and/or are §GATE (flag-enable/deploy). Concrete next steps in the DEFERRED file. Notable: **B1 listing_performance 0/91** (backfill `scraper/src/scripts/backfill-listing-performance.ts` exists — diagnose dark-job vs matcher vs never-run, then run via tunnel like A4); **C1 GMP** verify-only (its contract is CLOSED+DEPLOYED); **C2 BSE** flag OFF + current-board backfill never run.
 
-## DEFERRED — running list
-- (tracked in `…-DEFERRED.md`)
+## Skipped (already covered)
+- GMP coverage revival (C1) — CLOSED+DEPLOYED by its own contract (PRs #18/#20/#21, `*/30` cron); verify-only.
+
+## §GATE (needs Abhay)
+- (none reached this session — Stage A used only code + a corrective tunnel backfill, both allowed.)
+
+## DEFERRED
+- A5 registrar canonicalization; Stages B/C/D backfills + activations — see `…-DEFERRED.md`.
