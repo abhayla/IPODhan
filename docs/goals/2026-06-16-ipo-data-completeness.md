@@ -87,7 +87,13 @@ activation / flag-enable are GATED** (no prod deploy without Abhay).
 | GMP (defer to GMP contract) | `scraper/src/scrapers/investorgain-gmp-orchestrator-v2.ts` etc. | `gmp_records`=6% — Stage C1 = complete + verify the GMP contract, do NOT re-author |
 | Financials/objectives/docs (DRHP) | `web/lib/services/drhp-extractor-service.ts`, `/api/admin/drhp/extract` | manual-upload-gated; auto-discovery of DRHP URL is the gap (BSE contract Stage C) — **best-effort then DEFER** |
 | Name normalizer (dedup keystone) | `packages/shared/src/utils/company-name-normalizer.ts` (JS) ↔ `ipo-repository.ts findByNormalizedName` (SQL) | MUST stay in agreement; strip trailing status-code tokens (`" CT"`, `" P"`, `" O"`, `" N"`, trailing `" IPO"`) |
-| Schema SSOT | `packages/shared/src/db/schema.ts` | edit ONLY here; `web/lib/db/schema.ts` is a STALE legacy copy — never touch |
+| **Duplicate / already-listed detection** | `scraper/src/services/duplicate-detection-service.ts` (`checkForDuplicates`), wired into `scraper/src/pipelines/data-validation-pipeline.ts` (on by default) | HIGH symbol/ISIN match = **company already listed** → a root cause of the corp-action / re-listing pollution; MUST block re-creation, not just filter the display (`ipo-duplicate-detection.md`) |
+| Rendering detection (SPA vs static) | `scraper/src/utils/scraper-utils.ts` — `detectRenderingType` / `scrapeWithAutoDetection` | diagnose the dark/SPA writers (the BSE-detail root cause) static-first; never default to Puppeteer (`scraper-rendering-detection.md`) |
+| Scraper health metrics | `scraper/src/services/scraper-metrics-tracker.ts` (+ `alerting-service.ts`) | every activated job/scraper MUST record a per-source outcome (`scraper-health-metrics.md`) |
+| Field protection (admin edits) | `@ipodhan/shared/admin/field-protection-checker` (`FieldProtectionService`); web wrapper `web/lib/admin/field-protection-checker.ts` | backfills MUST respect protected fields (`data-persister` already filters them) (`admin-field-protection.md`) |
+| Canonical slug | `@ipodhan/shared/utils/slug` `generateIPOSlug()` | ALL slug derivation here; never hand-roll — keeps the unique index + dedup coherent (`canonical-ipo-slug.md`) |
+| **Web display SSOT** | `web/lib/utils/kpi-formatters.ts` (₹/Cr/`x`/`%`, null→`N/A`), `web/lib/utils/date-formatter.ts` (IST, `DD MMM YYYY`, null→`TBA`) | ALL Stage A/D rendering of money/ratios/dates goes through these — never inline `toLocaleString`/`Intl`/manual `₹` (`web-display-formatting.md`) |
+| Schema SSOT + financial precision | `packages/shared/src/db/schema.ts` | edit ONLY here (`web/lib/db/schema.ts` is STALE legacy); any new/changed money column = `numeric(precision,scale)`, share counts = `bigint(mode:'number')` (`financial-column-precision.md`) |
 
 **Gotchas:** CWD trap (root proxies only dev/dev:scraper/lint/build/test:unit; web tests from `web/`, scraper
 tests from `scraper/` with the right tier config); compile `packages/shared` (`npx tsc`) before web/scraper
@@ -105,7 +111,9 @@ offering rows polluting lists; OPEN bucket 13/15 non-IPO.
 
 **Files:** `web/lib/repositories/ipo-repository.ts` (listings/findAll), `web/app/ipos/[slug]/page.tsx`,
 `packages/shared/src/db/schema.ts` (only if a shared predicate constant is added), `packages/shared/src/utils/company-name-normalizer.ts`,
-`scripts/audit-ipo-coverage.mjs` (extend to a gate). **Keep untouched:** the scraper write-path; the PR #23 BSE `IR_flag` classification.
+`scraper/src/services/duplicate-detection-service.ts` (scrape-time re-listing block), `web/lib/utils/kpi-formatters.ts`
++ `web/lib/utils/date-formatter.ts` (render SSOT — extend, don't inline), `scripts/audit-ipo-coverage.mjs` (extend to a gate).
+**Keep untouched:** the scraper write-path internals; the PR #23 BSE `IR_flag` classification.
 
 ### Pre-made design decisions (do NOT deviate)
 1. **TDD red-first** for every task (web unit tests `cd web && npx vitest`; shared util tests in shared).
@@ -116,16 +124,25 @@ offering rows polluting lists; OPEN bucket 13/15 non-IPO.
    default filter excludes non-IPO offering types unless an explicit `offeringType` is passed; (b) the detail
    page 404s ALL non-IPO types (replace the partial `NON_IPO_CORPORATE_ACTIONS` list with the shared predicate);
    (c) the IPO calendar/SME hub/active lists inherit the same filter. **List ↔ detail parity is the invariant.**
+   (d) **Scrape-time ROOT CAUSE:** already-listed companies (e.g. WIPRO) must be caught by
+   `DuplicateDetectionService.checkForDuplicates()` HIGH symbol/ISIN match and NOT created as new IPO rows —
+   verify/repair that detection (via the validation pipeline, `skipDuplicateDetection:false`) so pollution stops
+   at ingestion, not only at display (`ipo-duplicate-detection.md`). The display predicate is the safety net; the
+   dedup service is the root-cause fix.
 3. **Do NOT delete corporate-action rows** — they stay in `ipos` (tracked by `offering_type`), just excluded
    from IPO surfaces. (Deletion is a separate product decision → `TODO(5W):` if it ever arises.)
 4. **Normalize core fields (root cause, general):**
    - Extend the **name normalizer** to strip trailing status-code tokens so `"…Ltd. CT"`, `"…Ltd. P"`,
-     `"…Ltd. O"`, trailing `" IPO"` collapse; keep JS↔SQL agreement (add the ≥30-name agreement test).
+     `"…Ltd. O"`, trailing `" IPO"` collapse; keep JS↔SQL agreement (add the ≥30-name agreement test). After a name
+     change, the row's `slug` MUST be re-derived via `generateIPOSlug()` (never hand-rolled) so the unique index +
+     dedup stay coherent (`canonical-ipo-slug.md`).
    - **Registrar normalization:** fix missing-space/casing (`"KFin TechnologiesLimited"` → canonical
      `"KFin Technologies Limited"`) at the consolidation/normalization layer, not per-row.
    - **Collapsed price band:** where only one bound exists or `min==max`, the band must RENDER as a single value
-     (`₹174`), not `₹174–₹174`; fix in the price-band display component (web), and stop mirroring `price_range_min:=max`
-     in the writer where the source gives only one bound (store the real bound, render single).
+     (`₹174`), not `₹174–₹174`. Fix in the **`kpi-formatters.ts` SSOT** (extend a `formatPriceBand` there — never
+     inline `₹`/`toLocaleString` in the component, per `web-display-formatting.md`), and stop mirroring
+     `price_range_min:=max` in the writer where the source gives only one bound (store the real bound, render single).
+     Price/band/issue-size columns stay `numeric()` typed (`financial-column-precision.md`).
    - **Null-segment real IPOs:** backfill `segment` for genuine IPO rows from the source; the 3 current null-segment
      rows are NCD/Trust (non-IPO) → excluded by the predicate, no segment backfill needed (verify).
 5. **Extend `scripts/audit-ipo-coverage.mjs` into the §7 thresholded gate** (`--gate` flag → exit 1 on any
@@ -134,19 +151,24 @@ offering rows polluting lists; OPEN bucket 13/15 non-IPO.
 ### Stage A acceptance (run the §6 gate sweep before committing)
 - **Zero corporate actions on any IPO surface:** no non-IPO `offering_type` appears in listings/calendar/SME hub;
   every non-IPO detail URL 404s; list↔detail parity proven (drive 3 corp-action slugs → 404, 3 real IPO slugs → 200).
-- Name/registrar normalized (no trailing status tokens; registrar canonical); normalizer JS↔SQL agreement test green.
-- Price band renders single value when min==max/one bound (Playwright proof on the `₹174–₹174` case).
+- Name/registrar normalized (no trailing status tokens; registrar canonical); normalizer JS↔SQL agreement test green; slug re-derived via `generateIPOSlug` (no orphaned/duplicate slugs).
+- `DuplicateDetectionService` blocks re-creation of an already-listed company (unit test: a HIGH symbol/ISIN match → create blocked, routed to update — `ipo-duplicate-detection.md`).
+- Price band renders single value when min==max/one bound (Playwright proof on the `₹174–₹174` case), via `kpi-formatters.ts`.
 - `node scripts/audit-ipo-coverage.mjs --gate` runs and reports the pollution count as **0**.
 
 ---
 
 ## 3. STAGE B — Activate & fix the dark data-population writers (the core of "fill everything")
 
-For EACH domain below: (1) **diagnose root cause** of 0% (job unregistered? matcher failing? endpoint dead?
-flag off?) — `/systematic-debugging`; (2) **fix at the writer/scheduler/matcher**, route through `upsertIPO`/the
-domain repo, register every field in `FIELD_PRIORITY_MATRIX`, gate new behavior behind a feature flag; (3) **run
-the backfill additively against prod via the tunnel**; (4) **prove the §7 threshold** by read-back + the coverage
-gate. TDD red-first per task. **Scheduler/cron/flag activation in prod is GATED** (author + leave OFF, add to §GATE).
+For EACH domain below: (1) **diagnose root cause** of 0% (job unregistered? matcher failing? endpoint dead/SPA?
+flag off?) — `/systematic-debugging`; for a dead/SPA source use `detectRenderingType`/`scrapeWithAutoDetection`
+(static-first, never default Puppeteer — `scraper-rendering-detection.md`); (2) **fix at the writer/scheduler/matcher**,
+route through `upsertIPO`/the domain repo, register every field in `FIELD_PRIORITY_MATRIX`, gate new behavior behind a
+feature flag, **record a per-source outcome via `ScraperMetricsTracker`** on every run (`scraper-health-metrics.md`),
+respect field protection (`data-persister` filters protected fields — `admin-field-protection.md`), and type any
+new money/share column `numeric()`/`bigint(mode:'number')` (`financial-column-precision.md`); (3) **run the backfill
+additively against prod via the tunnel**; (4) **prove the §7 threshold** by read-back + the coverage gate. TDD
+red-first per task. **Scheduler/cron/flag activation in prod is GATED** (author + leave OFF, add to §GATE).
 
 **Files:** the writers/jobs/repos named in §1. **Keep untouched:** GMP files (Stage C1 owns), the de-pollution
 predicate (Stage A owns).
@@ -202,7 +224,9 @@ charts. **Keep untouched:** data writers (Stages B/C own them).
 
 ### Pre-made design decisions (do NOT deviate)
 1. Where a section now HAS data, it MUST render the data (not an empty state) — verify each previously-blank
-   section on a populated real IPO.
+   section on a populated real IPO. All money/ratio/percent render via `web/lib/utils/kpi-formatters.ts` and all
+   dates via `web/lib/utils/date-formatter.ts` (IST, `TBA` null fallback, paired `getAccessibleDate()` aria-label) —
+   never inline `₹`/`toLocaleString`/`Intl` (`web-display-formatting.md`).
 2. No fabricated/`Math.random()` data on any surface (sibling-sweep with the GMP contract's G17 honesty rule).
 3. **Per-IPO UI verification (the audit-in-reverse):** drive a **stratified sample** with Playwright MCP — ≥2
    UPCOMING, ≥3 OPEN (real IPOs), ≥3 CLOSED, ≥3 LISTED, both segments — screenshot + ARIA + console; assert the
@@ -218,6 +242,11 @@ charts. **Keep untouched:** data writers (Stages B/C own them).
 > **All rules in `.claude/rules/` are operative for this run.** G-UI, G-PERSIST, and G-INDEPENDENT are **MANDATORY
 > at every task AND every stage boundary** (a standing Abhay mandate). Do not skip, soften, or defer them. They are
 > why this contract yields *proven-working*, not *claimed-working*, output.
+>
+> **Synthesized IPODhan-specific rules that bind this run (load transitively):** `ipo-duplicate-detection.md`,
+> `canonical-ipo-slug.md`, `financial-column-precision.md`, `web-display-formatting.md`, `scraper-rendering-detection.md`,
+> `scraper-health-metrics.md`, `admin-field-protection.md`, `agent-orchestration.md` (any subagent dispatch — e.g. a
+> G-INDEPENDENT blind verifier — is single-level from this T0 run; workers cannot sub-dispatch).
 
 **Static gates (per stage, from the right CWD):**
 - root: `npm run lint && npm run build` · `cd packages/shared && npx tsc && test -f dist/db/schema.d.ts`
@@ -232,8 +261,8 @@ three:** intended value visible; present in ARIA; no NEW console errors. ≤3 it
 
 **G-PERSIST — write→persistence verification** (`e2e-persistence-verification.md`; every scraper run / backfill /
 applied additive migration). Exit code / "it ran" do NOT count. Two signals: (1) the run's count/log reflects the
-write; (2) **independent `node`+`pg` read-back to `localhost:15432`** confirms shape+values. Verify **per batch** in
-backfill loops, then a final coverage query via the gate. ≤3 attempts → `/fix-loop`. Degrade → "persistence
+write; (2) **independent `node`+`pg` read-back to `localhost:15432`** confirms shape+values (the `/pg-query` skill is
+the canonical read-only query path). Verify **per batch** in backfill loops, then a final coverage query via the gate. ≤3 attempts → `/fix-loop`. Degrade → "persistence
 verification skipped because <reason>"; never claim complete.
 
 **G-INDEPENDENT — post-stage independent + substance verification (ALWAYS fires)** (`independent-test-verification.md`
@@ -338,6 +367,8 @@ DoD green/amber/red tally; DEFERRED entries (DRHP financials etc.) with rule sta
 | 7 | Known-hard data (DRHP financials/objectives/docs/peers) | best-effort, then **DEFER with reason + follow-up issue** — never faked |
 | 8 | Git policy | `feat/ipo-data-completeness` + draft PR; NEVER merge/push main |
 | 9 | Verification model | IPODhan named rules (supervisor- / independent- / e2e-persistence / output-plausibility) MANDATORY per task + stage |
+| 10 | Post-synthesis rule alignment (2026-06-16) | bind the 8 synthesized IPODhan rules: pollution root cause via `DuplicateDetectionService` (not only display filter); slugs via `generateIPOSlug`; money/share columns `numeric()`/`bigint`; render via `kpi-formatters.ts`/`date-formatter.ts`; dark-writer diagnosis via `detectRenderingType`; per-source `ScraperMetricsTracker`; backfills respect `FieldProtectionService`; subagent dispatch single-level (`agent-orchestration.md`) |
+| 11 | Update channel | contract authored/updated via the `goal-creator` skill (not ad-hoc edits); in-place edit permitted — contract not yet run/running |
 
 ---
 
@@ -348,6 +379,7 @@ DoD green/amber/red tally; DEFERRED entries (DRHP financials etc.) with rule sta
 - `.claude/rules/dod-verbs.md` — load-bearing DoD verbs · `.claude/rules/tdd-rule.md` — red-green-refactor
 - `.claude/rules/scraper-write-path.md` · `scraper-test-layout.md` · `schema-imports.md` · `shared-package-build.md` · `structured-logging.md`
 - `.claude/rules/web-data-access.md` · `web-api-routes.md` · `react-nextjs.md` · `bug-triage-discipline.md`
+- **Synthesized IPODhan-specific rules (post-2026-06-16, bind this run):** `.claude/rules/ipo-duplicate-detection.md` (DuplicateDetectionService) · `canonical-ipo-slug.md` (`generateIPOSlug` SSOT) · `financial-column-precision.md` (`numeric()`/`bigint`) · `web-display-formatting.md` (`kpi-formatters.ts` + `date-formatter.ts` SSOT) · `scraper-rendering-detection.md` (`detectRenderingType`/`scrapeWithAutoDetection`) · `scraper-health-metrics.md` (`ScraperMetricsTracker`) · `admin-field-protection.md` (`FieldProtectionService`) · `agent-orchestration.md` (single-level dispatch)
 - Prior contracts (defer, don't duplicate): `docs/goals/2026-06-14-gmp-coverage-revival.md` · `docs/goals/2026-06-15-bse-ipo-enrichment.md`
 - GitHub issues: **#6** (pollution), **#7** (blank pages), **#8** (empty shell)
-- Skills the run drives: `/fix-loop` · `/systematic-debugging` · `/auto-verify` · `/backfill-script` · `/playwright` · `/tdd`
+- Skills the run drives: `/fix-loop` · `/systematic-debugging` · `/auto-verify` · `/backfill-script` · `/playwright` · `/tdd` · `/pg-query` (canonical read-only DB query for G-PERSIST)
