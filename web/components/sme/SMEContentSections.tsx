@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ArrowRight, TrendingUp, TrendingDown } from 'lucide-react';
 import type { IPO } from '@/lib/db/types';
+import { formatPriceBand } from '@/lib/utils/kpi-formatters';
 import type {
   ReviewWithIPO,
   PerformanceHighlight,
@@ -144,7 +145,7 @@ export function SMEContentSections({
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Price Range:</span>
                       <span className="font-medium">
-                        ₹{ipo.priceRangeMin} - ₹{ipo.priceRangeMax}
+                        {formatPriceBand(ipo.priceRangeMin, ipo.priceRangeMax)}
                       </span>
                     </div>
                   )}
@@ -185,7 +186,7 @@ export function SMEContentSections({
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Price Range:</span>
                       <span className="font-medium">
-                        ₹{ipo.priceRangeMin} - ₹{ipo.priceRangeMax}
+                        {formatPriceBand(ipo.priceRangeMin, ipo.priceRangeMax)}
                       </span>
                     </div>
                   )}

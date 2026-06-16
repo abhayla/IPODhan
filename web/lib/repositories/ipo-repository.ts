@@ -29,6 +29,7 @@ import {
   type offeringTypeEnum,
 } from '../db';
 import * as schema from '@ipodhan/shared/db/schema';
+import { REAL_IPO_OFFERING_TYPES } from '@ipodhan/shared/utils/offering-type';
 import {
   CacheTTL,
   getIPOBySlugKey,
@@ -51,6 +52,12 @@ import type {
   HistoricalIPO,
   HistoricalIPOQueryParams,
 } from './types';
+
+// De-pollution (#6/#8): IPO surfaces show only genuine IPOs. The shared
+// REAL_IPO_OFFERING_TYPES predicate is the SSOT; cast once to the column's enum
+// tuple type for drizzle's inArray. Non-IPO offerings (OFS/NCD/RIGHTS/…) are
+// reached via an EXPLICIT offeringType filter and so bypass this default.
+const REAL_IPO_TYPE_FILTER = REAL_IPO_OFFERING_TYPES as unknown as (typeof offeringTypeEnum.enumValues)[number][];
 
 export class IPORepository extends BaseRepository implements IIPORepository {
   constructor(db: NodePgDatabase<typeof schema>, redis: Redis) {
@@ -113,6 +120,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             } else {
               conditions.push(eq(ipos.offeringType, offeringType as (typeof offeringTypeEnum.enumValues)[number]));
             }
+          } else {
+            // No explicit offeringType → IPO surfaces default to genuine IPOs only.
+            conditions.push(inArray(ipos.offeringType, REAL_IPO_TYPE_FILTER));
           }
 
           if (sector) {
@@ -632,6 +642,10 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // Build where conditions
       const conditions = [];
 
+      // Calendar views are IPO-only (the route accepts MAINBOARD/SME segments,
+      // both offering_type=IPO) — exclude any non-IPO offering that shares a segment.
+      conditions.push(inArray(ipos.offeringType, REAL_IPO_TYPE_FILTER));
+
       if (filters.category && filters.category.length > 0) {
         // Map old category to segment
         const segments = filters.category.filter(c => c === 'MAINBOARD' || c === 'SME');
@@ -741,6 +755,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         } else {
           conditions.push(eq(ipos.offeringType, offeringType as (typeof offeringTypeEnum.enumValues)[number]));
         }
+      } else {
+        // Mirror findAll's default so pagination totals match the rows returned.
+        conditions.push(inArray(ipos.offeringType, REAL_IPO_TYPE_FILTER));
       }
 
       if (sector) {
@@ -1409,6 +1426,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
               // FPO, RIGHTS, NCD are offering types - filter by offeringType
               whereConditions.push(eq(ipos.offeringType, category as (typeof offeringTypeEnum.enumValues)[number]));
             }
+          } else {
+            // ALL / unspecified → genuine IPOs only (non-IPO offerings have their own surfaces).
+            whereConditions.push(inArray(ipos.offeringType, REAL_IPO_TYPE_FILTER));
           }
 
           // Filter by year

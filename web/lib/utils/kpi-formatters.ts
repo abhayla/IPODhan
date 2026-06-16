@@ -85,6 +85,27 @@ export function formatCurrency(
 }
 
 /**
+ * Format an IPO price band. Prices are whole rupees, so no forced decimals.
+ * When only one bound exists OR min === max, render a SINGLE value ("₹174") —
+ * never "₹174 - ₹174" (the collapsed-band bug). Both missing → "N/A".
+ *
+ * SSOT for price-band rendering — components MUST call this, never inline
+ * `formatCurrency(min) - formatCurrency(max)` (web-display-formatting.md).
+ */
+export function formatPriceBand(
+  min: number | null | undefined,
+  max: number | null | undefined
+): string {
+  const hasMin = min !== null && min !== undefined;
+  const hasMax = max !== null && max !== undefined;
+  if (!hasMin && !hasMax) return 'N/A';
+  if (!hasMin) return formatCurrency(max, 0);
+  if (!hasMax) return formatCurrency(min, 0);
+  if (min === max) return formatCurrency(min, 0);
+  return `${formatCurrency(min, 0)} - ${formatCurrency(max, 0)}`;
+}
+
+/**
  * Format change percentage with +/- sign
  * Examples:
  * - 12.5 → "+12.5%"

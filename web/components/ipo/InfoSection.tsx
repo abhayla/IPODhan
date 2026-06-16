@@ -2,6 +2,7 @@
 
 import { IPO, IpoDetails } from '@/lib/db/types';
 import { formatIssueSizeCrores } from '@/lib/utils';
+import { formatPriceBand } from '@/lib/utils/kpi-formatters';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatIPODate, getAccessibleDate, getISODate } from '@/lib/utils/date-formatter';
 import { ISINDisplay } from './ISINDisplay';
@@ -165,7 +166,7 @@ export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
             />
             <InfoRow
               label="Price Range"
-              value={`${formatCurrency(ipo.priceRangeMin)} - ${formatCurrency(ipo.priceRangeMax)}`}
+              value={formatPriceBand(ipo.priceRangeMin, ipo.priceRangeMax)}
             />
             <InfoRow
               label="Face Value"

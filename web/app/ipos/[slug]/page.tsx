@@ -58,6 +58,7 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { ReviewRepository } from '@/lib/repositories/review-repository';
 import { SEARCH_CONFIG } from '@/lib/config/search';
+import { isRealIPO } from '@ipodhan/shared/utils/offering-type';
 import type { IPODetailResponse } from '@/lib/db/types';
 import {
   generateIPODetailMetadata,
@@ -106,6 +107,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
     });
 
     if (!ipoWithRelations) {
+      return {
+        title: 'IPO Not Found | IPODhan',
+        description: 'The requested IPO could not be found.',
+      };
+    }
+
+    // Parity with the page's 404: a non-IPO offering must not emit IPO metadata.
+    if (!isRealIPO(ipoWithRelations.offeringType)) {
       return {
         title: 'IPO Not Found | IPODhan',
         description: 'The requested IPO could not be found.',
@@ -161,12 +170,11 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     notFound();
   }
 
-  // Corporate actions (takeover open offers, buybacks, delistings) are NOT IPOs — e.g.
-  // an OTB/Takeover open offer of an already-listed company. They are excluded from IPO
-  // listings via offering_type; 404 the direct detail URL too so such a corporate action
-  // is never rendered as an IPO with empty fields.
-  const NON_IPO_CORPORATE_ACTIONS = ['TENDER', 'BUYBACK', 'DELISTING'];
-  if (ipoWithRelations.offeringType && NON_IPO_CORPORATE_ACTIONS.includes(ipoWithRelations.offeringType)) {
+  // Non-IPO offerings (corporate actions like TENDER/BUYBACK/DELISTING AND other
+  // offering types like OFS/FPO/RIGHTS/NCD/INVITS) are NOT IPOs. They have their own
+  // listing surfaces; 404 the IPO detail URL so a non-IPO never renders as an IPO with
+  // empty fields. Uses the shared isRealIPO() predicate for list↔detail parity (#6/#8).
+  if (!isRealIPO(ipoWithRelations.offeringType)) {
     notFound();
   }
 

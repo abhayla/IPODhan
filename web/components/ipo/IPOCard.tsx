@@ -1,6 +1,7 @@
 'use client';
 
 import { IPO, IPOStatus, ListingPerformance, IPOScore } from '@/lib/db/types';
+import { formatPriceBand } from '@/lib/utils/kpi-formatters';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
@@ -34,15 +35,6 @@ const getStatusConfig = (status: IPOStatus) => {
     default:
       return { color: 'bg-gray-600 text-gray-100', label: status };
   }
-};
-
-const formatCurrency = (amount: number | null) => {
-  if (amount === null) return 'N/A';
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(amount);
 };
 
 const getOfferingTypeConfig = (offeringType: string | null) => {
@@ -209,7 +201,7 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
           <div className="space-y-0.5 p-2 rounded-lg bg-muted/50 group-hover:bg-muted transition-colors duration-200">
             <p className="text-sm text-muted-foreground">Price Range</p>
             <p className="text-sm font-semibold text-primary">
-              {formatCurrency(ipo.priceRangeMin)} - {formatCurrency(ipo.priceRangeMax)}
+              {formatPriceBand(ipo.priceRangeMin, ipo.priceRangeMax)}
             </p>
           </div>
 
