@@ -246,6 +246,10 @@ export function sanitizeCompanyName(name: string): string {
     .replace(/<\/?[a-z][a-z0-9]*[^>]*>/g, '') // Remove HTML tags (lowercase only)
     .replace(/[<>]/g, '') // Remove remaining angle brackets
     .trim()
+    // Strip a trailing 1-2 letter status/category code appended after the legal
+    // suffix ("Ltd. P", "Ltd. CT") — a scrape artifact (#16). Keep the suffix.
+    .replace(/(Ltd\.?|Limited)\s+[A-Za-z]{1,2}$/i, '$1')
+    .trim()
     .slice(0, 200); // Limit length
 }
 
