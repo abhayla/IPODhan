@@ -11,6 +11,7 @@ export * from './repositories/field-sources-repository';
 export * from './repositories/data-conflicts-repository';
 // Export utility functions
 export * from './utils/slug';
+export * from './utils/offering-type';
 // Export field protection functions
 export * from './admin/field-protection-checker';
 // Export repository interfaces and pagination types only
