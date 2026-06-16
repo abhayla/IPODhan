@@ -23,6 +23,7 @@ import {
   type BSEDetailRow,
 } from '../src/scrapers/bse-api-scraper.js';
 import { normalizeCompanyNameForMatching, upsertIPO } from '../src/services/data-persister.js';
+import { IPORepository, getRedisClient } from '@ipodhan/shared';
 
 const BSE_API_BASE = 'https://api.bseindia.com/BseIndiaAPI/api/';
 const BSE_HEADERS = {
@@ -86,7 +87,9 @@ function missingFields(s: Skeleton, bse: ReturnType<typeof mapBSEDetailToScraped
   const out: string[] = [];
   const sizeEmpty = s.issueSize === null || Number(s.issueSize) === 0;
   if (sizeEmpty && bse.issueSize > 0) out.push(`issue_size→₹${(bse.issueSize / 1e7).toFixed(2)}cr`);
-  if ((s.lotSize === null || s.lotSize === 0) && bse.lotSize) out.push(`lot→${bse.lotSize}`);
+  // BSE returns market lot (1) for mainboard, NOT the IPO application/bid lot — only
+  // trust a plausible bid-lot (>1). SME rows carry a real bid lot and pass this.
+  if ((s.lotSize === null || s.lotSize === 0) && bse.lotSize && bse.lotSize > 1) out.push(`lot→${bse.lotSize}`);
   if ((s.priceRangeMax === null || s.priceRangeMax === 0) && bse.priceRangeMax) out.push(`band→${bse.priceRangeMin}-${bse.priceRangeMax}`);
   if (!s.registrar && bse.registrar) out.push('registrar');
   if ((!s.leadManagers || s.leadManagers.length === 0) && bse.leadManagers && bse.leadManagers.length) out.push('leadMgrs');
@@ -114,6 +117,10 @@ async function main() {
     .where(
       and(
         eq(ipos.segment, 'MAINBOARD'),
+        // Genuine IPOs only — never enrich corporate actions (BUYBACK/TENDER/OFS/etc.).
+        // Mirrors the isRealIPO predicate; without this, WIPRO (buyback), Sarda/Zydus
+        // (tender/OFS) etc. get matched and written with IPO-shaped fields.
+        eq(ipos.offeringType, 'IPO'),
         or(isNull(ipos.issueSize), eq(ipos.issueSize, sql`'0'`), isNull(ipos.lotSize)),
       ),
     )) as Skeleton[];
@@ -158,13 +165,18 @@ async function main() {
     return;
   }
   console.log(`\nAPPLY: enriching ${enrichable.length} skeletons via upsertIPO...`);
+  // upsertIPO signature is (ipoRepository, scrapedIPO, source) — construct the repo once.
+  const ipoRepository = new IPORepository(db as any, getRedisClient());
   let ok = 0;
   let fail = 0;
   for (const m of enrichable) {
     try {
       // Preserve the skeleton's existing status (avoid regressing LISTED→CLOSED on historical rows).
-      const payload = { ...m.bse, status: (m.skeleton.status as any) || m.bse.status };
-      await upsertIPO(payload, 'BSE');
+      // Omit lotSize unless it's a plausible IPO bid-lot (>1) — never write the BSE market-lot of 1.
+      const { lotSize, ...rest } = m.bse;
+      const payload: any = { ...rest, status: (m.skeleton.status as any) || m.bse.status };
+      if (typeof lotSize === 'number' && lotSize > 1) payload.lotSize = lotSize;
+      await upsertIPO(ipoRepository, payload, 'BSE');
       ok++;
       logger.info({ ipoNo: m.ipoNo, company: m.bse.companyName, fills: m.fills }, 'enriched');
     } catch (e) {
