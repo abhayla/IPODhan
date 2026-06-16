@@ -13,7 +13,8 @@
     "./cache": "./src/cache/index.ts",
     "./types": "./src/types/index.ts",
     "./utils/slug": "./src/utils/slug.ts",
-    "./utils/company-name-normalizer": "./src/utils/company-name-normalizer.ts"
+    "./utils/company-name-normalizer": "./src/utils/company-name-normalizer.ts",
+    "./utils/offering-type": "./src/utils/offering-type.ts"
   },
   "scripts": {
     "build": "tsc",

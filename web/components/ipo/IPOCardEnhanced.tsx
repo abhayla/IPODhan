@@ -1,6 +1,7 @@
 'use client';
 
 import { IPO, IPOStatus, ListingPerformance, IPOScore, GMPRecord, Subscription, FinancialData } from '@/lib/db/types';
+import { formatPriceBand } from '@/lib/utils/kpi-formatters';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -63,15 +64,6 @@ const getStatusDotConfig = (status: IPOStatus) => {
         textColor: 'text-muted-foreground',
       };
   }
-};
-
-const formatCurrency = (amount: number | null) => {
-  if (amount === null) return 'N/A';
-  return new Intl.NumberFormat('en-IN', {
-    style: 'currency',
-    currency: 'INR',
-    maximumFractionDigits: 0,
-  }).format(amount);
 };
 
 /**
@@ -161,7 +153,7 @@ export function IPOCardEnhanced({ ipo, searchQuery, onClick }: IPOCardEnhancedPr
             <div>
               <p className="text-xs text-muted-foreground mb-1">Price Band</p>
               <p className="text-base font-bold font-mono text-foreground">
-                {formatCurrency(ipo.priceRangeMin)} - {formatCurrency(ipo.priceRangeMax)}
+                {formatPriceBand(ipo.priceRangeMin, ipo.priceRangeMax)}
               </p>
             </div>
             {/* Large Prominent Score with Count-up Animation */}

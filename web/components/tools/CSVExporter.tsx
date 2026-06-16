@@ -140,9 +140,10 @@ export function CSVExporter({
       priceRange: {
         header: 'Price Range (₹)',
         getValue: (ipo) => {
-          if (ipo.priceRangeMin && ipo.priceRangeMax) {
-            return `${ipo.priceRangeMin} - ${ipo.priceRangeMax}`;
-          }
+          // Raw CSV value (no ₹): collapse an equal band to a single number.
+          const { priceRangeMin: min, priceRangeMax: max } = ipo;
+          if (min && max) return min === max ? `${min}` : `${min} - ${max}`;
+          if (min || max) return `${min ?? max}`;
           return 'N/A';
         },
       },

@@ -199,6 +199,22 @@ describe('validators', () => {
       const result = sanitizeCompanyName(longName);
       expect(result.length).toBe(200);
     });
+
+    // #16: some sources append a trailing 1-2 letter status/category code after the
+    // legal suffix ("Ltd. P", "Ltd. CT"). Strip it from the stored DISPLAY name so
+    // it never reaches a title; the legal suffix itself stays.
+    it('strips a trailing status code after the legal suffix', () => {
+      expect(sanitizeCompanyName('Susan Electricals India Ltd. P')).toBe('Susan Electricals India Ltd.');
+      expect(sanitizeCompanyName('Horizon Reclaim (India) Ltd. CT')).toBe('Horizon Reclaim (India) Ltd.');
+      expect(sanitizeCompanyName('Utkal Speciality Industries India Ltd. P')).toBe('Utkal Speciality Industries India Ltd.');
+      expect(sanitizeCompanyName('Acme Holdings Ltd O')).toBe('Acme Holdings Ltd');
+    });
+
+    it('does NOT strip a clean legal name or a non-code trailing token', () => {
+      expect(sanitizeCompanyName('Reliance Industries Limited')).toBe('Reliance Industries Limited');
+      expect(sanitizeCompanyName('Tata Steel Ltd')).toBe('Tata Steel Ltd');
+      expect(sanitizeCompanyName('Bajaj Finance Ltd.')).toBe('Bajaj Finance Ltd.');
+    });
   });
 
   describe('sanitizeSubscriptionNumber', () => {

@@ -15,6 +15,7 @@ import {
   formatEPS,
   formatPE,
   formatROE,
+  formatPriceBand,
 } from '@/lib/utils/kpi-formatters';
 
 describe('formatMarketCap', () => {
@@ -162,5 +163,26 @@ describe('formatROE', () => {
 
   it('should return N/A for null', () => {
     expect(formatROE(null)).toBe('N/A');
+  });
+});
+
+describe('formatPriceBand', () => {
+  it('renders a true range as "min - max" (whole rupees)', () => {
+    expect(formatPriceBand(100, 120)).toBe('₹100 - ₹120');
+  });
+
+  it('collapses an equal band to a single value (the ₹174–₹174 bug)', () => {
+    expect(formatPriceBand(174, 174)).toBe('₹174');
+  });
+
+  it('renders a single value when only one bound is present', () => {
+    expect(formatPriceBand(174, null)).toBe('₹174');
+    expect(formatPriceBand(null, 174)).toBe('₹174');
+    expect(formatPriceBand(174, undefined)).toBe('₹174');
+  });
+
+  it('returns N/A when both bounds are missing', () => {
+    expect(formatPriceBand(null, null)).toBe('N/A');
+    expect(formatPriceBand(undefined, undefined)).toBe('N/A');
   });
 });
