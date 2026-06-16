@@ -15,6 +15,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { FileText } from 'lucide-react';
 import { formatIssueSizeCrores } from '@/lib/utils';
+import { formatPriceBand } from '@/lib/utils/kpi-formatters';
 
 interface IPODetailsTableProps {
   issueSize: number | null;
@@ -94,8 +95,8 @@ export function IPODetailsTable({
     },
     {
       label: 'Price Band',
-      value: priceRangeMin && priceRangeMax
-        ? `₹${formatNumber(priceRangeMin)} - ₹${formatNumber(priceRangeMax)}`
+      value: priceRangeMin || priceRangeMax
+        ? formatPriceBand(priceRangeMin, priceRangeMax)
         : '-',
       highlight: true
     },

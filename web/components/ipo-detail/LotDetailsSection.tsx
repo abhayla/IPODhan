@@ -14,6 +14,7 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { formatPriceBand } from '@/lib/utils/kpi-formatters';
 import { Calculator } from 'lucide-react';
 
 interface LotDetailsSectionProps {
@@ -75,7 +76,7 @@ export function LotDetailsSection({
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Price Band</p>
             <p className="text-2xl font-bold">
-              {formatCurrency(priceRangeMin)} - {formatCurrency(priceRangeMax)}
+              {formatPriceBand(priceRangeMin, priceRangeMax)}
             </p>
             <p className="text-xs text-muted-foreground">per share</p>
           </div>
