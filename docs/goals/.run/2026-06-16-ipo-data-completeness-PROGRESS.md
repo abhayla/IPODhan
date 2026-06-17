@@ -95,6 +95,28 @@ subscriptions 2.8%; gmp_records 50% (GMP contract); registrar 59%; lot_size 71%;
 - name-quality permanent fix = deploy the merged `sanitizeCompanyName` create-fix (§GATE); 1 row is a
   slug-collision edge case needing manual review.
 
+## SESSION 3 FINAL (2026-06-17) — gate 8→6 fails; 2 more checks PASS
+Branch `feat/ipo-completeness-coverage` (PRs not opened; B1 code already on main via mistaken push f8c45dc3).
+Chittorgarh report map (found via per-IPO page report links): 20=prospectus, 25=listing-perf,
+21/22=subscription(LIVE-only), 118=timetable/allotment(FULL list), 32=registrar-directory(names only),
+82=IPO-list, 7=basis-of-allotment(latest-N).
+
+Delivered this session (all real-source, honest, fill-NULL-only, verified read-back):
+- **listing_performance 0→89/92 LISTED (96.7%) — PASS** (Chittorgarh report 25).
+- **core.symbol 73→88/92 LISTED (95.7%) — PASS** (isin/symbol backfill, reports 25+20).
+- **allotment_date 0.8%→52.8%** (report 118; older CLOSED IPOs absent from the report → source-capped, FAIL@90%).
+- **isin +96** (matching infra), **documents 0→30.8%** (report 20, session 2), **B7 matrix** (session 2).
+
+GATE now PASS(5): pollution, duplicates, listing_performance, core.symbol, listing_date.
+GATE FAIL(6):
+- name-quality (oscillates 0↔7 — prod cron re-scrapes with old code; PERMANENT fix = deploy `sanitizeCompanyName` = §GATE; corrective backfill is futile whack-a-mole).
+- subscriptions 2.8% (Chittorgarh reports 21/22 are LIVE-only → no history; needs per-IPO page scrape OR BSE-live path + flag = §GATE).
+- gmp_records 50% (separate GMP contract).
+- registrar 59.1% / lot_size 70.8% (no clean bulk report — report 32 is a registrar directory, report 118 has no lot; on per-IPO pages → multi-session per-IPO scrape, write via upsertIPO).
+- allotment_date 52.8% (source-capped by report 118 coverage).
+
+**exit-0 is not autonomously reachable:** name-quality + subscriptions-activation need §GATE deploy; gmp is another contract; registrar/lot/subscription-history need a multi-session per-IPO Chittorgarh scrape; allotment/symbol are source-capped. New backfill scripts (all dry-run-default, idempotent, fill-NULL-only) are reusable for re-runs.
+
 ## Skipped (already covered)
 - GMP coverage revival (C1) — CLOSED+DEPLOYED by its own contract (PRs #18/#20/#21, `*/30` cron); verify-only.
 
