@@ -13,6 +13,9 @@ vi.mock('@/lib/db', () => ({
   db: {
     select: vi.fn(),
   },
+  // sector-averages util imports these table tokens from @/lib/db (re-exported schema)
+  ipos: {},
+  listingPerformance: {},
 }));
 
 vi.mock('@/lib/cache/redis-client', () => ({

@@ -27,6 +27,9 @@ vi.mock('@/lib/db/index', () => ({
       })),
     })),
   },
+  // util imports `ipos`/`listingPerformance` from @/lib/db (→ @/lib/db/index)
+  ipos: {},
+  listingPerformance: {},
 }));
 
 // Mock the database schema
