@@ -281,6 +281,39 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'Expected listing date',
   },
 
+  // B7: allotment_date was missing — consolidation silently dropped it (allotment_date ~1%).
+  // Moneycontrol publishes it most reliably; NSE/BSE as fallbacks.
+  allotment_date: {
+    sources: ['ADMIN', 'MONEYCONTROL', 'NSE', 'BSE'],
+    normalization: 'date',
+    confidenceThreshold: 90,
+    description: 'Basis-of-allotment date - Moneycontrol most reliable',
+  },
+  // camelCase variant - consolidation service keys on this for some paths
+  allotmentDate: {
+    sources: ['ADMIN', 'MONEYCONTROL', 'NSE', 'BSE'],
+    normalization: 'date',
+    confidenceThreshold: 90,
+    description: 'Basis-of-allotment date (camelCase)',
+  },
+
+  // ==================== EXCHANGE IDENTIFIERS (NSE authoritative) ====================
+  // B7: isin/symbol were missing from the matrix → consolidation never let any source
+  // populate them. NSE is the canonical source for both; ISIN is also on DRHP/BSE.
+  isin: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
+    normalization: 'none',
+    confidenceThreshold: 90,
+    description: 'ISIN - International Securities Identification Number (NSE authoritative)',
+    validation: { regex: '^IN[A-Z0-9]{10}$', allowNull: true },
+  },
+  symbol: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'none',
+    confidenceThreshold: 85,
+    description: 'Stock ticker symbol - NSE symbol is canonical',
+  },
+
   // ==================== LOT SIZE (BSE is more accurate) ====================
 
   lot_size: {
