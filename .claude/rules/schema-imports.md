@@ -5,7 +5,7 @@ description: >
   and the @ipodhan/shared exports whitelist. Prevents imports of the stale legacy schema
   copy and deep src/ imports that bypass the package's public API.
 globs: ["web/**/*.ts", "web/**/*.tsx", "scraper/**/*.ts", "packages/shared/src/**/*.ts"]
-version: "1.0.0"
+version: "1.0.1"
 synthesized: true
 private: false
 ---
@@ -14,7 +14,7 @@ private: false
 
 ## Schema Single Source of Truth
 
-All database schema lives in `packages/shared/src/db/schema.ts` (24 tables). It is
+All database schema lives in `packages/shared/src/db/schema.ts` (25 tables). It is
 re-exported to the web app via `web/lib/db/index.ts`.
 
 - MUST edit ONLY `packages/shared/src/db/schema.ts` for any schema change
