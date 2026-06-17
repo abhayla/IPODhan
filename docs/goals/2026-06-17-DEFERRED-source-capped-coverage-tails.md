@@ -15,9 +15,12 @@ After all autonomous work + the 2026-06-17 prod deploy, these remain below thres
 | core.registrar | **85.0%** (226/266) | ≥90% | all real IPOs |
 | core.lot_size | **82.0%** (218/266) | ≥95% | all real IPOs |
 | core.allotment_date | **52.8%** (134/254) | ≥90% | CLOSED/LISTED |
+| **subscriptions** | **2.8%** (3/106) | ≥95% | OPEN/CLOSED w/ symbol — **live-only; 101 of 106 are CLOSED, windows passed** |
 | issue_size > 0 | **37 rows = ₹0** | (>0) | substance — see #8 |
 
 **Symptom:** the unmatched IPOs **are not present in the Chittorgarh source** the per-IPO enricher uses (Chittorgarh report 118 = 1359-IPO discovery map; the tail isn't in it). So coverage is **source-capped**, not a code bug. allotment_date is further capped because report 118 lacks older CLOSED IPOs.
+
+**subscriptions is the same class, via a TIMING cap (added 2026-06-17):** the write-path IS wired (Moneycontrol orchestrator + `createSubscriptionSnapshot`, BaseScraperOrchestrator:482) and the flags are deployed. But subscription data is **live-only** — it can only be captured WHILE an IPO is bidding. Of the 106-IPO gate population, only **~5 are currently OPEN** (capturable); the **101 CLOSED** had their windows pass before capture, and Chittorgarh's subscription reports are live-only (no history). So subscriptions will **NOT** accrue to 95% via cron — the CLOSED majority needs a **historical subscription source** OR the DoD population scoped to OPEN (live-capturable) IPOs.
 
 ---
 
