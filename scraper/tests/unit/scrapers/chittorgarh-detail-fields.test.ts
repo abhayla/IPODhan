@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractLotSizeFromDetailHtml } from '../../../src/scrapers/chittorgarh-detail-fields.js';
+import { extractLotSizeFromDetailHtml, extractRegistrarFromDetailHtml } from '../../../src/scrapers/chittorgarh-detail-fields.js';
 
 describe('extractLotSizeFromDetailHtml', () => {
   it('extracts lot size from the keyword-popup anchor layout (real SME page shape)', () => {
@@ -30,5 +30,33 @@ describe('extractLotSizeFromDetailHtml', () => {
   it('returns null when the page has no lot size', () => {
     expect(extractLotSizeFromDetailHtml('<td>Registrar</td><td>Bigshare</td>')).toBeNull();
     expect(extractLotSizeFromDetailHtml('')).toBeNull();
+  });
+});
+
+describe('extractRegistrarFromDetailHtml', () => {
+  it('extracts the registrar from the registrar-name anchor (real page shape)', () => {
+    const html = `<h2>IPO<!-- --> Registrar</h2><p><a title="Kfin Technologies Ltd. IPO Registrar Review" class="registrar-name" href="/report/ipo-registrar-review/114/2/">Kfin Technologies Ltd.</a></p>`;
+    expect(extractRegistrarFromDetailHtml(html)).toBe('Kfin Technologies Ltd.');
+  });
+
+  it('normalizes internal whitespace', () => {
+    const html = `<a class="registrar-name" href="#">Bigshare   Services\n  Pvt Ltd</a>`;
+    expect(extractRegistrarFromDetailHtml(html)).toBe('Bigshare Services Pvt Ltd');
+  });
+
+  it('fixes the missing-space "Pvt.Ltd." smell', () => {
+    const html = `<a class="registrar-name" href="#">Skyline Financial Services Pvt.Ltd.</a>`;
+    expect(extractRegistrarFromDetailHtml(html)).toBe('Skyline Financial Services Pvt. Ltd.');
+  });
+
+  it('does NOT match the registrar report links (not the value)', () => {
+    const html = `<a class="btn-link text-reset" title="Registrar- List of Issues Managed" href="/report/ipo-registrar-review/114/">Registrar- List of Issues Managed</a>`;
+    expect(extractRegistrarFromDetailHtml(html)).toBeNull();
+  });
+
+  it('rejects placeholders and empty input', () => {
+    expect(extractRegistrarFromDetailHtml('<a class="registrar-name" href="#">-</a>')).toBeNull();
+    expect(extractRegistrarFromDetailHtml('<a class="registrar-name" href="#">N/A</a>')).toBeNull();
+    expect(extractRegistrarFromDetailHtml('')).toBeNull();
   });
 });
