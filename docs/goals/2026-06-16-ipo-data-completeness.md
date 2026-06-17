@@ -1,8 +1,16 @@
 # GOAL — IPO data completeness: every publicly-available field/table/graph correct for every IPO, proven
 
-**Type:** Autonomous **fix + activate + backfill + migration** master contract (run via `/goal`). Execute
+**Type:** Autonomous **fix + activate + backfill + BUILD + migration** master contract (run via `/goal`). Execute
 end-to-end with **zero user input**. Every design decision is pre-made below — do not pause to ask; make the
 call the contract specifies and keep going until the Definition of Done is fully met.
+
+> **UPDATE 2026-06-16 (Abhay directive — "unblock ALL FOUR blocked-section groups"):** This contract no longer
+> *defers* the DRHP-fed sections. The DRHP discover→download→store pipeline and a fresh financial extractor are
+> **promoted to in-scope BUILDS** (Stage C3a/C3b below). All forks here are resolved by the owning engineering
+> role anchored to the goal (`.claude/rules/engineering-roles.md` + `goal-anchored-decisions.md`) — the run
+> DECIDES, it does not ask. Honesty still binds: a value that genuinely cannot be extracted at sane confidence
+> is DEFERRED with a follow-up issue, never faked. Prod deploy / flag-enable / cron activation / destructive
+> DDL remain §GATE (Abhay's).
 
 **Owner:** Abhay · **Created:** 2026-06-16 · **Scope:** `scraper/`, `packages/shared/`, `web/`, `docs/`, `scripts/` in `D:\Abhay\VibeCoding\IPODhan` ONLY
 **Invocation:** `/goal docs/goals/2026-06-16-ipo-data-completeness.md`
@@ -29,8 +37,10 @@ is populated from a real source and renders correctly — proven by (a) an exten
 read-back, and (c) Playwright-MCP drive of a stratified IPO sample — with corporate actions removed from all
 IPO surfaces, and with NO prod deploy, NO destructive prod DDL, and NO synthetic data.** Fixes are **root-cause
 in the scraper write-path / consolidation / scheduler** and a **shared is-real-IPO predicate** — never per-IPO
-data patches. Genuinely-unavailable data (e.g. DRHP-only financials that need a multi-day auto-discovery
-pipeline) is **DEFERRED with a reason + follow-up issue**, never faked.
+data patches. The DRHP/RHP **auto-discovery→download→store pipeline** (currently stubbed) and a **fresh
+financial extractor** (the external Python parser is missing from the repo) ARE in scope to build (Stage C3).
+Only a value that — after the build + the failure budget — genuinely cannot be extracted at sane confidence is
+**DEFERRED with a reason + follow-up issue**, never faked.
 
 ---
 
@@ -85,7 +95,8 @@ activation / flag-enable are GATED** (no prod deploy without Abhay).
 | Demand graph | `scraper/src/scrapers/nse-api-client.ts` (demand block), `ipoDemandGraph` table | `ipo_demand_graph`=0% — NSE live demand for OPEN IPOs |
 | IPO score (computed app-side) | `web/lib/services/ipo-score-service.ts`, `web/lib/repositories/ipo-score-repository.ts` | `ipo_scores`=0% — score compute/persist never triggered |
 | GMP (defer to GMP contract) | `scraper/src/scrapers/investorgain-gmp-orchestrator-v2.ts` etc. | `gmp_records`=6% — Stage C1 = complete + verify the GMP contract, do NOT re-author |
-| Financials/objectives/docs (DRHP) | `web/lib/services/drhp-extractor-service.ts`, `/api/admin/drhp/extract` | manual-upload-gated; auto-discovery of DRHP URL is the gap (BSE contract Stage C) — **best-effort then DEFER** |
+| **DRHP pipeline (BUILD — Stage C3)** | discover→download→store: `scraper/src/services/drhp-downloader.ts` (`findDRHPUrl`/`searchNSE`/`searchBSE`/`searchSEBI` are **100% stubbed — all `return null`**); store via `DocumentRepository` → `documents` table; jobs that READ `documents` are ALREADY registered: `scraper/src/jobs/anchor-investors-job.ts`, `objectives-job.ts`, `peer-companies-job.ts` | C3a builds the stubbed discovery/download/store → unblocks documents + (transitively) anchor/objectives/peers via the registered jobs |
+| **DRHP financials extractor (BUILD fresh — Stage C3b)** | `web/lib/services/drhp-extractor-service.ts` shells out to an **EXTERNAL `extract_drhp_pdfplumber_v2.py` that is NOT in this repo + undocumented**; schema `financial_data`/`ipo_financials` + `FinancialDataRepository.upsert()` already exist | build a fresh Node/TS PDF financial extractor (reuse the schema+repo+`extraction_logs`); **HARD output-plausibility gate** — defer un-extractable values, never fake |
 | Name normalizer (dedup keystone) | `packages/shared/src/utils/company-name-normalizer.ts` (JS) ↔ `ipo-repository.ts findByNormalizedName` (SQL) | MUST stay in agreement; strip trailing status-code tokens (`" CT"`, `" P"`, `" O"`, `" N"`, trailing `" IPO"`) |
 | **Duplicate / already-listed detection** | `scraper/src/services/duplicate-detection-service.ts` (`checkForDuplicates`), wired into `scraper/src/pipelines/data-validation-pipeline.ts` (on by default) | HIGH symbol/ISIN match = **company already listed** → a root cause of the corp-action / re-listing pollution; MUST block re-creation, not just filter the display (`ipo-duplicate-detection.md`) |
 | Rendering detection (SPA vs static) | `scraper/src/utils/scraper-utils.ts` — `detectRenderingType` / `scrapeWithAutoDetection` | diagnose the dark/SPA writers (the BSE-detail root cause) static-first; never default to Puppeteer (`scraper-rendering-detection.md`) |
@@ -174,25 +185,51 @@ red-first per task. **Scheduler/cron/flag activation in prod is GATED** (author 
 predicate (Stage A owns).
 
 ### Pre-made design decisions (do NOT deviate)
-1. **B1 — Listing performance (LISTED).** Diagnose why `listing_performance`=0/91 (matcher in `match-ipo.ts`?
-   job `listing-performance-update.ts` unregistered? `backfill-listing-performance.ts` never run?). Fix root
-   cause; backfill all 91 LISTED real IPOs (issue/listing/current price + gain%). Source: NSE/BSE quote.
-2. **B2 — Subscription (OPEN/CLOSED).** Complete the BSE-contract Stage C diagnosis (defer to it via preflight):
-   fix the live-subscription capture so OPEN/CLOSED real IPOs with a symbol get `subscriptions` rows
-   (QIB/NII/Retail/total, timestamped). Real-time only for OPEN; final snapshot for CLOSED.
+1. **B1 — Listing performance (LISTED).** GROUNDED (2026-06-16): the job `listing-performance-update.ts` IS
+   registered + the matcher `match-ipo.ts` works (symbol-exact → pg_trgm fallback); the dominant blocker is the
+   `backfill-listing-performance.ts` was **never run**, AND **no SME listing-price source** (67/91 LISTED are
+   SME; NSE `/api/public-past-issues` is mainboard-only). **Decision (Scraper/Data-Pipeline + Architect):**
+   (a) RUN the existing backfill via the tunnel for the ~24 MAINBOARD LISTED now (additive); (b) BUILD a BSE SME
+   listing-price path — reuse the BSE JSON-API + scrip-code lookup already in the BSE enricher
+   (`scraper/src/scrapers/bse-*`) to fetch listing-day + current price for SME symbols, matched via
+   `match-ipo.ts`. Register every new field in `FIELD_PRIORITY_MATRIX`. Threshold is ≥95% of LISTED; any SME row
+   with no obtainable listing-day price → DEFER that row (issue), never fabricate. Source: NSE past-issues
+   (mainboard) + BSE scrip-code quote (SME).
+2. **B2 — Subscription (OPEN/CLOSED).** GROUNDED: NSE scrapes 0 subscriptions (no API endpoint); BSE Puppeteer
+   path is fragile; the **Moneycontrol path is code-ready behind the OFF flag `ENABLE_MONEYCONTROL_SUBSCRIPTION`**
+   but `moneycontrol-orchestrator-v2.ts` never calls `createSubscriptionSnapshot()`. **Decision:** (a) wire the
+   Moneycontrol orchestrator to write subscriptions through `createSubscriptionSnapshot()` when the flag is on
+   (code-only, autonomous — flag stays OFF in prod = §GATE); (b) complete the **BSE JSON-API subscription path**
+   (`bse-api-scraper.ts` `Pubissues_GetBkbldgCatdem_ng/w`) so it flows through the orchestrator under
+   `ENABLE_BSE_API`. QIB/NII/Retail/total, timestamped; real-time for OPEN, final snapshot for CLOSED. Defer to
+   the BSE contract via preflight; build only the missing delta.
 3. **B3 — Anchor investors.** Activate `anchor-investors-job.ts`; backfill CLOSED/LISTED **book-built mainboard**
    real IPOs whose anchor bid date has passed (anchor applies to book-built mainboard only — measure threshold
    against THAT population, not all 298).
-4. **B4 — Peers.** Activate the peer scrape (`peer-company-repository.ts`); source from DRHP/Chittorgarh. If
-   peers require DRHP parsing that isn't feasible this run → best-effort + DEFER (no fake peers).
-5. **B5 — Demand graph (OPEN).** Activate NSE live-demand capture (`nse-api-client.ts` demand block → `ipoDemandGraph`)
-   for OPEN mainboard real IPOs.
+4. **B4 — Peers.** Activate the peer scrape (`peer-company-repository.ts` + the registered `peer-companies-job.ts`,
+   which reads `documents`); source from the C3a DRHP pipeline + Chittorgarh. Peers are now fed by C3a — DEFER
+   only a specific IPO whose prospectus genuinely lacks a peer section (no fake peers).
+5. **B5 — Demand graph (OPEN).** GROUNDED: the `ipoDemandGraph` table + web read route exist, but the **write
+   path is ENTIRELY ABSENT** (no parser, no persister fn, no orchestrator call, no job). **Decision (BUILD):**
+   (a) extract the demand block from the NSE API response in `nse-api-client.ts`; (b) validate + type the rows;
+   (c) add `createDemandGraphSnapshot()` to `data-persister.ts`; (d) wire it into the NSE orchestrator for OPEN
+   mainboard real IPOs; (e) register fields + add a scraper unit test (TDD red-first). Job registration in prod
+   = §GATE; the code build is autonomous.
 6. **B6 — IPO score.** Trigger the app-side score compute/persist (`ipo-score-service.ts`) for real IPOs with
    sufficient inputs; ensure it runs (job or on-write hook) and persists to `ipo_scores`. A score MUST be
    plausibility-bounded (0–100, sane verdict) — no absurd score ships.
-7. **B7 — Core sparse fields** (registrar/lot_size/allotment_date/listing_date/symbol/objectives) via the
-   NSE-first + BSE-JSON-API enrichment (defer BSE core to the BSE contract; run its backfill if unrun). Fill
-   from real sources; objectives best-effort (DRHP) → DEFER if not feasible.
+7. **B7 — Core sparse fields + marginal wins** (registrar/lot_size/allotment_date/listing_date/symbol/isin/
+   objectives). GROUNDED + decided: (a) **name-normalizer**: the trailing-status-token strip is ALREADY in code
+   (`company-name-normalizer.ts`) but **never backfilled to prod** — run an additive backfill over the 3 smelly
+   rows ("…Ltd. CT", "…Ltd. P" ×2) through the name-update path, re-deriving `slug` via `generateIPOSlug`;
+   (b) **`allotment_date`/`isin`/`symbol` are MISSING from `FIELD_PRIORITY_MATRIX`** → add entries (NSE-first for
+   isin/symbol, Moneycontrol for allotment_date) so consolidation stops dropping them; activate the existing but
+   unregistered `nse-isin-scraper.ts`; (c) **registrar**: build a shared `normalizeRegistrar()` (collapse
+   missing-space/casing: "KFin TechnologiesLimited" → "KFin Technologies Limited") and wire it as the registrar
+   `normalization` at the consolidation layer (not per-row); (d) the rumored **"per-script connection bug" is a
+   VERIFIED PHANTOM** — every script imports the shared `db` singleton, none creates its own connection — do NOT
+   chase it. Objectives come from the C3a DRHP pipeline (no longer "best-effort DEFER"). Defer BSE core to the
+   BSE contract; run its backfill if unrun.
 
 ### Stage B acceptance (per domain, run the §6 gate sweep)
 - Each domain meets its §7 threshold (read-back + `--gate`), OR is logged DEFERRED with a concrete reason +
@@ -200,20 +237,41 @@ predicate (Stage A owns).
 
 ---
 
-## 4. STAGE C — Complete the deferred-domain contracts + DRHP best-effort
+## 4. STAGE C — Complete the deferred-domain contracts + BUILD the DRHP pipeline
 
 1. **C1 — GMP:** via preflight, run/complete `2026-06-14-gmp-coverage-revival.md` to its AC1 (≥95% of
    InvestorGain-listed current IPOs) and VERIFY — do NOT re-author. If that contract's code is merged/active,
    verify-only; if its backfill never ran, run it additively and prove coverage.
 2. **C2 — BSE core + #16 dedup:** via preflight, run/complete `2026-06-15-bse-ipo-enrichment.md` (issue_size/lot/
    registrar/price/lead-managers + dup merge) and VERIFY. Verify-only if already done.
-3. **C3 — Financials / objectives / documents (DRHP):** best-effort DRHP/RHP URL auto-discovery (BSE/SEBI) →
-   feed the existing extractor for `financial_data`/`ipo_financials`/objectives/`documents`/anchor. **If
-   auto-discovery is a multi-day pipeline, fill what is feasible and DEFER the rest with a follow-up issue —
-   do NOT fabricate financials.**
+3. **C3 — DRHP pipeline + financials (PROMOTED FROM DEFERRED TO IN-SCOPE BUILD — Abhay "unblock all 4").**
+   Decision (Scraper/Data-Pipeline + Architect, goal-anchored): build it as two stages, foundation first.
+   - **C3a — DRHP/RHP discover→download→store (foundation, fully autonomous, highest leverage):** Implement the
+     **stubbed** `scraper/src/services/drhp-downloader.ts` search methods (`searchNSE`/`searchBSE`/`searchSEBI`,
+     all currently `return null`) using the static-first detection (`scraper-rendering-detection.md`); validate
+     the PDF (`%PDF` magic bytes, already coded); store via `DocumentRepository` → `documents` table with
+     `type`/`exchange`/`extractionStatus`. This UNBLOCKS three sections at once: **documents** (DRHP/RHP links)
+     directly, and **anchor_investors + objectives + peer_companies** transitively — their jobs
+     (`anchor-investors-job.ts`, `objectives-job.ts`, `peer-companies-job.ts`) are ALREADY registered and query
+     the `documents` table; once documents exist they produce rows. Verify each job actually fires + persists
+     (G-PERSIST read-back). Gate new behavior behind a feature flag; record `ScraperMetricsTracker` outcomes.
+   - **C3b — Financial extractor (BUILD FRESH — the external Python `extract_drhp_pdfplumber_v2.py` is NOT in the
+     repo):** build a Node/TS DRHP financial extractor (PDF → revenue/profit/EBITDA/EPS/net-worth/PE/ROE per FY)
+     reusing the existing `financial_data`/`ipo_financials` schema, `FinancialDataRepository.upsert()`, and the
+     `extraction_logs` audit trail + confidence routing (≥90% auto, 75–89% review, <75% manual). **HARD
+     output-plausibility gate (`output-plausibility-verification.md`):** no financial value persists unless it is
+     domain-sane (revenue/profit in ₹cr range, PE/ROE plausible, FY-consistent) — a value the extractor cannot
+     reach sane confidence on within the failure budget is **DEFERRED with a follow-up issue, NEVER fabricated.**
+   - **objectives + company_description:** objectives flow from C3a (the registered `objectives-job.ts`);
+     `company_description` is extracted by C3b from the DRHP overview section (currently 0% with no writer).
+   - **If the full extractor proves multi-day beyond the run's budget:** ship C3a + the C3b scaffold + whatever
+     financials pass the plausibility gate, and DEFER the remainder with a concrete follow-up issue — C3a's
+     unblocking of documents/anchor/objectives/peers stands on its own and is the bulk of the user value.
 
 ### Stage C acceptance
-- GMP + BSE-core thresholds met (or their contracts' DoD referenced as met); DRHP domains filled or DEFERRED with reason.
+- GMP + BSE-core thresholds met (or their contracts' DoD referenced as met); C3a documents pipeline built +
+  unblocking anchor/objectives/peers (proven by read-back); C3b financials extracted under the plausibility gate,
+  only un-extractable values DEFERRED with reason.
 
 ---
 
@@ -301,7 +359,12 @@ the PROGRESS file, never fake-complete.
 - [ ] **gmp_records ≥95% of InvestorGain-listed current** IPOs (GMP contract AC1).
 - [ ] **core fields:** registrar ≥90%, lot_size ≥95%, allotment_date ≥90% (CLOSED/LISTED), listing_date 100% (LISTED), symbol ≥90% (LISTED), issue_size>0 (BSE contract) — across real IPOs.
 - [ ] **anchor_investors ≥90% of book-built mainboard** real IPOs past anchor date; **ipo_scores ≥95%** of real IPOs with sufficient inputs; **ipo_demand_graph** present for OPEN mainboard real IPOs.
-- [ ] **financial_data / ipo_financials / objectives / documents / peer_companies:** filled from DRHP where feasible, else DEFERRED with reason + follow-up issue (NO fake data).
+- [ ] **documents (DRHP/RHP)** populated via the C3a discover→download→store pipeline for genuine IPOs with a
+  published prospectus; **anchor_investors / objectives / peer_companies** then produced by their already-registered
+  jobs reading `documents` (proven by read-back).
+- [ ] **financial_data / ipo_financials / company_description:** extracted by the C3b fresh extractor, every
+  persisted value passing the output-plausibility gate; values the extractor cannot reach sane confidence on are
+  DEFERRED with reason + follow-up issue (NO fake data).
 
 **Render proof (Stage D):**
 - [ ] Stratified UI sample (≥2 UPCOMING, ≥3 OPEN, ≥3 CLOSED, ≥3 LISTED, both segments) renders real data in every applicable section; values domain-sane; 0 new console errors; screenshots saved under `docs/goals/.run/`.
@@ -364,17 +427,19 @@ DoD green/amber/red tally; DEFERRED entries (DRHP financials etc.) with rule sta
 | 4 | Prod path | additive/corrective via the `localhost:15432` tunnel; deploy / cron / flag-enable / destructive DDL **GATED** |
 | 5 | DoD model | per-domain coverage thresholds against the **applicable** population, machine-checked by `scripts/audit-ipo-coverage.mjs --gate`; UI proven on a stratified sample |
 | 6 | Corporate-action pollution | shared `isRealIPO()` predicate applied uniformly (list ↔ detail parity); rows **excluded, not deleted** |
-| 7 | Known-hard data (DRHP financials/objectives/docs/peers) | best-effort, then **DEFER with reason + follow-up issue** — never faked |
+| 7 | Known-hard data (DRHP financials/objectives/docs/peers) | ~~best-effort, then DEFER~~ **SUPERSEDED by row 12 (2026-06-16): promoted to in-scope BUILD (C3a/C3b).** Only a value un-extractable at sane confidence after the build is DEFERRED with reason + follow-up issue — never faked |
 | 8 | Git policy | `feat/ipo-data-completeness` + draft PR; NEVER merge/push main |
 | 9 | Verification model | IPODhan named rules (supervisor- / independent- / e2e-persistence / output-plausibility) MANDATORY per task + stage |
 | 10 | Post-synthesis rule alignment (2026-06-16) | bind the 8 synthesized IPODhan rules: pollution root cause via `DuplicateDetectionService` (not only display filter); slugs via `generateIPOSlug`; money/share columns `numeric()`/`bigint`; render via `kpi-formatters.ts`/`date-formatter.ts`; dark-writer diagnosis via `detectRenderingType`; per-source `ScraperMetricsTracker`; backfills respect `FieldProtectionService`; subagent dispatch single-level (`agent-orchestration.md`) |
 | 11 | Update channel | contract authored/updated via the `goal-creator` skill (not ad-hoc edits); in-place edit permitted — contract not yet run/running |
+| 12 | Unblock-all-4 update (2026-06-16) | Abhay directive "unblock ALL FOUR" overrides the prior DRHP defer. DRHP promoted to in-scope BUILD: **C3a** discover→download→store (`drhp-downloader.ts` stubs → `documents`, unblocking anchor/objectives/peers via their registered jobs) + **C3b** fresh Node/TS financial extractor (external Python missing) under a hard output-plausibility gate. B1 = run mainboard backfill + build BSE-SME listing-price path. B2 = wire Moneycontrol (flag-gated) + BSE-API subscription. B5 = build the absent NSE demand write path. Marginal = name-normalizer backfill + add allotment_date/isin/symbol to FIELD_PRIORITY_MATRIX + `normalizeRegistrar()`; "per-script connection bug" = verified phantom. Forks resolved by the owning role anchored to the goal (`engineering-roles.md` + `goal-anchored-decisions.md`, ported from firekaro-planner 2026-06-16); honesty preserved (defer-not-fake); deploy/flag/cron/DDL stay §GATE |
 
 ---
 
 ## References (loaded transitively)
 
 - `.claude/rules/claude-behavior.md` — rules 15, 17, 20, 23
+- `.claude/rules/engineering-roles.md` + `goal-anchored-decisions.md` — the run RESOLVES every fork by adopting the owning role anchored to the goal (decide, don't ask); `decision-authority.md` governs escalate-vs-decide
 - `.claude/rules/supervisor-verification.md` · `independent-test-verification.md` · `e2e-persistence-verification.md` · `output-plausibility-verification.md` · `e2e-readiness-signal.md` — the G-UI / G-PERSIST / G-INDEPENDENT gates
 - `.claude/rules/dod-verbs.md` — load-bearing DoD verbs · `.claude/rules/tdd-rule.md` — red-green-refactor
 - `.claude/rules/scraper-write-path.md` · `scraper-test-layout.md` · `schema-imports.md` · `shared-package-build.md` · `structured-logging.md`
