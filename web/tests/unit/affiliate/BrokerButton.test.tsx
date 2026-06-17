@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { BrokerButton } from '@/components/affiliate/BrokerButton';
 import type { BrokerConfig } from '@/lib/config/affiliate-links';
@@ -61,7 +61,7 @@ describe('BrokerButton', () => {
     const user = userEvent.setup();
     render(<BrokerButton broker={mockBroker} source="homepage" />);
 
-    const button = screen.getByRole('button');
+    const button = screen.getByRole('link'); // BrokerButton renders an <a> affiliate link
     await user.click(button);
 
     await waitFor(() => {
@@ -89,7 +89,7 @@ describe('BrokerButton', () => {
       <BrokerButton broker={mockBroker} source="ipo_detail" ipoId={ipoId} />
     );
 
-    const button = screen.getByRole('button');
+    const button = screen.getByRole('link'); // BrokerButton renders an <a> affiliate link
     await user.click(button);
 
     await waitFor(() => {
@@ -113,7 +113,7 @@ describe('BrokerButton', () => {
     const user = userEvent.setup();
     render(<BrokerButton broker={mockBroker} source="homepage" />);
 
-    const button = screen.getByRole('button');
+    const button = screen.getByRole('link'); // BrokerButton renders an <a> affiliate link
     await user.click(button);
 
     await waitFor(() => {
@@ -134,7 +134,7 @@ describe('BrokerButton', () => {
     const user = userEvent.setup();
     render(<BrokerButton broker={mockBroker} source="homepage" />);
 
-    const button = screen.getByRole('button');
+    const button = screen.getByRole('link'); // BrokerButton renders an <a> affiliate link
     await user.click(button);
 
     await waitFor(() => {
@@ -148,17 +148,21 @@ describe('BrokerButton', () => {
   });
 
   it('prevents double-clicking during tracking', async () => {
-    const user = userEvent.setup();
+    // The guard (`if (isTracking) return`) dedupes clicks that arrive WHILE a
+    // track is in-flight. Hold fetch pending and fire synchronous clicks so the
+    // 2nd/3rd land before the first resolves (awaited clicks each complete a full
+    // cycle and would legitimately track 3 times).
+    (global.fetch as ReturnType<typeof vi.fn>).mockReturnValue(
+      new Promise(() => {}) // never resolves → stays in-flight
+    );
     render(<BrokerButton broker={mockBroker} source="homepage" />);
 
-    const button = screen.getByRole('button');
+    const link = screen.getByRole('link');
+    fireEvent.click(link);
+    fireEvent.click(link);
+    fireEvent.click(link);
 
-    // Click multiple times rapidly
-    await user.click(button);
-    await user.click(button);
-    await user.click(button);
-
-    // Should only track once
+    // Guard held during the in-flight track → only one request
     await waitFor(() => {
       expect(global.fetch).toHaveBeenCalledTimes(1);
     });
