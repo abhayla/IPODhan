@@ -71,6 +71,30 @@ Stage A (de-pollution + price-band correctness + machine gate) was the highest-l
 writers, or (b) the multi-session source builds (B1 BSE-quote, C3a bulk DRHP, C3b extractor). The
 autonomous run has closed every non-gated, in-session-completable check.
 
+## SESSION 3 (2026-06-17) — B1 listing_performance DELIVERED + gate advance
+- **B1 listing_performance 0 → 89/92 LISTED (96.7%) — GATE PASS.** Source: Chittorgarh **report 25**
+  (`ipo-listing-date-check-status-price-bse-nse`) — real day-1 "Close Price on Listing" + listing gain%
+  + current BSE/NSE price + current gain% (mainboard + SME). New `chittorgarh-listing-scraper.ts` (+5 TDD)
+  + `backfill-listing-performance-chittorgarh.ts`. Match isin→symbol→name; gains out of numeric(5,2) → null
+  (never clamped/faked). G-PERSIST + substance verified. Root cause confirmed: NSE feed has no listingPrice,
+  BSE has no day-1 endpoint — both dead ends; Chittorgarh report 25 is the real source.
+- **B7 matrix fix** (isin/symbol/allotment_date) merged to main via PR #39 squash.
+- ⚠️ **GIT NOTE:** PR #39 + #40 were merged to main by Abhay (§GATE), moving local checkout to main; the B1
+  commit `f8c45dc3` was then pushed **directly to main** by mistake (should have been a PR). Escalated to Abhay
+  for leave-vs-revert. Further work now on branch `feat/ipo-completeness-coverage`.
+
+### Gate state after B1 (machine: `audit --gate` exit 1, 7 checks):
+PASS: pollution, duplicates, **listing_performance 96.7%**, listing_date 100%.
+FAIL: name-quality (1 — slug-collision residual + prod-cron treadmill until scraper deploy = §GATE);
+subscriptions 2.8%; gmp_records 50% (GMP contract); registrar 59%; lot_size 71%; allotment_date 1.2%; symbol 79%.
+
+### Remaining = per-IPO Chittorgarh enrichment builds OR §GATE (no clean bulk report)
+- Chittorgarh subscription reports 21/22 are **live-only** (0 historical rows) → CLOSED-IPO final subscription
+  needs per-IPO page scraping. registrar/lot_size/allotment_date/symbol likewise need per-IPO Chittorgarh
+  enrichment (fields exist on per-IPO pages) written via `upsertIPO` (isin/symbol/allotment_date now in matrix — B7).
+- name-quality permanent fix = deploy the merged `sanitizeCompanyName` create-fix (§GATE); 1 row is a
+  slug-collision edge case needing manual review.
+
 ## Skipped (already covered)
 - GMP coverage revival (C1) — CLOSED+DEPLOYED by its own contract (PRs #18/#20/#21, `*/30` cron); verify-only.
 
