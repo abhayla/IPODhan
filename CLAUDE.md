@@ -22,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Quick Reference
 
-**Commands (root proxies only dev/dev:scraper/lint/build/test:unit — the rest run from web/):**
+**Commands (root proxies dev/dev:scraper/scraper:nse/lint/build/test:unit + audit:prod — the rest run from web/):**
 ```bash
 # Development
 npm run dev                    # Next.js dev server (port 3000)
@@ -69,7 +69,7 @@ IPODhan is an IPO information platform for Indian investors. Tech stack: Next.js
 ```
 IPODhan/
 ├── packages/shared/                  # @ipodhan/shared - used by both web & scraper
-│   └── src/db/schema.ts              # DB schema (24 tables) - SINGLE SOURCE OF TRUTH
+│   └── src/db/schema.ts              # DB schema (25 tables) - SINGLE SOURCE OF TRUTH
 │       (also: repositories, services, utils, errors, types)
 ├── web/                              # Next.js app
 │   ├── app/                          # Pages & API routes
@@ -245,6 +245,6 @@ export async function GET(request: NextRequest) {
 
 ## Claude Code Configuration
 
-The `.claude/` directory contains the project's skills, agents, and rules for Claude Code (browse `.claude/skills/`, `.claude/agents/`, `.claude/rules/` — counts drift, so they are not pinned here).
+The `.claude/` directory contains 123 skills, 24 agents, and 45 rules for Claude Code.
 
 <!-- hub:best-practices:end -->

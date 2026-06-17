@@ -22,7 +22,7 @@ triggers:
   - debug fix and verify
 allowed-tools: "Agent Bash Read Write Edit Grep Glob Skill"
 argument-hint: "<bug description, error output, or issue URL>"
-version: "2.0.0"
+version: "2.1.2"
 ---
 
 # /debugging-loop — Skill-at-T0 Orchestrator
@@ -55,15 +55,15 @@ Canonical pattern: `workflow-master-template.md` v2.0.0.
 
 | Flag | Default | Meaning |
 |------|---------|---------|
-| `--skip-verify` | off | Skip STEP 3 VERIFY (fix is trusted; e.g., trivial typo) |
-| `--skip-learn` | off | Skip STEP 4 LEARN (rare; learning is normally mandatory) |
+| `--skip-verify` | off | Skip STEP 4 VERIFY (fix is trusted; e.g., trivial typo) |
+| `--skip-learn` | off | Skip STEP 5 LEARN (rare; learning is normally mandatory) |
 
 ---
 
 ## STEP 1: INIT
 
 1. **Parse args.** If empty, ask for bug description + error output.
-2. **Read config.** `config/workflow-contracts.yaml` → `workflows.debugging-loop`.
+2. **Read config.** `.claude/config/workflow-contracts.yaml (hub repo: config/workflow-contracts.yaml; if absent, use the inline steps below — this skill is self-contained)` → `workflows.debugging-loop`.
    `master_agent` should be null; `sub_orchestrators` empty (Phase 3.3 shape).
 3. **Generate `run_id`.** `{ISO-8601}_{7-char git sha}` with `:` → `-`.
 4. **Detect input type.**
@@ -74,6 +74,29 @@ Canonical pattern: `workflow-master-template.md` v2.0.0.
    with `step_status: {INIT: done, DIAGNOSE: pending, FIX: pending,
    VERIFY: pending, LEARN: pending}`, `dispatches_used: 0`, hypothesis_trail: [].
 6. Append INIT event to `events.jsonl`.
+
+---
+
+## STEP 1.5: PREFLIGHT (dependency-closure gate — BLOCK on missing workers)
+
+Before any dispatch, verify the runtime closure this workflow needs is present
+AND dispatchable. Pattern provisioning copies by tier and may not resolve a
+skill's full closure, so a project can have this skill without its workers — a
+silent inline run or a mid-dispatch crash is the failure this gate prevents.
+
+- **Required sub-skills** (invoked via `Skill()`): `systematic-debugging`, `fix-loop`, `auto-verify`, `learn-n-improve`. Check each exists at
+  `.claude/skills/<name>/SKILL.md` (only those on the path you will actually run).
+- **Required worker agents** (dispatched via `Agent()`): `test-failure-analyzer-agent`, `debugger-agent`. File presence
+  (`.claude/agents/<name>.md`) is necessary but NOT sufficient — the agent registry
+  is pinned at session start (`pattern-structure.md` → "registry session-pinning"),
+  so probe runtime dispatchability for any agent on the path about to run.
+- **On any missing/undispatchable dependency → BLOCK** with verdict
+  `WORKER_REGISTRY_NOT_LOADED`, list what is missing, and emit: "run
+  `/update-practices` to provision the closure, then RESTART the session (agent
+  registry is pinned at session start), then re-run." Write the BLOCKED verdict to
+  this workflow's report artifact and STOP.
+
+Only when the required closure is present and dispatchable, continue.
 
 ---
 
@@ -220,6 +243,7 @@ Capture learning reference into `state.artifacts.learning`.
 
 ## CRITICAL RULES
 
+- MUST run STEP 1.5 PREFLIGHT before any dispatch and BLOCK with `WORKER_REGISTRY_NOT_LOADED` if a required sub-skill or worker agent (on the path being run) is missing/undispatchable. Provisioning does not always resolve dependency closures, so this skill can be present without its workers.
 - MUST run at T0 — skill body is injected into user's session. Dispatching
   this as a worker strips `Agent` at runtime and the STEP 2 / 3 / 4
   dispatches silently inline (2026-04-24 platform failure mode).

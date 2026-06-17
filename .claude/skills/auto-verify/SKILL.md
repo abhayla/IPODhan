@@ -14,7 +14,7 @@ triggers:
   - verify correctness
 allowed-tools: "Bash Read Grep Glob Write Skill Agent"
 argument-hint: "[--files <paths>] [--full-suite] [--strict-gates] [--capture-proof | --no-capture-proof] [--allow-degraded-ui]"
-version: "4.1.0"
+version: "4.3.0"
 type: workflow
 ---
 
@@ -116,18 +116,56 @@ After `/regression-test` completes, read `test-results/regression-test.json`:
    (some tests failed during mapping) → note failures but proceed to STEP 2
    (tester-agent will re-run them with full verdict rules)
 4. Use the mapped test files and risk classification for STEP 2
-5. If zero affected tests found → skip Steps 2-3, write auto-verify.json with
-   `result: "PASSED"`, `summary.total: 0`, and `warnings: ["No tests mapped to
-   changed files"]`. Proceed to Step 4 (quality gates still run).
+5. If zero affected tests found → classify the change before deciding the verdict
+   (a code-producing change that ran 0 tests MUST NOT report a clean PASS — that
+   is a vacuous-green / shape-vs-substance pass per `output-plausibility-verification.md`
+   and `dod-verbs.md`; a runner like `node --test` exits 0 on an empty suite):
+   - **Changed files include source/code** (not solely docs/config/fixtures —
+     i.e. any `.py/.ts/.tsx/.js/.jsx/.kt/.java/.go/.rs/.vue/.svelte/...` outside
+     `docs/`):
+     - **With `--strict-gates`:** write `result: "FAILED"`, `summary.total: 0`,
+       `failures: [{"test": "N/A", "category": "NO_TESTS_FOR_CHANGE", "message":
+       "Code changed but 0 tests cover it — cannot verify; add a test or run /fix-loop"}]`.
+       This is what stops `/development-loop` committing unverified code.
+     - **Without `--strict-gates`:** write `result: "PASSED"`, `summary.total: 0`,
+       and a prominent `warnings: ["UNVERIFIED: code changed but 0 tests cover it"]`
+       (back-compat for non-gated callers — but the warning MUST be surfaced).
+   - **No code changed** (docs/config/fixtures-only, or no changed files): write
+     `result: "PASSED"`, `summary.total: 0`, `warnings: ["No tests mapped to
+     changed files"]` — legitimately nothing to verify.
+   Then skip Steps 2-3 and proceed to Step 4 (quality gates still run).
 
 Coverage gaps flagged by `/regression-test` (source files with no mapped tests)
 are reported in the final auto-verify output as warnings.
+
+### Monorepo runner scoping (MUST — multi-stack repos)
+
+In a monorepo with more than one test runner, the runner MUST be scoped to the
+**changed sub-package**, not detected at the repo root. Detecting at root picks
+the wrong runner: e.g. a `backend/`-only change in a `backend/` (pytest) +
+`frontend/` (vitest) repo whose ROOT `package.json` `test` script is
+`playwright test` would run the E2E suite (or nothing relevant) instead of the
+backend unit tests — a false verdict.
+
+1. Detect monorepo via standard signals: `workspaces` in root `package.json`,
+   `pnpm-workspace.yaml`, `lerna.json`, `nx.json`, or multiple package manifests
+   at different depths.
+2. Group the changed files by their owning sub-package (nearest ancestor dir
+   containing a manifest: `package.json`, `pyproject.toml`/`requirements.txt`,
+   `build.gradle`, `go.mod`, `Cargo.toml`).
+3. For each affected sub-package, detect and run **that package's** runner from
+   **that package's directory** (e.g. `pytest tests/` in `backend/`, `vitest` in
+   `frontend/`). Aggregate per-package results into the single auto-verify verdict
+   (union-of-failures).
+4. Only fall back to a root-level runner when changes are not confined to a
+   sub-package (cross-cutting/root changes).
 
 ## STEP 2: Execute Tests (via tester-agent)
 
 **Fallback if `tester-agent` is not installed:** Run tests directly using the
 project's test runner (detect from CLAUDE.md, pyproject.toml, package.json, or
-build.gradle). All tests use exit-code verdicts (no screenshot verification).
+build.gradle — scoped to the changed sub-package per "Monorepo runner scoping"
+above). All tests use exit-code verdicts (no screenshot verification).
 Log: "WARN: tester-agent not available — running tests directly without UI
 screenshot verification."
 
@@ -410,3 +448,5 @@ stage gate aggregator from reading results from a previous run.
 - MUST report pre-existing failures separately from regression failures in the output. — Why: blocking on pre-existing failures prevents any new work from passing verification.
 - MUST degrade gracefully if `/regression-test` or `tester-agent` are missing — use fallbacks, not hard failures. — Why: not all projects have these installed; hard failure makes the skill unusable in simpler setups.
 - MUST fail the silent-degradation gate when UI tests are mapped but screenshot verification was skipped, unless `--allow-degraded-ui` was explicitly passed. — Why: a silent fallback to exit-code-only verification for UI tests reintroduces exactly the "green tests, broken UI" failure mode the dual-signal architecture exists to prevent.
+- MUST scope the test runner to the **changed sub-package** in a multi-stack monorepo (run that package's runner from its dir; aggregate union-of-failures) — never detect at the repo root. — Why: a `backend/`-only change in a backend(pytest)+frontend(vitest) repo whose root `package.json` test is `playwright test` would run the wrong suite and produce a false verdict.
+- MUST NOT report a clean `PASSED` for a **code-producing change that executed 0 tests** under `--strict-gates` — emit `FAILED` with category `NO_TESTS_FOR_CHANGE` instead. — Why: a runner like `node --test` exits 0 on an empty suite, so "exit 0" with zero tests is a vacuous green that lets `/development-loop` commit unverified code while claiming "verified" (shape-vs-substance, `output-plausibility-verification.md`). A docs/config-only change with 0 tests legitimately stays PASSED.

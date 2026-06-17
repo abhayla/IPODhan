@@ -286,3 +286,8 @@ temp/api-tests/*.json
 # Production server temporary files (testing)
 prod-server*.log
 prod-server*.pid
+
+# Ephemeral Claude Code workflow runtime artifacts (claude-best-practices hub)
+.workflows/
+test-results/
+test-evidence/
