@@ -170,6 +170,21 @@ async function main() {
     perFy('totalIncome', 'totalIncome', FINANCIAL_FIELD_BOUNDS.totalIncome);
     perFy('profit', 'profit', FINANCIAL_FIELD_BOUNDS.profit);
     perFy('ebitda', 'ebitda', FINANCIAL_FIELD_BOUNDS.ebitda);
+
+    // Cross-field coherence guard (output-plausibility-verification.md): "Revenue from
+    // operations" is the dominant component of "Total Income", so a PDF-extracted revenue
+    // must land within 30%–110% of the known total income for that FY. A value far outside
+    // that band (e.g. a column-misaligned 1.70 against total income 41.77) is a misparse
+    // and is DROPPED — never persisted. Total income may come from this PDF or the existing
+    // HTML-sourced row.
+    for (const y of FY_SLOTS) {
+      const rev = (pdf as any)[`revenueFy${y}`];
+      const ti = (pdf as any)[`totalIncomeFy${y}`] ?? (existing as any)[`totalIncomeFy${y}`];
+      if (rev != null && ti != null && ti > 0 && (rev < ti * 0.3 || rev > ti * 1.1)) {
+        delete (pdf as any)[`revenueFy${y}`];
+        logger.warn({ company: doc.companyName, fy: y, rev, totalIncome: ti }, 'PDF revenue incoherent with total income — dropped');
+      }
+    }
     const latestAnnual = (metricKey: string): number | undefined => {
       const byYear = m[metricKey];
       if (!byYear) return undefined;
