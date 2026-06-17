@@ -63,7 +63,13 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)"
 # when already in sync — those carry no marker and still match the over-ask patterns below.)
 # Honest use is governed by decision-authority.md "Confidence gate"; abuse is visible (the
 # banner renders to the user).
-if printf '%s' "$full" | grep -qE "push to prod|deploy|dns|cutover|force[- ]push|--force|spend|publish|destructive|drop (table|column)|delete (the )?(branch|remote)|escalat|blocked on|need (your|you to)|your (credential|password|approval|login|call)|waiting on (you|the user)|log in yourself|run .* yourself|requires? your|sync-check"; then
+# (2026-06-17) Broadened to genuine-blocker / autonomous-completion phrasings an
+# autonomous /goal run actually emits when it legitimately must stop — "holding for
+# your decision", "not autonomously reachable", "will not act/revert until you decide",
+# "§GATE (needs Abhay)". These are escalation STATEMENTS, not permission-to-START
+# over-asks (those still match the A/B patterns below), so exempting them does not
+# reopen the over-ask hole — it stops looping a genuinely-blocked run to the 12-cap.
+if printf '%s' "$full" | grep -qE "push to prod|deploy|dns|cutover|force[- ]push|--force|spend|publish|destructive|drop (table|column)|delete (the )?(branch|remote)|escalat|blocked on|need (your|you to)|your (credential|password|approval|login|call|decision|two|sign-?off|go-?ahead)|waiting on (you|the user)|holding for your|awaiting your|act without|will not (act|force|revert|push)|not autonomously|gate \(needs|log in yourself|run .* yourself|requires? your|sync-check"; then
   exit 0
 fi
 

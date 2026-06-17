@@ -71,6 +71,52 @@ Stage A (de-pollution + price-band correctness + machine gate) was the highest-l
 writers, or (b) the multi-session source builds (B1 BSE-quote, C3a bulk DRHP, C3b extractor). The
 autonomous run has closed every non-gated, in-session-completable check.
 
+## SESSION 3 (2026-06-17) — B1 listing_performance DELIVERED + gate advance
+- **B1 listing_performance 0 → 89/92 LISTED (96.7%) — GATE PASS.** Source: Chittorgarh **report 25**
+  (`ipo-listing-date-check-status-price-bse-nse`) — real day-1 "Close Price on Listing" + listing gain%
+  + current BSE/NSE price + current gain% (mainboard + SME). New `chittorgarh-listing-scraper.ts` (+5 TDD)
+  + `backfill-listing-performance-chittorgarh.ts`. Match isin→symbol→name; gains out of numeric(5,2) → null
+  (never clamped/faked). G-PERSIST + substance verified. Root cause confirmed: NSE feed has no listingPrice,
+  BSE has no day-1 endpoint — both dead ends; Chittorgarh report 25 is the real source.
+- **B7 matrix fix** (isin/symbol/allotment_date) merged to main via PR #39 squash.
+- ⚠️ **GIT NOTE:** PR #39 + #40 were merged to main by Abhay (§GATE), moving local checkout to main; the B1
+  commit `f8c45dc3` was then pushed **directly to main** by mistake (should have been a PR). Escalated to Abhay
+  for leave-vs-revert. Further work now on branch `feat/ipo-completeness-coverage`.
+
+### Gate state after B1 (machine: `audit --gate` exit 1, 7 checks):
+PASS: pollution, duplicates, **listing_performance 96.7%**, listing_date 100%.
+FAIL: name-quality (1 — slug-collision residual + prod-cron treadmill until scraper deploy = §GATE);
+subscriptions 2.8%; gmp_records 50% (GMP contract); registrar 59%; lot_size 71%; allotment_date 1.2%; symbol 79%.
+
+### Remaining = per-IPO Chittorgarh enrichment builds OR §GATE (no clean bulk report)
+- Chittorgarh subscription reports 21/22 are **live-only** (0 historical rows) → CLOSED-IPO final subscription
+  needs per-IPO page scraping. registrar/lot_size/allotment_date/symbol likewise need per-IPO Chittorgarh
+  enrichment (fields exist on per-IPO pages) written via `upsertIPO` (isin/symbol/allotment_date now in matrix — B7).
+- name-quality permanent fix = deploy the merged `sanitizeCompanyName` create-fix (§GATE); 1 row is a
+  slug-collision edge case needing manual review.
+
+## SESSION 3 FINAL (2026-06-17) — gate 8→6 fails; 2 more checks PASS
+Branch `feat/ipo-completeness-coverage` (PRs not opened; B1 code already on main via mistaken push f8c45dc3).
+Chittorgarh report map (found via per-IPO page report links): 20=prospectus, 25=listing-perf,
+21/22=subscription(LIVE-only), 118=timetable/allotment(FULL list), 32=registrar-directory(names only),
+82=IPO-list, 7=basis-of-allotment(latest-N).
+
+Delivered this session (all real-source, honest, fill-NULL-only, verified read-back):
+- **listing_performance 0→89/92 LISTED (96.7%) — PASS** (Chittorgarh report 25).
+- **core.symbol 73→88/92 LISTED (95.7%) — PASS** (isin/symbol backfill, reports 25+20).
+- **allotment_date 0.8%→52.8%** (report 118; older CLOSED IPOs absent from the report → source-capped, FAIL@90%).
+- **isin +96** (matching infra), **documents 0→30.8%** (report 20, session 2), **B7 matrix** (session 2).
+
+GATE now PASS(5): pollution, duplicates, listing_performance, core.symbol, listing_date.
+GATE FAIL(6):
+- name-quality (oscillates 0↔7 — prod cron re-scrapes with old code; PERMANENT fix = deploy `sanitizeCompanyName` = §GATE; corrective backfill is futile whack-a-mole).
+- subscriptions 2.8% (Chittorgarh reports 21/22 are LIVE-only → no history; needs per-IPO page scrape OR BSE-live path + flag = §GATE).
+- gmp_records 50% (separate GMP contract).
+- registrar 59.1% / lot_size 70.8% (no clean bulk report — report 32 is a registrar directory, report 118 has no lot; on per-IPO pages → multi-session per-IPO scrape, write via upsertIPO).
+- allotment_date 52.8% (source-capped by report 118 coverage).
+
+**exit-0 is not autonomously reachable:** name-quality + subscriptions-activation need §GATE deploy; gmp is another contract; registrar/lot/subscription-history need a multi-session per-IPO Chittorgarh scrape; allotment/symbol are source-capped. New backfill scripts (all dry-run-default, idempotent, fill-NULL-only) are reusable for re-runs.
+
 ## Skipped (already covered)
 - GMP coverage revival (C1) — CLOSED+DEPLOYED by its own contract (PRs #18/#20/#21, `*/30` cron); verify-only.
 
@@ -79,3 +125,40 @@ autonomous run has closed every non-gated, in-session-completable check.
 
 ## DEFERRED
 - A5 registrar canonicalization; Stages B/C/D backfills + activations — see `…-DEFERRED.md`.
+
+## SESSION 4 (2026-06-17 PM) — per-IPO detail enrichment unlocked; gate 6→6 (2 gaps narrowed, name-quality §GATE-confirmed)
+Branch `feat/ipo-completeness-coverage` (3 commits pushed; **no PR opened yet — draft PR for Abhay**).
+
+**Key unlock:** Chittorgarh **report 118** carries `~urlrewrite_folder_name` + `~id` → a FULL historical
+(1359-IPO) **slug+id discovery map** for the per-IPO detail page (`/ipo/<slug>/<id>/`). Session-3 thought
+registrar/lot needed a "multi-session per-IPO scrape with no discovery source" — report 118 IS the discovery
+source. Detail pages are static-scrapeable (cheerio/regex), so per-IPO enrichment is now a single, reusable path.
+
+Delivered (all real-source, fill-NULL-only, plausibility-gated, read-back verified):
+- **name-quality root cause (#42) — FIXED in code (commit 6f8afc56).** `sanitizeCompanyName` ran only on the
+  data-persister CREATE path; the consolidation-update + base-scraper-orchestrator paths wrote `company_name`
+  raw. New shared `sanitizeDisplayCompanyName()` applied at the **IPORepository.create()/update() choke point** —
+  every write path now sanitizes. Backfill cleaned 7 live rows. **CONFIRMED the pre-deploy treadmill:** prod cron
+  re-polluted within ~30min (`last_manual_edit_at` does NOT protect `company_name`). Durable fix = **deploy** (§GATE);
+  the repo choke-point fix auto-sanitizes the cron's writes post-deploy.
+- **lot_size 71%→82%** (commit 6b929852) — new `extractLotSizeFromDetailHtml` (anchor `<a title="Lot Size">`→`N Shares`,
+  reject 1/absurd). 30/78 matched+extracted, 0 fail. 48 unmatched = source-capped (not in report 118).
+- **registrar 59%→85%** (commit e4bcf797) — new `extractRegistrarFromDetailHtml` (`class="registrar-name"`,
+  fixes "Pvt.Ltd."→"Pvt. Ltd."). 69/109 matched+extracted, 0 fail. 40 unmatched = source-capped.
+- Filed **#44** (Horizon Reclaim duplicate — normalizer misses `(India)` vs `India`; paren-strip + merge deferred).
+- Fixed local `core.hooksPath` (.husky → .husky/_) so husky v9 pre-commit runs (env-only, no repo change).
+
+GATE now PASS(5): pollution, duplicates, listing_performance 96.7%, core.symbol 95.7%, listing_date 100%.
+GATE FAIL(6): name-quality (treadmills 0↔7 pre-deploy = §GATE deploy); subscriptions 2.8% (§GATE BSE/Moneycontrol
+flags + cron, or per-IPO subscription scrape); gmp 42% (GMP contract); registrar 85% (source-capped tail, FAIL@90);
+lot_size 82% (source-capped tail, FAIL@95); allotment_date 53% (report-118 column harvested by session-3; detail-page
+timetable extraction DEFERRED — date-format parsing + uncertain incremental yield).
+
+**Reusable:** `chittorgarh-detail-fields.ts` (lot+registrar extractors, unit-tested) + 2 detail backfills
+(report-118 discovery, fill-NULL, dry-run default). allotment_date detail extractor is the obvious next extension.
+
+## §GATE (needs Abhay) — updated
+- **Deploy the scraper** to activate the `sanitizeDisplayCompanyName` write-path fix → name-quality durably 0
+  (pre-deploy it treadmills every cron cycle; code fix is committed + in the branch).
+- Subscription flags (ENABLE_MONEYCONTROL_SUBSCRIPTION / ENABLE_BSE_API) + cron to accrue OPEN/CLOSED subscriptions.
+- Merge the branch / open+merge draft PR.

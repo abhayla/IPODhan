@@ -32,7 +32,7 @@ import {
   getHistoricalIPOsKey,
 } from '../cache/cache-keys';
 import { EntityNotFoundError, DatabaseError } from '../errors/repository-errors';
-import { normalizedCompanyNameSql } from '../utils/company-name-normalizer';
+import { normalizedCompanyNameSql, sanitizeDisplayCompanyName } from '../utils/company-name-normalizer';
 import type {
   IPO,
   IPOInsert,
@@ -438,6 +438,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    */
   async create(data: IPOInsert): Promise<IPO> {
     try {
+      // Single write choke point: every IPO create — regardless of which
+      // scraper/consolidation path produced it — stores a sanitized display
+      // name (strip trailing scrape-artifact status token, e.g. "Ltd. O"). #42
+      if (data.companyName) {
+        data = { ...data, companyName: sanitizeDisplayCompanyName(data.companyName) };
+      }
+
       const [ipo] = await this.db
         .insert(ipos)
         .values(data)
@@ -472,6 +479,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    */
   async update(id: string, data: Partial<IPOInsert>): Promise<IPO> {
     try {
+      // Same choke point on the update/consolidation path: if a write carries a
+      // company name (a re-scrape, a consolidated winning value, or an admin
+      // edit), persist the sanitized form so a raw token can never re-pollute. #42
+      if (data.companyName) {
+        data = { ...data, companyName: sanitizeDisplayCompanyName(data.companyName) };
+      }
+
       const [ipo] = await this.db
         .update(ipos)
         .set({ ...data, updatedAt: new Date() })

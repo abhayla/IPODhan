@@ -16,6 +16,34 @@
 import { sql, type SQL } from 'drizzle-orm';
 
 /**
+ * Canonical DISPLAY-name sanitizer (#42). Unlike `normalizeCompanyNameForMatching`
+ * (which strips the legal suffix to build a dedup key), this KEEPS the legal
+ * suffix but removes scrape artifacts: HTML tags/angle brackets, surrounding
+ * whitespace, and a trailing 1-2 letter status/category code appended after the
+ * legal suffix ("Ltd. O", "Ltd. P", "Ltd. LT", "Ltd. CT"). Length-capped at 200.
+ *
+ * This is the SINGLE source of truth for the stored display name. It is applied
+ * at the `IPORepository` write choke point so every write path (create / update /
+ * consolidation) persists a clean name, and the scraper's `sanitizeCompanyName`
+ * delegates to it. Keep this regex in lock-step with the trailing-token rule in
+ * `normalizeCompanyNameForMatching` / `normalizedCompanyNameSql`.
+ */
+export function sanitizeDisplayCompanyName(name: string | null | undefined): string {
+  if (!name) return '';
+
+  return name
+    .replace(/<\/?[a-z][a-z0-9]*[^>]*>/g, '') // strip HTML tags (lowercase only)
+    .replace(/[<>]/g, '') // strip remaining angle brackets
+    .trim()
+    // Strip a trailing 1-2 letter status/category code appended AFTER the legal
+    // suffix ("Ltd. O", "Ltd. P", "Ltd. LT") — a scrape artifact (#16/#42). Keep
+    // the suffix itself.
+    .replace(/(\bLtd\.?|\bLimited)\s+[A-Za-z]{1,2}$/i, '$1')
+    .trim()
+    .slice(0, 200);
+}
+
+/**
  * JS normalizer. Lowercase, trim, strip a trailing 1-2 letter status code that
  * some sources append after the legal suffix (#16), strip IPO/FPO + legal
  * suffixes, collapse whitespace.
