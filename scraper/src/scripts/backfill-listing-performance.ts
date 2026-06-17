@@ -199,7 +199,9 @@ export async function backfillListingPerformance(): Promise<BackfillResult> {
   const startTime = Date.now();
   const timestamp = new Date().toISOString();
 
-  logger.info('Starting Phase 5: Listing Performance Backfill');
+  // Safety: dry-run by default discipline (.claude/rules backfill-script). Pass --execute to write.
+  const DRY_RUN = !process.argv.includes('--execute');
+  logger.info({ mode: DRY_RUN ? 'DRY-RUN (no writes; pass --execute to persist)' : 'EXECUTE (writing to DB)' }, 'Starting Phase 5: Listing Performance Backfill');
 
   let totalListedIPOs = 0;
   let existingRecords = 0;
@@ -362,7 +364,11 @@ export async function backfillListingPerformance(): Promise<BackfillResult> {
             continue;
           }
 
-          await repository.upsert(listingData);
+          if (DRY_RUN) {
+            logger.info({ symbol: ipo.symbol, companyName: ipo.companyName, listingPrice: listingData.listingPrice, issuePrice: listingData.issuePrice, listingGainPercent: listingData.listingGainPercent, source }, '[DRY-RUN] would upsert listing_performance');
+          } else {
+            await repository.upsert(listingData);
+          }
           newRecordsCreated++;
 
           logger.info({
