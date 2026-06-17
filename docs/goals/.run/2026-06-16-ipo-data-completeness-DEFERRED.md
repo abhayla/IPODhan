@@ -29,6 +29,36 @@ false-positived on every already-known IPO (GitHub #3). Re-enabling it as a crea
 new-vs-update context (match to an existing IPO id first; only block when it's a genuinely NEW row for
 an already-listed symbol) — a separate, tested change. Not a band-aid re-enable.
 
+## SESSION-2 corrections (2026-06-16 PM) — supersede the optimistic Stage-B notes below
+
+### B1 — listing_performance 0%: NSE has NO listing price (root cause corrected)
+**Was:** "backfill likely never run". **Truth (evidence):** NSE `/api/public-past-issues` returns 1364
+records; 48/91 of our LISTED candidates match by symbol; **0 records contain `listingPrice`** — NSE
+simply does not publish listing-day price on that feed. The existing `backfill-listing-performance.ts`
+NSE path can therefore never create a row. **Next step:** build a real listing-PRICE source — BSE
+`StockReachGraph` quote keyed by BSE scrip code (we don't store scrip codes on `ipos`; resolve via the
+BSE IPO API which returns `Scrip_cd`), compute listingGain vs issue price, write via
+`ListingPerformanceRepository`. SME (67/91) needs the same BSE quote path. Diagnostic committed:
+`scraper/scripts/diagnose-listing-performance.ts`. Follow-up: comment on issue #36 (listing source gap).
+
+### C3a — documents: DISCOVERY half DELIVERED (81 IPOs); BULK archive deferred
+**Delivered:** Chittorgarh report-20 → 81/263 IPOs now have real prospectus PDFs (see PROGRESS). **Deferred:**
+the FULL DRHP/RHP archive. BSE detail pages are SPA (static fetch dead). Chittorgarh report-20 JSON is a
+"latest-N" widget (pagination ignored; only perPage 5/10 work) so it surfaces ~recent issues only. **Next
+step (multi-session):** reverse-engineer Chittorgarh's full-archive endpoint (likely a POST/search or a
+different report variant), OR scrape the SEBI "Draft Offer Documents filed with SEBI" registry (authoritative,
+server-rendered), OR add a Puppeteer-rendered BSE-detail path. Then re-run the committed
+`backfill-chittorgarh-documents.ts` (idempotent). Follow-up: file a dedicated issue.
+
+### C3b — DRHP financial extraction: still deferred (external Python parser missing)
+Documents now have URLs (extractionStatus PENDING) but the financial/objectives/peers extractor that turns a
+DRHP PDF into rows is unbuilt (the external `extract_drhp_pdfplumber_v2.py` is not in the repo). Build a
+fresh Node/TS PDF extractor under the hard output-plausibility gate (defer-not-fake). Multi-day.
+
+### B6 — ipo_scores: input-starved + no compute wiring
+`rating-calculator.ts` needs financials/subscriptions/peers (≈0%) and nothing computes→persists `ipo_scores`.
+Deferred until inputs exist (transitively gated on C3b + subscription capture).
+
 ## Stage B — dark data-population writers (HANDED OFF)
 All need a **diagnosis + backfill RUN**; scheduler/flag activation is §GATE (Abhay). Per-domain:
 - **B1 listing_performance 0/91 LISTED** — writer + job + backfill (`scraper/src/scripts/backfill-listing-performance.ts`) + matcher (`scraper/src/utils/match-ipo.ts`) all EXIST. Diagnose: job dark? matcher failing? backfill never run? (`/systematic-debugging`). Then run the backfill via tunnel (like A4) and prove ≥95% via `audit --gate`. **Highest-leverage Stage B item; likely "never run".**
