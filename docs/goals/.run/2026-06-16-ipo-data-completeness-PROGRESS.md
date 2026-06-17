@@ -125,3 +125,40 @@ GATE FAIL(6):
 
 ## DEFERRED
 - A5 registrar canonicalization; Stages B/C/D backfills + activations — see `…-DEFERRED.md`.
+
+## SESSION 4 (2026-06-17 PM) — per-IPO detail enrichment unlocked; gate 6→6 (2 gaps narrowed, name-quality §GATE-confirmed)
+Branch `feat/ipo-completeness-coverage` (3 commits pushed; **no PR opened yet — draft PR for Abhay**).
+
+**Key unlock:** Chittorgarh **report 118** carries `~urlrewrite_folder_name` + `~id` → a FULL historical
+(1359-IPO) **slug+id discovery map** for the per-IPO detail page (`/ipo/<slug>/<id>/`). Session-3 thought
+registrar/lot needed a "multi-session per-IPO scrape with no discovery source" — report 118 IS the discovery
+source. Detail pages are static-scrapeable (cheerio/regex), so per-IPO enrichment is now a single, reusable path.
+
+Delivered (all real-source, fill-NULL-only, plausibility-gated, read-back verified):
+- **name-quality root cause (#42) — FIXED in code (commit 6f8afc56).** `sanitizeCompanyName` ran only on the
+  data-persister CREATE path; the consolidation-update + base-scraper-orchestrator paths wrote `company_name`
+  raw. New shared `sanitizeDisplayCompanyName()` applied at the **IPORepository.create()/update() choke point** —
+  every write path now sanitizes. Backfill cleaned 7 live rows. **CONFIRMED the pre-deploy treadmill:** prod cron
+  re-polluted within ~30min (`last_manual_edit_at` does NOT protect `company_name`). Durable fix = **deploy** (§GATE);
+  the repo choke-point fix auto-sanitizes the cron's writes post-deploy.
+- **lot_size 71%→82%** (commit 6b929852) — new `extractLotSizeFromDetailHtml` (anchor `<a title="Lot Size">`→`N Shares`,
+  reject 1/absurd). 30/78 matched+extracted, 0 fail. 48 unmatched = source-capped (not in report 118).
+- **registrar 59%→85%** (commit e4bcf797) — new `extractRegistrarFromDetailHtml` (`class="registrar-name"`,
+  fixes "Pvt.Ltd."→"Pvt. Ltd."). 69/109 matched+extracted, 0 fail. 40 unmatched = source-capped.
+- Filed **#44** (Horizon Reclaim duplicate — normalizer misses `(India)` vs `India`; paren-strip + merge deferred).
+- Fixed local `core.hooksPath` (.husky → .husky/_) so husky v9 pre-commit runs (env-only, no repo change).
+
+GATE now PASS(5): pollution, duplicates, listing_performance 96.7%, core.symbol 95.7%, listing_date 100%.
+GATE FAIL(6): name-quality (treadmills 0↔7 pre-deploy = §GATE deploy); subscriptions 2.8% (§GATE BSE/Moneycontrol
+flags + cron, or per-IPO subscription scrape); gmp 42% (GMP contract); registrar 85% (source-capped tail, FAIL@90);
+lot_size 82% (source-capped tail, FAIL@95); allotment_date 53% (report-118 column harvested by session-3; detail-page
+timetable extraction DEFERRED — date-format parsing + uncertain incremental yield).
+
+**Reusable:** `chittorgarh-detail-fields.ts` (lot+registrar extractors, unit-tested) + 2 detail backfills
+(report-118 discovery, fill-NULL, dry-run default). allotment_date detail extractor is the obvious next extension.
+
+## §GATE (needs Abhay) — updated
+- **Deploy the scraper** to activate the `sanitizeDisplayCompanyName` write-path fix → name-quality durably 0
+  (pre-deploy it treadmills every cron cycle; code fix is committed + in the branch).
+- Subscription flags (ENABLE_MONEYCONTROL_SUBSCRIPTION / ENABLE_BSE_API) + cron to accrue OPEN/CLOSED subscriptions.
+- Merge the branch / open+merge draft PR.
