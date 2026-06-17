@@ -19,7 +19,7 @@ triggers:
   - docs pipeline
 allowed-tools: "Agent Bash Read Write Edit Grep Glob Skill"
 argument-hint: "[scope: 'all' | 'adr' | 'api' | 'structure' | 'staleness']"
-version: "2.0.0"
+version: "2.1.1"
 ---
 
 # /documentation-workflow — Skill-at-T0 Orchestrator
@@ -53,7 +53,7 @@ dispatched subagents don't receive the `Agent` tool
 ## STEP 1: INIT
 
 1. **Parse args.** Normalize `scope` to one of the 5 values.
-2. **Read config** `config/workflow-contracts.yaml` → `workflows.documentation`.
+2. **Read config** `.claude/config/workflow-contracts.yaml (hub repo: config/workflow-contracts.yaml; if absent, use the inline steps below — this skill is self-contained)` → `workflows.documentation`.
    `master_agent` should be null; `sub_orchestrators` empty.
 3. **Generate `run_id`.** `{ISO-8601}_{7-char git sha}` with `:` → `-`.
 4. **Initialize state** at `.workflows/documentation/state.json` (schema
@@ -62,6 +62,29 @@ dispatched subagents don't receive the `Agent` tool
 5. **Detect context.** Git log for architecture-relevant commits since last
    doc update; presence of `openapi.yaml`/`openapi.json` signals API lane.
 6. Append INIT event.
+
+---
+
+## STEP 1.5: PREFLIGHT (dependency-closure gate — BLOCK on missing workers)
+
+Before any dispatch, verify the runtime closure this workflow needs is present
+AND dispatchable. Pattern provisioning copies by tier and may not resolve a
+skill's full closure, so a project can have this skill without its workers — a
+silent inline run or a mid-dispatch crash is the failure this gate prevents.
+
+- **Required sub-skills** (invoked via `Skill()`): `adr`, `api-docs-generator`, `doc-structure-enforcer`, `doc-staleness`. Check each exists at
+  `.claude/skills/<name>/SKILL.md` (only those on the path you will actually run).
+- **Required worker agents** (dispatched via `Agent()`): `docs-manager-agent` (when bulk drafting runs). File presence
+  (`.claude/agents/<name>.md`) is necessary but NOT sufficient — the agent registry
+  is pinned at session start (`pattern-structure.md` → "registry session-pinning"),
+  so probe runtime dispatchability for any agent on the path about to run.
+- **On any missing/undispatchable dependency → BLOCK** with verdict
+  `WORKER_REGISTRY_NOT_LOADED`, list what is missing, and emit: "run
+  `/update-practices` to provision the closure, then RESTART the session (agent
+  registry is pinned at session start), then re-run." Write the BLOCKED verdict to
+  this workflow's report artifact and STOP.
+
+Only when the required closure is present and dispatchable, continue.
 
 ---
 
@@ -176,6 +199,7 @@ Gate: if `critical_stale_count > 0`, transition to `step_status.STALENESS
 
 ## CRITICAL RULES
 
+- MUST run STEP 1.5 PREFLIGHT before any dispatch and BLOCK with `WORKER_REGISTRY_NOT_LOADED` if a required sub-skill or worker agent (on the path being run) is missing/undispatchable. Provisioning does not always resolve dependency closures, so this skill can be present without its workers.
 - MUST run at T0 — dispatching this as a worker strips `Agent` at runtime
   and the optional STEP 4 docs-manager-agent dispatch silently inlines.
 - MUST NOT dispatch `documentation-master-agent` (deprecated 2026-04-25,
