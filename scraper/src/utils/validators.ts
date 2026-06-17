@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { generateIPOSlug } from '@ipodhan/shared/utils/slug';
+import { sanitizeDisplayCompanyName } from '@ipodhan/shared/utils/company-name-normalizer';
 
 // ==================== SCRAPED IPO SCHEMA ====================
 
@@ -236,21 +237,14 @@ export function validateSubscriptionData(data: unknown): {
  * Removes HTML tags, trims whitespace, limits length
  */
 export function sanitizeCompanyName(name: string): string {
-  // Add null/undefined check to prevent replace errors
+  // Delegates to the shared canonical display-name sanitizer (#42) so the
+  // HTML-strip + trailing-status-token rule lives in exactly one place and the
+  // scraper create-path and the IPORepository write choke point stay in lock-step.
   if (!name) {
     console.warn('[sanitizeCompanyName] Called with null/undefined name');
     return '';
   }
-
-  return name
-    .replace(/<\/?[a-z][a-z0-9]*[^>]*>/g, '') // Remove HTML tags (lowercase only)
-    .replace(/[<>]/g, '') // Remove remaining angle brackets
-    .trim()
-    // Strip a trailing 1-2 letter status/category code appended after the legal
-    // suffix ("Ltd. P", "Ltd. CT") — a scrape artifact (#16). Keep the suffix.
-    .replace(/(Ltd\.?|Limited)\s+[A-Za-z]{1,2}$/i, '$1')
-    .trim()
-    .slice(0, 200); // Limit length
+  return sanitizeDisplayCompanyName(name);
 }
 
 /**

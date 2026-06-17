@@ -62,20 +62,39 @@ async function main() {
     const cleaned = sanitizeCompanyName(r.company_name);
     if (cleaned === r.company_name) { unchanged++; continue; }
     const newSlug = generateIPOSlug(cleaned);
+
+    // When the stored slug ALSO carries the scrape artifact (e.g.
+    // "horizon-reclaim-india-ltd-ct"), the canonical slug for the cleaned name
+    // differs. Re-derive it (canonical-ipo-slug.md), but only if the canonical
+    // slug is free — a collision means another row already owns it and we must
+    // NOT break the unique index; report and skip those (rare, manual review).
+    let slugToWrite = r.slug;
     if (newSlug !== r.slug) {
-      // Re-slugging would break URLs/FKs — out of scope for this correction.
-      console.log(`  SKIP (slug would change ${r.slug} -> ${newSlug}): "${r.company_name}"`);
-      logger.warn({ ipoId: r.id, oldSlug: r.slug, newSlug }, 'clean-company-names: slug change skipped');
-      skipped++;
-      continue;
+      const { rows: clash } = await client.query(
+        `SELECT id FROM ipos WHERE slug = $1 AND id <> $2 LIMIT 1`, [newSlug, r.id]
+      );
+      if (clash.length > 0) {
+        // The canonical slug is owned by another row — almost always a genuine
+        // DUPLICATE IPO (e.g. a "(India)" vs "India" normalizer miss). Cleaning
+        // the NAME is still safe and removes the smell; KEEP the existing slug to
+        // avoid breaking the unique index. The duplicate-merge is a separate,
+        // deliberate correction (tracked) — do NOT silently delete/re-slug here.
+        console.log(`  CLEAN-NAME-ONLY (canonical slug ${newSlug} owned by dup ${clash[0].id}; keep slug ${r.slug}): "${r.company_name}"`);
+        logger.warn({ ipoId: r.id, oldSlug: r.slug, newSlug, clashId: clash[0].id }, 'clean-company-names: duplicate detected, name cleaned but slug kept');
+        slugToWrite = r.slug;
+      } else {
+        slugToWrite = newSlug;
+      }
     }
-    console.log(`  ${apply ? 'UPDATE' : 'would update'}: "${r.company_name}" -> "${cleaned}" (slug ${r.slug} unchanged)`);
+
+    const slugNote = slugToWrite === r.slug ? `slug ${r.slug} unchanged` : `slug ${r.slug} -> ${slugToWrite}`;
+    console.log(`  ${apply ? 'UPDATE' : 'would update'}: "${r.company_name}" -> "${cleaned}" (${slugNote})`);
     if (apply) {
       await client.query(
-        `UPDATE ipos SET company_name = $1, last_manual_edit_at = now(), updated_at = now() WHERE id = $2`,
-        [cleaned, r.id]
+        `UPDATE ipos SET company_name = $1, slug = $2, last_manual_edit_at = now(), updated_at = now() WHERE id = $3`,
+        [cleaned, slugToWrite, r.id]
       );
-      logger.info({ ipoId: r.id, from: r.company_name, to: cleaned }, 'clean-company-names: corrected');
+      logger.info({ ipoId: r.id, from: r.company_name, to: cleaned, oldSlug: r.slug, newSlug: slugToWrite }, 'clean-company-names: corrected');
     }
     updated++;
   }
