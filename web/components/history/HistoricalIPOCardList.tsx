@@ -32,10 +32,16 @@ const formatDate = (date: Date | string) => {
 };
 
 const formatSubscription = (value: number) => {
-  return `${value.toFixed(1)}x`;
+  return `${value.toFixed(2)}x`; // 2-dp, consistent with KeyMetricsCards/IPOScoreSection
 };
 
 export function HistoricalIPOCardList({ ipos }: HistoricalIPOCardListProps) {
+  if (!ipos || ipos.length === 0) {
+    return (
+      <p className="text-center text-muted-foreground py-8">No historical IPOs found.</p>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {ipos.map((ipo) => {

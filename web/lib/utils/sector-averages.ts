@@ -51,16 +51,21 @@ export async function getSectorAverage(sector: string | null): Promise<number> {
   const cacheKey = getSectorAverageCacheKey(sector);
   const redis = getRedisClient();
 
+  // Cache read is best-effort: a Redis error must fall through to the DB query,
+  // not return a wrong 0% average to the user (Redis down ≠ no data).
   try {
-    // Check cache first
     const cached = await redis.get(cacheKey);
     if (cached !== null) {
       console.log(`[Cache] HIT: ${cacheKey}`);
       return parseFloat(cached);
     }
-
     console.log(`[Cache] MISS: ${cacheKey}`);
+  } catch (error) {
+    console.error(`Error reading sector average cache for ${sector}:`, error);
+    // fall through to the database query
+  }
 
+  try {
     // Query database for sector average
     // Join ipos with listing_performance to get listing gain data
     const result = await db
@@ -76,14 +81,18 @@ export async function getSectorAverage(sector: string | null): Promise<number> {
     // Extract average value (handle null case)
     const average = result[0]?.average ? parseFloat(result[0].average) : 0;
 
-    // Cache result for 7 days
-    await redis.setex(cacheKey, SECTOR_AVERAGE_TTL, average.toString());
-    console.log(`[Cache] SET: ${cacheKey} = ${average} (TTL: ${SECTOR_AVERAGE_TTL}s)`);
+    // Cache write is best-effort — a failure here must not change the result.
+    try {
+      await redis.setex(cacheKey, SECTOR_AVERAGE_TTL, average.toString());
+      console.log(`[Cache] SET: ${cacheKey} = ${average} (TTL: ${SECTOR_AVERAGE_TTL}s)`);
+    } catch (error) {
+      console.error(`Error caching sector average for ${sector}:`, error);
+    }
 
     return average;
   } catch (error) {
     console.error(`Error calculating sector average for ${sector}:`, error);
-    // Return 0 as fallback if calculation fails
+    // Return 0 as fallback only if the database query itself fails
     return 0;
   }
 }

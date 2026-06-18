@@ -112,7 +112,14 @@ export function getVerdictBorderClass(verdict: IPOVerdict): string {
  * Get confidence level display text
  */
 export function getConfidenceText(confidence: ConfidenceLevel): string {
-  return confidence; // HIGH, MEDIUM, LOW
+  // Title-case for display (the badge is the only consumer). The raw enum is
+  // HIGH/MEDIUM/LOW; render it as High/Medium/Low for a polished badge.
+  const labels: Record<ConfidenceLevel, string> = {
+    HIGH: 'High',
+    MEDIUM: 'Medium',
+    LOW: 'Low',
+  };
+  return labels[confidence] ?? confidence;
 }
 
 /**

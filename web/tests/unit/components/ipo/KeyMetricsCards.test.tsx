@@ -21,14 +21,14 @@ describe('KeyMetricsCards', () => {
   it('should format issue size correctly', () => {
     render(
       <KeyMetricsCards
-        issueSize={500}
+        issueSize={5_000_000_000} // ₹500 Cr in rupees (issue_size is stored in rupees)
         subscription={null}
         gmp={null}
         gmpPercent={null}
       />
     );
 
-    expect(screen.getByText('₹500 Crores')).toBeInTheDocument();
+    expect(screen.getByText('₹500 Cr')).toBeInTheDocument(); // SSOT formatMarketCap
     expect(screen.getByText('Total Issue Size')).toBeInTheDocument();
   });
 
@@ -116,28 +116,28 @@ describe('KeyMetricsCards', () => {
   it('should format large issue size with Indian number formatting', () => {
     render(
       <KeyMetricsCards
-        issueSize={29807600000}
+        issueSize={29807600000} // ₹2,980.76 Cr in rupees
         subscription={null}
         gmp={null}
         gmpPercent={null}
       />
     );
 
-    // Verify large number is displayed with proper formatting (e.g., 29,80,76,00,000)
-    expect(screen.getByText(/₹29,80,76,00,000 Crores/i)).toBeInTheDocument();
+    // Rupees → crores (/1e7) via SSOT formatMarketCap with Indian grouping
+    expect(screen.getByText('₹2,980.76 Cr')).toBeInTheDocument();
   });
 
   it('should format issue size with decimals correctly', () => {
     render(
       <KeyMetricsCards
-        issueSize={3690.6}
+        issueSize={36_906_000} // ₹3.69 Cr in rupees
         subscription={null}
         gmp={null}
         gmpPercent={null}
       />
     );
 
-    // Verify decimal number is displayed (e.g., ₹3,690.6 Crores)
-    expect(screen.getByText(/₹3,690\.6 Crores/i)).toBeInTheDocument();
+    // Rupees → crores via SSOT formatMarketCap (2-dp)
+    expect(screen.getByText('₹3.69 Cr')).toBeInTheDocument();
   });
 });

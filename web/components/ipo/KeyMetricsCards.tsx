@@ -2,6 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { TrendingUp, TrendingDown, DollarSign, Users, BarChart } from 'lucide-react';
+import { formatMarketCap } from '@/lib/utils/kpi-formatters';
 
 interface KeyMetricsCardsProps {
   issueSize: number;
@@ -76,7 +77,8 @@ export function KeyMetricsCards({
         </CardHeader>
         <CardContent className="relative">
           <div className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent transition-all duration-300">
-            ₹{(issueSize / 10000000).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Crores
+            {/* issue_size is stored in RUPEES → /1e7 to crores → SSOT formatter (₹X Cr). */}
+            {formatMarketCap(issueSize / 10000000)}
           </div>
           <p className="text-xs text-muted-foreground mt-1 font-medium">
             Total Issue Size

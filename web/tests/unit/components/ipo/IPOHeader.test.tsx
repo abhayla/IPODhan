@@ -1,8 +1,24 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { IPOHeader } from '@/components/ipo/IPOHeader';
 import type { IPO } from '@/lib/db/types';
 import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
+
+// IPOHeader renders <AddToCompareButton>, which calls useRouter() from
+// next/navigation — unmounted in jsdom → "invariant expected app router to be
+// mounted". Mock the App Router (canonical pattern, see tests/unit/app/ipos/slug/page.test.tsx).
+vi.mock('next/navigation', () => ({
+  useRouter: vi.fn(() => ({
+    push: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    refresh: vi.fn(),
+    replace: vi.fn(),
+    prefetch: vi.fn(),
+  })),
+  useSearchParams: vi.fn(() => new URLSearchParams()),
+  usePathname: vi.fn(() => '/ipos/test-company'),
+}));
 
 const mockIPO: IPO = {
   ...DEFAULT_HISTORICAL_FIELDS,

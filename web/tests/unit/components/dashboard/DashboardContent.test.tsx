@@ -44,6 +44,16 @@ vi.mock('@/components/dashboard/FilterBar', () => ({
   )
 }));
 
+vi.mock('@/components/dashboard/SearchBar', () => ({
+  SearchBar: () => <div data-testid="search-bar">Search Bar</div>
+}));
+
+// SmartDefaults pulls in the personalization/behavior-tracker chain; mock it as a
+// child (it is a sibling component, not the unit under test here).
+vi.mock('@/components/intelligence/SmartDefaults', () => ({
+  SmartDefaultFilters: () => <div data-testid="smart-defaults">Smart Defaults</div>
+}));
+
 const mockIPO = (): IPO => ({
   ...DEFAULT_HISTORICAL_FIELDS,
   id: '123',
@@ -93,7 +103,12 @@ describe('DashboardContent', () => {
     );
 
     expect(screen.getByText('IPO Dashboard')).toBeInTheDocument();
-    expect(screen.getByText(/24 IPOs found/i)).toBeInTheDocument();
+    // Count badge renders "{total} {status} IPOs" (split across text nodes).
+    expect(
+      screen.getByText(
+        (_, el) => el?.tagName === 'SPAN' && /IPOs/.test(el.textContent || '')
+      )
+    ).toHaveTextContent('24');
   });
 
   it('should render IPOGrid component', () => {
@@ -200,7 +215,11 @@ describe('DashboardContent', () => {
       />
     );
 
-    expect(screen.getByText(/50 IPOs found/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        (_, el) => el?.tagName === 'SPAN' && /IPOs/.test(el.textContent || '')
+      )
+    ).toHaveTextContent('50');
   });
 
   it('should render with empty IPO array', () => {

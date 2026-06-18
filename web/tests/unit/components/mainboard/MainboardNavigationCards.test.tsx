@@ -107,8 +107,9 @@ describe('MainboardNavigationCards', () => {
     // Act
     const { container } = render(<MainboardNavigationCards />);
 
-    // Assert - Check for text-center class on descriptions
-    const descriptions = container.querySelectorAll('p.text-center.text-sm');
+    // Assert - Check for text-center class on descriptions (shadcn CardDescription
+    // renders a <div>, not a <p>, so match by class only).
+    const descriptions = container.querySelectorAll('.text-center.text-sm');
     expect(descriptions.length).toBe(4);
   });
 
@@ -158,11 +159,11 @@ describe('MainboardNavigationCards', () => {
   });
 
   it('should render cards in correct order', () => {
-    // Act
-    render(<MainboardNavigationCards />);
+    // Act — shadcn CardTitle renders a <div> (not an <h3>); match by its class.
+    const { container } = render(<MainboardNavigationCards />);
 
     // Assert - Get all card titles in order
-    const titles = screen.getAllByRole('heading', { level: 3 });
+    const titles = container.querySelectorAll('.text-center.text-lg');
     expect(titles[0]).toHaveTextContent('Performance Tracker');
     expect(titles[1]).toHaveTextContent('IPO Prospectus');
     expect(titles[2]).toHaveTextContent('IPO Calendar');

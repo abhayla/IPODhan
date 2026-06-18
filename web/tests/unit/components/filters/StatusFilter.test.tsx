@@ -8,14 +8,15 @@ describe('StatusFilter', () => {
     const onChange = vi.fn();
     render(<StatusFilter value="OPEN" onChange={onChange} />);
 
-    expect(screen.getByLabelText('Filter by status')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Filter IPOs by status/i)).toBeInTheDocument();
   });
 
   it('should display current value', () => {
     const onChange = vi.fn();
     render(<StatusFilter value="OPEN" onChange={onChange} />);
 
-    expect(screen.getByRole('combobox')).toHaveAttribute('data-state', 'closed');
+    // Native <select> reflects the current value (no Radix data-state attribute).
+    expect(screen.getByRole('combobox')).toHaveValue('OPEN');
   });
 
   it('should call onChange when selecting a different status', async () => {
@@ -23,12 +24,8 @@ describe('StatusFilter', () => {
     const onChange = vi.fn();
     render(<StatusFilter value="OPEN" onChange={onChange} />);
 
-    const trigger = screen.getByRole('combobox');
-    await user.click(trigger);
-
-    const upcomingOption = screen.getByText('Upcoming');
-    await user.click(upcomingOption);
-
+    // Native <select>: change via selectOptions (by option value).
+    await user.selectOptions(screen.getByRole('combobox'), 'UPCOMING');
     expect(onChange).toHaveBeenCalledWith('UPCOMING');
   });
 
@@ -60,12 +57,7 @@ describe('StatusFilter', () => {
     const onChange = vi.fn();
     render(<StatusFilter value="OPEN" onChange={onChange} />);
 
-    const trigger = screen.getByRole('combobox');
-    await user.click(trigger);
-
-    const allOption = screen.getByText('All Statuses');
-    await user.click(allOption);
-
+    await user.selectOptions(screen.getByRole('combobox'), 'ALL');
     expect(onChange).toHaveBeenCalledWith('ALL');
   });
 

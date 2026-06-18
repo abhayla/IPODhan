@@ -20,6 +20,9 @@ describe('FilterBar', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    // mockSearchParams is shared module state — clear it so params set by one
+    // test don't leak into the next (test isolation / FIRST).
+    Array.from(mockSearchParams.keys()).forEach((k) => mockSearchParams.delete(k));
     (useRouter as ReturnType<typeof vi.fn>).mockReturnValue({ push: mockPush });
     (useSearchParams as ReturnType<typeof vi.fn>).mockReturnValue(mockSearchParams);
     (usePathname as ReturnType<typeof vi.fn>).mockReturnValue('/dashboard');
@@ -32,23 +35,23 @@ describe('FilterBar', () => {
   it('should render all filter controls', () => {
     render(<FilterBar />);
 
-    expect(screen.getByLabelText('Filter by status')).toBeInTheDocument();
-    expect(screen.getByLabelText('Filter by category')).toBeInTheDocument();
-    expect(screen.getByLabelText('Filter by sector')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Filter IPOs by status/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Filter IPOs by segment/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Filter IPOs by sector/i)).toBeInTheDocument();
     expect(screen.getByLabelText('Clear all filters')).toBeInTheDocument();
   });
 
   it('should read filter values from URL params', () => {
     mockSearchParams.set('status', 'UPCOMING');
-    mockSearchParams.set('category', 'SME');
+    mockSearchParams.set('segment', 'SME');
     mockSearchParams.set('sector', 'Technology');
 
     render(<FilterBar />);
 
     // Filters should have the values from URL
-    expect(screen.getByLabelText('Filter by status')).toBeInTheDocument();
-    expect(screen.getByLabelText('Filter by category')).toBeInTheDocument();
-    expect(screen.getByLabelText('Filter by sector')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Filter IPOs by status/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Filter IPOs by segment/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/Filter IPOs by sector/i)).toBeInTheDocument();
   });
 
   it('should use default values when URL params are empty', () => {
@@ -58,18 +61,15 @@ describe('FilterBar', () => {
     render(<FilterBar />);
 
     // Should default to OPEN status, ALL category, ALL sector
-    expect(screen.getByLabelText('Filter by status')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Filter IPOs by status/i)).toBeInTheDocument();
   });
 
   it('should update URL when status filter changes', async () => {
     const user = userEvent.setup();
     render(<FilterBar />);
 
-    const statusFilter = screen.getByLabelText('Filter by status');
-    await user.click(statusFilter);
-
-    const upcomingOption = screen.getByText('Upcoming');
-    await user.click(upcomingOption);
+    const statusFilter = screen.getByLabelText(/Filter IPOs by status/i);
+    await user.selectOptions(statusFilter, 'UPCOMING');
 
     expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('status=UPCOMING'));
     expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('page=1'));
@@ -79,13 +79,10 @@ describe('FilterBar', () => {
     const user = userEvent.setup();
     render(<FilterBar />);
 
-    const categoryFilter = screen.getByLabelText('Filter by category');
-    await user.click(categoryFilter);
+    const categoryFilter = screen.getByLabelText(/Filter IPOs by segment/i);
+    await user.selectOptions(categoryFilter, 'SME');
 
-    const smeOption = screen.getByText('SME');
-    await user.click(smeOption);
-
-    expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('category=SME'));
+    expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('segment=SME'));
     expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('page=1'));
   });
 
@@ -95,11 +92,8 @@ describe('FilterBar', () => {
 
     render(<FilterBar />);
 
-    const statusFilter = screen.getByLabelText('Filter by status');
-    await user.click(statusFilter);
-
-    const upcomingOption = screen.getByText('Upcoming');
-    await user.click(upcomingOption);
+    const statusFilter = screen.getByLabelText(/Filter IPOs by status/i);
+    await user.selectOptions(statusFilter, 'UPCOMING');
 
     expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('page=1'));
   });
@@ -107,7 +101,7 @@ describe('FilterBar', () => {
   it('should clear all filters when clear button is clicked', async () => {
     const user = userEvent.setup();
     mockSearchParams.set('status', 'UPCOMING');
-    mockSearchParams.set('category', 'SME');
+    mockSearchParams.set('segment', 'SME');
     mockSearchParams.set('sector', 'Technology');
 
     render(<FilterBar />);
@@ -117,7 +111,7 @@ describe('FilterBar', () => {
 
     expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('status=OPEN'));
     expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('page=1'));
-    expect(mockPush).not.toHaveBeenCalledWith(expect.stringContaining('category='));
+    expect(mockPush).not.toHaveBeenCalledWith(expect.stringContaining('segment='));
     expect(mockPush).not.toHaveBeenCalledWith(expect.stringContaining('sector='));
   });
 
@@ -143,18 +137,20 @@ describe('FilterBar', () => {
   it('should show mobile filter toggle button', () => {
     render(<FilterBar />);
 
-    const toggleButton = screen.getByText(/Filters/);
+    const toggleButton = screen.getByLabelText('Toggle filters');
     expect(toggleButton).toBeInTheDocument();
   });
 
   it('should display active filter count on mobile toggle', () => {
     mockSearchParams.set('status', 'UPCOMING');
-    mockSearchParams.set('category', 'SME');
+    mockSearchParams.set('segment', 'SME');
 
     render(<FilterBar />);
 
-    // Should show count of 1 (status=UPCOMING is non-default, category=SME is non-default)
-    expect(screen.getByText('Filters (2)')).toBeInTheDocument();
+    // Toggle button shows "Filters" + a count badge (separate <span>), not "Filters (2)".
+    const toggleButton = screen.getByLabelText('Toggle filters');
+    expect(toggleButton).toHaveTextContent('Filters');
+    expect(toggleButton).toHaveTextContent('2');
   });
 
   it('should toggle filter visibility on mobile when toggle button is clicked', async () => {
@@ -170,8 +166,8 @@ describe('FilterBar', () => {
     // Click to show filters
     await user.click(toggleButton);
 
-    // Filters should now be visible
-    expect(filterBar).toHaveClass('block');
+    // Filters should now be visible (open state uses animate-in, not a 'block' class).
+    expect(filterBar).not.toHaveClass('hidden');
   });
 
   it('should have correct aria attributes', () => {
@@ -190,11 +186,8 @@ describe('FilterBar', () => {
 
     render(<FilterBar />);
 
-    const statusFilter = screen.getByLabelText('Filter by status');
-    await user.click(statusFilter);
-
-    const upcomingOption = screen.getByText('Upcoming');
-    await user.click(upcomingOption);
+    const statusFilter = screen.getByLabelText(/Filter IPOs by status/i);
+    await user.selectOptions(statusFilter, 'UPCOMING');
 
     // Should preserve the 'view' param
     expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('view=list'));
@@ -202,19 +195,16 @@ describe('FilterBar', () => {
 
   it('should remove filter param when selecting ALL option', async () => {
     const user = userEvent.setup();
-    mockSearchParams.set('category', 'SME');
+    mockSearchParams.set('segment', 'SME');
 
     render(<FilterBar />);
 
-    const categoryFilter = screen.getByLabelText('Filter by category');
-    await user.click(categoryFilter);
+    const categoryFilter = screen.getByLabelText(/Filter IPOs by segment/i);
+    await user.selectOptions(categoryFilter, 'ALL');
 
-    const allOption = screen.getByText('All Categories');
-    await user.click(allOption);
-
-    // Should not include category param when ALL is selected
+    // Selecting ALL removes the segment param from the pushed URL.
     const pushCall = mockPush.mock.calls[0][0];
-    expect(pushCall).not.toContain('category=');
+    expect(pushCall).not.toContain('segment=');
   });
 
   it('should be responsive (filters hidden on mobile, visible on desktop)', () => {

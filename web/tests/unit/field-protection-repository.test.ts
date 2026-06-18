@@ -362,7 +362,8 @@ describe('FieldProtectionRepository', () => {
     it('should update multiple fields', async () => {
       // Arrange
       const fieldNames = ['lotSize', 'priceRangeMin', 'priceRangeMax'];
-      mockDb.returning.mockResolvedValue([{ id: '1' }, { id: '2' }, { id: '3' }]);
+      // The repo upserts one row per field; each .returning() yields 1 row → 3 total.
+      mockDb.returning.mockResolvedValue([{ id: '1' }]);
       mockRedis.del = vi.fn().mockResolvedValue(1);
 
       // Act
@@ -373,13 +374,15 @@ describe('FieldProtectionRepository', () => {
         true
       );
 
-      // Assert
+      // Assert — repo uses insert().onConflictDoUpdate() (upsert), not update().set()
       expect(result).toBe(3);
-      expect(mockDb.update).toHaveBeenCalled();
-      expect(mockDb.set).toHaveBeenCalledWith(
+      expect(mockDb.insert).toHaveBeenCalled();
+      expect(mockDb.onConflictDoUpdate).toHaveBeenCalledWith(
         expect.objectContaining({
-          isProtected: true,
-          updatedAt: expect.any(Date),
+          set: expect.objectContaining({
+            isProtected: true,
+            updatedAt: expect.any(Date),
+          }),
         })
       );
     });

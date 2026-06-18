@@ -20,15 +20,19 @@ vi.mock('@/lib/cache/redis-client', () => ({
   getRedisClient: vi.fn(() => ({})),
 }));
 
-vi.mock('@/lib/logger', () => ({
-  logger: {
-    child: vi.fn(() => ({
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    })),
-  },
-}));
+vi.mock('@/lib/logger', () => {
+  const methods = () => ({
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    trace: vi.fn(),
+  });
+  // The route calls logger.* directly AND logger.child().* — provide both surfaces.
+  const logger = { ...methods(), child: vi.fn(() => ({ ...methods(), child: vi.fn() })) };
+  return { logger, default: logger, createLogger: vi.fn(() => logger) };
+});
 
 vi.mock('@sentry/nextjs', () => ({
   captureException: vi.fn(),
@@ -137,7 +141,9 @@ describe('GET /api/ipos', () => {
       const request = createMockRequest('http://localhost:3000/api/ipos');
       const response = await GET(request);
 
-      expect(response.headers.get('Cache-Control')).toBe('public, max-age=300');
+      expect(response.headers.get('Cache-Control')).toBe(
+        'public, s-maxage=300, stale-while-revalidate=600'
+      );
     });
 
     it('should handle custom page and limit parameters', async () => {
@@ -195,18 +201,19 @@ describe('GET /api/ipos', () => {
       );
     });
 
-    it('should filter by category parameter', async () => {
+    it('should filter by segment parameter', async () => {
+      // The API filters by `segment` (MAINBOARD/SME); `category` was renamed to `segment`.
       mockFindAll.mockResolvedValue(mockPaginatedResponse);
 
       const request = createMockRequest(
-        'http://localhost:3000/api/ipos?category=MAINBOARD'
+        'http://localhost:3000/api/ipos?segment=MAINBOARD'
       );
       const response = await GET(request);
 
       expect(response.status).toBe(200);
       expect(mockFindAll).toHaveBeenCalledWith(
         expect.objectContaining({
-          category: ['MAINBOARD'],
+          segment: ['MAINBOARD'],
         })
       );
     });
@@ -281,9 +288,9 @@ describe('GET /api/ipos', () => {
       expect(data.error.details).toBeDefined();
     });
 
-    it('should return 400 for invalid category parameter', async () => {
+    it('should return 400 for invalid segment parameter', async () => {
       const request = createMockRequest(
-        'http://localhost:3000/api/ipos?category=INVALID'
+        'http://localhost:3000/api/ipos?segment=INVALID'
       );
       const response = await GET(request);
       const data = await response.json();

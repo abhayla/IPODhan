@@ -72,6 +72,8 @@ const mockUpcomingSMEIPO: HomeIPOTableData = {
 
 // ==================== TEST SUITES ====================
 
+const currentYear = new Date().getFullYear();
+
 describe('HomeIPOTablesSection Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -91,7 +93,7 @@ describe('HomeIPOTablesSection Component', () => {
         />
       );
 
-      expect(screen.getByText('IPO 2025 Listings')).toBeInTheDocument();
+      expect(screen.getByText(`IPO ${currentYear} Listings`)).toBeInTheDocument();
     });
 
     it('should render all four table titles', () => {
@@ -106,8 +108,8 @@ describe('HomeIPOTablesSection Component', () => {
       );
 
       // AC#1: Four distinct table components render correctly
-      expect(screen.getByText('IPO 2025 List (Mainboard)')).toBeInTheDocument();
-      expect(screen.getByText('SME IPO 2025 List')).toBeInTheDocument();
+      expect(screen.getByText(`IPO ${currentYear} List (Mainboard)`)).toBeInTheDocument();
+      expect(screen.getByText(`SME IPO ${currentYear} List`)).toBeInTheDocument();
       expect(screen.getByText('Upcoming Mainboard IPOs (Filed with SEBI)')).toBeInTheDocument();
       expect(screen.getByText('Upcoming SME IPOs (Filed with BSE/NSE)')).toBeInTheDocument();
     });
@@ -279,8 +281,8 @@ describe('HomeIPOTablesSection Component', () => {
         />
       );
 
-      expect(screen.getByText('IPO 2025 List (Mainboard)')).toBeInTheDocument();
-      expect(screen.getByText('SME IPO 2025 List')).toBeInTheDocument();
+      expect(screen.getByText(`IPO ${currentYear} List (Mainboard)`)).toBeInTheDocument();
+      expect(screen.getByText(`SME IPO ${currentYear} List`)).toBeInTheDocument();
       expect(screen.getByText('Upcoming Mainboard IPOs (Filed with SEBI)')).toBeInTheDocument();
       expect(screen.getByText('Upcoming SME IPOs (Filed with BSE/NSE)')).toBeInTheDocument();
     });
@@ -347,8 +349,8 @@ describe('HomeIPOTablesSection Component', () => {
         />
       );
 
-      expect(screen.getByText('IPO 2025 List (Mainboard)')).toBeInTheDocument();
-      expect(screen.getByText('SME IPO 2025 List')).toBeInTheDocument();
+      expect(screen.getByText(`IPO ${currentYear} List (Mainboard)`)).toBeInTheDocument();
+      expect(screen.getByText(`SME IPO ${currentYear} List`)).toBeInTheDocument();
     });
   });
 
@@ -367,7 +369,7 @@ describe('HomeIPOTablesSection Component', () => {
       );
 
       // AC#7: Proper ARIA labels and semantic markup
-      const section = container.querySelector('section[aria-label="IPO 2025 Listings"]');
+      const section = container.querySelector(`section[aria-label="IPO ${currentYear} Listings"]`);
       expect(section).toBeInTheDocument();
     });
 
@@ -382,7 +384,7 @@ describe('HomeIPOTablesSection Component', () => {
         />
       );
 
-      const mainHeading = screen.getByRole('heading', { name: 'IPO 2025 Listings', level: 1 });
+      const mainHeading = screen.getByRole('heading', { name: `IPO ${currentYear} Listings`, level: 1 });
       expect(mainHeading).toBeInTheDocument();
 
       const tableHeadings = screen.getAllByRole('heading', { level: 2 });
@@ -420,7 +422,7 @@ describe('HomeIPOTablesSection Component', () => {
       );
 
       // AC#3: Responsive design
-      const heading = screen.getByText('IPO 2025 Listings');
+      const heading = screen.getByText(`IPO ${currentYear} Listings`);
       expect(heading.className).toMatch(/text-2xl md:text-3xl/);
     });
 

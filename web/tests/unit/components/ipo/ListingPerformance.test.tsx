@@ -23,8 +23,8 @@ describe('ListingPerformance', () => {
     it('renders with complete listing data', () => {
       render(<ListingPerformance {...mockProps} />);
 
-      expect(screen.getByText('Listing Day Performance')).toBeInTheDocument();
-      expect(screen.getByText(/Listing Date:/)).toBeInTheDocument();
+      expect(screen.getAllByText('Listing Day Performance')[0]).toBeInTheDocument();
+      expect(screen.getAllByText(/Listing Date:/)[0]).toBeInTheDocument();
     });
 
     it('does not render if listingDate is null', () => {
@@ -40,29 +40,29 @@ describe('ListingPerformance', () => {
     it('displays issue price', () => {
       render(<ListingPerformance {...mockProps} />);
 
-      expect(screen.getByText('Issue Price')).toBeInTheDocument();
-      expect(screen.getByText('₹300')).toBeInTheDocument();
+      expect(screen.getAllByText('Issue Price')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('₹300')[0]).toBeInTheDocument();
     });
 
     it('displays listing open price', () => {
       render(<ListingPerformance {...mockProps} />);
 
-      expect(screen.getByText('Listing Open')).toBeInTheDocument();
-      expect(screen.getByText('₹315')).toBeInTheDocument();
+      expect(screen.getAllByText('Listing Open')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('₹315')[0]).toBeInTheDocument();
     });
 
     it('displays listing high price', () => {
       render(<ListingPerformance {...mockProps} />);
 
-      expect(screen.getByText('Listing High')).toBeInTheDocument();
-      expect(screen.getByText('₹350')).toBeInTheDocument();
+      expect(screen.getAllByText('Listing High')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('₹350')[0]).toBeInTheDocument();
     });
 
     it('displays listing close price', () => {
       render(<ListingPerformance {...mockProps} />);
 
-      expect(screen.getByText('Listing Close')).toBeInTheDocument();
-      expect(screen.getByText('₹340')).toBeInTheDocument();
+      expect(screen.getAllByText('Listing Close')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('₹340')[0]).toBeInTheDocument();
     });
 
     it('formats currency with comma separators for large numbers', () => {
@@ -74,8 +74,8 @@ describe('ListingPerformance', () => {
         />
       );
 
-      expect(screen.getByText('₹1,500')).toBeInTheDocument();
-      expect(screen.getByText('₹2,000')).toBeInTheDocument();
+      expect(screen.getAllByText('₹1,500')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('₹2,000')[0]).toBeInTheDocument();
     });
   });
 
@@ -84,27 +84,27 @@ describe('ListingPerformance', () => {
       render(<ListingPerformance {...mockProps} />);
 
       // Open gain: ((315 - 300) / 300) * 100 = 5%
-      expect(screen.getByText('+5.00%')).toBeInTheDocument();
+      expect(screen.getAllByText('+5.00%')[0]).toBeInTheDocument();
     });
 
     it('calculates high gain correctly', () => {
       render(<ListingPerformance {...mockProps} />);
 
       // High gain: ((350 - 300) / 300) * 100 = 16.67%
-      expect(screen.getByText('+16.67%')).toBeInTheDocument();
+      expect(screen.getAllByText('+16.67%')[0]).toBeInTheDocument();
     });
 
     it('calculates close gain correctly', () => {
       render(<ListingPerformance {...mockProps} />);
 
       // Close gain: ((340 - 300) / 300) * 100 = 13.33%
-      expect(screen.getByText('+13.33%')).toBeInTheDocument();
+      expect(screen.getAllByText('+13.33%')[0]).toBeInTheDocument();
     });
 
     it('displays day return prominently', () => {
       render(<ListingPerformance {...mockProps} />);
 
-      expect(screen.getByText('Day Return')).toBeInTheDocument();
+      expect(screen.getAllByText('Day Return')[0]).toBeInTheDocument();
       // Day return should appear at least twice (desktop table + mobile)
       const dayReturns = screen.getAllByText('+13.33%');
       expect(dayReturns.length).toBeGreaterThanOrEqual(2);
@@ -141,7 +141,7 @@ describe('ListingPerformance', () => {
     it('displays listing date in DD MMM YYYY format', () => {
       render(<ListingPerformance {...mockProps} />);
 
-      expect(screen.getByText('15 Dec 2024')).toBeInTheDocument();
+      expect(screen.getAllByText('15 Dec 2024')[0]).toBeInTheDocument();
     });
 
     it('handles different date formats correctly', () => {
@@ -149,7 +149,7 @@ describe('ListingPerformance', () => {
         <ListingPerformance {...mockProps} listingDate={new Date('2023-01-05')} />
       );
 
-      expect(screen.getByText('05 Jan 2023')).toBeInTheDocument();
+      expect(screen.getAllByText('05 Jan 2023')[0]).toBeInTheDocument();
     });
   });
 
@@ -157,8 +157,8 @@ describe('ListingPerformance', () => {
     it('formats percentages with + sign for gains', () => {
       render(<ListingPerformance {...mockProps} />);
 
-      expect(screen.getByText('+5.00%')).toBeInTheDocument();
-      expect(screen.getByText('+16.67%')).toBeInTheDocument();
+      expect(screen.getAllByText('+5.00%')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('+16.67%')[0]).toBeInTheDocument();
     });
 
     it('formats percentages with - sign for losses', () => {
@@ -172,9 +172,9 @@ describe('ListingPerformance', () => {
         />
       );
 
-      expect(screen.getByText('-6.67%')).toBeInTheDocument();
-      expect(screen.getByText('-3.33%')).toBeInTheDocument();
-      expect(screen.getByText('-5.00%')).toBeInTheDocument();
+      expect(screen.getAllByText('-6.67%')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('-3.33%')[0]).toBeInTheDocument();
+      expect(screen.getAllByText('-5.00%')[0]).toBeInTheDocument();
     });
 
     it('formats percentages with 2 decimal places', () => {
@@ -218,7 +218,7 @@ describe('ListingPerformance', () => {
       );
 
       // Zero should be displayed without sign
-      expect(screen.getByText('0.00%')).toBeInTheDocument();
+      expect(screen.getAllByText('0.00%')[0]).toBeInTheDocument();
     });
 
     it('handles very large gains', () => {
@@ -232,9 +232,9 @@ describe('ListingPerformance', () => {
         />
       );
 
-      expect(screen.getByText('+100.00%')).toBeInTheDocument(); // Open gain
-      expect(screen.getByText('+200.00%')).toBeInTheDocument(); // High gain
-      expect(screen.getByText('+150.00%')).toBeInTheDocument(); // Close/day return
+      expect(screen.getAllByText('+100.00%')[0]).toBeInTheDocument(); // Open gain
+      expect(screen.getAllByText('+200.00%')[0]).toBeInTheDocument(); // High gain
+      expect(screen.getAllByText('+150.00%')[0]).toBeInTheDocument(); // Close/day return
     });
 
     it('handles very small gains', () => {
@@ -248,9 +248,9 @@ describe('ListingPerformance', () => {
         />
       );
 
-      expect(screen.getByText('+0.17%')).toBeInTheDocument(); // Open gain
-      expect(screen.getByText('+0.33%')).toBeInTheDocument(); // High gain
-      expect(screen.getByText('+0.25%')).toBeInTheDocument(); // Close/day return
+      expect(screen.getAllByText('+0.17%')[0]).toBeInTheDocument(); // Open gain
+      expect(screen.getAllByText('+0.33%')[0]).toBeInTheDocument(); // High gain
+      expect(screen.getAllByText('+0.25%')[0]).toBeInTheDocument(); // Close/day return
     });
   });
 });

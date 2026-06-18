@@ -135,8 +135,9 @@ describe('HistoricalPagination', () => {
       />
     );
 
-    // Should have ellipsis
-    const ellipsis = screen.getAllByText('…');
+    // shadcn <PaginationEllipsis/> renders a MoreHorizontal icon + sr-only label
+    // (not a literal "…" character).
+    const ellipsis = screen.getAllByText('More pages');
     expect(ellipsis.length).toBeGreaterThan(0);
 
     // First and last pages should be visible
@@ -177,7 +178,8 @@ describe('HistoricalPagination', () => {
       />
     );
 
-    const page3Link = screen.getByText('3').closest('a');
+    // PaginationLink renders a <button> (active = 'default' variant), not an <a>.
+    const page3Link = screen.getByText('3').closest('button');
     expect(page3Link).toHaveClass('cursor-pointer');
   });
 });

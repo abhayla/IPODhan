@@ -63,11 +63,28 @@ const createMockQueryBuilder = () => {
   return mockBuilder;
 };
 
-// Mock Drizzle ORM db instance
+// Mock Drizzle ORM db instance. `@/lib/db` re-exports the schema tables, and the
+// service imports `ipos`/`ipoReviews` from here — so the mock must export them too.
 vi.mock('@/lib/db', () => ({
   db: {
     select: vi.fn(() => createMockQueryBuilder()),
     selectDistinct: vi.fn(() => createMockQueryBuilder()),
+  },
+  ipos: {
+    id: 'ipos.id',
+    companyName: 'ipos.company_name',
+    slug: 'ipos.slug',
+  },
+  ipoReviews: {
+    id: 'ipo_reviews.id',
+    reviewTitle: 'ipo_reviews.review_title',
+    author: 'ipo_reviews.author',
+    recommendation: 'ipo_reviews.recommendation',
+    ipoId: 'ipo_reviews.ipo_id',
+    publishedDate: 'ipo_reviews.published_date',
+    year: 'ipo_reviews.year',
+    category: 'ipo_reviews.segment',
+    reviewUrl: 'ipo_reviews.review_url',
   },
 }));
 
