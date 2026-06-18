@@ -2,6 +2,10 @@
  * Unit Tests for Mainboard Calendar Service
  *
  * Tests for getMainboardIPOEvents, searchCalendarEvents, and getEventCounts functions.
+ *
+ * NOTE: the service uses the repository layer directly — IPORepository.findAllWithDetails
+ * (returns an IPO[] array) and MarketHolidayRepository.findByYear (returns a holiday[]).
+ * These tests mock those repositories, not the HTTP api-client.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -11,7 +15,6 @@ import {
   getEventCounts,
   CalendarEventType,
 } from '@/lib/services/mainboard-calendar-service';
-import * as apiClient from '@/lib/api-client';
 import {
   mockMainboardIPOs,
   mockMarketHolidays,
@@ -19,32 +22,42 @@ import {
 
 // ==================== MOCKS ====================
 
-vi.mock('@/lib/api-client', () => ({
-  apiClient: {
-    getIPOs: vi.fn(),
-    getMarketHolidays: vi.fn(),
-  },
+const mockFindAllWithDetails = vi.fn();
+const mockFindByYear = vi.fn();
+
+vi.mock('@/lib/db/index', () => ({ db: {} }));
+vi.mock('@/lib/cache/redis-client', () => ({
+  getRedisClient: vi.fn(() => ({})),
 }));
+vi.mock('@/lib/repositories/ipo-repository', () => ({
+  IPORepository: vi.fn().mockImplementation(() => ({
+    findAllWithDetails: mockFindAllWithDetails,
+  })),
+}));
+vi.mock('@/lib/repositories/market-holiday-repository', () => ({
+  MarketHolidayRepository: vi.fn().mockImplementation(() => ({
+    findByYear: mockFindByYear,
+  })),
+}));
+
+// Convenience setters mirroring the service's repository contracts
+const withIPOs = (rows: unknown[]) => mockFindAllWithDetails.mockResolvedValue(rows);
+const withHolidays = (rows: unknown[]) => mockFindByYear.mockResolvedValue(rows);
 
 // ==================== TESTS ====================
 
 describe('Mainboard Calendar Service', () => {
   beforeEach(() => {
+    // Do NOT restoreAllMocks — it wipes the repository factory implementations.
     vi.clearAllMocks();
+    mockFindAllWithDetails.mockReset();
+    mockFindByYear.mockReset();
   });
 
   describe('getMainboardIPOEvents', () => {
     it('should fetch and aggregate Mainboard IPO events for a month', async () => {
-      // Mock API responses
-      vi.mocked(apiClient.apiClient.getIPOs).mockResolvedValue({
-        data: mockMainboardIPOs as any[],
-        pagination: { page: 1, limit: 500, total: 3, hasMore: false },
-      });
-
-      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
-        holidays: mockMarketHolidays as any[],
-        fetchedAt: '2025-01-01T00:00:00Z',
-      });
+      withIPOs(mockMainboardIPOs as unknown[]);
+      withHolidays(mockMarketHolidays as unknown[]);
 
       const result = await getMainboardIPOEvents(10, 2025);
 
@@ -56,15 +69,8 @@ describe('Mainboard Calendar Service', () => {
     });
 
     it('should return 31 dates for October', async () => {
-      vi.mocked(apiClient.apiClient.getIPOs).mockResolvedValue({
-        data: [],
-        pagination: { page: 1, limit: 500, total: 0, hasMore: false },
-      });
-
-      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
-        holidays: [],
-        fetchedAt: '2025-01-01T00:00:00Z',
-      });
+      withIPOs([]);
+      withHolidays([]);
 
       const result = await getMainboardIPOEvents(10, 2025);
 
@@ -72,19 +78,11 @@ describe('Mainboard Calendar Service', () => {
     });
 
     it('should group events by date correctly', async () => {
-      vi.mocked(apiClient.apiClient.getIPOs).mockResolvedValue({
-        data: mockMainboardIPOs as any[],
-        pagination: { page: 1, limit: 500, total: 3, hasMore: false },
-      });
-
-      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
-        holidays: mockMarketHolidays as any[],
-        fetchedAt: '2025-01-01T00:00:00Z',
-      });
+      withIPOs(mockMainboardIPOs as unknown[]);
+      withHolidays(mockMarketHolidays as unknown[]);
 
       const result = await getMainboardIPOEvents(10, 2025);
 
-      // Find date with events
       const dateWithEvents = result.dates.find((d) => d.events.length > 0);
       expect(dateWithEvents).toBeDefined();
 
@@ -96,47 +94,35 @@ describe('Mainboard Calendar Service', () => {
     });
 
     it('should detect multi-event dates', async () => {
-      // Create IPO with multiple events on same date
+      // Two DISTINCT event types on the same date (ALLOTMENT + LISTING on 10-20)
+      // genuinely produce a multi-event date. (open==close yields a single
+      // OPENING_TODAY event, so it can't be used to test multi-event detection.)
       const multiEventIPO = {
         ...mockMainboardIPOs[0],
         id: '99',
         companyName: 'Multi Event Co',
-        openDate: '2025-10-15',
-        closeDate: '2025-10-15', // Same date as open
+        openDate: '2025-10-10',
+        closeDate: '2025-10-12',
         allotmentDate: '2025-10-20',
-        listingDate: '2025-10-22',
+        listingDate: '2025-10-20', // same date as allotment → 2 events on 10-20
       };
 
-      vi.mocked(apiClient.apiClient.getIPOs).mockResolvedValue({
-        data: [multiEventIPO] as any[],
-        pagination: { page: 1, limit: 500, total: 1, hasMore: false },
-      });
-
-      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
-        holidays: [],
-        fetchedAt: '2025-01-01T00:00:00Z',
-      });
+      withIPOs([multiEventIPO]);
+      withHolidays([]);
 
       const result = await getMainboardIPOEvents(10, 2025);
 
-      const oct15 = result.dates.find((d) => d.dateString === '2025-10-15');
-      expect(oct15).toBeDefined();
-      if (oct15) {
-        expect(oct15.hasMultipleEvents).toBe(true);
-        expect(oct15.events.length).toBeGreaterThanOrEqual(2);
+      const oct20 = result.dates.find((d) => d.dateString === '2025-10-20');
+      expect(oct20).toBeDefined();
+      if (oct20) {
+        expect(oct20.hasMultipleEvents).toBe(true);
+        expect(oct20.events.length).toBeGreaterThanOrEqual(2);
       }
     });
 
     it('should integrate market holidays', async () => {
-      vi.mocked(apiClient.apiClient.getIPOs).mockResolvedValue({
-        data: [],
-        pagination: { page: 1, limit: 500, total: 0, hasMore: false },
-      });
-
-      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
-        holidays: mockMarketHolidays as any[],
-        fetchedAt: '2025-01-01T00:00:00Z',
-      });
+      withIPOs([]);
+      withHolidays(mockMarketHolidays as unknown[]);
 
       const result = await getMainboardIPOEvents(10, 2025);
 
@@ -152,52 +138,29 @@ describe('Mainboard Calendar Service', () => {
       }
     });
 
-    it('should handle holiday API failure gracefully', async () => {
-      vi.mocked(apiClient.apiClient.getIPOs).mockResolvedValue({
-        data: mockMainboardIPOs as any[],
-        pagination: { page: 1, limit: 500, total: 3, hasMore: false },
-      });
+    it('should handle holiday repository failure gracefully', async () => {
+      withIPOs(mockMainboardIPOs as unknown[]);
+      mockFindByYear.mockRejectedValue(new Error('Holiday repo failed'));
 
-      vi.mocked(apiClient.apiClient.getMarketHolidays).mockRejectedValue(
-        new Error('Holiday API failed')
-      );
-
-      // Should not throw error
+      // Should not throw — graceful degradation
       const result = await getMainboardIPOEvents(10, 2025);
 
       expect(result.month).toBe(10);
       expect(result.year).toBe(2025);
-      // Calendar should work without holidays
       expect(result.dates.length).toBe(31);
     });
 
     it('should validate month and year parameters', async () => {
-      vi.mocked(apiClient.apiClient.getIPOs).mockResolvedValue({
-        data: [],
-        pagination: { page: 1, limit: 500, total: 0, hasMore: false },
-      });
+      withIPOs([]);
+      withHolidays([]);
 
-      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
-        holidays: [],
-        fetchedAt: '2025-01-01T00:00:00Z',
-      });
-
-      // Invalid month
       await expect(getMainboardIPOEvents(13, 2025)).rejects.toThrow('Invalid month');
-
-      // Invalid year
       await expect(getMainboardIPOEvents(10, 1999)).rejects.toThrow('Invalid year');
     });
 
-    it('should return empty calendar on API error', async () => {
-      vi.mocked(apiClient.apiClient.getIPOs).mockRejectedValue(
-        new Error('API failed')
-      );
-
-      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
-        holidays: [],
-        fetchedAt: '2025-01-01T00:00:00Z',
-      });
+    it('should return empty calendar on repository error', async () => {
+      mockFindAllWithDetails.mockRejectedValue(new Error('DB failed'));
+      withHolidays([]);
 
       const result = await getMainboardIPOEvents(10, 2025);
 
@@ -210,19 +173,11 @@ describe('Mainboard Calendar Service', () => {
 
   describe('searchCalendarEvents', () => {
     it('should filter events by company name', async () => {
-      vi.mocked(apiClient.apiClient.getIPOs).mockResolvedValue({
-        data: mockMainboardIPOs as any[],
-        pagination: { page: 1, limit: 500, total: 3, hasMore: false },
-      });
-
-      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
-        holidays: [],
-        fetchedAt: '2025-01-01T00:00:00Z',
-      });
+      withIPOs(mockMainboardIPOs as unknown[]);
+      withHolidays([]);
 
       const result = await searchCalendarEvents(10, 2025, 'Tech');
 
-      // Should only include dates with "Tech" events
       const techEvents = result.dates.flatMap((d) =>
         d.events.filter((e) => e.companyName?.includes('Tech'))
       );
@@ -230,15 +185,8 @@ describe('Mainboard Calendar Service', () => {
     });
 
     it('should return all events for empty search query', async () => {
-      vi.mocked(apiClient.apiClient.getIPOs).mockResolvedValue({
-        data: mockMainboardIPOs as any[],
-        pagination: { page: 1, limit: 500, total: 3, hasMore: false },
-      });
-
-      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
-        holidays: [],
-        fetchedAt: '2025-01-01T00:00:00Z',
-      });
+      withIPOs(mockMainboardIPOs as unknown[]);
+      withHolidays([]);
 
       const result = await searchCalendarEvents(10, 2025, '');
 
@@ -246,17 +194,12 @@ describe('Mainboard Calendar Service', () => {
     });
 
     it('should be case-insensitive', async () => {
-      vi.mocked(apiClient.apiClient.getIPOs).mockResolvedValue({
-        data: mockMainboardIPOs as any[],
-        pagination: { page: 1, limit: 500, total: 3, hasMore: false },
-      });
-
-      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
-        holidays: [],
-        fetchedAt: '2025-01-01T00:00:00Z',
-      });
+      withIPOs(mockMainboardIPOs as unknown[]);
+      withHolidays([]);
 
       const resultLower = await searchCalendarEvents(10, 2025, 'tech');
+      withIPOs(mockMainboardIPOs as unknown[]);
+      withHolidays([]);
       const resultUpper = await searchCalendarEvents(10, 2025, 'TECH');
 
       expect(resultLower.totalEvents).toBe(resultUpper.totalEvents);
@@ -265,41 +208,27 @@ describe('Mainboard Calendar Service', () => {
 
   describe('getEventCounts', () => {
     it('should return counts for all event types', async () => {
-      vi.mocked(apiClient.apiClient.getIPOs).mockResolvedValue({
-        data: mockMainboardIPOs as any[],
-        pagination: { page: 1, limit: 500, total: 3, hasMore: false },
-      });
-
-      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
-        holidays: mockMarketHolidays as any[],
-        fetchedAt: '2025-01-01T00:00:00Z',
-      });
+      withIPOs(mockMainboardIPOs as unknown[]);
+      withHolidays(mockMarketHolidays as unknown[]);
 
       const counts = await getEventCounts(10, 2025);
 
-      expect(counts).toHaveProperty(CalendarEventType.OPEN);
-      expect(counts).toHaveProperty(CalendarEventType.CLOSE);
+      // Enum members were renamed: OPEN→OPENING_TODAY, CLOSE→CLOSING_TODAY.
+      expect(counts).toHaveProperty(CalendarEventType.OPENING_TODAY);
+      expect(counts).toHaveProperty(CalendarEventType.CLOSING_TODAY);
       expect(counts).toHaveProperty(CalendarEventType.ALLOTMENT);
       expect(counts).toHaveProperty(CalendarEventType.REFUND);
       expect(counts).toHaveProperty(CalendarEventType.LISTING);
       expect(counts).toHaveProperty(CalendarEventType.HOLIDAY);
 
-      // All counts should be non-negative
       Object.values(counts).forEach((count) => {
         expect(count).toBeGreaterThanOrEqual(0);
       });
     });
 
     it('should count holiday events', async () => {
-      vi.mocked(apiClient.apiClient.getIPOs).mockResolvedValue({
-        data: [],
-        pagination: { page: 1, limit: 500, total: 0, hasMore: false },
-      });
-
-      vi.mocked(apiClient.apiClient.getMarketHolidays).mockResolvedValue({
-        holidays: mockMarketHolidays as any[],
-        fetchedAt: '2025-01-01T00:00:00Z',
-      });
+      withIPOs([]);
+      withHolidays(mockMarketHolidays as unknown[]);
 
       const counts = await getEventCounts(10, 2025);
 

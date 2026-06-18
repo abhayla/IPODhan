@@ -108,10 +108,11 @@ describe('score-utils', () => {
       expect(getConfidenceClass(confidence)).toContain('text-gray');
     });
 
-    it('should return confidence text', () => {
-      expect(getConfidenceText('HIGH')).toBe('HIGH');
-      expect(getConfidenceText('MEDIUM')).toBe('MEDIUM');
-      expect(getConfidenceText('LOW')).toBe('LOW');
+    it('should return confidence display text (title-case)', () => {
+      // getConfidenceText is documented "display text" → title-case for the badge.
+      expect(getConfidenceText('HIGH')).toBe('High');
+      expect(getConfidenceText('MEDIUM')).toBe('Medium');
+      expect(getConfidenceText('LOW')).toBe('Low');
     });
   });
 

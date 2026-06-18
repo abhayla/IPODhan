@@ -3,39 +3,49 @@
  * Tests for web/lib/admin/field-protection-checker.ts
  */
 
-import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Redis } from 'ioredis';
 
-// Mock dependencies
-vi.mock('@/lib/db/index.js', () => ({
+// Mock dependencies. The web adapter imports from '../db' and
+// '../cache/redis-client' (→ @/lib/db, @/lib/cache/redis-client) — mock THOSE
+// specifiers (the prior '.js'-suffixed paths never matched, so the real db/redis
+// were used and every query blew up).
+vi.mock('@/lib/db', () => ({
   getDb: vi.fn(),
 }));
 
-vi.mock('@/lib/cache/redis-client.js', () => ({
+vi.mock('@/lib/cache/redis-client', () => ({
   getRedisClient: vi.fn(),
 }));
 
-// Import after mocks
-import {
-  isIPOLocked,
-  isFieldProtected,
-  filterProtectedFields,
-  invalidateProtectionCache,
-  getBlockedUpdateNotifications,
-  markFieldAsManuallyEdited,
-  type FieldProtectionStatus,
-  type FilterProtectedFieldsResult,
-  type BlockedUpdateNotification,
+vi.mock('@/lib/services/notification-service', () => ({
+  sendNotification: vi.fn().mockResolvedValue(undefined),
+}));
+
+// Types are erased — safe to import statically.
+import type {
+  FieldProtectionStatus,
+  FilterProtectedFieldsResult,
+  BlockedUpdateNotification,
 } from '@/lib/admin/field-protection-checker';
-import { getDb } from '@/lib/db/index.js';
-import { getRedisClient } from '@/lib/cache/redis-client.js';
+
+// The adapter caches a module-level singleton (serviceInstance) built from
+// getDb()/getRedisClient() on first use. Re-import the adapter per test
+// (vi.resetModules) so the singleton is rebuilt with THIS test's mockDb/mockRedis.
+type Adapter = typeof import('@/lib/admin/field-protection-checker');
+let isIPOLocked: Adapter['isIPOLocked'];
+let isFieldProtected: Adapter['isFieldProtected'];
+let filterProtectedFields: Adapter['filterProtectedFields'];
+let invalidateProtectionCache: Adapter['invalidateProtectionCache'];
+let getBlockedUpdateNotifications: Adapter['getBlockedUpdateNotifications'];
+let markFieldAsManuallyEdited: Adapter['markFieldAsManuallyEdited'];
 
 describe('Field Protection Checker', () => {
   let mockDb: any;
   let mockRedis: Partial<Redis>;
 
-  beforeEach(() => {
-    // Reset mocks before each test
+  beforeEach(async () => {
+    vi.resetModules();
     vi.clearAllMocks();
 
     // Mock Redis client - all methods return resolved promises
@@ -49,7 +59,6 @@ describe('Field Protection Checker', () => {
       expire: vi.fn().mockResolvedValue(1),
       zrevrange: vi.fn().mockResolvedValue([]),
     };
-    vi.mocked(getRedisClient).mockReturnValue(mockRedis as Redis);
 
     // Mock DB client - create chainable mock
     mockDb = {
@@ -64,11 +73,20 @@ describe('Field Protection Checker', () => {
       set: vi.fn().mockReturnThis(),
     };
 
-    vi.mocked(getDb).mockResolvedValue(mockDb);
-  });
+    // Configure the mocked deps (re-imported after resetModules), then load a
+    // fresh copy of the adapter so its singleton uses these mocks.
+    const dbMod = await import('@/lib/db');
+    const redisMod = await import('@/lib/cache/redis-client');
+    vi.mocked(dbMod.getDb).mockResolvedValue(mockDb);
+    vi.mocked(redisMod.getRedisClient).mockReturnValue(mockRedis as Redis);
 
-  afterEach(() => {
-    vi.restoreAllMocks();
+    const mod = await import('@/lib/admin/field-protection-checker');
+    isIPOLocked = mod.isIPOLocked;
+    isFieldProtected = mod.isFieldProtected;
+    filterProtectedFields = mod.filterProtectedFields;
+    invalidateProtectionCache = mod.invalidateProtectionCache;
+    getBlockedUpdateNotifications = mod.getBlockedUpdateNotifications;
+    markFieldAsManuallyEdited = mod.markFieldAsManuallyEdited;
   });
 
   describe('isIPOLocked', () => {

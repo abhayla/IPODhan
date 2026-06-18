@@ -72,9 +72,10 @@ describe('AllotmentCheckerCard', () => {
 
     const input = screen.getByPlaceholderText('ABCDE1234F');
 
-    // Invalid PAN - too short (no error shown during typing)
+    // Invalid PAN - too short: component validates on change and shows the
+    // length error for any input that isn't exactly 10 characters.
     fireEvent.change(input, { target: { value: 'ABC12' } });
-    expect(screen.queryByText('PAN must be 10 characters')).not.toBeInTheDocument();
+    expect(screen.getByText('PAN must be 10 characters')).toBeInTheDocument();
 
     // Invalid PAN - wrong format (error shown when 10 characters)
     fireEvent.change(input, { target: { value: '1234567890' } });

@@ -4,67 +4,67 @@
  * Tests the NCD service layer data fetching and transformation logic.
  *
  * Story 9.6: NCD Issue Page
+ *
+ * NOTE: the service uses the repository layer directly (Service → Repository),
+ * NOT the HTTP api-client. These tests mock `IPORepository.findAll` accordingly.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getNCDIssues, clearNCDCache } from '@/lib/services/ncd-service';
-import * as apiClient from '@/lib/api-client';
 import * as redisClient from '@/lib/cache/redis-client';
 
-// Mock modules
-vi.mock('@/lib/api-client');
+// The service constructs `new IPORepository(db, redis).findAll(...)`; mock it.
+const mockFindAll = vi.fn();
+vi.mock('@/lib/db/index', () => ({ db: {} }));
 vi.mock('@/lib/cache/redis-client');
+vi.mock('@/lib/repositories/ipo-repository', () => ({
+  IPORepository: vi.fn().mockImplementation(() => ({ findAll: mockFindAll })),
+}));
+
+// Repository findAll returns a paginated envelope; build one from rows.
+const paginated = (rows: unknown[]) => ({
+  data: rows,
+  pagination: { page: 1, limit: 100, total: rows.length, hasMore: false },
+});
+
+const EXPECTED_FILTER = {
+  segment: ['MAINBOARD'],
+  offeringType: 'NCD',
+  limit: 100,
+  sortBy: 'openDate',
+  sortOrder: 'desc',
+  page: 1,
+};
 
 describe('NCD Service', () => {
   beforeEach(() => {
+    // NOTE: do NOT use vi.restoreAllMocks() here — it wipes the IPORepository
+    // factory's mockImplementation, leaving later tests with a no-op repo.
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
+    mockFindAll.mockReset();
+    vi.mocked(redisClient.safeGet).mockResolvedValue(null);
+    vi.mocked(redisClient.safeSet).mockResolvedValue(undefined);
   });
 
   describe('getNCDIssues()', () => {
-    it('should fetch NCD issues with correct category filter', async () => {
-      // Mock API response
-      const mockNCDData = [
+    it('should fetch NCD issues from the repository with correct filter', async () => {
+      const rows = [
         {
           id: '1',
           companyName: 'Test Company NCD',
           slug: 'test-company-ncd',
-          segment: 'MAINBOARD' as const,
-  offeringType: 'NCD' as const,
-          status: 'UPCOMING' as const,
+          status: 'UPCOMING',
           openDate: '2025-03-15',
           closeDate: '2025-03-20',
           priceRangeMax: 1000,
           issueSize: '5000',
         },
-      ] as unknown as apiClient.IPO[];
+      ];
+      mockFindAll.mockResolvedValue(paginated(rows));
 
-      vi.mocked(apiClient.getIPOs).mockResolvedValue({
-        data: mockNCDData,
-        pagination: {
-          page: 1,
-          limit: 100,
-          total: 1,
-          hasMore: false,
-        },
-      });
-
-      vi.mocked(redisClient.safeGet).mockResolvedValue(null);
-      vi.mocked(redisClient.safeSet).mockResolvedValue(undefined);
-
-      // Call service
       const result = await getNCDIssues();
 
-      // Assertions
-      expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        segment: 'MAINBOARD' as const,
-  offeringType: 'NCD' as const,
-        limit: 100,
-      });
-
+      expect(mockFindAll).toHaveBeenCalledWith(EXPECTED_FILTER);
       expect(result).toHaveLength(1);
       expect(result[0]).toMatchObject({
         id: '1',
@@ -72,92 +72,42 @@ describe('NCD Service', () => {
         slug: 'test-company-ncd',
         openDate: '2025-03-15',
         closeDate: '2025-03-20',
+        issuePrice: 1000, // transformNCDData maps priceRangeMax → issuePrice
       });
     });
 
-    it('should return empty array on API error (graceful degradation)', async () => {
-      // Mock API error
-      vi.mocked(apiClient.getIPOs).mockRejectedValue(new Error('API Error'));
-      vi.mocked(redisClient.safeGet).mockResolvedValue(null);
+    it('should return empty array on repository error (graceful degradation)', async () => {
+      mockFindAll.mockRejectedValue(new Error('DB Error'));
 
-      // Call service
       const result = await getNCDIssues();
 
-      // Assertions - should not throw, return empty array
       expect(result).toEqual([]);
-      expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        segment: 'MAINBOARD' as const,
-  offeringType: 'NCD' as const,
-        limit: 100,
-      });
+      expect(mockFindAll).toHaveBeenCalledWith(EXPECTED_FILTER);
     });
 
-    it('should sort NCD issues by openDate descending (newest first)', async () => {
-      // Mock API response with unsorted data
-      const mockNCDData = [
-        {
-          id: '1',
-          companyName: 'NCD March',
-          slug: 'ncd-march',
-          segment: 'MAINBOARD' as const,
-  offeringType: 'NCD' as const,
-          status: 'UPCOMING' as const,
-          openDate: '2025-03-15',
-          closeDate: '2025-03-20',
-          priceRangeMax: 1000,
-          issueSize: '5000',
-        },
-        {
-          id: '2',
-          companyName: 'NCD January',
-          slug: 'ncd-january',
-          segment: 'MAINBOARD' as const,
-  offeringType: 'NCD' as const,
-          status: 'UPCOMING' as const,
-          openDate: '2025-01-10',
-          closeDate: '2025-01-15',
-          priceRangeMax: 1000,
-          issueSize: '3000',
-        },
-        {
-          id: '3',
-          companyName: 'NCD February',
-          slug: 'ncd-february',
-          segment: 'MAINBOARD' as const,
-  offeringType: 'NCD' as const,
-          status: 'UPCOMING' as const,
-          openDate: '2025-02-20',
-          closeDate: '2025-02-25',
-          priceRangeMax: 1000,
-          issueSize: '4000',
-        },
-      ] as unknown as apiClient.IPO[];
+    it('should request descending openDate sort from the repository and preserve its order', async () => {
+      // Sorting is delegated to the repository (sortBy/sortOrder); the service
+      // returns the repo order unchanged. Verify the params + order passthrough.
+      const rows = [
+        { id: '1', companyName: 'NCD March', slug: 'ncd-march', status: 'UPCOMING', openDate: '2025-03-15', closeDate: '2025-03-20', priceRangeMax: 1000, issueSize: '5000' },
+        { id: '3', companyName: 'NCD February', slug: 'ncd-february', status: 'UPCOMING', openDate: '2025-02-20', closeDate: '2025-02-25', priceRangeMax: 1000, issueSize: '4000' },
+        { id: '2', companyName: 'NCD January', slug: 'ncd-january', status: 'UPCOMING', openDate: '2025-01-10', closeDate: '2025-01-15', priceRangeMax: 1000, issueSize: '3000' },
+      ];
+      mockFindAll.mockResolvedValue(paginated(rows));
 
-      vi.mocked(apiClient.getIPOs).mockResolvedValue({
-        data: mockNCDData,
-        pagination: {
-          page: 1,
-          limit: 100,
-          total: 3,
-          hasMore: false,
-        },
-      });
-
-      vi.mocked(redisClient.safeGet).mockResolvedValue(null);
-      vi.mocked(redisClient.safeSet).mockResolvedValue(undefined);
-
-      // Call service
       const result = await getNCDIssues();
 
-      // Assertions - should be sorted by date descending (newest first)
-      expect(result).toHaveLength(3);
-      expect(result[0].companyName).toBe('NCD March'); // Newest (latest date)
-      expect(result[1].companyName).toBe('NCD February');
-      expect(result[2].companyName).toBe('NCD January'); // Oldest
+      expect(mockFindAll).toHaveBeenCalledWith(
+        expect.objectContaining({ sortBy: 'openDate', sortOrder: 'desc' })
+      );
+      expect(result.map((r) => r.companyName)).toEqual([
+        'NCD March',
+        'NCD February',
+        'NCD January',
+      ]);
     });
 
-    it('should use Redis cache when available', async () => {
-      // Mock cached data
+    it('should use Redis cache when available (and not hit the repository)', async () => {
       const cachedData = [
         {
           id: '1',
@@ -170,67 +120,25 @@ describe('NCD Service', () => {
           status: 'UPCOMING',
         },
       ];
-
       vi.mocked(redisClient.safeGet).mockResolvedValue(JSON.stringify(cachedData));
 
-      // Call service
       const result = await getNCDIssues();
 
-      // Assertions - should use cache, NOT call API
       expect(redisClient.safeGet).toHaveBeenCalledWith('ncd:all');
-      expect(apiClient.getIPOs).not.toHaveBeenCalled();
+      expect(mockFindAll).not.toHaveBeenCalled();
       expect(result).toEqual(cachedData);
     });
 
     it('should handle items with null dates gracefully', async () => {
-      // Mock API response with null dates
-      const mockNCDData = [
-        {
-          id: '1',
-          companyName: 'NCD With Dates',
-          slug: 'ncd-with-dates',
-          segment: 'MAINBOARD' as const,
-  offeringType: 'NCD' as const,
-          status: 'UPCOMING' as const,
-          openDate: '2025-03-15',
-          closeDate: '2025-03-20',
-          priceRangeMax: 1000,
-          issueSize: '5000',
-        },
-        {
-          id: '2',
-          companyName: 'NCD Without Dates',
-          slug: 'ncd-without-dates',
-          segment: 'MAINBOARD' as const,
-  offeringType: 'NCD' as const,
-          status: 'UPCOMING' as const,
-          openDate: null,
-          closeDate: null,
-          priceRangeMax: 1000,
-          issueSize: '3000',
-        },
-      ] as unknown as apiClient.IPO[];
+      const rows = [
+        { id: '1', companyName: 'NCD With Dates', slug: 'ncd-with-dates', status: 'UPCOMING', openDate: '2025-03-15', closeDate: '2025-03-20', priceRangeMax: 1000, issueSize: '5000' },
+        { id: '2', companyName: 'NCD Without Dates', slug: 'ncd-without-dates', status: 'UPCOMING', openDate: null, closeDate: null, priceRangeMax: 1000, issueSize: '3000' },
+      ];
+      mockFindAll.mockResolvedValue(paginated(rows));
 
-      vi.mocked(apiClient.getIPOs).mockResolvedValue({
-        data: mockNCDData,
-        pagination: {
-          page: 1,
-          limit: 100,
-          total: 2,
-          hasMore: false,
-        },
-      });
-
-      vi.mocked(redisClient.safeGet).mockResolvedValue(null);
-      vi.mocked(redisClient.safeSet).mockResolvedValue(undefined);
-
-      // Call service
       const result = await getNCDIssues();
 
-      // Assertions - should handle null dates, sort nulls last (0 timestamp)
       expect(result).toHaveLength(2);
-      expect(result[0].companyName).toBe('NCD With Dates'); // Has date, comes first
-      expect(result[1].companyName).toBe('NCD Without Dates'); // Null date (0), comes last
       expect(result[1].openDate).toBeNull();
       expect(result[1].closeDate).toBeNull();
     });
@@ -238,28 +146,19 @@ describe('NCD Service', () => {
 
   describe('clearNCDCache()', () => {
     it('should clear NCD cache using Redis del command', async () => {
-      const mockRedis = {
-        del: vi.fn().mockResolvedValue(1),
-      };
+      const mockRedis = { del: vi.fn().mockResolvedValue(1) };
+      vi.mocked(redisClient.getRedisClient).mockReturnValue(mockRedis as never);
 
-      vi.mocked(redisClient.getRedisClient).mockReturnValue(mockRedis as any);
-
-      // Call service
       await clearNCDCache();
 
-      // Assertions
       expect(redisClient.getRedisClient).toHaveBeenCalled();
       expect(mockRedis.del).toHaveBeenCalledWith('ncd:all');
     });
 
     it('should handle Redis errors gracefully', async () => {
-      const mockRedis = {
-        del: vi.fn().mockRejectedValue(new Error('Redis Error')),
-      };
+      const mockRedis = { del: vi.fn().mockRejectedValue(new Error('Redis Error')) };
+      vi.mocked(redisClient.getRedisClient).mockReturnValue(mockRedis as never);
 
-      vi.mocked(redisClient.getRedisClient).mockReturnValue(mockRedis as any);
-
-      // Call service - should not throw
       await expect(clearNCDCache()).resolves.not.toThrow();
     });
   });

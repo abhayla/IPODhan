@@ -16,7 +16,9 @@ describe('ResultsCount', () => {
 
     expect(screen.getByText(/Showing/)).toBeInTheDocument();
     expect(screen.getByText('100')).toBeInTheDocument();
-    expect(screen.getByText('IPOs')).toBeInTheDocument();
+    // "IPOs" is a bare text node in mixed content (not its own element) — assert
+    // via the container's text rather than getByText (which can't match a split node).
+    expect(screen.getByText(/Showing/).textContent).toContain('IPOs');
   });
 
   it('displays filtered state when filters are active', () => {
@@ -44,8 +46,9 @@ describe('ResultsCount', () => {
     render(<ResultsCount total={1} />);
 
     expect(screen.getByText('1')).toBeInTheDocument();
-    expect(screen.getByText('IPO')).toBeInTheDocument();
-    expect(screen.queryByText('IPOs')).not.toBeInTheDocument();
+    const text = screen.getByText(/Showing/).textContent ?? '';
+    expect(text).toContain('IPO');
+    expect(text).not.toContain('IPOs'); // singular only
   });
 
   it('displays loading state', () => {

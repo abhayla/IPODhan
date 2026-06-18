@@ -8,6 +8,12 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./vitest.setup.ts'],
+    // Modest heap headroom margin for the jsdom + recharts component suite
+    // (defensive; the suite's steady-state heap is well under this). CI #35.
+    pool: 'forks',
+    poolOptions: {
+      forks: { execArgv: ['--max-old-space-size=4096'] },
+    },
     css: true,
     include: ['tests/unit/**/*.test.{ts,tsx}'],
     exclude: ['tests/e2e/**', 'tests/integration/**', 'node_modules/**', '.next/**'],

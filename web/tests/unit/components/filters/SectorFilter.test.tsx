@@ -20,7 +20,7 @@ describe('SectorFilter', () => {
 
     render(<SectorFilter value="ALL" onChange={onChange} />);
 
-    expect(screen.getByLabelText('Filter by sector')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Filter IPOs by sector/i)).toBeInTheDocument();
   });
 
   it('should show loading state initially', () => {
@@ -32,7 +32,8 @@ describe('SectorFilter', () => {
 
     render(<SectorFilter value="ALL" onChange={onChange} />);
 
-    expect(screen.getByText('Loading...')).toBeInTheDocument();
+    // Native <select>: the ALL option reads "Loading sectors..." while fetching.
+    expect(screen.getByText('Loading sectors...')).toBeInTheDocument();
   });
 
   it('should fetch sectors on mount', async () => {
@@ -52,7 +53,6 @@ describe('SectorFilter', () => {
   });
 
   it('should display sectors after loading', async () => {
-    const user = userEvent.setup();
     const onChange = vi.fn();
     const mockSectors = ['Technology', 'Healthcare', 'Finance'];
 
@@ -63,15 +63,12 @@ describe('SectorFilter', () => {
 
     render(<SectorFilter value="ALL" onChange={onChange} />);
 
+    // Native <select> renders all <option>s in the DOM — no open needed.
     await waitFor(() => {
-      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+      expect(screen.getByText('Technology')).toBeInTheDocument();
     });
 
-    const trigger = screen.getByRole('combobox');
-    await user.click(trigger);
-
     expect(screen.getByText('All Sectors')).toBeInTheDocument();
-    expect(screen.getByText('Technology')).toBeInTheDocument();
     expect(screen.getByText('Healthcare')).toBeInTheDocument();
     expect(screen.getByText('Finance')).toBeInTheDocument();
   });
@@ -89,15 +86,11 @@ describe('SectorFilter', () => {
     render(<SectorFilter value="ALL" onChange={onChange} />);
 
     await waitFor(() => {
-      expect(screen.queryByText('Loading...')).not.toBeInTheDocument();
+      expect(screen.getByText('Technology')).toBeInTheDocument();
     });
 
-    const trigger = screen.getByRole('combobox');
-    await user.click(trigger);
-
-    const techOption = screen.getByText('Technology');
-    await user.click(techOption);
-
+    // Native <select>: change via selectOptions, not click-to-open.
+    await user.selectOptions(screen.getByRole('combobox'), 'Technology');
     expect(onChange).toHaveBeenCalledWith('Technology');
   });
 
@@ -108,7 +101,8 @@ describe('SectorFilter', () => {
     render(<SectorFilter value="ALL" onChange={onChange} />);
 
     await waitFor(() => {
-      expect(screen.getByText('Error loading sectors')).toBeInTheDocument();
+      // On fetch error the native ALL option degrades to "All Sectors (Limited)".
+      expect(screen.getByText('All Sectors (Limited)')).toBeInTheDocument();
     });
   });
 

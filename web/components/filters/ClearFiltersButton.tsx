@@ -15,6 +15,7 @@ interface ClearFiltersButtonProps {
 export function ClearFiltersButton({ onClear, disabled }: ClearFiltersButtonProps) {
   return (
     <Button
+      type="button"
       variant="outline"
       onClick={onClear}
       disabled={disabled}

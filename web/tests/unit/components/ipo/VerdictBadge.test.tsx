@@ -7,6 +7,10 @@ import { render, screen } from '@testing-library/react';
 import { VerdictBadge } from '@/components/ipo/VerdictBadge';
 import type { IPOVerdict } from '@/lib/db/types';
 
+// Colour classes live on the inner badge div (the label's parent), not the
+// cursor-help tooltip wrapper that container.querySelector('div') returns.
+// Target the badge via its label text instead.
+
 describe('VerdictBadge', () => {
   it('should render APPLY verdict', () => {
     const verdict: IPOVerdict = 'APPLY';
@@ -27,24 +31,18 @@ describe('VerdictBadge', () => {
   });
 
   it('should apply green classes for APPLY', () => {
-    const verdict: IPOVerdict = 'APPLY';
-    const { container } = render(<VerdictBadge verdict={verdict} />);
-    const badge = container.querySelector('div');
-    expect(badge?.className).toContain('bg-green');
+    render(<VerdictBadge verdict={'APPLY'} />);
+    expect(screen.getByText('Apply').closest('div')?.className).toContain('bg-green');
   });
 
   it('should apply yellow classes for CONSIDER', () => {
-    const verdict: IPOVerdict = 'CONSIDER';
-    const { container } = render(<VerdictBadge verdict={verdict} />);
-    const badge = container.querySelector('div');
-    expect(badge?.className).toContain('bg-yellow');
+    render(<VerdictBadge verdict={'CONSIDER'} />);
+    expect(screen.getByText('Consider').closest('div')?.className).toContain('bg-yellow');
   });
 
   it('should apply red classes for SKIP', () => {
-    const verdict: IPOVerdict = 'SKIP';
-    const { container } = render(<VerdictBadge verdict={verdict} />);
-    const badge = container.querySelector('div');
-    expect(badge?.className).toContain('bg-red');
+    render(<VerdictBadge verdict={'SKIP'} />);
+    expect(screen.getByText('Skip').closest('div')?.className).toContain('bg-red');
   });
 
   it('should render without tooltip when showTooltip=false', () => {

@@ -25,6 +25,7 @@ const createMockQueryBuilder = (data: any[]) => {
 
 // Mock the database module with proper query chain
 let mockDb: any;
+// `@/lib/db` re-exports schema; the service imports ipos/ipoReviews from here.
 vi.mock('@/lib/db', () => ({
   db: {
     select: vi.fn(),
@@ -34,6 +35,18 @@ vi.mock('@/lib/db', () => ({
     where: vi.fn(),
     orderBy: vi.fn(),
     limit: vi.fn(),
+  },
+  ipos: { id: 'ipos.id', companyName: 'ipos.company_name', slug: 'ipos.slug' },
+  ipoReviews: {
+    id: 'ipo_reviews.id',
+    reviewTitle: 'ipo_reviews.review_title',
+    author: 'ipo_reviews.author',
+    recommendation: 'ipo_reviews.recommendation',
+    ipoId: 'ipo_reviews.ipo_id',
+    publishedDate: 'ipo_reviews.published_date',
+    year: 'ipo_reviews.year',
+    category: 'ipo_reviews.segment',
+    reviewUrl: 'ipo_reviews.review_url',
   },
 }));
 

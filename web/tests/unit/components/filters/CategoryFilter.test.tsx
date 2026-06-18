@@ -8,7 +8,7 @@ describe('CategoryFilter', () => {
     const onChange = vi.fn();
     render(<CategoryFilter value="ALL" onChange={onChange} />);
 
-    expect(screen.getByLabelText('Filter by category')).toBeInTheDocument();
+    expect(screen.getByLabelText(/Filter IPOs by category/i)).toBeInTheDocument();
   });
 
   it('should display current value', () => {
@@ -40,11 +40,13 @@ describe('CategoryFilter', () => {
     const trigger = screen.getByRole('combobox');
     await user.click(trigger);
 
-    expect(screen.getByText('All Categories')).toBeInTheDocument();
-    expect(screen.getByText('Mainboard')).toBeInTheDocument();
-    expect(screen.getByText('SME')).toBeInTheDocument();
-    expect(screen.getByText('Rights')).toBeInTheDocument();
-    expect(screen.getByText('NCD')).toBeInTheDocument();
+    // Query the dropdown options by role — 'All Categories' also appears in the
+    // trigger (value=ALL), so getByText would multiple-match.
+    expect(screen.getByRole('option', { name: 'All Categories' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Mainboard' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'SME' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Rights' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'NCD' })).toBeInTheDocument();
   });
 
   it('should have Tag icon', () => {

@@ -5,12 +5,14 @@ import { join } from 'path';
 
 // Test database connection — must be explicit: this suite runs down-migrations,
 // and pg's localhost fallback would aim them at an unintended database.
+// This is an integration-style suite (needs a real throwaway DB). In the unit
+// run TEST_DATABASE_URL is unset → skip the whole suite rather than throw at
+// import (which would crash the entire unit run). It runs for real when the var
+// is provided. Skipping preserves the "never aim at the wrong DB" safety.
 const testDbUrl = process.env.TEST_DATABASE_URL;
-if (!testDbUrl) {
-  throw new Error('TEST_DATABASE_URL is required for migration tests');
-}
+const describeMigrations = testDbUrl ? describe : describe.skip;
 
-describe('Database Migrations', () => {
+describeMigrations('Database Migrations', () => {
   describe('Migration Application', () => {
     let pool: Pool;
 

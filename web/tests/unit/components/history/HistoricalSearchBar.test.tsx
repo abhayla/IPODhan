@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { HistoricalSearchBar } from '@/components/history/HistoricalSearchBar';
 import { HistoricalFiltersProvider } from '@/contexts/HistoricalFiltersContext';
 
@@ -67,12 +67,14 @@ describe('HistoricalSearchBar', () => {
     // Should not update immediately
     expect(input.value).toBe('Reliance');
 
-    // Fast-forward time by 500ms
-    vi.advanceTimersByTime(500);
-
-    await waitFor(() => {
-      expect(input.value).toBe('Reliance');
+    // Fast-forward the 500ms debounce (act() flushes the resulting state update).
+    // NOTE: don't use waitFor() here — it polls via timers, which deadlocks under
+    // vi.useFakeTimers(). Assert directly after advancing.
+    act(() => {
+      vi.advanceTimersByTime(500);
     });
+
+    expect(input.value).toBe('Reliance');
   });
 
   it('shows clear button when search query is not empty', () => {
@@ -93,10 +95,8 @@ describe('HistoricalSearchBar', () => {
     expect(input.value).toBe('Reliance');
 
     const clearButton = screen.getByLabelText('Clear search');
-    fireEvent.click(clearButton);
+    fireEvent.click(clearButton); // synchronous state update (act-wrapped by fireEvent)
 
-    await waitFor(() => {
-      expect(input.value).toBe('');
-    });
+    expect(input.value).toBe('');
   });
 });

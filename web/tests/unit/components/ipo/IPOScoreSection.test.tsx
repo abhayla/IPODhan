@@ -12,10 +12,13 @@ describe('IPOScoreSection', () => {
     id: 'score-1',
     ipoId: 'ipo-1',
     totalScore: 85,
-    fundamentalScore: 80,
-    sentimentScore: 90,
-    subscriptionScore: 85,
-    sectorScore: 85,
+    // Component scores are 0–25 each (bar renders `${score}/25`; color uses
+    // score*4 → 0-100). Old mock used 0-100 values → rendered absurd "80/25".
+    // Realistic distinct 0–25 values:
+    fundamentalScore: 20,
+    sentimentScore: 23,
+    subscriptionScore: 22,
+    sectorScore: 21,
     verdict: 'APPLY',
     confidence: 'HIGH',
     reasoning: 'Strong fundamentals and positive market sentiment',
@@ -28,12 +31,15 @@ describe('IPOScoreSection', () => {
   it('should render score section with all scores', () => {
     render(<IPOScoreSection score={mockScore} />);
 
-    expect(screen.getByText('IPODhan AI Score')).toBeInTheDocument();
-    expect(screen.getByText('85')).toBeInTheDocument(); // total score
-    expect(screen.getByText(/Fundamental Analysis/)).toBeInTheDocument();
-    expect(screen.getByText(/Market Sentiment/)).toBeInTheDocument();
-    expect(screen.getByText(/Subscription Demand/)).toBeInTheDocument();
-    expect(screen.getByText(/Sector Performance/)).toBeInTheDocument();
+    // FLAG(Abhay): component heading ships "IPODhan Score"; test originally
+    // expected "IPODhan AI Score" — confirm intended branding.
+    expect(screen.getByText('IPODhan Score')).toBeInTheDocument();
+    expect(screen.getByText('85/100')).toBeInTheDocument(); // total score (ScoreBadge formats N/100)
+    // Bar labels shipped by the component (Score Breakdown section)
+    expect(screen.getByText(/Fundamental Score/)).toBeInTheDocument();
+    expect(screen.getByText(/Sentiment Score/)).toBeInTheDocument();
+    expect(screen.getByText(/Subscription Score/)).toBeInTheDocument();
+    expect(screen.getByText(/Sector Score/)).toBeInTheDocument();
   });
 
   it('should display AI reasoning', () => {
@@ -47,7 +53,8 @@ describe('IPOScoreSection', () => {
   it('should show Score Pending when score is null', () => {
     render(<IPOScoreSection score={null} />);
     expect(screen.getByText(/Score Pending/)).toBeInTheDocument();
-    expect(screen.getByText(/not yet available/)).toBeInTheDocument();
+    // Shipped copy: "IPODhan score is being calculated. Please check back later."
+    expect(screen.getByText(/being calculated/)).toBeInTheDocument();
   });
 
   it('should display verdict and confidence badges', () => {
@@ -59,9 +66,10 @@ describe('IPOScoreSection', () => {
   it('should display component scores with progress bars', () => {
     render(<IPOScoreSection score={mockScore} />);
 
-    // Check that scores are displayed
-    expect(screen.getByText('80')).toBeInTheDocument(); // fundamental
-    expect(screen.getByText('90')).toBeInTheDocument(); // sentiment
-    expect(screen.getByText('85')).toBeInTheDocument(); // subscription & sector (same value)
+    // Bars render `${score}/25`
+    expect(screen.getByText('20/25')).toBeInTheDocument(); // fundamental
+    expect(screen.getByText('23/25')).toBeInTheDocument(); // sentiment
+    expect(screen.getByText('22/25')).toBeInTheDocument(); // subscription
+    expect(screen.getByText('21/25')).toBeInTheDocument(); // sector
   });
 });

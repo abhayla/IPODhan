@@ -13,6 +13,9 @@ vi.mock('@/lib/db', () => ({
   db: {
     select: vi.fn(),
   },
+  // sector-averages util imports these table tokens from @/lib/db (re-exported schema)
+  ipos: {},
+  listingPerformance: {},
 }));
 
 vi.mock('@/lib/cache/redis-client', () => ({
@@ -179,10 +182,11 @@ describe('getSectorAverage', () => {
         const result = await getSectorAverage(name);
 
         expect(result).toBe(parseFloat(average));
+        // The util caches parseFloat(avg).toString() (e.g. '15.0' → '15').
         expect(mockRedis.setex).toHaveBeenCalledWith(
           `sector:average:listing-gain:${name}`,
           604800,
-          average
+          parseFloat(average).toString()
         );
       });
     });

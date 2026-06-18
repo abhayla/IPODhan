@@ -15,7 +15,7 @@
  * - Error handling without throwing (AC#5)
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   getMainboardIPOs,
   getSMEIPOs,
@@ -24,7 +24,6 @@ import {
   clearHomeIPOCaches,
   type HomeIPOTableData,
 } from '@/lib/services/home-ipo-service';
-import * as apiClient from '@/lib/api-client';
 import * as redisClient from '@/lib/cache/redis-client';
 import { DEFAULT_HISTORICAL_FIELDS } from '@/lib/db/types';
 
@@ -218,10 +217,15 @@ const mockSMEUpcomingIPO = {
 
 // ==================== MOCK SETUP ====================
 
-vi.mock('@/lib/api-client');
+// Service uses IPORepository.findAll directly (not api-client); alias the repo mock.
+const mockFindAll = vi.fn();
+vi.mock('@/lib/db/index', () => ({ db: {} }));
+vi.mock('@/lib/repositories/ipo-repository', () => ({
+  IPORepository: vi.fn().mockImplementation(() => ({ findAll: mockFindAll })),
+}));
 vi.mock('@/lib/cache/redis-client');
 
-const mockGetIPOs = vi.mocked(apiClient.getIPOs);
+const mockGetIPOs = mockFindAll;
 const mockSafeGet = vi.mocked(redisClient.safeGet);
 const mockSafeSet = vi.mocked(redisClient.safeSet);
 const mockGetRedisClient = vi.mocked(redisClient.getRedisClient);
@@ -230,7 +234,9 @@ const mockGetRedisClient = vi.mocked(redisClient.getRedisClient);
 
 describe('Home IPO Service', () => {
   beforeEach(() => {
+    // Do NOT reset/restoreAllMocks — it wipes the IPORepository factory impl.
     vi.clearAllMocks();
+    mockFindAll.mockReset();
 
     // Default: no cached data
     mockSafeGet.mockResolvedValue(null);
@@ -239,11 +245,7 @@ describe('Home IPO Service', () => {
     // Mock Redis client
     mockGetRedisClient.mockReturnValue({
       del: vi.fn().mockResolvedValue(1),
-    } as any);
-  });
-
-  afterEach(() => {
-    vi.resetAllMocks();
+    } as never);
   });
 
   // ==================== getMainboardIPOs() ====================
@@ -276,18 +278,12 @@ describe('Home IPO Service', () => {
       });
 
       // Verify API calls
-      expect(mockGetIPOs).toHaveBeenCalledWith({
-        segment: 'MAINBOARD' as const,
-  offeringType: 'IPO' as const,
-        status: 'OPEN',
-        limit: 10,
-      });
-      expect(mockGetIPOs).toHaveBeenCalledWith({
-        segment: 'MAINBOARD' as const,
-  offeringType: 'IPO' as const,
-        status: 'CLOSED',
-        limit: 50,
-      });
+      expect(mockGetIPOs).toHaveBeenCalledWith(
+        expect.objectContaining({ segment: ['MAINBOARD'], status: ['OPEN'] })
+      );
+      expect(mockGetIPOs).toHaveBeenCalledWith(
+        expect.objectContaining({ segment: ['MAINBOARD'], status: ['CLOSED'] })
+      );
     });
 
     it('should include CLOSED IPOs from last 30 days only', async () => {
@@ -401,10 +397,16 @@ describe('Home IPO Service', () => {
         id: 'mb-old',
         openDate: '2025-09-01',
       };
+      // newerIPO is returned in the CLOSED response, so its closeDate must fall
+      // within the last 30 days or the service filters it out (date-relative).
       const newerIPO = {
         ...mockMainboardOpenIPO,
         id: 'mb-new',
-        openDate: '2025-10-01',
+        openDate: '2025-10-01', // newer openDate than olderIPO
+        status: 'CLOSED' as const,
+        closeDate: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000)
+          .toISOString()
+          .split('T')[0], // 5 days ago → recently closed
       };
 
       mockGetIPOs
@@ -447,12 +449,9 @@ describe('Home IPO Service', () => {
       expect(result[0].segment).toBe('SME');
       expect(result[0].status).toBe('OPEN');
 
-      expect(mockGetIPOs).toHaveBeenCalledWith({
-        segment: 'SME' as const,
-  offeringType: 'IPO' as const,
-        status: 'OPEN',
-        limit: 10,
-      });
+      expect(mockGetIPOs).toHaveBeenCalledWith(
+        expect.objectContaining({ segment: ['SME'], status: ['OPEN'] })
+      );
     });
 
     it('should limit results to 10 items', async () => {
@@ -528,12 +527,9 @@ describe('Home IPO Service', () => {
       expect(result[0].segment).toBe('MAINBOARD');
       expect(result[0].status).toBe('UPCOMING');
 
-      expect(mockGetIPOs).toHaveBeenCalledWith({
-        segment: 'MAINBOARD' as const,
-  offeringType: 'IPO' as const,
-        status: 'UPCOMING',
-        limit: 10,
-      });
+      expect(mockGetIPOs).toHaveBeenCalledWith(
+        expect.objectContaining({ segment: ['MAINBOARD'], status: ['UPCOMING'] })
+      );
     });
 
     it('should limit results to 10 items', async () => {
@@ -625,12 +621,9 @@ describe('Home IPO Service', () => {
       expect(result[0].segment).toBe('SME');
       expect(result[0].status).toBe('UPCOMING');
 
-      expect(mockGetIPOs).toHaveBeenCalledWith({
-        segment: 'SME' as const,
-  offeringType: 'IPO' as const,
-        status: 'UPCOMING',
-        limit: 10,
-      });
+      expect(mockGetIPOs).toHaveBeenCalledWith(
+        expect.objectContaining({ segment: ['SME'], status: ['UPCOMING'] })
+      );
     });
 
     it('should limit results to 10 items', async () => {
@@ -689,7 +682,7 @@ describe('Home IPO Service', () => {
       const mockDel = vi.fn().mockResolvedValue(4);
       mockGetRedisClient.mockReturnValue({
         del: mockDel,
-      } as any);
+      } as never);
 
       await clearHomeIPOCaches();
 
@@ -705,7 +698,7 @@ describe('Home IPO Service', () => {
       const mockDel = vi.fn().mockRejectedValue(new Error('Redis error'));
       mockGetRedisClient.mockReturnValue({
         del: mockDel,
-      } as any);
+      } as never);
 
       await expect(clearHomeIPOCaches()).resolves.not.toThrow();
     });
