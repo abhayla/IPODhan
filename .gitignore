@@ -291,3 +291,8 @@ prod-server*.pid
 .workflows/
 test-results/
 test-evidence/
+.c3b-scratch/
+
+# Local-only goal-run artifacts and manual data drops (not source of truth)
+docs/goals/.run/*.png
+scraper/manual-listing-entries.csv
