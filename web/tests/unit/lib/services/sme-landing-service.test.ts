@@ -6,8 +6,7 @@
  * Target: >90% code coverage for service layer
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import * as apiClient from '@/lib/api-client';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as redisClient from '@/lib/cache/redis-client';
 import {
   getSMESummaryMetrics,
@@ -32,24 +31,26 @@ import {
   summaryMetricsFixture,
 } from '@/tests/fixtures/sme-landing.fixture';
 
-// Mock dependencies
-vi.mock('@/lib/api-client');
+// Mock dependencies. Service uses IPORepository.findAll directly, not api-client.
+const mockFindAll = vi.fn();
+vi.mock('@/lib/db/index', () => ({ db: {} }));
+vi.mock('@/lib/repositories/ipo-repository', () => ({
+  IPORepository: vi.fn().mockImplementation(() => ({ findAll: mockFindAll })),
+}));
 vi.mock('@/lib/cache/redis-client');
 
 describe('SME Landing Service', () => {
   beforeEach(() => {
+    // Do NOT restoreAllMocks — it wipes the IPORepository factory implementation.
     vi.clearAllMocks();
+    mockFindAll.mockReset();
 
     // Mock Redis cache (always miss for testing fresh data)
     vi.mocked(redisClient.safeGet).mockResolvedValue(null);
     vi.mocked(redisClient.safeSet).mockResolvedValue(undefined);
     vi.mocked(redisClient.getRedisClient).mockReturnValue({
       del: vi.fn().mockResolvedValue(1),
-    } as any);
-  });
-
-  afterEach(() => {
-    vi.restoreAllMocks();
+    } as never);
   });
 
   // ==================== TEST: getSMESummaryMetrics ====================
@@ -57,7 +58,7 @@ describe('SME Landing Service', () => {
   describe('getSMESummaryMetrics', () => {
     it('should calculate summary metrics correctly', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(smeIPOFixtures)
       );
 
@@ -74,16 +75,14 @@ describe('SME Landing Service', () => {
       expect(result.lossAOT).toBeGreaterThanOrEqual(0);
 
       // Verify API called with correct params
-      expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        segment: 'SME' as const,
-  offeringType: 'IPO' as const,
-        limit: 1000,
-      });
+      expect(mockFindAll).toHaveBeenCalledWith(
+        expect.objectContaining({ segment: ['SME'], offeringType: ['IPO'] })
+      );
     });
 
     it('should calculate upcomingAndOngoing correctly', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(smeIPOFixtures)
       );
 
@@ -99,7 +98,7 @@ describe('SME Landing Service', () => {
 
     it('should return zero values on API error', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockRejectedValue(new Error('API Error'));
+      mockFindAll.mockRejectedValue(new Error('API Error'));
 
       // Act
       const result = await getSMESummaryMetrics();
@@ -125,12 +124,12 @@ describe('SME Landing Service', () => {
 
       // Assert
       expect(result).toEqual(summaryMetricsFixture);
-      expect(apiClient.getIPOs).not.toHaveBeenCalled();
+      expect(mockFindAll).not.toHaveBeenCalled();
     });
 
     it('should cache the result after fetching', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(smeIPOFixtures)
       );
 
@@ -152,7 +151,7 @@ describe('SME Landing Service', () => {
     it('should fetch only OPEN SME IPOs', async () => {
       // Arrange
       const currentIPOs = getCurrentIPOs();
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(currentIPOs)
       );
 
@@ -167,18 +166,15 @@ describe('SME Landing Service', () => {
       });
 
       // Verify API called with correct filters
-      expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        segment: 'SME' as const,
-  offeringType: 'IPO' as const,
-        status: 'OPEN',
-        limit: 6,
-      });
+      expect(mockFindAll).toHaveBeenCalledWith(
+        expect.objectContaining({ segment: ['SME'], offeringType: ['IPO'], status: ['OPEN'] })
+      );
     });
 
     it('should sort by closeDate ascending (closing soonest first)', async () => {
       // Arrange
       const currentIPOs = getCurrentIPOs();
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(currentIPOs)
       );
 
@@ -196,7 +192,7 @@ describe('SME Landing Service', () => {
     it('should limit to 6 items', async () => {
       // Arrange
       const currentIPOs = getCurrentIPOs();
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(currentIPOs)
       );
 
@@ -209,7 +205,7 @@ describe('SME Landing Service', () => {
 
     it('should return empty array on error', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockRejectedValue(new Error('Network Error'));
+      mockFindAll.mockRejectedValue(new Error('Network Error'));
 
       // Act
       const result = await getSMECurrentIPOs();
@@ -228,7 +224,7 @@ describe('SME Landing Service', () => {
 
       // Assert
       expect(result).toEqual(getCurrentIPOs());
-      expect(apiClient.getIPOs).not.toHaveBeenCalled();
+      expect(mockFindAll).not.toHaveBeenCalled();
     });
   });
 
@@ -238,7 +234,7 @@ describe('SME Landing Service', () => {
     it('should fetch only UPCOMING SME IPOs', async () => {
       // Arrange
       const upcomingIPOs = getUpcomingIPOs();
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(upcomingIPOs)
       );
 
@@ -253,18 +249,15 @@ describe('SME Landing Service', () => {
       });
 
       // Verify API called with correct filters
-      expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        segment: 'SME' as const,
-  offeringType: 'IPO' as const,
-        status: 'UPCOMING',
-        limit: 6,
-      });
+      expect(mockFindAll).toHaveBeenCalledWith(
+        expect.objectContaining({ segment: ['SME'], offeringType: ['IPO'], status: ['UPCOMING'] })
+      );
     });
 
     it('should sort by openDate ascending (opening soonest first)', async () => {
       // Arrange
       const upcomingIPOs = getUpcomingIPOs();
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(upcomingIPOs)
       );
 
@@ -282,7 +275,7 @@ describe('SME Landing Service', () => {
     it('should limit to 6 items', async () => {
       // Arrange
       const upcomingIPOs = getUpcomingIPOs();
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(upcomingIPOs)
       );
 
@@ -295,7 +288,7 @@ describe('SME Landing Service', () => {
 
     it('should return empty array on error', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockRejectedValue(new Error('Server Error'));
+      mockFindAll.mockRejectedValue(new Error('Server Error'));
 
       // Act
       const result = await getSMEUpcomingIPOs();
@@ -311,7 +304,7 @@ describe('SME Landing Service', () => {
     it('should fetch only LISTED SME IPOs', async () => {
       // Arrange
       const listedIPOs = getRecentlyListedIPOs();
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(listedIPOs)
       );
 
@@ -326,18 +319,15 @@ describe('SME Landing Service', () => {
       });
 
       // Verify API called with correct filters
-      expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        segment: 'SME' as const,
-  offeringType: 'IPO' as const,
-        status: 'LISTED',
-        limit: 6,
-      });
+      expect(mockFindAll).toHaveBeenCalledWith(
+        expect.objectContaining({ segment: ['SME'], offeringType: ['IPO'], status: ['LISTED'] })
+      );
     });
 
     it('should sort by listingDate descending (newest first)', async () => {
       // Arrange
       const listedIPOs = getRecentlyListedIPOs();
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(listedIPOs)
       );
 
@@ -355,7 +345,7 @@ describe('SME Landing Service', () => {
     it('should limit to 6 items', async () => {
       // Arrange
       const listedIPOs = getRecentlyListedIPOs();
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(listedIPOs)
       );
 
@@ -368,7 +358,7 @@ describe('SME Landing Service', () => {
 
     it('should return empty array on error', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockRejectedValue(new Error('Database Error'));
+      mockFindAll.mockRejectedValue(new Error('Database Error'));
 
       // Act
       const result = await getSMERecentlyListedIPOs();
@@ -416,7 +406,7 @@ describe('SME Landing Service', () => {
     it('should calculate top gainers and losers', async () => {
       // Arrange
       const listedIPOs = getAllListedIPOs();
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(listedIPOs)
       );
 
@@ -435,7 +425,7 @@ describe('SME Landing Service', () => {
     it('should include gainPercent in performance highlights', async () => {
       // Arrange
       const listedIPOs = getAllListedIPOs();
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(listedIPOs)
       );
 
@@ -454,7 +444,7 @@ describe('SME Landing Service', () => {
     it('should return top gainers sorted by highest gain first', async () => {
       // Arrange
       const listedIPOs = getAllListedIPOs();
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(listedIPOs)
       );
 
@@ -471,7 +461,7 @@ describe('SME Landing Service', () => {
 
     it('should return empty arrays on error', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockRejectedValue(new Error('Fetch Error'));
+      mockFindAll.mockRejectedValue(new Error('Fetch Error'));
 
       // Act
       const result = await getSMEPerformanceHighlights();
@@ -482,7 +472,7 @@ describe('SME Landing Service', () => {
 
     it('should fetch LISTED IPOs with limit 50', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(getAllListedIPOs())
       );
 
@@ -490,12 +480,9 @@ describe('SME Landing Service', () => {
       await getSMEPerformanceHighlights();
 
       // Assert
-      expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        segment: 'SME' as const,
-  offeringType: 'IPO' as const,
-        status: 'LISTED',
-        limit: 50,
-      });
+      expect(mockFindAll).toHaveBeenCalledWith(
+        expect.objectContaining({ segment: ['SME'], offeringType: ['IPO'], status: ['LISTED'] })
+      );
     });
   });
 
@@ -505,7 +492,7 @@ describe('SME Landing Service', () => {
     it('should fetch OPEN IPOs with subscription data', async () => {
       // Arrange
       const currentIPOs = getCurrentIPOs();
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(currentIPOs)
       );
 
@@ -524,18 +511,15 @@ describe('SME Landing Service', () => {
       });
 
       // Verify API called with correct params
-      expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        segment: 'SME' as const,
-  offeringType: 'IPO' as const,
-        status: 'OPEN',
-        limit: 6,
-      });
+      expect(mockFindAll).toHaveBeenCalledWith(
+        expect.objectContaining({ segment: ['SME'], offeringType: ['IPO'], status: ['OPEN'] })
+      );
     });
 
     it('should include all subscription fields', async () => {
       // Arrange
       const currentIPOs = getCurrentIPOs();
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(currentIPOs)
       );
 
@@ -557,7 +541,7 @@ describe('SME Landing Service', () => {
 
     it('should return empty array on error', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockRejectedValue(new Error('API Down'));
+      mockFindAll.mockRejectedValue(new Error('API Down'));
 
       // Act
       const result = await getSMESubscriptionStatus();
@@ -572,7 +556,7 @@ describe('SME Landing Service', () => {
   describe('getSMEDetailedList', () => {
     it('should fetch all SME IPOs', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(smeIPOFixtures)
       );
 
@@ -582,16 +566,14 @@ describe('SME Landing Service', () => {
       // Assert
       expect(result.data).toBeInstanceOf(Array);
       expect(result.totalCount).toBe(smeIPOFixtures.length);
-      expect(apiClient.getIPOs).toHaveBeenCalledWith({
-        segment: 'SME' as const,
-  offeringType: 'IPO' as const,
-        limit: 1000,
-      });
+      expect(mockFindAll).toHaveBeenCalledWith(
+        expect.objectContaining({ segment: ['SME'], offeringType: ['IPO'] })
+      );
     });
 
     it('should filter by year', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(smeIPOFixtures)
       );
 
@@ -609,7 +591,7 @@ describe('SME Landing Service', () => {
 
     it('should filter by company search', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(smeIPOFixtures)
       );
 
@@ -624,7 +606,7 @@ describe('SME Landing Service', () => {
 
     it('should sort by specified column and direction', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(smeIPOFixtures)
       );
 
@@ -642,7 +624,7 @@ describe('SME Landing Service', () => {
 
     it('should sort by openDate descending by default', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(smeIPOFixtures)
       );
 
@@ -661,7 +643,7 @@ describe('SME Landing Service', () => {
 
     it('should return totalCount matching filtered data', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(smeIPOFixtures)
       );
 
@@ -674,7 +656,7 @@ describe('SME Landing Service', () => {
 
     it('should return empty result on error', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockRejectedValue(new Error('Timeout'));
+      mockFindAll.mockRejectedValue(new Error('Timeout'));
 
       // Act
       const result = await getSMEDetailedList();
@@ -685,7 +667,7 @@ describe('SME Landing Service', () => {
 
     it('should cache results by year', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(smeIPOFixtures)
       );
 
@@ -743,7 +725,7 @@ describe('SME Landing Service', () => {
   describe('Error Handling', () => {
     it('should handle API errors gracefully in all functions', async () => {
       // Arrange
-      vi.mocked(apiClient.getIPOs).mockRejectedValue(new Error('API Error'));
+      mockFindAll.mockRejectedValue(new Error('API Error'));
 
       // Act & Assert
       await expect(getSMESummaryMetrics()).resolves.toBeDefined();
@@ -759,7 +741,7 @@ describe('SME Landing Service', () => {
     it('should not throw errors when cache operations fail', async () => {
       // Arrange
       vi.mocked(redisClient.safeGet).mockRejectedValue(new Error('Cache Error'));
-      vi.mocked(apiClient.getIPOs).mockResolvedValue(
+      mockFindAll.mockResolvedValue(
         createMockAPIResponse(smeIPOFixtures)
       );
 
