@@ -497,6 +497,8 @@ describe('API Client', () => {
 
       try {
         const promise = getIPOs();
+        // Attach a handler now so a rejection during runAllTimersAsync isn't "unhandled".
+        promise.catch(() => {});
         await vi.runAllTimersAsync();
         await promise;
         expect.fail('Should have thrown APIError');
@@ -537,6 +539,8 @@ describe('API Client', () => {
 
       try {
         const promise = getIPOs();
+        // Attach a handler now so a rejection during runAllTimersAsync isn't "unhandled".
+        promise.catch(() => {});
         await vi.runAllTimersAsync();
         await promise;
         expect.fail('Should have thrown APIError');
@@ -561,6 +565,8 @@ describe('API Client', () => {
 
       try {
         const promise = getIPOs();
+        // Attach a handler now so a rejection during runAllTimersAsync isn't "unhandled".
+        promise.catch(() => {});
         await vi.runAllTimersAsync();
         await promise;
         expect.fail('Should have thrown APIError');
@@ -603,6 +609,10 @@ describe('API Client', () => {
 
       const promise = getIPOs();
 
+      // Attach a handler now so a rejection during runAllTimersAsync isn't "unhandled".
+
+      promise.catch(() => {});
+
       // Advance timers through retry delays
       await vi.runAllTimersAsync();
 
@@ -633,6 +643,8 @@ describe('API Client', () => {
 
       try {
         const promise = getIPOs();
+        // Attach a handler now so a rejection during runAllTimersAsync isn't "unhandled".
+        promise.catch(() => {});
         await vi.runAllTimersAsync();
         await promise;
         expect.fail('Should have thrown APIError');
@@ -652,6 +664,8 @@ describe('API Client', () => {
 
       try {
         const promise = getIPOs();
+        // Attach a handler now so a rejection during runAllTimersAsync isn't "unhandled".
+        promise.catch(() => {});
         await vi.runAllTimersAsync();
         await promise;
         expect.fail('Should have thrown APIError');
@@ -702,6 +716,10 @@ describe('API Client', () => {
       });
 
       const promise = getIPOs();
+
+      // Attach a handler now so a rejection during runAllTimersAsync isn't "unhandled".
+
+      promise.catch(() => {});
 
       // Advance timer by 30 seconds (timeout)
       await vi.advanceTimersByTimeAsync(30000);
@@ -778,6 +796,10 @@ describe('API Client', () => {
       });
 
       const promise = getIPOs();
+
+      // Attach a handler now so a rejection during runAllTimersAsync isn't "unhandled".
+
+      promise.catch(() => {});
       await promise;
 
       expect(loadingDuringRequest).toBe(true);
@@ -798,6 +820,8 @@ describe('API Client', () => {
       let promise;
       try {
         promise = getIPOs();
+        // Attach a handler now so a rejection during runAllTimersAsync isn't "unhandled".
+        promise.catch(() => {});
         await vi.runAllTimersAsync();
         await promise;
         expect.fail('Should have thrown APIError');
