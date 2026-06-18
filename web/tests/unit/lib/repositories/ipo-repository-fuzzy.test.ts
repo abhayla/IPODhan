@@ -19,6 +19,7 @@ import type Redis from 'ioredis';
 const mockRedis = {
   get: vi.fn(),
   set: vi.fn(),
+  setex: vi.fn(), // BaseRepository.setCache uses setex (not set)
   del: vi.fn(),
   keys: vi.fn(),
 } as unknown as Redis;
@@ -51,16 +52,22 @@ describe('IPORepository - Fuzzy Matching (ISS-027)', () => {
 
       // Mock cache miss, then database hit for exact match
       mockRedis.get = vi.fn().mockResolvedValue(null);
-      mockRedis.set = vi.fn().mockResolvedValue('OK');
 
-      const mockSelectBuilder = {
-        from: vi.fn().mockReturnThis(),
-        where: vi.fn().mockReturnThis(),
+      // findBySlug fires a 12-query Promise.all for related data (some use
+      // .orderBy()/.limit(), some are awaited directly). Provide a fully
+      // chainable, awaitable builder: the IPO row query resolves [mockIPO];
+      // related queries resolve [] (no related data).
+      const chain: Record<string, unknown> = {
+        from: vi.fn(() => chain),
+        where: vi.fn(() => chain),
+        leftJoin: vi.fn(() => chain),
+        innerJoin: vi.fn(() => chain),
+        orderBy: vi.fn(() => chain),
         limit: vi.fn().mockResolvedValue([mockIPO]),
-        leftJoin: vi.fn().mockReturnThis(),
+        then: (resolve: (v: unknown[]) => void) => resolve([]),
       };
 
-      mockDb.select = vi.fn().mockReturnValue(mockSelectBuilder);
+      mockDb.select = vi.fn().mockReturnValue(chain);
 
       const result = await repository.findBySlugWithFallback('tech-company-ipo');
 
@@ -220,7 +227,7 @@ describe('IPORepository - Fuzzy Matching (ISS-027)', () => {
       await repository.searchByName('Tech');
 
       // Verify cache set was called
-      expect(mockRedis.set).toHaveBeenCalled();
+      expect(mockRedis.setex).toHaveBeenCalled();
     });
 
     it('should return empty array when no matches found', async () => {
@@ -264,7 +271,7 @@ describe('IPORepository - Fuzzy Matching (ISS-027)', () => {
       await repository.searchByName('Query2', { limit: 5, threshold: 0.4 });
 
       // Verify set was called twice with different keys
-      expect(mockRedis.set).toHaveBeenCalledTimes(2);
+      expect(mockRedis.setex).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -294,10 +301,11 @@ describe('IPORepository - Fuzzy Matching (ISS-027)', () => {
 
       mockDb.select = vi.fn().mockReturnValue(mockSelectBuilder);
 
-      // Should still work even if Redis fails
-      await expect(
-        repository.searchByName('Tech')
-      ).rejects.toThrow('Redis unavailable');
+      // getFromCache catches Redis errors and falls back to the DB query, so the
+      // search resolves (gracefully) rather than rejecting (web-data-access:
+      // "Redis down ≠ outage").
+      const results = await repository.searchByName('Tech');
+      expect(Array.isArray(results)).toBe(true);
     });
   });
 
