@@ -182,10 +182,11 @@ describe('getSectorAverage', () => {
         const result = await getSectorAverage(name);
 
         expect(result).toBe(parseFloat(average));
+        // The util caches parseFloat(avg).toString() (e.g. '15.0' → '15').
         expect(mockRedis.setex).toHaveBeenCalledWith(
           `sector:average:listing-gain:${name}`,
           604800,
-          average
+          parseFloat(average).toString()
         );
       });
     });
