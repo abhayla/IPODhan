@@ -149,10 +149,12 @@ describe('SearchBar', () => {
     await user.type(input, 'reliance');
     await user.keyboard('{Enter}');
 
+    // Debounced URL updates can fire intermediate pushes while typing; assert
+    // that SOME push carried the final search value (not strictly calls[0]).
     await waitFor(() => {
-      expect(mockPush).toHaveBeenCalled();
-      const callArgs = mockPush.mock.calls[0][0];
-      expect(callArgs).toContain('search=reliance');
+      expect(mockPush).toHaveBeenCalledWith(
+        expect.stringContaining('search=reliance')
+      );
     });
   });
 
@@ -244,8 +246,9 @@ describe('SearchBar', () => {
     await user.type(input, 'a');
     await user.keyboard('{Enter}');
 
-    // saveSearch handles filtering, but we should still call it
-    expect(saveSearch).toHaveBeenCalledWith('a');
+    // The component itself gates on length >= 2 before saving, so a 1-char
+    // query is never saved (matches this test's name).
+    expect(saveSearch).not.toHaveBeenCalledWith('a');
   });
 
   it('should preserve existing URL params when searching', async () => {
@@ -259,12 +262,16 @@ describe('SearchBar', () => {
     await user.type(input, 'tech');
     await user.keyboard('{Enter}');
 
+    // Find the push that carried the final search (intermediate debounce pushes
+    // may precede it); it must preserve the existing params.
     await waitFor(() => {
-      const callArgs = mockPush.mock.calls[0][0];
-      expect(callArgs).toContain('status=OPEN');
-      expect(callArgs).toContain('category=MAINBOARD');
-      expect(callArgs).toContain('search=tech');
+      expect(mockPush).toHaveBeenCalledWith(expect.stringContaining('search=tech'));
     });
+    const searchCall = mockPush.mock.calls
+      .map((c) => c[0] as string)
+      .find((url) => url.includes('search=tech'));
+    expect(searchCall).toContain('status=OPEN');
+    expect(searchCall).toContain('category=MAINBOARD');
   });
 
   it('should show loading indicator while typing', async () => {
