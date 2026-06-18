@@ -26,7 +26,7 @@ export interface ScrapedPeerCompany {
   ronw?: number;
   nav?: number;
   pbvRatio?: number;
-  dataSource: 'MONEYCONTROL' | 'SCREENER' | 'NSE';
+  dataSource: 'MONEYCONTROL' | 'SCREENER' | 'NSE' | 'CHITTORGARH';
 }
 
 export interface PeerMetrics {

@@ -4,6 +4,8 @@
  * Used by data consolidation service to resolve conflicts intelligently
  */
 
+import { FINANCIAL_FIELD_BOUNDS } from '../scrapers/chittorgarh-detail-fields.js';
+
 export type ScraperSource =
   | 'ADMIN'           // Manual admin overrides (highest priority)
   | 'DRHP'            // Official regulatory documents
@@ -171,6 +173,32 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     confidenceThreshold: 80,
     description: 'Profit FY2024 - DRHP is most accurate',
   },
+
+  // ==================== C3b: Chittorgarh detail-page financials/peers/objectives ====================
+  // Live source for these is the per-IPO Chittorgarh detail page. Validation bounds reference
+  // FINANCIAL_FIELD_BOUNDS so the extraction gate and conflict-resolution never drift (one SSOT).
+  ebitdaFy2022: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'EBITDA FY2022 (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.ebitda } },
+  ebitdaFy2023: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'EBITDA FY2023 (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.ebitda } },
+  ebitdaFy2024: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'EBITDA FY2024 (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.ebitda } },
+  totalIncomeFy2022: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'Total Income FY2022 (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.totalIncome } },
+  totalIncomeFy2023: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'Total Income FY2023 (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.totalIncome } },
+  totalIncomeFy2024: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'Total Income FY2024 (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.totalIncome } },
+  netWorth: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'Net worth — most recent reported (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.netWorth } },
+  reservesAndSurplus: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'Reserves and surplus — most recent reported (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.reservesAndSurplus } },
+  totalAssets: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'Total assets — most recent reported (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.totalAssets } },
+  totalBorrowing: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'Total borrowing — most recent reported (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.totalBorrowing } },
+  eps: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'number', confidenceThreshold: 85, description: 'Earnings per share (post-issue ₹)', validation: { ...FINANCIAL_FIELD_BOUNDS.eps } },
+  preIpoEps: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'number', confidenceThreshold: 85, description: 'Pre-IPO EPS (₹)', validation: { ...FINANCIAL_FIELD_BOUNDS.eps } },
+  postIpoEps: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'number', confidenceThreshold: 85, description: 'Post-IPO EPS (₹)', validation: { ...FINANCIAL_FIELD_BOUNDS.eps } },
+  peRatio: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'number', confidenceThreshold: 85, description: 'Price-to-Earnings ratio (post-issue)', validation: { ...FINANCIAL_FIELD_BOUNDS.peRatio } },
+  roe: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'percentage', confidenceThreshold: 85, description: 'Return on Equity (%)', validation: { ...FINANCIAL_FIELD_BOUNDS.roe } },
+  ronw: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'percentage', confidenceThreshold: 85, description: 'Return on Net Worth (%)', validation: { ...FINANCIAL_FIELD_BOUNDS.ronw } },
+  debtToEquity: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'number', confidenceThreshold: 85, description: 'Debt-to-Equity ratio', validation: { ...FINANCIAL_FIELD_BOUNDS.debtToEquity } },
+  promoterHoldingPreIssue: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'percentage', confidenceThreshold: 85, description: 'Promoter holding pre-issue (%)', validation: { ...FINANCIAL_FIELD_BOUNDS.promoterHolding } },
+  promoterHoldingPostIssue: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'percentage', confidenceThreshold: 85, description: 'Promoter holding post-issue (%)', validation: { ...FINANCIAL_FIELD_BOUNDS.promoterHolding } },
+  marketCap: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'Market capitalization (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.marketCap } },
+  peer_companies: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL'], normalization: 'none', confidenceThreshold: 80, description: 'Peer-comparison payload (one-to-many) from the detail page peer table' },
+  objectives: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL'], normalization: 'none', confidenceThreshold: 80, description: 'Objects-of-issue payload (ipos.objectives jsonb) from the detail page' },
 
   pe_ratio: {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
