@@ -534,9 +534,11 @@ describe('UpcomingIPOTable Component', () => {
     });
 
     it('should handle mixed category types correctly', () => {
+      // Component keys status text off `segment` (not the old `category` field);
+      // a non-MAINBOARD segment renders "Filed with Exchange".
       const unknownCategoryIPO = {
         ...mockMainboardUpcomingIPO,
-        category: 'UNKNOWN' as any,
+        segment: 'UNKNOWN' as never,
       };
 
       render(

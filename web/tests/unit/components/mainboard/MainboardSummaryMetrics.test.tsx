@@ -121,8 +121,8 @@ describe('MainboardSummaryMetrics', () => {
     const zeroElements = screen.getAllByText('0');
     expect(zeroElements.length).toBeGreaterThanOrEqual(4); // At least 4 zero values
 
-    // Check formatted zeros for percentages
-    expect(screen.getByText('0.00')).toBeInTheDocument();
+    // Check formatted zeros for percentages (both gain-AOT and loss-AOT show 0.00)
+    expect(screen.getAllByText('0.00').length).toBeGreaterThanOrEqual(2);
   });
 
   it('should format decimal values to 2 decimal places for AOT metrics', () => {
