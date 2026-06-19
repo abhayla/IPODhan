@@ -196,21 +196,62 @@ export function looksLikePdf(buf: Buffer): boolean {
   return buf.subarray(0, 4).toString('latin1') === '%PDF';
 }
 
-// ZIP local file header signature ("PK\x03\x04").
-const ZIP_LOCAL_FILE_SIG = 0x04034b50;
+const ZIP_LOCAL_FILE_SIG = 0x04034b50;   // "PK\x03\x04"
+const ZIP_CENTRAL_DIR_SIG = 0x02014b50;  // "PK\x01\x02"
+const ZIP_EOCD_SIG = 0x06054b50;         // "PK\x05\x06" (End Of Central Directory)
 const ZIP_LOCAL_HEADER_SIZE = 30;
+
+/** Inflate one member's data at a local-header offset, using the authoritative
+ * compressed size from the central directory. Returns the bytes or null. */
+function inflateZipMember(buf: Buffer, localHeaderOffset: number, method: number, compSize: number): Buffer | null {
+  if (localHeaderOffset + ZIP_LOCAL_HEADER_SIZE > buf.length) return null;
+  if (buf.readUInt32LE(localHeaderOffset) !== ZIP_LOCAL_FILE_SIG) return null;
+  const nameLen = buf.readUInt16LE(localHeaderOffset + 26);
+  const extraLen = buf.readUInt16LE(localHeaderOffset + 28);
+  const dataStart = localHeaderOffset + ZIP_LOCAL_HEADER_SIZE + nameLen + extraLen;
+  if (dataStart + compSize > buf.length) return null;
+  const data = buf.subarray(dataStart, dataStart + compSize);
+  try {
+    if (method === 0) return Buffer.from(data);          // stored
+    if (method === 8) return zlib.inflateRawSync(data);  // deflate
+  } catch { /* fall through */ }
+  return null;
+}
 
 /**
  * Extract the first `%PDF` member from a `.zip` buffer (NSE/BSE serve docs as `.zip`
- * wrappers — C-1). Uses Node's built-in `zlib` (NO new dependency): it walks the ZIP
- * local file headers and inflates each member (stored=method 0, deflate=method 8),
- * returning the first member whose bytes start with `%PDF`. Handles the common
- * single-PDF archive; bails (returns null) on the cases a minimal parser cannot do
- * safely — a streaming data-descriptor (general-purpose bit 3 with no size in the
- * local header), or zip64/encrypted members — rather than guess. Never throws.
+ * wrappers — C-1) using Node's built-in `zlib` (NO new dependency). Parses the ZIP
+ * CENTRAL DIRECTORY (authoritative for sizes) so it handles real NSE archives that use
+ * a streaming data descriptor — the local-header compressed size is 0 there, which a
+ * naive local-header walk cannot follow (verified against a real 16 MB RHP_*.zip).
+ * Falls back to a local-header scan for trivial single-member zips. Never throws.
  */
 export function extractPdfFromZipBuffer(buf: Buffer): Buffer | null {
-  if (!Buffer.isBuffer(buf) || buf.length < ZIP_LOCAL_HEADER_SIZE) return null;
+  if (!Buffer.isBuffer(buf) || buf.length < 22) return null;
+
+  // 1) Central-directory path (robust). Find the EOCD record by scanning back from the
+  // end (it is within the last 64 KB + 22 bytes; comment is usually empty).
+  const minEocd = Math.max(0, buf.length - 22 - 0xffff);
+  for (let i = buf.length - 22; i >= minEocd; i--) {
+    if (buf.readUInt32LE(i) !== ZIP_EOCD_SIG) continue;
+    const entryCount = buf.readUInt16LE(i + 10);
+    let cdOffset = buf.readUInt32LE(i + 16);
+    for (let e = 0; e < entryCount && cdOffset + 46 <= buf.length; e++) {
+      if (buf.readUInt32LE(cdOffset) !== ZIP_CENTRAL_DIR_SIG) break;
+      const method = buf.readUInt16LE(cdOffset + 10);
+      const compSize = buf.readUInt32LE(cdOffset + 20);
+      const nameLen = buf.readUInt16LE(cdOffset + 28);
+      const extraLen = buf.readUInt16LE(cdOffset + 30);
+      const commentLen = buf.readUInt16LE(cdOffset + 32);
+      const localHeaderOffset = buf.readUInt32LE(cdOffset + 42);
+      const content = inflateZipMember(buf, localHeaderOffset, method, compSize);
+      if (content && looksLikePdf(content)) return content;
+      cdOffset += 46 + nameLen + extraLen + commentLen;
+    }
+    break; // found the EOCD; central-dir walked
+  }
+
+  // 2) Fallback: simple local-header scan (member sizes present in the local header).
   let offset = 0;
   while (offset + ZIP_LOCAL_HEADER_SIZE <= buf.length && buf.readUInt32LE(offset) === ZIP_LOCAL_FILE_SIG) {
     const flags = buf.readUInt16LE(offset + 6);
@@ -219,18 +260,9 @@ export function extractPdfFromZipBuffer(buf: Buffer): Buffer | null {
     const nameLen = buf.readUInt16LE(offset + 26);
     const extraLen = buf.readUInt16LE(offset + 28);
     const dataStart = offset + ZIP_LOCAL_HEADER_SIZE + nameLen + extraLen;
-    // Streaming data descriptor with no size in the local header — can't find the
-    // member boundary without the central directory. Bail safely.
-    if ((flags & 0x08) !== 0 && compSize === 0) return null;
-    if (dataStart + compSize > buf.length) return null;
-    const memberData = buf.subarray(dataStart, dataStart + compSize);
-    let content: Buffer | null = null;
-    try {
-      if (method === 0) content = Buffer.from(memberData);          // stored
-      else if (method === 8) content = zlib.inflateRawSync(memberData); // deflate
-    } catch {
-      content = null;
-    }
+    if ((flags & 0x08) !== 0 && compSize === 0) break; // data descriptor — handled by path 1
+    if (dataStart + compSize > buf.length) break;
+    const content = inflateZipMember(buf, offset, method, compSize);
     if (content && looksLikePdf(content)) return content;
     offset = dataStart + compSize;
   }
