@@ -90,6 +90,15 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
   - SME LISTED empty-state (C-6, page.tsx:454-459 hides ListingPerformanceCharts when listing price null) —
     minor honest-empty-state polish, still open.
 
+## ⚠️ TREADMILL FINDING (elevates deploy urgency)
+The write-path guards (`sanitizeIpoDates` #41/#52, `coercePositiveOrNull`, `sanitizeRegistrar`)
+are on the branch but **NOT deployed** — the prod cron runs old code. Observed live this run:
+after the corrective cleaned all substance violations (gate PASS), the cron **re-stomped
+Leapfrog's allotment_date** within minutes (gate → FAIL), fixed again by re-running the
+corrective. **The substance gate cannot stay green until PR #59 is deployed.** This makes the
+deploy a Tier-0 data-integrity action (stop active re-corruption of live investor-facing data),
+not just feature activation. `scripts/fix-substance-corruption.mjs --execute` is the interim band-aid.
+
 ## §GATE (awaiting Abhay)
 - ~~authorize an unzip dependency~~ **WITHDRAWN** — implemented `.zip`→`%PDF` extraction with
   Node's built-in `zlib` (commit `2ed23581`); no dependency needed. B-live is NOT dep-blocked.

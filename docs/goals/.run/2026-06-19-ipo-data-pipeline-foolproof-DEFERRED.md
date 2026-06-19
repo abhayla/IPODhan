@@ -40,6 +40,14 @@ need live network / a new dep / the tunnel, none safely verifiable in this sessi
   → `documents` rows with `doc_type`; register new doc fields in `FIELD_PRIORITY_MATRIX`; the
   already-registered anchor/objectives/peers jobs then populate. Additive tunnel backfill + read-back.
 
+## Stage D — closed-IPO subscription (source-capped, genuine)
+- **CLOSED-IPO subscription is not backfillable.** NSE ipo-detail serves LIVE bid data
+  (point-in-time); once an IPO closes the bids are gone. The write path works (verified:
+  4/6 current OPEN IPOs already have subscription); the OPEN+SME backfill tools exist
+  (`backfill-subscription.ts`, `backfill-demand-graph.ts`). The overall 2.6% subscription
+  is dominated by historical CLOSED IPOs whose final subscription was never captured live →
+  genuinely unobtainable now (no fabrication). Going-forward, the Stage-F cadence captures it.
+
 ## Out of scope (contract §0.1 — tracked independently, NOT this DoD)
 - #35 CI red repo-wide; #56/#57/#51 web test + OOM debt; #1 prod DB password rotation.
 - **Pre-existing scraper type-debt + 18 validators.test.ts failures** confirmed present
