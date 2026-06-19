@@ -25,6 +25,21 @@ source-capped, historical-unreachable, or higher-risk-than-reward right now. No 
   subscriptions 3.7%, gmp 50% (current), demand 0%, ipo_scores 0%, ipo_details 0%,
   anchor 0%, allotment_date 52.8%, SME listing price (#36).
 
+## Stage B — live half (needs a network + tunnel session)
+The pure parsing core shipped + unit-verified (commit `171587f3`). DEFERRED because they
+need live network / a new dep / the tunnel, none safely verifiable in this session:
+- **Live fetch wiring** of `parseNSEDocuments`/`parseBSEDocuments`/`parseSEBIDrhpListing`
+  (NSE `ipo-detail?symbol&series=SME` — `&series=SME` MANDATORY for SME; archive host needs
+  no cookies; BSE `GetMkt_ISSUE_BBS_IPO` detail row; SEBI `HomeAction.do?sid=3&ssid=15&smid=10`
+  page-1 GET). Wire into the stubbed `drhp-downloader.ts` or a new fetch orchestrator.
+- **`.zip`→`%PDF` unzip:** `extractPdfFromZipBuffer` is a no-op — needs an unzip dep
+  (`adm-zip`/`unzipper`); adding a dep is §authorize. `looksLikePdf` already implemented+tested.
+- **BSE GID→URL builder:** no in-repo builder exists; `parseBSEDocuments` only accepts
+  pre-resolved URLs today. Resolve the real GID→URL convention from a live BSE payload.
+- **Persistence + downstream:** route discovered docs through `data-persister`/`DocumentRepository`
+  → `documents` rows with `doc_type`; register new doc fields in `FIELD_PRIORITY_MATRIX`; the
+  already-registered anchor/objectives/peers jobs then populate. Additive tunnel backfill + read-back.
+
 ## Out of scope (contract §0.1 — tracked independently, NOT this DoD)
 - #35 CI red repo-wide; #56/#57/#51 web test + OOM debt; #1 prod DB password rotation.
 - **Pre-existing scraper type-debt + 18 validators.test.ts failures** confirmed present
