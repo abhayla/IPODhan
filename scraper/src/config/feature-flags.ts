@@ -104,6 +104,17 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_PRIMARY_SOURCE_DISCOVERY: process.env.ENABLE_PRIMARY_SOURCE_DISCOVERY === 'true',
 
+  /**
+   * Enable the stage-transition reconciler (Stage F of the 2026-06-19 IPO-data-
+   * pipeline contract): compute each IPO's lifecycle stage and enqueue only the
+   * data fetches that are due-but-missing as it crosses DRHP→RHP→OPEN→CLOSED→LISTED,
+   * instead of blindly running every scraper on a fixed timer. Pure planner core
+   * (stage-reconciler.ts) ships first; the live query+enqueue+cron wiring is GATED
+   * OFF and activated only on Abhay's §GATE (deploy/cron).
+   * Default: false
+   */
+  ENABLE_STAGE_RECONCILER: process.env.ENABLE_STAGE_RECONCILER === 'true',
+
   // ==================== ROLLOUT CONTROLS ====================
 
   /**
