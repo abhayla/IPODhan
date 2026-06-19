@@ -56,7 +56,15 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
 - [ ] **D** — live OPEN-window scrape (subscription/demand/GMP tiered cadence)
 - [ ] **E** — post-close listing + allotment (SME listing price #36)
 - [ ] **F** — self-sustaining automation (auto-discovery + stage-transition + cadence jobs, flags OFF)
-- [ ] **G** — render (#54/#8/#7/#58 + DemandGraph wire-in + honest empty-states)
+- [~] **G — #54 DONE + G-UI verified** (commit `bc4ec602`). Root cause was THREE revenue-only
+  gates (C-3 named only 2): `hasMinimumFinancialData` (the section-level gate — found via the
+  mandatory G-UI drive, not code-inspection), `calculateDataCompleteness`, and `RevenueChart`.
+  All now count the top-line (revenue ∥ total income) and `RevenueChart` plots it with an honest
+  "Total Income Trend" label (never mislabels income as revenue). G-UI: STALLION (3 income yrs,
+  0 revenue) renders the section + "Data completeness 67%" + "Total Income Trend (3 Years)" chart
+  (was "Financial Performance Data Unavailable"). Web `tsc` gate passed; catch-tests 4/4; screenshot
+  in `.run/2026-06-19-stageG-54-total-income-trend.png`. NO column rename (avoids §GATE migration).
+  **Remaining G:** #8/#7 blank-shell pages, #58 card listing-gain, wire `DemandGraph` into page.tsx JSX.
 
 ## §GATE (awaiting Abhay)
 - **NEW — authorize an unzip dependency** (`adm-zip` or `unzipper`) for Stage B-live: NSE/BSE
