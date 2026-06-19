@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import * as zlib from 'node:zlib';
 import {
   parseNSEDocuments,
   parseBSEDocuments,
@@ -217,13 +218,43 @@ describe('looksLikePdf', () => {
   });
 });
 
-describe('extractPdfFromZipBuffer (DEFERRED — no unzip dep)', () => {
-  it('returns null until an unzip dependency is added (network session)', () => {
-    // No adm-zip/jszip/unzipper dep exists in scraper/package.json. The .zip→%PDF
-    // unzip step is DEFERRED to the network session that adds the dependency.
-    // The function exists (stable signature) but is a documented no-op for now.
-    const fakeZip = Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x01, 0x02]);
-    expect(extractPdfFromZipBuffer(fakeZip)).toBeNull();
+describe('extractPdfFromZipBuffer (built-in zlib, no new dep)', () => {
+  // Build a minimal single-member ZIP (local header + name + data) — enough for the
+  // extractor, which reads local headers only (it does not need the central directory).
+  const makeZip = (content: Buffer, method: 0 | 8): Buffer => {
+    const data = method === 8 ? zlib.deflateRawSync(content) : content;
+    const name = Buffer.from('doc.pdf');
+    const h = Buffer.alloc(30);
+    h.writeUInt32LE(0x04034b50, 0); // local file header signature
+    h.writeUInt16LE(20, 4);         // version needed
+    h.writeUInt16LE(0, 6);          // flags (no data descriptor)
+    h.writeUInt16LE(method, 8);     // compression method
+    h.writeUInt32LE(0, 10);         // mod time/date
+    h.writeUInt32LE(0, 14);         // crc-32 (not validated by the extractor)
+    h.writeUInt32LE(data.length, 18);     // compressed size
+    h.writeUInt32LE(content.length, 22);  // uncompressed size
+    h.writeUInt16LE(name.length, 26);     // filename length
+    h.writeUInt16LE(0, 28);               // extra length
+    return Buffer.concat([h, name, data]);
+  };
+  const pdf = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.from('x'.repeat(2048))]);
+
+  it('extracts a DEFLATE-compressed PDF member', () => {
+    const out = extractPdfFromZipBuffer(makeZip(pdf, 8));
+    expect(out).not.toBeNull();
+    expect(looksLikePdf(out as Buffer)).toBe(true);
+    expect((out as Buffer).equals(pdf)).toBe(true);
+  });
+  it('extracts a STORED (uncompressed) PDF member', () => {
+    const out = extractPdfFromZipBuffer(makeZip(pdf, 0));
+    expect(out).not.toBeNull();
+    expect(looksLikePdf(out as Buffer)).toBe(true);
+  });
+  it('returns null for a zip whose only member is not a PDF', () => {
+    expect(extractPdfFromZipBuffer(makeZip(Buffer.from('not a pdf at all'), 8))).toBeNull();
+  });
+  it('returns null for garbage / empty input', () => {
+    expect(extractPdfFromZipBuffer(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x01, 0x02]))).toBeNull();
     expect(extractPdfFromZipBuffer(Buffer.alloc(0))).toBeNull();
   });
 });
