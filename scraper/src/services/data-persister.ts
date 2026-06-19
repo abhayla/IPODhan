@@ -2,7 +2,7 @@ import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDat
 import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
-import { generateSlug, sanitizeCompanyName } from '../utils/validators.js';
+import { generateSlug, sanitizeCompanyName, coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar } from '../utils/validators.js';
 import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { validateLotSize } from '../utils/lot-size-validator.js';
 import { resolveOfferingTypeKeepingClassification } from '../utils/detect-offering-type.js';
@@ -209,6 +209,19 @@ export async function upsertIPO(
         listingExchanges = [scrapedIPO.listingExchange];
       }
 
+      // Stage A.5 write-path date-plausibility guard (#41/#52): a current scrape must
+      // not stomp an old IPO's open/close dates. Anchor on the trustworthy post-IPO
+      // dates (this scrape's, else the existing row's allotment/listing) and drop any
+      // open/close that contradicts the anchor by years.
+      const safeDates = sanitizeIpoDates({
+        openDate: scrapedIPO.openDate,
+        closeDate: scrapedIPO.closeDate,
+        allotmentDate: scrapedIPO.allotmentDate || (existingIPO?.allotmentDate ?? null),
+        listingDate: scrapedIPO.listingDate || (existingIPO?.listingDate ?? null),
+      });
+      // issue_size: 0 means "unknown", not a real value — store NULL, never 0 (#A.5).
+      const safeIssueSize = coercePositiveOrNull(scrapedIPO.issueSize);
+
       const ipoData: Partial<IPOInsert> = {
         companyName: sanitizeCompanyName(scrapedIPO.companyName),
         slug,
@@ -218,7 +231,7 @@ export async function upsertIPO(
         // offering_type: Determines the type of offering (required NOT NULL field)
         offeringType: scrapedIPO.offeringType,
         sector: scrapedIPO.sector,
-        issueSize: scrapedIPO.issueSize.toString(),
+        issueSize: safeIssueSize !== null ? safeIssueSize.toString() : undefined,
         // Round price values to integers for INTEGER fields in database
         // Use explicit check to avoid storing 0 (only store positive values or undefined)
         priceRangeMin: scrapedIPO.priceRangeMin !== undefined && scrapedIPO.priceRangeMin > 0
@@ -230,13 +243,13 @@ export async function upsertIPO(
         lotSize: validateLotSize(scrapedIPO.lotSize, scrapedIPO.segment, scrapedIPO.companyName) ?? undefined, // Validate and reject lot_size = 1
         faceValue: scrapedIPO.faceValue || 10, // Default to 10 if not provided
         status: scrapedIPO.status as any,
-        openDate: scrapedIPO.openDate,
-        closeDate: scrapedIPO.closeDate,
+        openDate: (safeDates.openDate as Date | undefined) ?? undefined,
+        closeDate: (safeDates.closeDate as Date | undefined) ?? undefined,
         // Convert empty strings to undefined for date fields (Story 11.7 - Fix Chittorgarh date handling)
         allotmentDate: scrapedIPO.allotmentDate || undefined,
         listingDate: scrapedIPO.listingDate || undefined,
         companyDescription: scrapedIPO.companyDescription || undefined,
-        registrar: scrapedIPO.registrar || undefined,
+        registrar: sanitizeRegistrar(scrapedIPO.registrar) ?? undefined,
         leadManagers: scrapedIPO.leadManagers,
         listingExchanges,
         lastScrapedAt: new Date(), // Track last successful scrape time (Story 7.4)

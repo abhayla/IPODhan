@@ -8,6 +8,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import pg from 'pg';
+import { SUBSTANCE_CHECKS } from './lib/substance-checks.mjs';
+import { FIELDS, deriveStage, dueFieldKeysForStage, computeStageGaps } from './lib/ipo-stage-completeness.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const envPath = join(__dirname, '..', 'web', '.env.local');
@@ -170,18 +172,99 @@ async function main() {
     { name: 'duplicates.groups==0', ok: dups.length === 0, detail: `${dups.length}` },
   ];
 
+  // ---- SUBSTANCE GATE (folded in from audit-substance-plausibility.mjs so this
+  // single command is the comprehensive gate — contract Stage A.5 / C-5: --gate
+  // FAILs on substance smells, not just missing fields). HARD: contributes to exit.
+  const subRows = await q(
+    `SELECT i.id, i.company_name, i.isin, i.open_date, i.close_date, i.allotment_date, i.listing_date,
+            i.lot_size, i.price_range_min, i.price_range_max, i.issue_size, i.registrar,
+            lp.listing_price, lp.listing_gain_percent,
+            COALESCE(lp.issue_price, i.price_range_max) AS issue_price
+       FROM ipos i LEFT JOIN listing_performance lp ON lp.ipo_id = i.id WHERE i.${REAL_IPO}`
+  );
+  const gmpExists = (await q(`SELECT to_regclass('public.gmp_records') AS reg`))[0].reg;
+  if (gmpExists) {
+    const gmpRows = await q(
+      `SELECT DISTINCT ON (g.ipo_id) g.ipo_id, g.gmp AS gmp_value FROM gmp_records g
+         JOIN ipos i ON i.id=g.ipo_id AND i.${REAL_IPO} ORDER BY g.ipo_id, g.timestamp DESC`
+    );
+    const byId = new Map(gmpRows.map((r) => [r.ipo_id, r.gmp_value]));
+    for (const r of subRows) r.gmp_value = byId.get(r.id) ?? null;
+  }
+  let substanceFail = 0;
+  const substanceLines = [];
+  for (const check of SUBSTANCE_CHECKS) {
+    if (check.optional && check.key === 'gmp_sanity' && !gmpExists) { substanceLines.push(`  [SKIP] ${check.name}`); continue; }
+    let count = 0; const offenders = [];
+    for (const row of subRows) { const r = check.predicate(row); if (r !== null) { count++; if (offenders.length < 5) offenders.push(`"${row.company_name}" — ${r}`); } }
+    if (count > 0) substanceFail++;
+    substanceLines.push(`  [${count === 0 ? 'PASS' : 'FAIL'}] ${check.name.padEnd(48)} violations: ${count}`);
+    for (const o of offenders) substanceLines.push(`         - ${o}`);
+  }
+
+  // ---- STAGE-AWARE PER-IPO COMPLETENESS (the new measuring stick — contract §2).
+  // Build one presence query from the FIELDS map; compute per-IPO stage + gaps.
+  const presenceSelect = Object.entries(FIELDS).map(([k, f]) => `(${f.sql}) AS "${k}"`).join(',\n      ');
+  const activation = process.env.PIPELINE_ACTIVATION_DATE || null; // unset => no go-forward rows yet (activation is §GATE)
+  const ipoRows = await q(
+    `SELECT i.id, i.company_name, i.status, i.segment, i.price_range_min, i.created_at,
+      ${presenceSelect}
+     FROM ipos i WHERE i.${REAL_IPO}`
+  );
+  const stageCounts = {}; // stage -> { rows, reqDue, reqPresent }
+  const goForwardFails = [];
+  let historicalReqDue = 0, historicalReqPresent = 0;
+  for (const row of ipoRows) {
+    const presence = {};
+    for (const k of Object.keys(FIELDS)) presence[k] = row[k] === true;
+    const gaps = computeStageGaps(row, presence);
+    const reqDue = gaps.due.filter((k) => FIELDS[k].severity === 'required');
+    const reqPresent = reqDue.filter((k) => presence[k]).length;
+    stageCounts[gaps.stage] ??= { rows: 0, reqDue: 0, reqPresent: 0 };
+    stageCounts[gaps.stage].rows++;
+    stageCounts[gaps.stage].reqDue += reqDue.length;
+    stageCounts[gaps.stage].reqPresent += reqPresent;
+    const isGoForward = activation && row.created_at && new Date(row.created_at) >= new Date(activation);
+    if (isGoForward && gaps.missingRequired.length > 0) {
+      goForwardFails.push(`  [FAIL] ${row.company_name} (${gaps.stage}): missing ${gaps.missingRequired.join(', ')}`);
+    } else {
+      historicalReqDue += reqDue.length;
+      historicalReqPresent += reqPresent;
+    }
+  }
+
+  // ---- REPORT ----
   log(`\n=== §7 GATE ===`);
   let fail = 0;
-  log(`  -- Stage A invariants --`);
+  log(`  -- Stage A invariants (HARD) --`);
   for (const s of stageA) { if (!s.ok) fail++; log(`  [${s.ok ? 'PASS' : 'FAIL'}] ${s.name} (${s.detail})`); }
-  log(`  -- Coverage thresholds (applicable population) --`);
+
+  log(`\n  -- Substance plausibility (HARD; folds audit-substance-plausibility) --`);
+  for (const l of substanceLines) log(l);
+  fail += substanceFail;
+
+  log(`\n  -- Stage-aware per-IPO completeness --`);
+  log(`  activation date (go-forward cutoff): ${activation || '(unset — pipeline activation is §GATE; all rows historical/best-effort)'}`);
+  log(`  ${'stage'.padEnd(10)} ${'rows'.padStart(5)} ${'req-due'.padStart(8)} ${'present'.padStart(8)}  satisfied%`);
+  for (const st of ['UPCOMING', 'PRE_OPEN', 'OPEN', 'CLOSED', 'LISTED']) {
+    const c = stageCounts[st]; if (!c) continue;
+    const pct = c.reqDue > 0 ? ((c.reqPresent / c.reqDue) * 100).toFixed(1) : '100.0';
+    log(`  ${st.padEnd(10)} ${String(c.rows).padStart(5)} ${String(c.reqDue).padStart(8)} ${String(c.reqPresent).padStart(8)}  ${pct}%`);
+  }
+  const histPct = historicalReqDue > 0 ? ((historicalReqPresent / historicalReqDue) * 100).toFixed(1) : '100.0';
+  log(`  HISTORICAL required-field completeness (best-effort, dashboard): ${historicalReqPresent}/${historicalReqDue} = ${histPct}%`);
+  log(`  GO-FORWARD violations (HARD): ${goForwardFails.length}`);
+  for (const l of goForwardFails) log(l);
+  fail += goForwardFails.length;
+
+  log(`\n  -- Aggregate coverage thresholds (DASHBOARD — informational, NOT the pass condition per contract §2) --`);
   for (const c of checks) {
     const pct = c.den > 0 ? (c.num / c.den) * 100 : 0;
     const ok = c.den === 0 ? true : pct >= c.min;
-    if (!ok) fail++;
-    log(`  [${ok ? 'PASS' : 'FAIL'}] ${c.name.padEnd(40)} ${c.num}/${c.den} ${pct.toFixed(1)}% (min ${c.min}%, pop=${c.pop})`);
+    log(`  [${ok ? 'PASS' : 'WARN'}] ${c.name.padEnd(40)} ${c.num}/${c.den} ${pct.toFixed(1)}% (min ${c.min}%, pop=${c.pop})`);
   }
-  log(`\n  GATE: ${fail === 0 ? 'PASS (all thresholds met)' : `FAIL (${fail} check(s) below threshold)`}`);
+
+  log(`\n  GATE: ${fail === 0 ? 'PASS (invariants + substance + go-forward clean)' : `FAIL (${fail} hard check(s): invariants/substance/go-forward)`}`);
   await pool.end();
   process.exit(fail === 0 ? 0 : 1);
 }
