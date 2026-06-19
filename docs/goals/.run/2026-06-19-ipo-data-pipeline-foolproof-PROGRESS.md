@@ -58,7 +58,22 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
 - [ ] **F** — self-sustaining automation (auto-discovery + stage-transition + cadence jobs, flags OFF)
 - [ ] **G** — render (#54/#8/#7/#58 + DemandGraph wire-in + honest empty-states)
 
-## §GATE (awaiting Abhay) — populated as stages complete
-- (tbd)
+## §GATE (awaiting Abhay)
+- **NEW — authorize an unzip dependency** (`adm-zip` or `unzipper`) for Stage B-live: NSE/BSE
+  docs are `.zip` wrappers that must be unzipped before the `%PDF` check. Guardrail forbids
+  new deps without authorization. **Recommended: `adm-zip`** (sync, tiny, zero transitive deps).
+- Standing set (unchanged): enable `ENABLE_PRIMARY_SOURCE_DISCOVERY` + discovery/cadence cron
+  + `ENABLE_MONEYCONTROL_SUBSCRIPTION` + deploy/PM2 to activate (arrives with Stage F);
+  apply any authored migrations; merge draft **PR #59**; rotate leaked prod DB password (#1).
+
+## Shipped this run (branch `feat/ipo-data-pipeline-foolproof`, draft PR #59)
+- `9cc1cf16` Stage A + A.5 · `9f17ff0b` progress · `171587f3` Stage B pure-core · + progress/deferred docs.
+- Gate `node scripts/audit-ipo-coverage.mjs --gate` → PASS (exit 0). Scraper unit adds: 16 (write-guards) + 16 (discovery) + 6 (node:test stage lib), all green/reproduced.
+
+## Remaining (each needs a specific resource — not avoidable in a no-network/no-browser session)
+- **B-live** → network + tunnel + the §GATE unzip dep.
+- **C / D / E** → network + tunnel (extraction from live docs; live subscription/demand/GMP; SME listing #36).
+- **F** → jobs authored OFF then §GATE activation.
+- **G** (#54 render etc.) → web code + **G-UI browser drive** (Playwright MCP); note web unit harness OOMs (#56/#51, out of scope §0.1) — verify #54 via the isolated chart test + a browser drive.
 
 ## DEFERRED — see `2026-06-19-ipo-data-pipeline-foolproof-DEFERRED.md`
