@@ -87,18 +87,21 @@ describe('parseNSEDocuments', () => {
     expect(docs[0].url.endsWith('.pdf')).toBe(true);
   });
 
-  it('classifies the "Security Parameters Pre/Post-Anchor" rows correctly (the substring "Anchor" must NOT make them anchor-allocation docs)', () => {
+  it('classifies the REAL "Security Parameters (Pre/Post Anchor)" titles correctly (live-caught: "Anchor" substring must NOT make them anchor-allocation docs)', () => {
+    // Verbatim live NSE titles (parens + space, NOT hyphen) — the format that exposed the bug.
     const issueInfo = {
       dataList: [
-        { title: 'Security Parameters Pre-Anchor', value: 'https://nsearchives.nseindia.com/content/ipo/PREANCHOR_X.zip' },
-        { title: 'Security Parameters Post-Anchor', value: 'https://nsearchives.nseindia.com/content/ipo/POSTANCHOR_X.zip' },
+        { title: 'Security Parameters (Pre Anchor)', value: 'https://nsearchives.nseindia.com/content/ipo/PREANCHOR_PARAMETERS_X.zip' },
+        { title: 'Security Parameters (Post Anchor)', value: 'https://nsearchives.nseindia.com/content/ipo/POSTANCHOR_PARAMETERS_X.zip' },
+        { title: 'Security Parameters ', value: 'https://nsearchives.nseindia.com/content/ipo/PREANCHOR_PARAMETERS_Y.zip' }, // bare → pre-anchor
         { title: 'Anchor Allocation Report', value: 'https://nsearchives.nseindia.com/content/ipo/ANCHOR_X.zip' },
       ],
     };
     const docs = parseNSEDocuments(issueInfo, 'X');
-    expect(docs.find((d) => d.url.includes('PREANCHOR'))!.type).toBe('SECURITY_PARAMS_PRE_ANCHOR');
     expect(docs.find((d) => d.url.includes('POSTANCHOR'))!.type).toBe('SECURITY_PARAMS_POST_ANCHOR');
+    expect(docs.filter((d) => d.url.includes('PREANCHOR')).every((d) => d.type === 'SECURITY_PARAMS_PRE_ANCHOR')).toBe(true);
     expect(docs.find((d) => d.url.includes('/ANCHOR_X'))!.type).toBe('ANCHOR_ALLOCATION_REPORT');
+    // exactly ONE anchor-allocation doc — the security-params rows must not inflate it
     expect(docs.filter((d) => d.type === 'ANCHOR_ALLOCATION_REPORT')).toHaveLength(1);
   });
 
