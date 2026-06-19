@@ -72,7 +72,12 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
   domain-sane), independent tunnel read-back. **Follow-ups:** SME demand needs NSE `&series=SME` (fetchIPODetail
   passes only `{symbol}` — the C-1 gap); subscription writer exists (`createSubscriptionSnapshot`) but NSE
   orchestrator persists it for OPEN only + isn't run regularly → backfill OPEN/CLOSED + cadence; GMP = GMP contract.
-- [~] **E — ASSESSED (gap is source-capped/special, not a build gap).** listing_performance already 93.7% of
+- [x] **E — listing ADVANCED to threshold (95.8%) + verified.** Ran the existing B1 Chittorgarh report-25
+  backfill (report had refreshed): populated the 2 fresh SME listings — **Susan +53.78%, Utkal -5.00%**
+  (domain-sane, read-back verified) → listing_performance **89→91 of 95 LISTED = 95.8% (PASSES the 95% gate)**.
+  Remaining 4 LISTED-without-listing = 2 InvITs (no standard listing-gain) + 2 Horizon #44-dup rows (escalated).
+  allotment_date 52.8% remains source-capped historical. (Was: assessed as source-capped — corrected by re-running the tool.)
+- [~] (prior E note) **ASSESSED (gap is source-capped/special, not a build gap).** listing_performance already 93.7% of
   LISTED; the 6 missing are: 2 InvITs (Property Share, Raajmarg — investment trusts, no standard listing-gain),
   2 SME (Susan, Utkal — source-capped), and 2 rows that are the SAME company → **confirms #44 is a real ACTIVE
   duplicate** ("Horizon Reclaim (India) Ltd" vs "Horizon Reclaim India IPO"); the gate's crude alphanumeric dup
@@ -118,10 +123,17 @@ corrective. **The substance gate cannot stay green until PR #59 is deployed.** T
 deploy a Tier-0 data-integrity action (stop active re-corruption of live investor-facing data),
 not just feature activation. `scripts/fix-substance-corruption.mjs --execute` is the interim band-aid.
 
-## §GATE (awaiting Abhay)
-- ~~authorize an unzip dependency~~ **WITHDRAWN** — implemented `.zip`→`%PDF` extraction with
-  Node's built-in `zlib` (commit `2ed23581`); no dependency needed. B-live is NOT dep-blocked.
-- Standing set (unchanged): enable `ENABLE_PRIMARY_SOURCE_DISCOVERY` + discovery/cadence cron
+## §GATE — RESOLVED THIS SESSION (Abhay authorized merge+deploy via AskUserQuestion 2026-06-19)
+- ✅ **PR #59 MERGED to main** (`72576b28`, 23 commits) — `--admin` past red CI #35, authorized.
+- ✅ **DEPLOYED to prod** (deploy.yml `skip_tests=true`, run `27831455722` success, self-hosted VPS runner).
+- ✅ **Treadmill FIXED (Tier-0):** the write-path guards (`sanitizeIpoDates`/`coercePositiveOrNull`/
+  `sanitizeRegistrar`, commit `9cc1cf16`) are now LIVE — the cron runs guarded code, so it can no longer
+  re-stomp dates/issue_size/registrar. Post-deploy: re-cleaned 1 residual stomp → **gate PASS (exit 0)**.
+  Empirical confirmation (gate stays clean after a cron cycle) scheduled.
+- ⏳ **Still §GATE (NOT covered by "merge+deploy"):** enabling the OFF feature flags
+  (`ENABLE_PRIMARY_SOURCE_DISCOVERY`, `ENABLE_STAGE_RECONCILER`, `ENABLE_MONEYCONTROL_SUBSCRIPTION`) +
+  the discovery/reconciler cron schedule. Deployed dormant; activation is a separate authorization.
+- Remaining standing set: enable `ENABLE_PRIMARY_SOURCE_DISCOVERY` + discovery/cadence cron
   + `ENABLE_MONEYCONTROL_SUBSCRIPTION` + deploy/PM2 to activate (arrives with Stage F);
   apply any authored migrations; merge draft **PR #59**; rotate leaked prod DB password (#1).
 
