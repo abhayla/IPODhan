@@ -168,10 +168,22 @@ def main():
     tmp = None
     try:
         if re.match(r"^https?://", src):
-            tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
             req = urllib.request.Request(src, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=60) as r:
-                tmp.write(r.read())
+            with urllib.request.urlopen(req, timeout=120) as r:
+                content = r.read()
+            # NSE/BSE serve RHP/anchor docs as .zip wrappers — unzip to the first PDF
+            # member before pdfplumber (built-in zipfile, no new dependency).
+            if content[:2] == b"PK":
+                import io
+                import zipfile
+                with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                    pdf_name = next((n for n in zf.namelist() if n.lower().endswith(".pdf")), None)
+                    if pdf_name is None:
+                        print(json.dumps({"error": "zip contains no pdf member"}))
+                        sys.exit(0)
+                    content = zf.read(pdf_name)
+            tmp = tempfile.NamedTemporaryFile(suffix=".pdf", delete=False)
+            tmp.write(content)
             tmp.close()
             path = tmp.name
         else:
