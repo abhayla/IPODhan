@@ -59,7 +59,7 @@ async function main() {
   const rows = await q(
     `SELECT i.id, i.company_name, i.isin,
             i.open_date, i.close_date, i.allotment_date, i.listing_date,
-            i.lot_size, i.price_range_min, i.price_range_max, i.issue_size,
+            i.lot_size, i.price_range_min, i.price_range_max, i.issue_size, i.registrar,
             lp.listing_price, lp.listing_gain_percent,
             COALESCE(lp.issue_price, i.price_range_max) AS issue_price
        FROM ipos i

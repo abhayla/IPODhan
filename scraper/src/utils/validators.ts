@@ -248,6 +248,107 @@ export function sanitizeCompanyName(name: string): string {
 }
 
 /**
+ * Coerce a non-positive or absent numeric to null (Stage A.5 / substance gate).
+ * IPO money/size fields stored as 0 are a substance bug — 0 does NOT mean a free
+ * issue, it means "unknown" — and a stored 0 masquerades as 100% coverage in any
+ * non-null count. Use this at the write boundary so issue_size (etc.) is NULL when
+ * unknown rather than a misleading 0. Accepts a number or a numeric string.
+ */
+export function coercePositiveOrNull(value: number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const n = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+export interface IpoDateSet {
+  openDate?: Date | string | null;
+  closeDate?: Date | string | null;
+  allotmentDate?: Date | string | null;
+  listingDate?: Date | string | null;
+}
+
+function toEpoch(value: Date | string | null | undefined): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const t = value instanceof Date ? value.getTime() : Date.parse(String(value));
+  return Number.isFinite(t) ? t : null;
+}
+
+/**
+ * Write-path date-plausibility guard (#41 / #52). A current scrape MUST NOT stomp
+ * an IPO's dates. The lifecycle ordering is strict: open < close < allotment <
+ * listing. This guard drops the single field that contradicts the others, using
+ * `listing_date` as the disambiguator since the corrupt field is not always the
+ * same one:
+ *   - WINDLAS/AAA/CMS/STALLION: old IPO, listing absent, allotment is the stable
+ *     original (years ago) and a current scrape stomped open/close into the future
+ *     -> anchor on allotment; null the open/close that don't precede it.
+ *   - Leapfrog: current IPO, listing present and consistent with open/close, and the
+ *     ALLOTMENT is the outlier (lands before open) -> trust listing-corroborated
+ *     open/close; null the bad allotment instead.
+ * Also nulls an open>close inversion. Returns a NEW object with offending fields
+ * nulled; never throws. Pure (no clock) — the verdict is derivable from the inputs.
+ */
+export function sanitizeIpoDates(dates: IpoDateSet): IpoDateSet {
+  const result: IpoDateSet = { ...dates };
+  const open = toEpoch(dates.openDate);
+  const close = toEpoch(dates.closeDate);
+  const allot = toEpoch(dates.allotmentDate);
+  const listing = toEpoch(dates.listingDate);
+
+  // open > close is impossible — both are suspect, drop both.
+  if (open !== null && close !== null && open > close) {
+    result.openDate = null;
+    result.closeDate = null;
+    return result;
+  }
+
+  if (listing !== null) {
+    // listing is the most reliable post-facto date — open/close must precede it.
+    if (close !== null && close >= listing) result.closeDate = null;
+    if (open !== null && open >= listing) result.openDate = null;
+    // allotment must sit between close and listing; if it precedes the open/close
+    // window (or follows listing) it is the outlier, not open/close.
+    if (allot !== null) {
+      const lo = toEpoch(result.closeDate) ?? toEpoch(result.openDate);
+      if ((lo !== null && allot < lo) || allot > listing) result.allotmentDate = null;
+    }
+  } else if (allot !== null) {
+    // No listing: allotment is the stable original record — open/close must precede it.
+    if (close !== null && close >= allot) result.closeDate = null;
+    if (open !== null && open >= allot) result.openDate = null;
+  }
+  return result;
+}
+
+// Tokens that mark a string as a registrar NAME (vs an address/garbage segment).
+const REGISTRAR_KEYWORDS = /(registrar|technolog|services|consultant|securities|share|investor|corporate|capital|bigshare|link\s*intime|cameo|kfin|karvy|maashitla|skyline|purva|integrated|beetal|alankit|\bmas\b)/i;
+
+/**
+ * Sanitize a scraped registrar string (#45). Registrars arrive polluted with address
+ * and contact blocks delimited by '^', tabs, or newlines (e.g.
+ * "CAMEO CORPORATE SERVICES LTD.^Subramanian Building,..." or
+ * "1\tKfin Technologies Limited\tM Murali Krishna\tTel.: ..."). This picks the
+ * registrar-name segment, trims trailing address/contact text, and re-spaces a glued
+ * legal suffix. It does NOT collapse distinct variants (Kfin vs Karvy) — that is the
+ * risky canonicalization deferred for mis-map risk; this only removes pollution.
+ * Returns null for an empty/absent value.
+ */
+export function sanitizeRegistrar(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const segments = String(value).split(/[\^\t\n\r]+/).map((s) => s.trim()).filter(Boolean);
+  if (segments.length === 0) return null;
+  // Prefer a segment that reads like a registrar name; else the most-alphabetic segment.
+  const byAlpha = [...segments].sort((a, b) => b.replace(/[^a-z]/gi, '').length - a.replace(/[^a-z]/gi, '').length);
+  let s = segments.find((x) => REGISTRAR_KEYWORDS.test(x)) ?? byAlpha[0];
+  // Cut trailing contact/address riding on the same segment.
+  s = s.split(/\s*(?:Tel\.?:|E-?mail:|Phone:|,\s*\d)/i)[0].trim();
+  // Re-insert a space where a legal suffix got glued to the name ("TechnologiesLimited").
+  s = s.replace(/([a-z])(Limited|Ltd\.?|Private\b)/g, '$1 $2').replace(/\s+/g, ' ').trim();
+  return s || null;
+}
+
+/**
  * Sanitize subscription number to prevent injection
  * Ensures valid numeric value within reasonable bounds
  */

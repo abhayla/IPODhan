@@ -2,7 +2,7 @@ import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDat
 import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
-import { generateSlug, sanitizeCompanyName } from '../utils/validators.js';
+import { generateSlug, sanitizeCompanyName, coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar } from '../utils/validators.js';
 import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { validateLotSize } from '../utils/lot-size-validator.js';
 import { resolveOfferingTypeKeepingClassification } from '../utils/detect-offering-type.js';
@@ -15,6 +15,7 @@ import { DataConsolidationService } from './data-consolidation-service.js';
 import { FieldSourcesRepository, DataConflictsRepository } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
+import { ipoDemandGraph } from '@ipodhan/shared/db/schema';
 
 /**
  * Phase 2: Lazy singleton for Data Consolidation Service
@@ -209,6 +210,19 @@ export async function upsertIPO(
         listingExchanges = [scrapedIPO.listingExchange];
       }
 
+      // Stage A.5 write-path date-plausibility guard (#41/#52): a current scrape must
+      // not stomp an old IPO's open/close dates. Anchor on the trustworthy post-IPO
+      // dates (this scrape's, else the existing row's allotment/listing) and drop any
+      // open/close that contradicts the anchor by years.
+      const safeDates = sanitizeIpoDates({
+        openDate: scrapedIPO.openDate,
+        closeDate: scrapedIPO.closeDate,
+        allotmentDate: scrapedIPO.allotmentDate || (existingIPO?.allotmentDate ?? null),
+        listingDate: scrapedIPO.listingDate || (existingIPO?.listingDate ?? null),
+      });
+      // issue_size: 0 means "unknown", not a real value — store NULL, never 0 (#A.5).
+      const safeIssueSize = coercePositiveOrNull(scrapedIPO.issueSize);
+
       const ipoData: Partial<IPOInsert> = {
         companyName: sanitizeCompanyName(scrapedIPO.companyName),
         slug,
@@ -218,7 +232,7 @@ export async function upsertIPO(
         // offering_type: Determines the type of offering (required NOT NULL field)
         offeringType: scrapedIPO.offeringType,
         sector: scrapedIPO.sector,
-        issueSize: scrapedIPO.issueSize.toString(),
+        issueSize: safeIssueSize !== null ? safeIssueSize.toString() : undefined,
         // Round price values to integers for INTEGER fields in database
         // Use explicit check to avoid storing 0 (only store positive values or undefined)
         priceRangeMin: scrapedIPO.priceRangeMin !== undefined && scrapedIPO.priceRangeMin > 0
@@ -230,13 +244,13 @@ export async function upsertIPO(
         lotSize: validateLotSize(scrapedIPO.lotSize, scrapedIPO.segment, scrapedIPO.companyName) ?? undefined, // Validate and reject lot_size = 1
         faceValue: scrapedIPO.faceValue || 10, // Default to 10 if not provided
         status: scrapedIPO.status as any,
-        openDate: scrapedIPO.openDate,
-        closeDate: scrapedIPO.closeDate,
+        openDate: (safeDates.openDate as Date | undefined) ?? undefined,
+        closeDate: (safeDates.closeDate as Date | undefined) ?? undefined,
         // Convert empty strings to undefined for date fields (Story 11.7 - Fix Chittorgarh date handling)
         allotmentDate: scrapedIPO.allotmentDate || undefined,
         listingDate: scrapedIPO.listingDate || undefined,
         companyDescription: scrapedIPO.companyDescription || undefined,
-        registrar: scrapedIPO.registrar || undefined,
+        registrar: sanitizeRegistrar(scrapedIPO.registrar) ?? undefined,
         leadManagers: scrapedIPO.leadManagers,
         listingExchanges,
         lastScrapedAt: new Date(), // Track last successful scrape time (Story 7.4)
@@ -520,6 +534,59 @@ export async function createSubscriptionSnapshot(
  *   never diverges from the gmp it reported and needs no extra IPO read.
  * @returns GMP record ID on success
  */
+/** A demand-graph data point as produced by extractDemandGraphData() (NSE/BSE). */
+export interface ScrapedDemandPoint {
+  pricePoint: number | null;
+  isCutOff: boolean;
+  cumulativeQuantity: number;
+  exchange?: 'NSE' | 'BSE' | 'BOTH';
+  timestamp?: string | Date;
+}
+
+/**
+ * Pure mapper: scraped demand points -> ipo_demand_graph insert rows. Drops points
+ * with a non-positive/Non-finite cumulative quantity (no real demand to record).
+ * Exported for unit testing. `pricePoint` -> string for the numeric column; null for
+ * the Cut-Off row. Kept pure (no IO) so it is unit-testable.
+ */
+export function mapDemandPointsToRows(ipoId: string, points: ScrapedDemandPoint[]): Array<{
+  ipoId: string; timestamp: Date; pricePoint: string | null; isCutOff: boolean;
+  cumulativeQuantity: number; exchange: 'NSE' | 'BSE' | 'BOTH';
+}> {
+  if (!Array.isArray(points)) return [];
+  return points
+    .filter((p) => p && Number.isFinite(p.cumulativeQuantity) && p.cumulativeQuantity > 0)
+    .map((p) => ({
+      ipoId,
+      timestamp: p.timestamp ? new Date(p.timestamp) : new Date(),
+      pricePoint: p.pricePoint != null && Number.isFinite(p.pricePoint) ? p.pricePoint.toString() : null,
+      isCutOff: !!p.isCutOff,
+      cumulativeQuantity: p.cumulativeQuantity,
+      exchange: p.exchange || 'NSE',
+    }));
+}
+
+/**
+ * Persist a demand-graph snapshot for an IPO (Stage D). The NSE ipo-detail demand
+ * block was fetched but never stored (NO writer existed → ipo_demand_graph 0% root
+ * cause). Inserts the latest fetched price-wise cumulative-demand points. Returns the
+ * number of rows written (0 when there is nothing plausible to store). Routed through
+ * data-persister per scraper-write-path.md.
+ */
+export async function createDemandGraphSnapshot(
+  ipoId: string,
+  points: ScrapedDemandPoint[]
+): Promise<number> {
+  const rows = mapDemandPointsToRows(ipoId, points);
+  if (rows.length === 0) {
+    logger.debug({ ipoId }, 'No plausible demand points to persist');
+    return 0;
+  }
+  await db.insert(ipoDemandGraph).values(rows);
+  logger.info({ ipoId, points: rows.length, exchange: rows[0].exchange }, 'Demand graph snapshot persisted');
+  return rows.length;
+}
+
 export async function createGMPRecord(
   gmpRepository: GMPRepository,
   ipoId: string,

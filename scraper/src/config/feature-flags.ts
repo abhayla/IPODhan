@@ -93,6 +93,28 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_BSE_API: process.env.ENABLE_BSE_API === 'true',
 
+  /**
+   * Enable the primary-source document discovery spine (Stage B of the
+   * 2026-06-19 IPO-data-pipeline contract): discover the company's own filings
+   * (RHP/DRHP/ADDENDUM/ANCHOR) from NSE/BSE/SEBI incl. SME boards, instead of
+   * relying only on the Chittorgarh aggregator. Pure parsing core ships first;
+   * live fetch + persistence + scheduler wiring land in the network session.
+   * GATED OFF by default; activation in prod is Abhay's call (deploy/cron).
+   * Default: false
+   */
+  ENABLE_PRIMARY_SOURCE_DISCOVERY: process.env.ENABLE_PRIMARY_SOURCE_DISCOVERY === 'true',
+
+  /**
+   * Enable the stage-transition reconciler (Stage F of the 2026-06-19 IPO-data-
+   * pipeline contract): compute each IPO's lifecycle stage and enqueue only the
+   * data fetches that are due-but-missing as it crosses DRHP→RHP→OPEN→CLOSED→LISTED,
+   * instead of blindly running every scraper on a fixed timer. Pure planner core
+   * (stage-reconciler.ts) ships first; the live query+enqueue+cron wiring is GATED
+   * OFF and activated only on Abhay's §GATE (deploy/cron).
+   * Default: false
+   */
+  ENABLE_STAGE_RECONCILER: process.env.ENABLE_STAGE_RECONCILER === 'true',
+
   // ==================== ROLLOUT CONTROLS ====================
 
   /**
