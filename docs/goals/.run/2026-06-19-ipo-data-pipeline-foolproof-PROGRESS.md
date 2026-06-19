@@ -55,7 +55,13 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
 - [ ] **C** — extraction from own docs (extend C3b to DRHP/RHP PDFs) + #54 financial-field reconcile
 - [ ] **D** — live OPEN-window scrape (subscription/demand/GMP tiered cadence)
 - [ ] **E** — post-close listing + allotment (SME listing price #36)
-- [ ] **F** — self-sustaining automation (auto-discovery + stage-transition + cadence jobs, flags OFF)
+- [~] **F — reconciler core DONE + verified** (commit `2a3500c5`). `scraper/src/scheduler/stage-reconciler.ts`:
+  `deriveLifecycleStage` + `planStageReconciliation` → per-IPO {stage, dueFetches} (due-at-or-before-stage
+  AND missing) — the self-sustaining "brain" that enqueues only newly-due work as an IPO crosses stages,
+  vs blindly timer-running every scraper. Flag `ENABLE_STAGE_RECONCILER` (OFF). Unit 4/4. NOTE: the data-source
+  jobs (financialData/peerCompanies/anchorInvestors/objectives/listingPerformance…) ALREADY exist on cron.
+  **DEFERRED (§GATE-activated):** the live runner (query child-table presence via tunnel → enqueue the due jobs
+  → record metrics) + auto-discovery-of-new-IPOs job + cron wiring + flag enable.
 - [~] **G — #54 DONE + G-UI verified** (commit `bc4ec602`). Root cause was THREE revenue-only
   gates (C-3 named only 2): `hasMinimumFinancialData` (the section-level gate — found via the
   mandatory G-UI drive, not code-inspection), `calculateDataCompleteness`, and `RevenueChart`.
