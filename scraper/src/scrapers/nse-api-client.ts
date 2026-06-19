@@ -1072,6 +1072,24 @@ export async function fetchIPODetail(symbol: string, series?: 'EQ' | 'SME'): Pro
 }
 
 /**
+ * Fetch the raw NSE ipo-detail `issueInfo` block for a symbol (Stage B primary-source
+ * discovery). fetchIPODetail transforms the response away; this returns the raw
+ * `issueInfo` (with its `dataList` of titled document rows) so parseNSEDocuments can
+ * extract the RHP/anchor/ratios archive URLs. Returns null on error/empty.
+ * SME REQUIRES series='SME' (C-1) or issueInfo is empty.
+ */
+export async function fetchNSEIssueInfo(symbol: string, series?: 'EQ' | 'SME'): Promise<any | null> {
+  try {
+    const params: Record<string, string> = series ? { symbol, series } : { symbol };
+    const data = await makeRequest(ENDPOINTS.IPO_DETAIL, params);
+    return data?.issueInfo ?? null;
+  } catch (error) {
+    logger.warn({ symbol, series, error: (error as Error).message }, 'Failed to fetch NSE issueInfo');
+    return null;
+  }
+}
+
+/**
  * Main function to scrape NSE IPO data using API
  */
 export async function scrapeNSEAPI(): Promise<NSEAPIResult> {

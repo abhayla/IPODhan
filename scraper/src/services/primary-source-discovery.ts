@@ -69,21 +69,23 @@ function looksLikeDocumentUrl(value: unknown): value is string {
  * Returns null for titles that are not tracked document rows.
  */
 function nseTitleToDocType(title: string): DiscoveredDocumentType | null {
-  // Order matters: the more-specific "Security Parameters Pre/Post-Anchor" rows
-  // contain the substring "Anchor", so they MUST be matched before the broad
-  // "Anchor" → ANCHOR_ALLOCATION_REPORT rule, or they'd be misclassified.
-  if (title.includes('Security Parameters Pre-Anchor')) return 'SECURITY_PARAMS_PRE_ANCHOR';
-  if (title.includes('Security Parameters Post-Anchor')) return 'SECURITY_PARAMS_POST_ANCHOR';
-  if (title.includes('Red Herring Prospectus') || title.includes('Prospectus')) return 'RHP';
-  if (title.includes('Anchor Allocation Report') || title.includes('Anchor')) {
-    return 'ANCHOR_ALLOCATION_REPORT';
+  // Case-insensitive; matched against the REAL NSE dataList titles (verified live):
+  // "Security Parameters (Pre Anchor)" / "(Post Anchor)" / bare "Security Parameters",
+  // "Anchor Allocation Report", "Red Herring Prospectus", "Ratios / Basis of Issue Price",
+  // "Bidding Centers", "Sample Application Forms".
+  const t = title.toLowerCase();
+  // Security-parameters rows contain "anchor" — match them BEFORE the broad anchor rule,
+  // or they'd be misclassified as ANCHOR_ALLOCATION_REPORT (the live-caught bug). A bare
+  // "Security Parameters" (no Pre/Post qualifier) is the pre-anchor file by NSE convention.
+  if (t.includes('security parameter')) {
+    return t.includes('post') ? 'SECURITY_PARAMS_POST_ANCHOR' : 'SECURITY_PARAMS_PRE_ANCHOR';
   }
-  if (title.includes('Addendum') || title.includes('Corrigendum')) return 'ADDENDUM';
-  if (title.includes('Ratios') || title.includes('Basis of Issue Price')) {
-    return 'RATIOS_BASIS_ISSUE_PRICE';
-  }
-  if (title.includes('Bidding Centers')) return 'BIDDING_CENTERS';
-  if (title.includes('Sample Application Forms')) return 'SAMPLE_APPLICATION_FORMS';
+  if (t.includes('red herring') || t.includes('prospectus')) return 'RHP';
+  if (t.includes('anchor allocation') || t.includes('anchor')) return 'ANCHOR_ALLOCATION_REPORT';
+  if (t.includes('addendum') || t.includes('corrigendum')) return 'ADDENDUM';
+  if (t.includes('ratios') || t.includes('basis of issue price')) return 'RATIOS_BASIS_ISSUE_PRICE';
+  if (t.includes('bidding center')) return 'BIDDING_CENTERS';
+  if (t.includes('sample application form')) return 'SAMPLE_APPLICATION_FORMS';
   return null;
 }
 
