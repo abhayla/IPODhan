@@ -8,8 +8,8 @@
  *   cd scraper && npx tsx -e "require('dotenv').config({path:'../web/.env.local',override:true}); import('./src/scripts/backfill-demand-graph.ts').then(m=>m.runDemandBackfill({execute:false}))"
  *   ... {execute:true} to write.
  *
- * Idempotent: skips IPOs that already have demand rows. SME is skipped here (NSE
- * ipo-detail needs &series=SME — a separate follow-up); mainboard only.
+ * Idempotent: skips IPOs that already have demand rows. SME IPOs are fetched with
+ * NSE &series=SME (C-1, mandatory or issueInfo is empty); mainboard with no series.
  */
 import { sql } from 'drizzle-orm';
 import { db } from '@ipodhan/shared/db';
@@ -21,24 +21,25 @@ export async function runDemandBackfill(opts: { execute?: boolean } = {}): Promi
   const execute = opts.execute === true;
   logger.info({ execute }, `[demand-backfill] start (${execute ? 'EXECUTE' : 'DRY RUN'})`);
 
-  // Genuine OPEN mainboard IPOs with an NSE symbol and no demand rows yet.
+  // Genuine OPEN IPOs (both segments) with an NSE symbol and no demand rows yet.
   const candidates = await db.execute(sql`
-    SELECT i.id, i.symbol, i.company_name
+    SELECT i.id, i.symbol, i.company_name, i.segment
     FROM ipos i
-    WHERE i.offering_type = 'IPO' AND i.status = 'OPEN' AND i.segment = 'MAINBOARD'
+    WHERE i.offering_type = 'IPO' AND i.status = 'OPEN'
       AND i.symbol IS NOT NULL
       AND NOT EXISTS (SELECT 1 FROM ipo_demand_graph g WHERE g.ipo_id = i.id)
   `);
   const rows = (candidates as any).rows ?? candidates;
-  logger.info({ count: rows.length }, '[demand-backfill] candidate OPEN mainboard IPOs');
+  logger.info({ count: rows.length }, '[demand-backfill] candidate OPEN IPOs (both segments)');
 
   let populated = 0;
   let totalPoints = 0;
   for (const row of rows) {
     const symbol: string = row.symbol;
     const ipoId: string = row.id;
+    const series: 'EQ' | 'SME' = row.segment === 'SME' ? 'SME' : 'EQ';
     try {
-      const detail = await fetchIPODetail(symbol);
+      const detail = await fetchIPODetail(symbol, series);
       const points = (detail.demandGraph || []) as ScrapedDemandPoint[];
       logger.info({ symbol, company: row.company_name, points: points.length }, '[demand-backfill] fetched');
       if (points.length === 0) continue;

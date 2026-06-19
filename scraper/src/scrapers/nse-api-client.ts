@@ -1016,7 +1016,7 @@ export async function fetchAllIPOs(category: 'ipo' | 'ofs' | 'rights' | 'tender'
  * Fetch detailed IPO information including subscription data
  * Enhanced for Story 11.3 - proper subscription extraction (AC3, AC5)
  */
-export async function fetchIPODetail(symbol: string): Promise<{
+export async function fetchIPODetail(symbol: string, series?: 'EQ' | 'SME'): Promise<{
   ipo?: ScrapedIPO;
   subscriptions: ScrapedSubscription[];
   demandGraph?: any[]; // NEW: Add demand graph data
@@ -1025,9 +1025,12 @@ export async function fetchIPODetail(symbol: string): Promise<{
   let demandGraph: any[] = [];
 
   try {
-    logger.debug({ symbol }, 'Fetching IPO detail from NSE API');
+    logger.debug({ symbol, series }, 'Fetching IPO detail from NSE API');
 
-    const data = await makeRequest(ENDPOINTS.IPO_DETAIL, { symbol });
+    // C-1: the `&series=SME` param is MANDATORY for SME (NSE Emerge) symbols — without
+    // it ipo-detail returns an empty issueInfo{} for SME issues (≈⅔ of inventory).
+    const params: Record<string, string> = series ? { symbol, series } : { symbol };
+    const data = await makeRequest(ENDPOINTS.IPO_DETAIL, params);
 
     const companyName = data.companyName || data.metaInfo?.companyName || symbol;
 
