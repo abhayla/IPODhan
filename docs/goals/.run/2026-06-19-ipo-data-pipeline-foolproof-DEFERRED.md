@@ -48,6 +48,18 @@ need live network / a new dep / the tunnel, none safely verifiable in this sessi
   is dominated by historical CLOSED IPOs whose final subscription was never captured live →
   genuinely unobtainable now (no fabrication). Going-forward, the Stage-F cadence captures it.
 
+## #44 — Horizon Reclaim duplicate: confirmed real, but ESCALATE (not a safe auto-merge)
+Two LISTED SME rows for the same company, BOTH with children AND manual edits:
+- `87bc880e` "Horizon Reclaim India IPO" (sym HORIZON, slug horizon-reclaim-india-ltd):
+  documents 1, **subscriptions 154**, gmp 14; manualEdit=YES; created 06-12.
+- `0921acb4` "Horizon Reclaim (India) Ltd." (no symbol, slug …-ct):
+  **financial_data 1, peer_companies 3**, gmp 18; manualEdit=YES; created 06-16.
+A merge must pick the canonical row, repoint the other's children, reconcile the DUAL gmp
+(14+18) / divergent data, and delete a manually-edited row — destructive + judgment-requiring
+(decision-authority: escalate). **Needs Abhay's call** (which row is canonical + how to
+reconcile). The gate's alphanumeric dup key misses it because it doesn't strip `(India)`/`IPO`
+suffixes — tightening it to the canonical normalizer would surface this class (separate, safe gate change).
+
 ## Out of scope (contract §0.1 — tracked independently, NOT this DoD)
 - #35 CI red repo-wide; #56/#57/#51 web test + OOM debt; #1 prod DB password rotation.
 - **Pre-existing scraper type-debt + 18 validators.test.ts failures** confirmed present
