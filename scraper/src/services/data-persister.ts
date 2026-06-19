@@ -15,6 +15,7 @@ import { DataConsolidationService } from './data-consolidation-service.js';
 import { FieldSourcesRepository, DataConflictsRepository } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
+import { ipoDemandGraph } from '@ipodhan/shared/db/schema';
 
 /**
  * Phase 2: Lazy singleton for Data Consolidation Service
@@ -533,6 +534,59 @@ export async function createSubscriptionSnapshot(
  *   never diverges from the gmp it reported and needs no extra IPO read.
  * @returns GMP record ID on success
  */
+/** A demand-graph data point as produced by extractDemandGraphData() (NSE/BSE). */
+export interface ScrapedDemandPoint {
+  pricePoint: number | null;
+  isCutOff: boolean;
+  cumulativeQuantity: number;
+  exchange?: 'NSE' | 'BSE' | 'BOTH';
+  timestamp?: string | Date;
+}
+
+/**
+ * Pure mapper: scraped demand points -> ipo_demand_graph insert rows. Drops points
+ * with a non-positive/Non-finite cumulative quantity (no real demand to record).
+ * Exported for unit testing. `pricePoint` -> string for the numeric column; null for
+ * the Cut-Off row. Kept pure (no IO) so it is unit-testable.
+ */
+export function mapDemandPointsToRows(ipoId: string, points: ScrapedDemandPoint[]): Array<{
+  ipoId: string; timestamp: Date; pricePoint: string | null; isCutOff: boolean;
+  cumulativeQuantity: number; exchange: 'NSE' | 'BSE' | 'BOTH';
+}> {
+  if (!Array.isArray(points)) return [];
+  return points
+    .filter((p) => p && Number.isFinite(p.cumulativeQuantity) && p.cumulativeQuantity > 0)
+    .map((p) => ({
+      ipoId,
+      timestamp: p.timestamp ? new Date(p.timestamp) : new Date(),
+      pricePoint: p.pricePoint != null && Number.isFinite(p.pricePoint) ? p.pricePoint.toString() : null,
+      isCutOff: !!p.isCutOff,
+      cumulativeQuantity: p.cumulativeQuantity,
+      exchange: p.exchange || 'NSE',
+    }));
+}
+
+/**
+ * Persist a demand-graph snapshot for an IPO (Stage D). The NSE ipo-detail demand
+ * block was fetched but never stored (NO writer existed → ipo_demand_graph 0% root
+ * cause). Inserts the latest fetched price-wise cumulative-demand points. Returns the
+ * number of rows written (0 when there is nothing plausible to store). Routed through
+ * data-persister per scraper-write-path.md.
+ */
+export async function createDemandGraphSnapshot(
+  ipoId: string,
+  points: ScrapedDemandPoint[]
+): Promise<number> {
+  const rows = mapDemandPointsToRows(ipoId, points);
+  if (rows.length === 0) {
+    logger.debug({ ipoId }, 'No plausible demand points to persist');
+    return 0;
+  }
+  await db.insert(ipoDemandGraph).values(rows);
+  logger.info({ ipoId, points: rows.length, exchange: rows[0].exchange }, 'Demand graph snapshot persisted');
+  return rows.length;
+}
+
 export async function createGMPRecord(
   gmpRepository: GMPRepository,
   ipoId: string,
