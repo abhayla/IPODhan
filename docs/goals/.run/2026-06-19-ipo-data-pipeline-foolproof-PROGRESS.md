@@ -85,7 +85,13 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
   historical** (Chittorgarh report-118 lacks old CLOSED; documented in prior contract). **Actionable follow-ups:**
   (a) tighten the gate dup key to the canonical normalizer (would catch #44) + merge the Horizon rows; (b) SME
   listing-price source build for the 2 SME (BSE scrip-code quote). Both bounded; deferred at this session's depth.
-- [~] **F — reconciler core DONE + verified** (commit `2a3500c5`). `scraper/src/scheduler/stage-reconciler.ts`:
+- [x] **F — ACCEPTANCE MET** (commits `2a3500c5` core + `214ccd76` job; PR #60 merged to main `7b67d871`).
+  Per the contract's Stage-F acceptance ("jobs registered + pass a local dry-run, no prod cron; metrics recorded"):
+  `stage-reconciler-job.ts` registered in scheduler config + scheduler.ts (flag `ENABLE_STAGE_RECONCILER` OFF,
+  every 3h); **local dry-run verified via tunnel — 268 IPOs reconciled, coherent due-by-kind plan** (listing:4
+  cross-checks the 2 InvIT + 2 #44-dup), structured run-summary logged. Prod cron + flag enable = §GATE (Abhay).
+  (The enqueue/trigger step is a documented no-op until activation.)
+- [~] (prior F note) **reconciler core DONE + verified** (commit `2a3500c5`). `scraper/src/scheduler/stage-reconciler.ts`:
   `deriveLifecycleStage` + `planStageReconciliation` → per-IPO {stage, dueFetches} (due-at-or-before-stage
   AND missing) — the self-sustaining "brain" that enqueues only newly-due work as an IPO crosses stages,
   vs blindly timer-running every scraper. Flag `ENABLE_STAGE_RECONCILER` (OFF). Unit 4/4. NOTE: the data-source
