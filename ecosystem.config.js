@@ -62,6 +62,8 @@ module.exports = {
         // BSE source rebuilt on the JSON API (SPA broke the HTML scraper). Switches
         // the BSE orchestrator to scrapeBSEViaAPI (current board: detail + subscription). PR #26.
         ENABLE_BSE_API: 'true',
+        // Primary-source document discovery (NSE/BSE/SEBI RHP+anchor, incl. SME). PR #59 (foolproof pipeline).
+        ENABLE_PRIMARY_SOURCE_DISCOVERY: 'true',
       },
       max_memory_restart: '500M',
       error_file: './logs/scraper-error.log',
