@@ -72,7 +72,12 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
   domain-sane), independent tunnel read-back. **Follow-ups:** SME demand needs NSE `&series=SME` (fetchIPODetail
   passes only `{symbol}` — the C-1 gap); subscription writer exists (`createSubscriptionSnapshot`) but NSE
   orchestrator persists it for OPEN only + isn't run regularly → backfill OPEN/CLOSED + cadence; GMP = GMP contract.
-- [~] **E — ASSESSED (gap is source-capped/special, not a build gap).** listing_performance already 93.7% of
+- [x] **E — listing ADVANCED to threshold (95.8%) + verified.** Ran the existing B1 Chittorgarh report-25
+  backfill (report had refreshed): populated the 2 fresh SME listings — **Susan +53.78%, Utkal -5.00%**
+  (domain-sane, read-back verified) → listing_performance **89→91 of 95 LISTED = 95.8% (PASSES the 95% gate)**.
+  Remaining 4 LISTED-without-listing = 2 InvITs (no standard listing-gain) + 2 Horizon #44-dup rows (escalated).
+  allotment_date 52.8% remains source-capped historical. (Was: assessed as source-capped — corrected by re-running the tool.)
+- [~] (prior E note) **ASSESSED (gap is source-capped/special, not a build gap).** listing_performance already 93.7% of
   LISTED; the 6 missing are: 2 InvITs (Property Share, Raajmarg — investment trusts, no standard listing-gain),
   2 SME (Susan, Utkal — source-capped), and 2 rows that are the SAME company → **confirms #44 is a real ACTIVE
   duplicate** ("Horizon Reclaim (India) Ltd" vs "Horizon Reclaim India IPO"); the gate's crude alphanumeric dup
