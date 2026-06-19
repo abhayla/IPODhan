@@ -136,3 +136,12 @@ not just feature activation. `scripts/fix-substance-corruption.mjs --execute` is
 - **G** (#54 render etc.) → web code + **G-UI browser drive** (Playwright MCP); note web unit harness OOMs (#56/#51, out of scope §0.1) — verify #54 via the isolated chart test + a browser drive.
 
 ## DEFERRED — see `2026-06-19-ipo-data-pipeline-foolproof-DEFERRED.md`
+
+## Next autonomous win identified (root-cause, like demand)
+- **ipo_details 0% — NO writer exists** (same root cause demand had). NSE ipo-detail
+  (already fetched, `extractAdditionalNSEFields`) carries lead_managers/category shares/
+  cut-off/tick-size/sponsor-banks etc. Build `createIPODetails` (data-persister) + a
+  backfill, mapping NSE→ipo_details (~40 cols) CAREFULLY (a hasty map = wrong data = the
+  Tier-0 failure). Feeds CategoryReservationSection + IPOTimelineWidget (the #8 "blank
+  shells"). Deferred to a fresh session — deserves real budget for the column mapping, not
+  a depth-limited rush.
