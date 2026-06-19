@@ -32,8 +32,8 @@ need live network / a new dep / the tunnel, none safely verifiable in this sessi
   (NSE `ipo-detail?symbol&series=SME` — `&series=SME` MANDATORY for SME; archive host needs
   no cookies; BSE `GetMkt_ISSUE_BBS_IPO` detail row; SEBI `HomeAction.do?sid=3&ssid=15&smid=10`
   page-1 GET). Wire into the stubbed `drhp-downloader.ts` or a new fetch orchestrator.
-- **`.zip`→`%PDF` unzip:** `extractPdfFromZipBuffer` is a no-op — needs an unzip dep
-  (`adm-zip`/`unzipper`); adding a dep is §authorize. `looksLikePdf` already implemented+tested.
+- ~~`.zip`→`%PDF` unzip~~ **DONE** (commit `2ed23581`): `extractPdfFromZipBuffer` implemented with
+  built-in `zlib` (no dep). The remaining B-live work is the live fetch + persistence, below.
 - **BSE GID→URL builder:** no in-repo builder exists; `parseBSEDocuments` only accepts
   pre-resolved URLs today. Resolve the real GID→URL convention from a live BSE payload.
 - **Persistence + downstream:** route discovered docs through `data-persister`/`DocumentRepository`

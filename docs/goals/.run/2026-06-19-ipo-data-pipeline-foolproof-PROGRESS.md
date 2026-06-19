@@ -85,9 +85,8 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
     minor honest-empty-state polish, still open.
 
 ## §GATE (awaiting Abhay)
-- **NEW — authorize an unzip dependency** (`adm-zip` or `unzipper`) for Stage B-live: NSE/BSE
-  docs are `.zip` wrappers that must be unzipped before the `%PDF` check. Guardrail forbids
-  new deps without authorization. **Recommended: `adm-zip`** (sync, tiny, zero transitive deps).
+- ~~authorize an unzip dependency~~ **WITHDRAWN** — implemented `.zip`→`%PDF` extraction with
+  Node's built-in `zlib` (commit `2ed23581`); no dependency needed. B-live is NOT dep-blocked.
 - Standing set (unchanged): enable `ENABLE_PRIMARY_SOURCE_DISCOVERY` + discovery/cadence cron
   + `ENABLE_MONEYCONTROL_SUBSCRIPTION` + deploy/PM2 to activate (arrives with Stage F);
   apply any authored migrations; merge draft **PR #59**; rotate leaked prod DB password (#1).
