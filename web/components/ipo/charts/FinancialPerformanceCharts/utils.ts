@@ -247,10 +247,15 @@ export function calculateDataCompleteness(
     };
   }
 
+  // Top-line completeness counts revenue OR total income (#54): the compact
+  // Chittorgarh source carries "Total Income" but not "Revenue from operations",
+  // so counting only revenue under-reports ~132 IPOs as "No revenue data".
+  const topLine = (rev: string | null | undefined, inc: string | null | undefined) =>
+    rev !== null && rev !== undefined && rev !== '' ? rev : inc;
   const fields = [
-    { name: 'revenueFy2022', value: data.revenueFy2022 },
-    { name: 'revenueFy2023', value: data.revenueFy2023 },
-    { name: 'revenueFy2024', value: data.revenueFy2024 },
+    { name: 'revenueFy2022', value: topLine(data.revenueFy2022, data.totalIncomeFy2022) },
+    { name: 'revenueFy2023', value: topLine(data.revenueFy2023, data.totalIncomeFy2023) },
+    { name: 'revenueFy2024', value: topLine(data.revenueFy2024, data.totalIncomeFy2024) },
     { name: 'profitFy2022', value: data.profitFy2022 },
     { name: 'profitFy2023', value: data.profitFy2023 },
     { name: 'profitFy2024', value: data.profitFy2024 },
@@ -295,11 +300,14 @@ export function calculateDataCompleteness(
 export function hasMinimumFinancialData(data: FinancialDataFromDB | null): boolean {
   if (!data) return false;
 
-  // Count revenue years
-  const revenueYears = [
-    parseNumeric(data.revenueFy2022),
-    parseNumeric(data.revenueFy2023),
-    parseNumeric(data.revenueFy2024),
+  // Count top-line years — revenue OR total income (#54). The compact Chittorgarh
+  // source carries total income but not "Revenue from operations", so counting only
+  // revenue wrongly gates the whole section as "Financial Performance Data Unavailable"
+  // for income-only IPOs even though the charts can plot total income.
+  const topLineYears = [
+    parseNumeric(data.revenueFy2022) ?? parseNumeric(data.totalIncomeFy2022),
+    parseNumeric(data.revenueFy2023) ?? parseNumeric(data.totalIncomeFy2023),
+    parseNumeric(data.revenueFy2024) ?? parseNumeric(data.totalIncomeFy2024),
   ].filter((v) => v !== null).length;
 
   // Count profit years
@@ -309,8 +317,8 @@ export function hasMinimumFinancialData(data: FinancialDataFromDB | null): boole
     parseNumeric(data.profitFy2024),
   ].filter((v) => v !== null).length;
 
-  // Need at least 2 years of revenue OR profit data
-  return revenueYears >= 2 || profitYears >= 2;
+  // Need at least 2 years of top-line OR profit data
+  return topLineYears >= 2 || profitYears >= 2;
 }
 
 /**
