@@ -24,6 +24,27 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
   issue_size=0 36→0, date-stomp 7→0, registrar-pollution 3→0. #41/#52 prevented at source. #42 verified (smells=0).
   #44 + registrar variant-collapse DEFERRED (see DEFERRED.md — no active victim / mis-map risk).
 - [ ] **B/E/F unblocked** (A.5 gate green) — not yet started this session.
+
+### Ship status (this session)
+- Branch `feat/ipo-data-pipeline-foolproof` pushed; commit `9cc1cf16` (Stage A+A.5).
+- Draft PR: **PENDING — GitHub API rate limit hit at create time.** Branch is on remote;
+  create from https://github.com/abhayla/IPODhan/pull/new/feat/ipo-data-pipeline-foolproof
+  (or retry `gh pr create --draft`). Body drafted in this session's PR attempt.
+
+### Continuation plan (next session, in priority order)
+- **Stage B (next, biggest):** wire the stubbed `scraper/src/services/drhp-downloader.ts`
+  `searchNSE/searchBSE/searchSEBI` per contract §1.5 (C-1): NSE `ipo-detail?symbol&series=SME`
+  → archive `.zip` (unzip before %PDF, `extractAdditionalNSEFields()` already parses);
+  BSE RHP off the existing detail row's `Prospectus_GID` (zero extra requests); SEBI page-1
+  mainboard DRHP. Map to EXISTING `documentTypeEnum` (`ANCHOR_ALLOCATION_REPORT`, no `ANCHOR`).
+  Flag `ENABLE_PRIMARY_SOURCE_DISCOVERY` (default OFF). TDD: mock HTTP in unit, real in e2e.
+  Build code + unit tests first (no-network verifiable); live e2e + tunnel backfill needs a
+  network+tunnel session. Chittorgarh stays the SME-DRHP/BSE-DRHP/deep-history fallback.
+- **Stage C:** extend C3b extractors to the Stage-B PDFs; #54 is component-only (C-3).
+- **Stage D/E/F:** live subscription/demand/GMP cadence · SME listing price (#36) · jobs (flags OFF, §GATE).
+- **Stage G:** #54 `RevenueChart.tsx`+`calculateDataCompleteness` (plot totalIncome when revenue null;
+  count totalIncome toward completeness — NO column rename, C-3); wire `DemandGraph` into page.tsx JSX;
+  honest empty-states; #8/#7/#58. Needs G-UI (Playwright MCP drive).
 - [ ] **B** — primary-source discovery spine (searchNSE/searchBSE/searchSEBI + .zip unzip + doc_type)
 - [ ] **C** — extraction from own docs (extend C3b to DRHP/RHP PDFs) + #54 financial-field reconcile
 - [ ] **D** — live OPEN-window scrape (subscription/demand/GMP tiered cadence)
