@@ -160,6 +160,18 @@ export function checkGmpSanity(row) {
   return null;
 }
 
+// ---- Check 9: registrar quality (#45) --------------------------------------
+// A registrar string MUST NOT carry address/contact pollution — '^'/tab/newline
+// delimiters or "Tel:"/"E-mail:" blocks (the scrape artifact sanitizeRegistrar removes).
+export function checkRegistrarQuality(row) {
+  const r = row.registrar;
+  if (r === null || r === undefined || r === '') return null;
+  const s = String(r);
+  if (/[\^\t\n\r]/.test(s)) return `registrar ("${s.slice(0, 40)}…") has an address/contact delimiter (^, tab, newline)`;
+  if (/Tel\.?:|E-?mail:|Phone:/i.test(s)) return `registrar ("${s.slice(0, 40)}…") contains contact info`;
+  return null;
+}
+
 // Ordered registry consumed by the audit script. `name` is the report label;
 // `predicate` is the pure function; `optional` flags checks whose underlying
 // table/columns may be absent (the audit guards these gracefully).
@@ -172,4 +184,5 @@ export const SUBSTANCE_CHECKS = [
   { key: 'name_quality', name: 'name has no trailing status token', predicate: checkNameQuality },
   { key: 'listing_performance', name: 'listing_price>0 & gain in [-90..900]%', predicate: checkListingPerformance },
   { key: 'gmp_sanity', name: 'latest GMP premium in [-50..200]% of issue price', predicate: checkGmpSanity, optional: true },
+  { key: 'registrar_quality', name: 'registrar free of address/contact pollution', predicate: checkRegistrarQuality },
 ];
