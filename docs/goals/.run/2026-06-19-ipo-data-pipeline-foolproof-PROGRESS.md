@@ -23,7 +23,14 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
   to substance gate. **Corrective `scripts/fix-substance-corruption.mjs` applied (additive, tunnel, read-back):**
   issue_size=0 36→0, date-stomp 7→0, registrar-pollution 3→0. #41/#52 prevented at source. #42 verified (smells=0).
   #44 + registrar variant-collapse DEFERRED (see DEFERRED.md — no active victim / mis-map risk).
-- [~] **B — pure-core DONE + verified** (commit `171587f3`). `scraper/src/services/primary-source-discovery.ts`:
+- [x] **B — discover→persist DONE + live-verified** (commits `171587f3` `2ed23581` `be28fc26` `2ed…` `+ NSE issueInfo/doc backfill`).
+  PROVEN END-TO-END ON REAL DATA: live NSE ipo-detail discovery (both segments via `&series=SME`) → parse doc URLs
+  (RHP/Anchor/Ratios/…) → download the real 16 MB `.zip` → extract a valid 2 MB PDF via built-in `zlib`
+  central-directory parsing (NO dep) → upsert `documents` rows with correct `documentTypeEnum`. Backfill ran for
+  OPEN/UPCOMING: documents 81→85 IPOs, 33 NSE primary-source docs, doc_types correctly separated (live-caught
+  classification bug fixed). **Remaining B:** CLOSED historical doc backfill (159 IPOs — same proven path, longer
+  run, best-effort) + wiring discovery into the scheduler (§GATE). The PDF→financials EXTRACTION off these rows is Stage C.
+- [~] (B pure-core detail) `scraper/src/services/primary-source-discovery.ts`:
   `parseNSEDocuments`/`parseBSEDocuments`/`parseSEBIDrhpListing` + `looksLikePdf` + `ENABLE_PRIMARY_SOURCE_DISCOVERY`
   flag. Unit tests 16/16 (reproduced by orchestrator). All doc types verified against real `documentTypeEnum`.
   **DEFERRED to a network+tunnel session** (Stage B acceptance not yet met): live fetch (NSE `&series=SME`, BSE
