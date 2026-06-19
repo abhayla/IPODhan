@@ -15,12 +15,13 @@
  *  - `documents.type` maps to the EXISTING `documentTypeEnum`. Anchor docs map to
  *    `ANCHOR_ALLOCATION_REPORT` — there is NO `ANCHOR` enum value.
  *  - NSE/BSE docs are `.zip` wrappers → unzip to the `%PDF` member BEFORE the
- *    PDF-magic validity check (the unzip step is DEFERRED — no unzip dep yet).
+ *    PDF-magic validity check (done here with Node's built-in `zlib`, NO new dep).
  *
  * Pure parsers do NOT log (per `structured-logging.md`, no console.* in src/**).
  */
 
 import * as cheerio from 'cheerio';
+import * as zlib from 'node:zlib';
 
 /** A `document_type` enum value relevant to primary-source discovery. */
 export type DiscoveredDocumentType =
@@ -193,16 +194,43 @@ export function looksLikePdf(buf: Buffer): boolean {
   return buf.subarray(0, 4).toString('latin1') === '%PDF';
 }
 
+// ZIP local file header signature ("PK\x03\x04").
+const ZIP_LOCAL_FILE_SIG = 0x04034b50;
+const ZIP_LOCAL_HEADER_SIZE = 30;
+
 /**
- * Extract the first `%PDF` member from a `.zip` buffer.
- *
- * DEFERRED: no unzip dependency (adm-zip/jszip/unzipper) exists in
- * `scraper/package.json`, and the contract forbids adding deps without
- * authorization. This is a documented no-op (returns null) so the download/
- * validate path has a stable signature; the network session that wires real
- * fetching will add the unzip dep and implement the body. `looksLikePdf` already
- * covers the post-unzip validity check and IS unit-tested.
+ * Extract the first `%PDF` member from a `.zip` buffer (NSE/BSE serve docs as `.zip`
+ * wrappers — C-1). Uses Node's built-in `zlib` (NO new dependency): it walks the ZIP
+ * local file headers and inflates each member (stored=method 0, deflate=method 8),
+ * returning the first member whose bytes start with `%PDF`. Handles the common
+ * single-PDF archive; bails (returns null) on the cases a minimal parser cannot do
+ * safely — a streaming data-descriptor (general-purpose bit 3 with no size in the
+ * local header), or zip64/encrypted members — rather than guess. Never throws.
  */
-export function extractPdfFromZipBuffer(_buf: Buffer): Buffer | null {
+export function extractPdfFromZipBuffer(buf: Buffer): Buffer | null {
+  if (!Buffer.isBuffer(buf) || buf.length < ZIP_LOCAL_HEADER_SIZE) return null;
+  let offset = 0;
+  while (offset + ZIP_LOCAL_HEADER_SIZE <= buf.length && buf.readUInt32LE(offset) === ZIP_LOCAL_FILE_SIG) {
+    const flags = buf.readUInt16LE(offset + 6);
+    const method = buf.readUInt16LE(offset + 8);
+    const compSize = buf.readUInt32LE(offset + 18);
+    const nameLen = buf.readUInt16LE(offset + 26);
+    const extraLen = buf.readUInt16LE(offset + 28);
+    const dataStart = offset + ZIP_LOCAL_HEADER_SIZE + nameLen + extraLen;
+    // Streaming data descriptor with no size in the local header — can't find the
+    // member boundary without the central directory. Bail safely.
+    if ((flags & 0x08) !== 0 && compSize === 0) return null;
+    if (dataStart + compSize > buf.length) return null;
+    const memberData = buf.subarray(dataStart, dataStart + compSize);
+    let content: Buffer | null = null;
+    try {
+      if (method === 0) content = Buffer.from(memberData);          // stored
+      else if (method === 8) content = zlib.inflateRawSync(memberData); // deflate
+    } catch {
+      content = null;
+    }
+    if (content && looksLikePdf(content)) return content;
+    offset = dataStart + compSize;
+  }
   return null;
 }
