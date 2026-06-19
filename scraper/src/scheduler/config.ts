@@ -37,6 +37,7 @@ export interface SchedulerConfig {
     healthCheck: JobSchedule;
     dailySummary: JobSchedule;
     logCleanup: JobSchedule;
+    stageReconciler: JobSchedule;      // Stage F: stage-transition reconciler (flag-gated OFF; activation §GATE)
   };
 }
 
@@ -127,6 +128,11 @@ const PROD_SCHEDULES = {
     enabled: true,
     schedule: '0 2 * * *',                 // 2 AM daily
     timezone: 'Asia/Kolkata'
+  },
+  stageReconciler: {
+    enabled: process.env.ENABLE_STAGE_RECONCILER === 'true', // GATED OFF; Abhay enables in prod (§GATE)
+    schedule: '15 */3 * * *',              // Stage F: every 3 hours (computes due-but-missing fetches per IPO)
+    timezone: 'Asia/Kolkata'
   }
 };
 
@@ -214,6 +220,11 @@ const DEV_SCHEDULES = {
   logCleanup: {
     enabled: false,                        // Disable log cleanup in dev (can trigger manually)
     schedule: '0 2 * * *',                 // 2 AM daily
+    timezone: 'Asia/Kolkata'
+  },
+  stageReconciler: {
+    enabled: process.env.ENABLE_STAGE_RECONCILER === 'true', // GATED OFF; §GATE
+    schedule: '15 */3 * * *',              // Stage F: every 3 hours
     timezone: 'Asia/Kolkata'
   }
 };

@@ -7,6 +7,7 @@ import { runHealthCheck } from './jobs/health-check.js';
 import { runDailySummary } from './jobs/daily-summary.js';
 import { runLogCleanup } from './jobs/log-cleanup.js';
 import { runStatusUpdater } from './jobs/update-statuses.js';
+import { runStageReconcilerJob } from './jobs/stage-reconciler-job.js';
 import { runNSEScraper } from '../scrapers/nse-scraper-orchestrator.js';
 import { runBSEScraper } from '../scrapers/bse-scraper-orchestrator.js';
 import { runMoneycontrolScraper } from '../scrapers/moneycontrol-orchestrator.js';
@@ -187,6 +188,19 @@ export class SchedulerService {
         () => runInvestorgainGMPScraper(),
         LOCK_TTL.gmpInvestorgain,
         schedulerConfig.jobs.gmpInvestorgain.timezone
+      );
+    }
+
+    // Stage F: stage-transition reconciler (flag-gated OFF; activation is §GATE). Runs in
+    // dry-run by default — computes the per-IPO due-but-missing fetch plan + logs a summary;
+    // the enqueue/trigger step is intentionally a no-op until separately activated.
+    if (schedulerConfig.jobs.stageReconciler.enabled) {
+      this.registerJob(
+        'stageReconciler',
+        schedulerConfig.jobs.stageReconciler.schedule!,
+        () => runStageReconcilerJob({ dryRun: true }),
+        LOCK_TTL.scraper,
+        schedulerConfig.jobs.stageReconciler.timezone
       );
     }
 
