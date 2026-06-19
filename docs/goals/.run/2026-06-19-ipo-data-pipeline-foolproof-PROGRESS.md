@@ -64,7 +64,19 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
   0 revenue) renders the section + "Data completeness 67%" + "Total Income Trend (3 Years)" chart
   (was "Financial Performance Data Unavailable"). Web `tsc` gate passed; catch-tests 4/4; screenshot
   in `.run/2026-06-19-stageG-54-total-income-trend.png`. NO column rename (avoids §GATE migration).
-  **Remaining G:** #8/#7 blank-shell pages, #58 card listing-gain, wire `DemandGraph` into page.tsx JSX.
+  **Stage-G findings (verified against current code, correcting stale C-6):**
+  - **DemandGraph is NOT a gap** — the Demand tab already renders via `IPODetailTabs → DemandGraphChart`
+    (IPODetailTabs.tsx:324-326). The `DemandGraph` import at `page.tsx:44` is dead/unused (trivial cleanup,
+    optional). C-6's "wire DemandGraph into page.tsx JSX" was a partial read — do NOT add a duplicate.
+  - **#58** — `QuickStatsGrid` (lines 66-75) HAS a "Listing Gain" stat (gated on `listingGainPercent`), but a
+    live `/ipos?status=LISTED` drive showed **0** "Listing Gain" text on the cards → **UNVERIFIED / likely a
+    real gap**: investigate which card the listings page actually uses, a possible 3-stat cap crowding it out,
+    or whether the shown rows lack gain data. NOT claiming done.
+  - **#8/#7 blank shells** are largely **DATA-gated, not render-gated**: `ipo_details` 0%, `ipo_scores` 0%,
+    `subscriptions` 2.6%, `ipo_demand_graph` 0% → the existing components render honest empty-states; they fill
+    once the DATA stages (D/E/F) populate. The render layer is mostly fine; the gap is data.
+  - SME LISTED empty-state (C-6, page.tsx:454-459 hides ListingPerformanceCharts when listing price null) —
+    minor honest-empty-state polish, still open.
 
 ## §GATE (awaiting Abhay)
 - **NEW — authorize an unzip dependency** (`adm-zip` or `unzipper`) for Stage B-live: NSE/BSE
