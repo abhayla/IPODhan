@@ -53,7 +53,13 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
   honest empty-states; #8/#7/#58. Needs G-UI (Playwright MCP drive).
 - [ ] **B** — primary-source discovery spine (searchNSE/searchBSE/searchSEBI + .zip unzip + doc_type)
 - [ ] **C** — extraction from own docs (extend C3b to DRHP/RHP PDFs) + #54 financial-field reconcile
-- [ ] **D** — live OPEN-window scrape (subscription/demand/GMP tiered cadence)
+- [~] **D — demand writer DONE + live-verified** (commit `0cac2c55`). ROOT CAUSE of `ipo_demand_graph` 0%
+  found: NSE demand was fetched by `fetchIPODetail` but had NO writer anywhere. Added `createDemandGraphSnapshot`
+  + pure `mapDemandPointsToRows` (3/3) + `backfill-demand-graph.ts`. **NSE confirmed reachable live** (anti-bot
+  handled by existing client). Ran live → **ipo_demand_graph 0 → 29 rows for Turtlemint** (qty 682K–14.8M
+  domain-sane), independent tunnel read-back. **Follow-ups:** SME demand needs NSE `&series=SME` (fetchIPODetail
+  passes only `{symbol}` — the C-1 gap); subscription writer exists (`createSubscriptionSnapshot`) but NSE
+  orchestrator persists it for OPEN only + isn't run regularly → backfill OPEN/CLOSED + cadence; GMP = GMP contract.
 - [ ] **E** — post-close listing + allotment (SME listing price #36)
 - [~] **F — reconciler core DONE + verified** (commit `2a3500c5`). `scraper/src/scheduler/stage-reconciler.ts`:
   `deriveLifecycleStage` + `planStageReconciliation` → per-IPO {stage, dueFetches} (due-at-or-before-stage
