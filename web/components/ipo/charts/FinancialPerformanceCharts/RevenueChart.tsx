@@ -43,25 +43,34 @@ export function RevenueChart({
   height = 300,
   showGrowth = true,
 }: RevenueChartProps): React.ReactElement | null {
-  // Filter data to only include years with revenue
-  const revenueData = data.filter((d) => d.revenue !== null);
+  // Top-line series (#54): plot revenue, falling back to total income when revenue
+  // is absent (the compact Chittorgarh source carries Total Income, not "Revenue from
+  // operations"). When EVERY plotted point uses total income, label it honestly as
+  // "Total Income" — never mislabel income as revenue.
+  const revenueData = data
+    .map((d) => ({ ...d, topLine: d.revenue ?? d.totalIncome ?? null }))
+    .filter((d) => d.topLine !== null);
 
-  // Don't render if no revenue data
+  // Don't render if no top-line data
   if (revenueData.length === 0) {
     return (
       <ChartContainer
         title="Revenue Trend"
         description="Fiscal year revenue analysis"
         isEmpty={true}
-        emptyMessage="No revenue data available for this IPO"
+        emptyMessage="No revenue or income data available for this IPO"
       />
     );
   }
 
+  const usingIncomeOnly = revenueData.every((d) => d.revenue === null);
+  const metricLabel = usingIncomeOnly ? 'Total Income' : 'Revenue';
+  const chartTitle = usingIncomeOnly ? 'Total Income Trend' : 'Revenue Trend';
+
   // Custom tooltip formatter with YoY growth
   const tooltipFormatter = (value: number, name: string): [string, string] => {
-    if (name === 'revenue') {
-      return [formatFinancialValue(value, 2), 'Revenue'];
+    if (name === 'topLine') {
+      return [formatFinancialValue(value, 2), metricLabel];
     }
     return [String(value), name];
   };
@@ -71,7 +80,7 @@ export function RevenueChart({
     if (!active || !payload || payload.length === 0) return null;
 
     const dataPoint = payload[0].payload;
-    const revenue = dataPoint.revenue;
+    const topLine = dataPoint.topLine ?? dataPoint.revenue;
     const growth = dataPoint.revenueGrowth;
 
     return (
@@ -81,9 +90,9 @@ export function RevenueChart({
         </p>
         <div className="space-y-1">
           <div className="flex items-center justify-between gap-4">
-            <span className="text-xs text-gray-600 dark:text-gray-400">Revenue:</span>
+            <span className="text-xs text-gray-600 dark:text-gray-400">{metricLabel}:</span>
             <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
-              {formatFinancialValue(revenue, 2)}
+              {formatFinancialValue(topLine, 2)}
             </span>
           </div>
           {showGrowth && growth !== null && (
@@ -120,15 +129,15 @@ export function RevenueChart({
 
   return (
     <ChartContainer
-      title="Revenue Trend"
-      description={`${companyName} - Fiscal Year Revenue Analysis (${revenueData.length} Year${revenueData.length > 1 ? 's' : ''})`}
+      title={chartTitle}
+      description={`${companyName} - Fiscal Year ${metricLabel} Analysis (${revenueData.length} Year${revenueData.length > 1 ? 's' : ''})`}
     >
       <LineChartBase
         data={revenueData}
         lines={[
           {
-            dataKey: 'revenue',
-            label: 'Revenue',
+            dataKey: 'topLine',
+            label: metricLabel,
             color: '#3b82f6', // blue-500
             strokeWidth: 3,
             showDots: true,
@@ -138,7 +147,7 @@ export function RevenueChart({
         ]}
         xAxisKey="year"
         xAxisLabel="Fiscal Year"
-        yAxisLabel="Revenue (₹ Crores)"
+        yAxisLabel={`${metricLabel} (₹ Crores)`}
         yAxisFormatter={yAxisFormatter}
         tooltipFormatter={tooltipFormatter}
         height={height}
