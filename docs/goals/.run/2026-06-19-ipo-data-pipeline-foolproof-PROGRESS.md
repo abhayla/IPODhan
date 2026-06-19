@@ -59,7 +59,12 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
   count totalIncome toward completeness — NO column rename, C-3); wire `DemandGraph` into page.tsx JSX;
   honest empty-states; #8/#7/#58. Needs G-UI (Playwright MCP drive).
 - [ ] **B** — primary-source discovery spine (searchNSE/searchBSE/searchSEBI + .zip unzip + doc_type)
-- [ ] **C** — extraction from own docs (extend C3b to DRHP/RHP PDFs) + #54 financial-field reconcile
+- [~] **C — mechanism extended + verified; #54 reconcile DONE (Stage G).** The C3b pdfplumber sidecar now
+  handles NSE/BSE `.zip` RHP URLs (built-in zipfile; commit). Verified live on RHP_TURTLEMINT.zip:
+  download→unzip→pdfplumber (unit "lakhs", pages parsed). **HONEST: 0 metrics extracted for that RHP** — the
+  known C3b limitation (PDF financial-table recall ~3/81 across varied templates; no fabrication). Chittorgarh
+  HTML (C3b, financials ~54%, peers ~46%, objectives ~52%) remains the higher-recall PRIMARY path. Raising PDF
+  recall is ongoing extractor work. The canonical-financial-field reconcile (#54, C-4) is done in Stage G.
 - [~] **D — demand writer DONE + live-verified** (commit `0cac2c55`). ROOT CAUSE of `ipo_demand_graph` 0%
   found: NSE demand was fetched by `fetchIPODetail` but had NO writer anywhere. Added `createDemandGraphSnapshot`
   + pure `mapDemandPointsToRows` (3/3) + `backfill-demand-graph.ts`. **NSE confirmed reachable live** (anti-bot
@@ -67,7 +72,14 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
   domain-sane), independent tunnel read-back. **Follow-ups:** SME demand needs NSE `&series=SME` (fetchIPODetail
   passes only `{symbol}` — the C-1 gap); subscription writer exists (`createSubscriptionSnapshot`) but NSE
   orchestrator persists it for OPEN only + isn't run regularly → backfill OPEN/CLOSED + cadence; GMP = GMP contract.
-- [ ] **E** — post-close listing + allotment (SME listing price #36)
+- [~] **E — ASSESSED (gap is source-capped/special, not a build gap).** listing_performance already 93.7% of
+  LISTED; the 6 missing are: 2 InvITs (Property Share, Raajmarg — investment trusts, no standard listing-gain),
+  2 SME (Susan, Utkal — source-capped), and 2 rows that are the SAME company → **confirms #44 is a real ACTIVE
+  duplicate** ("Horizon Reclaim (India) Ltd" vs "Horizon Reclaim India IPO"); the gate's crude alphanumeric dup
+  key misses it (doesn't strip `(India)`/`IPO`/`Ltd`). allotment_date gap = 120/254 CLOSED-LISTED — **source-capped
+  historical** (Chittorgarh report-118 lacks old CLOSED; documented in prior contract). **Actionable follow-ups:**
+  (a) tighten the gate dup key to the canonical normalizer (would catch #44) + merge the Horizon rows; (b) SME
+  listing-price source build for the 2 SME (BSE scrip-code quote). Both bounded; deferred at this session's depth.
 - [~] **F — reconciler core DONE + verified** (commit `2a3500c5`). `scraper/src/scheduler/stage-reconciler.ts`:
   `deriveLifecycleStage` + `planStageReconciliation` → per-IPO {stage, dueFetches} (due-at-or-before-stage
   AND missing) — the self-sustaining "brain" that enqueues only newly-due work as an IPO crosses stages,
