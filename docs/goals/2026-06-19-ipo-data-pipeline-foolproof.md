@@ -411,6 +411,7 @@ Keep `docs/goals/.run/2026-06-19-ipo-data-pipeline-foolproof-PROGRESS.md` curren
 - [ ] §GATE list populated; deferrals logged in `docs/goals/.run/2026-06-19-ipo-data-pipeline-foolproof-DEFERRED.md` with reason.
 
 **§GATE — needs Abhay (run STOPS here, authors the artifact, logs, continues):**
+- [x] **AUTHORIZED 2026-06-19 (Abhay):** Stage B-live MAY add the unzip dependency **`adm-zip`** to the `scraper` workspace (`cd scraper && npm install adm-zip`) for `.zip`-wrapped NSE/BSE document handling (unzip before the `%PDF` check). No further approval needed — the B-live continuation installs it and proceeds.
 - [ ] Enable `ENABLE_PRIMARY_SOURCE_DISCOVERY` + the discovery/per-stage/cadence cron jobs + `ENABLE_MONEYCONTROL_SUBSCRIPTION` + any new flags; deploy/PM2 to activate.
 - [ ] Apply any authored-but-unapplied (destructive) migrations to prod. · [ ] Merge the draft PR to `main`. · [ ] Rotate the leaked prod DB password (#1).
 
