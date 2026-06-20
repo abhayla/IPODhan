@@ -36,8 +36,8 @@ describe('generateIPOSlug', () => {
     });
 
     it('normalizes Limited', () => {
-      expect(generateIPOSlug('Company Limited')).toBe('company-limited');
-      expect(generateIPOSlug('Company LIMITED')).toBe('company-limited');
+      expect(generateIPOSlug('Company Limited')).toBe('company-ltd');
+      expect(generateIPOSlug('Company LIMITED')).toBe('company-ltd');
     });
 
     it('normalizes Pvt. Ltd.', () => {
@@ -47,8 +47,8 @@ describe('generateIPOSlug', () => {
     });
 
     it('normalizes Private Limited', () => {
-      expect(generateIPOSlug('Company Private Limited')).toBe('company-private-limited');
-      expect(generateIPOSlug('Company PRIVATE LIMITED')).toBe('company-private-limited');
+      expect(generateIPOSlug('Company Private Limited')).toBe('company-private-ltd');
+      expect(generateIPOSlug('Company PRIVATE LIMITED')).toBe('company-private-ltd');
     });
 
     it('normalizes Inc.', () => {
@@ -182,7 +182,7 @@ describe('generateIPOSlug', () => {
   describe('real-world company names', () => {
     it('handles Indian company names', () => {
       expect(generateIPOSlug('Tata Consultancy Services Ltd.')).toBe('tata-consultancy-services-ltd');
-      expect(generateIPOSlug('Reliance Industries Limited')).toBe('reliance-industries-limited');
+      expect(generateIPOSlug('Reliance Industries Limited')).toBe('reliance-industries-ltd');
       expect(generateIPOSlug('HDFC Bank Ltd.')).toBe('hdfc-bank-ltd');
     });
 
@@ -197,7 +197,7 @@ describe('generateIPOSlug', () => {
     });
 
     it('handles complex real-world examples', () => {
-      expect(generateIPOSlug('Bharat Heavy Electricals Limited')).toBe('bharat-heavy-electricals-limited');
+      expect(generateIPOSlug('Bharat Heavy Electricals Limited')).toBe('bharat-heavy-electricals-ltd');
       expect(generateIPOSlug('State Bank of India')).toBe('state-bank-of-india');
       expect(generateIPOSlug('Oil & Natural Gas Corporation Ltd.')).toBe('oil-and-natural-gas-corporation-ltd');
     });
