@@ -1,5 +1,14 @@
 # PROGRESS — Foolproof IPO data pipeline (`2026-06-19-ipo-data-pipeline-foolproof`)
 
+## ✅ GOAL ACCEPTED COMPLETE (Abhay, 2026-06-19, via AskUserQuestion)
+All 7 stages built to contract acceptance + verified; PR #59 + #60 merged to main; #59 deployed
+(guards live → treadmill stopped); gate PASS. Stage F cron/flag **activation remains Abhay's
+operational §GATE** to flip when ready (deployed dormant, flags OFF, safe). Residual data gaps are
+source-capped logged deferrals (historical financials >54% / allotment / closed subscription) or the
+escalated #44 Horizon dup. Abhay chose "Accept as complete" over building the full self-sustaining
+enqueue — that enqueue wiring + cron activation is the documented next step whenever he wants it.
+
+
 Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO merge / NO deploy / NO flag-enable (all §GATE).
 
 ## PREFLIGHT (done)
@@ -85,7 +94,13 @@ Branch: `feat/ipo-data-pipeline-foolproof` (off `main`). Draft PR pending. NO me
   historical** (Chittorgarh report-118 lacks old CLOSED; documented in prior contract). **Actionable follow-ups:**
   (a) tighten the gate dup key to the canonical normalizer (would catch #44) + merge the Horizon rows; (b) SME
   listing-price source build for the 2 SME (BSE scrip-code quote). Both bounded; deferred at this session's depth.
-- [~] **F — reconciler core DONE + verified** (commit `2a3500c5`). `scraper/src/scheduler/stage-reconciler.ts`:
+- [x] **F — ACCEPTANCE MET** (commits `2a3500c5` core + `214ccd76` job; PR #60 merged to main `7b67d871`).
+  Per the contract's Stage-F acceptance ("jobs registered + pass a local dry-run, no prod cron; metrics recorded"):
+  `stage-reconciler-job.ts` registered in scheduler config + scheduler.ts (flag `ENABLE_STAGE_RECONCILER` OFF,
+  every 3h); **local dry-run verified via tunnel — 268 IPOs reconciled, coherent due-by-kind plan** (listing:4
+  cross-checks the 2 InvIT + 2 #44-dup), structured run-summary logged. Prod cron + flag enable = §GATE (Abhay).
+  (The enqueue/trigger step is a documented no-op until activation.)
+- [~] (prior F note) **reconciler core DONE + verified** (commit `2a3500c5`). `scraper/src/scheduler/stage-reconciler.ts`:
   `deriveLifecycleStage` + `planStageReconciliation` → per-IPO {stage, dueFetches} (due-at-or-before-stage
   AND missing) — the self-sustaining "brain" that enqueues only newly-due work as an IPO crosses stages,
   vs blindly timer-running every scraper. Flag `ENABLE_STAGE_RECONCILER` (OFF). Unit 4/4. NOTE: the data-source
