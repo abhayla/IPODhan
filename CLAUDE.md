@@ -69,7 +69,7 @@ IPODhan is an IPO information platform for Indian investors. Tech stack: Next.js
 ```
 IPODhan/
 ├── packages/shared/                  # @ipodhan/shared - used by both web & scraper
-│   └── src/db/schema.ts              # DB schema (25 tables) - SINGLE SOURCE OF TRUTH
+│   └── src/db/schema.ts              # DB schema (24 tables) - SINGLE SOURCE OF TRUTH
 │       (also: repositories, services, utils, errors, types)
 ├── web/                              # Next.js app
 │   ├── app/                          # Pages & API routes
@@ -245,6 +245,6 @@ export async function GET(request: NextRequest) {
 
 ## Claude Code Configuration
 
-The `.claude/` directory contains 123 skills, 24 agents, and 45 rules for Claude Code.
+The `.claude/` directory contains 156 skills, 36 agents, and 63 rules for Claude Code.
 
 <!-- hub:best-practices:end -->
