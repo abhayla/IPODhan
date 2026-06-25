@@ -14,7 +14,7 @@ private: false
 
 ## Schema Single Source of Truth
 
-All database schema lives in `packages/shared/src/db/schema.ts` (25 tables). It is
+All database schema lives in `packages/shared/src/db/schema.ts` (24 tables). It is
 re-exported to the web app via `web/lib/db/index.ts`.
 
 - MUST edit ONLY `packages/shared/src/db/schema.ts` for any schema change
