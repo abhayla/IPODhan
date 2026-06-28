@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -59,6 +60,22 @@ describe('extract_financials_pdf — issue #67 regression (offline pure core)', 
     expect(out.metrics.profit['2022']).toBeCloseTo(-3441, 0);
     expect(out.metrics.eps['2024']).toBeCloseTo(-47, 0);
     expect(out.metrics.netWorth['2024']).toBeCloseTo(5459, 0); // = 545.9 Cr
+  });
+
+  it('Ather financials match the frozen Chittorgarh oracle (₹ million / 10 = ₹ crore)', () => {
+    if (!pythonAvailable) return;
+    const out = runExtractor('ather-rhp-real');
+    const oracle = JSON.parse(
+      readFileSync(path.join(SCRAPER_ROOT, 'tests/integration/oracle/ather-energy.json'), 'utf-8'),
+    );
+    for (const fy of ['2024', '2023', '2022'] as const) {
+      const o = oracle.financialsByFY_Cr[fy];
+      // extractor emits ₹ million; oracle is ₹ crore → divide by 10, tolerance ±1%.
+      expect(out.metrics.totalIncome[fy] / 10).toBeCloseTo(o.totalIncome, 0);
+      expect(out.metrics.profit[fy] / 10).toBeCloseTo(o.pat, 0);
+      expect(out.metrics.netWorth[fy] / 10).toBeCloseTo(o.netWorth, 0);
+    }
+    expect(out.metrics.eps['2024']).toBe(oracle.ratios.epsBasic);
   });
 
   it('loss-maker + "₹ in million": extracts negative profit/EPS, net worth, correct unit', () => {
