@@ -303,10 +303,22 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   },
 
   listing_date: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    // CHITTORGARH added (#70): report-25 is the only working post-close listing-date
+    // source; without it the stuck-listing backfill's listing_date write is dropped
+    // by consolidation on any row that already has a value / on re-run.
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'Expected listing date',
+  },
+
+  // listing_exchange (#70): the stuck-listing backfill sets this from Chittorgarh
+  // "Listing At"; without a matrix entry it survives only via the null-bypass.
+  listing_exchange: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
+    normalization: 'none',
+    confidenceThreshold: 80,
+    description: 'Listing exchange(s) - NSE/BSE/BOTH',
   },
 
   // B7: allotment_date was missing — consolidation silently dropped it (allotment_date ~1%).
@@ -371,7 +383,10 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // ==================== REAL-TIME DATA (Latest wins) ====================
 
   status: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    // CHITTORGARH added (#70): the stuck-listing backfill advances CLOSED->LISTED;
+    // without CHITTORGARH registered, consolidation rejects the LISTED write (source
+    // priority -1) and the IPO stays CLOSED. Lowest priority — only wins when newer.
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
     normalization: 'none',
     timeBased: true,
     ignoreDRHP: true,

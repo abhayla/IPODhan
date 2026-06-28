@@ -94,7 +94,9 @@ async function main() {
   const byMethod: Record<string, number> = {};
   const samples: string[] = [];
 
+  let errors = 0;
   for (const ipo of stuckRows as StuckIpo[]) {
+   try {
     const best = findBestListingMatch(ipo, listingRows);
     if (!best) continue;
     matched++;
@@ -126,6 +128,11 @@ async function main() {
       await lpRepo.upsert(lp);
       written++;
     }
+   } catch (err) {
+     // Per-IPO isolation: one bad row must not strand the rest of the batch.
+     errors++;
+     logger.warn({ company: ipo.companyName, error: err instanceof Error ? err.message : String(err) }, 'backfill row failed (continuing)');
+   }
   }
 
   console.log('\n' + '='.repeat(70));
@@ -139,6 +146,7 @@ async function main() {
   console.log(`Implausible:     ${implausible} (skipped, need review)`);
   console.log(`Unmatched:       ${stuckRows.length - matched}  (residual -> sub-issue / older FYs)`);
   if (!DRY_RUN) console.log(`Written:         ${written}`);
+  console.log(`Row errors:      ${errors} (isolated, batch continued)`);
   console.log('\nSamples:');
   for (const s of samples) console.log('  ' + s);
   console.log('='.repeat(70) + '\n');
