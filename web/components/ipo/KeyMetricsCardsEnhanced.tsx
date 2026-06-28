@@ -5,6 +5,7 @@ import { LineChartBase } from '@/components/ipo/charts';
 import { TrendingUp, TrendingDown, DollarSign, Users, BarChart } from 'lucide-react';
 import { transformSubscriptionData, transformGMPData } from '@/components/ipo/charts';
 import type { SubscriptionDataRaw, GMPRecordRaw } from '@/components/ipo/charts';
+import { formatIssueSizeCrores } from '@/lib/utils';
 
 interface KeyMetricsCardsEnhancedProps {
   issueSize: number;
@@ -119,7 +120,7 @@ export function KeyMetricsCardsEnhanced({
         </CardHeader>
         <CardContent className="relative">
           <div className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent transition-all duration-300">
-            {issueSize > 0 ? `₹${(issueSize / 10000000).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Crores` : 'N/A'}
+            {formatIssueSizeCrores(issueSize)}
           </div>
           <p className="text-xs text-muted-foreground mt-1 font-medium">
             {issueSize > 0 ? 'Total Issue Size' : 'Not available'}
