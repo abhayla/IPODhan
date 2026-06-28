@@ -41,6 +41,26 @@ describe('extract_financials_pdf — issue #67 regression (offline pure core)', 
     pythonAvailable = !probe.error;
   });
 
+  it('REAL Ather RHP P&L page: integer money + 2 interim columns + Note column + garble → oracle match', () => {
+    if (!pythonAvailable) return;
+    // Captured verbatim from Ather's RHP page 369 (loss-maker, mainboard, "in
+    // millions", 9-month interim columns, a Note-No. column, and pdfplumber
+    // token garble). Values are cross-checked against the Chittorgarh oracle
+    // (₹ crore = millions / 10): Total income 1789.1/1801.8/413.8, PAT
+    // -1059.7/-864.5/-344.1, EPS -47, Net worth 545.9/613.7/224.9.
+    const out = runExtractor('ather-rhp-real');
+    expect(out.unit).toBe('millions');
+    expect(out.annualYears).toEqual([2024, 2023, 2022]);
+    expect(out.lowConfidence).toBe(false);
+    expect(out.metrics.revenue['2024']).toBeCloseTo(17538, 0);
+    expect(out.metrics.totalIncome['2024']).toBeCloseTo(17891, 0); // = 1789.1 Cr
+    expect(out.metrics.totalIncome['2022']).toBeCloseTo(4138, 0);
+    expect(out.metrics.profit['2024']).toBeCloseTo(-10597, 0); // = -1059.7 Cr
+    expect(out.metrics.profit['2022']).toBeCloseTo(-3441, 0);
+    expect(out.metrics.eps['2024']).toBeCloseTo(-47, 0);
+    expect(out.metrics.netWorth['2024']).toBeCloseTo(5459, 0); // = 545.9 Cr
+  });
+
   it('loss-maker + "₹ in million": extracts negative profit/EPS, net worth, correct unit', () => {
     if (!pythonAvailable) return; // python sidecar is a runtime dep; skip if absent
     const out = runExtractor('loss-maker-million');
