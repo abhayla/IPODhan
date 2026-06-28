@@ -1,0 +1,21 @@
+{
+  "_meta": {
+    "slug": "aastha-spintex-ltd",
+    "segment": "MAINBOARD",
+    "exchange": null,
+    "status": "UPCOMING",
+    "oracleSource": "Chittorgarh (cg 2678) via WebSearch 2026-06-28",
+    "dbDiff": "price/lot/issueCr PASS (UPCOMING — listing pending)"
+  },
+  "priceBand": [
+    125,
+    136
+  ],
+  "lot": 110,
+  "issueCr": 170,
+  "shares": 12500000,
+  "faceValue": 10,
+  "open": "2026-06-29",
+  "close": "2026-07-01",
+  "listing": "2026-07-06"
+}

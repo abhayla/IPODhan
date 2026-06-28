@@ -1,0 +1,9 @@
+{
+  "_meta": { "slug": "hexagon-nutrition-ltd", "segment": "MAINBOARD", "status": "LISTED",
+    "oracleSource": "Chittorgarh (cg id 2658) via WebSearch 2026-06-28", "diff": "DB value-match" },
+  "offerStructure": { "issuePrice": 45, "lotSize": 333, "issueSizeCr": 138.87, "issueShares": 30859704,
+    "reservation": { "qibPct": 50, "niiPct": 15, "riiPct": 35 } },
+  "dates": { "open": "2026-06-04", "close": "2026-06-09", "listing": "2026-06-12" },
+  "registrar": "KFin Technologies", "subscriptionX": 37.58,
+  "_dbDiff": { "issuePrice": "PASS", "lotSize": "PASS", "issueSize": "PASS", "listing": "PASS", "registrar": "PASS", "subscription": "GAP (DB 0 rows; oracle 37.58x)" }
+}

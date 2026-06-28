@@ -1,0 +1,21 @@
+{
+  "_meta": {
+    "slug": "ather-energy",
+    "company": "Ather Energy Limited",
+    "segment": "MAINBOARD", "status": "LISTED", "type": "loss-maker",
+    "oracleSources": { "chittorgarh": "captured 2026-06 (cg_ather.html)", "moneycontrol": "PENDING — single-source (CG) for now per contract decision 2" },
+    "financialsUnit": "₹ Crore (CG); RHP reports ₹ million → divide by 10",
+    "rhpDoc": "Ather RHP (586pp), Restated Statement of Profit and Loss, page 369"
+  },
+  "offerStructure": {
+    "priceBand": { "min": 304, "max": 321 }, "issuePrice": 321, "faceValue": 1,
+    "lotSize": 46, "issueType": "Bookbuilding IPO", "saleType": "Fresh + OFS",
+    "freshIssueShares": 81816199, "freshIssueApproxCr": 2626, "ofsShares": 11051746
+  },
+  "financialsByFY_Cr": {
+    "2024": { "totalIncome": 1789.10, "pat": -1059.70, "netWorth": 545.90 },
+    "2023": { "totalIncome": 1801.80, "pat": -864.50, "netWorth": 613.70 },
+    "2022": { "totalIncome": 413.80, "pat": -344.10, "netWorth": 224.90 }
+  },
+  "ratios": { "epsBasic": -47, "ronwPct": -194 }
+}

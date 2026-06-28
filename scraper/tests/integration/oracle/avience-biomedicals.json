@@ -1,0 +1,18 @@
+{
+  "_meta": {
+    "slug": "avience-biomedicals-ltd",
+    "segment": "SME",
+    "exchange": "NSE SME",
+    "status": "LISTED",
+    "oracleSource": "Chittorgarh (cg 2184) via WebSearch 2026-06-28",
+    "dbDiff": "price/lot/issueCr/listing PASS"
+  },
+  "issuePrice": 208,
+  "lot": 600,
+  "issueCr": 30,
+  "shares": 1453800,
+  "open": "2026-06-18",
+  "close": "2026-06-22",
+  "listing": "2026-06-25",
+  "subX": 385.32
+}

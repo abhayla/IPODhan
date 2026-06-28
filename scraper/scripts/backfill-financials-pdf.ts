@@ -68,7 +68,11 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 5): Promise<T> {
 function runSidecar(url: string): any | null {
   const res = spawnSync('python', ['scripts/extract_financials_pdf.py', url], {
     encoding: 'utf8',
-    timeout: 120000,
+    // Mainboard RHPs run 500+ pages; pdfplumber parses Ather's 586-page RHP in
+    // ~4 min. The old 120s cap killed every large prospectus mid-parse (the perf
+    // sibling of #67 — non-empty extraction is worthless if the process is
+    // reaped first). 6 min covers the realistic worst case for a backfill run.
+    timeout: 360000,
     maxBuffer: 32 * 1024 * 1024,
     env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
   });
