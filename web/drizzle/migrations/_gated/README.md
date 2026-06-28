@@ -12,6 +12,13 @@ up. Apply them manually, in order, only after sign-off:
 2. `B4_gmp_unique_dedup.sql` — dedup then add `UNIQUE(ipo_id, timestamp, source)`.
 3. `B2_gmp_int_to_numeric.sql` — widen `gmp`/`expected_listing_price`/`subject_rate`/`kostak_rate` int → numeric(10,2).
 
+Additive (non-destructive) DDL, parked here only because db:generate is blocked:
+
+4. `C1_listing_ohlc_add_columns.sql` — **ADDITIVE / SAFE**: add nullable
+   `listing_open_price` / `listing_high_price` / `listing_low_price` /
+   `listing_close_price` / `last_traded_price` (numeric(10,2)) to `listing_performance`.
+   No data/type change. Independent of B2–B4. Owner sign-off for prod apply.
+
 Apply each via the tunnel (`localhost:15432`) with a read-back after. Note: the drizzle
 journal is currently out of sync (pre-existing `extraction_status` enum drift blocks a
 clean `db:generate`), so these are hand-authored rather than generated — record the

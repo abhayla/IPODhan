@@ -544,6 +544,14 @@ export const listingPerformance = pgTable('listing_performance', {
     precision: 5,
     scale: 2,
   }),
+  // Listing-day OHLC trading information — captured from the exchange on listing day.
+  // numeric (not integer) so paise are preserved (₹/financial-column-precision rule);
+  // the legacy listingPrice/issuePrice/currentPrice integer columns above are pre-existing.
+  listingOpenPrice: numeric('listing_open_price', { precision: 10, scale: 2 }),
+  listingHighPrice: numeric('listing_high_price', { precision: 10, scale: 2 }),
+  listingLowPrice: numeric('listing_low_price', { precision: 10, scale: 2 }),
+  listingClosePrice: numeric('listing_close_price', { precision: 10, scale: 2 }),
+  lastTradedPrice: numeric('last_traded_price', { precision: 10, scale: 2 }),
   dataSource: dataSourceEnum('data_source').default('MANUAL'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
