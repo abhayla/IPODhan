@@ -299,3 +299,7 @@ scraper/manual-listing-entries.csv
 
 # Session checkpoints (local working state)
 .claude/sessions/
+
+# Autonomous-run isolation artifacts
+.run-active.lock
+docs/contracts/.run/
