@@ -92,6 +92,13 @@ interface PageProps {
  * not HTTP API calls. This follows the 3-layer architecture:
  * Server Component → Repository (not Server Component → HTTP → API → Repository)
  */
+/** Coerce a numeric DB column (string | number | null) to a number, or null. */
+function toNum(v: string | number | null | undefined): number | null {
+  if (v === null || v === undefined) return null;
+  const n = typeof v === 'string' ? parseFloat(v) : v;
+  return Number.isFinite(n) ? n : null;
+}
+
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { slug } = await params;
 
@@ -485,6 +492,11 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                   listingGainPercent={typeof listingPerformance.listingGainPercent === 'string'
                     ? parseFloat(listingPerformance.listingGainPercent)
                     : listingPerformance.listingGainPercent}
+                  listingOpenPrice={toNum(listingPerformance.listingOpenPrice)}
+                  listingHighPrice={toNum(listingPerformance.listingHighPrice)}
+                  listingLowPrice={toNum(listingPerformance.listingLowPrice)}
+                  listingClosePrice={toNum(listingPerformance.listingClosePrice)}
+                  lastTradedPrice={toNum(listingPerformance.lastTradedPrice)}
                 />
               </>
             )}

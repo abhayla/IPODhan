@@ -23,6 +23,12 @@ interface ListingDetailsSectionProps {
   listingPrice: number | null;
   listingGainPercent: number | null;
   listingGainAmount?: number | null;
+  // Listing-day OHLC trading information (optional — only present once captured).
+  listingOpenPrice?: number | null;
+  listingHighPrice?: number | null;
+  listingLowPrice?: number | null;
+  listingClosePrice?: number | null;
+  lastTradedPrice?: number | null;
 }
 
 /**
@@ -65,8 +71,23 @@ export function ListingDetailsSection({
   issuePrice,
   listingPrice,
   listingGainPercent,
-  listingGainAmount
+  listingGainAmount,
+  listingOpenPrice,
+  listingHighPrice,
+  listingLowPrice,
+  listingClosePrice,
+  lastTradedPrice
 }: ListingDetailsSectionProps) {
+  const ohlc = [
+    { label: 'Open', value: listingOpenPrice },
+    { label: 'High', value: listingHighPrice },
+    { label: 'Low', value: listingLowPrice },
+    { label: 'Close', value: listingClosePrice },
+    { label: 'Last Traded', value: lastTradedPrice },
+  ].filter((r) => r.value !== undefined && r.value !== null) as {
+    label: string;
+    value: number;
+  }[];
   // Don't render if no listing data available
   if (!listingDate && !listingPrice) {
     return null;
@@ -147,6 +168,26 @@ export function ListingDetailsSection({
             </div>
           )}
         </div>
+
+        {/* Listing-Day OHLC Trading Information */}
+        {ohlc.length > 0 && (
+          <div className="mt-6">
+            <p className="text-sm font-semibold text-muted-foreground mb-3">
+              Listing-Day Trading (OHLC)
+            </p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
+              {ohlc.map((row) => (
+                <div
+                  key={row.label}
+                  className="space-y-1 rounded-lg border bg-muted/30 p-3"
+                >
+                  <p className="text-xs text-muted-foreground">{row.label}</p>
+                  <p className="text-lg font-bold">{formatCurrency(row.value)}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Info Banner */}
         {listingGainPercent !== null && (
