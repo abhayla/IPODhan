@@ -88,6 +88,12 @@ export const insertListingPerformanceSchema = createInsertSchema(
     listingPrice: z.number().int().positive(),
     issuePrice: z.number().int().positive(),
     currentPrice: z.number().int().positive().optional().nullable(),
+    // Listing-day OHLC — numeric columns (string-typed by drizzle), coerce + allow null until populated.
+    listingOpenPrice: z.coerce.number().positive().optional().nullable(),
+    listingHighPrice: z.coerce.number().positive().optional().nullable(),
+    listingLowPrice: z.coerce.number().positive().optional().nullable(),
+    listingClosePrice: z.coerce.number().positive().optional().nullable(),
+    lastTradedPrice: z.coerce.number().positive().optional().nullable(),
   }
 );
 
