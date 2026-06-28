@@ -245,6 +245,6 @@ export async function GET(request: NextRequest) {
 
 ## Claude Code Configuration
 
-The `.claude/` directory contains 156 skills, 36 agents, and 63 rules for Claude Code.
+The `.claude/` directory contains 157 skills, 37 agents, and 67 rules for Claude Code.
 
 <!-- hub:best-practices:end -->
