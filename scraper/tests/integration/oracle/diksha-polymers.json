@@ -1,0 +1,17 @@
+{
+  "_meta": {
+    "slug": "diksha-polymers-ltd",
+    "segment": "SME",
+    "exchange": "BSE SME",
+    "status": "LISTED",
+    "oracleSource": "Chittorgarh (cg 2568) via WebSearch 2026-06-28",
+    "dbDiff": "price/lot/issueCr/listing PASS"
+  },
+  "issuePrice": 112,
+  "lot": 1200,
+  "issueCr": 17.9,
+  "shares": 1598400,
+  "open": "2026-06-17",
+  "close": "2026-06-19",
+  "listing": "2026-06-24"
+}

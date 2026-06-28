@@ -1,0 +1,16 @@
+{
+  "_meta": {
+    "slug": "clay-craft-india-ltd",
+    "segment": "SME",
+    "exchange": "NSE SME",
+    "status": "LISTED",
+    "oracleSource": "Chittorgarh (cg 2585) via WebSearch 2026-06-28",
+    "dbDiff": "price/lot/listing PASS; issueCr DB 110.11 vs oracle 104.58 (~5%) — RECONCILE (gross-at-upper vs net?)"
+  },
+  "anchorPrice": 203,
+  "lot": 600,
+  "issueCr": 104.58,
+  "shares": 5424000,
+  "listing": "2026-06-24",
+  "subX": 103.06
+}

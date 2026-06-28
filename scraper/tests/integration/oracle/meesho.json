@@ -1,0 +1,11 @@
+{
+  "_meta": { "slug": "meesho-ltd", "segment": "MAINBOARD", "status": "LISTED (oracle) / CLOSED (DB-stale)",
+    "oracleSource": "Chittorgarh (cg id 2516) via WebSearch 2026-06-28", "diff": "DB value-match — found 2 bugs" },
+  "offerStructure": { "priceBand": { "min": 105, "max": 111 }, "issuePrice": 111, "lotSize": 135,
+    "issueSizeCr": 5421.20, "issueShares": 488396721, "reservation": { "qibPct": 75, "niiPct": 15, "riiPct": 10 } },
+  "dates": { "open": "2025-12-03", "close": "2025-12-05", "allotment": "2025-12-08", "listing": "2025-12-10" },
+  "_dbDiff": { "issuePrice": "PASS (111)", "lotSize": "PASS (135)",
+    "issueSize": "MISMATCH — DB ₹3085.12Cr vs oracle ₹5421.20Cr (~43% low) → ISSUE#70 (stale record)",
+    "status": "MISMATCH — DB CLOSED vs oracle LISTED → ISSUE#70",
+    "listing": "MISMATCH — DB null vs oracle 2025-12-10 → ISSUE#70" }
+}
