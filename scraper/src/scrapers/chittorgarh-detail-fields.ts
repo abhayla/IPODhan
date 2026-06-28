@@ -441,3 +441,37 @@ export function extractCompanyDescriptionFromDetailHtml(html: string): string | 
   if (text.length < MIN_DESC || text.length > MAX_DESC) return null; // implausible
   return text;
 }
+
+/**
+ * Extract the ISIN from a Chittorgarh detail page (#71 historical ingestion).
+ * Rendered as: <a href="/glossary/isin/...">ISIN</a></span></td><td ...>INE0LEZ01016</td>.
+ * ISIN format: 2 letters + 9 alphanumerics + 1 check digit (12 chars). Returns
+ * null when absent/malformed.
+ */
+export function extractIsinFromDetailHtml(html: string): string | null {
+  if (!html) return null;
+  const m = html.match(/ISIN<\/a>[\s\S]{0,160}?\b([A-Z]{2}[0-9A-Z]{9}[0-9])\b/i);
+  if (!m) return null;
+  const isin = m[1].toUpperCase();
+  return /^[A-Z]{2}[0-9A-Z]{9}[0-9]$/.test(isin) ? isin : null;
+}
+
+/** Plausible issue-size bounds in crore (#71): ₹1 Cr .. ₹5,00,000 Cr. */
+const MIN_ISSUE_CR = 1;
+const MAX_ISSUE_CR = 500000;
+
+/**
+ * Extract the total issue size (in RUPEES) from a Chittorgarh detail page
+ * (#71). Rendered as: "book build issue </a></span> of ₹2,980.76 cr". Returns
+ * rupees (crore × 1e7) to match the issue_size storage convention, or null when
+ * absent/implausible.
+ */
+export function extractIssueSizeRupeesFromDetailHtml(html: string): number | null {
+  if (!html) return null;
+  const m = html.match(/issue\s*<\/a>\s*<\/span>\s*of\s*₹\s*([0-9,]+(?:\.[0-9]+)?)\s*cr/i)
+    ?? html.match(/of\s*₹\s*([0-9,]+(?:\.[0-9]+)?)\s*cr/i);
+  if (!m) return null;
+  const cr = parseFloat(m[1].replace(/,/g, ''));
+  if (!Number.isFinite(cr) || cr < MIN_ISSUE_CR || cr > MAX_ISSUE_CR) return null;
+  return Math.round(cr * 10000000); // crore -> rupees
+}
