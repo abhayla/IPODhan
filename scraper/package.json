@@ -24,6 +24,8 @@
     "update:listing-performance": "tsx src/scrapers/listing-performance-updater.ts",
     "backfill:stuck-listing": "tsx src/scripts/backfill-stuck-listing.ts",
     "backfill:stuck-listing:execute": "tsx src/scripts/backfill-stuck-listing.ts --execute",
+    "backfill:description": "tsx src/scripts/backfill-description-sector.ts",
+    "backfill:description:execute": "tsx src/scripts/backfill-description-sector.ts --execute",
     "build": "tsc && tsc-alias",
     "test": "vitest",
     "test:unit": "vitest --config vitest.config.ts",

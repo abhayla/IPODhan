@@ -264,6 +264,28 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'Offer for sale size',
   },
 
+  // ==================== DESCRIPTIVE FIELDS (#69) ====================
+  // Both were 0/285: no matrix entry meant consolidation silently dropped them.
+  // sector: NSE reads it (nse-api-client.ts:502) but it never reached the DB
+  //   without a matrix entry; carried through now (data-persister maps it).
+  //   Fixing sector also feeds peer-companies-scraper (sector -> peers cascade).
+  // company_description: DRHP "Our Business" or Chittorgarh "About" (id=ipoSummary).
+  sector: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
+    normalization: 'none',
+    confidenceThreshold: 80,
+    description: 'Industry sector - NSE/exchange classification; feeds peer discovery',
+    validation: { regex: '^.{2,100}$' },
+  },
+
+  company_description: {
+    sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE'],
+    normalization: 'none',
+    confidenceThreshold: 75,
+    description: 'Company business description - DRHP "Our Business" / Chittorgarh "About"',
+    validation: { regex: '^.{20,5000}$' },
+  },
+
   price_band_min: {
     sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
     normalization: 'number',

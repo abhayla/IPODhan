@@ -406,3 +406,38 @@ export function extractObjectivesFromDetailHtml(html: string): ExtractedObjectiv
   }
   return objectives;
 }
+
+/** Plausible company-description length bounds (#69). */
+const MIN_DESC = 20;
+const MAX_DESC = 5000;
+
+/**
+ * Extract the company business description ("About <Company>") from a Chittorgarh
+ * detail page (#69 — company_description is 0/285). Chittorgarh renders it as:
+ *   <div id="ipoSummary" class="...collapse "><p>Incorporated in 2019, ...</p>...</div>
+ *
+ * Pure (html -> value), with an output-plausibility gate: returns null when the
+ * block is absent or the text is implausibly short/long. HTML tags are stripped
+ * and entities decoded so the stored value is clean prose (never markup).
+ */
+export function extractCompanyDescriptionFromDetailHtml(html: string): string | null {
+  if (!html) return null;
+
+  const m = html.match(/<div[^>]*id="ipoSummary"[^>]*>([\s\S]*?)<\/div>/i);
+  if (!m) return null;
+
+  const text = m[1]
+    .replace(/<\/(p|li|br)\s*>/gi, ' ') // keep word spacing across block tags
+    .replace(/<[^>]+>/g, ' ') // strip remaining tags
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;|&rsquo;|&apos;/g, "'")
+    .replace(/&quot;|&ldquo;|&rdquo;/g, '"')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (text.length < MIN_DESC || text.length > MAX_DESC) return null; // implausible
+  return text;
+}
