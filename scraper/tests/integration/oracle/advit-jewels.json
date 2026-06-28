@@ -1,0 +1,20 @@
+{
+  "_meta": {
+    "slug": "advit-jewels-ltd",
+    "segment": "MAINBOARD",
+    "exchange": null,
+    "status": "CLOSED",
+    "oracleSource": "Chittorgarh (cg 2686) via WebSearch 2026-06-28",
+    "dbDiff": "price/lot/issueCr/listing PASS"
+  },
+  "priceBand": [
+    130,
+    138
+  ],
+  "lot": 100,
+  "issueCr": 165.16,
+  "shares": 11968000,
+  "open": "2026-06-23",
+  "close": "2026-06-25",
+  "listing": "2026-07-01"
+}

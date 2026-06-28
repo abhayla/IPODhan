@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "slug": "csm-technologies-ltd",
+    "segment": "MAINBOARD",
+    "exchange": null,
+    "status": "OPEN",
+    "oracleSource": "Chittorgarh (cg 2641) via WebSearch 2026-06-28",
+    "dbDiff": "price/lot/issueCr/listing PASS"
+  },
+  "priceBand": [
+    107,
+    113
+  ],
+  "lot": 132,
+  "issueCr": 145.78,
+  "open": "2026-06-24",
+  "close": "2026-06-29",
+  "listing": "2026-07-02"
+}
