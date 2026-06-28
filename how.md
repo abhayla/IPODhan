@@ -184,7 +184,19 @@ through UPCOMING → OPEN → CLOSED → LISTED.
 - *Where:* `scraper/src/scheduler/config.ts` (the tier tables, `timezone: 'Asia/Kolkata'`);
   PM2 `cron_restart` in `ecosystem.config.js`.
 
-### Step 13 — The website reads the data directly (no internal HTTP hop)
+### Step 13 — Keep the data store lean (prune transient logs)
+
+Every full scrape run records operational rows in `scraper_logs`. Left unbounded these **dwarf
+the actual IPO data** (they were ~87% of the database at 323 IPOs — ~115 MB of 132 MB) and have
+previously filled the VPS disk. So after each `--source=all` run the scraper **prunes
+`scraper_logs` older than 30 days** as a best-effort, non-fatal step — it keeps the database
+lean and is the single biggest lever on DB size. The retention window is configurable, and the
+prune never fails the scrape (it is wrapped so an error only logs `(non-fatal)` and continues).
+
+- *Where:* `scraper/src/index.ts` (`pruneScraperLogs()`, `SCRAPER_LOG_RETENTION_DAYS = 30`,
+  runs post-run after `--source=all`); follows the `non-fatal-side-effects` convention.
+
+### Step 14 — The website reads the data directly (no internal HTTP hop)
 
 The Next.js app's pages and services read from the database **directly through repositories** —
 they never call the site's own API over HTTP. Each repository extends a base class that wraps
@@ -196,7 +208,7 @@ serves from the database.
   `web/lib/repositories/*` extending `BaseRepository.getFromCache`;
   `web/lib/cache/redis-client.ts`.
 
-### Step 14 — Caching keys and freshness are kept in lock-step
+### Step 15 — Caching keys and freshness are kept in lock-step
 
 Cache keys follow one shape (`{entity}:{operation}:{id}`) defined in one place, with TTLs
 (e.g. listings 5 min, detail 15 min, GMP 10 min). Crucially, each page's **ISR revalidation
@@ -206,7 +218,7 @@ than its cache.
 - *Where:* `web/lib/cache/cache-keys.ts` (`CacheTTL`, key generators);
   `export const revalidate = …` in the page files (e.g. `web/app/page.tsx`).
 
-### Step 15 — Render the page: listings and the IPO detail view
+### Step 16 — Render the page: listings and the IPO detail view
 
 The home and listing pages (mainboard, SME, NCD, OFS, rights, history) show the IPO tables. The
 detail page (`/ipos/[slug]`) fetches the IPO with its relations, guards out non-IPO offerings,
@@ -216,7 +228,7 @@ rendered for speed and SEO.
 - *Where:* `web/app/page.tsx`, `web/app/mainboard-ipos/page.tsx`, … ,
   `web/app/ipos/[slug]/page.tsx`.
 
-### Step 16 — Format every number and date for an Indian audience
+### Step 17 — Format every number and date for an Indian audience
 
 All user-facing values go through shared formatters: money/ratios via the KPI formatters
 (₹, "Cr", "x", "%", `N/A` for missing), and dates via the date formatter (DD MMM YYYY in **IST**,
@@ -225,7 +237,7 @@ by hand — so display stays consistent.
 
 - *Where:* `web/lib/utils/kpi-formatters.ts`; `web/lib/utils/date-formatter.ts`.
 
-### Step 17 — Make it discoverable (SEO + structured data)
+### Step 18 — Make it discoverable (SEO + structured data)
 
 Every page's metadata is built from typed factories, and each IPO emits JSON-LD
 `FinancialProduct` structured data (price, availability mapped from status, valid dates) plus
@@ -235,7 +247,7 @@ lead-generation goal.
 - *Where:* `web/lib/seo/metadata.ts` (metadata factories);
   `web/lib/seo/structured-data.ts` (`generateFinancialProductSchema`, breadcrumb/list schemas).
 
-### Step 18 — Serve admin and API surfaces safely
+### Step 19 — Serve admin and API surfaces safely
 
 Public API routes return a uniform `{ success, data }` envelope and never leak internals; admin
 routes are wrapped with auth that fails closed and attributes every manual edit to the admin who
@@ -265,6 +277,7 @@ end-to-end debugging.
 
                     PHASE C — keep fresh & serve
   scheduler re-scrapes on IST market-hours tiers ──> data stays current
+        └─> prune scraper_logs > 30 days (non-fatal) ──> DB stays lean
   user visits ──> page ──> service ──> repository ──> Redis (2s, fail-open) ──> Postgres
         └─> format (₹/Cr/x/%, IST dates) + SEO/JSON-LD ──> rendered IPO page
 ```
