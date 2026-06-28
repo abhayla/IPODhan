@@ -4,10 +4,9 @@ name: Test Suite
 # Automated CI/CD pipeline for running all tests
 
 on:
-  push:
-    branches: [main, develop, feature/**]
-  pull_request:
-    branches: [main, develop]
+  # Manual-only by choice (see ci.yml note): run the full test suite from the
+  # Actions tab when wanted, not automatically on every push / PR / merge.
+  workflow_dispatch:
 
 env:
   NODE_VERSION: '20'

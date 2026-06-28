@@ -6,14 +6,15 @@ name: Production Verification
 # hydration errors). Run on demand or on a schedule.
 
 on:
+  # Manual-only by choice: the daily schedule was removed so it no longer consumes
+  # GitHub-hosted Actions minutes automatically. Run it from the Actions tab after a
+  # deploy (or whenever you want to sweep the live site).
   workflow_dispatch:
     inputs:
       base_url:
         description: 'Target base URL'
         required: false
         default: 'https://ipodhan.com'
-  schedule:
-    - cron: '30 2 * * *' # daily 02:30 UTC
 
 concurrency:
   group: prod-verify
