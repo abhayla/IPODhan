@@ -285,6 +285,17 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'Company business description - DRHP "Our Business" / Chittorgarh "About"',
     validation: { regex: '^.{20,5000}$' },
   },
+  // camelCase variant - consolidation service keys on this (data-persister writes
+  // `companyDescription`). Without it, getFieldRules('companyDescription') falls
+  // through to DEFAULT rules (NSE outranks DRHP, validation skipped). Mirrors the
+  // lotSize/allotmentDate dual-key pattern. DRHP-first priority is the intent.
+  companyDescription: {
+    sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE'],
+    normalization: 'none',
+    confidenceThreshold: 75,
+    description: 'Company business description (camelCase consolidation key)',
+    validation: { regex: '^.{20,5000}$' },
+  },
 
   price_band_min: {
     sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
@@ -334,13 +345,15 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'Expected listing date',
   },
 
-  // listing_exchange (#70): the stuck-listing backfill sets this from Chittorgarh
-  // "Listing At"; without a matrix entry it survives only via the null-bypass.
-  listing_exchange: {
+  // camelCase variant - consolidation keys on `listingDate` (data-persister
+  // writes it). Without this twin, getFieldRules('listingDate') falls through to
+  // DEFAULT rules and the CHITTORGARH registration above is never applied to the
+  // #70 stuck-listing backfill. Mirrors the lotSize/allotmentDate dual-key pattern.
+  listingDate: {
     sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
-    normalization: 'none',
-    confidenceThreshold: 80,
-    description: 'Listing exchange(s) - NSE/BSE/BOTH',
+    normalization: 'date',
+    confidenceThreshold: 95,
+    description: 'Listing date (camelCase consolidation key) - CHITTORGARH for #70 backfill',
   },
 
   // B7: allotment_date was missing — consolidation silently dropped it (allotment_date ~1%).
