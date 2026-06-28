@@ -1,158 +1,89 @@
-# Contract template (house format)
+# Contract template (fill, then save to `docs/contracts/YYYY-MM-DD-<slug>.md`)
 
-Fill every `<…>` placeholder with a resolved decision. Delete sections that genuinely
-don't apply (e.g. a pure process/loop contract has no "design decisions" stage), but
-never leave an open question. The two live references this skeleton is distilled from:
-
-- `docs/goals/2026-06-15-bse-ipo-enrichment.md` — a rebuild/enrich contract
-- `docs/goals/2026-06-14-gmp-coverage-revival.md` — a fix/migration contract
-
-Match their density. Long is correct — length buys an unattended run that does the right thing.
+Replace every `<…>` placeholder with a concrete, pre-made decision. The STEP 4.5
+gate greps for leftover `<…>` / `decide whether` / `PASTE` — none may survive.
+Paste the §0.1/§0.2/§0.3 blocks and the verification pointer block from
+`baked-in-rules.md` where marked.
 
 ---
 
 ```markdown
-# GOAL — <one-line title of what this run achieves>
+# Contract: <mission in 5-8 words>
 
-**Type:** Autonomous <build | propagation | fix-loop | migration | audit> contract
-(run via `/goal`). Execute end-to-end with **zero user input**. Every design decision is
-pre-made below — do not pause to ask; make the call the contract specifies and keep going
-until the Definition of Done is fully met.
+**Executor:** /goal (built-in autonomous run)   ·   **Created:** <YYYY-MM-DD>
+**Mission:** <one paragraph: the objective + what "done" looks like>
 
-**Owner:** Abhay · **Created:** <YYYY-MM-DD> · **Scope:** `<app tree / dir>` ONLY
-**Invocation:** `/goal docs/goals/<YYYY-MM-DD-slug>.md`
+## §0.1 Worktree isolation
+<PASTE the §0.1 block from baked-in-rules.md — adapt <repo>/<slug>/<feature-branch>>
 
----
+## §0.2 Idempotency preflight
+<PASTE the §0.2 block — name this project's coverage/gap ledger doc explicitly>
 
-## 0. Mission
+## §0.3 Progress log
+<PASTE the §0.3 block — progress path docs/contracts/.run/<slug>-PROGRESS.md>
 
-<One tight paragraph: the objective and what "done" looks like. State whether this is a
-fresh build vs a propagation/refactor vs a fix loop, and the one non-negotiable outcome.>
+## Scope boundary
+- **In scope:** <dirs/files this run may touch>
+- **Out of scope:** <dirs/files it must NOT touch; boundary contracts that apply>
+- **Goal type:** <fresh build | propagation/refactor | bug-fix loop | migration | audit>
 
----
+## Context to read first
+- `<path>` — <why; any gotcha (e.g. a CWD trap, a generated file not to edit)>
+- `<path>` — <why>
 
-## 0.2 PREFLIGHT — read the coverage ledger FIRST (idempotency · NO duplication)
+## Pre-made design decisions (the run must NOT pause on these)
+1. <decision> — <chosen value + one-line why>
+2. <decision> — <chosen value + one-line why>
+(Each is a DECISION, not a menu. This is the bulk of a build contract.)
 
-← PASTE the "§0.2 Preflight" block from `references/baked-in-rules.md` HERE, naming this
-project's actual coverage/gap ledger doc. This is the run's FIRST action, before any stage.
-It makes the contract safe to run while a parallel session implements part of it: read the
-ledger + code + `git log`, SKIP anything already done (verify-only), build only the delta,
-and report skips. (Omit only for a true greenfield goal with no prior/parallel work.)
+## Stages
+### Stage A: <title>
+- **Do:** <concrete steps with real paths/commands>
+- **Acceptance:** <observable signal this stage is done — ACTION + COMPLETENESS BAR>
+### Stage B: <title>
+- **Do:** <…>
+- **Acceptance:** <…>
 
----
+## Verification gates
+<PASTE the verification pointer block from baked-in-rules.md — adapt:
+ - the static-gate commands for each tree the change touches
+ - the persistence-verification signal (API read-back / storage round-trip / file re-read)
+ - the screens/routes/consumers named for the cross-page sweep>
 
-## 1. Context you need (read first)
+## Failure-recovery budget
+<PASTE the failure-budget block from baked-in-rules.md — tune the numbers>
 
-<The exact files / components / stores / composables the run must study, with import
-paths. Include any gotchas — e.g. the CWD (root vs `web/` vs `scraper/`), the `localhost:15432`
-tunnel, the scraper write-path. Use a table for thing → path → why when there are many.>
+## Commit + push policy
+- **Granularity:** <one commit per stage | per logical change>
+- **Message format:** Conventional Commits (`core/.claude/rules/git-collaboration.md`)
+- **Branch / push target:** <feature-branch> → <main? PR?> (per the project's git authority)
+- **Do NOT stage:** <unrelated untracked items the working tree may carry>
 
-| Thing | Path / import | Why it matters |
-|---|---|---|
-| <…> | <…> | <…> |
-
-**Gotchas:** <CWD, persistence key shape, ports, anything that silently misfires.>
-
----
-
-## 2. STAGE <A> — <name>
-
-**File(s):** `<path>` (<create | rewrite | edit>). **Keep untouched:** `<files the run
-must NOT touch>`.
-
-### Pre-made design decisions (do NOT deviate)
-
-1. <Decision, stated as a fact — not a menu. Repeat for every fork: layout, data source,
-   props, colors, copy, empty-state, edit/add flow, etc.>
-2. <…>
-
-### <Stage> acceptance (run the §<N> gate sweep before committing this stage)
-- <Concrete, checkable acceptance criteria.>
-- **Stage gate sweep:** static → G-PERSIST (if DB writes) → G-UI (if UI) → G-INDEPENDENT
-  (always). All green or DEFERRED-with-reason before the stage's commit.
-
-<Repeat STAGE B, C, … as needed.>
-
----
-
-## <N>. Verification gates  ← PASTE references/baked-in-rules.md HERE, adapted to the workspace
-
-<Insert the standing-rules block. Adapt only the mechanics to the target workspace:
-- static-gate commands + the CWD they run from (root / `web/` / `scraper/` / `packages/shared/`);
-- G-PERSIST = DB read-back via `node`+`pg` to the `localhost:15432` tunnel;
-- G-UI = Playwright MCP against port 3000.
-Keep the mandate intact — do not soften G-UI / G-PERSIST / G-INDEPENDENT.>
-
----
-
-## <N+1>. Commit + push
-
-<Number of commits and their boundaries. Conventional-commit messages (the right scope
-prefix — e.g. `feat(scraper): …` / `fix(web): …`). What to stage (NEVER `git add -A` — name
-the files; a stray `gmp-staleness-header.png` exists). Feature branch + DRAFT PR; never merge
-to main or deploy (GATED). Co-author trailer.>
-
----
-
-## <N+2>. Definition of Done (all MUST be true)
-
-**Build / change:**
+## Definition of Done (DoD verbs are load-bearing — ACTION + COMPLETENESS BAR)
+- [ ] <verb + completeness bar — e.g. "compute and display X on the default view; rendered value matches the API within 1%">
 - [ ] <…>
+- [ ] All baked-in verification gates passed (or each skip recorded with reason)
+- [ ] Final report written (below)
+- [ ] Run-end SUMMARY (DONE / PENDING / BLOCKED / NEXT) in PROGRESS.md + final report
 
-**Static gates:**
-- [ ] type-check 0 errors · unit tests no regression · build succeeds <+ bundle budget if any>.
+## Guardrails (hard stops)
+- No new dependencies without <explicit allowance>.
+- No design reinvention — use the named existing components/patterns.
+- No synthetic/fake data; surface uncertainty as `**Assumption:** X`.
+- <project-specific boundary, e.g. never write outside the in-scope dirs>
 
-**G-UI (per UI screen, if any):**
-- [ ] Playwright MCP: screenshot + ARIA snapshot + console_messages pass; intended value visible; zero NEW console errors.
+## Final report (what the closing report must contain)
+- What shipped, per stage, with commit SHAs.
+- Skipped (already covered) list from the §0.2 preflight.
+- LEARNINGS TO FOLD BACK (PROPOSE-only — routed per `learnings-routing.md`).
+- The DONE / PENDING / BLOCKED / NEXT summary.
 
-**G-PERSIST (per DB write):**
-- [ ] dual-signal: the run/log reflects the write AND `node`+`pg` read-back to `localhost:15432` confirms expected shape/values.
-
-**G-INDEPENDENT (every stage):**
-- [ ] gate reproduced (re-ran the command, not trusted exit code) AND substance is domain-sane on the default path; sibling-swept.
-
-**Ship:**
-- [ ] <N> conventional commits pushed to `<branch>`.
-- [ ] Any deferrals logged in `docs/goals/.run/<slug>-DEFERRED.md` with rule status + reason.
-
----
-
-## <N+3>. Final report (required on completion)
-
-Produce a closing report containing: commit SHAs + per-stage gate results; G-UI verdict
-per screen + screenshot paths; G-PERSIST verdict per write path (with read-back values);
-G-INDEPENDENT result; coverage before/after if relevant; the §GATE list awaiting Abhay
-(deploy/migrations); skipped (already-covered) list; DoD tally; DEFERRED entries with reason.
-
----
-
-## <N+4>. Guardrails (hard stops)
-
-- **<tree> only.** Never write outside it; never write `D:\Abhay\VibeCoding\5Wealths\`.
-- **No new dependencies** unless the contract explicitly authorizes one.
-- **No design reinvention** — reuse the named shared components; extend over inline.
-- **Honesty:** no synthetic/fake data — remove fakery rather than carry it forward.
-- **Stop only on a true blocker** (missing token, OS denial, decision contradiction in this
-  contract, irrecoverable build break after the full fix budget). Context-budget anxiety is
-  NOT a blocker — hand off via a one-line continuation note, never fake-complete.
-- **Strategic items are `TODO(5W):` notes**, not handled here — repo-level work only.
-
----
-
-## Authorization trail
-
-| # | Decision | Choice |
+## Authorization trail (decisions resolved in the interview)
+| Fork | Decision | Why |
 |---|---|---|
-| 1 | <fork> | <resolved choice> |
-| … | <…> | <…> |
+| <fork> | <decision> | <reason> |
 
----
-
-## References (loaded transitively by the skills this contract invokes)
-
-- `.claude/rules/claude-behavior.md` — rules 15, 17, 20, 23
-- `.claude/rules/supervisor-verification.md` · `independent-test-verification.md` · `e2e-persistence-verification.md` · `output-plausibility-verification.md` — the G-UI / G-PERSIST / G-INDEPENDENT gates
-- `.claude/rules/tdd-rule.md` — red-green-refactor (if the contract does TDD)
-- <the workspace rule files relevant to this goal — e.g. `scraper-write-path.md`, `scraper-test-layout.md`, `schema-imports.md`, `shared-package-build.md`, `web-data-access.md`, `react-nextjs.md`>
-- <the skills this contract drives: /fix-loop, /systematic-debugging, /auto-verify, /backfill-script, /playwright, etc.>
+## References (load transitively)
+- `core/.claude/rules/{supervisor-verification, independent-test-verification, output-plausibility-verification, e2e-persistence-verification, dod-verbs, bug-triage-discipline, testing, e2e-best-practices, git-worktrees, learnings-routing}`
+- `<any project-specific rule/doc the run needs>`
 ```
