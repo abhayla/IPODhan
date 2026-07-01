@@ -532,17 +532,24 @@ export const listingPerformance = pgTable('listing_performance', {
   symbol: varchar('symbol', { length: 20 }),
   companyName: varchar('company_name', { length: 255 }),
   listingDate: date('listing_date'),
-  listingPrice: integer('listing_price'),
-  issuePrice: integer('issue_price'),
+  // Prices are numeric(10,2), not integer (#79): Chittorgarh sends decimal rupee
+  // prices (e.g. ₹145.78) which an integer column rejects. mode:'number' keeps the
+  // Drizzle return type a JS number (financial-column-precision.md pattern), so
+  // consumers are unaffected by the numeric→string ripple.
+  listingPrice: numeric('listing_price', { precision: 10, scale: 2, mode: 'number' }),
+  issuePrice: numeric('issue_price', { precision: 10, scale: 2, mode: 'number' }),
+  // Gain % widened numeric(5,2)→numeric(7,2) (#79): current_gain (price vs issue,
+  // years after listing) is unbounded and older IPOs up >1000% overflow the ±999.99
+  // cap. numeric(7,2) admits up to ±99999.99%.
   listingGainPercent: numeric('listing_gain_percent', {
-    precision: 5,
+    precision: 7,
     scale: 2,
   }),
-  currentPrice: integer('current_price'), // @deprecated Use currentPriceBSE or currentPriceNSE
-  currentPriceBSE: integer('current_price_bse'),
-  currentPriceNSE: integer('current_price_nse'),
+  currentPrice: numeric('current_price', { precision: 10, scale: 2, mode: 'number' }), // @deprecated Use currentPriceBSE or currentPriceNSE
+  currentPriceBSE: numeric('current_price_bse', { precision: 10, scale: 2, mode: 'number' }),
+  currentPriceNSE: numeric('current_price_nse', { precision: 10, scale: 2, mode: 'number' }),
   currentGainPercent: numeric('current_gain_percent', {
-    precision: 5,
+    precision: 7,
     scale: 2,
   }),
   // Listing-day OHLC trading information — captured from the exchange on listing day.

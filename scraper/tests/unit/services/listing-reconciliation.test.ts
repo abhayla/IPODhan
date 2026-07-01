@@ -20,6 +20,7 @@ import {
   type StuckIpo,
 } from '../../../src/services/listing-reconciliation.js';
 import type { ChittorgarhListingRow } from '../../../src/scrapers/chittorgarh-listing-scraper.js';
+import { insertListingPerformanceSchema } from '@shared/db/validations';
 
 function cgRow(p: Partial<ChittorgarhListingRow>): ChittorgarhListingRow {
   return {
@@ -138,17 +139,45 @@ describe('buildListingScrapedIPO (upsertIPO payload)', () => {
 });
 
 describe('buildListingPerformanceRecord', () => {
-  it('uses day-1 close as listing price and computes a consistent gain', () => {
+  it('preserves the decimal day-1 close as listing price (#79 — no integer rounding)', () => {
     const rec = buildListingPerformanceRecord(stuck({ id: 'ipo-7' }), cgRow({ issuePrice: 114, listingClose: 104.54, listingGainPct: -8.3 }));
     expect(rec.ipoId).toBe('ipo-7');
-    expect(rec.listingPrice).toBe(105); // rounded day-1 close
+    expect(rec.listingPrice).toBe(104.54); // decimal preserved, NOT rounded to 105
     expect(rec.issuePrice).toBe(114);
-    expect(parseFloat(rec.listingGainPercent as string)).toBeCloseTo(-7.9, 0); // computed from rounded close
+    expect(parseFloat(rec.listingGainPercent as string)).toBeCloseTo(-8.3, 1); // computed from the true close
     expect(rec.dataSource).toBe('SCRAPER');
   });
   it('falls back to price_range_max for issue price when CG lacks it', () => {
     const rec = buildListingPerformanceRecord(stuck({ priceRangeMax: 200 }), cgRow({ issuePrice: null, listingClose: 250 }));
     expect(rec.issuePrice).toBe(200);
     expect(parseFloat(rec.listingGainPercent as string)).toBeCloseTo(25, 0);
+  });
+  it('#79: keeps a decimal ₹ price (145.78) AND an unbounded current gain (>999.99) unrounded', () => {
+    // The exact class that failed 36/42 upserts: decimal price (rejected by integer col)
+    // + current gain >999.99 (overflowed numeric(5,2)). Both must survive into the record.
+    const rec = buildListingPerformanceRecord(
+      stuck({ priceRangeMax: 10 }),
+      cgRow({ issuePrice: 10, listingClose: 145.78, currentBse: 165.5, currentNse: 164.9, currentGainPct: 1500 }),
+    );
+    expect(rec.listingPrice).toBe(145.78);       // decimal preserved → numeric(10,2) accepts it
+    expect(rec.currentPriceBSE).toBe(165.5);
+    expect(rec.currentPriceNSE).toBe(164.9);
+    expect(rec.currentGainPercent).toBe('1500.00'); // fits numeric(7,2) (±99999.99), no overflow
+  });
+});
+
+describe('#79: insertListingPerformanceSchema accepts decimal prices', () => {
+  it('validates a listing row with decimal listing/issue/current prices + high current gain', () => {
+    const r = insertListingPerformanceSchema.safeParse({
+      ipoId: 'f47ac10b-58cc-4372-a567-0e02b2c3d479',
+      listingPrice: 145.78,
+      issuePrice: 114.5,
+      currentPrice: 165.5,
+      currentPriceBSE: 165.5,
+      currentPriceNSE: 164.9,
+      listingGainPercent: '27.53',
+      currentGainPercent: '1500.00',
+    });
+    expect(r.success).toBe(true);
   });
 });
