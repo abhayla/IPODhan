@@ -31,12 +31,15 @@ const FISCAL_YEARS = [
   { year: 2023, range: '2023-24' },
 ];
 
-/** numeric(5,2) bound — keep a real value or null; never fabricate a clamped one. */
+/** numeric(7,2) bound (#79, post-C3) — keep a real value or null; never fabricate a
+ *  clamped one. Widened from ±999.99 to ±99999.99 so a legit unbounded current gain
+ *  (old IPOs up >1000% since listing) is preserved, not silently nulled. */
 function gainOrNull(v: number | null): string | null {
-  if (v == null || !Number.isFinite(v) || Math.abs(v) > 999.99) return null;
+  if (v == null || !Number.isFinite(v) || Math.abs(v) > 99999.99) return null;
   return v.toFixed(2);
 }
-const rnd = (v: number | null | undefined) => (v == null ? null : Math.round(v));
+/** Prices are numeric(10,2) (#79, post-C3) — keep paise, never Math.round to whole ₹. */
+const rnd = (v: number | null | undefined) => (v == null ? null : Math.round(v * 100) / 100);
 
 async function main() {
   console.log('='.repeat(80));
