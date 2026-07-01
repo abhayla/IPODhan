@@ -1,0 +1,32 @@
+{
+  "__status": "SCHEMA_ONLY",
+  "__note": "PLACEHOLDER — not real oracle data. chittorgarh.com was unreachable (connect-timeout) and moneycontrol had no deterministic detail-URL resolver in the 2026-07-01 build environment, so no live sample could be frozen. Replace with a FROZEN fixture per README.md when on a network that reaches the oracles. Every 'expected' value below is null (unknown), NOT a fabricated guess.",
+  "oracle": "chittorgarh",
+  "slug": "<ipo-slug>",
+  "companyName": "<Company Name>",
+  "ipoType": "MAINBOARD",
+  "sourceUrl": "https://www.chittorgarh.com/ipo/<slug>/<id>/",
+  "fetchedAt": null,
+  "rawHtmlFile": null,
+  "expected": {
+    "companyName": null,
+    "issueSizeCr": null,
+    "priceMin": null,
+    "priceMax": null,
+    "lotSize": null,
+    "faceValue": null,
+    "openDate": null,
+    "closeDate": null,
+    "allotmentDate": null,
+    "listingDate": null,
+    "subscriptionTotal": null,
+    "subscriptionQIB": null,
+    "subscriptionNII": null,
+    "subscriptionRetail": null,
+    "gmp": null,
+    "listingPrice": null,
+    "listingGainPct": null,
+    "registrar": null,
+    "sector": null
+  }
+}
