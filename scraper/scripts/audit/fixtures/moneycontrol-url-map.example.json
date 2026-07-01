@@ -1,0 +1,4 @@
+{
+  "__note": "OPTIONAL INPUT (rename to moneycontrol-url-map.json to activate). Maps an IPO slug to its Moneycontrol detail-page URL, since Moneycontrol has no deterministic name->URL resolver. Without an entry for a slug, the cross-check leaves all moneycontrol fields SOURCE-UNAVAILABLE — it NEVER guesses a URL or fabricates a value.",
+  "<ipo-slug>": "https://www.moneycontrol.com/ipo/<company>/<code>"
+}

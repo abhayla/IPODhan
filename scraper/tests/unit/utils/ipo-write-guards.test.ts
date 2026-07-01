@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar } from '../../../src/utils/validators';
+import { coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeIpoWriteFields } from '../../../src/utils/validators';
 
 // Write-path integrity guards (contract Stage A.5 / C-5). These run at the
 // persistence boundary so a bad scrape cannot store a domain-absurd value that
@@ -100,5 +100,65 @@ describe('sanitizeRegistrar (#45 — strip address/contact pollution, not varian
   });
   it('leaves a clean registrar unchanged', () => {
     expect(sanitizeRegistrar('Link Intime India Private Limited')).toBe('Link Intime India Private Limited');
+  });
+});
+
+describe('sanitizeIpoWriteFields (#42/#45/#52 — the consolidation-output write choke)', () => {
+  // The create path sanitizes fields inline, but the consolidation UPDATE path
+  // writes the per-field merged `consolidatedData` directly via ipoRepository.update
+  // WITHOUT re-sanitizing — so a merged winning value re-introduces pollution the
+  // create path had removed. This choke re-applies all three sanitizers to the
+  // consolidated record just before the write.
+
+  it('strips a trailing status token from a merged company_name (#42)', () => {
+    const r = sanitizeIpoWriteFields({ companyName: 'Leapfrog Engineering Services Ltd. O' });
+    expect(r.companyName).toBe('Leapfrog Engineering Services Ltd.');
+  });
+
+  it('strips address pollution from a merged registrar (#45)', () => {
+    const r = sanitizeIpoWriteFields({
+      registrar: 'MAS SERVICES LIMITED^T-34, 2nd Floor, Okhla Industrial AreaPhase - II,New Delhi 110 020',
+    });
+    expect(r.registrar).toBe('MAS SERVICES LIMITED');
+  });
+
+  it('nulls the incoherent date from a merged date set (#52 close>allotment)', () => {
+    // Consolidation merged a 2026 close onto a 2020 historical allotment.
+    const r = sanitizeIpoWriteFields({
+      openDate: '2026-04-01',
+      closeDate: '2026-05-01',
+      allotmentDate: '2020-10-01',
+      listingDate: null,
+    });
+    // open/close stomped the historical allotment anchor -> both nulled.
+    expect(r.openDate).toBeNull();
+    expect(r.closeDate).toBeNull();
+    expect(r.allotmentDate).toBe('2020-10-01');
+  });
+
+  it('only touches the fields present (does not invent keys)', () => {
+    const r = sanitizeIpoWriteFields({ issueSize: '500', segment: 'MAINBOARD' } as any);
+    expect(r).not.toHaveProperty('companyName');
+    expect(r).not.toHaveProperty('registrar');
+    expect((r as any).issueSize).toBe('500');
+  });
+
+  it('does not mutate the input object', () => {
+    const input: any = { companyName: 'X Ltd. O', registrar: 'A^addr' };
+    sanitizeIpoWriteFields(input);
+    expect(input.companyName).toBe('X Ltd. O');
+    expect(input.registrar).toBe('A^addr');
+  });
+
+  it('leaves a clean consolidated record unchanged', () => {
+    const clean = {
+      companyName: 'Acme Industries Limited',
+      registrar: 'Link Intime India Private Limited',
+      openDate: '2025-10-15',
+      closeDate: '2025-10-18',
+      allotmentDate: '2025-10-21',
+      listingDate: '2025-10-25',
+    };
+    expect(sanitizeIpoWriteFields({ ...clean })).toEqual(clean);
   });
 });

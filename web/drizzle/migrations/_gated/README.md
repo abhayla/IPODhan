@@ -23,6 +23,16 @@ Additive (non-destructive) DDL, parked here only because db:generate is blocked:
    `listing-performance-update` scheduler job selects `ipos.bse_scrip_code` but prod lacks
    the column (query errors every run). **Apply before the next deploy.** Independent of B2–C1.
 
+Type-widening (non-destructive) DDL, parked here (owner-applied with read-back):
+
+6. `C3_listing_performance_widen_precision.sql` — **WIDENING / SAFE (#79)**: widen
+   `listing_price`/`issue_price`/`current_price`/`current_price_bse`/`current_price_nse`
+   integer → numeric(10,2) (Chittorgarh sends decimal ₹ prices) and
+   `listing_gain_percent`/`current_gain_percent` numeric(5,2) → numeric(7,2)
+   (unbounded current-gain overflows ±999.99). USING casts are lossless. **Apply BEFORE
+   re-running `backfill:stuck-listing --execute`** to fill the 52 orphan LISTED IPOs.
+   Independent of B2–C2.
+
 Apply each via the tunnel (`localhost:15432`) with a read-back after. Note: the drizzle
 journal is currently out of sync (pre-existing `extraction_status` enum drift blocks a
 clean `db:generate`), so these are hand-authored rather than generated — record the
