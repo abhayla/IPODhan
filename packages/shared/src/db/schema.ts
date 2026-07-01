@@ -141,6 +141,7 @@ export const ipos = pgTable(
     slug: varchar('slug', { length: 255 }).notNull().unique(),
     symbol: varchar('symbol', { length: 20 }), // Stock ticker symbol (nullable - upcoming IPOs may not have symbols yet)
     isin: varchar('isin', { length: 12 }), // International Securities Identification Number (nullable)
+    bseScripCode: varchar('bse_scrip_code', { length: 20 }), // BSE numeric scrip code (e.g. "543320"); used by listing-performance-updater to fetch BSE prices (nullable)
     segment: segmentEnum('segment'), // Exchange segment (MAINBOARD | SME) - nullable for RIGHTS/InvITs/REITs
     offeringType: offeringTypeEnum('offering_type').notNull(), // Type of offering (IPO, RIGHTS, TENDER, etc.)
     sector: varchar('sector', { length: 100 }),

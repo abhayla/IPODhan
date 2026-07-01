@@ -18,6 +18,10 @@ Additive (non-destructive) DDL, parked here only because db:generate is blocked:
    `listing_open_price` / `listing_high_price` / `listing_low_price` /
    `listing_close_price` / `last_traded_price` (numeric(10,2)) to `listing_performance`.
    No data/type change. Independent of B2–B4. Owner sign-off for prod apply.
+5. `C2_ipos_add_bse_scrip_code.sql` — **ADDITIVE / SAFE**: add nullable
+   `bse_scrip_code` (varchar(20)) to `ipos`. Closes the SSOT drift where the deployed
+   `listing-performance-update` scheduler job selects `ipos.bse_scrip_code` but prod lacks
+   the column (query errors every run). **Apply before the next deploy.** Independent of B2–C1.
 
 Apply each via the tunnel (`localhost:15432`) with a read-back after. Note: the drizzle
 journal is currently out of sync (pre-existing `extraction_status` enum drift blocks a
