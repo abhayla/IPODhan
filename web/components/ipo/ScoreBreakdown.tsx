@@ -124,7 +124,7 @@ export function ScoreBreakdown({
         .attr('r', levelRadius)
         .attr('class', 'radar-grid-circle')
         .style('fill', 'none')
-        .style('stroke', 'hsl(var(--border))')
+        .style('stroke', 'var(--border)')
         .style('stroke-opacity', 0.3)
         .style('stroke-width', '1px');
     }
@@ -141,7 +141,7 @@ export function ScoreBreakdown({
       .attr('y1', 0)
       .attr('x2', (d, i) => rScale(100) * Math.cos(angleSlice * i - Math.PI / 2))
       .attr('y2', (d, i) => rScale(100) * Math.sin(angleSlice * i - Math.PI / 2))
-      .style('stroke', 'hsl(var(--border))')
+      .style('stroke', 'var(--border)')
       .style('stroke-opacity', 0.5)
       .style('stroke-width', '1px');
 
@@ -162,7 +162,7 @@ export function ScoreBreakdown({
       .text(d => d.axis)
       .style('font-size', '12px')
       .style('font-weight', '500')
-      .style('fill', 'hsl(var(--foreground))')
+      .style('fill', 'var(--foreground)')
       .style('font-family', 'var(--font-inter)');
 
     // Add score values next to labels
@@ -181,7 +181,7 @@ export function ScoreBreakdown({
       .text(d => `${d.value.toFixed(1)}/${d.max}`)
       .style('font-size', '11px')
       .style('font-weight', '600')
-      .style('fill', 'hsl(var(--primary))')
+      .style('fill', 'var(--primary)')
       .style('font-family', 'var(--font-jetbrains-mono)');
 
     // Create radar area path generator

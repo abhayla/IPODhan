@@ -8,6 +8,7 @@
 
 import { AlertCircle, TrendingDown, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { computeEquityDilution } from '@/lib/utils/kpi-calculations';
 
 interface PromoterHoldingSectionProps {
   promoterHoldingPreIssue: number | null;
@@ -74,11 +75,10 @@ export function PromoterHoldingSection({
     );
   }
 
-  // Calculate dilution if both values available
-  const dilution =
-    promoterHoldingPreIssue !== null && promoterHoldingPostIssue !== null
-      ? Number((promoterHoldingPreIssue - promoterHoldingPostIssue).toFixed(2))
-      : null;
+  // Calculate dilution with a plausibility guard: returns null (→ section hidden) for
+  // implausible inputs so a bad-unit row can never render an absurd value like "2152%"
+  // (blind-QA finding, #89).
+  const dilution = computeEquityDilution(promoterHoldingPreIssue, promoterHoldingPostIssue);
 
   return (
     <Card>

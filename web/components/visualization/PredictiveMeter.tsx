@@ -100,7 +100,7 @@ export function PredictiveMeter({
     // Draw background arc
     g.append('path')
       .attr('d', backgroundArc as any)
-      .style('fill', 'hsl(var(--muted))')
+      .style('fill', 'var(--muted)')
       .style('opacity', 0.2);
 
     // Color scale for probability
@@ -140,7 +140,7 @@ export function PredictiveMeter({
         .attr('y1', Math.sin(angle) * innerRadius)
         .attr('x2', Math.cos(angle) * outerRadius)
         .attr('y2', Math.sin(angle) * outerRadius)
-        .style('stroke', 'hsl(var(--border))')
+        .style('stroke', 'var(--border)')
         .style('stroke-width', i % 2 === 0 ? 2 : 1);
 
       // Add labels for major ticks
@@ -155,7 +155,7 @@ export function PredictiveMeter({
           .text(`${value}%`)
           .style('font-size', '11px')
           .style('font-weight', '500')
-          .style('fill', 'hsl(var(--muted-foreground))')
+          .style('fill', 'var(--muted-foreground)')
           .style('font-family', 'var(--font-jetbrains-mono)');
       }
     }
@@ -179,7 +179,7 @@ export function PredictiveMeter({
       .text('Listing Probability')
       .style('font-size', '12px')
       .style('font-weight', '500')
-      .style('fill', 'hsl(var(--muted-foreground))')
+      .style('fill', 'var(--muted-foreground)')
       .style('font-family', 'var(--font-inter)');
 
     // Add needle/pointer
@@ -192,7 +192,7 @@ export function PredictiveMeter({
       .attr('y1', 0)
       .attr('x2', Math.cos(needleAngle) * needleLength)
       .attr('y2', Math.sin(needleAngle) * needleLength)
-      .style('stroke', 'hsl(var(--foreground))')
+      .style('stroke', 'var(--foreground)')
       .style('stroke-width', 3)
       .style('stroke-linecap', 'round');
 
@@ -201,8 +201,8 @@ export function PredictiveMeter({
       .attr('cx', 0)
       .attr('cy', 0)
       .attr('r', 8)
-      .style('fill', 'hsl(var(--background))')
-      .style('stroke', 'hsl(var(--foreground))')
+      .style('fill', 'var(--background)')
+      .style('stroke', 'var(--foreground)')
       .style('stroke-width', 3);
 
   }, [animatedValue, width, height]);
