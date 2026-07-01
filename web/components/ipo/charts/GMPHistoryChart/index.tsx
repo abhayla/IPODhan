@@ -142,7 +142,7 @@ export function GMPHistoryChart({
           {
             dataKey: 'gmpUpper',
             name: 'Illustrative +10% (not a forecast)',
-            color: 'hsl(var(--chart-1))',
+            color: 'var(--chart-1)',
             fillOpacity: 0,
             strokeWidth: 0,
             type: 'monotone' as const,
@@ -154,15 +154,15 @@ export function GMPHistoryChart({
     {
       dataKey: 'gmp',
       name: 'Grey Market Premium',
-      color: 'hsl(var(--chart-1))',
+      color: 'var(--chart-1)',
       fillOpacity: 0.3,
       strokeWidth: 2,
       type: 'monotone' as const,
       gradient: true,
       gradientId: 'gmpGradient',
       gradientStops: [
-        { offset: '0%', stopColor: 'hsl(var(--chart-1))', stopOpacity: 0.8 },
-        { offset: '100%', stopColor: 'hsl(var(--chart-1))', stopOpacity: 0.1 },
+        { offset: '0%', stopColor: 'var(--chart-1)', stopOpacity: 0.8 },
+        { offset: '100%', stopColor: 'var(--chart-1)', stopOpacity: 0.1 },
       ],
     },
 
@@ -172,7 +172,7 @@ export function GMPHistoryChart({
           {
             dataKey: 'gmpLower',
             name: 'Illustrative −10% (not a forecast)',
-            color: 'hsl(var(--chart-1))',
+            color: 'var(--chart-1)',
             fillOpacity: 0,
             strokeWidth: 0,
             type: 'monotone' as const,
@@ -186,7 +186,7 @@ export function GMPHistoryChart({
           {
             dataKey: 'movingAvg7',
             name: '7-Day Moving Average',
-            color: 'hsl(var(--chart-2))',
+            color: 'var(--chart-2)',
             fillOpacity: 0,
             strokeWidth: 2,
             strokeDasharray: '5 5',
@@ -201,7 +201,7 @@ export function GMPHistoryChart({
           {
             dataKey: 'expectedListingPrice',
             name: 'Expected Listing Price',
-            color: 'hsl(var(--chart-3))',
+            color: 'var(--chart-3)',
             fillOpacity: 0,
             strokeWidth: 1.5,
             strokeDasharray: '3 3',

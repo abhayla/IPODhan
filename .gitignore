@@ -303,3 +303,4 @@ scraper/manual-listing-entries.csv
 # Autonomous-run isolation artifacts
 .run-active.lock
 docs/contracts/.run/
+.sweep/

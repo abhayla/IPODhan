@@ -148,11 +148,11 @@ export function formatCurrency(value: number | null): string {
  * @returns Tailwind color class
  */
 export function getDemandColor(intensity: number): string {
-  if (intensity >= 80) return 'hsl(var(--chart-1))'; // High demand - primary blue
-  if (intensity >= 60) return 'hsl(var(--chart-2))'; // Medium-high - green
-  if (intensity >= 40) return 'hsl(var(--chart-3))'; // Medium - yellow
-  if (intensity >= 20) return 'hsl(var(--chart-4))'; // Low-medium - orange
-  return 'hsl(var(--chart-5))'; // Low - red
+  if (intensity >= 80) return 'var(--chart-1)'; // High demand - primary blue
+  if (intensity >= 60) return 'var(--chart-2)'; // Medium-high - green
+  if (intensity >= 40) return 'var(--chart-3)'; // Medium - yellow
+  if (intensity >= 20) return 'var(--chart-4)'; // Low-medium - orange
+  return 'var(--chart-5)'; // Low - red
 }
 
 /**
