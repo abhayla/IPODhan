@@ -84,7 +84,12 @@ function parseChittorgarhDate(displayDate: string, isoDate?: string): string | u
     if (isNaN(date.getTime())) {
       return undefined;
     }
-    return date.toISOString().split('T')[0];
+    // Local components, not toISOString() — avoids the -1-day shift east of UTC
+    // (same bug fixed in chittorgarh-scraper.ts parseChittorgarhDate).
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   } catch {
     return undefined;
   }
