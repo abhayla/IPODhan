@@ -74,7 +74,7 @@ export function GMPSparkline({
 
   // Determine color based on latest GMP
   const latestGMP = values[values.length - 1] || 0;
-  const strokeColor = latestGMP >= 0 ? 'hsl(var(--success))' : 'hsl(var(--danger))';
+  const strokeColor = latestGMP >= 0 ? 'var(--success)' : 'var(--danger)';
 
   return (
     <div className={cn('relative', className)}>

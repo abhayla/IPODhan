@@ -139,7 +139,7 @@ export function CorrelationMatrix({
       .text(xLabel)
       .style('font-size', '12px')
       .style('font-weight', '600')
-      .style('fill', 'hsl(var(--foreground))')
+      .style('fill', 'var(--foreground)')
       .style('font-family', 'var(--font-inter)');
 
     // Y axis label
@@ -151,7 +151,7 @@ export function CorrelationMatrix({
       .text(yLabel)
       .style('font-size', '12px')
       .style('font-weight', '600')
-      .style('fill', 'hsl(var(--foreground))')
+      .style('fill', 'var(--foreground)')
       .style('font-family', 'var(--font-inter)');
 
     // Draw regression line
@@ -262,7 +262,7 @@ export function CorrelationMatrix({
       .text(`${xLabel} vs ${yLabel} (R² = ${r2.toFixed(3)})`)
       .style('font-size', '14px')
       .style('font-weight', '600')
-      .style('fill', 'hsl(var(--foreground))')
+      .style('fill', 'var(--foreground)')
       .style('font-family', 'var(--font-inter)');
 
     // Zoom behavior

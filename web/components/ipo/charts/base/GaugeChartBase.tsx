@@ -192,7 +192,7 @@ export function GaugeChartBase({
         >
           <PolarAngleAxis type="number" domain={[0, 100]} tick={false} />
           <RadialBar
-            background={{ fill: 'hsl(var(--muted))' }}
+            background={{ fill: 'var(--muted)' }}
             dataKey="value"
             cornerRadius={10}
             isAnimationActive={enableAnimations}

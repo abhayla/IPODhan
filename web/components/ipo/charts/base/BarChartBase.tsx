@@ -234,19 +234,19 @@ export function BarChartBase({
 
         <Tooltip
           contentStyle={{
-            backgroundColor: 'hsl(var(--background))',
-            border: '1px solid hsl(var(--border))',
+            backgroundColor: 'var(--background)',
+            border: '1px solid var(--border)',
             borderRadius: '6px',
           }}
           labelStyle={{
-            color: 'hsl(var(--foreground))',
+            color: 'var(--foreground)',
             fontWeight: 600,
           }}
           itemStyle={{
-            color: 'hsl(var(--foreground))',
+            color: 'var(--foreground)',
           }}
           formatter={tooltipFormatterFn}
-          cursor={{ fill: 'hsl(var(--muted))' }}
+          cursor={{ fill: 'var(--muted)' }}
         />
 
         {showLegend && (
@@ -281,7 +281,7 @@ export function BarChartBase({
                 position={layout === 'vertical' ? 'top' : 'right'}
                 formatter={(barConfig.labelFormatter || defaultFormatter) as any}
                 fontSize={11}
-                fill="hsl(var(--foreground))"
+                fill="var(--foreground)"
               />
             )}
           </Bar>
