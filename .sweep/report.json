@@ -1,0 +1,40 @@
+{
+  "total": 3,
+  "flaggedCount": 0,
+  "flagged": [],
+  "all": [
+    {
+      "slug": "aastha-spintex-ltd",
+      "company": "Aastha Spintex Ltd.",
+      "segment": "MAINBOARD",
+      "status": "OPEN",
+      "httpStatus": 200,
+      "flags": [],
+      "naCount": 2,
+      "consoleErrors": [],
+      "bodyLen": 6161
+    },
+    {
+      "slug": "accord-transformer-and-switchgear-ltd",
+      "company": "Accord Transformer & Switchgear Ltd.",
+      "segment": "SME",
+      "status": "LISTED",
+      "httpStatus": 200,
+      "flags": [],
+      "naCount": 5,
+      "consoleErrors": [],
+      "bodyLen": 8269
+    },
+    {
+      "slug": "advit-jewels-ltd",
+      "company": "Advit Jewels Ltd.",
+      "segment": "MAINBOARD",
+      "status": "LISTED",
+      "httpStatus": 200,
+      "flags": [],
+      "naCount": 4,
+      "consoleErrors": [],
+      "bodyLen": 8232
+    }
+  ]
+}
