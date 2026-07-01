@@ -2,7 +2,7 @@ import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDat
 import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
-import { generateSlug, sanitizeCompanyName, coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar } from '../utils/validators.js';
+import { generateSlug, sanitizeCompanyName, coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeIpoWriteFields } from '../utils/validators.js';
 import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { validateLotSize } from '../utils/lot-size-validator.js';
 import { resolveOfferingTypeKeepingClassification } from '../utils/detect-offering-type.js';
@@ -299,9 +299,14 @@ export async function upsertIPO(
               mergedExchanges = mergeListingExchanges(mergedExchanges, currentExchange);
             }
 
-            // Use consolidated data with merged exchanges
+            // Use consolidated data with merged exchanges. Re-apply the write-field
+            // sanitizers (#42/#45/#52): consolidation picks a winning value PER FIELD
+            // from field_sources, which can re-introduce a name status-token, a
+            // registrar address block, or a date field merged from a different-vintage
+            // source that breaks the open<close<allotment<listing ordering — none of
+            // which the incoming-payload sanitize (above) can catch post-merge.
             const finalData = {
-              ...consolidationResult.consolidatedData,
+              ...sanitizeIpoWriteFields(consolidationResult.consolidatedData),
               listingExchanges: mergedExchanges,
               lastScrapedAt: new Date(),
               updatedAt: new Date(),
