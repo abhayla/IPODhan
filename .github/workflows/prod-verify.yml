@@ -33,7 +33,10 @@ jobs:
       - name: Install deps + chromium
         working-directory: ./web
         run: |
-          npm ci --production=false
+          # --ignore-scripts skips the root `prepare: husky` hook, which fails on
+          # CI runners (exit 127, no git-hook context). Chromium is installed
+          # explicitly on the next line, so nothing is lost.
+          npm ci --production=false --ignore-scripts
           npx playwright install --with-deps chromium
       - name: Run production verification
         working-directory: ./web
