@@ -264,6 +264,39 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'Offer for sale size',
   },
 
+  // ==================== DESCRIPTIVE FIELDS (#69) ====================
+  // Both were 0/285: no matrix entry meant consolidation silently dropped them.
+  // sector: NSE reads it (nse-api-client.ts:502) but it never reached the DB
+  //   without a matrix entry; carried through now (data-persister maps it).
+  //   Fixing sector also feeds peer-companies-scraper (sector -> peers cascade).
+  // company_description: DRHP "Our Business" or Chittorgarh "About" (id=ipoSummary).
+  sector: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
+    normalization: 'none',
+    confidenceThreshold: 80,
+    description: 'Industry sector - NSE/exchange classification; feeds peer discovery',
+    validation: { regex: '^.{2,100}$' },
+  },
+
+  company_description: {
+    sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE'],
+    normalization: 'none',
+    confidenceThreshold: 75,
+    description: 'Company business description - DRHP "Our Business" / Chittorgarh "About"',
+    validation: { regex: '^.{20,5000}$' },
+  },
+  // camelCase variant - consolidation service keys on this (data-persister writes
+  // `companyDescription`). Without it, getFieldRules('companyDescription') falls
+  // through to DEFAULT rules (NSE outranks DRHP, validation skipped). Mirrors the
+  // lotSize/allotmentDate dual-key pattern. DRHP-first priority is the intent.
+  companyDescription: {
+    sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL', 'NSE'],
+    normalization: 'none',
+    confidenceThreshold: 75,
+    description: 'Company business description (camelCase consolidation key)',
+    validation: { regex: '^.{20,5000}$' },
+  },
+
   price_band_min: {
     sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
     normalization: 'number',
@@ -303,10 +336,24 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   },
 
   listing_date: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    // CHITTORGARH added (#70): report-25 is the only working post-close listing-date
+    // source; without it the stuck-listing backfill's listing_date write is dropped
+    // by consolidation on any row that already has a value / on re-run.
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'Expected listing date',
+  },
+
+  // camelCase variant - consolidation keys on `listingDate` (data-persister
+  // writes it). Without this twin, getFieldRules('listingDate') falls through to
+  // DEFAULT rules and the CHITTORGARH registration above is never applied to the
+  // #70 stuck-listing backfill. Mirrors the lotSize/allotmentDate dual-key pattern.
+  listingDate: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
+    normalization: 'date',
+    confidenceThreshold: 95,
+    description: 'Listing date (camelCase consolidation key) - CHITTORGARH for #70 backfill',
   },
 
   // B7: allotment_date was missing — consolidation silently dropped it (allotment_date ~1%).
@@ -371,7 +418,10 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // ==================== REAL-TIME DATA (Latest wins) ====================
 
   status: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    // CHITTORGARH added (#70): the stuck-listing backfill advances CLOSED->LISTED;
+    // without CHITTORGARH registered, consolidation rejects the LISTED write (source
+    // priority -1) and the IPO stays CLOSED. Lowest priority — only wins when newer.
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
     normalization: 'none',
     timeBased: true,
     ignoreDRHP: true,

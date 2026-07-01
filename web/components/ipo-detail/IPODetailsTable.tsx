@@ -41,13 +41,6 @@ function formatNumber(value: number): string {
 }
 
 /**
- * Format currency with ₹ symbol (in Crores)
- */
-function formatCurrency(value: number): string {
-  return `₹${formatNumber(value)} Cr`;
-}
-
-/**
  * Format date to readable format
  */
 function formatDate(dateString: string): string {
@@ -90,8 +83,10 @@ export function IPODetailsTable({
       value: freshIssueSize ? formatIssueSizeCrores(freshIssueSize) : '-'
     },
     {
+      // Fresh Issue + OFS are stored in RUPEES like issue_size (they sum to it);
+      // both render through the same rupees→crore SSOT so the table is unit-consistent (#8 sibling).
       label: 'Offer for Sale (OFS)',
-      value: offerForSaleSize ? formatCurrency(offerForSaleSize) : '-'
+      value: offerForSaleSize ? formatIssueSizeCrores(offerForSaleSize) : '-'
     },
     {
       label: 'Price Band',

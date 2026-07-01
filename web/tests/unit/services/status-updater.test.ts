@@ -46,4 +46,15 @@ describe('computeTargetStatus', () => {
   it('treats close_date == today as still OPEN (boundary)', () => {
     expect(computeTargetStatus({ openDate: '2026-06-10', closeDate: today, listingDate: null }, today)).toBe('OPEN');
   });
+
+  // GitHub #70: 142 stuck IPOs sit at CLOSED with listing_date=NULL because no
+  // source ever set it. The status SSOT already advances them the moment the
+  // listing source (Chittorgarh report-25 backfill) fills listing_date — proven here.
+  it('#70: a stuck CLOSED IPO advances to LISTED once the backfill sets listing_date', () => {
+    const dates = { openDate: '2026-05-20', closeDate: '2026-05-24', listingDate: null };
+    // Before backfill: window passed, no listing date -> stays CLOSED (the stuck state).
+    expect(computeTargetStatus(dates, today)).toBe('CLOSED');
+    // After backfill sets the real listing date -> advances to LISTED.
+    expect(computeTargetStatus({ ...dates, listingDate: '2026-05-29' }, today)).toBe('LISTED');
+  });
 });

@@ -26,9 +26,12 @@ export function IssueBreakdownChart({
   ofsIssue,
   className = '',
 }: IssueBreakdownChartProps) {
-  // Parse numeric values
-  const freshValue = freshIssue ? parseFloat(freshIssue.toString()) : 0;
-  const ofsValue = ofsIssue ? parseFloat(ofsIssue.toString()) : 0;
+  // fresh_issue / ofs_issue are stored in RUPEES (same convention as issue_size,
+  // which they sum to). Convert to crore for display so this matches the
+  // formatIssueSizeCrores SSOT used everywhere else (#8 sibling — unit consistency).
+  const RUPEES_PER_CRORE = 10000000;
+  const freshValue = (freshIssue ? parseFloat(freshIssue.toString()) : 0) / RUPEES_PER_CRORE;
+  const ofsValue = (ofsIssue ? parseFloat(ofsIssue.toString()) : 0) / RUPEES_PER_CRORE;
   const totalValue = freshValue + ofsValue;
 
   // If no data available
@@ -57,12 +60,18 @@ export function IssueBreakdownChart({
   ].filter((item) => item.value > 0); // Only show non-zero values
 
   // Custom label renderer to show percentages
-  const renderLabel = (entry: any) => {
+  const renderLabel = (entry: { percentage?: string }) => {
     return `${entry.percentage}%`;
   };
 
   // Custom tooltip
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({
+    active,
+    payload,
+  }: {
+    active?: boolean;
+    payload?: Array<{ name: string; value: number; payload: { percentage: string } }>;
+  }) => {
     if (active && payload && payload.length) {
       const data = payload[0];
       return (

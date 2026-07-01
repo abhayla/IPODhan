@@ -78,8 +78,8 @@ export function parseListingReportRows(rows: any[] | null | undefined): Chittorg
   return out;
 }
 
-async function fetchPage(cat: string, year: number, range: string, perPage: number): Promise<any[]> {
-  const url = `${API_BASE}/${REPORT_ID}/1/${perPage}/${year}/${range}/0/${cat}/0?search=&v=15-11`;
+async function fetchPage(cat: string, year: number, range: string, perPage: number, page = 1): Promise<any[]> {
+  const url = `${API_BASE}/${REPORT_ID}/${page}/${perPage}/${year}/${range}/0/${cat}/0?search=&v=15-11`;
   const res = await fetch(url, {
     headers: {
       'User-Agent':
@@ -101,22 +101,33 @@ export async function fetchChittorgarhListingRows(
 ): Promise<ChittorgarhListingRow[]> {
   const seen = new Set<string>();
   const all: ChittorgarhListingRow[] = [];
+  const MAX_PAGES = 40; // safety cap (report-25 ignores perPage>10 but paginates via the page param)
   for (const cat of ['mainboard', 'sme']) {
     for (const fy of fiscalYears) {
-      try {
-        const rows = await fetchPage(cat, fy.year, fy.range, perPage);
+      let fetchedForFy = 0;
+      // Paginate: report-25 honours only small perPage but pages correctly; walk
+      // pages until one returns no rows. (page=1 alone misses everything but the
+      // most-recent ~5 listings — the gap behind #36/#70's "0 matches".)
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        let rows: any[];
+        try {
+          rows = await fetchPage(cat, fy.year, fy.range, perPage, page);
+        } catch (err) {
+          logger.warn({ cat, fy: fy.range, page, error: err instanceof Error ? err.message : String(err) }, 'Chittorgarh listing report fetch failed (continuing)');
+          break;
+        }
+        if (!rows.length) break; // end of this fiscal-year × category
         const parsed = parseListingReportRows(rows);
         for (const r of parsed) {
           const key = (r.isin || r.slug || `${r.companyName}|${r.listingClose}`).toUpperCase();
           if (seen.has(key)) continue;
           seen.add(key);
           all.push(r);
+          fetchedForFy++;
         }
-        logger.info({ cat, fy: fy.range, fetched: rows.length, withClose: parsed.length }, 'Chittorgarh listing report fetched');
-        await new Promise((r) => setTimeout(r, 500));
-      } catch (err) {
-        logger.warn({ cat, fy: fy.range, error: err instanceof Error ? err.message : String(err) }, 'Chittorgarh listing report fetch failed (continuing)');
+        await new Promise((r) => setTimeout(r, 400));
       }
+      logger.info({ cat, fy: fy.range, added: fetchedForFy }, 'Chittorgarh listing report fetched (paginated)');
     }
   }
   return all;
