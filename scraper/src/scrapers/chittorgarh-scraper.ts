@@ -61,13 +61,13 @@ function extractTextFromAnchor(html: string): string {
  * Prefers metadata ISO date, falls back to display date parsing
  * Returns undefined for missing/invalid dates to ensure proper database handling
  */
-function parseChittorgarhDate(displayDate: string, isoDate?: string): string | undefined {
+export function parseChittorgarhDate(displayDate: string, isoDate?: string): string | undefined {
   // Prefer ISO date from metadata (already in correct format)
   if (isoDate) {
     return isoDate.split('T')[0]; // "2025-10-07T00:00:00.000Z" → "2025-10-07"
   }
 
-  // Fallback: parse display date "Tue, Oct 07, 2025"
+  // Fallback: parse display date "Tue, Oct 07, 2025" / "04-Dec-2025".
   if (!displayDate || displayDate.trim() === '') return undefined;
 
   try {
@@ -75,7 +75,16 @@ function parseChittorgarhDate(displayDate: string, isoDate?: string): string | u
     if (isNaN(date.getTime())) {
       return undefined;
     }
-    return date.toISOString().split('T')[0];
+    // Use LOCAL date components, NOT toISOString(). `new Date("04-Dec-2025")` builds a
+    // LOCAL-midnight Date; toISOString() converts it to UTC, and on any server east of
+    // UTC (the IST prod VPS, UTC+5:30) that shifts the calendar date back one day
+    // ("04-Dec" → "2025-12-03"). This silently stored ~55 SME IPO open/close dates one
+    // day early — caught by the chittorgarh oracle cross-check, invisible to UTC-CI unit
+    // tests. Local components preserve the parsed calendar date TZ-independently.
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
   } catch {
     return undefined;
   }
