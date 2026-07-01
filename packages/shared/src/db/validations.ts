@@ -85,9 +85,13 @@ export const insertListingPerformanceSchema = createInsertSchema(
   schema.listingPerformance,
   {
     ipoId: z.string().uuid('Invalid IPO ID'),
-    listingPrice: z.number().int().positive(),
-    issuePrice: z.number().int().positive(),
-    currentPrice: z.number().int().positive().optional().nullable(),
+    // #79: prices are decimal rupees (numeric(10,2)) — never .int(), which rejected
+    // ₹145.78 and failed 36/42 listing_performance upserts.
+    listingPrice: z.number().positive(),
+    issuePrice: z.number().positive(),
+    currentPrice: z.number().positive().optional().nullable(),
+    currentPriceBSE: z.number().positive().optional().nullable(),
+    currentPriceNSE: z.number().positive().optional().nullable(),
     // Listing-day OHLC — numeric columns (string-typed by drizzle), coerce + allow null until populated.
     listingOpenPrice: z.coerce.number().positive().optional().nullable(),
     listingHighPrice: z.coerce.number().positive().optional().nullable(),
