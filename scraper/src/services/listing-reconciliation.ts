@@ -197,8 +197,10 @@ export function buildListingPerformanceRecord(
   ipo: StuckIpo,
   row: ChittorgarhListingRow
 ): ListingPerformanceInsert {
-  const issuePrice = row.issuePrice ?? (ipo.priceRangeMax ? Math.round(ipo.priceRangeMax) : null);
-  const listingClose = Math.round(row.listingClose);
+  // Keep decimal rupee precision (#79): listing_price/issue_price are numeric(10,2),
+  // so ₹145.78 must NOT be rounded to an integer.
+  const issuePrice = row.issuePrice ?? ipo.priceRangeMax ?? null;
+  const listingClose = row.listingClose;
   const computedGain = computeListingGainPct(issuePrice, listingClose);
   // Prefer computed (deterministic from price); fall back to source's stated gain.
   const gain = computedGain ?? row.listingGainPct;
