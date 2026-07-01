@@ -167,3 +167,25 @@ export function getChangeTrend(change: number | null): 'up' | 'down' | 'neutral'
   if (change < 0) return 'down';
   return 'neutral';
 }
+
+/**
+ * Compute equity dilution (drop in promoter holding %) with a plausibility guard.
+ *
+ * Dilution = pre-issue % − post-issue %, valid ONLY when both inputs are genuine
+ * percentages in [0,100] and the result is a plausible [0,100]. Some IPO rows store
+ * promoter holding in the wrong unit (absolute counts, not %), which made the raw
+ * subtraction render a domain-absurd value (blind-QA found "2152%" on one page).
+ * Returns null in every implausible case so the UI shows "N/A" rather than an absurd
+ * number (output-plausibility rule). #89.
+ */
+export function computeEquityDilution(
+  preIssue: number | null,
+  postIssue: number | null
+): number | null {
+  if (preIssue === null || postIssue === null) return null;
+  if (!Number.isFinite(preIssue) || !Number.isFinite(postIssue)) return null;
+  if (preIssue < 0 || preIssue > 100 || postIssue < 0 || postIssue > 100) return null;
+  const dilution = Number((preIssue - postIssue).toFixed(2));
+  if (dilution < 0 || dilution > 100) return null; // post>pre or absurd
+  return dilution;
+}

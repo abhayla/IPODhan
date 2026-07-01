@@ -171,7 +171,7 @@ export function TimeSeriesPlayback({
       .text(yAxisLabel)
       .style('font-size', '12px')
       .style('font-weight', '600')
-      .style('fill', 'hsl(var(--foreground))')
+      .style('fill', 'var(--foreground)')
       .style('font-family', 'var(--font-inter)');
 
     // Grid lines
@@ -194,7 +194,7 @@ export function TimeSeriesPlayback({
       .attr('class', 'full-path')
       .attr('d', line)
       .style('fill', 'none')
-      .style('stroke', 'hsl(var(--muted-foreground))')
+      .style('stroke', 'var(--muted-foreground)')
       .style('stroke-width', 2)
       .style('stroke-opacity', 0.2)
       .style('stroke-dasharray', '5,5');
@@ -295,7 +295,7 @@ export function TimeSeriesPlayback({
         .text(currentPoint.value.toFixed(2))
         .style('font-size', '12px')
         .style('font-weight', '700')
-        .style('fill', 'hsl(var(--foreground))')
+        .style('fill', 'var(--foreground)')
         .style('font-family', 'var(--font-jetbrains-mono)');
     }
 
@@ -307,7 +307,7 @@ export function TimeSeriesPlayback({
       .text(title)
       .style('font-size', '14px')
       .style('font-weight', '600')
-      .style('fill', 'hsl(var(--foreground))')
+      .style('fill', 'var(--foreground)')
       .style('font-family', 'var(--font-inter)');
 
   }, [sortedData, currentFrame, title, yAxisLabel, width, height]);

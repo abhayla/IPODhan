@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   calculateMarketCap,
+  computeEquityDilution,
   calculatePreIPO_PE,
   calculatePostIPO_PE,
   calculateEPSChange,
@@ -222,5 +223,29 @@ describe('getChangeTrend', () => {
 
   it('should return "neutral" for null', () => {
     expect(getChangeTrend(null)).toBe('neutral');
+  });
+});
+
+describe('computeEquityDilution — plausibility-guarded (blind-QA: exato showed 2152%)', () => {
+  it('computes a sane dilution (pre - post) when both are valid percentages', () => {
+    expect(computeEquityDilution(75, 55)).toBe(20);
+    expect(computeEquityDilution(90, 86.5)).toBe(3.5);
+  });
+  it('returns null (→ N/A, not an absurd render) when inputs are not valid percentages', () => {
+    // EXATO shape: stored values are not %, subtraction would give 2152 → must be rejected.
+    expect(computeEquityDilution(2200, 48)).toBeNull();
+    expect(computeEquityDilution(150, 20)).toBeNull(); // pre > 100
+    expect(computeEquityDilution(80, -5)).toBeNull();   // post < 0
+  });
+  it('rejects a negative dilution (post > pre is impossible)', () => {
+    expect(computeEquityDilution(40, 60)).toBeNull();
+  });
+  it('returns null for missing / non-finite inputs', () => {
+    expect(computeEquityDilution(null, 55)).toBeNull();
+    expect(computeEquityDilution(75, null)).toBeNull();
+    expect(computeEquityDilution(NaN, 55)).toBeNull();
+  });
+  it('accepts a genuinely low dilution (0.10% is low but in-range, not absurd)', () => {
+    expect(computeEquityDilution(74.1, 74)).toBeCloseTo(0.1, 2);
   });
 });

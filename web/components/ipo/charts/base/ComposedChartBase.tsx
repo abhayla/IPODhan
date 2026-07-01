@@ -242,16 +242,16 @@ export function ComposedChartBase({
 
         <Tooltip
           contentStyle={{
-            backgroundColor: 'hsl(var(--background))',
-            border: '1px solid hsl(var(--border))',
+            backgroundColor: 'var(--background)',
+            border: '1px solid var(--border)',
             borderRadius: '6px',
           }}
           labelStyle={{
-            color: 'hsl(var(--foreground))',
+            color: 'var(--foreground)',
             fontWeight: 600,
           }}
           itemStyle={{
-            color: 'hsl(var(--foreground))',
+            color: 'var(--foreground)',
           }}
           formatter={tooltipFormatterFn}
         />
