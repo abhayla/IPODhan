@@ -406,3 +406,72 @@ export function extractObjectivesFromDetailHtml(html: string): ExtractedObjectiv
   }
   return objectives;
 }
+
+/** Plausible company-description length bounds (#69). */
+const MIN_DESC = 20;
+const MAX_DESC = 5000;
+
+/**
+ * Extract the company business description ("About <Company>") from a Chittorgarh
+ * detail page (#69 — company_description is 0/285). Chittorgarh renders it as:
+ *   <div id="ipoSummary" class="...collapse "><p>Incorporated in 2019, ...</p>...</div>
+ *
+ * Pure (html -> value), with an output-plausibility gate: returns null when the
+ * block is absent or the text is implausibly short/long. HTML tags are stripped
+ * and entities decoded so the stored value is clean prose (never markup).
+ */
+export function extractCompanyDescriptionFromDetailHtml(html: string): string | null {
+  if (!html) return null;
+
+  const m = html.match(/<div[^>]*id="ipoSummary"[^>]*>([\s\S]*?)<\/div>/i);
+  if (!m) return null;
+
+  const text = m[1]
+    .replace(/<\/(p|li|br)\s*>/gi, ' ') // keep word spacing across block tags
+    .replace(/<[^>]+>/g, ' ') // strip remaining tags
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&#39;|&rsquo;|&apos;/g, "'")
+    .replace(/&quot;|&ldquo;|&rdquo;/g, '"')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (text.length < MIN_DESC || text.length > MAX_DESC) return null; // implausible
+  return text;
+}
+
+/**
+ * Extract the ISIN from a Chittorgarh detail page (#71 historical ingestion).
+ * Rendered as: <a href="/glossary/isin/...">ISIN</a></span></td><td ...>INE0LEZ01016</td>.
+ * ISIN format: 2 letters + 9 alphanumerics + 1 check digit (12 chars). Returns
+ * null when absent/malformed.
+ */
+export function extractIsinFromDetailHtml(html: string): string | null {
+  if (!html) return null;
+  const m = html.match(/ISIN<\/a>[\s\S]{0,160}?\b([A-Z]{2}[0-9A-Z]{9}[0-9])\b/i);
+  if (!m) return null;
+  const isin = m[1].toUpperCase();
+  return /^[A-Z]{2}[0-9A-Z]{9}[0-9]$/.test(isin) ? isin : null;
+}
+
+/** Plausible issue-size bounds in crore (#71): ₹1 Cr .. ₹5,00,000 Cr. */
+const MIN_ISSUE_CR = 1;
+const MAX_ISSUE_CR = 500000;
+
+/**
+ * Extract the total issue size (in RUPEES) from a Chittorgarh detail page
+ * (#71). Rendered as: "book build issue </a></span> of ₹2,980.76 cr". Returns
+ * rupees (crore × 1e7) to match the issue_size storage convention, or null when
+ * absent/implausible.
+ */
+export function extractIssueSizeRupeesFromDetailHtml(html: string): number | null {
+  if (!html) return null;
+  const m = html.match(/issue\s*<\/a>\s*<\/span>\s*of\s*₹\s*([0-9,]+(?:\.[0-9]+)?)\s*cr/i)
+    ?? html.match(/of\s*₹\s*([0-9,]+(?:\.[0-9]+)?)\s*cr/i);
+  if (!m) return null;
+  const cr = parseFloat(m[1].replace(/,/g, ''));
+  if (!Number.isFinite(cr) || cr < MIN_ISSUE_CR || cr > MAX_ISSUE_CR) return null;
+  return Math.round(cr * 10000000); // crore -> rupees
+}

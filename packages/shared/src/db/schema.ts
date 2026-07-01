@@ -827,6 +827,8 @@ export const ipoDetails = pgTable(
 
     // Issue structure fields (Story 4.11)
     issueType: issueTypeEnum('issue_type'),
+    // in INR RUPEES (same convention as ipos.issue_size, which fresh+ofs sum to;
+    // render via formatIssueSizeCrores). GitHub #8 — unit consistency.
     freshIssue: numeric('fresh_issue', { precision: 12, scale: 2 }),
     ofsIssue: numeric('ofs_issue', { precision: 12, scale: 2 }),
     cutOffPrice: numeric('cut_off_price', { precision: 10, scale: 2 }),
