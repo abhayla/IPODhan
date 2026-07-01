@@ -3,6 +3,7 @@ import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { generateSlug, sanitizeCompanyName, coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeIpoWriteFields } from '../utils/validators.js';
+import { isDateSequenceCoherent } from './ipo-date-plausibility.js';
 import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { validateLotSize } from '../utils/lot-size-validator.js';
 import { resolveOfferingTypeKeepingClassification } from '../utils/detect-offering-type.js';
@@ -299,14 +300,47 @@ export async function upsertIPO(
               mergedExchanges = mergeListingExchanges(mergedExchanges, currentExchange);
             }
 
+            // #52 observability: detect an incoherent merged date sequence BEFORE the
+            // sanitizer corrects it, so a consolidation mis-merge recurrence is visible
+            // in prod logs/alerting (the sanitize below only silently nulls the offender).
+            const rawConsolidated = consolidationResult.consolidatedData;
+            const dateCoherence = isDateSequenceCoherent({
+              openDate: rawConsolidated.openDate,
+              closeDate: rawConsolidated.closeDate,
+              allotmentDate: rawConsolidated.allotmentDate,
+              listingDate: rawConsolidated.listingDate,
+            });
+            if (!dateCoherence.ok) {
+              logger.warn({
+                ipoId: existingIPO.id,
+                companyName: scrapedIPO.companyName,
+                source,
+                reason: dateCoherence.reason,
+                dates: {
+                  openDate: rawConsolidated.openDate,
+                  closeDate: rawConsolidated.closeDate,
+                  allotmentDate: rawConsolidated.allotmentDate,
+                  listingDate: rawConsolidated.listingDate,
+                },
+              }, '[DataConsolidation] incoherent merged date sequence — sanitizer will null the offender (#52)');
+            }
+
             // Use consolidated data with merged exchanges. Re-apply the write-field
             // sanitizers (#42/#45/#52): consolidation picks a winning value PER FIELD
             // from field_sources, which can re-introduce a name status-token, a
             // registrar address block, or a date field merged from a different-vintage
             // source that breaks the open<close<allotment<listing ordering — none of
             // which the incoming-payload sanitize (above) can catch post-merge.
+            //
+            // KNOWN LIMITATION (review finding, owner-gated #52 correction): the no-listing
+            // date disambiguation anchors on allotment and nulls open/close. For a genuine
+            // NEW IPO that got a WRONG historical allotment merged and has no listing yet,
+            // this nulls the good open/close and keeps the bad allotment. Correctly
+            // resolving that needs field_sources provenance (the owner-gated #52 fix) — the
+            // guard never ships an absurd value (nulled → "Data Not Available"), it just may
+            // drop a recoverable field for that unobserved pre-listing edge.
             const finalData = {
-              ...sanitizeIpoWriteFields(consolidationResult.consolidatedData),
+              ...sanitizeIpoWriteFields(rawConsolidated),
               listingExchanges: mergedExchanges,
               lastScrapedAt: new Date(),
               updatedAt: new Date(),
