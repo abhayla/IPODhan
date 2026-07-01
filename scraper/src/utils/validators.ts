@@ -349,6 +349,51 @@ export function sanitizeRegistrar(value: string | null | undefined): string | nu
 }
 
 /**
+ * Consolidation-output write choke (#42/#45/#52). The create path sanitizes
+ * company_name / registrar / dates inline while building the insert record, but the
+ * consolidation UPDATE path writes `consolidationResult.consolidatedData` directly
+ * via `ipoRepository.update` — so a per-field merge that picks an unsanitized winning
+ * value (a name with a trailing status token, a registrar with an address block, or a
+ * date field merged from a different-vintage source that breaks the ordering) is
+ * persisted UNGUARDED, re-introducing exactly the pollution the create path removed.
+ *
+ * This re-applies all three sanitizers to a merged write record just before it is
+ * written, so every write path — create AND consolidation-update — enforces the same
+ * substance guarantees. Only fields PRESENT on the record are touched (so a partial
+ * update never invents keys); the input is not mutated.
+ */
+export function sanitizeIpoWriteFields<T extends Record<string, any>>(record: T): T {
+  const out: Record<string, any> = { ...record };
+
+  if (typeof out.companyName === 'string' && out.companyName) {
+    out.companyName = sanitizeCompanyName(out.companyName);
+  }
+  if ('registrar' in out) {
+    out.registrar = sanitizeRegistrar(out.registrar);
+  }
+
+  const hasAnyDate = ['openDate', 'closeDate', 'allotmentDate', 'listingDate'].some(
+    (k) => k in out
+  );
+  if (hasAnyDate) {
+    const safe = sanitizeIpoDates({
+      openDate: out.openDate ?? null,
+      closeDate: out.closeDate ?? null,
+      allotmentDate: out.allotmentDate ?? null,
+      listingDate: out.listingDate ?? null,
+    });
+    // Write back only the keys the record actually carried, so an absent key stays
+    // absent (a partial update must not null a column it never intended to touch).
+    if ('openDate' in out) out.openDate = safe.openDate ?? null;
+    if ('closeDate' in out) out.closeDate = safe.closeDate ?? null;
+    if ('allotmentDate' in out) out.allotmentDate = safe.allotmentDate ?? null;
+    if ('listingDate' in out) out.listingDate = safe.listingDate ?? null;
+  }
+
+  return out as T;
+}
+
+/**
  * Sanitize subscription number to prevent injection
  * Ensures valid numeric value within reasonable bounds
  */
