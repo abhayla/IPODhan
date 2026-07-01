@@ -64,7 +64,7 @@ jobs:
               Write-Host "  PM2 manages no ipodhan process -> starting from $eco"
               pm2 start $eco
             } else {
-              Write-Host "  [WARN] ecosystem config not found at $eco — cannot cold-start"
+              Write-Host "  [WARN] ecosystem config not found at $eco - cannot cold-start"
             }
           }
           pm2 save --force 2>$null
