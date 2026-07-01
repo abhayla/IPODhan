@@ -9,6 +9,7 @@
  */
 import { Client } from 'pg';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
+import { isDateSequenceCoherent } from '../../src/services/ipo-date-plausibility.js';
 import { writeFileSync } from 'fs';
 
 const FYS = [
@@ -111,6 +112,45 @@ async function main() {
   if (wrongs.length > 40) console.log(`  ... +${wrongs.length - 40} more`);
 
   if (outPath) { writeFileSync(outPath, lines.join('\n')); console.log(`\nmatrix written: ${outPath} (${lines.length - 1} rows)`); }
+
+  // --fix: correct stored dates to the oracle value for confirmed present-vs-present
+  // mismatches (the -1-day class). Only writes when the RESULTING full date sequence is
+  // coherent (isDateSequenceCoherent), never blindly. dry-run unless --apply.
+  if (process.argv.includes('--fix')) {
+    const apply = process.argv.includes('--apply');
+    console.log(`\n=== DATE CORRECTION (${apply ? 'APPLY' : 'DRY-RUN'}) — oracle-authoritative, coherence-guarded ===`);
+    const c2 = new Client({
+      host: process.env.DATABASE_HOST, port: parseInt(process.env.DATABASE_PORT || '5432'),
+      user: process.env.DATABASE_USER, password: process.env.DATABASE_PASSWORD, database: process.env.DATABASE_NAME,
+      ssl: false, connectionTimeoutMillis: 12000,
+    });
+    await c2.connect();
+    let fixed = 0, skipped = 0;
+    const COL = { open: 'open_date', close: 'close_date', allot: 'allotment_date', listing: 'listing_date' } as const;
+    for (const ipo of ipos) {
+      const key = normalizeCompanyNameForMatching(ipo.company_name);
+      const o = key ? oracle.get(key) : undefined;
+      if (!o) continue;
+      // Build the corrected row: oracle value where present + differs from ours.
+      const corrected: any = { open: ipo.open, close: ipo.close, allot: ipo.allot, listing: ipo.listing };
+      const changes: string[] = [];
+      for (const f of FIELDS) {
+        const orc = (o as any)[f]; const ours = ipo[f] ?? null;
+        if (orc !== null && ours !== null && ours !== orc) { corrected[f] = orc; changes.push(f); }
+      }
+      if (changes.length === 0) continue;
+      const coh = isDateSequenceCoherent({ openDate: corrected.open, closeDate: corrected.close, allotmentDate: corrected.allot, listingDate: corrected.listing });
+      if (!coh.ok) { skipped++; console.log(`  SKIP (incoherent result: ${coh.reason}) ${ipo.company_name}`); continue; }
+      if (apply) {
+        const sets = changes.map((f, i) => `${(COL as any)[f]} = $${i + 2}`).join(', ');
+        await c2.query(`update ipos set ${sets}, updated_at = now() where company_name = $1`, [ipo.company_name, ...changes.map((f) => corrected[f])]);
+      }
+      fixed++;
+      if (fixed <= 30) console.log(`  ${apply ? 'FIXED' : 'would fix'} ${ipo.company_name}: ${changes.map((f) => `${f} ${ipo[f]}→${corrected[f]}`).join(', ')}`);
+    }
+    console.log(`\n${apply ? 'corrected' : 'would correct'}: ${fixed} IPOs | skipped (incoherent): ${skipped}`);
+    await c2.end();
+  }
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
