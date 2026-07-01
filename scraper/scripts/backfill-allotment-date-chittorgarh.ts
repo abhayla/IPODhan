@@ -15,6 +15,7 @@ import { db } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
+import { isAllotmentPlausible } from '../src/services/ipo-date-plausibility.js';
 import logger from '../src/utils/logger.js';
 
 const APPLY = process.argv.includes('--apply');
@@ -76,21 +77,41 @@ async function main() {
   }
   console.log(`distinct allotment dates from report 118: ${allotByName.size}`);
 
-  // Genuine IPOs missing allotment_date
+  // Genuine IPOs missing allotment_date — also pull close/listing so we can gate
+  // each candidate date to the plausible window (#41).
   const ipos = await db
-    .select({ id: schema.ipos.id, companyName: schema.ipos.companyName })
+    .select({
+      id: schema.ipos.id,
+      companyName: schema.ipos.companyName,
+      closeDate: schema.ipos.closeDate,
+      listingDate: schema.ipos.listingDate,
+    })
     .from(schema.ipos)
     .where(and(eq(schema.ipos.offeringType, 'IPO'), isNull(schema.ipos.allotmentDate)));
 
   console.log(`genuine IPOs with NULL allotment_date: ${ipos.length}`);
 
   const plans: Array<{ id: string; name: string; date: string }> = [];
+  let rejectedImplausible = 0;
   for (const ipo of ipos) {
     const key = normalizeCompanyNameForMatching(ipo.companyName);
     const date = key ? allotByName.get(key) : undefined;
-    if (date) plans.push({ id: ipo.id, name: ipo.companyName, date });
+    if (!date) continue;
+    // #41 plausibility guard: reject any candidate allotment not strictly within
+    // (close_date, listing_date). A name-match collision otherwise pulls a
+    // historical company's allotment onto this row (the 7 domain-absurd dates).
+    if (!isAllotmentPlausible(date, ipo.closeDate, ipo.listingDate)) {
+      rejectedImplausible++;
+      logger.warn(
+        { company: ipo.companyName, candidate: date, closeDate: ipo.closeDate, listingDate: ipo.listingDate },
+        'allotment_date candidate rejected — outside plausible (close, listing) window (#41)'
+      );
+      continue;
+    }
+    plans.push({ id: ipo.id, name: ipo.companyName, date });
   }
   console.log(`\nmatched (would fill): ${plans.length}`);
+  console.log(`rejected as implausible (outside close..listing window): ${rejectedImplausible}`);
   for (const p of plans.slice(0, 10)) console.log(`  - ${p.name} -> ${p.date}`);
 
   if (!APPLY) {
