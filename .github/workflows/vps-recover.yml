@@ -51,7 +51,23 @@ jobs:
           Write-Host "=== RESTART IPODHAN PM2 APPS ==="
           pm2 restart ipodhan-web 2>$null
           pm2 restart ipodhan-scraper 2>$null
-          pm2 save 2>$null
+
+          # Fallback: `pm2 restart` is a no-op when PM2 manages no process (e.g. after
+          # a VPS reboot with no resurrect, which leaves prod down with an empty PM2
+          # list). In that case start the apps from the already-deployed ecosystem
+          # config (no rebuild) so this no-build recovery can restore prod on its own.
+          $eco = 'C:\Apps\IPODhan\current\ecosystem.config.js'
+          $managed = @()
+          try { $managed = (pm2 jlist | ConvertFrom-Json) | Where-Object { $_.name -like 'ipodhan-*' } } catch { $managed = @() }
+          if (-not $managed) {
+            if (Test-Path $eco) {
+              Write-Host "  PM2 manages no ipodhan process -> starting from $eco"
+              pm2 start $eco
+            } else {
+              Write-Host "  [WARN] ecosystem config not found at $eco — cannot cold-start"
+            }
+          }
+          pm2 save --force 2>$null
 
           Start-Sleep -Seconds 8
 
