@@ -190,7 +190,7 @@ export function PieChartBase({
               style={{
                 fontSize: '14px',
                 fontWeight: 600,
-                fill: 'hsl(var(--foreground))',
+                fill: 'var(--foreground)',
               }}
               dy={centerSubLabel ? -10 : 0}
             />
@@ -203,7 +203,7 @@ export function PieChartBase({
               style={{
                 fontSize: '18px',
                 fontWeight: 700,
-                fill: 'hsl(var(--foreground))',
+                fill: 'var(--foreground)',
               }}
               dy={15}
             />
@@ -212,12 +212,12 @@ export function PieChartBase({
 
         <Tooltip
           contentStyle={{
-            backgroundColor: 'hsl(var(--background))',
-            border: '1px solid hsl(var(--border))',
+            backgroundColor: 'var(--background)',
+            border: '1px solid var(--border)',
             borderRadius: '6px',
           }}
           itemStyle={{
-            color: 'hsl(var(--foreground))',
+            color: 'var(--foreground)',
           }}
           formatter={(value: number, name: string, entry: any) => {
             const [formattedValue, label] = tooltipFormatterFn(value, entry.payload);

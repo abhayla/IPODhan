@@ -139,7 +139,7 @@ export function SectorHeatMap({
       .attr('height', cellHeight - 4)
       .attr('rx', 8)
       .attr('fill', d => colorScale(getMetricValue(d)))
-      .attr('stroke', 'hsl(var(--border))')
+      .attr('stroke', 'var(--border)')
       .attr('stroke-width', 1)
       .attr('cursor', 'pointer')
       .style('transition', 'all 0.2s ease')
@@ -147,7 +147,7 @@ export function SectorHeatMap({
         // Highlight cell
         d3.select(this)
           .attr('stroke-width', 3)
-          .attr('stroke', 'hsl(var(--primary))');
+          .attr('stroke', 'var(--primary)');
 
         // Show tooltip
         if (tooltipRef.current) {
@@ -170,7 +170,7 @@ export function SectorHeatMap({
         // Reset cell
         d3.select(this)
           .attr('stroke-width', 1)
-          .attr('stroke', 'hsl(var(--border))');
+          .attr('stroke', 'var(--border)');
 
         // Hide tooltip
         if (tooltipRef.current) {
@@ -259,7 +259,7 @@ export function SectorHeatMap({
       .text(`Sector Performance: ${metricLabel}`)
       .style('font-size', '16px')
       .style('font-weight', '600')
-      .style('fill', 'hsl(var(--foreground))')
+      .style('fill', 'var(--foreground)')
       .style('font-family', 'var(--font-inter)');
 
     // Add legend
@@ -299,7 +299,7 @@ export function SectorHeatMap({
       .attr('width', legendWidth)
       .attr('height', legendHeight)
       .attr('fill', 'url(#legend-gradient)')
-      .attr('stroke', 'hsl(var(--border))')
+      .attr('stroke', 'var(--border)')
       .attr('stroke-width', 1)
       .attr('rx', 4);
 
