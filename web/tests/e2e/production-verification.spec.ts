@@ -52,7 +52,9 @@ const ROUTES: string[] = [
   '/tools/lot-calculator',
   // representative detail pages (listed + open)
   '/ipos/fractal-analytics-ltd',
-  '/ipos/sarda-proteins-ltd',
+  // NOTE: '/ipos/sarda-proteins-ltd' removed — Sarda Proteins was a takeover/corporate
+  // action, not an IPO; it was de-polluted from the DB, so its detail page correctly 404s.
+  // Hardcoding removed-IPO slugs makes this sweep flaky; prefer a live IPO detail page.
 ];
 
 // Console/network noise outside our control (third-party widgets, analytics).
