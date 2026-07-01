@@ -22,23 +22,23 @@ export function SectorComparisonChart({
     {
       name: comparison.sector + ' Average',
       gain: comparison.sectorAverage,
-      color: 'hsl(var(--chart-2))',
+      color: 'var(--chart-2)',
     },
     {
       name: 'This IPO',
       gain: comparison.ipoGain,
-      color: comparison.outperformance ? 'hsl(var(--chart-1))' : 'hsl(var(--chart-3))',
+      color: comparison.outperformance ? 'var(--chart-1)' : 'var(--chart-3)',
     },
   ];
 
   const bars: any[] = [
     {
       dataKey: 'gain',
-      fill: 'hsl(var(--chart-1))',
+      fill: 'var(--chart-1)',
       radius: [0, 4, 4, 0] as [number, number, number, number],
       name: 'Listing Gain %',
       label: 'Listing Gain %',
-      fillColor: 'hsl(var(--chart-1))',
+      fillColor: 'var(--chart-1)',
     },
   ];
 

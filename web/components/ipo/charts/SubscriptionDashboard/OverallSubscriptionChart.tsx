@@ -51,8 +51,8 @@ export function OverallSubscriptionChart({
     areas.push({
       dataKey: 'Retail',
       stackId: '1',
-      fill: 'hsl(var(--chart-3))',
-      stroke: 'hsl(var(--chart-3))',
+      fill: 'var(--chart-3)',
+      stroke: 'var(--chart-3)',
       name: 'Retail',
     });
   }
@@ -60,8 +60,8 @@ export function OverallSubscriptionChart({
     areas.push({
       dataKey: 'NII',
       stackId: '1',
-      fill: 'hsl(var(--chart-2))',
-      stroke: 'hsl(var(--chart-2))',
+      fill: 'var(--chart-2)',
+      stroke: 'var(--chart-2)',
       name: 'NII',
     });
   }
@@ -69,8 +69,8 @@ export function OverallSubscriptionChart({
     areas.push({
       dataKey: 'QIB',
       stackId: '1',
-      fill: 'hsl(var(--chart-1))',
-      stroke: 'hsl(var(--chart-1))',
+      fill: 'var(--chart-1)',
+      stroke: 'var(--chart-1)',
       name: 'QIB',
     });
   }
@@ -80,8 +80,8 @@ export function OverallSubscriptionChart({
     areas.push({
       dataKey: 'Total',
       stackId: '1',
-      fill: 'hsl(var(--chart-1))',
-      stroke: 'hsl(var(--chart-1))',
+      fill: 'var(--chart-1)',
+      stroke: 'var(--chart-1)',
       name: 'Total',
     });
   }

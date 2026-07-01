@@ -175,7 +175,7 @@ export function getCategoryBreakdown(
         ? Number(latest.qibSharesOffered)
         : null,
       label: 'QIB',
-      color: 'hsl(var(--chart-1))', // Blue
+      color: 'var(--chart-1)', // Blue
     });
   }
 
@@ -189,7 +189,7 @@ export function getCategoryBreakdown(
         ? Number(latest.niiSharesOffered)
         : null,
       label: 'NII',
-      color: 'hsl(var(--chart-2))', // Green
+      color: 'var(--chart-2)', // Green
     });
   }
 
@@ -205,7 +205,7 @@ export function getCategoryBreakdown(
         ? Number(latest.retailSharesOffered)
         : null,
       label: 'Retail',
-      color: 'hsl(var(--chart-3))', // Orange
+      color: 'var(--chart-3)', // Orange
     });
   }
 
@@ -219,7 +219,7 @@ export function getCategoryBreakdown(
         ? Number(latest.employeeSharesOffered)
         : null,
       label: 'Employee',
-      color: 'hsl(var(--chart-4))', // Purple
+      color: 'var(--chart-4)', // Purple
     });
   }
 
@@ -233,7 +233,7 @@ export function getCategoryBreakdown(
         ? Number(latest.shareholderSharesOffered)
         : null,
       label: 'Shareholder',
-      color: 'hsl(var(--chart-5))', // Pink
+      color: 'var(--chart-5)', // Pink
     });
   }
 
