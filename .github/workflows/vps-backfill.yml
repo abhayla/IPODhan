@@ -1,0 +1,52 @@
+name: VPS Backfill (data population)
+
+# One-off data backfills that must run ON the VPS (need Chittorgarh internet access
+# + direct prod DB), against the deployed scraper. DRY-RUN by default; check the
+# 'execute' box to persist. No checkout / build - uses the already-deployed code
+# at C:\Apps\IPODhan\current\scraper. Manual dispatch only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Which backfill to run'
+        type: choice
+        options:
+          - stuck-listing
+          - description
+          - both
+        default: stuck-listing
+      execute:
+        description: 'Persist writes to prod (unchecked = DRY-RUN, no writes)'
+        type: boolean
+        default: false
+
+jobs:
+  backfill:
+    runs-on: self-hosted
+    steps:
+      - name: Run backfill(s)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $dir = 'C:\Apps\IPODhan\current\scraper'
+          if (-not (Test-Path $dir)) { Write-Host "FATAL: deployed scraper not found at $dir"; exit 1 }
+          Set-Location $dir
+
+          $suffix = ''
+          if ('${{ inputs.execute }}' -eq 'true') { $suffix = ':execute' }
+          $mode = if ($suffix -eq ':execute') { 'EXECUTE (writing to prod)' } else { 'DRY-RUN (no writes)' }
+          Write-Host ("MODE: {0}  TARGET: {1}" -f $mode, '${{ inputs.target }}')
+
+          $fail = 0
+          if ('${{ inputs.target }}' -eq 'stuck-listing' -or '${{ inputs.target }}' -eq 'both') {
+            Write-Host "=== backfill:stuck-listing$suffix (#70) ==="
+            npm run "backfill:stuck-listing$suffix"
+            if ($LASTEXITCODE -ne 0) { Write-Host "stuck-listing exit $LASTEXITCODE"; $fail = 1 }
+          }
+          if ('${{ inputs.target }}' -eq 'description' -or '${{ inputs.target }}' -eq 'both') {
+            Write-Host "=== backfill:description$suffix (#69) ==="
+            npm run "backfill:description$suffix"
+            if ($LASTEXITCODE -ne 0) { Write-Host "description exit $LASTEXITCODE"; $fail = 1 }
+          }
+          exit $fail
