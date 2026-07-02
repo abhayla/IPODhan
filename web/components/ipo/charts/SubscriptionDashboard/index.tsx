@@ -58,7 +58,7 @@ export function SubscriptionDashboard({
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [activeView, setActiveView] = useState<
     'overview' | 'categories' | 'heatmap' | 'all'
-  >('all');
+  >('overview'); // compact default — 'all' stacked 4x subscription views (2026-07-02 review)
 
   // Check if we have minimum data
   const hasData = hasMinimumSubscriptionData(subscriptions);

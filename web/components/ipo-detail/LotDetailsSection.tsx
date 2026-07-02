@@ -94,23 +94,35 @@ export function LotDetailsSection({
             <p className="text-xs text-muted-foreground">per share</p>
           </div>
 
-          {/* Min Investment */}
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Minimum Investment</p>
-            <p className="text-2xl font-bold text-green-600">{formatCurrency(minInvestment)}</p>
-            <p className="text-xs text-muted-foreground">
-              {formatNumber(lotSize)} shares × {formatCurrency(priceRangeMin)}
-            </p>
-          </div>
+          {/* Investment — collapses to a single figure when the price band has
+              one value (min=max side-by-side looked wrong; 2026-07-02 review) */}
+          {minInvestment === maxInvestment ? (
+            <div className="space-y-1">
+              <p className="text-sm text-muted-foreground">Investment (1 lot)</p>
+              <p className="text-2xl font-bold text-green-600">{formatCurrency(minInvestment)}</p>
+              <p className="text-xs text-muted-foreground">
+                {formatNumber(lotSize)} shares × {formatCurrency(priceRangeMax)}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Minimum Investment</p>
+                <p className="text-2xl font-bold text-green-600">{formatCurrency(minInvestment)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatNumber(lotSize)} shares × {formatCurrency(priceRangeMin)}
+                </p>
+              </div>
 
-          {/* Max Investment */}
-          <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Maximum Investment</p>
-            <p className="text-2xl font-bold text-blue-600">{formatCurrency(maxInvestment)}</p>
-            <p className="text-xs text-muted-foreground">
-              {formatNumber(lotSize)} shares × {formatCurrency(priceRangeMax)}
-            </p>
-          </div>
+              <div className="space-y-1">
+                <p className="text-sm text-muted-foreground">Maximum Investment</p>
+                <p className="text-2xl font-bold text-blue-600">{formatCurrency(maxInvestment)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {formatNumber(lotSize)} shares × {formatCurrency(priceRangeMax)}
+                </p>
+              </div>
+            </>
+          )}
 
           {/* Face Value */}
           {faceValue && (

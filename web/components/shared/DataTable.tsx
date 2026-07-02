@@ -53,6 +53,9 @@ export interface ColumnDef<T> {
   render?: (value: any, row: T) => React.ReactNode;
   align?: 'left' | 'center' | 'right';
   minWidth?: string;
+  /** Hide this column below md — mobile shows only priority columns instead of
+      a desktop table crushed to micro-text (2026-07-02 blind review). */
+  mobileHidden?: boolean;
 }
 
 interface YearFilterConfig {
@@ -297,6 +300,7 @@ export function DataTable<T extends Record<string, any>>({
                       column.className,
                       column.align === 'right' && 'text-right',
                       column.align === 'center' && 'text-center',
+                      column.mobileHidden && 'hidden md:table-cell',
                       // first column stays visible while the table scrolls horizontally
                       colIndex === 0 && 'sticky left-0 z-20 bg-white border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]'
                     )}
@@ -323,7 +327,10 @@ export function DataTable<T extends Record<string, any>>({
               {enableColumnSearch && (
                 <TableRow className="bg-gray-50">
                   {columns.map((column) => (
-                    <TableHead key={`search-${column.key}`} className="py-2">
+                    <TableHead
+                      key={`search-${column.key}`}
+                      className={cn('py-2', column.mobileHidden && 'hidden md:table-cell')}
+                    >
                       {column.searchable !== false ? (
                         <div className="flex items-center gap-1">
                           <Input
@@ -364,6 +371,7 @@ export function DataTable<T extends Record<string, any>>({
                         column.className,
                         column.align === 'right' && 'text-right',
                         column.align === 'center' && 'text-center',
+                        column.mobileHidden && 'hidden md:table-cell',
                         colIndex === 0 &&
                           'sticky left-0 z-10 bg-white border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)] max-w-[220px] overflow-hidden text-ellipsis'
                       )}

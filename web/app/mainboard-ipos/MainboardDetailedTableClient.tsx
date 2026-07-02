@@ -132,11 +132,13 @@ export function MainboardDetailedTableClient({
   const router = useRouter();
   const pathname = usePathname();
   const [year, setYear] = useState(String(initialYear));
+  const [page, setPage] = useState(1);
   const [searches, setSearches] = useState<Record<string, string>>({});
 
   // Handle year change with URL update
   // AC#10, AC#11: Year navigation updates URL
   const handleYearChange = (newYear: string) => {
+    setPage(1);
     setYear(newYear);
     const params = new URLSearchParams(window.location.search);
     params.set('year', newYear);
@@ -145,6 +147,7 @@ export function MainboardDetailedTableClient({
 
   // Handle column search with URL update
   const handleSearch = (newSearches: Record<string, string>) => {
+    setPage(1);
     setSearches(newSearches);
     const params = new URLSearchParams(window.location.search);
 
@@ -192,6 +195,7 @@ export function MainboardDetailedTableClient({
     },
     {
       key: 'listingDate',
+      mobileHidden: true,
       header: 'Listing Date',
       sortable: true,
       searchable: false,
@@ -207,6 +211,7 @@ export function MainboardDetailedTableClient({
     },
     {
       key: 'issueSize',
+      mobileHidden: true,
       header: 'Total Issue Amount',
       sortable: true,
       searchable: false,
@@ -215,6 +220,7 @@ export function MainboardDetailedTableClient({
     },
     {
       key: 'listingExchanges',
+      mobileHidden: true,
       header: 'Listing At',
       searchable: false,
       align: 'center',
@@ -225,6 +231,7 @@ export function MainboardDetailedTableClient({
     },
     {
       key: 'leadManagers',
+      mobileHidden: true,
       header: 'Lead Manager',
       searchable: true,
       render: (value: string[]) => {
@@ -244,6 +251,7 @@ export function MainboardDetailedTableClient({
     },
     {
       key: 'compare',
+      mobileHidden: true,
       header: 'Compare',
       sortable: false,
       searchable: false,
@@ -278,6 +286,7 @@ export function MainboardDetailedTableClient({
         // AC#10, AC#11: Year navigation
         // AC#17: Minimize/maximize toggle
         enableColumnSearch={true}
+        enablePagination={true}
         enableYearFilter={true}
         enableMinimizeToggle={true}
         yearFilterConfig={{
@@ -290,6 +299,12 @@ export function MainboardDetailedTableClient({
           currentSearches: searches,
         }}
         // Custom row className for color coding
+        paginationConfig={{
+          pageSize: 25,
+          currentPage: page,
+          totalRecords: data.length,
+          onPageChange: setPage,
+        }}
         keyExtractor={(row) => row.id}
         className="detailed-table"
       />

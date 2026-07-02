@@ -136,6 +136,7 @@ export function SMEDetailedTableClient({
   const [year, setYear] = useState(String(initialYear));
   const [searches, setSearches] = useState<Record<string, string>>({});
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [page, setPage] = useState(1);
 
   // ISS-026 Fix: Initialize status filter from URL parameters
   useEffect(() => {
@@ -148,6 +149,7 @@ export function SMEDetailedTableClient({
   // Handle year change with URL update
   // AC#10, AC#11: Year navigation updates URL
   const handleYearChange = (newYear: string) => {
+    setPage(1);
     setYear(newYear);
     const params = new URLSearchParams(window.location.search);
     params.set('year', newYear);
@@ -156,6 +158,7 @@ export function SMEDetailedTableClient({
 
   // Handle column search with URL update
   const handleSearch = (newSearches: Record<string, string>) => {
+    setPage(1);
     setSearches(newSearches);
     const params = new URLSearchParams(window.location.search);
 
@@ -174,6 +177,7 @@ export function SMEDetailedTableClient({
   // Handle status filter change with URL update
   const handleStatusChange = (newStatus: string) => {
     setStatusFilter(newStatus);
+    setPage(1);
     const params = new URLSearchParams(window.location.search);
 
     if (newStatus === 'ALL') {
@@ -222,6 +226,7 @@ export function SMEDetailedTableClient({
     },
     {
       key: 'listingDate',
+      mobileHidden: true,
       header: 'Listing Date',
       sortable: true,
       searchable: false,
@@ -237,6 +242,7 @@ export function SMEDetailedTableClient({
     },
     {
       key: 'issueSize',
+      mobileHidden: true,
       header: 'Total Issue Amount',
       sortable: true,
       searchable: false,
@@ -245,6 +251,7 @@ export function SMEDetailedTableClient({
     },
     {
       key: 'listingExchanges',
+      mobileHidden: true,
       header: 'Listing At',
       searchable: false,
       align: 'center',
@@ -261,6 +268,7 @@ export function SMEDetailedTableClient({
     },
     {
       key: 'leadManagers',
+      mobileHidden: true,
       header: 'Lead Manager',
       searchable: true,
       render: (value: string[]) => {
@@ -280,6 +288,7 @@ export function SMEDetailedTableClient({
     },
     {
       key: 'compare',
+      mobileHidden: true,
       header: 'Compare',
       sortable: false,
       searchable: false,
@@ -361,6 +370,7 @@ export function SMEDetailedTableClient({
         // AC#10, AC#11: Year navigation
         // AC#17: Minimize/maximize toggle
         enableColumnSearch={true}
+        enablePagination={true}
         enableYearFilter={true}
         enableMinimizeToggle={true}
         yearFilterConfig={{
@@ -373,6 +383,12 @@ export function SMEDetailedTableClient({
           currentSearches: searches,
         }}
         // Custom row className for color coding
+        paginationConfig={{
+          pageSize: 25,
+          currentPage: page,
+          totalRecords: filteredData.length,
+          onPageChange: setPage,
+        }}
         keyExtractor={(row) => row.id}
         className="detailed-table"
       />
