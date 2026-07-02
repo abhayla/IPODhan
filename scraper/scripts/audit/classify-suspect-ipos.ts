@@ -37,6 +37,7 @@ import { writeFileSync } from 'fs';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { detectOfferingTypeFromBSEIRFlag } from '../../src/utils/detect-offering-type.js';
 import { fetchChittorgarhListingRows } from '../../src/scrapers/chittorgarh-listing-scraper.js';
+import { fetchNseEquityMasters } from '../../src/scrapers/nse-equity-master.js';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)';
 const FYS = [
@@ -87,55 +88,6 @@ async function fetchBSECurrent(): Promise<Map<string, BSECurrent>> {
   return out;
 }
 
-type NseMasterRow = { symbol: string; name: string; listingIso: string; isin: string; board: 'MAIN' | 'SME' };
-const MONTHS: Record<string, string> = { JAN: '01', FEB: '02', MAR: '03', APR: '04', MAY: '05', JUN: '06', JUL: '07', AUG: '08', SEP: '09', OCT: '10', NOV: '11', DEC: '12' };
-/** "06-OCT-2008" | "01-Jul-26" -> ISO day (2-digit years are 20xx). */
-function parseNseListingDate(v: string): string {
-  const m = v.trim().match(/^(\d{1,2})-([A-Za-z]{3})-(\d{2,4})$/);
-  if (!m) return '';
-  const yr = m[3].length === 2 ? `20${m[3]}` : m[3];
-  const mo = MONTHS[m[2].toUpperCase()];
-  return mo ? `${yr}-${mo}-${m[1].padStart(2, '0')}` : '';
-}
-function parseCsv(text: string): string[][] {
-  return text.split(/\r?\n/).filter(Boolean).map((line) => line.split(',').map((c) => c.trim()));
-}
-async function fetchNseMasters(): Promise<{ bySymbol: Map<string, NseMasterRow>; byName: Map<string, NseMasterRow> }> {
-  const bySymbol = new Map<string, NseMasterRow>();
-  const byName = new Map<string, NseMasterRow>();
-  const sources: Array<{ url: string; board: 'MAIN' | 'SME' }> = [
-    { url: 'https://nsearchives.nseindia.com/content/equities/EQUITY_L.csv', board: 'MAIN' },
-    { url: 'https://nsearchives.nseindia.com/emerge/corporates/content/SME_EQUITY_L.csv', board: 'SME' },
-  ];
-  for (const s of sources) {
-    try {
-      const r = await fetch(s.url, { headers: { 'User-Agent': UA }, signal: AbortSignal.timeout(25000) });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const rows = parseCsv(await r.text());
-      const header = rows[0].map((h) => h.replace(/\s+/g, '_').toUpperCase());
-      const idx = (n: string) => header.findIndex((h) => h.includes(n));
-      const iSym = idx('SYMBOL'), iName = idx('NAME'), iDate = idx('DATE_OF_LISTING'), iIsin = idx('ISIN');
-      for (const row of rows.slice(1)) {
-        const rec: NseMasterRow = {
-          symbol: (row[iSym] ?? '').toUpperCase(),
-          name: row[iName] ?? '',
-          listingIso: parseNseListingDate(row[iDate] ?? ''),
-          isin: (row[iIsin] ?? '').toUpperCase(),
-          board: s.board,
-        };
-        if (!rec.symbol) continue;
-        if (!bySymbol.has(rec.symbol)) bySymbol.set(rec.symbol, rec);
-        const key = normalizeCompanyNameForMatching(rec.name);
-        if (key && !byName.has(key)) byName.set(key, rec);
-      }
-      console.log(`NSE master ${s.board}: ${rows.length - 1} rows`);
-    } catch (e) {
-      console.log(`NSE master ${s.board} fetch failed: ${(e as Error).message}`);
-    }
-  }
-  return { bySymbol, byName };
-}
-
 /** BSE scrip master (a segment, ALL statuses — suspended/delisted included: takeover and
  *  rights targets are often suspended scrips). Name + scrip_id membership; used jointly
  *  with CG-universe absence to prove "already listed / debt issuer, not an equity IPO". */
@@ -174,7 +126,7 @@ async function main() {
     fetchReport118Names(),
     fetchChittorgarhListingRows(FYS),
     fetchBSECurrent(),
-    fetchNseMasters(),
+    fetchNseEquityMasters(),
     fetchBseMaster('Equity'),
     fetchBseMaster('Debt'),
   ]);
