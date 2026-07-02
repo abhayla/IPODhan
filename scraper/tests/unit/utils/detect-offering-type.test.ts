@@ -260,3 +260,35 @@ describe('Real-world test cases', () => {
     expect(detectSegmentFromExchange(['NSE EMERGE'])).toBe('SME');
   });
 });
+
+describe('detectOfferingTypeFromBSEType — BSE SHORT codes (#23 pollution recurrence)', () => {
+  // BSE serves short codes (OTB/DPI/RI) in "Type of Issue"; the long-word matches
+  // never hit them, so buybacks (Zydus, Garware), debt issues (Muthoot, Kosamattam)
+  // and rights issues were ingested as offering_type='IPO'. Pin the mapping.
+  it('maps OTB (Offer To Buy: takeover / buyback tender) to TENDER, never IPO', () => {
+    expect(detectOfferingTypeFromBSEType('OTB')).toBe('TENDER');
+    expect(detectOfferingTypeFromBSEType('OTB - Buy Back')).toBe('TENDER');
+    expect(detectOfferingTypeFromBSEType('otb')).toBe('TENDER');
+  });
+
+  it('maps DPI / Debt Issue to NCD, never IPO', () => {
+    expect(detectOfferingTypeFromBSEType('DPI')).toBe('NCD');
+    expect(detectOfferingTypeFromBSEType('Debt Issue')).toBe('NCD');
+  });
+
+  it('maps the RI short code to RIGHTS, never IPO', () => {
+    expect(detectOfferingTypeFromBSEType('RI')).toBe('RIGHTS');
+  });
+
+  it('does not false-match short codes inside longer labels', () => {
+    expect(detectOfferingTypeFromBSEType('IPO')).toBe('IPO');
+    expect(detectOfferingTypeFromBSEType('Book Building')).toBe('IPO');
+    expect(detectOfferingTypeFromBSEType('UNKNOWN')).toBe('IPO');
+  });
+
+  it('classifies the real polluted rows via the combined path', () => {
+    expect(detectOfferingType({ symbol: 'ZYDUSLIFE', bseType: 'OTB' })).toBe('TENDER');
+    expect(detectOfferingType({ symbol: '', bseType: 'DPI' })).toBe('NCD');
+    expect(detectOfferingType({ symbol: 'OASIS SECURITIES LTD', bseType: 'RI' })).toBe('RIGHTS');
+  });
+});

@@ -313,7 +313,7 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
           listingExchange: 'BSE',
           segment: segment as 'MAINBOARD' | 'SME' | null | undefined,
           offeringType: offeringType as 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | 'NCD' | 'BONDS' | 'INVITS' | 'REITS' | 'IPP' | 'QIP' | 'PREFERENTIAL',
-          sector: '', // Not available in BSE main table
+          sector: undefined, // Not available in BSE main table — never write '' (it plants a blank that blocks real backfills)
           status,
           lotSize: undefined, // Let detail page scraper populate this (don't default to 100)
           faceValue: parseInt(rawIPO.faceValue, 10) || 10 // Integer face value

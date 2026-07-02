@@ -499,7 +499,7 @@ function transformIPOData(data: any, endpointCategory?: 'ipo' | 'ofs' | 'rights'
     listingExchange: 'NSE',
     segment,
     offeringType: offeringType as 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | 'NCD' | 'BONDS' | 'INVITS' | 'REITS' | 'IPP' | 'QIP' | 'PREFERENTIAL',
-    sector: data.sector || '',
+    sector: data.sector?.trim() || undefined,
     status,
     lotSize: parseInt(data.lotSize) || undefined,
     faceValue: parseFloat(data.faceValue) || 10,
