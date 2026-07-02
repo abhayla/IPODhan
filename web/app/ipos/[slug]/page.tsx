@@ -24,7 +24,8 @@ import { CompanyOverview } from '@/components/ipo/CompanyOverview';
 import { KeyMetricsCardsEnhanced } from '@/components/ipo/KeyMetricsCardsEnhanced';
 import { InfoSection } from '@/components/ipo/InfoSection';
 import { IssueStructureSection } from '@/components/ipo/IssueStructureSection';
-import { IPODetailTabs } from '@/components/ipo/IPODetailTabs';
+import { IPOSectionNav } from '@/components/ipo-detail/IPOSectionNav';
+import { DocumentList } from '@/components/ipo/DocumentList';
 import { AllotmentCheckerCard } from '@/components/ipo/AllotmentCheckerCard';
 import { LotCalculator } from '@/components/tools/LotCalculator';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
@@ -215,7 +216,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     },
   };
 
-  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails, peerCompanies, financialData, anchorInvestor } = data;
+  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails, peerCompanies, financialData, anchorInvestor, documents } = data;
 
   // Calculate metrics for KeyMetricsCards
   const latestSubscription = subscriptions?.[0];
@@ -259,6 +260,9 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   const hasKpis = Boolean(financialData);
   const hasPeers = (peerCompanies?.length ?? 0) > 0;
 
+  const hasCompanyOverview = Boolean(ipo.companyDescription);
+  const hasDocuments = (documents?.length ?? 0) > 0;
+
   const pendingSections = [
     !hasIssueStructure && 'Issue structure',
     !hasScore && 'IPODhan score',
@@ -268,7 +272,19 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     !hasPromoterHolding && 'Promoter holding',
     !hasAnchor && 'Anchor investors',
     !hasPeers && 'Peer comparison',
+    !hasDocuments && 'Documents',
   ].filter((s): s is string => Boolean(s));
+
+  // Sticky anchor nav (Screener pattern) — only sections that actually render
+  const sectionNavItems = [
+    hasCompanyOverview && { id: 'overview', label: 'Overview' },
+    { id: 'subscription', label: 'Subscription' },
+    hasGmpHistory && { id: 'gmp', label: 'GMP' },
+    hasFinancials && { id: 'financials', label: 'Financials' },
+    hasPeers && { id: 'peers', label: 'Peers' },
+    { id: 'allotment', label: 'Allotment' },
+    hasDocuments && { id: 'documents', label: 'Documents' },
+  ].filter((i): i is { id: string; label: string } => Boolean(i));
 
   // Generate structured data using SEO utilities
   const financialProductSchema = generateFinancialProductSchema(ipo);
@@ -387,39 +403,53 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               minBidQuantity={null}
             />
 
-            {/* 4. IPO Detail Tabs */}
-            <IPODetailTabs
-              slug={slug}
-              ipo={ipo}
-              ipoData={data}
-              initialTab={tab || 'overview'}
-            />
+            {/* Sticky section navigation — Screener.in anchor pattern
+                (UI-REDESIGN-NORTHSTAR.md). Replaces the tab bar whose content
+                double-rendered below it. */}
+            <IPOSectionNav items={sectionNavItems} />
 
-            {/* 5. IPO Information Section */}
-            <InfoSection ipo={ipo} ipoDetails={ipoDetails || null} />
+            {/* 4. Company Overview (was inside the removed tabs) */}
+            {hasCompanyOverview && (
+              <section id="overview" className="scroll-mt-28">
+                <CompanyOverview
+                  companyDescription={ipo.companyDescription || ''}
+                  riskFactors={[]}
+                />
+              </section>
+            )}
+
+            {/* 5. Allotment & Listing details */}
+            <section id="allotment" className="scroll-mt-28">
+              <InfoSection ipo={ipo} ipoDetails={ipoDetails || null} />
+            </section>
 
             {/* 6. IPO Score Section */}
             {hasScore && <IPOScoreSection score={ipoScore || null} />}
 
             {/* 7. GMP History Chart */}
             {hasGmpHistory && (
-              <GMPHistoryChart
-                gmpRecords={gmpRecords || []}
-                companyName={ipo.companyName}
-                priceRangeMax={ipo.priceRangeMax}
-              />
+              <section id="gmp" className="scroll-mt-28">
+                <GMPHistoryChart
+                  gmpRecords={gmpRecords || []}
+                  companyName={ipo.companyName}
+                  priceRangeMax={ipo.priceRangeMax}
+                />
+              </section>
             )}
 
             {/* 9. Financial Performance Charts */}
             {hasFinancials && (
+            <section id="financials" className="scroll-mt-28">
             <FinancialPerformanceCharts
               financialData={financialData}
               companyName={ipo.companyName}
               status={ipo.status}
             />
+            </section>
             )}
 
             {/* 10. Subscription Dashboard */}
+            <section id="subscription" className="scroll-mt-28">
             <SubscriptionDashboard
               subscriptions={subscriptions || []}
               latestSubscription={latestSubscription ?? null}
@@ -427,6 +457,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               closeDate={ipo.closeDate ? new Date(ipo.closeDate) : null}
               status={ipo.status}
             />
+            </section>
 
             {/* 11. Broker Recommendations */}
             {hasBrokerReviews && (
@@ -504,10 +535,22 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
             {/* 16. Peer Comparison */}
             {hasPeers && (
-              <PeerComparisonSection
-                peerCompanies={peerCompanies}
-                companyName={ipo.companyName}
-              />
+              <section id="peers" className="scroll-mt-28">
+                <PeerComparisonSection
+                  peerCompanies={peerCompanies}
+                  companyName={ipo.companyName}
+                />
+              </section>
+            )}
+
+            {/* 16b. Documents (was inside the removed tabs) */}
+            {hasDocuments && (
+              <section id="documents" className="scroll-mt-28">
+                <div className="rounded-lg border bg-card p-6">
+                  <h3 className="mb-4 text-lg font-semibold">Documents</h3>
+                  <DocumentList documents={documents} />
+                </div>
+              </section>
             )}
 
             {/* One compact notice replaces the removed empty-state cards */}
