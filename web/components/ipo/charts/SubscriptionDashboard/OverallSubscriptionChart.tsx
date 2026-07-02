@@ -136,59 +136,14 @@ export function OverallSubscriptionChart({
 
   return (
     <div className={className}>
-      {/* Stats Summary */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-        {/* Current Subscription */}
-        <div className="rounded-lg border bg-muted/30 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">
-                Current Subscription
-              </p>
-              <p className="text-2xl font-bold">
-                {formatSubscription(stats.total)}
-              </p>
-            </div>
-            <BarChart className="h-8 w-8 text-muted-foreground/50" />
-          </div>
-        </div>
-
-        {/* Peak Subscription */}
-        <div className="rounded-lg border bg-muted/30 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Peak Subscription</p>
-              <p className="text-2xl font-bold">
-                {formatSubscription(stats.peakSubscription)}
-              </p>
-              {stats.peakDate && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  {format(stats.peakDate, 'MMM dd, yyyy')}
-                </p>
-              )}
-            </div>
-            <TrendingUp className="h-8 w-8 text-muted-foreground/50" />
-          </div>
-        </div>
-
-        {/* Average Daily */}
-        <div className="rounded-lg border bg-muted/30 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-xs text-muted-foreground mb-1">Average Daily</p>
-              <p className="text-2xl font-bold">
-                {formatSubscription(stats.averageDaily)}
-              </p>
-              {closeDate && (
-                <p className="text-xs text-muted-foreground mt-1">
-                  Closes {format(closeDate, 'MMM dd')}
-                </p>
-              )}
-            </div>
-            <Calendar className="h-8 w-8 text-muted-foreground/50" />
-          </div>
-        </div>
-      </div>
+      {/* Spec D4.2: the Current/Peak/Average tile trio rendered three
+          near-identical numbers during a live issue and read as dummy data
+          (round-8 scorer). The current multiple lives in the fact ribbon;
+          the chart carries the trend. One caption line replaces the tiles. */}
+      <p className="mb-4 text-xs text-muted-foreground">
+        Current {formatSubscription(stats.total)}
+        {closeDate ? ` · closes ${format(closeDate, 'MMM dd')}` : ''}
+      </p>
 
       {/* Chart */}
       <div className="rounded-lg border bg-card p-4">

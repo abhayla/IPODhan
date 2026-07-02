@@ -29,13 +29,10 @@ interface ISINDisplayProps {
 export function ISINDisplay({ isin, className }: ISINDisplayProps) {
   const [copied, setCopied] = useState(false);
 
-  // Handle null/undefined ISIN (very new IPOs may not have ISIN yet)
+  // No ISIN yet (very new IPOs) → render nothing; 'ISIN: Not assigned' read
+  // as a trust-eroding placeholder (2026-07-02 round-8 scorer)
   if (!isin) {
-    return (
-      <div className={cn('text-sm text-muted-foreground', className)}>
-        <span className="font-medium">ISIN:</span> Not assigned
-      </div>
-    );
+    return null;
   }
 
   const copyToClipboard = async () => {

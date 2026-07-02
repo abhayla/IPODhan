@@ -150,20 +150,8 @@ export function SubscriptionDashboard({
           </button>
         </div>
 
-        {/* Data Quality Indicator */}
-        {isExpanded && (
-          <div className="mt-4 flex items-center gap-2">
-            <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-              <div
-                className="h-full rounded-full bg-primary transition-all duration-500"
-                style={{ width: `${completeness}%` }}
-              />
-            </div>
-            <span className="text-xs text-muted-foreground font-medium">
-              {completeness}% data
-            </span>
-          </div>
-        )}
+        {/* Unlabeled "90% data" meter removed — an opaque meter erodes trust
+            on a finance page (round-8 scorer; spec deletion list). */}
       </div>
 
       {/* Content */}

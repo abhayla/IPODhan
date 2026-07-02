@@ -475,6 +475,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                   gmpRecords={gmpRecords || []}
                   companyName={ipo.companyName}
                   priceRangeMax={ipo.priceRangeMax}
+                  defaultExpanded
                 />
               </section>
             )}
