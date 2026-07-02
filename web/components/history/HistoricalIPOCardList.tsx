@@ -119,13 +119,16 @@ export function HistoricalIPOCardList({ ipos }: HistoricalIPOCardListProps) {
                   </div>
                 </div>
 
-                {/* Subscription */}
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Subscription</p>
-                  <p className="text-base font-semibold">
-                    {ipo.subscriptionOverall !== null && ipo.subscriptionOverall !== undefined ? formatSubscription(ipo.subscriptionOverall) : 'N/A'}
-                  </p>
-                </div>
+                {/* Subscription — hidden when absent; 'Subscription: N/A' repeated
+                    on 20+ cards erodes trust (2026-07-02 blind review) */}
+                {ipo.subscriptionOverall !== null && ipo.subscriptionOverall !== undefined && (
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">Subscription</p>
+                    <p className="text-base font-semibold">
+                      {formatSubscription(ipo.subscriptionOverall)}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </Link>

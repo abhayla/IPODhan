@@ -79,8 +79,8 @@ export const SECTOR_OPTIONS = [
  */
 export const PERFORMANCE_OPTIONS = [
   { value: 'All', label: 'All Performance' },
-  { value: 'Positive', label: 'Positive Gains' },
-  { value: 'Negative', label: 'Negative Losses' },
+  { value: 'Positive', label: 'Listed in gain' },
+  { value: 'Negative', label: 'Listed in loss' },
 ] as const;
 
 /**

@@ -130,8 +130,10 @@ describe('HistoricalIPOCardList', () => {
 
     render(<HistoricalIPOCardList ipos={[ipoWithNulls]} />);
 
-    const naElements = screen.getAllByText('N/A');
-    expect(naElements.length).toBeGreaterThanOrEqual(2);
+    // Null subscription/sector rows are hidden entirely (2026-07-02 review);
+    // price fields still show an explicit N/A placeholder.
+    expect(screen.getAllByText('N/A').length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText('Subscription')).toBeNull();
   });
 
   it('never renders a fabricated +0.00% gain when listingGainPercent is null', () => {
