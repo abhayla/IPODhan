@@ -122,6 +122,11 @@ async function main() {
   const outArg = process.argv.indexOf('--out');
   const outPath = outArg > -1 ? process.argv[outArg + 1] : null;
 
+  // Fail fast on missing DB env — falling through to pg defaults silently targets localhost.
+  for (const k of ['DATABASE_HOST', 'DATABASE_USER', 'DATABASE_PASSWORD', 'DATABASE_NAME']) {
+    if (!process.env[k]) throw new Error(`Missing required env var: ${k}`);
+  }
+
   const [cg118, cg25Rows, bseCurrent, nse, bseMaster, bseDebt] = await Promise.all([
     fetchReport118Names(),
     fetchChittorgarhListingRows(FYS),
@@ -166,10 +171,18 @@ async function main() {
 
     let verdict = 'NO_EVIDENCE';
     let reclassTo = '';
-    if (bse && bse.irFlag && bse.irFlag !== 'IPO') {
-      const mapped = detectOfferingTypeFromBSEIRFlag(bse.irFlag, bse.irFlagFull);
-      verdict = `CORP_ACTION_BSE_${bse.irFlag}`;
-      reclassTo = mapped ?? '';
+    const bseNonIpoFlag = bse && bse.irFlag && bse.irFlag !== 'IPO';
+    const bseMapped = bseNonIpoFlag ? detectOfferingTypeFromBSEIRFlag(bse!.irFlag, bse!.irFlagFull) : null;
+    if (bseNonIpoFlag && (inCg118 || inCg25)) {
+      // A live corp-action flag only proves what the company is doing NOW; CG-universe
+      // membership proves a genuine IPO existed. Conflicting evidence -> never touch.
+      verdict = 'EVIDENCE_CONFLICT';
+    } else if (bseNonIpoFlag && bseMapped === null) {
+      // Unknown flag (e.g. CMN): the mapper refuses to classify — so do we (never a delete target).
+      verdict = 'BSE_FLAG_UNKNOWN';
+    } else if (bseNonIpoFlag) {
+      verdict = `CORP_ACTION_BSE_${bse!.irFlag}`;
+      reclassTo = bseMapped!;
     } else if (listedDaysBeforeOpen !== null && listedDaysBeforeOpen > 90) {
       // company listed on NSE >90d before this "IPO" opened -> provably not a new listing
       verdict = 'ALREADY_LISTED';
@@ -208,6 +221,19 @@ async function main() {
   const mode = process.argv[depArg + 1];
   const APPLY = process.argv.includes('--apply');
   if (mode !== 'delete' && mode !== 'reclass') throw new Error(`--depollute needs delete|reclass, got: ${mode}`);
+
+  // Minimum-evidence gate: the CG fetchers swallow per-FY failures, so a CG outage
+  // would strip every genuine IPO of its GENUINE_IPO evidence and flip it to
+  // ALREADY_LISTED_BSE — a delete target. Refuse de-pollution on degraded evidence.
+  const degraded: string[] = [];
+  if (cg118.size < 500) degraded.push(`cg118=${cg118.size} (<500)`);
+  if (cg25.size < 500) degraded.push(`cg25=${cg25.size} (<500)`);
+  if (nse.bySymbol.size < 1500) degraded.push(`nseMaster=${nse.bySymbol.size} (<1500)`);
+  if (bseMaster.byName.size < 4000) degraded.push(`bseEquityMaster=${bseMaster.byName.size} (<4000)`);
+  if (bseDebt.byName.size < 1000) degraded.push(`bseDebtMaster=${bseDebt.byName.size} (<1000)`);
+  if (degraded.length > 0) {
+    throw new Error(`DEPOLLUTE REFUSED — evidence degraded/incomplete: ${degraded.join(', ')}. Fix the source fetches and re-run.`);
+  }
 
   const provenNotIpo = (v: string) =>
     v === 'ALREADY_LISTED' || v === 'ALREADY_LISTED_BSE' || v === 'DEBT_ISSUER_BSE' || v.startsWith('CORP_ACTION_BSE_');

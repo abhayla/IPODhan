@@ -89,7 +89,7 @@ async function scrapeNSEDirect() {
           listingDate: undefined,
           listingExchange: 'NSE',
           category: item.series === 'SME' ? 'SME' : (item.series === 'NCD' ? 'NCD' : 'MAINBOARD'),
-          sector: '',
+          sector: undefined, // never write '' — plants a blank that blocks real backfills
           status: item.status === 'Active' ? 'OPEN' : (item.status === 'Closed' ? 'CLOSED' : 'UPCOMING'),
           lotSize: 1, // Default
           faceValue: 10, // Default

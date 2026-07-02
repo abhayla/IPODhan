@@ -54,7 +54,7 @@ async function main() {
   console.log(`NSE masters: ${nse.bySymbol.size} symbols`);
 
   const ipos = await db
-    .select({ id: schema.ipos.id, companyName: schema.ipos.companyName, isin: schema.ipos.isin, symbol: schema.ipos.symbol })
+    .select({ id: schema.ipos.id, companyName: schema.ipos.companyName, isin: schema.ipos.isin, symbol: schema.ipos.symbol, openDate: schema.ipos.openDate })
     .from(schema.ipos)
     .where(and(eq(schema.ipos.offeringType, 'IPO'), or(isNull(schema.ipos.isin), isNull(schema.ipos.symbol))));
   console.log(`genuine IPOs missing isin and/or symbol: ${ipos.length}`);
@@ -63,8 +63,18 @@ async function main() {
   for (const ipo of ipos) {
     const key = normalizeCompanyNameForMatching(ipo.companyName);
     const hit = byName.get(key) || { isin: null, symbol: null };
-    // NSE master fallback: by our stored symbol first, then by canonical name
-    const nseHit = (ipo.symbol && nse.bySymbol.get(ipo.symbol.toUpperCase())) || nse.byName.get(key) || null;
+    // NSE master fallback: by our stored symbol first (strong key). A NAME match is only
+    // trusted when the master's listing date sits in a plausible window around our
+    // open_date (-30d .. +400d) — the master spans the whole listed universe, and a
+    // normalized-name homonym with a decades-old listing would plant a wrong ISIN/symbol.
+    let nseHit = (ipo.symbol && nse.bySymbol.get(ipo.symbol.toUpperCase())) || null;
+    if (!nseHit) {
+      const byNameHit = nse.byName.get(key);
+      if (byNameHit?.listingIso && ipo.openDate) {
+        const days = Math.round((Date.parse(byNameHit.listingIso) - new Date(ipo.openDate).getTime()) / 86_400_000);
+        if (days >= -30 && days <= 400) nseHit = byNameHit;
+      }
+    }
     const isin = hit.isin || (isinOk(nseHit?.isin) ? nseHit!.isin : null);
     const symbol = hit.symbol || nseHit?.symbol || null;
     if (!isin && !symbol) continue;
