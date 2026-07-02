@@ -25,7 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **Commands (root proxies dev/dev:scraper/scraper:nse/lint/build/test:unit + audit:prod — the rest run from web/):**
 ```bash
 # Development
-npm run dev                    # Next.js dev server (port 3000)
+npm run dev                    # Next.js dev server (port 3000, Turbopack; web/ has dev:webpack fallback)
 npm run dev:scraper            # Scraper in dev mode
 
 # Testing
@@ -47,10 +47,14 @@ npm run seed:force             # Seed database (truncates first)
 npm run lint && npm run build
 
 # Scraper (from scraper/)
-npm start                      # Run all enabled scrapers once
+npm start                      # Run all enabled scrapers once (NSE included — there is no start:nse)
 npm run start:bse              # Single source: bse | moneycontrol | chittorgarh | gmp | fallback | api
-npm run scheduler              # Cron-based scheduler (production mode)
+npm run scheduler              # Cron-based scheduler (production mode; SCRAPER_INTERVAL_MODE=dev relaxes cadence)
 cd scraper && npx vitest run tests/unit/path/to/test.test.ts  # Single scraper test (tiers/configs: .claude/rules/scraper-test-layout.md)
+
+# Production verification (run BOTH after any deploy — see .claude/rules/repeatable-production-audit.md)
+npm run audit:prod                   # Read-only API + data-integrity audit of live site (exit 1 = real failure)
+cd web && npm run test:prod-verify   # Browser-level Playwright sweep of prod routes (console errors, blank pages)
 ```
 
 **Critical Rules:**
