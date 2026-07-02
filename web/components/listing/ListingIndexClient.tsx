@@ -24,6 +24,7 @@ import {
   DEFAULT_IPO_YEARS_EXPORT,
 } from '@/components/shared/DataTable';
 import { MobileMetricCard, type CardField } from '@/components/shared/MobileMetricCard';
+import { SubscriptionBar } from '@/components/shared/SubscriptionBar';
 import { Button } from '@/components/ui/button';
 import type { IPO } from '@/lib/db/types';
 import type { ListingGainsMap } from '@/lib/services/listing-gains-service';
@@ -61,10 +62,9 @@ function gainCell(gain: number | null | undefined) {
   );
 }
 
-/** Subscription multiple (x) — real value or an honest em dash. */
+/** Subscription heat-bar + multiple (x) — real value or an honest em dash. */
 function subCell(sub: number | null | undefined) {
-  if (sub === null || sub === undefined) return <span className="text-gray-400">—</span>;
-  return <span className="tabular-nums">{sub.toFixed(2)}x</span>;
+  return <SubscriptionBar value={sub} />;
 }
 
 /** GMP in ₹ (colored by sign) — real value or an honest em dash. */

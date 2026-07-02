@@ -28,6 +28,7 @@ import type { HomeIPOTableData } from '@/lib/services/home-ipo-service';
 import { formatPriceBand } from '@/lib/utils/kpi-formatters';
 import { IpoStatusChip } from '@/components/listing/ipo-status';
 import { MobileMetricCard } from '@/components/shared/MobileMetricCard';
+import { SubscriptionBar } from '@/components/shared/SubscriptionBar';
 import { IPOTableSkeleton } from './IPOTableSkeleton';
 
 // ==================== TYPES ====================
@@ -80,10 +81,9 @@ function gmpCell(gmp: number | null, gmpPercent: number | null) {
   );
 }
 
-/** Subscription multiple (x). Null → em dash. */
+/** Subscription heat-bar + multiple (x). Null → em dash. */
 function subscriptionCell(sub: number | null) {
-  if (sub === null || sub === undefined) return <span className="text-gray-400">—</span>;
-  return <span className="font-medium tabular-nums">{sub.toFixed(2)}x</span>;
+  return <SubscriptionBar value={sub} />;
 }
 
 // ==================== COMPONENT ====================
