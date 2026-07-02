@@ -21,6 +21,7 @@ import { DataTable, type ColumnDef, DEFAULT_IPO_YEARS_EXPORT } from '@/component
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import type { IPO } from '@/lib/db/types';
+import { formatIssueSizeCrores } from '@/lib/utils';
 
 interface MainboardDetailedTableClientProps {
   data: IPO[];
@@ -45,13 +46,8 @@ function formatCurrency(amount: number | null): string {
   return `₹${amount.toFixed(0)}`;
 }
 
-/**
- * Format issue size in crores
- */
-function formatIssueSize(amount: number | null): string {
-  if (!amount) return '-';
-  return `₹${(amount / 100).toFixed(0)} Cr`;
-}
+// Issue size is stored in RUPEES (GitHub #9) — display goes through the
+// shared SSOT formatter; the old local /100 helper produced ₹43950000 Cr.
 
 /**
  * Get row color based on IPO status and dates
@@ -215,7 +211,7 @@ export function MainboardDetailedTableClient({
       sortable: true,
       searchable: false,
       align: 'right',
-      render: (value) => formatIssueSize(value),
+      render: (value) => formatIssueSizeCrores(value),
     },
     {
       key: 'listingExchanges',

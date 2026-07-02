@@ -58,16 +58,6 @@ function formatCurrency(amount: number | null): string {
 }
 
 /**
- * Format issue size
- */
-function formatIssueSize(amount: string | null): string {
-  if (!amount) return 'N/A';
-  const numAmount = parseFloat(amount);
-  if (isNaN(numAmount)) return 'N/A';
-  return `₹${(numAmount / 100).toFixed(0)} Cr`;
-}
-
-/**
  * Section header with "View All" link
  */
 function SectionHeader({ title, viewAllHref }: { title: string; viewAllHref: string }) {

@@ -25,6 +25,7 @@ import { Badge } from '@/components/ui/badge';
 import { ArrowRight, TrendingUp, TrendingDown } from 'lucide-react';
 import type { IPO } from '@/lib/db/types';
 import { formatPriceBand } from '@/lib/utils/kpi-formatters';
+import { formatIssueSizeCrores } from '@/lib/utils';
 import type {
   ReviewWithIPO,
   PerformanceHighlight,
@@ -60,15 +61,7 @@ function formatCurrency(amount: number | null): string {
   return `₹${amount.toFixed(0)}`;
 }
 
-/**
- * Format issue size
- */
-function formatIssueSize(amount: string | null): string {
-  if (!amount) return 'N/A';
-  const numAmount = parseFloat(amount);
-  if (isNaN(numAmount)) return 'N/A';
-  return `₹${(numAmount / 100).toFixed(0)} Cr`;
-}
+// Issue size is stored in RUPEES (GitHub #9) — display via shared SSOT formatter.
 
 /**
  * Section header with "View All" link
@@ -139,7 +132,7 @@ export function SMEContentSections({
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Issue Size:</span>
-                    <span className="font-medium">{formatIssueSize(ipo.issueSize)}</span>
+                    <span className="font-medium">{formatIssueSizeCrores(ipo.issueSize)}</span>
                   </div>
                   {ipo.priceRangeMin && ipo.priceRangeMax && (
                     <div className="flex justify-between text-sm">
@@ -180,7 +173,7 @@ export function SMEContentSections({
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-600">Issue Size:</span>
-                    <span className="font-medium">{formatIssueSize(ipo.issueSize)}</span>
+                    <span className="font-medium">{formatIssueSizeCrores(ipo.issueSize)}</span>
                   </div>
                   {ipo.priceRangeMin && ipo.priceRangeMax && (
                     <div className="flex justify-between text-sm">

@@ -23,6 +23,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import type { IPO } from '@/lib/db/types';
+import { formatIssueSizeCrores } from '@/lib/utils';
 
 interface SMEDetailedTableClientProps {
   data: IPO[];
@@ -47,13 +48,7 @@ function formatCurrency(amount: number | null): string {
   return `₹${amount.toFixed(0)}`;
 }
 
-/**
- * Format issue size in crores
- */
-function formatIssueSize(amount: number | null): string {
-  if (!amount) return '-';
-  return `₹${(amount / 100).toFixed(0)} Cr`;
-}
+// Issue size is stored in RUPEES (GitHub #9) — display via shared SSOT formatter.
 
 /**
  * Get row color based on IPO status and dates
@@ -246,7 +241,7 @@ export function SMEDetailedTableClient({
       sortable: true,
       searchable: false,
       align: 'right',
-      render: (value) => formatIssueSize(value),
+      render: (value) => formatIssueSizeCrores(value),
     },
     {
       key: 'listingExchanges',
