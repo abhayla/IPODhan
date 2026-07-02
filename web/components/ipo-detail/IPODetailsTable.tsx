@@ -144,46 +144,34 @@ export function IPODetailsTable({
         </p>
       </CardHeader>
       <CardContent>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Plain key-value rows, 1px separators — no tinted value cells
+            (spec G1: color in a key-value table = zero) */}
+        <div className="grid grid-cols-1 md:grid-cols-2 md:gap-x-10">
           {details.map((detail, index) => (
             <div
               key={index}
-              className={`flex justify-between items-center py-3 px-4 rounded-lg border ${
-                detail.highlight
-                  ? 'bg-primary/5 border-primary/20'
-                  : 'bg-muted/30 border-muted'
-              }`}
+              className="flex justify-between items-center gap-4 border-b border-border py-3"
             >
-              <span className="text-sm font-medium text-muted-foreground">
+              <span className="text-sm text-muted-foreground">
                 {detail.label}
               </span>
-              <span className={`font-semibold text-right ${
-                detail.highlight ? 'text-primary' : ''
-              }`}>
+              <span className="text-sm font-semibold text-right tabular-nums">
                 {detail.value}
               </span>
             </div>
           ))}
         </div>
 
-        {/* Additional Info */}
-        <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
-          <p className="text-xs text-blue-900 dark:text-blue-100">
-            <strong>Note:</strong> All dates are tentative and subject to market conditions and regulatory approvals.
-            The company/merchant bankers reserve the right to revise the IPO timetable. Please refer to the DRHP/RHP
-            for detailed terms and conditions.
-          </p>
-        </div>
-
-        {/* Investment Reminder */}
-        {lotSize && priceRangeMax && (
-          <div className="mt-4 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-            <p className="text-sm text-green-900 dark:text-green-100">
-              <strong>Minimum Investment:</strong> ₹{formatNumber(lotSize * priceRangeMax)} per lot
-              ({lotSize} shares × ₹{formatNumber(priceRangeMax)})
-            </p>
-          </div>
-        )}
+        <p className="mt-4 text-xs text-muted-foreground">
+          All dates are tentative and subject to market conditions and regulatory
+          approvals; refer to the DRHP/RHP for detailed terms.
+          {lotSize && priceRangeMax && (
+            <>
+              {' '}Minimum investment: ₹{formatNumber(lotSize * priceRangeMax)} per lot
+              ({lotSize} shares × ₹{formatNumber(priceRangeMax)}).
+            </>
+          )}
+        </p>
       </CardContent>
     </Card>
   );
