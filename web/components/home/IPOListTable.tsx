@@ -131,14 +131,20 @@ export function IPOListTable({
     );
   }
 
-  // AC#8: Empty states handled gracefully
+  // AC#8: Empty states handled gracefully — informative, never a bare dead box
   if (ipos.length === 0) {
     return (
       <div className="space-y-4">
         <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
-        <div className="rounded-md border bg-card">
-          <div className="text-center py-12 text-muted-foreground">
-            No IPOs available
+        <div className="rounded-md border border-dashed bg-card">
+          <div className="text-center py-10 px-4 text-muted-foreground text-sm">
+            <p className="font-medium text-foreground mb-1">No active issues right now</p>
+            <p>
+              New IPOs appear here the moment they are announced.{' '}
+              <Link href={moreLink} className="text-primary hover:underline">
+                Browse all listings
+              </Link>
+            </p>
           </div>
         </div>
       </div>
@@ -147,21 +153,34 @@ export function IPOListTable({
 
   return (
     <div className="space-y-4">
-      {/* Table Title - AC#1: Components render correctly */}
-      <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
+      {/* Table Title + row-color legend */}
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
+        <div className="flex items-center gap-3 text-xs text-muted-foreground" aria-hidden="true">
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm bg-green-400" /> Open
+          </span>
+          <span className="flex items-center gap-1">
+            <span className="inline-block h-2.5 w-2.5 rounded-sm bg-yellow-400" /> Closing soon
+          </span>
+        </div>
+      </div>
 
       {/* AC#3: Tables are responsive and match reference design */}
       <div className="rounded-md border bg-card overflow-x-auto">
         <Table aria-label={title} className="min-w-full">
           <TableHeader>
             <TableRow>
-              <TableHead scope="col" className="w-[40%] sm:w-auto">
+              <TableHead scope="col" className="w-[38%] sm:w-auto">
                 Issuer Company
               </TableHead>
-              <TableHead scope="col" className="w-[30%] sm:w-auto whitespace-nowrap">
+              <TableHead scope="col" className="whitespace-nowrap text-right">
+                Price
+              </TableHead>
+              <TableHead scope="col" className="whitespace-nowrap">
                 Open
               </TableHead>
-              <TableHead scope="col" className="w-[30%] sm:w-auto whitespace-nowrap">
+              <TableHead scope="col" className="whitespace-nowrap">
                 Close
               </TableHead>
             </TableRow>
@@ -180,10 +199,13 @@ export function IPOListTable({
                     {ipo.companyName}
                   </Link>
                 </TableCell>
-                <TableCell className="text-sm md:text-base">
+                <TableCell className="text-sm md:text-base text-right whitespace-nowrap">
+                  {ipo.issuePrice ? `₹${ipo.issuePrice}` : 'TBA'}
+                </TableCell>
+                <TableCell className="text-sm md:text-base whitespace-nowrap">
                   {formatDate(ipo.openDate)}
                 </TableCell>
-                <TableCell className="text-sm md:text-base">
+                <TableCell className="text-sm md:text-base whitespace-nowrap">
                   {formatDate(ipo.closeDate)}
                 </TableCell>
               </TableRow>

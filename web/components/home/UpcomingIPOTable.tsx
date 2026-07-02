@@ -107,14 +107,20 @@ export function UpcomingIPOTable({
     );
   }
 
-  // AC#8: Empty states handled gracefully
+  // AC#8: Empty states handled gracefully — informative, never a bare dead box
   if (ipos.length === 0) {
     return (
       <div className="space-y-4">
         <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
-        <div className="rounded-md border bg-card">
-          <div className="text-center py-12 text-muted-foreground">
-            No IPOs available
+        <div className="rounded-md border border-dashed bg-card">
+          <div className="text-center py-10 px-4 text-muted-foreground text-sm">
+            <p className="font-medium text-foreground mb-1">Nothing filed yet</p>
+            <p>
+              Companies appear here as soon as they file with the exchanges.{' '}
+              <Link href={moreLink} className="text-primary hover:underline">
+                See all upcoming IPOs
+              </Link>
+            </p>
           </div>
         </div>
       </div>

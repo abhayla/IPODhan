@@ -319,7 +319,7 @@ describe('HomeIPOTablesSection Component', () => {
 
       // AC#8: Empty states handled gracefully
       // Should have at least one "No IPOs available" message
-      const emptyMessages = screen.getAllByText('No IPOs available');
+      const emptyMessages = screen.getAllByText(/No active issues right now|Nothing filed yet/);
       expect(emptyMessages.length).toBeGreaterThanOrEqual(1);
     });
 
@@ -334,7 +334,7 @@ describe('HomeIPOTablesSection Component', () => {
         />
       );
 
-      const emptyMessages = screen.getAllByText('No IPOs available');
+      const emptyMessages = screen.getAllByText(/No active issues right now|Nothing filed yet/);
       expect(emptyMessages.length).toBe(4); // One for each table
     });
 
@@ -509,7 +509,7 @@ describe('HomeIPOTablesSection Component', () => {
       expect(screen.getByText('Upcoming Mainboard Company')).toBeInTheDocument();
 
       // Empty tables should show empty state
-      const emptyMessages = screen.getAllByText('No IPOs available');
+      const emptyMessages = screen.getAllByText(/No active issues right now|Nothing filed yet/);
       expect(emptyMessages.length).toBe(2); // SME tables are empty
     });
   });

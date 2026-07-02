@@ -108,9 +108,10 @@ describe('IPOListTable Component', () => {
         />
       );
 
-      expect(screen.getByText('Issuer Company')).toBeInTheDocument();
-      expect(screen.getByText('Open')).toBeInTheDocument();
-      expect(screen.getByText('Close')).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Issuer Company' })).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Price' })).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Open' })).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Close' })).toBeInTheDocument();
     });
 
     it('should render company names as clickable links', () => {
@@ -310,7 +311,7 @@ describe('IPOListTable Component', () => {
       );
 
       // AC#8: Empty states handled gracefully
-      expect(screen.getByText('No IPOs available')).toBeInTheDocument();
+      expect(screen.getByText('No active issues right now')).toBeInTheDocument();
     });
 
     it('should still render title when empty', () => {
@@ -374,7 +375,7 @@ describe('IPOListTable Component', () => {
 
       // AC#7: Semantic markup with scope="col"
       const headers = container.querySelectorAll('th[scope="col"]');
-      expect(headers.length).toBe(3); // Issuer Company, Open, Close
+      expect(headers.length).toBe(4); // Issuer Company, Price, Open, Close
     });
 
     it('should have semantic table structure', () => {
@@ -389,7 +390,7 @@ describe('IPOListTable Component', () => {
       );
 
       expect(screen.getByRole('table')).toBeInTheDocument();
-      expect(screen.getByRole('row', { name: /Issuer Company Open Close/i })).toBeInTheDocument();
+      expect(screen.getByRole('row', { name: /Issuer Company Price Open Close/i })).toBeInTheDocument();
     });
   });
 
