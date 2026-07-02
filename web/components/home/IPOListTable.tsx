@@ -170,10 +170,10 @@ export function IPOListTable({
 
       {/* AC#3: Tables are responsive and match reference design */}
       <div className="rounded-md border bg-card overflow-x-auto">
-        <Table aria-label={title} className="min-w-full">
+        <Table aria-label={title} className="min-w-full [&_td]:px-1.5 [&_th]:px-1.5 sm:[&_td]:px-2 sm:[&_th]:px-2">
           <TableHeader>
             <TableRow>
-              <TableHead scope="col" className="w-[38%] sm:w-auto">
+              <TableHead scope="col">
                 Issuer Company
               </TableHead>
               <TableHead scope="col" className="whitespace-nowrap text-right">
@@ -196,7 +196,7 @@ export function IPOListTable({
                 <TableCell>
                   <Link
                     href={`/ipos/${ipo.slug}`}
-                    className="font-medium hover:underline text-primary text-sm md:text-base"
+                    className="font-medium hover:underline text-primary text-sm md:text-base block max-w-[100px] sm:max-w-none truncate"
                   >
                     {ipo.companyName}
                   </Link>
