@@ -62,12 +62,18 @@ export function transformToTimeSeriesData(
     return dateA.getTime() - dateB.getTime();
   });
 
+  // Intraday snapshots need TIME ticks — a same-day series labeled 'MMM dd'
+  // repeated the identical date on every tick (2026-07-02 reference review)
+  const first = parseTimestamp(sorted[0].timestamp)!;
+  const last = parseTimestamp(sorted[sorted.length - 1].timestamp)!;
+  const sameDay = format(first, 'yyyy-MM-dd') === format(last, 'yyyy-MM-dd');
+
   return sorted.map((sub) => {
     const date = parseTimestamp(sub.timestamp)!;
 
     return {
       date,
-      dateLabel: format(date, 'MMM dd'),
+      dateLabel: sameDay ? format(date, 'HH:mm') : format(date, 'MMM dd'),
       totalSubscription: sub.totalSubscription ? Number(sub.totalSubscription) : 0,
       qibSubscription: sub.qibSubscription ? Number(sub.qibSubscription) : null,
       niiSubscription: sub.niiSubscription ? Number(sub.niiSubscription) : null,

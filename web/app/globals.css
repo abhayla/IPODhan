@@ -52,7 +52,7 @@
      ======================================== */
 
   /* Background & Foreground - Neutral Foundation */
-  --background: oklch(0.98 0.002 264.5); /* Light warm gray for reduced eye strain */
+  --background: oklch(1 0 0); /* WHITE — owner call 2026-07-02, matching Screener/Zerodha references */
   --foreground: oklch(0.27 0.02 264); /* #1f2937 - Dark Gray */
   --card: oklch(1 0 0); /* Pure white cards */
   --card-foreground: oklch(0.27 0.02 264);
