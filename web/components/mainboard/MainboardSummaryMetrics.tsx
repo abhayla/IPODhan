@@ -29,7 +29,7 @@ export function MainboardSummaryMetrics({ metrics }: MainboardSummaryMetricsProp
   const metricCards = [
     {
       id: 'total-ipos',
-      title: 'Total Mainboard IPOs',
+      title: 'Total Mainboard IPOs (all years)',
       value: metrics.totalIPOs,
       icon: Signal,
       iconColor: 'text-blue-600',

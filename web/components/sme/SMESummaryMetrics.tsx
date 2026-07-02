@@ -30,7 +30,7 @@ export function SMESummaryMetrics({ metrics }: SMESummaryMetricsProps) {
       iconColor: 'text-blue-600',
       bgColor: 'bg-blue-50',
       value: metrics.totalIPOs,
-      label: 'Total SME IPOs',
+      label: 'Total SME IPOs (all years)',
       valueColor: 'text-gray-900',
     },
     {

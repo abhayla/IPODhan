@@ -162,7 +162,7 @@ export function UpcomingIPOTable({
                 <TableCell className="text-muted-foreground text-sm md:text-base">
                   {getStatusText(ipo.segment)}
                 </TableCell>
-                <TableCell className="text-sm md:text-base">
+                <TableCell className="text-sm md:text-base whitespace-nowrap">
                   {formatDate(ipo.openDate)}
                 </TableCell>
               </TableRow>
