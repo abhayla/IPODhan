@@ -65,7 +65,7 @@ for (const [slug, path] of ROUTES) {
       await page.waitForTimeout(800);
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.waitForTimeout(400);
-      await page.addStyleTag({ content: 'header { position: static !important; }' }).catch(() => {});
+      await page.addStyleTag({ content: 'header, nav[aria-label="Page sections"] { position: static !important; }' }).catch(() => {});
       const file = join(OUT, `${slug}.${tag}.png`);
       await page.screenshot({ path: file, fullPage: true });
       results.push({ slug, tag, status: resp?.status(), errors: errors.length, file });
