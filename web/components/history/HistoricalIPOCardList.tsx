@@ -45,11 +45,12 @@ export function HistoricalIPOCardList({ ipos }: HistoricalIPOCardListProps) {
   return (
     <div className="space-y-4">
       {ipos.map((ipo) => {
-        const gainPercent = ipo.listingGainPercent ?? 0;
-        const isPositiveGain = gainPercent >= 0;
-        const borderColor = isPositiveGain ? 'border-green-500' : 'border-red-500';
-        const gainColor = isPositiveGain ? 'bg-green-500' : 'bg-red-500';
-        const gainSign = isPositiveGain ? '+' : '';
+        const gainPercent = ipo.listingGainPercent;
+        const hasGain = gainPercent !== null && gainPercent !== undefined && Number.isFinite(gainPercent);
+        const isPositiveGain = hasGain && gainPercent >= 0;
+        const borderColor = !hasGain ? 'border-border' : isPositiveGain ? 'border-green-500' : 'border-red-500';
+        const gainColor = !hasGain ? 'bg-muted-foreground/20 text-muted-foreground' : isPositiveGain ? 'bg-green-500 text-white' : 'bg-red-500 text-white';
+        const gainSign = hasGain && isPositiveGain ? '+' : '';
         const GainIcon = isPositiveGain ? ArrowUp : ArrowDown;
 
         return (
@@ -69,19 +70,30 @@ export function HistoricalIPOCardList({ ipos }: HistoricalIPOCardListProps) {
                 {/* Listing Gain Badge - Prominent */}
                 <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                   <span className="text-sm font-medium text-muted-foreground">Listing Gain</span>
-                  <Badge className={`${gainColor} text-white text-base font-bold px-3 py-1`}>
-                    <GainIcon className="h-4 w-4 inline mr-1" />
-                    {gainSign}
-                    {gainPercent.toFixed(2)}%
-                  </Badge>
+                  {hasGain ? (
+                    <Badge className={`${gainColor} text-base font-bold px-3 py-1`}>
+                      <GainIcon className="h-4 w-4 inline mr-1" />
+                      {gainSign}
+                      {gainPercent.toFixed(2)}%
+                    </Badge>
+                  ) : (
+                    <Badge
+                      className={`${gainColor} text-base font-bold px-3 py-1`}
+                      aria-label="Listing gain not available"
+                    >
+                      —
+                    </Badge>
+                  )}
                 </div>
 
                 {/* Sector */}
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs">
-                    {ipo.sector}
-                  </Badge>
-                </div>
+                {ipo.sector && (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">
+                      {ipo.sector}
+                    </Badge>
+                  </div>
+                )}
 
                 {/* Listing Date */}
                 <div className="space-y-1">

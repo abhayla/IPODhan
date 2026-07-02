@@ -134,6 +134,35 @@ describe('HistoricalIPOCardList', () => {
     expect(naElements.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('never renders a fabricated +0.00% gain when listingGainPercent is null', () => {
+    const ipoWithNullGain: HistoricalIPO = {
+      ...mockIPO,
+      listingGainPercent: null,
+    };
+
+    render(<HistoricalIPOCardList ipos={[ipoWithNullGain]} />);
+
+    // missing data must not be presented as a (positive) return
+    expect(screen.queryByText('+0.00%')).not.toBeInTheDocument();
+    expect(screen.queryByText('0.00%')).not.toBeInTheDocument();
+    // neutral placeholder badge instead, without gain coloring
+    const placeholder = screen.getByText('—');
+    expect(placeholder).not.toHaveClass('bg-green-500');
+    expect(placeholder).not.toHaveClass('bg-red-500');
+  });
+
+  it('does not render an empty sector badge when sector is null', () => {
+    const ipoWithNullSector: HistoricalIPO = {
+      ...mockIPO,
+      sector: null,
+    };
+
+    const { container } = render(<HistoricalIPOCardList ipos={[ipoWithNullSector]} />);
+
+    const outlineBadges = container.querySelectorAll('[class*="text-xs"]');
+    outlineBadges.forEach((b) => expect(b.textContent?.trim()).not.toBe(''));
+  });
+
   it('applies positive gain styling', () => {
     render(<HistoricalIPOCardList ipos={[mockIPO]} />);
 
