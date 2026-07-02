@@ -18,8 +18,9 @@ export function SubscriptionBar({ value }: { value: number | null | undefined })
   }
   const fill = Math.min(Math.max(value, 0) / SATURATION, 1) * 100;
   const oversubscribed = value >= 1;
+  const legend = `${value.toFixed(2)}x subscribed (bar fills at ${SATURATION}x; green = oversubscribed, amber = under)`;
   return (
-    <div className="flex items-center justify-end gap-2">
+    <div className="flex items-center justify-end gap-2" title={legend}>
       <div className="h-1.5 w-14 overflow-hidden rounded-full bg-gray-100" aria-hidden>
         <div
           className={`h-full rounded-full ${oversubscribed ? 'bg-green-500' : 'bg-amber-500'}`}

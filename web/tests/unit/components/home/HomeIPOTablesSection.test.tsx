@@ -427,7 +427,7 @@ describe('HomeIPOTablesSection Component', () => {
       expect(tableHeading.className).toMatch(/text-xl md:text-2xl/);
     });
 
-    it('should have responsive padding', () => {
+    it('should render a full-width section (padding now owned by the parent container, not doubled)', () => {
       const { container } = render(
         <HomeIPOTablesSection
           mainboardIPOs={[mockMainboardIPO]}
@@ -439,8 +439,10 @@ describe('HomeIPOTablesSection Component', () => {
       );
 
       const section = container.querySelector('section');
-      expect(section).toHaveClass('px-4');
-      expect(section).toHaveClass('py-8');
+      expect(section).toHaveClass('w-full');
+      // no self-padding — the page section + container own it (avoids the
+      // orphaned-label dead-gap the blind review flagged)
+      expect(section).not.toHaveClass('py-8');
     });
   });
 

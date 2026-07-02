@@ -72,15 +72,15 @@ export default async function Home() {
 
         {/* Hero — compact and data-first (spec H1): single-color title, one-line
             sub, restrained CTAs; the persona came for tables, not marketing */}
-        <section className="container mx-auto px-4 py-10 md:py-14">
+        <section className="container mx-auto px-4 py-6 md:py-8">
           <div className="mx-auto max-w-3xl text-center">
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl text-foreground">
+            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl text-foreground">
               India&apos;s IPO tracker — live subscription, GMP &amp; allotment
             </h1>
-            <p className="mt-3 text-[15px] text-muted-foreground">
+            <p className="mt-2 text-[15px] text-muted-foreground">
               Real-time NSE &amp; BSE data on every mainboard and SME IPO, in one place.
             </p>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-center">
               <a
                 href="/dashboard"
                 className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
@@ -100,7 +100,7 @@ export default async function Home() {
         {/* IPO Tables Section — flat white, quiet title (spec G1/G2) */}
         <section className="border-t py-10 md:py-12">
           <div className="container mx-auto px-4">
-            <h2 className="mb-8 text-lg font-semibold text-foreground">
+            <h2 className="mb-5 text-lg font-semibold text-foreground">
               Latest IPO updates
             </h2>
             {/* TEMP: AsyncErrorBoundary commented out - causes webpack error (Session 5) */}

@@ -68,7 +68,7 @@ export function HomeIPOTablesSection({
 }: HomeIPOTablesSectionProps) {
   const currentYear = new Date().getFullYear();
   return (
-    <section className="w-full py-8 px-4" aria-label={`IPO ${currentYear} Listings`}>
+    <section className="w-full" aria-label={`IPO ${currentYear} Listings`}>
       {/* Live tables stacked full-width — 6 data columns (incl. Subscription +
           GMP, spec H2) need the room; a 2-col grid clipped GMP on SME. */}
       <div className="space-y-8">
