@@ -251,18 +251,22 @@ export function IPODetailTabs({
           />
         </TabErrorBoundary>
 
-        {/* Rating Section */}
-        <TabErrorBoundary tabName="Rating">
-          <div className="rounded-lg border bg-card p-6">
-            <h3 className="mb-4 text-lg font-semibold">IPODhan Rating</h3>
-            <RatingDisplay
-              rating={ipo.rating}
-              rationale={ipo.ratingRationale}
-              showRationale={true}
-              size="lg"
-            />
-          </div>
-        </TabErrorBoundary>
+        {/* Rating Section — hidden until a rating exists; an empty 'Not Rated'
+            section undermines authority (2026-07-02 blind review). The header
+            already shows the rating when present. */}
+        {ipo.rating && (
+          <TabErrorBoundary tabName="Rating">
+            <div className="rounded-lg border bg-card p-6">
+              <h3 className="mb-4 text-lg font-semibold">IPODhan Rating</h3>
+              <RatingDisplay
+                rating={ipo.rating}
+                rationale={ipo.ratingRationale}
+                showRationale={true}
+                size="lg"
+              />
+            </div>
+          </TabErrorBoundary>
+        )}
 
         {/* Share Buttons */}
         <TabErrorBoundary tabName="Share">

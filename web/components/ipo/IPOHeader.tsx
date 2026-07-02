@@ -141,18 +141,21 @@ export function IPOHeader({ ipo }: IPOHeaderProps) {
               )}
             </div>
 
-            {/* Rating */}
-            <div className="pt-2 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-200">
-              <p className="mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                IPODhan Rating
-              </p>
-              <RatingDisplay
-                rating={ipo.rating}
-                rationale={ipo.ratingRationale}
-                showRationale={true}
-                size="lg"
-              />
-            </div>
+            {/* Rating — hidden until one exists; 'Not Rated' in the hero
+                undermines authority (2026-07-02 blind review) */}
+            {ipo.rating && (
+              <div className="pt-2 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-200">
+                <p className="mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  IPODhan Rating
+                </p>
+                <RatingDisplay
+                  rating={ipo.rating}
+                  rationale={ipo.ratingRationale}
+                  showRationale={true}
+                  size="lg"
+                />
+              </div>
+            )}
 
             {/* UPI Deadline Timer - Display for OPEN IPOs */}
             {ipo.status === 'OPEN' && ipo.closeDate && (

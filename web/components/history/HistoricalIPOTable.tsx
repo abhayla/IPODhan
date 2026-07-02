@@ -65,6 +65,13 @@ const formatListingGain = (gain: number) => {
 export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
   const { filters, setSort } = useHistoricalFilters();
 
+  // Columns that are empty for EVERY visible row are dropped — a column of
+  // pure N/A advertises missing data on each record (2026-07-02 blind review)
+  const hasSector = ipos.some((ipo) => Boolean(ipo.sector));
+  const hasSubscription = ipos.some(
+    (ipo) => ipo.subscriptionOverall !== null && ipo.subscriptionOverall !== undefined
+  );
+
   const handleSort = (column: 'listing_date' | 'listing_gain' | 'subscription') => {
     // Toggle sort order if clicking the same column
     const newSortOrder =
@@ -89,7 +96,7 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
         <TableHeader>
           <TableRow className="bg-muted/50">
             <TableHead className="font-semibold">Company Name</TableHead>
-            <TableHead className="font-semibold">Sector</TableHead>
+            {hasSector && <TableHead className="font-semibold">Sector</TableHead>}
             <TableHead
               className="font-semibold cursor-pointer hover:bg-muted/80 transition-colors"
               onClick={() => handleSort('listing_date')}
@@ -106,14 +113,18 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
               Listing Gain %
               {getSortIcon('listing_gain')}
             </TableHead>
-            <TableHead
-              className="font-semibold cursor-pointer hover:bg-muted/80 transition-colors text-right"
-              onClick={() => handleSort('subscription')}
-            >
-              Subscription
-              {getSortIcon('subscription')}
-            </TableHead>
-            <TableHead className="font-semibold">Status</TableHead>
+            {hasSubscription && (
+              <TableHead
+                className="font-semibold cursor-pointer hover:bg-muted/80 transition-colors text-right"
+                onClick={() => handleSort('subscription')}
+              >
+                Subscription
+                {getSortIcon('subscription')}
+              </TableHead>
+            )}
+            {/* Status column removed — every row on the history page is LISTED
+                by definition; a 100% identical badge column earns no pixels
+                (2026-07-02 blind review) */}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -127,9 +138,11 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
                   {ipo.companyName}
                 </Link>
               </TableCell>
-              <TableCell>
-                <span className="text-sm text-muted-foreground">{ipo.sector}</span>
-              </TableCell>
+              {hasSector && (
+                <TableCell>
+                  <span className="text-sm text-muted-foreground">{ipo.sector ?? '—'}</span>
+                </TableCell>
+              )}
               <TableCell>{ipo.listingDate ? formatDate(ipo.listingDate) : 'N/A'}</TableCell>
               <TableCell className="text-right">
                 {ipo.issuePrice !== null && ipo.issuePrice !== undefined ? formatCurrency(ipo.issuePrice) : 'N/A'}
@@ -140,12 +153,11 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
               <TableCell className="text-right">
                 {ipo.listingGainPercent !== null && ipo.listingGainPercent !== undefined ? formatListingGain(ipo.listingGainPercent) : 'N/A'}
               </TableCell>
-              <TableCell className="text-right">
-                {ipo.subscriptionOverall !== null && ipo.subscriptionOverall !== undefined ? formatSubscription(ipo.subscriptionOverall) : 'N/A'}
-              </TableCell>
-              <TableCell>
-                <Badge className="bg-purple-500 text-white">LISTED</Badge>
-              </TableCell>
+              {hasSubscription && (
+                <TableCell className="text-right">
+                  {ipo.subscriptionOverall !== null && ipo.subscriptionOverall !== undefined ? formatSubscription(ipo.subscriptionOverall) : '—'}
+                </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>

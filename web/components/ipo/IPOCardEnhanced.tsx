@@ -157,7 +157,9 @@ export function IPOCardEnhanced({ ipo, searchQuery, onClick }: IPOCardEnhancedPr
               </p>
             </div>
             {/* Large Prominent Score with Count-up Animation */}
-            {ipo.ipoScore ? (
+            {/* Absent score renders nothing — 'Score Pending' on every card
+                reads as a broken pipeline (2026-07-02 blind review) */}
+            {ipo.ipoScore && (
               <div className="text-right">
                 <p className="text-xs text-muted-foreground mb-1">IPODhan Score</p>
                 <AnimatedScore
@@ -167,12 +169,6 @@ export function IPOCardEnhanced({ ipo, searchQuery, onClick }: IPOCardEnhancedPr
                   showSuffix={true}
                   delay={100} // Slight delay for better UX
                 />
-              </div>
-            ) : (
-              <div className="text-right">
-                <Badge variant="outline" className="text-xs">
-                  Score Pending
-                </Badge>
               </div>
             )}
           </div>

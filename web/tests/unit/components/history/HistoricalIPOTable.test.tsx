@@ -126,7 +126,8 @@ describe('HistoricalIPOTable', () => {
     expect(screen.getByText('Sector')).toBeDefined();
     expect(screen.getByText('Issue Price')).toBeDefined();
     expect(screen.getByText('Listing Price')).toBeDefined();
-    expect(screen.getByText('Status')).toBeDefined();
+    // Status column intentionally removed — every history row is LISTED (2026-07-02 review)
+    expect(screen.queryByText('Status')).toBeNull();
   });
 
   it('displays listing gain with color coding - positive', () => {
@@ -159,11 +160,10 @@ describe('HistoricalIPOTable', () => {
     expect(screen.getByText('8.2x')).toBeDefined();
   });
 
-  it('displays LISTED badge for all rows', () => {
+  it('does not render a tautological LISTED badge column (all history rows are listed)', () => {
     renderWithProvider(<HistoricalIPOTable ipos={mockIPOs} />);
 
-    const listedBadges = screen.getAllByText('LISTED');
-    expect(listedBadges.length).toBe(2);
+    expect(screen.queryByText('LISTED')).toBeNull();
   });
 
   it('makes company name clickable with correct link', () => {
