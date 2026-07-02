@@ -124,7 +124,7 @@ const statusCol: ColumnDef<IPO> = {
 const openCol: ColumnDef<IPO> = {
   key: 'openDate',
   header: 'Open',
-  sortable: false,
+  sortable: true,
   searchable: false,
   align: 'right',
   render: (v) => dateCell(v),
@@ -133,7 +133,7 @@ const openCol: ColumnDef<IPO> = {
 const closeCol: ColumnDef<IPO> = {
   key: 'closeDate',
   header: 'Close',
-  sortable: false,
+  sortable: true,
   searchable: false,
   align: 'right',
   render: (v) => dateCell(v),
@@ -142,7 +142,7 @@ const closeCol: ColumnDef<IPO> = {
 const priceBandCol: ColumnDef<IPO> = {
   key: 'priceRangeMax',
   header: 'Price band',
-  sortable: false,
+  sortable: true,
   searchable: false,
   align: 'right',
   render: (_v, row) => orDash(formatPriceBand(row.priceRangeMin, row.priceRangeMax)),
@@ -151,7 +151,7 @@ const priceBandCol: ColumnDef<IPO> = {
 const issueSizeCol: ColumnDef<IPO> = {
   key: 'issueSize',
   header: 'Issue size',
-  sortable: false,
+  sortable: true,
   searchable: false,
   align: 'right',
   mobileHidden: true,
@@ -173,6 +173,52 @@ export function ListingIndexClient({
   // Open/Upcoming are one click away with count badges.
   const [tab, setTab] = useState<TabKey>('all');
   const [page, setPage] = useState(1);
+  const [sort, setSort] = useState<{ field: string; order: 'asc' | 'desc' } | null>(null);
+
+  // Sort value for a row+field — resolves the derived columns (gain/GMP/sub live
+  // in the maps, not on the row) so click-to-sort works on every column.
+  const sortValue = (ipo: IPO, field: string): number | string | null => {
+    switch (field) {
+      case 'listingGainPercent':
+        return gainsMap[ipo.id]?.listingGainPercent ?? null;
+      case 'gmp':
+        return liveMetricsMap[ipo.id]?.gmp ?? null;
+      case 'subscription':
+        return liveMetricsMap[ipo.id]?.totalSubscription ?? null;
+      case 'priceRangeMax':
+        return ipo.priceRangeMax ?? null;
+      case 'issueSize':
+        return ipo.issueSize ? parseFloat(ipo.issueSize) : null;
+      case 'openDate':
+      case 'closeDate':
+      case 'listingDate': {
+        const v = ipo[field];
+        return v ? new Date(v).getTime() : null;
+      }
+      default:
+        return (ipo[field as keyof IPO] as string | number | null) ?? null;
+    }
+  };
+
+  const handleSort = (field: string, order: 'asc' | 'desc') => {
+    setSort({ field, order });
+    setPage(1);
+  };
+
+  const sortRows = (rows: IPO[]): IPO[] => {
+    if (!sort) return rows;
+    const dir = sort.order === 'asc' ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const va = sortValue(a, sort.field);
+      const vb = sortValue(b, sort.field);
+      if (va === null && vb === null) return 0;
+      if (va === null) return 1; // nulls always last
+      if (vb === null) return -1;
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return 0;
+    });
+  };
 
   const { openIpos, upcomingIpos, listedIpos } = useMemo(() => {
     const openIpos: IPO[] = [];
@@ -196,7 +242,7 @@ export function ListingIndexClient({
   const gainColumn: ColumnDef<IPO> = {
     key: 'listingGainPercent',
     header: 'Listing gain',
-    sortable: false,
+    sortable: true,
     searchable: false,
     align: 'right',
     render: (_v, row) => gainCell(gainsMap[row.id]?.listingGainPercent),
@@ -208,7 +254,7 @@ export function ListingIndexClient({
   const subColumn: ColumnDef<IPO> = {
     key: 'subscription',
     header: 'Sub.',
-    sortable: false,
+    sortable: true,
     searchable: false,
     align: 'right',
     render: (_v, row) => subCell(liveMetricsMap[row.id]?.totalSubscription),
@@ -216,7 +262,7 @@ export function ListingIndexClient({
   const gmpColumn: ColumnDef<IPO> = {
     key: 'gmp',
     header: 'GMP',
-    sortable: false,
+    sortable: true,
     searchable: false,
     align: 'right',
     render: (_v, row) =>
@@ -226,7 +272,7 @@ export function ListingIndexClient({
   const listingDateCol: ColumnDef<IPO> = {
     key: 'listingDate',
     header: 'Listing',
-    sortable: false,
+    sortable: true,
     searchable: false,
     align: 'right',
     mobileHidden: true,
@@ -342,8 +388,9 @@ export function ListingIndexClient({
     ];
   };
 
-  const totalPages = Math.max(1, Math.ceil(active.rows.length / PAGE_SIZE));
-  const pageRows = active.rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const sortedRows = sortRows(active.rows);
+  const totalPages = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
+  const pageRows = sortedRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <div className="space-y-5">
@@ -401,18 +448,20 @@ export function ListingIndexClient({
         </div>
       )}
 
-      {/* Desktop: dense table */}
+      {/* Desktop: dense table with click-to-sort headers */}
       <div className="hidden md:block">
         <DataTable
           key={tab}
-          data={active.rows}
+          data={sortedRows}
           columns={columnsFor[tab]}
           emptyMessage={emptyFor[tab]}
+          onSort={handleSort}
+          currentSort={sort ?? undefined}
           enablePagination
           paginationConfig={{
             pageSize: PAGE_SIZE,
             currentPage: page,
-            totalRecords: active.rows.length,
+            totalRecords: sortedRows.length,
             onPageChange: setPage,
           }}
           keyExtractor={(row) => row.id}
