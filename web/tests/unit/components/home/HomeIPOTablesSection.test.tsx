@@ -143,9 +143,9 @@ describe('HomeIPOTablesSection Component', () => {
         />
       );
 
-      expect(screen.getByRole('link', { name: /More Mainline IPO.../i })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /More Mainboard IPOs.../i })).toBeInTheDocument();
       expect(screen.getByRole('link', { name: /More SME IPO.../i })).toBeInTheDocument();
-      expect(screen.getByRole('link', { name: /More Upcoming Mainline IPO.../i })).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: /More Upcoming Mainboard IPOs.../i })).toBeInTheDocument();
       expect(screen.getByRole('link', { name: /More Upcoming SME IPO.../i })).toBeInTheDocument();
     });
   });
@@ -165,7 +165,7 @@ describe('HomeIPOTablesSection Component', () => {
       );
 
       // AC#4: "More..." links navigate to dashboard with correct filters
-      const link = screen.getByRole('link', { name: /More Mainline IPO.../i });
+      const link = screen.getByRole('link', { name: /More Mainboard IPOs.../i });
       expect(link).toHaveAttribute('href', '/dashboard?category=mainboard');
     });
 
@@ -195,7 +195,7 @@ describe('HomeIPOTablesSection Component', () => {
         />
       );
 
-      const link = screen.getByRole('link', { name: /More Upcoming Mainline IPO.../i });
+      const link = screen.getByRole('link', { name: /More Upcoming Mainboard IPOs.../i });
       expect(link).toHaveAttribute('href', '/dashboard?category=mainboard&status=upcoming');
     });
 

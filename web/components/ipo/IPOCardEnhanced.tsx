@@ -107,6 +107,18 @@ export function IPOCardEnhanced({ ipo, searchQuery, onClick }: IPOCardEnhancedPr
     return 'border-danger'; // Below average
   };
 
+  // Latest real subscription multiplier (timestamp-safe); the bar was hardcoded
+  // to null and rendered 'Subscription --' on every card (2026-07-02 review)
+  const latestSubscription = (ipo.subscriptions ?? []).reduce<Subscription | null>(
+    (latest, sub) =>
+      !latest || new Date(sub.timestamp) > new Date(latest.timestamp) ? sub : latest,
+    null
+  );
+  const subscriptionMultiplier =
+    latestSubscription?.totalSubscription != null
+      ? Number(latestSubscription.totalSubscription)
+      : null;
+
   return (
     <Link
       href={`/ipos/${ipo.slug}`}
@@ -187,12 +199,14 @@ export function IPOCardEnhanced({ ipo, searchQuery, onClick }: IPOCardEnhancedPr
             )}
           </div>
 
-          {/* Mini Progress Bar for Subscription */}
-          <SubscriptionProgressBar
-            subscriptionMultiplier={null} // TODO: Pass actual subscription data when available
-            size="sm"
-            showLabel={true}
-          />
+          {/* Mini Progress Bar for Subscription — hidden when no data */}
+          {subscriptionMultiplier !== null && subscriptionMultiplier > 0 && (
+            <SubscriptionProgressBar
+              subscriptionMultiplier={subscriptionMultiplier}
+              size="sm"
+              showLabel={true}
+            />
+          )}
 
           {/* Key Dates - Simplified */}
           <div className="pt-3 border-t border-border/50">

@@ -82,7 +82,7 @@ export function HomeIPOTablesSection({
           title={`IPO ${currentYear} List (Mainboard)`}
           ipos={mainboardIPOs}
           moreLink="/dashboard?category=mainboard"
-          moreLinkText="More Mainline IPO..."
+          moreLinkText="More Mainboard IPOs..."
           isLoading={isLoading}
         />
 
@@ -100,7 +100,7 @@ export function HomeIPOTablesSection({
           title="Upcoming Mainboard IPOs (Filed with SEBI)"
           ipos={upcomingMainboardIPOs}
           moreLink="/dashboard?category=mainboard&status=upcoming"
-          moreLinkText="More Upcoming Mainline IPO..."
+          moreLinkText="More Upcoming Mainboard IPOs..."
           isLoading={isLoading}
         />
 

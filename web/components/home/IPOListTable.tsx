@@ -77,9 +77,11 @@ function getRowColorClass(ipo: HomeIPOTableData): string {
     return 'hover:bg-muted/50';
   }
 
-  // Yellow: Closing within 2 days (check first - higher priority)
+  // Yellow: closing today/tomorrow only — at <=2 days most short-window SME
+  // issues qualified, highlighting 7 of 9 rows and destroying the signal
+  // (2026-07-02 blind review)
   const daysUntilClose = differenceInDays(closeDate, today);
-  if (daysUntilClose >= 0 && daysUntilClose <= 2) {
+  if (daysUntilClose >= 0 && daysUntilClose <= 1) {
     return 'bg-yellow-50 hover:bg-yellow-100 border-l-4 border-yellow-500';
   }
 
@@ -109,7 +111,7 @@ function getRowColorClass(ipo: HomeIPOTableData): string {
  *   title="IPO 2025 List (Mainboard)"
  *   ipos={mainboardIPOs}
  *   moreLink="/dashboard?category=mainboard"
- *   moreLinkText="More Mainline IPO..."
+ *   moreLinkText="More Mainboard IPOs..."
  *   isLoading={false}
  * />
  * ```

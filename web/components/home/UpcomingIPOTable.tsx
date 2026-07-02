@@ -85,7 +85,7 @@ function getStatusText(segment: string | null): string {
  *   title="Upcoming Mainboard IPOs (Filed with SEBI)"
  *   ipos={upcomingMainboardIPOs}
  *   moreLink="/dashboard?category=mainboard&status=upcoming"
- *   moreLinkText="More Upcoming Mainline IPO..."
+ *   moreLinkText="More Upcoming Mainboard IPOs..."
  *   isLoading={false}
  * />
  * ```

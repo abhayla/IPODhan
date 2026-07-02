@@ -228,7 +228,12 @@ export function IPODetailTabs({
   return (
     <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
       {/* Tab List */}
-      <TabsList className={`grid w-full ${hasPeerData ? 'grid-cols-7' : 'grid-cols-6'} lg:w-auto lg:inline-grid shadow-sm`}>
+      {/* Mobile: horizontally scrollable flex strip — a 6/7-col grid at 390px
+          collided tab labels into unreadable/untappable slivers (2026-07-02
+          blind review). Desktop keeps the grid. */}
+      <TabsList
+        className={`flex w-full overflow-x-auto justify-start md:grid ${hasPeerData ? 'md:grid-cols-7' : 'md:grid-cols-6'} lg:w-auto lg:inline-grid shadow-sm`}
+      >
         <TabsTrigger value="overview" className="touch-manipulation">Overview</TabsTrigger>
         <TabsTrigger value="financials" className="touch-manipulation">Financials</TabsTrigger>
         {hasPeerData && (
