@@ -237,7 +237,11 @@ export function getCategoryBreakdown(
     });
   }
 
-  return categories.sort((a, b) => b.subscription - a.subscription);
+  // Canonical investor-category order (QIB, NII, Retail, Employee, Shareholder).
+  // Sorting by subscription value demoted an under-subscribed QIB out of the
+  // headline cards while promoting Employee — misleading arrangement for a
+  // money decision (2026-07-02 blind review read it as a data contradiction).
+  return categories;
 }
 
 /**
