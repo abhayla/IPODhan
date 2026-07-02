@@ -39,6 +39,10 @@ export function sanitizeDisplayCompanyName(name: string | null | undefined): str
     // suffix ("Ltd. O", "Ltd. P", "Ltd. LT") — a scrape artifact (#16/#42). Keep
     // the suffix itself.
     .replace(/(\bLtd\.?|\bLimited)\s+[A-Za-z]{1,2}$/i, '$1')
+    // Strip a trailing " IPO"/" FPO" — Chittorgarh display names arrive as
+    // "Twinkle Papers IPO"; the instrument label is not part of the company
+    // name (#42; matching normalizer already strips it — keep in lock-step).
+    .replace(/\s+(IPO|FPO)$/i, '')
     .trim()
     .slice(0, 200);
 }
