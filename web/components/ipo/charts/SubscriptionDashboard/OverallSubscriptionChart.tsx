@@ -50,8 +50,8 @@ export function OverallSubscriptionChart({
   if (hasRetail) {
     areas.push({
       dataKey: 'Retail',
-      stackId: '1',
       fill: 'var(--chart-3)',
+      fillOpacity: 0.08,
       stroke: 'var(--chart-3)',
       name: 'Retail',
     });
@@ -59,8 +59,8 @@ export function OverallSubscriptionChart({
   if (hasNII) {
     areas.push({
       dataKey: 'NII',
-      stackId: '1',
       fill: 'var(--chart-2)',
+      fillOpacity: 0.08,
       stroke: 'var(--chart-2)',
       name: 'NII',
     });
@@ -68,8 +68,8 @@ export function OverallSubscriptionChart({
   if (hasQIB) {
     areas.push({
       dataKey: 'QIB',
-      stackId: '1',
       fill: 'var(--chart-1)',
+      fillOpacity: 0.08,
       stroke: 'var(--chart-1)',
       name: 'QIB',
     });
@@ -79,8 +79,8 @@ export function OverallSubscriptionChart({
   if (areas.length === 0) {
     areas.push({
       dataKey: 'Total',
-      stackId: '1',
       fill: 'var(--chart-1)',
+      fillOpacity: 0.08,
       stroke: 'var(--chart-1)',
       name: 'Total',
     });
@@ -205,7 +205,7 @@ export function OverallSubscriptionChart({
         />
         {areas.length > 1 && (
           <p className="text-xs text-muted-foreground mt-2 text-center">
-            Stacked view showing category-wise subscription buildup
+            Category-wise subscription over time (1x = fully subscribed)
           </p>
         )}
       </div>
