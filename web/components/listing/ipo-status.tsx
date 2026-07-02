@@ -5,9 +5,15 @@
  * Closing soon = amber, Upcoming = accent blue, Closed/Listed = muted.
  */
 
-import type { IPO } from '@/lib/db/types';
-
 export type DisplayStatus = 'open' | 'closingSoon' | 'upcoming' | 'closed' | 'listed';
+
+/** Minimal shape needed to derive a status — satisfied by both IPO rows and the
+ * lighter HomeIPOTableData. */
+export interface StatusInput {
+  openDate: string | null;
+  closeDate: string | null;
+  status: string;
+}
 
 interface StatusMeta {
   status: DisplayStatus;
@@ -25,7 +31,7 @@ const startOfDay = (d: Date): Date => {
  * Dates decide "open"/"closing soon" (they are the ground truth for an active
  * window); the stored status decides upcoming/listed/closed.
  */
-export function getDisplayStatus(ipo: IPO): StatusMeta {
+export function getDisplayStatus(ipo: StatusInput): StatusMeta {
   const today = startOfDay(new Date());
 
   if (ipo.openDate && ipo.closeDate) {
@@ -54,7 +60,7 @@ const TONE: Record<DisplayStatus, { chip: string; dot: string }> = {
   listed: { chip: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' },
 };
 
-export function IpoStatusChip({ ipo }: { ipo: IPO }) {
+export function IpoStatusChip({ ipo }: { ipo: StatusInput }) {
   const { status, label } = getDisplayStatus(ipo);
   const tone = TONE[status];
   return (
@@ -64,5 +70,17 @@ export function IpoStatusChip({ ipo }: { ipo: IPO }) {
       <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} aria-hidden />
       {label}
     </span>
+  );
+}
+
+/** Status dot only (spec G1: status = dot before the name, no row tint). */
+export function IpoStatusDot({ ipo }: { ipo: StatusInput }) {
+  const { status, label } = getDisplayStatus(ipo);
+  return (
+    <span
+      className={`inline-block h-2 w-2 shrink-0 rounded-full ${TONE[status].dot}`}
+      title={label}
+      aria-label={label}
+    />
   );
 }

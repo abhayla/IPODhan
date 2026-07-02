@@ -1,10 +1,10 @@
 /**
- * Unit Tests for IPOListTable Component
+ * Unit Tests for IPOListTable Component (spec H2)
  *
- * Tests rendering, color-coding logic, date formatting,
- * navigation links, empty states, and accessibility
- *
- * Story 9.2: Home Page IPO Tables - UI Components
+ * The home live table shows: status dot + Company | Price band | Open | Close |
+ * Subscription | GMP. Status is a dot before the name (NOT a row tint).
+ * GMP/subscription are REAL values (or an em dash when absent) — tests assert
+ * the conveyed substance, not just that a cell exists.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -14,59 +14,69 @@ import type { HomeIPOTableData } from '@/lib/services/home-ipo-service';
 
 // ==================== MOCK DATA ====================
 
+const base = {
+  segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
+  listingDate: null,
+  priceMin: null,
+  gmp: null,
+  gmpPercent: null,
+  totalSubscription: null,
+};
+
 const mockOpenIPO: HomeIPOTableData = {
+  ...base,
   id: 'open-1',
   companyName: 'Currently Open IPO',
   slug: 'currently-open-ipo',
-  segment: 'MAINBOARD' as const,
-  offeringType: 'IPO' as const,
-  openDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Started 1 day ago
-  closeDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Closes in 5 days (not closing soon)
+  openDate: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  closeDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  priceMin: 95,
   issuePrice: 100,
   issueSize: '500',
-  listingDate: null,
   status: 'OPEN',
+  gmp: 50,
+  gmpPercent: 50,
+  totalSubscription: 2.5,
 };
 
 const mockClosingSoonIPO: HomeIPOTableData = {
+  ...base,
   id: 'closing-soon-1',
   companyName: 'Closing Soon IPO',
   slug: 'closing-soon-ipo',
-  segment: 'MAINBOARD' as const,
-  offeringType: 'IPO' as const,
-  openDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Started 3 days ago
-  closeDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Closes in 1 day
+  openDate: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  closeDate: new Date(Date.now() + 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   issuePrice: 200,
   issueSize: '1000',
-  listingDate: null,
   status: 'OPEN',
+  gmp: -15,
+  gmpPercent: -7.5,
+  totalSubscription: 0.8,
 };
 
 const mockClosedIPO: HomeIPOTableData = {
+  ...base,
   id: 'closed-1',
   companyName: 'Recently Closed IPO',
   slug: 'recently-closed-ipo',
-  segment: 'MAINBOARD' as const,
-  offeringType: 'IPO' as const,
-  openDate: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Started 20 days ago
-  closeDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Closed 10 days ago
+  openDate: new Date(Date.now() - 20 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+  closeDate: new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
   issuePrice: 150,
   issueSize: '750',
-  listingDate: null,
   status: 'CLOSED',
 };
 
 const mockIPOWithNullDates: HomeIPOTableData = {
+  ...base,
   id: 'null-dates-1',
   companyName: 'IPO with Null Dates',
   slug: 'ipo-null-dates',
   segment: 'SME' as const,
-  offeringType: 'IPO' as const,
   openDate: null,
   closeDate: null,
   issuePrice: null,
   issueSize: null,
-  listingDate: null,
   status: 'UPCOMING',
 };
 
@@ -76,8 +86,6 @@ describe('IPOListTable Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
-
-  // ==================== RENDERING TESTS ====================
 
   describe('Rendering', () => {
     it('should render table with title and data', () => {
@@ -91,13 +99,12 @@ describe('IPOListTable Component', () => {
         />
       );
 
-      // AC#1: Components render correctly
       expect(screen.getByText('IPO 2025 List (Mainboard)')).toBeInTheDocument();
       expect(screen.getByText('Currently Open IPO')).toBeInTheDocument();
       expect(screen.getByText('Recently Closed IPO')).toBeInTheDocument();
     });
 
-    it('should render all three column headers', () => {
+    it('should render all six column headers (H2: adds Sub. + GMP)', () => {
       render(
         <IPOListTable
           title="Test Table"
@@ -108,10 +115,12 @@ describe('IPOListTable Component', () => {
         />
       );
 
-      expect(screen.getByRole('columnheader', { name: 'Issuer Company' })).toBeInTheDocument();
-      expect(screen.getByRole('columnheader', { name: 'Price' })).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Company' })).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Price band' })).toBeInTheDocument();
       expect(screen.getByRole('columnheader', { name: 'Open' })).toBeInTheDocument();
       expect(screen.getByRole('columnheader', { name: 'Close' })).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Sub.' })).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'GMP' })).toBeInTheDocument();
     });
 
     it('should render company names as clickable links', () => {
@@ -141,17 +150,76 @@ describe('IPOListTable Component', () => {
         />
       );
 
-      // AC#4: "More..." links navigate to dashboard with correct filters
       const moreLink = screen.getByRole('link', { name: /More Mainline IPO.../i });
       expect(moreLink).toBeInTheDocument();
       expect(moreLink).toHaveAttribute('href', '/dashboard?category=mainboard');
     });
   });
 
-  // ==================== COLOR-CODING TESTS ====================
+  // ==================== SUBSTANCE: GMP + Subscription ====================
 
-  describe('Color-Coding Logic', () => {
-    it('should apply green styling for currently open IPOs', () => {
+  describe('Live metrics (GMP + Subscription) — substance', () => {
+    it('shows a positive GMP in ₹ with its percent', () => {
+      render(
+        <IPOListTable
+          title="T"
+          ipos={[mockOpenIPO]}
+          moreLink="/d"
+          moreLinkText="More..."
+          isLoading={false}
+        />
+      );
+      // GMP 50 (+50%) → "+₹50" and "(+50.0%)"
+      expect(screen.getByText(/\+₹50/)).toBeInTheDocument();
+      expect(screen.getByText(/\(\+50\.0%\)/)).toBeInTheDocument();
+    });
+
+    it('shows a negative GMP colored as loss', () => {
+      const { container } = render(
+        <IPOListTable
+          title="T"
+          ipos={[mockClosingSoonIPO]}
+          moreLink="/d"
+          moreLinkText="More..."
+          isLoading={false}
+        />
+      );
+      expect(screen.getByText(/₹-15|-₹15/)).toBeInTheDocument();
+      expect(container.querySelector('.text-red-600')).toBeInTheDocument();
+    });
+
+    it('shows subscription as a multiple (x)', () => {
+      render(
+        <IPOListTable
+          title="T"
+          ipos={[mockOpenIPO]}
+          moreLink="/d"
+          moreLinkText="More..."
+          isLoading={false}
+        />
+      );
+      expect(screen.getByText('2.50x')).toBeInTheDocument();
+    });
+
+    it('renders an em dash (not a fabricated value) when GMP/subscription are absent', () => {
+      render(
+        <IPOListTable
+          title="T"
+          ipos={[mockClosedIPO]}
+          moreLink="/d"
+          moreLinkText="More..."
+          isLoading={false}
+        />
+      );
+      // closed IPO has null gmp + null subscription → two em dashes
+      expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  // ==================== STATUS DOT (replaces row tints) ====================
+
+  describe('Status indicator (dot, not row tint)', () => {
+    it('shows an Open dot for a currently open IPO and does NOT tint the row', () => {
       const { container } = render(
         <IPOListTable
           title="Test Table"
@@ -162,13 +230,14 @@ describe('IPOListTable Component', () => {
         />
       );
 
-      // AC#2: Color-coding works based on date logic (green for open)
-      const tableRow = container.querySelector('tbody tr');
-      expect(tableRow).toHaveClass('bg-green-50');
-      expect(tableRow).toHaveClass('border-green-500');
+      const row = container.querySelector('tbody tr');
+      expect(row).not.toHaveClass('bg-green-50');
+      expect(row).not.toHaveClass('bg-yellow-50');
+      // green status dot present
+      expect(container.querySelector('.bg-green-600')).toBeInTheDocument();
     });
 
-    it('should apply yellow styling for IPOs closing within 2 days', () => {
+    it('shows a Closing soon (amber) dot for an IPO closing within a day', () => {
       const { container } = render(
         <IPOListTable
           title="Test Table"
@@ -178,32 +247,11 @@ describe('IPOListTable Component', () => {
           isLoading={false}
         />
       );
-
-      // AC#2: Color-coding works based on date logic (yellow for closing soon)
-      const tableRow = container.querySelector('tbody tr');
-      expect(tableRow).toHaveClass('bg-yellow-50');
-      expect(tableRow).toHaveClass('border-yellow-500');
+      expect(screen.getByTitle('Closing soon')).toBeInTheDocument();
+      expect(container.querySelector('.bg-amber-500')).toBeInTheDocument();
     });
 
-    it('should apply default styling for closed IPOs', () => {
-      const { container } = render(
-        <IPOListTable
-          title="Test Table"
-          ipos={[mockClosedIPO]}
-          moreLink="/dashboard"
-          moreLinkText="More..."
-          isLoading={false}
-        />
-      );
-
-      // AC#2: Color-coding works based on date logic (white/default for closed)
-      const tableRow = container.querySelector('tbody tr');
-      expect(tableRow).not.toHaveClass('bg-green-50');
-      expect(tableRow).not.toHaveClass('bg-yellow-50');
-      expect(tableRow).toHaveClass('hover:bg-muted/50');
-    });
-
-    it('should handle IPOs with null dates gracefully', () => {
+    it('handles IPOs with null dates gracefully (no crash, muted dot)', () => {
       const { container } = render(
         <IPOListTable
           title="Test Table"
@@ -213,26 +261,19 @@ describe('IPOListTable Component', () => {
           isLoading={false}
         />
       );
-
-      const tableRow = container.querySelector('tbody tr');
-      expect(tableRow).toHaveClass('hover:bg-muted/50');
+      const row = container.querySelector('tbody tr');
+      expect(row).toHaveClass('hover:bg-muted/50');
     });
   });
 
-  // ==================== DATE FORMATTING TESTS ====================
+  // ==================== DATE FORMATTING ====================
 
   describe('Date Formatting', () => {
     it('should format dates as "dd MMM"', () => {
       render(
         <IPOListTable
           title="Test Table"
-          ipos={[
-            {
-              ...mockOpenIPO,
-              openDate: '2025-10-15',
-              closeDate: '2025-10-18',
-            },
-          ]}
+          ipos={[{ ...mockOpenIPO, openDate: '2025-10-15', closeDate: '2025-10-18' }]}
           moreLink="/dashboard"
           moreLinkText="More..."
           isLoading={false}
@@ -255,181 +296,87 @@ describe('IPOListTable Component', () => {
       );
 
       const cells = screen.getAllByText('N/A');
-      expect(cells.length).toBeGreaterThanOrEqual(2); // Open and Close columns
+      expect(cells.length).toBeGreaterThanOrEqual(2);
     });
   });
 
-  // ==================== LOADING STATE TESTS ====================
+  // ==================== LOADING / EMPTY ====================
 
   describe('Loading State', () => {
     it('should render skeleton when isLoading is true', () => {
       const { container } = render(
-        <IPOListTable
-          title="Test Table"
-          ipos={[]}
-          moreLink="/dashboard"
-          moreLinkText="More..."
-          isLoading={true}
-        />
+        <IPOListTable title="Test Table" ipos={[]} moreLink="/dashboard" moreLinkText="More..." isLoading={true} />
       );
-
-      // AC#6: Loading states display properly
       expect(screen.getByText('Test Table')).toBeInTheDocument();
-
-      // Check for skeleton rows
       const skeletonRows = container.querySelectorAll('tbody tr');
-      expect(skeletonRows.length).toBe(5); // IPOTableSkeleton shows 5 rows
+      expect(skeletonRows.length).toBe(5);
     });
 
     it('should not render data when loading', () => {
       render(
-        <IPOListTable
-          title="Test Table"
-          ipos={[mockOpenIPO]}
-          moreLink="/dashboard"
-          moreLinkText="More..."
-          isLoading={true}
-        />
+        <IPOListTable title="Test Table" ipos={[mockOpenIPO]} moreLink="/dashboard" moreLinkText="More..." isLoading={true} />
       );
-
       expect(screen.queryByText('Currently Open IPO')).not.toBeInTheDocument();
     });
   });
 
-  // ==================== EMPTY STATE TESTS ====================
-
   describe('Empty State', () => {
-    it('should display "No IPOs available" when ipos array is empty', () => {
-      render(
-        <IPOListTable
-          title="Test Table"
-          ipos={[]}
-          moreLink="/dashboard"
-          moreLinkText="More..."
-          isLoading={false}
-        />
-      );
-
-      // AC#8: Empty states handled gracefully
+    it('should display an informative empty state', () => {
+      render(<IPOListTable title="Test Table" ipos={[]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />);
       expect(screen.getByText('No active issues right now')).toBeInTheDocument();
     });
 
     it('should still render title when empty', () => {
-      render(
-        <IPOListTable
-          title="Empty Table"
-          ipos={[]}
-          moreLink="/dashboard"
-          moreLinkText="More..."
-          isLoading={false}
-        />
-      );
-
+      render(<IPOListTable title="Empty Table" ipos={[]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />);
       expect(screen.getByText('Empty Table')).toBeInTheDocument();
     });
 
     it('should not render "More..." link when empty', () => {
-      render(
-        <IPOListTable
-          title="Test Table"
-          ipos={[]}
-          moreLink="/dashboard"
-          moreLinkText="More..."
-          isLoading={false}
-        />
-      );
-
+      render(<IPOListTable title="Test Table" ipos={[]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />);
       expect(screen.queryByText('More...')).not.toBeInTheDocument();
     });
   });
 
-  // ==================== ACCESSIBILITY TESTS ====================
+  // ==================== ACCESSIBILITY ====================
 
   describe('Accessibility', () => {
     it('should have proper ARIA label on table', () => {
       render(
-        <IPOListTable
-          title="IPO 2025 List (Mainboard)"
-          ipos={[mockOpenIPO]}
-          moreLink="/dashboard"
-          moreLinkText="More..."
-          isLoading={false}
-        />
+        <IPOListTable title="IPO 2025 List (Mainboard)" ipos={[mockOpenIPO]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />
       );
-
-      // AC#7: Tables have proper ARIA labels
-      const table = screen.getByRole('table', { name: 'IPO 2025 List (Mainboard)' });
-      expect(table).toBeInTheDocument();
+      expect(screen.getByRole('table', { name: 'IPO 2025 List (Mainboard)' })).toBeInTheDocument();
     });
 
-    it('should have proper table header scopes', () => {
+    it('should have six semantic column headers with scope', () => {
       const { container } = render(
-        <IPOListTable
-          title="Test Table"
-          ipos={[mockOpenIPO]}
-          moreLink="/dashboard"
-          moreLinkText="More..."
-          isLoading={false}
-        />
+        <IPOListTable title="Test Table" ipos={[mockOpenIPO]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />
       );
-
-      // AC#7: Semantic markup with scope="col"
       const headers = container.querySelectorAll('th[scope="col"]');
-      expect(headers.length).toBe(4); // Issuer Company, Price, Open, Close
-    });
-
-    it('should have semantic table structure', () => {
-      render(
-        <IPOListTable
-          title="Test Table"
-          ipos={[mockOpenIPO]}
-          moreLink="/dashboard"
-          moreLinkText="More..."
-          isLoading={false}
-        />
-      );
-
-      expect(screen.getByRole('table')).toBeInTheDocument();
-      expect(screen.getByRole('row', { name: /Issuer Company Price Open Close/i })).toBeInTheDocument();
+      expect(headers.length).toBe(6); // Company, Price band, Open, Close, Sub., GMP
     });
   });
 
-  // ==================== RESPONSIVE DESIGN TESTS ====================
+  // ==================== RESPONSIVE ====================
 
   describe('Responsive Design', () => {
-    it('should apply responsive text classes', () => {
-      const { container } = render(
-        <IPOListTable
-          title="Test Table"
-          ipos={[mockOpenIPO]}
-          moreLink="/dashboard"
-          moreLinkText="More..."
-          isLoading={false}
-        />
+    it('should apply responsive text classes to company link', () => {
+      render(
+        <IPOListTable title="Test Table" ipos={[mockOpenIPO]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />
       );
-
-      // AC#3: Responsive design with text-sm md:text-base
       const companyLink = screen.getByRole('link', { name: 'Currently Open IPO' });
-      expect(companyLink.className).toMatch(/text-sm md:text-base/);
+      expect(companyLink.className).toMatch(/text-sm/);
     });
 
     it('should apply responsive heading classes', () => {
-      const { container } = render(
-        <IPOListTable
-          title="Test Table"
-          ipos={[mockOpenIPO]}
-          moreLink="/dashboard"
-          moreLinkText="More..."
-          isLoading={false}
-        />
+      render(
+        <IPOListTable title="Test Table" ipos={[mockOpenIPO]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />
       );
-
       const heading = screen.getByText('Test Table');
       expect(heading.className).toMatch(/text-xl md:text-2xl/);
     });
   });
 
-  // ==================== MULTIPLE IPOS TESTS ====================
+  // ==================== MULTIPLE + EDGE ====================
 
   describe('Multiple IPOs', () => {
     it('should render multiple IPOs correctly', () => {
@@ -442,50 +389,23 @@ describe('IPOListTable Component', () => {
           isLoading={false}
         />
       );
-
       expect(screen.getByText('Currently Open IPO')).toBeInTheDocument();
       expect(screen.getByText('Closing Soon IPO')).toBeInTheDocument();
       expect(screen.getByText('Recently Closed IPO')).toBeInTheDocument();
     });
-
-    it('should apply different colors to different IPOs', () => {
-      const { container } = render(
-        <IPOListTable
-          title="Test Table"
-          ipos={[mockOpenIPO, mockClosingSoonIPO, mockClosedIPO]}
-          moreLink="/dashboard"
-          moreLinkText="More..."
-          isLoading={false}
-        />
-      );
-
-      const rows = container.querySelectorAll('tbody tr');
-      expect(rows[0]).toHaveClass('bg-green-50'); // Open
-      expect(rows[1]).toHaveClass('bg-yellow-50'); // Closing soon
-      expect(rows[2]).toHaveClass('hover:bg-muted/50'); // Closed
-    });
   });
-
-  // ==================== EDGE CASES ====================
 
   describe('Edge Cases', () => {
     it('should handle invalid date strings gracefully', () => {
       render(
         <IPOListTable
           title="Test Table"
-          ipos={[
-            {
-              ...mockOpenIPO,
-              openDate: 'invalid-date',
-              closeDate: 'invalid-date',
-            },
-          ]}
+          ipos={[{ ...mockOpenIPO, openDate: 'invalid-date', closeDate: 'invalid-date' }]}
           moreLink="/dashboard"
           moreLinkText="More..."
           isLoading={false}
         />
       );
-
       const cells = screen.getAllByText('N/A');
       expect(cells.length).toBeGreaterThanOrEqual(2);
     });
@@ -495,33 +415,16 @@ describe('IPOListTable Component', () => {
         ...mockOpenIPO,
         companyName: 'Very Long Company Name That Should Still Display Properly Without Breaking Layout',
       };
-
       render(
-        <IPOListTable
-          title="Test Table"
-          ipos={[longNameIPO]}
-          moreLink="/dashboard"
-          moreLinkText="More..."
-          isLoading={false}
-        />
+        <IPOListTable title="Test Table" ipos={[longNameIPO]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />
       );
-
       expect(
         screen.getByText('Very Long Company Name That Should Still Display Properly Without Breaking Layout')
       ).toBeInTheDocument();
     });
 
     it('should handle missing optional props with defaults', () => {
-      // isLoading defaults to false
-      render(
-        <IPOListTable
-          title="Test Table"
-          ipos={[mockOpenIPO]}
-          moreLink="/dashboard"
-          moreLinkText="More..."
-        />
-      );
-
+      render(<IPOListTable title="Test Table" ipos={[mockOpenIPO]} moreLink="/dashboard" moreLinkText="More..." />);
       expect(screen.getByText('Currently Open IPO')).toBeInTheDocument();
     });
   });

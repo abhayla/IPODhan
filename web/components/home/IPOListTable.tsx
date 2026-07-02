@@ -14,7 +14,7 @@
 'use client';
 
 import Link from 'next/link';
-import { format, isWithinInterval, differenceInDays } from 'date-fns';
+import { format } from 'date-fns';
 import { ArrowRight } from 'lucide-react';
 import {
   Table,
@@ -24,8 +24,9 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
 import type { HomeIPOTableData } from '@/lib/services/home-ipo-service';
+import { formatPriceBand } from '@/lib/utils/kpi-formatters';
+import { IpoStatusDot } from '@/components/listing/ipo-status';
 import { IPOTableSkeleton } from './IPOTableSkeleton';
 
 // ==================== TYPES ====================
@@ -59,43 +60,29 @@ function formatDate(dateString: string | null): string {
 }
 
 /**
- * Get row color class based on IPO status and dates
- *
- * Logic:
- * - Yellow: IPO closing within 2 days (has higher priority)
- * - Green: IPO currently open (today is between openDate and closeDate)
- * - White: Default (all other cases)
- *
- * AC#2: Color-coding works based on date logic
+ * GMP cell: real grey-market premium (₹ + %), colored by sign. Null → em dash.
+ * A positive premium is the bullish signal the persona scans for first.
  */
-function getRowColorClass(ipo: HomeIPOTableData): string {
-  const today = new Date();
-  const openDate = ipo.openDate ? new Date(ipo.openDate) : null;
-  const closeDate = ipo.closeDate ? new Date(ipo.closeDate) : null;
+function gmpCell(gmp: number | null, gmpPercent: number | null) {
+  if (gmp === null || gmp === undefined) return <span className="text-gray-400">—</span>;
+  const positive = gmp >= 0;
+  return (
+    <span className={positive ? 'font-medium text-green-600' : 'font-medium text-red-600'}>
+      {positive ? '+' : ''}₹{gmp}
+      {gmpPercent !== null && gmpPercent !== undefined && (
+        <span className="ml-1 text-xs text-muted-foreground">
+          ({positive ? '+' : ''}
+          {gmpPercent.toFixed(1)}%)
+        </span>
+      )}
+    </span>
+  );
+}
 
-  if (!openDate || !closeDate) {
-    return 'hover:bg-muted/50';
-  }
-
-  // Yellow: closing today/tomorrow only — at <=2 days most short-window SME
-  // issues qualified, highlighting 7 of 9 rows and destroying the signal
-  // (2026-07-02 blind review)
-  const daysUntilClose = differenceInDays(closeDate, today);
-  if (daysUntilClose >= 0 && daysUntilClose <= 1) {
-    return 'bg-yellow-50 hover:bg-yellow-100 border-l-4 border-yellow-500';
-  }
-
-  // Green: IPO currently open
-  const isOpen = isWithinInterval(today, {
-    start: openDate,
-    end: closeDate,
-  });
-  if (isOpen) {
-    return 'bg-green-50 hover:bg-green-100 border-l-4 border-green-500';
-  }
-
-  // White: Default
-  return 'hover:bg-muted/50';
+/** Subscription multiple (x). Null → em dash. */
+function subscriptionCell(sub: number | null) {
+  if (sub === null || sub === undefined) return <span className="text-gray-400">—</span>;
+  return <span className="font-medium tabular-nums">{sub.toFixed(2)}x</span>;
 }
 
 // ==================== COMPONENT ====================
@@ -155,60 +142,56 @@ export function IPOListTable({
 
   return (
     <div className="space-y-4">
-      {/* Table Title + row-color legend */}
-      <div className="flex flex-wrap items-baseline justify-between gap-2">
-        <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
-        <div className="flex items-center gap-3 text-xs text-muted-foreground" aria-hidden="true">
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2.5 w-2.5 rounded-sm bg-green-400" /> Open
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="inline-block h-2.5 w-2.5 rounded-sm bg-yellow-400" /> Closing soon
-          </span>
-        </div>
-      </div>
+      <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
 
-      {/* AC#3: Tables are responsive and match reference design */}
+      {/* Live table (spec H2): status dot + Company | Price band | Open | Close |
+          Subscription | GMP — the persona's #1 data. No row tints. */}
       <div className="rounded-md border bg-card overflow-x-auto">
         <Table aria-label={title} className="min-w-full [&_td]:px-1.5 [&_th]:px-1.5 sm:[&_td]:px-2 sm:[&_th]:px-2">
           <TableHeader>
             <TableRow>
-              <TableHead scope="col">
-                Issuer Company
+              <TableHead scope="col">Company</TableHead>
+              <TableHead scope="col" className="whitespace-nowrap text-right">
+                Price band
+              </TableHead>
+              <TableHead scope="col" className="whitespace-nowrap">Open</TableHead>
+              <TableHead scope="col" className="whitespace-nowrap">Close</TableHead>
+              <TableHead scope="col" className="whitespace-nowrap text-right">
+                Sub.
               </TableHead>
               <TableHead scope="col" className="whitespace-nowrap text-right">
-                Price
-              </TableHead>
-              <TableHead scope="col" className="whitespace-nowrap">
-                Open
-              </TableHead>
-              <TableHead scope="col" className="whitespace-nowrap">
-                Close
+                GMP
               </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {ipos.map((ipo) => (
-              <TableRow
-                key={ipo.id}
-                className={cn('transition-colors', getRowColorClass(ipo))}
-              >
+              <TableRow key={ipo.id} className="transition-colors hover:bg-muted/50">
                 <TableCell>
-                  <Link
-                    href={`/ipos/${ipo.slug}`}
-                    className="font-medium hover:underline text-primary text-sm md:text-base block max-w-[100px] sm:max-w-none truncate"
-                  >
-                    {ipo.companyName}
-                  </Link>
+                  <div className="flex items-center gap-2">
+                    <IpoStatusDot ipo={ipo} />
+                    <Link
+                      href={`/ipos/${ipo.slug}`}
+                      className="block max-w-[120px] truncate text-sm font-medium text-foreground hover:text-primary hover:underline sm:max-w-none md:text-base"
+                    >
+                      {ipo.companyName}
+                    </Link>
+                  </div>
                 </TableCell>
-                <TableCell className="text-sm md:text-base text-right whitespace-nowrap">
-                  {ipo.issuePrice ? `₹${ipo.issuePrice}` : 'TBA'}
+                <TableCell className="whitespace-nowrap text-right text-sm md:text-base">
+                  {formatPriceBand(ipo.priceMin, ipo.issuePrice)}
                 </TableCell>
-                <TableCell className="text-sm md:text-base whitespace-nowrap">
+                <TableCell className="whitespace-nowrap text-sm md:text-base">
                   {formatDate(ipo.openDate)}
                 </TableCell>
-                <TableCell className="text-sm md:text-base whitespace-nowrap">
+                <TableCell className="whitespace-nowrap text-sm md:text-base">
                   {formatDate(ipo.closeDate)}
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-right text-sm md:text-base">
+                  {subscriptionCell(ipo.totalSubscription)}
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-right text-sm md:text-base">
+                  {gmpCell(ipo.gmp, ipo.gmpPercent)}
                 </TableCell>
               </TableRow>
             ))}
