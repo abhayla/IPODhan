@@ -142,55 +142,37 @@ describe('Home Page (Story 9.3)', () => {
   });
 
   describe('Page Structure', () => {
-    it('should render all main sections in correct order', async () => {
-      const page = await Home();
-      const { container } = render(page);
-
-      // Check that sections exist
-      expect(screen.getByText(/Your Trusted IPO Investment Platform/i)).toBeInTheDocument();
-      expect(screen.getByText(/Latest IPO Updates/i)).toBeInTheDocument();
-      expect(screen.getByText(/Everything You Need for IPO Investments/i)).toBeInTheDocument();
-      expect(screen.getByText(/Ready to Start Your IPO Journey/i)).toBeInTheDocument();
-    });
-
-    it('should render IPO tables section before Features section', async () => {
-      const page = await Home();
-      const { container } = render(page);
-
-      const sections = container.querySelectorAll('section');
-      const sectionTexts = Array.from(sections).map(s => s.textContent);
-
-      // Find indices
-      const ipoTablesSectionIndex = sectionTexts.findIndex(text =>
-        text?.includes('Latest IPO Updates')
-      );
-      const featuresSectionIndex = sectionTexts.findIndex(text =>
-        text?.includes('Everything You Need for IPO Investments')
-      );
-
-      // IPO tables should come before Features
-      expect(ipoTablesSectionIndex).toBeGreaterThan(-1);
-      expect(featuresSectionIndex).toBeGreaterThan(-1);
-      expect(ipoTablesSectionIndex).toBeLessThan(featuresSectionIndex);
-    });
-
-    it('should preserve existing Hero, Features, and CTA sections', async () => {
+    // Spec H1/H4 (2026-07-02 reference redesign): compact data-first hero,
+    // marketing feature-cards + CTA banner removed, tools become a link row.
+    it('renders the compact data-first hero and table section', async () => {
       const page = await Home();
       render(page);
 
-      // Hero section
-      expect(screen.getByText(/Your Trusted IPO Investment Platform/i)).toBeInTheDocument();
+      expect(
+        screen.getByText(/India's IPO tracker — live subscription, GMP & allotment/i)
+      ).toBeInTheDocument();
+      expect(screen.getByText(/Latest IPO updates/i)).toBeInTheDocument();
       expect(screen.getByText(/Browse IPOs/i)).toBeInTheDocument();
-      expect(screen.getByText(/Calculate Lots/i)).toBeInTheDocument();
+      expect(screen.getAllByText(/Lot Calculator/i).length).toBeGreaterThanOrEqual(1);
+    });
 
-      // Features section
-      expect(screen.getByText(/Live Subscription Data/i)).toBeInTheDocument();
-      expect(screen.getByText(/Financial Analysis/i)).toBeInTheDocument();
-      expect(screen.getByText(/Investment Calculators/i)).toBeInTheDocument();
+    it('does not render the removed marketing sections', async () => {
+      const page = await Home();
+      render(page);
 
-      // CTA section
-      expect(screen.getByText(/Ready to Start Your IPO Journey/i)).toBeInTheDocument();
-      expect(screen.getByText(/Explore Active IPOs/i)).toBeInTheDocument();
+      expect(screen.queryByText(/Everything You Need for IPO Investments/i)).toBeNull();
+      expect(screen.queryByText(/Ready to Start Your IPO Journey/i)).toBeNull();
+      expect(screen.queryByText(/Your Trusted IPO Investment Platform/i)).toBeNull();
+    });
+
+    it('renders the quiet tools link row', async () => {
+      const page = await Home();
+      render(page);
+
+      const tools = screen.getByRole('navigation', { name: /tools/i });
+      expect(tools).toBeInTheDocument();
+      expect(screen.getByText(/Market holidays/i)).toBeInTheDocument();
+      expect(screen.getByText(/Allotment status/i)).toBeInTheDocument();
     });
   });
 
@@ -229,7 +211,7 @@ describe('Home Page (Story 9.3)', () => {
       const { container } = render(page);
 
       // Page should still render
-      expect(screen.getByText(/Your Trusted IPO Investment Platform/i)).toBeInTheDocument();
+      expect(screen.getByText(/India's IPO tracker/i)).toBeInTheDocument();
 
       // Should pass empty arrays to component
       await waitFor(() => {
@@ -359,15 +341,14 @@ describe('Home Page (Story 9.3)', () => {
 
       expect(h1).toBeInTheDocument();
       expect(h2s.length).toBeGreaterThan(0);
-      expect(h3s.length).toBeGreaterThan(0);
+      // h3s belonged to the removed marketing cards (spec H4) — h1 + h2 suffice
     });
 
     it('should have meaningful section headings', async () => {
       const page = await Home();
       render(page);
 
-      expect(screen.getByText(/Latest IPO Updates/i)).toBeInTheDocument();
-      expect(screen.getByText(/Everything You Need for IPO Investments/i)).toBeInTheDocument();
+      expect(screen.getByText(/Latest IPO updates/i)).toBeInTheDocument();
     });
   });
 });
