@@ -122,10 +122,10 @@ describe('HistoricalIPOTable', () => {
   it('displays all table columns', () => {
     renderWithProvider(<HistoricalIPOTable ipos={mockIPOs} />);
 
-    expect(screen.getByText('Company Name')).toBeDefined();
+    expect(screen.getByText('Company')).toBeDefined();
     expect(screen.getByText('Sector')).toBeDefined();
-    expect(screen.getByText('Issue Price')).toBeDefined();
-    expect(screen.getByText('Listing Price')).toBeDefined();
+    expect(screen.getByText('Issue price')).toBeDefined();
+    expect(screen.getByText('Listing price')).toBeDefined();
     // Status column intentionally removed — every history row is LISTED (2026-07-02 review)
     expect(screen.queryByText('Status')).toBeNull();
   });
@@ -177,7 +177,7 @@ describe('HistoricalIPOTable', () => {
   it('shows sort indicator on sortable columns', () => {
     renderWithProvider(<HistoricalIPOTable ipos={mockIPOs} />);
 
-    const listingDateHeader = screen.getByText(/Listing Date/);
+    const listingDateHeader = screen.getByText(/Listing date/i);
     expect(listingDateHeader).toBeDefined();
   });
 });
