@@ -16,6 +16,8 @@ import {
   getSMEDetailedList,
 } from '@/lib/services/sme-landing-service';
 import { getListingGainsByIds } from '@/lib/services/listing-gains-service';
+import { getLiveMetricsByIds } from '@/lib/services/live-metrics-service';
+import { isLiveIPO } from '@/lib/services/ipo-live-status';
 import { ListingIndexClient } from '@/components/listing/ListingIndexClient';
 
 // ===== ISR CONFIGURATION =====
@@ -55,6 +57,9 @@ export default async function SMEIPOsLandingPage({ searchParams }: PageProps) {
     ]);
 
     const gainsMap = await getListingGainsByIds(detailedData.data.map((ipo) => ipo.id));
+    const liveMetricsMap = await getLiveMetricsByIds(
+      detailedData.data.filter(isLiveIPO).map((ipo) => ipo.id)
+    );
 
     return (
       <>
@@ -117,6 +122,7 @@ export default async function SMEIPOsLandingPage({ searchParams }: PageProps) {
             data={detailedData.data}
             allTimeTotal={metrics.totalIPOs}
             gainsMap={gainsMap}
+            liveMetricsMap={liveMetricsMap}
             initialYear={currentYear}
           />
         </div>

@@ -27,6 +27,7 @@ import { MobileMetricCard, type CardField } from '@/components/shared/MobileMetr
 import { Button } from '@/components/ui/button';
 import type { IPO } from '@/lib/db/types';
 import type { ListingGainsMap } from '@/lib/services/listing-gains-service';
+import type { LiveMetricsMap } from '@/lib/services/live-metrics-service';
 import { formatIssueSizeCrores } from '@/lib/utils';
 import { formatIPODate, getAccessibleDate } from '@/lib/utils/date-formatter';
 import { formatPriceBand } from '@/lib/utils/kpi-formatters';
@@ -42,6 +43,7 @@ interface ListingIndexClientProps {
   data: IPO[]; // year-filtered detailed list
   allTimeTotal: number; // metrics.totalIPOs (all-time, all years)
   gainsMap: ListingGainsMap;
+  liveMetricsMap: LiveMetricsMap; // latest GMP + subscription for live (open) IPOs
   initialYear: number;
 }
 
@@ -59,9 +61,37 @@ function gainCell(gain: number | null | undefined) {
   );
 }
 
+/** Subscription multiple (x) — real value or an honest em dash. */
+function subCell(sub: number | null | undefined) {
+  if (sub === null || sub === undefined) return <span className="text-gray-400">—</span>;
+  return <span className="tabular-nums">{sub.toFixed(2)}x</span>;
+}
+
+/** GMP in ₹ (colored by sign) — real value or an honest em dash. */
+function gmpCell(gmp: number | null | undefined, gmpPercent: number | null | undefined) {
+  if (gmp === null || gmp === undefined) return <span className="text-gray-400">—</span>;
+  const positive = gmp >= 0;
+  return (
+    <span className={positive ? 'font-medium text-green-600' : 'font-medium text-red-600'}>
+      {positive ? '+' : ''}₹{gmp}
+      {gmpPercent !== null && gmpPercent !== undefined && (
+        <span className="ml-1 text-xs text-muted-foreground">
+          ({positive ? '+' : ''}
+          {gmpPercent.toFixed(1)}%)
+        </span>
+      )}
+    </span>
+  );
+}
+
 function dateCell(value: string | null) {
   if (!value) return <span className="text-gray-400">TBA</span>;
   return <time dateTime={value} title={getAccessibleDate(value)}>{formatIPODate(value)}</time>;
+}
+
+/** One empty token across the grid: map the formatters' 'N/A' to an em dash. */
+function orDash(value: string) {
+  return value === 'N/A' ? <span className="text-gray-400">—</span> : value;
 }
 
 function companyCol(): ColumnDef<IPO> {
@@ -115,7 +145,7 @@ const priceBandCol: ColumnDef<IPO> = {
   sortable: false,
   searchable: false,
   align: 'right',
-  render: (_v, row) => formatPriceBand(row.priceRangeMin, row.priceRangeMax),
+  render: (_v, row) => orDash(formatPriceBand(row.priceRangeMin, row.priceRangeMax)),
 };
 
 const issueSizeCol: ColumnDef<IPO> = {
@@ -125,7 +155,7 @@ const issueSizeCol: ColumnDef<IPO> = {
   searchable: false,
   align: 'right',
   mobileHidden: true,
-  render: (v) => formatIssueSizeCrores(v),
+  render: (v) => orDash(formatIssueSizeCrores(v)),
 };
 
 export function ListingIndexClient({
@@ -133,6 +163,7 @@ export function ListingIndexClient({
   data,
   allTimeTotal,
   gainsMap,
+  liveMetricsMap,
   initialYear,
 }: ListingIndexClientProps) {
   const router = useRouter();
@@ -171,6 +202,27 @@ export function ListingIndexClient({
     render: (_v, row) => gainCell(gainsMap[row.id]?.listingGainPercent),
   };
 
+  // Live decision columns — only on the Open tab, where GMP + subscription are
+  // actually populated (adding them to the mostly-listed All tab would create
+  // empty columns).
+  const subColumn: ColumnDef<IPO> = {
+    key: 'subscription',
+    header: 'Sub.',
+    sortable: false,
+    searchable: false,
+    align: 'right',
+    render: (_v, row) => subCell(liveMetricsMap[row.id]?.totalSubscription),
+  };
+  const gmpColumn: ColumnDef<IPO> = {
+    key: 'gmp',
+    header: 'GMP',
+    sortable: false,
+    searchable: false,
+    align: 'right',
+    render: (_v, row) =>
+      gmpCell(liveMetricsMap[row.id]?.gmp, liveMetricsMap[row.id]?.gmpPercent),
+  };
+
   const listingDateCol: ColumnDef<IPO> = {
     key: 'listingDate',
     header: 'Listing',
@@ -188,7 +240,18 @@ export function ListingIndexClient({
     { key: 'all', label: 'All', rows: data },
   ];
 
+  // Open IPOs are live — surface GMP + subscription (the persona's decision data).
   const openColumns: ColumnDef<IPO>[] = [
+    companyCol(),
+    statusCol,
+    openCol,
+    closeCol,
+    priceBandCol,
+    subColumn,
+    gmpColumn,
+  ];
+  // Upcoming IPOs are not open yet — no live subscription; keep issue size.
+  const upcomingColumns: ColumnDef<IPO>[] = [
     companyCol(),
     statusCol,
     openCol,
@@ -196,7 +259,6 @@ export function ListingIndexClient({
     priceBandCol,
     issueSizeCol,
   ];
-  const upcomingColumns = openColumns;
   const listedColumns: ColumnDef<IPO>[] = [
     companyCol(),
     listingDateCol,
@@ -246,8 +308,8 @@ export function ListingIndexClient({
   // Mobile card fields per tab — keep the persona's decision data (gain, price
   // band, dates) visible without the horizontal-scroll clipping a table causes.
   const mobileFields = (ipo: IPO): CardField[] => {
-    const band = formatPriceBand(ipo.priceRangeMin, ipo.priceRangeMax);
-    const size = formatIssueSizeCrores(ipo.issueSize);
+    const band = orDash(formatPriceBand(ipo.priceRangeMin, ipo.priceRangeMax));
+    const size = orDash(formatIssueSizeCrores(ipo.issueSize));
     if (tab === 'listed') {
       return [
         { label: 'Listing gain', value: gainCell(gainsMap[ipo.id]?.listingGainPercent) },
@@ -262,6 +324,14 @@ export function ListingIndexClient({
         { label: 'Price band', value: band },
         { label: 'Open', value: dateCell(ipo.openDate) },
         { label: 'Close', value: dateCell(ipo.closeDate) },
+      ];
+    }
+    if (tab === 'open') {
+      return [
+        { label: 'Price band', value: band },
+        { label: 'Open – Close', value: <>{dateCell(ipo.openDate)} – {dateCell(ipo.closeDate)}</> },
+        { label: 'Subscription', value: subCell(liveMetricsMap[ipo.id]?.totalSubscription) },
+        { label: 'GMP', value: gmpCell(liveMetricsMap[ipo.id]?.gmp, liveMetricsMap[ipo.id]?.gmpPercent) },
       ];
     }
     return [

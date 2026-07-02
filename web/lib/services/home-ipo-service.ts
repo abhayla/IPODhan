@@ -10,8 +10,7 @@
 import { getRedisClient, safeGet, safeSet } from '@/lib/cache/redis-client';
 import { db } from '@/lib/db/index';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
-import { GMPRepository } from '@/lib/repositories/gmp-repository';
-import { SubscriptionRepository } from '@/lib/repositories/subscription-repository';
+import { getLiveMetricsByIds, type LiveMetric } from '@/lib/services/live-metrics-service';
 import type { IPO } from '@/lib/db/types';
 
 // ==================== TYPES ====================
@@ -37,17 +36,6 @@ export interface HomeIPOTableData {
   gmp: number | null; // grey market premium in ₹
   gmpPercent: number | null; // GMP as % of issue price
   totalSubscription: number | null; // total subscription multiple (x)
-}
-
-/**
- * Latest live metrics for one IPO, keyed by ipoId. Sourced from the real
- * gmp_records / subscriptions tables — a missing entry means no data yet
- * (never a fabricated value).
- */
-interface LiveMetric {
-  gmp: number | null;
-  gmpPercent: number | null;
-  totalSubscription: number | null;
 }
 
 // ==================== CONSTANTS ====================
@@ -94,33 +82,9 @@ function transformIPOData(ipo: IPO, metric?: LiveMetric): HomeIPOTableData {
  * Uses the cached findLatest repository methods; a per-IPO failure degrades to
  * null for that IPO rather than failing the whole table.
  */
-async function attachLiveMetrics(
-  ipos: IPO[],
-  redis: ReturnType<typeof getRedisClient>
-): Promise<HomeIPOTableData[]> {
-  const gmpRepo = new GMPRepository(db, redis);
-  const subRepo = new SubscriptionRepository(db, redis);
-
-  return Promise.all(
-    ipos.map(async (ipo) => {
-      const [gmpRecord, subscription] = await Promise.all([
-        gmpRepo.findLatest(ipo.id).catch(() => null),
-        subRepo.findLatest(ipo.id).catch(() => null),
-      ]);
-
-      const totalSub =
-        subscription?.totalSubscription != null
-          ? parseFloat(String(subscription.totalSubscription))
-          : null;
-
-      return transformIPOData(ipo, {
-        gmp: gmpRecord?.gmp ?? null,
-        gmpPercent: gmpRecord?.gmpPercentage ?? null,
-        totalSubscription:
-          totalSub != null && Number.isFinite(totalSub) ? totalSub : null,
-      });
-    })
-  );
+async function attachLiveMetrics(ipos: IPO[]): Promise<HomeIPOTableData[]> {
+  const metrics = await getLiveMetricsByIds(ipos.map((ipo) => ipo.id));
+  return ipos.map((ipo) => transformIPOData(ipo, metrics[ipo.id]));
 }
 
 /**
@@ -226,7 +190,7 @@ export async function getMainboardIPOs(): Promise<HomeIPOTableData[]> {
         })
         .slice(0, RESULT_LIMIT);
 
-      return attachLiveMetrics(sortedIPOs, redis);
+      return attachLiveMetrics(sortedIPOs);
     } catch (error) {
       console.error('Error fetching mainboard IPOs:', error);
       return []; // AC#5: Return empty array on error
@@ -292,7 +256,7 @@ export async function getSMEIPOs(): Promise<HomeIPOTableData[]> {
         })
         .slice(0, RESULT_LIMIT);
 
-      return attachLiveMetrics(sortedIPOs, redis);
+      return attachLiveMetrics(sortedIPOs);
     } catch (error) {
       console.error('Error fetching SME IPOs:', error);
       return []; // AC#5: Return empty array on error
