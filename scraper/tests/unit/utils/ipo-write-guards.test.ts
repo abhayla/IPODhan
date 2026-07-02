@@ -162,3 +162,25 @@ describe('sanitizeIpoWriteFields (#42/#45/#52 — the consolidation-output write
     expect(sanitizeIpoWriteFields({ ...clean })).toEqual(clean);
   });
 });
+
+describe('sanitizeIpoWriteFields — empty-string sector normalization (#89 sector=0% root cause)', () => {
+  it("normalizes sector '' to undefined so the column is left untouched", () => {
+    const r = sanitizeIpoWriteFields({ companyName: 'Acme Ltd', sector: '' });
+    expect(r.sector).toBeUndefined();
+  });
+
+  it('trims whitespace-only sector to undefined', () => {
+    const r = sanitizeIpoWriteFields({ companyName: 'Acme Ltd', sector: '   ' });
+    expect(r.sector).toBeUndefined();
+  });
+
+  it('passes a real sector through trimmed', () => {
+    const r = sanitizeIpoWriteFields({ companyName: 'Acme Ltd', sector: ' Pharmaceuticals ' });
+    expect(r.sector).toBe('Pharmaceuticals');
+  });
+
+  it('leaves records without a sector key untouched (partial update never invents keys)', () => {
+    const r = sanitizeIpoWriteFields({ companyName: 'Acme Ltd' });
+    expect('sector' in r).toBe(false);
+  });
+});
