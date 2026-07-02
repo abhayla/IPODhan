@@ -134,9 +134,12 @@ async function main() {
       // Build the corrected row: oracle value where present + differs from ours.
       const corrected: any = { open: ipo.open, close: ipo.close, allot: ipo.allot, listing: ipo.listing };
       const changes: string[] = [];
+      const fillNulls = process.argv.includes('--fill-nulls');
       for (const f of FIELDS) {
         const orc = (o as any)[f]; const ours = ipo[f] ?? null;
+        // Correct a present-but-wrong value, OR (with --fill-nulls) fill a NULL from the oracle.
         if (orc !== null && ours !== null && ours !== orc) { corrected[f] = orc; changes.push(f); }
+        else if (orc !== null && ours === null && fillNulls) { corrected[f] = orc; changes.push(f); }
       }
       if (changes.length === 0) continue;
       const coh = isDateSequenceCoherent({ openDate: corrected.open, closeDate: corrected.close, allotmentDate: corrected.allot, listingDate: corrected.listing });
