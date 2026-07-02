@@ -127,7 +127,10 @@ export function IPODetailsTable({
       value: listingDate ? formatDate(listingDate) : 'TBA',
       highlight: true
     },
-  ];
+  // Rows with no value render nothing — a grid of '-' placeholders reads as a
+  // broken page (2026-07-02 reference review). Dates keep an explicit 'TBA'
+  // (the persona plans around them); optional facts simply disappear.
+  ].filter((d) => d.value !== '-');
 
   return (
     <Card>

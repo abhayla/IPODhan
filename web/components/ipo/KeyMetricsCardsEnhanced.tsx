@@ -108,7 +108,7 @@ export function KeyMetricsCardsEnhanced({
   return (
     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
       {/* Issue Size Card */}
-      <Card className="group relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border-l-4 border-l-blue-500">
+      <Card className="group relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border">
         <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-transparent dark:from-blue-950/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
         <CardHeader className="relative flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
@@ -129,7 +129,7 @@ export function KeyMetricsCardsEnhanced({
       </Card>
 
       {/* Subscription Card with Sparkline */}
-      <Card className="group relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border-l-4 border-l-purple-500">
+      <Card className="group relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border">
         <div className="absolute inset-0 bg-gradient-to-br from-purple-50/50 to-transparent dark:from-purple-950/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
         <CardHeader className="relative flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
@@ -183,7 +183,7 @@ export function KeyMetricsCardsEnhanced({
       </Card>
 
       {/* GMP Card with Sparkline */}
-      <Card className="group relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border-l-4 border-l-emerald-500">
+      <Card className="group relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 border">
         <div className="absolute inset-0 bg-gradient-to-br from-emerald-50/50 to-transparent dark:from-emerald-950/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
         <CardHeader className="relative flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">

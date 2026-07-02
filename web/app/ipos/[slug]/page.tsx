@@ -277,6 +277,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
   // Sticky anchor nav (Screener pattern) — only sections that actually render
   const sectionNavItems = [
+    { id: 'details', label: 'Details' },
     hasCompanyOverview && { id: 'overview', label: 'Overview' },
     { id: 'subscription', label: 'Subscription' },
     hasGmpHistory && { id: 'gmp', label: 'GMP' },
@@ -357,6 +358,11 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               }
             />
 
+            {/* Sticky section navigation — Screener puts it right under the
+                header, before any section content (reference review round 7:
+                'buried mid-page after ~5 sections'). */}
+            <IPOSectionNav items={sectionNavItems} />
+
             {/* 2. Key Metrics Cards */}
             <KeyMetricsCardsEnhanced
               issueSize={Number(ipo.issueSize)}
@@ -369,6 +375,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             />
 
             {/* 2a. IPO Details Table */}
+            <section id="details" className="scroll-mt-28">
             <IPODetailsTable
               issueSize={ipo.issueSize ? Number(ipo.issueSize) : null}
               issueType={ipoDetails?.issueType ?? null}
@@ -384,6 +391,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               freshIssueSize={ipoDetails?.freshIssue ? Number(ipoDetails.freshIssue) : null}
               offerForSaleSize={ipoDetails?.ofsIssue ? Number(ipoDetails.ofsIssue) : null}
             />
+            </section>
 
             {/* Apply CTA surfaced next to the key facts — was buried below every
                 section at the page bottom (2026-07-02 UI review) */}
@@ -402,11 +410,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               faceValue={ipo.faceValue}
               minBidQuantity={null}
             />
-
-            {/* Sticky section navigation — Screener.in anchor pattern
-                (UI-REDESIGN-NORTHSTAR.md). Replaces the tab bar whose content
-                double-rendered below it. */}
-            <IPOSectionNav items={sectionNavItems} />
 
             {/* 4. Company Overview (was inside the removed tabs) */}
             {hasCompanyOverview && (
