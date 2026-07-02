@@ -14,6 +14,7 @@ import { and, eq, isNull, or } from 'drizzle-orm';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { fetchChittorgarhListingRows } from '../src/scrapers/chittorgarh-listing-scraper.js';
 import { fetchChittorgarhProspectusRows } from '../src/scrapers/chittorgarh-document-scraper.js';
+import { fetchNseEquityMasters } from '../src/scrapers/nse-equity-master.js';
 import logger from '../src/utils/logger.js';
 
 const APPLY = process.argv.includes('--apply');
@@ -46,6 +47,12 @@ async function main() {
   for (const r of await fetchChittorgarhProspectusRows(FY)) add(r.companyName, r.isin, r.nseSymbol);
   console.log(`distinct names with an identifier from Chittorgarh: ${byName.size}`);
 
+  // Second deterministic source: NSE listed-equity masters (mainboard + SME).
+  // Covers LISTED IPOs the CG reports age out of; match by our stored symbol
+  // (exact) or by canonical name. Same NULL-only fill discipline.
+  const nse = await fetchNseEquityMasters();
+  console.log(`NSE masters: ${nse.bySymbol.size} symbols`);
+
   const ipos = await db
     .select({ id: schema.ipos.id, companyName: schema.ipos.companyName, isin: schema.ipos.isin, symbol: schema.ipos.symbol })
     .from(schema.ipos)
@@ -54,11 +61,16 @@ async function main() {
 
   const plans: Array<{ id: string; name: string; isin?: string; symbol?: string }> = [];
   for (const ipo of ipos) {
-    const hit = byName.get(normalizeCompanyNameForMatching(ipo.companyName));
-    if (!hit) continue;
+    const key = normalizeCompanyNameForMatching(ipo.companyName);
+    const hit = byName.get(key) || { isin: null, symbol: null };
+    // NSE master fallback: by our stored symbol first, then by canonical name
+    const nseHit = (ipo.symbol && nse.bySymbol.get(ipo.symbol.toUpperCase())) || nse.byName.get(key) || null;
+    const isin = hit.isin || (isinOk(nseHit?.isin) ? nseHit!.isin : null);
+    const symbol = hit.symbol || nseHit?.symbol || null;
+    if (!isin && !symbol) continue;
     const p: { id: string; name: string; isin?: string; symbol?: string } = { id: ipo.id, name: ipo.companyName };
-    if (!ipo.isin && hit.isin) p.isin = hit.isin;
-    if (!ipo.symbol && hit.symbol) p.symbol = hit.symbol;
+    if (!ipo.isin && isin) p.isin = isin;
+    if (!ipo.symbol && symbol) p.symbol = symbol;
     if (p.isin || p.symbol) plans.push(p);
   }
   const isinFills = plans.filter((p) => p.isin).length;
