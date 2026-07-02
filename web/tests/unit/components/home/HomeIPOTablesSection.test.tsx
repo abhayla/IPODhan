@@ -82,8 +82,8 @@ describe('HomeIPOTablesSection Component', () => {
   // ==================== RENDERING TESTS ====================
 
   describe('Rendering', () => {
-    it('should render section heading "IPO 2025 Listings"', () => {
-      render(
+    it('should render the listings section landmark (redundant centered heading removed per blind review)', () => {
+      const { container } = render(
         <HomeIPOTablesSection
           mainboardIPOs={[mockMainboardIPO]}
           smeIPOs={[mockSMEIPO]}
@@ -93,7 +93,9 @@ describe('HomeIPOTablesSection Component', () => {
         />
       );
 
-      expect(screen.getByText(`IPO ${currentYear} Listings`)).toBeInTheDocument();
+      expect(
+        container.querySelector(`section[aria-label="IPO ${currentYear} Listings"]`)
+      ).toBeInTheDocument();
     });
 
     it('should render all four table titles', () => {
@@ -125,9 +127,10 @@ describe('HomeIPOTablesSection Component', () => {
         />
       );
 
-      // AC#1: Components render correctly with proper data
-      expect(screen.getByText('Mainboard Company')).toBeInTheDocument();
-      expect(screen.getByText('SME Company')).toBeInTheDocument();
+      // AC#1: active tables render in both desktop table + mobile card (2x);
+      // upcoming tables have no mobile-card variant (1x).
+      expect(screen.getAllByText('Mainboard Company').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('SME Company').length).toBeGreaterThan(0);
       expect(screen.getByText('Upcoming Mainboard Company')).toBeInTheDocument();
       expect(screen.getByText('Upcoming SME Company')).toBeInTheDocument();
     });
@@ -384,9 +387,7 @@ describe('HomeIPOTablesSection Component', () => {
         />
       );
 
-      const mainHeading = screen.getByRole('heading', { name: `IPO ${currentYear} Listings`, level: 1 });
-      expect(mainHeading).toBeInTheDocument();
-
+      // Redundant centered h1 removed (blind review); the four table titles are h2.
       const tableHeadings = screen.getAllByRole('heading', { level: 2 });
       expect(tableHeadings.length).toBe(4); // One for each table
     });
@@ -421,9 +422,9 @@ describe('HomeIPOTablesSection Component', () => {
         />
       );
 
-      // AC#3: Responsive design
-      const heading = screen.getByText(`IPO ${currentYear} Listings`);
-      expect(heading.className).toMatch(/text-2xl md:text-3xl/);
+      // AC#3: Responsive design — table titles (h2) carry responsive classes
+      const tableHeading = screen.getByText(`IPO ${currentYear} List (Mainboard)`);
+      expect(tableHeading.className).toMatch(/text-xl md:text-2xl/);
     });
 
     it('should have responsive padding', () => {
@@ -467,10 +468,10 @@ describe('HomeIPOTablesSection Component', () => {
         />
       );
 
-      expect(screen.getByText('Mainboard Company')).toBeInTheDocument();
-      expect(screen.getByText('Second Mainboard')).toBeInTheDocument();
-      expect(screen.getByText('SME Company')).toBeInTheDocument();
-      expect(screen.getByText('Second SME')).toBeInTheDocument();
+      expect(screen.getAllByText('Mainboard Company').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Second Mainboard').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('SME Company').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Second SME').length).toBeGreaterThan(0);
     });
   });
 
@@ -505,7 +506,7 @@ describe('HomeIPOTablesSection Component', () => {
       );
 
       // Tables with data should show IPOs
-      expect(screen.getByText('Mainboard Company')).toBeInTheDocument();
+      expect(screen.getAllByText('Mainboard Company').length).toBeGreaterThan(0);
       expect(screen.getByText('Upcoming Mainboard Company')).toBeInTheDocument();
 
       // Empty tables should show empty state
@@ -528,7 +529,7 @@ describe('HomeIPOTablesSection Component', () => {
         />
       );
 
-      expect(screen.getByText('Mainboard Company')).toBeInTheDocument();
+      expect(screen.getAllByText('Mainboard Company').length).toBeGreaterThan(0);
     });
 
     it('should handle 10 IPOs in each table', () => {

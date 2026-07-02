@@ -72,15 +72,3 @@ export function IpoStatusChip({ ipo }: { ipo: StatusInput }) {
     </span>
   );
 }
-
-/** Status dot only (spec G1: status = dot before the name, no row tint). */
-export function IpoStatusDot({ ipo }: { ipo: StatusInput }) {
-  const { status, label } = getDisplayStatus(ipo);
-  return (
-    <span
-      className={`inline-block h-2 w-2 shrink-0 rounded-full ${TONE[status].dot}`}
-      title={label}
-      aria-label={label}
-    />
-  );
-}

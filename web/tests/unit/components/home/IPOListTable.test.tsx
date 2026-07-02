@@ -100,11 +100,12 @@ describe('IPOListTable Component', () => {
       );
 
       expect(screen.getByText('IPO 2025 List (Mainboard)')).toBeInTheDocument();
-      expect(screen.getByText('Currently Open IPO')).toBeInTheDocument();
-      expect(screen.getByText('Recently Closed IPO')).toBeInTheDocument();
+      // Rendered in both the desktop table and the mobile card list.
+      expect(screen.getAllByText('Currently Open IPO').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Recently Closed IPO').length).toBeGreaterThan(0);
     });
 
-    it('should render all six column headers (H2: adds Sub. + GMP)', () => {
+    it('should render all seven column headers (H2: Status + Sub. + GMP)', () => {
       render(
         <IPOListTable
           title="Test Table"
@@ -116,6 +117,7 @@ describe('IPOListTable Component', () => {
       );
 
       expect(screen.getByRole('columnheader', { name: 'Company' })).toBeInTheDocument();
+      expect(screen.getByRole('columnheader', { name: 'Status' })).toBeInTheDocument();
       expect(screen.getByRole('columnheader', { name: 'Price band' })).toBeInTheDocument();
       expect(screen.getByRole('columnheader', { name: 'Open' })).toBeInTheDocument();
       expect(screen.getByRole('columnheader', { name: 'Close' })).toBeInTheDocument();
@@ -169,9 +171,9 @@ describe('IPOListTable Component', () => {
           isLoading={false}
         />
       );
-      // GMP 50 (+50%) → "+₹50" and "(+50.0%)"
-      expect(screen.getByText(/\+₹50/)).toBeInTheDocument();
-      expect(screen.getByText(/\(\+50\.0%\)/)).toBeInTheDocument();
+      // GMP 50 (+50%) → "+₹50" and "(+50.0%)" — in table + mobile card
+      expect(screen.getAllByText(/\+₹50/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/\(\+50\.0%\)/).length).toBeGreaterThan(0);
     });
 
     it('shows a negative GMP colored as loss', () => {
@@ -184,7 +186,7 @@ describe('IPOListTable Component', () => {
           isLoading={false}
         />
       );
-      expect(screen.getByText(/₹-15|-₹15/)).toBeInTheDocument();
+      expect(screen.getAllByText(/₹-15|-₹15/).length).toBeGreaterThan(0);
       expect(container.querySelector('.text-red-600')).toBeInTheDocument();
     });
 
@@ -198,7 +200,7 @@ describe('IPOListTable Component', () => {
           isLoading={false}
         />
       );
-      expect(screen.getByText('2.50x')).toBeInTheDocument();
+      expect(screen.getAllByText('2.50x').length).toBeGreaterThan(0);
     });
 
     it('renders an em dash (not a fabricated value) when GMP/subscription are absent', () => {
@@ -237,7 +239,7 @@ describe('IPOListTable Component', () => {
       expect(container.querySelector('.bg-green-600')).toBeInTheDocument();
     });
 
-    it('shows a Closing soon (amber) dot for an IPO closing within a day', () => {
+    it('shows a Closing soon (amber) chip for an IPO closing within a day', () => {
       const { container } = render(
         <IPOListTable
           title="Test Table"
@@ -247,7 +249,7 @@ describe('IPOListTable Component', () => {
           isLoading={false}
         />
       );
-      expect(screen.getByTitle('Closing soon')).toBeInTheDocument();
+      expect(screen.getAllByText('Closing soon').length).toBeGreaterThan(0);
       expect(container.querySelector('.bg-amber-500')).toBeInTheDocument();
     });
 
@@ -352,19 +354,21 @@ describe('IPOListTable Component', () => {
         <IPOListTable title="Test Table" ipos={[mockOpenIPO]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />
       );
       const headers = container.querySelectorAll('th[scope="col"]');
-      expect(headers.length).toBe(6); // Company, Price band, Open, Close, Sub., GMP
+      expect(headers.length).toBe(7); // Company, Status, Price band, Open, Close, Sub., GMP
     });
   });
 
   // ==================== RESPONSIVE ====================
 
   describe('Responsive Design', () => {
-    it('should apply responsive text classes to company link', () => {
+    it('should render the company link with a truncating medium-weight style', () => {
       render(
         <IPOListTable title="Test Table" ipos={[mockOpenIPO]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />
       );
+      // exact accessible name matches only the desktop table link
       const companyLink = screen.getByRole('link', { name: 'Currently Open IPO' });
-      expect(companyLink.className).toMatch(/text-sm/);
+      expect(companyLink.className).toMatch(/font-medium/);
+      expect(companyLink.className).toMatch(/truncate/);
     });
 
     it('should apply responsive heading classes', () => {
@@ -389,9 +393,9 @@ describe('IPOListTable Component', () => {
           isLoading={false}
         />
       );
-      expect(screen.getByText('Currently Open IPO')).toBeInTheDocument();
-      expect(screen.getByText('Closing Soon IPO')).toBeInTheDocument();
-      expect(screen.getByText('Recently Closed IPO')).toBeInTheDocument();
+      expect(screen.getAllByText('Currently Open IPO').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Closing Soon IPO').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('Recently Closed IPO').length).toBeGreaterThan(0);
     });
   });
 
@@ -419,13 +423,13 @@ describe('IPOListTable Component', () => {
         <IPOListTable title="Test Table" ipos={[longNameIPO]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />
       );
       expect(
-        screen.getByText('Very Long Company Name That Should Still Display Properly Without Breaking Layout')
-      ).toBeInTheDocument();
+        screen.getAllByText('Very Long Company Name That Should Still Display Properly Without Breaking Layout').length
+      ).toBeGreaterThan(0);
     });
 
     it('should handle missing optional props with defaults', () => {
       render(<IPOListTable title="Test Table" ipos={[mockOpenIPO]} moreLink="/dashboard" moreLinkText="More..." />);
-      expect(screen.getByText('Currently Open IPO')).toBeInTheDocument();
+      expect(screen.getAllByText('Currently Open IPO').length).toBeGreaterThan(0);
     });
   });
 });

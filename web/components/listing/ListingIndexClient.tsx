@@ -23,6 +23,8 @@ import {
   type ColumnDef,
   DEFAULT_IPO_YEARS_EXPORT,
 } from '@/components/shared/DataTable';
+import { MobileMetricCard, type CardField } from '@/components/shared/MobileMetricCard';
+import { Button } from '@/components/ui/button';
 import type { IPO } from '@/lib/db/types';
 import type { ListingGainsMap } from '@/lib/services/listing-gains-service';
 import { formatIssueSizeCrores } from '@/lib/utils';
@@ -30,6 +32,8 @@ import { formatIPODate, getAccessibleDate } from '@/lib/utils/date-formatter';
 import { formatPriceBand } from '@/lib/utils/kpi-formatters';
 import { IpoStatusChip, getDisplayStatus } from './ipo-status';
 import { ListingKpiRibbon } from './ListingKpiRibbon';
+
+const PAGE_SIZE = 25;
 
 type TabKey = 'open' | 'upcoming' | 'listed' | 'all';
 
@@ -67,17 +71,13 @@ function companyCol(): ColumnDef<IPO> {
     sortable: false,
     searchable: false,
     render: (value, row) => (
-      <div className="flex flex-col gap-1">
-        <Link
-          href={`/ipos/${row.slug}`}
-          className="font-medium text-gray-900 hover:text-primary hover:underline"
-        >
-          {value}
-        </Link>
-        <div className="md:hidden">
-          <IpoStatusChip ipo={row} />
-        </div>
-      </div>
+      <Link
+        href={`/ipos/${row.slug}`}
+        title={value}
+        className="block max-w-[200px] truncate font-medium text-gray-900 hover:text-primary hover:underline"
+      >
+        {value}
+      </Link>
     ),
   };
 }
@@ -243,6 +243,38 @@ export function ListingIndexClient({
     all: `No ${segmentLabel} IPOs found for ${initialYear}.`,
   };
 
+  // Mobile card fields per tab — keep the persona's decision data (gain, price
+  // band, dates) visible without the horizontal-scroll clipping a table causes.
+  const mobileFields = (ipo: IPO): CardField[] => {
+    const band = formatPriceBand(ipo.priceRangeMin, ipo.priceRangeMax);
+    const size = formatIssueSizeCrores(ipo.issueSize);
+    if (tab === 'listed') {
+      return [
+        { label: 'Listing gain', value: gainCell(gainsMap[ipo.id]?.listingGainPercent) },
+        { label: 'Price band', value: band },
+        { label: 'Listed', value: dateCell(ipo.listingDate) },
+        { label: 'Issue size', value: size },
+      ];
+    }
+    if (tab === 'all') {
+      return [
+        { label: 'Listing gain', value: gainCell(gainsMap[ipo.id]?.listingGainPercent) },
+        { label: 'Price band', value: band },
+        { label: 'Open', value: dateCell(ipo.openDate) },
+        { label: 'Close', value: dateCell(ipo.closeDate) },
+      ];
+    }
+    return [
+      { label: 'Price band', value: band },
+      { label: 'Issue size', value: size },
+      { label: 'Open', value: dateCell(ipo.openDate) },
+      { label: 'Close', value: dateCell(ipo.closeDate) },
+    ];
+  };
+
+  const totalPages = Math.max(1, Math.ceil(active.rows.length / PAGE_SIZE));
+  const pageRows = active.rows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   return (
     <div className="space-y-5">
       <ListingKpiRibbon
@@ -278,26 +310,90 @@ export function ListingIndexClient({
         })}
       </div>
 
-      <DataTable
-        key={tab}
-        data={active.rows}
-        columns={columnsFor[tab]}
-        emptyMessage={emptyFor[tab]}
-        enablePagination
-        enableYearFilter={tab === 'all'}
-        yearFilterConfig={{
-          availableYears: DEFAULT_IPO_YEARS_EXPORT,
-          selectedYear: String(initialYear),
-          onYearChange: handleYearChange,
-        }}
-        paginationConfig={{
-          pageSize: 25,
-          currentPage: page,
-          totalRecords: active.rows.length,
-          onPageChange: setPage,
-        }}
-        keyExtractor={(row) => row.id}
-      />
+      {/* Year selector (All tab) — outside the table so it shows on mobile too */}
+      {tab === 'all' && (
+        <div className="flex items-center gap-2">
+          <label htmlFor="listing-year" className="text-sm font-medium text-gray-600">
+            Year
+          </label>
+          <select
+            id="listing-year"
+            value={String(initialYear)}
+            onChange={(e) => handleYearChange(e.target.value)}
+            className="h-9 rounded-md border border-border bg-white px-2 text-sm"
+          >
+            {DEFAULT_IPO_YEARS_EXPORT.map((y) => (
+              <option key={y} value={y}>
+                {y}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {/* Desktop: dense table */}
+      <div className="hidden md:block">
+        <DataTable
+          key={tab}
+          data={active.rows}
+          columns={columnsFor[tab]}
+          emptyMessage={emptyFor[tab]}
+          enablePagination
+          paginationConfig={{
+            pageSize: PAGE_SIZE,
+            currentPage: page,
+            totalRecords: active.rows.length,
+            onPageChange: setPage,
+          }}
+          keyExtractor={(row) => row.id}
+        />
+      </div>
+
+      {/* Mobile: row-cards (no horizontal clipping) */}
+      <div className="md:hidden">
+        {active.rows.length === 0 ? (
+          <p className="py-8 text-center text-sm text-gray-500">{emptyFor[tab]}</p>
+        ) : (
+          <>
+            <div className="space-y-2">
+              {pageRows.map((ipo) => (
+                <MobileMetricCard
+                  key={ipo.id}
+                  href={`/ipos/${ipo.slug}`}
+                  title={ipo.companyName}
+                  status={<IpoStatusChip ipo={ipo} />}
+                  fields={mobileFields(ipo)}
+                />
+              ))}
+            </div>
+            {totalPages > 1 && (
+              <div className="mt-4 flex items-center justify-between">
+                <span className="text-xs text-gray-500">
+                  Page {page} of {totalPages}
+                </span>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page === 1}
+                    onClick={() => setPage(page - 1)}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={page === totalPages}
+                    onClick={() => setPage(page + 1)}
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

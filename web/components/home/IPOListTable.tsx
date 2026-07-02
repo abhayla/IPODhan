@@ -26,7 +26,8 @@ import {
 } from '@/components/ui/table';
 import type { HomeIPOTableData } from '@/lib/services/home-ipo-service';
 import { formatPriceBand } from '@/lib/utils/kpi-formatters';
-import { IpoStatusDot } from '@/components/listing/ipo-status';
+import { IpoStatusChip } from '@/components/listing/ipo-status';
+import { MobileMetricCard } from '@/components/shared/MobileMetricCard';
 import { IPOTableSkeleton } from './IPOTableSkeleton';
 
 // ==================== TYPES ====================
@@ -144,13 +145,14 @@ export function IPOListTable({
     <div className="space-y-4">
       <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
 
-      {/* Live table (spec H2): status dot + Company | Price band | Open | Close |
-          Subscription | GMP — the persona's #1 data. No row tints. */}
-      <div className="rounded-md border bg-card overflow-x-auto">
-        <Table aria-label={title} className="min-w-full [&_td]:px-1.5 [&_th]:px-1.5 sm:[&_td]:px-2 sm:[&_th]:px-2">
+      {/* Desktop live table (spec H2): Status · Company | Price band | Open |
+          Close | Subscription | GMP — the persona's #1 data. No row tints. */}
+      <div className="hidden rounded-md border bg-card md:block">
+        <Table aria-label={title} className="min-w-full [&_td]:px-2 [&_th]:px-2">
           <TableHeader>
             <TableRow>
               <TableHead scope="col">Company</TableHead>
+              <TableHead scope="col" className="whitespace-nowrap">Status</TableHead>
               <TableHead scope="col" className="whitespace-nowrap text-right">
                 Price band
               </TableHead>
@@ -168,35 +170,50 @@ export function IPOListTable({
             {ipos.map((ipo) => (
               <TableRow key={ipo.id} className="transition-colors hover:bg-muted/50">
                 <TableCell>
-                  <div className="flex items-center gap-2">
-                    <IpoStatusDot ipo={ipo} />
-                    <Link
-                      href={`/ipos/${ipo.slug}`}
-                      className="block max-w-[120px] truncate text-sm font-medium text-foreground hover:text-primary hover:underline sm:max-w-none md:text-base"
-                    >
-                      {ipo.companyName}
-                    </Link>
-                  </div>
+                  <Link
+                    href={`/ipos/${ipo.slug}`}
+                    title={ipo.companyName}
+                    className="block max-w-[240px] truncate font-medium text-foreground hover:text-primary hover:underline"
+                  >
+                    {ipo.companyName}
+                  </Link>
                 </TableCell>
-                <TableCell className="whitespace-nowrap text-right text-sm md:text-base">
+                <TableCell className="whitespace-nowrap">
+                  <IpoStatusChip ipo={ipo} />
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-right">
                   {formatPriceBand(ipo.priceMin, ipo.issuePrice)}
                 </TableCell>
-                <TableCell className="whitespace-nowrap text-sm md:text-base">
-                  {formatDate(ipo.openDate)}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-sm md:text-base">
-                  {formatDate(ipo.closeDate)}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-right text-sm md:text-base">
+                <TableCell className="whitespace-nowrap">{formatDate(ipo.openDate)}</TableCell>
+                <TableCell className="whitespace-nowrap">{formatDate(ipo.closeDate)}</TableCell>
+                <TableCell className="whitespace-nowrap text-right">
                   {subscriptionCell(ipo.totalSubscription)}
                 </TableCell>
-                <TableCell className="whitespace-nowrap text-right text-sm md:text-base">
+                <TableCell className="whitespace-nowrap text-right">
                   {gmpCell(ipo.gmp, ipo.gmpPercent)}
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
+      </div>
+
+      {/* Mobile row-cards — keep Subscription + GMP visible (no h-scroll clip) */}
+      <div className="space-y-2 md:hidden">
+        {ipos.map((ipo) => (
+          <MobileMetricCard
+            key={ipo.id}
+            href={`/ipos/${ipo.slug}`}
+            title={ipo.companyName}
+            status={<IpoStatusChip ipo={ipo} />}
+            fields={[
+              { label: 'Price band', value: formatPriceBand(ipo.priceMin, ipo.issuePrice) },
+              { label: 'Open – Close', value: `${formatDate(ipo.openDate)} – ${formatDate(ipo.closeDate)}` },
+              { label: 'Subscription', value: subscriptionCell(ipo.totalSubscription) },
+              { label: 'GMP', value: gmpCell(ipo.gmp, ipo.gmpPercent) },
+            ]}
+          />
+        ))}
       </div>
 
       {/* AC#4: "More..." links navigate to dashboard with correct filters */}
