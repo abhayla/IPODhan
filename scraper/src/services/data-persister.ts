@@ -232,7 +232,10 @@ export async function upsertIPO(
         segment: scrapedIPO.segment || null,
         // offering_type: Determines the type of offering (required NOT NULL field)
         offeringType: scrapedIPO.offeringType,
-        sector: scrapedIPO.sector,
+        // '' sector plants a blank that renders empty AND defeats NULL-based backfills —
+        // normalize at the CREATE path too (the consolidation path is covered by
+        // sanitizeIpoWriteFields; this covers create + the legacy fallback update).
+        sector: scrapedIPO.sector?.trim() || undefined,
         issueSize: safeIssueSize !== null ? safeIssueSize.toString() : undefined,
         // Round price values to integers for INTEGER fields in database
         // Use explicit check to avoid storing 0 (only store positive values or undefined)

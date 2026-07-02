@@ -106,6 +106,22 @@ export function detectOfferingTypeFromBSEType(bseIpoType: string): string {
 
   const typeUpper = bseIpoType.toUpperCase().trim();
 
+  // BSE SHORT CODES first (the public-issues table/API "Type of Issue" values).
+  // These are what BSE actually serves — the long-word matches below never hit them,
+  // which is how OTB/DPI/RI corporate actions were ingested as offering_type='IPO'
+  // (the #23 pollution recurrence: Zydus/Garware buybacks, Muthoot NCDs, rights).
+  if (/\bOTB\b/.test(typeUpper)) {
+    // Offer To Buy: takeover open offer or buyback tender — conservatively TENDER
+    // (the authoritative BUYBACK split needs IR_FLAG_FULL — see detectOfferingTypeFromBSEIRFlag)
+    return 'TENDER';
+  }
+  if (/\bDPI\b/.test(typeUpper) || typeUpper.includes('DEBT ISSUE')) {
+    return 'NCD'; // Debt Public Issue
+  }
+  if (/\bRI\b/.test(typeUpper)) {
+    return 'RIGHTS';
+  }
+
   // Map BSE types to our enum
   if (typeUpper.includes('RIGHTS')) {
     return 'RIGHTS';

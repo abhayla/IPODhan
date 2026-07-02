@@ -41,4 +41,12 @@ describe('sanitizeDisplayCompanyName', () => {
   it('caps length at 200 chars', () => {
     expect(sanitizeDisplayCompanyName('A'.repeat(250)).length).toBe(200);
   });
+
+  it("strips a trailing ' IPO'/' FPO' instrument label (#42 — CG display names)", () => {
+    expect(sanitizeDisplayCompanyName('Twinkle Papers IPO')).toBe('Twinkle Papers');
+    expect(sanitizeDisplayCompanyName('Sri Priyanka Geo Commex IPO')).toBe('Sri Priyanka Geo Commex');
+    expect(sanitizeDisplayCompanyName('Acme FPO')).toBe('Acme');
+    // never mid-name, only the trailing label
+    expect(sanitizeDisplayCompanyName('IPO Advisors Ltd')).toBe('IPO Advisors Ltd');
+  });
 });
