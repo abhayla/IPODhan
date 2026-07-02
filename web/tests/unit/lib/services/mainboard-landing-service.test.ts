@@ -70,10 +70,11 @@ describe('Mainboard Landing Service', () => {
       expect(result).toBeDefined();
       expect(result.totalIPOs).toBe(mainboardIPOFixtures.length);
       expect(result.upcomingAndOngoing).toBeGreaterThan(0);
-      expect(result.listedInGain).toBeGreaterThanOrEqual(0);
-      expect(result.listedInLoss).toBeGreaterThanOrEqual(0);
-      expect(result.gainAOT).toBeGreaterThanOrEqual(0);
-      expect(result.lossAOT).toBeGreaterThanOrEqual(0);
+      // Mocked gain/loss metrics removed — null until real aggregates (#98)
+      expect(result.listedInGain).toBeNull();
+      expect(result.listedInLoss).toBeNull();
+      expect(result.gainAOT).toBeNull();
+      expect(result.lossAOT).toBeNull();
 
       // Verify API called with correct params
       expect(mockFindAll).toHaveBeenCalledWith(
@@ -107,11 +108,11 @@ describe('Mainboard Landing Service', () => {
       // Assert
       expect(result).toEqual({
         totalIPOs: 0,
-        listedInGain: 0,
-        listedInLoss: 0,
+        listedInGain: null,
+        listedInLoss: null,
         upcomingAndOngoing: 0,
-        gainAOT: 0,
-        lossAOT: 0,
+        gainAOT: null,
+        lossAOT: null,
       });
     });
 

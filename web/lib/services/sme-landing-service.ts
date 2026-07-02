@@ -19,11 +19,11 @@ import { IPORepository } from '@/lib/repositories/ipo-repository';
  */
 export interface SMESummaryMetrics {
   totalIPOs: number;
-  listedInGain: number;
-  listedInLoss: number;
+  listedInGain: number | null;
+  listedInLoss: number | null;
   upcomingAndOngoing: number;
-  gainAOT: number; // All Over Time gain percentage
-  lossAOT: number; // All Over Time loss percentage
+  gainAOT: number | null; // null until computed from real listing_performance aggregates (#98)
+  lossAOT: number | null; // null until computed from real listing_performance aggregates (#98)
 }
 
 /**
@@ -164,10 +164,12 @@ export async function getSMESummaryMetrics(): Promise<SMESummaryMetrics> {
       const listedIPOs = ipos.filter((ipo) => ipo.status === 'LISTED');
 
       // Count IPOs in gain (mock: assume 55% in gain for SME)
-      const listedInGain = Math.floor(listedIPOs.length * 0.55);
+      // Mocked metrics removed — null until real listing_performance aggregates (#98).
+      void listedIPOs;
+      const listedInGain = null;
 
       // Count IPOs in loss (mock: assume 45% in loss)
-      const listedInLoss = listedIPOs.length - listedInGain;
+      const listedInLoss = null;
 
       // Count upcoming and ongoing IPOs
       const upcomingAndOngoing = ipos.filter(
@@ -175,10 +177,8 @@ export async function getSMESummaryMetrics(): Promise<SMESummaryMetrics> {
       ).length;
 
       // Calculate average gain (mock: 30% for SME)
-      const gainAOT = 30.0;
-
-      // Calculate average loss (mock: 20% for SME)
-      const lossAOT = 20.0;
+      const gainAOT = null;
+      const lossAOT = null;
 
       return {
         totalIPOs,
@@ -192,11 +192,11 @@ export async function getSMESummaryMetrics(): Promise<SMESummaryMetrics> {
       console.error('Error fetching SME summary metrics:', error);
       return {
         totalIPOs: 0,
-        listedInGain: 0,
-        listedInLoss: 0,
+        listedInGain: null,
+        listedInLoss: null,
         upcomingAndOngoing: 0,
-        gainAOT: 0,
-        lossAOT: 0,
+        gainAOT: null,
+        lossAOT: null,
       };
     }
   });

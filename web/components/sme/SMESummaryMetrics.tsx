@@ -65,7 +65,7 @@ export function SMESummaryMetrics({ metrics }: SMESummaryMetricsProps) {
       icon: TrendingUp,
       iconColor: 'text-green-600',
       bgColor: 'bg-green-50',
-      value: `${metrics.gainAOT.toFixed(2)}%`,
+      value: metrics.gainAOT !== null ? `${metrics.gainAOT.toFixed(2)}%` : null,
       label: 'Gain (All Over Time)',
       valueColor: 'text-green-600',
     },
@@ -74,7 +74,7 @@ export function SMESummaryMetrics({ metrics }: SMESummaryMetricsProps) {
       icon: TrendingDown,
       iconColor: 'text-red-600',
       bgColor: 'bg-red-50',
-      value: `${metrics.lossAOT.toFixed(2)}%`,
+      value: metrics.lossAOT !== null ? `${metrics.lossAOT.toFixed(2)}%` : null,
       label: 'Loss (All Over Time)',
       valueColor: 'text-red-600',
     },
@@ -82,7 +82,8 @@ export function SMESummaryMetrics({ metrics }: SMESummaryMetricsProps) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {metricCards.map((card) => {
+      {/* Cards with null values (mocked metrics removed, #98) render nothing */}
+      {metricCards.filter((card) => card.value !== null && card.value !== undefined).map((card) => {
         const Icon = card.icon;
         return (
           <Card

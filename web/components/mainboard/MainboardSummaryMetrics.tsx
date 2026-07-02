@@ -68,7 +68,7 @@ export function MainboardSummaryMetrics({ metrics }: MainboardSummaryMetricsProp
     {
       id: 'gain-aot',
       title: 'Gain (All Over Time)',
-      value: metrics.gainAOT.toFixed(2),
+      value: metrics.gainAOT !== null ? metrics.gainAOT.toFixed(2) : null,
       icon: TrendingUp,
       iconColor: 'text-green-600',
       bgColor: 'bg-green-50',
@@ -78,7 +78,7 @@ export function MainboardSummaryMetrics({ metrics }: MainboardSummaryMetricsProp
     {
       id: 'loss-aot',
       title: 'Loss (All Over Time)',
-      value: metrics.lossAOT.toFixed(2),
+      value: metrics.lossAOT !== null ? metrics.lossAOT.toFixed(2) : null,
       icon: TrendingDown,
       iconColor: 'text-red-600',
       bgColor: 'bg-red-50',
@@ -89,7 +89,7 @@ export function MainboardSummaryMetrics({ metrics }: MainboardSummaryMetricsProp
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-      {metricCards.map((metric) => {
+      {metricCards.filter((m) => m.value !== null && m.value !== undefined).map((metric) => {
         const Icon = metric.icon;
         return (
           <Card
