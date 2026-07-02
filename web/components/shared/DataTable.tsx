@@ -288,14 +288,17 @@ export function DataTable<T extends Record<string, any>>({
             <TableHeader>
               {/* Header Row */}
               <TableRow>
-                {columns.map((column) => (
+                {columns.map((column, colIndex) => (
                   <TableHead
                     key={column.key}
+                    style={column.minWidth ? { minWidth: column.minWidth } : undefined}
                     className={cn(
+                      'whitespace-nowrap',
                       column.className,
                       column.align === 'right' && 'text-right',
                       column.align === 'center' && 'text-center',
-                      column.minWidth && `min-w-[${column.minWidth}]`
+                      // first column stays visible while the table scrolls horizontally
+                      colIndex === 0 && 'sticky left-0 z-20 bg-white border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]'
                     )}
                   >
                     {column.sortable !== false ? (
@@ -353,13 +356,16 @@ export function DataTable<T extends Record<string, any>>({
             <TableBody>
               {displayData.map((row) => (
                 <TableRow key={keyExtractor(row)}>
-                  {columns.map((column) => (
+                  {columns.map((column, colIndex) => (
                     <TableCell
                       key={column.key}
                       className={cn(
+                        'whitespace-nowrap',
                         column.className,
                         column.align === 'right' && 'text-right',
-                        column.align === 'center' && 'text-center'
+                        column.align === 'center' && 'text-center',
+                        colIndex === 0 &&
+                          'sticky left-0 z-10 bg-white border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)] max-w-[220px] overflow-hidden text-ellipsis'
                       )}
                     >
                       {column.render ? column.render(row[column.key], row) : row[column.key]}
