@@ -1,41 +1,28 @@
 /**
- * Mainboard IPOs Landing Page
+ * Mainboard IPOs Landing Page (spec L1 — status-tabbed single table)
  *
- * Comprehensive central hub for all Mainboard IPO information:
- * - Summary metrics dashboard (6 cards)
- * - Content sections (6 card grids: current, upcoming, recently listed, reviews, performance, subscription)
- * - Navigation cards (4 links to dedicated pages)
- * - Detailed IPO table with sorting, column search, year filter, and minimize toggle
+ * Data-first listing index: educational header → KPI ribbon → status tabs
+ * (Open · Upcoming · Recently listed · All), each rendering ONE table.
+ * Replaces the former card-grid composition (summary cards + 6 content grids +
+ * nav cards + separate detailed table). Listing-gain data is REAL
+ * (listing_performance); the old Math.random() performance/subscription cards
+ * are gone (#98).
  *
- * Server component with ISR (5-minute revalidation)
- *
- * Story 9.15: Mainboard IPOs Landing Page
- * AC#1, #3, #4, #5, #6, #7-17, #18-23
+ * Server component with ISR (5-minute revalidation).
  */
 
-import Link from 'next/link';
 import type { Metadata } from 'next';
-import { MainboardSummaryMetrics } from '@/components/mainboard/MainboardSummaryMetrics';
-import { MainboardContentSections } from '@/components/mainboard/MainboardContentSections';
-import { MainboardNavigationCards } from '@/components/mainboard/MainboardNavigationCards';
-import { MainboardDetailedTableClient } from './MainboardDetailedTableClient';
 import {
   getMainboardSummaryMetrics,
-  getMainboardCurrentIPOs,
-  getMainboardUpcomingIPOs,
-  getMainboardRecentlyListedIPOs,
-  getMainboardReviews,
-  getMainboardPerformanceHighlights,
-  getMainboardSubscriptionStatus,
   getMainboardDetailedList,
 } from '@/lib/services/mainboard-landing-service';
+import { getListingGainsByIds } from '@/lib/services/listing-gains-service';
+import { ListingIndexClient } from '@/components/listing/ListingIndexClient';
 
 // ===== ISR CONFIGURATION =====
-// AC#19: Page uses ISR with 5-minute revalidation
-export const revalidate = 300; // 5 minutes in seconds
+export const revalidate = 300; // 5 minutes — matches backing Redis TTL
 
 // ===== SEO METADATA =====
-// AC#22: SEO metadata configured
 export const metadata: Metadata = {
   title: `Mainboard IPOs ${new Date().getFullYear()} - Complete Hub | IPODhan`,
   description:
@@ -51,68 +38,48 @@ export const metadata: Metadata = {
   },
 };
 
-// ===== PAGE COMPONENT =====
-
 interface PageProps {
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
 export default async function MainboardIPOsLandingPage({ searchParams }: PageProps) {
-  // Await searchParams (Next.js 15 requirement)
   const params = searchParams ? await searchParams : {};
-
-  // Parse query parameters
   const currentYear = parseInt(
     (params?.year as string) || String(new Date().getFullYear()),
     10
   );
 
   try {
-    // Fetch all data server-side with Promise.all for optimal performance
-    const [
-      metrics,
-      currentIPOs,
-      upcomingIPOs,
-      recentlyListedIPOs,
-      reviews,
-      performanceHighlights,
-      subscriptionStatus,
-      detailedData,
-    ] = await Promise.all([
+    const [metrics, detailedData] = await Promise.all([
       getMainboardSummaryMetrics(),
-      getMainboardCurrentIPOs(),
-      getMainboardUpcomingIPOs(),
-      getMainboardRecentlyListedIPOs(),
-      getMainboardReviews(),
-      getMainboardPerformanceHighlights(),
-      getMainboardSubscriptionStatus(),
       getMainboardDetailedList({ year: currentYear }),
     ]);
 
+    const gainsMap = await getListingGainsByIds(detailedData.data.map((ipo) => ipo.id));
+
     return (
       <>
-        {/* AC#22: Structured Data (JSON-LD) */}
+        {/* Structured Data (JSON-LD) */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               '@context': 'https://schema.org',
               '@type': 'CollectionPage',
-              name: 'Mainboard IPOs 2025 - Complete Hub',
+              name: 'Mainboard IPOs - Complete Hub',
               description:
                 'Comprehensive Mainboard IPO information hub with current, upcoming, and listed IPOs',
               url: 'https://ipodhan.com/mainboard-ipos',
               mainEntity: {
                 '@type': 'ItemList',
                 numberOfItems: metrics.totalIPOs,
-                itemListElement: currentIPOs.slice(0, 10).map((ipo, index) => ({
+                itemListElement: detailedData.data.slice(0, 10).map((ipo, index) => ({
                   '@type': 'ListItem',
                   position: index + 1,
                   item: {
                     '@type': 'FinancialProduct',
                     name: `${ipo.companyName} IPO`,
                     category: 'Mainboard IPO',
-                    description: ipo.companyDescription || `Mainboard IPO for ${ipo.companyName}`,
                   },
                 })),
               },
@@ -122,10 +89,7 @@ export default async function MainboardIPOsLandingPage({ searchParams }: PagePro
                   {
                     '@type': 'ListItem',
                     position: 1,
-                    item: {
-                      '@id': 'https://ipodhan.com',
-                      name: 'Home',
-                    },
+                    item: { '@id': 'https://ipodhan.com', name: 'Home' },
                   },
                   {
                     '@type': 'ListItem',
@@ -142,72 +106,37 @@ export default async function MainboardIPOsLandingPage({ searchParams }: PagePro
         />
 
         <div className="container mx-auto px-4 py-8">
-          {/* AC#18: Educational Header */}
-          <header className="mb-8">
-            <h1 className="text-3xl font-bold mb-3 text-gray-900">Mainboard IPOs</h1>
-            <p className="text-gray-600 leading-relaxed">
-              Mainboard IPOs are public offerings listed on NSE and BSE main boards. These are
-              typically large companies with higher minimum investment requirements compared to SME
-              IPOs. Access comprehensive information on current, upcoming, and listed Mainboard IPOs
-              including performance metrics, expert reviews, prospectus documents, and event calendar.
+          <header className="mb-6">
+            <h1 className="mb-2 text-2xl font-semibold text-gray-900">Mainboard IPOs</h1>
+            <p className="max-w-3xl text-sm leading-relaxed text-gray-600">
+              Public offerings on the NSE and BSE main boards — larger companies with
+              higher minimum investment than SME IPOs. Track open, upcoming, and recently
+              listed Mainboard IPOs with price band, issue size, and listing gains.
             </p>
           </header>
 
-        {/* AC#3: Summary Metrics Section */}
-        <section className="mb-12">
-          <h2 className="text-2xl font-semibold mb-4 text-gray-800">Mainboard IPO Metrics</h2>
-          <MainboardSummaryMetrics metrics={metrics} />
-        </section>
-
-        {/* AC#4, AC#5: Content Sections (6 card grids) */}
-        <section className="mb-12">
-          <MainboardContentSections
-            currentIPOs={currentIPOs}
-            upcomingIPOs={upcomingIPOs}
-            recentlyListedIPOs={recentlyListedIPOs}
-            reviews={reviews}
-            performanceHighlights={performanceHighlights}
-            subscriptionStatus={subscriptionStatus}
-          />
-        </section>
-
-        {/* AC#6: Navigation Cards */}
-        <section className="mb-12">
-          <h2 className="text-2xl font-semibold mb-4 text-gray-800">
-            Explore Mainboard IPO Features
-          </h2>
-          <MainboardNavigationCards />
-        </section>
-
-        {/* AC#7-17: Detailed Table */}
-        <section className="mb-12">
-          <h2 className="text-2xl font-semibold mb-4 text-gray-800">
-            Detailed Mainboard IPO Listings
-          </h2>
-          <MainboardDetailedTableClient
+          <ListingIndexClient
+            segmentLabel="Mainboard"
             data={detailedData.data}
-            totalCount={detailedData.totalCount}
+            allTimeTotal={metrics.totalIPOs}
+            gainsMap={gainsMap}
             initialYear={currentYear}
           />
-        </section>
         </div>
       </>
     );
   } catch (error) {
     console.error('Error loading Mainboard IPOs landing page:', error);
-
-    // Graceful degradation on error
     return (
       <div className="container mx-auto px-4 py-8">
         <header className="mb-8">
-          <h1 className="text-3xl font-bold mb-3 text-gray-900">Mainboard IPOs</h1>
-          <p className="text-gray-600 leading-relaxed">
+          <h1 className="mb-3 text-2xl font-semibold text-gray-900">Mainboard IPOs</h1>
+          <p className="leading-relaxed text-gray-600">
             Mainboard IPOs are public offerings listed on NSE and BSE main boards.
           </p>
         </header>
-
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <p className="text-red-800 font-medium">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center">
+          <p className="font-medium text-red-800">
             Unable to load Mainboard IPO data at this time. Please try again later.
           </p>
         </div>

@@ -1,0 +1,68 @@
+/**
+ * IPO display-status derivation + status chip (spec G6).
+ *
+ * One status system shared across listing tables: Open = green dot,
+ * Closing soon = amber, Upcoming = accent blue, Closed/Listed = muted.
+ */
+
+import type { IPO } from '@/lib/db/types';
+
+export type DisplayStatus = 'open' | 'closingSoon' | 'upcoming' | 'closed' | 'listed';
+
+interface StatusMeta {
+  status: DisplayStatus;
+  label: string;
+}
+
+const startOfDay = (d: Date): Date => {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+};
+
+/**
+ * Derive the display status from dates + stored status.
+ * Dates decide "open"/"closing soon" (they are the ground truth for an active
+ * window); the stored status decides upcoming/listed/closed.
+ */
+export function getDisplayStatus(ipo: IPO): StatusMeta {
+  const today = startOfDay(new Date());
+
+  if (ipo.openDate && ipo.closeDate) {
+    const open = startOfDay(new Date(ipo.openDate));
+    const close = startOfDay(new Date(ipo.closeDate));
+    if (today >= open && today <= close) {
+      const daysToClose = Math.ceil(
+        (close.getTime() - today.getTime()) / (1000 * 60 * 60 * 24)
+      );
+      if (daysToClose <= 1) return { status: 'closingSoon', label: 'Closing soon' };
+      return { status: 'open', label: 'Open' };
+    }
+  }
+
+  if (ipo.status === 'LISTED') return { status: 'listed', label: 'Listed' };
+  if (ipo.status === 'UPCOMING') return { status: 'upcoming', label: 'Upcoming' };
+  if (ipo.status === 'OPEN') return { status: 'open', label: 'Open' };
+  return { status: 'closed', label: 'Closed' };
+}
+
+const TONE: Record<DisplayStatus, { chip: string; dot: string }> = {
+  open: { chip: 'bg-green-50 text-green-700', dot: 'bg-green-600' },
+  closingSoon: { chip: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
+  upcoming: { chip: 'bg-primary/10 text-primary', dot: 'bg-primary' },
+  closed: { chip: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' },
+  listed: { chip: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' },
+};
+
+export function IpoStatusChip({ ipo }: { ipo: IPO }) {
+  const { status, label } = getDisplayStatus(ipo);
+  const tone = TONE[status];
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${tone.chip}`}
+    >
+      <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} aria-hidden />
+      {label}
+    </span>
+  );
+}
