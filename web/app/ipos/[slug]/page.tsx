@@ -21,7 +21,9 @@ import Script from 'next/script';
 import { IPOHeader } from '@/components/ipo/IPOHeader';
 import { IPOTimelineWidget } from '@/components/ipo/IPOTimelineWidget';
 import { CompanyOverview } from '@/components/ipo/CompanyOverview';
-import { KeyMetricsCardsEnhanced } from '@/components/ipo/KeyMetricsCardsEnhanced';
+import { FactRibbon } from '@/components/ipo-detail/FactRibbon';
+import { formatPriceBand } from '@/lib/utils/kpi-formatters';
+import { formatIssueSizeCrores } from '@/lib/utils';
 import { InfoSection } from '@/components/ipo/InfoSection';
 import { IssueStructureSection } from '@/components/ipo/IssueStructureSection';
 import { IPOSectionNav } from '@/components/ipo-detail/IPOSectionNav';
@@ -275,6 +277,51 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     !hasDocuments && 'Documents',
   ].filter((s): s is string => Boolean(s));
 
+  // Fact ribbon cells (spec D2 order); GMP is the only colored cell
+  const fmtShortDate = (d: string | null) =>
+    d
+      ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
+      : 'TBA';
+  const minInvestment =
+    ipo.lotSize && ipo.priceRangeMax ? ipo.lotSize * Number(ipo.priceRangeMax) : null;
+  const ribbonCells = [
+    {
+      label: 'Price Band',
+      value:
+        ipo.priceRangeMin || ipo.priceRangeMax
+          ? formatPriceBand(ipo.priceRangeMin, ipo.priceRangeMax)
+          : 'TBA',
+    },
+    { label: 'Lot Size', value: ipo.lotSize ? `${ipo.lotSize}` : 'TBA' },
+    {
+      label: 'Min. Investment',
+      value: minInvestment ? `₹${minInvestment.toLocaleString('en-IN')}` : 'TBA',
+    },
+    {
+      label: 'Issue Size',
+      value: formatIssueSizeCrores(ipo.issueSize).replace(' Crores', ' Cr'),
+      mobileHidden: true,
+    },
+    ...(gmpValue !== null
+      ? [
+          {
+            label: 'GMP',
+            value: `₹${gmpValue}${gmpPercent !== null ? ` (${gmpPercent >= 0 ? '+' : ''}${gmpPercent.toFixed(1)}%)` : ''}`,
+            tone: (gmpValue >= 0 ? 'gain' : 'loss') as 'gain' | 'loss',
+          },
+        ]
+      : []),
+    ...(subscriptionValue !== null
+      ? [{ label: 'Subscription', value: `${Number(subscriptionValue).toFixed(2)}x` }]
+      : []),
+    {
+      label: 'Open–Close',
+      value: `${fmtShortDate(ipo.openDate)} – ${fmtShortDate(ipo.closeDate)}`,
+      mobileHidden: true,
+    },
+    { label: 'Listing', value: fmtShortDate(ipo.listingDate) },
+  ];
+
   // Sticky anchor nav (Screener pattern) — only sections that actually render
   const sectionNavItems = [
     { id: 'details', label: 'Details' },
@@ -363,16 +410,8 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 'buried mid-page after ~5 sections'). */}
             <IPOSectionNav items={sectionNavItems} />
 
-            {/* 2. Key Metrics Cards */}
-            <KeyMetricsCardsEnhanced
-              issueSize={Number(ipo.issueSize)}
-              subscription={subscriptionValue !== null ? Number(subscriptionValue) : null}
-              subscriptionTrend={subscriptionTrend}
-              gmp={gmpValue}
-              gmpPercent={gmpPercent}
-              subscriptions={subscriptions}
-              gmpRecords={gmpRecords}
-            />
+            {/* 2. Fact ribbon (spec D2/G4) — replaces the three stat cards */}
+            <FactRibbon cells={ribbonCells} />
 
             {/* 2a. IPO Details Table */}
             <section id="details" className="scroll-mt-28">
