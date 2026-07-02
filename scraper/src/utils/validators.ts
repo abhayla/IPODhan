@@ -371,6 +371,11 @@ export function sanitizeIpoWriteFields<T extends Record<string, any>>(record: T)
   if ('registrar' in out) {
     out.registrar = sanitizeRegistrar(out.registrar);
   }
+  if ('sector' in out && typeof out.sector === 'string') {
+    // '' passes z.string().optional() and plants a blank that both renders as empty
+    // AND defeats NULL-based backfill filters — normalize to undefined (column untouched).
+    out.sector = out.sector.trim() || undefined;
+  }
 
   const hasAnyDate = ['openDate', 'closeDate', 'allotmentDate', 'listingDate'].some(
     (k) => k in out
