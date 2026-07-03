@@ -143,6 +143,9 @@ export function IPOListTable({
 
       {/* Desktop live table (spec H2): Status · Company | Price band | Open |
           Close | Subscription | GMP — the persona's #1 data. No row tints. */}
+      <div className="relative">
+      {/* Right-edge fade — mobile horizontal-scroll cue (R20 #2) */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-30 w-8 rounded-r-md bg-gradient-to-l from-card to-transparent md:hidden" />
       <div className="rounded-md border bg-card overflow-x-auto">
         <Table aria-label={title} className="min-w-full [&_td]:px-2 [&_td]:py-1.5 [&_th]:px-2 [&_th]:h-9">
           <TableHeader>
@@ -198,6 +201,7 @@ export function IPOListTable({
             ))}
           </TableBody>
         </Table>
+      </div>
       </div>
 
       {/* AC#4: "More..." links navigate to dashboard with correct filters */}

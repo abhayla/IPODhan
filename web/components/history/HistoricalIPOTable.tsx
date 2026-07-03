@@ -114,7 +114,10 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
     'sticky left-0 z-20 border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]';
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border">
+    <div className="relative">
+      {/* Right-edge fade — mobile horizontal-scroll cue (R20 #2) */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-30 w-8 rounded-r-lg bg-gradient-to-l from-white to-transparent md:hidden" />
+      <div className="overflow-x-auto rounded-lg border border-border">
       <Table className="[&_td]:py-1.5 [&_th]:h-9">
         <TableHeader>
           <TableRow className="border-0 bg-gray-50 hover:bg-gray-50">
@@ -209,6 +212,7 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
           ))}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 }
