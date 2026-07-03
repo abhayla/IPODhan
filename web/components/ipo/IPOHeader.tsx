@@ -14,18 +14,20 @@ interface IPOHeaderProps {
   };
 }
 
+// Light tonal chips matching the listing-table status system (ipo-status.tsx) —
+// no saturated fills / purple, one calm palette across the product (R22 #3).
 const getStatusConfig = (status: IPOStatus) => {
   switch (status) {
     case 'UPCOMING':
-      return { color: 'bg-blue-600 text-white', label: 'Upcoming' };
+      return { color: 'bg-primary/10 text-primary', label: 'Upcoming' };
     case 'OPEN':
-      return { color: 'bg-green-600 text-white', label: 'Open Now' };
+      return { color: 'bg-green-50 text-green-700', label: 'Open Now' };
     case 'CLOSED':
-      return { color: 'bg-gray-600 text-white', label: 'Closed' };
+      return { color: 'bg-gray-100 text-gray-600', label: 'Closed' };
     case 'LISTED':
-      return { color: 'bg-purple-600 text-white', label: 'Listed' };
+      return { color: 'bg-emerald-50 text-emerald-700', label: 'Listed' };
     default:
-      return { color: 'bg-gray-600 text-gray-100', label: status };
+      return { color: 'bg-gray-100 text-gray-600', label: status };
   }
 };
 
