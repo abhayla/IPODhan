@@ -70,7 +70,7 @@ export default function LotCalculatorPage() {
             gradient tint was a tonal outlier) */}
         <div className="border-b bg-background">
           <div className="container mx-auto px-4 py-8">
-            <div className="max-w-3xl">
+            <div className="mx-auto max-w-2xl">
               <h1 className="text-2xl font-bold tracking-tight sm:text-3xl text-foreground">
                 IPO Lot Size Calculator
               </h1>
@@ -84,7 +84,9 @@ export default function LotCalculatorPage() {
 
         {/* Calculator */}
         <div className="container mx-auto px-4 py-8">
-          <div className="mx-auto max-w-4xl">
+          {/* Tighter centered column so the tool reads intentional, not a lone
+              card floating in a wide empty viewport (R31 #3). */}
+          <div className="mx-auto max-w-2xl">
             <LotCalculator mode="standalone" />
 
             {/* Help Section — collapsed by default so the calculator is the hero,

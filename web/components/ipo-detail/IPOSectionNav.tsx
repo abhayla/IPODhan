@@ -53,7 +53,10 @@ export function IPOSectionNav({ items }: IPOSectionNavProps) {
             key={id}
             href={`#${id}`}
             className={cn(
-              'whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+              // shrink-0 keeps each tab its full width so the row scrolls
+              // horizontally instead of the tabs compressing into overlapping,
+              // illegible text on mobile (R31 #1 — a real bug).
+              'shrink-0 whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
               activeId === id
                 ? 'bg-primary/10 text-primary'
                 : 'text-muted-foreground hover:bg-muted hover:text-foreground'
