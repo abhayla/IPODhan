@@ -33,7 +33,7 @@ import type { LiveMetricsMap } from '@/lib/services/live-metrics-service';
 import { formatIssueSizeCrores, formatIssueSizeCroresBare } from '@/lib/utils';
 import { formatIPODate, getAccessibleDate } from '@/lib/utils/date-formatter';
 import { formatPriceBand } from '@/lib/utils/kpi-formatters';
-import { IpoStatusChip, getDisplayStatus } from './ipo-status';
+import { IpoStatusChip, StatusDot, getDisplayStatus } from './ipo-status';
 import { ListingKpiRibbon, type RibbonCell } from './ListingKpiRibbon';
 
 const PAGE_SIZE = 25;
@@ -98,8 +98,11 @@ function companyCol(): ColumnDef<IPO> {
       <Link
         href={`/ipos/${row.slug}`}
         title={value}
-        className="group flex items-center gap-2.5 text-gray-900 hover:text-primary"
+        className="group flex items-center gap-2 text-gray-900 hover:text-primary"
       >
+        {/* Status as a dot on mobile (the standalone Status column is hidden < md
+            so a value column leads the horizontal scroll) — R27 #1 */}
+        <StatusDot ipo={row} className="md:hidden" />
         <MonogramChip name={value} />
         <span className="min-w-0">
           {/* Single-line truncate → uniform row height (R26 #1); full name via the
@@ -123,6 +126,9 @@ const statusCol: ColumnDef<IPO> = {
   header: 'Status',
   sortable: false,
   searchable: false,
+  // Full chip on desktop; on mobile the dot lives in the Company cell instead so a
+  // value column leads the horizontal scroll (R27 #1).
+  mobileHidden: true,
   render: (_v, row) => <IpoStatusChip ipo={row} />,
 };
 

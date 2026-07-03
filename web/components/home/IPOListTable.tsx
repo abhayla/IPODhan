@@ -27,7 +27,7 @@ import {
 } from '@/components/ui/table';
 import type { HomeIPOTableData } from '@/lib/services/home-ipo-service';
 import { formatPriceBand } from '@/lib/utils/kpi-formatters';
-import { IpoStatusChip } from '@/components/listing/ipo-status';
+import { IpoStatusChip, StatusDot } from '@/components/listing/ipo-status';
 import { SubscriptionBar } from '@/components/shared/SubscriptionBar';
 import { MonogramChip } from '@/components/shared/MonogramChip';
 import { GmpDisplay } from '@/components/shared/GmpDisplay';
@@ -154,7 +154,7 @@ export function IPOListTable({
               {/* Value-first order (R22 #1): GMP + Sub right after Company/Status
                   so the decision data is visible on mobile, not scrolled off. */}
               <TableHead scope="col" className="sticky left-0 z-20 border-r bg-gray-50 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">Company</TableHead>
-              <TableHead scope="col" className="whitespace-nowrap">Status</TableHead>
+              <TableHead scope="col" className="hidden whitespace-nowrap md:table-cell">Status</TableHead>
               <TableHead scope="col" className="whitespace-nowrap text-right">
                 GMP
               </TableHead>
@@ -181,11 +181,12 @@ export function IPOListTable({
                     title={ipo.companyName}
                     className="flex items-center gap-2 font-medium text-foreground hover:text-primary"
                   >
+                    <StatusDot ipo={ipo} className="md:hidden" />
                     <MonogramChip name={ipo.companyName} />
                     <span className="max-w-[128px] truncate hover:underline sm:max-w-[240px] md:max-w-[340px]">{ipo.companyName}</span>
                   </Link>
                 </TableCell>
-                <TableCell className="whitespace-nowrap">
+                <TableCell className="hidden whitespace-nowrap md:table-cell">
                   <IpoStatusChip ipo={ipo} />
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-right">

@@ -63,6 +63,19 @@ const TONE: Record<DisplayStatus, { chip: string; dot: string }> = {
   listed: { chip: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
 };
 
+/** Just the colored status dot — used inside the pinned Company cell on mobile so
+ * the standalone Status column can be dropped and a VALUE column leads (R27 #1). */
+export function StatusDot({ ipo, className = '' }: { ipo: StatusInput; className?: string }) {
+  const { status, label } = getDisplayStatus(ipo);
+  return (
+    <span
+      className={`h-2 w-2 shrink-0 rounded-full ${TONE[status].dot} ${className}`}
+      title={label}
+      aria-label={label}
+    />
+  );
+}
+
 export function IpoStatusChip({ ipo }: { ipo: StatusInput }) {
   const { status, label } = getDisplayStatus(ipo);
   const tone = TONE[status];
