@@ -293,7 +293,7 @@ export function DataTable<T extends Record<string, any>>({
       <div className="relative border rounded-lg overflow-hidden">
         {/* Right-edge shadow — a DARK gradient (not white-on-white, which was
             invisible) reads as depth = 'more columns →' on mobile scroll (R29 #1). */}
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-30 w-6 bg-gradient-to-l from-black/[0.10] to-transparent md:hidden" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-30 w-8 bg-gradient-to-l from-black/25 via-black/[0.06] to-transparent md:hidden" />
         <div className="overflow-x-auto">
           {/* Compact "data terminal" rhythm — tighter than the default h-10/p-2 */}
           <Table className="[&_td]:py-1.5 [&_th]:h-9">

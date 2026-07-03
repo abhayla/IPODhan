@@ -145,7 +145,7 @@ export function IPOListTable({
           Close | Subscription | GMP — the persona's #1 data. No row tints. */}
       <div className="relative">
       {/* Right-edge shadow — dark gradient reads as 'more columns →' (R29 #1) */}
-      <div className="pointer-events-none absolute inset-y-0 right-0 z-30 w-6 rounded-r-md bg-gradient-to-l from-black/[0.10] to-transparent md:hidden" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-30 w-8 rounded-r-md bg-gradient-to-l from-black/25 via-black/[0.06] to-transparent md:hidden" />
       <div className="rounded-md border bg-card overflow-x-auto">
         <Table aria-label={title} className="min-w-full [&_td]:px-2 [&_td]:py-1.5 [&_th]:px-2 [&_th]:h-9">
           <TableHeader>
