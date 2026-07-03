@@ -136,37 +136,47 @@ export function AllotmentCheckerCard({
           )}
         </div>
 
-        <Button
-          onClick={handleCheckStatus}
-          disabled={pan.length !== 10 || !!error || isChecking}
-          className="w-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {isChecking ? (
-            <>
-              <RotateCw className="mr-2 h-4 w-4 animate-spin" />
-              Opening Registrar Site...
-            </>
-          ) : (
-            <>
-              <ExternalLink className="mr-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
-              Check Status on {registrar}
-            </>
-          )}
-        </Button>
+        {/* When the registrar URL is known, show the Check-Status CTA + privacy
+            note. When it isn't, show ONE quiet fallback to the registrars
+            directory — never a CTA and a red 'URL not available' error together
+            (R28 #3). */}
+        {registrarUrl ? (
+          <>
+            <Button
+              onClick={handleCheckStatus}
+              disabled={pan.length !== 10 || !!error || isChecking}
+              className="w-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {isChecking ? (
+                <>
+                  <RotateCw className="mr-2 h-4 w-4 animate-spin" />
+                  Opening Registrar Site...
+                </>
+              ) : (
+                <>
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Check Status on {registrar}
+                </>
+              )}
+            </Button>
 
-        <Alert className="bg-muted/50">
-          <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-          <AlertDescription className="text-sm text-muted-foreground">
-            Your PAN is not stored. You will be redirected to the official
-            registrar website to check your allotment status.
-          </AlertDescription>
-        </Alert>
-
-        {!registrarUrl && (
-          <Alert variant="destructive" className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <AlertDescription className="text-sm font-medium">
-              Registrar website URL is not available. Please visit the
-              registrar website directly to check allotment status.
+            <Alert className="bg-muted/50">
+              <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+              <AlertDescription className="text-sm text-muted-foreground">
+                Your PAN is not stored. You will be redirected to the official
+                registrar website to check your allotment status.
+              </AlertDescription>
+            </Alert>
+          </>
+        ) : (
+          <Alert className="bg-muted/50">
+            <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+            <AlertDescription className="text-sm text-muted-foreground">
+              Direct link for {registrar} isn&apos;t available yet — find it in the{' '}
+              <a href="/registrars" className="font-medium text-primary hover:underline">
+                registrars directory
+              </a>{' '}
+              to check your allotment.
             </AlertDescription>
           </Alert>
         )}

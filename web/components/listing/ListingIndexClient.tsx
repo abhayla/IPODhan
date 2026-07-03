@@ -81,11 +81,24 @@ function orDash(value: string) {
 }
 
 /** Muted second line: "Mainboard · Technology" (segment + sector when known). */
-// The page is already single-segment (Mainboard OR SME), so repeating the
-// segment on every row is pure noise (R21 #2). Show the sector, which varies
-// per row and adds value; nothing when it's absent.
+// A always-present second line gives the mobile rows history's dense, uniform
+// 2-line rhythm (R28 #4): sector when known (it varies and adds real value),
+// otherwise the relevant date. Never empty → every row is the same height.
 function companySubline(ipo: IPO): string {
-  return ipo.sector ?? '';
+  if (ipo.sector) return ipo.sector;
+  const d = ipo.listingDate ?? ipo.openDate ?? ipo.closeDate;
+  if (d) {
+    try {
+      return new Date(d).toLocaleDateString('en-IN', {
+        month: 'short',
+        year: 'numeric',
+        timeZone: 'Asia/Kolkata',
+      });
+    } catch {
+      /* fall through */
+    }
+  }
+  return ipo.segment === 'SME' ? 'SME' : 'Mainboard';
 }
 
 function companyCol(): ColumnDef<IPO> {
@@ -105,16 +118,14 @@ function companyCol(): ColumnDef<IPO> {
         <StatusDot ipo={row} className="md:hidden" />
         <MonogramChip name={value} />
         <span className="min-w-0">
-          {/* Single-line truncate → uniform row height (R26 #1); full name via the
-              Link's title tooltip. 144px pinned column fits most names. */}
-          <span className="block max-w-[300px] truncate font-medium group-hover:underline">
+          {/* Uniform 2-line cell (R28 #4): name (single-line truncate, full name
+              via tooltip) over an always-present sub-label → dense + even rows. */}
+          <span className="block max-w-[300px] truncate font-medium leading-tight group-hover:underline">
             {value}
           </span>
-          {companySubline(row) && (
-            <span className="block truncate text-xs text-muted-foreground">
-              {companySubline(row)}
-            </span>
-          )}
+          <span className="block truncate text-xs leading-tight text-muted-foreground">
+            {companySubline(row)}
+          </span>
         </span>
       </Link>
     ),
