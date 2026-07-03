@@ -87,48 +87,52 @@ export default function LotCalculatorPage() {
           <div className="mx-auto max-w-4xl">
             <LotCalculator mode="standalone" />
 
-            {/* Help Section */}
-            <div className="mt-12 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-300">
-              <h2 className="text-2xl font-bold">How to Use</h2>
-              <div className="grid gap-6 sm:grid-cols-2">
-                <div className="group rounded-lg border p-6 transition-all duration-300 hover:shadow-lg hover:scale-105 hover:border-primary/50">
-                  <h3 className="font-semibold group-hover:text-primary transition-colors duration-300">Step 1: Select IPO</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Choose an IPO from the dropdown menu. The calculator shows
-                    active and recent IPOs with available pricing information.
+            {/* Help Section — collapsed by default so the calculator is the hero,
+                not the docs (R21 #13: explainer chrome was outweighing the tool 4:1) */}
+            <details className="group mt-8 rounded-lg border bg-card">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm font-medium text-foreground">
+                How the calculator works
+                <span className="text-muted-foreground transition-transform group-open:rotate-180">⌄</span>
+              </summary>
+              <div className="space-y-6 border-t px-5 py-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <h3 className="text-sm font-semibold">Step 1: Select IPO</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Choose an IPO from the dropdown. It shows active and recent
+                    IPOs with available pricing.
                   </p>
                 </div>
-                <div className="group rounded-lg border p-6 transition-all duration-300 hover:shadow-lg hover:scale-105 hover:border-primary/50">
-                  <h3 className="font-semibold group-hover:text-primary transition-colors duration-300">Step 2: Enter Amount</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    Enter your investment amount in rupees. The calculator will
-                    automatically format it with comma separators.
+                <div>
+                  <h3 className="text-sm font-semibold">Step 2: Enter Amount</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Enter your investment in rupees; it&apos;s formatted with
+                    comma separators automatically.
                   </p>
                 </div>
-                <div className="group rounded-lg border p-6 transition-all duration-300 hover:shadow-lg hover:scale-105 hover:border-primary/50">
-                  <h3 className="font-semibold group-hover:text-primary transition-colors duration-300">Step 3: View Results</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    See the number of lots you can buy, total shares, and exact
-                    investment amount rounded to lot size.
+                <div>
+                  <h3 className="text-sm font-semibold">Step 3: View Results</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    See lots, total shares, and the exact amount rounded to lot
+                    size.
                   </p>
                 </div>
-                <div className="group rounded-lg border p-6 transition-all duration-300 hover:shadow-lg hover:scale-105 hover:border-primary/50">
-                  <h3 className="font-semibold group-hover:text-primary transition-colors duration-300">Understanding Lots</h3>
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    A lot is the minimum number of shares you can apply for in an
-                    IPO. You must buy shares in multiples of the lot size.
+                <div>
+                  <h3 className="text-sm font-semibold">Understanding Lots</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    A lot is the minimum shares you can apply for; you buy in
+                    multiples of the lot size.
                   </p>
                 </div>
               </div>
 
               {/* Formula Explanation */}
-              <div className="rounded-lg border bg-muted/50 p-6">
-                <h3 className="font-semibold">Calculation Formula</h3>
-                <p className="mt-2 text-sm text-muted-foreground">
-                  The calculator uses the maximum price from the price band for
-                  conservative calculations:
+              <div className="rounded-lg border bg-muted/50 p-4">
+                <h3 className="text-sm font-semibold">Calculation Formula</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Uses the maximum price from the band for conservative results:
                 </p>
-                <div className="mt-4 font-mono text-sm">
+                <div className="mt-3 font-mono text-sm">
                   <p>lots = floor(investment_amount / (price × lot_size))</p>
                   <p>total_shares = lots × lot_size</p>
                   <p>total_amount = lots × lot_size × price</p>
@@ -158,7 +162,8 @@ export default function LotCalculatorPage() {
                   <p>Total Investment: ₹14,000 (1 × 40 × 350)</p>
                 </div>
               </div>
-            </div>
+              </div>
+            </details>
           </div>
         </div>
       </div>

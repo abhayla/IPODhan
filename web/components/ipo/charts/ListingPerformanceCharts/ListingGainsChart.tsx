@@ -6,7 +6,6 @@
  * Displays listing day performance with gauge visualization and statistics
  */
 
-import { GaugeChartBase } from '../base/GaugeChartBase';
 import { formatCurrency, formatPercent, getPerformanceRating } from './utils';
 import type { ListingGainsChartProps } from './types';
 import { TrendingUp, TrendingDown } from 'lucide-react';
@@ -22,26 +21,6 @@ export function ListingGainsChart({
 }: ListingGainsChartProps) {
   const rating = getPerformanceRating(listingGainPercent);
   const isPositive = listingGainPercent >= 0;
-
-  // Calculate gauge value (normalize to 0-100 scale)
-  // Map -50% to 0, 0% to 50, +100% to 100
-  const normalizeGain = (gain: number): number => {
-    if (gain <= -50) return 0;
-    if (gain >= 100) return 100;
-    // Linear interpolation: -50% = 0, 0% = 50, 100% = 100
-    return ((gain + 50) / 150) * 100;
-  };
-
-  const gaugeValue = normalizeGain(listingGainPercent);
-
-  // Color ranges for gauge
-  const colorRanges = [
-    { min: 0, max: 30, color: '#ef4444' }, // Red (poor)
-    { min: 30, max: 45, color: '#f97316' }, // Orange (below avg)
-    { min: 45, max: 55, color: '#eab308' }, // Yellow (avg)
-    { min: 55, max: 70, color: '#84cc16' }, // Light green (good)
-    { min: 70, max: 100, color: '#22c55e' }, // Green (excellent)
-  ];
 
   return (
     <div className={className}>
@@ -122,29 +101,10 @@ export function ListingGainsChart({
         )}
       </div>
 
-      {/* Gauge Visualization */}
-      <div className="rounded-lg border bg-card p-6">
-        <h4 className="text-sm font-medium mb-4">Listing Performance Gauge</h4>
-        <GaugeChartBase
-          value={gaugeValue}
-          min={0}
-          max={100}
-          label="Listing gain"
-          // Center shows the REAL gain, not the 0-100 dial position — a bare
-          // "40.9" over "+11.33%" reads as an orphaned number (R18 #2).
-          valueFormatter={() => formatPercent(listingGainPercent)}
-          // Color by SIGN, not the rank band — a positive gain must read green,
-          // never orange/red (R21 #3, a semantic-color correctness fix).
-          valueColor={listingGainPercent >= 0 ? '#16a34a' : '#dc2626'}
-          colorRanges={colorRanges}
-          height={240}
-        />
-        <div className="flex justify-between text-xs text-muted-foreground mt-2 px-4">
-          <span>Poor (-50%)</span>
-          <span>Average (0%)</span>
-          <span>Excellent (+100%)</span>
-        </div>
-      </div>
+      {/* R21 #5: the speedometer gauge was removed — a dated dataviz idiom none
+          of the references would ship, and it triplicated the listing gain that
+          the card above already shows. The two performance cards + the statistics
+          strip carry the same information, quietly. */}
 
       {/* Listing Day Statistics */}
       {listingDayStats && (

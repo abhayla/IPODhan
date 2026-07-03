@@ -271,6 +271,23 @@ export function LotCalculator({
     setResult(calculationResult);
   }, [getSelectedIPO]);
 
+  // Seed a default investment ONCE (standalone) so the tool shows a live result
+  // on landing instead of an empty form floating in whitespace (R21 #6). ~3 lots
+  // of the selected IPO; the user overwrites it the moment they type.
+  const seededDefaultRef = React.useRef(false);
+  useEffect(() => {
+    if (mode !== 'standalone' || seededDefaultRef.current) return;
+    if (investmentAmount !== '') return;
+    const ipo = getSelectedIPO();
+    if (!ipo) return;
+    seededDefaultRef.current = true;
+    const seed = ipo.pricePerShare * ipo.lotSize * 3;
+    const display = new Intl.NumberFormat('en-IN').format(seed);
+    setInvestmentAmount(display);
+    performCalculation(display);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIPOId, ipoOptions, mode]);
+
   // ==================== HANDLE INPUT CHANGE (DEBOUNCED) ====================
 
   const handleInvestmentChange = (value: string) => {
@@ -484,7 +501,7 @@ export function LotCalculator({
 
             {/* Calculation Result */}
             {result && result.lots > 0 && (
-              <div className="space-y-4 rounded-lg border bg-accent/50 p-4">
+              <div className="space-y-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div>
                     <p className="text-sm text-muted-foreground">Number of Lots</p>

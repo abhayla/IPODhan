@@ -172,26 +172,20 @@ export function ComparisonTable({
         </p>
       </div>
 
-      {/* Mobile Scroll Indicator */}
-      <div className="md:hidden">
-        <Alert className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-          <AlertDescription className="text-sm text-blue-900 dark:text-blue-100">
-            Scroll horizontally to see all comparison data
-          </AlertDescription>
-        </Alert>
-      </div>
-
-      {/* Responsive Table Container */}
-      <div className="border rounded-lg overflow-x-auto">
+      {/* Responsive Table Container — narrow metric column on mobile so the
+          first IPO's VALUES are visible (not just labels), with the same subtle
+          right-edge fade cue the list tables use instead of a blue banner (R21 #1). */}
+      <div className="relative">
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-8 rounded-r-lg bg-gradient-to-l from-background to-transparent md:hidden" />
+        <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="min-w-[180px] sticky left-0 bg-background z-10">
+              <TableHead className="min-w-[116px] sticky left-0 bg-background z-10 md:min-w-[180px]">
                 Metric
               </TableHead>
               {comparisonData.map((ipo) => (
-                <TableHead key={ipo.slug} className="min-w-[200px] text-center">
+                <TableHead key={ipo.slug} className="min-w-[150px] text-center md:min-w-[200px]">
                   <div className="font-semibold">{ipo.companyName}</div>
                   <Badge
                     variant={getStatusBadgeVariant(ipo.status)}
@@ -474,6 +468,7 @@ export function ComparisonTable({
             </TableRow>
           </TableBody>
         </Table>
+        </div>
       </div>
 
       {/* Legend */}
