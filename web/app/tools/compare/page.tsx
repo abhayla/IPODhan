@@ -231,9 +231,14 @@ function CompareIPOsContent() {
         </div>
       )}
 
-      {/* Info Section */}
-      <div className="bg-muted/50 border rounded-lg p-6 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-450 hover:shadow-lg transition-all hover:border-primary/50">
-        <h2 className="text-lg font-semibold">How to Use This Tool</h2>
+      {/* Info Section — collapsed by default so the comparison table is the
+          page's focus, not a wall of instructional prose (R36 #1) */}
+      <details className="group rounded-lg border bg-card">
+        <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm font-medium text-foreground">
+          How to use this tool
+          <span className="text-muted-foreground transition-transform group-open:rotate-180">⌄</span>
+        </summary>
+        <div className="space-y-4 border-t px-5 py-5">
         <div className="space-y-3 text-sm text-muted-foreground">
           <div>
             <h3 className="font-medium text-foreground mb-1">1. Select IPOs</h3>
@@ -270,7 +275,8 @@ function CompareIPOsContent() {
             <li>Consider all metrics together, not in isolation</li>
           </ul>
         </div>
-      </div>
+        </div>
+      </details>
     </div>
   );
 }
