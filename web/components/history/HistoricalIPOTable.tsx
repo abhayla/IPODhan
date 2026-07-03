@@ -93,17 +93,17 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
 
   const getSortIcon = (column: 'listing_date' | 'listing_gain' | 'subscription') => {
     if (filters.sort !== column) {
-      return <ArrowUpDown className="h-4 w-4 ml-1 inline opacity-40" />;
+      return <ArrowUpDown className="ml-1 inline h-3.5 w-3.5 opacity-40" />;
     }
     return filters.sortOrder === 'DESC' ? (
-      <ArrowDown className="h-4 w-4 ml-1 inline" />
+      <ArrowDown className="ml-1 inline h-3.5 w-3.5 text-cyan-300" />
     ) : (
-      <ArrowUp className="h-4 w-4 ml-1 inline" />
+      <ArrowUp className="ml-1 inline h-3.5 w-3.5 text-cyan-300" />
     );
   };
 
   // Levels.fyi-style header cell classes
-  const th = 'text-xs font-semibold text-white';
+  const th = 'whitespace-nowrap text-xs font-semibold text-white';
   const thSort = `${th} cursor-pointer transition-colors hover:bg-white/10`;
 
   return (

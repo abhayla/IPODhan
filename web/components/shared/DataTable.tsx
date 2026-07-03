@@ -184,11 +184,13 @@ export function DataTable<T extends Record<string, any>>({
   // ===== RENDER HELPERS =====
 
   const SortIcon = ({ field }: { field: string }) => {
-    if (sortField !== field) return <ArrowUpDown className="h-4 w-4 opacity-50" />;
+    // Inactive: dim. Active: a bright cyan caret that pops on the dark header
+    // so the sorted column is unmistakable (R14 active-sort-clarity gap).
+    if (sortField !== field) return <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />;
     return sortOrder === 'asc' ? (
-      <ArrowUp className="h-4 w-4" />
+      <ArrowUp className="h-3.5 w-3.5 text-cyan-300" />
     ) : (
-      <ArrowDown className="h-4 w-4" />
+      <ArrowDown className="h-3.5 w-3.5 text-cyan-300" />
     );
   };
 
