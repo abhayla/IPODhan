@@ -182,7 +182,7 @@ export function IPOListTable({
                     className="flex items-center gap-2 font-medium text-foreground hover:text-primary"
                   >
                     <MonogramChip name={ipo.companyName} />
-                    <span className="max-w-[130px] truncate hover:underline sm:max-w-[240px] md:max-w-[340px]">{ipo.companyName}</span>
+                    <span className="max-w-[110px] truncate hover:underline sm:max-w-[240px] md:max-w-[340px]">{ipo.companyName}</span>
                   </Link>
                 </TableCell>
                 <TableCell className="whitespace-nowrap">

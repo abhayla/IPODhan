@@ -181,11 +181,11 @@ export function ComparisonTable({
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="min-w-[116px] sticky left-0 bg-background z-10 md:min-w-[180px]">
+              <TableHead className="min-w-[96px] sticky left-0 bg-background z-10 md:min-w-[180px]">
                 Metric
               </TableHead>
               {comparisonData.map((ipo) => (
-                <TableHead key={ipo.slug} className="min-w-[150px] text-center md:min-w-[200px]">
+                <TableHead key={ipo.slug} className="min-w-[128px] text-center md:min-w-[200px]">
                   <div className="font-semibold">{ipo.companyName}</div>
                   <Badge
                     variant={getStatusBadgeVariant(ipo.status)}

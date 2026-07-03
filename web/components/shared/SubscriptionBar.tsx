@@ -6,19 +6,23 @@
  * eye reads "oversubscribed or not" before parsing the digits:
  *   < 1x  → amber (under-subscribed, weak demand)
  *   ≥ 1x  → green (fully/over-subscribed)
- * Bar fills to 100% at 5x (the retail-relevant saturation point); the exact
- * multiple is always printed alongside. Null → an honest em dash.
+ * Fill is LOG-scaled (R23 #3): a linear "full at 5x" bar made 14x and 205x look
+ * identical (both pinned full) — actively misleading on a trust number. Log10 to
+ * ~300x lets 14x (~45%) and 205x (~93%) read distinctly. Exact multiple always
+ * printed alongside; the number is the source of truth, the bar is the cue.
  */
 
-const SATURATION = 5; // x at which the bar is full
+// Full bar approached near ~300x; log-scaled so the whole 1x–300x range separates.
+const LOG_MAX = Math.log10(300);
 
 export function SubscriptionBar({ value }: { value: number | null | undefined }) {
   if (value === null || value === undefined) {
     return <span className="text-gray-400">—</span>;
   }
-  const fill = Math.min(Math.max(value, 0) / SATURATION, 1) * 100;
+  const v = Math.max(value, 0);
+  const fill = v <= 0 ? 0 : Math.min(Math.log10(v + 1) / LOG_MAX, 1) * 100;
   const oversubscribed = value >= 1;
-  const legend = `${value.toFixed(2)}x subscribed (bar fills at ${SATURATION}x; green = oversubscribed, amber = under)`;
+  const legend = `${value.toFixed(2)}x subscribed (log-scaled bar; green = oversubscribed, amber = under)`;
   return (
     <div className="flex items-center justify-end gap-2" title={legend}>
       {/* Quiet 5px track + muted fill — a data cue, not a shout (R18 #3) */}

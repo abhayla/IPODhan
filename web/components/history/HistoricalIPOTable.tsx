@@ -165,7 +165,7 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
                 i % 2 === 1 ? 'bg-[#FAFBFC]' : 'bg-white'
               }`}
             >
-              <TableCell className={`${stickyFirst} max-w-[160px] bg-inherit sm:max-w-[240px] md:max-w-none`}>
+              <TableCell className={`${stickyFirst} max-w-[120px] bg-inherit sm:max-w-[240px] md:max-w-none`}>
                 <Link href={`/ipos/${ipo.slug}`} className="group flex items-center gap-2.5">
                   <MonogramChip name={ipo.companyName} />
                   <span className="min-w-0">

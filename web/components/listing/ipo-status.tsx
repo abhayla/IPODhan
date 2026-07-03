@@ -66,12 +66,15 @@ const TONE: Record<DisplayStatus, { chip: string; dot: string }> = {
 export function IpoStatusChip({ ipo }: { ipo: StatusInput }) {
   const { status, label } = getDisplayStatus(ipo);
   const tone = TONE[status];
+  // On mobile the label text is hidden (dot only) so the value column has room to
+  // render its FULL number, not a clipped "+30" (R23 #2). Full chip returns at sm+.
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${tone.chip}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-1.5 py-0.5 text-xs font-medium sm:px-2 ${tone.chip}`}
+      title={label}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} aria-hidden />
-      {label}
+      <span className="hidden sm:inline">{label}</span>
     </span>
   );
 }
