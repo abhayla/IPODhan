@@ -20,6 +20,7 @@ import {
 } from '@/components/ui/table';
 import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import type { HistoricalIPO } from '@/lib/repositories/types';
+import { MonogramChip } from '@/components/shared/MonogramChip';
 import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
 
 interface HistoricalIPOTableProps {
@@ -139,12 +140,15 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
               }`}
             >
               <TableCell>
-                <Link href={`/ipos/${ipo.slug}`} className="group block">
-                  <span className="block font-medium text-gray-900 group-hover:text-primary group-hover:underline">
-                    {ipo.companyName}
-                  </span>
-                  <span className="block text-xs text-muted-foreground">
-                    {companySubline(ipo)}
+                <Link href={`/ipos/${ipo.slug}`} className="group flex items-center gap-2.5">
+                  <MonogramChip name={ipo.companyName} />
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-gray-900 group-hover:text-primary group-hover:underline">
+                      {ipo.companyName}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {companySubline(ipo)}
+                    </span>
                   </span>
                 </Link>
               </TableCell>

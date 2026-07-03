@@ -25,6 +25,7 @@ import {
 } from '@/components/shared/DataTable';
 import { MobileMetricCard, type CardField } from '@/components/shared/MobileMetricCard';
 import { SubscriptionBar } from '@/components/shared/SubscriptionBar';
+import { MonogramChip } from '@/components/shared/MonogramChip';
 import { Button } from '@/components/ui/button';
 import type { IPO } from '@/lib/db/types';
 import type { ListingGainsMap } from '@/lib/services/listing-gains-service';
@@ -104,9 +105,10 @@ function companyCol(): ColumnDef<IPO> {
       <Link
         href={`/ipos/${row.slug}`}
         title={value}
-        className="block max-w-[200px] truncate font-medium text-gray-900 hover:text-primary hover:underline"
+        className="flex items-center gap-2 font-medium text-gray-900 hover:text-primary"
       >
-        {value}
+        <MonogramChip name={value} />
+        <span className="max-w-[180px] truncate hover:underline">{value}</span>
       </Link>
     ),
   };

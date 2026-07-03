@@ -70,26 +70,28 @@ export default async function Home() {
         {/* TEMP: AffiliateCTAWrapper commented out - causes webpack error (Session 5) */}
         {/* <AffiliateCTAWrapper /> */}
 
-        {/* Hero — compact and data-first (spec H1): single-color title, one-line
-            sub, restrained CTAs; the persona came for tables, not marketing */}
-        <section className="container mx-auto px-4 py-6 md:py-8">
-          <div className="mx-auto max-w-3xl text-center">
-            <h1 className="text-2xl font-bold tracking-tight sm:text-3xl text-foreground">
-              India&apos;s IPO tracker — live subscription, GMP &amp; allotment
-            </h1>
-            <p className="mt-2 text-[15px] text-muted-foreground">
-              Real-time NSE &amp; BSE data on every mainboard and SME IPO, in one place.
-            </p>
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:justify-center">
+        {/* Hero — one-line data-first strip (blind-review lever: live tables at
+            pixel 1). Title left, CTAs right; the persona came for tables. */}
+        <section className="border-b">
+          <div className="container mx-auto flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">
+                India&apos;s IPO tracker — live subscription, GMP &amp; allotment
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Real-time NSE &amp; BSE data on every mainboard and SME IPO.
+              </p>
+            </div>
+            <div className="flex shrink-0 gap-2">
               <a
                 href="/dashboard"
-                className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                className="inline-flex h-9 items-center justify-center rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
               >
                 Browse IPOs
               </a>
               <a
                 href="/tools/lot-calculator"
-                className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-5 text-sm font-semibold transition-colors hover:bg-muted"
+                className="inline-flex h-9 items-center justify-center rounded-lg border bg-background px-4 text-sm font-semibold transition-colors hover:bg-muted"
               >
                 Lot Calculator
               </a>
@@ -98,9 +100,9 @@ export default async function Home() {
         </section>
 
         {/* IPO Tables Section — flat white, quiet title (spec G1/G2) */}
-        <section className="border-t py-10 md:py-12">
+        <section className="py-6">
           <div className="container mx-auto px-4">
-            <h2 className="mb-5 text-lg font-semibold text-foreground">
+            <h2 className="mb-4 text-lg font-semibold text-foreground">
               Latest IPO updates
             </h2>
             {/* TEMP: AsyncErrorBoundary commented out - causes webpack error (Session 5) */}

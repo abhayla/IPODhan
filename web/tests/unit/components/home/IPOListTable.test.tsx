@@ -365,10 +365,12 @@ describe('IPOListTable Component', () => {
       render(
         <IPOListTable title="Test Table" ipos={[mockOpenIPO]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />
       );
-      // exact accessible name matches only the desktop table link
+      // exact accessible name matches only the desktop table link (monogram is aria-hidden)
       const companyLink = screen.getByRole('link', { name: 'Currently Open IPO' });
       expect(companyLink.className).toMatch(/font-medium/);
-      expect(companyLink.className).toMatch(/truncate/);
+      // the name span (inside the link) carries the truncation
+      const nameSpan = companyLink.querySelector('span.truncate');
+      expect(nameSpan).toBeTruthy();
     });
 
     it('should apply responsive heading classes', () => {

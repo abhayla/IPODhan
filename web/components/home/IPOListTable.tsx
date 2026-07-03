@@ -29,6 +29,7 @@ import { formatPriceBand } from '@/lib/utils/kpi-formatters';
 import { IpoStatusChip } from '@/components/listing/ipo-status';
 import { MobileMetricCard } from '@/components/shared/MobileMetricCard';
 import { SubscriptionBar } from '@/components/shared/SubscriptionBar';
+import { MonogramChip } from '@/components/shared/MonogramChip';
 import { IPOTableSkeleton } from './IPOTableSkeleton';
 
 // ==================== TYPES ====================
@@ -173,9 +174,10 @@ export function IPOListTable({
                   <Link
                     href={`/ipos/${ipo.slug}`}
                     title={ipo.companyName}
-                    className="block max-w-[240px] truncate font-medium text-foreground hover:text-primary hover:underline"
+                    className="flex items-center gap-2 font-medium text-foreground hover:text-primary"
                   >
-                    {ipo.companyName}
+                    <MonogramChip name={ipo.companyName} />
+                    <span className="max-w-[220px] truncate hover:underline">{ipo.companyName}</span>
                   </Link>
                 </TableCell>
                 <TableCell className="whitespace-nowrap">
