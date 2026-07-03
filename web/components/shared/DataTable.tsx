@@ -289,27 +289,27 @@ export function DataTable<T extends Record<string, any>>({
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
-              {/* Header Row */}
-              <TableRow className="border-b border-border bg-gray-50/80">
+              {/* Header Row — dark, unified with the History table (one system) */}
+              <TableRow className="border-0 bg-[#232B35] hover:bg-[#232B35]">
                 {columns.map((column, colIndex) => (
                   <TableHead
                     key={column.key}
                     style={column.minWidth ? { minWidth: column.minWidth } : undefined}
                     className={cn(
-                      'whitespace-nowrap',
+                      'whitespace-nowrap text-xs font-semibold text-white',
                       column.className,
                       column.align === 'right' && 'text-right',
                       column.align === 'center' && 'text-center',
                       column.mobileHidden && 'hidden md:table-cell',
                       // first column stays visible while the table scrolls horizontally
-                      colIndex === 0 && 'sticky left-0 z-20 bg-inherit border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]'
+                      colIndex === 0 && 'sticky left-0 z-20 bg-inherit border-r border-white/10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]'
                     )}
                   >
                     {column.sortable !== false ? (
                       <button
                         onClick={() => handleSort(column.key)}
                         className={cn(
-                          'flex items-center gap-2 font-semibold hover:text-primary transition-colors',
+                          'flex items-center gap-2 font-semibold text-white transition-colors hover:text-white/80',
                           column.align === 'right' && 'ml-auto',
                           column.align === 'center' && 'mx-auto'
                         )}
@@ -317,7 +317,7 @@ export function DataTable<T extends Record<string, any>>({
                         {column.header} <SortIcon field={column.key} />
                       </button>
                     ) : (
-                      <span className="font-semibold">{column.header}</span>
+                      <span className="font-semibold text-white">{column.header}</span>
                     )}
                   </TableHead>
                 ))}
