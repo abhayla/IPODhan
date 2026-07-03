@@ -195,24 +195,20 @@ export function ComparisonTable({
               <span className="font-semibold leading-tight">{ipo.companyName}</span>
               <Badge variant={getStatusBadgeVariant(ipo.status)}>{ipo.status}</Badge>
             </div>
+            {/* Show the FULL metric set for mobile↔desktop parity (R33 #4) — a
+                comparison that silently drops metrics on mobile is degraded;
+                N/A values are muted so the populated ones still stand out. */}
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
-              {mobileMetrics
-                // Hide a metric on this card when it has no value — don't repeat
-                // 'N/A' 6× per card (R28 #8). Price/Lot/GMP/Rating always show.
-                .filter((m) => {
-                  const v = m.value(ipo);
-                  return !(v === 'N/A');
-                })
-                .map((m) => {
-                  const v = m.value(ipo);
-                  const muted = v === 'Not Rated';
-                  return (
-                    <div key={m.label} className="flex flex-col">
-                      <dt className="text-xs text-muted-foreground">{m.label}</dt>
-                      <dd className={cn('font-medium tabular-nums', muted && 'text-gray-400 font-normal')}>{v}</dd>
-                    </div>
-                  );
-                })}
+              {mobileMetrics.map((m) => {
+                const v = m.value(ipo);
+                const muted = v === 'N/A' || v === 'Not Rated';
+                return (
+                  <div key={m.label} className="flex flex-col">
+                    <dt className="text-xs text-muted-foreground">{m.label}</dt>
+                    <dd className={cn('font-medium tabular-nums', muted && 'text-gray-400 font-normal')}>{v}</dd>
+                  </div>
+                );
+              })}
             </dl>
           </div>
         ))}
