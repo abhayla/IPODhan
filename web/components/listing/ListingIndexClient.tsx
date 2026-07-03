@@ -81,9 +81,11 @@ function orDash(value: string) {
 }
 
 /** Muted second line: "Mainboard · Technology" (segment + sector when known). */
+// The page is already single-segment (Mainboard OR SME), so repeating the
+// segment on every row is pure noise (R21 #2). Show the sector, which varies
+// per row and adds value; nothing when it's absent.
 function companySubline(ipo: IPO): string {
-  const board = ipo.segment === 'SME' ? 'SME' : 'Mainboard';
-  return ipo.sector ? `${board} · ${ipo.sector}` : board;
+  return ipo.sector ?? '';
 }
 
 function companyCol(): ColumnDef<IPO> {
@@ -103,9 +105,11 @@ function companyCol(): ColumnDef<IPO> {
           <span className="block max-w-[300px] truncate font-medium group-hover:underline">
             {value}
           </span>
-          <span className="block truncate text-xs text-muted-foreground">
-            {companySubline(row)}
-          </span>
+          {companySubline(row) && (
+            <span className="block truncate text-xs text-muted-foreground">
+              {companySubline(row)}
+            </span>
+          )}
         </span>
       </Link>
     ),

@@ -111,7 +111,7 @@ export function IPOListTable({
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
         <IPOTableSkeleton />
       </div>
     );
@@ -121,7 +121,7 @@ export function IPOListTable({
   if (ipos.length === 0) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
         <div className="rounded-md border border-dashed bg-card">
           <div className="text-center py-10 px-4 text-muted-foreground text-sm">
             <p className="font-medium text-foreground mb-1">No active issues right now</p>
@@ -139,7 +139,7 @@ export function IPOListTable({
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
+      <h2 className="text-base font-semibold text-foreground">{title}</h2>
 
       {/* Desktop live table (spec H2): Status · Company | Price band | Open |
           Close | Subscription | GMP — the persona's #1 data. No row tints. */}

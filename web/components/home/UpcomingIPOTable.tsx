@@ -101,7 +101,7 @@ export function UpcomingIPOTable({
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
         <IPOTableSkeleton />
       </div>
     );
@@ -111,7 +111,7 @@ export function UpcomingIPOTable({
   if (ipos.length === 0) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
         <div className="rounded-md border border-dashed bg-card">
           <div className="text-center py-10 px-4 text-muted-foreground text-sm">
             <p className="font-medium text-foreground mb-1">Nothing filed yet</p>
@@ -130,7 +130,7 @@ export function UpcomingIPOTable({
   return (
     <div className="space-y-4">
       {/* Table Title - AC#1: Components render correctly */}
-      <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
+      <h2 className="text-base font-semibold text-foreground">{title}</h2>
 
       {/* AC#3: Tables are responsive and match reference design */}
       <div className="rounded-md border bg-card overflow-x-auto">

@@ -133,6 +133,9 @@ export function ListingGainsChart({
           // Center shows the REAL gain, not the 0-100 dial position — a bare
           // "40.9" over "+11.33%" reads as an orphaned number (R18 #2).
           valueFormatter={() => formatPercent(listingGainPercent)}
+          // Color by SIGN, not the rank band — a positive gain must read green,
+          // never orange/red (R21 #3, a semantic-color correctness fix).
+          valueColor={listingGainPercent >= 0 ? '#16a34a' : '#dc2626'}
           colorRanges={colorRanges}
           height={240}
         />
