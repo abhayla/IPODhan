@@ -36,7 +36,7 @@ import { formatIssueSizeCrores, formatIssueSizeCroresBare } from '@/lib/utils';
 import { formatIPODate, getAccessibleDate } from '@/lib/utils/date-formatter';
 import { formatPriceBand } from '@/lib/utils/kpi-formatters';
 import { IpoStatusChip, getDisplayStatus } from './ipo-status';
-import { ListingKpiRibbon } from './ListingKpiRibbon';
+import { ListingKpiRibbon, type RibbonCell } from './ListingKpiRibbon';
 
 const PAGE_SIZE = 25;
 
@@ -442,13 +442,41 @@ export function ListingIndexClient({
   const totalPages = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
   const pageRows = sortedRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
+  // Richer stat strip (R15 #20): pack 6 honest metrics vs the old 3-card row.
+  const listedGains = listedIpos
+    .map((i) => gainsMap[i.id]?.listingGainPercent)
+    .filter((g): g is number => g !== null && g !== undefined);
+  const avgGain =
+    listedGains.length > 0
+      ? listedGains.reduce((a, b) => a + b, 0) / listedGains.length
+      : null;
+  const totalRaisedCr = data.reduce((sum, ipo) => {
+    const n = ipo.issueSize ? parseFloat(ipo.issueSize) : 0;
+    const cr = n / 10000000;
+    return sum + (Number.isFinite(cr) && cr >= 0.01 && cr <= 100000 ? cr : 0);
+  }, 0);
+  const ribbonCells: RibbonCell[] = [
+    { label: 'Total IPOs', value: allTimeTotal },
+    { label: 'Open now', value: openIpos.length },
+    { label: 'Upcoming', value: upcomingIpos.length },
+    { label: `Listed ${initialYear}`, value: listedIpos.length },
+    {
+      label: 'Avg listing gain',
+      value: avgGain !== null ? `${avgGain >= 0 ? '+' : ''}${avgGain.toFixed(1)}%` : '—',
+      tone: avgGain === null ? 'default' : avgGain >= 0 ? 'gain' : 'loss',
+    },
+    {
+      label: 'Raised (₹ Cr)',
+      value:
+        totalRaisedCr > 0
+          ? totalRaisedCr.toLocaleString('en-IN', { maximumFractionDigits: 0 })
+          : '—',
+    },
+  ];
+
   return (
     <div className="space-y-5">
-      <ListingKpiRibbon
-        total={allTimeTotal}
-        open={openIpos.length}
-        upcoming={upcomingIpos.length}
-      />
+      <ListingKpiRibbon cells={ribbonCells} />
 
       <div className="flex justify-end">
         <DataFreshness asOf={asOf} />
