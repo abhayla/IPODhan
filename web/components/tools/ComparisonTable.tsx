@@ -162,6 +162,21 @@ export function ComparisonTable({
   const bestROCE = findBestValue(roces, true); // Higher is better
   const bestIndustryPE = findBestValue(industryPEs, false); // Lower is better (but informational)
 
+  // Collapse whole metric GROUPS when NO compared IPO has any value in them, so
+  // the table isn't a wall of N/A (R33/R34 #6) — financial ratios are structurally
+  // absent for pre-listing IPOs; subscription shows only once populated.
+  const anyVal = (vals: (number | null | undefined)[]) =>
+    vals.some((v) => v !== null && v !== undefined);
+  const hasAnySubscription = comparisonData.some((c) =>
+    anyVal([c.subscription.qib, c.subscription.nii, c.subscription.retail, c.subscription.total])
+  );
+  const hasAnyFinancials = comparisonData.some((c) =>
+    anyVal([
+      c.financials.peRatio, c.financials.roe, c.financials.eps, c.financials.revenueGrowth,
+      c.ipoFinancials?.pbRatio, c.ipoFinancials?.rocePercentage, c.ipoFinancials?.industryPe,
+    ])
+  );
+
   // Metric list drives the MOBILE stacked view (one card per IPO) — a side-by-side
   // table cannot fit 2-3 value columns on a 390px phone, so mobile stacks the IPOs
   // and lists each one's metrics (R24 #1). Desktop keeps the comparison table.
@@ -263,7 +278,8 @@ export function ComparisonTable({
               ))}
             </TableRow>
 
-            {/* Subscription - QIB */}
+            {/* Subscription group — hidden entirely when no compared IPO has it */}
+            {hasAnySubscription && (<>
             <TableRow>
               <TableCell className="sticky left-0 bg-background font-medium">
                 QIB Subscription
@@ -319,6 +335,7 @@ export function ComparisonTable({
                 </TableCell>
               ))}
             </TableRow>
+            </>)}
 
             {/* GMP (Highlighted) */}
             <TableRow>
@@ -341,7 +358,10 @@ export function ComparisonTable({
               ))}
             </TableRow>
 
-            {/* P/E Ratio (Highlighted - lower is better) */}
+            {/* Financial-ratio group — hidden when no compared IPO has any of
+                these (pre-listing IPOs structurally lack them) so the table isn't
+                a wall of N/A (R34 #6). */}
+            {hasAnyFinancials && (<>
             <TableRow>
               <TableCell className="sticky left-0 bg-background font-medium">
                 P/E Ratio
@@ -471,6 +491,7 @@ export function ComparisonTable({
                 </TableCell>
               ))}
             </TableRow>
+            </>)}
 
             {/* Rating (Highlighted) */}
             <TableRow>
