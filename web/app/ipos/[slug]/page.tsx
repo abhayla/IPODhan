@@ -265,10 +265,13 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   const hasCompanyOverview = Boolean(ipo.companyDescription);
   const hasDocuments = (documents?.length ?? 0) > 0;
 
+  const hasSubscriptions = (subscriptions?.length ?? 0) > 0;
+
   const pendingSections = [
     !hasIssueStructure && 'Issue structure',
     !hasScore && 'IPODhan score',
     !hasFinancials && 'Financials & KPIs',
+    !hasSubscriptions && 'Subscription',
     !hasGmpHistory && 'GMP trend',
     !hasBrokerReviews && 'Broker reviews',
     !hasPromoterHolding && 'Promoter holding',

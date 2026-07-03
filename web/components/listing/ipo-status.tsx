@@ -52,12 +52,15 @@ export function getDisplayStatus(ipo: StatusInput): StatusMeta {
   return { status: 'closed', label: 'Closed' };
 }
 
+// Every status carries a tonal chip so the column reads at a glance (R17 #7):
+// Open = live green, Closing soon = amber, Upcoming = accent blue,
+// Listed = completed/positive emerald, Closed = neutral gray.
 const TONE: Record<DisplayStatus, { chip: string; dot: string }> = {
   open: { chip: 'bg-green-50 text-green-700', dot: 'bg-green-600' },
   closingSoon: { chip: 'bg-amber-50 text-amber-700', dot: 'bg-amber-500' },
   upcoming: { chip: 'bg-primary/10 text-primary', dot: 'bg-primary' },
   closed: { chip: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' },
-  listed: { chip: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' },
+  listed: { chip: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
 };
 
 export function IpoStatusChip({ ipo }: { ipo: StatusInput }) {

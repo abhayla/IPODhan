@@ -135,8 +135,9 @@ export default function LotCalculatorPage() {
                 </div>
               </div>
 
-              {/* Example */}
-              <div className="rounded-lg border bg-accent/50 p-6">
+              {/* Example — quiet white card with a thin left-accent rule, not a
+                  saturated fill (R17 #3, the product's worst tonal offense) */}
+              <div className="rounded-lg border border-l-4 border-l-primary/50 bg-card p-6">
                 <h3 className="font-semibold">Example Calculation</h3>
                 <div className="mt-4 space-y-2 text-sm">
                   <p>
