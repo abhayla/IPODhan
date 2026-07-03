@@ -30,6 +30,7 @@ import { IpoStatusChip } from '@/components/listing/ipo-status';
 import { MobileMetricCard } from '@/components/shared/MobileMetricCard';
 import { SubscriptionBar } from '@/components/shared/SubscriptionBar';
 import { MonogramChip } from '@/components/shared/MonogramChip';
+import { GmpDisplay } from '@/components/shared/GmpDisplay';
 import { IPOTableSkeleton } from './IPOTableSkeleton';
 
 // ==================== TYPES ====================
@@ -62,23 +63,16 @@ function formatDate(dateString: string | null): string {
   }
 }
 
-/**
- * GMP cell: real grey-market premium (₹ + %), colored by sign. Null → em dash.
- * A positive premium is the bullish signal the persona scans for first.
- */
-function gmpCell(gmp: number | null, gmpPercent: number | null) {
-  if (gmp === null || gmp === undefined) return <span className="text-gray-400">—</span>;
-  const positive = gmp >= 0;
+/** GMP cell: rich display (₹ + %, trend arrow, sparkline, freshness). */
+function gmpCell(ipo: HomeIPOTableData) {
   return (
-    <span className={positive ? 'font-medium text-green-600' : 'font-medium text-red-600'}>
-      {positive ? '+' : ''}₹{gmp}
-      {gmpPercent !== null && gmpPercent !== undefined && (
-        <span className="ml-1 text-xs text-muted-foreground">
-          ({positive ? '+' : ''}
-          {gmpPercent.toFixed(1)}%)
-        </span>
-      )}
-    </span>
+    <GmpDisplay
+      gmp={ipo.gmp}
+      gmpPercent={ipo.gmpPercent}
+      gmpUpdatedAt={ipo.gmpUpdatedAt}
+      gmpTrend={ipo.gmpTrend}
+      gmpSeries={ipo.gmpSeries}
+    />
   );
 }
 
@@ -192,7 +186,7 @@ export function IPOListTable({
                   {subscriptionCell(ipo.totalSubscription)}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-right">
-                  {gmpCell(ipo.gmp, ipo.gmpPercent)}
+                  {gmpCell(ipo)}
                 </TableCell>
               </TableRow>
             ))}
@@ -212,7 +206,7 @@ export function IPOListTable({
               { label: 'Price band', value: formatPriceBand(ipo.priceMin, ipo.issuePrice) },
               { label: 'Open – Close', value: `${formatDate(ipo.openDate)} – ${formatDate(ipo.closeDate)}` },
               { label: 'Subscription', value: subscriptionCell(ipo.totalSubscription) },
-              { label: 'GMP', value: gmpCell(ipo.gmp, ipo.gmpPercent) },
+              { label: 'GMP', value: gmpCell(ipo) },
             ]}
           />
         ))}

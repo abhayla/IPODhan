@@ -171,9 +171,9 @@ describe('IPOListTable Component', () => {
           isLoading={false}
         />
       );
-      // GMP 50 (+50%) → "+₹50" and "(+50.0%)" — in table + mobile card
+      // GMP 50 (+50%) → "+₹50" and a "+50.0%" line — in table + mobile card
       expect(screen.getAllByText(/\+₹50/).length).toBeGreaterThan(0);
-      expect(screen.getAllByText(/\(\+50\.0%\)/).length).toBeGreaterThan(0);
+      expect(screen.getAllByText(/\+50\.0%/).length).toBeGreaterThan(0);
     });
 
     it('shows a negative GMP colored as loss', () => {

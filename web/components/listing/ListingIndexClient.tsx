@@ -26,6 +26,7 @@ import {
 import { MobileMetricCard, type CardField } from '@/components/shared/MobileMetricCard';
 import { SubscriptionBar } from '@/components/shared/SubscriptionBar';
 import { MonogramChip } from '@/components/shared/MonogramChip';
+import { GmpDisplay } from '@/components/shared/GmpDisplay';
 import { Button } from '@/components/ui/button';
 import type { IPO } from '@/lib/db/types';
 import type { ListingGainsMap } from '@/lib/services/listing-gains-service';
@@ -68,22 +69,6 @@ function subCell(sub: number | null | undefined) {
   return <SubscriptionBar value={sub} />;
 }
 
-/** GMP in ₹ (colored by sign) — real value or an honest em dash. */
-function gmpCell(gmp: number | null | undefined, gmpPercent: number | null | undefined) {
-  if (gmp === null || gmp === undefined) return <span className="text-gray-400">—</span>;
-  const positive = gmp >= 0;
-  return (
-    <span className={positive ? 'font-medium text-green-600' : 'font-medium text-red-600'}>
-      {positive ? '+' : ''}₹{gmp}
-      {gmpPercent !== null && gmpPercent !== undefined && (
-        <span className="ml-1 text-xs text-muted-foreground">
-          ({positive ? '+' : ''}
-          {gmpPercent.toFixed(1)}%)
-        </span>
-      )}
-    </span>
-  );
-}
 
 function dateCell(value: string | null) {
   if (!value) return <span className="text-gray-400">TBA</span>;
@@ -267,8 +252,18 @@ export function ListingIndexClient({
     sortable: true,
     searchable: false,
     align: 'right',
-    render: (_v, row) =>
-      gmpCell(liveMetricsMap[row.id]?.gmp, liveMetricsMap[row.id]?.gmpPercent),
+    render: (_v, row) => {
+      const m = liveMetricsMap[row.id];
+      return (
+        <GmpDisplay
+          gmp={m?.gmp}
+          gmpPercent={m?.gmpPercent}
+          gmpUpdatedAt={m?.gmpUpdatedAt}
+          gmpTrend={m?.gmpTrend}
+          gmpSeries={m?.gmpSeries}
+        />
+      );
+    },
   };
 
   const listingDateCol: ColumnDef<IPO> = {
@@ -379,7 +374,18 @@ export function ListingIndexClient({
         { label: 'Price band', value: band },
         { label: 'Open – Close', value: <>{dateCell(ipo.openDate)} – {dateCell(ipo.closeDate)}</> },
         { label: 'Subscription', value: subCell(liveMetricsMap[ipo.id]?.totalSubscription) },
-        { label: 'GMP', value: gmpCell(liveMetricsMap[ipo.id]?.gmp, liveMetricsMap[ipo.id]?.gmpPercent) },
+        {
+          label: 'GMP',
+          value: (
+            <GmpDisplay
+              gmp={liveMetricsMap[ipo.id]?.gmp}
+              gmpPercent={liveMetricsMap[ipo.id]?.gmpPercent}
+              gmpUpdatedAt={liveMetricsMap[ipo.id]?.gmpUpdatedAt}
+              gmpTrend={liveMetricsMap[ipo.id]?.gmpTrend}
+              gmpSeries={liveMetricsMap[ipo.id]?.gmpSeries}
+            />
+          ),
+        },
       ];
     }
     return [

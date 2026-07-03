@@ -35,6 +35,9 @@ export interface HomeIPOTableData {
   // Live metrics (spec H2) — REAL latest GMP + subscription, null when no data
   gmp: number | null; // grey market premium in ₹
   gmpPercent: number | null; // GMP as % of issue price
+  gmpUpdatedAt: string | null; // ISO timestamp of latest GMP snapshot
+  gmpTrend: 'up' | 'down' | 'flat' | null; // latest vs prior GMP
+  gmpSeries: number[]; // GMP values oldest→newest, for a sparkline
   totalSubscription: number | null; // total subscription multiple (x)
 }
 
@@ -73,6 +76,9 @@ function transformIPOData(ipo: IPO, metric?: LiveMetric): HomeIPOTableData {
     status: ipo.status,
     gmp: metric?.gmp ?? null,
     gmpPercent: metric?.gmpPercent ?? null,
+    gmpUpdatedAt: metric?.gmpUpdatedAt ?? null,
+    gmpTrend: metric?.gmpTrend ?? null,
+    gmpSeries: metric?.gmpSeries ?? [],
     totalSubscription: metric?.totalSubscription ?? null,
   };
 }
