@@ -129,7 +129,10 @@ export function ListingGainsChart({
           value={gaugeValue}
           min={0}
           max={100}
-          label={formatPercent(listingGainPercent)}
+          label="Listing gain"
+          // Center shows the REAL gain, not the 0-100 dial position — a bare
+          // "40.9" over "+11.33%" reads as an orphaned number (R18 #2).
+          valueFormatter={() => formatPercent(listingGainPercent)}
           colorRanges={colorRanges}
           height={240}
         />

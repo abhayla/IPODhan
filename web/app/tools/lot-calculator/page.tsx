@@ -66,24 +66,24 @@ export default function LotCalculatorPage() {
           </div>
         </div>
 
-        {/* Page Header */}
-        <div className="border-b bg-gradient-to-r from-primary/10 to-primary/5">
-          <div className="container mx-auto px-4 py-12">
-            <div className="max-w-3xl animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl bg-gradient-to-r from-foreground to-foreground/70 bg-clip-text text-transparent">
+        {/* Page Header — flat white to match every other page (R18 #8: the
+            gradient tint was a tonal outlier) */}
+        <div className="border-b bg-background">
+          <div className="container mx-auto px-4 py-8">
+            <div className="max-w-3xl">
+              <h1 className="text-2xl font-bold tracking-tight sm:text-3xl text-foreground">
                 IPO Lot Size Calculator
               </h1>
-              <p className="mt-4 text-lg text-muted-foreground animate-in fade-in slide-in-from-bottom-4 duration-700 delay-150">
-                Calculate how many lots you can buy with your investment amount.
-                Select an IPO, enter your investment, and get instant results with
-                total shares and amount breakdown.
+              <p className="mt-2 text-muted-foreground">
+                Calculate how many lots you can buy with your investment amount —
+                pick an IPO, enter an amount, and get lots, total shares, and cost.
               </p>
             </div>
           </div>
         </div>
 
         {/* Calculator */}
-        <div className="container mx-auto px-4 py-12">
+        <div className="container mx-auto px-4 py-8">
           <div className="mx-auto max-w-4xl">
             <LotCalculator mode="standalone" />
 

@@ -385,7 +385,9 @@ export function DataTable<T extends Record<string, any>>({
                       className={cn(
                         'whitespace-nowrap',
                         column.className,
-                        column.align === 'right' && 'text-right',
+                        // Right-aligned columns are numeric → monospaced figures so
+                        // decimals/₹ align down the column (R18 #5, Levels-grade).
+                        column.align === 'right' && 'text-right tabular-nums',
                         column.align === 'center' && 'text-center',
                         column.mobileHidden && 'hidden md:table-cell',
                         colIndex === 0 &&
