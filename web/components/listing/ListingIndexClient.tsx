@@ -116,7 +116,11 @@ function companyCol(): ColumnDef<IPO> {
         {/* Status as a dot on mobile (the standalone Status column is hidden < md
             so a value column leads the horizontal scroll) — R27 #1 */}
         <StatusDot ipo={row} className="md:hidden" />
-        <MonogramChip name={value} />
+        {/* Monogram is desktop-only — on the narrow mobile pinned cell the status
+            dot + name are the signal; the avatar just costs name width (R32 #1). */}
+        <span className="hidden shrink-0 sm:inline-flex">
+          <MonogramChip name={value} />
+        </span>
         <span className="min-w-0">
           {/* Uniform 2-line cell (R28 #4): name (single-line truncate, full name
               via tooltip) over an always-present sub-label → dense + even rows. */}
