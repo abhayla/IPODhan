@@ -169,7 +169,7 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
                 <Link href={`/ipos/${ipo.slug}`} className="group flex items-center gap-2.5">
                   <MonogramChip name={ipo.companyName} />
                   <span className="min-w-0">
-                    <span className="block truncate font-medium text-gray-900 group-hover:text-primary group-hover:underline">
+                    <span className="block font-medium leading-tight text-gray-900 line-clamp-2 group-hover:text-primary group-hover:underline md:truncate">
                       {ipo.companyName}
                     </span>
                     <span className="block text-xs text-muted-foreground">

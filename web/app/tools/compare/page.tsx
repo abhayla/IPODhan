@@ -54,12 +54,19 @@ function CompareIPOsContent() {
     if (searchParams.get('ipos')) return;
     if (typeof window !== 'undefined' && sessionStorage.getItem(SESSION_STORAGE_KEY)) return;
     seededDefaultRef.current = true;
-    setSelectedSlugs(availableIPOs.slice(0, 2).map((ipo) => ipo.slug));
+    // Prefer CLOSED IPOs for the default pair — they carry real subscription/GMP
+    // data (subscription has completed), so the demo isn't a wall of N/A (R25 #3).
+    const rank = (s: string) => (s === 'CLOSED' ? 0 : s === 'OPEN' ? 1 : 2);
+    const seed = [...availableIPOs]
+      .sort((a, b) => rank(a.status) - rank(b.status))
+      .slice(0, 2);
+    setSelectedSlugs(seed.map((ipo) => ipo.slug));
   }, [availableIPOs, selectedSlugs.length, searchParams]);
 
   /**
-   * Fetch available IPOs on mount
-   * Only OPEN, UPCOMING, CLOSED statuses allowed for comparison
+   * Fetch available IPOs on mount. Only OPEN/UPCOMING/CLOSED are comparable
+   * (the compare API rejects LISTED); the default seed prefers CLOSED, which
+   * carry real subscription/GMP data, so the demo isn't a wall of N/A (R25 #3).
    */
   React.useEffect(() => {
     async function fetchAvailableIPOs() {

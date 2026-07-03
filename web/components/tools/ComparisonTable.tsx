@@ -255,7 +255,7 @@ export function ComparisonTable({
               </TableCell>
               {comparisonData.map((ipo) => (
                 <TableCell key={ipo.slug} className="text-center">
-                  {ipo.lotSize} shares
+                  {ipo.lotSize ? `${ipo.lotSize} shares` : <span className="text-gray-400">—</span>}
                 </TableCell>
               ))}
             </TableRow>
