@@ -31,7 +31,7 @@ import { Button } from '@/components/ui/button';
 import type { IPO } from '@/lib/db/types';
 import type { ListingGainsMap } from '@/lib/services/listing-gains-service';
 import type { LiveMetricsMap } from '@/lib/services/live-metrics-service';
-import { formatIssueSizeCrores } from '@/lib/utils';
+import { formatIssueSizeCrores, formatIssueSizeCroresBare } from '@/lib/utils';
 import { formatIPODate, getAccessibleDate } from '@/lib/utils/date-formatter';
 import { formatPriceBand } from '@/lib/utils/kpi-formatters';
 import { IpoStatusChip, getDisplayStatus } from './ipo-status';
@@ -114,6 +114,7 @@ const openCol: ColumnDef<IPO> = {
   sortable: true,
   searchable: false,
   align: 'right',
+    className: 'tabular-nums',
   render: (v) => dateCell(v),
 };
 
@@ -123,6 +124,7 @@ const closeCol: ColumnDef<IPO> = {
   sortable: true,
   searchable: false,
   align: 'right',
+    className: 'tabular-nums',
   render: (v) => dateCell(v),
 };
 
@@ -132,17 +134,20 @@ const priceBandCol: ColumnDef<IPO> = {
   sortable: true,
   searchable: false,
   align: 'right',
+  className: 'tabular-nums',
   render: (_v, row) => orDash(formatPriceBand(row.priceRangeMin, row.priceRangeMax)),
 };
 
+// Unit ("₹ Cr") lives in the header so the value column is a clean numeric ruler.
 const issueSizeCol: ColumnDef<IPO> = {
   key: 'issueSize',
-  header: 'Issue size',
+  header: 'Issue size (₹ Cr)',
   sortable: true,
   searchable: false,
   align: 'right',
   mobileHidden: true,
-  render: (v) => orDash(formatIssueSizeCrores(v)),
+  className: 'tabular-nums',
+  render: (v) => orDash(formatIssueSizeCroresBare(v)),
 };
 
 export function ListingIndexClient({
@@ -232,6 +237,7 @@ export function ListingIndexClient({
     sortable: true,
     searchable: false,
     align: 'right',
+    className: 'tabular-nums',
     render: (_v, row) => gainCell(gainsMap[row.id]?.listingGainPercent),
   };
 
@@ -272,6 +278,7 @@ export function ListingIndexClient({
     sortable: true,
     searchable: false,
     align: 'right',
+    className: 'tabular-nums',
     mobileHidden: true,
     render: (v) => dateCell(v),
   };

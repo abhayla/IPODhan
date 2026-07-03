@@ -177,11 +177,11 @@ export function IPOListTable({
                 <TableCell className="whitespace-nowrap">
                   <IpoStatusChip ipo={ipo} />
                 </TableCell>
-                <TableCell className="whitespace-nowrap text-right">
+                <TableCell className="whitespace-nowrap text-right tabular-nums">
                   {formatPriceBand(ipo.priceMin, ipo.issuePrice)}
                 </TableCell>
-                <TableCell className="whitespace-nowrap">{formatDate(ipo.openDate)}</TableCell>
-                <TableCell className="whitespace-nowrap">{formatDate(ipo.closeDate)}</TableCell>
+                <TableCell className="whitespace-nowrap tabular-nums">{formatDate(ipo.openDate)}</TableCell>
+                <TableCell className="whitespace-nowrap tabular-nums">{formatDate(ipo.closeDate)}</TableCell>
                 <TableCell className="whitespace-nowrap text-right">
                   {subscriptionCell(ipo.totalSubscription)}
                 </TableCell>

@@ -38,3 +38,17 @@ export function formatIssueSizeCrores(rupees: number | string | null | undefined
   if (crores < 0.01 || crores > 100000) return 'N/A';
   return `₹${crores.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Crores`;
 }
+
+/**
+ * Bare crores value (no "₹"/"Crores" suffix) for dense tables that carry the
+ * unit in the column header instead of repeating it every row — the numeral
+ * treatment that gives Screener its clean vertical ruler. Same plausibility
+ * bounds as formatIssueSizeCrores.
+ */
+export function formatIssueSizeCroresBare(rupees: number | string | null | undefined): string {
+  const n = typeof rupees === 'string' ? parseFloat(rupees) : rupees;
+  if (n === null || n === undefined || !Number.isFinite(n) || n <= 0) return 'N/A';
+  const crores = n / RUPEES_PER_CRORE;
+  if (crores < 0.01 || crores > 100000) return 'N/A';
+  return crores.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}

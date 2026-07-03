@@ -40,8 +40,13 @@ export function GmpDisplay({
   const positive = gmp >= 0;
   const freshness = gmpUpdatedAt ? ago(gmpUpdatedAt) : '';
 
+  // Freshness moves to a tooltip so the cell reads clean (value+trend / %),
+  // not a 4-signal jumble (blind-review R12 #2).
   return (
-    <div className="flex flex-col items-end gap-0.5">
+    <div
+      className="flex flex-col items-end gap-0.5 tabular-nums"
+      title={freshness ? `GMP updated ${freshness}` : undefined}
+    >
       <div className="flex items-center gap-1.5">
         {gmpSeries && gmpSeries.length >= 2 && <Sparkline values={gmpSeries} />}
         <span className={positive ? 'font-medium text-green-600' : 'font-medium text-red-600'}>
@@ -50,22 +55,12 @@ export function GmpDisplay({
         {gmpTrend === 'up' && <ArrowUp className="h-3 w-3 text-green-600" aria-label="rising" />}
         {gmpTrend === 'down' && <ArrowDown className="h-3 w-3 text-red-600" aria-label="falling" />}
       </div>
-      {(gmpPercent !== null && gmpPercent !== undefined) || freshness ? (
+      {gmpPercent !== null && gmpPercent !== undefined && (
         <div className="text-xs text-muted-foreground">
-          {gmpPercent !== null && gmpPercent !== undefined && (
-            <span>
-              {positive ? '+' : ''}
-              {gmpPercent.toFixed(1)}%
-            </span>
-          )}
-          {freshness && (
-            <span>
-              {gmpPercent !== null && gmpPercent !== undefined ? ' · ' : ''}
-              {freshness}
-            </span>
-          )}
+          {positive ? '+' : ''}
+          {gmpPercent.toFixed(1)}%
         </div>
-      ) : null}
+      )}
     </div>
   );
 }
