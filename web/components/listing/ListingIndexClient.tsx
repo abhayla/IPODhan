@@ -80,6 +80,12 @@ function orDash(value: string) {
   return value === 'N/A' ? <span className="text-gray-400">—</span> : value;
 }
 
+/** Muted second line: "Mainboard · Technology" (segment + sector when known). */
+function companySubline(ipo: IPO): string {
+  const board = ipo.segment === 'SME' ? 'SME' : 'Mainboard';
+  return ipo.sector ? `${board} · ${ipo.sector}` : board;
+}
+
 function companyCol(): ColumnDef<IPO> {
   return {
     key: 'companyName',
@@ -90,10 +96,17 @@ function companyCol(): ColumnDef<IPO> {
       <Link
         href={`/ipos/${row.slug}`}
         title={value}
-        className="flex items-center gap-2 font-medium text-gray-900 hover:text-primary"
+        className="group flex items-center gap-2.5 text-gray-900 hover:text-primary"
       >
         <MonogramChip name={value} />
-        <span className="max-w-[300px] truncate hover:underline">{value}</span>
+        <span className="min-w-0">
+          <span className="block max-w-[300px] truncate font-medium group-hover:underline">
+            {value}
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {companySubline(row)}
+          </span>
+        </span>
       </Link>
     ),
   };

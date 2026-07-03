@@ -290,7 +290,7 @@ export function DataTable<T extends Record<string, any>>({
           <Table>
             <TableHeader>
               {/* Header Row */}
-              <TableRow>
+              <TableRow className="border-b border-border bg-gray-50/80">
                 {columns.map((column, colIndex) => (
                   <TableHead
                     key={column.key}
@@ -302,7 +302,7 @@ export function DataTable<T extends Record<string, any>>({
                       column.align === 'center' && 'text-center',
                       column.mobileHidden && 'hidden md:table-cell',
                       // first column stays visible while the table scrolls horizontally
-                      colIndex === 0 && 'sticky left-0 z-20 bg-white border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]'
+                      colIndex === 0 && 'sticky left-0 z-20 bg-inherit border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]'
                     )}
                   >
                     {column.sortable !== false ? (
@@ -361,8 +361,11 @@ export function DataTable<T extends Record<string, any>>({
             </TableHeader>
 
             <TableBody>
-              {displayData.map((row) => (
-                <TableRow key={keyExtractor(row)}>
+              {displayData.map((row, rowIndex) => (
+                <TableRow
+                  key={keyExtractor(row)}
+                  className={cn('hover:bg-primary/5', rowIndex % 2 === 1 && 'bg-[#FAFBFC]')}
+                >
                   {columns.map((column, colIndex) => (
                     <TableCell
                       key={column.key}
@@ -373,7 +376,7 @@ export function DataTable<T extends Record<string, any>>({
                         column.align === 'center' && 'text-center',
                         column.mobileHidden && 'hidden md:table-cell',
                         colIndex === 0 &&
-                          'sticky left-0 z-10 bg-white border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)] max-w-[320px] overflow-hidden text-ellipsis'
+                          'sticky left-0 z-10 bg-inherit border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)] max-w-[320px] overflow-hidden text-ellipsis'
                       )}
                     >
                       {column.render ? column.render(row[column.key], row) : row[column.key]}
