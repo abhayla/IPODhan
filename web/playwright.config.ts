@@ -77,11 +77,15 @@ export default defineConfig({
     },
   ],
 
-  /* Run your local dev server before starting the tests */
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:3000',
-    reuseExistingServer: !process.env.CI,
-    timeout: 120000,
-  },
+  /* Run a local dev server before the tests — EXCEPT for prod-verify, which
+     targets the live site (PROD_BASE_URL) with absolute URLs and must not boot a
+     local server (that caused a 120s webServer timeout — #101). */
+  webServer: process.env.PROD_BASE_URL
+    ? undefined
+    : {
+        command: 'npm run dev',
+        url: 'http://localhost:3000',
+        reuseExistingServer: !process.env.CI,
+        timeout: 120000,
+      },
 });
