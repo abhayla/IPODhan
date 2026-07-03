@@ -321,43 +321,47 @@ export function ListingIndexClient({
     { key: 'all', label: 'All', rows: data },
   ];
 
-  // Open IPOs are live — surface Min-invest + GMP + subscription (decision data).
+  // Column ORDER = value-first (R22 #1): the money column the persona came for
+  // sits right after Company/Status so it is visible on mobile (where the table
+  // scrolls under the pinned Company column) — not buried last off-screen.
+  // Open IPOs are live → GMP + subscription are the decision data.
   const openColumns: ColumnDef<IPO>[] = [
     companyCol(),
     statusCol,
-    openCol,
-    closeCol,
+    gmpColumn,
+    subColumn,
     priceBandCol,
     minInvestCol,
-    subColumn,
-    gmpColumn,
+    openCol,
+    closeCol,
   ];
-  // Upcoming IPOs are not open yet — no live subscription; show min-invest + size.
+  // Upcoming IPOs are not open yet — the open date + price band are what matters.
   const upcomingColumns: ColumnDef<IPO>[] = [
     companyCol(),
     statusCol,
     openCol,
-    closeCol,
     priceBandCol,
     minInvestCol,
+    closeCol,
     issueSizeCol,
   ];
+  // Listed → the listing gain is the headline; lead with it.
   const listedColumns: ColumnDef<IPO>[] = [
     companyCol(),
+    gainColumn,
     listingDateCol,
     priceBandCol,
     issueSizeCol,
-    gainColumn,
   ];
   const allColumns: ColumnDef<IPO>[] = [
     companyCol(),
     statusCol,
-    openCol,
-    closeCol,
+    gainColumn,
     listingDateCol,
     priceBandCol,
+    openCol,
+    closeCol,
     issueSizeCol,
-    gainColumn,
   ];
 
   const columnsFor: Record<TabKey, ColumnDef<IPO>[]> = {
