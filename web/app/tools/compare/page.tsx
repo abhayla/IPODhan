@@ -39,6 +39,23 @@ function CompareIPOsContent() {
   const [comparisonData, setComparisonData] = React.useState<ComparisonResponse['comparisons']>([]);
   const [isLoadingComparison, setIsLoadingComparison] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  // One-time guard so a default selection is seeded exactly once and never
+  // fights the user clearing their picks (R20 #7).
+  const seededDefaultRef = React.useRef(false);
+
+  /**
+   * Seed a default 2-IPO comparison on landing so the tool DEMONSTRATES its
+   * value (the side-by-side metric grid) instead of showing an empty state.
+   * Only when nothing came from the URL or session, and only once.
+   */
+  React.useEffect(() => {
+    if (seededDefaultRef.current) return;
+    if (availableIPOs.length < 2 || selectedSlugs.length > 0) return;
+    if (searchParams.get('ipos')) return;
+    if (typeof window !== 'undefined' && sessionStorage.getItem(SESSION_STORAGE_KEY)) return;
+    seededDefaultRef.current = true;
+    setSelectedSlugs(availableIPOs.slice(0, 2).map((ipo) => ipo.slug));
+  }, [availableIPOs, selectedSlugs.length, searchParams]);
 
   /**
    * Fetch available IPOs on mount
