@@ -376,12 +376,15 @@ export function ListingIndexClient({
     priceBandCol,
     issueSizeCol,
   ];
+  // 'All' is status-mixed → lead the mobile scroll with Price band, which is
+  // ALWAYS populated (Listing gain is em-dash for every not-yet-listed row, so
+  // leading with it left the first scroll column mostly empty — R34 #1).
   const allColumns: ColumnDef<IPO>[] = [
     companyCol(),
     statusCol,
+    priceBandCol,
     gainColumn,
     listingDateCol,
-    priceBandCol,
     openCol,
     closeCol,
     issueSizeCol,
