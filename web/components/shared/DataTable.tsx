@@ -287,7 +287,9 @@ export function DataTable<T extends Record<string, any>>({
       {/* ===== TABLE ===== */}
       <div className="border rounded-lg overflow-hidden">
         <div className="overflow-x-auto">
-          <Table>
+          {/* Compact "data terminal" rhythm — tighter than the default h-10/p-2 */}
+          <Table className="[&_td]:py-1.5 [&_th]:h-9">
+
             <TableHeader>
               {/* Header Row — dark, unified with the History table (one system) */}
               <TableRow className="border-0 bg-[#232B35] hover:bg-[#232B35]">

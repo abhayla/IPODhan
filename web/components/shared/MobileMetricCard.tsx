@@ -38,9 +38,7 @@ export function MobileMetricCard({
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1.5">
         {fields.map((f) => (
           <div key={f.label} className="flex flex-col">
-            <dt className="text-[11px] font-medium uppercase tracking-wide text-gray-400">
-              {f.label}
-            </dt>
+            <dt className="text-[11px] font-normal text-gray-400">{f.label}</dt>
             <dd className="text-sm tabular-nums text-gray-800">{f.value}</dd>
           </div>
         ))}

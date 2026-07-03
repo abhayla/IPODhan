@@ -143,7 +143,7 @@ export function IPOListTable({
       {/* Desktop live table (spec H2): Status · Company | Price band | Open |
           Close | Subscription | GMP — the persona's #1 data. No row tints. */}
       <div className="hidden rounded-md border bg-card md:block">
-        <Table aria-label={title} className="min-w-full [&_td]:px-2 [&_th]:px-2">
+        <Table aria-label={title} className="min-w-full [&_td]:px-2 [&_td]:py-1.5 [&_th]:px-2 [&_th]:h-9">
           <TableHeader>
             {/* Dark header — unified with the History + listing tables (one system) */}
             <TableRow className="border-0 bg-[#232B35] hover:bg-[#232B35] [&>th]:text-xs [&>th]:font-semibold [&>th]:text-white">

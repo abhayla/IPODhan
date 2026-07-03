@@ -108,7 +108,7 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
 
   return (
     <div className="overflow-hidden rounded-lg border border-border">
-      <Table>
+      <Table className="[&_td]:py-1.5 [&_th]:h-9">
         <TableHeader>
           <TableRow className="border-0 bg-[#232B35] hover:bg-[#232B35]">
             <TableHead className={th}>Company</TableHead>
