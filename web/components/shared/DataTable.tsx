@@ -394,7 +394,7 @@ export function DataTable<T extends Record<string, any>>({
                         column.align === 'center' && 'text-center',
                         column.mobileHidden && 'hidden md:table-cell',
                         colIndex === 0 &&
-                          'sticky left-0 z-10 bg-inherit border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)] max-w-[128px] whitespace-normal sm:max-w-[240px] md:max-w-[320px] md:whitespace-nowrap'
+                          'sticky left-0 z-10 bg-inherit border-r shadow-[3px_0_5px_-2px_rgba(0,0,0,0.12)] max-w-[144px] overflow-hidden text-ellipsis whitespace-nowrap sm:max-w-[240px] md:max-w-[320px]'
                       )}
                     >
                       {column.render ? column.render(row[column.key], row) : row[column.key]}

@@ -139,7 +139,7 @@ export function AllotmentCheckerCard({
         <Button
           onClick={handleCheckStatus}
           disabled={pan.length !== 10 || !!error || isChecking}
-          className="w-full transition-all duration-300 hover:shadow-md hover:scale-[1.02] disabled:opacity-50 disabled:cursor-not-allowed bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800"
+          className="w-full bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isChecking ? (
             <>
@@ -154,9 +154,9 @@ export function AllotmentCheckerCard({
           )}
         </Button>
 
-        <Alert className="border-indigo-200 bg-indigo-50 dark:bg-indigo-950/20 dark:border-indigo-800">
-          <ShieldCheck className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
-          <AlertDescription className="text-sm font-medium text-indigo-900 dark:text-indigo-100">
+        <Alert className="bg-muted/50">
+          <ShieldCheck className="h-4 w-4 text-muted-foreground" />
+          <AlertDescription className="text-sm text-muted-foreground">
             Your PAN is not stored. You will be redirected to the official
             registrar website to check your allotment status.
           </AlertDescription>
