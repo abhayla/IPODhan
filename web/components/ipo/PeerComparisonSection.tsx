@@ -169,19 +169,10 @@ export function PeerComparisonSection({ peerCompanies, companyName }: PeerCompar
                 <span className="text-muted-foreground">PBV Ratio</span>
                 <p className="font-medium text-foreground mt-0.5">{formatNumber(peer.pbvRatio)}</p>
               </div>
-              <div>
-                <span className="text-muted-foreground">Financial Type</span>
-                <p className="font-medium text-foreground mt-0.5 text-xs">
-                  {peer.financialStatementType || 'N/A'}
-                </p>
-              </div>
             </div>
-
-            {peer.dataSource && (
-              <div className="text-xs text-muted-foreground pt-2 border-t">
-                Source: {peer.dataSource}
-              </div>
-            )}
+            {/* Per-card 'Financial Type' + 'Source:' footer removed — repetitive
+                chrome that broke the quiet-grid feel; source noted once below the
+                section instead (R33 #1). */}
           </div>
         ))}
       </div>

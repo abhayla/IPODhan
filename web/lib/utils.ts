@@ -32,5 +32,23 @@ export function formatIssueSizeCrores(rupees: number | string | null | undefined
   const n = typeof rupees === 'string' ? parseFloat(rupees) : rupees;
   if (n === null || n === undefined || !Number.isFinite(n) || n <= 0) return 'N/A';
   const crores = n / RUPEES_PER_CRORE;
+  // Plausibility bounds: an Indian IPO issue size below ₹0.01 Cr or above
+  // ₹1,00,000 Cr is a wrong-unit/corrupt row (34 such rows in prod, 2026-07-02)
+  // — render N/A rather than an absurd number the user might trust.
+  if (crores < 0.01 || crores > 100000) return 'N/A';
   return `₹${crores.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} Crores`;
+}
+
+/**
+ * Bare crores value (no "₹"/"Crores" suffix) for dense tables that carry the
+ * unit in the column header instead of repeating it every row — the numeral
+ * treatment that gives Screener its clean vertical ruler. Same plausibility
+ * bounds as formatIssueSizeCrores.
+ */
+export function formatIssueSizeCroresBare(rupees: number | string | null | undefined): string {
+  const n = typeof rupees === 'string' ? parseFloat(rupees) : rupees;
+  if (n === null || n === undefined || !Number.isFinite(n) || n <= 0) return 'N/A';
+  const crores = n / RUPEES_PER_CRORE;
+  if (crores < 0.01 || crores > 100000) return 'N/A';
+  return crores.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }

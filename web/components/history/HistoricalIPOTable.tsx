@@ -18,9 +18,10 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { Badge } from '@/components/ui/badge';
 import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import type { HistoricalIPO } from '@/lib/repositories/types';
+import { MonogramChip } from '@/components/shared/MonogramChip';
+import { useRouter } from 'next/navigation';
 import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
 
 interface HistoricalIPOTableProps {
@@ -54,7 +55,7 @@ const formatListingGain = (gain: number) => {
   const sign = isPositive ? '+' : '';
 
   return (
-    <span className={`font-semibold ${color} flex items-center gap-1`}>
+    <span className={`inline-flex items-center justify-end gap-1 font-semibold tabular-nums ${color}`}>
       {icon}
       {sign}
       {gain.toFixed(2)}%
@@ -62,8 +63,28 @@ const formatListingGain = (gain: number) => {
   );
 };
 
+/** Muted second line under the company name: "Mainboard · Jul 2026". */
+const companySubline = (ipo: HistoricalIPO): string => {
+  const board = ipo.segment === 'SME' ? 'SME' : 'Mainboard';
+  const when = ipo.listingDate ? format(new Date(ipo.listingDate), 'MMM yyyy') : `${ipo.year}`;
+  return `${board} · ${when}`;
+};
+
 export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
+  const router = useRouter();
   const { filters, setSort } = useHistoricalFilters();
+
+  // Columns that are empty for EVERY visible row are dropped — a column of
+  // pure N/A advertises missing data on each record (2026-07-02 blind review)
+  const hasSector = ipos.some((ipo) => Boolean(ipo.sector));
+  const hasSubscription = ipos.some(
+    (ipo) => ipo.subscriptionOverall !== null && ipo.subscriptionOverall !== undefined
+  );
+  // Current price/gain only when at least one visible row has it (else drop the
+  // pair rather than show a column of em dashes — the ledger's own rule).
+  const hasCurrent = ipos.some(
+    (ipo) => ipo.currentPriceLive !== null && ipo.currentPriceLive !== undefined
+  );
 
   const handleSort = (column: 'listing_date' | 'listing_gain' | 'subscription') => {
     // Toggle sort order if clicking the same column
@@ -74,82 +95,126 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
 
   const getSortIcon = (column: 'listing_date' | 'listing_gain' | 'subscription') => {
     if (filters.sort !== column) {
-      return <ArrowUpDown className="h-4 w-4 ml-1 inline opacity-40" />;
+      return <ArrowUpDown className="ml-1 inline h-3.5 w-3.5 opacity-40" />;
     }
     return filters.sortOrder === 'DESC' ? (
-      <ArrowDown className="h-4 w-4 ml-1 inline" />
+      <ArrowDown className="ml-1 inline h-3 w-3 text-gray-800" />
     ) : (
-      <ArrowUp className="h-4 w-4 ml-1 inline" />
+      <ArrowUp className="ml-1 inline h-3 w-3 text-gray-800" />
     );
   };
 
+  // Screener/Levels-style quiet header cell classes (R16 #1)
+  const th = 'whitespace-nowrap border-b border-border text-[11px] font-medium uppercase tracking-wider text-gray-500';
+  const thSort = `${th} cursor-pointer transition-colors hover:text-gray-800`;
+
+  // Company column stays pinned while the rest scrolls horizontally on mobile
+  // (Levels/Screener pattern, R19 #1) — one table system at every breakpoint.
+  const stickyFirst =
+    'sticky left-0 z-20 border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]';
+
   return (
-    <div className="border rounded-lg overflow-hidden">
-      <Table>
+    <div className="relative">
+      {/* Right-edge shadow — dark gradient reads as 'more columns →' (R29 #1) */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-30 w-8 rounded-r-lg bg-gradient-to-l from-black/25 via-black/[0.06] to-transparent md:hidden" />
+      <div className="overflow-x-auto rounded-lg border border-border">
+      <Table className="[&_td]:py-1.5 [&_th]:h-9">
         <TableHeader>
-          <TableRow className="bg-muted/50">
-            <TableHead className="font-semibold">Company Name</TableHead>
-            <TableHead className="font-semibold">Sector</TableHead>
-            <TableHead
-              className="font-semibold cursor-pointer hover:bg-muted/80 transition-colors"
-              onClick={() => handleSort('listing_date')}
-            >
-              Listing Date
+          <TableRow className="border-0 bg-gray-50 hover:bg-gray-50">
+            <TableHead className={`${th} ${stickyFirst} bg-gray-50`}>Company</TableHead>
+            {/* Lead the mobile scroll with Listing date — ALWAYS populated (gain
+                is em-dash for the newest not-yet-settled rows). Gain follows (R35 #3). */}
+            <TableHead className={thSort} onClick={() => handleSort('listing_date')}>
+              Listing date
               {getSortIcon('listing_date')}
             </TableHead>
-            <TableHead className="font-semibold text-right">Issue Price</TableHead>
-            <TableHead className="font-semibold text-right">Listing Price</TableHead>
             <TableHead
-              className="font-semibold cursor-pointer hover:bg-muted/80 transition-colors text-right"
+              className={`${thSort} text-right`}
               onClick={() => handleSort('listing_gain')}
             >
-              Listing Gain %
-              {getSortIcon('listing_gain')}
+              Listing gain %{getSortIcon('listing_gain')}
             </TableHead>
-            <TableHead
-              className="font-semibold cursor-pointer hover:bg-muted/80 transition-colors text-right"
-              onClick={() => handleSort('subscription')}
-            >
-              Subscription
-              {getSortIcon('subscription')}
-            </TableHead>
-            <TableHead className="font-semibold">Status</TableHead>
+            {hasSector && <TableHead className={th}>Sector</TableHead>}
+            <TableHead className={`${th} text-right`}>Issue price</TableHead>
+            <TableHead className={`${th} text-right`}>Listing price</TableHead>
+            {hasCurrent && (
+              <>
+                <TableHead className={`${th} border-l text-right`}>
+                  Current price
+                </TableHead>
+                <TableHead className={`${th} text-right`}>Current gain %</TableHead>
+              </>
+            )}
+            {hasSubscription && (
+              <TableHead
+                className={`${thSort} text-right`}
+                onClick={() => handleSort('subscription')}
+              >
+                Subscription
+                {getSortIcon('subscription')}
+              </TableHead>
+            )}
           </TableRow>
         </TableHeader>
         <TableBody>
-          {ipos.map((ipo) => (
-            <TableRow key={ipo.id} className="hover:bg-muted/30 transition-colors">
-              <TableCell>
-                <Link
-                  href={`/ipos/${ipo.slug}`}
-                  className="font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                >
-                  {ipo.companyName}
+          {ipos.map((ipo, i) => (
+            <TableRow
+              key={ipo.id}
+              onClick={() => router.push(`/ipos/${ipo.slug}`)}
+              className={`cursor-pointer border-0 transition-colors hover:bg-primary/5 ${
+                i % 2 === 1 ? 'bg-[#FAFBFC]' : 'bg-white'
+              }`}
+            >
+              <TableCell className={`${stickyFirst} max-w-[144px] bg-inherit sm:max-w-[240px] md:max-w-none`}>
+                <Link href={`/ipos/${ipo.slug}`} className="group flex items-center gap-2.5">
+                  <MonogramChip name={ipo.companyName} />
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-gray-900 group-hover:text-primary group-hover:underline" title={ipo.companyName}>
+                      {ipo.companyName}
+                    </span>
+                    <span className="block text-xs text-muted-foreground">
+                      {companySubline(ipo)}
+                    </span>
+                  </span>
                 </Link>
               </TableCell>
-              <TableCell>
-                <span className="text-sm text-muted-foreground">{ipo.sector}</span>
-              </TableCell>
-              <TableCell>{ipo.listingDate ? formatDate(ipo.listingDate) : 'N/A'}</TableCell>
-              <TableCell className="text-right">
-                {ipo.issuePrice !== null && ipo.issuePrice !== undefined ? formatCurrency(ipo.issuePrice) : 'N/A'}
+              <TableCell className="tabular-nums">
+                {ipo.listingDate ? formatDate(ipo.listingDate) : '—'}
               </TableCell>
               <TableCell className="text-right">
-                {ipo.listingClose !== null && ipo.listingClose !== undefined ? formatCurrency(ipo.listingClose) : 'N/A'}
+                {ipo.listingGainPercent !== null && ipo.listingGainPercent !== undefined ? formatListingGain(ipo.listingGainPercent) : <span className="text-gray-400">—</span>}
               </TableCell>
-              <TableCell className="text-right">
-                {ipo.listingGainPercent !== null && ipo.listingGainPercent !== undefined ? formatListingGain(ipo.listingGainPercent) : 'N/A'}
+              {hasSector && (
+                <TableCell>
+                  <span className="text-sm text-muted-foreground">{ipo.sector ?? '—'}</span>
+                </TableCell>
+              )}
+              <TableCell className="text-right tabular-nums">
+                {ipo.issuePrice !== null && ipo.issuePrice !== undefined ? formatCurrency(ipo.issuePrice) : '—'}
               </TableCell>
-              <TableCell className="text-right">
-                {ipo.subscriptionOverall !== null && ipo.subscriptionOverall !== undefined ? formatSubscription(ipo.subscriptionOverall) : 'N/A'}
+              <TableCell className="text-right tabular-nums">
+                {ipo.listingClose !== null && ipo.listingClose !== undefined ? formatCurrency(ipo.listingClose) : '—'}
               </TableCell>
-              <TableCell>
-                <Badge className="bg-purple-500 text-white">LISTED</Badge>
-              </TableCell>
+              {hasCurrent && (
+                <>
+                  <TableCell className="border-l border-border/60 text-right tabular-nums">
+                    {ipo.currentPriceLive !== null && ipo.currentPriceLive !== undefined ? formatCurrency(ipo.currentPriceLive) : <span className="text-gray-400">—</span>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {ipo.currentGainLive !== null && ipo.currentGainLive !== undefined ? formatListingGain(ipo.currentGainLive) : <span className="text-gray-400">—</span>}
+                  </TableCell>
+                </>
+              )}
+              {hasSubscription && (
+                <TableCell className="text-right tabular-nums">
+                  {ipo.subscriptionOverall !== null && ipo.subscriptionOverall !== undefined ? formatSubscription(ipo.subscriptionOverall) : '—'}
+                </TableCell>
+              )}
             </TableRow>
           ))}
         </TableBody>
       </Table>
+      </div>
     </div>
   );
 }

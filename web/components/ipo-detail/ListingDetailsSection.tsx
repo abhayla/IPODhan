@@ -189,26 +189,18 @@ export function ListingDetailsSection({
           </div>
         )}
 
-        {/* Info Banner */}
+        {/* Info Banner — neutral panel, not a colored alert; only the heading
+            carries semantic color (R21 #5, quiet callouts) */}
         {listingGainPercent !== null && (
-          <div className={`mt-6 p-4 rounded-lg border ${
-            isPositiveGain
-              ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
-              : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
-          }`}>
-            <div className="flex items-start gap-3">
-              <DollarSign className={`h-5 w-5 mt-0.5 ${gainColor}`} />
-              <div>
-                <p className={`font-semibold ${gainColor}`}>
-                  {isPositiveGain ? 'Positive Listing' : 'Negative Listing'}
-                </p>
-                <p className={`text-sm ${isPositiveGain ? 'text-green-900 dark:text-green-100' : 'text-red-900 dark:text-red-100'}`}>
-                  {isPositiveGain
-                    ? 'Investors who received allotment made profits on listing day. The stock opened above the issue price.'
-                    : 'The stock listed below the issue price. Allottees experienced losses on listing day.'}
-                </p>
-              </div>
-            </div>
+          <div className="mt-6 p-4 rounded-lg bg-muted/50">
+            <p className={`font-semibold ${gainColor}`}>
+              {isPositiveGain ? 'Positive Listing' : 'Negative Listing'}
+            </p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {isPositiveGain
+                ? 'Investors who received allotment made profits on listing day — the stock opened above the issue price.'
+                : 'The stock listed below the issue price; allottees experienced losses on listing day.'}
+            </p>
           </div>
         )}
 

@@ -13,8 +13,8 @@ import type { HistoricalIPO } from '@/lib/repositories/types';
 import { HistoricalFilters } from '@/components/history/HistoricalFilters';
 import { HistoricalSearchBar } from '@/components/history/HistoricalSearchBar';
 import { ResultsCount } from '@/components/history/ResultsCount';
+import { DataFreshness } from '@/components/shared/DataFreshness';
 import { HistoricalIPOTable } from '@/components/history/HistoricalIPOTable';
-import { HistoricalIPOCardList } from '@/components/history/HistoricalIPOCardList';
 import { HistoricalPagination } from '@/components/history/HistoricalPagination';
 import { EmptyState } from '@/components/history/EmptyState';
 import { LoadingSkeleton } from '@/components/history/LoadingSkeleton';
@@ -39,6 +39,7 @@ interface HistoricalIPOsContentProps {
 export function HistoricalIPOsContent({ availableSectors, availableYears }: HistoricalIPOsContentProps) {
   const { filters } = useHistoricalFilters();
   const [ipos, setIpos] = useState<HistoricalIPO[]>([]);
+  const [asOf, setAsOf] = useState<string | null>(null);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
@@ -80,6 +81,7 @@ export function HistoricalIPOsContent({ availableSectors, availableYears }: Hist
         }
         setIpos(data.data);
         setPagination(data.pagination);
+        setAsOf(new Date().toISOString());
       } catch (err) {
         console.error('Error fetching historical IPOs:', err);
         setError('Failed to load historical IPOs. Please try again later.');
@@ -112,7 +114,12 @@ export function HistoricalIPOsContent({ availableSectors, availableYears }: Hist
             {/* Search Bar and Results Count */}
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
               <HistoricalSearchBar />
-              <ResultsCount total={pagination.total} loading={loading} />
+              {/* Stack freshness + count on mobile so the long IST timestamp and
+                  the count don't wrap into ragged fragments (R27 #4). */}
+              <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3">
+                {asOf && <DataFreshness asOf={asOf} />}
+                <ResultsCount total={pagination.total} loading={loading} />
+              </div>
             </div>
 
             {/* Error State */}
@@ -132,14 +139,9 @@ export function HistoricalIPOsContent({ availableSectors, availableYears }: Hist
             {/* IPO List - Desktop Table View */}
             {!loading && !error && ipos.length > 0 && (
               <>
-                <div className="hidden lg:block">
-                  <HistoricalIPOTable ipos={ipos} />
-                </div>
-
-                {/* IPO List - Mobile Card View */}
-                <div className="lg:hidden">
-                  <HistoricalIPOCardList ipos={ipos} />
-                </div>
+                {/* One table at every breakpoint — scrolls horizontally under a
+                    sticky company column on mobile (R19 #1). */}
+                <HistoricalIPOTable ipos={ipos} />
 
                 {/* Pagination */}
                 <div className="flex justify-center mt-8">

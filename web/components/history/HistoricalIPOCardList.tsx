@@ -45,43 +45,57 @@ export function HistoricalIPOCardList({ ipos }: HistoricalIPOCardListProps) {
   return (
     <div className="space-y-4">
       {ipos.map((ipo) => {
-        const gainPercent = ipo.listingGainPercent ?? 0;
-        const isPositiveGain = gainPercent >= 0;
-        const borderColor = isPositiveGain ? 'border-green-500' : 'border-red-500';
-        const gainColor = isPositiveGain ? 'bg-green-500' : 'bg-red-500';
-        const gainSign = isPositiveGain ? '+' : '';
+        const gainPercent = ipo.listingGainPercent;
+        const hasGain = gainPercent !== null && gainPercent !== undefined && Number.isFinite(gainPercent);
+        const isPositiveGain = hasGain && gainPercent >= 0;
+        // Quiet reference language (R16 #4/#12): a thin left color-tick, not a
+        // full saturated border; light-tint gain chip, not a solid fill.
+        const tickColor = !hasGain ? 'border-l-border' : isPositiveGain ? 'border-l-green-500' : 'border-l-red-500';
+        const gainColor = !hasGain ? 'bg-muted text-muted-foreground' : isPositiveGain ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700';
+        const gainSign = hasGain && isPositiveGain ? '+' : '';
         const GainIcon = isPositiveGain ? ArrowUp : ArrowDown;
 
         return (
           <Link key={ipo.id} href={`/ipos/${ipo.slug}`} className="block">
             <Card
-              className={`border-2 ${borderColor} hover:shadow-lg transition-all duration-200 cursor-pointer`}
+              className={`border border-l-4 ${tickColor} transition-shadow duration-200 hover:shadow-md cursor-pointer`}
             >
-              <CardContent className="p-6 space-y-4">
+              <CardContent className="p-4 space-y-3">
                 {/* Header: Company Name and Status */}
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="text-lg font-bold leading-tight line-clamp-2 flex-1">
+                  <h3 className="text-base font-semibold leading-tight line-clamp-2 flex-1">
                     {ipo.companyName}
                   </h3>
-                  <Badge className="bg-purple-500 text-white">LISTED</Badge>
+                  <Badge className="bg-gray-100 text-gray-600 hover:bg-gray-100">Listed</Badge>
                 </div>
 
                 {/* Listing Gain Badge - Prominent */}
                 <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
                   <span className="text-sm font-medium text-muted-foreground">Listing Gain</span>
-                  <Badge className={`${gainColor} text-white text-base font-bold px-3 py-1`}>
-                    <GainIcon className="h-4 w-4 inline mr-1" />
-                    {gainSign}
-                    {gainPercent.toFixed(2)}%
-                  </Badge>
+                  {hasGain ? (
+                    <Badge className={`${gainColor} text-base font-bold px-3 py-1`}>
+                      <GainIcon className="h-4 w-4 inline mr-1" />
+                      {gainSign}
+                      {gainPercent.toFixed(2)}%
+                    </Badge>
+                  ) : (
+                    <Badge
+                      className={`${gainColor} text-base font-bold px-3 py-1`}
+                      aria-label="Listing gain not available"
+                    >
+                      —
+                    </Badge>
+                  )}
                 </div>
 
                 {/* Sector */}
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs">
-                    {ipo.sector}
-                  </Badge>
-                </div>
+                {ipo.sector && (
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">
+                      {ipo.sector}
+                    </Badge>
+                  </div>
+                )}
 
                 {/* Listing Date */}
                 <div className="space-y-1">
@@ -107,13 +121,16 @@ export function HistoricalIPOCardList({ ipos }: HistoricalIPOCardListProps) {
                   </div>
                 </div>
 
-                {/* Subscription */}
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground">Subscription</p>
-                  <p className="text-base font-semibold">
-                    {ipo.subscriptionOverall !== null && ipo.subscriptionOverall !== undefined ? formatSubscription(ipo.subscriptionOverall) : 'N/A'}
-                  </p>
-                </div>
+                {/* Subscription — hidden when absent; 'Subscription: N/A' repeated
+                    on 20+ cards erodes trust (2026-07-02 blind review) */}
+                {ipo.subscriptionOverall !== null && ipo.subscriptionOverall !== undefined && (
+                  <div className="space-y-1">
+                    <p className="text-sm text-muted-foreground">Subscription</p>
+                    <p className="text-base font-semibold">
+                      {formatSubscription(ipo.subscriptionOverall)}
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </Link>

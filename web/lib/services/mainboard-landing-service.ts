@@ -19,11 +19,11 @@ import { IPORepository } from '@/lib/repositories/ipo-repository';
  */
 export interface MainboardSummaryMetrics {
   totalIPOs: number;
-  listedInGain: number;
-  listedInLoss: number;
+  listedInGain: number | null;
+  listedInLoss: number | null;
   upcomingAndOngoing: number;
-  gainAOT: number; // All Over Time gain percentage
-  lossAOT: number; // All Over Time loss percentage
+  gainAOT: number | null; // null until computed from real listing_performance aggregates (#98)
+  lossAOT: number | null; // null until computed from real listing_performance aggregates (#98)
 }
 
 /**
@@ -163,22 +163,19 @@ export async function getMainboardSummaryMetrics(): Promise<MainboardSummaryMetr
       // For MVP, we'll use mock calculations based on available data
       const listedIPOs = ipos.filter((ipo) => ipo.status === 'LISTED');
 
-      // Count IPOs in gain (mock: assume 60% in gain)
-      const listedInGain = Math.floor(listedIPOs.length * 0.6);
-
-      // Count IPOs in loss (mock: assume 40% in loss)
-      const listedInLoss = listedIPOs.length - listedInGain;
+      // Gain/loss splits and averages were MOCKED (60/40, 25%/15%) — render
+      // nothing rather than fabricated numbers until real aggregates exist (#98).
+      void listedIPOs;
+      const listedInGain = null;
+      const listedInLoss = null;
 
       // Count upcoming and ongoing IPOs
       const upcomingAndOngoing = ipos.filter(
         (ipo) => ipo.status === 'UPCOMING' || ipo.status === 'OPEN'
       ).length;
 
-      // Calculate average gain (mock: 25%)
-      const gainAOT = 25.0;
-
-      // Calculate average loss (mock: 15%)
-      const lossAOT = 15.0;
+      const gainAOT = null;
+      const lossAOT = null;
 
       return {
         totalIPOs,
@@ -192,11 +189,11 @@ export async function getMainboardSummaryMetrics(): Promise<MainboardSummaryMetr
       console.error('Error fetching Mainboard summary metrics:', error);
       return {
         totalIPOs: 0,
-        listedInGain: 0,
-        listedInLoss: 0,
+        listedInGain: null,
+        listedInLoss: null,
         upcomingAndOngoing: 0,
-        gainAOT: 0,
-        lossAOT: 0,
+        gainAOT: null,
+        lossAOT: null,
       };
     }
   });

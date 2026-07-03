@@ -107,6 +107,18 @@ export function IPOCardEnhanced({ ipo, searchQuery, onClick }: IPOCardEnhancedPr
     return 'border-danger'; // Below average
   };
 
+  // Latest real subscription multiplier (timestamp-safe); the bar was hardcoded
+  // to null and rendered 'Subscription --' on every card (2026-07-02 review)
+  const latestSubscription = (ipo.subscriptions ?? []).reduce<Subscription | null>(
+    (latest, sub) =>
+      !latest || new Date(sub.timestamp) > new Date(latest.timestamp) ? sub : latest,
+    null
+  );
+  const subscriptionMultiplier =
+    latestSubscription?.totalSubscription != null
+      ? Number(latestSubscription.totalSubscription)
+      : null;
+
   return (
     <Link
       href={`/ipos/${ipo.slug}`}
@@ -157,7 +169,9 @@ export function IPOCardEnhanced({ ipo, searchQuery, onClick }: IPOCardEnhancedPr
               </p>
             </div>
             {/* Large Prominent Score with Count-up Animation */}
-            {ipo.ipoScore ? (
+            {/* Absent score renders nothing — 'Score Pending' on every card
+                reads as a broken pipeline (2026-07-02 blind review) */}
+            {ipo.ipoScore && (
               <div className="text-right">
                 <p className="text-xs text-muted-foreground mb-1">IPODhan Score</p>
                 <AnimatedScore
@@ -167,12 +181,6 @@ export function IPOCardEnhanced({ ipo, searchQuery, onClick }: IPOCardEnhancedPr
                   showSuffix={true}
                   delay={100} // Slight delay for better UX
                 />
-              </div>
-            ) : (
-              <div className="text-right">
-                <Badge variant="outline" className="text-xs">
-                  Score Pending
-                </Badge>
               </div>
             )}
           </div>
@@ -191,12 +199,14 @@ export function IPOCardEnhanced({ ipo, searchQuery, onClick }: IPOCardEnhancedPr
             )}
           </div>
 
-          {/* Mini Progress Bar for Subscription */}
-          <SubscriptionProgressBar
-            subscriptionMultiplier={null} // TODO: Pass actual subscription data when available
-            size="sm"
-            showLabel={true}
-          />
+          {/* Mini Progress Bar for Subscription — hidden when no data */}
+          {subscriptionMultiplier !== null && subscriptionMultiplier > 0 && (
+            <SubscriptionProgressBar
+              subscriptionMultiplier={subscriptionMultiplier}
+              size="sm"
+              showLabel={true}
+            />
+          )}
 
           {/* Key Dates - Simplified */}
           <div className="pt-3 border-t border-border/50">

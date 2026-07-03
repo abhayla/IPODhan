@@ -135,10 +135,9 @@ export function KPIHighlightSection({
   }
 
   return (
-    <Card className="border-2 border-primary/20 bg-gradient-to-br from-background to-muted/20">
+    <Card>
       <CardHeader>
         <div className="flex items-center gap-2">
-          <BarChart className="h-6 w-6 text-primary" />
           <CardTitle className="text-xl">Key Performance Indicators</CardTitle>
         </div>
         <p className="text-sm text-muted-foreground mt-1">
@@ -160,8 +159,7 @@ export function KPIHighlightSection({
             icon={TrendingUp}
             title="Return on Equity (ROE)"
             value={formatPercentage(roe ? Number(roe) : null)}
-            tooltip="Return on Equity - measures profitability relative to shareholder equity. Higher ROE indicates better efficiency in generating profits from investments."
-            iconColor="text-blue-600"
+            tooltip="Return on Equity - measures profitability relative to shareholder equity. Higher ROE indicates better efficiency in generating profits from investments."
           />
 
           {/* 3. Return on Net Worth (RoNW) */}
@@ -169,8 +167,7 @@ export function KPIHighlightSection({
             icon={DollarSign}
             title="Return on Net Worth (RoNW)"
             value={formatPercentage(ronw ? Number(ronw) : null)}
-            tooltip="Return on Net Worth - net profit as percentage of net worth. Similar to ROE, it shows how effectively the company uses its net worth to generate profits."
-            iconColor="text-green-600"
+            tooltip="Return on Net Worth - net profit as percentage of net worth. Similar to ROE, it shows how effectively the company uses its net worth to generate profits."
           />
 
           {/* 4. Price-to-Book Value (P/BV) */}
@@ -178,8 +175,7 @@ export function KPIHighlightSection({
             icon={Banknote}
             title="Price-to-Book Value"
             value={formatRatio(priceToBook)}
-            tooltip="Price-to-Book Value ratio - market price relative to book value. A ratio > 1 means the market values the company higher than its book value."
-            iconColor="text-purple-600"
+            tooltip="Price-to-Book Value ratio - market price relative to book value. A ratio > 1 means the market values the company higher than its book value."
           />
 
           {/* 5. EPS Comparison (Pre vs Post) */}
@@ -191,8 +187,7 @@ export function KPIHighlightSection({
             postLabel="Post-IPO EPS"
             postValue={formatEPS(postIpoEps ? Number(postIpoEps) : null)}
             changePercent={epsChange}
-            tooltip="Earnings Per Share comparison before and after IPO. This shows the impact of IPO dilution on per-share earnings. Higher post-IPO EPS is generally positive."
-            iconColor="text-orange-600"
+            tooltip="Earnings Per Share comparison before and after IPO. This shows the impact of IPO dilution on per-share earnings. Higher post-IPO EPS is generally positive."
           />
 
           {/* 6. P/E Ratio Comparison (Pre vs Post) */}
@@ -204,8 +199,7 @@ export function KPIHighlightSection({
             postLabel="Post-IPO P/E"
             postValue={formatPE(postIPO_PE)}
             changePercent={peChange}
-            tooltip="Price-to-Earnings ratio comparison before and after IPO. Lower post-IPO P/E (due to dilution) is generally viewed positively as it indicates better valuation for new investors."
-            iconColor="text-indigo-600"
+            tooltip="Price-to-Earnings ratio comparison before and after IPO. Lower post-IPO P/E (due to dilution) is generally viewed positively as it indicates better valuation for new investors."
             invertColors={true}
           />
         </div>

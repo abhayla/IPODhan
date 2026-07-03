@@ -162,6 +162,36 @@ export function ComparisonTable({
   const bestROCE = findBestValue(roces, true); // Higher is better
   const bestIndustryPE = findBestValue(industryPEs, false); // Lower is better (but informational)
 
+  // Collapse whole metric GROUPS when NO compared IPO has any value in them, so
+  // the table isn't a wall of N/A (R33/R34 #6) — financial ratios are structurally
+  // absent for pre-listing IPOs; subscription shows only once populated.
+  const anyVal = (vals: (number | null | undefined)[]) =>
+    vals.some((v) => v !== null && v !== undefined);
+  const hasAnySubscription = comparisonData.some((c) =>
+    anyVal([c.subscription.qib, c.subscription.nii, c.subscription.retail, c.subscription.total])
+  );
+  const hasAnyFinancials = comparisonData.some((c) =>
+    anyVal([
+      c.financials.peRatio, c.financials.roe, c.financials.eps, c.financials.revenueGrowth,
+      c.ipoFinancials?.pbRatio, c.ipoFinancials?.rocePercentage, c.ipoFinancials?.industryPe,
+    ])
+  );
+
+  // Metric list drives the MOBILE stacked view (one card per IPO) — a side-by-side
+  // table cannot fit 2-3 value columns on a 390px phone, so mobile stacks the IPOs
+  // and lists each one's metrics (R24 #1). Desktop keeps the comparison table.
+  const mobileMetrics: { label: string; value: (c: IPOComparison) => string }[] = [
+    { label: 'Price Range', value: (c) => `${formatCurrency(c.priceRange.min)} – ${formatCurrency(c.priceRange.max)}` },
+    { label: 'Lot Size', value: (c) => (c.lotSize ? `${c.lotSize} shares` : 'N/A') },
+    { label: 'Total Sub.', value: (c) => formatSubscription(c.subscription.total) },
+    { label: 'Current GMP', value: (c) => formatCurrency(c.gmp) },
+    { label: 'P/E Ratio', value: (c) => (c.financials.peRatio !== null ? c.financials.peRatio.toFixed(2) : 'N/A') },
+    { label: 'ROE', value: (c) => formatPercentage(c.financials.roe) },
+    { label: 'RoCE', value: (c) => formatPercentage(c.ipoFinancials?.rocePercentage ?? null) },
+    { label: 'EPS', value: (c) => formatCurrency(c.financials.eps) },
+    { label: 'Rating', value: (c) => (c.rating !== null ? `${c.rating}/5` : 'Not Rated') },
+  ];
+
   return (
     <div className="space-y-4">
       {/* Table Header */}
@@ -172,26 +202,56 @@ export function ComparisonTable({
         </p>
       </div>
 
-      {/* Mobile Scroll Indicator */}
-      <div className="md:hidden">
-        <Alert className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
-          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-          <AlertDescription className="text-sm text-blue-900 dark:text-blue-100">
-            Scroll horizontally to see all comparison data
-          </AlertDescription>
-        </Alert>
+      {/* Mobile: one card per IPO (a side-by-side table can't fit on a phone).
+          Suppress a metric across ALL cards when NO compared IPO has it (same
+          all-N/A rule as desktop) so cards aren't a wall of N/A (R35 #1). */}
+      {(() => {
+        const visibleMetrics = mobileMetrics.filter((m) =>
+          comparisonData.some((c) => {
+            const v = m.value(c);
+            return v !== 'N/A' && v !== 'Not Rated';
+          })
+        );
+        return (
+      <div className="space-y-4 md:hidden">
+        {comparisonData.map((ipo) => (
+          <div key={ipo.slug} className="rounded-lg border bg-card p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <span className="font-semibold leading-tight">{ipo.companyName}</span>
+              <Badge variant={getStatusBadgeVariant(ipo.status)}>{ipo.status}</Badge>
+            </div>
+            {/* Show the FULL metric set for mobile↔desktop parity (R33 #4) — a
+                comparison that silently drops metrics on mobile is degraded;
+                N/A values are muted so the populated ones still stand out. */}
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
+              {visibleMetrics.map((m) => {
+                const v = m.value(ipo);
+                const muted = v === 'N/A' || v === 'Not Rated';
+                return (
+                  <div key={m.label} className="flex flex-col">
+                    <dt className="text-xs text-muted-foreground">{m.label}</dt>
+                    <dd className={cn('font-medium tabular-nums', muted && 'text-gray-400 font-normal')}>{v}</dd>
+                  </div>
+                );
+              })}
+            </dl>
+          </div>
+        ))}
       </div>
+        );
+      })()}
 
-      {/* Responsive Table Container */}
-      <div className="border rounded-lg overflow-x-auto">
+      {/* Desktop: side-by-side comparison table */}
+      <div className="relative hidden md:block">
+        <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="min-w-[180px] sticky left-0 bg-background z-10">
+              <TableHead className="min-w-[96px] sticky left-0 bg-background z-10 md:min-w-[180px]">
                 Metric
               </TableHead>
               {comparisonData.map((ipo) => (
-                <TableHead key={ipo.slug} className="min-w-[200px] text-center">
+                <TableHead key={ipo.slug} className="min-w-[128px] text-center md:min-w-[200px]">
                   <div className="font-semibold">{ipo.companyName}</div>
                   <Badge
                     variant={getStatusBadgeVariant(ipo.status)}
@@ -225,12 +285,13 @@ export function ComparisonTable({
               </TableCell>
               {comparisonData.map((ipo) => (
                 <TableCell key={ipo.slug} className="text-center">
-                  {ipo.lotSize} shares
+                  {ipo.lotSize ? `${ipo.lotSize} shares` : <span className="text-gray-400">—</span>}
                 </TableCell>
               ))}
             </TableRow>
 
-            {/* Subscription - QIB */}
+            {/* Subscription group — hidden entirely when no compared IPO has it */}
+            {hasAnySubscription && (<>
             <TableRow>
               <TableCell className="sticky left-0 bg-background font-medium">
                 QIB Subscription
@@ -286,6 +347,7 @@ export function ComparisonTable({
                 </TableCell>
               ))}
             </TableRow>
+            </>)}
 
             {/* GMP (Highlighted) */}
             <TableRow>
@@ -308,7 +370,10 @@ export function ComparisonTable({
               ))}
             </TableRow>
 
-            {/* P/E Ratio (Highlighted - lower is better) */}
+            {/* Financial-ratio group — hidden when no compared IPO has any of
+                these (pre-listing IPOs structurally lack them) so the table isn't
+                a wall of N/A (R34 #6). */}
+            {hasAnyFinancials && (<>
             <TableRow>
               <TableCell className="sticky left-0 bg-background font-medium">
                 P/E Ratio
@@ -438,6 +503,7 @@ export function ComparisonTable({
                 </TableCell>
               ))}
             </TableRow>
+            </>)}
 
             {/* Rating (Highlighted) */}
             <TableRow>
@@ -474,6 +540,7 @@ export function ComparisonTable({
             </TableRow>
           </TableBody>
         </Table>
+        </div>
       </div>
 
       {/* Legend */}

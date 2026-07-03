@@ -21,10 +21,13 @@ import Script from 'next/script';
 import { IPOHeader } from '@/components/ipo/IPOHeader';
 import { IPOTimelineWidget } from '@/components/ipo/IPOTimelineWidget';
 import { CompanyOverview } from '@/components/ipo/CompanyOverview';
-import { KeyMetricsCardsEnhanced } from '@/components/ipo/KeyMetricsCardsEnhanced';
+import { FactRibbon } from '@/components/ipo-detail/FactRibbon';
+import { formatPriceBand } from '@/lib/utils/kpi-formatters';
+import { formatIssueSizeCrores } from '@/lib/utils';
 import { InfoSection } from '@/components/ipo/InfoSection';
 import { IssueStructureSection } from '@/components/ipo/IssueStructureSection';
-import { IPODetailTabs } from '@/components/ipo/IPODetailTabs';
+import { IPOSectionNav } from '@/components/ipo-detail/IPOSectionNav';
+import { DocumentList } from '@/components/ipo/DocumentList';
 import { AllotmentCheckerCard } from '@/components/ipo/AllotmentCheckerCard';
 import { LotCalculator } from '@/components/tools/LotCalculator';
 import { Breadcrumbs } from '@/components/layout/Breadcrumbs';
@@ -48,6 +51,7 @@ import { IPOObjectivesSection } from '@/components/ipo-detail/IPOObjectivesSecti
 import { CompanyContactSection } from '@/components/ipo-detail/CompanyContactSection';
 import { RecommendationSummarySection } from '@/components/ipo-detail/RecommendationSummarySection';
 import { CategoryReservationSection } from '@/components/ipo-detail/CategoryReservationSection';
+import { PendingDataNotice } from '@/components/ipo-detail/PendingDataNotice';
 import { LotDetailsSection } from '@/components/ipo-detail/LotDetailsSection';
 import { ListingDetailsSection } from '@/components/ipo-detail/ListingDetailsSection';
 import { LeadManagerSection } from '@/components/ipo-detail/LeadManagerSection';
@@ -214,7 +218,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     },
   };
 
-  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails, peerCompanies, financialData, anchorInvestor } = data;
+  const { ipo, gmpRecords, subscriptions, listingPerformance, ipoScore, ipoDetails, peerCompanies, financialData, anchorInvestor, documents } = data;
 
   // Calculate metrics for KeyMetricsCards
   const latestSubscription = subscriptions?.[0];
@@ -239,6 +243,99 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
     ipo.status === 'LISTED' && ipo.sector
       ? await getSectorAverage(ipo.sector)
       : null;
+
+  // Empty-prone sections render nothing when their data is absent; one compact
+  // PendingDataNotice names what's awaited instead of a stack of dead cards
+  // (2026-07-02 UI review). Presence flags are computed server-side, once.
+  const hasIssueStructure = Boolean(
+    ipoDetails && (ipoDetails.freshIssue || ipoDetails.ofsIssue || ipoDetails.issueType)
+  );
+  const hasScore = Boolean(ipoScore);
+  const hasFinancials = Boolean(financialData);
+  const hasGmpHistory = (gmpRecords?.length ?? 0) > 0;
+  const hasBrokerReviews = Boolean(reviewSummary && (reviewSummary.totalReviews ?? 0) > 0);
+  const hasObjectives = (ipo.objectives?.length ?? 0) > 0;
+  const hasPromoterHolding = Boolean(
+    financialData?.promoterHoldingPreIssue && financialData?.promoterHoldingPostIssue
+  );
+  const hasAnchor = Boolean(anchorInvestor);
+  const hasKpis = Boolean(financialData);
+  const hasPeers = (peerCompanies?.length ?? 0) > 0;
+
+  const hasCompanyOverview = Boolean(ipo.companyDescription);
+  const hasDocuments = (documents?.length ?? 0) > 0;
+
+  const hasSubscriptions = (subscriptions?.length ?? 0) > 0;
+
+  const pendingSections = [
+    !hasIssueStructure && 'Issue structure',
+    !hasScore && 'IPODhan score',
+    !hasFinancials && 'Financials & KPIs',
+    !hasSubscriptions && 'Subscription',
+    !hasGmpHistory && 'GMP trend',
+    !hasBrokerReviews && 'Broker reviews',
+    !hasPromoterHolding && 'Promoter holding',
+    !hasAnchor && 'Anchor investors',
+    !hasPeers && 'Peer comparison',
+    !hasDocuments && 'Documents',
+  ].filter((s): s is string => Boolean(s));
+
+  // Fact ribbon cells (spec D2 order); GMP is the only colored cell
+  const fmtShortDate = (d: string | null) =>
+    d
+      ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })
+      : 'TBA';
+  const minInvestment =
+    ipo.lotSize && ipo.priceRangeMax ? ipo.lotSize * Number(ipo.priceRangeMax) : null;
+  const ribbonCells = [
+    {
+      label: 'Price Band',
+      value:
+        ipo.priceRangeMin || ipo.priceRangeMax
+          ? formatPriceBand(ipo.priceRangeMin, ipo.priceRangeMax)
+          : 'TBA',
+    },
+    { label: 'Lot Size', value: ipo.lotSize ? `${ipo.lotSize}` : 'TBA' },
+    {
+      label: 'Min. Investment',
+      value: minInvestment ? `₹${minInvestment.toLocaleString('en-IN')}` : 'TBA',
+    },
+    {
+      label: 'Issue Size',
+      value: formatIssueSizeCrores(ipo.issueSize).replace(' Crores', ' Cr'),
+      mobileHidden: true,
+    },
+    ...(gmpValue !== null
+      ? [
+          {
+            label: 'GMP',
+            value: `₹${gmpValue}${gmpPercent !== null ? ` (${gmpPercent >= 0 ? '+' : ''}${gmpPercent.toFixed(1)}%)` : ''}`,
+            tone: (gmpValue >= 0 ? 'gain' : 'loss') as 'gain' | 'loss',
+          },
+        ]
+      : []),
+    ...(subscriptionValue !== null
+      ? [{ label: 'Subscription', value: `${Number(subscriptionValue).toFixed(2)}x` }]
+      : []),
+    {
+      label: 'Open–Close',
+      value: `${fmtShortDate(ipo.openDate)} – ${fmtShortDate(ipo.closeDate)}`,
+      mobileHidden: true,
+    },
+    { label: 'Listing', value: fmtShortDate(ipo.listingDate) },
+  ];
+
+  // Sticky anchor nav (Screener pattern) — only sections that actually render
+  const sectionNavItems = [
+    { id: 'details', label: 'Details' },
+    hasCompanyOverview && { id: 'overview', label: 'Overview' },
+    { id: 'subscription', label: 'Subscription' },
+    hasGmpHistory && { id: 'gmp', label: 'GMP' },
+    hasFinancials && { id: 'financials', label: 'Financials' },
+    hasPeers && { id: 'peers', label: 'Peers' },
+    { id: 'allotment', label: 'Allotment' },
+    hasDocuments && { id: 'documents', label: 'Documents' },
+  ].filter((i): i is { id: string; label: string } => Boolean(i));
 
   // Generate structured data using SEO utilities
   const financialProductSchema = generateFinancialProductSchema(ipo);
@@ -290,7 +387,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
 
         {/* Main Content */}
         <div className="container mx-auto px-4 py-8">
-          <div className="space-y-8">
+          <div className="space-y-5">
             {/* 1. IPO Timeline Widget */}
             <IPOTimelineWidget
               ipo={{
@@ -311,18 +408,16 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               }
             />
 
-            {/* 2. Key Metrics Cards */}
-            <KeyMetricsCardsEnhanced
-              issueSize={Number(ipo.issueSize)}
-              subscription={subscriptionValue !== null ? Number(subscriptionValue) : null}
-              subscriptionTrend={subscriptionTrend}
-              gmp={gmpValue}
-              gmpPercent={gmpPercent}
-              subscriptions={subscriptions}
-              gmpRecords={gmpRecords}
-            />
+            {/* Sticky section navigation — Screener puts it right under the
+                header, before any section content (reference review round 7:
+                'buried mid-page after ~5 sections'). */}
+            <IPOSectionNav items={sectionNavItems} />
+
+            {/* 2. Fact ribbon (spec D2/G4) — replaces the three stat cards */}
+            <FactRibbon cells={ribbonCells} />
 
             {/* 2a. IPO Details Table */}
+            <section id="details" className="scroll-mt-28">
             <IPODetailsTable
               issueSize={ipo.issueSize ? Number(ipo.issueSize) : null}
               issueType={ipoDetails?.issueType ?? null}
@@ -338,9 +433,16 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               freshIssueSize={ipoDetails?.freshIssue ? Number(ipoDetails.freshIssue) : null}
               offerForSaleSize={ipoDetails?.ofsIssue ? Number(ipoDetails.ofsIssue) : null}
             />
+            </section>
+
+            {/* Apply CTA surfaced next to the key facts — was buried below every
+                section at the page bottom (2026-07-02 UI review) */}
+            {(ipo.status === 'OPEN' || ipo.status === 'UPCOMING') && (
+              <AffiliateSection ipoId={ipo.id} companyName={ipo.companyName} />
+            )}
 
             {/* 3. Issue Structure Section */}
-            <IssueStructureSection ipoDetails={ipoDetails || null} />
+            {hasIssueStructure && <IssueStructureSection ipoDetails={ipoDetails || null} />}
 
             {/* 3a. Lot Details Section */}
             <LotDetailsSection
@@ -351,35 +453,49 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               minBidQuantity={null}
             />
 
-            {/* 4. IPO Detail Tabs */}
-            <IPODetailTabs
-              slug={slug}
-              ipo={ipo}
-              ipoData={data}
-              initialTab={tab || 'overview'}
-            />
+            {/* 4. Company Overview (was inside the removed tabs) */}
+            {hasCompanyOverview && (
+              <section id="overview" className="scroll-mt-28">
+                <CompanyOverview
+                  companyDescription={ipo.companyDescription || ''}
+                  riskFactors={[]}
+                />
+              </section>
+            )}
 
-            {/* 5. IPO Information Section */}
-            <InfoSection ipo={ipo} ipoDetails={ipoDetails || null} />
+            {/* 5. Allotment & Listing details */}
+            <section id="allotment" className="scroll-mt-28">
+              <InfoSection ipo={ipo} ipoDetails={ipoDetails || null} />
+            </section>
 
             {/* 6. IPO Score Section */}
-            <IPOScoreSection score={ipoScore || null} />
+            {hasScore && <IPOScoreSection score={ipoScore || null} />}
 
             {/* 7. GMP History Chart */}
-            <GMPHistoryChart
-              gmpRecords={gmpRecords || []}
-              companyName={ipo.companyName}
-              priceRangeMax={ipo.priceRangeMax}
-            />
+            {hasGmpHistory && (
+              <section id="gmp" className="scroll-mt-28">
+                <GMPHistoryChart
+                  gmpRecords={gmpRecords || []}
+                  companyName={ipo.companyName}
+                  priceRangeMax={ipo.priceRangeMax}
+                  defaultExpanded
+                />
+              </section>
+            )}
 
             {/* 9. Financial Performance Charts */}
+            {hasFinancials && (
+            <section id="financials" className="scroll-mt-28">
             <FinancialPerformanceCharts
               financialData={financialData}
               companyName={ipo.companyName}
               status={ipo.status}
             />
+            </section>
+            )}
 
             {/* 10. Subscription Dashboard */}
+            <section id="subscription" className="scroll-mt-28">
             <SubscriptionDashboard
               subscriptions={subscriptions || []}
               latestSubscription={latestSubscription ?? null}
@@ -387,18 +503,23 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               closeDate={ipo.closeDate ? new Date(ipo.closeDate) : null}
               status={ipo.status}
             />
+            </section>
 
             {/* 11. Broker Recommendations */}
-            <RecommendationSummarySection
-              reviewSummary={reviewSummary}
-              ipoSegment={ipo.segment as 'MAINBOARD' | 'SME'}
-            />
+            {hasBrokerReviews && (
+              <RecommendationSummarySection
+                reviewSummary={reviewSummary}
+                ipoSegment={ipo.segment as 'MAINBOARD' | 'SME'}
+              />
+            )}
 
             {/* 12. IPO Objectives Section */}
-            <IPOObjectivesSection
-              objectives={ipo.objectives}
-              totalIssueSize={ipo.issueSize ? Number(ipo.issueSize) : undefined}
-            />
+            {hasObjectives && (
+              <IPOObjectivesSection
+                objectives={ipo.objectives}
+                totalIssueSize={ipo.issueSize ? Number(ipo.issueSize) : undefined}
+              />
+            )}
 
             {/* 12a. Lead Managers Section */}
             {ipoDetails?.leadManagers && (
@@ -406,10 +527,12 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             )}
 
             {/* 13. Promoter Holding Section */}
-            <PromoterHoldingSection
-              promoterHoldingPreIssue={financialData?.promoterHoldingPreIssue ? Number(financialData.promoterHoldingPreIssue) : null}
-              promoterHoldingPostIssue={financialData?.promoterHoldingPostIssue ? Number(financialData.promoterHoldingPostIssue) : null}
-            />
+            {hasPromoterHolding && (
+              <PromoterHoldingSection
+                promoterHoldingPreIssue={financialData?.promoterHoldingPreIssue ? Number(financialData.promoterHoldingPreIssue) : null}
+                promoterHoldingPostIssue={financialData?.promoterHoldingPostIssue ? Number(financialData.promoterHoldingPostIssue) : null}
+              />
+            )}
 
             {/* 13a. Category Reservation Section */}
             {ipoDetails && (
@@ -426,6 +549,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             )}
 
             {/* 14. Anchor Investors Section */}
+            {hasAnchor && (
             <AnchorInvestorsSection
               bidDate={anchorInvestor?.bidDate || null}
               totalSharesOffered={anchorInvestor?.totalSharesOffered ? Number(anchorInvestor.totalSharesOffered) : null}
@@ -435,8 +559,10 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               lockInRemainingDate={anchorInvestor?.lockInRemainingDate || null}
               investorList={anchorInvestor?.investorList || null}
             />
+            )}
 
             {/* 15. KPI Highlight Section */}
+            {hasKpis && (
             <KPIHighlightSection
               financialData={financialData ? {
                 marketCap: financialData.marketCap ? Number(financialData.marketCap) : null,
@@ -451,12 +577,30 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 issueSize: ipo.issueSize ? Number(ipo.issueSize) : null,
               }}
             />
+            )}
 
             {/* 16. Peer Comparison */}
-            <PeerComparisonSection
-              peerCompanies={peerCompanies}
-              companyName={ipo.companyName}
-            />
+            {hasPeers && (
+              <section id="peers" className="scroll-mt-28">
+                <PeerComparisonSection
+                  peerCompanies={peerCompanies}
+                  companyName={ipo.companyName}
+                />
+              </section>
+            )}
+
+            {/* 16b. Documents (was inside the removed tabs) */}
+            {hasDocuments && (
+              <section id="documents" className="scroll-mt-28">
+                <div className="rounded-lg border bg-card p-6">
+                  <h3 className="mb-4 text-lg font-semibold">Documents</h3>
+                  <DocumentList documents={documents} />
+                </div>
+              </section>
+            )}
+
+            {/* One compact notice replaces the removed empty-state cards */}
+            <PendingDataNotice pendingSections={pendingSections} status={ipo.status} />
 
             {/* Post-Listing Performance - Conditional for LISTED IPOs */}
             {ipo.status === 'LISTED' &&
@@ -501,13 +645,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               </>
             )}
 
-            {/* 17. Apply for IPO Section (Affiliate) */}
-            {(ipo.status === 'OPEN' || ipo.status === 'UPCOMING') && (
-              <AffiliateSection
-                ipoId={ipo.id}
-                companyName={ipo.companyName}
-              />
-            )}
+            {/* Apply CTA lives above the fold now (after IPODetailsTable) */}
 
             {/* 18. Lot Size Calculator */}
             {ipo.priceRangeMax && ipo.lotSize && (

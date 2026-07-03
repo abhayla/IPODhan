@@ -81,17 +81,8 @@ export function CompanyOverview({
           </div>
         )}
 
-        {/* Placeholder for when no risk factors */}
-        {riskFactors.length === 0 && (
-          <div>
-            <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
-              Risk Factors
-            </h3>
-            <p className="text-sm text-muted-foreground">
-              Risk factors will be added after DRHP analysis
-            </p>
-          </div>
-        )}
+        {/* No empty-state placeholder: a section that has nothing renders nothing
+            (R17 #1 — reference products treat missing data as invisible). */}
       </CardContent>
     </Card>
   );

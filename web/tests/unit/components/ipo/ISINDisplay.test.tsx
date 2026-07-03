@@ -105,28 +105,21 @@ describe('ISINDisplay Component', () => {
   });
 
   describe('with null/undefined ISIN', () => {
-    it('renders "Not assigned" for null ISIN', () => {
-      render(<ISINDisplay isin={null} />);
-      expect(screen.getByText('ISIN:')).toBeInTheDocument();
-      expect(screen.getByText('Not assigned')).toBeInTheDocument();
+    // 'ISIN: Not assigned' placeholders were a trust-eroding pattern
+    // (2026-07-02 round-8 reference review) — absent ISIN renders nothing.
+    it('renders nothing for null ISIN', () => {
+      const { container } = render(<ISINDisplay isin={null} />);
+      expect(container).toBeEmptyDOMElement();
     });
 
-    it('renders "Not assigned" for undefined ISIN', () => {
-      render(<ISINDisplay isin={undefined} />);
-      expect(screen.getByText('ISIN:')).toBeInTheDocument();
-      expect(screen.getByText('Not assigned')).toBeInTheDocument();
+    it('renders nothing for undefined ISIN', () => {
+      const { container } = render(<ISINDisplay isin={undefined} />);
+      expect(container).toBeEmptyDOMElement();
     });
 
     it('does not render copy button for null ISIN', () => {
       render(<ISINDisplay isin={null} />);
-      const button = screen.queryByRole('button');
-      expect(button).not.toBeInTheDocument();
-    });
-
-    it('applies muted text color for "Not assigned"', () => {
-      const { container } = render(<ISINDisplay isin={null} />);
-      const notAssignedText = container.querySelector('.text-muted-foreground');
-      expect(notAssignedText).toHaveTextContent('Not assigned');
+      expect(screen.queryByRole('button')).not.toBeInTheDocument();
     });
   });
 

@@ -68,25 +68,18 @@ export function HomeIPOTablesSection({
 }: HomeIPOTablesSectionProps) {
   const currentYear = new Date().getFullYear();
   return (
-    <section className="w-full py-8 px-4" aria-label={`IPO ${currentYear} Listings`}>
-      {/* Section Heading */}
-      <h1 className="text-2xl md:text-3xl font-bold mb-8 text-center">
-        IPO {currentYear} Listings
-      </h1>
-
-      {/* 2x2 Grid Layout - AC#3: Responsive design */}
-      {/* Desktop: 2 columns, Mobile: 1 column */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Top Left: Active Mainboard IPOs */}
+    <section className="w-full" aria-label={`IPO ${currentYear} Listings`}>
+      {/* Live tables stacked full-width — 6 data columns (incl. Subscription +
+          GMP, spec H2) need the room; a 2-col grid clipped GMP on SME. */}
+      <div className="space-y-8">
         <IPOListTable
           title={`IPO ${currentYear} List (Mainboard)`}
           ipos={mainboardIPOs}
           moreLink="/dashboard?category=mainboard"
-          moreLinkText="More Mainline IPO..."
+          moreLinkText="More Mainboard IPOs..."
           isLoading={isLoading}
         />
 
-        {/* Top Right: Active SME IPOs */}
         <IPOListTable
           title={`SME IPO ${currentYear} List`}
           ipos={smeIPOs}
@@ -95,23 +88,24 @@ export function HomeIPOTablesSection({
           isLoading={isLoading}
         />
 
-        {/* Bottom Left: Upcoming Mainboard IPOs */}
-        <UpcomingIPOTable
-          title="Upcoming Mainboard IPOs (Filed with SEBI)"
-          ipos={upcomingMainboardIPOs}
-          moreLink="/dashboard?category=mainboard&status=upcoming"
-          moreLinkText="More Upcoming Mainline IPO..."
-          isLoading={isLoading}
-        />
+        {/* Upcoming tables are narrow (Company · Status · Date) — keep paired. */}
+        <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+          <UpcomingIPOTable
+            title="Upcoming Mainboard IPOs (Filed with SEBI)"
+            ipos={upcomingMainboardIPOs}
+            moreLink="/dashboard?category=mainboard&status=upcoming"
+            moreLinkText="More Upcoming Mainboard IPOs..."
+            isLoading={isLoading}
+          />
 
-        {/* Bottom Right: Upcoming SME IPOs */}
-        <UpcomingIPOTable
-          title="Upcoming SME IPOs (Filed with BSE/NSE)"
-          ipos={upcomingSMEIPOs}
-          moreLink="/dashboard?category=sme&status=upcoming"
-          moreLinkText="More Upcoming SME IPO..."
-          isLoading={isLoading}
-        />
+          <UpcomingIPOTable
+            title="Upcoming SME IPOs (Filed with BSE/NSE)"
+            ipos={upcomingSMEIPOs}
+            moreLink="/dashboard?category=sme&status=upcoming"
+            moreLinkText="More Upcoming SME IPO..."
+            isLoading={isLoading}
+          />
+        </div>
       </div>
     </section>
   );

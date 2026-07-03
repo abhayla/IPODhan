@@ -298,7 +298,7 @@ describe('UpcomingIPOTable Component', () => {
       );
 
       // AC#8: Empty states handled gracefully
-      expect(screen.getByText('No IPOs available')).toBeInTheDocument();
+      expect(screen.getByText('Nothing filed yet')).toBeInTheDocument();
     });
 
     it('should still render title when empty', () => {

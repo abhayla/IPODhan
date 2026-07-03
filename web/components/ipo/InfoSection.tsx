@@ -100,33 +100,15 @@ export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
   return (
     <Card className="transition-all duration-300 hover:shadow-lg border-t-4 border-t-primary/20">
       <CardHeader className="bg-gradient-to-r from-background to-muted/20">
-        <CardTitle className="text-xl font-bold tracking-tight">IPO Details</CardTitle>
+        <CardTitle className="text-xl font-bold tracking-tight">Allotment & Listing Details</CardTitle>
       </CardHeader>
       <CardContent className="pt-6">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-2 md:gap-8">
-          {/* Left Column - Timeline Dates (Story 4.12) */}
+          {/* Left Column — allotment lifecycle (Story 4.12). Open/Close/Price/
+              Face Value/Lot/Issue Size were removed: they already render in the
+              timeline + IPO Details table above (fact-triplication flagged by
+              the 2026-07-02 blind review). */}
           <div className="space-y-2 animate-in fade-in slide-in-from-left-4 duration-500">
-            <InfoRow
-              label="Open Date"
-              value={formatIPODate(ipo.openDate)}
-              isDate
-              dateValue={ipo.openDate}
-              timeDistance={getTimeDistance(ipo.openDate)}
-            />
-            <InfoRow
-              label="Close Date"
-              value={formatIPODate(ipo.closeDate)}
-              isDate
-              dateValue={ipo.closeDate}
-              timeDistance={getTimeDistance(ipo.closeDate)}
-            />
-            <InfoRow
-              label="Allotment Date"
-              value={formatIPODate(ipo.allotmentDate)}
-              isDate
-              dateValue={ipo.allotmentDate}
-              timeDistance={getTimeDistance(ipo.allotmentDate)}
-            />
             {/* Story 4.12: Basis of Allotment Date */}
             {(ipoDetails?.basisOfAllotmentDate || (ipo.status === 'CLOSED' || ipo.status === 'LISTED')) ? (
               <InfoRow
@@ -164,26 +146,10 @@ export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
               dateValue={ipo.listingDate}
               timeDistance={getTimeDistance(ipo.listingDate)}
             />
-            <InfoRow
-              label="Price Range"
-              value={formatPriceBand(ipo.priceRangeMin, ipo.priceRangeMax)}
-            />
-            <InfoRow
-              label="Face Value"
-              value={formatCurrency(ipo.faceValue)}
-            />
           </div>
 
           {/* Right Column */}
           <div className="space-y-2 animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
-            <InfoRow
-              label="Lot Size"
-              value={ipo.lotSize ? `${ipo.lotSize} shares` : null}
-            />
-            <InfoRow
-              label="Issue Size"
-              value={formatIssueSizeCrores(ipo.issueSize)}
-            />
             {/* ISIN Display (Story 4.9) */}
             <div className="group flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-4 p-2 rounded-md transition-all duration-200 hover:bg-muted/30">
               <ISINDisplay isin={ipo.isin} />

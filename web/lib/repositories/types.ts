@@ -287,6 +287,10 @@ export type HistoricalIPO = IPO & {
   issuePrice?: number | null;
   listingGainPercent?: number | null;
   subscriptionOverall?: number | null;
+  // Enriched at the API boundary from listing_performance (ipos.current_* are
+  // empty); distinct names avoid clashing with the IPO row's current* columns.
+  currentPriceLive?: number | null;
+  currentGainLive?: number | null;
   year: number;
 };
 
