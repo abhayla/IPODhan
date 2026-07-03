@@ -13,6 +13,7 @@ import type { HistoricalIPO } from '@/lib/repositories/types';
 import { HistoricalFilters } from '@/components/history/HistoricalFilters';
 import { HistoricalSearchBar } from '@/components/history/HistoricalSearchBar';
 import { ResultsCount } from '@/components/history/ResultsCount';
+import { DataFreshness } from '@/components/shared/DataFreshness';
 import { HistoricalIPOTable } from '@/components/history/HistoricalIPOTable';
 import { HistoricalIPOCardList } from '@/components/history/HistoricalIPOCardList';
 import { HistoricalPagination } from '@/components/history/HistoricalPagination';
@@ -39,6 +40,7 @@ interface HistoricalIPOsContentProps {
 export function HistoricalIPOsContent({ availableSectors, availableYears }: HistoricalIPOsContentProps) {
   const { filters } = useHistoricalFilters();
   const [ipos, setIpos] = useState<HistoricalIPO[]>([]);
+  const [asOf, setAsOf] = useState<string | null>(null);
   const [pagination, setPagination] = useState({
     page: 1,
     limit: 20,
@@ -80,6 +82,7 @@ export function HistoricalIPOsContent({ availableSectors, availableYears }: Hist
         }
         setIpos(data.data);
         setPagination(data.pagination);
+        setAsOf(new Date().toISOString());
       } catch (err) {
         console.error('Error fetching historical IPOs:', err);
         setError('Failed to load historical IPOs. Please try again later.');
@@ -112,7 +115,10 @@ export function HistoricalIPOsContent({ availableSectors, availableYears }: Hist
             {/* Search Bar and Results Count */}
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
               <HistoricalSearchBar />
-              <ResultsCount total={pagination.total} loading={loading} />
+              <div className="flex items-center gap-3">
+                {asOf && <DataFreshness asOf={asOf} />}
+                <ResultsCount total={pagination.total} loading={loading} />
+              </div>
             </div>
 
             {/* Error State */}

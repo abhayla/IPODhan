@@ -124,6 +124,8 @@ export default async function SMEIPOsLandingPage({ searchParams }: PageProps) {
             gainsMap={gainsMap}
             liveMetricsMap={liveMetricsMap}
             initialYear={currentYear}
+
+            asOf={new Date().toISOString()}
           />
         </div>
       </>

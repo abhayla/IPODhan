@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 // TEMP: AffiliateCTAWrapper commented out - causes webpack error (Session 5)
 // import { AffiliateCTAWrapper } from "@/components/affiliate/AffiliateCTAWrapper";
 import { HomeIPOTablesSection } from "@/components/home/HomeIPOTablesSection";
+import { DataFreshness } from "@/components/shared/DataFreshness";
 import { IPOTableSkeleton } from "@/components/home/IPOTableSkeleton";
 // TEMP: AsyncErrorBoundary commented out - causes webpack error (Session 5)
 // import { AsyncErrorBoundary } from "@/components/error/AsyncErrorBoundary";
@@ -102,9 +103,10 @@ export default async function Home() {
         {/* IPO Tables Section — flat white, quiet title (spec G1/G2) */}
         <section className="py-6">
           <div className="container mx-auto px-4">
-            <h2 className="mb-4 text-lg font-semibold text-foreground">
-              Latest IPO updates
-            </h2>
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold text-foreground">Latest IPO updates</h2>
+              <DataFreshness asOf={new Date().toISOString()} />
+            </div>
             {/* TEMP: AsyncErrorBoundary commented out - causes webpack error (Session 5) */}
             {/* <AsyncErrorBoundary
               loadingFallback={<IPOTableSkeleton />}

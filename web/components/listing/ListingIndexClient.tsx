@@ -27,6 +27,7 @@ import { MobileMetricCard, type CardField } from '@/components/shared/MobileMetr
 import { SubscriptionBar } from '@/components/shared/SubscriptionBar';
 import { MonogramChip } from '@/components/shared/MonogramChip';
 import { GmpDisplay } from '@/components/shared/GmpDisplay';
+import { DataFreshness } from '@/components/shared/DataFreshness';
 import { Button } from '@/components/ui/button';
 import type { IPO } from '@/lib/db/types';
 import type { ListingGainsMap } from '@/lib/services/listing-gains-service';
@@ -48,6 +49,7 @@ interface ListingIndexClientProps {
   gainsMap: ListingGainsMap;
   liveMetricsMap: LiveMetricsMap; // latest GMP + subscription for live (open) IPOs
   initialYear: number;
+  asOf: string; // ISO server render/fetch time for the freshness stamp
 }
 
 /** Colored, signed listing-gain cell — real value or an honest em dash. */
@@ -170,6 +172,7 @@ export function ListingIndexClient({
   gainsMap,
   liveMetricsMap,
   initialYear,
+  asOf,
 }: ListingIndexClientProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -427,6 +430,10 @@ export function ListingIndexClient({
         open={openIpos.length}
         upcoming={upcomingIpos.length}
       />
+
+      <div className="flex justify-end">
+        <DataFreshness asOf={asOf} />
+      </div>
 
       {/* Status tabs */}
       <div

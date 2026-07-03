@@ -127,6 +127,8 @@ export default async function MainboardIPOsLandingPage({ searchParams }: PagePro
             gainsMap={gainsMap}
             liveMetricsMap={liveMetricsMap}
             initialYear={currentYear}
+
+            asOf={new Date().toISOString()}
           />
         </div>
       </>
