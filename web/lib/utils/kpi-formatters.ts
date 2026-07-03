@@ -92,6 +92,17 @@ export function formatCurrency(
  * SSOT for price-band rendering — components MUST call this, never inline
  * `formatCurrency(min) - formatCurrency(max)` (web-display-formatting.md).
  */
+/**
+ * Compact rupee for a single price value — keeps the price-band column a clean
+ * ruler: normal ₹ for < ₹1 lakh, else ₹X.XL / ₹X.XCr so a REIT unit at
+ * ₹10,50,000 renders "₹10.5L" instead of breaking column alignment.
+ */
+function formatRupeeCompact(value: number): string {
+  if (value >= 10000000) return `₹${(value / 10000000).toFixed(2)}Cr`;
+  if (value >= 100000) return `₹${(value / 100000).toFixed(1)}L`;
+  return formatCurrency(value, 0);
+}
+
 export function formatPriceBand(
   min: number | null | undefined,
   max: number | null | undefined
@@ -99,10 +110,10 @@ export function formatPriceBand(
   const hasMin = min !== null && min !== undefined;
   const hasMax = max !== null && max !== undefined;
   if (!hasMin && !hasMax) return 'N/A';
-  if (!hasMin) return formatCurrency(max, 0);
-  if (!hasMax) return formatCurrency(min, 0);
-  if (min === max) return formatCurrency(min, 0);
-  return `${formatCurrency(min, 0)} - ${formatCurrency(max, 0)}`;
+  if (!hasMin) return formatRupeeCompact(max as number);
+  if (!hasMax) return formatRupeeCompact(min as number);
+  if (min === max) return formatRupeeCompact(min as number);
+  return `${formatRupeeCompact(min as number)} - ${formatRupeeCompact(max as number)}`;
 }
 
 /**

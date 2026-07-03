@@ -153,6 +153,23 @@ const priceBandCol: ColumnDef<IPO> = {
   render: (_v, row) => orDash(formatPriceBand(row.priceRangeMin, row.priceRangeMax)),
 };
 
+// Min investment (retail's real question: what does 1 lot cost) = lot × upper band.
+const minInvestCol: ColumnDef<IPO> = {
+  key: 'minInvest',
+  header: 'Min invest',
+  sortable: false,
+  searchable: false,
+  align: 'right',
+  mobileHidden: true,
+  className: 'tabular-nums',
+  render: (_v, row) => {
+    const lot = row.lotSize;
+    const price = row.priceRangeMax;
+    if (!lot || !price) return <span className="text-gray-400">—</span>;
+    return orDash(formatPriceBand(lot * price, lot * price));
+  },
+};
+
 // Unit ("₹ Cr") lives in the header so the value column is a clean numeric ruler.
 const issueSizeCol: ColumnDef<IPO> = {
   key: 'issueSize',
@@ -306,23 +323,25 @@ export function ListingIndexClient({
     { key: 'all', label: 'All', rows: data },
   ];
 
-  // Open IPOs are live — surface GMP + subscription (the persona's decision data).
+  // Open IPOs are live — surface Min-invest + GMP + subscription (decision data).
   const openColumns: ColumnDef<IPO>[] = [
     companyCol(),
     statusCol,
     openCol,
     closeCol,
     priceBandCol,
+    minInvestCol,
     subColumn,
     gmpColumn,
   ];
-  // Upcoming IPOs are not open yet — no live subscription; keep issue size.
+  // Upcoming IPOs are not open yet — no live subscription; show min-invest + size.
   const upcomingColumns: ColumnDef<IPO>[] = [
     companyCol(),
     statusCol,
     openCol,
     closeCol,
     priceBandCol,
+    minInvestCol,
     issueSizeCol,
   ];
   const listedColumns: ColumnDef<IPO>[] = [
