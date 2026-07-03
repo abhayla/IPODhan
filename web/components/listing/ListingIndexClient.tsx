@@ -23,12 +23,10 @@ import {
   type ColumnDef,
   DEFAULT_IPO_YEARS_EXPORT,
 } from '@/components/shared/DataTable';
-import { MobileMetricCard, type CardField } from '@/components/shared/MobileMetricCard';
 import { SubscriptionBar } from '@/components/shared/SubscriptionBar';
 import { MonogramChip } from '@/components/shared/MonogramChip';
 import { GmpDisplay } from '@/components/shared/GmpDisplay';
 import { DataFreshness } from '@/components/shared/DataFreshness';
-import { Button } from '@/components/ui/button';
 import type { IPO } from '@/lib/db/types';
 import type { ListingGainsMap } from '@/lib/services/listing-gains-service';
 import type { LiveMetricsMap } from '@/lib/services/live-metrics-service';
@@ -119,7 +117,6 @@ const statusCol: ColumnDef<IPO> = {
   header: 'Status',
   sortable: false,
   searchable: false,
-  mobileHidden: true,
   render: (_v, row) => <IpoStatusChip ipo={row} />,
 };
 
@@ -160,7 +157,6 @@ const minInvestCol: ColumnDef<IPO> = {
   sortable: false,
   searchable: false,
   align: 'right',
-  mobileHidden: true,
   className: 'tabular-nums',
   render: (_v, row) => {
     const lot = row.lotSize;
@@ -177,7 +173,6 @@ const issueSizeCol: ColumnDef<IPO> = {
   sortable: true,
   searchable: false,
   align: 'right',
-  mobileHidden: true,
   className: 'tabular-nums',
   render: (v) => orDash(formatIssueSizeCroresBare(v)),
 };
@@ -312,7 +307,6 @@ export function ListingIndexClient({
     searchable: false,
     align: 'right',
     className: 'tabular-nums',
-    mobileHidden: true,
     render: (v) => dateCell(v),
   };
 
@@ -390,57 +384,7 @@ export function ListingIndexClient({
     all: `No ${segmentLabel} IPOs found for ${initialYear}.`,
   };
 
-  // Mobile card fields per tab — keep the persona's decision data (gain, price
-  // band, dates) visible without the horizontal-scroll clipping a table causes.
-  const mobileFields = (ipo: IPO): CardField[] => {
-    const band = orDash(formatPriceBand(ipo.priceRangeMin, ipo.priceRangeMax));
-    const size = orDash(formatIssueSizeCrores(ipo.issueSize));
-    if (tab === 'listed') {
-      return [
-        { label: 'Listing gain', value: gainCell(gainsMap[ipo.id]?.listingGainPercent) },
-        { label: 'Price band', value: band },
-        { label: 'Listed', value: dateCell(ipo.listingDate) },
-        { label: 'Issue size', value: size },
-      ];
-    }
-    if (tab === 'all') {
-      return [
-        { label: 'Listing gain', value: gainCell(gainsMap[ipo.id]?.listingGainPercent) },
-        { label: 'Price band', value: band },
-        { label: 'Open', value: dateCell(ipo.openDate) },
-        { label: 'Close', value: dateCell(ipo.closeDate) },
-      ];
-    }
-    if (tab === 'open') {
-      return [
-        { label: 'Price band', value: band },
-        { label: 'Open – Close', value: <>{dateCell(ipo.openDate)} – {dateCell(ipo.closeDate)}</> },
-        { label: 'Subscription', value: subCell(liveMetricsMap[ipo.id]?.totalSubscription) },
-        {
-          label: 'GMP',
-          value: (
-            <GmpDisplay
-              gmp={liveMetricsMap[ipo.id]?.gmp}
-              gmpPercent={liveMetricsMap[ipo.id]?.gmpPercent}
-              gmpUpdatedAt={liveMetricsMap[ipo.id]?.gmpUpdatedAt}
-              gmpTrend={liveMetricsMap[ipo.id]?.gmpTrend}
-              gmpSeries={liveMetricsMap[ipo.id]?.gmpSeries}
-            />
-          ),
-        },
-      ];
-    }
-    return [
-      { label: 'Price band', value: band },
-      { label: 'Issue size', value: size },
-      { label: 'Open', value: dateCell(ipo.openDate) },
-      { label: 'Close', value: dateCell(ipo.closeDate) },
-    ];
-  };
-
   const sortedRows = sortRows(active.rows);
-  const totalPages = Math.max(1, Math.ceil(sortedRows.length / PAGE_SIZE));
-  const pageRows = sortedRows.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   // Richer stat strip (R15 #20): pack 6 honest metrics vs the old 3-card row.
   const listedGains = listedIpos
@@ -530,72 +474,26 @@ export function ListingIndexClient({
         </div>
       )}
 
-      {/* Desktop: dense table with click-to-sort headers */}
-      <div className="hidden md:block">
-        <DataTable
-          key={tab}
-          data={sortedRows}
-          columns={columnsFor[tab]}
-          emptyMessage={emptyFor[tab]}
-          onRowClick={(row) => router.push(`/ipos/${row.slug}`)}
-          onSort={handleSort}
-          currentSort={sort ?? undefined}
-          enablePagination
-          paginationConfig={{
-            pageSize: PAGE_SIZE,
-            currentPage: page,
-            totalRecords: sortedRows.length,
-            onPageChange: setPage,
-          }}
-          keyExtractor={(row) => row.id}
-        />
-      </div>
-
-      {/* Mobile: row-cards (no horizontal clipping) */}
-      <div className="md:hidden">
-        {active.rows.length === 0 ? (
-          <p className="py-8 text-center text-sm text-gray-500">{emptyFor[tab]}</p>
-        ) : (
-          <>
-            <div className="space-y-2">
-              {pageRows.map((ipo) => (
-                <MobileMetricCard
-                  key={ipo.id}
-                  href={`/ipos/${ipo.slug}`}
-                  title={ipo.companyName}
-                  status={<IpoStatusChip ipo={ipo} />}
-                  fields={mobileFields(ipo)}
-                />
-              ))}
-            </div>
-            {totalPages > 1 && (
-              <div className="mt-4 flex items-center justify-between">
-                <span className="text-xs text-gray-500">
-                  Page {page} of {totalPages}
-                </span>
-                <div className="flex gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page === 1}
-                    onClick={() => setPage(page - 1)}
-                  >
-                    Previous
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={page === totalPages}
-                    onClick={() => setPage(page + 1)}
-                  >
-                    Next
-                  </Button>
-                </div>
-              </div>
-            )}
-          </>
-        )}
-      </div>
+      {/* One table system at every breakpoint — on mobile it scrolls
+          horizontally under a sticky company column (Levels/Screener pattern),
+          NOT a stack of label:value cards that drop columns (R19 #1). */}
+      <DataTable
+        key={tab}
+        data={sortedRows}
+        columns={columnsFor[tab]}
+        emptyMessage={emptyFor[tab]}
+        onRowClick={(row) => router.push(`/ipos/${row.slug}`)}
+        onSort={handleSort}
+        currentSort={sort ?? undefined}
+        enablePagination
+        paginationConfig={{
+          pageSize: PAGE_SIZE,
+          currentPage: page,
+          totalRecords: sortedRows.length,
+          onPageChange: setPage,
+        }}
+        keyExtractor={(row) => row.id}
+      />
     </div>
   );
 }
