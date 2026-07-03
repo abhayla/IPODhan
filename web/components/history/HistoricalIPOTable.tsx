@@ -108,12 +108,17 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
   const th = 'whitespace-nowrap border-b border-border text-[11px] font-medium uppercase tracking-wider text-gray-500';
   const thSort = `${th} cursor-pointer transition-colors hover:text-gray-800`;
 
+  // Company column stays pinned while the rest scrolls horizontally on mobile
+  // (Levels/Screener pattern, R19 #1) — one table system at every breakpoint.
+  const stickyFirst =
+    'sticky left-0 z-20 border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]';
+
   return (
-    <div className="overflow-hidden rounded-lg border border-border">
+    <div className="overflow-x-auto rounded-lg border border-border">
       <Table className="[&_td]:py-1.5 [&_th]:h-9">
         <TableHeader>
           <TableRow className="border-0 bg-gray-50 hover:bg-gray-50">
-            <TableHead className={th}>Company</TableHead>
+            <TableHead className={`${th} ${stickyFirst} bg-gray-50`}>Company</TableHead>
             {hasSector && <TableHead className={th}>Sector</TableHead>}
             <TableHead className={thSort} onClick={() => handleSort('listing_date')}>
               Listing date
@@ -155,7 +160,7 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
                 i % 2 === 1 ? 'bg-[#FAFBFC]' : 'bg-white'
               }`}
             >
-              <TableCell>
+              <TableCell className={`${stickyFirst} max-w-[160px] bg-inherit sm:max-w-[240px] md:max-w-none`}>
                 <Link href={`/ipos/${ipo.slug}`} className="group flex items-center gap-2.5">
                   <MonogramChip name={ipo.companyName} />
                   <span className="min-w-0">

@@ -15,7 +15,6 @@ import { HistoricalSearchBar } from '@/components/history/HistoricalSearchBar';
 import { ResultsCount } from '@/components/history/ResultsCount';
 import { DataFreshness } from '@/components/shared/DataFreshness';
 import { HistoricalIPOTable } from '@/components/history/HistoricalIPOTable';
-import { HistoricalIPOCardList } from '@/components/history/HistoricalIPOCardList';
 import { HistoricalPagination } from '@/components/history/HistoricalPagination';
 import { EmptyState } from '@/components/history/EmptyState';
 import { LoadingSkeleton } from '@/components/history/LoadingSkeleton';
@@ -138,14 +137,9 @@ export function HistoricalIPOsContent({ availableSectors, availableYears }: Hist
             {/* IPO List - Desktop Table View */}
             {!loading && !error && ipos.length > 0 && (
               <>
-                <div className="hidden lg:block">
-                  <HistoricalIPOTable ipos={ipos} />
-                </div>
-
-                {/* IPO List - Mobile Card View */}
-                <div className="lg:hidden">
-                  <HistoricalIPOCardList ipos={ipos} />
-                </div>
+                {/* One table at every breakpoint — scrolls horizontally under a
+                    sticky company column on mobile (R19 #1). */}
+                <HistoricalIPOTable ipos={ipos} />
 
                 {/* Pagination */}
                 <div className="flex justify-center mt-8">
