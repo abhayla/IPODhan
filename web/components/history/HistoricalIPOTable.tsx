@@ -115,8 +115,8 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
 
   return (
     <div className="relative">
-      {/* Right-edge fade — mobile horizontal-scroll cue (R20 #2) */}
-      <div className="pointer-events-none absolute inset-y-0 right-0 z-30 w-8 rounded-r-lg bg-gradient-to-l from-white to-transparent md:hidden" />
+      {/* Right-edge shadow — dark gradient reads as 'more columns →' (R29 #1) */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-30 w-6 rounded-r-lg bg-gradient-to-l from-black/[0.10] to-transparent md:hidden" />
       <div className="overflow-x-auto rounded-lg border border-border">
       <Table className="[&_td]:py-1.5 [&_th]:h-9">
         <TableHeader>
