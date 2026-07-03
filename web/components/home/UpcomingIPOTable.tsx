@@ -136,7 +136,8 @@ export function UpcomingIPOTable({
       <div className="rounded-md border bg-card overflow-x-auto">
         <Table aria-label={title} className="min-w-full [&_td]:px-1.5 [&_th]:px-1.5 sm:[&_td]:px-2 sm:[&_th]:px-2">
           <TableHeader>
-            <TableRow>
+            {/* Dark header — unified table system across the site */}
+            <TableRow className="border-0 bg-[#232B35] hover:bg-[#232B35] [&>th]:text-xs [&>th]:font-semibold [&>th]:text-white">
               <TableHead scope="col">
                 Company Name
               </TableHead>
