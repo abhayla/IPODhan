@@ -147,8 +147,8 @@ export function IPOListTable({
       <div className="hidden rounded-md border bg-card md:block">
         <Table aria-label={title} className="min-w-full [&_td]:px-2 [&_td]:py-1.5 [&_th]:px-2 [&_th]:h-9">
           <TableHeader>
-            {/* Dark header — unified with the History + listing tables (one system) */}
-            <TableRow className="border-0 bg-[#232B35] hover:bg-[#232B35] [&>th]:text-xs [&>th]:font-semibold [&>th]:text-white">
+            {/* Quiet Screener/Levels header — unified light surface (R16 #1) */}
+            <TableRow className="border-0 border-b border-border bg-gray-50 hover:bg-gray-50 [&>th]:text-[11px] [&>th]:font-medium [&>th]:uppercase [&>th]:tracking-wider [&>th]:text-gray-500">
               <TableHead scope="col">Company</TableHead>
               <TableHead scope="col" className="whitespace-nowrap">Status</TableHead>
               <TableHead scope="col" className="whitespace-nowrap text-right">

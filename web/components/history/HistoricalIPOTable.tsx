@@ -98,21 +98,21 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
       return <ArrowUpDown className="ml-1 inline h-3.5 w-3.5 opacity-40" />;
     }
     return filters.sortOrder === 'DESC' ? (
-      <ArrowDown className="ml-1 inline h-3.5 w-3.5 text-cyan-300" />
+      <ArrowDown className="ml-1 inline h-3 w-3 text-gray-800" />
     ) : (
-      <ArrowUp className="ml-1 inline h-3.5 w-3.5 text-cyan-300" />
+      <ArrowUp className="ml-1 inline h-3 w-3 text-gray-800" />
     );
   };
 
-  // Levels.fyi-style header cell classes
-  const th = 'whitespace-nowrap text-xs font-semibold text-white';
-  const thSort = `${th} cursor-pointer transition-colors hover:bg-white/10`;
+  // Screener/Levels-style quiet header cell classes (R16 #1)
+  const th = 'whitespace-nowrap border-b border-border text-[11px] font-medium uppercase tracking-wider text-gray-500';
+  const thSort = `${th} cursor-pointer transition-colors hover:text-gray-800`;
 
   return (
     <div className="overflow-hidden rounded-lg border border-border">
       <Table className="[&_td]:py-1.5 [&_th]:h-9">
         <TableHeader>
-          <TableRow className="border-0 bg-[#232B35] hover:bg-[#232B35]">
+          <TableRow className="border-0 bg-gray-50 hover:bg-gray-50">
             <TableHead className={th}>Company</TableHead>
             {hasSector && <TableHead className={th}>Sector</TableHead>}
             <TableHead className={thSort} onClick={() => handleSort('listing_date')}>
@@ -129,7 +129,7 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
             </TableHead>
             {hasCurrent && (
               <>
-                <TableHead className={`${th} border-l border-white/15 text-right`}>
+                <TableHead className={`${th} border-l text-right`}>
                   Current price
                 </TableHead>
                 <TableHead className={`${th} text-right`}>Current gain %</TableHead>

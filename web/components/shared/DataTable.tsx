@@ -187,13 +187,13 @@ export function DataTable<T extends Record<string, any>>({
   // ===== RENDER HELPERS =====
 
   const SortIcon = ({ field }: { field: string }) => {
-    // Inactive: dim. Active: a bright cyan caret that pops on the dark header
-    // so the sorted column is unmistakable (R14 active-sort-clarity gap).
-    if (sortField !== field) return <ArrowUpDown className="h-3.5 w-3.5 opacity-40" />;
+    // Inactive: dim. Active: a dark caret that pops on the light Screener-style
+    // header so the sorted column is unmistakable (R14 active-sort-clarity gap).
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 opacity-30" />;
     return sortOrder === 'asc' ? (
-      <ArrowUp className="h-3.5 w-3.5 text-cyan-300" />
+      <ArrowUp className="h-3 w-3 text-gray-800" />
     ) : (
-      <ArrowDown className="h-3.5 w-3.5 text-cyan-300" />
+      <ArrowDown className="h-3 w-3 text-gray-800" />
     );
   };
 
@@ -296,27 +296,28 @@ export function DataTable<T extends Record<string, any>>({
           <Table className="[&_td]:py-1.5 [&_th]:h-9">
 
             <TableHeader>
-              {/* Header Row — dark, unified with the History table (one system) */}
-              <TableRow className="border-0 bg-[#232B35] hover:bg-[#232B35]">
+              {/* Header Row — quiet Screener/Levels surface: light bg, hairline
+                  bottom rule, uppercase tracked gray labels (R16 #1, the ceiling lever) */}
+              <TableRow className="border-0 bg-gray-50 hover:bg-gray-50">
                 {columns.map((column, colIndex) => (
                   <TableHead
                     key={column.key}
                     style={column.minWidth ? { minWidth: column.minWidth } : undefined}
                     className={cn(
-                      'whitespace-nowrap text-xs font-semibold text-white',
+                      'whitespace-nowrap border-b border-border text-[11px] font-medium uppercase tracking-wider text-gray-500',
                       column.className,
                       column.align === 'right' && 'text-right',
                       column.align === 'center' && 'text-center',
                       column.mobileHidden && 'hidden md:table-cell',
                       // first column stays visible while the table scrolls horizontally
-                      colIndex === 0 && 'sticky left-0 z-20 bg-inherit border-r border-white/10 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)]'
+                      colIndex === 0 && 'sticky left-0 z-20 bg-inherit border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]'
                     )}
                   >
                     {column.sortable !== false ? (
                       <button
                         onClick={() => handleSort(column.key)}
                         className={cn(
-                          'flex items-center gap-2 font-semibold text-white transition-colors hover:text-white/80',
+                          'flex items-center gap-1.5 uppercase tracking-wider text-gray-500 transition-colors hover:text-gray-800',
                           column.align === 'right' && 'ml-auto',
                           column.align === 'center' && 'mx-auto'
                         )}
@@ -324,7 +325,7 @@ export function DataTable<T extends Record<string, any>>({
                         {column.header} <SortIcon field={column.key} />
                       </button>
                     ) : (
-                      <span className="font-semibold text-white">{column.header}</span>
+                      <span className="uppercase tracking-wider text-gray-500">{column.header}</span>
                     )}
                   </TableHead>
                 ))}

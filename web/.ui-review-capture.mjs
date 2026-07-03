@@ -12,7 +12,7 @@ const ROUTES = [
   ['home', '/'],
   ['mainboard-ipos', '/mainboard-ipos'],
   ['sme-ipos', '/sme-ipos'],
-  ['ipo-detail', '/ipos/knack-packaging-ltd'],
+  ['ipo-detail', '/ipos/gsp-crop-science-ltd'],
   ['mainboard-calendar', '/mainboard-ipo-calendar'],
   ['sme-calendar', '/sme-ipo-calendar'],
   ['mainboard-listings', '/mainboard-ipo-listings'],

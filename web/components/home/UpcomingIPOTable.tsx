@@ -136,8 +136,8 @@ export function UpcomingIPOTable({
       <div className="rounded-md border bg-card overflow-x-auto">
         <Table aria-label={title} className="min-w-full [&_td]:px-1.5 [&_th]:px-1.5 sm:[&_td]:px-2 sm:[&_th]:px-2">
           <TableHeader>
-            {/* Dark header — unified table system across the site */}
-            <TableRow className="border-0 bg-[#232B35] hover:bg-[#232B35] [&>th]:text-xs [&>th]:font-semibold [&>th]:text-white">
+            {/* Quiet Screener/Levels header — unified light surface (R16 #1) */}
+            <TableRow className="border-0 border-b border-border bg-gray-50 hover:bg-gray-50 [&>th]:text-[11px] [&>th]:font-medium [&>th]:uppercase [&>th]:tracking-wider [&>th]:text-gray-500">
               <TableHead scope="col">
                 Company Name
               </TableHead>

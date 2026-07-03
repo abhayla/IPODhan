@@ -48,23 +48,25 @@ export function HistoricalIPOCardList({ ipos }: HistoricalIPOCardListProps) {
         const gainPercent = ipo.listingGainPercent;
         const hasGain = gainPercent !== null && gainPercent !== undefined && Number.isFinite(gainPercent);
         const isPositiveGain = hasGain && gainPercent >= 0;
-        const borderColor = !hasGain ? 'border-border' : isPositiveGain ? 'border-green-500' : 'border-red-500';
-        const gainColor = !hasGain ? 'bg-muted-foreground/20 text-muted-foreground' : isPositiveGain ? 'bg-green-500 text-white' : 'bg-red-500 text-white';
+        // Quiet reference language (R16 #4/#12): a thin left color-tick, not a
+        // full saturated border; light-tint gain chip, not a solid fill.
+        const tickColor = !hasGain ? 'border-l-border' : isPositiveGain ? 'border-l-green-500' : 'border-l-red-500';
+        const gainColor = !hasGain ? 'bg-muted text-muted-foreground' : isPositiveGain ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700';
         const gainSign = hasGain && isPositiveGain ? '+' : '';
         const GainIcon = isPositiveGain ? ArrowUp : ArrowDown;
 
         return (
           <Link key={ipo.id} href={`/ipos/${ipo.slug}`} className="block">
             <Card
-              className={`border-2 ${borderColor} hover:shadow-lg transition-all duration-200 cursor-pointer`}
+              className={`border border-l-4 ${tickColor} transition-shadow duration-200 hover:shadow-md cursor-pointer`}
             >
-              <CardContent className="p-6 space-y-4">
+              <CardContent className="p-4 space-y-3">
                 {/* Header: Company Name and Status */}
                 <div className="flex items-start justify-between gap-2">
-                  <h3 className="text-lg font-bold leading-tight line-clamp-2 flex-1">
+                  <h3 className="text-base font-semibold leading-tight line-clamp-2 flex-1">
                     {ipo.companyName}
                   </h3>
-                  <Badge className="bg-purple-500 text-white">LISTED</Badge>
+                  <Badge className="bg-gray-100 text-gray-600 hover:bg-gray-100">Listed</Badge>
                 </div>
 
                 {/* Listing Gain Badge - Prominent */}
