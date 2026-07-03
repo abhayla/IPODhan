@@ -85,7 +85,7 @@ function getStatusText(segment: string | null): string {
  *   title="Upcoming Mainboard IPOs (Filed with SEBI)"
  *   ipos={upcomingMainboardIPOs}
  *   moreLink="/dashboard?category=mainboard&status=upcoming"
- *   moreLinkText="More Upcoming Mainline IPO..."
+ *   moreLinkText="More Upcoming Mainboard IPOs..."
  *   isLoading={false}
  * />
  * ```
@@ -101,20 +101,26 @@ export function UpcomingIPOTable({
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
         <IPOTableSkeleton />
       </div>
     );
   }
 
-  // AC#8: Empty states handled gracefully
+  // AC#8: Empty states handled gracefully — informative, never a bare dead box
   if (ipos.length === 0) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
-        <div className="rounded-md border bg-card">
-          <div className="text-center py-12 text-muted-foreground">
-            No IPOs available
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+        <div className="rounded-md border border-dashed bg-card">
+          <div className="text-center py-10 px-4 text-muted-foreground text-sm">
+            <p className="font-medium text-foreground mb-1">Nothing filed yet</p>
+            <p>
+              Companies appear here as soon as they file with the exchanges.{' '}
+              <Link href={moreLink} className="text-primary hover:underline">
+                See all upcoming IPOs
+              </Link>
+            </p>
           </div>
         </div>
       </div>
@@ -124,20 +130,21 @@ export function UpcomingIPOTable({
   return (
     <div className="space-y-4">
       {/* Table Title - AC#1: Components render correctly */}
-      <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
+      <h2 className="text-base font-semibold text-foreground">{title}</h2>
 
       {/* AC#3: Tables are responsive and match reference design */}
       <div className="rounded-md border bg-card overflow-x-auto">
-        <Table aria-label={title} className="min-w-full">
+        <Table aria-label={title} className="min-w-full [&_td]:px-1.5 [&_th]:px-1.5 sm:[&_td]:px-2 sm:[&_th]:px-2">
           <TableHeader>
-            <TableRow>
-              <TableHead scope="col" className="w-[40%] sm:w-auto">
+            {/* Quiet Screener/Levels header — unified light surface (R16 #1) */}
+            <TableRow className="border-0 border-b border-border bg-gray-50 hover:bg-gray-50 [&>th]:text-[11px] [&>th]:font-medium [&>th]:uppercase [&>th]:tracking-wider [&>th]:text-gray-500">
+              <TableHead scope="col">
                 Company Name
               </TableHead>
-              <TableHead scope="col" className="w-[35%] sm:w-auto whitespace-nowrap">
+              <TableHead scope="col" className="whitespace-nowrap">
                 Status
               </TableHead>
-              <TableHead scope="col" className="w-[25%] sm:w-auto whitespace-nowrap">
+              <TableHead scope="col" className="whitespace-nowrap">
                 Date
               </TableHead>
             </TableRow>
@@ -148,7 +155,7 @@ export function UpcomingIPOTable({
                 <TableCell>
                   <Link
                     href={`/ipos/${ipo.slug}`}
-                    className="font-medium hover:underline text-primary text-sm md:text-base"
+                    className="font-medium hover:underline text-primary text-sm md:text-base block max-w-[100px] sm:max-w-none truncate"
                   >
                     {ipo.companyName}
                   </Link>
@@ -156,7 +163,7 @@ export function UpcomingIPOTable({
                 <TableCell className="text-muted-foreground text-sm md:text-base">
                   {getStatusText(ipo.segment)}
                 </TableCell>
-                <TableCell className="text-sm md:text-base">
+                <TableCell className="text-sm md:text-base whitespace-nowrap">
                   {formatDate(ipo.openDate)}
                 </TableCell>
               </TableRow>

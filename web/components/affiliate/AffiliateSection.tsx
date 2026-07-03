@@ -42,7 +42,7 @@ export function AffiliateSection({ ipoId }: AffiliateSectionProps) {
               source="ipo_detail"
               ipoId={ipoId}
               size="lg"
-              className="flex-1"
+              className="sm:max-w-[220px] flex-1"
             />
           ))}
         </div>

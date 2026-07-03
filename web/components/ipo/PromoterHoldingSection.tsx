@@ -125,15 +125,11 @@ export function PromoterHoldingSection({
             </div>
           </div>
 
-          {/* Equity Dilution Section (only if both values available) */}
+          {/* Equity Dilution — a neutral stat panel (matches the two above), not
+              a colored alert box; only the number carries semantic color (R18 #15) */}
           {dilution !== null && (
-            <div
-              className={`p-4 rounded-lg border ${getDilutionBgClass(dilution)}`}
-            >
+            <div className="p-4 rounded-lg bg-muted/50">
               <div className="flex items-start gap-3">
-                <TrendingDown 
-                  className={`h-5 w-5 mt-0.5 ${getDilutionColorClass(dilution)}`}
-                />
                 <div className="flex-1 space-y-2">
                   <div className="flex items-baseline justify-between">
                     <p className="text-sm font-medium text-foreground">

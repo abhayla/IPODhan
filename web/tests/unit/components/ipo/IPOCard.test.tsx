@@ -87,7 +87,9 @@ describe('IPOCard', () => {
       render(<IPOCard ipo={ipo} />);
 
       expect(screen.getByText('Example Corp')).toBeInTheDocument();
-      expect(screen.getByText('Not Rated')).toBeInTheDocument();
+      // Rating row is hidden when null — no 'Not Rated' placeholder (2026-07-02 review)
+      expect(screen.queryByText('Not Rated')).toBeNull();
+      expect(screen.queryByText('IPODhan Rating')).toBeNull();
     });
   });
 
@@ -195,7 +197,9 @@ describe('IPOCard', () => {
       const ipo = mockIPO({ rating: null });
       render(<IPOCard ipo={ipo} />);
 
-      expect(screen.getByText('Not Rated')).toBeInTheDocument();
+      // Rating row is hidden when null — no 'Not Rated' placeholder (2026-07-02 review)
+      expect(screen.queryByText('Not Rated')).toBeNull();
+      expect(screen.queryByText('IPODhan Rating')).toBeNull();
     });
 
     it.each([

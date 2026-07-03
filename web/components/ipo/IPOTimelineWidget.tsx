@@ -184,13 +184,14 @@ export function IPOTimelineWidget({ ipo, ipoDetails, compact = false, className 
         </p>
       </CardHeader>
       <CardContent>
+        {/* Spec D4.1: compact timeline — dots + short labels, no descriptions
+            (desktop clipped the last steps; mobile showed 2 of 8) */}
         <TimelineBase
           milestones={milestones}
           orientation="horizontal"
           showConnectors
           dateFormat="dd MMM"
-          showDescriptions
-          dotSize="medium"
+          dotSize="small"
         />
       </CardContent>
     </Card>

@@ -5,7 +5,7 @@
  * Implements caching for frequently accessed listing metrics.
  */
 
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { BaseRepository } from './base-repository';
@@ -54,6 +54,29 @@ export class ListingPerformanceRepository
       },
       CacheTTL.LISTING_PERFORMANCE
     );
+  }
+
+  /**
+   * Batch-fetch listing performance for many IPOs in one query.
+   * Used by listing-index pages to surface real listing-gain data without
+   * N+1 per-IPO lookups. Returns only the rows that exist (LISTED IPOs with
+   * a listing_performance row) — callers treat a missing id as "no data yet".
+   */
+  async findByIPOIds(ipoIds: string[]): Promise<ListingPerformance[]> {
+    if (ipoIds.length === 0) return [];
+
+    try {
+      return await this.db
+        .select()
+        .from(listingPerformance)
+        .where(inArray(listingPerformance.ipoId, ipoIds));
+    } catch (error) {
+      throw new DatabaseError(
+        'Failed to batch-fetch listing performance',
+        undefined,
+        error
+      );
+    }
   }
 
   /**

@@ -10,6 +10,7 @@
 import { getRedisClient, safeGet, safeSet } from '@/lib/cache/redis-client';
 import { db } from '@/lib/db/index';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
+import { getLiveMetricsByIds, type LiveMetric } from '@/lib/services/live-metrics-service';
 import type { IPO } from '@/lib/db/types';
 
 // ==================== TYPES ====================
@@ -26,10 +27,18 @@ export interface HomeIPOTableData {
   offeringType: string;
   openDate: string | null;
   closeDate: string | null;
-  issuePrice: number | null; // Computed from priceRangeMax
+  priceMin: number | null; // priceRangeMin — for price-band display
+  issuePrice: number | null; // priceRangeMax
   issueSize: string | null; // Matches IPO schema (numeric -> string)
   listingDate: string | null;
   status: string;
+  // Live metrics (spec H2) — REAL latest GMP + subscription, null when no data
+  gmp: number | null; // grey market premium in ₹
+  gmpPercent: number | null; // GMP as % of issue price
+  gmpUpdatedAt: string | null; // ISO timestamp of latest GMP snapshot
+  gmpTrend: 'up' | 'down' | 'flat' | null; // latest vs prior GMP
+  gmpSeries: number[]; // GMP values oldest→newest, for a sparkline
+  totalSubscription: number | null; // total subscription multiple (x)
 }
 
 // ==================== CONSTANTS ====================
@@ -48,9 +57,10 @@ const CACHE_KEYS = {
 // ==================== HELPER FUNCTIONS ====================
 
 /**
- * Transform IPO data to HomeIPOTableData format
+ * Transform IPO data to HomeIPOTableData format.
+ * `metric` carries the real latest GMP/subscription (null when absent).
  */
-function transformIPOData(ipo: IPO): HomeIPOTableData {
+function transformIPOData(ipo: IPO, metric?: LiveMetric): HomeIPOTableData {
   return {
     id: ipo.id,
     companyName: ipo.companyName,
@@ -59,11 +69,28 @@ function transformIPOData(ipo: IPO): HomeIPOTableData {
     offeringType: ipo.offeringType,
     openDate: ipo.openDate,
     closeDate: ipo.closeDate,
+    priceMin: ipo.priceRangeMin,
     issuePrice: ipo.priceRangeMax, // Use max price from range
     issueSize: ipo.issueSize, // Already string | null from schema
     listingDate: ipo.listingDate,
     status: ipo.status,
+    gmp: metric?.gmp ?? null,
+    gmpPercent: metric?.gmpPercent ?? null,
+    gmpUpdatedAt: metric?.gmpUpdatedAt ?? null,
+    gmpTrend: metric?.gmpTrend ?? null,
+    gmpSeries: metric?.gmpSeries ?? [],
+    totalSubscription: metric?.totalSubscription ?? null,
   };
+}
+
+/**
+ * Enrich a set of IPOs with their latest real GMP + subscription (spec H2).
+ * Uses the cached findLatest repository methods; a per-IPO failure degrades to
+ * null for that IPO rather than failing the whole table.
+ */
+async function attachLiveMetrics(ipos: IPO[]): Promise<HomeIPOTableData[]> {
+  const metrics = await getLiveMetricsByIds(ipos.map((ipo) => ipo.id));
+  return ipos.map((ipo) => transformIPOData(ipo, metrics[ipo.id]));
 }
 
 /**
@@ -169,7 +196,7 @@ export async function getMainboardIPOs(): Promise<HomeIPOTableData[]> {
         })
         .slice(0, RESULT_LIMIT);
 
-      return sortedIPOs.map(transformIPOData);
+      return attachLiveMetrics(sortedIPOs);
     } catch (error) {
       console.error('Error fetching mainboard IPOs:', error);
       return []; // AC#5: Return empty array on error
@@ -235,7 +262,7 @@ export async function getSMEIPOs(): Promise<HomeIPOTableData[]> {
         })
         .slice(0, RESULT_LIMIT);
 
-      return sortedIPOs.map(transformIPOData);
+      return attachLiveMetrics(sortedIPOs);
     } catch (error) {
       console.error('Error fetching SME IPOs:', error);
       return []; // AC#5: Return empty array on error
@@ -277,7 +304,7 @@ export async function getUpcomingMainboardIPOs(): Promise<HomeIPOTableData[]> {
         return dateA - dateB;
       });
 
-      return sortedIPOs.map(transformIPOData);
+      return sortedIPOs.map((ipo) => transformIPOData(ipo));
     } catch (error) {
       console.error('Error fetching upcoming mainboard IPOs:', error);
       return []; // AC#5: Return empty array on error
@@ -319,7 +346,7 @@ export async function getUpcomingSMEIPOs(): Promise<HomeIPOTableData[]> {
         return dateA - dateB;
       });
 
-      return sortedIPOs.map(transformIPOData);
+      return sortedIPOs.map((ipo) => transformIPOData(ipo));
     } catch (error) {
       console.error('Error fetching upcoming SME IPOs:', error);
       return []; // AC#5: Return empty array on error

@@ -57,27 +57,11 @@ export default function FinancialPerformanceCharts({
   // State for collapsible sections
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
-  // Check if we have sufficient data
+  // No data → render nothing. A full "Financial Performance Data Unavailable"
+  // card is exactly the empty-state noise R17 #1 flagged; the detail page's
+  // one-line "Awaiting data" strip acknowledges it once instead.
   if (!hasMinimumFinancialData(financialData)) {
-    return (
-      <section
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-8"
-        aria-labelledby="financial-performance-title"
-      >
-        <div className="text-center">
-          <DollarSign className="h-12 w-12 text-gray-400 dark:text-gray-600 mx-auto mb-4" />
-          <h2
-            id="financial-performance-title"
-            className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2"
-          >
-            Financial Performance Data Unavailable
-          </h2>
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            {ipoEmptyStateMessage('financial', status, companyName)}
-          </p>
-        </div>
-      </section>
-    );
+    return null;
   }
 
   // Transform data with margins and growth
@@ -96,7 +80,7 @@ export default function FinancialPerformanceCharts({
       aria-describedby="financial-performance-description"
     >
       {/* Section Header */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <div className="bg-card rounded-lg border p-6">
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-3">
@@ -174,7 +158,7 @@ export default function FinancialPerformanceCharts({
           {/* Charts Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Revenue Chart */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="bg-card rounded-lg border p-6">
               <RevenueChart
                 data={chartData}
                 companyName={companyName}
@@ -184,7 +168,7 @@ export default function FinancialPerformanceCharts({
             </div>
 
             {/* Profitability Chart */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="bg-card rounded-lg border p-6">
               <ProfitabilityChart
                 data={chartData}
                 companyName={companyName}
@@ -196,7 +180,7 @@ export default function FinancialPerformanceCharts({
 
           {/* EBITDA Chart (Full Width if data exists) */}
           {chartData.some((d) => d.ebitda !== null) && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="bg-card rounded-lg border p-6">
               <EBITDAChart
                 data={chartData}
                 companyName={companyName}
@@ -208,7 +192,7 @@ export default function FinancialPerformanceCharts({
 
           {/* Financial Ratios Grid */}
           {financialData && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="bg-card rounded-lg border p-6">
               <FinancialRatiosGrid
                 financialData={financialData}
                 industryBenchmarks={industryBenchmarks}
@@ -243,29 +227,25 @@ export default function FinancialPerformanceCharts({
 
       {/* Collapsed State Preview */}
       {!isExpanded && (
-        <div className="bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+        <div className="bg-muted/40 rounded-lg border p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="text-center">
-                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                  {chartData.length}
-                </div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">Fiscal Years</div>
-              </div>
-              <div className="h-8 w-px bg-gray-300 dark:bg-gray-600" />
-              <div className="text-center">
-                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
-                  {chartData.filter((d) => d.revenue !== null).length}
-                </div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">Revenue Points</div>
-              </div>
-              <div className="h-8 w-px bg-gray-300 dark:bg-gray-600" />
-              <div className="text-center">
-                <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
-                  {chartData.filter((d) => d.ebitda !== null).length}
-                </div>
-                <div className="text-xs text-gray-600 dark:text-gray-400">EBITDA Points</div>
-              </div>
+              {[
+                { n: chartData.length, label: 'Fiscal Years', cls: 'text-blue-600 dark:text-blue-400' },
+                { n: chartData.filter((d) => d.revenue !== null).length, label: 'Revenue Points', cls: 'text-green-600 dark:text-green-400' },
+                { n: chartData.filter((d) => d.ebitda !== null).length, label: 'EBITDA Points', cls: 'text-amber-600 dark:text-amber-400' },
+              ]
+                // Never advertise a zero — a "0 Revenue Points" chip reads as broken (R17 #1)
+                .filter((s) => s.n > 0)
+                .map((s, i) => (
+                  <React.Fragment key={s.label}>
+                    {i > 0 && <div className="h-8 w-px bg-gray-300 dark:bg-gray-600" />}
+                    <div className="text-center">
+                      <div className={`text-2xl font-bold ${s.cls}`}>{s.n}</div>
+                      <div className="text-xs text-gray-600 dark:text-gray-400">{s.label}</div>
+                    </div>
+                  </React.Fragment>
+                ))}
             </div>
             <button
               onClick={() => setIsExpanded(true)}

@@ -64,11 +64,13 @@ export function HistoricalFilters({ availableSectors, availableYears }: Historic
         </div>
       )}
 
-      {/* Year Filter */}
+      {/* Year Filter — years come from the DB (listing dates), not a hardcoded
+          list: the static 2020–2025 constant omitted 2026 while every visible
+          row was 2026 (2026-07-02 blind review, twice). */}
       <div className="space-y-3">
         <Label className="text-base font-semibold">Year</Label>
         <div className="space-y-2">
-          {YEAR_OPTIONS.map((year) => (
+          {(availableYears.length > 0 ? ['All', ...availableYears] : [...YEAR_OPTIONS]).map((year) => (
             <div key={year} className="flex items-center space-x-2">
               <Checkbox
                 id={`year-${year}`}

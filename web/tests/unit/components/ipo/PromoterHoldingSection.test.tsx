@@ -210,7 +210,7 @@ describe('PromoterHoldingSection', () => {
       expect(screen.getByText('25.00%')).toBeInTheDocument();
     });
 
-    it('should handle negative dilution (increase in holding - unusual but possible)', () => {
+    it('hides the dilution block for negative dilution (post > pre = implausible data, PR #90 guard)', () => {
       render(
         <PromoterHoldingSection
           promoterHoldingPreIssue={60.0}
@@ -218,8 +218,13 @@ describe('PromoterHoldingSection', () => {
         />
       );
 
-      // Negative dilution: 60 - 65 = -5
-      expect(screen.getByText('-5.00%')).toBeInTheDocument();
+      // computeEquityDilution returns null when post > pre (plausibility guard) —
+      // the dilution block must be hidden rather than showing a negative value.
+      expect(screen.queryByText('Equity Dilution')).not.toBeInTheDocument();
+      expect(screen.queryByText('-5.00%')).not.toBeInTheDocument();
+      // the holdings themselves still render
+      expect(screen.getByText('60.00%')).toBeInTheDocument();
+      expect(screen.getByText('65.00%')).toBeInTheDocument();
     });
 
     it('should handle very small percentages', () => {

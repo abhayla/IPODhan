@@ -1,40 +1,29 @@
 /**
- * SME IPOs Landing Page
+ * SME IPOs Landing Page (spec L1 — status-tabbed single table)
  *
- * Comprehensive central hub for all SME IPO information:
- * - Summary metrics dashboard (6 cards)
- * - Content sections (6 card grids: current, upcoming, recently listed, reviews, performance, subscription)
- * - Navigation cards (4 links to dedicated pages)
- * - Detailed IPO table with sorting, column search, year filter, and minimize toggle
+ * Data-first listing index: educational header → KPI ribbon → status tabs
+ * (Open · Upcoming · Recently listed · All), each rendering ONE table.
+ * Replaces the former card-grid composition. Listing-gain data is REAL
+ * (listing_performance); the old Math.random() performance/subscription cards
+ * are gone (#98).
  *
- * Server component with ISR (5-minute revalidation)
- *
- * Story 9.16: SME IPOs Landing Page
- * AC#1, #3, #4, #5, #6, #7-17, #18-23
+ * Server component with ISR (5-minute revalidation).
  */
 
 import type { Metadata } from 'next';
-import { SMESummaryMetrics } from '@/components/sme/SMESummaryMetrics';
-import { SMEContentSections } from '@/components/sme/SMEContentSections';
-import { SMENavigationCards } from '@/components/sme/SMENavigationCards';
-import { SMEDetailedTableClient } from './SMEDetailedTableClient';
 import {
   getSMESummaryMetrics,
-  getSMECurrentIPOs,
-  getSMEUpcomingIPOs,
-  getSMERecentlyListedIPOs,
-  getSMEReviews,
-  getSMEPerformanceHighlights,
-  getSMESubscriptionStatus,
   getSMEDetailedList,
 } from '@/lib/services/sme-landing-service';
+import { getListingGainsByIds } from '@/lib/services/listing-gains-service';
+import { getLiveMetricsByIds } from '@/lib/services/live-metrics-service';
+import { isLiveIPO } from '@/lib/services/ipo-live-status';
+import { ListingIndexClient } from '@/components/listing/ListingIndexClient';
 
 // ===== ISR CONFIGURATION =====
-// AC#19: Page uses ISR with 5-minute revalidation
-export const revalidate = 300; // 5 minutes in seconds
+export const revalidate = 300; // 5 minutes — matches backing Redis TTL
 
 // ===== SEO METADATA =====
-// AC#22: SEO metadata configured
 export const metadata: Metadata = {
   title: `SME IPOs ${new Date().getFullYear()} - Complete Hub | IPODhan`,
   description:
@@ -50,68 +39,51 @@ export const metadata: Metadata = {
   },
 };
 
-// ===== PAGE COMPONENT =====
-
 interface PageProps {
   searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }
 
 export default async function SMEIPOsLandingPage({ searchParams }: PageProps) {
-  // Await searchParams (Next.js 15 requirement)
   const params = searchParams ? await searchParams : {};
-
-  // Parse query parameters
   const currentYear = parseInt(
     (params?.year as string) || String(new Date().getFullYear()),
     10
   );
 
   try {
-    // Fetch all data server-side with Promise.all for optimal performance
-    const [
-      metrics,
-      currentIPOs,
-      upcomingIPOs,
-      recentlyListedIPOs,
-      reviews,
-      performanceHighlights,
-      subscriptionStatus,
-      detailedData,
-    ] = await Promise.all([
+    const [metrics, detailedData] = await Promise.all([
       getSMESummaryMetrics(),
-      getSMECurrentIPOs(),
-      getSMEUpcomingIPOs(),
-      getSMERecentlyListedIPOs(),
-      getSMEReviews(),
-      getSMEPerformanceHighlights(),
-      getSMESubscriptionStatus(),
       getSMEDetailedList({ year: currentYear }),
     ]);
 
+    const gainsMap = await getListingGainsByIds(detailedData.data.map((ipo) => ipo.id));
+    const liveMetricsMap = await getLiveMetricsByIds(
+      detailedData.data.filter(isLiveIPO).map((ipo) => ipo.id)
+    );
+
     return (
       <>
-        {/* AC#22: Structured Data (JSON-LD) */}
+        {/* Structured Data (JSON-LD) */}
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{
             __html: JSON.stringify({
               '@context': 'https://schema.org',
               '@type': 'CollectionPage',
-              name: 'SME IPOs 2025 - Complete Hub',
+              name: 'SME IPOs - Complete Hub',
               description:
                 'Comprehensive SME IPO information hub with current, upcoming, and listed IPOs on BSE SME and NSE Emerge',
               url: 'https://ipodhan.com/sme-ipos',
               mainEntity: {
                 '@type': 'ItemList',
                 numberOfItems: metrics.totalIPOs,
-                itemListElement: currentIPOs.slice(0, 10).map((ipo, index) => ({
+                itemListElement: detailedData.data.slice(0, 10).map((ipo, index) => ({
                   '@type': 'ListItem',
                   position: index + 1,
                   item: {
                     '@type': 'FinancialProduct',
                     name: `${ipo.companyName} IPO`,
                     category: 'SME IPO',
-                    description: ipo.companyDescription || `SME IPO for ${ipo.companyName}`,
                   },
                 })),
               },
@@ -121,18 +93,12 @@ export default async function SMEIPOsLandingPage({ searchParams }: PageProps) {
                   {
                     '@type': 'ListItem',
                     position: 1,
-                    item: {
-                      '@id': 'https://ipodhan.com',
-                      name: 'Home',
-                    },
+                    item: { '@id': 'https://ipodhan.com', name: 'Home' },
                   },
                   {
                     '@type': 'ListItem',
                     position: 2,
-                    item: {
-                      '@id': 'https://ipodhan.com/sme-ipos',
-                      name: 'SME IPOs',
-                    },
+                    item: { '@id': 'https://ipodhan.com/sme-ipos', name: 'SME IPOs' },
                   },
                 ],
               },
@@ -141,73 +107,42 @@ export default async function SMEIPOsLandingPage({ searchParams }: PageProps) {
         />
 
         <div className="container mx-auto px-4 py-8">
-          {/* AC#18: Educational Header */}
-          <header className="mb-8">
-            <h1 className="text-3xl font-bold mb-3 text-gray-900">SME IPOs</h1>
-            <p className="text-gray-600 leading-relaxed">
-              SME IPOs are Initial Public Offerings of Small and Medium Enterprises listed on BSE SME and NSE Emerge platforms.
-              These are smaller companies with lower minimum investment requirements compared to Mainboard IPOs.
-              The SME platforms provide growth capital for emerging businesses while offering investors early-stage investment opportunities.
-              Access comprehensive information on current, upcoming, and listed SME IPOs including performance metrics, expert reviews,
-              prospectus documents, and event calendar.
+          <header className="mb-6">
+            <h1 className="mb-2 text-2xl font-semibold text-gray-900">SME IPOs</h1>
+            <p className="max-w-3xl text-sm leading-relaxed text-gray-600">
+              Initial public offerings of small and medium enterprises on BSE SME and NSE
+              Emerge — smaller companies with lower minimum investment than Mainboard IPOs.
+              Track open, upcoming, and recently listed SME IPOs with price band, issue
+              size, and listing gains.
             </p>
           </header>
 
-        {/* AC#3: Summary Metrics Section */}
-        <section className="mb-12">
-          <h2 className="text-2xl font-semibold mb-4 text-gray-800">SME IPO Metrics</h2>
-          <SMESummaryMetrics metrics={metrics} />
-        </section>
-
-        {/* AC#4, AC#5: Content Sections (6 card grids) */}
-        <section className="mb-12">
-          <SMEContentSections
-            currentIPOs={currentIPOs}
-            upcomingIPOs={upcomingIPOs}
-            recentlyListedIPOs={recentlyListedIPOs}
-            reviews={reviews}
-            performanceHighlights={performanceHighlights}
-            subscriptionStatus={subscriptionStatus}
-          />
-        </section>
-
-        {/* AC#6: Navigation Cards */}
-        <section className="mb-12">
-          <h2 className="text-2xl font-semibold mb-4 text-gray-800">
-            Explore SME IPO Features
-          </h2>
-          <SMENavigationCards />
-        </section>
-
-        {/* AC#7-17: Detailed Table */}
-        <section className="mb-12">
-          <h2 className="text-2xl font-semibold mb-4 text-gray-800">
-            Detailed SME IPO Listings
-          </h2>
-          <SMEDetailedTableClient
+          <ListingIndexClient
+            segmentLabel="SME"
             data={detailedData.data}
-            totalCount={detailedData.totalCount}
+            allTimeTotal={metrics.totalIPOs}
+            gainsMap={gainsMap}
+            liveMetricsMap={liveMetricsMap}
             initialYear={currentYear}
+
+            asOf={new Date().toISOString()}
           />
-        </section>
         </div>
       </>
     );
   } catch (error) {
     console.error('Error loading SME IPOs landing page:', error);
-
-    // Graceful degradation on error
     return (
       <div className="container mx-auto px-4 py-8">
         <header className="mb-8">
-          <h1 className="text-3xl font-bold mb-3 text-gray-900">SME IPOs</h1>
-          <p className="text-gray-600 leading-relaxed">
-            SME IPOs are Initial Public Offerings of Small and Medium Enterprises listed on BSE SME and NSE Emerge platforms.
+          <h1 className="mb-3 text-2xl font-semibold text-gray-900">SME IPOs</h1>
+          <p className="leading-relaxed text-gray-600">
+            SME IPOs are Initial Public Offerings of Small and Medium Enterprises listed on
+            BSE SME and NSE Emerge platforms.
           </p>
         </header>
-
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <p className="text-red-800 font-medium">
+        <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-center">
+          <p className="font-medium text-red-800">
             Unable to load SME IPO data at this time. Please try again later.
           </p>
         </div>

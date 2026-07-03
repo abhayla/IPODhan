@@ -52,20 +52,21 @@
      ======================================== */
 
   /* Background & Foreground - Neutral Foundation */
-  --background: oklch(0.98 0.002 264.5); /* Light warm gray for reduced eye strain */
+  --background: oklch(1 0 0); /* WHITE — owner call 2026-07-02, matching Screener/Zerodha references */
   --foreground: oklch(0.27 0.02 264); /* #1f2937 - Dark Gray */
   --card: oklch(1 0 0); /* Pure white cards */
   --card-foreground: oklch(0.27 0.02 264);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.27 0.02 264);
 
-  /* Primary - Deep Teal (#0f766e) - Trust, Stability, Finance */
-  --primary: oklch(0.52 0.09 193); /* Deep Teal - IPODhan signature color */
+  /* Primary - Zerodha-family blue #387ED1 (UI-SPEC-REFERENCE-PARITY G1, owner
+     reverse-solutioning 2026-07-02). THE one accent: links, buttons, active states. */
+  --primary: oklch(0.585 0.128 254); /* #387ED1 */
   --primary-foreground: oklch(1 0 0);
 
-  /* Secondary - Warm Gold (#d97706) - Prosperity, "Dhan" */
-  --secondary: oklch(0.66 0.14 65); /* Warm Gold */
-  --secondary-foreground: oklch(0.15 0.02 264);
+  /* Secondary - neutral (spec G5: secondary buttons are white + border) */
+  --secondary: oklch(0.97 0.003 255); /* near-white neutral */
+  --secondary-foreground: oklch(0.27 0.02 264);
 
   /* Success - Vibrant Green (#059669) - Growth, Gains */
   --success: oklch(0.58 0.14 160); /* Vibrant Green */
@@ -77,39 +78,39 @@
   --danger-foreground: oklch(1 0 0);
   --danger-text: oklch(0.52 0.22 27); /* Darker for text: #b91c1c, 5.1:1 contrast */
 
-  /* Accent - Electric Blue (#0284c7) - Innovation, Tech */
-  --accent: oklch(0.58 0.14 230); /* Electric Blue */
+  /* Accent - same blue family as primary (G1: ONE accent) */
+  --accent: oklch(0.585 0.128 254); /* #387ED1 */
   --accent-foreground: oklch(1 0 0);
-  --accent-text: oklch(0.48 0.14 230); /* Darker for text: #0369a1, 4.9:1 contrast */
+  --accent-text: oklch(0.50 0.128 254); /* darker for text contrast */
 
-  /* Muted - Subtle backgrounds */
-  --muted: oklch(0.97 0.004 193); /* Teal-tinted muted */
-  --muted-foreground: oklch(0.54 0.02 264); /* #6b7280 */
+  /* Muted - neutral gray (was teal-tinted) */
+  --muted: oklch(0.965 0.002 255); /* #F6F8FB-class */
+  --muted-foreground: oklch(0.52 0.015 255); /* #6E7681 */
 
   /* Destructive - Alias for danger */
   --destructive: oklch(0.58 0.22 27); /* Same as danger */
 
-  /* Border & Input - Subtle separation */
-  --border: oklch(0.89 0.01 193); /* Teal-tinted border */
-  --input: oklch(0.89 0.01 193);
-  --ring: oklch(0.52 0.09 193); /* Primary teal for focus rings */
+  /* Border & Input - neutral 1px separation (#E6E8EC-class) */
+  --border: oklch(0.925 0.003 255);
+  --input: oklch(0.925 0.003 255);
+  --ring: oklch(0.585 0.128 254); /* accent focus rings */
 
-  /* Chart colors using IPODhan palette */
-  --chart-1: oklch(0.58 0.14 160); /* Success Green */
-  --chart-2: oklch(0.52 0.09 193); /* Primary Teal */
-  --chart-3: oklch(0.58 0.14 230); /* Accent Blue */
-  --chart-4: oklch(0.66 0.14 65); /* Secondary Gold */
-  --chart-5: oklch(0.58 0.22 27); /* Danger Red */
+  /* Chart colors per spec G3 (accent blue leads; series 2/3 per spec) */
+  --chart-1: oklch(0.585 0.128 254); /* #387ED1 blue */
+  --chart-2: oklch(0.54 0.19 293);   /* #7C3AED violet */
+  --chart-3: oklch(0.60 0.10 183);   /* #0E9384 teal-green */
+  --chart-4: oklch(0.66 0.14 65);    /* gold (rare 4th series) */
+  --chart-5: oklch(0.58 0.22 27);    /* red (semantic only) */
 
   /* Sidebar */
   --sidebar: oklch(1 0 0);
   --sidebar-foreground: oklch(0.27 0.02 264);
-  --sidebar-primary: oklch(0.52 0.09 193);
+  --sidebar-primary: oklch(0.585 0.128 254);
   --sidebar-primary-foreground: oklch(1 0 0);
-  --sidebar-accent: oklch(0.97 0.004 193);
+  --sidebar-accent: oklch(0.965 0.002 255);
   --sidebar-accent-foreground: oklch(0.27 0.02 264);
-  --sidebar-border: oklch(0.89 0.01 193);
-  --sidebar-ring: oklch(0.52 0.09 193);
+  --sidebar-border: oklch(0.925 0.003 255);
+  --sidebar-ring: oklch(0.585 0.128 254);
 
   /* ========================================
      IPODhan Typography Scale

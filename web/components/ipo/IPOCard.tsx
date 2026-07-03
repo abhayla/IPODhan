@@ -151,14 +151,10 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
             </h3>
             <div className="flex flex-col gap-1.5 items-end">
               <Badge className={`${statusConfig.color} transition-all duration-200 group-hover:scale-110`}>{statusConfig.label}</Badge>
-              {/* IPO Score Badge (Story 4.7) */}
-              {ipo.ipoScore ? (
-                <ScoreBadge score={ipo.ipoScore.totalScore} size="sm" />
-              ) : (
-                <Badge variant="outline" className="text-xs bg-gray-100 text-gray-600 border-gray-300">
-                  Score Pending
-                </Badge>
-              )}
+              {/* IPO Score Badge (Story 4.7) — absent score renders nothing;
+                  a 'Score Pending' chip on every card reads as a broken pipeline
+                  (2026-07-02 blind review) */}
+              {ipo.ipoScore && <ScoreBadge score={ipo.ipoScore.totalScore} size="sm" />}
               {/* Listing Performance Badge for LISTED IPOs (Story 6.3) */}
               {ipo.status === 'LISTED' && listingGainPercent !== null && (
                 <ListingPerformanceBadge
@@ -240,13 +236,16 @@ export function IPOCard({ ipo, searchQuery, onClick }: IPOCardProps) {
             </div>
           </div>
 
-          {/* Rating */}
-          <div className="pt-2 border-t border-border group-hover:border-primary/30 transition-colors duration-200">
-            <p className="text-sm text-muted-foreground mb-1.5">IPODhan Rating</p>
-            <div className="group-hover:scale-105 transition-transform duration-200">
-              <RatingHiStars rating={ipo.rating} />
+          {/* Rating — hidden until one exists; a 'Not Rated' row on every card
+              undermines authority (2026-07-02 blind review) */}
+          {ipo.rating !== null && (
+            <div className="pt-2 border-t border-border group-hover:border-primary/30 transition-colors duration-200">
+              <p className="text-sm text-muted-foreground mb-1.5">IPODhan Rating</p>
+              <div className="group-hover:scale-105 transition-transform duration-200">
+                <RatingHiStars rating={ipo.rating} />
+              </div>
             </div>
-          </div>
+          )}
         </CardContent>
       </Card>
     </Link>

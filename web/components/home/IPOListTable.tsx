@@ -14,7 +14,8 @@
 'use client';
 
 import Link from 'next/link';
-import { format, isWithinInterval, differenceInDays } from 'date-fns';
+import { useRouter } from 'next/navigation';
+import { format } from 'date-fns';
 import { ArrowRight } from 'lucide-react';
 import {
   Table,
@@ -24,8 +25,12 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { cn } from '@/lib/utils';
 import type { HomeIPOTableData } from '@/lib/services/home-ipo-service';
+import { formatPriceBand } from '@/lib/utils/kpi-formatters';
+import { IpoStatusChip, StatusDot } from '@/components/listing/ipo-status';
+import { SubscriptionBar } from '@/components/shared/SubscriptionBar';
+import { MonogramChip } from '@/components/shared/MonogramChip';
+import { GmpDisplay } from '@/components/shared/GmpDisplay';
 import { IPOTableSkeleton } from './IPOTableSkeleton';
 
 // ==================== TYPES ====================
@@ -58,42 +63,22 @@ function formatDate(dateString: string | null): string {
   }
 }
 
-/**
- * Get row color class based on IPO status and dates
- *
- * Logic:
- * - Yellow: IPO closing within 2 days (has higher priority)
- * - Green: IPO currently open (today is between openDate and closeDate)
- * - White: Default (all other cases)
- *
- * AC#2: Color-coding works based on date logic
- */
-function getRowColorClass(ipo: HomeIPOTableData): string {
-  const today = new Date();
-  const openDate = ipo.openDate ? new Date(ipo.openDate) : null;
-  const closeDate = ipo.closeDate ? new Date(ipo.closeDate) : null;
+/** GMP cell: rich display (₹ + %, trend arrow, sparkline, freshness). */
+function gmpCell(ipo: HomeIPOTableData) {
+  return (
+    <GmpDisplay
+      gmp={ipo.gmp}
+      gmpPercent={ipo.gmpPercent}
+      gmpUpdatedAt={ipo.gmpUpdatedAt}
+      gmpTrend={ipo.gmpTrend}
+      gmpSeries={ipo.gmpSeries}
+    />
+  );
+}
 
-  if (!openDate || !closeDate) {
-    return 'hover:bg-muted/50';
-  }
-
-  // Yellow: Closing within 2 days (check first - higher priority)
-  const daysUntilClose = differenceInDays(closeDate, today);
-  if (daysUntilClose >= 0 && daysUntilClose <= 2) {
-    return 'bg-yellow-50 hover:bg-yellow-100 border-l-4 border-yellow-500';
-  }
-
-  // Green: IPO currently open
-  const isOpen = isWithinInterval(today, {
-    start: openDate,
-    end: closeDate,
-  });
-  if (isOpen) {
-    return 'bg-green-50 hover:bg-green-100 border-l-4 border-green-500';
-  }
-
-  // White: Default
-  return 'hover:bg-muted/50';
+/** Subscription heat-bar + multiple (x). Null → em dash. */
+function subscriptionCell(sub: number | null) {
+  return <SubscriptionBar value={sub} />;
 }
 
 // ==================== COMPONENT ====================
@@ -109,7 +94,7 @@ function getRowColorClass(ipo: HomeIPOTableData): string {
  *   title="IPO 2025 List (Mainboard)"
  *   ipos={mainboardIPOs}
  *   moreLink="/dashboard?category=mainboard"
- *   moreLinkText="More Mainline IPO..."
+ *   moreLinkText="More Mainboard IPOs..."
  *   isLoading={false}
  * />
  * ```
@@ -121,24 +106,31 @@ export function IPOListTable({
   moreLinkText,
   isLoading = false,
 }: IPOListTableProps) {
+  const router = useRouter();
   // AC#6: Loading states display properly
   if (isLoading) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
         <IPOTableSkeleton />
       </div>
     );
   }
 
-  // AC#8: Empty states handled gracefully
+  // AC#8: Empty states handled gracefully — informative, never a bare dead box
   if (ipos.length === 0) {
     return (
       <div className="space-y-4">
-        <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
-        <div className="rounded-md border bg-card">
-          <div className="text-center py-12 text-muted-foreground">
-            No IPOs available
+        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+        <div className="rounded-md border border-dashed bg-card">
+          <div className="text-center py-10 px-4 text-muted-foreground text-sm">
+            <p className="font-medium text-foreground mb-1">No active issues right now</p>
+            <p>
+              New IPOs appear here the moment they are announced.{' '}
+              <Link href={moreLink} className="text-primary hover:underline">
+                Browse all listings
+              </Link>
+            </p>
           </div>
         </div>
       </div>
@@ -147,49 +139,75 @@ export function IPOListTable({
 
   return (
     <div className="space-y-4">
-      {/* Table Title - AC#1: Components render correctly */}
-      <h2 className="text-xl md:text-2xl font-bold">{title}</h2>
+      <h2 className="text-base font-semibold text-foreground">{title}</h2>
 
-      {/* AC#3: Tables are responsive and match reference design */}
+      {/* Desktop live table (spec H2): Status · Company | Price band | Open |
+          Close | Subscription | GMP — the persona's #1 data. No row tints. */}
+      <div className="relative">
+      {/* Right-edge shadow — dark gradient reads as 'more columns →' (R29 #1) */}
+      <div className="pointer-events-none absolute inset-y-0 right-0 z-30 w-8 rounded-r-md bg-gradient-to-l from-black/25 via-black/[0.06] to-transparent md:hidden" />
       <div className="rounded-md border bg-card overflow-x-auto">
-        <Table aria-label={title} className="min-w-full">
+        <Table aria-label={title} className="min-w-full [&_td]:px-2 [&_td]:py-1.5 [&_th]:px-2 [&_th]:h-9">
           <TableHeader>
-            <TableRow>
-              <TableHead scope="col" className="w-[40%] sm:w-auto">
-                Issuer Company
+            {/* Quiet Screener/Levels header — unified light surface (R16 #1) */}
+            <TableRow className="border-0 border-b border-border bg-gray-50 hover:bg-gray-50 [&>th]:text-[11px] [&>th]:font-medium [&>th]:uppercase [&>th]:tracking-wider [&>th]:text-gray-500">
+              {/* Lead the mobile scroll with Price band — ALWAYS populated (GMP
+                  is em-dash for many rows, which read as an empty leading column).
+                  GMP/Sub follow (R35 #2). */}
+              <TableHead scope="col" className="sticky left-0 z-20 border-r bg-gray-50 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">Company</TableHead>
+              <TableHead scope="col" className="hidden whitespace-nowrap md:table-cell">Status</TableHead>
+              <TableHead scope="col" className="whitespace-nowrap text-right">
+                Price band
               </TableHead>
-              <TableHead scope="col" className="w-[30%] sm:w-auto whitespace-nowrap">
-                Open
+              <TableHead scope="col" className="whitespace-nowrap text-right">
+                GMP
               </TableHead>
-              <TableHead scope="col" className="w-[30%] sm:w-auto whitespace-nowrap">
-                Close
+              <TableHead scope="col" className="whitespace-nowrap text-right">
+                Sub.
               </TableHead>
+              <TableHead scope="col" className="whitespace-nowrap">Open</TableHead>
+              <TableHead scope="col" className="whitespace-nowrap">Close</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {ipos.map((ipo) => (
               <TableRow
                 key={ipo.id}
-                className={cn('transition-colors', getRowColorClass(ipo))}
+                onClick={() => router.push(`/ipos/${ipo.slug}`)}
+                className="cursor-pointer transition-colors hover:bg-primary/5"
               >
-                <TableCell>
+                <TableCell className="sticky left-0 z-10 border-r bg-card shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">
                   <Link
                     href={`/ipos/${ipo.slug}`}
-                    className="font-medium hover:underline text-primary text-sm md:text-base"
+                    title={ipo.companyName}
+                    className="flex items-center gap-2 font-medium text-foreground hover:text-primary"
                   >
-                    {ipo.companyName}
+                    <StatusDot ipo={ipo} className="md:hidden" />
+                    <span className="hidden shrink-0 sm:inline-flex">
+                      <MonogramChip name={ipo.companyName} />
+                    </span>
+                    <span className="max-w-[128px] truncate hover:underline sm:max-w-[240px] md:max-w-[340px]">{ipo.companyName}</span>
                   </Link>
                 </TableCell>
-                <TableCell className="text-sm md:text-base">
-                  {formatDate(ipo.openDate)}
+                <TableCell className="hidden whitespace-nowrap md:table-cell">
+                  <IpoStatusChip ipo={ipo} />
                 </TableCell>
-                <TableCell className="text-sm md:text-base">
-                  {formatDate(ipo.closeDate)}
+                <TableCell className="whitespace-nowrap text-right tabular-nums">
+                  {formatPriceBand(ipo.priceMin, ipo.issuePrice)}
                 </TableCell>
+                <TableCell className="whitespace-nowrap text-right">
+                  {gmpCell(ipo)}
+                </TableCell>
+                <TableCell className="whitespace-nowrap text-right">
+                  {subscriptionCell(ipo.totalSubscription)}
+                </TableCell>
+                <TableCell className="whitespace-nowrap tabular-nums">{formatDate(ipo.openDate)}</TableCell>
+                <TableCell className="whitespace-nowrap tabular-nums">{formatDate(ipo.closeDate)}</TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
+      </div>
       </div>
 
       {/* AC#4: "More..." links navigate to dashboard with correct filters */}

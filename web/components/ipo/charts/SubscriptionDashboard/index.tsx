@@ -58,40 +58,16 @@ export function SubscriptionDashboard({
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [activeView, setActiveView] = useState<
     'overview' | 'categories' | 'heatmap' | 'all'
-  >('all');
+  >('overview'); // compact default — 'all' stacked 4x subscription views (2026-07-02 review)
 
   // Check if we have minimum data
   const hasData = hasMinimumSubscriptionData(subscriptions);
 
-  // If no data, show empty state
+  // No data → render nothing. A full-height "No Subscription Data" card is the
+  // exact empty-state noise the R17 review flagged; the detail page's one-line
+  // "Awaiting data" strip acknowledges it once instead (R17 #1).
   if (!hasData) {
-    return (
-      <div className={cn('rounded-lg border bg-card', className)}>
-        <div className="p-6">
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <BarChart className="h-6 w-6 text-muted-foreground" />
-              <div>
-                <h3 className="text-lg font-semibold">Subscription Dashboard</h3>
-                <p className="text-sm text-muted-foreground">
-                  Real-time subscription tracking
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-lg border border-dashed border-muted-foreground/25 p-12 text-center">
-            <BarChart className="mx-auto h-16 w-16 text-muted-foreground/50 mb-4" />
-            <p className="text-lg font-medium text-muted-foreground mb-2">
-              No Subscription Data Available
-            </p>
-            <p className="text-sm text-muted-foreground">
-              {ipoEmptyStateMessage('subscription', status, companyName)}
-            </p>
-          </div>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   // Transform data for visualizations
@@ -150,20 +126,8 @@ export function SubscriptionDashboard({
           </button>
         </div>
 
-        {/* Data Quality Indicator */}
-        {isExpanded && (
-          <div className="mt-4 flex items-center gap-2">
-            <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-              <div
-                className="h-full rounded-full bg-primary transition-all duration-500"
-                style={{ width: `${completeness}%` }}
-              />
-            </div>
-            <span className="text-xs text-muted-foreground font-medium">
-              {completeness}% data
-            </span>
-          </div>
-        )}
+        {/* Unlabeled "90% data" meter removed — an opaque meter erodes trust
+            on a finance page (round-8 scorer; spec deletion list). */}
       </div>
 
       {/* Content */}

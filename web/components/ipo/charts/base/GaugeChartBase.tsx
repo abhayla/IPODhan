@@ -48,6 +48,9 @@ export interface GaugeChartBaseProps {
   decimals?: number;
   /** Custom formatter for the value display */
   valueFormatter?: (value: number) => string;
+  /** Override the center value's text color (e.g. sign-based green/red) —
+      defaults to the gauge's rank-band color. */
+  valueColor?: string;
   /** Inner radius percentage (0-100, default: 70) */
   innerRadius?: number;
   /** Outer radius percentage (0-100, default: 90) */
@@ -134,6 +137,7 @@ export function GaugeChartBase({
   showPercentage = false,
   decimals = 1,
   valueFormatter,
+  valueColor,
   innerRadius = 70,
   outerRadius = 90,
   startAngle = 180,
@@ -214,7 +218,7 @@ export function GaugeChartBase({
           {label && (
             <div className="text-xs text-muted-foreground mb-1 font-medium">{label}</div>
           )}
-          <div className="text-3xl font-bold" style={{ color: gaugeColor }}>
+          <div className="text-3xl font-bold" style={{ color: valueColor ?? gaugeColor }}>
             {formattedValue}
           </div>
           {subLabel && (

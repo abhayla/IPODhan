@@ -53,6 +53,9 @@ export interface ColumnDef<T> {
   render?: (value: any, row: T) => React.ReactNode;
   align?: 'left' | 'center' | 'right';
   minWidth?: string;
+  /** Hide this column below md — mobile shows only priority columns instead of
+      a desktop table crushed to micro-text (2026-07-02 blind review). */
+  mobileHidden?: boolean;
 }
 
 interface YearFilterConfig {
@@ -82,6 +85,8 @@ interface DataTableProps<T> {
   emptyMessage?: string;
   keyExtractor?: (row: T) => string | number;
   className?: string;
+  /** Full-row click (reference-table behavior) — e.g. navigate to detail. */
+  onRowClick?: (row: T) => void;
 
   // ===== SORTING (ALWAYS ENABLED) =====
   onSort?: (field: string, order: 'asc' | 'desc') => void;
@@ -112,6 +117,7 @@ export function DataTable<T extends Record<string, any>>({
   emptyMessage = 'No data found',
   keyExtractor = (row) => row.id,
   className,
+  onRowClick,
   enableColumnSearch = false,
   enableYearFilter = false,
   enablePagination = false,
@@ -181,11 +187,13 @@ export function DataTable<T extends Record<string, any>>({
   // ===== RENDER HELPERS =====
 
   const SortIcon = ({ field }: { field: string }) => {
-    if (sortField !== field) return <ArrowUpDown className="h-4 w-4 opacity-50" />;
+    // Inactive: dim. Active: a dark caret that pops on the light Screener-style
+    // header so the sorted column is unmistakable (R14 active-sort-clarity gap).
+    if (sortField !== field) return <ArrowUpDown className="h-3 w-3 opacity-30" />;
     return sortOrder === 'asc' ? (
-      <ArrowUp className="h-4 w-4" />
+      <ArrowUp className="h-3 w-3 text-gray-800" />
     ) : (
-      <ArrowDown className="h-4 w-4" />
+      <ArrowDown className="h-3 w-3 text-gray-800" />
     );
   };
 
@@ -282,27 +290,37 @@ export function DataTable<T extends Record<string, any>>({
       </div>
 
       {/* ===== TABLE ===== */}
-      <div className="border rounded-lg overflow-hidden">
+      <div className="relative border rounded-lg overflow-hidden">
+        {/* Right-edge shadow — a DARK gradient (not white-on-white, which was
+            invisible) reads as depth = 'more columns →' on mobile scroll (R29 #1). */}
+        <div className="pointer-events-none absolute inset-y-0 right-0 z-30 w-8 bg-gradient-to-l from-black/25 via-black/[0.06] to-transparent md:hidden" />
         <div className="overflow-x-auto">
-          <Table>
+          {/* Compact "data terminal" rhythm — tighter than the default h-10/p-2 */}
+          <Table className="[&_td]:py-1.5 [&_th]:h-9">
+
             <TableHeader>
-              {/* Header Row */}
-              <TableRow>
-                {columns.map((column) => (
+              {/* Header Row — quiet Screener/Levels surface: light bg, hairline
+                  bottom rule, uppercase tracked gray labels (R16 #1, the ceiling lever) */}
+              <TableRow className="border-0 bg-gray-50 hover:bg-gray-50">
+                {columns.map((column, colIndex) => (
                   <TableHead
                     key={column.key}
+                    style={column.minWidth ? { minWidth: column.minWidth } : undefined}
                     className={cn(
+                      'whitespace-nowrap border-b border-border text-[11px] font-medium uppercase tracking-wider text-gray-500',
                       column.className,
                       column.align === 'right' && 'text-right',
                       column.align === 'center' && 'text-center',
-                      column.minWidth && `min-w-[${column.minWidth}]`
+                      column.mobileHidden && 'hidden md:table-cell',
+                      // first column stays visible while the table scrolls horizontally
+                      colIndex === 0 && 'sticky left-0 z-20 bg-inherit border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]'
                     )}
                   >
                     {column.sortable !== false ? (
                       <button
                         onClick={() => handleSort(column.key)}
                         className={cn(
-                          'flex items-center gap-2 font-semibold hover:text-primary transition-colors',
+                          'flex items-center gap-1.5 uppercase tracking-wider text-gray-500 transition-colors hover:text-gray-800',
                           column.align === 'right' && 'ml-auto',
                           column.align === 'center' && 'mx-auto'
                         )}
@@ -310,7 +328,7 @@ export function DataTable<T extends Record<string, any>>({
                         {column.header} <SortIcon field={column.key} />
                       </button>
                     ) : (
-                      <span className="font-semibold">{column.header}</span>
+                      <span className="uppercase tracking-wider text-gray-500">{column.header}</span>
                     )}
                   </TableHead>
                 ))}
@@ -320,7 +338,10 @@ export function DataTable<T extends Record<string, any>>({
               {enableColumnSearch && (
                 <TableRow className="bg-gray-50">
                   {columns.map((column) => (
-                    <TableHead key={`search-${column.key}`} className="py-2">
+                    <TableHead
+                      key={`search-${column.key}`}
+                      className={cn('py-2', column.mobileHidden && 'hidden md:table-cell')}
+                    >
                       {column.searchable !== false ? (
                         <div className="flex items-center gap-1">
                           <Input
@@ -351,15 +372,29 @@ export function DataTable<T extends Record<string, any>>({
             </TableHeader>
 
             <TableBody>
-              {displayData.map((row) => (
-                <TableRow key={keyExtractor(row)}>
-                  {columns.map((column) => (
+              {displayData.map((row, rowIndex) => (
+                <TableRow
+                  key={keyExtractor(row)}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  className={cn(
+                    'hover:bg-primary/5',
+                    onRowClick && 'cursor-pointer',
+                    rowIndex % 2 === 1 && 'bg-[#FAFBFC]'
+                  )}
+                >
+                  {columns.map((column, colIndex) => (
                     <TableCell
                       key={column.key}
                       className={cn(
+                        'whitespace-nowrap',
                         column.className,
-                        column.align === 'right' && 'text-right',
-                        column.align === 'center' && 'text-center'
+                        // Right-aligned columns are numeric → monospaced figures so
+                        // decimals/₹ align down the column (R18 #5, Levels-grade).
+                        column.align === 'right' && 'text-right tabular-nums',
+                        column.align === 'center' && 'text-center',
+                        column.mobileHidden && 'hidden md:table-cell',
+                        colIndex === 0 &&
+                          'sticky left-0 z-10 bg-inherit border-r shadow-[3px_0_5px_-2px_rgba(0,0,0,0.12)] max-w-[144px] overflow-hidden text-ellipsis whitespace-nowrap sm:max-w-[240px] md:max-w-[320px]'
                       )}
                     >
                       {column.render ? column.render(row[column.key], row) : row[column.key]}
@@ -387,8 +422,9 @@ export function DataTable<T extends Record<string, any>>({
             >
               Previous
             </Button>
-            {/* Page Numbers */}
-            <div className="flex items-center gap-1">
+            {/* Page Numbers — hidden on mobile (Prev/Next + 'Page X of Y' suffice;
+                5 numbered buttons overflow a 390px row) — R27 #6 */}
+            <div className="hidden items-center gap-1 sm:flex">
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                 let pageNum: number;
                 if (totalPages <= 5) {

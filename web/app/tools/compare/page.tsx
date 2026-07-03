@@ -39,10 +39,40 @@ function CompareIPOsContent() {
   const [comparisonData, setComparisonData] = React.useState<ComparisonResponse['comparisons']>([]);
   const [isLoadingComparison, setIsLoadingComparison] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  // One-time guard so a default selection is seeded exactly once and never
+  // fights the user clearing their picks (R20 #7).
+  const seededDefaultRef = React.useRef(false);
 
   /**
-   * Fetch available IPOs on mount
-   * Only OPEN, UPCOMING, CLOSED statuses allowed for comparison
+   * Seed a default 2-IPO comparison on landing so the tool DEMONSTRATES its
+   * value (the side-by-side metric grid) instead of showing an empty state.
+   * Only when nothing came from the URL or session, and only once.
+   */
+  React.useEffect(() => {
+    if (seededDefaultRef.current) return;
+    if (availableIPOs.length < 2 || selectedSlugs.length > 0) return;
+    if (searchParams.get('ipos')) return;
+    if (typeof window !== 'undefined' && sessionStorage.getItem(SESSION_STORAGE_KEY)) return;
+    seededDefaultRef.current = true;
+    // Seed the default pair with IPOs that actually carry SUBSCRIPTION data first
+    // (so the comparison is dense, not a wall of N/A — R36 #2), then CLOSED>OPEN.
+    // subscriptionTotal is exposed by /api/ipos though not in the base IPO type.
+    const hasSub = (ipo: IPO) =>
+      (ipo as unknown as { subscriptionTotal?: number | null }).subscriptionTotal != null;
+    const statusRank = (s: string) => (s === 'CLOSED' ? 0 : s === 'OPEN' ? 1 : 2);
+    const seed = [...availableIPOs]
+      .sort((a, b) => {
+        const s = Number(hasSub(b)) - Number(hasSub(a)); // subscription-rich first
+        return s !== 0 ? s : statusRank(a.status) - statusRank(b.status);
+      })
+      .slice(0, 2);
+    setSelectedSlugs(seed.map((ipo) => ipo.slug));
+  }, [availableIPOs, selectedSlugs.length, searchParams]);
+
+  /**
+   * Fetch available IPOs on mount. Only OPEN/UPCOMING/CLOSED are comparable
+   * (the compare API rejects LISTED); the default seed prefers CLOSED, which
+   * carry real subscription/GMP data, so the demo isn't a wall of N/A (R25 #3).
    */
   React.useEffect(() => {
     async function fetchAvailableIPOs() {
@@ -207,9 +237,14 @@ function CompareIPOsContent() {
         </div>
       )}
 
-      {/* Info Section */}
-      <div className="bg-muted/50 border rounded-lg p-6 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700 delay-450 hover:shadow-lg transition-all hover:border-primary/50">
-        <h2 className="text-lg font-semibold">How to Use This Tool</h2>
+      {/* Info Section — collapsed by default so the comparison table is the
+          page's focus, not a wall of instructional prose (R36 #1) */}
+      <details className="group rounded-lg border bg-card">
+        <summary className="flex cursor-pointer list-none items-center justify-between px-5 py-4 text-sm font-medium text-foreground">
+          How to use this tool
+          <span className="text-muted-foreground transition-transform group-open:rotate-180">⌄</span>
+        </summary>
+        <div className="space-y-4 border-t px-5 py-5">
         <div className="space-y-3 text-sm text-muted-foreground">
           <div>
             <h3 className="font-medium text-foreground mb-1">1. Select IPOs</h3>
@@ -246,7 +281,8 @@ function CompareIPOsContent() {
             <li>Consider all metrics together, not in isolation</li>
           </ul>
         </div>
-      </div>
+        </div>
+      </details>
     </div>
   );
 }

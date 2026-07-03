@@ -6,7 +6,7 @@ import { RatingDisplay } from './RatingDisplay';
 import { AddToCompareButton } from '@/components/tools/AddToCompareButton';
 import { StockSymbol } from './StockSymbol';
 import { UPIDeadlineTimer } from '@/components/ipo-detail/UPIDeadlineTimer';
-import { Building2 } from 'lucide-react';
+import { MonogramChip } from '@/components/shared/MonogramChip';
 
 interface IPOHeaderProps {
   ipo: IPO & {
@@ -14,18 +14,20 @@ interface IPOHeaderProps {
   };
 }
 
+// Light tonal chips matching the listing-table status system (ipo-status.tsx) —
+// no saturated fills / purple, one calm palette across the product (R22 #3).
 const getStatusConfig = (status: IPOStatus) => {
   switch (status) {
     case 'UPCOMING':
-      return { color: 'bg-blue-600 text-white', label: 'Upcoming' };
+      return { color: 'bg-primary/10 text-primary', label: 'Upcoming' };
     case 'OPEN':
-      return { color: 'bg-green-600 text-white', label: 'Open Now' };
+      return { color: 'bg-green-50 text-green-700', label: 'Open Now' };
     case 'CLOSED':
-      return { color: 'bg-gray-600 text-white', label: 'Closed' };
+      return { color: 'bg-gray-100 text-gray-600', label: 'Closed' };
     case 'LISTED':
-      return { color: 'bg-purple-600 text-white', label: 'Listed' };
+      return { color: 'bg-emerald-50 text-emerald-700', label: 'Listed' };
     default:
-      return { color: 'bg-gray-600 text-gray-100', label: status };
+      return { color: 'bg-gray-100 text-gray-600', label: status };
   }
 };
 
@@ -82,11 +84,11 @@ export function IPOHeader({ ipo }: IPOHeaderProps) {
     <div className="w-full border-b bg-gradient-to-br from-background via-background to-muted/30 py-8 md:py-12 transition-all duration-300">
       <div className="container mx-auto px-4">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[auto_1fr] md:gap-8 lg:gap-12">
-          {/* Company Logo or Placeholder */}
+          {/* Company monogram (deterministic colored initials — consistent with
+              the table monograms; a real-logo pipeline can replace this later). */}
           <div className="flex justify-center md:justify-start">
-            <div className="group flex h-20 w-20 items-center justify-center rounded-xl border-2 border-border bg-white shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105 md:h-24 md:w-24 lg:h-32 lg:w-32">
-              {/* TODO: In future, add actual company logo support */}
-              <Building2 className="h-10 w-10 text-muted-foreground transition-transform duration-300 group-hover:scale-110 md:h-12 md:w-12 lg:h-16 lg:w-16" />
+            <div className="h-20 w-20 overflow-hidden rounded-xl border-2 border-border shadow-md transition-all duration-300 hover:scale-105 hover:shadow-xl md:h-24 md:w-24 lg:h-32 lg:w-32">
+              <MonogramChip name={ipo.companyName} size="lg" />
             </div>
           </div>
 
@@ -141,18 +143,21 @@ export function IPOHeader({ ipo }: IPOHeaderProps) {
               )}
             </div>
 
-            {/* Rating */}
-            <div className="pt-2 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-200">
-              <p className="mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-                IPODhan Rating
-              </p>
-              <RatingDisplay
-                rating={ipo.rating}
-                rationale={ipo.ratingRationale}
-                showRationale={true}
-                size="lg"
-              />
-            </div>
+            {/* Rating — hidden until one exists; 'Not Rated' in the hero
+                undermines authority (2026-07-02 blind review) */}
+            {ipo.rating && (
+              <div className="pt-2 animate-in fade-in slide-in-from-bottom-2 duration-500 delay-200">
+                <p className="mb-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  IPODhan Rating
+                </p>
+                <RatingDisplay
+                  rating={ipo.rating}
+                  rationale={ipo.ratingRationale}
+                  showRationale={true}
+                  size="lg"
+                />
+              </div>
+            )}
 
             {/* UPI Deadline Timer - Display for OPEN IPOs */}
             {ipo.status === 'OPEN' && ipo.closeDate && (
