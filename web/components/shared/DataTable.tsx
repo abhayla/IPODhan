@@ -373,7 +373,7 @@ export function DataTable<T extends Record<string, any>>({
                         column.align === 'center' && 'text-center',
                         column.mobileHidden && 'hidden md:table-cell',
                         colIndex === 0 &&
-                          'sticky left-0 z-10 bg-white border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)] max-w-[220px] overflow-hidden text-ellipsis'
+                          'sticky left-0 z-10 bg-white border-r shadow-[2px_0_4px_-2px_rgba(0,0,0,0.1)] max-w-[320px] overflow-hidden text-ellipsis'
                       )}
                     >
                       {column.render ? column.render(row[column.key], row) : row[column.key]}

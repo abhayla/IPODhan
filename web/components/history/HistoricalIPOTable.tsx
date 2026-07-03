@@ -127,7 +127,9 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
             </TableHead>
             {hasCurrent && (
               <>
-                <TableHead className={`${th} text-right`}>Current price</TableHead>
+                <TableHead className={`${th} border-l border-white/15 text-right`}>
+                  Current price
+                </TableHead>
                 <TableHead className={`${th} text-right`}>Current gain %</TableHead>
               </>
             )}
@@ -182,7 +184,7 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
               </TableCell>
               {hasCurrent && (
                 <>
-                  <TableCell className="text-right tabular-nums">
+                  <TableCell className="border-l border-border/60 text-right tabular-nums">
                     {ipo.currentPriceLive !== null && ipo.currentPriceLive !== undefined ? formatCurrency(ipo.currentPriceLive) : <span className="text-gray-400">—</span>}
                   </TableCell>
                   <TableCell className="text-right">

@@ -93,7 +93,7 @@ function companyCol(): ColumnDef<IPO> {
         className="flex items-center gap-2 font-medium text-gray-900 hover:text-primary"
       >
         <MonogramChip name={value} />
-        <span className="max-w-[180px] truncate hover:underline">{value}</span>
+        <span className="max-w-[300px] truncate hover:underline">{value}</span>
       </Link>
     ),
   };
