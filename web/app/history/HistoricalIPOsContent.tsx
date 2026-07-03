@@ -114,7 +114,9 @@ export function HistoricalIPOsContent({ availableSectors, availableYears }: Hist
             {/* Search Bar and Results Count */}
             <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
               <HistoricalSearchBar />
-              <div className="flex items-center gap-3">
+              {/* Stack freshness + count on mobile so the long IST timestamp and
+                  the count don't wrap into ragged fragments (R27 #4). */}
+              <div className="flex flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3">
                 {asOf && <DataFreshness asOf={asOf} />}
                 <ResultsCount total={pagination.total} loading={loading} />
               </div>

@@ -422,8 +422,9 @@ export function DataTable<T extends Record<string, any>>({
             >
               Previous
             </Button>
-            {/* Page Numbers */}
-            <div className="flex items-center gap-1">
+            {/* Page Numbers — hidden on mobile (Prev/Next + 'Page X of Y' suffice;
+                5 numbered buttons overflow a 390px row) — R27 #6 */}
+            <div className="hidden items-center gap-1 sm:flex">
               {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
                 let pageNum: number;
                 if (totalPages <= 5) {
