@@ -14,6 +14,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { format } from 'date-fns';
 import { ArrowRight } from 'lucide-react';
 import {
@@ -106,6 +107,7 @@ export function IPOListTable({
   moreLinkText,
   isLoading = false,
 }: IPOListTableProps) {
+  const router = useRouter();
   // AC#6: Loading states display properly
   if (isLoading) {
     return (
@@ -164,7 +166,11 @@ export function IPOListTable({
           </TableHeader>
           <TableBody>
             {ipos.map((ipo) => (
-              <TableRow key={ipo.id} className="transition-colors hover:bg-muted/50">
+              <TableRow
+                key={ipo.id}
+                onClick={() => router.push(`/ipos/${ipo.slug}`)}
+                className="cursor-pointer transition-colors hover:bg-primary/5"
+              >
                 <TableCell>
                   <Link
                     href={`/ipos/${ipo.slug}`}

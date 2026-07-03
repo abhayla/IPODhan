@@ -21,6 +21,7 @@ import {
 import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import type { HistoricalIPO } from '@/lib/repositories/types';
 import { MonogramChip } from '@/components/shared/MonogramChip';
+import { useRouter } from 'next/navigation';
 import { useHistoricalFilters } from '@/contexts/HistoricalFiltersContext';
 
 interface HistoricalIPOTableProps {
@@ -70,6 +71,7 @@ const companySubline = (ipo: HistoricalIPO): string => {
 };
 
 export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
+  const router = useRouter();
   const { filters, setSort } = useHistoricalFilters();
 
   // Columns that are empty for EVERY visible row are dropped — a column of
@@ -148,7 +150,8 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
           {ipos.map((ipo, i) => (
             <TableRow
               key={ipo.id}
-              className={`border-0 transition-colors hover:bg-primary/5 ${
+              onClick={() => router.push(`/ipos/${ipo.slug}`)}
+              className={`cursor-pointer border-0 transition-colors hover:bg-primary/5 ${
                 i % 2 === 1 ? 'bg-[#FAFBFC]' : 'bg-white'
               }`}
             >

@@ -12,6 +12,11 @@ import { render, screen } from '@testing-library/react';
 import { IPOListTable } from '@/components/home/IPOListTable';
 import type { HomeIPOTableData } from '@/lib/services/home-ipo-service';
 
+// Row-click navigation added iter33 → mock the router
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}));
+
 // ==================== MOCK DATA ====================
 
 const base = {
@@ -264,7 +269,7 @@ describe('IPOListTable Component', () => {
         />
       );
       const row = container.querySelector('tbody tr');
-      expect(row).toHaveClass('hover:bg-muted/50');
+      expect(row).toHaveClass('cursor-pointer');
     });
   });
 

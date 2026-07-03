@@ -483,6 +483,7 @@ export function ListingIndexClient({
           data={sortedRows}
           columns={columnsFor[tab]}
           emptyMessage={emptyFor[tab]}
+          onRowClick={(row) => router.push(`/ipos/${row.slug}`)}
           onSort={handleSort}
           currentSort={sort ?? undefined}
           enablePagination

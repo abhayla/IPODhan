@@ -85,6 +85,8 @@ interface DataTableProps<T> {
   emptyMessage?: string;
   keyExtractor?: (row: T) => string | number;
   className?: string;
+  /** Full-row click (reference-table behavior) — e.g. navigate to detail. */
+  onRowClick?: (row: T) => void;
 
   // ===== SORTING (ALWAYS ENABLED) =====
   onSort?: (field: string, order: 'asc' | 'desc') => void;
@@ -115,6 +117,7 @@ export function DataTable<T extends Record<string, any>>({
   emptyMessage = 'No data found',
   keyExtractor = (row) => row.id,
   className,
+  onRowClick,
   enableColumnSearch = false,
   enableYearFilter = false,
   enablePagination = false,
@@ -368,7 +371,12 @@ export function DataTable<T extends Record<string, any>>({
               {displayData.map((row, rowIndex) => (
                 <TableRow
                   key={keyExtractor(row)}
-                  className={cn('hover:bg-primary/5', rowIndex % 2 === 1 && 'bg-[#FAFBFC]')}
+                  onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  className={cn(
+                    'hover:bg-primary/5',
+                    onRowClick && 'cursor-pointer',
+                    rowIndex % 2 === 1 && 'bg-[#FAFBFC]'
+                  )}
                 >
                   {columns.map((column, colIndex) => (
                     <TableCell
