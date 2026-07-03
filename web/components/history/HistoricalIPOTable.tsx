@@ -78,6 +78,11 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
   const hasSubscription = ipos.some(
     (ipo) => ipo.subscriptionOverall !== null && ipo.subscriptionOverall !== undefined
   );
+  // Current price/gain only when at least one visible row has it (else drop the
+  // pair rather than show a column of em dashes — the ledger's own rule).
+  const hasCurrent = ipos.some(
+    (ipo) => ipo.currentPriceLive !== null && ipo.currentPriceLive !== undefined
+  );
 
   const handleSort = (column: 'listing_date' | 'listing_gain' | 'subscription') => {
     // Toggle sort order if clicking the same column
@@ -120,6 +125,12 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
             >
               Listing gain %{getSortIcon('listing_gain')}
             </TableHead>
+            {hasCurrent && (
+              <>
+                <TableHead className={`${th} text-right`}>Current price</TableHead>
+                <TableHead className={`${th} text-right`}>Current gain %</TableHead>
+              </>
+            )}
             {hasSubscription && (
               <TableHead
                 className={`${thSort} text-right`}
@@ -169,6 +180,16 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
               <TableCell className="text-right">
                 {ipo.listingGainPercent !== null && ipo.listingGainPercent !== undefined ? formatListingGain(ipo.listingGainPercent) : <span className="text-gray-400">—</span>}
               </TableCell>
+              {hasCurrent && (
+                <>
+                  <TableCell className="text-right tabular-nums">
+                    {ipo.currentPriceLive !== null && ipo.currentPriceLive !== undefined ? formatCurrency(ipo.currentPriceLive) : <span className="text-gray-400">—</span>}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    {ipo.currentGainLive !== null && ipo.currentGainLive !== undefined ? formatListingGain(ipo.currentGainLive) : <span className="text-gray-400">—</span>}
+                  </TableCell>
+                </>
+              )}
               {hasSubscription && (
                 <TableCell className="text-right tabular-nums">
                   {ipo.subscriptionOverall !== null && ipo.subscriptionOverall !== undefined ? formatSubscription(ipo.subscriptionOverall) : '—'}

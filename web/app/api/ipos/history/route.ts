@@ -36,6 +36,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
+import { ListingPerformanceRepository } from '@/lib/repositories/listing-performance-repository';
 import { DatabaseError } from '@/lib/errors/repository-errors';
 import { logger } from '@/lib/logger';
 import { historicalIPOQueryParamsSchema } from '@/lib/db/validations';
@@ -174,9 +175,33 @@ export async function GET(request: NextRequest) {
     // Fetch data from repository (includes caching)
     const result = await ipoRepository.findHistorical(validatedParams);
 
+    // Enrich with REAL current price + current gain from listing_performance
+    // (the ipos.current_* columns are empty in prod; listing_performance is the
+    // canonical source). Best-effort: on failure rows keep null current-* values.
+    const lpRepo = new ListingPerformanceRepository(db, redis);
+    const lpRows = await lpRepo
+      .findByIPOIds(result.data.map((ipo) => ipo.id))
+      .catch(() => []);
+    const toNum = (v: string | number | null | undefined): number | null => {
+      if (v === null || v === undefined) return null;
+      const n = typeof v === 'string' ? parseFloat(v) : v;
+      return Number.isFinite(n) ? n : null;
+    };
+    const lpByIpo = new Map(
+      lpRows.filter((r) => r.ipoId).map((r) => [r.ipoId as string, r])
+    );
+    const enrichedData = result.data.map((ipo) => {
+      const lp = lpByIpo.get(ipo.id);
+      return {
+        ...ipo,
+        currentPriceLive: toNum(lp?.currentPrice ?? null),
+        currentGainLive: toNum(lp?.currentGainPercent ?? null),
+      };
+    });
+
     // Transform repository response to API response format
     const response = {
-      data: result.data,
+      data: enrichedData,
       pagination: {
         page: result.meta.page,
         limit: result.meta.limit,
