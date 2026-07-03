@@ -162,6 +162,21 @@ export function ComparisonTable({
   const bestROCE = findBestValue(roces, true); // Higher is better
   const bestIndustryPE = findBestValue(industryPEs, false); // Lower is better (but informational)
 
+  // Metric list drives the MOBILE stacked view (one card per IPO) — a side-by-side
+  // table cannot fit 2-3 value columns on a 390px phone, so mobile stacks the IPOs
+  // and lists each one's metrics (R24 #1). Desktop keeps the comparison table.
+  const mobileMetrics: { label: string; value: (c: IPOComparison) => string }[] = [
+    { label: 'Price Range', value: (c) => `${formatCurrency(c.priceRange.min)} – ${formatCurrency(c.priceRange.max)}` },
+    { label: 'Lot Size', value: (c) => (c.lotSize ? `${c.lotSize} shares` : 'N/A') },
+    { label: 'Total Sub.', value: (c) => formatSubscription(c.subscription.total) },
+    { label: 'Current GMP', value: (c) => formatCurrency(c.gmp) },
+    { label: 'P/E Ratio', value: (c) => (c.financials.peRatio !== null ? c.financials.peRatio.toFixed(2) : 'N/A') },
+    { label: 'ROE', value: (c) => formatPercentage(c.financials.roe) },
+    { label: 'RoCE', value: (c) => formatPercentage(c.ipoFinancials?.rocePercentage ?? null) },
+    { label: 'EPS', value: (c) => formatCurrency(c.financials.eps) },
+    { label: 'Rating', value: (c) => (c.rating !== null ? `${c.rating}/5` : 'Not Rated') },
+  ];
+
   return (
     <div className="space-y-4">
       {/* Table Header */}
@@ -172,11 +187,32 @@ export function ComparisonTable({
         </p>
       </div>
 
-      {/* Responsive Table Container — narrow metric column on mobile so the
-          first IPO's VALUES are visible (not just labels), with the same subtle
-          right-edge fade cue the list tables use instead of a blue banner (R21 #1). */}
-      <div className="relative">
-        <div className="pointer-events-none absolute inset-y-0 right-0 z-20 w-8 rounded-r-lg bg-gradient-to-l from-background to-transparent md:hidden" />
+      {/* Mobile: one card per IPO (a side-by-side table can't fit on a phone) */}
+      <div className="space-y-4 md:hidden">
+        {comparisonData.map((ipo) => (
+          <div key={ipo.slug} className="rounded-lg border bg-card p-4">
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <span className="font-semibold leading-tight">{ipo.companyName}</span>
+              <Badge variant={getStatusBadgeVariant(ipo.status)}>{ipo.status}</Badge>
+            </div>
+            <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
+              {mobileMetrics.map((m) => {
+                const v = m.value(ipo);
+                const muted = v === 'N/A' || v === 'Not Rated';
+                return (
+                  <div key={m.label} className="flex flex-col">
+                    <dt className="text-xs text-muted-foreground">{m.label}</dt>
+                    <dd className={cn('font-medium tabular-nums', muted && 'text-gray-400 font-normal')}>{v}</dd>
+                  </div>
+                );
+              })}
+            </dl>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop: side-by-side comparison table */}
+      <div className="relative hidden md:block">
         <div className="border rounded-lg overflow-x-auto">
         <Table>
           <TableHeader>
