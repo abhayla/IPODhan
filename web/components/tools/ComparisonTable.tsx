@@ -202,7 +202,17 @@ export function ComparisonTable({
         </p>
       </div>
 
-      {/* Mobile: one card per IPO (a side-by-side table can't fit on a phone) */}
+      {/* Mobile: one card per IPO (a side-by-side table can't fit on a phone).
+          Suppress a metric across ALL cards when NO compared IPO has it (same
+          all-N/A rule as desktop) so cards aren't a wall of N/A (R35 #1). */}
+      {(() => {
+        const visibleMetrics = mobileMetrics.filter((m) =>
+          comparisonData.some((c) => {
+            const v = m.value(c);
+            return v !== 'N/A' && v !== 'Not Rated';
+          })
+        );
+        return (
       <div className="space-y-4 md:hidden">
         {comparisonData.map((ipo) => (
           <div key={ipo.slug} className="rounded-lg border bg-card p-4">
@@ -214,7 +224,7 @@ export function ComparisonTable({
                 comparison that silently drops metrics on mobile is degraded;
                 N/A values are muted so the populated ones still stand out. */}
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2.5 text-sm">
-              {mobileMetrics.map((m) => {
+              {visibleMetrics.map((m) => {
                 const v = m.value(ipo);
                 const muted = v === 'N/A' || v === 'Not Rated';
                 return (
@@ -228,6 +238,8 @@ export function ComparisonTable({
           </div>
         ))}
       </div>
+        );
+      })()}
 
       {/* Desktop: side-by-side comparison table */}
       <div className="relative hidden md:block">

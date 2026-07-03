@@ -151,18 +151,19 @@ export function IPOListTable({
           <TableHeader>
             {/* Quiet Screener/Levels header — unified light surface (R16 #1) */}
             <TableRow className="border-0 border-b border-border bg-gray-50 hover:bg-gray-50 [&>th]:text-[11px] [&>th]:font-medium [&>th]:uppercase [&>th]:tracking-wider [&>th]:text-gray-500">
-              {/* Value-first order (R22 #1): GMP + Sub right after Company/Status
-                  so the decision data is visible on mobile, not scrolled off. */}
+              {/* Lead the mobile scroll with Price band — ALWAYS populated (GMP
+                  is em-dash for many rows, which read as an empty leading column).
+                  GMP/Sub follow (R35 #2). */}
               <TableHead scope="col" className="sticky left-0 z-20 border-r bg-gray-50 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.06)]">Company</TableHead>
               <TableHead scope="col" className="hidden whitespace-nowrap md:table-cell">Status</TableHead>
+              <TableHead scope="col" className="whitespace-nowrap text-right">
+                Price band
+              </TableHead>
               <TableHead scope="col" className="whitespace-nowrap text-right">
                 GMP
               </TableHead>
               <TableHead scope="col" className="whitespace-nowrap text-right">
                 Sub.
-              </TableHead>
-              <TableHead scope="col" className="whitespace-nowrap text-right">
-                Price band
               </TableHead>
               <TableHead scope="col" className="whitespace-nowrap">Open</TableHead>
               <TableHead scope="col" className="whitespace-nowrap">Close</TableHead>
@@ -191,14 +192,14 @@ export function IPOListTable({
                 <TableCell className="hidden whitespace-nowrap md:table-cell">
                   <IpoStatusChip ipo={ipo} />
                 </TableCell>
+                <TableCell className="whitespace-nowrap text-right tabular-nums">
+                  {formatPriceBand(ipo.priceMin, ipo.issuePrice)}
+                </TableCell>
                 <TableCell className="whitespace-nowrap text-right">
                   {gmpCell(ipo)}
                 </TableCell>
                 <TableCell className="whitespace-nowrap text-right">
                   {subscriptionCell(ipo.totalSubscription)}
-                </TableCell>
-                <TableCell className="whitespace-nowrap text-right tabular-nums">
-                  {formatPriceBand(ipo.priceMin, ipo.issuePrice)}
                 </TableCell>
                 <TableCell className="whitespace-nowrap tabular-nums">{formatDate(ipo.openDate)}</TableCell>
                 <TableCell className="whitespace-nowrap tabular-nums">{formatDate(ipo.closeDate)}</TableCell>

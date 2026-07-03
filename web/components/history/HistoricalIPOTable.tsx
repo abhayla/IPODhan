@@ -122,8 +122,12 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
         <TableHeader>
           <TableRow className="border-0 bg-gray-50 hover:bg-gray-50">
             <TableHead className={`${th} ${stickyFirst} bg-gray-50`}>Company</TableHead>
-            {/* Listing gain is the headline — lead with it so it's visible on
-                mobile right after the pinned Company column (R22 #1). */}
+            {/* Lead the mobile scroll with Listing date — ALWAYS populated (gain
+                is em-dash for the newest not-yet-settled rows). Gain follows (R35 #3). */}
+            <TableHead className={thSort} onClick={() => handleSort('listing_date')}>
+              Listing date
+              {getSortIcon('listing_date')}
+            </TableHead>
             <TableHead
               className={`${thSort} text-right`}
               onClick={() => handleSort('listing_gain')}
@@ -131,10 +135,6 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
               Listing gain %{getSortIcon('listing_gain')}
             </TableHead>
             {hasSector && <TableHead className={th}>Sector</TableHead>}
-            <TableHead className={thSort} onClick={() => handleSort('listing_date')}>
-              Listing date
-              {getSortIcon('listing_date')}
-            </TableHead>
             <TableHead className={`${th} text-right`}>Issue price</TableHead>
             <TableHead className={`${th} text-right`}>Listing price</TableHead>
             {hasCurrent && (
@@ -178,6 +178,9 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
                   </span>
                 </Link>
               </TableCell>
+              <TableCell className="tabular-nums">
+                {ipo.listingDate ? formatDate(ipo.listingDate) : '—'}
+              </TableCell>
               <TableCell className="text-right">
                 {ipo.listingGainPercent !== null && ipo.listingGainPercent !== undefined ? formatListingGain(ipo.listingGainPercent) : <span className="text-gray-400">—</span>}
               </TableCell>
@@ -186,9 +189,6 @@ export function HistoricalIPOTable({ ipos }: HistoricalIPOTableProps) {
                   <span className="text-sm text-muted-foreground">{ipo.sector ?? '—'}</span>
                 </TableCell>
               )}
-              <TableCell className="tabular-nums">
-                {ipo.listingDate ? formatDate(ipo.listingDate) : '—'}
-              </TableCell>
               <TableCell className="text-right tabular-nums">
                 {ipo.issuePrice !== null && ipo.issuePrice !== undefined ? formatCurrency(ipo.issuePrice) : '—'}
               </TableCell>
