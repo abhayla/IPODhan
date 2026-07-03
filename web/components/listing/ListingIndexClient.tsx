@@ -102,7 +102,9 @@ function companyCol(): ColumnDef<IPO> {
       >
         <MonogramChip name={value} />
         <span className="min-w-0">
-          <span className="block max-w-[300px] truncate font-medium group-hover:underline">
+          {/* Wrap to 2 lines on narrow screens rather than truncate to 'Kusumg…'
+              (R24 #2); single line with room on desktop. */}
+          <span className="block max-w-[300px] font-medium leading-tight line-clamp-2 group-hover:underline md:truncate">
             {value}
           </span>
           {companySubline(row) && (
