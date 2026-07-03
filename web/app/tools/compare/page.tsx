@@ -54,11 +54,17 @@ function CompareIPOsContent() {
     if (searchParams.get('ipos')) return;
     if (typeof window !== 'undefined' && sessionStorage.getItem(SESSION_STORAGE_KEY)) return;
     seededDefaultRef.current = true;
-    // Prefer CLOSED IPOs for the default pair — they carry real subscription/GMP
-    // data (subscription has completed), so the demo isn't a wall of N/A (R25 #3).
-    const rank = (s: string) => (s === 'CLOSED' ? 0 : s === 'OPEN' ? 1 : 2);
+    // Seed the default pair with IPOs that actually carry SUBSCRIPTION data first
+    // (so the comparison is dense, not a wall of N/A — R36 #2), then CLOSED>OPEN.
+    // subscriptionTotal is exposed by /api/ipos though not in the base IPO type.
+    const hasSub = (ipo: IPO) =>
+      (ipo as unknown as { subscriptionTotal?: number | null }).subscriptionTotal != null;
+    const statusRank = (s: string) => (s === 'CLOSED' ? 0 : s === 'OPEN' ? 1 : 2);
     const seed = [...availableIPOs]
-      .sort((a, b) => rank(a.status) - rank(b.status))
+      .sort((a, b) => {
+        const s = Number(hasSub(b)) - Number(hasSub(a)); // subscription-rich first
+        return s !== 0 ? s : statusRank(a.status) - statusRank(b.status);
+      })
       .slice(0, 2);
     setSelectedSlugs(seed.map((ipo) => ipo.slug));
   }, [availableIPOs, selectedSlugs.length, searchParams]);
