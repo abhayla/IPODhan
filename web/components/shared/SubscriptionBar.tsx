@@ -21,13 +21,17 @@ export function SubscriptionBar({ value }: { value: number | null | undefined })
   const legend = `${value.toFixed(2)}x subscribed (bar fills at ${SATURATION}x; green = oversubscribed, amber = under)`;
   return (
     <div className="flex items-center justify-end gap-2" title={legend}>
-      <div className="h-1.5 w-14 overflow-hidden rounded-full bg-gray-100" aria-hidden>
+      {/* Crisper track: taller, subtle inset ring, saturated fill (R14 fidelity) */}
+      <div
+        className="h-2 w-16 overflow-hidden rounded-full bg-gray-200/70 ring-1 ring-inset ring-black/[0.04]"
+        aria-hidden
+      >
         <div
-          className={`h-full rounded-full ${oversubscribed ? 'bg-green-500' : 'bg-amber-500'}`}
+          className={`h-full rounded-full ${oversubscribed ? 'bg-green-600' : 'bg-amber-500'}`}
           style={{ width: `${fill}%` }}
         />
       </div>
-      <span className="tabular-nums text-sm">{value.toFixed(2)}x</span>
+      <span className="w-14 text-right text-sm font-medium tabular-nums">{value.toFixed(2)}x</span>
     </div>
   );
 }
