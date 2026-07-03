@@ -80,7 +80,7 @@ export default function FinancialPerformanceCharts({
       aria-describedby="financial-performance-description"
     >
       {/* Section Header */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+      <div className="bg-card rounded-lg border p-6">
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <div className="flex items-center gap-3">
@@ -158,7 +158,7 @@ export default function FinancialPerformanceCharts({
           {/* Charts Grid */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Revenue Chart */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="bg-card rounded-lg border p-6">
               <RevenueChart
                 data={chartData}
                 companyName={companyName}
@@ -168,7 +168,7 @@ export default function FinancialPerformanceCharts({
             </div>
 
             {/* Profitability Chart */}
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="bg-card rounded-lg border p-6">
               <ProfitabilityChart
                 data={chartData}
                 companyName={companyName}
@@ -180,7 +180,7 @@ export default function FinancialPerformanceCharts({
 
           {/* EBITDA Chart (Full Width if data exists) */}
           {chartData.some((d) => d.ebitda !== null) && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="bg-card rounded-lg border p-6">
               <EBITDAChart
                 data={chartData}
                 companyName={companyName}
@@ -192,7 +192,7 @@ export default function FinancialPerformanceCharts({
 
           {/* Financial Ratios Grid */}
           {financialData && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700 p-6">
+            <div className="bg-card rounded-lg border p-6">
               <FinancialRatiosGrid
                 financialData={financialData}
                 industryBenchmarks={industryBenchmarks}
@@ -227,7 +227,7 @@ export default function FinancialPerformanceCharts({
 
       {/* Collapsed State Preview */}
       {!isExpanded && (
-        <div className="bg-gray-50 dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-700 p-6">
+        <div className="bg-muted/40 rounded-lg border p-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               {[
