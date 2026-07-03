@@ -5,6 +5,7 @@ import type { Metadata } from "next";
 // import { AffiliateCTAWrapper } from "@/components/affiliate/AffiliateCTAWrapper";
 import { HomeIPOTablesSection } from "@/components/home/HomeIPOTablesSection";
 import { DataFreshness } from "@/components/shared/DataFreshness";
+import { ListingKpiRibbon, type RibbonCell } from "@/components/listing/ListingKpiRibbon";
 import { IPOTableSkeleton } from "@/components/home/IPOTableSkeleton";
 // TEMP: AsyncErrorBoundary commented out - causes webpack error (Session 5)
 // import { AsyncErrorBoundary } from "@/components/error/AsyncErrorBoundary";
@@ -44,6 +45,28 @@ export default async function Home() {
   // Generate IPO listings schema for SEO (combine all IPOs)
   const allIPOs = [...mainboardIPOs, ...smeIPOs, ...upcomingMainboardIPOs, ...upcomingSMEIPOs];
   const ipoListingSchema = generateIPOListingSchema(allIPOs);
+
+  // Data-first "market pulse" strip (blind-review R24 #5) — honest counts from
+  // the same data the tables render; avg GMP only over IPOs that actually have it.
+  const activeIPOs = [...mainboardIPOs, ...smeIPOs];
+  const openNow = activeIPOs.filter((i) => i.status === "OPEN").length;
+  const upcomingCount = upcomingMainboardIPOs.length + upcomingSMEIPOs.length;
+  const gmpPcts = activeIPOs
+    .map((i) => i.gmpPercent)
+    .filter((g): g is number => g !== null && g !== undefined && Number.isFinite(g));
+  const avgGmp = gmpPcts.length ? gmpPcts.reduce((a, b) => a + b, 0) / gmpPcts.length : null;
+  const pulseCells: RibbonCell[] = [
+    { label: "Open now", value: openNow },
+    { label: "Upcoming", value: upcomingCount },
+    { label: "Mainboard", value: mainboardIPOs.length },
+    { label: "SME", value: smeIPOs.length },
+    {
+      label: "Avg GMP",
+      value: avgGmp !== null ? `${avgGmp >= 0 ? "+" : ""}${avgGmp.toFixed(1)}%` : "—",
+      tone: avgGmp === null ? "default" : avgGmp >= 0 ? "gain" : "loss",
+    },
+    { label: "Tracked", value: activeIPOs.length + upcomingCount },
+  ];
 
   return (
     <>
@@ -103,6 +126,10 @@ export default async function Home() {
         {/* IPO Tables Section — flat white, quiet title (spec G1/G2) */}
         <section className="py-6">
           <div className="container mx-auto px-4">
+            {/* Market pulse — data at pixel-1 (R24 #5) */}
+            <div className="mb-4">
+              <ListingKpiRibbon cells={pulseCells} />
+            </div>
             <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-semibold text-foreground">Latest IPO updates</h2>
               <DataFreshness asOf={new Date().toISOString()} />
