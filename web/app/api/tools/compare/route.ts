@@ -109,6 +109,14 @@ async function fetchIPOComparisonData(
   // Extract GMP value
   const latestGMP = gmpRecords.length > 0 ? gmpRecords[0].gmp : null;
 
+  // Parse a numeric/string DB value to a finite number, else null (empty string
+  // and 0-as-falsy are treated as "no value" consistently across metrics).
+  const num = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === '') return null;
+    const n = parseFloat(String(v));
+    return Number.isFinite(n) && n !== 0 ? n : null;
+  };
+
   // Build comparison object
   const comparison: IPOComparison = {
     slug: ipo.slug,
@@ -119,11 +127,15 @@ async function fetchIPOComparisonData(
     },
     lotSize: ipo.lotSize ?? 0,
     status: ipo.status,
+    // Subscription: prefer the latest time-series row; fall back to the ipos
+    // table's denormalized columns so an IPO with subscription data on the ipos
+    // row (what /api/ipos serves) isn't shown as N/A when its subscriptions
+    // time-series is empty (#99). NII ≡ HNI (same SEBI non-institutional category).
     subscription: {
-      qib: latestSubscription?.qibSubscription ? parseFloat(String(latestSubscription.qibSubscription)) : null,
-      nii: latestSubscription?.niiSubscription ? parseFloat(String(latestSubscription.niiSubscription)) : null,
-      retail: latestSubscription?.retailSubscription ? parseFloat(String(latestSubscription.retailSubscription)) : null,
-      total: latestSubscription?.totalSubscription ? parseFloat(String(latestSubscription.totalSubscription)) : null,
+      qib: num(latestSubscription?.qibSubscription) ?? num(ipo.subscriptionQib),
+      nii: num(latestSubscription?.niiSubscription) ?? num(ipo.subscriptionHni),
+      retail: num(latestSubscription?.retailSubscription) ?? num(ipo.subscriptionRetail),
+      total: num(latestSubscription?.totalSubscription) ?? num(ipo.subscriptionTotal),
     },
     gmp: latestGMP,
     financials: {
