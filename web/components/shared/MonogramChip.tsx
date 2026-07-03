@@ -39,11 +39,22 @@ function paletteFor(name: string) {
   return PALETTE[Math.abs(h) % PALETTE.length];
 }
 
-export function MonogramChip({ name }: { name: string }) {
+export function MonogramChip({
+  name,
+  size = 'sm',
+}: {
+  name: string;
+  /** 'sm' = inline table chip; 'lg' = fill the parent box (detail-page avatar). */
+  size?: 'sm' | 'lg';
+}) {
   const tone = paletteFor(name);
+  const sizeCls =
+    size === 'lg'
+      ? 'h-full w-full rounded-xl text-2xl md:text-3xl lg:text-4xl'
+      : 'h-6 w-6 rounded text-[10px]';
   return (
     <span
-      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-[10px] font-semibold ${tone.bg} ${tone.text}`}
+      className={`inline-flex shrink-0 items-center justify-center font-semibold ${sizeCls} ${tone.bg} ${tone.text}`}
       aria-hidden
     >
       {initials(name)}

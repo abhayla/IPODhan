@@ -6,7 +6,7 @@ import { RatingDisplay } from './RatingDisplay';
 import { AddToCompareButton } from '@/components/tools/AddToCompareButton';
 import { StockSymbol } from './StockSymbol';
 import { UPIDeadlineTimer } from '@/components/ipo-detail/UPIDeadlineTimer';
-import { Building2 } from 'lucide-react';
+import { MonogramChip } from '@/components/shared/MonogramChip';
 
 interface IPOHeaderProps {
   ipo: IPO & {
@@ -82,11 +82,11 @@ export function IPOHeader({ ipo }: IPOHeaderProps) {
     <div className="w-full border-b bg-gradient-to-br from-background via-background to-muted/30 py-8 md:py-12 transition-all duration-300">
       <div className="container mx-auto px-4">
         <div className="grid grid-cols-1 gap-6 md:grid-cols-[auto_1fr] md:gap-8 lg:gap-12">
-          {/* Company Logo or Placeholder */}
+          {/* Company monogram (deterministic colored initials — consistent with
+              the table monograms; a real-logo pipeline can replace this later). */}
           <div className="flex justify-center md:justify-start">
-            <div className="group flex h-20 w-20 items-center justify-center rounded-xl border-2 border-border bg-white shadow-md transition-all duration-300 hover:shadow-xl hover:scale-105 md:h-24 md:w-24 lg:h-32 lg:w-32">
-              {/* TODO: In future, add actual company logo support */}
-              <Building2 className="h-10 w-10 text-muted-foreground transition-transform duration-300 group-hover:scale-110 md:h-12 md:w-12 lg:h-16 lg:w-16" />
+            <div className="h-20 w-20 overflow-hidden rounded-xl border-2 border-border shadow-md transition-all duration-300 hover:scale-105 hover:shadow-xl md:h-24 md:w-24 lg:h-32 lg:w-32">
+              <MonogramChip name={ipo.companyName} size="lg" />
             </div>
           </div>
 
