@@ -160,6 +160,10 @@ jobs:
           }
           cd web; npm run build
         env:
+          # next build OOM'd on the self-hosted runner (exit 134,
+          # NewSpace::EnsureCurrentCapacity) under memory pressure after the
+          # bundle grew — raise the V8 old-space heap so the build has headroom.
+          NODE_OPTIONS: --max-old-space-size=4096
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           NEXT_PUBLIC_GA_MEASUREMENT_ID: ${{ secrets.NEXT_PUBLIC_GA_MEASUREMENT_ID }}
           NEXT_PUBLIC_ZERODHA_AFFILIATE_LINK: ${{ secrets.NEXT_PUBLIC_ZERODHA_AFFILIATE_LINK }}
