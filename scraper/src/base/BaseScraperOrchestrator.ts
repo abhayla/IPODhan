@@ -568,27 +568,44 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
   }
 
   /**
-   * Log successful scraper execution
+   * Log completed scraper execution with a truthful status.
+   * A run where every record failed MUST NOT be recorded as SUCCESS (ISS-I):
+   * SUCCESS = no record failures, PARTIAL = some failed, FAILURE = run
+   * produced no successfully processed records despite scraping some.
    */
   private async logSuccess(result: ScraperResult, duration: number): Promise<void> {
     const scraperName = this.getScraperName();
 
-    // Record success in failure tracker
-    scraperFailureTracker.recordSuccess(scraperName);
+    const status: 'SUCCESS' | 'PARTIAL' | 'FAILURE' = result.success
+      ? (result.iposFailed > 0 ? 'PARTIAL' : 'SUCCESS')
+      : 'FAILURE';
+
+    if (status === 'FAILURE') {
+      scraperFailureTracker.recordFailure(
+        scraperName,
+        new Error(result.errors[0] ?? 'All scraped records failed processing')
+      );
+    } else {
+      scraperFailureTracker.recordSuccess(scraperName);
+    }
 
     // Log to database
     await this.scraperLogRepository.create({
       source: scraperName,
-      status: 'SUCCESS',
+      status,
       recordsProcessed: result.iposProcessed,
       recordsFailed: result.iposFailed,
       durationMs: duration,
-      errorMessage: null,
+      errorMessage: status === 'FAILURE' ? (result.errors[0] ?? null) : null,
       errorStack: null,
     });
 
     // Record metrics
-    await this.metricsTracker.recordSuccess(scraperName);
+    if (status === 'FAILURE') {
+      await this.metricsTracker.recordFailure(scraperName);
+    } else {
+      await this.metricsTracker.recordSuccess(scraperName);
+    }
   }
 
   /**

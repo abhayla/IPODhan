@@ -44,6 +44,8 @@ export interface PipelineResult {
   duplicateCheck?: DuplicateCheckResult;
   autoFixesApplied: Record<string, any>;
   warnings: string[];
+  /** True when the record matches an existing IPO and should flow to the upsert/update path */
+  isUpdate?: boolean;
 }
 
 export interface PipelineConfig {
@@ -61,6 +63,15 @@ export interface PipelineConfig {
 
   /** Confidence threshold for duplicate detection (default: 'MEDIUM') */
   duplicateConfidenceThreshold?: 'HIGH' | 'MEDIUM' | 'LOW';
+
+  /**
+   * What to do when the record matches an existing IPO row.
+   * - 'route-to-update': pass through so upsertIPO updates the existing row
+   *   (scrapers — a match against the ipos table means "already tracked",
+   *   and rejecting froze every tracked IPO; see ISS-C, audit 2026-06-12)
+   * - 'reject': legacy behavior — refuse the record entirely (manual entry)
+   */
+  duplicateHandling?: 'reject' | 'route-to-update';
 }
 
 const DEFAULT_CONFIG: Required<PipelineConfig> = {
@@ -69,6 +80,7 @@ const DEFAULT_CONFIG: Required<PipelineConfig> = {
   enableAutoFixes: true,
   enableLogging: true,
   duplicateConfidenceThreshold: 'MEDIUM',
+  duplicateHandling: 'reject',
 };
 
 /**
@@ -129,6 +141,7 @@ export class DataValidationPipeline {
 
     // Step 4: Duplicate detection
     let duplicateCheck: DuplicateCheckResult | undefined;
+    let isUpdate = false;
 
     if (!this.config.skipDuplicateDetection) {
       duplicateCheck = await this.duplicateService.checkForDuplicates({
@@ -139,22 +152,34 @@ export class DataValidationPipeline {
         closeDate: data.closeDate,
       });
 
-      // Reject if duplicate found with sufficient confidence
       if (duplicateCheck.isDuplicate) {
-        const shouldReject = this.shouldRejectDuplicate(duplicateCheck);
-
-        if (shouldReject) {
-          return {
-            shouldCreate: false,
-            reason: `Duplicate detected: ${duplicateCheck.matchReason}`,
-            validatedData: data,
-            validationResult,
-            duplicateCheck,
-            autoFixesApplied,
-            warnings: [],
-          };
+        if (
+          this.config.duplicateHandling === 'route-to-update' &&
+          duplicateCheck.existingIPO
+        ) {
+          // Match against the ipos table = already tracked. Pass through so
+          // upsertIPO routes to its update path (with field protection and
+          // consolidation). Rejecting here froze every tracked IPO (ISS-C).
+          isUpdate = true;
+          warnings.push(
+            `Matches existing IPO "${duplicateCheck.existingIPO.companyName}" — routing to update path`
+          );
         } else {
-          warnings.push(`Possible duplicate (${duplicateCheck.confidence} confidence): ${duplicateCheck.matchReason}`);
+          const shouldReject = this.shouldRejectDuplicate(duplicateCheck);
+
+          if (shouldReject) {
+            return {
+              shouldCreate: false,
+              reason: `Duplicate detected: ${duplicateCheck.matchReason}`,
+              validatedData: data,
+              validationResult,
+              duplicateCheck,
+              autoFixesApplied,
+              warnings: [],
+            };
+          } else {
+            warnings.push(`Possible duplicate (${duplicateCheck.confidence} confidence): ${duplicateCheck.matchReason}`);
+          }
         }
       }
     }
@@ -167,12 +192,13 @@ export class DataValidationPipeline {
     // Step 6: Final decision
     return {
       shouldCreate: true,
-      reason: 'Validation passed',
+      reason: isUpdate ? 'Validation passed (existing IPO — update)' : 'Validation passed',
       validatedData: data,
       validationResult,
       duplicateCheck,
       autoFixesApplied,
       warnings,
+      isUpdate,
     };
   }
 
@@ -283,6 +309,7 @@ export class PipelineFactory {
       enableAutoFixes: true,
       enableLogging: true,
       duplicateConfidenceThreshold: 'MEDIUM',
+      duplicateHandling: 'route-to-update',
     });
   }
 

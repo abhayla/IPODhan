@@ -24,6 +24,7 @@
  */
 
 import { spawn, ChildProcess } from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 
 /**
@@ -283,7 +284,6 @@ export class DRHPExtractorService {
     }
 
     // Check if Python script exists
-    const fs = require('fs');
     if (!fs.existsSync(this.PYTHON_SCRIPT_PATH)) {
       throw new Error(`Python script not found: ${this.PYTHON_SCRIPT_PATH}`);
     }
@@ -436,7 +436,6 @@ export class DRHPExtractorService {
       });
 
       // Check script exists
-      const fs = require('fs');
       const scriptExists = fs.existsSync(this.PYTHON_SCRIPT_PATH);
 
       // Test dependencies (pdfplumber)

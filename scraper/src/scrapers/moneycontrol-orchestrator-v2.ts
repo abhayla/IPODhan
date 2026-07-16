@@ -52,7 +52,6 @@ import logger from '../utils/logger.js';
 export class MoneycontrolScraperOrchestratorV2 extends BaseScraperOrchestrator<any, never> {
 
   private validationPipeline: DataValidationPipeline;
-  private logger = require('../utils/logger.js').default;
 
   constructor() {
     super();
