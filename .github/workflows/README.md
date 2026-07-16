@@ -4,11 +4,26 @@ This directory contains the CI/CD workflows for the IPODhan project.
 
 ## Workflows
 
+### PR Gate (`pr-gate.yml`)
+
+**Triggers:**
+- On every pull request to `main` (no path filters, no manual step needed)
+
+The only automatic check in this repo. Deliberately narrow — lint, type-check,
+and unit tests only — to stay fast and avoid GitHub-hosted Actions minutes
+costs. This is the check to require once branch protection / required status
+checks are available (private free-plan repos don't support them yet); until
+then, treat "wait for this to go green before merging" as the enforcement
+mechanism.
+
 ### CI Workflow (`ci.yml`)
 
 **Triggers:**
-- On every pull request to `main`
-- On every push to `main`
+- Manual only (`workflow_dispatch`) — GitHub Actions tab, "Run workflow".
+  Previously ran on every push/PR to `main`, but that consumed GitHub-hosted
+  Actions minutes and tripped the account's billing block. Runs the full
+  suite (lint, type-check, unit, E2E, Lighthouse, build) — heavier than
+  `pr-gate.yml`.
 
 **Jobs:**
 1. **Checkout code** - Checks out the repository
@@ -28,11 +43,10 @@ This directory contains the CI/CD workflows for the IPODhan project.
 - **Artifact upload on failure** - Only uploads test results/reports when tests fail
 
 **Required Checks:**
-All steps must pass for a PR to be mergeable. This ensures:
-- Code quality (lint)
-- Type safety (type-check)
-- Functionality (unit + E2E tests)
-- Build success (production build)
+Not enforced by GitHub — this is a private repo on the free plan, which does
+not support branch protection / required status checks. `pr-gate.yml` runs
+automatically on every PR; treat waiting for it to go green before merging as
+the enforcement mechanism until the plan/visibility changes.
 
 **Execution Time:**
 - Target: <5 minutes (with caching)
