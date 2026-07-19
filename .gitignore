@@ -304,3 +304,6 @@ scraper/manual-listing-entries.csv
 .run-active.lock
 docs/contracts/.run/
 .sweep/
+
+# Local DB credential test scripts (never track — plaintext connection secrets)
+test-db-connection.js
