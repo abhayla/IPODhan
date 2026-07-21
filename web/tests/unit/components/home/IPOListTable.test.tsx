@@ -141,7 +141,8 @@ describe('IPOListTable Component', () => {
         />
       );
 
-      const link = screen.getByRole('link', { name: 'Currently Open IPO' });
+      // accessible name is prefixed by the mobile-only StatusDot's aria-label (e.g. "Open")
+      const link = screen.getByRole('link', { name: /Currently Open IPO$/ });
       expect(link).toBeInTheDocument();
       expect(link).toHaveAttribute('href', '/ipos/currently-open-ipo');
     });
@@ -370,8 +371,8 @@ describe('IPOListTable Component', () => {
       render(
         <IPOListTable title="Test Table" ipos={[mockOpenIPO]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />
       );
-      // exact accessible name matches only the desktop table link (monogram is aria-hidden)
-      const companyLink = screen.getByRole('link', { name: 'Currently Open IPO' });
+      // accessible name is prefixed by the mobile-only StatusDot's aria-label (e.g. "Open")
+      const companyLink = screen.getByRole('link', { name: /Currently Open IPO$/ });
       expect(companyLink.className).toMatch(/font-medium/);
       // the name span (inside the link) carries the truncation
       const nameSpan = companyLink.querySelector('span.truncate');
@@ -383,7 +384,7 @@ describe('IPOListTable Component', () => {
         <IPOListTable title="Test Table" ipos={[mockOpenIPO]} moreLink="/dashboard" moreLinkText="More..." isLoading={false} />
       );
       const heading = screen.getByText('Test Table');
-      expect(heading.className).toMatch(/text-xl md:text-2xl/);
+      expect(heading.className).toMatch(/text-base font-semibold/);
     });
   });
 
