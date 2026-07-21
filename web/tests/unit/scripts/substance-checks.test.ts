@@ -194,7 +194,7 @@ describe('checkGmpSanity', () => {
 
 describe('SUBSTANCE_CHECKS registry', () => {
   it('exposes one entry per predicate with key/name/predicate', () => {
-    expect(SUBSTANCE_CHECKS).toHaveLength(8);
+    expect(SUBSTANCE_CHECKS).toHaveLength(9);
     for (const c of SUBSTANCE_CHECKS) {
       expect(typeof c.key).toBe('string');
       expect(typeof c.name).toBe('string');

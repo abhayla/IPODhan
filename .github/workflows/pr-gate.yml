@@ -1,0 +1,53 @@
+name: PR Gate
+
+# Minimal, always-on check for every PR into main. Deliberately narrow (lint +
+# type-check + unit tests only, no E2E/Lighthouse) so it stays fast and cheap
+# on GitHub-hosted minutes — ci.yml/test.yml run the full suite but are
+# manual-only (workflow_dispatch) after a prior billing block from running the
+# heavy suite on every push/PR. This is the check to require once branch
+# protection / required status checks are available (private free-plan repos
+# don't support them yet).
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: pr-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    name: Lint, Type-check & Unit Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared package
+        run: |
+          rm -rf packages/shared/dist packages/shared/tsconfig.tsbuildinfo
+          cd packages/shared && npx tsc
+          test -f dist/db/schema.d.ts || (echo "FATAL: schema.d.ts not created!" && exit 1)
+
+      - name: Run lint
+        run: npm run lint
+        working-directory: ./web
+
+      - name: Run type-check
+        run: npx tsc --noEmit
+        working-directory: ./web
+
+      - name: Run unit tests
+        run: npm run test:unit
+        working-directory: ./web

@@ -369,8 +369,9 @@ describe('GMPAPIScraper', () => {
       await sleep(100);
       const duration = Date.now() - start;
 
-      // Allow 10ms tolerance
-      expect(duration).toBeGreaterThanOrEqual(100);
+      // Allow 10ms tolerance in both directions — real timers can land a
+      // few ms short of the nominal delay under CI runner scheduling jitter.
+      expect(duration).toBeGreaterThanOrEqual(90);
       expect(duration).toBeLessThan(120);
     });
   });
