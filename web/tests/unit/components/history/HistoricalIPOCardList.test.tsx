@@ -169,7 +169,7 @@ describe('HistoricalIPOCardList', () => {
     render(<HistoricalIPOCardList ipos={[mockIPO]} />);
 
     const gainText = screen.getByText('+25.50%');
-    expect(gainText).toHaveClass('bg-green-500'); // solid green gain badge (redesign)
+    expect(gainText).toHaveClass('bg-green-50'); // light-tint green gain badge (redesign)
   });
 
   it('applies negative gain styling', () => {
@@ -181,7 +181,7 @@ describe('HistoricalIPOCardList', () => {
     render(<HistoricalIPOCardList ipos={[negativeIPO]} />);
 
     const gainText = screen.getByText('-15.50%');
-    expect(gainText).toHaveClass('bg-red-500'); // solid red gain badge (redesign)
+    expect(gainText).toHaveClass('bg-red-50'); // light-tint red gain badge (redesign)
   });
 
   it('renders multiple cards', () => {

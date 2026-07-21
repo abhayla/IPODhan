@@ -245,8 +245,8 @@ describe('IPOObjectivesSection', () => {
     it('should use Card component for structure', () => {
       const { container } = render(<IPOObjectivesSection objectives={mockObjectivesComplete} />);
 
-      // Card component adds specific classes
-      expect(container.firstChild).toHaveClass('rounded-xl');
+      // Card component adds specific classes (Card renders rounded-lg, not rounded-xl)
+      expect(container.firstChild).toHaveClass('rounded-lg');
     });
   });
 

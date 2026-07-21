@@ -155,7 +155,7 @@ describe('AllotmentCheckerCard', () => {
     expect(screen.getByText(/Your PAN is not stored/)).toBeInTheDocument();
   });
 
-  it('should show error when registrar URL is missing', () => {
+  it('should show a quiet registrars-directory fallback when registrar URL is missing (R28 #3 — no CTA + error pair)', () => {
     render(
       <AllotmentCheckerCard
         status="CLOSED"
@@ -165,11 +165,14 @@ describe('AllotmentCheckerCard', () => {
     );
 
     expect(
-      screen.getByText(/Registrar website URL is not available/)
+      screen.getByText(/Direct link for Link Intime isn't available yet/)
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'registrars directory' })
+    ).toHaveAttribute('href', '/registrars');
   });
 
-  it('should enable button even when registrarUrl is null but PAN is valid (ISS-007)', () => {
+  it('should not render a Check Status button when registrarUrl is null (R28 #3)', () => {
     render(
       <AllotmentCheckerCard
         status="LISTED"
@@ -181,36 +184,9 @@ describe('AllotmentCheckerCard', () => {
     const input = screen.getByPlaceholderText('ABCDE1234F');
     fireEvent.change(input, { target: { value: 'ABCDE1234F' } });
 
-    const button = screen.getByRole('button', { name: /Check Status/ });
-    expect(button).not.toBeDisabled();
-  });
-
-  it('should show informative error when button is clicked without registrarUrl', async () => {
-    render(
-      <AllotmentCheckerCard
-        status="LISTED"
-        registrar="N/A"
-        registrarUrl={null}
-        companyName="Ather Energy Ltd"
-      />
-    );
-
-    const input = screen.getByPlaceholderText('ABCDE1234F');
-    fireEvent.change(input, { target: { value: 'ABCDE1234F' } });
-
-    const button = screen.getByRole('button', { name: /Check Status/ });
-    fireEvent.click(button);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          /Registrar information not available. Please check allotment status directly on the NSE\/BSE website or contact the registrar./
-        )
-      ).toBeInTheDocument();
-    });
-
-    // Window.open should NOT be called
-    expect(mockWindowOpen).not.toHaveBeenCalled();
+    expect(
+      screen.queryByRole('button', { name: /Check Status/ })
+    ).not.toBeInTheDocument();
   });
 
   it('should track analytics event on valid submission', async () => {

@@ -12,6 +12,12 @@ import { render, screen } from '@testing-library/react';
 import { HomeIPOTablesSection } from '@/components/home/HomeIPOTablesSection';
 import type { HomeIPOTableData } from '@/lib/services/home-ipo-service';
 
+// IPOListTable (rendered by this section) added row-click navigation (iter33)
+// via useRouter() — mock next/navigation so it doesn't throw "app router not mounted".
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}));
+
 // ==================== MOCK DATA ====================
 
 const mockMainboardIPO: HomeIPOTableData = {
@@ -422,9 +428,11 @@ describe('HomeIPOTablesSection Component', () => {
         />
       );
 
-      // AC#3: Responsive design — table titles (h2) carry responsive classes
+      // AC#3: Responsive design — table titles (h2) carry their styling classes
+      // (table titles switched to a flat text-base font-semibold size, no
+      // longer a responsive text-xl md:text-2xl scale)
       const tableHeading = screen.getByText(`IPO ${currentYear} List (Mainboard)`);
-      expect(tableHeading.className).toMatch(/text-xl md:text-2xl/);
+      expect(tableHeading.className).toMatch(/text-base font-semibold/);
     });
 
     it('should render a full-width section (padding now owned by the parent container, not doubled)', () => {

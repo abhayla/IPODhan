@@ -412,7 +412,7 @@ describe('UpcomingIPOTable Component', () => {
       );
 
       const heading = screen.getByText('Test Table');
-      expect(heading.className).toMatch(/text-xl md:text-2xl/);
+      expect(heading.className).toMatch(/text-base font-semibold/);
     });
   });
 

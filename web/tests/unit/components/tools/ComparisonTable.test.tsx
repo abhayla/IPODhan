@@ -130,18 +130,20 @@ describe('ComparisonTable Component', () => {
       screen.getByText(/Side-by-side comparison/i)
     ).toBeInTheDocument();
 
-    // Check for company names
-    expect(screen.getByText('Alpha Tech IPO')).toBeInTheDocument();
-    expect(screen.getByText('Beta Finance IPO')).toBeInTheDocument();
-    expect(screen.getByText('Gamma Industries IPO')).toBeInTheDocument();
+    // Check for company names — each renders twice (mobile stacked card +
+    // desktop table, both present in jsdom since CSS media queries don't apply)
+    expect(screen.getAllByText('Alpha Tech IPO').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Beta Finance IPO').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Gamma Industries IPO').length).toBeGreaterThan(0);
   });
 
   it('should display status badges for each IPO', () => {
     render(<ComparisonTable comparisonData={mockComparisonData} />);
 
-    expect(screen.getByText('OPEN')).toBeInTheDocument();
-    expect(screen.getByText('UPCOMING')).toBeInTheDocument();
-    expect(screen.getByText('CLOSED')).toBeInTheDocument();
+    // Badges render in both the mobile card header and the desktop table header
+    expect(screen.getAllByText('OPEN').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('UPCOMING').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('CLOSED').length).toBeGreaterThan(0);
   });
 
   it('should format currency values correctly', () => {
@@ -173,9 +175,10 @@ describe('ComparisonTable Component', () => {
   it('should display lot size with "shares" suffix', () => {
     render(<ComparisonTable comparisonData={mockComparisonData} />);
 
-    expect(screen.getByText('40 shares')).toBeInTheDocument();
-    expect(screen.getByText('25 shares')).toBeInTheDocument();
-    expect(screen.getByText('75 shares')).toBeInTheDocument();
+    // Renders in both the mobile card and the desktop table
+    expect(screen.getAllByText('40 shares').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('25 shares').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('75 shares').length).toBeGreaterThan(0);
   });
 
   it('should highlight best rating value', () => {
@@ -240,15 +243,18 @@ describe('ComparisonTable Component', () => {
   it('should render all metric rows', () => {
     render(<ComparisonTable comparisonData={mockComparisonData} />);
 
-    // Check for all metric labels
-    expect(screen.getByText('Price Range')).toBeInTheDocument();
-    expect(screen.getByText('Lot Size')).toBeInTheDocument();
+    // Check for all metric labels. Some short labels (Price Range, Lot Size,
+    // Current GMP, P/E Ratio) are reused verbatim by the mobile stacked-card
+    // view alongside the desktop table, so they match twice in jsdom — the
+    // rest are desktop-table-only full names and still match once.
+    expect(screen.getAllByText('Price Range').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Lot Size').length).toBeGreaterThan(0);
     expect(screen.getByText('QIB Subscription')).toBeInTheDocument();
     expect(screen.getByText('NII Subscription')).toBeInTheDocument();
     expect(screen.getByText('Retail Subscription')).toBeInTheDocument();
     expect(screen.getByText('Total Subscription')).toBeInTheDocument();
-    expect(screen.getByText('Current GMP')).toBeInTheDocument();
-    expect(screen.getByText('P/E Ratio')).toBeInTheDocument();
+    expect(screen.getAllByText('Current GMP').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('P/E Ratio').length).toBeGreaterThan(0);
     expect(screen.getByText('Return on Equity (ROE)')).toBeInTheDocument();
     expect(screen.getByText('Revenue Growth (CAGR)')).toBeInTheDocument();
     expect(screen.getByText('Earnings Per Share (EPS)')).toBeInTheDocument();
@@ -278,8 +284,9 @@ describe('ComparisonTable Component', () => {
 
     render(<ComparisonTable comparisonData={twoIPOs} />);
 
-    expect(screen.getByText('Alpha Tech IPO')).toBeInTheDocument();
-    expect(screen.getByText('Beta Finance IPO')).toBeInTheDocument();
+    // Renders in both the mobile card and the desktop table
+    expect(screen.getAllByText('Alpha Tech IPO').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Beta Finance IPO').length).toBeGreaterThan(0);
     expect(screen.queryByText('Gamma Industries IPO')).not.toBeInTheDocument();
   });
 
