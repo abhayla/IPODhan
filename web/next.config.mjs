@@ -1,5 +1,4 @@
-// TEMPORARILY DISABLED: Sentry causing webpack errors
-// import { withSentryConfig } from '@sentry/nextjs';
+import { withSentryConfig } from '@sentry/nextjs';
 import bundleAnalyzer from '@next/bundle-analyzer';
 
 // Bundle analyzer configuration
@@ -31,7 +30,10 @@ const nextConfig = {
   // Package transpilation (Session 5 Fix)
   // ESM packages require transpilation for Next.js 15 webpack compatibility
   // See: docs/08-troubleshooting/RECHARTS_WEBPACK_FIX.md
-  transpilePackages: ['recharts', 'react-icons', 'date-fns'],
+  // 'react-icons' removed (T-178): the package was uninstalled in 182ccf6c when
+  // it was identified as the actual Session-5 root cause and replaced by
+  // lucide-react. See docs/monitoring/webpack-session5-root-cause.md
+  transpilePackages: ['recharts', 'date-fns'],
 
   // Performance: Browser caching headers for static assets
   // Security: CORS configuration for API endpoints
@@ -104,10 +106,15 @@ const nextConfig = {
 
 // Apply bundle analyzer only when explicitly enabled
 // This prevents Turbopack warnings about webpack-specific configurations
-// TEMPORARILY DISABLED: Sentry configuration causing webpack module loading errors
-// TODO: Migrate to instrumentation-based Sentry setup per Next.js 15 recommendations
-// export default withSentryConfig(configWithAnalyzer, {...});
-
-export default process.env.ANALYZE === 'true'
+const configWithAnalyzer = process.env.ANALYZE === 'true'
   ? withBundleAnalyzer(nextConfig)
   : nextConfig;
+
+export default withSentryConfig(configWithAnalyzer, {
+  org: process.env.SENTRY_ORG,
+  project: process.env.SENTRY_PROJECT,
+  silent: !process.env.CI,
+  widenClientFileUpload: true,
+  disableLogger: true,
+  automaticVercelMonitors: false,
+});

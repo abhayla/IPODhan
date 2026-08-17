@@ -59,8 +59,7 @@ export default function RootLayout({
 
   return (
     <html lang="en" suppressHydrationWarning>
-      {/* TEMP: GA scripts commented out - testing if they cause webpack error (Session 5) */}
-      {/* {GA_MEASUREMENT_ID && (
+      {GA_MEASUREMENT_ID && (
         <>
           <Script
             src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`}
@@ -77,7 +76,7 @@ export default function RootLayout({
             `}
           </Script>
         </>
-      )} */}
+      )}
       <body className={`${instrumentSerif.variable} ${inter.variable} ${jetbrainsMono.variable} font-sans antialiased`}>
         <a
           href="#main-content"
