@@ -53,9 +53,10 @@ not a sustained outage. There is **no evidence of Indian-market-hours tiering**
 24-hour day) and the day-of-week distribution is proportional to the number of
 each weekday observed in the window, not weighted toward weekdays/market hours.
 
-**Finding 2 — `listingPerformanceUpdate` and `statusUpdater` never run in
-production, at all.** Zero rows for either job name in 30 days of
-`scraper_logs`. This is not a measurement gap — it is confirmed structurally:
+**Finding 2 — the dedicated `listingPerformanceUpdate` and `statusUpdater`
+scheduler JOBS never run in production, at all.** Zero rows for either job
+name in 30 days of `scraper_logs`. This is not a measurement gap — it is
+confirmed structurally:
 
 - Both jobs are defined only in `scraper/src/scheduler/config.ts` /
   `scraper/src/scheduler/scheduler.ts`, which is driven by the
@@ -68,22 +69,50 @@ production, at all.** Zero rows for either job name in 30 days of
   | gmp` (confirmed by reading `scraper/src/index.ts`'s `--source` branches —
   there is no `listingPerformanceUpdate` or `statusUpdater` branch in that
   file). `scraper/src/scheduler/index.ts` is not deployed as its own PM2 app.
-- DB corroboration: the `listing_performance` table's most recent row
-  (`updated_at`/`created_at`) is **2026-07-01T10:56:44Z — 47 days stale** as of
-  this measurement (2026-08-17), with 143 total rows, consistent with the job
-  never having run since whatever one-off backfill populated it. (`ipos.status`
-  IS updated recently, but that is a side effect of the live scrapers' own
-  `upsertIPO` writes touching the row, not evidence the dedicated
-  `statusUpdater` job executes.)
 
-**Implication for the watchdog:** any freshness SLO for `listingPerformanceUpdate`
-or `statusUpdater` cannot be "expected cadence minus tolerance" — there is no
-cadence, because the feature is not wired into the production process tree.
-The watchdog plan should either (a) treat these two as "known-inactive,
-out-of-scope for freshness alerting until the entrypoint is deployed" or
-(b) file a separate activation task (deploy `scheduler/index.ts` as its own
-gated PM2 app per `.claude/rules/owner-gated-feature-flags.md` §GATE
-convention) before setting an SLO on them. This report does not make that call —
+**`listingPerformanceUpdate` — dormant job, no functional equivalent (CONFIRMED).**
+DB corroboration: the `listing_performance` table's most recent row
+(`updated_at`/`created_at`) is **2026-07-01T10:56:44Z — 47 days stale** as of
+this measurement (2026-08-17), with 143 total rows, consistent with the job
+never having run since whatever one-off backfill populated it. There is no
+other code path that writes `listing_performance` in production — the dedicated
+job is the only writer, and it is not deployed. Any freshness SLO on this table
+cannot be "expected cadence minus tolerance" — there is no cadence, because the
+feature is not wired into the production process tree.
+
+**`statusUpdater` — dormant job, BUT its functional work runs via a different
+path every 30 minutes.** The dedicated scheduler job (the 1-minute-cadence
+entry in `scraper/src/scheduler/config.ts`) never fires, for the same
+structural reason as above. But IPO status transitions — the *functional*
+purpose of that job — are NOT actually missing: every one-shot
+`--source=all` cron cycle calls `triggerStatusUpdate()`
+(`scraper/src/index.ts`, called after the source scrapes complete), which
+POSTs to `/api/admin/status/update` on the web app, which runs
+`updateIPOStatuses()` server-side. This means time-based IPO status
+transitions execute on the **same flat 30-minute cadence** as the six live
+scraper sources above, just via the web admin API instead of the dedicated
+scheduler job. Verified directly: 20/20 cron cycles in the 2026-08-16 VPS PM2
+logs show `triggerStatusUpdate()` firing and completing (`"IPO status
+transitions applied"`) once per cycle, with zero misses. `ipos.status` being
+current in the DB is therefore not a side effect of the live scrapers'
+`upsertIPO` writes — it is evidence this alternate path executes on schedule.
+
+**Implication for the watchdog:**
+- `listingPerformanceUpdate` — treat as "known-inactive, out-of-scope for
+  freshness alerting until the dedicated job (or an equivalent write path) is
+  deployed," OR file a separate activation task (deploy `scheduler/index.ts`
+  as its own gated PM2 app per `.claude/rules/owner-gated-feature-flags.md`
+  §GATE convention) before setting an SLO on it.
+- `statusUpdater` — do **not** treat this as inactive/out-of-scope. Set its
+  freshness SLO against the same flat 30-minute cadence as the six live
+  scraper sources (§2's ground truth), measured via `triggerStatusUpdate()`
+  call success/failure in the scraper's own logs or `ipos.status`-transition
+  timestamps — NOT against a "job never runs, zero rows" signal from
+  `scraper_logs`, which would incorrectly page on a healthy system (the
+  dedicated job name legitimately never appears there; that is expected, not
+  a failure).
+
+This report does not make the activation call for `listingPerformanceUpdate` —
 it is out of scope (read/measure only, per the task contract).
 
 ## 3. The PM2-UTC-vs-IST contradiction, resolved with evidence
@@ -160,15 +189,61 @@ analytical gain. If a future re-measurement needs a *forward-looking* window
 against `scraper_logs` — it is a standing, always-on record; no separate
 instrumentation is needed for that either.
 
-## 5. Re-run
+## 5. Reproduce this measurement
 
-To reproduce or refresh this measurement: open the VPS DB tunnel
-(`vps-db-tunnel-setup` memory / `.claude/rules` — `ssh -i ~/.ssh/ipodhan_vps -N
--L 15432:localhost:5432 Administrator@103.118.16.189`), then query
-`scraper_logs` grouped by `source` with a `lag()` window over `created_at`
-(the exact query used for this report is in the PR description / git history
-of this file's commit for auditability). No new script is needed since
-`scraper_logs` is populated continuously by production.
+1. Open the VPS DB tunnel (`vps-db-tunnel-setup` memory / `.claude/rules`):
+
+   ```bash
+   ssh -i ~/.ssh/ipodhan_vps -N -L 15432:localhost:5432 Administrator@103.118.16.189
+   ```
+
+2. Run the exact query used to produce §2's table against `scraper_logs`
+   (via `psql "postgresql://<user>:<pass>@localhost:15432/<db>"` or any
+   Postgres client pointed at the tunnel). It computes per-source gaps with
+   `lag()` over `created_at`, then aggregates median/p90/max/min in minutes
+   over a rolling 30-day window:
+
+   ```sql
+   WITH gaps AS (
+     SELECT
+       source,
+       created_at,
+       EXTRACT(EPOCH FROM (
+         created_at - LAG(created_at) OVER (
+           PARTITION BY source ORDER BY created_at
+         )
+       )) / 60.0 AS gap_minutes
+     FROM scraper_logs
+     WHERE created_at >= NOW() - INTERVAL '30 days'
+   )
+   SELECT
+     source,
+     COUNT(*) AS n_runs,
+     ROUND(PERCENTILE_CONT(0.5)  WITHIN GROUP (ORDER BY gap_minutes)::numeric, 2) AS median_gap_min,
+     ROUND(PERCENTILE_CONT(0.9)  WITHIN GROUP (ORDER BY gap_minutes)::numeric, 2) AS p90_gap_min,
+     ROUND(MAX(gap_minutes)::numeric, 2) AS max_gap_min,
+     ROUND(MIN(gap_minutes)::numeric, 3) AS min_gap_min
+   FROM gaps
+   WHERE gap_minutes IS NOT NULL
+   GROUP BY source
+   ORDER BY source;
+   ```
+
+3. To confirm the "never runs" finding for `listingPerformanceUpdate` /
+   `statusUpdater` (§2, Finding 2), run:
+
+   ```sql
+   SELECT source, COUNT(*) AS n_runs
+   FROM scraper_logs
+   WHERE created_at >= NOW() - INTERVAL '30 days'
+     AND source IN ('listingPerformanceUpdate', 'statusUpdater')
+   GROUP BY source;
+   -- Expected (as measured 2026-08-17): zero rows for both.
+   ```
+
+No new script is needed since `scraper_logs` is populated continuously by
+production — re-running the query above at any later date refreshes the
+measurement over a new rolling 30-day window.
 
 ## 6. Data source declaration (per task contract)
 
