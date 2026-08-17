@@ -38,7 +38,7 @@ All values computed from consecutive `scraper_logs.created_at` gaps per source
 | INVESTORGAIN_GMP (GMP) | every 30 min (PM2 `cron_restart`) | 1440 | 30.00 | 30.28 | 90.96 | 0.002 |
 | IPO_ALERTS_API (API fallback) | every 30 min (PM2 `cron_restart`) | 1440 | 30.00 | 30.28 | 91.05 | 0.002 |
 | **listingPerformanceUpdate** | tiered, `scheduler/config.ts` | **0** | **N/A — never runs** | — | — | — |
-| **statusUpdater** | every 1 min, `scheduler/config.ts` | **0** | **N/A — never runs** | — | — | — |
+| **statusUpdater** | every 1 min, `scheduler/config.ts` | **0** | **job dormant; function runs every 30 min via triggerStatusUpdate()** | — | — | — |
 
 **Finding 1 — the six "live" sources track the configured 30-minute PM2 cron
 almost exactly.** Median gap is 30.00 min for every source (i.e. the scraper
