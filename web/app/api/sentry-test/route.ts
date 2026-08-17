@@ -20,7 +20,26 @@ import {
  *
  * Usage: GET /api/sentry-test?test=all
  */
+
+/**
+ * This route deliberately emits Sentry events and calls Sentry.setUser().
+ * Before T-178 it was inert (Sentry was never initialised); now that Sentry is
+ * wired, an unauthenticated caller in production could flood the event quota
+ * and write a fake user into the server scope. Not an admin route, so
+ * withAdminAuth() does not apply — gate it explicitly instead.
+ *
+ * 404 rather than 403: a diagnostic endpoint should not confirm its own
+ * existence to an anonymous caller.
+ */
+function isTestRouteDisabled(): boolean {
+  return process.env.NODE_ENV === 'production' && process.env.ADMIN_PANEL_ENABLED !== 'true';
+}
+
+const NOT_FOUND = () => NextResponse.json({ error: 'Not found' }, { status: 404 });
+
 export async function GET(request: NextRequest) {
+  if (isTestRouteDisabled()) return NOT_FOUND();
+
   const searchParams = request.nextUrl.searchParams;
   const testType = searchParams.get('test') || 'all';
 
@@ -225,6 +244,10 @@ export async function GET(request: NextRequest) {
  * Test error handling in POST request
  */
 export async function POST(request: NextRequest) {
+  // Same gate as GET — POST also reaches captureAPIError on every malformed
+  // body, so leaving it open would keep the quota-exhaustion path live.
+  if (isTestRouteDisabled()) return NOT_FOUND();
+
   try {
     const body = await request.json();
 

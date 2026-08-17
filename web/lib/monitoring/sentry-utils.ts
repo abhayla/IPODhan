@@ -6,6 +6,8 @@
 
 import * as Sentry from '@sentry/nextjs';
 
+import { resolveServerDsn } from './sentry-env';
+
 /**
  * API Error Context
  */
@@ -340,10 +342,14 @@ export function withSentryErrorHandler<T extends (...args: any[]) => Promise<any
 }
 
 /**
- * Check if Sentry is properly initialized
+ * Check if Sentry is properly initialized.
+ *
+ * Must use the same resolution order as sentry.server.config.ts, which prefers
+ * the non-public SENTRY_DSN — otherwise the recommended server-only setup is
+ * reported as "not initialized" while Sentry is in fact running (T-178).
  */
 export function isSentryInitialized(): boolean {
-  return !!process.env.NEXT_PUBLIC_SENTRY_DSN;
+  return !!resolveServerDsn();
 }
 
 /**

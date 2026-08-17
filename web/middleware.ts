@@ -47,7 +47,13 @@ export function middleware(request: NextRequest) {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: https:",
     "font-src 'self' data:",
-    "connect-src 'self' https://www.google-analytics.com https://cloudflareinsights.com",
+    // Sentry ingest + GA4 beacons must be allow-listed here or the browser
+    // silently blocks them: default-src 'self' does not cover connect-src, so a
+    // missing origin means zero client-side events with only a console CSP
+    // violation to show for it (T-178 — both subsystems re-enabled).
+    // GA4 uses region-sharded *.google-analytics.com and analytics.google.com
+    // in addition to the www host already listed.
+    "connect-src 'self' https://www.google-analytics.com https://*.google-analytics.com https://analytics.google.com https://cloudflareinsights.com https://*.ingest.sentry.io https://*.ingest.us.sentry.io https://*.ingest.de.sentry.io",
     "frame-ancestors 'none'",
     "base-uri 'self'",
     "form-action 'self'",
