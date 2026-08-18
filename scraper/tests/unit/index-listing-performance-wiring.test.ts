@@ -82,6 +82,20 @@ vi.mock('../../src/scrapers/listing-performance-updater.js', () => ({
 vi.mock('../../src/scheduler/listing-performance-cadence.js', () => ({
   shouldRunListingPerformanceUpdate: shouldRunListingPerformanceUpdateMock,
 }));
+const evaluateFreshnessMock = vi.fn().mockResolvedValue([]);
+const checkCrossSourceDisagreementsMock = vi.fn().mockResolvedValue({
+  openIpoCount: 0,
+  disagreements: [],
+  highValueCount: 0,
+  otherCount: 0,
+});
+
+vi.mock('../../src/services/freshness-monitor.js', () => ({
+  evaluateFreshness: evaluateFreshnessMock,
+}));
+vi.mock('../../src/services/cross-source-disagreement-monitor.js', () => ({
+  checkCrossSourceDisagreements: checkCrossSourceDisagreementsMock,
+}));
 vi.mock('@ipodhan/shared', () => ({
   db: {
     delete: () => ({
@@ -90,6 +104,8 @@ vi.mock('@ipodhan/shared', () => ({
       }),
     }),
   },
+  getRedisClient: () => ({}),
+  ScraperLogRepository: vi.fn().mockImplementation(() => ({})),
 }));
 vi.mock('@ipodhan/shared/db/schema', () => ({
   scraperLogs: { createdAt: 'created_at' },
