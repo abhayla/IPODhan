@@ -2,47 +2,35 @@
  * Alerting Service
  *
  * Sends alerts when scraper failures exceed thresholds.
- * Supports console logging (always) and email notifications (optional).
- * Story 7.5: Error Handling & Monitoring
+ * Always logs to console (structured). Routes through the Notifier gateway
+ * (owner-notify.ts) so scraper degradation reaches the owner's phone -- see
+ * .claude/rules/notifier-integration.md.
+ * Story 7.5: Error Handling & Monitoring. T-194: replaced the nodemailer SMTP
+ * path with Notifier (org rule: Notifier is the single owner-alert channel).
  */
 
 import { logger } from '../utils/logger';
-import type { ScraperAlert, ScraperSource } from './types';
+import type { ScraperAlert, AlertSeverity } from './types';
 import type { ScraperLog } from '@ipodhan/shared';
+import { notifyOwner, type OwnerSeverity } from './owner-notify';
 
-/**
- * Configuration for email alerting
- */
-export interface EmailAlertConfig {
-  enabled: boolean;
-  smtpHost?: string;
-  smtpPort?: number;
-  smtpUser?: string;
-  smtpPassword?: string;
-  adminEmail?: string;
-}
+/** Maps the scraper's internal alert severity to Notifier's routing tiers. */
+const OWNER_SEVERITY_BY_ALERT_SEVERITY: Record<AlertSeverity, OwnerSeverity> = {
+  ERROR: 'P1',
+  WARN: 'P2',
+  INFO: 'info',
+};
 
 /**
  * Service for sending scraper failure alerts
  */
 export class AlertingService {
-  private emailConfig: EmailAlertConfig;
-
-  constructor(emailConfig: EmailAlertConfig = { enabled: false }) {
-    this.emailConfig = emailConfig;
-  }
-
   /**
-   * Send alert via console (always) and email (if configured)
+   * Send alert via structured log (always) and the Notifier gateway.
    */
   async sendAlert(alert: ScraperAlert): Promise<void> {
-    // Always log to console
     this.logAlert(alert);
-
-    // Send email if enabled
-    if (this.emailConfig.enabled) {
-      await this.sendEmailAlert(alert);
-    }
+    this.notifyOwnerOfAlert(alert);
   }
 
   /**
@@ -72,85 +60,22 @@ export class AlertingService {
   }
 
   /**
-   * Send email alert (optional)
+   * Fire-and-forget owner notification via the Notifier gateway. Fail-open
+   * by construction (owner-notify.ts) -- a dead/unconfigured Notifier can
+   * never fail or delay a scraper run.
    */
-  private async sendEmailAlert(alert: ScraperAlert): Promise<void> {
-    try {
-      // Dynamically import nodemailer to avoid bundling if not used
-      const nodemailer = await import('nodemailer');
-
-      // Create SMTP transporter
-      const transporter = nodemailer.createTransport({
-        host: this.emailConfig.smtpHost || process.env.SMTP_HOST || 'smtp.gmail.com',
-        port: this.emailConfig.smtpPort || parseInt(process.env.SMTP_PORT || '587'),
-        secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
-        auth: {
-          user: this.emailConfig.smtpUser || process.env.SMTP_USER,
-          pass: this.emailConfig.smtpPassword || process.env.SMTP_PASSWORD
-        }
-      });
-
-      // Send email
-      await transporter.sendMail({
-        from: this.emailConfig.smtpUser || process.env.SMTP_USER,
-        to: this.emailConfig.adminEmail || process.env.ADMIN_EMAIL,
-        subject: `[IPODhan Alert] Scraper ${alert.source} ${alert.severity}: ${alert.reason}`,
-        html: this.generateEmailHtml(alert)
-      });
-
-      logger.info({
-        source: alert.source,
-        severity: alert.severity,
-        recipient: this.emailConfig.adminEmail || process.env.ADMIN_EMAIL
-      }, `Email alert sent successfully to ${this.emailConfig.adminEmail || process.env.ADMIN_EMAIL}`);
-
-    } catch (error) {
-      logger.error({
-        error: error instanceof Error ? error.message : String(error),
-        source: alert.source,
-      }, `Failed to send email alert for ${alert.source}`);
-      // Don't throw - email failure shouldn't crash the alerting system
-    }
-  }
-
-  /**
-   * Generate HTML email content
-   */
-  private generateEmailHtml(alert: ScraperAlert): string {
-    return `
-      <html>
-        <head>
-          <style>
-            body { font-family: Arial, sans-serif; }
-            .header { background-color: ${alert.severity === 'ERROR' ? '#dc2626' : '#f59e0b'}; color: white; padding: 20px; }
-            .content { padding: 20px; }
-            .metric { margin: 10px 0; }
-            .errors { background-color: #f3f4f6; padding: 15px; margin-top: 20px; }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>Scraper Alert: ${alert.source}</h1>
-            <p>Severity: ${alert.severity}</p>
-          </div>
-          <div class="content">
-            <div class="metric"><strong>Reason:</strong> ${alert.reason}</div>
-            <div class="metric"><strong>Consecutive Failures:</strong> ${alert.consecutiveFailures}</div>
-            <div class="metric"><strong>Success Rate (24h):</strong> ${alert.successRate.toFixed(1)}%</div>
-            <div class="metric"><strong>Timestamp:</strong> ${alert.timestamp.toISOString()}</div>
-
-            ${alert.recentErrors.length > 0 ? `
-            <div class="errors">
-              <h3>Recent Errors:</h3>
-              <ul>
-                ${alert.recentErrors.map(err => `<li>${err || 'Unknown error'}</li>`).join('')}
-              </ul>
-            </div>
-            ` : ''}
-          </div>
-        </body>
-      </html>
-    `;
+  private notifyOwnerOfAlert(alert: ScraperAlert): void {
+    const recentErrorsPreview = alert.recentErrors.slice(0, 3).join('; ');
+    notifyOwner(
+      OWNER_SEVERITY_BY_ALERT_SEVERITY[alert.severity],
+      `Scraper ${alert.source}: ${alert.reason}`,
+      {
+        body: `Consecutive failures: ${alert.consecutiveFailures}. Success rate (24h): ${alert.successRate.toFixed(1)}%.` +
+          (recentErrorsPreview ? ` Recent errors: ${recentErrorsPreview}` : ''),
+        type: 'scraper-failure',
+        dedupeKey: `scraper-failure:${alert.source}`,
+      }
+    );
   }
 
   /**
