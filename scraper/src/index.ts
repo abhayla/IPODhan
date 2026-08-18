@@ -17,11 +17,13 @@ import { runChittorgarhScraper } from './scrapers/chittorgarh-orchestrator-v2.js
 import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator-v2.js';
 import { updateListingPerformance } from './scrapers/listing-performance-updater.js';
 import { shouldRunListingPerformanceUpdate } from './scheduler/listing-performance-cadence.js';
-import { db } from '@ipodhan/shared';
+import { db, ScraperLogRepository, getRedisClient } from '@ipodhan/shared';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
 import { lt } from 'drizzle-orm';
 import logger from './utils/logger.js';
 import { heartbeat, flushOwnerNotify } from './services/owner-notify.js';
+import { evaluateFreshness } from './services/freshness-monitor.js';
+import { checkCrossSourceDisagreements } from './services/cross-source-disagreement-monitor.js';
 
 /** Days of scraper_logs history to retain. */
 const SCRAPER_LOG_RETENTION_DAYS = 30;
@@ -242,6 +244,11 @@ export async function main() {
       await triggerStatusUpdate();
       await triggerListingPerformanceUpdate();
       await pruneScraperLogs();
+      // T-195: data-quality watchdog core (freshness SLO + cross-source
+      // disagreement report). Selector-degradation runs per-source inside
+      // BaseScraperOrchestrator.run() itself, not here. Non-fatal, same
+      // pattern as the other post-scrape side effects above.
+      await triggerDataQualityWatchdog();
       // T-194: job-completion heartbeat -- proves this cron cycle reached the
       // end of the pipeline (not that every source succeeded; source-level
       // failures are reported separately via AlertingService/notifyOwner).
@@ -368,6 +375,37 @@ export async function triggerListingPerformanceUpdate(): Promise<void> {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'Listing performance update trigger failed (non-fatal)'
+    );
+  }
+}
+
+/**
+ * T-195: data-quality watchdog core, run once per full `--source=all` cycle.
+ * Evaluates the freshness SLOs (freshness-slo.ts) against `scraper_logs`
+ * (the same source `/api/admin/scraper/status` reads) and reports
+ * cross-source disagreements for OPEN IPOs (cross-source-disagreement-monitor.ts,
+ * extending the existing data_conflicts subsystem). Both halves are
+ * independently non-fatal — a failure in one must not skip the other or fail
+ * the scrape (non-fatal-side-effects.md).
+ */
+async function triggerDataQualityWatchdog(): Promise<void> {
+  try {
+    const redis = getRedisClient();
+    const scraperLogRepository = new ScraperLogRepository(db, redis);
+    await evaluateFreshness(scraperLogRepository);
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Freshness SLO evaluation failed (non-fatal)'
+    );
+  }
+
+  try {
+    await checkCrossSourceDisagreements(db);
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Cross-source disagreement check failed (non-fatal)'
     );
   }
 }

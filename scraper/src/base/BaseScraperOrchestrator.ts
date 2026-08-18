@@ -42,6 +42,8 @@ import { AlertingService } from '../services/alerting-service.js';
 import type { ScraperSource } from '../services/types.js';
 import { DataConsolidationOrchestrator } from '../services/data-consolidation-orchestrator.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { computeBlankFieldStats, evaluateAndRecordDegradation } from '../services/selector-degradation-monitor.js';
+import type Redis from 'ioredis';
 
 /**
  * Result interface for scraper execution
@@ -114,6 +116,9 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
   protected fieldSourcesRepository!: FieldSourcesRepository;
   protected dataConflictsRepository!: DataConflictsRepository;
   protected consolidationOrchestrator!: DataConsolidationOrchestrator;
+
+  // T-195: selector-degradation detection
+  protected redis!: Redis;
 
   // Scraper name (e.g., 'NSE', 'BSE', 'MONEYCONTROL')
   protected abstract getScraperName(): ScraperSource;
@@ -211,6 +216,23 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       // Step 3: Comprehensive cache invalidation
       if (updatedIPOSlugs.length > 0) {
         await this.cacheInvalidator.invalidateAfterScrape(scraperName, updatedIPOSlugs);
+      }
+
+      // T-195: selector-degradation detection — compute this scrape's
+      // row-count + blank-field-rate sample from the RAW scraped records
+      // (before consolidation/protection filtering, so a source that starts
+      // returning mostly-blank rows is caught even when field protection
+      // would otherwise mask it downstream) and compare against the 7-day
+      // rolling baseline. Best-effort, non-fatal — never allowed to fail the
+      // scrape itself (non-fatal-side-effects.md).
+      try {
+        const sample = computeBlankFieldStats(scrapedData.ipos as unknown as Array<Record<string, unknown>>);
+        await evaluateAndRecordDegradation(this.redis, scraperName, sample);
+      } catch (error) {
+        logger.warn(
+          { scraperName, error: error instanceof Error ? error.message : String(error) },
+          'Selector-degradation check failed (non-fatal)'
+        );
       }
 
       const duration = Date.now() - startTime;
@@ -557,6 +579,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
    */
   private initializeServices(): void {
     const redis = getRedisClient();
+    this.redis = redis;
 
     // Phase 2: Manual protection services
     this.ipoRepository = new IPORepositoryClass(db, redis);

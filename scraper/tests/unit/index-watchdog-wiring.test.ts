@@ -1,13 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 /**
- * T-194 regression test: proves the one-shot production path
+ * T-195 regression test: proves the one-shot production path
  * (`scraper/src/index.ts --source=all`, the ONLY scraper process PM2 runs --
  * see docs/monitoring/scrape-cadence-measurement.md) actually invokes the
- * Notifier heartbeat with the interval that matches the MEASURED 30-min
- * cadence (not the undeployed IST-tier config). Pre-fix, this path never
- * called `heartbeat()` -- this test fails against that code the same way
- * index-listing-performance-wiring.test.ts fails T-179's revert.
+ * data-quality watchdog core (freshness SLO evaluation + cross-source
+ * disagreement report) once per cycle. Pre-fix, `triggerDataQualityWatchdog`
+ * does not exist / is never wired into the `source === 'all'` branch -- this
+ * test fails against that code the same way index-listing-performance-wiring
+ * and index-heartbeat-wiring fail their respective pre-fix states.
  */
 
 const baseScraperResult = {
@@ -59,6 +60,13 @@ const shouldRunListingPerformanceUpdateMock = vi.fn().mockReturnValue(true);
 const dbReturningMock = vi.fn().mockResolvedValue([]);
 const heartbeatMock = vi.fn();
 const flushOwnerNotifyMock = vi.fn().mockResolvedValue(undefined);
+const evaluateFreshnessMock = vi.fn().mockResolvedValue([]);
+const checkCrossSourceDisagreementsMock = vi.fn().mockResolvedValue({
+  openIpoCount: 0,
+  disagreements: [],
+  highValueCount: 0,
+  otherCount: 0,
+});
 
 vi.mock('../../src/scrapers/nse-scraper-orchestrator-v2.js', () => ({
   runNSEScraper: runNSEScraperMock,
@@ -88,14 +96,6 @@ vi.mock('../../src/services/owner-notify.js', () => ({
   heartbeat: heartbeatMock,
   flushOwnerNotify: flushOwnerNotifyMock,
 }));
-const evaluateFreshnessMock = vi.fn().mockResolvedValue([]);
-const checkCrossSourceDisagreementsMock = vi.fn().mockResolvedValue({
-  openIpoCount: 0,
-  disagreements: [],
-  highValueCount: 0,
-  otherCount: 0,
-});
-
 vi.mock('../../src/services/freshness-monitor.js', () => ({
   evaluateFreshness: evaluateFreshnessMock,
 }));
@@ -120,7 +120,7 @@ vi.mock('drizzle-orm', () => ({
   lt: vi.fn(),
 }));
 
-describe('scraper/src/index.ts one-shot --source=all Notifier heartbeat wiring', () => {
+describe('scraper/src/index.ts one-shot --source=all path -- data-quality watchdog (T-195)', () => {
   const originalArgv = process.argv;
   let exitSpy: ReturnType<typeof vi.spyOn>;
   let fetchSpy: ReturnType<typeof vi.fn>;
@@ -140,62 +140,44 @@ describe('scraper/src/index.ts one-shot --source=all Notifier heartbeat wiring',
     exitSpy.mockRestore();
   });
 
-  it('calls heartbeat("watchdog", 30) on the full scrape cycle -- 30min matches the MEASURED cadence, not a 15min config default', async () => {
+  it('calls evaluateFreshness and checkCrossSourceDisagreements exactly once on the full scrape cycle', async () => {
     const { main } = await import('../../src/index.js');
 
     await main();
 
-    expect(heartbeatMock).toHaveBeenCalledTimes(1);
-    expect(heartbeatMock).toHaveBeenCalledWith('watchdog', 30);
+    expect(evaluateFreshnessMock).toHaveBeenCalledTimes(1);
+    expect(checkCrossSourceDisagreementsMock).toHaveBeenCalledTimes(1);
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
-  it('flushes in-flight Notifier sends before process.exit(0)', async () => {
-    const { main } = await import('../../src/index.js');
-
-    await main();
-
-    expect(flushOwnerNotifyMock).toHaveBeenCalled();
-    // flush must happen before exit, not after (exit ends the process)
-    const flushCallOrder = flushOwnerNotifyMock.mock.invocationCallOrder[0];
-    const exitCallOrder = exitSpy.mock.invocationCallOrder[0];
-    expect(flushCallOrder).toBeLessThan(exitCallOrder);
-  });
-
-  it('still fires the heartbeat when a source failed (job-completion, not job-success)', async () => {
-    runNSEScraperMock.mockResolvedValueOnce({
-      ...baseScraperResult,
-      success: false,
-      errors: ['NSE fetch timed out'],
-    });
+  it('still runs checkCrossSourceDisagreements and completes the cycle when evaluateFreshness throws (non-fatal)', async () => {
+    evaluateFreshnessMock.mockRejectedValueOnce(new Error('scraper_logs read failed'));
 
     const { main } = await import('../../src/index.js');
     await main();
 
-    expect(heartbeatMock).toHaveBeenCalledTimes(1);
-    expect(heartbeatMock).toHaveBeenCalledWith('watchdog', 30);
-    expect(exitSpy).toHaveBeenCalledWith(1);
-  });
-
-  it('does not fail the scrape run when heartbeat() throws (non-fatal side effect)', async () => {
-    heartbeatMock.mockImplementationOnce(() => {
-      throw new Error('unexpected Notifier client error');
-    });
-
-    const { main } = await import('../../src/index.js');
-    await main();
-
-    expect(heartbeatMock).toHaveBeenCalledTimes(1);
+    expect(evaluateFreshnessMock).toHaveBeenCalledTimes(1);
+    expect(checkCrossSourceDisagreementsMock).toHaveBeenCalledTimes(1);
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
-  it('does not call heartbeat for a single-source run (--source=nse)', async () => {
+  it('does not fail the scrape run when checkCrossSourceDisagreements throws (non-fatal)', async () => {
+    checkCrossSourceDisagreementsMock.mockRejectedValueOnce(new Error('DB unreachable'));
+
+    const { main } = await import('../../src/index.js');
+    await main();
+
+    expect(checkCrossSourceDisagreementsMock).toHaveBeenCalledTimes(1);
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('does NOT run the watchdog for a single-source invocation (only source === "all")', async () => {
     process.argv = [...originalArgv.slice(0, 2), '--source=nse'];
 
     const { main } = await import('../../src/index.js');
     await main();
 
-    expect(heartbeatMock).not.toHaveBeenCalled();
-    expect(exitSpy).toHaveBeenCalledWith(0);
+    expect(evaluateFreshnessMock).not.toHaveBeenCalled();
+    expect(checkCrossSourceDisagreementsMock).not.toHaveBeenCalled();
   });
 });
