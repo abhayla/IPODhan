@@ -1,5 +1,5 @@
 import cron, { type ScheduledTask } from 'node-cron';
-import { getRedisClient } from '@ipodhan/shared';
+import { db, getRedisClient, ScraperLogRepository } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { schedulerConfig, LOCK_TTL } from './config.js';
 import { JobLockManager } from './job-lock.js';
@@ -302,7 +302,7 @@ export class SchedulerService {
       this.registerJob(
         'health-check',
         schedulerConfig.jobs.healthCheck.schedule!,
-        () => runHealthCheck(this.redis),
+        () => runHealthCheck(this.redis, new ScraperLogRepository(db, this.redis)),
         LOCK_TTL.healthCheck,
         schedulerConfig.jobs.healthCheck.timezone
       );

@@ -1,4 +1,7 @@
 import type Redis from 'ioredis';
+import type { ScraperLogRepository } from '@ipodhan/shared';
+import type { ScraperSource } from '../../services/types.js';
+import { FRESHNESS_SLOS } from '../../config/freshness-slo.js';
 import logger from '../../utils/logger.js';
 
 /**
@@ -12,136 +15,167 @@ export interface ScraperHealth {
 }
 
 /**
- * Complete health check result
+ * Complete health check result. Keyed by the sources covered in
+ * `freshness-slo.ts` (T-195) — the full set of six live scraper sources
+ * T-176 measured actually running in production (nse/bse/moneycontrol/
+ * chittorgarh/investorgainGmp/apiFallback), not just the original three.
  */
 export interface HealthCheckResult {
   success: boolean;
   status: 'HEALTHY' | 'DEGRADED' | 'CRITICAL' | 'UNKNOWN';
   timestamp: Date;
-  scrapers: {
-    nse: ScraperHealth;
-    bse: ScraperHealth;
-    apiFallback: ScraperHealth;
-  };
+  scrapers: Record<string, ScraperHealth>;
 }
 
 /**
- * Health check thresholds (in milliseconds)
+ * Health check thresholds (T-195): derived from each source's freshness SLO
+ * in `freshness-slo.ts` (itself seeded from the T-176 MEASURED 30-min flat
+ * cadence), NOT a hardcoded flat 1h/2h. WARNING fires at half the source's
+ * max staleness (an early, non-paging signal); ALERT fires at the full SLO
+ * (the same bar `freshness-monitor.ts` uses to page the owner), so this
+ * job's status and the freshness monitor's alerts never disagree.
  */
-const HEALTH_THRESHOLDS = {
-  WARNING: 60 * 60 * 1000,    // 1 hour
-  ALERT: 2 * 60 * 60 * 1000,  // 2 hours
-  CONSECUTIVE_FAILURES_WARNING: 3,
-  CONSECUTIVE_FAILURES_ALERT: 5
-} as const;
+const CONSECUTIVE_FAILURES_WARNING = 3;
+const CONSECUTIVE_FAILURES_ALERT = 5;
 
 /**
  * Run health check job
- * Checks last successful scrape times and consecutive failures for all scrapers
+ * Checks last successful scrape times (from `scraper_logs`, via
+ * `ScraperLogRepository.getLastSuccess` — the SAME source
+ * `/api/admin/scraper/status` already reads, see
+ * `web/app/api/admin/scraper/status/route.ts`) and consecutive failures
+ * (Redis) for every source in `freshness-slo.ts`.
  *
  * @param redis - Redis client for failure tracking
+ * @param scraperLogRepository - Reused source of truth for last-successful-scrape timestamps
  * @returns Health check result
  */
-export async function runHealthCheck(redis: Redis): Promise<HealthCheckResult> {
+export async function runHealthCheck(
+  redis: Redis,
+  scraperLogRepository: Pick<ScraperLogRepository, 'getLastSuccess'>
+): Promise<HealthCheckResult> {
   const startTime = Date.now();
 
   try {
     logger.info('Starting health check');
 
-    // Get health status for each scraper
-    // Note: Once last_scraped_at is added to database, this will query the database
-    // For now, we use Redis failure tracking as a proxy
-    const nseHealth = await getScraperHealth(redis, 'NSE');
-    const bseHealth = await getScraperHealth(redis, 'BSE');
-    const apiHealth = await getScraperHealth(redis, 'API_FALLBACK');
+    const scrapers: Record<string, ScraperHealth> = {};
+    for (const slo of FRESHNESS_SLOS) {
+      scrapers[healthKey(slo.source)] = await getScraperHealth(
+        redis,
+        scraperLogRepository,
+        slo.source,
+        slo.maxStalenessMs
+      );
+    }
 
-    // Determine overall health status
-    const overallStatus = determineOverallStatus([nseHealth, bseHealth, apiHealth]);
+    const overallStatus = determineOverallStatus(Object.values(scrapers));
 
-    // Log warnings and alerts
-    logHealthIssues(nseHealth, 'NSE');
-    logHealthIssues(bseHealth, 'BSE');
-    logHealthIssues(apiHealth, 'API_FALLBACK');
+    for (const [key, health] of Object.entries(scrapers)) {
+      logHealthIssues(health, key);
+    }
 
     const duration = Date.now() - startTime;
-    logger.info({
-      status: overallStatus,
-      duration,
-      nse: nseHealth.status,
-      bse: bseHealth.status,
-      api: apiHealth.status
-    }, 'Health check completed');
+    logger.info(
+      {
+        status: overallStatus,
+        duration,
+        scraperStatuses: Object.fromEntries(
+          Object.entries(scrapers).map(([key, h]) => [key, h.status])
+        ),
+      },
+      'Health check completed'
+    );
 
     return {
       success: true,
       status: overallStatus,
       timestamp: new Date(),
-      scrapers: {
-        nse: nseHealth,
-        bse: bseHealth,
-        apiFallback: apiHealth
-      }
+      scrapers,
     };
   } catch (error) {
-    logger.error({
-      error: error instanceof Error ? error.message : String(error),
-      duration: Date.now() - startTime
-    }, 'Health check failed');
+    logger.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+        duration: Date.now() - startTime,
+      },
+      'Health check failed'
+    );
 
     // Return UNKNOWN status on error (don't crash scheduler)
     return {
       success: false,
       status: 'UNKNOWN',
       timestamp: new Date(),
-      scrapers: {
-        nse: createUnknownHealth(),
-        bse: createUnknownHealth(),
-        apiFallback: createUnknownHealth()
-      }
+      scrapers: Object.fromEntries(FRESHNESS_SLOS.map((slo) => [healthKey(slo.source), createUnknownHealth()])),
     };
   }
 }
 
+/** camelCase key for the ScraperHealth map, matching the pre-T-195 nse/bse/apiFallback naming convention. */
+function healthKey(source: ScraperSource): string {
+  const map: Partial<Record<ScraperSource, string>> = {
+    API_FALLBACK: 'apiFallback',
+    INVESTORGAIN_GMP: 'investorgainGmp',
+  };
+  return map[source] ?? source.toLowerCase();
+}
+
 /**
- * Get health status for a specific scraper
+ * Get health status for a specific scraper source. `lastScrapedAt` /
+ * `timeSinceLastScrape` now come from `scraperLogRepository.getLastSuccess`
+ * (T-195 — this was previously a hardcoded null/0 stub with a TODO).
+ *
  * @param redis - Redis client for failure tracking
- * @param source - Scraper source (NSE, BSE, API_FALLBACK)
+ * @param scraperLogRepository - Source of truth for last-successful-scrape timestamps
+ * @param source - Scraper source
+ * @param maxStalenessMs - This source's freshness SLO (from freshness-slo.ts)
  * @returns Scraper health status
  */
 async function getScraperHealth(
   redis: Redis,
-  source: 'NSE' | 'BSE' | 'API_FALLBACK'
+  scraperLogRepository: Pick<ScraperLogRepository, 'getLastSuccess'>,
+  source: ScraperSource,
+  maxStalenessMs: number
 ): Promise<ScraperHealth> {
   try {
-    // TODO: Once last_scraped_at is added to database, query it here
-    // For now, use Redis failure tracking as a proxy
-    // Query: SELECT MAX(last_scraped_at) FROM ipos WHERE 'NSE' = ANY(listing_exchanges)
-
-    // Get consecutive failures from Redis (from Story 7.3)
     const failureKey = `scraper:${source}:failures`;
     const failures = await redis.get(failureKey);
     const consecutiveFailures = failures ? parseInt(failures, 10) : 0;
 
-    // For MVP, we don't have last_scraped_at yet, so we use failure count
-    // as a proxy for health status
+    const lastSuccess = await scraperLogRepository.getLastSuccess(source);
+    const lastScrapedAt = lastSuccess ? new Date(lastSuccess.createdAt) : null;
+    // A source that has NEVER succeeded (fresh deploy / new source) is
+    // "unknown freshness", not "infinitely stale" — timeSinceLastScrape
+    // stays 0 and staleness plays no part in this source's status, matching
+    // the null-lastRun handling already relied on by
+    // /api/admin/scraper/status (GitHub #3: null means "never ran", not "stale").
+    const timeSinceLastScrape = lastScrapedAt ? Date.now() - lastScrapedAt.getTime() : 0;
+
+    const staleWarning = lastScrapedAt !== null && timeSinceLastScrape >= maxStalenessMs / 2;
+    const staleAlert = lastScrapedAt !== null && timeSinceLastScrape >= maxStalenessMs;
+
     let status: 'OK' | 'WARNING' | 'ALERT' = 'OK';
-    if (consecutiveFailures >= HEALTH_THRESHOLDS.CONSECUTIVE_FAILURES_ALERT) {
+    if (consecutiveFailures >= CONSECUTIVE_FAILURES_ALERT || staleAlert) {
       status = 'ALERT';
-    } else if (consecutiveFailures >= HEALTH_THRESHOLDS.CONSECUTIVE_FAILURES_WARNING) {
+    } else if (consecutiveFailures >= CONSECUTIVE_FAILURES_WARNING || staleWarning) {
       status = 'WARNING';
     }
 
     return {
-      lastScrapedAt: null,  // TODO: Get from database once field is added
-      timeSinceLastScrape: 0,  // TODO: Calculate from database timestamp
+      lastScrapedAt,
+      timeSinceLastScrape,
       consecutiveFailures,
-      status
+      status,
     };
   } catch (error) {
-    logger.error({
-      error: error instanceof Error ? error.message : String(error),
-      source
-    }, 'Failed to get scraper health');
+    logger.error(
+      {
+        error: error instanceof Error ? error.message : String(error),
+        source,
+      },
+      'Failed to get scraper health'
+    );
     return createUnknownHealth();
   }
 }
