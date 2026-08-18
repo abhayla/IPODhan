@@ -15,6 +15,8 @@ import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrato
 import { runMoneycontrolScraper } from './scrapers/moneycontrol-orchestrator-v2.js';
 import { runChittorgarhScraper } from './scrapers/chittorgarh-orchestrator-v2.js';
 import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator-v2.js';
+import { updateListingPerformance } from './scrapers/listing-performance-updater.js';
+import { shouldRunListingPerformanceUpdate } from './scheduler/listing-performance-cadence.js';
 import { db } from '@ipodhan/shared';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
 import { lt } from 'drizzle-orm';
@@ -36,7 +38,7 @@ const SCRAPER_LOG_RETENTION_DAYS = 30;
  *   npm run start:api                 (alias for fallback)
  *   npm run start:all                 (NSE + BSE + Moneycontrol + Chittorgarh + API fallback + GMP sequentially)
  */
-async function main() {
+export async function main() {
   try {
     // Parse CLI arguments
     const args = process.argv.slice(2);
@@ -215,11 +217,13 @@ async function main() {
       );
     }
 
-    // After scraping, apply time-based IPO status transitions (GitHub #4).
-    // Only for the full 'all' run (the scheduled production path). Non-fatal:
-    // a status-update failure must not fail the scrape.
+    // After scraping, apply time-based IPO status transitions (GitHub #4) and
+    // refresh listed-company current prices (T-179). Only for the full 'all'
+    // run (the scheduled production path). Both are non-fatal: a failure here
+    // must not fail the scrape.
     if (source === 'all') {
       await triggerStatusUpdate();
+      await triggerListingPerformanceUpdate();
       await pruneScraperLogs();
     }
 
@@ -295,6 +299,35 @@ async function triggerStatusUpdate(): Promise<void> {
 }
 
 /**
+ * Trigger listed-company current-price updates (T-179). The dedicated
+ * `listingPerformanceUpdate` scheduler job (`scheduler/jobs/listing-performance-update.ts`)
+ * is defined but never deployed — `scraper/src/scheduler/index.ts` is not run
+ * by PM2 (confirmed by T-176's 30-day scraper_logs measurement:
+ * docs/monitoring/scrape-cadence-measurement.md). Calling the scraper
+ * function directly here (same in-process call, not an HTTP round-trip like
+ * triggerStatusUpdate — updateListingPerformance already lives in this
+ * workspace) wires it into the path that actually runs in production, on the
+ * same flat 30-min cadence as the other sources, gated by
+ * `shouldRunListingPerformanceUpdate()` so it only fires as often as the
+ * job's original market-hours/after-hours/weekends tiers intended.
+ */
+export async function triggerListingPerformanceUpdate(): Promise<void> {
+  if (!shouldRunListingPerformanceUpdate(new Date())) {
+    logger.debug('Listing performance update skipped (outside cadence window)');
+    return;
+  }
+  try {
+    const result = await updateListingPerformance();
+    logger.info({ result }, 'Listing performance update triggered from one-shot cycle');
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Listing performance update trigger failed (non-fatal)'
+    );
+  }
+}
+
+/**
  * Prune scraper_logs to the retention window so the table can't regrow to the
  * 515k-row / 115 MB bloat the crash-loop produced (GitHub #15 follow-up).
  * Runs each full cycle; non-fatal.
@@ -314,5 +347,9 @@ async function pruneScraperLogs(): Promise<void> {
   }
 }
 
-// Run CLI
-main();
+// Run CLI (guarded so importing this module — e.g. from a test — doesn't
+// trigger a live scrape; matches the pattern used by
+// scrapers/listing-performance-updater.ts and the scripts/ CLIs).
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}
