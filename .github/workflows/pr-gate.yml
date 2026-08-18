@@ -11,7 +11,19 @@ name: PR Gate
 on:
   pull_request:
     branches: [main]
+    # Docs-only PRs don't need lint/type-check/unit tests to burn Actions minutes.
+    # Checked for runtime coupling first (T-190): grepped web/tests, scraper/tests,
+    # scraper/src/tests for any readFileSync/fs.readFile/require of a docs/*.md
+    # path. Only hit was a code COMMENT (not a runtime read) in
+    # scraper/tests/unit/index-listing-performance-wiring.test.ts referencing
+    # docs/monitoring/scrape-cadence-measurement.md — no negation entry needed.
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
 
+# No main-branch guard needed here (T-190 review): this workflow only triggers
+# on `pull_request`, never on `push` to main, and the group is scoped per PR
+# number — so cancel-in-progress can never cancel a run tied to main.
 concurrency:
   group: pr-gate-${{ github.event.pull_request.number }}
   cancel-in-progress: true
