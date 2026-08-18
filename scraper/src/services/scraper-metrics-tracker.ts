@@ -8,6 +8,7 @@
 import type Redis from 'ioredis';
 import { logger } from '../utils/logger';
 import type { ScraperSource } from './types';
+import { notifyOwner } from './owner-notify';
 
 /**
  * Metrics for a scraper source
@@ -178,6 +179,23 @@ export class ScraperMetricsTracker {
         error,
         source,
       }, `Failed to check alert status for ${source}`);
+
+      // T-194: a Redis error here means the alert-detection path itself is
+      // blind -- silently returning {sendAlert:false} would hide a REAL
+      // scraper failure behind a monitoring failure. Redis stays best-effort
+      // (redis-best-effort-fail-open.md -- this never throws or blocks the
+      // scrape), but the owner MUST be told monitoring is degraded rather
+      // than the failure going dark. Best-effort + fire-and-forget: never
+      // awaited, never throws.
+      notifyOwner(
+        'P0',
+        `Scraper alerting degraded for ${source}`,
+        {
+          body: `shouldSendAlert() failed to read Redis: ${error instanceof Error ? error.message : String(error)}`,
+          type: 'alerting-degraded',
+          dedupeKey: `alerting-degraded:${source}`,
+        }
+      );
 
       return { sendAlert: false, reason: null };
     }

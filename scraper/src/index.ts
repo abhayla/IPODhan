@@ -21,9 +21,26 @@ import { db } from '@ipodhan/shared';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
 import { lt } from 'drizzle-orm';
 import logger from './utils/logger.js';
+import { heartbeat, flushOwnerNotify } from './services/owner-notify.js';
 
 /** Days of scraper_logs history to retain. */
 const SCRAPER_LOG_RETENTION_DAYS = 30;
+
+/**
+ * Notifier heartbeat name for this cycle (matches `projects.ipodhan.heartbeats`
+ * in Notifier's config.yaml -- see docs/monitoring/scrape-cadence-measurement.md
+ * and this PR's DEPLOY-AND-RE-ARM section for the Notifier-side re-arm).
+ */
+const HEARTBEAT_NAME = 'watchdog';
+
+/**
+ * T-194: the `source === 'all'` cycle is the ONLY scraper process PM2 runs
+ * (docs/monitoring/scrape-cadence-measurement.md measured a flat 30-minute
+ * cron_restart cadence -- see pm2-scheduled-one-shot-scraper.md), never the
+ * undeployed IST market-hour tiers. The heartbeat interval MUST match that
+ * measured reality, not a config-file default.
+ */
+const HEARTBEAT_INTERVAL_MINUTES = 30;
 
 /**
  * CLI entry point for IPO scrapers
@@ -225,6 +242,12 @@ export async function main() {
       await triggerStatusUpdate();
       await triggerListingPerformanceUpdate();
       await pruneScraperLogs();
+      // T-194: job-completion heartbeat -- proves this cron cycle reached the
+      // end of the pipeline (not that every source succeeded; source-level
+      // failures are reported separately via AlertingService/notifyOwner).
+      // Fires regardless of combinedResult.success, matching the other
+      // non-fatal post-scrape side effects above.
+      triggerHeartbeat();
     }
 
     // Log final combined result
@@ -245,15 +268,19 @@ export async function main() {
       'Scraper execution completed'
     );
 
-    // Exit with appropriate code
+    // Exit with appropriate code. Flush any in-flight Notifier sends first --
+    // process.exit() would otherwise abort the heartbeat/alert fetch mid-air
+    // (fire-and-forget promises don't get to run to completion after exit).
     if (combinedResult.success) {
       logger.info('Scraper completed successfully');
+      await flushOwnerNotify();
       process.exit(0);
     } else {
       logger.error('Scraper completed with errors');
       if (combinedResult.errors.length > 0) {
         logger.error({ errors: combinedResult.errors }, 'Error details');
       }
+      await flushOwnerNotify();
       process.exit(1);
     }
 
@@ -262,7 +289,25 @@ export async function main() {
       { error: error instanceof Error ? error.message : String(error) },
       'Scraper CLI failed with unhandled error'
     );
+    await flushOwnerNotify();
     process.exit(1);
+  }
+}
+
+/**
+ * T-194: fire-and-forget job-completion heartbeat to the Notifier gateway
+ * (see services/owner-notify.ts). Non-fatal side effect -- a Notifier outage
+ * or missing env config must never fail the scrape (redis-best-effort /
+ * non-fatal-side-effects discipline). The caller flushes before process.exit().
+ */
+function triggerHeartbeat(): void {
+  try {
+    heartbeat(HEARTBEAT_NAME, HEARTBEAT_INTERVAL_MINUTES);
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Notifier heartbeat trigger failed (non-fatal)'
+    );
   }
 }
 
