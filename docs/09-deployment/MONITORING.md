@@ -314,6 +314,54 @@ pm2 start ipodhan-web
 
 ## Error Tracking (Sentry)
 
+### Live status (verified 2026-08-20, T-222)
+
+**NOT WIRED — owner-blocked on a credential.** The code is fully ready
+(`@sentry/nextjs`, `sentry.client.config.ts` / `sentry.server.config.ts` /
+`sentry.edge.config.ts`, `web/instrumentation-client.ts`, and the test route
+`GET /api/sentry-test` all exist and are DSN-gated), but there is currently no
+real DSN anywhere:
+
+- The Windows VPS (`103.118.16.189`, `C:\Apps\IPODhan\current`) was searched
+  for every `.env*` file matching `^(NEXT_PUBLIC_SENTRY_DSN|SENTRY_DSN|SENTRY_)`
+  and returned **zero matches**. The only observability key present on the box
+  is `NEXT_PUBLIC_GA_MEASUREMENT_ID`.
+- The served homepage contains **zero** occurrences of `sentry` and one
+  GA4/gtag reference — i.e. GA4 genuinely fires; Sentry does not initialise at
+  all (it is DSN-gated and silently no-ops with nothing set).
+- `D:\Abhay\GLOBAL.env` (the cross-project shared-secret store) has no
+  `SENTRY_*` entry.
+- The repo's `web/.env.local` and `web/.env.local.bak` contain only a
+  **placeholder** DSN (`https://example@o0000000.ingest.sentry.io/0000000`),
+  not a real one.
+
+So every error Sentry would have captured in production right now goes
+nowhere — the code runs, the exception is caught, and `Sentry.captureException`
+silently no-ops because there is no destination configured. This was shipped
+as "re-enable Sentry + GA4" (`8b5ae00b`, PR #115) — GA4 half of that claim is
+true and verified; the Sentry half is not.
+
+**What the owner must do (cannot be automated or guessed):**
+
+1. Sign in to https://sentry.io (or create an account) and open/create the
+   `ipodhan-web` project.
+2. Copy its DSN from Project Settings → Client Keys (DSN).
+3. Hand the DSN to a session with VPS access, which will set `SENTRY_DSN`
+   (server) and `NEXT_PUBLIC_SENTRY_DSN` (client — read by
+   `sentry-env.ts`/`instrumentation-client.ts`) in `web/.env.local` on the
+   VPS, back up the file first, restart `pm2 restart ipodhan-web`, then hit
+   `GET /api/sentry-test?test=error` and confirm the event lands in the
+   Sentry project dashboard with a fresh timestamp before calling it done.
+   `SENTRY_ORG` / `SENTRY_PROJECT` / `SENTRY_AUTH_TOKEN` are optional
+   (source-map upload only — `next.config.mjs`'s `withSentryConfig`); their
+   absence does not block error capture.
+
+**How to re-check this status in one command** (from the VPS, or over the SSH
+tunnel): `grep -riE "SENTRY" C:\Apps\IPODhan\current\web\.env.local` — a real
+`https://...@o<digits>.ingest.sentry.io/<digits>` value (not `example`/`xxx`/
+`0000000`) means it's wired; confirm delivery via `/api/sentry-test?test=error`
+and the Sentry dashboard, not just the presence of the env var.
+
 ### Option 1: Sentry (Recommended)
 
 **⚠️ OPTIONAL** - Sentry provides powerful error tracking but requires account setup.
