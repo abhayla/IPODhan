@@ -12,14 +12,15 @@ private: false
 
 # Pre-Commit Secret + Type-Check Gate
 
-`.husky/pre-commit` runs exactly two commands, in order:
+`.husky/pre-commit` runs exactly three commands, in order:
 
 ```
 node scripts/check-staged-secrets.js
+node scripts/check-workflow-ascii.js
 npx lint-staged
 ```
 
-Both must pass for a commit to land. Do not bypass with `--no-verify`.
+All three must pass for a commit to land. Do not bypass with `--no-verify`.
 
 ## Secret scanner — scripts/check-staged-secrets.js
 
@@ -42,6 +43,19 @@ A `PLACEHOLDER` allowlist exempts obvious non-secrets (`<...>`, `${VAR}`, `%VAR%
   use `secret-scan:allow` to wave through a REAL secret.
 - Real secrets MUST live in env (`.env` is gitignored); never commit them. See issue #1.
 
+## Workflow ASCII guard — scripts/check-workflow-ascii.js
+
+A deterministic gate created after **T-217** (em dashes in `deploy.yml` broke PowerShell
+parsing on the self-hosted Windows runner and blocked every deploy). It scans every
+`.github/workflows/*.yml` file for `run:` step bodies (block scalar or inline) and fails if
+any character in that generated-script text is non-ASCII. YAML comments and other non-`run:`
+text are NOT scanned — they never reach the generated script, so non-ASCII there is harmless.
+
+- Run standalone: `node scripts/check-workflow-ascii.js` (scans all workflow files) or
+  `node scripts/check-workflow-ascii.js <file...>` (scans specific files).
+- MUST NOT introduce non-ASCII characters (em dashes, curly quotes, arrows) into a `run:`
+  step body — use a plain-ASCII equivalent (em dash -> ` - `).
+
 ## Type-check pass — .lintstagedrc.js
 
 `npx lint-staged` runs `.lintstagedrc.js`, which for staged `web/**/*.{ts,tsx}` runs
@@ -54,7 +68,8 @@ CI). Do not add auto-fixers here that rewrite files mid-commit.
 
 ## CRITICAL RULES
 
-- MUST keep `.husky/pre-commit` running `check-staged-secrets.js` then `lint-staged`; do not commit with `--no-verify`.
+- MUST keep `.husky/pre-commit` running `check-staged-secrets.js`, then `check-workflow-ascii.js`, then `lint-staged`; do not commit with `--no-verify`.
 - MUST NOT use `secret-scan:allow` to bypass the scanner for a real credential — only for documented dummy values.
 - MUST keep real secrets in gitignored env files; the scanner exists because of the leak in issue #1.
+- MUST NOT introduce non-ASCII characters into a workflow `run:` step body; the guard exists because of the deploy breakage in T-217.
 - MUST keep the lint-staged step as `tsc --noEmit` type-check only — do not add file-rewriting fixers to the pre-commit path.

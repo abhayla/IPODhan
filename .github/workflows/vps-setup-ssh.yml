@@ -2,7 +2,7 @@ name: VPS Setup SSH (one-time maintenance)
 
 # Installs OpenSSH Server on the production VPS via the self-hosted runner,
 # authorizes a single public key (key-only auth; password login disabled),
-# and opens the firewall for port 22. Contains no secrets — only a public key.
+# and opens the firewall for port 22. Contains no secrets - only a public key.
 
 on:
   workflow_dispatch:
@@ -43,7 +43,7 @@ jobs:
           icacls $authFile /inheritance:r /grant 'Administrators:F' /grant 'SYSTEM:F'
           Write-Host "[OK] administrators_authorized_keys written with restricted ACL"
 
-          # Disable password authentication — key-only
+          # Disable password authentication - key-only
           $cfg = 'C:\ProgramData\ssh\sshd_config'
           $content = Get-Content $cfg
           if ($content -match '^#?PasswordAuthentication') {
