@@ -11,15 +11,15 @@ on:
       checks_verified_locally:
         # Exists because private-repo GitHub Actions minutes run out most months
         # (shared 2000 min/mo quota across all repos on the account) and every
-        # ubuntu-latest job then fails to START — including quality-checks,
+        # ubuntu-latest job then fails to START - including quality-checks,
         # which gates this deploy. Self-hosted runners (the deploy job below)
         # are unaffected: they run on the owner's own VPS and cost zero minutes.
-        # This input does NOT skip testing — it moves the test run from the
+        # This input does NOT skip testing - it moves the test run from the
         # hosted job to the self-hosted deploy job (see "Re-run quality checks
         # on self-hosted runner" step below), so the free half of the pipeline
         # is never held hostage by the paid half. Default is FALSE: the strict,
         # today's-behavior path is still what you get by doing nothing.
-        description: 'Quality checks verified locally elsewhere (e.g. hosted-runner minutes exhausted) — skips the hosted quality-checks job; deploy job re-runs the full check suite on the self-hosted runner before touching any files. Requires local_verification_evidence.'
+        description: 'Quality checks verified locally elsewhere (e.g. hosted-runner minutes exhausted) - skips the hosted quality-checks job; deploy job re-runs the full check suite on the self-hosted runner before touching any files. Requires local_verification_evidence.'
         required: false
         type: boolean
         default: false
@@ -85,7 +85,7 @@ jobs:
     name: Deploy to VPS
     runs-on: self-hosted
     needs: quality-checks
-    # `needs:` on a skipped job normally skips the dependent too — `always()`
+    # `needs:` on a skipped job normally skips the dependent too - `always()`
     # overrides that so a SKIPPED quality-checks (via skip_tests or
     # checks_verified_locally) still lets the deploy proceed, while a
     # genuinely FAILED quality-checks (result == 'failure', neither input
@@ -127,20 +127,20 @@ jobs:
 
       - name: Validate local-verification evidence
         # checks_verified_locally=true means the hosted quality-checks job
-        # was skipped — this makes an unexplained skip impossible by hard
+        # was skipped - this makes an unexplained skip impossible by hard
         # failing before any deploy work if the evidence field was left
         # blank, and records what/where into the job summary for later readers.
         if: ${{ inputs.checks_verified_locally }}
         shell: powershell
         run: |
           if ([string]::IsNullOrWhiteSpace($env:LOCAL_EVIDENCE)) {
-            Write-Host "[ERROR] checks_verified_locally=true requires local_verification_evidence (what was verified, and where) — refusing to deploy on an unexplained skip."
+            Write-Host "[ERROR] checks_verified_locally=true requires local_verification_evidence (what was verified, and where) - refusing to deploy on an unexplained skip."
             exit 1
           }
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Hosted quality-checks SKIPPED — verified locally instead"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Hosted quality-checks SKIPPED - verified locally instead"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "$env:LOCAL_EVIDENCE"
           Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
-          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "_The full check suite is re-run on this self-hosted runner before any files are replaced — see 'Re-run quality checks on self-hosted runner' below._"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "_The full check suite is re-run on this self-hosted runner before any files are replaced - see 'Re-run quality checks on self-hosted runner' below._"
           Write-Host "[OK] Local-verification evidence recorded to job summary"
         env:
           LOCAL_EVIDENCE: ${{ inputs.local_verification_evidence }}
@@ -196,10 +196,10 @@ jobs:
 
       - name: Re-run quality checks on self-hosted runner (local-verification path)
         # Mirrors the hosted quality-checks job's lint/typecheck/unit-test
-        # steps (same commands: root `npm run lint` / `npm run test:unit` —
-        # both delegate to the web workspace — and `npx tsc --noEmit` in
+        # steps (same commands: root `npm run lint` / `npm run test:unit` -
+        # both delegate to the web workspace - and `npx tsc --noEmit` in
         # web/). Runs ONLY when checks_verified_locally=true, i.e. only when
-        # the hosted job was skipped — so skipping the hosted job never means
+        # the hosted job was skipped - so skipping the hosted job never means
         # skipping tests, only running them somewhere free. This step runs
         # BEFORE "Stop PM2 processes" / "Deploy files", so a failure here
         # aborts the job before any live file is touched or process is killed.
@@ -237,7 +237,7 @@ jobs:
         env:
           # next build OOM'd on the self-hosted runner (exit 134,
           # NewSpace::EnsureCurrentCapacity) under memory pressure after the
-          # bundle grew — raise the V8 old-space heap so the build has headroom.
+          # bundle grew - raise the V8 old-space heap so the build has headroom.
           NODE_OPTIONS: --max-old-space-size=4096
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           NEXT_PUBLIC_GA_MEASUREMENT_ID: ${{ secrets.NEXT_PUBLIC_GA_MEASUREMENT_ID }}
@@ -388,7 +388,7 @@ jobs:
                   NODE_ENV: 'production',
                   SCRAPER_INTERVAL_MODE: 'prod',
                   TZ: 'UTC',
-                  // GMP/subscription coverage flags — MUST be regenerated here or a
+                  // GMP/subscription coverage flags - MUST be regenerated here or a
                   // deploy silently turns them off (they live in the committed
                   // ecosystem.config.js per 07470243, but this step overwrites it).
                   // The */30 --source=all cron is what runs the GMP scraper in prod;
@@ -396,7 +396,7 @@ jobs:
                   ENABLE_GMP_NAME_MATCH: 'true',
                   ENABLE_MONEYCONTROL_SUBSCRIPTION: 'true',
                   // BSE source rebuilt on the JSON API (the Puppeteer/HTML scraper
-                  // is dead — BSE migrated to a SPA). Switches the BSE orchestrator
+                  // is dead - BSE migrated to a SPA). Switches the BSE orchestrator
                   // from the dead scraper to scrapeBSEViaAPI (list IR_flag=IPO ->
                   // detail + subscription) for the current board. PR #26.
                   ENABLE_BSE_API: 'true',
