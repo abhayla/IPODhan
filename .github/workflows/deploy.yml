@@ -8,6 +8,26 @@ on:
         required: false
         type: boolean
         default: false
+      checks_verified_locally:
+        # Exists because private-repo GitHub Actions minutes run out most months
+        # (shared 2000 min/mo quota across all repos on the account) and every
+        # ubuntu-latest job then fails to START — including quality-checks,
+        # which gates this deploy. Self-hosted runners (the deploy job below)
+        # are unaffected: they run on the owner's own VPS and cost zero minutes.
+        # This input does NOT skip testing — it moves the test run from the
+        # hosted job to the self-hosted deploy job (see "Re-run quality checks
+        # on self-hosted runner" step below), so the free half of the pipeline
+        # is never held hostage by the paid half. Default is FALSE: the strict,
+        # today's-behavior path is still what you get by doing nothing.
+        description: 'Quality checks verified locally elsewhere (e.g. hosted-runner minutes exhausted) — skips the hosted quality-checks job; deploy job re-runs the full check suite on the self-hosted runner before touching any files. Requires local_verification_evidence.'
+        required: false
+        type: boolean
+        default: false
+      local_verification_evidence:
+        description: 'Required when checks_verified_locally=true: what was verified and where (command output summary, or a commit SHA + pass/fail result line)'
+        required: false
+        type: string
+        default: ''
 
 # Only one production deploy at a time; a newer dispatch cancels an in-progress
 # one instead of queueing another full ~20-min run behind it.
@@ -19,7 +39,7 @@ jobs:
   quality-checks:
     name: Quality Checks & Build
     runs-on: ubuntu-latest
-    if: ${{ !inputs.skip_tests }}
+    if: ${{ !inputs.skip_tests && !inputs.checks_verified_locally }}
 
     steps:
       - name: Checkout code
@@ -65,7 +85,12 @@ jobs:
     name: Deploy to VPS
     runs-on: self-hosted
     needs: quality-checks
-    if: ${{ always() && (needs.quality-checks.result == 'success' || inputs.skip_tests) }}
+    # `needs:` on a skipped job normally skips the dependent too — `always()`
+    # overrides that so a SKIPPED quality-checks (via skip_tests or
+    # checks_verified_locally) still lets the deploy proceed, while a
+    # genuinely FAILED quality-checks (result == 'failure', neither input
+    # set) is NOT in this OR-list and therefore still blocks the deploy.
+    if: ${{ always() && (needs.quality-checks.result == 'success' || inputs.skip_tests || inputs.checks_verified_locally) }}
 
     env:
       DEPLOY_DIR: C:\Apps\IPODhan\current
@@ -99,6 +124,26 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
+
+      - name: Validate local-verification evidence
+        # checks_verified_locally=true means the hosted quality-checks job
+        # was skipped — this makes an unexplained skip impossible by hard
+        # failing before any deploy work if the evidence field was left
+        # blank, and records what/where into the job summary for later readers.
+        if: ${{ inputs.checks_verified_locally }}
+        shell: powershell
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:LOCAL_EVIDENCE)) {
+            Write-Host "[ERROR] checks_verified_locally=true requires local_verification_evidence (what was verified, and where) — refusing to deploy on an unexplained skip."
+            exit 1
+          }
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "### Hosted quality-checks SKIPPED — verified locally instead"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "$env:LOCAL_EVIDENCE"
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value ""
+          Add-Content -Path $env:GITHUB_STEP_SUMMARY -Value "_The full check suite is re-run on this self-hosted runner before any files are replaced — see 'Re-run quality checks on self-hosted runner' below._"
+          Write-Host "[OK] Local-verification evidence recorded to job summary"
+        env:
+          LOCAL_EVIDENCE: ${{ inputs.local_verification_evidence }}
 
       - name: Create backup
         shell: powershell
@@ -148,6 +193,36 @@ jobs:
       - name: Build shared package
         run: npm run build
         working-directory: ./packages/shared
+
+      - name: Re-run quality checks on self-hosted runner (local-verification path)
+        # Mirrors the hosted quality-checks job's lint/typecheck/unit-test
+        # steps (same commands: root `npm run lint` / `npm run test:unit` —
+        # both delegate to the web workspace — and `npx tsc --noEmit` in
+        # web/). Runs ONLY when checks_verified_locally=true, i.e. only when
+        # the hosted job was skipped — so skipping the hosted job never means
+        # skipping tests, only running them somewhere free. This step runs
+        # BEFORE "Stop PM2 processes" / "Deploy files", so a failure here
+        # aborts the job before any live file is touched or process is killed.
+        if: ${{ inputs.checks_verified_locally }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          Write-Host "[INFO] checks_verified_locally=true - re-running lint/typecheck/unit tests on the self-hosted runner before touching the live app."
+
+          npm run lint
+          if ($LASTEXITCODE -ne 0) { Write-Host "[ERROR] lint failed"; exit 1 }
+
+          Push-Location web
+          npx tsc --noEmit
+          $typecheckExit = $LASTEXITCODE
+          Pop-Location
+          if ($typecheckExit -ne 0) { Write-Host "[ERROR] TypeScript type check failed"; exit 1 }
+
+          npm run test:unit
+          if ($LASTEXITCODE -ne 0) { Write-Host "[ERROR] unit tests failed"; exit 1 }
+
+          Write-Host "[OK] Self-hosted re-verification passed - proceeding to deploy"
 
       - name: Build web application (incremental - keeps .next/cache)
         shell: powershell

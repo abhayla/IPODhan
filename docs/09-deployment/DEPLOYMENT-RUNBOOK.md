@@ -360,7 +360,20 @@ redis-cli -a your_redis_password_here ping
 
 ## Application Deployment
 
-### Step 1: Clone Repository
+> **Actual production deploys run via GitHub Actions** (`.github/workflows/deploy.yml`,
+> manual `workflow_dispatch` only) — the steps below describe the underlying process the
+> workflow automates. See `CLAUDE.md` "Production & Deployment" and
+> `.claude/rules/self-hosted-windows-vps-deploy.md` for the CI mechanics.
+
+### Manual dispatch inputs (`workflow_dispatch`)
+
+| Input | Default | Effect |
+|---|---|---|
+| `skip_tests` | `false` | Emergency path — skips `quality-checks` entirely (no test run anywhere) and deploys straight away. |
+| `checks_verified_locally` | `false` | Skips the **hosted** `quality-checks` job (`ubuntu-latest`) but the `deploy` job (self-hosted) re-runs the full lint/typecheck/unit-test suite itself before touching any files — so skipping the hosted job never means skipping tests, only running them somewhere free. Exists because the account's shared private-repo Actions minutes (2000/mo) run out most months, and every `ubuntu-latest` job then fails to *start* — while self-hosted runners (the `deploy` job) are unaffected. Requires `local_verification_evidence`. |
+| `local_verification_evidence` | `''` | Required when `checks_verified_locally=true`: a short note on WHAT was verified and WHERE (e.g. local command output summary, or a commit SHA + pass/fail line). Echoed into the job's summary so a later reader can see the evidence — an unexplained skip is a hard failure. |
+
+
 
 ```bash
 # Create application directory
