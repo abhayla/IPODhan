@@ -374,12 +374,29 @@ describe('HistoricalIPOScraper', () => {
 
   describe('sleep', () => {
     it('should delay execution for specified milliseconds', async () => {
-      const start = Date.now();
-      await (scraper as any).sleep(100);
-      const duration = Date.now() - start;
+      // Fake timers instead of a real-time stopwatch: a wall-clock upper
+      // bound measures OS scheduler jitter on the CI runner, not the code
+      // under test, and is unfixable by widening the tolerance.
+      vi.useFakeTimers();
+      try {
+        let resolved = false;
+        (scraper as any).sleep(100).then(() => {
+          resolved = true;
+        });
 
-      expect(duration).toBeGreaterThanOrEqual(90); // Allow 10ms tolerance
-      expect(duration).toBeLessThan(150);
+        // Flush pending microtasks without advancing the clock: a broken
+        // sleep() that resolves immediately would already be resolved here.
+        await vi.advanceTimersByTimeAsync(0);
+        expect(resolved).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(99);
+        expect(resolved).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(resolved).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });
