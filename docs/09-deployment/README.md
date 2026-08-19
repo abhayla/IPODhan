@@ -84,6 +84,8 @@ Follow these guides in order:
 |------|-------|---------|
 | [ROLLBACK.md](./ROLLBACK.md) | 416 | Emergency rollback procedures |
 | [DEPLOYMENT-CHECKLIST.md](./DEPLOYMENT-CHECKLIST.md) | 553 | Complete deployment checklist |
+| [SECURITY-CREDENTIAL-EXPOSURE.md](./SECURITY-CREDENTIAL-EXPOSURE.md) | — | **P1 open finding:** prod DB superuser credential exposed in git history, not yet rotated (T-215) |
+| [CREDENTIAL-ROTATION-PLAN.md](./CREDENTIAL-ROTATION-PLAN.md) | — | Owner-gated rotation plan: consumer enumeration, cutover, rollback, verification (T-215) |
 
 ### Scripts
 
