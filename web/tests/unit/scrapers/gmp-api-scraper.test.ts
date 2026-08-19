@@ -363,16 +363,31 @@ describe('GMPAPIScraper', () => {
 
   describe('sleep utility', () => {
     it('should sleep for specified milliseconds', async () => {
-      const sleep = (scraper as any).sleep.bind(scraper);
+      // Fake timers instead of a real-time stopwatch: a wall-clock upper
+      // bound measures OS scheduler jitter on the CI runner, not the code
+      // under test, and is unfixable by widening the tolerance.
+      vi.useFakeTimers();
+      try {
+        const sleep = (scraper as any).sleep.bind(scraper);
 
-      const start = Date.now();
-      await sleep(100);
-      const duration = Date.now() - start;
+        let resolved = false;
+        sleep(100).then(() => {
+          resolved = true;
+        });
 
-      // Allow 10ms tolerance in both directions — real timers can land a
-      // few ms short of the nominal delay under CI runner scheduling jitter.
-      expect(duration).toBeGreaterThanOrEqual(90);
-      expect(duration).toBeLessThan(120);
+        // Flush pending microtasks without advancing the clock: a broken
+        // sleep() that resolves immediately would already be resolved here.
+        await vi.advanceTimersByTimeAsync(0);
+        expect(resolved).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(99);
+        expect(resolved).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(1);
+        expect(resolved).toBe(true);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });
