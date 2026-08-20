@@ -292,15 +292,17 @@ build_release() {
     return 0
   fi
 
-  # shellcheck disable=SC1090  # per-slot generated env file, path known at runtime
   set -a
+  # shellcheck disable=SC1090  # per-slot generated env file, path known at runtime
   . "$WEB_ENV_FILE"
   set +a
   # NEXT_PUBLIC_BUILD_SHA / NEXT_PUBLIC_BUILT_AT: baked at build time so
   # /api/version reflects THIS release regardless of runtime env (T-242,
   # supersedes T-229).
   export NEXT_PUBLIC_BUILD_SHA="$SHORT_SHA"
-  export NEXT_PUBLIC_BUILT_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  local built_at
+  built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  export NEXT_PUBLIC_BUILT_AT="$built_at"
 
   ( cd "$RELEASE_DIR" && npm ci --no-audit --no-fund )
   ( cd "$RELEASE_DIR/packages/shared" && npx tsc )
@@ -424,9 +426,11 @@ trap - EXIT
 log "Pruning old releases (keeping the newest $KEEP_RELEASES)"
 CUR="$(read_current_link || true)"
 if [ -d "$RELEASES_DIR" ]; then
+  # shellcheck disable=SC2012  # release dir names are timestamp_sha, plain alphanumeric — ls is safe
   TOTAL="$(cd "$RELEASES_DIR" && ls -1 | LC_ALL=C sort | wc -l)"
   if [ "$TOTAL" -gt "$KEEP_RELEASES" ]; then
     cd "$RELEASES_DIR"
+    # shellcheck disable=SC2012  # release dir names are timestamp_sha, plain alphanumeric — ls is safe
     ls -1 | LC_ALL=C sort | head -n "$((TOTAL - KEEP_RELEASES))" | while IFS= read -r old; do
       if [ "$RELEASES_DIR/$old" = "$CUR" ]; then
         log "keeping $old (it is 'current')"

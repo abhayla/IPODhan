@@ -116,6 +116,7 @@ for i in 1 2 3 4 5; do
   }
   sleep 1.1 # release names are timestamp+sha; force a distinct second-resolution stamp
 done
+# shellcheck disable=SC2012  # release dir names are timestamp_sha, plain alphanumeric — ls is safe
 COUNT="$(ls -1 "$ROOT5/releases" 2>/dev/null | wc -l | tr -d ' ')"
 if [ "$COUNT" -le 3 ]; then
   pass "case 5: prune kept <= 3 releases after 5 deploys (kept $COUNT)"
