@@ -280,10 +280,10 @@ jobs:
       - name: Verify required env keys were written
         shell: powershell
         run: |
-          # Fails the deploy loudly if a required key is missing from either
-          # generated .env file - never let a dropped key (like NOTIFIER_KEY
-          # in T-224) degrade into silent no-alerting. Checks key NAMES only;
-          # never reads or echoes values.
+          # Fails the deploy loudly if a required key is missing OR present
+          # but blank from either generated .env file - never let a dropped
+          # or emptied key (like NOTIFIER_KEY in T-224) degrade into silent
+          # no-alerting. Compares emptiness only; never reads or echoes values.
           $webRequired = @(
             'NODE_ENV','DATABASE_URL','REDIS_URL','ADMIN_API_TOKEN',
             'NEXT_PUBLIC_GA_MEASUREMENT_ID','NEXT_PUBLIC_ZERODHA_AFFILIATE_LINK',
@@ -300,14 +300,21 @@ jobs:
           function Test-EnvKeys {
             param([string]$Path, [string[]]$RequiredKeys)
             $lines = Get-Content -Path $Path
-            $present = @{}
+            $nonBlank = @{}
             foreach ($line in $lines) {
               $trimmed = $line.Trim()
-              if ($trimmed -match '^([A-Za-z_][A-Za-z0-9_]*)=') {
-                $present[$Matches[1]] = $true
+              if ($trimmed -match '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$') {
+                $key = $Matches[1]
+                $value = $Matches[2].Trim()
+                if ($value.Length -gt 0) {
+                  $nonBlank[$key] = $true
+                }
               }
             }
-            $missing = $RequiredKeys | Where-Object { -not $present.ContainsKey($_) }
+            # A key that never appeared and a key that appeared with an empty
+            # value are the SAME failure to the caller - neither ends up in
+            # $nonBlank, so one check catches both shapes.
+            $missing = $RequiredKeys | Where-Object { -not $nonBlank.ContainsKey($_) }
             return $missing
           }
 
@@ -315,16 +322,16 @@ jobs:
           $missingScraper = Test-EnvKeys -Path "scraper\.env" -RequiredKeys $scraperRequired
 
           if ($missingWeb.Count -gt 0) {
-            Write-Host "[FATAL] web\.env.local is missing required keys: $($missingWeb -join ', ')"
+            Write-Host "[FATAL] web\.env.local is missing or has blank values for required keys: $($missingWeb -join ', ')"
           }
           if ($missingScraper.Count -gt 0) {
-            Write-Host "[FATAL] scraper\.env is missing required keys: $($missingScraper -join ', ')"
+            Write-Host "[FATAL] scraper\.env is missing or has blank values for required keys: $($missingScraper -join ', ')"
           }
           if ($missingWeb.Count -gt 0 -or $missingScraper.Count -gt 0) {
-            Write-Error "Required env key(s) missing after generation - aborting deploy before any files are touched. This check exists because NOTIFIER_URL/NOTIFIER_KEY/NOTIFIER_PROJECT silently vanished on a prior deploy (T-224) and owner alerting went dark with no signal."
+            Write-Error "Required env key(s) missing or blank after generation - aborting deploy at the verification gate. A backup was already taken and the app was already built by this point, so the Rollback on failure step will restore the prior release; this step does NOT mean the deploy directory is untouched. This check exists because NOTIFIER_URL/NOTIFIER_KEY/NOTIFIER_PROJECT silently vanished on a prior deploy (T-224) and owner alerting went dark with no signal."
             exit 1
           }
-          Write-Host "[OK] All required keys present in both generated env files"
+          Write-Host "[OK] All required keys present and non-blank in both generated env files"
 
       - name: Stop PM2 processes (release file locks)
         shell: powershell
