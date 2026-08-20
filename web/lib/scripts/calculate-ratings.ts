@@ -13,6 +13,7 @@
  * @module calculate-ratings
  */
 
+import { pathToFileURL } from 'node:url';
 import { db, closePool } from '../db/index';
 import { getRedisClient, closeRedisClient } from '../cache/redis-client';
 import { IPORepository } from '../repositories/ipo-repository';
@@ -304,7 +305,7 @@ async function main() {
 // ==================== SCRIPT EXECUTION ====================
 
 // Run the script if executed directly
-if (require.main === module || import.meta.url === `file://${process.argv[1]}`) {
+if (require.main === module || import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((error) => {
     console.error('Unhandled error:', error);
     process.exit(1);
