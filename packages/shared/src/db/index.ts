@@ -12,6 +12,32 @@ let _pool: Pool | undefined;
 let _db: NodePgDatabase<typeof schema> | undefined;
 
 /**
+ * Resolve the shared pool's max size from env, with a safe default.
+ * Pure function (no Pool side effects) so T-242's pool-cap arithmetic
+ * (web instances x pool + shared + calendar < 97 usable conns) is
+ * unit-testable without opening a real connection. See T-241
+ * 17-required-keys.md (POOL-SIZE P1) + 19-handoffs-m3.md H4.
+ */
+export function resolveSharedPoolSize(env: NodeJS.ProcessEnv = process.env): { max: number } {
+  const max = parseInt(env.SHARED_DB_POOL_MAX || '15', 10);
+  return { max: Number.isFinite(max) && max > 0 ? max : 15 };
+}
+
+/**
+ * Resolve the pg `ssl` option from DATABASE_SSL (T-242 M3 handoff H6).
+ * Default 'off' preserves current Windows-prod behavior — nothing changes
+ * until the env var is set. The DSN's own `sslmode` (T-241 M1) still wins
+ * over this when a connectionString is used.
+ */
+export function resolveDatabaseSsl(env: NodeJS.ProcessEnv = process.env): false | { rejectUnauthorized: boolean } {
+  const mode = (env.DATABASE_SSL || 'off').toLowerCase();
+  if (mode === 'require') {
+    return { rejectUnauthorized: false }; // self-signed origin cert (T-241 16-tls.md)
+  }
+  return false;
+}
+
+/**
  * Initialize the database pool lazily
  */
 function initPool(): Pool {
@@ -23,6 +49,8 @@ function initPool(): Pool {
   // Use individual parameters if DATABASE_HOST is set, otherwise use DATABASE_URL
   // `-c timezone=UTC` forces the session to UTC so now()/defaultNow() write
   // UTC-naive and naive<->timestamptz comparisons treat naive values as UTC (#28).
+  const { max } = resolveSharedPoolSize();
+  const ssl = resolveDatabaseSsl();
   _pool = new Pool(
     process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
       ? {
@@ -32,16 +60,18 @@ function initPool(): Pool {
           user: process.env.DATABASE_USER || 'postgres',
           password: process.env.DATABASE_PASSWORD,
           options: '-c timezone=UTC',
-          max: 20,
+          max,
           idleTimeoutMillis: 30000,
           connectionTimeoutMillis: 2000,
+          ssl,
         }
       : {
           connectionString: process.env.DATABASE_URL,
           options: '-c timezone=UTC',
-          max: 20,
+          max,
           idleTimeoutMillis: 30000,
           connectionTimeoutMillis: 2000,
+          ssl,
         }
   );
 

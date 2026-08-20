@@ -1,38 +1,27 @@
-import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
+import { PoolClient, QueryResult, QueryResultRow } from 'pg';
+import { pool as sharedPool } from './db/index';
 
 // Re-export db from drizzle setup for repositories
 export { db } from './db/index';
 
-// Singleton pool instance
-let pool: Pool | null = null;
-
 /**
- * Get PostgreSQL connection pool
- * Creates a new pool if one doesn't exist (singleton pattern)
+ * Get PostgreSQL connection pool.
+ *
+ * T-242 M3 (Linux deploy pipeline) fix: this used to construct its OWN
+ * second `new Pool(...)` from DISCRETE `DATABASE_HOST`/`DATABASE_USER`/
+ * `DATABASE_PASSWORD` vars only — no `DATABASE_URL` fallback at all. On
+ * the Linux deploy the env files are DSN-only (T-241 17-required-keys.md,
+ * H5: "Do NOT set DATABASE_HOST / DATABASE_PASSWORD"), so this pool would
+ * have connected with `password: undefined` and failed every query (the
+ * exact GitHub #10 class of bug `web/lib/db.ts` was already patched for).
+ * It was ALSO a duplicate connection budget on top of `./db/index`'s pool
+ * (T-241 17-required-keys.md POOL-SIZE P1 listed it as "same pool
+ * family"). Delegating to the SAME pool as `./db/index` fixes both: no
+ * more DSN-blind duplicate pool, and `SHARED_DB_POOL_MAX`/`DATABASE_SSL`
+ * (see `db/index.ts`) become the single source of truth for pool sizing.
  */
-export function getPool(): Pool {
-  if (!pool) {
-    pool = new Pool({
-      host: process.env.DATABASE_HOST,
-      port: parseInt(process.env.DATABASE_PORT || '5432'),
-      database: process.env.DATABASE_NAME,
-      user: process.env.DATABASE_USER,
-      password: process.env.DATABASE_PASSWORD,
-      options: '-c timezone=UTC', // Force session UTC so now()/defaultNow() write UTC-naive (#28)
-      max: 20, // Maximum number of clients in the pool
-      idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-      connectionTimeoutMillis: 10000, // Timeout connection attempts after 10 seconds
-    });
-
-    // Handle pool errors
-    pool.on('error', (err) => {
-      console.error('Unexpected error on idle PostgreSQL client', err);
-    });
-
-    console.log('✓ PostgreSQL connection pool created');
-  }
-
-  return pool;
+export function getPool() {
+  return sharedPool;
 }
 
 /**
@@ -72,11 +61,8 @@ export async function getClient(): Promise<PoolClient> {
  * Close the database pool (for graceful shutdown)
  */
 export async function closePool(): Promise<void> {
-  if (pool) {
-    await pool.end();
-    pool = null;
-    console.log('✓ PostgreSQL connection pool closed');
-  }
+  await getPool().end();
+  console.log('✓ PostgreSQL connection pool closed');
 }
 
 /**
