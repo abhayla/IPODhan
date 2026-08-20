@@ -81,3 +81,47 @@ describe('T-236 / a zero price band is unannounced, not invalid', () => {
     expect(good.data?.priceRangeMax).toBe(100);
   });
 });
+
+/**
+ * T-236C follow-up (fleet worker T-236C): the T-236C contract's "supervisor
+ * probe" called `validateChittorgarhIPOData({companyName, priceRangeMin: 0,
+ * priceRangeMax: 0})` with ONLY those 3 fields and treated `success: false`
+ * as proof the price-band fix (above) hadn't landed on the live path.
+ *
+ * Reproduced here byte-for-byte: it DOES return `success: false` - but the
+ * `error.issues` array (asserted below) contains ZERO issues on
+ * `priceRangeMin`/`priceRangeMax`. Every issue is `issueSize`, `openDate`,
+ * `closeDate`, `listingExchange`, `offeringType`, `status`, `dataSource` -
+ * fields the 3-field probe never populated. ChittorgarhIPOSchema requires
+ * all of them; the probe was never going to pass regardless of the
+ * price-band fix, because it wasn't exercising the price-band path at all.
+ * This is NOT evidence of a live regression - it is a malformed fixture.
+ * The REAL production shape (all required fields present, exactly what
+ * chittorgarh-orchestrator-v2.ts feeds the validator) is covered above and
+ * has passed since f9df24fa; this test exists so the next worker sees WHY
+ * the minimal probe fails instead of re-diagnosing the price band again.
+ */
+describe('T-236C / the minimal 3-field "supervisor probe" fails for unrelated reasons', () => {
+  it('fails on missing required fields, NOT on priceRangeMin/priceRangeMax', () => {
+    const result = validateChittorgarhIPOData({
+      companyName: 'Rays of Belief Ltd.',
+      priceRangeMin: 0,
+      priceRangeMax: 0,
+    });
+    expect(result.success).toBe(false);
+    const paths = result.error?.issues.map((i) => i.path.join('.')) ?? [];
+    expect(paths).not.toContain('priceRangeMin');
+    expect(paths).not.toContain('priceRangeMax');
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        'issueSize',
+        'openDate',
+        'closeDate',
+        'listingExchange',
+        'offeringType',
+        'status',
+        'dataSource',
+      ])
+    );
+  });
+});
