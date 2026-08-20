@@ -23,11 +23,23 @@ import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { ScraperMetricsTracker } from '../services/scraper-metrics-tracker.js';
 import { AlertingService } from '../services/alerting-service.js';
-// Field protection functions from shared package (currently STUB implementations)
-import {
-  isIPOLocked,
-  filterProtectedFields
-} from '@ipodhan/shared';
+// Field protection goes through the shared service factory (see
+// .claude/rules/admin-field-protection.md) - the legacy free-function exports
+// require (db, redis) to be threaded through every call site.
+import { createFieldProtectionService } from '@ipodhan/shared';
+import type { FieldProtectionService } from '@ipodhan/shared';
+
+/**
+ * Lazily-built singleton protection service. Built on first use rather than at
+ * module load so importing this module never opens a DB/Redis connection.
+ */
+let fieldProtectionService: FieldProtectionService | null = null;
+function getFieldProtectionService(): FieldProtectionService {
+  if (!fieldProtectionService) {
+    fieldProtectionService = createFieldProtectionService(db, getRedisClient());
+  }
+  return fieldProtectionService;
+}
 
 export interface InvestorgainGMPResult {
   success: boolean;
@@ -224,8 +236,10 @@ async function isGMPProtected(
   gmpData: { gmp: number; gmpUpdatedAt: Date }
 ): Promise<boolean> {
   try {
+    const service = getFieldProtectionService();
+
     // Step 1: Check IPO-level lock
-    const locked = await isIPOLocked(ipoId);
+    const locked = await service.isIPOLocked(ipoId);
     if (locked) {
       logger.debug(
         { ipoId },
@@ -236,14 +250,17 @@ async function isGMPProtected(
 
     // Step 2: Check field-level protection for gmp_records table
     // Filter the GMP data through protection checks
-    const filteredData = await filterProtectedFields(
+    const filterResult = await service.filterProtectedFields(
       ipoId,
       'gmp_records',
       gmpData,
       'INVESTORGAIN_GMP'
     );
 
-    // If any fields were filtered out, GMP is protected
+    // If any fields were filtered out, GMP is protected. filterProtectedFields
+    // returns a FilterProtectedFieldsResult - the surviving fields live on
+    // .filtered, not on the result object itself.
+    const filteredData = filterResult.filtered;
     const isProtected = Object.keys(filteredData).length < Object.keys(gmpData).length;
 
     if (isProtected) {
