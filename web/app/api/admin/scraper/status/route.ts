@@ -121,7 +121,14 @@ export async function GET(request: NextRequest) {
     const redis = getRedisClient();
     const scraperLogRepository = new ScraperLogRepository(db, redis);
 
-    const sources: ScraperSource[] = ['NSE', 'BSE', 'API_FALLBACK'];
+    // Every source that writes a scraper_logs row (T-228). This route is where
+    // the owner sees WHICH SOURCES ARE LIVE, so it must enumerate all of them:
+    // listing only NSE/BSE/API_FALLBACK meant a dark CHITTORGARH, MONEYCONTROL
+    // or INVESTORGAIN_GMP was invisible here. Same six sources the scraper's
+    // FRESHNESS_SLOS table watches (scraper/src/config/freshness-slo.ts).
+    const sources: ScraperSource[] = [
+      'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH', 'INVESTORGAIN_GMP', 'API_FALLBACK',
+    ];
 
     // Fetch data for all sources in parallel
     const statusData = await Promise.all(
@@ -154,9 +161,16 @@ export async function GET(request: NextRequest) {
 
     // Build response
     const response = {
+      // Back-compat keys for existing callers.
       nse: statusData.find(s => s.source === 'NSE'),
       bse: statusData.find(s => s.source === 'BSE'),
       apiFallback: statusData.find(s => s.source === 'API_FALLBACK'),
+      moneycontrol: statusData.find(s => s.source === 'MONEYCONTROL'),
+      chittorgarh: statusData.find(s => s.source === 'CHITTORGARH'),
+      investorgainGmp: statusData.find(s => s.source === 'INVESTORGAIN_GMP'),
+      // Full per-source list - iterate this rather than adding another key per
+      // source the next time a source is added.
+      sources: statusData,
       health,
       timestamp: new Date().toISOString(),
     };
