@@ -85,12 +85,22 @@ describe('T-228 / an unannounced price band must not drop the record', () => {
     expect(result.success).toBe(true);
   });
 
-  it('still rejects a zero price band, so 0 can never mean "unknown"', () => {
+  // T-236 supersedes this: the T-228 design assumed every caller would
+  // normalize 0 -> undefined before reaching this schema (chittorgarh-scraper.ts
+  // does, at line 372-373). It didn't hold - chittorgarh-rights-debt-adapter.ts
+  // (line 341-342) passes price.min/price.max raw, so a literal 0 DOES reach
+  // this schema in production and dropped a real IPO (Rays of Belief Ltd.,
+  // Kwick Forensic Solutions Ltd. - see t236-rays-of-belief-price-band.test.ts).
+  // The schema now normalizes 0 -> undefined itself, so every caller is safe
+  // regardless of whether it normalizes first.
+  it('normalizes a zero price band to unannounced, so 0 can never masquerade as a real price', () => {
     const result = ScrapedIPOSchema.safeParse({
       ...baseIPO,
       priceRangeMin: 0,
       priceRangeMax: 0,
     });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    expect(result.success && result.data.priceRangeMin).toBeUndefined();
+    expect(result.success && result.data.priceRangeMax).toBeUndefined();
   });
 });
