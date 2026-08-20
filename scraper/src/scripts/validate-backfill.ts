@@ -17,6 +17,7 @@
  *   npm run validate:backfill
  */
 
+import { pathToFileURL } from 'node:url';
 import logger from '../utils/logger.js';
 import { db } from '@ipodhan/shared/db';
 import { sql } from 'drizzle-orm';
@@ -525,6 +526,6 @@ async function main() {
 }
 
 // Run CLI if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }

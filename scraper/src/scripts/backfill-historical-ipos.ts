@@ -18,6 +18,7 @@
  *   npm run backfill -- --resume --start-batch=5  # Resume from batch 5
  */
 
+import { pathToFileURL } from 'node:url';
 import { Command } from 'commander';
 import cliProgress from 'cli-progress';
 import logger from '../utils/logger.js';
@@ -473,6 +474,6 @@ async function main() {
 }
 
 // Run CLI if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }

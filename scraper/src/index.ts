@@ -2,7 +2,7 @@
 
 // CRITICAL: Load environment variables FIRST before any imports that use them
 import dotenv from 'dotenv';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import { dirname, join } from 'path';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -433,6 +433,6 @@ async function pruneScraperLogs(): Promise<void> {
 // Run CLI (guarded so importing this module — e.g. from a test — doesn't
 // trigger a live scrape; matches the pattern used by
 // scrapers/listing-performance-updater.ts and the scripts/ CLIs).
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }
