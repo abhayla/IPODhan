@@ -58,18 +58,27 @@ export async function GET(request: Request) {
     );
   }
 
+  // Run both checks concurrently - each has its own timeout budget, so the
+  // endpoint's worst-case latency is ~max(DB_TIMEOUT_MS, REDIS_TIMEOUT_MS),
+  // not the sum of the two.
+  const dbStart = Date.now();
+  const redisStart = Date.now();
+
+  const [dbResult, redisResult] = await Promise.allSettled([
+    withTimeout(query('SELECT 1 AS health_check'), DB_TIMEOUT_MS, 'Database'),
+    withTimeout(Promise.resolve().then(() => getRedisClient().ping()), REDIS_TIMEOUT_MS, 'Redis'),
+  ]);
+
   // Database health check - a hard dependency; a connect timeout MUST fail
   // this endpoint. Kept to a single trivial query, no aggregation.
   let databaseStatus: 'healthy' | 'unhealthy' = 'unhealthy';
   let dbError: string | undefined;
-  const dbStart = Date.now();
 
-  try {
-    await withTimeout(query('SELECT 1 AS health_check'), DB_TIMEOUT_MS, 'Database');
+  if (dbResult.status === 'fulfilled') {
     databaseStatus = 'healthy';
-  } catch (error) {
-    console.error('[Health Check] Database check failed:', error);
-    dbError = error instanceof Error ? error.message : 'Unknown error';
+  } else {
+    console.error('[Health Check] Database check failed:', dbResult.reason);
+    dbError = dbResult.reason instanceof Error ? dbResult.reason.message : 'Unknown error';
   }
   const databaseResponseTimeMs = Date.now() - dbStart;
 
@@ -77,15 +86,14 @@ export async function GET(request: Request) {
   // readiness (see the module doc comment above).
   let redisStatus: 'healthy' | 'unhealthy' = 'unhealthy';
   let redisError: string | undefined;
-  const redisStart = Date.now();
 
-  try {
-    const redis = getRedisClient();
-    const pingResult = await withTimeout(redis.ping(), REDIS_TIMEOUT_MS, 'Redis');
-    redisStatus = pingResult === 'PONG' ? 'healthy' : 'unhealthy';
-  } catch (error) {
-    console.error('[Health Check] Redis check failed:', error);
-    redisError = error instanceof Error ? error.message : 'Unknown error';
+  if (redisResult.status === 'fulfilled' && redisResult.value === 'PONG') {
+    redisStatus = 'healthy';
+  } else if (redisResult.status === 'rejected') {
+    console.error('[Health Check] Redis check failed:', redisResult.reason);
+    redisError = redisResult.reason instanceof Error ? redisResult.reason.message : 'Unknown error';
+  } else {
+    redisError = `Unexpected PING reply: ${String(redisResult.value)}`;
   }
   const redisResponseTimeMs = Date.now() - redisStart;
 
