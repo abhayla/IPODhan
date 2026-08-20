@@ -4,6 +4,8 @@ import {
   parseGMPTimestamp,
   isParseRateHealthy,
   scrapeInvestorgainGMPs,
+  financialYearLabel,
+  readPrice,
 } from '../../../src/scrapers/investorgain-gmp-scraper.js';
 
 /**
@@ -139,5 +141,102 @@ describe('scrapeInvestorgainGMPs — fetches mainboard AND SME (G3)', () => {
     const result = await scrapeInvestorgainGMPs();
     expect(result.gmps.length).toBe(0);
     expect(result.errors.some((e) => /parse rate|parse-rate/i.test(e))).toBe(true);
+  });
+});
+
+describe('financialYearLabel — India FY starts in April (T-228)', () => {
+  it('maps Apr-Dec to the FY beginning that calendar year', () => {
+    expect(financialYearLabel(new Date(2026, 3, 1))).toBe('2026-27');  // 1-Apr-2026
+    expect(financialYearLabel(new Date(2026, 7, 20))).toBe('2026-27'); // 20-Aug-2026
+    expect(financialYearLabel(new Date(2026, 11, 31))).toBe('2026-27');
+  });
+
+  it('maps Jan-Mar to the FY that began the PREVIOUS calendar year', () => {
+    expect(financialYearLabel(new Date(2026, 0, 1))).toBe('2025-26');  // 1-Jan-2026
+    expect(financialYearLabel(new Date(2026, 2, 31))).toBe('2025-26'); // 31-Mar-2026
+  });
+
+  it('zero-pads the second component across a century rollover', () => {
+    expect(financialYearLabel(new Date(2099, 5, 1))).toBe('2099-00');
+  });
+});
+
+describe('readPrice — tolerates the v1→v2 "Price" rename (T-228)', () => {
+  it('reads the v2 "Price (₹)" column', () => {
+    expect(readPrice({ 'Price (₹)': '988' } as any)).toBe('988');
+  });
+
+  it('falls back to the legacy "Price" column', () => {
+    expect(readPrice({ 'Price': '1065' } as any)).toBe('1065');
+  });
+
+  it('returns an empty string when neither is present (never undefined)', () => {
+    expect(readPrice({} as any)).toBe('');
+  });
+});
+
+describe('scrapeInvestorgainGMPs — v2 endpoint + HTTP-200 error bodies (T-228)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('calls the /v2/ path with the month in slot 3 and the category last', async () => {
+    const fetchMock = vi.spyOn(global, 'fetch').mockImplementation(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ msg: 1, sSearchWhere: '', reportTableData: [apiRecord()] }),
+    }) as any);
+
+    await scrapeInvestorgainGMPs();
+
+    const urls = fetchMock.mock.calls.map((c) => String(c[0]));
+    expect(urls.length).toBeGreaterThan(0);
+    for (const u of urls) {
+      expect(u).toContain('/cloud/v2/report/data-read/');
+      // {reportId}/{page}/{month}/{year}/{fy}/{sort}/{category}
+      expect(u).toMatch(/\/data-read\/331\/\d+\/\d{1,2}\/\d{4}\/\d{4}-\d{2}\/0\/(ipo|sme)\?/);
+    }
+  });
+
+  it('parses the price from the renamed v2 column (not 0)', async () => {
+    vi.spyOn(global, 'fetch').mockImplementation(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({
+        msg: 1,
+        sSearchWhere: '',
+        // v2 record: no plain "Price" key at all
+        reportTableData: [(() => { const r: any = apiRecord(); delete r['Price']; r['Price (₹)'] = '988'; return r; })()],
+      }),
+    }) as any);
+
+    const result = await scrapeInvestorgainGMPs();
+    expect(result.gmps.length).toBeGreaterThan(0);
+    expect(result.gmps[0].price).toBe(988);
+  });
+
+  it('treats an HTTP-200 "API not found" body as a hard error, not an empty success', async () => {
+    // This is the exact shape that hid the v1 retirement: ok=true, 200, error in the body.
+    vi.spyOn(global, 'fetch').mockImplementation(async () => ({
+      ok: true,
+      status: 200,
+      statusText: 'OK',
+      json: async () => ({ msg: 'API not found', error: '/cloud/report/... API NOT FOUND' }),
+    }) as any);
+
+    // The failure path retries with real 1s/2s/4s backoff; drive it with fake
+    // timers so the assertion is deterministic instead of racing wall-clock.
+    vi.useFakeTimers();
+    try {
+      const pending = scrapeInvestorgainGMPs();
+      await vi.runAllTimersAsync();
+      const result = await pending;
+
+      expect(result.gmps.length).toBe(0);
+      expect(result.errors.length).toBeGreaterThan(0);
+      expect(result.errors.some((e) => /unhealthy|not found/i.test(e))).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

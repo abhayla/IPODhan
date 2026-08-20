@@ -11,10 +11,25 @@
 import logger from '../utils/logger.js';
 import { sanitizeText, retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 
-const INVESTORGAIN_API_BASE = 'https://webnodejs.investorgain.com/cloud/report/data-read';
+// InvestorGain versioned this report API to /v2/ (verified live 2026-08-20, T-228).
+// The v1 path now 404s for EVERY financial year -- including years that used to
+// work -- so this is a genuine API migration, not the FY rollover the path shape
+// suggests. The v2 slot order also differs from v1: position 3 is the MONTH, not
+// perPage, and the ipo/sme category moved into the trailing parameter_id slot.
+const INVESTORGAIN_API_BASE = 'https://webnodejs.investorgain.com/cloud/v2/report/data-read';
 const REPORT_ID = '331'; // Live IPO GMP report ID
-const CURRENT_YEAR = new Date().getFullYear();
-const YEAR_RANGE = `${CURRENT_YEAR}-${(CURRENT_YEAR + 1) % 100}`; // e.g., "2025-26"
+
+/**
+ * Financial year label for a date, in InvestorGain's "YYYY-YY" form.
+ * India's FY starts in April, so Jan-Mar belongs to the FY that began the
+ * PREVIOUS calendar year (e.g. 2026-02-10 -> "2025-26", 2026-08-20 -> "2026-27").
+ * Computing this from the month (rather than the calendar year alone) is what
+ * keeps the caller correct across the Mar->Apr boundary.
+ */
+export function financialYearLabel(date: Date = new Date()): string {
+  const startYear = date.getMonth() >= 3 ? date.getFullYear() : date.getFullYear() - 1;
+  return `${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`;
+}
 
 export interface InvestorgainGMP {
   companyName: string;
@@ -35,7 +50,10 @@ export interface InvestorgainGMPScraperResult {
 }
 
 interface InvestorgainAPIResponse {
-  msg: number;
+  // 1 on success. A retired/renamed route answers HTTP 200 with a STRING here
+  // (e.g. "API not found"), so the type must admit both to be checkable (T-228).
+  msg: number | string;
+  error?: string;
   sSearchWhere: string;
   reportTableData: InvestorgainAPIRecord[];
 }
@@ -46,7 +64,10 @@ interface InvestorgainAPIRecord {
   'Name': string; // HTML with company link
   'GMP': string; // HTML-encoded: "&#8377;<b>110</b> (10.33%)"
   '~gmp_percent_calc': string; // Numeric: "10.33"
-  'Price': string; // "1065"
+  // v2 renamed the plain "Price" column to "Price (₹)" (T-228). Both are declared
+  // so a record from either shape type-checks; readPrice() picks whichever is present.
+  'Price (₹)'?: string; // "1065"
+  'Price'?: string; // v1 name, retained for back-compat
   'Updated-On': string; // HTML: "<small><b>18-Oct 7:33</b></small>"
   'Open': string; // Display: "15-Oct"
   'Close': string; // Display: "17-Oct"
@@ -164,6 +185,15 @@ export function parseGMPTimestamp(timestampHTML: string, now: Date = new Date())
 /**
  * Parse price (simple numeric string)
  */
+/**
+ * Read the price column, tolerating the v1 -> v2 rename (`Price` -> `Price (₹)`).
+ * Accepting both means a future rename back, or a mixed rollout, cannot silently
+ * zero out every price.
+ */
+export function readPrice(record: Partial<InvestorgainAPIRecord>): string {
+  return record['Price (₹)'] ?? record['Price'] ?? '';
+}
+
 function parsePrice(priceStr: string): number {
   if (!priceStr) return 0;
 
@@ -209,15 +239,24 @@ async function fetchInvestorgainAPI(
   const hour = String(now.getHours()).padStart(2, '0');
   const version = `${day}-${hour}`;
 
-  const url = `${INVESTORGAIN_API_BASE}/${REPORT_ID}/${page}/${perPage}/${CURRENT_YEAR}/${YEAR_RANGE}/0/${category}`;
+  // v2 slot order: {reportId}/{page}/{month}/{year}/{financialYear}/{sort}/{parameter_id}
+  // NOTE: slot 3 is the MONTH in v2 (it was perPage in v1); page size is fixed
+  // server-side by the report config, so `perPage` no longer travels in the path.
+  const month = now.getMonth() + 1;
+  const year = now.getFullYear();
+  const financialYear = financialYearLabel(now);
+  const url =
+    `${INVESTORGAIN_API_BASE}/${REPORT_ID}/${page}/${month}/${year}/${financialYear}/0/${category}` +
+    `?search=&v=${version}`;
 
   logger.info({
     url,
     page,
     perPage,
     category,
-    currentYear: CURRENT_YEAR,
-    yearRange: YEAR_RANGE,
+    month,
+    year,
+    financialYear,
     reportId: REPORT_ID,
     version
   }, 'Fetching Investorgain API with parameters');
@@ -226,7 +265,7 @@ async function fetchInvestorgainAPI(
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'application/json',
-      'Referer': 'https://www.investorgain.com/report/live-ipo-gmp/331/ipo/'
+      'Referer': 'https://www.investorgain.com/report/ipo-gmp-live/331/'
     }
   });
 
@@ -235,6 +274,19 @@ async function fetchInvestorgainAPI(
   }
 
   const data = await response.json() as InvestorgainAPIResponse;
+
+  // InvestorGain answers a dead/renamed route with HTTP 200 and an error BODY
+  // ({"msg":"API not found", ...}), so response.ok is useless as a health signal --
+  // that is precisely how the v1 retirement went unnoticed as an HTTP failure for
+  // months (T-228). A healthy response carries msg === 1; treat anything else as
+  // a hard error so a future migration surfaces immediately instead of silently
+  // yielding zero rows.
+  if (data.msg !== 1) {
+    throw new Error(
+      `Investorgain API unhealthy (msg=${JSON.stringify(data.msg)}): ` +
+      `${(data as any).error || 'unexpected response shape'}`
+    );
+  }
 
   logger.debug(
     {
@@ -319,7 +371,7 @@ export async function scrapeInvestorgainGMPs(): Promise<InvestorgainGMPScraperRe
 
         const gmpPercentage = parseGMPPercentage(record['~gmp_percent_calc']);
         const gmpUpdatedAt = parseGMPTimestamp(record['Updated-On']);
-        const price = parsePrice(record['Price']);
+        const price = parsePrice(readPrice(record));
 
         const openDate = record['~Srt_Open'];
         const closeDate = record['~Srt_Close'];
