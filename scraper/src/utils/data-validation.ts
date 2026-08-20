@@ -238,6 +238,22 @@ export function validateIPOData(
 }
 
 /**
+ * Members of the `offering_type` DB enum (packages/shared/src/db/schema.ts).
+ * `detectOfferingType` is typed against this so a detected value that is not a
+ * real enum member is a COMPILE error rather than a silent no-op auto-fix (T-228).
+ */
+export const OFFERING_TYPES = [
+  'IPO', 'FPO', 'RIGHTS', 'OFS', 'IPP', 'QIP', 'PREFERENTIAL',
+  'NCD', 'BONDS', 'INVITS', 'REITS', 'BUYBACK', 'DELISTING', 'TENDER',
+] as const;
+
+export type OfferingType = (typeof OFFERING_TYPES)[number];
+
+export function isOfferingType(value: string): value is OfferingType {
+  return (OFFERING_TYPES as readonly string[]).includes(value);
+}
+
+/**
  * Detect offering type from scraped data
  * Auto-detects RIGHTS issues, InvITs, REITs, etc.
  */
@@ -245,7 +261,7 @@ export function detectOfferingType(
   data: IPODataToValidate,
   source: string
 ): {
-  detectedType: string | null;
+  detectedType: OfferingType | null;
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   reason: string;
 } {
@@ -261,9 +277,16 @@ export function detectOfferingType(
     };
   }
 
+  // The detected value is written straight onto the record by the pipeline's
+  // `Object.assign(data, autoFixesApplied)`, so it MUST be a member of the
+  // `offering_type` DB enum. Emitting the display spellings 'InvIT'/'REIT' here
+  // (which are NOT enum members) made the auto-fix a no-op: the mismatch warning
+  // re-fired every cycle and the row stayed 'IPO' -- i.e. a REIT/InvIT shown to
+  // retail users as an IPO (T-228). Canonical enum values are 'INVITS'/'REITS',
+  // matching what nse-api-client.ts already writes.
   if (title.includes('invit') || title.includes('infrastructure investment trust')) {
     return {
-      detectedType: 'InvIT',
+      detectedType: 'INVITS',
       confidence: 'HIGH',
       reason: 'Company name contains "InvIT" or "infrastructure investment trust".',
     };
@@ -271,18 +294,28 @@ export function detectOfferingType(
 
   if (title.includes('reit') || title.includes('real estate investment trust')) {
     return {
-      detectedType: 'REIT',
+      detectedType: 'REITS',
       confidence: 'HIGH',
       reason: 'Company name contains "REIT" or "real estate investment trust".',
     };
   }
 
-  // MEDIUM confidence patterns
+  // MEDIUM confidence: trust the value the source already supplied -- but only
+  // once it is confirmed to be a real enum member. An unrecognised string here
+  // would otherwise be echoed straight back into the auto-fix and written to the
+  // record (the same failure mode as the 'REIT'/'InvIT' bug above).
   if (data.offeringType && data.offeringType !== 'IPO') {
+    if (isOfferingType(data.offeringType)) {
+      return {
+        detectedType: data.offeringType,
+        confidence: 'MEDIUM',
+        reason: `offeringType field is set to: ${data.offeringType}`,
+      };
+    }
     return {
-      detectedType: data.offeringType,
-      confidence: 'MEDIUM',
-      reason: `offeringType field is set to: ${data.offeringType}`,
+      detectedType: null,
+      confidence: 'LOW',
+      reason: `offeringType "${data.offeringType}" is not a recognised offering type; leaving it untouched.`,
     };
   }
 
