@@ -11,10 +11,29 @@
 import logger from '../utils/logger.js';
 import { sanitizeText, retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 
-const INVESTORGAIN_API_BASE = 'https://webnodejs.investorgain.com/cloud/report/data-read';
+// T-228: Investorgain migrated its report API from the v1 path
+// (/cloud/report/data-read/...) to a v2 path (/cloud/v2/report/data-read/...) with a
+// DIFFERENT segment order. The old path now answers HTTP 200 with
+// {"msg":"API not found","error":"... API NOT FOUND"}, which is why this source
+// contributed nothing every cycle while looking merely "quiet".
+//
+// v2 shape (read off the live site's own client bundle):
+//   /cloud/v2/report/data-read/{reportId}/{page}/{month}/{year}/{financialYear}/{sort}/{parameterId}?search=&v={version}
+// The v1 shape had {perPage} where v2 now has {month}, and no month at all.
+const INVESTORGAIN_API_BASE = 'https://webnodejs.investorgain.com/cloud/v2/report/data-read';
 const REPORT_ID = '331'; // Live IPO GMP report ID
-const CURRENT_YEAR = new Date().getFullYear();
-const YEAR_RANGE = `${CURRENT_YEAR}-${(CURRENT_YEAR + 1) % 100}`; // e.g., "2025-26"
+
+/**
+ * Indian financial year label the API expects, e.g. "2026-27".
+ * The FY starts in April: Jan-Mar 2026 is still FY 2025-26.
+ * Computed per call (never cached at import) so a long-running scraper process
+ * does not keep querying last year's report after the rollover.
+ */
+export function getFinancialYearLabel(now: Date = new Date()): string {
+  const year = now.getFullYear();
+  const startYear = now.getMonth() >= 3 ? year : year - 1; // getMonth() 3 === April
+  return `${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`;
+}
 
 export interface InvestorgainGMP {
   companyName: string;
@@ -46,7 +65,8 @@ interface InvestorgainAPIRecord {
   'Name': string; // HTML with company link
   'GMP': string; // HTML-encoded: "&#8377;<b>110</b> (10.33%)"
   '~gmp_percent_calc': string; // Numeric: "10.33"
-  'Price': string; // "1065"
+  'Price (₹)'?: string; // v2 column name, e.g. "1065"
+  'Price'?: string; // v1 column name (kept as a fallback)
   'Updated-On': string; // HTML: "<small><b>18-Oct 7:33</b></small>"
   'Open': string; // Display: "15-Oct"
   'Close': string; // Display: "17-Oct"
@@ -209,15 +229,24 @@ async function fetchInvestorgainAPI(
   const hour = String(now.getHours()).padStart(2, '0');
   const version = `${day}-${hour}`;
 
-  const url = `${INVESTORGAIN_API_BASE}/${REPORT_ID}/${page}/${perPage}/${CURRENT_YEAR}/${YEAR_RANGE}/0/${category}`;
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1; // API expects 1-indexed month
+  const financialYear = getFinancialYearLabel(now);
+
+  // v2 segment order: {reportId}/{page}/{month}/{year}/{financialYear}/{sort}/{parameterId}
+  // `perPage` no longer exists in the v2 path — the API returns the whole category.
+  const url =
+    `${INVESTORGAIN_API_BASE}/${REPORT_ID}/${page}/${currentMonth}/${currentYear}/` +
+    `${financialYear}/0/${category}?search=&v=${version}`;
 
   logger.info({
     url,
     page,
     perPage,
     category,
-    currentYear: CURRENT_YEAR,
-    yearRange: YEAR_RANGE,
+    currentYear,
+    currentMonth,
+    financialYear,
     reportId: REPORT_ID,
     version
   }, 'Fetching Investorgain API with parameters');
@@ -226,7 +255,7 @@ async function fetchInvestorgainAPI(
     headers: {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
       'Accept': 'application/json',
-      'Referer': 'https://www.investorgain.com/report/live-ipo-gmp/331/ipo/'
+      'Referer': `https://www.investorgain.com/report/ipo-gmp-live/${REPORT_ID}/${category}/`
     }
   });
 
@@ -235,6 +264,15 @@ async function fetchInvestorgainAPI(
   }
 
   const data = await response.json() as InvestorgainAPIResponse;
+
+  // Investorgain answers a bad/retired path with HTTP 200 + an error envelope.
+  // Treat that as a transport failure so retryWithExponentialBackoff sees it and the
+  // source is recorded as unavailable rather than "returned zero rows".
+  if ((data as unknown as { error?: string }).error) {
+    throw new Error(
+      `Investorgain API error envelope: ${(data as unknown as { error?: string }).error}`
+    );
+  }
 
   logger.debug(
     {
@@ -270,18 +308,24 @@ export async function scrapeInvestorgainGMPs(): Promise<InvestorgainGMPScraperRe
     const allRecords: InvestorgainAPIRecord[] = [];
 
     for (const category of categories) {
-      const apiData = await retryWithExponentialBackoff(
-        () => fetchInvestorgainAPI(1, perPage, category),
-        3,
-        1000
-      );
-
-      if ((apiData as any).error) {
-        const errorMsg = `Investorgain API error (${category}): ${(apiData as any).error}`;
-        logger.error({ category, error: (apiData as any).error }, errorMsg);
+      let apiData: InvestorgainAPIResponse;
+      try {
+        apiData = await retryWithExponentialBackoff(
+          () => fetchInvestorgainAPI(1, perPage, category),
+          3,
+          1000
+        );
+      } catch (error) {
+        // Keep the two categories isolated: a dead 'sme' must not throw away a
+        // healthy 'ipo' fetch. The error is still recorded so the run reports it.
+        const errorMsg = `Investorgain API error (${category}): ${
+          error instanceof Error ? error.message : String(error)
+        }`;
+        logger.error({ category, error: errorMsg }, errorMsg);
         result.errors.push(errorMsg);
         continue;
       }
+
       if (!apiData.reportTableData || apiData.reportTableData.length === 0) {
         logger.info({ category }, 'No GMP data returned from API for category');
         continue;
@@ -319,7 +363,9 @@ export async function scrapeInvestorgainGMPs(): Promise<InvestorgainGMPScraperRe
 
         const gmpPercentage = parseGMPPercentage(record['~gmp_percent_calc']);
         const gmpUpdatedAt = parseGMPTimestamp(record['Updated-On']);
-        const price = parsePrice(record['Price']);
+        // v2 renamed this column from 'Price' to 'Price (₹)'. Accept either so a
+        // future rename back (or a partial rollout) does not silently zero the price.
+        const price = parsePrice(record['Price (₹)'] ?? record['Price'] ?? '');
 
         const openDate = record['~Srt_Open'];
         const closeDate = record['~Srt_Close'];
