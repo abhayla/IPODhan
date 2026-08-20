@@ -271,8 +271,35 @@ jobs:
           ENABLE_DATA_CONSOLIDATION=true
           ADMIN_API_TOKEN=${{ secrets.ADMIN_API_TOKEN }}
           WEB_INTERNAL_URL=http://localhost:3001
+          NOTIFIER_URL=${{ secrets.NOTIFIER_URL }}
+          NOTIFIER_KEY=${{ secrets.NOTIFIER_KEY }}
+          NOTIFIER_PROJECT=${{ secrets.NOTIFIER_PROJECT }}
           "@
           $scraperEnv | Out-File -FilePath "scraper\.env" -Encoding UTF8
+
+      - name: Verify required environment keys (T-224 - fail loud, never silent)
+        shell: powershell
+        run: |
+          # A key silently missing from the generator above degrades owner
+          # alerting to a no-op (scraper/src/services/owner-notify.ts no-ops
+          # when NOTIFIER_URL/NOTIFIER_KEY are unset by design, for Notifier
+          # OUTAGES - that same no-op must never mask a MISCONFIGURED deploy).
+          # Checks key NAMES only via a regex on each line's LHS - never reads
+          # or echoes a value, so no secret can leak into workflow logs.
+          $required = @('NOTIFIER_URL', 'NOTIFIER_KEY', 'NOTIFIER_PROJECT')
+          $scraperEnvContent = Get-Content "scraper\.env" -Raw
+          $missing = @()
+          foreach ($key in $required) {
+            if ($scraperEnvContent -notmatch "(?m)^$key=.+$") {
+              $missing += $key
+            }
+          }
+          if ($missing.Count -gt 0) {
+            Write-Host "[FAIL] Missing/empty required key(s) in scraper\.env: $($missing -join ', ')"
+            Write-Host "[FAIL] Add the corresponding GitHub repository secret(s) - see .claude/rules/notifier-integration.md"
+            exit 1
+          }
+          Write-Host "[OK] All required scraper env keys present: $($required -join ', ')"
 
       - name: Stop PM2 processes (release file locks)
         shell: powershell
