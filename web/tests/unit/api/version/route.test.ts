@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { GET } from '../../../../app/api/version/route';
 
 describe('GET /api/version (T-242 M3 deployed-SHA endpoint)', () => {

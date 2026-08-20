@@ -24,7 +24,7 @@ export async function GET() {
         builtAt: process.env.NEXT_PUBLIC_BUILT_AT || null,
       },
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
