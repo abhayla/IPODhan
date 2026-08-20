@@ -1,4 +1,5 @@
-import { Pool, PoolClient, QueryResult, QueryResultRow } from 'pg';
+import { PoolClient, QueryResult, QueryResultRow } from 'pg';
+import { getPool as getSharedWebPool } from './db/index';
 
 // Re-export db and all schema from drizzle setup for repositories
 export { db } from './db/index';
@@ -6,58 +7,21 @@ export { db } from './db/index';
 // Re-export all schema tables, enums, and relations
 export * from './db/index';
 
-// Singleton pool instance
-let pool: Pool | null = null;
-
 /**
- * Get PostgreSQL connection pool
- * Creates a new pool if one doesn't exist (singleton pattern)
+ * Get PostgreSQL connection pool.
+ *
+ * T-242 M3 (Linux deploy pipeline) fix: this used to construct its OWN
+ * second `new Pool(...)` (max:20) independent of `./db/index`'s pool, so a
+ * process that only called `query()`/`getClient()` here (e.g.
+ * `web/app/api/health/route.ts`) could open a whole extra pool's worth of
+ * connections on top of the primary one — undercounting the real
+ * connection budget in the pool-cap arithmetic. Delegating to the SAME
+ * pool as `./db/index` removes that duplicate entirely (root cause, not a
+ * lower cap) and keeps `DB_POOL_MAX`/`DATABASE_SSL` as the single source
+ * of truth for pool sizing (see `web/lib/db/index.ts`).
  */
-export function getPool(): Pool {
-  if (!pool) {
-    // Prefer individual DATABASE_* vars; fall back to DATABASE_URL.
-    // Production sets only DATABASE_URL — without this fallback the pool was
-    // built with password=undefined, so every query threw
-    // "SASL: client password must be a string" (GitHub #10: /api/health
-    // falsely reported the database unhealthy).
-    const hasDiscreteVars = !!(process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD);
-    if (!hasDiscreteVars && !process.env.DATABASE_URL) {
-      throw new Error(
-        'Database configuration missing! Set DATABASE_URL or individual DATABASE_* environment variables.'
-      );
-    }
-
-    pool = new Pool(
-      hasDiscreteVars
-        ? {
-            host: process.env.DATABASE_HOST,
-            port: parseInt(process.env.DATABASE_PORT || '5432'),
-            database: process.env.DATABASE_NAME,
-            user: process.env.DATABASE_USER,
-            password: process.env.DATABASE_PASSWORD,
-            options: '-c timezone=UTC', // Force session UTC (#28)
-            max: 20,
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 10000,
-          }
-        : {
-            connectionString: process.env.DATABASE_URL,
-            options: '-c timezone=UTC', // Force session UTC (#28)
-            max: 20,
-            idleTimeoutMillis: 30000,
-            connectionTimeoutMillis: 10000,
-          }
-    );
-
-    // Handle pool errors
-    pool.on('error', (err) => {
-      console.error('Unexpected error on idle PostgreSQL client', err);
-    });
-
-    console.log('✓ PostgreSQL connection pool created');
-  }
-
-  return pool;
+export function getPool() {
+  return getSharedWebPool();
 }
 
 /**
@@ -97,11 +61,8 @@ export async function getClient(): Promise<PoolClient> {
  * Close the database pool (for graceful shutdown)
  */
 export async function closePool(): Promise<void> {
-  if (pool) {
-    await pool.end();
-    pool = null;
-    console.log('✓ PostgreSQL connection pool closed');
-  }
+  await getPool().end();
+  console.log('✓ PostgreSQL connection pool closed');
 }
 
 /**

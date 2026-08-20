@@ -1,0 +1,103 @@
+name: Deploy Linux (Migration M3)
+
+# T-242 M3 — the Linux side of the Windows -> Linux app migration
+# (migration plan v4). Runs scripts/deploy-linux.sh on the self-hosted
+# Linux runner provisioned in T-239 (labels: self-hosted, linux, ipodhan).
+# This runner is self-hosted, so it does NOT consume GitHub-hosted Actions
+# minutes (the reason ci.yml/test.yml are manual-only — see their own
+# headers — does not apply here).
+#
+# THE GUARD THIS FILE EXISTS TO ENFORCE: `push` to main NEVER deploys
+# prod. It always deploys staging, no exceptions, no input can override
+# it. The ONLY way to deploy prod is an explicit `workflow_dispatch` run
+# with slot=prod chosen by a human in the Actions tab — that is the M4
+# cutover button, owned by the migration plan's M4 phase, not by this
+# workflow auto-firing.
+#
+# deploy_tier for the T-242 contract that authored this file is `none` —
+# landing this workflow does not, by itself, deploy anything to prod; only
+# a deliberate workflow_dispatch with slot=prod does, and that is a later
+# migration phase's call, not this PR's.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**/*.md'
+      - 'docs/**'
+  workflow_dispatch:
+    inputs:
+      slot:
+        description: 'Deploy slot'
+        type: choice
+        options: [staging, prod]
+        default: staging
+      ref:
+        description: 'Commit-ish to deploy (blank = HEAD of the checked-out ref)'
+        type: string
+        default: ''
+
+concurrency:
+  group: deploy-linux-${{ github.event_name == 'push' && 'staging' || inputs.slot }}
+  cancel-in-progress: false # never cancel a deploy mid-flight (release dirs are immutable, but a cancelled npm/next build can leave a half-built release)
+
+jobs:
+  deploy:
+    name: Deploy (${{ github.event_name == 'push' && 'staging (push guard)' || inputs.slot }})
+    runs-on: [self-hosted, linux, ipodhan]
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # deploy-linux.sh resolves an arbitrary commit-ish
+
+      - name: Resolve deploy slot (push -> staging, ALWAYS; no input can change this)
+        id: slot
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "slot=staging" >> "$GITHUB_OUTPUT"
+          else
+            echo "slot=${{ inputs.slot }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy
+        shell: bash
+        env:
+          DEPLOY_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          if [ -n "${DEPLOY_REF:-}" ]; then
+            bash scripts/deploy-linux.sh "${{ steps.slot.outputs.slot }}" "$DEPLOY_REF"
+          else
+            bash scripts/deploy-linux.sh "${{ steps.slot.outputs.slot }}"
+          fi
+
+      - name: Verify /api/version reflects the deployed SHA
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          SLOT="${{ steps.slot.outputs.slot }}"
+          ROOT="/var/www/ipodhan"
+          if [ "$SLOT" = "prod" ]; then PORT_FILE="$ROOT/shared/env/prod/web.env.local"; else PORT_FILE="$ROOT/shared/env/$SLOT/web.env.local"; fi
+          PORT="$(grep -E '^PORT=' "$PORT_FILE" 2>/dev/null | tail -n1 | cut -d= -f2-)"
+          DEPLOYED_SHA_FILE="$ROOT/DEPLOYED_SHA-$SLOT"
+          if [ ! -f "$DEPLOYED_SHA_FILE" ]; then
+            echo "No DEPLOYED_SHA-$SLOT file yet (nothing deployed on this box for this slot) - skipping."
+            exit 0
+          fi
+          EXPECTED_SHA="$(cat "$DEPLOYED_SHA_FILE")"
+          ACTUAL_SHA="$(curl -s "http://127.0.0.1:${PORT:-3000}/api/version" | node -e '
+            let d=""; process.stdin.on("data",c=>d+=c); process.stdin.on("end",()=>{
+              try { console.log(JSON.parse(d).data.sha); } catch { console.log("unparseable"); }
+            });
+          ')"
+          echo "Expected SHA (DEPLOYED_SHA-$SLOT): $EXPECTED_SHA"
+          echo "Actual SHA (/api/version):         $ACTUAL_SHA"
+          if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
+            echo "WARNING: /api/version SHA does not match DEPLOYED_SHA-$SLOT - investigate (non-blocking, deploy already succeeded per its own gates)." >&2
+          fi
