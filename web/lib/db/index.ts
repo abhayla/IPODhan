@@ -27,6 +27,36 @@ let poolInstance: Pool | null = null;
 let dbInstance: NodePgDatabase<typeof sharedSchema> | null = null;
 
 /**
+ * Resolve the web pool's max/min size from env, with a safe default.
+ * Extracted as a pure function (no Pool side effects) so T-242's pool-cap
+ * arithmetic (web instances x pool + shared + calendar < 97 usable conns)
+ * is unit-testable without opening a real connection.
+ */
+export function resolveWebPoolSize(env: NodeJS.ProcessEnv = process.env): { max: number; min: number } {
+  const max = parseInt(env.DB_POOL_MAX || '15', 10);
+  const min = parseInt(env.DB_POOL_MIN || '2', 10);
+  return {
+    max: Number.isFinite(max) && max > 0 ? max : 15,
+    min: Number.isFinite(min) && min >= 0 ? min : 2,
+  };
+}
+
+/**
+ * Resolve the pg `ssl` option from DATABASE_SSL (T-242 M3 handoff H6).
+ * Default 'off' preserves current Windows-prod behavior (ssl:false) — nothing
+ * changes until the env var is set. The DSN's own `sslmode` (T-241 M1) still
+ * wins over this when a connectionString is used; this only matters for the
+ * discrete DATABASE_HOST branch and for hygiene/explicitness.
+ */
+export function resolveDatabaseSsl(env: NodeJS.ProcessEnv = process.env): false | { rejectUnauthorized: boolean } {
+  const mode = (env.DATABASE_SSL || 'off').toLowerCase();
+  if (mode === 'require') {
+    return { rejectUnauthorized: false }; // self-signed origin cert (T-241 16-tls.md)
+  }
+  return false;
+}
+
+/**
  * Get or create the PostgreSQL connection pool
  * Uses lazy initialization to ensure environment variables are loaded first
  */
@@ -42,6 +72,8 @@ function getPool(): Pool {
 
     // Create PostgreSQL connection pool
     // Use individual parameters if DATABASE_URL has special characters, otherwise use connectionString
+    const { max: poolMax, min: poolMin } = resolveWebPoolSize();
+    const ssl = resolveDatabaseSsl();
     poolInstance = new Pool(
       process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
         ? {
@@ -51,16 +83,15 @@ function getPool(): Pool {
             user: process.env.DATABASE_USER || 'postgres',
             password: process.env.DATABASE_PASSWORD,
             options: '-c timezone=UTC', // Force session UTC (#28)
-            // ==================== CONNECTION POOL OPTIMIZATION ====================
-            // Phase 5 Performance: Optimized for production workload
-            // Pool size increased from 20 → 50 → 100 to support test concurrency:
-            // - Previous: ~800 concurrent users max (pool saturation at 20)
-            // - Phase 5: ~2500 concurrent users (50 connections)
-            // - Testing: ~5000 concurrent users (100 connections for Playwright tests)
-            // Each connection can handle ~50 concurrent users with efficient query execution
-            // 100 connections × 50 users/connection = 5000 concurrent users
-            max: 100, // Maximum pool size - increased for test concurrency (was 50)
-            min: 5, // Keep minimum connections ready (warm pool)
+            // ==================== CONNECTION POOL SIZE (T-242 M3) ====================
+            // Env-driven so the Linux deploy's worst-case connection count (web
+            // instances x pool + shared + calendar) can be capped under the
+            // server's usable max_connections. See T-241 17-required-keys.md
+            // (POOL-SIZE P1) + 19-handoffs-m3.md H4. Defaults: DB_POOL_MAX=15,
+            // DB_POOL_MIN=2 (was a hardcoded max:100/min:5 — 5x oversized for
+            // this workload; see PR description for the arithmetic).
+            max: poolMax,
+            min: poolMin,
             idleTimeoutMillis: 30000, // Close idle connections after 30s
             connectionTimeoutMillis: 5000, // 5s timeout for new connections (reduced from 10s)
             // ==================== QUERY PERFORMANCE ====================
@@ -68,19 +99,19 @@ function getPool(): Pool {
             statement_timeout: 10000, // 10s max per query (prevents hanging)
             query_timeout: 10000, // Alternative query timeout (fallback)
             // ==================== CONNECTION HEALTH ====================
-            ssl: false, // Disabled for VPS (internal network)
+            ssl, // DATABASE_SSL=require|off (default off — see resolveDatabaseSsl)
             allowExitOnIdle: false, // Keep pool alive
           }
         : {
             connectionString: process.env.DATABASE_URL,
             options: '-c timezone=UTC', // Force session UTC (#28)
-            max: 100,
-            min: 5,
+            max: poolMax,
+            min: poolMin,
             idleTimeoutMillis: 30000,
             connectionTimeoutMillis: 5000,
             statement_timeout: 10000,
             query_timeout: 10000,
-            ssl: false,
+            ssl,
             allowExitOnIdle: false,
           }
     );
@@ -182,7 +213,7 @@ export function getPoolStats() {
     total: currentPool.totalCount,     // Total connections (active + idle)
     idle: currentPool.idleCount,       // Idle connections available
     waiting: currentPool.waitingCount, // Requests waiting for connection
-    max: 100                           // Maximum pool size
+    max: resolveWebPoolSize().max,     // Maximum pool size (env-driven, see resolveWebPoolSize)
   };
 }
 

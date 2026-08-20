@@ -30,12 +30,16 @@ export async function refreshCalendarView(): Promise<void> {
 
   // Create database connection
   // Use the same DATABASE_URL as the main application
+  const ssl = (process.env.DATABASE_SSL || 'off').toLowerCase() === 'require'
+    ? { rejectUnauthorized: false } // self-signed origin cert (T-241 16-tls.md)
+    : false; // default 'off' preserves current Windows-prod behavior
   const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     options: '-c timezone=UTC', // Force session UTC so the NOW() scraper_logs write is UTC-naive (#28)
     max: 2, // Small pool for background jobs
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 5000,
+    ssl,
   });
 
   try {
@@ -51,8 +55,17 @@ export async function refreshCalendarView(): Promise<void> {
     console.log(`[Cron] ✓ Calendar view refreshed successfully in ${duration}ms`);
   } catch (error) {
     const duration = Date.now() - startTime;
+    // T-241/T-242 H3: `refresh_calendar_view()` does not exist in the DB today
+    // (migration 0001_add_calendar_materialized_view.sql was never applied —
+    // `drizzle.__drizzle_migrations` has 0 rows). This is a PRE-EXISTING bug,
+    // unrelated to the Linux migration; T-242 is explicitly scoped to make the
+    // failure loud-but-non-fatal here, NOT to invent the function's SQL.
+    const isMissingFunction =
+      error instanceof Error && /function refresh_calendar_view\(\) does not exist/i.test(error.message);
     console.error(
-      `[Cron] ✗ Calendar refresh failed after ${duration}ms:`,
+      `[Cron] ✗ Calendar refresh failed after ${duration}ms (non-fatal)${
+        isMissingFunction ? ' — refresh_calendar_view() is MISSING from the DB (T-241/T-242 H3, pre-existing, not a regression)' : ''
+      }:`,
       error instanceof Error ? error.message : error
     );
 
@@ -69,7 +82,7 @@ export async function refreshCalendarView(): Promise<void> {
         ]
       );
     } catch (logError) {
-      console.error('[Cron] Failed to log error:', logError);
+      console.error('[Cron] Failed to log error (non-fatal):', logError);
     }
   } finally {
     // Clean up pool

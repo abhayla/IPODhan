@@ -1,0 +1,7 @@
+# T-242: shell scripts MUST stay LF regardless of a committer's local
+# core.autocrlf setting — a CRLF shebang line ("#!/usr/bin/env bash\r")
+# fails with "bad interpreter" on the Linux deploy runner. Mirrors the
+# T-217 lesson (em-dashes broke deploy.yml on Windows) for the opposite
+# direction: this repo's contributors are on Windows, its deploy targets
+# are Linux.
+*.sh text eol=lf
