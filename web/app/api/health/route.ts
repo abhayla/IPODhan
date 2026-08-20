@@ -8,15 +8,26 @@ import { getRedisClient } from '@/lib/cache/redis-client';
  * Story: 8.4a - Production Deployment - Dev Machine Preparation
  * Fixed T-226 (2026-08-20): during a deploy, a DB connect timeout right after
  * migrations left every data-backed page 502ing while this endpoint reported
- * 200 the whole outage. Two compounding causes:
- *  1. This GET handler had no `dynamic = 'force-dynamic'`. A route handler
- *     with no request-derived input (no cookies/headers/searchParams) can be
- *     statically evaluated by Next.js and served as a frozen build-time
- *     response forever - it never actually re-ran the DB/Redis checks at
- *     request time in production.
- *  2. The DB check had no explicit timeout, so it inherited the pg pool's
+ * 200 the whole outage. This route already queried the database before this
+ * fix - the real defects were:
+ *  1. The DB check had no explicit timeout, so it inherited the pg pool's
  *     10s `connectionTimeoutMillis` - too slow for a check meant to be
- *     polled every few minutes and to fail fast during an active outage.
+ *     polled every few minutes and to fail fast during an active outage. It
+ *     also ran a heavier `information_schema` aggregation instead of a
+ *     trivial `SELECT 1`.
+ *  2. Redis was coupled into the overall status, which risks a false
+ *     rollback trigger from a Redis blip alone once this route is actually
+ *     wired into the deploy gate (see cause 3).
+ *  3. deploy.yml's Health check step polled bare `/`, not this route at
+ *     all - "/" only proves the Next.js process answers HTTP, it says
+ *     nothing about the database. THIS was the actual reason the outage
+ *     scored a green deploy: the route that could have caught it was never
+ *     being asked.
+ *
+ * `dynamic = 'force-dynamic'` is added as defense-in-depth (Next.js 15
+ * route handlers are uncached by default already - this repo is on Next
+ * 15.5.4 - so it is not fixing a caching bug here, just making the intent
+ * explicit against a future Next.js version where the default could change).
  *
  * `?probe=live` returns a pure liveness signal (process is up, no
  * dependency checks) for callers that only need to know the app is running.
