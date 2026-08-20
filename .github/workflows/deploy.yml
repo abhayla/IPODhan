@@ -271,8 +271,60 @@ jobs:
           ENABLE_DATA_CONSOLIDATION=true
           ADMIN_API_TOKEN=${{ secrets.ADMIN_API_TOKEN }}
           WEB_INTERNAL_URL=http://localhost:3001
+          NOTIFIER_URL=${{ secrets.NOTIFIER_URL }}
+          NOTIFIER_KEY=${{ secrets.NOTIFIER_KEY }}
+          NOTIFIER_PROJECT=${{ secrets.NOTIFIER_PROJECT }}
           "@
           $scraperEnv | Out-File -FilePath "scraper\.env" -Encoding UTF8
+
+      - name: Verify required env keys were written
+        shell: powershell
+        run: |
+          # Fails the deploy loudly if a required key is missing from either
+          # generated .env file - never let a dropped key (like NOTIFIER_KEY
+          # in T-224) degrade into silent no-alerting. Checks key NAMES only;
+          # never reads or echoes values.
+          $webRequired = @(
+            'NODE_ENV','DATABASE_URL','REDIS_URL','ADMIN_API_TOKEN',
+            'NEXT_PUBLIC_GA_MEASUREMENT_ID','NEXT_PUBLIC_ZERODHA_AFFILIATE_LINK',
+            'NEXT_PUBLIC_ANGELONE_AFFILIATE_LINK'
+          )
+          $scraperRequired = @(
+            'NODE_ENV','DATABASE_URL','REDIS_URL','SCRAPER_ENABLED',
+            'SCRAPER_INTERVAL_MODE','ENABLE_SOURCE_TRACKING',
+            'ENABLE_CONFLICT_DETECTION','ENABLE_DATA_CONSOLIDATION',
+            'ADMIN_API_TOKEN','WEB_INTERNAL_URL',
+            'NOTIFIER_URL','NOTIFIER_KEY','NOTIFIER_PROJECT'
+          )
+
+          function Test-EnvKeys {
+            param([string]$Path, [string[]]$RequiredKeys)
+            $lines = Get-Content -Path $Path
+            $present = @{}
+            foreach ($line in $lines) {
+              $trimmed = $line.Trim()
+              if ($trimmed -match '^([A-Za-z_][A-Za-z0-9_]*)=') {
+                $present[$Matches[1]] = $true
+              }
+            }
+            $missing = $RequiredKeys | Where-Object { -not $present.ContainsKey($_) }
+            return $missing
+          }
+
+          $missingWeb = Test-EnvKeys -Path "web\.env.local" -RequiredKeys $webRequired
+          $missingScraper = Test-EnvKeys -Path "scraper\.env" -RequiredKeys $scraperRequired
+
+          if ($missingWeb.Count -gt 0) {
+            Write-Host "[FATAL] web\.env.local is missing required keys: $($missingWeb -join ', ')"
+          }
+          if ($missingScraper.Count -gt 0) {
+            Write-Host "[FATAL] scraper\.env is missing required keys: $($missingScraper -join ', ')"
+          }
+          if ($missingWeb.Count -gt 0 -or $missingScraper.Count -gt 0) {
+            Write-Error "Required env key(s) missing after generation - aborting deploy before any files are touched. This check exists because NOTIFIER_URL/NOTIFIER_KEY/NOTIFIER_PROJECT silently vanished on a prior deploy (T-224) and owner alerting went dark with no signal."
+            exit 1
+          }
+          Write-Host "[OK] All required keys present in both generated env files"
 
       - name: Stop PM2 processes (release file locks)
         shell: powershell
