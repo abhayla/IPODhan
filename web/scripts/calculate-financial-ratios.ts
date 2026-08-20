@@ -34,6 +34,7 @@
  * - All calculated values validated (no negative PE, ROE in 0-100% range)
  */
 
+import { pathToFileURL } from 'node:url';
 import { eq, and, isNotNull, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@ipodhan/shared/db/schema';
@@ -519,6 +520,6 @@ async function main() {
 }
 
 // Run CLI if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }

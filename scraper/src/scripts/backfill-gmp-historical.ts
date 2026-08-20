@@ -27,6 +27,7 @@
  * - GMP values within reasonable range (-500 to +500 INR)
  */
 
+import { pathToFileURL } from 'node:url';
 import { eq, inArray, desc } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@ipodhan/shared/db/schema';
@@ -514,6 +515,6 @@ async function main() {
 }
 
 // Run CLI if executed directly
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   main();
 }

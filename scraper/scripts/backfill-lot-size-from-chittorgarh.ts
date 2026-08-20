@@ -24,6 +24,7 @@
  *   npm run backfill-lot-size --limit 10   # Test on 10 IPOs first
  */
 
+import { pathToFileURL } from 'node:url';
 import { db } from '@ipodhan/shared';
 import { ipos } from '@ipodhan/shared/db/schema';
 import { isNull, or, and, sql } from 'drizzle-orm';
@@ -415,7 +416,7 @@ async function main() {
 }
 
 // Auto-run if this is the main module
-const isMain = import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`;
+const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
   main().catch((error) => {
     console.error('❌ Backfill failed:', error);
