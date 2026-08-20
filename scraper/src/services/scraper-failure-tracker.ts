@@ -3,6 +3,15 @@ import type { ScraperType } from './types.js';
 
 // ==================== TYPES ====================
 
+/**
+ * Every source that writes a `scraper_logs` row. Kept in sync with
+ * `FRESHNESS_SLOS` (config/freshness-slo.ts) — both describe "the sources the
+ * owner can see the health of".
+ */
+const TRACKED_SCRAPER_TYPES: ScraperType[] = [
+  'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH', 'INVESTORGAIN_GMP', 'API_FALLBACK',
+];
+
 interface FailureRecord {
   count: number;
   timestamps: number[];
@@ -23,16 +32,31 @@ export class ScraperFailureTracker {
   constructor(fallbackThreshold: number = 3) {
     this.fallbackThreshold = fallbackThreshold;
 
-    // Initialize failure records for each scraper type
-    const scraperTypes: ScraperType[] = ['NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH', 'API_FALLBACK'];
-    scraperTypes.forEach(type => {
-      this.failures.set(type, {
-        count: 0,
-        timestamps: [],
-        lastError: null,
-        lastFailureTime: null
-      });
+    // Initialize failure records for every scraper-log-tracked source.
+    // INVESTORGAIN_GMP was missing here (T-228), so every GMP failure/success
+    // hit the `!record` branch, logged 'Invalid scraper type' and was DROPPED —
+    // the GMP source could never reach the fallback threshold.
+    TRACKED_SCRAPER_TYPES.forEach(type => {
+      this.failures.set(type, this.emptyRecord());
     });
+  }
+
+  private emptyRecord(): FailureRecord {
+    return { count: 0, timestamps: [], lastError: null, lastFailureTime: null };
+  }
+
+  /**
+   * Get (or lazily create) the record for a scraper type. Lazily creating is
+   * deliberate: a new source must never be silently un-tracked just because it
+   * was not listed at construction time (T-228).
+   */
+  private getRecord(scraperType: ScraperType): FailureRecord {
+    let record = this.failures.get(scraperType);
+    if (!record) {
+      record = this.emptyRecord();
+      this.failures.set(scraperType, record);
+    }
+    return record;
   }
 
   /**
@@ -41,11 +65,7 @@ export class ScraperFailureTracker {
    * @param error - Error that caused the failure
    */
   recordFailure(scraperType: ScraperType, error: Error): void {
-    const record = this.failures.get(scraperType);
-    if (!record) {
-      logger.error({ scraperType }, 'Invalid scraper type');
-      return;
-    }
+    const record = this.getRecord(scraperType);
 
     const now = Date.now();
     record.count++;
@@ -82,11 +102,7 @@ export class ScraperFailureTracker {
    * @param scraperType - Type of scraper that succeeded
    */
   recordSuccess(scraperType: ScraperType): void {
-    const record = this.failures.get(scraperType);
-    if (!record) {
-      logger.error({ scraperType }, 'Invalid scraper type');
-      return;
-    }
+    const record = this.getRecord(scraperType);
 
     const previousCount = record.count;
 
@@ -113,11 +129,7 @@ export class ScraperFailureTracker {
    * @returns true if fallback should be triggered (failures >= threshold)
    */
   shouldTriggerFallback(scraperType: ScraperType): boolean {
-    const record = this.failures.get(scraperType);
-    if (!record) {
-      logger.error({ scraperType }, 'Invalid scraper type');
-      return false;
-    }
+    const record = this.getRecord(scraperType);
 
     return record.count >= this.fallbackThreshold;
   }

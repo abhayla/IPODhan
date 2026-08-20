@@ -124,7 +124,18 @@ export type DocumentType = Document['type'];
 export type Exchange = MarketHoliday['exchange'];
 export type HolidayType = MarketHoliday['type'];
 export type FinancialStatementType = NonNullable<PeerCompany['financialStatementType']>;
-export type ScraperSource = 'NSE' | 'BSE' | 'API_FALLBACK';
+// Every source that writes a `scraper_logs` row (T-228). This list is what the
+// owner-facing surfaces enumerate - a source missing here is a source whose
+// health nobody can see. Kept in sync with the scraper's FRESHNESS_SLOS table
+// (scraper/src/config/freshness-slo.ts) and ScraperSource in
+// scraper/src/config/field-priority-matrix.ts.
+export type ScraperSource =
+  | 'NSE'
+  | 'BSE'
+  | 'MONEYCONTROL'
+  | 'CHITTORGARH'
+  | 'INVESTORGAIN_GMP'
+  | 'API_FALLBACK';
 export type ScraperStatus = 'SUCCESS' | 'FAILURE' | 'PARTIAL';
 export type IPOVerdict = IPOScore['verdict'];
 export type ConfidenceLevel = IPOScore['confidence'];

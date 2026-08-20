@@ -27,7 +27,11 @@ export type FallbackTriggerReason = 'nse_failure' | 'bse_failure' | 'manual' | '
  * Extended result with API-specific fields
  */
 export interface FallbackScraperResult extends ScraperResult {
-  source: 'IPO_ALERTS_API';
+  // Canonical `ScraperSource` value (field-priority-matrix.ts). The legacy
+  // 'IPO_ALERTS_API' string was NOT a ScraperSource, so every scraper_logs row
+  // and every failure-tracker call from this source landed under a name that
+  // no consumer looks for (T-228).
+  source: 'API_FALLBACK';
   rateLimitUsed: number;
   rateLimitRemaining: number;
   triggerReason: FallbackTriggerReason;
@@ -63,8 +67,8 @@ export class IPOAlertsFallbackOrchestratorV2 extends BaseScraperOrchestrator<Scr
   /**
    * Get scraper name
    */
-  protected getScraperName(): 'IPO_ALERTS_API' {
-    return 'IPO_ALERTS_API';
+  protected getScraperName(): 'API_FALLBACK' {
+    return 'API_FALLBACK';
   }
 
   /**
@@ -123,7 +127,7 @@ export class IPOAlertsFallbackOrchestratorV2 extends BaseScraperOrchestrator<Scr
     // Build fallback-specific result
     const fallbackResult: FallbackScraperResult = {
       ...baseResult,
-      source: 'IPO_ALERTS_API',
+      source: 'API_FALLBACK',
       rateLimitUsed: rateLimitAfter.used - this.rateLimitBefore.used,
       rateLimitRemaining: rateLimitAfter.remaining,
       triggerReason: this.triggerReason,
