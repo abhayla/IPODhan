@@ -236,7 +236,15 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       }
 
       const duration = Date.now() - startTime;
-      result.success = result.iposFailed < result.iposProcessed;
+      // Honest success semantics (T-228). The old rule was
+      // `iposFailed < iposProcessed`, which reported a source that scraped a
+      // legitimately EMPTY list (0 processed, 0 failed, no errors) as a
+      // FAILURE - the whole cycle then exited 1 with errorCount=0 and an empty
+      // errors[], i.e. a failure nobody could diagnose. A run is successful
+      // when nothing actually failed: no per-IPO failures and no recorded
+      // errors. A partial failure (some IPOs failed) is now honestly a
+      // failure rather than being masked by the majority succeeding.
+      result.success = result.iposFailed === 0 && result.errors.length === 0;
 
       // Record success
       await this.logSuccess(result, duration);
