@@ -7,8 +7,18 @@ import { sanitizeDisplayCompanyName } from '@ipodhan/shared/utils/company-name-n
 export const ScrapedIPOSchema = z.object({
   companyName: z.string().min(1, 'Company name is required').max(255),
   issueSize: z.number().nonnegative('Issue size must be non-negative'),
-  priceRangeMin: z.number().positive('Price range min must be positive').optional(),
-  priceRangeMax: z.number().positive('Price range max must be positive').optional(),
+  // A literal 0 means "unannounced" (the source returned a blank price cell),
+  // never a real ₹0 band - normalize it to undefined here so every caller of
+  // every schema built on ScrapedIPOSchema treats an unannounced band as
+  // absent-and-kept rather than rejecting the whole IPO (T-236).
+  priceRangeMin: z.preprocess(
+    (val) => (val === 0 ? undefined : val),
+    z.number().positive('Price range min must be positive').optional()
+  ),
+  priceRangeMax: z.preprocess(
+    (val) => (val === 0 ? undefined : val),
+    z.number().positive('Price range max must be positive').optional()
+  ),
   openDate: z.string().refine(
     (date) => !isNaN(Date.parse(date)),
     'Open date must be a valid ISO 8601 date string'
