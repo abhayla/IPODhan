@@ -263,7 +263,11 @@ export function detectOfferingType(
 
   if (title.includes('invit') || title.includes('infrastructure investment trust')) {
     return {
-      detectedType: 'InvIT',
+      // T-228: MUST be the canonical offering_type enum value ('INVITS'), not the
+      // display label 'InvIT'. The auto-fixer writes detectedType straight into the
+      // record, and a display label fails the offeringType enum check -- which is why
+      // four real trusts were rejected outright every cycle.
+      detectedType: 'INVITS',
       confidence: 'HIGH',
       reason: 'Company name contains "InvIT" or "infrastructure investment trust".',
     };
@@ -271,7 +275,8 @@ export function detectOfferingType(
 
   if (title.includes('reit') || title.includes('real estate investment trust')) {
     return {
-      detectedType: 'REIT',
+      // T-228: canonical enum value ('REITS'), not the display label 'REIT'.
+      detectedType: 'REITS',
       confidence: 'HIGH',
       reason: 'Company name contains "REIT" or "real estate investment trust".',
     };

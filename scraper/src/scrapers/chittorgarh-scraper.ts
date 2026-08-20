@@ -364,8 +364,13 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
         const ipo: ChittorgarhIPO = {
           companyName: sanitizeText(companyName),
           issueSize,
-          priceRangeMin: price.min,
-          priceRangeMax: price.max,
+          // T-228: an unannounced price band comes back as 0 from the source.
+          // The schema types these as optional-but-positive, so passing 0 made the
+          // whole record fail validation and get dropped -- losing the name, dates
+          // and lot size of every IPO whose band is not published yet.
+          // "Not announced" is UNKNOWN, not zero: omit the field instead.
+          priceRangeMin: price.min > 0 ? price.min : undefined,
+          priceRangeMax: price.max > 0 ? price.max : undefined,
           openDate,
           closeDate: effectiveCloseDate,
           listingDate,
