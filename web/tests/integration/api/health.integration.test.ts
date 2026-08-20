@@ -1,15 +1,21 @@
 /**
  * Integration Tests for GET /api/health
  * Story 8.4a: Production Deployment - Dev Machine Preparation
+ * Updated T-226 (2026-08-20): endpoint now exercises the real dependency
+ * path (short-timeout DB query, Redis best-effort) instead of a heavier,
+ * potentially-cached check. See web/app/api/health/route.ts doc comment.
  *
  * Tests the health check endpoint with real database and Redis connections.
  * Ensures proper monitoring of application dependencies for production deployment.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { db } from '@/lib/db/index';
+import { describe, it, expect, beforeAll } from 'vitest';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { GET } from '@/app/api/health/route';
+
+function makeRequest(url = 'http://localhost:3000/api/health'): Request {
+  return new Request(url);
+}
 
 // ==================== SETUP & TEARDOWN ====================
 
@@ -20,16 +26,12 @@ beforeAll(async () => {
   redisClient = getRedisClient();
 });
 
-afterAll(async () => {
-  // No cleanup needed - health check doesn't modify data
-});
-
 // ==================== TESTS ====================
 
 describe('GET /api/health', () => {
   describe('Health Check Response', () => {
     it('should return health status (healthy or unhealthy)', async () => {
-      const response = await GET();
+      const response = await GET(makeRequest());
       const data = await response.json();
 
       // Status should be 200 if healthy, 503 if unhealthy
@@ -45,23 +47,19 @@ describe('GET /api/health', () => {
 
       expect(data).toHaveProperty('timestamp');
       expect(data.timestamp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/); // ISO format
+      expect(data.probe).toBe('ready');
     });
 
     it('should include database details with connection status', async () => {
-      const response = await GET();
+      const response = await GET(makeRequest());
       const data = await response.json();
 
       expect(data.details.database).toHaveProperty('connected');
       expect(typeof data.details.database.connected).toBe('boolean');
+      expect(typeof data.details.database.responseTimeMs).toBe('number');
 
-      // If database is healthy, should have additional details
       if (data.services.database === 'healthy') {
         expect(data.details.database.connected).toBe(true);
-        expect(data.details.database).toHaveProperty('serverTime');
-        expect(data.details.database).toHaveProperty('version');
-        expect(data.details.database).toHaveProperty('tables');
-        expect(typeof data.details.database.tables).toBe('number');
-        expect(data.details.database.tables).toBeGreaterThan(0);
       } else {
         expect(data.details.database.connected).toBe(false);
         expect(data.details.database).toHaveProperty('error');
@@ -69,17 +67,15 @@ describe('GET /api/health', () => {
     });
 
     it('should include Redis details with connection status', async () => {
-      const response = await GET();
+      const response = await GET(makeRequest());
       const data = await response.json();
 
       expect(data.details.redis).toHaveProperty('connected');
       expect(typeof data.details.redis.connected).toBe('boolean');
+      expect(typeof data.details.redis.responseTimeMs).toBe('number');
 
-      // If Redis is healthy, should have additional details
       if (data.services.redis === 'healthy') {
         expect(data.details.redis.connected).toBe(true);
-        expect(data.details.redis).toHaveProperty('memoryUsed');
-        expect(typeof data.details.redis.memoryUsed).toBe('string');
       } else {
         expect(data.details.redis.connected).toBe(false);
         expect(data.details.redis).toHaveProperty('error');
@@ -87,7 +83,7 @@ describe('GET /api/health', () => {
     });
 
     it('should include application metadata', async () => {
-      const response = await GET();
+      const response = await GET(makeRequest());
       const data = await response.json();
 
       expect(data).toHaveProperty('application');
@@ -98,22 +94,34 @@ describe('GET /api/health', () => {
     });
 
     it('should return different timestamps on subsequent calls', async () => {
-      const response1 = await GET();
+      const response1 = await GET(makeRequest());
       const data1 = await response1.json();
 
       // Small delay to ensure timestamp difference
       await new Promise((resolve) => setTimeout(resolve, 10));
 
-      const response2 = await GET();
+      const response2 = await GET(makeRequest());
       const data2 = await response2.json();
 
       expect(data1.timestamp).not.toBe(data2.timestamp);
     });
   });
 
+  describe('Liveness probe', () => {
+    it('should return alive immediately without checking dependencies', async () => {
+      const response = await GET(makeRequest('http://localhost:3000/api/health?probe=live'));
+      const data = await response.json();
+
+      expect(response.status).toBe(200);
+      expect(data.status).toBe('alive');
+      expect(data.probe).toBe('live');
+      expect(data).not.toHaveProperty('services');
+    });
+  });
+
   describe('Response Format Validation', () => {
     it('should always include required top-level fields', async () => {
-      const response = await GET();
+      const response = await GET(makeRequest());
       const data = await response.json();
 
       expect(data).toHaveProperty('status');
@@ -124,7 +132,7 @@ describe('GET /api/health', () => {
     });
 
     it('should include both database and Redis in services object', async () => {
-      const response = await GET();
+      const response = await GET(makeRequest());
       const data = await response.json();
 
       expect(data.services).toHaveProperty('database');
@@ -134,7 +142,7 @@ describe('GET /api/health', () => {
     });
 
     it('should include details for both services', async () => {
-      const response = await GET();
+      const response = await GET(makeRequest());
       const data = await response.json();
 
       expect(data.details).toHaveProperty('database');
@@ -144,53 +152,22 @@ describe('GET /api/health', () => {
     });
   });
 
-  describe('Service-Specific Checks', () => {
-    it('should verify PostgreSQL version is reported', async () => {
-      const response = await GET();
-      const data = await response.json();
-
-      if (data.services.database === 'healthy') {
-        expect(data.details.database.version).toMatch(/PostgreSQL/);
-        expect(data.details.database.version).toBeTruthy();
-      }
-    });
-
-    it('should verify Redis memory usage is reported', async () => {
-      const response = await GET();
-      const data = await response.json();
-
-      if (data.services.redis === 'healthy') {
-        expect(data.details.redis.memoryUsed).toBeTruthy();
-        // Memory should be in human-readable format (e.g., "1.5M", "200K")
-        expect(data.details.redis.memoryUsed).toMatch(/^\d+(\.\d+)?[KMG]?$/);
-      }
-    });
-
-    it('should report correct table count from database', async () => {
-      const response = await GET();
-      const data = await response.json();
-
-      if (data.services.database === 'healthy') {
-        // IPODhan should have multiple tables (ipos, subscriptions, gmp_records, etc.)
-        expect(data.details.database.tables).toBeGreaterThanOrEqual(5);
-      }
-    });
-  });
-
   describe('Performance', () => {
-    it('should respond within 2 seconds', async () => {
+    it('should respond within 2.5 seconds even under the DB/Redis timeout budget', async () => {
       const startTime = Date.now();
-      await GET();
+      await GET(makeRequest());
       const endTime = Date.now();
       const duration = endTime - startTime;
 
-      expect(duration).toBeLessThan(2000);
+      // 2s DB timeout + 2s Redis timeout run concurrently, not stacked -
+      // budget generously above the 2s per-check ceiling for CI jitter.
+      expect(duration).toBeLessThan(2500);
     });
 
     it('should handle multiple concurrent requests', async () => {
       const requests = Array(10)
         .fill(null)
-        .map(() => GET());
+        .map(() => GET(makeRequest()));
 
       const responses = await Promise.all(requests);
 
@@ -203,7 +180,7 @@ describe('GET /api/health', () => {
 
   describe('Monitoring Integration', () => {
     it('should return format compatible with UptimeRobot', async () => {
-      const response = await GET();
+      const response = await GET(makeRequest());
       const data = await response.json();
 
       // UptimeRobot expects 200 status for healthy, non-200 for unhealthy
@@ -215,14 +192,14 @@ describe('GET /api/health', () => {
     });
 
     it('should provide machine-readable status field', async () => {
-      const response = await GET();
+      const response = await GET(makeRequest());
       const data = await response.json();
 
       expect(['healthy', 'unhealthy']).toContain(data.status);
     });
 
     it('should include ISO 8601 timestamp', async () => {
-      const response = await GET();
+      const response = await GET(makeRequest());
       const data = await response.json();
 
       // Verify timestamp is valid ISO 8601
@@ -233,9 +210,9 @@ describe('GET /api/health', () => {
 
   describe('Edge Cases', () => {
     it('should handle rapid successive calls', async () => {
-      const response1 = await GET();
-      const response2 = await GET();
-      const response3 = await GET();
+      const response1 = await GET(makeRequest());
+      const response2 = await GET(makeRequest());
+      const response3 = await GET(makeRequest());
 
       // All should return valid status codes
       expect([200, 503]).toContain(response1.status);
@@ -244,10 +221,10 @@ describe('GET /api/health', () => {
     });
 
     it('should return consistent structure on every call', async () => {
-      const response1 = await GET();
+      const response1 = await GET(makeRequest());
       const data1 = await response1.json();
 
-      const response2 = await GET();
+      const response2 = await GET(makeRequest());
       const data2 = await response2.json();
 
       // Same keys should be present
@@ -263,7 +240,7 @@ describe('GET /api/health', () => {
 
   describe('Production Readiness', () => {
     it('should not expose database connection strings', async () => {
-      const response = await GET();
+      const response = await GET(makeRequest());
       const data = await response.json();
       const dataString = JSON.stringify(data);
 
@@ -277,7 +254,7 @@ describe('GET /api/health', () => {
     });
 
     it('should provide actionable error information when unhealthy', async () => {
-      const response = await GET();
+      const response = await GET(makeRequest());
       const data = await response.json();
 
       // If any service is unhealthy, details should include error info
@@ -292,12 +269,16 @@ describe('GET /api/health', () => {
       }
     });
 
-    it('should return 503 when any service is unhealthy', async () => {
-      const response = await GET();
+    it('should return 503 only when the database (hard dependency) is unhealthy', async () => {
+      const response = await GET(makeRequest());
       const data = await response.json();
 
-      if (data.status === 'unhealthy') {
+      if (data.services.database === 'unhealthy') {
         expect(response.status).toBe(503);
+        expect(data.status).toBe('unhealthy');
+      } else {
+        expect(response.status).toBe(200);
+        expect(data.status).toBe('healthy');
       }
     });
   });
