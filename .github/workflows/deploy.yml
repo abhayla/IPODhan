@@ -531,6 +531,14 @@ jobs:
       - name: Health check
         shell: powershell
         run: |
+          # Hits the dependency-checking /api/health route (T-226), not the
+          # bare "/" root - "/" only proves the Next.js process answers HTTP,
+          # it does not prove the database is reachable. /api/health runs a
+          # real SELECT 1 with its own timeout and returns 503 when the
+          # database is down, which Invoke-WebRequest surfaces as a
+          # terminating error the catch block below retries on - so a
+          # DB-shaped outage exhausts $maxAttempts, exit 1 fires, and the
+          # existing "Rollback on failure" step (if: failure()) takes over.
           Start-Sleep -Seconds 8
 
           $maxAttempts = 10
@@ -539,13 +547,15 @@ jobs:
           for ($i = 1; $i -le $maxAttempts; $i++) {
             Write-Host "Health check attempt $i/$maxAttempts..."
             try {
-              $response = Invoke-WebRequest -Uri "http://localhost:3001" -TimeoutSec 5 -UseBasicParsing
+              $response = Invoke-WebRequest -Uri "http://localhost:3001/api/health" -TimeoutSec 5 -UseBasicParsing
               if ($response.StatusCode -eq 200) {
                 $healthy = $true
                 Write-Host "[OK] Health check passed"
+                Write-Host $response.Content
                 break
               }
             } catch {
+              Write-Host "  attempt $i failed: $($_.Exception.Message)"
               Start-Sleep -Seconds 3
             }
           }
