@@ -27,6 +27,25 @@
 #   per-slot env files, so a release directory is a complete, runnable app
 #   root and `npm run build` bakes that slot's NEXT_PUBLIC_* values.
 #
+#   shared/env/<SLOT>/*.env is HAND-PROVISIONED ONCE (T-241 M1) and
+#   RELEASE-INDEPENDENT — this script and deploy-linux.yml only READ it
+#   (via assert-env-keys.sh below), NEITHER EVER WRITES OR REGENERATES IT.
+#   This is a deliberate difference from the old Windows deploy.yml, which
+#   had an inline "Create ecosystem.config.js" here-string that rewrote the
+#   whole env block on every deploy (self-hosted-windows-vps-deploy.md) — on
+#   Linux there is no such regeneration step, so a key can only go missing
+#   by direct hand-edit of the shared file, never by a deploy. T-251 (F9)
+#   is the counter-example that motivated writing this down: four scraper
+#   feature flags that lived only in the Windows ecosystem.config.js env{}
+#   block were never migrated into shared/env/*/scraper.env at the T-249
+#   cutover, and nothing caught it because assert-env-keys.sh's required-key
+#   list didn't cover them either. Since there is no regeneration step to
+#   "carry the flags forward" on every deploy, THE GUARD IS THE FIX: every
+#   key that must exist in shared/env belongs in assert-env-keys.sh's
+#   REQUIRED_KEYS list (presence-checked on every deploy), and scraper/
+#   .env.example is the source-of-truth reference for what value each key
+#   should hold in prod.
+#
 # PM2 apps (prod keeps the EXISTING Windows app names so monitoring/Notifier
 # config that already refers to them by name keeps working after cutover):
 #   prod:    ipodhan-web            ipodhan-scraper
