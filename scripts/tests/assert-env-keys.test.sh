@@ -43,6 +43,13 @@ run_case "DATABASE_HOST present -> fail (T-241 H5)" 1 \
 run_case "missing env file -> fail" 1 \
   "$FIXTURES/does-not-exist.env" "$FIXTURES/scraper.env.good"
 
+# --- T-251 (F9): revert-proof for the flag-regression ratchet. If someone
+# removes ENABLE_BSE_API (or any of the other 3 flags) from a fixture -- or
+# for real, from a slot's shared/env/*/scraper.env -- the assert MUST fail
+# loudly rather than silently deploying with the flag defaulted OFF.
+run_case "scraper.env missing ENABLE_BSE_API -> fail (T-251, F9 revert-proof)" 1 \
+  "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.missing-f9-flag"
+
 # --- T-243: slot DSN assert (staging must never target the production db) ---
 run_case "slot staging + staging DSN -> pass" 0 \
   "$FIXTURES/slot/staging/web.env.local" "$FIXTURES/slot/staging/scraper.env"
