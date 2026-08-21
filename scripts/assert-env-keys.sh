@@ -55,6 +55,19 @@ SCRAPER_REQUIRED_KEYS=(
   ENABLE_SOURCE_TRACKING
   ENABLE_CONFLICT_DETECTION
   ENABLE_DATA_CONSOLIDATION
+  # T-251 (F9): these four flags lived only in the Windows ecosystem.config.js
+  # env{} block and were never carried to the Linux shared/env files at the
+  # T-249 cutover -> all four silently defaulted OFF for ~70min on a closing
+  # day (subscription writes stopped dead; BSE corp-action pollution came
+  # back). Presence-required here so a deploy fails loudly if any of the
+  # four is ever missing again; VALUE is not enforced (a value flip like
+  # accidentally setting one to "false" is a product/owner decision, not a
+  # deploy-safety one) -- see scraper/.env.example for the values this repo
+  # documents as correct for prod.
+  ENABLE_GMP_NAME_MATCH
+  ENABLE_MONEYCONTROL_SUBSCRIPTION
+  ENABLE_BSE_API
+  ENABLE_PRIMARY_SOURCE_DISCOVERY
   ADMIN_API_TOKEN
   WEB_INTERNAL_URL
   NOTIFIER_URL
