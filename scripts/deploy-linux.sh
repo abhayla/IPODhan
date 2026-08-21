@@ -119,6 +119,20 @@ HEALTH_TIMEOUT="${DEPLOY_HEALTH_TIMEOUT_SECONDS:-30}"
 MUTEX_MAX_WAIT="${DEPLOY_MUTEX_MAX_WAIT_SECONDS:-600}"
 MUTEX_POLL="${DEPLOY_MUTEX_POLL_SECONDS:-15}"
 
+# T-243: npm workspaces HOISTS dependencies to the RELEASE ROOT, so the
+# per-workspace paths this script used ("<rel>/web/node_modules/next/...",
+# "<rel>/scraper/node_modules/tsx/...") do not exist on a real install.
+# Resolve each binary wherever npm actually placed it, and die loudly if
+# it is genuinely absent rather than pm2-starting a non-existent file.
+resolve_bin() {
+  local rel="$1" relpath="$2" base
+  for base in "$rel/web/node_modules" "$rel/scraper/node_modules" "$rel/node_modules"; do
+    if [ -f "$base/$relpath" ]; then printf '%s' "$base/$relpath"; return 0; fi
+  done
+  echo "FATAL: $relpath not found under $rel (web/, scraper/ or root node_modules)" >&2
+  exit 1
+}
+
 log() { echo "==> $*"; }
 warn() { echo "WARN: $*" >&2; }
 fatal() { echo "FATAL: $*" >&2; exit 1; }
@@ -216,8 +230,8 @@ resume_scraper() {
   fi
   log "Resuming scraper ($PM2_SCRAPER_APP) from $target_dir"
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
-  ( cd "$target_dir/scraper" && pm2 start node_modules/tsx/dist/cli.mjs --name "$PM2_SCRAPER_APP" \
-      --exec-mode fork --no-autorestart --cron-restart="*/30 * * * *" -- src/index.ts --source=all ) \
+  ( cd "$target_dir/scraper" && pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
+      --no-autorestart --cron-restart="*/30 * * * *" -- src/index.ts --source=all ) \
     || warn "resume_scraper: pm2 start failed for $PM2_SCRAPER_APP — investigate manually, do not assume it is running."
 }
 trap resume_scraper EXIT
@@ -304,10 +318,18 @@ build_release() {
   built_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   export NEXT_PUBLIC_BUILT_AT="$built_at"
 
-  ( cd "$RELEASE_DIR" && npm ci --no-audit --no-fund )
+  # T-243: the slot env file above sets NODE_ENV=production, and `set -a` has
+  # already exported it — so a bare `npm ci` OMITS devDependencies and the build
+  # then dies on missing husky / vitest / @next/bundle-analyzer. Install with
+  # dev deps explicitly; the BUILD still runs under NODE_ENV=production.
+  # HUSKY=0: release dirs are `git archive` exports, not git repos.
+  ( cd "$RELEASE_DIR" && NODE_ENV=development HUSKY=0 npm ci --include=dev --no-audit --no-fund )
   ( cd "$RELEASE_DIR/packages/shared" && npx tsc )
   ( cd "$RELEASE_DIR/web" && npm run build )
-  ( cd "$RELEASE_DIR/scraper" && npm ci --no-audit --no-fund )
+  # T-243: NO second `npm ci` inside scraper/. npm ci run from a workspace
+  # MEMBER installs only that member's deps and PRUNES everything else - it
+  # deleted next/ and husky/ from the tree the web build had just produced.
+  # The root workspace install above already covers every workspace.
 }
 
 log "Building release (npm ci + next build, env sourced from $WEB_ENV_FILE)"
@@ -366,15 +388,15 @@ restart_pm2() {
   fi
   local instances="${DEPLOY_WEB_INSTANCES:-2}"
   ( cd "$RELEASE_DIR/web" && pm2 reload "$PM2_WEB_APP" --update-env ) \
-    || ( cd "$RELEASE_DIR/web" && pm2 start node_modules/next/dist/bin/next --name "$PM2_WEB_APP" \
-           -i "$instances" --exec-mode cluster -- start )
+    || ( cd "$RELEASE_DIR/web" && pm2 start "$(resolve_bin "$RELEASE_DIR" next/dist/bin/next)" --name "$PM2_WEB_APP" \
+           -i "$instances" -- start )
   # Scraper is delete+start (not reload) on every deploy — it is a one-shot
   # fork process, not a long-lived server (pm2-scheduled-one-shot-scraper.md).
   # Exact script/args mirror the existing ecosystem.config.js entry so the
   # Linux PM2 process list looks like the Windows one it is replacing.
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
-  ( cd "$RELEASE_DIR/scraper" && pm2 start node_modules/tsx/dist/cli.mjs --name "$PM2_SCRAPER_APP" \
-      --exec-mode fork --no-autorestart --cron-restart="*/30 * * * *" -- src/index.ts --source=all )
+  ( cd "$RELEASE_DIR/scraper" && pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
+      --no-autorestart --cron-restart="*/30 * * * *" -- src/index.ts --source=all )
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
 }
 
@@ -423,6 +445,17 @@ fi
 trap - EXIT
 
 # ------------------------------------------------------------------- 10. prune
+# T-243: persist the process list so a reboot resurrects THIS release. Without
+# it, `pm2 resurrect` restores whatever list was last saved - on a fresh box
+# that meant the IPODhan apps were absent entirely, and after any deploy it
+# would mean pm2 restarting an older, possibly pruned, release directory.
+if (( DRY_RUN )); then
+  log "[dry-run] would run pm2 save"
+else
+  pm2 save >/dev/null 2>&1 || warn "pm2 save failed - a reboot may not restore this release."
+  log "pm2 process list saved (boot-restore points at $RELEASE_NAME)"
+fi
+
 log "Pruning old releases (keeping the newest $KEEP_RELEASES)"
 CUR="$(read_current_link || true)"
 if [ -d "$RELEASES_DIR" ]; then
