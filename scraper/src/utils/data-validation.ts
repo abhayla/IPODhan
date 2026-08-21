@@ -225,6 +225,60 @@ export function validateIPOData(
     }
   }
 
+  // Rule 8: Non-IPO Shape Guard (issues #140/#141) — an offering about to be
+  // persisted as offering_type='IPO' whose SHAPE cannot be a genuine book-built
+  // IPO/FPO must be rejected outright rather than silently polluting the IPO
+  // listings. Two independent, falsifiable signals (either one is sufficient):
+  //   (a) subscription window > 10 days with no lot size AND no issue size —
+  //       real mainboard/SME IPOs run ~3-5 days (rarely to ~10 with an
+  //       extension); a multi-week/month "window" with nothing else populated
+  //       is a corporate-action echo (rights/tender/NCD/an already-listed
+  //       company), not a fresh public issue. Real: ADVENZYMES (98 days),
+  //       LIGHT OF LIFE TRUST (11 days, a charity ZCZP bond) — both null
+  //       lot_size, zero issue_size.
+  //   (b) companyName is a bare exchange scrip code (a single ALL-CAPS
+  //       alphanumeric token, no spaces, no legal-entity suffix) — a ticker,
+  //       not a company name. Real: SIS, ADVENZYMES.
+  // This only fires for the type the row would ACTUALLY be written as (the
+  // effective type after Rule 2's auto-fix, so a row already reclassified to
+  // NCD/RIGHTS/TENDER/etc. is correctly exempt).
+  {
+    const effectiveOfferingType = (autoFixes.offeringType as string | undefined) ?? data.offeringType ?? 'IPO';
+    if (effectiveOfferingType === 'IPO') {
+      const noLotSize = !data.lotSize || data.lotSize <= 0;
+      const issueSizeNum = data.issueSize != null ? Number(data.issueSize) : NaN;
+      const noIssueSize = !Number.isFinite(issueSizeNum) || issueSizeNum <= 0;
+
+      let longWindowNoSubstance = false;
+      if (data.openDate && data.closeDate && noLotSize && noIssueSize) {
+        const openDate = new Date(data.openDate);
+        const closeDate = new Date(data.closeDate);
+        const duration = (closeDate.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24);
+        longWindowNoSubstance = duration > 10;
+      }
+
+      if (longWindowNoSubstance) {
+        errors.push({
+          field: 'offeringType',
+          rule: 'NON_IPO_WINDOW_TOO_LONG',
+          severity: 'ERROR',
+          message: `offeringType='IPO' with a >10-day subscription window and no lot size / issue size is not a genuine equity IPO (#140/#141: ADVENZYMES/LIGHT OF LIFE TRUST shape). Reclassify to the correct offering type or drop the row.`,
+        });
+      }
+
+      const name = (data.companyName || '').trim();
+      const isBareScripCode = /^[A-Z0-9]{2,15}$/.test(name);
+      if (isBareScripCode) {
+        errors.push({
+          field: 'companyName',
+          rule: 'NON_IPO_SCRIP_CODE_NAME',
+          severity: 'ERROR',
+          message: `companyName "${name}" is a bare exchange scrip code (all-caps token, no legal suffix, no space), not a company name — offering_type='IPO' rejected (#140: SIS/ADVENZYMES shape).`,
+        });
+      }
+    }
+  }
+
   // Determine overall validity
   const valid = errors.length === 0;
 
