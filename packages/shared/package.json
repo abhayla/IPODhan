@@ -15,7 +15,8 @@
     "./admin/field-protection-checker": "./src/admin/field-protection-checker.ts",
     "./utils/slug": "./src/utils/slug.ts",
     "./utils/company-name-normalizer": "./src/utils/company-name-normalizer.ts",
-    "./utils/offering-type": "./src/utils/offering-type.ts"
+    "./utils/offering-type": "./src/utils/offering-type.ts",
+    "./errors/db-cause": "./src/errors/db-cause.ts"
   },
   "scripts": {
     "build": "tsc",

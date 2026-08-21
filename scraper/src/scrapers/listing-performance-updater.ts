@@ -1,36 +1,53 @@
 /**
  * Listing Performance Updater
  *
- * ISS-001 Fix: Updates current prices for all LISTED IPOs
+ * Keeps `listing_performance` current for every LISTED IPO: the real day-1
+ * listing price, the issue price, the listing gain, and the latest traded price
+ * with its gain-since-issue.
  *
- * This scraper addresses the issue where only 77/388 (19.85%) of LISTED IPOs
- * have listing_performance records. It performs two critical functions:
+ * ROOT-CAUSE HISTORY (GitHub #139) - read before changing the data source
+ * ----------------------------------------------------------------------
+ * This module used to read the listing price from `nseData.listingPrice`, an
+ * OPTIONAL field on `NSEPastIPOResponse`. NSE's /api/public-past-issues has
+ * never actually returned that field (verified live 2026-08-22: 0 of 1411
+ * records carry it; the payload is company/symbol/htmSym/ipoStartDate/
+ * ipoEndDate/linkRemovalDate/priceRange/issuePrice/listingDate/securityType).
+ * So `listingPrice` - and `listingGainPercent`, which is derived from it - was
+ * `null` for EVERY IPO. Prod's `listing_performance.listing_price` is NOT NULL,
+ * so all 243 upserts failed with SQLSTATE 23502 on every cycle, for seven weeks,
+ * while the log line only ever said "Failed to upsert listing performance"
+ * because the repository's `DatabaseError` wrapper kept the real error in
+ * `cause` and the caller logged `error.message`.
  *
- * 1. **Backfill Gap**: Creates listing_performance records for 311 missing IPOs
- * 2. **Price Updates**: Updates current prices (BSE/NSE) for all listed IPOs
+ * Three things changed and must stay changed:
+ *  1. The listing price now comes from Chittorgarh report-25 - the only reachable
+ *     source publishing a real day-1 close for mainboard AND SME (NSE is
+ *     bot-blocked; BSE StockReachGraph returns only the current intraday
+ *     series). Matching and record-building reuse the tested pure core in
+ *     `services/listing-reconciliation.ts`.
+ *  2. An IPO with no usable listing price is SKIPPED, not attempted. Writing an
+ *     all-null row is not success - it publishes a blank listing gain to users.
+ *  3. Every DB failure logs its Postgres cause (SQLSTATE, column, constraint,
+ *     DETAIL) via `describeDbCause`, so the next regression is diagnosable from
+ *     the first log line instead of taking seven weeks.
  *
- * Data Sources (priority order):
- * - NSE API: /api/public-past-issues (1,268 historical IPOs with listing prices)
- * - BSE API: Real-time price data
- * - Moneycontrol: Current market prices as fallback
- *
- * Architecture:
- * - Fetches all LISTED IPOs from database
- * - Matches against NSE historical data for initial listing performance
- * - Fetches current prices from NSE/BSE APIs
- * - Upserts to listing_performance table via repository pattern
- * - Invalidates cache after updates
+ * The per-IPO NSE quote-API and BSE StockReachGraph calls were removed in the
+ * same change: both are bot-blocked from the production hosts and returned null
+ * for every symbol, contributing nothing but ~24s of sleep per cycle.
+ * Chittorgarh report-25 already carries the current BSE/NSE price and gain in
+ * the same row.
  */
 
 import { pathToFileURL } from 'node:url';
-import { eq, and } from 'drizzle-orm';
-import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { eq } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 import { db } from '@ipodhan/shared/db';
 import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
 import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
-import type { ListingPerformanceInsert } from '@ipodhan/shared/repositories/types';
-import { fetchPastIPOs } from './nse-api-client.js';
+import { describeDbCause } from '@ipodhan/shared/errors/db-cause';
+import { fetchChittorgarhListingRows } from './chittorgarh-listing-scraper.js';
+import type { StuckIpo } from '../services/listing-reconciliation.js';
+import { planListingPerformanceUpdates } from './listing-performance-plan.js';
 import logger from '../utils/logger.js';
 
 export interface ListingPerformanceUpdateResult {
@@ -38,261 +55,155 @@ export interface ListingPerformanceUpdateResult {
   existingRecords: number;
   newRecordsCreated: number;
   recordsUpdated: number;
+  /** IPOs with no usable listing price this cycle - expected, not an error. */
+  skipped: number;
+  /** Real write failures. A healthy cycle has 0 here. */
   failures: number;
   duration: number;
   timestamp: string;
 }
 
 /**
- * Fetch current price from NSE for a given symbol
- * Uses NSE's quote API endpoint
+ * Fiscal-year x category windows to pull from Chittorgarh report-25. Covers the
+ * current and previous two Indian fiscal years, which is where every IPO that
+ * can still move a listing gain lives. Both `year` values that report-25
+ * accepts for a range are requested because the report keys some rows off the
+ * calendar year and some off the fiscal year.
  */
-async function fetchNSECurrentPrice(symbol: string): Promise<number | null> {
-  try {
-    // NSE quote API - provides real-time price data
-    const url = `https://www.nseindia.com/api/quote-equity?symbol=${symbol}`;
-
-    const headers = {
-      'Accept': 'application/json',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-      'Referer': 'https://www.nseindia.com/',
-      'X-Requested-With': 'XMLHttpRequest'
-    };
-
-    const response = await fetch(url, { headers });
-
-    if (!response.ok) {
-      logger.debug({ symbol, status: response.status }, 'NSE price fetch failed');
-      return null;
-    }
-
-    const data = await response.json();
-    const price = data?.priceInfo?.lastPrice || data?.lastPrice;
-
-    if (price && typeof price === 'number' && price > 0) {
-      return Math.round(price);
-    }
-
-    return null;
-  } catch (error) {
-    logger.debug({ symbol, error }, 'NSE price fetch error');
-    return null;
+export function recentFiscalYears(now: Date): Array<{ year: number; range: string }> {
+  // Indian FY starts in April: months 0-2 (Jan-Mar) still belong to the prior FY.
+  const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1;
+  const windows: Array<{ year: number; range: string }> = [];
+  for (let i = 0; i < 3; i++) {
+    const start = fyStart - i;
+    const range = `${start}-${String((start + 1) % 100).padStart(2, '0')}`;
+    windows.push({ year: start + 1, range });
+    windows.push({ year: start, range });
   }
+  return windows;
 }
 
 /**
- * Fetch current price from BSE for a given symbol/scrip code
- * Uses BSE's stock quote API
- */
-async function fetchBSECurrentPrice(bseCode: string): Promise<number | null> {
-  try {
-    // BSE quote API - provides real-time price data
-    const url = `https://api.bseindia.com/BseIndiaAPI/api/StockReachGraph/w?scripcode=${bseCode}&flag=0&fromdate=&todate=&seriesid=`;
-
-    const response = await fetch(url);
-
-    if (!response.ok) {
-      logger.debug({ bseCode, status: response.status }, 'BSE price fetch failed');
-      return null;
-    }
-
-    const data = await response.json();
-    const price = data?.Data?.[0]?.CurrRate?.LTP || data?.ltp;
-
-    if (price && typeof price === 'number' && price > 0) {
-      return Math.round(price);
-    }
-
-    return null;
-  } catch (error) {
-    logger.debug({ bseCode, error }, 'BSE price fetch error');
-    return null;
-  }
-}
-
-/**
- * Calculate current gain percentage from issue price
- */
-function calculateCurrentGain(
-  currentPrice: number | null,
-  issuePrice: number | null
-): string | null {
-  if (!currentPrice || !issuePrice || issuePrice === 0) {
-    return null;
-  }
-
-  const gain = ((currentPrice - issuePrice) / issuePrice) * 100;
-  return gain.toFixed(2);
-}
-
-/**
- * Main function to update listing performance for all LISTED IPOs
+ * Main function to update listing performance for all LISTED IPOs.
  */
 export async function updateListingPerformance(): Promise<ListingPerformanceUpdateResult> {
   const startTime = Date.now();
   const timestamp = new Date().toISOString();
 
-  logger.info('Starting listing performance update (ISS-001 Fix)');
+  logger.info('Starting listing performance update');
 
   let totalListedIPOs = 0;
   let existingRecords = 0;
   let newRecordsCreated = 0;
   let recordsUpdated = 0;
+  let skipped = 0;
   let failures = 0;
+  let skipReasons: Record<string, number> = {};
 
   try {
     const redis = getRedisClient();
     const repository = new ListingPerformanceRepository(db, redis);
 
-    // Step 1: Fetch all LISTED IPOs from database
-    logger.info('Fetching all LISTED IPOs from database');
+    // Step 1: every LISTED IPO, with the fields the matcher needs
+    // (ISIN > symbol > slug > normalized name).
     const listedIPOsResult = await db.query.ipos.findMany({
       where: eq(schema.ipos.status, 'LISTED'),
       columns: {
         id: true,
         companyName: true,
+        slug: true,
         symbol: true,
+        isin: true,
+        segment: true,
+        offeringType: true,
+        status: true,
+        openDate: true,
+        closeDate: true,
         listingDate: true,
-        priceRangeMin: true,
         priceRangeMax: true,
-        bseScripCode: true,
+        issueSize: true,
       },
     });
 
     totalListedIPOs = listedIPOsResult.length;
     logger.info({ totalListedIPOs }, 'Found LISTED IPOs in database');
 
-    // Step 2: Fetch NSE historical data for listing prices
-    logger.info('Fetching NSE historical IPO data for listing prices');
-    const { pastIPOs: nseHistoricalData } = await fetchPastIPOs();
-    logger.info({
-      nseRecordsCount: nseHistoricalData.length
-    }, 'NSE historical data fetched');
+    const ipos: StuckIpo[] = listedIPOsResult.map((i) => ({
+      id: i.id,
+      companyName: i.companyName,
+      slug: i.slug,
+      symbol: i.symbol ?? null,
+      isin: i.isin ?? null,
+      segment: i.segment ?? null,
+      offeringType: i.offeringType as string,
+      status: i.status as string,
+      openDate: i.openDate ?? null,
+      closeDate: i.closeDate ?? null,
+      listingDate: i.listingDate ?? null,
+      priceRangeMax: i.priceRangeMax ?? null,
+      issueSize: i.issueSize ?? null,
+    }));
 
-    // Create lookup map: symbol -> NSE historical data
-    const nseDataMap = new Map(
-      nseHistoricalData.map(ipo => [ipo.symbol?.toUpperCase(), ipo])
-    );
+    // Step 2: the real day-1 listing prices.
+    const listingRows = await fetchChittorgarhListingRows(recentFiscalYears(new Date()));
+    logger.info({ listingRows: listingRows.length }, 'Chittorgarh listing rows fetched');
 
-    // Step 3: Check which IPOs already have listing_performance records
+    if (listingRows.length === 0) {
+      // Nothing to write is a source outage, not 243 failures. Say so plainly.
+      logger.error(
+        { totalListedIPOs },
+        'Listing source returned zero rows - skipping this cycle without writes'
+      );
+    }
+
+    // Step 3: which IPOs already have a record (for the created/updated split).
     const existingPerformanceRecords = await db.query.listingPerformance.findMany({
-      columns: {
-        ipoId: true,
-      },
+      columns: { ipoId: true },
     });
-
-    const existingIPOIds = new Set(existingPerformanceRecords.map(r => r.ipoId));
+    const existingIPOIds = new Set(existingPerformanceRecords.map((r) => r.ipoId));
     existingRecords = existingPerformanceRecords.length;
 
-    logger.info({
-      totalListedIPOs,
-      existingRecords,
-      missingRecords: totalListedIPOs - existingRecords,
-    }, 'Existing listing performance records found');
+    // Step 4: decide what to write (pure, unit-tested).
+    const plan = planListingPerformanceUpdates(ipos, listingRows);
+    skipped = plan.skipped.length;
 
-    // Step 4: Process each LISTED IPO
-    for (const ipo of listedIPOsResult) {
+    skipReasons = plan.skipped.reduce<Record<string, number>>((acc, s) => {
+      acc[s.reason] = (acc[s.reason] ?? 0) + 1;
+      return acc;
+    }, {});
+    logger.info(
+      { planned: plan.records.length, skipped, skipReasons },
+      'Listing performance plan computed'
+    );
+
+    // Step 5: write.
+    for (const planned of plan.records) {
       try {
-        const symbol = ipo.symbol?.toUpperCase();
-        const nseData = symbol ? nseDataMap.get(symbol) : null;
+        await repository.upsert(planned.record);
 
-        // Fetch current prices from exchanges
-        const currentPriceNSE = symbol ? await fetchNSECurrentPrice(symbol) : null;
-        const currentPriceBSE = ipo.bseScripCode
-          ? await fetchBSECurrentPrice(ipo.bseScripCode)
-          : null;
-
-        // Use NSE price as primary, BSE as fallback
-        const currentPrice = currentPriceNSE || currentPriceBSE || null;
-
-        // Parse listing price from NSE data
-        let listingPrice: number | null = null;
-        if (nseData?.listingPrice) {
-          const parsed = parseFloat(String(nseData.listingPrice));
-          if (!isNaN(parsed) && parsed > 0) {
-            listingPrice = Math.round(parsed);
-          }
-        }
-
-        // Parse issue price from NSE data
-        let issuePrice: number | null = null;
-        if (nseData?.issuePrice) {
-          const parsed = parseFloat(String(nseData.issuePrice).replace(/\s+/g, ''));
-          if (!isNaN(parsed) && parsed > 0) {
-            issuePrice = Math.round(parsed);
-          }
-        }
-
-        // If NSE doesn't have issue price, use IPO's price range max
-        if (!issuePrice && ipo.priceRangeMax) {
-          issuePrice = Math.round(ipo.priceRangeMax);
-        }
-
-        // Calculate listing gain from NSE data
-        let listingGainPercent: string | null = null;
-        if (listingPrice && issuePrice && issuePrice > 0) {
-          const gain = ((listingPrice - issuePrice) / issuePrice) * 100;
-          listingGainPercent = gain.toFixed(2);
-        }
-
-        // Calculate current gain
-        const currentGainPercent = calculateCurrentGain(currentPrice, issuePrice);
-
-        // Use NSE listing date or IPO's listing date
-        const listingDate = nseData?.listingDate
-          ? new Date(nseData.listingDate).toISOString().split('T')[0]
-          : ipo.listingDate;
-
-        // Prepare upsert data
-        const performanceData: ListingPerformanceInsert = {
-          ipoId: ipo.id,
-          symbol: ipo.symbol || null,
-          companyName: ipo.companyName,
-          listingDate: listingDate || null,
-          listingPrice: listingPrice,
-          issuePrice: issuePrice,
-          listingGainPercent: listingGainPercent,
-          currentPrice: currentPrice, // Deprecated field for backward compatibility
-          currentPriceBSE: currentPriceBSE,
-          currentPriceNSE: currentPriceNSE,
-          currentGainPercent: currentGainPercent,
-          dataSource: 'NSE_PAST_API',
-        };
-
-        // Upsert to database
-        await repository.upsert(performanceData);
-
-        // Track statistics
-        if (existingIPOIds.has(ipo.id)) {
+        if (existingIPOIds.has(planned.ipo.id)) {
           recordsUpdated++;
-          logger.debug({
-            symbol: ipo.symbol,
-            companyName: ipo.companyName,
-            currentPrice,
-            listingPrice
-          }, 'Updated listing performance');
         } else {
           newRecordsCreated++;
-          logger.info({
-            symbol: ipo.symbol,
-            companyName: ipo.companyName,
-            currentPrice,
-            listingPrice
-          }, 'Created new listing performance record');
         }
-
-        // Add delay to avoid rate limiting (100ms between requests)
-        await new Promise(resolve => setTimeout(resolve, 100));
-
       } catch (error) {
         failures++;
-        logger.error({
-          ipoId: ipo.id,
-          symbol: ipo.symbol,
-          companyName: ipo.companyName,
-          error: error instanceof Error ? error.message : String(error),
-        }, 'Failed to update listing performance for IPO');
+        // #139: log the Postgres cause, not just the wrapper's generic message.
+        const cause = describeDbCause(error);
+        logger.error(
+          {
+            ipoId: planned.ipo.id,
+            symbol: planned.ipo.symbol,
+            companyName: planned.ipo.companyName,
+            matchMethod: planned.matchMethod,
+            pgCode: cause.code,
+            pgColumn: cause.column,
+            pgConstraint: cause.constraint,
+            pgDetail: cause.detail,
+            errorChain: cause.chain,
+          },
+          'Failed to update listing performance for IPO'
+        );
       }
     }
 
@@ -303,50 +214,73 @@ export async function updateListingPerformance(): Promise<ListingPerformanceUpda
       existingRecords,
       newRecordsCreated,
       recordsUpdated,
+      skipped,
       failures,
       duration,
       timestamp,
     };
 
-    logger.info(result, 'Listing performance update completed (ISS-001 Fix)');
-
-    // Print summary
-    console.log('\n' + '='.repeat(80));
-    console.log('LISTING PERFORMANCE UPDATE REPORT (ISS-001 Fix)');
-    console.log('='.repeat(80));
-    console.log(`Timestamp: ${timestamp}`);
-    console.log(`Duration: ${Math.round(duration / 1000)}s`);
-    console.log('');
-    console.log('Coverage:');
-    console.log(`  Total LISTED IPOs: ${totalListedIPOs}`);
-    console.log(`  Existing Records: ${existingRecords} (${Math.round(existingRecords/totalListedIPOs*100)}%)`);
-    console.log(`  New Records Created: ${newRecordsCreated}`);
-    console.log(`  Records Updated: ${recordsUpdated}`);
-    console.log(`  Failures: ${failures}`);
-    console.log('');
-    console.log('Result:');
-    console.log(`  Total Coverage: ${existingRecords + newRecordsCreated}/${totalListedIPOs} (${Math.round((existingRecords + newRecordsCreated)/totalListedIPOs*100)}%)`);
-    console.log('='.repeat(80) + '\n');
+    logger.info(result, 'Listing performance update completed');
+    printReport(result, skipReasons);
 
     return result;
-
   } catch (error) {
     const duration = Date.now() - startTime;
-    logger.error({
-      error: error instanceof Error ? error.message : String(error),
-      duration,
-    }, 'Listing performance update failed (ISS-001)');
+    const cause = describeDbCause(error);
+    logger.error(
+      {
+        pgCode: cause.code,
+        pgColumn: cause.column,
+        pgConstraint: cause.constraint,
+        pgDetail: cause.detail,
+        errorChain: cause.chain,
+        duration,
+      },
+      'Listing performance update failed'
+    );
 
     return {
       totalListedIPOs,
       existingRecords,
       newRecordsCreated,
       recordsUpdated,
+      skipped,
       failures: failures + 1,
       duration,
       timestamp,
     };
   }
+}
+
+function printReport(
+  result: ListingPerformanceUpdateResult,
+  skipReasons: Record<string, number>
+): void {
+  const pct = (n: number) =>
+    result.totalListedIPOs > 0 ? Math.round((n / result.totalListedIPOs) * 100) : 0;
+  const bar = '='.repeat(80);
+  const covered = result.existingRecords + result.newRecordsCreated;
+
+  console.log('\n' + bar);
+  console.log('LISTING PERFORMANCE UPDATE REPORT');
+  console.log(bar);
+  console.log(`Timestamp: ${result.timestamp}`);
+  console.log(`Duration: ${Math.round(result.duration / 1000)}s`);
+  console.log('');
+  console.log('Coverage:');
+  console.log(`  Total LISTED IPOs: ${result.totalListedIPOs}`);
+  console.log(`  Existing Records: ${result.existingRecords} (${pct(result.existingRecords)}%)`);
+  console.log(`  New Records Created: ${result.newRecordsCreated}`);
+  console.log(`  Records Updated: ${result.recordsUpdated}`);
+  console.log(`  Skipped (no listing price available): ${result.skipped}`);
+  for (const [reason, count] of Object.entries(skipReasons)) {
+    console.log(`    - ${reason}: ${count}`);
+  }
+  console.log(`  Failures: ${result.failures}`);
+  console.log('');
+  console.log('Result:');
+  console.log(`  Total Coverage: ${covered}/${result.totalListedIPOs} (${pct(covered)}%)`);
+  console.log(bar + '\n');
 }
 
 /**
@@ -357,7 +291,10 @@ async function main() {
     await updateListingPerformance();
     process.exit(0);
   } catch (error) {
-    logger.error({ error }, 'Listing performance updater failed');
+    logger.error(
+      { errorChain: describeDbCause(error).chain },
+      'Listing performance updater failed'
+    );
     process.exit(1);
   }
 }
