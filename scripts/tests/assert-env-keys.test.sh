@@ -43,6 +43,19 @@ run_case "DATABASE_HOST present -> fail (T-241 H5)" 1 \
 run_case "missing env file -> fail" 1 \
   "$FIXTURES/does-not-exist.env" "$FIXTURES/scraper.env.good"
 
+# --- T-243: slot DSN assert (staging must never target the production db) ---
+run_case "slot staging + staging DSN -> pass" 0 \
+  "$FIXTURES/slot/staging/web.env.local" "$FIXTURES/slot/staging/scraper.env"
+
+run_case "slot staging pointed at PROD db ipodhan -> fail (T-243)" 1 \
+  "$FIXTURES/slot/staging/web.env.local.points-at-prod" "$FIXTURES/slot/staging/scraper.env"
+
+run_case "slot prod + prod DSN -> pass" 0 \
+  "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env"
+
+run_case "no DSN_ASSERT_DB -> assert is advisory, still passes" 0 \
+  "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.good"
+
 run_case "wrong arg count -> usage error" 2 \
   "$FIXTURES/web.env.local.good"
 

@@ -113,6 +113,37 @@ check_file() {
   fi
 }
 
+# T-243 - SLOT DSN ASSERT. Beyond "is the key present", a slot must target the
+# database it declares. Without this, a copy-pasted env file leaves the STAGING
+# slot building and writing against PRODUCTION db `ipodhan` - the exact accident
+# the staging rehearsal exists to prevent, and one no key-presence check can
+# see. The slot is derived from the env file's own directory
+# (<root>/shared/env/<slot>/web.env.local), so deploy-linux.sh needs no new
+# argument. DSN_ASSERT_DB is advisory-if-absent, so pre-T-243 env files and
+# local/dev copies keep working; when present it is enforced.
+assert_slot_dsn() {
+  local file="$1" label="$2" slot dsn db want
+  slot="$(basename "$(dirname "$file")")"
+  want="$(grep -E "^DSN_ASSERT_DB=" "$file" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d "\"'" || true)"
+  [ -n "$want" ] || return 0
+  dsn="$(get_value "$file" DATABASE_URL)" || return 0
+  dsn="${dsn%\"}"; dsn="${dsn#\"}"
+  # Strip the query string BEFORE taking the basename: the DSN carries
+  # sslrootcert=/var/www/.../pg-server.crt, so "everything after the last /"
+  # would return the certificate filename, not the database.
+  db="${dsn%%\?*}"
+  db="${db##*/}"
+  if [ "$db" != "$want" ]; then
+    echo "FATAL: $label declares DSN_ASSERT_DB=$want but DATABASE_URL targets database '$db'." >&2
+    exit 1
+  fi
+  if [ "$slot" != "prod" ] && [ "$db" = "ipodhan" ]; then
+    echo "FATAL: slot '$slot' is not prod but $label targets the PRODUCTION database 'ipodhan'." >&2
+    exit 1
+  fi
+  echo "OK: $label -> database '$db' (slot '$slot', DSN-asserted)"
+}
+
 check_file "$WEB_ENV_FILE" "web.env.local" "${WEB_REQUIRED_KEYS[@]}"
 check_file "$SCRAPER_ENV_FILE" "scraper.env" "${SCRAPER_REQUIRED_KEYS[@]}"
 
@@ -132,5 +163,8 @@ if [ "${#MISSING[@]}" -gt 0 ] || [ "${#BLANK[@]}" -gt 0 ]; then
   fi
   exit 1
 fi
+
+assert_slot_dsn "$WEB_ENV_FILE" "web.env.local"
+assert_slot_dsn "$SCRAPER_ENV_FILE" "scraper.env"
 
 echo "OK: all required keys present and non-blank in $WEB_ENV_FILE and $SCRAPER_ENV_FILE"
