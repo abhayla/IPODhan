@@ -13,6 +13,7 @@ import { listingPerformance } from '../db/schema';
 import type * as schema from '../db/schema';
 import { CacheTTL, getListingPerformanceKey } from '../cache/cache-keys';
 import { DatabaseError } from '../errors/repository-errors';
+import { formatDbCause } from '../errors/db-cause';
 import type {
   ListingPerformance,
   ListingPerformanceInsert,
@@ -78,8 +79,11 @@ export class ListingPerformanceRepository
 
       return result;
     } catch (error) {
+      // #139: name the IPO and inline the driver's diagnostics. The old message
+      // was a bare constant, so 243 identical log lines said nothing about which
+      // column or constraint Postgres actually rejected.
       throw new DatabaseError(
-        'Failed to upsert listing performance',
+        `Failed to upsert listing performance for IPO ${data.ipoId}: ${formatDbCause(error)}`,
         undefined,
         error
       );
