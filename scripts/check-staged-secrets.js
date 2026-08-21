@@ -8,8 +8,18 @@
 const { execSync } = require('child_process');
 
 // Placeholder shapes that are NOT secrets: <db-password>, ${VAR}, %VAR%,
-// process.env.X, your_password-style docs values, asterisk masking.
-const PLACEHOLDER = /<[^>]+>|\$\{[^}]+\}|%[A-Z_]+%|process\.env|your_|example|changeme|\*{3,}/i;
+// process.env.X, your_password-style docs values, asterisk masking, shell/PS
+// variable references ($VAR, $env:X), and the usual docs filler words.
+const PLACEHOLDER =
+  /<[^>]+>|\$\{[^}]+\}|%[A-Z_]+%|process\.env|your_|example|changeme|\*{3,}|^\$|^`|placeholder|redacted|dummy|REPLACE[_-]?ME|^x{3,}$/i;
+
+// Case-SENSITIVE: a value made only of lowercase letters (`something`, `secret`,
+// `yourpassword`) is docs filler, not a credential — real credentials mix
+// character classes. Trades a little detection (an all-lowercase weak password
+// slips through) for a gate that does not block routine documentation edits.
+const FILLER_WORD = /^[a-z]+$/;
+
+const isPlaceholder = (value) => PLACEHOLDER.test(value) || FILLER_WORD.test(value);
 
 const RULES = [
   {
@@ -19,7 +29,24 @@ const RULES = [
   },
   {
     name: 'PGPASSWORD literal',
-    re: /PGPASSWORD\s*=\s*["']?([^\s"';|&]{4,})/,
+    // `(`/`)`/`$` excluded so code like `PGPASSWORD=unquote(u.password or "")`
+    // is not mistaken for a literal.
+    re: /PGPASSWORD\s*=\s*["']?([^\s"';|&()$]{4,})(?![^\s"';|&$]*\()/,
+    secretGroup: 1,
+  },
+  {
+    // The shape of the original leak (issue #1): `password: 'literal'` in a
+    // client config. The connection-string rule never covered it, so the gate
+    // built in response to that leak would not have caught the leak itself.
+    name: 'hardcoded password assignment (quoted literal)',
+    re: /\b(?:db|pg|admin|root|user)?[_-]?(?:password|passwd|pwd)\b["']?\s*[:=]\s*["']([^"'\s]{6,})["']/i,
+    secretGroup: 1,
+  },
+  {
+    // Env/shell style: `DB_PASSWORD=literal` on its own. Uppercase-anchored so
+    // ordinary code (`const password = value`) is not swept up.
+    name: 'hardcoded password assignment (env style)',
+    re: /^[A-Z0-9_]*(?:PASSWORD|PASSWD|PWD)\s*=\s*([^\s"'#=]{6,})\s*$/,
     secretGroup: 1,
   },
   { name: 'AWS access key id', re: /\bAKIA[0-9A-Z]{16}\b/ },
@@ -50,7 +77,7 @@ for (const line of diff.split('\n')) {
     const m = added.match(rule.re);
     if (!m) continue;
     const candidate = rule.secretGroup ? m[rule.secretGroup] : null;
-    if (candidate && PLACEHOLDER.test(candidate)) continue;
+    if (candidate && isPlaceholder(candidate)) continue;
     if (PLACEHOLDER.test(added) && !candidate) continue;
     hits.push({ file, rule: rule.name });
   }
