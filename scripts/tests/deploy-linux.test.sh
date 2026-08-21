@@ -228,6 +228,69 @@ fi
 
 unset DEPLOY_ROOT
 
+# --- Case 9: T-262F — restart_pm2's dry-run emits the REAL pm2 command -----
+# --- sequence for the web app (delete THEN start against the new release's -
+# --- realpath), never `pm2 reload`. The checker that failed T-262 (#149) ---
+# --- found that the prior one-line "[dry-run] would: ..." summary gave the -
+# --- suite nothing to grep for — reverting delete+start back to `pm2 -------
+# --- reload` still passed all 16 assertions. These checks close that gap. -
+DELETE_LINE9="$(grep -n '^==> \[dry-run\] pm2 delete ipodhan-web$' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
+START_LINE9="$(grep -n '^==> \[dry-run\] pm2 start .*--name ipodhan-web ' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
+if [ -n "$DELETE_LINE9" ] && [ -n "$START_LINE9" ] && [ "$DELETE_LINE9" -lt "$START_LINE9" ]; then
+  pass "case 9: restart_pm2 dry-run emits 'pm2 delete ipodhan-web' before 'pm2 start ... --name ipodhan-web'"
+else
+  fail "case 9: expected 'pm2 delete ipodhan-web' then 'pm2 start ... --name ipodhan-web' in order (delete_line=$DELETE_LINE9 start_line=$START_LINE9)"
+  cat /tmp/deploy-test-1.log
+fi
+WEB_START_CMD9="$(sed -n "${START_LINE9}p" /tmp/deploy-test-1.log)"
+if printf '%s' "$WEB_START_CMD9" | grep -qE 'release=.*current$|release=/'; then
+  # The realpath is whatever mktemp produced for TARGET1 (case 1) — assert
+  # the logged 'release=' path is a real, existing directory, not a label.
+  RELEASE_PATH9="$(printf '%s' "$WEB_START_CMD9" | sed -n 's/.*release=\(.*\))$/\1/p')"
+  if [ -n "$RELEASE_PATH9" ] && [ -d "$RELEASE_PATH9" ]; then
+    pass "case 9: logged 'release=' path is the real release directory ($RELEASE_PATH9)"
+  else
+    fail "case 9: logged 'release=' path does not resolve to a real directory ($RELEASE_PATH9)"
+  fi
+else
+  fail "case 9: could not find 'release=<path>' in the logged pm2 start line: $WEB_START_CMD9"
+fi
+if grep -q 'pm2 reload' /tmp/deploy-test-1.log; then
+  fail "case 9: dry-run log contains 'pm2 reload' for the web app — must be delete+start, never reload"
+else
+  pass "case 9: dry-run log does NOT contain 'pm2 reload' anywhere"
+fi
+
+# --- Case 10: T-262F — the AUTO-ROLLBACK path (case 8's SHA-mismatch run) --
+# --- ALSO emits delete+start against PREVIOUS_RELEASE's realpath, never ----
+# --- reload. Before this fix the rollback's pm2 calls were gated entirely -
+# --- behind `if (( ! DRY_RUN ))`, so --dry-run tests had ZERO coverage of --
+# --- the rollback command shape — a revert to reload there would have -----
+# --- passed silently. -------------------------------------------------------
+# test-8-2.log contains TWO restart_pm2 sequences: the primary flip (against
+# the NEW/mismatched release) runs first, then AUTO-ROLLBACK's own delete+
+# start (against PREVIOUS_RELEASE) — take the SECOND occurrence of each.
+DELETE_LINE10="$(grep -n '^==> \[dry-run\] pm2 delete ipodhan-web$' /tmp/deploy-test-8-2.log | sed -n '2p' | cut -d: -f1)"
+START_LINE10="$(grep -n '^==> \[dry-run\] pm2 start .*--name ipodhan-web ' /tmp/deploy-test-8-2.log | sed -n '2p' | cut -d: -f1)"
+if [ -n "$DELETE_LINE10" ] && [ -n "$START_LINE10" ] && [ "$DELETE_LINE10" -lt "$START_LINE10" ]; then
+  pass "case 10: rollback dry-run emits 'pm2 delete ipodhan-web' before 'pm2 start ... --name ipodhan-web'"
+else
+  fail "case 10: expected rollback 'pm2 delete ipodhan-web' then 'pm2 start ... --name ipodhan-web' in order (delete_line=$DELETE_LINE10 start_line=$START_LINE10)"
+  cat /tmp/deploy-test-8-2.log
+fi
+WEB_START_CMD10="$(sed -n "${START_LINE10}p" /tmp/deploy-test-8-2.log)"
+ROLLBACK_RELEASE_PATH10="$(printf '%s' "$WEB_START_CMD10" | sed -n 's/.*release=\(.*\))$/\1/p')"
+if [ "$ROLLBACK_RELEASE_PATH10" = "$GOOD_RELEASE" ]; then
+  pass "case 10: rollback dry-run 'pm2 start' targets the previous good release ($GOOD_RELEASE)"
+else
+  fail "case 10: rollback dry-run 'pm2 start' targeted '$ROLLBACK_RELEASE_PATH10', expected '$GOOD_RELEASE'"
+fi
+if grep -q 'pm2 reload' /tmp/deploy-test-8-2.log; then
+  fail "case 10: rollback dry-run log contains 'pm2 reload' for the web app — must be delete+start, never reload"
+else
+  pass "case 10: rollback dry-run log does NOT contain 'pm2 reload' anywhere"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1

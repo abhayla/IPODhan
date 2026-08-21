@@ -423,11 +423,25 @@ SCRAPER_RESUME_TARGET="new"
 
 # --------------------------------------------------------- 9. restart + verify
 restart_pm2() {
+  local instances="${DEPLOY_WEB_INSTANCES:-2}"
   if (( DRY_RUN )); then
-    log "[dry-run] would: pm2 delete/start $PM2_WEB_APP and $PM2_SCRAPER_APP from $RELEASE_DIR"
+    # T-262F: emit the EXACT command sequence this function would run against
+    # a real box, so scripts/tests/deploy-linux.test.sh can assert on it —
+    # the checker that failed T-262 (#149) found that the old one-line
+    # "[dry-run] would: ..." summary gave the regression suite nothing to
+    # grep for, so reverting delete+start back to `pm2 reload` still passed
+    # all 16 assertions. These lines are the actual command shape, not a
+    # paraphrase: `pm2 delete <app>` followed by `pm2 start ... <realpath>`,
+    # and they MUST NOT contain `pm2 reload` for the web app (see the
+    # comment on the real branch below for why reload is wrong here).
+    local release_realpath
+    release_realpath="$(cd "$RELEASE_DIR" && pwd)"
+    log "[dry-run] pm2 delete $PM2_WEB_APP"
+    log "[dry-run] pm2 start next/dist/bin/next --name $PM2_WEB_APP -i $instances -- start (cwd=$release_realpath/web, release=$release_realpath)"
+    log "[dry-run] pm2 delete $PM2_SCRAPER_APP"
+    log "[dry-run] pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart --cron-restart=*/30_*_*_*_* -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
     return 0
   fi
-  local instances="${DEPLOY_WEB_INSTANCES:-2}"
   # T-262: delete+start, NOT `pm2 reload`, for the web app. `pm2 reload`
   # reuses the ALREADY-RUNNING process's original launch script/cwd — it
   # does not repoint a pinned script path to the NEW release directory.
@@ -510,7 +524,17 @@ if ! verify_public_health; then
     atomic_flip_current "$PREVIOUS_RELEASE"
     basename "$PREVIOUS_RELEASE" | sed 's/^[0-9]*-[0-9]*-//' > "$ROOT/DEPLOYED_SHA-$SLOT"
     SCRAPER_RESUME_TARGET="prev"
-    if (( ! DRY_RUN )); then
+    if (( DRY_RUN )); then
+      # T-262F: same reasoning as restart_pm2's dry-run branch — emit the
+      # exact rollback command sequence (delete+start, never reload) so the
+      # regression suite can assert on it. Without this, the rollback path
+      # had ZERO command-shape coverage in --dry-run: it was previously
+      # gated entirely behind `if (( ! DRY_RUN ))`, so a revert of THIS
+      # branch to `pm2 reload` was invisible to every dry-run test.
+      prev_realpath="$(cd "$PREVIOUS_RELEASE" && pwd)"
+      log "[dry-run] pm2 delete $PM2_WEB_APP"
+      log "[dry-run] pm2 start next/dist/bin/next --name $PM2_WEB_APP -i ${DEPLOY_WEB_INSTANCES:-2} -- start (cwd=$prev_realpath/web, release=$prev_realpath)"
+    else
       # T-262: delete+start here too — same reasoning as restart_pm2's
       # primary flip path. A rollback that used `pm2 reload` would leave
       # the live process wherever it already was instead of actually
