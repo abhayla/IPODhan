@@ -4,6 +4,17 @@ This directory contains the CI/CD workflows for the IPODhan project.
 
 ## Workflows
 
+### Deploy Linux (`deploy-linux.yml`)
+
+The **only** production deploy path. Runs on the `linux-vps-ipodhan` self-hosted runner and
+ships to the Linux VPS `72.61.240.224`. Prod deploys are an explicit `workflow_dispatch`;
+a push to the staging path deploys the staging slot only.
+
+> The Windows-era deploy (`deploy.yml`) and its four `vps-*.yml` maintenance workflows were
+> retired on 2026-08-21 (T-252) and moved to `.github/workflows-disabled/`, which GitHub does
+> not read. See that folder's README for what they did and how to restore one.
+
+
 ### PR Gate (`pr-gate.yml`)
 
 **Triggers:**

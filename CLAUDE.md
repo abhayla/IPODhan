@@ -213,8 +213,18 @@ export async function GET(request: NextRequest) {
 
 ## Production & Deployment
 
-- **Target:** Windows Server 2022 VPS (`103.118.16.189`), processes managed by PM2 (`ecosystem.config.js`): `ipodhan-web` (cluster x2, **port 3001** in prod), `ipodhan-scraper` (fork)
-- **Deploy:** GitHub Actions `deploy.yml`, manual `workflow_dispatch` only (with optional `skip_tests` for emergencies)
+- **Serving target (since the 2026-08 migration):** Linux VPS `72.61.240.224` — nginx + PM2
+  (`ipodhan-web` cluster x2, `ipodhan-scraper` one-shot on cron), behind Cloudflare.
+- **Deploy:** GitHub Actions `deploy-linux.yml`, on the `linux-vps-ipodhan` self-hosted runner.
+- **Database host:** the Windows VPS `103.118.16.189` still runs PostgreSQL 16 (and the Redis
+  instance AlgoChanakya uses). The app connects to it remotely as the least-privilege role
+  `ipodhan_app`; the `postgres` superuser is **localhost-only** and its password was rotated
+  (T-252, 2026-08-21). A nightly Windows scheduled task `IPODhan-DB-Backup` (02:00 IST) dumps,
+  restore-verifies, and copies the dump offsite to the Linux box.
+- **Retired:** the Windows deploy path. `deploy.yml` and the four `vps-*.yml` workflows now live
+  in `.github/workflows-disabled/` (inert — GitHub only reads `.github/workflows/`); the Windows
+  runner `windows-vps-ipodhan` is stopped. Windows-era runbooks under `docs/` and
+  `.claude/skills/windows-deployment-expert/` describe that retired path — read them as history.
 - **Shared package must be compiled before web/scraper builds:** `cd packages/shared && npx tsc` — CI verifies `dist/db/schema.d.ts` exists. If types from `@ipodhan/shared` seem stale locally, rebuild it.
 
 ---
