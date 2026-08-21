@@ -305,7 +305,7 @@ jobs:
               $trimmed = $line.Trim()
               if ($trimmed -match '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$') {
                 $key = $Matches[1]
-                $value = $Matches[2].Trim()
+                $value = $Matches[2].Trim().Trim('"').Trim("'").Trim()
                 if ($value.Length -gt 0) {
                   $nonBlank[$key] = $true
                 }
