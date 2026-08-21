@@ -63,13 +63,24 @@
 #   6. Health-probe the new release on a throwaway localhost port (`/` and
 #      `/api/health`) BEFORE the flip.
 #   7. Atomically flip `current`/`current-<SLOT>`, write DEPLOYED_SHA.
-#   8. `pm2 reload` the web app; `pm2 delete`+`start` the scraper app from
-#      the release's realpath (cron_restart re-arms it).
-#   9. Probe the public-facing health URL; on failure, AUTO-ROLLBACK to the
-#      previous release and restart PM2 against it.
+#   8. `pm2 delete`+`start` BOTH the web app and the scraper app from the
+#      release's realpath (cron_restart re-arms the scraper). T-262: NOT
+#      `pm2 reload` for the web app — reload reuses the already-running
+#      process's original script/cwd instead of repointing it, so it can
+#      leave the live process pinned to a stale release even after the
+#      flip (2026-08-22 staging 502 chain). See restart_pm2()'s comment.
+#   9. Probe the public-facing health URL AND cross-check /api/version's
+#      baked-in sha against the release just flipped to — a process still
+#      pinned to a stale release fails this even if /api/health returns
+#      200. On failure, AUTO-ROLLBACK to the previous release and restart
+#      PM2 (delete+start, same as above) against it.
 #  10. Resume the scraper against whichever release ended up live (new on
 #      success, old on rollback) — it is never left stopped.
-#  11. Prune to the last N releases (default 5), never deleting `current`.
+#  11. Prune to the last N releases (default 5). T-262: SLOT-AWARE — never
+#      deletes a release still referenced by ANY slot's `current`/
+#      `current-<slot>` link OR by a live `ipodhan-*` pm2 process's actual
+#      cwd (see collect_live_release_dirs()), not just this slot's own
+#      `current`.
 #
 # Usage:
 #   scripts/deploy-linux.sh <staging|prod>              # deploy local HEAD
@@ -83,7 +94,11 @@
 # Env overrides: DEPLOY_ROOT, DEPLOY_KEEP_RELEASES, DEPLOY_PROBE_PORT,
 # DEPLOY_MUTEX_MAX_WAIT_SECONDS, DEPLOY_MUTEX_POLL_SECONDS,
 # DEPLOY_HEALTH_TIMEOUT_SECONDS, DEPLOY_FAIL_BUILD (dry-run test hook — set
-# to force the "build" step to fail so the abort/no-flip path is exercised).
+# to force the "build" step to fail so the abort/no-flip path is exercised),
+# DEPLOY_DRYRUN_PM2_RELEASE_DIRS (dry-run test hook — colon-separated release
+# dirs to simulate as "still referenced by a live pm2 process" during
+# pruning), DEPLOY_DRYRUN_VERSION_MISMATCH (dry-run test hook — set to force
+# the post-flip /api/version sha check to simulate a mismatch).
 
 set -euo pipefail
 
@@ -255,12 +270,19 @@ resume_scraper() {
 }
 trap resume_scraper EXIT
 
-read_current_link() {
-  if [ -L "$CURRENT_LINK" ]; then
-    readlink "$CURRENT_LINK"
-  elif [ -f "$CURRENT_LINK" ]; then
-    cat "$CURRENT_LINK"
+# T-262: factored out of read_current_link() so collect_live_release_dirs()
+# can resolve ANY slot's current-link, not just this invocation's own.
+resolve_link_target() {
+  local link="$1"
+  if [ -L "$link" ]; then
+    readlink "$link"
+  elif [ -f "$link" ]; then
+    cat "$link"
   fi
+}
+
+read_current_link() {
+  resolve_link_target "$CURRENT_LINK"
 }
 
 # Atomically point $CURRENT_LINK at $1. `mv` over an existing symlink is a
@@ -402,13 +424,23 @@ SCRAPER_RESUME_TARGET="new"
 # --------------------------------------------------------- 9. restart + verify
 restart_pm2() {
   if (( DRY_RUN )); then
-    log "[dry-run] would: pm2 reload $PM2_WEB_APP; pm2 delete/start $PM2_SCRAPER_APP from $RELEASE_DIR"
+    log "[dry-run] would: pm2 delete/start $PM2_WEB_APP and $PM2_SCRAPER_APP from $RELEASE_DIR"
     return 0
   fi
   local instances="${DEPLOY_WEB_INSTANCES:-2}"
-  ( cd "$RELEASE_DIR/web" && pm2 reload "$PM2_WEB_APP" --update-env ) \
-    || ( cd "$RELEASE_DIR/web" && pm2 start "$(resolve_bin "$RELEASE_DIR" next/dist/bin/next)" --name "$PM2_WEB_APP" \
-           -i "$instances" -- start )
+  # T-262: delete+start, NOT `pm2 reload`, for the web app. `pm2 reload`
+  # reuses the ALREADY-RUNNING process's original launch script/cwd — it
+  # does not repoint a pinned script path to the NEW release directory.
+  # That is exactly what produced the 2026-08-22 staging 502 chain:
+  # `current-staging` flipped forward, `pm2 reload` reported success, but
+  # the live process kept serving out of the OLD release directory — which
+  # the next prune then deleted out from under it (the pruning-side half of
+  # this fix is collect_live_release_dirs() below). Delete+start guarantees
+  # the running process's script/cwd point at the release we just flipped
+  # `current` to, mirroring the scraper's existing delete+start semantics.
+  pm2 delete "$PM2_WEB_APP" >/dev/null 2>&1 || true
+  ( cd "$RELEASE_DIR/web" && pm2 start "$(resolve_bin "$RELEASE_DIR" next/dist/bin/next)" --name "$PM2_WEB_APP" \
+      -i "$instances" -- start )
   # Scraper is delete+start (not reload) on every deploy — it is a one-shot
   # fork process, not a long-lived server (pm2-scheduled-one-shot-scraper.md).
   # Exact script/args mirror the existing ecosystem.config.js entry so the
@@ -421,19 +453,51 @@ restart_pm2() {
 
 verify_public_health() {
   if (( DRY_RUN )); then
-    log "[dry-run] skipping post-flip public health probe"
+    if [ "${DEPLOY_DRYRUN_VERSION_MISMATCH:-0}" = "1" ]; then
+      echo "ERROR: [dry-run] simulated post-flip /api/version SHA mismatch (DEPLOY_DRYRUN_VERSION_MISMATCH=1)" >&2
+      return 1
+    fi
+    log "[dry-run] skipping post-flip public health/version probe"
     return 0
   fi
   local port; port="$(grep -E '^PORT=' "$WEB_ENV_FILE" | tail -n1 | cut -d= -f2-)"
   local waited=0 code=000
   while [ "$waited" -lt "$HEALTH_TIMEOUT" ]; do
     code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port:-3000}/api/health" || true)"
-    [ "$code" = "200" ] && { log "Post-flip health probe: HTTP $code"; return 0; }
+    [ "$code" = "200" ] && break
     sleep 1
     waited=$((waited + 1))
   done
-  echo "ERROR: post-flip health probe failed (HTTP $code) after ${HEALTH_TIMEOUT}s." >&2
-  return 1
+  if [ "$code" != "200" ]; then
+    echo "ERROR: post-flip health probe failed (HTTP $code) after ${HEALTH_TIMEOUT}s." >&2
+    return 1
+  fi
+  log "Post-flip health probe: HTTP $code"
+
+  # T-262: HONEST PROBE. A 200 from /api/health only proves *some* process
+  # is listening on the port — it does NOT prove that process is running
+  # THIS release. `pm2 reload`'s stale-pin bug (see restart_pm2's comment)
+  # used to let a probe like the one above pass every time even while the
+  # slot silently served a stale or dead build. Cross-check /api/version's
+  # build-time-baked sha (route.ts: NEXT_PUBLIC_BUILD_SHA, inlined at
+  # `next build` — see web/app/api/version/route.ts) against the release we
+  # just flipped to, so a stale-pin can never pass this gate again.
+  local version_json served_sha
+  version_json="$(curl -s "http://127.0.0.1:${port:-3000}/api/version" || true)"
+  served_sha="$(node -e '
+    try {
+      const j = JSON.parse(process.argv[1] || "{}");
+      process.stdout.write((j && j.data && j.data.sha) || "");
+    } catch {
+      process.stdout.write("");
+    }
+  ' "$version_json" 2>/dev/null || true)"
+  if [ "$served_sha" != "$SHORT_SHA" ]; then
+    echo "ERROR: post-flip /api/version SHA mismatch — served='$served_sha' expected='$SHORT_SHA' (stale pin, see restart_pm2's comment)." >&2
+    return 1
+  fi
+  log "Post-flip /api/version confirmed: served sha=$served_sha matches $SHORT_SHA"
+  return 0
 }
 
 log "Restarting PM2 apps"
@@ -447,7 +511,15 @@ if ! verify_public_health; then
     basename "$PREVIOUS_RELEASE" | sed 's/^[0-9]*-[0-9]*-//' > "$ROOT/DEPLOYED_SHA-$SLOT"
     SCRAPER_RESUME_TARGET="prev"
     if (( ! DRY_RUN )); then
-      ( cd "$PREVIOUS_RELEASE/web" && pm2 reload "$PM2_WEB_APP" --update-env ) || true
+      # T-262: delete+start here too — same reasoning as restart_pm2's
+      # primary flip path. A rollback that used `pm2 reload` would leave
+      # the live process wherever it already was instead of actually
+      # repointing it at PREVIOUS_RELEASE, defeating the rollback.
+      pm2 delete "$PM2_WEB_APP" >/dev/null 2>&1 || true
+      ( cd "$PREVIOUS_RELEASE/web" && pm2 start "$(resolve_bin "$PREVIOUS_RELEASE" next/dist/bin/next)" --name "$PM2_WEB_APP" \
+          -i "${DEPLOY_WEB_INSTANCES:-2}" -- start ) \
+        || warn "rollback: pm2 start failed for $PM2_WEB_APP against $PREVIOUS_RELEASE — investigate manually, do not assume it is running."
+      pm2 save >/dev/null 2>&1 || warn "rollback: pm2 save failed — a reboot may not restore the rolled-back release."
     fi
     echo "Rolled back to the previous release. Investigate before re-deploying." >&2
     exit 1
@@ -475,8 +547,56 @@ else
   log "pm2 process list saved (boot-restore points at $RELEASE_NAME)"
 fi
 
+# T-262: pruning must never delete a release that is still LIVE somewhere —
+# not just "this slot's `current`". A release stays live if (a) ANY slot's
+# `current`/`current-<slot>` link still points at it, or (b) a running
+# `ipodhan-*` pm2 process's actual cwd is still inside it. (b) is what the
+# 2026-08-22 staging 502 chain hit: `current-staging` had already flipped
+# forward, but the live process — left pinned to the old release by
+# `pm2 reload`'s stale-pin bug (see restart_pm2's comment) — was still
+# serving out of a directory that no longer matched `current`, and prune
+# deleted it out from under the live process because it only ever checked
+# `current`. restart_pm2 is now delete+start (fixing (b) going forward),
+# but this check stays as defense in depth against ANY other way a live
+# process's cwd could drift from the current-link.
+collect_live_release_dirs() {
+  local link target
+  for link in "$ROOT"/current "$ROOT"/current-*; do
+    [ -L "$link" ] || [ -f "$link" ] || continue
+    target="$(resolve_link_target "$link")"
+    [ -n "$target" ] && printf '%s\n' "$target"
+  done
+
+  if (( DRY_RUN )); then
+    if [ -n "${DEPLOY_DRYRUN_PM2_RELEASE_DIRS:-}" ]; then
+      local d
+      local IFS=':'
+      for d in $DEPLOY_DRYRUN_PM2_RELEASE_DIRS; do
+        printf '%s\n' "$d"
+      done
+    fi
+    return 0
+  fi
+
+  pm2 jlist 2>/dev/null | node -e '
+    const apps = JSON.parse(require("fs").readFileSync(0, "utf8"));
+    for (const a of apps) {
+      const name = a && a.name;
+      const cwd = a && a.pm2_env && a.pm2_env.pm_cwd;
+      if (name && cwd && name.indexOf("ipodhan-") === 0) {
+        process.stdout.write(cwd + "\n");
+      }
+    }
+  ' 2>/dev/null | while IFS= read -r cwd; do
+    if [ -n "$cwd" ]; then
+      dirname "$cwd"
+    fi
+  done || true
+}
+
 log "Pruning old releases (keeping the newest $KEEP_RELEASES)"
 CUR="$(read_current_link || true)"
+mapfile -t LIVE_REFS < <(collect_live_release_dirs)
 if [ -d "$RELEASES_DIR" ]; then
   # shellcheck disable=SC2012  # release dir names are timestamp_sha, plain alphanumeric — ls is safe
   TOTAL="$(cd "$RELEASES_DIR" && ls -1 | LC_ALL=C sort | wc -l)"
@@ -484,8 +604,21 @@ if [ -d "$RELEASES_DIR" ]; then
     cd "$RELEASES_DIR"
     # shellcheck disable=SC2012  # release dir names are timestamp_sha, plain alphanumeric — ls is safe
     ls -1 | LC_ALL=C sort | head -n "$((TOTAL - KEEP_RELEASES))" | while IFS= read -r old; do
-      if [ "$RELEASES_DIR/$old" = "$CUR" ]; then
+      old_path="$RELEASES_DIR/$old"
+      if [ "$old_path" = "$CUR" ]; then
         log "keeping $old (it is 'current')"
+        continue
+      fi
+      referenced=0
+      for ref in "${LIVE_REFS[@]}"; do
+        [ -n "$ref" ] || continue
+        if [ "$ref" = "$old_path" ]; then
+          referenced=1
+          break
+        fi
+      done
+      if [ "$referenced" -eq 1 ]; then
+        log "keeping $old (still referenced by a live current-link or pm2 process — T-262 slot-safe prune)"
         continue
       fi
       log "removing $old"

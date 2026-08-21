@@ -145,6 +145,89 @@ fi
 
 unset DEPLOY_ROOT DEPLOY_MUTEX_MAX_WAIT_SECONDS DEPLOY_MUTEX_POLL_SECONDS DEPLOY_KEEP_RELEASES DEPLOY_FAIL_BUILD DEPLOY_DRYRUN_SCRAPER_STATUS
 
+# --- Case 7: T-262 slot-safe prune — a release still referenced by a live --
+# --- pm2 process (not just `current`) survives a prune that removes an -----
+# --- unreferenced one. Reproduces the 2026-08-22 staging 502 shape: a ------
+# --- release the running process is still pinned to must never be pruned --
+# --- just because `current` has moved on. -----------------------------------
+ROOT7="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT7"
+export DEPLOY_KEEP_RELEASES=2
+
+bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-7-1.log 2>&1 \
+  || { fail "case 7: deploy #1 failed"; cat /tmp/deploy-test-7-1.log; }
+RELEASE1="$(current_target "$ROOT7/current")"
+sleep 1.1
+
+bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-7-2.log 2>&1 \
+  || { fail "case 7: deploy #2 failed"; cat /tmp/deploy-test-7-2.log; }
+RELEASE2="$(current_target "$ROOT7/current")"
+sleep 1.1
+
+# Simulate a live pm2 process still pinned to RELEASE1 (as `pm2 reload`'s
+# stale-pin bug used to leave it) even though `current` has moved past it.
+export DEPLOY_DRYRUN_PM2_RELEASE_DIRS="$RELEASE1"
+
+bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-7-3.log 2>&1 \
+  || { fail "case 7: deploy #3 failed"; cat /tmp/deploy-test-7-3.log; }
+sleep 1.1
+bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-7-4.log 2>&1 \
+  || { fail "case 7: deploy #4 failed"; cat /tmp/deploy-test-7-4.log; }
+
+# 4 releases now exist, KEEP=2 -> releases 1 and 2 are prune candidates.
+# RELEASE1 is "pm2-referenced" (must survive); RELEASE2 is not (must be pruned).
+if [ -d "$RELEASE1" ]; then
+  pass "case 7: pm2-referenced release survived the prune even though 'current' moved past it"
+else
+  fail "case 7: pm2-referenced release $RELEASE1 was PRUNED — slot-safety regression"
+fi
+if [ ! -d "$RELEASE2" ]; then
+  pass "case 7: unreferenced release was pruned as expected"
+else
+  fail "case 7: unreferenced release $RELEASE2 survived — prune is not trimming correctly"
+fi
+
+unset DEPLOY_ROOT DEPLOY_KEEP_RELEASES DEPLOY_DRYRUN_PM2_RELEASE_DIRS
+
+# --- Case 8: honest probe — a simulated /api/version SHA mismatch fails ----
+# --- the deploy and triggers auto-rollback, even though /api/health would --
+# --- have reported 200 (the exact gap `pm2 reload`'s stale-pin bug opened) -
+ROOT8="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT8"
+
+bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-8-1.log 2>&1 \
+  || { fail "case 8: deploy #1 (good) failed"; cat /tmp/deploy-test-8-1.log; }
+GOOD_RELEASE="$(current_target "$ROOT8/current")"
+sleep 1.1
+
+DEPLOY_DRYRUN_VERSION_MISMATCH=1 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-8-2.log 2>&1
+RC=$?
+if [ "$RC" -ne 0 ]; then
+  pass "case 8: simulated SHA mismatch exits non-zero"
+else
+  fail "case 8: simulated SHA mismatch exited 0 (expected failure)"
+fi
+if grep -q "SHA mismatch" /tmp/deploy-test-8-2.log; then
+  pass "case 8: script logged the /api/version SHA mismatch"
+else
+  fail "case 8: expected 'SHA mismatch' message not found in output"
+  cat /tmp/deploy-test-8-2.log
+fi
+if grep -q "AUTO-ROLLBACK" /tmp/deploy-test-8-2.log; then
+  pass "case 8: mismatch triggered AUTO-ROLLBACK"
+else
+  fail "case 8: expected 'AUTO-ROLLBACK' not found in output"
+  cat /tmp/deploy-test-8-2.log
+fi
+AFTER_TARGET8="$(current_target "$ROOT8/current")"
+if [ "$AFTER_TARGET8" = "$GOOD_RELEASE" ]; then
+  pass "case 8: 'current' rolled back to the last good release ($GOOD_RELEASE)"
+else
+  fail "case 8: 'current' did NOT roll back to the good release (expected=$GOOD_RELEASE actual=$AFTER_TARGET8)"
+fi
+
+unset DEPLOY_ROOT
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1
