@@ -445,6 +445,17 @@ fi
 trap - EXIT
 
 # ------------------------------------------------------------------- 10. prune
+# T-243: persist the process list so a reboot resurrects THIS release. Without
+# it, `pm2 resurrect` restores whatever list was last saved - on a fresh box
+# that meant the IPODhan apps were absent entirely, and after any deploy it
+# would mean pm2 restarting an older, possibly pruned, release directory.
+if (( DRY_RUN )); then
+  log "[dry-run] would run pm2 save"
+else
+  pm2 save >/dev/null 2>&1 || warn "pm2 save failed - a reboot may not restore this release."
+  log "pm2 process list saved (boot-restore points at $RELEASE_NAME)"
+fi
+
 log "Pruning old releases (keeping the newest $KEEP_RELEASES)"
 CUR="$(read_current_link || true)"
 if [ -d "$RELEASES_DIR" ]; then
