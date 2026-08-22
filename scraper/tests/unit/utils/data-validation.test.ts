@@ -155,3 +155,65 @@ describe('validateIPOData — Rule 8 NON_IPO_SCRIP_CODE_NAME (issue #140)', () =
     expect(result.errors.map((e) => e.rule)).not.toContain('NON_IPO_SCRIP_CODE_NAME');
   });
 });
+
+describe('validateIPOData — Rule 8 NON_IPO_TRUST_SHAPE (P2-2, T-277)', () => {
+  it('rejects an InvIT trust shape written with offeringType=IPO (Cube Highways Trust InvIT shape)', () => {
+    const result = validateIPOData(
+      {
+        companyName: 'Cube Highways Trust (Cube Highways Trust InvIT)',
+        offeringType: 'IPO',
+        segment: 'MAINBOARD',
+        priceRangeMin: 152,
+        priceRangeMax: 152,
+      },
+      'CHITTORGARH'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors.map((e) => e.rule)).toContain('NON_IPO_TRUST_SHAPE');
+  });
+
+  it('rejects a REIT trust shape written with offeringType=IPO', () => {
+    const result = validateIPOData(
+      {
+        companyName: 'Bagmane Prime Office REIT',
+        offeringType: 'IPO',
+        segment: 'MAINBOARD',
+      },
+      'CHITTORGARH'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors.map((e) => e.rule)).toContain('NON_IPO_TRUST_SHAPE');
+  });
+
+  it('does NOT flag a trust name once auto-fixed away from IPO by Rule 2', () => {
+    // Rule 2 (offering-type detection) sets autoFixes.offeringType='INVITS' with
+    // HIGH confidence for this exact name, so the effective type is no longer
+    // 'IPO' by the time Rule 8 runs — this is the normal, already-working path.
+    const result = validateIPOData(
+      {
+        companyName: 'Citius Transnet InvIT',
+        offeringType: 'IPO',
+        segment: 'MAINBOARD',
+      },
+      'CHITTORGARH'
+    );
+    expect(result.errors.map((e) => e.rule)).not.toContain('NON_IPO_TRUST_SHAPE');
+    expect(result.autoFixes?.offeringType).toBe('INVITS');
+  });
+
+  it('does NOT flag a normal equity IPO with no trust/REIT signal', () => {
+    const result = validateIPOData(
+      {
+        companyName: 'Tempsens Instruments (India) Ltd.',
+        offeringType: 'IPO',
+        segment: 'MAINBOARD',
+        priceRangeMin: 285,
+        priceRangeMax: 300,
+        lotSize: 50,
+        issueSize: '6500000000.00',
+      },
+      'BSE'
+    );
+    expect(result.errors.map((e) => e.rule)).not.toContain('NON_IPO_TRUST_SHAPE');
+  });
+});

@@ -51,6 +51,14 @@ export function sanitizeDisplayCompanyName(name: string | null | undefined): str
  * JS normalizer. Lowercase, trim, strip a trailing 1-2 letter status code that
  * some sources append after the legal suffix (#16), strip IPO/FPO + legal
  * suffixes, collapse whitespace.
+ *
+ * P2-1 (round-2 review): a period-joined suffix ("Engg.Ltd."), an ampersand
+ * variant ("X & Y" vs "X and Y"), a redundant trailing parenthetical
+ * ("Ltd. (Company Name IPO)"), or a mid-string paren/hyphen ("(India)",
+ * "Indo-MIM" vs "INDO MIM") must NOT mint a second identity for the same
+ * company — fold all of these to a common token before the legal-suffix
+ * chain runs, so a re-scrape's slug/normalized-name lookup finds the
+ * existing row instead of inserting a duplicate.
  */
 export function normalizeCompanyNameForMatching(companyName: string): string {
   if (!companyName) return '';
@@ -61,6 +69,17 @@ export function normalizeCompanyNameForMatching(companyName: string): string {
     // Strip a trailing 1-2 letter status/category code appended AFTER the legal
     // suffix (e.g. "Ltd. O", "Ltd. LT") — scrape artifacts (#16).
     .replace(/(\bltd\.?|\blimited)\s+[a-z]{1,2}$/i, '$1')
+    // Punctuation normalization (P2-1) — do this BEFORE the suffix chain so a
+    // period-joined suffix or an "&"-vs-"and" variant lines up with its sibling.
+    .replace(/\./g, ' ')
+    .replace(/&/g, ' and ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    // Strip a trailing parenthetical block ("(Company Name IPO)") BEFORE the
+    // legal-suffix chain — scrapers sometimes append a redundant descriptive
+    // suffix in parens after the real legal suffix.
+    .replace(/\s*\([^)]*\)\s*$/, '')
+    .trim()
     .replace(/\s+ipo$/i, '')
     .replace(/\s+fpo$/i, '')
     .replace(/\s+limited$/i, '')
@@ -76,6 +95,11 @@ export function normalizeCompanyNameForMatching(companyName: string): string {
     .replace(/\s+llc$/i, '')
     .replace(/\s+llp$/i, '')
     .replace(/\s+plc$/i, '')
+    // Any remaining parens (mid-string, e.g. "(India)") and hyphens are
+    // separators, not semantic content — fold to spaces so "Indo-MIM" and
+    // "INDO MIM", or "Gulf Lloyds (India)" and "Gulf Lloyds India", agree.
+    .replace(/[()]/g, ' ')
+    .replace(/-/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -89,7 +113,8 @@ export function normalizeCompanyNameForMatching(companyName: string): string {
  */
 export function normalizedCompanyNameSql(input: SQL): SQL {
   return sql`LOWER(
-    TRIM(
+  TRIM(
+    REGEXP_REPLACE(
       REGEXP_REPLACE(
         REGEXP_REPLACE(
           REGEXP_REPLACE(
@@ -99,25 +124,76 @@ export function normalizedCompanyNameSql(input: SQL): SQL {
                   REGEXP_REPLACE(
                     REGEXP_REPLACE(
                       REGEXP_REPLACE(
-                        ${input},
-                        '(Ltd\\.?|Limited)\\s+[A-Za-z]{1,2}$', '\\1', 'i'
+                        REGEXP_REPLACE(
+                          REGEXP_REPLACE(
+                            REGEXP_REPLACE(
+                              REGEXP_REPLACE(
+                                REGEXP_REPLACE(
+                                  REGEXP_REPLACE(
+                                    ${input},
+                                      '(Ltd\\.?|Limited)\\s+[A-Za-z]{1,2}$',
+                                      '\\1',
+                                      'i'
+                                  ),
+                                    '\\.',
+                                    ' ',
+                                    'g'
+                                ),
+                                  '&',
+                                  ' and ',
+                                  'g'
+                              ),
+                                '\\s+',
+                                ' ',
+                                'g'
+                            ),
+                              '^\\s+|\\s+$',
+                              '',
+                              'g'
+                          ),
+                            '\\s*\\([^)]*\\)\\s*$',
+                            ''
+                        ),
+                          '\\s+(IPO|FPO)$',
+                          '',
+                          'i'
                       ),
-                      '\\s+(IPO|FPO)$', '', 'i'
+                        '\\s+(Limited|Ltd\\.?)$',
+                        '',
+                        'i'
                     ),
-                    '\\s+(Limited|Ltd\\.?)$', '', 'i'
+                      '\\s+(Private\\s+Limited|Pvt\\.?\\s+Ltd\\.?)$',
+                      '',
+                      'i'
                   ),
-                  '\\s+(Private\\s+Limited|Pvt\\.?\\s+Ltd\\.?)$', '', 'i'
+                    '\\s+(Pvt\\.?|Private)$',
+                    '',
+                    'i'
                 ),
-                '\\s+(Pvt\\.?|Private)$', '', 'i'
+                  '\\s+(Inc\\.?|Incorporated)$',
+                  '',
+                  'i'
               ),
-              '\\s+(Inc\\.?|Incorporated)$', '', 'i'
+                '\\s+(Corp\\.?|Corporation)$',
+                '',
+                'i'
             ),
-            '\\s+(Corp\\.?|Corporation)$', '', 'i'
+              '\\s+(LLC|LLP|PLC)$',
+              '',
+              'i'
           ),
-          '\\s+(LLC|LLP|PLC)$', '', 'i'
+            '[()]',
+            ' ',
+            'g'
         ),
-        '\\s+', ' ', 'g'
-      )
+          '-',
+          ' ',
+          'g'
+      ),
+        '\\s+',
+        ' ',
+        'g'
     )
-  )`;
+  )
+)`;
 }

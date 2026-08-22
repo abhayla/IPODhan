@@ -67,6 +67,29 @@ const FIXTURE: string[] = [
   'Bansal Wire Industries Limited',
   'Tolins Tyres Ltd FPO',
   'Orient Technologies Pvt',
+  // P2-1 (T-277) — the round-2 review's 11 real-world duplicate-pair names:
+  // ampersand variance, period-joined suffixes, redundant trailing
+  // parentheticals, and mid-string hyphens/parens.
+  'Caliber Mining & Logistics Ltd.',
+  'Caliber Mining and Logistics',
+  'Gulf Lloyds India',
+  'Gulf Lloyds (India) Ltd.',
+  'G V Electricals',
+  'G.V.Electricals Ltd. (G.V. Electricals IPO)',
+  'H R Hygiene Products',
+  'H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO)',
+  'INDO MIM Limited',
+  'Indo-MIM Ltd.',
+  'Laser Power & Infra Ltd.',
+  'Laser Power and Infra',
+  'Poojaa Precision Engg',
+  'Poojaa Precision Engg.Ltd.',
+  'Propshop Events and Exhibitions',
+  'Propshop Events & Exhibitions Ltd.',
+  'Shree Balaji (Mala) Textiles Limited',
+  'Shree Balaji (Mala) Textiles Ltd. (Shree Balaji Mala IPO)',
+  'Silverstorm Parks and Resorts',
+  'Silverstorm Parks & Resorts Ltd.',
 ];
 
 describe('company-name normalizer — JS ↔ SQL agreement (A3)', () => {
