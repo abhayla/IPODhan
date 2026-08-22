@@ -16,7 +16,7 @@
  */
 
 import { Metadata } from 'next';
-import { notFound } from 'next/navigation';
+import { notFound, permanentRedirect } from 'next/navigation';
 import Script from 'next/script';
 import { IPOHeader } from '@/components/ipo/IPOHeader';
 import { IPOTimelineWidget } from '@/components/ipo/IPOTimelineWidget';
@@ -169,6 +169,16 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   const redis = getRedisClient();
   const ipoRepository = new IPORepository(db, redis);
   const reviewRepository = new ReviewRepository(db, redis);
+
+  // A retired slug (name-pollution cleanup, dedup merge, admin rename) 308s to
+  // its IPO's current slug instead of falling through to fuzzy/404 (P3-1, T-278).
+  // permanentRedirect() (not redirect()) is required for a real 308 — Next
+  // 15.5.4's redirect() throws RedirectStatusCode.TemporaryRedirect (307),
+  // which keeps the retired URL indexed and transfers no link equity (T-278F).
+  const redirectSlug = await ipoRepository.findRedirectSlug(slug);
+  if (redirectSlug && redirectSlug !== slug) {
+    permanentRedirect(`/ipos/${redirectSlug}`);
+  }
 
   // Fetch IPO data using repository pattern (with fuzzy fallback)
   const ipoWithRelations = await ipoRepository.findBySlugWithFallback(slug, {

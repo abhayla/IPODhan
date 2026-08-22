@@ -1004,4 +1004,102 @@ describe('IPORepository', () => {
       ).rejects.toThrow('Failed to fetch historical IPO list');
     });
   });
+
+  describe('findRedirectSlug', () => {
+    // T-278F (checker finding #3): a currently-LIVE ipos.slug must never be
+    // shadowed by a stale ipo_slug_redirects row — prod observed a cron cycle
+    // re-mint a new IPO under an already-retired slug before the fix deployed.
+    it('returns null WITHOUT consulting the redirect table when oldSlug is a live ipos.slug', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+
+      const liveSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([{ id: 'live-ipo-id' }]),
+      };
+      mockDb.select = vi.fn().mockReturnValue(liveSelect);
+
+      const result = await repository.findRedirectSlug('shadowed-slug');
+
+      expect(result).toBeNull();
+      // Only the live-slug check ran — no second query against ipo_slug_redirects.
+      expect(mockDb.select).toHaveBeenCalledTimes(1);
+    });
+
+    it('returns the redirect target when oldSlug is retired (not live) and a redirect row exists', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+
+      const liveSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]), // not live
+      };
+      const redirectSelect = {
+        from: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([{ currentSlug: 'clean-slug' }]),
+      };
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(liveSelect)
+        .mockReturnValueOnce(redirectSelect);
+
+      const result = await repository.findRedirectSlug('retired-slug');
+
+      expect(result).toBe('clean-slug');
+      expect(mockDb.select).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns null when oldSlug is retired but was never redirected', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+
+      const liveSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      const redirectSelect = {
+        from: vi.fn().mockReturnThis(),
+        innerJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([]),
+      };
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(liveSelect)
+        .mockReturnValueOnce(redirectSelect);
+
+      const result = await repository.findRedirectSlug('never-redirected-slug');
+
+      expect(result).toBeNull();
+    });
+
+    // T-278F2 (checker round 2 finding): a poisoned/stale `ipo:slug-redirect:*`
+    // cache entry must NOT be able to shadow a currently-live slug. Round 1's
+    // guard sat inside the getFromCache miss callback, so a cache HIT skipped
+    // it entirely. Checker reproduced: plant the cache key -> 200 becomes 308
+    // -> delete the key -> back to 200. Reproduce the exact "plant the cache
+    // key" scenario here: mock a cache HIT returning a redirect target for a
+    // slug that is ALSO live in ipos.slug, and assert the guard still wins.
+    it('never returns a redirect target for a live slug even when the redirect cache is poisoned (plant-the-cache-key)', async () => {
+      // Simulate a planted/stale cache entry claiming oldSlug redirects somewhere.
+      mockRedis.get = vi.fn().mockResolvedValue(JSON.stringify('poisoned-target-slug'));
+
+      const liveSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([{ id: 'live-ipo-id' }]),
+      };
+      mockDb.select = vi.fn().mockReturnValue(liveSelect);
+
+      const result = await repository.findRedirectSlug('shadowed-slug');
+
+      expect(result).toBeNull();
+      // The live-slug guard must run BEFORE the cache is ever consulted, so a
+      // poisoned cache entry is never reached — redis.get must not be called.
+      expect(mockRedis.get).not.toHaveBeenCalled();
+      expect(mockDb.select).toHaveBeenCalledTimes(1);
+    });
+  });
 });

@@ -29,6 +29,7 @@ export const CacheTTL = {
   REFERENCE: 604800, // 7 days - registrars, holidays, sectors (static data)
   ANCHOR_INVESTOR: 86400, // 24 hours (Story 11.10 requirement)
   REVIEW_SUMMARY: 900, // 15 minutes (Story 11.16 requirement)
+  SLUG_REDIRECT: 604800, // 7 days — retired slugs are immutable once written (P3-1, T-278)
 } as const;
 
 /**
@@ -43,6 +44,13 @@ export function getIPOBySlugKey(slug: string): string {
  */
 export function getIPODetailKey(slug: string): string {
   return `ipo:detail:${slug}`;
+}
+
+/**
+ * Generate cache key for a retired-slug redirect lookup (P3-1, T-278)
+ */
+export function getSlugRedirectKey(oldSlug: string): string {
+  return `ipo:slug-redirect:${oldSlug}`;
 }
 
 /**

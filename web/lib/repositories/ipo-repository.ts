@@ -38,6 +38,7 @@ import {
   getIPOSearchKey,
   getHistoricalIPOsKey,
   getFuzzySearchKey,
+  getSlugRedirectKey,
 } from '../cache/cache-keys';
 import { parseNaiveTimestampAsUtc } from '../../../packages/shared/src/db/timezone-config';
 import {
@@ -1140,6 +1141,60 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         }
       },
       CacheTTL.HISTORICAL_IPOS
+    );
+  }
+
+  /**
+   * Look up a retired slug's live redirect target (P3-1, T-278). Returns the
+   * CURRENT slug of the IPO it now belongs to, or null if `oldSlug` was never
+   * retired. Reads `ipos.slug` fresh at request time so a redirect never goes
+   * stale if the target is renamed again later.
+   *
+   * Guard (T-278F, checker finding #3 round 2): a stale scraper write path can
+   * re-mint a NEW live IPO reusing an old, already-redirected slug (observed
+   * in prod: 5 rows re-created under a retired slug by a cron cycle that
+   * hadn't picked up the P3-1 name-pollution fix yet). A currently-live slug
+   * MUST NEVER be shadowed by a redirect row.
+   *
+   * The live-row check runs UNCACHED and BEFORE the redirect cache is even
+   * consulted — round 1 put it inside the `getFromCache` miss callback, which
+   * a planted/poisoned `ipo:slug-redirect:*` cache key skips entirely (a
+   * cache HIT returns the stored value without ever running the callback).
+   * Checker reproduced this: plant the cache key -> 308 on a live slug ->
+   * delete the key -> 200 again. Running the guard first makes it impossible
+   * to bypass via cache state, by construction, regardless of TTL.
+   *
+   * No cache invalidation was added for `ipo:slug-redirect:*` on IPO slug
+   * writes (the simpler correct option here): the cached branch below only
+   * ever stores the `ipoSlugRedirects` -> currentSlug mapping, which is
+   * immutable once a redirect row is written (see CacheTTL.SLUG_REDIRECT's
+   * own "retired slugs are immutable once written" comment) — and even a
+   * stale/wrong cached mapping can no longer shadow a live slug, because the
+   * live check above already returned null before the cache was ever read.
+   */
+  async findRedirectSlug(oldSlug: string): Promise<string | null> {
+    const [live] = await this.db
+      .select({ id: ipos.id })
+      .from(ipos)
+      .where(eq(ipos.slug, oldSlug))
+      .limit(1);
+    if (live) return null;
+
+    const cacheKey = getSlugRedirectKey(oldSlug);
+
+    return this.getFromCache(
+      cacheKey,
+      async () => {
+        const [row] = await this.db
+          .select({ currentSlug: ipos.slug })
+          .from(schema.ipoSlugRedirects)
+          .innerJoin(ipos, eq(schema.ipoSlugRedirects.ipoId, ipos.id))
+          .where(eq(schema.ipoSlugRedirects.oldSlug, oldSlug))
+          .limit(1);
+
+        return row?.currentSlug ?? null;
+      },
+      CacheTTL.SLUG_REDIRECT
     );
   }
 
