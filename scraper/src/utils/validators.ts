@@ -190,6 +190,14 @@ export const ScrapedSubscriptionSchema = z.object({
   sNIISubscription: z.number().min(0).optional(),
   retailHNISubscription: z.number().min(0).optional(),
   retailOthersSubscription: z.number().min(0).optional(),
+  // Share counts behind the multiples (NSE ships these on the Total row).
+  totalSharesBid: z.number().int().min(0).optional(),
+  sharesOffered: z.number().int().min(0).optional(),
+  // T-266: how much of the market this figure covers. CONSOLIDATED = both
+  // exchange books (NSE /api/ipo-active-category); EXCHANGE_ONLY = one book
+  // (NSE /api/ipo-current-issue, or the BSE API). A partial figure must never
+  // be published as the whole-market number - see data-persister.ts.
+  coverage: z.enum(['CONSOLIDATED', 'EXCHANGE_ONLY']).optional(),
   timestamp: z.string().refine(
     (date) => !isNaN(Date.parse(date)),
     'Timestamp must be a valid ISO 8601 date string'

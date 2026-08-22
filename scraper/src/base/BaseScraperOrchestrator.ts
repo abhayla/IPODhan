@@ -509,12 +509,15 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
           const subscriptionValidation = this.validateSubscription(relatedSubscription);
 
           if (subscriptionValidation.success) {
-            await createSubscriptionSnapshot(
+            const snapshotId = await createSubscriptionSnapshot(
               this.subscriptionRepository,
               upsertedIPOId,
-              subscriptionValidation.data!
+              subscriptionValidation.data!,
+              { source: scraperName }
             );
-            processResult.subscriptionCreated = true;
+            // null = suppressed because a consolidated snapshot already landed
+            // this run (T-266); that is a correct outcome, not a failure.
+            processResult.subscriptionCreated = snapshotId !== null;
           } else {
             logger.warn(
               {

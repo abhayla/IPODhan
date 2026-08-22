@@ -4,6 +4,10 @@ import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { generateSlug, sanitizeCompanyName, coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeIpoWriteFields } from '../utils/validators.js';
 import { isDateSequenceCoherent } from './ipo-date-plausibility.js';
+import {
+  markConsolidatedSubscription,
+  shouldPersistSubscriptionSnapshot,
+} from './subscription-coverage-registry.js';
 import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { validateLotSize } from '../utils/lot-size-validator.js';
 import { resolveOfferingTypeKeepingClassification } from '../utils/detect-offering-type.js';
@@ -492,9 +496,18 @@ export async function upsertIPO(
 export async function createSubscriptionSnapshot(
   subscriptionRepository: SubscriptionRepository,
   ipoId: string,
-  scrapedSubscription: ScrapedSubscription
-): Promise<string> {
+  scrapedSubscription: ScrapedSubscription,
+  options: { source?: string } = {}
+): Promise<string | null> {
   const startTime = Date.now();
+
+  // T-266: never let a one-exchange figure supersede the whole-market one.
+  if (!shouldPersistSubscriptionSnapshot(ipoId, scrapedSubscription.coverage, {
+    companyName: scrapedSubscription.ipoCompanyName,
+    source: options.source,
+  })) {
+    return null;
+  }
 
   logger.debug({
     ipoId,
@@ -521,7 +534,10 @@ export async function createSubscriptionSnapshot(
         bNIISubscription: scrapedSubscription.bNIISubscription?.toString(),
         sNIISubscription: scrapedSubscription.sNIISubscription?.toString(),
         retailHNISubscription: scrapedSubscription.retailHNISubscription?.toString(),
-        retailOthersSubscription: scrapedSubscription.retailOthersSubscription?.toString()
+        retailOthersSubscription: scrapedSubscription.retailOthersSubscription?.toString(),
+        // T-266: the share counts behind the multiples, when the source ships them.
+        totalSharesBid: scrapedSubscription.totalSharesBid,
+        sharesOffered: scrapedSubscription.sharesOffered
       };
 
       // Validate foreign key constraint (IPO must exist) before insert (AC4)
@@ -550,12 +566,18 @@ export async function createSubscriptionSnapshot(
     `Create subscription snapshot for IPO: ${ipoId}`
   );
 
+  if (scrapedSubscription.coverage === 'CONSOLIDATED') {
+    markConsolidatedSubscription(ipoId);
+  }
+
   const duration = Date.now() - startTime;
   logger.info(
     {
       ipoId,
       subscriptionId: result,
       companyName: scrapedSubscription.ipoCompanyName,
+      coverage: scrapedSubscription.coverage ?? 'unlabelled',
+      total: scrapedSubscription.totalSubscription,
       duration
     },
     'Subscription snapshot created successfully (AC4, AC6)'

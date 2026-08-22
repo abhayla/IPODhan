@@ -262,12 +262,13 @@ export async function runBSEScraper(): Promise<ScraperResult> {
             const subscriptionValidation = validateSubscriptionData(relatedSubscription);
 
             if (subscriptionValidation.success) {
-              await createSubscriptionSnapshot(
+              const snapshotId = await createSubscriptionSnapshot(
                 subscriptionRepository,
                 ipoId,
-                subscriptionValidation.data!
+                subscriptionValidation.data!,
+                { source: 'BSE' }
               );
-              result.subscriptionsCreated++;
+              if (snapshotId !== null) result.subscriptionsCreated++;
 
               // Note: Subscription cache invalidation will be handled by comprehensive invalidation
             } else {
