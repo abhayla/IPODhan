@@ -8,6 +8,7 @@
 
 import { safeDelPattern, safeDel } from './redis-client';
 import { logger } from '../logger';
+import { getRegistrarInvalidationKeys } from './cache-keys';
 
 /**
  * Invalidate all cached data for a specific IPO
@@ -112,7 +113,13 @@ export async function invalidateSectorCache(): Promise<void> {
 export async function invalidateRegistrarCache(): Promise<void> {
   try {
     logger.info('Invalidating registrar cache');
-    await safeDel('registrars:list');
+    // T-275: previously deleted the literal key 'registrars:list', which the
+    // RegistrarRepository never wrote to (it uses 'registrars:all:*' /
+    // 'registrars:search:*' via cache-keys.ts) -- this call was a silent
+    // no-op. Now shares the same SSOT generator as the repository.
+    for (const pattern of getRegistrarInvalidationKeys()) {
+      await safeDelPattern(pattern);
+    }
     logger.info('Registrar cache invalidated successfully');
   } catch (error) {
     logger.error({ error }, 'Failed to invalidate registrar cache');

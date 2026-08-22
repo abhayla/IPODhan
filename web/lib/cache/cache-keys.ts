@@ -326,3 +326,46 @@ export function getIPOListingsInvalidationKeys(): string[] {
     'ipo:listings:*', // All listings caches (MAINBOARD, SME, FPO, all years/pages)
   ];
 }
+
+/**
+ * Generate cache key for a single registrar by id
+ */
+export function getRegistrarByIdKey(id: string): string {
+  return `registrar:${id}`;
+}
+
+/**
+ * Generate cache key for a single registrar by name
+ */
+export function getRegistrarByNameKey(name: string): string {
+  return `registrar:name:${name}`;
+}
+
+/**
+ * Generate cache key for the full registrar list
+ * T-275: was previously inlined at the call site with no generator/invalidation
+ * pair, which is how a poisoned key went undetected and un-invalidatable.
+ */
+export function getRegistrarAllKey(activeOnly: boolean): string {
+  return `registrars:all:${activeOnly ? 'active' : 'all'}`;
+}
+
+/**
+ * Generate cache key for registrar search results
+ */
+export function getRegistrarSearchKey(query: string, activeOnly: boolean): string {
+  return `registrars:search:${query.toLowerCase()}:${activeOnly ? 'active' : 'all'}`;
+}
+
+/**
+ * Get all cache key patterns for registrar invalidation (T-275)
+ * Should be called whenever registrar rows are inserted, updated, or seeded.
+ */
+export function getRegistrarInvalidationKeys(id?: string): string[] {
+  const keys = ['registrars:*']; // all-list + search-result caches
+  if (id) {
+    keys.push(getRegistrarByIdKey(id));
+    keys.push('registrar:name:*');
+  }
+  return keys;
+}
