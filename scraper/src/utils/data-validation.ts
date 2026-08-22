@@ -324,14 +324,24 @@ export function validateIPOData(
       // appearing mid-name is at most a WARN, never a hard reject.
       const nameSansInstrumentLabel = name.replace(/\s+(IPO|FPO)$/i, '').trim();
       const endsWithTrustSuffix = /\btrust$/i.test(nameSansInstrumentLabel);
+      // Checker round-2 finding #3 (T-277F2): "Investment Trust" is itself a
+      // structural legal-entity-type token (same as a bare terminal "Trust"),
+      // and it does not always land at the very end of the name — a real prod
+      // row is "Property Share Investment Trust-Propshare Celestia", where the
+      // instrument's own sub-name follows the "Investment Trust" token via a
+      // hyphen. So match "Investment Trust" ANYWHERE (word-boundary), not only
+      // as a terminal suffix — this stays structural (no plain "Trust" brand
+      // word is also preceded by "Investment"), so "Trust Fintech Limited"
+      // still does not match and stays a PASS.
+      const containsInvestmentTrust = /\binvestment\s+trust\b/i.test(nameSansInstrumentLabel);
       const containsTrustToken = /\btrust\b/i.test(name);
 
-      if (endsWithTrustSuffix) {
+      if (endsWithTrustSuffix || containsInvestmentTrust) {
         errors.push({
           field: 'offeringType',
           rule: 'NON_IPO_TRUST_SHAPE',
           severity: 'ERROR',
-          message: `companyName "${name}" ends in the bare "Trust" legal-entity-type token (InvIT/REIT business-trust structure) but was not reclassified by Rule 2's invit/reit substring check — offering_type='IPO' rejected (P2-2: Cube Highways Trust shape). Reclassify to INVITS/REITS or drop the row.`,
+          message: `companyName "${name}" ${endsWithTrustSuffix ? 'ends in the bare "Trust" legal-entity-type token' : 'contains the "Investment Trust" legal-entity-type token'} (InvIT/REIT business-trust structure) but was not reclassified by Rule 2's invit/reit substring check — offering_type='IPO' rejected (P2-2: Cube Highways Trust shape; T-277F2: Property Share Investment Trust shape). Reclassify to INVITS/REITS or drop the row.`,
         });
       } else if (containsTrustToken) {
         warnings.push({

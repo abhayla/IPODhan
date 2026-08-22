@@ -140,7 +140,7 @@ export function compactCompanyNameKey(companyName: string): string {
  * with the JS path.
  */
 export function compactNormalizedCompanyNameSql(input: SQL): SQL {
-  return sql`REGEXP_REPLACE(${normalizedCompanyNameSql(input)}, '\s+', '', 'g')`;
+  return sql`REGEXP_REPLACE(${normalizedCompanyNameSql(input)}, '\\s+', '', 'g')`;
 }
 
 export function normalizedCompanyNameSql(input: SQL): SQL {

@@ -260,4 +260,44 @@ describe('validateIPOData — Rule 8 NON_IPO_TRUST_SHAPE (P2-2, T-277)', () => {
     expect(result.valid).toBe(false);
     expect(result.errors.map((e) => e.rule)).toContain('NON_IPO_TRUST_SHAPE');
   });
+
+  // T-277F2 checker round-2 finding #3: "Investment Trust" is a structural
+  // legal-entity-type token even when it does NOT land at the very end of the
+  // name. Real prod row (currently offering_type='REITS', listed 2026-04-23) —
+  // round-1 verified this shape as REJECTED; round-2's mid-name-only ERROR
+  // check regressed it to a bare WARN. Must be an ERROR again.
+  it('rejects the mid-name "Investment Trust" shape (Property Share Investment Trust-Propshare Celestia)', () => {
+    const result = validateIPOData(
+      {
+        companyName: 'Property Share Investment Trust-Propshare Celestia',
+        offeringType: 'IPO',
+        segment: 'MAINBOARD',
+      },
+      'CHITTORGARH'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors.map((e) => e.rule)).toContain('NON_IPO_TRUST_SHAPE');
+  });
+
+  // Guard against the mid-name fix over-firing: "Trust Fintech Limited" has
+  // NO "Investment Trust" substring anywhere, so it must still PASS as an
+  // ordinary company (companion to the earlier "MUST pass" test above).
+  it('does NOT flag "Trust Fintech Limited" via the mid-name Investment Trust check', () => {
+    const result = validateIPOData(
+      {
+        companyName: 'Trust Fintech Limited',
+        offeringType: 'IPO',
+        segment: 'SME',
+        priceRangeMin: 91,
+        priceRangeMax: 95,
+        lotSize: 1200,
+        issueSize: '4700000000.00',
+        openDate: '2024-03-14',
+        closeDate: '2024-03-18',
+      },
+      'BSE'
+    );
+    expect(result.valid).toBe(true);
+    expect(result.errors.map((e) => e.rule)).not.toContain('NON_IPO_TRUST_SHAPE');
+  });
 });
