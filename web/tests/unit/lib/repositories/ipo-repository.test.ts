@@ -254,7 +254,9 @@ describe('IPORepository', () => {
               ipo_id: '1',
               gmp: '310.00',
               gmp_percentage: '39.34',
-              timestamp: new Date('2026-08-21T18:06:00.000Z'),
+              // UTC-naive text, exactly as Postgres emits it for a
+              // `timestamp without time zone` column (#28).
+              ts_text: '2026-08-21 18:06:00',
               source: 'INVESTORGAIN_GMP',
             },
           ],
@@ -267,7 +269,7 @@ describe('IPORepository', () => {
               retail_subscription: '0.67',
               qib_subscription: '1.69',
               nii_subscription: '0.63',
-              timestamp: new Date('2026-08-21T23:44:23.400Z'),
+              ts_text: '2026-08-21 23:44:23.4',
             },
           ],
         });
@@ -280,7 +282,10 @@ describe('IPORepository', () => {
       expect(enriched.subscriptionTotal).toBe(0.95);
       expect(enriched.subscriptionQib).toBe(1.69);
       expect(enriched.gmpSource).toBe('INVESTORGAIN_GMP');
+      // The naive DB value is UTC-naive: it must surface as 18:06Z, NOT shifted
+      // by the box's local offset — a freshness claim that is 5h30m off is a lie.
       expect(enriched.gmpUpdatedAt).toBe('2026-08-21T18:06:00.000Z');
+      expect(enriched.subscriptionUpdatedAt).toBe('2026-08-21T23:44:23.400Z');
 
       // An IPO with no grey market / no bids stays honestly empty.
       expect(untouched.gmpPrice).toBeNull();

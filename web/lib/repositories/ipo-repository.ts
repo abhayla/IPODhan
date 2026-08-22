@@ -39,6 +39,7 @@ import {
   getHistoricalIPOsKey,
   getFuzzySearchKey,
 } from '../cache/cache-keys';
+import { parseNaiveTimestampAsUtc } from '../../../packages/shared/src/db/timezone-config';
 import {
   mergeLiveMetrics,
   type LiveMetricsSnapshot,
@@ -90,6 +91,11 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       sql`, `
     );
 
+    // The naive `timestamp` columns are UTC-naive by contract (#28), but a raw
+    // `db.execute()` does NOT go through drizzle's column mapper and, in the web
+    // runtime, was observed NOT to hit the process-wide pg type-parser either —
+    // it came back shifted by the box's +05:30. Read the value as TEXT and parse
+    // it with the shared UTC parser so the freshness we publish is the real one.
     const num = (v: unknown): number | null => {
       if (v === null || v === undefined) return null;
       const n = typeof v === 'number' ? v : parseFloat(String(v));
@@ -116,7 +122,8 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       [gmpRows, subRows] = await Promise.all([
       this.db
         .execute(
-          sql`SELECT DISTINCT ON (ipo_id) ipo_id, gmp, gmp_percentage, "timestamp", source
+          sql`SELECT DISTINCT ON (ipo_id) ipo_id, gmp, gmp_percentage,
+                     "timestamp"::text AS ts_text, source
               FROM gmp_records WHERE ipo_id IN (${idList})
               ORDER BY ipo_id, "timestamp" DESC`
         )
@@ -127,7 +134,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       this.db
         .execute(
           sql`SELECT DISTINCT ON (ipo_id) ipo_id, total_subscription, retail_subscription,
-                     qib_subscription, nii_subscription, "timestamp"
+                     qib_subscription, nii_subscription, "timestamp"::text AS ts_text
               FROM subscriptions WHERE ipo_id IN (${idList})
               ORDER BY ipo_id, "timestamp" DESC`
         )
@@ -146,7 +153,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       const entry = byIpo.get(id) ?? blank();
       entry.gmp = num(row.gmp);
       entry.gmpPercentage = num(row.gmp_percentage);
-      entry.gmpTimestamp = (row.timestamp as Date | string | null) ?? null;
+      entry.gmpTimestamp = parseNaiveTimestampAsUtc((row.ts_text as string | null) ?? null);
       entry.gmpSource = row.source ? String(row.source) : null;
       byIpo.set(id, entry);
     }
@@ -160,7 +167,7 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       // `nii_subscription` (non-institutional) is what the `ipos.subscription_hni`
       // column has always meant — HNI is the retail-facing name for the NII book.
       entry.subscriptionHni = num(row.nii_subscription);
-      entry.subscriptionTimestamp = (row.timestamp as Date | string | null) ?? null;
+      entry.subscriptionTimestamp = parseNaiveTimestampAsUtc((row.ts_text as string | null) ?? null);
       byIpo.set(id, entry);
     }
 
