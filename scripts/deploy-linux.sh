@@ -62,21 +62,30 @@
 #      SOURCED so NEXT_PUBLIC_* bake into the build.
 #   6. Health-probe the new release on a throwaway localhost port (`/` and
 #      `/api/health`) BEFORE the flip.
-#   7. Atomically flip `current`/`current-<SLOT>`, write DEPLOYED_SHA.
-#   8. `pm2 delete`+`start` BOTH the web app and the scraper app from the
+#   7. Apply database migrations (`npx drizzle-kit migrate`) against this
+#      slot's DB, then assert the target DB is actually current
+#      (scripts/assert-migrations-applied.sh) — BEFORE the flip. T-267: the
+#      Linux pipeline never ran migrations at all until this step existed;
+#      drizzle.__drizzle_migrations sat at 0 rows in prod for the app's
+#      whole life and a NOT NULL schema drift silently failed 243/243
+#      listing-performance upserts every cycle for seven weeks before
+#      anyone noticed. See web/drizzle/migrations/_repair/ for the
+#      one-time baseline this step depends on.
+#   8. Atomically flip `current`/`current-<SLOT>`, write DEPLOYED_SHA.
+#   9. `pm2 delete`+`start` BOTH the web app and the scraper app from the
 #      release's realpath (cron_restart re-arms the scraper). T-262: NOT
 #      `pm2 reload` for the web app — reload reuses the already-running
 #      process's original script/cwd instead of repointing it, so it can
 #      leave the live process pinned to a stale release even after the
 #      flip (2026-08-22 staging 502 chain). See restart_pm2()'s comment.
-#   9. Probe the public-facing health URL AND cross-check /api/version's
+#  10. Probe the public-facing health URL AND cross-check /api/version's
 #      baked-in sha against the release just flipped to — a process still
 #      pinned to a stale release fails this even if /api/health returns
 #      200. On failure, AUTO-ROLLBACK to the previous release and restart
 #      PM2 (delete+start, same as above) against it.
-#  10. Resume the scraper against whichever release ended up live (new on
+#  11. Resume the scraper against whichever release ended up live (new on
 #      success, old on rollback) — it is never left stopped.
-#  11. Prune to the last N releases (default 5). T-262: SLOT-AWARE — never
+#  12. Prune to the last N releases (default 5). T-262: SLOT-AWARE — never
 #      deletes a release still referenced by ANY slot's `current`/
 #      `current-<slot>` link OR by a live `ipodhan-*` pm2 process's actual
 #      cwd (see collect_live_release_dirs()), not just this slot's own
@@ -378,7 +387,37 @@ if ! build_release; then
   fatal "build failed for $RELEASE_NAME — 'current' was NOT touched; $CURRENT_LINK still serves the old release."
 fi
 
-# ---------------------------------------------- 7. health-probe BEFORE the flip
+# ------------------------------- 7. apply + assert DB migrations BEFORE the flip
+apply_migrations() {
+  if (( DRY_RUN )); then
+    log "[dry-run] skipping real 'drizzle-kit migrate' + migrations-applied assert"
+    return 0
+  fi
+  set -a
+  # shellcheck disable=SC1090  # per-slot generated env file, path known at runtime
+  . "$WEB_ENV_FILE"
+  set +a
+  local database_url="$DATABASE_URL"
+  local journal_path="$RELEASE_DIR/web/drizzle/migrations/meta/_journal.json"
+
+  log "Applying database migrations (npx drizzle-kit migrate) for slot '$SLOT'"
+  if ! ( cd "$RELEASE_DIR/web" && npx drizzle-kit migrate ); then
+    echo "FATAL: 'drizzle-kit migrate' failed for $RELEASE_NAME." >&2
+    return 1
+  fi
+
+  log "Asserting the target DB is current with the journaled migration chain"
+  if ! bash "$SCRIPT_DIR/assert-migrations-applied.sh" "$database_url" "$journal_path"; then
+    echo "FATAL: migrations-applied assert failed for $RELEASE_NAME (T-267)." >&2
+    return 1
+  fi
+}
+
+if ! apply_migrations; then
+  fatal "migration step failed for $RELEASE_NAME — 'current' was NOT touched; $CURRENT_LINK still serves the old release."
+fi
+
+# ---------------------------------------------- 8. health-probe BEFORE the flip
 probe_release() {
   if (( DRY_RUN )); then
     log "[dry-run] skipping pre-flip probe on 127.0.0.1:$PROBE_PORT"
@@ -412,7 +451,7 @@ if ! probe_release; then
   fatal "pre-flip health probe failed for $RELEASE_NAME — 'current' was NOT touched; $CURRENT_LINK still serves the old release."
 fi
 
-# ------------------------------------------------------- 8. atomic pointer flip
+# ------------------------------------------------------- 9. atomic pointer flip
 PREVIOUS_RELEASE="$(read_current_link || true)"
 log "Previous release: ${PREVIOUS_RELEASE:-<none - first release-dir deploy>}"
 
@@ -421,7 +460,7 @@ atomic_flip_current "$RELEASE_DIR"
 printf '%s\n' "$SHORT_SHA" > "$ROOT/DEPLOYED_SHA-$SLOT"
 SCRAPER_RESUME_TARGET="new"
 
-# --------------------------------------------------------- 9. restart + verify
+# -------------------------------------------------------- 10. restart + verify
 restart_pm2() {
   local instances="${DEPLOY_WEB_INSTANCES:-2}"
   if (( DRY_RUN )); then
@@ -559,7 +598,7 @@ fi
 # leaves the trap armed so it performs the scraper's actual restart.)
 trap - EXIT
 
-# ------------------------------------------------------------------- 10. prune
+# ------------------------------------------------------------------- 12. prune
 # T-243: persist the process list so a reboot resurrects THIS release. Without
 # it, `pm2 resurrect` restores whatever list was last saved - on a fresh box
 # that meant the IPODhan apps were absent entirely, and after any deploy it

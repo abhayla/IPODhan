@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Test double for psql, used only by assert-migrations-applied.test.sh.
+# Ignores its real arguments; responds from env vars the test sets per case:
+#   FAKE_PSQL_FAIL=1                 -> simulate a connection/query failure (exit 1)
+#   FAKE_PSQL_MAX_CREATED_AT=<value> -> stdout the -tA query result verbatim
+set -euo pipefail
+
+if [ "${FAKE_PSQL_FAIL:-0}" = "1" ]; then
+  echo "psql: error: connection to server failed (fake, test double)" >&2
+  exit 1
+fi
+
+printf '%s\n' "${FAKE_PSQL_MAX_CREATED_AT:-0}"
