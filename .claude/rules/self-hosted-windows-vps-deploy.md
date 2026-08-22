@@ -12,6 +12,12 @@ private: true
 
 # Self-Hosted Windows VPS Deploy
 
+> **RETIRED 2026-08-21 (T-252) — HISTORICAL.** IPODhan no longer deploys to the Windows VPS.
+> Serving moved to the Linux VPS `72.61.240.224` (`.github/workflows/deploy-linux.yml`), and
+> `deploy.yml` + the four `vps-*.yml` workflows were moved to `.github/workflows-disabled/`.
+> The Windows box is now the **database host only** (PostgreSQL 16 + AlgoChanakya's Redis).
+> Keep this file as the record of how the retired path worked; do not follow it for new work.
+
 `.github/workflows/deploy.yml` runs the deploy job on a `runs-on: self-hosted` Windows runner
 that injects secrets from GitHub Secrets (`DATABASE_URL`, `REDIS_URL`, `ADMIN_API_TOKEN`,
 `NEXT_PUBLIC_GA_MEASUREMENT_ID`, the Zerodha/AngelOne affiliate links) into `web\.env.local`

@@ -5,6 +5,12 @@ description: Windows Server 2022 VPS deployment with PM2 process management, env
 
 # Windows Server Deployment Expert
 
+> **RETIRED 2026-08-21 (T-252) — HISTORICAL.** IPODhan no longer deploys to the Windows VPS.
+> Serving moved to the Linux VPS `72.61.240.224` (`.github/workflows/deploy-linux.yml`), and
+> `deploy.yml` + the four `vps-*.yml` workflows were moved to `.github/workflows-disabled/`.
+> The Windows box is now the **database host only** (PostgreSQL 16 + AlgoChanakya's Redis).
+> Keep this file as the record of how the retired path worked; do not follow it for new work.
+
 **Purpose:** Expertise in deploying IPODhan to Windows Server 2022 VPS, including PM2 process management, environment configuration, and production maintenance.
 
 **When to invoke:** Deploying to production, configuring PM2, setting up SSL, managing logs, or troubleshooting deployment issues.

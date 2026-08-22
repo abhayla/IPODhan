@@ -12,6 +12,12 @@ private: false
 
 # PM2 Scheduled One-Shot Scraper
 
+> **RETIRED 2026-08-21 (T-252) — HISTORICAL.** IPODhan no longer deploys to the Windows VPS.
+> Serving moved to the Linux VPS `72.61.240.224` (`.github/workflows/deploy-linux.yml`), and
+> `deploy.yml` + the four `vps-*.yml` workflows were moved to `.github/workflows-disabled/`.
+> The Windows box is now the **database host only** (PostgreSQL 16 + AlgoChanakya's Redis).
+> Keep this file as the record of how the retired path worked; do not follow it for new work.
+
 ## The two apps run in opposite modes — on purpose
 
 `ecosystem.config.js` defines exactly two PM2 apps, and their modes are intentionally
