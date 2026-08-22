@@ -8,6 +8,8 @@ import { fileURLToPath } from 'url';
 import {
   normalizeCompanyNameForMatching,
   normalizedCompanyNameSql,
+  compactCompanyNameKey,
+  compactNormalizedCompanyNameSql,
 } from '@ipodhan/shared/utils/company-name-normalizer';
 
 /**
@@ -67,6 +69,29 @@ const FIXTURE: string[] = [
   'Bansal Wire Industries Limited',
   'Tolins Tyres Ltd FPO',
   'Orient Technologies Pvt',
+  // P2-1 (T-277) — the round-2 review's 11 real-world duplicate-pair names:
+  // ampersand variance, period-joined suffixes, redundant trailing
+  // parentheticals, and mid-string hyphens/parens.
+  'Caliber Mining & Logistics Ltd.',
+  'Caliber Mining and Logistics',
+  'Gulf Lloyds India',
+  'Gulf Lloyds (India) Ltd.',
+  'G V Electricals',
+  'G.V.Electricals Ltd. (G.V. Electricals IPO)',
+  'H R Hygiene Products',
+  'H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO)',
+  'INDO MIM Limited',
+  'Indo-MIM Ltd.',
+  'Laser Power & Infra Ltd.',
+  'Laser Power and Infra',
+  'Poojaa Precision Engg',
+  'Poojaa Precision Engg.Ltd.',
+  'Propshop Events and Exhibitions',
+  'Propshop Events & Exhibitions Ltd.',
+  'Shree Balaji (Mala) Textiles Limited',
+  'Shree Balaji (Mala) Textiles Ltd. (Shree Balaji Mala IPO)',
+  'Silverstorm Parks and Resorts',
+  'Silverstorm Parks & Resorts Ltd.',
 ];
 
 describe('company-name normalizer — JS ↔ SQL agreement (A3)', () => {
@@ -105,5 +130,26 @@ describe('company-name normalizer — JS ↔ SQL agreement (A3)', () => {
       }
     }
     expect(divergences, `JS↔SQL normalizer divergences:\n${divergences.join('\n')}`).toEqual([]);
+  });
+
+  // Checker round-2 finding #1 (T-277F2): the spaced normalizer above agreeing
+  // does NOT prove the COMPACT (word-break-fold) twin agrees — that fallback
+  // has its own SQL expression (`compactNormalizedCompanyNameSql`) with its own
+  // cooked-string escaping to get right. Assert it directly so a broken `\s+`
+  // literal (e.g. written as `'\s+'` instead of `'\\s+'` inside the `sql`
+  // tagged template) fails here instead of silently reaching findByNormalizedName.
+  it('every fixture name compact-folds IDENTICALLY in JS and SQL', async () => {
+    const divergences: string[] = [];
+    for (const name of FIXTURE) {
+      const js = compactCompanyNameKey(name);
+      const res = (await db.execute(
+        sql`SELECT ${compactNormalizedCompanyNameSql(sql`${name}`)} AS compact`,
+      )) as unknown as { rows: Array<{ compact: string }> };
+      const sqlCompact = res.rows[0].compact;
+      if (sqlCompact !== js) {
+        divergences.push(`"${name}" → JS="${js}"  SQL="${sqlCompact}"`);
+      }
+    }
+    expect(divergences, `JS↔SQL compact-key divergences:\n${divergences.join('\n')}`).toEqual([]);
   });
 });

@@ -217,7 +217,12 @@ async function fetchMainboardPerformanceData(year: string): Promise<PerformanceD
   const json: HistoricalIPOApiResponse = await response.json();
 
   return json.data
-    .filter((row) => row.segment === 'MAINBOARD')
+    // T-277F checker finding #3: `row.listingGainPercent ?? 0` used to render
+    // a row with NO listing_performance data (e.g. a reclassified trust with
+    // no listing gain computed) as a fake 0.00/+0.00% instead of being
+    // excluded. A null listingGainPercent means "no performance data yet" —
+    // that row does not belong on a PERFORMANCE tracker at all.
+    .filter((row) => row.segment === 'MAINBOARD' && row.listingGainPercent !== null)
     .map((row) => {
       const issuePrice = toNumber(row.issuePrice) ?? 0;
       const listingDayClose = toNumber(row.listingClose) ?? 0;
@@ -228,7 +233,7 @@ async function fetchMainboardPerformanceData(year: string): Promise<PerformanceD
         listedOn: row.listingDate,
         issuePrice,
         listingDayClose,
-        listingDayGain: row.listingGainPercent ?? 0,
+        listingDayGain: row.listingGainPercent as number,
         currentPrice: row.currentPriceLive,
         profitLoss: row.currentGainLive,
       };

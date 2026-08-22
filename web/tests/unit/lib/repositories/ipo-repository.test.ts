@@ -929,6 +929,65 @@ describe('IPORepository', () => {
       expect(result.data[0].year).toBe(2024);
     });
 
+    // T-277F checker finding #3: a row reclassified away from offering_type
+    // 'IPO' (e.g. INVITS via the NON_IPO_TRUST_SHAPE guard) still has
+    // status='LISTED' + a listing_date, so it stayed ranked by findHistorical
+    // (the query behind the Mainboard/SME Performance Trackers) with no
+    // offeringType gate. Assert the WHERE clause actually references the
+    // offering_type column — every other IPO surface in this file already
+    // gates on REAL_IPO_TYPE_FILTER (see offering-type.ts); this closes the
+    // one method that didn't.
+    it('gates the query on the offering_type column (REAL_IPO_TYPE_FILTER)', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const mockCountSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([{ count: 1 }]),
+      };
+
+      const mockDataSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockResolvedValue([
+          { ipo: mockHistoricalIPO, ...mockListingPerformance },
+        ]),
+      };
+
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(mockCountSelect)
+        .mockReturnValueOnce(mockDataSelect);
+
+      await repository.findHistorical({ page: 1, limit: 20 });
+
+      // Walk the real drizzle SQL AST passed to .where() looking for a
+      // reference to the `offering_type` column (bounded-depth, cycle-safe —
+      // drizzle Column/Table objects are mutually circular).
+      function referencesColumn(node: unknown, columnName: string, depth = 0, seen = new Set<unknown>()): boolean {
+        if (node == null || typeof node !== 'object' || depth > 8 || seen.has(node)) return false;
+        seen.add(node);
+        const obj = node as Record<string, unknown>;
+        if (obj.name === columnName) return true;
+        if (Array.isArray(obj.queryChunks)) {
+          return obj.queryChunks.some((c) => referencesColumn(c, columnName, depth + 1, seen));
+        }
+        if (Array.isArray(node)) {
+          return (node as unknown[]).some((c) => referencesColumn(c, columnName, depth + 1, seen));
+        }
+        return false;
+      }
+
+      const countWhereArg = mockCountSelect.where.mock.calls[0][0];
+      expect(referencesColumn(countWhereArg, 'offering_type')).toBe(true);
+      const dataWhereArg = mockDataSelect.where.mock.calls[0][0];
+      expect(referencesColumn(dataWhereArg, 'offering_type')).toBe(true);
+    });
+
     it('should throw DatabaseError on query failure', async () => {
       mockRedis.get = vi.fn().mockResolvedValue(null);
 

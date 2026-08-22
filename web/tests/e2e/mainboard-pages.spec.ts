@@ -49,12 +49,9 @@ const MAINBOARD_PAGES = [
     expectedApiEndpoint: '/api/ipo/list',
     hasDataDisplay: true,
   },
-  {
-    name: 'Reviews',
-    url: '/mainboard-ipo-reviews',
-    expectedApiEndpoint: '/api/ipo/reviews',
-    hasDataDisplay: true,
-  },
+  // P2-3 (T-277): '/mainboard-ipo-reviews' is now a static "coming soon"
+  // placeholder (no data fetch, de-listed from nav) — it no longer fits this
+  // data-display page archetype, so it is intentionally not covered here.
 ];
 
 interface APIRequest {

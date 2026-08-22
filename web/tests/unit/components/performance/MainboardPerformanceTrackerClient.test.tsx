@@ -87,6 +87,51 @@ describe('MainboardPerformanceTrackerClient', () => {
     expect(requestedUrl).toContain('year=2026');
   }, 15000); // full-suite parallel jsdom load can exceed the 5000ms default
 
+  // T-277F checker finding #3: `listingGainPercent ?? 0` used to render a row
+  // with no listing_performance data (e.g. a reclassified trust) as a fake
+  // 0.00/+0.00% instead of being excluded — a null gain must never render.
+  it('excludes a MAINBOARD row with null listingGainPercent instead of rendering a fake 0.00%', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [
+          {
+            id: 'real-1',
+            companyName: 'Real Mainboard Co Ltd',
+            slug: 'real-mainboard-co-ltd',
+            segment: 'MAINBOARD',
+            listingDate: '2026-01-10',
+            issuePrice: '120.00',
+            listingClose: '130.50',
+            listingGainPercent: 8.75,
+            currentPriceLive: 145.2,
+            currentGainLive: 21.0,
+          },
+          {
+            id: 'no-perf-data',
+            companyName: 'Cube Highways Trust',
+            slug: 'cube-highways-trust',
+            segment: 'MAINBOARD',
+            listingDate: '2026-08-03',
+            issuePrice: null,
+            listingClose: null,
+            listingGainPercent: null,
+            currentPriceLive: null,
+            currentGainLive: null,
+          },
+        ],
+      }),
+    });
+
+    render(<MainboardPerformanceTrackerClient initialYear="2026" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Real Mainboard Co Ltd')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('Cube Highways Trust')).not.toBeInTheDocument();
+  }, 15000);
+
   it('renders an honest empty state (no invented rows) when the API call fails', async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,

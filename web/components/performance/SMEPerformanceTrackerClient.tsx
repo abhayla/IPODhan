@@ -217,7 +217,11 @@ async function fetchSMEPerformanceData(year: string): Promise<PerformanceData[]>
   const json: HistoricalIPOApiResponse = await response.json();
 
   return json.data
-    .filter((row) => row.segment === 'SME')
+    // T-277F checker finding #3 sibling (Mainboard tracker had the same bug):
+    // `row.listingGainPercent ?? 0` rendered a row with no listing_performance
+    // data as a fake 0.00/+0.00% instead of being excluded. A null
+    // listingGainPercent means "no performance data yet" — exclude it.
+    .filter((row) => row.segment === 'SME' && row.listingGainPercent !== null)
     .map((row) => {
       const issuePrice = toNumber(row.issuePrice) ?? 0;
       const listingDayClose = toNumber(row.listingClose) ?? 0;
@@ -228,7 +232,7 @@ async function fetchSMEPerformanceData(year: string): Promise<PerformanceData[]>
         listedOn: row.listingDate,
         issuePrice,
         listingDayClose,
-        listingDayGain: row.listingGainPercent ?? 0,
+        listingDayGain: row.listingGainPercent as number,
         currentPrice: row.currentPriceLive,
         profitLoss: row.currentGainLive,
       };

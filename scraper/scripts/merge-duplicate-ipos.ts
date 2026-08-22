@@ -18,6 +18,7 @@
 import { db } from '@ipodhan/shared/db';
 import { ipos } from '@ipodhan/shared/db/schema';
 import { sql } from 'drizzle-orm';
+import { pathToFileURL } from 'node:url';
 import { normalizeCompanyNameForMatching } from '../src/services/data-persister.js';
 
 const APPLY = process.argv.includes('--apply');
@@ -29,19 +30,44 @@ const CHILD_TABLES = [
   'documents', 'peer_companies', 'user_watchlist',
 ];
 
-interface Row {
+export interface Row {
   id: string; companyName: string; slug: string;
   issueSize: string | null; lotSize: number | null; priceRangeMax: number | null;
   registrar: string | null; createdAt: Date | null;
 }
 
-function completeness(r: Row): number {
+export function completeness(r: Row): number {
   let n = 0;
   if (r.issueSize && Number(r.issueSize) > 0) n++;
   if (r.lotSize && r.lotSize > 0) n++;
   if (r.priceRangeMax && r.priceRangeMax > 0) n++;
   if (r.registrar) n++;
   return n;
+}
+
+/**
+ * Rank a duplicate cluster and return the row to KEEP (T-277F checker finding
+ * #4). Priority: field-COMPLETENESS first (a CASCADE-losing decision is about
+ * losing the record's OWN data — issue size, lot size, price band, registrar
+ * — none of which the apply step ever repoints), then real-child-history
+ * count as a tiebreak (subscriptions/gmp_records are REPOINTED to whichever
+ * row is `keep` before the CASCADE delete — see the apply transaction below
+ * — so child count does NOT protect against data loss the way completeness
+ * does; it is a fine tiebreak, never the primary signal), then oldest
+ * (stable history).
+ *
+ * Before this fix, child-history count ranked FIRST, which kept the LESS
+ * complete row in 2 real prod clusters (shree-balaji-mala-textiles c=2 over
+ * c=4; cube-highways-trust c=1 over c=2) purely because it happened to have
+ * a stray gmp/subscription row — losing lot_size/registrar on the deleted,
+ * more-complete sibling.
+ */
+export function pickKeeper(rows: Row[], realChildValue: Map<string, number>): Row {
+  const ranked = [...rows].sort((a, b) =>
+    (completeness(b) - completeness(a)) ||
+    ((realChildValue.get(b.id) ?? 0) - (realChildValue.get(a.id) ?? 0)) ||
+    ((a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0)));
+  return ranked[0];
 }
 
 /** Real (non-rebuildable) child data a CASCADE delete would lose. */
@@ -91,16 +117,10 @@ async function main() {
   const merges: { keep: string; dup: string }[] = [];
   const toDelete: string[] = [];
   for (const [key, rs] of dupClusters) {
-    // Keep the row with the most REAL children (GMP/subscription history a CASCADE
-    // would lose), then richest fields, then oldest (stable history).
     const val = new Map<string, number>();
     for (const r of rs) val.set(r.id, await realChildValue(r.id));
-    const ranked = [...rs].sort((a, b) =>
-      (val.get(b.id)! - val.get(a.id)!) ||
-      completeness(b) - completeness(a) ||
-      (a.createdAt?.getTime() ?? 0) - (b.createdAt?.getTime() ?? 0));
-    const keep = ranked[0];
-    const dups = ranked.slice(1);
+    const keep = pickKeeper(rs, val);
+    const dups = rs.filter((r) => r.id !== keep.id);
     console.log(`\n● "${key}" (${rs.length})  KEEP id=${keep.id.slice(0, 8)} slug=${keep.slug} [c=${completeness(keep)}]`);
     for (const dpRow of dups) {
       const kids = await childCounts(dpRow.id);
@@ -138,4 +158,12 @@ async function main() {
   console.log(`APPLIED — repointed gmp/subscriptions to survivors, deleted ${toDelete.length} duplicate rows (CASCADE removed rebuildable children).`);
 }
 
-main().then(() => process.exit(0)).catch((e) => { console.error('merge failed:', e?.message || e); process.exit(1); });
+// Guard so `pickKeeper`/`completeness` can be imported by unit tests without
+// executing `main()` (which touches the real DB) as an import side effect.
+// MUST use pathToFileURL, not a hand-rolled `file://${argv[1]}` template — that
+// pattern silently never matches on Windows (T-223 / PR #116 — see
+// tests/unit/utils/cli-entry-guard.test.ts) and main() would never run in prod.
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) {
+  main().then(() => process.exit(0)).catch((e) => { console.error('merge failed:', e?.message || e); process.exit(1); });
+}

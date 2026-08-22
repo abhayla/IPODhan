@@ -298,6 +298,59 @@ export function validateIPOData(
           message: `companyName "${name}" is a bare exchange scrip code (all-caps token, no legal suffix, no space), not a company name — offering_type='IPO' rejected (#140: SIS/ADVENZYMES shape).`,
         });
       }
+
+      // NON_IPO_TRUST_SHAPE (P2-2, round-2 review; redesigned T-277F checker
+      // finding #2). Rule 2 already reclassifies a name containing "InvIT" or
+      // "REIT" (HIGH confidence) before this block runs, so effectiveOfferingType
+      // is no longer 'IPO' for those — no double report needed. But a genuine
+      // InvIT/REIT does not always carry that keyword in its company name:
+      // "Cube Highways Trust" and "Raajmarg Infra Investment Trust" both wrote
+      // offering_type='IPO' from a bare "...Trust" name with no "InvIT"/"REIT"
+      // substring, so Rule 2's narrower check missed them (Cube Highways
+      // rendered 0.00/+0.00% on the Mainboard tracker).
+      //
+      // A bare /\btrust\b/i match on the WHOLE name is a false-positive trap:
+      // "Trust Fintech Limited" is a real NSE Emerge SME IPO (Mar-2024) whose
+      // name merely CONTAINS the word "Trust" — it is not a trust-structured
+      // vehicle. The distinguishing STRUCTURAL signal is where the token
+      // lands: an InvIT/REIT business trust is legally named "<something>
+      // Trust" — "Trust" (or "Investment Trust") is the terminal legal-entity-
+      // type token, exactly the way "Ltd"/"Limited" terminates an ordinary
+      // company name. An ordinary company that merely uses "Trust" as a brand
+      // word is followed by its OWN legal suffix ("... Trust Fintech
+      // Limited"). So: reject only when the name (after stripping a trailing
+      // IPO/FPO instrument label) ENDS in the bare token "trust" — that is
+      // structural (the entity-type suffix), not just word presence. A "Trust"
+      // appearing mid-name is at most a WARN, never a hard reject.
+      const nameSansInstrumentLabel = name.replace(/\s+(IPO|FPO)$/i, '').trim();
+      const endsWithTrustSuffix = /\btrust$/i.test(nameSansInstrumentLabel);
+      // Checker round-2 finding #3 (T-277F2): "Investment Trust" is itself a
+      // structural legal-entity-type token (same as a bare terminal "Trust"),
+      // and it does not always land at the very end of the name — a real prod
+      // row is "Property Share Investment Trust-Propshare Celestia", where the
+      // instrument's own sub-name follows the "Investment Trust" token via a
+      // hyphen. So match "Investment Trust" ANYWHERE (word-boundary), not only
+      // as a terminal suffix — this stays structural (no plain "Trust" brand
+      // word is also preceded by "Investment"), so "Trust Fintech Limited"
+      // still does not match and stays a PASS.
+      const containsInvestmentTrust = /\binvestment\s+trust\b/i.test(nameSansInstrumentLabel);
+      const containsTrustToken = /\btrust\b/i.test(name);
+
+      if (endsWithTrustSuffix || containsInvestmentTrust) {
+        errors.push({
+          field: 'offeringType',
+          rule: 'NON_IPO_TRUST_SHAPE',
+          severity: 'ERROR',
+          message: `companyName "${name}" ${endsWithTrustSuffix ? 'ends in the bare "Trust" legal-entity-type token' : 'contains the "Investment Trust" legal-entity-type token'} (InvIT/REIT business-trust structure) but was not reclassified by Rule 2's invit/reit substring check — offering_type='IPO' rejected (P2-2: Cube Highways Trust shape; T-277F2: Property Share Investment Trust shape). Reclassify to INVITS/REITS or drop the row.`,
+        });
+      } else if (containsTrustToken) {
+        warnings.push({
+          field: 'offeringType',
+          rule: 'NON_IPO_TRUST_SHAPE_WARN',
+          severity: 'WARNING',
+          message: `companyName "${name}" contains the word "Trust" but does not end in it as a legal-entity-type token — treated as an ordinary company name (e.g. "Trust Fintech Limited"), not rejected. Verify manually if this is actually a trust-structured vehicle.`,
+        });
+      }
     }
   }
 

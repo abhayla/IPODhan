@@ -87,6 +87,51 @@ describe('SMEPerformanceTrackerClient', () => {
     expect(requestedUrl).toContain('year=2026');
   }, 15000); // full-suite parallel jsdom load can exceed the 5000ms default
 
+  // T-277F checker finding #3 sibling: `listingGainPercent ?? 0` used to
+  // render a row with no listing_performance data as a fake 0.00/+0.00%
+  // instead of being excluded — a null gain must never render.
+  it('excludes an SME row with null listingGainPercent instead of rendering a fake 0.00%', async () => {
+    (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: [
+          {
+            id: 'real-1',
+            companyName: 'Real SME Co Ltd',
+            slug: 'real-sme-co-ltd',
+            segment: 'SME',
+            listingDate: '2026-01-10',
+            issuePrice: '60.00',
+            listingClose: '65.00',
+            listingGainPercent: 8.33,
+            currentPriceLive: 70.0,
+            currentGainLive: 16.67,
+          },
+          {
+            id: 'no-perf-data',
+            companyName: 'No Performance Data SME Ltd',
+            slug: 'no-performance-data-sme-ltd',
+            segment: 'SME',
+            listingDate: '2026-08-03',
+            issuePrice: null,
+            listingClose: null,
+            listingGainPercent: null,
+            currentPriceLive: null,
+            currentGainLive: null,
+          },
+        ],
+      }),
+    });
+
+    render(<SMEPerformanceTrackerClient initialYear="2026" />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Real SME Co Ltd')).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText('No Performance Data SME Ltd')).not.toBeInTheDocument();
+  }, 15000);
+
   it('renders an honest empty state (no invented rows) when the API call fails', async () => {
     (global.fetch as ReturnType<typeof vi.fn>).mockResolvedValue({
       ok: false,

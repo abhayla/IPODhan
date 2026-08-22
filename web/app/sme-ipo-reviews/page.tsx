@@ -1,254 +1,30 @@
-'use client';
+import type { Metadata } from 'next';
+import Link from 'next/link';
+import { generateMetadata as generatePageMetadata } from '@/lib/seo/metadata';
 
 /**
- * SME IPO Reviews & Analysis Page
+ * SME IPO Reviews — Coming Soon
  *
- * Displays expert SME IPO reviews and analysis from SEBI registered analysts.
- * Features:
- * - Year navigation with URL query params
- * - Column-level search (review title, author, recommendation, IPO name)
- * - Sortable columns
- * - Pagination (50 records per page)
- * - Educational header explaining review benefits
+ * P2-3 (round-2 review, T-277): same empty-data-source condition as
+ * `/mainboard-ipo-reviews` — see that page for the full rationale.
  */
 
-import { useState, useEffect } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { DataTable, ColumnDef, renderFunctions } from '@/components/shared/DataTable';
-import Link from 'next/link';
+export const metadata: Metadata = generatePageMetadata('sme-ipo-reviews-coming-soon');
 
-export interface Review {
-  id: string;
-  reviewTitle: string;
-  author: string;
-  recommendation: string;
-  ipoId: string;
-  ipoName: string;
-  ipoSlug: string;
-  publishedDate: Date;
-  year: number;
-  reviewUrl?: string | null;
-}
-
-// ===== EDUCATIONAL HEADER COMPONENT =====
-
-function ReviewsHeader() {
+export default function SmeIPOReviewsPage() {
   return (
-    <div className="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
-      <h2 className="text-xl font-semibold mb-3 text-gray-900">
-        SME IPO Reviews & Analysis
-      </h2>
-      <p className="text-sm text-gray-700 mb-2">
-        IPO forecast helps investors decide if the SME IPO is worth investing in.
-        Our analysis covers:
+    <div className="container mx-auto py-16 px-4 text-center">
+      <h1 className="text-3xl font-bold mb-4">SME IPO Reviews</h1>
+      <p className="text-gray-600 max-w-xl mx-auto mb-8">
+        Expert SME IPO reviews and analysis are coming soon. In the meantime, check the current
+        SME IPOs below.
       </p>
-      <ul className="text-sm text-gray-700 list-disc list-inside space-y-1 ml-2">
-        <li>Company background and offer details</li>
-        <li>Company valuation and capital structure</li>
-        <li>Financial performance and strengths</li>
-        <li>Risks & benefits analysis</li>
-        <li>Peer comparison</li>
-      </ul>
-      <p className="text-sm text-gray-600 mt-3 italic">
-        Analysis tailored for both short and long-term investors
-      </p>
-    </div>
-  );
-}
-
-// ===== COLUMN DEFINITIONS =====
-
-const columns: ColumnDef<Review>[] = [
-  {
-    key: 'rowNumber',
-    header: '#',
-    sortable: false,
-    searchable: false,
-    align: 'center',
-    className: 'w-16',
-    render: (_value: any, _row: Review, index?: number) => (index ?? 0) + 1,
-  },
-  {
-    key: 'reviewTitle',
-    header: 'Review Title',
-    searchable: true,
-    className: 'min-w-[300px]',
-    render: (value: string, row: Review) =>
-      renderFunctions.link(value, `/ipo-reviews/${row.id}`),
-  },
-  {
-    key: 'author',
-    header: 'Author',
-    searchable: true,
-    className: 'min-w-[200px]',
-  },
-  {
-    key: 'recommendation',
-    header: 'Recommendation',
-    searchable: true,
-    className: 'min-w-[150px]',
-    render: (value: string) => (
-      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-        {value}
-      </span>
-    ),
-  },
-  {
-    key: 'ipoName',
-    header: 'IPO',
-    searchable: true,
-    className: 'min-w-[200px]',
-    render: (value: string, row: Review) =>
-      renderFunctions.link(value, `/ipos/${row.ipoSlug}`),
-  },
-];
-
-// ===== MAIN PAGE COMPONENT =====
-
-export default function SMEIPOReviewsPage() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
-  // ===== STATE =====
-
-  const [year, setYear] = useState(
-    searchParams.get('year') || new Date().getFullYear().toString()
-  );
-  const [page, setPage] = useState(Number(searchParams.get('page')) || 1);
-  const [searches, setSearches] = useState<Record<string, string>>({});
-  const [data, setData] = useState<Review[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  // ===== DATA FETCHING =====
-
-  useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const params = new URLSearchParams({
-          year: year.toString(),
-          page: page.toString(),
-        });
-
-        if (searches.reviewTitle) params.append('reviewTitle', searches.reviewTitle);
-        if (searches.author) params.append('author', searches.author);
-        if (searches.recommendation) params.append('recommendation', searches.recommendation);
-        if (searches.ipoName) params.append('ipoName', searches.ipoName);
-
-        const response = await fetch(`/api/reviews/sme?${params.toString()}`);
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch reviews');
-        }
-
-        const result = await response.json();
-        setData(result.reviews);
-        setTotalCount(result.totalCount);
-      } catch (err) {
-        console.error('Error fetching reviews:', err);
-        setError('Failed to load SME IPO reviews. Please try again later.');
-        setData([]);
-        setTotalCount(0);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    fetchData();
-  }, [year, page, searches]);
-
-  // ===== EVENT HANDLERS =====
-
-  const handleYearChange = (newYear: string) => {
-    setYear(newYear);
-    setPage(1);
-    router.push(`/sme-ipo-reviews?year=${newYear}`);
-  };
-
-  const handlePageChange = (newPage: number) => {
-    setPage(newPage);
-    const params = new URLSearchParams(searchParams.toString());
-    params.set('page', String(newPage));
-    router.push(`/sme-ipo-reviews?${params.toString()}`);
-  };
-
-  const handleSearch = (newSearches: Record<string, string>) => {
-    setSearches(newSearches);
-    setPage(1);
-  };
-
-  // ===== RENDER =====
-
-  if (loading) {
-    return (
-      <div className="container mx-auto py-8 px-4">
-        <div className="h-8 bg-gray-200 rounded w-1/3 mb-6 animate-pulse" />
-        <div className="bg-gray-100 rounded-lg p-6 mb-6 animate-pulse">
-          <div className="h-6 bg-gray-200 rounded w-1/4 mb-3" />
-          <div className="h-4 bg-gray-200 rounded w-full mb-2" />
-          <div className="h-4 bg-gray-200 rounded w-3/4" />
-        </div>
-        <div className="space-y-4">
-          {[...Array(5)].map((_, i) => (
-            <div key={i} className="h-12 bg-gray-200 rounded animate-pulse" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container mx-auto py-8 px-4">
-        <h1 className="text-3xl font-bold mb-6">
-          SME IPO Reviews & Analysis
-        </h1>
-        <div className="bg-red-50 border border-red-200 rounded-lg p-6 text-center">
-          <p className="text-red-700">{error}</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="container mx-auto py-8 px-4">
-      <h1 className="text-3xl font-bold mb-6">
-        SME IPO Reviews & Analysis
-      </h1>
-
-      <ReviewsHeader />
-
-      <div className="mb-4 text-sm text-gray-600">
-        Total Records: {totalCount}
-      </div>
-
-      <DataTable
-        data={data}
-        columns={columns}
-        emptyMessage={`No SME IPO reviews available for ${year}`}
-        keyExtractor={(row) => row.id}
-        enableColumnSearch={true}
-        enableYearFilter={true}
-        enablePagination={true}
-        yearFilterConfig={{
-          selectedYear: year,
-          onYearChange: handleYearChange,
-        }}
-        paginationConfig={{
-          pageSize: 50,
-          currentPage: page,
-          totalRecords: totalCount,
-          onPageChange: handlePageChange,
-        }}
-        columnSearchConfig={{
-          onSearch: handleSearch,
-          currentSearches: searches,
-        }}
-      />
+      <Link
+        href="/sme-ipos"
+        className="inline-flex items-center px-5 py-2.5 rounded-lg bg-blue-600 text-white font-medium hover:bg-blue-700"
+      >
+        View SME IPOs
+      </Link>
     </div>
   );
 }

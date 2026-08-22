@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, X, Calculator, Scale, Building2, Calendar, TrendingUp, FileText, Star, List } from 'lucide-react';
+import { Menu, X, Calculator, Scale, Building2, Calendar, TrendingUp, FileText, List } from 'lucide-react';
 
 export function MobileMenu() {
   const pathname = usePathname();
@@ -91,14 +91,6 @@ export function MobileMenu() {
                 <Calendar className="h-4 w-4" />
                 <span>Mainboard IPO Calendar</span>
               </Link>
-              <Link
-                href="/mainboard-ipo-reviews"
-                className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
-                onClick={closeMenu}
-              >
-                <Star className="h-4 w-4" />
-                <span>Mainboard IPO Reviews</span>
-              </Link>
             </div>
 
             <div className="space-y-2">
@@ -144,14 +136,6 @@ export function MobileMenu() {
               >
                 <Calendar className="h-4 w-4" />
                 <span>SME IPO Calendar</span>
-              </Link>
-              <Link
-                href="/sme-ipo-reviews"
-                className="flex items-center space-x-2 pl-4 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
-                onClick={closeMenu}
-              >
-                <Star className="h-4 w-4" />
-                <span>SME IPO Reviews</span>
               </Link>
             </div>
 
