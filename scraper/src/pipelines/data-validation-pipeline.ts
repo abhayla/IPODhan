@@ -44,6 +44,11 @@ export interface PipelineResult {
   duplicateCheck?: DuplicateCheckResult;
   autoFixesApplied: Record<string, any>;
   warnings: string[];
+  /**
+   * True when this record matched an existing IPO and was routed through to
+   * the update path rather than rejected or silently dropped (#159).
+   */
+  isUpdate?: boolean;
 }
 
 export interface PipelineConfig {
@@ -61,6 +66,17 @@ export interface PipelineConfig {
 
   /** Confidence threshold for duplicate detection (default: 'MEDIUM') */
   duplicateConfidenceThreshold?: 'HIGH' | 'MEDIUM' | 'LOW';
+
+  /**
+   * What to do with a record that matches an existing IPO row (#159):
+   * - 'reject' (default) — refuse the record entirely (manual-entry / migration pipelines)
+   * - 'route-to-update' — pass the record through (`shouldCreate: true`,
+   *   `isUpdate: true`) so it flows into `upsertIPO()`'s existing
+   *   field-protection + consolidation path and updates the matched row.
+   *   Requires the duplicate check to have resolved an `existingIPO`; a
+   *   match with no resolvable row still rejects even under this mode.
+   */
+  duplicateHandling?: 'reject' | 'route-to-update';
 }
 
 const DEFAULT_CONFIG: Required<PipelineConfig> = {
@@ -69,6 +85,7 @@ const DEFAULT_CONFIG: Required<PipelineConfig> = {
   enableAutoFixes: true,
   enableLogging: true,
   duplicateConfidenceThreshold: 'MEDIUM',
+  duplicateHandling: 'reject',
 };
 
 /**
@@ -129,6 +146,7 @@ export class DataValidationPipeline {
 
     // Step 4: Duplicate detection
     let duplicateCheck: DuplicateCheckResult | undefined;
+    let isUpdate = false;
 
     if (!this.config.skipDuplicateDetection) {
       duplicateCheck = await this.duplicateService.checkForDuplicates({
@@ -139,11 +157,23 @@ export class DataValidationPipeline {
         closeDate: data.closeDate,
       });
 
-      // Reject if duplicate found with sufficient confidence
       if (duplicateCheck.isDuplicate) {
-        const shouldReject = this.shouldRejectDuplicate(duplicateCheck);
+        const shouldRoute = this.shouldRejectDuplicate(duplicateCheck);
 
-        if (shouldReject) {
+        if (
+          shouldRoute &&
+          this.config.duplicateHandling === 'route-to-update' &&
+          duplicateCheck.existingIPO
+        ) {
+          // Match against the ipos table = this record is already tracked.
+          // Route it through to the update path instead of rejecting or
+          // silently dropping it (#159) — upsertIPO's field-protection +
+          // consolidation logic decides what actually changes.
+          isUpdate = true;
+          warnings.push(
+            `Matches existing IPO "${duplicateCheck.existingIPO.companyName}" (${duplicateCheck.confidence} confidence) — routing to update path`
+          );
+        } else if (shouldRoute) {
           return {
             shouldCreate: false,
             reason: `Duplicate detected: ${duplicateCheck.matchReason}`,
@@ -167,12 +197,13 @@ export class DataValidationPipeline {
     // Step 6: Final decision
     return {
       shouldCreate: true,
-      reason: 'Validation passed',
+      reason: isUpdate ? 'Validation passed (existing IPO — routed to update)' : 'Validation passed',
       validatedData: data,
       validationResult,
       duplicateCheck,
       autoFixesApplied,
       warnings,
+      isUpdate,
     };
   }
 
@@ -279,16 +310,20 @@ export class PipelineFactory {
   ): DataValidationPipeline {
     return new DataValidationPipeline(db, {
       rejectOnCriticalErrors: true,
-      // Duplicate detection is intentionally OFF here: the persister
-      // (upsertIPO) is the single source of dedup+update truth — it matches an
-      // existing IPO by normalized name / slug and UPDATEs it. Using a
-      // symbol-exists check as a create gate rejected every already-known IPO,
-      // so open IPOs could never refresh their GMP / subscription / status
-      // (GitHub #3, the production zero-records bug).
-      skipDuplicateDetection: true,
+      // Duplicate detection runs, but a match ROUTES to update instead of
+      // rejecting (duplicateHandling below) — the persister (upsertIPO)
+      // remains the single source of dedup+update truth, matching an
+      // existing IPO by normalized name / slug and UPDATEing it. Using a
+      // symbol-exists check as a hard create-reject gate rejected every
+      // already-known IPO (GitHub #3, the production zero-records bug);
+      // skipping detection entirely to dodge that instead silently dropped
+      // every MEDIUM+ duplicate match with no route to update at all
+      // (GitHub #159 — GMP/subscription/status froze on re-scrape).
+      skipDuplicateDetection: false,
       enableAutoFixes: true,
       enableLogging: true,
       duplicateConfidenceThreshold: 'MEDIUM',
+      duplicateHandling: 'route-to-update',
     });
   }
 
