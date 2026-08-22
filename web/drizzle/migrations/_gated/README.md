@@ -33,6 +33,15 @@ Type-widening (non-destructive) DDL, parked here (owner-applied with read-back):
    re-running `backfill:stuck-listing --execute`** to fill the 52 orphan LISTED IPOs.
    Independent of B2–C2.
 
+Destructive column drop (owner-applied with read-back):
+
+7. `D1_ipos_drop_dead_price_band_columns.sql` — **DESTRUCTIVE (T-276 / round-2 P3-4)**:
+   drop `ipos.price_band_low` / `ipos.price_band_high`. Verified 100% NULL on all 328
+   prod rows (2026-08-22) and absent from the SSOT schema — the live band is
+   `price_range_min`/`price_range_max`. Until this is applied the columns stay in place,
+   unwritten; `scraper/tests/unit/config/price-band-single-scheme.test.ts` asserts no
+   code path writes them. Independent of B2–C3.
+
 Apply each via the tunnel (`localhost:15432`) with a read-back after. Note: the drizzle
 journal is currently out of sync (pre-existing `extraction_status` enum drift blocks a
 clean `db:generate`), so these are hand-authored rather than generated — record the

@@ -49,6 +49,22 @@ export interface FieldRules {
   timeBased?: boolean;
 
   /**
+   * Allow a NEWER value from the SAME source to replace the stored value.
+   *
+   * T-276: a same-source conflict on a non-`timeBased` field previously
+   * resolved to `DEFAULT_KEEP_EXISTING`, so once a wrong value landed the
+   * source could never correct itself - production logged
+   * `NSE 360 vs NSE 342 -> DEFAULT_KEEP_EXISTING` on `priceRangeMin` every
+   * cycle for two days while NSE published the right band.
+   *
+   * Unlike `timeBased` (newest wins REGARDLESS of source), this only applies
+   * when both values came from the SAME source AND the matrix lists that
+   * source as authoritative for the field (`sources.indexOf(source) !== -1`).
+   * Cross-source priority is untouched.
+   */
+  sameSourceRefresh?: boolean;
+
+  /**
    * Ignore DRHP for this field (for real-time data)
    */
   ignoreDRHP?: boolean;
@@ -297,33 +313,26 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { regex: '^.{20,5000}$' },
   },
 
-  price_band_min: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
-    normalization: 'number',
-    confidenceThreshold: 90,
-    description: 'Minimum price in price band',
-    validation: { min: 1, max: 100000 },
-  },
-
-  price_band_max: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
-    normalization: 'number',
-    confidenceThreshold: 90,
-    description: 'Maximum price in price band',
-    validation: { min: 1, max: 100000 },
-  },
-
-  // camelCase variant - consolidation keys on `priceRangeMin`/`priceRangeMax`
-  // (nse-scraper-orchestrator-v2.ts writes these; field_sources confirms it).
-  // Without this twin, getFieldRules('priceRangeMin') falls through to DEFAULT
-  // rules (no validation, no refresh), so a corrected NSE band never
-  // re-consolidates once the field is set once. Mirrors the
-  // lotSize/allotmentDate/listingDate/companyDescription dual-key pattern.
+  // ONE naming scheme for the price band: `priceRangeMin`/`priceRangeMax`.
+  //
+  // T-276 (round-2 P3-4): the matrix used to carry a snake_case
+  // `price_band_min`/`price_band_max` twin as well. Nothing ever consolidated
+  // under those keys - `data-persister.ts` and
+  // `data-consolidation-orchestrator.ts` both build camelCase payloads, and
+  // prod `field_sources` contains only `priceRangeMin`/`priceRangeMax`. The
+  // dead twin was live ambiguity: `cross-source-disagreement-monitor.ts`
+  // filtered `data_conflicts.field_name` on the snake_case names, so the
+  // price-band disagreement alert could never fire. Do not reintroduce it -
+  // if a caller needs a snake_case key, fix the caller.
   priceRangeMin: {
     sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
     normalization: 'number',
     confidenceThreshold: 90,
-    description: 'Minimum price in price band (camelCase consolidation key)',
+    // T-276: NSE/BSE republish a corrected band mid-issue (an early scrape can
+    // see a single price before the band is announced). Without this the
+    // correction is discarded as DEFAULT_KEEP_EXISTING - the P1-1 mechanism.
+    sameSourceRefresh: true,
+    description: 'Minimum price in price band',
     validation: { min: 1, max: 100000 },
   },
 
@@ -331,7 +340,8 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
     normalization: 'number',
     confidenceThreshold: 90,
-    description: 'Maximum price in price band (camelCase consolidation key)',
+    sameSourceRefresh: true,
+    description: 'Maximum price in price band',
     validation: { min: 1, max: 100000 },
   },
 
@@ -621,6 +631,17 @@ export function getSourcePriority(fieldName: string, source: ScraperSource): num
 export function isTimeBased(fieldName: string): boolean {
   const rules = getFieldRules(fieldName);
   return rules.timeBased || false;
+}
+
+/**
+ * T-276: may a NEWER value from `source` replace the stored value when BOTH
+ * values came from `source`? True only when the field opts in via
+ * `sameSourceRefresh` AND the matrix lists `source` as authoritative for it,
+ * so an unlisted source (priority -1) can never self-refresh.
+ */
+export function allowsSameSourceRefresh(fieldName: string, source: ScraperSource): boolean {
+  const rules = getFieldRules(fieldName);
+  return Boolean(rules.sameSourceRefresh) && rules.sources.indexOf(source) !== -1;
 }
 
 /**

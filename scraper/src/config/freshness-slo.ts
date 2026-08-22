@@ -46,7 +46,7 @@ const OPEN_IPO_REALTIME_MAX_STALENESS_MS = 90 * MIN;
 /**
  * 6h for price band / open date / close date: these fields change far less
  * often intraday than GMP/subscription, and their specialist sources (NSE,
- * BSE — see `price_band_min`/`price_band_max`/`open_date`/`close_date` in
+ * BSE — see `priceRangeMin`/`priceRangeMax`/`open_date`/`close_date` in
  * field-priority-matrix.ts, `sources[0]`/`sources[1]`) still run the same
  * flat 30-min cadence. 6h is a generous multiple (12 missed cycles) that
  * still catches a genuinely dead source well inside a single trading day.
@@ -83,14 +83,14 @@ export const FRESHNESS_SLOS: FreshnessSLO[] = [
     dataClass: 'open-ipo-price-band-dates',
     maxStalenessMs: PRICE_BAND_DATES_MAX_STALENESS_MS,
     justification:
-      'price_band_min/price_band_max/open_date/close_date sources[0] (field-priority-matrix.ts) — critical fields, generous 6h multiple of the 30-min cadence.',
+      'priceRangeMin/priceRangeMax/open_date/close_date sources[0] (field-priority-matrix.ts) — critical fields, generous 6h multiple of the 30-min cadence.',
   },
   {
     source: 'BSE',
     dataClass: 'open-ipo-price-band-dates',
     maxStalenessMs: PRICE_BAND_DATES_MAX_STALENESS_MS,
     justification:
-      'price_band_min/price_band_max/open_date/close_date sources[1] (field-priority-matrix.ts) — same class/SLO as NSE.',
+      'priceRangeMin/priceRangeMax/open_date/close_date sources[1] (field-priority-matrix.ts) — same class/SLO as NSE.',
   },
   {
     source: 'MONEYCONTROL',

@@ -15,9 +15,17 @@
  * see this PR's body). This module reads THOSE existing rows for OPEN IPOs
  * and reports/alerts on the ones that matter most.
  *
- * Field-name keys (`price_band_min`, `open_date`, `gmp_price`, ...) match
- * `field-priority-matrix.ts`'s matrix keys, which is what
- * `data-consolidation-service.ts` writes into `data_conflicts.field_name`.
+ * Field-name keys MUST be the keys consolidation actually writes into
+ * `data_conflicts.field_name` — i.e. the camelCase property names on the
+ * payload `data-persister.ts` / `data-consolidation-orchestrator.ts` hand to
+ * `consolidateIPOData` (`priceRangeMin`, `openDate`, ...), NOT the snake_case
+ * names some `field-priority-matrix.ts` entries still use.
+ *
+ * T-276: they were snake_case here, so the `inArray(fieldName, ...)` filter
+ * matched nothing and the price-band alert could never fire — while prod
+ * `data_conflicts` was full of `priceRangeMin` NSE-vs-NSE rows. Verified
+ * against prod: every row in `data_conflicts` and every row in
+ * `field_sources` uses the camelCase names.
  */
 import { and, eq, inArray, isNull } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
@@ -28,12 +36,16 @@ import logger from '../utils/logger.js';
 
 /** Fields compared for OPEN IPOs, per DoD: price band, open/close dates, and GMP. */
 export const COMPARED_FIELDS = [
-  'price_band_min',
-  'price_band_max',
-  'open_date',
-  'close_date',
-  'gmp_price',
-  'gmp_percentage',
+  'priceRangeMin',
+  'priceRangeMax',
+  'openDate',
+  'closeDate',
+  // GMP is not consolidated today — `consolidateIPOData` is only ever called
+  // with `tableName: 'ipos'`, so no GMP conflict row exists under ANY key.
+  // Listed so the report picks them up the moment a GMP consolidation path
+  // lands; until then these two contribute nothing (T-276).
+  'gmpPrice',
+  'gmpPercentage',
 ] as const;
 
 /**
@@ -42,7 +54,7 @@ export const COMPARED_FIELDS = [
  * are compared too but stay at the P2 tier — the DoD names only price band
  * and dates as HIGH-value.
  */
-export const HIGH_VALUE_FIELDS = new Set<string>(['price_band_min', 'price_band_max', 'open_date', 'close_date']);
+export const HIGH_VALUE_FIELDS = new Set<string>(['priceRangeMin', 'priceRangeMax', 'openDate', 'closeDate']);
 
 export interface DisagreementRecord {
   ipoId: string;

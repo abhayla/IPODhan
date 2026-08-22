@@ -13,6 +13,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   checkCrossSourceDisagreements,
+  COMPARED_FIELDS,
   HIGH_VALUE_FIELDS,
 } from '../../../src/services/cross-source-disagreement-monitor.js';
 
@@ -75,7 +76,7 @@ describe('checkCrossSourceDisagreements', () => {
       [
         {
           ipoId: 'ipo-1',
-          fieldName: 'price_band_min',
+          fieldName: 'priceRangeMin',
           source1: 'NSE',
           value1: '100',
           source2: 'BSE',
@@ -94,7 +95,7 @@ describe('checkCrossSourceDisagreements', () => {
     const body = JSON.parse(init.body);
     expect(body.severity).toBe('P1');
     expect(body.title).toContain('Acme Ltd');
-    expect(body.title).toContain('price_band_min');
+    expect(body.title).toContain('priceRangeMin');
   });
 
   it('aggregates GMP (non-HIGH-value) disagreements into a single P2 notifyOwner call', async () => {
@@ -104,8 +105,8 @@ describe('checkCrossSourceDisagreements', () => {
         { id: 'ipo-2', companyName: 'Beta Ltd' },
       ],
       [
-        { ipoId: 'ipo-1', fieldName: 'gmp_price', source1: 'INVESTORGAIN_GMP', value1: '50', source2: 'CHITTORGARH', value2: '65' },
-        { ipoId: 'ipo-2', fieldName: 'gmp_percentage', source1: 'INVESTORGAIN_GMP', value1: '10', source2: 'CHITTORGARH', value2: '18' },
+        { ipoId: 'ipo-1', fieldName: 'gmpPrice', source1: 'INVESTORGAIN_GMP', value1: '50', source2: 'CHITTORGARH', value2: '65' },
+        { ipoId: 'ipo-2', fieldName: 'gmpPercentage', source1: 'INVESTORGAIN_GMP', value1: '10', source2: 'CHITTORGARH', value2: '18' },
       ]
     );
 
@@ -122,11 +123,23 @@ describe('checkCrossSourceDisagreements', () => {
     expect(body.body).toContain('Beta Ltd');
   });
 
-  it('classifies exactly price_band_min, price_band_max, open_date, close_date as HIGH-value', () => {
+  // T-276: the filter keys MUST be the names consolidation actually writes into
+  // data_conflicts.field_name. They were snake_case (`price_band_min`, ...),
+  // which matched zero rows, so the price-band alert was dead on arrival.
+  it('uses only camelCase field keys — a snake_case key matches nothing in data_conflicts', () => {
+    for (const f of COMPARED_FIELDS) {
+      expect(f, `${f} is snake_case; consolidation writes camelCase keys`).not.toMatch(/_/);
+    }
+    for (const f of HIGH_VALUE_FIELDS) {
+      expect(f, `${f} is snake_case; consolidation writes camelCase keys`).not.toMatch(/_/);
+    }
+  });
+
+  it('classifies exactly priceRangeMin, priceRangeMax, openDate, closeDate as HIGH-value', () => {
     expect([...HIGH_VALUE_FIELDS].sort()).toEqual(
-      ['close_date', 'open_date', 'price_band_max', 'price_band_min'].sort()
+      ['closeDate', 'openDate', 'priceRangeMax', 'priceRangeMin'].sort()
     );
-    expect(HIGH_VALUE_FIELDS.has('gmp_price')).toBe(false);
-    expect(HIGH_VALUE_FIELDS.has('gmp_percentage')).toBe(false);
+    expect(HIGH_VALUE_FIELDS.has('gmpPrice')).toBe(false);
+    expect(HIGH_VALUE_FIELDS.has('gmpPercentage')).toBe(false);
   });
 });

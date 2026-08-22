@@ -27,6 +27,7 @@ import type {
   FieldRules,
 } from '../config/field-priority-matrix';
 import {
+  allowsSameSourceRefresh,
   getFieldRules,
   getSourcePriority,
   isTimeBased,
@@ -109,6 +110,43 @@ interface ConflictInfo {
   reason: string;
 }
 
+const PRICE_BAND_FIELDS = ['priceRangeMin', 'priceRangeMax'] as const;
+
+function toFiniteNumber(value: any): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const n = typeof value === 'number' ? value : Number(String(value).replace(/[^0-9.\-]/g, ''));
+  return Number.isFinite(n) ? n : null;
+}
+
+/**
+ * T-276: which price-band fields must be rejected because the incoming band is
+ * degenerate (min === max) while a real stored range already exists?
+ *
+ * Returns an empty set unless BOTH incoming band fields are present and equal
+ * AND both stored values are present with `min < max` - a zero-width band is a
+ * legitimate value for a fixed-price issue, so it is only rejected when it
+ * would destroy a real range.
+ */
+export function collectDegeneratePriceBandFields(
+  incomingData: Record<string, any>,
+  existingSourceMap: Map<string, { value: any; source: ScraperSource; updatedAt?: Date }>
+): Set<string> {
+  const empty = new Set<string>();
+  if (!PRICE_BAND_FIELDS.every(f => f in incomingData && existingSourceMap.has(f))) return empty;
+
+  const incomingMin = toFiniteNumber(incomingData.priceRangeMin);
+  const incomingMax = toFiniteNumber(incomingData.priceRangeMax);
+  const existingMin = toFiniteNumber(existingSourceMap.get('priceRangeMin')!.value);
+  const existingMax = toFiniteNumber(existingSourceMap.get('priceRangeMax')!.value);
+
+  if (incomingMin === null || incomingMax === null) return empty;
+  if (existingMin === null || existingMax === null) return empty;
+  if (incomingMin !== incomingMax) return empty;   // incoming is a real range
+  if (existingMin >= existingMax) return empty;    // nothing real to protect
+
+  return new Set<string>(PRICE_BAND_FIELDS);
+}
+
 /**
  * Data Consolidation Service
  * Main orchestrator for intelligent data merging
@@ -183,10 +221,39 @@ export class DataConsolidationService {
         }
       }
 
+      // T-276 no-narrowing guard: a DEGENERATE incoming band (min === max) must
+      // never overwrite a stored real range. NSE/BSE report a single `issuePrice`
+      // before the band is announced and `parsePriceRange` widens that into a
+      // zero-width {min: p, max: p}; with SAME_SOURCE_REFRESH enabled that fake
+      // band would now be free to re-collapse a corrected range every cycle.
+      // A degenerate band is still accepted when nothing real is stored (genuine
+      // fixed-price issues).
+      const degenerateBandFields = collectDegeneratePriceBandFields(
+        input.incomingData,
+        existingSourceMap
+      );
+      for (const fieldName of degenerateBandFields) {
+        result.fieldsProcessed++;
+        result.fieldResults.push({
+          fieldName,
+          finalValue: existingSourceMap.get(fieldName)!.value,
+          chosenSource: existingSourceMap.get(fieldName)!.source,
+          hadConflict: false,
+          rejectedSources: [
+            {
+              source: input.source,
+              value: input.incomingData[fieldName],
+              reason: 'DEGENERATE_PRICE_BAND',
+            },
+          ],
+        });
+      }
+
       // Process each field in incoming data
       for (const [fieldName, incomingValue] of Object.entries(
         input.incomingData
       )) {
+        if (degenerateBandFields.has(fieldName)) continue;
         result.fieldsProcessed++;
 
         try {
@@ -447,6 +514,24 @@ export class DataConsolidationService {
         chosenSource = incomingSource;
         chosenValue = incomingValue;
         resolutionReason = 'TIME_BASED_PRIORITY';
+      }
+    } else if (
+      existingSource === incomingSource &&
+      allowsSameSourceRefresh(fieldName, incomingSource)
+    ) {
+      // T-276: the SAME authoritative source has changed its mind. Keeping the
+      // stored value here is what made the price-band floor permanent
+      // (`NSE 360 vs NSE 342 -> DEFAULT_KEEP_EXISTING`, logged every cycle for
+      // two days). Narrower than `timeBased`: it needs the same source AND the
+      // field to opt in via `sameSourceRefresh`.
+      if (scrapedAt && existingUpdatedAt && scrapedAt <= existingUpdatedAt) {
+        chosenSource = existingSource;
+        chosenValue = existingValue;
+        resolutionReason = 'SAME_SOURCE_REFRESH_EXISTING_NEWER';
+      } else {
+        chosenSource = incomingSource;
+        chosenValue = incomingValue;
+        resolutionReason = 'SAME_SOURCE_REFRESH';
       }
     } else {
       // Same source priority, not time-based - keep existing
