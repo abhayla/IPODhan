@@ -10,6 +10,13 @@ import { eq, or, ilike, asc } from 'drizzle-orm';
 import { BaseRepository } from './base-repository';
 import { registrars } from '../db/schema';
 import type { Registrar } from '../db/types';
+import {
+  getRegistrarByIdKey,
+  getRegistrarByNameKey,
+  getRegistrarAllKey,
+  getRegistrarSearchKey,
+  getRegistrarInvalidationKeys,
+} from '../cache/cache-keys';
 
 export class RegistrarRepository extends BaseRepository {
   private readonly CACHE_TTL = 604800; // 7 days in seconds (as per Story 5.3 requirements)
@@ -19,7 +26,7 @@ export class RegistrarRepository extends BaseRepository {
    * Uses Redis cache with 7-day TTL
    */
   async findById(id: string): Promise<Registrar | null> {
-    const cacheKey = `registrar:${id}`;
+    const cacheKey = getRegistrarByIdKey(id);
 
     return this.getFromCache(
       cacheKey,
@@ -47,7 +54,7 @@ export class RegistrarRepository extends BaseRepository {
    * Uses Redis cache with 7-day TTL
    */
   async findByName(name: string): Promise<Registrar | null> {
-    const cacheKey = `registrar:name:${name}`;
+    const cacheKey = getRegistrarByNameKey(name);
 
     return this.getFromCache(
       cacheKey,
@@ -76,7 +83,7 @@ export class RegistrarRepository extends BaseRepository {
    * Uses Redis cache with 7-day TTL
    */
   async findAll(activeOnly: boolean = true): Promise<Registrar[]> {
-    const cacheKey = `registrars:all:${activeOnly ? 'active' : 'all'}`;
+    const cacheKey = getRegistrarAllKey(activeOnly);
 
     return this.getFromCache(
       cacheKey,
@@ -113,7 +120,7 @@ export class RegistrarRepository extends BaseRepository {
     }
 
     const normalizedQuery = query.trim();
-    const cacheKey = `registrars:search:${normalizedQuery.toLowerCase()}:${activeOnly ? 'active' : 'all'}`;
+    const cacheKey = getRegistrarSearchKey(normalizedQuery, activeOnly);
 
     return this.getFromCache(
       cacheKey,
@@ -152,14 +159,8 @@ export class RegistrarRepository extends BaseRepository {
    * Called when registrar data is updated
    */
   async invalidateRegistrarCache(id?: string): Promise<void> {
-    const keys: string[] = [];
-    const patterns: string[] = ['registrars:*'];
-
-    if (id) {
-      keys.push(`registrar:${id}`);
-      patterns.push(`registrar:name:*`);
-    }
-
+    const keys: string[] = id ? [getRegistrarByIdKey(id)] : [];
+    const patterns = getRegistrarInvalidationKeys(id).filter((k) => k !== keys[0]);
     await this.invalidateCache(keys, patterns);
   }
 }

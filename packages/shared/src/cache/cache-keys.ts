@@ -185,3 +185,47 @@ export function getHistoricalIPOsKey(filters: {
 export function getHistoricalIPOInvalidationKeys(): string[] {
   return ['ipos:history:*'];
 }
+
+/**
+ * Generate cache key for a single registrar by id
+ */
+export function getRegistrarByIdKey(id: string): string {
+  return `registrar:${id}`;
+}
+
+/**
+ * Generate cache key for a single registrar by name
+ */
+export function getRegistrarByNameKey(name: string): string {
+  return `registrar:name:${name}`;
+}
+
+/**
+ * Generate cache key for the full registrar list
+ * T-279: mirrors web/lib/cache/cache-keys.ts's registrar generators (T-275)
+ * so packages/shared's RegistrarRepository stops inlining these key strings
+ * (GitHub #164).
+ */
+export function getRegistrarAllKey(activeOnly: boolean): string {
+  return `registrars:all:${activeOnly ? 'active' : 'all'}`;
+}
+
+/**
+ * Generate cache key for registrar search results
+ */
+export function getRegistrarSearchKey(query: string, activeOnly: boolean): string {
+  return `registrars:search:${query.toLowerCase()}:${activeOnly ? 'active' : 'all'}`;
+}
+
+/**
+ * Get all cache key patterns for registrar invalidation (T-279)
+ * Should be called whenever registrar rows are inserted, updated, or seeded.
+ */
+export function getRegistrarInvalidationKeys(id?: string): string[] {
+  const keys = ['registrars:*']; // all-list + search-result caches
+  if (id) {
+    keys.push(getRegistrarByIdKey(id));
+    keys.push('registrar:name:*');
+  }
+  return keys;
+}
