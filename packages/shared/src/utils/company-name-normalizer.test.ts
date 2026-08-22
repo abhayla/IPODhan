@@ -59,6 +59,22 @@ describe('normalizeCompanyNameForMatching — P2-1 duplicate-prevention pairs', 
     expect(normalizeCompanyNameForMatching('Acme Industries Private Limited')).toBe('acme industries');
     expect(normalizeCompanyNameForMatching('Jay Bee Laminations Ltd. O')).toBe('jay bee laminations');
   });
+
+  /**
+   * P3-1 (round-2 review, T-278): "X Ltd. (X IPO)" and "X Ltd. (X IPO) O" must
+   * converge to the SAME identity key. Before this fix they did not — the
+   * trailing 1-2 letter status code sits AFTER the closing paren, so neither
+   * the ltd-anchored status-code strip nor the trailing-paren strip fired on
+   * the suffixed variant, minting a second row every re-scrape (prod: 5
+   * duplicate rows each for G.V. Electricals, H.R. Hygiene, Shree Balaji).
+   */
+  it('converges "X Ltd. (X IPO)" with "X Ltd. (X IPO) <status code>" (P3-1)', () => {
+    const base = normalizeCompanyNameForMatching('G.V.Electricals Ltd. (G.V. Electricals IPO)');
+    expect(base).toBe('g v electricals');
+    for (const code of ['O', 'P', 'LT', 'CT']) {
+      expect(normalizeCompanyNameForMatching(`G.V.Electricals Ltd. (G.V. Electricals IPO) ${code}`)).toBe(base);
+    }
+  });
 });
 
 /**

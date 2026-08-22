@@ -39,6 +39,18 @@ export function sanitizeDisplayCompanyName(name: string | null | undefined): str
     // suffix ("Ltd. O", "Ltd. P", "Ltd. LT") — a scrape artifact (#16/#42). Keep
     // the suffix itself.
     .replace(/(\bLtd\.?|\bLimited)\s+[A-Za-z]{1,2}$/i, '$1')
+    // Strip a trailing KNOWN status code even when it trails a redundant
+    // parenthetical ("Ltd. (X IPO) O") — the ltd-anchored rule above only
+    // fires when the code sits immediately after the legal suffix (#42, P3-1).
+    // Enumerated (not a blanket 1-2 letter strip) to avoid over-stripping a
+    // genuine short trailing word.
+    .replace(/\s+(O|P|LT|CT)$/i, '')
+    // Strip a redundant trailing parenthetical descriptor ("Ltd. (Company Name
+    // IPO)") once it is at the absolute end of the string — a scrape artifact
+    // (#42, P3-1). A genuine parenthetical ("Horizon Reclaim (India) Ltd.")
+    // precedes the legal suffix, so it is never at the end and survives.
+    .replace(/\s*\([^)]*\)\s*$/, '')
+    .trim()
     // Strip a trailing " IPO"/" FPO" — Chittorgarh display names arrive as
     // "Twinkle Papers IPO"; the instrument label is not part of the company
     // name (#42; matching normalizer already strips it — keep in lock-step).
@@ -69,6 +81,11 @@ export function normalizeCompanyNameForMatching(companyName: string): string {
     // Strip a trailing 1-2 letter status/category code appended AFTER the legal
     // suffix (e.g. "Ltd. O", "Ltd. LT") — scrape artifacts (#16).
     .replace(/(\bltd\.?|\blimited)\s+[a-z]{1,2}$/i, '$1')
+    // Strip a trailing KNOWN status code even when it trails a redundant
+    // parenthetical ("Ltd. (X IPO) O") — the ltd-anchored rule above only
+    // fires when the code sits immediately after the legal suffix (P3-1;
+    // keep in lock-step with `sanitizeDisplayCompanyName` and the SQL twin).
+    .replace(/\s+(o|p|lt|ct)$/i, '')
     // Punctuation normalization (P2-1) — do this BEFORE the suffix chain so a
     // period-joined suffix or an "&"-vs-"and" variant lines up with its sibling.
     .replace(/\./g, ' ')
@@ -162,9 +179,14 @@ export function normalizedCompanyNameSql(input: SQL): SQL {
                               REGEXP_REPLACE(
                                 REGEXP_REPLACE(
                                   REGEXP_REPLACE(
-                                    ${input},
-                                      '(Ltd\\.?|Limited)\\s+[A-Za-z]{1,2}$',
-                                      '\\1',
+                                    REGEXP_REPLACE(
+                                      ${input},
+                                        '(Ltd\\.?|Limited)\\s+[A-Za-z]{1,2}$',
+                                        '\\1',
+                                        'i'
+                                    ),
+                                      '\\s+(O|P|LT|CT)$',
+                                      '',
                                       'i'
                                   ),
                                     '\\.',

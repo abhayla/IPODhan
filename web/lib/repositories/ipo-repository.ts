@@ -38,6 +38,7 @@ import {
   getIPOSearchKey,
   getHistoricalIPOsKey,
   getFuzzySearchKey,
+  getSlugRedirectKey,
 } from '../cache/cache-keys';
 import { parseNaiveTimestampAsUtc } from '../../../packages/shared/src/db/timezone-config';
 import {
@@ -1140,6 +1141,31 @@ export class IPORepository extends BaseRepository implements IIPORepository {
         }
       },
       CacheTTL.HISTORICAL_IPOS
+    );
+  }
+
+  /**
+   * Look up a retired slug's live redirect target (P3-1, T-278). Returns the
+   * CURRENT slug of the IPO it now belongs to, or null if `oldSlug` was never
+   * retired. Reads `ipos.slug` fresh at request time so a redirect never goes
+   * stale if the target is renamed again later.
+   */
+  async findRedirectSlug(oldSlug: string): Promise<string | null> {
+    const cacheKey = getSlugRedirectKey(oldSlug);
+
+    return this.getFromCache(
+      cacheKey,
+      async () => {
+        const [row] = await this.db
+          .select({ currentSlug: ipos.slug })
+          .from(schema.ipoSlugRedirects)
+          .innerJoin(ipos, eq(schema.ipoSlugRedirects.ipoId, ipos.id))
+          .where(eq(schema.ipoSlugRedirects.oldSlug, oldSlug))
+          .limit(1);
+
+        return row?.currentSlug ?? null;
+      },
+      CacheTTL.SLUG_REDIRECT
     );
   }
 
