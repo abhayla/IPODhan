@@ -41,6 +41,27 @@ export function getRedisClient(): Redis {
         : {}),
     };
 
+    // T-278 P3-7 (#165 F3): a direct-write backfill script run over an SSH
+    // tunnel to the DB host (e.g. DATABASE_HOST=127.0.0.1 PORT=15432) has NO
+    // reason to also have REDIS_URL/REDIS_HOST set — prod Redis is
+    // loopback-only on a DIFFERENT box (the Linux app server), reachable only
+    // through its own tunnel. Silently falling back to localhost:6379 makes
+    // invalidateIPOCaches() connect to whatever (if anything) is running
+    // locally and report success — the write looks complete, but prod's
+    // cached page keeps serving the pre-backfill value until CacheTTL
+    // expires naturally. This warning is the only signal that happens; it
+    // was previously silent (a 17-minute stale API read after a completed
+    // backfill was the only observable symptom).
+    if (!process.env.REDIS_URL && !process.env.REDIS_HOST) {
+      console.warn(
+        '[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. ' +
+        'If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis ' +
+        'connection is almost certainly NOT the one production reads from; cache invalidation ' +
+        'will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that ' +
+        'the change becomes visible only after the cache TTL expires.'
+      );
+    }
+
     redisClient = process.env.REDIS_URL
       ? new Redis(process.env.REDIS_URL, sharedOptions)
       : new Redis({

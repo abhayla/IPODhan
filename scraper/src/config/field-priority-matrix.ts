@@ -65,6 +65,19 @@ export interface FieldRules {
   sameSourceRefresh?: boolean;
 
   /**
+   * T-278 P3-7 (GitHub #165 F1): bounds WHICH sources may exercise
+   * `sameSourceRefresh`. Without this, `allowsSameSourceRefresh()` treated
+   * every source in `sources` as equally "authoritative" for self-refresh —
+   * so a low-priority fallback source (e.g. MONEYCONTROL, listed only as a
+   * last-resort) could silently overwrite a value another source had
+   * already corrected, since a same-source match skips the cross-source
+   * priority contest entirely. When set, ONLY these sources may self-refresh;
+   * when omitted, falls back to the full `sources` list (existing behavior)
+   * for any other field that opts into `sameSourceRefresh` in the future.
+   */
+  sameSourceRefreshSources?: ScraperSource[];
+
+  /**
    * Ignore DRHP for this field (for real-time data)
    */
   ignoreDRHP?: boolean;
@@ -332,6 +345,11 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     // see a single price before the band is announced). Without this the
     // correction is discarded as DEFAULT_KEEP_EXISTING - the P1-1 mechanism.
     sameSourceRefresh: true,
+    // T-278 P3-7 (#165 F1): only the exchange sources actually "republish a
+    // corrected band" the way the T-276 comment above describes — DRHP is a
+    // static filing and MONEYCONTROL a lower-priority fallback, neither
+    // should be able to self-refresh past a value NSE/BSE already set.
+    sameSourceRefreshSources: ['NSE', 'BSE'],
     description: 'Minimum price in price band',
     validation: { min: 1, max: 100000 },
   },
@@ -341,6 +359,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     normalization: 'number',
     confidenceThreshold: 90,
     sameSourceRefresh: true,
+    sameSourceRefreshSources: ['NSE', 'BSE'],
     description: 'Maximum price in price band',
     validation: { min: 1, max: 100000 },
   },
@@ -641,7 +660,9 @@ export function isTimeBased(fieldName: string): boolean {
  */
 export function allowsSameSourceRefresh(fieldName: string, source: ScraperSource): boolean {
   const rules = getFieldRules(fieldName);
-  return Boolean(rules.sameSourceRefresh) && rules.sources.indexOf(source) !== -1;
+  if (!rules.sameSourceRefresh) return false;
+  const allowList = rules.sameSourceRefreshSources ?? rules.sources;
+  return allowList.indexOf(source) !== -1;
 }
 
 /**
