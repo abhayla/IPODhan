@@ -4,6 +4,17 @@
  *
  * Tests the full API route with real database and Redis connections.
  * Ensures proper integration with RegistrarRepository and caching.
+ *
+ * T-265 root-cause note: this suite writes through the SAME `db` client the
+ * whole app uses (wired to DATABASE_URL, not a dedicated TEST_DATABASE_URL) —
+ * that is how "Alpha Registrar Services Ltd" / "Beta Registrar Technologies" /
+ * "Gamma Corporate Services" ended up as 39 orphaned rows in the PRODUCTION
+ * `ipodhan` database (2025-11-07): DATABASE_URL was pointed at prod (e.g. via
+ * a local SSH-tunneled .env.local) when this suite ran, and the old teardown
+ * only tracked the LAST beforeEach's inserted ids, silently orphaning every
+ * earlier batch. assertNotProductionDatabase() below is the guard that stops
+ * this class of leak from recurring; the accumulating cleanup below stops the
+ * orphaning even against a correctly-scoped test database.
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
@@ -13,6 +24,7 @@ import { registrars } from '@/lib/db';
 import { GET } from '@/app/api/registrars/route';
 import { NextRequest } from 'next/server';
 import { eq } from 'drizzle-orm';
+import { assertNotProductionDatabase } from '../../helpers/db-safety-guard';
 
 // ==================== TEST DATA ====================
 
@@ -57,6 +69,8 @@ let insertedRegistrarIds: string[] = [];
 // ==================== SETUP & TEARDOWN ====================
 
 beforeAll(async () => {
+  assertNotProductionDatabase('registrars.integration.test.ts');
+
   // Clean up any existing test data
   await db
     .delete(registrars)
@@ -70,10 +84,20 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
-  // Clean up test data
-  for (const id of insertedRegistrarIds) {
-    await db.delete(registrars).where(eq(registrars.id, id));
-  }
+  // Final safety-net cleanup by name, in case any afterEach was skipped
+  // (e.g. the process was killed mid-suite) — this is what the ORIGINAL
+  // teardown relied on exclusively, and why 39 rows survived: it only ever
+  // saw the ids from the LAST beforeEach call. afterEach below is now the
+  // primary cleanup; this is a backstop, not the only line of defense.
+  await db
+    .delete(registrars)
+    .where(eq(registrars.name, 'Alpha Registrar Services Ltd'));
+  await db
+    .delete(registrars)
+    .where(eq(registrars.name, 'Beta Registrar Technologies'));
+  await db
+    .delete(registrars)
+    .where(eq(registrars.name, 'Gamma Corporate Services'));
 
   // Clear Redis cache
   const redis = getRedisClient();
@@ -81,7 +105,16 @@ afterAll(async () => {
   if (keys.length > 0) {
     await redis.del(...keys);
   }
+});
 
+afterEach(async () => {
+  // Delete exactly what this test's beforeEach inserted, every time -- the
+  // bug this fixes: beforeEach used to reassign insertedRegistrarIds = []
+  // and afterAll only ever saw the LAST test's batch, silently orphaning
+  // every earlier test's 3 rows (13 test runs x 3 rows = the 39-row leak).
+  for (const id of insertedRegistrarIds) {
+    await db.delete(registrars).where(eq(registrars.id, id));
+  }
   insertedRegistrarIds = [];
 });
 
