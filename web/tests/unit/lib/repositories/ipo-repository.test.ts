@@ -1074,5 +1074,32 @@ describe('IPORepository', () => {
 
       expect(result).toBeNull();
     });
+
+    // T-278F2 (checker round 2 finding): a poisoned/stale `ipo:slug-redirect:*`
+    // cache entry must NOT be able to shadow a currently-live slug. Round 1's
+    // guard sat inside the getFromCache miss callback, so a cache HIT skipped
+    // it entirely. Checker reproduced: plant the cache key -> 200 becomes 308
+    // -> delete the key -> back to 200. Reproduce the exact "plant the cache
+    // key" scenario here: mock a cache HIT returning a redirect target for a
+    // slug that is ALSO live in ipos.slug, and assert the guard still wins.
+    it('never returns a redirect target for a live slug even when the redirect cache is poisoned (plant-the-cache-key)', async () => {
+      // Simulate a planted/stale cache entry claiming oldSlug redirects somewhere.
+      mockRedis.get = vi.fn().mockResolvedValue(JSON.stringify('poisoned-target-slug'));
+
+      const liveSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([{ id: 'live-ipo-id' }]),
+      };
+      mockDb.select = vi.fn().mockReturnValue(liveSelect);
+
+      const result = await repository.findRedirectSlug('shadowed-slug');
+
+      expect(result).toBeNull();
+      // The live-slug guard must run BEFORE the cache is ever consulted, so a
+      // poisoned cache entry is never reached — redis.get must not be called.
+      expect(mockRedis.get).not.toHaveBeenCalled();
+      expect(mockDb.select).toHaveBeenCalledTimes(1);
+    });
   });
 });
