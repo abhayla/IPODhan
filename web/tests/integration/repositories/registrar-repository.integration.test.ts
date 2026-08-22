@@ -17,6 +17,7 @@ import { getRedisClient, closeRedisClient } from '@/lib/cache/redis-client';
 import { registrars } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 import type { NewRegistrar } from '@/lib/db/types';
+import { assertNotProductionDatabase } from '../../helpers/db-safety-guard';
 
 describe('RegistrarRepository Integration Tests', () => {
   let repository: RegistrarRepository;
@@ -36,6 +37,8 @@ describe('RegistrarRepository Integration Tests', () => {
   };
 
   beforeAll(async () => {
+    assertNotProductionDatabase('registrar-repository.integration.test.ts');
+
     redis = getRedisClient();
     repository = new RegistrarRepository(db, redis);
 

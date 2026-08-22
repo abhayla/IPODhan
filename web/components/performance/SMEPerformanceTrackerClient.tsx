@@ -169,100 +169,70 @@ const performanceColumns: ColumnDef<PerformanceData>[] = [
   },
 ];
 
-// ==================== MOCK DATA HELPER ====================
+// ==================== REAL DATA FETCH ====================
 
 /**
- * Generate mock performance data for demonstration
- * In production, this would be fetched from the API with real data
- *
- * NOTE: This is temporary mock data. Replace with actual API call
- * when ListingPerformance table and currentPrice field are available.
+ * Raw row shape returned by GET /api/ipos/history (the fields this page needs).
+ * See web/app/api/ipos/history/route.ts and IPORepository.findHistorical().
  */
-function generateMockPerformanceData(year: string): PerformanceData[] {
-  const currentYear = new Date().getFullYear();
-  const selectedYear = parseInt(year, 10);
+interface HistoricalIPOApiRow {
+  id: string;
+  companyName: string;
+  slug: string;
+  segment: 'MAINBOARD' | 'SME' | null;
+  listingDate: string | null;
+  issuePrice: string | number | null;
+  listingClose: string | number | null;
+  listingGainPercent: number | null;
+  currentPriceLive: number | null;
+  currentGainLive: number | null;
+}
 
-  // Return empty if future year
-  if (selectedYear > currentYear) {
-    return [];
-  }
+interface HistoricalIPOApiResponse {
+  data: HistoricalIPOApiRow[];
+}
 
-  // Sample SME IPO data for demonstration (AC#9: accurate calculations)
-  const mockData: PerformanceData[] = [
-    {
-      id: '1',
-      companyName: 'SME Tech Ventures Ltd',
-      slug: 'sme-tech-ventures-ltd',
-      listedOn: `${year}-10-25`,
-      issuePrice: 50,
-      listingDayClose: 68.5,
-      listingDayGain: 37.0, // ((68.50 - 50) / 50) × 100 = 37.00%
-      currentPrice: 75.2,
-      profitLoss: 50.4, // ((75.20 - 50) / 50) × 100 = 50.40%
-    },
-    {
-      id: '2',
-      companyName: 'Small Cap Manufacturing Ltd',
-      slug: 'small-cap-manufacturing-ltd',
-      listedOn: `${year}-09-18`,
-      issuePrice: 80,
-      listingDayClose: 72.0,
-      listingDayGain: -10.0, // ((72 - 80) / 80) × 100 = -10.00%
-      currentPrice: 68.5,
-      profitLoss: -14.38, // ((68.50 - 80) / 80) × 100 = -14.38%
-    },
-    {
-      id: '3',
-      companyName: 'SME Digital Services India',
-      slug: 'sme-digital-services-india',
-      listedOn: `${year}-08-12`,
-      issuePrice: 120,
-      listingDayClose: 156.0,
-      listingDayGain: 30.0, // ((156 - 120) / 120) × 100 = 30.00%
-      currentPrice: 180.5,
-      profitLoss: 50.42, // ((180.50 - 120) / 120) × 100 = 50.42%
-    },
-    {
-      id: '4',
-      companyName: 'Green SME Solutions Ltd',
-      slug: 'green-sme-solutions-ltd',
-      listedOn: `${year}-07-08`,
-      issuePrice: 95,
-      listingDayClose: 98.5,
-      listingDayGain: 3.68, // ((98.50 - 95) / 95) × 100 = 3.68%
-      currentPrice: 105.3,
-      profitLoss: 10.84, // ((105.30 - 95) / 95) × 100 = 10.84%
-    },
-    {
-      id: '5',
-      companyName: 'SME Pharma Innovations',
-      slug: 'sme-pharma-innovations',
-      listedOn: `${year}-06-22`,
-      issuePrice: 150,
-      listingDayClose: 195.0,
-      listingDayGain: 30.0, // ((195 - 150) / 150) × 100 = 30.00%
-      currentPrice: 220.5,
-      profitLoss: 47.0, // ((220.50 - 150) / 150) × 100 = 47.00%
-    },
-    {
-      id: '6',
-      companyName: 'Regional SME Finance Ltd',
-      slug: 'regional-sme-finance-ltd',
-      listedOn: `${year}-05-15`,
-      issuePrice: 60,
-      listingDayClose: 54.0,
-      listingDayGain: -10.0, // ((54 - 60) / 60) × 100 = -10.00%
-      currentPrice: 58.2,
-      profitLoss: -3.0, // ((58.20 - 60) / 60) × 100 = -3.00%
-    },
-  ];
+function toNumber(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const n = typeof value === 'string' ? parseFloat(value) : value;
+  return Number.isFinite(n) ? n : null;
+}
 
-  // AC#10: Sort by listing date descending (newest first)
-  return mockData.sort((a, b) => {
-    const dateA = a.listedOn ? new Date(a.listedOn).getTime() : 0;
-    const dateB = b.listedOn ? new Date(b.listedOn).getTime() : 0;
-    return dateB - dateA;
+/**
+ * Fetch REAL SME IPO performance data from the historical IPOs API
+ * (backed by the ipos + listing_performance tables) and filter to segment=SME.
+ * Returns an empty array (honest empty state) if the request fails or no rows match.
+ */
+async function fetchSMEPerformanceData(year: string): Promise<PerformanceData[]> {
+  const params = new URLSearchParams({
+    year,
+    sort: 'listing_date',
+    sortOrder: 'desc',
+    limit: '100',
   });
+  const response = await fetch(`/api/ipos/history?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Historical IPO API returned ${response.status}`);
+  }
+  const json: HistoricalIPOApiResponse = await response.json();
+
+  return json.data
+    .filter((row) => row.segment === 'SME')
+    .map((row) => {
+      const issuePrice = toNumber(row.issuePrice) ?? 0;
+      const listingDayClose = toNumber(row.listingClose) ?? 0;
+      return {
+        id: row.id,
+        companyName: row.companyName,
+        slug: row.slug,
+        listedOn: row.listingDate,
+        issuePrice,
+        listingDayClose,
+        listingDayGain: row.listingGainPercent ?? 0,
+        currentPrice: row.currentPriceLive,
+        profitLoss: row.currentGainLive,
+      };
+    });
 }
 
 // ==================== MAIN CLIENT COMPONENT ====================
@@ -297,9 +267,7 @@ export function SMEPerformanceTrackerClient({
     const fetchData = async () => {
       setLoading(true);
       try {
-        // TODO: Replace with actual API call
-        // const data = await getSMEIPOPerformance(parseInt(year, 10));
-        const data = generateMockPerformanceData(year);
+        const data = await fetchSMEPerformanceData(year);
         setPerformanceData(data);
       } catch (error) {
         console.error('Failed to fetch performance data:', error);
@@ -406,9 +374,8 @@ export function SMEPerformanceTrackerClient({
             </li>
           </ul>
           <p className="text-muted-foreground mt-4">
-            <strong>Note:</strong> This page currently displays demonstration data. Real-time
-            performance data will be available once the ListingPerformance table and current price
-            updates are implemented.
+            <strong>Note:</strong> Current Price and Profit/Loss reflect the latest data our
+            tracker has recorded and may lag live market prices.
           </p>
         </div>
       </div>

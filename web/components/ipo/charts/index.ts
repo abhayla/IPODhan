@@ -81,17 +81,6 @@ export type {
   SubscriptionHeatmapPoint,
 } from './SubscriptionDashboard/types';
 
-// Listing Performance Charts (Phase 3)
-export { ListingPerformanceCharts } from './ListingPerformanceCharts';
-export type {
-  ListingPerformanceChartsProps,
-  ListingPerformanceData,
-  StockPricePoint,
-  PerformancePeriod,
-  SectorComparison,
-  ListingDayStats,
-} from './ListingPerformanceCharts/types';
-
 // Demand Graph (Phase 3)
 export { DemandGraph } from './DemandGraph';
 export type {
