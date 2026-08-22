@@ -275,6 +275,20 @@ export function validateFeatureFlags(): void {
   if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION && FEATURE_FLAGS.CONSOLIDATION_PERCENTAGE === 0) {
     console.warn('⚠️  DATA_CONSOLIDATION enabled but percentage is 0% - no IPOs will use it');
   }
+
+  // T-278 P3-5: ENABLE_SOURCE_TRACKING is a hard prerequisite for
+  // ENABLE_CONFLICT_DETECTION to ever record anything. Conflict detection
+  // compares an incoming value against the LAST source recorded in
+  // field_sources; if source tracking is off, that baseline is never
+  // written, so consolidateField() always takes the "no existing value"
+  // branch and conflictsDetected stays 0 forever even while consolidation
+  // itself runs normally. This combination previously shipped silently —
+  // warn loudly so it's never invisible again.
+  if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION && !FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
+    console.warn(
+      '⚠️  DATA_CONSOLIDATION is enabled but SOURCE_TRACKING is not — conflictsDetected will stay 0 forever (no field_sources baseline is ever persisted). See T-278 P3-5.'
+    );
+  }
 }
 
 /**
