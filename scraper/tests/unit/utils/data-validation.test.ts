@@ -220,4 +220,44 @@ describe('validateIPOData — Rule 8 NON_IPO_TRUST_SHAPE (P2-2, T-277)', () => {
     );
     expect(result.errors.map((e) => e.rule)).not.toContain('NON_IPO_TRUST_SHAPE');
   });
+
+  // T-277F checker finding #2: the bare /\btrust\b/i ERROR rejected a REAL
+  // company. "Trust Fintech Limited" is a genuine NSE Emerge SME IPO
+  // (Mar-2024) — the word "Trust" is part of its brand name, followed by its
+  // OWN legal suffix ("Fintech Limited"), not a bare business-trust name.
+  it('MUST pass a real company whose name merely contains "Trust" (Trust Fintech Limited)', () => {
+    const result = validateIPOData(
+      {
+        companyName: 'Trust Fintech Limited',
+        offeringType: 'IPO',
+        segment: 'SME',
+        priceRangeMin: 91,
+        priceRangeMax: 95,
+        lotSize: 1200,
+        issueSize: '4700000000.00',
+        openDate: '2024-03-14',
+        closeDate: '2024-03-18',
+      },
+      'BSE'
+    );
+    expect(result.valid).toBe(true);
+    expect(result.errors.map((e) => e.rule)).not.toContain('NON_IPO_TRUST_SHAPE');
+    // The mid-name "Trust" token is a WARN, not silently ignored either.
+    expect(result.warnings.map((e) => e.rule)).toContain('NON_IPO_TRUST_SHAPE_WARN');
+  });
+
+  it('still rejects the structural "ends in bare Trust" shape (Cube Highways Trust) as an ERROR', () => {
+    const result = validateIPOData(
+      {
+        companyName: 'Cube Highways Trust',
+        offeringType: 'IPO',
+        segment: 'MAINBOARD',
+        priceRangeMin: 152,
+        priceRangeMax: 152,
+      },
+      'CHITTORGARH'
+    );
+    expect(result.valid).toBe(false);
+    expect(result.errors.map((e) => e.rule)).toContain('NON_IPO_TRUST_SHAPE');
+  });
 });
