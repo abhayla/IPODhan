@@ -36,59 +36,18 @@ import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
 import { sql, isNull, or } from 'drizzle-orm';
 import logger from '../src/utils/logger.js';
 import { invalidateIPOCaches } from '../src/services/cache-invalidator.js';
+import {
+  matchNSEPastIssue,
+  parsePriceRange,
+  type NSEPastIssue,
+} from '../src/services/nse-past-issue-matcher.js';
 
 const DRY_RUN = process.argv.includes('--dry-run');
 
 /**
- * NSE Past IPO Response Interface
- */
-interface NSEPastIPO {
-  company: string;
-  symbol: string;
-  priceRange: string; // Format: "Rs.100 to Rs.106" or "₹253-₹266"
-  ipoStartDate: string;
-  ipoEndDate: string;
-  listingDate?: string;
-}
-
-/**
- * Parse price range from NSE format
- * Handles formats: "Rs.100 to Rs.106", "₹253-₹266", "100 - 120"
- */
-function parsePriceRange(priceStr: string): { min: number; max: number } | null {
-  if (!priceStr || priceStr === '--' || priceStr === 'N/A') {
-    return null;
-  }
-
-  try {
-    const cleaned = priceStr.replace(/Rs\.?|₹|INR/gi, '').trim();
-
-    // Handle range format "253 to 266" or "253 - 266" or "253-266"
-    const rangeMatch = cleaned.match(/(\d+(?:\.\d+)?)\s*(?:to|-)\s*(\d+(?:\.\d+)?)/i);
-    if (rangeMatch) {
-      const min = parseFloat(rangeMatch[1]);
-      const max = parseFloat(rangeMatch[2]);
-      if (!isNaN(min) && !isNaN(max) && min > 0 && max > 0 && max >= min) {
-        return { min, max };
-      }
-    }
-
-    // Handle single price
-    const price = parseFloat(cleaned);
-    if (!isNaN(price) && price > 0) {
-      return { min: price, max: price };
-    }
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Fetch NSE past IPO data from API
  */
-async function fetchNSEPastIPOs(): Promise<NSEPastIPO[]> {
+async function fetchNSEPastIPOs(): Promise<NSEPastIssue[]> {
   const BASE_URL = 'https://www.nseindia.com';
   const ENDPOINT = '/api/public-past-issues';
 
@@ -126,7 +85,7 @@ async function fetchNSEPastIPOs(): Promise<NSEPastIPO[]> {
       throw new Error(`NSE API returned ${apiResponse.status}: ${apiResponse.statusText}`);
     }
 
-    const data = await apiResponse.json() as NSEPastIPO[];
+    const data = await apiResponse.json() as NSEPastIssue[];
 
     if (!Array.isArray(data)) {
       throw new Error('NSE API returned non-array response');
@@ -140,59 +99,6 @@ async function fetchNSEPastIPOs(): Promise<NSEPastIPO[]> {
     }, 'Failed to fetch NSE past IPO data');
     throw error;
   }
-}
-
-/**
- * Match NSE IPO to database IPO by company name similarity
- * Returns best match or null if no good match found
- */
-function matchIPOByName(dbIPO: { companyName: string; symbol?: string | null }, nseIPOs: NSEPastIPO[]): NSEPastIPO | null {
-  const dbName = dbIPO.companyName.toLowerCase().trim();
-  const dbSymbol = dbIPO.symbol?.toLowerCase().trim();
-
-  // Try exact symbol match first
-  if (dbSymbol) {
-    const symbolMatch = nseIPOs.find(nseIPO =>
-      nseIPO.symbol?.toLowerCase() === dbSymbol
-    );
-    if (symbolMatch) {
-      return symbolMatch;
-    }
-  }
-
-  // Try company name matching
-  let bestMatch: NSEPastIPO | null = null;
-  let bestScore = 0;
-
-  for (const nseIPO of nseIPOs) {
-    const nseName = nseIPO.company.toLowerCase().trim();
-
-    // Exact match
-    if (dbName === nseName) {
-      return nseIPO;
-    }
-
-    // Partial match (calculate similarity score)
-    const dbWords = dbName.split(/\s+/);
-    const nseWords = nseName.split(/\s+/);
-    let matchingWords = 0;
-
-    for (const dbWord of dbWords) {
-      if (dbWord.length < 3) continue; // Skip short words
-      if (nseWords.some(nseWord => nseWord.includes(dbWord) || dbWord.includes(nseWord))) {
-        matchingWords++;
-      }
-    }
-
-    const score = matchingWords / Math.max(dbWords.length, nseWords.length);
-
-    if (score > bestScore && score >= 0.6) { // 60% similarity threshold
-      bestScore = score;
-      bestMatch = nseIPO;
-    }
-  }
-
-  return bestMatch;
 }
 
 /**
@@ -251,16 +157,18 @@ async function backfillPriceBands() {
 
     for (const dbIPO of iposWithoutPriceBands) {
       try {
-        // Match IPO by name/symbol
-        const nseIPO = matchIPOByName(dbIPO, nseIPOs);
+        // T-270: only a CONFIDENT identity match (exact symbol, or a unique
+        // normalized name) is accepted. The old fuzzy name-overlap scorer
+        // produced false positives that wrote wrong bands into 80 prod rows.
+        const match = matchNSEPastIssue(dbIPO, nseIPOs);
 
-        if (!nseIPO) {
-          console.log(`⚠️  No match: ${dbIPO.companyName}`);
+        if (!match) {
+          console.log(`⚠️  No confident match: ${dbIPO.companyName}`);
           notFound++;
           continue;
         }
 
-        // Parse price range
+        const nseIPO = match.issue;
         const priceRange = parsePriceRange(nseIPO.priceRange);
 
         if (!priceRange) {
@@ -277,7 +185,7 @@ async function backfillPriceBands() {
         }
 
         if (DRY_RUN) {
-          console.log(`🔎 Would update: ${dbIPO.companyName} → ₹${priceRange.min}-₹${priceRange.max}`);
+          console.log(`🔎 Would update: ${dbIPO.companyName} → ₹${priceRange.min}-₹${priceRange.max} (matched by ${match.matchedBy}: ${nseIPO.company}/${nseIPO.symbol ?? '-'})`);
           updated++;
           continue;
         }
@@ -304,7 +212,7 @@ async function backfillPriceBands() {
           );
         }
 
-        console.log(`✅ Updated: ${dbIPO.companyName} → ₹${priceRange.min}-₹${priceRange.max}`);
+        console.log(`✅ Updated: ${dbIPO.companyName} → ₹${priceRange.min}-₹${priceRange.max} (matched by ${match.matchedBy}: ${nseIPO.company}/${nseIPO.symbol ?? '-'})`);
         updated++;
 
         // Rate limiting
@@ -322,7 +230,7 @@ async function backfillPriceBands() {
 
     console.log(`Total IPOs processed: ${iposWithoutPriceBands.length}`);
     console.log(`✅ Successfully updated: ${updated}`);
-    console.log(`⚠️  No NSE match found: ${notFound}`);
+    console.log(`⚠️  No confident NSE match: ${notFound}`);
     console.log(`❌ Failed to update: ${failed}\n`);
 
     const successRate = ((updated / iposWithoutPriceBands.length) * 100).toFixed(2);

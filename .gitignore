@@ -307,3 +307,6 @@ docs/contracts/.run/
 
 # Local DB credential test scripts (never track — plaintext connection secrets)
 test-db-connection.js
+
+# T-270 local investigation scratch (evidence lives in GetWorkDone/evidence)
+.t270/
