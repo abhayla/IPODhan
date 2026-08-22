@@ -9,6 +9,7 @@
 import { safeGet, safeSet } from './redis-client';
 import { logger } from '../logger';
 import { CACHE_TTL } from './warm';
+import { getRegistrarAllKey } from './cache-keys';
 
 /**
  * Cache-aside pattern with automatic JSON serialization
@@ -136,7 +137,11 @@ export async function cacheAsideSectors<T>(
 export async function cacheAsideRegistrars<T>(
   fetchFn: () => Promise<T>
 ): Promise<T> {
-  const cacheKey = 'registrars:list';
+  // T-279: was the literal 'registrars:list', which RegistrarRepository
+  // never wrote to (GitHub #164) -- this function has no current callers,
+  // but on the off chance it is wired up later, the key must already match
+  // the SSOT the repository/invalidation actually use.
+  const cacheKey = getRegistrarAllKey(true);
   return cacheAside(cacheKey, CACHE_TTL.REGISTRARS, fetchFn);
 }
 
