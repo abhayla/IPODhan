@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { extractLotSizeFromDetailHtml, extractRegistrarFromDetailHtml } from '../../../src/scrapers/chittorgarh-detail-fields.js';
+import {
+  extractLotSizeFromDetailHtml,
+  extractRegistrarFromDetailHtml,
+  extractAllotmentDateFromDetailHtml,
+} from '../../../src/scrapers/chittorgarh-detail-fields.js';
 
 describe('extractLotSizeFromDetailHtml', () => {
   it('extracts lot size from the keyword-popup anchor layout (real SME page shape)', () => {
@@ -58,5 +62,31 @@ describe('extractRegistrarFromDetailHtml', () => {
     expect(extractRegistrarFromDetailHtml('<a class="registrar-name" href="#">-</a>')).toBeNull();
     expect(extractRegistrarFromDetailHtml('<a class="registrar-name" href="#">N/A</a>')).toBeNull();
     expect(extractRegistrarFromDetailHtml('')).toBeNull();
+  });
+});
+
+describe('extractAllotmentDateFromDetailHtml', () => {
+  it('extracts the allotment date from the Tentative Allotment timeline entry (real page shape)', () => {
+    const html = `<li class="d-flex justify-content-between ms-2"><span data-component="keyword-popup" data-record-id="118"><a title="Tentative Allotment" href="/keyword/tentative-allotment/118/">Allotment</a></span><span class="text-end">Thu, Dec 26, 2024</span></li>`;
+    expect(extractAllotmentDateFromDetailHtml(html)).toBe('2024-12-26');
+  });
+
+  it('does NOT match the RSC-stream escaped JSON variant (different quoting)', () => {
+    const html = `{\\"title\\":\\"Tentative Allotment\\",\\"children\\":\\"Allotment\\"}],[\\"$\\",\\"span\\",null,{\\"className\\":\\"text-end\\",\\"children\\":\\"Thu, Dec 26, 2024\\"}]`;
+    expect(extractAllotmentDateFromDetailHtml(html)).toBeNull();
+  });
+
+  it('rejects placeholders and empty/unparsable input', () => {
+    expect(
+      extractAllotmentDateFromDetailHtml(
+        '<a title="Tentative Allotment">Allotment</a></span><span class="text-end">TBA</span>'
+      )
+    ).toBeNull();
+    expect(
+      extractAllotmentDateFromDetailHtml(
+        '<a title="Tentative Allotment">Allotment</a></span><span class="text-end">-</span>'
+      )
+    ).toBeNull();
+    expect(extractAllotmentDateFromDetailHtml('')).toBeNull();
   });
 });

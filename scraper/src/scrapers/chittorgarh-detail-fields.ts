@@ -475,3 +475,43 @@ export function extractIssueSizeRupeesFromDetailHtml(html: string): number | nul
   if (!Number.isFinite(cr) || cr < MIN_ISSUE_CR || cr > MAX_ISSUE_CR) return null;
   return Math.round(cr * 10000000); // crore -> rupees
 }
+
+/**
+ * Extract the basis-of-allotment date from a Chittorgarh detail page (T-278
+ * P3-3). Neither NSE, BSE, nor the bulk Chittorgarh JSON reports ever supply
+ * this field — Moneycontrol only captures it while an IPO sits in its
+ * site-side "Closed" bucket (a window many IPOs are never scraped during),
+ * so it stays permanently NULL for most rows. The detail page's "IPO
+ * Timeline" block renders it as:
+ *   <a title="Tentative Allotment" href="/keyword/tentative-allotment/118/">
+ *     Allotment</a></span><span class="text-end">Thu, Dec 26, 2024</span>
+ * Returns an ISO 8601 date string (YYYY-MM-DD), or null when absent/unparsable.
+ */
+const MONTH_ABBR: Record<string, string> = {
+  jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+  jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+};
+
+export function extractAllotmentDateFromDetailHtml(html: string): string | null {
+  if (!html) return null;
+  const m = html.match(/title="Tentative Allotment"[\s\S]{0,200}?<span class="text-end">([^<]+)<\/span>/i);
+  if (!m) return null;
+  const raw = m[1].trim();
+  if (!raw || /^(n\/?a|tbd|tba|-+)$/i.test(raw)) return null;
+
+  // Parse "Thu, Dec 26, 2024" -> "2024-12-26" via explicit components — never
+  // `new Date(raw).toISOString()`, which silently shifts by a day depending
+  // on the running process's local timezone offset (utc-naive-timestamp-
+  // normalization.md's exact class of bug, applied to a date string here).
+  const dm = raw.match(/([A-Za-z]{3})[a-z]*\s+(\d{1,2}),?\s+(\d{4})/);
+  if (!dm) return null;
+  const month = MONTH_ABBR[dm[1].toLowerCase()];
+  if (!month) return null;
+  const day = dm[2].padStart(2, '0');
+  const year = dm[3];
+  const iso = `${year}-${month}-${day}`;
+  // Plausibility: reject an out-of-range day/month combination (e.g. Feb 30).
+  const check = new Date(`${iso}T00:00:00Z`);
+  if (isNaN(check.getTime()) || check.getUTCDate() !== Number(day)) return null;
+  return iso;
+}
