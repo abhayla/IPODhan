@@ -94,6 +94,26 @@ async function run() {
   record('no OPEN IPO past its close date', staleOpen.length === 0,
     staleOpen.length ? `${staleOpen.length} stale (e.g. ${staleOpen[0].slug})` : 'none');
 
+  // 5b. OPEN IPOs expose live GMP + subscription on the list API (#89 / T-261).
+  // The data lives in gmp_records / subscriptions; the ipos.* current-value columns
+  // are never written, so this check catches a regression back to serving them raw.
+  {
+    const openIpos = open.json?.data || [];
+    if (openIpos.length === 0) {
+      record('OPEN IPOs expose live GMP + subscription', true, 'no open IPOs right now — nothing to check');
+    } else {
+      const withGmp = openIpos.filter(i => i.gmpPrice !== null && i.gmpPrice !== undefined);
+      const withSub = openIpos.filter(i => i.subscriptionTotal !== null && i.subscriptionTotal !== undefined);
+      const pct = n => Math.round((n / openIpos.length) * 100);
+      const missGmp = openIpos.filter(i => i.gmpPrice === null || i.gmpPrice === undefined).map(i => i.slug);
+      const missSub = openIpos.filter(i => i.subscriptionTotal === null || i.subscriptionTotal === undefined).map(i => i.slug);
+      record('OPEN IPO GMP coverage >= 80%', pct(withGmp.length) >= 80,
+        `${withGmp.length}/${openIpos.length} (${pct(withGmp.length)}%)` + (missGmp.length ? ` — missing: ${missGmp.join(', ')}` : ''));
+      record('OPEN IPO subscription coverage >= 80%', pct(withSub.length) >= 80,
+        `${withSub.length}/${openIpos.length} (${pct(withSub.length)}%)` + (missSub.length ? ` — missing: ${missSub.join(', ')}` : ''));
+    }
+  }
+
   // 6. No seed/dummy company names visible (#5)
   const listings = await get('/api/ipos/listings');
   const ipoList = await get('/api/ipos?limit=100');
