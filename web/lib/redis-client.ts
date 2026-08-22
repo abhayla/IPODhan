@@ -19,8 +19,14 @@ export function getRedisClient(): Redis {
   if (!redisClient) {
     const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
 
+    // F2 (T-264 P2-3): REDIS_DB, when set, always wins as an explicit slot
+    // override even if REDIS_URL has no (or a different) db suffix - see the
+    // matching comment in lib/cache/redis-client.ts for the full incident.
     redisClient = new Redis(redisUrl, {
       maxRetriesPerRequest: 3,
+      ...(process.env.REDIS_DB !== undefined
+        ? { db: parseInt(process.env.REDIS_DB, 10) }
+        : {}),
       retryStrategy(times) {
         const delay = Math.min(times * 50, 2000);
         logger.warn({ attempt: times, delay }, 'Retrying Redis connection');

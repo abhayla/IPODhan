@@ -33,6 +33,7 @@ WEB_REQUIRED_KEYS=(
   REDIS_HOST
   REDIS_PORT
   REDIS_PASSWORD
+  REDIS_DB
   ADMIN_API_TOKEN
   NEXT_PUBLIC_GA_MEASUREMENT_ID
   NEXT_PUBLIC_ZERODHA_AFFILIATE_LINK
@@ -50,6 +51,7 @@ SCRAPER_REQUIRED_KEYS=(
   REDIS_HOST
   REDIS_PORT
   REDIS_PASSWORD
+  REDIS_DB
   SCRAPER_ENABLED
   SCRAPER_INTERVAL_MODE
   ENABLE_SOURCE_TRACKING
@@ -157,6 +159,56 @@ assert_slot_dsn() {
   echo "OK: $label -> database '$db' (slot '$slot', DSN-asserted)"
 }
 
+# T-264 F2 / T-268 - SLOT REDIS-DB ASSERT. Mirrors assert_slot_dsn above, one
+# level down: even with the client fixed to honor REDIS_URL/REDIS_DB, a
+# copy-pasted env file can still leave a non-prod slot pointed at Redis db0 -
+# the exact db prod uses - silently sharing prod's cache (F2: staging wrote
+# into the key prod served, because BOTH the client bug AND this class of
+# env mistake had to be closed). Effective db resolution mirrors the
+# client's own precedence: REDIS_DB wins when set; otherwise it is read off
+# the REDIS_URL path suffix (redis://host:port/N); otherwise db0.
+# DSN_ASSERT_REDIS_DB is advisory-if-absent, like DSN_ASSERT_DB.
+resolve_redis_db() {
+  local file="$1" redis_db redis_url path
+  redis_db="$(get_value "$file" REDIS_DB)" || redis_db=""
+  redis_db="${redis_db%\"}"; redis_db="${redis_db#\"}"
+  redis_db="${redis_db%\'}"; redis_db="${redis_db#\'}"
+  if [ -n "$redis_db" ]; then
+    printf '%s\n' "$redis_db"
+    return 0
+  fi
+  redis_url="$(get_value "$file" REDIS_URL)" || redis_url=""
+  redis_url="${redis_url%\"}"; redis_url="${redis_url#\"}"
+  # redis://[:pass@]host:port[/db] - take the segment after the last '/',
+  # but only if the URL actually carries a path (has a 3rd '/').
+  if printf '%s' "$redis_url" | grep -qE '^redis(s)?://[^/]+/[0-9]+$'; then
+    path="${redis_url##*/}"
+    printf '%s\n' "$path"
+    return 0
+  fi
+  printf '%s\n' "0"
+}
+
+assert_slot_redis_db() {
+  local file="$1" label="$2" slot want effective
+  slot="$(basename "$(dirname "$file")")"
+  want="$(grep -E "^DSN_ASSERT_REDIS_DB=" "$file" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d "\"'" || true)"
+  # Advisory-if-absent, exactly like assert_slot_dsn: a file that doesn't
+  # opt in with DSN_ASSERT_REDIS_DB is unaffected (pre-T-268 env files and
+  # local/dev copies keep working).
+  [ -n "$want" ] || return 0
+  effective="$(resolve_redis_db "$file")"
+  if [ "$effective" != "$want" ]; then
+    echo "FATAL: $label declares DSN_ASSERT_REDIS_DB=$want but resolves to Redis db '$effective'." >&2
+    exit 1
+  fi
+  if [ "$slot" != "prod" ] && [ "$effective" = "0" ]; then
+    echo "FATAL: slot '$slot' is not prod but $label resolves to Redis db 0 (T-264 F2 — the PRODUCTION cache db)." >&2
+    exit 1
+  fi
+  echo "OK: $label -> Redis db '$effective' (slot '$slot', Redis-db-asserted)"
+}
+
 check_file "$WEB_ENV_FILE" "web.env.local" "${WEB_REQUIRED_KEYS[@]}"
 check_file "$SCRAPER_ENV_FILE" "scraper.env" "${SCRAPER_REQUIRED_KEYS[@]}"
 
@@ -179,5 +231,7 @@ fi
 
 assert_slot_dsn "$WEB_ENV_FILE" "web.env.local"
 assert_slot_dsn "$SCRAPER_ENV_FILE" "scraper.env"
+assert_slot_redis_db "$WEB_ENV_FILE" "web.env.local"
+assert_slot_redis_db "$SCRAPER_ENV_FILE" "scraper.env"
 
 echo "OK: all required keys present and non-blank in $WEB_ENV_FILE and $SCRAPER_ENV_FILE"

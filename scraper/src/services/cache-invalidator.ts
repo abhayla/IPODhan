@@ -73,6 +73,30 @@ export async function invalidateSubscriptionCache(
 }
 
 /**
+ * Invalidate the /history page cache (`ipos:history:*`).
+ *
+ * F1 (T-264): the job that writes `listing_performance` - the source of the
+ * issue price / listing gain % rendered on /history - never purged this
+ * cache. `CacheTTL.HISTORICAL_IPOS` is 24h, so a stale snapshot (missing the
+ * newest listings, blank gain columns) could survive a full day. Call this
+ * whenever `listing_performance` rows are created/updated so the next page
+ * view reflects the write instead of waiting out the TTL.
+ * @param redis - Redis client instance
+ */
+export async function invalidateHistoryCache(redis: Redis): Promise<void> {
+  try {
+    await deleteKeysByPattern(redis, 'ipos:history:*');
+    logger.debug('History cache invalidated');
+  } catch (error) {
+    // Log error but don't crash scraper (cache miss is acceptable)
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Failed to invalidate history cache'
+    );
+  }
+}
+
+/**
  * Delete keys matching a pattern using SCAN for production safety
  * @param redis - Redis client instance
  * @param pattern - Key pattern to match (e.g., 'ipo:list:*')

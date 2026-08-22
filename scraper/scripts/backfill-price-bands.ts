@@ -1,25 +1,43 @@
 /**
- * Backfill Missing Price Bands
+ * Backfill Missing / Collapsed Price Bands
  *
- * Fixes Phase 5 data quality issue: 493/495 IPOs (99.6%) missing price band data
+ * Fixes Phase 5 data quality issue: originally 493/495 IPOs (99.6%) missing
+ * price band data.
+ *
+ * F5 (T-264 P2-1): field-priority-matrix.ts registered the band under
+ * snake_case `price_band_min`/`price_band_max` while consolidation actually
+ * keys on camelCase `priceRangeMin`/`priceRangeMax` (fixed in this same
+ * change), so `getFieldRules('priceRangeMin')` fell through to the DEFAULT
+ * rule with no validation - a stale single-price write (e.g. from an early
+ * scrape before the full band was known) was never re-consolidated even
+ * though later cycles carried the real range. Result: 232/267 IPO rows
+ * (87%) had `price_range_min = price_range_max`, showing a single price
+ * where NSE/Chittorgarh/IPOWatch all agree it is a range. This script also
+ * targets that COLLAPSED case, not just the NULL case the name implies.
  *
  * This script:
- * 1. Queries database for IPOs with missing price_range_min/max
+ * 1. Queries database for IPOs with missing OR collapsed price_range_min/max
  * 2. Uses NSE public-past-issues API to fetch price range data
  * 3. Updates database with price band information
- * 4. Provides progress reporting and error handling
+ * 4. Purges the affected list/detail caches so the fix is visible immediately
+ * 5. Provides progress reporting and error handling
  *
  * Run:
  * cd scraper
- * npx tsx scripts/backfill-price-bands.ts
+ * npx tsx scripts/backfill-price-bands.ts             # apply
+ * npx tsx scripts/backfill-price-bands.ts --dry-run   # report only, no writes
  *
  * @module scraper/scripts/backfill-price-bands
  */
 
 import { db } from '@ipodhan/shared/db';
 import { ipos } from '@ipodhan/shared/db/schema';
+import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
 import { sql, isNull, or } from 'drizzle-orm';
 import logger from '../src/utils/logger.js';
+import { invalidateIPOCaches } from '../src/services/cache-invalidator.js';
+
+const DRY_RUN = process.argv.includes('--dry-run');
 
 /**
  * NSE Past IPO Response Interface
@@ -182,12 +200,13 @@ function matchIPOByName(dbIPO: { companyName: string; symbol?: string | null }, 
  */
 async function backfillPriceBands() {
   console.log('========================================');
-  console.log('Backfill Missing Price Bands');
+  console.log('Backfill Missing / Collapsed Price Bands');
+  if (DRY_RUN) console.log('(DRY RUN - no database writes)');
   console.log('========================================\n');
 
   try {
-    // Step 1: Get IPOs with missing price bands
-    console.log('Step 1: Querying IPOs with missing price bands...\n');
+    // Step 1: Get IPOs with missing OR collapsed price bands
+    console.log('Step 1: Querying IPOs with missing/collapsed price bands...\n');
 
     const iposWithoutPriceBands = await db.select({
       id: ipos.id,
@@ -201,11 +220,13 @@ async function backfillPriceBands() {
       .where(
         or(
           isNull(ipos.priceRangeMin),
-          isNull(ipos.priceRangeMax)
+          isNull(ipos.priceRangeMax),
+          // F5: collapsed - both set but equal (min = max), the 232-row bug.
+          sql`${ipos.priceRangeMin} = ${ipos.priceRangeMax}`
         )
       );
 
-    console.log(`Found ${iposWithoutPriceBands.length} IPOs without price bands\n`);
+    console.log(`Found ${iposWithoutPriceBands.length} IPOs without a real price band\n`);
 
     if (iposWithoutPriceBands.length === 0) {
       console.log('✅ No IPOs need price band backfill!\n');
@@ -248,6 +269,19 @@ async function backfillPriceBands() {
           continue;
         }
 
+        // NSE itself only carries a single price for this IPO (fixed-price
+        // issue, or its own data is incomplete) - nothing to fix here.
+        if (priceRange.min === priceRange.max && dbIPO.priceRangeMin === priceRange.min) {
+          console.log(`ℹ️  Already correct (no range on NSE either): ${dbIPO.companyName}`);
+          continue;
+        }
+
+        if (DRY_RUN) {
+          console.log(`🔎 Would update: ${dbIPO.companyName} → ₹${priceRange.min}-₹${priceRange.max}`);
+          updated++;
+          continue;
+        }
+
         // Update database
         await db.update(ipos)
           .set({
@@ -256,6 +290,19 @@ async function backfillPriceBands() {
             updatedAt: new Date()
           })
           .where(sql`${ipos.id} = ${dbIPO.id}`);
+
+        // Keep the site consistent with the write - purge this IPO's cached
+        // detail/list entries so the corrected band is visible immediately
+        // instead of waiting out CacheTTL.IPO_DETAIL/IPO_LIST.
+        try {
+          const redis = getRedisClient();
+          await invalidateIPOCaches(redis, dbIPO.slug);
+        } catch (cacheError) {
+          logger.warn(
+            { slug: dbIPO.slug, error: cacheError instanceof Error ? cacheError.message : String(cacheError) },
+            'Cache invalidation failed after price band backfill (non-fatal)'
+          );
+        }
 
         console.log(`✅ Updated: ${dbIPO.companyName} → ₹${priceRange.min}-₹${priceRange.max}`);
         updated++;
@@ -287,7 +334,8 @@ async function backfillPriceBands() {
       .where(
         or(
           isNull(ipos.priceRangeMin),
-          isNull(ipos.priceRangeMax)
+          isNull(ipos.priceRangeMax),
+          sql`${ipos.priceRangeMin} = ${ipos.priceRangeMax}`
         )
       );
 
