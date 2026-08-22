@@ -40,3 +40,27 @@ unambiguous key.
 Refresh procedure: re-run the capture script in the evidence directory while an
 IPO is open, and re-save with the capture date in the filename. Keep old
 fixtures — they are regression anchors.
+
+## Reading the suite result on this branch
+
+`npx vitest run` in `scraper/` reports **43 failures** on this branch. All 43 are
+pre-existing on `origin/main` and live in files T-266 does not touch:
+`chittorgarh-rights-debt-adapter.test.ts`, `chittorgarh-scraper.test.ts`,
+`moneycontrol-scraper.test.ts`, `validators.test.ts`.
+
+`validators.test.ts` is the only one whose source file T-266 also edits, so it was
+baselined explicitly — `scraper/src/utils/validators.ts` was reverted to
+`origin/main` and the suite re-run:
+
+| `validators.ts` at | Result |
+|---|---|
+| `169284d7` (pre-T-266) | 18 failed / 34 passed (52) |
+| `d22f7b2e` (post-T-266) | 18 failed / 34 passed (52) |
+
+Identical. The T-266 edit to that file is additive only — two optional numeric
+fields and an optional `coverage` enum on `ScrapedSubscriptionSchema` — while the
+failures are in `generateSlug` and `ScrapedIPOSchema`.
+
+T-266's own tests are green: 23/23 across
+`t266-nse-subscription-parser.test.ts`, `t266-nse-active-category-wiring.test.ts`
+and `t266-subscription-coverage-guard.test.ts`.
