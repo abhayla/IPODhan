@@ -169,100 +169,70 @@ const performanceColumns: ColumnDef<PerformanceData>[] = [
   },
 ];
 
-// ==================== MOCK DATA HELPER ====================
+// ==================== REAL DATA FETCH ====================
 
 /**
- * Generate mock performance data for demonstration
- * In production, this would be fetched from the API with real data
- *
- * NOTE: This is temporary mock data. Replace with actual API call
- * when ListingPerformance table and currentPrice field are available.
+ * Raw row shape returned by GET /api/ipos/history (the fields this page needs).
+ * See web/app/api/ipos/history/route.ts and IPORepository.findHistorical().
  */
-function generateMockPerformanceData(year: string): PerformanceData[] {
-  const currentYear = new Date().getFullYear();
-  const selectedYear = parseInt(year, 10);
+interface HistoricalIPOApiRow {
+  id: string;
+  companyName: string;
+  slug: string;
+  segment: 'MAINBOARD' | 'SME' | null;
+  listingDate: string | null;
+  issuePrice: string | number | null;
+  listingClose: string | number | null;
+  listingGainPercent: number | null;
+  currentPriceLive: number | null;
+  currentGainLive: number | null;
+}
 
-  // Return empty if future year
-  if (selectedYear > currentYear) {
-    return [];
-  }
+interface HistoricalIPOApiResponse {
+  data: HistoricalIPOApiRow[];
+}
 
-  // Sample data for demonstration (AC#9: accurate calculations)
-  const mockData: PerformanceData[] = [
-    {
-      id: '1',
-      companyName: 'Tech Innovations Ltd',
-      slug: 'tech-innovations-ltd',
-      listedOn: `${year}-10-15`,
-      issuePrice: 100,
-      listingDayClose: 125.5,
-      listingDayGain: 25.5, // ((125.50 - 100) / 100) × 100 = 25.50%
-      currentPrice: 145.8,
-      profitLoss: 45.8, // ((145.80 - 100) / 100) × 100 = 45.80%
-    },
-    {
-      id: '2',
-      companyName: 'Green Energy Solutions',
-      slug: 'green-energy-solutions',
-      listedOn: `${year}-09-20`,
-      issuePrice: 250,
-      listingDayClose: 230.0,
-      listingDayGain: -8.0, // ((230 - 250) / 250) × 100 = -8.00%
-      currentPrice: 215.5,
-      profitLoss: -13.8, // ((215.50 - 250) / 250) × 100 = -13.80%
-    },
-    {
-      id: '3',
-      companyName: 'Healthcare Plus India',
-      slug: 'healthcare-plus-india',
-      listedOn: `${year}-08-05`,
-      issuePrice: 500,
-      listingDayClose: 675.25,
-      listingDayGain: 35.05, // ((675.25 - 500) / 500) × 100 = 35.05%
-      currentPrice: 820.0,
-      profitLoss: 64.0, // ((820 - 500) / 500) × 100 = 64.00%
-    },
-    {
-      id: '4',
-      companyName: 'Infrastructure Builders Corp',
-      slug: 'infrastructure-builders-corp',
-      listedOn: `${year}-07-12`,
-      issuePrice: 150,
-      listingDayClose: 148.5,
-      listingDayGain: -1.0, // ((148.50 - 150) / 150) × 100 = -1.00%
-      currentPrice: 162.3,
-      profitLoss: 8.2, // ((162.30 - 150) / 150) × 100 = 8.20%
-    },
-    {
-      id: '5',
-      companyName: 'Digital Finance Ltd',
-      slug: 'digital-finance-ltd',
-      listedOn: `${year}-06-18`,
-      issuePrice: 300,
-      listingDayClose: 385.0,
-      listingDayGain: 28.33, // ((385 - 300) / 300) × 100 = 28.33%
-      currentPrice: 425.75,
-      profitLoss: 41.92, // ((425.75 - 300) / 300) × 100 = 41.92%
-    },
-    {
-      id: '6',
-      companyName: 'Manufacturing Excellence Ltd',
-      slug: 'manufacturing-excellence-ltd',
-      listedOn: `${year}-05-10`,
-      issuePrice: 180,
-      listingDayClose: 195.6,
-      listingDayGain: 8.67, // ((195.6 - 180) / 180) × 100 = 8.67%
-      currentPrice: 210.25,
-      profitLoss: 16.81, // ((210.25 - 180) / 180) × 100 = 16.81%
-    },
-  ];
+function toNumber(value: string | number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const n = typeof value === 'string' ? parseFloat(value) : value;
+  return Number.isFinite(n) ? n : null;
+}
 
-  // AC#10: Sort by listing date descending (newest first)
-  return mockData.sort((a, b) => {
-    const dateA = a.listedOn ? new Date(a.listedOn).getTime() : 0;
-    const dateB = b.listedOn ? new Date(b.listedOn).getTime() : 0;
-    return dateB - dateA;
+/**
+ * Fetch REAL Mainboard IPO performance data from the historical IPOs API
+ * (backed by the ipos + listing_performance tables) and filter to segment=MAINBOARD.
+ * Returns an empty array (honest empty state) if the request fails or no rows match.
+ */
+async function fetchMainboardPerformanceData(year: string): Promise<PerformanceData[]> {
+  const params = new URLSearchParams({
+    year,
+    sort: 'listing_date',
+    sortOrder: 'desc',
+    limit: '100',
   });
+  const response = await fetch(`/api/ipos/history?${params.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Historical IPO API returned ${response.status}`);
+  }
+  const json: HistoricalIPOApiResponse = await response.json();
+
+  return json.data
+    .filter((row) => row.segment === 'MAINBOARD')
+    .map((row) => {
+      const issuePrice = toNumber(row.issuePrice) ?? 0;
+      const listingDayClose = toNumber(row.listingClose) ?? 0;
+      return {
+        id: row.id,
+        companyName: row.companyName,
+        slug: row.slug,
+        listedOn: row.listingDate,
+        issuePrice,
+        listingDayClose,
+        listingDayGain: row.listingGainPercent ?? 0,
+        currentPrice: row.currentPriceLive,
+        profitLoss: row.currentGainLive,
+      };
+    });
 }
 
 // ==================== MAIN CLIENT COMPONENT ====================
@@ -297,9 +267,7 @@ export function MainboardPerformanceTrackerClient({
     const fetchData = async () => {
       setLoading(true);
       try {
-        // TODO: Replace with actual API call
-        // const data = await getMainboardIPOPerformance(parseInt(year, 10));
-        const data = generateMockPerformanceData(year);
+        const data = await fetchMainboardPerformanceData(year);
         setPerformanceData(data);
       } catch (error) {
         console.error('Failed to fetch performance data:', error);
@@ -406,9 +374,8 @@ export function MainboardPerformanceTrackerClient({
             </li>
           </ul>
           <p className="text-muted-foreground mt-4">
-            <strong>Note:</strong> This page currently displays demonstration data. Real-time
-            performance data will be available once the ListingPerformance table and current price
-            updates are implemented.
+            <strong>Note:</strong> Current Price and Profit/Loss reflect the latest data our
+            tracker has recorded and may lag live market prices.
           </p>
         </div>
       </div>

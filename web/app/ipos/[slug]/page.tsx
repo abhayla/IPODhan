@@ -43,7 +43,6 @@ import { IPOViewTracker } from '@/components/ipo/IPOViewTracker';
 import {
   FinancialPerformanceCharts,
   SubscriptionDashboard,
-  ListingPerformanceCharts,
   DemandGraph,
   GMPHistoryChart,
 } from '@/components/ipo/charts';
@@ -608,41 +607,21 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
              listingPerformance.issuePrice !== null &&
              listingPerformance.listingPrice !== null &&
              listingPerformance.listingGainPercent !== null && (
-              <>
-                <ListingPerformanceCharts
-                  listingPerformance={{
-                    issuePrice: listingPerformance.issuePrice,
-                    listingPrice: listingPerformance.listingPrice,
-                    listingGainPercent: typeof listingPerformance.listingGainPercent === 'string'
-                      ? parseFloat(listingPerformance.listingGainPercent)
-                      : listingPerformance.listingGainPercent,
-                    currentPrice: listingPerformance.currentPrice,
-                    currentGainPercent: listingPerformance.currentGainPercent
-                      ? typeof listingPerformance.currentGainPercent === 'string'
-                        ? parseFloat(listingPerformance.currentGainPercent)
-                        : listingPerformance.currentGainPercent
-                      : null,
-                  }}
-                  issuePrice={listingPerformance.issuePrice}
-                  companyName={ipo.companyName}
-                />
-
-                {/* 16a. Listing Details Section */}
-                <ListingDetailsSection
-                  listingDate={ipo.listingDate}
-                  symbol={ipo.symbol}
-                  issuePrice={listingPerformance.issuePrice}
-                  listingPrice={listingPerformance.listingPrice}
-                  listingGainPercent={typeof listingPerformance.listingGainPercent === 'string'
-                    ? parseFloat(listingPerformance.listingGainPercent)
-                    : listingPerformance.listingGainPercent}
-                  listingOpenPrice={toNum(listingPerformance.listingOpenPrice)}
-                  listingHighPrice={toNum(listingPerformance.listingHighPrice)}
-                  listingLowPrice={toNum(listingPerformance.listingLowPrice)}
-                  listingClosePrice={toNum(listingPerformance.listingClosePrice)}
-                  lastTradedPrice={toNum(listingPerformance.lastTradedPrice)}
-                />
-              </>
+              /* 16a. Listing Details Section */
+              <ListingDetailsSection
+                listingDate={ipo.listingDate}
+                symbol={ipo.symbol}
+                issuePrice={listingPerformance.issuePrice}
+                listingPrice={listingPerformance.listingPrice}
+                listingGainPercent={typeof listingPerformance.listingGainPercent === 'string'
+                  ? parseFloat(listingPerformance.listingGainPercent)
+                  : listingPerformance.listingGainPercent}
+                listingOpenPrice={toNum(listingPerformance.listingOpenPrice)}
+                listingHighPrice={toNum(listingPerformance.listingHighPrice)}
+                listingLowPrice={toNum(listingPerformance.listingLowPrice)}
+                listingClosePrice={toNum(listingPerformance.listingClosePrice)}
+                lastTradedPrice={toNum(listingPerformance.lastTradedPrice)}
+              />
             )}
 
             {/* Apply CTA lives above the fold now (after IPODetailsTable) */}
