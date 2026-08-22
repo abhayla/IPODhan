@@ -157,10 +157,14 @@ describe('validateIPOData — Rule 8 NON_IPO_SCRIP_CODE_NAME (issue #140)', () =
 });
 
 describe('validateIPOData — Rule 8 NON_IPO_TRUST_SHAPE (P2-2, T-277)', () => {
-  it('rejects an InvIT trust shape written with offeringType=IPO (Cube Highways Trust InvIT shape)', () => {
+  // Real prod rows (evidence: verify-cube.mjs query, 2026-08-22) that wrote
+  // offering_type='IPO' because their company name carries no "InvIT"/"REIT"
+  // substring for Rule 2's narrower detector to match — this is the gap
+  // NON_IPO_TRUST_SHAPE closes, complementing (not duplicating) Rule 2.
+  it('rejects a bare "Trust"-named InvIT written with offeringType=IPO (Cube Highways Trust)', () => {
     const result = validateIPOData(
       {
-        companyName: 'Cube Highways Trust (Cube Highways Trust InvIT)',
+        companyName: 'Cube Highways Trust',
         offeringType: 'IPO',
         segment: 'MAINBOARD',
         priceRangeMin: 152,
@@ -172,10 +176,10 @@ describe('validateIPOData — Rule 8 NON_IPO_TRUST_SHAPE (P2-2, T-277)', () => {
     expect(result.errors.map((e) => e.rule)).toContain('NON_IPO_TRUST_SHAPE');
   });
 
-  it('rejects a REIT trust shape written with offeringType=IPO', () => {
+  it('rejects a bare "Investment Trust"-named InvIT written with offeringType=IPO (Raajmarg Infra Investment Trust)', () => {
     const result = validateIPOData(
       {
-        companyName: 'Bagmane Prime Office REIT',
+        companyName: 'Raajmarg Infra Investment Trust',
         offeringType: 'IPO',
         segment: 'MAINBOARD',
       },

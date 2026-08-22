@@ -298,6 +298,27 @@ export function validateIPOData(
           message: `companyName "${name}" is a bare exchange scrip code (all-caps token, no legal suffix, no space), not a company name — offering_type='IPO' rejected (#140: SIS/ADVENZYMES shape).`,
         });
       }
+
+      // NON_IPO_TRUST_SHAPE (P2-2, round-2 review): Rule 2 already reclassifies
+      // a name containing "InvIT" or "REIT" (HIGH confidence) before this block
+      // runs, so effectiveOfferingType is no longer 'IPO' for those — no double
+      // report needed. But a genuine InvIT/REIT does not always carry that
+      // keyword in its company name: "Cube Highways Trust", "Raajmarg Infra
+      // Investment Trust", and "Property Share Investment Trust-Propshare
+      // Celestia" all wrote offering_type='IPO' from a bare "...Trust" name
+      // with no "InvIT"/"REIT" substring, so Rule 2's narrower check missed
+      // them (Cube Highways rendered 0.00/+0.00% on the Mainboard tracker).
+      // Reject any name still flagged 'IPO' here that carries a bare "Trust"
+      // signal — the same-class sibling of Rule 2's invit/reit substring check.
+      const isBareTrustShape = /\btrust\b/i.test(name);
+      if (isBareTrustShape) {
+        errors.push({
+          field: 'offeringType',
+          rule: 'NON_IPO_TRUST_SHAPE',
+          severity: 'ERROR',
+          message: `companyName "${name}" carries a Trust shape signal (InvIT/REIT structure) but was not reclassified by Rule 2's invit/reit substring check — offering_type='IPO' rejected (P2-2: Cube Highways Trust shape). Reclassify to INVITS/REITS or drop the row.`,
+        });
+      }
     }
   }
 
