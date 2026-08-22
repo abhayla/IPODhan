@@ -27,10 +27,18 @@ describe('resolveRegistrarId', () => {
     ['BIGSHARE SERVICES PRIVATE LTD', 'r-bigshare'],
     ['Bigshare Services Pvt. Ltd.', 'r-bigshare'],
     ['Cameo Corporate Services Ltd.', 'r-cameo'],
-    ['CAMEO CORPORATE SERVICES LTD.^Subramanian Building,1,Club House Road,Chennai,Tamil Nadu- 600002', null], // address-suffixed — sanitizeRegistrar must run first
+    // Address/contact block riding on the string, delimited by '^' — the matcher
+    // now strips everything from '^' onward itself (T-278F; was null pre-fix).
+    ['CAMEO CORPORATE SERVICES LTD.^Subramanian Building,1,Club House Road,Chennai,Tamil Nadu- 600002', 'r-cameo'],
+    ['Skyline Financial Services Private Limited^D-153/A, First Floor,Okhla Industrial Area,Phase I', 'r-skyline'],
     ['Kfin Technologies Limited', 'r-kfin'],
     ['KFIN Technologies Limited', 'r-kfin'],
     ['Kfin Technologies Ltd.', 'r-kfin'],
+    // Legal suffix glued to the preceding word with no space — a scrape artifact
+    // (T-278F; the matcher now re-inserts the missing space before stripping).
+    ['KFin TechnologiesLimited', 'r-kfin'],
+    // Single-letter-drop typo ("Servies" for "Services") — bridged via explicit alias.
+    ['Bigshare Servies Private Limited', 'r-bigshare'],
     ['LINK INTIME INDIA PRIVATE LIMITED', 'r-linkintime'],
     ['Maheshwari Datamatics Private Limited', 'r-maheshwari'],
     ['MAS Services Ltd.', 'r-mas'],

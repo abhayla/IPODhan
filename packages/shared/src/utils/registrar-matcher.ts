@@ -23,17 +23,33 @@ export interface RegistrarLookupRow {
 const REGISTRAR_ALIASES: Record<string, string> = {
   // MUFG Intime India Pvt Ltd is Link Intime India Pvt Ltd's post-2023 rebrand.
   'mufg intime india': 'link intime india',
+  // Single-letter-drop typo ("Servies" for "Services") seen in prod scrape data —
+  // an explicit alias, not fuzzy matching, so it never risks a wrong guess (T-278F).
+  'bigshare servies': 'bigshare services',
 };
 
 function normalizeRegistrarName(name: string): string {
   return name
     .toLowerCase()
     .trim()
+    // Drop an address/contact block riding on the same string, delimited by '^'
+    // (a known scrape-pollution artifact — see scraper's sanitizeRegistrar) —
+    // MUST run before the parenthetical strip so an address containing '(' text
+    // doesn't confuse it (T-278F).
+    .replace(/\^.*$/, '')
+    .trim()
     // Drop a parenthetical rename note ("(formerly known as ...)").
     .replace(/\s*\([^)]*\)\s*/g, ' ')
     // Drop curly/straight quotes some sources wrap the old name in.
     .replace(/["“”]/g, '')
     .replace(/\./g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    // Re-insert a space where a legal suffix got glued to the preceding word
+    // with no separating whitespace ("TechnologiesLimited") — a scrape
+    // artifact seen in prod (T-278F), otherwise the trailing-suffix strip
+    // below (anchored on `\s+`) never fires.
+    .replace(/([a-z])(limited|ltd|private)\b/gi, '$1 $2')
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/\s+(private\s+limited|pvt\.?\s+ltd\.?|private\s+ltd\.?|pvt\.?|limited|ltd\.?)$/i, '')

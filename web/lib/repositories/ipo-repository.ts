@@ -1149,6 +1149,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * CURRENT slug of the IPO it now belongs to, or null if `oldSlug` was never
    * retired. Reads `ipos.slug` fresh at request time so a redirect never goes
    * stale if the target is renamed again later.
+   *
+   * Guard (T-278F, checker finding #3): a stale scraper write path can
+   * re-mint a NEW live IPO reusing an old, already-redirected slug (observed
+   * in prod: 5 rows re-created under a retired slug by a cron cycle that
+   * hadn't picked up the P3-1 name-pollution fix yet). A currently-live slug
+   * MUST NEVER be shadowed by a redirect row, so the live-row check runs
+   * FIRST and short-circuits to null (no redirect) when `oldSlug` is live.
    */
   async findRedirectSlug(oldSlug: string): Promise<string | null> {
     const cacheKey = getSlugRedirectKey(oldSlug);
@@ -1156,6 +1163,13 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     return this.getFromCache(
       cacheKey,
       async () => {
+        const [live] = await this.db
+          .select({ id: ipos.id })
+          .from(ipos)
+          .where(eq(ipos.slug, oldSlug))
+          .limit(1);
+        if (live) return null;
+
         const [row] = await this.db
           .select({ currentSlug: ipos.slug })
           .from(schema.ipoSlugRedirects)
