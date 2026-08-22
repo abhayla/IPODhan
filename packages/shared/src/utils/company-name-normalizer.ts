@@ -111,6 +111,38 @@ export function normalizeCompanyNameForMatching(companyName: string): string {
  *
  * @param input a drizzle `sql` expression yielding the raw company name
  */
+/**
+ * Word-break fold for DEDUP MATCHING only (P2-1 checker finding, T-277F). A
+ * hyphenated compound ("Atharva Poly-Plast") and its run-together sibling
+ * ("Atharva Polyplast") land on different tokens under the primary
+ * normalizer — "atharva poly plast" (hyphen -> space) vs "atharva polyplast"
+ * (no separator at all) — and never converge on the spaced identity alone.
+ *
+ * This is a SEPARATE, coarser identity: strip every remaining space from the
+ * already-normalized key. It is used only as a duplicate-match FALLBACK (see
+ * `ipo-repository.ts findByNormalizedName`), never as the primary/display
+ * key — every existing consumer of the spaced `normalizeCompanyNameForMatching`
+ * output is unaffected, and two names that already agree on the spaced key
+ * trivially agree here too (exact match is a subset of compact match).
+ *
+ * Because this only removes whitespace (never merges letters across an
+ * actual semantic boundary), two names that differ in their letters still
+ * produce different compact keys — e.g. "Atharva Polyplast" vs
+ * "Atharva Polymers" stay "atharvapolyplast" vs "atharvapolymers".
+ */
+export function compactCompanyNameKey(companyName: string): string {
+  return normalizeCompanyNameForMatching(companyName).replace(/\s+/g, '');
+}
+
+/**
+ * SQL twin of `compactCompanyNameKey` — strips all whitespace from the
+ * SQL-normalized key so the fallback match in `findByNormalizedName` agrees
+ * with the JS path.
+ */
+export function compactNormalizedCompanyNameSql(input: SQL): SQL {
+  return sql`REGEXP_REPLACE(${normalizedCompanyNameSql(input)}, '\s+', '', 'g')`;
+}
+
 export function normalizedCompanyNameSql(input: SQL): SQL {
   return sql`LOWER(
   TRIM(

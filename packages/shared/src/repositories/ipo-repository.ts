@@ -32,7 +32,11 @@ import {
   getHistoricalIPOsKey,
 } from '../cache/cache-keys';
 import { EntityNotFoundError, DatabaseError } from '../errors/repository-errors';
-import { normalizedCompanyNameSql, sanitizeDisplayCompanyName } from '../utils/company-name-normalizer';
+import {
+  normalizedCompanyNameSql,
+  compactNormalizedCompanyNameSql,
+  sanitizeDisplayCompanyName,
+} from '../utils/company-name-normalizer';
 import type {
   IPO,
   IPOInsert,
