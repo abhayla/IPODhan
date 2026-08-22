@@ -992,10 +992,17 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       async () => {
         try {
           // Build base conditions: status='LISTED' AND listing_date IS NOT NULL AND listing_date < CURRENT_DATE
+          // AND offeringType is a genuine IPO (T-277F checker finding #3). This
+          // method drives the Mainboard/SME Performance Trackers; without the
+          // REAL_IPO_TYPE_FILTER gate every other IPO surface in this file
+          // already applies (lines ~235/768/881/1552), a row reclassified away
+          // from 'IPO' (e.g. INVITS via the NON_IPO_TRUST_SHAPE guard) still
+          // had status='LISTED' + a listing_date, so it stayed ranked here.
           const conditions = [
             eq(ipos.status, 'LISTED'),
             sql`${ipos.listingDate} IS NOT NULL`,
             sql`${ipos.listingDate} < CURRENT_DATE`, // Only past listings, not future dates
+            inArray(ipos.offeringType, REAL_IPO_TYPE_FILTER),
           ];
 
           // Add year filter (extract year from listing_date)

@@ -313,10 +313,19 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     try {
       // Normalize company_name at query time via the SHARED normalizer so the
       // SQL path stays in lock-step with the JS path (company-name-normalizer.ts).
+      // The OR clause is a word-break FALLBACK (P2-1 checker finding, T-277F):
+      // a hyphenated compound ("Atharva Poly-Plast") and its run-together
+      // sibling ("Atharva Polyplast") land on different spaced keys but the
+      // same compact (whitespace-stripped) key — compare compact keys too so
+      // this class of pair matches. Exact match is a subset of compact match,
+      // so this can only ADD matches, never drop one the exact path already found.
       const [ipo] = await this.db
         .select()
         .from(ipos)
-        .where(sql`${normalizedCompanyNameSql(sql`${ipos.companyName}`)} = ${normalizedName}`)
+        .where(
+          sql`${normalizedCompanyNameSql(sql`${ipos.companyName}`)} = ${normalizedName}
+              OR ${compactNormalizedCompanyNameSql(sql`${ipos.companyName}`)} = ${normalizedName.replace(/\s+/g, '')}`
+        )
         .limit(1);
 
       return ipo || null;
@@ -685,8 +694,15 @@ export class IPORepository extends BaseRepository implements IIPORepository {
       async () => {
         try {
           // Build base conditions: status='LISTED' AND listing_date IS NOT NULL
+          // AND offering_type='IPO' (T-277F checker finding #3). A row
+          // reclassified to a non-IPO offering type (e.g. INVITS/REITS via
+          // the NON_IPO_TRUST_SHAPE guard) still has segment='MAINBOARD' and
+          // status='LISTED' — without this filter it stayed ranked on the
+          // historical/tracker query even after reclassification (Cube
+          // Highways Trust rendering on the Mainboard Performance Tracker).
           const conditions = [
             eq(ipos.status, 'LISTED'),
+            eq(ipos.offeringType, 'IPO'),
             sql`${ipos.listingDate} IS NOT NULL`,
           ];
 
