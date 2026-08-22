@@ -21,6 +21,11 @@
 import logger from '../utils/logger.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { scrapeSecurityTypeFromWebsite, batchScrapeSecurityTypes } from './nse-security-type-scraper.js';
+import {
+  transformActiveCategorySubscription,
+  transformCurrentIssueSubscription,
+} from './nse-subscription-parser.js';
+import { notifyOwner } from '../services/owner-notify.js';
 
 const BASE_URL = 'https://www.nseindia.com';
 
@@ -30,6 +35,11 @@ const ENDPOINTS = {
   CURRENT_IPOS: '/api/ipo-current-issue',              // 1 active IPO
   ALL_IPOS: '/api/all-upcoming-issues',                // 2 IPOs (active + closed)
   IPO_DETAIL: '/api/ipo-detail',                       // Detailed IPO info
+
+  // T-266: the ONLY endpoint carrying the per-category bid table AND the
+  // consolidated (NSE+BSE) subscription multiple. /api/ipo-current-issue
+  // carries NSE's own book only and has no bidDetails array at all.
+  ACTIVE_CATEGORY: '/api/ipo-active-category',         // ?symbol=<SYM>&issueType=ipo
 
   // ✅ Story 11.4: Historical IPO Data (WORKING - Tested Oct 2025)
   PUBLIC_PAST_ISSUES: '/api/public-past-issues',       // 1,268 historical IPOs
@@ -510,141 +520,14 @@ function transformIPOData(data: any, endpointCategory?: 'ipo' | 'ofs' | 'rights'
 }
 
 /**
- * Transform subscription data from NSE API response
- * Enhanced for Story 11.3 - extracts all subscription categories (AC3, AC5)
- * @param bidDetails - Array of bid details from NSE API (multiple categories)
- * @param symbol - IPO symbol
- * @param companyName - IPO company name
- * @returns Complete subscription data with all categories
+ * T-266: `transformSubscriptionData()` was removed here.
+ *
+ * It iterated a `bidDetails` array that no live NSE payload has ever carried,
+ * so it returned null on every call in every code path - silently producing
+ * `totalSubscriptions: 0` each cycle for months (T-264 P1-2). Its replacements
+ * live in `nse-subscription-parser.ts`, parse the payloads NSE actually serves,
+ * and label how much of the market each figure covers.
  */
-function transformSubscriptionData(bidDetails: any[], symbol: string, companyName: string): ScrapedSubscription | null {
-  if (!bidDetails || !Array.isArray(bidDetails) || bidDetails.length === 0) {
-    return null;
-  }
-
-  // Initialize subscription data with all fields set to 0
-  const subscription: ScrapedSubscription = {
-    ipoCompanyName: companyName,
-    ipoSymbol: symbol,
-    qibSubscription: 0,
-    niiSubscription: 0,
-    retailSubscription: 0,
-    totalSubscription: 0,
-    employeeSubscription: undefined,
-    anchorInvestorSubscription: undefined,
-    bNIISubscription: undefined,
-    sNIISubscription: undefined,
-    timestamp: new Date().toISOString()
-  };
-
-  // Extract subscription for each category from bid details array
-  for (const bid of bidDetails) {
-    const category = (bid.category || bid.investorCategory || '').toUpperCase();
-    const timesSubscribed = parseFloat(bid.noOfTime || bid.timesSubscribed || bid.subscription || 0);
-
-    // Skip invalid data
-    if (!category || isNaN(timesSubscribed)) {
-      continue;
-    }
-
-    // Map NSE category names to our schema fields (AC3)
-    // Extract shares bid for sub-category tracking
-    const sharesBid = bid.noOfsharesBid ? parseInt(bid.noOfsharesBid.replace(/,/g, '')) : 0;
-
-    if (category.includes('QIB') || category.includes('QUALIFIED INSTITUTIONAL')) {
-      subscription.qibSubscription = timesSubscribed;
-
-      // Sub-category breakdowns within QIB
-      if (category.includes('FII') || category.includes('FOREIGN')) {
-        subscription.qibFiiSubscription = timesSubscribed;
-      } else if (category.includes('DOMESTIC') && category.includes('FI')) {
-        subscription.qibDomesticFiSubscription = timesSubscribed;
-      } else if (category.includes('MUTUAL') && category.includes('FUND')) {
-        subscription.qibMutualFundSubscription = timesSubscribed;
-      } else if (category.includes('OTHER') && category.includes('QIB')) {
-        subscription.qibOthersSubscription = timesSubscribed;
-      }
-    } else if (category.includes('NII') || category.includes('NON-INSTITUTIONAL') || category.includes('NON INSTITUTIONAL')) {
-      subscription.niiSubscription = timesSubscribed;
-
-      // Sub-category breakdowns within NII
-      if (category.includes('CORPORATE')) {
-        subscription.niiCorporatesSubscription = timesSubscribed;
-      } else if (category.includes('INDIVIDUAL') && !category.includes('RETAIL')) {
-        subscription.niiIndividualsSubscription = timesSubscribed;
-      } else if (category.includes('OTHER') && category.includes('NII')) {
-        subscription.niiOthersSubscription = timesSubscribed;
-      }
-    } else if (category.includes('RETAIL') || category.includes('RII') || category.includes('INDIVIDUAL')) {
-      subscription.retailSubscription = timesSubscribed;
-
-      // Track cut-off vs price bids for retail
-      if (bid.cutOffBids) {
-        subscription.retailCutOffShares = parseInt(bid.cutOffBids.replace(/,/g, ''));
-      }
-      if (bid.priceBids) {
-        subscription.retailPriceBidShares = parseInt(bid.priceBids.replace(/,/g, ''));
-      }
-    } else if (category.includes('EMPLOYEE')) {
-      subscription.employeeSubscription = timesSubscribed;
-
-      // Track cut-off vs price bids for employees
-      if (bid.cutOffBids) {
-        subscription.employeeCutOffShares = parseInt(bid.cutOffBids.replace(/,/g, ''));
-      }
-      if (bid.priceBids) {
-        subscription.employeePriceBidShares = parseInt(bid.priceBids.replace(/,/g, ''));
-      }
-    } else if (category.includes('ANCHOR')) {
-      subscription.anchorInvestorSubscription = timesSubscribed;
-    } else if (category.includes('BNII') || category.includes('BIG NII') || category.includes('B-NII')) {
-      subscription.bNIISubscription = timesSubscribed;
-    } else if (category.includes('SNII') || category.includes('SMALL NII') || category.includes('S-NII')) {
-      subscription.sNIISubscription = timesSubscribed;
-    } else if (category === 'TOTAL' || category.includes('OVERALL')) {
-      subscription.totalSubscription = timesSubscribed;
-
-      // Track total cut-off bids
-      if (bid.cutOffBidsTotal) {
-        subscription.cutOffBidsTotal = parseInt(bid.cutOffBidsTotal.replace(/,/g, ''));
-      }
-
-      // Track exchange-wise totals
-      if (bid.exchange === 'NSE') {
-        subscription.totalBidsNSE = sharesBid;
-      } else if (bid.exchange === 'BSE') {
-        subscription.totalBidsBSE = sharesBid;
-      }
-    }
-  }
-
-  // Calculate total if not provided (AC3)
-  if (subscription.totalSubscription === 0) {
-    subscription.totalSubscription = Math.max(
-      subscription.qibSubscription,
-      subscription.niiSubscription,
-      subscription.retailSubscription
-    );
-  }
-
-  // Return null if no valid subscription data found
-  if (subscription.qibSubscription === 0 &&
-      subscription.niiSubscription === 0 &&
-      subscription.retailSubscription === 0 &&
-      subscription.totalSubscription === 0) {
-    return null;
-  }
-
-  logger.debug({
-    symbol,
-    qib: subscription.qibSubscription,
-    nii: subscription.niiSubscription,
-    retail: subscription.retailSubscription,
-    total: subscription.totalSubscription
-  }, 'Subscription data extracted successfully (AC3)');
-
-  return subscription;
-}
 
 /**
  * Extract additional NSE fields from issueInfo data
@@ -901,7 +784,9 @@ export async function fetchCurrentIPOs(): Promise<NSEAPIResult> {
   try {
     logger.info('Fetching current IPOs from NSE API (Priority: /api/ipo-current-issue)');
 
-    // PRIMARY: Fetch current issues with detailed subscription data
+    // PRIMARY: Fetch current issues. NOTE (T-266): this payload does NOT carry
+    // a bidDetails array and its noOfTime is NSE's own book only. The
+    // whole-market multiple comes from /api/ipo-active-category, fetched below.
     const currentData = await makeRequest(ENDPOINTS.CURRENT_IPOS);
 
     if (Array.isArray(currentData)) {
@@ -913,20 +798,8 @@ export async function fetchCurrentIPOs(): Promise<NSEAPIResult> {
           const ipo = transformIPOData(item);
           ipos.push(ipo);
 
-          // Extract subscription data from bidDetails array (AC3, AC5)
-          if (item.symbol && item.bidDetails && Array.isArray(item.bidDetails)) {
-            const subscription = transformSubscriptionData(item.bidDetails, item.symbol, ipo.companyName);
-            if (subscription) {
-              subscriptions.push(subscription);
-              logger.debug({
-                symbol: item.symbol,
-                qib: subscription.qibSubscription,
-                nii: subscription.niiSubscription,
-                retail: subscription.retailSubscription,
-                total: subscription.totalSubscription
-              }, 'Subscription data extracted from /api/ipo-current-issue (AC3)');
-            }
-          }
+          const subscription = await fetchSubscriptionForCurrentIssue(item, ipo.companyName);
+          if (subscription) subscriptions.push(subscription);
         } catch (error) {
           logger.warn({ item, error }, 'Failed to transform IPO data from current issues');
         }
@@ -937,8 +810,11 @@ export async function fetchCurrentIPOs(): Promise<NSEAPIResult> {
     logger.info({
       iposFound: ipos.length,
       subscriptionsFound: subscriptions.length,
+      consolidated: subscriptions.filter(s => s.coverage === 'CONSOLIDATED').length,
       duration
     }, 'NSE API fetch completed (AC4)');
+
+    reportZeroSubscriptionYield(currentData, subscriptions);
 
     return {
       ipos,
@@ -951,6 +827,115 @@ export async function fetchCurrentIPOs(): Promise<NSEAPIResult> {
     logger.error({ error }, 'Failed to fetch current IPOs from NSE API');
     throw error;
   }
+}
+
+/**
+ * Fetch the consolidated (whole-market) subscription table for one symbol
+ * from `/api/ipo-active-category` (T-266). Returns null - never a zeroed
+ * record - when the endpoint fails or the payload is unusable.
+ */
+export async function fetchConsolidatedSubscription(
+  symbol: string,
+  companyName: string
+): Promise<ScrapedSubscription | null> {
+  const sym = String(symbol ?? '').trim();
+  if (!sym) return null;
+
+  try {
+    const payload = await makeRequest(ENDPOINTS.ACTIVE_CATEGORY, {
+      symbol: sym,
+      issueType: 'ipo',
+    });
+    const consolidated = transformActiveCategorySubscription(payload, sym, companyName);
+    if (consolidated) {
+      logger.info({
+        symbol: sym,
+        total: consolidated.totalSubscription,
+        qib: consolidated.qibSubscription,
+        nii: consolidated.niiSubscription,
+        retail: consolidated.retailSubscription,
+        coverage: consolidated.coverage,
+      }, 'NSE consolidated subscription fetched from /api/ipo-active-category (T-266)');
+      return consolidated;
+    }
+    logger.warn(
+      { symbol: sym, companyName },
+      'NSE /api/ipo-active-category yielded no usable subscription'
+    );
+  } catch (error) {
+    logger.warn({
+      symbol: sym,
+      companyName,
+      error: error instanceof Error ? error.message : String(error),
+    }, 'NSE /api/ipo-active-category request failed');
+  }
+  return null;
+}
+
+/**
+ * Resolve the subscription for one `/api/ipo-current-issue` row (T-266).
+ *
+ * Order of preference:
+ *   1. /api/ipo-active-category -> CONSOLIDATED (both exchange books)
+ *   2. the current-issue row itself -> EXCHANGE_ONLY (NSE book), so a
+ *      transient failure of (1) still yields *something*, correctly labelled.
+ */
+async function fetchSubscriptionForCurrentIssue(
+  item: any,
+  companyName: string
+): Promise<ScrapedSubscription | null> {
+  const symbol = String(item?.symbol ?? '').trim();
+
+  const consolidated = await fetchConsolidatedSubscription(symbol, companyName);
+  if (consolidated) return consolidated;
+
+  const exchangeOnly = transformCurrentIssueSubscription(item);
+  if (exchangeOnly) {
+    logger.warn({
+      symbol: symbol || null,
+      companyName,
+      total: exchangeOnly.totalSubscription,
+      coverage: exchangeOnly.coverage,
+    }, 'Falling back to the NSE-only subscription figure - this is ONE exchange book, not the whole market');
+  }
+  return exchangeOnly;
+}
+
+/**
+ * Zero-yield anomaly detector (T-266 DoD).
+ *
+ * The defect this fixes ran silently for months: NSE reported active IPOs and
+ * the parser returned nothing, every single cycle, at info level. A parser that
+ * yields zero rows while its input clearly has rows is never normal - it is a
+ * payload-shape change, and it must be loud.
+ */
+function reportZeroSubscriptionYield(
+  currentData: unknown,
+  subscriptions: ScrapedSubscription[]
+): void {
+  const activeCount = Array.isArray(currentData) ? currentData.length : 0;
+  if (activeCount === 0 || subscriptions.length > 0) return;
+
+  const sampleKeys = Array.isArray(currentData) && currentData[0] && typeof currentData[0] === 'object'
+    ? Object.keys(currentData[0] as Record<string, unknown>)
+    : [];
+
+  logger.error({
+    activeIPOs: activeCount,
+    subscriptionsParsed: 0,
+    endpoint: ENDPOINTS.CURRENT_IPOS,
+    payloadKeys: sampleKeys,
+    likelyCause: 'NSE changed the payload shape, or ipo-active-category is unreachable for every symbol',
+  }, 'ZERO-YIELD ANOMALY: NSE reported active IPOs but the subscription parser produced no rows (T-266)');
+
+  notifyOwner('P1', 'IPODhan: NSE subscription parser yielded zero rows', {
+    body:
+      `NSE reported ${activeCount} active IPO(s) but the subscription parser produced 0 rows. ` +
+      `Payload keys seen: ${sampleKeys.join(', ') || 'none'}. ` +
+      `This is the T-264 P1-2 failure mode - the site will fall back to one exchange book.`,
+    type: 'scraper-zero-yield',
+    dedupeKey: 'nse-subscription-zero-yield',
+  });
 }
 
 /**
@@ -976,11 +961,12 @@ export async function fetchAllIPOs(category: 'ipo' | 'ofs' | 'rights' | 'tender'
           ipos.push(ipo);
           logger.debug({ companyName: ipo.companyName }, 'Transformed IPO successfully');
 
-          // Skip detailed subscription fetch - it requires 401 auth
-          // We'll get subscription data from the main listing if available
+          // T-266: this used to call transformSubscriptionData(item, ...) with a
+          // single object where an ARRAY was expected, so it returned null on
+          // every row - a second silent zero-yield path. The listing row only
+          // ever carries NSE's own multiple, so it is parsed as EXCHANGE_ONLY.
           if (item.noOfTime) {
-            // Extract subscription from main data
-            const sub = transformSubscriptionData(item, item.symbol, ipo.companyName);
+            const sub = transformCurrentIssueSubscription(item);
             if (sub) {
               subscriptions.push(sub);
             }
@@ -1034,12 +1020,12 @@ export async function fetchIPODetail(symbol: string, series?: 'EQ' | 'SME'): Pro
 
     const companyName = data.companyName || data.metaInfo?.companyName || symbol;
 
-    // Extract bid details for subscription data (AC3)
-    if (data.bidDetails && Array.isArray(data.bidDetails)) {
-      const subscription = transformSubscriptionData(data.bidDetails, symbol, companyName);
-      if (subscription) {
-        subscriptions.push(subscription);
-      }
+    // T-266: subscription comes from /api/ipo-active-category (the consolidated
+    // per-category table), not from a `bidDetails` array on this payload -
+    // ipo-detail has never carried one.
+    const subscription = await fetchConsolidatedSubscription(symbol, companyName);
+    if (subscription) {
+      subscriptions.push(subscription);
     }
 
     // NEW: Extract demand graph data
@@ -1115,14 +1101,25 @@ export async function scrapeNSEAPI(): Promise<NSEAPIResult> {
     try {
       const currentData = await fetchCurrentIPOs();
 
-      // Merge subscription data
-      if (currentData.subscriptions.length > 0) {
-        // Add subscriptions that don't already exist
-        const existingSymbols = new Set(allIPOs.subscriptions.map(s => s.ipoSymbol));
-        for (const sub of currentData.subscriptions) {
-          if (!existingSymbols.has(sub.ipoSymbol)) {
-            allIPOs.subscriptions.push(sub);
-          }
+      // Merge subscription data.
+      // T-266: the old rule was "keep whatever arrived first", and
+      // fetchAllIPOs() always arrives first with the NSE-only figure - so the
+      // consolidated figure fetched here would have been discarded. Coverage
+      // wins over arrival order: CONSOLIDATED always replaces EXCHANGE_ONLY.
+      for (const sub of currentData.subscriptions) {
+        const existingIndex = allIPOs.subscriptions.findIndex(s => s.ipoSymbol === sub.ipoSymbol);
+        if (existingIndex === -1) {
+          allIPOs.subscriptions.push(sub);
+          continue;
+        }
+        const existing = allIPOs.subscriptions[existingIndex];
+        if (sub.coverage === 'CONSOLIDATED' && existing.coverage !== 'CONSOLIDATED') {
+          logger.debug({
+            symbol: sub.ipoSymbol,
+            replaced: existing.totalSubscription,
+            with: sub.totalSubscription,
+          }, 'Consolidated subscription replaced the exchange-only figure (T-266)');
+          allIPOs.subscriptions[existingIndex] = sub;
         }
       }
     } catch (error) {

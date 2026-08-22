@@ -239,12 +239,13 @@ export async function runNSEScraper(): Promise<ScraperResult> {
             const subscriptionValidation = validateSubscriptionData(relatedSubscription);
 
             if (subscriptionValidation.success) {
-              await createSubscriptionSnapshot(
+              const snapshotId = await createSubscriptionSnapshot(
                 subscriptionRepository,
                 ipoId,
-                subscriptionValidation.data!
+                subscriptionValidation.data!,
+                { source: 'NSE' }
               );
-              result.subscriptionsCreated++;
+              if (snapshotId !== null) result.subscriptionsCreated++;
 
               // Note: Subscription cache invalidation will be handled by comprehensive invalidation
             } else {

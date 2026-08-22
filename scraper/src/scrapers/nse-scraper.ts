@@ -4,6 +4,7 @@ import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { scrapeNSEAPI, testNSEAPIConnection } from './nse-api-client.js';
+import { notifyOwner } from '../services/owner-notify.js';
 import { detectOfferingType, detectSegmentFromExchange } from '../utils/detect-offering-type.js';
 
 const NSE_URL = config.scraper.nseUrl;
@@ -375,6 +376,7 @@ export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
         'NSE scrape completed using browser fallback (AC6, AC7, Task 13)'
       );
 
+      reportSubscriptionYield(browserResult, 'browser');
       return browserResult;
     }
 
@@ -410,6 +412,7 @@ export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
             'NSE scrape completed successfully using API (AC6, AC7, Task 13)'
           );
 
+          reportSubscriptionYield(apiResult, 'api');
           return {
             ipos: apiResult.ipos,
             subscriptions: apiResult.subscriptions,
@@ -460,6 +463,7 @@ export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
       'NSE scrape completed using browser automation (AC6, AC7, Task 13)'
     );
 
+    reportSubscriptionYield(browserResult, 'browser');
     return browserResult;
 
   } catch (error) {
@@ -483,6 +487,42 @@ export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
       source: undefined
     };
   }
+}
+
+/**
+ * Zero-yield anomaly (T-266).
+ *
+ * NSE reporting OPEN IPOs while the subscription parser returns nothing is
+ * never normal - it means the payload shape changed under us. The pre-T-266
+ * code logged exactly this state at INFO ("coverage: 0.00%") on every 30-minute
+ * cycle for months and nobody saw it, while the site published BSE's partial
+ * book as the whole-market figure. It must be loud.
+ */
+function reportSubscriptionYield(
+  result: NSEScrapeResult,
+  scrapeSource: 'api' | 'browser'
+): void {
+  const coverage = calculateSubscriptionCoverage(result);
+  if (coverage.openIPOs === 0 || coverage.withSubscriptions > 0) return;
+
+  logger.error(
+    {
+      openIPOs: coverage.openIPOs,
+      subscriptionsFound: 0,
+      scrapeSource,
+      symbols: result.ipos.filter(i => i.status === 'OPEN').map(i => i.symbol ?? i.companyName),
+    },
+    'ZERO-YIELD ANOMALY: NSE returned OPEN IPOs but zero subscription rows (T-266)'
+  );
+
+  notifyOwner('P1', 'IPODhan: NSE returned zero subscriptions for open IPOs', {
+    body:
+      `NSE reported ${coverage.openIPOs} OPEN IPO(s) via the ${scrapeSource} path and produced 0 ` +
+      'subscription rows. The site will fall back to one exchange book and understate demand ' +
+      '(the T-264 P1-2 failure mode).',
+    type: 'scraper-zero-yield',
+    dedupeKey: 'nse-subscription-zero-yield',
+  });
 }
 
 /**
