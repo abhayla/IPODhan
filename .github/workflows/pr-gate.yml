@@ -63,3 +63,26 @@ jobs:
       - name: Run unit tests
         run: npm run test:unit
         working-directory: ./web
+
+      - name: Run scraper targeted regression tests
+        # T-268C/T-268F: this job previously ran ONLY web tests, so the scraper
+        # workspace had zero automatic PR coverage. That let packages/shared's
+        # `exports` map drop two subpaths scraper entrypoints import
+        # (@ipodhan/shared/cache/redis-client,
+        # @ipodhan/shared/repositories/listing-performance-repository) without
+        # any CI signal — vitest's own resolver couldn't have caught it either
+        # (scraper/vitest.config.ts aliases those subpaths straight to source
+        # for test-resolution), which is why this test spawns a real tsx child
+        # process instead of relying on vitest's resolver.
+        #
+        # Scoped to this one file, not the full scraper suite: the scraper
+        # workspace carries a pre-existing baseline of 43 unrelated failing
+        # tests (T-266, tracked separately) that this PR does not touch and is
+        # not the place to fix; running the full suite here would turn every
+        # future PR red on unrelated debt. Widen this to the full suite only
+        # once that baseline is cleaned up.
+        # T-270 adds nse-past-issue-matcher.test.ts here: the price-band
+        # backfill's old fuzzy name matcher wrote wrong bands into 80 live
+        # prod rows, and nothing in CI could have caught it.
+        run: npx vitest run --config vitest.config.ts tests/unit/module-resolution/shared-package-exports-real-esm.test.ts tests/unit/services/nse-past-issue-matcher.test.ts
+        working-directory: ./scraper

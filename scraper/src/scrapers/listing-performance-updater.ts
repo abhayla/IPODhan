@@ -44,6 +44,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { db } from '@ipodhan/shared/db';
 import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
 import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
+import { invalidateHistoryCache } from '../services/cache-invalidator.js';
 import { describeDbCause } from '@ipodhan/shared/errors/db-cause';
 import { fetchChittorgarhListingRows } from './chittorgarh-listing-scraper.js';
 import type { StuckIpo } from '../services/listing-reconciliation.js';
@@ -222,6 +223,14 @@ export async function updateListingPerformance(): Promise<ListingPerformanceUpda
 
     logger.info(result, 'Listing performance update completed');
     printReport(result, skipReasons);
+
+    // F1 (T-264): this write is the source of the issue price / listing gain %
+    // rendered on /history. Nothing else purges `ipos:history:*`, so without
+    // this the page can serve a stale snapshot for the full 24h TTL after a
+    // real write. Event-driven: only worth purging when something changed.
+    if (newRecordsCreated + recordsUpdated > 0) {
+      await invalidateHistoryCache(redis);
+    }
 
     return result;
   } catch (error) {

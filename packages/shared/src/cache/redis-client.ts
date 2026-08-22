@@ -15,10 +15,14 @@ let redisClient: Redis | null = null;
  */
 export function getRedisClient(): Redis {
   if (!redisClient) {
-    redisClient = new Redis({
-      host: process.env.REDIS_HOST || 'localhost',
-      port: parseInt(process.env.REDIS_PORT || '6379'),
-      password: process.env.REDIS_PASSWORD,
+    // F2 (T-264 P2-3): this client used to build its connection from
+    // REDIS_HOST/REDIS_PORT/REDIS_PASSWORD only, ignoring both REDIS_URL
+    // (whose path segment selects the db, e.g. "redis://...:6379/1") and an
+    // explicit REDIS_DB override. That collapsed staging and prod onto the
+    // SAME Redis db0, so a staging page view could overwrite the key prod
+    // serves. Honor REDIS_URL first (it carries the slot's db suffix);
+    // REDIS_DB, when set, always wins as an explicit override.
+    const sharedOptions = {
       retryStrategy: (times: number) => {
         // Stop retrying after 3 attempts in development to prevent hanging
         if (times > 3) {
@@ -32,7 +36,19 @@ export function getRedisClient(): Redis {
       enableReadyCheck: true,
       lazyConnect: false,
       connectTimeout: 5000, // 5 second timeout for connection
-    });
+      ...(process.env.REDIS_DB !== undefined
+        ? { db: parseInt(process.env.REDIS_DB, 10) }
+        : {}),
+    };
+
+    redisClient = process.env.REDIS_URL
+      ? new Redis(process.env.REDIS_URL, sharedOptions)
+      : new Redis({
+          host: process.env.REDIS_HOST || 'localhost',
+          port: parseInt(process.env.REDIS_PORT || '6379'),
+          password: process.env.REDIS_PASSWORD,
+          ...sharedOptions,
+        });
 
     // Handle connection events
     redisClient.on('error', (error) => {

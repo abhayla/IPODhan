@@ -63,6 +63,21 @@ run_case "slot prod + prod DSN -> pass" 0 \
 run_case "no DSN_ASSERT_DB -> assert is advisory, still passes" 0 \
   "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.good"
 
+# --- T-264 F2 / T-268: slot Redis-db assert (staging must never share prod's
+# Redis db0 — the exact accident that let a staging page view overwrite the
+# key prod served) ---
+run_case "slot staging Redis db1 -> pass" 0 \
+  "$FIXTURES/slot/staging/web.env.local" "$FIXTURES/slot/staging/scraper.env"
+
+run_case "slot staging pointed at Redis db0 -> fail (T-264 F2)" 1 \
+  "$FIXTURES/slot/staging/web.env.local.points-at-prod-redis" "$FIXTURES/slot/staging/scraper.env"
+
+run_case "slot prod + Redis db0 -> pass" 0 \
+  "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env"
+
+run_case "no DSN_ASSERT_REDIS_DB -> assert is advisory, still passes" 0 \
+  "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.good"
+
 run_case "wrong arg count -> usage error" 2 \
   "$FIXTURES/web.env.local.good"
 

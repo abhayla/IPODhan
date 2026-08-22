@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { invalidateIPOCaches, invalidateSubscriptionCache } from '../../../src/services/cache-invalidator';
+import {
+  invalidateIPOCaches,
+  invalidateSubscriptionCache,
+  invalidateHistoryCache,
+} from '../../../src/services/cache-invalidator';
 
 // Mock Redis client
 const mockRedis = {
@@ -73,6 +77,32 @@ describe('cache-invalidator', () => {
 
       // Should not throw error
       await expect(invalidateSubscriptionCache(mockRedis as any, 'ipoId')).resolves.toBeUndefined();
+    });
+  });
+
+  describe('invalidateHistoryCache', () => {
+    // F1 (T-264 P1-4): the job writing listing_performance never purged this
+    // pattern, so /history could serve a stale (up to 24h) snapshot missing
+    // the newest listings and their gain figures.
+    it('should delete every ipos:history:* key via SCAN', async () => {
+      mockRedis.scan.mockResolvedValueOnce([
+        '0',
+        ['ipos:history:All:All:All:listing_date:desc:1:20', 'ipos:history:All:All:All:listing_date:desc:1:40'],
+      ]);
+
+      await invalidateHistoryCache(mockRedis as any);
+
+      expect(mockRedis.scan).toHaveBeenCalledWith('0', 'MATCH', 'ipos:history:*', 'COUNT', 100);
+      expect(mockRedis.del).toHaveBeenCalledWith(
+        'ipos:history:All:All:All:listing_date:desc:1:20',
+        'ipos:history:All:All:All:listing_date:desc:1:40'
+      );
+    });
+
+    it('should handle Redis errors gracefully (cache miss is acceptable)', async () => {
+      mockRedis.scan.mockRejectedValueOnce(new Error('Redis scan error'));
+
+      await expect(invalidateHistoryCache(mockRedis as any)).resolves.toBeUndefined();
     });
   });
 });

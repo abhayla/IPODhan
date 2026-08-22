@@ -313,6 +313,28 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: 1, max: 100000 },
   },
 
+  // camelCase variant - consolidation keys on `priceRangeMin`/`priceRangeMax`
+  // (nse-scraper-orchestrator-v2.ts writes these; field_sources confirms it).
+  // Without this twin, getFieldRules('priceRangeMin') falls through to DEFAULT
+  // rules (no validation, no refresh), so a corrected NSE band never
+  // re-consolidates once the field is set once. Mirrors the
+  // lotSize/allotmentDate/listingDate/companyDescription dual-key pattern.
+  priceRangeMin: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
+    normalization: 'number',
+    confidenceThreshold: 90,
+    description: 'Minimum price in price band (camelCase consolidation key)',
+    validation: { min: 1, max: 100000 },
+  },
+
+  priceRangeMax: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
+    normalization: 'number',
+    confidenceThreshold: 90,
+    description: 'Maximum price in price band (camelCase consolidation key)',
+    validation: { min: 1, max: 100000 },
+  },
+
   issue_price: {
     sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
     normalization: 'number',

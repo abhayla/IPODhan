@@ -120,6 +120,54 @@ describe('MarketHolidayRepository', () => {
       expect(mockDb.select).toHaveBeenCalled();
     });
 
+    // T-264 P2-2: calling .where() more than once on the same Drizzle query
+    // builder does NOT AND the conditions - each call REPLACES the previous
+    // one. With year+exchange both set, only the LAST .where() call took
+    // effect, so ?year=2026&exchange=NSE silently returned every year's
+    // NSE/BOTH rows instead of just 2026's. A mock that merely returns
+    // `this` from `.where()` can't catch this (it's shape, not substance) -
+    // assert the query builder is invoked with a SINGLE combined `.where()`
+    // call, which is the only way both conditions can actually apply.
+    it('combines year + exchange into a single .where() call (regression: T-264 P2-2)', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const whereSpy = vi.fn().mockReturnThis();
+      const mockSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: whereSpy,
+        orderBy: vi.fn().mockResolvedValue([mockHolidays[0]]),
+      };
+      mockDb.select = vi.fn().mockReturnValue(mockSelect);
+
+      await repository.findAll({ year: 2026, exchange: 'NSE' });
+
+      // Exactly one .where() call - if the old sequential-.where() bug
+      // regressed, this would be 2 (one per filter) and the second call
+      // would silently discard the first condition.
+      expect(whereSpy).toHaveBeenCalledTimes(1);
+      // The single call must carry a real condition, not undefined (which
+      // would mean no filtering happened at all).
+      expect(whereSpy.mock.calls[0][0]).toBeDefined();
+    });
+
+    it('applies only one .where() call even with all three filters set', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const whereSpy = vi.fn().mockReturnThis();
+      const mockSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: whereSpy,
+        orderBy: vi.fn().mockResolvedValue(mockHolidays),
+      };
+      mockDb.select = vi.fn().mockReturnValue(mockSelect);
+
+      await repository.findAll({ year: 2026, exchange: 'BSE', upcoming: true });
+
+      expect(whereSpy).toHaveBeenCalledTimes(1);
+    });
+
     it('should filter upcoming holidays', async () => {
       mockRedis.get = vi.fn().mockResolvedValue(null);
       mockRedis.setex = vi.fn().mockResolvedValue('OK');
