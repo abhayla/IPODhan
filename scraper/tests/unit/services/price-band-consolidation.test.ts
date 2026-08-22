@@ -166,3 +166,83 @@ describe('T-276 price-band consolidation', () => {
     expect(finalOf(result, 'priceRangeMin')).toBe(360);
   });
 });
+
+describe('T-281 — cross-source degenerate band guard (T-280 live finding)', () => {
+  let service: DataConsolidationService;
+
+  beforeEach(() => {
+    service = new DataConsolidationService(mockFieldSourcesRepo, mockConflictsRepo);
+    vi.clearAllMocks();
+  });
+
+  // T-280 live-effect finding: the T-276 guard (`collectDegeneratePriceBandFields`)
+  // only inspects `field_sources` rows via `existingSourceMap`. A repaired row
+  // whose real range was written straight to `ipos` (the T-276/T-280 backfill
+  // scripts) has NO tracked `field_sources` entry, so `existingSourceMap.has(f)`
+  // is false and the guard falls through — CHITTORGARH's degenerate single-price
+  // scrape then hits the "no existing value -> accept incoming" branch and
+  // collapses the real range. This must be RED on main.
+  it('CROSS-SOURCE: a degenerate band from an untracked source never overwrites a real range in the ipos row itself', async () => {
+    (mockFieldSourcesRepo.findByIPOId as any).mockResolvedValue([]); // no field_sources rows tracked (repair-script scenario)
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'ipo-1',
+      tableName: 'ipos',
+      incomingData: { priceRangeMin: 300, priceRangeMax: 300 },
+      source: 'CHITTORGARH',
+      existingData: { priceRangeMin: 285, priceRangeMax: 300, issueType: 'BOOK_BUILDING' },
+      scrapedAt: NEW,
+    });
+
+    expect(finalOf(result, 'priceRangeMin')).toBe(285);
+    expect(finalOf(result, 'priceRangeMax')).toBe(300);
+  });
+
+  it('SAME-SOURCE: a degenerate band from an untracked source still respects an untracked real range', async () => {
+    (mockFieldSourcesRepo.findByIPOId as any).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'ipo-1',
+      tableName: 'ipos',
+      incomingData: { priceRangeMin: 97, priceRangeMax: 97 },
+      source: 'NSE',
+      existingData: { priceRangeMin: 92, priceRangeMax: 97, issueType: 'BOOK_BUILDING' },
+      scrapedAt: NEW,
+    });
+
+    expect(finalOf(result, 'priceRangeMin')).toBe(92);
+    expect(finalOf(result, 'priceRangeMax')).toBe(97);
+  });
+
+  it('LEGITIMATE FIXED_PRICE: a degenerate band is accepted for a FIXED_PRICE issue even when a differing value is stored', async () => {
+    (mockFieldSourcesRepo.findByIPOId as any).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'ipo-1',
+      tableName: 'ipos',
+      incomingData: { priceRangeMin: 45, priceRangeMax: 45 },
+      source: 'NSE',
+      existingData: { priceRangeMin: 42, priceRangeMax: 42, issueType: 'FIXED_PRICE' },
+      scrapedAt: NEW,
+    });
+
+    expect(finalOf(result, 'priceRangeMin')).toBe(45);
+    expect(finalOf(result, 'priceRangeMax')).toBe(45);
+  });
+
+  it('LEGITIMATE RANGE UPDATE: a non-degenerate correction from the untracked stored range still applies (not falsely blocked)', async () => {
+    (mockFieldSourcesRepo.findByIPOId as any).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'ipo-1',
+      tableName: 'ipos',
+      incomingData: { priceRangeMin: 88, priceRangeMax: 97 },
+      source: 'NSE',
+      existingData: { priceRangeMin: 92, priceRangeMax: 97, issueType: 'BOOK_BUILDING' },
+      scrapedAt: NEW,
+    });
+
+    expect(finalOf(result, 'priceRangeMin')).toBe(88);
+    expect(finalOf(result, 'priceRangeMax')).toBe(97);
+  });
+});

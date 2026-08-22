@@ -119,29 +119,59 @@ function toFiniteNumber(value: any): number | null {
 }
 
 /**
- * T-276: which price-band fields must be rejected because the incoming band is
- * degenerate (min === max) while a real stored range already exists?
+ * T-276/T-281: which price-band fields must be rejected because the incoming
+ * band is degenerate (min === max) while a real stored range already exists?
  *
  * Returns an empty set unless BOTH incoming band fields are present and equal
- * AND both stored values are present with `min < max` - a zero-width band is a
- * legitimate value for a fixed-price issue, so it is only rejected when it
- * would destroy a real range.
+ * AND a stored real range (`min < max`) can be found - a zero-width band is a
+ * legitimate value for a FIXED_PRICE issue, so it is only rejected when it
+ * would destroy a real range on a book-built issue.
+ *
+ * T-281 (T-280 live finding): the ORIGINAL guard read the stored range only
+ * from `existingSourceMap`, which is populated exclusively from tracked
+ * `field_sources` rows. A row repaired by a script that wrote straight to the
+ * `ipos` table (the T-276/T-280 backfill discipline) has NO tracked
+ * `field_sources` entry, so the guard silently no-opped and a degenerate
+ * CHITTORGARH scrape collapsed the repaired range on the very next cycle -
+ * this is the cross-source collapse T-280's live-effect check caught. The
+ * guard now ALSO falls back to `existingData` (the raw `ipos` row passed by
+ * the caller) so an untracked-but-real stored range is still protected,
+ * regardless of which source last wrote it or whether it was ever tracked.
+ *
+ * The FIXED_PRICE exemption uses the `issueType` enum column (BOOK_BUILDING |
+ * FIXED_PRICE | HYBRID) - the same signal `data-validation.ts` already uses
+ * for the `PRICE_BAND_DEGENERATE` warning - never a heuristic on the values.
  */
 export function collectDegeneratePriceBandFields(
   incomingData: Record<string, any>,
-  existingSourceMap: Map<string, { value: any; source: ScraperSource; updatedAt?: Date }>
+  existingSourceMap: Map<string, { value: any; source: ScraperSource; updatedAt?: Date }>,
+  existingData?: Record<string, any> | null
 ): Set<string> {
   const empty = new Set<string>();
-  if (!PRICE_BAND_FIELDS.every(f => f in incomingData && existingSourceMap.has(f))) return empty;
+  if (!PRICE_BAND_FIELDS.every(f => f in incomingData)) return empty;
 
   const incomingMin = toFiniteNumber(incomingData.priceRangeMin);
   const incomingMax = toFiniteNumber(incomingData.priceRangeMax);
-  const existingMin = toFiniteNumber(existingSourceMap.get('priceRangeMin')!.value);
-  const existingMax = toFiniteNumber(existingSourceMap.get('priceRangeMax')!.value);
-
   if (incomingMin === null || incomingMax === null) return empty;
+  if (incomingMin !== incomingMax) return empty; // incoming is a real range
+
+  // Fixed-price issues legitimately have min === max — the offering/issue-type
+  // signal (same field `data-validation.ts` checks for PRICE_BAND_DEGENERATE),
+  // not a heuristic on the incoming/stored values. Checked on both sides: the
+  // freshest scrape may carry the classification even when the stored row
+  // predates it, or vice versa.
+  if (incomingData.issueType === 'FIXED_PRICE' || existingData?.issueType === 'FIXED_PRICE') {
+    return empty;
+  }
+
+  const existingMin = toFiniteNumber(
+    existingSourceMap.get('priceRangeMin')?.value ?? existingData?.priceRangeMin
+  );
+  const existingMax = toFiniteNumber(
+    existingSourceMap.get('priceRangeMax')?.value ?? existingData?.priceRangeMax
+  );
+
   if (existingMin === null || existingMax === null) return empty;
-  if (incomingMin !== incomingMax) return empty;   // incoming is a real range
   if (existingMin >= existingMax) return empty;    // nothing real to protect
 
   return new Set<string>(PRICE_BAND_FIELDS);
@@ -230,14 +260,20 @@ export class DataConsolidationService {
       // fixed-price issues).
       const degenerateBandFields = collectDegeneratePriceBandFields(
         input.incomingData,
-        existingSourceMap
+        existingSourceMap,
+        input.existingData
       );
       for (const fieldName of degenerateBandFields) {
         result.fieldsProcessed++;
+        const trackedField = existingSourceMap.get(fieldName);
+        // T-281: the field may have a real value in `ipos` with no tracked
+        // `field_sources` row (the repair-script scenario) - fall back to the
+        // raw stored value/source so the untracked row still reports its true
+        // origin instead of throwing on a non-null assertion of `undefined`.
         result.fieldResults.push({
           fieldName,
-          finalValue: existingSourceMap.get(fieldName)!.value,
-          chosenSource: existingSourceMap.get(fieldName)!.source,
+          finalValue: trackedField?.value ?? input.existingData?.[fieldName],
+          chosenSource: trackedField?.source ?? input.source,
           hadConflict: false,
           rejectedSources: [
             {
