@@ -66,7 +66,14 @@ export function normalizeCompanyName(name: string | null | undefined): string {
  */
 export function matchNSEPastIssue(
   dbIPO: MatchCandidate,
-  nseIssues: NSEPastIssue[]
+  nseIssues: NSEPastIssue[],
+  /**
+   * T-276: `'symbol'` restricts matching to an exact stock-symbol hit and
+   * disables the normalized-name fallback entirely. Repair runs that WRITE over
+   * existing production values use this - after T-270 the bar for overwriting a
+   * value a user can see is an exact identifier, nothing softer.
+   */
+  identity: 'symbol' | 'symbol+name' = 'symbol+name'
 ): NSEMatch | null {
   const symbol = dbIPO.symbol?.trim().toLowerCase();
   if (symbol) {
@@ -75,6 +82,8 @@ export function matchNSEPastIssue(
       return { issue: bySymbol[0], matchedBy: 'symbol' };
     }
   }
+
+  if (identity === 'symbol') return null;
 
   const normalized = normalizeCompanyName(dbIPO.companyName);
   if (!normalized) return null;

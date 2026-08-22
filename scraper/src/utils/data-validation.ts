@@ -43,6 +43,8 @@ export interface IPODataToValidate {
   offeringType?: string | null;
   priceRangeMin?: number | null;
   priceRangeMax?: number | null;
+  /** BOOK_BUILDING | FIXED_PRICE | HYBRID - a FIXED_PRICE issue may legitimately have min === max. */
+  issueType?: string | null;
   issueSize?: string | number | null;
   symbol?: string | null;  // Stock symbol (NSE/BSE)
   isin?: string | null;
@@ -123,6 +125,26 @@ export function validateIPOData(
 
   // Rule 3: Price Band Validation (SEBI Regulation)
   if (data.priceRangeMin && data.priceRangeMax) {
+    // T-276: a band is a RANGE. min > max is never valid data; min === max is
+    // only valid for a fixed-price issue. Neither was checked before, so a
+    // single price silently masqueraded as a band on 223/271 prod rows and the
+    // site rendered "Price Band Rs.300" for a Rs.285-Rs.300 book-built issue.
+    if (data.priceRangeMin > data.priceRangeMax) {
+      errors.push({
+        field: 'priceBand',
+        rule: 'PRICE_BAND_INVERTED',
+        severity: 'ERROR',
+        message: `Price band floor ${data.priceRangeMin} exceeds cap ${data.priceRangeMax}. A band cannot be inverted.`,
+      });
+    } else if (data.priceRangeMin === data.priceRangeMax && data.issueType !== 'FIXED_PRICE') {
+      warnings.push({
+        field: 'priceBand',
+        rule: 'PRICE_BAND_DEGENERATE',
+        severity: 'WARNING',
+        message: `Price band has zero width (${data.priceRangeMin} = ${data.priceRangeMax}). Only a FIXED_PRICE issue has a single price; a book-built issue always has floor < cap. Likely a single-price scrape taken before the band was announced.`,
+      });
+    }
+
     const priceBandWidth = data.priceRangeMax - data.priceRangeMin;
     const priceBandPercentage = (priceBandWidth / data.priceRangeMin) * 100;
 
