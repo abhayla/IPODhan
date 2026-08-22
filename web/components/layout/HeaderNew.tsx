@@ -46,12 +46,6 @@ export function HeaderNew() {
       description: 'View upcoming IPO schedules',
       iconName: 'Calendar' as const,
     },
-    {
-      href: '/mainboard-ipo-reviews',
-      label: 'Mainboard IPO Reviews',
-      description: 'Read expert IPO analysis',
-      iconName: 'Star' as const,
-    },
   ];
 
   // SME IPOs dropdown items
@@ -79,12 +73,6 @@ export function HeaderNew() {
       label: 'SME IPO Calendar',
       description: 'View SME IPO event schedules',
       iconName: 'Calendar' as const,
-    },
-    {
-      href: '/sme-ipo-reviews',
-      label: 'SME IPO Reviews',
-      description: 'Read expert SME IPO analysis',
-      iconName: 'Star' as const,
     },
   ];
 

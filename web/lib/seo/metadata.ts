@@ -23,7 +23,9 @@ export type MetadataPageType =
   | 'comparison-tool'
   | 'registrars'
   | 'market-holidays'
-  | 'historical-ipos';
+  | 'historical-ipos'
+  | 'mainboard-ipo-reviews-coming-soon'
+  | 'sme-ipo-reviews-coming-soon';
 
 /**
  * IPO detail metadata params
@@ -454,6 +456,77 @@ export function generateHistoricalIPOsMetadata(): Metadata {
 }
 
 /**
+ * Generate metadata for the Mainboard IPO Reviews "coming soon" placeholder
+ * (P2-3, round-2 review: the review/score backing tables are empty with no
+ * live source — this page is de-listed from nav but the route itself still
+ * needs a real, page-type-specific title, not the generic homepage fallback).
+ */
+export function generateMainboardReviewsComingSoonMetadata(): Metadata {
+  const title = 'Mainboard IPO Reviews — Coming Soon | IPO Dhan';
+  const description =
+    'Expert Mainboard IPO reviews and analysis are coming soon to IPO Dhan.';
+
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: `${BASE_URL}/mainboard-ipo-reviews`,
+    },
+    robots: {
+      index: false,
+      follow: true,
+    },
+    openGraph: {
+      type: 'website',
+      locale: 'en_IN',
+      url: `${BASE_URL}/mainboard-ipo-reviews`,
+      siteName: 'IPO Dhan',
+      title,
+      description,
+    },
+    twitter: {
+      card: 'summary',
+      title,
+      description,
+    },
+  };
+}
+
+/**
+ * Generate metadata for the SME IPO Reviews "coming soon" placeholder (P2-3).
+ */
+export function generateSmeReviewsComingSoonMetadata(): Metadata {
+  const title = 'SME IPO Reviews — Coming Soon | IPO Dhan';
+  const description =
+    'Expert SME IPO reviews and analysis are coming soon to IPO Dhan.';
+
+  return {
+    title,
+    description,
+    alternates: {
+      canonical: `${BASE_URL}/sme-ipo-reviews`,
+    },
+    robots: {
+      index: false,
+      follow: true,
+    },
+    openGraph: {
+      type: 'website',
+      locale: 'en_IN',
+      url: `${BASE_URL}/sme-ipo-reviews`,
+      siteName: 'IPO Dhan',
+      title,
+      description,
+    },
+    twitter: {
+      card: 'summary',
+      title,
+      description,
+    },
+  };
+}
+
+/**
  * Generate metadata based on page type
  */
 export function generateMetadata(
@@ -480,6 +553,10 @@ export function generateMetadata(
       return generateMarketHolidaysMetadata();
     case 'historical-ipos':
       return generateHistoricalIPOsMetadata();
+    case 'mainboard-ipo-reviews-coming-soon':
+      return generateMainboardReviewsComingSoonMetadata();
+    case 'sme-ipo-reviews-coming-soon':
+      return generateSmeReviewsComingSoonMetadata();
     default:
       return generateHomepageMetadata();
   }
