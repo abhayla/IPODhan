@@ -7,7 +7,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    setupFiles: ['./vitest.setup.ts'],
+    setupFiles: ['./vitest.integration.setup.ts', './vitest.setup.ts'],
     include: ['tests/integration/**/*.integration.test.{ts,tsx}'],
     exclude: ['tests/unit/**', 'tests/e2e/**', 'node_modules/**', '.next/**'],
     testTimeout: 30000, // 30 seconds for integration tests
