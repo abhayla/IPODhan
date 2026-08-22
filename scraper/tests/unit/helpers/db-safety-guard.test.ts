@@ -18,11 +18,17 @@ describe('assertNotProductionDatabase', () => {
   const originalDatabaseUrl = process.env.DATABASE_URL;
   const originalDatabaseHost = process.env.DATABASE_HOST;
   const originalDatabaseName = process.env.DATABASE_NAME;
+  const originalTestDbHost = process.env.TEST_DB_HOST;
+  const originalTestDbName = process.env.TEST_DB_NAME;
+  const originalTestDbPort = process.env.TEST_DB_PORT;
 
   beforeEach(() => {
     delete process.env.DATABASE_URL;
     delete process.env.DATABASE_HOST;
     delete process.env.DATABASE_NAME;
+    delete process.env.TEST_DB_HOST;
+    delete process.env.TEST_DB_NAME;
+    delete process.env.TEST_DB_PORT;
   });
 
   afterEach(() => {
@@ -30,6 +36,9 @@ describe('assertNotProductionDatabase', () => {
       ['DATABASE_URL', originalDatabaseUrl],
       ['DATABASE_HOST', originalDatabaseHost],
       ['DATABASE_NAME', originalDatabaseName],
+      ['TEST_DB_HOST', originalTestDbHost],
+      ['TEST_DB_NAME', originalTestDbName],
+      ['TEST_DB_PORT', originalTestDbPort],
     ] as const) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -71,6 +80,25 @@ describe('assertNotProductionDatabase', () => {
   it('throws on the known prod host even without a "_test"-shaped name', () => {
     process.env.DATABASE_URL = 'postgresql://postgres:pw@103.118.16.189:5432/ipodhan';
     expect(() => assertNotProductionDatabase('caller')).toThrow(/known production\/staging host/);
+  });
+
+  it('throws when TEST_DB_HOST alone targets prod, even with a safe DATABASE_URL (T-279F checker F1)', () => {
+    // Checker probe: scraper/tests/test-utils/db.ts resolves its pool from
+    // TEST_DB_HOST/TEST_DB_NAME FIRST (falling back to DATABASE_HOST/
+    // DATABASE_NAME only when unset). Before this fix the guard never read
+    // TEST_DB_HOST/TEST_DB_NAME at all, so this exact shape sailed through
+    // and let all 12 integration suites run against prod (GitHub #163).
+    process.env.TEST_DB_HOST = '103.118.16.189';
+    process.env.TEST_DB_NAME = 'ipodhan';
+    process.env.DATABASE_URL = 'postgresql://postgres:pw@localhost:5432/ipodhan_test';
+    expect(() => assertNotProductionDatabase('caller')).toThrow(/known production\/staging host/);
+  });
+
+  it('does not throw when TEST_DB_HOST/TEST_DB_NAME target a safe "*_test" database', () => {
+    process.env.TEST_DB_HOST = 'localhost';
+    process.env.TEST_DB_NAME = 'ipodhan_test';
+    process.env.DATABASE_URL = 'postgresql://postgres:pw@localhost:5432/ipodhan_test';
+    expect(() => assertNotProductionDatabase('caller')).not.toThrow();
   });
 });
 

@@ -32,18 +32,30 @@ const KNOWN_PROD_HOST_MARKERS = ['72.61.240.224', '103.118.16.189', 'ipodhan.com
  * non-overridable denylist posture already established for Redis below.
  */
 export function assertNotProductionDatabase(callerLabel: string): void {
+  // T-279F: `scraper/tests/test-utils/db.ts` (`getTestDb()`) resolves its
+  // pool from TEST_DB_HOST/TEST_DB_NAME/TEST_DB_PORT FIRST, falling back to
+  // DATABASE_HOST/DATABASE_NAME/DATABASE_PORT only when those are unset --
+  // the exact same precedence used below. The guard MUST evaluate the same
+  // vars the pool will actually use, or a prod host set only via TEST_DB_HOST
+  // (with a safe-looking DATABASE_URL left in place) sails through unchecked
+  // (checker finding F1, GitHub #163 follow-up). TEST_DB_PORT carries no
+  // host-identity signal of its own -- the denylist below is host/URL-based
+  // -- so it needs no separate check once TEST_DB_HOST is covered.
+  const testHost = process.env.TEST_DB_HOST || '';
   const url = process.env.DATABASE_URL || '';
   const host = process.env.DATABASE_HOST || '';
-  const resolved = url || host;
+  const resolved = testHost || url || host;
 
   if (!resolved) {
     throw new Error(
-      `${callerLabel}: could not determine the target database host from DATABASE_URL/DATABASE_HOST. ` +
+      `${callerLabel}: could not determine the target database host from TEST_DB_HOST/DATABASE_URL/DATABASE_HOST. ` +
         'Refusing to run seed/cleanup writes without a confirmed non-production target.'
     );
   }
 
-  const hitsKnownProdHost = KNOWN_PROD_HOST_MARKERS.some((marker) => resolved.includes(marker));
+  const hitsKnownProdHost = KNOWN_PROD_HOST_MARKERS.some(
+    (marker) => testHost.includes(marker) || url.includes(marker) || host.includes(marker)
+  );
   if (hitsKnownProdHost) {
     throw new Error(
       `${callerLabel}: database target "${resolved.replace(/:[^:@]*@/, ':<redacted>@')}" matches a known ` +
@@ -54,8 +66,9 @@ export function assertNotProductionDatabase(callerLabel: string): void {
     );
   }
 
+  const testName = process.env.TEST_DB_NAME || '';
   const dbNameMatch = url.match(/\/([^/?]+)(\?|$)/);
-  const dbName = dbNameMatch?.[1] || process.env.DATABASE_NAME || '';
+  const dbName = testName || dbNameMatch?.[1] || process.env.DATABASE_NAME || '';
 
   if (!dbName) {
     throw new Error(
