@@ -204,6 +204,11 @@ describe('IPORepository', () => {
         .mockReturnValueOnce(mockCountSelect)
         .mockReturnValueOnce(mockSelect);
 
+      // T-261: findAll now enriches rows with the newest gmp_records /
+      // subscriptions snapshot via raw SQL. No live rows here -> the list must
+      // still come back intact, with the figures simply absent.
+      mockDb.execute = vi.fn().mockResolvedValue({ rows: [] });
+
       const result = await repository.findAll({
         status: 'OPEN',
         page: 1,
@@ -214,6 +219,108 @@ describe('IPORepository', () => {
       expect(result.meta.total).toBe(2);
       expect(result.meta.page).toBe(1);
       expect(result.meta.limit).toBe(10);
+    });
+
+    it('fills GMP + subscription from the live time-series when the ipos columns are null (#89)', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const mockSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockResolvedValue([
+          { ipo: { ...mockIPOs[0], gmpPrice: null, subscriptionTotal: null }, ipoScore: null },
+          { ipo: { ...mockIPOs[1], gmpPrice: null, subscriptionTotal: null }, ipoScore: null },
+        ]),
+      };
+      const mockCountSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([{ count: 2 }]),
+      };
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(mockCountSelect)
+        .mockReturnValueOnce(mockSelect);
+
+      // 1st execute() = GMP lookup, 2nd = subscription lookup. Only IPO '1' has data.
+      mockDb.execute = vi
+        .fn()
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              ipo_id: '1',
+              gmp: '310.00',
+              gmp_percentage: '39.34',
+              // UTC-naive text, exactly as Postgres emits it for a
+              // `timestamp without time zone` column (#28).
+              ts_text: '2026-08-21 18:06:00',
+              source: 'INVESTORGAIN_GMP',
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              ipo_id: '1',
+              total_subscription: '0.95',
+              retail_subscription: '0.67',
+              qib_subscription: '1.69',
+              nii_subscription: '0.63',
+              ts_text: '2026-08-21 23:44:23.4',
+            },
+          ],
+        });
+
+      const result = await repository.findAll({ status: 'OPEN', page: 1, limit: 10 });
+      const [enriched, untouched] = result.data as unknown as Array<Record<string, unknown>>;
+
+      expect(enriched.gmpPrice).toBe(310);
+      expect(enriched.gmpPercentageHistorical).toBe(39.34);
+      expect(enriched.subscriptionTotal).toBe(0.95);
+      expect(enriched.subscriptionQib).toBe(1.69);
+      expect(enriched.gmpSource).toBe('INVESTORGAIN_GMP');
+      // The naive DB value is UTC-naive: it must surface as 18:06Z, NOT shifted
+      // by the box's local offset — a freshness claim that is 5h30m off is a lie.
+      expect(enriched.gmpUpdatedAt).toBe('2026-08-21T18:06:00.000Z');
+      expect(enriched.subscriptionUpdatedAt).toBe('2026-08-21T23:44:23.400Z');
+
+      // An IPO with no grey market / no bids stays honestly empty.
+      expect(untouched.gmpPrice).toBeNull();
+      expect(untouched.subscriptionTotal).toBeNull();
+      expect(untouched.gmpSource).toBeNull();
+    });
+
+    it('still returns the list when the live-metrics lookup fails (fail-open)', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const mockSelect = {
+        from: vi.fn().mockReturnThis(),
+        leftJoin: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        offset: vi.fn().mockResolvedValue(
+          mockIPOs.map(ipo => ({ ipo: { ...ipo, gmpPrice: null }, ipoScore: null }))
+        ),
+      };
+      const mockCountSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockResolvedValue([{ count: 2 }]),
+      };
+      mockDb.select = vi
+        .fn()
+        .mockReturnValueOnce(mockCountSelect)
+        .mockReturnValueOnce(mockSelect);
+      mockDb.execute = vi.fn().mockRejectedValue(new Error('gmp lookup exploded'));
+
+      const result = await repository.findAll({ status: 'OPEN', page: 1, limit: 10 });
+
+      expect(result.data).toHaveLength(2);
+      expect((result.data[0] as unknown as Record<string, unknown>).gmpPrice).toBeNull();
     });
   });
 

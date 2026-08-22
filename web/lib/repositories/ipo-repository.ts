@@ -39,6 +39,11 @@ import {
   getHistoricalIPOsKey,
   getFuzzySearchKey,
 } from '../cache/cache-keys';
+import { parseNaiveTimestampAsUtc } from '../../../packages/shared/src/db/timezone-config';
+import {
+  mergeLiveMetrics,
+  type LiveMetricsSnapshot,
+} from './live-metrics-merge';
 import { EntityNotFoundError, DatabaseError } from '../errors/repository-errors';
 import { logger } from '../logger';
 import type {
@@ -62,6 +67,111 @@ const REAL_IPO_TYPE_FILTER = REAL_IPO_OFFERING_TYPES as unknown as (typeof offer
 export class IPORepository extends BaseRepository implements IIPORepository {
   constructor(db: NodePgDatabase<typeof schema>, redis: Redis) {
     super(db, redis);
+  }
+
+  /**
+   * Newest GMP + subscription snapshot per IPO, for the given ids.
+   *
+   * The live pipeline writes the `gmp_records` / `subscriptions` time-series; the
+   * current-value columns on `ipos` are never written by it. List surfaces have to
+   * bridge that themselves — this is the batched, index-backed bridge (one
+   * `DISTINCT ON` per table, both covered by idx_{gmp_records,subscriptions}_ipo_timestamp).
+   *
+   * Best-effort by design: if either query fails the list still renders, just
+   * without the live figures — a missing number is shown as missing, never guessed.
+   */
+  private async fetchLiveMetricsFor(
+    ipoIds: string[]
+  ): Promise<Map<string, LiveMetricsSnapshot>> {
+    const byIpo = new Map<string, LiveMetricsSnapshot>();
+    if (ipoIds.length === 0) return byIpo;
+
+    const idList = sql.join(
+      ipoIds.map((id) => sql`${id}::uuid`),
+      sql`, `
+    );
+
+    // The naive `timestamp` columns are UTC-naive by contract (#28), but a raw
+    // `db.execute()` does NOT go through drizzle's column mapper and, in the web
+    // runtime, was observed NOT to hit the process-wide pg type-parser either —
+    // it came back shifted by the box's +05:30. Read the value as TEXT and parse
+    // it with the shared UTC parser so the freshness we publish is the real one.
+    const num = (v: unknown): number | null => {
+      if (v === null || v === undefined) return null;
+      const n = typeof v === 'number' ? v : parseFloat(String(v));
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const blank = (): LiveMetricsSnapshot => ({
+      gmp: null,
+      gmpPercentage: null,
+      gmpTimestamp: null,
+      gmpSource: null,
+      subscriptionTotal: null,
+      subscriptionRetail: null,
+      subscriptionQib: null,
+      subscriptionHni: null,
+      subscriptionTimestamp: null,
+    });
+
+    // The whole lookup is advisory: any failure (including a driver that cannot
+    // run raw SQL) degrades to "no live figures", never to a broken list.
+    let gmpRows: { rows?: Record<string, unknown>[] };
+    let subRows: { rows?: Record<string, unknown>[] };
+    try {
+      [gmpRows, subRows] = await Promise.all([
+      this.db
+        .execute(
+          sql`SELECT DISTINCT ON (ipo_id) ipo_id, gmp, gmp_percentage,
+                     "timestamp"::text AS ts_text, source
+              FROM gmp_records WHERE ipo_id IN (${idList})
+              ORDER BY ipo_id, "timestamp" DESC`
+        )
+        .catch((error) => {
+          logger.warn({ error }, '[IPORepository] live GMP lookup failed (non-fatal)');
+          return { rows: [] as Record<string, unknown>[] };
+        }),
+      this.db
+        .execute(
+          sql`SELECT DISTINCT ON (ipo_id) ipo_id, total_subscription, retail_subscription,
+                     qib_subscription, nii_subscription, "timestamp"::text AS ts_text
+              FROM subscriptions WHERE ipo_id IN (${idList})
+              ORDER BY ipo_id, "timestamp" DESC`
+        )
+        .catch((error) => {
+          logger.warn({ error }, '[IPORepository] live subscription lookup failed (non-fatal)');
+          return { rows: [] as Record<string, unknown>[] };
+        }),
+      ]);
+    } catch (error) {
+      logger.warn({ error }, '[IPORepository] live metrics lookup unavailable (non-fatal)');
+      return byIpo;
+    }
+
+    for (const row of (gmpRows.rows ?? []) as Record<string, unknown>[]) {
+      const id = String(row.ipo_id);
+      const entry = byIpo.get(id) ?? blank();
+      entry.gmp = num(row.gmp);
+      entry.gmpPercentage = num(row.gmp_percentage);
+      entry.gmpTimestamp = parseNaiveTimestampAsUtc((row.ts_text as string | null) ?? null);
+      entry.gmpSource = row.source ? String(row.source) : null;
+      byIpo.set(id, entry);
+    }
+
+    for (const row of (subRows.rows ?? []) as Record<string, unknown>[]) {
+      const id = String(row.ipo_id);
+      const entry = byIpo.get(id) ?? blank();
+      entry.subscriptionTotal = num(row.total_subscription);
+      entry.subscriptionRetail = num(row.retail_subscription);
+      entry.subscriptionQib = num(row.qib_subscription);
+      // `nii_subscription` (non-institutional) is what the `ipos.subscription_hni`
+      // column has always meant — HNI is the retail-facing name for the NII book.
+      entry.subscriptionHni = num(row.nii_subscription);
+      entry.subscriptionTimestamp = parseNaiveTimestampAsUtc((row.ts_text as string | null) ?? null);
+      byIpo.set(id, entry);
+    }
+
+    return byIpo;
   }
 
   /**
@@ -207,11 +317,22 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             .limit(limit)
             .offset(offset);
 
+          // Fill the never-written current-value columns (gmp_price,
+          // subscription_*) from the live time-series so this list — and the
+          // public /api/ipos it backs — stops reporting "no data" for IPOs that
+          // demonstrably have data (#89 / T-261). Stored values still win.
+          const liveMetrics = await this.fetchLiveMetricsFor(results.map(row => row.ipo.id));
+
           // Transform results to include ipoScore as a property
-          const data = results.map(row => ({
-            ...row.ipo,
-            ipoScore: row.ipoScore || null,
-          }));
+          const data = results.map(row =>
+            mergeLiveMetrics(
+              {
+                ...row.ipo,
+                ipoScore: row.ipoScore || null,
+              },
+              liveMetrics.get(row.ipo.id)
+            )
+          );
 
           const totalPages = Math.ceil(count / limit);
 
