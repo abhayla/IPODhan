@@ -49,4 +49,34 @@ describe('sanitizeDisplayCompanyName', () => {
     // never mid-name, only the trailing label
     expect(sanitizeDisplayCompanyName('IPO Advisors Ltd')).toBe('IPO Advisors Ltd');
   });
+
+  /**
+   * P3-1 (round-2 review, T-278): a redundant trailing parenthetical
+   * descriptor ("Ltd. (Company Name IPO)") leaked into the stored display
+   * name and the 76-char public slug. It must be stripped, but the legal
+   * suffix + a genuinely mid-string parenthetical ("(India)") must survive.
+   */
+  it('strips a redundant trailing parenthetical descriptor (#42/#16, P3-1)', () => {
+    expect(sanitizeDisplayCompanyName('Complete Sports & Management India Ltd. (Complete Sports and Management IPO)')).toBe(
+      'Complete Sports & Management India Ltd.'
+    );
+    expect(sanitizeDisplayCompanyName('Citius Transnet Investment Trust (Citius Transnet InvIT IPO)')).toBe(
+      'Citius Transnet Investment Trust'
+    );
+  });
+
+  it('strips a trailing status code even when it trails a redundant parenthetical (P3-1 — "Ltd. (X IPO) O")', () => {
+    expect(sanitizeDisplayCompanyName('G.V.Electricals Ltd. (G.V. Electricals IPO) O')).toBe('G.V.Electricals Ltd.');
+    expect(sanitizeDisplayCompanyName('G.V.Electricals Ltd. (G.V. Electricals IPO) P')).toBe('G.V.Electricals Ltd.');
+    expect(sanitizeDisplayCompanyName('G.V.Electricals Ltd. (G.V. Electricals IPO) LT')).toBe('G.V.Electricals Ltd.');
+    expect(sanitizeDisplayCompanyName('G.V.Electricals Ltd. (G.V. Electricals IPO) CT')).toBe('G.V.Electricals Ltd.');
+    expect(sanitizeDisplayCompanyName('H.R.Hygiene Products Ltd. (H.R. Hygiene Products IPO) O')).toBe(
+      'H.R.Hygiene Products Ltd.'
+    );
+  });
+
+  it('does not strip a genuine mid-string parenthetical that precedes the legal suffix', () => {
+    expect(sanitizeDisplayCompanyName('Horizon Reclaim (India) Ltd.')).toBe('Horizon Reclaim (India) Ltd.');
+    expect(sanitizeDisplayCompanyName('Shree Balaji (Mala) Textiles Limited')).toBe('Shree Balaji (Mala) Textiles Limited');
+  });
 });

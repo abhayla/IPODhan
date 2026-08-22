@@ -99,6 +99,13 @@
       "when": 1761833097516,
       "tag": "0013_square_zaran",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1787422532380,
+      "tag": "0031_add_ipo_slug_redirects",
+      "breakpoints": true
     }
   ]
 }

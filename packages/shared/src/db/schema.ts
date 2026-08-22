@@ -1176,6 +1176,30 @@ export const dataConflicts = pgTable(
   })
 );
 
+// ==================== TABLE 23: IPO_SLUG_REDIRECTS (P3-1, T-278) ====================
+// A permanent redirect from a retired IPO slug (name pollution cleanup, dedup merge,
+// admin correction) to the IPO's current slug, so an old bookmarked/indexed URL 301s
+// instead of 404ing. Looked up by the detail page BEFORE fuzzy fallback (SEO — no
+// dead links). One old slug always maps to exactly one IPO; the IPO's live slug is
+// read fresh from `ipos.slug` at request time so a redirect chain never goes stale
+// if the target is renamed again later.
+export const ipoSlugRedirects = pgTable(
+  'ipo_slug_redirects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    oldSlug: varchar('old_slug', { length: 255 }).notNull().unique(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    reason: varchar('reason', { length: 100 }), // e.g. 'NAME_POLLUTION_CLEANUP', 'DUPLICATE_MERGE'
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    oldSlugIdx: index('idx_ipo_slug_redirects_old_slug').on(table.oldSlug),
+    ipoIdIdx: index('idx_ipo_slug_redirects_ipo_id').on(table.ipoId),
+  })
+);
+
 // ==================== RELATIONS ====================
 
 export const iposRelations = relations(ipos, ({ many, one }) => ({
@@ -1332,6 +1356,13 @@ export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
 export const fieldSourcesRelations = relations(fieldSources, ({ one }) => ({
   ipo: one(ipos, {
     fields: [fieldSources.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const ipoSlugRedirectsRelations = relations(ipoSlugRedirects, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [ipoSlugRedirects.ipoId],
     references: [ipos.id],
   }),
 }));

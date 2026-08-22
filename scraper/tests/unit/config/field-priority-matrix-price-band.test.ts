@@ -58,6 +58,19 @@ describe('field priority matrix — one price-band naming scheme (T-276 / F5)', 
     }
   });
 
+  // T-278 P3-7 (#165 F1): MONEYCONTROL and DRHP are listed as valid
+  // cross-source priority fallbacks for the price band, but neither is an
+  // exchange that "republishes a corrected band mid-issue" — so neither may
+  // exercise same-source refresh, even though both appear in `sources`.
+  it('narrows same-source refresh to the exchange sources — MONEYCONTROL/DRHP may not self-refresh (#165 F1)', () => {
+    for (const f of ['priceRangeMin', 'priceRangeMax']) {
+      expect(FIELD_PRIORITY_MATRIX[f].sources).toContain('MONEYCONTROL');
+      expect(FIELD_PRIORITY_MATRIX[f].sources).toContain('DRHP');
+      expect(allowsSameSourceRefresh(f, 'MONEYCONTROL')).toBe(false);
+      expect(allowsSameSourceRefresh(f, 'DRHP')).toBe(false);
+    }
+  });
+
   it('does not silently enable same-source refresh for unrelated fields', () => {
     expect(allowsSameSourceRefresh('faceValue', 'NSE')).toBe(false);
     expect(allowsSameSourceRefresh('companyName', 'NSE')).toBe(false);

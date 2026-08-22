@@ -31,6 +31,21 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@ipodhan/shared/db/schema';
 import { validateIPOData, type IPODataToValidate, type ValidationResult } from '../utils/data-validation.js';
 import { DuplicateDetectionService, type DuplicateCheckResult } from '../services/duplicate-detection-service.js';
+import logger from '../utils/logger.js';
+
+/**
+ * Module-level (not per-pipeline-instance) dedup set for repeated validation
+ * warnings (P3-6, T-278). `DataValidationPipeline` is re-instantiated on every
+ * write (per IPO, per source), so an instance-scoped Set would never dedupe
+ * anything — the SAME warning for the SAME IPO fires once per source per
+ * cycle by design (each of ~6 sources independently validates the row), which
+ * is what produced 20+ identical "InvIT/REIT written as IPO" log lines per
+ * cycle for the same 3 companies. This process runs one scrape cycle and
+ * exits (the PM2 scheduled-one-shot contract — see pm2-scheduled-one-shot-
+ * scraper.md), so module-level state naturally resets to "once per cycle"
+ * for free on the next cron-triggered process start.
+ */
+const loggedWarningKeys = new Set<string>();
 
 export interface PipelineInput extends IPODataToValidate {
   // All fields from IPODataToValidate
@@ -123,7 +138,7 @@ export class DataValidationPipeline {
       Object.assign(data, autoFixesApplied);
 
       if (this.config.enableLogging) {
-        console.log(`[Pipeline] Auto-fixes applied for ${data.companyName}:`, autoFixesApplied);
+        logger.info({ companyName: data.companyName, autoFixesApplied }, 'Pipeline auto-fixes applied');
       }
     }
 
@@ -229,27 +244,24 @@ export class DataValidationPipeline {
     companyName?: string,
     source?: string
   ): void {
-    const prefix = `[Pipeline][${source}]`;
-
     if (!result.valid) {
-      console.error(
-        `${prefix} ❌ Validation FAILED for ${companyName}:`,
-        result.errors.map(e => e.message).join(', ')
+      logger.error(
+        { source, companyName, errors: result.errors.map((e) => e.message) },
+        'Pipeline validation FAILED'
       );
     } else if (result.warnings.length > 0) {
-      console.warn(
-        `${prefix} ⚠️  Validation passed with warnings for ${companyName}:`,
-        result.warnings.map(w => w.message).join(', ')
-      );
+      const message = result.warnings.map((w) => w.message).join(', ');
+      const dedupeKey = `${companyName}::${message}`;
+      if (!loggedWarningKeys.has(dedupeKey)) {
+        loggedWarningKeys.add(dedupeKey);
+        logger.warn({ source, companyName, warnings: result.warnings.map((w) => w.message) }, 'Pipeline validation passed with warnings');
+      }
     } else {
-      console.log(`${prefix} ✅ Validation passed for ${companyName}`);
+      logger.debug({ source, companyName }, 'Pipeline validation passed');
     }
 
     if (result.autoFixes) {
-      console.log(
-        `${prefix} 🔧 Auto-fixes available:`,
-        Object.keys(result.autoFixes).join(', ')
-      );
+      logger.info({ source, companyName, autoFixes: Object.keys(result.autoFixes) }, 'Pipeline auto-fixes available');
     }
   }
 

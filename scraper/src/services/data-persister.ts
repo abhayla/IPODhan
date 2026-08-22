@@ -17,10 +17,33 @@ import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 // Phase 2: Shadow Mode - Data Consolidation Service
 import { DataConsolidationService } from './data-consolidation-service.js';
-import { FieldSourcesRepository, DataConflictsRepository } from '@ipodhan/shared/repositories';
+import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { ipoDemandGraph } from '@ipodhan/shared/db/schema';
+import { resolveRegistrarId } from '@ipodhan/shared/utils/registrar-matcher';
+
+/**
+ * Resolve a sanitized registrar name to its `registrars.id` FK (P3-2, T-278).
+ * `RegistrarRepository.findAll()` is itself Redis-cached for 7 days, so this
+ * is cheap to call on every write; best-effort by design (non-fatal-side-
+ * effects.md) — a lookup failure never blocks the primary IPO write, it just
+ * leaves `registrarId` unset for this cycle.
+ */
+async function resolveRegistrarIdSafe(registrarName: string | null | undefined): Promise<string | null> {
+  if (!registrarName) return null;
+  try {
+    const registrarRepo = new RegistrarRepository(db, getRedisClient());
+    const allRegistrars = await registrarRepo.findAll(false);
+    return resolveRegistrarId(
+      registrarName,
+      allRegistrars.map((r) => ({ id: r.id, name: r.name, shortName: r.shortName }))
+    );
+  } catch (error) {
+    logger.warn({ error, registrarName }, 'registrarId resolution failed (non-fatal)');
+    return null;
+  }
+}
 
 /**
  * Phase 2: Lazy singleton for Data Consolidation Service
@@ -259,6 +282,10 @@ export async function upsertIPO(
         listingDate: scrapedIPO.listingDate || undefined,
         companyDescription: scrapedIPO.companyDescription || undefined,
         registrar: sanitizeRegistrar(scrapedIPO.registrar) ?? undefined,
+        // P3-2: populate the FK when the sanitized name resolves unambiguously
+        // to a reference registrars row; undefined otherwise (never guessed,
+        // and never clobbers an existing value with a fresh non-match).
+        registrarId: (await resolveRegistrarIdSafe(sanitizeRegistrar(scrapedIPO.registrar))) ?? undefined,
         leadManagers: scrapedIPO.leadManagers,
         listingExchanges,
         lastScrapedAt: new Date(), // Track last successful scrape time (Story 7.4)
@@ -346,12 +373,20 @@ export async function upsertIPO(
             // resolving that needs field_sources provenance (the owner-gated #52 fix) — the
             // guard never ships an absurd value (nulled → "Data Not Available"), it just may
             // drop a recoverable field for that unobserved pre-listing edge.
-            const finalData = {
+            const finalData: Record<string, any> = {
               ...sanitizeIpoWriteFields(rawConsolidated),
               listingExchanges: mergedExchanges,
               lastScrapedAt: new Date(),
               updatedAt: new Date(),
             };
+
+            // P3-2: the consolidation path can pick a winning `registrar` value
+            // this cycle even when the create path never ran (a name-only
+            // update on an existing row) — resolve registrarId here too, same
+            // unambiguous-match-only contract as the create path above.
+            if ('registrar' in finalData) {
+              finalData.registrarId = (await resolveRegistrarIdSafe(finalData.registrar)) ?? undefined;
+            }
 
             // Never let a scraper's generic 'IPO' downgrade an existing specific
             // classification (takeover/buyback/rights/debt) — otherwise the */30 cron
