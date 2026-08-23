@@ -10,7 +10,7 @@
 
 ## 0. Executive summary (plain English)
 
-**What is wrong.** IPODhan has good data rules — price bands must be sane, one company must be one row, an admin's manual edit must never be overwritten, every value must record where it came from. Those rules are real and they are written down in code. The problem is **where** they are written down: they live inside one 1,224-line function (`upsertIPO`) and inside its *caller* (`BaseScraperOrchestrator`), while **37 other files write to the same table directly and obey none of them.**
+**What is wrong.** IPODhan has good data rules — price bands must be sane, one company must be one row, an admin's manual edit must never be overwritten, every value must record where it came from. Those rules are real and they are written down in code. The problem is **where** they are written down: they live inside one 1,224-line function (`upsertIPO`) and inside its *caller* (`BaseScraperOrchestrator`), while **~48 other files write to the same table directly and obey none of them.**
 
 So the rules are not rules. They are a convention that one path happens to follow.
 
@@ -21,7 +21,7 @@ The clearest proof is a bug that is **live right now.** Three hours before this 
 **What we change.** Four things, no rewrite, no new services:
 
 1. **One door.** Every write to `ipos` goes through one function that enforces identity, protection, sanity and provenance. Scripts included. Direct `db.update(ipos)` becomes a lint error.
-2. **A lock on the door frame.** The database itself gets `CHECK` and `UNIQUE` constraints for the hard rules. Today the schema has **zero** `CHECK` constraints and no uniqueness on `isin` or `symbol`. With them, even a rogue script physically cannot write a backwards price band or a duplicate ISIN.
+2. **A lock on the door frame.** The database itself gets `CHECK` and `UNIQUE` constraints for the hard rules. Today the **Drizzle schema file** declares **zero** `CHECK` constraints and no uniqueness on `isin` or `symbol` — but production already has three hand-applied guards outside the migration journal (`ipos_symbol_key` UNIQUE(symbol), `ipos_issue_size_positive` CHECK (issue_size >= 0), `ipos_status_check`; see §1.9). None of those cover `isin` uniqueness, price-band ordering, or `lot_size`. With the missing ones added, even a rogue script physically cannot write a backwards price band or a duplicate ISIN.
 3. **Honest switches.** Retire the percentage-rollout flags. One of them (`CONSOLIDATION_PERCENTAGE`) silently disabled the entire multi-source merge engine for the product's whole life while the logs cheerfully reported success. Flags become plain on/off booleans that fail loudly when misconfigured.
 4. **Tests that check the gate is open, not just that the gate works.** Today every consolidation test stubs the gate to `() => true`. That is why nobody noticed the real gate was shut.
 
@@ -86,9 +86,9 @@ Five invariants matter for data correctness. Here is where each is enforced.
 
 | Invariant | Enforced in | Enforced by DB | Skipped by |
 |---|---|---|---|
-| **Canonical identity / dedup** (one company = one row) | `data-persister.ts:219–247` (3 tiers: normalized-name → slug → fuzzy) | `slug` UNIQUE only. **`isin` and `symbol` are plain indexes, not unique** (`schema.ts:142,143,210,211`) | all 35 non-repository write paths; and the two *other* copies of the lookup (§1.4) |
+| **Canonical identity / dedup** (one company = one row) | `data-persister.ts:219–247` (3 tiers: normalized-name → slug → fuzzy) | `slug` UNIQUE only in the schema file; **`isin` and `symbol` are plain indexes there, not unique** (`schema.ts:142,143,210,211`) — *(schema file; prod differs — see §1.9: `ipos_symbol_key UNIQUE(symbol)` already exists out-of-journal; `isin` has no DB-level uniqueness in either the schema file or prod)* | all 35 non-repository write paths; and the two *other* copies of the lookup (§1.4) |
 | **Field protection / IPO lock** (admin edits stick) | `BaseScraperOrchestrator.ts:385,402` — **the caller, not the write** | no | **`upsertIPO` itself** — `grep -cE 'isIPOLocked|filterProtectedFields|isFieldProtected|fieldProtectionService' data-persister.ts` = **0** (vs **5** in `BaseScraperOrchestrator.ts`). Every script that calls `upsertIPO` directly believes it is protected and is not. |
-| **Band / value sanity** (min ≤ max, no `0` issue size, no `lot_size = 1`) | `data-persister.ts:307–320` (create) and `sanitizeIpoWriteFields` (update) — two different implementations | **zero `CHECK` constraints in the entire 1,375-line schema** (`grep -c 'check(' = 0`) | all 35 non-repository paths |
+| **Band / value sanity** (min ≤ max, no `0` issue size, no `lot_size = 1`) | `data-persister.ts:307–320` (create) and `sanitizeIpoWriteFields` (update) — two different implementations | **zero `CHECK` constraints in the 1,375-line schema *file*** (`grep -c 'check(' = 0`) — *(schema file; prod differs — see §1.9: `ipos_issue_size_positive` CHECK (issue_size >= 0) and `ipos_status_check` already exist out-of-journal; no CHECK exists anywhere, schema file or prod, for band ordering or `lot_size`)* | all 35 non-repository paths |
 | **Lineage / provenance** (`field_sources`) | `data-persister.ts:587` (create, added T-292 P3-11) and `:480` (update) | no | all 35; and gated on `ENABLE_SOURCE_TRACKING` |
 | **Offering-type / segment consistency** (an SME board has no FPO; a takeover is not an IPO) | `data-persister.ts:356`, `:458`, `:554` — **three separate copies of the same guard** in one function | no | all 35 |
 
