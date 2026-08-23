@@ -164,6 +164,7 @@ export class BSEScraperOrchestratorV2 extends BaseScraperOrchestrator<ScrapedIPO
         error: {
           message: pipelineResult.reason,
           issues: pipelineResult.validationResult.errors,
+          expected: pipelineResult.expectedRejection,
         },
       };
     }

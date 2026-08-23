@@ -333,16 +333,27 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     const validation = validationResult instanceof Promise ? await validationResult : validationResult;
 
     if (!validation.success) {
+      // P2-2 (T-287): an "expected" rejection (the Non-IPO Shape Guard doing
+      // its job on a known InvIT/REIT/scrip-code row) is a skip, not a
+      // failure — it must not flip `result.success` false or inflate
+      // `result.errors`, which is what made every cycle's health signal
+      // useless despite nothing actually being broken.
+      const expected = (validation.error as any)?.expected === true;
       logger.warn(
         {
           scraperName,
           companyName: (scrapedIPO as any).companyName,
-          errors: validation.error?.issues
+          errors: validation.error?.issues,
+          expected,
         },
-        'IPO validation failed, skipping'
+        expected ? 'IPO rejected by expected guard, skipping' : 'IPO validation failed, skipping'
       );
-      result.errors.push(`Validation failed for ${(scrapedIPO as any).companyName}`);
-      processResult.failed = true;
+      if (expected) {
+        processResult.skipped = true;
+      } else {
+        result.errors.push(`Validation failed for ${(scrapedIPO as any).companyName}`);
+        processResult.failed = true;
+      }
       return processResult;
     }
 

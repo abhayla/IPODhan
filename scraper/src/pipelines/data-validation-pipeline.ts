@@ -29,7 +29,7 @@
 
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@ipodhan/shared/db/schema';
-import { validateIPOData, type IPODataToValidate, type ValidationResult } from '../utils/data-validation.js';
+import { validateIPOData, isExpectedRejection, type IPODataToValidate, type ValidationResult } from '../utils/data-validation.js';
 import { DuplicateDetectionService, type DuplicateCheckResult } from '../services/duplicate-detection-service.js';
 import logger from '../utils/logger.js';
 
@@ -59,6 +59,14 @@ export interface PipelineResult {
   duplicateCheck?: DuplicateCheckResult;
   autoFixesApplied: Record<string, any>;
   warnings: string[];
+  /**
+   * P2-2 (T-287): true when `shouldCreate === false` solely because the
+   * Non-IPO Shape Guard correctly rejected a known non-IPO row (InvIT/REIT/
+   * scrip-code shape) — see `isExpectedRejection`. Orchestrators use this to
+   * classify the rejection as a skip, not a failure, so a healthy cycle of
+   * expected rejections doesn't flip run success to false or log at error level.
+   */
+  expectedRejection: boolean;
 }
 
 export interface PipelineConfig {
@@ -129,6 +137,7 @@ export class DataValidationPipeline {
         validationResult,
         autoFixesApplied: {},
         warnings: [],
+        expectedRejection: isExpectedRejection(validationResult),
       };
     }
 
@@ -167,6 +176,7 @@ export class DataValidationPipeline {
             duplicateCheck,
             autoFixesApplied,
             warnings: [],
+            expectedRejection: false,
           };
         } else {
           warnings.push(`Possible duplicate (${duplicateCheck.confidence} confidence): ${duplicateCheck.matchReason}`);
@@ -188,6 +198,7 @@ export class DataValidationPipeline {
       duplicateCheck,
       autoFixesApplied,
       warnings,
+      expectedRejection: false,
     };
   }
 
@@ -244,7 +255,16 @@ export class DataValidationPipeline {
     companyName?: string,
     source?: string
   ): void {
-    if (!result.valid) {
+    if (!result.valid && isExpectedRejection(result)) {
+      // P2-2 (T-287): the Non-IPO Shape Guard doing its job (rejecting a
+      // known InvIT/REIT/scrip-code row) is not a run failure — log at info
+      // so a healthy cycle full of expected rejections doesn't read as an
+      // error storm.
+      logger.info(
+        { source, companyName, errors: result.errors.map((e) => e.message) },
+        'Pipeline rejected known non-IPO row (expected)'
+      );
+    } else if (!result.valid) {
       logger.error(
         { source, companyName, errors: result.errors.map((e) => e.message) },
         'Pipeline validation FAILED'

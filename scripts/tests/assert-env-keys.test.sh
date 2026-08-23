@@ -28,6 +28,29 @@ run_case() {
   rm -f /tmp/assert-env-keys.$$.out
 }
 
+# Like run_case, but ALSO asserts the output contains a specific substring
+# (T-287 P3-1) -- a bare exit-code check would still pass if the FATAL
+# message text itself were gutted/removed while the exit(1) stayed intact.
+run_case_grep() {
+  local name="$1" expect_exit="$2" expect_grep="$3"
+  shift 3
+  local actual_exit=0
+  bash "$ASSERT_SCRIPT" "$@" >/tmp/assert-env-keys-grep.$$.out 2>&1 || actual_exit=$?
+
+  local exit_ok=0 grep_ok=0
+  [ "$actual_exit" -eq "$expect_exit" ] && exit_ok=1
+  grep -q -- "$expect_grep" /tmp/assert-env-keys-grep.$$.out && grep_ok=1
+
+  if [ "$exit_ok" -eq 1 ] && [ "$grep_ok" -eq 1 ]; then
+    echo "PASS: $name (exit $actual_exit, message contains '$expect_grep')"
+  else
+    echo "FAIL: $name (exit $actual_exit expected $expect_exit; message contains '$expect_grep'? $grep_ok)"
+    sed 's/^/    /' /tmp/assert-env-keys-grep.$$.out
+    FAILED=1
+  fi
+  rm -f /tmp/assert-env-keys-grep.$$.out
+}
+
 run_case "good web + scraper env -> pass" 0 \
   "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.good"
 
@@ -57,6 +80,16 @@ run_case "slot staging + staging DSN -> pass" 0 \
 run_case "slot staging pointed at PROD db ipodhan -> fail (T-243)" 1 \
   "$FIXTURES/slot/staging/web.env.local.points-at-prod" "$FIXTURES/slot/staging/scraper.env"
 
+# T-287 P3-1: mutation-proof for the SECONDARY branch of assert_slot_dsn
+# (assert-env-keys.sh:155-158) — a fixture where DSN_ASSERT_DB=ipodhan
+# matches the actual DATABASE_URL database exactly, so the PRIMARY
+# "db != want" check (line 151-154) never fires; only the secondary
+# "slot != prod && db == ipodhan" branch can catch this. Before this case
+# existed, commenting out lines 155-158 left the whole suite green.
+run_case_grep "slot staging DECLARES (and matches) PROD db ipodhan -> fail (T-287, secondary branch)" 1 \
+  "targets the PRODUCTION database" \
+  "$FIXTURES/slot/staging/web.env.local.declares-prod-db-on-staging" "$FIXTURES/slot/staging/scraper.env"
+
 run_case "slot prod + prod DSN -> pass" 0 \
   "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env"
 
@@ -71,6 +104,16 @@ run_case "slot staging Redis db1 -> pass" 0 \
 
 run_case "slot staging pointed at Redis db0 -> fail (T-264 F2)" 1 \
   "$FIXTURES/slot/staging/web.env.local.points-at-prod-redis" "$FIXTURES/slot/staging/scraper.env"
+
+# T-287 P3-1: mutation-proof for the SECONDARY branch of assert_slot_redis_db
+# (assert-env-keys.sh:205-208) — DSN_ASSERT_REDIS_DB=0 matches the actual
+# resolved Redis db exactly, so the PRIMARY "effective != want" check
+# (line 201-204) never fires; only the secondary "slot != prod && effective
+# == 0" branch catches this. Before this case existed, commenting out lines
+# 205-208 left the whole suite green.
+run_case_grep "slot staging DECLARES (and matches) Redis db0 -> fail (T-287, secondary branch)" 1 \
+  "the PRODUCTION cache db" \
+  "$FIXTURES/slot/staging/web.env.local.declares-prod-redis-on-staging" "$FIXTURES/slot/staging/scraper.env"
 
 run_case "slot prod + Redis db0 -> pass" 0 \
   "$FIXTURES/slot/prod/web.env.local" "$FIXTURES/slot/prod/scraper.env"

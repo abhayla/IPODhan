@@ -17,17 +17,21 @@
  * ONLY where currently NULL — never overwrites (admin edits stay), never
  * creates a row. Real data only; TBA / unparsable is skipped, never guessed.
  *
- * A row that has already CLOSED (close_date in the past) but is not yet
- * LISTED is the primary target — a genuinely still-OPEN IPO correctly has no
- * allotment date to find yet, and the extractor returning null for it is
- * correct behavior, not a backfill failure.
+ * P3-2 (T-287): OPEN/UPCOMING IPOs are candidates too — Chittorgarh detail
+ * pages publish the "Tentative Allotment" date BEFORE the issue closes (e.g.
+ * Tempsens, closing 24 Aug, already carries it while still OPEN). The prior
+ * assumption that a still-OPEN IPO "correctly has no allotment date to find
+ * yet" was wrong; `extractAllotmentDateFromDetailHtml` already handles a
+ * genuinely-not-yet-published field safely (returns null, no write), so
+ * widening the candidate set costs nothing on rows where the date truly
+ * isn't up yet.
  *
  * dry-run by default; --apply writes. --limit N caps detail fetches (testing).
  * Run from scraper/ with tunnel env exported (DATABASE_HOST=127.0.0.1 PORT=15432 + creds).
  */
 import { db } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
-import { and, eq, isNull, ne } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { extractAllotmentDateFromDetailHtml } from '../src/scrapers/chittorgarh-detail-fields.js';
 import logger from '../src/utils/logger.js';
@@ -107,18 +111,18 @@ async function main() {
   }
   console.log(`discovery map (name -> detail url): ${discovery.size} IPOs`);
 
-  // Only genuine IPOs (not corporate actions/InvITs/etc) that are past their
-  // close date (offering closed, allotment is knowable) with no admin edit.
+  // Only genuine IPOs (not corporate actions/InvITs/etc) with no admin edit.
+  // P3-2 (T-287): OPEN/UPCOMING are included — source pages publish the
+  // tentative allotment date pre-listing (Tempsens shape). The extractor
+  // safely returns null (no write) when the field genuinely isn't up yet.
   const candidates = await db
     .select({ id: schema.ipos.id, companyName: schema.ipos.companyName, status: schema.ipos.status })
     .from(schema.ipos)
     .where(and(
       eq(schema.ipos.offeringType, 'IPO'),
       isNull(schema.ipos.allotmentDate),
-      ne(schema.ipos.status, 'UPCOMING'),
-      ne(schema.ipos.status, 'OPEN'), // still open -> genuinely TBA, not a backfill target
     ));
-  console.log(`genuine closed/listed IPOs with NULL allotment_date: ${candidates.length}`);
+  console.log(`genuine IPOs with NULL allotment_date: ${candidates.length}`);
 
   const matched = candidates
     .map((c) => ({ ...c, disc: discovery.get(normalizeCompanyNameForMatching(c.companyName)) }))

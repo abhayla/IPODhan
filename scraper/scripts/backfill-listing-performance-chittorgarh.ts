@@ -24,11 +24,22 @@ import logger from '../src/utils/logger.js';
 
 const APPLY = process.argv.includes('--apply');
 
+// P3-3 (T-287): widened from a 4-year window (2023-24..2026-27) to cover every
+// fiscal year Chittorgarh's report-25 has ever returned data for. Root cause
+// of 5/8 missing rows (CMS Info Systems, Windlas Biotech, Maruti Interior
+// Products, Net Pix Shorts, AAA Technologies — all listed 2020-2022) was
+// this window excluding them outright, not a matching bug: verified their
+// exact ISIN/close-price rows exist in FY2020-21/2021-22/2022-23. This is a
+// ONE-TIME backfill script (not the live cron job, which stays recent-only
+// by design), so a wider window here has no ongoing cost.
 const FISCAL_YEARS = [
   { year: 2026, range: '2026-27' },
   { year: 2025, range: '2025-26' },
   { year: 2024, range: '2024-25' },
   { year: 2023, range: '2023-24' },
+  { year: 2022, range: '2022-23' },
+  { year: 2021, range: '2021-22' },
+  { year: 2020, range: '2020-21' },
 ];
 
 /** numeric(7,2) bound (#79, post-C3) — keep a real value or null; never fabricate a

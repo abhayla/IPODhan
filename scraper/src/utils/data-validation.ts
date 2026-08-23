@@ -26,6 +26,15 @@ export interface ValidationRule {
   rule: string;
   severity: 'ERROR' | 'WARNING' | 'INFO';
   message: string;
+  /**
+   * P2-2 (T-287): true when this error is a rejection the guard is SUPPOSED
+   * to produce (e.g. the Non-IPO Shape Guard correctly refusing to write a
+   * known InvIT/REIT/scrip-code row as offering_type='IPO') rather than a
+   * genuine data-quality bug. Callers use this to keep expected rejections
+   * out of run-level failure counts and error-level logs, while still
+   * refusing to persist the row.
+   */
+  expected?: boolean;
 }
 
 export interface ValidationResult {
@@ -285,6 +294,7 @@ export function validateIPOData(
           rule: 'NON_IPO_WINDOW_TOO_LONG',
           severity: 'ERROR',
           message: `offeringType='IPO' with a >10-day subscription window and no lot size / issue size is not a genuine equity IPO (#140/#141: ADVENZYMES/LIGHT OF LIFE TRUST shape). Reclassify to the correct offering type or drop the row.`,
+          expected: true,
         });
       }
 
@@ -296,6 +306,7 @@ export function validateIPOData(
           rule: 'NON_IPO_SCRIP_CODE_NAME',
           severity: 'ERROR',
           message: `companyName "${name}" is a bare exchange scrip code (all-caps token, no legal suffix, no space), not a company name — offering_type='IPO' rejected (#140: SIS/ADVENZYMES shape).`,
+          expected: true,
         });
       }
 
@@ -342,6 +353,7 @@ export function validateIPOData(
           rule: 'NON_IPO_TRUST_SHAPE',
           severity: 'ERROR',
           message: `companyName "${name}" ${endsWithTrustSuffix ? 'ends in the bare "Trust" legal-entity-type token' : 'contains the "Investment Trust" legal-entity-type token'} (InvIT/REIT business-trust structure) but was not reclassified by Rule 2's invit/reit substring check — offering_type='IPO' rejected (P2-2: Cube Highways Trust shape; T-277F2: Property Share Investment Trust shape). Reclassify to INVITS/REITS or drop the row.`,
+          expected: true,
         });
       } else if (containsTrustToken) {
         warnings.push({
@@ -364,6 +376,18 @@ export function validateIPOData(
     info,
     autoFixes: Object.keys(autoFixes).length > 0 ? autoFixes : undefined,
   };
+}
+
+/**
+ * P2-2 (T-287): true when a validation result is INVALID solely because of
+ * errors the guard is designed to produce (`ValidationRule.expected === true`
+ * — e.g. Rule 8's Non-IPO Shape Guard correctly refusing an InvIT/REIT row).
+ * Distinguishes "the guard did its job" from a genuine data-quality bug so
+ * callers can keep expected rejections out of run-level failure counts and
+ * error-level logs while still refusing to persist the row.
+ */
+export function isExpectedRejection(result: ValidationResult): boolean {
+  return !result.valid && result.errors.length > 0 && result.errors.every((e) => e.expected === true);
 }
 
 /**

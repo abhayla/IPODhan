@@ -154,6 +154,7 @@ export class MoneycontrolScraperOrchestratorV2 extends BaseScraperOrchestrator<a
         error: {
           message: pipelineResult.reason,
           issues: pipelineResult.validationResult.errors,
+          expected: pipelineResult.expectedRejection,
         },
       };
     }
