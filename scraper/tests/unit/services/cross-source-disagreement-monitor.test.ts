@@ -11,6 +11,7 @@
  * (zero OPEN IPOs, or zero conflict rows) never alerts.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import {
   checkCrossSourceDisagreements,
   COMPARED_FIELDS,
@@ -141,5 +142,36 @@ describe('checkCrossSourceDisagreements', () => {
     );
     expect(HIGH_VALUE_FIELDS.has('gmpPrice')).toBe(false);
     expect(HIGH_VALUE_FIELDS.has('gmpPercentage')).toBe(false);
+  });
+
+  // T-286 (P1-2 defense-in-depth): the conflict query MUST exclude rows where
+  // source1 === source2 -- a same-source refresh is not a cross-source
+  // disagreement. Rendered via drizzle's own PgDialect so this asserts the
+  // ACTUAL SQL the `.where()` call builds, not just that some `ne` import
+  // exists somewhere in the file.
+  it('the data_conflicts query excludes source1 = source2 rows (SQL contains source1 <> source2)', async () => {
+    let capturedCondition: unknown;
+    const db = {
+      select: vi
+        .fn()
+        .mockReturnValueOnce({
+          from: () => ({ where: () => Promise.resolve([{ id: 'ipo-1', companyName: 'Acme Ltd' }]) }),
+        })
+        .mockReturnValueOnce({
+          from: () => ({
+            where: (condition: unknown) => {
+              capturedCondition = condition;
+              return Promise.resolve([]);
+            },
+          }),
+        }),
+    } as any;
+
+    await checkCrossSourceDisagreements(db, new Date());
+
+    expect(capturedCondition).toBeDefined();
+    const dialect = new PgDialect();
+    const { sql } = dialect.sqlToQuery(capturedCondition as any);
+    expect(sql).toContain('"data_conflicts"."source1" <> "data_conflicts"."source2"');
   });
 });

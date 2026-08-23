@@ -27,7 +27,7 @@
  * against prod: every row in `data_conflicts` and every row in
  * `field_sources` uses the camelCase names.
  */
-import { and, eq, inArray, isNull } from 'drizzle-orm';
+import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@ipodhan/shared/db/schema';
 import { dataConflicts, ipos } from '@ipodhan/shared/db/schema';
@@ -107,7 +107,13 @@ export async function checkCrossSourceDisagreements(
       and(
         isNull(dataConflicts.resolvedAt),
         inArray(dataConflicts.ipoId, openIpoIds),
-        inArray(dataConflicts.fieldName, [...COMPARED_FIELDS])
+        inArray(dataConflicts.fieldName, [...COMPARED_FIELDS]),
+        // T-286 (P1-2 defense-in-depth): a row where source1 === source2 is a
+        // same-source refresh, not a cross-source disagreement -- the write
+        // path (data-consolidation-service.ts) now excludes these at the
+        // source, but this filter guards the report against any stale rows
+        // or a future regression in that write path.
+        ne(dataConflicts.source1, dataConflicts.source2)
       )
     );
 

@@ -4,7 +4,7 @@
  * Logs conflicts between different scraper sources for admin review
  */
 
-import { eq, and, isNull, desc, sql } from 'drizzle-orm';
+import { eq, and, isNull, isNotNull, lt, desc, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { Redis } from 'ioredis';
 import * as schema from '@ipodhan/shared/db/schema';
@@ -104,6 +104,135 @@ export class DataConflictsRepository extends BaseRepository {
     ]);
 
     return result[0] as DataConflictRecord;
+  }
+
+  /**
+   * Log a conflict, refreshing the existing UNRESOLVED row for the same
+   * (ipoId, tableName, fieldName) instead of inserting a new one every cycle
+   * (T-286, P2-3: unbounded re-insert-per-cycle growth in data_conflicts).
+   * Only one open conflict per field makes sense at a time -- a fresh
+   * disagreement on the same field supersedes the prior unresolved record
+   * rather than piling up beside it.
+   */
+  async upsertConflict(input: LogConflictInput): Promise<DataConflictRecord> {
+    const existing = await this.db
+      .select({ id: dataConflicts.id })
+      .from(dataConflicts)
+      .where(
+        and(
+          eq(dataConflicts.ipoId, input.ipoId),
+          eq(dataConflicts.tableName, input.tableName),
+          eq(dataConflicts.fieldName, input.fieldName),
+          isNull(dataConflicts.resolvedAt)
+        )
+      )
+      .limit(1);
+
+    if (existing.length === 0) {
+      return this.logConflict(input);
+    }
+
+    const result = await this.executeQuery(
+      'refreshDataConflict',
+      async () => {
+        return await this.db
+          .update(dataConflicts)
+          .set({
+            source1: input.source1,
+            value1: input.value1 || null,
+            source2: input.source2,
+            value2: input.value2 || null,
+            resolvedSource: input.resolvedSource || null,
+            resolutionReason: input.resolutionReason || null,
+            severity: input.severity || 'INFO',
+            detectedAt: new Date(),
+          })
+          .where(eq(dataConflicts.id, existing[0].id))
+          .returning();
+      },
+      input as unknown as Record<string, unknown>
+    );
+
+    await this.deleteCache([
+      `conflicts:unresolved:all`,
+      `conflicts:ipo:${input.ipoId}:unresolved`,
+    ]);
+
+    return result[0] as DataConflictRecord;
+  }
+
+  /**
+   * Auto-resolve the open conflict for (ipoId, tableName, fieldName), if any,
+   * because a later consolidation cycle found the sources now agree (T-286).
+   * Distinguished from manual `resolveConflict` by `resolvedBy: 'SYSTEM'` and
+   * `resolutionReason: 'AUTO_RESOLVED_VALUES_CONVERGED'` so the audit trail
+   * still shows how the conflict closed. A no-op (returns 0) when there was
+   * no open conflict for the field -- the common case.
+   */
+  async autoResolveConverged(
+    ipoId: string,
+    tableName: string,
+    fieldName: string
+  ): Promise<number> {
+    const result = await this.executeQuery(
+      'autoResolveConvergedConflict',
+      async () => {
+        return await this.db
+          .update(dataConflicts)
+          .set({
+            resolutionReason: 'AUTO_RESOLVED_VALUES_CONVERGED',
+            resolvedBy: 'SYSTEM',
+            resolvedAt: new Date(),
+          })
+          .where(
+            and(
+              eq(dataConflicts.ipoId, ipoId),
+              eq(dataConflicts.tableName, tableName),
+              eq(dataConflicts.fieldName, fieldName),
+              isNull(dataConflicts.resolvedAt)
+            )
+          )
+          .returning({ id: dataConflicts.id });
+      },
+      { ipoId, tableName, fieldName }
+    );
+
+    if (result.length > 0) {
+      await this.deleteCachePattern(`conflicts:*`);
+    }
+
+    return result.length;
+  }
+
+  /**
+   * Prune RESOLVED conflicts older than `retentionDays` (default 30, mirrors
+   * `scraper_logs` retention -- see `non-fatal-side-effects.md` /
+   * `SCRAPER_LOG_RETENTION_DAYS`). Never deletes an unresolved row -- an
+   * unresolved conflict has no natural expiry until it's resolved.
+   */
+  async pruneResolved(retentionDays: number = 30): Promise<number> {
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+    const result = await this.executeQuery(
+      'pruneResolvedConflicts',
+      async () => {
+        return await this.db
+          .delete(dataConflicts)
+          .where(
+            and(
+              isNotNull(dataConflicts.resolvedAt),
+              lt(dataConflicts.resolvedAt, cutoff)
+            )
+          )
+          .returning({ id: dataConflicts.id });
+      },
+      { retentionDays }
+    );
+
+    if (result.length > 0) {
+      await this.deleteCachePattern(`conflicts:*`);
+    }
+
+    return result.length;
   }
 
   /**

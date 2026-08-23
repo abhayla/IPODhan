@@ -19,6 +19,7 @@ import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestra
 import { updateListingPerformance } from './scrapers/listing-performance-updater.js';
 import { shouldRunListingPerformanceUpdate } from './scheduler/listing-performance-cadence.js';
 import { db, ScraperLogRepository, getRedisClient } from '@ipodhan/shared';
+import { DataConflictsRepository } from '@ipodhan/shared/repositories';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
 import { lt } from 'drizzle-orm';
 import logger from './utils/logger.js';
@@ -29,6 +30,9 @@ import { validateFeatureFlags, getFeatureStatus } from './config/feature-flags.j
 
 /** Days of scraper_logs history to retain. */
 const SCRAPER_LOG_RETENTION_DAYS = 30;
+
+/** Days of RESOLVED data_conflicts history to retain (T-286, mirrors scraper_logs). */
+const DATA_CONFLICTS_RETENTION_DAYS = 30;
 
 /**
  * Notifier heartbeat name for this cycle (matches `projects.ipodhan.heartbeats`
@@ -271,6 +275,7 @@ export async function main() {
       await triggerStatusUpdate();
       await triggerListingPerformanceUpdate();
       await pruneScraperLogs();
+      await pruneDataConflicts();
       // T-195: data-quality watchdog core (freshness SLO + cross-source
       // disagreement report). Selector-degradation runs per-source inside
       // BaseScraperOrchestrator.run() itself, not here. Non-fatal, same
@@ -453,6 +458,29 @@ async function pruneScraperLogs(): Promise<void> {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'scraper_logs prune failed (non-fatal)'
+    );
+  }
+}
+
+/**
+ * Prune RESOLVED data_conflicts rows past the retention window (T-286, P2-3:
+ * mirrors pruneScraperLogs() above -- data_conflicts had no prune at all,
+ * growing unbounded because every disagreement re-inserted a fresh row and
+ * resolvedAt was never set for the auto/system-detected cases). Runs each
+ * full cycle; non-fatal. Never deletes an unresolved row.
+ */
+async function pruneDataConflicts(): Promise<void> {
+  try {
+    const redis = getRedisClient();
+    const dataConflictsRepository = new DataConflictsRepository(db, redis);
+    const deletedCount = await dataConflictsRepository.pruneResolved(DATA_CONFLICTS_RETENTION_DAYS);
+    if (deletedCount > 0) {
+      logger.info({ deletedCount, retentionDays: DATA_CONFLICTS_RETENTION_DAYS }, 'Pruned resolved data_conflicts');
+    }
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'data_conflicts prune failed (non-fatal)'
     );
   }
 }

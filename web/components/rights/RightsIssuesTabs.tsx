@@ -12,7 +12,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DataTable, type ColumnDef } from '@/components/shared/DataTable';
+import { DataTable, type ColumnDef, getAvailableYears, getLatestYearWithData } from '@/components/shared/DataTable';
 import type { RightsIssueData } from '@/lib/services/rights-service';
 import { renderFunctions } from '@/components/shared/DataTable';
 import Link from 'next/link';
@@ -106,9 +106,15 @@ export function RightsIssuesTabs({
   const [upcomingSearches, setUpcomingSearches] = useState<Record<string, string>>({});
   const [liveSearches, setLiveSearches] = useState<Record<string, string>>({});
 
-  // Year filter state
-  const [upcomingYear, setUpcomingYear] = useState<string>('2025');
-  const [liveYear, setLiveYear] = useState<string>('2025');
+  // Year filter state. T-286 (P1-1): derived from each tab's own data (the
+  // latest year with rows), not a hardcoded '2025' that hid every currently
+  // open/upcoming 2026 rights issue on first paint.
+  const [upcomingYear, setUpcomingYear] = useState<string>(() =>
+    getLatestYearWithData(upcomingRights, (item) => item.openDate || item.recordDate)
+  );
+  const [liveYear, setLiveYear] = useState<string>(() =>
+    getLatestYearWithData(liveRights, (item) => item.openDate || item.recordDate)
+  );
 
   // Pagination state
   const [upcomingPage, setUpcomingPage] = useState(1);
@@ -213,7 +219,7 @@ export function RightsIssuesTabs({
             },
           }}
           yearFilterConfig={{
-            availableYears: ['2024', '2025', '2026'],
+            availableYears: getAvailableYears(upcomingYear),
             selectedYear: upcomingYear,
             onYearChange: (year) => {
               setUpcomingYear(year);
@@ -249,7 +255,7 @@ export function RightsIssuesTabs({
             },
           }}
           yearFilterConfig={{
-            availableYears: ['2024', '2025', '2026'],
+            availableYears: getAvailableYears(liveYear),
             selectedYear: liveYear,
             onYearChange: (year) => {
               setLiveYear(year);
