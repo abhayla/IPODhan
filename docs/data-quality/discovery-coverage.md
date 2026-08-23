@@ -23,11 +23,13 @@ So the loop will not converge to zero by repeating reviews. It converges when th
 SPACE is covered by standing checks, and the review round is left to find only what a
 machine cannot.
 
-**And the method space is not covered.** Of 18 distinct discovery methods this project has
-demonstrably used, **6 are automated and scheduled, 8 are automated but never scheduled,
-and the rest have no automation at all.** The most valuable one — comparing against the
-outside world in either direction — has *zero* automation, which every round's own bottom
-line said out loud and none of them fixed.
+**And the method space is not covered.** Of the **19** distinct discovery methods this
+project has demonstrably used (§3), only **7** have a standing scheduled check anywhere;
+**3** are automated but scheduled nowhere — they run only when a person types the path —
+**8** have no automation at all, and **1** is process-enforced rather than code-enforced.
+The most valuable method of all — comparing against the outside world, in either direction —
+is in that group of eight, which every round's own bottom line said out loud and none of
+them fixed.
 
 ---
 
@@ -185,7 +187,7 @@ Method codes are defined in §3.
 
 ---
 
-## 4. COVERAGE MATRIX — methods × layers
+## 4. COVERAGE MATRIX — 19 methods × 7 layers
 
 Legend: **A** = automated **and scheduled** · **U** = automated but **unscheduled** (runs only
 when a human types the path — *this is a document, not a gate*) · **M** = manual review only ·
@@ -218,7 +220,9 @@ when a human types the path — *this is a document, not a gate*) · **M** = man
 **Every `M` and every `U` cell is a place the next review round will find something, and the
 round after that will find something else.**
 
-Three facts stand out, and they are the whole story.
+Counted by method (a method counts as covered if it has a standing scheduled check on at
+least one layer): **7 covered · 3 automated-but-unscheduled · 8 with no automation at all ·
+1 process-enforced.** Three facts stand out, and they are the whole story.
 
 1. **The `U` cells are the cheapest and the most damaging.** `audit-ipo-coverage.mjs --gate`
    is a genuinely good gate — it holds the `invisibleSme` invariant added yesterday (PR #181),
