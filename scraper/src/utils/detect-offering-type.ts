@@ -310,3 +310,30 @@ export function resolveOfferingTypeKeepingClassification(
   }
   return incoming;
 }
+
+/**
+ * Guard against a lower-trust source demoting an SME-segment row to FPO.
+ *
+ * SME-segment rows list on the BSE-SME / NSE-SME first-time-listing platform, where
+ * every issue is the company's first public offer — a genuine SME "FPO" does not occur
+ * on these boards. Only a mid-priority source (e.g. Moneycontrol) that supplies
+ * offering_type when the authoritative exchange source (NSE/BSE) does not can flip a
+ * real SME IPO to FPO uncontested, silently removing it from every IPO surface (it
+ * fails the `offeringType === 'IPO'` filter site-wide). T-292 P1-1 (Mopshop
+ * Distribution Ltd. — real BSE SME fixed-price IPO stored as FPO, 404 across the site).
+ *
+ * Applies to BOTH create and update paths: a fresh row can be created with the wrong
+ * type just as easily as an existing one can be flipped.
+ *
+ * @returns the offering type to persist — `'IPO'` in place of an incoming/existing
+ *          `'FPO'` whenever the row's segment is SME, otherwise `incoming` unchanged.
+ */
+export function guardSmeOfferingTypeAgainstFpo(
+  segment: string | null | undefined,
+  incoming: string
+): string {
+  if (segment === 'SME' && incoming === 'FPO') {
+    return 'IPO';
+  }
+  return incoming;
+}
