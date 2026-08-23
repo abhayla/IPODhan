@@ -1,4 +1,4 @@
-import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDataRepository, IPOInsert, SubscriptionInsert, GMPRecordInsert, FinancialDataInsert } from '@ipodhan/shared';
+import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDataRepository, IPOInsert, SubscriptionInsert, GMPRecordInsert, FinancialDataInsert, IPO } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
@@ -232,7 +232,19 @@ export async function upsertIPO(
         // has one, but the production pipeline sets skipDuplicateDetection:
         // true — see data-validation-pipeline.ts). Only reached when the
         // cheap exact tiers already missed, so the extra scan cost is rare.
-        const fuzzyMatch = await ipoRepository.findByFuzzyName(normalizedName);
+        // Advisory check: a fuzzy-match failure (bad connection, query error) MUST
+        // NEVER fail the create — fall through to the exact-tier result and let the
+        // post-insert duplicate-sweep job reconcile any duplicate it would have caught.
+        let fuzzyMatch: IPO | null = null;
+        try {
+          fuzzyMatch = await ipoRepository.findByFuzzyName(normalizedName);
+        } catch (fuzzyError) {
+          logger.warn({
+            companyName: scrapedIPO.companyName,
+            normalizedName,
+            error: fuzzyError instanceof Error ? fuzzyError.message : String(fuzzyError)
+          }, '[T-293] Fuzzy duplicate check failed (non-fatal) - continuing create without it');
+        }
         if (fuzzyMatch) {
           logger.info({
             companyName: scrapedIPO.companyName,
