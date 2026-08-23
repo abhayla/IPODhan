@@ -391,6 +391,51 @@ export function isExpectedRejection(result: ValidationResult): boolean {
 }
 
 /**
+ * Structural, name-only detection of a business-trust (InvIT/REIT) company.
+ * T-287F2: extracted so a scraper with ONLY a company-name signal (no
+ * symbol/bseType — Chittorgarh) can decide "this is a business trust, not an
+ * equity mainboard/SME issue" BEFORE it ever writes segment/offeringType,
+ * rather than relying on a downstream validation pass to catch it after the
+ * wrong value already landed. Mirrors the structural regex used by the
+ * NON_IPO_TRUST_SHAPE guard below: a keyword substring ("invit"/"reit") OR
+ * the terminal legal-entity-type token "Trust"/"Investment Trust" — not a
+ * bare mid-name "Trust" (see NON_IPO_TRUST_SHAPE comment for the false-
+ * positive trap this avoids, e.g. "Trust Fintech Limited").
+ */
+export function isBusinessTrustCompanyName(companyName: string | null | undefined): boolean {
+  const name = (companyName || '').trim();
+  if (!name) return false;
+  const lower = name.toLowerCase();
+  if (lower.includes('invit') || lower.includes('infrastructure investment trust')) return true;
+  if (lower.includes('reit') || lower.includes('real estate investment trust')) return true;
+  const nameSansInstrumentLabel = name.replace(/\s+(IPO|FPO)$/i, '').trim();
+  if (/\btrust$/i.test(nameSansInstrumentLabel)) return true;
+  if (/\binvestment\s+trust\b/i.test(nameSansInstrumentLabel)) return true;
+  return false;
+}
+
+/**
+ * Map a business-trust company name to its offering_type enum value.
+ * Returns null when the name is not a business-trust shape at all.
+ * When the shape is structural (bare "...Trust"/"Investment Trust") but no
+ * REIT/InvIT keyword is present, defaults to 'INVITS' — InvITs are the more
+ * common bare-"Trust"-named vehicle in this dataset (Cube Highways Trust,
+ * Raajmarg Infra Investment Trust) and a wrong INVITS/REITS split is far
+ * cheaper to correct later than a MAINBOARD segment silently re-applied to a
+ * trust every scrape cycle.
+ */
+export function offeringTypeFromBusinessTrustName(
+  companyName: string | null | undefined
+): 'INVITS' | 'REITS' | null {
+  const name = (companyName || '').trim();
+  const lower = name.toLowerCase();
+  if (lower.includes('reit') || lower.includes('real estate investment trust')) return 'REITS';
+  if (lower.includes('invit') || lower.includes('infrastructure investment trust')) return 'INVITS';
+  if (isBusinessTrustCompanyName(name)) return 'INVITS';
+  return null;
+}
+
+/**
  * Detect offering type from scraped data
  * Auto-detects RIGHTS issues, InvITs, REITs, etc.
  */

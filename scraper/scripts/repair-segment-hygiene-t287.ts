@@ -62,7 +62,7 @@
  *   npx tsx scripts/repair-segment-hygiene-t287.ts          # dry-run
  *   npx tsx scripts/repair-segment-hygiene-t287.ts --apply
  */
-import { db } from '@ipodhan/shared';
+import { db, getRedisClient } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { createFieldProtectionService } from '@ipodhan/shared/admin/field-protection-checker';
 import { and, eq, isNull, inArray } from 'drizzle-orm';
@@ -146,7 +146,17 @@ async function main() {
     process.exit(0);
   }
 
-  const protectionService = createFieldProtectionService(db, null);
+  // T-287F2 (checker T-287C2 FINDING-hold-rebounded.md): constructing this
+  // service with `redis: null` made `invalidateProtectionCache()` a silent
+  // no-op (`if (!this.redis) { return; }`), so the DB protection row landed
+  // but the stale Redis `protection:field:<id>:ipos:segment` verdict from
+  // the last scrape cycle (cached for PROTECTION_CACHE_TTL = 3600s) was
+  // NEVER purged. The very next */30 scrape read the stale "not protected"
+  // cache entry and overwrote the just-repaired rows -- while this script
+  // exited 0 reporting success. A real Redis client is required so the
+  // protection actually takes effect before the next scrape cycle, not up
+  // to an hour later.
+  const protectionService = createFieldProtectionService(db, getRedisClient());
 
   let written = 0;
   const failures: string[] = [];
