@@ -31,19 +31,26 @@ NOTIFIER_ENV="/root/notifier/.env"
 
 mkdir -p "$STATE_DIR"
 
-{
+# run_verify is a FUNCTION, not a brace group: `return` inside it ends only the
+# function, so a `cd` failure or a red test run always falls through to the
+# alert + log-retention logic below — nothing that happens inside here can
+# terminate the whole script (a brace group's `exit` would; a function's
+# `return` does not). This is the fix for the T-294 checker P1 finding: the
+# old brace-group body ended in `exit $RESULT`, which is unreachable-after
+# dead code because a redirected brace group is NOT a subshell.
+run_verify() {
   echo "=== prod-verify VPS cron run: $(date -Iseconds) ==="
 
   if [[ -f "$NOTIFIER_ENV" ]]; then
     set -a; source "$NOTIFIER_ENV"; set +a
   fi
 
-  cd "$REPO" || { echo "FATAL: repo checkout missing at $REPO"; exit 1; }
+  cd "$REPO" || { echo "FATAL: repo checkout missing at $REPO"; return 1; }
   git fetch origin main --quiet
   git reset --hard origin/main --quiet
   echo "checked out: $(git log -1 --oneline)"
 
-  cd "$REPO/web" || { echo "FATAL: web/ missing"; exit 1; }
+  cd "$REPO/web" || { echo "FATAL: web/ missing"; return 1; }
 
   # --ignore-scripts skips the root `prepare: husky` hook (no git-hook context
   # on this box); playwright chromium is installed explicitly next.
@@ -54,12 +61,13 @@ mkdir -p "$STATE_DIR"
   # server) and switches workers/retries to the CI-safe values in
   # playwright.config.ts — required for a non-interactive cron run.
   CI=true PROD_BASE_URL="https://ipodhan.com" npm run test:prod-verify
-  RESULT=$?
+  local result=$?
 
-  echo "=== exit code: $RESULT ==="
-  exit $RESULT
-} >> "$LOG" 2>&1
+  echo "=== exit code: $result ==="
+  return "$result"
+}
 
+run_verify >> "$LOG" 2>&1
 RESULT=$?
 
 if [[ $RESULT -ne 0 ]]; then
