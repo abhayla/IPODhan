@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { completeness, pickKeeper, type Row } from '../../../scripts/merge-duplicate-ipos';
+import { completeness, pickKeeper, buildDuplicateKeyGroups, type Row } from '../../../scripts/merge-duplicate-ipos';
+import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 
 /**
  * T-277F checker finding #4: the pair-merge kept the LESS-field-complete row
@@ -105,5 +106,47 @@ describe('pickKeeper — field-completeness ranks first (T-277F finding #4)', ()
 
     const keeper = pickKeeper([newer, older], realChildValue);
     expect(keeper.id).toBe('older');
+  });
+});
+
+/**
+ * P2-2b (round-4 review, T-293): the POST-INSERT sweep — this script's own
+ * clustering — must converge a typo pair that an exact-normalized-key group-by
+ * cannot see. "Dhanwel Hybird Seeds Limited" / "Dhanwel Hybrid Seeds Ltd."
+ * lived as two separate exact clusters (of one row each) forever under the
+ * old exact-only clustering; that is exactly the class this fixes.
+ */
+describe('buildDuplicateKeyGroups — typo-similar clusters converge (P2-2b, T-293)', () => {
+  it('unions two DIFFERENT exact-normalized keys that are a typo apart', () => {
+    const a = normalizeCompanyNameForMatching('Dhanwel Hybird Seeds Limited');
+    const b = normalizeCompanyNameForMatching('Dhanwel Hybrid Seeds Ltd.');
+    expect(a).not.toBe(b); // exact keys genuinely differ — documents the gap
+
+    const groups = buildDuplicateKeyGroups([a, b]);
+    expect(groups.size).toBe(1);
+  });
+
+  it('does NOT union unrelated companies that merely share a long prefix', () => {
+    const a = normalizeCompanyNameForMatching('Sun Pharmaceutical Industries Ltd');
+    const b = normalizeCompanyNameForMatching('Sunrise Pharmaceutical Industries Ltd');
+    const groups = buildDuplicateKeyGroups([a, b]);
+    expect(groups.size).toBe(2);
+  });
+
+  it('de-duplicates a repeated key into a single one-entry group (row multiplicity is the caller\'s concern)', () => {
+    const key = normalizeCompanyNameForMatching('Acme Industries Ltd');
+    const groups = buildDuplicateKeyGroups([key, key, key]);
+    expect(groups.size).toBe(1);
+    expect([...groups.values()][0]).toEqual([key]);
+  });
+
+  it('transitively merges a chain of typo-similar keys into ONE cluster', () => {
+    // A -> B -> C, each a small edit apart, A and C further apart than either
+    // adjacent pair but still all one real company's name variants.
+    const a = 'atharva polyplast pvt';
+    const b = 'atharva polyplasty pvt';
+    const c = 'atharva polyplasti pvt';
+    const groups = buildDuplicateKeyGroups([a, b, c]);
+    expect(groups.size).toBe(1);
   });
 });

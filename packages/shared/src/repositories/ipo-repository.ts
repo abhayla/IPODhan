@@ -36,7 +36,9 @@ import {
   normalizedCompanyNameSql,
   compactNormalizedCompanyNameSql,
   sanitizeDisplayCompanyName,
+  normalizeCompanyNameForMatching,
 } from '../utils/company-name-normalizer';
+import { findMostSimilarName } from '../utils/company-name-similarity';
 import type {
   IPO,
   IPOInsert,
@@ -332,6 +334,70 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     } catch (error) {
       throw new DatabaseError(
         `Failed to fetch IPO by normalized name: ${normalizedName}`,
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
+   * Find an existing IPO whose normalized company name is a close SPELLING
+   * variant of `normalizedName` (P2-2a, T-293) — a typo like "Hybird" vs
+   * "Hybrid" that `findByNormalizedName`'s exact + compact-whitespace tiers
+   * cannot catch (the letters genuinely differ, not just punctuation/
+   * whitespace). Deliberately the LAST-resort check on the CREATE path: it is
+   * a real network+CPU cost (scans existing company names), so callers MUST
+   * only reach it after the exact-match tiers have already returned null.
+   *
+   * Root cause this closes (round-4 review, T-293): "Dhanwel Hybird Seeds
+   * Limited" and "Dhanwel Hybrid Seeds Ltd." minted two live prod rows
+   * because NOTHING on the production insert path (`upsertIPO`) ever ran a
+   * similarity check — `DuplicateDetectionService`'s 0.85-threshold fuzzy
+   * check exists but `PipelineFactory.createProductionPipeline` sets
+   * `skipDuplicateDetection: true` (see `data-validation-pipeline.ts`), so it
+   * never actually executes on a live scrape.
+   *
+   * @param normalizedName - Normalized company name of the CANDIDATE (not yet
+   *   in the DB) to check against existing rows.
+   * @param threshold - Minimum Levenshtein similarity (0-1) to count as a match.
+   */
+  async findByFuzzyName(normalizedName: string, threshold = 0.85): Promise<IPO | null> {
+    if (!normalizedName) {
+      return null;
+    }
+
+    try {
+      // Cheap pre-filter: only rows sharing the candidate's first word are
+      // plausible typo variants — this keeps the scan bounded without a
+      // full-table fetch, same spirit as IPODeduplicationService's tiering.
+      // Known limitation: a typo IN the first word itself ("Dhanwel" ->
+      // "Dhanwle") would not be pre-filtered in; the real prod pair this
+      // closes (T-293) has its typo in the SECOND word ("Hybird"/"Hybrid").
+      const firstWord = normalizedName.split(' ')[0];
+      if (!firstWord || firstWord.length < 3) {
+        return null;
+      }
+
+      const candidates = await this.db
+        .select()
+        .from(ipos)
+        .where(sql`${normalizedCompanyNameSql(sql`${ipos.companyName}`)} LIKE ${firstWord + '%'}`)
+        .limit(200);
+
+      if (candidates.length === 0) {
+        return null;
+      }
+
+      const byNormalizedName = new Map<string, IPO>();
+      for (const candidate of candidates) {
+        byNormalizedName.set(normalizeCompanyNameForMatching(candidate.companyName), candidate);
+      }
+
+      const match = findMostSimilarName(normalizedName, [...byNormalizedName.keys()], threshold);
+      return match ? (byNormalizedName.get(match) ?? null) : null;
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to fetch IPO by fuzzy name: ${normalizedName}`,
         undefined,
         error
       );

@@ -1,4 +1,4 @@
-import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDataRepository, IPOInsert, SubscriptionInsert, GMPRecordInsert, FinancialDataInsert } from '@ipodhan/shared';
+import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDataRepository, IPOInsert, SubscriptionInsert, GMPRecordInsert, FinancialDataInsert, IPO } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
@@ -221,7 +221,44 @@ export async function upsertIPO(
       if (!existingIPO) {
         // Fallback to slug-based lookup (existing behavior)
         existingIPO = await ipoRepository.findBySlug(slug);
-      } else {
+      }
+
+      if (!existingIPO) {
+        // P2-2a (T-293): the exact + compact-whitespace tiers above cannot
+        // catch a genuine SPELLING typo ("Hybird" vs "Hybrid") — only a
+        // similarity check can. This is the insert-path fix for the class of
+        // bug that let "Dhanwel Hybird Seeds Limited" mint a second row
+        // alongside "Dhanwel Hybrid Seeds Ltd." in prod: NOTHING on this
+        // write path ever ran a fuzzy check before (DuplicateDetectionService
+        // has one, but the production pipeline sets skipDuplicateDetection:
+        // true — see data-validation-pipeline.ts). Only reached when the
+        // cheap exact tiers already missed, so the extra scan cost is rare.
+        // Advisory check: a fuzzy-match failure (bad connection, query error) MUST
+        // NEVER fail the create — fall through to the exact-tier result and let the
+        // post-insert duplicate-sweep job reconcile any duplicate it would have caught.
+        let fuzzyMatch: IPO | null = null;
+        try {
+          fuzzyMatch = await ipoRepository.findByFuzzyName(normalizedName);
+        } catch (fuzzyError) {
+          logger.warn({
+            companyName: scrapedIPO.companyName,
+            normalizedName,
+            error: fuzzyError instanceof Error ? fuzzyError.message : String(fuzzyError)
+          }, '[T-293] Fuzzy duplicate check failed (non-fatal) - continuing create without it');
+        }
+        if (fuzzyMatch) {
+          logger.info({
+            companyName: scrapedIPO.companyName,
+            normalizedName,
+            existingCompanyName: fuzzyMatch.companyName,
+            existingSlug: fuzzyMatch.slug,
+            newSlug: slug
+          }, '[T-293] Found existing IPO via fuzzy (typo) name matching - preventing duplicate!');
+          existingIPO = fuzzyMatch;
+        }
+      }
+
+      if (existingIPO && normalizeCompanyNameForMatching(existingIPO.companyName) === normalizedName) {
         logger.info({
           companyName: scrapedIPO.companyName,
           normalizedName,

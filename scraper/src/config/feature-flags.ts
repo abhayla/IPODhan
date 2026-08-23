@@ -115,6 +115,19 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_STAGE_RECONCILER: process.env.ENABLE_STAGE_RECONCILER === 'true',
 
+  /**
+   * Enable the periodic duplicate-IPO sweep job (P2-2b, round-4 review, T-293):
+   * re-runs `merge-duplicate-ipos.ts`'s two-tier clustering (exact-normalized-
+   * name UNION Levenshtein-typo) every cycle so a duplicate pair that slips
+   * past the create-time check converges instead of living in prod forever.
+   * Job runs DRY-RUN (report/log only) at all times, regardless of this flag —
+   * this flag only gates whether the job runs AT ALL on the cron schedule.
+   * Actual merge/delete (`dryRun: false`) is never wired to the cron path in
+   * this build; a separate, explicit activation is Abhay's call.
+   * Default: false
+   */
+  ENABLE_DUPLICATE_SWEEP_JOB: process.env.ENABLE_DUPLICATE_SWEEP_JOB === 'true',
+
   // ==================== ROLLOUT CONTROLS ====================
 
   /**
