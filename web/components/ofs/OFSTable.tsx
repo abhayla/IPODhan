@@ -11,7 +11,7 @@
 
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
-import { DataTable, type ColumnDef, renderFunctions, DEFAULT_IPO_YEARS_EXPORT, getLatestYearWithData } from '@/components/shared/DataTable';
+import { DataTable, type ColumnDef, renderFunctions, getAvailableYears, getLatestYearWithData } from '@/components/shared/DataTable';
 import type { OFSData } from '@/lib/services/ofs-service';
 
 // ==================== TYPES ====================
@@ -179,7 +179,7 @@ export function OFSTable({ ofsIssues }: OFSTableProps) {
 
         // Year filter configuration
         yearFilterConfig={{
-          availableYears: DEFAULT_IPO_YEARS_EXPORT,
+          availableYears: getAvailableYears(year),
           selectedYear: year,
           onYearChange: handleYearChange,
         }}

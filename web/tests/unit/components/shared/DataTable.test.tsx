@@ -18,6 +18,7 @@ import {
   type ColumnDef,
   getLatestYearWithData,
   generateYearRange,
+  getAvailableYears,
 } from '@/components/shared/DataTable';
 
 interface Row {
@@ -153,6 +154,48 @@ describe('DataTable', () => {
       ];
 
       expect(getLatestYearWithData(rows, (r) => r.date)).toBe('2027');
+    });
+  });
+
+  describe('getAvailableYears (T-286F, checker finding F1)', () => {
+    it('PROBE-C: a future-dated row selects a year that IS present in availableYears', () => {
+      // checker's exact adversarial scenario: clock 2026-12-20, an upcoming
+      // issue announced in December that opens 2027-01-15. Before the fix,
+      // getLatestYearWithData() picked "2027" but DEFAULT_IPO_YEARS_EXPORT
+      // (capped at new Date().getFullYear() = 2026) did not contain it, so
+      // the Select control silently fell back to its placeholder with no way
+      // back to 2027.
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-12-20T06:00:00+05:30'));
+
+      const rows: Row[] = [
+        { id: '1', name: 'A', date: '2026-12-01' },
+        { id: '2', name: 'B', date: '2027-01-15' },
+      ];
+      const selected = getLatestYearWithData(rows, (r) => r.date);
+      expect(selected).toBe('2027');
+
+      const availableYears = getAvailableYears(selected);
+      expect(availableYears.includes(selected)).toBe(true);
+      expect(availableYears[availableYears.length - 1]).toBe('2027');
+    });
+
+    it('upper bound is max(currentYear, latestDataYear) -- does not shrink below the current year', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-23T00:00:00Z'));
+
+      // Selected year older than current year (e.g. viewing a past-only table).
+      const years = getAvailableYears('2024');
+      expect(years[years.length - 1]).toBe('2026');
+    });
+
+    it('upper bound tracks a selected year further ahead than one year', () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-08-23T00:00:00Z'));
+
+      const years = getAvailableYears('2029');
+      expect(years[years.length - 1]).toBe('2029');
+      expect(years.includes('2029')).toBe(true);
     });
   });
 });

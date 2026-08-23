@@ -12,7 +12,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { DataTable, type ColumnDef, DEFAULT_IPO_YEARS_EXPORT, getLatestYearWithData } from '@/components/shared/DataTable';
+import { DataTable, type ColumnDef, getAvailableYears, getLatestYearWithData } from '@/components/shared/DataTable';
 import type { RightsIssueData } from '@/lib/services/rights-service';
 import { renderFunctions } from '@/components/shared/DataTable';
 import Link from 'next/link';
@@ -219,7 +219,7 @@ export function RightsIssuesTabs({
             },
           }}
           yearFilterConfig={{
-            availableYears: DEFAULT_IPO_YEARS_EXPORT,
+            availableYears: getAvailableYears(upcomingYear),
             selectedYear: upcomingYear,
             onYearChange: (year) => {
               setUpcomingYear(year);
@@ -255,7 +255,7 @@ export function RightsIssuesTabs({
             },
           }}
           yearFilterConfig={{
-            availableYears: DEFAULT_IPO_YEARS_EXPORT,
+            availableYears: getAvailableYears(liveYear),
             selectedYear: liveYear,
             onYearChange: (year) => {
               setLiveYear(year);

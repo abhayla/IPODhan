@@ -569,6 +569,23 @@ export function getLatestYearWithData<T>(
   return (latestYear ?? new Date().getFullYear()).toString();
 }
 
+/**
+ * T-286F (F1 fix): DEFAULT_IPO_YEARS_EXPORT is capped at the current calendar
+ * year, but `getLatestYearWithData` can return a LATER year when a row is
+ * dated in the future (e.g. an upcoming issue announced in December for a
+ * January open). Without this, the selected year is not present in the
+ * dropdown's option list and the Select control silently falls back to its
+ * placeholder with no way back to that year. Upper bound = max(currentYear,
+ * the year actually selected from data).
+ */
+export function getAvailableYears(selectedYear: string): string[] {
+  const selectedYearNum = Number(selectedYear);
+  const upperBound = Number.isFinite(selectedYearNum)
+    ? Math.max(new Date().getFullYear(), selectedYearNum)
+    : new Date().getFullYear();
+  return generateYearRange(DEFAULT_IPO_YEARS_START_YEAR, upperBound);
+}
+
 // ===== CONSTANTS =====
 export const DEFAULT_IPO_YEARS_EXPORT = DEFAULT_IPO_YEARS;
 export const CURRENT_YEAR = new Date().getFullYear().toString();
