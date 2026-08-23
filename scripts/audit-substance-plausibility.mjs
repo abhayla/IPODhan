@@ -9,17 +9,25 @@
 //   node scripts/audit-substance-plausibility.mjs --gate    → report + gate (exit 1 if ANY check has a violation)
 //
 // SELECT-only. No writes. Loads web/.env.local for the tunnel connection (localhost:15432).
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import pg from 'pg';
 import { SUBSTANCE_CHECKS } from './lib/substance-checks.mjs';
 
+// T-297 (gap G3): web/.env.local is OPTIONAL — see the matching note in
+// audit-ipo-coverage.mjs. A hard read tied this gate to one developer laptop.
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const envPath = join(__dirname, '..', 'web', '.env.local');
-for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
-  const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-  if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+if (existsSync(envPath)) {
+  for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+}
+if (!process.env.DATABASE_HOST && !process.env.DATABASE_URL) {
+  console.error('FATAL: no DB connection configured — provide web/.env.local or DATABASE_* in the environment');
+  process.exit(2);
 }
 
 const GATE = process.argv.includes('--gate');

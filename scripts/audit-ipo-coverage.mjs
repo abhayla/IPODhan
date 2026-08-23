@@ -4,18 +4,31 @@
 //   node scripts/audit-ipo-coverage.mjs --gate    → report + §7 thresholded gate (exit 1 on any miss)
 // Coverage thresholds are measured against the APPLICABLE population (genuine IPOs,
 // offering_type='IPO'; LISTED-only for listing perf; etc.). No writes. Loads web/.env.local.
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import pg from 'pg';
 import { SUBSTANCE_CHECKS } from './lib/substance-checks.mjs';
 import { FIELDS, deriveStage, dueFieldKeysForStage, computeStageGaps } from './lib/ipo-stage-completeness.mjs';
 
+// T-297 (gap G3): loading web/.env.local is now OPTIONAL. On a dev PC that file
+// carries the SSH-tunnel DSN, so it stays the default. On the Linux box — where
+// this gate now runs daily via scripts/vps-data-audit-cron.sh — there is no
+// web/.env.local in the audit checkout; the cron sources the real prod env into
+// the process instead. A hard readFileSync here made the gate un-runnable
+// anywhere except one laptop, which is a large part of why it had never been
+// scheduled (see docs/data-quality/discovery-coverage.md §4.1).
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const envPath = join(__dirname, '..', 'web', '.env.local');
-for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
-  const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
-  if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+if (existsSync(envPath)) {
+  for (const line of readFileSync(envPath, 'utf8').split(/\r?\n/)) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*)\s*$/);
+    if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '');
+  }
+}
+if (!process.env.DATABASE_HOST && !process.env.DATABASE_URL) {
+  console.error('FATAL: no DB connection configured — provide web/.env.local or DATABASE_* in the environment');
+  process.exit(2);
 }
 
 const GATE = process.argv.includes('--gate');
