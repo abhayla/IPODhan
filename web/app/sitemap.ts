@@ -15,7 +15,10 @@ import { CacheTTL } from '@/lib/cache/cache-keys';
 // the underlying IPO-list cache (`CacheTTL.IPO_LIST`, used by
 // `ipoRepository.findAll` below) means a slug retired in prod drops out of
 // the sitemap within one cache window instead of waiting for a redeploy.
-export const revalidate = CacheTTL.IPO_LIST;
+// Next.js requires route-segment config exports to be static literals, not
+// member expressions — CacheTTL.IPO_LIST is 900s; keep this literal in sync
+// with that constant (see cache-key-and-ttl-ssot.md).
+export const revalidate = 900;
 
 /**
  * Dynamic sitemap generation for SEO
