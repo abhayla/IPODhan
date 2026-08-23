@@ -17,8 +17,14 @@ export function OverallSubscriptionChart({
   data,
   stats,
   closeDate,
+  status,
   className,
 }: OverallSubscriptionChartProps) {
+  // P3-15 (T-302): "Current ... closes {date}" is present/future-tense framing
+  // that is honest only while bidding is genuinely ongoing. Once the IPO has
+  // CLOSED or LISTED, the window already closed — say so in the past tense
+  // instead of implying it's still open.
+  const isStillBidding = status !== 'CLOSED' && status !== 'LISTED';
   if (data.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-muted-foreground/25 p-8 text-center">
@@ -141,8 +147,12 @@ export function OverallSubscriptionChart({
           (round-8 scorer). The current multiple lives in the fact ribbon;
           the chart carries the trend. One caption line replaces the tiles. */}
       <p className="mb-4 text-xs text-muted-foreground">
-        Current {formatSubscription(stats.total)}
-        {closeDate ? ` · closes ${format(closeDate, 'MMM dd')}` : ''}
+        {isStillBidding ? 'Current' : 'Final'} {formatSubscription(stats.total)}
+        {closeDate
+          ? isStillBidding
+            ? ` · closes ${format(closeDate, 'MMM dd')}`
+            : ` · closed ${format(closeDate, 'MMM dd')}`
+          : ''}
       </p>
 
       {/* Chart */}

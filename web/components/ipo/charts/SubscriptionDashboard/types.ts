@@ -88,6 +88,8 @@ export interface OverallSubscriptionChartProps {
   data: SubscriptionTimePoint[];
   stats: SubscriptionStats;
   closeDate: Date | null;
+  /** IPO lifecycle status — drives past- vs present-tense caption wording (P3-15) */
+  status?: string;
   className?: string;
 }
 

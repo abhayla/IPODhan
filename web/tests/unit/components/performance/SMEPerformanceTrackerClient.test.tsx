@@ -163,6 +163,33 @@ describe('SMEPerformanceTrackerClient', () => {
     });
   });
 
+  // P3-13 (T-302): the page now server-renders initial rows. The client
+  // component must show them on the FIRST render (no loading skeleton, no
+  // client fetch) instead of discarding them and re-fetching.
+  it('renders server-provided initialData immediately without a client fetch', () => {
+    render(
+      <SMEPerformanceTrackerClient
+        initialYear="2026"
+        initialData={[
+          {
+            id: 'ssr-sme-1',
+            companyName: 'Server Rendered SME Co Ltd',
+            slug: 'server-rendered-sme-co-ltd',
+            listedOn: '2026-01-10',
+            issuePrice: 40,
+            listingDayClose: 45,
+            listingDayGain: 12.5,
+            currentPrice: 50,
+            profitLoss: 25,
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText('Server Rendered SME Co Ltd')).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it('never contains a mock/demo-data generator function in its module source', () => {
     // Guards against reintroducing generateMockPerformanceData or an equivalent.
     const filePath = path.resolve(

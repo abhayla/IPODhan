@@ -12,7 +12,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { DataTable, ColumnDef, renderFunctions } from '@/components/shared/DataTable';
@@ -243,6 +243,12 @@ async function fetchSMEPerformanceData(year: string): Promise<PerformanceData[]>
 
 interface SMEPerformanceTrackerClientProps {
   initialYear: string;
+  /**
+   * Server-rendered rows for `initialYear` (P3-13, T-302). When present, the
+   * first paint already shows real data and skips the loading skeleton;
+   * client-side fetching still runs on year changes.
+   */
+  initialData?: PerformanceData[];
 }
 
 /**
@@ -257,17 +263,29 @@ interface SMEPerformanceTrackerClientProps {
  */
 export function SMEPerformanceTrackerClient({
   initialYear,
+  initialData,
 }: SMEPerformanceTrackerClientProps) {
   const router = useRouter();
 
   // AC#3: Year filter with default current year
   const [year, setYear] = useState<string>(initialYear);
   const [page, setPage] = useState(1);
-  const [performanceData, setPerformanceData] = useState<PerformanceData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [performanceData, setPerformanceData] = useState<PerformanceData[]>(initialData ?? []);
+  // Server-rendered data for the initial year means the first paint is
+  // already real — only show the loading skeleton when no initial data was
+  // provided (P3-13, T-302).
+  const [loading, setLoading] = useState(initialData === undefined);
+  const hasServerData = useRef(initialData !== undefined);
 
   // Fetch performance data (AC#5: SME IPOs only)
   useEffect(() => {
+    // Skip the redundant client-side refetch on first mount when the server
+    // already rendered this exact year's data.
+    if (hasServerData.current) {
+      hasServerData.current = false;
+      return;
+    }
+
     const fetchData = async () => {
       setLoading(true);
       try {

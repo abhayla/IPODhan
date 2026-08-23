@@ -56,6 +56,31 @@ const mockIPOWithNullDates: HomeIPOTableData = {
   status: 'UPCOMING',
 };
 
+// P2-6 (T-302): "Symbiotec" shape — a MAINBOARD IPO opening tomorrow with an
+// approved price band. The old getStatusText(segment) implementation labelled
+// this "Filed with SEBI" (DRHP stage) purely from segment, even though the
+// approved price band means it has already cleared review.
+const mockApprovedBandIPO: HomeIPOTableData = {
+  id: 'approved-band-1',
+  companyName: 'Symbiotec Specialities Limited',
+  slug: 'symbiotec-specialities-limited',
+  segment: 'MAINBOARD' as const,
+  offeringType: 'IPO' as const,
+  openDate: '2025-10-16',
+  closeDate: '2025-10-18',
+  priceMin: 92,
+  issuePrice: 97,
+  issueSize: '1500',
+  listingDate: null,
+  status: 'UPCOMING',
+  gmp: null,
+  gmpPercent: null,
+  gmpUpdatedAt: null,
+  gmpTrend: null,
+  gmpSeries: [],
+  totalSubscription: null,
+};
+
 // ==================== TEST SUITES ====================
 
 describe('UpcomingIPOTable Component', () => {
@@ -164,6 +189,21 @@ describe('UpcomingIPOTable Component', () => {
 
       // AC#1: Status text logic works correctly
       expect(screen.getByText('Filed with Exchange')).toBeInTheDocument();
+    });
+
+    it('should display "Price Band Announced" for an approved IPO, never the DRHP-filed label (P2-6)', () => {
+      render(
+        <UpcomingIPOTable
+          title="Test Table"
+          ipos={[mockApprovedBandIPO]}
+          moreLink="/dashboard"
+          moreLinkText="More..."
+          isLoading={false}
+        />
+      );
+
+      expect(screen.getByText('Price Band Announced')).toBeInTheDocument();
+      expect(screen.queryByText('Filed with SEBI')).not.toBeInTheDocument();
     });
 
     it('should display correct status for mixed categories', () => {

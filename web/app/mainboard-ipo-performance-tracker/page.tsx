@@ -42,6 +42,7 @@ import type { Metadata } from 'next';
 import Script from 'next/script';
 import { Suspense } from 'react';
 import { MainboardPerformanceTrackerClient } from '@/components/performance/MainboardPerformanceTrackerClient';
+import { getMainboardPerformanceData } from '@/lib/services/mainboard-performance-service';
 import {
   generateOrganizationSchema,
   generateBreadcrumbSchema,
@@ -167,6 +168,12 @@ export default async function MainboardPerformanceTrackerPage({
   const currentYear = new Date().getFullYear().toString();
   const year = params.year || currentYear;
 
+  // P3-13 (T-302): server-render the initial rows for the requested year so
+  // the first response ships real data, not just an empty client shell that
+  // fetches after hydration. The client component still owns client-side
+  // refetching when the user switches years.
+  const initialData = await getMainboardPerformanceData(year);
+
   // Generate structured data schemas
   const organizationSchema = generateOrganizationSchema();
   const breadcrumbSchema = generateBreadcrumbSchema(breadcrumbItems);
@@ -194,7 +201,7 @@ export default async function MainboardPerformanceTrackerPage({
       {/* Main Content - Delegated to Client Component for interactivity */}
       {/* AC#2, AC#3, AC#4, AC#5, AC#6, AC#7, AC#8, AC#9, AC#10, AC#12, AC#13, AC#17, AC#18 */}
       <Suspense fallback={<PerformanceTrackerSkeleton />}>
-        <MainboardPerformanceTrackerClient initialYear={year} />
+        <MainboardPerformanceTrackerClient initialYear={year} initialData={initialData} />
       </Suspense>
     </>
   );

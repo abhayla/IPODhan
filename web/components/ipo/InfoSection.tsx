@@ -109,16 +109,25 @@ export function InfoSection({ ipo, ipoDetails }: InfoSectionProps) {
               timeline + IPO Details table above (fact-triplication flagged by
               the 2026-07-02 blind review). */}
           <div className="space-y-2 animate-in fade-in slide-in-from-left-4 duration-500">
-            {/* Story 4.12: Basis of Allotment Date */}
-            {(ipoDetails?.basisOfAllotmentDate || (ipo.status === 'CLOSED' || ipo.status === 'LISTED')) ? (
-              <InfoRow
-                label="Basis of Allotment"
-                value={ipoDetails?.basisOfAllotmentDate ? formatIPODate(ipoDetails.basisOfAllotmentDate) : 'TBD'}
-                isDate={!!ipoDetails?.basisOfAllotmentDate}
-                dateValue={ipoDetails?.basisOfAllotmentDate ?? null}
-                timeDistance={getTimeDistance(ipoDetails?.basisOfAllotmentDate ?? null)}
-              />
-            ) : null}
+            {/* Story 4.12: Basis of Allotment Date.
+                P3-15 (T-302): `ipoDetails.basisOfAllotmentDate` is a granular
+                field that only some sources populate. `ipo.allotmentDate` (the
+                same date the timeline widget already renders — IPOTimelineWidget
+                milestone 5) is a reliable fallback: when it exists, allotment
+                has genuinely happened and the "TBD" placeholder is false. */}
+            {(() => {
+              const allotmentDisplayDate = ipoDetails?.basisOfAllotmentDate ?? ipo.allotmentDate ?? null;
+              if (!allotmentDisplayDate && ipo.status !== 'CLOSED' && ipo.status !== 'LISTED') return null;
+              return (
+                <InfoRow
+                  label="Basis of Allotment"
+                  value={allotmentDisplayDate ? formatIPODate(allotmentDisplayDate) : 'TBD'}
+                  isDate={!!allotmentDisplayDate}
+                  dateValue={allotmentDisplayDate}
+                  timeDistance={getTimeDistance(allotmentDisplayDate)}
+                />
+              );
+            })()}
             {/* Story 4.12: Initiation of Refunds Date */}
             {(ipoDetails?.initiationOfRefundsDate || (ipo.status === 'CLOSED' || ipo.status === 'LISTED')) ? (
               <InfoRow
