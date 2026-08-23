@@ -25,6 +25,7 @@ import logger from './utils/logger.js';
 import { heartbeat, flushOwnerNotify } from './services/owner-notify.js';
 import { evaluateFreshness } from './services/freshness-monitor.js';
 import { checkCrossSourceDisagreements } from './services/cross-source-disagreement-monitor.js';
+import { validateFeatureFlags, getFeatureStatus } from './config/feature-flags.js';
 
 /** Days of scraper_logs history to retain. */
 const SCRAPER_LOG_RETENTION_DAYS = 30;
@@ -65,6 +66,26 @@ export async function main() {
     const source = args.find(arg => arg.startsWith('--source='))?.split('=')[1] || 'nse';
 
     logger.info({ source }, 'IPO Scraper CLI started');
+
+    // T-283: loud, LOUD feature-flag visibility at every run start.
+    // validateFeatureFlags() (console.warn) fires exactly when a boolean
+    // ENABLE_* flag is on but its paired *_PERCENTAGE rollout is still 0% —
+    // the dead-fallback-path shape that let CONSOLIDATION_PERCENTAGE ship
+    // unset for the pipeline's entire production lifetime (T-282/T-283) with
+    // zero visibility, because this function was defined but never called
+    // from anywhere. Also emit the flag snapshot through the structured pino
+    // logger so it is queryable in scraper-out.log JSON on every cycle, not
+    // just readable as console text.
+    try {
+      validateFeatureFlags();
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Feature flag validation failed — refusing to start with an invalid percentage flag'
+      );
+      throw error;
+    }
+    logger.info(getFeatureStatus(), 'Feature flag status at scraper startup');
 
     // T-266: the consolidated-vs-partial subscription guard is per-cycle state.
     // Clearing it here keeps the long-running scheduler correct too, where the
