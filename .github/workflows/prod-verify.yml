@@ -6,9 +6,21 @@ name: Production Verification
 # hydration errors). Run on demand or on a schedule.
 
 on:
-  # Manual-only by choice: the daily schedule was removed so it no longer consumes
-  # GitHub-hosted Actions minutes automatically. Run it from the Actions tab after a
-  # deploy (or whenever you want to sweep the live site).
+  # Manual-only by choice: the daily `schedule:` was removed (commit b5011df5) so
+  # this no longer consumes GitHub-hosted Actions minutes automatically. Run it
+  # from the Actions tab after a deploy (or whenever you want to sweep the live
+  # site) — PR Gate (ci.yml/test.yml) still runs per-PR unit coverage regardless.
+  #
+  # T-294 (2026-08-23): this gap left the live-site browser sweep unmonitored
+  # for 53 days (last scheduled run 2026-07-01) and GitHub Actions billing on
+  # this account is ALSO separately broken until 2026-09-01, so re-adding a GH
+  # `schedule:` here is not viable right now either way. The interim fix is a
+  # daily cron running the SAME spec (web/tests/e2e/production-verification.spec.ts)
+  # directly on the Linux VPS that serves ipodhan.com (72.61.240.224), via
+  # scripts/vps-prod-verify-cron.sh, at 03:15 IST daily, alerting through the
+  # Notifier gateway (project "ipodhan") on any failure. See that script's
+  # header for the exact revert steps once Actions billing resumes — in short:
+  # add a `schedule:` block back here, then remove the VPS crontab line.
   workflow_dispatch:
     inputs:
       base_url:

@@ -87,6 +87,9 @@ Thumbs.db
 !.claude/settings.json
 !.claude/synthesis-config.yml
 !.claude/sync-manifest.json
+!.claude/tasks/
+.claude/tasks/*
+!.claude/tasks/lessons.md
 .claude/settings.local.json
 .claude/.enhance-misses.log
 .claude/.keepgoing-count
