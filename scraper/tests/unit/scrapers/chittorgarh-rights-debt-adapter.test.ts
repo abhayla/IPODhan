@@ -408,13 +408,18 @@ describe('chittorgarh-rights-debt-adapter', () => {
 
       const url = (global.fetch as any).mock.calls[0][0];
 
-      // Verify URL structure
+      // Verify URL structure. The year/year-range segments are derived from
+      // the CURRENT calendar year at call time (see the adapter's
+      // CURRENT_YEAR/YEAR_RANGE constants) - a hardcoded year goes stale
+      // every January, which is exactly how this assertion broke.
+      const currentYear = new Date().getFullYear();
+      const yearRange = `${currentYear}-${(currentYear + 1) % 100}`; // mirrors YEAR_RANGE in the adapter
       expect(url).toContain('webnodejs.chittorgarh.com/cloud/report/data-read');
       expect(url).toContain('/82/'); // Report ID
       expect(url).toContain('/1/'); // Page number
       expect(url).toContain('/10/'); // perPage limit (not 100)
-      expect(url).toContain('/2025/'); // Current year (or test year)
-      expect(url).toContain('/2025-26/'); // Year range
+      expect(url).toContain(`/${currentYear}/`); // Current year
+      expect(url).toContain(`/${yearRange}/`); // Year range
       expect(url).toContain('/all/0'); // Category=all (not ncd)
       expect(url).toContain('v=20-47'); // Updated version parameter
     });

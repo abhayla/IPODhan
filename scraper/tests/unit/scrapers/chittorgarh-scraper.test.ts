@@ -1,13 +1,54 @@
 /**
  * Unit tests for chittorgarh-scraper.ts
- * Tests: GMP extraction, GMP validation, data transformation, error handling
+ *
+ * The scraper was rewritten 2025-10-17 from HTML/Cheerio table parsing to
+ * API-based data fetching (see the header comment in
+ * src/scrapers/chittorgarh-scraper.ts). These tests mock
+ * `retryWithExponentialBackoff` to resolve a `ChittorgarhAPIResponse`-shaped
+ * object (the JSON the Chittorgarh report API actually returns), not a
+ * Cheerio `$` — the old HTML-table mocks in this file were stale and, since
+ * `scrapeChittorgarhIPOs` never touched `apiData.reportTableData` on a
+ * Cheerio object, most of them were accidentally "passing" on an empty
+ * result rather than exercising the real parsing path.
+ *
+ * GMP extraction (gmp/gmpPercentage/gmpUpdatedAt/validateGMP) is NOT tested
+ * here anymore: the API rewrite intentionally dropped it from this scraper
+ * ("GMP data NOT available on list page" - source header comment), the IPO
+ * object hardcodes gmp/gmpPercentage/gmpUpdatedAt to undefined, and
+ * validateGMP is no longer called from this file at all (GMP is sourced
+ * exclusively from investorgain-gmp-orchestrator now). The one remaining
+ * GMP test below asserts the fields stay undefined, matching current code.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { scrapeChittorgarhIPOs } from '../../../src/scrapers/chittorgarh-scraper.js';
 import * as scraperUtils from '../../../src/utils/scraper-utils.js';
-import * as validators from '../../../src/utils/validators.js';
-import * as cheerio from 'cheerio';
+
+/** Build one Chittorgarh API record with sane defaults, override as needed. */
+function apiRecord(overrides: Record<string, string> = {}) {
+  return {
+    'Company': '<a href="/ipo/abc-company/1/">ABC Company Limited</a>',
+    'Opening Date': 'Tue, Oct 07, 2025',
+    'Closing Date': 'Thu, Oct 09, 2025',
+    'Listing Date': '',
+    'Issue Price (Rs.)': '250.00 to 260.00',
+    'Total Issue Amount (Incl.Firm reservations) (Rs.cr.)': '1000.00',
+    'Listing at': 'BSE, NSE',
+    'Lead Manager': '<a href="/lead-manager/xyz-capital/">XYZ Capital</a>',
+    '~Issue_Open_Date': '2025-10-07T00:00:00.000Z',
+    '~IssueCloseDate': '2025-10-09T00:00:00.000Z',
+    '~ListingDate': '',
+    ...overrides,
+  };
+}
+
+function mockApiResponse(reportTableData: unknown[]) {
+  vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue({
+    msg: 1,
+    sSearchWhere: '',
+    reportTableData,
+  });
+}
 
 describe('chittorgarh-scraper', () => {
   beforeEach(() => {
@@ -15,35 +56,8 @@ describe('chittorgarh-scraper', () => {
   });
 
   describe('scrapeChittorgarhIPOs', () => {
-    it('should successfully parse IPO data with GMP from mock HTML', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <table class="table">
-              <tr>
-                <th>Company</th>
-                <th>Issue Size</th>
-                <th>Price</th>
-                <th>Dates</th>
-                <th>GMP</th>
-                <th>Subscription</th>
-              </tr>
-              <tr>
-                <td>ABC Company Limited</td>
-                <td>₹1000 Cr</td>
-                <td>₹250 - 260</td>
-                <td>10-Oct-2025 - 12-Oct-2025</td>
-                <td>₹50</td>
-                <td>2.5x</td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
-
-      const $ = cheerio.load(mockHtml);
-      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue($);
-      vi.spyOn(validators, 'validateGMP').mockReturnValue(true);
+    it('should successfully parse IPO data from a mock API response', async () => {
+      mockApiResponse([apiRecord()]);
 
       const result = await scrapeChittorgarhIPOs();
 
@@ -52,126 +66,18 @@ describe('chittorgarh-scraper', () => {
       expect(result.ipos[0].issueSize).toBe(10000000000); // 1000 Cr
       expect(result.ipos[0].priceRangeMin).toBe(250);
       expect(result.ipos[0].priceRangeMax).toBe(260);
-      expect(result.ipos[0].gmp).toBe(50);
-      expect(result.ipos[0].gmpPercentage).toBeCloseTo(19.23, 1); // 50/260 * 100
+      expect(result.ipos[0].openDate).toBe('2025-10-07');
+      expect(result.ipos[0].closeDate).toBe('2025-10-09');
+      expect(result.ipos[0].listingExchange).toBe('BOTH');
+      expect(result.ipos[0].segment).toBe('MAINBOARD');
+      expect(result.ipos[0].offeringType).toBe('IPO');
+      expect(result.ipos[0].leadManagers).toEqual(['XYZ Capital']);
       expect(result.ipos[0].dataSource).toBe('CHITTORGARH');
       expect(result.errors).toHaveLength(0);
     });
 
-    it('should handle negative GMP values', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <table class="table">
-              <tr><th>Headers</th></tr>
-              <tr>
-                <td>XYZ Company</td>
-                <td>₹500 Cr</td>
-                <td>₹100 - 110</td>
-                <td>15-Nov-2025 - 17-Nov-2025</td>
-                <td>₹-10</td>
-                <td>1.2x</td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
-
-      const $ = cheerio.load(mockHtml);
-      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue($);
-      vi.spyOn(validators, 'validateGMP').mockReturnValue(true);
-
-      const result = await scrapeChittorgarhIPOs();
-
-      expect(result.ipos).toHaveLength(1);
-      expect(result.ipos[0].gmp).toBe(-10);
-      expect(result.ipos[0].gmpPercentage).toBeCloseTo(-9.09, 1); // -10/110 * 100
-    });
-
-    it('should reject unrealistic GMP values using validation', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <table class="table">
-              <tr><th>Headers</th></tr>
-              <tr>
-                <td>Test Company</td>
-                <td>₹500 Cr</td>
-                <td>₹100 - 110</td>
-                <td>15-Nov-2025 - 17-Nov-2025</td>
-                <td>₹500</td>
-                <td>1.5x</td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
-
-      const $ = cheerio.load(mockHtml);
-      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue($);
-      // Mock validateGMP to return false for unrealistic value
-      vi.spyOn(validators, 'validateGMP').mockReturnValue(false);
-
-      const result = await scrapeChittorgarhIPOs();
-
-      expect(result.ipos).toHaveLength(1);
-      // GMP should be undefined due to validation failure
-      expect(result.ipos[0].gmp).toBeUndefined();
-      expect(result.ipos[0].gmpPercentage).toBeUndefined();
-    });
-
-    it('should calculate GMP percentage correctly', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <table class="table">
-              <tr><th>Headers</th></tr>
-              <tr>
-                <td>GMP Test Company</td>
-                <td>₹1000 Cr</td>
-                <td>₹200 - 250</td>
-                <td>10-Oct-2025 - 12-Oct-2025</td>
-                <td>₹25</td>
-                <td>3.0x</td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
-
-      const $ = cheerio.load(mockHtml);
-      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue($);
-      vi.spyOn(validators, 'validateGMP').mockReturnValue(true);
-
-      const result = await scrapeChittorgarhIPOs();
-
-      expect(result.ipos).toHaveLength(1);
-      expect(result.ipos[0].gmp).toBe(25);
-      // GMP percentage = (25 / 250) * 100 = 10%
-      expect(result.ipos[0].gmpPercentage).toBe(10);
-    });
-
-    it('should handle missing GMP data gracefully', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <table class="table">
-              <tr><th>Headers</th></tr>
-              <tr>
-                <td>No GMP Company</td>
-                <td>₹500 Cr</td>
-                <td>₹100 - 110</td>
-                <td>15-Nov-2025 - 17-Nov-2025</td>
-                <td>N/A</td>
-                <td>2.0x</td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
-
-      const $ = cheerio.load(mockHtml);
-      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue($);
+    it('should handle missing GMP data gracefully (GMP is not sourced from Chittorgarh anymore)', async () => {
+      mockApiResponse([apiRecord()]);
 
       const result = await scrapeChittorgarhIPOs();
 
@@ -181,153 +87,67 @@ describe('chittorgarh-scraper', () => {
       expect(result.ipos[0].gmpUpdatedAt).toBeUndefined();
     });
 
-    it('should set gmpUpdatedAt when GMP is present', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <table class="table">
-              <tr><th>Headers</th></tr>
-              <tr>
-                <td>Test Company</td>
-                <td>₹500 Cr</td>
-                <td>₹100 - 110</td>
-                <td>15-Nov-2025 - 17-Nov-2025</td>
-                <td>₹20</td>
-                <td>1.5x</td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
-
-      const $ = cheerio.load(mockHtml);
-      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue($);
-      vi.spyOn(validators, 'validateGMP').mockReturnValue(true);
-
-      const result = await scrapeChittorgarhIPOs();
-
-      expect(result.ipos).toHaveLength(1);
-      expect(result.ipos[0].gmp).toBe(20);
-      expect(result.ipos[0].gmpUpdatedAt).toBeDefined();
-      // Verify it's a valid ISO timestamp
-      expect(() => new Date(result.ipos[0].gmpUpdatedAt!)).not.toThrow();
-    });
-
-    it('should handle empty IPO table', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <table class="table">
-              <tr><th>Headers</th></tr>
-            </table>
-          </body>
-        </html>
-      `;
-
-      const $ = cheerio.load(mockHtml);
-      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue($);
+    it('should handle an empty report table', async () => {
+      mockApiResponse([]);
 
       const result = await scrapeChittorgarhIPOs();
 
       expect(result.ipos).toHaveLength(0);
+      expect(result.errors).toContain('No IPO data found');
     });
 
-    it('should skip rows with insufficient columns', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <table class="table">
-              <tr><th>Headers</th></tr>
-              <tr>
-                <td>Incomplete Row</td>
-                <td>₹500 Cr</td>
-                <!-- Missing columns -->
-              </tr>
-              <tr>
-                <td>Complete Company</td>
-                <td>₹1000 Cr</td>
-                <td>₹250 - 260</td>
-                <td>10-Oct-2025 - 12-Oct-2025</td>
-                <td>₹50</td>
-                <td>2.5x</td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
-
-      const $ = cheerio.load(mockHtml);
-      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue($);
-      vi.spyOn(validators, 'validateGMP').mockReturnValue(true);
+    it('should surface an API-level error without throwing', async () => {
+      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue({
+        msg: 0,
+        sSearchWhere: '',
+        reportTableData: undefined as any,
+        error: 'Invalid report parameters',
+      } as any);
 
       const result = await scrapeChittorgarhIPOs();
 
-      // Only complete row should be parsed
+      expect(result.ipos).toHaveLength(0);
+      expect(result.errors).toContain('Chittorgarh API error: Invalid report parameters');
+    });
+
+    it('should skip a record with a missing company name', async () => {
+      mockApiResponse([
+        apiRecord({ 'Company': '' }),
+        apiRecord({ 'Company': '<a href="/ipo/complete-company/2/">Complete Company</a>' }),
+      ]);
+
+      const result = await scrapeChittorgarhIPOs();
+
+      // Only the record with a company name should be parsed
       expect(result.ipos).toHaveLength(1);
       expect(result.ipos[0].companyName).toBe('Complete Company');
     });
 
-    it('should skip rows with missing required fields', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <table class="table">
-              <tr><th>Headers</th></tr>
-              <tr>
-                <td></td>
-                <td>₹500 Cr</td>
-                <td>₹100 - 110</td>
-                <td>15-Nov-2025 - 17-Nov-2025</td>
-                <td>₹20</td>
-                <td>1.5x</td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
-
-      const $ = cheerio.load(mockHtml);
-      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue($);
+    it('should skip a record with a missing open date', async () => {
+      mockApiResponse([
+        apiRecord({ 'Opening Date': '', '~Issue_Open_Date': '' }),
+      ]);
 
       const result = await scrapeChittorgarhIPOs();
 
-      // Row with missing company name should be skipped
       expect(result.ipos).toHaveLength(0);
     });
 
-    it('should determine status as LIVE for active IPOs', async () => {
+    it('should determine status as OPEN for a currently-trading IPO', async () => {
       const today = new Date();
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
       const tomorrow = new Date(today);
       tomorrow.setDate(tomorrow.getDate() + 1);
+      const iso = (d: Date) => d.toISOString();
 
-      const formatDate = (date: Date) => {
-        const options: Intl.DateTimeFormatOptions = { day: '2-digit', month: 'short', year: 'numeric' };
-        return date.toLocaleDateString('en-GB', options);
-      };
-
-      const mockHtml = `
-        <html>
-          <body>
-            <table class="table">
-              <tr><th>Headers</th></tr>
-              <tr>
-                <td>Live IPO</td>
-                <td>₹500 Cr</td>
-                <td>₹100 - 110</td>
-                <td>${formatDate(yesterday)} - ${formatDate(tomorrow)}</td>
-                <td>₹20</td>
-                <td>1.5x</td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
-
-      const $ = cheerio.load(mockHtml);
-      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue($);
-      vi.spyOn(validators, 'validateGMP').mockReturnValue(true);
+      mockApiResponse([
+        apiRecord({
+          'Company': '<a href="/ipo/live-ipo/3/">Live IPO</a>',
+          '~Issue_Open_Date': iso(yesterday),
+          '~IssueCloseDate': iso(tomorrow),
+        }),
+      ]);
 
       const result = await scrapeChittorgarhIPOs();
 
@@ -335,33 +155,33 @@ describe('chittorgarh-scraper', () => {
       expect(result.ipos[0].status).toBe('OPEN');
     });
 
-    it('should identify SME category when mentioned', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <table class="table">
-              <tr><th>Headers</th></tr>
-              <tr class="sme-ipo">
-                <td>SME Company</td>
-                <td>₹100 Cr</td>
-                <td>₹50 - 55</td>
-                <td>10-Oct-2025 - 12-Oct-2025</td>
-                <td>₹10</td>
-                <td>1.0x</td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
-
-      const $ = cheerio.load(mockHtml);
-      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue($);
-      vi.spyOn(validators, 'validateGMP').mockReturnValue(true);
+    it('should identify SME segment when "Listing at" mentions SME', async () => {
+      mockApiResponse([
+        apiRecord({
+          'Company': '<a href="/ipo/sme-company/4/">SME Company</a>',
+          'Listing at': 'NSE SME',
+        }),
+      ]);
 
       const result = await scrapeChittorgarhIPOs();
 
       expect(result.ipos).toHaveLength(1);
-      expect(result.ipos[0].category).toBe('SME');
+      expect(result.ipos[0].segment).toBe('SME');
+      expect(result.ipos[0].listingExchange).toBe('NSE');
+    });
+
+    it('should detect a business trust (InvIT) and null out the segment (T-287F2)', async () => {
+      mockApiResponse([
+        apiRecord({
+          'Company': '<a href="/ipo/example-invit/5/">Example InvIT</a>',
+        }),
+      ]);
+
+      const result = await scrapeChittorgarhIPOs();
+
+      expect(result.ipos).toHaveLength(1);
+      expect(result.ipos[0].segment).toBeNull();
+      expect(result.ipos[0].offeringType).toBe('INVITS');
     });
 
     it('should handle scraping errors gracefully', async () => {
@@ -375,96 +195,38 @@ describe('chittorgarh-scraper', () => {
       expect(result.errors).toContain('Scraper error: Network timeout');
     });
 
-    it('should handle parsing errors for individual rows', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <table class="table">
-              <tr><th>Headers</th></tr>
-              <tr>
-                <td>Valid Company</td>
-                <td>₹1000 Cr</td>
-                <td>₹250 - 260</td>
-                <td>10-Oct-2025 - 12-Oct-2025</td>
-                <td>₹50</td>
-                <td>2.5x</td>
-              </tr>
-              <tr>
-                <td>Invalid Company</td>
-                <!-- Missing critical columns -->
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
-
-      const $ = cheerio.load(mockHtml);
-      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue($);
-      vi.spyOn(validators, 'validateGMP').mockReturnValue(true);
+    it('should skip a record that throws while parsing but keep the others', async () => {
+      mockApiResponse([
+        apiRecord({ 'Company': '<a href="/ipo/valid-company/6/">Valid Company</a>' }),
+        // A truthy-but-non-string Company value passes extractTextFromAnchor()'s
+        // `if (!html) return ''` guard but then throws on `html.replace` (not a
+        // function on a number) - exercising the per-record try/catch in
+        // scrapeChittorgarhIPOs, unlike an empty/falsy Company which is just
+        // silently skipped (see the "missing company name" test above).
+        apiRecord({ 'Company': 12345 as any }),
+      ]);
 
       const result = await scrapeChittorgarhIPOs();
 
-      // Valid IPO should be parsed, invalid skipped
       expect(result.ipos).toHaveLength(1);
       expect(result.ipos[0].companyName).toBe('Valid Company');
+      expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should extract lot size when present', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <table class="table">
-              <tr><th>Headers</th></tr>
-              <tr>
-                <td>Test Company (Lot: 150)</td>
-                <td>₹500 Cr</td>
-                <td>₹100 - 110</td>
-                <td>15-Nov-2025 - 17-Nov-2025</td>
-                <td>₹20</td>
-                <td>1.5x</td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
-
-      const $ = cheerio.load(mockHtml);
-      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue($);
-      vi.spyOn(validators, 'validateGMP').mockReturnValue(true);
+    it('should default the close date to open date + 3 days when Closing Date is missing', async () => {
+      mockApiResponse([
+        apiRecord({
+          'Company': '<a href="/ipo/single-date-ipo/7/">Single Date IPO</a>',
+          'Closing Date': '',
+          '~IssueCloseDate': '',
+        }),
+      ]);
 
       const result = await scrapeChittorgarhIPOs();
 
       expect(result.ipos).toHaveLength(1);
-      expect(result.ipos[0].lotSize).toBe(150);
-    });
-
-    it('should handle single date (open = close)', async () => {
-      const mockHtml = `
-        <html>
-          <body>
-            <table class="table">
-              <tr><th>Headers</th></tr>
-              <tr>
-                <td>Single Date IPO</td>
-                <td>₹500 Cr</td>
-                <td>₹100 - 110</td>
-                <td>15-Nov-2025</td>
-                <td>₹20</td>
-                <td>1.5x</td>
-              </tr>
-            </table>
-          </body>
-        </html>
-      `;
-
-      const $ = cheerio.load(mockHtml);
-      vi.spyOn(scraperUtils, 'retryWithExponentialBackoff').mockResolvedValue($);
-      vi.spyOn(validators, 'validateGMP').mockReturnValue(true);
-
-      const result = await scrapeChittorgarhIPOs();
-
-      expect(result.ipos).toHaveLength(1);
-      expect(result.ipos[0].openDate).toBe(result.ipos[0].closeDate);
+      expect(result.ipos[0].openDate).toBe('2025-10-07');
+      expect(result.ipos[0].closeDate).toBe('2025-10-10'); // open + 3 days
     });
   });
 });

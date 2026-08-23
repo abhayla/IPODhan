@@ -525,12 +525,30 @@ export function validateIPOAlertsIPOData(data: unknown): {
 }
 
 /**
+ * Map the IPO Alerts API's `category` (MAINBOARD/SME/RIGHTS/NCD) onto the
+ * post-Story-11.8 segment + offeringType pair. MAINBOARD/SME are market
+ * segments (offeringType stays the IPO Alerts default of 'IPO'); RIGHTS/NCD
+ * are offering types with no market segment (segment is null, matching
+ * `ScrapedIPOSchema`'s "nullable for RIGHTS/InvITs/REITs/NCDs" contract).
+ */
+function segmentAndOfferingTypeFromAlertsCategory(
+  category: IPOAlertsAPIIPO['category']
+): { segment: 'MAINBOARD' | 'SME' | null; offeringType: 'IPO' | 'RIGHTS' | 'NCD' } {
+  if (category === 'RIGHTS' || category === 'NCD') {
+    return { segment: null, offeringType: category };
+  }
+  return { segment: category, offeringType: 'IPO' };
+}
+
+/**
  * Transform IPO Alerts API data to IPODhan ScrapedIPO format
  * Converts API underscore_case to camelCase and maps fields
  * @param apiData - Validated IPO Alerts API data
  * @returns Transformed ScrapedIPO data
  */
 export function transformIPOAlertsData(apiData: IPOAlertsAPIIPO): ScrapedIPO {
+  const { segment, offeringType } = segmentAndOfferingTypeFromAlertsCategory(apiData.category);
+
   return {
     companyName: sanitizeCompanyName(apiData.company_name),
     issueSize: apiData.issue_size,
@@ -539,7 +557,8 @@ export function transformIPOAlertsData(apiData: IPOAlertsAPIIPO): ScrapedIPO {
     openDate: apiData.open_date,
     closeDate: apiData.close_date,
     listingExchange: apiData.exchange,
-    category: apiData.category,
+    segment,
+    offeringType,
     sector: apiData.sector,
     status: apiData.status,
     lotSize: apiData.lot_size,
