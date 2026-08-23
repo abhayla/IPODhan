@@ -63,7 +63,7 @@ Five invariants matter for data correctness. Here is where each is enforced.
 | Invariant | Enforced in | Enforced by DB | Skipped by |
 |---|---|---|---|
 | **Canonical identity / dedup** (one company = one row) | `data-persister.ts:219–247` (3 tiers: normalized-name → slug → fuzzy) | `slug` UNIQUE only. **`isin` and `symbol` are plain indexes, not unique** (`schema.ts:142,143,210,211`) | all 35 non-repository write paths; and the two *other* copies of the lookup (§1.4) |
-| **Field protection / IPO lock** (admin edits stick) | `BaseScraperOrchestrator.ts:385,402` — **the caller, not the write** | no | **`upsertIPO` itself** — `grep -c 'protect\|lock' data-persister.ts` = **0**. Every script that calls `upsertIPO` directly believes it is protected and is not. |
+| **Field protection / IPO lock** (admin edits stick) | `BaseScraperOrchestrator.ts:385,402` — **the caller, not the write** | no | **`upsertIPO` itself** — `grep -cE 'isIPOLocked|filterProtectedFields|isFieldProtected|fieldProtectionService' data-persister.ts` = **0** (vs **5** in `BaseScraperOrchestrator.ts`). Every script that calls `upsertIPO` directly believes it is protected and is not. |
 | **Band / value sanity** (min ≤ max, no `0` issue size, no `lot_size = 1`) | `data-persister.ts:307–320` (create) and `sanitizeIpoWriteFields` (update) — two different implementations | **zero `CHECK` constraints in the entire 1,375-line schema** (`grep -c 'check(' = 0`) | all 35 non-repository paths |
 | **Lineage / provenance** (`field_sources`) | `data-persister.ts:587` (create, added T-292 P3-11) and `:480` (update) | no | all 35; and gated on `ENABLE_SOURCE_TRACKING` |
 | **Offering-type / segment consistency** (an SME board has no FPO; a takeover is not an IPO) | `data-persister.ts:356`, `:458`, `:554` — **three separate copies of the same guard** in one function | no | all 35 |
@@ -76,7 +76,20 @@ The hypothesis is confirmed, with one honest correction and one aggravation.
 
 **Confirmed.** `upsertIPO` (`scraper/src/services/data-persister.ts:199`) is documented in `.claude/rules/scraper-write-path.md` as the "single write entry point" that applies "IPO-level lock check, field-level protection filtering, validation pipeline, consolidation."
 
-It does not apply the first two. `data-persister.ts` contains **zero** occurrences of `protect`, `Protect`, `lock`, or `Locked`. The IPO-lock check and `filterProtectedFields` call live in `scraper/src/base/BaseScraperOrchestrator.ts:385` and `:402` — the *caller*. The documented gateway does not gate.
+It does not apply the first two. `data-persister.ts` contains **zero** references to any protection API:
+
+```
+PROT='isIPOLocked|filterProtectedFields|isFieldProtected|fieldProtectionService'
+
+$ grep -cE "$PROT" scraper/src/services/data-persister.ts
+0
+$ grep -cE "$PROT" scraper/src/base/BaseScraperOrchestrator.ts
+5
+```
+
+(A naive `grep -i 'protect\|lock'` on `data-persister.ts` returns 10 hits — all substring noise: `blocks`, `lock-step`, `block`, and `lockIn50PercentDate`, the anchor-investor lock-in date field, an unrelated domain concept. Use the API-name grep above to reproduce.)
+
+The IPO-lock check and `filterProtectedFields` call live in `scraper/src/base/BaseScraperOrchestrator.ts:385` and `:402` — the *caller*. The documented gateway does not gate.
 
 The practical consequence: these scripts and jobs call `upsertIPO` directly, several of them announcing in their own header comments that they route "via upsertIPO (write-path SSOT)" for safety —
 
