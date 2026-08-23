@@ -16,6 +16,14 @@
  * whether to render the allotment-check CTA — this job is what keeps that
  * flag current, not a live per-request fetch (a live fetch per page view
  * would be slow and itself a new failure mode).
+ *
+ * KNOWN LIMITATION (T-300F, fixing T-300C finding F5): an HTTP 200 alone
+ * cannot prove the page actually loaded — a client-rendered SPA can return
+ * 200 with the same thin shell for every path, including a removed one (see
+ * `MIN_EXPECTED_RESPONSE_BYTES` / `KNOWN_THIN_RESPONSE_REGISTRARS` below).
+ * This job logs a distinct `thin-response` warning when that happens so a
+ * human can investigate, but does not fail the health check on it alone —
+ * a size-based false positive would page the owner spuriously.
  */
 import { db, getRedisClient } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
@@ -27,6 +35,35 @@ import { CacheInvalidator } from '../cache-invalidator.js';
 const FETCH_TIMEOUT_MS = 12_000;
 const USER_AGENT = 'Mozilla/5.0 (compatible; IPODhan-RegistrarHealthCheck/1.0)';
 
+/**
+ * T-300F (fixing T-300C finding F5): an HTTP 200 alone proves nothing for a
+ * client-rendered SPA — the checker confirmed maashitla.com returns the same
+ * ~499-byte shell with status 200 for ANY path, including a deliberately
+ * garbage control route (`/this-route-does-not-exist-t300c`). A typo'd or
+ * silently-removed allotment page on a site like this would still pass this
+ * job's status check. There is no generic, low-cost fix (rendering every
+ * registrar page headlessly to inspect real content is out of budget for a
+ * daily cron job) — this heuristic makes the blind spot VISIBLE instead of
+ * silent: a response smaller than this threshold is logged as a distinct
+ * `thin-response` warning (see `KNOWN_THIN_RESPONSE_REGISTRARS` below) so a
+ * human can investigate, without flipping `healthy` on a false signal (many
+ * legitimate small confirmation pages would otherwise page the owner
+ * spuriously).
+ */
+const MIN_EXPECTED_RESPONSE_BYTES = 600;
+
+/**
+ * Registrars known (as of T-300F) to be client-rendered SPAs whose server
+ * response size/status cannot distinguish a live allotment page from a
+ * removed/404'd one — see the `MIN_EXPECTED_RESPONSE_BYTES` comment above.
+ * `runRegistrarHealthCheck` still marks these healthy on HTTP 200 (the same
+ * blind spot the original round-5 check shipped with), but logs the
+ * thin-response warning without the "unexpected" framing for names already
+ * on this list, since it is an already-documented, not a newly-discovered,
+ * limitation.
+ */
+const KNOWN_THIN_RESPONSE_REGISTRARS = new Set(['Maashitla Securities Private Limited']);
+
 export interface RegistrarHealthCheckResult {
   checked: number;
   healthy: number;
@@ -34,7 +71,13 @@ export interface RegistrarHealthCheckResult {
   stillDead: string[];
 }
 
-async function isUrlHealthy(url: string): Promise<boolean> {
+interface UrlHealthCheckResult {
+  healthy: boolean;
+  /** Response body byte size, when the server reports Content-Length. Null when unknown (chunked transfer, HEAD not supported, etc). */
+  contentLength: number | null;
+}
+
+async function isUrlHealthy(url: string): Promise<UrlHealthCheckResult> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
   try {
@@ -45,9 +88,11 @@ async function isUrlHealthy(url: string): Promise<boolean> {
     if (!res.ok || res.status === 405 || res.status === 501) {
       res = await fetch(url, { method: 'GET', redirect: 'follow', signal: controller.signal, headers: { 'User-Agent': USER_AGENT } });
     }
-    return res.ok;
+    const contentLengthHeader = res.headers.get('content-length');
+    const contentLength = contentLengthHeader !== null ? Number(contentLengthHeader) : null;
+    return { healthy: res.ok, contentLength: Number.isFinite(contentLength) ? contentLength : null };
   } catch {
-    return false;
+    return { healthy: false, contentLength: null };
   } finally {
     clearTimeout(timer);
   }
@@ -82,7 +127,22 @@ export async function runRegistrarHealthCheck(): Promise<RegistrarHealthCheckRes
     const url = r.allotmentCheckUrl!;
     let healthy: boolean;
     try {
-      healthy = await isUrlHealthy(url);
+      const check = await isUrlHealthy(url);
+      healthy = check.healthy;
+      if (check.healthy && check.contentLength !== null && check.contentLength < MIN_EXPECTED_RESPONSE_BYTES) {
+        logger.warn(
+          {
+            registrarId: r.id,
+            name: r.name,
+            url,
+            contentLength: check.contentLength,
+            known: KNOWN_THIN_RESPONSE_REGISTRARS.has(r.name),
+          },
+          KNOWN_THIN_RESPONSE_REGISTRARS.has(r.name)
+            ? '[registrar-health-check] thin response (known SPA-shell limitation, see MIN_EXPECTED_RESPONSE_BYTES comment) — status alone cannot confirm the page loaded'
+            : '[registrar-health-check] thin response (new) — status alone cannot confirm the page loaded; investigate whether this URL is a client-rendered SPA'
+        );
+      }
     } catch (error) {
       // isUrlHealthy already catches its own errors; this is a last-resort
       // guard so one unexpected throw (e.g. DNS module crash) can't take

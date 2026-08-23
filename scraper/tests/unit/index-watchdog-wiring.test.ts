@@ -92,6 +92,15 @@ vi.mock('../../src/scrapers/listing-performance-updater.js', () => ({
 vi.mock('../../src/scheduler/listing-performance-cadence.js', () => ({
   shouldRunListingPerformanceUpdate: shouldRunListingPerformanceUpdateMock,
 }));
+vi.mock('../../src/scheduler/jobs/registrar-health-check-job.js', () => ({
+  runRegistrarHealthCheck: vi.fn().mockResolvedValue({ checked: 0, healthy: 0, newlyDead: [], stillDead: [] }),
+}));
+vi.mock('../../src/scheduler/registrar-health-check-cadence.js', () => ({
+  shouldRunRegistrarHealthCheck: vi.fn().mockReturnValue(false),
+}));
+vi.mock('../../src/services/registrar-reresolve.js', () => ({
+  reresolveRegistrarIds: vi.fn().mockResolvedValue({ candidates: 0, matched: 0, written: 0, unmatchedNames: [] }),
+}));
 vi.mock('../../src/services/owner-notify.js', () => ({
   heartbeat: heartbeatMock,
   flushOwnerNotify: flushOwnerNotifyMock,

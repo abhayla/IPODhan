@@ -96,4 +96,20 @@ describe('runRegistrarHealthCheck', () => {
 
     await expect(runRegistrarHealthCheck()).resolves.toBeDefined();
   });
+
+  it('T-300F (fixing F5): still marks a thin HTTP-200 response healthy, not unhealthy on size alone', async () => {
+    // A client-rendered SPA can return 200 with a tiny shell for ANY path —
+    // status-only health checks cannot distinguish this from a genuinely
+    // live page. Flipping `healthy: false` purely on response size would be
+    // a false positive (many legitimate confirmation pages are small too).
+    global.fetch = vi.fn(async () =>
+      new Response('<html>shell</html>', { status: 200, headers: { 'content-length': '19' } })
+    ) as unknown as typeof fetch;
+
+    const result = await runRegistrarHealthCheck();
+
+    expect(result.checked).toBe(3);
+    expect(result.healthy).toBe(3);
+    expect(result.newlyDead).toEqual([]);
+  });
 });

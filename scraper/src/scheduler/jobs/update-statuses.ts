@@ -15,30 +15,6 @@ import logger from '../../utils/logger.js';
 import { updateIPOStatuses, getOutdatedStatusCount } from '../../../../web/lib/services/status-updater-service.js';
 import { getDb } from '../../../../web/lib/db/index.js';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
-import { reresolveRegistrarIds } from '../../services/registrar-reresolve.js';
-
-/**
- * P2-4 (T-300, round-5): piggyback the registrar_id re-resolve pass on this
- * hourly job rather than adding a new cron entry — `registrar_id` is never
- * written at scrape time (see registrar-reresolve.ts header), so new IPOs
- * created since the last pass need periodic retrying as the registrars
- * table grows. Best-effort / non-fatal per `non-fatal-side-effects.md`: its
- * own try/catch, logs `(non-fatal)`, and NEVER affects this job's own
- * success/failure or `scraper_logs` outcome.
- */
-async function reresolveRegistrarIdsNonFatal(): Promise<void> {
-  try {
-    const result = await reresolveRegistrarIds({ dryRun: false });
-    if (result.written > 0) {
-      logger.info({ ...result }, '[status-updater] piggybacked registrar_id re-resolve');
-    }
-  } catch (error) {
-    logger.warn(
-      { error: error instanceof Error ? error.message : String(error) },
-      'registrar_id re-resolve piggyback failed (non-fatal)'
-    );
-  }
-}
 
 /**
  * Run status updater job
@@ -92,7 +68,11 @@ export async function runStatusUpdater(): Promise<{
       duration
     }, 'Status updater job completed successfully');
 
-    await reresolveRegistrarIdsNonFatal();
+    // T-300F: the registrar_id re-resolve piggyback moved to
+    // `triggerRegistrarReresolve()` in `scraper/src/index.ts` — the one-shot
+    // `--source=all` cycle prod actually runs. This job (`runStatusUpdater`)
+    // only exists inside `SchedulerService`, which prod never imports (same
+    // T-179/T-176 dead path); piggybacking here would never execute.
 
     return {
       success: true,
