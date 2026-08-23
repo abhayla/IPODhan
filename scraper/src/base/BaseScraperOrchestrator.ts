@@ -361,8 +361,24 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     const slug = generateSlug(validatedIPO.companyName);
     processResult.slug = slug;
 
-    // Step 2: Check if IPO already exists (for insert vs update tracking)
-    const existingIPO = await this.ipoRepository.findBySlug(slug);
+    // Step 2: Check if IPO already exists (for insert vs update tracking).
+    // MUST resolve via the SAME two-step lookup the write path uses further
+    // down (normalized-name first, slug fallback — see
+    // data-consolidation-orchestrator.ts consolidatedUpsertIPO() and
+    // data-persister.ts upsertIPO()). A slug-only lookup here can diverge from
+    // the write path whenever the raw scraped title carries content the slug
+    // generator does not strip but the name normalizer does (e.g. a trailing
+    // parenthetical descriptor, confirmed for Chittorgarh's "Citius Transnet
+    // Investment Trust (Citius Transnet InvIT IPO)"). When it diverges, this
+    // lookup returns null, `ipoId` is undefined, and the protection checks
+    // below (Step 3 IPO lock + Step 4 field filtering) are skipped entirely —
+    // while the write moments later resolves the SAME company to its existing
+    // row via normalized-name matching and applies UNFILTERED data to it,
+    // silently bypassing manual field protection (T-287F3).
+    const normalizedName = normalizeCompanyNameForMatching(validatedIPO.companyName);
+    const existingIPO =
+      (normalizedName ? await this.ipoRepository.findByNormalizedName(normalizedName) : null) ??
+      (await this.ipoRepository.findBySlug(slug));
     const ipoId = existingIPO?.id;
 
     // Step 3: PROTECTION CHECK - IPO-level lock
