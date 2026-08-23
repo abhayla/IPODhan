@@ -82,6 +82,10 @@ export function SubscriptionDashboard({
   // Determine loading state
   const isLoading = false; // Could be passed as prop in future
 
+  // P3-15 (T-302): the dashboard kept "real-time" framing even after the IPO
+  // had CLOSED/LISTED — honest only while bidding is genuinely ongoing.
+  const isStillBidding = status !== 'CLOSED' && status !== 'LISTED';
+
   // View toggles
   const viewOptions = [
     { value: 'all' as const, label: 'All Views', icon: BarChart },
@@ -104,7 +108,7 @@ export function SubscriptionDashboard({
             <div>
               <h3 className="text-lg font-semibold">Subscription Dashboard</h3>
               <p className="text-sm text-muted-foreground">
-                Real-time tracking for {companyName}
+                {isStillBidding ? 'Real-time tracking' : 'Final subscription data'} for {companyName}
               </p>
             </div>
           </div>
@@ -172,6 +176,7 @@ export function SubscriptionDashboard({
                   data={timeSeriesData}
                   stats={stats}
                   closeDate={closeDate}
+                  status={status}
                 />
               </ChartContainer>
             )}

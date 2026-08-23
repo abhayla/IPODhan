@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { differenceInSeconds, format, parseISO, set, isAfter, isBefore } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Clock, AlertTriangle, CheckCircle } from 'lucide-react';
@@ -12,87 +12,125 @@ interface UPIDeadlineTimerProps {
   status?: 'UPCOMING' | 'OPEN' | 'CLOSED';
 }
 
+type UrgencyLevel = 'normal' | 'warning' | 'critical' | 'expired';
+
+interface TimerState {
+  timeLeft: number;
+  urgencyLevel: UrgencyLevel;
+}
+
+// India does not observe DST — IST is a fixed UTC+5:30 offset year-round.
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+
+/**
+ * Parse the UPI cutoff time. Handles "5:00 PM", "17:00", "5 PM" formats.
+ * Defaults to 5:00 PM (the standard UPI mandate cutoff) if parsing fails.
+ */
+function parseUPITime(timeStr: string): { hours: number; minutes: number } {
+  const cleanTime = timeStr.trim().toUpperCase();
+
+  // Check if it's 24-hour format
+  if (cleanTime.match(/^\d{1,2}:\d{2}$/)) {
+    const [hours, minutes] = cleanTime.split(':').map(Number);
+    return { hours, minutes };
+  }
+
+  // Handle 12-hour format
+  const match = cleanTime.match(/^(\d{1,2}):?(\d{0,2})\s*(AM|PM)$/);
+  if (match) {
+    let hours = parseInt(match[1]);
+    const minutes = parseInt(match[2] || '0');
+    const isPM = match[3] === 'PM';
+
+    if (isPM && hours !== 12) {
+      hours += 12;
+    } else if (!isPM && hours === 12) {
+      hours = 0;
+    }
+
+    return { hours, minutes };
+  }
+
+  // Default to 5:00 PM if parsing fails
+  return { hours: 17, minutes: 0 };
+}
+
+/**
+ * Compute the UPI cutoff instant as an absolute UTC timestamp (ms since epoch),
+ * anchored to India Standard Time regardless of the viewer's local timezone.
+ *
+ * P2-9: the previous implementation built the cutoff via date-fns `set()` on a
+ * `parseISO`'d Date, which applies the cutoff hour/minute in the BROWSER's local
+ * timezone — a viewer outside IST would get the wrong deadline (e.g. "5:00 PM"
+ * local instead of 5:00 PM IST). Computing the offset explicitly makes the
+ * cutoff timezone-correct for every viewer.
+ */
+function getCutoffTimestampMs(closeDate: string, upiCutoffTime: string): number {
+  const { hours, minutes } = parseUPITime(upiCutoffTime);
+  const [year, month, day] = closeDate.slice(0, 10).split('-').map(Number);
+  return Date.UTC(year, month - 1, day, hours, minutes, 0) - IST_OFFSET_MS;
+}
+
+/**
+ * Pure, side-effect-free computation of the timer state at "now". Callable
+ * during the initial render (server AND client, via a lazy useState
+ * initializer) so the FIRST paint already reflects reality instead of a
+ * client-only useEffect overwriting an incorrect default after hydration.
+ *
+ * P2-9: the previous implementation initialized timeLeft to 0 and only
+ * computed the real value inside useEffect (client-only) — every server render
+ * (and the pre-hydration client render) showed "UPI bidding closed" even for
+ * IPOs that were genuinely OPEN with time remaining.
+ */
+function computeTimerState(closeDate: string, upiCutoffTime: string, status: UPIDeadlineTimerProps['status']): TimerState {
+  if (status !== 'OPEN') {
+    return { timeLeft: 0, urgencyLevel: 'normal' };
+  }
+
+  const cutoffMs = getCutoffTimestampMs(closeDate, upiCutoffTime);
+  const nowMs = Date.now();
+
+  if (nowMs >= cutoffMs) {
+    return { timeLeft: 0, urgencyLevel: 'expired' };
+  }
+
+  const seconds = Math.max(0, Math.floor((cutoffMs - nowMs) / 1000));
+  const hoursLeft = seconds / 3600;
+
+  let urgencyLevel: UrgencyLevel;
+  if (seconds === 0) {
+    urgencyLevel = 'expired';
+  } else if (hoursLeft <= 2) {
+    urgencyLevel = 'critical';
+  } else if (hoursLeft <= 24) {
+    urgencyLevel = 'warning';
+  } else {
+    urgencyLevel = 'normal';
+  }
+
+  return { timeLeft: seconds, urgencyLevel };
+}
+
 export function UPIDeadlineTimer({
   closeDate,
   upiCutoffTime = '5:00 PM',
   status = 'OPEN'
 }: UPIDeadlineTimerProps) {
-  const [timeLeft, setTimeLeft] = useState<number>(0);
-  const [urgencyLevel, setUrgencyLevel] = useState<'normal' | 'warning' | 'critical' | 'expired'>('normal');
+  const [{ timeLeft, urgencyLevel }, setTimerState] = useState<TimerState>(() =>
+    computeTimerState(closeDate, upiCutoffTime, status)
+  );
 
   useEffect(() => {
     if (status !== 'OPEN') {
       return;
     }
 
-    // Parse the UPI cutoff time
-    const parseUPITime = (timeStr: string): { hours: number; minutes: number } => {
-      // Handle formats like "5:00 PM", "17:00", "5 PM"
-      const cleanTime = timeStr.trim().toUpperCase();
+    const tick = () => setTimerState(computeTimerState(closeDate, upiCutoffTime, status));
 
-      // Check if it's 24-hour format
-      if (cleanTime.match(/^\d{1,2}:\d{2}$/)) {
-        const [hours, minutes] = cleanTime.split(':').map(Number);
-        return { hours, minutes };
-      }
-
-      // Handle 12-hour format
-      const match = cleanTime.match(/^(\d{1,2}):?(\d{0,2})\s*(AM|PM)$/);
-      if (match) {
-        let hours = parseInt(match[1]);
-        const minutes = parseInt(match[2] || '0');
-        const isPM = match[3] === 'PM';
-
-        if (isPM && hours !== 12) {
-          hours += 12;
-        } else if (!isPM && hours === 12) {
-          hours = 0;
-        }
-
-        return { hours, minutes };
-      }
-
-      // Default to 5:00 PM if parsing fails
-      return { hours: 17, minutes: 0 };
-    };
-
-    const { hours, minutes } = parseUPITime(upiCutoffTime);
-
-    // Create the cutoff datetime
-    const closeDateObj = parseISO(closeDate);
-    const cutoffDateTime = set(closeDateObj, { hours, minutes, seconds: 0 });
-
-    const calculateTimeLeft = () => {
-      const now = new Date();
-
-      // Check if IPO has already closed
-      if (isAfter(now, cutoffDateTime)) {
-        setTimeLeft(0);
-        setUrgencyLevel('expired');
-        return;
-      }
-
-      const seconds = differenceInSeconds(cutoffDateTime, now);
-      setTimeLeft(Math.max(0, seconds));
-
-      // Set urgency level based on time remaining
-      const hoursLeft = seconds / 3600;
-      if (seconds === 0) {
-        setUrgencyLevel('expired');
-      } else if (hoursLeft <= 2) {
-        setUrgencyLevel('critical');
-      } else if (hoursLeft <= 24) {
-        setUrgencyLevel('warning');
-      } else {
-        setUrgencyLevel('normal');
-      }
-    };
-
-    // Calculate immediately
-    calculateTimeLeft();
-
-    // Update every second
-    const timer = setInterval(calculateTimeLeft, 1000);
+    // Recompute immediately in case time passed between the lazy initial
+    // state and mount (e.g. a slow hydration).
+    tick();
+    const timer = setInterval(tick, 1000);
 
     return () => clearInterval(timer);
   }, [closeDate, upiCutoffTime, status]);
@@ -167,7 +205,7 @@ export function UPIDeadlineTimer({
     } else if (urgencyLevel === 'warning') {
       return 'Warning: Less than 24 hours remaining. Ensure your UPI mandate is approved before the deadline.';
     } else {
-      return `UPI mandate must be approved by ${upiCutoffTime} on the closing day to complete your application.`;
+      return `UPI mandate must be approved by ${upiCutoffTime} IST on the closing day to complete your application.`;
     }
   };
 
@@ -199,7 +237,7 @@ export function UPIDeadlineTimer({
         </Badge>
         {timeLeft > 0 && (
           <p className="text-xs text-gray-500 mt-1">
-            Closes: {format(parseISO(closeDate), 'MMM dd, yyyy')} at {upiCutoffTime}
+            Closes: {format(parseISO(closeDate), 'MMM dd, yyyy')} at {upiCutoffTime} IST
           </p>
         )}
       </div>
@@ -230,70 +268,19 @@ export function UPIDeadlineTimerInline({
   upiCutoffTime = '5:00 PM',
   status = 'OPEN'
 }: UPIDeadlineTimerProps) {
-  const [timeLeft, setTimeLeft] = useState<number>(0);
-  const [urgencyLevel, setUrgencyLevel] = useState<'normal' | 'warning' | 'critical' | 'expired'>('normal');
+  const [{ timeLeft, urgencyLevel }, setTimerState] = useState<TimerState>(() =>
+    computeTimerState(closeDate, upiCutoffTime, status)
+  );
 
   useEffect(() => {
     if (status !== 'OPEN') {
       return;
     }
 
-    const parseUPITime = (timeStr: string): { hours: number; minutes: number } => {
-      const cleanTime = timeStr.trim().toUpperCase();
+    const tick = () => setTimerState(computeTimerState(closeDate, upiCutoffTime, status));
 
-      if (cleanTime.match(/^\d{1,2}:\d{2}$/)) {
-        const [hours, minutes] = cleanTime.split(':').map(Number);
-        return { hours, minutes };
-      }
-
-      const match = cleanTime.match(/^(\d{1,2}):?(\d{0,2})\s*(AM|PM)$/);
-      if (match) {
-        let hours = parseInt(match[1]);
-        const minutes = parseInt(match[2] || '0');
-        const isPM = match[3] === 'PM';
-
-        if (isPM && hours !== 12) {
-          hours += 12;
-        } else if (!isPM && hours === 12) {
-          hours = 0;
-        }
-
-        return { hours, minutes };
-      }
-
-      return { hours: 17, minutes: 0 };
-    };
-
-    const { hours, minutes } = parseUPITime(upiCutoffTime);
-    const closeDateObj = parseISO(closeDate);
-    const cutoffDateTime = set(closeDateObj, { hours, minutes, seconds: 0 });
-
-    const calculateTimeLeft = () => {
-      const now = new Date();
-
-      if (isAfter(now, cutoffDateTime)) {
-        setTimeLeft(0);
-        setUrgencyLevel('expired');
-        return;
-      }
-
-      const seconds = differenceInSeconds(cutoffDateTime, now);
-      setTimeLeft(Math.max(0, seconds));
-
-      const hoursLeft = seconds / 3600;
-      if (seconds === 0) {
-        setUrgencyLevel('expired');
-      } else if (hoursLeft <= 2) {
-        setUrgencyLevel('critical');
-      } else if (hoursLeft <= 24) {
-        setUrgencyLevel('warning');
-      } else {
-        setUrgencyLevel('normal');
-      }
-    };
-
-    calculateTimeLeft();
-    const timer = setInterval(calculateTimeLeft, 1000);
+    tick();
+    const timer = setInterval(tick, 1000);
 
     return () => clearInterval(timer);
   }, [closeDate, upiCutoffTime, status]);

@@ -163,6 +163,34 @@ describe('MainboardPerformanceTrackerClient', () => {
     });
   });
 
+  // P3-13 (T-302): the page now server-renders initial rows. The client
+  // component must show them on the FIRST render (no loading skeleton, no
+  // client fetch) instead of discarding them and re-fetching.
+  it('renders server-provided initialData immediately without a client fetch', () => {
+    render(
+      <MainboardPerformanceTrackerClient
+        initialYear="2026"
+        initialData={[
+          {
+            id: 'ssr-1',
+            companyName: 'Server Rendered Co Ltd',
+            slug: 'server-rendered-co-ltd',
+            listedOn: '2026-01-10',
+            issuePrice: 100,
+            listingDayClose: 110,
+            listingDayGain: 10,
+            currentPrice: 120,
+            profitLoss: 20,
+          },
+        ]}
+      />
+    );
+
+    // Present on the FIRST synchronous render — no waitFor, no fetch.
+    expect(screen.getByText('Server Rendered Co Ltd')).toBeInTheDocument();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
   it('never contains a mock/demo-data generator function in its module source', () => {
     // Guards against reintroducing generateMockPerformanceData or an equivalent.
     const filePath = path.resolve(

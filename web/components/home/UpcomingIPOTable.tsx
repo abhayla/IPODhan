@@ -58,18 +58,25 @@ function formatDate(dateString: string | null): string {
 }
 
 /**
- * Get status text based on segment
+ * Get status text from the IPO's actual approval state, not just its segment.
  *
  * Logic:
- * - MAINBOARD → "Filed with SEBI"
- * - SME → "Filed with Exchange"
- * - null → "N/A" (for RIGHTS/InvITs/REITs offerings)
+ * - segment === null → "N/A" (RIGHTS/InvITs/REITs offerings)
+ * - a firm price band is set (priceMin AND issuePrice both present) → the IPO has
+ *   cleared SEBI/exchange review and is approved to open, so it is NOT still at
+ *   "filed" (DRHP) stage — e.g. an IPO opening tomorrow with an approved band
+ *   (P2-6: this table previously mislabeled such rows as "Filed with SEBI/Exchange")
+ * - otherwise → "Filed with SEBI" (MAINBOARD) or "Filed with Exchange" (SME),
+ *   the genuine DRHP-filed stage
  *
  * AC#1: Components render correctly with proper data
  */
-function getStatusText(segment: string | null): string {
-  if (!segment) return 'N/A';
-  return segment === 'MAINBOARD' ? 'Filed with SEBI' : 'Filed with Exchange';
+function getStatusText(ipo: Pick<HomeIPOTableData, 'segment' | 'priceMin' | 'issuePrice'>): string {
+  if (!ipo.segment) return 'N/A';
+  const hasPriceBand =
+    ipo.priceMin != null && ipo.priceMin > 0 && ipo.issuePrice != null && ipo.issuePrice > 0;
+  if (hasPriceBand) return 'Price Band Announced';
+  return ipo.segment === 'MAINBOARD' ? 'Filed with SEBI' : 'Filed with Exchange';
 }
 
 // ==================== COMPONENT ====================
@@ -161,7 +168,7 @@ export function UpcomingIPOTable({
                   </Link>
                 </TableCell>
                 <TableCell className="text-muted-foreground text-sm md:text-base">
-                  {getStatusText(ipo.segment)}
+                  {getStatusText(ipo)}
                 </TableCell>
                 <TableCell className="text-sm md:text-base whitespace-nowrap">
                   {formatDate(ipo.openDate)}

@@ -121,6 +121,21 @@ export default function MarketHolidaysPage() {
     });
   }, [holidays]);
 
+  /**
+   * "Last updated" reflects the most recent row update in the fetched data —
+   * never the render/request time, which would falsely imply the data just changed.
+   */
+  const lastUpdatedAt = React.useMemo(() => {
+    if (holidays.length === 0) return null;
+    return holidays.reduce<Date | null>((latest, holiday) => {
+      const updatedAt = (holiday as MarketHoliday & { updatedAt?: string | Date }).updatedAt;
+      if (!updatedAt) return latest;
+      const updatedDate = new Date(updatedAt);
+      if (isNaN(updatedDate.getTime())) return latest;
+      return !latest || updatedDate.getTime() > latest.getTime() ? updatedDate : latest;
+    }, null);
+  }, [holidays]);
+
   return (
     <div className="container mx-auto px-4 py-6 max-w-7xl">
       {/* Breadcrumbs */}
@@ -232,13 +247,16 @@ export default function MarketHolidaysPage() {
                 </a>
               </li>
             </ul>
-            <p className="mt-2 text-xs text-muted-foreground">
-              Last updated: {new Date().toLocaleDateString('en-IN', {
-                day: '2-digit',
-                month: 'short',
-                year: 'numeric'
-              })}
-            </p>
+            {lastUpdatedAt && (
+              <p className="mt-2 text-xs text-muted-foreground">
+                Last updated: {lastUpdatedAt.toLocaleDateString('en-IN', {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric',
+                  timeZone: 'Asia/Kolkata',
+                })}
+              </p>
+            )}
           </AlertDescription>
         </Alert>
       </div>
