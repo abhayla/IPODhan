@@ -134,6 +134,7 @@ export class ChittorgarhScraperOrchestratorV2 extends BaseScraperOrchestrator<an
         error: {
           message: pipelineResult.reason,
           issues: pipelineResult.validationResult.errors,
+          expected: pipelineResult.expectedRejection,
         },
       };
     }

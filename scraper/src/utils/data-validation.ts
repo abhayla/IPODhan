@@ -26,6 +26,15 @@ export interface ValidationRule {
   rule: string;
   severity: 'ERROR' | 'WARNING' | 'INFO';
   message: string;
+  /**
+   * P2-2 (T-287): true when this error is a rejection the guard is SUPPOSED
+   * to produce (e.g. the Non-IPO Shape Guard correctly refusing to write a
+   * known InvIT/REIT/scrip-code row as offering_type='IPO') rather than a
+   * genuine data-quality bug. Callers use this to keep expected rejections
+   * out of run-level failure counts and error-level logs, while still
+   * refusing to persist the row.
+   */
+  expected?: boolean;
 }
 
 export interface ValidationResult {
@@ -285,6 +294,7 @@ export function validateIPOData(
           rule: 'NON_IPO_WINDOW_TOO_LONG',
           severity: 'ERROR',
           message: `offeringType='IPO' with a >10-day subscription window and no lot size / issue size is not a genuine equity IPO (#140/#141: ADVENZYMES/LIGHT OF LIFE TRUST shape). Reclassify to the correct offering type or drop the row.`,
+          expected: true,
         });
       }
 
@@ -296,6 +306,7 @@ export function validateIPOData(
           rule: 'NON_IPO_SCRIP_CODE_NAME',
           severity: 'ERROR',
           message: `companyName "${name}" is a bare exchange scrip code (all-caps token, no legal suffix, no space), not a company name — offering_type='IPO' rejected (#140: SIS/ADVENZYMES shape).`,
+          expected: true,
         });
       }
 
@@ -342,6 +353,7 @@ export function validateIPOData(
           rule: 'NON_IPO_TRUST_SHAPE',
           severity: 'ERROR',
           message: `companyName "${name}" ${endsWithTrustSuffix ? 'ends in the bare "Trust" legal-entity-type token' : 'contains the "Investment Trust" legal-entity-type token'} (InvIT/REIT business-trust structure) but was not reclassified by Rule 2's invit/reit substring check — offering_type='IPO' rejected (P2-2: Cube Highways Trust shape; T-277F2: Property Share Investment Trust shape). Reclassify to INVITS/REITS or drop the row.`,
+          expected: true,
         });
       } else if (containsTrustToken) {
         warnings.push({
@@ -364,6 +376,63 @@ export function validateIPOData(
     info,
     autoFixes: Object.keys(autoFixes).length > 0 ? autoFixes : undefined,
   };
+}
+
+/**
+ * P2-2 (T-287): true when a validation result is INVALID solely because of
+ * errors the guard is designed to produce (`ValidationRule.expected === true`
+ * — e.g. Rule 8's Non-IPO Shape Guard correctly refusing an InvIT/REIT row).
+ * Distinguishes "the guard did its job" from a genuine data-quality bug so
+ * callers can keep expected rejections out of run-level failure counts and
+ * error-level logs while still refusing to persist the row.
+ */
+export function isExpectedRejection(result: ValidationResult): boolean {
+  return !result.valid && result.errors.length > 0 && result.errors.every((e) => e.expected === true);
+}
+
+/**
+ * Structural, name-only detection of a business-trust (InvIT/REIT) company.
+ * T-287F2: extracted so a scraper with ONLY a company-name signal (no
+ * symbol/bseType — Chittorgarh) can decide "this is a business trust, not an
+ * equity mainboard/SME issue" BEFORE it ever writes segment/offeringType,
+ * rather than relying on a downstream validation pass to catch it after the
+ * wrong value already landed. Mirrors the structural regex used by the
+ * NON_IPO_TRUST_SHAPE guard below: a keyword substring ("invit"/"reit") OR
+ * the terminal legal-entity-type token "Trust"/"Investment Trust" — not a
+ * bare mid-name "Trust" (see NON_IPO_TRUST_SHAPE comment for the false-
+ * positive trap this avoids, e.g. "Trust Fintech Limited").
+ */
+export function isBusinessTrustCompanyName(companyName: string | null | undefined): boolean {
+  const name = (companyName || '').trim();
+  if (!name) return false;
+  const lower = name.toLowerCase();
+  if (lower.includes('invit') || lower.includes('infrastructure investment trust')) return true;
+  if (lower.includes('reit') || lower.includes('real estate investment trust')) return true;
+  const nameSansInstrumentLabel = name.replace(/\s+(IPO|FPO)$/i, '').trim();
+  if (/\btrust$/i.test(nameSansInstrumentLabel)) return true;
+  if (/\binvestment\s+trust\b/i.test(nameSansInstrumentLabel)) return true;
+  return false;
+}
+
+/**
+ * Map a business-trust company name to its offering_type enum value.
+ * Returns null when the name is not a business-trust shape at all.
+ * When the shape is structural (bare "...Trust"/"Investment Trust") but no
+ * REIT/InvIT keyword is present, defaults to 'INVITS' — InvITs are the more
+ * common bare-"Trust"-named vehicle in this dataset (Cube Highways Trust,
+ * Raajmarg Infra Investment Trust) and a wrong INVITS/REITS split is far
+ * cheaper to correct later than a MAINBOARD segment silently re-applied to a
+ * trust every scrape cycle.
+ */
+export function offeringTypeFromBusinessTrustName(
+  companyName: string | null | undefined
+): 'INVITS' | 'REITS' | null {
+  const name = (companyName || '').trim();
+  const lower = name.toLowerCase();
+  if (lower.includes('reit') || lower.includes('real estate investment trust')) return 'REITS';
+  if (lower.includes('invit') || lower.includes('infrastructure investment trust')) return 'INVITS';
+  if (isBusinessTrustCompanyName(name)) return 'INVITS';
+  return null;
 }
 
 /**

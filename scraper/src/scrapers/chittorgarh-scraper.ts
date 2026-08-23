@@ -11,6 +11,7 @@
 import logger from '../utils/logger.js';
 import { sanitizeText, retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import type { ChittorgarhIPO } from '../utils/validators.js';
+import { offeringTypeFromBusinessTrustName } from '../utils/data-validation.js';
 
 const CHITTORGARH_API_BASE = 'https://webnodejs.chittorgarh.com/cloud/report/data-read';
 const REPORT_ID = '82'; // IPO list report ID
@@ -360,7 +361,21 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
         // Extract lead manager (optional)
         const leadManager = extractTextFromAnchor(record['Lead Manager']);
 
-        // Story 11.8: Default to IPO offering type for Chittorgarh data
+        // T-287F2: a business trust (InvIT/REIT) does not sit on the equity
+        // mainboard/SME axis at all (see schema.ts: "segment ... nullable for
+        // RIGHTS/InvITs/REITs"), so `listingInfo.segment` (which only ever
+        // resolves to MAINBOARD or SME from the "Listing at" text) is WRONG
+        // for these rows -- it was previously written unconditionally,
+        // re-defaulting a manually-corrected segment=NULL back to MAINBOARD
+        // on every scrape cycle (checker T-287C2 FINDING-hold-rebounded.md).
+        // Detect the trust shape from the company name BEFORE assigning
+        // segment/offeringType, instead of hardcoding both and relying on a
+        // downstream validation pass to catch it after the wrong value has
+        // already been scraped.
+        const trustOfferingType = offeringTypeFromBusinessTrustName(companyName);
+
+        // Story 11.8: Default to IPO offering type for Chittorgarh data,
+        // EXCEPT business trusts (T-287F2) which are never IPOs.
         const ipo: ChittorgarhIPO = {
           companyName: sanitizeText(companyName),
           issueSize,
@@ -375,8 +390,9 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
           closeDate: effectiveCloseDate,
           listingDate,
           listingExchange: listingInfo.exchange,
-          segment: listingInfo.segment,
-          offeringType: 'IPO', // Chittorgarh API primarily returns IPOs
+          // T-287F2: null (not MAINBOARD) for a detected business trust.
+          segment: trustOfferingType ? null : listingInfo.segment,
+          offeringType: trustOfferingType ?? 'IPO',
           status,
           leadManagers: leadManager ? [leadManager] : undefined,
           dataSource: 'CHITTORGARH',

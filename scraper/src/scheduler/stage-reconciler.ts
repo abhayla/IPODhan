@@ -35,8 +35,12 @@ export type FetchKind =
 const STAGE_FETCHES: Record<LifecycleStage, FetchKind[]> = {
   UPCOMING: ['documents', 'financials', 'peers', 'objectives'],
   PRE_OPEN: ['anchor'],
-  OPEN: ['subscription', 'demand', 'gmp'],
-  CLOSED: ['allotment'],
+  // P3-2 (T-287): allotment becomes due at OPEN, not CLOSED — source detail
+  // pages (Chittorgarh) publish the tentative allotment date while an IPO is
+  // still open for subscription (Tempsens shape). CLOSED remains a covered
+  // catch-up stage because `dueFetchKindsForStage` is cumulative.
+  OPEN: ['subscription', 'demand', 'gmp', 'allotment'],
+  CLOSED: [],
   LISTED: ['listing'],
 };
 

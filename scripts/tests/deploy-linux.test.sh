@@ -228,6 +228,72 @@ fi
 
 unset DEPLOY_ROOT
 
+# --- Case 8b: the REAL (non-dry-run) served-sha comparison at ---------------
+# --- deploy-linux.sh:538-552 actually executes and rejects a mismatch ------
+# T-287 P3-1: every deploy-linux.test.sh invocation runs `--dry-run`, and
+# `verify_public_health`'s dry-run branch (deploy-linux.sh:507-514) returns
+# BEFORE the real curl/node comparison ever runs — Case 8 above only proves
+# the SIMULATED branch (`DEPLOY_DRYRUN_VERSION_MISMATCH=1`) works. Deleting
+# the real block (lines 538-552) entirely still left 22/22 tests green. This
+# case extracts `verify_public_health` in isolation, runs it with DRY_RUN=0
+# against a fake curl/node returning a genuinely wrong served sha, and
+# asserts the REAL (non-"[dry-run] simulated") failure path fires.
+VERIFY_FN="$(sed -n '/^verify_public_health()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -z "$VERIFY_FN" ]; then
+  fail "case 8b: could not extract verify_public_health() from $DEPLOY_SCRIPT — function renamed?"
+else
+  FAKEBIN8B="$(mktemp -d)"
+  cat > "$FAKEBIN8B/curl" <<'EOSCRIPT'
+#!/usr/bin/env bash
+# Minimal curl stub covering the two shapes verify_public_health invokes:
+# `curl -s -o /dev/null -w '%{http_code}' <url>/api/health` and
+# `curl -s <url>/api/version`.
+for a in "$@"; do
+  case "$a" in
+    *"/api/health") printf '200'; exit 0 ;;
+    *"/api/version") printf '{"data":{"sha":"deadbee"}}'; exit 0 ;;
+  esac
+done
+printf ''
+EOSCRIPT
+  chmod +x "$FAKEBIN8B/curl"
+
+  ENVFILE8B="$(mktemp)"
+  echo "PORT=39999" > "$ENVFILE8B"
+
+  (
+    eval "$VERIFY_FN"
+    log() { echo "==> $*"; }
+    DRY_RUN=0
+    HEALTH_TIMEOUT=2
+    WEB_ENV_FILE="$ENVFILE8B"
+    SHORT_SHA="cafebabe"
+    PATH="$FAKEBIN8B:$PATH"
+    verify_public_health
+  ) >/tmp/deploy-test-8b.log 2>&1
+  RC8B=$?
+
+  if [ "$RC8B" -ne 0 ]; then
+    pass "case 8b: REAL (non-dry-run) served-sha comparison rejects a genuine mismatch"
+  else
+    fail "case 8b: REAL served-sha comparison exited 0 on a genuine mismatch (RC=$RC8B) — the deleted-block mutation would pass"
+    cat /tmp/deploy-test-8b.log
+  fi
+
+  if grep -q "post-flip /api/version SHA mismatch" /tmp/deploy-test-8b.log \
+     && ! grep -q '\[dry-run\] simulated' /tmp/deploy-test-8b.log; then
+    pass "case 8b: real (non-simulated) SHA mismatch message present"
+  else
+    fail "case 8b: expected the REAL 'post-flip /api/version SHA mismatch' message (not the simulated one)"
+    cat /tmp/deploy-test-8b.log
+  fi
+
+  rm -rf "$FAKEBIN8B"
+  rm -f "$ENVFILE8B"
+fi
+
+unset DEPLOY_ROOT
+
 # --- Case 9: T-262F — restart_pm2's dry-run emits the REAL pm2 command -----
 # --- sequence for the web app (delete THEN start against the new release's -
 # --- realpath), never `pm2 reload`. The checker that failed T-262 (#149) ---

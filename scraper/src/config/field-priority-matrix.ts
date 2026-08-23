@@ -293,6 +293,34 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'Offer for sale size',
   },
 
+  // T-287F2: had NO matrix entry before this fix (checker T-287C2
+  // FINDING-hold-rebounded.md) -- an unlisted field falls back to
+  // getFieldRules()'s DEFAULT rules (['ADMIN','NSE','BSE','DRHP',
+  // 'MONEYCONTROL','CHITTORGARH','API_FALLBACK'], no sameSourceRefresh),
+  // which is fine for a same-source-vs-same-source CONFLICT (both values
+  // present) but does NOT protect a NULL stored segment: consolidateField()'s
+  // Case 1 ("no existing value - accept incoming") fires whenever the
+  // existing normalized value is null/undefined and accepts ANY incoming
+  // value unconditionally, bypassing source priority entirely. For most
+  // fields that is correct (null == genuinely missing data, fill it in). For
+  // `segment` on a business-trust (InvIT/REIT) row, NULL is the CORRECT
+  // terminal value (schema.ts: "segment ... nullable for RIGHTS/InvITs/
+  // REITs") -- not missing data awaiting a fill. This matrix entry alone
+  // does NOT close that gap (Case 1 still runs before any matrix rule is
+  // consulted); the durable guard for the null-segment-on-a-trust case is
+  // field-level protection (markFieldAsManuallyEdited -> filterProtectedFields()
+  // filters the field OUT of the update before consolidation ever sees it --
+  // see admin-field-protection.md). This entry exists to govern the
+  // value-vs-value conflict case (e.g. NSE says MAINBOARD, a stale
+  // Moneycontrol scrape says SME) with NSE/BSE (authoritative exchange data)
+  // outranking Chittorgarh/Moneycontrol.
+  segment: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL', 'API_FALLBACK'],
+    normalization: 'none',
+    confidenceThreshold: 70,
+    description: 'MAINBOARD/SME exchange segment (null for InvIT/REIT business trusts). NSE/BSE are authoritative.',
+  },
+
   // ==================== DESCRIPTIVE FIELDS (#69) ====================
   // Both were 0/285: no matrix entry meant consolidation silently dropped them.
   // sector: NSE reads it (nse-api-client.ts:502) but it never reached the DB
