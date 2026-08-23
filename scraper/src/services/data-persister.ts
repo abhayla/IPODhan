@@ -15,7 +15,7 @@ import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
 import { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 // Phase 2: Shadow Mode - Data Consolidation Service
 import { DataConsolidationService } from './data-consolidation-service.js';
-import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository } from '@ipodhan/shared/repositories';
+import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { ipoDemandGraph } from '@ipodhan/shared/db/schema';
@@ -196,7 +196,16 @@ export { normalizeCompanyNameForMatching };
 export async function upsertIPO(
   ipoRepository: IPORepository,
   scrapedIPO: ScrapedIPO,
-  source: ScraperSource = 'NSE'
+  source: ScraperSource = 'NSE',
+  // T-307 (write-path hardening Phase 1, §2(a) step 1): when the caller has
+  // ALREADY resolved identity once for this request (e.g. the protection
+  // guard in BaseScraperOrchestrator), pass that SAME resolved row here so
+  // this write never re-resolves independently — a second, independently-
+  // timed resolution is exactly how the guard and the write diverged before
+  // (docs/architecture/write-path-hardening.md §1.4). `undefined` (the
+  // default) means "no pre-resolution supplied" — resolve it here, as
+  // before, for callers outside the guarded path.
+  preResolvedIPO?: IPO | null
 ): Promise<string> {
   const startTime = Date.now();
   const slug = generateSlug(scrapedIPO.companyName);
@@ -211,49 +220,17 @@ export async function upsertIPO(
 
   const result = await retryWithBackoff(
     async () => {
-      // Phase 11 Step 2: Try fuzzy company name matching first
-      // This prevents duplicates when scrapers use different name variations
-      let existingIPO = await ipoRepository.findByNormalizedName(normalizedName);
-
-      if (!existingIPO) {
-        // Fallback to slug-based lookup (existing behavior)
-        existingIPO = await ipoRepository.findBySlug(slug);
-      }
-
-      if (!existingIPO) {
-        // P2-2a (T-293): the exact + compact-whitespace tiers above cannot
-        // catch a genuine SPELLING typo ("Hybird" vs "Hybrid") — only a
-        // similarity check can. This is the insert-path fix for the class of
-        // bug that let "Dhanwel Hybird Seeds Limited" mint a second row
-        // alongside "Dhanwel Hybrid Seeds Ltd." in prod: NOTHING on this
-        // write path ever ran a fuzzy check before (DuplicateDetectionService
-        // has one, but the production pipeline sets skipDuplicateDetection:
-        // true — see data-validation-pipeline.ts). Only reached when the
-        // cheap exact tiers already missed, so the extra scan cost is rare.
-        // Advisory check: a fuzzy-match failure (bad connection, query error) MUST
-        // NEVER fail the create — fall through to the exact-tier result and let the
-        // post-insert duplicate-sweep job reconcile any duplicate it would have caught.
-        let fuzzyMatch: IPO | null = null;
-        try {
-          fuzzyMatch = await ipoRepository.findByFuzzyName(normalizedName);
-        } catch (fuzzyError) {
-          logger.warn({
+      // T-307: single source of truth for "which row is this?" — the exact
+      // three-tier lookup (normalized-name -> slug -> fuzzy) formerly
+      // hand-copied here now lives in resolveIpoRow, shared with the
+      // protection guard and the consolidation write path.
+      let existingIPO: IPO | null = preResolvedIPO !== undefined
+        ? preResolvedIPO
+        : await resolveIpoRow(ipoRepository, {
             companyName: scrapedIPO.companyName,
             normalizedName,
-            error: fuzzyError instanceof Error ? fuzzyError.message : String(fuzzyError)
-          }, '[T-293] Fuzzy duplicate check failed (non-fatal) - continuing create without it');
-        }
-        if (fuzzyMatch) {
-          logger.info({
-            companyName: scrapedIPO.companyName,
-            normalizedName,
-            existingCompanyName: fuzzyMatch.companyName,
-            existingSlug: fuzzyMatch.slug,
-            newSlug: slug
-          }, '[T-293] Found existing IPO via fuzzy (typo) name matching - preventing duplicate!');
-          existingIPO = fuzzyMatch;
-        }
-      }
+            slug,
+          }) as IPO | null;
 
       if (existingIPO && normalizeCompanyNameForMatching(existingIPO.companyName) === normalizedName) {
         logger.info({

@@ -20,7 +20,9 @@ import type {
   IPORepository,
   SubscriptionRepository,
   IPOInsert,
+  IPO,
 } from '@ipodhan/shared';
+import { resolveIpoRow } from '@ipodhan/shared/repositories';
 import logger from '../utils/logger.js';
 import type { ScrapedIPO } from '../utils/validators.js';
 import { generateSlug } from '../utils/validators.js';
@@ -76,7 +78,14 @@ export class DataConsolidationOrchestrator {
   async consolidatedUpsertIPO(
     scrapedIPO: ScrapedIPO,
     source: ScraperSource,
-    confidence: number = 100
+    confidence: number = 100,
+    // T-307 (write-path hardening Phase 1, §2(a) step 1): when the caller
+    // (BaseScraperOrchestrator's guard) has already resolved identity once
+    // for this request, pass that SAME resolved row so this write never
+    // re-resolves independently. `undefined` (the default) means "no
+    // pre-resolution supplied" — resolve it here, as before, for callers
+    // that invoke this method directly.
+    preResolvedIPO?: IPO | null
   ): Promise<ConsolidatedUpsertResult> {
     const startTime = Date.now();
     const slug = generateSlug(scrapedIPO.companyName);
@@ -116,20 +125,18 @@ export class DataConsolidationOrchestrator {
     }
 
     try {
-      // Fetch existing IPO — match by NORMALIZED COMPANY NAME first (Phase 11 / #16)
-      // so name variants ("X Ltd. CT" / "X Limited" / "X IPO") resolve to the same
-      // row, then fall back to slug. This MUST stay in lock-step with
-      // data-persister.upsertIPO (which already does this): the consolidation path
-      // is the prod default (ENABLE_DATA_CONSOLIDATION), so a slug-only check here
-      // creates a NEW row for every name variant (different slug) — the duplicate
-      // rows + ipos_symbol_key collisions. Matching by name updates the existing row.
+      // T-307: single source of truth for "which row is this?" — resolveIpoRow
+      // runs the exact three-tier lookup (normalized-name -> slug -> fuzzy)
+      // shared with the protection guard and data-persister.upsertIPO, so
+      // this path can no longer diverge from either of them.
       const normalizedName = normalizeCompanyNameForMatching(scrapedIPO.companyName);
-      let existingIPO = normalizedName
-        ? await this.ipoRepository.findByNormalizedName(normalizedName)
-        : null;
-      if (!existingIPO) {
-        existingIPO = await this.ipoRepository.findBySlug(slug);
-      }
+      const existingIPO: IPO | null = preResolvedIPO !== undefined
+        ? preResolvedIPO
+        : await resolveIpoRow(this.ipoRepository, {
+            companyName: scrapedIPO.companyName,
+            normalizedName,
+            slug,
+          }) as IPO | null;
       const isNew = !existingIPO;
 
       if (FEATURE_FLAGS.DEBUG_DATA_FLOW) {
