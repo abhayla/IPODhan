@@ -105,7 +105,14 @@ interface DataTableProps<T> {
 }
 
 // ===== DEFAULT YEAR RANGE =====
-const DEFAULT_IPO_YEARS = ['2020', '2021', '2022', '2023', '2024', '2025', '2026'];
+// T-286 (P3-5): DERIVED from the current date, not a hardcoded literal that
+// silently stops covering new years (the array used to end at 2026 -- a
+// "2027 time bomb": on 2027-01-01 every table using it would lose the
+// ability to filter to the new year until someone remembered to bump this
+// array by hand). `generateYearRange` is a function declaration (hoisted),
+// so this reference above its definition below is safe.
+const DEFAULT_IPO_YEARS_START_YEAR = 2020;
+const DEFAULT_IPO_YEARS = generateYearRange(DEFAULT_IPO_YEARS_START_YEAR, new Date().getFullYear());
 
 // ===== MAIN COMPONENT =====
 
@@ -197,15 +204,12 @@ export function DataTable<T extends Record<string, any>>({
     );
   };
 
-  // ===== EMPTY STATE =====
-
-  if (data.length === 0) {
-    return (
-      <div className="text-center py-12">
-        <p className="text-gray-500 text-lg">{emptyMessage}</p>
-      </div>
-    );
-  }
+  // T-286 (P1-1/P2-1): the empty-state early-return used to bail out BEFORE
+  // the top controls bar (including the year filter) ever rendered, so a
+  // user landing on a year with zero rows had no way to change the year --
+  // an unrecoverable dead end. `isEmpty` now only decides what renders in
+  // place of the table body; the controls bar always renders below.
+  const isEmpty = data.length === 0;
 
   // ===== MINIMIZED STATE =====
 
@@ -282,13 +286,19 @@ export function DataTable<T extends Record<string, any>>({
         )}
 
         {/* Total Records Count */}
-        {enablePagination && (
+        {enablePagination && totalRecords > 0 && (
           <div className="text-sm text-gray-600 ml-auto">
             Showing {startRecord}-{endRecord} of {totalRecords} records
           </div>
         )}
       </div>
 
+      {isEmpty ? (
+        <div className="text-center py-12">
+          <p className="text-gray-500 text-lg">{emptyMessage}</p>
+        </div>
+      ) : (
+        <>
       {/* ===== TABLE ===== */}
       <div className="relative border rounded-lg overflow-hidden">
         {/* Right-edge shadow — a DARK gradient (not white-on-white, which was
@@ -461,6 +471,8 @@ export function DataTable<T extends Record<string, any>>({
           </div>
         </div>
       )}
+        </>
+      )}
     </div>
   );
 }
@@ -526,6 +538,35 @@ export function generateYearRange(startYear: number, endYear: number): string[] 
     years.push(year.toString());
   }
   return years;
+}
+
+/**
+ * T-286 (P1-1/P2-1): derive the year filter's DEFAULT selection from the
+ * data itself -- the latest year that actually HAS rows -- instead of a
+ * hardcoded literal (`useState('2025')`) that silently hides every later
+ * year's rows (7 NCDs, 6 rights issues, 14 OFS entries were invisible on
+ * first paint because 2026 rows existed but the default filter was '2025').
+ * Falls back to the current calendar year when `data` is empty or every row
+ * has a null/unparseable date -- the only sane default with no rows to learn
+ * a year from.
+ */
+export function getLatestYearWithData<T>(
+  data: T[],
+  dateExtractor: (item: T) => string | null | undefined
+): string {
+  let latestYear: number | null = null;
+
+  for (const item of data) {
+    const date = dateExtractor(item);
+    if (!date) continue;
+    const year = new Date(date).getFullYear();
+    if (!Number.isFinite(year)) continue;
+    if (latestYear === null || year > latestYear) {
+      latestYear = year;
+    }
+  }
+
+  return (latestYear ?? new Date().getFullYear()).toString();
 }
 
 // ===== CONSTANTS =====

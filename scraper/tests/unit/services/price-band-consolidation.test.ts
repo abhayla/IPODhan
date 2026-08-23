@@ -46,6 +46,8 @@ const mockFieldSourcesRepo = {
 
 const mockConflictsRepo = {
   logConflict: vi.fn(),
+  upsertConflict: vi.fn(),
+  autoResolveConverged: vi.fn(),
   findUnresolvedForIPO: vi.fn(),
 } as unknown as DataConflictsRepository;
 

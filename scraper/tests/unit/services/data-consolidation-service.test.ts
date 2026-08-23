@@ -49,6 +49,8 @@ const mockFieldSourcesRepo = {
 
 const mockConflictsRepo = {
   logConflict: vi.fn(),
+  upsertConflict: vi.fn(),
+  autoResolveConverged: vi.fn(),
   findUnresolvedForIPO: vi.fn(),
 } as unknown as DataConflictsRepository;
 
@@ -205,7 +207,7 @@ describe('DataConsolidationService', () => {
         }];
 
         vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(existingFieldSources);
-        vi.mocked(mockConflictsRepo.logConflict).mockResolvedValue({} as any);
+        vi.mocked(mockConflictsRepo.upsertConflict).mockResolvedValue({} as any);
 
         const result = await service.consolidateIPOData({
           ipoId: 'test-ipo',
@@ -217,7 +219,7 @@ describe('DataConsolidationService', () => {
 
         expect(result.conflictsDetected).toBeGreaterThan(0);
         expect(result.conflictsBySeverity.CRITICAL).toBeGreaterThan(0);
-        expect(mockConflictsRepo.logConflict).toHaveBeenCalledWith(
+        expect(mockConflictsRepo.upsertConflict).toHaveBeenCalledWith(
           expect.objectContaining({
             severity: 'CRITICAL'
           })
@@ -240,7 +242,7 @@ describe('DataConsolidationService', () => {
         }];
 
         vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(existingFieldSources);
-        vi.mocked(mockConflictsRepo.logConflict).mockResolvedValue({} as any);
+        vi.mocked(mockConflictsRepo.upsertConflict).mockResolvedValue({} as any);
 
         const result = await service.consolidateIPOData({
           ipoId: 'test-ipo',
@@ -252,7 +254,7 @@ describe('DataConsolidationService', () => {
 
         expect(result.conflictsDetected).toBeGreaterThan(0);
         expect(result.conflictsBySeverity.WARNING).toBeGreaterThan(0);
-        expect(mockConflictsRepo.logConflict).toHaveBeenCalledWith(
+        expect(mockConflictsRepo.upsertConflict).toHaveBeenCalledWith(
           expect.objectContaining({
             severity: 'WARNING'
           })
@@ -275,7 +277,7 @@ describe('DataConsolidationService', () => {
         }];
 
         vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(existingFieldSources);
-        vi.mocked(mockConflictsRepo.logConflict).mockResolvedValue({} as any);
+        vi.mocked(mockConflictsRepo.upsertConflict).mockResolvedValue({} as any);
 
         const result = await service.consolidateIPOData({
           ipoId: 'test-ipo',
@@ -305,7 +307,7 @@ describe('DataConsolidationService', () => {
         }];
 
         vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(existingFieldSources);
-        vi.mocked(mockConflictsRepo.logConflict).mockResolvedValue({} as any);
+        vi.mocked(mockConflictsRepo.upsertConflict).mockResolvedValue({} as any);
 
         const result = await service.consolidateIPOData({
           ipoId: 'test-ipo',
@@ -413,6 +415,112 @@ describe('DataConsolidationService', () => {
       });
     });
 
+    // T-286 (P1-2/P2-3): a SAME-source refresh (the same scraper source
+    // updating its own previously-reported value) is not a cross-source
+    // disagreement and MUST NOT write a data_conflicts row. This is the
+    // regression test for the root cause of 9921/11493 data_conflicts rows
+    // having source1 === source2, which destroyed the alert channel.
+    describe('Same-source refresh does not log a conflict (T-286 P1-2)', () => {
+      it('does NOT call upsertConflict when existingSource === incomingSource (time-based field)', async () => {
+        const existingFieldSources = [{
+          ipoId: 'test-ipo',
+          tableName: 'ipos',
+          fieldName: 'total_subscription',
+          source: 'NSE',
+          value: '5',
+          confidence: 95,
+          dataLineage: null,
+          previousValue: null,
+          previousSource: null,
+          updatedAt: new Date('2026-08-20T10:00:00Z'),
+          createdAt: new Date(),
+        }];
+
+        vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(existingFieldSources);
+
+        const result = await service.consolidateIPOData({
+          ipoId: 'test-ipo',
+          tableName: 'ipos',
+          incomingData: { total_subscription: 8 }, // NSE revising its own number upward
+          source: 'NSE', // SAME source as existing
+          confidence: 95,
+          scrapedAt: new Date('2026-08-20T11:00:00Z'), // newer -> TIME_BASED_PRIORITY wins
+        });
+
+        expect(result.fieldResults[0].chosenSource).toBe('NSE');
+        expect(result.fieldResults[0].finalValue).toBe(8);
+        expect(mockConflictsRepo.upsertConflict).not.toHaveBeenCalled();
+        expect(mockConflictsRepo.logConflict).not.toHaveBeenCalled();
+      });
+
+      it('DOES call upsertConflict when existingSource !== incomingSource (genuine cross-source disagreement)', async () => {
+        const existingFieldSources = [{
+          ipoId: 'test-ipo',
+          tableName: 'ipos',
+          fieldName: 'total_subscription',
+          source: 'NSE',
+          value: '5',
+          confidence: 95,
+          dataLineage: null,
+          previousValue: null,
+          previousSource: null,
+          updatedAt: new Date('2026-08-20T10:00:00Z'),
+          createdAt: new Date(),
+        }];
+
+        vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(existingFieldSources);
+        vi.mocked(mockConflictsRepo.upsertConflict).mockResolvedValue({} as any);
+
+        await service.consolidateIPOData({
+          ipoId: 'test-ipo',
+          tableName: 'ipos',
+          incomingData: { total_subscription: 9 },
+          source: 'BSE', // DIFFERENT source than existing (NSE)
+          confidence: 90,
+          scrapedAt: new Date('2026-08-20T11:00:00Z'),
+        });
+
+        expect(mockConflictsRepo.upsertConflict).toHaveBeenCalledWith(
+          expect.objectContaining({ source1: 'NSE', source2: 'BSE' })
+        );
+      });
+
+      it('auto-resolves a prior open conflict once the sources converge on the same value', async () => {
+        const existingFieldSources = [{
+          ipoId: 'test-ipo',
+          tableName: 'ipos',
+          fieldName: 'total_subscription',
+          source: 'NSE',
+          value: '9',
+          confidence: 95,
+          dataLineage: null,
+          previousValue: null,
+          previousSource: null,
+          updatedAt: new Date('2026-08-20T10:00:00Z'),
+          createdAt: new Date(),
+        }];
+
+        vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(existingFieldSources);
+        vi.mocked(mockConflictsRepo.autoResolveConverged).mockResolvedValue(1);
+
+        await service.consolidateIPOData({
+          ipoId: 'test-ipo',
+          tableName: 'ipos',
+          incomingData: { total_subscription: 9 }, // BSE now agrees with NSE's 9
+          source: 'BSE',
+          confidence: 90,
+        });
+
+        expect(mockConflictsRepo.autoResolveConverged).toHaveBeenCalledWith(
+          'test-ipo',
+          'ipos',
+          'total_subscription'
+        );
+        // Values are equivalent -> no new conflict is logged
+        expect(mockConflictsRepo.upsertConflict).not.toHaveBeenCalled();
+      });
+    });
+
     describe('Shadow mode', () => {
       it('should return consolidated data but not track sources in shadow mode', async () => {
         vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
@@ -429,7 +537,7 @@ describe('DataConsolidationService', () => {
         expect(result.fieldsProcessed).toBeGreaterThan(0);
         expect(result.consolidatedData).toBeDefined();
         expect(mockFieldSourcesRepo.trackFieldUpdate).not.toHaveBeenCalled();
-        expect(mockConflictsRepo.logConflict).not.toHaveBeenCalled();
+        expect(mockConflictsRepo.upsertConflict).not.toHaveBeenCalled();
       });
 
       it('should still detect conflicts in shadow mode for metrics', async () => {
@@ -460,7 +568,7 @@ describe('DataConsolidationService', () => {
 
         expect(result.conflictsDetected).toBeGreaterThan(0);
         expect(result.conflictsBySeverity.CRITICAL).toBeGreaterThan(0);
-        expect(mockConflictsRepo.logConflict).not.toHaveBeenCalled(); // Not logged in shadow mode
+        expect(mockConflictsRepo.upsertConflict).not.toHaveBeenCalled(); // Not logged in shadow mode
       });
     });
 
@@ -718,7 +826,7 @@ describe('DataConsolidationService', () => {
         ];
 
         vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(existingFieldSources);
-        vi.mocked(mockConflictsRepo.logConflict).mockResolvedValue({} as any);
+        vi.mocked(mockConflictsRepo.upsertConflict).mockResolvedValue({} as any);
 
         const result = await service.consolidateIPOData({
           ipoId: 'test-ipo',

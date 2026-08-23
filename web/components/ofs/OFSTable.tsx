@@ -11,7 +11,7 @@
 
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
-import { DataTable, type ColumnDef, renderFunctions, DEFAULT_IPO_YEARS_EXPORT } from '@/components/shared/DataTable';
+import { DataTable, type ColumnDef, renderFunctions, DEFAULT_IPO_YEARS_EXPORT, getLatestYearWithData } from '@/components/shared/DataTable';
 import type { OFSData } from '@/lib/services/ofs-service';
 
 // ==================== TYPES ====================
@@ -81,7 +81,11 @@ const ofsColumns: ColumnDef<OFSData>[] = [
 export function OFSTable({ ofsIssues }: OFSTableProps) {
   // State management for DataTable features
   const [searches, setSearches] = useState<Record<string, string>>({});
-  const [year, setYear] = useState<string>('2025');
+  // T-286 (P2-1): derived from the data (latest year with rows), not a
+  // hardcoded '2025' that hid every 2026 OFS entry on first paint.
+  const [year, setYear] = useState<string>(() =>
+    getLatestYearWithData(ofsIssues, (item) => item.nonRetailDate || item.retailDate)
+  );
   const [page, setPage] = useState(1);
   const [sortState, setSortState] = useState<{ field: string; order: 'asc' | 'desc' }>({
     field: 'nonRetailDate',

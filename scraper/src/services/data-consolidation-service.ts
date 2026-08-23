@@ -441,6 +441,25 @@ export class DataConsolidationService {
 
     // Case 2: Values are equivalent - no conflict, no update needed
     if (areEquivalent(normalizedIncoming, normalizedExisting)) {
+      // T-286: the sources have converged on this field since a prior cycle
+      // logged a disagreement -- auto-resolve that open conflict (if any) so
+      // it doesn't sit unresolved forever. Best-effort/non-fatal: this is an
+      // audit-trail cleanup, never allowed to fail the consolidation itself.
+      if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+        try {
+          await this.dataConflictsRepository.autoResolveConverged(
+            ipoId,
+            tableName,
+            fieldName
+          );
+        } catch (error) {
+          console.error(
+            '[DataConsolidation] Failed to auto-resolve converged conflict (non-fatal):',
+            error
+          );
+        }
+      }
+
       // Don't track or update - values are identical
       return {
         fieldName,
@@ -584,10 +603,18 @@ export class DataConsolidationService {
       rules
     );
 
-    // Log conflict if enabled
+    // Log conflict if enabled. T-286 (P1-2): a SAME-source refresh (the same
+    // scraper source changing its own reported value across cycles, e.g.
+    // SAME_SOURCE_REFRESH/TIME_BASED_PRIORITY resolutions where
+    // existingSource === incomingSource) is NOT a cross-source disagreement --
+    // there is only one source in play, so it must never write a
+    // `data_conflicts` row (that write path was the root cause of 9921/11493
+    // rows having source1 === source2, which in turn destroyed the alert
+    // channel with self-comparisons).
     if (
       FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION &&
-      !this.currentShadowMode
+      !this.currentShadowMode &&
+      existingSource !== incomingSource
     ) {
       await this.logConflict({
         ipoId,
@@ -688,7 +715,11 @@ export class DataConsolidationService {
     }
 
     try {
-      await this.dataConflictsRepository.logConflict({
+      // T-286 (P2-3): upsert, not insert -- refreshes the existing UNRESOLVED
+      // row for this (ipoId, tableName, fieldName) instead of piling up a new
+      // row every consolidation cycle (the "re-insert per cycle" growth that
+      // left data_conflicts unbounded with resolved_at never set).
+      await this.dataConflictsRepository.upsertConflict({
         ipoId: conflict.ipoId,
         tableName: conflict.tableName,
         fieldName: conflict.fieldName,

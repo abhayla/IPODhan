@@ -11,7 +11,7 @@
 
 import { useState, useCallback } from 'react';
 import Link from 'next/link';
-import { DataTable, type ColumnDef, renderFunctions, DEFAULT_IPO_YEARS_EXPORT } from '@/components/shared/DataTable';
+import { DataTable, type ColumnDef, renderFunctions, DEFAULT_IPO_YEARS_EXPORT, getLatestYearWithData } from '@/components/shared/DataTable';
 import type { NCDData } from '@/lib/services/ncd-service';
 
 // ==================== TYPES ====================
@@ -82,7 +82,11 @@ const ncdColumns: ColumnDef<NCDData>[] = [
 export function NCDTable({ ncdIssues }: NCDTableProps) {
   // State management for DataTable features
   const [searches, setSearches] = useState<Record<string, string>>({});
-  const [year, setYear] = useState<string>('2025');
+  // T-286 (P1-1): derived from the data (latest year with rows), not a
+  // hardcoded '2025' that hid every 2026 NCD on first paint.
+  const [year, setYear] = useState<string>(() =>
+    getLatestYearWithData(ncdIssues, (item) => item.openDate || item.closeDate)
+  );
   const [page, setPage] = useState(1);
   const [sortState, setSortState] = useState<{ field: string; order: 'asc' | 'desc' }>({
     field: 'openDate',
