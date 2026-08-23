@@ -10,6 +10,7 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import Fuse from 'fuse.js';
 import { BaseRepository } from './base-repository';
+import { withEffectiveAllotmentCheckUrl } from '@ipodhan/shared/utils/registrar-display';
 import {
   ipos,
   financialData,
@@ -472,7 +473,10 @@ export class IPORepository extends BaseRepository implements IIPORepository {
             gmpRecords: gmps,
             listingPerformance: listing,
             peerCompanies: peers,
-            registrarRelation: registrarData,
+            // Graceful degrade (T-300): hide the allotment-check CTA when the
+            // registrar is inactive or its URL is currently known-dead —
+            // never render a link the standing health check has confirmed broken.
+            registrarRelation: registrarData ? withEffectiveAllotmentCheckUrl(registrarData) : registrarData,
             ipoScore: ipoScore, // Story 4.7
             anchorInvestor: anchorInvestor, // Story 11.10
             ipoDemandGraph: demandGraph, // Phase 3B: DemandGraph component

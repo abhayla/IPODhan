@@ -17,6 +17,9 @@ import { runChittorgarhScraper } from './scrapers/chittorgarh-orchestrator-v2.js
 import { runInvestorgainGMPScraper } from './scrapers/investorgain-gmp-orchestrator-v2.js';
 import { updateListingPerformance } from './scrapers/listing-performance-updater.js';
 import { shouldRunListingPerformanceUpdate } from './scheduler/listing-performance-cadence.js';
+import { runRegistrarHealthCheck } from './scheduler/jobs/registrar-health-check-job.js';
+import { shouldRunRegistrarHealthCheck } from './scheduler/registrar-health-check-cadence.js';
+import { reresolveRegistrarIds } from './services/registrar-reresolve.js';
 import { db, ScraperLogRepository, getRedisClient } from '@ipodhan/shared';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
@@ -267,6 +270,8 @@ export async function main() {
     // must not fail the scrape.
     if (source === 'all') {
       await triggerStatusUpdate();
+      await triggerRegistrarReresolve();
+      await triggerRegistrarHealthCheck();
       await triggerListingPerformanceUpdate();
       await pruneScraperLogs();
       await pruneDataConflicts();
@@ -401,6 +406,66 @@ export async function triggerListingPerformanceUpdate(): Promise<void> {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'Listing performance update trigger failed (non-fatal)'
+    );
+  }
+}
+
+/**
+ * Re-resolve `ipos.registrar_id` for rows left NULL by the scraper write path
+ * (T-300F, fixing T-300C finding F2). `registrar_id` is never written at
+ * scrape time (see `registrar-reresolve.ts` header), so new IPOs created
+ * since the last pass need periodic retrying as the registrars table grows.
+ *
+ * The original PR piggybacked this on `runStatusUpdater()`
+ * (`scheduler/jobs/update-statuses.ts`) — a job that only exists inside
+ * `SchedulerService`, which production never imports (same T-179/T-176 dead
+ * path as `registrar-health-check-job.ts`; see the comment on
+ * `triggerListingPerformanceUpdate` below). This wires the SAME non-fatal
+ * pass onto the path prod actually runs instead: right after
+ * `triggerStatusUpdate()` in this one-shot `--source=all` cycle. It is a
+ * cheap DB-only pass (no outbound HTTP), so it runs every cycle rather than
+ * being cadence-gated like the registrar health check.
+ */
+export async function triggerRegistrarReresolve(): Promise<void> {
+  try {
+    const result = await reresolveRegistrarIds({ dryRun: false });
+    if (result.written > 0) {
+      logger.info({ result }, 'registrar_id re-resolve pass wrote rows');
+    }
+  } catch (error) {
+    logger.warn(
+      { error: error instanceof Error ? error.message : String(error) },
+      'registrar_id re-resolve pass failed (non-fatal)'
+    );
+  }
+}
+
+/**
+ * Run the daily registrar allotment-URL health check (T-300F, fixing T-300C
+ * finding F1). `runRegistrarHealthCheck()` was only ever registered in
+ * `SchedulerService.init()` (`scheduler.ts`, cron `'30 6 * * *'` IST), but
+ * production runs the one-shot `--source=all` CLI on a flat 30-minute
+ * `cron_restart` and never imports `SchedulerService` — the repo's own
+ * T-179/T-176 comments document this exact trap
+ * (`docs/monitoring/scrape-cadence-measurement.md`). Calling the job function
+ * directly here (in-process, same pattern as `triggerListingPerformanceUpdate`
+ * below) wires it into the path that actually runs in production, gated by
+ * `shouldRunRegistrarHealthCheck()` so the ~19 sequential outbound fetches
+ * fire once daily (matching the scheduler's original cron intent) instead of
+ * every 30-minute cycle.
+ */
+export async function triggerRegistrarHealthCheck(): Promise<void> {
+  if (!shouldRunRegistrarHealthCheck(new Date())) {
+    logger.debug('Registrar health check skipped (outside cadence window)');
+    return;
+  }
+  try {
+    const result = await runRegistrarHealthCheck();
+    logger.info({ result }, 'Registrar health check triggered from one-shot cycle');
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Registrar health check trigger failed (non-fatal)'
     );
   }
 }

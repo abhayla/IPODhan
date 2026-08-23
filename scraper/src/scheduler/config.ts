@@ -39,6 +39,7 @@ export interface SchedulerConfig {
     logCleanup: JobSchedule;
     stageReconciler: JobSchedule;      // Stage F: stage-transition reconciler (flag-gated OFF; activation §GATE)
     duplicateSweep: JobSchedule;       // P2-2b (T-293): periodic duplicate-IPO cluster sweep (flag-gated OFF; activation §GATE)
+    registrarHealthCheck: JobSchedule; // P1-2 (T-300): daily registrar allotment-URL health check + owner alert on dead URLs
   };
 }
 
@@ -139,6 +140,11 @@ const PROD_SCHEDULES = {
     enabled: process.env.ENABLE_DUPLICATE_SWEEP_JOB === 'true', // GATED OFF; Abhay enables in prod (§GATE)
     schedule: '30 4 * * *',                // P2-2b (T-293): once daily — not time-critical, dry-run report only
     timezone: 'Asia/Kolkata'
+  },
+  registrarHealthCheck: {
+    enabled: true,                         // P1-2 (T-300): read-only fetches + a non-destructive status write; on by default like healthCheck/dailySummary
+    schedule: '30 6 * * *',                // Once daily, ahead of dailySummary (8 AM) — not time-critical
+    timezone: 'Asia/Kolkata'
   }
 };
 
@@ -237,6 +243,11 @@ const DEV_SCHEDULES = {
     enabled: process.env.ENABLE_DUPLICATE_SWEEP_JOB === 'true', // GATED OFF; §GATE
     schedule: '30 4 * * *',
     timezone: 'Asia/Kolkata'
+  },
+  registrarHealthCheck: {
+    enabled: false,                        // Disable in dev (can trigger manually); no schedule field needed
+    schedule: '30 6 * * *',
+    timezone: 'Asia/Kolkata'
   }
 };
 
@@ -265,5 +276,6 @@ export const LOCK_TTL = {
   objectives: 1800,      // 30 minutes for objectives scraper (PDF processing)
   healthCheck: 60,       // 1 minute for health check
   dailySummary: 120,     // 2 minutes for daily summary
-  logCleanup: 300        // 5 minutes for log cleanup
+  logCleanup: 300,       // 5 minutes for log cleanup
+  registrarHealthCheck: 300 // 5 minutes for registrar URL health check (~19 sequential outbound fetches)
 } as const;

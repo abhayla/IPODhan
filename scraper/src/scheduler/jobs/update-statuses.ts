@@ -68,6 +68,12 @@ export async function runStatusUpdater(): Promise<{
       duration
     }, 'Status updater job completed successfully');
 
+    // T-300F: the registrar_id re-resolve piggyback moved to
+    // `triggerRegistrarReresolve()` in `scraper/src/index.ts` — the one-shot
+    // `--source=all` cycle prod actually runs. This job (`runStatusUpdater`)
+    // only exists inside `SchedulerService`, which prod never imports (same
+    // T-179/T-176 dead path); piggybacking here would never execute.
+
     return {
       success: true,
       updatedCount: result.total

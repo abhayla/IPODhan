@@ -10,6 +10,7 @@ import { eq, or, ilike, asc } from 'drizzle-orm';
 import { BaseRepository } from './base-repository';
 import { registrars } from '../db';
 import type { Registrar } from '../db/types';
+import { withEffectiveAllotmentCheckUrl } from '@ipodhan/shared/utils/registrar-display';
 import {
   getRegistrarByIdKey,
   getRegistrarByNameKey,
@@ -40,7 +41,8 @@ export class RegistrarRepository extends BaseRepository {
               .where(eq(registrars.id, id))
               .limit(1);
 
-            return result[0] || null;
+            // Graceful degrade (T-300): hide the CTA when inactive/unhealthy.
+            return result[0] ? withEffectiveAllotmentCheckUrl(result[0]) : null;
           },
           { id }
         );
@@ -68,7 +70,8 @@ export class RegistrarRepository extends BaseRepository {
               .where(eq(registrars.name, name))
               .limit(1);
 
-            return result[0] || null;
+            // Graceful degrade (T-300): hide the CTA when inactive/unhealthy.
+            return result[0] ? withEffectiveAllotmentCheckUrl(result[0]) : null;
           },
           { name }
         );
@@ -98,7 +101,9 @@ export class RegistrarRepository extends BaseRepository {
             }
 
             // Order alphabetically by name (Story 5.3 requirement)
-            return await query.orderBy(asc(registrars.name));
+            const rows = await query.orderBy(asc(registrars.name));
+            // Graceful degrade (T-300): hide the CTA when inactive/unhealthy.
+            return rows.map(withEffectiveAllotmentCheckUrl);
           },
           { activeOnly }
         );
@@ -145,7 +150,9 @@ export class RegistrarRepository extends BaseRepository {
               query = query.where(nameCondition) as typeof query;
             }
 
-            return await query.orderBy(asc(registrars.name));
+            const rows = await query.orderBy(asc(registrars.name));
+            // Graceful degrade (T-300): hide the CTA when inactive/unhealthy.
+            return rows.map(withEffectiveAllotmentCheckUrl);
           },
           { query: normalizedQuery, activeOnly }
         );
