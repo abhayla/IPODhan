@@ -193,3 +193,30 @@ against the class, not just the original row.
   Parse explicit date components (`month/day/year`) rather than `new Date(raw).toISOString()`
   — the latter silently shifts by a day depending on the running process's local
   timezone offset (see also `utc-naive-timestamp-normalization.md`).
+
+- **A written gate that is not scheduled is a document, not a gate (T-297, discovery-coverage
+  meta-analysis).** Five consecutive full-site review rounds produced 0 / 16 / 12 / 12 / 11
+  findings — a FLAT rate while the defect population shrank. That is the signature of a
+  method-limited search, not a defect-limited one: each round found new issues because it used
+  a discovery METHOD the previous round had not used (round 2 opened a browser; round 3 audited
+  the alert channel; round 4 ran the comparison BACKWARDS, external-list→our-site, and instantly
+  found a real SME IPO invisible on the site — something no forward comparison can ever reach,
+  because a row we do not have fails no check that iterates our rows). Two compounding causes,
+  both mechanical: (1) checks were written and never scheduled — `audit-ipo-coverage.mjs --gate`
+  and `audit-substance-plausibility.mjs --gate` were wired to no npm script, no workflow and no
+  cron, and one of them hard-crashed on `readFileSync('web/.env.local')` so it could only ever
+  run on one laptop; `prod-verify.yml` was demoted to manual-only and sat red and unread for 53
+  days; the freshness watchdog had no scheduler at all. (2) gates asserted SHAPE, not SUBSTANCE
+  — `npm run audit:prod` returned 24/24 PASS on a site with four live P1s, because it checked
+  HTTP 200 and grepped the IPO API for known seed names, so it could not see client-rendered
+  mock rows, a poisoned registrar cache, or a page rendering "No NCDs available" for eight
+  months while two NCDs were open for subscription. **Rules:** (a) a new check MUST land with
+  its trigger — npm script AND cron/CI entry — in the SAME change; an unscheduled gate is worth
+  zero. (b) Never let a gate depend on a file that exists only on a developer machine; make env
+  loading optional and fail loudly when nothing is configured. (c) Every check must assert a
+  value re-derived, a count reconciled, or a row proven to exist — "renders 200 with >80
+  characters" is a claim about shape and an empty state satisfies it. (d) Forward and reverse
+  are DIFFERENT checks: anything iterating our rows is half a check; the other half iterates the
+  world's rows. (e) Measure a review loop by METHOD COVERAGE promoted per round, not by
+  findings per round — the latter is flat by construction. Full matrix and the 14 remaining
+  uncovered cells: `docs/data-quality/discovery-coverage.md`.

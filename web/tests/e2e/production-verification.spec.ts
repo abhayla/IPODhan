@@ -57,6 +57,68 @@ const ROUTES: string[] = [
   // Hardcoding removed-IPO slugs makes this sweep flaky; prefer a live IPO detail page.
 ];
 
+// T-297 (gap G2) — SUBSTANCE OF RENDER.
+//
+// The four assertions above check that a page did not CRASH. They do not check
+// that it SHOWED ANYTHING. That distinction cost eight months:
+//
+//   T-285 P1-1 — /ncd and /rights-issues rendered "No NCDs available" and "No
+//   upcoming rights issues available" from 2026-01-01 onward, while two NCDs and
+//   one rights issue were open for subscription. A hardcoded `useState('2025')`
+//   filter default hid every 2026 row, and DataTable's empty-state returned
+//   before the controls bar, so the user could not even change the year.
+//   HTTP 200. Correct payload shipped into the page. ZERO console errors. Main
+//   content comfortably over 80 characters. Every assertion above passed.
+//   (T-285 P2-1 is the same class on /ofs: 5 of 19 rows shown, the stale ones.)
+//
+// So: for routes we KNOW hold rows, an empty-state phrase is a FAILURE, and the
+// rendered text must additionally carry a marker only real data produces. This
+// is the check that turns "the page loaded" into "the page told the truth".
+//
+// The check has two halves, because "shows nothing" is only a bug on some routes.
+//
+// HALF 1 — MUST_SHOW_ROWS: routes that structurally always hold rows. A listed
+// mainboard IPO never un-lists; the holiday calendar never empties mid-year. If
+// one of these renders zero rows, something is broken. Verified live 2026-08-23:
+// /mainboard-ipos 25 rows, /sme-ipos 25, /history 20, /registrars 15,
+// /market-holidays 20 holiday cards.
+//
+// HALF 2 — ESCAPABLE_EMPTY: routes whose row count legitimately reaches zero
+// (NCDs, OFS and rights issues are sparse — /rights-issues is genuinely empty
+// today and that is honest). Demanding rows here would produce a false alarm.
+// What must NEVER happen on these routes is the T-285 shape: an empty state the
+// user cannot escape, or one produced by a filter stuck on a past year. So we
+// assert the year control still exists and still points at the current year or
+// later. That is the actual defect, independent of how many rows exist.
+//
+// NOTE the deliberate omission: /mainboard-ipo-reviews and the prospectus pages
+// are legitimately empty and are tracked separately (#167).
+const EMPTY_STATE_PHRASES = [
+  /No NCDs available/i,
+  /No upcoming rights issues available/i,
+  /No live rights issues available/i,
+  /No OFS available/i,
+  /No historical IPOs found/i,
+  /No holidays found/i,
+  /No data found/i,
+  /No data available/i,
+];
+
+// route -> how to prove at least one real row rendered.
+// `rows` counts table body rows; `marker` is for card-based layouts with no <table>.
+const MUST_SHOW_ROWS: Record<string, { rows?: true; marker?: RegExp }> = {
+  '/mainboard-ipos': { rows: true },
+  '/sme-ipos': { rows: true },
+  '/history': { rows: true },
+  '/registrars': { rows: true },
+  // Card layout, no <table>: a real holiday row always carries a weekday name.
+  // The blank page of T-264 P2-2 had none — breadcrumb, title, footer, nothing else.
+  '/market-holidays': { marker: /\b(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/i },
+};
+
+// Routes allowed to be empty, but never allowed to be inescapably empty.
+const ESCAPABLE_EMPTY = ['/ncd', '/ofs', '/rights-issues'];
+
 // Console/network noise outside our control (third-party widgets, analytics).
 const BENIGN = [
   /cloudflareinsights/i,
@@ -108,6 +170,67 @@ test.describe('Production verification — every page renders correctly', () => 
       ).replace(/\s+/g, ' ').trim();
       expect(text.length, `main content too thin on ${route}`).toBeGreaterThan(80);
       expect(/^\s*Loading/i.test(text) && text.length < 200, `stuck loading on ${route}`).toBeFalsy();
+
+      // 5. SUBSTANCE (T-297 G2) — half 1: routes that must always show rows.
+      const rowRule = MUST_SHOW_ROWS[route];
+      if (rowRule) {
+        const emptyState = EMPTY_STATE_PHRASES.find((re) => re.test(text));
+        expect(
+          emptyState ? (text.match(emptyState)?.[0] ?? String(emptyState)) : null,
+          `${route} must always have rows but rendered an empty state — filter default or data-fetch regression`
+        ).toBeNull();
+
+        if (rowRule.rows) {
+          const rowCount = await page.locator('table tbody tr').count();
+          expect(rowCount, `${route} rendered a table with zero body rows`).toBeGreaterThan(0);
+        }
+        if (rowRule.marker) {
+          expect(
+            rowRule.marker.test(text),
+            `${route} rendered no data-row marker ${rowRule.marker} — page loaded but shows no rows`
+          ).toBe(true);
+        }
+      }
+
+      // 5b. SUBSTANCE — half 2: the year filter must not hide live data (T-285 P1-1/P2-1).
+      //
+      // Two distinct defects, one rule. On /ncd and /rights-issues the stale
+      // default produced an EMPTY page (P1-1). On /ofs it produced a POPULATED
+      // page — five December-2025 rows, presented as current, with fourteen 2026
+      // rows hidden (P2-1). A check that only looks at empty states catches the
+      // first and sails past the second, so this asserts the invariant that
+      // covers both: the default view must not hide rows that exist for the
+      // current year.
+      if (ESCAPABLE_EMPTY.includes(route)) {
+        const currentYear = new Date().getFullYear();
+        const isEmpty = EMPTY_STATE_PHRASES.some((re) => re.test(text));
+
+        // (i) An empty state must always leave the user a way out. T-285 measured
+        // `#year-filter` count = 0 on /ncd and /rights-issues: DataTable returned
+        // the empty state before rendering the controls bar, so the filter that
+        // hid every row could not be changed.
+        if (isEmpty) {
+          expect(
+            await page.locator('#year-filter').count(),
+            `${route} shows an empty state with NO year control — the user cannot undo the filter that hid every row`
+          ).toBeGreaterThan(0);
+        }
+
+        // (ii) A past-year default is only legitimate when the current year truly
+        // has no data. Switch the control to the current year and see.
+        const shownYear = Number(text.match(/Year:?\s*(\d{4})/i)?.[1] ?? currentYear);
+        if (shownYear < currentYear && (await page.locator('#year-filter').count()) > 0) {
+          const defaultRows = await page.locator('table tbody tr').count();
+          await page.locator('#year-filter').first().click();
+          await page.getByRole('option', { name: String(currentYear), exact: true }).click();
+          await page.waitForTimeout(1500);
+          const currentYearRows = await page.locator('table tbody tr').count();
+          expect(
+            currentYearRows,
+            `${route} defaulted to ${shownYear} showing ${defaultRows} row(s) while ${currentYear} has ${currentYearRows} — the default view hides live data`
+          ).toBe(0);
+        }
+      }
 
       // 3 + 2. no broken same-origin fetches, no console errors
       expect(failedRequests, `failed same-origin requests on ${route}`).toEqual([]);
