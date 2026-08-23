@@ -10,7 +10,8 @@ import {
 } from './subscription-coverage-registry.js';
 import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { validateLotSize } from '../utils/lot-size-validator.js';
-import { resolveOfferingTypeKeepingClassification } from '../utils/detect-offering-type.js';
+import { resolveOfferingTypeKeepingClassification, guardSmeOfferingTypeAgainstFpo } from '../utils/detect-offering-type.js';
+import { isAuthoritativeForHardDatesOnCreate } from '../utils/hard-date-source-trust.js';
 import type { ScraperSource } from './types.js';
 import type { ScrapedFinancialData } from '../scrapers/financial-data-scraper.js';
 import type { ScrapedPeerCompany } from '../scrapers/peer-companies-scraper.js';
@@ -343,6 +344,31 @@ export async function upsertIPO(
         delete (ipoData as any).segment;
       }
 
+      // P1-1 (T-292): a lower-trust source (e.g. Moneycontrol) cannot flip an
+      // SME-segment row to FPO — SME boards never have genuine FPOs (Mopshop
+      // Distribution shape). Applied to the INCOMING payload before both the
+      // create path and consolidation, so consolidation's field-priority pick
+      // sees the already-corrected value. Falls back to the existing row's
+      // segment when this scrape didn't report one (segment key may have just
+      // been deleted above).
+      if ((ipoData as any).offeringType) {
+        const effectiveSegment = 'segment' in ipoData ? (ipoData as any).segment : (existingIPO?.segment ?? null);
+        (ipoData as any).offeringType = guardSmeOfferingTypeAgainstFpo(effectiveSegment, (ipoData as any).offeringType);
+      }
+
+      // P2-5 (T-292): a brand-new row (no existing row = no corroborating
+      // history yet) cannot have its hard dates asserted by a single
+      // mid/low-trust source — only the exchanges, DRHP, or an admin override
+      // are trusted alone (Priority Jewels shape: Dec-2026 dates rendered as
+      // fact from one uncorroborated source). Update-path dates are left to
+      // consolidation's existing field-priority/conflict logic, which already
+      // has prior field_sources history to arbitrate against.
+      if (!existingIPO && !isAuthoritativeForHardDatesOnCreate(source)) {
+        delete (ipoData as any).openDate;
+        delete (ipoData as any).closeDate;
+        delete (ipoData as any).listingDate;
+      }
+
       if (existingIPO) {
         // ========== PHASE 4: PRODUCTION CONSOLIDATION (100% ROLLOUT) ==========
         // All IPO updates use intelligent data consolidation
@@ -540,6 +566,27 @@ export async function upsertIPO(
           ...ipoData,
           createdAt: new Date()
         } as IPOInsert);
+
+        // P3-11 (T-292): lineage was previously written only on the UPDATE path
+        // (inside consolidation, above) — a brand-new row had ZERO field_sources
+        // rows, which is exactly why P2-5's Priority Jewels row had no provenance
+        // to show it was single-sourced. Track every field this scrape actually
+        // supplied, at full confidence, with no prior value (there is no prior row).
+        if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
+          const fieldsToTrack = Object.entries(ipoData)
+            .filter(([, value]) => value !== undefined)
+            .map(([fieldName]) => ({
+              fieldName,
+              source,
+              confidence: 100,
+              previousValue: null,
+            }));
+
+          if (fieldsToTrack.length > 0) {
+            const fieldSourcesRepo = new FieldSourcesRepository(db, getRedisClient());
+            await fieldSourcesRepo.bulkTrackFieldUpdates(newIPO.id, 'ipos', fieldsToTrack);
+          }
+        }
 
         logger.info({ slug, source }, `New ${source} IPO ${slug} created`);
         return newIPO.id;

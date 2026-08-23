@@ -11,6 +11,7 @@ import {
   detectOfferingTypeFromBSEIRFlag,
   detectOfferingType,
   resolveOfferingTypeKeepingClassification,
+  guardSmeOfferingTypeAgainstFpo,
 } from '../../../src/utils/detect-offering-type';
 
 describe('resolveOfferingTypeKeepingClassification (anti-repollution guard)', () => {
@@ -34,6 +35,26 @@ describe('resolveOfferingTypeKeepingClassification (anti-repollution guard)', ()
   it('uses incoming when there is no existing classification', () => {
     expect(resolveOfferingTypeKeepingClassification(null, 'IPO')).toBe('IPO');
     expect(resolveOfferingTypeKeepingClassification(undefined, 'RIGHTS')).toBe('RIGHTS');
+  });
+});
+
+describe('guardSmeOfferingTypeAgainstFpo (T-292 P1-1 — SME/FPO cross-check)', () => {
+  it('demotes an incoming FPO to IPO when the row is SME-segment (Mopshop shape)', () => {
+    // Mopshop Distribution Ltd.: segment=SME, MONEYCONTROL supplied offeringType=FPO
+    // at confidence 100 while BSE (the authoritative exchange source) supplied no
+    // type this cycle — MC won uncontested and the site 404'd a real BSE SME IPO.
+    expect(guardSmeOfferingTypeAgainstFpo('SME', 'FPO')).toBe('IPO');
+  });
+
+  it('leaves FPO alone for MAINBOARD-segment rows — genuine FPOs exist there', () => {
+    expect(guardSmeOfferingTypeAgainstFpo('MAINBOARD', 'FPO')).toBe('FPO');
+  });
+
+  it('leaves non-FPO incoming types unchanged regardless of segment', () => {
+    expect(guardSmeOfferingTypeAgainstFpo('SME', 'IPO')).toBe('IPO');
+    expect(guardSmeOfferingTypeAgainstFpo('SME', 'TENDER')).toBe('TENDER');
+    expect(guardSmeOfferingTypeAgainstFpo(null, 'FPO')).toBe('FPO');
+    expect(guardSmeOfferingTypeAgainstFpo(undefined, 'FPO')).toBe('FPO');
   });
 });
 
