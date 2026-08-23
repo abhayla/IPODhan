@@ -170,6 +170,31 @@ export class CacheInvalidator {
   }
 
   /**
+   * Invalidate registrar caches (T-300): the standing daily URL health
+   * check writes `allotment_url_healthy` directly to Postgres, bypassing
+   * the 7-day-TTL `RegistrarRepository` cache (`registrar:*` / `registrars:*`
+   * — see `web/lib/cache/cache-keys.ts` `getRegistrarInvalidationKeys`).
+   * Without this, a URL that flips dead-or-healthy would take up to 7 days
+   * to show through on the site. Call after any health-check cycle that
+   * changed at least one registrar's status.
+   */
+  async invalidateRegistrars(): Promise<number> {
+    try {
+      const deleted =
+        (await this.deleteKeysByPattern('registrars:*')) +
+        (await this.deleteKeysByPattern('registrar:*'));
+      logger.debug({ keysDeleted: deleted }, 'Registrar caches invalidated');
+      return deleted;
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Failed to invalidate registrar caches'
+      );
+      return 0;
+    }
+  }
+
+  /**
    * Bulk invalidation (all cache types)
    */
   async invalidateAll(): Promise<void> {

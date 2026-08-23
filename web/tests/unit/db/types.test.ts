@@ -228,6 +228,8 @@ describe('Database Types', () => {
         address: 'Mumbai Office',
         logoUrl: null,
         active: true,
+        allotmentUrlHealthy: true,
+        allotmentUrlCheckedAt: null,
         createdAt: new Date(),
         updatedAt: new Date(),
       };

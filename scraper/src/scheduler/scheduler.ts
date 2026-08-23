@@ -9,6 +9,7 @@ import { runLogCleanup } from './jobs/log-cleanup.js';
 import { runStatusUpdater } from './jobs/update-statuses.js';
 import { runStageReconcilerJob } from './jobs/stage-reconciler-job.js';
 import { runDuplicateSweepJob } from './jobs/duplicate-sweep-job.js';
+import { runRegistrarHealthCheck } from './jobs/registrar-health-check-job.js';
 import { runNSEScraper } from '../scrapers/nse-scraper-orchestrator.js';
 import { runBSEScraper } from '../scrapers/bse-scraper-orchestrator.js';
 import { runMoneycontrolScraper } from '../scrapers/moneycontrol-orchestrator.js';
@@ -81,7 +82,8 @@ export class SchedulerService {
         objectives: schedulerConfig.jobs.objectives.enabled,
         healthCheck: schedulerConfig.jobs.healthCheck.enabled,
         dailySummary: schedulerConfig.jobs.dailySummary.enabled,
-        logCleanup: schedulerConfig.jobs.logCleanup.enabled
+        logCleanup: schedulerConfig.jobs.logCleanup.enabled,
+        registrarHealthCheck: schedulerConfig.jobs.registrarHealthCheck.enabled
       }
     }, 'Scheduler configuration loaded');
 
@@ -341,6 +343,19 @@ export class SchedulerService {
         () => runLogCleanup(),
         LOCK_TTL.logCleanup,
         schedulerConfig.jobs.logCleanup.timezone
+      );
+    }
+
+    // Register registrar allotment-URL health check job (P1-2, T-300: daily,
+    // fetches every active registrar's URL and alerts the owner via Notifier
+    // the moment one goes dead, instead of it going unnoticed for months)
+    if (schedulerConfig.jobs.registrarHealthCheck.enabled) {
+      this.registerJob(
+        'registrar-health-check',
+        schedulerConfig.jobs.registrarHealthCheck.schedule!,
+        () => runRegistrarHealthCheck(),
+        LOCK_TTL.registrarHealthCheck,
+        schedulerConfig.jobs.registrarHealthCheck.timezone
       );
     }
 

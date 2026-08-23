@@ -16,6 +16,7 @@
     "./types": "./src/types/index.ts",
     "./admin/field-protection-checker": "./src/admin/field-protection-checker.ts",
     "./utils/slug": "./src/utils/slug.ts",
+    "./utils/registrar-display": "./src/utils/registrar-display.ts",
     "./utils/company-name-normalizer": "./src/utils/company-name-normalizer.ts",
     "./utils/company-name-similarity": "./src/utils/company-name-similarity.ts",
     "./utils/registrar-matcher": "./src/utils/registrar-matcher.ts",

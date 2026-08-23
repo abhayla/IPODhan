@@ -55,6 +55,8 @@ describe('RegistrarRepository', () => {
       address: 'C-101, 1st Floor, Mumbai - 400083',
       logoUrl: null,
       active: true,
+      allotmentUrlHealthy: true,
+      allotmentUrlCheckedAt: null,
       createdAt: new Date('2024-01-01'),
       updatedAt: new Date('2024-01-01'),
     },
@@ -69,6 +71,8 @@ describe('RegistrarRepository', () => {
       address: 'Selenium Building, Hyderabad - 500032',
       logoUrl: null,
       active: true,
+      allotmentUrlHealthy: true,
+      allotmentUrlCheckedAt: null,
       createdAt: new Date('2024-01-01'),
       updatedAt: new Date('2024-01-01'),
     },
@@ -83,6 +87,8 @@ describe('RegistrarRepository', () => {
       address: '1st Floor, Mumbai - 400059',
       logoUrl: null,
       active: true,
+      allotmentUrlHealthy: true,
+      allotmentUrlCheckedAt: null,
       createdAt: new Date('2024-01-01'),
       updatedAt: new Date('2024-01-01'),
     },
@@ -97,6 +103,8 @@ describe('RegistrarRepository', () => {
       address: 'Delhi',
       logoUrl: null,
       active: false,
+      allotmentUrlHealthy: true,
+      allotmentUrlCheckedAt: null,
       createdAt: new Date('2024-01-01'),
       updatedAt: new Date('2024-01-01'),
     },
@@ -122,6 +130,25 @@ describe('RegistrarRepository', () => {
       const result = await repository.findById('reg-1');
 
       expect(result).toEqual(mockRegistrars[0]);
+      expect(result?.name).toBe('Link Intime India Pvt Ltd');
+    });
+
+    it('T-300: hides the allotment-check CTA (returns null URL) when the standing health check marked the URL dead', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const unhealthyRegistrar = { ...mockRegistrars[0], allotmentUrlHealthy: false };
+      const mockSelect = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockResolvedValue([unhealthyRegistrar]),
+      };
+      mockDb.select = vi.fn().mockReturnValue(mockSelect);
+
+      const result = await repository.findById('reg-1');
+
+      expect(result?.allotmentCheckUrl).toBeNull();
+      // Everything else about the registrar (name, logo, website) still renders.
       expect(result?.name).toBe('Link Intime India Pvt Ltd');
     });
 
@@ -222,6 +249,24 @@ describe('RegistrarRepository', () => {
 
       expect(result).toHaveLength(4);
       expect(result.find((r) => r.shortName === 'Inactive')).toBeDefined();
+    });
+
+    it('T-300: strips the allotment-check URL for an inactive registrar even if one is still set on the row', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(null);
+      mockRedis.setex = vi.fn().mockResolvedValue('OK');
+
+      const rowsWithAStaleUrlOnAnInactiveRow = mockRegistrars.map((r) =>
+        r.shortName === 'Inactive' ? { ...r, allotmentCheckUrl: 'https://stale.example.com/status' } : r
+      );
+      const mockSelect = {
+        from: vi.fn().mockReturnThis(),
+        orderBy: vi.fn().mockResolvedValue(rowsWithAStaleUrlOnAnInactiveRow),
+      };
+      mockDb.select = vi.fn().mockReturnValue(mockSelect);
+
+      const result = await repository.findAll(false);
+
+      expect(result.find((r) => r.shortName === 'Inactive')?.allotmentCheckUrl).toBeNull();
     });
 
     it('should use cached data when available', async () => {

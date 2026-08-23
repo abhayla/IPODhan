@@ -599,6 +599,13 @@ export const registrars = pgTable('registrars', {
   address: text('address'),
   logoUrl: text('logo_url'),
   active: boolean('active').default(true).notNull(),
+  // T-300: standing daily URL health check writes these so the serving layer
+  // can degrade gracefully (hide a dead CTA) without a live fetch per request.
+  // allotmentUrlHealthy defaults true (unknown == assume OK) until the first
+  // health-check cycle observes it; NULL allotmentUrlCheckedAt means "never
+  // checked yet", not "checked and healthy".
+  allotmentUrlHealthy: boolean('allotment_url_healthy').default(true).notNull(),
+  allotmentUrlCheckedAt: timestamp('allotment_url_checked_at'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at').defaultNow().notNull(),
 });
