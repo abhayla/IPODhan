@@ -67,6 +67,7 @@ function makeIpoRepository(createReturn: any) {
   return {
     findByNormalizedName: vi.fn().mockResolvedValue(null),
     findBySlug: vi.fn().mockResolvedValue(null),
+    findByFuzzyName: vi.fn().mockResolvedValue(null),
     create: vi.fn().mockResolvedValue(createReturn),
     update: vi.fn(),
   } as any;
