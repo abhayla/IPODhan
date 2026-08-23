@@ -20,7 +20,7 @@ describe('validators', () => {
         openDate: '2025-10-15',
         closeDate: '2025-10-18',
         listingExchange: 'NSE',
-        category: 'MAINBOARD' as const,
+        segment: 'MAINBOARD' as const, offeringType: 'IPO' as const,
         sector: 'Technology',
         status: 'UPCOMING' as const,
         lotSize: 100,
@@ -53,7 +53,7 @@ describe('validators', () => {
         openDate: '2025-10-15',
         closeDate: '2025-10-18',
         listingExchange: 'NSE',
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD', offeringType: 'IPO',
         status: 'UPCOMING'
       };
 
@@ -70,7 +70,7 @@ describe('validators', () => {
         openDate: '2025-10-18',
         closeDate: '2025-10-15', // Invalid: close < open
         listingExchange: 'NSE',
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD', offeringType: 'IPO',
         status: 'UPCOMING'
       };
 
@@ -87,7 +87,7 @@ describe('validators', () => {
         openDate: '2025-10-15',
         closeDate: '2025-10-18',
         listingExchange: 'INVALID_EXCHANGE', // Invalid enum
-        category: 'MAINBOARD',
+        segment: 'MAINBOARD', offeringType: 'IPO',
         status: 'UPCOMING'
       };
 
@@ -153,7 +153,7 @@ describe('validators', () => {
         openDate: '2025-10-15',
         closeDate: '2025-10-18',
         listingExchange: 'NSE',
-        category: 'MAINBOARD' as const,
+        segment: 'MAINBOARD' as const, offeringType: 'IPO' as const,
         status: 'UPCOMING' as const,
         symbol: 'TESTCO',
         leadManagers: ['Test Lead Manager']
@@ -240,17 +240,20 @@ describe('validators', () => {
   describe('generateSlug', () => {
     it('should convert to lowercase', () => {
       const result = generateSlug('TEST COMPANY LIMITED');
-      expect(result).toBe('test-company-limited');
+      // generateIPOSlug canonicalizes the legal suffix ("Limited" -> "-ltd") -
+      // see .claude/rules/canonical-ipo-slug.md.
+      expect(result).toBe('test-company-ltd');
     });
 
     it('should replace spaces with hyphens', () => {
       const result = generateSlug('Test Company Limited');
-      expect(result).toBe('test-company-limited');
+      expect(result).toBe('test-company-ltd');
     });
 
     it('should remove non-alphanumeric characters', () => {
       const result = generateSlug('Test & Company! Ltd.');
-      expect(result).toBe('test-company-ltd');
+      // '&' canonicalizes to 'and' (canonical-ipo-slug.md); '!' is stripped.
+      expect(result).toBe('test-and-company-ltd');
     });
 
     it('should remove leading and trailing hyphens', () => {
@@ -454,7 +457,10 @@ describe('validators', () => {
       expect(transformed.openDate).toBe('2025-10-25');
       expect(transformed.closeDate).toBe('2025-10-28');
       expect(transformed.listingExchange).toBe('NSE');
-      expect(transformed.category).toBe('MAINBOARD');
+      // category (MAINBOARD/SME/RIGHTS/NCD) maps to segment + offeringType
+      // post-Story-11.8 - see segmentAndOfferingTypeFromAlertsCategory().
+      expect(transformed.segment).toBe('MAINBOARD');
+      expect(transformed.offeringType).toBe('IPO');
       expect(transformed.status).toBe('UPCOMING');
       expect(transformed.sector).toBe('IT Services');
     });
@@ -576,7 +582,9 @@ describe('validators', () => {
       const transformed = transformIPOAlertsData(apiData);
 
       expect(transformed.status).toBe('CLOSED');
-      expect(transformed.category).toBe('RIGHTS');
+      // RIGHTS has no market segment (nullable) and offeringType carries it.
+      expect(transformed.segment).toBeNull();
+      expect(transformed.offeringType).toBe('RIGHTS');
       expect(transformed.listingExchange).toBe('BOTH');
     });
 
@@ -621,7 +629,7 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         openDate: '2025-10-15',
         closeDate: '2025-10-17',
         listingExchange: 'BSE',
-        category: 'MAINBOARD' as const,
+        segment: 'MAINBOARD' as const, offeringType: 'IPO' as const,
         status: 'UPCOMING' as const,
         lotSize: 14,
         faceValue: 10,
@@ -642,7 +650,7 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         openDate: '2025-10-15',
         closeDate: '2025-10-17',
         listingExchange: 'BSE',
-        category: 'MAINBOARD' as const,
+        segment: 'MAINBOARD' as const, offeringType: 'IPO' as const,
         status: 'UPCOMING' as const,
         lotSize: 14,
         faceValue: 10,
@@ -663,7 +671,7 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         openDate: '2024-03-25',
         closeDate: '2024-03-27',
         listingExchange: 'BSE',
-        category: 'SME' as const,
+        segment: 'SME' as const, offeringType: 'IPO' as const,
         status: 'UPCOMING' as const,
         lotSize: 500,
         faceValue: 10,
@@ -684,7 +692,7 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         openDate: '2025-10-15',
         closeDate: '2025-10-17',
         listingExchange: 'BSE',
-        category: 'MAINBOARD' as const,
+        segment: 'MAINBOARD' as const, offeringType: 'IPO' as const,
         status: 'UPCOMING' as const,
         lotSize: 14,
         faceValue: 10,
@@ -707,7 +715,7 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         openDate: '2024-01-15',
         closeDate: '2024-01-22',
         listingExchange: 'BSE',
-        category: 'RIGHTS' as const,
+        segment: null as const, offeringType: 'RIGHTS' as const,
         status: 'UPCOMING' as const,
         lotSize: 150,
         faceValue: 10,
@@ -728,7 +736,7 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         openDate: '2024-02-01',
         closeDate: '2024-02-08',
         listingExchange: 'BSE',
-        category: 'RIGHTS' as const,
+        segment: null as const, offeringType: 'RIGHTS' as const,
         status: 'UPCOMING' as const,
         lotSize: 200,
         faceValue: 10,
@@ -749,7 +757,7 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         openDate: '2024-01-10',
         closeDate: '2024-01-17',
         listingExchange: 'BSE',
-        category: 'NCD' as const,
+        segment: null as const, offeringType: 'NCD' as const,
         status: 'UPCOMING' as const,
         lotSize: 10,
         faceValue: 1000,
@@ -770,7 +778,7 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         openDate: '2024-01-20',
         closeDate: '2024-01-27',
         listingExchange: 'BSE',
-        category: 'NCD' as const,
+        segment: null as const, offeringType: 'NCD' as const,
         status: 'UPCOMING' as const,
         lotSize: 10,
         faceValue: 1000,
@@ -791,7 +799,7 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         openDate: '2024-02-10',
         closeDate: '2024-02-17',
         listingExchange: 'BSE',
-        category: 'RIGHTS' as const,
+        segment: null as const, offeringType: 'RIGHTS' as const,
         status: 'UPCOMING' as const,
         lotSize: 100,
         faceValue: 10,
@@ -812,7 +820,7 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         openDate: '2024-05-01',
         closeDate: '2024-05-03',
         listingExchange: 'NSE',
-        category: 'MAINBOARD' as const,
+        segment: 'MAINBOARD' as const, offeringType: 'IPO' as const,
         status: 'UPCOMING' as const,
         lotSize: 25,
         faceValue: 10,
@@ -835,7 +843,7 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         openDate: '2024-06-01',
         closeDate: '2024-06-03',
         listingExchange: 'NSE',
-        category: 'MAINBOARD' as const,
+        segment: 'MAINBOARD' as const, offeringType: 'IPO' as const,
         status: 'UPCOMING' as const,
         lotSize: 30,
         faceValue: 10,
@@ -857,7 +865,7 @@ describe('ScrapedIPOSchema - Conditional Validation for BSE Detail Data', () => 
         openDate: '2024-03-01',
         closeDate: '2024-03-08',
         listingExchange: 'BSE',
-        category: 'RIGHTS' as const,
+        segment: null as const, offeringType: 'RIGHTS' as const,
         status: 'UPCOMING' as const,
         lotSize: 50,
         faceValue: 10,

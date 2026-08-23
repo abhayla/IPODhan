@@ -135,6 +135,15 @@ describe('scraper-utils', () => {
       const mockFn = vi.fn().mockRejectedValue(new Error('Always fails'));
 
       const promise = retryWithExponentialBackoff(mockFn, 3, 1000);
+      // Attach a handler synchronously so the rejection during
+      // runAllTimersAsync() below is never "unhandled" from Node's
+      // perspective — without this, the promise can reject mid-await
+      // (before the `.rejects` assertion attaches its own handler),
+      // which vitest reports as a global unhandled-rejection error even
+      // though the test's assertion below is genuinely correct (T-301:
+      // this is what made the full-suite pr-gate run exit 1 despite every
+      // test passing).
+      promise.catch(() => {});
       await vi.runAllTimersAsync();
 
       await expect(promise).rejects.toThrow('Always fails');
@@ -153,6 +162,9 @@ describe('scraper-utils', () => {
       }) as any);
 
       const promise = retryWithExponentialBackoff(mockFn, 3, 1000);
+      // See the "should throw error after all retries exhausted" test above
+      // for why this synchronous catch is required (T-301).
+      promise.catch(() => {});
       await vi.runAllTimersAsync();
 
       try {
