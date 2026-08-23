@@ -112,6 +112,14 @@ export function normalizeCompanyNameForMatching(companyName: string): string {
     .replace(/\s+llc$/i, '')
     .replace(/\s+llp$/i, '')
     .replace(/\s+plc$/i, '')
+    // "Company" / a bare "Co." are generic-corporate-suffix synonyms for
+    // ltd/inc/corp (P2-2, T-293) — "IC Electricals Co.Ltd." and "IC
+    // Electricals Company" must fold to the same identity. Strip "company"
+    // first (longer token), then a trailing "co" (already period-stripped
+    // above) so "co ltd" -> "co" (ltd already stripped by the prior rule)
+    // -> "" folds correctly without eating mid-string words ("Cocoa Traders").
+    .replace(/\s+company$/i, '')
+    .replace(/\s+co$/i, '')
     // Any remaining parens (mid-string, e.g. "(India)") and hyphens are
     // separators, not semantic content — fold to spaces so "Indo-MIM" and
     // "INDO MIM", or "Gulf Lloyds (India)" and "Gulf Lloyds India", agree.
@@ -180,7 +188,9 @@ export function normalizedCompanyNameSql(input: SQL): SQL {
                                 REGEXP_REPLACE(
                                   REGEXP_REPLACE(
                                     REGEXP_REPLACE(
-                                      ${input},
+                                      REGEXP_REPLACE(
+                                        REGEXP_REPLACE(
+                                          ${input},
                                         '(Ltd\\.?|Limited)\\s+[A-Za-z]{1,2}$',
                                         '\\1',
                                         'i'
@@ -236,10 +246,18 @@ export function normalizedCompanyNameSql(input: SQL): SQL {
               '',
               'i'
           ),
-            '[()]',
-            ' ',
-            'g'
+            '\\s+company$',
+            '',
+            'i'
         ),
+          '\\s+co$',
+          '',
+          'i'
+      ),
+        '[()]',
+        ' ',
+        'g'
+    ),
           '-',
           ' ',
           'g'

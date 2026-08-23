@@ -20,6 +20,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { extractRegistrarFromDetailHtml } from '../src/scrapers/chittorgarh-detail-fields.js';
+import { fillDiscoveryGapsFromReport82 } from './lib/chittorgarh-report82-discovery.js';
 import logger from '../src/utils/logger.js';
 
 const APPLY = process.argv.includes('--apply');
@@ -95,7 +96,16 @@ async function main() {
       logger.warn({ fy: fy.range, error: err instanceof Error ? err.message : String(err) }, 'report 118 fetch failed (continuing)');
     }
   }
-  console.log(`discovery map (name -> detail url): ${discovery.size} IPOs`);
+  console.log(`discovery map (report 118, historical): ${discovery.size} IPOs`);
+
+  // Report 82 fallback (P3-7, T-293) — same root cause + fix as the
+  // sibling lot-size backfill: report 118 misses not-yet-open IPOs.
+  const report82Added = await fillDiscoveryGapsFromReport82(
+    discovery,
+    normalizeCompanyNameForMatching,
+    (cat, err) => logger.warn({ cat, error: err instanceof Error ? err.message : String(err) }, 'report 82 fallback fetch failed (continuing)')
+  );
+  console.log(`discovery map (+ report 82 upcoming-issue fallback, +${report82Added}): ${discovery.size} IPOs`);
 
   const candidates = await db
     .select({ id: schema.ipos.id, companyName: schema.ipos.companyName })

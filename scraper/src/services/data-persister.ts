@@ -220,7 +220,32 @@ export async function upsertIPO(
       if (!existingIPO) {
         // Fallback to slug-based lookup (existing behavior)
         existingIPO = await ipoRepository.findBySlug(slug);
-      } else {
+      }
+
+      if (!existingIPO) {
+        // P2-2a (T-293): the exact + compact-whitespace tiers above cannot
+        // catch a genuine SPELLING typo ("Hybird" vs "Hybrid") — only a
+        // similarity check can. This is the insert-path fix for the class of
+        // bug that let "Dhanwel Hybird Seeds Limited" mint a second row
+        // alongside "Dhanwel Hybrid Seeds Ltd." in prod: NOTHING on this
+        // write path ever ran a fuzzy check before (DuplicateDetectionService
+        // has one, but the production pipeline sets skipDuplicateDetection:
+        // true — see data-validation-pipeline.ts). Only reached when the
+        // cheap exact tiers already missed, so the extra scan cost is rare.
+        const fuzzyMatch = await ipoRepository.findByFuzzyName(normalizedName);
+        if (fuzzyMatch) {
+          logger.info({
+            companyName: scrapedIPO.companyName,
+            normalizedName,
+            existingCompanyName: fuzzyMatch.companyName,
+            existingSlug: fuzzyMatch.slug,
+            newSlug: slug
+          }, '[T-293] Found existing IPO via fuzzy (typo) name matching - preventing duplicate!');
+          existingIPO = fuzzyMatch;
+        }
+      }
+
+      if (existingIPO && normalizeCompanyNameForMatching(existingIPO.companyName) === normalizedName) {
         logger.info({
           companyName: scrapedIPO.companyName,
           normalizedName,

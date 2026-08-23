@@ -11,17 +11,89 @@
  * each cluster + the child rows that ON DELETE CASCADE would remove, so any data
  * loss is visible BEFORE applying. Apply runs in a single transaction.
  *
+ * P2-2b (round-4 review, T-293): clustering is now TWO-TIER — exact normalized
+ * key (as before) UNIONED with a Levenshtein-typo check (>=0.85 similarity AND
+ * <=3 absolute edits — see `company-name-similarity.ts` for why both bars are
+ * needed, not percentage alone). This is the POST-INSERT convergence sweep: a
+ * pair that slips past the create-time check in `upsertIPO` (a different insert
+ * path, a race, a bug) still converges when this script next runs, instead of
+ * living forever. Run this script periodically (see
+ * `scheduler/jobs/duplicate-sweep.ts`, gated OFF by default) as well as ad hoc.
+ *
  * Usage (tunnel: DATABASE_HOST=localhost DATABASE_PORT=15432):
  *   npx tsx --tsconfig tsx.tsconfig.json scripts/merge-duplicate-ipos.ts [--apply]
  */
 
 import { db } from '@ipodhan/shared/db';
-import { ipos } from '@ipodhan/shared/db/schema';
+import { ipos, ipoSlugRedirects } from '@ipodhan/shared/db/schema';
 import { sql } from 'drizzle-orm';
 import { pathToFileURL } from 'node:url';
 import { normalizeCompanyNameForMatching } from '../src/services/data-persister.js';
+import { levenshteinSimilarity } from '@ipodhan/shared/utils/company-name-similarity';
 
 const APPLY = process.argv.includes('--apply');
+const FUZZY_THRESHOLD = 0.85;
+const MAX_TYPO_EDIT_DISTANCE = 3;
+
+function levenshteinDistanceRaw(a: string, b: string): number {
+  const matrix: number[][] = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      matrix[i][j] = b.charAt(i - 1) === a.charAt(j - 1)
+        ? matrix[i - 1][j - 1]
+        : Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+/** Union-Find over normalized-name KEYS: exact equality OR typo-similarity. */
+export function buildDuplicateKeyGroups(keys: string[]): Map<string, string[]> {
+  const parent = new Map<string, string>();
+  const find = (k: string): string => {
+    if (!parent.has(k)) parent.set(k, k);
+    let root = k;
+    while (parent.get(root) !== root) root = parent.get(root)!;
+    let cur = k;
+    while (parent.get(cur) !== root) {
+      const next = parent.get(cur)!;
+      parent.set(cur, root);
+      cur = next;
+    }
+    return root;
+  };
+  const union = (a: string, b: string) => {
+    const ra = find(a);
+    const rb = find(b);
+    if (ra !== rb) parent.set(ra, rb);
+  };
+
+  const unique = [...new Set(keys)];
+  for (const k of unique) find(k);
+
+  for (let i = 0; i < unique.length; i++) {
+    for (let j = i + 1; j < unique.length; j++) {
+      const a = unique[i];
+      const b = unique[j];
+      if (a === b) {
+        union(a, b);
+        continue;
+      }
+      const distance = levenshteinDistanceRaw(a, b);
+      if (distance > MAX_TYPO_EDIT_DISTANCE) continue;
+      if (levenshteinSimilarity(a, b) >= FUZZY_THRESHOLD) union(a, b);
+    }
+  }
+
+  const groups = new Map<string, string[]>();
+  for (const k of unique) {
+    const root = find(k);
+    (groups.get(root) ?? groups.set(root, []).get(root)!).push(k);
+  }
+  return groups;
+}
 
 // Data-bearing child tables worth reporting before a CASCADE delete.
 const CHILD_TABLES = [
@@ -104,17 +176,26 @@ async function main() {
     })
     .from(ipos)) as Row[];
 
-  const clusters = new Map<string, Row[]>();
+  const byExactKey = new Map<string, Row[]>();
   for (const r of all) {
     const key = normalizeCompanyNameForMatching(r.companyName);
     if (!key) continue;
-    (clusters.get(key) ?? clusters.set(key, []).get(key)!).push(r);
+    (byExactKey.get(key) ?? byExactKey.set(key, []).get(key)!).push(r);
+  }
+  // P2-2b (T-293): union exact-key clusters that are ALSO typo-similar to
+  // each other, so a pair like "dhanwel hybird seeds" / "dhanwel hybrid
+  // seeds" — two different exact keys — converges into one cluster.
+  const keyGroups = buildDuplicateKeyGroups([...byExactKey.keys()]);
+  const clusters = new Map<string, Row[]>();
+  for (const [root, keys] of keyGroups) {
+    const rows = keys.flatMap((k) => byExactKey.get(k) ?? []);
+    clusters.set(root, rows);
   }
   const dupClusters = [...clusters.entries()].filter(([, rs]) => rs.length > 1);
 
   console.log(`Total IPOs: ${all.length} · clusters: ${clusters.size} · DUP clusters: ${dupClusters.length}\n${'='.repeat(80)}`);
 
-  const merges: { keep: string; dup: string }[] = [];
+  const merges: { keep: string; dup: string; dupSlug: string }[] = [];
   const toDelete: string[] = [];
   for (const [key, rs] of dupClusters) {
     const val = new Map<string, number>();
@@ -126,7 +207,7 @@ async function main() {
       const kids = await childCounts(dpRow.id);
       const kidStr = Object.keys(kids).length ? Object.entries(kids).map(([t, n]) => `${t}:${n}`).join(', ') : 'no children';
       console.log(`    DELETE id=${dpRow.id.slice(0, 8)} slug=${dpRow.slug} [c=${completeness(dpRow)}]  repoint gmp/subs → keep, then CASCADE: ${kidStr}`);
-      merges.push({ keep: keep.id, dup: dpRow.id });
+      merges.push({ keep: keep.id, dup: dpRow.id, dupSlug: dpRow.slug });
       toDelete.push(dpRow.id);
     }
   }
@@ -141,6 +222,19 @@ async function main() {
 
   await db.transaction(async (tx) => {
     for (const { keep, dup } of merges) {
+      // Scalar high-value fields (symbol/isin) live ONLY on the `ipos` row
+      // itself — a CASCADE delete of `dup` loses them forever, and they are
+      // NOT part of `completeness()`'s scoring, so the richer row can still
+      // lose a real exchange identifier the other row happened to carry
+      // (round-4 review finding, T-293: "Dhanwel Hybird" carried the DHANWEL
+      // symbol; the kept "Hybrid" row did not). Backfill ONLY where the
+      // keeper is NULL — never overwrite a keeper's existing value.
+      for (const col of ['symbol', 'isin'] as const) {
+        await tx.execute(sql.raw(
+          `UPDATE ipos SET ${col} = dup.${col} FROM ipos dup ` +
+          `WHERE ipos.id = '${keep}' AND dup.id = '${dup}' ` +
+          `AND ipos.${col} IS NULL AND dup.${col} IS NOT NULL`));
+      }
       // subscriptions: only UNIQUE(id) -> plain repoint is safe.
       await tx.execute(sql.raw(`UPDATE subscriptions SET ipo_id = '${keep}' WHERE ipo_id = '${dup}'`));
       // gmp_records: UNIQUE(ipo_id, timestamp, source) -> drop dup rows that would
@@ -151,11 +245,22 @@ async function main() {
         `AND k."timestamp" = d."timestamp" AND k.source = d.source)`));
       await tx.execute(sql.raw(`UPDATE gmp_records SET ipo_id = '${keep}' WHERE ipo_id = '${dup}'`));
     }
+    // P2-2 (T-293): a merged-away slug is a real URL a user/search-engine may
+    // hold — deleting the row without a redirect turns it into a 404. Write
+    // one BEFORE the delete (same table+shape as the T-278 name-pollution
+    // repair's `writeRedirect`). `onConflictDoNothing` makes this idempotent
+    // if the script is ever re-run over an already-redirected slug.
+    for (const { keep, dupSlug } of merges) {
+      await tx
+        .insert(ipoSlugRedirects)
+        .values({ oldSlug: dupSlug, ipoId: keep, reason: 'DUPLICATE_MERGE' })
+        .onConflictDoNothing({ target: ipoSlugRedirects.oldSlug });
+    }
     for (const id of toDelete) {
       await tx.execute(sql.raw(`DELETE FROM ipos WHERE id = '${id}'`));
     }
   });
-  console.log(`APPLIED — repointed gmp/subscriptions to survivors, deleted ${toDelete.length} duplicate rows (CASCADE removed rebuildable children).`);
+  console.log(`APPLIED — repointed gmp/subscriptions to survivors, wrote ${merges.length} slug redirect(s), deleted ${toDelete.length} duplicate rows (CASCADE removed rebuildable children).`);
 }
 
 // Guard so `pickKeeper`/`completeness` can be imported by unit tests without

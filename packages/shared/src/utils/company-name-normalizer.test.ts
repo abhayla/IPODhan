@@ -75,6 +75,28 @@ describe('normalizeCompanyNameForMatching — P2-1 duplicate-prevention pairs', 
       expect(normalizeCompanyNameForMatching(`G.V.Electricals Ltd. (G.V. Electricals IPO) ${code}`)).toBe(base);
     }
   });
+
+  /**
+   * P2-2 (round-4 review, T-293): "IC Electricals Co.Ltd." and "IC Electricals
+   * Company" minted two live prod rows because "company" / a bare "co." are
+   * generic-corporate-suffix synonyms the normalizer never stripped — only
+   * ltd/limited/pvt/inc/corp/llc/llp/plc were in the suffix chain. This is the
+   * cleaner fix vs. loosening a fuzzy-similarity threshold (which risks
+   * over-merging unrelated companies): a deterministic suffix fold, same as
+   * every other legal-suffix synonym already handled.
+   */
+  it('folds "Company" and "Co.Ltd." as generic-corporate-suffix synonyms (P2-2, T-293)', () => {
+    expect(normalizeCompanyNameForMatching('IC Electricals Co.Ltd.')).toBe('ic electricals');
+    expect(normalizeCompanyNameForMatching('IC Electricals Company')).toBe('ic electricals');
+    expect(normalizeCompanyNameForMatching('IC Electricals Co.Ltd.')).toBe(
+      normalizeCompanyNameForMatching('IC Electricals Company')
+    );
+  });
+
+  it('does not strip "co" when it is not a trailing generic-suffix token', () => {
+    // "Cocoa" / "Company" mid-string must not be mistaken for the suffix.
+    expect(normalizeCompanyNameForMatching('Cocoa Traders Ltd')).toBe('cocoa traders');
+  });
 });
 
 /**

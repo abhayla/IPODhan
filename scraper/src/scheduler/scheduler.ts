@@ -8,6 +8,7 @@ import { runDailySummary } from './jobs/daily-summary.js';
 import { runLogCleanup } from './jobs/log-cleanup.js';
 import { runStatusUpdater } from './jobs/update-statuses.js';
 import { runStageReconcilerJob } from './jobs/stage-reconciler-job.js';
+import { runDuplicateSweepJob } from './jobs/duplicate-sweep-job.js';
 import { runNSEScraper } from '../scrapers/nse-scraper-orchestrator.js';
 import { runBSEScraper } from '../scrapers/bse-scraper-orchestrator.js';
 import { runMoneycontrolScraper } from '../scrapers/moneycontrol-orchestrator.js';
@@ -201,6 +202,19 @@ export class SchedulerService {
         () => runStageReconcilerJob({ dryRun: true }),
         LOCK_TTL.scraper,
         schedulerConfig.jobs.stageReconciler.timezone
+      );
+    }
+
+    // P2-2b (T-293): periodic duplicate-IPO cluster sweep (flag-gated OFF; activation
+    // is §GATE). Runs dry-run by default — computes + logs the duplicate-cluster plan;
+    // the actual merge/delete step is intentionally never wired to `dryRun: false` here.
+    if (schedulerConfig.jobs.duplicateSweep.enabled) {
+      this.registerJob(
+        'duplicateSweep',
+        schedulerConfig.jobs.duplicateSweep.schedule!,
+        () => runDuplicateSweepJob({ dryRun: true }),
+        LOCK_TTL.scraper,
+        schedulerConfig.jobs.duplicateSweep.timezone
       );
     }
 

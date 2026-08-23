@@ -38,6 +38,7 @@ export interface SchedulerConfig {
     dailySummary: JobSchedule;
     logCleanup: JobSchedule;
     stageReconciler: JobSchedule;      // Stage F: stage-transition reconciler (flag-gated OFF; activation §GATE)
+    duplicateSweep: JobSchedule;       // P2-2b (T-293): periodic duplicate-IPO cluster sweep (flag-gated OFF; activation §GATE)
   };
 }
 
@@ -133,6 +134,11 @@ const PROD_SCHEDULES = {
     enabled: process.env.ENABLE_STAGE_RECONCILER === 'true', // GATED OFF; Abhay enables in prod (§GATE)
     schedule: '15 */3 * * *',              // Stage F: every 3 hours (computes due-but-missing fetches per IPO)
     timezone: 'Asia/Kolkata'
+  },
+  duplicateSweep: {
+    enabled: process.env.ENABLE_DUPLICATE_SWEEP_JOB === 'true', // GATED OFF; Abhay enables in prod (§GATE)
+    schedule: '30 4 * * *',                // P2-2b (T-293): once daily — not time-critical, dry-run report only
+    timezone: 'Asia/Kolkata'
   }
 };
 
@@ -225,6 +231,11 @@ const DEV_SCHEDULES = {
   stageReconciler: {
     enabled: process.env.ENABLE_STAGE_RECONCILER === 'true', // GATED OFF; §GATE
     schedule: '15 */3 * * *',              // Stage F: every 3 hours
+    timezone: 'Asia/Kolkata'
+  },
+  duplicateSweep: {
+    enabled: process.env.ENABLE_DUPLICATE_SWEEP_JOB === 'true', // GATED OFF; §GATE
+    schedule: '30 4 * * *',
     timezone: 'Asia/Kolkata'
   }
 };

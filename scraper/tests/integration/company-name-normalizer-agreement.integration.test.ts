@@ -92,6 +92,9 @@ const FIXTURE: string[] = [
   'Shree Balaji (Mala) Textiles Ltd. (Shree Balaji Mala IPO)',
   'Silverstorm Parks and Resorts',
   'Silverstorm Parks & Resorts Ltd.',
+  // P2-2 (round-4 review, T-293): "Company" / bare "Co." suffix synonyms.
+  'IC Electricals Co.Ltd.',
+  'IC Electricals Company',
 ];
 
 describe('company-name normalizer — JS ↔ SQL agreement (A3)', () => {

@@ -19,8 +19,10 @@
 import { db } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { and, eq, isNull } from 'drizzle-orm';
+import { pathToFileURL } from 'node:url';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { extractLotSizeFromDetailHtml } from '../src/scrapers/chittorgarh-detail-fields.js';
+import { fillDiscoveryGapsFromReport82 } from './lib/chittorgarh-report82-discovery.js';
 import logger from '../src/utils/logger.js';
 
 const APPLY = process.argv.includes('--apply');
@@ -53,6 +55,9 @@ async function fetchReport118(year: number, range: string): Promise<any[]> {
   const d: any = await r.json();
   return d?.reportTableData ?? [];
 }
+
+// Report-82 discovery fallback (P3-7, T-293) — see chittorgarh-report82-discovery.ts
+// for why this closes a real gap (upcoming issues invisible to report 118).
 
 async function fetchDetailHtml(slug: string, id: string): Promise<string | null> {
   const u = `https://www.chittorgarh.com/ipo/${slug}/${id}/`;
@@ -97,7 +102,19 @@ async function main() {
       logger.warn({ fy: fy.range, error: err instanceof Error ? err.message : String(err) }, 'report 118 fetch failed (continuing)');
     }
   }
-  console.log(`discovery map (name -> detail url): ${discovery.size} IPOs`);
+  console.log(`discovery map (report 118, historical): ${discovery.size} IPOs`);
+
+  // 1b. Report 82 fallback (P3-7, T-293): report 118 only carries an IPO once
+  // it has opened — a not-yet-open issue is invisible to it. Report 82 (the
+  // SAME source the main scraper discovers IPOs from) covers the current
+  // fiscal year INCLUDING upcoming issues, closing that gap. Only fills a
+  // name report 118 missed — 118 stays authoritative where both agree.
+  const report82Added = await fillDiscoveryGapsFromReport82(
+    discovery,
+    normalizeCompanyNameForMatching,
+    (cat, err) => logger.warn({ cat, error: err instanceof Error ? err.message : String(err) }, 'report 82 fallback fetch failed (continuing)')
+  );
+  console.log(`discovery map (+ report 82 upcoming-issue fallback, +${report82Added}): ${discovery.size} IPOs`);
 
   // 2. Genuine IPOs missing lot_size.
   const candidates = await db
@@ -154,8 +171,15 @@ async function main() {
   process.exit(failed > written ? 1 : 0);
 }
 
-main().catch((e) => {
-  logger.error({ error: e instanceof Error ? e.message : String(e) }, 'lot-size detail backfill crashed');
-  console.error(e);
-  process.exit(1);
-});
+// MUST use pathToFileURL, not a hand-rolled `file://${argv[1]}` template — see
+// tests/unit/utils/cli-entry-guard.test.ts (T-223). Guards main() from running
+// as an import side effect so pure helpers (parseReport82DiscoveryEntry) are
+// unit-testable without touching the DB/network.
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+if (isMain) {
+  main().catch((e) => {
+    logger.error({ error: e instanceof Error ? e.message : String(e) }, 'lot-size detail backfill crashed');
+    console.error(e);
+    process.exit(1);
+  });
+}
