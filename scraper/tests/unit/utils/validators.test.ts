@@ -75,8 +75,7 @@ describe('validators', () => {
       };
 
       const result = ScrapedIPOSchema.safeParse(invalidIPO);
-      // T-301 GATE PROOF: deliberately inverted assertion to prove pr-gate fails red.
-      expect(result.success).toBe(true);
+      expect(result.success).toBe(false);
     });
 
     it('should reject IPO with invalid enum values', () => {
