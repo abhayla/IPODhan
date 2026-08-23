@@ -218,12 +218,28 @@ export function UPIDeadlineTimer({
           <p className="text-sm font-medium text-gray-600 dark:text-gray-400">
             UPI Mandate Deadline
           </p>
-          <p className={`text-2xl font-bold ${
-            urgencyLevel === 'critical' ? 'text-red-600' :
-            urgencyLevel === 'warning' ? 'text-yellow-600' :
-            urgencyLevel === 'expired' ? 'text-gray-500' :
-            'text-green-600'
-          }`}>
+          <p
+            className={`text-2xl font-bold ${
+              urgencyLevel === 'critical' ? 'text-red-600' :
+              urgencyLevel === 'warning' ? 'text-yellow-600' :
+              urgencyLevel === 'expired' ? 'text-gray-500' :
+              'text-green-600'
+            }`}
+            // F1 (T-302C checker finding): the server and the client's
+            // pre-hydration render each call `computeTimerState` against
+            // their OWN `Date.now()`, which differ by however long hydration
+            // took. Any resulting text (seconds most visibly, but also a
+            // minute rollover right at a boundary) legitimately differs
+            // between the two renders — that's not a bug, it's the passage
+            // of real time, so it must not be treated as one. This is
+            // exactly the case React's docs call out for
+            // `suppressHydrationWarning`: keep the server-rendered text on
+            // the first paint, then let the `useEffect` tick below correct
+            // it, without tripping the hydration-mismatch warning (and the
+            // project's zero-console-error prod gate) or discarding the
+            // server-rendered subtree.
+            suppressHydrationWarning
+          >
             {formatTimeLeft(timeLeft)}
           </p>
         </div>

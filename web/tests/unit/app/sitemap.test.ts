@@ -1,12 +1,19 @@
 /**
- * Unit tests for the dynamic sitemap generator (T-302 / P3-14, P3-16)
+ * Unit tests for the dynamic sitemap generator (T-302 / P3-14, P3-16, F2 rework)
  *
  * P3-14: a retired/redirected slug (an `ipo_slug_redirects.old_slug`) must
  * never be published in the sitemap — crawling it just bounces through a 308.
  * P3-16: the "coming soon" review placeholder pages must not be indexed.
+ * F2 (T-302C checker finding): the `old_slug` filter alone is a no-op against
+ * the reported bug, because a build-time-cached sitemap (no `revalidate`)
+ * kept serving a stale snapshot from BEFORE the retirement, and the filter
+ * only ever sees the data available at build time. The route must revalidate
+ * on a cadence so a slug retired in prod actually drops out without a
+ * redeploy.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { CacheTTL } from '@/lib/cache/cache-keys';
 
 const mockFindAll = vi.fn();
 const mockSelect = vi.fn();
@@ -70,6 +77,11 @@ describe('sitemap', () => {
     expect(urls.some((u) => u.endsWith('/sme-ipo-reviews'))).toBe(false);
     // Sanity: real static routes still get through
     expect(urls.some((u) => u.endsWith('/mainboard-ipos'))).toBe(true);
+  });
+
+  it('F2: revalidates on the IPO-list cache cadence instead of only at build time', async () => {
+    const sitemapModule = await import('@/app/sitemap');
+    expect(sitemapModule.revalidate).toBe(CacheTTL.IPO_LIST);
   });
 
   it('degrades to an empty exclusion set (fails open, not closed) if the redirects table read fails', async () => {

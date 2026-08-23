@@ -77,12 +77,16 @@ describe('getMainboardPerformanceData', () => {
     });
   });
 
-  it('fails open to an empty array (never throws) when the repository errors', async () => {
+  it('F4: returns undefined (never throws, never a false-empty []) when the repository errors', async () => {
+    // T-302C checker F4: `[]` must mean "genuinely zero rows". Returning `[]`
+    // on error made the client treat a transient DB/Redis failure as
+    // "server data present, zero rows" and skip its own client-side fetch —
+    // undefined is the only signal that tells the client to fetch itself.
     mockFindHistorical.mockRejectedValue(new Error('db down'));
 
     const result = await getMainboardPerformanceData('2026');
 
-    expect(result).toEqual([]);
+    expect(result).toBeUndefined();
   });
 });
 
@@ -125,11 +129,11 @@ describe('getSMEPerformanceData', () => {
     expect(result[0].companyName).toBe('Real SME Co Ltd');
   });
 
-  it('fails open to an empty array when the repository errors', async () => {
+  it('F4: returns undefined (never a false-empty []) when the repository errors', async () => {
     mockFindHistorical.mockRejectedValue(new Error('db down'));
 
     const result = await getSMEPerformanceData('2026');
 
-    expect(result).toEqual([]);
+    expect(result).toBeUndefined();
   });
 });

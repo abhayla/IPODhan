@@ -3,6 +3,19 @@ import { MetadataRoute } from 'next';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { discoverStaticRoutes } from '@/lib/seo/route-discovery';
 import * as schema from '@ipodhan/shared/db/schema';
+import { CacheTTL } from '@/lib/cache/cache-keys';
+
+// F2 (T-302C checker finding): this route has no `revalidate`, so Next.js
+// generates it ONCE at build time and serves that snapshot from cache
+// (`x-nextjs-cache: HIT`) until the next deploy. A slug retired between
+// deploys (merged/renamed IPO) keeps 308-ing from the sitemap for the whole
+// gap — the `redirectedOldSlugs` filter below only ever runs against the data
+// available at the build that produced the cached snapshot, so it can't
+// remove a slug retired AFTER that build. Revalidating on the same cadence as
+// the underlying IPO-list cache (`CacheTTL.IPO_LIST`, used by
+// `ipoRepository.findAll` below) means a slug retired in prod drops out of
+// the sitemap within one cache window instead of waiting for a redeploy.
+export const revalidate = CacheTTL.IPO_LIST;
 
 /**
  * Dynamic sitemap generation for SEO

@@ -25,15 +25,22 @@ function toNumber(value: string | number | null | undefined): number | null {
 /**
  * Shared server-side fetch behind `getMainboardPerformanceData` /
  * `getSMEPerformanceData` — same repository query, filtered to the requested
- * segment. Fails open to an empty array (honest empty state) on any
- * repository error; this is a supplementary "ship something real on first
- * paint" fetch, not the page's sole data source — the client component still
+ * segment. This is a supplementary "ship something real on first paint"
+ * fetch, not the page's sole data source — the client component still
  * refetches on year changes.
+ *
+ * F4 (T-302C checker finding): on a repository error this MUST return
+ * `undefined`, never `[]`. The client (`MainboardPerformanceTrackerClient` /
+ * `SMEPerformanceTrackerClient`) treats `initialData === undefined` as "no
+ * server data, fetch client-side" and any defined array (including `[]`) as
+ * "server data present, genuinely zero rows" — it skips its own fetch and
+ * `revalidate = 300` then caches that false empty state for 5 minutes. `[]`
+ * must mean "the query ran and found zero rows", not "the query blew up".
  */
 async function getSegmentPerformanceData(
   year: string,
   segment: 'MAINBOARD' | 'SME'
-): Promise<PerformanceData[]> {
+): Promise<PerformanceData[] | undefined> {
   try {
     const redis = getRedisClient();
     const ipoRepository = new IPORepository(db, redis);
@@ -69,16 +76,16 @@ async function getSegmentPerformanceData(
     });
   } catch (error) {
     console.error(`Error fetching server-rendered ${segment} performance data:`, error);
-    return [];
+    return undefined;
   }
 }
 
 /** Fetch Mainboard IPO performance rows for a given year, server-side. */
-export async function getMainboardPerformanceData(year: string): Promise<PerformanceData[]> {
+export async function getMainboardPerformanceData(year: string): Promise<PerformanceData[] | undefined> {
   return getSegmentPerformanceData(year, 'MAINBOARD');
 }
 
 /** Fetch SME IPO performance rows for a given year, server-side. */
-export async function getSMEPerformanceData(year: string): Promise<PerformanceData[]> {
+export async function getSMEPerformanceData(year: string): Promise<PerformanceData[] | undefined> {
   return getSegmentPerformanceData(year, 'SME');
 }
