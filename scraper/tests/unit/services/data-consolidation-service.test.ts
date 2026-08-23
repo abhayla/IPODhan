@@ -872,4 +872,40 @@ describe('DataConsolidationService', () => {
       expect(result.performanceMs).toBeLessThan(100);
     });
   });
+
+  describe("trackFieldSource 'new' sentinel guard (T-299 P3-10)", () => {
+    it('does not call trackFieldUpdate for a new-IPO insert (ipoId sentinel "new")', async () => {
+      // findByIPOId('new') is never reached — consolidateIPOData's own 'new'
+      // guard (line ~230) short-circuits to []. This isolates the SECOND
+      // 'new' guard this test targets: trackFieldSource forwarding 'new'
+      // straight into fieldSourcesRepository.trackFieldUpdate's uuid column,
+      // which previously threw `invalid input syntax for type uuid: "new"`
+      // (caught+logged, but a wasted round-trip on every field of every
+      // new-IPO insert — 132 occurrences in prod error logs).
+      const result = await service.consolidateIPOData({
+        ipoId: 'new',
+        tableName: 'ipos',
+        incomingData: { lot_size: 150, company_name: 'Fresh IPO Ltd' },
+        source: 'NSE',
+        confidence: 95,
+      });
+
+      expect(result.errors).toEqual([]);
+      expect(mockFieldSourcesRepo.trackFieldUpdate).not.toHaveBeenCalled();
+    });
+
+    it('still calls trackFieldUpdate for a real uuid ipoId', async () => {
+      vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+      await service.consolidateIPOData({
+        ipoId: 'a1b2c3d4-0000-0000-0000-000000000001',
+        tableName: 'ipos',
+        incomingData: { lot_size: 150 },
+        source: 'NSE',
+        confidence: 95,
+      });
+
+      expect(mockFieldSourcesRepo.trackFieldUpdate).toHaveBeenCalled();
+    });
+  });
 });

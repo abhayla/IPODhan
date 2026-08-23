@@ -263,16 +263,28 @@ export function GMPHistoryChart({
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Trend</p>
-                <p className={`text-lg font-semibold flex items-center gap-1 ${trendIndicator.color}`}>
-                  <span>{trendIndicator.icon}</span>
-                  <span>{formatPercentage(trendAnalysis.changePercent)}</span>
-                </p>
+                {trendAnalysis.insufficientHistory ? (
+                  <p className="text-sm font-semibold text-muted-foreground">
+                    Insufficient history
+                  </p>
+                ) : (
+                  <p className={`text-lg font-semibold flex items-center gap-1 ${trendIndicator.color}`}>
+                    <span>{trendIndicator.icon}</span>
+                    <span>{formatPercentage(trendAnalysis.changePercent)}</span>
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Volatility</p>
-                <p className={`text-sm font-semibold ${volatilityIndicator.color}`}>
-                  {volatilityIndicator.label}
-                </p>
+                {trendAnalysis.insufficientHistory ? (
+                  <p className="text-sm font-semibold text-muted-foreground">
+                    Insufficient history
+                  </p>
+                ) : (
+                  <p className={`text-sm font-semibold ${volatilityIndicator.color}`}>
+                    {volatilityIndicator.label}
+                  </p>
+                )}
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Avg GMP</p>
@@ -361,16 +373,26 @@ export function GMPHistoryChart({
                   <span className="text-muted-foreground">Max GMP:</span>
                   <span className="ml-2 font-semibold">{formatCurrency(trendAnalysis.maxGMP)}</span>
                 </div>
-                <div>
-                  <span className="text-muted-foreground">Avg Volatility:</span>
-                  <span className="ml-2 font-semibold">{formatPercentage(trendAnalysis.avgVolatility)}</span>
-                </div>
-                <div>
-                  <span className="text-muted-foreground">Price Change:</span>
-                  <span className={`ml-2 font-semibold ${trendAnalysis.changePercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {formatPercentage(trendAnalysis.changePercent)}
-                  </span>
-                </div>
+                {trendAnalysis.insufficientHistory ? (
+                  <div className="md:col-span-2">
+                    <span className="text-muted-foreground">
+                      Insufficient history for volatility/trend (need {'≥'}3 data points, have {trendAnalysis.sampleSize})
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <span className="text-muted-foreground">Avg Volatility:</span>
+                      <span className="ml-2 font-semibold">{formatPercentage(trendAnalysis.avgVolatility)}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Price Change:</span>
+                      <span className={`ml-2 font-semibold ${trendAnalysis.changePercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        {formatPercentage(trendAnalysis.changePercent)}
+                      </span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </div>

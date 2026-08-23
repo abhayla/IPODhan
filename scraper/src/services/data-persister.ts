@@ -2,12 +2,9 @@ import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDat
 import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
-import { generateSlug, sanitizeCompanyName, coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeIpoWriteFields } from '../utils/validators.js';
+import { generateSlug, sanitizeCompanyName, coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeLeadManagers, sanitizeIpoWriteFields } from '../utils/validators.js';
 import { isDateSequenceCoherent } from './ipo-date-plausibility.js';
-import {
-  markConsolidatedSubscription,
-  shouldPersistSubscriptionSnapshot,
-} from './subscription-coverage-registry.js';
+import { shouldPersistSubscriptionSnapshot } from './subscription-coverage-registry.js';
 import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { validateLotSize } from '../utils/lot-size-validator.js';
 import { resolveOfferingTypeKeepingClassification, guardSmeOfferingTypeAgainstFpo } from '../utils/detect-offering-type.js';
@@ -280,11 +277,27 @@ export async function upsertIPO(
       // not stomp an old IPO's open/close dates. Anchor on the trustworthy post-IPO
       // dates (this scrape's, else the existing row's allotment/listing) and drop any
       // open/close that contradicts the anchor by years.
-      const safeDates = sanitizeIpoDates({
+      const rawDatesForSanitize = {
         openDate: scrapedIPO.openDate,
         closeDate: scrapedIPO.closeDate,
         allotmentDate: scrapedIPO.allotmentDate || (existingIPO?.allotmentDate ?? null),
         listingDate: scrapedIPO.listingDate || (existingIPO?.listingDate ?? null),
+      };
+      const safeDates = sanitizeIpoDates(rawDatesForSanitize);
+      // T-299 (#P2-7): a violation MUST be loud, not just silently nulled — this is
+      // the create/legacy-update path's only date-plausibility log (the
+      // consolidation-update path logs via isDateSequenceCoherent above).
+      (['openDate', 'closeDate', 'allotmentDate', 'listingDate'] as const).forEach((k) => {
+        if (rawDatesForSanitize[k] != null && safeDates[k] == null) {
+          logger.warn({
+            ipoId: existingIPO?.id,
+            companyName: scrapedIPO.companyName,
+            source,
+            field: k,
+            rejectedValue: rawDatesForSanitize[k],
+            allDates: rawDatesForSanitize,
+          }, `[DatePlausibility] rejected incoherent ${k} at write boundary (#P2-7)`);
+        }
       });
       // issue_size: 0 means "unknown", not a real value — store NULL, never 0 (#A.5).
       const safeIssueSize = coercePositiveOrNull(scrapedIPO.issueSize);
@@ -324,7 +337,7 @@ export async function upsertIPO(
         // to a reference registrars row; undefined otherwise (never guessed,
         // and never clobbers an existing value with a fresh non-match).
         registrarId: (await resolveRegistrarIdSafe(sanitizeRegistrar(scrapedIPO.registrar))) ?? undefined,
-        leadManagers: scrapedIPO.leadManagers,
+        leadManagers: sanitizeLeadManagers(scrapedIPO.leadManagers),
         listingExchanges,
         lastScrapedAt: new Date(), // Track last successful scrape time (Story 7.4)
         updatedAt: new Date(),
@@ -620,11 +633,31 @@ export async function createSubscriptionSnapshot(
 ): Promise<string | null> {
   const startTime = Date.now();
 
-  // T-266: never let a one-exchange figure supersede the whole-market one.
-  if (!shouldPersistSubscriptionSnapshot(ipoId, scrapedSubscription.coverage, {
-    companyName: scrapedSubscription.ipoCompanyName,
-    source: options.source,
-  })) {
+  // T-266/T-299: never let a snapshot REDUCE the figure already persisted for
+  // this IPO, unless it is explicitly whole-market and share-count-backed.
+  // Compares against the last PERSISTED row (not in-process memory) so the
+  // check is correct on the very first write of a cold process.
+  const lastPersisted = await subscriptionRepository.findLatest(ipoId);
+  const persistedTotal =
+    lastPersisted?.totalSubscription != null
+      ? parseFloat(lastPersisted.totalSubscription)
+      : null;
+
+  if (
+    !shouldPersistSubscriptionSnapshot(
+      ipoId,
+      scrapedSubscription.coverage,
+      {
+        totalSubscription: scrapedSubscription.totalSubscription,
+        totalSharesBid: scrapedSubscription.totalSharesBid,
+      },
+      persistedTotal !== null && !isNaN(persistedTotal) ? persistedTotal : null,
+      {
+        companyName: scrapedSubscription.ipoCompanyName,
+        source: options.source,
+      }
+    )
+  ) {
     return null;
   }
 
@@ -684,10 +717,6 @@ export async function createSubscriptionSnapshot(
     },
     `Create subscription snapshot for IPO: ${ipoId}`
   );
-
-  if (scrapedSubscription.coverage === 'CONSOLIDATED') {
-    markConsolidatedSubscription(ipoId);
-  }
 
   const duration = Date.now() - startTime;
   logger.info(

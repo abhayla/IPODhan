@@ -1,5 +1,47 @@
 import { describe, it, expect } from 'vitest';
-import { coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeIpoWriteFields } from '../../../src/utils/validators';
+import { coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeLeadManagers, sanitizeIpoWriteFields } from '../../../src/utils/validators';
+
+describe('sanitizeLeadManagers (T-299 P2-8 — strip a tab-split contact block, keep only company names)', () => {
+  it('returns null for null/undefined/empty', () => {
+    expect(sanitizeLeadManagers(null)).toBeNull();
+    expect(sanitizeLeadManagers(undefined)).toBeNull();
+    expect(sanitizeLeadManagers([])).toBeNull();
+  });
+
+  it('passes through a clean single-BRLM array unchanged', () => {
+    expect(sanitizeLeadManagers(['ICICI Securities Limited'])).toEqual([
+      'ICICI Securities Limited',
+    ]);
+  });
+
+  it('passes through multiple clean company names', () => {
+    expect(
+      sanitizeLeadManagers(['ICICI Securities Limited', 'Kotak Mahindra Capital Company Limited'])
+    ).toEqual(['ICICI Securities Limited', 'Kotak Mahindra Capital Company Limited']);
+  });
+
+  it('strips the real prod tempsens compliance-contact pollution (T-296 P2-8 raw payload)', () => {
+    // Verbatim from prod `ipos.lead_managers` for tempsens-instruments-india-ltd
+    // (db-leadmanagers-polluted.txt) — a compliance-officer contact table's rows
+    // (company + person name, then person + phone/email) got captured as the
+    // lead_managers array instead of just the BRLM.
+    const polluted = [
+      'ICICI Securities Limited\tKishan Rastogi',
+      'Rahul Sharma\tTel: +91 22 6807 7100E-mail: tempsens.ipo@icicisecurities.com',
+    ];
+    expect(sanitizeLeadManagers(polluted)).toEqual(['ICICI Securities Limited']);
+  });
+
+  it('deduplicates repeated company names across entries', () => {
+    expect(
+      sanitizeLeadManagers(['ICICI Securities Limited\tKishan Rastogi', 'ICICI Securities Limited'])
+    ).toEqual(['ICICI Securities Limited']);
+  });
+
+  it('returns null when nothing survives the company-keyword filter', () => {
+    expect(sanitizeLeadManagers(['Kishan Rastogi\tRahul Sharma'])).toBeNull();
+  });
+});
 
 // Write-path integrity guards (contract Stage A.5 / C-5). These run at the
 // persistence boundary so a bad scrape cannot store a domain-absurd value that
