@@ -683,6 +683,17 @@ export class DataConsolidationService {
       return;
     }
 
+    // T-299 (P3-10): match the sibling 'new' guards at line ~230/814 - a new-IPO
+    // insert has no row yet, so its ipoId sentinel is the literal string 'new',
+    // not a uuid. Without this guard every field on every new-IPO insert threw
+    // `invalid input syntax for type uuid: "new"` (132 occurrences in prod logs);
+    // caught and logged, but real lineage is written after insert by
+    // data-persister.ts, so this write was always a no-op that only burned a
+    // failing DB round-trip and flooded the error log.
+    if (params.ipoId === 'new') {
+      return;
+    }
+
     try {
       await this.fieldSourcesRepository.trackFieldUpdate({
         ipoId: params.ipoId,

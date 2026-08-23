@@ -366,6 +366,38 @@ export function sanitizeRegistrar(value: string | null | undefined): string | nu
   return s || null;
 }
 
+// A cell/segment that reads like a company (vs a bare person name or a
+// contact-detail fragment) for lead-manager pollution filtering.
+const COMPANY_ENTITY_KEYWORDS = /(securities|capital|finance|financial|bank|services|advisors?|advisory|partners|corp\.?|inc\.?|limited|ltd\.?|llp|pvt\.?)/i;
+
+/**
+ * Sanitize a scraped lead_managers array (#T-299 P2-8). Some sources capture a
+ * two-column contact table (e.g. compliance-officer name + phone/email) instead
+ * of, or glued alongside, the actual Book Running Lead Manager row, joining the
+ * two table cells with a literal tab inside one array entry — e.g.
+ * `["ICICI Securities Limited\tKishan Rastogi", "Rahul Sharma\tTel: ...E-mail: ..."]`.
+ * Every entry is split on tabs into its cells; a cell is kept only if it reads
+ * like a company name (legal-entity keyword) and has any trailing contact info
+ * (Tel:/E-mail:/Phone:) cut off. Returns null for an empty/absent value or when
+ * nothing survives the filter (never invents a manager name).
+ */
+export function sanitizeLeadManagers(value: string[] | null | undefined): string[] | null {
+  if (!value || value.length === 0) return null;
+
+  const kept: string[] = [];
+  for (const raw of value) {
+    const cells = String(raw).split(/\t+/).map((c) => c.trim()).filter(Boolean);
+    for (let cell of cells) {
+      cell = cell.split(/\s*(?:Tel\.?:|E-?mail:|Phone:)/i)[0].trim();
+      if (!cell || !COMPANY_ENTITY_KEYWORDS.test(cell)) continue;
+      kept.push(cell);
+    }
+  }
+
+  const deduped = Array.from(new Set(kept));
+  return deduped.length > 0 ? deduped : null;
+}
+
 /**
  * Consolidation-output write choke (#42/#45/#52). The create path sanitizes
  * company_name / registrar / dates inline while building the insert record, but the
@@ -388,6 +420,9 @@ export function sanitizeIpoWriteFields<T extends Record<string, any>>(record: T)
   }
   if ('registrar' in out) {
     out.registrar = sanitizeRegistrar(out.registrar);
+  }
+  if ('leadManagers' in out) {
+    out.leadManagers = sanitizeLeadManagers(out.leadManagers);
   }
   if ('sector' in out && typeof out.sector === 'string') {
     // '' passes z.string().optional() and plants a blank that both renders as empty

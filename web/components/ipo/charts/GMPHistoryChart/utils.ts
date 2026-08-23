@@ -132,6 +132,13 @@ export function calculateVolatility(
 }
 
 /**
+ * Below this many data points, trend direction / volatility classification /
+ * change-percent are not statistically meaningful (T-299 P3-12) — a single
+ * point has zero variance to measure and a two-point "trend" is one delta.
+ */
+export const MIN_TREND_SAMPLE_SIZE = 3;
+
+/**
  * Analyze GMP trend over the entire period
  *
  * @param records - GMP records
@@ -148,6 +155,8 @@ export function analyzeGMPTrend(records: GMPRecordDB[]): GMPTrendAnalysis {
       latestGMP: 0,
       changePercent: 0,
       avgVolatility: 0,
+      insufficientHistory: true,
+      sampleSize: 0,
     };
   }
 
@@ -161,6 +170,26 @@ export function analyzeGMPTrend(records: GMPRecordDB[]): GMPTrendAnalysis {
   const avgGMP = gmpValues.reduce((sum, val) => sum + val, 0) / gmpValues.length;
   const latestGMP = sorted[sorted.length - 1].gmp;
   const firstGMP = sorted[0].gmp;
+  const insufficientHistory = sorted.length < MIN_TREND_SAMPLE_SIZE;
+
+  if (insufficientHistory) {
+    // avgGMP/minGMP/maxGMP/latestGMP are honest even with 1-2 points (they
+    // are direct reads, not derived statistics) - only trend/volatility/
+    // changePercent claim a statistical shape the sample can't support.
+    return {
+      trend: 'stable',
+      volatility: 'low',
+      avgGMP,
+      minGMP,
+      maxGMP,
+      latestGMP,
+      changePercent: 0,
+      avgVolatility: 0,
+      insufficientHistory: true,
+      sampleSize: sorted.length,
+    };
+  }
+
   const changePercent = firstGMP !== 0 ? ((latestGMP - firstGMP) / firstGMP) * 100 : 0;
 
   // Calculate average volatility
@@ -202,6 +231,8 @@ export function analyzeGMPTrend(records: GMPRecordDB[]): GMPTrendAnalysis {
     latestGMP,
     changePercent,
     avgVolatility,
+    insufficientHistory: false,
+    sampleSize: sorted.length,
   };
 }
 

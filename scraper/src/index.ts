@@ -11,7 +11,6 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 
 import { runNSEScraper } from './scrapers/nse-scraper-orchestrator-v2.js';
 import { runBSEScraper } from './scrapers/bse-scraper-orchestrator-v2.js';
-import { resetSubscriptionCoverageRegistry } from './services/subscription-coverage-registry.js';
 import { runIPOAlertsFallback } from './scrapers/ipo-alerts-fallback-orchestrator-v2.js';
 import { runMoneycontrolScraper } from './scrapers/moneycontrol-orchestrator-v2.js';
 import { runChittorgarhScraper } from './scrapers/chittorgarh-orchestrator-v2.js';
@@ -90,11 +89,6 @@ export async function main() {
       throw error;
     }
     logger.info(getFeatureStatus(), 'Feature flag status at scraper startup');
-
-    // T-266: the consolidated-vs-partial subscription guard is per-cycle state.
-    // Clearing it here keeps the long-running scheduler correct too, where the
-    // same process runs many cycles.
-    resetSubscriptionCoverageRegistry();
 
     // Validate source
     if (!['nse', 'bse', 'moneycontrol', 'chittorgarh', 'gmp', 'fallback', 'api', 'all'].includes(source)) {

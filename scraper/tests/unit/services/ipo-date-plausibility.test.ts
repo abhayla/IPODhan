@@ -86,4 +86,18 @@ describe('isDateSequenceCoherent (#52 — open ≤ close < allotment < listing)'
     expect(isDateSequenceCoherent({ openDate: '2024-05-06', closeDate: null, allotmentDate: null, listingDate: null }).ok).toBe(true);
     expect(isDateSequenceCoherent({ openDate: null, closeDate: null, allotmentDate: null, listingDate: null }).ok).toBe(true);
   });
+
+  it('flags close_date AT/AFTER listing_date even when allotment is null (T-299 P2-7, kwality-walls shape)', () => {
+    // open 2026-04-23, close 2026-05-07, allotment null, listing 2026-02-16 — the
+    // IPO would list before it closes. Neither existing close/allot nor
+    // allot/listing check fires because allotment is null.
+    const r = isDateSequenceCoherent({
+      openDate: '2026-04-23',
+      closeDate: '2026-05-07',
+      allotmentDate: null,
+      listingDate: '2026-02-16',
+    });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toMatch(/close|listing/i);
+  });
 });

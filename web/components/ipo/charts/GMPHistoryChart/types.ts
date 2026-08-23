@@ -47,6 +47,15 @@ export interface GMPTrendAnalysis {
   latestGMP: number; // Most recent GMP
   changePercent: number; // % change from first to last
   avgVolatility: number; // Average daily volatility %
+  /**
+   * T-299 P3-12: trend/volatility/change-percent are not statistically
+   * meaningful below MIN_TREND_SAMPLE_SIZE data points (utils.ts) — e.g. a
+   * single GMP row renders "Trend +0.0%, Low Volatility" with no real
+   * sample behind it. Callers MUST render an honest "insufficient history"
+   * state instead of the trend/volatility/changePercent fields when true.
+   */
+  insufficientHistory: boolean;
+  sampleSize: number;
 }
 
 /**
