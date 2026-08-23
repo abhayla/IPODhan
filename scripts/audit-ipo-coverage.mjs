@@ -110,6 +110,22 @@ async function main() {
   log(`  active non-IPO inventory (OPEN/UPCOMING, excluded from surfaces, not deleted): ${inv}`);
   log(`  surfaceLeak (non-IPO rows passing the IPO-surface filter — MUST be 0): ${leak}`);
 
+  // ---- INVISIBLE SME (T-292C checker finding F1): an SME-segment row can never be
+  // an FPO. The SME boards (BSE-SME / NSE-SME) are first-time-listing platforms, so
+  // every issue on them is the company's first public offer. A row stored as
+  // segment='SME' AND offering_type='FPO' is therefore always wrong, and it is
+  // INVISIBLE to every other check here: the coverage, name-quality, duplicate and
+  // substance checks all filter on REAL_IPO, so a mis-typed SME IPO silently drops
+  // out of the audit and out of every public surface (404 on /ipos/<slug>).
+  // Caught live 2026-08-23: 3 real BSE SME IPOs 404-ing on prod (issue #180 F1).
+  const invisibleSme = await q(
+    `SELECT slug, company_name, open_date::date, last_scraped_at
+       FROM ipos WHERE segment = 'SME' AND offering_type = 'FPO'
+      ORDER BY open_date DESC NULLS LAST`
+  );
+  log(`  invisible SME (segment=SME AND offering_type=FPO — impossible, MUST be 0): ${invisibleSme.length}`);
+  for (const r of invisibleSme) log(`    - ${r.slug} (${r.company_name}) open=${r.open_date ?? 'n/a'}`);
+
   // Name-quality smells (genuine IPOs) — trailing status-code artifacts.
   log(`\n=== NAME-QUALITY SMELLS (genuine IPOs, trailing status artifacts) ===`);
   const smells = await q(
@@ -168,6 +184,7 @@ async function main() {
   // Stage A invariants (drive-to-zero):
   const stageA = [
     { name: 'pollution.surfaceLeak==0', ok: leak === 0, detail: `${leak}` },
+    { name: 'pollution.invisibleSme==0', ok: invisibleSme.length === 0, detail: `${invisibleSme.length}` + (invisibleSme.length ? ` (${invisibleSme.map((r) => r.slug).join(', ')})` : '') },
     { name: 'name-quality.smells==0', ok: smells.length === 0, detail: `${smells.length}` },
     { name: 'duplicates.groups==0', ok: dups.length === 0, detail: `${dups.length}` },
   ];
