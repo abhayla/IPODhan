@@ -380,6 +380,12 @@ describe('IPOAlertsClient', () => {
       });
 
       const promise = client.fetchOpenIPOs();
+      // Attach a handler synchronously so the rejection during the
+      // advanceTimersByTimeAsync() awaits below is never "unhandled" from
+      // Node's perspective (T-301 - see scraper-utils.test.ts for the same
+      // pattern and why it was making the full-suite pr-gate run exit 1
+      // despite every individual test passing).
+      promise.catch(() => {});
 
       // Fast-forward through all retry delays
       await vi.advanceTimersByTimeAsync(1000); // First retry
