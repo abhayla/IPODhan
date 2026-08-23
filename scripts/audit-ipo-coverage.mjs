@@ -33,15 +33,29 @@ if (!process.env.DATABASE_HOST && !process.env.DATABASE_URL) {
 
 const GATE = process.argv.includes('--gate');
 
-const pool = new pg.Pool({
-  host: process.env.DATABASE_HOST,
-  port: parseInt(process.env.DATABASE_PORT || '5432'),
-  database: process.env.DATABASE_NAME || 'ipodhan',
-  user: process.env.DATABASE_USER || 'postgres',
-  password: process.env.DATABASE_PASSWORD,
-  ssl: false,
-  max: 4,
-});
+// Mirror packages/shared/src/db/index.ts: use discrete DATABASE_* params only
+// when both HOST and PASSWORD are set (dev-tunnel shape); otherwise fall back
+// to DATABASE_URL (the prod VPS env shape — web.env.local sets only
+// DATABASE_URL, so building a discrete-params Pool unconditionally left
+// `password: undefined` and failed SASL auth the first time this gate ran
+// against real prod env — T-304 finding).
+const pool = new pg.Pool(
+  process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
+    ? {
+        host: process.env.DATABASE_HOST,
+        port: parseInt(process.env.DATABASE_PORT || '5432'),
+        database: process.env.DATABASE_NAME || 'ipodhan',
+        user: process.env.DATABASE_USER || 'postgres',
+        password: process.env.DATABASE_PASSWORD,
+        ssl: false,
+        max: 4,
+      }
+    : {
+        connectionString: process.env.DATABASE_URL,
+        ssl: false,
+        max: 4,
+      }
+);
 
 const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
 // Genuine-IPO population predicate — MUST mirror REAL_IPO_OFFERING_TYPES in
