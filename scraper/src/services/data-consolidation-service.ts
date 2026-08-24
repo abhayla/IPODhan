@@ -411,11 +411,23 @@ export class DataConsolidationService {
     // with a stored real value. Before this check it fell through to Case 3
     // and was logged as a genuine conflict against the existing value on
     // EVERY cycle, forever — a field-less source can never produce a
-    // non-null value, so it could never converge. Confirmed against prod
-    // `data_conflicts` (read-only probe, 2026-08-24): the majority of open
-    // symbol/faceValue/allotmentDate rows have `value2 = null` from exactly
-    // this shape. Symmetric with Case 1 below (missing EXISTING accepts
-    // incoming) — this is missing INCOMING keeps existing, no conflict logged.
+    // non-null value, so it could never converge. Corroborated by a
+    // read-only probe against prod `data_conflicts` (2026-08-24, role
+    // ipodhan_app, query + output saved at
+    // evidence/2026-08-24-T-309/fix2/prod-probe-conflicts.txt): 3,588 open
+    // (unresolved) rows total; for allotmentDate/faceValue/symbol/registrar
+    // essentially ALL of them (496-542 of ~498-573) have a NULL `value2`
+    // (one of the two recorded conflicting sources), and leadManagers is
+    // 483/573. `value2` is source2's raw value, not literally "incoming"
+    // (the table records source1-vs-source2 pairs, not existing-vs-incoming),
+    // so this does not prove every one of these rows hits this exact code
+    // path — but it does show a missing-side value dominates the open
+    // conflict set for precisely these fields, which is the same shape this
+    // fix targets. issueSize/companyName conflicts, by contrast, have 0 null
+    // sides — this fix does not address those; they are a different
+    // (genuine two-value-disagreement) class. Symmetric with Case 1 below
+    // (missing EXISTING accepts incoming) — this is missing INCOMING keeps
+    // existing, no conflict logged.
     if (
       (normalizedIncoming === null || normalizedIncoming === undefined) &&
       normalizedExisting !== null &&
