@@ -80,7 +80,7 @@ describe('OFS Service', () => {
       expect(mockFindAll).toHaveBeenCalledWith(EXPECTED_FILTER);
     });
 
-    it('T-310: requests descending openDate sort so a 100-row cap cannot hide current data behind old rows', async () => {
+    it('T-310: requests descending openDate sort so the newest record surfaces first (defensive against a future 100-row cap)', async () => {
       const rows = [
         { id: '1', companyName: 'OFS March', slug: 'ofs-march', status: 'UPCOMING', openDate: '2025-03-15', closeDate: '2025-03-16', priceRangeMax: 1000, issueSize: '5000' },
         { id: '3', companyName: 'OFS February', slug: 'ofs-february', status: 'UPCOMING', openDate: '2025-02-20', closeDate: '2025-02-21', priceRangeMax: 1000, issueSize: '4000' },
