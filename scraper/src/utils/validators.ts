@@ -307,6 +307,24 @@ function toEpoch(value: Date | string | null | undefined): number | null {
  * Also nulls an open>close inversion. Returns a NEW object with offending fields
  * nulled; never throws. Pure (no clock) — the verdict is derivable from the inputs.
  */
+// T-306 F2: when a present listing_date conflicts with open/close, this threshold
+// decides which side is the corrupt one. A listing that sits FAR in the past
+// relative to open/close (> this many ms) is the WINDLAS "stomp" signature — a
+// rescrape overwrote open/close with future junk while the old, stable listing
+// survived, so listing is the trustworthy anchor. A listing that is only
+// mildly/near-term inconsistent with an otherwise self-coherent open/close pair
+// is itself the outlier (the kwality-walls-india-ltd shape: open/close ~80 days
+// after listing) — keep open/close, null the listing instead. 180 days cleanly
+// separates the two real prod shapes seen so far (~80 days vs ~4.7 years).
+const FAR_PAST_ANCHOR_THRESHOLD_MS = 180 * 24 * 60 * 60 * 1000;
+
+/**
+ * Same open/close/allotment/listing ordering rule that `isDateSequenceCoherent`
+ * (ipo-date-plausibility.ts) DETECTS — this function is the write-path twin that
+ * RESOLVES a detected violation by nulling the offending field(s). Keep both in
+ * sync: a pair this function treats as impossible must also be a pair the
+ * coherence check flags, and vice versa (T-306 reconciliation).
+ */
 export function sanitizeIpoDates(dates: IpoDateSet): IpoDateSet {
   const result: IpoDateSet = { ...dates };
   const open = toEpoch(dates.openDate);
@@ -322,14 +340,33 @@ export function sanitizeIpoDates(dates: IpoDateSet): IpoDateSet {
   }
 
   if (listing !== null) {
-    // listing is the most reliable post-facto date — open/close must precede it.
-    if (close !== null && close >= listing) result.closeDate = null;
-    if (open !== null && open >= listing) result.openDate = null;
-    // allotment must sit between close and listing; if it precedes the open/close
-    // window (or follows listing) it is the outlier, not open/close.
+    const closeConflict = close !== null && close >= listing;
+    const openConflict = open !== null && open >= listing;
+    if (closeConflict || openConflict) {
+      const anchor = close ?? open;
+      const gap = anchor !== null ? anchor - listing : null;
+      if (gap !== null && gap > FAR_PAST_ANCHOR_THRESHOLD_MS) {
+        // WINDLAS-shape stomp: listing is the stable anchor, open/close are junk.
+        if (closeConflict) result.closeDate = null;
+        if (openConflict) result.openDate = null;
+      } else {
+        // kwality-shape: open/close are self-coherent and near-term; listing is
+        // the outlier that must not be allowed to null two GOOD dates.
+        result.listingDate = null;
+      }
+    }
+
+    // allotment must sit between close and the (possibly just-resolved) listing;
+    // if it precedes the open/close window (or follows a still-present listing)
+    // it is the outlier, not open/close.
     if (allot !== null) {
       const lo = toEpoch(result.closeDate) ?? toEpoch(result.openDate);
-      if ((lo !== null && allot < lo) || allot > listing) result.allotmentDate = null;
+      const resolvedListing = toEpoch(result.listingDate);
+      if (resolvedListing !== null) {
+        if ((lo !== null && allot < lo) || allot > resolvedListing) result.allotmentDate = null;
+      } else if (lo !== null && allot < lo) {
+        result.allotmentDate = null;
+      }
     }
   } else if (allot !== null) {
     // No listing: allotment is the stable original record — open/close must precede it.

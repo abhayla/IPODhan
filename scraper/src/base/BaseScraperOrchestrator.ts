@@ -540,7 +540,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
               this.subscriptionRepository,
               upsertedIPOId,
               subscriptionValidation.data!,
-              { source: scraperName }
+              { source: scraperName, redis: this.redis }
             );
             // null = suppressed because a consolidated snapshot already landed
             // this run (T-266); that is a correct outcome, not a failure.

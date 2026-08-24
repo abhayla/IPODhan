@@ -120,6 +120,25 @@ describe('sanitizeIpoDates (#41/#52 date-stomp guard)', () => {
     expect(r.allotmentDate).toBeNull();      // the real outlier
     expect(r.listingDate).toBe('2026-06-24');
   });
+
+  it('when listing is only mildly/near-term inconsistent with a self-coherent open/close pair, nulls the bad listing instead (T-306 F2, kwality-walls-india-ltd shape)', () => {
+    // Real T-299 prod row: open 2026-04-23 / close 2026-05-07 are a genuine,
+    // self-consistent near-term IPO window; listing 2026-02-16 is the outlier
+    // (~80 days before close, not a years-old stale anchor). The T-299 manual
+    // repair nulled the listing and KEPT open/close — the write-path sanitizer
+    // must resolve the same shape the same way, or a re-scrape re-corrupts the row.
+    const r = sanitizeIpoDates({ openDate: '2026-04-23', closeDate: '2026-05-07', allotmentDate: null, listingDate: '2026-02-16' });
+    expect(r.openDate).toBe('2026-04-23');   // preserved
+    expect(r.closeDate).toBe('2026-05-07');  // preserved
+    expect(r.listingDate).toBeNull();        // the real outlier, not open/close
+  });
+
+  it('still anchors on a listing that is FAR (years) in the past — the WINDLAS stomp signature, not the kwality shape', () => {
+    const r = sanitizeIpoDates({ openDate: '2026-04-30', closeDate: '2026-05-07', allotmentDate: null, listingDate: '2021-08-20' });
+    expect(r.openDate).toBeNull();
+    expect(r.closeDate).toBeNull();
+    expect(r.listingDate).toBe('2021-08-20'); // stable anchor preserved
+  });
 });
 
 describe('sanitizeRegistrar (#45 — strip address/contact pollution, not variant-collapse)', () => {

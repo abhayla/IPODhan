@@ -86,6 +86,13 @@ export function isDateSequenceCoherent(seq: DateSequence): CoherenceResult {
   if (allot !== null && listing !== null && allot >= listing) {
     return { ok: false, reason: 'allotment_date is at/after listing_date' };
   }
+  // T-306 F1: a dedicated close-vs-listing rule, independent of allotment or open.
+  // Without this, `open 2026-04-23 / close 2026-05-07 / allot null / listing
+  // 2026-02-16` only failed by accident (the open-vs-listing check below), and an
+  // otherwise-identical row with `open` absent slipped through as coherent.
+  if (close !== null && listing !== null && close >= listing) {
+    return { ok: false, reason: 'close_date is at/after listing_date' };
+  }
   // Guard the open→allotment and close→listing spans too (catch corruption where
   // the intermediate date is null but the ends are inverted).
   if (open !== null && allot !== null && open > allot) {

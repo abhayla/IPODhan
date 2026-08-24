@@ -266,7 +266,7 @@ export async function runBSEScraper(): Promise<ScraperResult> {
                 subscriptionRepository,
                 ipoId,
                 subscriptionValidation.data!,
-                { source: 'BSE' }
+                { source: 'BSE', redis: getRedisClient() }
               );
               if (snapshotId !== null) result.subscriptionsCreated++;
 
