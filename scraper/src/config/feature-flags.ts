@@ -276,15 +276,19 @@ export function validateFeatureFlags(): void {
     }
   }
 
-  // Warn if features enabled without corresponding percentage
-  if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && FEATURE_FLAGS.SOURCE_TRACKING_PERCENTAGE === 0) {
-    console.warn('⚠️  SOURCE_TRACKING enabled but percentage is 0% - no IPOs will use it');
-  }
-
-  if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && FEATURE_FLAGS.CONFLICT_DETECTION_PERCENTAGE === 0) {
-    console.warn('⚠️  CONFLICT_DETECTION enabled but percentage is 0% - no IPOs will use it');
-  }
-
+  // T-309 (T-305 round-6 P3): SOURCE_TRACKING_PERCENTAGE and
+  // CONFLICT_DETECTION_PERCENTAGE are NEVER consulted by shouldUseFeature() at
+  // any call site (grep confirms ENABLE_SOURCE_TRACKING / ENABLE_CONFLICT_DETECTION
+  // gate `data-consolidation-service.ts` and `data-persister.ts` as PLAIN
+  // BOOLEANS, with no percentage check anywhere) — unlike DATA_CONSOLIDATION,
+  // whose CONSOLIDATION_PERCENTAGE genuinely IS read via
+  // `shouldUseFeature('CONSOLIDATION_PERCENTAGE', ...)` in
+  // data-consolidation-service.ts. A warning that checks a percentage which is
+  // not the real gate is FALSE: it fired every cycle in prod
+  // (ENABLE_SOURCE_TRACKING=true, SOURCE_TRACKING_PERCENTAGE unset=0) while
+  // `field_sources`/`data_conflicts` were genuinely being written (~40x/cycle,
+  // 695KB of misleading noise). Removed for these two flags; kept for
+  // DATA_CONSOLIDATION below, whose percentage is the real gate.
   if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION && FEATURE_FLAGS.CONSOLIDATION_PERCENTAGE === 0) {
     console.warn('⚠️  DATA_CONSOLIDATION enabled but percentage is 0% - no IPOs will use it');
   }

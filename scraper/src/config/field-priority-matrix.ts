@@ -392,6 +392,32 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: 1, max: 100000 },
   },
 
+  // T-309 (T-305 round-6 P3): issueSize and faceValue were BOTH absent from
+  // this matrix entirely — getFieldRules() fell through to the DEFAULT rule
+  // (`normalization: 'none'`), so a genuinely-same value reported in a
+  // different shape by two sources (issueSize: "45.5 Cr" text vs a raw-rupee
+  // number; bse-detail-scraper.ts explicitly stores issueSize "in basic units,
+  // not crores") could never pass areEquivalent()'s strict typeof-gated
+  // comparison and re-detected as a conflict every 30-min cycle forever
+  // (~851 issueSize conflicts/cycle per the T-305 review). `currency`
+  // normalization already exists for every other Cr-denominated field
+  // (netWorth, marketCap, ...) above — issueSize just never got the entry.
+  issueSize: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL'],
+    normalization: 'currency',
+    confidenceThreshold: 80,
+    description: 'Total issue size (₹) - amounts may arrive as Cr text or raw rupees depending on source',
+    validation: { min: 0, max: 999999990000 }, // 999,999.9 Cr ceiling, mirrors the NUMERIC(15,2) cap in financial-column-precision
+  },
+
+  faceValue: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL'],
+    normalization: 'number',
+    confidenceThreshold: 75,
+    description: 'Per-share face value (₹) - typically a small whole number (1/2/5/10)',
+    validation: { min: 0, max: 10000 },
+  },
+
   issue_price: {
     sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
     normalization: 'number',

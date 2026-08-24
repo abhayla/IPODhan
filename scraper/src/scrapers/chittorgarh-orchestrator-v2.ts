@@ -49,8 +49,17 @@ import logger from '../utils/logger.js';
  *
  * @extends BaseScraperOrchestrator<any, never>
  */
+export interface ChittorgarhScraperResult extends ScraperResult {
+  smeCount: number;
+  mainboardCount: number;
+}
+
 export class ChittorgarhScraperOrchestratorV2 extends BaseScraperOrchestrator<any, never> {
 
+  // T-309: segment tallies so index.ts's run-summary log can aggregate across
+  // ALL sources, not just BSE (the only orchestrator that carried these before).
+  private smeCount: number = 0;
+  private mainboardCount: number = 0;
   private validationPipeline: DataValidationPipeline;
 
   constructor() {
@@ -71,6 +80,10 @@ export class ChittorgarhScraperOrchestratorV2 extends BaseScraperOrchestrator<an
    */
   protected async scrapeData(): Promise<ScrapedData<any, never>> {
     const { ipos, errors } = await scrapeChittorgarhIPOs();
+
+    // T-309: tally segment counts (each scraped IPO already carries `segment`).
+    this.smeCount = ipos.filter((ipo: any) => ipo.segment === 'SME').length;
+    this.mainboardCount = ipos.filter((ipo: any) => ipo.segment === 'MAINBOARD').length;
 
     // Log scrape-level errors
     if (errors.length > 0) {
@@ -198,12 +211,26 @@ export class ChittorgarhScraperOrchestratorV2 extends BaseScraperOrchestrator<an
    * No subscription validation (Chittorgarh doesn't provide subscriptions)
    */
   protected validateSubscription = undefined;
+
+  /** T-309: segment counts, read by runChittorgarhScraper() after run() completes. */
+  public getSmeCount(): number {
+    return this.smeCount;
+  }
+
+  public getMainboardCount(): number {
+    return this.mainboardCount;
+  }
 }
 
 /**
  * Run Chittorgarh scraper with protection checks
  */
-export async function runChittorgarhScraper(): Promise<ScraperResult> {
+export async function runChittorgarhScraper(): Promise<ChittorgarhScraperResult> {
   const orchestrator = new ChittorgarhScraperOrchestratorV2();
-  return await orchestrator.run();
+  const baseResult = await orchestrator.run();
+  return {
+    ...baseResult,
+    smeCount: orchestrator.getSmeCount(),
+    mainboardCount: orchestrator.getMainboardCount(),
+  };
 }

@@ -35,6 +35,13 @@ export class ScraperMetricsTracker {
   private readonly ALERT_COOLDOWN = 3600; // 1 hour in seconds
   private readonly CONSECUTIVE_FAILURE_THRESHOLD = 3;
   private readonly SUCCESS_RATE_THRESHOLD = 80; // percentage
+  // T-309 (T-305 round-6 P3): a run that returns 0 rows but throws nothing is
+  // logged 'SUCCESS' by BaseScraperOrchestrator.logSuccess() — indistinguishable
+  // from a genuinely healthy cycle to the freshness/health monitors (the
+  // API_FALLBACK source did this every cycle). Same 3-strikes shape as
+  // CONSECUTIVE_FAILURE_THRESHOLD, extending this tracker rather than adding a
+  // parallel mechanism.
+  private readonly CONSECUTIVE_ZERO_YIELD_THRESHOLD = 3;
 
   constructor(private redis: Redis) {}
 
@@ -85,6 +92,51 @@ export class ScraperMetricsTracker {
         source,
       }, `Failed to record failure metric for ${source}`);
     }
+  }
+
+  /**
+   * T-309: record one cycle's yield (rows processed) and return the new
+   * consecutive-zero-yield streak. A non-zero yield resets the streak to 0.
+   * Best-effort — mirrors recordFailure()'s error handling (never throws).
+   */
+  async recordZeroYieldCycle(source: ScraperSource, iposProcessed: number): Promise<number> {
+    const key = this.getConsecutiveZeroYieldKey(source);
+    try {
+      if (iposProcessed > 0) {
+        await this.redis.del(key);
+        return 0;
+      }
+      const streak = await this.redis.incr(key);
+      await this.redis.expire(key, this.METRICS_TTL);
+      return streak;
+    } catch (error) {
+      logger.error({
+        error,
+        source,
+      }, `Failed to record zero-yield cycle for ${source}`);
+      return 0;
+    }
+  }
+
+  /**
+   * Get the current consecutive-zero-yield streak for a source.
+   */
+  async getConsecutiveZeroYield(source: ScraperSource): Promise<number> {
+    try {
+      const value = await this.redis.get(this.getConsecutiveZeroYieldKey(source));
+      return parseInt(value || '0', 10);
+    } catch (error) {
+      logger.error({
+        error,
+        source,
+      }, `Failed to get consecutive zero-yield count for ${source}`);
+      return 0;
+    }
+  }
+
+  /** Is the zero-yield streak at/above the DEGRADED threshold? */
+  isZeroYieldDegraded(streak: number): boolean {
+    return streak >= this.CONSECUTIVE_ZERO_YIELD_THRESHOLD;
   }
 
   /**
@@ -249,6 +301,10 @@ export class ScraperMetricsTracker {
 
   private getConsecutiveFailureKey(source: ScraperSource): string {
     return `scraper:${source}:consecutive_failures`;
+  }
+
+  private getConsecutiveZeroYieldKey(source: ScraperSource): string {
+    return `scraper:${source}:consecutive_zero_yield`;
   }
 
   private getAlertSentKey(source: ScraperSource): string {

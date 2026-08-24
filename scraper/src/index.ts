@@ -127,6 +127,9 @@ export async function main() {
       combinedResult.iposUpdated += nseResult.iposUpdated;
       combinedResult.iposFailed += nseResult.iposFailed;
       combinedResult.subscriptionsCreated += nseResult.subscriptionsCreated;
+      // T-309: NSE now reports segment counts too — was previously BSE-only.
+      combinedResult.smeCount += nseResult.smeCount;
+      combinedResult.mainboardCount += nseResult.mainboardCount;
       combinedResult.errors.push(...nseResult.errors);
 
       logger.info(
@@ -182,6 +185,9 @@ export async function main() {
       combinedResult.iposInserted += moneycontrolResult.iposInserted;
       combinedResult.iposUpdated += moneycontrolResult.iposUpdated;
       combinedResult.iposFailed += moneycontrolResult.iposFailed;
+      // T-309: Moneycontrol now reports segment counts too — was previously BSE-only.
+      combinedResult.smeCount += moneycontrolResult.smeCount;
+      combinedResult.mainboardCount += moneycontrolResult.mainboardCount;
       combinedResult.errors.push(...moneycontrolResult.errors);
 
       logger.info(
@@ -206,6 +212,9 @@ export async function main() {
       combinedResult.iposInserted += chittorgarhResult.iposInserted;
       combinedResult.iposUpdated += chittorgarhResult.iposUpdated;
       combinedResult.iposFailed += chittorgarhResult.iposFailed;
+      // T-309: Chittorgarh now reports segment counts too — was previously BSE-only.
+      combinedResult.smeCount += chittorgarhResult.smeCount;
+      combinedResult.mainboardCount += chittorgarhResult.mainboardCount;
       combinedResult.errors.push(...chittorgarhResult.errors);
 
       logger.info(

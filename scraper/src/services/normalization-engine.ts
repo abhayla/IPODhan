@@ -41,6 +41,21 @@ export function normalize(
 // ==================== CURRENCY NORMALIZATION ====================
 
 /**
+ * T-309 (T-305 round-6 P3): the crore-scale heuristic below used to test
+ * `fieldName.includes('issue_size')` (snake_case only). The actual field name
+ * the consolidation service passes through is the camelCase `issueSize`
+ * (see field-priority-matrix.ts / data-consolidation-service.ts), which never
+ * matched — so a bare-number crore value from a source that omits the "Cr"
+ * suffix (e.g. NSE reporting `45.5`) was returned unconverted while another
+ * source's raw-rupee value (e.g. BSE's `455000000`) went through correctly,
+ * producing a permanent order-of-magnitude mismatch that re-detects as a
+ * conflict every cycle and can never converge. Matches both spellings.
+ */
+function isCroreScaleField(fieldName: string): boolean {
+  return /issue.?size|revenue|profit/i.test(fieldName);
+}
+
+/**
  * Normalize Indian currency formats to rupees (number)
  *
  * Handles:
@@ -62,7 +77,7 @@ export function normalizeCurrency(value: string | number, fieldName?: string): n
 
   if (typeof value === 'number') {
     // If already a number, check context
-    if (fieldName && (fieldName.includes('issue_size') || fieldName.includes('revenue') || fieldName.includes('profit'))) {
+    if (fieldName && (isCroreScaleField(fieldName))) {
       // For large amounts, if number is small (< 10000), likely in crores
       if (value < 10000) {
         return value * 1e7; // Convert crores to rupees
@@ -121,7 +136,7 @@ export function normalizeCurrency(value: string | number, fieldName?: string): n
     }
 
     // Context-aware interpretation
-    if (fieldName && (fieldName.includes('issue_size') || fieldName.includes('revenue') || fieldName.includes('profit'))) {
+    if (fieldName && (isCroreScaleField(fieldName))) {
       // For financial fields, small numbers are likely in crores
       if (num < 10000 && num > 0) {
         return num * 1e7;

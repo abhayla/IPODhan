@@ -101,6 +101,23 @@ describe('isDateSequenceCoherent (#52 — open ≤ close < allotment < listing)'
     expect(r.reason).toMatch(/close|listing/i);
   });
 
+  it('flags a listing_date with no open_date at all (T-309 presence-coherence, priority-jewels-ltd shape)', () => {
+    // Real prod row: open_date=NULL, close_date=NULL, listing_date=2026-09-04 —
+    // an IPO cannot be scheduled to list before it is even scheduled to open.
+    const r = isDateSequenceCoherent({
+      openDate: null,
+      closeDate: null,
+      allotmentDate: null,
+      listingDate: '2026-09-04',
+    });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toMatch(/listing_date present without open_date/);
+  });
+
+  it('does not flag a present open_date + listing_date with close/allotment absent', () => {
+    expect(isDateSequenceCoherent({ openDate: '2026-04-23', closeDate: null, allotmentDate: null, listingDate: '2026-05-14' }).ok).toBe(true);
+  });
+
   it('flags close_date AT/AFTER listing_date via a REAL close-vs-listing rule, not the open-vs-listing shape-lock (T-306 F1)', () => {
     // open is absent, so the pre-existing `open > listing` check cannot fire at
     // all — this isolates whether a dedicated close-vs-listing comparison exists.

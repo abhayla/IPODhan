@@ -63,8 +63,17 @@ import logger from '../utils/logger.js';
  *
  * @extends BaseScraperOrchestrator<ScrapedIPO, ScrapedSubscription>
  */
+export interface NSEScraperResult extends ScraperResult {
+  smeCount: number;
+  mainboardCount: number;
+}
+
 export class NSEScraperOrchestratorV2 extends BaseScraperOrchestrator<ScrapedIPO, ScrapedSubscription> {
 
+  // T-309: segment tallies so index.ts's run-summary log can aggregate across
+  // ALL sources, not just BSE (the only orchestrator that carried these before).
+  private smeCount: number = 0;
+  private mainboardCount: number = 0;
   private validationPipeline: DataValidationPipeline;
 
   constructor() {
@@ -87,6 +96,10 @@ export class NSEScraperOrchestratorV2 extends BaseScraperOrchestrator<ScrapedIPO
    */
   protected async scrapeData(): Promise<ScrapedData<ScrapedIPO, ScrapedSubscription>> {
     const { ipos, subscriptions } = await scrapeNSEIPOs();
+
+    // T-309: tally segment counts (each ScrapedIPO already carries `segment`).
+    this.smeCount = ipos.filter((ipo) => ipo.segment === 'SME').length;
+    this.mainboardCount = ipos.filter((ipo) => ipo.segment === 'MAINBOARD').length;
 
     return {
       ipos,
@@ -201,14 +214,28 @@ export class NSEScraperOrchestratorV2 extends BaseScraperOrchestrator<ScrapedIPO
   protected validateSubscription(subscription: ScrapedSubscription): { success: boolean; data?: any; error?: any } {
     return validateSubscriptionData(subscription);
   }
+
+  /** T-309: segment counts, read by runNSEScraper() after run() completes. */
+  public getSmeCount(): number {
+    return this.smeCount;
+  }
+
+  public getMainboardCount(): number {
+    return this.mainboardCount;
+  }
 }
 
 /**
  * Run NSE scraper with protection checks
  *
- * @returns Promise<ScraperResult> - Scraper execution summary
+ * @returns Promise<NSEScraperResult> - Scraper execution summary, incl. segment counts
  */
-export async function runNSEScraper(): Promise<ScraperResult> {
+export async function runNSEScraper(): Promise<NSEScraperResult> {
   const orchestrator = new NSEScraperOrchestratorV2();
-  return await orchestrator.run();
+  const baseResult = await orchestrator.run();
+  return {
+    ...baseResult,
+    smeCount: orchestrator.getSmeCount(),
+    mainboardCount: orchestrator.getMainboardCount(),
+  };
 }

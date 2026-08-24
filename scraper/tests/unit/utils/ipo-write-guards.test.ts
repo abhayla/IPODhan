@@ -122,6 +122,20 @@ describe('sanitizeIpoDates (#41/#52 date-stomp guard)', () => {
     expect(r.listingDate).toBe('2026-06-24');
   });
 
+  it('nulls a listing_date that has no open_date at all (T-309 presence-coherence, priority-jewels-ltd shape)', () => {
+    const r = sanitizeIpoDates({ openDate: null, closeDate: null, allotmentDate: null, listingDate: '2026-09-04' });
+    expect(r.listingDate).toBeNull();
+    expect(r.openDate).toBeNull();
+    expect(r.closeDate).toBeNull();
+  });
+
+  it('leaves listing_date alone when open_date is present (normal case)', () => {
+    const r = sanitizeIpoDates({ openDate: '2026-08-28', closeDate: '2026-09-01', allotmentDate: null, listingDate: '2026-09-04' });
+    expect(r.listingDate).toBe('2026-09-04');
+    expect(r.openDate).toBe('2026-08-28');
+    expect(r.closeDate).toBe('2026-09-01');
+  });
+
   it('when listing is only mildly/near-term inconsistent with a self-coherent open/close pair, nulls the bad listing instead (T-306 F2, kwality-walls-india-ltd shape)', () => {
     // Real T-299 prod row: open 2026-04-23 / close 2026-05-07 are a genuine,
     // self-consistent near-term IPO window; listing 2026-02-16 is the outlier
