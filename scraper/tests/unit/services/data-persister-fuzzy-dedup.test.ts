@@ -26,15 +26,22 @@ vi.mock('@ipodhan/shared/utils/registrar-matcher', () => ({
   resolveRegistrarId: () => null,
 }));
 
-vi.mock('@ipodhan/shared/repositories', () => ({
-  FieldSourcesRepository: vi.fn().mockImplementation(() => ({
-    bulkTrackFieldUpdates: bulkTrackFieldUpdatesMock,
-  })),
-  DataConflictsRepository: vi.fn().mockImplementation(() => ({})),
-  RegistrarRepository: vi.fn().mockImplementation(() => ({
-    findAll: vi.fn().mockResolvedValue([]),
-  })),
-}));
+vi.mock('@ipodhan/shared/repositories', async (importOriginal) => {
+  // T-307: keep the REAL resolveIpoRow — the tests below assert on
+  // upsertIPO's identity-resolution behaviour (findByFuzzyName call counts,
+  // create-vs-update), so a hand-copied mock would defeat the point.
+  const actual = await importOriginal<typeof import('@ipodhan/shared/repositories')>();
+  return {
+    ...actual,
+    FieldSourcesRepository: vi.fn().mockImplementation(() => ({
+      bulkTrackFieldUpdates: bulkTrackFieldUpdatesMock,
+    })),
+    DataConflictsRepository: vi.fn().mockImplementation(() => ({})),
+    RegistrarRepository: vi.fn().mockImplementation(() => ({
+      findAll: vi.fn().mockResolvedValue([]),
+    })),
+  };
+});
 
 // Legacy fallback-update path (ENABLE_DATA_CONSOLIDATION: false) is the
 // simplest way to observe "existingIPO was found" without also mocking the
