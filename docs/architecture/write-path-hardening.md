@@ -548,3 +548,21 @@ What should stop is round 6 finding round 2's bug again.
 - `evidence/2026-08-23-T-298/plan-review/c1-c17-*.txt` — the reviewer's 10 raw capture files (write inventory, regression/schema checks, prod constraint dump, live env flags, feasibility/lint checks, scheduler-import proof, prod entrypoint proof)
 - `evidence/2026-08-23-T-298/plan-rev2/` — this revision's own self-verification: re-run greps for F1 (`scheduler.ts` imports, non-v2 `upsertIPO`/`BaseScraperOrchestrator` reference counts), B3 (absence of `scraper/eslint.config.*`, root lint scope), B8 (`packages/shared` import graph, consolidation/matrix line counts), B1/B2 (raw-SQL/`.sql` write-site sweep), F11 (`consolidation-percentage-gate.test.ts` presence) — all reproduced independently of the reviewer's own capture files, on the same branch, before being folded into §1.9/§2/§3 above
 - New file:line anchors from this revision: `scraper/src/scheduler/scheduler.ts:12-15`; `scraper/src/scrapers/{nse,bse,moneycontrol,chittorgarh}-orchestrator.ts` (non-v2, each 3× `upsertIPO`, 0× `BaseScraperOrchestrator`); `web/scripts/apply-issue-size-migration.ts:19`; `scripts/assert-env-keys.sh:57-72`; `scraper/tests/unit/services/consolidation-percentage-gate.test.ts`
+
+---
+
+## R0 — write ratchet (T-316, shipped)
+
+Per T-313C's amendment, R0 is a **CI grep-ratchet**, not an ESLint rule — a syntax rule cannot
+match the dynamic admin route's runtime-resolved table (`(schema as any)[tableName]`), and no
+lint layer reaches raw `.mjs`/`.sql` writers. `scripts/check-write-ratchet.mjs` scans `.ts`/`.mjs`/`.sql`
+for four pattern classes (drizzle, repository, raw SQL, dynamic-table) and compares the matched
+file set against the shrink-only allowlist `config/write-ratchet-baseline.json` (61 files at
+baseline time). It runs as a blocking `pr-gate.yml` step alongside its own mutation-proof self-test
+(`scripts/tests/check-write-ratchet.test.mjs`). It **covers**: every file whose file-content
+matches one of the four patterns, new or existing. It **deliberately does not cover**: the 61
+baselined files themselves (Phase 2's gateway is what fixes those) or child tables other than
+`ipos`. To shrink the baseline after fixing a listed file, run
+`node scripts/check-write-ratchet.mjs --update` and commit the regenerated JSON — the script
+fails loudly if the baseline still lists a file no longer found, so a shrink can never be silently
+skipped.
