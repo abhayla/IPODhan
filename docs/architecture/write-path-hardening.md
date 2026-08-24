@@ -6,6 +6,8 @@
 **Scope:** Why data defects kept recurring across five review rounds (T-250…T-295), what in the architecture causes it, and the minimum change that stops it.
 **Revision note:** T-298C reproduced every core claim below (write-path count, H1/H2/H3, the live regression) but found the plan itself contained factual errors about production and about the repo — including one action that would have broken the build and one DB constraint that could not be added as written. Those corrections are folded in throughout; the biggest are in §1.9, §2, and §3. See `evidence/2026-08-23-T-298/plan-review/REVIEW.md` for the full independent review and `evidence/2026-08-23-T-298/plan-rev2/` for the per-finding self-verification behind this revision.
 
+**Round-2 pointer (T-317, 2026-08-24):** The second independent-review round is complete — see `docs/architecture/fable-review-2026-08-24.md` §7 REVIEW-VERDICTS for the full T-314C verdict (REVISE, 5 corrections folded). Converged build order (adopted): R0 ratchet -> IDENT (NULL-safe) + Phase-1 completion -> LIFECYCLE-1 (no new tables) -> deploy+repairs -> constraints -> OBS-1/OBS-2 (retention/shadow/breaker) -> gateway-as-projection. R0 (the CI grep-ratchet gate) is shipping as T-316 — this doc's own "lint gate now exists after #214" framing (Phase 3 above) is superseded by that correction. Read the Fable doc §7 before building any further phase of this plan.
+
 ---
 
 ## 0. Executive summary (plain English)
