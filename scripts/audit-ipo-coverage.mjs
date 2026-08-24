@@ -223,8 +223,12 @@ async function main() {
     `SELECT i.id, i.company_name, i.isin, i.open_date, i.close_date, i.allotment_date, i.listing_date,
             i.lot_size, i.price_range_min, i.price_range_max, i.issue_size, i.registrar,
             lp.listing_price, lp.listing_gain_percent,
-            COALESCE(lp.issue_price, i.price_range_max) AS issue_price
-       FROM ipos i LEFT JOIN listing_performance lp ON lp.ipo_id = i.id WHERE i.${REAL_IPO}`
+            COALESCE(lp.issue_price, i.price_range_max) AS issue_price,
+            d.issue_type
+       FROM ipos i
+       LEFT JOIN listing_performance lp ON lp.ipo_id = i.id
+       LEFT JOIN ipo_details d ON d.ipo_id = i.id
+      WHERE i.${REAL_IPO}`
   );
   const gmpExists = (await q(`SELECT to_regclass('public.gmp_records') AS reg`))[0].reg;
   if (gmpExists) {

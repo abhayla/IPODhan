@@ -202,10 +202,6 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
     // Transform extracted data to MoneycontrolIPO format
     for (const raw of extractedData) {
       try {
-        // Parse issue price (₹ 106)
-        const issuePriceMatch = raw.issuePrice?.match(/([\d.]+)/);
-        const issuePrice = issuePriceMatch ? parseFloat(issuePriceMatch[1]) : 0;
-
         // Parse issue size (₹ 2,517.50 Cr)
         const issueSize = parseMoneycontrolCurrency(raw.issueSize || '');
 
@@ -276,11 +272,21 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
         // Detect offering type (default to IPO for Moneycontrol data)
         const offeringType = 'IPO'; // Moneycontrol primarily lists equity IPOs
 
+        // T-308 (round-6 P1, 3rd occurrence of this class): Moneycontrol's
+        // Closed/Listed/Draft tables expose exactly ONE price column
+        // (issuePrice) — there is no separate min/max band on this page, ever.
+        // Writing that lone price into BOTH priceRangeMin and priceRangeMax
+        // silently collapsed a real book-built band (e.g. Rs76-Rs81) into a
+        // degenerate "Price Band Rs81" the moment an IPO closed/listed, since
+        // MONEYCONTROL is the lowest-priority source in field-priority-matrix
+        // and reliably provides a value at close/listing when NSE/BSE stop
+        // republishing the band. Leave the band fields OUT of the payload
+        // entirely (undefined, not 0) so consolidation treats this as "no
+        // update" (data-persister's `> 0` guard + normalization-engine's
+        // VALIDATION_FAILED-on-null path) and the stored band is left alone.
         const ipo: MoneycontrolIPO = {
           companyName: sanitizeText(raw.companyName),
           issueSize,
-          priceRangeMin: issuePrice,
-          priceRangeMax: issuePrice,
           openDate,
           closeDate,
           listingExchange: 'BOTH', // Moneycontrol aggregates both exchanges

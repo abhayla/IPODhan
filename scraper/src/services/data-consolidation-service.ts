@@ -178,6 +178,58 @@ export function collectDegeneratePriceBandFields(
 }
 
 /**
+ * T-308 (round-6 P1, 3rd occurrence of this class): widen-aware counterpart
+ * to `collectDegeneratePriceBandFields` above.
+ *
+ * The narrowing guard protects a REAL stored band from being collapsed by an
+ * incoming degenerate write. But it does nothing for the opposite direction:
+ * once a HIGHER-priority source (e.g. NSE/BSE, which rank above MONEYCONTROL
+ * in `FIELD_PRIORITY_MATRIX.priceRangeMin/Max`) has already written a
+ * degenerate band - typically at close/listing, when the source starts
+ * reporting a single final price instead of the original band - normal
+ * `resolveConflict` priority resolution NEVER lets a lower-priority source's
+ * CORRECT wide band win, even when that lower-priority source is the only one
+ * still reporting the truth. The wrong degenerate value becomes permanent:
+ * "the guard only blocks narrowing and never widens" (round-6 review finding).
+ *
+ * Returns the price-band field names that must bypass normal priority
+ * resolution and force-accept the incoming (real, wider) value, because the
+ * value CURRENTLY STORED is itself a degenerate collapse on a non-FIXED_PRICE
+ * issue. A degenerate stored value is corruption, not a settled fact, so it
+ * gets no priority protection regardless of which source wrote it.
+ */
+export function collectDegenerateBandFieldsToWiden(
+  incomingData: Record<string, any>,
+  existingSourceMap: Map<string, { value: any; source: ScraperSource; updatedAt?: Date }>,
+  existingData?: Record<string, any> | null
+): Set<string> {
+  const empty = new Set<string>();
+  if (!PRICE_BAND_FIELDS.every(f => f in incomingData)) return empty;
+
+  const incomingMin = toFiniteNumber(incomingData.priceRangeMin);
+  const incomingMax = toFiniteNumber(incomingData.priceRangeMax);
+  if (incomingMin === null || incomingMax === null) return empty;
+  if (incomingMin >= incomingMax) return empty; // incoming isn't a real (widening) band
+
+  // A FIXED_PRICE issue's degenerate stored value is legitimate, not corrupt -
+  // never force-overwrite it.
+  if (incomingData.issueType === 'FIXED_PRICE' || existingData?.issueType === 'FIXED_PRICE') {
+    return empty;
+  }
+
+  const existingMin = toFiniteNumber(
+    existingSourceMap.get('priceRangeMin')?.value ?? existingData?.priceRangeMin
+  );
+  const existingMax = toFiniteNumber(
+    existingSourceMap.get('priceRangeMax')?.value ?? existingData?.priceRangeMax
+  );
+  if (existingMin === null || existingMax === null) return empty; // nothing stored to widen
+  if (existingMin !== existingMax) return empty; // existing is already a real band - normal priority applies
+
+  return new Set<string>(PRICE_BAND_FIELDS);
+}
+
+/**
  * Data Consolidation Service
  * Main orchestrator for intelligent data merging
  */
@@ -285,11 +337,46 @@ export class DataConsolidationService {
         });
       }
 
+      // T-308 widen-aware guard: an ALREADY-degenerate stored band (min ===
+      // max, not FIXED_PRICE) is corruption, not a settled fact - it gets no
+      // priority protection. A real (min < max) incoming band force-wins
+      // regardless of source rank, so a lower-priority source's correct band
+      // can repair a higher-priority source's earlier collapse.
+      const widenBandFields = collectDegenerateBandFieldsToWiden(
+        input.incomingData,
+        existingSourceMap,
+        input.existingData
+      );
+      for (const fieldName of widenBandFields) {
+        result.fieldsProcessed++;
+        const existingField = existingSourceMap.get(fieldName);
+        await this.trackFieldSource({
+          ipoId: input.ipoId,
+          tableName: input.tableName,
+          fieldName,
+          value: input.incomingData[fieldName],
+          source: input.source,
+          confidence: input.confidence,
+          previousValue: existingField?.value ?? input.existingData?.[fieldName],
+          previousSource: existingField?.source,
+        });
+        result.fieldResults.push({
+          fieldName,
+          finalValue: input.incomingData[fieldName],
+          chosenSource: input.source,
+          hadConflict: true,
+          conflictSeverity: 'INFO',
+          conflictReason: 'DEGENERATE_BAND_WIDENED',
+        });
+        result.fieldsUpdated++;
+      }
+
       // Process each field in incoming data
       for (const [fieldName, incomingValue] of Object.entries(
         input.incomingData
       )) {
         if (degenerateBandFields.has(fieldName)) continue;
+        if (widenBandFields.has(fieldName)) continue;
         result.fieldsProcessed++;
 
         try {

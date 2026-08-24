@@ -78,11 +78,13 @@ describe('moneycontrol-scraper', () => {
       expect(result.ipos).toHaveLength(1);
       expect(result.ipos[0].companyName).toBe('ABC Company Limited');
       expect(result.ipos[0].issueSize).toBe(10000000000); // 1000 Cr
-      // Current extraction only yields a single issue price (no min/max
-      // range), so both bounds equal it - see priceRangeMin/Max assignment
-      // in moneycontrol-scraper.ts.
-      expect(result.ipos[0].priceRangeMin).toBe(250);
-      expect(result.ipos[0].priceRangeMax).toBe(250);
+      // T-308 (round-6 P1): Moneycontrol's Closed/Listed/Draft tables expose
+      // only a single price column, never a real min/max band. The scraper
+      // MUST NOT collapse that lone price into both band fields (that
+      // silently destroyed real book-built bands at close/listing) - the
+      // band fields are left out of the payload entirely.
+      expect(result.ipos[0].priceRangeMin).toBeUndefined();
+      expect(result.ipos[0].priceRangeMax).toBeUndefined();
       expect(result.ipos[0].segment).toBe('MAINBOARD');
       expect(result.ipos[0].offeringType).toBe('IPO');
       expect(result.ipos[0].totalSubscription).toBe(2.5);
@@ -144,8 +146,8 @@ describe('moneycontrol-scraper', () => {
       expect(result.ipos).toHaveLength(1);
       expect(result.ipos[0].companyName).toBe('Minimal Row Ltd');
       expect(result.ipos[0].issueSize).toBe(0);
-      expect(result.ipos[0].priceRangeMin).toBe(0);
-      expect(result.ipos[0].priceRangeMax).toBe(0);
+      expect(result.ipos[0].priceRangeMin).toBeUndefined();
+      expect(result.ipos[0].priceRangeMax).toBeUndefined();
       expect(result.ipos[0].totalSubscription).toBe(0);
       expect(result.errors).toHaveLength(0);
     });
@@ -184,14 +186,14 @@ describe('moneycontrol-scraper', () => {
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should handle an unparseable price with a zero fallback', async () => {
+    it('should leave the price band undefined when the source price is unparseable', async () => {
       mockBrowserExtraction([rawIpo({ issuePrice: 'N/A' })]);
 
       const result = await scrapeMoneycontrolIPOs();
 
       expect(result.ipos).toHaveLength(1);
-      expect(result.ipos[0].priceRangeMin).toBe(0);
-      expect(result.ipos[0].priceRangeMax).toBe(0);
+      expect(result.ipos[0].priceRangeMin).toBeUndefined();
+      expect(result.ipos[0].priceRangeMax).toBeUndefined();
     });
   });
 });

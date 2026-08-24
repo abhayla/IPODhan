@@ -248,3 +248,66 @@ describe('T-281 — cross-source degenerate band guard (T-280 live finding)', ()
     expect(finalOf(result, 'priceRangeMax')).toBe(97);
   });
 });
+
+describe('T-308 — widen-aware guard: a lower-priority source repairs an already-degenerate band (round-6 P1)', () => {
+  let service: DataConsolidationService;
+
+  beforeEach(() => {
+    service = new DataConsolidationService(mockFieldSourcesRepo, mockConflictsRepo);
+    vi.clearAllMocks();
+  });
+
+  // The exact round-6 finding: NSE (rank 1) already collapsed the stored band
+  // to a lone issue price at listing. MONEYCONTROL (rank 4, lowest priority)
+  // later reports the real corroborated band. Normal SOURCE_PRIORITY
+  // resolution would keep NSE's degenerate value forever - mutate away the
+  // `widenBandFields` force-accept branch and this test goes RED.
+  it('lets a LOWER-priority source widen a band a HIGHER-priority source already collapsed', async () => {
+    (mockFieldSourcesRepo.findByIPOId as any).mockResolvedValue(existingBand(81, 81, 'NSE'));
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'ipo-1',
+      tableName: 'ipos',
+      incomingData: { priceRangeMin: 76, priceRangeMax: 81 },
+      source: 'MONEYCONTROL',
+      existingData: { priceRangeMin: 81, priceRangeMax: 81, issueType: 'BOOK_BUILDING' },
+      scrapedAt: NEW,
+    });
+
+    expect(finalOf(result, 'priceRangeMin')).toBe(76);
+    expect(finalOf(result, 'priceRangeMax')).toBe(81);
+  });
+
+  it('does NOT force-widen when the existing stored band is already real (min < max) — normal priority still applies', async () => {
+    (mockFieldSourcesRepo.findByIPOId as any).mockResolvedValue(existingBand(76, 81, 'NSE'));
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'ipo-1',
+      tableName: 'ipos',
+      incomingData: { priceRangeMin: 70, priceRangeMax: 81 },
+      source: 'MONEYCONTROL',
+      existingData: { priceRangeMin: 76, priceRangeMax: 81, issueType: 'BOOK_BUILDING' },
+      scrapedAt: NEW,
+    });
+
+    // NSE outranks MONEYCONTROL and the existing band is already real -
+    // ordinary SOURCE_PRIORITY resolution keeps NSE's value.
+    expect(finalOf(result, 'priceRangeMin')).toBe(76);
+  });
+
+  it('does NOT force-widen a legitimately FIXED_PRICE degenerate value', async () => {
+    (mockFieldSourcesRepo.findByIPOId as any).mockResolvedValue(existingBand(42, 42, 'NSE'));
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'ipo-1',
+      tableName: 'ipos',
+      incomingData: { priceRangeMin: 40, priceRangeMax: 45 },
+      source: 'MONEYCONTROL',
+      existingData: { priceRangeMin: 42, priceRangeMax: 42, issueType: 'FIXED_PRICE' },
+      scrapedAt: NEW,
+    });
+
+    expect(finalOf(result, 'priceRangeMin')).toBe(42);
+    expect(finalOf(result, 'priceRangeMax')).toBe(42);
+  });
+});
