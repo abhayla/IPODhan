@@ -115,7 +115,7 @@ function parseBSEDate(dateStr: string): string {
  * @param priceStr - Price string from BSE
  * @returns {min: number, max: number}
  */
-function parsePriceRange(priceStr: string): { min: number | undefined; max: number | undefined } {
+export function parsePriceRange(priceStr: string): { min: number | undefined; max: number | undefined } {
   try {
     const cleaned = priceStr.trim();
 
@@ -132,10 +132,15 @@ function parsePriceRange(priceStr: string): { min: number | undefined; max: numb
       }
     }
 
-    // Handle single price "310.00"
+    // T-308 (round-6 P1, 3rd occurrence of this class): a lone single-price
+    // string (no "-" range) is NOT a real book-built band — writing it into
+    // both min and max silently collapses a previously-published band once
+    // BSE stops showing the range at close/listing. Leave the band
+    // undefined so consolidation treats this as "no update" instead of
+    // overwriting a real stored band with a degenerate min===max.
     const price = parseFloat(cleaned);
     if (!isNaN(price)) {
-      return { min: price, max: price };
+      return { min: undefined, max: undefined };
     }
 
     return { min: undefined, max: undefined };

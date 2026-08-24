@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { runNSEScraper } from '../../src/scrapers/nse-scraper-orchestrator';
+import { runNSEScraper } from '../../src/scrapers/nse-scraper-orchestrator-v2';
 
 describe('NSE Scraper E2E Tests', () => {
   it('should complete scraper execution within 60 seconds (performance test)', async () => {

@@ -43,6 +43,21 @@ jobs:
           node-version: '20'
           cache: 'npm'
 
+      - name: Write-ratchet self-test (T-316)
+        # Mutation-proof: scripts/tests/check-write-ratchet.test.mjs imports
+        # the actual PATTERNS from the script under test, so a deleted
+        # pattern turns this red before the ratchet check below can silently
+        # stop catching that pattern class. No deps needed (Node builtins only).
+        run: node --test scripts/tests/check-write-ratchet.test.mjs
+
+      - name: Write ratchet — no new direct `ipos` writers (T-316/R0)
+        # Grep-based gate, not ESLint (T-313C amendment): catches raw .sql/.mjs
+        # writers and the runtime-resolved dynamic-table admin route that a
+        # syntax-aware lint rule cannot see. Baseline is shrink-only —
+        # config/write-ratchet-baseline.json. See
+        # docs/architecture/write-path-hardening.md ("R0").
+        run: node scripts/check-write-ratchet.mjs
+
       - name: Install dependencies
         run: npm ci
 
@@ -53,7 +68,7 @@ jobs:
           test -f dist/db/schema.d.ts || (echo "FATAL: schema.d.ts not created!" && exit 1)
 
       - name: Run lint
-        run: npm run lint
+        run: npm run lint:ci
         working-directory: ./web
 
       - name: Run type-check

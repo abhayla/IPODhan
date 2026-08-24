@@ -20,6 +20,10 @@ import { shouldRunListingPerformanceUpdate } from './scheduler/listing-performan
 import { runRegistrarHealthCheck } from './scheduler/jobs/registrar-health-check-job.js';
 import { shouldRunRegistrarHealthCheck } from './scheduler/registrar-health-check-cadence.js';
 import { reresolveRegistrarIds } from './services/registrar-reresolve.js';
+import { runDuplicateSweepJob } from './scheduler/jobs/duplicate-sweep-job.js';
+import { runStageReconcilerJob } from './scheduler/jobs/stage-reconciler-job.js';
+import { runPrimaryDocBackfill } from './scripts/backfill-primary-source-documents.js';
+import { shouldRunOnCatchUpCadence } from './scheduler/catch-up-cadence.js';
 import { db, ScraperLogRepository, getRedisClient } from '@ipodhan/shared';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
@@ -273,6 +277,9 @@ export async function main() {
       await triggerRegistrarReresolve();
       await triggerRegistrarHealthCheck();
       await triggerListingPerformanceUpdate();
+      await triggerDuplicateSweep();
+      await triggerStageReconciler();
+      await triggerPrimarySourceDiscovery();
       await pruneScraperLogs();
       await pruneDataConflicts();
       // T-195: data-quality watchdog core (freshness SLO + cross-source
@@ -454,18 +461,158 @@ export async function triggerRegistrarReresolve(): Promise<void> {
  * fire once daily (matching the scheduler's original cron intent) instead of
  * every 30-minute cycle.
  */
+// T-306 (T-300C2 advisory): persisted last-run timestamp so a missed 06:30-06:59
+// IST window (a slow prior cycle, a restart, a missed cron_restart tick) is
+// caught up on the next cycle instead of silently skipping the whole day —
+// see shouldRunRegistrarHealthCheck's catch-up semantics. Redis is
+// best-effort (redis-best-effort-fail-open.md): if the key can't be read, we
+// pass `null` (treated as "no confirmed run" -> catch-up now, the safe
+// default) rather than block or crash the cycle.
+const REGISTRAR_HEALTH_CHECK_LAST_RUN_KEY = 'registrar-health-check:last-run';
+
 export async function triggerRegistrarHealthCheck(): Promise<void> {
-  if (!shouldRunRegistrarHealthCheck(new Date())) {
-    logger.debug('Registrar health check skipped (outside cadence window)');
+  const now = new Date();
+  let lastRunAt: Date | null = null;
+  try {
+    const redis = getRedisClient();
+    const raw = await redis.get(REGISTRAR_HEALTH_CHECK_LAST_RUN_KEY);
+    lastRunAt = raw ? new Date(raw) : null;
+    if (lastRunAt !== null && Number.isNaN(lastRunAt.getTime())) lastRunAt = null;
+  } catch (error) {
+    logger.debug(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Registrar health check last-run lookup failed (non-fatal) - treating as catch-up eligible'
+    );
+  }
+
+  if (!shouldRunRegistrarHealthCheck(now, lastRunAt)) {
+    logger.debug('Registrar health check skipped (outside cadence window, no catch-up due)');
     return;
   }
   try {
     const result = await runRegistrarHealthCheck();
     logger.info({ result }, 'Registrar health check triggered from one-shot cycle');
+    try {
+      const redis = getRedisClient();
+      // No TTL: this key MUST survive indefinitely so a long gap (outage,
+      // deploy freeze) is still detected as catch-up-eligible on return.
+      await redis.set(REGISTRAR_HEALTH_CHECK_LAST_RUN_KEY, now.toISOString());
+    } catch (error) {
+      logger.debug(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Registrar health check last-run persist failed (non-fatal)'
+      );
+    }
   } catch (error) {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'Registrar health check trigger failed (non-fatal)'
+    );
+  }
+}
+
+/**
+ * P2-2b (T-293) / T-311: periodic duplicate-IPO cluster sweep. Was only ever
+ * registered in `SchedulerService` (`scheduler.ts`, cron `'30 4 * * *'`
+ * IST), which production never imports — the same T-179/T-176 dead-path
+ * trap as the registrar health check above. Wires the SAME dry-run-only
+ * sweep (report/log a duplicate-cluster plan; NEVER deletes — actual
+ * merge/delete stays §GATE, `dryRun: false` is never passed here) onto the
+ * path prod actually runs, gated by a last-run catch-up cadence (not a
+ * wall-clock window — see `catch-up-cadence.ts`) so the full-table scan
+ * fires roughly once a day, matching the original schedule's intent.
+ */
+const DUPLICATE_SWEEP_INTERVAL_MINUTES = 24 * 60;
+
+export async function triggerDuplicateSweep(): Promise<void> {
+  const redis = getRedisClient();
+  const shouldRun = await shouldRunOnCatchUpCadence(redis, 'duplicate-sweep', DUPLICATE_SWEEP_INTERVAL_MINUTES);
+  if (!shouldRun) {
+    logger.debug('Duplicate sweep skipped (outside catch-up cadence window)');
+    return;
+  }
+  try {
+    const result = await runDuplicateSweepJob({ dryRun: true });
+    logger.info({ result }, 'Duplicate sweep triggered from one-shot cycle (dry-run — report only)');
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Duplicate sweep trigger failed (non-fatal)'
+    );
+  }
+}
+
+/**
+ * Stage F stage-transition reconciler (T-311). Was only ever registered in
+ * `SchedulerService` (cron "every 3 hours" IST), gated OFF by
+ * `ENABLE_STAGE_RECONCILER` (§GATE — activation is Abhay's call per
+ * `owner-gated-feature-flags.md`). Wires the SAME dry-run-only reconciler
+ * (computes + logs the due-but-missing fetch plan; enqueue/trigger stays a
+ * documented no-op — see `stage-reconciler-job.ts`) onto the path prod
+ * actually runs, so the flag has a real consumer the moment Abhay flips it,
+ * gated by both the flag AND a last-run catch-up cadence matching the
+ * original 3-hour schedule intent.
+ */
+const STAGE_RECONCILER_INTERVAL_MINUTES = 3 * 60;
+
+export async function triggerStageReconciler(): Promise<void> {
+  if (process.env.ENABLE_STAGE_RECONCILER !== 'true') {
+    return;
+  }
+  const redis = getRedisClient();
+  const shouldRun = await shouldRunOnCatchUpCadence(redis, 'stage-reconciler', STAGE_RECONCILER_INTERVAL_MINUTES);
+  if (!shouldRun) {
+    logger.debug('Stage reconciler skipped (outside catch-up cadence window)');
+    return;
+  }
+  try {
+    const result = await runStageReconcilerJob({ dryRun: true });
+    logger.info({ result }, 'Stage reconciler triggered from one-shot cycle (dry-run — report only)');
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Stage reconciler trigger failed (non-fatal)'
+    );
+  }
+}
+
+/**
+ * T-311, closing #213 / T-305 P2-2: `ENABLE_PRIMARY_SOURCE_DISCOVERY` had NO
+ * consumer anywhere in the running entrypoint — only a manual backfill
+ * script (`backfill-primary-source-documents.ts`) existed, never invoked
+ * automatically. The owner's 2026-08-23 order to turn the flag on in prod
+ * was therefore a no-op: the flag changed nothing, and the "two clean
+ * cycles" hold-test the owner was told about could not have failed.
+ *
+ * This wires a REAL consumer: with the flag true, this one-shot cycle runs
+ * the NSE primary-source document discovery pass for every open/upcoming/
+ * closed IPO with an NSE symbol and upserts discovered documents via
+ * `DocumentRepository.upsertDocument` (`documents` table — idempotent,
+ * dedups by URL; NEVER a raw `db.insert`). With the flag false (today's
+ * live prod state), nothing runs — restoring the honesty gap #213 flagged.
+ * Cadence-gated to once daily (matching the script's own "backfill" nature
+ * — one full NSE issue-info fetch per candidate IPO is not a per-cycle
+ * operation) via the same last-run catch-up guard as the jobs above.
+ */
+const PRIMARY_SOURCE_DISCOVERY_INTERVAL_MINUTES = 24 * 60;
+
+export async function triggerPrimarySourceDiscovery(): Promise<void> {
+  if (process.env.ENABLE_PRIMARY_SOURCE_DISCOVERY !== 'true') {
+    return;
+  }
+  const redis = getRedisClient();
+  const shouldRun = await shouldRunOnCatchUpCadence(redis, 'primary-source-discovery', PRIMARY_SOURCE_DISCOVERY_INTERVAL_MINUTES);
+  if (!shouldRun) {
+    logger.debug('Primary-source discovery skipped (outside catch-up cadence window)');
+    return;
+  }
+  try {
+    await runPrimaryDocBackfill({ execute: true });
+    logger.info('Primary-source discovery triggered from one-shot cycle');
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Primary-source discovery trigger failed (non-fatal)'
     );
   }
 }

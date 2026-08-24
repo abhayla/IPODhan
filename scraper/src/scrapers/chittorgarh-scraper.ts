@@ -109,12 +109,13 @@ function parseChittorgarhPrice(priceStr: string): { min: number; max: number } {
     }
   }
 
-  // Handle fixed price: "1140.00"
-  const price = parseFloat(cleaned);
-  if (!isNaN(price)) {
-    return { min: price, max: price };
-  }
-
+  // T-308 (round-6 P1, 3rd occurrence of this class): a lone price string
+  // (no "to" range) is NOT a real book-built band -- writing it into both
+  // min and max silently collapses a previously-published band once
+  // Chittorgarh's report stops showing the range at close/listing. Return
+  // {0,0} (the existing "no band" sentinel this function already used for
+  // unparseable input) so the caller's `price.min > 0 ? ... : undefined`
+  // guard leaves the band fields unset instead of overwriting.
   return { min: 0, max: 0 };
 }
 

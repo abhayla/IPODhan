@@ -24,7 +24,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { scrapeMoneycontrolIPOs } from '../../../src/scrapers/moneycontrol-scraper.js';
+import {
+  scrapeMoneycontrolIPOs,
+  filterRowsWithCompanyName,
+  type RawMoneycontrolRow,
+} from '../../../src/scrapers/moneycontrol-scraper.js';
 import * as browser from '../../../src/utils/browser.js';
 
 /** Shape of one row produced by the in-browser page.evaluate() extraction. */
@@ -78,11 +82,13 @@ describe('moneycontrol-scraper', () => {
       expect(result.ipos).toHaveLength(1);
       expect(result.ipos[0].companyName).toBe('ABC Company Limited');
       expect(result.ipos[0].issueSize).toBe(10000000000); // 1000 Cr
-      // Current extraction only yields a single issue price (no min/max
-      // range), so both bounds equal it - see priceRangeMin/Max assignment
-      // in moneycontrol-scraper.ts.
-      expect(result.ipos[0].priceRangeMin).toBe(250);
-      expect(result.ipos[0].priceRangeMax).toBe(250);
+      // T-308 (round-6 P1): Moneycontrol's Closed/Listed/Draft tables expose
+      // only a single price column, never a real min/max band. The scraper
+      // MUST NOT collapse that lone price into both band fields (that
+      // silently destroyed real book-built bands at close/listing) - the
+      // band fields are left out of the payload entirely.
+      expect(result.ipos[0].priceRangeMin).toBeUndefined();
+      expect(result.ipos[0].priceRangeMax).toBeUndefined();
       expect(result.ipos[0].segment).toBe('MAINBOARD');
       expect(result.ipos[0].offeringType).toBe('IPO');
       expect(result.ipos[0].totalSubscription).toBe(2.5);
@@ -144,8 +150,8 @@ describe('moneycontrol-scraper', () => {
       expect(result.ipos).toHaveLength(1);
       expect(result.ipos[0].companyName).toBe('Minimal Row Ltd');
       expect(result.ipos[0].issueSize).toBe(0);
-      expect(result.ipos[0].priceRangeMin).toBe(0);
-      expect(result.ipos[0].priceRangeMax).toBe(0);
+      expect(result.ipos[0].priceRangeMin).toBeUndefined();
+      expect(result.ipos[0].priceRangeMax).toBeUndefined();
       expect(result.ipos[0].totalSubscription).toBe(0);
       expect(result.errors).toHaveLength(0);
     });
@@ -184,14 +190,54 @@ describe('moneycontrol-scraper', () => {
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should handle an unparseable price with a zero fallback', async () => {
+    it('should leave the price band undefined when the source price is unparseable', async () => {
       mockBrowserExtraction([rawIpo({ issuePrice: 'N/A' })]);
 
       const result = await scrapeMoneycontrolIPOs();
 
       expect(result.ipos).toHaveLength(1);
-      expect(result.ipos[0].priceRangeMin).toBe(0);
-      expect(result.ipos[0].priceRangeMax).toBe(0);
+      expect(result.ipos[0].priceRangeMin).toBeUndefined();
+      expect(result.ipos[0].priceRangeMax).toBeUndefined();
+    });
+
+    // T-306 (T-301C disclosure gap): the missing-company-name skip moved out
+    // of the in-browser page.evaluate() closure into
+    // filterRowsWithCompanyName() (a pure function called right after
+    // page.evaluate() resolves), so it is exercisable through the public
+    // scraper entry point again. This test FAILS if the skip is removed —
+    // it would then assert 2 ipos instead of 1.
+    it('should drop a row with no company name (moved skip path)', async () => {
+      mockBrowserExtraction([
+        rawIpo({ companyName: 'Valid Company' }),
+        rawIpo({ companyName: '' }),
+        rawIpo({ companyName: '   ' }), // whitespace-only also counts as missing
+      ]);
+
+      const result = await scrapeMoneycontrolIPOs();
+
+      expect(result.ipos).toHaveLength(1);
+      expect(result.ipos[0].companyName).toBe('Valid Company');
+    });
+  });
+
+  describe('filterRowsWithCompanyName', () => {
+    function row(companyName: string): RawMoneycontrolRow {
+      return { companyName, companyUrl: '/x', category: 'MAINBOARD', tableType: 'CLOSED' };
+    }
+
+    it('keeps rows with a non-empty company name', () => {
+      const rows = [row('Alpha Ltd'), row('Beta Ltd')];
+      expect(filterRowsWithCompanyName(rows)).toEqual(rows);
+    });
+
+    it('drops rows with an empty or whitespace-only company name', () => {
+      const kept = row('Gamma Ltd');
+      const result = filterRowsWithCompanyName([row(''), kept, row('   ')]);
+      expect(result).toEqual([kept]);
+    });
+
+    it('returns an empty array when every row is missing a company name', () => {
+      expect(filterRowsWithCompanyName([row(''), row('  ')])).toEqual([]);
     });
   });
 });

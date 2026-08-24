@@ -98,7 +98,7 @@ describe('BSE Scraper E2E Tests', () => {
       vi.mocked(closeBrowser).mockResolvedValue(undefined);
 
       // Import and run orchestrator
-      const { runBSEScraper } = await import('../../src/scrapers/bse-scraper-orchestrator.js');
+      const { runBSEScraper } = await import('../../src/scrapers/bse-scraper-orchestrator-v2.js');
       const result = await runBSEScraper();
 
       // Verify orchestrator completes (even with no IPOs)
@@ -130,7 +130,7 @@ describe('BSE Scraper E2E Tests', () => {
       vi.mocked(closeBrowser).mockResolvedValue(undefined);
 
       // Import and run orchestrator
-      const { runBSEScraper } = await import('../../src/scrapers/bse-scraper-orchestrator.js');
+      const { runBSEScraper } = await import('../../src/scrapers/bse-scraper-orchestrator-v2.js');
       await runBSEScraper();
 
       // Verify completion log was called (regardless of success/failure)
@@ -162,7 +162,7 @@ describe('BSE Scraper E2E Tests', () => {
       vi.mocked(closeBrowser).mockResolvedValue(undefined);
 
       // Import and run orchestrator
-      const { runBSEScraper } = await import('../../src/scrapers/bse-scraper-orchestrator.js');
+      const { runBSEScraper } = await import('../../src/scrapers/bse-scraper-orchestrator-v2.js');
       const result = await runBSEScraper();
 
       // Verify result structure includes count fields
@@ -196,7 +196,7 @@ describe('BSE Scraper E2E Tests', () => {
       vi.mocked(closeBrowser).mockResolvedValue(undefined);
 
       // Import and run orchestrator
-      const { runBSEScraper } = await import('../../src/scrapers/bse-scraper-orchestrator.js');
+      const { runBSEScraper } = await import('../../src/scrapers/bse-scraper-orchestrator-v2.js');
       const result = await runBSEScraper();
 
       // Verify failure
@@ -241,7 +241,7 @@ describe('BSE Scraper E2E Tests', () => {
       const startTime = Date.now();
 
       // Import and run orchestrator
-      const { runBSEScraper } = await import('../../src/scrapers/bse-scraper-orchestrator.js');
+      const { runBSEScraper } = await import('../../src/scrapers/bse-scraper-orchestrator-v2.js');
       const result = await runBSEScraper();
 
       const duration = Date.now() - startTime;
@@ -311,7 +311,7 @@ describe('BSE Scraper E2E Tests', () => {
       vi.mocked(closeBrowser).mockResolvedValue(undefined);
 
       // Import and run orchestrator
-      const { runBSEScraper } = await import('../../src/scrapers/bse-scraper-orchestrator.js');
+      const { runBSEScraper } = await import('../../src/scrapers/bse-scraper-orchestrator-v2.js');
       const result = await runBSEScraper();
 
       // Verify result structure

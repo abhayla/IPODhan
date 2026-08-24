@@ -201,7 +201,7 @@ if (( DRY_RUN )); then
   log "[dry-run] skipping required-keys assert (no real env files under $ENV_DIR)"
 else
   log "Required-keys assert against $WEB_ENV_FILE / $SCRAPER_ENV_FILE"
-  bash "$SCRIPT_DIR/assert-env-keys.sh" "$WEB_ENV_FILE" "$SCRAPER_ENV_FILE"
+  bash "$SCRIPT_DIR/assert-env-keys.sh" "$WEB_ENV_FILE" "$SCRAPER_ENV_FILE" "$REPO_ROOT/scraper/src"
 fi
 
 # --------------------------------------------- 2. build/scrape mutual exclusion
@@ -553,8 +553,80 @@ verify_public_health() {
   return 0
 }
 
+assert_pm2_logrotate_installed() {
+  # T-311 (#8 P3 / the 2026-06-13 disk-full-incident class): pm2-logrotate is
+  # ABSENT on the Linux box today — ipodhan-scraper-out.log alone grows
+  # ~1.47MB per 30-min cycle (~70MB/day; ~140MB/day across prod+staging),
+  # the same unbounded-log-growth shape that took the prod DB, SSH, and the
+  # runner down on 2026-06-13. This is a LOUD, NON-BLOCKING check (WARN, not
+  # a deploy failure): the module must be installed once, by hand, on the
+  # box (see scripts/ops/install-pm2-logrotate.sh) — T-311 does not install
+  # it, and a deploy MUST NOT start hard-failing before the owner has had a
+  # chance to run that one-time command. Once installed, a future task can
+  # promote this to a hard gate (mirroring assert-env-keys.sh's severity).
+  #
+  # T-311F (checker HARD finding): `pm2 conf <module>` exits 0 REGARDLESS of
+  # whether the module is installed — verified read-only on the real box
+  # with the module genuinely absent: `pm2 conf pm2-logrotate >/dev/null
+  # 2>&1; echo $?` printed `0` with no output, so the warn branch below could
+  # never fire and the deploy log lied ("installed and configured" on a box
+  # where it was not). `pm2 jlist` is pm2's own process/module inventory (the
+  # same introspection `pm2_app_status()` above already uses) — an installed
+  # module registers itself there by name, so grepping it actually
+  # distinguishes installed vs absent.
+  if (( DRY_RUN )); then
+    log "[dry-run] skipping pm2-logrotate presence assert"
+    return 0
+  fi
+  if pm2 jlist 2>/dev/null | grep -Eq '"name"[[:space:]]*:[[:space:]]*"pm2-logrotate"'; then
+    log "pm2-logrotate: installed (see scripts/ops/install-pm2-logrotate.sh for the config values it applies)"
+  else
+    warn "pm2-logrotate module NOT installed — scraper/web logs will grow unbounded (2026-06-13 disk-full-incident class). One-time fix on the box: bash scripts/ops/install-pm2-logrotate.sh"
+  fi
+}
+
+# T-311F MEDIUM: a deploy-time report line per job T-311 wired into the
+# one-shot `--source=all` cycle (duplicateSweep, stageReconciler,
+# primarySourceDiscovery), so the deploy log shows what is actually wired
+# instead of that being a claim only checkable by reading source. Reads the
+# committed tree via `git show $SHA:...` (works in both --dry-run and a real
+# deploy — unlike $RELEASE_DIR, which is only a stub marker in --dry-run; see
+# step 4 above) rather than a hardcoded static claim, so a future revert of
+# the wiring in scraper/src/index.ts is caught here too.
+report_wired_jobs() {
+  local idx_content
+  idx_content="$(cd "$REPO_ROOT" && git show "$SHA:scraper/src/index.ts" 2>/dev/null || true)"
+  if [ -z "$idx_content" ]; then
+    warn "report_wired_jobs: could not read scraper/src/index.ts at $SHORT_SHA — cannot verify job wiring"
+    return 0
+  fi
+  local entry job rest call flag flag_val
+  for entry in "duplicateSweep:triggerDuplicateSweep:" "stageReconciler:triggerStageReconciler:ENABLE_STAGE_RECONCILER" "primarySourceDiscovery:triggerPrimarySourceDiscovery:ENABLE_PRIMARY_SOURCE_DISCOVERY"; do
+    job="${entry%%:*}"
+    rest="${entry#*:}"
+    call="${rest%%:*}"
+    flag="${rest#*:}"
+    if printf '%s' "$idx_content" | grep -q "await ${call}()"; then
+      if [ -n "$flag" ]; then
+        flag_val="unset"
+        if (( ! DRY_RUN )); then
+          flag_val="$(grep "^${flag}=" "$SCRAPER_ENV_FILE" "$WEB_ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)"
+          [ -n "$flag_val" ] || flag_val="unset"
+        fi
+        log "job wired: $job (${call}(), flag ${flag}=${flag_val})"
+      else
+        log "job wired: $job (${call}(), always-on/cadence-gated)"
+      fi
+    else
+      warn "job NOT wired: $job — expected 'await ${call}()' in scraper/src/index.ts at $SHORT_SHA"
+    fi
+  done
+}
+
 log "Restarting PM2 apps"
 restart_pm2
+assert_pm2_logrotate_installed
+report_wired_jobs
 
 if ! verify_public_health; then
   echo "ERROR: post-flip verification failed for $RELEASE_NAME." >&2

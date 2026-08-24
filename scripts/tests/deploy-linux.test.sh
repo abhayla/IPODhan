@@ -357,6 +357,101 @@ else
   pass "case 10: rollback dry-run log does NOT contain 'pm2 reload' anywhere"
 fi
 
+# --- Case 11: T-311F HARD finding — assert_pm2_logrotate_installed() must ---
+# --- actually distinguish an installed pm2-logrotate module from an -------
+# --- absent one. The original predicate (`pm2 conf pm2-logrotate`) exits 0 -
+# --- REGARDLESS of install state (verified read-only on the real box where -
+# --- the module is genuinely absent), so it could never warn. This ---------
+# --- extracts the function in isolation (same pattern as case 8b) and -----
+# --- stubs `pm2 jlist` to both shapes: absent (must WARN) and present -----
+# --- (must log installed, no warn). -----------------------------------------
+ASSERT_FN="$(sed -n '/^assert_pm2_logrotate_installed()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -z "$ASSERT_FN" ]; then
+  fail "case 11: could not extract assert_pm2_logrotate_installed() from $DEPLOY_SCRIPT — function renamed?"
+else
+  FAKEBIN11="$(mktemp -d)"
+
+  # --- 11a: module ABSENT — pm2 jlist has no pm2-logrotate entry -----------
+  cat > "$FAKEBIN11/pm2" <<'EOSCRIPT'
+#!/usr/bin/env bash
+if [ "$1" = "jlist" ]; then
+  printf '[{"name":"ipodhan-web","pm2_env":{"status":"online"}}]'
+  exit 0
+fi
+exit 1
+EOSCRIPT
+  chmod +x "$FAKEBIN11/pm2"
+
+  (
+    eval "$ASSERT_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=0
+    PATH="$FAKEBIN11:$PATH"
+    assert_pm2_logrotate_installed
+  ) >/tmp/deploy-test-11a.log 2>&1
+
+  if grep -q 'WARN:.*pm2-logrotate module NOT installed' /tmp/deploy-test-11a.log; then
+    pass "case 11a: absent pm2-logrotate module produces a WARN (predicate actually fires)"
+  else
+    fail "case 11a: expected a 'pm2-logrotate module NOT installed' WARN when the module is absent"
+    cat /tmp/deploy-test-11a.log
+  fi
+  if grep -q 'installed and configured\|pm2-logrotate: installed (' /tmp/deploy-test-11a.log && ! grep -q 'WARN' /tmp/deploy-test-11a.log; then
+    fail "case 11a: logged 'installed' with no WARN even though the module is absent — the false-green regression"
+  else
+    pass "case 11a: did not falsely log 'installed' while the module is absent"
+  fi
+
+  # --- 11b: module PRESENT — pm2 jlist has a pm2-logrotate entry -----------
+  cat > "$FAKEBIN11/pm2" <<'EOSCRIPT'
+#!/usr/bin/env bash
+if [ "$1" = "jlist" ]; then
+  printf '[{"name":"ipodhan-web","pm2_env":{"status":"online"}},{"name":"pm2-logrotate","pm2_env":{"status":"online"}}]'
+  exit 0
+fi
+exit 1
+EOSCRIPT
+  chmod +x "$FAKEBIN11/pm2"
+
+  (
+    eval "$ASSERT_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=0
+    PATH="$FAKEBIN11:$PATH"
+    assert_pm2_logrotate_installed
+  ) >/tmp/deploy-test-11b.log 2>&1
+
+  if grep -q 'pm2-logrotate: installed' /tmp/deploy-test-11b.log; then
+    pass "case 11b: present pm2-logrotate module logs 'installed', not a WARN"
+  else
+    fail "case 11b: expected 'pm2-logrotate: installed' when the module IS present"
+    cat /tmp/deploy-test-11b.log
+  fi
+  if grep -q 'WARN' /tmp/deploy-test-11b.log; then
+    fail "case 11b: unexpected WARN when the module IS present"
+    cat /tmp/deploy-test-11b.log
+  else
+    pass "case 11b: no WARN when the module is present"
+  fi
+
+  rm -rf "$FAKEBIN11"
+fi
+
+# --- Case 12: T-311F MEDIUM — report_wired_jobs() emits one deploy-time ----
+# --- log line per job T-311 wired into the one-shot cycle, read from the ---
+# --- committed tree via `git show`, so the reader does not have to trust ---
+# --- source comments to know what actually runs in prod. -------------------
+for job_case12 in "duplicateSweep" "stageReconciler" "primarySourceDiscovery"; do
+  if grep -q "job wired: $job_case12" /tmp/deploy-test-1.log; then
+    pass "case 12: deploy log reports '$job_case12' as wired"
+  else
+    fail "case 12: expected a 'job wired: $job_case12' line in the deploy log"
+    cat /tmp/deploy-test-1.log
+  fi
+done
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1

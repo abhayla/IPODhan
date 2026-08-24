@@ -91,6 +91,18 @@ vi.mock('../../src/scheduler/registrar-health-check-cadence.js', () => ({
 vi.mock('../../src/services/registrar-reresolve.js', () => ({
   reresolveRegistrarIds: vi.fn().mockResolvedValue({ candidates: 0, matched: 0, written: 0, unmatchedNames: [] }),
 }));
+vi.mock('../../src/scheduler/jobs/duplicate-sweep-job.js', () => ({
+  runDuplicateSweepJob: vi.fn().mockResolvedValue({ totalIpos: 0, clusters: 0, dupClusters: [], applied: false }),
+}));
+vi.mock('../../src/scheduler/jobs/stage-reconciler-job.js', () => ({
+  runStageReconcilerJob: vi.fn().mockResolvedValue({ totalIpos: 0, iposWithDueFetches: 0, dueByKind: {}, byStage: {} }),
+}));
+vi.mock('../../src/scripts/backfill-primary-source-documents.js', () => ({
+  runPrimaryDocBackfill: vi.fn().mockResolvedValue(undefined),
+}));
+vi.mock('../../src/scheduler/catch-up-cadence.js', () => ({
+  shouldRunOnCatchUpCadence: vi.fn().mockResolvedValue(true),
+}));
 const evaluateFreshnessMock = vi.fn().mockResolvedValue([]);
 const checkCrossSourceDisagreementsMock = vi.fn().mockResolvedValue({
   openIpoCount: 0,

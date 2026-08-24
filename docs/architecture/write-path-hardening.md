@@ -6,6 +6,8 @@
 **Scope:** Why data defects kept recurring across five review rounds (T-250…T-295), what in the architecture causes it, and the minimum change that stops it.
 **Revision note:** T-298C reproduced every core claim below (write-path count, H1/H2/H3, the live regression) but found the plan itself contained factual errors about production and about the repo — including one action that would have broken the build and one DB constraint that could not be added as written. Those corrections are folded in throughout; the biggest are in §1.9, §2, and §3. See `evidence/2026-08-23-T-298/plan-review/REVIEW.md` for the full independent review and `evidence/2026-08-23-T-298/plan-rev2/` for the per-finding self-verification behind this revision.
 
+**Round-2 pointer (T-317, 2026-08-24):** The second independent-review round is complete — see `docs/architecture/fable-review-2026-08-24.md` §7 REVIEW-VERDICTS for the full T-314C verdict (REVISE, 5 corrections folded). Converged build order (adopted): R0 ratchet -> IDENT (NULL-safe) + Phase-1 completion -> LIFECYCLE-1 (no new tables) -> deploy+repairs -> constraints -> OBS-1/OBS-2 (retention/shadow/breaker) -> gateway-as-projection. R0 (the CI grep-ratchet gate) is shipping as T-316 — this doc's own "lint gate now exists after #214" framing (Phase 3 above) is superseded by that correction. Read the Fable doc §7 before building any further phase of this plan.
+
 ---
 
 ## 0. Executive summary (plain English)
@@ -406,9 +408,19 @@ Two concrete test/lint classes (a third — a standalone "config-contract test" 
 
 ## 3. Migration plan
 
+> **AMENDED 2026-08-24 by the round-2 architecture review (T-313) — see `docs/architecture/review-round2-2026-08-24.md`.**
+> The five phases below are confirmed as the right five phases. **Their ORDER is amended:**
+>
+> 1. **Phase 3 splits, and Phase 3a goes FIRST.** Phase 3a is a *baseline ratchet*: stand up `scraper/eslint.config.mjs`, add the `no-restricted-syntax` ban on direct `ipos` writes with an explicit allowlist of the 52 files that write today, and wire scraper lint + `tsc --noEmit` into `pr-gate.yml`. It blocks nothing that exists and fails the build on the 53rd writer. Phase 3b (migrating the 52 files) stays after the gateway, as originally planned. **Reason:** the sequencing note below is correct for *migrating existing* writers and wrong for *stopping new ones* — a brand-new ungoverned live write path (`scraper/src/services/registrar-reresolve.ts:64`, #204) merged **24 minutes after this plan did**, and nothing in the repo could have caught it.
+> 2. **Phase 1 is INCOMPLETE, not done.** `preResolvedIPO` is an optional parameter whose default re-resolves independently; the 6 direct `upsertIPO` callers still skip protection entirely; three other identity implementations (`IPODeduplicationService`, `DuplicateDetectionService`, the single-tier GMP match) were never in scope. It is also **not deployed** — prod serves `43b0c906`, two merged PRs behind.
+> 3. **Phase 4 is re-costed and extended.** `issue_size > 0` scoped by `offering_type` needs **3 repairs, not 50** — it belongs in the cheap first batch. Add a `subscriptions` unique key (that table has *zero* DB constraints and 12 writers). And each constraint contract MUST execute its own repair rather than defer it.
+> 4. **NEW Phase 0 — drain the repair ledger.** Six review rounds produced mechanisms and **zero** data repairs; every prod violation count is unchanged from the 2026-08-23 baseline. `repair-before-deploy` has no successor step, so it degrades into repair-never. Every contract that defers a repair must create the follow-up contract in the same session.
+>
+> Phase 2 (the gateway) and Phase 5 (flags) are unchanged in scope; Phase 2 moves to third in the order.
+
 Five phases. Each is independently shippable, independently revertible, checker-verifiable, and sized for a single Sonnet worker contract. **Phases 1 and 2 stop the bleeding; 3–5 are cleanup and can be reordered or deferred without losing the benefit.**
 
-Sequencing is load-bearing: the identity unification (Phase 1) must precede the gateway (Phase 2), because the gateway's protection step depends on single-source identity. The lint ban (Phase 3) must follow the gateway, or it blocks work with no sanctioned alternative. Constraints (Phase 4) come after the gateway so the application stops *producing* violations before the DB starts *rejecting* them — otherwise every scraper cycle throws.
+Sequencing is load-bearing: the identity unification (Phase 1) must precede the gateway (Phase 2), because the gateway's protection step depends on single-source identity. The lint ban (Phase 3) must follow the gateway, or it blocks work with no sanctioned alternative *(amended above: this holds for Phase 3b, the migration; it does NOT hold for Phase 3a, the baseline ratchet, which blocks nothing)*. Constraints (Phase 4) come after the gateway so the application stops *producing* violations before the DB starts *rejecting* them — otherwise every scraper cycle throws.
 
 Per `.claude/tasks/lessons.md` (T-281): **any phase pairing a code fix with a data repair must sequence code → deploy → verify served SHA → repair → hold one full scraper cycle → re-verify.** Phase 4 is the one that does this.
 
@@ -548,3 +560,21 @@ What should stop is round 6 finding round 2's bug again.
 - `evidence/2026-08-23-T-298/plan-review/c1-c17-*.txt` — the reviewer's 10 raw capture files (write inventory, regression/schema checks, prod constraint dump, live env flags, feasibility/lint checks, scheduler-import proof, prod entrypoint proof)
 - `evidence/2026-08-23-T-298/plan-rev2/` — this revision's own self-verification: re-run greps for F1 (`scheduler.ts` imports, non-v2 `upsertIPO`/`BaseScraperOrchestrator` reference counts), B3 (absence of `scraper/eslint.config.*`, root lint scope), B8 (`packages/shared` import graph, consolidation/matrix line counts), B1/B2 (raw-SQL/`.sql` write-site sweep), F11 (`consolidation-percentage-gate.test.ts` presence) — all reproduced independently of the reviewer's own capture files, on the same branch, before being folded into §1.9/§2/§3 above
 - New file:line anchors from this revision: `scraper/src/scheduler/scheduler.ts:12-15`; `scraper/src/scrapers/{nse,bse,moneycontrol,chittorgarh}-orchestrator.ts` (non-v2, each 3× `upsertIPO`, 0× `BaseScraperOrchestrator`); `web/scripts/apply-issue-size-migration.ts:19`; `scripts/assert-env-keys.sh:57-72`; `scraper/tests/unit/services/consolidation-percentage-gate.test.ts`
+
+---
+
+## R0 — write ratchet (T-316, shipped)
+
+Per T-313C's amendment, R0 is a **CI grep-ratchet**, not an ESLint rule — a syntax rule cannot
+match the dynamic admin route's runtime-resolved table (`(schema as any)[tableName]`), and no
+lint layer reaches raw `.mjs`/`.sql` writers. `scripts/check-write-ratchet.mjs` scans `.ts`/`.mjs`/`.sql`
+for four pattern classes (drizzle, repository, raw SQL, dynamic-table) and compares the matched
+file set against the shrink-only allowlist `config/write-ratchet-baseline.json` (61 files at
+baseline time). It runs as a blocking `pr-gate.yml` step alongside its own mutation-proof self-test
+(`scripts/tests/check-write-ratchet.test.mjs`). It **covers**: every file whose file-content
+matches one of the four patterns, new or existing. It **deliberately does not cover**: the 61
+baselined files themselves (Phase 2's gateway is what fixes those) or child tables other than
+`ipos`. To shrink the baseline after fixing a listed file, run
+`node scripts/check-write-ratchet.mjs --update` and commit the regenerated JSON — the script
+fails loudly if the baseline still lists a file no longer found, so a shrink can never be silently
+skipped.

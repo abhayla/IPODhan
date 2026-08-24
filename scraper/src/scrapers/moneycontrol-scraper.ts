@@ -22,6 +22,41 @@ export interface MoneycontrolScraperResult {
   errors: string[];
 }
 
+/** Shape of one raw row as returned by the page.evaluate() DOM extraction, before filtering/parsing. */
+export interface RawMoneycontrolRow {
+  companyName: string;
+  companyUrl: string;
+  category: string;
+  tableType: string;
+  [key: string]: unknown;
+}
+
+/**
+ * T-306 (T-301C): a row with no company name (the site occasionally renders a
+ * blank/placeholder <tr>, or the anchor tag is missing on a malformed row) is
+ * not a real IPO and must be dropped before parsing. This check used to live
+ * as `if (!companyName) continue;` INSIDE the page.evaluate() browser-context
+ * closure, where it ran but could never be unit-tested directly (vitest has
+ * no DOM/Puppeteer runtime there). Moving it here — a pure function over the
+ * plain-object rows page.evaluate() already returns to Node — makes this
+ * exact skip condition unit-coverable again, with IDENTICAL runtime
+ * behavior: page.evaluate() now returns every row (no longer applying the
+ * `continue`), and this function is called immediately afterward to drop the
+ * same rows the inline check used to drop.
+ */
+export function filterRowsWithCompanyName(rows: RawMoneycontrolRow[]): RawMoneycontrolRow[] {
+  return rows.filter((row) => {
+    // Only trim actual strings — a non-string companyName (malformed/mocked
+    // data) is truthy and must fall through to the per-row transform
+    // try/catch downstream, matching the original `if (!companyName)
+    // continue;` check which only ever saw already-stringified DOM text.
+    if (typeof row.companyName !== 'string') {
+      return Boolean(row.companyName);
+    }
+    return row.companyName.trim().length > 0;
+  });
+}
+
 /**
  * Parse Indian currency format (₹ 2,517.50 Cr)
  */
@@ -144,7 +179,10 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
             const companyName = companyLink?.textContent?.trim() || '';
             const companyUrl = companyLink?.getAttribute('href') || '';
 
-            if (!companyName) continue;
+            // T-306: missing-company-name rows are now dropped by
+            // filterRowsWithCompanyName() after page.evaluate() returns, so
+            // this pure check is unit-coverable. Do NOT re-add a `continue`
+            // here — it would make the skip untestable again.
 
             // Extract category (second cell)
             const category = cells[1]?.textContent?.trim().toUpperCase() || '';
@@ -199,13 +237,19 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
 
     logger.info({ extractedCount: extractedData.length }, 'Extracted IPOs from Moneycontrol');
 
-    // Transform extracted data to MoneycontrolIPO format
-    for (const raw of extractedData) {
-      try {
-        // Parse issue price (₹ 106)
-        const issuePriceMatch = raw.issuePrice?.match(/([\d.]+)/);
-        const issuePrice = issuePriceMatch ? parseFloat(issuePriceMatch[1]) : 0;
+    // T-306: drop rows with no company name — moved out of page.evaluate() so
+    // this exact skip condition is unit-coverable (see filterRowsWithCompanyName).
+    const filteredData = filterRowsWithCompanyName(extractedData) as typeof extractedData;
+    if (filteredData.length !== extractedData.length) {
+      logger.warn(
+        { droppedCount: extractedData.length - filteredData.length },
+        'Dropped Moneycontrol rows with missing company name'
+      );
+    }
 
+    // Transform extracted data to MoneycontrolIPO format
+    for (const raw of filteredData) {
+      try {
         // Parse issue size (₹ 2,517.50 Cr)
         const issueSize = parseMoneycontrolCurrency(raw.issueSize || '');
 
@@ -276,11 +320,21 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
         // Detect offering type (default to IPO for Moneycontrol data)
         const offeringType = 'IPO'; // Moneycontrol primarily lists equity IPOs
 
+        // T-308 (round-6 P1, 3rd occurrence of this class): Moneycontrol's
+        // Closed/Listed/Draft tables expose exactly ONE price column
+        // (issuePrice) — there is no separate min/max band on this page, ever.
+        // Writing that lone price into BOTH priceRangeMin and priceRangeMax
+        // silently collapsed a real book-built band (e.g. Rs76-Rs81) into a
+        // degenerate "Price Band Rs81" the moment an IPO closed/listed, since
+        // MONEYCONTROL is the lowest-priority source in field-priority-matrix
+        // and reliably provides a value at close/listing when NSE/BSE stop
+        // republishing the band. Leave the band fields OUT of the payload
+        // entirely (undefined, not 0) so consolidation treats this as "no
+        // update" (data-persister's `> 0` guard + normalization-engine's
+        // VALIDATION_FAILED-on-null path) and the stored band is left alone.
         const ipo: MoneycontrolIPO = {
           companyName: sanitizeText(raw.companyName),
           issueSize,
-          priceRangeMin: issuePrice,
-          priceRangeMax: issuePrice,
           openDate,
           closeDate,
           listingExchange: 'BOTH', // Moneycontrol aggregates both exchanges

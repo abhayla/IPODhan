@@ -160,6 +160,24 @@ export function checkGmpSanity(row) {
   return null;
 }
 
+// ---- Check 9b: degenerate band on a bookbuilding IPO (T-308, round-6 P1) ---
+// A book-built issue ALWAYS has floor < cap (SEBI ICDR); min === max is only
+// legitimate for a genuinely FIXED_PRICE issue. `checkPriceBand` above only
+// asserts min<=max (a degenerate band passes it silently) — that gap is
+// exactly what let the price-band collapse at close/listing go unnoticed for
+// three round-6 occurrences. `issue_type` (BOOK_BUILDING|FIXED_PRICE|HYBRID)
+// is read from a LEFT JOIN ipo_details in the caller; NULL is treated as "not
+// known to be fixed-price" (the near-universal default for MAINBOARD/SME).
+export function checkDegenerateBookbuildingBand(row) {
+  const min = toNumber(row.price_range_min);
+  const max = toNumber(row.price_range_max);
+  if (min === null || max === null) return null;
+  if (min <= 0) return null; // checkPriceBand already flags this shape
+  if (min !== max) return null;
+  if (row.issue_type === 'FIXED_PRICE') return null;
+  return `price band is degenerate (min===max===${min}) but the issue is not FIXED_PRICE (issue_type=${row.issue_type ?? 'null'}) — a book-built issue always has floor < cap`;
+}
+
 // ---- Check 9: registrar quality (#45) --------------------------------------
 // A registrar string MUST NOT carry address/contact pollution — '^'/tab/newline
 // delimiters or "Tel:"/"E-mail:" blocks (the scrape artifact sanitizeRegistrar removes).
@@ -179,6 +197,7 @@ export const SUBSTANCE_CHECKS = [
   { key: 'date_ordering', name: 'Date ordering (open<=close<allotment<listing)', predicate: checkDateOrdering },
   { key: 'lot_size', name: 'lot_size in [1..100000]', predicate: checkLotSize },
   { key: 'price_band', name: 'price band (min>0, min<=max)', predicate: checkPriceBand },
+  { key: 'degenerate_bookbuilding_band', name: 'no degenerate band on a non-FIXED_PRICE issue', predicate: checkDegenerateBookbuildingBand },
   { key: 'issue_size', name: 'issue_size > 0', predicate: checkIssueSize },
   { key: 'isin_format', name: 'ISIN format IN[E|F]{9 alnum}', predicate: checkIsinFormat },
   { key: 'name_quality', name: 'name has no trailing status token', predicate: checkNameQuality },

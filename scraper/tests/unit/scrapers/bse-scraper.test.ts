@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { parsePriceRange } from '../../../src/scrapers/bse-scraper.js';
 
 /**
  * Unit Tests for BSE Scraper Helper Functions
  * Tests the core parsing and extraction logic without browser dependencies
+ *
+ * T-308 (round-6 P1, checker finding F1): `parsePriceRange` is now imported
+ * directly from source (it was exported specifically for this) instead of
+ * being re-implemented below — the local re-implementation had drifted from
+ * the real (fixed) source and was silently testing dead code that still
+ * asserted the OLD collapse-to-min===max behavior.
  */
 
 // Mock the BSE scraper module to test exported functions
@@ -73,35 +80,6 @@ function parseBSEDate(dateStr: string): string {
     return new Date().toISOString().split('T')[0];
   } catch (error) {
     return new Date().toISOString().split('T')[0];
-  }
-}
-
-function parsePriceRange(priceStr: string): { min: number; max: number } {
-  try {
-    const cleaned = priceStr.trim();
-
-    // Handle "--" (no price)
-    if (cleaned === '--' || cleaned === '' || cleaned === 'N/A') {
-      return { min: 0, max: 0 };
-    }
-
-    // Handle range format "310.00 - 326.00"
-    if (cleaned.includes('-')) {
-      const parts = cleaned.split('-').map(p => parseFloat(p.trim()));
-      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-        return { min: parts[0], max: parts[1] };
-      }
-    }
-
-    // Handle single price "310.00"
-    const price = parseFloat(cleaned);
-    if (!isNaN(price)) {
-      return { min: price, max: price };
-    }
-
-    return { min: 0, max: 0 };
-  } catch (error) {
-    return { min: 0, max: 0 };
   }
 }
 
@@ -219,43 +197,45 @@ describe('BSE Scraper Unit Tests', () => {
       expect(parsePriceRange('50.50 - 75.75')).toEqual({ min: 50.5, max: 75.75 });
     });
 
-    it('should parse single price as both min and max', () => {
-      expect(parsePriceRange('310.00')).toEqual({ min: 310, max: 310 });
-      expect(parsePriceRange('100')).toEqual({ min: 100, max: 100 });
-      expect(parsePriceRange('50.5')).toEqual({ min: 50.5, max: 50.5 });
+    // T-308 (round-6 P1, 3rd occurrence of this class): a lone single price
+    // is NOT a real book-built band — collapsing it into min===max silently
+    // destroyed a previously-published real band once BSE stopped showing
+    // the range at close/listing. The fix leaves the band undefined instead.
+    it('T-308: leaves a lone single price undefined instead of collapsing min===max', () => {
+      expect(parsePriceRange('310.00')).toEqual({ min: undefined, max: undefined });
+      expect(parsePriceRange('100')).toEqual({ min: undefined, max: undefined });
+      expect(parsePriceRange('50.5')).toEqual({ min: undefined, max: undefined });
     });
 
     it('should handle -- (no price) correctly', () => {
-      expect(parsePriceRange('--')).toEqual({ min: 0, max: 0 });
+      expect(parsePriceRange('--')).toEqual({ min: undefined, max: undefined });
     });
 
     it('should handle N/A correctly', () => {
-      expect(parsePriceRange('N/A')).toEqual({ min: 0, max: 0 });
+      expect(parsePriceRange('N/A')).toEqual({ min: undefined, max: undefined });
     });
 
     it('should handle empty string correctly', () => {
-      expect(parsePriceRange('')).toEqual({ min: 0, max: 0 });
+      expect(parsePriceRange('')).toEqual({ min: undefined, max: undefined });
     });
 
     it('should handle whitespace correctly', () => {
       expect(parsePriceRange('  310.00 - 326.00  ')).toEqual({ min: 310, max: 326 });
-      expect(parsePriceRange('  100  ')).toEqual({ min: 100, max: 100 });
+      expect(parsePriceRange('  100  ')).toEqual({ min: undefined, max: undefined });
     });
 
     it('should handle invalid price strings', () => {
-      expect(parsePriceRange('invalid')).toEqual({ min: 0, max: 0 });
-      expect(parsePriceRange('abc - def')).toEqual({ min: 0, max: 0 });
+      expect(parsePriceRange('invalid')).toEqual({ min: undefined, max: undefined });
+      expect(parsePriceRange('abc - def')).toEqual({ min: undefined, max: undefined });
     });
 
     it('should handle malformed range strings', () => {
-      // '100 - ' parses as single price 100 (stops at hyphen)
-      // This is acceptable behavior - treats as single price
+      // '100 - ' parses as single price 100 (stops at hyphen) -> now undefined, not a collapsed single price.
       const result1 = parsePriceRange('100 - ');
-      expect(result1.min).toBeGreaterThanOrEqual(0);
-      expect(result1.max).toBeGreaterThanOrEqual(0);
+      expect(result1).toEqual({ min: undefined, max: undefined });
 
-      // ' - 200' should return 0,0 as it starts with invalid data
-      expect(parsePriceRange(' - 200')).toEqual({ min: 0, max: 0 });
+      // ' - 200' should return undefined,undefined as it starts with invalid data
+      expect(parsePriceRange(' - 200')).toEqual({ min: undefined, max: undefined });
     });
   });
 });
