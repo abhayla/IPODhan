@@ -201,7 +201,7 @@ if (( DRY_RUN )); then
   log "[dry-run] skipping required-keys assert (no real env files under $ENV_DIR)"
 else
   log "Required-keys assert against $WEB_ENV_FILE / $SCRAPER_ENV_FILE"
-  bash "$SCRIPT_DIR/assert-env-keys.sh" "$WEB_ENV_FILE" "$SCRAPER_ENV_FILE"
+  bash "$SCRIPT_DIR/assert-env-keys.sh" "$WEB_ENV_FILE" "$SCRAPER_ENV_FILE" "$REPO_ROOT/scraper/src"
 fi
 
 # --------------------------------------------- 2. build/scrape mutual exclusion

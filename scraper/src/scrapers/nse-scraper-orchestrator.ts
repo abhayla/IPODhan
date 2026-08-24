@@ -243,7 +243,7 @@ export async function runNSEScraper(): Promise<ScraperResult> {
                 subscriptionRepository,
                 ipoId,
                 subscriptionValidation.data!,
-                { source: 'NSE' }
+                { source: 'NSE', redis: getRedisClient() }
               );
               if (snapshotId !== null) result.subscriptionsCreated++;
 
