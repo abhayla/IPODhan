@@ -1,4 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { FEATURE_FLAGS } from '../../src/config/feature-flags.js';
 
 /**
  * T-307 (write-path hardening Phase 1) — FAILING-FIRST for the user-visible
@@ -124,9 +125,30 @@ vi.mock('../../src/services/selector-degradation-monitor.js', async (importOrigi
   };
 });
 
+// Stub the consolidation-math internals (field-source lookups, conflict
+// tracking) so the ENABLE_DATA_CONSOLIDATION=true case below can drive the
+// REAL DataConsolidationOrchestrator.consolidatedUpsertIPO (unmocked -- see
+// below) without needing a live field-sources/data-conflicts repository.
+// This isolates the test on what T-307C2 actually flagged: whether the
+// Step-2-resolved row is threaded into the consolidation call site (:449),
+// not whether field-level consolidation math is correct (that is covered
+// elsewhere -- data-consolidation-service tests).
+const mockConsolidateIPOData = vi.fn();
+vi.mock('../../src/services/data-consolidation-service.js', () => ({
+  DataConsolidationService: vi.fn().mockImplementation(() => ({
+    consolidateIPOData: mockConsolidateIPOData,
+  })),
+}));
+
 describe('BaseScraperOrchestrator.processIPO() — guard/write parity on the fuzzy (typo) tier (T-307, §1.4)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  afterEach(() => {
+    // Belt-and-braces: no test in this file is allowed to leak the
+    // consolidation flag into a sibling test.
+    FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION = false;
   });
 
   it('honors an IPO lock when only the fuzzy tier resolves the row (a typo in the company name) — locked value survives', async () => {
@@ -250,6 +272,95 @@ describe('BaseScraperOrchestrator.processIPO() — guard/write parity on the fuz
     // independently, findByFuzzyName's SECOND call returns null, existingIPO
     // is null, and the write silently becomes a CREATE of a duplicate row
     // instead of an update of the row the guard just cleared.
+    expect(mockCreate).not.toHaveBeenCalled();
+  }, 20000);
+
+  it('threads the guard-resolved row into consolidatedUpsertIPO when ENABLE_DATA_CONSOLIDATION=true (T-307C2 Finding 1) -- the branch that actually runs in production', async () => {
+    // T-307C2 (independent checker, round 2) found that the test above only
+    // ever exercises call site :499 (legacy upsertIPO fallback) because it
+    // forces ENABLE_DATA_CONSOLIDATION=false. Production runs with that flag
+    // TRUE (docs/04-data-flow/PHASE-2-POST-DEPLOYMENT-STATUS.md), so the
+    // branch that actually executes is :449 -> consolidationOrchestrator
+    // .consolidatedUpsertIPO() -> its OWN threading check at
+    // data-consolidation-orchestrator.ts ("preResolvedIPO !== undefined ?
+    // preResolvedIPO : await resolveIpoRow(...)"). That check was completely
+    // uncovered -- the checker proved it by stripping existingIPO from the
+    // :449 call site alone and watching the full 1140-test suite stay green
+    // (mutant 2a). This test drives the REAL production wiring
+    // (processIPO() -> the ENABLE_DATA_CONSOLIDATION branch ->
+    // consolidatedUpsertIPO(), itself unmocked -- only its internal
+    // DataConsolidationService dependency is stubbed, see the module mock
+    // above) with the REAL resolveIpoRow, and the same
+    // once-then-null findByFuzzyName trick as the legacy-path test: if the
+    // pre-resolved row is not threaded through, consolidatedUpsertIPO
+    // re-resolves independently, the second findByFuzzyName call misses, and
+    // the write silently becomes a CREATE of a duplicate row instead of an
+    // UPDATE of the row the guard already cleared.
+    FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION = true;
+
+    // vi.clearAllMocks() (global beforeEach) wipes call history but leaves
+    // any UNCONSUMED mockResolvedValueOnce() queued from the previous test
+    // in place -- the prior test's second (unconsumed) findByFuzzyName
+    // once-value would otherwise silently become THIS test's first result.
+    // mockReset() drops that queue; this test re-establishes the mock's
+    // resolved values immediately below.
+    mockFindByFuzzyName.mockReset();
+
+    const { BaseScraperOrchestrator } = await import('../../src/base/BaseScraperOrchestrator.js');
+
+    const rawIPOs = [
+      {
+        companyName: 'Hybird Seeds Limited',
+        offeringType: 'SME',
+        segment: 'SME',
+        issueSize: 100,
+      },
+    ];
+
+    class TestOrchestrator extends BaseScraperOrchestrator<any> {
+      protected getScraperName() {
+        return 'CHITTORGARH' as const;
+      }
+      protected async scrapeData() {
+        return { ipos: rawIPOs, subscriptions: [] };
+      }
+      protected validateIPO(ipo: any) {
+        return { success: true as const, data: ipo };
+      }
+    }
+
+    mockFindBySlug.mockResolvedValue(null);
+    mockFindByNormalizedName.mockResolvedValue(null);
+    mockFindByFuzzyName
+      .mockResolvedValueOnce({ id: 'hybrid-canonical-id', companyName: 'Hybrid Seeds Limited' })
+      .mockResolvedValueOnce(null);
+    mockIsIPOLocked.mockResolvedValue(false);
+    mockFilterProtectedFields.mockResolvedValue({
+      filtered: { companyName: rawIPOs[0].companyName, offeringType: 'SME', issueSize: 100 },
+    });
+    mockUpdate.mockResolvedValue({ id: 'hybrid-canonical-id' });
+    mockCreate.mockResolvedValue({ id: 'wrongly-created-duplicate-id' });
+    mockConsolidateIPOData.mockResolvedValue({
+      ipoId: 'hybrid-canonical-id',
+      fieldsProcessed: 0,
+      fieldsUpdated: 0,
+      conflictsDetected: 0,
+      conflictsBySeverity: { INFO: 0, WARNING: 0, CRITICAL: 0 },
+      fieldResults: [],
+      consolidatedData: {},
+      errors: [],
+      performanceMs: 1,
+    });
+
+    const orchestrator = new TestOrchestrator();
+    await orchestrator.run();
+
+    // consolidatedUpsertIPO received the guard-resolved row -- its own
+    // resolveIpoRow call never fired a second time.
+    expect(mockFindByFuzzyName).toHaveBeenCalledTimes(1);
+    // The write UPDATES the guard-cleared row...
+    expect(mockUpdate).toHaveBeenCalledWith('hybrid-canonical-id', expect.anything());
+    // ...and never CREATEs a duplicate.
     expect(mockCreate).not.toHaveBeenCalled();
   }, 20000);
 });
