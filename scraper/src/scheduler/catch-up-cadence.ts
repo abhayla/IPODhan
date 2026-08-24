@@ -26,6 +26,31 @@ import logger from '../utils/logger.js';
 
 const KEY_PREFIX = 'scheduler:last-run:';
 
+// T-311F (checker MEDIUM finding): the previous implementation was a plain
+// GET-then-SET — two separate round trips — while its own comment claimed
+// "atomically reserve the slot". Two overlapping one-shot cycles (e.g. a
+// slow-running cycle overlapping with cron_restart firing the next one)
+// could both read the same stale last-run value before either SET landed,
+// and both would claim the slot. This Lua script makes the read-check-write
+// a single atomic command: Redis executes a script to completion before
+// serving any other command, so a second concurrent caller for the SAME key
+// only ever sees the result of the FIRST caller's write, never a
+// stale mid-way state. `KEYS[1]` is the cadence key; `ARGV` carries the
+// current time, the interval in ms, and the TTL in seconds so all the
+// arithmetic below is identical to the pre-atomic version.
+const CADENCE_LUA = `
+local lastRunRaw = redis.call('GET', KEYS[1])
+local lastRun = tonumber(lastRunRaw) or 0
+local now = tonumber(ARGV[1])
+local intervalMs = tonumber(ARGV[2])
+local ttlSeconds = tonumber(ARGV[3])
+if lastRun > 0 and (now - lastRun) < intervalMs then
+  return 0
+end
+redis.call('SET', KEYS[1], tostring(now), 'EX', ttlSeconds)
+return 1
+`;
+
 /**
  * Decide whether THIS one-shot cycle should run `jobName`, and if so,
  * atomically reserve the slot (write the new last-run timestamp) so a
@@ -43,21 +68,13 @@ export async function shouldRunOnCatchUpCadence(
   now: Date = new Date()
 ): Promise<boolean> {
   const key = `${KEY_PREFIX}${jobName}`;
+  const intervalMs = intervalMinutes * 60_000;
+  // TTL is generous (4x the interval) so a stuck key still self-heals.
+  const ttlSeconds = Math.max(60, intervalMinutes * 60 * 4);
 
   try {
-    const lastRunRaw = await redis.get(key);
-    const lastRunMs = lastRunRaw ? Number(lastRunRaw) : 0;
-    const elapsedMinutes = (now.getTime() - lastRunMs) / 60_000;
-
-    if (Number.isFinite(lastRunMs) && lastRunMs > 0 && elapsedMinutes < intervalMinutes) {
-      return false;
-    }
-
-    // Reserve the slot before the caller runs the job body, so a slow run
-    // this cycle does not cause the very next cycle to also claim it. TTL
-    // is generous (4x the interval) so a stuck key still self-heals.
-    await redis.set(key, String(now.getTime()), 'EX', Math.max(60, intervalMinutes * 60 * 4));
-    return true;
+    const result = await redis.eval(CADENCE_LUA, 1, key, String(now.getTime()), String(intervalMs), String(ttlSeconds));
+    return Number(result) === 1;
   } catch (error) {
     logger.warn(
       { jobName, error: error instanceof Error ? error.message : String(error) },

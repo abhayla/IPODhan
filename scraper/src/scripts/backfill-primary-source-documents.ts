@@ -16,10 +16,46 @@ import logger from '../utils/logger.js';
 import { fetchNSEIssueInfo } from '../scrapers/nse-api-client.js';
 import { parseNSEDocuments } from '../services/primary-source-discovery.js';
 
-export async function runPrimaryDocBackfill(opts: { execute?: boolean; statuses?: string[] } = {}): Promise<void> {
+// T-311F MEDIUM: this backfill is `await`ed from index.ts's
+// triggerPrimarySourceDiscovery(), itself inside the same one-shot
+// `--source=all` process as the job-completion heartbeat/watchdog, on a
+// `*/30` cron cycle (deploy-linux.sh / pm2-scheduled-one-shot-scraper.md).
+// The original loop had NO bound: one slow/hanging NSE response, or growth
+// in the OPEN/UPCOMING/CLOSED candidate count, could make this
+// once-daily-cadence-gated backfill run past its own `*/30` cycle and
+// starve the heartbeat. Two independent guards close that: a PER-FETCH
+// timeout (one hung request cannot stall the whole loop) and a TOTAL time
+// budget (skip-remaining + log once the budget is exhausted, rather than
+// running unbounded).
+const PER_FETCH_TIMEOUT_MS = 15_000;
+const TOTAL_BUDGET_MS = 5 * 60_000;
+
+/** Races `promise` against a timeout, rejecting with a labeled error if the
+ * timeout wins. Exported for direct unit coverage without a DB/network mock. */
+export async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer!);
+  }
+}
+
+/** Pure predicate for "has the total time budget for this cycle run out?" —
+ * exported for direct unit coverage without a DB/network mock. */
+export function isBudgetExhausted(startedAtMs: number, budgetMs: number, nowMs: number = Date.now()): boolean {
+  return nowMs - startedAtMs >= budgetMs;
+}
+
+export async function runPrimaryDocBackfill(opts: { execute?: boolean; statuses?: string[]; budgetMs?: number; perFetchTimeoutMs?: number } = {}): Promise<void> {
   const execute = opts.execute === true;
   const statuses = opts.statuses ?? ['OPEN', 'UPCOMING', 'CLOSED'];
-  logger.info({ execute, statuses }, `[primary-doc-backfill] start (${execute ? 'EXECUTE' : 'DRY RUN'})`);
+  const budgetMs = opts.budgetMs ?? TOTAL_BUDGET_MS;
+  const perFetchTimeoutMs = opts.perFetchTimeoutMs ?? PER_FETCH_TIMEOUT_MS;
+  logger.info({ execute, statuses, budgetMs, perFetchTimeoutMs }, `[primary-doc-backfill] start (${execute ? 'EXECUTE' : 'DRY RUN'})`);
 
   const redis = getRedisClient();
   const documentRepository = new DocumentRepository(db as any, redis as any);
@@ -34,12 +70,23 @@ export async function runPrimaryDocBackfill(opts: { execute?: boolean; statuses?
   const rows = (candidates as any).rows ?? candidates;
   logger.info({ count: rows.length }, '[primary-doc-backfill] candidate IPOs with NSE symbol');
 
+  const startedAtMs = Date.now();
   let iposWithDocs = 0;
   let docsUpserted = 0;
-  for (const row of rows) {
+  let skippedForBudget = 0;
+  for (let i = 0; i < rows.length; i++) {
+    if (isBudgetExhausted(startedAtMs, budgetMs)) {
+      skippedForBudget = rows.length - i;
+      logger.warn(
+        { processed: i, remaining: skippedForBudget, budgetMs },
+        '[primary-doc-backfill] time budget exhausted — skipping remaining candidates this cycle (they will be retried on the next daily-cadence run)'
+      );
+      break;
+    }
+    const row = rows[i];
     const series: 'EQ' | 'SME' = row.segment === 'SME' ? 'SME' : 'EQ';
     try {
-      const issueInfo = await fetchNSEIssueInfo(row.symbol, series);
+      const issueInfo = await withTimeout(fetchNSEIssueInfo(row.symbol, series), perFetchTimeoutMs, `fetchNSEIssueInfo(${row.symbol})`);
       const docs = parseNSEDocuments(issueInfo, row.symbol);
       if (docs.length === 0) continue;
       logger.info({ symbol: row.symbol, company: row.company_name, docs: docs.length, types: docs.map((d) => d.type) }, '[primary-doc-backfill] discovered');
@@ -63,7 +110,7 @@ export async function runPrimaryDocBackfill(opts: { execute?: boolean; statuses?
     }
   }
 
-  logger.info({ execute, iposWithDocs, docsUpserted }, `[primary-doc-backfill] done`);
+  logger.info({ execute, iposWithDocs, docsUpserted, skippedForBudget }, `[primary-doc-backfill] done`);
 
   const cov = await db.execute(sql`
     SELECT count(DISTINCT d.ipo_id)::int AS ipos, count(*)::int AS docs,

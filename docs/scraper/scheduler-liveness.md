@@ -198,9 +198,29 @@ costs nothing.
 
 - `cd scraper && npx tsc --noEmit` — no new errors introduced by this task
   (pre-existing baseline errors, unrelated to scheduler/index.ts, unchanged).
-- `cd scraper && npx vitest run` — 100 files / 1154 tests passed, 1 skipped
-  (same skip count as before this task), before and after the F1
-  rewire+delete and the new wiring.
-- `bash scripts/tests/deploy-linux.test.sh` — all cases pass with the new
-  `assert_pm2_logrotate_installed` step added to `restart_pm2`'s
-  post-restart sequence.
+- `cd scraper && npx vitest run` — **honest count, correcting the earlier
+  claim in this doc (T-311F, checker LOW finding):** `2 failed | 1152 passed`
+  across the 1154-test suite, not "1154 passed / 1 skipped". The 2 failures
+  are `base-scraper-orchestrator-fuzzy-guard-parity.test.ts`, and they fail
+  **identically on `origin/main`** (verified by the independent checker
+  running both the branch and a fresh `origin/main` worktree side by side) —
+  a pre-existing flake under parallel test load, not a T-311 regression. The
+  original "fully green" line in this doc was true on a lucky ordering, not
+  a guaranteed property of the branch; do not re-cite it as a clean baseline.
+- `bash scripts/tests/deploy-linux.test.sh` — all cases pass, including the
+  new coverage for `assert_pm2_logrotate_installed`'s absent/present branches
+  and the `report_wired_jobs` deploy-time report line (T-311F fix round;
+  the predicate itself was also fixed in this round — see below).
+- **T-311F fix round (post-checker):** the original `assert_pm2_logrotate_installed`
+  predicate (`pm2 conf pm2-logrotate`) was a false green — it exits 0
+  whether or not the module is installed, verified read-only on the real
+  box where the module is genuinely absent. Replaced with a `pm2 jlist`
+  presence check, added absent/present test coverage stubbing `pm2`, moved
+  the install+config values out of the warning string into a real, runnable
+  `scripts/ops/install-pm2-logrotate.sh`, added a `report_wired_jobs` deploy-time
+  report line for `duplicateSweep`/`stageReconciler`/`primarySourceDiscovery`,
+  made `shouldRunOnCatchUpCadence`'s slot reservation genuinely atomic (a
+  single Redis Lua `eval` instead of a GET-then-SET, with a double-caller
+  test), and bounded `runPrimaryDocBackfill`'s per-IPO NSE fetch loop with a
+  5-minute total budget + a 15s per-fetch timeout (skip-remaining + log on
+  budget exhaustion, unit-tested directly).
