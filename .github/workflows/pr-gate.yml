@@ -53,7 +53,7 @@ jobs:
           test -f dist/db/schema.d.ts || (echo "FATAL: schema.d.ts not created!" && exit 1)
 
       - name: Run lint
-        run: npm run lint
+        run: npm run lint:ci
         working-directory: ./web
 
       - name: Run type-check

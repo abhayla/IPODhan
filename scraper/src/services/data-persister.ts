@@ -4,7 +4,7 @@ import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { generateSlug, sanitizeCompanyName, coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeLeadManagers, sanitizeIpoWriteFields } from '../utils/validators.js';
 import { isDateSequenceCoherent } from './ipo-date-plausibility.js';
-import { shouldPersistSubscriptionSnapshot } from './subscription-coverage-registry.js';
+import { shouldPersistSubscriptionSnapshot, recordSuppressionOutcome, type SuppressionCounterStore } from './subscription-coverage-registry.js';
 import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { validateLotSize } from '../utils/lot-size-validator.js';
 import { resolveOfferingTypeKeepingClassification, guardSmeOfferingTypeAgainstFpo } from '../utils/detect-offering-type.js';
@@ -418,7 +418,7 @@ export async function upsertIPO(
                   allotmentDate: rawConsolidated.allotmentDate,
                   listingDate: rawConsolidated.listingDate,
                 },
-              }, '[DataConsolidation] incoherent merged date sequence — sanitizer will null the offender (#52)');
+              }, '[DataConsolidation] incoherent merged date sequence — sanitizer will null the offender (#52, T-306: sanitizeIpoDates now covers every isDateSequenceCoherent rule)');
             }
 
             // Use consolidated data with merged exchanges. Re-apply the write-field
@@ -615,7 +615,7 @@ export async function createSubscriptionSnapshot(
   subscriptionRepository: SubscriptionRepository,
   ipoId: string,
   scrapedSubscription: ScrapedSubscription,
-  options: { source?: string } = {}
+  options: { source?: string; redis?: SuppressionCounterStore | null } = {}
 ): Promise<string | null> {
   const startTime = Date.now();
 
@@ -628,22 +628,33 @@ export async function createSubscriptionSnapshot(
     lastPersisted?.totalSubscription != null
       ? parseFloat(lastPersisted.totalSubscription)
       : null;
+  const normalizedPersistedTotal = persistedTotal !== null && !isNaN(persistedTotal) ? persistedTotal : null;
 
-  if (
-    !shouldPersistSubscriptionSnapshot(
-      ipoId,
-      scrapedSubscription.coverage,
-      {
-        totalSubscription: scrapedSubscription.totalSubscription,
-        totalSharesBid: scrapedSubscription.totalSharesBid,
-      },
-      persistedTotal !== null && !isNaN(persistedTotal) ? persistedTotal : null,
-      {
-        companyName: scrapedSubscription.ipoCompanyName,
-        source: options.source,
-      }
-    )
-  ) {
+  const allowed = shouldPersistSubscriptionSnapshot(
+    ipoId,
+    scrapedSubscription.coverage,
+    {
+      totalSubscription: scrapedSubscription.totalSubscription,
+      totalSharesBid: scrapedSubscription.totalSharesBid,
+    },
+    normalizedPersistedTotal,
+    {
+      companyName: scrapedSubscription.ipoCompanyName,
+      source: options.source,
+    }
+  );
+
+  // T-306 F4 follow-up: fire-and-forget, non-fatal streak tracking + owner
+  // alert (see non-fatal-side-effects.md) — never delays or blocks the write.
+  void recordSuppressionOutcome(options.redis, ipoId, !allowed, {
+    companyName: scrapedSubscription.ipoCompanyName,
+    persistedTotal: normalizedPersistedTotal,
+    candidateTotal: scrapedSubscription.totalSubscription,
+  }).catch(() => {
+    // recordSuppressionOutcome already catches internally; this is a final backstop.
+  });
+
+  if (!allowed) {
     return null;
   }
 

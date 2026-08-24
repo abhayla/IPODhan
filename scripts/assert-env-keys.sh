@@ -10,21 +10,32 @@
 # BOTH env files, BOTH Redis config shapes (URL-only + discrete HOST/PORT/
 # PASSWORD), and WEB_INTERNAL_URL for the scraper.
 #
-# Usage: scripts/assert-env-keys.sh <web-env-file> <scraper-env-file>
+# Usage: scripts/assert-env-keys.sh <web-env-file> <scraper-env-file> [scraper-src-dir]
+#
+# The optional 3rd arg enables the flag-liveness REPORT (T-306, T-297 D9): a
+# scraper ENABLE_* flag that is required-present but has no consumer reachable
+# from the actual prod entrypoint (scraper/src/index.ts) is a silent no-op —
+# ENABLE_PRIMARY_SOURCE_DISCOVERY is exactly this class (issue #213: true in
+# prod, zero consumers outside the retired SchedulerService path). This is
+# advisory-if-omitted (deploy-linux.sh passes it; the test harness and any
+# older caller keep working without it) and NEVER fails the deploy on its
+# own -- wiring a flag's consumer is a product decision, not a deploy-safety
+# one; this ONLY makes the gap visible instead of silent.
 
 set -euo pipefail
 
 usage() {
-  echo "Usage: $0 <web-env-file> <scraper-env-file>" >&2
+  echo "Usage: $0 <web-env-file> <scraper-env-file> [scraper-src-dir]" >&2
   exit 2
 }
 
-if [ "$#" -ne 2 ]; then
+if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
   usage
 fi
 
 WEB_ENV_FILE="$1"
 SCRAPER_ENV_FILE="$2"
+SCRAPER_SRC_DIR="${3:-}"
 
 WEB_REQUIRED_KEYS=(
   NODE_ENV
@@ -209,8 +220,43 @@ assert_slot_redis_db() {
   echo "OK: $label -> Redis db '$effective' (slot '$slot', Redis-db-asserted)"
 }
 
+# T-306 (T-297 D9 liveness class, issue #213). Reports (never fails) any
+# required ENABLE_* scraper flag whose name appears NOWHERE in the source tree
+# except inside scheduler/** (the retired SchedulerService path, never
+# imported by the prod entrypoint) or its own declaration in
+# config/feature-flags.ts (reading it from process.env is not "using" it).
+# A flag that only shows up in those two places has zero live consumers on
+# `scraper/src/index.ts`, the ONLY process PM2 actually runs.
+report_dead_flags() {
+  local src_dir="$1"
+  [ -n "$src_dir" ] || return 0
+  [ -d "$src_dir" ] || { echo "WARN: flag-liveness report skipped, scraper src dir not found: $src_dir" >&2; return 0; }
+
+  local key hits dead=()
+  for key in "${SCRAPER_REQUIRED_KEYS[@]}"; do
+    case "$key" in
+      ENABLE_*) ;;
+      *) continue ;;
+    esac
+    hits="$( { grep -rl "$key" "$src_dir" --include='*.ts' 2>/dev/null \
+      | grep -v '/scheduler/' \
+      | grep -v 'config/feature-flags\.ts$' || true; } | wc -l | tr -d ' ')"
+    if [ "$hits" -eq 0 ]; then
+      dead+=("$key")
+    fi
+  done
+
+  if [ "${#dead[@]}" -gt 0 ]; then
+    echo "WARNING: the following scraper flag(s) have NO live consumer outside scheduler/** (T-297 D9 liveness class — the retired SchedulerService path). Setting them true/false in prod is a no-op on the actual entrypoint (scraper/src/index.ts):" >&2
+    for key in "${dead[@]}"; do
+      echo "  - $key" >&2
+    done
+  fi
+}
+
 check_file "$WEB_ENV_FILE" "web.env.local" "${WEB_REQUIRED_KEYS[@]}"
 check_file "$SCRAPER_ENV_FILE" "scraper.env" "${SCRAPER_REQUIRED_KEYS[@]}"
+report_dead_flags "$SCRAPER_SRC_DIR"
 
 if [ "${#MISSING[@]}" -gt 0 ] || [ "${#BLANK[@]}" -gt 0 ]; then
   echo "FATAL: required-keys assert failed — deploy refused." >&2

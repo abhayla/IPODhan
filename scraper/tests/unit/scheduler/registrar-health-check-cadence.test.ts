@@ -33,7 +33,36 @@ describe('shouldRunRegistrarHealthCheck', () => {
       const totalMinutes = i * 30;
       return istDate(2026, 8, 17, Math.floor(totalMinutes / 60), totalMinutes % 60);
     });
-    const runCount = cyclesToday.filter(shouldRunRegistrarHealthCheck).length;
+    const runCount = cyclesToday.filter((d) => shouldRunRegistrarHealthCheck(d)).length;
     expect(runCount).toBe(1);
+  });
+
+  describe('T-306 catch-up (T-300C2 advisory) — a missed window must not silently skip a whole day', () => {
+    it('runs on the very next cycle when the caller confirms no prior run exists (explicit lastRunAt=null)', () => {
+      // Outside the window, but there is no confirmed prior run -> catch-up now.
+      expect(shouldRunRegistrarHealthCheck(istDate(2026, 8, 17, 9, 0), null)).toBe(true);
+    });
+
+    it('preserves the original window-only behavior when lastRunAt is omitted entirely', () => {
+      expect(shouldRunRegistrarHealthCheck(istDate(2026, 8, 17, 9, 0))).toBe(false);
+    });
+
+    it('does NOT catch-up when the last confirmed run is under 24h old and we are outside the window', () => {
+      const lastRunAt = istDate(2026, 8, 17, 6, 45); // yesterday's confirmed run
+      expect(shouldRunRegistrarHealthCheck(istDate(2026, 8, 17, 9, 0), lastRunAt)).toBe(false);
+      expect(shouldRunRegistrarHealthCheck(istDate(2026, 8, 18, 6, 0), lastRunAt)).toBe(false); // ~23h15m later, still < 24h
+    });
+
+    it('DOES catch-up once the last confirmed run is more than 24h old (the missed-window scenario)', () => {
+      const lastRunAt = istDate(2026, 8, 17, 6, 45);
+      // 2026-08-18 07:10 IST is > 24h after 2026-08-17 06:45 IST -- e.g. the
+      // 08-18 06:30 window cycle was slow/restarted and never fired.
+      expect(shouldRunRegistrarHealthCheck(istDate(2026, 8, 18, 7, 10), lastRunAt)).toBe(true);
+    });
+
+    it('a confirmed run inside the window still fires normally regardless of lastRunAt', () => {
+      const lastRunAt = istDate(2026, 8, 17, 6, 45); // ~24h ago, doesn't matter -- in-window always wins
+      expect(shouldRunRegistrarHealthCheck(istDate(2026, 8, 18, 6, 45), lastRunAt)).toBe(true);
+    });
   });
 });

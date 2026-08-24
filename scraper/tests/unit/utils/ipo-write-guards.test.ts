@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeLeadManagers, sanitizeIpoWriteFields } from '../../../src/utils/validators';
+import { isDateSequenceCoherent } from '../../../src/services/ipo-date-plausibility';
 
 describe('sanitizeLeadManagers (T-299 P2-8 — strip a tab-split contact block, keep only company names)', () => {
   it('returns null for null/undefined/empty', () => {
@@ -119,6 +120,66 @@ describe('sanitizeIpoDates (#41/#52 date-stomp guard)', () => {
     expect(r.closeDate).toBe('2026-06-19');  // preserved
     expect(r.allotmentDate).toBeNull();      // the real outlier
     expect(r.listingDate).toBe('2026-06-24');
+  });
+
+  it('when listing is only mildly/near-term inconsistent with a self-coherent open/close pair, nulls the bad listing instead (T-306 F2, kwality-walls-india-ltd shape)', () => {
+    // Real T-299 prod row: open 2026-04-23 / close 2026-05-07 are a genuine,
+    // self-consistent near-term IPO window; listing 2026-02-16 is the outlier
+    // (~80 days before close, not a years-old stale anchor). The T-299 manual
+    // repair nulled the listing and KEPT open/close — the write-path sanitizer
+    // must resolve the same shape the same way, or a re-scrape re-corrupts the row.
+    const r = sanitizeIpoDates({ openDate: '2026-04-23', closeDate: '2026-05-07', allotmentDate: null, listingDate: '2026-02-16' });
+    expect(r.openDate).toBe('2026-04-23');   // preserved
+    expect(r.closeDate).toBe('2026-05-07');  // preserved
+    expect(r.listingDate).toBeNull();        // the real outlier, not open/close
+  });
+
+  it('still anchors on a listing that is FAR (years) in the past — the WINDLAS stomp signature, not the kwality shape', () => {
+    const r = sanitizeIpoDates({ openDate: '2026-04-30', closeDate: '2026-05-07', allotmentDate: null, listingDate: '2021-08-20' });
+    expect(r.openDate).toBeNull();
+    expect(r.closeDate).toBeNull();
+    expect(r.listingDate).toBe('2021-08-20'); // stable anchor preserved
+  });
+
+  describe('round-trip with isDateSequenceCoherent (T-306 reconciliation)', () => {
+    // Every shape the detector (#52) flags incoherent MUST be CHANGED by the
+    // sanitizer into a shape the detector then accepts — the two are supposed
+    // to be write-path twins (see the sanitizeIpoDates doc comment). Built from
+    // the detector's own six rules, at minimum: close==allotment,
+    // allotment==listing, listing<close, open>close, open>listing.
+    const incoherentShapes: Array<{ name: string; seq: Parameters<typeof sanitizeIpoDates>[0] }> = [
+      {
+        name: 'close == allotment',
+        seq: { openDate: '2026-01-01', closeDate: '2026-01-05', allotmentDate: '2026-01-05', listingDate: '2026-02-01' },
+      },
+      {
+        name: 'allotment == listing',
+        seq: { openDate: '2026-01-01', closeDate: '2026-01-05', allotmentDate: '2026-02-01', listingDate: '2026-02-01' },
+      },
+      {
+        name: 'listing < close (kwality shape, near-term)',
+        seq: { openDate: '2026-04-23', closeDate: '2026-05-07', allotmentDate: null, listingDate: '2026-02-16' },
+      },
+      {
+        name: 'open > close',
+        seq: { openDate: '2025-10-20', closeDate: '2025-10-15', allotmentDate: null, listingDate: null },
+      },
+      {
+        name: 'open > listing (far-past WINDLAS stomp)',
+        seq: { openDate: '2026-04-30', closeDate: '2026-05-07', allotmentDate: null, listingDate: '2021-08-20' },
+      },
+    ];
+
+    it.each(incoherentShapes)('detector rejects $name pre-sanitize, then accepts the sanitized output', ({ seq }) => {
+      const pre = isDateSequenceCoherent(seq);
+      expect(pre.ok).toBe(false); // sanity: the fixture really is a detector-rejected shape
+
+      const sanitized = sanitizeIpoDates(seq);
+      expect(sanitized).not.toEqual(seq); // sanitizer must CHANGE a shape the detector rejects
+
+      const post = isDateSequenceCoherent(sanitized);
+      expect(post.ok).toBe(true);
+    });
   });
 });
 
