@@ -211,6 +211,10 @@ costs nothing.
   new coverage for `assert_pm2_logrotate_installed`'s absent/present branches
   and the `report_wired_jobs` deploy-time report line (T-311F fix round;
   the predicate itself was also fixed in this round — see below).
+  **Correction (T-311F2, checker LOW finding):** the T-311F commit message
+  claimed "36 assertions" — the script actually emits **31** `PASS:` lines
+  (0 `FAIL:`), re-verified directly by counting the run's own output; do not
+  re-cite the 36 figure.
 - **T-311F fix round (post-checker):** the original `assert_pm2_logrotate_installed`
   predicate (`pm2 conf pm2-logrotate`) was a false green — it exits 0
   whether or not the module is installed, verified read-only on the real
