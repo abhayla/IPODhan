@@ -31,35 +31,46 @@ const mockIsIPOLocked = vi.fn();
 const mockFilterProtectedFields = vi.fn();
 const mockUpdate = vi.fn();
 
-vi.mock('@ipodhan/shared', () => ({
-  db: {},
-  getRedisClient: () => ({}),
-  IPORepository: vi.fn().mockImplementation(() => ({
-    findBySlug: mockFindBySlug,
-    findByNormalizedName: mockFindByNormalizedName,
-    // With ENABLE_DATA_CONSOLIDATION off (test default), processIPO() falls
-    // through to the traditional upsert path (data-persister.ts upsertIPO),
-    // which resolves this same existing row again and calls
-    // ipoRepository.update() on it. Without this mock the call throws,
-    // upsertIPO retries 3x and fails, processIPO's exception propagates to
-    // the outer catch in run() -- which never aggregates
-    // processResult.fieldsProtected into result.fieldsProtected, masking
-    // the exact protection-accounting behavior this test verifies.
-    update: mockUpdate,
-  })),
-  SubscriptionRepository: vi.fn().mockImplementation(() => ({})),
-  ScraperLogRepository: vi.fn().mockImplementation(() => ({
-    create: vi.fn().mockResolvedValue({}),
-    getRecentLogs: vi.fn().mockResolvedValue([]),
-  })),
-  FieldSourcesRepository: vi.fn().mockImplementation(() => ({})),
-  DataConflictsRepository: vi.fn().mockImplementation(() => ({})),
-  createFieldProtectionService: vi.fn().mockReturnValue({
-    isIPOLocked: mockIsIPOLocked,
-    filterProtectedFields: mockFilterProtectedFields,
-    isFieldProtected: vi.fn().mockResolvedValue({ isProtected: false }),
-  }),
-}));
+vi.mock('@ipodhan/shared', async (importOriginal) => {
+  // T-307: keep the REAL resolveIpoRow (the single source of truth for
+  // "which row is this?") rather than re-implementing its tier logic in
+  // this mock — a hand-copied mock of resolveIpoRow would be exactly the
+  // class of divergence this task closes.
+  const actual = await importOriginal<typeof import('@ipodhan/shared')>();
+  return {
+    ...actual,
+    db: {},
+    getRedisClient: () => ({}),
+    IPORepository: vi.fn().mockImplementation(() => ({
+      findBySlug: mockFindBySlug,
+      findByNormalizedName: mockFindByNormalizedName,
+      // resolveIpoRow's fuzzy tier is only reached when the two tiers above
+      // both miss; no test in this file exercises that path.
+      findByFuzzyName: vi.fn().mockResolvedValue(null),
+      // With ENABLE_DATA_CONSOLIDATION off (test default), processIPO() falls
+      // through to the traditional upsert path (data-persister.ts upsertIPO),
+      // which resolves this same existing row again and calls
+      // ipoRepository.update() on it. Without this mock the call throws,
+      // upsertIPO retries 3x and fails, processIPO's exception propagates to
+      // the outer catch in run() -- which never aggregates
+      // processResult.fieldsProtected into result.fieldsProtected, masking
+      // the exact protection-accounting behavior this test verifies.
+      update: mockUpdate,
+    })),
+    SubscriptionRepository: vi.fn().mockImplementation(() => ({})),
+    ScraperLogRepository: vi.fn().mockImplementation(() => ({
+      create: vi.fn().mockResolvedValue({}),
+      getRecentLogs: vi.fn().mockResolvedValue([]),
+    })),
+    FieldSourcesRepository: vi.fn().mockImplementation(() => ({})),
+    DataConflictsRepository: vi.fn().mockImplementation(() => ({})),
+    createFieldProtectionService: vi.fn().mockReturnValue({
+      isIPOLocked: mockIsIPOLocked,
+      filterProtectedFields: mockFilterProtectedFields,
+      isFieldProtected: vi.fn().mockResolvedValue({ isProtected: false }),
+    }),
+  };
+});
 
 vi.mock('../../src/scheduler/cache-invalidator.js', () => ({
   CacheInvalidator: vi.fn().mockImplementation(() => ({
