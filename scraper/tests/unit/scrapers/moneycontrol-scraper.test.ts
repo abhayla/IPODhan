@@ -24,7 +24,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { scrapeMoneycontrolIPOs } from '../../../src/scrapers/moneycontrol-scraper.js';
+import {
+  scrapeMoneycontrolIPOs,
+  filterRowsWithCompanyName,
+  type RawMoneycontrolRow,
+} from '../../../src/scrapers/moneycontrol-scraper.js';
 import * as browser from '../../../src/utils/browser.js';
 
 /** Shape of one row produced by the in-browser page.evaluate() extraction. */
@@ -192,6 +196,46 @@ describe('moneycontrol-scraper', () => {
       expect(result.ipos).toHaveLength(1);
       expect(result.ipos[0].priceRangeMin).toBe(0);
       expect(result.ipos[0].priceRangeMax).toBe(0);
+    });
+
+    // T-306 (T-301C disclosure gap): the missing-company-name skip moved out
+    // of the in-browser page.evaluate() closure into
+    // filterRowsWithCompanyName() (a pure function called right after
+    // page.evaluate() resolves), so it is exercisable through the public
+    // scraper entry point again. This test FAILS if the skip is removed —
+    // it would then assert 2 ipos instead of 1.
+    it('should drop a row with no company name (moved skip path)', async () => {
+      mockBrowserExtraction([
+        rawIpo({ companyName: 'Valid Company' }),
+        rawIpo({ companyName: '' }),
+        rawIpo({ companyName: '   ' }), // whitespace-only also counts as missing
+      ]);
+
+      const result = await scrapeMoneycontrolIPOs();
+
+      expect(result.ipos).toHaveLength(1);
+      expect(result.ipos[0].companyName).toBe('Valid Company');
+    });
+  });
+
+  describe('filterRowsWithCompanyName', () => {
+    function row(companyName: string): RawMoneycontrolRow {
+      return { companyName, companyUrl: '/x', category: 'MAINBOARD', tableType: 'CLOSED' };
+    }
+
+    it('keeps rows with a non-empty company name', () => {
+      const rows = [row('Alpha Ltd'), row('Beta Ltd')];
+      expect(filterRowsWithCompanyName(rows)).toEqual(rows);
+    });
+
+    it('drops rows with an empty or whitespace-only company name', () => {
+      const kept = row('Gamma Ltd');
+      const result = filterRowsWithCompanyName([row(''), kept, row('   ')]);
+      expect(result).toEqual([kept]);
+    });
+
+    it('returns an empty array when every row is missing a company name', () => {
+      expect(filterRowsWithCompanyName([row(''), row('  ')])).toEqual([]);
     });
   });
 });

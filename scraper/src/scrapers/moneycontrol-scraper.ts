@@ -45,7 +45,16 @@ export interface RawMoneycontrolRow {
  * same rows the inline check used to drop.
  */
 export function filterRowsWithCompanyName(rows: RawMoneycontrolRow[]): RawMoneycontrolRow[] {
-  return rows.filter((row) => Boolean(row.companyName && row.companyName.trim()));
+  return rows.filter((row) => {
+    // Only trim actual strings — a non-string companyName (malformed/mocked
+    // data) is truthy and must fall through to the per-row transform
+    // try/catch downstream, matching the original `if (!companyName)
+    // continue;` check which only ever saw already-stringified DOM text.
+    if (typeof row.companyName !== 'string') {
+      return Boolean(row.companyName);
+    }
+    return row.companyName.trim().length > 0;
+  });
 }
 
 /**
@@ -170,7 +179,10 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
             const companyName = companyLink?.textContent?.trim() || '';
             const companyUrl = companyLink?.getAttribute('href') || '';
 
-            if (!companyName) continue;
+            // T-306: missing-company-name rows are now dropped by
+            // filterRowsWithCompanyName() after page.evaluate() returns, so
+            // this pure check is unit-coverable. Do NOT re-add a `continue`
+            // here — it would make the skip untestable again.
 
             // Extract category (second cell)
             const category = cells[1]?.textContent?.trim().toUpperCase() || '';
@@ -225,8 +237,18 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
 
     logger.info({ extractedCount: extractedData.length }, 'Extracted IPOs from Moneycontrol');
 
+    // T-306: drop rows with no company name — moved out of page.evaluate() so
+    // this exact skip condition is unit-coverable (see filterRowsWithCompanyName).
+    const filteredData = filterRowsWithCompanyName(extractedData) as typeof extractedData;
+    if (filteredData.length !== extractedData.length) {
+      logger.warn(
+        { droppedCount: extractedData.length - filteredData.length },
+        'Dropped Moneycontrol rows with missing company name'
+      );
+    }
+
     // Transform extracted data to MoneycontrolIPO format
-    for (const raw of extractedData) {
+    for (const raw of filteredData) {
       try {
         // Parse issue price (₹ 106)
         const issuePriceMatch = raw.issuePrice?.match(/([\d.]+)/);
