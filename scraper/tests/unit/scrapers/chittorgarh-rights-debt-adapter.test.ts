@@ -247,33 +247,44 @@ describe('chittorgarh-rights-debt-adapter', () => {
       expect(results[1].companyName).toBe('Corporate Bond Issue');
     });
 
-    it(
-      'should handle network errors gracefully',
-      async () => {
-        (global.fetch as any).mockRejectedValueOnce(new Error('Network timeout'));
+    it('should handle network errors gracefully', async () => {
+      // T-309: retryWithExponentialBackoff's 1s/2s/4s backoff delays are real
+      // setTimeout calls — without fake timers this test burns ~7s of real
+      // wall-clock per run (14s total across both retry tests, T-305 round-6
+      // P3 finding). Fake timers make the retries resolve instantly while
+      // still exercising the same retry-count/backoff logic.
+      vi.useFakeTimers();
+      try {
+        (global.fetch as any).mockRejectedValue(new Error('Network timeout'));
 
-        const results = await fetchDebtIssuesFromChittorgarh();
+        const promise = fetchDebtIssuesFromChittorgarh();
+        await vi.runAllTimersAsync();
+        const results = await promise;
 
         expect(results).toHaveLength(0);
-      },
-      { timeout: 15000 } // Allow time for retries (3 retries with exponential backoff)
-    );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
 
-    it(
-      'should handle HTTP errors gracefully',
-      async () => {
-        (global.fetch as any).mockResolvedValueOnce({
+    it('should handle HTTP errors gracefully', async () => {
+      vi.useFakeTimers();
+      try {
+        (global.fetch as any).mockResolvedValue({
           ok: false,
           status: 500,
           statusText: 'Internal Server Error',
         });
 
-        const results = await fetchDebtIssuesFromChittorgarh();
+        const promise = fetchDebtIssuesFromChittorgarh();
+        await vi.runAllTimersAsync();
+        const results = await promise;
 
         expect(results).toHaveLength(0);
-      },
-      { timeout: 15000 } // Allow time for retries
-    );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   describe('fetchRightsIssuesFromChittorgarh - Regression Tests', () => {

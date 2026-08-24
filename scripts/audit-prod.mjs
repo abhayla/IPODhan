@@ -203,6 +203,21 @@ async function run() {
     const pipeline = await get('/api/admin/metrics/data-pipeline', { admin: true });
     const completeness = pipeline.json?.data?.dataQuality?.fieldCompleteness;
     record('data-pipeline metrics reachable', pipeline.status === 200, `fieldCompleteness=${completeness}`);
+
+    // T-309 (T-305 round-6 P3): fieldCompleteness used to be logged with no
+    // threshold at all — a value like "0.7%" passed silently because this
+    // check only asserted the endpoint was reachable, never that the number
+    // itself was sane. Report-only (does not affect exit code): the metric's
+    // exact semantics (which denominator it uses) are owned by
+    // web/app/api/admin/metrics/data-pipeline/route.ts, out of this task's
+    // scope (T-310 territory) — so a low reading is surfaced for a human to
+    // investigate rather than silently swallowed OR turned into a hard
+    // audit failure this task cannot fully validate against prod.
+    const FIELD_COMPLETENESS_WARN_THRESHOLD = 50; // percent
+    const completenessNum = typeof completeness === 'string' ? parseFloat(completeness) : NaN;
+    if (Number.isFinite(completenessNum) && completenessNum < FIELD_COMPLETENESS_WARN_THRESHOLD) {
+      console.log(`[WARN] fieldCompleteness=${completeness} is below the ${FIELD_COMPLETENESS_WARN_THRESHOLD}% documented threshold — investigate, does not fail this audit`);
+    }
   } else {
     console.log('[SKIP] admin checks — set ADMIN_API_TOKEN to enable');
   }

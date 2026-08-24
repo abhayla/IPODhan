@@ -403,6 +403,39 @@ export class DataConsolidationService {
       ? normalize(fieldName, existingValue, rules)
       : null;
 
+    // T-309 (T-305 round-6 P3) — the dominant root cause of the non-converging
+    // conflict churn: a MISSING incoming value (the source genuinely has no
+    // data for this field this cycle — e.g. chittorgarh-orchestrator-v2.ts
+    // unconditionally emits `symbol: ipo.symbol`, which is `undefined` for
+    // every IPO Chittorgarh doesn't carry a symbol for) is NOT a disagreement
+    // with a stored real value. Before this check it fell through to Case 3
+    // and was logged as a genuine conflict against the existing value on
+    // EVERY cycle, forever — a field-less source can never produce a
+    // non-null value, so it could never converge. Confirmed against prod
+    // `data_conflicts` (read-only probe, 2026-08-24): the majority of open
+    // symbol/faceValue/allotmentDate rows have `value2 = null` from exactly
+    // this shape. Symmetric with Case 1 below (missing EXISTING accepts
+    // incoming) — this is missing INCOMING keeps existing, no conflict logged.
+    if (
+      (normalizedIncoming === null || normalizedIncoming === undefined) &&
+      normalizedExisting !== null &&
+      normalizedExisting !== undefined
+    ) {
+      return {
+        fieldName,
+        finalValue: existingValue,
+        chosenSource: existingSource || incomingSource,
+        hadConflict: false,
+        rejectedSources: [
+          {
+            source: incomingSource,
+            value: incomingValue,
+            reason: 'NO_INCOMING_VALUE',
+          },
+        ],
+      };
+    }
+
     // Validate incoming value
     if (!validateValue(normalizedIncoming, rules)) {
       return {
