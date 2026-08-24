@@ -77,6 +77,18 @@ export function isDateSequenceCoherent(seq: DateSequence): CoherenceResult {
   const allot = toMs(seq.allotmentDate);
   const listing = toMs(seq.listingDate);
 
+  // T-309 presence-coherence: a listing_date cannot exist without an open_date —
+  // an IPO opens, then closes, then lists; a scheduled listing with no scheduled
+  // open is chronologically impossible information, not merely an ordering
+  // breach (the ORDER checks below only fire when both sides are present, so
+  // they never catch this "one side entirely missing" shape). Real case:
+  // priority-jewels-ltd carried listing_date=2026-09-04 with open_date/close_date
+  // both NULL. Checked FIRST and independent of the present-vs-present ORDER
+  // checks below (T-306) so it composes without touching their logic.
+  if (listing !== null && open === null) {
+    return { ok: false, reason: 'listing_date present without open_date' };
+  }
+
   if (open !== null && close !== null && open > close) {
     return { ok: false, reason: 'open_date is after close_date' };
   }

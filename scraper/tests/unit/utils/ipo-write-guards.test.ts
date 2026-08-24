@@ -120,6 +120,19 @@ describe('sanitizeIpoDates (#41/#52 date-stomp guard)', () => {
     expect(r.allotmentDate).toBeNull();      // the real outlier
     expect(r.listingDate).toBe('2026-06-24');
   });
+
+  it('nulls a listing_date that has no open_date at all (T-309 presence-coherence, priority-jewels-ltd shape)', () => {
+    const r = sanitizeIpoDates({ openDate: null, closeDate: null, allotmentDate: null, listingDate: '2026-09-04' });
+    expect(r.listingDate).toBeNull();
+    expect(r.openDate).toBeNull();
+    expect(r.closeDate).toBeNull();
+  });
+
+  it('leaves listing_date alone when open_date is present (normal case)', () => {
+    const r = sanitizeIpoDates({ openDate: '2026-08-28', closeDate: '2026-09-01', allotmentDate: null, listingDate: '2026-09-04' });
+    expect(r.listingDate).toBe('2026-09-04');
+    expect(r.openDate).toBe('2026-08-28');
+  });
 });
 
 describe('sanitizeRegistrar (#45 — strip address/contact pollution, not variant-collapse)', () => {

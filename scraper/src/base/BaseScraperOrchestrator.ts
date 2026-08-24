@@ -650,10 +650,25 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     // Record success in failure tracker
     scraperFailureTracker.recordSuccess(scraperName);
 
+    // T-309 (T-305 round-6 P3): a run that throws nothing but yields 0 rows for
+    // several consecutive cycles (e.g. API_FALLBACK) is logged 'SUCCESS' below
+    // by default — invisible to the freshness/health monitors, which only look
+    // for FAILURE. Track the zero-yield streak and downgrade the logged status
+    // to 'DEGRADED' once it crosses the threshold, WITHOUT touching the actual
+    // scrape outcome (result/errors are unchanged — this only affects observability).
+    const zeroYieldStreak = await this.metricsTracker.recordZeroYieldCycle(scraperName, result.iposProcessed);
+    const isZeroYieldDegraded = this.metricsTracker.isZeroYieldDegraded(zeroYieldStreak);
+    if (isZeroYieldDegraded) {
+      logger.warn(
+        { scraperName, iposProcessed: result.iposProcessed, zeroYieldStreak },
+        `Scraper ${scraperName} returned 0 IPOs for ${zeroYieldStreak} consecutive cycles — logging DEGRADED, not SUCCESS`
+      );
+    }
+
     // Log to database
     await this.scraperLogRepository.create({
       source: scraperName,
-      status: 'SUCCESS',
+      status: isZeroYieldDegraded ? 'DEGRADED' : 'SUCCESS',
       recordsProcessed: result.iposProcessed,
       recordsFailed: result.iposFailed,
       durationMs: duration,

@@ -52,8 +52,17 @@ import logger from '../utils/logger.js';
  *
  * @extends BaseScraperOrchestrator<any, never>
  */
+export interface MoneycontrolScraperResult extends ScraperResult {
+  smeCount: number;
+  mainboardCount: number;
+}
+
 export class MoneycontrolScraperOrchestratorV2 extends BaseScraperOrchestrator<any, ScrapedSubscription> {
 
+  // T-309: segment tallies so index.ts's run-summary log can aggregate across
+  // ALL sources, not just BSE (the only orchestrator that carried these before).
+  private smeCount: number = 0;
+  private mainboardCount: number = 0;
   private validationPipeline: DataValidationPipeline;
 
   constructor() {
@@ -74,6 +83,10 @@ export class MoneycontrolScraperOrchestratorV2 extends BaseScraperOrchestrator<a
    */
   protected async scrapeData(): Promise<ScrapedData<any, ScrapedSubscription>> {
     const { ipos, errors } = await scrapeMoneycontrolIPOs();
+
+    // T-309: tally segment counts (each scraped IPO already carries `segment`).
+    this.smeCount = ipos.filter((ipo: any) => ipo.segment === 'SME').length;
+    this.mainboardCount = ipos.filter((ipo: any) => ipo.segment === 'MAINBOARD').length;
 
     // Log scrape-level errors
     if (errors.length > 0) {
@@ -224,12 +237,26 @@ export class MoneycontrolScraperOrchestratorV2 extends BaseScraperOrchestrator<a
   ): { success: boolean; data?: any; error?: any } {
     return validateSubscriptionData(subscription);
   }
+
+  /** T-309: segment counts, read by runMoneycontrolScraper() after run() completes. */
+  public getSmeCount(): number {
+    return this.smeCount;
+  }
+
+  public getMainboardCount(): number {
+    return this.mainboardCount;
+  }
 }
 
 /**
  * Run Moneycontrol scraper with protection checks
  */
-export async function runMoneycontrolScraper(): Promise<ScraperResult> {
+export async function runMoneycontrolScraper(): Promise<MoneycontrolScraperResult> {
   const orchestrator = new MoneycontrolScraperOrchestratorV2();
-  return await orchestrator.run();
+  const baseResult = await orchestrator.run();
+  return {
+    ...baseResult,
+    smeCount: orchestrator.getSmeCount(),
+    mainboardCount: orchestrator.getMainboardCount(),
+  };
 }

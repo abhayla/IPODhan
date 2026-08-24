@@ -321,6 +321,16 @@ export function sanitizeIpoDates(dates: IpoDateSet): IpoDateSet {
     return result;
   }
 
+  // T-309 presence-coherence: a listing_date without an open_date is unconfirmable
+  // (an IPO cannot be scheduled to list before it is scheduled to open) — null the
+  // listing rather than let it stand alone. Returns early so the ORDER-based
+  // branches below (T-306), which assume a present listing implies open/close
+  // should exist, never see this shape.
+  if (listing !== null && open === null) {
+    result.listingDate = null;
+    return result;
+  }
+
   if (listing !== null) {
     // listing is the most reliable post-facto date — open/close must precede it.
     if (close !== null && close >= listing) result.closeDate = null;
