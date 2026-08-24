@@ -363,7 +363,7 @@ function parseNSEDate(dateStr: string | null | undefined): string {
 /**
  * Parse price range from NSE format
  */
-function parsePriceRange(priceStr: string | null | undefined): { min: number | undefined; max: number | undefined } {
+export function parsePriceRange(priceStr: string | null | undefined): { min: number | undefined; max: number | undefined } {
   if (!priceStr) {
     return { min: undefined, max: undefined };
   }
@@ -380,10 +380,15 @@ function parsePriceRange(priceStr: string | null | undefined): { min: number | u
       };
     }
 
-    // Single price
+    // T-308 (round-6 P1, 3rd occurrence of this class): a lone single-price
+    // string (no "to"/"-" range) is NOT a real book-built band — writing it
+    // into both min and max silently collapses a previously-published band
+    // once NSE stops showing the range at close/listing. Leave the band
+    // undefined so consolidation treats this as "no update" instead of
+    // overwriting a real stored band with a degenerate min===max.
     const price = parseFloat(cleaned);
     if (!isNaN(price)) {
-      return { min: price, max: price };
+      return { min: undefined, max: undefined };
     }
 
     return { min: undefined, max: undefined };

@@ -16,6 +16,44 @@ export interface NSEScrapeResult {
 }
 
 /**
+ * Module-level mirror of the `parsePriceRange` closure inside
+ * `scrapeNSEWithBrowser`'s `page.evaluate()` callback below.
+ *
+ * DUPLICATED ON PURPOSE: Puppeteer's `page.evaluate(() => {...})` serializes
+ * the callback to run inside the browser's own JS context, which cannot
+ * reference functions from this module's outer closure — so the parsing
+ * logic must be re-declared inline inside `evaluate()` to run there at all.
+ * This copy exists solely so the T-308 fix (a lone single-price string is
+ * NOT a real book-built band) is unit-testable without a real browser. If
+ * you change one, change the other.
+ */
+export function parseNSEBrowserPriceRange(
+  priceStr: string
+): { min: number | undefined; max: number | undefined } {
+  try {
+    const cleaned = priceStr.trim().replace(/₹|Rs\.?|INR/gi, '').trim();
+
+    if (cleaned === '--' || cleaned === '' || cleaned === 'N/A') {
+      return { min: undefined, max: undefined };
+    }
+
+    if (cleaned.includes('-')) {
+      const parts = cleaned.split('-').map(p => parseFloat(p.trim()));
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        return { min: parts[0], max: parts[1] };
+      }
+    }
+
+    // T-308 (round-6 P1, 3rd occurrence of this class): a lone price is not
+    // a real range — leave undefined so consolidation treats it as "no
+    // update" instead of overwriting a real stored band with min===max.
+    return { min: undefined, max: undefined };
+  } catch {
+    return { min: undefined, max: undefined };
+  }
+}
+
+/**
  * Scrape IPO data from NSE using browser automation (fallback method)
  * This is used when the API approach fails
  * @returns Promise<NSEScrapeResult> - Scraped IPO and subscription data
@@ -160,10 +198,19 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
                 }
               }
 
-              // Handle single price
+              // T-308 (round-6 P1, 3rd occurrence of this class): a lone
+              // single-price string (no "-" range) is NOT a real book-built
+              // band — writing it into both min and max silently collapses a
+              // previously-published band once NSE stops showing the range
+              // at close/listing. Leave the band undefined so consolidation
+              // treats this as "no update" instead of overwriting a real
+              // stored band with a degenerate min===max. Mirrored (and unit
+              // tested) at module scope as `parseNSEBrowserPriceRange` above
+              // — this inline copy is required by Puppeteer's evaluate()
+              // browser-context serialization boundary; keep both in sync.
               const price = parseFloat(cleaned);
               if (!isNaN(price)) {
-                return { min: price, max: price };
+                return { min: undefined, max: undefined };
               }
 
               return { min: undefined, max: undefined };

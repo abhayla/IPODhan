@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { scrapeNSEIPOs } from '../../../src/scrapers/nse-scraper.js';
+import { scrapeNSEIPOs, parseNSEBrowserPriceRange } from '../../../src/scrapers/nse-scraper.js';
 import * as nseApiClient from '../../../src/scrapers/nse-api-client.js';
 
 /**
@@ -222,6 +222,30 @@ describe('NSE Scraper', () => {
         // Issue sizes are in INR (paise), so even small IPOs should be in crores converted to paise
         expect(ipo.issueSize).toBeLessThan(1000000000000); // 10 lakh crore max (very large)
       }
+    });
+  });
+
+  // T-308 (round-6 P1, checker finding F1): scrapeNSEWithBrowser (the
+  // fallback path used when the NSE API fails MAX_CONSECUTIVE_FAILURES
+  // times — NSE is field-priority rank #2, ABOVE Moneycontrol) previously
+  // wrote a lone single-price string into BOTH priceRangeMin/Max, silently
+  // collapsing a real book-built band. parseNSEBrowserPriceRange is the
+  // module-level mirror of that internal parser (duplicated because
+  // Puppeteer's page.evaluate() closure cannot reference outer-scope
+  // functions), unit-tested directly here.
+  describe('parseNSEBrowserPriceRange (T-308 fix)', () => {
+    it('parses a genuine two-value range', () => {
+      expect(parseNSEBrowserPriceRange('100 - 120')).toEqual({ min: 100, max: 120 });
+    });
+
+    it('leaves a lone single price undefined instead of collapsing min===max', () => {
+      expect(parseNSEBrowserPriceRange('₹106')).toEqual({ min: undefined, max: undefined });
+    });
+
+    it('leaves placeholders ("--", "N/A", "") undefined', () => {
+      expect(parseNSEBrowserPriceRange('--')).toEqual({ min: undefined, max: undefined });
+      expect(parseNSEBrowserPriceRange('N/A')).toEqual({ min: undefined, max: undefined });
+      expect(parseNSEBrowserPriceRange('')).toEqual({ min: undefined, max: undefined });
     });
   });
 

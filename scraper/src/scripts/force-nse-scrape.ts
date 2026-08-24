@@ -67,14 +67,19 @@ async function scrapeNSEDirect() {
           return date.toISOString().split('T')[0];
         };
 
-        // Parse price range
+        // Parse price range. T-308 (round-6 P1, 3rd occurrence of this
+        // class): this script calls upsertIPO() directly, so a lone
+        // single price is NOT a real book-built band -- writing it into
+        // both min and max would silently collapse a previously-published
+        // band. Return undefined (not a collapsed single value) so it is
+        // omitted from the payload and consolidation treats it as "no
+        // update" instead of overwriting a real stored band.
         const parsePrice = (priceStr: string) => {
           const match = priceStr.match(/(\d+)\s*to\s*(\d+)/);
           if (match) {
             return { min: parseInt(match[1]), max: parseInt(match[2]) };
           }
-          const single = parseInt(priceStr.replace(/\D/g, ''));
-          return { min: single, max: single };
+          return { min: undefined, max: undefined };
         };
 
         const prices = parsePrice(item.issuePrice || '0');

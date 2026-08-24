@@ -67,15 +67,19 @@ export interface BSEApiScrapeResult {
   errors: string[];
 }
 
-/** "120.00-127.00" → {min:120,max:127}; "95.00" → {95,95}; ""/"-" → {}. */
+/**
+ * "120.00-127.00" -> {min:120,max:127}; "95.00" -> {} (T-308: a lone price is
+ * NOT a real book-built band -- writing it into both min and max silently
+ * collapses a previously-published band once BSE's API stops returning the
+ * range at close/listing); ""/"-" -> {}.
+ */
 export function parsePriceBand(band: string): { min?: number; max?: number } {
   if (!band) return {};
   const parts = band
     .split('-')
     .map((p) => parseFloat(p.trim()))
     .filter((n) => Number.isFinite(n) && n > 0);
-  if (parts.length === 0) return {};
-  if (parts.length === 1) return { min: parts[0], max: parts[0] };
+  if (parts.length !== 2) return {};
   return { min: Math.min(parts[0], parts[1]), max: Math.max(parts[0], parts[1]) };
 }
 

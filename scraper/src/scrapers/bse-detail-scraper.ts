@@ -234,7 +234,7 @@ export function detectBSEDetailPageType(url: string): BSEDetailPageType {
  * @param $ - Cheerio loaded HTML
  * @returns Parsed BSE detail data
  */
-function parseACQDispPage($: cheerio.CheerioAPI): BSEDetailPageData {
+export function parseACQDispPage($: cheerio.CheerioAPI): BSEDetailPageData {
   // Extract all fields using helper function
   const symbol = extractFieldValue($, 'Symbol');
   const issuePeriod = extractFieldValue($, 'Issue Period');
@@ -291,7 +291,7 @@ function parseACQDispPage($: cheerio.CheerioAPI): BSEDetailPageData {
  * @param $ - Cheerio loaded HTML
  * @returns Parsed BSE detail data
  */
-function parseDisplayIPOPage($: cheerio.CheerioAPI): BSEDetailPageData {
+export function parseDisplayIPOPage($: cheerio.CheerioAPI): BSEDetailPageData {
   // Symbol: OPTIONAL (often missing for RIGHTS/NCD)
   const symbol = extractFieldValue($, 'Symbol') || null;
 
@@ -302,12 +302,23 @@ function parseDisplayIPOPage($: cheerio.CheerioAPI): BSEDetailPageData {
     extractFieldValue($, 'Manager') ||
     null;
 
-  // Price: Single value instead of range for RIGHTS/NCD
+  // Price: DisplayIPO.aspx exposes exactly ONE "Issue Price" field, never a
+  // genuine min/max band (unlike ACQDisp's "Price Band" field, parsed by
+  // parsePriceBand() above). T-308 (round-6 P1, 3rd occurrence of this
+  // class): the caller in bse-scraper.ts documents this page type is used
+  // for BOTH RIGHTS/NCD (DisplayIPO.aspx?...type=RI|DPI) AND "regular IPOs"
+  // — so this is not safely gated to single-price products. Writing the
+  // lone issue price into both priceRangeMin and priceRangeMax silently
+  // collapsed (or, via bse-scraper's merge, overwrote) a real book-built
+  // band. Keep priceRangeMin/Max at 0 so bse-scraper's
+  // `if (detailData.priceRangeMin > 0 && detailData.priceRangeMax > 0)`
+  // merge guard treats this as "no update" — issueSize below still uses the
+  // real lone price for its own (unrelated) computation.
   const issuePriceStr = extractFieldValue($, 'Issue Price') ||
                         extractFieldValue($, 'Price');
   const issuePrice = issuePriceStr ? parseFloat(issuePriceStr) : 0;
-  const priceRangeMin = issuePrice;
-  const priceRangeMax = issuePrice;
+  const priceRangeMin = 0;
+  const priceRangeMax = 0;
 
   // Lot Size: Different label
   const lotSizeStr = extractFieldValue($, 'Lot Size') ||
@@ -330,8 +341,9 @@ function parseDisplayIPOPage($: cheerio.CheerioAPI): BSEDetailPageData {
   const registrar = extractFieldValue($, 'Registrar');
   const sponsorBanksStr = extractFieldValue($, 'Sponsor Bank');
 
-  // Calculate issue size
-  const issueSize = calculateIssueSize(issueShares, priceRangeMax);
+  // Calculate issue size from the real lone issue price (unrelated to the
+  // band fields, which are intentionally zeroed above).
+  const issueSize = calculateIssueSize(issueShares, issuePrice);
 
   // Parse lists
   const leadManagers = parseCommaSeparatedList(leadManagersStr);

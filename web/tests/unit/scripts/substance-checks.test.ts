@@ -15,6 +15,7 @@ import {
   checkNameQuality,
   checkListingPerformance,
   checkGmpSanity,
+  checkDegenerateBookbuildingBand,
   SUBSTANCE_CHECKS,
 } from '../../../../scripts/lib/substance-checks.mjs';
 
@@ -192,9 +193,48 @@ describe('checkGmpSanity', () => {
   });
 });
 
+describe('checkDegenerateBookbuildingBand (T-308, round-6 P1: gabion-technologies-india-ltd shape)', () => {
+  it('fails when min===max and the issue is not FIXED_PRICE (issue_type null)', () => {
+    const reason = checkDegenerateBookbuildingBand({
+      price_range_min: 81,
+      price_range_max: 81,
+      issue_type: null,
+    });
+    expect(reason).toMatch(/degenerate/);
+  });
+
+  it('fails when min===max and issue_type is explicitly BOOK_BUILDING', () => {
+    expect(
+      checkDegenerateBookbuildingBand({ price_range_min: 81, price_range_max: 81, issue_type: 'BOOK_BUILDING' })
+    ).toMatch(/degenerate/);
+  });
+
+  it('passes when min===max and the issue IS FIXED_PRICE (legitimate)', () => {
+    expect(
+      checkDegenerateBookbuildingBand({ price_range_min: 45, price_range_max: 45, issue_type: 'FIXED_PRICE' })
+    ).toBeNull();
+  });
+
+  it('passes for a real band (min < max)', () => {
+    expect(
+      checkDegenerateBookbuildingBand({ price_range_min: 76, price_range_max: 81, issue_type: null })
+    ).toBeNull();
+  });
+
+  it('passes when the band is not populated (not applicable)', () => {
+    expect(checkDegenerateBookbuildingBand({ price_range_min: null, price_range_max: null, issue_type: null })).toBeNull();
+  });
+
+  it('defers to checkPriceBand for the min<=0 shape (not applicable here)', () => {
+    expect(
+      checkDegenerateBookbuildingBand({ price_range_min: 0, price_range_max: 0, issue_type: null })
+    ).toBeNull();
+  });
+});
+
 describe('SUBSTANCE_CHECKS registry', () => {
   it('exposes one entry per predicate with key/name/predicate', () => {
-    expect(SUBSTANCE_CHECKS).toHaveLength(9);
+    expect(SUBSTANCE_CHECKS).toHaveLength(10);
     for (const c of SUBSTANCE_CHECKS) {
       expect(typeof c.key).toBe('string');
       expect(typeof c.name).toBe('string');
