@@ -27,11 +27,13 @@ call, made with full context of the price-band guard it lives inside.
 
 ## Backlog
 
-Filed as GitHub issues (see PR description for links) so the gap is tracked,
-not silently dropped:
-- `ipo_details.issue_type` writer: wire a Chittorgarh per-IPO detail-page fetch
+Filed as GitHub issues so the gap is tracked, not silently dropped:
+- `ipo_details.issue_type` writer — wire a Chittorgarh per-IPO detail-page fetch
   (reusing the existing pure extractors in `chittorgarh-detail-fields.ts`) into
   the live cycle, scoped to `issue_type` only, so the `FIXED_PRICE` exemption
   becomes reachable in prod.
-- `anchor_investors` / `ipo_financials` writers: new Chittorgarh report
-  extractors, each its own scoped task.
+  [#222](https://github.com/abhayla/IPODhan/issues/222)
+- `anchor_investors` writer — new Chittorgarh Anchor Investors report extractor.
+  [#223](https://github.com/abhayla/IPODhan/issues/223)
+- `ipo_financials` writer — new extractor, distinct from `financial_data`.
+  [#224](https://github.com/abhayla/IPODhan/issues/224)
