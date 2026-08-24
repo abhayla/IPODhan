@@ -55,8 +55,8 @@ describe('parsePriceBand', () => {
     expect(parsePriceBand('')).toEqual({});
     expect(parsePriceBand('-')).toEqual({});
   });
-  it('handles a single (fixed) price', () => {
-    expect(parsePriceBand('95.00')).toEqual({ min: 95, max: 95 });
+  it('T-308: a lone single price is NOT a real band -- returns {} rather than collapsing min===max', () => {
+    expect(parsePriceBand('95.00')).toEqual({});
   });
 });
 

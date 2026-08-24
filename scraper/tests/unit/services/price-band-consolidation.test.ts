@@ -310,4 +310,33 @@ describe('T-308 — widen-aware guard: a lower-priority source repairs an alread
     expect(finalOf(result, 'priceRangeMin')).toBe(42);
     expect(finalOf(result, 'priceRangeMax')).toBe(42);
   });
+
+  // T-308F checker finding F5: issue_type is never populated by any scraper
+  // (live gate shows issue_type=null on all 112 rows), so the FIXED_PRICE
+  // exemption above is a documented no-op in prod. The only thing standing
+  // between an untagged legitimately-fixed-price row and a bad force-widen
+  // is `collectDegenerateBandFieldsToWiden`'s `incomingMin >= incomingMax`
+  // guard: it must NEVER treat a synthetic/degenerate incoming value as a
+  // real widening band, even when the existing stored value is also
+  // degenerate and untagged (the exact shape a fixed-price NCD/RIGHTS row
+  // has in prod today).
+  it('F5: never force-widens on a degenerate INCOMING band, even over an untagged degenerate existing value', async () => {
+    (mockFieldSourcesRepo.findByIPOId as any).mockResolvedValue(existingBand(42, 42, 'NSE'));
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'ipo-1',
+      tableName: 'ipos',
+      // incoming is itself degenerate (min === max) - not a real band, so it
+      // must never trigger the force-widen branch regardless of issueType.
+      incomingData: { priceRangeMin: 45, priceRangeMax: 45 },
+      source: 'MONEYCONTROL',
+      existingData: { priceRangeMin: 42, priceRangeMax: 42 }, // no issueType - the prod reality
+      scrapedAt: NEW,
+    });
+
+    // MONEYCONTROL is lower priority than NSE and this is not a widen case -
+    // ordinary SOURCE_PRIORITY resolution keeps the existing NSE value.
+    expect(finalOf(result, 'priceRangeMin')).toBe(42);
+    expect(finalOf(result, 'priceRangeMax')).toBe(42);
+  });
 });

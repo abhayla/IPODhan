@@ -5,6 +5,7 @@ import * as path from 'path';
 import {
   detectBSEDetailPageType,
   validateBSEDetailData,
+  parseDisplayIPOPage,
   type BSEDetailPageData,
   type BSEDetailPageType
 } from '../../../src/scrapers/bse-detail-scraper.js';
@@ -257,18 +258,23 @@ describe('parseDisplayIPOPage - NEW (RIGHTS/NCD)', () => {
     expect(leadManagers).toBeNull();
   });
 
-  it('should parse issue price as both min and max for RIGHTS/NCD', () => {
-    const issuePrice = '100.00';
-    const price = parseFloat(issuePrice);
+  // T-308 (round-6 P1, checker finding F1): the caller in bse-scraper.ts
+  // documents DisplayIPO.aspx is used for BOTH RIGHTS/NCD AND "regular
+  // IPOs" — writing the lone Issue Price into both priceRangeMin/Max
+  // silently collapsed (or, via bse-scraper's merge guard, overwrote) a
+  // real book-built band. parseDisplayIPOPage now leaves the band at 0 so
+  // bse-scraper's `priceRangeMin > 0 && priceRangeMax > 0` merge guard
+  // treats it as "no update"; issueSize is still computed from the real
+  // lone price.
+  it('T-308: parseDisplayIPOPage never collapses the lone Issue Price into priceRangeMin/Max', () => {
+    const $ = cheerio.load(rightsIssueHTML);
+    const result = parseDisplayIPOPage($);
 
-    expect(price).toBe(100.00);
-
-    // For RIGHTS/NCD, use same value for both min and max
-    const priceRangeMin = price;
-    const priceRangeMax = price;
-
-    expect(priceRangeMin).toBe(100.00);
-    expect(priceRangeMax).toBe(100.00);
+    expect(result.priceRangeMin).toBe(0);
+    expect(result.priceRangeMax).toBe(0);
+    // issueSize is still computed from the real lone price + share count,
+    // independent of the (intentionally zeroed) band fields.
+    expect(result.issueSize).toBeGreaterThan(0);
   });
 });
 
