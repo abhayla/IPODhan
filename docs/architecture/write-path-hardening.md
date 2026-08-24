@@ -406,9 +406,19 @@ Two concrete test/lint classes (a third — a standalone "config-contract test" 
 
 ## 3. Migration plan
 
+> **AMENDED 2026-08-24 by the round-2 architecture review (T-313) — see `docs/architecture/review-round2-2026-08-24.md`.**
+> The five phases below are confirmed as the right five phases. **Their ORDER is amended:**
+>
+> 1. **Phase 3 splits, and Phase 3a goes FIRST.** Phase 3a is a *baseline ratchet*: stand up `scraper/eslint.config.mjs`, add the `no-restricted-syntax` ban on direct `ipos` writes with an explicit allowlist of the 52 files that write today, and wire scraper lint + `tsc --noEmit` into `pr-gate.yml`. It blocks nothing that exists and fails the build on the 53rd writer. Phase 3b (migrating the 52 files) stays after the gateway, as originally planned. **Reason:** the sequencing note below is correct for *migrating existing* writers and wrong for *stopping new ones* — a brand-new ungoverned live write path (`scraper/src/services/registrar-reresolve.ts:64`, #204) merged **24 minutes after this plan did**, and nothing in the repo could have caught it.
+> 2. **Phase 1 is INCOMPLETE, not done.** `preResolvedIPO` is an optional parameter whose default re-resolves independently; the 6 direct `upsertIPO` callers still skip protection entirely; three other identity implementations (`IPODeduplicationService`, `DuplicateDetectionService`, the single-tier GMP match) were never in scope. It is also **not deployed** — prod serves `43b0c906`, two merged PRs behind.
+> 3. **Phase 4 is re-costed and extended.** `issue_size > 0` scoped by `offering_type` needs **3 repairs, not 50** — it belongs in the cheap first batch. Add a `subscriptions` unique key (that table has *zero* DB constraints and 12 writers). And each constraint contract MUST execute its own repair rather than defer it.
+> 4. **NEW Phase 0 — drain the repair ledger.** Six review rounds produced mechanisms and **zero** data repairs; every prod violation count is unchanged from the 2026-08-23 baseline. `repair-before-deploy` has no successor step, so it degrades into repair-never. Every contract that defers a repair must create the follow-up contract in the same session.
+>
+> Phase 2 (the gateway) and Phase 5 (flags) are unchanged in scope; Phase 2 moves to third in the order.
+
 Five phases. Each is independently shippable, independently revertible, checker-verifiable, and sized for a single Sonnet worker contract. **Phases 1 and 2 stop the bleeding; 3–5 are cleanup and can be reordered or deferred without losing the benefit.**
 
-Sequencing is load-bearing: the identity unification (Phase 1) must precede the gateway (Phase 2), because the gateway's protection step depends on single-source identity. The lint ban (Phase 3) must follow the gateway, or it blocks work with no sanctioned alternative. Constraints (Phase 4) come after the gateway so the application stops *producing* violations before the DB starts *rejecting* them — otherwise every scraper cycle throws.
+Sequencing is load-bearing: the identity unification (Phase 1) must precede the gateway (Phase 2), because the gateway's protection step depends on single-source identity. The lint ban (Phase 3) must follow the gateway, or it blocks work with no sanctioned alternative *(amended above: this holds for Phase 3b, the migration; it does NOT hold for Phase 3a, the baseline ratchet, which blocks nothing)*. Constraints (Phase 4) come after the gateway so the application stops *producing* violations before the DB starts *rejecting* them — otherwise every scraper cycle throws.
 
 Per `.claude/tasks/lessons.md` (T-281): **any phase pairing a code fix with a data repair must sequence code → deploy → verify served SHA → repair → hold one full scraper cycle → re-verify.** Phase 4 is the one that does this.
 
