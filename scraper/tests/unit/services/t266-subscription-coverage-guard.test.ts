@@ -1,7 +1,18 @@
 import { describe, it, expect, vi } from 'vitest';
 
 import { createSubscriptionSnapshot } from '../../../src/services/data-persister.js';
-import { shouldPersistSubscriptionSnapshot } from '../../../src/services/subscription-coverage-registry.js';
+import {
+  shouldPersistSubscriptionSnapshot,
+  isAnomalousUpwardJump,
+  recordSuppressionOutcome,
+  SUPPRESSION_ALERT_THRESHOLD,
+  MAX_UPWARD_JUMP_FACTOR,
+} from '../../../src/services/subscription-coverage-registry.js';
+
+vi.mock('../../../src/services/owner-notify.js', () => ({
+  notifyOwner: vi.fn(),
+}));
+import { notifyOwner } from '../../../src/services/owner-notify.js';
 
 /**
  * T-266/T-299 — the guard that stops a subscription write from REDUCING the
@@ -90,6 +101,127 @@ describe('T-299 subscription regression guard (persisted-row comparison)', () =>
         2.74
       )
     ).toBe(true);
+  });
+});
+
+describe('T-306 F4 follow-up — upper-anomaly guard (reject an implausible spike, not just a drop)', () => {
+  it('isAnomalousUpwardJump: flags a candidate more than the configured factor above the persisted total', () => {
+    expect(isAnomalousUpwardJump(30, 2)).toBe(true); // 15x jump
+    expect(isAnomalousUpwardJump(15, 2)).toBe(false); // 7.5x, under the 10x default
+    expect(isAnomalousUpwardJump(5, null)).toBe(false); // no persisted total, nothing to jump from
+    expect(isAnomalousUpwardJump(5, 0)).toBe(false); // persisted 0 is not a real anchor
+  });
+
+  it('isAnomalousUpwardJump honours a custom factor', () => {
+    expect(isAnomalousUpwardJump(6, 2, 2)).toBe(true); // 3x > factor 2
+    expect(isAnomalousUpwardJump(3, 2, 2)).toBe(false); // 1.5x <= factor 2
+  });
+
+  it('REJECTS a non-authoritative candidate that spikes >10x the persisted total (the un-sticking bug source)', () => {
+    expect(
+      shouldPersistSubscriptionSnapshot(
+        'ipo-1',
+        'EXCHANGE_ONLY',
+        { totalSubscription: 25 }, // 12.5x
+        2
+      )
+    ).toBe(false);
+  });
+
+  it('ALLOWS a large jump when the candidate is CONSOLIDATED and carries totalSharesBid (fresh authoritative)', () => {
+    expect(
+      shouldPersistSubscriptionSnapshot(
+        'ipo-1',
+        'CONSOLIDATED',
+        { totalSubscription: 25, totalSharesBid: 100000 },
+        2
+      )
+    ).toBe(true);
+  });
+
+  it(`does not flag a normal jump under the ${MAX_UPWARD_JUMP_FACTOR}x factor`, () => {
+    expect(
+      shouldPersistSubscriptionSnapshot(
+        'ipo-1',
+        'EXCHANGE_ONLY',
+        { totalSubscription: 8 }, // 4x — a real late-book-building surge
+        2
+      )
+    ).toBe(true);
+  });
+});
+
+describe('T-306 F4 follow-up — recordSuppressionOutcome (consecutive-suppression alert + un-stick)', () => {
+  function makeFakeStore() {
+    const data = new Map<string, string>();
+    return {
+      data,
+      get: vi.fn(async (key: string) => data.get(key) ?? null),
+      set: vi.fn(async (key: string, value: string) => {
+        data.set(key, value);
+        return 'OK';
+      }),
+      del: vi.fn(async (key: string) => {
+        data.delete(key);
+        return 1;
+      }),
+    };
+  }
+
+  it('no-ops (never throws) when no store is provided', async () => {
+    const r = await recordSuppressionOutcome(null, 'ipo-1', true);
+    expect(r).toEqual({ consecutiveCount: 0, alerted: false });
+  });
+
+  it('resets the streak to 0 on a successful (non-suppressed) write', async () => {
+    const store = makeFakeStore();
+    store.data.set('subscription:suppressed-cycles:ipo-1', '3');
+    const r = await recordSuppressionOutcome(store, 'ipo-1', false);
+    expect(r).toEqual({ consecutiveCount: 0, alerted: false });
+    expect(store.del).toHaveBeenCalledWith('subscription:suppressed-cycles:ipo-1');
+  });
+
+  it(`does NOT alert before ${SUPPRESSION_ALERT_THRESHOLD} consecutive suppressions`, async () => {
+    const store = makeFakeStore();
+    let last;
+    for (let i = 0; i < SUPPRESSION_ALERT_THRESHOLD - 1; i++) {
+      last = await recordSuppressionOutcome(store, 'ipo-1', true, { companyName: 'Acme' });
+    }
+    expect(last!.consecutiveCount).toBe(SUPPRESSION_ALERT_THRESHOLD - 1);
+    expect(last!.alerted).toBe(false);
+    expect(notifyOwner).not.toHaveBeenCalled();
+  });
+
+  it(`fires a Notifier P2 alert with a stable dedupeKey at the ${SUPPRESSION_ALERT_THRESHOLD}th consecutive suppression`, async () => {
+    const store = makeFakeStore();
+    let last;
+    for (let i = 0; i < SUPPRESSION_ALERT_THRESHOLD; i++) {
+      last = await recordSuppressionOutcome(store, 'ipo-1', true, {
+        companyName: 'Acme',
+        persistedTotal: 21.66,
+        candidateTotal: 8.15,
+      });
+    }
+    expect(last!.consecutiveCount).toBe(SUPPRESSION_ALERT_THRESHOLD);
+    expect(last!.alerted).toBe(true);
+    expect(notifyOwner).toHaveBeenCalledTimes(1);
+    expect(notifyOwner).toHaveBeenCalledWith(
+      'P2',
+      expect.stringContaining('Acme'),
+      expect.objectContaining({ dedupeKey: 'subscription-floor-stuck:ipo-1', type: 'subscription-floor-stuck' })
+    );
+  });
+
+  it('is fail-open: a store that throws is swallowed, never rejects', async () => {
+    const throwing = {
+      get: vi.fn().mockRejectedValue(new Error('redis down')),
+      set: vi.fn(),
+      del: vi.fn(),
+    };
+    await expect(recordSuppressionOutcome(throwing as any, 'ipo-1', true)).resolves.toEqual({
+      consecutiveCount: 0,
+      alerted: false,
+    });
   });
 });
 

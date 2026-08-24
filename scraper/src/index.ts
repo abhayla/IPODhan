@@ -461,14 +461,48 @@ export async function triggerRegistrarReresolve(): Promise<void> {
  * fire once daily (matching the scheduler's original cron intent) instead of
  * every 30-minute cycle.
  */
+// T-306 (T-300C2 advisory): persisted last-run timestamp so a missed 06:30-06:59
+// IST window (a slow prior cycle, a restart, a missed cron_restart tick) is
+// caught up on the next cycle instead of silently skipping the whole day —
+// see shouldRunRegistrarHealthCheck's catch-up semantics. Redis is
+// best-effort (redis-best-effort-fail-open.md): if the key can't be read, we
+// pass `null` (treated as "no confirmed run" -> catch-up now, the safe
+// default) rather than block or crash the cycle.
+const REGISTRAR_HEALTH_CHECK_LAST_RUN_KEY = 'registrar-health-check:last-run';
+
 export async function triggerRegistrarHealthCheck(): Promise<void> {
-  if (!shouldRunRegistrarHealthCheck(new Date())) {
-    logger.debug('Registrar health check skipped (outside cadence window)');
+  const now = new Date();
+  let lastRunAt: Date | null = null;
+  try {
+    const redis = getRedisClient();
+    const raw = await redis.get(REGISTRAR_HEALTH_CHECK_LAST_RUN_KEY);
+    lastRunAt = raw ? new Date(raw) : null;
+    if (lastRunAt !== null && Number.isNaN(lastRunAt.getTime())) lastRunAt = null;
+  } catch (error) {
+    logger.debug(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Registrar health check last-run lookup failed (non-fatal) - treating as catch-up eligible'
+    );
+  }
+
+  if (!shouldRunRegistrarHealthCheck(now, lastRunAt)) {
+    logger.debug('Registrar health check skipped (outside cadence window, no catch-up due)');
     return;
   }
   try {
     const result = await runRegistrarHealthCheck();
     logger.info({ result }, 'Registrar health check triggered from one-shot cycle');
+    try {
+      const redis = getRedisClient();
+      // No TTL: this key MUST survive indefinitely so a long gap (outage,
+      // deploy freeze) is still detected as catch-up-eligible on return.
+      await redis.set(REGISTRAR_HEALTH_CHECK_LAST_RUN_KEY, now.toISOString());
+    } catch (error) {
+      logger.debug(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Registrar health check last-run persist failed (non-fatal)'
+      );
+    }
   } catch (error) {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },

@@ -32,7 +32,7 @@ jobs:
 
       - name: Run ESLint
         working-directory: ./web
-        run: npm run lint
+        run: npm run lint:ci
 
   unit-tests:
     name: Unit Tests
