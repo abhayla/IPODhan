@@ -34,6 +34,7 @@ const mockFindByFuzzyName = vi.fn();
 const mockIsIPOLocked = vi.fn();
 const mockFilterProtectedFields = vi.fn();
 const mockUpdate = vi.fn();
+const mockCreate = vi.fn();
 
 vi.mock('@ipodhan/shared', async (importOriginal) => {
   // Keep the REAL resolveIpoRow -- a hand-copied mock of its tier logic
@@ -48,6 +49,7 @@ vi.mock('@ipodhan/shared', async (importOriginal) => {
       findByNormalizedName: mockFindByNormalizedName,
       findByFuzzyName: mockFindByFuzzyName,
       update: mockUpdate,
+      create: mockCreate,
     })),
     SubscriptionRepository: vi.fn().mockImplementation(() => ({})),
     ScraperLogRepository: vi.fn().mockImplementation(() => ({
@@ -184,34 +186,70 @@ describe('BaseScraperOrchestrator.processIPO() — guard/write parity on the fuz
     expect(result.iposSkipped).toBeGreaterThan(0);
   }, 20000);
 
-  it('guard-side and write-side resolution agree on the same row id for a typo shape (unit-level, no divergent copies)', async () => {
-    const { resolveIpoRow } = await import('@ipodhan/shared');
+  it('threads the guard-resolved row down to the write instead of re-resolving (T-307C Finding 1) -- write targets the FIRST resolution, not a second independent one', async () => {
+    // T-307C (independent checker) found that the DoD's second test called
+    // resolveIpoRow() twice, directly, with the same mock -- true by
+    // construction for any pure function, and it stayed green even after
+    // the checker removed the `preResolvedIPO` threading from all 3 call
+    // sites in BaseScraperOrchestrator.ts (mutant 2: the guard and the write
+    // resolve independently again -- exactly the B7 failure mode Phase 1
+    // exists to prevent). This test drives the REAL production wiring
+    // (processIPO() -> upsertIPO()) and proves the threading is load-bearing:
+    // findByFuzzyName is mocked to resolve the canonical row on its FIRST
+    // call (the guard's Step 2 resolution) and to miss (return null) on any
+    // SECOND call -- simulating another writer altering the row between the
+    // guard's resolve and the write, which the pre-resolved-row threading
+    // exists to make impossible to observe.
+    const { BaseScraperOrchestrator } = await import('../../src/base/BaseScraperOrchestrator.js');
+
+    const rawIPOs = [
+      {
+        companyName: 'Hybird Seeds Limited',
+        offeringType: 'SME',
+        segment: 'SME',
+      },
+    ];
+
+    class TestOrchestrator extends BaseScraperOrchestrator<any> {
+      protected getScraperName() {
+        return 'CHITTORGARH' as const;
+      }
+      protected async scrapeData() {
+        return { ipos: rawIPOs, subscriptions: [] };
+      }
+      protected validateIPO(ipo: any) {
+        return { success: true as const, data: ipo };
+      }
+    }
 
     mockFindBySlug.mockResolvedValue(null);
     mockFindByNormalizedName.mockResolvedValue(null);
-    mockFindByFuzzyName.mockResolvedValue({ id: 'hybrid-canonical-id', companyName: 'Hybrid Seeds Limited' });
+    mockFindByFuzzyName
+      .mockResolvedValueOnce({ id: 'hybrid-canonical-id', companyName: 'Hybrid Seeds Limited' })
+      .mockResolvedValueOnce(null);
+    // Not locked -- the write is allowed to proceed, so it can actually land
+    // and reveal which row (or none) it targeted.
+    mockIsIPOLocked.mockResolvedValue(false);
+    mockFilterProtectedFields.mockResolvedValue({
+      filtered: { companyName: rawIPOs[0].companyName, offeringType: 'SME' },
+    });
+    mockUpdate.mockResolvedValue({ id: 'hybrid-canonical-id' });
+    mockCreate.mockResolvedValue({ id: 'wrongly-created-duplicate-id' });
 
-    const identity = {
-      companyName: 'Hybird Seeds Limited',
-      normalizedName: 'hybird seeds limited',
-      slug: 'hybird-seeds-limited',
-    };
-    const fakeRepo = {
-      findBySlug: mockFindBySlug,
-      findByNormalizedName: mockFindByNormalizedName,
-      findByFuzzyName: mockFindByFuzzyName,
-    } as any;
+    const orchestrator = new TestOrchestrator();
+    await orchestrator.run();
 
-    // The guard and the write each call resolveIpoRow independently in
-    // production (guard at Step 2, write only when no pre-resolved row was
-    // threaded through) -- but because both now go through the SAME
-    // function with the SAME tiers, they can never return a different row
-    // for the identical identity.
-    const guardResolved = await resolveIpoRow(fakeRepo, identity);
-    const writeResolved = await resolveIpoRow(fakeRepo, identity);
-
-    expect(guardResolved?.id).toBe('hybrid-canonical-id');
-    expect(writeResolved?.id).toBe('hybrid-canonical-id');
-    expect(guardResolved?.id).toBe(writeResolved?.id);
-  });
+    // Threading intact: the write path's `preResolvedIPO !== undefined`
+    // check short-circuits its own resolveIpoRow call, so findByFuzzyName is
+    // called exactly ONCE (the guard's Step 2 resolution) and the write is
+    // an UPDATE targeting that SAME row -- never a second, independently
+    // (and here, differently) resolved one.
+    expect(mockFindByFuzzyName).toHaveBeenCalledTimes(1);
+    expect(mockUpdate).toHaveBeenCalledWith('hybrid-canonical-id', expect.anything());
+    // If the threading regresses (mutant 2), upsertIPO re-resolves
+    // independently, findByFuzzyName's SECOND call returns null, existingIPO
+    // is null, and the write silently becomes a CREATE of a duplicate row
+    // instead of an update of the row the guard just cleared.
+    expect(mockCreate).not.toHaveBeenCalled();
+  }, 20000);
 });

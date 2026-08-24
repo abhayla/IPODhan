@@ -218,6 +218,15 @@ export async function upsertIPO(
     source
   }, 'Upserting IPO (Phase 11: with fuzzy matching)');
 
+  // T-307C Finding 3 (retry-semantics trade-off, accepted): when `preResolvedIPO` is
+  // supplied, the SAME resolved row is reused across every retry attempt below instead
+  // of being re-resolved per attempt (as it was before T-307). Consequence: if another
+  // writer inserts the row between the guard's resolve (Step 2 of processIPO) and this
+  // write, a create that loses that race now retries into the same unique-key conflict
+  // instead of self-healing into an update on the next attempt. Narrow window, mitigated
+  // by the `ipo:{slug}` distributed lock covering the common concurrent-write case — and
+  // the correct trade for guard/write parity (§1.4): re-resolving per retry would just
+  // reopen the divergence this whole task exists to close.
   const result = await retryWithBackoff(
     async () => {
       // T-307: single source of truth for "which row is this?" — the exact
