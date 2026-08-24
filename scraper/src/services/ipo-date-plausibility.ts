@@ -64,6 +64,11 @@ export interface CoherenceResult {
   reason?: string;
 }
 
+// T-309: mirrors FAR_PAST_ANCHOR_THRESHOLD_MS in validators.ts — a listing
+// older than this, relative to now, is treated as an already-happened
+// historical fact rather than an unconfirmed future scheduling claim.
+const FAR_PAST_LISTING_THRESHOLD_MS = 180 * 24 * 60 * 60 * 1000;
+
 /**
  * #52 — Is the full date sequence coherent (open ≤ close < allotment < listing)?
  *
@@ -77,16 +82,31 @@ export function isDateSequenceCoherent(seq: DateSequence): CoherenceResult {
   const allot = toMs(seq.allotmentDate);
   const listing = toMs(seq.listingDate);
 
-  // T-309 presence-coherence: a listing_date cannot exist without an open_date —
-  // an IPO opens, then closes, then lists; a scheduled listing with no scheduled
-  // open is chronologically impossible information, not merely an ordering
-  // breach (the ORDER checks below only fire when both sides are present, so
-  // they never catch this "one side entirely missing" shape). Real case:
-  // priority-jewels-ltd carried listing_date=2026-09-04 with open_date/close_date
-  // both NULL. Checked FIRST and independent of the present-vs-present ORDER
-  // checks below (T-306) so it composes without touching their logic.
-  if (listing !== null && open === null) {
-    return { ok: false, reason: 'listing_date present without open_date' };
+  // T-309 presence-coherence: a FUTURE-or-recent listing_date with NEITHER an
+  // open_date NOR a close_date is an unconfirmable scheduling claim — an IPO
+  // opens, then closes, then lists; nothing corroborates a bare promise to
+  // list on a date that hasn't happened yet (the ORDER checks below only fire
+  // when both sides of a pair are present, so they never catch this "both
+  // sides entirely missing" shape). Real case: priority-jewels-ltd carried
+  // listing_date=2026-09-04 (future) with open_date AND close_date both NULL.
+  //
+  // Gated to FUTURE/near-term listings only (not far in the past) so this does
+  // NOT re-flag the WINDLAS-shape stomp result (sanitizeIpoDates deliberately
+  // keeps a far-past listing alone as the trustworthy anchor after nulling a
+  // conflicting near-term open/close — see FAR_PAST_ANCHOR_THRESHOLD_MS in
+  // validators.ts, same threshold reused here) — a listing already in the past
+  // is a historical fact, not a scheduling promise, and needs no open/close to
+  // corroborate it. Gated on close also being absent (not just open) so this
+  // does not re-flag the T-306 F1 shape — open absent but close present is a
+  // legitimate partial-data case the close-vs-listing check below already
+  // handles on its own terms. Checked FIRST and independent of the
+  // present-vs-present ORDER checks below (T-306) so it composes without
+  // touching their logic.
+  if (listing !== null && open === null && close === null) {
+    const isFarPast = Date.now() - listing > FAR_PAST_LISTING_THRESHOLD_MS;
+    if (!isFarPast) {
+      return { ok: false, reason: 'listing_date present without open_date' };
+    }
   }
 
   if (open !== null && close !== null && open > close) {

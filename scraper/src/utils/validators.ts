@@ -339,14 +339,21 @@ export function sanitizeIpoDates(dates: IpoDateSet): IpoDateSet {
     return result;
   }
 
-  // T-309 presence-coherence: a listing_date without an open_date is unconfirmable
-  // (an IPO cannot be scheduled to list before it is scheduled to open) — null the
-  // listing rather than let it stand alone. Returns early so the ORDER-based
-  // branches below (T-306), which assume a present listing implies open/close
-  // should exist, never see this shape.
-  if (listing !== null && open === null) {
-    result.listingDate = null;
-    return result;
+  // T-309 presence-coherence: a FUTURE-or-recent listing_date with NEITHER an
+  // open_date NOR a close_date is unconfirmable (an IPO cannot be scheduled to
+  // list before it is scheduled to open) — null the listing rather than let it
+  // stand alone. Gated on close also being absent so a T-306-shape row (open
+  // null, close present) is left for the ORDER-based branches below to
+  // resolve on their own terms. Gated to future/near-term listings (mirrors
+  // isDateSequenceCoherent's identical gate) so this does not fight the
+  // WINDLAS-shape stomp further below, which deliberately keeps a far-past
+  // listing alone as the trustworthy anchor.
+  if (listing !== null && open === null && close === null) {
+    const isFarPast = Date.now() - listing > FAR_PAST_ANCHOR_THRESHOLD_MS;
+    if (!isFarPast) {
+      result.listingDate = null;
+      return result;
+    }
   }
 
   if (listing !== null) {

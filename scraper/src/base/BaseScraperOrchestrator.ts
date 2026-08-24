@@ -656,12 +656,23 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     // for FAILURE. Track the zero-yield streak and downgrade the logged status
     // to 'DEGRADED' once it crosses the threshold, WITHOUT touching the actual
     // scrape outcome (result/errors are unchanged — this only affects observability).
-    const zeroYieldStreak = await this.metricsTracker.recordZeroYieldCycle(scraperName, result.iposProcessed);
-    const isZeroYieldDegraded = this.metricsTracker.isZeroYieldDegraded(zeroYieldStreak);
-    if (isZeroYieldDegraded) {
+    // Non-fatal per non-fatal-side-effects.md: this is pure observability: a
+    // failure here (e.g. a Redis hiccup inside the metrics tracker) MUST NOT
+    // crash an otherwise-successful scrape run or corrupt its recorded status.
+    let isZeroYieldDegraded = false;
+    try {
+      const zeroYieldStreak = await this.metricsTracker.recordZeroYieldCycle(scraperName, result.iposProcessed);
+      isZeroYieldDegraded = this.metricsTracker.isZeroYieldDegraded(zeroYieldStreak);
+      if (isZeroYieldDegraded) {
+        logger.warn(
+          { scraperName, iposProcessed: result.iposProcessed, zeroYieldStreak },
+          `Scraper ${scraperName} returned 0 IPOs for ${zeroYieldStreak} consecutive cycles — logging DEGRADED, not SUCCESS`
+        );
+      }
+    } catch (error) {
       logger.warn(
-        { scraperName, iposProcessed: result.iposProcessed, zeroYieldStreak },
-        `Scraper ${scraperName} returned 0 IPOs for ${zeroYieldStreak} consecutive cycles — logging DEGRADED, not SUCCESS`
+        { scraperName, error: error instanceof Error ? error.message : String(error) },
+        'Zero-yield streak tracking failed (non-fatal) - logging SUCCESS as usual'
       );
     }
 
