@@ -356,17 +356,25 @@ export function sanitizeIpoDates(dates: IpoDateSet): IpoDateSet {
       }
     }
 
-    // allotment must sit between close and the (possibly just-resolved) listing;
-    // if it precedes the open/close window (or follows a still-present listing)
-    // it is the outlier, not open/close.
+    // allotment must sit between the (possibly just-resolved) close/open and
+    // listing; if it precedes that window or follows a still-present listing
+    // it is the outlier, not open/close/listing.
     if (allot !== null) {
-      const lo = toEpoch(result.closeDate) ?? toEpoch(result.openDate);
+      const resolvedClose = toEpoch(result.closeDate);
+      const resolvedOpen = toEpoch(result.openDate);
       const resolvedListing = toEpoch(result.listingDate);
-      if (resolvedListing !== null) {
-        if ((lo !== null && allot < lo) || allot > resolvedListing) result.allotmentDate = null;
-      } else if (lo !== null && allot < lo) {
-        result.allotmentDate = null;
-      }
+      // (T-306 F reconciliation) close>=allotment is incoherent on its own —
+      // matches isDateSequenceCoherent's "close_date is at/after allotment_date"
+      // rule, independent of whether listing also conflicts.
+      const closeConflict = resolvedClose !== null && resolvedClose >= allot;
+      // open>allotment (strict) only matters when close was already nulled above
+      // (the WINDLAS-shape stomp) — mirrors the detector's open-vs-allotment rule.
+      const openConflict = resolvedClose === null && resolvedOpen !== null && resolvedOpen > allot;
+      // allotment>=listing (was strict `>`) — matches the detector's
+      // "allotment_date is at/after listing_date" rule, which treats equality
+      // as incoherent too.
+      const listingConflict = resolvedListing !== null && allot >= resolvedListing;
+      if (closeConflict || openConflict || listingConflict) result.allotmentDate = null;
     }
   } else if (allot !== null) {
     // No listing: allotment is the stable original record — open/close must precede it.

@@ -418,7 +418,7 @@ export async function upsertIPO(
                   allotmentDate: rawConsolidated.allotmentDate,
                   listingDate: rawConsolidated.listingDate,
                 },
-              }, '[DataConsolidation] incoherent merged date sequence — sanitizer will null the offender (#52)');
+              }, '[DataConsolidation] incoherent merged date sequence — sanitizer will null the offender (#52, T-306: sanitizeIpoDates now covers every isDateSequenceCoherent rule)');
             }
 
             // Use consolidated data with merged exchanges. Re-apply the write-field

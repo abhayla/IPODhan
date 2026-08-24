@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeLeadManagers, sanitizeIpoWriteFields } from '../../../src/utils/validators';
+import { isDateSequenceCoherent } from '../../../src/services/ipo-date-plausibility';
 
 describe('sanitizeLeadManagers (T-299 P2-8 — strip a tab-split contact block, keep only company names)', () => {
   it('returns null for null/undefined/empty', () => {
@@ -138,6 +139,47 @@ describe('sanitizeIpoDates (#41/#52 date-stomp guard)', () => {
     expect(r.openDate).toBeNull();
     expect(r.closeDate).toBeNull();
     expect(r.listingDate).toBe('2021-08-20'); // stable anchor preserved
+  });
+
+  describe('round-trip with isDateSequenceCoherent (T-306 reconciliation)', () => {
+    // Every shape the detector (#52) flags incoherent MUST be CHANGED by the
+    // sanitizer into a shape the detector then accepts — the two are supposed
+    // to be write-path twins (see the sanitizeIpoDates doc comment). Built from
+    // the detector's own six rules, at minimum: close==allotment,
+    // allotment==listing, listing<close, open>close, open>listing.
+    const incoherentShapes: Array<{ name: string; seq: Parameters<typeof sanitizeIpoDates>[0] }> = [
+      {
+        name: 'close == allotment',
+        seq: { openDate: '2026-01-01', closeDate: '2026-01-05', allotmentDate: '2026-01-05', listingDate: '2026-02-01' },
+      },
+      {
+        name: 'allotment == listing',
+        seq: { openDate: '2026-01-01', closeDate: '2026-01-05', allotmentDate: '2026-02-01', listingDate: '2026-02-01' },
+      },
+      {
+        name: 'listing < close (kwality shape, near-term)',
+        seq: { openDate: '2026-04-23', closeDate: '2026-05-07', allotmentDate: null, listingDate: '2026-02-16' },
+      },
+      {
+        name: 'open > close',
+        seq: { openDate: '2025-10-20', closeDate: '2025-10-15', allotmentDate: null, listingDate: null },
+      },
+      {
+        name: 'open > listing (far-past WINDLAS stomp)',
+        seq: { openDate: '2026-04-30', closeDate: '2026-05-07', allotmentDate: null, listingDate: '2021-08-20' },
+      },
+    ];
+
+    it.each(incoherentShapes)('detector rejects $name pre-sanitize, then accepts the sanitized output', ({ seq }) => {
+      const pre = isDateSequenceCoherent(seq);
+      expect(pre.ok).toBe(false); // sanity: the fixture really is a detector-rejected shape
+
+      const sanitized = sanitizeIpoDates(seq);
+      expect(sanitized).not.toEqual(seq); // sanitizer must CHANGE a shape the detector rejects
+
+      const post = isDateSequenceCoherent(sanitized);
+      expect(post.ok).toBe(true);
+    });
   });
 });
 
