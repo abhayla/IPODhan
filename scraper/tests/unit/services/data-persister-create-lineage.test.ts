@@ -23,15 +23,21 @@ vi.mock('@ipodhan/shared/utils/registrar-matcher', () => ({
   resolveRegistrarId: () => null,
 }));
 
-vi.mock('@ipodhan/shared/repositories', () => ({
-  FieldSourcesRepository: vi.fn().mockImplementation(() => ({
-    bulkTrackFieldUpdates: bulkTrackFieldUpdatesMock,
-  })),
-  DataConflictsRepository: vi.fn().mockImplementation(() => ({})),
-  RegistrarRepository: vi.fn().mockImplementation(() => ({
-    findAll: vi.fn().mockResolvedValue([]),
-  })),
-}));
+vi.mock('@ipodhan/shared/repositories', async (importOriginal) => {
+  // T-307: keep the REAL resolveIpoRow — see data-persister-fuzzy-dedup.test.ts
+  // for why a hand-copied mock of the tier logic would be wrong here.
+  const actual = await importOriginal<typeof import('@ipodhan/shared/repositories')>();
+  return {
+    ...actual,
+    FieldSourcesRepository: vi.fn().mockImplementation(() => ({
+      bulkTrackFieldUpdates: bulkTrackFieldUpdatesMock,
+    })),
+    DataConflictsRepository: vi.fn().mockImplementation(() => ({})),
+    RegistrarRepository: vi.fn().mockImplementation(() => ({
+      findAll: vi.fn().mockResolvedValue([]),
+    })),
+  };
+});
 
 vi.mock('../../../src/config/feature-flags.js', () => ({
   FEATURE_FLAGS: {

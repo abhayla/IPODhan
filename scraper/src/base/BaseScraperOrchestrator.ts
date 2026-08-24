@@ -18,6 +18,7 @@ import type {
   SubscriptionRepository,
   ScraperLogRepository,
   IPOInsert,
+  IPO,
   FieldSourcesRepository,
   DataConflictsRepository
 } from '@ipodhan/shared';
@@ -30,6 +31,7 @@ import {
   FieldSourcesRepository as FieldSourcesRepositoryClass,
   DataConflictsRepository as DataConflictsRepositoryClass,
   createFieldProtectionService,
+  resolveIpoRow,
   type FieldProtectionService
 } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
@@ -361,24 +363,20 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     const slug = generateSlug(validatedIPO.companyName);
     processResult.slug = slug;
 
-    // Step 2: Check if IPO already exists (for insert vs update tracking).
-    // MUST resolve via the SAME two-step lookup the write path uses further
-    // down (normalized-name first, slug fallback — see
-    // data-consolidation-orchestrator.ts consolidatedUpsertIPO() and
-    // data-persister.ts upsertIPO()). A slug-only lookup here can diverge from
-    // the write path whenever the raw scraped title carries content the slug
-    // generator does not strip but the name normalizer does (e.g. a trailing
-    // parenthetical descriptor, confirmed for Chittorgarh's "Citius Transnet
-    // Investment Trust (Citius Transnet InvIT IPO)"). When it diverges, this
-    // lookup returns null, `ipoId` is undefined, and the protection checks
-    // below (Step 3 IPO lock + Step 4 field filtering) are skipped entirely —
-    // while the write moments later resolves the SAME company to its existing
-    // row via normalized-name matching and applies UNFILTERED data to it,
-    // silently bypassing manual field protection (T-287F3).
+    // Step 2: Resolve identity ONCE per request (T-307, write-path hardening
+    // Phase 1). `resolveIpoRow` is the single source of truth for "which row
+    // is this?" — the same three-tier lookup (normalized-name -> slug ->
+    // fuzzy) the write path uses. The row resolved here is passed straight
+    // down to the write (Step 5) so the guard and the write can no longer
+    // disagree (docs/architecture/write-path-hardening.md §1.4, §2(a) step 1
+    // — closes the T-287F3 divergence that T-293 reopened by adding a fuzzy
+    // tier to the write path only).
     const normalizedName = normalizeCompanyNameForMatching(validatedIPO.companyName);
-    const existingIPO =
-      (normalizedName ? await this.ipoRepository.findByNormalizedName(normalizedName) : null) ??
-      (await this.ipoRepository.findBySlug(slug));
+    const existingIPO = await resolveIpoRow(this.ipoRepository, {
+      companyName: validatedIPO.companyName,
+      normalizedName,
+      slug,
+    }) as IPO | null;
     const ipoId = existingIPO?.id;
 
     // Step 3: PROTECTION CHECK - IPO-level lock
@@ -445,7 +443,10 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       const consolidationResult = await this.consolidationOrchestrator.consolidatedUpsertIPO(
         filteredIPOData,
         scraperName,
-        confidenceScore
+        confidenceScore,
+        // T-307: pass the row already resolved at Step 2 — guard and write
+        // now share ONE resolution instead of resolving independently.
+        existingIPO
       );
 
       if (consolidationResult.skipped) {
@@ -453,8 +454,8 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
           { slug, reason: consolidationResult.skipReason },
           '[Phase 1] IPO consolidation skipped'
         );
-        // Fallback to traditional upsert
-        upsertedIPOId = await upsertIPO(this.ipoRepository, filteredIPOData, scraperName);
+        // Fallback to traditional upsert — pass the same pre-resolved row.
+        upsertedIPOId = await upsertIPO(this.ipoRepository, filteredIPOData, scraperName, existingIPO);
         if (existingIPO) {
           processResult.updated = true;
         } else {
@@ -493,8 +494,9 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
         }
       }
     } else {
-      // Traditional upsert (no consolidation)
-      upsertedIPOId = await upsertIPO(this.ipoRepository, filteredIPOData, scraperName);
+      // Traditional upsert (no consolidation) — pass the row already
+      // resolved at Step 2 (T-307).
+      upsertedIPOId = await upsertIPO(this.ipoRepository, filteredIPOData, scraperName, existingIPO);
 
       if (existingIPO) {
         processResult.updated = true;

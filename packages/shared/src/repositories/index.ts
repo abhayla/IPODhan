@@ -20,5 +20,9 @@ export { DataConflictsRepository } from './data-conflicts-repository';
 // Base Repository
 export { BaseRepository } from './base-repository';
 
+// IPO identity resolution (T-307 — SSOT for the guard/write three-tier lookup)
+export { resolveIpoRow } from './ipo-identity';
+export type { IpoIdentity } from './ipo-identity';
+
 // Types and Interfaces
 export type * from './types';
