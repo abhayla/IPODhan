@@ -6,6 +6,15 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['tests/unit/**/*.test.ts'],
+    // T-306 (T-300C2 advisory): with no testTimeout set, vitest's 5000ms
+    // default is tight enough that the index-*-wiring tests (which spin up a
+    // real scheduler/CLI wiring path under mocks) intermittently exceeded it
+    // once the full ~93-file / ~1115-test suite started running as ONE
+    // pr-gate step under CPU contention (3 measured full-suite runs: 55/45/49
+    // failures, delta entirely these files — timeouts, not real regressions).
+    // 20s gives real headroom under parallel-worker contention without
+    // masking a genuinely hung test (which would still exceed 20s).
+    testTimeout: 20_000,
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
