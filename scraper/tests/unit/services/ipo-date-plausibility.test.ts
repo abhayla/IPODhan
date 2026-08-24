@@ -117,4 +117,27 @@ describe('isDateSequenceCoherent (#52 — open ≤ close < allotment < listing)'
   it('does not flag a present open_date + listing_date with close/allotment absent', () => {
     expect(isDateSequenceCoherent({ openDate: '2026-04-23', closeDate: null, allotmentDate: null, listingDate: '2026-05-14' }).ok).toBe(true);
   });
+
+  it('flags close_date AT/AFTER listing_date via a REAL close-vs-listing rule, not the open-vs-listing shape-lock (T-306 F1)', () => {
+    // open is absent, so the pre-existing `open > listing` check cannot fire at
+    // all — this isolates whether a dedicated close-vs-listing comparison exists.
+    const r = isDateSequenceCoherent({
+      openDate: null,
+      closeDate: '2026-05-07',
+      allotmentDate: null,
+      listingDate: '2026-02-16',
+    });
+    expect(r.ok).toBe(false);
+    expect(r.reason).toMatch(/close.*listing|listing.*close/i);
+  });
+
+  it('accepts close_date strictly before listing_date when open/allotment are absent', () => {
+    const r = isDateSequenceCoherent({
+      openDate: null,
+      closeDate: '2026-02-10',
+      allotmentDate: null,
+      listingDate: '2026-02-16',
+    });
+    expect(r.ok).toBe(true);
+  });
 });

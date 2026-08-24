@@ -124,6 +124,33 @@ run_case "no DSN_ASSERT_REDIS_DB -> assert is advisory, still passes" 0 \
 run_case "wrong arg count -> usage error" 2 \
   "$FIXTURES/web.env.local.good"
 
+# --- T-306 (T-297 D9 liveness class, issue #213): flag-liveness REPORT ---
+# Fixture src tree: ENABLE_BSE_API has a real consumer outside scheduler/ +
+# feature-flags.ts (index.ts); ENABLE_PRIMARY_SOURCE_DISCOVERY is mentioned
+# ONLY inside scheduler/ (the retired SchedulerService path) -- the exact
+# shape of the real #213 regression.
+run_case "flag-liveness report is advisory-if-omitted (2-arg call unaffected)" 0 \
+  "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.good"
+
+run_case "flag-liveness report never fails the deploy, even with dead flags present" 0 \
+  "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.good" "$FIXTURES/scraper-src-fake"
+
+run_case_grep "flag-liveness report catches a scheduler/-only flag (the real #213 shape)" 0 \
+  "ENABLE_PRIMARY_SOURCE_DISCOVERY" \
+  "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.good" "$FIXTURES/scraper-src-fake"
+
+# Mutation-proof: a flag WITH a real consumer outside scheduler/ must NOT be
+# reported. Grep the actual stdout+stderr for a false positive on ENABLE_BSE_API.
+actual_bse_hit=0
+bash "$ASSERT_SCRIPT" "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.good" "$FIXTURES/scraper-src-fake" 2>&1 \
+  | grep -q '\- ENABLE_BSE_API$' && actual_bse_hit=1
+if [ "$actual_bse_hit" -eq 0 ]; then
+  echo "PASS: flag-liveness report does NOT flag ENABLE_BSE_API (has a real consumer in the fixture)"
+else
+  echo "FAIL: flag-liveness report false-positived on ENABLE_BSE_API (has a real consumer in the fixture)"
+  FAILED=1
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "assert-env-keys.test.sh: FAILED"
   exit 1
