@@ -553,8 +553,31 @@ verify_public_health() {
   return 0
 }
 
+assert_pm2_logrotate_installed() {
+  # T-311 (#8 P3 / the 2026-06-13 disk-full-incident class): pm2-logrotate is
+  # ABSENT on the Linux box today — ipodhan-scraper-out.log alone grows
+  # ~1.47MB per 30-min cycle (~70MB/day; ~140MB/day across prod+staging),
+  # the same unbounded-log-growth shape that took the prod DB, SSH, and the
+  # runner down on 2026-06-13. This is a LOUD, NON-BLOCKING check (WARN, not
+  # a deploy failure): the module must be installed once, by hand, on the
+  # box (see the one-time command below) — T-311 does not install it, and a
+  # deploy MUST NOT start hard-failing before the owner has had a chance to
+  # run that one-time command. Once installed, a future task can promote
+  # this to a hard gate (mirroring assert-env-keys.sh's severity).
+  if (( DRY_RUN )); then
+    log "[dry-run] skipping pm2-logrotate presence assert"
+    return 0
+  fi
+  if pm2 conf pm2-logrotate >/dev/null 2>&1; then
+    log "pm2-logrotate: installed and configured"
+  else
+    warn "pm2-logrotate module NOT installed — scraper/web logs will grow unbounded (2026-06-13 disk-full-incident class). One-time fix on the box: pm2 install pm2-logrotate && pm2 set pm2-logrotate:max_size 50M && pm2 set pm2-logrotate:retain 7 && pm2 set pm2-logrotate:compress true && pm2 set pm2-logrotate:rotateInterval '0 0 * * *'"
+  fi
+}
+
 log "Restarting PM2 apps"
 restart_pm2
+assert_pm2_logrotate_installed
 
 if ! verify_public_health; then
   echo "ERROR: post-flip verification failed for $RELEASE_NAME." >&2

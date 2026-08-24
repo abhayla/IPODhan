@@ -1,13 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 /**
- * T-194 regression test: proves the one-shot production path
+ * T-311 regression test: proves the one-shot production path
  * (`scraper/src/index.ts --source=all`, the ONLY scraper process PM2 runs --
  * see docs/monitoring/scrape-cadence-measurement.md) actually invokes the
- * Notifier heartbeat with the interval that matches the MEASURED 30-min
- * cadence (not the undeployed IST-tier config). Pre-fix, this path never
- * called `heartbeat()` -- this test fails against that code the same way
- * index-listing-performance-wiring.test.ts fails T-179's revert.
+ * duplicate sweep, the stage reconciler, and the primary-source discovery
+ * consumer. Pre-fix, none of `triggerDuplicateSweep` / `triggerStageReconciler`
+ * / `triggerPrimarySourceDiscovery` exist, and the entire tiered scheduler
+ * (`scraper/src/scheduler/*`) that DEFINES these jobs is imported by nothing
+ * PM2 runs (T-305 P2-7) -- this test fails against that pre-fix code the same
+ * way index-registrar-health-check-wiring fails pre-T-300F.
  */
 
 const baseScraperResult = {
@@ -55,10 +57,35 @@ const updateListingPerformanceMock = vi.fn().mockResolvedValue({
   duration: 1,
   timestamp: new Date(0).toISOString(),
 });
-const shouldRunListingPerformanceUpdateMock = vi.fn().mockReturnValue(true);
+const shouldRunListingPerformanceUpdateMock = vi.fn().mockReturnValue(false);
+const runRegistrarHealthCheckMock = vi.fn().mockResolvedValue({
+  checked: 14,
+  healthy: 14,
+  newlyDead: [] as string[],
+  stillDead: [] as string[],
+});
+const shouldRunRegistrarHealthCheckMock = vi.fn().mockReturnValue(false);
+const reresolveRegistrarIdsMock = vi.fn().mockResolvedValue({
+  candidates: 0,
+  matched: 0,
+  written: 0,
+  unmatchedNames: [] as string[],
+});
+const runDuplicateSweepJobMock = vi.fn().mockResolvedValue({
+  totalIpos: 0,
+  clusters: 0,
+  dupClusters: [] as unknown[],
+  applied: false,
+});
+const runStageReconcilerJobMock = vi.fn().mockResolvedValue({
+  totalIpos: 0,
+  iposWithDueFetches: 0,
+  dueByKind: {},
+  byStage: {},
+});
+const runPrimaryDocBackfillMock = vi.fn().mockResolvedValue(undefined);
+const shouldRunOnCatchUpCadenceMock = vi.fn().mockResolvedValue(true);
 const dbReturningMock = vi.fn().mockResolvedValue([]);
-const heartbeatMock = vi.fn();
-const flushOwnerNotifyMock = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../../src/scrapers/nse-scraper-orchestrator-v2.js', () => ({
   runNSEScraper: runNSEScraperMock,
@@ -85,29 +112,25 @@ vi.mock('../../src/scheduler/listing-performance-cadence.js', () => ({
   shouldRunListingPerformanceUpdate: shouldRunListingPerformanceUpdateMock,
 }));
 vi.mock('../../src/scheduler/jobs/registrar-health-check-job.js', () => ({
-  runRegistrarHealthCheck: vi.fn().mockResolvedValue({ checked: 0, healthy: 0, newlyDead: [], stillDead: [] }),
+  runRegistrarHealthCheck: runRegistrarHealthCheckMock,
 }));
 vi.mock('../../src/scheduler/registrar-health-check-cadence.js', () => ({
-  shouldRunRegistrarHealthCheck: vi.fn().mockReturnValue(false),
+  shouldRunRegistrarHealthCheck: shouldRunRegistrarHealthCheckMock,
 }));
 vi.mock('../../src/services/registrar-reresolve.js', () => ({
-  reresolveRegistrarIds: vi.fn().mockResolvedValue({ candidates: 0, matched: 0, written: 0, unmatchedNames: [] }),
+  reresolveRegistrarIds: reresolveRegistrarIdsMock,
 }));
 vi.mock('../../src/scheduler/jobs/duplicate-sweep-job.js', () => ({
-  runDuplicateSweepJob: vi.fn().mockResolvedValue({ totalIpos: 0, clusters: 0, dupClusters: [], applied: false }),
+  runDuplicateSweepJob: runDuplicateSweepJobMock,
 }));
 vi.mock('../../src/scheduler/jobs/stage-reconciler-job.js', () => ({
-  runStageReconcilerJob: vi.fn().mockResolvedValue({ totalIpos: 0, iposWithDueFetches: 0, dueByKind: {}, byStage: {} }),
+  runStageReconcilerJob: runStageReconcilerJobMock,
 }));
 vi.mock('../../src/scripts/backfill-primary-source-documents.js', () => ({
-  runPrimaryDocBackfill: vi.fn().mockResolvedValue(undefined),
+  runPrimaryDocBackfill: runPrimaryDocBackfillMock,
 }));
 vi.mock('../../src/scheduler/catch-up-cadence.js', () => ({
-  shouldRunOnCatchUpCadence: vi.fn().mockResolvedValue(true),
-}));
-vi.mock('../../src/services/owner-notify.js', () => ({
-  heartbeat: heartbeatMock,
-  flushOwnerNotify: flushOwnerNotifyMock,
+  shouldRunOnCatchUpCadence: shouldRunOnCatchUpCadenceMock,
 }));
 const evaluateFreshnessMock = vi.fn().mockResolvedValue([]);
 const checkCrossSourceDisagreementsMock = vi.fn().mockResolvedValue({
@@ -141,82 +164,111 @@ vi.mock('drizzle-orm', () => ({
   lt: vi.fn(),
 }));
 
-describe('scraper/src/index.ts one-shot --source=all Notifier heartbeat wiring', () => {
+describe('scraper/src/index.ts one-shot --source=all path (scheduler-jobs wiring)', () => {
   const originalArgv = process.argv;
+  const originalEnv = { ...process.env };
   let exitSpy: ReturnType<typeof vi.spyOn>;
-  let fetchSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    shouldRunOnCatchUpCadenceMock.mockResolvedValue(true);
+    shouldRunListingPerformanceUpdateMock.mockReturnValue(false);
+    shouldRunRegistrarHealthCheckMock.mockReturnValue(false);
     process.argv = [...originalArgv.slice(0, 2), '--source=all'];
     delete process.env.ADMIN_API_TOKEN;
+    delete process.env.ENABLE_STAGE_RECONCILER;
+    delete process.env.ENABLE_PRIMARY_SOURCE_DISCOVERY;
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
-    fetchSpy = vi.fn();
-    vi.stubGlobal('fetch', fetchSpy);
+    vi.stubGlobal('fetch', vi.fn());
   });
 
   afterEach(() => {
     process.argv = originalArgv;
+    process.env = { ...originalEnv };
     vi.unstubAllGlobals();
     exitSpy.mockRestore();
   });
 
-  it('calls heartbeat("watchdog", 30) on the full scrape cycle -- 30min matches the MEASURED cadence, not a 15min config default', async () => {
+  it('calls runDuplicateSweepJob in dry-run mode on every full scrape cycle when cadence allows', async () => {
     const { main } = await import('../../src/index.js');
 
     await main();
 
-    expect(heartbeatMock).toHaveBeenCalledTimes(1);
-    expect(heartbeatMock).toHaveBeenCalledWith('watchdog', 30);
+    expect(runDuplicateSweepJobMock).toHaveBeenCalledTimes(1);
+    expect(runDuplicateSweepJobMock).toHaveBeenCalledWith({ dryRun: true });
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
-  it('flushes in-flight Notifier sends before process.exit(0)', async () => {
-    const { main } = await import('../../src/index.js');
-
-    await main();
-
-    expect(flushOwnerNotifyMock).toHaveBeenCalled();
-    // flush must happen before exit, not after (exit ends the process)
-    const flushCallOrder = flushOwnerNotifyMock.mock.invocationCallOrder[0];
-    const exitCallOrder = exitSpy.mock.invocationCallOrder[0];
-    expect(flushCallOrder).toBeLessThan(exitCallOrder);
-  });
-
-  it('still fires the heartbeat when a source failed (job-completion, not job-success)', async () => {
-    runNSEScraperMock.mockResolvedValueOnce({
-      ...baseScraperResult,
-      success: false,
-      errors: ['NSE fetch timed out'],
-    });
+  it('skips the duplicate sweep when the catch-up cadence guard says no', async () => {
+    shouldRunOnCatchUpCadenceMock.mockImplementation(async (_r: unknown, jobName: string) =>
+      jobName !== 'duplicate-sweep'
+    );
 
     const { main } = await import('../../src/index.js');
     await main();
 
-    expect(heartbeatMock).toHaveBeenCalledTimes(1);
-    expect(heartbeatMock).toHaveBeenCalledWith('watchdog', 30);
-    expect(exitSpy).toHaveBeenCalledWith(1);
-  });
-
-  it('does not fail the scrape run when heartbeat() throws (non-fatal side effect)', async () => {
-    heartbeatMock.mockImplementationOnce(() => {
-      throw new Error('unexpected Notifier client error');
-    });
-
-    const { main } = await import('../../src/index.js');
-    await main();
-
-    expect(heartbeatMock).toHaveBeenCalledTimes(1);
+    expect(runDuplicateSweepJobMock).not.toHaveBeenCalled();
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
-  it('does not call heartbeat for a single-source run (--source=nse)', async () => {
-    process.argv = [...originalArgv.slice(0, 2), '--source=nse'];
+  it('does not fail the run when runDuplicateSweepJob throws (non-fatal side effect)', async () => {
+    runDuplicateSweepJobMock.mockRejectedValueOnce(new Error('DB timeout'));
 
     const { main } = await import('../../src/index.js');
     await main();
 
-    expect(heartbeatMock).not.toHaveBeenCalled();
+    expect(runDuplicateSweepJobMock).toHaveBeenCalledTimes(1);
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('does NOT call runStageReconcilerJob when ENABLE_STAGE_RECONCILER is unset (§GATE default OFF)', async () => {
+    const { main } = await import('../../src/index.js');
+
+    await main();
+
+    expect(runStageReconcilerJobMock).not.toHaveBeenCalled();
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('calls runStageReconcilerJob in dry-run mode when ENABLE_STAGE_RECONCILER=true and cadence allows', async () => {
+    process.env.ENABLE_STAGE_RECONCILER = 'true';
+
+    const { main } = await import('../../src/index.js');
+    await main();
+
+    expect(runStageReconcilerJobMock).toHaveBeenCalledTimes(1);
+    expect(runStageReconcilerJobMock).toHaveBeenCalledWith({ dryRun: true });
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('does NOT call runPrimaryDocBackfill when ENABLE_PRIMARY_SOURCE_DISCOVERY is unset (closes #213 dishonesty gap)', async () => {
+    const { main } = await import('../../src/index.js');
+
+    await main();
+
+    expect(runPrimaryDocBackfillMock).not.toHaveBeenCalled();
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('calls runPrimaryDocBackfill with execute:true when ENABLE_PRIMARY_SOURCE_DISCOVERY=true and cadence allows', async () => {
+    process.env.ENABLE_PRIMARY_SOURCE_DISCOVERY = 'true';
+
+    const { main } = await import('../../src/index.js');
+    await main();
+
+    expect(runPrimaryDocBackfillMock).toHaveBeenCalledTimes(1);
+    expect(runPrimaryDocBackfillMock).toHaveBeenCalledWith({ execute: true });
+    expect(exitSpy).toHaveBeenCalledWith(0);
+  });
+
+  it('does not fail the run when runPrimaryDocBackfill throws (non-fatal side effect)', async () => {
+    process.env.ENABLE_PRIMARY_SOURCE_DISCOVERY = 'true';
+    runPrimaryDocBackfillMock.mockRejectedValueOnce(new Error('NSE API timeout'));
+
+    const { main } = await import('../../src/index.js');
+    await main();
+
+    expect(runPrimaryDocBackfillMock).toHaveBeenCalledTimes(1);
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 });
