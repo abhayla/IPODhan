@@ -143,6 +143,13 @@ vi.mock('../../src/services/data-consolidation-service.js', () => ({
 describe('BaseScraperOrchestrator.processIPO() — guard/write parity on the fuzzy (typo) tier (T-307, §1.4)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // vi.clearAllMocks() wipes call history but leaves any UNCONSUMED
+    // mockResolvedValueOnce() queued from the previous test in place --
+    // mockReset() drops that queue so no test's leftover once-value can
+    // leak into whichever test runs next, regardless of ordering.
+    mockFindBySlug.mockReset();
+    mockFindByNormalizedName.mockReset();
+    mockFindByFuzzyName.mockReset();
   });
 
   afterEach(() => {
@@ -297,14 +304,6 @@ describe('BaseScraperOrchestrator.processIPO() — guard/write parity on the fuz
     // the write silently becomes a CREATE of a duplicate row instead of an
     // UPDATE of the row the guard already cleared.
     FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION = true;
-
-    // vi.clearAllMocks() (global beforeEach) wipes call history but leaves
-    // any UNCONSUMED mockResolvedValueOnce() queued from the previous test
-    // in place -- the prior test's second (unconsumed) findByFuzzyName
-    // once-value would otherwise silently become THIS test's first result.
-    // mockReset() drops that queue; this test re-establishes the mock's
-    // resolved values immediately below.
-    mockFindByFuzzyName.mockReset();
 
     const { BaseScraperOrchestrator } = await import('../../src/base/BaseScraperOrchestrator.js');
 
