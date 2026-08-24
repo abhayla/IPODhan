@@ -39,6 +39,8 @@ export interface OFSData {
   issuePrice: number | null;
   issueSize: string | null;
   status: string;
+  /** T-310 (P2): row freshness — drives the page's "Last updated" banner. */
+  updatedAt: string | null;
 }
 
 // ==================== CONSTANTS ====================
@@ -71,6 +73,7 @@ function transformOFSData(ipo: IPO): OFSData {
     issuePrice: ipo.priceRangeMax,
     issueSize: ipo.issueSize,
     status: ipo.status,
+    updatedAt: ipo.updatedAt ? new Date(ipo.updatedAt).toISOString() : null,
   };
 }
 
@@ -114,7 +117,17 @@ async function getCachedOrFetch<T>(
  * AC#5: ISR with 5-minute revalidation (cache TTL)
  * AC#11: Page renders successfully even if API call fails (returns empty array on error)
  *
- * @returns Array of OFS issues sorted by openDate (soonest first)
+ * T-310 (P2) root cause of the page going 76 days stale: this query has no
+ * status filter and previously sorted openDate ASCENDING with limit:100 — with
+ * more than 100 historical (closed/listed) OFS rows in the table, ascending
+ * order fills the entire 100-row cap with old records before ever reaching
+ * today's date, silently excluding every current/recent OFS from the result.
+ * Sorting DESCENDING surfaces the newest records (including any upcoming
+ * ones) first, so the cap can no longer hide current data behind old rows.
+ * This was a query bug in this service, not a stalled/broken scraper — no
+ * GitHub issue filed against T-309/T-311 scraper scope.
+ *
+ * @returns Array of OFS issues sorted by openDate (most recent first)
  */
 export async function getOFSIssues(): Promise<OFSData[]> {
   return getCachedOrFetch(CACHE_KEY, async () => {
@@ -129,7 +142,7 @@ export async function getOFSIssues(): Promise<OFSData[]> {
         offeringType: 'OFS',
         limit: 100,
         sortBy: 'openDate',
-        sortOrder: 'asc', // Soonest first (ascending)
+        sortOrder: 'desc', // Most recent first — see root-cause note above
         page: 1,
       });
 

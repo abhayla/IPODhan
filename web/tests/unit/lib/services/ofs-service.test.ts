@@ -28,7 +28,7 @@ const EXPECTED_FILTER = {
   offeringType: 'OFS',
   limit: 100,
   sortBy: 'openDate',
-  sortOrder: 'asc', // OFS: soonest first
+  sortOrder: 'desc', // T-310: most recent first — see root-cause note in ofs-service.ts
   page: 1,
 };
 
@@ -80,23 +80,23 @@ describe('OFS Service', () => {
       expect(mockFindAll).toHaveBeenCalledWith(EXPECTED_FILTER);
     });
 
-    it('should request ascending openDate sort and preserve repository order', async () => {
+    it('T-310: requests descending openDate sort so a 100-row cap cannot hide current data behind old rows', async () => {
       const rows = [
-        { id: '2', companyName: 'OFS January', slug: 'ofs-january', status: 'UPCOMING', openDate: '2025-01-10', closeDate: '2025-01-11', priceRangeMax: 1000, issueSize: '3000' },
-        { id: '3', companyName: 'OFS February', slug: 'ofs-february', status: 'UPCOMING', openDate: '2025-02-20', closeDate: '2025-02-21', priceRangeMax: 1000, issueSize: '4000' },
         { id: '1', companyName: 'OFS March', slug: 'ofs-march', status: 'UPCOMING', openDate: '2025-03-15', closeDate: '2025-03-16', priceRangeMax: 1000, issueSize: '5000' },
+        { id: '3', companyName: 'OFS February', slug: 'ofs-february', status: 'UPCOMING', openDate: '2025-02-20', closeDate: '2025-02-21', priceRangeMax: 1000, issueSize: '4000' },
+        { id: '2', companyName: 'OFS January', slug: 'ofs-january', status: 'UPCOMING', openDate: '2025-01-10', closeDate: '2025-01-11', priceRangeMax: 1000, issueSize: '3000' },
       ];
       mockFindAll.mockResolvedValue(paginated(rows));
 
       const result = await getOFSIssues();
 
       expect(mockFindAll).toHaveBeenCalledWith(
-        expect.objectContaining({ sortBy: 'openDate', sortOrder: 'asc' })
+        expect.objectContaining({ sortBy: 'openDate', sortOrder: 'desc' })
       );
       expect(result.map((r) => r.companyName)).toEqual([
-        'OFS January',
-        'OFS February',
         'OFS March',
+        'OFS February',
+        'OFS January',
       ]);
     });
 

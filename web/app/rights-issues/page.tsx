@@ -48,15 +48,13 @@ const DEFAULT_OG_IMAGE = `${BASE_URL}/og-image.jpg`;
 export const metadata: Metadata = {
   title: 'Rights Issues - Live and Upcoming | IPODhan',
   description:
-    'Track live and upcoming Rights Issues in India. View record dates, open dates, renunciation dates, and apply through trusted brokers. Real-time data from NSE & BSE.',
+    'Track live and upcoming Rights Issues in India. View open dates, close dates, and apply through trusted brokers. Real-time data from NSE & BSE.',
   keywords: [
     'Rights Issue',
     'Rights Issue India',
     'upcoming rights issues',
     'live rights issues',
     'rights entitlement',
-    'record date',
-    'renunciation date',
     'NSE rights',
     'BSE rights',
   ],
@@ -84,7 +82,7 @@ export const metadata: Metadata = {
     siteName: 'IPODhan',
     title: 'Rights Issues - Live and Upcoming | IPODhan',
     description:
-      'Track live and upcoming Rights Issues in India. View record dates, open dates, and apply through trusted brokers.',
+      'Track live and upcoming Rights Issues in India. View open dates, close dates, and apply through trusted brokers.',
     images: [
       {
         url: DEFAULT_OG_IMAGE,
@@ -98,7 +96,7 @@ export const metadata: Metadata = {
     card: 'summary_large_image',
     title: 'Rights Issues - Live and Upcoming | IPODhan',
     description:
-      'Track live and upcoming Rights Issues in India. View record dates, open dates, and apply through trusted brokers.',
+      'Track live and upcoming Rights Issues in India. View open dates, close dates, and apply through trusted brokers.',
     images: [DEFAULT_OG_IMAGE],
     creator: '@ipodhan',
   },
@@ -221,8 +219,8 @@ export default async function RightsIssuesPage({
             Rights Issues
           </h1>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Track live and upcoming Rights Issues. View record dates, open dates, renunciation
-            dates, and stay updated on all rights entitlement opportunities.
+            Track live and upcoming Rights Issues. View open dates, close dates, and stay
+            updated on all rights entitlement opportunities.
           </p>
         </div>
 
@@ -244,20 +242,21 @@ export default async function RightsIssuesPage({
             <p className="text-muted-foreground">
               A Rights Issue is a way for companies to raise additional capital by offering
               existing shareholders the right to purchase additional shares at a discounted
-              price. Key dates to track:
+              price. Key dates:
             </p>
             <ul className="list-disc list-inside text-muted-foreground mt-4 space-y-2">
               <li>
-                <strong>Record Date:</strong> The date on which you must be a shareholder to be
-                eligible for the rights issue
-              </li>
-              <li>
                 <strong>Open Date:</strong> The date when the rights issue application period
-                begins
+                begins — tracked below.
               </li>
               <li>
-                <strong>Renunciation Date:</strong> The last date by which you can renounce
-                (give up) your rights or transfer them to someone else
+                <strong>Close Date:</strong> The last date to apply for the rights issue —
+                tracked below.
+              </li>
+              <li>
+                <strong>Record Date:</strong> The date on which you must be a shareholder to be
+                eligible for the rights issue. This is set separately by the company/registrar —
+                check the official RTA notice or exchange filing for the exact date.
               </li>
             </ul>
             <p className="text-muted-foreground mt-4">

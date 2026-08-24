@@ -50,6 +50,7 @@ export interface ProspectusResponse {
   page: number;
   limit: number;
   hasMore: boolean;
+  documentsAvailableCount: number;
 }
 
 // ==================== COMPONENT ====================
@@ -66,6 +67,7 @@ export function MainboardProspectusClient() {
     page: 1,
     limit: 50,
     hasMore: false,
+    documentsAvailableCount: 0,
   });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -216,6 +218,7 @@ export function MainboardProspectusClient() {
         total={data.total}
         page={data.page}
         limit={data.limit}
+        documentsAvailableCount={data.documentsAvailableCount}
         onPageChange={handlePageChange}
         onSort={handleSort}
         sortColumn={sortColumn}

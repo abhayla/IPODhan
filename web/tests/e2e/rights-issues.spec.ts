@@ -274,9 +274,12 @@ test.describe('Rights Issues Page', () => {
         // If table exists, check column headers
         await expect(table).toBeVisible();
         await expect(page.locator('thead th:has-text("Issuer Company")')).toBeVisible();
-        await expect(page.locator('thead th:has-text("Record Date")')).toBeVisible();
         await expect(page.locator('thead th:has-text("Open Date")')).toBeVisible();
-        await expect(page.locator('thead th:has-text("Renunciation Date")')).toBeVisible();
+        await expect(page.locator('thead th:has-text("Close Date")')).toBeVisible();
+        // T-310 (P2): "Record Date" / "Renunciation Date" are not real columns —
+        // the schema doesn't hold those fields, so they must never appear as headers.
+        await expect(page.locator('thead th:has-text("Record Date")')).toHaveCount(0);
+        await expect(page.locator('thead th:has-text("Renunciation Date")')).toHaveCount(0);
       } else {
         // If no table, empty message should be visible (expected when no data)
         const emptyMessage = page.locator('text=/No.*rights issues available/i');
@@ -465,7 +468,7 @@ test.describe('Rights Issues Page', () => {
       const infoSection = page.locator('text="About Rights Issues"').locator('..');
       await expect(infoSection.locator('text=/Record Date/i')).toBeVisible();
       await expect(infoSection.locator('text=/Open Date/i')).toBeVisible();
-      await expect(infoSection.locator('text=/Renunciation Date/i')).toBeVisible();
+      await expect(infoSection.locator('text=/Close Date/i')).toBeVisible();
     });
   });
 

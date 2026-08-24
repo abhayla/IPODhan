@@ -29,7 +29,11 @@ export interface RightsIssuesTabsProps {
 
 /**
  * Column definitions for Rights Issues DataTable
- * Displays: Issuer Company, Record Date, Open Date, Renunciation Date
+ * Displays: Issuer Company, Open Date, Close Date
+ *
+ * T-310: no "Record Date" / "Renunciation Date" columns — the schema doesn't
+ * hold those fields, and rendering openDate/closeDate under those labels
+ * would misrepresent the actual record date, which decides eligibility.
  */
 const rightsIssueColumns: ColumnDef<RightsIssueData>[] = [
   {
@@ -49,14 +53,6 @@ const rightsIssueColumns: ColumnDef<RightsIssueData>[] = [
     ),
   },
   {
-    key: 'recordDate',
-    header: 'Record Date',
-    sortable: true,
-    searchable: false,
-    align: 'center',
-    render: (value) => renderFunctions.date(value, 'MMM dd, yyyy'),
-  },
-  {
     key: 'openDate',
     header: 'Open Date',
     sortable: true,
@@ -65,8 +61,8 @@ const rightsIssueColumns: ColumnDef<RightsIssueData>[] = [
     render: (value) => renderFunctions.date(value, 'MMM dd, yyyy'),
   },
   {
-    key: 'renunciationDate',
-    header: 'Renunciation Date',
+    key: 'closeDate',
+    header: 'Close Date',
     sortable: true,
     searchable: false,
     align: 'center',
@@ -110,10 +106,10 @@ export function RightsIssuesTabs({
   // latest year with rows), not a hardcoded '2025' that hid every currently
   // open/upcoming 2026 rights issue on first paint.
   const [upcomingYear, setUpcomingYear] = useState<string>(() =>
-    getLatestYearWithData(upcomingRights, (item) => item.openDate || item.recordDate)
+    getLatestYearWithData(upcomingRights, (item) => item.openDate)
   );
   const [liveYear, setLiveYear] = useState<string>(() =>
-    getLatestYearWithData(liveRights, (item) => item.openDate || item.recordDate)
+    getLatestYearWithData(liveRights, (item) => item.openDate)
   );
 
   // Pagination state
@@ -162,7 +158,7 @@ export function RightsIssuesTabs({
   const filterByYear = (data: RightsIssueData[], year: string) => {
     if (!year) return data;
     return data.filter((item) => {
-      const date = item.openDate || item.recordDate;
+      const date = item.openDate;
       if (!date) return false;
       return new Date(date).getFullYear().toString() === year;
     });
