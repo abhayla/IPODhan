@@ -164,4 +164,55 @@ describe('upsertIPO — create path (T-292)', () => {
     expect(created.openDate).toBeTruthy();
     expect(created.closeDate).toBeTruthy();
   });
+
+  // T-308F checker finding F1 — "first-sight write": an IPO first ingested
+  // at/after listing, with a lone price and NO stored band, must not land
+  // min===max on the CREATE path either. The real fix lives in each emitter's
+  // parser (a lone price now yields priceRangeMin/Max === undefined — see
+  // nse-scraper.ts/nse-api-client.ts/bse-scraper.ts/bse-detail-scraper.ts),
+  // so this proves the persister's create path has no fallback that would
+  // synthesize a degenerate band from anywhere else (e.g. an issuePrice
+  // field) when the scraped payload correctly carries no band.
+  it('does not synthesize a degenerate min===max band on a fresh create when the scrape carries no band (post-fix emitter shape)', async () => {
+    const ipoRepository = makeIpoRepository({ id: 'new-ipo-id', slug: 'late-listing-ipo-ltd' });
+
+    await upsertIPO(
+      ipoRepository,
+      makeScrapedIPO({
+        companyName: 'Late Listing IPO Ltd.',
+        status: 'LISTED',
+        priceRangeMin: undefined,
+        priceRangeMax: undefined,
+      }),
+      'NSE'
+    );
+
+    const created = ipoRepository.create.mock.calls[0][0];
+    expect(created.priceRangeMin).toBeUndefined();
+    expect(created.priceRangeMax).toBeUndefined();
+  });
+
+  // A genuinely fixed-price first-sight row (RIGHTS/NCD, or a scraper that
+  // legitimately reports a single price) is NOT the bug this rule guards
+  // against — min===max is the correct value there, and the create path
+  // must not strip it.
+  it('still allows a genuine fixed-price band (min===max) through on create — not every equal pair is a collapse', async () => {
+    const ipoRepository = makeIpoRepository({ id: 'new-ipo-id', slug: 'fixed-price-rights-ltd' });
+
+    await upsertIPO(
+      ipoRepository,
+      makeScrapedIPO({
+        companyName: 'Fixed Price Rights Ltd.',
+        offeringType: 'RIGHTS',
+        segment: null,
+        priceRangeMin: 42,
+        priceRangeMax: 42,
+      }),
+      'CHITTORGARH'
+    );
+
+    const created = ipoRepository.create.mock.calls[0][0];
+    expect(created.priceRangeMin).toBe(42);
+    expect(created.priceRangeMax).toBe(42);
+  });
 });

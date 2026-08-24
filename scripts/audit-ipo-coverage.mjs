@@ -227,7 +227,12 @@ async function main() {
             d.issue_type
        FROM ipos i
        LEFT JOIN listing_performance lp ON lp.ipo_id = i.id
-       LEFT JOIN ipo_details d ON d.ipo_id = i.id
+       LEFT JOIN LATERAL (
+         SELECT issue_type FROM ipo_details
+          WHERE ipo_id = i.id
+          ORDER BY updated_at DESC, id DESC
+          LIMIT 1
+       ) d ON true
       WHERE i.${REAL_IPO}`
   );
   const gmpExists = (await q(`SELECT to_regclass('public.gmp_records') AS reg`))[0].reg;
