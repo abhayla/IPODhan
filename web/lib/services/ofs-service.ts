@@ -39,6 +39,8 @@ export interface OFSData {
   issuePrice: number | null;
   issueSize: string | null;
   status: string;
+  /** T-310 (P2): row freshness — drives the page's "Last updated" banner. */
+  updatedAt: string | null;
 }
 
 // ==================== CONSTANTS ====================
@@ -71,6 +73,7 @@ function transformOFSData(ipo: IPO): OFSData {
     issuePrice: ipo.priceRangeMax,
     issueSize: ipo.issueSize,
     status: ipo.status,
+    updatedAt: ipo.updatedAt ? new Date(ipo.updatedAt).toISOString() : null,
   };
 }
 
@@ -114,7 +117,35 @@ async function getCachedOrFetch<T>(
  * AC#5: ISR with 5-minute revalidation (cache TTL)
  * AC#11: Page renders successfully even if API call fails (returns empty array on error)
  *
- * @returns Array of OFS issues sorted by openDate (soonest first)
+ * T-310 (P2) root cause of the page going 76 days stale, VERIFIED against the
+ * prod DB (2026-08-24): `offering_type='OFS'` has only 19 rows total, newest
+ * open_date 2026-06-08 — well under the old `limit:100`, so the previous
+ * ascending sort was NOT hiding rows behind a 100-row cap (that theory does
+ * not hold once you count the rows). Sorting DESCENDING here is still correct
+ * practice (surfaces the newest — including any upcoming — record first if
+ * the table ever does grow past the cap), but it is not what was stale.
+ *
+ * The real cause is scraper-side: no source in the live pipeline actively
+ * refreshes OFS rows once they close.
+ * - `scraper/src/scrapers/nse-api-client.ts` implements a dedicated NSE OFS
+ *   API endpoint (`fetchAllIPOs(category: 'ofs')`), but it is dead code —
+ *   `grep -rn fetchAllIPOs scraper/src` shows the only caller is the
+ *   standalone `scripts/debug-nse-api-response.ts`; the production NSE
+ *   orchestrator (`nse-scraper-orchestrator-v2.ts`) calls `scrapeNSEIPOs()`
+ *   (the HTML "current issues" scraper) instead, which never queries OFS.
+ * - `scraper/src/scrapers/bse-api-scraper.ts` explicitly EXCLUDES OFS/NCD/
+ *   rights rows (empty `Price_Band`) from its output by design.
+ * - The only live path that can produce an OFS row at all is the BSE/NSE
+ *   HTML "current issues" scrape via `detectOfferingType()`
+ *   (`scraper/src/utils/detect-offering-type.ts`), which free-text matches
+ *   an issue-type field containing "OFS"/"OFFER FOR SALE" — and only while
+ *   that OFS book is listed as CURRENT on the page. Once it closes and drops
+ *   off "current issues", nothing backfills it, so the table only grows when
+ *   a new OFS happens to be live on scrape day.
+ * Filed as a scraper-scope finding (T-309/T-311), not fixed here — this repo
+ * is web/ only for T-310. See the GitHub issue referenced in the PR.
+ *
+ * @returns Array of OFS issues sorted by openDate (most recent first)
  */
 export async function getOFSIssues(): Promise<OFSData[]> {
   return getCachedOrFetch(CACHE_KEY, async () => {
@@ -129,7 +160,7 @@ export async function getOFSIssues(): Promise<OFSData[]> {
         offeringType: 'OFS',
         limit: 100,
         sortBy: 'openDate',
-        sortOrder: 'asc', // Soonest first (ascending)
+        sortOrder: 'desc', // Most recent first — see root-cause note above
         page: 1,
       });
 

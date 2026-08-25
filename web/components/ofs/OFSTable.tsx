@@ -9,7 +9,7 @@
 
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { DataTable, type ColumnDef, renderFunctions, getAvailableYears, getLatestYearWithData } from '@/components/shared/DataTable';
 import type { OFSData } from '@/lib/services/ofs-service';
@@ -119,6 +119,18 @@ export function OFSTable({ ofsIssues }: OFSTableProps) {
   // Apply filters to data
   const filteredData = filterBySearch(filterByYear(ofsIssues, year), searches);
 
+  // T-310 (P2): "Last updated" reflects the most recent row update in the
+  // fetched data — never the render/request time, which would falsely imply
+  // the data just changed. Mirrors the market-holidays honesty pattern (T-302).
+  const lastUpdatedAt = useMemo(() => {
+    return ofsIssues.reduce<Date | null>((latest, issue) => {
+      if (!issue.updatedAt) return latest;
+      const updatedDate = new Date(issue.updatedAt);
+      if (isNaN(updatedDate.getTime())) return latest;
+      return !latest || updatedDate.getTime() > latest.getTime() ? updatedDate : latest;
+    }, null);
+  }, [ofsIssues]);
+
   // Handle search
   const handleSearch = useCallback((newSearches: Record<string, string>) => {
     setSearches(newSearches);
@@ -154,6 +166,21 @@ export function OFSTable({ ofsIssues }: OFSTableProps) {
           OFS helps companies meet minimum public shareholding norms and provides liquidity to existing shareholders.
         </p>
       </div>
+
+      {/* T-310 (P2): visible freshness signal — never claim a calendar year
+          this page has no data for; state exactly when the newest row was
+          last updated. */}
+      {lastUpdatedAt && (
+        <p className="text-xs text-muted-foreground">
+          Last updated:{' '}
+          {lastUpdatedAt.toLocaleDateString('en-IN', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            timeZone: 'Asia/Kolkata',
+          })}
+        </p>
+      )}
 
       {/* OFS DataTable (AC#2, AC#6, AC#7) */}
       <DataTable

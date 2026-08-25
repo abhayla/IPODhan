@@ -22,18 +22,16 @@ import type { IPO } from '@/lib/db/types';
  * Rights Issue Table Data
  * Compatible with DataTable component columns
  *
- * Note: Schema doesn't have recordDate/renunciationDate fields yet.
- * Using temporary mapping:
- * - recordDate → openDate
- * - renunciationDate → closeDate
+ * T-310: the schema has no recordDate/renunciationDate columns and no source
+ * currently scrapes them — record date decides shareholder eligibility, so
+ * showing openDate/closeDate under those labels would mislead investors. Only
+ * the fields the schema actually holds are surfaced: openDate and closeDate.
  */
 export interface RightsIssueData {
   id: string;
   companyName: string;
   slug: string;
-  recordDate: string | null; // Maps to openDate
   openDate: string | null;
-  renunciationDate: string | null; // Maps to closeDate
   closeDate: string | null;
   issuePrice: number | null;
   issueSize: string | null;
@@ -54,19 +52,13 @@ const CACHE_KEYS = {
 
 /**
  * Transform IPO data to RightsIssueData format
- *
- * Temporary field mapping until schema is updated:
- * - recordDate = openDate (when record date is finalized)
- * - renunciationDate = closeDate (last date to renounce rights)
  */
 function transformRightsData(ipo: IPO): RightsIssueData {
   return {
     id: ipo.id,
     companyName: ipo.companyName,
     slug: ipo.slug,
-    recordDate: ipo.openDate, // Temporary mapping
     openDate: ipo.openDate,
-    renunciationDate: ipo.closeDate, // Temporary mapping
     closeDate: ipo.closeDate,
     issuePrice: ipo.priceRangeMax,
     issueSize: ipo.issueSize,

@@ -9,7 +9,8 @@
 
 import { db } from '@/lib/db';
 import { ipos, documents } from '@/lib/db';
-import { eq, and, ilike, sql } from 'drizzle-orm';
+import { eq, and, ilike, sql, inArray } from 'drizzle-orm';
+import { REAL_IPO_OFFERING_TYPES } from '@ipodhan/shared/utils/offering-type';
 
 // ==================== TYPES ====================
 
@@ -51,6 +52,12 @@ export interface ProspectusResponse {
   page: number;
   limit: number;
   hasMore: boolean;
+  /**
+   * T-310 (P2): how many of the returned rows actually have at least one
+   * document, so the UI can say honestly "documents available for X of Y"
+   * instead of rendering a page of "Not Available" cells with no context.
+   */
+  documentsAvailableCount: number;
 }
 
 // ==================== SERVICE FUNCTIONS ====================
@@ -73,7 +80,14 @@ export async function getMainboardProspectusDocuments(
     const exchange = filters?.exchange || 'All';
 
     // Build WHERE conditions
-    const conditions = [eq(ipos.segment, 'MAINBOARD')];
+    // T-310 (P2): segment alone lets non-IPO offerings (OFS, TENDER, ...) with
+    // segment='MAINBOARD' leak into a page titled "Mainboard IPO Prospectus" —
+    // the same offeringType gate the mainboard listing uses (REAL_IPO_OFFERING_TYPES,
+    // the shared SSOT predicate) is required here too.
+    const conditions = [
+      eq(ipos.segment, 'MAINBOARD'),
+      inArray(ipos.offeringType, [...REAL_IPO_OFFERING_TYPES]),
+    ];
 
     // Add company name filter (case-insensitive partial match)
     if (companyName) {
@@ -168,12 +182,17 @@ export async function getMainboardProspectusDocuments(
     // Get total count (approximate - can be improved with separate count query)
     const total = hasMore ? (page * limit) + 1 : (page - 1) * limit + prospectusArray.length;
 
+    const documentsAvailableCount = paginatedData.filter(
+      (row) => row.drhpDocument || row.rhpDocument
+    ).length;
+
     return {
       data: paginatedData,
       total,
       page,
       limit,
       hasMore,
+      documentsAvailableCount,
     };
   } catch (error) {
     console.error('Error fetching mainboard prospectus documents:', error);
@@ -184,6 +203,7 @@ export async function getMainboardProspectusDocuments(
       page: 1,
       limit: 50,
       hasMore: false,
+      documentsAvailableCount: 0,
     };
   }
 }

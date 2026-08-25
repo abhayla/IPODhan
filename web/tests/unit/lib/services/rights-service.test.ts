@@ -111,8 +111,8 @@ describe('Rights Service', () => {
       );
       expect(result).toHaveLength(1);
       expect(result[0].companyName).toBe('Test Company Rights');
-      expect(result[0].recordDate).toBe('2025-03-01'); // Maps to openDate
-      expect(result[0].renunciationDate).toBe('2025-03-10'); // Maps to closeDate
+      expect(result[0].openDate).toBe('2025-03-01');
+      expect(result[0].closeDate).toBe('2025-03-10');
     });
 
     it('should return cached data when available', async () => {
@@ -120,9 +120,7 @@ describe('Rights Service', () => {
         id: '1',
         companyName: 'Cached Rights Company',
         slug: 'cached-rights',
-        recordDate: '2025-03-01',
         openDate: '2025-03-01',
-        renunciationDate: '2025-03-10',
         closeDate: '2025-03-10',
         issuePrice: 150,
         issueSize: '500',
@@ -289,9 +287,7 @@ describe('Rights Service', () => {
       expect(transformed.id).toBe(mockUpcomingRightsIPO.id);
       expect(transformed.companyName).toBe(mockUpcomingRightsIPO.companyName);
       expect(transformed.slug).toBe(mockUpcomingRightsIPO.slug);
-      expect(transformed.recordDate).toBe(mockUpcomingRightsIPO.openDate);
       expect(transformed.openDate).toBe(mockUpcomingRightsIPO.openDate);
-      expect(transformed.renunciationDate).toBe(mockUpcomingRightsIPO.closeDate);
       expect(transformed.closeDate).toBe(mockUpcomingRightsIPO.closeDate);
       expect(transformed.issuePrice).toBe(mockUpcomingRightsIPO.priceRangeMax);
       expect(transformed.issueSize).toBe(mockUpcomingRightsIPO.issueSize);

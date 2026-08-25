@@ -44,6 +44,8 @@ interface MainboardProspectusTableProps {
   total: number;
   page: number;
   limit: number;
+  /** T-310 (P2): how many of the rows below actually have a document. */
+  documentsAvailableCount: number;
   onPageChange?: (page: number) => void;
   onSort?: (column: 'companyName' | 'exchange') => void;
   sortColumn?: string;
@@ -59,6 +61,7 @@ export function MainboardProspectusTable({
   total,
   page,
   limit,
+  documentsAvailableCount,
   onPageChange,
   onSort,
   sortColumn,
@@ -113,6 +116,18 @@ export function MainboardProspectusTable({
       <div className="text-sm text-muted-foreground">
         Total Records: {total}
       </div>
+
+      {/* T-310 (P2): honest coverage note — most rows currently show "Not
+          Available" because their DRHP/RHP documents have not been collected
+          yet, not because of a display bug. Say so once instead of leaving
+          the reader to guess why most cells are empty. */}
+      {prospectusData.length > 0 && documentsAvailableCount < prospectusData.length && (
+        <div className="text-sm text-muted-foreground bg-muted/50 border rounded-md px-3 py-2">
+          Documents available for {documentsAvailableCount} of {prospectusData.length} IPOs shown
+          on this page. Documents for the rest are still being collected and will appear once
+          uploaded.
+        </div>
+      )}
 
       {/* Desktop Table Layout (AC#12 - desktop view) */}
       <div className="hidden md:block overflow-x-auto">
