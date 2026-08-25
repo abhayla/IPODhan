@@ -67,10 +67,13 @@ const SELF_EXCLUDED_FILES = new Set([
 export const PATTERNS = {
   drizzle: /\.(insert|update|delete)\(\s*(schema\.)?ipos\b/,
   repository: /\bipoRepository\.(create|update|delete|upsert)\(/i,
-  // T-318: also match a schema-qualified (`public.ipos`) or double-quoted
-  // (`"ipos"`) identifier — both are valid Postgres references to the same
-  // table that the original bare `ipos` pattern missed.
-  raw_sql: /\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(public\.)?"?ipos"?\b/i,
+  // T-318: also match a schema-qualified (`public.ipos`, `"public"."ipos"`)
+  // or double-quoted (`"ipos"`) identifier — all are valid Postgres
+  // references to the same table that the original bare `ipos` pattern
+  // missed. The schema qualifier itself may or may not be quoted
+  // independently of the table name (drizzle-kit/pg_dump commonly emit
+  // `"public"."ipos"` with both sides quoted).
+  raw_sql: /\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+("?public"?\.)?"?ipos"?\b/i,
   dynamic_table: /(getTableFromSchema\(|\(schema\s+as\s+any\)\[)/,
 };
 

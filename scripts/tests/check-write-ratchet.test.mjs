@@ -120,6 +120,16 @@ test('raw_sql: schema-qualified public.ipos_backup does NOT match', () => {
   assert.deepEqual(detectPatterns(fixture), []);
 });
 
+test('raw_sql: fully double-quoted "public"."ipos" (drizzle-kit/pg_dump form) is detected', () => {
+  const fixture = `INSERT INTO "public"."ipos" (company_name) VALUES ('Acme');`;
+  assert.deepEqual(detectPatterns(fixture), ['raw_sql']);
+});
+
+test('raw_sql: fully double-quoted "public"."ipos_backup" does NOT match', () => {
+  const fixture = `INSERT INTO "public"."ipos_backup" (id) SELECT 1;`;
+  assert.deepEqual(detectPatterns(fixture), []);
+});
+
 test('dynamic_table: getTableFromSchema( is detected', () => {
   const fixture = `const table = getTableFromSchema(tableName);`;
   assert.deepEqual(detectPatterns(fixture), ['dynamic_table']);
