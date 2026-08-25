@@ -126,9 +126,13 @@ export class DataConsolidationOrchestrator {
 
     try {
       // T-307: single source of truth for "which row is this?" — resolveIpoRow
-      // runs the exact three-tier lookup (normalized-name -> slug -> fuzzy)
-      // shared with the protection guard and data-persister.upsertIPO, so
-      // this path can no longer diverge from either of them.
+      // runs the same tiered lookup shared with the protection guard and
+      // data-persister.upsertIPO, so this path can no longer diverge from
+      // either of them. T-318 (IDENT): key-first (isin -> symbol) before
+      // name/slug/fuzzy — this is the main consolidated-write path every
+      // real-time scrape goes through, so isin/symbol MUST be threaded here
+      // (not just in the secondary backfill scripts) for the key-first tiers
+      // to actually fire on production writes.
       const normalizedName = normalizeCompanyNameForMatching(scrapedIPO.companyName);
       const existingIPO: IPO | null = preResolvedIPO !== undefined
         ? preResolvedIPO
@@ -136,6 +140,8 @@ export class DataConsolidationOrchestrator {
             companyName: scrapedIPO.companyName,
             normalizedName,
             slug,
+            isin: scrapedIPO.isin,
+            symbol: scrapedIPO.symbol,
           }) as IPO | null;
       const isNew = !existingIPO;
 

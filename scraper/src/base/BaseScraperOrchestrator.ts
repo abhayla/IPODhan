@@ -365,17 +365,22 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
 
     // Step 2: Resolve identity ONCE per request (T-307, write-path hardening
     // Phase 1). `resolveIpoRow` is the single source of truth for "which row
-    // is this?" — the same three-tier lookup (normalized-name -> slug ->
-    // fuzzy) the write path uses. The row resolved here is passed straight
-    // down to the write (Step 5) so the guard and the write can no longer
-    // disagree (docs/architecture/write-path-hardening.md §1.4, §2(a) step 1
-    // — closes the T-287F3 divergence that T-293 reopened by adding a fuzzy
-    // tier to the write path only).
+    // is this?" — key-first (isin -> symbol), then normalized-name -> slug ->
+    // fuzzy (T-318, IDENT). The row resolved here is passed straight down to
+    // the write (Step 5) so the guard and the write can no longer disagree
+    // (docs/architecture/write-path-hardening.md §1.4, §2(a) step 1 — closes
+    // the T-287F3 divergence that T-293 reopened by adding a fuzzy tier to
+    // the write path only). T-318: this is the LIVE scraper write path (the
+    // guard every real-time NSE/BSE/Chittorgarh scrape goes through) — it
+    // MUST thread isin/symbol so the key-first tiers actually fire here, not
+    // only in the secondary backfill scripts.
     const normalizedName = normalizeCompanyNameForMatching(validatedIPO.companyName);
     const existingIPO = await resolveIpoRow(this.ipoRepository, {
       companyName: validatedIPO.companyName,
       normalizedName,
       slug,
+      isin: validatedIPO.isin,
+      symbol: validatedIPO.symbol,
     }) as IPO | null;
     const ipoId = existingIPO?.id;
 

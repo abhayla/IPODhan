@@ -32,6 +32,7 @@ import logger from './utils/logger.js';
 import { heartbeat, flushOwnerNotify } from './services/owner-notify.js';
 import { evaluateFreshness } from './services/freshness-monitor.js';
 import { checkCrossSourceDisagreements } from './services/cross-source-disagreement-monitor.js';
+import { getKeylessCoverage } from './services/keyless-coverage-monitor.js';
 import { validateFeatureFlags, getFeatureStatus } from './config/feature-flags.js';
 
 /** Days of scraper_logs history to retain. */
@@ -629,11 +630,13 @@ export async function triggerPrimarySourceDiscovery(): Promise<void> {
 /**
  * T-195: data-quality watchdog core, run once per full `--source=all` cycle.
  * Evaluates the freshness SLOs (freshness-slo.ts) against `scraper_logs`
- * (the same source `/api/admin/scraper/status` reads) and reports
- * cross-source disagreements for OPEN IPOs (cross-source-disagreement-monitor.ts,
- * extending the existing data_conflicts subsystem). Both halves are
- * independently non-fatal — a failure in one must not skip the other or fail
- * the scrape (non-fatal-side-effects.md).
+ * (the same source `/api/admin/scraper/status` reads), reports cross-source
+ * disagreements for OPEN IPOs (cross-source-disagreement-monitor.ts,
+ * extending the existing data_conflicts subsystem), and (T-318) reports the
+ * keyless-coverage metric (keyless-coverage-monitor.ts — rows with neither
+ * symbol nor isin, relying on name-based identity matching). All three
+ * checks are independently non-fatal — a failure in one must not skip the
+ * others or fail the scrape (non-fatal-side-effects.md).
  */
 async function triggerDataQualityWatchdog(): Promise<void> {
   try {
@@ -653,6 +656,28 @@ async function triggerDataQualityWatchdog(): Promise<void> {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'Cross-source disagreement check failed (non-fatal)'
+    );
+  }
+
+  // T-318 (ITEM 2): keyless-coverage metric — how many `ipos` rows have
+  // neither a symbol nor an isin, i.e. rely on name-based identity matching
+  // as the fallback tail of resolveIpoRow's priority chain. Reporting only;
+  // does not change resolution behavior. Non-fatal, same pattern as the two
+  // checks above.
+  try {
+    const report = await getKeylessCoverage(db);
+    logger.info(
+      {
+        totalCount: report.totalCount,
+        keylessCount: report.keylessCount,
+        keylessPct: report.keylessPct,
+      },
+      'Keyless IPO coverage (rows with neither symbol nor isin)'
+    );
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Keyless-coverage metric failed (non-fatal)'
     );
   }
 }

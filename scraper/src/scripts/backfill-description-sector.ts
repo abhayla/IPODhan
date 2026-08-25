@@ -22,6 +22,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { db } from '@ipodhan/shared/db';
 import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
 import { IPORepository } from '@ipodhan/shared/repositories/ipo-repository';
+import { resolveIpoRow } from '@ipodhan/shared/repositories';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { upsertIPO } from '../services/data-persister.js';
 import { extractCompanyDescriptionFromDetailHtml } from '../scrapers/chittorgarh-detail-fields.js';
@@ -126,7 +127,17 @@ async function main() {
 
       if (EXECUTE) {
         const scraped = buildDescriptionScrapedIPO(c, description);
-        await upsertIPO(ipoRepo, scraped, 'CHITTORGARH');
+        // T-318 (Phase-1 completion): resolve identity ONCE here instead of
+        // letting upsertIPO re-resolve independently (one of the 6 direct
+        // callers named in review-round2 P1-2/C2).
+        const preResolvedIPO = await resolveIpoRow(ipoRepo, {
+          companyName: c.companyName,
+          normalizedName: normalizeCompanyNameForMatching(c.companyName),
+          slug: c.slug,
+          isin: c.isin,
+          symbol: c.symbol,
+        });
+        await upsertIPO(ipoRepo, scraped, 'CHITTORGARH', preResolvedIPO);
         written++;
       } else {
         logger.info({ company: c.companyName, len: description.length }, '[DRY-RUN] would set company_description');

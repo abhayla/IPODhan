@@ -10,10 +10,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 dotenv.config({ path: join(__dirname, '../../.env') });
 
-import { db, getRedisClient } from '@ipodhan/shared';
+import { db, getRedisClient, resolveIpoRow } from '@ipodhan/shared';
 import { IPORepository } from '@ipodhan/shared';
-import { upsertIPO } from '../services/data-persister.js';
-import type { ScrapedIPO } from '../utils/validators.js';
+import { upsertIPO, normalizeCompanyNameForMatching } from '../services/data-persister.js';
+import { generateSlug, type ScrapedIPO } from '../utils/validators.js';
 
 const BASE_URL = 'https://www.nseindia.com';
 
@@ -101,7 +101,16 @@ async function scrapeNSEDirect() {
           symbol: item.symbol
         };
 
-        const ipoId = await upsertIPO(ipoRepository, ipo, 'NSE');
+        // T-318 (Phase-1 completion): resolve identity ONCE here instead of
+        // letting upsertIPO re-resolve independently (one of the 6 direct
+        // callers named in review-round2 P1-2/C2).
+        const preResolvedIPO = await resolveIpoRow(ipoRepository, {
+          companyName: ipo.companyName,
+          normalizedName: normalizeCompanyNameForMatching(ipo.companyName),
+          slug: generateSlug(ipo.companyName),
+          symbol: ipo.symbol,
+        });
+        const ipoId = await upsertIPO(ipoRepository, ipo, 'NSE', preResolvedIPO);
         console.log(`✅ ${ipo.companyName}`);
         successCount++;
       } catch (error) {

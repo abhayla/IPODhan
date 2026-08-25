@@ -31,17 +31,22 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 export const ROOT = join(__dirname, '..');
 export const BASELINE_PATH = join(ROOT, 'config', 'write-ratchet-baseline.json');
 
-const SCAN_EXTENSIONS = new Set(['.ts', '.mjs', '.sql']);
+export const SCAN_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.cjs', '.mjs', '.sql']);
 
-const EXCLUDED_DIR_NAMES = new Set([
+export const EXCLUDED_DIR_NAMES = new Set([
   'node_modules', '.git', '.next', 'dist', 'coverage', '.turbo', '.husky',
 ]);
 
 // Segments (checked against the POSIX-normalized relative path) that are
 // never live write sites even when a pattern matches inside them.
-const EXCLUDED_PATH_SEGMENTS = [
+//
+// T-318: the bare '/test/' segment was REMOVED (T-316 originally had it).
+// It over-matched: a *route directory* literally named `test/` (e.g.
+// `web/app/api/admin/notifications/test/route.ts`) is a live production
+// write site, not a test fixture — only '/tests/' (plural), '__tests__/',
+// '.test.', and '.spec.' are actual test-file conventions in this repo.
+export const EXCLUDED_PATH_SEGMENTS = [
   '/tests/',
-  '/test/',
   '__tests__/',
   '.test.',
   '.spec.',
@@ -62,7 +67,13 @@ const SELF_EXCLUDED_FILES = new Set([
 export const PATTERNS = {
   drizzle: /\.(insert|update|delete)\(\s*(schema\.)?ipos\b/,
   repository: /\bipoRepository\.(create|update|delete|upsert)\(/i,
-  raw_sql: /\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+ipos\b/i,
+  // T-318: also match a schema-qualified (`public.ipos`, `"public"."ipos"`)
+  // or double-quoted (`"ipos"`) identifier — all are valid Postgres
+  // references to the same table that the original bare `ipos` pattern
+  // missed. The schema qualifier itself may or may not be quoted
+  // independently of the table name (drizzle-kit/pg_dump commonly emit
+  // `"public"."ipos"` with both sides quoted).
+  raw_sql: /\b(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+("?public"?\.)?"?ipos"?\b/i,
   dynamic_table: /(getTableFromSchema\(|\(schema\s+as\s+any\)\[)/,
 };
 

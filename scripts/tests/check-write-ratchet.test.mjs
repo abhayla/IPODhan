@@ -6,12 +6,46 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { detectPatterns, PATTERNS } from '../check-write-ratchet.mjs';
+import {
+  detectPatterns,
+  PATTERNS,
+  SCAN_EXTENSIONS,
+  EXCLUDED_DIR_NAMES,
+  EXCLUDED_PATH_SEGMENTS,
+} from '../check-write-ratchet.mjs';
 
 test('exactly the four documented pattern classes exist', () => {
   assert.deepEqual(
     Object.keys(PATTERNS).sort(),
     ['drizzle', 'dynamic_table', 'raw_sql', 'repository']
+  );
+});
+
+// T-318: pin the scanned extensions and exclusion sets so a future edit that
+// silently narrows them (e.g. dropping '.tsx' or re-adding the over-broad
+// bare '/test/' segment) turns this fixture red instead of drifting quietly.
+test('SCAN_EXTENSIONS includes .ts, .tsx, .js, .jsx, .cjs, .mjs, .sql', () => {
+  assert.deepEqual(
+    [...SCAN_EXTENSIONS].sort(),
+    ['.cjs', '.js', '.jsx', '.mjs', '.sql', '.ts', '.tsx']
+  );
+});
+
+test('EXCLUDED_DIR_NAMES is exactly the documented directory set', () => {
+  assert.deepEqual(
+    [...EXCLUDED_DIR_NAMES].sort(),
+    ['.git', '.husky', '.next', '.turbo', 'coverage', 'dist', 'node_modules']
+  );
+});
+
+test('EXCLUDED_PATH_SEGMENTS does NOT contain the over-broad bare "/test/" segment', () => {
+  // T-318: a route directory literally named `test/` (e.g.
+  // web/app/api/admin/notifications/test/route.ts) is a live production
+  // write site, not a test fixture. Only the plural '/tests/' and the
+  // per-file '.test.'/'.spec.'/'__tests__/' conventions are legitimate.
+  assert.deepEqual(
+    EXCLUDED_PATH_SEGMENTS,
+    ['/tests/', '__tests__/', '.test.', '.spec.', '/drizzle/migrations/']
   );
 });
 
@@ -68,6 +102,31 @@ test('raw_sql: DELETE FROM ipos is detected', () => {
 
 test('raw_sql: a table name that merely starts with "ipos" does NOT match', () => {
   const fixture = `INSERT INTO ipos_backup (id) SELECT id FROM ipos_source;`;
+  assert.deepEqual(detectPatterns(fixture), []);
+});
+
+test('raw_sql: schema-qualified public.ipos is detected', () => {
+  const fixture = `UPDATE public.ipos SET status = 'LISTED' WHERE id = $1;`;
+  assert.deepEqual(detectPatterns(fixture), ['raw_sql']);
+});
+
+test('raw_sql: double-quoted "ipos" identifier is detected', () => {
+  const fixture = `INSERT INTO "ipos" (company_name) VALUES ('Acme');`;
+  assert.deepEqual(detectPatterns(fixture), ['raw_sql']);
+});
+
+test('raw_sql: schema-qualified public.ipos_backup does NOT match', () => {
+  const fixture = `INSERT INTO public.ipos_backup (id) SELECT 1;`;
+  assert.deepEqual(detectPatterns(fixture), []);
+});
+
+test('raw_sql: fully double-quoted "public"."ipos" (drizzle-kit/pg_dump form) is detected', () => {
+  const fixture = `INSERT INTO "public"."ipos" (company_name) VALUES ('Acme');`;
+  assert.deepEqual(detectPatterns(fixture), ['raw_sql']);
+});
+
+test('raw_sql: fully double-quoted "public"."ipos_backup" does NOT match', () => {
+  const fixture = `INSERT INTO "public"."ipos_backup" (id) SELECT 1;`;
   assert.deepEqual(detectPatterns(fixture), []);
 });
 
