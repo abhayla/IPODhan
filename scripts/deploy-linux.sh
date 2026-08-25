@@ -541,7 +541,13 @@ verify_public_health() {
     log "[dry-run] skipping post-flip public health/version probe"
     return 0
   fi
-  local port; port="$(grep -E '^PORT=' "$WEB_ENV_FILE" | tail -n1 | cut -d= -f2-)"
+  # T-321F (checker sibling finding): `|| true` guards this the same way
+  # line ~641's flag lookup does — under `set -euo pipefail`, `grep` finding
+  # no `PORT=` line (its normal state when the deploy env omits an explicit
+  # port) makes the whole pipeline non-zero, which used to abort the deploy
+  # here even though the next line's `${port:-3000}` proves absence was
+  # always meant to fall through to the 3000 default, not crash.
+  local port; port="$(grep -E '^PORT=' "$WEB_ENV_FILE" | tail -n1 | cut -d= -f2- || true)"
   local waited=0 code=000
   while [ "$waited" -lt "$HEALTH_TIMEOUT" ]; do
     code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port:-3000}/api/health" || true)"

@@ -559,6 +559,48 @@ else
   fi
 fi
 
+# --- Case 15: T-321F sibling — verify_public_health()'s PORT= lookup must --
+# --- NOT silently exit the deploy when $WEB_ENV_FILE genuinely omits -------
+# --- PORT= (the same class as case 13/report_wired_jobs(): a --------------
+# --- grep|tail|cut pipeline with no match fails under pipefail even though -
+# --- the very next line reads `${port:-3000}`, proving absence was always -
+# --- meant to fall through to the default, not crash). Extracts the exact -
+# --- port-assignment line from verify_public_health() and evals it --------
+# --- standalone under the real `set -euo pipefail`.
+PORT_LINE15="$(sed -n 's/^  local port; //p' "$DEPLOY_SCRIPT" | grep '^port=')"
+if [ -z "$PORT_LINE15" ]; then
+  fail "case 15: could not extract the PORT= lookup line from verify_public_health() in $DEPLOY_SCRIPT — line renamed/moved?"
+else
+  ENVDIR15="$(mktemp -d)"
+  echo "SOME_OTHER_KEY=1" > "$ENVDIR15/web.env.local"   # no PORT= line at all — its normal off-state
+
+  set +e
+  (
+    set -euo pipefail
+    WEB_ENV_FILE="$ENVDIR15/web.env.local"
+    eval "$PORT_LINE15"
+    echo "port=[${port:-3000}]"
+  ) >/tmp/deploy-test-15.log 2>&1
+  RC15=$?
+  set -e
+
+  if [ "$RC15" -ne 0 ]; then
+    fail "case 15: PORT= lookup exited non-zero ($RC15) when PORT= was absent from web.env.local — the T-321F sibling silent-exit"
+    cat /tmp/deploy-test-15.log
+  else
+    pass "case 15: PORT= lookup completes when PORT= is absent from web.env.local"
+  fi
+
+  if grep -q '^port=\[3000\]$' /tmp/deploy-test-15.log; then
+    pass "case 15: absent PORT= falls through to the 3000 default, not a crash"
+  else
+    fail "case 15: expected 'port=[3000]' (the \${port:-3000} default) in the output"
+    cat /tmp/deploy-test-15.log
+  fi
+
+  rm -rf "$ENVDIR15"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1
