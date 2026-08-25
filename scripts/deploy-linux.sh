@@ -109,7 +109,35 @@
 # pruning), DEPLOY_DRYRUN_VERSION_MISMATCH (dry-run test hook — set to force
 # the post-flip /api/version sha check to simulate a mismatch).
 
-set -euo pipefail
+set -Eeuo pipefail
+
+# T-321: name-the-failure safety net. Before this trap existed, ANY command
+# that failed under `set -euo pipefail` (a `grep`/pipeline with no match
+# assigned to a variable, an unguarded arithmetic expansion, etc.) exited the
+# whole deploy with NO error message at all — the log just stopped and the
+# EXIT trap (resume_scraper) ran, so a real failure looked identical to a
+# clean run that happened to end early. This is a backstop, not a substitute
+# for fixing the specific gate (see report_wired_jobs() below for the actual
+# T-321 root cause) — every future silent-exit-class bug now prints WHERE and
+# WHAT failed before the script exits, instead of failing invisibly.
+#
+# T-321F (checker HARD finding): `set -euo pipefail` alone does NOT make bash
+# inherit the ERR trap into shell functions, command substitutions, or
+# subshells (bash's `set -e`/ERR-trap documentation calls this out — POSIX
+# mode + missing `errtrace` is the historical default). The real T-321 bug
+# lived inside report_wired_jobs(), a FUNCTION, so without `-E` (errtrace)
+# this backstop would silently fail to fire for the very failure it was
+# written to catch — proven on bash 5.2.37: an unguarded failing pipeline
+# inside a function exits non-zero with NO "FATAL:" line under
+# `set -euo pipefail`, and DOES print it under `set -Eeuo pipefail`. `-E` is
+# what makes the trap apply inside functions/subshells/`$(...)` — see
+# scripts/tests/deploy-linux.test.sh case 14 for the RED/GREEN proof.
+on_deploy_error() {
+  local ec=$?
+  echo "FATAL: deploy-linux.sh:${BASH_LINENO[0]:-?} failed running: ${BASH_COMMAND} (exit ${ec})" >&2
+  exit "$ec"
+}
+trap on_deploy_error ERR
 
 DRY_RUN=0
 FORCE=0
@@ -513,7 +541,13 @@ verify_public_health() {
     log "[dry-run] skipping post-flip public health/version probe"
     return 0
   fi
-  local port; port="$(grep -E '^PORT=' "$WEB_ENV_FILE" | tail -n1 | cut -d= -f2-)"
+  # T-321F (checker sibling finding): `|| true` guards this the same way
+  # line ~641's flag lookup does — under `set -euo pipefail`, `grep` finding
+  # no `PORT=` line (its normal state when the deploy env omits an explicit
+  # port) makes the whole pipeline non-zero, which used to abort the deploy
+  # here even though the next line's `${port:-3000}` proves absence was
+  # always meant to fall through to the 3000 default, not crash.
+  local port; port="$(grep -E '^PORT=' "$WEB_ENV_FILE" | tail -n1 | cut -d= -f2- || true)"
   local waited=0 code=000
   while [ "$waited" -lt "$HEALTH_TIMEOUT" ]; do
     code="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:${port:-3000}/api/health" || true)"
@@ -610,7 +644,19 @@ report_wired_jobs() {
       if [ -n "$flag" ]; then
         flag_val="unset"
         if (( ! DRY_RUN )); then
-          flag_val="$(grep "^${flag}=" "$SCRAPER_ENV_FILE" "$WEB_ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)"
+          # T-321: a §GATE'd flag (e.g. ENABLE_STAGE_RECONCILER) is routinely
+          # ABSENT from both env files entirely — that is its normal "off"
+          # state (owner-gated-feature-flags.md), not an error. Under
+          # `set -euo pipefail`, `grep` finding zero matches exits 1, and
+          # pipefail propagates that through `tail`/`cut` to the whole
+          # pipeline; assigning a failing command substitution to a variable
+          # is checked by `set -e`, so the ENTIRE DEPLOY exited immediately
+          # here with NO error message the moment a flag was legitimately
+          # unset — the exact silent-exit-1 this informational report line
+          # must never cause. `|| true` makes "flag not found" the expected,
+          # non-fatal outcome this report already handles via the blank-value
+          # fallback on the next line.
+          flag_val="$(grep "^${flag}=" "$SCRAPER_ENV_FILE" "$WEB_ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
           [ -n "$flag_val" ] || flag_val="unset"
         fi
         log "job wired: $job (${call}(), flag ${flag}=${flag_val})"

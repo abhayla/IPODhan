@@ -452,6 +452,155 @@ for job_case12 in "duplicateSweep" "stageReconciler" "primarySourceDiscovery"; d
   fi
 done
 
+# --- Case 13: T-321 — report_wired_jobs() must NEVER silently exit the -----
+# --- whole deploy over a §GATE'd flag that is legitimately ABSENT from -----
+# --- both env files (its normal off state, owner-gated-feature-flags.md). --
+# --- Reproduces the real incident: `deploy-linux.yml` failed 4/4 runs with -
+# --- "Process completed with exit code 1" and ZERO error message, right ----
+# --- after logging "job wired: duplicateSweep" and before the next job -----
+# --- line — because under `set -euo pipefail`, `grep` finding no match in --
+# --- the ENABLE_STAGE_RECONCILER lookup made the whole pipeline (and the --
+# --- variable assignment reading it) fail, which `set -e` treated as a -----
+# --- fatal script error. This extracts report_wired_jobs() in isolation ----
+# --- (same pattern as case 11) with NON-dry-run env files that genuinely ---
+# --- omit both gated flags, under the SAME `set -euo pipefail` the real ----
+# --- script runs under, and asserts the function completes AND reports all-
+# --- three jobs instead of vanishing after the first.
+REPORT_FN="$(sed -n '/^report_wired_jobs()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -z "$REPORT_FN" ]; then
+  fail "case 13: could not extract report_wired_jobs() from $DEPLOY_SCRIPT — function renamed?"
+else
+  ENVDIR13="$(mktemp -d)"
+  # Neither env file mentions the gated flags at all — their real off-state.
+  echo "SOME_OTHER_KEY=1" > "$ENVDIR13/scraper.env"
+  echo "SOME_OTHER_KEY=1" > "$ENVDIR13/web.env.local"
+
+  set +e
+  (
+    set -euo pipefail
+    eval "$REPORT_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=0
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    SHA="$(cd "$REPO_ROOT" && git rev-parse HEAD)"
+    SHORT_SHA="${SHA:0:7}"
+    SCRAPER_ENV_FILE="$ENVDIR13/scraper.env"
+    WEB_ENV_FILE="$ENVDIR13/web.env.local"
+    report_wired_jobs
+  ) >/tmp/deploy-test-13.log 2>&1
+  RC13=$?
+  set -e
+
+  if [ "$RC13" -ne 0 ]; then
+    fail "case 13: report_wired_jobs() exited non-zero ($RC13) when a §GATE'd flag was legitimately absent from both env files — the T-321 silent-exit regression"
+    cat /tmp/deploy-test-13.log
+  else
+    pass "case 13: report_wired_jobs() completes when a §GATE'd flag is absent from both env files"
+  fi
+
+  for job_case13 in "duplicateSweep" "stageReconciler" "primarySourceDiscovery"; do
+    if grep -q "job wired: $job_case13" /tmp/deploy-test-13.log; then
+      pass "case 13: reports '$job_case13' as wired even with gated flags absent"
+    else
+      fail "case 13: missing 'job wired: $job_case13' — report_wired_jobs() likely exited early (T-321 class)"
+      cat /tmp/deploy-test-13.log
+    fi
+  done
+
+  if grep -q "flag ENABLE_STAGE_RECONCILER=unset" /tmp/deploy-test-13.log; then
+    pass "case 13: absent flag reports 'unset', not a crash"
+  else
+    fail "case 13: expected 'flag ENABLE_STAGE_RECONCILER=unset' in the report"
+    cat /tmp/deploy-test-13.log
+  fi
+
+  rm -rf "$ENVDIR13"
+fi
+
+# --- Case 14: T-321F — ERR trap must fire inside FUNCTION bodies too -------
+# --- (checker finding: `set -euo pipefail` w/o `-E` does not inherit the ---
+# --- ERR trap into functions/subshells/command substitutions, so the exact -
+# --- class of bug that caused the real T-321 incident — an unguarded -------
+# --- failing pipeline inside a function — would NOT have been named by the -
+# --- "name-the-failure" backstop). Extracts the real prelude (the ----------
+# --- `set -Eeuo pipefail` line through `trap on_deploy_error ERR`) straight
+# --- from deploy-linux.sh so this test tracks the real script, then defines
+# --- a function with an unguarded failing pipeline (same shape as the -----
+# --- report_wired_jobs() bug) and asserts the FATAL line names the failing -
+# --- line + command. RED/GREEN proof (manual, not asserted in-test): -------
+# --- deleting `trap on_deploy_error ERR` from deploy-linux.sh turns this ---
+# --- case RED (rc=0, no FATAL); restoring it turns the suite GREEN again. --
+PRELUDE14="$(sed -n '/^set -Eeuo pipefail$/,/^trap on_deploy_error ERR$/p' "$DEPLOY_SCRIPT")"
+if [ -z "$PRELUDE14" ]; then
+  fail "case 14: could not extract the 'set -Eeuo pipefail' / trap prelude from $DEPLOY_SCRIPT — did the ERR-trap setup move or lose -E?"
+else
+  set +e
+  (
+    eval "$PRELUDE14"
+    fn_with_unguarded_pipeline_case14() {
+      local x
+      x="$(grep '^NOPE=' /dev/null | tail -n1 | cut -d= -f2-)"
+      echo "unreachable: $x"
+    }
+    fn_with_unguarded_pipeline_case14
+  ) >/tmp/deploy-test-14.log 2>&1
+  RC14=$?
+  set -e
+
+  if [ "$RC14" -eq 0 ]; then
+    fail "case 14: fn_with_unguarded_pipeline_case14() exited 0 — the unguarded failing pipeline was not caught at all"
+    cat /tmp/deploy-test-14.log
+  elif grep -Eq '^FATAL: .*:[0-9]+ failed running:.*\(exit [0-9]+\)$' /tmp/deploy-test-14.log; then
+    pass "case 14: ERR trap fires inside a function body and names the failing line + command"
+  else
+    fail "case 14: function-scoped failure exited non-zero but printed NO well-formed 'FATAL: <file>:<line> failed running: <cmd> (exit <n>)' line (the T-321F checker finding — trap not inherited without -E)"
+    cat /tmp/deploy-test-14.log
+  fi
+fi
+
+# --- Case 15: T-321F sibling — verify_public_health()'s PORT= lookup must --
+# --- NOT silently exit the deploy when $WEB_ENV_FILE genuinely omits -------
+# --- PORT= (the same class as case 13/report_wired_jobs(): a --------------
+# --- grep|tail|cut pipeline with no match fails under pipefail even though -
+# --- the very next line reads `${port:-3000}`, proving absence was always -
+# --- meant to fall through to the default, not crash). Extracts the exact -
+# --- port-assignment line from verify_public_health() and evals it --------
+# --- standalone under the real `set -euo pipefail`.
+PORT_LINE15="$(sed -n 's/^  local port; //p' "$DEPLOY_SCRIPT" | grep '^port=')"
+if [ -z "$PORT_LINE15" ]; then
+  fail "case 15: could not extract the PORT= lookup line from verify_public_health() in $DEPLOY_SCRIPT — line renamed/moved?"
+else
+  ENVDIR15="$(mktemp -d)"
+  echo "SOME_OTHER_KEY=1" > "$ENVDIR15/web.env.local"   # no PORT= line at all — its normal off-state
+
+  set +e
+  (
+    set -euo pipefail
+    WEB_ENV_FILE="$ENVDIR15/web.env.local"
+    eval "$PORT_LINE15"
+    echo "port=[${port:-3000}]"
+  ) >/tmp/deploy-test-15.log 2>&1
+  RC15=$?
+  set -e
+
+  if [ "$RC15" -ne 0 ]; then
+    fail "case 15: PORT= lookup exited non-zero ($RC15) when PORT= was absent from web.env.local — the T-321F sibling silent-exit"
+    cat /tmp/deploy-test-15.log
+  else
+    pass "case 15: PORT= lookup completes when PORT= is absent from web.env.local"
+  fi
+
+  if grep -q '^port=\[3000\]$' /tmp/deploy-test-15.log; then
+    pass "case 15: absent PORT= falls through to the 3000 default, not a crash"
+  else
+    fail "case 15: expected 'port=[3000]' (the \${port:-3000} default) in the output"
+    cat /tmp/deploy-test-15.log
+  fi
+
+  rm -rf "$ENVDIR15"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1
