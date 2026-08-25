@@ -109,7 +109,7 @@
 # pruning), DEPLOY_DRYRUN_VERSION_MISMATCH (dry-run test hook — set to force
 # the post-flip /api/version sha check to simulate a mismatch).
 
-set -euo pipefail
+set -Eeuo pipefail
 
 # T-321: name-the-failure safety net. Before this trap existed, ANY command
 # that failed under `set -euo pipefail` (a `grep`/pipeline with no match
@@ -120,6 +120,18 @@ set -euo pipefail
 # for fixing the specific gate (see report_wired_jobs() below for the actual
 # T-321 root cause) — every future silent-exit-class bug now prints WHERE and
 # WHAT failed before the script exits, instead of failing invisibly.
+#
+# T-321F (checker HARD finding): `set -euo pipefail` alone does NOT make bash
+# inherit the ERR trap into shell functions, command substitutions, or
+# subshells (bash's `set -e`/ERR-trap documentation calls this out — POSIX
+# mode + missing `errtrace` is the historical default). The real T-321 bug
+# lived inside report_wired_jobs(), a FUNCTION, so without `-E` (errtrace)
+# this backstop would silently fail to fire for the very failure it was
+# written to catch — proven on bash 5.2.37: an unguarded failing pipeline
+# inside a function exits non-zero with NO "FATAL:" line under
+# `set -euo pipefail`, and DOES print it under `set -Eeuo pipefail`. `-E` is
+# what makes the trap apply inside functions/subshells/`$(...)` — see
+# scripts/tests/deploy-linux.test.sh case 14 for the RED/GREEN proof.
 on_deploy_error() {
   local ec=$?
   echo "FATAL: deploy-linux.sh:${BASH_LINENO[0]:-?} failed running: ${BASH_COMMAND} (exit ${ec})" >&2

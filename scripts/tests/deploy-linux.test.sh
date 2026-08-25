@@ -518,6 +518,47 @@ else
   rm -rf "$ENVDIR13"
 fi
 
+# --- Case 14: T-321F — ERR trap must fire inside FUNCTION bodies too -------
+# --- (checker finding: `set -euo pipefail` w/o `-E` does not inherit the ---
+# --- ERR trap into functions/subshells/command substitutions, so the exact -
+# --- class of bug that caused the real T-321 incident — an unguarded -------
+# --- failing pipeline inside a function — would NOT have been named by the -
+# --- "name-the-failure" backstop). Extracts the real prelude (the ----------
+# --- `set -Eeuo pipefail` line through `trap on_deploy_error ERR`) straight
+# --- from deploy-linux.sh so this test tracks the real script, then defines
+# --- a function with an unguarded failing pipeline (same shape as the -----
+# --- report_wired_jobs() bug) and asserts the FATAL line names the failing -
+# --- line + command. RED/GREEN proof (manual, not asserted in-test): -------
+# --- deleting `trap on_deploy_error ERR` from deploy-linux.sh turns this ---
+# --- case RED (rc=0, no FATAL); restoring it turns the suite GREEN again. --
+PRELUDE14="$(sed -n '/^set -Eeuo pipefail$/,/^trap on_deploy_error ERR$/p' "$DEPLOY_SCRIPT")"
+if [ -z "$PRELUDE14" ]; then
+  fail "case 14: could not extract the 'set -Eeuo pipefail' / trap prelude from $DEPLOY_SCRIPT — did the ERR-trap setup move or lose -E?"
+else
+  set +e
+  (
+    eval "$PRELUDE14"
+    fn_with_unguarded_pipeline_case14() {
+      local x
+      x="$(grep '^NOPE=' /dev/null | tail -n1 | cut -d= -f2-)"
+      echo "unreachable: $x"
+    }
+    fn_with_unguarded_pipeline_case14
+  ) >/tmp/deploy-test-14.log 2>&1
+  RC14=$?
+  set -e
+
+  if [ "$RC14" -eq 0 ]; then
+    fail "case 14: fn_with_unguarded_pipeline_case14() exited 0 — the unguarded failing pipeline was not caught at all"
+    cat /tmp/deploy-test-14.log
+  elif grep -Eq '^FATAL: .*:[0-9]+ failed running:.*\(exit [0-9]+\)$' /tmp/deploy-test-14.log; then
+    pass "case 14: ERR trap fires inside a function body and names the failing line + command"
+  else
+    fail "case 14: function-scoped failure exited non-zero but printed NO well-formed 'FATAL: <file>:<line> failed running: <cmd> (exit <n>)' line (the T-321F checker finding — trap not inherited without -E)"
+    cat /tmp/deploy-test-14.log
+  fi
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1
