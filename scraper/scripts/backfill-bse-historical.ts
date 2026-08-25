@@ -23,7 +23,8 @@ import {
   type BSEDetailRow,
 } from '../src/scrapers/bse-api-scraper.js';
 import { normalizeCompanyNameForMatching, upsertIPO } from '../src/services/data-persister.js';
-import { IPORepository, getRedisClient } from '@ipodhan/shared';
+import { IPORepository, getRedisClient, resolveIpoRow } from '@ipodhan/shared';
+import { generateSlug } from '../src/utils/validators.js';
 
 const BSE_API_BASE = 'https://api.bseindia.com/BseIndiaAPI/api/';
 const BSE_HEADERS = {
@@ -176,7 +177,18 @@ async function main() {
       const { lotSize, ...rest } = m.bse;
       const payload: any = { ...rest, status: (m.skeleton.status as any) || m.bse.status };
       if (typeof lotSize === 'number' && lotSize > 1) payload.lotSize = lotSize;
-      await upsertIPO(ipoRepository, payload, 'BSE');
+      // T-318 (Phase-1 completion): resolve identity ONCE here, the same way
+      // the protected path does, instead of letting upsertIPO re-resolve
+      // independently — this is a direct upsertIPO caller with no
+      // preResolvedIPO, one of the 6 named in review-round2 P1-2/C2.
+      const preResolvedIPO = await resolveIpoRow(ipoRepository, {
+        companyName: payload.companyName,
+        normalizedName: normalizeCompanyNameForMatching(payload.companyName),
+        slug: generateSlug(payload.companyName),
+        isin: payload.isin,
+        symbol: payload.symbol,
+      });
+      await upsertIPO(ipoRepository, payload, 'BSE', preResolvedIPO);
       ok++;
       logger.info({ ipoNo: m.ipoNo, company: m.bse.companyName, fills: m.fills }, 'enriched');
     } catch (e) {

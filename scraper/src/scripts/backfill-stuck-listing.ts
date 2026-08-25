@@ -25,6 +25,8 @@ import { db } from '@ipodhan/shared/db';
 import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
 import { IPORepository } from '@ipodhan/shared/repositories/ipo-repository';
 import { ListingPerformanceRepository } from '@ipodhan/shared/repositories/listing-performance-repository';
+import { resolveIpoRow } from '@ipodhan/shared/repositories';
+import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { upsertIPO } from '../services/data-persister.js';
 import { fetchChittorgarhListingRows } from '../scrapers/chittorgarh-listing-scraper.js';
 import {
@@ -124,7 +126,17 @@ async function main() {
       );
     } else {
       const scraped = buildListingScrapedIPO(ipo, best.row);
-      await upsertIPO(ipoRepo, scraped, 'CHITTORGARH');
+      // T-318 (Phase-1 completion): resolve identity ONCE here instead of
+      // letting upsertIPO re-resolve independently (one of the 6 direct
+      // callers named in review-round2 P1-2/C2).
+      const preResolvedIPO = await resolveIpoRow(ipoRepo, {
+        companyName: ipo.companyName,
+        normalizedName: normalizeCompanyNameForMatching(ipo.companyName),
+        slug: ipo.slug,
+        isin: ipo.isin,
+        symbol: ipo.symbol,
+      });
+      await upsertIPO(ipoRepo, scraped, 'CHITTORGARH', preResolvedIPO);
       await lpRepo.upsert(lp);
       written++;
     }

@@ -23,9 +23,11 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { db } from '@ipodhan/shared/db';
 import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
 import { IPORepository } from '@ipodhan/shared/repositories/ipo-repository';
+import { resolveIpoRow } from '@ipodhan/shared/repositories';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
 import { upsertIPO } from '../services/data-persister.js';
 import { assembleHistoricalRecord, type HistoricalReportRow } from '../services/historical-ipo-assembler.js';
+import { generateSlug } from '../utils/validators.js';
 import logger from '../utils/logger.js';
 
 const argv = process.argv;
@@ -112,7 +114,17 @@ async function main() {
 
   const redis = getRedisClient();
   const ipoRepo = new IPORepository(db, redis);
-  await upsertIPO(ipoRepo, scraped, 'CHITTORGARH');
+  // T-318 (Phase-1 completion): resolve identity ONCE here instead of
+  // letting upsertIPO re-resolve independently (one of the 6 direct
+  // callers named in review-round2 P1-2/C2).
+  const preResolvedIPO = await resolveIpoRow(ipoRepo, {
+    companyName: scraped.companyName,
+    normalizedName: normalizeCompanyNameForMatching(scraped.companyName),
+    slug: generateSlug(scraped.companyName),
+    isin: scraped.isin,
+    symbol: scraped.symbol,
+  });
+  await upsertIPO(ipoRepo, scraped, 'CHITTORGARH', preResolvedIPO);
   console.log(`\nEXECUTE: upserted ${scraped.companyName} via upsertIPO.`);
   console.log('='.repeat(72));
   process.exit(0);

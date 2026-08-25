@@ -341,6 +341,82 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Find IPO by exchange ticker symbol (T-318, IDENT: NULL-safe key-first
+   * identity). `symbol` is a plain (non-unique-in-DB-for-NULLs) column shared
+   * by NSE and BSE listings — this is deliberately the NSE/BSE `symbol`
+   * column ONLY, never `bseScripCode` (a separate keyspace per T-314C/T-316C
+   * findings: BSE's numeric scrip code and NSE's ticker symbol must never be
+   * cross-compared).
+   *
+   * NULL-safe by construction: an empty/whitespace-only input returns null
+   * without querying, so this can never resolve a "NULL matches NULL" false
+   * positive — Postgres would otherwise happily return multiple rows for
+   * `symbol IS NULL`, and matching any of them would be wrong.
+   *
+   * @param symbol - Raw (un-normalized) ticker symbol. Normalized here via
+   *   trim + uppercase before comparison (source scrapers vary in case).
+   */
+  async findBySymbol(symbol: string | null | undefined): Promise<IPO | null> {
+    const normalized = symbol?.trim().toUpperCase();
+    if (!normalized) {
+      return null;
+    }
+
+    try {
+      const [ipo] = await this.db
+        .select()
+        .from(ipos)
+        .where(sql`upper(trim(${ipos.symbol})) = ${normalized}`)
+        .limit(1);
+
+      return ipo || null;
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to fetch IPO by symbol: ${symbol}`,
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
+   * Find IPO by ISIN (International Securities Identification Number)
+   * (T-318, IDENT: NULL-safe key-first identity). ISIN is the highest-
+   * confidence natural key available — a 12-character code unique to the
+   * security — and per T-314C's reproduction, 0 duplicate ISIN groups exist
+   * in production across all rows that have one.
+   *
+   * NULL-safe by construction: an empty/whitespace-only input returns null
+   * without querying, matching `findBySymbol`'s guarantee that NULL never
+   * matches NULL.
+   *
+   * @param isin - Raw (un-normalized) ISIN. Normalized here via trim +
+   *   uppercase before comparison.
+   */
+  async findByIsin(isin: string | null | undefined): Promise<IPO | null> {
+    const normalized = isin?.trim().toUpperCase();
+    if (!normalized) {
+      return null;
+    }
+
+    try {
+      const [ipo] = await this.db
+        .select()
+        .from(ipos)
+        .where(sql`upper(trim(${ipos.isin})) = ${normalized}`)
+        .limit(1);
+
+      return ipo || null;
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to fetch IPO by ISIN: ${isin}`,
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
    * Find an existing IPO whose normalized company name is a close SPELLING
    * variant of `normalizedName` (P2-2a, T-293) — a typo like "Hybird" vs
    * "Hybrid" that `findByNormalizedName`'s exact + compact-whitespace tiers
