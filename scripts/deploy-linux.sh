@@ -111,6 +111,22 @@
 
 set -euo pipefail
 
+# T-321: name-the-failure safety net. Before this trap existed, ANY command
+# that failed under `set -euo pipefail` (a `grep`/pipeline with no match
+# assigned to a variable, an unguarded arithmetic expansion, etc.) exited the
+# whole deploy with NO error message at all — the log just stopped and the
+# EXIT trap (resume_scraper) ran, so a real failure looked identical to a
+# clean run that happened to end early. This is a backstop, not a substitute
+# for fixing the specific gate (see report_wired_jobs() below for the actual
+# T-321 root cause) — every future silent-exit-class bug now prints WHERE and
+# WHAT failed before the script exits, instead of failing invisibly.
+on_deploy_error() {
+  local ec=$?
+  echo "FATAL: deploy-linux.sh:${BASH_LINENO[0]:-?} failed running: ${BASH_COMMAND} (exit ${ec})" >&2
+  exit "$ec"
+}
+trap on_deploy_error ERR
+
 DRY_RUN=0
 FORCE=0
 SLOT=""
@@ -610,7 +626,19 @@ report_wired_jobs() {
       if [ -n "$flag" ]; then
         flag_val="unset"
         if (( ! DRY_RUN )); then
-          flag_val="$(grep "^${flag}=" "$SCRAPER_ENV_FILE" "$WEB_ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2-)"
+          # T-321: a §GATE'd flag (e.g. ENABLE_STAGE_RECONCILER) is routinely
+          # ABSENT from both env files entirely — that is its normal "off"
+          # state (owner-gated-feature-flags.md), not an error. Under
+          # `set -euo pipefail`, `grep` finding zero matches exits 1, and
+          # pipefail propagates that through `tail`/`cut` to the whole
+          # pipeline; assigning a failing command substitution to a variable
+          # is checked by `set -e`, so the ENTIRE DEPLOY exited immediately
+          # here with NO error message the moment a flag was legitimately
+          # unset — the exact silent-exit-1 this informational report line
+          # must never cause. `|| true` makes "flag not found" the expected,
+          # non-fatal outcome this report already handles via the blank-value
+          # fallback on the next line.
+          flag_val="$(grep "^${flag}=" "$SCRAPER_ENV_FILE" "$WEB_ENV_FILE" 2>/dev/null | tail -1 | cut -d= -f2- || true)"
           [ -n "$flag_val" ] || flag_val="unset"
         fi
         log "job wired: $job (${call}(), flag ${flag}=${flag_val})"

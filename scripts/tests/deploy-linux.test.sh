@@ -452,6 +452,72 @@ for job_case12 in "duplicateSweep" "stageReconciler" "primarySourceDiscovery"; d
   fi
 done
 
+# --- Case 13: T-321 — report_wired_jobs() must NEVER silently exit the -----
+# --- whole deploy over a §GATE'd flag that is legitimately ABSENT from -----
+# --- both env files (its normal off state, owner-gated-feature-flags.md). --
+# --- Reproduces the real incident: `deploy-linux.yml` failed 4/4 runs with -
+# --- "Process completed with exit code 1" and ZERO error message, right ----
+# --- after logging "job wired: duplicateSweep" and before the next job -----
+# --- line — because under `set -euo pipefail`, `grep` finding no match in --
+# --- the ENABLE_STAGE_RECONCILER lookup made the whole pipeline (and the --
+# --- variable assignment reading it) fail, which `set -e` treated as a -----
+# --- fatal script error. This extracts report_wired_jobs() in isolation ----
+# --- (same pattern as case 11) with NON-dry-run env files that genuinely ---
+# --- omit both gated flags, under the SAME `set -euo pipefail` the real ----
+# --- script runs under, and asserts the function completes AND reports all-
+# --- three jobs instead of vanishing after the first.
+REPORT_FN="$(sed -n '/^report_wired_jobs()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -z "$REPORT_FN" ]; then
+  fail "case 13: could not extract report_wired_jobs() from $DEPLOY_SCRIPT — function renamed?"
+else
+  ENVDIR13="$(mktemp -d)"
+  # Neither env file mentions the gated flags at all — their real off-state.
+  echo "SOME_OTHER_KEY=1" > "$ENVDIR13/scraper.env"
+  echo "SOME_OTHER_KEY=1" > "$ENVDIR13/web.env.local"
+
+  set +e
+  (
+    set -euo pipefail
+    eval "$REPORT_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=0
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    SHA="$(cd "$REPO_ROOT" && git rev-parse HEAD)"
+    SHORT_SHA="${SHA:0:7}"
+    SCRAPER_ENV_FILE="$ENVDIR13/scraper.env"
+    WEB_ENV_FILE="$ENVDIR13/web.env.local"
+    report_wired_jobs
+  ) >/tmp/deploy-test-13.log 2>&1
+  RC13=$?
+  set -e
+
+  if [ "$RC13" -ne 0 ]; then
+    fail "case 13: report_wired_jobs() exited non-zero ($RC13) when a §GATE'd flag was legitimately absent from both env files — the T-321 silent-exit regression"
+    cat /tmp/deploy-test-13.log
+  else
+    pass "case 13: report_wired_jobs() completes when a §GATE'd flag is absent from both env files"
+  fi
+
+  for job_case13 in "duplicateSweep" "stageReconciler" "primarySourceDiscovery"; do
+    if grep -q "job wired: $job_case13" /tmp/deploy-test-13.log; then
+      pass "case 13: reports '$job_case13' as wired even with gated flags absent"
+    else
+      fail "case 13: missing 'job wired: $job_case13' — report_wired_jobs() likely exited early (T-321 class)"
+      cat /tmp/deploy-test-13.log
+    fi
+  done
+
+  if grep -q "flag ENABLE_STAGE_RECONCILER=unset" /tmp/deploy-test-13.log; then
+    pass "case 13: absent flag reports 'unset', not a crash"
+  else
+    fail "case 13: expected 'flag ENABLE_STAGE_RECONCILER=unset' in the report"
+    cat /tmp/deploy-test-13.log
+  fi
+
+  rm -rf "$ENVDIR13"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1
