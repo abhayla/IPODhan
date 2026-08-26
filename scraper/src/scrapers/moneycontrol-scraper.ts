@@ -14,6 +14,7 @@ import { launchBrowser, createPage, closeBrowser, navigateToUrl } from '../utils
 import logger from '../utils/logger.js';
 import type { MoneycontrolIPO } from '../utils/validators.js';
 import { sanitizeText } from '../utils/scraper-utils.js';
+import { parseDdMmmYy } from '../utils/date-string-parsing.js';
 
 const MONEYCONTROL_URL = 'https://www.moneycontrol.com/ipo/';
 
@@ -87,15 +88,10 @@ function parseMoneycontrolDate(text: string): string {
   if (!text || text === '-') return '';
 
   try {
-    // Format: "17 Oct 25"
+    // Format: "17 Oct 25" — string arithmetic, TZ-invariant by construction
+    // (T-327, round-7 P1-1); NEVER `new Date(dateOnlyString).toISOString()`.
     const cleaned = text.trim();
-    const date = new Date(cleaned);
-
-    if (isNaN(date.getTime())) {
-      return '';
-    }
-
-    return date.toISOString().split('T')[0];
+    return parseDdMmmYy(cleaned) || '';
   } catch {
     return '';
   }

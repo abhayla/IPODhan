@@ -66,6 +66,15 @@ run_case "DATABASE_HOST present -> fail (T-241 H5)" 1 \
 run_case "missing env file -> fail" 1 \
   "$FIXTURES/does-not-exist.env" "$FIXTURES/scraper.env.good"
 
+# --- T-327 P2-7: TZ is now a required key on both env files (belt-and-braces
+# alongside `TZ=UTC pm2 start` in deploy-linux.sh) -- a deploy MUST fail
+# loudly if either hand-provisioned env file drops it. ---
+run_case "web.env.local missing TZ -> fail (T-327 P2-7)" 1 \
+  "$FIXTURES/web.env.local.missing-tz" "$FIXTURES/scraper.env.good"
+
+run_case "scraper.env missing TZ -> fail (T-327 P2-7)" 1 \
+  "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.missing-tz"
+
 # --- T-251 (F9): revert-proof for the flag-regression ratchet. If someone
 # removes ENABLE_BSE_API (or any of the other 3 flags) from a fixture -- or
 # for real, from a slot's shared/env/*/scraper.env -- the assert MUST fail

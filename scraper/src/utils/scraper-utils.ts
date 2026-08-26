@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio';
 import logger from './logger.js';
 import { launchBrowser, closeBrowser } from './browser.js';
 import type { Browser, Page } from 'puppeteer';
+import { parseDdMmmYyyy } from './date-string-parsing.js';
 
 export type RenderingType = 'STATIC' | 'DYNAMIC';
 
@@ -278,6 +279,16 @@ export function parseDate(dateStr: string): string {
   if (!dateStr) return '';
 
   try {
+    // DD-MMM-YYYY (e.g. "27-Aug-2026") — string arithmetic, TZ-invariant by
+    // construction (T-327, round-7 P1-1); NEVER `new Date(dateOnlyString)`,
+    // which drifts a day on any non-UTC host.
+    const ddMmmIso = parseDdMmmYyyy(dateStr.trim());
+    if (ddMmmIso) {
+      return `${ddMmmIso}T00:00:00.000Z`;
+    }
+
+    // Fallback for other formats (e.g. full RSS pubDate strings that already
+    // carry a time/offset, which `new Date()` parses correctly).
     const date = new Date(dateStr);
     if (isNaN(date.getTime())) {
       return '';

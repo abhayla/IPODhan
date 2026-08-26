@@ -28,6 +28,7 @@ import { launchBrowser, createPage, closeBrowser, navigateToUrl, waitForSelector
 import logger from '../utils/logger.js';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
+import { parseDdMmmYyyy } from '../utils/date-string-parsing.js';
 import { scrapeBSEIPODetails, type BSEDetailPageData } from './bse-detail-scraper.js';
 import {
   enrichRightsIssuesFromChittorgarh,
@@ -88,10 +89,12 @@ function parseBSEDate(dateStr: string): string {
       return `${year}-${month}-${day}`;
     }
 
-    // Handle DD/MMM/YYYY format (e.g., "06/Oct/2025")
-    if (cleaned.match(/^\d{2}\/[A-Za-z]{3}\/\d{4}$/)) {
-      const date = new Date(cleaned);
-      return date.toISOString().split('T')[0];
+    // Handle DD/MMM/YYYY format (e.g., "06/Oct/2025") — string arithmetic,
+    // TZ-invariant by construction (T-327, round-7 P1-1; same class as the
+    // NSE fix in nse-api-client.ts).
+    const ddMmmIso = parseDdMmmYyyy(cleaned);
+    if (ddMmmIso) {
+      return ddMmmIso;
     }
 
     // Fallback: try to parse with Date constructor

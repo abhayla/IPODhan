@@ -79,6 +79,18 @@ export async function main() {
 
     logger.info({ source }, 'IPO Scraper CLI started');
 
+    // T-327 P2-7: make the process TZ observable at every run — this is what
+    // let NSE dates land a day early for months (local-TZ new Date() parsing
+    // combined with an unset/non-UTC process TZ on the Linux pm2 path, which
+    // never reads ecosystem.config.js's TZ:'UTC'). The date-parse fix (see
+    // scraper/src/utils/date-string-parsing.ts) no longer depends on this
+    // value, but logging it turns a future TZ drift into a visible signal
+    // instead of a silent one-day skew.
+    logger.info(
+      { processTz: process.env.TZ || Intl.DateTimeFormat().resolvedOptions().timeZone },
+      'Scraper process timezone at startup'
+    );
+
     // T-283: loud, LOUD feature-flag visibility at every run start.
     // validateFeatureFlags() (console.warn) fires exactly when a boolean
     // ENABLE_* flag is on but its paired *_PERCENTAGE rollout is still 0% —

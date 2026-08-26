@@ -26,6 +26,7 @@ import {
   transformCurrentIssueSubscription,
 } from './nse-subscription-parser.js';
 import { notifyOwner } from '../services/owner-notify.js';
+import { parseDdMmmYyyy } from '../utils/date-string-parsing.js';
 
 const BASE_URL = 'https://www.nseindia.com';
 
@@ -328,7 +329,7 @@ async function makeRequest(endpoint: string, params?: Record<string, string>, re
 /**
  * Parse NSE date format to ISO 8601
  */
-function parseNSEDate(dateStr: string | null | undefined): string {
+export function parseNSEDate(dateStr: string | null | undefined): string {
   if (!dateStr) {
     return new Date().toISOString().split('T')[0];
   }
@@ -336,10 +337,11 @@ function parseNSEDate(dateStr: string | null | undefined): string {
   try {
     const cleaned = dateStr.trim();
 
-    // Handle DD-MMM-YYYY format (e.g., "09-Oct-2025")
-    if (cleaned.match(/^\d{2}-[A-Za-z]{3}-\d{4}$/)) {
-      const date = new Date(cleaned);
-      return date.toISOString().split('T')[0];
+    // Handle DD-MMM-YYYY format (e.g., "09-Oct-2025") — string arithmetic,
+    // TZ-invariant by construction (T-327, round-7 P1-1).
+    const ddMmmIso = parseDdMmmYyyy(cleaned);
+    if (ddMmmIso) {
+      return ddMmmIso;
     }
 
     // Handle DD/MM/YYYY format
