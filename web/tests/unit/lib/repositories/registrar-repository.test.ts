@@ -168,14 +168,15 @@ describe('RegistrarRepository', () => {
       expect(result).toBeNull();
     });
 
-    it('should use cached data when available', async () => {
-      const cachedRegistrar = JSON.parse(JSON.stringify(mockRegistrars[0]));
-      mockRedis.get = vi.fn().mockResolvedValue(JSON.stringify(cachedRegistrar));
+    it('should use cached data when available, rehydrating Date fields', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(JSON.stringify(mockRegistrars[0]));
 
       const result = await repository.findById('reg-1');
 
-      expect(result).toEqual(cachedRegistrar);
       expect(mockDb.select).not.toHaveBeenCalled();
+      expect(result).not.toBeNull();
+      expect(result!.createdAt).toBeInstanceOf(Date);
+      expect(result!.name).toBe(mockRegistrars[0].name);
     });
   });
 
@@ -269,14 +270,15 @@ describe('RegistrarRepository', () => {
       expect(result.find((r) => r.shortName === 'Inactive')?.allotmentCheckUrl).toBeNull();
     });
 
-    it('should use cached data when available', async () => {
-      const cachedRegistrars = JSON.parse(JSON.stringify(mockRegistrars.filter((r) => r.active)));
-      mockRedis.get = vi.fn().mockResolvedValue(JSON.stringify(cachedRegistrars));
+    it('should use cached data when available, rehydrating Date fields', async () => {
+      const activeRegistrars = mockRegistrars.filter((r) => r.active);
+      mockRedis.get = vi.fn().mockResolvedValue(JSON.stringify(activeRegistrars));
 
       const result = await repository.findAll();
 
-      expect(result).toEqual(cachedRegistrars);
       expect(mockDb.select).not.toHaveBeenCalled();
+      expect(result).toHaveLength(activeRegistrars.length);
+      expect(result[0].createdAt).toBeInstanceOf(Date);
     });
   });
 
@@ -356,14 +358,15 @@ describe('RegistrarRepository', () => {
       expect(result.every((r) => r.active)).toBe(true);
     });
 
-    it('should use cached search results when available', async () => {
-      const cachedSearchResults = JSON.parse(JSON.stringify([mockRegistrars[0]]));
-      mockRedis.get = vi.fn().mockResolvedValue(JSON.stringify(cachedSearchResults));
+    it('should use cached search results when available, rehydrating Date fields', async () => {
+      mockRedis.get = vi.fn().mockResolvedValue(JSON.stringify([mockRegistrars[0]]));
 
       const result = await repository.search('Link');
 
-      expect(result).toEqual(cachedSearchResults);
       expect(mockDb.select).not.toHaveBeenCalled();
+      expect(result).toHaveLength(1);
+      expect(result[0].createdAt).toBeInstanceOf(Date);
+      expect(result[0].name).toBe(mockRegistrars[0].name);
     });
   });
 

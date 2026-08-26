@@ -88,17 +88,21 @@ describe('SubscriptionRepository', () => {
       expect(result).toHaveLength(1);
     });
 
-    it('should use cached data when available', async () => {
-      // Simulate cache behavior: Date objects are serialized as strings
-      const cachedSubscriptions = JSON.parse(JSON.stringify(mockSubscriptions));
+    it('should rehydrate Date fields when reading from cache (not leave them as strings)', async () => {
+      // Redis only ever stores the JSON.stringify'd form, so timestamp comes
+      // back as an ISO string on the wire — the repository must revive it.
       mockRedis.get = vi
         .fn()
-        .mockResolvedValue(JSON.stringify(cachedSubscriptions));
+        .mockResolvedValue(JSON.stringify(mockSubscriptions));
 
       const result = await repository.findByIPO({ ipoId: 'ipo-123' });
 
-      expect(result).toEqual(cachedSubscriptions);
       expect(mockDb.select).not.toHaveBeenCalled();
+      expect(result).toHaveLength(2);
+      expect(result[0].timestamp).toBeInstanceOf(Date);
+      expect(result[0].timestamp.toISOString()).toBe(
+        mockSubscriptions[0].timestamp.toISOString()
+      );
     });
   });
 
@@ -146,6 +150,22 @@ describe('SubscriptionRepository', () => {
       const result = await repository.findLatest('ipo-123');
 
       expect(result).toBeNull();
+    });
+
+    it('should return a real Date (not a string) for timestamp on a cache hit, so callers can call .toISOString() safely', async () => {
+      // Regression test for the P2-2 500: the route calls
+      // latestSubscription.timestamp.toISOString() and previously threw
+      // "timestamp.toISOString is not a function" on any cache hit because
+      // JSON.parse left timestamp as a string.
+      mockRedis.get = vi.fn().mockResolvedValue(JSON.stringify(mockLatest));
+
+      const result = await repository.findLatest('ipo-123');
+
+      expect(mockDb.select).not.toHaveBeenCalled();
+      expect(result).not.toBeNull();
+      expect(result!.timestamp).toBeInstanceOf(Date);
+      expect(() => result!.timestamp.toISOString()).not.toThrow();
+      expect(result!.timestamp.toISOString()).toBe(mockLatest.timestamp.toISOString());
     });
   });
 
