@@ -1,0 +1,478 @@
+TAP version 13
+# Subtest: (a/b) FAILS on Lumino-shaped unresolved openDate conflict while OPEN
+ok 1 - (a/b) FAILS on Lumino-shaped unresolved openDate conflict while OPEN
+  ---
+  duration_ms: 2.3827
+  type: 'test'
+  ...
+# Subtest: (a/b) PASSES when the same field has no unresolved conflict
+ok 2 - (a/b) PASSES when the same field has no unresolved conflict
+  ---
+  duration_ms: 0.2671
+  type: 'test'
+  ...
+# Subtest: (a/b) PASSES when the IPO is not live (LISTED) even with an unresolved conflict
+ok 3 - (a/b) PASSES when the IPO is not live (LISTED) even with an unresolved conflict
+  ---
+  duration_ms: 0.1538
+  type: 'test'
+  ...
+# Subtest: (c) FAILS on Annu-Projects-shaped issue_size below MAINBOARD floor
+ok 4 - (c) FAILS on Annu-Projects-shaped issue_size below MAINBOARD floor
+  ---
+  duration_ms: 23.5421
+  type: 'test'
+  ...
+# Subtest: (c) PASSES a genuine MAINBOARD issue_size above the floor
+ok 5 - (c) PASSES a genuine MAINBOARD issue_size above the floor
+  ---
+  duration_ms: 0.3178
+  type: 'test'
+  ...
+# Subtest: (c) FAILS on Annu-shaped shares x price inconsistency (issue_size == sharesOffered)
+ok 6 - (c) FAILS on Annu-shaped shares x price inconsistency (issue_size == sharesOffered)
+  ---
+  duration_ms: 0.205
+  type: 'test'
+  ...
+# Subtest: (c) PASSES when issue_size agrees with sharesOffered x priceRangeMax within tolerance
+ok 7 - (c) PASSES when issue_size agrees with sharesOffered x priceRangeMax within tolerance
+  ---
+  duration_ms: 0.2091
+  type: 'test'
+  ...
+# Subtest: (d) FAILS on ICICI-Pru-AMC-shaped lot x band (Rs2,16,500 per lot)
+ok 8 - (d) FAILS on ICICI-Pru-AMC-shaped lot x band (Rs2,16,500 per lot)
+  ---
+  duration_ms: 0.3019
+  type: 'test'
+  ...
+# Subtest: (d) PASSES a genuine MAINBOARD lot value inside the SEBI window
+ok 9 - (d) PASSES a genuine MAINBOARD lot value inside the SEBI window
+  ---
+  duration_ms: 0.3853
+  type: 'test'
+  ...
+# Subtest: (d) FAILS on a KWALITY-WALLS-shaped corporate-action typed as IPO
+ok 10 - (d) FAILS on a KWALITY-WALLS-shaped corporate-action typed as IPO
+  ---
+  duration_ms: 0.4595
+  type: 'test'
+  ...
+# Subtest: (d) PASSES a genuine fixed-price SME IPO outside the corporate-action window shape
+ok 11 - (d) PASSES a genuine fixed-price SME IPO outside the corporate-action window shape
+  ---
+  duration_ms: 0.18
+  type: 'test'
+  ...
+# Subtest: (e) FAILS on a 500 with a leaked SQL statement (score-route shape)
+ok 12 - (e) FAILS on a 500 with a leaked SQL statement (score-route shape)
+  ---
+  duration_ms: 0.3137
+  type: 'test'
+  ...
+# Subtest: (e) FAILS on a 500 with an empty body (calendar/materialized shape)
+ok 13 - (e) FAILS on a 500 with an empty body (calendar/materialized shape)
+  ---
+  duration_ms: 0.3284
+  type: 'test'
+  ...
+# Subtest: (e) PASSES a clean 200 JSON body
+ok 14 - (e) PASSES a clean 200 JSON body
+  ---
+  duration_ms: 0.2348
+  type: 'test'
+  ...
+# Subtest: (f) FAILS on an 86%-noise ratio (round-7 shape)
+ok 15 - (f) FAILS on an 86%-noise ratio (round-7 shape)
+  ---
+  duration_ms: 0.1329
+  type: 'test'
+  ...
+# Subtest: (f) PASSES a clean sub-5% noise ratio
+ok 16 - (f) PASSES a clean sub-5% noise ratio
+  ---
+  duration_ms: 0.0662
+  type: 'test'
+  ...
+# Subtest: (g) FAILS on an OFS-shaped 78-day-frozen calendar
+ok 17 - (g) FAILS on an OFS-shaped 78-day-frozen calendar
+  ---
+  duration_ms: 0.0891
+  type: 'test'
+  ...
+# Subtest: (g) PASSES a fresh OFS row
+ok 18 - (g) PASSES a fresh OFS row
+  ---
+  duration_ms: 0.0576
+  type: 'test'
+  ...
+# Subtest: (h) FAILS when pm2 env has no TZ (P1-1 enabling gap)
+ok 19 - (h) FAILS when pm2 env has no TZ (P1-1 enabling gap)
+  ---
+  duration_ms: 0.0689
+  type: 'test'
+  ...
+# Subtest: (h) PASSES when pm2 env carries TZ
+ok 20 - (h) PASSES when pm2 env carries TZ
+  ---
+  duration_ms: 0.0572
+  type: 'test'
+  ...
+# Subtest: (h) FAILS on a 240 MB pm2 log (round-7 shape)
+ok 21 - (h) FAILS on a 240 MB pm2 log (round-7 shape)
+  ---
+  duration_ms: 0.0833
+  type: 'test'
+  ...
+# Subtest: (h) PASSES a small rotated pm2 log
+ok 22 - (h) PASSES a small rotated pm2 log
+  ---
+  duration_ms: 0.777
+  type: 'test'
+  ...
+# Subtest: (i) FAILS naming the tiered scheduler (defined, never referenced — P2-8 shape)
+ok 23 - (i) FAILS naming the tiered scheduler (defined, never referenced — P2-8 shape)
+  ---
+  duration_ms: 1.5713
+  type: 'test'
+  ...
+# Subtest: (i) PASSES when every definition is referenced
+ok 24 - (i) PASSES when every definition is referenced
+  ---
+  duration_ms: 0.1168
+  type: 'test'
+  ...
+# Subtest: (j) FAILS on 0% sector population (round-7 shape)
+ok 25 - (j) FAILS on 0% sector population (round-7 shape)
+  ---
+  duration_ms: 0.1063
+  type: 'test'
+  ...
+# Subtest: (j) PASSES healthy sector population
+ok 26 - (j) PASSES healthy sector population
+  ---
+  duration_ms: 0.0584
+  type: 'test'
+  ...
+# Subtest: (j) FAILS on a non-executable cron script (mode 0644, P3-5 shape)
+ok 27 - (j) FAILS on a non-executable cron script (mode 0644, P3-5 shape)
+  ---
+  duration_ms: 0.0858
+  type: 'test'
+  ...
+# Subtest: (j) PASSES an executable cron script (mode 0755)
+ok 28 - (j) PASSES an executable cron script (mode 0755)
+  ---
+  duration_ms: 0.085
+  type: 'test'
+  ...
+# Subtest: (j) FAILS on a dead source with 7+ degraded cycles and no retire-by (API_FALLBACK shape)
+ok 29 - (j) FAILS on a dead source with 7+ degraded cycles and no retire-by (API_FALLBACK shape)
+  ---
+  duration_ms: 0.0895
+  type: 'test'
+  ...
+# Subtest: (j) PASSES a dead source that has a documented retire-by decision
+ok 30 - (j) PASSES a dead source that has a documented retire-by decision
+  ---
+  duration_ms: 0.1504
+  type: 'test'
+  ...
+# Subtest: (j) FAILS on an IPO row with a NULL segment
+ok 31 - (j) FAILS on an IPO row with a NULL segment
+  ---
+  duration_ms: 0.1511
+  type: 'test'
+  ...
+# Subtest: (j) PASSES an IPO row with a populated segment
+ok 32 - (j) PASSES an IPO row with a populated segment
+  ---
+  duration_ms: 0.0784
+  type: 'test'
+  ...
+# Subtest: (a/b) FAILS naming BOTH Lumino and Annu with data_conflicts EMPTY
+ok 33 - (a/b) FAILS naming BOTH Lumino and Annu with data_conflicts EMPTY
+  ---
+  duration_ms: 1.6096
+  type: 'test'
+  ...
+# Subtest: (a/b) matches across legal-suffix and status-flag naming differences
+ok 34 - (a/b) matches across legal-suffix and status-flag naming differences
+  ---
+  duration_ms: 0.1889
+  type: 'test'
+  ...
+# Subtest: (a/b) data_conflicts remains a SECONDARY signal and still contributes
+ok 35 - (a/b) data_conflicts remains a SECONDARY signal and still contributes
+  ---
+  duration_ms: 0.1382
+  type: 'test'
+  ...
+# Subtest: (a/b) the same ipo+field is never double-counted across both signals
+ok 36 - (a/b) the same ipo+field is never double-counted across both signals
+  ---
+  duration_ms: 0.2132
+  type: 'test'
+  ...
+# Subtest: (a/b) PASSES when the oracle agrees with the published dates
+ok 37 - (a/b) PASSES when the oracle agrees with the published dates
+  ---
+  duration_ms: 0.2312
+  type: 'test'
+  ...
+# Subtest: (a/b) PASSES for a LISTED (not live) IPO even when the oracle disagrees
+ok 38 - (a/b) PASSES for a LISTED (not live) IPO even when the oracle disagrees
+  ---
+  duration_ms: 0.3848
+  type: 'test'
+  ...
+# Subtest: (a/b) an IPO absent from the oracle contributes nothing (no false positive)
+ok 39 - (a/b) an IPO absent from the oracle contributes nothing (no false positive)
+  ---
+  duration_ms: 0.1857
+  type: 'test'
+  ...
+# Subtest: valuesDisagree compares dates by calendar day, not string form
+ok 40 - valuesDisagree compares dates by calendar day, not string form
+  ---
+  duration_ms: 0.1924
+  type: 'test'
+  ...
+# Subtest: (blocker 1) a blackholed source yields an UNVERIFIABLE P2 page, not silence
+ok 41 - (blocker 1) a blackholed source yields an UNVERIFIABLE P2 page, not silence
+  ---
+  duration_ms: 1.0091
+  type: 'test'
+  ...
+# Subtest: (blocker 1) an all-UNVERIFIABLE night exits 3, never 0
+ok 42 - (blocker 1) an all-UNVERIFIABLE night exits 3, never 0
+  ---
+  duration_ms: 0.1841
+  type: 'test'
+  ...
+# Subtest: (blocker 1) exit-code contract: 0 clean, 1 on FAIL, FAIL dominates UNVERIFIABLE
+ok 43 - (blocker 1) exit-code contract: 0 clean, 1 on FAIL, FAIL dominates UNVERIFIABLE
+  ---
+  duration_ms: 0.1192
+  type: 'test'
+  ...
+# Subtest: (blocker 1) the UNVERIFIABLE dedupeKey is per check per night
+ok 44 - (blocker 1) the UNVERIFIABLE dedupeKey is per check per night
+  ---
+  duration_ms: 0.1665
+  type: 'test'
+  ...
+# Subtest: (blocker 3) git unavailable yields UNVERIFIABLE without throwing
+ok 45 - (blocker 3) git unavailable yields UNVERIFIABLE without throwing
+  ---
+  duration_ms: 0.5462
+  type: 'test'
+  ...
+# Subtest: (blocker 3) a mode-0644 cron script still FAILs when git IS available
+ok 46 - (blocker 3) a mode-0644 cron script still FAILs when git IS available
+  ---
+  duration_ms: 0.1951
+  type: 'test'
+  ...
+# Subtest: (blocker 3) a mode-0755 cron script PASSes
+ok 47 - (blocker 3) a mode-0755 cron script PASSes
+  ---
+  duration_ms: 0.1209
+  type: 'test'
+  ...
+# Subtest: (blocker 4) 25 failing rows across 2 checks produce 2 pages, not 25
+ok 48 - (blocker 4) 25 failing rows across 2 checks produce 2 pages, not 25
+  ---
+  duration_ms: 0.6904
+  type: 'test'
+  ...
+# Subtest: (blocker 4) the digest shows the count and only the first 10 rows
+ok 49 - (blocker 4) the digest shows the count and only the first 10 rows
+  ---
+  duration_ms: 0.2668
+  type: 'test'
+  ...
+# Subtest: (blocker 4) an unchanged backlog pages P2, not P1
+ok 50 - (blocker 4) an unchanged backlog pages P2, not P1
+  ---
+  duration_ms: 0.1343
+  type: 'test'
+  ...
+# Subtest: (blocker 4) a NEW row versus last night escalates the digest to P1
+ok 51 - (blocker 4) a NEW row versus last night escalates the digest to P1
+  ---
+  duration_ms: 0.119
+  type: 'test'
+  ...
+# Subtest: (blocker 4) the digest dedupeKey is check+date so the 30-min cooldown cannot swallow it
+ok 52 - (blocker 4) the digest dedupeKey is check+date so the 30-min cooldown cannot swallow it
+  ---
+  duration_ms: 0.1437
+  type: 'test'
+  ...
+# Subtest: (blocker 4) a check with zero failing rows produces no page at all
+ok 53 - (blocker 4) a check with zero failing rows produces no page at all
+  ---
+  duration_ms: 0.0724
+  type: 'test'
+  ...
+# Subtest: (blocker 4) FAIL digests and UNVERIFIABLE pages coexist in one run
+ok 54 - (blocker 4) FAIL digests and UNVERIFIABLE pages coexist in one run
+  ---
+  duration_ms: 0.1986
+  type: 'test'
+  ...
+# Subtest: (j) FAILS on an empty-string segment (round-7 P3-7 shape), not just NULL
+ok 55 - (j) FAILS on an empty-string segment (round-7 P3-7 shape), not just NULL
+  ---
+  duration_ms: 0.0843
+  type: 'test'
+  ...
+# Subtest: (k) expected-step list is DERIVED from scraper/src/index.ts, never hand-typed
+ok 56 - (k) expected-step list is DERIVED from scraper/src/index.ts, never hand-typed
+  ---
+  duration_ms: 0.4208
+  type: 'test'
+  ...
+# Subtest: (k) parseStepNames throws when the constant is gone — the audit goes UNVERIFIABLE, never silently green
+ok 57 - (k) parseStepNames throws when the constant is gone — the audit goes UNVERIFIABLE, never silently green
+  ---
+  duration_ms: 0.6469
+  type: 'test'
+  ...
+# Subtest: (k) parseStepNames matches the REAL prod entrypoint and finds every wired step
+ok 58 - (k) parseStepNames matches the REAL prod entrypoint and finds every wired step
+  ---
+  duration_ms: 2.0676
+  type: 'test'
+  ...
+# Subtest: (k) FAILS a step with zero ok rows in the 24h window (the silent-skip shape)
+ok 59 - (k) FAILS a step with zero ok rows in the 24h window (the silent-skip shape)
+  ---
+  duration_ms: 0.2563
+  type: 'test'
+  ...
+# Subtest: (k) PASSES a step with at least one ok row in the window
+ok 60 - (k) PASSES a step with at least one ok row in the window
+  ---
+  duration_ms: 0.1263
+  type: 'test'
+  ...
+# Subtest: (k) counts only the LEADING failures, newest-first
+ok 61 - (k) counts only the LEADING failures, newest-first
+  ---
+  duration_ms: 0.2406
+  type: 'test'
+  ...
+# Subtest: (k) FAILS a step that failed in >= 3 consecutive cycles
+ok 62 - (k) FAILS a step that failed in >= 3 consecutive cycles
+  ---
+  duration_ms: 0.2661
+  type: 'test'
+  ...
+# Subtest: (k) PASSES a step at 2 consecutive failures — the threshold is 3, not "any failure"
+ok 63 - (k) PASSES a step at 2 consecutive failures — the threshold is 3, not "any failure"
+  ---
+  duration_ms: 0.3005
+  type: 'test'
+  ...
+# Subtest: (k) PASSES a healthy step
+ok 64 - (k) PASSES a healthy step
+  ---
+  duration_ms: 0.1753
+  type: 'test'
+  ...
+# Subtest: (k) a step that is SKIPPED every cycle still FAILS the silence check
+ok 65 - (k) a step that is SKIPPED every cycle still FAILS the silence check
+  ---
+  duration_ms: 0.1448
+  type: 'test'
+  ...
+# Subtest: every detection-checks.json check id is actually recorded by the audit script, and vice versa
+ok 66 - every detection-checks.json check id is actually recorded by the audit script, and vice versa
+  ---
+  duration_ms: 3.1884
+  type: 'test'
+  ...
+# Subtest: every detection-checks.json check id is recorded by a function that is actually CALLED from main() (not just defined)
+ok 67 - every detection-checks.json check id is recorded by a function that is actually CALLED from main() (not just defined)
+  ---
+  duration_ms: 3.736
+  type: 'test'
+  ...
+# Subtest: (l) key set matches on symbol OR normalized company name
+ok 68 - (l) key set matches on symbol OR normalized company name
+  ---
+  duration_ms: 0.3575
+  type: 'test'
+  ...
+# Subtest: (l) FAILS when we publish OPEN but NSE current-issue does not list it
+ok 69 - (l) FAILS when we publish OPEN but NSE current-issue does not list it
+  ---
+  duration_ms: 0.8373
+  type: 'test'
+  ...
+# Subtest: (l) FAILS when NSE lists an issue as currently open and we do not show it OPEN
+ok 70 - (l) FAILS when NSE lists an issue as currently open and we do not show it OPEN
+  ---
+  duration_ms: 0.338
+  type: 'test'
+  ...
+# Subtest: (l) FAILS when NSE lists a currently-open issue we have no row for at all
+ok 71 - (l) FAILS when NSE lists a currently-open issue we have no row for at all
+  ---
+  duration_ms: 0.2038
+  type: 'test'
+  ...
+# Subtest: (l) PASSES when our OPEN set matches NSE current-issue exactly
+ok 72 - (l) PASSES when our OPEN set matches NSE current-issue exactly
+  ---
+  duration_ms: 0.3265
+  type: 'test'
+  ...
+# Subtest: (l) matches on company name when the symbol is not yet assigned
+ok 73 - (l) matches on company name when the symbol is not yet assigned
+  ---
+  duration_ms: 0.2011
+  type: 'test'
+  ...
+# Subtest: (l) ignores SME rows — NSE Emerge is not on these endpoints (noise control)
+ok 74 - (l) ignores SME rows — NSE Emerge is not on these endpoints (noise control)
+  ---
+  duration_ms: 0.3329
+  type: 'test'
+  ...
+# Subtest: (l) ignores BSE-only rows — they legitimately never appear on NSE feeds
+ok 75 - (l) ignores BSE-only rows — they legitimately never appear on NSE feeds
+  ---
+  duration_ms: 0.1874
+  type: 'test'
+  ...
+# Subtest: (l) ignores rows with unknown listing exchanges rather than guessing
+ok 76 - (l) ignores rows with unknown listing exchanges rather than guessing
+  ---
+  duration_ms: 0.1217
+  type: 'test'
+  ...
+# Subtest: (l) an NSE UPCOMING issue we do not list at all is a mismatch
+ok 77 - (l) an NSE UPCOMING issue we do not list at all is a mismatch
+  ---
+  duration_ms: 0.2093
+  type: 'test'
+  ...
+# Subtest: (l) does not double-report the same company from both feeds
+ok 78 - (l) does not double-report the same company from both feeds
+  ---
+  duration_ms: 0.1684
+  type: 'test'
+  ...
+1..78
+# tests 78
+# suites 0
+# pass 78
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 241.3186

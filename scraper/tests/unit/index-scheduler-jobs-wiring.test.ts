@@ -164,6 +164,7 @@ vi.mock('@ipodhan/shared', () => ({
 }));
 vi.mock('@ipodhan/shared/db/schema', () => ({
   scraperLogs: { createdAt: 'created_at' },
+  scraperSteps: {},
 }));
 vi.mock('drizzle-orm', () => ({
   lt: vi.fn(),
@@ -180,7 +181,7 @@ describe('scraper/src/index.ts one-shot --source=all path (scheduler-jobs wiring
     shouldRunListingPerformanceUpdateMock.mockReturnValue(false);
     shouldRunRegistrarHealthCheckMock.mockReturnValue(false);
     process.argv = [...originalArgv.slice(0, 2), '--source=all'];
-    delete process.env.ADMIN_API_TOKEN;
+    process.env.ADMIN_API_TOKEN = 'test-admin-token'; // T-340: main() now refuses to start --source=all without this key
     delete process.env.ENABLE_STAGE_RECONCILER;
     delete process.env.ENABLE_PRIMARY_SOURCE_DISCOVERY;
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);

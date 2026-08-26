@@ -141,6 +141,7 @@ vi.mock('@ipodhan/shared', () => ({
 }));
 vi.mock('@ipodhan/shared/db/schema', () => ({
   scraperLogs: { createdAt: 'created_at' },
+  scraperSteps: {},
 }));
 vi.mock('drizzle-orm', () => ({
   lt: vi.fn(),
@@ -154,7 +155,7 @@ describe('scraper/src/index.ts one-shot --source=all Notifier heartbeat wiring',
   beforeEach(() => {
     vi.clearAllMocks();
     process.argv = [...originalArgv.slice(0, 2), '--source=all'];
-    delete process.env.ADMIN_API_TOKEN;
+    process.env.ADMIN_API_TOKEN = 'test-admin-token'; // T-340: main() now refuses to start --source=all without this key
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);

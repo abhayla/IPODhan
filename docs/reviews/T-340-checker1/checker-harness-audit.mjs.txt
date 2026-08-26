@@ -34,7 +34,23 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import pg from 'pg';
+
+// ==== CHECKER HARNESS: fake pg driven by CHECKER_FIXTURE ====
+import { readFileSync as __rfs } from 'node:fs';
+const __FIX = JSON.parse(__rfs(process.env.CHECKER_FIXTURE, 'utf8'));
+const pg = { Pool: class { async query(sql, params) {
+  const s = String(sql).replace(/\s+/g, ' ').trim();
+  if (s.startsWith('SELECT to_regclass')) {
+    const t = String(params[0]).replace('public.', '');
+    return { rows: [{ reg: (__FIX.tables || []).includes(t) ? params[0] : null }] };
+  }
+  if (s.includes('FROM scraper_steps')) return { rows: __FIX.scraper_steps || [] };
+  if (__FIX.genericRow) return { rows: [__FIX.genericRow] };
+  if (s.includes("FROM ipos") && s.includes("status IN ('OPEN', 'UPCOMING')")) return { rows: __FIX.ipos_live || [] };
+  return { rows: [] };
+} async end(){} } };
+// ==== END HARNESS ====
+
 import {
   checkNoUnresolvedConflictOnLiveIpo, HIGH_VALUE_FIELDS, LIVE_STATUSES,
   checkIssueSizeSegmentFloor, checkIssueSizeSharesConsistency,
@@ -516,7 +532,7 @@ async function checkK() {
 // NSE down => UNVERIFIABLE, never PASS. A check that silently goes green when
 // its oracle is unreachable is the T-321 silent-pass class, and it is exactly
 // what this audit exists to prevent.
-const NSE_BASE = 'https://www.nseindia.com';
+const NSE_BASE = process.env.CHECKER_NSE_BASE || 'https://www.nseindia.com';
 const NSE_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 async function nseCookieJar() {

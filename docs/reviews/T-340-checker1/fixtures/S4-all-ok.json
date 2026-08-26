@@ -1,0 +1,68 @@
+{
+ "tables": [
+  "scraper_steps"
+ ],
+ "scraper_steps": [
+  {
+   "step": "statusUpdate",
+   "status": "ok",
+   "created_at": "2026-08-26T10:00:00Z"
+  },
+  {
+   "step": "registrarReresolve",
+   "status": "ok",
+   "created_at": "2026-08-26T10:00:00Z"
+  },
+  {
+   "step": "registrarHealthCheck",
+   "status": "ok",
+   "created_at": "2026-08-26T10:00:00Z"
+  },
+  {
+   "step": "listingPerformanceUpdate",
+   "status": "ok",
+   "created_at": "2026-08-26T10:00:00Z"
+  },
+  {
+   "step": "duplicateSweep",
+   "status": "ok",
+   "created_at": "2026-08-26T10:00:00Z"
+  },
+  {
+   "step": "stageReconciler",
+   "status": "ok",
+   "created_at": "2026-08-26T10:00:00Z"
+  },
+  {
+   "step": "primarySourceDiscovery",
+   "status": "ok",
+   "created_at": "2026-08-26T10:00:00Z"
+  },
+  {
+   "step": "deployDriftMonitor",
+   "status": "ok",
+   "created_at": "2026-08-26T10:00:00Z"
+  },
+  {
+   "step": "pruneScraperLogs",
+   "status": "ok",
+   "created_at": "2026-08-26T10:00:00Z"
+  },
+  {
+   "step": "pruneDataConflicts",
+   "status": "ok",
+   "created_at": "2026-08-26T10:00:00Z"
+  },
+  {
+   "step": "dataQualityWatchdog",
+   "status": "ok",
+   "created_at": "2026-08-26T10:00:00Z"
+  },
+  {
+   "step": "heartbeat",
+   "status": "ok",
+   "created_at": "2026-08-26T10:00:00Z"
+  }
+ ],
+ "ipos_live": []
+}

@@ -82,6 +82,18 @@ run_case "scraper.env missing TZ -> fail (T-327 P2-7)" 1 \
 run_case "scraper.env missing ENABLE_BSE_API -> fail (T-251, F9 revert-proof)" 1 \
   "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.missing-f9-flag"
 
+# --- T-340: ADMIN_API_TOKEN is what the post-scrape steps need. A missing (or
+# blank) token used to produce a SILENT per-step skip inside triggerStatusUpdate
+# -- the cycle exited 0 with stale statuses and nothing alerted. The scraper now
+# refuses to START without it (scraper/src/index.ts assertRequiredEnvForCycle,
+# covered by scraper/tests/unit/index-env-assert.test.ts); this pair is the
+# deploy-time half, so a box is never provisioned without the key in the first
+# place. run_case_grep, not run_case: a bare exit-1 would still pass if the
+# message stopped naming the key, and "which key" is the whole point.
+run_case_grep "scraper.env missing ADMIN_API_TOKEN -> fail naming the key (T-340)" 1 "ADMIN_API_TOKEN"   "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.missing-admin-token"
+
+run_case_grep "scraper.env blank ADMIN_API_TOKEN -> fail naming the key (T-340 + T-230)" 1 "ADMIN_API_TOKEN"   "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.blank-admin-token"
+
 # --- T-243: slot DSN assert (staging must never target the production db) ---
 run_case "slot staging + staging DSN -> pass" 0 \
   "$FIXTURES/slot/staging/web.env.local" "$FIXTURES/slot/staging/scraper.env"
