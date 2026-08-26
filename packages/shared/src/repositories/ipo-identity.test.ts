@@ -4,12 +4,17 @@
  * Covers the priority-order rewrite of resolveIpoRow: isin -> nse symbol
  * (own keyspace, never bse_scrip_code) -> normalizedName -> slug -> fuzzy.
  * Binding constraints under test (per this task's contract / T-314C /
- * T-316C findings): NULL is never a key value; a key-tier hit that
- * disagrees with the name tier logs a structured warning and falls back to
- * the name-based row rather than silently picking either.
+ * T-316C findings): NULL is never a key value.
+ *
+ * T-339 (item 2) UPDATED the disagreement contract: a key-tier hit that
+ * disagrees with the name tier no longer "falls back to the name-based row"
+ * (which still WROTE, on the weaker tier's row) — it throws
+ * IdentityQuarantineError so nothing is written at all. The fixtures below
+ * cover BOTH disagreement directions (ISIN-key vs name, SYMBOL-key vs name)
+ * plus the no-disagreement control.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { resolveIpoRow, type IpoIdentity } from './ipo-identity';
+import { resolveIpoRow, IdentityQuarantineError, isIdentityQuarantineError, type IpoIdentity } from './ipo-identity';
 import type { IPORepository } from './ipo-repository';
 import type { IPO } from './types';
 
@@ -132,8 +137,9 @@ describe('resolveIpoRow — bse_scrip_code is a separate keyspace', () => {
   });
 });
 
-describe('resolveIpoRow — conflict detection', () => {
-  it('when a key match (row A) and a name match (row B, different id) disagree, logs identity_conflict and falls back to the name-based row', async () => {
+describe('resolveIpoRow — identity quarantine on key-vs-name disagreement (T-339 item 2)', () => {
+  // Direction 1: the ISIN key tier resolves row A, the name tier resolves row B.
+  it('ISIN key match (row A) vs name match (row B) -> throws IdentityQuarantineError, writes nothing', async () => {
     const rowA = makeIpo({ id: 'row-A', companyName: 'Acme Ltd', isin: 'INE123A01011' });
     const rowB = makeIpo({ id: 'row-B', companyName: 'Acme Limited', slug: 'acme-ltd' });
     const repo = makeRepo({
@@ -142,23 +148,83 @@ describe('resolveIpoRow — conflict detection', () => {
     });
 
     const { logger } = await import('../logger');
-    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => undefined as any);
 
-    const result = await resolveIpoRow(repo, { ...baseIdentity, isin: 'INE123A01011' });
+    await expect(
+      resolveIpoRow(repo, { ...baseIdentity, isin: 'INE123A01011' })
+    ).rejects.toBeInstanceOf(IdentityQuarantineError);
 
-    expect(result).toEqual(rowB); // falls back to name-based row, not the key match
-    expect(warnSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        keyMatchId: 'row-A',
-        nameMatchId: 'row-B',
-      }),
-      expect.stringContaining('identity_conflict')
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ keyTier: 'ISIN', keyMatchId: 'row-A', nameMatchId: 'row-B' }),
+      expect.stringContaining('identity_quarantine')
     );
 
-    warnSpy.mockRestore();
+    errorSpy.mockRestore();
   });
 
-  it('does NOT log a conflict when the key match and name match resolve to the SAME row', async () => {
+  it('the thrown error carries BOTH candidate ids, the key tier and the raw key values', async () => {
+    const rowA = makeIpo({ id: 'row-A', companyName: 'Acme Ltd', isin: 'INE123A01011' });
+    const rowB = makeIpo({ id: 'row-B', companyName: 'Acme Limited' });
+    const repo = makeRepo({
+      findByIsin: vi.fn().mockResolvedValue(rowA),
+      findByNormalizedName: vi.fn().mockResolvedValue(rowB),
+    });
+
+    const { logger } = await import('../logger');
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined as any);
+
+    const err = await resolveIpoRow(repo, { ...baseIdentity, isin: 'INE123A01011' }).catch((e) => e);
+
+    expect(isIdentityQuarantineError(err)).toBe(true);
+    expect(err.keyMatchId).toBe('row-A');
+    expect(err.keyMatchCompanyName).toBe('Acme Ltd');
+    expect(err.nameMatchId).toBe('row-B');
+    expect(err.nameMatchCompanyName).toBe('Acme Limited');
+    expect(err.keyTier).toBe('ISIN');
+    expect(err.isin).toBe('INE123A01011');
+    expect(err.symbol).toBeNull();
+    expect(err.companyName).toBe('Acme Ltd');
+  });
+
+  // Direction 2: no ISIN at all — the SYMBOL key tier is the one that disagrees.
+  it('SYMBOL key match (row C) vs name match (row D) -> throws, and reports keyTier SYMBOL', async () => {
+    const rowC = makeIpo({ id: 'row-C', companyName: 'Acme Industries', symbol: 'ACME' });
+    const rowD = makeIpo({ id: 'row-D', companyName: 'Acme Ltd' });
+    const repo = makeRepo({
+      findBySymbol: vi.fn().mockResolvedValue(rowC),
+      findByNormalizedName: vi.fn().mockResolvedValue(rowD),
+    });
+
+    const { logger } = await import('../logger');
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined as any);
+
+    const err = await resolveIpoRow(repo, { ...baseIdentity, isin: null, symbol: 'ACME' }).catch((e) => e);
+
+    expect(isIdentityQuarantineError(err)).toBe(true);
+    expect(err.keyTier).toBe('SYMBOL');
+    expect(err.symbol).toBe('ACME');
+    expect(err.keyMatchId).toBe('row-C');
+    expect(err.nameMatchId).toBe('row-D');
+  });
+
+  it('also throws when the disagreeing name row came from the SLUG tier, not normalizedName', async () => {
+    const rowA = makeIpo({ id: 'row-A', isin: 'INE123A01011' });
+    const rowB = makeIpo({ id: 'row-B', slug: 'acme-ltd' });
+    const repo = makeRepo({
+      findByIsin: vi.fn().mockResolvedValue(rowA),
+      findBySlug: vi.fn().mockResolvedValue(rowB),
+    });
+
+    const { logger } = await import('../logger');
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined as any);
+
+    await expect(
+      resolveIpoRow(repo, { ...baseIdentity, isin: 'INE123A01011' })
+    ).rejects.toBeInstanceOf(IdentityQuarantineError);
+  });
+
+  // CONTROL: agreement must stay on the happy path — no throw, no error log.
+  it('CONTROL: key match and name match on the SAME row -> resolves normally, no throw, no error log', async () => {
     const sameRow = makeIpo({ id: 'row-1', isin: 'INE123A01011' });
     const repo = makeRepo({
       findByIsin: vi.fn().mockResolvedValue(sameRow),
@@ -166,14 +232,23 @@ describe('resolveIpoRow — conflict detection', () => {
     });
 
     const { logger } = await import('../logger');
-    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
+    const errorSpy = vi.spyOn(logger, 'error').mockImplementation(() => undefined as any);
 
     const result = await resolveIpoRow(repo, { ...baseIdentity, isin: 'INE123A01011' });
 
     expect(result).toEqual(sameRow);
-    expect(warnSpy).not.toHaveBeenCalled();
+    expect(errorSpy).not.toHaveBeenCalled();
 
-    warnSpy.mockRestore();
+    errorSpy.mockRestore();
+  });
+
+  it('CONTROL: a key hit with NO name hit resolves to the key row (key beats name), no throw', async () => {
+    const rowA = makeIpo({ id: 'row-A', isin: 'INE123A01011' });
+    const repo = makeRepo({ findByIsin: vi.fn().mockResolvedValue(rowA) });
+
+    const result = await resolveIpoRow(repo, { ...baseIdentity, isin: 'INE123A01011' });
+
+    expect(result).toEqual(rowA);
   });
 });
 
