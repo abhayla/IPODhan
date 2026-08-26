@@ -35,10 +35,19 @@
  *     chain specifically so those keyless rows keep resolving — it is not
  *     legacy code to delete, it is the fallback for ~23% of the table.
  *   - A key-tier hit and a name-tier hit that disagree (point to two
- *     DIFFERENT existing rows) MUST NOT be silently resolved either way in
- *     this phase — log a structured `identity_conflict` warning and fall
- *     back to the pre-T-318 name-based result, so no data silently moves
- *     rows. See `resolveIpoRow`'s conflict-detection step below.
+ *     DIFFERENT existing rows) MUST NOT be silently resolved either way.
+ *
+ * T-339 (item 2 — key beats name, quarantine on disagreement): the T-318
+ * phase logged that disagreement and then returned the NAME row, so the
+ * write still landed — on whichever row the weaker tier picked. That is the
+ * exact failure this task exists to close: on disagreement the row is now
+ * NOT written at all. `resolveIpoRow` throws `IdentityQuarantineError`
+ * carrying BOTH candidate ids; the scraper's caller records a quarantine
+ * (an unresolved `data_conflicts` HOLD row, reusing the T-328 state shape —
+ * no new table) plus a P1 owner page, and skips the IPO. The nightly
+ * detection-floor audit FAILs while any quarantine row is older than 24h
+ * (`k_identity_quarantine` in docs/reviews/detection-checks.json), so a
+ * quarantine cannot sit unnoticed.
  */
 import { logger } from '../logger';
 import type { IPORepository } from './ipo-repository';
@@ -68,6 +77,63 @@ export interface IpoIdentity {
 }
 
 /**
+ * Thrown by `resolveIpoRow` when the natural-key tier (ISIN or exchange
+ * symbol) and the name tier resolve to two DIFFERENT existing rows.
+ *
+ * The key is the stronger identifier, but "stronger" is not "certain": one
+ * of the two rows is wrong, and we do not know which. Writing either one
+ * risks moving live data onto the wrong company. So the write is refused
+ * and the disagreement is quarantined for a human. Callers MUST NOT catch
+ * this and fall back to a write — catch it, record the quarantine, skip.
+ */
+export class IdentityQuarantineError extends Error {
+  readonly name = 'IdentityQuarantineError';
+  /** Which key tier produced `keyMatchId` — useful in the quarantine record. */
+  readonly keyTier: 'ISIN' | 'SYMBOL';
+  readonly companyName: string;
+  readonly normalizedName: string;
+  readonly isin: string | null;
+  readonly symbol: string | null;
+  readonly keyMatchId: string;
+  readonly keyMatchCompanyName: string;
+  readonly nameMatchId: string;
+  readonly nameMatchCompanyName: string;
+
+  constructor(details: {
+    keyTier: 'ISIN' | 'SYMBOL';
+    companyName: string;
+    normalizedName: string;
+    isin?: string | null;
+    symbol?: string | null;
+    keyMatchId: string;
+    keyMatchCompanyName: string;
+    nameMatchId: string;
+    nameMatchCompanyName: string;
+  }) {
+    super(
+      `identity_quarantine: ${details.keyTier} key for "${details.companyName}" resolves to row ${details.keyMatchId} ` +
+      `("${details.keyMatchCompanyName}") but the name tier resolves to row ${details.nameMatchId} ` +
+      `("${details.nameMatchCompanyName}") — refusing to write either row`
+    );
+    this.keyTier = details.keyTier;
+    this.companyName = details.companyName;
+    this.normalizedName = details.normalizedName;
+    this.isin = details.isin ?? null;
+    this.symbol = details.symbol ?? null;
+    this.keyMatchId = details.keyMatchId;
+    this.keyMatchCompanyName = details.keyMatchCompanyName;
+    this.nameMatchId = details.nameMatchId;
+    this.nameMatchCompanyName = details.nameMatchCompanyName;
+  }
+}
+
+/** Type guard usable across package boundaries (instanceof survives, but this is cheaper to mock). */
+export function isIdentityQuarantineError(e: unknown): e is IdentityQuarantineError {
+  return e instanceof IdentityQuarantineError
+    || (typeof e === 'object' && e !== null && (e as { name?: string }).name === 'IdentityQuarantineError');
+}
+
+/**
  * Resolve the existing `ipos` row (if any) that an incoming write or guard
  * check should treat as "this company" — priority order:
  * isin (exact, normalized) -> nse/bse symbol (exact, normalized) ->
@@ -90,6 +156,7 @@ export async function resolveIpoRow(
   // row with no ISIN can never "match" an existing row that also has no
   // ISIN (both null() calls short-circuit before querying).
   let keyMatch: IPO | null = isin ? await ipoRepository.findByIsin(isin) : null;
+  let keyTier: 'ISIN' | 'SYMBOL' = 'ISIN';
 
   // Tier 2: NSE/BSE ticker symbol (exact, normalized). Same NULL-safety
   // guarantee as ISIN. Deliberately queries ONLY the `symbol` column, never
@@ -97,6 +164,7 @@ export async function resolveIpoRow(
   // comment, and findBySymbol's implementation enforces this by construction.
   if (!keyMatch && symbol) {
     keyMatch = await ipoRepository.findBySymbol(symbol);
+    if (keyMatch) keyTier = 'SYMBOL';
   }
 
   // Tier 3: normalized company name (existing behaviour, unchanged).
@@ -151,13 +219,27 @@ export async function resolveIpoRow(
     return keyMatch;
   }
 
-  // T-318 conflict: the key tier (isin/symbol) resolved to a DIFFERENT row
-  // than the name tier. Per the binding design constraint, do NOT silently
-  // pick either row in this phase — log a structured warning and fall back
-  // to the name-based result (the behavior every caller already had before
-  // this task). A future phase may choose to surface this as a
-  // merge_candidates row instead of merely logging it.
-  logger.warn({
+  // T-339 (item 2): the key tier (isin/symbol) resolved to a DIFFERENT row
+  // than the name tier. T-318 logged this and returned the NAME row — which
+  // meant the write still landed, on the row the weaker tier chose. Now the
+  // write is refused outright: throw, so no caller can persist anything for
+  // this company until a human resolves which row is real. The caller
+  // records the quarantine (see scraper/src/services/identity-quarantine.ts)
+  // and skips.
+  logger.error({
+    companyName,
+    normalizedName,
+    isin: isin ?? null,
+    symbol: symbol ?? null,
+    keyTier,
+    keyMatchId: keyMatch.id,
+    keyMatchCompanyName: keyMatch.companyName,
+    nameMatchId: nameMatch.id,
+    nameMatchCompanyName: nameMatch.companyName,
+  }, 'identity_quarantine: natural-key match and name match disagree on which row this is — refusing to write either row');
+
+  throw new IdentityQuarantineError({
+    keyTier,
     companyName,
     normalizedName,
     isin,
@@ -166,7 +248,5 @@ export async function resolveIpoRow(
     keyMatchCompanyName: keyMatch.companyName,
     nameMatchId: nameMatch.id,
     nameMatchCompanyName: nameMatch.companyName,
-  }, 'identity_conflict: natural-key match and name match disagree on which row this is — falling back to name-based resolution');
-
-  return nameMatch;
+  });
 }

@@ -32,6 +32,7 @@ import {
   DataConflictsRepository as DataConflictsRepositoryClass,
   createFieldProtectionService,
   resolveIpoRow,
+  isIdentityQuarantineError,
   type FieldProtectionService
 } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
@@ -41,6 +42,7 @@ import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { ScraperMetricsTracker } from '../services/scraper-metrics-tracker.js';
 import { AlertingService } from '../services/alerting-service.js';
+import { recordIdentityQuarantine } from '../services/identity-quarantine.js';
 import type { ScraperSource } from '../services/types.js';
 import { DataConsolidationOrchestrator } from '../services/data-consolidation-orchestrator.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
@@ -374,14 +376,40 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     // guard every real-time NSE/BSE/Chittorgarh scrape goes through) — it
     // MUST thread isin/symbol so the key-first tiers actually fire here, not
     // only in the secondary backfill scripts.
+    //
+    // T-339 (item 2): when the key tier and the name tier disagree about
+    // WHICH row this is, resolveIpoRow throws instead of quietly returning
+    // the name row. One of the two candidates is wrong and we cannot tell
+    // which, so the IPO is quarantined (an unresolved data_conflicts HOLD
+    // row + a P1 owner page) and SKIPPED — nothing is written. Catching this
+    // and falling back to a write would restore exactly the bug the throw
+    // exists to prevent.
     const normalizedName = normalizeCompanyNameForMatching(validatedIPO.companyName);
-    const existingIPO = await resolveIpoRow(this.ipoRepository, {
-      companyName: validatedIPO.companyName,
-      normalizedName,
-      slug,
-      isin: validatedIPO.isin,
-      symbol: validatedIPO.symbol,
-    }) as IPO | null;
+    let existingIPO: IPO | null;
+    try {
+      existingIPO = await resolveIpoRow(this.ipoRepository, {
+        companyName: validatedIPO.companyName,
+        normalizedName,
+        slug,
+        isin: validatedIPO.isin,
+        symbol: validatedIPO.symbol,
+      }) as IPO | null;
+    } catch (identityError) {
+      if (!isIdentityQuarantineError(identityError)) throw identityError;
+      await recordIdentityQuarantine(
+        { dataConflictsRepository: this.dataConflictsRepository },
+        identityError,
+        scraperName
+      );
+      logger.error({
+        scraperName,
+        companyName: validatedIPO.companyName,
+        keyMatchId: identityError.keyMatchId,
+        nameMatchId: identityError.nameMatchId,
+      }, 'Identity quarantined (key vs name disagree) - IPO skipped, nothing written');
+      processResult.skipped = true;
+      return processResult;
+    }
     const ipoId = existingIPO?.id;
 
     // Step 3: PROTECTION CHECK - IPO-level lock
