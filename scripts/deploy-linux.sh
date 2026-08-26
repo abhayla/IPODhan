@@ -539,6 +539,39 @@ restart_pm2() {
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
 }
 
+# T-327F: extracted out of the inline AUTO-ROLLBACK block below so
+# scripts/tests/deploy-linux.test.sh can exercise the REAL (non-dry-run)
+# rollback pm2-start command in isolation, the same way restart_pm2 and
+# resume_scraper already are (case 8b/11 pattern) — a dry-run-only test
+# only ever proves the "[dry-run] ..." echo string, which is a separate
+# literal from the real invocation and can silently drift from it.
+rollback_start_web() {
+  if (( DRY_RUN )); then
+    # T-262F: same reasoning as restart_pm2's dry-run branch — emit the
+    # exact rollback command sequence (delete+start, never reload) so the
+    # regression suite can assert on it. Without this, the rollback path
+    # had ZERO command-shape coverage in --dry-run: it was previously
+    # gated entirely behind `if (( ! DRY_RUN ))`, so a revert of THIS
+    # branch to `pm2 reload` was invisible to every dry-run test.
+    local prev_realpath
+    prev_realpath="$(cd "$PREVIOUS_RELEASE" && pwd)"
+    log "[dry-run] pm2 delete $PM2_WEB_APP"
+    log "[dry-run] TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i ${DEPLOY_WEB_INSTANCES:-2} -- start (cwd=$prev_realpath/web, release=$prev_realpath)"
+    return 0
+  fi
+  # T-262: delete+start here too — same reasoning as restart_pm2's
+  # primary flip path. A rollback that used `pm2 reload` would leave
+  # the live process wherever it already was instead of actually
+  # repointing it at PREVIOUS_RELEASE, defeating the rollback.
+  # T-327 P2-7: TZ=UTC explicit here too, so a rollback never leaves the
+  # web app running without an explicit process TZ.
+  pm2 delete "$PM2_WEB_APP" >/dev/null 2>&1 || true
+  ( cd "$PREVIOUS_RELEASE/web" && TZ=UTC pm2 start "$(resolve_bin "$PREVIOUS_RELEASE" next/dist/bin/next)" --name "$PM2_WEB_APP" \
+      -i "${DEPLOY_WEB_INSTANCES:-2}" -- start ) \
+    || warn "rollback: pm2 start failed for $PM2_WEB_APP against $PREVIOUS_RELEASE — investigate manually, do not assume it is running."
+  pm2 save >/dev/null 2>&1 || warn "rollback: pm2 save failed — a reboot may not restore the rolled-back release."
+}
+
 verify_public_health() {
   if (( DRY_RUN )); then
     if [ "${DEPLOY_DRYRUN_VERSION_MISMATCH:-0}" = "1" ]; then
@@ -688,29 +721,7 @@ if ! verify_public_health; then
     atomic_flip_current "$PREVIOUS_RELEASE"
     basename "$PREVIOUS_RELEASE" | sed 's/^[0-9]*-[0-9]*-//' > "$ROOT/DEPLOYED_SHA-$SLOT"
     SCRAPER_RESUME_TARGET="prev"
-    if (( DRY_RUN )); then
-      # T-262F: same reasoning as restart_pm2's dry-run branch — emit the
-      # exact rollback command sequence (delete+start, never reload) so the
-      # regression suite can assert on it. Without this, the rollback path
-      # had ZERO command-shape coverage in --dry-run: it was previously
-      # gated entirely behind `if (( ! DRY_RUN ))`, so a revert of THIS
-      # branch to `pm2 reload` was invisible to every dry-run test.
-      prev_realpath="$(cd "$PREVIOUS_RELEASE" && pwd)"
-      log "[dry-run] pm2 delete $PM2_WEB_APP"
-      log "[dry-run] TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i ${DEPLOY_WEB_INSTANCES:-2} -- start (cwd=$prev_realpath/web, release=$prev_realpath)"
-    else
-      # T-262: delete+start here too — same reasoning as restart_pm2's
-      # primary flip path. A rollback that used `pm2 reload` would leave
-      # the live process wherever it already was instead of actually
-      # repointing it at PREVIOUS_RELEASE, defeating the rollback.
-      # T-327 P2-7: TZ=UTC explicit here too, so a rollback never leaves the
-      # web app running without an explicit process TZ.
-      pm2 delete "$PM2_WEB_APP" >/dev/null 2>&1 || true
-      ( cd "$PREVIOUS_RELEASE/web" && TZ=UTC pm2 start "$(resolve_bin "$PREVIOUS_RELEASE" next/dist/bin/next)" --name "$PM2_WEB_APP" \
-          -i "${DEPLOY_WEB_INSTANCES:-2}" -- start ) \
-        || warn "rollback: pm2 start failed for $PM2_WEB_APP against $PREVIOUS_RELEASE — investigate manually, do not assume it is running."
-      pm2 save >/dev/null 2>&1 || warn "rollback: pm2 save failed — a reboot may not restore the rolled-back release."
-    fi
+    rollback_start_web
     echo "Rolled back to the previous release. Investigate before re-deploying." >&2
     exit 1
   else
