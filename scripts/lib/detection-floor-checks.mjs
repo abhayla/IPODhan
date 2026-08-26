@@ -250,8 +250,253 @@ export function checkDeadSourceHasRetireBy(sourceName, consecutiveDegradedCycles
 
 export function checkSegmentPopulatedForIpo(row) {
   if (row.offeringType !== 'IPO') return null;
-  if (row.segment === null || row.segment === undefined) {
-    return `offering_type=IPO row "${row.companyName}" has a NULL segment — segment is not nullable in intent for real IPOs`;
+  // An empty string is the round-7 P3-7 shape and is just as broken as NULL —
+  // the sibling sector check already handles `<> ''` (checker finding).
+  if (row.segment === null || row.segment === undefined || String(row.segment).trim() === '') {
+    const shown = row.segment === null || row.segment === undefined ? 'NULL' : 'empty';
+    return `offering_type=IPO row "${row.companyName}" has a ${shown} segment — segment is not nullable in intent for real IPOs`;
   }
   return null;
+}
+
+// ---- T-335 fix round 1 (checker T-335C blockers) ------------------------------
+// Everything below is still PURE (no DB/IO/clock/network beyond an injected
+// `now`) so each behaviour has a fixture in
+// scripts/tests/audit-detection-floor.test.mjs.
+
+// (blocker 2) The live-IPO date check must not depend on `data_conflicts`
+// alone: the cross-source-disagreement monitor RESOLVES and RE-INSERTS every
+// conflict each 30-minute cycle, so there is a ~11-30s window per cycle with
+// zero unresolved rows — the checker observed the check PASS at 05:00:22Z and
+// FAIL naming Lumino + Annu at 05:03:03Z. Worse, if that monitor dies the table
+// stays empty forever and the check shows a permanent green PASS on a live
+// wrong-date defect. So we compute the cross-source comparison OURSELVES from
+// `ipos` (the published value) + `field_sources` (the losing source and the
+// value it recorded), and keep `data_conflicts` only as a secondary signal.
+
+// A field_sources row older than this is history, not an active disagreement:
+// while two sources flip-flop on a live IPO the row is rewritten every cycle.
+export const CROSS_SOURCE_DISAGREEMENT_WINDOW_DAYS = 3;
+
+// Compare two scraped values the way a reader would: dates by calendar day,
+// numbers numerically, everything else as a trimmed string.
+export function valuesDisagree(a, b) {
+  if (a === null || a === undefined || a === '') return false;
+  if (b === null || b === undefined || b === '') return false;
+  const sa = String(a).trim();
+  const sb = String(b).trim();
+  if (sa === sb) return false;
+  const na = Number(sa);
+  const nb = Number(sb);
+  if (Number.isFinite(na) && Number.isFinite(nb)) return na !== nb;
+  const da = new Date(sa);
+  const db = new Date(sb);
+  if (!Number.isNaN(da.getTime()) && !Number.isNaN(db.getTime())) {
+    return da.toISOString().slice(0, 10) !== db.toISOString().slice(0, 10);
+  }
+  return true;
+}
+
+/**
+ * Independent cross-source disagreement detector for live IPOs.
+ *
+ * ipoRows         [{ id, companyName, status, values: { <field>: publishedValue } }]
+ * fieldSourceRows [{ ipoId, tableName, fieldName, source, previousSource, previousValue, updatedAt }]
+ * conflictRows    [{ ipoId, companyName, fieldName, source1, value1, source2, value2 }] (SECONDARY)
+ * now             Date — injected so the recency window is testable.
+ * returns         [{ ipoId, companyName, fieldName, signal, message }]
+ */
+export function findLiveCrossSourceDisagreements({ ipoRows = [], fieldSourceRows = [], conflictRows = [], now = new Date() }) {
+  const live = ipoRows.filter((r) => LIVE_STATUSES.includes(r.status));
+  const liveById = new Map(live.map((r) => [r.id, r]));
+  const out = [];
+  const seen = new Set();
+
+  // PRIMARY — our own comparison, computed from data no other process resolves.
+  const windowMs = CROSS_SOURCE_DISAGREEMENT_WINDOW_DAYS * 86400000;
+  for (const fs of fieldSourceRows) {
+    if (fs.tableName && fs.tableName !== 'ipos') continue;
+    if (!HIGH_VALUE_FIELDS.includes(fs.fieldName)) continue;
+    const ipo = liveById.get(fs.ipoId);
+    if (!ipo) continue;
+    if (!fs.previousSource || fs.previousSource === fs.source) continue;
+    const age = now.getTime() - new Date(fs.updatedAt).getTime();
+    if (!Number.isFinite(age) || age > windowMs) continue;
+    const published = (ipo.values || {})[fs.fieldName];
+    if (!valuesDisagree(published, fs.previousValue)) continue;
+    const key = `${fs.ipoId}-${fs.fieldName}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      ipoId: fs.ipoId,
+      companyName: ipo.companyName,
+      fieldName: fs.fieldName,
+      signal: 'field_sources',
+      message: `live IPO "${ipo.companyName}" (${ipo.status}) publishes ${fs.fieldName}=${published} from ${fs.source}, while ${fs.previousSource} recorded ${fs.previousValue} — cross-source disagreement on a high-value field, computed independently of data_conflicts`,
+    });
+  }
+
+  // SECONDARY — unresolved data_conflicts rows, when the monitor happens to
+  // have one on the table at this instant. Never the only signal.
+  for (const c of conflictRows) {
+    const ipo = liveById.get(c.ipoId);
+    if (!ipo) continue;
+    if (!HIGH_VALUE_FIELDS.includes(c.fieldName)) continue;
+    const key = `${c.ipoId}-${c.fieldName}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      ipoId: c.ipoId,
+      companyName: ipo.companyName ?? c.companyName,
+      fieldName: c.fieldName,
+      signal: 'data_conflicts',
+      message: `live IPO "${ipo.companyName ?? c.companyName}" (${ipo.status}) has an unresolved ${c.fieldName} conflict: ${c.source1}=${c.value1} vs ${c.source2}=${c.value2}`,
+    });
+  }
+  return out;
+}
+
+// ---- (blocker 4) page-flood control: one digest per check per night ----------
+
+export const DIGEST_MAX_ROWS = 10;
+
+/**
+ * Shape ONE Notifier payload for a whole check, instead of one page per row.
+ *
+ * Severity is P1 only when the check has rows that were NOT present last night
+ * (a genuinely new defect); an unchanged backlog pages P2 so the owner still
+ * sees the state without the channel being drowned. The dedupeKey is scoped to
+ * check+date so the Notifier's 30-minute cooldown can never swallow the nightly
+ * digest (a date-less key would).
+ */
+export function buildCheckDigest({ checkId, checkTitle, rows = [], previousRowKeys = [], date, reportPath }) {
+  if (rows.length === 0) return null;
+  const previous = new Set(previousRowKeys);
+  const newRows = rows.filter((r) => !previous.has(r.rowKey));
+  const shown = rows.slice(0, DIGEST_MAX_ROWS).map((r) => `- ${r.body ?? r.title}`);
+  const more = rows.length - shown.length;
+  const bodyLines = [
+    `${rows.length} row(s) failing; ${newRows.length} new since the previous run.`,
+    '',
+    ...shown,
+  ];
+  if (more > 0) bodyLines.push(`- ...and ${more} more`);
+  if (reportPath) bodyLines.push('', `Full report: ${reportPath}`);
+  return {
+    project: 'ipodhan',
+    severity: newRows.length > 0 ? 'P1' : 'P2',
+    title: `[detection-floor] ${checkId}: ${rows.length} failing${newRows.length ? ` (${newRows.length} new)` : ''} — ${checkTitle}`,
+    body: bodyLines.join('\n'),
+    type: 'detection-floor',
+    dedupeKey: `detection-floor-${checkId}-${date}`,
+    newCount: newRows.length,
+  };
+}
+
+/**
+ * (blocker 1) An UNVERIFIABLE check MUST page. A check that cannot see its
+ * source is not a pass — the T-321 silent-pass class is exactly "the dependency
+ * was down, so nothing was reported". P2 (the owner must look, but nothing is
+ * proven broken), one page per check per night.
+ */
+export function buildUnverifiableDigest({ checkId, checkTitle, detail, date, reportPath }) {
+  const bodyLines = [
+    `Check "${checkId}" could not run: ${detail || 'source unreachable'}.`,
+    '',
+    'An UNVERIFIABLE check is NOT a pass — the coverage floor has a hole tonight.',
+  ];
+  if (reportPath) bodyLines.push('', `Full report: ${reportPath}`);
+  return {
+    project: 'ipodhan',
+    severity: 'P2',
+    title: `[detection-floor] ${checkId} UNVERIFIABLE — ${checkTitle}`,
+    body: bodyLines.join('\n'),
+    type: 'detection-floor',
+    dedupeKey: `detection-floor-unverifiable-${checkId}-${date}`,
+  };
+}
+
+/**
+ * (blocker 1) Exit-code contract, documented and tested:
+ *   0 — every check PASSed.
+ *   1 — at least one check FAILed (a defect is live).
+ *   3 — no FAIL, but at least one check is UNVERIFIABLE (the floor has a hole
+ *       tonight; distinct from 1 so the cron/log can tell "broken data" from
+ *       "blind audit"). FAIL dominates when both are present.
+ */
+export const EXIT_OK = 0;
+export const EXIT_FAIL = 1;
+export const EXIT_UNVERIFIABLE = 3;
+
+export function computeExitCode({ failCount = 0, unverifiableCount = 0 }) {
+  if (failCount > 0) return EXIT_FAIL;
+  if (unverifiableCount > 0) return EXIT_UNVERIFIABLE;
+  return EXIT_OK;
+}
+
+/**
+ * (blocker 1 + 4) RUN-LEVEL payload assembly, kept here rather than in the
+ * runner so the self-tests can prove the whole night's paging behaviour from
+ * fixtures — including the case the T-335C checker caught, where every check is
+ * UNVERIFIABLE and the first cut paged nobody and exited 0.
+ *
+ * results          [{ id, name, status, detail }]
+ * findingsByCheck  Map|Object  checkId -> [{ rowKey, title, body }]
+ * previousState    { checkId: [rowKey, ...] } from the previous run
+ */
+export function buildRunPayloads({ results = [], findingsByCheck = new Map(), previousState = {}, date, reportPath }) {
+  const entries = findingsByCheck instanceof Map
+    ? Array.from(findingsByCheck.entries())
+    : Object.entries(findingsByCheck);
+  const nameOf = (id) => results.find((r) => r.id === id)?.name || id;
+  const payloads = [];
+
+  for (const [checkId, rows] of entries) {
+    const digest = buildCheckDigest({
+      checkId, checkTitle: nameOf(checkId), rows,
+      previousRowKeys: previousState[checkId] || [], date, reportPath,
+    });
+    if (digest) payloads.push(digest);
+  }
+
+  // An UNVERIFIABLE check pages. Always. This is the branch whose absence let
+  // an all-blind night exit 0 with silence.
+  for (const r of results) {
+    if (r.status !== 'UNVERIFIABLE') continue;
+    payloads.push(buildUnverifiableDigest({
+      checkId: r.id, checkTitle: r.name, detail: r.detail, date, reportPath,
+    }));
+  }
+  return payloads;
+}
+
+/**
+ * (blocker 3) The cron-executable gate, with git injected so "git is not
+ * installed" is a fixture rather than a machine state. The first cut used
+ * `execOffenders.length = -1` as an "already recorded" sentinel, which throws
+ * `RangeError: Invalid array length` — turning the git-missing fallback into a
+ * crash that aborted the check and skipped ALL paging for that night.
+ *
+ * gitLsFiles: (paths) => string   — may throw; a throw means UNVERIFIABLE.
+ * returns { status, offenders, detail }
+ */
+export function evaluateCronExecutable(paths, gitLsFiles) {
+  let out;
+  try {
+    out = gitLsFiles(paths);
+  } catch (e) {
+    return { status: 'UNVERIFIABLE', offenders: [], detail: `git ls-files failed: ${e.message}` };
+  }
+  const offenders = [];
+  for (const line of String(out).trim().split('\n').filter(Boolean)) {
+    const [modeStr, , , path] = line.trim().split(/\s+/);
+    const mode = parseInt(modeStr, 8) & 0o777;
+    const v = checkCronScriptExecutable(path, mode);
+    if (v) offenders.push({ path, violation: v });
+  }
+  return {
+    status: offenders.length === 0 ? 'PASS' : 'FAIL',
+    offenders,
+    detail: offenders.length ? offenders.map((o) => o.violation).join('; ') : 'all executable',
+  };
 }

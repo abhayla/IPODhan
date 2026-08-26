@@ -11,14 +11,26 @@
 //
 // Usage:
 //   node scripts/audit-detection-floor.mjs           -> human report, exit 0 always
-//   node scripts/audit-detection-floor.mjs --gate    -> report + gate (exit 1 on ANY FAIL)
+//   node scripts/audit-detection-floor.mjs --gate    -> report + gate (see exit codes)
 //   BASE_URL=https://ipodhan.com node scripts/audit-detection-floor.mjs --gate
 //
-// A source that cannot be reached reports UNVERIFIABLE (distinct from OK) and
-// is surfaced separately — a check that silently passes when a dependency is
-// down is the T-321 class again (see evidence/2026-08-26-T-322/DETECTION-RCA.md
-// "Honest limits").
-import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+// EXIT CODES (--gate mode; report mode always exits 0):
+//   0  every check PASSed.
+//   1  at least one check FAILed — a defect is live.
+//   3  no FAIL, but at least one check is UNVERIFIABLE — the audit was BLIND
+//      tonight. Distinct from 1 so the cron log and the owner can tell "the
+//      data is broken" from "the audit could not see". FAIL dominates when both
+//      are present.
+//   2  the audit itself crashed / could not start.
+//
+// A source that cannot be reached reports UNVERIFIABLE (never OK), PAGES the
+// owner at P2, and makes the gate exit non-zero. A check that silently passes
+// when its dependency is down is the T-321 silent-pass class again (see
+// evidence/2026-08-26-T-322/DETECTION-RCA.md "Honest limits"); the T-335C
+// checker found exactly that hole in the first cut of this file and it is
+// closed here.
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -31,6 +43,8 @@ import {
   checkPm2EnvHasTz, checkPm2LogSize, findUnreferencedDefinitions,
   checkSectorPopulatedPct, checkCronScriptExecutable, checkDeadSourceHasRetireBy,
   checkSegmentPopulatedForIpo, DEAD_SOURCE_MAX_DEGRADED_CYCLES,
+  findLiveCrossSourceDisagreements, buildRunPayloads, evaluateCronExecutable,
+  computeExitCode, EXIT_UNVERIFIABLE,
 } from './lib/detection-floor-checks.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -68,13 +82,17 @@ const pool = new pg.Pool(
 const q = (sql, p) => pool.query(sql, p).then((r) => r.rows);
 const REAL_IPO = `offering_type = 'IPO'`;
 
-// Every finding this run wants to page the owner about — collected as we go,
-// emitted to the Notifier once at the end (item 2: dedupeKey per check per
-// row, not per night, so N defects page N times until each is individually
-// resolved, but a re-run of the SAME defect the same day is deduped).
-const notifications = [];
-function notify(checkId, severity, rowKey, title, body) {
-  notifications.push({ checkId, severity, rowKey, title, body, dedupeKey: `detection-floor-${checkId}-${rowKey}` });
+// Findings are collected PER CHECK and emitted as ONE DIGEST per check per
+// night — not one page per row. The first cut of this file paged per row: the
+// T-335C checker measured ~72 Notifier pages per run against a 30-minute
+// cooldown, i.e. ~72 Telegram messages every night until every legacy defect
+// cleared. A channel that noisy gets muted, and a muted channel is a dead
+// mechanism. See buildCheckDigest() for the severity rule (P1 only for rows
+// that are NEW versus the previous run).
+const findingsByCheck = new Map(); // checkId -> [{ rowKey, title, body }]
+function notify(checkId, _severity, rowKey, title, body) {
+  if (!findingsByCheck.has(checkId)) findingsByCheck.set(checkId, []);
+  findingsByCheck.get(checkId).push({ rowKey: String(rowKey), title, body });
 }
 
 const results = []; // { id, name, status: 'PASS'|'FAIL'|'UNVERIFIABLE', detail }
@@ -83,38 +101,103 @@ function record(id, name, status, detail) {
   console.log(`[${status}] ${id} ${name}${detail ? ' — ' + detail : ''}`);
 }
 
+// Last night's failing row keys, so a digest can say what is NEW. Kept in the
+// audit's own state dir on the box (same dir the cron script already owns);
+// falls back to the OS temp dir off-box so a dev run never writes to /root.
+const STATE_DIR = process.env.DETECTION_FLOOR_STATE_DIR
+  || (existsSync('/root/data-audit-ipodhan/state') ? '/root/data-audit-ipodhan/state' : tmpdir());
+const STATE_FILE = join(STATE_DIR, 'detection-floor-last-run.json');
+const RUN_DATE = new Date().toISOString().slice(0, 10);
+const REPORT_PATH = join(STATE_DIR, `run-${RUN_DATE}.log`);
+
+function readPreviousState() {
+  try { return JSON.parse(readFileSync(STATE_FILE, 'utf8')); } catch { return {}; }
+}
+function writeCurrentState(state) {
+  try { writeFileSync(STATE_FILE, JSON.stringify(state, null, 2)); }
+  catch (e) { console.log(`[STATE-WARN] could not persist ${STATE_FILE}: ${e.message} — every row will look "new" next run`); }
+}
+
 async function tableExists(name) {
   const rows = await q(`SELECT to_regclass($1) AS reg`, [`public.${name}`]);
   return rows[0]?.reg !== null && rows[0]?.reg !== undefined;
 }
 
-// ---- (a)/(b): live IPO vs unresolved cross-source conflict -----------------
+// ---- (a)/(b): live IPO vs cross-source disagreement -----------------------
+// INDEPENDENT BY CONSTRUCTION. The first cut read `data_conflicts` only, and
+// the T-335C checker caught it PASSing at 05:00:22Z and FAILing (Lumino, Annu)
+// at 05:03:03Z on the SAME live defect: the cross-source-disagreement monitor
+// resolves and re-inserts every conflict each 30-minute cycle, so there is a
+// ~11-30s window with zero unresolved rows — and if that monitor ever dies the
+// table stays empty and the check shows a permanent green PASS on a live
+// wrong-date defect. So the PRIMARY signal is now our own comparison, computed
+// from `ipos` (what the site publishes) against `field_sources` (which source
+// won and what the losing source had recorded). `data_conflicts` is kept only
+// as a SECONDARY signal. If field_sources is unreadable the check is
+// UNVERIFIABLE (which pages, per blocker 1) — never a silent PASS.
 async function checkA_B() {
-  if (!(await tableExists('data_conflicts'))) {
-    record('a_b_live_conflict', 'live IPO published value has no unresolved conflict', 'UNVERIFIABLE', 'data_conflicts table not present');
+  const name = `live IPO HIGH_VALUE field has no cross-source disagreement (fields: ${HIGH_VALUE_FIELDS.join(', ')})`;
+  if (!(await tableExists('field_sources'))) {
+    record('a_b_live_conflict', name, 'UNVERIFIABLE', 'field_sources table not present — cannot compute the independent cross-source comparison');
     return;
   }
   const fieldList = HIGH_VALUE_FIELDS.map((f) => `'${f}'`).join(',');
-  const rows = await q(
-    `SELECT c.ipo_id, i.company_name, i.status, c.field_name AS "fieldName",
-            c.source1, c.value1, c.source2, c.value2
-       FROM data_conflicts c
-       JOIN ipos i ON i.id = c.ipo_id AND i.${REAL_IPO}
-      WHERE c.resolved_at IS NULL
-        AND c.field_name IN (${fieldList})
-        AND i.status IN ('${LIVE_STATUSES.join("','")}')`
-  );
-  const offenders = [];
-  for (const r of rows) {
-    const violation = checkNoUnresolvedConflictOnLiveIpo({ ...r, hasUnresolvedConflict: true });
-    if (violation) {
-      offenders.push(`"${r.company_name}" — ${violation}`);
-      notify('a_b_live_conflict', 'P1', `${r.ipo_id}-${r.fieldName}`,
-        `Live IPO "${r.company_name}" publishes a disputed ${r.fieldName}`, violation);
-    }
+
+  // Published values, straight from the rows the site renders.
+  const ipoRows = (await q(
+    `SELECT id, company_name AS "companyName", status,
+            open_date AS "openDate", close_date AS "closeDate",
+            price_range_min AS "priceRangeMin", price_range_max AS "priceRangeMax"
+       FROM ipos
+      WHERE ${REAL_IPO} AND status IN ('${LIVE_STATUSES.join("','")}')`
+  )).map((r) => ({
+    id: r.id, companyName: r.companyName, status: r.status,
+    values: {
+      openDate: r.openDate, closeDate: r.closeDate,
+      priceRangeMin: r.priceRangeMin, priceRangeMax: r.priceRangeMax,
+    },
+  }));
+
+  // PRIMARY signal: the winning source and the value the losing source held.
+  const fieldSourceRows = ipoRows.length
+    ? await q(
+        `SELECT ipo_id AS "ipoId", table_name AS "tableName", field_name AS "fieldName",
+                source, previous_source AS "previousSource", previous_value AS "previousValue",
+                updated_at AS "updatedAt"
+           FROM field_sources
+          WHERE table_name = 'ipos' AND field_name IN (${fieldList})
+            AND ipo_id = ANY($1::uuid[])`,
+        [ipoRows.map((r) => r.id)]
+      )
+    : [];
+
+  // SECONDARY signal: whatever unresolved conflict rows happen to exist right
+  // now. Best-effort — a missing table must not blind the primary comparison.
+  let conflictRows = [];
+  let conflictSignalAvailable = false;
+  if (await tableExists('data_conflicts')) {
+    conflictSignalAvailable = true;
+    conflictRows = await q(
+      `SELECT c.ipo_id AS "ipoId", i.company_name AS "companyName", c.field_name AS "fieldName",
+              c.source1, c.value1, c.source2, c.value2
+         FROM data_conflicts c
+         JOIN ipos i ON i.id = c.ipo_id AND i.${REAL_IPO}
+        WHERE c.resolved_at IS NULL
+          AND c.field_name IN (${fieldList})
+          AND i.status IN ('${LIVE_STATUSES.join("','")}')`
+    );
   }
-  record('a_b_live_conflict', `live IPO HIGH_VALUE field has no unresolved conflict (fields: ${HIGH_VALUE_FIELDS.join(', ')})`,
-    offenders.length === 0 ? 'PASS' : 'FAIL', `${offenders.length} violation(s)` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join('; ')}` : ''));
+
+  const violations = findLiveCrossSourceDisagreements({ ipoRows, fieldSourceRows, conflictRows, now: new Date() });
+  for (const v of violations) {
+    notify('a_b_live_conflict', 'P1', `${v.ipoId}-${v.fieldName}`,
+      `Live IPO "${v.companyName}" publishes a disputed ${v.fieldName}`, v.message);
+  }
+  const primaryCount = violations.filter((v) => v.signal === 'field_sources').length;
+  const detail = `${violations.length} violation(s) (${primaryCount} from the independent field_sources comparison, `
+    + `${violations.length - primaryCount} data_conflicts-only${conflictSignalAvailable ? '' : '; data_conflicts absent'})`
+    + (violations.length ? `: ${violations.slice(0, MAX_OFFENDERS).map((v) => `"${v.companyName}" — ${v.message}`).join('; ')}` : '');
+  record('a_b_live_conflict', name, violations.length === 0 ? 'PASS' : 'FAIL', detail);
 }
 
 // ---- (c): issue_size plausibility -------------------------------------------
@@ -218,9 +301,14 @@ async function checkE() {
     }
   }
   for (const o of offenders) notify('e_route_sweep', 'P1', o.split(' — ')[0], `Public API route unhealthy: ${o.split(' — ')[0]}`, o);
-  const status = unreachable === publicRoutes.length ? 'UNVERIFIABLE' : offenders.length === 0 ? 'PASS' : 'FAIL';
+  // ANY unreachable route means this sweep did not cover its whole population.
+  // The first cut only reported UNVERIFIABLE when EVERY route was unreachable,
+  // so 39/40 reachable + 1 hanging read as a clean PASS (checker finding). A
+  // real FAIL still dominates — an unreachable route cannot un-break a broken
+  // one — but a sweep with holes and no failures is BLIND, not green.
+  const status = offenders.length > 0 ? 'FAIL' : unreachable > 0 ? 'UNVERIFIABLE' : 'PASS';
   record('e_route_sweep', `every web/app/api/** public route (${publicRoutes.length} enumerated, ${adminRoutes.length} admin routes skipped) returns non-5xx with no SQL/stack leak`,
-    status, `${offenders.length} failing, ${unreachable} unreachable` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join(' | ')}` : ''));
+    status, `${offenders.length} failing, ${unreachable} unreachable (of ${publicRoutes.length})` + (offenders.length ? `: ${offenders.slice(0, MAX_OFFENDERS).join(' | ')}` : ''));
 }
 
 // ---- (f): conflict noise ratio ------------------------------------------------
@@ -326,32 +414,20 @@ async function checkJ() {
     sectorViolation || `${populated}/${total}`);
 
   // segment NOT NULL for offering_type=IPO — enumerated from the DB, not a hand list
-  const nullSegRows = await q(`SELECT id, company_name FROM ipos WHERE offering_type = 'IPO' AND segment IS NULL`);
-  const segOffenders = nullSegRows.map((r) => checkSegmentPopulatedForIpo({ offeringType: 'IPO', segment: null, companyName: r.company_name })).filter(Boolean);
-  for (const r of nullSegRows) notify('j_segment_not_null', 'P2', r.id, `IPO with NULL segment`, `"${r.company_name}" is offering_type=IPO with a NULL segment`);
-  record('j_segment_not_null', 'every offering_type=IPO row has a non-null segment', segOffenders.length === 0 ? 'PASS' : 'FAIL',
+  // Empty string counts, not just NULL — the round-7 P3-7 shape (checker finding).
+  const nullSegRows = await q(`SELECT id, company_name, segment FROM ipos WHERE offering_type = 'IPO' AND (segment IS NULL OR btrim(segment) = '')`);
+  const segOffenders = nullSegRows.map((r) => checkSegmentPopulatedForIpo({ offeringType: 'IPO', segment: r.segment, companyName: r.company_name })).filter(Boolean);
+  for (const r of nullSegRows) notify('j_segment_not_null', 'P2', r.id, `IPO with a blank segment`, `"${r.company_name}" is offering_type=IPO with a ${r.segment == null ? 'NULL' : 'empty'} segment`);
+  record('j_segment_not_null', 'every offering_type=IPO row has a non-blank segment', segOffenders.length === 0 ? 'PASS' : 'FAIL',
     segOffenders.length ? segOffenders.join('; ') : 'all populated');
 
   // cron script executable bit — enumerated from git-tracked scripts/*.sh that
   // this box's crontab actually invokes (README-documented entrypoints).
   const CRON_ENTRYPOINTS = ['scripts/vps-data-audit-cron.sh', 'scripts/vps-prod-verify-cron.sh'];
-  const execOffenders = [];
-  try {
-    const out = execFileSync('git', ['ls-files', '-s', ...CRON_ENTRYPOINTS], { cwd: REPO_ROOT, encoding: 'utf8' });
-    for (const line of out.trim().split('\n').filter(Boolean)) {
-      const [modeStr, , , path] = line.trim().split(/\s+/);
-      const mode = parseInt(modeStr, 8) & 0o777;
-      const v = checkCronScriptExecutable(path, mode);
-      if (v) { execOffenders.push(v); notify('j_cron_executable', 'P2', path, `cron script not executable in git`, v); }
-    }
-  } catch (e) {
-    record('j_cron_executable', 'every cron-invoked script has the executable bit set in git', 'UNVERIFIABLE', `git ls-files failed: ${e.message}`);
-    execOffenders.length = -1; // sentinel: already recorded
-  }
-  if (execOffenders.length !== -1) {
-    record('j_cron_executable', 'every cron-invoked script has the executable bit set in git', execOffenders.length === 0 ? 'PASS' : 'FAIL',
-      execOffenders.length ? execOffenders.join('; ') : 'all executable');
-  }
+  const execEval = evaluateCronExecutable(CRON_ENTRYPOINTS, (paths) =>
+    execFileSync('git', ['ls-files', '-s', ...paths], { cwd: REPO_ROOT, encoding: 'utf8' }));
+  for (const o of execEval.offenders) notify('j_cron_executable', 'P2', o.path, `cron script not executable in git`, o.violation);
+  record('j_cron_executable', 'every cron-invoked script has the executable bit set in git', execEval.status, execEval.detail);
 
   // dead-source retire-by — enumerated from scraper_logs sources, not a hand list
   if (await tableExists('scraper_logs')) {
@@ -373,32 +449,37 @@ async function checkJ() {
   }
 }
 
-async function sendNotifications() {
+async function sendNotifications(payloads) {
   const key = process.env.NOTIFIER_KEY_IPODHAN;
   const url = (process.env.NOTIFIER_URL || 'http://127.0.0.1:3300') + '/notify';
   if (!key) {
-    console.log(`\n[NOTIFY-SKIP] NOTIFIER_KEY_IPODHAN not set — ${notifications.length} pending notification(s) not sent (expected off the box)`);
+    console.log(`
+[NOTIFY-SKIP] NOTIFIER_KEY_IPODHAN not set — ${payloads.length} pending digest(s) not sent (expected off the box)`);
+    for (const pl of payloads) console.log(`  would page ${pl.severity} ${pl.dedupeKey}: ${pl.title}`);
     return;
   }
-  for (const n of notifications) {
+  for (const pl of payloads) {
+    const { newCount, ...body } = pl; // newCount is local bookkeeping, not wire
     try {
       const ctrl = new AbortController();
       const t = setTimeout(() => ctrl.abort(), 5000);
       await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Api-Key': key },
-        body: JSON.stringify({ project: 'ipodhan', severity: n.severity, title: n.title, body: n.body, type: 'detection-floor', dedupeKey: n.dedupeKey }),
+        body: JSON.stringify(body),
         signal: ctrl.signal,
       }).finally(() => clearTimeout(t));
     } catch (e) {
-      console.log(`[NOTIFY-FAIL] ${n.checkId}/${n.rowKey}: ${e.message}`);
+      console.log(`[NOTIFY-FAIL] ${pl.dedupeKey}: ${e.message}`);
     }
   }
-  console.log(`\n[NOTIFY] sent ${notifications.length} notification(s) to the Notifier gateway`);
+  console.log(`
+[NOTIFY] sent ${payloads.length} digest(s) to the Notifier gateway`);
 }
 
 async function main() {
-  console.log(`\n=== DETECTION-FLOOR AUDIT (T-335) — ${new Date().toISOString()} ===`);
+  console.log(`
+=== DETECTION-FLOOR AUDIT (T-335) — ${new Date().toISOString()} ===`);
   await checkA_B();
   await checkC();
   await checkD();
@@ -411,13 +492,29 @@ async function main() {
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');
-  console.log(`\n=== SUMMARY: ${results.length - failed.length - unverifiable.length} PASS, ${failed.length} FAIL, ${unverifiable.length} UNVERIFIABLE ===`);
+  console.log(`
+=== SUMMARY: ${results.length - failed.length - unverifiable.length} PASS, ${failed.length} FAIL, ${unverifiable.length} UNVERIFIABLE ===`);
 
-  if (failed.length && GATE) await sendNotifications();
+  const previousState = readPreviousState();
+  const payloads = buildRunPayloads({
+    results, findingsByCheck, previousState, date: RUN_DATE, reportPath: REPORT_PATH,
+  });
+
+  // Persist tonight's failing row keys so tomorrow's digest can say what is NEW.
+  const nextState = {};
+  for (const [checkId, rows] of findingsByCheck) nextState[checkId] = rows.map((r) => r.rowKey);
+
+  // NOT gated on failed.length any more: an all-UNVERIFIABLE night (data_conflicts
+  // gone, pm2 gone, site down) used to exit 0 with nobody paged — the T-321
+  // silent-pass class this whole mechanism exists to prevent (blocker 1).
+  if (payloads.length && GATE) await sendNotifications(payloads);
+  if (GATE) writeCurrentState(nextState);
   await pool.end();
 
-  if (!GATE) { console.log('(report mode; pass --gate to exit non-zero on FAIL)'); process.exit(0); }
-  process.exit(failed.length === 0 ? 0 : 1);
+  if (!GATE) { console.log('(report mode; pass --gate to exit non-zero on FAIL or UNVERIFIABLE)'); process.exit(0); }
+  const code = computeExitCode({ failCount: failed.length, unverifiableCount: unverifiable.length });
+  if (code === EXIT_UNVERIFIABLE) console.log(`(exit ${code}: no FAIL, but ${unverifiable.length} check(s) UNVERIFIABLE — the audit was blind, not green)`);
+  process.exit(code);
 }
 
 main().catch((e) => { console.error(e); process.exit(2); });
