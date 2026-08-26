@@ -221,6 +221,71 @@ export function findUnreferencedDefinitions(definedNames, referencedNames) {
   return definedNames.filter((name) => !referenced.has(name));
 }
 
+// ---- (k): T-340 post-scrape step ledger -------------------------------------
+// The RUNTIME twin of (i) wire_or_retire above. (i) catches a step that exists
+// on paper and is never wired to prod. (k) catches the harder case: a step that
+// IS wired, runs every cycle, and quietly does nothing — skipped for a reason
+// nobody reads (ADMIN_API_TOKEN unset was exactly this: triggerStatusUpdate
+// returned early, the cycle exited 0, statuses went stale, nothing alerted), or
+// failing every cycle inside its non-fatal catch. Both shapes are "green cycle,
+// dead step"; only the ledger (scraper_steps, T-340 item 1) can see the second.
+
+/** A step failing this many cycles in a row is a live defect, not a blip. */
+export const STEP_LEDGER_MAX_CONSECUTIVE_FAILURES = 3;
+/** The window in which every expected step must produce at least one `ok`. */
+export const STEP_LEDGER_WINDOW_HOURS = 24;
+
+/**
+ * Derive the expected-step list from the prod entrypoint's exported STEP_NAMES
+ * constant. NEVER hand-type this list in the audit: a hand-typed duplicate is
+ * the `i_wire_or_retire` failure class itself — a step added to index.ts and
+ * forgotten in the audit would be silently unmonitored forever.
+ *
+ * Throws when the constant cannot be found, so the caller reports UNVERIFIABLE
+ * (the audit is blind) instead of PASSing an empty expected-step list — an
+ * empty list would make every check vacuously green, the T-321 silent-pass class.
+ */
+export function parseStepNames(indexTsSource) {
+  const m = indexTsSource.match(/export\s+const\s+STEP_NAMES\s*=\s*\[([\s\S]*?)\]\s*as\s+const/);
+  if (!m) {
+    throw new Error('could not parse `export const STEP_NAMES = [...] as const` from scraper/src/index.ts');
+  }
+  const names = [...m[1].matchAll(/'([^']+)'|"([^"]+)"/g)].map((x) => x[1] ?? x[2]);
+  if (names.length === 0) {
+    throw new Error('STEP_NAMES parsed but is empty — refusing to run the step-ledger checks against an empty list');
+  }
+  return names;
+}
+
+/**
+ * FAIL when an expected step produced zero `ok` rows in the window. Deliberately
+ * counts `ok` only: a step skipped every cycle for a documented reason is still
+ * a step that is not doing its job, and that is the precise defect this task
+ * exists for.
+ */
+export function checkStepSilence(stepName, okCountInWindow) {
+  if (okCountInWindow > 0) return null;
+  return `post-scrape step "${stepName}" has ZERO ok rows in the last ${STEP_LEDGER_WINDOW_HOURS}h `
+    + `— it is wired but silently skipped or failing every cycle (T-340 runtime wire-or-retire)`;
+}
+
+/** Leading run of 'failed' in a newest-first status list. Any non-'failed' ends it. */
+export function countLeadingFailures(statusesNewestFirst) {
+  let n = 0;
+  for (const s of statusesNewestFirst) {
+    if (s !== 'failed') break;
+    n += 1;
+  }
+  return n;
+}
+
+export function checkStepConsecutiveFailures(stepName, statusesNewestFirst) {
+  const streak = countLeadingFailures(statusesNewestFirst);
+  if (streak < STEP_LEDGER_MAX_CONSECUTIVE_FAILURES) return null;
+  return `post-scrape step "${stepName}" has failed in ${streak} consecutive cycles `
+    + `(>= ${STEP_LEDGER_MAX_CONSECUTIVE_FAILURES}) — its non-fatal catch is hiding a persistent failure`;
+}
+
 // ---- (j): assorted P3 gates --------------------------------------------------
 
 export function checkSectorPopulatedPct(populatedCount, totalCount) {

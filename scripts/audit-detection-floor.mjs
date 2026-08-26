@@ -46,6 +46,8 @@ import {
   findLiveCrossSourceDisagreements, ORACLE_COMPARABLE_FIELDS,
   buildRunPayloads, evaluateCronExecutable,
   computeExitCode, EXIT_UNVERIFIABLE,
+  parseStepNames, checkStepSilence, checkStepConsecutiveFailures,
+  STEP_LEDGER_WINDOW_HOURS,
 } from './lib/detection-floor-checks.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -426,6 +428,84 @@ function checkI() {
     unreferenced.length === 0 ? 'PASS' : 'FAIL', unreferenced.length ? unreferenced.join(', ') + ' — never imported by prod' : 'all referenced');
 }
 
+// ---- (k): T-340 post-scrape step ledger -- every wired step must leave a row --
+// The RUNTIME twin of (i) above. (i) proves a step is WIRED; (k) proves it
+// actually RAN and worked. A cycle can exit 0 with statusUpdate skipped every
+// time (ADMIN_API_TOKEN unset) or failing every time inside its non-fatal
+// catch -- (i) sees nothing wrong, the exit code is 0, and statuses go stale
+// with no alert. That is this check's entire reason to exist.
+async function checkK() {
+  const silenceName = `every post-scrape step in STEP_NAMES has >=1 ok row in ${STEP_LEDGER_WINDOW_HOURS}h`;
+  const streakName = 'no post-scrape step has failed in 3+ consecutive cycles';
+
+  // The expected-step list is DERIVED from the prod entrypoint, never typed
+  // here -- a hand-typed copy is the i_wire_or_retire class itself.
+  let stepNames;
+  try {
+    stepNames = parseStepNames(readFileSync(join(REPO_ROOT, 'scraper', 'src', 'index.ts'), 'utf8'));
+  } catch (e) {
+    record('k_step_ledger_silence', silenceName, 'UNVERIFIABLE', `cannot derive STEP_NAMES: ${e.message}`);
+    record('k_step_consecutive_failures', streakName, 'UNVERIFIABLE', `cannot derive STEP_NAMES: ${e.message}`);
+    return;
+  }
+
+  if (!(await tableExists('scraper_steps'))) {
+    const detail = 'scraper_steps table not present (T-340 migration 0033 not applied on this DB) -- the audit is BLIND to step health, not green';
+    record('k_step_ledger_silence', silenceName, 'UNVERIFIABLE', detail);
+    record('k_step_consecutive_failures', streakName, 'UNVERIFIABLE', detail);
+    return;
+  }
+
+  const rows = await q(
+    `SELECT step, status, created_at
+       FROM scraper_steps
+      WHERE created_at > now() - interval '${STEP_LEDGER_WINDOW_HOURS} hours'
+      ORDER BY created_at DESC`
+  );
+
+  // Zero rows at all is NOT 12 FAILs -- on the first night after deploy the
+  // writer may not have run yet, and 12 spurious P1 pages would get the channel
+  // muted (the noise lesson this file already learned). It is UNVERIFIABLE:
+  // blind, still non-zero exit, still paged. A genuinely dead scraper is caught
+  // by (g) freshness, which does not depend on this table.
+  if (rows.length === 0) {
+    const detail = `scraper_steps has zero rows in the last ${STEP_LEDGER_WINDOW_HOURS}h -- the ledger writer has not run (or the scraper is dead; (g) freshness is the independent signal for that)`;
+    record('k_step_ledger_silence', silenceName, 'UNVERIFIABLE', detail);
+    record('k_step_consecutive_failures', streakName, 'UNVERIFIABLE', detail);
+    return;
+  }
+
+  const okCounts = new Map();
+  const statusesByStep = new Map(); // newest-first, insertion order from the query
+  for (const r of rows) {
+    if (r.status === 'ok') okCounts.set(r.step, (okCounts.get(r.step) || 0) + 1);
+    if (!statusesByStep.has(r.step)) statusesByStep.set(r.step, []);
+    statusesByStep.get(r.step).push(r.status);
+  }
+
+  const silent = [];
+  const streaks = [];
+  for (const step of stepNames) {
+    const silence = checkStepSilence(step, okCounts.get(step) || 0);
+    if (silence) {
+      silent.push(step);
+      notify('k_step_ledger_silence', 'P1', step, 'Post-scrape step is silently dead', silence);
+    }
+    const streak = checkStepConsecutiveFailures(step, statusesByStep.get(step) || []);
+    if (streak) {
+      streaks.push(step);
+      notify('k_step_consecutive_failures', 'P1', step, 'Post-scrape step failing every cycle', streak);
+    }
+  }
+
+  record('k_step_ledger_silence', `${silenceName} (${stepNames.length} derived)`,
+    silent.length === 0 ? 'PASS' : 'FAIL',
+    silent.length ? `no ok row in ${STEP_LEDGER_WINDOW_HOURS}h: ${silent.join(', ')}` : 'all steps produced ok rows');
+  record('k_step_consecutive_failures', streakName,
+    streaks.length === 0 ? 'PASS' : 'FAIL',
+    streaks.length ? `failing streak >=3: ${streaks.join(', ')}` : 'no failing streaks');
+}
+
 // ---- (j): assorted P3 gates ----------------------------------------------------
 async function checkJ() {
   // sector population
@@ -513,6 +593,7 @@ async function main() {
   await checkG();
   await checkH();
   checkI();
+  await checkK();
   await checkJ();
 
   const failed = results.filter((r) => r.status === 'FAIL');

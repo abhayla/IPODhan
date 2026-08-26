@@ -7,6 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   checkNoUnresolvedConflictOnLiveIpo,
   checkIssueSizeSegmentFloor,
@@ -446,4 +447,106 @@ test('(blocker 4) FAIL digests and UNVERIFIABLE pages coexist in one run', () =>
 test('(j) FAILS on an empty-string segment (round-7 P3-7 shape), not just NULL', () => {
   assert.ok(checkSegmentPopulatedForIpo({ offeringType: 'IPO', segment: '', companyName: 'Blank Co' }) !== null);
   assert.ok(checkSegmentPopulatedForIpo({ offeringType: 'IPO', segment: '   ', companyName: 'Blank Co' }) !== null);
+});
+
+// ---- (k) T-340 post-scrape step ledger --------------------------------------
+// The runtime twin of (i) wire_or_retire. (i) catches a step that exists on
+// paper and is never WIRED; (k) catches a step that IS wired, runs every
+// cycle, and silently does nothing (skipped for an unnoticed reason) or fails
+// every cycle inside its non-fatal catch. Both are "green cycle, dead step".
+
+import {
+  parseStepNames,
+  checkStepSilence,
+  countLeadingFailures,
+  checkStepConsecutiveFailures,
+  STEP_LEDGER_MAX_CONSECUTIVE_FAILURES,
+} from '../lib/detection-floor-checks.mjs';
+
+test('(k) expected-step list is DERIVED from scraper/src/index.ts, never hand-typed', () => {
+  const src = `
+const HEARTBEAT_INTERVAL_MINUTES = 30;
+export const STEP_NAMES = [
+  'statusUpdate',
+  'registrarReresolve', // trailing comment
+  'heartbeat',
+] as const;
+export type StepName = typeof STEP_NAMES[number];
+`;
+  assert.deepEqual(parseStepNames(src), ['statusUpdate', 'registrarReresolve', 'heartbeat']);
+});
+
+test('(k) parseStepNames throws when the constant is gone — the audit goes UNVERIFIABLE, never silently green', () => {
+  assert.throws(() => parseStepNames('const something = [];'), /STEP_NAMES/);
+});
+
+test('(k) parseStepNames matches the REAL prod entrypoint and finds every wired step', () => {
+  const src = readFileSync(new URL('../../scraper/src/index.ts', import.meta.url), 'utf8');
+  const names = parseStepNames(src);
+  assert.ok(names.length >= 10, `expected the real STEP_NAMES to have >=10 steps, got ${names.length}`);
+  assert.ok(names.includes('statusUpdate'), 'statusUpdate must be in the derived list');
+  // Every derived name must actually be passed to runStep() in the same file —
+  // otherwise the SSOT lists a step nothing runs.
+  for (const n of names) {
+    assert.ok(src.includes(`runStep(cycleId, '${n}'`), `${n} is in STEP_NAMES but never passed to runStep()`);
+  }
+});
+
+test('(k) FAILS a step with zero ok rows in the 24h window (the silent-skip shape)', () => {
+  assert.ok(checkStepSilence('statusUpdate', 0) !== null);
+  assert.match(checkStepSilence('statusUpdate', 0), /statusUpdate/);
+});
+
+test('(k) PASSES a step with at least one ok row in the window', () => {
+  assert.equal(checkStepSilence('statusUpdate', 1), null);
+  assert.equal(checkStepSilence('statusUpdate', 48), null);
+});
+
+test('(k) counts only the LEADING failures, newest-first', () => {
+  assert.equal(countLeadingFailures(['failed', 'failed', 'failed', 'ok']), 3);
+  assert.equal(countLeadingFailures(['ok', 'failed', 'failed', 'failed']), 0);
+  assert.equal(countLeadingFailures([]), 0);
+  // a 'skipped' cycle is not a failure and stops the streak
+  assert.equal(countLeadingFailures(['failed', 'skipped', 'failed']), 1);
+});
+
+test('(k) FAILS a step that failed in >= 3 consecutive cycles', () => {
+  const res = checkStepConsecutiveFailures('deployDriftMonitor', ['failed', 'failed', 'failed', 'ok']);
+  assert.ok(res !== null);
+  assert.match(res, /deployDriftMonitor/);
+  assert.match(res, new RegExp(String(STEP_LEDGER_MAX_CONSECUTIVE_FAILURES)));
+});
+
+test('(k) PASSES a step at 2 consecutive failures — the threshold is 3, not "any failure"', () => {
+  assert.equal(checkStepConsecutiveFailures('deployDriftMonitor', ['failed', 'failed', 'ok']), null);
+});
+
+test('(k) PASSES a healthy step', () => {
+  assert.equal(checkStepConsecutiveFailures('heartbeat', ['ok', 'ok', 'ok', 'ok']), null);
+});
+
+test('(k) a step that is SKIPPED every cycle still FAILS the silence check', () => {
+  // skipped rows exist, but zero of them are 'ok' — this is the exact
+  // ADMIN_API_TOKEN-unset shape this task exists for.
+  assert.ok(checkStepSilence('statusUpdate', 0) !== null);
+  assert.equal(checkStepConsecutiveFailures('statusUpdate', ['skipped', 'skipped', 'skipped']), null);
+});
+
+// ---- manifest <-> script wiring (T-340) -------------------------------------
+// detection-checks.json is read by the round-8 review contract to decide whether
+// a fresh finding "should have been caught". A check listed there but never
+// recorded by the audit script is a PAPER check: it makes the coverage floor
+// look wider than it is. This is wire-or-retire applied to the manifest itself.
+
+test('every detection-checks.json check id is actually recorded by the audit script, and vice versa', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../../docs/reviews/detection-checks.json', import.meta.url), 'utf8'));
+  const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  const recorded = new Set([...script.matchAll(/record\(\s*'([a-z0-9_]+)'/g)].map((m) => m[1]));
+  const declared = new Set(manifest.checks.map((c) => c.id));
+
+  const paperOnly = [...declared].filter((id) => !recorded.has(id));
+  assert.deepEqual(paperOnly, [], `manifest lists check(s) the audit never records: ${paperOnly.join(', ')}`);
+
+  const undocumented = [...recorded].filter((id) => !declared.has(id));
+  assert.deepEqual(undocumented, [], `audit records check(s) absent from the manifest: ${undocumented.join(', ')}`);
 });
