@@ -550,3 +550,126 @@ test('every detection-checks.json check id is actually recorded by the audit scr
   const undocumented = [...recorded].filter((id) => !declared.has(id));
   assert.deepEqual(undocumented, [], `audit records check(s) absent from the manifest: ${undocumented.join(', ')}`);
 });
+
+// ---- (l) T-340 NSE status cross-check ---------------------------------------
+// Our OPEN/UPCOMING set is produced by our own pipeline; nothing independent
+// checks it. NSE's own current-issue + upcoming feeds are the primary oracle
+// for "is this IPO actually open right now". Scope is deliberately narrow --
+// MAINBOARD rows that list NSE as an exchange -- because NSE SME (Emerge) and
+// BSE-only issues legitimately do not appear on these endpoints, and a check
+// that FAILs on those would be noise, which is how a channel gets muted.
+
+import {
+  crossCheckNseStatuses,
+  buildNseKeySet,
+} from '../lib/detection-floor-checks.mjs';
+
+const nse = (symbol, companyName) => ({ symbol, companyName });
+const ours = (o) => ({
+  companyName: 'X Ltd', symbol: 'X', status: 'OPEN',
+  segment: 'MAINBOARD', listingExchanges: ['NSE'], ...o,
+});
+
+test('(l) key set matches on symbol OR normalized company name', () => {
+  const keys = buildNseKeySet([nse('ACME', 'Acme Industries Limited')]);
+  assert.ok(keys.has('ACME'));
+  assert.ok(keys.has(normalizeCompanyKey('Acme Industries Ltd')));
+});
+
+test('(l) FAILS when we publish OPEN but NSE current-issue does not list it', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({ companyName: 'Ghost Ltd', symbol: 'GHOST', status: 'OPEN' })],
+    nseCurrent: [nse('OTHER', 'Other Ltd')],
+    nseUpcoming: [],
+  });
+  // BOTH directions are real defects here and both must be named: we publish an
+  // OPEN NSE lists nowhere, AND NSE lists an open issue we do not carry.
+  assert.equal(m.length, 2);
+  const joined = m.map((x) => x.message).join(' | ');
+  assert.match(joined, /Ghost Ltd/);
+  assert.match(joined, /Other Ltd/);
+});
+
+test('(l) FAILS when NSE lists an issue as currently open and we do not show it OPEN', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({ companyName: 'Late Ltd', symbol: 'LATE', status: 'UPCOMING' })],
+    nseCurrent: [nse('LATE', 'Late Ltd')],
+    nseUpcoming: [],
+  });
+  assert.ok(m.length >= 1);
+  assert.match(m.map((x) => x.message).join(' '), /LATE|Late Ltd/);
+});
+
+test('(l) FAILS when NSE lists a currently-open issue we have no row for at all', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [],
+    nseCurrent: [nse('MISSING', 'Missing Ltd')],
+    nseUpcoming: [],
+  });
+  assert.equal(m.length, 1);
+  assert.match(m[0].message, /Missing Ltd/);
+});
+
+test('(l) PASSES when our OPEN set matches NSE current-issue exactly', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({ companyName: 'Acme Ltd', symbol: 'ACME', status: 'OPEN' })],
+    nseCurrent: [nse('ACME', 'Acme Ltd')],
+    nseUpcoming: [],
+  });
+  assert.deepEqual(m, []);
+});
+
+test('(l) matches on company name when the symbol is not yet assigned', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({ companyName: 'Acme Industries Limited', symbol: null, status: 'OPEN' })],
+    nseCurrent: [nse('ACME', 'Acme Industries Ltd')],
+    nseUpcoming: [],
+  });
+  assert.deepEqual(m, []);
+});
+
+test('(l) ignores SME rows — NSE Emerge is not on these endpoints (noise control)', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({ companyName: 'Tiny Ltd', symbol: 'TINY', status: 'OPEN', segment: 'SME' })],
+    nseCurrent: [],
+    nseUpcoming: [],
+  });
+  assert.deepEqual(m, []);
+});
+
+test('(l) ignores BSE-only rows — they legitimately never appear on NSE feeds', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({ companyName: 'Bse Only Ltd', symbol: 'BONLY', status: 'OPEN', listingExchanges: ['BSE'] })],
+    nseCurrent: [],
+    nseUpcoming: [],
+  });
+  assert.deepEqual(m, []);
+});
+
+test('(l) ignores rows with unknown listing exchanges rather than guessing', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({ companyName: 'Unknown Ltd', symbol: 'UNK', status: 'OPEN', listingExchanges: null })],
+    nseCurrent: [],
+    nseUpcoming: [],
+  });
+  assert.deepEqual(m, []);
+});
+
+test('(l) an NSE UPCOMING issue we do not list at all is a mismatch', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [],
+    nseCurrent: [],
+    nseUpcoming: [nse('SOON', 'Soon Ltd')],
+  });
+  assert.equal(m.length, 1);
+  assert.match(m[0].message, /Soon Ltd/);
+});
+
+test('(l) does not double-report the same company from both feeds', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [],
+    nseCurrent: [nse('DUP', 'Dup Ltd')],
+    nseUpcoming: [nse('DUP', 'Dup Ltd')],
+  });
+  assert.equal(m.length, 1);
+});

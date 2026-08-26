@@ -286,6 +286,98 @@ export function checkStepConsecutiveFailures(stepName, statusesNewestFirst) {
     + `(>= ${STEP_LEDGER_MAX_CONSECUTIVE_FAILURES}) — its non-fatal catch is hiding a persistent failure`;
 }
 
+// ---- (l): T-340 NSE status cross-check ---------------------------------------
+// Our OPEN/UPCOMING set is produced entirely by our own pipeline; until now
+// nothing independent checked it. NSE's own current-issue + upcoming feeds are
+// the primary oracle for "is this issue actually open right now".
+//
+// SCOPE IS DELIBERATELY NARROW: MAINBOARD rows that name NSE among their
+// listing exchanges. NSE SME (Emerge) issues and BSE-only issues legitimately
+// never appear on these endpoints, so FAILing on them would be pure noise — and
+// a noisy channel gets muted, which is how a mechanism dies (the lesson already
+// recorded in audit-detection-floor.mjs's digest design). Rows with unknown
+// listing exchanges are skipped rather than guessed at.
+
+/** Normalized lookup keys for an NSE feed: exact symbol plus normalized name. */
+export function buildNseKeySet(feedRows) {
+  const keys = new Set();
+  for (const r of feedRows || []) {
+    if (r.symbol) keys.add(String(r.symbol).trim().toUpperCase());
+    if (r.companyName) keys.add(normalizeCompanyKey(r.companyName));
+  }
+  return keys;
+}
+
+function ourKeys(row) {
+  const keys = [];
+  if (row.symbol) keys.push(String(row.symbol).trim().toUpperCase());
+  if (row.companyName) keys.push(normalizeCompanyKey(row.companyName));
+  return keys;
+}
+
+function inScope(row) {
+  if (row.segment !== 'MAINBOARD') return false;
+  const ex = row.listingExchanges;
+  if (!Array.isArray(ex) || ex.length === 0) return false;
+  return ex.includes('NSE');
+}
+
+export function crossCheckNseStatuses({ ourRows = [], nseCurrent = [], nseUpcoming = [] }) {
+  const currentKeys = buildNseKeySet(nseCurrent);
+  const upcomingKeys = buildNseKeySet(nseUpcoming);
+  const mismatches = [];
+  const seen = new Set();
+  const push = (key, companyName, message) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    mismatches.push({ key, companyName, message });
+  };
+
+  // Direction 1: what WE publish, checked against NSE.
+  const scoped = ourRows.filter(inScope);
+  for (const row of scoped) {
+    const keys = ourKeys(row);
+    const onCurrent = keys.some((k) => currentKeys.has(k));
+    const onUpcoming = keys.some((k) => upcomingKeys.has(k));
+    const label = row.companyName || keys[0];
+    if (row.status === 'OPEN' && !onCurrent) {
+      push(keys[0], row.companyName,
+        `we publish "${label}" as OPEN, but NSE's current-issue feed does not list it (and NSE ${onUpcoming ? 'still calls it upcoming' : 'does not list it at all'})`);
+    } else if (row.status === 'UPCOMING' && onCurrent) {
+      push(keys[0], row.companyName,
+        `NSE lists "${label}" as a CURRENT (open) issue while we still publish it as UPCOMING`);
+    }
+  }
+
+  // Direction 2: what NSE publishes, checked against us. A live issue we never
+  // show at all is the worse defect of the two and is invisible to direction 1.
+  const openByKey = new Set();
+  const knownByKey = new Set();
+  for (const row of scoped) {
+    for (const k of ourKeys(row)) {
+      knownByKey.add(k);
+      if (row.status === 'OPEN') openByKey.add(k);
+      if (row.status === 'UPCOMING') knownByKey.add(k);
+    }
+  }
+  for (const r of nseCurrent || []) {
+    const keys = buildNseKeySet([r]);
+    if ([...keys].some((k) => openByKey.has(k))) continue;
+    const key = [...keys][0];
+    push(key, r.companyName,
+      `NSE's current-issue feed lists "${r.companyName || key}" as OPEN, but we publish no OPEN row for it${[...keys].some((k) => knownByKey.has(k)) ? ' (we have the company, with a different status)' : ' (we have no row for it at all)'}`);
+  }
+  for (const r of nseUpcoming || []) {
+    const keys = buildNseKeySet([r]);
+    if ([...keys].some((k) => knownByKey.has(k) || openByKey.has(k))) continue;
+    const key = [...keys][0];
+    push(key, r.companyName,
+      `NSE's upcoming feed lists "${r.companyName || key}", but we have no OPEN/UPCOMING row for it`);
+  }
+
+  return mismatches;
+}
+
 // ---- (j): assorted P3 gates --------------------------------------------------
 
 export function checkSectorPopulatedPct(populatedCount, totalCount) {

@@ -143,6 +143,16 @@
       "unverifiableWhen": "same as k_step_ledger_silence — unparseable STEP_NAMES, missing scraper_steps table, or an empty 24h window"
     },
     {
+      "id": "l_nse_status_crosscheck",
+      "findingClass": "our published OPEN/UPCOMING set disagrees with the exchange that actually runs the issue",
+      "round7Findings": [
+        "T-340 (new coverage — no round-7 finding; our live status set had NO independent oracle at all)"
+      ],
+      "failThreshold": "any MAINBOARD row naming NSE among its listing exchanges where (a) we publish OPEN but NSE current-issue does not list it, (b) NSE current-issue lists it as open while we publish UPCOMING or no OPEN row, or (c) an NSE current/upcoming issue has no OPEN/UPCOMING row of ours at all. Scope excludes SME (NSE Emerge is not on these endpoints), BSE-only rows, and rows with unknown listing exchanges — FAILing those would be noise, and a muted channel is a dead mechanism.",
+      "severity": "P1",
+      "unverifiableWhen": "the NSE cookie handshake or either feed fetch fails, or both feeds return zero usable rows (indistinguishable from a broken feed, so never read as \"nothing is open today\"). UNVERIFIABLE pages and exits 3 — never a silent PASS (T-321 class)."
+    },
+    {
       "id": "j_sector_populated",
       "findingClass": "the sector field/facet is populated for too few real IPOs to be usable",
       "round7Findings": [

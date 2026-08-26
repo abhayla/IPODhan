@@ -48,6 +48,7 @@ import {
   computeExitCode, EXIT_UNVERIFIABLE,
   parseStepNames, checkStepSilence, checkStepConsecutiveFailures,
   STEP_LEDGER_WINDOW_HOURS,
+  crossCheckNseStatuses,
 } from './lib/detection-floor-checks.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -506,6 +507,118 @@ async function checkK() {
     streaks.length ? `failing streak >=3: ${streaks.join(', ')}` : 'no failing streaks');
 }
 
+// ---- (l): T-340 daily NSE status cross-check ---------------------------------
+// Our OPEN/UPCOMING set has never been checked against anything outside our own
+// pipeline. NSE's current-issue + upcoming feeds are the primary oracle for
+// "is this issue actually open right now". Same header/cookie handshake as
+// scraper/src/scrapers/nse-api-client.ts (NSE rejects a cold API call).
+//
+// NSE down => UNVERIFIABLE, never PASS. A check that silently goes green when
+// its oracle is unreachable is the T-321 silent-pass class, and it is exactly
+// what this audit exists to prevent.
+const NSE_BASE = 'https://www.nseindia.com';
+const NSE_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+async function nseCookieJar() {
+  const jar = new Map();
+  const collect = (res) => {
+    for (const c of res.headers.getSetCookie?.() || []) {
+      const [pair] = c.split(';');
+      const [name] = pair.split('=');
+      if (name) jar.set(name, pair);
+    }
+  };
+  for (const url of [NSE_BASE, `${NSE_BASE}/market-data/all-upcoming-issues-ipo`]) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20000);
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      headers: {
+        'User-Agent': NSE_UA,
+        Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        Referer: NSE_BASE,
+        ...(jar.size ? { Cookie: [...jar.values()].join('; ') } : {}),
+      },
+    }).finally(() => clearTimeout(t));
+    collect(res);
+  }
+  if (jar.size === 0) throw new Error('NSE returned no cookies — bot wall or outage');
+  return [...jar.values()].join('; ');
+}
+
+async function nseJson(path, cookie) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 20000);
+  const res = await fetch(`${NSE_BASE}${path}`, {
+    signal: ctrl.signal,
+    headers: {
+      'User-Agent': NSE_UA,
+      Accept: 'application/json, text/plain, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      Referer: `${NSE_BASE}/market-data/all-upcoming-issues-ipo`,
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'same-origin',
+      Cookie: cookie,
+    },
+  }).finally(() => clearTimeout(t));
+  if (!res.ok) throw new Error(`${path} -> HTTP ${res.status}`);
+  return res.json();
+}
+
+// NSE's feeds have moved field names before; accept the known aliases and
+// require SOMETHING usable rather than silently mapping every row to nulls
+// (an all-null feed would make every key miss and manufacture false FAILs).
+function normalizeNseFeed(payload) {
+  const rows = Array.isArray(payload) ? payload : (payload?.data || []);
+  return rows.map((r) => ({
+    symbol: r.symbol || r.Symbol || r.symbolName || null,
+    companyName: r.companyName || r.company || r.issuerName || r.name || null,
+  })).filter((r) => r.symbol || r.companyName);
+}
+
+async function checkL() {
+  const name = 'our OPEN/UPCOMING set agrees with NSE current-issue + upcoming feeds';
+  let cookie, current, upcoming;
+  try {
+    cookie = await nseCookieJar();
+    current = normalizeNseFeed(await nseJson('/api/ipo-current-issue', cookie));
+    upcoming = normalizeNseFeed(await nseJson('/api/all-upcoming-issues?category=ipo', cookie));
+  } catch (e) {
+    record('l_nse_status_crosscheck', name, 'UNVERIFIABLE',
+      `NSE oracle unreachable (${e.message}) — the check is BLIND tonight, not green (T-321 class)`);
+    return;
+  }
+
+  // Both feeds empty is indistinguishable from "no IPO is open today", which is
+  // a normal state — but it is ALSO what a silently-broken feed looks like, so
+  // do not manufacture FAILs from it. Report blind, page, move on.
+  if (current.length === 0 && upcoming.length === 0) {
+    record('l_nse_status_crosscheck', name, 'UNVERIFIABLE',
+      'both NSE feeds returned zero usable rows — indistinguishable from a broken feed, so not treated as "nothing is open"');
+    return;
+  }
+
+  const ourRows = await q(
+    `SELECT company_name AS "companyName", symbol, status, segment,
+            listing_exchanges AS "listingExchanges"
+       FROM ipos
+      WHERE status IN ('OPEN', 'UPCOMING')`
+  );
+
+  const mismatches = crossCheckNseStatuses({ ourRows, nseCurrent: current, nseUpcoming: upcoming });
+  for (const m of mismatches) {
+    notify('l_nse_status_crosscheck', 'P1', m.key, 'Our IPO status disagrees with NSE', m.message);
+  }
+  record('l_nse_status_crosscheck',
+    `${name} (${current.length} current, ${upcoming.length} upcoming from NSE; ${ourRows.length} live rows of ours)`,
+    mismatches.length === 0 ? 'PASS' : 'FAIL',
+    mismatches.length
+      ? mismatches.slice(0, MAX_OFFENDERS).map((m) => m.message).join(' | ')
+      : 'every in-scope MAINBOARD/NSE row agrees with NSE');
+}
+
 // ---- (j): assorted P3 gates ----------------------------------------------------
 async function checkJ() {
   // sector population
@@ -594,6 +707,7 @@ async function main() {
   await checkH();
   checkI();
   await checkK();
+  await checkL();
   await checkJ();
 
   const failed = results.filter((r) => r.status === 'FAIL');
