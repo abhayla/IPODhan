@@ -65,6 +65,8 @@ export interface DisagreementRecord {
   source2: string;
   value2: string | null;
   severity: 'P1' | 'P2';
+  resolutionReason: string | null;
+  resolvedSource: string | null;
 }
 
 export interface DisagreementReport {
@@ -72,6 +74,38 @@ export interface DisagreementReport {
   disagreements: DisagreementRecord[];
   highValueCount: number;
   otherCount: number;
+}
+
+/**
+ * T-328: state what the system DID about a HIGH_VALUE disagreement, not just
+ * the raw disagreeing values — an alert that only reports "wrong value
+ * published" is the pre-HOLD behaviour. Reads the SAME
+ * `data_conflicts.resolutionReason`/`resolvedSource` that
+ * `data-consolidation-service.ts::resolveConflict` now writes (no schema
+ * change; these columns already existed).
+ *
+ * - `HELD_DISPUTED_HIGH_VALUE_LIVE` -> HOLD fired: the previously-published
+ *   value stayed live, nothing was asserted one-sided.
+ * - `TZ_SIGNATURE_TIEBREAK_PREFER_NON_NSE` -> the interim T-327 tie-break
+ *   resolved it by preferring the non-NSE source.
+ * - Anything else (or no resolution recorded, e.g. detection ran independently
+ *   of a consolidation cycle) falls back to the raw-values description so the
+ *   alert never silently omits the disagreement itself.
+ */
+export function buildDisagreementActionBody(d: DisagreementRecord): string {
+  if (d.resolutionReason === 'HELD_DISPUTED_HIGH_VALUE_LIVE') {
+    const publishedValue = d.resolvedSource === d.source1 ? d.value1 : d.value2;
+    const publishedSource = d.resolvedSource ?? d.source1;
+    return `HELD — no value published change; ${publishedValue} (${publishedSource}) stays live. (${d.source1}="${d.value1}" vs ${d.source2}="${d.value2}")`;
+  }
+
+  if (d.resolutionReason === 'TZ_SIGNATURE_TIEBREAK_PREFER_NON_NSE') {
+    const chosenValue = d.resolvedSource === d.source1 ? d.value1 : d.value2;
+    const nonNseSource = d.resolvedSource ?? (d.source1 === 'NSE' ? d.source2 : d.source1);
+    return `TIE-BROKEN — preferred ${nonNseSource} (${chosenValue}) over NSE per the T-327 TZ-signature interim rule.`;
+  }
+
+  return `${d.source1}="${d.value1}" vs ${d.source2}="${d.value2}" (open IPO, unresolved).`;
 }
 
 /**
@@ -126,6 +160,8 @@ export async function checkCrossSourceDisagreements(
     source2: row.source2,
     value2: row.value2,
     severity: HIGH_VALUE_FIELDS.has(row.fieldName) ? 'P1' : 'P2',
+    resolutionReason: row.resolutionReason ?? null,
+    resolvedSource: row.resolvedSource ?? null,
   }));
 
   const highValue = disagreements.filter((d) => d.severity === 'P1');
@@ -133,7 +169,7 @@ export async function checkCrossSourceDisagreements(
 
   for (const d of highValue) {
     notifyOwner('P1', `Cross-source disagreement: ${d.companyName} — ${d.fieldName}`, {
-      body: `${d.source1}="${d.value1}" vs ${d.source2}="${d.value2}" (open IPO, unresolved).`,
+      body: buildDisagreementActionBody(d),
       type: 'cross-source-disagreement',
       dedupeKey: `disagreement:${d.ipoId}:${d.fieldName}:${now.toISOString().slice(0, 10)}`,
     });

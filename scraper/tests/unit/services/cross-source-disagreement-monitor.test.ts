@@ -14,6 +14,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { PgDialect } from 'drizzle-orm/pg-core';
 import {
   checkCrossSourceDisagreements,
+  buildDisagreementActionBody,
   COMPARED_FIELDS,
   HIGH_VALUE_FIELDS,
 } from '../../../src/services/cross-source-disagreement-monitor.js';
@@ -134,6 +135,82 @@ describe('checkCrossSourceDisagreements', () => {
     for (const f of HIGH_VALUE_FIELDS) {
       expect(f, `${f} is snake_case; consolidation writes camelCase keys`).not.toMatch(/_/);
     }
+  });
+
+  // T-328 DoD item 5: the P1 alert body must state what the system DID
+  // (held / tie-broke), not just the raw disagreeing values — that was the
+  // pre-HOLD behaviour the reviewer flagged as "detection decoupled from
+  // correction" (an alert saying 'wrong value published' with no mention
+  // that the write path already held/corrected it).
+  it('fires the P1 body reading resolutionReason/resolvedSource from the conflict row', async () => {
+    const db = makeDb(
+      [{ id: 'ipo-lumino', companyName: 'Lumino Industries Ltd' }],
+      [
+        {
+          ipoId: 'ipo-lumino',
+          fieldName: 'openDate',
+          source1: 'NSE',
+          value1: '2026-08-26',
+          source2: 'CHITTORGARH',
+          value2: '2026-08-27',
+          resolutionReason: 'HELD_DISPUTED_HIGH_VALUE_LIVE',
+          resolvedSource: 'NSE',
+        },
+      ]
+    );
+
+    await checkCrossSourceDisagreements(db, new Date('2026-08-26T00:01:00Z'));
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.body).toContain('HELD');
+    expect(body.body).toContain('2026-08-26');
+    expect(body.body).not.toMatch(/^NSE="2026-08-26" vs CHITTORGARH="2026-08-27"/);
+  });
+
+  it('fires the P1 body stating TIE-BROKEN when resolutionReason is the T-327 interim rule', async () => {
+    const db = makeDb(
+      [{ id: 'ipo-annu', companyName: 'Annu Photovoltaic Ltd' }],
+      [
+        {
+          ipoId: 'ipo-annu',
+          fieldName: 'closeDate',
+          source1: 'NSE',
+          value1: '2026-08-28',
+          source2: 'CHITTORGARH',
+          value2: '2026-08-27',
+          resolutionReason: 'TZ_SIGNATURE_TIEBREAK_PREFER_NON_NSE',
+          resolvedSource: 'CHITTORGARH',
+        },
+      ]
+    );
+
+    await checkCrossSourceDisagreements(db, new Date('2026-08-26T00:01:00Z'));
+
+    const [, init] = fetchMock.mock.calls[0];
+    const body = JSON.parse(init.body);
+    expect(body.body).toContain('TIE-BROKEN');
+    expect(body.body).toContain('CHITTORGARH');
+    expect(body.body).toContain('2026-08-27');
+  });
+
+  it('falls back to the raw-values description when no resolutionReason is recorded', () => {
+    const body = buildDisagreementActionBody({
+      ipoId: 'ipo-1',
+      companyName: 'Acme Ltd',
+      fieldName: 'priceRangeMin',
+      source1: 'NSE',
+      value1: '100',
+      source2: 'BSE',
+      value2: '105',
+      severity: 'P1',
+      resolutionReason: null,
+      resolvedSource: null,
+    });
+
+    expect(body).toContain('NSE="100"');
+    expect(body).toContain('BSE="105"');
+    expect(body).not.toMatch(/HELD|TIE-BROKEN/);
   });
 
   it('classifies exactly priceRangeMin, priceRangeMax, openDate, closeDate as HIGH-value', () => {
