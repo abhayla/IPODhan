@@ -133,6 +133,14 @@ describe('scraper/src/index.ts one-shot --source=all path (T-340 step ledger)', 
       expect(typeof row.durationMs).toBe('number');
       expect(row.durationMs).toBeGreaterThanOrEqual(0);
       expect(['ok', 'skipped', 'failed']).toContain(row.status);
+      // T-340 checker round-1 F1: the contract requires "a skipped step MUST
+      // carry a reason". Assert it generically, for every recorded row, not
+      // just the one step the tests below happen to name — a step added six
+      // months from now with a reasonless skip/failure must fail THIS test.
+      if (row.status !== 'ok') {
+        expect(typeof row.reason).toBe('string');
+        expect(row.reason.length).toBeGreaterThan(0);
+      }
     }
   });
 
