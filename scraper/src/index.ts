@@ -140,7 +140,16 @@ async function runStep(cycleId: string, step: StepName, fn: () => Promise<StepRe
  * note). Scoped to `source === 'all'` because that is the only path that runs
  * any post-scrape step; `--source=nse`/`bse`/etc. need none of these keys.
  */
-const REQUIRED_ENV_FOR_ALL_CYCLE: readonly string[] = ['ADMIN_API_TOKEN'];
+// Exported so the drift guard in tests/unit/index-env-assert.test.ts can bind
+// this runtime list to scripts/assert-env-keys.sh's deploy-time list — two
+// hand-maintained lists in two languages is the exact drift class T-340 exists
+// to kill.
+//
+// WEB_INTERNAL_URL is deliberately NOT here: it has a fallback
+// ('http://localhost:3001') that is CORRECT on the prod box (the web app is
+// pm2-served on 3001 there), so requiring it would break local `--source=all`
+// runs for zero safety gain. It stays a deploy-time required key only.
+export const REQUIRED_ENV_FOR_ALL_CYCLE: readonly string[] = ['ADMIN_API_TOKEN'];
 
 export function assertRequiredEnvForCycle(source: string, env: NodeJS.ProcessEnv = process.env): void {
   if (source !== 'all') return;
