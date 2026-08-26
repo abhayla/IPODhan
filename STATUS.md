@@ -8,7 +8,7 @@ Started: 2026-08-27
 
 - [x] P2-6: conflict-writer noise mechanism (reject empty/equal/dup at write time) + cleanup SQL (written, not run) + HIGH_VALUE count post-filter
 - [x] P2-8: scheduler wire-or-retire (the recurrence) — either wire market-hours tiering into src/index.ts prod path, or delete scraper/src/scheduler/ + update rule
-- [ ] P2-11: pm2-logrotate install (live, reversible ops) + deploy-linux.sh FAILs if absent
+- [x] P2-11: pm2-logrotate install (live, reversible ops) + deploy-linux.sh FAILs if absent
 - [ ] P2-9 + P3-4: nightly audit thresholds (fieldCompleteness <5% FAIL; content table 0-rows >30d FAIL named)
 - [ ] P3-1/P3-2/P3-5/P3-7/P3-6: sector empty root-cause, Chittorgarh glyph strip, cron script chmod+x, segment NOT NULL, API_FALLBACK dead-source note
 
@@ -46,3 +46,11 @@ Started: 2026-08-27
   was blocking a clean read of "zero new test failures" for my own case 16 addition. Full
   deploy-linux.test.sh run: all 16 cases pass (was 13/16 before my report_wired_jobs fix, now 16/16).
   Added a "Round-8 re-verification" section to scheduler-liveness.md documenting the proof.
+- 2026-08-27: P2-11 done. Ran scripts/ops/install-pm2-logrotate.sh LIVE on the box (SSH
+  root@72.61.240.224, key firekaro_v6_vps) — pm2-logrotate installed and online, config confirmed
+  via `pm2 conf pm2-logrotate` (max_size=50M retain=7 compress=true). Verified rotation: the
+  pre-existing 261M ipodhan-scraper-out.log rotated to ipodhan-scraper-out__2026-08-27_03-45-55.log
+  within one workerInterval (30s) of install, leaving a fresh 0-byte log. Promoted
+  assert_pm2_logrotate_installed() in scripts/deploy-linux.sh from WARN to a hard FATAL/exit-1 gate
+  now that the one-time hand-run step it was waiting on is done. Updated deploy-linux.test.sh cases
+  11a/11b for the new exit-code + FATAL-line semantics. Full suite: 44/44 assertions pass.
