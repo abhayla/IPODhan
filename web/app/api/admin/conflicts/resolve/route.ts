@@ -20,6 +20,7 @@ import {
 import { eq, and } from 'drizzle-orm';
 import { invalidateProtectionCache } from '@/lib/admin/field-protection-checker';
 import { logAudit, AuditActionTypes, getClientIP, getUserAgent } from '@/lib/services/audit-log-service';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 interface ResolveConflictRequest {
   conflicts: Array<{
@@ -202,14 +203,7 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
     return NextResponse.json(response);
 
   } catch (error) {
-    console.error('[Admin API] Failed to resolve conflicts:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to resolve conflicts',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/admin/conflicts/resolve');
   }
 });
 

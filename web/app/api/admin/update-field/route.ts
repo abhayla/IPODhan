@@ -28,6 +28,7 @@ import { eq, and, desc } from 'drizzle-orm';
 import { markFieldAsManuallyEdited } from '@/lib/admin/field-protection-checker';
 import { sql } from 'drizzle-orm';
 import { logAudit, AuditActionTypes, getClientIP, getUserAgent } from '@/lib/services/audit-log-service';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 import { getTableConfig, TableCategory } from '@/lib/admin/table-map-generator';
 
 interface UpdateFieldRequest {
@@ -370,12 +371,6 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
       errorMessage: error instanceof Error ? error.message : 'Unknown error',
     });
 
-    return NextResponse.json(
-      {
-        error: 'Failed to update field',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/admin/update-field');
   }
 });

@@ -15,6 +15,7 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { ScraperLogRepository } from '@/lib/repositories/scraper-log-repository';
 import { requireAdminAuth } from '@/lib/auth/admin-auth';
 import type { ScraperSource } from '@/lib/db/types';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 export async function GET(request: NextRequest) {
   // Require admin authentication
@@ -70,14 +71,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(result, { status: 200 });
   } catch (error) {
-    console.error('Failed to get scraper logs:', error);
-
-    return NextResponse.json(
-      {
-        error: 'Failed to retrieve scraper logs',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/admin/scraper/logs');
   }
 }

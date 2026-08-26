@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { extractionLogs } from '@/lib/db';
 import { eq, desc } from 'drizzle-orm';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 export async function GET(
   request: NextRequest,
@@ -50,14 +51,6 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('[DRHP IPO API] Error fetching extraction logs:', error);
-
-    return NextResponse.json(
-      {
-        error: 'Failed to fetch extraction logs',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/admin/drhp/ipo/[ipoId]');
   }
 }

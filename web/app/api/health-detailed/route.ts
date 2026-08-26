@@ -95,9 +95,13 @@ export async function GET() {
     healthStatus.checks.database = {
       status: 'unhealthy',
       responseTime: Date.now() - startTime,
-      error: error instanceof Error ? error.message : 'Database connection failed',
+      error: 'Database connection failed',
     };
-    logger.error('Database health check failed', { error });
+    // Real error detail (can include SQL/connection info) logged server-side
+    // only - never in the public probe body (T-330 P2-5).
+    logger.error('Database health check failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
   // Check Redis
@@ -127,8 +131,11 @@ export async function GET() {
     healthStatus.checks.redis = {
       status: 'degraded',
       responseTime: Date.now() - startTime,
-      error: error instanceof Error ? error.message : 'Redis connection failed',
+      error: 'Redis connection failed',
     };
+    logger.warn('Redis health check failed', {
+      error: error instanceof Error ? error.message : String(error),
+    });
     if (healthStatus.status === 'healthy') {
       healthStatus.status = 'degraded';
     }

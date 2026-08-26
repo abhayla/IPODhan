@@ -88,8 +88,13 @@ export async function GET(request: Request) {
   if (dbResult.status === 'fulfilled') {
     databaseStatus = 'healthy';
   } else {
+    // Real error (can include connection/auth detail) logged server-side only;
+    // the public probe body gets a generic reason (T-330 P2-5).
     console.error('[Health Check] Database check failed:', dbResult.reason);
-    dbError = dbResult.reason instanceof Error ? dbResult.reason.message : 'Unknown error';
+    dbError =
+      dbResult.reason instanceof Error && /timed out/i.test(dbResult.reason.message)
+        ? dbResult.reason.message
+        : 'Database check failed';
   }
   const databaseResponseTimeMs = Date.now() - dbStart;
 
@@ -101,10 +106,14 @@ export async function GET(request: Request) {
   if (redisResult.status === 'fulfilled' && redisResult.value === 'PONG') {
     redisStatus = 'healthy';
   } else if (redisResult.status === 'rejected') {
+    // Real error logged server-side only; generic reason in the public body.
     console.error('[Health Check] Redis check failed:', redisResult.reason);
-    redisError = redisResult.reason instanceof Error ? redisResult.reason.message : 'Unknown error';
+    redisError =
+      redisResult.reason instanceof Error && /timed out/i.test(redisResult.reason.message)
+        ? redisResult.reason.message
+        : 'Redis check failed';
   } else {
-    redisError = `Unexpected PING reply: ${String(redisResult.value)}`;
+    redisError = 'Unexpected PING reply';
   }
   const redisResponseTimeMs = Date.now() - redisStart;
 

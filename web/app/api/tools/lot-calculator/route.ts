@@ -12,6 +12,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db/index';
 import { ipos } from '@/lib/db';
 import { eq, or, ilike, desc } from 'drizzle-orm';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 // ==================== TYPES ====================
 
@@ -103,13 +104,6 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Lot Calculator API Error:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to fetch IPO data',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/tools/lot-calculator');
   }
 }
