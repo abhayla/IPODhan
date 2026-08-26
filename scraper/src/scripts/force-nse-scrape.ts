@@ -14,6 +14,7 @@ import { db, getRedisClient, resolveIpoRow } from '@ipodhan/shared';
 import { IPORepository } from '@ipodhan/shared';
 import { upsertIPO, normalizeCompanyNameForMatching } from '../services/data-persister.js';
 import { generateSlug, type ScrapedIPO } from '../utils/validators.js';
+import { parseNSEDate } from '../scrapers/nse-api-client.js';
 
 const BASE_URL = 'https://www.nseindia.com';
 
@@ -61,11 +62,9 @@ async function scrapeNSEDirect() {
 
     for (const item of ipos) {
       try {
-        // Parse dates
-        const parseDate = (dateStr: string) => {
-          const date = new Date(dateStr);
-          return date.toISOString().split('T')[0];
-        };
+        // Parse dates — reuse the shared TZ-invariant parser (T-327, round-7
+        // P1-1); NEVER a local `new Date(dateStr).toISOString()` lambda.
+        const parseDate = parseNSEDate;
 
         // Parse price range. T-308 (round-6 P1, 3rd occurrence of this
         // class): this script calls upsertIPO() directly, so a lone

@@ -13,6 +13,7 @@
 import { z } from 'zod';
 import logger from './logger.js';
 import type { NSEPastIPOResponse } from '../scrapers/nse-api-client.js';
+import { parseDdMmmYyyy } from './date-string-parsing.js';
 
 /**
  * Zod schema for validating transformed past IPO data (AC2)
@@ -117,12 +118,12 @@ export function parseDate(dateStr: string | null | undefined): string | null {
       }
     }
 
-    // Handle DD-MMM-YYYY format (e.g., "15-Jan-2024")
-    if (/^\d{2}-[A-Za-z]{3}-\d{4}$/.test(cleaned)) {
-      const date = new Date(cleaned);
-      if (!isNaN(date.getTime())) {
-        return date.toISOString().split('T')[0];
-      }
+    // Handle DD-MMM-YYYY format (e.g., "15-Jan-2024") — string arithmetic,
+    // TZ-invariant by construction (T-327, round-7 P1-1); NEVER
+    // `new Date(dateOnlyString).toISOString()`.
+    const ddMmmIso = parseDdMmmYyyy(cleaned);
+    if (ddMmmIso) {
+      return ddMmmIso;
     }
 
     // Handle DD/MM/YYYY format
