@@ -120,6 +120,11 @@ const checkCrossSourceDisagreementsMock = vi.fn().mockResolvedValue({
 vi.mock('../../src/services/freshness-monitor.js', () => ({
   evaluateFreshness: evaluateFreshnessMock,
 }));
+vi.mock('../../src/services/deploy-drift-monitor.js', () => ({
+  checkDeployDrift: vi.fn().mockResolvedValue([]),
+  getMainShaFromOrigin: vi.fn(),
+  getServedShaForSlot: vi.fn(),
+}));
 vi.mock('../../src/services/cross-source-disagreement-monitor.js', () => ({
   checkCrossSourceDisagreements: checkCrossSourceDisagreementsMock,
 }));
