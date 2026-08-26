@@ -86,11 +86,22 @@ run_audit() {
 
   local failed=0
 
-  echo "--- [1/2] audit-ipo-coverage --gate (DB invariants + substance) ---"
+  echo "--- [1/3] audit-ipo-coverage --gate (DB invariants + substance) ---"
   node scripts/audit-ipo-coverage.mjs --gate || { failed=1; echo "GATE FAILED: audit-ipo-coverage"; }
 
-  echo "--- [2/2] audit-prod (live HTTP/API) ---"
+  echo "--- [2/3] audit-prod (live HTTP/API) ---"
   BASE_URL="https://ipodhan.com" node scripts/audit-prod.mjs || { failed=1; echo "GATE FAILED: audit-prod"; }
+
+  # T-335: the fresh-review coverage floor, promoted to FAIL-level checks —
+  # live-IPO cross-source conflicts, issue_size/lot-band plausibility, a full
+  # API route sweep, conflict-noise ratio, per-type freshness, pm2 env/log
+  # health, scheduler wire-or-retire, and the P3 gates (sector %, cron exec
+  # bit, dead-source retire-by). This script sends its OWN per-check/per-row
+  # Notifier pages (dedupeKey = detection-floor-<check>-<row>, one page per
+  # defect rather than one page per night) — it needs NOTIFIER_KEY_IPODHAN,
+  # already sourced above from $NOTIFIER_ENV.
+  echo "--- [3/3] audit-detection-floor --gate (round-7 coverage floor) ---"
+  BASE_URL="https://ipodhan.com" node scripts/audit-detection-floor.mjs --gate || { failed=1; echo "GATE FAILED: audit-detection-floor"; }
 
   echo "=== exit code: $failed ==="
   return "$failed"
