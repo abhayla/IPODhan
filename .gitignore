@@ -1,3 +1,6 @@
+# Local scratch Postgres data dir used for manual drift-gate testing (never commit)
+.scratch-pgdata/
+
 # Dependencies (install on VPS)
 node_modules/
 npm-debug.log*

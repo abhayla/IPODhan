@@ -22,8 +22,10 @@
 # alert path.
 #
 # WHAT IT RUNS
-#   1. audit-ipo-coverage.mjs --gate   (DB invariants + substance; needs the DB)
-#   2. audit-prod.mjs                  (live HTTP/API audit; needs no DB)
+#   1. audit-ipo-coverage.mjs --gate     (DB invariants + substance; needs the DB)
+#   2. audit-prod.mjs                    (live HTTP/API audit; needs no DB)
+#   3. audit-detection-floor.mjs --gate  (round-7 coverage floor; needs the DB)
+#   4. assert-schema-drift.ts            (T-330: live DB vs schema.ts; needs the DB)
 # Both are strictly read-only: SELECT-only SQL and GET requests. Neither writes
 # to the database, Redis, or the filesystem outside this script's state dir.
 #
@@ -100,10 +102,10 @@ run_audit() {
 
   local failed=0
 
-  echo "--- [1/3] audit-ipo-coverage --gate (DB invariants + substance) ---"
+  echo "--- [1/4] audit-ipo-coverage --gate (DB invariants + substance) ---"
   node scripts/audit-ipo-coverage.mjs --gate || { failed=1; echo "GATE FAILED: audit-ipo-coverage"; }
 
-  echo "--- [2/3] audit-prod (live HTTP/API) ---"
+  echo "--- [2/4] audit-prod (live HTTP/API) ---"
   BASE_URL="https://ipodhan.com" node scripts/audit-prod.mjs || { failed=1; echo "GATE FAILED: audit-prod"; }
 
   # T-335: the fresh-review coverage floor, promoted to FAIL-level checks —
@@ -119,7 +121,7 @@ run_audit() {
   # Exit codes: 0 clean, 1 a check FAILed, 3 no FAIL but at least one check was
   # UNVERIFIABLE (the audit was BLIND tonight, not green - it still pages and
   # still fails this cron run), 2 the audit crashed.
-  echo "--- [3/3] audit-detection-floor --gate (round-7 coverage floor) ---"
+  echo "--- [3/4] audit-detection-floor --gate (round-7 coverage floor) ---"
   BASE_URL="https://ipodhan.com" node scripts/audit-detection-floor.mjs --gate
   DF_CODE=$?
   case "$DF_CODE" in
@@ -127,6 +129,14 @@ run_audit() {
     3) failed=1; echo "GATE BLIND: audit-detection-floor exited 3 - at least one check was UNVERIFIABLE (not a pass)" ;;
     *) failed=1; echo "GATE FAILED: audit-detection-floor exited $DF_CODE" ;;
   esac
+
+  # T-330: read-only schema-drift check — compares the live column/matview set
+  # against packages/shared/src/db/schema.ts. Catches the class where a
+  # migration is journaled as applied but the live DDL never actually matched
+  # (ipo_scores.algorithm_version varchar(10) vs SSOT varchar(50); calendar_view
+  # never created) between deploys, e.g. after an out-of-band manual DB change.
+  echo "--- [4/4] assert-schema-drift (live DB vs schema.ts) ---"
+  npx tsx scripts/assert-schema-drift.ts || { failed=1; echo "GATE FAILED: assert-schema-drift"; }
 
   echo "=== exit code: $failed ==="
   return "$failed"
