@@ -71,9 +71,16 @@ SCRAPER_REQUIRED_KEYS=(
   REDIS_DB
   SCRAPER_ENABLED
   SCRAPER_INTERVAL_MODE
-  ENABLE_SOURCE_TRACKING
-  ENABLE_CONFLICT_DETECTION
-  ENABLE_DATA_CONSOLIDATION
+  # T-339: ENABLE_SOURCE_TRACKING / ENABLE_CONFLICT_DETECTION /
+  # ENABLE_DATA_CONSOLIDATION were REQUIRED here until 2026-08-26. They are now
+  # RETIRED: source tracking, conflict detection and consolidation are
+  # unconditional in code, so requiring the keys would demand a value the app
+  # no longer reads. The scraper still refuses to start if any of them (or the
+  # three *_PERCENTAGE knobs) is present with an OFF/PARTIAL value -- see
+  # assertConsolidationFlagsNotDisabled() in scraper/src/config/feature-flags.ts.
+  # Prod + staging still carry them set fully ON; that is tolerated, and the
+  # removal is listed in docs/architecture/write-path-hardening.md as env
+  # cleanup for the next deploy wave.
   # T-251 (F9): these four flags lived only in the Windows ecosystem.config.js
   # env{} block and were never carried to the Linux shared/env files at the
   # T-249 cutover -> all four silently defaulted OFF for ~70min on a closing

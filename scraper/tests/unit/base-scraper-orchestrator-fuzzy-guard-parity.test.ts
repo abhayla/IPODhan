@@ -1,5 +1,4 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { FEATURE_FLAGS } from '../../src/config/feature-flags.js';
 
 /**
  * T-307 (write-path hardening Phase 1) — FAILING-FIRST for the user-visible
@@ -95,16 +94,9 @@ vi.mock('../../src/services/alerting-service.js', () => ({
 // and '../../src/services/data-persister.js' -- this test needs the REAL
 // write path (upsertIPO) so its independent fuzzy resolution can actually
 // execute and expose the divergence.
-vi.mock('../../src/config/feature-flags.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../src/config/feature-flags.js')>();
-  return {
-    ...actual,
-    FEATURE_FLAGS: {
-      ...actual.FEATURE_FLAGS,
-      ENABLE_DATA_CONSOLIDATION: false, // exercise the legacy upsertIPO fallback directly
-    },
-  };
-});
+// T-339: the feature-flags mock that used to force
+// `ENABLE_DATA_CONSOLIDATION: false` here is gone with the flag itself.
+// Consolidation is now the only write path, so there is nothing to force.
 
 vi.mock('../../src/services/scraper-failure-tracker.js', () => ({
   scraperFailureTracker: {
@@ -150,12 +142,6 @@ describe('BaseScraperOrchestrator.processIPO() — guard/write parity on the fuz
     mockFindBySlug.mockReset();
     mockFindByNormalizedName.mockReset();
     mockFindByFuzzyName.mockReset();
-  });
-
-  afterEach(() => {
-    // Belt-and-braces: no test in this file is allowed to leak the
-    // consolidation flag into a sibling test.
-    FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION = false;
   });
 
   it('honors an IPO lock when only the fuzzy tier resolves the row (a typo in the company name) — locked value survives', async () => {
@@ -215,74 +201,15 @@ describe('BaseScraperOrchestrator.processIPO() — guard/write parity on the fuz
     expect(result.iposSkipped).toBeGreaterThan(0);
   }, 20000);
 
-  it('threads the guard-resolved row down to the write instead of re-resolving (T-307C Finding 1) -- write targets the FIRST resolution, not a second independent one', async () => {
-    // T-307C (independent checker) found that the DoD's second test called
-    // resolveIpoRow() twice, directly, with the same mock -- true by
-    // construction for any pure function, and it stayed green even after
-    // the checker removed the `preResolvedIPO` threading from all 3 call
-    // sites in BaseScraperOrchestrator.ts (mutant 2: the guard and the write
-    // resolve independently again -- exactly the B7 failure mode Phase 1
-    // exists to prevent). This test drives the REAL production wiring
-    // (processIPO() -> upsertIPO()) and proves the threading is load-bearing:
-    // findByFuzzyName is mocked to resolve the canonical row on its FIRST
-    // call (the guard's Step 2 resolution) and to miss (return null) on any
-    // SECOND call -- simulating another writer altering the row between the
-    // guard's resolve and the write, which the pre-resolved-row threading
-    // exists to make impossible to observe.
-    const { BaseScraperOrchestrator } = await import('../../src/base/BaseScraperOrchestrator.js');
-
-    const rawIPOs = [
-      {
-        companyName: 'Hybird Seeds Limited',
-        offeringType: 'SME',
-        segment: 'SME',
-      },
-    ];
-
-    class TestOrchestrator extends BaseScraperOrchestrator<any> {
-      protected getScraperName() {
-        return 'CHITTORGARH' as const;
-      }
-      protected async scrapeData() {
-        return { ipos: rawIPOs, subscriptions: [] };
-      }
-      protected validateIPO(ipo: any) {
-        return { success: true as const, data: ipo };
-      }
-    }
-
-    mockFindBySlug.mockResolvedValue(null);
-    mockFindByNormalizedName.mockResolvedValue(null);
-    mockFindByFuzzyName
-      .mockResolvedValueOnce({ id: 'hybrid-canonical-id', companyName: 'Hybrid Seeds Limited' })
-      .mockResolvedValueOnce(null);
-    // Not locked -- the write is allowed to proceed, so it can actually land
-    // and reveal which row (or none) it targeted.
-    mockIsIPOLocked.mockResolvedValue(false);
-    mockFilterProtectedFields.mockResolvedValue({
-      filtered: { companyName: rawIPOs[0].companyName, offeringType: 'SME' },
-    });
-    mockUpdate.mockResolvedValue({ id: 'hybrid-canonical-id' });
-    mockCreate.mockResolvedValue({ id: 'wrongly-created-duplicate-id' });
-
-    const orchestrator = new TestOrchestrator();
-    await orchestrator.run();
-
-    // Threading intact: the write path's `preResolvedIPO !== undefined`
-    // check short-circuits its own resolveIpoRow call, so findByFuzzyName is
-    // called exactly ONCE (the guard's Step 2 resolution) and the write is
-    // an UPDATE targeting that SAME row -- never a second, independently
-    // (and here, differently) resolved one.
-    expect(mockFindByFuzzyName).toHaveBeenCalledTimes(1);
-    expect(mockUpdate).toHaveBeenCalledWith('hybrid-canonical-id', expect.anything());
-    // If the threading regresses (mutant 2), upsertIPO re-resolves
-    // independently, findByFuzzyName's SECOND call returns null, existingIPO
-    // is null, and the write silently becomes a CREATE of a duplicate row
-    // instead of an update of the row the guard just cleared.
-    expect(mockCreate).not.toHaveBeenCalled();
-  }, 20000);
-
-  it('threads the guard-resolved row into consolidatedUpsertIPO when ENABLE_DATA_CONSOLIDATION=true (T-307C2 Finding 1) -- the branch that actually runs in production', async () => {
+  // T-339: the sibling test that used to sit here — "threads the guard-resolved
+  // row down to the write instead of re-resolving (T-307C Finding 1)" — drove the
+  // LEGACY `upsertIPO` fallback by forcing ENABLE_DATA_CONSOLIDATION=false. That
+  // branch no longer exists (consolidation is the only write path), so the test
+  // became an exact duplicate of the consolidation test below rather than extra
+  // coverage. Its mutant — stripping `preResolvedIPO` from the call site so the
+  // write re-resolves independently and silently CREATEs a duplicate — is still
+  // covered, on the path production actually runs.
+  it('threads the guard-resolved row into consolidatedUpsertIPO (T-307C2 Finding 1) -- the only write path (T-339)', async () => {
     // T-307C2 (independent checker, round 2) found that the test above only
     // ever exercises call site :499 (legacy upsertIPO fallback) because it
     // forces ENABLE_DATA_CONSOLIDATION=false. Production runs with that flag
@@ -303,8 +230,6 @@ describe('BaseScraperOrchestrator.processIPO() — guard/write parity on the fuz
     // re-resolves independently, the second findByFuzzyName call misses, and
     // the write silently becomes a CREATE of a duplicate row instead of an
     // UPDATE of the row the guard already cleared.
-    FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION = true;
-
     const { BaseScraperOrchestrator } = await import('../../src/base/BaseScraperOrchestrator.js');
 
     const rawIPOs = [

@@ -38,7 +38,7 @@ import {
   getConflictSeverity,
   validateValue,
 } from './normalization-engine';
-import { FEATURE_FLAGS, shouldUseFeature } from '../config/feature-flags';
+import { FEATURE_FLAGS } from '../config/feature-flags';
 
 /**
  * Result of field consolidation
@@ -253,14 +253,11 @@ export class DataConsolidationService {
     // Set shadow mode for this consolidation (defaults to false for production)
     this.currentShadowMode = input.shadowMode ?? false;
 
-    // Check if consolidation is enabled
-    if (
-      !FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION ||
-      !shouldUseFeature('CONSOLIDATION_PERCENTAGE', input.ipoId)
-    ) {
-      // Fallback: Accept all incoming data without conflict detection
-      return this.fallbackConsolidation(input, startTime);
-    }
+    // T-339: consolidation is MANDATORY. The flag + percentage gate that
+    // used to stand here (and its accept-all fallback
+    // branch) is deleted — an incoming value now ALWAYS goes through the
+    // priority/conflict layer, so every published field has a decision
+    // record behind it. See docs/architecture/write-path-hardening.md.
 
     const result: ConsolidationResult = {
       ipoId: input.ipoId,
@@ -577,7 +574,7 @@ export class DataConsolidationService {
       // logged a disagreement -- auto-resolve that open conflict (if any) so
       // it doesn't sit unresolved forever. Best-effort/non-fatal: this is an
       // audit-trail cleanup, never allowed to fail the consolidation itself.
-      if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+      if (!this.currentShadowMode) {
         try {
           await this.dataConflictsRepository.autoResolveConverged(
             ipoId,
@@ -743,11 +740,7 @@ export class DataConsolidationService {
     // `data_conflicts` row (that write path was the root cause of 9921/11493
     // rows having source1 === source2, which in turn destroyed the alert
     // channel with self-comparisons).
-    if (
-      FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION &&
-      !this.currentShadowMode &&
-      existingSource !== incomingSource
-    ) {
+    if (!this.currentShadowMode && existingSource !== incomingSource) {
       await this.logConflict({
         ipoId,
         tableName,
@@ -764,7 +757,7 @@ export class DataConsolidationService {
     }
 
     // Track chosen source
-    if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && !this.currentShadowMode) {
+    if (!this.currentShadowMode) {
       await this.trackFieldSource({
         ipoId,
         tableName,
@@ -806,10 +799,6 @@ export class DataConsolidationService {
     previousValue?: any;
     previousSource?: ScraperSource;
   }): Promise<void> {
-    if (!FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
-      return;
-    }
-
     if (this.currentShadowMode) {
       console.log('[SHADOW] Track field source:', params);
       return;
@@ -848,10 +837,6 @@ export class DataConsolidationService {
    * Log conflict to database for admin review
    */
   private async logConflict(conflict: ConflictInfo): Promise<void> {
-    if (!FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION) {
-      return;
-    }
-
     if (this.currentShadowMode) {
       console.log('[SHADOW] Log conflict:', conflict);
       return;
@@ -880,46 +865,6 @@ export class DataConsolidationService {
     } catch (error) {
       console.error('[DataConsolidation] Failed to log conflict:', error);
     }
-  }
-
-  /**
-   * Fallback consolidation when features are disabled
-   * Simply accepts all incoming data
-   */
-  private fallbackConsolidation(
-    input: ConsolidateIPODataInput,
-    startTime: number
-  ): ConsolidationResult {
-    const fieldResults: FieldConsolidationResult[] = [];
-
-    for (const [fieldName, incomingValue] of Object.entries(
-      input.incomingData
-    )) {
-      fieldResults.push({
-        fieldName,
-        finalValue: incomingValue,
-        chosenSource: input.source,
-        hadConflict: false,
-      });
-    }
-
-    // Build consolidated data from field results
-    const consolidatedData: Record<string, any> = {};
-    for (const fieldResult of fieldResults) {
-      consolidatedData[fieldResult.fieldName] = fieldResult.finalValue;
-    }
-
-    return {
-      ipoId: input.ipoId,
-      fieldsProcessed: fieldResults.length,
-      fieldsUpdated: fieldResults.length,
-      conflictsDetected: 0,
-      conflictsBySeverity: { INFO: 0, WARNING: 0, CRITICAL: 0 },
-      fieldResults,
-      consolidatedData,
-      errors: [],
-      performanceMs: Date.now() - startTime,
-    };
   }
 
   /**

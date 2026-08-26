@@ -91,15 +91,16 @@ export async function main() {
       'Scraper process timezone at startup'
     );
 
-    // T-283: loud, LOUD feature-flag visibility at every run start.
-    // validateFeatureFlags() (console.warn) fires exactly when a boolean
-    // ENABLE_* flag is on but its paired *_PERCENTAGE rollout is still 0% —
-    // the dead-fallback-path shape that let CONSOLIDATION_PERCENTAGE ship
-    // unset for the pipeline's entire production lifetime (T-282/T-283) with
-    // zero visibility, because this function was defined but never called
-    // from anywhere. Also emit the flag snapshot through the structured pino
-    // logger so it is queryable in scraper-out.log JSON on every cycle, not
-    // just readable as console text.
+    // T-283 -> T-339: loud, LOUD feature-flag visibility at every run start.
+    // The original T-283 reason was that a boolean ENABLE_* flag could be on
+    // while its paired *_PERCENTAGE rollout was still 0% — the dead-fallback
+    // shape that let CONSOLIDATION_PERCENTAGE ship unset for the pipeline's
+    // entire production lifetime with zero visibility. T-339 removed those
+    // knobs, so validateFeatureFlags() now has one job: REFUSE TO START if the
+    // environment still tries to switch consolidation off or ration it (and
+    // warn about fully-ON leftovers awaiting env cleanup). Also emit the flag
+    // snapshot through the structured pino logger so it is queryable in
+    // scraper-out.log JSON on every cycle, not just readable as console text.
     try {
       validateFeatureFlags();
     } catch (error) {

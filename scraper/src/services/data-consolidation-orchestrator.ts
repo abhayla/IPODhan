@@ -90,17 +90,10 @@ export class DataConsolidationOrchestrator {
     const startTime = Date.now();
     const slug = generateSlug(scrapedIPO.companyName);
 
-    // Check if consolidation is enabled
-    if (!FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
-      // Fallback: Use traditional upsert (will be called by orchestrator)
-      return {
-        ipoId: '',
-        isNew: false,
-        skipped: true,
-        locked: false,
-        skipReason: 'CONSOLIDATION_DISABLED',
-      };
-    }
+    // T-339: the CONSOLIDATION_DISABLED early-return that stood here is gone.
+    // It returned skipped=true, and every caller answered a skip by falling
+    // back to a plain upsert — so the "disabled" flag did not stop the write,
+    // it only stopped the arbitration. Consolidation is mandatory now.
 
     // Acquire distributed lock for this IPO
     const lockResult = await this.distributedLock.acquire(slug, {

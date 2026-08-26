@@ -36,7 +36,7 @@ import {
 } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { generateSlug } from '../utils/validators.js';
-import { upsertIPO, createSubscriptionSnapshot, normalizeCompanyNameForMatching } from '../services/data-persister.js';
+import { createSubscriptionSnapshot, normalizeCompanyNameForMatching } from '../services/data-persister.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { ScraperMetricsTracker } from '../services/scraper-metrics-tracker.js';
@@ -158,7 +158,9 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       fieldsProtected: 0,
       errors: [],
       // Phase 1: Consolidation metrics
-      consolidationEnabled: FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION,
+      // T-339: consolidation is mandatory — this is a constant now, kept on
+      // the result shape so existing log consumers do not break.
+      consolidationEnabled: true,
       conflictsDetected: 0,
       fieldsConsolidated: 0,
       avgConsolidationTimeMs: 0,
@@ -257,14 +259,12 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
         duration,
       };
 
-      if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
-        logData.phase1Metrics = {
-          consolidationEnabled: result.consolidationEnabled,
-          conflictsDetected: result.conflictsDetected,
-          fieldsConsolidated: result.fieldsConsolidated,
-          avgConsolidationTimeMs: result.avgConsolidationTimeMs?.toFixed(2),
-        };
-      }
+      logData.phase1Metrics = {
+        consolidationEnabled: result.consolidationEnabled,
+        conflictsDetected: result.conflictsDetected,
+        fieldsConsolidated: result.fieldsConsolidated,
+        avgConsolidationTimeMs: result.avgConsolidationTimeMs?.toFixed(2),
+      };
 
       logger.info(logData, `${scraperName} scraper orchestrator completed (Phase 1 + Phase 2 integrated)`);
 
@@ -439,11 +439,15 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       }
     }
 
-    // Step 5: Upsert filtered IPO data with Phase 1 consolidation (if enabled)
+    // Step 5: Upsert filtered IPO data through the consolidation orchestrator.
+    // T-339: this is the ONLY write path. The pre-T-339 code had two escapes —
+    // a now-retired consolidation feature-flag else-branch and a
+    // `consolidationResult.skipped` fallback — that BOTH called plain
+    // `upsertIPO`, i.e. published price band and dates by last-writer-wins.
+    // A skip is now exactly what it says: no write this cycle.
     let upsertedIPOId: string;
 
-    if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
-      // Phase 1: Use consolidation orchestrator
+    {
       const confidenceScore = this.getConfidenceScore(scraperName);
       const consolidationResult = await this.consolidationOrchestrator.consolidatedUpsertIPO(
         filteredIPOData,
@@ -457,15 +461,10 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       if (consolidationResult.skipped) {
         logger.warn(
           { slug, reason: consolidationResult.skipReason },
-          '[Phase 1] IPO consolidation skipped'
+          '[T-339] IPO consolidation skipped — NOT written (no bypass write path exists)'
         );
-        // Fallback to traditional upsert — pass the same pre-resolved row.
-        upsertedIPOId = await upsertIPO(this.ipoRepository, filteredIPOData, scraperName, existingIPO);
-        if (existingIPO) {
-          processResult.updated = true;
-        } else {
-          processResult.inserted = true;
-        }
+        processResult.skipped = true;
+        return processResult;
       } else {
         upsertedIPOId = consolidationResult.ipoId;
 
@@ -497,16 +496,6 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
             fieldsUpdated: consolidationResult.consolidation?.fieldsUpdated,
           }, '[Phase 1] IPO consolidated successfully');
         }
-      }
-    } else {
-      // Traditional upsert (no consolidation) — pass the row already
-      // resolved at Step 2 (T-307).
-      upsertedIPOId = await upsertIPO(this.ipoRepository, filteredIPOData, scraperName, existingIPO);
-
-      if (existingIPO) {
-        processResult.updated = true;
-      } else {
-        processResult.inserted = true;
       }
     }
 
