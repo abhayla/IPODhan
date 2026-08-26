@@ -13,8 +13,45 @@ import { getDb } from '@/lib/db';
 import { ipos } from '@/lib/db';
 import { eq } from 'drizzle-orm';
 import { getRedisClient } from '@/lib/cache/redis-client';
+import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
 
 export type IPOStatus = 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED';
+
+/**
+ * T-328 (LIFECYCLE-1, belt-and-suspenders half of HOLD): the date field that
+ * DRIVES each transition computeTargetStatus can produce. If that field has
+ * an unresolved HIGH_VALUE data_conflicts row for this IPO, the transition is
+ * skipped this cycle rather than acted on — the scraper-side HOLD in
+ * data-consolidation-service.ts already stops the wrong value from being
+ * written, but this is an independent second check in case a disputed value
+ * reached `ipos` some other way (an older code path, a manual repair with a
+ * lingering unresolved conflict row, etc.). `listingDate` is not a
+ * HIGH_VALUE field (see cross-source-disagreement-monitor.ts
+ * HIGH_VALUE_FIELDS), so CLOSED→LISTED is never held by this check.
+ */
+const TRANSITION_DRIVING_FIELD: Partial<Record<`${IPOStatus}->${IPOStatus}`, string>> = {
+  'UPCOMING->OPEN': 'openDate',
+  'OPEN->CLOSED': 'closeDate',
+};
+
+/** Pure lookup — which field (if any) drives a given status transition. */
+export function getTransitionDrivingField(from: IPOStatus, to: IPOStatus): string | undefined {
+  return TRANSITION_DRIVING_FIELD[`${from}->${to}`];
+}
+
+/**
+ * Pure decision: given the driving field for a transition and the IPO's
+ * unresolved data_conflicts rows, should the transition be held? True only
+ * when the driving field itself has an unresolved conflict — an unresolved
+ * conflict on an unrelated field must not block an otherwise-safe transition.
+ */
+export function isTransitionHeld(
+  drivingField: string | undefined,
+  unresolvedConflicts: { fieldName: string }[]
+): boolean {
+  if (!drivingField) return false;
+  return unresolvedConflicts.some((c) => c.fieldName === drivingField);
+}
 
 export interface StatusUpdateResult {
   upcomingToOpen: number;
@@ -67,6 +104,7 @@ export async function updateIPOStatuses(): Promise<StatusUpdateResult> {
 
   const db = await getDb();
   const redis = getRedisClient();
+  const conflictsRepo = new DataConflictsRepository(db, redis);
   const now = new Date();
   const today = now.toISOString().split('T')[0];
 
@@ -93,6 +131,21 @@ export async function updateIPOStatuses(): Promise<StatusUpdateResult> {
       today
     );
     if (!target || target === r.status) continue;
+
+    // T-328: refuse to flip status when the field driving this transition
+    // has an unresolved HIGH_VALUE dispute for this IPO — belt-and-suspenders
+    // alongside the scraper-side HOLD (data-consolidation-service.ts).
+    const drivingField = getTransitionDrivingField(r.status as IPOStatus, target);
+    if (drivingField) {
+      const unresolved = await conflictsRepo.findUnresolvedForIPO(r.id);
+      if (isTransitionHeld(drivingField, unresolved)) {
+        const disputed = unresolved.find((c) => c.fieldName === drivingField)!;
+        console.warn(
+          `[Status Updater] hold_status_transition: ${r.companyName} (${r.id}) ${r.status} -> ${target} held — ${drivingField} disputed (${disputed.source1}="${disputed.value1}" vs ${disputed.source2}="${disputed.value2}")`
+        );
+        continue;
+      }
+    }
 
     await db.update(ipos).set({ status: target, updatedAt: now }).where(eq(ipos.id, r.id));
     updatedIPOs.push({ id: r.id, companyName: r.companyName, oldStatus: r.status, newStatus: target });

@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { computeTargetStatus } from '@/lib/services/status-updater-service';
+import {
+  computeTargetStatus,
+  getTransitionDrivingField,
+  isTransitionHeld,
+} from '@/lib/services/status-updater-service';
 
 /**
  * State-machine coverage for IPO status transitions (GitHub #4/#6).
@@ -56,5 +60,50 @@ describe('computeTargetStatus', () => {
     expect(computeTargetStatus(dates, today)).toBe('CLOSED');
     // After backfill sets the real listing date -> advances to LISTED.
     expect(computeTargetStatus({ ...dates, listingDate: '2026-05-29' }, today)).toBe('LISTED');
+  });
+});
+
+/**
+ * T-328 — belt-and-suspenders half of HOLD: the status engine refuses to
+ * flip status when the field driving the transition has an unresolved
+ * HIGH_VALUE dispute, independent of the scraper-side HOLD in
+ * data-consolidation-service.ts.
+ */
+describe('getTransitionDrivingField', () => {
+  it('UPCOMING->OPEN is driven by openDate', () => {
+    expect(getTransitionDrivingField('UPCOMING', 'OPEN')).toBe('openDate');
+  });
+
+  it('OPEN->CLOSED is driven by closeDate', () => {
+    expect(getTransitionDrivingField('OPEN', 'CLOSED')).toBe('closeDate');
+  });
+
+  it('CLOSED->LISTED has no driving field (listingDate is not HIGH_VALUE)', () => {
+    expect(getTransitionDrivingField('CLOSED', 'LISTED')).toBeUndefined();
+  });
+});
+
+describe('isTransitionHeld', () => {
+  it('holds when the driving field has an unresolved conflict (Lumino shape)', () => {
+    const drivingField = getTransitionDrivingField('UPCOMING', 'OPEN');
+    const unresolved = [{ fieldName: 'openDate' }];
+    expect(isTransitionHeld(drivingField, unresolved)).toBe(true);
+  });
+
+  it('does NOT hold when the unresolved conflict is on an unrelated field', () => {
+    const drivingField = getTransitionDrivingField('UPCOMING', 'OPEN');
+    const unresolved = [{ fieldName: 'registrar' }];
+    expect(isTransitionHeld(drivingField, unresolved)).toBe(false);
+  });
+
+  it('does NOT hold when there is no driving field for the transition', () => {
+    const drivingField = getTransitionDrivingField('CLOSED', 'LISTED');
+    const unresolved = [{ fieldName: 'listingDate' }];
+    expect(isTransitionHeld(drivingField, unresolved)).toBe(false);
+  });
+
+  it('does NOT hold when there are no unresolved conflicts', () => {
+    const drivingField = getTransitionDrivingField('OPEN', 'CLOSED');
+    expect(isTransitionHeld(drivingField, [])).toBe(false);
   });
 });
