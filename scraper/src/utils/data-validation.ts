@@ -298,6 +298,57 @@ export function validateIPOData(
         });
       }
 
+      // NON_IPO_CORPORATE_ACTION_SHAPE (T-329, round-7 P1-4 GUARD FIX —
+      // evidence/2026-08-26-T-322/FINDING-P1-3-lot-band-and-shape.md).
+      // longWindowNoSubstance above only fires when BOTH lot size AND issue
+      // size are absent — but 7 live rows (KWALITY WALLS, MORGANITE
+      // CRUCIBLE, MUTHOOT FINCOTP, BANGANGA PAPER, NIRBHAY COLOURS,
+      // SANMITRA COMMERCIAL, STANBIK AGRO) HAVE both a lot size (100) and an
+      // issue size populated, so that guard never reaches them. Every one of
+      // these is a corporate action (scheme of arrangement / demerger /
+      // already-listed-company echo), not a genuine book-built IPO, and
+      // shares a distinct three-part shape none of which requires a missing
+      // lot/issue size:
+      //   - fixed price (price_range_min === price_range_max — no
+      //     book-building; the FIXED_PRICE-issueType exemption used
+      //     elsewhere in this file does not apply here because these rows
+      //     have issueType=null in prod, so this checks the raw band values)
+      //   - lot_size === 100 (the corporate-action-echo lot, distinct from a
+      //     genuine SME fixed-price IPO's typically larger/varied lot sizes)
+      //   - a 10-14 day "bidding window" (longer than a genuine mainboard
+      //     book-built IPO's ~3-5 days, but short enough that the >10-day
+      //     longWindowNoSubstance guard above — which needs a MUCH longer
+      //     window in practice for the ADVENZYMES/LIGHT OF LIFE TRUST shape,
+      //     98/11 days — does not reliably span it)
+      // All three conditions together are the discriminator; each alone is
+      // too common in genuine data to reject on (fixed price alone is a
+      // legitimate FIXED_PRICE SME issue; lot=100 alone is common; a 10-14
+      // day window alone can be a genuine extended mainboard offer — see the
+      // "does NOT reject a >10-day window when lot/issue size ARE populated"
+      // guard elsewhere in this file, which this new check deliberately
+      // narrows past by requiring the fixed-price + lot-100 co-occurrence).
+      if (
+        data.priceRangeMin != null &&
+        data.priceRangeMax != null &&
+        data.priceRangeMin === data.priceRangeMax &&
+        data.lotSize === 100 &&
+        data.openDate &&
+        data.closeDate
+      ) {
+        const openDate = new Date(data.openDate);
+        const closeDate = new Date(data.closeDate);
+        const duration = (closeDate.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24);
+        if (duration >= 10 && duration <= 14) {
+          errors.push({
+            field: 'offeringType',
+            rule: 'NON_IPO_CORPORATE_ACTION_SHAPE',
+            severity: 'ERROR',
+            message: `offeringType='IPO' with a fixed price (₹${data.priceRangeMax}), lot size 100, and a ${duration}-day window matches the corporate-action-echo shape (scheme of arrangement / demerger / already-listed company), not a genuine book-built IPO (#P1-4: KWALITY WALLS/MORGANITE CRUCIBLE/MUTHOOT FINCOTP/BANGANGA PAPER/NIRBHAY COLOURS/SANMITRA COMMERCIAL/STANBIK AGRO shape). Reclassify to the correct offering type or drop the row.`,
+            expected: true,
+          });
+        }
+      }
+
       const name = (data.companyName || '').trim();
       const isBareScripCode = /^[A-Z0-9]{2,15}$/.test(name);
       if (isBareScripCode) {
