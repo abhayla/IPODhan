@@ -38,7 +38,7 @@ silently regress to last-writer-wins.
 
 ## Progress log
 - [x] STEP 1 live flag capture
-- [ ] Item 1 — consolidation mandatory + single write path
+- [x] Item 1 — consolidation mandatory + single write path (ec23d85f)
 - [ ] Item 2 — key-beats-name identity quarantine
 - [ ] Item 3 — docs rollout note + prod env cleanup list
 
@@ -70,3 +70,24 @@ an unresolved row + a `resolutionReason` string. This task reuses that exact tab
 ### Item 3 — docs + env cleanup
 `docs/architecture/write-path-hardening.md`: rollout note + the explicit prod/staging env-key
 cleanup list for the next deploy wave. No prod writes by this task.
+
+## Resume log — T-339F (2026-08-26)
+
+The first attempt (worker T-339, worktree `D:/Abhay/Ventures/IPODhan-t339`) hit its
+**120-turn cap** after landing item 1. Its uncommitted tail was autosaved to
+`wip/T-339-autosave` (`ef090c54`); nothing of value was lost — `fleet/T-339` @ `ec23d85f`
+is the real state.
+
+This resume worker (T-339F, worktree `D:/Abhay/Ventures/IPODhan-t339-t339F`) opens the PR
+first (honest, work-in-progress body) and then executes the two remaining items.
+
+| Item | State |
+|---|---|
+| STEP 1 live flag capture | DONE (586538f0) |
+| Plan before first edit | DONE (5a307569) |
+| 1 — consolidation mandatory, one write path | DONE (ec23d85f) |
+| 2 — identity: key beats name, quarantine | OPEN — in progress by T-339F |
+| 3 — docs rollout note + prod env cleanup list | OPEN — in progress by T-339F |
+
+Constraints honoured: never merges, no prod DB writes, no secrets printed, commit+push
+after every item.
