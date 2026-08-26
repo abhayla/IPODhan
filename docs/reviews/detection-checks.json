@@ -8,14 +8,14 @@
   "checks": [
     {
       "id": "a_b_live_conflict",
-      "findingClass": "live IPO publishes a value that disagrees with another source (computed independently of data_conflicts)",
+      "findingClass": "live IPO publishes an open/close date that disagrees with an independent non-NSE oracle",
       "round7Findings": [
         "P1-1",
         "P1-2"
       ],
-      "failThreshold": "any OPEN/UPCOMING IPO where the published openDate/closeDate/priceRangeMin/priceRangeMax disagrees with the value field_sources records for the losing source (updated within 3 days) — PRIMARY signal; an unresolved data_conflicts row on the same field is a SECONDARY signal. The primary comparison is deliberately independent of data_conflicts because the cross-source monitor resolves and re-inserts every row each 30-minute cycle (T-335C).",
+      "failThreshold": "any OPEN/UPCOMING IPO whose published openDate or closeDate disagrees (by calendar day) with the value this audit fetches LIVE from the Chittorgarh public IPO report - PRIMARY signal, owned by nothing in our pipeline. An unresolved data_conflicts row on a HIGH_VALUE field is a SECONDARY signal. The primary comparison is deliberately independent because the cross-source monitor resolves and re-inserts every row each 30-minute cycle (T-335C), and field_sources.previous_source is populated on 1 of 5746 prod rows so it cannot serve as the oracle.",
       "severity": "P1",
-      "unverifiableWhen": "field_sources table not present"
+      "unverifiableWhen": "the live oracle fetch fails or returns no rows (the check is BLIND, and pages P2)"
     },
     {
       "id": "c_issue_size_floor",

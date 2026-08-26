@@ -267,16 +267,42 @@ export function checkSegmentPopulatedForIpo(row) {
 // (blocker 2) The live-IPO date check must not depend on `data_conflicts`
 // alone: the cross-source-disagreement monitor RESOLVES and RE-INSERTS every
 // conflict each 30-minute cycle, so there is a ~11-30s window per cycle with
-// zero unresolved rows — the checker observed the check PASS at 05:00:22Z and
-// FAIL naming Lumino + Annu at 05:03:03Z. Worse, if that monitor dies the table
-// stays empty forever and the check shows a permanent green PASS on a live
-// wrong-date defect. So we compute the cross-source comparison OURSELVES from
-// `ipos` (the published value) + `field_sources` (the losing source and the
-// value it recorded), and keep `data_conflicts` only as a secondary signal.
+// zero unresolved rows — the T-335C checker observed the check PASS at
+// 05:00:22Z and FAIL naming Lumino + Annu at 05:03:03Z on the same live defect.
+// Worse, if that monitor ever dies the table stays empty and the check shows a
+// permanent green PASS on a live wrong-date defect.
+//
+// So the PRIMARY signal is a LIVE FETCH of the non-NSE oracle (Chittorgarh's
+// public IPO report, the same endpoint scraper/src/scrapers/chittorgarh-scraper.ts
+// uses), compared against what `ipos` publishes. Nothing in our own pipeline can
+// resolve it away. `data_conflicts` is kept only as a SECONDARY signal, and a
+// failed oracle fetch is UNVERIFIABLE (which pages) — never a silent PASS.
+//
+// An earlier cut of this fix used field_sources.previous_source/previous_value
+// as the independent signal. Measured on prod: 1 of 5746 rows has
+// previous_source populated, so that comparison found ZERO disagreements on a
+// night when two were live. It is not used.
 
-// A field_sources row older than this is history, not an active disagreement:
-// while two sources flip-flop on a live IPO the row is rewritten every cycle.
-export const CROSS_SOURCE_DISAGREEMENT_WINDOW_DAYS = 3;
+// Only the fields the oracle publishes reliably. Chittorgarh's price column is
+// deliberately excluded: a lone price string is not a real band (see the T-308
+// note in chittorgarh-scraper.ts), so comparing it manufactures false positives.
+export const ORACLE_COMPARABLE_FIELDS = ['openDate', 'closeDate'];
+
+const LEGAL_SUFFIXES = new Set(['ltd', 'limited', 'pvt', 'private', 'plc', 'corp', 'corporation', 'inc']);
+
+// "Lumino Industries Limited" (ours) and "Lumino Industries Ltd." (oracle, which
+// also appends single-letter status flags like a trailing " O") must key the same.
+export function normalizeCompanyKey(name) {
+  if (!name) return '';
+  return String(name)
+    .replace(/<[^>]+>/g, ' ')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter((t) => t && t.length > 1 && !LEGAL_SUFFIXES.has(t))
+    .join(' ');
+}
 
 // Compare two scraped values the way a reader would: dates by calendar day,
 // numbers numerically, everything else as a trimmed string.
@@ -300,40 +326,38 @@ export function valuesDisagree(a, b) {
 /**
  * Independent cross-source disagreement detector for live IPOs.
  *
- * ipoRows         [{ id, companyName, status, values: { <field>: publishedValue } }]
- * fieldSourceRows [{ ipoId, tableName, fieldName, source, previousSource, previousValue, updatedAt }]
- * conflictRows    [{ ipoId, companyName, fieldName, source1, value1, source2, value2 }] (SECONDARY)
- * now             Date — injected so the recency window is testable.
- * returns         [{ ipoId, companyName, fieldName, signal, message }]
+ * ipoRows      [{ id, companyName, status, values: { openDate, closeDate, ... } }]
+ * oracleRows   [{ companyName, values: { openDate, closeDate } }]  — LIVE non-NSE fetch
+ * conflictRows [{ ipoId, companyName, fieldName, source1, value1, source2, value2 }] (SECONDARY)
+ * returns      [{ ipoId, companyName, fieldName, signal, message }]
  */
-export function findLiveCrossSourceDisagreements({ ipoRows = [], fieldSourceRows = [], conflictRows = [], now = new Date() }) {
+export function findLiveCrossSourceDisagreements({ ipoRows = [], oracleRows = [], conflictRows = [], oracleName = 'CHITTORGARH' }) {
   const live = ipoRows.filter((r) => LIVE_STATUSES.includes(r.status));
   const liveById = new Map(live.map((r) => [r.id, r]));
+  const oracleByKey = new Map();
+  for (const o of oracleRows) {
+    const k = normalizeCompanyKey(o.companyName);
+    if (k && !oracleByKey.has(k)) oracleByKey.set(k, o);
+  }
   const out = [];
   const seen = new Set();
 
-  // PRIMARY — our own comparison, computed from data no other process resolves.
-  const windowMs = CROSS_SOURCE_DISAGREEMENT_WINDOW_DAYS * 86400000;
-  for (const fs of fieldSourceRows) {
-    if (fs.tableName && fs.tableName !== 'ipos') continue;
-    if (!HIGH_VALUE_FIELDS.includes(fs.fieldName)) continue;
-    const ipo = liveById.get(fs.ipoId);
-    if (!ipo) continue;
-    if (!fs.previousSource || fs.previousSource === fs.source) continue;
-    const age = now.getTime() - new Date(fs.updatedAt).getTime();
-    if (!Number.isFinite(age) || age > windowMs) continue;
-    const published = (ipo.values || {})[fs.fieldName];
-    if (!valuesDisagree(published, fs.previousValue)) continue;
-    const key = `${fs.ipoId}-${fs.fieldName}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({
-      ipoId: fs.ipoId,
-      companyName: ipo.companyName,
-      fieldName: fs.fieldName,
-      signal: 'field_sources',
-      message: `live IPO "${ipo.companyName}" (${ipo.status}) publishes ${fs.fieldName}=${published} from ${fs.source}, while ${fs.previousSource} recorded ${fs.previousValue} — cross-source disagreement on a high-value field, computed independently of data_conflicts`,
-    });
+  // PRIMARY — our own comparison against a source nothing in our pipeline owns.
+  for (const ipo of live) {
+    const oracle = oracleByKey.get(normalizeCompanyKey(ipo.companyName));
+    if (!oracle) continue;
+    for (const field of ORACLE_COMPARABLE_FIELDS) {
+      const ours = (ipo.values || {})[field];
+      const theirs = (oracle.values || {})[field];
+      if (!valuesDisagree(ours, theirs)) continue;
+      const key = `${ipo.id}-${field}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        ipoId: ipo.id, companyName: ipo.companyName, fieldName: field, signal: 'oracle',
+        message: `live IPO "${ipo.companyName}" (${ipo.status}) publishes ${field}=${fmtDay(ours)}, but ${oracleName} currently says ${fmtDay(theirs)} — cross-source disagreement found by this audit's own live fetch, independent of data_conflicts`,
+      });
+    }
   }
 
   // SECONDARY — unresolved data_conflicts rows, when the monitor happens to
@@ -346,14 +370,16 @@ export function findLiveCrossSourceDisagreements({ ipoRows = [], fieldSourceRows
     if (seen.has(key)) continue;
     seen.add(key);
     out.push({
-      ipoId: c.ipoId,
-      companyName: ipo.companyName ?? c.companyName,
-      fieldName: c.fieldName,
-      signal: 'data_conflicts',
+      ipoId: c.ipoId, companyName: ipo.companyName ?? c.companyName, fieldName: c.fieldName, signal: 'data_conflicts',
       message: `live IPO "${ipo.companyName ?? c.companyName}" (${ipo.status}) has an unresolved ${c.fieldName} conflict: ${c.source1}=${c.value1} vs ${c.source2}=${c.value2}`,
     });
   }
   return out;
+}
+
+function fmtDay(v) {
+  const d = new Date(String(v));
+  return Number.isNaN(d.getTime()) ? String(v) : d.toISOString().slice(0, 10);
 }
 
 // ---- (blocker 4) page-flood control: one digest per check per night ----------

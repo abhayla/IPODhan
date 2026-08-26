@@ -43,7 +43,8 @@ import {
   checkPm2EnvHasTz, checkPm2LogSize, findUnreferencedDefinitions,
   checkSectorPopulatedPct, checkCronScriptExecutable, checkDeadSourceHasRetireBy,
   checkSegmentPopulatedForIpo, DEAD_SOURCE_MAX_DEGRADED_CYCLES,
-  findLiveCrossSourceDisagreements, buildRunPayloads, evaluateCronExecutable,
+  findLiveCrossSourceDisagreements, ORACLE_COMPARABLE_FIELDS,
+  buildRunPayloads, evaluateCronExecutable,
   computeExitCode, EXIT_UNVERIFIABLE,
 } from './lib/detection-floor-checks.mjs';
 
@@ -124,59 +125,82 @@ async function tableExists(name) {
 }
 
 // ---- (a)/(b): live IPO vs cross-source disagreement -----------------------
-// INDEPENDENT BY CONSTRUCTION. The first cut read `data_conflicts` only, and
-// the T-335C checker caught it PASSing at 05:00:22Z and FAILing (Lumino, Annu)
-// at 05:03:03Z on the SAME live defect: the cross-source-disagreement monitor
+// INDEPENDENT BY CONSTRUCTION. The first cut read `data_conflicts` only, and the
+// T-335C checker caught it PASSing at 05:00:22Z and FAILing (Lumino, Annu) at
+// 05:03:03Z on the SAME live defect: the cross-source-disagreement monitor
 // resolves and re-inserts every conflict each 30-minute cycle, so there is a
-// ~11-30s window with zero unresolved rows — and if that monitor ever dies the
-// table stays empty and the check shows a permanent green PASS on a live
-// wrong-date defect. So the PRIMARY signal is now our own comparison, computed
-// from `ipos` (what the site publishes) against `field_sources` (which source
-// won and what the losing source had recorded). `data_conflicts` is kept only
-// as a SECONDARY signal. If field_sources is unreadable the check is
-// UNVERIFIABLE (which pages, per blocker 1) — never a silent PASS.
-async function checkA_B() {
-  const name = `live IPO HIGH_VALUE field has no cross-source disagreement (fields: ${HIGH_VALUE_FIELDS.join(', ')})`;
-  if (!(await tableExists('field_sources'))) {
-    record('a_b_live_conflict', name, 'UNVERIFIABLE', 'field_sources table not present — cannot compute the independent cross-source comparison');
-    return;
-  }
-  const fieldList = HIGH_VALUE_FIELDS.map((f) => `'${f}'`).join(',');
+// ~11-30s window with zero unresolved rows — and a dead monitor would mean a
+// permanent green PASS on a live wrong-date defect.
+//
+// The PRIMARY signal is now this audit's OWN live fetch of the non-NSE oracle
+// (Chittorgarh's public IPO report — the same endpoint the scraper uses),
+// compared against what `ipos` publishes. `data_conflicts` is a SECONDARY
+// signal only. A failed oracle fetch is UNVERIFIABLE, which pages (blocker 1) —
+// never a silent PASS.
+const ORACLE_REPORT_URL = (() => {
+  const year = new Date().getFullYear();
+  const range = `${year}-${(year + 1) % 100}`;
+  // perPage is pinned to 10 because the endpoint rejects any other value with
+  // "Invalid API Call" (measured 2026-08-26: 25/50/100/200 all fail) and returns
+  // the whole report regardless — same call shape as
+  // scraper/src/scrapers/chittorgarh-scraper.ts.
+  return `https://webnodejs.chittorgarh.com/cloud/report/data-read/82/1/10/${year}/${range}/0/all/0?search=&v=15-11`;
+})();
 
-  // Published values, straight from the rows the site renders.
+async function fetchOracleRows() {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 20000);
+  const res = await fetch(ORACLE_REPORT_URL, {
+    signal: ctrl.signal,
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+      Accept: 'application/json',
+      Referer: 'https://www.chittorgarh.com/',
+    },
+  }).finally(() => clearTimeout(t));
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const rows = data?.reportTableData;
+  if (!Array.isArray(rows) || rows.length === 0) {
+    throw new Error(`oracle returned no rows (${JSON.stringify(data).slice(0, 120)})`);
+  }
+  return rows.map((r) => ({
+    companyName: String(r['Company'] || '').replace(/<[^>]+>/g, ' ').trim(),
+    values: {
+      openDate: r['~Issue_Open_Date'] || r['Opening Date'] || null,
+      closeDate: r['~IssueCloseDate'] || r['Closing Date'] || null,
+    },
+  }));
+}
+
+async function checkA_B() {
+  const name = `live IPO open/close dates agree with the independent non-NSE oracle (fields: ${ORACLE_COMPARABLE_FIELDS.join(', ')})`;
+
   const ipoRows = (await q(
     `SELECT id, company_name AS "companyName", status,
-            open_date AS "openDate", close_date AS "closeDate",
-            price_range_min AS "priceRangeMin", price_range_max AS "priceRangeMax"
+            open_date AS "openDate", close_date AS "closeDate"
        FROM ipos
       WHERE ${REAL_IPO} AND status IN ('${LIVE_STATUSES.join("','")}')`
   )).map((r) => ({
     id: r.id, companyName: r.companyName, status: r.status,
-    values: {
-      openDate: r.openDate, closeDate: r.closeDate,
-      priceRangeMin: r.priceRangeMin, priceRangeMax: r.priceRangeMax,
-    },
+    values: { openDate: r.openDate, closeDate: r.closeDate },
   }));
 
-  // PRIMARY signal: the winning source and the value the losing source held.
-  const fieldSourceRows = ipoRows.length
-    ? await q(
-        `SELECT ipo_id AS "ipoId", table_name AS "tableName", field_name AS "fieldName",
-                source, previous_source AS "previousSource", previous_value AS "previousValue",
-                updated_at AS "updatedAt"
-           FROM field_sources
-          WHERE table_name = 'ipos' AND field_name IN (${fieldList})
-            AND ipo_id = ANY($1::uuid[])`,
-        [ipoRows.map((r) => r.id)]
-      )
-    : [];
+  let oracleRows;
+  try {
+    oracleRows = await fetchOracleRows();
+  } catch (e) {
+    record('a_b_live_conflict', name, 'UNVERIFIABLE',
+      `could not reach the independent oracle (${e.message}) — this check is BLIND tonight, not passing`);
+    return;
+  }
 
-  // SECONDARY signal: whatever unresolved conflict rows happen to exist right
-  // now. Best-effort — a missing table must not blind the primary comparison.
+  // SECONDARY — best-effort; its absence must never blind the primary signal.
   let conflictRows = [];
   let conflictSignalAvailable = false;
   if (await tableExists('data_conflicts')) {
     conflictSignalAvailable = true;
+    const fieldList = HIGH_VALUE_FIELDS.map((f) => `'${f}'`).join(',');
     conflictRows = await q(
       `SELECT c.ipo_id AS "ipoId", i.company_name AS "companyName", c.field_name AS "fieldName",
               c.source1, c.value1, c.source2, c.value2
@@ -188,15 +212,16 @@ async function checkA_B() {
     );
   }
 
-  const violations = findLiveCrossSourceDisagreements({ ipoRows, fieldSourceRows, conflictRows, now: new Date() });
+  const violations = findLiveCrossSourceDisagreements({ ipoRows, oracleRows, conflictRows });
   for (const v of violations) {
     notify('a_b_live_conflict', 'P1', `${v.ipoId}-${v.fieldName}`,
       `Live IPO "${v.companyName}" publishes a disputed ${v.fieldName}`, v.message);
   }
-  const primaryCount = violations.filter((v) => v.signal === 'field_sources').length;
-  const detail = `${violations.length} violation(s) (${primaryCount} from the independent field_sources comparison, `
-    + `${violations.length - primaryCount} data_conflicts-only${conflictSignalAvailable ? '' : '; data_conflicts absent'})`
-    + (violations.length ? `: ${violations.slice(0, MAX_OFFENDERS).map((v) => `"${v.companyName}" — ${v.message}`).join('; ')}` : '');
+  const primary = violations.filter((v) => v.signal === 'oracle').length;
+  const detail = `${violations.length} violation(s) (${primary} from this audit's own live oracle comparison over `
+    + `${oracleRows.length} oracle rows vs ${ipoRows.length} live IPOs, ${violations.length - primary} `
+    + `data_conflicts-only${conflictSignalAvailable ? '' : '; data_conflicts absent'})`
+    + (violations.length ? `: ${violations.slice(0, MAX_OFFENDERS).map((v) => v.message).join('; ')}` : '');
   record('a_b_live_conflict', name, violations.length === 0 ? 'PASS' : 'FAIL', detail);
 }
 
@@ -415,7 +440,7 @@ async function checkJ() {
 
   // segment NOT NULL for offering_type=IPO — enumerated from the DB, not a hand list
   // Empty string counts, not just NULL — the round-7 P3-7 shape (checker finding).
-  const nullSegRows = await q(`SELECT id, company_name, segment FROM ipos WHERE offering_type = 'IPO' AND (segment IS NULL OR btrim(segment) = '')`);
+  const nullSegRows = await q(`SELECT id, company_name, segment FROM ipos WHERE offering_type = 'IPO' AND (segment IS NULL OR btrim(segment::text) = '')`);
   const segOffenders = nullSegRows.map((r) => checkSegmentPopulatedForIpo({ offeringType: 'IPO', segment: r.segment, companyName: r.company_name })).filter(Boolean);
   for (const r of nullSegRows) notify('j_segment_not_null', 'P2', r.id, `IPO with a blank segment`, `"${r.company_name}" is offering_type=IPO with a ${r.segment == null ? 'NULL' : 'empty'} segment`);
   record('j_segment_not_null', 'every offering_type=IPO row has a non-blank segment', segOffenders.length === 0 ? 'PASS' : 'FAIL',

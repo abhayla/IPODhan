@@ -25,6 +25,7 @@ import {
   checkSegmentPopulatedForIpo,
   findLiveCrossSourceDisagreements,
   valuesDisagree,
+  normalizeCompanyKey,
   buildCheckDigest,
   buildUnverifiableDigest,
   buildRunPayloads,
@@ -212,14 +213,17 @@ const NOW = new Date('2026-08-26T05:00:00Z');
 const FRESH = '2026-08-26T04:59:00Z';
 
 // The two live IPOs the checker observed publishing a wrong date while
-// `data_conflicts` had momentarily zero unresolved rows.
+// `data_conflicts` had momentarily zero unresolved rows. Values are the REAL
+// ones measured on prod and on the live Chittorgarh report, 2026-08-26.
 const LUMINO_ANNU_IPOS = [
-  { id: 'ipo-lumino', companyName: 'Lumino Industries', status: 'OPEN', values: { openDate: '2026-08-26' } },
-  { id: 'ipo-annu', companyName: 'Annu Projects', status: 'OPEN', values: { openDate: '2026-08-26' } },
+  { id: 'ipo-lumino', companyName: 'Lumino Industries Limited', status: 'OPEN', values: { openDate: '2026-08-26', closeDate: '2026-08-30' } },
+  { id: 'ipo-annu', companyName: 'Annu Projects Limited', status: 'OPEN', values: { openDate: '2026-08-24', closeDate: '2026-08-27' } },
 ];
-const LUMINO_ANNU_FIELD_SOURCES = [
-  { ipoId: 'ipo-lumino', tableName: 'ipos', fieldName: 'openDate', source: 'NSE', previousSource: 'CHITTORGARH', previousValue: '2026-08-27', updatedAt: FRESH },
-  { ipoId: 'ipo-annu', tableName: 'ipos', fieldName: 'openDate', source: 'NSE', previousSource: 'CHITTORGARH', previousValue: '2026-08-27', updatedAt: FRESH },
+// Note the oracle's own naming ("Ltd." plus a trailing status flag) — matching
+// must survive it, or the independent check silently compares nothing.
+const LUMINO_ANNU_ORACLE = [
+  { companyName: 'Lumino Industries Ltd.', values: { openDate: '2026-08-27T00:00:00.000Z', closeDate: '2026-08-31T00:00:00.000Z' } },
+  { companyName: 'Annu Projects Ltd. O', values: { openDate: '2026-08-25T00:00:00.000Z', closeDate: '2026-08-28T00:00:00.000Z' } },
 ];
 
 // ---- blocker 2: a_b_live_conflict must be INDEPENDENT of data_conflicts ----
@@ -231,23 +235,27 @@ const LUMINO_ANNU_FIELD_SOURCES = [
 test('(a/b) FAILS naming BOTH Lumino and Annu with data_conflicts EMPTY', () => {
   const violations = findLiveCrossSourceDisagreements({
     ipoRows: LUMINO_ANNU_IPOS,
-    fieldSourceRows: LUMINO_ANNU_FIELD_SOURCES,
+    oracleRows: LUMINO_ANNU_ORACLE,
     conflictRows: [],
-    now: NOW,
   });
-  assert.equal(violations.length, 2);
-  const named = violations.map((v) => v.companyName).sort();
-  assert.deepEqual(named, ['Annu Projects', 'Lumino Industries']);
-  assert.ok(violations.every((v) => v.signal === 'field_sources'));
-  assert.ok(violations.every((v) => /NSE/.test(v.message) && /CHITTORGARH/.test(v.message)));
+  assert.equal(violations.length, 4, 'openDate + closeDate for both companies');
+  const named = [...new Set(violations.map((v) => v.companyName))].sort();
+  assert.deepEqual(named, ['Annu Projects Limited', 'Lumino Industries Limited']);
+  assert.ok(violations.every((v) => v.signal === 'oracle'));
+  assert.ok(violations.some((v) => /2026-08-26.*2026-08-27/.test(v.message)));
+});
+
+test('(a/b) matches across legal-suffix and status-flag naming differences', () => {
+  assert.equal(normalizeCompanyKey('Lumino Industries Ltd.'), normalizeCompanyKey('Lumino Industries Limited'));
+  assert.equal(normalizeCompanyKey('Annu Projects Ltd. O'), normalizeCompanyKey('Annu Projects Limited'));
+  assert.notEqual(normalizeCompanyKey('Annu Projects Limited'), normalizeCompanyKey('Sumax Engineering Limited'));
 });
 
 test('(a/b) data_conflicts remains a SECONDARY signal and still contributes', () => {
   const violations = findLiveCrossSourceDisagreements({
     ipoRows: [{ id: 'ipo-x', companyName: 'X Ltd', status: 'OPEN', values: { closeDate: '2026-09-01' } }],
-    fieldSourceRows: [],
-    conflictRows: [{ ipoId: 'ipo-x', fieldName: 'closeDate', source1: 'NSE', value1: '2026-09-01', source2: 'BSE', value2: '2026-09-02' }],
-    now: NOW,
+    oracleRows: [],
+    conflictRows: [{ ipoId: 'ipo-x', fieldName: 'priceRangeMax', source1: 'NSE', value1: '100', source2: 'BSE', value2: '120' }],
   });
   assert.equal(violations.length, 1);
   assert.equal(violations[0].signal, 'data_conflicts');
@@ -256,46 +264,36 @@ test('(a/b) data_conflicts remains a SECONDARY signal and still contributes', ()
 test('(a/b) the same ipo+field is never double-counted across both signals', () => {
   const violations = findLiveCrossSourceDisagreements({
     ipoRows: [LUMINO_ANNU_IPOS[0]],
-    fieldSourceRows: [LUMINO_ANNU_FIELD_SOURCES[0]],
+    oracleRows: [LUMINO_ANNU_ORACLE[0]],
     conflictRows: [{ ipoId: 'ipo-lumino', fieldName: 'openDate', source1: 'NSE', value1: '2026-08-26', source2: 'CHITTORGARH', value2: '2026-08-27' }],
-    now: NOW,
   });
-  assert.equal(violations.length, 1);
-  assert.equal(violations[0].signal, 'field_sources');
+  assert.equal(violations.filter((v) => v.fieldName === 'openDate').length, 1);
+  assert.equal(violations.find((v) => v.fieldName === 'openDate').signal, 'oracle');
 });
 
-test('(a/b) PASSES when the losing source agrees with the published value', () => {
+test('(a/b) PASSES when the oracle agrees with the published dates', () => {
   const violations = findLiveCrossSourceDisagreements({
-    ipoRows: [{ id: 'i', companyName: 'Agreeable Ltd', status: 'OPEN', values: { openDate: '2026-08-26' } }],
-    fieldSourceRows: [{ ipoId: 'i', tableName: 'ipos', fieldName: 'openDate', source: 'NSE', previousSource: 'CHITTORGARH', previousValue: '2026-08-26', updatedAt: FRESH }],
-    conflictRows: [], now: NOW,
-  });
-  assert.equal(violations.length, 0);
-});
-
-test('(a/b) PASSES for a LISTED (not live) IPO even with a fresh disagreement', () => {
-  const violations = findLiveCrossSourceDisagreements({
-    ipoRows: [{ id: 'i', companyName: 'Done Ltd', status: 'LISTED', values: { openDate: '2026-08-26' } }],
-    fieldSourceRows: [{ ipoId: 'i', tableName: 'ipos', fieldName: 'openDate', source: 'NSE', previousSource: 'CHITTORGARH', previousValue: '2026-08-27', updatedAt: FRESH }],
-    conflictRows: [], now: NOW,
+    ipoRows: [{ id: 'i', companyName: 'Agreeable Limited', status: 'OPEN', values: { openDate: '2026-08-26', closeDate: '2026-08-30' } }],
+    oracleRows: [{ companyName: 'Agreeable Ltd.', values: { openDate: '2026-08-26T00:00:00.000Z', closeDate: '2026-08-30T00:00:00.000Z' } }],
+    conflictRows: [],
   });
   assert.equal(violations.length, 0);
 });
 
-test('(a/b) ignores a stale field_sources row outside the recency window', () => {
+test('(a/b) PASSES for a LISTED (not live) IPO even when the oracle disagrees', () => {
   const violations = findLiveCrossSourceDisagreements({
-    ipoRows: [LUMINO_ANNU_IPOS[0]],
-    fieldSourceRows: [{ ...LUMINO_ANNU_FIELD_SOURCES[0], updatedAt: '2026-01-01T00:00:00Z' }],
-    conflictRows: [], now: NOW,
+    ipoRows: [{ id: 'i', companyName: 'Done Limited', status: 'LISTED', values: { openDate: '2026-08-26' } }],
+    oracleRows: [{ companyName: 'Done Ltd.', values: { openDate: '2026-08-27' } }],
+    conflictRows: [],
   });
   assert.equal(violations.length, 0);
 });
 
-test('(a/b) ignores low-value fields even when sources disagree', () => {
+test('(a/b) an IPO absent from the oracle contributes nothing (no false positive)', () => {
   const violations = findLiveCrossSourceDisagreements({
-    ipoRows: [{ id: 'i', companyName: 'Y Ltd', status: 'OPEN', values: { sector: 'Tech' } }],
-    fieldSourceRows: [{ ipoId: 'i', tableName: 'ipos', fieldName: 'sector', source: 'NSE', previousSource: 'BSE', previousValue: 'Finance', updatedAt: FRESH }],
-    conflictRows: [], now: NOW,
+    ipoRows: [{ id: 'i', companyName: 'Unlisted Elsewhere Limited', status: 'OPEN', values: { openDate: '2026-08-26' } }],
+    oracleRows: LUMINO_ANNU_ORACLE,
+    conflictRows: [],
   });
   assert.equal(violations.length, 0);
 });
