@@ -1,0 +1,15 @@
+===== CASE A: ADMIN_API_TOKEN UNSET =====
+[11:19:03 UTC] [32mINFO[39m: [36mIPO Scraper CLI started[39m
+    source: "all"
+[11:19:03 UTC] [31mERROR[39m: [36mScraper CLI failed with unhandled error[39m
+    error: "Missing required env var(s) for --source=all cycle: ADMIN_API_TOKEN — refusing to start (T-340: a missing ADMIN_API_TOKEN previously caused a silent per-step skip, not a startup failure)"
+CASE_A_EXIT=1
+
+===== CASE B: ADMIN_API_TOKEN='' (blank) =====
+[11:19:38 UTC] [32mINFO[39m: [36mIPO Scraper CLI started[39m
+    source: "all"
+[11:19:38 UTC] [31mERROR[39m: [36mScraper CLI failed with unhandled error[39m
+    error: "Missing required env var(s) for --source=all cycle: ADMIN_API_TOKEN — refusing to start (T-340: a missing ADMIN_API_TOKEN previously caused a silent per-step skip, not a startup failure)"
+CASE_B_EXIT=1
+
+===== CONTROL: token SET, single-source (must NOT refuse on env) =====
