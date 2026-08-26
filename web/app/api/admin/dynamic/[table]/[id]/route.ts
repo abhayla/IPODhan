@@ -18,6 +18,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { eq, getTableColumns } from 'drizzle-orm';
 import { PgTable } from 'drizzle-orm/pg-core';
 import { validateRecord } from '@/lib/admin/dynamic-validation-rules';
+import { logger } from '@/lib/logger';
 
 /**
  * Get the table object from schema by name
@@ -120,11 +121,14 @@ export async function GET(
       message: 'Record retrieved successfully'
     });
   } catch (error) {
-    console.error('[Dynamic Admin] Get error:', error);
+    logger.error(
+      { route: '/api/admin/dynamic/[table]/[id]', error: error instanceof Error ? error.message : String(error) },
+      '[Dynamic Admin] Get error'
+    );
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to retrieve record'
+        error: 'Failed to retrieve record'
       },
       { status: 500 }
     );
@@ -260,11 +264,14 @@ export async function PATCH(
       message: 'Record updated successfully'
     });
   } catch (error) {
-    console.error('[Dynamic Admin] Update error:', error);
+    logger.error(
+      { route: '/api/admin/dynamic/[table]/[id]', error: error instanceof Error ? error.message : String(error) },
+      '[Dynamic Admin] Update error'
+    );
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to update record'
+        error: 'Failed to update record'
       },
       { status: 500 }
     );
@@ -326,11 +333,14 @@ export async function DELETE(
       data: result[0]
     });
   } catch (error) {
-    console.error('[Dynamic Admin] Delete error:', error);
+    logger.error(
+      { route: '/api/admin/dynamic/[table]/[id]', error: error instanceof Error ? error.message : String(error) },
+      '[Dynamic Admin] Delete error'
+    );
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to delete record'
+        error: 'Failed to delete record'
       },
       { status: 500 }
     );

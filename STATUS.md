@@ -2,21 +2,61 @@
 
 Branch: `fleet/T-330-api-500s-schema-drift` (worktree `IPODhan-T-330-t330`).
 
-## Resume context
+## Resume context (3rd and FINAL lifetime resume — 2026-08-27)
 
-First attempt hit `error_max_turns` at 150/150. Worktree was clean, branch pushed at `6677c4a`.
-This run resumes in the SAME worktree/branch with max_turns doubled to 200, continuing P2-2..P2-5.
+Run 1 hit `error_max_turns` at 150/150 (P2-1 landed). Run 2 hit `error_max_turns` at
+200/200 (P2-2, P2-3+P2-4 committed clean with tests; P2-5 work existed uncommitted at
+death — an automatic rescue captured it as autosave commit `69cf93d`, merged onto this
+branch by the dispatcher and pushed). This run (3rd/final): verified the autosave
+commit's content, finished the remaining P2-5 sweep, ran the full test suite + tsc
+across both workspaces, wrote evidence, and opens the PR.
 
-## DoD audit (5 items)
+## DoD audit (5 items) — ALL DONE
 
 | # | Item | Status |
 |---|---|---|
 | 1 | Schema-drift gate (mechanism) | **DONE** (commit `6677c4a`) |
 | 2 | P2-1: ipo_scores.algorithm_version varchar(50) migration | **DONE** (commit `6677c4a`) |
-| 3 | P2-2: cache round-trip Date rehydration class fix | **DONE** |
-| 4 | P2-3 + P2-4: calendar_view matview / /api/metrics column mismatch | **DONE** |
-| 5 | P2-5: public error-body SQL leak sweep + generic error-handler helper | PENDING |
-| 6 | Zero new test failures / tsc clean / PR opened / never merge | PENDING |
+| 3 | P2-2: cache round-trip Date rehydration class fix | **DONE** (commit `fe2cfeb`) |
+| 4 | P2-3 + P2-4: calendar_view matview / /api/metrics column mismatch | **DONE** (commit `d05003a`) |
+| 5 | P2-5: public error-body SQL leak sweep + generic error-handler helper | **DONE** (autosave `69cf93d` + this run's finishing sweep) |
+| 6 | Zero new test failures / tsc clean / PR opened / never merge | **DONE this run** |
+
+## P2-5 evidence (this run)
+
+Verified the autosave commit (`69cf93d`) was sound: read `web/lib/errors/api-error-response.ts`
+in full, confirmed its 6-test unit suite passes in isolation, and spot-checked several
+of its 24 route edits (`admin/gmp/[ipoId]`, `admin/cache/clear`, `admin/conflicts`,
+`health`) — all correct, no half-edited handlers, no dead imports.
+
+Finished the sweep: grepped all of `web/app/api/**/*.ts` for `.message` usage (32
+files matched), individually inspected each to separate real unconditional leaks
+from false positives (server-side-logger-only usage, `EntityNotFoundError`'s
+controlled-safe message, or the pre-existing `NODE_ENV==='development'`-gated
+`details` pattern). Found and fixed **5 more files / 6 more sites** that
+unconditionally leaked `error.message` into a public response body:
+- `admin/scraper/status` (migrated to `apiErrorResponse`)
+- `admin/dynamic/[table]` POST, `admin/dynamic/[table]/list` GET,
+  `admin/dynamic/[table]/[id]` GET/PATCH/DELETE (5 sites) — these are the
+  fable-review-flagged "write any table by name" admin endpoint (P1-D); kept the
+  existing `{success, error: string}` response shape (not `apiErrorResponse`'s
+  object shape) because `web/app/admin/dynamic/[table]/[id]/page.tsx` does
+  `throw new Error(response.error || ...)` and would have shown `[object Object]`
+  to the admin user otherwise — verified by reading the caller before choosing the fix.
+- `admin/conflicts/resolve` — a second site missed by the autosave: the inner
+  per-conflict catch inside the resolution loop, pushing raw `.message` into the
+  `failed[]` array of an otherwise-200 response.
+
+Full sweep detail + the 26 files inspected and confirmed already-safe:
+`C:\Abhay\GetWorkDone\evidence\2026-08-26-T-330\p2-5-error-leak-sweep.md`.
+
+**Verification (both workspaces, full suite):**
+- `npx tsc --noEmit --project web/tsconfig.json` -> clean.
+- `npx tsc --noEmit` (packages/shared) -> clean.
+- `npm run test:unit` (web, full suite) -> **164 files / 2350 tests pass, 17 skipped, 0 failed**.
+- scraper `npx vitest run tests/unit` (full suite) -> **123 files / 1353 tests pass, 1 skipped, 0 failed**.
+
+Zero new failures vs origin/main (both suites fully green, no skips added by this run).
 
 ## P2-3 + P2-4 evidence
 
