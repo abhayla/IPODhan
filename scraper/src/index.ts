@@ -31,6 +31,7 @@ import { lt } from 'drizzle-orm';
 import logger from './utils/logger.js';
 import { heartbeat, flushOwnerNotify } from './services/owner-notify.js';
 import { evaluateFreshness } from './services/freshness-monitor.js';
+import { checkDeployDrift, getMainShaFromOrigin, getServedShaForSlot } from './services/deploy-drift-monitor.js';
 import { checkCrossSourceDisagreements } from './services/cross-source-disagreement-monitor.js';
 import { getKeylessCoverage } from './services/keyless-coverage-monitor.js';
 import { validateFeatureFlags, getFeatureStatus } from './config/feature-flags.js';
@@ -290,6 +291,7 @@ export async function main() {
       await triggerDuplicateSweep();
       await triggerStageReconciler();
       await triggerPrimarySourceDiscovery();
+      await triggerDeployDriftMonitor();
       await pruneScraperLogs();
       await pruneDataConflicts();
       // T-195: data-quality watchdog core (freshness SLO + cross-source
@@ -623,6 +625,38 @@ export async function triggerPrimarySourceDiscovery(): Promise<void> {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'Primary-source discovery trigger failed (non-fatal)'
+    );
+  }
+}
+
+/**
+ * T-324 ITEM 2 (MECHANISM-DUE 'automated-deploy-failing-unnoticed'): served-
+ * SHA drift monitor. Same T-311 wire-or-retire pattern as the triggers
+ * above -- `SchedulerService` is dead code in production, so this hooks
+ * the one-shot cycle directly, cadence-gated to once an hour (the DoD's
+ * own comparison window) via the SAME `catch-up-cadence.ts` guard the
+ * other jobs use -- no second scheduler/cron is registered.
+ */
+const DEPLOY_DRIFT_INTERVAL_MINUTES = 60;
+
+export async function triggerDeployDriftMonitor(): Promise<void> {
+  const redis = getRedisClient();
+  const shouldRun = await shouldRunOnCatchUpCadence(redis, 'deploy-drift-monitor', DEPLOY_DRIFT_INTERVAL_MINUTES);
+  if (!shouldRun) {
+    logger.debug('Deploy drift monitor skipped (outside catch-up cadence window)');
+    return;
+  }
+  try {
+    const results = await checkDeployDrift({
+      getMainSha: getMainShaFromOrigin,
+      getServedSha: getServedShaForSlot,
+      redis,
+    });
+    logger.info({ results }, 'Deploy drift monitor triggered from one-shot cycle');
+  } catch (error) {
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Deploy drift monitor trigger failed (non-fatal)'
     );
   }
 }
