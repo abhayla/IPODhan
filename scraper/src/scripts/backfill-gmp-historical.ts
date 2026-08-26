@@ -148,7 +148,11 @@ export function parseGmpHistoryDateCell(raw: string): string | null {
  * Alternative: Scrape GMP history from Chittorgarh IPO detail page
  * This is a fallback method when API is not available
  */
-async function scrapeChittorgarhGMPHistory(
+// Exported for the T-327F call-site test: the date-cell parse must be
+// exercised through the function that actually consumes cells[0], not only
+// through the extracted helper (a helper-only test stays green when the call
+// site is reverted to new Date(cells[0]).toISOString()).
+export async function scrapeChittorgarhGMPHistory(
   companyName: string,
   slug: string
 ): Promise<Array<{
