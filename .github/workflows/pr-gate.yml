@@ -50,6 +50,15 @@ jobs:
         # stop catching that pattern class. No deps needed (Node builtins only).
         run: node --test scripts/tests/check-write-ratchet.test.mjs
 
+      - name: Detection-floor checks self-test (T-335)
+        # Mutation-proof: scripts/tests/audit-detection-floor.test.mjs imports
+        # the actual predicates from scripts/lib/detection-floor-checks.mjs
+        # (the round-7 fresh-review coverage floor promoted to FAIL-level
+        # nightly checks), so weakening/deleting a predicate turns this red
+        # before it can silently stop catching that finding class again. No
+        # deps needed (Node builtins only).
+        run: node --test scripts/tests/audit-detection-floor.test.mjs
+
       - name: Write ratchet — no new direct `ipos` writers (T-316/R0)
         # Grep-based gate, not ESLint (T-313C amendment): catches raw .sql/.mjs
         # writers and the runtime-resolved dynamic-table admin route that a

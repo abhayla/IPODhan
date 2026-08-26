@@ -1,0 +1,183 @@
+{
+  "$schema": "T-335 detection-checks manifest — read by the round-8 review contract to classify a fresh finding as SHOULD-HAVE-BEEN-CAUGHT (a listed check already covers this finding's class) vs a genuinely new gap.",
+  "generatedBy": "T-335",
+  "sourceRca": "docs/reviews/round-7-detection-rca.md",
+  "auditScript": "scripts/audit-detection-floor.mjs",
+  "selfTest": "scripts/tests/audit-detection-floor.test.mjs",
+  "wiredInto": "scripts/vps-data-audit-cron.sh (cron 45 3 * * * on 72.61.240.224)",
+  "checks": [
+    {
+      "id": "a_b_live_conflict",
+      "findingClass": "live IPO publishes an open/close date that disagrees with an independent non-NSE oracle",
+      "round7Findings": [
+        "P1-1",
+        "P1-2"
+      ],
+      "failThreshold": "any OPEN/UPCOMING IPO whose published openDate or closeDate disagrees (by calendar day) with the value this audit fetches LIVE from the Chittorgarh public IPO report - PRIMARY signal, owned by nothing in our pipeline. An unresolved data_conflicts row on a HIGH_VALUE field is a SECONDARY signal. The primary comparison is deliberately independent because the cross-source monitor resolves and re-inserts every row each 30-minute cycle (T-335C), and field_sources.previous_source is populated on 1 of 5746 prod rows so it cannot serve as the oracle.",
+      "severity": "P1",
+      "unverifiableWhen": "the live oracle fetch fails or returns no rows (the check is BLIND, and pages P2)"
+    },
+    {
+      "id": "c_issue_size_floor",
+      "findingClass": "issue_size holds a magnitude implausible for its segment (share count stored as rupees)",
+      "round7Findings": [
+        "P1-3"
+      ],
+      "failThreshold": "issue_size > 0 AND issue_size < Rs10,00,00,000 for MAINBOARD, or < Rs1,00,00,000 for SME",
+      "severity": "P1",
+      "unverifiableWhen": "never — always runs against the ipos table"
+    },
+    {
+      "id": "c_issue_size_consistency",
+      "findingClass": "issue_size disagrees with an independently-derivable estimate (shares_offered x price)",
+      "round7Findings": [
+        "P1-3"
+      ],
+      "failThreshold": "issue_size diverges from shares_offered x price_range_max by more than 25%, when both are present",
+      "severity": "P1",
+      "unverifiableWhen": "shares_offered not yet scraped for the row (skipped, not a violation)"
+    },
+    {
+      "id": "d_lot_band_window",
+      "findingClass": "lot_size x price_range_max implies a retail application size SEBI would not permit",
+      "round7Findings": [
+        "P1-4"
+      ],
+      "failThreshold": "lot value outside [Rs8,000..Rs20,000] MAINBOARD or [Rs90,000..Rs3,00,000] SME, for offering_type=IPO",
+      "severity": "P1",
+      "unverifiableWhen": "never — always runs against the ipos table"
+    },
+    {
+      "id": "d_corporate_action_shape",
+      "findingClass": "a row typed offering_type=IPO matches the shape of a corporate action (demerger/scheme-of-arrangement)",
+      "round7Findings": [
+        "P1-4"
+      ],
+      "failThreshold": "offering_type=IPO AND price_range_min==price_range_max AND lot_size==100 AND close_date-open_date in [10..14] days",
+      "severity": "P1",
+      "unverifiableWhen": "never — always runs against the ipos table"
+    },
+    {
+      "id": "e_route_sweep",
+      "findingClass": "a public API route 5xxs, or leaks SQL/stack-trace text in its response body",
+      "round7Findings": [
+        "P2-1",
+        "P2-2",
+        "P2-3",
+        "P2-4",
+        "P2-5"
+      ],
+      "failThreshold": "any enumerated web/app/api/** non-admin route returns >=500, or its body matches a SQL/bound-param/stack-trace pattern",
+      "severity": "P1",
+      "unverifiableWhen": "any enumerated public route is unreachable (the sweep did not cover its whole population)"
+    },
+    {
+      "id": "f_conflict_noise_ratio",
+      "findingClass": "the data_conflicts table is dominated by non-actionable noise, burying genuine P1 disagreements",
+      "round7Findings": [
+        "P2-6"
+      ],
+      "failThreshold": "(empty value2 OR value1==value2) / total unresolved >= 5%",
+      "severity": "P2",
+      "unverifiableWhen": "data_conflicts table not present"
+    },
+    {
+      "id": "g_freshness_per_type",
+      "findingClass": "an offering_type's calendar has gone stale with no per-type freshness check to catch it",
+      "round7Findings": [
+        "P2-10"
+      ],
+      "failThreshold": "newest row age exceeds 3 days (IPO/SME) or 21 days (OFS/NCD/RIGHTS)",
+      "severity": "P2",
+      "unverifiableWhen": "no rows exist yet for that offering_type"
+    },
+    {
+      "id": "h_pm2_env_tz",
+      "findingClass": "a pm2 process runs without TZ in its environment, exposing new Date() parsing to the box's local time",
+      "round7Findings": [
+        "P2-7",
+        "P1-1 (enabling gap)"
+      ],
+      "failThreshold": "any pm2 process's env lacks a TZ key",
+      "severity": "P1",
+      "unverifiableWhen": "pm2 not reachable on the host running the audit (expected off the production box)"
+    },
+    {
+      "id": "h_pm2_log_size",
+      "findingClass": "an unrotated pm2 log file is growing unbounded, risking the 2026-06-13 disk-full class",
+      "round7Findings": [
+        "P2-11"
+      ],
+      "failThreshold": "any pm2 out/err log file exceeds 100 MB",
+      "severity": "P2",
+      "unverifiableWhen": "pm2 not reachable on the host running the audit"
+    },
+    {
+      "id": "i_wire_or_retire",
+      "findingClass": "a scheduler/cron/job definition exists in the repo but is never imported by the prod entrypoint",
+      "round7Findings": [
+        "P2-8"
+      ],
+      "failThreshold": "any scraper/src/scheduler/*.ts file not `import`-ed by scraper/src/index.ts, ecosystem.config.js, or scripts/deploy-linux.sh",
+      "severity": "P2",
+      "unverifiableWhen": "never — static analysis of the checked-out repo"
+    },
+    {
+      "id": "j_sector_populated",
+      "findingClass": "the sector field/facet is populated for too few real IPOs to be usable",
+      "round7Findings": [
+        "P3-1"
+      ],
+      "failThreshold": "populated sector fraction < 50% of real IPOs",
+      "severity": "P2",
+      "unverifiableWhen": "never — always runs against the ipos table"
+    },
+    {
+      "id": "j_segment_not_null",
+      "findingClass": "an offering_type=IPO row has a NULL segment",
+      "round7Findings": [
+        "P3-7"
+      ],
+      "failThreshold": "any offering_type=IPO row with segment IS NULL — an empty/whitespace segment counts as blank, not only SQL NULL.",
+      "severity": "P2",
+      "unverifiableWhen": "never — always runs against the ipos table"
+    },
+    {
+      "id": "j_cron_executable",
+      "findingClass": "a cron-invoked script is committed without the executable bit, so a direct cron invocation fails silently",
+      "round7Findings": [
+        "P3-5"
+      ],
+      "failThreshold": "git-tracked mode of a cron entrypoint script lacks any execute bit",
+      "severity": "P2",
+      "unverifiableWhen": "git ls-files fails (corrupt checkout)"
+    },
+    {
+      "id": "j_dead_source_retire_by",
+      "findingClass": "a scraper source has been degraded/dead for many cycles with no owner decision to fix or retire it",
+      "round7Findings": [
+        "P3-6"
+      ],
+      "failThreshold": "a source has >=7 consecutive non-SUCCESS-or-zero-record cycles and is not listed in docs/reviews/dead-source-retirement.json",
+      "severity": "P2",
+      "unverifiableWhen": "scraper_logs table not present"
+    }
+  ],
+  "notCoveredByThisManifest": [
+    "P2-9 / P3-4 (empty content tables, fieldCompleteness thresholds) — owned by T-331's threshold work on audit-ipo-coverage.mjs, not duplicated here",
+    "P3-3 (always-red Production Verification GitHub Actions workflow) — owned by T-326",
+    "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion"
+  ],
+  "exitCodes": {
+    "0": "every check PASSed",
+    "1": "at least one check FAILed — a defect is live",
+    "3": "no FAIL, but at least one check is UNVERIFIABLE — the audit was blind tonight, not green (FAIL dominates when both occur)",
+    "2": "the audit itself crashed or could not start"
+  },
+  "paging": {
+    "model": "one DIGEST page per check per night (title, failing-row count, first 10 rows, pointer to the full report on the box) — never one page per row",
+    "severityRule": "P1 when the check has rows that were NOT present in the previous run (state persisted in the audit state dir); P2 for an unchanged backlog",
+    "dedupeKey": "detection-floor-<checkId>-<YYYY-MM-DD> for FAIL digests; detection-floor-unverifiable-<checkId>-<YYYY-MM-DD> for UNVERIFIABLE pages — date-scoped so the Notifier 30-minute cooldown cannot swallow the nightly digest",
+    "unverifiablePages": "every UNVERIFIABLE check pages P2; an UNVERIFIABLE check is never treated as a pass"
+  }
+}
