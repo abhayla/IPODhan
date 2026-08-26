@@ -43,19 +43,32 @@ vi.mock('@ipodhan/shared/repositories', async (importOriginal) => {
   };
 });
 
-// Legacy fallback-update path (ENABLE_DATA_CONSOLIDATION: false) is the
-// simplest way to observe "existingIPO was found" without also mocking the
-// full consolidation service — that path is covered elsewhere.
+// T-339: the legacy fallback-update path this file used to lean on
+// (ENABLE_DATA_CONSOLIDATION: false) no longer exists — consolidation is the
+// only update path. These tests are about IDENTITY resolution (which row did
+// the write target?), not about merge semantics, so the consolidation service
+// is stubbed to a pass-through that returns the incoming data unchanged.
 vi.mock('../../../src/config/feature-flags.js', () => ({
-  FEATURE_FLAGS: {
-    ENABLE_DATA_CONSOLIDATION: false,
-    ENABLE_SOURCE_TRACKING: true,
-  },
+  FEATURE_FLAGS: { DEBUG_DATA_FLOW: false },
   shouldUseFeature: () => false,
 }));
 
 vi.mock('../../../src/services/data-consolidation-service.js', () => ({
-  DataConsolidationService: vi.fn(),
+  DataConsolidationService: vi.fn().mockImplementation(() => ({
+    consolidateIPOData: vi.fn(async (input: any) => ({
+      ipoId: input.ipoId,
+      fieldsProcessed: Object.keys(input.incomingData).length,
+      fieldsUpdated: Object.keys(input.incomingData).length,
+      conflictsDetected: 0,
+      conflictsBySeverity: { INFO: 0, WARNING: 0, CRITICAL: 0 },
+      // Every incoming field carries a decision record, so the T-339
+      // write-path guard is satisfied on the honest path.
+      fieldResults: Object.keys(input.incomingData).map((fieldName) => ({ fieldName })),
+      consolidatedData: { ...input.incomingData },
+      errors: [],
+      performanceMs: 1,
+    })),
+  })),
 }));
 
 const { upsertIPO } = await import('../../../src/services/data-persister.js');
