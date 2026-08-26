@@ -360,6 +360,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
       label: 'Open–Close',
       value: `${fmtShortDate(ipo.openDate)} – ${fmtShortDate(ipo.closeDate)}`,
       mobileHidden: true,
+      disputed: openCloseDisputed,
     },
     { label: 'Listing', value: fmtShortDate(ipo.listingDate) },
   ];
