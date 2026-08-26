@@ -328,7 +328,7 @@ async function makeRequest(endpoint: string, params?: Record<string, string>, re
 /**
  * Parse NSE date format to ISO 8601
  */
-function parseNSEDate(dateStr: string | null | undefined): string {
+export function parseNSEDate(dateStr: string | null | undefined): string {
   if (!dateStr) {
     return new Date().toISOString().split('T')[0];
   }
