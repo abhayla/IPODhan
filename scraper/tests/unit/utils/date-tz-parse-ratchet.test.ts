@@ -110,7 +110,7 @@ const BASELINE: Record<string, number> = {
  * A regex-only `/\*...\*\//` strip is UNSAFE here: a plain string literal
  * containing `/*` (e.g. an HTTP `Accept` header value like
  * `'...,image/webp,*\/*;q=0.8'`) makes the non-greedy block-comment pattern
- * swallow everything up to the NEXT unrelated `*/` in the file — silently
+ * swallow everything up to the NEXT unrelated block-comment terminator — silently
  * deleting real code (verified against nse-scraper.ts, whose `Accept:
  * '.../webp,*\/*;q=0.8'` header string ate the rest of the function and
  * made a genuine baselined instance vanish). This is a minimal
