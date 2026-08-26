@@ -366,6 +366,50 @@ export function validateIPOData(
     }
   }
 
+  // Rule 9: Lot-Economics Invariant (T-329, round-7 P1-4 —
+  // evidence/2026-08-26-T-322/FINDING-P1-3-lot-band-and-shape.md). Rule 4
+  // above (MIN_INVESTMENT_*) only WARNS — it never blocks persistence, so 10
+  // rows with an arithmetically impossible "minimum investment" (lot_size x
+  // upper price band) render on the live site today, e.g. ICICI Prudential
+  // AMC "Minimum investment: Rs2,16,500 per lot (100 x Rs2,165)".
+  //
+  // SEBI ICDR Regulation 32(1) caps a MAINBOARD retail individual application
+  // at one lot within the Rs10,000-Rs15,000 band (the lot size is fixed so
+  // that lot_size x cap-price lands in that range); this guard uses a
+  // slightly wider Rs10,000-Rs16,000 window to tolerate the last paisa of
+  // rounding at the cap price without false-rejecting a genuine issue. SME
+  // issues use a materially larger per-lot minimum — SEBI ICDR Chapter IX
+  // (Regulation 253 and allied SME-specific provisions) requires post-issue
+  // paid-up capital thresholds and retail lot sizing that put a genuine SME
+  // minimum investment at Rs1,00,000-Rs2,00,000 per lot (the same range Rule
+  // 4's MIN_INVESTMENT_LOW_SME/MIN_INVESTMENT_HIGH_SME above already uses).
+  //
+  // Unlike Rule 4, this is a hard REJECT (never published) — only for
+  // BOOK_BUILDING (or unclassified) issues; a FIXED_PRICE issue's minimum
+  // investment is not bounded the same way SEBI's retail-lot band assumes
+  // book-building, so it is exempt here (Rule 4's warnings still apply).
+  if (data.lotSize && data.priceRangeMax && data.issueType !== 'FIXED_PRICE') {
+    const minInvestment = data.lotSize * data.priceRangeMax;
+
+    if (data.segment === 'MAINBOARD' && (minInvestment < 10000 || minInvestment > 16000)) {
+      errors.push({
+        field: 'lotEconomics',
+        rule: 'LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD',
+        severity: 'ERROR',
+        message: `MAINBOARD minimum investment ₹${minInvestment.toLocaleString('en-IN')} (lot ${data.lotSize} x band-cap ₹${data.priceRangeMax}) falls outside the SEBI ICDR Reg 32(1) retail range (~₹10,000-₹16,000). This lot/band pair is arithmetically impossible for a genuine book-built mainboard IPO — reject and flag for reclassification (#P1-4: ICICI Prudential AMC/STALLION/MORGANITE shape).`,
+        expected: true,
+      });
+    } else if (data.segment === 'SME' && (minInvestment < 100000 || minInvestment > 200000)) {
+      errors.push({
+        field: 'lotEconomics',
+        rule: 'LOT_ECONOMICS_IMPOSSIBLE_SME',
+        severity: 'ERROR',
+        message: `SME minimum investment ₹${minInvestment.toLocaleString('en-IN')} (lot ${data.lotSize} x band-cap ₹${data.priceRangeMax}) falls outside the SEBI ICDR Chapter IX retail range (~₹1,00,000-₹2,00,000). This lot/band pair is arithmetically implausible for a genuine SME IPO — reject and flag for reclassification.`,
+        expected: true,
+      });
+    }
+  }
+
   // Determine overall validity
   const valid = errors.length === 0;
 
