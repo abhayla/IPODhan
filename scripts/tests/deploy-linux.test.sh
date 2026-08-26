@@ -301,7 +301,7 @@ unset DEPLOY_ROOT
 # --- suite nothing to grep for — reverting delete+start back to `pm2 -------
 # --- reload` still passed all 16 assertions. These checks close that gap. -
 DELETE_LINE9="$(grep -n '^==> \[dry-run\] pm2 delete ipodhan-web$' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
-START_LINE9="$(grep -n '^==> \[dry-run\] pm2 start .*--name ipodhan-web ' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
+START_LINE9="$(grep -n '^==> \[dry-run\] TZ=UTC pm2 start .*--name ipodhan-web ' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
 if [ -n "$DELETE_LINE9" ] && [ -n "$START_LINE9" ] && [ "$DELETE_LINE9" -lt "$START_LINE9" ]; then
   pass "case 9: restart_pm2 dry-run emits 'pm2 delete ipodhan-web' before 'pm2 start ... --name ipodhan-web'"
 else
@@ -337,7 +337,7 @@ fi
 # the NEW/mismatched release) runs first, then AUTO-ROLLBACK's own delete+
 # start (against PREVIOUS_RELEASE) — take the SECOND occurrence of each.
 DELETE_LINE10="$(grep -n '^==> \[dry-run\] pm2 delete ipodhan-web$' /tmp/deploy-test-8-2.log | sed -n '2p' | cut -d: -f1)"
-START_LINE10="$(grep -n '^==> \[dry-run\] pm2 start .*--name ipodhan-web ' /tmp/deploy-test-8-2.log | sed -n '2p' | cut -d: -f1)"
+START_LINE10="$(grep -n '^==> \[dry-run\] TZ=UTC pm2 start .*--name ipodhan-web ' /tmp/deploy-test-8-2.log | sed -n '2p' | cut -d: -f1)"
 if [ -n "$DELETE_LINE10" ] && [ -n "$START_LINE10" ] && [ "$DELETE_LINE10" -lt "$START_LINE10" ]; then
   pass "case 10: rollback dry-run emits 'pm2 delete ipodhan-web' before 'pm2 start ... --name ipodhan-web'"
 else
