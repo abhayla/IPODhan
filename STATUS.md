@@ -14,9 +14,50 @@ This run resumes in the SAME worktree/branch with max_turns doubled to 200, cont
 | 1 | Schema-drift gate (mechanism) | **DONE** (commit `6677c4a`) |
 | 2 | P2-1: ipo_scores.algorithm_version varchar(50) migration | **DONE** (commit `6677c4a`) |
 | 3 | P2-2: cache round-trip Date rehydration class fix | **DONE** |
-| 4 | P2-3 + P2-4: calendar_view matview / /api/metrics column mismatch | PENDING |
+| 4 | P2-3 + P2-4: calendar_view matview / /api/metrics column mismatch | **DONE** |
 | 5 | P2-5: public error-body SQL leak sweep + generic error-handler helper | PENDING |
 | 6 | Zero new test failures / tsc clean / PR opened / never merge | PENDING |
+
+## P2-3 + P2-4 evidence
+
+**P2-3** — `/api/calendar/materialized/[category]` queried a `calendar_view` matview that
+migration `0001_add_calendar_materialized_view.sql` creates but which was never added to
+`meta/_journal.json` — so `drizzle-kit migrate` never ran it and the matview has never existed
+in any real database (confirmed: `assert-schema-drift.ts`'s own header/comments, landed in the
+prior P2-1 commit, already documented this exact class and explicitly deferred the calendar_view
+decision to "T-330 P2-3"). The scraper-side refresh job (`scraper/src/jobs/refresh-calendar.ts`)
+that was meant to keep it fresh is dead code — never wired into the scheduler tree — and its own
+header comment records this as a pre-existing, already-triaged gap (T-241/T-242 H3) with an
+explicit prior decision NOT to build the matview SQL out.
+
+Decision: retire the route honestly (contract's own wording) rather than build unused
+infrastructure — the route has zero frontend consumers (grepped; only self-referenced), and the
+live, JOIN-based `/api/calendar/[category]` already serves this data. Route now returns
+`410 Gone` with `{error: {code: 'ENDPOINT_RETIRED', message: '...use GET /api/calendar/[category]
+instead'}}` instead of a public 500 that can never succeed. This matches
+`EXPECTED_MATVIEWS` in `assert-schema-drift.ts`, which already excludes `calendar_view` with a
+comment anticipating this exact retirement.
+
+**P2-4** — `web/lib/services/metrics-service.ts` had two broken raw-SQL queries against
+`scraper_logs`/`ipos`:
+- `collectBusinessMetrics()`'s scraper-health query referenced `started_at`/`completed_at`
+  (schema SSOT: only `created_at` + `duration_ms` exist) and filtered `status = 'FAILED'`
+  (real enum value is `'FAILURE'`). Fixed to use `created_at`, `duration_ms` directly (already
+  milliseconds, matching `scraper-log-repository.ts`'s own `avgDuration` convention), and the
+  correct `'FAILURE'` value.
+- `getDataQualityMetrics()` referenced `price_range_lower`/`price_range_upper` (real:
+  `price_range_min`/`price_range_max`) and `total_shares`, which does not exist on `ipos` at
+  all (share counts live on `subscriptions.totalSharesBid` / `ipoDetails.totalSharesOffered`,
+  not a per-IPO column) — this query would also 500. Fixed the column names; removed the
+  `totalShares` completeness dimension since no real ipos-level column backs it (grepped: zero
+  downstream consumers of `completeness.totalShares`).
+
+New tests: `web/tests/unit/api/calendar-materialized/route.test.ts` (410 regression),
+`web/tests/unit/lib/services/metrics-service.test.ts` (4 tests asserting the corrected SQL
+never references the broken column names/enum value, plus shape assertions).
+
+Verification: `npx vitest run tests/unit/lib/services tests/unit/api --testTimeout=20000` ->
+20 files / 267 tests pass. `npx tsc --noEmit --project web/tsconfig.json` -> clean.
 
 ## P2-2 evidence
 
