@@ -402,11 +402,21 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // (~851 issueSize conflicts/cycle per the T-305 review). `currency`
   // normalization already exists for every other Cr-denominated field
   // (netWorth, marketCap, ...) above — issueSize just never got the entry.
+  // T-329 (round-7 P1-3 GUARD, evidence/2026-08-26-T-322/FINDING-P1-2-issue-size-shares.md):
+  // {min:0, max:999999990000} below is a TYPE check (rejects only negative/
+  // absurdly-huge numbers), not a plausibility check — a raw share count
+  // (e.g. 17,683,000) passes it trivially. The real plausibility floor
+  // (segment-aware: MAINBOARD >= Rs10 Cr, SME >= Rs1 Cr) plus the shares x
+  // band coherence check live in data-consolidation-service.ts's
+  // `collectImplausibleIssueSizeFields()` — a per-field {min,max} rule here
+  // cannot see `segment`/`priceRangeMax` from the same row, so it cannot
+  // express either check. Do not "fix" this by narrowing max here; extend
+  // the record-level guard instead.
   issueSize: {
     sources: ['ADMIN', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL'],
     normalization: 'currency',
     confidenceThreshold: 80,
-    description: 'Total issue size (₹) - amounts may arrive as Cr text or raw rupees depending on source',
+    description: 'Total issue size (₹) - amounts may arrive as Cr text or raw rupees depending on source. Plausibility (segment floor + shares x band coherence) is enforced record-level, not here — see collectImplausibleIssueSizeFields.',
     validation: { min: 0, max: 999999990000 }, // 999,999.9 Cr ceiling, mirrors the NUMERIC(15,2) cap in financial-column-precision
   },
 
