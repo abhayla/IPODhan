@@ -70,10 +70,19 @@ jobs:
           DEPLOY_REF: ${{ inputs.ref }}
         run: |
           set -euo pipefail
+          # T-324: tee the deploy log to a run-scoped file so a later
+          # `if: failure()` step can pull the last named-gate reason
+          # (deploy-linux.sh's on_deploy_error trap / fatal() calls both
+          # print a "FATAL: ..." line - see that script's ERR trap comment)
+          # without re-running anything or depending on GitHub's log API.
+          LOG_FILE="/tmp/ipodhan-deploy-${{ github.run_id }}.log"
+          # `pipefail` (set above) already makes this step's exit code
+          # deploy-linux.sh's own code, not tee's - a failing deploy still
+          # fails this step even though its output is piped through tee.
           if [ -n "${DEPLOY_REF:-}" ]; then
-            bash scripts/deploy-linux.sh "${{ steps.slot.outputs.slot }}" "$DEPLOY_REF"
+            bash scripts/deploy-linux.sh "${{ steps.slot.outputs.slot }}" "$DEPLOY_REF" 2>&1 | tee "$LOG_FILE"
           else
-            bash scripts/deploy-linux.sh "${{ steps.slot.outputs.slot }}"
+            bash scripts/deploy-linux.sh "${{ steps.slot.outputs.slot }}" 2>&1 | tee "$LOG_FILE"
           fi
 
       - name: Verify /api/version reflects the deployed SHA
@@ -100,4 +109,70 @@ jobs:
           echo "Actual SHA (/api/version):         $ACTUAL_SHA"
           if [ "$EXPECTED_SHA" != "$ACTUAL_SHA" ]; then
             echo "WARNING: /api/version SHA does not match DEPLOYED_SHA-$SLOT - investigate (non-blocking, deploy already succeeded per its own gates)." >&2
+          fi
+
+      # T-324 ITEM 1 (MECHANISM-DUE 'automated-deploy-failing-unnoticed'):
+      # deploy-linux.yml failed 4 consecutive push-to-main runs on
+      # 2026-08-25 with NOTHING paging the owner or the fleet - a red run
+      # in the Actions tab is not an alert. This step is the fix: on ANY
+      # job failure it POSTs a P1 straight to the Notifier gateway
+      # (see D:\Abhay\GLOBAL.md section 2 - the gateway; secrets/routing
+      # config live in GLOBAL.env / the VPS's own Notifier config, never
+      # printed or committed here). The Notifier is the ONLY sender - this
+      # step never builds a parallel alert path.
+      #
+      # NOTIFIER_URL/NOTIFIER_KEY come from the self-hosted RUNNER's own
+      # environment (a `.env` file in the runner's install dir, loaded by
+      # the runner service into every job automatically - see the Actions
+      # docs on self-hosted runner environment variables), never from a
+      # GitHub repo Secret and never hardcoded here. This runner lives on
+      # the same Hostinger VPS (72.61.240.224) as the Notifier gateway
+      # itself, so the gateway is reachable at 127.0.0.1:3300 with no
+      # public ingress involved.
+      - name: Alert owner on deploy failure
+        if: failure()
+        shell: bash
+        run: |
+          set -uo pipefail
+          SLOT="${{ steps.slot.outputs.slot }}"
+          SHA="${{ inputs.ref != '' && inputs.ref || github.sha }}"
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          LOG_FILE="/tmp/ipodhan-deploy-${{ github.run_id }}.log"
+
+          # Last named-gate reason: deploy-linux.sh's ERR trap (on_deploy_error)
+          # and every fatal() call print a line starting "FATAL: " (see that
+          # script's trap comment, T-321). Fall back to a generic reason if the
+          # deploy log never got written (e.g. the "Resolve deploy slot" step
+          # itself failed, before "Deploy" ever ran).
+          GATE_REASON="no deploy log captured - failure was before/outside the Deploy step"
+          if [ -f "$LOG_FILE" ]; then
+            LAST_FATAL="$(grep -E '^FATAL: ' "$LOG_FILE" | tail -n1 || true)"
+            if [ -n "$LAST_FATAL" ]; then
+              GATE_REASON="$LAST_FATAL"
+            else
+              GATE_REASON="$(tail -n 1 "$LOG_FILE" || true)"
+            fi
+          fi
+
+          if [ -z "${NOTIFIER_URL:-}" ] || [ -z "${NOTIFIER_KEY:-}" ]; then
+            echo "WARNING: NOTIFIER_URL/NOTIFIER_KEY not set in the runner's env - cannot page the owner for this failure (see runner .env setup in GLOBAL.md section 2)." >&2
+            exit 0
+          fi
+
+          BODY="$(node -e '
+            const [runUrl, gateReason] = process.argv.slice(1);
+            process.stdout.write(JSON.stringify(`Run: ${runUrl}\nLast gate: ${gateReason}`));
+          ' "$RUN_URL" "$GATE_REASON")"
+
+          RESPONSE="$(curl -sS -o /tmp/ipodhan-deploy-alert-response-${{ github.run_id }}.json -w '%{http_code}' \
+            -X POST "${NOTIFIER_URL%/}/notify" \
+            -H 'Content-Type: application/json' \
+            -H "X-Api-Key: ${NOTIFIER_KEY}" \
+            --max-time 5 \
+            -d "{\"project\":\"ipodhan\",\"severity\":\"P1\",\"title\":\"deploy-linux FAILED ${SHA} ${SLOT}\",\"body\":${BODY},\"type\":\"deploy\",\"dedupeKey\":\"deploy-linux-${{ github.run_id }}\"}" || echo "curl-failed")"
+
+          echo "Notifier /notify HTTP status: $RESPONSE"
+          cat /tmp/ipodhan-deploy-alert-response-${{ github.run_id }}.json 2>/dev/null || true
+          if [ "$RESPONSE" != "202" ]; then
+            echo "WARNING: Notifier did not return 202 - owner alert may not have been delivered (deploy failure itself is already reflected by this job's red status)." >&2
           fi

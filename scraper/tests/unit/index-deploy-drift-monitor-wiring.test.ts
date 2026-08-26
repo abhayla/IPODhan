@@ -1,15 +1,14 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 /**
- * T-311 regression test: proves the one-shot production path
+ * T-324 ITEM 2 regression test: proves the one-shot production path
  * (`scraper/src/index.ts --source=all`, the ONLY scraper process PM2 runs --
  * see docs/monitoring/scrape-cadence-measurement.md) actually invokes the
- * duplicate sweep, the stage reconciler, and the primary-source discovery
- * consumer. Pre-fix, none of `triggerDuplicateSweep` / `triggerStageReconciler`
- * / `triggerPrimarySourceDiscovery` exist, and the entire tiered scheduler
- * (`scraper/src/scheduler/*`) that DEFINES these jobs is imported by nothing
- * PM2 runs (T-305 P2-7) -- this test fails against that pre-fix code the same
- * way index-registrar-health-check-wiring fails pre-T-300F.
+ * served-SHA drift monitor (`checkDeployDrift`, via `triggerDeployDriftMonitor`),
+ * cadence-gated to once an hour through the SAME `catch-up-cadence.ts` guard
+ * the T-311 jobs already use -- not a second scheduler. Mirrors
+ * index-scheduler-jobs-wiring.test.ts's pattern for the other T-311/T-324
+ * one-shot-cycle triggers.
  */
 
 const baseScraperResult = {
@@ -58,33 +57,14 @@ const updateListingPerformanceMock = vi.fn().mockResolvedValue({
   timestamp: new Date(0).toISOString(),
 });
 const shouldRunListingPerformanceUpdateMock = vi.fn().mockReturnValue(false);
-const runRegistrarHealthCheckMock = vi.fn().mockResolvedValue({
-  checked: 14,
-  healthy: 14,
-  newlyDead: [] as string[],
-  stillDead: [] as string[],
-});
+const runRegistrarHealthCheckMock = vi.fn().mockResolvedValue({ checked: 0, healthy: 0, newlyDead: [], stillDead: [] });
 const shouldRunRegistrarHealthCheckMock = vi.fn().mockReturnValue(false);
-const reresolveRegistrarIdsMock = vi.fn().mockResolvedValue({
-  candidates: 0,
-  matched: 0,
-  written: 0,
-  unmatchedNames: [] as string[],
-});
-const runDuplicateSweepJobMock = vi.fn().mockResolvedValue({
-  totalIpos: 0,
-  clusters: 0,
-  dupClusters: [] as unknown[],
-  applied: false,
-});
-const runStageReconcilerJobMock = vi.fn().mockResolvedValue({
-  totalIpos: 0,
-  iposWithDueFetches: 0,
-  dueByKind: {},
-  byStage: {},
-});
+const reresolveRegistrarIdsMock = vi.fn().mockResolvedValue({ candidates: 0, matched: 0, written: 0, unmatchedNames: [] });
+const runDuplicateSweepJobMock = vi.fn().mockResolvedValue({ totalIpos: 0, clusters: 0, dupClusters: [] as unknown[], applied: false });
+const runStageReconcilerJobMock = vi.fn().mockResolvedValue({ totalIpos: 0, iposWithDueFetches: 0, dueByKind: {}, byStage: {} });
 const runPrimaryDocBackfillMock = vi.fn().mockResolvedValue(undefined);
 const shouldRunOnCatchUpCadenceMock = vi.fn().mockResolvedValue(true);
+const checkDeployDriftMock = vi.fn().mockResolvedValue([]);
 const dbReturningMock = vi.fn().mockResolvedValue([]);
 
 vi.mock('../../src/scrapers/nse-scraper-orchestrator-v2.js', () => ({
@@ -132,6 +112,11 @@ vi.mock('../../src/scripts/backfill-primary-source-documents.js', () => ({
 vi.mock('../../src/scheduler/catch-up-cadence.js', () => ({
   shouldRunOnCatchUpCadence: shouldRunOnCatchUpCadenceMock,
 }));
+vi.mock('../../src/services/deploy-drift-monitor.js', () => ({
+  checkDeployDrift: checkDeployDriftMock,
+  getMainShaFromOrigin: vi.fn(),
+  getServedShaForSlot: vi.fn(),
+}));
 const evaluateFreshnessMock = vi.fn().mockResolvedValue([]);
 const checkCrossSourceDisagreementsMock = vi.fn().mockResolvedValue({
   openIpoCount: 0,
@@ -142,11 +127,6 @@ const checkCrossSourceDisagreementsMock = vi.fn().mockResolvedValue({
 
 vi.mock('../../src/services/freshness-monitor.js', () => ({
   evaluateFreshness: evaluateFreshnessMock,
-}));
-vi.mock('../../src/services/deploy-drift-monitor.js', () => ({
-  checkDeployDrift: vi.fn().mockResolvedValue([]),
-  getMainShaFromOrigin: vi.fn(),
-  getServedShaForSlot: vi.fn(),
 }));
 vi.mock('../../src/services/cross-source-disagreement-monitor.js', () => ({
   checkCrossSourceDisagreements: checkCrossSourceDisagreementsMock,
@@ -169,7 +149,7 @@ vi.mock('drizzle-orm', () => ({
   lt: vi.fn(),
 }));
 
-describe('scraper/src/index.ts one-shot --source=all path (scheduler-jobs wiring)', () => {
+describe('scraper/src/index.ts one-shot --source=all path (deploy-drift-monitor wiring)', () => {
   const originalArgv = process.argv;
   const originalEnv = { ...process.env };
   let exitSpy: ReturnType<typeof vi.spyOn>;
@@ -177,12 +157,9 @@ describe('scraper/src/index.ts one-shot --source=all path (scheduler-jobs wiring
   beforeEach(() => {
     vi.clearAllMocks();
     shouldRunOnCatchUpCadenceMock.mockResolvedValue(true);
-    shouldRunListingPerformanceUpdateMock.mockReturnValue(false);
-    shouldRunRegistrarHealthCheckMock.mockReturnValue(false);
+    checkDeployDriftMock.mockResolvedValue([]);
     process.argv = [...originalArgv.slice(0, 2), '--source=all'];
     delete process.env.ADMIN_API_TOKEN;
-    delete process.env.ENABLE_STAGE_RECONCILER;
-    delete process.env.ENABLE_PRIMARY_SOURCE_DISCOVERY;
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     vi.stubGlobal('fetch', vi.fn());
   });
@@ -194,86 +171,42 @@ describe('scraper/src/index.ts one-shot --source=all path (scheduler-jobs wiring
     exitSpy.mockRestore();
   });
 
-  it('calls runDuplicateSweepJob in dry-run mode on every full scrape cycle when cadence allows', async () => {
+  it('calls checkDeployDrift on every full scrape cycle when the cadence guard says yes', async () => {
     const { main } = await import('../../src/index.js');
 
     await main();
 
-    expect(runDuplicateSweepJobMock).toHaveBeenCalledTimes(1);
-    expect(runDuplicateSweepJobMock).toHaveBeenCalledWith({ dryRun: true });
+    expect(shouldRunOnCatchUpCadenceMock).toHaveBeenCalledWith(expect.anything(), 'deploy-drift-monitor', 60);
+    expect(checkDeployDriftMock).toHaveBeenCalledTimes(1);
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
-  it('skips the duplicate sweep when the catch-up cadence guard says no', async () => {
-    shouldRunOnCatchUpCadenceMock.mockImplementation(async (_r: unknown, jobName: string) =>
-      jobName !== 'duplicate-sweep'
-    );
+  it('skips checkDeployDrift when the cadence guard says no (hourly throttle)', async () => {
+    shouldRunOnCatchUpCadenceMock.mockImplementation(async (_r: unknown, jobName: string) => jobName !== 'deploy-drift-monitor');
 
     const { main } = await import('../../src/index.js');
     await main();
 
-    expect(runDuplicateSweepJobMock).not.toHaveBeenCalled();
+    expect(checkDeployDriftMock).not.toHaveBeenCalled();
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
-  it('does not fail the run when runDuplicateSweepJob throws (non-fatal side effect)', async () => {
-    runDuplicateSweepJobMock.mockRejectedValueOnce(new Error('DB timeout'));
+  it('does not fail the scrape run when checkDeployDrift throws (non-fatal side effect)', async () => {
+    checkDeployDriftMock.mockRejectedValueOnce(new Error('git ls-remote failed'));
 
     const { main } = await import('../../src/index.js');
     await main();
 
-    expect(runDuplicateSweepJobMock).toHaveBeenCalledTimes(1);
+    expect(checkDeployDriftMock).toHaveBeenCalledTimes(1);
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 
-  it('does NOT call runStageReconcilerJob when ENABLE_STAGE_RECONCILER is unset (§GATE default OFF)', async () => {
-    const { main } = await import('../../src/index.js');
-
-    await main();
-
-    expect(runStageReconcilerJobMock).not.toHaveBeenCalled();
-    expect(exitSpy).toHaveBeenCalledWith(0);
-  });
-
-  it('calls runStageReconcilerJob in dry-run mode when ENABLE_STAGE_RECONCILER=true and cadence allows', async () => {
-    process.env.ENABLE_STAGE_RECONCILER = 'true';
+  it('does NOT call checkDeployDrift for a single-source invocation (only source === "all")', async () => {
+    process.argv = [...originalArgv.slice(0, 2), '--source=nse'];
 
     const { main } = await import('../../src/index.js');
     await main();
 
-    expect(runStageReconcilerJobMock).toHaveBeenCalledTimes(1);
-    expect(runStageReconcilerJobMock).toHaveBeenCalledWith({ dryRun: true });
-    expect(exitSpy).toHaveBeenCalledWith(0);
-  });
-
-  it('does NOT call runPrimaryDocBackfill when ENABLE_PRIMARY_SOURCE_DISCOVERY is unset (closes #213 dishonesty gap)', async () => {
-    const { main } = await import('../../src/index.js');
-
-    await main();
-
-    expect(runPrimaryDocBackfillMock).not.toHaveBeenCalled();
-    expect(exitSpy).toHaveBeenCalledWith(0);
-  });
-
-  it('calls runPrimaryDocBackfill with execute:true when ENABLE_PRIMARY_SOURCE_DISCOVERY=true and cadence allows', async () => {
-    process.env.ENABLE_PRIMARY_SOURCE_DISCOVERY = 'true';
-
-    const { main } = await import('../../src/index.js');
-    await main();
-
-    expect(runPrimaryDocBackfillMock).toHaveBeenCalledTimes(1);
-    expect(runPrimaryDocBackfillMock).toHaveBeenCalledWith({ execute: true });
-    expect(exitSpy).toHaveBeenCalledWith(0);
-  });
-
-  it('does not fail the run when runPrimaryDocBackfill throws (non-fatal side effect)', async () => {
-    process.env.ENABLE_PRIMARY_SOURCE_DISCOVERY = 'true';
-    runPrimaryDocBackfillMock.mockRejectedValueOnce(new Error('NSE API timeout'));
-
-    const { main } = await import('../../src/index.js');
-    await main();
-
-    expect(runPrimaryDocBackfillMock).toHaveBeenCalledTimes(1);
-    expect(exitSpy).toHaveBeenCalledWith(0);
+    expect(checkDeployDriftMock).not.toHaveBeenCalled();
   });
 });

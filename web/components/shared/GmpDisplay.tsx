@@ -5,6 +5,7 @@
  * trust question that a bare "+₹44" leaves open. Missing GMP → honest em dash.
  */
 
+import { useEffect, useState } from 'react';
 import { ArrowUp, ArrowDown } from 'lucide-react';
 import { Sparkline } from './Sparkline';
 
@@ -34,11 +35,25 @@ export function GmpDisplay({
   gmpTrend?: 'up' | 'down' | 'flat' | null;
   gmpSeries?: number[];
 }) {
+  // T-326: `ago()` reads Date.now() — computing it directly in the render body
+  // means the server render and the client's pre-hydration render each call it
+  // at a different real instant, so the text can legitimately differ (a minute
+  // rollover between the two) and trips React's hydration-mismatch error
+  // (#418). Deferred into useEffect, same pattern as DataFreshness.relativeAge:
+  // first paint renders no freshness text (matches on both server and client),
+  // then the real value fills in post-mount.
+  const [freshness, setFreshness] = useState('');
+  useEffect(() => {
+    if (!gmpUpdatedAt) return;
+    setFreshness(ago(gmpUpdatedAt));
+    const id = setInterval(() => setFreshness(ago(gmpUpdatedAt)), 60_000);
+    return () => clearInterval(id);
+  }, [gmpUpdatedAt]);
+
   if (gmp === null || gmp === undefined) {
     return <span className="text-gray-400">—</span>;
   }
   const positive = gmp >= 0;
-  const freshness = gmpUpdatedAt ? ago(gmpUpdatedAt) : '';
 
   // Freshness moves to a tooltip so the cell reads clean (value+trend / %),
   // not a 4-signal jumble (blind-review R12 #2).
