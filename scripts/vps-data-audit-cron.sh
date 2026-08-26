@@ -32,8 +32,22 @@
 #
 #   mkdir -p /root/data-audit-ipodhan/state
 #   git clone https://github.com/abhayla/IPODhan /root/data-audit-ipodhan/repo
+#   chmod +x /root/data-audit-ipodhan/repo/scripts/vps-data-audit-cron.sh
 #   crontab -e   # add, off-peak IST, staggered away from the 03:15 prod-verify:
-#   45 3 * * * /root/data-audit-ipodhan/repo/scripts/vps-data-audit-cron.sh >> /root/data-audit-ipodhan/state/cron.log 2>&1
+#   45 3 * * * /bin/bash /root/data-audit-ipodhan/repo/scripts/vps-data-audit-cron.sh >> /root/data-audit-ipodhan/state/cron.log 2>&1
+#
+# NOTE the leading `/bin/bash` - it is NOT cosmetic (T-335C checker finding).
+# This script's own `git reset --hard origin/main` restores the file's TRACKED
+# mode on every run. While that tracked mode was 100644, the script ran once,
+# reset its own bit back to 0644, and every later cron tick died with
+# "/bin/sh: Permission denied" - the audit silently disabled itself and nobody
+# was paged, because cron's failure never reaches the alert path inside the
+# script. The tracked mode is 100755 now, but invoking through `bash` makes the
+# executable bit no longer load-bearing, so ANY future mode drift self-heals.
+# Applied on the box 2026-08-26 (one-time chmod +x plus the crontab rewrite) and
+# proven with the file deliberately left at 0644: the crontab command ran the
+# full audit to completion. Evidence:
+# GetWorkDone/evidence/2026-08-26-T-335/fix-round-1/box-bootstrap-proof.log
 #
 # The DB credentials are NOT stored here. The script sources the live prod env
 # that already exists on the box (/var/www/ipodhan/shared/env/prod/web.env.local),
@@ -96,12 +110,23 @@ run_audit() {
   # live-IPO cross-source conflicts, issue_size/lot-band plausibility, a full
   # API route sweep, conflict-noise ratio, per-type freshness, pm2 env/log
   # health, scheduler wire-or-retire, and the P3 gates (sector %, cron exec
-  # bit, dead-source retire-by). This script sends its OWN per-check/per-row
-  # Notifier pages (dedupeKey = detection-floor-<check>-<row>, one page per
-  # defect rather than one page per night) — it needs NOTIFIER_KEY_IPODHAN,
-  # already sourced above from $NOTIFIER_ENV.
+  # bit, dead-source retire-by). It sends its OWN Notifier pages: ONE DIGEST
+  # per check per night (dedupeKey = detection-floor-<check>-<date>), P1 only
+  # when a check has rows that are new versus the previous run, plus a P2 page
+  # for every UNVERIFIABLE check. It needs NOTIFIER_KEY_IPODHAN, already
+  # sourced above from $NOTIFIER_ENV.
+  #
+  # Exit codes: 0 clean, 1 a check FAILed, 3 no FAIL but at least one check was
+  # UNVERIFIABLE (the audit was BLIND tonight, not green - it still pages and
+  # still fails this cron run), 2 the audit crashed.
   echo "--- [3/3] audit-detection-floor --gate (round-7 coverage floor) ---"
-  BASE_URL="https://ipodhan.com" node scripts/audit-detection-floor.mjs --gate || { failed=1; echo "GATE FAILED: audit-detection-floor"; }
+  BASE_URL="https://ipodhan.com" node scripts/audit-detection-floor.mjs --gate
+  DF_CODE=$?
+  case "$DF_CODE" in
+    0) ;;
+    3) failed=1; echo "GATE BLIND: audit-detection-floor exited 3 - at least one check was UNVERIFIABLE (not a pass)" ;;
+    *) failed=1; echo "GATE FAILED: audit-detection-floor exited $DF_CODE" ;;
+  esac
 
   echo "=== exit code: $failed ==="
   return "$failed"
