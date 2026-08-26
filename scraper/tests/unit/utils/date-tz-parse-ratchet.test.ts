@@ -28,16 +28,23 @@
  * value), while still treating the local-getter reads (`getFullYear`/
  * `getMonth`/`getDate`) as SAFE, same as the bound form.
  *
- * KNOWN RESIDUAL (baseline = 6, tracked in
- * D:\Abhay\GetWorkDone\evidence\2026-08-26-T-327\STATUS.md): five files keep
- * a last-resort `new Date(cleaned).toISOString()` fallback for date STRINGS
- * that don't match any of the known DD-MMM-YYYY / DD/MMM/YYYY / DD MMM YY /
- * DD/MM/YYYY / DD-MM-YYYY shapes (all of which are now handled by explicit
- * string-arithmetic branches BEFORE the fallback is ever reached). This
- * ratchet does not re-fix them (out of this pass's budget) — it freezes the
- * count so a NEW instance of the class cannot be added silently. Shrinking
- * the baseline (fixing one of the five) requires updating BASELINE_COUNT and
- * BASELINE_FILES below in the same commit as the fix.
+ * KNOWN RESIDUAL (8 entries — see BASELINE below, cross-referenced in
+ * D:\Abhay\GetWorkDone\evidence\2026-08-26-T-327\06-class-sweep.md and
+ * class-sweep-item3.md): six files keep a last-resort
+ * `new Date(cleaned).toISOString()` fallback for date STRINGS that don't
+ * match any of the known DD-MMM-YYYY / DD/MMM/YYYY / DD MMM YY / DD/MM/YYYY /
+ * DD-MM-YYYY shapes (all of which are now handled by explicit
+ * string-arithmetic branches BEFORE the fallback is ever reached), plus two
+ * sites the INLINE_RISKY_CHAIN pass surfaced (T-327F checker remediation
+ * item 4) that were already reviewed-safe in the sweep docs but missing from
+ * this file's BASELINE: `backfill-listing-performance.ts` (manual CLI
+ * script, unverified third-party field, out of scope) and
+ * `freshness-monitor.ts` (reads a full DB timestamptz for an epoch-ms diff,
+ * not a raw date-only string — TZ-agnostic by construction). This ratchet
+ * does not re-fix the six string-parsing fallbacks (out of this pass's
+ * budget) — it freezes the count so a NEW instance of the class cannot be
+ * added silently. Shrinking the baseline (fixing one of them) requires
+ * updating BASELINE below in the same commit as the fix.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -87,7 +94,70 @@ const BASELINE: Record<string, number> = {
   'utils/transform-past-ipo.ts': 1,
   'services/normalization-engine.ts': 1,
   'utils/scraper-utils.ts': 1,
+  // T-327F (checker T-327C remediation item 4): INLINE_RISKY_CHAIN surfaced
+  // two more real, already-reviewed-safe sites documented in
+  // D:\Abhay\GetWorkDone\evidence\2026-08-26-T-327\06-class-sweep.md before
+  // this ratchet gained the inline-form check —
+  'scripts/backfill-listing-performance.ts': 1, // `new Date(data.Data[0].TDate).toISOString()` on an unverified BSE LTP-API field; manual, non-scheduled CLI backfill, not on the automated write path (06-class-sweep.md:71).
+  'services/freshness-monitor.ts': 1, // `new Date(lastSuccess.createdAt).getTime()` reads a full DB timestamptz column (not a raw scraped date-only string) purely for an epoch-ms staleness diff — TZ-agnostic by construction (06-class-sweep.md:50).
 };
+
+/**
+ * Strip comments before scanning so prose that DESCRIBES the anti-pattern
+ * (e.g. "NEVER `new Date(dateOnlyString).toISOString()`" in a doc comment
+ * explaining why a site was fixed) doesn't self-match as a NEW instance.
+ *
+ * A regex-only `/\*...\*\//` strip is UNSAFE here: a plain string literal
+ * containing `/*` (e.g. an HTTP `Accept` header value like
+ * `'...,image/webp,*\/*;q=0.8'`) makes the non-greedy block-comment pattern
+ * swallow everything up to the NEXT unrelated `*/` in the file — silently
+ * deleting real code (verified against nse-scraper.ts, whose `Accept:
+ * '.../webp,*\/*;q=0.8'` header string ate the rest of the function and
+ * made a genuine baselined instance vanish). This is a minimal
+ * string-literal-aware scanner instead: `//` / `/* ... *\/` are only
+ * treated as comments OUTSIDE a quoted string/template literal.
+ */
+function stripComments(src: string): string {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    const c2 = i + 1 < n ? src[i + 1] : '';
+    if (c === '/' && c2 === '/') {
+      while (i < n && src[i] !== '\n') i++;
+      continue;
+    }
+    if (c === '/' && c2 === '*') {
+      i += 2;
+      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') {
+      const quote = c;
+      out += c;
+      i++;
+      while (i < n && src[i] !== quote) {
+        if (src[i] === '\\' && i + 1 < n) {
+          out += src[i] + src[i + 1];
+          i += 2;
+          continue;
+        }
+        out += src[i];
+        i++;
+      }
+      if (i < n) {
+        out += src[i];
+        i++;
+      }
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
 
 function walk(dir: string): string[] {
   const out: string[] = [];
@@ -103,7 +173,8 @@ function walk(dir: string): string[] {
   return out;
 }
 
-function countRiskyChains(content: string): number {
+function countRiskyChains(rawContent: string): number {
+  const content = stripComments(rawContent);
   RISKY_CHAIN.lastIndex = 0;
   let count = 0;
   while (RISKY_CHAIN.exec(content)) count++;
