@@ -551,6 +551,45 @@ test('every detection-checks.json check id is actually recorded by the audit scr
   assert.deepEqual(undocumented, [], `audit records check(s) absent from the manifest: ${undocumented.join(', ')}`);
 });
 
+// T-340 checker round-1 F2: the test above matches `record('id'` against the
+// script's SOURCE TEXT, so an orphan check function that is never called from
+// main() still "passes" as long as its dead body still contains the record()
+// call. Deleting `await checkK();` from main() left this file 77/77 green
+// (checker mutation M6). This test guards the INVOCATION instead: for every
+// declared check id, find the function whose body actually records it, then
+// assert that function name is called from inside main()'s body.
+test('every detection-checks.json check id is recorded by a function that is actually CALLED from main() (not just defined)', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../../docs/reviews/detection-checks.json', import.meta.url), 'utf8'));
+  const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+
+  // Split the script into named top-level check-function bodies, each running
+  // from its own declaration to the next top-level `function`/`async function`.
+  const fnStarts = [...script.matchAll(/^(?:async )?function (check[A-Za-z_]+)\(/gm)];
+  assert.ok(fnStarts.length > 0, 'no check functions found — regex drifted from the source shape');
+
+  const fnBodies = fnStarts.map((m, i) => {
+    const start = m.index;
+    const end = i + 1 < fnStarts.length ? fnStarts[i + 1].index : script.length;
+    return { name: m[1], body: script.slice(start, end) };
+  });
+
+  const mainStart = script.indexOf('async function main()');
+  assert.ok(mainStart !== -1, 'main() not found — regex drifted from the source shape');
+  const mainBody = script.slice(mainStart);
+
+  const declared = manifest.checks.map((c) => c.id);
+  const notInvoked = [];
+
+  for (const id of declared) {
+    const owner = fnBodies.find((f) => new RegExp(`record\\(\\s*'${id}'`).test(f.body));
+    if (!owner) continue; // already reported as paperOnly by the text-level test above
+    const invoked = new RegExp(`\\b${owner.name}\\s*\\(`).test(mainBody);
+    if (!invoked) notInvoked.push(`${id} (owner ${owner.name} defined but never called from main())`);
+  }
+
+  assert.deepEqual(notInvoked, [], `check(s) recorded by a function main() never calls: ${notInvoked.join('; ')}`);
+});
+
 // ---- (l) T-340 NSE status cross-check ---------------------------------------
 // Our OPEN/UPCOMING set is produced by our own pipeline; nothing independent
 // checks it. NSE's own current-issue + upcoming feeds are the primary oracle

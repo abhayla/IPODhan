@@ -84,11 +84,15 @@ export const STEP_NAMES = [
 export type StepName = typeof STEP_NAMES[number];
 
 export type StepStatus = 'ok' | 'skipped' | 'failed';
-export interface StepResult {
-  status: StepStatus;
-  /** Required when status='skipped'; the failure message when status='failed'. */
-  reason?: string;
-}
+// T-340 checker round-1 F1: a plain `{ status: StepStatus; reason?: string }`
+// interface let a reasonless `{ status: 'skipped' }` type-check and pass all
+// tests — the contract's "a skipped step MUST carry a reason" was a
+// convention, not a guarantee. The discriminated union makes it a compile
+// error instead: 'ok' may omit reason, 'skipped'/'failed' must not.
+export type StepResult =
+  | { status: 'ok'; reason?: string }
+  | { status: 'skipped'; reason: string }
+  | { status: 'failed'; reason: string };
 
 /**
  * T-340: the runtime twin of the design-time "wire or retire" check
@@ -705,7 +709,7 @@ const STAGE_RECONCILER_INTERVAL_MINUTES = 3 * 60;
 
 export async function triggerStageReconciler(): Promise<StepResult> {
   if (process.env.ENABLE_STAGE_RECONCILER !== 'true') {
-    return { status: 'skipped', reason: 'ENABLE_STAGE_RECONCILER not true (§GATE)' };
+    return { status: 'skipped' };
   }
   const redis = getRedisClient();
   const shouldRun = await shouldRunOnCatchUpCadence(redis, 'stage-reconciler', STAGE_RECONCILER_INTERVAL_MINUTES);

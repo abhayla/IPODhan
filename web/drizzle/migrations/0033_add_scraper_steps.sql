@@ -11,6 +11,12 @@
 -- for a documented reason (e.g. ADMIN_API_TOKEN unset, outside a cadence
 -- window) cannot be represented there without overloading `source` with
 -- non-source values and losing the reason. See the T-340 PR body.
+-- T-340 checker round-1 F1: the app-level type made reason optional for
+-- every status, so a reasonless 'skipped'/'failed' row type-checked and
+-- passed all tests. This CHECK is the second, DB-level layer of the same
+-- guarantee (belt-and-suspenders with the TS discriminated union in
+-- scraper/src/index.ts's StepResult) — free to add now because this
+-- migration is not yet applied anywhere, impossible to add for free later.
 CREATE TABLE IF NOT EXISTS "scraper_steps" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"cycle_id" uuid NOT NULL,
@@ -18,7 +24,8 @@ CREATE TABLE IF NOT EXISTS "scraper_steps" (
 	"status" text NOT NULL,
 	"reason" text,
 	"duration_ms" integer NOT NULL,
-	"created_at" timestamp DEFAULT now() NOT NULL
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "scraper_steps_reason_required_unless_ok" CHECK ("status" = 'ok' OR "reason" IS NOT NULL)
 );
 --> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_scraper_steps_created_at" ON "scraper_steps" USING btree ("created_at");
