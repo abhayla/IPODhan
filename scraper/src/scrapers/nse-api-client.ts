@@ -328,6 +328,16 @@ async function makeRequest(endpoint: string, params?: Record<string, string>, re
 /**
  * Parse NSE date format to ISO 8601
  */
+// T-327 (round-7 P1-1): month-name lookup for the DD-MMM-YYYY branch below.
+// Pure string arithmetic — NEVER `new Date(dateOnlyString)`, which constructs
+// at local midnight and drifts a day when read back via toISOString() on any
+// host whose process TZ is not UTC (the prod box is Asia/Kolkata; PM2 does not
+// propagate TZ to the process — see .claude/rules/utc-naive-timestamp-normalization.md).
+const MONTH_ABBR_TO_NUM: Record<string, string> = {
+  jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+  jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+};
+
 export function parseNSEDate(dateStr: string | null | undefined): string {
   if (!dateStr) {
     return new Date().toISOString().split('T')[0];
@@ -336,10 +346,15 @@ export function parseNSEDate(dateStr: string | null | undefined): string {
   try {
     const cleaned = dateStr.trim();
 
-    // Handle DD-MMM-YYYY format (e.g., "09-Oct-2025")
-    if (cleaned.match(/^\d{2}-[A-Za-z]{3}-\d{4}$/)) {
-      const date = new Date(cleaned);
-      return date.toISOString().split('T')[0];
+    // Handle DD-MMM-YYYY format (e.g., "09-Oct-2025") — string arithmetic,
+    // TZ-invariant by construction (T-327, round-7 P1-1).
+    const ddMmmMatch = cleaned.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})$/);
+    if (ddMmmMatch) {
+      const [, day, mon, year] = ddMmmMatch;
+      const month = MONTH_ABBR_TO_NUM[mon.toLowerCase()];
+      if (month) {
+        return `${year}-${month}-${day}`;
+      }
     }
 
     // Handle DD/MM/YYYY format

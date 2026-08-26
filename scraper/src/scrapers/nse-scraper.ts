@@ -152,6 +152,15 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
             console.log(`Processing NSE IPO: ${companyName}`);
 
           // Parse dates (NSE format: DD-Mon-YYYY or DD/MM/YYYY)
+          // T-327 (round-7 P1-1): this runs inside page.evaluate() (browser
+          // context) — the browser's local TZ, not Node's, previously drove
+          // `new Date(cleaned).toISOString()` a day off. Pure string
+          // arithmetic (month-name lookup) is TZ-invariant by construction;
+          // NEVER `new Date(dateOnlyString)` for a date-only source string.
+          const MONTH_ABBR_TO_NUM: Record<string, string> = {
+            jan: '01', feb: '02', mar: '03', apr: '04', may: '05', jun: '06',
+            jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+          };
           const parseNSEDate = (dateStr: string): string => {
             try {
               const cleaned = dateStr.trim();
@@ -162,10 +171,15 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
                 return `${year}-${month}-${day}`;
               }
 
-              // Handle DD-Mon-YYYY format (e.g., "06-Oct-2025")
-              if (cleaned.match(/^\d{2}-[A-Za-z]{3}-\d{4}$/)) {
-                const date = new Date(cleaned);
-                return date.toISOString().split('T')[0];
+              // Handle DD-Mon-YYYY format (e.g., "06-Oct-2025") — string
+              // arithmetic, TZ-invariant (T-327).
+              const ddMmmMatch = cleaned.match(/^(\d{2})-([A-Za-z]{3})-(\d{4})$/);
+              if (ddMmmMatch) {
+                const [, day, mon, year] = ddMmmMatch;
+                const month = MONTH_ABBR_TO_NUM[mon.toLowerCase()];
+                if (month) {
+                  return `${year}-${month}-${day}`;
+                }
               }
 
               // Fallback: try Date constructor
