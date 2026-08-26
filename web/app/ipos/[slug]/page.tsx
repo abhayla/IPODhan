@@ -60,6 +60,7 @@ import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { ReviewRepository } from '@/lib/repositories/review-repository';
+import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
 import { SEARCH_CONFIG } from '@/lib/config/search';
 import { isRealIPO } from '@ipodhan/shared/utils/offering-type';
 import type { IPODetailResponse } from '@/lib/db/types';
@@ -73,6 +74,17 @@ import {
   generateIPODetailBreadcrumbs,
   toJsonLdScript,
 } from '@/lib/seo/structured-data';
+
+// ==================== CONSTANTS ====================
+
+/**
+ * T-328: mirrors HIGH_VALUE_FIELDS in
+ * scraper/src/services/cross-source-disagreement-monitor.ts and
+ * HIGH_VALUE_LIVE_FIELDS in scraper/src/services/data-consolidation-service.ts
+ * — the fields whose unresolved dispute renders the "under verification"
+ * marker instead of asserting a HELD value as settled fact.
+ */
+const HIGH_VALUE_DISPUTE_FIELDS = new Set(['priceRangeMin', 'priceRangeMax', 'openDate', 'closeDate']);
 
 // ==================== TYPES ====================
 
@@ -253,6 +265,21 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
       ? await getSectorAverage(ipo.sector)
       : null;
 
+  // T-328: on a live IPO, an unresolved HIGH_VALUE cross-source disagreement
+  // means the currently-published price band/date is HELD, not settled — the
+  // UI must say so instead of asserting the number as fact (LIFECYCLE-1, no
+  // new tables: reads the existing data_conflicts row the scraper-side HOLD
+  // writes). Only fetched for live IPOs — a CLOSED/LISTED IPO's fields are
+  // never held (see data-consolidation-service.ts HIGH_VALUE_LIVE_FIELDS).
+  const disputedFields: Set<string> =
+    ipo.status === 'UPCOMING' || ipo.status === 'OPEN'
+      ? new Set(
+          (await new DataConflictsRepository(db, redis).findUnresolvedForIPO(ipo.id))
+            .filter((c) => HIGH_VALUE_DISPUTE_FIELDS.has(c.fieldName))
+            .map((c) => c.fieldName)
+        )
+      : new Set<string>();
+
   // Empty-prone sections render nothing when their data is absent; one compact
   // PendingDataNotice names what's awaited instead of a stack of dead cards
   // (2026-07-02 UI review). Presence flags are computed server-side, once.
@@ -296,6 +323,8 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
       : 'TBA';
   const minInvestment =
     ipo.lotSize && ipo.priceRangeMax ? ipo.lotSize * Number(ipo.priceRangeMax) : null;
+  const priceBandDisputed = disputedFields.has('priceRangeMin') || disputedFields.has('priceRangeMax');
+  const openCloseDisputed = disputedFields.has('openDate') || disputedFields.has('closeDate');
   const ribbonCells = [
     {
       label: 'Price Band',
@@ -303,6 +332,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
         ipo.priceRangeMin || ipo.priceRangeMax
           ? formatPriceBand(ipo.priceRangeMin, ipo.priceRangeMax)
           : 'TBA',
+      disputed: priceBandDisputed,
     },
     { label: 'Lot Size', value: ipo.lotSize ? `${ipo.lotSize}` : 'TBA' },
     {
