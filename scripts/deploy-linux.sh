@@ -680,7 +680,16 @@ report_wired_jobs() {
     rest="${entry#*:}"
     call="${rest%%:*}"
     flag="${rest#*:}"
-    if printf '%s' "$idx_content" | grep -q "await ${call}()"; then
+    # T-331 fix-round: T-340's step-ledger refactor changed the call site
+    # from a direct `await triggerX()` to `await runStep(cycleId, 'x',
+    # triggerX)` (a callback reference, not an invocation) -- the original
+    # `await ${call}()` grep stopped matching ANY of the three jobs the
+    # moment that refactor landed, so this report has been silently
+    # reporting "job NOT wired" for all three on every real deploy since
+    # T-340, without failing the deploy (this report is informational only
+    # -- see the surrounding block). Match either call shape: the direct
+    # `await triggerX()` OR the step-ledger `triggerX)` callback-reference.
+    if printf '%s' "$idx_content" | grep -qE "(await ${call}\(\)|, ${call}\))"; then
       if [ -n "$flag" ]; then
         flag_val="unset"
         if (( ! DRY_RUN )); then

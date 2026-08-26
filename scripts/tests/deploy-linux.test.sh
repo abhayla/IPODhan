@@ -755,6 +755,34 @@ else
   rm -rf "$ENVDIR15"
 fi
 
+# --- Case 16: T-331 P2-8 (round-7 recurrence) — deploy-linux.sh MUST only --
+# --- ever start the scraper via the one-shot `src/index.ts --source=all` --
+# --- entrypoint, and MUST NEVER start `scheduler/index.ts` (the `npm run --
+# --- scheduler` / SchedulerService tree that defines the tiered ----------
+# --- market-hours/after-hours/weekend cron schedules in scheduler/config.ts).
+# --- T-311 already decided (docs/scraper/scheduler-liveness.md) to RETIRE --
+# --- that tiering -- every job it registers has an equivalent already ------
+# --- wired into src/index.ts's flat one-shot cadence -- and to KEEP -------
+# --- SchedulerService only as documented non-prod tooling (`npm run --------
+# --- scheduler`, local/manual use). This case is the static proof that the -
+# --- REAL deploy script honors that decision: grep the actual file content,
+# --- not a doc's claim about it, so a future edit that starts the ----------
+# --- scheduler tree in the live path fails this test immediately. ---------
+SCHEDULER_PM2_STARTS="$(grep -c "scheduler/index" "$DEPLOY_SCRIPT" || true)"
+SOURCE_ALL_PM2_STARTS="$(grep -c -- "--source=all" "$DEPLOY_SCRIPT" || true)"
+
+if [ "$SCHEDULER_PM2_STARTS" -ne 0 ]; then
+  fail "case 16: $DEPLOY_SCRIPT references scheduler/index.ts $SCHEDULER_PM2_STARTS time(s) -- the tiered scheduler tree must stay unwired from the live deploy path (T-311/T-331 RETIRE decision) or docs/scraper/scheduler-liveness.md must be updated to WIRE and this test corrected"
+else
+  pass "case 16a: deploy-linux.sh never references scheduler/index.ts (tiered scheduler stays unwired from prod)"
+fi
+
+if [ "$SOURCE_ALL_PM2_STARTS" -lt 1 ]; then
+  fail "case 16: expected at least one '--source=all' pm2 start invocation in $DEPLOY_SCRIPT -- the one-shot entrypoint is the only scraper path that should exist"
+else
+  pass "case 16b: deploy-linux.sh starts the scraper via the one-shot --source=all entrypoint ($SOURCE_ALL_PM2_STARTS occurrence(s))"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1
