@@ -16,6 +16,7 @@ import { ScraperLogRepository } from '@/lib/repositories/scraper-log-repository'
 import { requireAdminAuth } from '@/lib/auth/admin-auth';
 import type { ScraperSource } from '@/lib/db/types';
 import { adminRateLimiter } from '@/lib/middleware/rate-limiter';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 /**
  * Health status calculation
@@ -177,14 +178,6 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('Failed to get scraper status:', error);
-
-    return NextResponse.json(
-      {
-        error: 'Failed to retrieve scraper status',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/admin/scraper/status');
   }
 }

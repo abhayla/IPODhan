@@ -21,6 +21,7 @@ import { eq, and } from 'drizzle-orm';
 import { invalidateProtectionCache } from '@/lib/admin/field-protection-checker';
 import { logAudit, AuditActionTypes, getClientIP, getUserAgent } from '@/lib/services/audit-log-service';
 import { apiErrorResponse } from '@/lib/errors/api-error-response';
+import { logger } from '@/lib/logger';
 
 interface ResolveConflictRequest {
   conflicts: Array<{
@@ -181,11 +182,22 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
         }
 
       } catch (error) {
+        // Real error detail (can include SQL/constraint text) logged server-side
+        // only - never in the public response body (T-330 P2-5).
+        logger.error(
+          {
+            ipoId: conflict.ipoId,
+            tableName: conflict.tableName,
+            fieldName: conflict.fieldName,
+            error: error instanceof Error ? error.message : String(error),
+          },
+          'Failed to resolve conflict'
+        );
         response.failed.push({
           ipoId: conflict.ipoId,
           tableName: conflict.tableName,
           fieldName: conflict.fieldName,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: 'Failed to resolve conflict',
         });
       }
     }
