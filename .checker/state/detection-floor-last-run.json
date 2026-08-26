@@ -1,0 +1,20 @@
+{
+  "e_route_sweep": [
+    "/api/metrics",
+    "/api/performance/mainboard"
+  ],
+  "i_wire_or_retire": [
+    "scraper/src/scheduler/cache-invalidator.ts",
+    "scraper/src/scheduler/catch-up-cadence.ts",
+    "scraper/src/scheduler/config.ts",
+    "scraper/src/scheduler/index.ts",
+    "scraper/src/scheduler/job-lock.ts",
+    "scraper/src/scheduler/listing-performance-cadence.ts",
+    "scraper/src/scheduler/registrar-health-check-cadence.ts",
+    "scraper/src/scheduler/scheduler.ts",
+    "scraper/src/scheduler/stage-reconciler.ts"
+  ],
+  "j_segment_not_null": [
+    "undefined"
+  ]
+}
