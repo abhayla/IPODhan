@@ -211,6 +211,55 @@ describe('checkDeployDrift', () => {
     expect(getServedSha).not.toHaveBeenCalled();
   });
 
+  describe('real-value sha lengths (8-char served vs 40-char main)', () => {
+    // deploy-linux.sh:394 serves NEXT_PUBLIC_BUILD_SHA=$SHORT_SHA (8 hex
+    // chars); getMainShaFromOrigin returns the full 40-char origin/main
+    // sha. A strict `===` between the two can never match -- these are the
+    // ACTUAL values from a real in-sync deploy, not test-only 40-vs-40
+    // fixtures, so they catch the regression the shape-only fixtures above
+    // (both sides always 40 chars) missed entirely.
+    const SERVED_SHORT = 'd002d234';
+    const MAIN_MATCHING_FULL = 'd002d2340ab167810b0511c3e45d3220af48f651';
+    const MAIN_DIFFERENT_FULL = 'ffffffffffffffffffffffffffffffffffffffff';
+
+    it('is NOT drifting when the 8-char served sha is a prefix of the 40-char main sha', async () => {
+      const redis = makeRedis();
+      const getServedSha = vi.fn(async () => SERVED_SHORT);
+
+      const results = await checkDeployDrift({
+        getMainSha: async () => MAIN_MATCHING_FULL,
+        getServedSha,
+        redis,
+        notify,
+        now: () => new Date('2026-08-26T00:00:00Z'),
+      });
+
+      expect(results.every((r) => !r.drifting && !r.alerted)).toBe(true);
+      expect(notify).not.toHaveBeenCalled();
+    });
+
+    it('IS drifting (and alerts past grace) when the 8-char served sha does not match a different 40-char main sha', async () => {
+      const redis = makeRedis();
+      const getServedSha = vi.fn(async () => SERVED_SHORT);
+      const t0 = new Date('2026-08-26T00:00:00Z');
+      const t1 = new Date('2026-08-26T01:01:00Z'); // 61 min later, past grace
+
+      await checkDeployDrift({ getMainSha: async () => MAIN_DIFFERENT_FULL, getServedSha, redis, notify, now: () => t0 });
+      expect(notify).not.toHaveBeenCalled();
+
+      const results = await checkDeployDrift({ getMainSha: async () => MAIN_DIFFERENT_FULL, getServedSha, redis, notify, now: () => t1 });
+
+      expect(results.every((r) => r.drifting)).toBe(true);
+      const prodResult = results.find((r) => r.slot === 'prod')!;
+      expect(prodResult.alerted).toBe(true);
+      expect(notify).toHaveBeenCalledWith(
+        'P1',
+        expect.stringContaining('prod'),
+        expect.objectContaining({ dedupeKey: MAIN_DIFFERENT_FULL, type: 'deploy-drift' })
+      );
+    });
+  });
+
   it('does not crash when getMainSha throws (non-fatal)', async () => {
     const redis = makeRedis();
     const getServedSha = vi.fn(async () => OTHER_SHA);

@@ -136,6 +136,21 @@ export async function getServedShaForSlot(slot: DeploySlot): Promise<string | nu
   }
 }
 
+/**
+ * Compare a served sha (deploy-linux.sh:394 serves the 8-char
+ * `$SHORT_SHA` via `NEXT_PUBLIC_BUILD_SHA`) against the 40-char
+ * `origin/main` HEAD sha (`getMainShaFromOrigin`) by PREFIX, not `===` --
+ * the two are different lengths by design, so a strict equality check can
+ * never match and would false-page every slot, every cycle, forever. Both
+ * sides must be non-empty hex of at least 7 chars (the shortest sha git
+ * itself will abbreviate to) before either `startsWith` check runs.
+ */
+function shasMatch(servedSha: string, mainSha: string): boolean {
+  const hex7Plus = /^[0-9a-f]{7,}$/i;
+  if (!hex7Plus.test(servedSha) || !hex7Plus.test(mainSha)) return false;
+  return servedSha.startsWith(mainSha) || mainSha.startsWith(servedSha);
+}
+
 async function loadState(redis: Pick<Redis, 'get'>, slot: DeploySlot): Promise<DriftState | null> {
   try {
     const raw = await redis.get(`${STATE_KEY_PREFIX}${slot}`);
@@ -184,7 +199,7 @@ async function checkSlot(
     return { slot, mainSha, servedSha: null, drifting: false, alerted: false, reason: 'served-sha-unknown' };
   }
 
-  if (servedSha === mainSha) {
+  if (shasMatch(servedSha, mainSha)) {
     await clearState(deps.redis, slot);
     return { slot, mainSha, servedSha, drifting: false, alerted: false };
   }
