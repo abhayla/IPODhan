@@ -1,102 +1,85 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
-
-// Same module-graph stubs as backfill-gmp-historical-date-parse.test.ts: the
-// script imports DB/Redis/repository modules that need a live shared-package
-// build to resolve, none of which this test exercises.
-vi.mock('@ipodhan/shared/db/schema', () => ({}));
-vi.mock('@ipodhan/shared/db', () => ({ db: {} }));
-vi.mock('@ipodhan/shared/cache/redis-client', () => ({ getRedisClient: () => ({}) }));
-vi.mock('@ipodhan/shared/repositories', () => ({
-  GMPRepository: vi.fn().mockImplementation(() => ({})),
-}));
-vi.mock('../../../src/utils/logger.js', () => ({
-  default: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
-}));
-
-import { scrapeChittorgarhGMPHistory } from '../../../src/scripts/backfill-gmp-historical.js';
+import { describe, it, expect } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 
 /**
- * T-327F fix round 4, item B (checker T-327C2).
+ * T-327F fix round 5 — the TZ-explicit driver.
  *
- * The first sweep-miss test only called the extracted helper
- * parseGmpHistoryDateCell(), so reverting the CALL SITE in
- * scrapeChittorgarhGMPHistory() back to the local-TZ shape
- * new Date(cells[0]).toISOString() left the suite green — the regression the
- * ticket exists to prevent was undetected.
+ * Round 4's version of this file set `process.env.TZ = 'Asia/Kolkata'` inside
+ * the vitest worker and then asserted the drifted value
+ * '2025-10-05T18:30:00.000Z'. That mutation is a NO-OP: vitest runs each test
+ * file on a worker thread, and assigning process.env.TZ off the main thread
+ * does not reset V8's date cache. The assertion only ever passed because the
+ * dev machine's ambient zone already IS Asia/Kolkata; GitHub's runners are UTC,
+ * so CI went red (run 32934980618, backfill-gmp-historical-callsite-tz.test.ts:68).
  *
- * This test drives the real consuming function with a fetch stub returning a
- * Chittorgarh-shaped GMP-history table, under a fixed non-UTC process TZ
- * (Asia/Kolkata). A date-only cell parsed with bare new Date() lands at LOCAL
- * midnight, so reading it back as ISO yields the PREVIOUS day at 18:30Z; the
- * shared TZ-invariant parser yields UTC midnight of the same day. The
- * assertion below therefore goes RED on that revert, in any CI timezone.
+ * The property under test genuinely needs a non-UTC process timezone (under
+ * TZ=UTC the buggy `new Date(cells[0]).toISOString()` shape produces the SAME
+ * output as the correct parser, so a UTC-only test cannot catch the
+ * regression). The only reliable way to set a process timezone is at SPAWN
+ * time — so this driver runs the real assertions
+ * (tests/tz-cases/backfill-gmp-historical-callsite.tzcase.test.ts, deliberately
+ * outside the tests/unit include glob) in a child vitest process, once per
+ * timezone, with TZ in the child's env.
+ *
+ * Net effect: green in any CI timezone, and still RED if the call site is
+ * reverted to the local-TZ shape — because the Asia/Kolkata child proves the
+ * drift is real (witness assertion) before asserting the parser defeats it.
  */
-const GMP_HISTORY_HTML = `
-<html><body>
-<table class="gmp-history">
-  <tr><td>Date</td><td>GMP</td><td>GMP %</td><td>Est. Listing</td></tr>
-  <tr><td>06-Oct-2025</td><td>120</td><td>15.5</td><td>920</td><td>800</td><td>500</td></tr>
-  <tr><td>31-Dec-2025</td><td>90</td><td>11.0</td><td>890</td><td>700</td><td>400</td></tr>
-</table>
-</body></html>`;
 
-function stubFetchOk(html: string) {
-  return vi.fn().mockResolvedValue({
-    ok: true,
-    status: 200,
-    text: async () => html,
-  });
+const require = createRequire(import.meta.url);
+const VITEST_BIN = require.resolve('vitest/vitest.mjs');
+const SCRAPER_ROOT = join(fileURLToPath(new URL('.', import.meta.url)), '..', '..', '..');
+const CASE_FILE = 'tests/tz-cases/backfill-gmp-historical-callsite.tzcase.test.ts';
+
+function runCaseUnder(tz: string) {
+  return spawnSync(
+    process.execPath,
+    [
+      VITEST_BIN,
+      'run',
+      '--root',
+      SCRAPER_ROOT,
+      '--config',
+      join(SCRAPER_ROOT, 'vitest.tzcase.config.ts'),
+      '--reporter',
+      'basic',
+      CASE_FILE,
+    ],
+    {
+      cwd: SCRAPER_ROOT,
+      encoding: 'utf-8',
+      env: { ...process.env, TZ: tz, TZCASE_EXPECT_TZ: tz, CI: 'true' },
+    }
+  );
 }
 
-const originalTZ = process.env.TZ;
-const originalFetch = globalThis.fetch;
-
-afterEach(() => {
-  process.env.TZ = originalTZ;
-  globalThis.fetch = originalFetch;
-  vi.restoreAllMocks();
-});
-
 describe('scrapeChittorgarhGMPHistory call site is TZ-invariant (T-327F item B)', () => {
-  it('emits UTC-midnight instants for date-only cells under TZ=Asia/Kolkata', async () => {
-    process.env.TZ = 'Asia/Kolkata';
-    globalThis.fetch = stubFetchOk(GMP_HISTORY_HTML) as unknown as typeof fetch;
+  // Each case spawns a full vitest run; two of them comfortably exceed the
+  // 20s suite default.
+  it(
+    'passes its TZ-explicit case file under TZ=Asia/Kolkata (where the buggy shape WOULD drift)',
+    () => {
+      const res = runCaseUnder('Asia/Kolkata');
+      expect(
+        res.status,
+        `child vitest failed under TZ=Asia/Kolkata:\n${res.stdout}\n${res.stderr}`
+      ).toBe(0);
+    },
+    180_000
+  );
 
-    // Sanity: this process really is in a +05:30 zone, so the bare-new-Date
-    // form WOULD shift. Without this the assertion below could pass vacuously
-    // in a UTC CI runner.
-    expect(new Date('06-Oct-2025').toISOString()).toBe('2025-10-05T18:30:00.000Z');
-
-    const rows = await scrapeChittorgarhGMPHistory('Example Ltd', 'example-ltd');
-
-    expect(rows.map((r) => r.date)).toEqual([
-      '2025-10-06T00:00:00.000Z',
-      '2025-12-31T00:00:00.000Z',
-    ]);
-  });
-
-  it('produces the same instants under TZ=UTC and TZ=America/Los_Angeles', async () => {
-    const seen: string[][] = [];
-    for (const tz of ['UTC', 'America/Los_Angeles']) {
-      process.env.TZ = tz;
-      globalThis.fetch = stubFetchOk(GMP_HISTORY_HTML) as unknown as typeof fetch;
-      const rows = await scrapeChittorgarhGMPHistory('Example Ltd', 'example-ltd');
-      seen.push(rows.map((r) => r.date));
-    }
-    expect(seen[0]).toEqual(['2025-10-06T00:00:00.000Z', '2025-12-31T00:00:00.000Z']);
-    expect(seen[1]).toEqual(seen[0]);
-  });
-
-  it('skips a row whose date cell is unparseable instead of guessing', async () => {
-    process.env.TZ = 'Asia/Kolkata';
-    globalThis.fetch = stubFetchOk(`
-<table class="gmp-history">
-  <tr><td>not a date</td><td>120</td><td>15.5</td><td>920</td></tr>
-  <tr><td>06-Oct-2025</td><td>120</td><td>15.5</td><td>920</td></tr>
-</table>`) as unknown as typeof fetch;
-
-    const rows = await scrapeChittorgarhGMPHistory('Example Ltd', 'example-ltd');
-    expect(rows).toHaveLength(1);
-    expect(rows[0].date).toBe('2025-10-06T00:00:00.000Z');
-  });
+  it(
+    'passes the same case file under TZ=UTC (proving the driver is not zone-locked)',
+    () => {
+      const res = runCaseUnder('UTC');
+      expect(
+        res.status,
+        `child vitest failed under TZ=UTC:\n${res.stdout}\n${res.stderr}`
+      ).toBe(0);
+    },
+    180_000
+  );
 });

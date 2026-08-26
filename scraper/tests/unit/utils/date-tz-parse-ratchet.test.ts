@@ -100,6 +100,15 @@ const BASELINE: Record<string, number> = {
   // this ratchet gained the inline-form check —
   'scripts/backfill-listing-performance.ts': 1, // `new Date(data.Data[0].TDate).toISOString()` on an unverified BSE LTP-API field; manual, non-scheduled CLI backfill, not on the automated write path (06-class-sweep.md:71).
   'services/freshness-monitor.ts': 1, // `new Date(lastSuccess.createdAt).getTime()` reads a full DB timestamptz column (not a raw scraped date-only string) purely for an epoch-ms staleness diff — TZ-agnostic by construction (06-class-sweep.md:50).
+  // T-327F fix round 5: landed on main as T-324 (6080fdc6) AFTER this
+  // baseline was written, so the PR merge commit — not this branch's tree —
+  // is where CI first saw it. Same reviewed-safe class as
+  // freshness-monitor.ts above: `new Date(existing.firstSeenAt).getTime()`
+  // re-reads a value THIS module itself wrote as `now.toISOString()` (a
+  // full UTC instant with an explicit `Z`), purely for an epoch-ms
+  // grace-period diff. An explicit-offset string parses identically in
+  // every process TZ, so no local-midnight shift is possible.
+  'services/deploy-drift-monitor.ts': 1,
 };
 
 /**
