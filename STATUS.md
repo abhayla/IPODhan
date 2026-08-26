@@ -39,8 +39,8 @@ silently regress to last-writer-wins.
 ## Progress log
 - [x] STEP 1 live flag capture
 - [x] Item 1 — consolidation mandatory + single write path (ec23d85f)
-- [ ] Item 2 — key-beats-name identity quarantine
-- [ ] Item 3 — docs rollout note + prod env cleanup list
+- [x] Item 2 — key-beats-name identity quarantine (96fb83af)
+- [x] Item 3 — docs rollout note + prod env cleanup list
 
 ## Plan (written before the first code edit)
 
@@ -86,8 +86,35 @@ first (honest, work-in-progress body) and then executes the two remaining items.
 | STEP 1 live flag capture | DONE (586538f0) |
 | Plan before first edit | DONE (5a307569) |
 | 1 — consolidation mandatory, one write path | DONE (ec23d85f) |
-| 2 — identity: key beats name, quarantine | OPEN — in progress by T-339F |
-| 3 — docs rollout note + prod env cleanup list | OPEN — in progress by T-339F |
+| 2 — identity: key beats name, quarantine | DONE (96fb83af) |
+| 3 — docs rollout note + prod env cleanup list | DONE |
 
 Constraints honoured: never merges, no prod DB writes, no secrets printed, commit+push
 after every item.
+
+## Final verification (T-339F)
+
+| Gate | Result |
+|---|---|
+| scraper vitest (full suite, one run) | **1319/1319 pass**, 474 suites, 0 fail |
+| web vitest (full suite, one run) | 2352/2354 pass. The 2 failures are `MainboardPerformanceTrackerClient` / `SMEPerformanceTrackerClient`, which PASS when run on their own or as a pair — a pre-existing parallel-run flake. This task touched **zero** files under `web/`. |
+| detection-floor self-test | 60/60 pass (5 new for `k_identity_quarantine`) |
+| `packages/shared` tsc | clean |
+| `scraper` tsc | 118 errors — **unchanged**; measured against a stashed baseline of the same tree, none in any touched file. Pre-existing (the scraper has no commit-time type gate by design). |
+| `detection-checks.json` | valid JSON, 16 checks, every id referenced by `audit-detection-floor.mjs` |
+| pre-commit gates | secret scan + workflow-ASCII run on every commit |
+
+### Honest gaps
+
+- The web flake above is not fixed here (out of scope, untouched area) — it is
+  reported, not hidden.
+- Standalone backfill scripts call `resolveIpoRow` directly and do not catch
+  `IdentityQuarantineError`. A disagreement there throws for that IPO — still
+  no write, which is the safety property — but it is not recorded as a
+  quarantine. Named as a follow-up in
+  `docs/architecture/write-path-hardening.md` "Honest limits".
+- The env cleanup list names two `*_PERCENTAGE` keys as "confirm before
+  deleting": STEP 1's read-only capture covered four keys, not six, so
+  claiming they are present would be inventing evidence.
+- No prod DB writes and no env edits were made by this task. The env cleanup is
+  a list for the next deploy wave, executed by a human.
