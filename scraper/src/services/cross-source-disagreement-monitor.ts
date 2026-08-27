@@ -9,10 +9,9 @@
  * duplicating it: `data-consolidation-service.ts` already logs a
  * `data_conflicts` row (via `DataConflictsRepository.logConflict`) every time
  * an incoming scrape disagrees with the currently-stored value for a field
- * (gated by `FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION` /
- * `ENABLE_DATA_CONSOLIDATION` — see `.claude/rules/owner-gated-feature-flags.md`;
- * both default OFF, so this report is silent until an owner enables them —
- * see this PR's body). This module reads THOSE existing rows for OPEN IPOs
+ * (T-339: unconditionally — the two feature flags that used to gate it are
+ * retired, so `data_conflicts` is always populated and this report is never
+ * silently empty because of configuration). This module reads THOSE rows for OPEN IPOs
  * and reports/alerts on the ones that matter most.
  *
  * Field-name keys MUST be the keys consolidation actually writes into

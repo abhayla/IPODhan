@@ -683,3 +683,39 @@ export function evaluateCronExecutable(paths, gitLsFiles) {
     detail: offenders.length ? offenders.map((o) => o.violation).join('; ') : 'all executable',
   };
 }
+
+// ---- (k): identity quarantine age (T-339 item 2) -----------------------------
+
+/**
+ * A quarantine is a REFUSED write: the natural-key tier and the name tier
+ * disagreed about which `ipos` row a scrape belongs to, so nothing was
+ * written and the disagreement was parked as an unresolved `data_conflicts`
+ * HOLD row (resolution_reason = QUARANTINE_IDENTITY_CONFLICT).
+ *
+ * That is safe for an hour and dangerous for a week: while the quarantine
+ * stands, that company's data is FROZEN — every subsequent scrape is refused
+ * too. So the nightly audit FAILs once a quarantine has gone unresolved for
+ * a day, which is the detection half of the mechanism (the P1 page at
+ * quarantine time is the other half, and pages can be missed).
+ */
+export const IDENTITY_QUARANTINE_REASON = 'QUARANTINE_IDENTITY_CONFLICT';
+export const IDENTITY_QUARANTINE_MAX_AGE_HOURS = 24;
+
+/**
+ * row: { id, ipoId, value1, value2, detectedAt, resolvedAt, ageHours }
+ * Returns a violation string, or null when the row is fine / not a quarantine.
+ * Pure: `ageHours` is supplied by the caller so the check never reads a clock.
+ */
+export function checkIdentityQuarantineAge(row) {
+  if (row.resolutionReason !== IDENTITY_QUARANTINE_REASON) return null;
+  if (row.resolvedAt) return null; // resolved — the human dealt with it
+  // Number(null) is 0 and Number('') is 0 — both would look like "brand new"
+  // and silently pass. An age we cannot read is treated as stale.
+  const raw = row.ageHours;
+  const age = (raw === null || raw === undefined || raw === '') ? NaN : Number(raw);
+  if (!Number.isFinite(age)) {
+    return `identity quarantine ${row.id} has an unreadable detected_at — treat as stale (candidates ${row.value1} vs ${row.value2})`;
+  }
+  if (age <= IDENTITY_QUARANTINE_MAX_AGE_HOURS) return null;
+  return `identity quarantine on ipo ${row.ipoId} unresolved for ${age.toFixed(1)}h (> ${IDENTITY_QUARANTINE_MAX_AGE_HOURS}h) — candidates ${row.value1} vs ${row.value2}; that company's writes have been frozen the whole time`;
+}

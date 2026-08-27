@@ -23,26 +23,8 @@ dotenv.config({ path: join(__dirname, '..', '..', '.env') });
 export const FEATURE_FLAGS = {
   // ==================== CORE FEATURES ====================
 
-  /**
-   * Enable field source tracking
-   * When enabled, records which scraper provided each field value
-   * Default: false (Phase 0 foundation)
-   */
-  ENABLE_SOURCE_TRACKING: process.env.ENABLE_SOURCE_TRACKING === 'true',
 
-  /**
-   * Enable conflict detection and logging
-   * When enabled, logs conflicts between scrapers to database
-   * Default: false (Phase 0 foundation)
-   */
-  ENABLE_CONFLICT_DETECTION: process.env.ENABLE_CONFLICT_DETECTION === 'true',
 
-  /**
-   * Enable data consolidation service
-   * When enabled, uses smart merging with priority matrix
-   * Default: false (Phase 1)
-   */
-  ENABLE_DATA_CONSOLIDATION: process.env.ENABLE_DATA_CONSOLIDATION === 'true',
 
   /**
    * Enable DRHP extraction pipeline
@@ -130,24 +112,8 @@ export const FEATURE_FLAGS = {
 
   // ==================== ROLLOUT CONTROLS ====================
 
-  /**
-   * Percentage of IPOs to use source tracking (0-100)
-   * Enables gradual rollout with hash-based distribution
-   * Default: 0 (disabled)
-   */
-  SOURCE_TRACKING_PERCENTAGE: parseInt(process.env.SOURCE_TRACKING_PERCENTAGE || '0'),
 
-  /**
-   * Percentage of IPOs to use conflict detection (0-100)
-   * Default: 0 (disabled)
-   */
-  CONFLICT_DETECTION_PERCENTAGE: parseInt(process.env.CONFLICT_DETECTION_PERCENTAGE || '0'),
 
-  /**
-   * Percentage of IPOs to use data consolidation (0-100)
-   * Default: 0 (disabled)
-   */
-  CONSOLIDATION_PERCENTAGE: parseInt(process.env.CONSOLIDATION_PERCENTAGE || '0'),
 
   // ==================== TESTING & DEBUG ====================
 
@@ -244,17 +210,97 @@ function simpleHash(str: string): number {
  */
 export function getFeatureStatus(): Record<string, boolean | number | string[]> {
   return {
-    SOURCE_TRACKING: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
-    CONFLICT_DETECTION: FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION,
-    DATA_CONSOLIDATION: FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION,
+    // T-339: source tracking, conflict detection and data consolidation are
+    // no longer flags — they are MANDATORY and always on. They are reported
+    // here as constant `true` so the startup snapshot in scraper-out.log
+    // keeps the same shape for anything parsing it, and so a reader can see
+    // at a glance that the pipeline cannot be running without them.
+    SOURCE_TRACKING: true,
+    CONFLICT_DETECTION: true,
+    DATA_CONSOLIDATION: true,
     DRHP_EXTRACTION: FEATURE_FLAGS.ENABLE_DRHP_EXTRACTION,
     EARLY_DETECTION: FEATURE_FLAGS.ENABLE_EARLY_DETECTION,
-    SOURCE_TRACKING_PCT: FEATURE_FLAGS.SOURCE_TRACKING_PERCENTAGE,
-    CONFLICT_DETECTION_PCT: FEATURE_FLAGS.CONFLICT_DETECTION_PERCENTAGE,
-    CONSOLIDATION_PCT: FEATURE_FLAGS.CONSOLIDATION_PERCENTAGE,
     DEBUG_MODE: FEATURE_FLAGS.DEBUG_DATA_FLOW,
     ENABLED_SCRAPERS: FEATURE_FLAGS.ENABLED_SCRAPERS,
   };
+}
+
+/**
+ * Retired rollout knobs (T-339). Consolidation, conflict detection and source
+ * tracking used to be independently switchable, and every OFF position was a
+ * silent last-writer-wins write path. They are now unconditional, so these six
+ * env vars no longer exist in `FEATURE_FLAGS`.
+ *
+ * They are still CHECKED, because deleting the code is not the same as
+ * deleting the deployed env value: prod and staging both carry them today
+ * (measured read-only 2026-08-26 — all three `true`, percentage `100`). Two
+ * different leftovers need two different answers:
+ *
+ *   - a leftover value that means FULLY ON matches the new behaviour -> warn,
+ *     list it for the next deploy wave's env cleanup, keep running.
+ *   - a leftover value that means OFF or PARTIAL means an operator believes
+ *     they can still disable/ration consolidation. They cannot, and the row
+ *     would be written under rules they did not choose -> HARD-FAIL startup
+ *     (`index.ts` turns this throw into a refusal to start).
+ */
+export const RETIRED_CONSOLIDATION_ENV_KEYS = [
+  'ENABLE_DATA_CONSOLIDATION',
+  'ENABLE_CONFLICT_DETECTION',
+  'ENABLE_SOURCE_TRACKING',
+  'CONSOLIDATION_PERCENTAGE',
+  'SOURCE_TRACKING_PERCENTAGE',
+  'CONFLICT_DETECTION_PERCENTAGE',
+] as const;
+
+const RETIRED_BOOLEAN_KEYS = new Set<string>([
+  'ENABLE_DATA_CONSOLIDATION',
+  'ENABLE_CONFLICT_DETECTION',
+  'ENABLE_SOURCE_TRACKING',
+]);
+
+/**
+ * `true` when the leftover value means "fully on" (and is therefore
+ * compatible with the mandatory behaviour). Anything else — `false`, `0`,
+ * `no`, `off`, a partial percentage, or an unparseable value — is treated as
+ * an attempt to disable or ration consolidation.
+ */
+function retiredValueMeansFullyOn(key: string, rawValue: string): boolean {
+  const v = rawValue.trim().toLowerCase();
+  if (RETIRED_BOOLEAN_KEYS.has(key)) return v === 'true' || v === '1' || v === 'yes' || v === 'on';
+  // percentage knobs: only a literal 100 is "fully on"
+  const n = Number.parseInt(v, 10);
+  return Number.isFinite(n) && n === 100;
+}
+
+/**
+ * Hard-fail startup if any retired consolidation env var is still set to an
+ * OFF or PARTIAL value. Returns the keys that are present-but-harmless (fully
+ * ON leftovers) so the caller can surface the env-cleanup list.
+ */
+export function assertConsolidationFlagsNotDisabled(
+  env: Record<string, string | undefined> = process.env
+): string[] {
+  const leftoversToClean: string[] = [];
+  const disabling: string[] = [];
+
+  for (const key of RETIRED_CONSOLIDATION_ENV_KEYS) {
+    const raw = env[key];
+    if (raw === undefined) continue;
+    if (retiredValueMeansFullyOn(key, raw)) leftoversToClean.push(key);
+    else disabling.push(`${key}=${raw}`);
+  }
+
+  if (disabling.length > 0) {
+    throw new Error(
+      `[T-339] Refusing to start: data consolidation is MANDATORY and can no longer be disabled, ` +
+        `but the environment still tries to switch it off or ration it: ${disabling.join(', ')}. ` +
+        `Remove these keys from the slot's scraper.env (see ` +
+        `docs/architecture/write-path-hardening.md "prod env cleanup"). ` +
+        `Retired keys: ${RETIRED_CONSOLIDATION_ENV_KEYS.join(', ')}.`
+    );
+  }
+
+  return leftoversToClean;
 }
 
 /**
@@ -262,48 +308,17 @@ export function getFeatureStatus(): Record<string, boolean | number | string[]> 
  * Throws error if invalid configuration detected
  */
 export function validateFeatureFlags(): void {
-  // Check percentage values are 0-100
-  const percentageFlags = [
-    'SOURCE_TRACKING_PERCENTAGE',
-    'CONFLICT_DETECTION_PERCENTAGE',
-    'CONSOLIDATION_PERCENTAGE',
-  ] as const;
-
-  for (const flag of percentageFlags) {
-    const value = FEATURE_FLAGS[flag];
-    if (value < 0 || value > 100) {
-      throw new Error(`Feature flag ${flag} must be between 0 and 100, got ${value}`);
-    }
-  }
-
-  // T-309 (T-305 round-6 P3): SOURCE_TRACKING_PERCENTAGE and
-  // CONFLICT_DETECTION_PERCENTAGE are NEVER consulted by shouldUseFeature() at
-  // any call site (grep confirms ENABLE_SOURCE_TRACKING / ENABLE_CONFLICT_DETECTION
-  // gate `data-consolidation-service.ts` and `data-persister.ts` as PLAIN
-  // BOOLEANS, with no percentage check anywhere) — unlike DATA_CONSOLIDATION,
-  // whose CONSOLIDATION_PERCENTAGE genuinely IS read via
-  // `shouldUseFeature('CONSOLIDATION_PERCENTAGE', ...)` in
-  // data-consolidation-service.ts. A warning that checks a percentage which is
-  // not the real gate is FALSE: it fired every cycle in prod
-  // (ENABLE_SOURCE_TRACKING=true, SOURCE_TRACKING_PERCENTAGE unset=0) while
-  // `field_sources`/`data_conflicts` were genuinely being written (~40x/cycle,
-  // 695KB of misleading noise). Removed for these two flags; kept for
-  // DATA_CONSOLIDATION below, whose percentage is the real gate.
-  if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION && FEATURE_FLAGS.CONSOLIDATION_PERCENTAGE === 0) {
-    console.warn('⚠️  DATA_CONSOLIDATION enabled but percentage is 0% - no IPOs will use it');
-  }
-
-  // T-278 P3-5: ENABLE_SOURCE_TRACKING is a hard prerequisite for
-  // ENABLE_CONFLICT_DETECTION to ever record anything. Conflict detection
-  // compares an incoming value against the LAST source recorded in
-  // field_sources; if source tracking is off, that baseline is never
-  // written, so consolidateField() always takes the "no existing value"
-  // branch and conflictsDetected stays 0 forever even while consolidation
-  // itself runs normally. This combination previously shipped silently —
-  // warn loudly so it's never invisible again.
-  if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION && !FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
+  // T-339: the ONLY remaining consolidation-related startup check. The
+  // previous body validated three percentage knobs and warned about two
+  // inert flag combinations (T-278 P3-5, T-309); all five of those knobs are
+  // gone, and the combinations they warned about are now impossible by
+  // construction rather than by warning.
+  const leftovers = assertConsolidationFlagsNotDisabled();
+  if (leftovers.length > 0) {
     console.warn(
-      '⚠️  DATA_CONSOLIDATION is enabled but SOURCE_TRACKING is not — conflictsDetected will stay 0 forever (no field_sources baseline is ever persisted). See T-278 P3-5.'
+      `[T-339] Retired consolidation env key(s) still present with a fully-ON value: ` +
+        `${leftovers.join(', ')}. They are IGNORED — consolidation is mandatory. ` +
+        `Remove them in the next deploy wave (docs/architecture/write-path-hardening.md).`
     );
   }
 }

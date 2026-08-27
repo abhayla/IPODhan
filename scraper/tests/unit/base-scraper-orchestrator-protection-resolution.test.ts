@@ -47,10 +47,9 @@ vi.mock('@ipodhan/shared', async (importOriginal) => {
       // resolveIpoRow's fuzzy tier is only reached when the two tiers above
       // both miss; no test in this file exercises that path.
       findByFuzzyName: vi.fn().mockResolvedValue(null),
-      // With ENABLE_DATA_CONSOLIDATION off (test default), processIPO() falls
-      // through to the traditional upsert path (data-persister.ts upsertIPO),
-      // which resolves this same existing row again and calls
-      // ipoRepository.update() on it. Without this mock the call throws,
+      // T-339: consolidation is the only write path now; processIPO() goes
+      // through consolidatedUpsertIPO, which lands on ipoRepository.update()
+      // for this same existing row. Without this mock the call throws,
       // upsertIPO retries 3x and fails, processIPO's exception propagates to
       // the outer catch in run() -- which never aggregates
       // processResult.fieldsProtected into result.fieldsProtected, masking

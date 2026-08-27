@@ -110,6 +110,10 @@ test-*.mjs
 test-*.js
 test-*.bat
 test-*.json
+# vitest --reporter=json run dumps (T-339: web/vitest-t339F.json, 710KB, was
+# committed because the rule above only matches a `test-` prefix, not `vitest-`)
+vitest-*.json
+**/vitest-*.json
 test-*.txt
 update-*.sh
 scraper/test-*.js

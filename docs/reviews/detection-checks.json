@@ -191,6 +191,15 @@
       "failThreshold": "a source has >=7 consecutive non-SUCCESS-or-zero-record cycles and is not listed in docs/reviews/dead-source-retirement.json",
       "severity": "P2",
       "unverifiableWhen": "scraper_logs table not present"
+    },
+    {
+      "id": "k_identity_quarantine",
+      "findingClass": "an identity quarantine (natural-key tier and name tier disagree about which ipos row a scrape belongs to) sits unresolved, silently freezing every write for that company",
+      "round7Findings": [],
+      "addedBy": "T-339 item 2",
+      "failThreshold": "any data_conflicts row with resolution_reason = QUARANTINE_IDENTITY_CONFLICT and resolved_at IS NULL whose detected_at is older than 24h. A fresh quarantine is NOT a failure - refusing the write is the designed behaviour; an unresolved one is, because the company's data stays frozen until a human picks the real row.",
+      "severity": "P1",
+      "unverifiableWhen": "data_conflicts table not present (the quarantine HOLD state lives there)"
     }
   ],
   "notCoveredByThisManifest": [

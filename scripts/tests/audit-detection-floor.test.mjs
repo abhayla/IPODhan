@@ -24,6 +24,9 @@ import {
   checkCronScriptExecutable,
   checkDeadSourceHasRetireBy,
   checkSegmentPopulatedForIpo,
+  checkIdentityQuarantineAge,
+  IDENTITY_QUARANTINE_REASON,
+  IDENTITY_QUARANTINE_MAX_AGE_HOURS,
   findLiveCrossSourceDisagreements,
   valuesDisagree,
   normalizeCompanyKey,
@@ -447,6 +450,44 @@ test('(blocker 4) FAIL digests and UNVERIFIABLE pages coexist in one run', () =>
 test('(j) FAILS on an empty-string segment (round-7 P3-7 shape), not just NULL', () => {
   assert.ok(checkSegmentPopulatedForIpo({ offeringType: 'IPO', segment: '', companyName: 'Blank Co' }) !== null);
   assert.ok(checkSegmentPopulatedForIpo({ offeringType: 'IPO', segment: '   ', companyName: 'Blank Co' }) !== null);
+});
+
+// ---- (m) identity quarantine age (T-339 item 2) --------------------------
+
+const quarantineRow = (o = {}) => ({
+  id: 'c-1',
+  ipoId: 'row-A',
+  value1: 'row-A',
+  value2: 'row-B',
+  resolutionReason: IDENTITY_QUARANTINE_REASON,
+  resolvedAt: null,
+  ageHours: 2,
+  ...o,
+});
+
+test('(m) FAILS on an identity quarantine unresolved past the 24h ceiling', () => {
+  const v = checkIdentityQuarantineAge(quarantineRow({ ageHours: IDENTITY_QUARANTINE_MAX_AGE_HOURS + 0.5 }));
+  assert.ok(v !== null);
+  assert.match(v, /row-A/);
+  assert.match(v, /row-B/);
+});
+
+test('(m) PASSES on a fresh quarantine (inside the ceiling) - a quarantine is not itself a defect', () => {
+  assert.equal(checkIdentityQuarantineAge(quarantineRow({ ageHours: 3 })), null);
+  assert.equal(checkIdentityQuarantineAge(quarantineRow({ ageHours: IDENTITY_QUARANTINE_MAX_AGE_HOURS })), null);
+});
+
+test('(m) PASSES on a RESOLVED quarantine no matter how old', () => {
+  assert.equal(checkIdentityQuarantineAge(quarantineRow({ ageHours: 900, resolvedAt: new Date() })), null);
+});
+
+test('(m) ignores ordinary field conflicts - only QUARANTINE_IDENTITY_CONFLICT rows are in scope', () => {
+  assert.equal(checkIdentityQuarantineAge(quarantineRow({ resolutionReason: 'SOURCE_PRIORITY', ageHours: 900 })), null);
+});
+
+test('(m) treats an unreadable age as STALE rather than silently passing', () => {
+  assert.ok(checkIdentityQuarantineAge(quarantineRow({ ageHours: null })) !== null);
+  assert.ok(checkIdentityQuarantineAge(quarantineRow({ ageHours: 'nonsense' })) !== null);
 });
 
 // ---- (k) T-340 post-scrape step ledger --------------------------------------

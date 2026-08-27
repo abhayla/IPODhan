@@ -32,15 +32,17 @@ import {
   DataConflictsRepository as DataConflictsRepositoryClass,
   createFieldProtectionService,
   resolveIpoRow,
+  isIdentityQuarantineError,
   type FieldProtectionService
 } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { generateSlug } from '../utils/validators.js';
-import { upsertIPO, createSubscriptionSnapshot, normalizeCompanyNameForMatching } from '../services/data-persister.js';
+import { createSubscriptionSnapshot, normalizeCompanyNameForMatching } from '../services/data-persister.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { ScraperMetricsTracker } from '../services/scraper-metrics-tracker.js';
 import { AlertingService } from '../services/alerting-service.js';
+import { recordIdentityQuarantine } from '../services/identity-quarantine.js';
 import type { ScraperSource } from '../services/types.js';
 import { DataConsolidationOrchestrator } from '../services/data-consolidation-orchestrator.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
@@ -158,7 +160,9 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       fieldsProtected: 0,
       errors: [],
       // Phase 1: Consolidation metrics
-      consolidationEnabled: FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION,
+      // T-339: consolidation is mandatory — this is a constant now, kept on
+      // the result shape so existing log consumers do not break.
+      consolidationEnabled: true,
       conflictsDetected: 0,
       fieldsConsolidated: 0,
       avgConsolidationTimeMs: 0,
@@ -257,14 +261,12 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
         duration,
       };
 
-      if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
-        logData.phase1Metrics = {
-          consolidationEnabled: result.consolidationEnabled,
-          conflictsDetected: result.conflictsDetected,
-          fieldsConsolidated: result.fieldsConsolidated,
-          avgConsolidationTimeMs: result.avgConsolidationTimeMs?.toFixed(2),
-        };
-      }
+      logData.phase1Metrics = {
+        consolidationEnabled: result.consolidationEnabled,
+        conflictsDetected: result.conflictsDetected,
+        fieldsConsolidated: result.fieldsConsolidated,
+        avgConsolidationTimeMs: result.avgConsolidationTimeMs?.toFixed(2),
+      };
 
       logger.info(logData, `${scraperName} scraper orchestrator completed (Phase 1 + Phase 2 integrated)`);
 
@@ -374,14 +376,40 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     // guard every real-time NSE/BSE/Chittorgarh scrape goes through) — it
     // MUST thread isin/symbol so the key-first tiers actually fire here, not
     // only in the secondary backfill scripts.
+    //
+    // T-339 (item 2): when the key tier and the name tier disagree about
+    // WHICH row this is, resolveIpoRow throws instead of quietly returning
+    // the name row. One of the two candidates is wrong and we cannot tell
+    // which, so the IPO is quarantined (an unresolved data_conflicts HOLD
+    // row + a P1 owner page) and SKIPPED — nothing is written. Catching this
+    // and falling back to a write would restore exactly the bug the throw
+    // exists to prevent.
     const normalizedName = normalizeCompanyNameForMatching(validatedIPO.companyName);
-    const existingIPO = await resolveIpoRow(this.ipoRepository, {
-      companyName: validatedIPO.companyName,
-      normalizedName,
-      slug,
-      isin: validatedIPO.isin,
-      symbol: validatedIPO.symbol,
-    }) as IPO | null;
+    let existingIPO: IPO | null;
+    try {
+      existingIPO = await resolveIpoRow(this.ipoRepository, {
+        companyName: validatedIPO.companyName,
+        normalizedName,
+        slug,
+        isin: validatedIPO.isin,
+        symbol: validatedIPO.symbol,
+      }) as IPO | null;
+    } catch (identityError) {
+      if (!isIdentityQuarantineError(identityError)) throw identityError;
+      await recordIdentityQuarantine(
+        { dataConflictsRepository: this.dataConflictsRepository },
+        identityError,
+        scraperName
+      );
+      logger.error({
+        scraperName,
+        companyName: validatedIPO.companyName,
+        keyMatchId: identityError.keyMatchId,
+        nameMatchId: identityError.nameMatchId,
+      }, 'Identity quarantined (key vs name disagree) - IPO skipped, nothing written');
+      processResult.skipped = true;
+      return processResult;
+    }
     const ipoId = existingIPO?.id;
 
     // Step 3: PROTECTION CHECK - IPO-level lock
@@ -439,11 +467,15 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       }
     }
 
-    // Step 5: Upsert filtered IPO data with Phase 1 consolidation (if enabled)
+    // Step 5: Upsert filtered IPO data through the consolidation orchestrator.
+    // T-339: this is the ONLY write path. The pre-T-339 code had two escapes —
+    // a now-retired consolidation feature-flag else-branch and a
+    // `consolidationResult.skipped` fallback — that BOTH called plain
+    // `upsertIPO`, i.e. published price band and dates by last-writer-wins.
+    // A skip is now exactly what it says: no write this cycle.
     let upsertedIPOId: string;
 
-    if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
-      // Phase 1: Use consolidation orchestrator
+    {
       const confidenceScore = this.getConfidenceScore(scraperName);
       const consolidationResult = await this.consolidationOrchestrator.consolidatedUpsertIPO(
         filteredIPOData,
@@ -457,15 +489,10 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       if (consolidationResult.skipped) {
         logger.warn(
           { slug, reason: consolidationResult.skipReason },
-          '[Phase 1] IPO consolidation skipped'
+          '[T-339] IPO consolidation skipped — NOT written (no bypass write path exists)'
         );
-        // Fallback to traditional upsert — pass the same pre-resolved row.
-        upsertedIPOId = await upsertIPO(this.ipoRepository, filteredIPOData, scraperName, existingIPO);
-        if (existingIPO) {
-          processResult.updated = true;
-        } else {
-          processResult.inserted = true;
-        }
+        processResult.skipped = true;
+        return processResult;
       } else {
         upsertedIPOId = consolidationResult.ipoId;
 
@@ -497,16 +524,6 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
             fieldsUpdated: consolidationResult.consolidation?.fieldsUpdated,
           }, '[Phase 1] IPO consolidated successfully');
         }
-      }
-    } else {
-      // Traditional upsert (no consolidation) — pass the row already
-      // resolved at Step 2 (T-307).
-      upsertedIPOId = await upsertIPO(this.ipoRepository, filteredIPOData, scraperName, existingIPO);
-
-      if (existingIPO) {
-        processResult.updated = true;
-      } else {
-        processResult.inserted = true;
       }
     }
 

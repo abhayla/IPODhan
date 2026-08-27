@@ -46,6 +46,7 @@ import {
   findLiveCrossSourceDisagreements, ORACLE_COMPARABLE_FIELDS,
   buildRunPayloads, evaluateCronExecutable,
   computeExitCode, EXIT_UNVERIFIABLE,
+  checkIdentityQuarantineAge, IDENTITY_QUARANTINE_REASON, IDENTITY_QUARANTINE_MAX_AGE_HOURS,
   parseStepNames, checkStepSilence, checkStepConsecutiveFailures,
   STEP_LEDGER_WINDOW_HOURS,
   crossCheckNseStatuses,
@@ -667,6 +668,36 @@ async function checkJ() {
   }
 }
 
+// ---- (k): identity quarantine age (T-339 item 2) ------------------------------
+// A quarantine FREEZES every future write for that company (the scrape is
+// refused, deliberately). The P1 page fires at quarantine time; this is the
+// detection half, for the case where the page was missed or ignored.
+async function checkK() {
+  const NAME = `no identity quarantine unresolved for more than ${IDENTITY_QUARANTINE_MAX_AGE_HOURS}h`;
+  if (!(await tableExists('data_conflicts'))) {
+    record('k_identity_quarantine', NAME, 'UNVERIFIABLE', 'data_conflicts table not present — the quarantine HOLD state lives there');
+    return;
+  }
+  const rows = await q(
+    `SELECT id, ipo_id AS "ipoId", value1, value2, resolution_reason AS "resolutionReason",
+            resolved_at AS "resolvedAt",
+            EXTRACT(EPOCH FROM (now() - detected_at)) / 3600 AS "ageHours"
+       FROM data_conflicts
+      WHERE resolution_reason = $1 AND resolved_at IS NULL`,
+    [IDENTITY_QUARANTINE_REASON]
+  );
+  const offenders = [];
+  for (const r of rows) {
+    const violation = checkIdentityQuarantineAge(r);
+    if (violation) {
+      offenders.push(violation);
+      notify('k_identity_quarantine', 'P1', r.id, `Identity quarantine unresolved > ${IDENTITY_QUARANTINE_MAX_AGE_HOURS}h`, violation);
+    }
+  }
+  record('k_identity_quarantine', NAME, offenders.length === 0 ? 'PASS' : 'FAIL',
+    offenders.length ? offenders.slice(0, MAX_OFFENDERS).join('; ') : `${rows.length} open quarantine(s), none older than ${IDENTITY_QUARANTINE_MAX_AGE_HOURS}h`);
+}
+
 async function sendNotifications(payloads) {
   const key = process.env.NOTIFIER_KEY_IPODHAN;
   const url = (process.env.NOTIFIER_URL || 'http://127.0.0.1:3300') + '/notify';
@@ -709,6 +740,7 @@ async function main() {
   await checkK();
   await checkL();
   await checkJ();
+  await checkK();
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');

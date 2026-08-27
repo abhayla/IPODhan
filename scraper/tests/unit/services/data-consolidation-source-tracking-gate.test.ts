@@ -1,61 +1,32 @@
 /**
- * P3-5 (T-278) regression: conflictsDetected==0 in prod despite 3760
- * fields/cycle consolidated.
+ * P3-5 (T-278) -> T-339: the flag that caused it is gone; this file now locks
+ * the INVERSE.
  *
- * Root cause: ENABLE_SOURCE_TRACKING defaults to false (never set in any
- * deploy config — grep confirms it has never appeared in deploy-linux.yml
- * or its retired Windows predecessor) and gates `trackFieldSource()`
- * (data-consolidation-service.ts ~line 614). With it off, a scraper write
- * NEVER persists a field_sources row, so on every later cycle
- * `findByIPOId()` returns [] for that field — Case 1 ("no existing value")
- * fires forever, and Case 3 (the actual conflict-comparison branch) is
- * unreachable in practice, even though ENABLE_DATA_CONSOLIDATION is on and
- * the field IS being re-scraped from multiple disagreeing sources every
- * cycle. This is NOT dead code from a refactor — the detection logic
- * itself is correct (see data-consolidation-service.test.ts, which proves
- * it with ENABLE_SOURCE_TRACKING force-mocked true) — it is an inert
- * combination of two independently-gated flags where one is a hard
- * prerequisite for the other's counter to ever move.
+ * ORIGINAL DEFECT (T-278 P3-5): `ENABLE_SOURCE_TRACKING` defaulted to false and
+ * gated `trackFieldSource()`. With it off, a scraper write NEVER persisted a
+ * field_sources row, so on every later cycle `findByIPOId()` returned [] for
+ * that field — the "no existing value" branch fired forever and
+ * `conflictsDetected` stayed 0 in prod even while multiple disagreeing sources
+ * re-scraped the same field every cycle. The detection LOGIC was correct; the
+ * flag combination made it unreachable.
  *
- * This file mocks the REAL production defaults (both flags false, as
- * shipped) to prove the inertness end-to-end, and confirms that once
- * field_sources already holds a prior value for a field (as it does for
- * admin-edited fields, or as it will for scraper fields once
- * ENABLE_SOURCE_TRACKING is turned on), conflict detection resumes working
- * without any further code change — turning the flag on is the complete
- * fix. Enabling it in production is an owner-gated activation
- * (owner-gated-feature-flags.md) and is intentionally NOT flipped by this
- * change; see the T-278 PR description.
+ * T-339 deleted `ENABLE_SOURCE_TRACKING` (and `ENABLE_CONFLICT_DETECTION`, and
+ * `ENABLE_DATA_CONSOLIDATION`, and the three percentage knobs) rather than
+ * documenting the trap again. Source tracking and conflict persistence are
+ * unconditional.
+ *
+ * So this suite is inverted: with the env EXACTLY as prod shipped it for the
+ * pipeline's entire life (every one of those vars UNSET), the baseline IS
+ * written on cycle 1 and the disagreement IS detected on cycle 2. If someone
+ * reintroduces a gate, the first test goes red.
  */
-
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DataConsolidationService } from '../../../src/services/data-consolidation-service.js';
 import type { FieldSourcesRepository, DataConflictsRepository } from '@ipodhan/shared';
 
-// Mirror the ACTUAL shipped defaults: process.env.ENABLE_* unset -> false.
-// This is the config every prod scraper cycle runs under today.
-vi.mock('../../../src/config/feature-flags.js', () => ({
-  FEATURE_FLAGS: {
-    ENABLE_SOURCE_TRACKING: false,
-    ENABLE_CONFLICT_DETECTION: false,
-    ENABLE_DATA_CONSOLIDATION: true, // confirmed on in prod (3760 fields/cycle)
-    SHADOW_MODE: false,
-    DEBUG_DATA_FLOW: false,
-    ENABLE_DRHP_EXTRACTION: false,
-    ENABLE_EARLY_DETECTION: false,
-    SOURCE_TRACKING_PERCENTAGE: 0,
-    CONFLICT_DETECTION_PERCENTAGE: 0,
-    CONSOLIDATION_PERCENTAGE: 100,
-    MAX_CONFLICTS_PER_IPO: 50,
-    SOURCE_TRACKING_BATCH_SIZE: 100,
-    ENABLED_SCRAPERS: [],
-    ENABLED_IPO_IDS: [],
-  },
-  shouldUseFeature: (flag: string) => flag === 'CONSOLIDATION_PERCENTAGE',
-  getFeatureStatus: vi.fn(),
-  validateFeatureFlags: vi.fn(),
-  logFeatureFlags: vi.fn(),
-}));
+// The real module is used deliberately — there is no longer a flag to mock.
+// The only env-dependent knobs left (DEBUG_DATA_FLOW etc.) are unset here,
+// which is the production shape.
 
 const mockFieldSourcesRepo = {
   findByIPOId: vi.fn(),
@@ -70,15 +41,25 @@ const mockConflictsRepo = {
   findUnresolvedForIPO: vi.fn(),
 } as unknown as DataConflictsRepository;
 
-describe('DataConsolidationService — prod-default flag gate (P3-5 root cause)', () => {
+describe('DataConsolidationService — tracking + conflict detection are unconditional (T-339, was P3-5)', () => {
   let service: DataConsolidationService;
 
   beforeEach(() => {
+    for (const k of [
+      'ENABLE_DATA_CONSOLIDATION',
+      'ENABLE_CONFLICT_DETECTION',
+      'ENABLE_SOURCE_TRACKING',
+      'CONSOLIDATION_PERCENTAGE',
+      'SOURCE_TRACKING_PERCENTAGE',
+      'CONFLICT_DETECTION_PERCENTAGE',
+    ]) {
+      delete process.env[k];
+    }
     service = new DataConsolidationService(mockFieldSourcesRepo, mockConflictsRepo);
     vi.clearAllMocks();
   });
 
-  it('never persists a field source under prod defaults, so a disagreeing re-scrape stays undetected forever', async () => {
+  it('persists the field_sources baseline on cycle 1 and DETECTS the cycle-2 disagreement (P3-5 inverted)', async () => {
     // Cycle 1: no prior field_sources row (fresh field). NSE reports 1000.
     (mockFieldSourcesRepo.findByIPOId as any).mockResolvedValueOnce([]);
     const cycle1 = await service.consolidateIPOData({
@@ -88,14 +69,18 @@ describe('DataConsolidationService — prod-default flag gate (P3-5 root cause)'
       incomingData: { lotSize: 1000 },
       confidence: 90,
     });
-    expect(cycle1.conflictsDetected).toBe(0);
-    // trackFieldUpdate is gated by ENABLE_SOURCE_TRACKING=false -> never called.
-    expect(mockFieldSourcesRepo.trackFieldUpdate).not.toHaveBeenCalled();
+    expect(cycle1.conflictsDetected).toBe(0); // nothing to disagree with yet
 
-    // Cycle 2: because cycle 1 never wrote a field_sources row, the repo
-    // STILL returns [] here even though BSE now disagrees sharply (600 vs
-    // 1000) — a genuine conflict a working detector would flag.
-    (mockFieldSourcesRepo.findByIPOId as any).mockResolvedValueOnce([]);
+    // The baseline IS written — this single assertion is the whole P3-5 fix.
+    expect(mockFieldSourcesRepo.trackFieldUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ ipoId: 'ipo-1', fieldName: 'lotSize', value: 1000, source: 'NSE' })
+    );
+
+    // Cycle 2: the baseline cycle 1 wrote is now visible to the repo, so BSE's
+    // sharply different value (600 vs 1000) is a comparison, not a first sight.
+    (mockFieldSourcesRepo.findByIPOId as any).mockResolvedValueOnce([
+      { tableName: 'ipos', fieldName: 'lotSize', value: 1000, source: 'NSE', updatedAt: new Date() },
+    ]);
     const cycle2 = await service.consolidateIPOData({
       ipoId: 'ipo-1',
       tableName: 'ipos',
@@ -104,23 +89,12 @@ describe('DataConsolidationService — prod-default flag gate (P3-5 root cause)'
       confidence: 90,
     });
 
-    // This is the P3-5 symptom reproduced at unit scale: two disagreeing
-    // sources, zero conflicts recorded, because the baseline was never saved.
-    expect(cycle2.conflictsDetected).toBe(0);
+    expect(cycle2.conflictsDetected).toBeGreaterThan(0);
   });
 
-  it('resumes detecting conflicts as soon as a prior field_sources row exists — proving the fix is the flag, not the logic', async () => {
-    // Simulates the state AFTER ENABLE_SOURCE_TRACKING is turned on and has
-    // run at least one prior cycle (or an admin-tracked field): a baseline
-    // row already exists in field_sources.
+  it('persists the conflict to data_conflicts too — detection and the audit trail are no longer separately gated', async () => {
     (mockFieldSourcesRepo.findByIPOId as any).mockResolvedValueOnce([
-      {
-        tableName: 'ipos',
-        fieldName: 'lotSize',
-        value: 1000,
-        source: 'NSE',
-        updatedAt: new Date(),
-      },
+      { tableName: 'ipos', fieldName: 'lotSize', value: 1000, source: 'NSE', updatedAt: new Date() },
     ]);
 
     const result = await service.consolidateIPOData({
@@ -131,11 +105,24 @@ describe('DataConsolidationService — prod-default flag gate (P3-5 root cause)'
       confidence: 90,
     });
 
-    // ENABLE_CONFLICT_DETECTION is still false here (persistence to
-    // data_conflicts is owner-gated), but the in-memory counter that drives
-    // the "conflictsDetected" log field (data-persister.ts) is NOT gated by
-    // that flag — only the DB write is. The detection logic itself works
-    // the instant a comparison baseline exists.
     expect(result.conflictsDetected).toBeGreaterThan(0);
+    // ENABLE_CONFLICT_DETECTION used to gate this write independently of the
+    // in-memory counter, which is how prod could log "conflicts detected" with
+    // an empty data_conflicts table. Both now move together.
+    expect(mockConflictsRepo.upsertConflict).toHaveBeenCalled();
+  });
+
+  it('shadow mode is the ONLY thing that still suppresses persistence (negative control)', async () => {
+    (mockFieldSourcesRepo.findByIPOId as any).mockResolvedValueOnce([]);
+    await service.consolidateIPOData({
+      ipoId: 'ipo-1',
+      tableName: 'ipos',
+      source: 'NSE' as any,
+      incomingData: { lotSize: 1000 },
+      confidence: 90,
+      shadowMode: true,
+    });
+    expect(mockFieldSourcesRepo.trackFieldUpdate).not.toHaveBeenCalled();
+    expect(mockConflictsRepo.upsertConflict).not.toHaveBeenCalled();
   });
 });

@@ -102,7 +102,7 @@ if (shadowLogs.length === 0) {
   console.log('⚠️  No shadow mode logs found.');
   console.log('\nMake sure:');
   console.log('  1. Shadow mode is enabled: SHADOW_MODE=true in .env');
-  console.log('  2. Consolidation is enabled: ENABLE_DATA_CONSOLIDATION=true');
+  console.log('  2. Consolidation always runs (T-339 — no flag to enable)');
   console.log('  3. Scrapers have been run: npm run scraper:nse');
   process.exit(0);
 }
@@ -271,9 +271,8 @@ if (analysis.recommendation === 'GO') {
   console.log('\nShadow mode validation successful! Ready to enable consolidation in production.');
   console.log('\nNext steps:');
   console.log('  1. Set SHADOW_MODE=false in .env');
-  console.log('  2. Set ENABLE_SOURCE_TRACKING=true');
-  console.log('  3. Set ENABLE_CONFLICT_DETECTION=true');
-  console.log('  4. Deploy and monitor closely for 24 hours');
+  console.log('  2. Source tracking + conflict detection are always on (T-339 — no flags to set)');
+  console.log('  3. Deploy and monitor closely for 24 hours');
 } else if (analysis.recommendation === 'NO_GO') {
   console.log('❌ RECOMMENDATION: NO-GO - DO NOT PROCEED TO PHASE 3');
   console.log('\nCritical issues must be resolved before production rollout.');

@@ -16,10 +16,10 @@ import { PeerCompanyRepository } from '../repositories/peer-company-repository.j
 // Phase 2: Shadow Mode - Data Consolidation Service
 import { DataConsolidationService } from './data-consolidation-service.js';
 import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow } from '@ipodhan/shared/repositories';
-import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { ipoDemandGraph } from '@ipodhan/shared/db/schema';
 import { resolveRegistrarId } from '@ipodhan/shared/utils/registrar-matcher';
+import { assertConsolidationDecisionRecorded, WritePathIntegrityError } from './write-path-guard.js';
 
 /**
  * Resolve a sanitized registrar name to its `registrars.id` FK (P3-2, T-278).
@@ -369,195 +369,183 @@ export async function upsertIPO(
       }
 
       if (existingIPO) {
-        // ========== PHASE 4: PRODUCTION CONSOLIDATION (100% ROLLOUT) ==========
-        // All IPO updates use intelligent data consolidation
-        if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
-          try {
-            const consolidationService = await getConsolidationService();
-            const consolidationStartTime = Date.now();
+        // ========== T-339: CONSOLIDATION IS THE ONLY UPDATE PATH ==========
+        // Every IPO update goes through the priority/conflict layer. There is
+        // no flag to turn this off and no fallback to a plain update: a
+        // consolidation failure now propagates (retryWithBackoff retries it,
+        // then the cycle records the IPO as failed) instead of silently
+        // downgrading the write to last-writer-wins.
+        try {
+          const consolidationService = await getConsolidationService();
+          const consolidationStartTime = Date.now();
 
-            // Run consolidation service in production mode
-            const consolidationResult = await consolidationService.consolidateIPOData({
-              ipoId: existingIPO.id,
-              tableName: 'ipos',
-              incomingData: ipoData,
-              source: source,
-              existingData: existingIPO as any,
-              shadowMode: false, // Production mode - writes to database
-              scrapedAt: new Date(),
-            });
+          // Run consolidation service in production mode
+          const consolidationResult = await consolidationService.consolidateIPOData({
+            ipoId: existingIPO.id,
+            tableName: 'ipos',
+            incomingData: ipoData,
+            source: source,
+            existingData: existingIPO as any,
+            shadowMode: false, // Production mode - writes to database
+            scrapedAt: new Date(),
+          });
 
-            const consolidationDuration = Date.now() - consolidationStartTime;
+          const consolidationDuration = Date.now() - consolidationStartTime;
 
-            // Merge exchanges (preserve exchange tracking logic)
-            let mergedExchanges = existingIPO.listingExchanges as ('NSE' | 'BSE')[];
-            if (source === 'NSE' || source === 'BSE') {
-              const currentExchange = scrapedIPO.listingExchange === 'BOTH' ? source : scrapedIPO.listingExchange;
-              mergedExchanges = mergeListingExchanges(mergedExchanges, currentExchange);
-            }
+          // Merge exchanges (preserve exchange tracking logic)
+          let mergedExchanges = existingIPO.listingExchanges as ('NSE' | 'BSE')[];
+          if (source === 'NSE' || source === 'BSE') {
+            const currentExchange = scrapedIPO.listingExchange === 'BOTH' ? source : scrapedIPO.listingExchange;
+            mergedExchanges = mergeListingExchanges(mergedExchanges, currentExchange);
+          }
 
-            // #52 observability: detect an incoherent merged date sequence BEFORE the
-            // sanitizer corrects it, so a consolidation mis-merge recurrence is visible
-            // in prod logs/alerting (the sanitize below only silently nulls the offender).
-            const rawConsolidated = consolidationResult.consolidatedData;
-            const dateCoherence = isDateSequenceCoherent({
-              openDate: rawConsolidated.openDate,
-              closeDate: rawConsolidated.closeDate,
-              allotmentDate: rawConsolidated.allotmentDate,
-              listingDate: rawConsolidated.listingDate,
-            });
-            if (!dateCoherence.ok) {
-              logger.warn({
-                ipoId: existingIPO.id,
-                companyName: scrapedIPO.companyName,
-                source,
-                reason: dateCoherence.reason,
-                dates: {
-                  openDate: rawConsolidated.openDate,
-                  closeDate: rawConsolidated.closeDate,
-                  allotmentDate: rawConsolidated.allotmentDate,
-                  listingDate: rawConsolidated.listingDate,
-                },
-              }, '[DataConsolidation] incoherent merged date sequence — sanitizer will null the offender (#52, T-306: sanitizeIpoDates now covers every isDateSequenceCoherent rule)');
-            }
-
-            // Use consolidated data with merged exchanges. Re-apply the write-field
-            // sanitizers (#42/#45/#52): consolidation picks a winning value PER FIELD
-            // from field_sources, which can re-introduce a name status-token, a
-            // registrar address block, or a date field merged from a different-vintage
-            // source that breaks the open<close<allotment<listing ordering — none of
-            // which the incoming-payload sanitize (above) can catch post-merge.
-            //
-            // KNOWN LIMITATION (review finding, owner-gated #52 correction): the no-listing
-            // date disambiguation anchors on allotment and nulls open/close. For a genuine
-            // NEW IPO that got a WRONG historical allotment merged and has no listing yet,
-            // this nulls the good open/close and keeps the bad allotment. Correctly
-            // resolving that needs field_sources provenance (the owner-gated #52 fix) — the
-            // guard never ships an absurd value (nulled → "Data Not Available"), it just may
-            // drop a recoverable field for that unobserved pre-listing edge.
-            const finalData: Record<string, any> = {
-              ...sanitizeIpoWriteFields(rawConsolidated),
-              listingExchanges: mergedExchanges,
-              lastScrapedAt: new Date(),
-              updatedAt: new Date(),
-            };
-
-            // P3-2: the consolidation path can pick a winning `registrar` value
-            // this cycle even when the create path never ran (a name-only
-            // update on an existing row) — resolve registrarId here too, same
-            // unambiguous-match-only contract as the create path above.
-            if ('registrar' in finalData) {
-              finalData.registrarId = (await resolveRegistrarIdSafe(finalData.registrar)) ?? undefined;
-            }
-
-            // Never let a scraper's generic 'IPO' downgrade an existing specific
-            // classification (takeover/buyback/rights/debt) — otherwise the */30 cron
-            // re-pollutes the IPO listings every run. (See reclassify-corporate-actions.ts.)
-            if ((finalData as any).offeringType) {
-              (finalData as any).offeringType = resolveOfferingTypeKeepingClassification(
-                (existingIPO as any).offeringType,
-                (finalData as any).offeringType
-              );
-            }
-
-            // Update IPO with consolidated data
-            await ipoRepository.update(existingIPO.id, finalData);
-
-            // Track field sources for all updated fields
-            if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && consolidationResult.fieldResults.length > 0) {
-              const fieldSourcesRepo = new FieldSourcesRepository(db, getRedisClient());
-              const fieldsToTrack = consolidationResult.fieldResults
-                .filter(fr => fr.chosenSource === source) // Only track fields we provided
-                .map(fr => ({
-                  fieldName: fr.fieldName,
-                  source: source,
-                  confidence: 100,
-                  previousValue: fr.existingValue ? String(fr.existingValue) : null,
-                }));
-
-              if (fieldsToTrack.length > 0) {
-                await fieldSourcesRepo.bulkTrackFieldUpdates(
-                  existingIPO.id,
-                  'ipos',
-                  fieldsToTrack
-                );
-              }
-            }
-
-            // Log successful consolidation
-            logger.info({
+          // #52 observability: detect an incoherent merged date sequence BEFORE the
+          // sanitizer corrects it, so a consolidation mis-merge recurrence is visible
+          // in prod logs/alerting (the sanitize below only silently nulls the offender).
+          const rawConsolidated = consolidationResult.consolidatedData;
+          const dateCoherence = isDateSequenceCoherent({
+            openDate: rawConsolidated.openDate,
+            closeDate: rawConsolidated.closeDate,
+            allotmentDate: rawConsolidated.allotmentDate,
+            listingDate: rawConsolidated.listingDate,
+          });
+          if (!dateCoherence.ok) {
+            logger.warn({
               ipoId: existingIPO.id,
               companyName: scrapedIPO.companyName,
               source,
-              fieldsUpdated: consolidationResult.fieldsUpdated,
-              conflictsDetected: consolidationResult.conflictsDetected,
-              performanceMs: consolidationDuration,
-            }, '[DataConsolidation] Updated IPO with consolidated data');
+              reason: dateCoherence.reason,
+              dates: {
+                openDate: rawConsolidated.openDate,
+                closeDate: rawConsolidated.closeDate,
+                allotmentDate: rawConsolidated.allotmentDate,
+                listingDate: rawConsolidated.listingDate,
+              },
+            }, '[DataConsolidation] incoherent merged date sequence — sanitizer will null the offender (#52, T-306: sanitizeIpoDates now covers every isDateSequenceCoherent rule)');
+          }
 
-            // Log performance warning if slow
-            if (consolidationDuration > 500) {
-              logger.warn({
-                ipoId: existingIPO.id,
-                source,
-                performanceMs: consolidationDuration,
-              }, '[DataConsolidation] Consolidation exceeded 500ms target');
+          // Use consolidated data with merged exchanges. Re-apply the write-field
+          // sanitizers (#42/#45/#52): consolidation picks a winning value PER FIELD
+          // from field_sources, which can re-introduce a name status-token, a
+          // registrar address block, or a date field merged from a different-vintage
+          // source that breaks the open<close<allotment<listing ordering — none of
+          // which the incoming-payload sanitize (above) can catch post-merge.
+          //
+          // KNOWN LIMITATION (review finding, owner-gated #52 correction): the no-listing
+          // date disambiguation anchors on allotment and nulls open/close. For a genuine
+          // NEW IPO that got a WRONG historical allotment merged and has no listing yet,
+          // this nulls the good open/close and keeps the bad allotment. Correctly
+          // resolving that needs field_sources provenance (the owner-gated #52 fix) — the
+          // guard never ships an absurd value (nulled → "Data Not Available"), it just may
+          // drop a recoverable field for that unobserved pre-listing edge.
+          const finalData: Record<string, any> = {
+            ...sanitizeIpoWriteFields(rawConsolidated),
+            listingExchanges: mergedExchanges,
+            lastScrapedAt: new Date(),
+            updatedAt: new Date(),
+          };
+
+          // P3-2: the consolidation path can pick a winning `registrar` value
+          // this cycle even when the create path never ran (a name-only
+          // update on an existing row) — resolve registrarId here too, same
+          // unambiguous-match-only contract as the create path above.
+          if ('registrar' in finalData) {
+            finalData.registrarId = (await resolveRegistrarIdSafe(finalData.registrar)) ?? undefined;
+          }
+
+          // Never let a scraper's generic 'IPO' downgrade an existing specific
+          // classification (takeover/buyback/rights/debt) — otherwise the */30 cron
+          // re-pollutes the IPO listings every run. (See reclassify-corporate-actions.ts.)
+          if ((finalData as any).offeringType) {
+            (finalData as any).offeringType = resolveOfferingTypeKeepingClassification(
+              (existingIPO as any).offeringType,
+              (finalData as any).offeringType
+            );
+          }
+
+          // T-339: last gate before the DB. Every HIGH_VALUE field about to
+          // be published MUST carry a consolidation decision record — if one
+          // does not, some bypass produced it and the value was chosen by
+          // last-writer-wins. Throw rather than publish (write-path-guard.ts).
+          assertConsolidationDecisionRecorded({
+            ipoId: existingIPO.id,
+            source,
+            writtenData: finalData,
+            fieldResults: consolidationResult.fieldResults,
+          });
+
+          // Update IPO with consolidated data
+          await ipoRepository.update(existingIPO.id, finalData);
+
+          // Track field sources for all updated fields
+          if (consolidationResult.fieldResults.length > 0) {
+            const fieldSourcesRepo = new FieldSourcesRepository(db, getRedisClient());
+            const fieldsToTrack = consolidationResult.fieldResults
+              .filter(fr => fr.chosenSource === source) // Only track fields we provided
+              .map(fr => ({
+                fieldName: fr.fieldName,
+                source: source,
+                confidence: 100,
+                previousValue: fr.existingValue ? String(fr.existingValue) : null,
+              }));
+
+            if (fieldsToTrack.length > 0) {
+              await fieldSourcesRepo.bulkTrackFieldUpdates(
+                existingIPO.id,
+                'ipos',
+                fieldsToTrack
+              );
             }
+          }
 
-            // Log critical conflicts for review
-            if (consolidationResult.conflictsBySeverity.CRITICAL > 0) {
-              logger.error({
-                ipoId: existingIPO.id,
-                companyName: scrapedIPO.companyName,
-                source,
-                criticalConflicts: consolidationResult.conflictsBySeverity.CRITICAL,
-              }, '[DataConsolidation] ⚠️  CRITICAL CONFLICTS - Review priority matrix');
-            }
+          // Log successful consolidation
+          logger.info({
+            ipoId: existingIPO.id,
+            companyName: scrapedIPO.companyName,
+            source,
+            fieldsUpdated: consolidationResult.fieldsUpdated,
+            conflictsDetected: consolidationResult.conflictsDetected,
+            performanceMs: consolidationDuration,
+          }, '[DataConsolidation] Updated IPO with consolidated data');
 
-            return existingIPO.id;
-
-          } catch (error: any) {
-            // Consolidation failure - fall back to simple update
-            logger.error({
+          // Log performance warning if slow
+          if (consolidationDuration > 500) {
+            logger.warn({
               ipoId: existingIPO.id,
               source,
-              error: error?.message,
-              stack: error?.stack,
-            }, '[DataConsolidation] Consolidation failed - falling back to simple update');
-
-            // Fall through to fallback logic below
+              performanceMs: consolidationDuration,
+            }, '[DataConsolidation] Consolidation exceeded 500ms target');
           }
+
+          // Log critical conflicts for review
+          if (consolidationResult.conflictsBySeverity.CRITICAL > 0) {
+            logger.error({
+              ipoId: existingIPO.id,
+              companyName: scrapedIPO.companyName,
+              source,
+              criticalConflicts: consolidationResult.conflictsBySeverity.CRITICAL,
+            }, '[DataConsolidation] ⚠️  CRITICAL CONFLICTS - Review priority matrix');
+          }
+
+          return existingIPO.id;
+
+        } catch (error: any) {
+          if (error instanceof WritePathIntegrityError) throw error;
+          // T-339: NO fallback. The pre-T-339 code caught this and fell
+          // through to a plain `ipoRepository.update(...)` with the raw
+          // scraped payload — a last-writer-wins publish of price band and
+          // dates, entered precisely when the layer that arbitrates them
+          // had just failed. Rethrow instead: retryWithBackoff gets another
+          // attempt, and a persistent failure surfaces as a failed IPO in
+          // the cycle result rather than as a silently un-arbitrated write.
+          logger.error({
+            ipoId: existingIPO.id,
+            source,
+            error: error?.message,
+            stack: error?.stack,
+          }, '[DataConsolidation] Consolidation failed — refusing to write (T-339: no bypass update)');
+          throw error;
         }
-        // ========== END CONSOLIDATION ==========
-
-        // ========== PHASE 4: LEGACY MERGE REMOVED ==========
-        // All IPO updates now handled by consolidation service above.
-        // This code should never be reached with CONSOLIDATION_PERCENTAGE=100.
-        // If we reach here, consolidation failed and fallback already logged error.
-        logger.warn({
-          ipoId: existingIPO.id,
-          slug,
-          source,
-        }, '[LEGACY PATH] Reached unreachable code - consolidation should have handled this');
-
-        // Fallback: Simple update without merge logic
-        // This is a safety net that should rarely/never execute
-        const fallbackData: any = {
-          ...ipoData,
-          lastScrapedAt: new Date(),
-          updatedAt: new Date(),
-        };
-        // Same classification guard as the consolidation path (above) — only
-        // applied when an offering_type is present, so the safety-net update
-        // never writes undefined to the NOT NULL offering_type column.
-        if (fallbackData.offeringType) {
-          fallbackData.offeringType = resolveOfferingTypeKeepingClassification(
-            (existingIPO as any).offeringType,
-            fallbackData.offeringType
-          );
-        }
-        await ipoRepository.update(existingIPO.id, fallbackData);
-
-        return existingIPO.id;
       } else {
         // Create new IPO
         logger.debug({ slug, source }, `Creating new ${source} IPO`);
@@ -571,20 +559,22 @@ export async function upsertIPO(
         // rows, which is exactly why P2-5's Priority Jewels row had no provenance
         // to show it was single-sourced. Track every field this scrape actually
         // supplied, at full confidence, with no prior value (there is no prior row).
-        if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING) {
-          const fieldsToTrack = Object.entries(ipoData)
-            .filter(([, value]) => value !== undefined)
-            .map(([fieldName]) => ({
-              fieldName,
-              source,
-              confidence: 100,
-              previousValue: null,
-            }));
+        // T-339: unconditional. This lineage IS the create path's
+        // consolidation decision record — a brand-new row has no existing
+        // value to arbitrate against, so "this single source supplied it" is
+        // the whole decision, and it must always be recorded.
+        const fieldsToTrack = Object.entries(ipoData)
+          .filter(([, value]) => value !== undefined)
+          .map(([fieldName]) => ({
+            fieldName,
+            source,
+            confidence: 100,
+            previousValue: null,
+          }));
 
-          if (fieldsToTrack.length > 0) {
-            const fieldSourcesRepo = new FieldSourcesRepository(db, getRedisClient());
-            await fieldSourcesRepo.bulkTrackFieldUpdates(newIPO.id, 'ipos', fieldsToTrack);
-          }
+        if (fieldsToTrack.length > 0) {
+          const fieldSourcesRepo = new FieldSourcesRepository(db, getRedisClient());
+          await fieldSourcesRepo.bulkTrackFieldUpdates(newIPO.id, 'ipos', fieldsToTrack);
         }
 
         logger.info({ slug, source }, `New ${source} IPO ${slug} created`);

@@ -578,3 +578,108 @@ baselined files themselves (Phase 2's gateway is what fixes those) or child tabl
 `node scripts/check-write-ratchet.mjs --update` and commit the regenerated JSON — the script
 fails loudly if the baseline still lists a file no longer found, so a shrink can never be silently
 skipped.
+
+---
+
+## T-339 — rollout note and prod env cleanup (2026-08-26)
+
+T-339 finished two things this document had been describing as future work:
+consolidation is no longer optional, and an identity disagreement no longer
+writes. This section is the deploy-facing part: what changes on the box, what
+must be removed from the env files, and what to watch after the flip.
+
+### What actually changes in production
+
+Measured read-only on 2026-08-26 (method and table in the task's `STATUS.md`),
+**prod and staging both already ran** `ENABLE_DATA_CONSOLIDATION=true`,
+`ENABLE_CONFLICT_DETECTION=true`, `ENABLE_SOURCE_TRACKING=true` and
+`CONSOLIDATION_PERCENTAGE=100`. So the deleted OFF paths were already dead code
+on the box.
+
+| Change | Prod behaviour before | Prod behaviour after |
+|---|---|---|
+| Consolidation flags/percentages deleted | already fully ON | identical — the flags simply no longer exist |
+| Consolidation *skip* no longer falls back to `upsertIPO` | a skip wrote last-writer-wins | a skip writes nothing |
+| `write-path-guard` decision check | absent | a HIGH_VALUE field with no consolidation decision throws `WritePathIntegrityError` instead of being published |
+| Identity key-vs-name disagreement | logged, then wrote onto the NAME row | quarantined: nothing written, P1 page, nightly FAIL after 24h |
+
+The first row is why this is a low-risk deploy. Rows 2–4 are real behaviour
+changes, and all three trade **a wrong write for no write**. Expect the
+observable effect to be a small number of skipped IPOs, not a data change.
+
+### Startup refusal (read this before deploying)
+
+`assertConsolidationFlagsNotDisabled()` runs inside `validateFeatureFlags()`,
+which `scraper/src/index.ts` already turns into a startup refusal:
+
+- A retired key present with an **OFF/partial** value (`false`, `0`, `50`) →
+  **the scraper refuses to start.** Deliberate: that value used to mean
+  "bypass consolidation", and silently ignoring it would be the T-283 class
+  all over again.
+- A retired key present with a **fully-ON** value (`true`, `100`) → starts, and
+  logs a warning naming the keys. This is exactly the state prod and staging
+  are in today, which is why this deploy does not need the env edit to land
+  first.
+
+So the deploy order is: **ship the code, then clean the env.** Not the reverse.
+
+### Prod env cleanup list — next deploy wave
+
+These keys are inert after T-339 and should be deleted from both slots. They
+live in the hand-provisioned, release-independent env files that
+`scripts/deploy-linux.sh` symlinks into each release — editing a release
+directory does nothing.
+
+Files: `/var/www/ipodhan/shared/env/prod/scraper.env` and
+`/var/www/ipodhan/shared/env/staging/scraper.env`.
+
+| Key | Current value (both slots) | Action |
+|---|---|---|
+| `ENABLE_DATA_CONSOLIDATION` | `true` | delete |
+| `ENABLE_CONFLICT_DETECTION` | `true` | delete |
+| `ENABLE_SOURCE_TRACKING` | `true` | delete |
+| `CONSOLIDATION_PERCENTAGE` | `100` | delete |
+| `SOURCE_TRACKING_PERCENTAGE` | present per `.env.example` lineage — confirm before deleting | delete if present |
+| `CONFLICT_DETECTION_PERCENTAGE` | present per `.env.example` lineage — confirm before deleting | delete if present |
+
+Nothing else changes. The three `ENABLE_*` keys were also removed from
+`SCRAPER_REQUIRED_KEYS` in `scripts/assert-env-keys.sh`, so the required-key
+ratchet will not fail once they are gone — that removal had to land in the same
+change, otherwise deleting the keys would trip the ratchet instead.
+
+Rollback: re-adding the keys does nothing (the code no longer reads them), so
+the env cleanup is not rollback-relevant. Rolling back the *code* is the
+ordinary release rollback.
+
+### Identity quarantine — what an operator sees
+
+1. A scrape hits a company where the ISIN/symbol key resolves row A and the
+   name resolves row B. Nothing is written for that company.
+2. An unresolved `data_conflicts` row appears:
+   `resolution_reason = 'QUARANTINE_IDENTITY_CONFLICT'`, `severity = 'CRITICAL'`,
+   `ipo_id` = the key candidate, `value1`/`value2` = both candidate ids,
+   `detected_at` = now. This reuses the T-328 HOLD state — **no new table**, so
+   it does not depend on PR #233 (open, unmerged) landing.
+3. A P1 page goes out through the Notifier path, deduped per candidate pair, so
+   a repeatedly-scraped conflict pages once, not every 30 minutes.
+4. Every later scrape of that company is refused too. That is the point, and it
+   is also the cost: **the company's data is frozen until a human resolves it.**
+5. The nightly detection-floor audit (`k_identity_quarantine`, registered in
+   `docs/reviews/detection-checks.json`) FAILs once any quarantine is older
+   than 24h — a fresh quarantine is not a failure, a forgotten one is.
+
+To clear a quarantine: decide which row is the real company, merge/correct the
+data, then resolve the `data_conflicts` row. The next scrape resolves cleanly
+and writes normally.
+
+### Honest limits
+
+- The quarantine only covers the disagreement `resolveIpoRow` can SEE. Two rows
+  that share no key and no similar name still look like two companies.
+- Standalone backfill scripts call `resolveIpoRow` directly and do not catch
+  the error, so a disagreement surfaces there as a thrown error for that IPO
+  rather than as a recorded quarantine. That is safe (still no write) but
+  noisier; wiring those scripts through `recordIdentityQuarantine` is a
+  follow-up, not part of this task.
+- `write-path-guard` covers HIGH_VALUE fields only. Other fields can still be
+  written without an explicit decision record.
