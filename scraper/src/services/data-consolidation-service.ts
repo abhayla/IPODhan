@@ -39,6 +39,7 @@ import {
   validateValue,
 } from './normalization-engine';
 import { FEATURE_FLAGS, shouldUseFeature } from '../config/feature-flags';
+import logger from '../utils/logger.js';
 
 /**
  * Result of field consolidation
@@ -111,6 +112,69 @@ interface ConflictInfo {
 }
 
 const PRICE_BAND_FIELDS = ['priceRangeMin', 'priceRangeMax'] as const;
+
+/**
+ * T-328 (LIFECYCLE-1 step, per docs/architecture/fable-review-2026-08-24.md
+ * §5 converged order — no new tables): the fields the cross-source-
+ * disagreement monitor already treats as HIGH_VALUE (price band + hard
+ * dates). An unresolved cross-source disagreement on one of these, on a
+ * live IPO, must never be asserted one-sided by resolveConflict — see HOLD
+ * below. Kept in sync with `HIGH_VALUE_FIELDS` in
+ * `cross-source-disagreement-monitor.ts` (that module owns detection; this
+ * one owns correction — the whole point of this task is coupling the two).
+ */
+const HIGH_VALUE_LIVE_FIELDS = new Set<string>([
+  'priceRangeMin',
+  'priceRangeMax',
+  'openDate',
+  'closeDate',
+]);
+
+/** IPO lifecycle states in which a HIGH_VALUE field dispute must HOLD rather than assert one-sided. */
+const LIVE_STATUSES = new Set<string>(['UPCOMING', 'OPEN']);
+
+const DATE_FIELDS_WITH_TZ_TIEBREAK = new Set<string>(['openDate', 'closeDate']);
+
+/**
+ * T-328 interim tie-break for the known NSE timezone-parsing signature
+ * (root cause owned by T-327, `nse-api-client.ts`): when NSE and a non-NSE
+ * source disagree on a date field by EXACTLY one calendar day, prefer the
+ * non-NSE value rather than falling through to HOLD — this is a resolvable
+ * case, not a genuine dispute. Returns null when the delta isn't the 1-day
+ * signature (falls through to normal resolution / HOLD).
+ *
+ * REMOVAL CONDITION: once T-327 fixes nse-api-client.ts's date parsing, this
+ * branch should stop triggering (NSE will report the correct date and the
+ * two sources will agree, hitting the Case-2 equivalence path upstream
+ * instead). Re-run the Lumino-shape RED test in
+ * scraper/tests/unit/services/data-consolidation-hold-disputed.test.ts after
+ * T-327 lands — it should still pass (this tie-break simply won't fire), and
+ * once confidently dead, delete this function and DATE_FIELDS_WITH_TZ_TIEBREAK.
+ */
+function resolveTzSignatureTiebreak(
+  fieldName: string,
+  existingValue: any,
+  existingSource: ScraperSource,
+  incomingValue: any,
+  incomingSource: ScraperSource
+): { chosenValue: any; chosenSource: ScraperSource } | null {
+  if (!DATE_FIELDS_WITH_TZ_TIEBREAK.has(fieldName)) return null;
+  if (existingSource !== 'NSE' && incomingSource !== 'NSE') return null;
+  if (existingSource === incomingSource) return null;
+
+  const existingDate = new Date(existingValue);
+  const incomingDate = new Date(incomingValue);
+  if (Number.isNaN(existingDate.getTime()) || Number.isNaN(incomingDate.getTime())) return null;
+
+  const deltaDays = Math.abs(existingDate.getTime() - incomingDate.getTime()) / (24 * 60 * 60 * 1000);
+  if (Math.abs(deltaDays - 1) > 1e-6) return null;
+
+  // Prefer whichever side is NOT NSE.
+  return existingSource === 'NSE'
+    ? { chosenValue: incomingValue, chosenSource: incomingSource }
+    : { chosenValue: existingValue, chosenSource: existingSource };
+}
+
 
 function toFiniteNumber(value: any): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -510,6 +574,11 @@ export class DataConsolidationService {
             confidence: input.confidence,
             scrapedAt: input.scrapedAt,
             existingUpdatedAt: existingSourceMap.get(fieldName)?.updatedAt,
+            // T-328: threaded so resolveConflict can HOLD a disputed
+            // HIGH_VALUE field rather than assert one side while the IPO is
+            // live. `ipos.status` is already on the row passed as
+            // `existingData` — no new column, no new table.
+            ipoStatus: input.existingData?.status,
           });
 
           result.fieldResults.push(fieldResult);
@@ -589,6 +658,7 @@ export class DataConsolidationService {
     confidence?: number;
     scrapedAt?: Date;
     existingUpdatedAt?: Date;
+    ipoStatus?: string;
   }): Promise<FieldConsolidationResult> {
     const {
       ipoId,
@@ -734,6 +804,7 @@ export class DataConsolidationService {
       rules,
       scrapedAt: params.scrapedAt,
       existingUpdatedAt: params.existingUpdatedAt,
+      ipoStatus: params.ipoStatus,
     });
 
     return conflict;
@@ -756,6 +827,7 @@ export class DataConsolidationService {
     rules: FieldRules;
     scrapedAt?: Date;
     existingUpdatedAt?: Date;
+    ipoStatus?: string;
   }): Promise<FieldConsolidationResult> {
     const {
       ipoId,
@@ -768,20 +840,110 @@ export class DataConsolidationService {
       rules,
       scrapedAt,
       existingUpdatedAt,
+      ipoStatus,
     } = params;
 
     let chosenSource: ScraperSource;
     let chosenValue: any;
     let resolutionReason: string;
+    let tiebreakResolved = false;
+
+    // T-328 (LIFECYCLE-1, no new tables): a HIGH_VALUE field disagreement on a
+    // live IPO (UPCOMING/OPEN) is never asserted one-sided by plain source
+    // priority. ADMIN is exempt — an explicit admin edit is never held (it is
+    // never in dispute; field protection already keeps scrapers from
+    // reaching a locked field before this point). Checked BEFORE source
+    // priority, same precedence tier as ADMIN-always-wins below, because an
+    // unresolved dispute must win over "NSE happens to rank higher".
+    if (
+      HIGH_VALUE_LIVE_FIELDS.has(fieldName) &&
+      ipoStatus !== undefined &&
+      LIVE_STATUSES.has(ipoStatus) &&
+      existingSource !== 'ADMIN' &&
+      incomingSource !== 'ADMIN'
+    ) {
+      const tiebreak = resolveTzSignatureTiebreak(
+        fieldName,
+        existingValue,
+        existingSource,
+        incomingValue,
+        incomingSource
+      );
+
+      if (tiebreak) {
+        chosenSource = tiebreak.chosenSource;
+        chosenValue = tiebreak.chosenValue;
+        resolutionReason = 'TZ_SIGNATURE_TIEBREAK_PREFER_NON_NSE';
+        tiebreakResolved = true;
+      } else {
+        // HOLD: keep the previously-published value, never assert either
+        // side. `hold_status_transition` naming mirrors the status-updater's
+        // own log line (status-updater-service.ts) so the two halves of this
+        // fix are greppable together.
+        logger.warn(
+          {
+            ipoId,
+            tableName,
+            fieldName,
+            ipoStatus,
+            existingSource,
+            existingValue,
+            incomingSource,
+            incomingValue,
+          },
+          'hold_status_transition: HIGH_VALUE field disputed on a live IPO — holding previously-published value'
+        );
+
+        if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+          try {
+            await this.dataConflictsRepository.upsertConflict({
+              ipoId,
+              tableName,
+              fieldName,
+              source1: existingSource,
+              value1: existingValue === null || existingValue === undefined ? null : String(existingValue),
+              source2: incomingSource,
+              value2: incomingValue === null || incomingValue === undefined ? null : String(incomingValue),
+              resolvedSource: existingSource,
+              resolutionReason: 'HELD_DISPUTED_HIGH_VALUE_LIVE',
+              severity: 'CRITICAL',
+            });
+          } catch (error) {
+            console.error('[DataConsolidation] Failed to record HOLD conflict (non-fatal):', error);
+          }
+        }
+
+        return {
+          fieldName,
+          finalValue: existingValue,
+          chosenSource: existingSource,
+          hadConflict: true,
+          conflictSeverity: 'CRITICAL',
+          conflictReason: 'HELD_DISPUTED_HIGH_VALUE_LIVE',
+          rejectedSources: [
+            {
+              source: incomingSource,
+              value: incomingValue,
+              reason: 'HELD_DISPUTED_HIGH_VALUE_LIVE',
+            },
+          ],
+        };
+      }
+    }
 
     // CRITICAL: Check source priority FIRST (before time-based)
     // This ensures ADMIN and other high-priority sources can never be overridden
     // by lower-priority sources, even for time-based fields
+    //
+    // T-328: the TZ-signature tie-break above already decided chosenValue/
+    // chosenSource/resolutionReason for this field — skip the normal
+    // priority/time-based resolution so it can't be silently overwritten.
     const existingPriority = getSourcePriority(fieldName, existingSource);
     const incomingPriority = getSourcePriority(fieldName, incomingSource);
 
-    // If sources have different priorities, use source priority
-    if (existingPriority !== incomingPriority) {
+    if (tiebreakResolved) {
+      // tie-break already resolved this field — chosenValue/chosenSource/resolutionReason stand.
+    } else if (existingPriority !== incomingPriority) {
       // Lower index = higher priority
       if (
         incomingPriority !== -1 &&
