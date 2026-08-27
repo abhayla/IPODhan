@@ -15,7 +15,7 @@ Everything below marked **[verified]** was tested live on 2026-08-28 00:30–00:
 | `nsearchives.nseindia.com/content/ipo/*.zip` | The documents (RHP_SKYWAYS.zip = 23 MB, PDF inside) | 200 | 200 | **[verified]** never blocked in any probe; this is where NSE documents live |
 | `www.nseindia.com/api/ipo-current-issue` | Live issues with `issueStartDate`/`issueEndDate` as `DD-Mon-YYYY` strings | 200 | 200 | **[verified]** raw dates are correct (Annu 25→28); our parser shifts them (see §5) |
 | `www.sebi.gov.in …sid=3&ssid=15&smid=11` (Public Issues → RHP) | Every current RHP + Abridged Prospectus, **mainboard and SME** | 200 | 200 | **[verified]** official regulator copy; the DRHP copy we fetched from SEBI was structurally broken (0 readable pages) — treat SEBI as fallback, not primary |
-| `www.bsesme.com/PublicIssues/RHP.aspx`, `SMEIPODRHP.aspx` | BSE SME filings (HTML pages, PDFs under `bseindia.com/corporates/download/...`) | 200 | — | page exists; **not yet parsed** (Q3) |
+| `www.bsesme.com/PublicIssues/RHP.aspx`, `SMEIPODRHP.aspx` | BSE SME filings (HTML pages, PDFs under `bseindia.com/corporates/download/...`) | 200 | — | HTML with `/download/<scrip>/…Prospectus….pdf` links — parseable, second SME source after NSE (Q3 resolved, §8) |
 | Company investor page (from RHP cover "website") | Full set incl. DRHP, addenda, material documents | 200 | 200 | **[verified]** only source that had everything for Skyways; unstructured, per-company layout |
 | Chittorgarh / InvestorGain / IPO Watch | Links to the above + their own copy of numbers | 200 | — | **verifier only** (owner rule) |
 
@@ -52,7 +52,7 @@ Order for SME: NSE (Emerge) first, then BSE SME pages, then SEBI, then company h
 | S2 | Security params post-anchor | NSE zip | NSE SME zip | optional |
 | S3 Open | Addenda | BSE `Addendum` zip → company | company | none is normal |
 | S4 Closed | Basis of allotment | BSE / NSE circular → registrar site | same | T+1 evening; retry hourly |
-| S4 | **Prospectus (final)** | BSE `Prospectus_GID` (link changes from RHP to Prospectus) → NSE issueInfo title "Prospectus" → SEBI → company | same | expected close…T+2; if absent at T+5 = P2 alert (Q1) |
+| S4 | **Prospectus (final)** | BSE `Prospectus_GID` (link changes from RHP to Prospectus) → NSE issueInfo title "Prospectus" → SEBI → company | same | expected close…T+2; retry every cycle; if absent on listing day (T+3) = P2 alert (Q1 resolved, §8) |
 | S5 Listed | Listing circular | NSE/BSE circulars (existing updater) | same | — |
 
 ## 3. Verify before trusting any download
