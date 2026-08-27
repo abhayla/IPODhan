@@ -73,7 +73,7 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 | "Skyways Air Services Ltd." · SKYWAYS (NSE) · MAINBOARD · IPO | NSE (conf 100/95) via `field_sources` | "Skyways Air Services Limited", CIN U74899DL1984PLC019666 (RHP p.1) | NSE listing page is a fine primary for identity; matrix order ADMIN>NSE>BSE>DRHP. |
 
 **Rec:** (a) **keep NSE as primary**; RHP fills CIN/legal name in `ipo_details` (Unit 30); (b) make DRHP primary for name. Recommend **(a)** — the exchange record is authoritative and exists before the RHP.
-**Owner:** —
+**Owner:** (a) — approved 2026-08-27 22:15 IST
 
 ### Unit 3 — Price band (₹131–₹138)
 | Page shows | Src | RHP | Why not PDF |
