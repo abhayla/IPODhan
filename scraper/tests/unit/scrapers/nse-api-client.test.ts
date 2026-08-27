@@ -107,3 +107,70 @@ describe('transformIPOData issueSize (T-329 fix, RED against the old parseFloat(
     expect(result.issueSize).toBe(1750617000);
   });
 });
+
+/**
+ * T-331 P3-1 - ROOT CAUSE of "sector empty for all 251 IPOs".
+ *
+ * The field-priority matrix names NSE as the primary source for `sector`
+ * ("Industry sector - NSE/exchange classification; feeds peer discovery"), and
+ * backfill-description-sector.ts states outright that "NSE is the intended
+ * source (nse-api-client reads it)". Both are wrong.
+ *
+ * `transformIPOData(data: any, ...)` reads `data.sector`. The string "sector"
+ * appears EXACTLY ONCE in the whole NSE client - that read. It is declared in
+ * NO NSE interface, and NSE does not return it. The `any` on the parameter is
+ * what let an untyped read of a non-existent field compile and ship.
+ *
+ * Consequences, both live in prod:
+ *   - sector is 0/251. BSE explicitly has none ("Not available in BSE main
+ *     table"); no other scraper writes it. There is NO working source.
+ *   - peer-companies-job filters to IPOs that HAVE a sector, so it is starved
+ *     by the same bug - the "sector -> peers cascade" the matrix comment warns
+ *     about.
+ *
+ * These tests pin the ACTUAL behaviour so nobody "fixes" sector by assuming the
+ * NSE path works. They are characterization tests, not a fix: they must be
+ * UPDATED, not deleted, by whoever wires a real source (see the P3-1 issue).
+ */
+describe('transformIPOData sector (T-331 P3-1 root cause: NSE has no sector field)', () => {
+  it('yields undefined sector for a realistic NSE payload - NSE never supplies one', async () => {
+    const { transformIPOData } = await import('../../../src/scrapers/nse-api-client.js');
+    // Every field here is one NSE genuinely returns. There is no `sector`.
+    const data = {
+      companyName: 'Annu Projects Limited',
+      symbol: 'ANNU',
+      series: 'EQ',
+      issueSize: '17683000',
+      issuePrice: '95 to 99',
+      issueStartDate: '24-Aug-2026',
+      issueEndDate: '27-Aug-2026',
+      status: 'Active',
+      isin: 'INE0ABC01011',
+      lotSize: '150',
+    };
+    const result = transformIPOData(data, 'ipo');
+    expect(result.sector).toBeUndefined();
+  });
+
+  it('would carry a sector through IF NSE ever started returning one - the read itself is not broken', async () => {
+    const { transformIPOData } = await import('../../../src/scrapers/nse-api-client.js');
+    const result = transformIPOData(
+      { companyName: 'X Ltd', symbol: 'X', series: 'EQ', issuePrice: '10', status: 'Active', sector: '  Pharmaceuticals  ' },
+      'ipo'
+    );
+    // Proves the mapping is wired correctly and the defect is purely that the
+    // upstream field does not exist - so the fix is a SOURCE, not this line.
+    expect(result.sector).toBe('Pharmaceuticals');
+  });
+
+  it('never writes a blank sector - an empty upstream value becomes undefined, not ""', async () => {
+    const { transformIPOData } = await import('../../../src/scrapers/nse-api-client.js');
+    const result = transformIPOData(
+      { companyName: 'X Ltd', symbol: 'X', series: 'EQ', issuePrice: '10', status: 'Active', sector: '   ' },
+      'ipo'
+    );
+    // A blank would plant an empty string that blocks a real backfill later -
+    // the same trap bse-scraper.ts calls out in its own comment.
+    expect(result.sector).toBeUndefined();
+  });
+});
