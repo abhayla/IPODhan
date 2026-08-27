@@ -4,7 +4,7 @@ description: >
   Enforces the field-protection lifecycle — admin edits call
   markFieldAsManuallyEdited() to auto-protect a field, which the scraper write
   path then filters out. The shared FieldProtectionService is the SSOT; web wraps it.
-globs: ["web/app/api/admin/**/*.ts", "web/lib/admin/field-protection-checker.ts", "packages/shared/src/admin/**/*.ts"]
+paths: ["web/app/api/admin/**/*.ts", "web/lib/admin/field-protection-checker.ts", "packages/shared/src/admin/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

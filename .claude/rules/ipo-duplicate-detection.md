@@ -4,7 +4,7 @@ description: >
   Enforces running confidence-tiered duplicate detection (symbol/ISIN/name/date)
   before creating a NEW IPO record, so scraper runs don't insert duplicates or
   re-list already-listed companies. Runs inside the data-validation pipeline.
-globs: ["scraper/src/services/duplicate-detection-service.ts", "scraper/src/pipelines/**/*.ts", "scraper/src/scrapers/**/*.ts"]
+paths: ["scraper/src/services/duplicate-detection-service.ts", "scraper/src/pipelines/**/*.ts", "scraper/src/scrapers/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

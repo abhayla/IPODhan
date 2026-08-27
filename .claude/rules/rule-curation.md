@@ -1,6 +1,6 @@
 ---
 description: Guidelines for curating patterns (skills, agents, rules) added to the distributed .claude/ template.
-globs: [".claude/**/*.md"]
+paths: [".claude/**/*.md"]
 ---
 
 # Pattern Curation for Distributed Template

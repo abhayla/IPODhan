@@ -5,7 +5,7 @@ description: >
   (IST, never UTC) and TIERED crons (marketHours vs afterHours vs weekends); the
   whole table swaps to DEV_SCHEDULES when SCRAPER_INTERVAL_MODE=dev. Cadence is
   driven by Indian trading hours, not a flat interval.
-globs: ["scraper/src/scheduler/**"]
+paths: ["scraper/src/scheduler/**"]
 version: "1.0.0"
 synthesized: true
 private: false

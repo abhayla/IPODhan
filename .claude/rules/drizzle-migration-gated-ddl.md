@@ -4,7 +4,7 @@ description: >
   IPODhan's three-part Drizzle convention — db:push for ephemeral CI, drizzle-kit migrate for
   prod, and a _gated/ subdir for destructive DDL that drizzle-kit migrate must NEVER auto-apply.
   Keeps a type-change or drop from silently running on prod without owner sign-off.
-globs: ["web/drizzle/**", "web/drizzle.config.ts", ".github/workflows/*.yml"]
+paths: ["web/drizzle/**", "web/drizzle.config.ts", ".github/workflows/*.yml"]
 version: "1.0.0"
 synthesized: true
 private: false

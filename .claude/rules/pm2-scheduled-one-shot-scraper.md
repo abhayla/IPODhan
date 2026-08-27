@@ -4,7 +4,7 @@ description: >
   The two IPODhan PM2 apps run in deliberately OPPOSITE modes — ipodhan-web is a
   long-running cluster, ipodhan-scraper is a scheduled one-shot whose autorestart:false
   is load-bearing. Codifies why, so the next edit doesn't reintroduce the #2 restart storm.
-globs: ["ecosystem.config.js", ".github/workflows/*.yml"]
+paths: ["ecosystem.config.js", ".github/workflows/*.yml"]
 version: "1.0.0"
 synthesized: true
 private: false

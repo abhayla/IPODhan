@@ -4,7 +4,7 @@ description: >
   Redis is best-effort across the IPODhan monorepo: every cache read and lock
   acquisition degrades to the source-of-truth on Redis error/outage and MUST NEVER
   throw into or block a user request or a scrape. Cache writes are non-blocking.
-globs: ["web/**/*.ts", "web/**/*.tsx", "packages/shared/src/**/*.ts"]
+paths: ["web/**/*.ts", "web/**/*.tsx", "packages/shared/src/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

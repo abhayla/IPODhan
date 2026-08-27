@@ -1,6 +1,6 @@
 ---
 description: Structural requirements for skills, agents, and rules. Enforces frontmatter, versioning, type classification, and scope.
-globs: [".claude/**/*.md"]
+paths: [".claude/**/*.md"]
 ---
 
 # Pattern Structure Standards
