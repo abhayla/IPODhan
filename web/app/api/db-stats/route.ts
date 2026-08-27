@@ -45,6 +45,7 @@
 import { NextResponse } from 'next/server';
 import { getPoolStats } from '@/lib/db';
 import { getRetryStats } from '@/lib/db/connection-retry';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 /**
  * GET /api/db-stats
@@ -96,15 +97,7 @@ export async function GET() {
 
     return NextResponse.json(response, { status: 200 });
   } catch (error) {
-    console.error('[API] /db-stats error:', error);
-
-    return NextResponse.json(
-      {
-        error: 'Failed to retrieve database statistics',
-        details: error instanceof Error ? error.message : String(error),
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/db-stats');
   }
 }
 

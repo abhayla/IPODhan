@@ -12,6 +12,23 @@ import { CacheError } from '../errors/repository-errors';
 import * as schema from '@ipodhan/shared/db/schema';
 import { withRetry, trackRetry } from '../db/connection-retry';
 
+// Matches JSON.stringify(Date) output exactly (e.g. 2026-08-27T09:15:00.000Z) so
+// plain date-like strings that were never Date instances are not miscoerced.
+const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+/**
+ * JSON.parse reviver that rehydrates Date fields lost to the cache's JSON
+ * round-trip. Drizzle returns real Date instances from the DB, but a Redis
+ * cache hit only ever yields the JSON.stringify'd string form — without this,
+ * every cached row's timestamp fields silently change type on a cache hit.
+ */
+function reviveDates(_key: string, value: unknown): unknown {
+  if (typeof value === 'string' && ISO_DATE_REGEX.test(value)) {
+    return new Date(value);
+  }
+  return value;
+}
+
 export abstract class BaseRepository {
   constructor(
     protected db: NodePgDatabase<typeof schema>,
@@ -39,7 +56,7 @@ export abstract class BaseRepository {
 
       if (cached) {
         console.log(`[Cache] HIT: ${cacheKey}`);
-        return JSON.parse(cached) as T;
+        return JSON.parse(cached, reviveDates) as T;
       }
 
       console.log(`[Cache] MISS: ${cacheKey}`);

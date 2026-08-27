@@ -15,6 +15,7 @@ import { drhpExtractorService } from '@/lib/services/drhp-extractor-service';
 import { logger, logError } from '@/lib/logging/logger';
 import path from 'path';
 import fs from 'fs/promises';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 // Request body schema
 const extractionRequestSchema = z.object({
@@ -176,13 +177,7 @@ export async function POST(
       slug
     });
 
-    return NextResponse.json(
-      {
-        error: 'Internal server error',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/ipos/[slug]/drhp-extract');
   }
 }
 

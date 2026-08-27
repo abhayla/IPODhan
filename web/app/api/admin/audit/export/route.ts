@@ -8,6 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
 import { exportAuditLogsCSV } from '@/lib/services/audit-log-service';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 /**
  * GET /api/admin/audit/export
@@ -67,13 +68,6 @@ export const GET = withAdminAuth(async (request: NextRequest) => {
       },
     });
   } catch (error) {
-    console.error('[Admin API] Failed to export audit logs:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to export audit logs',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/admin/audit/export');
   }
 });

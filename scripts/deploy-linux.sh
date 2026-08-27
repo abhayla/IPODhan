@@ -443,6 +443,13 @@ apply_migrations() {
     echo "FATAL: migrations-applied assert failed for $RELEASE_NAME (T-267)." >&2
     return 1
   fi
+
+  log "Asserting the target DB's live columns/matviews match packages/shared/src/db/schema.ts (T-330)"
+  if ! ( cd "$RELEASE_DIR" && npx tsx scripts/assert-schema-drift.ts "$database_url" ); then
+    echo "FATAL: schema-drift assert failed for $RELEASE_NAME (T-330) — the journal says migrations applied," >&2
+    echo "       but a live column/matview disagrees with schema.ts. See the named drift above." >&2
+    return 1
+  fi
 }
 
 if ! apply_migrations; then

@@ -21,6 +21,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 export async function GET(request: NextRequest) {
   try {
@@ -99,15 +100,6 @@ export async function GET(request: NextRequest) {
       { status: 200 }
     );
   } catch (error) {
-    console.error('[API /performance/mainboard] Error:', error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Failed to fetch Mainboard IPO performance data',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/performance/mainboard');
   }
 }

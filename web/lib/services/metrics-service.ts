@@ -85,14 +85,17 @@ export async function collectBusinessMetrics(): Promise<BusinessMetrics> {
     };
 
     // Scraper health
+    // scraper_logs has no started_at/completed_at columns (it records one row
+    // per completed run, not a start/end pair) - use created_at + duration_ms,
+    // and the real status enum value is 'FAILURE', not 'FAILED'.
     const scraperHealthResult = await db.execute(sql`
       SELECT
         COUNT(*) as total_runs,
         COUNT(*) FILTER (WHERE status = 'SUCCESS') as successful_runs,
-        COUNT(*) FILTER (WHERE status = 'FAILED' AND started_at > NOW() - INTERVAL '24 hours') as failed_24h,
-        AVG(EXTRACT(EPOCH FROM (completed_at - started_at))) as avg_duration
+        COUNT(*) FILTER (WHERE status = 'FAILURE' AND created_at > NOW() - INTERVAL '24 hours') as failed_24h,
+        AVG(duration_ms) as avg_duration
       FROM scraper_logs
-      WHERE started_at > NOW() - INTERVAL '7 days'
+      WHERE created_at > NOW() - INTERVAL '7 days'
     `);
 
     const totalRuns = Number(scraperHealthResult.rows[0]?.total_runs || 0);
@@ -152,14 +155,17 @@ export async function collectBusinessMetrics(): Promise<BusinessMetrics> {
  */
 export async function getDataQualityMetrics() {
   try {
+    // ipos has price_range_min/price_range_max (not price_range_lower/upper)
+    // and no total_shares column at all - share counts live on subscriptions
+    // (total_shares_bid) and ipo_details (total_shares_offered), not on ipos
+    // itself, so there is no single ipos-level "missing shares" dimension.
     const result = await db.execute(sql`
       SELECT
         COUNT(*) as total,
         COUNT(*) FILTER (WHERE lot_size IS NULL OR lot_size = 0) as missing_lot_size,
-        COUNT(*) FILTER (WHERE price_range_lower IS NULL OR price_range_upper IS NULL) as missing_price,
+        COUNT(*) FILTER (WHERE price_range_min IS NULL OR price_range_max IS NULL) as missing_price,
         COUNT(*) FILTER (WHERE open_date IS NULL) as missing_open_date,
-        COUNT(*) FILTER (WHERE close_date IS NULL) as missing_close_date,
-        COUNT(*) FILTER (WHERE total_shares IS NULL OR total_shares = 0) as missing_shares
+        COUNT(*) FILTER (WHERE close_date IS NULL) as missing_close_date
       FROM ipos
       WHERE status IN ('UPCOMING', 'OPEN')
     `);
@@ -190,11 +196,6 @@ export async function getDataQualityMetrics() {
           total > 0
             ? ((total - Number(result.rows[0]?.missing_close_date || 0)) /
                 total) *
-              100
-            : 0,
-        totalShares:
-          total > 0
-            ? ((total - Number(result.rows[0]?.missing_shares || 0)) / total) *
               100
             : 0,
       },

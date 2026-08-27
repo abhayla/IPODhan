@@ -209,7 +209,7 @@ describe('ReviewRepository', () => {
       expect(result?.latestReviews[2].id).toBe('review-003-approved');
     });
 
-    it('should use cache on second call', async () => {
+    it('should use cache on second call, rehydrating Date fields', async () => {
       // First call - cache miss, populates cache
       mockRedis.get = vi.fn().mockResolvedValueOnce(null);
       mockRedis.setex = vi.fn().mockResolvedValue('OK');
@@ -223,25 +223,29 @@ describe('ReviewRepository', () => {
 
       await repository.getReviewSummary(ipoId);
 
-      // Serialize and deserialize to match cache behavior (dates become strings)
-      const cachedSummary = JSON.parse(
-        JSON.stringify({
-          averageRating: 3.7,
-          totalReviews: 3,
-          recommendationBreakdown: { apply: 1, subscribe: 1, avoid: 1, notRecommended: 0 },
-          sentimentAnalysis: { positive: 67, negative: 33 },
-          topApplyReasons: ['Strong fundamentals', 'Good valuation', 'Growth potential'],
-          topAvoidReasons: ['Weak financials', 'Intense competition', 'Regulatory risks'],
-          latestReviews: approvedReviews,
-        })
-      );
+      // Redis only ever stores the JSON.stringify'd form of whatever was set,
+      // so the second call's cache hit is the raw wire form (dates as strings).
+      const wireSummary = {
+        averageRating: 3.7,
+        totalReviews: 3,
+        recommendationBreakdown: { apply: 1, subscribe: 1, avoid: 1, notRecommended: 0 },
+        sentimentAnalysis: { positive: 67, negative: 33 },
+        topApplyReasons: ['Strong fundamentals', 'Good valuation', 'Growth potential'],
+        topAvoidReasons: ['Weak financials', 'Intense competition', 'Regulatory risks'],
+        latestReviews: approvedReviews,
+      };
 
       // Second call - cache hit
-      mockRedis.get = vi.fn().mockResolvedValueOnce(JSON.stringify(cachedSummary));
+      mockRedis.get = vi.fn().mockResolvedValueOnce(JSON.stringify(wireSummary));
 
       const result = await repository.getReviewSummary(ipoId);
 
-      expect(result).toEqual(cachedSummary);
+      // The repository must revive Date fields on the cache-hit path, so the
+      // result should equal the pre-serialization summary (real Date instances),
+      // not the raw JSON-stringified wire form.
+      expect(result).toEqual(wireSummary);
+      expect(result?.latestReviews[0].moderatedAt).toBeInstanceOf(Date);
+      expect(result?.latestReviews[0].publishedDate).toBeInstanceOf(Date);
       expect(mockDb.select).toHaveBeenCalledTimes(1); // Only once
     });
   });

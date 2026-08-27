@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { testRedisConnection, getRedisClient } from '@/lib/redis-client';
 import { logger } from '@/lib/logger';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 /**
  * Test Redis API Route
@@ -52,15 +53,6 @@ export async function GET() {
       retrievedValue: retrieved,
     });
   } catch (error: unknown) {
-    logger.error({ error }, 'Redis test failed');
-    return NextResponse.json(
-      {
-        success: false,
-        error: 'Redis test failed',
-        message: error instanceof Error ? error.message : 'Unknown error',
-        hint: 'Make sure Redis is running: redis-server',
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/test-redis');
   }
 }
