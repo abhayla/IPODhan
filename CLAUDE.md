@@ -54,7 +54,10 @@ cd scraper && npx vitest run tests/unit/path/to/test.test.ts  # Single scraper t
 
 # Production verification (run BOTH after any deploy — see .claude/rules/repeatable-production-audit.md)
 npm run audit:prod                   # Read-only API + data-integrity audit of live site (exit 1 = real failure)
+npm run audit:data                   # audit:coverage (--gate) + audit:prod — run this, not audit:prod alone
+npm run audit:substance              # Plausibility gate: absurd-but-rendering values (exit 1 = real failure)
 cd web && npm run test:prod-verify   # Browser-level Playwright sweep of prod routes (console errors, blank pages)
+cd web && npm run lint:ci            # The lint gate CI actually runs (scripts/lint-ci-gate.mjs), not bare eslint
 ```
 
 **Critical Rules:**
@@ -67,13 +70,13 @@ cd web && npm run test:prod-verify   # Browser-level Playwright sweep of prod ro
 
 ## Project Overview
 
-IPODhan is an IPO information platform for Indian investors. Tech stack: Next.js 15 (App Router) + React 18, PostgreSQL 16 + Drizzle ORM, Redis, TypeScript, Tailwind CSS 4. (README.md is stale in places — it still says Next.js 14; package.json is authoritative.)
+IPODhan is an IPO information platform for Indian investors. Tech stack: Next.js 15 (App Router) + React 18, PostgreSQL 16 + Drizzle ORM, Redis, TypeScript, Tailwind CSS 4. (**README.md is stale — do not trust it.** It still claims Next.js 14 and a "Windows Server 2022 VPS" deployment that was retired in Aug 2026. `package.json` is authoritative for the stack; the Production & Deployment section below is authoritative for hosting.)
 
 **Monorepo Structure (npm workspaces: web, scraper, packages/*):**
 ```
 IPODhan/
 ├── packages/shared/                  # @ipodhan/shared - used by both web & scraper
-│   └── src/db/schema.ts              # DB schema (24 tables) - SINGLE SOURCE OF TRUTH
+│   └── src/db/schema.ts              # DB schema (26 tables) - SINGLE SOURCE OF TRUTH
 │       (also: repositories, services, utils, errors, types)
 ├── web/                              # Next.js app
 │   ├── app/                          # Pages & API routes
@@ -208,6 +211,9 @@ export async function GET(request: NextRequest) {
 | Zod version conflicts | Pinned to `^4.1.11` in root package.json overrides |
 | Redis down | App auto-falls back to database |
 | Tests failing | Run `npm run db:migrate`, check DB connection |
+| A migration in `_gated/` "won't apply" | By design — `web/drizzle/migrations/_gated/` is destructive DDL kept OUT of `meta/_journal.json`. Apply manually after owner sign-off; adding it to the journal drops production columns. `_repair/` holds idempotent non-destructive fixes. |
+| Timestamps off by 5h30m | A `new Pool(...)` missing `options: '-c timezone=UTC'`, or `configureUtcTimestampParsing()` not called before the first query. Every pool (web, scraper, scripts) needs both. |
+| Scraper change committed but broken | Pre-commit type-checks `web/**` ONLY (`tsc --noEmit`); `scraper/` has `strict: false` and no commit-time type gate. Verify scraper changes by running its tests, not by trusting the commit. |
 
 ---
 
@@ -216,6 +222,10 @@ export async function GET(request: NextRequest) {
 - **Serving target (since the 2026-08 migration):** Linux VPS `72.61.240.224` — nginx + PM2
   (`ipodhan-web` cluster x2, `ipodhan-scraper` one-shot on cron), behind Cloudflare.
 - **Deploy:** GitHub Actions `deploy-linux.yml`, on the `linux-vps-ipodhan` self-hosted runner.
+- **CI is narrower than it looks.** `pr-gate.yml` (lint + type-check + unit tests, skipped for docs-only
+  PRs) is the ONLY workflow that triggers on a PR. `ci.yml` and `test.yml` are `workflow_dispatch`-only
+  after a prior Actions billing block — integration and E2E do NOT run automatically. Before merging
+  anything non-trivial, dispatch them yourself or run the suites locally; a green pr-gate is not a green CI.
 - **Database host:** the Windows VPS `103.118.16.189` still runs PostgreSQL 16 (and the Redis
   instance AlgoChanakya uses). The app connects to it remotely as the least-privilege role
   `ipodhan_app`; the `postgres` superuser is **localhost-only** and its password was rotated
