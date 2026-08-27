@@ -41,7 +41,8 @@ import {
   checkLotBandSebiWindow, checkCorporateActionShape,
   classifyRouteResponse, classifyConflictNoiseRatio, checkFreshnessPerType,
   checkPm2EnvHasTz, checkPm2LogSize, findUnreferencedDefinitions,
-  checkSectorPopulatedPct, checkCronScriptExecutable, checkDeadSourceHasRetireBy,
+  checkSectorPopulatedPct, checkDeadSourceHasRetireBy,
+  checkFieldCompleteness, checkContentTableEmpty, CONTENT_TABLES, CONTENT_TABLE_EMPTY_MAX_DAYS,
   checkSegmentPopulatedForIpo, DEAD_SOURCE_MAX_DEGRADED_CYCLES,
   findLiveCrossSourceDisagreements, ORACLE_COMPARABLE_FIELDS,
   buildRunPayloads, evaluateCronExecutable,
@@ -619,6 +620,86 @@ async function checkL() {
       : 'every in-scope MAINBOARD/NSE row agrees with NSE');
 }
 
+
+// ---- (n): T-331 P2-9 + P3-4 -- zero can never pass silently -------------------
+// Round 7: four content tables at 0 rows across 251 IPOs, and fieldCompleteness
+// at 0.7%. Both PASSED the nightly audit, because the audit printed the numbers
+// and asserted nothing about them. These are the missing assertions.
+async function checkN() {
+  // Oldest real IPO is the proxy for "has this table had time to populate?" --
+  // an empty table carries no history of its own, and on a genuinely new
+  // database emptiness is legitimate and must not fire.
+  let oldestDays = null;
+  try {
+    const [row] = await q(
+      `SELECT COALESCE(EXTRACT(EPOCH FROM (now() - min(created_at))) / 86400, 0)::float8 AS d
+         FROM ipos WHERE ${REAL_IPO}`
+    );
+    oldestDays = Number(row?.d);
+  } catch (e) {
+    oldestDays = null;
+  }
+
+  // ONE static check id, not one per table: the manifest-coverage test scans
+  // this file for literal record() ids, so a template-literal id would be
+  // invisible to it -- the check would escape the very registry gate that
+  // catches an undeclared check. Offenders are NAMED in the detail instead.
+  const contentName = `no content table sits at 0 rows past the ${CONTENT_TABLE_EMPTY_MAX_DAYS}d window (${CONTENT_TABLES.length} enumerated)`;
+  const contentViolations = [];
+  const contentUnreadable = [];
+  const contentDetail = [];
+  for (const table of CONTENT_TABLES) {
+    let count;
+    try {
+      const [row] = await q(`SELECT count(*)::int AS c FROM ${table}`);
+      count = Number(row?.c);
+    } catch (e) {
+      contentUnreadable.push(`${table} (${e.message})`);
+      continue;
+    }
+    contentDetail.push(`${table}=${count}`);
+    const violation = checkContentTableEmpty(table, count, oldestDays);
+    if (violation) {
+      contentViolations.push(violation);
+      notify('n_content_tables_populated', 'P2', 'aggregate', `${table} empty`, violation);
+    }
+  }
+  record('n_content_tables_populated', contentName,
+    contentViolations.length ? 'FAIL' : (contentUnreadable.length === CONTENT_TABLES.length ? 'UNVERIFIABLE' : 'PASS'),
+    contentViolations.length ? contentViolations.join('; ')
+      : (contentUnreadable.length ? `unreadable: ${contentUnreadable.join(', ')}` : contentDetail.join(', ')));
+
+  // fieldCompleteness comes from the admin metrics endpoint, so it is
+  // UNVERIFIABLE (never PASS) without a token -- the same posture (k) takes.
+  const fcName = 'fieldCompleteness is above the hard floor';
+  const token = process.env.ADMIN_API_TOKEN;
+  if (!token) {
+    record('n_field_completeness', fcName, 'UNVERIFIABLE', 'ADMIN_API_TOKEN unset - cannot read the metric');
+    return;
+  }
+  let completeness;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 20000);
+    const res = await fetch(`${BASE_URL}/api/admin/metrics/data-pipeline`, {
+      signal: ctrl.signal,
+      headers: { Authorization: `Bearer ${token}` },
+    }).finally(() => clearTimeout(t));
+    if (!res.ok) {
+      record('n_field_completeness', fcName, 'UNVERIFIABLE', `metrics endpoint returned ${res.status}`);
+      return;
+    }
+    const json = await res.json();
+    completeness = json?.data?.dataQuality?.fieldCompleteness;
+  } catch (e) {
+    record('n_field_completeness', fcName, 'UNVERIFIABLE', `metrics endpoint unreachable: ${e.message}`);
+    return;
+  }
+  const fcViolation = checkFieldCompleteness(completeness);
+  if (fcViolation) notify('n_field_completeness', 'P2', 'aggregate', 'fieldCompleteness below floor', fcViolation);
+  record('n_field_completeness', fcName, fcViolation ? 'FAIL' : 'PASS', fcViolation || `${completeness}`);
+}
+
 // ---- (j): assorted P3 gates ----------------------------------------------------
 async function checkJ() {
   // sector population
@@ -709,6 +790,7 @@ async function main() {
   await checkK();
   await checkL();
   await checkJ();
+  await checkN();
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');
