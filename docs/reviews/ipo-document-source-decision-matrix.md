@@ -92,7 +92,7 @@ Order for SME: NSE (Emerge) first, then BSE SME pages, then SEBI, then company h
 
 ## 5. Live findings from this probe (must be fixed, independent of the plan)
 
-1. **Date drift is live in prod today.** NSE raw `ipo-current-issue` says Annu 25→28 Aug and Lumino 27→31 Aug **[verified]**; prod DB has 24→27 and 26→30 (Sunday). Chittorgarh had the right dates and lost on priority. Cause: the T-327 fix (`b49f764f`) is merged but **never deployed** — its staging deploy on 26 Aug 07:12 was refused by the required-keys assert (`FATAL: required-keys assert failed — deploy refused`), the next run (`ee496299`) had `startup_failure`, and no run exists for the 27 Aug commits. Prod serves `d002d234` (25 Aug), 11 commits behind, including the issue-size fix and five API-500 fixes. The T-324 Notifier alert **did** fire (202) and was not acted on.
+1. **Date drift WAS live in prod until 2026-08-28 01:47 IST — RESOLVED by deploying `main` (47da0a74) to staging then prod** after fixing the missing `TZ` key in all four env files and repairing the `ipos.registrar` width drift (PR #246). Prod forced cycle: Annu 25→28, Lumino 27→31; audit:prod 29/29. Original finding: NSE raw `ipo-current-issue` says Annu 25→28 Aug and Lumino 27→31 Aug **[verified]**; prod DB has 24→27 and 26→30 (Sunday). Chittorgarh had the right dates and lost on priority. Cause: the T-327 fix (`b49f764f`) is merged but **never deployed** — its staging deploy on 26 Aug 07:12 was refused by the required-keys assert (`FATAL: required-keys assert failed — deploy refused`), the next run (`ee496299`) had `startup_failure`, and no run exists for the 27 Aug commits. Prod serves `d002d234` (25 Aug), 11 commits behind, including the issue-size fix and five API-500 fixes. The T-324 Notifier alert **did** fire (202) and was not acted on.
 2. **BSE mainboard board carries non-IPO rows** (Takeover, Buyback, Debt, Rights) — the June corporate-action pollution class; the filter must be on `IR_FLAG_FULL`.
 3. **NSE documents are one API call + a never-blocked archive host.** Our discovery job only fails because it gives that single call 15 s and no retry.
 
@@ -189,3 +189,23 @@ Your failure case: cycle 1 BSE times out, NSE times out, SEBI has no listing yet
 - **Q2 — BLOCKED_ALL on the page → decided (overridable): show the exchange-API fields with a "filings unavailable — retrying" note; never hide sections that have data.** No research can answer a UX preference; this is the option that loses the user the least.
 - **Q4 — verifier sites → decided (overridable): Chittorgarh only for now.** It is the one third-party page we already scrape successfully; adding more verifiers adds more things that can block us and gains nothing until Chittorgarh proves insufficient.
 - **Q5 — deploy `main` before the batch → still yours.** Recommended yes.
+
+### 7.6 "Don't repeat work" — the edge cases, made explicit
+
+| # | Case | Rule |
+|---|---|---|
+| R1 | Document found via NSE while BSE was down | It is FOUND; nothing retries BSE for it. Exchanges-first applies only while a document is still missing |
+| R2 | Same document reachable on both exchanges | First verified download wins; the other URL is recorded in lineage; SHA-256 prevents a second copy |
+| R3 | Link URL changes but the file hash is identical | No re-download, no re-extract; only the URL list on the row is updated |
+| R4 | Link changes AND hash changes for the same type (re-uploaded RHP) | New `documents` row, old one `is_active=false`; re-extract only if `filing_date` is newer or the cover differs |
+| R5 | Extractor code improves (`extractor_version` bump) | Rows with an older version are re-queued for extraction once, newest IPOs first, one per cycle — the only case an EXTRACTED row is reprocessed |
+| R6 | Process crashes mid-extraction | `IN_PROGRESS` older than 30 min is treated as FOUND again (crash recovery); no row is ever left stuck |
+| R7 | Two cycles overlap (long previous cycle) | Existing Redis distributed lock per IPO (`ipo:<slug>`) — the second worker skips locked IPOs |
+| R8 | IPO rows merged by the duplicate sweep | State rows are re-pointed to the surviving `ipo_id`; documents are never re-fetched |
+| R9 | Fixed-price issue (no price band ad), or no OFS (no selling-shareholder docs) | Types that cannot exist for that issue type are `NOT_APPLICABLE` from the start — never retried |
+| R10 | IPO listed more than 10 days ago with gaps | No state rows are created; backfill (WP F) handles history explicitly, the live cycle never touches it |
+| R11 | Field refresh vs document refresh | Band/dates/lot keep refreshing every cycle through the normal NSE/BSE scrapers as today — that is field data, independent of document state; EXTRACTED does not freeze those fields |
+| R12 | Cycle time budget | Discovery ≤ 60 s per cycle across all IPOs (one exchange call per IPO with missing docs), extraction ≤ 1 document per cycle; anything left waits for the next cycle — the 30-min scrape is never starved |
+| R13 | Owner turns the flags off, then on again | State rows persist; on re-enable the job resumes exactly where it stopped — no re-fetch |
+
+Honest status: this is a **design**, committed in this doc. None of it is implemented yet (owner instruction: implementation on hold). The first thing WP B builds is the state table and these transitions, with a fixture test per row R1–R13.
