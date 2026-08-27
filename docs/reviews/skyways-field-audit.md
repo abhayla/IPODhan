@@ -65,7 +65,7 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 | "Open Now" at 20:55 IST on close day | `ipos.status` = NSE (conf 100). Chittorgarh says CLOSED every cycle; NSE outranks it. `status-updater-service.ts` is date-only + UTC date, flips at 05:30 IST next day. | Close Thu 27 Aug (Corrigendum p.1); UPI mandate cut-off 5:00 pm | Status is derived, not a PDF field. The bug is the flip rule, not the source. |
 
 **Rec:** (a) **flip to CLOSED at 17:00 IST on close_date** (IST-aware state machine; also stop letting NSE's stale "OPEN" beat a date-derived CLOSED in the conflict resolver); (b) keep date-only but use IST midnight (still wrong 7 h/day); (c) leave as-is. Recommend **(a)**.
-**Owner:** —
+**Owner:** (a) — approved 2026-08-27 22:01 IST
 
 ### Unit 2 — Company name / symbol / segment / offering type (header)
 | Page shows | Src | RHP | Why not PDF |
