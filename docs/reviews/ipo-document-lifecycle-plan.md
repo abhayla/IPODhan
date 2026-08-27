@@ -2,6 +2,8 @@
 
 Owner ask (2026-08-27 23:59 IST): "depending on the time and stage of the IPO, documents will be available; based on that the right doc should be downloaded, read and data updated — list all scenarios and plan for them."
 
+**Owner approval:** work packages A–F approved 2026-08-28 00:16 IST. Implementation NOT started at the owner's instruction (discussion continues); start only on the owner's explicit go.
+
 Precedence (verified, SEBI ICDR): **Prospectus > RHP + Corrigendum + Addenda + Price Band Advertisement > DRHP.** A later filing supersedes an earlier one *for the fields it carries*; it never blanks a field it does not carry.
 
 Timeline notation: T = open date; T+n in working days.
