@@ -34,20 +34,35 @@ Other verified defects seen on this IPO:
 - `gmp_records` has 203 rows (latest 44.00 / 31.88%) but `ipos.gmp*` columns are null; page reads `gmp_records` directly so it still renders.
 - `scraper_steps` table absent in prod (migration 0033 / T-340 not applied).
 
-## 2. Documents obtained
+## 2. Documents obtained (2026-08-27, all HTTP 200, from the company's own host — NSE 403/404 bot-blocked, SEBI copy unreadable)
 
-_(pending — RHP/DRHP fetch running)_
+| Document | URL | Pages | SHA-256 |
+|---|---|---|---|
+| RHP (11 Aug 2026) | https://r2.skyways-air.in/RHP-Skyways.pdf | 644 | b4971a1aa3ef27ccb9375622081b4abf9b03e4646e8b725ae4971930742500b1 |
+| DRHP (30 Jun 2025) | https://skyways-air.in/DRHP_Skyways%20Final.pdf | 564 | 78b3a4537ccc713267231e1e2351692f2b33ed6d3ee5abaeeffc821158d76f30 |
+| Corrigendum to RHP (12 Aug) | https://r2.skyways-air.in/Corrigendum-of-RHP-Skyways.pdf | 2 | d3a6094a2a23371ec38432ec9a34ec91def2b2d3cecf6546fd375ff45e2dee1c |
+| Price Band Advertisement (14 Aug) | https://r2.skyways-air.in/Price-Band-Advertisement.pdf | 10 | 1f413a9e2c06d4da2aacacb7a385cd29426722c4e7f47ae0d8093b3d6c4a580b |
+| Abridged Prospectus | https://r2.skyways-air.in/Abrigded-Prospectus.pdf | 8 | ec6202c6a4dcfd7cbec099577e2ebaf4de0a8c1223a72daf298f8fcece2a20e8 |
+| Addendum 1 (24 Aug) | https://r2.skyways-air.in/Skyways-Air-Services-Limited-Addendum.pdf | 2 | 971b265a1d22ee9350d2c353585953c5cbae1f41bb5812906f1f8eee2b38dea1 |
+| Addendum 2 (26 Aug) | https://r2.skyways-air.in/Skyways-Air-Services-Limited-Second-Addendum.pdf | 2 | f2a2663b246469a00cd115e4be3982e8a5457cb5ad29e6d328381e70794c4bce |
+
+**Three document facts that change the design:**
+1. The RHP is filed BEFORE pricing: price band, issue size in ₹, lot size, P/E, market cap, post-issue capital and post-issue promoter % are all `[•]` in it. They are fixed in the **Price Band Advertisement** (a scanned newspaper PDF, no text layer). An extractor that reads only the RHP must not treat `[•]` as failure.
+2. The **Corrigendum** moved close 26→27 Aug (Mumbai bank holiday) and shifted allotment/refund/credit/listing to 28 Aug / 31 Aug / 31 Aug / 1 Sep. The RHP body still prints the old dates — dates must be read from the latest filing, never the RHP alone.
+3. The 100-page Restated Financials chapter has **no text layer** (images); the MD&A and Basis-for-Offer-Price sections carry the same numbers as text.
+
+Full extraction (page-referenced): `docs/reviews/skyways-rhp-values.md`.
 
 ## 3. Field-by-field audit
 
-Legend — **Src** = what actually wrote the value in prod (`field_sources` row, or code path); **RHP** = value in the RHP (page no.), ⏳ = extraction pending; **Rec** = my recommendation, options lettered; **Owner** = your pick (blank = not yet decided).
+Legend — **Src** = what actually wrote the value in prod (`field_sources` row, or code path); **RHP** = value in the latest filing (RHP / Corrigendum / Price Band Ad, with page no.); **Rec** = my recommendation, options lettered; **Owner** = your pick (blank = not yet decided).
 
 Fields are grouped into decision units (one unit = one turn). 290 rendered entries collapse into 36 units because entries in a unit share one source and one fix.
 
 ### Unit 1 — Status badge ("Open Now")
 | Page shows | Src | RHP | Why not PDF |
 |---|---|---|---|
-| "Open Now" at 20:55 IST on close day | `ipos.status` = NSE (conf 100). Chittorgarh says CLOSED every cycle; NSE outranks it. `status-updater-service.ts` is date-only + UTC date, flips at 05:30 IST next day. | RHP gives close date 27 Aug + bid closing time (page ⏳) | Status is derived, not a PDF field. The bug is the flip rule, not the source. |
+| "Open Now" at 20:55 IST on close day | `ipos.status` = NSE (conf 100). Chittorgarh says CLOSED every cycle; NSE outranks it. `status-updater-service.ts` is date-only + UTC date, flips at 05:30 IST next day. | Close Thu 27 Aug (Corrigendum p.1); UPI mandate cut-off 5:00 pm | Status is derived, not a PDF field. The bug is the flip rule, not the source. |
 
 **Rec:** (a) **flip to CLOSED at 17:00 IST on close_date** (IST-aware state machine; also stop letting NSE's stale "OPEN" beat a date-derived CLOSED in the conflict resolver); (b) keep date-only but use IST midnight (still wrong 7 h/day); (c) leave as-is. Recommend **(a)**.
 **Owner:** —
@@ -55,7 +70,7 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 ### Unit 2 — Company name / symbol / segment / offering type (header)
 | Page shows | Src | RHP | Why not PDF |
 |---|---|---|---|
-| "Skyways Air Services Ltd." · SKYWAYS (NSE) · MAINBOARD · IPO | NSE (conf 100/95) via `field_sources` | ⏳ (legal name on cover) | NSE listing page is a fine primary for identity; matrix order ADMIN>NSE>BSE>DRHP. |
+| "Skyways Air Services Ltd." · SKYWAYS (NSE) · MAINBOARD · IPO | NSE (conf 100/95) via `field_sources` | "Skyways Air Services Limited", CIN U74899DL1984PLC019666 (RHP p.1) | NSE listing page is a fine primary for identity; matrix order ADMIN>NSE>BSE>DRHP. |
 
 **Rec:** (a) **keep NSE as primary**; RHP fills CIN/legal name in `ipo_details` (Unit 30); (b) make DRHP primary for name. Recommend **(a)** — the exchange record is authoritative and exists before the RHP.
 **Owner:** —
@@ -63,7 +78,7 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 ### Unit 3 — Price band (₹131–₹138)
 | Page shows | Src | RHP | Why not PDF |
 |---|---|---|---|
-| ₹131 – ₹138 | NSE (conf 95), set 20 Aug | ⏳ (RHP / price-band advertisement) | Price band is NOT in the DRHP; it appears in the RHP / price-band ad. Matrix ADMIN>NSE>BSE>DRHP — correct order. |
+| ₹131 – ₹138 | NSE (conf 95), set 20 Aug | `[•]` in RHP; **₹131–₹138** (Price Band Ad p.1) — MATCHES page | Price band is NOT in the DRHP; it appears in the RHP / price-band ad. Matrix ADMIN>NSE>BSE>DRHP — correct order. |
 
 **Rec:** (a) **keep NSE primary; add RHP as verifier** (raise a conflict if RHP band ≠ NSE band); (b) no change. Recommend **(a)**.
 **Owner:** —
@@ -71,7 +86,7 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 ### Unit 4 — Lot size (100) and Min. Investment (₹13,800)
 | Page shows | Src | RHP | Why not PDF |
 |---|---|---|---|
-| 100 shares · ₹13,800 = 100 × ₹138 (derived in page) | `lotSize` = BSE (conf 90), 23 Aug | ⏳ | Matrix ADMIN>BSE>NSE>DRHP. Min investment is computed, never stored. |
+| 100 shares · ₹13,800 = 100 × ₹138 (derived in page) | `lotSize` = BSE (conf 90), 23 Aug | `[•]` in RHP; **100 shares**, min ₹13,800 (Price Band Ad p.1) — MATCHES | Matrix ADMIN>BSE>NSE>DRHP. Min investment is computed, never stored. |
 
 **Rec:** (a) **keep; add RHP cross-check**; (b) store min_investment in `ipo_details` from RHP. Recommend **(a)** — derived is safer than a second stored copy.
 **Owner:** —
@@ -79,7 +94,7 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 ### Unit 5 — Issue size (₹582.80 Cr)
 | Page shows | Src | RHP | Why not PDF |
 |---|---|---|---|
-| ₹582.80 Cr | NSE (conf 100). BSE says 4,082,536,800 (₹408.25 Cr) every cycle; conflict auto-labelled "converged". | ⏳ (fresh + OFS at upper band) | Matrix ADMIN>NSE>BSE>CHITTORGARH. RHP never consulted. NSE vs BSE differ by ₹174 Cr. |
+| ₹582.80 Cr | NSE (conf 100). BSE says 4,082,536,800 (₹408.25 Cr) every cycle; conflict auto-labelled "converged". | `[•]` in RHP; **₹582.80 Cr at cap** = fresh ₹398.80 Cr + OFS ₹184.00 Cr; 4,22,31,600 shares (PBA p.1, RHP p.72) — MATCHES NSE. BSE's 4,082,536,800 = 2,95,83,600 shares × 138 = offer NET of the 1,26,48,000 anchor portion — a different definition, not a wrong number | Matrix ADMIN>NSE>BSE>CHITTORGARH. RHP never consulted. NSE vs BSE differ by ₹174 Cr. |
 
 **Rec:** (a) **RHP / price-band ad primary for issue size at upper band, NSE second**, and fix the resolver so a 30 % gap is never marked "converged"; (b) keep NSE, fix only the resolver label; (c) show both. Recommend **(a)**.
 **Owner:** —
@@ -87,7 +102,7 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 ### Unit 6 — Face value (₹10)
 | Page shows | Src | RHP | Why not PDF |
 |---|---|---|---|
-| ₹10 | NSE (conf 100) | ⏳ | Matrix ADMIN>NSE>BSE>CHITTORGARH; DRHP not listed although it is the canonical source. |
+| ₹10 | NSE (conf 100) | **₹10** (RHP p.1) — MATCHES | Matrix ADMIN>NSE>BSE>CHITTORGARH; DRHP not listed although it is the canonical source. |
 
 **Rec:** (a) **add DRHP to the source list as verifier**; (b) leave. Recommend **(a)**.
 **Owner:** —
@@ -95,7 +110,7 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 ### Unit 7 — Open / Close dates
 | Page shows | Src | RHP | Why not PDF |
 |---|---|---|---|
-| 24 Aug – 27 Aug 2026 | NSE (conf 100) | ⏳ (RHP cover / price-band ad) | DRHP has no dates; RHP does. Matrix excludes DRHP correctly. |
+| 24 Aug – 27 Aug 2026 | NSE (conf 100) | Open Mon 24 Aug (RHP p.1); close **27 Aug per Corrigendum** (RHP body says 26 Aug) — MATCHES page | DRHP has no dates; RHP does. Matrix excludes DRHP correctly. |
 
 **Rec:** (a) **keep NSE; RHP verifier**; (b) leave. Recommend **(a)**.
 **Owner:** —
@@ -103,7 +118,7 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 ### Unit 8 — Allotment / Refund / Credit / Listing dates (timeline + details table)
 | Page shows | Src | RHP | Why not PDF |
 |---|---|---|---|
-| Allotment 28 Aug, Listing 1 Sept; Refunds & Credit-of-shares rows **blank** | allotment/listing = NSE (conf 100). Refund + credit dates live in `ipo_details` (0 rows) → blank. | ⏳ (RHP "tentative timeline" table lists all five) | `ipo_details` is filled only by DRHP/RHP extraction, which never runs. |
+| Allotment 28 Aug, Listing 1 Sept; Refunds & Credit-of-shares rows **blank** | allotment/listing = NSE (conf 100). Refund + credit dates live in `ipo_details` (0 rows) → blank. | Per Corrigendum: basis 28 Aug · refunds **31 Aug** · credit **31 Aug** · listing 1 Sep (RHP p.571 has the stale pre-corrigendum dates) — allotment/listing MATCH; refund/credit MISSING on page | `ipo_details` is filled only by DRHP/RHP extraction, which never runs. |
 
 **Rec:** (a) **extract the full tentative-timeline table from the RHP into `ipo_details`** (basis, refund, credit, listing); (b) scrape from Chittorgarh instead. Recommend **(a)**.
 **Owner:** —
@@ -111,7 +126,7 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 ### Unit 9 — Registrar (Bigshare) and allotment-check link
 | Page shows | Src | RHP | Why not PDF |
 |---|---|---|---|
-| Bigshare, link healthy | NSE (conf 100) → `registrar_id` resolved | ⏳ | Fine. |
+| Bigshare, link healthy | NSE (conf 100) → `registrar_id` resolved | Bigshare Services Pvt Ltd, SEBI INR000001385 (RHP p.81) — MATCHES | Fine. |
 
 **Rec:** (a) **keep**; RHP as verifier only. Recommend **(a)**.
 **Owner:** —
@@ -119,7 +134,7 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 ### Unit 10 — Lead managers
 | Page shows | Src | RHP | Why not PDF |
 |---|---|---|---|
-| Holani Consultants, Shannon Advisors (`ipos.lead_managers`) | NSE (conf 100) | ⏳ | Matrix lists DRHP first, but DRHP never runs, so NSE filled it. A second copy `ipo_details.lead_managers` exists and is empty (two data paths — drift risk). |
+| Holani Consultants, Shannon Advisors (`ipos.lead_managers`) | NSE (conf 100) | **THREE** BRLMs: Holani Consultants, Shannon Advisors, **Dolat Finserv** (RHP p.81) — page is MISSING one | Matrix lists DRHP first, but DRHP never runs, so NSE filled it. A second copy `ipo_details.lead_managers` exists and is empty (two data paths — drift risk). |
 
 **Rec:** (a) **RHP primary (as the matrix already says), NSE fallback; remove the duplicate `ipo_details.lead_managers` path**; (b) keep NSE only. Recommend **(a)**.
 **Owner:** —
@@ -127,7 +142,7 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 ### Unit 11 — Listing exchanges (NSE, BSE)
 | Page shows | Src | RHP | Why not PDF |
 |---|---|---|---|
-| NSE, BSE | CHITTORGARH (conf 80) | ⏳ | RHP cover states it; aggregator used because no primary path. |
+| NSE, BSE | CHITTORGARH (conf 80) | BSE + NSE, designated exchange **BSE** (RHP p.1) — MATCHES; "designated exchange" not stored | RHP cover states it; aggregator used because no primary path. |
 
 **Rec:** (a) **RHP primary, Chittorgarh fallback**; (b) leave. Recommend **(a)**.
 **Owner:** —
@@ -135,7 +150,7 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 ### Unit 12 — ISIN (not shown)
 | Page shows | Src | RHP | Why not PDF |
 |---|---|---|---|
-| hidden (null) | `field_sources` says CHITTORGARH conf 80 — but the value is null (a source row was written for an empty value) | ⏳ (RHP cover / "Terms of the Offer") | Nothing that runs reads the RHP. |
+| hidden (null) | `field_sources` says CHITTORGARH conf 80 — but the value is null (a source row was written for an empty value) | **INE0PX301025** (RHP p.534, p.570) — page hides it | Nothing that runs reads the RHP. |
 
 **Rec:** (a) **RHP primary; fix the writer so a null value never records a source**; (b) leave hidden until listing. Recommend **(a)**.
 **Owner:** —
@@ -159,7 +174,7 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 ### Unit 15 — Lot Details table (Retail min/max, S-HNI, B-HNI)
 | Page shows | Src | RHP | Why not PDF |
 |---|---|---|---|
-| Computed from lot × band (`computeBidTiers`) | derived | ⏳ (RHP bid-lot / maximum-bid rules) | Derived from regulatory caps; correct as long as Units 3–4 are right. |
+| Computed from lot × band (`computeBidTiers`) | derived | Retail ≤ ₹2 lakh, sNII ₹2–10 lakh, bNII > ₹10 lakh (RHP p.575–577) — page table MATCHES | Derived from regulatory caps; correct as long as Units 3–4 are right. |
 
 **Rec:** (a) **keep derived**; (b) store from RHP. Recommend **(a)**.
 **Owner:** —
@@ -167,31 +182,31 @@ Fields are grouped into decision units (one unit = one turn). 290 rendered entri
 ### Unit 16 — Issue structure (fresh vs OFS, shares offered) — SECTION MISSING
 | Page shows | Src | RHP | Why not PDF |
 |---|---|---|---|
-| "Awaiting data" | `ipo_details.fresh_issue / ofs_issue` empty; matrix `fresh_issue_size` = ADMIN>NSE>DRHP>BSE but the NSE scraper does not emit it | ⏳ (RHP cover + "The Offer" table) | Extraction never runs (§1). |
+| "Awaiting data" | `ipo_details.fresh_issue / ofs_issue` empty; matrix `fresh_issue_size` = ADMIN>NSE>DRHP>BSE but the NSE scraper does not emit it | Fresh 2,88,98,300 sh (₹398.80 Cr) + OFS 1,33,33,300 sh (₹184.00 Cr) = 4,22,31,600 (RHP p.72; PBA p.1). DRHP had fresh 3,29,17,700 — cut by the 40,19,326-share pre-IPO placement @ ₹120 | Extraction never runs (§1). |
 
 **Rec:** (a) **RHP extraction fills it** (cover table is deterministic); (b) Chittorgarh fallback. Recommend **(a)** with (b) as fallback.
 **Owner:** —
 
 ### Unit 17 — Category reservation (QIB/NII/Retail/Employee shares + %, anchor portion) — SECTION MISSING
-Same root cause as Unit 16 (`ipo_details.*_shares_offered`). RHP ⏳. **Rec:** (a) RHP extraction. **Owner:** —
+Same root cause as Unit 16 (`ipo_details.*_shares_offered`). RHP p.72: QIB ≤ 2,10,80,000 (50 %) incl. anchor 1,26,48,000; NII ≥ 63,51,600 (15 %: sNII 21,17,200 / bNII 42,34,400); Retail ≥ 1,48,00,000 (35 %); **no employee reservation**. (pdftotext shifts this table one row — the extractor must checksum: categories must sum to the total.) **Rec:** (a) RHP extraction. **Owner:** —
 
 ### Unit 18 — Objects of the issue — SECTION MISSING
-`ipos.objectives` null; matrix ADMIN>DRHP>CHITTORGARH. RHP ⏳ ("Objects of the Offer" table). **Rec:** (a) RHP extraction (table with ₹ amounts), Chittorgarh fallback. **Owner:** —
+`ipos.objectives` null; matrix ADMIN>DRHP>CHITTORGARH. RHP p.111–113: (1) repay borrowings of Company + Forin Container Line ₹216.79 Cr; (2) working capital ₹130.00 Cr; (3) GCP `[•]` (≤25 %). No capex object. **Rec:** (a) RHP extraction (table with ₹ amounts), Chittorgarh fallback. **Owner:** —
 
 ### Unit 19 — Company overview / description / industry / sector — SECTION MISSING
-`companyDescription`, `industry`, `sector` all null. `sector` is starved by the phantom `data.sector` field (#242); `industry`/description declare DRHP first. RHP ⏳ ("Our Business"). **Rec:** (a) RHP extraction for description + industry; fix #242 for sector from NSE. **Owner:** —
+`companyDescription`, `industry`, `sector` all null. `sector` is starved by the phantom `data.sector` field (#242); `industry`/description declare DRHP first. RHP p.252: est. 1984, No. 1 air freight forwarder by AWBs (World ACD, 2022–25); air/ocean/trucking/warehousing/customs/express. Industry: **Logistics — air freight forwarding**. Employees: 1,193 group (RHP p.290) — RHP also prints 320 standalone and "over 400"; the extractor must pick the KPI figure. **Rec:** (a) RHP extraction for description + industry; fix #242 for sector from NSE. **Owner:** —
 
 ### Unit 20 — Financials (revenue/PAT/net worth/EBITDA ×3 FY, KPIs, ratios: EPS, P/E, RoNW, D/E, ROCE, P/B, market cap) — SECTIONS MISSING (Financial charts + KPI highlights)
-`financial_data` 0 rows; matrix declares DRHP first for every one of these. RHP ⏳ ("Summary of Financial Information" + "Basis for Offer Price"). **Rec:** (a) RHP extraction — the existing pdfplumber extractor (C3b, 144 IPOs in June) proves it is deterministic; wire it. **Owner:** —
+`financial_data` 0 rows; matrix declares DRHP first for every one of these. RHP p.475/480/491 (₹ lakh): Revenue FY26 2,81,289.89 / FY25 2,24,782.49 / FY24 1,28,911.01; EBITDA 12,564.86; PAT 6,352.38 / 4,813.97 / 3,449.35; Net worth 33,264.21; Borrowings 62,405.68; EPS 3.56; RoNW 12.33 %; NAV 28.91; D/E 1.26; RoCE 18.11 %. P/E **36.80× floor / 38.76× cap**, industry avg 491×, market cap **₹2,005.74 Cr** at cap (PBA p.1). **RHP covers FY24–26 with NO stub; DRHP covered FY22–24 + Dec-24 stub** — the extractor must key on the latest filing, not the DRHP. **Rec:** (a) RHP extraction — the existing pdfplumber extractor (C3b, 144 IPOs in June) proves it is deterministic; wire it. **Owner:** —
 
 ### Unit 21 — Promoter holding pre/post — SECTION MISSING
-`financial_data.promoter_holding_*` empty. RHP ⏳ ("Capital Structure"). **Rec:** (a) RHP extraction. **Owner:** —
+`financial_data.promoter_holding_*` empty. Pre-issue **79.14 %** (Yashpal Sharma 46.49 % + Tarun Sharma 32.65 %, RHP p.105). Post-issue `[•]` in every filing — derivable ≈ 56.82 % ((9,21,59,452 − 95,80,690 sold) ÷ 14,53,43,544); must be labelled "computed" on the page. **Rec:** (a) RHP extraction. **Owner:** —
 
 ### Unit 22 — Anchor investors — SECTION MISSING
 `anchor_investors` 0 rows. Source is NOT the RHP — it is the exchange "Anchor allocation report" PDF (discovery already knows the type `ANCHOR_ALLOCATION_REPORT`). Skyways' was never discovered (timeout). **Rec:** (a) fix discovery (Unit 33) + extract the anchor report. **Owner:** —
 
 ### Unit 23 — Peer comparison — SECTION MISSING
-`peer_companies` 0 rows; RHP ⏳ ("Basis for Offer Price — comparison with listed peers"). **Rec:** (a) RHP extraction (peer table with P/E, EPS, RoNW). **Owner:** —
+`peer_companies` 0 rows; RHP p.135: Delhivery (P/E 260, RoNW 1.58 %), TVS Supply Chain (54, 5.62 %), Mahindra Logistics (1,548, 0.19 %), Shadowfax (104, 6.40 %). **Rec:** (a) RHP extraction (peer table with P/E, EPS, RoNW). **Owner:** —
 
 ### Unit 24 — Documents list (RHP/DRHP/addenda links) — SECTION MISSING
 `documents` 0 rows for Skyways; discovery timed out twice. Tonight's manual fetch found 8 filings (DRHP, RHP, corrigendum, 2 addenda, price-band ad, abridged prospectus, SEBI DRHP). **Rec:** (a) fix discovery (Unit 33) so these links appear on day one. **Owner:** —
@@ -203,7 +218,7 @@ Same root cause as Unit 16 (`ipo_details.*_shares_offered`). RHP ⏳. **Rec:** (
 `ipo_reviews` 0 rows for every IPO (no writer runs). Not a PDF field. **Rec:** (a) decide separately whether to build a review scraper; (b) drop it from the "Awaiting data" strip so the page stops promising it. Recommend **(b)** now. **Owner:** —
 
 ### Unit 27 — Company contact (address/phone/email/compliance officer) — SECTION MISSING
-`ipo_details.company_*` empty. RHP ⏳ (cover page). **Rec:** (a) RHP extraction. **Owner:** —
+`ipo_details.company_*` empty. Same values as Unit 30 (RHP p.1, p.80). **Rec:** (a) RHP extraction. **Owner:** —
 
 ### Unit 28 — Listing performance (listing price, gain) — not applicable yet
 Renders only when LISTED; writer `listing-performance-updater.ts` runs on cadence. **Rec:** (a) no change; re-check on 1 Sept. **Owner:** —
@@ -212,7 +227,7 @@ Renders only when LISTED; writer `listing-performance-updater.ts` runs on cadenc
 Renders only when CLOSED/LISTED — hidden tonight because status is still OPEN (Unit 1). **Rec:** fixed by Unit 1. **Owner:** —
 
 ### Unit 30 — CIN / legal name / registered office (`ipo_details`)
-Not shown today; RHP ⏳. **Rec:** (a) include in RHP extraction (cover page). **Owner:** —
+RHP p.1/p.80: legal name Skyways Air Services Limited; CIN U74899DL1984PLC019666; RZ 128-129A Mahipalpur Extension NH-8, New Delhi 110037; cs@skyways-group.com; +91 9910791501; Compliance Officer Hitesh Kumar (ACS 33286); CFO Himanshu Chhabra. **Rec:** (a) include in RHP extraction (cover page). **Owner:** —
 
 ### Unit 31 — Lot calculator (embedded)
 Derived from band + lot; fine. **Rec:** keep. **Owner:** —
