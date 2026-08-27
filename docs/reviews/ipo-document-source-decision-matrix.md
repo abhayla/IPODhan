@@ -103,3 +103,89 @@ Order for SME: NSE (Emerge) first, then BSE SME pages, then SEBI, then company h
 - **Q3 — BSE SME depth.** BSE SME filings sit behind HTML pages (`bsesme.com/PublicIssues/RHP.aspx`), not an API. Is BSE-SME coverage required in this batch, or is NSE Emerge + SEBI + company site enough for SME until BSE SME is parsed? I assumed the latter for now.
 - **Q4 — Third-party verifier list.** Owner named Chittorgarh-type sites as verifiers. Which ones are acceptable to fetch (they may block us too)? I assumed Chittorgarh only.
 - **Q5 — Deploy.** Prod is 11 commits behind with live data bugs fixed on `main`. Deploying is your gate: do you want the staging env key fixed and `main` deployed before the A–F batch starts? (Recommended yes — otherwise the audit re-run will measure old code.)
+
+## 7. Per-document state machine — never repeat finished work, always retry the exchanges first
+
+Owner rule (2026-08-28 00:52 IST): each 30-min run must do only what is still missing. Found + read = skip. Not found = try BSE and NSE again (always, in that order), then fallbacks, until found. Every attempt is logged with success/failure.
+
+### 7.1 State per (IPO, document type)
+
+One row per `(ipo_id, doc_type)` in a new table `document_fetch_state` (the `documents` table only has rows for things already found, so "wanted but not found yet" has nowhere to live today):
+
+| Column | Meaning |
+|---|---|
+| `state` | `WANTED` · `NOT_YET_FILED` · `FOUND` · `EXTRACTED` · `EXTRACT_FAILED` · `BLOCKED_ALL` · `SUPERSEDED` · `NOT_APPLICABLE` |
+| `document_id` | FK to `documents` once found |
+| `attempts` | total tries |
+| `last_attempt_at`, `next_retry_at` | scheduling |
+| `last_attempt` (jsonb) | `[{source:'BSE', http:200, ms:812, outcome:'no_link'}, {source:'NSE', http:0, ms:15000, outcome:'timeout'}, …]` — every source tried in that run, in order |
+| `first_seen_at`, `extracted_at`, `extractor_version` | idempotency keys |
+| `filing_date` | date printed on the document (supersession is by filing date, not fetch order) |
+
+Transitions:
+```
+WANTED ──exchange says "not filed" (empty field, no title)──> NOT_YET_FILED   (retry next cycle; this is NOT a failure)
+WANTED / NOT_YET_FILED ──link found + download verified (§3)──> FOUND          (documents row inserted, sha256)
+WANTED ──every source failed (timeout/4xx/5xx/bad file)──> BLOCKED_ALL         (retry every cycle 24 h, then every 6 h; P2 alert at first entry)
+FOUND ──extractor SUCCESS──> EXTRACTED                                          (extracted_at, extractor_version)
+FOUND ──extractor FAILED ×3──> EXTRACT_FAILED                                   (admin flag; no more automatic retries until extractor_version changes)
+EXTRACTED ──newer filing of a superseding type appears (Corrigendum/Prospectus/Addendum n+1)──> SUPERSEDED on the old row, new row WANTED→FOUND→EXTRACTED for the new doc
+any ──IPO withdrawn / doc type not applicable (e.g. Price Band Ad for a fixed-price SME)──> NOT_APPLICABLE
+```
+
+### 7.2 What one 30-minute cycle does per IPO
+
+```
+for each IPO with status in (UPCOMING, OPEN, CLOSED) or LISTED within 10 days:
+  due = doc types due at its stage (§2) whose state ∉ {EXTRACTED, SUPERSEDED, NOT_APPLICABLE}
+  if due is empty → skip IPO entirely (zero network calls)            ← "found + read = don't touch"
+  else:
+    ONE exchange call covers every doc type at once:
+      BSE core API (mainboard) / NSE ipo-detail (SME first) → map links to doc types
+      if that call fails → the other exchange (retry ×3 backoff)      ← BSE/NSE always first, every cycle, regardless of last run
+      if both fail → SEBI → company host → verifier                    (only for the types still missing)
+    for each due type:
+      link present → download → verify → FOUND (or BLOCKED_ALL if download fails on every host)
+      link absent on both exchanges → NOT_YET_FILED
+    extraction: at most ONE FOUND document per cycle across all IPOs (keeps the cycle < 60 s); newest filing first
+    supersession check (cheap, uses the same exchange payload): if the RHP link changed to a Prospectus link, or an Addendum count grew → mark old EXTRACTED row SUPERSEDED, create the new WANTED row
+```
+Cost: an IPO whose documents are all EXTRACTED costs 0 calls. An IPO waiting for its Prospectus costs 1 BSE call per cycle. Today's job costs 1 NSE call per IPO per day with a 15 s stall and no memory of what happened.
+
+### 7.3 Retry policy (why each number)
+
+| State | Retry | Reason |
+|---|---|---|
+| NOT_YET_FILED | next cycle (30 min) | filing can appear any time; the call is one cheap API hit |
+| BLOCKED_ALL | every cycle for 24 h, then every 6 h, P2 alert once at entry and once at 24 h | NSE stalls clear within minutes (measured); a day of failure means a real outage or a wrong link |
+| Download failed on one host but link exists elsewhere | immediately, next host | same run |
+| EXTRACT_FAILED | 3 attempts across 3 cycles, then stop until `extractor_version` bumps | a parse bug will not fix itself; retrying burns CPU and hides the bug |
+| Prospectus not found | every cycle until T+3 (listing day); alert at T+3 | listing cannot happen before the Prospectus is filed with RoC (Q1) |
+
+### 7.4 Logging — what exists today vs what the design adds
+
+Today (verified): discovery writes **7 pino log lines** to the PM2 log file and nothing else — no `scraper_logs` row, no per-IPO record, no attempt history. The step ledger `scraper_steps` (T-340) exists in code but its migration (0033) is not in prod because the release was never deployed (§5). So the honest answer to "is the scraper logging success/failure?" is: **only as free text in a log file that rotates; nothing queryable, nothing the nightly audit reads.**
+
+Design:
+1. Every attempt writes the `last_attempt` json on the state row (source, http, ms, outcome) — queryable per IPO.
+2. Every cycle writes one `scraper_steps` row per step (`primarySourceDiscovery: ok|skipped|failed`, `documentExtraction: …`) with counts in `reason` (e.g. `ipos=4 found=2 not_yet=1 blocked=1 extracted=1`).
+3. `scraper_logs` gets one row per cycle for source `DOCUMENTS` with `records_processed`/`records_failed`, so the existing metrics tracker and alert thresholds cover it.
+4. Nightly audit checks: any `BLOCKED_ALL` > 24 h → FAIL; any `FOUND` not extracted > 48 h → FAIL; any OPEN IPO with 0 state rows → FAIL (the job forgot the IPO); any `EXTRACT_FAILED` → WARN with the error.
+5. Admin page (`/admin/documents`): the state table per IPO with the last attempt json — so you can see "BSE 200 no_link, NSE timeout, SEBI 200 found" without opening a log file.
+
+### 7.5 Scenario walk-through (your example)
+
+Cycle 1 (new IPO, T−5): BSE core API → RHP link present → download → FOUND. Price Band Ad link empty → NOT_YET_FILED. Anchor report → NOT_YET_FILED. Extraction: RHP → EXTRACTED (fields written).
+Cycle 2: RHP state EXTRACTED → skipped. PBA + anchor still due → one BSE call. PBA link now present → FOUND → (next cycle) EXTRACTED. Anchor → NOT_YET_FILED.
+Cycle N (T−1 evening): anchor link present → FOUND → EXTRACTED.
+Cycle at open: nothing due except addenda check — the same BSE call; addendum count unchanged → no work.
+Cycle after close: Prospectus becomes due → BSE link still "RHP" → NOT_YET_FILED; retried every cycle; at T+1 link changes → FOUND → EXTRACTED → RHP row marked SUPERSEDED for the fields the Prospectus carries; price-dependent fields rewritten at the final price.
+Your failure case: cycle 1 BSE times out, NSE times out, SEBI has no listing yet, company site unknown (no RHP cover yet) → BLOCKED_ALL, P2 alert. Cycle 2: BSE first again → 200 → FOUND. No fallback host is touched because BSE answered.
+
+## 8. Answers to the open questions (web-researched where possible)
+
+- **Q1 — Prospectus wait limit → answered: alert at T+3.** Under SEBI's T+3 framework (mandatory since 1 Dec 2023) listing happens within 3 working days of close, and a company cannot list before the Prospectus is filed with the RoC; in practice issuers file it T+1/T+2. So: retry every cycle until listing day; if still absent on listing day, alert. Sources: [Business Standard — SEBI T+3 timeline](https://www.business-standard.com/amp/markets/ipo/market-regulator-sebi-plans-to-shorten-ipo-listing-timeline-to-three-days-123052000674_1.html), [Lawrbit — main-board IPO procedure](https://www.lawrbit.com/companies-act-procedures/initial-public-offer-on-main-board/), [s45 — mainboard listing timeline](https://s45.ai/feeds/blog/ipo-pre-open-time). No source states a statutory "within N days of close" deadline for the Prospectus itself — the T+3 listing bound is the effective one.
+- **Q3 — BSE SME → answered: include it, no API needed.** `bsesme.com/PublicIssues/SMEIPODRHP.aspx` is plain HTML with `/download/<scrip>/…` links whose filenames carry the type (Draft Prospectus, Prospectus, Basis Advertisement, Addendum) — verified 00:55 IST. Parse it as the second SME source after NSE Emerge. No JSON API exists ([BSE SME public issues](https://www.bsesme.com/PublicIssues/PublicIssues.aspx?id=1)); third-party feeds ([APIDataFeed](https://www.apidatafeed.com/product/ipo)) are paid and not primary.
+- **Q2 — BLOCKED_ALL on the page → decided (overridable): show the exchange-API fields with a "filings unavailable — retrying" note; never hide sections that have data.** No research can answer a UX preference; this is the option that loses the user the least.
+- **Q4 — verifier sites → decided (overridable): Chittorgarh only for now.** It is the one third-party page we already scrape successfully; adding more verifiers adds more things that can block us and gains nothing until Chittorgarh proves insufficient.
+- **Q5 — deploy `main` before the batch → still yours.** Recommended yes.
