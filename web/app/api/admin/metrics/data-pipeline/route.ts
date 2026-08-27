@@ -29,6 +29,7 @@ import { ipos, documents, subscriptions, gmpRecords, financialData, listingPerfo
 import { sql, gt, gte, eq, and, isNotNull } from 'drizzle-orm';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 interface DetectionMetrics {
   last24h: number;
@@ -127,11 +128,7 @@ export async function GET(request: NextRequest) {
       cached: false,
     }, { status: 200 });
   } catch (error) {
-    console.error('Pipeline Metrics Error:', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to fetch pipeline metrics',
-    }, { status: 500 });
+    return apiErrorResponse(error, '/api/admin/metrics/data-pipeline');
   }
 }
 

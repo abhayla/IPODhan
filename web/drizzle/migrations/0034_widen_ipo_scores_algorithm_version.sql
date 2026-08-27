@@ -1,0 +1,16 @@
+-- T-330 P2-1: ipo_scores.algorithm_version is varchar(10) in prod even though
+-- the schema SSOT (packages/shared/src/db/schema.ts:857) and the original
+-- migration (0007_ancient_roulette.sql) have always declared varchar(50) --
+-- the CREATE TABLE IF NOT EXISTS in 0007 silently no-op'd against a
+-- pre-existing narrower column, so the journal marks 0007 "applied" while the
+-- live column disagrees. The app writes 'realtime-v1.0' (13 chars), which
+-- overflows a varchar(10) column and 500s every /api/ipos/<slug>/score call
+-- (web/lib/repositories/ipo-score-realtime-repository.ts, web/app/api/ipos/[slug]/score/route.ts).
+-- Widening (not narrowing) is always safe and idempotent regardless of
+-- whether the live column is already varchar(50) or still varchar(10).
+--
+-- Hand-authored (not `drizzle-kit generate`) because the existing journal is
+-- blocked by a pre-existing, unrelated `extraction_status` enum-rename prompt
+-- (documented in .claude/rules/drizzle-migration-gated-ddl.md) that this
+-- change does not touch.
+ALTER TABLE "ipo_scores" ALTER COLUMN "algorithm_version" TYPE varchar(50);

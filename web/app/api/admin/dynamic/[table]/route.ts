@@ -18,6 +18,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { desc, asc, like, and, or, sql, eq, getTableColumns } from 'drizzle-orm';
 import { PgTable } from 'drizzle-orm/pg-core';
 import { validateRecord } from '@/lib/admin/dynamic-validation-rules';
+import { logger } from '@/lib/logger';
 
 /**
  * Get the table object from schema by name
@@ -111,11 +112,16 @@ export async function POST(
       message: `Record created successfully in ${tableName}`
     });
   } catch (error) {
-    console.error('[Dynamic Admin] Create error:', error);
+    // Real error detail (can include SQL/constraint text from a raw dynamic-table
+    // write) logged server-side only - never in the public response body (T-330 P2-5).
+    logger.error(
+      { route: '/api/admin/dynamic/[table]', error: error instanceof Error ? error.message : String(error) },
+      '[Dynamic Admin] Create error'
+    );
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to create record'
+        error: 'Failed to create record'
       },
       { status: 500 }
     );

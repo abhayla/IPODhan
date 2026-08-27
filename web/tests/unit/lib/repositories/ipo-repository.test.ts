@@ -41,16 +41,19 @@ describe('IPORepository', () => {
       lastScrapedAt: null,
     };
 
-    it('should return IPO from cache if available', async () => {
-      // Simulate cache behavior: Date objects are serialized as strings
-      const cachedIPO = JSON.parse(JSON.stringify(mockIPO));
-      mockRedis.get = vi.fn().mockResolvedValue(JSON.stringify(cachedIPO));
+    it('should return IPO from cache if available, rehydrating Date fields', async () => {
+      // Redis only ever stores the JSON.stringify'd form, so createdAt/updatedAt
+      // come back as ISO strings on the wire — the repository must revive them.
+      mockRedis.get = vi.fn().mockResolvedValue(JSON.stringify(mockIPO));
 
       const result = await repository.findById(mockIPO.id);
 
       expect(mockRedis.get).toHaveBeenCalledWith(`ipo:id:${mockIPO.id}`);
-      expect(result).toEqual(cachedIPO);
       expect(mockDb.select).not.toHaveBeenCalled();
+      expect(result).not.toBeNull();
+      expect(result!.createdAt).toBeInstanceOf(Date);
+      expect(result!.updatedAt).toBeInstanceOf(Date);
+      expect(result!.createdAt.toISOString()).toBe(mockIPO.createdAt.toISOString());
     });
 
     it('should query database on cache miss and populate cache', async () => {

@@ -20,6 +20,7 @@
     "build": "npm run build --workspace=web",
     "test:unit": "npm run test:unit --workspace=web",
     "audit:prod": "node scripts/audit-prod.mjs",
+    "audit:schema-drift": "npx tsx scripts/assert-schema-drift.ts",
     "audit:coverage": "node scripts/audit-ipo-coverage.mjs --gate",
     "audit:substance": "node scripts/audit-substance-plausibility.mjs --gate",
     "audit:data": "npm run audit:coverage && npm run audit:prod",

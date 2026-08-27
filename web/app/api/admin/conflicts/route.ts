@@ -16,6 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ConflictResolutionService } from '@/lib/services/conflict-resolution';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 /**
  * GET /api/admin/conflicts
@@ -49,11 +50,7 @@ export async function GET(request: NextRequest) {
       conflicts,
     }, { status: 200 });
   } catch (error) {
-    console.error('Conflicts API Error:', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to fetch conflicts',
-    }, { status: 500 });
+    return apiErrorResponse(error, '/api/admin/conflicts');
   }
 }
 
@@ -108,10 +105,6 @@ export async function POST(request: NextRequest) {
       message: 'Conflict resolved successfully',
     }, { status: 200 });
   } catch (error) {
-    console.error('Conflict Resolution Error:', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to resolve conflict',
-    }, { status: 500 });
+    return apiErrorResponse(error, '/api/admin/conflicts');
   }
 }
