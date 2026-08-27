@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
 
 /**
  * T-339 item 2 - "key beats name" identity quarantine.
@@ -74,6 +74,7 @@ vi.mock('../../../src/services/scraper-metrics-tracker.js', () => ({
     shouldSendAlert: vi.fn().mockResolvedValue({ sendAlert: false, reason: null }),
     getMetrics: vi.fn().mockResolvedValue({ success: 0, failure: 0, rate: 100 }),
     getConsecutiveFailures: vi.fn().mockResolvedValue(0),
+    recordZeroYieldCycle: vi.fn().mockResolvedValue(undefined),
     markAlertSent: vi.fn().mockResolvedValue(undefined),
   })),
 }));
@@ -103,8 +104,33 @@ vi.mock('../../../src/services/selector-degradation-monitor.js', async (importOr
   };
 });
 
+// ---------------------------------------------------------------------------
+// Module loading is hoisted OUT of every per-test budget.
+//
+// vitest.config.ts sets testTimeout: 20_000. Each `await import(...)` below used
+// to sit INSIDE a test, so whichever test ran first paid the cold transform of
+// the whole orchestrator/service graph (measured: ~14s idle) against its own 20s
+// timeout. Under load that tips over, and a timed-out vitest test is NOT
+// cancelled - its pending run() completes during the NEXT test and lands a call
+// on these module-level mocks, failing `not.toHaveBeenCalled()` with the
+// PREVIOUS test's payload. Measured 5 failures / 20 cold runs before this hoist.
+// beforeAll has its own (generous) hook timeout, so no test can be orphaned.
+// ---------------------------------------------------------------------------
+let QuarantineMod: typeof import('../../../src/services/identity-quarantine.js');
+let SharedMod: typeof import('@ipodhan/shared');
+let OrchestratorBase: typeof import('../../../src/base/BaseScraperOrchestrator.js')['BaseScraperOrchestrator'];
+
+beforeAll(async () => {
+  [QuarantineMod, SharedMod] = await Promise.all([
+    import('../../../src/services/identity-quarantine.js'),
+    import('@ipodhan/shared'),
+  ]);
+  ({ BaseScraperOrchestrator: OrchestratorBase } =
+    await import('../../../src/base/BaseScraperOrchestrator.js'));
+}, 180000);
+
 async function makeError(overrides: Record<string, unknown> = {}) {
-  const { IdentityQuarantineError } = await import('@ipodhan/shared');
+  const { IdentityQuarantineError } = SharedMod;
   return new IdentityQuarantineError({
     keyTier: 'ISIN',
     companyName: 'Acme Ltd',
@@ -123,8 +149,7 @@ describe('recordIdentityQuarantine - HOLD row + P1 page', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('writes an UNRESOLVED data_conflicts HOLD row carrying BOTH candidate ids, the source and CRITICAL severity', async () => {
-    const { recordIdentityQuarantine, IDENTITY_QUARANTINE_REASON, IDENTITY_QUARANTINE_FIELD } =
-      await import('../../../src/services/identity-quarantine.js');
+    const { recordIdentityQuarantine, IDENTITY_QUARANTINE_REASON, IDENTITY_QUARANTINE_FIELD } = QuarantineMod;
     mockUpsertConflict.mockResolvedValue({ id: 'conflict-1' });
 
     const outcome = await recordIdentityQuarantine(
@@ -151,7 +176,7 @@ describe('recordIdentityQuarantine - HOLD row + P1 page', () => {
   });
 
   it('pages the owner at P1 with both candidate ids and a stable per-pair dedupeKey', async () => {
-    const { recordIdentityQuarantine } = await import('../../../src/services/identity-quarantine.js');
+    const { recordIdentityQuarantine } = QuarantineMod;
     mockUpsertConflict.mockResolvedValue({ id: 'conflict-1' });
 
     await recordIdentityQuarantine(
@@ -172,7 +197,7 @@ describe('recordIdentityQuarantine - HOLD row + P1 page', () => {
   });
 
   it('still pages (and never throws) when the HOLD row cannot be written', async () => {
-    const { recordIdentityQuarantine } = await import('../../../src/services/identity-quarantine.js');
+    const { recordIdentityQuarantine } = QuarantineMod;
     mockUpsertConflict.mockRejectedValue(new Error('db down'));
 
     const outcome = await recordIdentityQuarantine(
@@ -187,13 +212,22 @@ describe('recordIdentityQuarantine - HOLD row + P1 page', () => {
   });
 
   it('maps a source outside the data_conflicts enum onto API_FALLBACK instead of failing the insert', async () => {
-    const { toConflictSource } = await import('../../../src/services/identity-quarantine.js');
+    const { toConflictSource } = QuarantineMod;
     expect(toConflictSource('NSE')).toBe('NSE');
     expect(toConflictSource('INVESTORGAIN_GMP')).toBe('API_FALLBACK');
   });
 });
 
 describe('BaseScraperOrchestrator.processIPO - quarantine means NO write', () => {
+  // The first dynamic import of BaseScraperOrchestrator pulls in the whole
+  // orchestrator dependency graph and costs ~14s on a cold transform. Paid
+  // inside a test's own 20s budget (as it was), the FIRST test in this block
+  // sat at 70% of its timeout on an idle machine and tipped over it under CI
+  // load. A timed-out vitest test does not cancel its pending work: the
+  // orphaned run() completed during the NEXT test and landed a
+  // mockConsolidatedUpsert call there, failing `not.toHaveBeenCalled()` with
+  // the PREVIOUS test's payload. Hoisting the import into beforeAll pays that
+  // cost once, outside every per-test timeout, so no test can be orphaned.
   beforeEach(() => {
     vi.clearAllMocks();
     mockFindByIsin.mockResolvedValue(null);
@@ -205,8 +239,7 @@ describe('BaseScraperOrchestrator.processIPO - quarantine means NO write', () =>
   });
 
   async function runWith(ipo: Record<string, unknown>) {
-    const { BaseScraperOrchestrator } = await import('../../../src/base/BaseScraperOrchestrator.js');
-    class TestOrchestrator extends BaseScraperOrchestrator<Record<string, unknown>> {
+    class TestOrchestrator extends OrchestratorBase<Record<string, unknown>> {
       protected getScraperName() { return 'NSE' as const; }
       protected async scrapeData() { return { ipos: [ipo], subscriptions: [] }; }
       protected validateIPO(i: Record<string, unknown>) { return { success: true as const, data: i }; }
