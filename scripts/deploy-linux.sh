@@ -635,26 +635,34 @@ verify_public_health() {
 }
 
 assert_pm2_logrotate_installed() {
-  # T-311 (#8 P3 / the 2026-06-13 disk-full-incident class): pm2-logrotate is
-  # ABSENT on the Linux box today — ipodhan-scraper-out.log alone grows
-  # ~1.47MB per 30-min cycle (~70MB/day; ~140MB/day across prod+staging),
-  # the same unbounded-log-growth shape that took the prod DB, SSH, and the
-  # runner down on 2026-06-13. This is a LOUD, NON-BLOCKING check (WARN, not
-  # a deploy failure): the module must be installed once, by hand, on the
-  # box (see scripts/ops/install-pm2-logrotate.sh) — T-311 does not install
-  # it, and a deploy MUST NOT start hard-failing before the owner has had a
-  # chance to run that one-time command. Once installed, a future task can
-  # promote this to a hard gate (mirroring assert-env-keys.sh's severity).
+  # T-311 (#8 P3 / the 2026-06-13 disk-full-incident class): pm2-logrotate
+  # was ABSENT on the Linux box for a while — ipodhan-scraper-out.log alone
+  # grows ~1.47MB per 30-min cycle (~70MB/day; ~140MB/day across
+  # prod+staging), the same unbounded-log-growth shape that took the prod
+  # DB, SSH, and the runner down on 2026-06-13. T-311 shipped this as a
+  # LOUD, NON-BLOCKING check (WARN) deliberately: the module had to be
+  # installed once, by hand, on the box (scripts/ops/install-pm2-logrotate.sh)
+  # before a hard gate could be safe — hard-failing before the owner had a
+  # chance to run that one-time command would have blocked every deploy.
   #
-  # T-311F (checker HARD finding): `pm2 conf <module>` exits 0 REGARDLESS of
-  # whether the module is installed — verified read-only on the real box
-  # with the module genuinely absent: `pm2 conf pm2-logrotate >/dev/null
-  # 2>&1; echo $?` printed `0` with no output, so the warn branch below could
-  # never fire and the deploy log lied ("installed and configured" on a box
-  # where it was not). `pm2 jlist` is pm2's own process/module inventory (the
-  # same introspection `pm2_app_status()` above already uses) — an installed
-  # module registers itself there by name, so grepping it actually
-  # distinguishes installed vs absent.
+  # T-331 P2-11: install-pm2-logrotate.sh was run on the box (2026-08-27,
+  # confirmed: pm2 jlist shows pm2-logrotate online, `pm2 conf` shows
+  # max_size=50M retain=7 compress=true, and the pre-existing 261M
+  # ipodhan-scraper-out.log rotated within one workerInterval of install).
+  # The one-time hand-run step T-311 was waiting on is done, so this is now
+  # promoted to a HARD GATE (mirroring assert-env-keys.sh's FATAL severity):
+  # a deploy where the module has gone missing again (e.g. a box rebuild
+  # that didn't re-run the install script) MUST NOT silently proceed toward
+  # another multi-hundred-MB unrotated log.
+  #
+  # T-311F (checker HARD finding, still true): `pm2 conf <module>` exits 0
+  # REGARDLESS of whether the module is installed — verified read-only on
+  # the real box with the module genuinely absent: `pm2 conf pm2-logrotate
+  # >/dev/null 2>&1; echo $?` printed `0` with no output, so a presence
+  # check built on that exit code can never fire. `pm2 jlist` is pm2's own
+  # process/module inventory (the same introspection `pm2_app_status()`
+  # above already uses) — an installed module registers itself there by
+  # name, so grepping it actually distinguishes installed vs absent.
   if (( DRY_RUN )); then
     log "[dry-run] skipping pm2-logrotate presence assert"
     return 0
@@ -662,7 +670,8 @@ assert_pm2_logrotate_installed() {
   if pm2 jlist 2>/dev/null | grep -Eq '"name"[[:space:]]*:[[:space:]]*"pm2-logrotate"'; then
     log "pm2-logrotate: installed (see scripts/ops/install-pm2-logrotate.sh for the config values it applies)"
   else
-    warn "pm2-logrotate module NOT installed — scraper/web logs will grow unbounded (2026-06-13 disk-full-incident class). One-time fix on the box: bash scripts/ops/install-pm2-logrotate.sh"
+    echo "FATAL: pm2-logrotate module NOT installed — deploy refused (2026-06-13 disk-full-incident class). One-time fix on the box: bash scripts/ops/install-pm2-logrotate.sh, then re-run this deploy." >&2
+    exit 1
   fi
 }
 
@@ -687,7 +696,16 @@ report_wired_jobs() {
     rest="${entry#*:}"
     call="${rest%%:*}"
     flag="${rest#*:}"
-    if printf '%s' "$idx_content" | grep -q "await ${call}()"; then
+    # T-331 fix-round: T-340's step-ledger refactor changed the call site
+    # from a direct `await triggerX()` to `await runStep(cycleId, 'x',
+    # triggerX)` (a callback reference, not an invocation) -- the original
+    # `await ${call}()` grep stopped matching ANY of the three jobs the
+    # moment that refactor landed, so this report has been silently
+    # reporting "job NOT wired" for all three on every real deploy since
+    # T-340, without failing the deploy (this report is informational only
+    # -- see the surrounding block). Match either call shape: the direct
+    # `await triggerX()` OR the step-ledger `triggerX)` callback-reference.
+    if printf '%s' "$idx_content" | grep -qE "(await ${call}\(\)|, ${call}\))"; then
       if [ -n "$flag" ]; then
         flag_val="unset"
         if (( ! DRY_RUN )); then

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeCompanyNameForMatching, compactCompanyNameKey } from './company-name-normalizer';
+import { normalizeCompanyNameForMatching, compactCompanyNameKey, sanitizeDisplayCompanyName } from './company-name-normalizer';
 
 /**
  * P2-1 (round-2 review, T-277): 11 duplicate IPO pairs existed in prod because
@@ -146,5 +146,54 @@ describe('compactCompanyNameKey — word-break fold (P2-1, T-277F)', () => {
     expect(compactCompanyNameKey('Sun Pharmaceutical Industries Ltd')).not.toBe(
       compactCompanyNameKey('Sunrise Pharmaceutical Industries Ltd')
     );
+  });
+});
+
+/**
+ * T-331 P3-2 — Chittorgarh status-glyph leak into DISPLAY names.
+ *
+ * Round 7 found "ABH Healthcare Ltd. O" published to users. The stripping rules
+ * in `sanitizeDisplayCompanyName` were already correct (shipped with #42), and
+ * the round-7 sighting is STALE ROWS written before that sanitizer was wired at
+ * the IPORepository choke point — not a broken normalizer.
+ *
+ * The real gap round 7 should have caught: `sanitizeDisplayCompanyName` — which
+ * its own docstring calls "the SINGLE source of truth for the stored display
+ * name" — had ZERO tests. A regression in it would have shipped silently and
+ * re-dirtied every name written afterwards. These are the missing locks. The
+ * negative controls matter as much as the positives: an over-eager strip would
+ * corrupt legitimate names, which is worse than the glyph it removes.
+ */
+describe('sanitizeDisplayCompanyName - display-name scrape artifacts (T-331 P3-2)', () => {
+  it('strips a trailing status glyph appended after the legal suffix', () => {
+    expect(sanitizeDisplayCompanyName('ABH Healthcare Ltd. O')).toBe('ABH Healthcare Ltd.');
+    expect(sanitizeDisplayCompanyName('Acme Limited P')).toBe('Acme Limited');
+    expect(sanitizeDisplayCompanyName('Foo Ltd. LT')).toBe('Foo Ltd.');
+    expect(sanitizeDisplayCompanyName('Bar Ltd. CT')).toBe('Bar Ltd.');
+  });
+
+  it('KEEPS the legal suffix - this is the display name, not the matching key', () => {
+    expect(sanitizeDisplayCompanyName('ABH Healthcare Ltd. O')).toContain('Ltd.');
+  });
+
+  it('does NOT strip a genuine mid-string parenthetical', () => {
+    expect(sanitizeDisplayCompanyName('Horizon Reclaim (India) Ltd.')).toBe('Horizon Reclaim (India) Ltd.');
+  });
+
+  it('strips HTML tags and stray angle brackets', () => {
+    expect(sanitizeDisplayCompanyName('<b>Acme</b> Ltd.')).toBe('Acme Ltd.');
+    expect(sanitizeDisplayCompanyName('Acme> Ltd.')).toBe('Acme Ltd.');
+  });
+
+  it('strips a trailing IPO/FPO instrument label', () => {
+    expect(sanitizeDisplayCompanyName('Twinkle Papers IPO')).toBe('Twinkle Papers');
+    expect(sanitizeDisplayCompanyName('Twinkle Papers FPO')).toBe('Twinkle Papers');
+  });
+
+  it('is null-safe and length-capped at 200', () => {
+    expect(sanitizeDisplayCompanyName(null)).toBe('');
+    expect(sanitizeDisplayCompanyName(undefined)).toBe('');
+    expect(sanitizeDisplayCompanyName('')).toBe('');
+    expect(sanitizeDisplayCompanyName('A'.repeat(300))).toHaveLength(200);
   });
 });

@@ -378,6 +378,70 @@ export function crossCheckNseStatuses({ ourRows = [], nseCurrent = [], nseUpcomi
   return mismatches;
 }
 
+// ---- (n): T-331 P2-9 + P3-4 -- thresholds so "zero" can never pass silently ---
+//
+// Round 7 found four content tables at 0 rows across 251 IPOs, and
+// fieldCompleteness reported as 0.7%. BOTH passed the nightly audit. The audit
+// printed the numbers and asserted nothing about them: `record(... reachable)`
+// only checked the endpoint answered, and the completeness reading was a
+// console WARN that cannot affect an exit code. A number nobody asserts on is
+// not a check -- it is a log line that looks like one.
+
+/**
+ * Hard floor for fieldCompleteness. Deliberately FAR below the existing 50%
+ * WARN in audit-prod.mjs, and the two coexist: WARN at <50 means "investigate",
+ * FAIL at <5 means "structurally broken". T-309 left this report-only because
+ * the metric's exact denominator is owned elsewhere and it did not want to gate
+ * on semantics it could not validate. That caution is respected here -- 5% is
+ * low enough that NO reasonable denominator makes it healthy, so the floor
+ * holds regardless of which one the endpoint uses.
+ */
+export const FIELD_COMPLETENESS_FAIL_PCT = 5;
+
+export function checkFieldCompleteness(pct) {
+  const n = typeof pct === 'string' ? parseFloat(pct) : pct;
+  // An unreadable reading is STALE, never a silent pass -- same posture as the
+  // step-ledger age checks.
+  if (!Number.isFinite(n)) {
+    return `fieldCompleteness is unreadable (${JSON.stringify(pct)}) - cannot prove data quality, treated as a failure rather than a silent pass`;
+  }
+  if (n < FIELD_COMPLETENESS_FAIL_PCT) {
+    return `fieldCompleteness=${n}% is below the ${FIELD_COMPLETENESS_FAIL_PCT}% hard floor - the extractors are not populating fields at all (round-7 P3-4 shape: 0.7% passed silently)`;
+  }
+  return null;
+}
+
+/** Content tables whose emptiness is a defect, not a legitimate empty state. */
+export const CONTENT_TABLES = ['ipo_details', 'ipo_scores', 'anchor_investors', 'ipo_reviews'];
+
+/** A content table may sit empty this long before it counts as never-populated. */
+export const CONTENT_TABLE_EMPTY_MAX_DAYS = 30;
+
+/**
+ * FAIL a NAMED content table that holds 0 rows while IPOs old enough to have
+ * populated it exist.
+ *
+ * "0 rows for > 30 days" cannot be read from a row count alone -- an empty
+ * table carries no history. `oldestIpoAgeDays` is the proxy: if IPOs have
+ * existed for longer than the window and the table is still empty, the
+ * extractor has never run. On a genuinely new database (no IPO older than the
+ * window) emptiness is legitimate and this must NOT fire.
+ *
+ * Does NOT build the missing extractors -- issues #222/#223/#224 own those; the
+ * violation text points at them so the audit output is actionable.
+ */
+export function checkContentTableEmpty(tableName, rowCount, oldestIpoAgeDays) {
+  if (!Number.isFinite(rowCount)) {
+    return `${tableName}: row count unreadable - cannot prove the table is populated, treated as a failure rather than a silent pass`;
+  }
+  if (rowCount > 0) return null;
+  if (!Number.isFinite(oldestIpoAgeDays)) {
+    return `${tableName}: 0 rows and the oldest-IPO age is unreadable - cannot prove this is a legitimately new database`;
+  }
+  if (oldestIpoAgeDays <= CONTENT_TABLE_EMPTY_MAX_DAYS) return null;
+  return `${tableName}: 0 rows while IPOs have existed for ${Math.floor(oldestIpoAgeDays)} days (> ${CONTENT_TABLE_EMPTY_MAX_DAYS}d) - the extractor has never run (see issues #222/#223/#224)`;
+}
+
 // ---- (j): assorted P3 gates --------------------------------------------------
 
 export function checkSectorPopulatedPct(populatedCount, totalCount) {

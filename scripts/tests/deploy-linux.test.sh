@@ -544,15 +544,26 @@ EOSCRIPT
     PATH="$FAKEBIN11:$PATH"
     assert_pm2_logrotate_installed
   ) >/tmp/deploy-test-11a.log 2>&1
+  RC11A=$?
 
-  if grep -q 'WARN:.*pm2-logrotate module NOT installed' /tmp/deploy-test-11a.log; then
-    pass "case 11a: absent pm2-logrotate module produces a WARN (predicate actually fires)"
+  # T-331 P2-11: promoted from WARN to a hard gate now that
+  # install-pm2-logrotate.sh has actually been run on the box (the one-time
+  # step T-311's WARN was waiting on) -- an absent module MUST refuse the
+  # deploy (exit 1 + FATAL), not just log a warning and proceed.
+  if [ "$RC11A" -eq 0 ]; then
+    fail "case 11a: assert_pm2_logrotate_installed() exited 0 when the module is absent -- must refuse the deploy (T-331 hard-gate promotion)"
+    cat /tmp/deploy-test-11a.log
   else
-    fail "case 11a: expected a 'pm2-logrotate module NOT installed' WARN when the module is absent"
+    pass "case 11a: absent pm2-logrotate module exits non-zero (deploy refused)"
+  fi
+  if grep -q 'FATAL:.*pm2-logrotate module NOT installed' /tmp/deploy-test-11a.log; then
+    pass "case 11a: absent pm2-logrotate module produces a FATAL line naming the fix (install-pm2-logrotate.sh)"
+  else
+    fail "case 11a: expected a 'FATAL: ... pm2-logrotate module NOT installed' line when the module is absent"
     cat /tmp/deploy-test-11a.log
   fi
-  if grep -q 'installed and configured\|pm2-logrotate: installed (' /tmp/deploy-test-11a.log && ! grep -q 'WARN' /tmp/deploy-test-11a.log; then
-    fail "case 11a: logged 'installed' with no WARN even though the module is absent — the false-green regression"
+  if grep -q 'installed and configured\|pm2-logrotate: installed (' /tmp/deploy-test-11a.log; then
+    fail "case 11a: logged 'installed' even though the module is absent -- the false-green regression"
   else
     pass "case 11a: did not falsely log 'installed' while the module is absent"
   fi
@@ -576,18 +587,25 @@ EOSCRIPT
     PATH="$FAKEBIN11:$PATH"
     assert_pm2_logrotate_installed
   ) >/tmp/deploy-test-11b.log 2>&1
+  RC11B=$?
 
+  if [ "$RC11B" -eq 0 ]; then
+    pass "case 11b: assert_pm2_logrotate_installed() exits 0 when the module IS present (deploy proceeds)"
+  else
+    fail "case 11b: assert_pm2_logrotate_installed() exited non-zero ($RC11B) when the module IS present"
+    cat /tmp/deploy-test-11b.log
+  fi
   if grep -q 'pm2-logrotate: installed' /tmp/deploy-test-11b.log; then
-    pass "case 11b: present pm2-logrotate module logs 'installed', not a WARN"
+    pass "case 11b: present pm2-logrotate module logs 'installed', not a FATAL"
   else
     fail "case 11b: expected 'pm2-logrotate: installed' when the module IS present"
     cat /tmp/deploy-test-11b.log
   fi
-  if grep -q 'WARN' /tmp/deploy-test-11b.log; then
-    fail "case 11b: unexpected WARN when the module IS present"
+  if grep -q 'FATAL\|WARN' /tmp/deploy-test-11b.log; then
+    fail "case 11b: unexpected FATAL/WARN when the module IS present"
     cat /tmp/deploy-test-11b.log
   else
-    pass "case 11b: no WARN when the module is present"
+    pass "case 11b: no FATAL/WARN when the module is present"
   fi
 
   rm -rf "$FAKEBIN11"
@@ -753,6 +771,34 @@ else
   fi
 
   rm -rf "$ENVDIR15"
+fi
+
+# --- Case 16: T-331 P2-8 (round-7 recurrence) — deploy-linux.sh MUST only --
+# --- ever start the scraper via the one-shot `src/index.ts --source=all` --
+# --- entrypoint, and MUST NEVER start `scheduler/index.ts` (the `npm run --
+# --- scheduler` / SchedulerService tree that defines the tiered ----------
+# --- market-hours/after-hours/weekend cron schedules in scheduler/config.ts).
+# --- T-311 already decided (docs/scraper/scheduler-liveness.md) to RETIRE --
+# --- that tiering -- every job it registers has an equivalent already ------
+# --- wired into src/index.ts's flat one-shot cadence -- and to KEEP -------
+# --- SchedulerService only as documented non-prod tooling (`npm run --------
+# --- scheduler`, local/manual use). This case is the static proof that the -
+# --- REAL deploy script honors that decision: grep the actual file content,
+# --- not a doc's claim about it, so a future edit that starts the ----------
+# --- scheduler tree in the live path fails this test immediately. ---------
+SCHEDULER_PM2_STARTS="$(grep -c "scheduler/index" "$DEPLOY_SCRIPT" || true)"
+SOURCE_ALL_PM2_STARTS="$(grep -c -- "--source=all" "$DEPLOY_SCRIPT" || true)"
+
+if [ "$SCHEDULER_PM2_STARTS" -ne 0 ]; then
+  fail "case 16: $DEPLOY_SCRIPT references scheduler/index.ts $SCHEDULER_PM2_STARTS time(s) -- the tiered scheduler tree must stay unwired from the live deploy path (T-311/T-331 RETIRE decision) or docs/scraper/scheduler-liveness.md must be updated to WIRE and this test corrected"
+else
+  pass "case 16a: deploy-linux.sh never references scheduler/index.ts (tiered scheduler stays unwired from prod)"
+fi
+
+if [ "$SOURCE_ALL_PM2_STARTS" -lt 1 ]; then
+  fail "case 16: expected at least one '--source=all' pm2 start invocation in $DEPLOY_SCRIPT -- the one-shot entrypoint is the only scraper path that should exist"
+else
+  pass "case 16b: deploy-linux.sh starts the scraper via the one-shot --source=all entrypoint ($SOURCE_ALL_PM2_STARTS occurrence(s))"
 fi
 
 if [ "$FAILED" -ne 0 ]; then

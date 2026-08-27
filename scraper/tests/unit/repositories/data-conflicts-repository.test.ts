@@ -230,6 +230,144 @@ describe('DataConflictsRepository (T-286F direct tests)', () => {
     });
   });
 
+  describe('write-time noise guard (T-331 P2-6)', () => {
+    const baseInput = {
+      ipoId: 'ipo-1',
+      tableName: 'ipos',
+      fieldName: 'openDate',
+      source1: 'NSE' as const,
+      value1: '2026-09-01',
+      source2: 'BSE' as const,
+      value2: '2026-09-05',
+    };
+
+    function makeNoInsertNoUpdateDb() {
+      return {
+        insert: vi.fn(),
+        update: vi.fn(),
+        select: vi.fn(),
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any;
+    }
+
+    describe('logConflict', () => {
+      it('rejects an empty value2 (null) without an insert', async () => {
+        const mockDb = makeNoInsertNoUpdateDb();
+        const repo = new DataConflictsRepository(mockDb, mockRedis);
+        const result = await repo.logConflict({ ...baseInput, value2: null });
+
+        expect(result).toBeNull();
+        expect(mockDb.insert).not.toHaveBeenCalled();
+      });
+
+      it('rejects an empty value2 (the literal string "null" from JSON.stringify(null))', async () => {
+        const mockDb = makeNoInsertNoUpdateDb();
+        const repo = new DataConflictsRepository(mockDb, mockRedis);
+        const result = await repo.logConflict({ ...baseInput, value2: 'null' });
+
+        expect(result).toBeNull();
+        expect(mockDb.insert).not.toHaveBeenCalled();
+      });
+
+      it('rejects an empty value1', async () => {
+        const mockDb = makeNoInsertNoUpdateDb();
+        const repo = new DataConflictsRepository(mockDb, mockRedis);
+        const result = await repo.logConflict({ ...baseInput, value1: null });
+
+        expect(result).toBeNull();
+        expect(mockDb.insert).not.toHaveBeenCalled();
+      });
+
+      it('rejects value1 === value2 (post-normalization duplicate)', async () => {
+        const mockDb = makeNoInsertNoUpdateDb();
+        const repo = new DataConflictsRepository(mockDb, mockRedis);
+        const result = await repo.logConflict({ ...baseInput, value1: '"45"', value2: '"45"' });
+
+        expect(result).toBeNull();
+        expect(mockDb.insert).not.toHaveBeenCalled();
+      });
+
+      it('still inserts a genuine two-real-different-value disagreement', async () => {
+        const mockDb = {
+          insert: vi.fn().mockReturnValue({
+            values: vi.fn().mockReturnValue({
+              returning: vi.fn().mockResolvedValue([{ id: 'real-conflict-id', ...baseInput }]),
+            }),
+          }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any;
+
+        const repo = new DataConflictsRepository(mockDb, mockRedis);
+        const result = await repo.logConflict(baseInput);
+
+        expect(mockDb.insert).toHaveBeenCalledTimes(1);
+        expect(result?.id).toBe('real-conflict-id');
+      });
+    });
+
+    describe('upsertConflict', () => {
+      it('rejects noise-shaped input (empty value2) with no insert, no update, when no existing row', async () => {
+        const mockDb = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([]),
+              }),
+            }),
+          }),
+          insert: vi.fn(),
+          update: vi.fn(),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any;
+
+        const repo = new DataConflictsRepository(mockDb, mockRedis);
+        const result = await repo.upsertConflict({ ...baseInput, value2: null });
+
+        expect(result).toBeNull();
+        expect(mockDb.insert).not.toHaveBeenCalled();
+        expect(mockDb.update).not.toHaveBeenCalled();
+      });
+
+      it('auto-resolves the existing open row instead of updating it with noise-shaped input', async () => {
+        let capturedSet: Record<string, unknown> | undefined;
+        const mockDb = {
+          select: vi.fn().mockReturnValue({
+            from: vi.fn().mockReturnValue({
+              where: vi.fn().mockReturnValue({
+                limit: vi.fn().mockResolvedValue([{ id: 'existing-conflict-id' }]),
+              }),
+            }),
+          }),
+          insert: vi.fn(),
+          update: vi.fn().mockReturnValue({
+            set: vi.fn((setValues) => {
+              capturedSet = setValues;
+              return {
+                where: vi.fn().mockReturnValue({
+                  returning: vi.fn().mockResolvedValue([{ id: 'existing-conflict-id' }]),
+                }),
+              };
+            }),
+          }),
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        } as any;
+
+        const repo = new DataConflictsRepository(mockDb, mockRedis);
+        const result = await repo.upsertConflict({ ...baseInput, value1: '"same"', value2: '"same"' });
+
+        expect(result).toBeNull();
+        expect(mockDb.insert).not.toHaveBeenCalled();
+        // The only update() call must be the auto-resolve (SYSTEM attribution),
+        // never a refresh of source1/value1/source2/value2 with noise-shaped data.
+        expect(mockDb.update).toHaveBeenCalledTimes(1);
+        expect(capturedSet).toMatchObject({
+          resolutionReason: 'AUTO_RESOLVED_VALUES_CONVERGED',
+          resolvedBy: 'SYSTEM',
+        });
+      });
+    });
+  });
+
   describe('autoResolveConverged', () => {
     it('sets resolved_at + SYSTEM attribution ONLY when a genuine open conflict exists (converges)', async () => {
       let capturedCond: unknown;

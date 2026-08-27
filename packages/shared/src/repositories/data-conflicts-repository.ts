@@ -59,6 +59,17 @@ export interface ConflictStats {
 }
 
 /**
+ * True when a value is empty in the sense that matters for conflict noise:
+ * null/undefined, the empty string, or the literal 4-char string "null" that
+ * `JSON.stringify(null)` produces (T-331 P2-6 — callers store JSON-stringified
+ * values in value1/value2, so a genuinely-missing side arrives here as the
+ * string "null", not the JS value null).
+ */
+function isEmptyConflictValue(value: string | null | undefined): boolean {
+  return value === null || value === undefined || value === '' || value === 'null';
+}
+
+/**
  * Repository for data conflict operations
  * Provides conflict detection logging and resolution tracking
  */
@@ -71,9 +82,43 @@ export class DataConflictsRepository extends BaseRepository {
   }
 
   /**
+   * Write-time noise guard shared by `logConflict`/`upsertConflict` (T-331
+   * P2-6). Of 2,555 unresolved `data_conflicts` rows sampled in the round-7
+   * review, 2,205 had an empty `value2` (one side genuinely has no data —
+   * not a disagreement) and 99 had `value1 === value2` after normalization
+   * (a false "conflict" between two identical values, usually a JSON
+   * formatting mismatch). Both are non-disagreements and MUST NOT reach the
+   * table — every existing conflict-detection guard upstream
+   * (`data-consolidation-service.ts` Case 2 / the T-309 missing-incoming
+   * guard) already tries to prevent these, but this is a defense-in-depth
+   * chokepoint at the actual write, so a bypass in any upstream caller (e.g.
+   * the `implausibleIssueSize` path, which calls `logConflict` directly
+   * without running through `consolidateField`'s guards) still cannot
+   * produce a noise row. Returns a reason string when the write should be
+   * rejected, or null when it's a genuine candidate conflict.
+   */
+  private rejectNoiseReason(input: LogConflictInput): string | null {
+    if (isEmptyConflictValue(input.value2)) {
+      return 'EMPTY_VALUE2';
+    }
+    if (isEmptyConflictValue(input.value1)) {
+      return 'EMPTY_VALUE1';
+    }
+    if (input.value1 === input.value2) {
+      return 'VALUE1_EQUALS_VALUE2';
+    }
+    return null;
+  }
+
+  /**
    * Log a new conflict between sources
    */
-  async logConflict(input: LogConflictInput): Promise<DataConflictRecord> {
+  async logConflict(input: LogConflictInput): Promise<DataConflictRecord | null> {
+    const noiseReason = this.rejectNoiseReason(input);
+    if (noiseReason) {
+      return null;
+    }
+
     const result = await this.executeQuery(
       'logDataConflict',
       async () => {
@@ -114,7 +159,9 @@ export class DataConflictsRepository extends BaseRepository {
    * disagreement on the same field supersedes the prior unresolved record
    * rather than piling up beside it.
    */
-  async upsertConflict(input: LogConflictInput): Promise<DataConflictRecord> {
+  async upsertConflict(input: LogConflictInput): Promise<DataConflictRecord | null> {
+    const noiseReason = this.rejectNoiseReason(input);
+
     const existing = await this.db
       .select({ id: dataConflicts.id })
       .from(dataConflicts)
@@ -127,6 +174,18 @@ export class DataConflictsRepository extends BaseRepository {
         )
       )
       .limit(1);
+
+    if (noiseReason) {
+      // A prior cycle logged a real disagreement for this field, but this
+      // cycle's inputs are now noise-shaped (empty side / values converged) —
+      // auto-resolve the stale open row instead of leaving it unresolved
+      // forever (same "sources converged" signal `autoResolveConverged`
+      // handles for the consolidation-service path).
+      if (existing.length > 0) {
+        await this.autoResolveConverged(input.ipoId, input.tableName, input.fieldName);
+      }
+      return null;
+    }
 
     if (existing.length === 0) {
       return this.logConflict(input);

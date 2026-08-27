@@ -194,6 +194,34 @@ costs nothing.
   review finds the two diverge in coverage, reconcile by extending
   `evaluateFreshness`, not by wiring a second implementation.
 
+## Round-8 re-verification (T-331 P2-8, 2026-08-27)
+
+Round-7 review flagged this as "THE ONE RECURRENCE" — the concern that T-311's
+wire-or-retire rule was applied to individual JOBS but never proven against
+the SCHEDULER TREE itself (`SchedulerService`/`scheduler/config.ts`'s tiered
+market-hours cadence). Re-verified: the decision above (RETIRE the tiering,
+KEEP `SchedulerService` as documented non-prod `npm run scheduler` tooling)
+is still correct and still what actually runs in prod — nothing wired it in
+between T-311 and this task. Proof, not just re-assertion:
+
+- `scripts/deploy-linux.sh` starts the scraper via exactly one command shape
+  (`pm2 start tsx/dist/cli.mjs --name ipodhan-scraper ... -- src/index.ts
+  --source=all`, in `restart_pm2()`/`resume_scraper()`/the rollback path) and
+  contains ZERO references to `scheduler/index.ts` anywhere in the file.
+- No crontab, systemd timer, or `.github/workflows/*.yml` invokes `npm run
+  scheduler` or `scheduler/index.ts` either.
+- `scripts/tests/deploy-linux.test.sh` case 16 makes this a standing,
+  automated assertion (not just a one-time grep at review time): it greps the
+  real `deploy-linux.sh` content for `scheduler/index` (must be absent) and
+  for `--source=all` (must be present) — the same "prove the live entrypoint,
+  not the doc" shape as the existing `index-scheduler-jobs-wiring.test.ts`
+  (T-311) uses for the individual jobs. A future edit that starts the
+  scheduler tree in the live path fails this test immediately.
+
+No third option (delete `scraper/src/scheduler/`) was taken: `SchedulerService`
+remains a legitimate, documented, non-production entrypoint for local/manual
+use, unchanged from the T-311 decision above.
+
 ## Verification
 
 - `cd scraper && npx tsc --noEmit` — no new errors introduced by this task

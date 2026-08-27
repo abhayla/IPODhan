@@ -24,6 +24,11 @@ import {
   checkCronScriptExecutable,
   checkDeadSourceHasRetireBy,
   checkSegmentPopulatedForIpo,
+  checkFieldCompleteness,
+  FIELD_COMPLETENESS_FAIL_PCT,
+  checkContentTableEmpty,
+  CONTENT_TABLES,
+  CONTENT_TABLE_EMPTY_MAX_DAYS,
   findLiveCrossSourceDisagreements,
   valuesDisagree,
   normalizeCompanyKey,
@@ -711,4 +716,56 @@ test('(l) does not double-report the same company from both feeds', () => {
     nseUpcoming: [nse('DUP', 'Dup Ltd')],
   });
   assert.equal(m.length, 1);
+});
+
+// ---- (n) T-331 P2-9 + P3-4: zero can never pass silently ---------------------
+
+test('(n) FAILS fieldCompleteness below the hard floor (round-7 saw 0.7% pass)', () => {
+  const v = checkFieldCompleteness(0.7);
+  assert.ok(v !== null);
+  assert.match(v, /0\.7/);
+});
+
+test('(n) FAILS on the exclusive boundary and PASSES at the floor itself', () => {
+  assert.ok(checkFieldCompleteness(FIELD_COMPLETENESS_FAIL_PCT - 0.01) !== null);
+  assert.equal(checkFieldCompleteness(FIELD_COMPLETENESS_FAIL_PCT), null);
+});
+
+test('(n) PASSES a healthy fieldCompleteness, and accepts the string form the API returns', () => {
+  assert.equal(checkFieldCompleteness(87.4), null);
+  assert.equal(checkFieldCompleteness('87.4'), null);
+  assert.ok(checkFieldCompleteness('0.7') !== null);
+});
+
+test('(n) treats an unreadable fieldCompleteness as a FAILURE, not a silent pass', () => {
+  assert.ok(checkFieldCompleteness(null) !== null);
+  assert.ok(checkFieldCompleteness(undefined) !== null);
+  assert.ok(checkFieldCompleteness('nonsense') !== null);
+});
+
+test('(n) FAILS a NAMED content table empty while old IPOs exist', () => {
+  const v = checkContentTableEmpty('ipo_scores', 0, 251);
+  assert.ok(v !== null);
+  assert.match(v, /ipo_scores/);
+  assert.match(v, /#222/);
+});
+
+test('(n) does NOT fire on a genuinely new database (no IPO older than the window)', () => {
+  assert.equal(checkContentTableEmpty('ipo_scores', 0, 3), null);
+  assert.equal(checkContentTableEmpty('ipo_scores', 0, CONTENT_TABLE_EMPTY_MAX_DAYS), null);
+});
+
+test('(n) PASSES a populated content table regardless of age', () => {
+  assert.equal(checkContentTableEmpty('anchor_investors', 42, 900), null);
+});
+
+test('(n) treats unreadable counts as STALE rather than passing', () => {
+  assert.ok(checkContentTableEmpty('ipo_details', null, 900) !== null);
+  assert.ok(checkContentTableEmpty('ipo_details', 0, null) !== null);
+});
+
+test('(n) names all four round-7 content tables', () => {
+  for (const t of ['ipo_details', 'ipo_scores', 'anchor_investors', 'ipo_reviews']) {
+    assert.ok(CONTENT_TABLES.includes(t), `${t} missing from CONTENT_TABLES`);
+  }
 });

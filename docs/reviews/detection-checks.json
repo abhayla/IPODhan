@@ -1,5 +1,5 @@
 {
-  "$schema": "T-335 detection-checks manifest — read by the round-8 review contract to classify a fresh finding as SHOULD-HAVE-BEEN-CAUGHT (a listed check already covers this finding's class) vs a genuinely new gap.",
+  "$schema": "T-335 detection-checks manifest \u2014 read by the round-8 review contract to classify a fresh finding as SHOULD-HAVE-BEEN-CAUGHT (a listed check already covers this finding's class) vs a genuinely new gap.",
   "generatedBy": "T-335",
   "sourceRca": "docs/reviews/round-7-detection-rca.md",
   "auditScript": "scripts/audit-detection-floor.mjs",
@@ -25,7 +25,7 @@
       ],
       "failThreshold": "issue_size > 0 AND issue_size < Rs10,00,00,000 for MAINBOARD, or < Rs1,00,00,000 for SME",
       "severity": "P1",
-      "unverifiableWhen": "never — always runs against the ipos table"
+      "unverifiableWhen": "never \u2014 always runs against the ipos table"
     },
     {
       "id": "c_issue_size_consistency",
@@ -45,7 +45,7 @@
       ],
       "failThreshold": "lot value outside [Rs8,000..Rs20,000] MAINBOARD or [Rs90,000..Rs3,00,000] SME, for offering_type=IPO",
       "severity": "P1",
-      "unverifiableWhen": "never — always runs against the ipos table"
+      "unverifiableWhen": "never \u2014 always runs against the ipos table"
     },
     {
       "id": "d_corporate_action_shape",
@@ -55,7 +55,7 @@
       ],
       "failThreshold": "offering_type=IPO AND price_range_min==price_range_max AND lot_size==100 AND close_date-open_date in [10..14] days",
       "severity": "P1",
-      "unverifiableWhen": "never — always runs against the ipos table"
+      "unverifiableWhen": "never \u2014 always runs against the ipos table"
     },
     {
       "id": "e_route_sweep",
@@ -120,17 +120,17 @@
       ],
       "failThreshold": "any scraper/src/scheduler/*.ts file not `import`-ed by scraper/src/index.ts, ecosystem.config.js, or scripts/deploy-linux.sh",
       "severity": "P2",
-      "unverifiableWhen": "never — static analysis of the checked-out repo"
+      "unverifiableWhen": "never \u2014 static analysis of the checked-out repo"
     },
     {
       "id": "k_step_ledger_silence",
-      "findingClass": "a post-scrape step is wired and runs every cycle but produces no successful work — skipped for an unread reason, or failing inside its non-fatal catch",
+      "findingClass": "a post-scrape step is wired and runs every cycle but produces no successful work \u2014 skipped for an unread reason, or failing inside its non-fatal catch",
       "round7Findings": [
         "P2-8 (runtime twin)"
       ],
-      "failThreshold": "any step in the exported STEP_NAMES of scraper/src/index.ts with ZERO rows of status=ok in scraper_steps over the last 24h. The expected-step list is DERIVED from that constant at audit time (parseStepNames), never hand-typed here — a hand-typed copy is the i_wire_or_retire class itself. skipped rows do not count as ok: a step skipped every cycle (ADMIN_API_TOKEN unset) is still a step doing nothing.",
+      "failThreshold": "any step in the exported STEP_NAMES of scraper/src/index.ts with ZERO rows of status=ok in scraper_steps over the last 24h. The expected-step list is DERIVED from that constant at audit time (parseStepNames), never hand-typed here \u2014 a hand-typed copy is the i_wire_or_retire class itself. skipped rows do not count as ok: a step skipped every cycle (ADMIN_API_TOKEN unset) is still a step doing nothing.",
       "severity": "P1",
-      "unverifiableWhen": "STEP_NAMES cannot be parsed from scraper/src/index.ts, the scraper_steps table is absent (migration 0033 not applied), or the table has zero rows in the window (the ledger writer has not run). Zero rows is deliberately UNVERIFIABLE rather than 12 simultaneous FAILs — a genuinely dead scraper is caught independently by g_freshness_per_type."
+      "unverifiableWhen": "STEP_NAMES cannot be parsed from scraper/src/index.ts, the scraper_steps table is absent (migration 0033 not applied), or the table has zero rows in the window (the ledger writer has not run). Zero rows is deliberately UNVERIFIABLE rather than 12 simultaneous FAILs \u2014 a genuinely dead scraper is caught independently by g_freshness_per_type."
     },
     {
       "id": "k_step_consecutive_failures",
@@ -140,17 +140,17 @@
       ],
       "failThreshold": "any step in the derived STEP_NAMES whose most recent scraper_steps rows show status=failed for >= 3 consecutive cycles (leading streak, newest-first). 2 is a blip and PASSes; a non-failed row ends the streak.",
       "severity": "P1",
-      "unverifiableWhen": "same as k_step_ledger_silence — unparseable STEP_NAMES, missing scraper_steps table, or an empty 24h window"
+      "unverifiableWhen": "same as k_step_ledger_silence \u2014 unparseable STEP_NAMES, missing scraper_steps table, or an empty 24h window"
     },
     {
       "id": "l_nse_status_crosscheck",
       "findingClass": "our published OPEN/UPCOMING set disagrees with the exchange that actually runs the issue",
       "round7Findings": [
-        "T-340 (new coverage — no round-7 finding; our live status set had NO independent oracle at all)"
+        "T-340 (new coverage \u2014 no round-7 finding; our live status set had NO independent oracle at all)"
       ],
-      "failThreshold": "any MAINBOARD row naming NSE among its listing exchanges where (a) we publish OPEN but NSE current-issue does not list it, (b) NSE current-issue lists it as open while we publish UPCOMING or no OPEN row, or (c) an NSE current/upcoming issue has no OPEN/UPCOMING row of ours at all. Scope excludes SME (NSE Emerge is not on these endpoints), BSE-only rows, and rows with unknown listing exchanges — FAILing those would be noise, and a muted channel is a dead mechanism.",
+      "failThreshold": "any MAINBOARD row naming NSE among its listing exchanges where (a) we publish OPEN but NSE current-issue does not list it, (b) NSE current-issue lists it as open while we publish UPCOMING or no OPEN row, or (c) an NSE current/upcoming issue has no OPEN/UPCOMING row of ours at all. Scope excludes SME (NSE Emerge is not on these endpoints), BSE-only rows, and rows with unknown listing exchanges \u2014 FAILing those would be noise, and a muted channel is a dead mechanism.",
       "severity": "P1",
-      "unverifiableWhen": "the NSE cookie handshake or either feed fetch fails, or both feeds return zero usable rows (indistinguishable from a broken feed, so never read as \"nothing is open today\"). UNVERIFIABLE pages and exits 3 — never a silent PASS (T-321 class)."
+      "unverifiableWhen": "the NSE cookie handshake or either feed fetch fails, or both feeds return zero usable rows (indistinguishable from a broken feed, so never read as \"nothing is open today\"). UNVERIFIABLE pages and exits 3 \u2014 never a silent PASS (T-321 class)."
     },
     {
       "id": "j_sector_populated",
@@ -160,7 +160,7 @@
       ],
       "failThreshold": "populated sector fraction < 50% of real IPOs",
       "severity": "P2",
-      "unverifiableWhen": "never — always runs against the ipos table"
+      "unverifiableWhen": "never \u2014 always runs against the ipos table"
     },
     {
       "id": "j_segment_not_null",
@@ -168,9 +168,9 @@
       "round7Findings": [
         "P3-7"
       ],
-      "failThreshold": "any offering_type=IPO row with segment IS NULL — an empty/whitespace segment counts as blank, not only SQL NULL.",
+      "failThreshold": "any offering_type=IPO row with segment IS NULL \u2014 an empty/whitespace segment counts as blank, not only SQL NULL.",
       "severity": "P2",
-      "unverifiableWhen": "never — always runs against the ipos table"
+      "unverifiableWhen": "never \u2014 always runs against the ipos table"
     },
     {
       "id": "j_cron_executable",
@@ -191,23 +191,43 @@
       "failThreshold": "a source has >=7 consecutive non-SUCCESS-or-zero-record cycles and is not listed in docs/reviews/dead-source-retirement.json",
       "severity": "P2",
       "unverifiableWhen": "scraper_logs table not present"
+    },
+    {
+      "id": "n_content_tables_populated",
+      "findingClass": "a content table sits at 0 rows while IPOs old enough to have populated it exist - the extractor has never run",
+      "round7Findings": [
+        "P2-9"
+      ],
+      "failThreshold": "any of ipo_details/ipo_scores/anchor_investors/ipo_reviews has 0 rows while the oldest real IPO is older than 30 days (offenders named); the extractors themselves are issues #222/#223/#224",
+      "severity": "P2",
+      "unverifiableWhen": "none of the content tables are queryable"
+    },
+    {
+      "id": "n_field_completeness",
+      "findingClass": "fieldCompleteness reported with no FAIL threshold, so a structurally-broken value passes silently",
+      "round7Findings": [
+        "P3-4"
+      ],
+      "failThreshold": "fieldCompleteness < 5% (hard floor, far below audit-prod's 50% WARN; an unreadable value fails rather than passing)",
+      "severity": "P2",
+      "unverifiableWhen": "ADMIN_API_TOKEN unset or the admin metrics endpoint unreachable/non-200"
     }
   ],
   "notCoveredByThisManifest": [
-    "P2-9 / P3-4 (empty content tables, fieldCompleteness thresholds) — owned by T-331's threshold work on audit-ipo-coverage.mjs, not duplicated here",
-    "P3-3 (always-red Production Verification GitHub Actions workflow) — owned by T-326",
-    "P2-7 ecosystem.config.js dead-config class beyond TZ — owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion"
+    "P2-9 / P3-4 (empty content tables, fieldCompleteness thresholds) \u2014 owned by T-331's threshold work on audit-ipo-coverage.mjs, not duplicated here",
+    "P3-3 (always-red Production Verification GitHub Actions workflow) \u2014 owned by T-326",
+    "P2-7 ecosystem.config.js dead-config class beyond TZ \u2014 owned by T-327's assert-env-keys.sh work; this manifest's h_pm2_env_tz check is the audit-side companion"
   ],
   "exitCodes": {
     "0": "every check PASSed",
-    "1": "at least one check FAILed — a defect is live",
+    "1": "at least one check FAILed \u2014 a defect is live",
     "2": "the audit itself crashed or could not start",
-    "3": "no FAIL, but at least one check is UNVERIFIABLE — the audit was blind tonight, not green (FAIL dominates when both occur)"
+    "3": "no FAIL, but at least one check is UNVERIFIABLE \u2014 the audit was blind tonight, not green (FAIL dominates when both occur)"
   },
   "paging": {
-    "model": "one DIGEST page per check per night (title, failing-row count, first 10 rows, pointer to the full report on the box) — never one page per row",
+    "model": "one DIGEST page per check per night (title, failing-row count, first 10 rows, pointer to the full report on the box) \u2014 never one page per row",
     "severityRule": "P1 when the check has rows that were NOT present in the previous run (state persisted in the audit state dir); P2 for an unchanged backlog",
-    "dedupeKey": "detection-floor-<checkId>-<YYYY-MM-DD> for FAIL digests; detection-floor-unverifiable-<checkId>-<YYYY-MM-DD> for UNVERIFIABLE pages — date-scoped so the Notifier 30-minute cooldown cannot swallow the nightly digest",
+    "dedupeKey": "detection-floor-<checkId>-<YYYY-MM-DD> for FAIL digests; detection-floor-unverifiable-<checkId>-<YYYY-MM-DD> for UNVERIFIABLE pages \u2014 date-scoped so the Notifier 30-minute cooldown cannot swallow the nightly digest",
     "unverifiablePages": "every UNVERIFIABLE check pages P2; an UNVERIFIABLE check is never treated as a pass"
   }
 }
