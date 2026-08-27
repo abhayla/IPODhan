@@ -401,16 +401,33 @@ function parseInvestorTable(text: string): AnchorInvestor[] {
  * - "Bid Date: 27/10/2025"
  * - "Anchor Portion opened on: 27 Oct 2025"
  */
-function extractBidDate(text: string): Date | null {
+// T-327 (round-7 P1-1 class sweep): every branch below builds the returned
+// Date via Date.UTC(...), never `new Date(localString)` / `new Date(y, m, d)`
+// (both construct at LOCAL midnight and drift a day on a non-UTC host when
+// later read back via toISOString() — the prod box is Asia/Kolkata and PM2
+// does not propagate TZ; see .claude/rules/utc-naive-timestamp-normalization.md).
+const FULL_MONTH_MAP: Record<string, number> = {
+  january: 0, february: 1, march: 2, april: 3, may: 4, june: 5,
+  july: 6, august: 7, september: 8, october: 9, november: 10, december: 11,
+};
+
+const ABBR_MONTH_MAP: Record<string, number> = {
+  Jan: 0, Feb: 1, Mar: 2, Apr: 3, May: 4, Jun: 5,
+  Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
+};
+
+// Exported purely for direct unit testing (T-327 class sweep) — same pattern
+// as `parseNSEDate` (T-308/T-327), no other behavior change.
+export function extractBidDate(text: string): Date | null {
   // Pattern 1: "Month DD, YYYY"
   const pattern1 = /(?:bid\s+date|anchor\s+.*?date|opened\s+on).*?(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),?\s+(\d{4})/i;
   const match1 = text.match(pattern1);
 
   if (match1) {
-    const month = match1[1];
+    const month = FULL_MONTH_MAP[match1[1].toLowerCase()];
     const day = parseInt(match1[2]);
     const year = parseInt(match1[3]);
-    const date = new Date(`${month} ${day}, ${year}`);
+    const date = month !== undefined ? new Date(Date.UTC(year, month, day)) : new Date(NaN);
 
     if (!isNaN(date.getTime())) {
       logger.info(`[Anchor Investors] Extracted bid date: ${date.toISOString()}`);
@@ -426,7 +443,7 @@ function extractBidDate(text: string): Date | null {
     const day = parseInt(match2[1]);
     const month = parseInt(match2[2]);
     const year = parseInt(match2[3]);
-    const date = new Date(year, month - 1, day);
+    const date = new Date(Date.UTC(year, month - 1, day));
 
     if (!isNaN(date.getTime())) {
       logger.info(`[Anchor Investors] Extracted bid date: ${date.toISOString()}`);
@@ -443,14 +460,9 @@ function extractBidDate(text: string): Date | null {
     const monthStr = match3[2];
     const year = parseInt(match3[3]);
 
-    const monthMap: Record<string, number> = {
-      'Jan': 0, 'Feb': 1, 'Mar': 2, 'Apr': 3, 'May': 4, 'Jun': 5,
-      'Jul': 6, 'Aug': 7, 'Sep': 8, 'Oct': 9, 'Nov': 10, 'Dec': 11
-    };
-
-    const month = monthMap[monthStr];
+    const month = ABBR_MONTH_MAP[monthStr];
     if (month !== undefined) {
-      const date = new Date(year, month, day);
+      const date = new Date(Date.UTC(year, month, day));
 
       if (!isNaN(date.getTime())) {
         logger.info(`[Anchor Investors] Extracted bid date: ${date.toISOString()}`);

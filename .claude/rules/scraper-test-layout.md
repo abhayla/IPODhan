@@ -3,7 +3,7 @@ name: scraper-test-layout
 description: >
   Enforces the scraper workspace's four-tier test layout (unit / integration / e2e /
   load), each with its own vitest config, directory, naming convention, and timeout.
-globs: ["scraper/tests/**/*.ts", "scraper/vitest*.config.ts"]
+paths: ["scraper/tests/**/*.ts", "scraper/vitest*.config.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

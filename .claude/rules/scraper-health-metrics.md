@@ -4,7 +4,7 @@ description: >
   Enforces recording per-source scraper run metrics to Redis (24h TTL) and the
   threshold-based alerting contract — consecutive-failure and success-rate alerts
   with a cooldown — so a degrading source is caught instead of silently rotting.
-globs: ["scraper/src/services/scraper-metrics-tracker.ts", "scraper/src/services/alerting-service.ts", "scraper/src/scrapers/**/*.ts", "scraper/src/jobs/**/*.ts"]
+paths: ["scraper/src/services/scraper-metrics-tracker.ts", "scraper/src/services/alerting-service.ts", "scraper/src/scrapers/**/*.ts", "scraper/src/jobs/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

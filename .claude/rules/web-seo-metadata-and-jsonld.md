@@ -4,7 +4,7 @@ description: >
   Every public web route builds its Next.js metadata through a per-page-TYPE factory in
   web/lib/seo/metadata.ts and emits JSON-LD via builders in web/lib/seo/structured-data.ts —
   never inline metadata objects or hand-written schema literals, so canonical/OG/locale stay uniform.
-globs: ["web/app/**/*.tsx", "web/lib/seo/**/*.ts"]
+paths: ["web/app/**/*.tsx", "web/lib/seo/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

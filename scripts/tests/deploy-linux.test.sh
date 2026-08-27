@@ -301,7 +301,7 @@ unset DEPLOY_ROOT
 # --- suite nothing to grep for — reverting delete+start back to `pm2 -------
 # --- reload` still passed all 16 assertions. These checks close that gap. -
 DELETE_LINE9="$(grep -n '^==> \[dry-run\] pm2 delete ipodhan-web$' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
-START_LINE9="$(grep -n '^==> \[dry-run\] pm2 start .*--name ipodhan-web ' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
+START_LINE9="$(grep -n '^==> \[dry-run\] TZ=UTC pm2 start .*--name ipodhan-web ' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
 if [ -n "$DELETE_LINE9" ] && [ -n "$START_LINE9" ] && [ "$DELETE_LINE9" -lt "$START_LINE9" ]; then
   pass "case 9: restart_pm2 dry-run emits 'pm2 delete ipodhan-web' before 'pm2 start ... --name ipodhan-web'"
 else
@@ -337,7 +337,7 @@ fi
 # the NEW/mismatched release) runs first, then AUTO-ROLLBACK's own delete+
 # start (against PREVIOUS_RELEASE) — take the SECOND occurrence of each.
 DELETE_LINE10="$(grep -n '^==> \[dry-run\] pm2 delete ipodhan-web$' /tmp/deploy-test-8-2.log | sed -n '2p' | cut -d: -f1)"
-START_LINE10="$(grep -n '^==> \[dry-run\] pm2 start .*--name ipodhan-web ' /tmp/deploy-test-8-2.log | sed -n '2p' | cut -d: -f1)"
+START_LINE10="$(grep -n '^==> \[dry-run\] TZ=UTC pm2 start .*--name ipodhan-web ' /tmp/deploy-test-8-2.log | sed -n '2p' | cut -d: -f1)"
 if [ -n "$DELETE_LINE10" ] && [ -n "$START_LINE10" ] && [ "$DELETE_LINE10" -lt "$START_LINE10" ]; then
   pass "case 10: rollback dry-run emits 'pm2 delete ipodhan-web' before 'pm2 start ... --name ipodhan-web'"
 else
@@ -355,6 +355,160 @@ if grep -q 'pm2 reload' /tmp/deploy-test-8-2.log; then
   fail "case 10: rollback dry-run log contains 'pm2 reload' for the web app — must be delete+start, never reload"
 else
   pass "case 10: rollback dry-run log does NOT contain 'pm2 reload' anywhere"
+fi
+
+# --- Case 9b/9c/9d: T-327F — TZ=UTC on the REAL (non-dry-run) pm2 start ----
+# --- command path, not just the dry-run echo string. Cases 9/10 above only -
+# --- grep the '[dry-run] TZ=UTC pm2 start ...' log lines, which are SEPARATE
+# --- string literals from the real invocations at deploy-linux.sh:530/537/
+# --- 308/(rollback_start_web) — sed 's/&& TZ=UTC pm2 start /&& pm2 start /g'
+# --- across all four real invocations left cases 9/10 fully green (same
+# --- decoupled-dry-run-echo class T-321 already burned this repo on). These
+# --- cases extract each real function in isolation (case 8b/11 pattern),
+# --- put a fake `pm2` on PATH that records its own inherited environment
+# --- (not the script source) to a file, run the REAL (DRY_RUN=0) start path
+# --- against fixture release dirs, and assert TZ=UTC actually reached the
+# --- pm2 process — proving runtime behavior, not just the source text.
+fake_pm2_recorder() {
+  local dir="$1"
+  cat > "$dir/pm2" <<'EOSCRIPT'
+#!/usr/bin/env bash
+if [ "$1" = "start" ]; then
+  { printf 'ARGV: %s\n' "$*"; printf 'TZ=%s\n' "${TZ:-<unset>}"; } >> "$PM2_CALL_LOG"
+fi
+exit 0
+EOSCRIPT
+  chmod +x "$dir/pm2"
+}
+
+RESOLVE_BIN_FN="$(sed -n '/^resolve_bin()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -z "$RESOLVE_BIN_FN" ]; then
+  fail "case 9b/9c/9d: could not extract resolve_bin() from $DEPLOY_SCRIPT — function renamed?"
+fi
+
+# --- Case 9b: restart_pm2()'s REAL path — flip-web (deploy-linux.sh:530) ---
+# --- and flip-scraper (deploy-linux.sh:537) --------------------------------
+RESTART_FN="$(sed -n '/^restart_pm2()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -z "$RESTART_FN" ] || [ -z "$RESOLVE_BIN_FN" ]; then
+  fail "case 9b: could not extract restart_pm2()/resolve_bin() from $DEPLOY_SCRIPT"
+else
+  FAKEBIN9B="$(mktemp -d)"
+  fake_pm2_recorder "$FAKEBIN9B"
+  CALLLOG9B="$(mktemp)"
+  REL9B="$(mktemp -d)"
+  mkdir -p "$REL9B/web/node_modules/next/dist/bin" "$REL9B/scraper/node_modules/tsx/dist"
+  : > "$REL9B/web/node_modules/next/dist/bin/next"
+  : > "$REL9B/scraper/node_modules/tsx/dist/cli.mjs"
+
+  (
+    eval "$RESOLVE_BIN_FN"
+    eval "$RESTART_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=0
+    RELEASE_DIR="$REL9B"
+    PM2_WEB_APP="ipodhan-web"
+    PM2_SCRAPER_APP="ipodhan-scraper"
+    DEPLOY_WEB_INSTANCES=2
+    PATH="$FAKEBIN9B:$PATH"
+    export PM2_CALL_LOG="$CALLLOG9B"
+    restart_pm2
+  ) >/tmp/deploy-test-9b.log 2>&1
+
+  TZ_COUNT9B="$(grep -c '^TZ=UTC$' "$CALLLOG9B" 2>/dev/null || echo 0)"
+  if [ "$TZ_COUNT9B" = "2" ] \
+    && grep -q -- "--name ipodhan-web" "$CALLLOG9B" \
+    && grep -q -- "--name ipodhan-scraper" "$CALLLOG9B"; then
+    pass "case 9b: restart_pm2() REAL (non-dry-run) path sets TZ=UTC on both the web and scraper pm2 start (deploy-linux.sh:530,537)"
+  else
+    fail "case 9b: restart_pm2() REAL path did not set TZ=UTC on both real pm2 start invocations (tz_count=$TZ_COUNT9B)"
+    cat "$CALLLOG9B" 2>/dev/null
+    cat /tmp/deploy-test-9b.log
+  fi
+
+  rm -rf "$FAKEBIN9B" "$REL9B"
+  rm -f "$CALLLOG9B"
+fi
+
+# --- Case 9c: resume_scraper()'s REAL path (deploy-linux.sh:308) — the ------
+# --- EXIT-trap resume that ALWAYS restarts the scraper on any deploy exit --
+RESUME_FN="$(sed -n '/^resume_scraper()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -z "$RESUME_FN" ] || [ -z "$RESOLVE_BIN_FN" ]; then
+  fail "case 9c: could not extract resume_scraper()/resolve_bin() from $DEPLOY_SCRIPT"
+else
+  FAKEBIN9C="$(mktemp -d)"
+  fake_pm2_recorder "$FAKEBIN9C"
+  CALLLOG9C="$(mktemp)"
+  REL9C="$(mktemp -d)"
+  mkdir -p "$REL9C/scraper/node_modules/tsx/dist"
+  : > "$REL9C/scraper/node_modules/tsx/dist/cli.mjs"
+
+  (
+    eval "$RESOLVE_BIN_FN"
+    eval "$RESUME_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=0
+    RELEASE_DIR="$REL9C"
+    SCRAPER_RESUME_TARGET="new"
+    PM2_SCRAPER_APP="ipodhan-scraper"
+    PATH="$FAKEBIN9C:$PATH"
+    export PM2_CALL_LOG="$CALLLOG9C"
+    resume_scraper
+  ) >/tmp/deploy-test-9c.log 2>&1
+
+  TZ_COUNT9C="$(grep -c '^TZ=UTC$' "$CALLLOG9C" 2>/dev/null || echo 0)"
+  if [ "$TZ_COUNT9C" = "1" ] && grep -q -- "--name ipodhan-scraper" "$CALLLOG9C"; then
+    pass "case 9c: resume_scraper() REAL (non-dry-run) path sets TZ=UTC on the scraper pm2 start (deploy-linux.sh:308)"
+  else
+    fail "case 9c: resume_scraper() REAL path did not set TZ=UTC on the scraper pm2 start (tz_count=$TZ_COUNT9C)"
+    cat "$CALLLOG9C" 2>/dev/null
+    cat /tmp/deploy-test-9c.log
+  fi
+
+  rm -rf "$FAKEBIN9C" "$REL9C"
+  rm -f "$CALLLOG9C"
+fi
+
+# --- Case 9d: rollback_start_web()'s REAL path — the AUTO-ROLLBACK web -----
+# --- pm2 start (T-327F extracted this out of the inline rollback block so --
+# --- it is testable the same way as restart_pm2/resume_scraper) -----------
+ROLLBACK_FN="$(sed -n '/^rollback_start_web()/,/^}/p' "$DEPLOY_SCRIPT")"
+if [ -z "$ROLLBACK_FN" ] || [ -z "$RESOLVE_BIN_FN" ]; then
+  fail "case 9d: could not extract rollback_start_web()/resolve_bin() from $DEPLOY_SCRIPT — function renamed?"
+else
+  FAKEBIN9D="$(mktemp -d)"
+  fake_pm2_recorder "$FAKEBIN9D"
+  CALLLOG9D="$(mktemp)"
+  REL9D="$(mktemp -d)"
+  mkdir -p "$REL9D/web/node_modules/next/dist/bin"
+  : > "$REL9D/web/node_modules/next/dist/bin/next"
+
+  (
+    eval "$RESOLVE_BIN_FN"
+    eval "$ROLLBACK_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=0
+    PREVIOUS_RELEASE="$REL9D"
+    PM2_WEB_APP="ipodhan-web"
+    DEPLOY_WEB_INSTANCES=2
+    PATH="$FAKEBIN9D:$PATH"
+    export PM2_CALL_LOG="$CALLLOG9D"
+    rollback_start_web
+  ) >/tmp/deploy-test-9d.log 2>&1
+
+  TZ_COUNT9D="$(grep -c '^TZ=UTC$' "$CALLLOG9D" 2>/dev/null || echo 0)"
+  if [ "$TZ_COUNT9D" = "1" ] && grep -q -- "--name ipodhan-web" "$CALLLOG9D"; then
+    pass "case 9d: rollback_start_web() REAL (non-dry-run) path sets TZ=UTC on the rollback web pm2 start"
+  else
+    fail "case 9d: rollback_start_web() REAL path did not set TZ=UTC on the rollback web pm2 start (tz_count=$TZ_COUNT9D)"
+    cat "$CALLLOG9D" 2>/dev/null
+    cat /tmp/deploy-test-9d.log
+  fi
+
+  rm -rf "$FAKEBIN9D" "$REL9D"
+  rm -f "$CALLLOG9D"
 fi
 
 # --- Case 11: T-311F HARD finding — assert_pm2_logrotate_installed() must ---

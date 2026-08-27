@@ -11,6 +11,7 @@
 import { NextResponse } from 'next/server';
 import { Pool } from 'pg';
 import { requireAdminAuth } from '@/lib/auth/admin-auth';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 export async function GET() {
   // Require admin authentication
@@ -34,14 +35,6 @@ export async function GET() {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json(
-      {
-        success: false,
-        message: 'Database connection failed',
-        error: errorMessage,
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/db-test');
   }
 }

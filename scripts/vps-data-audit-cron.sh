@@ -22,8 +22,10 @@
 # alert path.
 #
 # WHAT IT RUNS
-#   1. audit-ipo-coverage.mjs --gate   (DB invariants + substance; needs the DB)
-#   2. audit-prod.mjs                  (live HTTP/API audit; needs no DB)
+#   1. audit-ipo-coverage.mjs --gate     (DB invariants + substance; needs the DB)
+#   2. audit-prod.mjs                    (live HTTP/API audit; needs no DB)
+#   3. audit-detection-floor.mjs --gate  (round-7 coverage floor; needs the DB)
+#   4. assert-schema-drift.ts            (T-330: live DB vs schema.ts; needs the DB)
 # Both are strictly read-only: SELECT-only SQL and GET requests. Neither writes
 # to the database, Redis, or the filesystem outside this script's state dir.
 #
@@ -32,8 +34,22 @@
 #
 #   mkdir -p /root/data-audit-ipodhan/state
 #   git clone https://github.com/abhayla/IPODhan /root/data-audit-ipodhan/repo
+#   chmod +x /root/data-audit-ipodhan/repo/scripts/vps-data-audit-cron.sh
 #   crontab -e   # add, off-peak IST, staggered away from the 03:15 prod-verify:
-#   45 3 * * * /root/data-audit-ipodhan/repo/scripts/vps-data-audit-cron.sh >> /root/data-audit-ipodhan/state/cron.log 2>&1
+#   45 3 * * * /bin/bash /root/data-audit-ipodhan/repo/scripts/vps-data-audit-cron.sh >> /root/data-audit-ipodhan/state/cron.log 2>&1
+#
+# NOTE the leading `/bin/bash` - it is NOT cosmetic (T-335C checker finding).
+# This script's own `git reset --hard origin/main` restores the file's TRACKED
+# mode on every run. While that tracked mode was 100644, the script ran once,
+# reset its own bit back to 0644, and every later cron tick died with
+# "/bin/sh: Permission denied" - the audit silently disabled itself and nobody
+# was paged, because cron's failure never reaches the alert path inside the
+# script. The tracked mode is 100755 now, but invoking through `bash` makes the
+# executable bit no longer load-bearing, so ANY future mode drift self-heals.
+# Applied on the box 2026-08-26 (one-time chmod +x plus the crontab rewrite) and
+# proven with the file deliberately left at 0644: the crontab command ran the
+# full audit to completion. Evidence:
+# GetWorkDone/evidence/2026-08-26-T-335/fix-round-1/box-bootstrap-proof.log
 #
 # The DB credentials are NOT stored here. The script sources the live prod env
 # that already exists on the box (/var/www/ipodhan/shared/env/prod/web.env.local),
@@ -86,11 +102,41 @@ run_audit() {
 
   local failed=0
 
-  echo "--- [1/2] audit-ipo-coverage --gate (DB invariants + substance) ---"
+  echo "--- [1/4] audit-ipo-coverage --gate (DB invariants + substance) ---"
   node scripts/audit-ipo-coverage.mjs --gate || { failed=1; echo "GATE FAILED: audit-ipo-coverage"; }
 
-  echo "--- [2/2] audit-prod (live HTTP/API) ---"
+  echo "--- [2/4] audit-prod (live HTTP/API) ---"
   BASE_URL="https://ipodhan.com" node scripts/audit-prod.mjs || { failed=1; echo "GATE FAILED: audit-prod"; }
+
+  # T-335: the fresh-review coverage floor, promoted to FAIL-level checks —
+  # live-IPO cross-source conflicts, issue_size/lot-band plausibility, a full
+  # API route sweep, conflict-noise ratio, per-type freshness, pm2 env/log
+  # health, scheduler wire-or-retire, and the P3 gates (sector %, cron exec
+  # bit, dead-source retire-by). It sends its OWN Notifier pages: ONE DIGEST
+  # per check per night (dedupeKey = detection-floor-<check>-<date>), P1 only
+  # when a check has rows that are new versus the previous run, plus a P2 page
+  # for every UNVERIFIABLE check. It needs NOTIFIER_KEY_IPODHAN, already
+  # sourced above from $NOTIFIER_ENV.
+  #
+  # Exit codes: 0 clean, 1 a check FAILed, 3 no FAIL but at least one check was
+  # UNVERIFIABLE (the audit was BLIND tonight, not green - it still pages and
+  # still fails this cron run), 2 the audit crashed.
+  echo "--- [3/4] audit-detection-floor --gate (round-7 coverage floor) ---"
+  BASE_URL="https://ipodhan.com" node scripts/audit-detection-floor.mjs --gate
+  DF_CODE=$?
+  case "$DF_CODE" in
+    0) ;;
+    3) failed=1; echo "GATE BLIND: audit-detection-floor exited 3 - at least one check was UNVERIFIABLE (not a pass)" ;;
+    *) failed=1; echo "GATE FAILED: audit-detection-floor exited $DF_CODE" ;;
+  esac
+
+  # T-330: read-only schema-drift check — compares the live column/matview set
+  # against packages/shared/src/db/schema.ts. Catches the class where a
+  # migration is journaled as applied but the live DDL never actually matched
+  # (ipo_scores.algorithm_version varchar(10) vs SSOT varchar(50); calendar_view
+  # never created) between deploys, e.g. after an out-of-band manual DB change.
+  echo "--- [4/4] assert-schema-drift (live DB vs schema.ts) ---"
+  npx tsx scripts/assert-schema-drift.ts || { failed=1; echo "GATE FAILED: assert-schema-drift"; }
 
   echo "=== exit code: $failed ==="
   return "$failed"

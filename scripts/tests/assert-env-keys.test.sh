@@ -66,12 +66,33 @@ run_case "DATABASE_HOST present -> fail (T-241 H5)" 1 \
 run_case "missing env file -> fail" 1 \
   "$FIXTURES/does-not-exist.env" "$FIXTURES/scraper.env.good"
 
+# --- T-327 P2-7: TZ is now a required key on both env files (belt-and-braces
+# alongside `TZ=UTC pm2 start` in deploy-linux.sh) -- a deploy MUST fail
+# loudly if either hand-provisioned env file drops it. ---
+run_case "web.env.local missing TZ -> fail (T-327 P2-7)" 1 \
+  "$FIXTURES/web.env.local.missing-tz" "$FIXTURES/scraper.env.good"
+
+run_case "scraper.env missing TZ -> fail (T-327 P2-7)" 1 \
+  "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.missing-tz"
+
 # --- T-251 (F9): revert-proof for the flag-regression ratchet. If someone
 # removes ENABLE_BSE_API (or any of the other 3 flags) from a fixture -- or
 # for real, from a slot's shared/env/*/scraper.env -- the assert MUST fail
 # loudly rather than silently deploying with the flag defaulted OFF.
 run_case "scraper.env missing ENABLE_BSE_API -> fail (T-251, F9 revert-proof)" 1 \
   "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.missing-f9-flag"
+
+# --- T-340: ADMIN_API_TOKEN is what the post-scrape steps need. A missing (or
+# blank) token used to produce a SILENT per-step skip inside triggerStatusUpdate
+# -- the cycle exited 0 with stale statuses and nothing alerted. The scraper now
+# refuses to START without it (scraper/src/index.ts assertRequiredEnvForCycle,
+# covered by scraper/tests/unit/index-env-assert.test.ts); this pair is the
+# deploy-time half, so a box is never provisioned without the key in the first
+# place. run_case_grep, not run_case: a bare exit-1 would still pass if the
+# message stopped naming the key, and "which key" is the whole point.
+run_case_grep "scraper.env missing ADMIN_API_TOKEN -> fail naming the key (T-340)" 1 "ADMIN_API_TOKEN"   "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.missing-admin-token"
+
+run_case_grep "scraper.env blank ADMIN_API_TOKEN -> fail naming the key (T-340 + T-230)" 1 "ADMIN_API_TOKEN"   "$FIXTURES/web.env.local.good" "$FIXTURES/scraper.env.blank-admin-token"
 
 # --- T-243: slot DSN assert (staging must never target the production db) ---
 run_case "slot staging + staging DSN -> pass" 0 \

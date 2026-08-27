@@ -4,7 +4,7 @@ description: >
   Enforces the web app's API route conventions — response envelope, error shape,
   request-id tracing, pagination meta, and domain-error mapping — for all
   Next.js route handlers.
-globs: ["web/app/api/**/*.ts"]
+paths: ["web/app/api/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

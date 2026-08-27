@@ -1,4 +1,9 @@
-# Scope: global
+---
+paths:
+  - "web/lib/**"
+  - "scraper/src/**"
+  - "**/config.ts"
+---
 
 # Environment Variable Validation — fail fast at boot, reject placeholders
 

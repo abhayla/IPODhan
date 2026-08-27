@@ -4,7 +4,7 @@ description: >
   Enforces pino structured logging in scraper source code — object-first call
   signature, context tags, level discipline — with a narrow console allowance
   for CLI script user-facing output.
-globs: ["scraper/src/**/*.ts", "scraper/scripts/**/*.ts"]
+paths: ["scraper/src/**/*.ts", "scraper/scripts/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

@@ -33,9 +33,10 @@ import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@ipodhan/shared/db/schema';
 import { db } from '@ipodhan/shared/db';
 import { getRedisClient } from '@ipodhan/shared/cache/redis-client';
-import { GMPRepository } from '@ipodhan/shared/repositories/gmp-repository';
+import { GMPRepository } from '@ipodhan/shared/repositories';
 import type { GMPRecordInsert } from '@ipodhan/shared/repositories/types';
 import logger from '../utils/logger.js';
+import { parseDdMmmYyyy, parseDdMmmYy } from '../utils/date-string-parsing.js';
 
 export interface GMPBackfillResult {
   // Target metrics
@@ -131,10 +132,27 @@ async function fetchChittorgarhGMPHistory(
 }
 
 /**
+ * Parse a Chittorgarh GMP-history table's date cell ("DD-MMM-YYYY" /
+ * "DD MMM YYYY" / "DD MMM YY") into a UTC-midnight ISO instant string,
+ * without ever routing through `new Date(rawString)` (T-327 round-7 P1-1 —
+ * .claude/rules/utc-naive-timestamp-normalization.md). Returns null when
+ * the cell doesn't match a known shape, so the caller can skip the row
+ * instead of persisting a silently-wrong local-TZ-shifted date.
+ */
+export function parseGmpHistoryDateCell(raw: string): string | null {
+  const iso = parseDdMmmYyyy(raw) ?? parseDdMmmYy(raw);
+  return iso ? `${iso}T00:00:00.000Z` : null;
+}
+
+/**
  * Alternative: Scrape GMP history from Chittorgarh IPO detail page
  * This is a fallback method when API is not available
  */
-async function scrapeChittorgarhGMPHistory(
+// Exported for the T-327F call-site test: the date-cell parse must be
+// exercised through the function that actually consumes cells[0], not only
+// through the extracted helper (a helper-only test stays green when the call
+// site is reverted to new Date(cells[0]).toISOString()).
+export async function scrapeChittorgarhGMPHistory(
   companyName: string,
   slug: string
 ): Promise<Array<{
@@ -189,8 +207,15 @@ async function scrapeChittorgarhGMPHistory(
         // Date | GMP | GMP % | Est. Listing | Subject | Kostak
         if (cells.length >= 4) {
           try {
+            const parsedDate = parseGmpHistoryDateCell(cells[0]);
+            if (!parsedDate) {
+              // Unparseable date cell — skip the row rather than fall back
+              // to a local-TZ-shifted `new Date(cells[0])` (T-327).
+              continue;
+            }
+
             gmpHistory.push({
-              date: new Date(cells[0]).toISOString(),
+              date: parsedDate,
               gmp: parseInt(cells[1].replace(/[^\d-]/g, ''), 10),
               gmpPercent: parseFloat(cells[2].replace(/[^\d.-]/g, '')),
               estimatedListing: parseInt(cells[3].replace(/[^\d]/g, ''), 10),

@@ -1,0 +1,55 @@
+
+ RUN  v1.6.1 D:/Abhay/Ventures/IPODhan-t340C2/scraper
+
+{"level":30,"time":"2026-08-26T13:24:53.540Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","msg":"CHITTORGARH scraper orchestrator started (Phase 1 consolidation + Phase 2 protection)"}
+{"level":"info","time":"2026-08-26T13:24:53.554Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","companyName":"Hybird Seeds Limited","normalizedName":"hybird seeds","existingCompanyName":"Hybrid Seeds Limited","newSlug":"hybird-seeds-ltd","msg":"[T-293] Found existing IPO via fuzzy (typo) name matching - preventing duplicate!"}
+{"level":30,"time":"2026-08-26T13:24:53.546Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","totalIPOs":1,"totalSubscriptions":0,"msg":"Scraped data received from CHITTORGARH"}
+{"level":40,"time":"2026-08-26T13:24:53.555Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","scraperName":"CHITTORGARH","companyName":"Hybird Seeds Limited","ipoId":"hybrid-canonical-id","msg":"IPO is locked - skipping entire IPO update"}
+{"level":40,"time":"2026-08-26T13:24:53.556Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","scraperName":"CHITTORGARH","error":"this.metricsTracker.recordZeroYieldCycle is not a function","msg":"Zero-yield streak tracking failed (non-fatal) - logging SUCCESS as usual"}
+{"level":30,"time":"2026-08-26T13:24:53.556Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"iposSkipped":1,"subscriptionsCreated":0,"subscriptionsSkipped":0,"fieldsProtected":0,"errors":[],"consolidationEnabled":false,"conflictsDetected":0,"fieldsConsolidated":0,"avgConsolidationTimeMs":0,"duration":17,"msg":"CHITTORGARH scraper orchestrator completed (Phase 1 + Phase 2 integrated)"}
+{"level":30,"time":"2026-08-26T13:24:53.570Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","msg":"CHITTORGARH scraper orchestrator started (Phase 1 consolidation + Phase 2 protection)"}
+{"level":30,"time":"2026-08-26T13:24:53.571Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","totalIPOs":1,"totalSubscriptions":0,"msg":"Scraped data received from CHITTORGARH"}
+{"level":30,"time":"2026-08-26T13:24:53.572Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","scraperName":"CHITTORGARH","companyName":"Hybird Seeds Limited","ipoId":"hybrid-canonical-id","protectedCount":1,"originalCount":3,"filteredCount":2,"msg":"Filtered 1 protected fields from IPO update"}
+{"level":40,"time":"2026-08-26T13:24:53.577Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","ipoId":"hybrid-canonical-id","slug":"hybird-seeds-ltd","source":"CHITTORGARH","msg":"[LEGACY PATH] Reached unreachable code - consolidation should have handled this"}
+{"level":30,"time":"2026-08-26T13:24:53.578Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","companyName":"Hybird Seeds Limited","ipoId":"hybrid-canonical-id","source":"CHITTORGARH","duration":5,"msg":"IPO upserted successfully"}
+{"level":40,"time":"2026-08-26T13:24:53.580Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","scraperName":"CHITTORGARH","error":"this.metricsTracker.recordZeroYieldCycle is not a function","msg":"Zero-yield streak tracking failed (non-fatal) - logging SUCCESS as usual"}
+{"level":30,"time":"2026-08-26T13:24:53.580Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":1,"iposInserted":0,"iposUpdated":1,"iposFailed":0,"iposSkipped":0,"subscriptionsCreated":0,"subscriptionsSkipped":0,"fieldsProtected":1,"errors":[],"consolidationEnabled":false,"conflictsDetected":0,"fieldsConsolidated":0,"avgConsolidationTimeMs":0,"duration":9,"msg":"CHITTORGARH scraper orchestrator completed (Phase 1 + Phase 2 integrated)"}
+{"level":30,"time":"2026-08-26T13:24:53.587Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","msg":"CHITTORGARH scraper orchestrator started (Phase 1 consolidation + Phase 2 protection)"}
+{"level":30,"time":"2026-08-26T13:24:53.588Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","totalIPOs":1,"totalSubscriptions":0,"msg":"Scraped data received from CHITTORGARH"}
+{"level":30,"time":"2026-08-26T13:24:53.588Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","scraperName":"CHITTORGARH","companyName":"Hybird Seeds Limited","ipoId":"hybrid-canonical-id","protectedCount":1,"originalCount":4,"filteredCount":3,"msg":"Filtered 1 protected fields from IPO update"}
+{"level":30,"time":"2026-08-26T13:24:53.612Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","slug":"hybird-seeds-ltd","source":"CHITTORGARH","ipoId":"hybrid-canonical-id","fieldsUpdated":0,"conflictsDetected":0,"msg":"[DataConsolidation] Updated IPO with consolidated data"}
+{"level":40,"time":"2026-08-26T13:24:53.614Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","scraperName":"CHITTORGARH","error":"this.metricsTracker.recordZeroYieldCycle is not a function","msg":"Zero-yield streak tracking failed (non-fatal) - logging SUCCESS as usual"}
+{"level":30,"time":"2026-08-26T13:24:53.615Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":1,"iposInserted":0,"iposUpdated":1,"iposFailed":0,"iposSkipped":0,"subscriptionsCreated":0,"subscriptionsSkipped":0,"fieldsProtected":1,"errors":[],"consolidationEnabled":true,"conflictsDetected":0,"fieldsConsolidated":0,"avgConsolidationTimeMs":1,"duration":27,"phase1Metrics":{"consolidationEnabled":true,"conflictsDetected":0,"fieldsConsolidated":0,"avgConsolidationTimeMs":"1.00"},"msg":"CHITTORGARH scraper orchestrator completed (Phase 1 + Phase 2 integrated)"}
+{"level":"info","time":"2026-08-26T13:24:53.572Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","companyName":"Hybird Seeds Limited","normalizedName":"hybird seeds","existingCompanyName":"Hybrid Seeds Limited","newSlug":"hybird-seeds-ltd","msg":"[T-293] Found existing IPO via fuzzy (typo) name matching - preventing duplicate!"}
+{"level":"info","time":"2026-08-26T13:24:53.588Z","pid":15976,"hostname":"LAPTOP-IOTIH7C4","companyName":"Hybird Seeds Limited","normalizedName":"hybird seeds","existingCompanyName":"Hybrid Seeds Limited","newSlug":"hybird-seeds-ltd","msg":"[T-293] Found existing IPO via fuzzy (typo) name matching - preventing duplicate!"}
+stderr | tests/unit/base-scraper-orchestrator-fuzzy-guard-parity.test.ts > BaseScraperOrchestrator.processIPO() — guard/write parity on the fuzzy (typo) tier (T-307, §1.4) > threads the guard-resolved row into consolidatedUpsertIPO when ENABLE_DATA_CONSOLIDATION=true (T-307C2 Finding 1) -- the branch that actually runs in production
+[DistributedLock] Error acquiring lock for hybird-seeds-ltd: TypeError: this.redis.set is not a function
+    at DistributedLock.acquire (D:\Abhay\Ventures\IPODhan-t340C2\scraper\src\utils\distributed-lock.ts:127:41)
+    at DataConsolidationOrchestrator.consolidatedUpsertIPO (D:\Abhay\Ventures\IPODhan-t340C2\scraper\src\services\data-consolidation-orchestrator.ts:106:51)
+    at TestOrchestrator.processIPO (D:\Abhay\Ventures\IPODhan-t340C2\scraper\src\base\BaseScraperOrchestrator.ts:448:72)
+    at TestOrchestrator.run (D:\Abhay\Ventures\IPODhan-t340C2\scraper\src\base\BaseScraperOrchestrator.ts:187:33)
+    at D:\Abhay\Ventures\IPODhan-t340C2\scraper\tests\unit\base-scraper-orchestrator-fuzzy-guard-parity.test.ts:355:5
+    at runTest (file:///D:/Abhay/Ventures/IPODhan-t340C2/node_modules/@vitest/runner/dist/index.js:781:11)
+    at runSuite (file:///D:/Abhay/Ventures/IPODhan-t340C2/node_modules/@vitest/runner/dist/index.js:909:15)
+    at runSuite (file:///D:/Abhay/Ventures/IPODhan-t340C2/node_modules/@vitest/runner/dist/index.js:909:15)
+    at runFiles (file:///D:/Abhay/Ventures/IPODhan-t340C2/node_modules/@vitest/runner/dist/index.js:958:5)
+    at startTests (file:///D:/Abhay/Ventures/IPODhan-t340C2/node_modules/@vitest/runner/dist/index.js:967:3)
+[DistributedLock] Error releasing lock for hybird-seeds-ltd: TypeError: this.redis.eval is not a function
+    at DistributedLock.release (D:\Abhay\Ventures\IPODhan-t340C2\scraper\src\utils\distributed-lock.ts:210:39)
+    at DataConsolidationOrchestrator.consolidatedUpsertIPO (D:\Abhay\Ventures\IPODhan-t340C2\scraper\src\services\data-consolidation-orchestrator.ts:280:36)
+    at TestOrchestrator.processIPO (D:\Abhay\Ventures\IPODhan-t340C2\scraper\src\base\BaseScraperOrchestrator.ts:448:35)
+    at TestOrchestrator.run (D:\Abhay\Ventures\IPODhan-t340C2\scraper\src\base\BaseScraperOrchestrator.ts:187:33)
+    at D:\Abhay\Ventures\IPODhan-t340C2\scraper\tests\unit\base-scraper-orchestrator-fuzzy-guard-parity.test.ts:355:5
+    at runTest (file:///D:/Abhay/Ventures/IPODhan-t340C2/node_modules/@vitest/runner/dist/index.js:781:11)
+    at runSuite (file:///D:/Abhay/Ventures/IPODhan-t340C2/node_modules/@vitest/runner/dist/index.js:909:15)
+    at runSuite (file:///D:/Abhay/Ventures/IPODhan-t340C2/node_modules/@vitest/runner/dist/index.js:909:15)
+    at runFiles (file:///D:/Abhay/Ventures/IPODhan-t340C2/node_modules/@vitest/runner/dist/index.js:958:5)
+    at startTests (file:///D:/Abhay/Ventures/IPODhan-t340C2/node_modules/@vitest/runner/dist/index.js:967:3)
+
+ ✓ tests/unit/base-scraper-orchestrator-fuzzy-guard-parity.test.ts  (3 tests) 4603ms
+
+ Test Files  1 passed (1)
+      Tests  3 passed (3)
+   Start at  18:54:47
+   Duration  5.85s (transform 1.28s, setup 1ms, collect 250ms, tests 4.60s, environment 1ms, prepare 454ms)
+

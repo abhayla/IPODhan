@@ -301,7 +301,11 @@ resume_scraper() {
   fi
   log "Resuming scraper ($PM2_SCRAPER_APP) from $target_dir"
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
-  ( cd "$target_dir/scraper" && pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
+  # T-327 P2-7: TZ=UTC is explicit at every pm2 start — pm2 captures the
+  # invoking shell's env at start time and pins it for restarts/reload, so
+  # this is the one place that actually reaches the running process (the
+  # retired ecosystem.config.js TZ:'UTC' is never read on this Linux path).
+  ( cd "$target_dir/scraper" && TZ=UTC pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
       --no-autorestart --cron-restart="*/30 * * * *" -- src/index.ts --source=all ) \
     || warn "resume_scraper: pm2 start failed for $PM2_SCRAPER_APP — investigate manually, do not assume it is running."
 }
@@ -439,6 +443,13 @@ apply_migrations() {
     echo "FATAL: migrations-applied assert failed for $RELEASE_NAME (T-267)." >&2
     return 1
   fi
+
+  log "Asserting the target DB's live columns/matviews match packages/shared/src/db/schema.ts (T-330)"
+  if ! ( cd "$RELEASE_DIR" && npx tsx scripts/assert-schema-drift.ts "$database_url" ); then
+    echo "FATAL: schema-drift assert failed for $RELEASE_NAME (T-330) — the journal says migrations applied," >&2
+    echo "       but a live column/matview disagrees with schema.ts. See the named drift above." >&2
+    return 1
+  fi
 }
 
 if ! apply_migrations; then
@@ -504,9 +515,9 @@ restart_pm2() {
     local release_realpath
     release_realpath="$(cd "$RELEASE_DIR" && pwd)"
     log "[dry-run] pm2 delete $PM2_WEB_APP"
-    log "[dry-run] pm2 start next/dist/bin/next --name $PM2_WEB_APP -i $instances -- start (cwd=$release_realpath/web, release=$release_realpath)"
+    log "[dry-run] TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i $instances -- start (cwd=$release_realpath/web, release=$release_realpath)"
     log "[dry-run] pm2 delete $PM2_SCRAPER_APP"
-    log "[dry-run] pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart --cron-restart=*/30_*_*_*_* -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
+    log "[dry-run] TZ=UTC pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart --cron-restart=*/30_*_*_*_* -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
     return 0
   fi
   # T-262: delete+start, NOT `pm2 reload`, for the web app. `pm2 reload`
@@ -519,17 +530,53 @@ restart_pm2() {
   # this fix is collect_live_release_dirs() below). Delete+start guarantees
   # the running process's script/cwd point at the release we just flipped
   # `current` to, mirroring the scraper's existing delete+start semantics.
+  # T-327 P2-7: TZ=UTC explicit on every pm2 start — this is the live path;
+  # ecosystem.config.js's TZ:'UTC' is dead config here (deploy-linux.sh never
+  # reads it) and is retired/documented as historical, not wired.
   pm2 delete "$PM2_WEB_APP" >/dev/null 2>&1 || true
-  ( cd "$RELEASE_DIR/web" && pm2 start "$(resolve_bin "$RELEASE_DIR" next/dist/bin/next)" --name "$PM2_WEB_APP" \
+  ( cd "$RELEASE_DIR/web" && TZ=UTC pm2 start "$(resolve_bin "$RELEASE_DIR" next/dist/bin/next)" --name "$PM2_WEB_APP" \
       -i "$instances" -- start )
   # Scraper is delete+start (not reload) on every deploy — it is a one-shot
   # fork process, not a long-lived server (pm2-scheduled-one-shot-scraper.md).
   # Exact script/args mirror the existing ecosystem.config.js entry so the
   # Linux PM2 process list looks like the Windows one it is replacing.
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
-  ( cd "$RELEASE_DIR/scraper" && pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
+  ( cd "$RELEASE_DIR/scraper" && TZ=UTC pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
       --no-autorestart --cron-restart="*/30 * * * *" -- src/index.ts --source=all )
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
+}
+
+# T-327F: extracted out of the inline AUTO-ROLLBACK block below so
+# scripts/tests/deploy-linux.test.sh can exercise the REAL (non-dry-run)
+# rollback pm2-start command in isolation, the same way restart_pm2 and
+# resume_scraper already are (case 8b/11 pattern) — a dry-run-only test
+# only ever proves the "[dry-run] ..." echo string, which is a separate
+# literal from the real invocation and can silently drift from it.
+rollback_start_web() {
+  if (( DRY_RUN )); then
+    # T-262F: same reasoning as restart_pm2's dry-run branch — emit the
+    # exact rollback command sequence (delete+start, never reload) so the
+    # regression suite can assert on it. Without this, the rollback path
+    # had ZERO command-shape coverage in --dry-run: it was previously
+    # gated entirely behind `if (( ! DRY_RUN ))`, so a revert of THIS
+    # branch to `pm2 reload` was invisible to every dry-run test.
+    local prev_realpath
+    prev_realpath="$(cd "$PREVIOUS_RELEASE" && pwd)"
+    log "[dry-run] pm2 delete $PM2_WEB_APP"
+    log "[dry-run] TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i ${DEPLOY_WEB_INSTANCES:-2} -- start (cwd=$prev_realpath/web, release=$prev_realpath)"
+    return 0
+  fi
+  # T-262: delete+start here too — same reasoning as restart_pm2's
+  # primary flip path. A rollback that used `pm2 reload` would leave
+  # the live process wherever it already was instead of actually
+  # repointing it at PREVIOUS_RELEASE, defeating the rollback.
+  # T-327 P2-7: TZ=UTC explicit here too, so a rollback never leaves the
+  # web app running without an explicit process TZ.
+  pm2 delete "$PM2_WEB_APP" >/dev/null 2>&1 || true
+  ( cd "$PREVIOUS_RELEASE/web" && TZ=UTC pm2 start "$(resolve_bin "$PREVIOUS_RELEASE" next/dist/bin/next)" --name "$PM2_WEB_APP" \
+      -i "${DEPLOY_WEB_INSTANCES:-2}" -- start ) \
+    || warn "rollback: pm2 start failed for $PM2_WEB_APP against $PREVIOUS_RELEASE — investigate manually, do not assume it is running."
+  pm2 save >/dev/null 2>&1 || warn "rollback: pm2 save failed — a reboot may not restore the rolled-back release."
 }
 
 verify_public_health() {
@@ -681,27 +728,7 @@ if ! verify_public_health; then
     atomic_flip_current "$PREVIOUS_RELEASE"
     basename "$PREVIOUS_RELEASE" | sed 's/^[0-9]*-[0-9]*-//' > "$ROOT/DEPLOYED_SHA-$SLOT"
     SCRAPER_RESUME_TARGET="prev"
-    if (( DRY_RUN )); then
-      # T-262F: same reasoning as restart_pm2's dry-run branch — emit the
-      # exact rollback command sequence (delete+start, never reload) so the
-      # regression suite can assert on it. Without this, the rollback path
-      # had ZERO command-shape coverage in --dry-run: it was previously
-      # gated entirely behind `if (( ! DRY_RUN ))`, so a revert of THIS
-      # branch to `pm2 reload` was invisible to every dry-run test.
-      prev_realpath="$(cd "$PREVIOUS_RELEASE" && pwd)"
-      log "[dry-run] pm2 delete $PM2_WEB_APP"
-      log "[dry-run] pm2 start next/dist/bin/next --name $PM2_WEB_APP -i ${DEPLOY_WEB_INSTANCES:-2} -- start (cwd=$prev_realpath/web, release=$prev_realpath)"
-    else
-      # T-262: delete+start here too — same reasoning as restart_pm2's
-      # primary flip path. A rollback that used `pm2 reload` would leave
-      # the live process wherever it already was instead of actually
-      # repointing it at PREVIOUS_RELEASE, defeating the rollback.
-      pm2 delete "$PM2_WEB_APP" >/dev/null 2>&1 || true
-      ( cd "$PREVIOUS_RELEASE/web" && pm2 start "$(resolve_bin "$PREVIOUS_RELEASE" next/dist/bin/next)" --name "$PM2_WEB_APP" \
-          -i "${DEPLOY_WEB_INSTANCES:-2}" -- start ) \
-        || warn "rollback: pm2 start failed for $PM2_WEB_APP against $PREVIOUS_RELEASE — investigate manually, do not assume it is running."
-      pm2 save >/dev/null 2>&1 || warn "rollback: pm2 save failed — a reboot may not restore the rolled-back release."
-    fi
+    rollback_start_web
     echo "Rolled back to the previous release. Investigate before re-deploying." >&2
     exit 1
   else

@@ -18,6 +18,7 @@
 import * as cheerio from 'cheerio';
 import logger from '../utils/logger.js';
 import { sanitizeText, retryWithExponentialBackoff } from '../utils/scraper-utils.js';
+import { parseDdMmmYyyy } from '../utils/date-string-parsing.js';
 import { scrapeBSEDocuments, type DocumentLink } from './bse-document-scraper.js';
 import { detectDocumentType } from '../utils/document-type-mapper.js';
 import type { DocumentInsert } from '@ipodhan/shared';
@@ -99,18 +100,18 @@ function parseIssuePeriod(issuePeriod: string | null): {
 
     const [startStr, endStr] = parts;
 
-    const startDate = new Date(startStr);
-    const endDate = new Date(endStr);
+    // String arithmetic, TZ-invariant by construction (T-327, round-7 P1-1) —
+    // NEVER `new Date(dateOnlyString).toISOString()`, which drifts a day on
+    // any non-UTC host.
+    const openDate = parseDdMmmYyyy(startStr);
+    const closeDate = parseDdMmmYyyy(endStr);
 
-    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+    if (!openDate || !closeDate) {
       logger.warn({ startStr, endStr }, 'Failed to parse issue period dates');
       return { openDate: null, closeDate: null };
     }
 
-    return {
-      openDate: startDate.toISOString().split('T')[0],
-      closeDate: endDate.toISOString().split('T')[0],
-    };
+    return { openDate, closeDate };
   } catch (error) {
     logger.error({ issuePeriod, error }, 'Error parsing issue period');
     return { openDate: null, closeDate: null };

@@ -294,6 +294,76 @@ export function collectDegenerateBandFieldsToWiden(
 }
 
 /**
+ * T-329 (round-7 P1-3 GUARD) — `issueSize` plausibility floor + shares x band
+ * coherence, applied at the record level so BOTH the segment and the price
+ * band are visible together (the field-priority-matrix's per-field {min,max}
+ * validation has no segment dimension and cannot see `lotSize`/`priceRangeMax`
+ * in the same call - see field-priority-matrix.ts `issueSize` entry).
+ *
+ * Thresholds derived from the live prod distribution (evidence/2026-08-26-
+ * T-322/db-queries.txt: segment MAINBOARD 134 rows, SME 167 rows) and the
+ * review's plausibility sweep (plausibility.txt SIZE_IMPLAUSIBLE_MAINBOARD/
+ * SIZE_IMPLAUSIBLE_SME): every genuine MAINBOARD issue size on record is
+ * comfortably above Rs10 Cr and every genuine SME issue size is above Rs1 Cr;
+ * the 19 polluted rows (7 MAINBOARD + 12 SME) all sit at Rs0.30-8.97 Cr -
+ * strictly below both floors, with a wide margin (smallest genuine SME issue
+ * observed is well over 10x the floor). A MAINBOARD IPO below Rs10 Cr or an
+ * SME IPO below Rs1 Cr is definitionally impossible under SEBI ICDR sizing
+ * norms (SME issues alone require a post-issue paid-up capital of at least
+ * Rs3 Cr, mainboard issues are materially larger) - these are floors, not
+ * medians, chosen to reject-with-margin rather than flag borderline-real data.
+ *
+ * The coherence check (`|issueSize - shares*band_max| / issueSize > 0.5`)
+ * catches the shape even when a segment floor alone would not (e.g. a small
+ * MAINBOARD SHARE COUNT that happens to clear Rs10 Cr as a raw number but
+ * disagrees wildly with shares x band).
+ *
+ * Violations are rejected (never written) and logged to `data_conflicts`
+ * with a named reason (`ISSUE_SIZE_IMPLAUSIBLE_SEGMENT_FLOOR` /
+ * `ISSUE_SIZE_INCOHERENT_WITH_SHARES_BAND`) via the same reject-in-place
+ * pattern as `collectDegeneratePriceBandFields` above.
+ */
+const MAINBOARD_ISSUE_SIZE_FLOOR = 10_00_00_000; // Rs10 Cr
+const SME_ISSUE_SIZE_FLOOR = 1_00_00_000; // Rs1 Cr
+const ISSUE_SIZE_COHERENCE_TOLERANCE = 0.25; // 25%
+
+export interface ImplausibleIssueSizeResult {
+  fields: Set<string>;
+  reason?: 'ISSUE_SIZE_IMPLAUSIBLE_SEGMENT_FLOOR' | 'ISSUE_SIZE_INCOHERENT_WITH_SHARES_BAND';
+}
+
+export function collectImplausibleIssueSizeFields(
+  incomingData: Record<string, any>,
+  existingData?: Record<string, any> | null
+): ImplausibleIssueSizeResult {
+  const empty: ImplausibleIssueSizeResult = { fields: new Set() };
+  if (!('issueSize' in incomingData)) return empty;
+
+  const issueSize = toFiniteNumber(incomingData.issueSize);
+  if (issueSize === null || issueSize <= 0) return empty; // NULL/0 is "unknown", handled elsewhere
+
+  const segment = incomingData.segment ?? existingData?.segment;
+  const floor =
+    segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
+
+  if (floor !== null && issueSize < floor) {
+    return { fields: new Set(['issueSize']), reason: 'ISSUE_SIZE_IMPLAUSIBLE_SEGMENT_FLOOR' };
+  }
+
+  const shares = toFiniteNumber(incomingData.noOfSharesOffered ?? incomingData.sharesOffered);
+  const bandMax = toFiniteNumber(incomingData.priceRangeMax ?? existingData?.priceRangeMax);
+  if (shares !== null && shares > 0 && bandMax !== null && bandMax > 0) {
+    const expected = shares * bandMax;
+    const relativeDiff = Math.abs(issueSize - expected) / issueSize;
+    if (relativeDiff > ISSUE_SIZE_COHERENCE_TOLERANCE) {
+      return { fields: new Set(['issueSize']), reason: 'ISSUE_SIZE_INCOHERENT_WITH_SHARES_BAND' };
+    }
+  }
+
+  return empty;
+}
+
+/**
  * Data Consolidation Service
  * Main orchestrator for intelligent data merging
  */
@@ -435,12 +505,61 @@ export class DataConsolidationService {
         result.fieldsUpdated++;
       }
 
+      // T-329 (round-7 P1-3 GUARD): reject an issueSize that fails the
+      // segment-floor / shares-x-band plausibility check - never written,
+      // logged to data_conflicts with a named reason so admin review can see
+      // why a source's issueSize was refused.
+      const implausibleIssueSize = collectImplausibleIssueSizeFields(
+        input.incomingData,
+        input.existingData
+      );
+      for (const fieldName of implausibleIssueSize.fields) {
+        result.fieldsProcessed++;
+        const trackedField = existingSourceMap.get(fieldName);
+        const existingValue = trackedField?.value ?? input.existingData?.[fieldName];
+        const existingSource = trackedField?.source ?? input.source;
+
+        if (
+          FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION &&
+          !this.currentShadowMode
+        ) {
+          await this.logConflict({
+            ipoId: input.ipoId,
+            tableName: input.tableName,
+            fieldName,
+            existingValue,
+            existingSource,
+            incomingValue: input.incomingData[fieldName],
+            incomingSource: input.source,
+            normalizedExisting: existingValue,
+            normalizedIncoming: input.incomingData[fieldName],
+            severity: 'CRITICAL',
+            reason: implausibleIssueSize.reason!,
+          });
+        }
+
+        result.fieldResults.push({
+          fieldName,
+          finalValue: existingValue,
+          chosenSource: existingSource,
+          hadConflict: false,
+          rejectedSources: [
+            {
+              source: input.source,
+              value: input.incomingData[fieldName],
+              reason: implausibleIssueSize.reason!,
+            },
+          ],
+        });
+      }
+
       // Process each field in incoming data
       for (const [fieldName, incomingValue] of Object.entries(
         input.incomingData
       )) {
         if (degenerateBandFields.has(fieldName)) continue;
         if (widenBandFields.has(fieldName)) continue;
+        if (implausibleIssueSize.fields.has(fieldName)) continue;
         result.fieldsProcessed++;
 
         try {

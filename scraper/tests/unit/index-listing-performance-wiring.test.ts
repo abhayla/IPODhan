@@ -114,6 +114,11 @@ const checkCrossSourceDisagreementsMock = vi.fn().mockResolvedValue({
 vi.mock('../../src/services/freshness-monitor.js', () => ({
   evaluateFreshness: evaluateFreshnessMock,
 }));
+vi.mock('../../src/services/deploy-drift-monitor.js', () => ({
+  checkDeployDrift: vi.fn().mockResolvedValue([]),
+  getMainShaFromOrigin: vi.fn(),
+  getServedShaForSlot: vi.fn(),
+}));
 vi.mock('../../src/services/cross-source-disagreement-monitor.js', () => ({
   checkCrossSourceDisagreements: checkCrossSourceDisagreementsMock,
 }));
@@ -130,6 +135,7 @@ vi.mock('@ipodhan/shared', () => ({
 }));
 vi.mock('@ipodhan/shared/db/schema', () => ({
   scraperLogs: { createdAt: 'created_at' },
+  scraperSteps: {},
 }));
 vi.mock('drizzle-orm', () => ({
   lt: vi.fn(),
@@ -143,9 +149,10 @@ describe('scraper/src/index.ts one-shot --source=all path', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.argv = [...originalArgv.slice(0, 2), '--source=all'];
-    // triggerStatusUpdate must not reach the network in this test — matching
-    // the "ADMIN_API_TOKEN unset" behavior, it warns and returns early.
-    delete process.env.ADMIN_API_TOKEN;
+    // ADMIN_API_TOKEN must be set (T-340: main() now refuses to start --source=all
+    // without it); fetch is globally stubbed below so triggerStatusUpdate still
+    // never reaches the real network.
+    process.env.ADMIN_API_TOKEN = 'test-admin-token'; // T-340: main() now refuses to start --source=all without this key
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
     fetchSpy = vi.fn();
     vi.stubGlobal('fetch', fetchSpy);
@@ -167,8 +174,15 @@ describe('scraper/src/index.ts one-shot --source=all path', () => {
 
     expect(updateListingPerformanceMock).toHaveBeenCalledTimes(1);
     expect(shouldRunListingPerformanceUpdateMock).toHaveBeenCalledTimes(1);
-    // Never falls back to an HTTP round-trip — it's an in-process scraper call.
-    expect(fetchSpy).not.toHaveBeenCalled();
+    // triggerListingPerformanceUpdate itself never falls back to an HTTP
+    // round-trip — it's an in-process scraper call. The one fetch call seen
+    // here is triggerStatusUpdate's admin API call (a separate step earlier
+    // in the same --source=all cycle), not this step's doing.
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(fetchSpy).toHaveBeenCalledWith(
+      expect.stringContaining('/api/admin/status/update'),
+      expect.anything()
+    );
     expect(exitSpy).toHaveBeenCalledWith(0);
   });
 

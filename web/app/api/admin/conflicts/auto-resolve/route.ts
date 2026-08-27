@@ -34,6 +34,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ConflictResolutionService } from '@/lib/services/conflict-resolution';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 /**
  * POST /api/admin/conflicts/auto-resolve
@@ -76,10 +77,6 @@ export async function POST(request: NextRequest) {
       dryRun,
     }, { status: 200 });
   } catch (error) {
-    console.error('Auto Conflict Resolution Error:', error);
-    return NextResponse.json({
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to auto-resolve conflicts',
-    }, { status: 500 });
+    return apiErrorResponse(error, '/api/admin/conflicts/auto-resolve');
   }
 }

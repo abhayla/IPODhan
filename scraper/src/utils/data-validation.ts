@@ -298,6 +298,57 @@ export function validateIPOData(
         });
       }
 
+      // NON_IPO_CORPORATE_ACTION_SHAPE (T-329, round-7 P1-4 GUARD FIX —
+      // evidence/2026-08-26-T-322/FINDING-P1-3-lot-band-and-shape.md).
+      // longWindowNoSubstance above only fires when BOTH lot size AND issue
+      // size are absent — but 7 live rows (KWALITY WALLS, MORGANITE
+      // CRUCIBLE, MUTHOOT FINCOTP, BANGANGA PAPER, NIRBHAY COLOURS,
+      // SANMITRA COMMERCIAL, STANBIK AGRO) HAVE both a lot size (100) and an
+      // issue size populated, so that guard never reaches them. Every one of
+      // these is a corporate action (scheme of arrangement / demerger /
+      // already-listed-company echo), not a genuine book-built IPO, and
+      // shares a distinct three-part shape none of which requires a missing
+      // lot/issue size:
+      //   - fixed price (price_range_min === price_range_max — no
+      //     book-building; the FIXED_PRICE-issueType exemption used
+      //     elsewhere in this file does not apply here because these rows
+      //     have issueType=null in prod, so this checks the raw band values)
+      //   - lot_size === 100 (the corporate-action-echo lot, distinct from a
+      //     genuine SME fixed-price IPO's typically larger/varied lot sizes)
+      //   - a 10-14 day "bidding window" (longer than a genuine mainboard
+      //     book-built IPO's ~3-5 days, but short enough that the >10-day
+      //     longWindowNoSubstance guard above — which needs a MUCH longer
+      //     window in practice for the ADVENZYMES/LIGHT OF LIFE TRUST shape,
+      //     98/11 days — does not reliably span it)
+      // All three conditions together are the discriminator; each alone is
+      // too common in genuine data to reject on (fixed price alone is a
+      // legitimate FIXED_PRICE SME issue; lot=100 alone is common; a 10-14
+      // day window alone can be a genuine extended mainboard offer — see the
+      // "does NOT reject a >10-day window when lot/issue size ARE populated"
+      // guard elsewhere in this file, which this new check deliberately
+      // narrows past by requiring the fixed-price + lot-100 co-occurrence).
+      if (
+        data.priceRangeMin != null &&
+        data.priceRangeMax != null &&
+        data.priceRangeMin === data.priceRangeMax &&
+        data.lotSize === 100 &&
+        data.openDate &&
+        data.closeDate
+      ) {
+        const openDate = new Date(data.openDate);
+        const closeDate = new Date(data.closeDate);
+        const duration = (closeDate.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24);
+        if (duration >= 10 && duration <= 14) {
+          errors.push({
+            field: 'offeringType',
+            rule: 'NON_IPO_CORPORATE_ACTION_SHAPE',
+            severity: 'ERROR',
+            message: `offeringType='IPO' with a fixed price (₹${data.priceRangeMax}), lot size 100, and a ${duration}-day window matches the corporate-action-echo shape (scheme of arrangement / demerger / already-listed company), not a genuine book-built IPO (#P1-4: KWALITY WALLS/MORGANITE CRUCIBLE/MUTHOOT FINCOTP/BANGANGA PAPER/NIRBHAY COLOURS/SANMITRA COMMERCIAL/STANBIK AGRO shape). Reclassify to the correct offering type or drop the row.`,
+            expected: true,
+          });
+        }
+      }
+
       const name = (data.companyName || '').trim();
       const isBareScripCode = /^[A-Z0-9]{2,15}$/.test(name);
       if (isBareScripCode) {
@@ -363,6 +414,50 @@ export function validateIPOData(
           message: `companyName "${name}" contains the word "Trust" but does not end in it as a legal-entity-type token — treated as an ordinary company name (e.g. "Trust Fintech Limited"), not rejected. Verify manually if this is actually a trust-structured vehicle.`,
         });
       }
+    }
+  }
+
+  // Rule 9: Lot-Economics Invariant (T-329, round-7 P1-4 —
+  // evidence/2026-08-26-T-322/FINDING-P1-3-lot-band-and-shape.md). Rule 4
+  // above (MIN_INVESTMENT_*) only WARNS — it never blocks persistence, so 10
+  // rows with an arithmetically impossible "minimum investment" (lot_size x
+  // upper price band) render on the live site today, e.g. ICICI Prudential
+  // AMC "Minimum investment: Rs2,16,500 per lot (100 x Rs2,165)".
+  //
+  // SEBI ICDR Regulation 32(1) caps a MAINBOARD retail individual application
+  // at one lot within the Rs10,000-Rs15,000 band (the lot size is fixed so
+  // that lot_size x cap-price lands in that range); this guard uses a
+  // slightly wider Rs10,000-Rs16,000 window to tolerate the last paisa of
+  // rounding at the cap price without false-rejecting a genuine issue. SME
+  // issues use a materially larger per-lot minimum — SEBI ICDR Chapter IX
+  // (Regulation 253 and allied SME-specific provisions) requires post-issue
+  // paid-up capital thresholds and retail lot sizing that put a genuine SME
+  // minimum investment at Rs1,00,000-Rs2,00,000 per lot (the same range Rule
+  // 4's MIN_INVESTMENT_LOW_SME/MIN_INVESTMENT_HIGH_SME above already uses).
+  //
+  // Unlike Rule 4, this is a hard REJECT (never published) — only for
+  // BOOK_BUILDING (or unclassified) issues; a FIXED_PRICE issue's minimum
+  // investment is not bounded the same way SEBI's retail-lot band assumes
+  // book-building, so it is exempt here (Rule 4's warnings still apply).
+  if (data.lotSize && data.priceRangeMax && data.issueType !== 'FIXED_PRICE') {
+    const minInvestment = data.lotSize * data.priceRangeMax;
+
+    if (data.segment === 'MAINBOARD' && (minInvestment < 10000 || minInvestment > 16000)) {
+      errors.push({
+        field: 'lotEconomics',
+        rule: 'LOT_ECONOMICS_IMPOSSIBLE_MAINBOARD',
+        severity: 'ERROR',
+        message: `MAINBOARD minimum investment ₹${minInvestment.toLocaleString('en-IN')} (lot ${data.lotSize} x band-cap ₹${data.priceRangeMax}) falls outside the SEBI ICDR Reg 32(1) retail range (~₹10,000-₹16,000). This lot/band pair is arithmetically impossible for a genuine book-built mainboard IPO — reject and flag for reclassification (#P1-4: ICICI Prudential AMC/STALLION/MORGANITE shape).`,
+        expected: true,
+      });
+    } else if (data.segment === 'SME' && (minInvestment < 100000 || minInvestment > 200000)) {
+      errors.push({
+        field: 'lotEconomics',
+        rule: 'LOT_ECONOMICS_IMPOSSIBLE_SME',
+        severity: 'ERROR',
+        message: `SME minimum investment ₹${minInvestment.toLocaleString('en-IN')} (lot ${data.lotSize} x band-cap ₹${data.priceRangeMax}) falls outside the SEBI ICDR Chapter IX retail range (~₹1,00,000-₹2,00,000). This lot/band pair is arithmetically implausible for a genuine SME IPO — reject and flag for reclassification.`,
+        expected: true,
+      });
     }
   }
 

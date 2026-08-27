@@ -26,6 +26,7 @@ import {
   transformCurrentIssueSubscription,
 } from './nse-subscription-parser.js';
 import { notifyOwner } from '../services/owner-notify.js';
+import { parseDdMmmYyyy } from '../utils/date-string-parsing.js';
 
 const BASE_URL = 'https://www.nseindia.com';
 
@@ -328,7 +329,7 @@ async function makeRequest(endpoint: string, params?: Record<string, string>, re
 /**
  * Parse NSE date format to ISO 8601
  */
-function parseNSEDate(dateStr: string | null | undefined): string {
+export function parseNSEDate(dateStr: string | null | undefined): string {
   if (!dateStr) {
     return new Date().toISOString().split('T')[0];
   }
@@ -336,10 +337,11 @@ function parseNSEDate(dateStr: string | null | undefined): string {
   try {
     const cleaned = dateStr.trim();
 
-    // Handle DD-MMM-YYYY format (e.g., "09-Oct-2025")
-    if (cleaned.match(/^\d{2}-[A-Za-z]{3}-\d{4}$/)) {
-      const date = new Date(cleaned);
-      return date.toISOString().split('T')[0];
+    // Handle DD-MMM-YYYY format (e.g., "09-Oct-2025") — string arithmetic,
+    // TZ-invariant by construction (T-327, round-7 P1-1).
+    const ddMmmIso = parseDdMmmYyyy(cleaned);
+    if (ddMmmIso) {
+      return ddMmmIso;
     }
 
     // Handle DD/MM/YYYY format
@@ -430,6 +432,42 @@ function determineStatus(statusStr: string | null | undefined, startDate: string
 }
 
 /**
+ * T-329 (round-7 P1-3): NSE's `issueSize` field is byte-identical to
+ * `noOfSharesOffered` — it is a SHARE COUNT, never rupees. Fetched live from
+ * the box (2026-08-26): {"issueSize":"17683000","noOfSharesOffered":"1.7683E7"}
+ * for Annu Projects. The old code wrote `parseFloat(data.issueSize)` straight
+ * into the rupee column `ipos.issue_size`, producing "Issue Size Rs1.77
+ * Crores" for an IPO whose real size is Rs175 Cr (17,683,000 sh x Rs99).
+ *
+ * This computes the true rupee issue size as shares x price (upper band
+ * preferred, issue price as fallback), and returns undefined (never a share
+ * count) when neither price signal is available — undefined lets a
+ * higher-confidence source (BSE/Chittorgarh) win instead of writing a wrong
+ * number. `noOfSharesOffered` is preferred over `issueSize` as the share
+ * count because it is NSE's correctly-named field for the same value.
+ */
+export function computeNSEIssueSizeRupees(
+  data: any,
+  priceRangeMax: number | undefined,
+  priceRangeMin: number | undefined
+): number | undefined {
+  const sharesRaw = data.noOfSharesOffered ?? data.issueSize;
+  const shares = sharesRaw != null ? parseFloat(String(sharesRaw)) : NaN;
+  if (!Number.isFinite(shares) || shares <= 0) return undefined;
+
+  const price = priceRangeMax ?? priceRangeMin;
+  if (price == null || !Number.isFinite(price) || price <= 0) {
+    logger.warn(
+      { companyName: data.companyName || data.company, shares },
+      '[NSE] issueSize omitted: share count known but no price band to convert to rupees (T-329)'
+    );
+    return undefined;
+  }
+
+  return shares * price;
+}
+
+/**
  * Transform NSE API response to ScrapedIPO format
  * Updated to use segment + offeringType (Story 11.8)
  * Enhanced with endpoint category detection for better accuracy
@@ -437,7 +475,7 @@ function determineStatus(statusStr: string | null | undefined, startDate: string
  * @param data - Raw NSE API response
  * @param endpointCategory - Optional category from API endpoint ('ipo' | 'rights' | 'tender' etc.)
  */
-function transformIPOData(data: any, endpointCategory?: 'ipo' | 'ofs' | 'rights' | 'tender' | 'ipp'): ScrapedIPO {
+export function transformIPOData(data: any, endpointCategory?: 'ipo' | 'ofs' | 'rights' | 'tender' | 'ipp'): ScrapedIPO {
   const priceRange = parsePriceRange(data.issuePrice);
   const openDate = parseNSEDate(data.issueStartDate);
   const closeDate = parseNSEDate(data.issueEndDate);
@@ -505,7 +543,9 @@ function transformIPOData(data: any, endpointCategory?: 'ipo' | 'ofs' | 'rights'
 
   return {
     companyName: data.companyName || data.company || '',
-    issueSize: parseFloat(data.issueSize) || 0,
+    // T-329 (round-7 P1-3): NSE's issueSize is a share count, not rupees —
+    // see computeNSEIssueSizeRupees(). Never write the raw share count here.
+    issueSize: computeNSEIssueSizeRupees(data, priceRange.max, priceRange.min),
     priceRangeMin: priceRange.min,
     priceRangeMax: priceRange.max,
     openDate,

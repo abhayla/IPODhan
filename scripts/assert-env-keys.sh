@@ -53,6 +53,12 @@ WEB_REQUIRED_KEYS=(
   NOTIFIER_URL
   NOTIFIER_KEY
   NOTIFIER_PROJECT
+  # T-327 P2-7: the real fix is `TZ=UTC pm2 start` (deploy-linux.sh), which is
+  # what actually reaches the running process; requiring it here too is
+  # belt-and-braces self-documentation on the hand-provisioned env file so a
+  # human reading shared/env/<SLOT>/web.env.local sees the TZ contract
+  # explicitly instead of it living only inside deploy-linux.sh.
+  TZ
 )
 
 SCRAPER_REQUIRED_KEYS=(
@@ -86,6 +92,12 @@ SCRAPER_REQUIRED_KEYS=(
   NOTIFIER_URL
   NOTIFIER_KEY
   NOTIFIER_PROJECT
+  # T-327 P2-7: same TZ contract as WEB_REQUIRED_KEYS above — the scraper is
+  # the process that actually parses NSE/BSE/... date strings, so this is the
+  # required key that matters most; see date-string-parsing.ts for why the
+  # date-parse fix no longer DEPENDS on this value (belt-and-braces, not the
+  # only guard).
+  TZ
 )
 
 MISSING=()

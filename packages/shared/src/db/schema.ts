@@ -703,6 +703,36 @@ export const scraperLogs = pgTable(
   })
 );
 
+// ==================== TABLE 12b: SCRAPER_STEPS (T-340 post-scrape step ledger) ====================
+// A NEW table, deliberately NOT reusing scraper_logs above: scraper_logs'
+// `source` column is a SOURCE name (NSE/BSE/API_FALLBACK/...) and its
+// `status` enum (SUCCESS/FAILURE/PARTIAL) has no 'skipped' state, so a
+// post-scrape step (statusUpdate, registrarReresolve, ...) skipped for a
+// documented reason (e.g. ADMIN_API_TOKEN unset, outside a cadence window)
+// cannot be represented without either overloading `source` with non-source
+// values or losing the reason entirely. See the T-340 PR body for the full
+// "why a new table" rationale.
+export const scraperSteps = pgTable(
+  'scraper_steps',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    cycleId: uuid('cycle_id').notNull(), // one value per `--source=all` run, links every step of that cycle
+    step: text('step').notNull(), // one of scraper/src/index.ts's exported STEP_NAMES
+    status: text('status').notNull(), // 'ok' | 'skipped' | 'failed'
+    reason: text('reason'), // required when status='skipped'; the failure message when status='failed'
+    durationMs: integer('duration_ms').notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    createdAtIdx: index('idx_scraper_steps_created_at').on(table.createdAt),
+    stepCreatedAtIdx: index('idx_scraper_steps_step_created_at').on(
+      table.step,
+      table.createdAt
+    ),
+    cycleIdIdx: index('idx_scraper_steps_cycle_id').on(table.cycleId),
+  })
+);
+
 // ==================== TABLE 13: EXTRACTION_LOGS (DRHP PDF Extraction Tracking) ====================
 
 export const extractionLogs = pgTable(

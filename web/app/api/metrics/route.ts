@@ -10,6 +10,7 @@ import { collectBusinessMetrics, getDataQualityMetrics } from '@/lib/services/me
 import { monitorRedisHealth } from '@/scripts/monitor-redis';
 import { checkDatabaseHealth } from '@/scripts/db-health-check';
 import { logger } from '@/lib/logging/logger';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -80,16 +81,6 @@ export async function GET(request: Request) {
 
     return NextResponse.json(response);
   } catch (error) {
-    logger.error('Metrics endpoint failed', {
-      error: error instanceof Error ? error.message : String(error),
-    });
-
-    return NextResponse.json(
-      {
-        error: 'Failed to collect metrics',
-        message: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/metrics');
   }
 }

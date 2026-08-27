@@ -1,10 +1,25 @@
 /**
- * PM2 Ecosystem Configuration
+ * PM2 Ecosystem Configuration — RETIRED / HISTORICAL (T-252, 2026-08-21).
  *
- * Production deployment configuration for IPODhan
+ * DEAD CONFIG on the live path: scripts/deploy-linux.sh starts both PM2 apps
+ * with explicit `pm2 start ... --name ... -- ...` command-line flags (see its
+ * restart_pm2()/resume_scraper() functions) — it never reads this file, and
+ * nothing on the Linux VPS invokes `pm2 start ecosystem.config.js`. Every
+ * value below (including `TZ: 'UTC'`) is therefore inert; it documents the
+ * Windows-era shape this repo migrated away from, per
+ * .claude/rules/pm2-scheduled-one-shot-scraper.md and
+ * .claude/rules/self-hosted-windows-vps-deploy.md (both marked RETIRED).
+ *
+ * T-327 P2-7 note: TZ is now made explicit on the REAL path instead — every
+ * `pm2 start` call in scripts/deploy-linux.sh is prefixed `TZ=UTC`, and
+ * scripts/assert-env-keys.sh requires a `TZ` key in both env files. This
+ * file is kept (not deleted) only as a historical record of the retired
+ * Windows deploy shape — do not "fix" it expecting it to take effect.
+ *
+ * Production deployment configuration for IPODhan (historical — see above)
  * Manages Next.js web application and IPO scraper service
  *
- * Server: Windows Server 2022 VPS (103.118.16.189)
+ * Server (historical): Windows Server 2022 VPS (103.118.16.189)
  * PM2 Version: 5.3+
  */
 
