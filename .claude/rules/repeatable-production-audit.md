@@ -4,7 +4,7 @@ description: >
   Production health on IPODhan is checked two SCRIPTED, exit-code-gated ways — the audit-prod.mjs
   API/data audit and the prod-verify.yml browser sweep — never by eyeballing. Codifies which to
   run, what each catches, and that "looks fine" is not a pass.
-globs: ["scripts/audit-*.mjs", "scripts/lib/*.mjs", ".github/workflows/prod-verify.yml"]
+paths: ["scripts/audit-*.mjs", "scripts/lib/*.mjs", ".github/workflows/prod-verify.yml"]
 version: "1.0.0"
 synthesized: true
 private: true

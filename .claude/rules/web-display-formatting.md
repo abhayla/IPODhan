@@ -4,7 +4,7 @@ description: >
   Enforces the web app's single source of truth for displaying IPO financial KPIs
   and dates — the kpi-formatters and date-formatter modules — so currency, ratios,
   percentages, and dates render consistently (₹/en-IN, IST, null → 'N/A'/'TBA').
-globs: ["web/app/**/*.tsx", "web/components/**/*.tsx", "web/lib/**/*.ts"]
+paths: ["web/app/**/*.tsx", "web/components/**/*.tsx", "web/lib/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

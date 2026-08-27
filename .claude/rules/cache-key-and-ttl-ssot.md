@@ -4,7 +4,7 @@ description: >
   Redis cache keys, invalidation patterns, and TTLs come ONLY from the centralized
   cache-keys SSOT modules — never inline string keys or magic-number TTLs. A page's
   ISR revalidate window MUST equal its backing data-layer Redis TTL.
-globs: ["web/**/*.ts", "web/**/*.tsx", "packages/shared/src/**/*.ts"]
+paths: ["web/**/*.ts", "web/**/*.tsx", "packages/shared/src/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

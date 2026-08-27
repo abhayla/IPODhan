@@ -4,7 +4,7 @@ description: >
   Every IPODhan commit runs a custom regex secret scanner over staged-ADDED lines, then a
   type-check-only lint-staged pass. Codifies the scanner's shapes, the `secret-scan:allow`
   exemption, and why the hook exists (GitHub #1, leaked VPS Postgres password).
-globs: [".husky/**", "scripts/check-staged-secrets.js", ".lintstagedrc.js"]
+paths: [".husky/**", "scripts/check-staged-secrets.js", ".lintstagedrc.js"]
 version: "1.0.0"
 synthesized: true
 private: false

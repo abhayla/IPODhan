@@ -4,7 +4,7 @@ description: >
   Enforces the web app's 3-layer data access — services and Server Components use
   repositories directly (ESLint-backed), repositories extend BaseRepository with
   cache-aside, constructor DI of (db, redis), and centralized cache keys + TTLs.
-globs: ["web/lib/services/**/*.ts", "web/lib/repositories/**/*.ts", "web/app/**/*.tsx"]
+paths: ["web/lib/services/**/*.ts", "web/lib/repositories/**/*.ts", "web/app/**/*.tsx"]
 version: "1.0.0"
 synthesized: true
 private: false

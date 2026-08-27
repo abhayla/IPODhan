@@ -5,7 +5,7 @@ description: >
   domain-rule overrides in db/validations.ts, and every table ROW type is derived via
   Infer{Select,Insert}Model, never hand-authored. Hand-written interfaces are reserved for
   non-table shapes (filters, pagination).
-globs: ["packages/shared/src/**/*.ts"]
+paths: ["packages/shared/src/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

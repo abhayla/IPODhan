@@ -5,7 +5,7 @@ description: >
   capabilities land their pure core first while the live enqueue/fetch/cron side
   is a deliberate §GATE no-op, and production activation is reserved as the
   owner's manual call — never auto-enabled by code or a deploy.
-globs: ["scraper/src/**/*.ts"]
+paths: ["scraper/src/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

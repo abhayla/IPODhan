@@ -4,7 +4,7 @@ description: >
   All `timestamp without time zone` columns obey a two-part UTC contract — every pg Pool sets
   session timezone UTC, and configureUtcTimestampParsing() reads naive values as UTC — because PM2
   on the VPS does not propagate TZ=UTC to Node. Skipping either half skews timestamps by the IST offset.
-globs: ["packages/shared/src/db/**/*.ts", "web/**/*.ts", "scraper/src/**/*.ts"]
+paths: ["packages/shared/src/db/**/*.ts", "web/**/*.ts", "scraper/src/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

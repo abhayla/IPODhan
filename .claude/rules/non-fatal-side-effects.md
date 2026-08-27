@@ -5,7 +5,7 @@ description: >
   (status update, log pruning, alert email, cache invalidation, calendar
   refresh) MUST be isolated in its own try/catch, logged as "(non-fatal)", and
   MUST NEVER throw into or fail the core scrape result.
-globs: ["scraper/src/**/*.ts"]
+paths: ["scraper/src/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

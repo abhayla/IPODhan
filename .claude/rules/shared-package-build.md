@@ -4,7 +4,7 @@ description: >
   Enforces the @ipodhan/shared compile-before-build ordering, the dist verification
   ritual CI depends on, the monorepo's asymmetric quality gates (web strict,
   scraper permissive), and shared-package boundary direction.
-globs: ["packages/shared/**/*.ts", "packages/shared/**/*.json", ".github/workflows/*.yml", "package.json", ".lintstagedrc.js"]
+paths: ["packages/shared/**/*.ts", "packages/shared/**/*.json", ".github/workflows/*.yml", "package.json", ".lintstagedrc.js"]
 version: "1.0.0"
 synthesized: true
 private: false

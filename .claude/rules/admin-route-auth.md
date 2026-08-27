@@ -4,7 +4,7 @@ description: >
   Enforces the admin API auth contract — every admin route is wrapped with
   withAdminAuth(), which gates on ADMIN_PANEL_ENABLED + a Bearer ADMIN_AUTH_TOKEN
   and injects an AdminAuthContext used for audit attribution.
-globs: ["web/app/api/admin/**/*.ts", "web/lib/middleware/admin-auth.ts"]
+paths: ["web/app/api/admin/**/*.ts", "web/lib/middleware/admin-auth.ts"]
 version: "1.0.0"
 synthesized: true
 private: true

@@ -4,7 +4,7 @@ description: >
   Enforces the scraper's single write entry point (upsertIPO via the consolidation
   pipeline), mandatory field-priority-matrix registration for every scraped field,
   the BaseScraperOrchestrator contract, distributed locking, and feature-flag gating.
-globs: ["scraper/src/**/*.ts", "scraper/scripts/**/*.ts"]
+paths: ["scraper/src/**/*.ts", "scraper/scripts/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

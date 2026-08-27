@@ -4,7 +4,7 @@ description: >
   Enforces the scraper's auto rendering-strategy detection — detectRenderingType()
   picks Cheerio for static HTML and Puppeteer for JS-rendered pages — so new
   scrapers don't hardcode (and pay for) a browser when a fetch+parse suffices.
-globs: ["scraper/src/scrapers/**/*.ts", "scraper/src/utils/scraper-utils.ts"]
+paths: ["scraper/src/scrapers/**/*.ts", "scraper/src/utils/scraper-utils.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

@@ -4,7 +4,7 @@ description: >
   @ipodhan/shared is consumed as TypeScript SOURCE, not compiled JS — every package.json exports key
   maps to ./src/*.ts, tsc emits only .d.ts, and relative imports inside the package MUST be
   extensionless. A new deep-import entry point requires BOTH an exports key AND the file.
-globs: ["packages/shared/**/*.ts", "packages/shared/package.json"]
+paths: ["packages/shared/**/*.ts", "packages/shared/package.json"]
 version: "1.0.0"
 synthesized: true
 private: false

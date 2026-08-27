@@ -4,7 +4,7 @@ description: >
   Enforces using generateIPOSlug() from @ipodhan/shared as the single source of
   truth for IPO URL slugs, with its canonical legal-entity normalization, so the
   same company always resolves to one unique, stable slug across web and scraper.
-globs: ["packages/shared/src/utils/slug.ts", "web/**/*.ts", "web/**/*.tsx", "scraper/src/**/*.ts"]
+paths: ["packages/shared/src/utils/slug.ts", "web/**/*.ts", "web/**/*.tsx", "scraper/src/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false

@@ -4,7 +4,7 @@ description: >
   IPODhan deploys from a self-hosted Windows runner to a fixed deploy directory. Codifies the
   PowerShell/PM2 gotchas that have bitten this pipeline — incremental checkout, lockfile-hash
   skip, pm2 delete (not reload), the $ErrorActionPreference trap, and dual feature-flag copies.
-globs: [".github/workflows/deploy.yml", ".github/workflows/vps-*.yml", "ecosystem.config.js"]
+paths: [".github/workflows/deploy.yml", ".github/workflows/vps-*.yml", "ecosystem.config.js"]
 version: "1.0.0"
 synthesized: true
 private: true

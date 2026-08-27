@@ -4,7 +4,7 @@ description: >
   Enforces the database schema single source of truth (packages/shared/src/db/schema.ts)
   and the @ipodhan/shared exports whitelist. Prevents imports of the stale legacy schema
   copy and deep src/ imports that bypass the package's public API.
-globs: ["web/**/*.ts", "web/**/*.tsx", "scraper/**/*.ts", "packages/shared/src/**/*.ts"]
+paths: ["web/**/*.ts", "web/**/*.tsx", "scraper/**/*.ts", "packages/shared/src/**/*.ts"]
 version: "1.0.1"
 synthesized: true
 private: false

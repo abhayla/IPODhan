@@ -4,7 +4,7 @@ description: >
   Enforces precise numeric typing for money/share columns in the shared Drizzle
   schema — numeric() for fractional rupee values and bigint mode:'number' for
   share counts — so scraper updates never truncate or float-corrupt financial data.
-globs: ["packages/shared/src/db/schema.ts", "packages/shared/src/db/**/*.ts"]
+paths: ["packages/shared/src/db/schema.ts", "packages/shared/src/db/**/*.ts"]
 version: "1.0.0"
 synthesized: true
 private: false
