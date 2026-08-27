@@ -1,4 +1,10 @@
-# Scope: global
+---
+paths:
+  - "web/**/*.ts"
+  - "web/**/*.tsx"
+  - "scraper/src/**/*.ts"
+  - "packages/**/*.ts"
+---
 
 # Design Principles
 

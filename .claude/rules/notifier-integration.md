@@ -1,4 +1,9 @@
-# Scope: global
+---
+paths:
+  - "web/lib/**"
+  - "scraper/src/**"
+  - "scripts/ops/**"
+---
 
 # Notifier Integration — Owner Alerts & Uptime Heartbeats
 
