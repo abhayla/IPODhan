@@ -24,9 +24,10 @@ import { runDuplicateSweepJob } from './scheduler/jobs/duplicate-sweep-job.js';
 import { runStageReconcilerJob } from './scheduler/jobs/stage-reconciler-job.js';
 import { runPrimaryDocBackfill } from './scripts/backfill-primary-source-documents.js';
 import { shouldRunOnCatchUpCadence } from './scheduler/catch-up-cadence.js';
+import { randomUUID } from 'crypto';
 import { db, ScraperLogRepository, getRedisClient } from '@ipodhan/shared';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories';
-import { scraperLogs } from '@ipodhan/shared/db/schema';
+import { scraperLogs, scraperSteps } from '@ipodhan/shared/db/schema';
 import { lt } from 'drizzle-orm';
 import logger from './utils/logger.js';
 import { heartbeat, flushOwnerNotify } from './services/owner-notify.js';
@@ -59,6 +60,113 @@ const HEARTBEAT_NAME = 'watchdog';
 const HEARTBEAT_INTERVAL_MINUTES = 30;
 
 /**
+ * T-340: the ordered list of post-scrape steps run by the `--source=all`
+ * cycle (main(), the `if (source === 'all')` block below). This is the
+ * SSOT the step-ledger writer and the nightly audit's expected-step list
+ * both derive from — never hand-typed a second time (docs/reviews/
+ * detection-checks.json's `i_wire_or_retire` class is exactly what a
+ * hand-typed duplicate list risks: a step added here and forgotten there).
+ */
+export const STEP_NAMES = [
+  'statusUpdate',
+  'registrarReresolve',
+  'registrarHealthCheck',
+  'listingPerformanceUpdate',
+  'duplicateSweep',
+  'stageReconciler',
+  'primarySourceDiscovery',
+  'deployDriftMonitor',
+  'pruneScraperLogs',
+  'pruneDataConflicts',
+  'dataQualityWatchdog',
+  'heartbeat',
+] as const;
+export type StepName = typeof STEP_NAMES[number];
+
+export type StepStatus = 'ok' | 'skipped' | 'failed';
+// T-340 checker round-1 F1: a plain `{ status: StepStatus; reason?: string }`
+// interface let a reasonless `{ status: 'skipped' }` type-check and pass all
+// tests — the contract's "a skipped step MUST carry a reason" was a
+// convention, not a guarantee. The discriminated union makes it a compile
+// error instead: 'ok' may omit reason, 'skipped'/'failed' must not.
+export type StepResult =
+  | { status: 'ok'; reason?: string }
+  | { status: 'skipped'; reason: string }
+  | { status: 'failed'; reason: string };
+
+/**
+ * T-340: the runtime twin of the design-time "wire or retire" check
+ * (docs/reviews/detection-checks.json `i_wire_or_retire`). Every post-scrape
+ * step used to be a non-fatal try/catch that logged and returned void — a
+ * cycle could exit 0 with a step silently skipped (e.g. ADMIN_API_TOKEN
+ * unset) or silently failing every cycle, with nothing but a log line nobody
+ * reads. This wrapper writes ONE row per step per cycle to `scraper_steps`
+ * so the nightly audit can FAIL on silence (zero ok rows in 24h, or >=3
+ * consecutive failures) instead of a human having to notice.
+ *
+ * The ledger write itself is non-fatal (redis-best-effort-fail-open.md /
+ * non-fatal-side-effects.md discipline) — a DB hiccup while writing the
+ * ledger must never fail the cycle or mask the step's own result from the
+ * logger.
+ */
+async function runStep(cycleId: string, step: StepName, fn: () => Promise<StepResult>): Promise<void> {
+  const start = Date.now();
+  let result: StepResult;
+  try {
+    result = await fn();
+  } catch (error) {
+    result = { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
+  }
+  const durationMs = Date.now() - start;
+  try {
+    await db.insert(scraperSteps).values({
+      cycleId,
+      step,
+      status: result.status,
+      reason: result.reason ?? null,
+      durationMs,
+    });
+  } catch (logError) {
+    logger.error(
+      { step, error: logError instanceof Error ? logError.message : String(logError) },
+      'Failed to write step ledger row (non-fatal)'
+    );
+  }
+}
+
+/**
+ * T-340 DoD item 3: the scraper refuses to START a `--source=all` cycle
+ * (never runs any post-scrape step, exits non-zero, names the missing key)
+ * when a required env var for that cycle is absent. Previously
+ * `triggerStatusUpdate()` alone decided this at the point of use — a missing
+ * `ADMIN_API_TOKEN` produced a silent per-step skip, not a startup failure,
+ * so a cycle exited 0 with stale statuses and no alert (this task's data_source
+ * note). Scoped to `source === 'all'` because that is the only path that runs
+ * any post-scrape step; `--source=nse`/`bse`/etc. need none of these keys.
+ */
+// Exported so the drift guard in tests/unit/index-env-assert.test.ts can bind
+// this runtime list to scripts/assert-env-keys.sh's deploy-time list — two
+// hand-maintained lists in two languages is the exact drift class T-340 exists
+// to kill.
+//
+// WEB_INTERNAL_URL is deliberately NOT here: it has a fallback
+// ('http://localhost:3001') that is CORRECT on the prod box (the web app is
+// pm2-served on 3001 there), so requiring it would break local `--source=all`
+// runs for zero safety gain. It stays a deploy-time required key only.
+export const REQUIRED_ENV_FOR_ALL_CYCLE: readonly string[] = ['ADMIN_API_TOKEN'];
+
+export function assertRequiredEnvForCycle(source: string, env: NodeJS.ProcessEnv = process.env): void {
+  if (source !== 'all') return;
+  const missing = REQUIRED_ENV_FOR_ALL_CYCLE.filter((key) => !env[key]);
+  if (missing.length > 0) {
+    throw new Error(
+      `Missing required env var(s) for --source=all cycle: ${missing.join(', ')} — refusing to start ` +
+      `(T-340: a missing ADMIN_API_TOKEN previously caused a silent per-step skip, not a startup failure)`
+    );
+  }
+}
+
+/**
  * CLI entry point for IPO scrapers
  * Supports NSE, BSE, Moneycontrol, Chittorgarh, GMP, API fallback, and combined scraping via --source flag
  * Usage:
@@ -78,6 +186,10 @@ export async function main() {
     const source = args.find(arg => arg.startsWith('--source='))?.split('=')[1] || 'nse';
 
     logger.info({ source }, 'IPO Scraper CLI started');
+
+    // T-340: refuse to start a --source=all cycle without the env the
+    // post-scrape steps need — see assertRequiredEnvForCycle's doc comment.
+    assertRequiredEnvForCycle(source);
 
     // T-327 P2-7: make the process TZ observable at every run — this is what
     // let NSE dates land a day early for months (local-TZ new Date() parsing
@@ -297,27 +409,30 @@ export async function main() {
     // run (the scheduled production path). Both are non-fatal: a failure here
     // must not fail the scrape.
     if (source === 'all') {
-      await triggerStatusUpdate();
-      await triggerRegistrarReresolve();
-      await triggerRegistrarHealthCheck();
-      await triggerListingPerformanceUpdate();
-      await triggerDuplicateSweep();
-      await triggerStageReconciler();
-      await triggerPrimarySourceDiscovery();
-      await triggerDeployDriftMonitor();
-      await pruneScraperLogs();
-      await pruneDataConflicts();
+      // T-340: cycleId links every step-ledger row this run writes so the
+      // audit and any operator can see the whole cycle's shape together.
+      const cycleId = randomUUID();
+      await runStep(cycleId, 'statusUpdate', triggerStatusUpdate);
+      await runStep(cycleId, 'registrarReresolve', triggerRegistrarReresolve);
+      await runStep(cycleId, 'registrarHealthCheck', triggerRegistrarHealthCheck);
+      await runStep(cycleId, 'listingPerformanceUpdate', triggerListingPerformanceUpdate);
+      await runStep(cycleId, 'duplicateSweep', triggerDuplicateSweep);
+      await runStep(cycleId, 'stageReconciler', triggerStageReconciler);
+      await runStep(cycleId, 'primarySourceDiscovery', triggerPrimarySourceDiscovery);
+      await runStep(cycleId, 'deployDriftMonitor', triggerDeployDriftMonitor);
+      await runStep(cycleId, 'pruneScraperLogs', pruneScraperLogs);
+      await runStep(cycleId, 'pruneDataConflicts', pruneDataConflicts);
       // T-195: data-quality watchdog core (freshness SLO + cross-source
       // disagreement report). Selector-degradation runs per-source inside
       // BaseScraperOrchestrator.run() itself, not here. Non-fatal, same
       // pattern as the other post-scrape side effects above.
-      await triggerDataQualityWatchdog();
+      await runStep(cycleId, 'dataQualityWatchdog', triggerDataQualityWatchdog);
       // T-194: job-completion heartbeat -- proves this cron cycle reached the
       // end of the pipeline (not that every source succeeded; source-level
       // failures are reported separately via AlertingService/notifyOwner).
       // Fires regardless of combinedResult.success, matching the other
       // non-fatal post-scrape side effects above.
-      triggerHeartbeat();
+      await runStep(cycleId, 'heartbeat', async () => { triggerHeartbeat(); return { status: 'ok' }; });
     }
 
     // Log final combined result
@@ -387,12 +502,15 @@ function triggerHeartbeat(): void {
  * status logic stays in the web app — its DB schema, cache keys, and the `@/`
  * path alias all resolve there, and the scraper avoids a web/ boundary import.
  */
-async function triggerStatusUpdate(): Promise<void> {
+async function triggerStatusUpdate(): Promise<StepResult> {
   const baseUrl = process.env.WEB_INTERNAL_URL || 'http://localhost:3001';
   const token = process.env.ADMIN_API_TOKEN;
   if (!token) {
+    // Unreachable in practice under --source=all: assertRequiredEnvForCycle
+    // already refused to start the cycle without ADMIN_API_TOKEN (T-340).
+    // Kept as a defensive skip (not a throw) for direct-call/test paths.
     logger.warn('ADMIN_API_TOKEN not set — skipping IPO status update');
-    return;
+    return { status: 'skipped', reason: 'ADMIN_API_TOKEN not set' };
   }
   try {
     const res = await fetch(`${baseUrl}/api/admin/status/update`, {
@@ -401,15 +519,17 @@ async function triggerStatusUpdate(): Promise<void> {
     });
     if (!res.ok) {
       logger.error({ status: res.status }, 'IPO status update returned non-OK');
-      return;
+      return { status: 'failed', reason: `status update endpoint returned HTTP ${res.status}` };
     }
     const body = await res.json() as { data?: unknown };
     logger.info({ result: body.data }, 'IPO status transitions applied');
+    return { status: 'ok' };
   } catch (error) {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'IPO status update trigger failed (non-fatal)'
     );
+    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -426,19 +546,21 @@ async function triggerStatusUpdate(): Promise<void> {
  * `shouldRunListingPerformanceUpdate()` so it only fires as often as the
  * job's original market-hours/after-hours/weekends tiers intended.
  */
-export async function triggerListingPerformanceUpdate(): Promise<void> {
+export async function triggerListingPerformanceUpdate(): Promise<StepResult> {
   if (!shouldRunListingPerformanceUpdate(new Date())) {
     logger.debug('Listing performance update skipped (outside cadence window)');
-    return;
+    return { status: 'skipped', reason: 'outside cadence window' };
   }
   try {
     const result = await updateListingPerformance();
     logger.info({ result }, 'Listing performance update triggered from one-shot cycle');
+    return { status: 'ok' };
   } catch (error) {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'Listing performance update trigger failed (non-fatal)'
     );
+    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -458,17 +580,19 @@ export async function triggerListingPerformanceUpdate(): Promise<void> {
  * cheap DB-only pass (no outbound HTTP), so it runs every cycle rather than
  * being cadence-gated like the registrar health check.
  */
-export async function triggerRegistrarReresolve(): Promise<void> {
+export async function triggerRegistrarReresolve(): Promise<StepResult> {
   try {
     const result = await reresolveRegistrarIds({ dryRun: false });
     if (result.written > 0) {
       logger.info({ result }, 'registrar_id re-resolve pass wrote rows');
     }
+    return { status: 'ok' };
   } catch (error) {
     logger.warn(
       { error: error instanceof Error ? error.message : String(error) },
       'registrar_id re-resolve pass failed (non-fatal)'
     );
+    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -495,7 +619,7 @@ export async function triggerRegistrarReresolve(): Promise<void> {
 // default) rather than block or crash the cycle.
 const REGISTRAR_HEALTH_CHECK_LAST_RUN_KEY = 'registrar-health-check:last-run';
 
-export async function triggerRegistrarHealthCheck(): Promise<void> {
+export async function triggerRegistrarHealthCheck(): Promise<StepResult> {
   const now = new Date();
   let lastRunAt: Date | null = null;
   try {
@@ -512,7 +636,7 @@ export async function triggerRegistrarHealthCheck(): Promise<void> {
 
   if (!shouldRunRegistrarHealthCheck(now, lastRunAt)) {
     logger.debug('Registrar health check skipped (outside cadence window, no catch-up due)');
-    return;
+    return { status: 'skipped', reason: 'outside cadence window, no catch-up due' };
   }
   try {
     const result = await runRegistrarHealthCheck();
@@ -528,11 +652,13 @@ export async function triggerRegistrarHealthCheck(): Promise<void> {
         'Registrar health check last-run persist failed (non-fatal)'
       );
     }
+    return { status: 'ok' };
   } catch (error) {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'Registrar health check trigger failed (non-fatal)'
     );
+    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -549,21 +675,23 @@ export async function triggerRegistrarHealthCheck(): Promise<void> {
  */
 const DUPLICATE_SWEEP_INTERVAL_MINUTES = 24 * 60;
 
-export async function triggerDuplicateSweep(): Promise<void> {
+export async function triggerDuplicateSweep(): Promise<StepResult> {
   const redis = getRedisClient();
   const shouldRun = await shouldRunOnCatchUpCadence(redis, 'duplicate-sweep', DUPLICATE_SWEEP_INTERVAL_MINUTES);
   if (!shouldRun) {
     logger.debug('Duplicate sweep skipped (outside catch-up cadence window)');
-    return;
+    return { status: 'skipped', reason: 'outside catch-up cadence window' };
   }
   try {
     const result = await runDuplicateSweepJob({ dryRun: true });
     logger.info({ result }, 'Duplicate sweep triggered from one-shot cycle (dry-run — report only)');
+    return { status: 'ok' };
   } catch (error) {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'Duplicate sweep trigger failed (non-fatal)'
     );
+    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -580,24 +708,26 @@ export async function triggerDuplicateSweep(): Promise<void> {
  */
 const STAGE_RECONCILER_INTERVAL_MINUTES = 3 * 60;
 
-export async function triggerStageReconciler(): Promise<void> {
+export async function triggerStageReconciler(): Promise<StepResult> {
   if (process.env.ENABLE_STAGE_RECONCILER !== 'true') {
-    return;
+    return { status: 'skipped', reason: 'ENABLE_STAGE_RECONCILER not true (§GATE)' };
   }
   const redis = getRedisClient();
   const shouldRun = await shouldRunOnCatchUpCadence(redis, 'stage-reconciler', STAGE_RECONCILER_INTERVAL_MINUTES);
   if (!shouldRun) {
     logger.debug('Stage reconciler skipped (outside catch-up cadence window)');
-    return;
+    return { status: 'skipped', reason: 'outside catch-up cadence window' };
   }
   try {
     const result = await runStageReconcilerJob({ dryRun: true });
     logger.info({ result }, 'Stage reconciler triggered from one-shot cycle (dry-run — report only)');
+    return { status: 'ok' };
   } catch (error) {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'Stage reconciler trigger failed (non-fatal)'
     );
+    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -621,24 +751,26 @@ export async function triggerStageReconciler(): Promise<void> {
  */
 const PRIMARY_SOURCE_DISCOVERY_INTERVAL_MINUTES = 24 * 60;
 
-export async function triggerPrimarySourceDiscovery(): Promise<void> {
+export async function triggerPrimarySourceDiscovery(): Promise<StepResult> {
   if (process.env.ENABLE_PRIMARY_SOURCE_DISCOVERY !== 'true') {
-    return;
+    return { status: 'skipped', reason: 'ENABLE_PRIMARY_SOURCE_DISCOVERY not true (§GATE)' };
   }
   const redis = getRedisClient();
   const shouldRun = await shouldRunOnCatchUpCadence(redis, 'primary-source-discovery', PRIMARY_SOURCE_DISCOVERY_INTERVAL_MINUTES);
   if (!shouldRun) {
     logger.debug('Primary-source discovery skipped (outside catch-up cadence window)');
-    return;
+    return { status: 'skipped', reason: 'outside catch-up cadence window' };
   }
   try {
     await runPrimaryDocBackfill({ execute: true });
     logger.info('Primary-source discovery triggered from one-shot cycle');
+    return { status: 'ok' };
   } catch (error) {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'Primary-source discovery trigger failed (non-fatal)'
     );
+    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -652,12 +784,12 @@ export async function triggerPrimarySourceDiscovery(): Promise<void> {
  */
 const DEPLOY_DRIFT_INTERVAL_MINUTES = 60;
 
-export async function triggerDeployDriftMonitor(): Promise<void> {
+export async function triggerDeployDriftMonitor(): Promise<StepResult> {
   const redis = getRedisClient();
   const shouldRun = await shouldRunOnCatchUpCadence(redis, 'deploy-drift-monitor', DEPLOY_DRIFT_INTERVAL_MINUTES);
   if (!shouldRun) {
     logger.debug('Deploy drift monitor skipped (outside catch-up cadence window)');
-    return;
+    return { status: 'skipped', reason: 'outside catch-up cadence window' };
   }
   try {
     const results = await checkDeployDrift({
@@ -666,11 +798,13 @@ export async function triggerDeployDriftMonitor(): Promise<void> {
       redis,
     });
     logger.info({ results }, 'Deploy drift monitor triggered from one-shot cycle');
+    return { status: 'ok' };
   } catch (error) {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'Deploy drift monitor trigger failed (non-fatal)'
     );
+    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -685,25 +819,25 @@ export async function triggerDeployDriftMonitor(): Promise<void> {
  * checks are independently non-fatal — a failure in one must not skip the
  * others or fail the scrape (non-fatal-side-effects.md).
  */
-async function triggerDataQualityWatchdog(): Promise<void> {
+async function triggerDataQualityWatchdog(): Promise<StepResult> {
+  const failures: string[] = [];
+
   try {
     const redis = getRedisClient();
     const scraperLogRepository = new ScraperLogRepository(db, redis);
     await evaluateFreshness(scraperLogRepository);
   } catch (error) {
-    logger.error(
-      { error: error instanceof Error ? error.message : String(error) },
-      'Freshness SLO evaluation failed (non-fatal)'
-    );
+    const reason = error instanceof Error ? error.message : String(error);
+    logger.error({ error: reason }, 'Freshness SLO evaluation failed (non-fatal)');
+    failures.push(`freshness: ${reason}`);
   }
 
   try {
     await checkCrossSourceDisagreements(db);
   } catch (error) {
-    logger.error(
-      { error: error instanceof Error ? error.message : String(error) },
-      'Cross-source disagreement check failed (non-fatal)'
-    );
+    const reason = error instanceof Error ? error.message : String(error);
+    logger.error({ error: reason }, 'Cross-source disagreement check failed (non-fatal)');
+    failures.push(`cross-source: ${reason}`);
   }
 
   // T-318 (ITEM 2): keyless-coverage metric — how many `ipos` rows have
@@ -722,11 +856,12 @@ async function triggerDataQualityWatchdog(): Promise<void> {
       'Keyless IPO coverage (rows with neither symbol nor isin)'
     );
   } catch (error) {
-    logger.error(
-      { error: error instanceof Error ? error.message : String(error) },
-      'Keyless-coverage metric failed (non-fatal)'
-    );
+    const reason = error instanceof Error ? error.message : String(error);
+    logger.error({ error: reason }, 'Keyless-coverage metric failed (non-fatal)');
+    failures.push(`keyless-coverage: ${reason}`);
   }
+
+  return failures.length === 0 ? { status: 'ok' } : { status: 'failed', reason: failures.join('; ') };
 }
 
 /**
@@ -734,18 +869,20 @@ async function triggerDataQualityWatchdog(): Promise<void> {
  * 515k-row / 115 MB bloat the crash-loop produced (GitHub #15 follow-up).
  * Runs each full cycle; non-fatal.
  */
-async function pruneScraperLogs(): Promise<void> {
+async function pruneScraperLogs(): Promise<StepResult> {
   try {
     const cutoff = new Date(Date.now() - SCRAPER_LOG_RETENTION_DAYS * 24 * 60 * 60 * 1000);
     const deleted = await db.delete(scraperLogs).where(lt(scraperLogs.createdAt, cutoff)).returning({ id: scraperLogs.id });
     if (deleted.length > 0) {
       logger.info({ deleted: deleted.length, retentionDays: SCRAPER_LOG_RETENTION_DAYS }, 'Pruned old scraper_logs');
     }
+    return { status: 'ok' };
   } catch (error) {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'scraper_logs prune failed (non-fatal)'
     );
+    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }
 }
 
@@ -756,7 +893,7 @@ async function pruneScraperLogs(): Promise<void> {
  * resolvedAt was never set for the auto/system-detected cases). Runs each
  * full cycle; non-fatal. Never deletes an unresolved row.
  */
-async function pruneDataConflicts(): Promise<void> {
+async function pruneDataConflicts(): Promise<StepResult> {
   try {
     const redis = getRedisClient();
     const dataConflictsRepository = new DataConflictsRepository(db, redis);
@@ -764,11 +901,13 @@ async function pruneDataConflicts(): Promise<void> {
     if (deletedCount > 0) {
       logger.info({ deletedCount, retentionDays: DATA_CONFLICTS_RETENTION_DAYS }, 'Pruned resolved data_conflicts');
     }
+    return { status: 'ok' };
   } catch (error) {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'data_conflicts prune failed (non-fatal)'
     );
+    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }
 }
 

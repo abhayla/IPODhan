@@ -19,6 +19,7 @@ import { IPOScoreRealtimeRepository } from '@/lib/repositories/ipo-score-realtim
 import { IPOScoringService } from '@/lib/services/ipo-scoring-realtime';
 import { ipos } from '@/lib/db';
 import { eq } from 'drizzle-orm';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 export async function GET(
   request: NextRequest,
@@ -143,15 +144,6 @@ export async function GET(
       }
     );
   } catch (error) {
-    console.error('[API] Score calculation error:', error);
-
-    return NextResponse.json(
-      {
-        error: 'Internal server error',
-        message: 'Failed to calculate IPO score',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/ipos/[slug]/score');
   }
 }

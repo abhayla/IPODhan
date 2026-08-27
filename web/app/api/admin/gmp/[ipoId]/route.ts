@@ -12,6 +12,7 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { gmpRecords } from '@ipodhan/shared/db/schema';
 import { eq, and, desc } from 'drizzle-orm';
 import { markFieldAsManuallyEdited } from '@/lib/admin/field-protection-checker';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 interface CreateGMPRequest {
   gmpPrice: number;
@@ -120,14 +121,7 @@ export const POST = withAdminAuth(async (
     });
 
   } catch (error) {
-    console.error('[Admin API] Failed to create GMP record:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to create GMP record',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/admin/gmp/[ipoId]');
   }
 });
 
@@ -232,14 +226,7 @@ export const PATCH = withAdminAuth(async (
     });
 
   } catch (error) {
-    console.error('[Admin API] Failed to update GMP record:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to update GMP record',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/admin/gmp/[ipoId]');
   }
 });
 
@@ -301,13 +288,6 @@ export const DELETE = withAdminAuth(async (
     });
 
   } catch (error) {
-    console.error('[Admin API] Failed to delete GMP record:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to delete GMP record',
-        details: error instanceof Error ? error.message : 'Unknown error'
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/admin/gmp/[ipoId]');
   }
 });

@@ -113,6 +113,20 @@
       "when": 1787501789375,
       "tag": "0032_add_registrar_url_health",
       "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1787736995397,
+      "tag": "0033_add_scraper_steps",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787777931006,
+      "tag": "0034_widen_ipo_scores_algorithm_version",
+      "breakpoints": true
     }
   ]
 }

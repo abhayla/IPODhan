@@ -12,6 +12,7 @@ import {
   getAdminUsers,
   getActionTypes,
 } from '@/lib/services/audit-log-service';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 /**
  * GET /api/admin/audit
@@ -86,13 +87,6 @@ export const GET = withAdminAuth(async (request: NextRequest, adminContext) => {
       },
     });
   } catch (error) {
-    console.error('[Admin API] Failed to retrieve audit logs:', error);
-    return NextResponse.json(
-      {
-        error: 'Failed to retrieve audit logs',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/admin/audit');
   }
 });

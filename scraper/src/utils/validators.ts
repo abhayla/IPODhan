@@ -6,7 +6,12 @@ import { sanitizeDisplayCompanyName } from '@ipodhan/shared/utils/company-name-n
 
 export const ScrapedIPOSchema = z.object({
   companyName: z.string().min(1, 'Company name is required').max(255),
-  issueSize: z.number().nonnegative('Issue size must be non-negative'),
+  // T-329 (round-7 P1-3): optional, not required-with-0-fallback. A source
+  // that cannot derive a real rupee issue size (e.g. NSE has only a share
+  // count and no price band yet) MUST omit the field so a higher-priority
+  // source can supply it, never coerce to a wrong number. data-persister.ts's
+  // `coercePositiveOrNull` already treats 0/undefined as "unknown -> NULL".
+  issueSize: z.number().nonnegative('Issue size must be non-negative').optional(),
   // A literal 0 means "unannounced" (the source returned a blank price cell),
   // never a real ₹0 band - normalize it to undefined here so every caller of
   // every schema built on ScrapedIPOSchema treats an unannounced band as

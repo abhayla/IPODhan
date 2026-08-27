@@ -12,6 +12,7 @@ import { requireAdminAuth } from '@/lib/auth/admin-auth';
 import * as schema from '@ipodhan/shared/db/schema';
 import { desc, asc, like, and, or, sql, getTableColumns } from 'drizzle-orm';
 import { PgTable } from 'drizzle-orm/pg-core';
+import { logger } from '@/lib/logger';
 
 /**
  * Get the table object from schema by name
@@ -137,11 +138,16 @@ export async function GET(
       message: `Found ${records.length} records`
     });
   } catch (error) {
-    console.error('[Dynamic Admin] List error:', error);
+    // Real error detail logged server-side only - never in the public
+    // response body (T-330 P2-5).
+    logger.error(
+      { route: '/api/admin/dynamic/[table]/list', error: error instanceof Error ? error.message : String(error) },
+      '[Dynamic Admin] List error'
+    );
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to list records'
+        error: 'Failed to list records'
       },
       { status: 500 }
     );

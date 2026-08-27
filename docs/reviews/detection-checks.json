@@ -123,6 +123,36 @@
       "unverifiableWhen": "never — static analysis of the checked-out repo"
     },
     {
+      "id": "k_step_ledger_silence",
+      "findingClass": "a post-scrape step is wired and runs every cycle but produces no successful work — skipped for an unread reason, or failing inside its non-fatal catch",
+      "round7Findings": [
+        "P2-8 (runtime twin)"
+      ],
+      "failThreshold": "any step in the exported STEP_NAMES of scraper/src/index.ts with ZERO rows of status=ok in scraper_steps over the last 24h. The expected-step list is DERIVED from that constant at audit time (parseStepNames), never hand-typed here — a hand-typed copy is the i_wire_or_retire class itself. skipped rows do not count as ok: a step skipped every cycle (ADMIN_API_TOKEN unset) is still a step doing nothing.",
+      "severity": "P1",
+      "unverifiableWhen": "STEP_NAMES cannot be parsed from scraper/src/index.ts, the scraper_steps table is absent (migration 0033 not applied), or the table has zero rows in the window (the ledger writer has not run). Zero rows is deliberately UNVERIFIABLE rather than 12 simultaneous FAILs — a genuinely dead scraper is caught independently by g_freshness_per_type."
+    },
+    {
+      "id": "k_step_consecutive_failures",
+      "findingClass": "a post-scrape step fails every cycle, hidden by its non-fatal catch, while the cycle keeps exiting 0",
+      "round7Findings": [
+        "P2-8 (runtime twin)"
+      ],
+      "failThreshold": "any step in the derived STEP_NAMES whose most recent scraper_steps rows show status=failed for >= 3 consecutive cycles (leading streak, newest-first). 2 is a blip and PASSes; a non-failed row ends the streak.",
+      "severity": "P1",
+      "unverifiableWhen": "same as k_step_ledger_silence — unparseable STEP_NAMES, missing scraper_steps table, or an empty 24h window"
+    },
+    {
+      "id": "l_nse_status_crosscheck",
+      "findingClass": "our published OPEN/UPCOMING set disagrees with the exchange that actually runs the issue",
+      "round7Findings": [
+        "T-340 (new coverage — no round-7 finding; our live status set had NO independent oracle at all)"
+      ],
+      "failThreshold": "any MAINBOARD row naming NSE among its listing exchanges where (a) we publish OPEN but NSE current-issue does not list it, (b) NSE current-issue lists it as open while we publish UPCOMING or no OPEN row, or (c) an NSE current/upcoming issue has no OPEN/UPCOMING row of ours at all. Scope excludes SME (NSE Emerge is not on these endpoints), BSE-only rows, and rows with unknown listing exchanges — FAILing those would be noise, and a muted channel is a dead mechanism.",
+      "severity": "P1",
+      "unverifiableWhen": "the NSE cookie handshake or either feed fetch fails, or both feeds return zero usable rows (indistinguishable from a broken feed, so never read as \"nothing is open today\"). UNVERIFIABLE pages and exits 3 — never a silent PASS (T-321 class)."
+    },
+    {
       "id": "j_sector_populated",
       "findingClass": "the sector field/facet is populated for too few real IPOs to be usable",
       "round7Findings": [
@@ -180,8 +210,8 @@
   "exitCodes": {
     "0": "every check PASSed",
     "1": "at least one check FAILed — a defect is live",
-    "3": "no FAIL, but at least one check is UNVERIFIABLE — the audit was blind tonight, not green (FAIL dominates when both occur)",
-    "2": "the audit itself crashed or could not start"
+    "2": "the audit itself crashed or could not start",
+    "3": "no FAIL, but at least one check is UNVERIFIABLE — the audit was blind tonight, not green (FAIL dominates when both occur)"
   },
   "paging": {
     "model": "one DIGEST page per check per night (title, failing-row count, first 10 rows, pointer to the full report on the box) — never one page per row",

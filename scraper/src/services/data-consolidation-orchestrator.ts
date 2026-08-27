@@ -353,7 +353,11 @@ export class DataConsolidationOrchestrator {
       segment: consolidated.segment ?? originalScraped.segment ?? null,
       offeringType: consolidated.offeringType || originalScraped.offeringType,
       sector: consolidated.sector,
-      issueSize: consolidated.issueSize?.toString() || originalScraped.issueSize.toString(),
+      // T-329: issueSize is optional on ScrapedIPO (a source may genuinely
+      // have no rupee-convertible value) — `?.toString()` on both sides
+      // avoids a TypeError when neither side has a value, leaving it
+      // undefined so data-persister.ts's coercePositiveOrNull writes NULL.
+      issueSize: consolidated.issueSize?.toString() ?? originalScraped.issueSize?.toString(),
       priceRangeMin: consolidated.priceRangeMin,
       priceRangeMax: consolidated.priceRangeMax,
       lotSize: consolidated.lotSize,

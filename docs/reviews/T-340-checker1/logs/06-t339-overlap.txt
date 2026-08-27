@@ -1,0 +1,19 @@
+=== T-340 vs T-339 conflicting hunks ===
+--- scripts/audit-detection-floor.mjs: T-340 hunk headers ---
+@@ -46,6 +46,9 @@ import {
+@@ -426,6 +429,196 @@ function checkI() {
+@@ -513,6 +706,8 @@ async function main() {
+--- scripts/audit-detection-floor.mjs: T-339 hunk headers ---
+@@ -46,6 +46,7 @@ import {
+@@ -474,6 +475,36 @@ async function checkJ() {
+@@ -514,6 +545,7 @@ async function main() {
+--- scripts/tests/audit-detection-floor.test.mjs: T-340 hunk headers ---
+@@ -7,6 +7,7 @@
+@@ -447,3 +448,228 @@ test('(j) FAILS on an empty-string segment (round-7 P3-7 shape), not just NULL',
+--- scripts/tests/audit-detection-floor.test.mjs: T-339 hunk headers ---
+@@ -23,6 +23,9 @@ import {
+@@ -447,3 +450,41 @@ test('(j) FAILS on an empty-string segment (round-7 P3-7 shape), not just NULL',
+--- auto-merged (no conflict) overlap files ---
+docs/reviews/detection-checks.json: AUTO-MERGED OK
+scraper/src/index.ts: AUTO-MERGED OK
+scripts/lib/detection-floor-checks.mjs: AUTO-MERGED OK

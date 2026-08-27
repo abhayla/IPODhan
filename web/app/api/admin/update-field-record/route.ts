@@ -19,6 +19,7 @@ import {
 import { eq, and } from 'drizzle-orm';
 import { createFieldProtectionService } from '@ipodhan/shared/admin/field-protection-checker';
 import { logAudit, AuditActionTypes, getClientIP, getUserAgent } from '@/lib/services/audit-log-service';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 interface UpdateFieldRecordRequest {
   recordId: string;      // Specific record ID (document, peer, review)
@@ -262,12 +263,6 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
       });
     }
 
-    return NextResponse.json(
-      {
-        error: 'Failed to update field',
-        details: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/admin/update-field-record');
   }
 });

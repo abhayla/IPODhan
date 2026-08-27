@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/middleware/admin-auth';
 import { getRedisClient } from '@/lib/cache/redis-client';
+import { apiErrorResponse } from '@/lib/errors/api-error-response';
 
 /**
  * GET /api/admin/cache/clear
@@ -47,11 +48,7 @@ export const GET = withAdminAuth(async (request: NextRequest, adminContext) => {
       },
     });
   } catch (error) {
-    console.error('[Admin API] Failed to get cache statistics:', error);
-    return NextResponse.json(
-      { error: 'Failed to get cache statistics', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/admin/cache/clear');
   }
 });
 
@@ -116,10 +113,6 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
         : `Successfully cleared ${keysCleared} cache keys matching "${pattern}"`,
     });
   } catch (error) {
-    console.error('[Admin API] Failed to clear cache:', error);
-    return NextResponse.json(
-      { error: 'Failed to clear cache', details: error instanceof Error ? error.message : 'Unknown error' },
-      { status: 500 }
-    );
+    return apiErrorResponse(error, '/api/admin/cache/clear');
   }
 });

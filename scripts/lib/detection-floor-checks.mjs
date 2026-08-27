@@ -221,6 +221,163 @@ export function findUnreferencedDefinitions(definedNames, referencedNames) {
   return definedNames.filter((name) => !referenced.has(name));
 }
 
+// ---- (k): T-340 post-scrape step ledger -------------------------------------
+// The RUNTIME twin of (i) wire_or_retire above. (i) catches a step that exists
+// on paper and is never wired to prod. (k) catches the harder case: a step that
+// IS wired, runs every cycle, and quietly does nothing — skipped for a reason
+// nobody reads (ADMIN_API_TOKEN unset was exactly this: triggerStatusUpdate
+// returned early, the cycle exited 0, statuses went stale, nothing alerted), or
+// failing every cycle inside its non-fatal catch. Both shapes are "green cycle,
+// dead step"; only the ledger (scraper_steps, T-340 item 1) can see the second.
+
+/** A step failing this many cycles in a row is a live defect, not a blip. */
+export const STEP_LEDGER_MAX_CONSECUTIVE_FAILURES = 3;
+/** The window in which every expected step must produce at least one `ok`. */
+export const STEP_LEDGER_WINDOW_HOURS = 24;
+
+/**
+ * Derive the expected-step list from the prod entrypoint's exported STEP_NAMES
+ * constant. NEVER hand-type this list in the audit: a hand-typed duplicate is
+ * the `i_wire_or_retire` failure class itself — a step added to index.ts and
+ * forgotten in the audit would be silently unmonitored forever.
+ *
+ * Throws when the constant cannot be found, so the caller reports UNVERIFIABLE
+ * (the audit is blind) instead of PASSing an empty expected-step list — an
+ * empty list would make every check vacuously green, the T-321 silent-pass class.
+ */
+export function parseStepNames(indexTsSource) {
+  const m = indexTsSource.match(/export\s+const\s+STEP_NAMES\s*=\s*\[([\s\S]*?)\]\s*as\s+const/);
+  if (!m) {
+    throw new Error('could not parse `export const STEP_NAMES = [...] as const` from scraper/src/index.ts');
+  }
+  const names = [...m[1].matchAll(/'([^']+)'|"([^"]+)"/g)].map((x) => x[1] ?? x[2]);
+  if (names.length === 0) {
+    throw new Error('STEP_NAMES parsed but is empty — refusing to run the step-ledger checks against an empty list');
+  }
+  return names;
+}
+
+/**
+ * FAIL when an expected step produced zero `ok` rows in the window. Deliberately
+ * counts `ok` only: a step skipped every cycle for a documented reason is still
+ * a step that is not doing its job, and that is the precise defect this task
+ * exists for.
+ */
+export function checkStepSilence(stepName, okCountInWindow) {
+  if (okCountInWindow > 0) return null;
+  return `post-scrape step "${stepName}" has ZERO ok rows in the last ${STEP_LEDGER_WINDOW_HOURS}h `
+    + `— it is wired but silently skipped or failing every cycle (T-340 runtime wire-or-retire)`;
+}
+
+/** Leading run of 'failed' in a newest-first status list. Any non-'failed' ends it. */
+export function countLeadingFailures(statusesNewestFirst) {
+  let n = 0;
+  for (const s of statusesNewestFirst) {
+    if (s !== 'failed') break;
+    n += 1;
+  }
+  return n;
+}
+
+export function checkStepConsecutiveFailures(stepName, statusesNewestFirst) {
+  const streak = countLeadingFailures(statusesNewestFirst);
+  if (streak < STEP_LEDGER_MAX_CONSECUTIVE_FAILURES) return null;
+  return `post-scrape step "${stepName}" has failed in ${streak} consecutive cycles `
+    + `(>= ${STEP_LEDGER_MAX_CONSECUTIVE_FAILURES}) — its non-fatal catch is hiding a persistent failure`;
+}
+
+// ---- (l): T-340 NSE status cross-check ---------------------------------------
+// Our OPEN/UPCOMING set is produced entirely by our own pipeline; until now
+// nothing independent checked it. NSE's own current-issue + upcoming feeds are
+// the primary oracle for "is this issue actually open right now".
+//
+// SCOPE IS DELIBERATELY NARROW: MAINBOARD rows that name NSE among their
+// listing exchanges. NSE SME (Emerge) issues and BSE-only issues legitimately
+// never appear on these endpoints, so FAILing on them would be pure noise — and
+// a noisy channel gets muted, which is how a mechanism dies (the lesson already
+// recorded in audit-detection-floor.mjs's digest design). Rows with unknown
+// listing exchanges are skipped rather than guessed at.
+
+/** Normalized lookup keys for an NSE feed: exact symbol plus normalized name. */
+export function buildNseKeySet(feedRows) {
+  const keys = new Set();
+  for (const r of feedRows || []) {
+    if (r.symbol) keys.add(String(r.symbol).trim().toUpperCase());
+    if (r.companyName) keys.add(normalizeCompanyKey(r.companyName));
+  }
+  return keys;
+}
+
+function ourKeys(row) {
+  const keys = [];
+  if (row.symbol) keys.push(String(row.symbol).trim().toUpperCase());
+  if (row.companyName) keys.push(normalizeCompanyKey(row.companyName));
+  return keys;
+}
+
+function inScope(row) {
+  if (row.segment !== 'MAINBOARD') return false;
+  const ex = row.listingExchanges;
+  if (!Array.isArray(ex) || ex.length === 0) return false;
+  return ex.includes('NSE');
+}
+
+export function crossCheckNseStatuses({ ourRows = [], nseCurrent = [], nseUpcoming = [] }) {
+  const currentKeys = buildNseKeySet(nseCurrent);
+  const upcomingKeys = buildNseKeySet(nseUpcoming);
+  const mismatches = [];
+  const seen = new Set();
+  const push = (key, companyName, message) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    mismatches.push({ key, companyName, message });
+  };
+
+  // Direction 1: what WE publish, checked against NSE.
+  const scoped = ourRows.filter(inScope);
+  for (const row of scoped) {
+    const keys = ourKeys(row);
+    const onCurrent = keys.some((k) => currentKeys.has(k));
+    const onUpcoming = keys.some((k) => upcomingKeys.has(k));
+    const label = row.companyName || keys[0];
+    if (row.status === 'OPEN' && !onCurrent) {
+      push(keys[0], row.companyName,
+        `we publish "${label}" as OPEN, but NSE's current-issue feed does not list it (and NSE ${onUpcoming ? 'still calls it upcoming' : 'does not list it at all'})`);
+    } else if (row.status === 'UPCOMING' && onCurrent) {
+      push(keys[0], row.companyName,
+        `NSE lists "${label}" as a CURRENT (open) issue while we still publish it as UPCOMING`);
+    }
+  }
+
+  // Direction 2: what NSE publishes, checked against us. A live issue we never
+  // show at all is the worse defect of the two and is invisible to direction 1.
+  const openByKey = new Set();
+  const knownByKey = new Set();
+  for (const row of scoped) {
+    for (const k of ourKeys(row)) {
+      knownByKey.add(k);
+      if (row.status === 'OPEN') openByKey.add(k);
+      if (row.status === 'UPCOMING') knownByKey.add(k);
+    }
+  }
+  for (const r of nseCurrent || []) {
+    const keys = buildNseKeySet([r]);
+    if ([...keys].some((k) => openByKey.has(k))) continue;
+    const key = [...keys][0];
+    push(key, r.companyName,
+      `NSE's current-issue feed lists "${r.companyName || key}" as OPEN, but we publish no OPEN row for it${[...keys].some((k) => knownByKey.has(k)) ? ' (we have the company, with a different status)' : ' (we have no row for it at all)'}`);
+  }
+  for (const r of nseUpcoming || []) {
+    const keys = buildNseKeySet([r]);
+    if ([...keys].some((k) => knownByKey.has(k) || openByKey.has(k))) continue;
+    const key = [...keys][0];
+    push(key, r.companyName,
+      `NSE's upcoming feed lists "${r.companyName || key}", but we have no OPEN/UPCOMING row for it`);
+  }
+
+  return mismatches;
+}
+
 // ---- (j): assorted P3 gates --------------------------------------------------
 
 export function checkSectorPopulatedPct(populatedCount, totalCount) {

@@ -7,6 +7,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   checkNoUnresolvedConflictOnLiveIpo,
   checkIssueSizeSegmentFloor,
@@ -451,7 +452,7 @@ test('(j) FAILS on an empty-string segment (round-7 P3-7 shape), not just NULL',
   assert.ok(checkSegmentPopulatedForIpo({ offeringType: 'IPO', segment: '   ', companyName: 'Blank Co' }) !== null);
 });
 
-// ---- (k) identity quarantine age (T-339 item 2) --------------------------
+// ---- (m) identity quarantine age (T-339 item 2) --------------------------
 
 const quarantineRow = (o = {}) => ({
   id: 'c-1',
@@ -464,27 +465,291 @@ const quarantineRow = (o = {}) => ({
   ...o,
 });
 
-test('(k) FAILS on an identity quarantine unresolved past the 24h ceiling', () => {
+test('(m) FAILS on an identity quarantine unresolved past the 24h ceiling', () => {
   const v = checkIdentityQuarantineAge(quarantineRow({ ageHours: IDENTITY_QUARANTINE_MAX_AGE_HOURS + 0.5 }));
   assert.ok(v !== null);
   assert.match(v, /row-A/);
   assert.match(v, /row-B/);
 });
 
-test('(k) PASSES on a fresh quarantine (inside the ceiling) - a quarantine is not itself a defect', () => {
+test('(m) PASSES on a fresh quarantine (inside the ceiling) - a quarantine is not itself a defect', () => {
   assert.equal(checkIdentityQuarantineAge(quarantineRow({ ageHours: 3 })), null);
   assert.equal(checkIdentityQuarantineAge(quarantineRow({ ageHours: IDENTITY_QUARANTINE_MAX_AGE_HOURS })), null);
 });
 
-test('(k) PASSES on a RESOLVED quarantine no matter how old', () => {
+test('(m) PASSES on a RESOLVED quarantine no matter how old', () => {
   assert.equal(checkIdentityQuarantineAge(quarantineRow({ ageHours: 900, resolvedAt: new Date() })), null);
 });
 
-test('(k) ignores ordinary field conflicts - only QUARANTINE_IDENTITY_CONFLICT rows are in scope', () => {
+test('(m) ignores ordinary field conflicts - only QUARANTINE_IDENTITY_CONFLICT rows are in scope', () => {
   assert.equal(checkIdentityQuarantineAge(quarantineRow({ resolutionReason: 'SOURCE_PRIORITY', ageHours: 900 })), null);
 });
 
-test('(k) treats an unreadable age as STALE rather than silently passing', () => {
+test('(m) treats an unreadable age as STALE rather than silently passing', () => {
   assert.ok(checkIdentityQuarantineAge(quarantineRow({ ageHours: null })) !== null);
   assert.ok(checkIdentityQuarantineAge(quarantineRow({ ageHours: 'nonsense' })) !== null);
+});
+
+// ---- (k) T-340 post-scrape step ledger --------------------------------------
+// The runtime twin of (i) wire_or_retire. (i) catches a step that exists on
+// paper and is never WIRED; (k) catches a step that IS wired, runs every
+// cycle, and silently does nothing (skipped for an unnoticed reason) or fails
+// every cycle inside its non-fatal catch. Both are "green cycle, dead step".
+
+import {
+  parseStepNames,
+  checkStepSilence,
+  countLeadingFailures,
+  checkStepConsecutiveFailures,
+  STEP_LEDGER_MAX_CONSECUTIVE_FAILURES,
+} from '../lib/detection-floor-checks.mjs';
+
+test('(k) expected-step list is DERIVED from scraper/src/index.ts, never hand-typed', () => {
+  const src = `
+const HEARTBEAT_INTERVAL_MINUTES = 30;
+export const STEP_NAMES = [
+  'statusUpdate',
+  'registrarReresolve', // trailing comment
+  'heartbeat',
+] as const;
+export type StepName = typeof STEP_NAMES[number];
+`;
+  assert.deepEqual(parseStepNames(src), ['statusUpdate', 'registrarReresolve', 'heartbeat']);
+});
+
+test('(k) parseStepNames throws when the constant is gone — the audit goes UNVERIFIABLE, never silently green', () => {
+  assert.throws(() => parseStepNames('const something = [];'), /STEP_NAMES/);
+});
+
+test('(k) parseStepNames matches the REAL prod entrypoint and finds every wired step', () => {
+  const src = readFileSync(new URL('../../scraper/src/index.ts', import.meta.url), 'utf8');
+  const names = parseStepNames(src);
+  assert.ok(names.length >= 10, `expected the real STEP_NAMES to have >=10 steps, got ${names.length}`);
+  assert.ok(names.includes('statusUpdate'), 'statusUpdate must be in the derived list');
+  // Every derived name must actually be passed to runStep() in the same file —
+  // otherwise the SSOT lists a step nothing runs.
+  for (const n of names) {
+    assert.ok(src.includes(`runStep(cycleId, '${n}'`), `${n} is in STEP_NAMES but never passed to runStep()`);
+  }
+});
+
+test('(k) FAILS a step with zero ok rows in the 24h window (the silent-skip shape)', () => {
+  assert.ok(checkStepSilence('statusUpdate', 0) !== null);
+  assert.match(checkStepSilence('statusUpdate', 0), /statusUpdate/);
+});
+
+test('(k) PASSES a step with at least one ok row in the window', () => {
+  assert.equal(checkStepSilence('statusUpdate', 1), null);
+  assert.equal(checkStepSilence('statusUpdate', 48), null);
+});
+
+test('(k) counts only the LEADING failures, newest-first', () => {
+  assert.equal(countLeadingFailures(['failed', 'failed', 'failed', 'ok']), 3);
+  assert.equal(countLeadingFailures(['ok', 'failed', 'failed', 'failed']), 0);
+  assert.equal(countLeadingFailures([]), 0);
+  // a 'skipped' cycle is not a failure and stops the streak
+  assert.equal(countLeadingFailures(['failed', 'skipped', 'failed']), 1);
+});
+
+test('(k) FAILS a step that failed in >= 3 consecutive cycles', () => {
+  const res = checkStepConsecutiveFailures('deployDriftMonitor', ['failed', 'failed', 'failed', 'ok']);
+  assert.ok(res !== null);
+  assert.match(res, /deployDriftMonitor/);
+  assert.match(res, new RegExp(String(STEP_LEDGER_MAX_CONSECUTIVE_FAILURES)));
+});
+
+test('(k) PASSES a step at 2 consecutive failures — the threshold is 3, not "any failure"', () => {
+  assert.equal(checkStepConsecutiveFailures('deployDriftMonitor', ['failed', 'failed', 'ok']), null);
+});
+
+test('(k) PASSES a healthy step', () => {
+  assert.equal(checkStepConsecutiveFailures('heartbeat', ['ok', 'ok', 'ok', 'ok']), null);
+});
+
+test('(k) a step that is SKIPPED every cycle still FAILS the silence check', () => {
+  // skipped rows exist, but zero of them are 'ok' — this is the exact
+  // ADMIN_API_TOKEN-unset shape this task exists for.
+  assert.ok(checkStepSilence('statusUpdate', 0) !== null);
+  assert.equal(checkStepConsecutiveFailures('statusUpdate', ['skipped', 'skipped', 'skipped']), null);
+});
+
+// ---- manifest <-> script wiring (T-340) -------------------------------------
+// detection-checks.json is read by the round-8 review contract to decide whether
+// a fresh finding "should have been caught". A check listed there but never
+// recorded by the audit script is a PAPER check: it makes the coverage floor
+// look wider than it is. This is wire-or-retire applied to the manifest itself.
+
+test('every detection-checks.json check id is actually recorded by the audit script, and vice versa', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../../docs/reviews/detection-checks.json', import.meta.url), 'utf8'));
+  const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+  const recorded = new Set([...script.matchAll(/record\(\s*'([a-z0-9_]+)'/g)].map((m) => m[1]));
+  const declared = new Set(manifest.checks.map((c) => c.id));
+
+  const paperOnly = [...declared].filter((id) => !recorded.has(id));
+  assert.deepEqual(paperOnly, [], `manifest lists check(s) the audit never records: ${paperOnly.join(', ')}`);
+
+  const undocumented = [...recorded].filter((id) => !declared.has(id));
+  assert.deepEqual(undocumented, [], `audit records check(s) absent from the manifest: ${undocumented.join(', ')}`);
+});
+
+// T-340 checker round-1 F2: the test above matches `record('id'` against the
+// script's SOURCE TEXT, so an orphan check function that is never called from
+// main() still "passes" as long as its dead body still contains the record()
+// call. Deleting `await checkK();` from main() left this file 77/77 green
+// (checker mutation M6). This test guards the INVOCATION instead: for every
+// declared check id, find the function whose body actually records it, then
+// assert that function name is called from inside main()'s body.
+test('every detection-checks.json check id is recorded by a function that is actually CALLED from main() (not just defined)', () => {
+  const manifest = JSON.parse(readFileSync(new URL('../../docs/reviews/detection-checks.json', import.meta.url), 'utf8'));
+  const script = readFileSync(new URL('../audit-detection-floor.mjs', import.meta.url), 'utf8');
+
+  // Split the script into named top-level check-function bodies, each running
+  // from its own declaration to the next top-level `function`/`async function`.
+  const fnStarts = [...script.matchAll(/^(?:async )?function (check[A-Za-z_]+)\(/gm)];
+  assert.ok(fnStarts.length > 0, 'no check functions found — regex drifted from the source shape');
+
+  const fnBodies = fnStarts.map((m, i) => {
+    const start = m.index;
+    const end = i + 1 < fnStarts.length ? fnStarts[i + 1].index : script.length;
+    return { name: m[1], body: script.slice(start, end) };
+  });
+
+  const mainStart = script.indexOf('async function main()');
+  assert.ok(mainStart !== -1, 'main() not found — regex drifted from the source shape');
+  const mainBody = script.slice(mainStart);
+
+  const declared = manifest.checks.map((c) => c.id);
+  const notInvoked = [];
+
+  for (const id of declared) {
+    const owner = fnBodies.find((f) => new RegExp(`record\\(\\s*'${id}'`).test(f.body));
+    if (!owner) continue; // already reported as paperOnly by the text-level test above
+    const invoked = new RegExp(`\\b${owner.name}\\s*\\(`).test(mainBody);
+    if (!invoked) notInvoked.push(`${id} (owner ${owner.name} defined but never called from main())`);
+  }
+
+  assert.deepEqual(notInvoked, [], `check(s) recorded by a function main() never calls: ${notInvoked.join('; ')}`);
+});
+
+// ---- (l) T-340 NSE status cross-check ---------------------------------------
+// Our OPEN/UPCOMING set is produced by our own pipeline; nothing independent
+// checks it. NSE's own current-issue + upcoming feeds are the primary oracle
+// for "is this IPO actually open right now". Scope is deliberately narrow --
+// MAINBOARD rows that list NSE as an exchange -- because NSE SME (Emerge) and
+// BSE-only issues legitimately do not appear on these endpoints, and a check
+// that FAILs on those would be noise, which is how a channel gets muted.
+
+import {
+  crossCheckNseStatuses,
+  buildNseKeySet,
+} from '../lib/detection-floor-checks.mjs';
+
+const nse = (symbol, companyName) => ({ symbol, companyName });
+const ours = (o) => ({
+  companyName: 'X Ltd', symbol: 'X', status: 'OPEN',
+  segment: 'MAINBOARD', listingExchanges: ['NSE'], ...o,
+});
+
+test('(l) key set matches on symbol OR normalized company name', () => {
+  const keys = buildNseKeySet([nse('ACME', 'Acme Industries Limited')]);
+  assert.ok(keys.has('ACME'));
+  assert.ok(keys.has(normalizeCompanyKey('Acme Industries Ltd')));
+});
+
+test('(l) FAILS when we publish OPEN but NSE current-issue does not list it', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({ companyName: 'Ghost Ltd', symbol: 'GHOST', status: 'OPEN' })],
+    nseCurrent: [nse('OTHER', 'Other Ltd')],
+    nseUpcoming: [],
+  });
+  // BOTH directions are real defects here and both must be named: we publish an
+  // OPEN NSE lists nowhere, AND NSE lists an open issue we do not carry.
+  assert.equal(m.length, 2);
+  const joined = m.map((x) => x.message).join(' | ');
+  assert.match(joined, /Ghost Ltd/);
+  assert.match(joined, /Other Ltd/);
+});
+
+test('(l) FAILS when NSE lists an issue as currently open and we do not show it OPEN', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({ companyName: 'Late Ltd', symbol: 'LATE', status: 'UPCOMING' })],
+    nseCurrent: [nse('LATE', 'Late Ltd')],
+    nseUpcoming: [],
+  });
+  assert.ok(m.length >= 1);
+  assert.match(m.map((x) => x.message).join(' '), /LATE|Late Ltd/);
+});
+
+test('(l) FAILS when NSE lists a currently-open issue we have no row for at all', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [],
+    nseCurrent: [nse('MISSING', 'Missing Ltd')],
+    nseUpcoming: [],
+  });
+  assert.equal(m.length, 1);
+  assert.match(m[0].message, /Missing Ltd/);
+});
+
+test('(l) PASSES when our OPEN set matches NSE current-issue exactly', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({ companyName: 'Acme Ltd', symbol: 'ACME', status: 'OPEN' })],
+    nseCurrent: [nse('ACME', 'Acme Ltd')],
+    nseUpcoming: [],
+  });
+  assert.deepEqual(m, []);
+});
+
+test('(l) matches on company name when the symbol is not yet assigned', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({ companyName: 'Acme Industries Limited', symbol: null, status: 'OPEN' })],
+    nseCurrent: [nse('ACME', 'Acme Industries Ltd')],
+    nseUpcoming: [],
+  });
+  assert.deepEqual(m, []);
+});
+
+test('(l) ignores SME rows — NSE Emerge is not on these endpoints (noise control)', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({ companyName: 'Tiny Ltd', symbol: 'TINY', status: 'OPEN', segment: 'SME' })],
+    nseCurrent: [],
+    nseUpcoming: [],
+  });
+  assert.deepEqual(m, []);
+});
+
+test('(l) ignores BSE-only rows — they legitimately never appear on NSE feeds', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({ companyName: 'Bse Only Ltd', symbol: 'BONLY', status: 'OPEN', listingExchanges: ['BSE'] })],
+    nseCurrent: [],
+    nseUpcoming: [],
+  });
+  assert.deepEqual(m, []);
+});
+
+test('(l) ignores rows with unknown listing exchanges rather than guessing', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [ours({ companyName: 'Unknown Ltd', symbol: 'UNK', status: 'OPEN', listingExchanges: null })],
+    nseCurrent: [],
+    nseUpcoming: [],
+  });
+  assert.deepEqual(m, []);
+});
+
+test('(l) an NSE UPCOMING issue we do not list at all is a mismatch', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [],
+    nseCurrent: [],
+    nseUpcoming: [nse('SOON', 'Soon Ltd')],
+  });
+  assert.equal(m.length, 1);
+  assert.match(m[0].message, /Soon Ltd/);
+});
+
+test('(l) does not double-report the same company from both feeds', () => {
+  const m = crossCheckNseStatuses({
+    ourRows: [],
+    nseCurrent: [nse('DUP', 'Dup Ltd')],
+    nseUpcoming: [nse('DUP', 'Dup Ltd')],
+  });
+  assert.equal(m.length, 1);
 });

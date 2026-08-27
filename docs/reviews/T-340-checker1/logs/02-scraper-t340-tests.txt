@@ -1,0 +1,128 @@
+
+ RUN  v1.6.1 D:/Abhay/Ventures/IPODhan-t340C/scraper
+
+{"level":30,"time":"2026-08-26T11:15:52.199Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","source":"all","msg":"IPO Scraper CLI started"}
+{"level":30,"time":"2026-08-26T11:15:52.237Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","processTz":"Asia/Calcutta","msg":"Scraper process timezone at startup"}
+{"level":30,"time":"2026-08-26T11:15:52.237Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","SOURCE_TRACKING":false,"CONFLICT_DETECTION":false,"DATA_CONSOLIDATION":false,"DRHP_EXTRACTION":false,"EARLY_DETECTION":false,"SOURCE_TRACKING_PCT":0,"CONFLICT_DETECTION_PCT":0,"CONSOLIDATION_PCT":0,"DEBUG_MODE":false,"ENABLED_SCRAPERS":[],"msg":"Feature flag status at scraper startup"}
+{"level":30,"time":"2026-08-26T11:15:52.237Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running NSE scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.238Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"NSE scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.238Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running BSE scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.238Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposMerged":0,"smeCount":0,"mainboardCount":0,"iposFailed":0,"msg":"BSE scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.238Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Moneycontrol scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.238Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"Moneycontrol scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.238Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Chittorgarh scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.238Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"Chittorgarh scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.238Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running IPO Alerts API fallback scraper (manual execution)"}
+{"level":30,"time":"2026-08-26T11:15:52.238Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposSkipped":0,"iposFailed":0,"rateLimitUsed":0,"rateLimitRemaining":100,"triggerReason":"manual","msg":"IPO Alerts API fallback scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.239Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Investorgain GMP scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.239Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"gmpsProcessed":0,"gmpsCreated":0,"gmpsSkipped":0,"gmpsFailed":0,"msg":"Investorgain GMP scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.239Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","result":{},"msg":"IPO status transitions applied"}
+{"level":50,"time":"2026-08-26T11:15:52.242Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","error":"duplicate sweep boom","msg":"Duplicate sweep trigger failed (non-fatal)"}
+{"level":30,"time":"2026-08-26T11:15:52.242Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","results":[],"msg":"Deploy drift monitor triggered from one-shot cycle"}
+{"level":30,"time":"2026-08-26T11:15:52.244Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","totalCount":0,"keylessCount":0,"keylessPct":0,"msg":"Keyless IPO coverage (rows with neither symbol nor isin)"}
+{"level":30,"time":"2026-08-26T11:15:52.244Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","source":"all","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposMerged":0,"smeCount":null,"mainboardCount":null,"iposFailed":0,"subscriptionsCreated":0,"errorCount":0,"msg":"Scraper execution completed"}
+{"level":30,"time":"2026-08-26T11:15:52.244Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Scraper completed successfully"}
+{"level":30,"time":"2026-08-26T11:15:52.255Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","source":"all","msg":"IPO Scraper CLI started"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","processTz":"Asia/Calcutta","msg":"Scraper process timezone at startup"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","SOURCE_TRACKING":false,"CONFLICT_DETECTION":false,"DATA_CONSOLIDATION":false,"DRHP_EXTRACTION":false,"EARLY_DETECTION":false,"SOURCE_TRACKING_PCT":0,"CONFLICT_DETECTION_PCT":0,"CONSOLIDATION_PCT":0,"DEBUG_MODE":false,"ENABLED_SCRAPERS":[],"msg":"Feature flag status at scraper startup"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running NSE scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"NSE scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running BSE scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposMerged":0,"smeCount":0,"mainboardCount":0,"iposFailed":0,"msg":"BSE scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Moneycontrol scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"Moneycontrol scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Chittorgarh scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"Chittorgarh scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running IPO Alerts API fallback scraper (manual execution)"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposSkipped":0,"iposFailed":0,"rateLimitUsed":0,"rateLimitRemaining":100,"triggerReason":"manual","msg":"IPO Alerts API fallback scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Investorgain GMP scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"gmpsProcessed":0,"gmpsCreated":0,"gmpsSkipped":0,"gmpsFailed":0,"msg":"Investorgain GMP scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.256Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","result":{},"msg":"IPO status transitions applied"}
+{"level":50,"time":"2026-08-26T11:15:52.257Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","error":"duplicate sweep boom","msg":"Duplicate sweep trigger failed (non-fatal)"}
+{"level":30,"time":"2026-08-26T11:15:52.257Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","results":[],"msg":"Deploy drift monitor triggered from one-shot cycle"}
+{"level":30,"time":"2026-08-26T11:15:52.257Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","totalCount":0,"keylessCount":0,"keylessPct":0,"msg":"Keyless IPO coverage (rows with neither symbol nor isin)"}
+{"level":30,"time":"2026-08-26T11:15:52.257Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","source":"all","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposMerged":0,"smeCount":null,"mainboardCount":null,"iposFailed":0,"subscriptionsCreated":0,"errorCount":0,"msg":"Scraper execution completed"}
+{"level":30,"time":"2026-08-26T11:15:52.257Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Scraper completed successfully"}
+{"level":30,"time":"2026-08-26T11:15:52.260Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","source":"all","msg":"IPO Scraper CLI started"}
+{"level":30,"time":"2026-08-26T11:15:52.261Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","processTz":"Asia/Calcutta","msg":"Scraper process timezone at startup"}
+{"level":30,"time":"2026-08-26T11:15:52.261Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","SOURCE_TRACKING":false,"CONFLICT_DETECTION":false,"DATA_CONSOLIDATION":false,"DRHP_EXTRACTION":false,"EARLY_DETECTION":false,"SOURCE_TRACKING_PCT":0,"CONFLICT_DETECTION_PCT":0,"CONSOLIDATION_PCT":0,"DEBUG_MODE":false,"ENABLED_SCRAPERS":[],"msg":"Feature flag status at scraper startup"}
+{"level":30,"time":"2026-08-26T11:15:52.261Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running NSE scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.261Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"NSE scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.261Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running BSE scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.261Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposMerged":0,"smeCount":0,"mainboardCount":0,"iposFailed":0,"msg":"BSE scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.261Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Moneycontrol scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.261Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"Moneycontrol scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.261Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Chittorgarh scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.262Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"Chittorgarh scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.262Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running IPO Alerts API fallback scraper (manual execution)"}
+{"level":30,"time":"2026-08-26T11:15:52.262Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposSkipped":0,"iposFailed":0,"rateLimitUsed":0,"rateLimitRemaining":100,"triggerReason":"manual","msg":"IPO Alerts API fallback scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.262Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Investorgain GMP scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.262Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"gmpsProcessed":0,"gmpsCreated":0,"gmpsSkipped":0,"gmpsFailed":0,"msg":"Investorgain GMP scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.262Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","result":{},"msg":"IPO status transitions applied"}
+{"level":50,"time":"2026-08-26T11:15:52.262Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","error":"duplicate sweep boom","msg":"Duplicate sweep trigger failed (non-fatal)"}
+{"level":30,"time":"2026-08-26T11:15:52.262Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","results":[],"msg":"Deploy drift monitor triggered from one-shot cycle"}
+{"level":30,"time":"2026-08-26T11:15:52.263Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","totalCount":0,"keylessCount":0,"keylessPct":0,"msg":"Keyless IPO coverage (rows with neither symbol nor isin)"}
+{"level":30,"time":"2026-08-26T11:15:52.263Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","source":"all","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposMerged":0,"smeCount":null,"mainboardCount":null,"iposFailed":0,"subscriptionsCreated":0,"errorCount":0,"msg":"Scraper execution completed"}
+{"level":30,"time":"2026-08-26T11:15:52.263Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Scraper completed successfully"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","source":"all","msg":"IPO Scraper CLI started"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","processTz":"Asia/Calcutta","msg":"Scraper process timezone at startup"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","SOURCE_TRACKING":false,"CONFLICT_DETECTION":false,"DATA_CONSOLIDATION":false,"DRHP_EXTRACTION":false,"EARLY_DETECTION":false,"SOURCE_TRACKING_PCT":0,"CONFLICT_DETECTION_PCT":0,"CONSOLIDATION_PCT":0,"DEBUG_MODE":false,"ENABLED_SCRAPERS":[],"msg":"Feature flag status at scraper startup"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running NSE scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"NSE scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running BSE scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposMerged":0,"smeCount":0,"mainboardCount":0,"iposFailed":0,"msg":"BSE scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Moneycontrol scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"Moneycontrol scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Chittorgarh scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"Chittorgarh scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running IPO Alerts API fallback scraper (manual execution)"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposSkipped":0,"iposFailed":0,"rateLimitUsed":0,"rateLimitRemaining":100,"triggerReason":"manual","msg":"IPO Alerts API fallback scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Investorgain GMP scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"gmpsProcessed":0,"gmpsCreated":0,"gmpsSkipped":0,"gmpsFailed":0,"msg":"Investorgain GMP scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.265Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","result":{},"msg":"IPO status transitions applied"}
+{"level":50,"time":"2026-08-26T11:15:52.266Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","error":"duplicate sweep boom","msg":"Duplicate sweep trigger failed (non-fatal)"}
+{"level":30,"time":"2026-08-26T11:15:52.266Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","results":[],"msg":"Deploy drift monitor triggered from one-shot cycle"}
+{"level":30,"time":"2026-08-26T11:15:52.266Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","totalCount":0,"keylessCount":0,"keylessPct":0,"msg":"Keyless IPO coverage (rows with neither symbol nor isin)"}
+{"level":30,"time":"2026-08-26T11:15:52.266Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","source":"all","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposMerged":0,"smeCount":null,"mainboardCount":null,"iposFailed":0,"subscriptionsCreated":0,"errorCount":0,"msg":"Scraper execution completed"}
+{"level":30,"time":"2026-08-26T11:15:52.266Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Scraper completed successfully"}
+{"level":30,"time":"2026-08-26T11:15:52.269Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","source":"all","msg":"IPO Scraper CLI started"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","processTz":"Asia/Calcutta","msg":"Scraper process timezone at startup"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","SOURCE_TRACKING":false,"CONFLICT_DETECTION":false,"DATA_CONSOLIDATION":false,"DRHP_EXTRACTION":false,"EARLY_DETECTION":false,"SOURCE_TRACKING_PCT":0,"CONFLICT_DETECTION_PCT":0,"CONSOLIDATION_PCT":0,"DEBUG_MODE":false,"ENABLED_SCRAPERS":[],"msg":"Feature flag status at scraper startup"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running NSE scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"NSE scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running BSE scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposMerged":0,"smeCount":0,"mainboardCount":0,"iposFailed":0,"msg":"BSE scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Moneycontrol scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"Moneycontrol scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Chittorgarh scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposFailed":0,"msg":"Chittorgarh scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running IPO Alerts API fallback scraper (manual execution)"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"iposProcessed":0,"iposInserted":0,"iposSkipped":0,"iposFailed":0,"rateLimitUsed":0,"rateLimitRemaining":100,"triggerReason":"manual","msg":"IPO Alerts API fallback scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Running Investorgain GMP scraper"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","success":true,"gmpsProcessed":0,"gmpsCreated":0,"gmpsSkipped":0,"gmpsFailed":0,"msg":"Investorgain GMP scraper completed"}
+{"level":30,"time":"2026-08-26T11:15:52.271Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","result":{},"msg":"IPO status transitions applied"}
+{"level":50,"time":"2026-08-26T11:15:52.272Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","step":"statusUpdate","error":"DB unreachable","msg":"Failed to write step ledger row (non-fatal)"}
+{"level":50,"time":"2026-08-26T11:15:52.272Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","step":"registrarReresolve","error":"DB unreachable","msg":"Failed to write step ledger row (non-fatal)"}
+{"level":50,"time":"2026-08-26T11:15:52.272Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","step":"registrarHealthCheck","error":"DB unreachable","msg":"Failed to write step ledger row (non-fatal)"}
+{"level":50,"time":"2026-08-26T11:15:52.272Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","step":"listingPerformanceUpdate","error":"DB unreachable","msg":"Failed to write step ledger row (non-fatal)"}
+{"level":50,"time":"2026-08-26T11:15:52.272Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","error":"duplicate sweep boom","msg":"Duplicate sweep trigger failed (non-fatal)"}
+{"level":50,"time":"2026-08-26T11:15:52.272Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","step":"duplicateSweep","error":"DB unreachable","msg":"Failed to write step ledger row (non-fatal)"}
+{"level":50,"time":"2026-08-26T11:15:52.272Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","step":"stageReconciler","error":"DB unreachable","msg":"Failed to write step ledger row (non-fatal)"}
+{"level":50,"time":"2026-08-26T11:15:52.272Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","step":"primarySourceDiscovery","error":"DB unreachable","msg":"Failed to write step ledger row (non-fatal)"}
+{"level":30,"time":"2026-08-26T11:15:52.272Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","results":[],"msg":"Deploy drift monitor triggered from one-shot cycle"}
+{"level":50,"time":"2026-08-26T11:15:52.272Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","step":"deployDriftMonitor","error":"DB unreachable","msg":"Failed to write step ledger row (non-fatal)"}
+{"level":50,"time":"2026-08-26T11:15:52.272Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","step":"pruneScraperLogs","error":"DB unreachable","msg":"Failed to write step ledger row (non-fatal)"}
+{"level":50,"time":"2026-08-26T11:15:52.272Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","step":"pruneDataConflicts","error":"DB unreachable","msg":"Failed to write step ledger row (non-fatal)"}
+{"level":30,"time":"2026-08-26T11:15:52.272Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","totalCount":0,"keylessCount":0,"keylessPct":0,"msg":"Keyless IPO coverage (rows with neither symbol nor isin)"}
+{"level":50,"time":"2026-08-26T11:15:52.272Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","step":"dataQualityWatchdog","error":"DB unreachable","msg":"Failed to write step ledger row (non-fatal)"}
+{"level":50,"time":"2026-08-26T11:15:52.273Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","step":"heartbeat","error":"DB unreachable","msg":"Failed to write step ledger row (non-fatal)"}
+{"level":30,"time":"2026-08-26T11:15:52.273Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","source":"all","success":true,"iposProcessed":0,"iposInserted":0,"iposUpdated":0,"iposMerged":0,"smeCount":null,"mainboardCount":null,"iposFailed":0,"subscriptionsCreated":0,"errorCount":0,"msg":"Scraper execution completed"}
+{"level":30,"time":"2026-08-26T11:15:52.273Z","pid":45232,"hostname":"LAPTOP-IOTIH7C4","msg":"Scraper completed successfully"}
+ ✓ tests/unit/index-step-ledger-wiring.test.ts  (5 tests) 1072ms
+ ✓ tests/unit/index-env-assert.test.ts  (7 tests) 12ms
+
+ Test Files  2 passed (2)
+      Tests  12 passed (12)
+   Start at  16:45:48
+   Duration  26.65s (transform 1.79s, setup 0ms, collect 24.08s, tests 1.08s, environment 1ms, prepare 3.74s)
+

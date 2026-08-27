@@ -90,19 +90,27 @@ describe('T-236 / a zero price band is unannounced, not invalid', () => {
  *
  * Reproduced here byte-for-byte: it DOES return `success: false` - but the
  * `error.issues` array (asserted below) contains ZERO issues on
- * `priceRangeMin`/`priceRangeMax`. Every issue is `issueSize`, `openDate`,
- * `closeDate`, `listingExchange`, `offeringType`, `status`, `dataSource` -
- * fields the 3-field probe never populated. ChittorgarhIPOSchema requires
- * all of them; the probe was never going to pass regardless of the
+ * `priceRangeMin`/`priceRangeMax`. Every issue is on the OTHER genuinely
+ * required fields the 3-field probe never populated - ChittorgarhIPOSchema
+ * requires them; the probe was never going to pass regardless of the
  * price-band fix, because it wasn't exercising the price-band path at all.
  * This is NOT evidence of a live regression - it is a malformed fixture.
  * The REAL production shape (all required fields present, exactly what
  * chittorgarh-orchestrator-v2.ts feeds the validator) is covered above and
  * has passed since f9df24fa; this test exists so the next worker sees WHY
  * the minimal probe fails instead of re-diagnosing the price band again.
+ *
+ * T-329 (round-7 P1-3) update: `issueSize` was REMOVED from this expected
+ * list. It is no longer a required field on ScrapedIPOSchema (and therefore
+ * ChittorgarhIPOSchema, which merges it) - a source that cannot derive a
+ * real rupee issue size (e.g. NSE has only a share count and no price band
+ * yet) MUST be able to omit the field rather than coerce to a wrong number
+ * (see nse-api-client.ts computeNSEIssueSizeRupees() and validators.ts). The
+ * 3-field probe above therefore no longer reports a missing-issueSize
+ * error, which is correct: `issueSize: undefined` is now a VALID value.
  */
 describe('T-236C / the minimal 3-field "supervisor probe" fails for unrelated reasons', () => {
-  it('fails on missing required fields, NOT on priceRangeMin/priceRangeMax', () => {
+  it('fails on missing required fields, NOT on priceRangeMin/priceRangeMax or issueSize (T-329: issueSize is now optional)', () => {
     const result = validateChittorgarhIPOData({
       companyName: 'Rays of Belief Ltd.',
       priceRangeMin: 0,
@@ -112,9 +120,11 @@ describe('T-236C / the minimal 3-field "supervisor probe" fails for unrelated re
     const paths = result.error?.issues.map((i) => i.path.join('.')) ?? [];
     expect(paths).not.toContain('priceRangeMin');
     expect(paths).not.toContain('priceRangeMax');
+    // issueSize is intentionally NOT expected here anymore (T-329) - it is
+    // an optional field now, so omitting it produces no validation error.
+    expect(paths).not.toContain('issueSize');
     expect(paths).toEqual(
       expect.arrayContaining([
-        'issueSize',
         'openDate',
         'closeDate',
         'listingExchange',
