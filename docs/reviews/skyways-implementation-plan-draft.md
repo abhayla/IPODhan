@@ -1,5 +1,7 @@
 # Skyways audit — implementation plan (DRAFT, keyed to ★ recommendations)
 
+> **Superseded 2026-08-28:** WP2 and WP4 are replaced by the stage-driven plan in `ipo-document-lifecycle-plan.md` §4 (work packages A–F); WP1/WP3/WP5 map to D/E there.
+
 **Status: DRAFT.** Built from the ★ column of `skyways-field-decisions.md`. The owner's **Final value** column overrides every line here; the plan is re-cut once that column is filled. Nothing in this file is implemented.
 
 Scope: one batch, one PR per work-package below (each < 400 lines, reviewable alone), landed in order. Every package ships a red-then-green test and a detection upgrade (nightly audit check) per the round-7 detection-gap rule.
