@@ -22,6 +22,16 @@
  * Usage (from scraper/):
  *   npx tsx src/scripts/run-document-discovery.ts
  *   npx tsx src/scripts/run-document-discovery.ts --no-download   (skip PDFs)
+ *   DATABASE_URL=... npx tsx src/scripts/run-document-discovery.ts --db
+ *   npx tsx src/scripts/run-document-discovery.ts --evidence-dir=path/to/dir
+ *
+ * `--db` (V4) swaps the in-memory store for the real
+ * `DocumentFetchStateRepository` against `DATABASE_URL`. It requires the four
+ * acceptance IPO rows to already exist there (matched by company name) and
+ * migration 0035 to be applied. NOT EXERCISED as of 2026-08-28: the only
+ * credentials this task may use are refused DDL on the available test database,
+ * so no database with the 0035 schema was reachable. It is implemented rather
+ * than documented-and-missing, which is what the review flagged.
  */
 
 import { mkdirSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
@@ -34,6 +44,7 @@ import {
   type IpoRunResult,
 } from '../services/document-discovery-runner.js';
 import { InMemoryDocumentFetchStateStore } from '../services/in-memory-document-fetch-state-store.js';
+import { DocumentFetchStateRepository } from '@ipodhan/shared/repositories/document-fetch-state-repository';
 import { NetworkCounter } from '../utils/network-counter.js';
 
 /**
@@ -104,9 +115,70 @@ interface RunEvidence {
   stateTable: unknown[];
 }
 
+/**
+ * The state store for this run: the real repository when `--db` is given,
+ * otherwise in-memory. `--db` also resolves each acceptance IPO to its real
+ * `ipos.id`, because the state table has a foreign key to it — the literal ids
+ * used in memory would violate it.
+ */
+async function makeStore(useDb: boolean): Promise<{
+  store: InMemoryDocumentFetchStateStore | DocumentFetchStateRepository;
+  dump: () => Promise<unknown[]>;
+  close: () => Promise<void>;
+}> {
+  if (!useDb) {
+    const store = new InMemoryDocumentFetchStateStore();
+    return { store, dump: async () => store.all(), close: async () => undefined };
+  }
+
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error('--db requires DATABASE_URL');
+
+  const { Pool } = await import('pg');
+  const { drizzle } = await import('drizzle-orm/node-postgres');
+  const schema = await import('@ipodhan/shared/db/schema');
+  const { sql } = await import('drizzle-orm');
+
+  const pool = new Pool({ connectionString: url, max: 4, options: '-c timezone=UTC' });
+  const db = drizzle(pool, { schema });
+  const store = new DocumentFetchStateRepository(db as never, {
+    get: async () => null,
+    set: async () => 'OK',
+    del: async () => 0,
+    keys: async () => [],
+  } as never);
+
+  // Resolve each acceptance IPO to its real row; the FK makes the literal ids unusable.
+  for (const ipo of ACCEPTANCE_IPOS) {
+    const found = await db.execute(
+      sql`SELECT id FROM ipos WHERE company_name = ${ipo.companyName} LIMIT 1`
+    );
+    const rows = ((found as unknown as { rows?: { id: string }[] }).rows ?? []);
+    if (rows.length === 0) {
+      throw new Error(
+        `--db: no ipos row for ${ipo.companyName}. Seed the four acceptance rows first.`
+      );
+    }
+    ipo.id = rows[0].id;
+  }
+
+  return {
+    store,
+    dump: async () => {
+      const out: unknown[] = [];
+      for (const ipo of ACCEPTANCE_IPOS) out.push(...(await store.listForIpo(ipo.id)));
+      return out;
+    },
+    close: async () => {
+      await pool.end();
+    },
+  };
+}
+
 async function runOnce(
   run: number,
-  store: InMemoryDocumentFetchStateStore,
+  store: InMemoryDocumentFetchStateStore | DocumentFetchStateRepository,
+  dump: () => Promise<unknown[]>,
   download: boolean,
   storeDir: string
 ): Promise<RunEvidence> {
@@ -144,14 +216,17 @@ async function runOnce(
     results,
     network,
     fallbackCalls,
-    stateTable: store.all().map((r) => ({
-      ipoId: r.ipoId,
-      docType: r.docType,
-      state: r.state,
-      attempts: r.attempts,
-      nextRetryAt: r.nextRetryAt,
-      documentId: r.documentId,
-    })),
+    stateTable: (await dump()).map((raw) => {
+      const r = raw as Record<string, unknown>;
+      return {
+        ipoId: r.ipoId,
+        docType: r.docType,
+        state: r.state,
+        attempts: r.attempts,
+        nextRetryAt: r.nextRetryAt,
+        documentId: r.documentId,
+      };
+    }),
   };
 }
 
@@ -159,15 +234,22 @@ async function main(): Promise<void> {
   const download = !process.argv.includes('--no-download');
   const storeDir =
     process.env.PROSPECTUS_STORE_DIR ?? 'D:/Abhay/Ventures/IPODhan-backups/prospectus-wpab';
-  const evidenceDir = join(process.cwd(), '..', 'evidence', 'T-403');
+  // V7: never silently overwrite a previous run's evidence. Each run gets its
+  // own timestamped directory unless one is named explicitly.
+  const dirArg = process.argv.find((a) => a.startsWith('--evidence-dir='));
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const evidenceDir = dirArg
+    ? dirArg.slice('--evidence-dir='.length)
+    : join(process.cwd(), '..', 'evidence', 'T-403', `run-${stamp}`);
   mkdirSync(evidenceDir, { recursive: true });
 
-  const store = new InMemoryDocumentFetchStateStore();
+  const useDb = process.argv.includes('--db');
+  const { store, dump, close } = await makeStore(useDb);
 
   console.log('=== T-403 acceptance run 1 (discovery) ===');
-  const run1 = await runOnce(1, store, download, storeDir);
+  const run1 = await runOnce(1, store, dump, download, storeDir);
   console.log('=== T-403 acceptance run 2 (must cost ZERO calls for found IPOs) ===');
-  const run2 = await runOnce(2, store, download, storeDir);
+  const run2 = await runOnce(2, store, dump, download, storeDir);
 
   for (const evidence of [run1, run2]) {
     writeFileSync(
@@ -251,7 +333,15 @@ async function main(): Promise<void> {
       // extractor will read.
       name: 'No IPO holds the same bytes on disk under two document types (E7/R2)',
       pass: (() => {
-        if (!download) return true;
+        // V5: this used to return true under --no-download, so the check
+        // passed while asserting nothing. It now fails loudly instead of
+        // pretending — a vacuous PASS is worse than an honest FAIL.
+        if (!download) return false;
+        const anyFiles = ACCEPTANCE_IPOS.some((ipo) =>
+          existsSync(join(storeDir, ipo.id)) &&
+          readdirSync(join(storeDir, ipo.id)).some((f) => f.endsWith('.pdf'))
+        );
+        if (!anyFiles) return false; // nothing stored means nothing was proven
         return ACCEPTANCE_IPOS.every((ipo) => {
           const dir = join(storeDir, ipo.id);
           if (!existsSync(dir)) return true;
@@ -261,14 +351,15 @@ async function main(): Promise<void> {
           return new Set(shas).size === shas.length;
         });
       })(),
-      detail: ACCEPTANCE_IPOS.map((ipo) => {
+      detail: (download ? '' : 'SKIPPED-VACUOUS: --no-download stores no files, so this check cannot pass. ') +
+        ACCEPTANCE_IPOS.map((ipo) => {
         const dir = join(storeDir, ipo.id);
         const n = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.pdf')).length : 0;
         const deduped = find(run1, ipo.id).attempts.filter(
           (a) => typeof a.outcome === 'string' && a.outcome.startsWith('deduped_by_sha256')
         ).length;
         return `${ipo.id}: ${n} file(s), ${deduped} deduped`;
-      }).join(' | '),
+        }).join(' | '),
     },
     {
       id: 'A6',
@@ -287,7 +378,9 @@ async function main(): Promise<void> {
   const summary = {
     task: 'T-403',
     ranAt: new Date().toISOString(),
-    persistence: 'IN-MEMORY (dev database ipodhan_wpab dropped 2026-08-28 — host out of disk)',
+    persistence: useDb
+      ? 'POSTGRES via DATABASE_URL (--db)'
+      : 'IN-MEMORY (no database with the 0035 schema was reachable — see the module header)',
     downloadsEnabled: download,
     storeDir,
     run1Calls: run1.network.total,
@@ -301,6 +394,7 @@ async function main(): Promise<void> {
   for (const c of checks) console.log(`[${c.pass ? 'PASS' : 'FAIL'}] ${c.id} ${c.name} — ${c.detail}`);
   console.log(`\nrun1 calls=${run1.network.total}  run2 calls=${run2.network.total}`);
   console.log(`evidence: ${evidenceDir}`);
+  await close();
   process.exit(summary.allPassed ? 0 : 1);
 }
 

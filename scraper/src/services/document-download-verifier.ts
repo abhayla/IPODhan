@@ -101,6 +101,20 @@ export type VerifySuccess = {
    * this whole check was silently in for the first cut of T-403.
    */
   coverCheck: 'passed' | 'skipped_no_text_layer' | 'skipped_not_requested';
+  /**
+   * Set when the chosen zip member's own NAME classifies as a DIFFERENT type
+   * from the one requested (T-403 V8).
+   *
+   * This is information, not an error. India's exchanges genuinely label the
+   * same PDF differently: NSE's `RATIOS_<SYM>.zip` ("Ratios / Basis of Issue
+   * Price") contains the price-band newspaper advertisement, because that ad IS
+   * the document carrying the basis of issue price — while BSE publishes the
+   * same thing under `Price_Band_Advertisement`. Both are correctly typed for
+   * their own source, which is why this is recorded rather than 'corrected':
+   * rewriting NSE's type to BSE's would misrepresent what NSE actually served.
+   * The sha256 dedup already links the two when the bytes match.
+   */
+  memberTypeMismatch?: string;
 };
 
 export type VerifyFailure = { ok: false; reason: VerifyFailureReason; detail: string };
@@ -281,6 +295,7 @@ export function verifyDownload(
   let pdf = body;
   let wasZip = false;
   let zipMember: string | undefined;
+  let memberTypeMismatch: string | undefined;
   const isZip = body.length > 4 && body.readUInt32LE(0) === 0x04034b50;
   if (isZip) {
     wasZip = true;
@@ -289,6 +304,10 @@ export function verifyDownload(
     if (!chosen) return fail('zip_without_pdf', `zip at ${meta.url} contains no PDF member`);
     pdf = chosen.content;
     zipMember = chosen.name;
+    const memberType = classifyByTitle(baseName(chosen.name));
+    if (memberType && options.wantedType && memberType !== options.wantedType) {
+      memberTypeMismatch = memberType;
+    }
   }
 
   if (!looksLikePdf(pdf)) {
@@ -321,6 +340,7 @@ export function verifyDownload(
     bytes: pdf.length,
     wasZip,
     zipMember,
+    memberTypeMismatch,
     coverCheck,
   };
 }

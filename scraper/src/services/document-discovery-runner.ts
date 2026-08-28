@@ -94,6 +94,29 @@ const NSE_HEADERS = {
  */
 export const NSE_RETRY_BACKOFF_MS = [2_000, 4_000, 8_000];
 
+/**
+ * BSE gets the SAME ladder. Round 1 gave the retry only to NSE, on the evidence
+ * that NSE was the source that stalled. The 2026-08-28 re-run then lost the
+ * whole BSE core payload for Skyways to a single transport failure (http 0) —
+ * and with it every BSE-only document type AND all three lead managers — while
+ * a manual request seconds later returned 200. A transient stall is not an
+ * NSE-specific phenomenon; assuming it was cost a complete cycle of BSE data.
+ */
+export const BSE_RETRY_BACKOFF_MS = [2_000, 4_000, 8_000];
+
+/**
+ * Attempt outcomes that mean 'this source was asked and could not answer'.
+ * Deliberately excludes `not_on_board` and `no_symbol`, which mean the exchange
+ * does not carry this issue at all (F13) — a fact, not a failure.
+ */
+export const EXCHANGE_FAILURE_OUTCOMES = [
+  'http_error',
+  'timeout',
+  'shape_error',
+  'board_unavailable',
+  'no_detail_row',
+];
+
 /** Per-request ceiling for a JSON API call. Generous vs the old 15 s cap. */
 export const FETCH_TIMEOUT_MS = 20_000;
 
@@ -322,7 +345,11 @@ export class DocumentDiscoveryRunner {
 
     const url = `${BSE_API_BASE}GetMkt_ISSUE_BBS_IPO/w?IPO_NO=${ipoNo}`;
     const started = Date.now();
-    const res = await this.request(url, BSE_HEADERS, ipo.id);
+    let res = await this.request(url, BSE_HEADERS, ipo.id);
+    for (let attempt = 0; res.status !== 200 && attempt < BSE_RETRY_BACKOFF_MS.length - 1; attempt++) {
+      await new Promise((r) => setTimeout(r, BSE_RETRY_BACKOFF_MS[attempt]));
+      res = await this.request(url, BSE_HEADERS, ipo.id);
+    }
     if (res.status !== 200) {
       attempts.push({ source: 'BSE', http: res.status, ms: Date.now() - started, outcome: 'http_error', url });
       return null;
@@ -438,6 +465,7 @@ export class DocumentDiscoveryRunner {
       // defect). A skip that reads like a pass is how M1 stayed hidden.
       const parts = [
         verdict.zipMember ? `zip member: ${verdict.zipMember}` : null,
+        verdict.memberTypeMismatch ? `member classifies as: ${verdict.memberTypeMismatch}` : null,
         `cover_check: ${verdict.coverCheck}`,
       ].filter(Boolean);
       outcome = `downloaded (${parts.join('; ')})`;
@@ -568,9 +596,21 @@ export class DocumentDiscoveryRunner {
 
     if (!allDueCovered()) await ensureNseCandidates();
 
-    const exchangesAnswered = attempts.some(
-      (a) => (a.source === 'BSE' || a.source === 'NSE') && a.outcome === 'ok'
-    );
+    // F3 vs F6, and the distinction is NOT 'did any exchange answer'.
+    //
+    // The 2026-08-28 re-run made the difference concrete: BSE timed out for
+    // Skyways while NSE answered, and every BSE-ONLY type (price-band ad,
+    // corrigendum, addendum) was recorded as NOT_YET_FILED — i.e. 'the company
+    // has not filed it', which we had no evidence for and which suppresses the
+    // retry ladder and the alert. A type may only be called NOT_YET_FILED when
+    // EVERY exchange we consulted actually answered; if any consulted exchange
+    // failed, the honest state is BLOCKED_ALL.
+    const consulted = attempts.filter((a) => a.source === 'BSE' || a.source === 'NSE');
+    // `not_on_board` / `no_symbol` are NOT failures: they mean this exchange does
+    // not carry this issue at all (F13 — the mainboard board never lists SME).
+    // Only a source that was asked and could not answer counts against us.
+    const anyExchangeFailed = consulted.some((a) => EXCHANGE_FAILURE_OUTCOMES.includes(a.outcome));
+    const exchangesAnswered = consulted.some((a) => a.outcome === 'ok') && !anyExchangeFailed;
 
     for (const docType of plan.due) {
       const stateRow = await this.deps.store.ensureRow(ipo.id, docType);

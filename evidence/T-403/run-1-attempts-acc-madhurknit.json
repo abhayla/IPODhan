@@ -35,30 +35,33 @@
     {
       "source": "NSE",
       "http": 200,
-      "ms": 4949,
+      "ms": 5239,
       "outcome": "ok",
       "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME"
     },
     {
       "source": "NSE",
       "http": 200,
-      "ms": 5350,
-      "outcome": "downloaded (zip member: RHP_MADHURKNIT/MKCL RHP.pdf)",
-      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_MADHURKNIT.zip"
+      "ms": 7451,
+      "outcome": "downloaded (zip member: RHP_MADHURKNIT/MKCL RHP.pdf; cover_check: passed)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_MADHURKNIT.zip",
+      "sha256": "69dcb28b1fe18c9da2399339a6959a9cff610ddca144615b7fb1ddc3a39c1af2"
     },
     {
       "source": "NSE",
       "http": 200,
-      "ms": 1536,
-      "outcome": "downloaded (zip member: RATIOS_MADHURKNIT/PRICE BAND JANSATTA.pdf)",
-      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_MADHURKNIT.zip"
+      "ms": 1724,
+      "outcome": "downloaded (zip member: RATIOS_MADHURKNIT/PRICE BAND JANSATTA.pdf; member classifies as: PRICE_BAND_AD; cover_check: skipped_no_text_layer)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_MADHURKNIT.zip",
+      "sha256": "04a1caf10d84731d42bb9026cf2d915fe2709ecd79fd2602b0ce5923ae5df6bc"
     },
     {
       "source": "NSE",
       "http": 200,
-      "ms": 236,
-      "outcome": "downloaded (zip member: ANCHOR_MADHURKNIT/ANCHOR Letter.pdf)",
-      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MADHURKNIT.zip"
+      "ms": 273,
+      "outcome": "downloaded (zip member: ANCHOR_MADHURKNIT/ANCHOR Letter.pdf; cover_check: passed)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MADHURKNIT.zip",
+      "sha256": "3ccd79ad85c15c35a17725ee59a5c33a72bc10a195a88affc2a7c275fc3fef35"
     }
   ],
   "networkCalls": 4

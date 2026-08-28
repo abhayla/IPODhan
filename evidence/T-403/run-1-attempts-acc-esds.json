@@ -32,51 +32,56 @@
     {
       "source": "BSE",
       "http": 200,
-      "ms": 298,
+      "ms": 204,
       "outcome": "ok",
       "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916"
     },
     {
       "source": "NSE",
       "http": 200,
-      "ms": 547,
+      "ms": 337,
       "outcome": "ok",
       "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ"
     },
     {
       "source": "BSE",
       "http": 200,
-      "ms": 74940,
-      "outcome": "downloaded (zip member: ESDSRHP.pdf)",
-      "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/RHPGID_20260825191135.zip"
+      "ms": 20458,
+      "outcome": "downloaded (zip member: ESDSRHP.pdf; cover_check: passed)",
+      "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/RHPGID_20260825191135.zip",
+      "sha256": "2b1500da163d971da74e9af5b0a60120ea2b8d696e2a7dc23471a832a95903ca"
     },
     {
       "source": "BSE",
       "http": 200,
-      "ms": 10847,
-      "outcome": "downloaded",
-      "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf"
+      "ms": 11032,
+      "outcome": "downloaded (cover_check: skipped_no_text_layer)",
+      "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf",
+      "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4"
     },
     {
       "source": "NSE",
       "http": 200,
-      "ms": 6564,
-      "outcome": "downloaded (zip member: RATIOS_ESDS/FINANCIAL EXPRESS-MUMBAI-ENGLISH-ESDS SOFTWARE SOLUTION LTD-PRICE BAND AD-25.08.2026.pdf)",
-      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip"
+      "ms": 1264,
+      "outcome": "downloaded (zip member: RATIOS_ESDS/FINANCIAL EXPRESS-MUMBAI-ENGLISH-ESDS SOFTWARE SOLUTION LTD-PRICE BAND AD-25.08.2026.pdf; member classifies as: PRICE_BAND_AD; cover_check: skipped_no_text_layer)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
+      "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4"
     },
     {
       "source": "NSE",
       "http": 200,
       "ms": 0,
       "outcome": "deduped_by_sha256_to:PRICE_BAND_AD",
-      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip"
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
+      "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4"
     },
     {
       "source": "NSE",
       "http": 200,
-      "ms": 1083,
-      "outcome": "downloaded (zip member: ANCHOR_ESDS/Anchor Intimation to SEBI and Stock Exchanges_Final.pdf)",
-      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ESDS.zip"
+      "ms": 289,
+      "outcome": "downloaded (zip member: ANCHOR_ESDS/Anchor Intimation to SEBI and Stock Exchanges_Final.pdf; cover_check: passed)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ESDS.zip",
+      "sha256": "4e5a4f9de9ef11f31f98a3ff303df1fad1ff9ea7f880fff9348c1d3d5f80802d"
     }
   ],
   "networkCalls": 6,
