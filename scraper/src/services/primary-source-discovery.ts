@@ -22,25 +22,28 @@
 
 import * as cheerio from 'cheerio';
 import * as zlib from 'node:zlib';
+import type { DocumentType } from './document-types.js';
+import {
+  classifyByTitle,
+  classifyBseField,
+  BSE_DOCUMENT_FIELDS,
+  type BseDocumentField,
+} from './document-classifier.js';
 
-/** A `document_type` enum value relevant to primary-source discovery. */
-export type DiscoveredDocumentType =
-  | 'DRHP'
-  | 'RHP'
-  | 'PROSPECTUS'
-  | 'ADDENDUM'
-  | 'ANCHOR_ALLOCATION_REPORT'
-  | 'RATIOS_BASIS_ISSUE_PRICE'
-  | 'BIDDING_CENTERS'
-  | 'SAMPLE_APPLICATION_FORMS'
-  | 'SECURITY_PARAMS_PRE_ANCHOR'
-  | 'SECURITY_PARAMS_POST_ANCHOR';
+/**
+ * The document vocabulary now lives in `document-types.ts` (T-403) so the
+ * classifier, the fetch-state machine and these parsers cannot drift apart.
+ * Re-exported under the historical name for the existing callers.
+ */
+export type DiscoveredDocumentType = DocumentType;
 
 export interface DiscoveredDocument {
   type: DiscoveredDocumentType;
   url: string;
   source: 'NSE' | 'BSE' | 'SEBI';
   title: string;
+  /** The BSE field or NSE row title the link came from — kept for the attempt log. */
+  sourceField?: string;
 }
 
 export interface SEBIDrhpListingRow {
@@ -64,32 +67,6 @@ function looksLikeDocumentUrl(value: unknown): value is string {
 }
 
 /**
- * Map an NSE dataList row TITLE to a document_type, mirroring the title strings
- * `extractAdditionalNSEFields()` already keys on (nse-api-client.ts:723-752).
- * Returns null for titles that are not tracked document rows.
- */
-function nseTitleToDocType(title: string): DiscoveredDocumentType | null {
-  // Case-insensitive; matched against the REAL NSE dataList titles (verified live):
-  // "Security Parameters (Pre Anchor)" / "(Post Anchor)" / bare "Security Parameters",
-  // "Anchor Allocation Report", "Red Herring Prospectus", "Ratios / Basis of Issue Price",
-  // "Bidding Centers", "Sample Application Forms".
-  const t = title.toLowerCase();
-  // Security-parameters rows contain "anchor" — match them BEFORE the broad anchor rule,
-  // or they'd be misclassified as ANCHOR_ALLOCATION_REPORT (the live-caught bug). A bare
-  // "Security Parameters" (no Pre/Post qualifier) is the pre-anchor file by NSE convention.
-  if (t.includes('security parameter')) {
-    return t.includes('post') ? 'SECURITY_PARAMS_POST_ANCHOR' : 'SECURITY_PARAMS_PRE_ANCHOR';
-  }
-  if (t.includes('red herring') || t.includes('prospectus')) return 'RHP';
-  if (t.includes('anchor allocation') || t.includes('anchor')) return 'ANCHOR_ALLOCATION_REPORT';
-  if (t.includes('addendum') || t.includes('corrigendum')) return 'ADDENDUM';
-  if (t.includes('ratios') || t.includes('basis of issue price')) return 'RATIOS_BASIS_ISSUE_PRICE';
-  if (t.includes('bidding center')) return 'BIDDING_CENTERS';
-  if (t.includes('sample application form')) return 'SAMPLE_APPLICATION_FORMS';
-  return null;
-}
-
-/**
  * Parse NSE `issueInfo.dataList` (`{title, value}[]`) into discovered documents.
  * The row VALUE is the archive URL (taken verbatim, never templated). A row is
  * kept only when its title maps to a tracked doc type AND its value is a real
@@ -106,7 +83,7 @@ export function parseNSEDocuments(issueInfo: any, symbol: string): DiscoveredDoc
     const value = item.value;
     if (!title) continue;
 
-    const type = nseTitleToDocType(title);
+    const type = classifyByTitle(title);
     if (!type) continue;
     if (!looksLikeDocumentUrl(value)) continue;
 
@@ -114,39 +91,65 @@ export function parseNSEDocuments(issueInfo: any, symbol: string): DiscoveredDoc
       type,
       url: (value as string).trim(),
       source: 'NSE',
-      title: symbol ? `${symbol} — ${title}` : title,
+      title: symbol ? `${symbol} — ${title.trim()}` : title.trim(),
+      sourceField: title,
     });
   }
   return docs;
 }
 
 /**
- * BSE detail-row fields → discovered documents. The C-1 research found the
- * `GetMkt_ISSUE_BBS_IPO` detail row carries the RHP under `Prospectus_GID` plus
- * `Addendum` / `Corrigendum` / `Price_Band_Advertisement`. The existing BSE doc
- * code (`scrapeBSEDocuments`) parses URLs straight from the response and there is
- * NO GID→URL builder in the codebase — so we accept a PRE-RESOLVED URL in each
- * field and DEFER URL construction: a bare GID (non-URL) is skipped, never
+ * BSE core-API (`GetMkt_ISSUE_BBS_IPO`) detail-row fields to discovered documents.
+ *
+ * T-403 RC2. This used to hard-code one type per field, and folded THREE distinct
+ * filings into `ADDENDUM`:
+ *
+ *   Prospectus_GID          -> RHP        (always, even after the final Prospectus lands)
+ *   Addendum                -> ADDENDUM
+ *   Corrigendum             -> ADDENDUM   (loses the date precedence a corrigendum carries)
+ *   Price_Band_Advertisement-> ADDENDUM   (loses the price-band ad entirely)
+ *
+ * Typing is now delegated to `classifyBseField`, which reads the file NAME first
+ * (so `Prospectus_GID` correctly flips from RHP to PROSPECTUS after close --
+ * lifecycle-plan S4) and falls back to the field default. `Anchor_Details` is
+ * covered too; it is empty until anchor day, which is F3 (NOT_YET_FILED), not a
+ * failure, and simply produces no document here.
+ *
+ * URL construction is still DEFERRED: a bare GID (non-URL) is skipped, never
  * invented into a URL. Returns [] when no field resolves to a document URL.
  */
 export function parseBSEDocuments(detailRow: any): DiscoveredDocument[] {
   if (!detailRow || typeof detailRow !== 'object') return [];
 
-  const fieldMap: { field: string; type: DiscoveredDocumentType; label: string }[] = [
-    { field: 'Prospectus_GID', type: 'RHP', label: 'Red Herring Prospectus' },
-    { field: 'Addendum', type: 'ADDENDUM', label: 'Addendum' },
-    { field: 'Corrigendum', type: 'ADDENDUM', label: 'Corrigendum' },
-    { field: 'Price_Band_Advertisement', type: 'ADDENDUM', label: 'Price Band Advertisement' },
-  ];
-
   const docs: DiscoveredDocument[] = [];
-  for (const { field, type, label } of fieldMap) {
+  for (const field of Object.keys(BSE_DOCUMENT_FIELDS) as BseDocumentField[]) {
     const value = detailRow[field];
     // DEFER URL construction: only take values that are already resolvable URLs.
     if (!looksLikeDocumentUrl(value)) continue;
-    docs.push({ type, url: (value as string).trim(), source: 'BSE', title: label });
+    const url = (value as string).trim();
+    const type = classifyBseField(field, url);
+    if (!type) continue;
+    docs.push({ type, url, source: 'BSE', title: field.replace(/_/g, ' ').trim(), sourceField: field });
   }
   return docs;
+}
+
+/**
+ * Percent-encode the parts of a document URL that a raw `fetch` would choke on.
+ *
+ * BSE serves real links with LITERAL SPACES in the path -- verified live
+ * 2026-08-28 on IPO_NO=7903:
+ *   https://www.bseindia.com/downloads/ipo/Addendum to RHP_250820261220.zip
+ * `new URL()` normalises those to %20; anything already encoded is left alone
+ * (encoding twice would turn %20 into %2520 and 404). Returns the input
+ * unchanged when it is not parseable as a URL.
+ */
+export function encodeDocumentUrl(url: string): string {
+  try {
+    return new URL(url).toString();
+  } catch {
+    return url;
+  }
 }
 
 /**
