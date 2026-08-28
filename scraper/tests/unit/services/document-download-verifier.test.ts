@@ -9,6 +9,7 @@ import {
   sha256Hex,
   MIN_DOCUMENT_BYTES,
   MAX_DOCUMENT_BYTES,
+  selectZipMemberForType,
 } from '../../../src/services/document-download-verifier.js';
 
 /** A PDF buffer of `bytes` total, starting with the %PDF magic. */
@@ -208,5 +209,100 @@ describe('verifier predicates', () => {
   it('coverNamesCompany refuses to judge when the name has no significant tokens', () => {
     // "The India Company" is all stop-words; a false reject would drop a good file.
     expect(coverNamesCompany('anything at all', 'The India Company Limited')).toBe(true);
+  });
+});
+
+/** A STORED zip with several named members, mirroring NSE's real archives. */
+function makeMultiZip(entries: { name: string; content: Buffer }[]): Buffer {
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+  for (const { name, content } of entries) {
+    const nameBuf = Buffer.from(name, 'latin1');
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0, 8);
+    local.writeUInt32LE(content.length, 18);
+    local.writeUInt32LE(content.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    const localPart = Buffer.concat([local, nameBuf, content]);
+
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0, 10);
+    central.writeUInt32LE(content.length, 20);
+    central.writeUInt32LE(content.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt32LE(offset, 42);
+    centrals.push(Buffer.concat([central, nameBuf]));
+
+    locals.push(localPart);
+    offset += localPart.length;
+  }
+  const localAll = Buffer.concat(locals);
+  const centralAll = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(centralAll.length, 12);
+  eocd.writeUInt32LE(localAll.length, 16);
+  return Buffer.concat([localAll, centralAll, eocd]);
+}
+
+describe('multi-member zips — the wrong-document defect the acceptance run caught', () => {
+  // The REAL shape of NSE's RHP_SKYWAYS.zip, captured live 2026-08-28: three
+  // PDFs, and the one we actually want is LAST and by far the largest.
+  const corrigendum = { name: 'RHP_SKYWAYS/CorrigendumofRHPSkyways.pdf', content: fakePdf(60_000) };
+  const gid = { name: 'RHP_SKYWAYS/GID_Skyways.pdf', content: fakePdf(80_000) };
+  const rhp = { name: 'RHP_SKYWAYS/RHP Skyways.pdf', content: fakePdf(400_000) };
+  const skywaysZip = () => makeMultiZip([corrigendum, gid, rhp]);
+
+  it('T34 picks the RHP by member NAME, not the first member', () => {
+    const r = verifyDownload(skywaysZip(), ZIP_META, { wantedType: 'RHP' });
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.zipMember).toBe('RHP_SKYWAYS/RHP Skyways.pdf');
+      expect(r.sha256).toBe(sha256Hex(rhp.content));
+      // The exact bug: the first member is the corrigendum.
+      expect(r.sha256).not.toBe(sha256Hex(corrigendum.content));
+    }
+  });
+
+  it('T34b picks the CORRIGENDUM out of the same archive when that is what was asked for', () => {
+    const r = verifyDownload(skywaysZip(), ZIP_META, { wantedType: 'CORRIGENDUM' });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.zipMember).toBe('RHP_SKYWAYS/CorrigendumofRHPSkyways.pdf');
+  });
+
+  it('T34c falls back to the LARGEST member when no name matches the wanted type', () => {
+    // A prospectus-class filing dwarfs the covering letters shipped beside it,
+    // so 'biggest' is a better guess than 'whichever came first'.
+    const chosen = selectZipMemberForType(
+      [
+        { name: 'cover.pdf', content: fakePdf(60_000) },
+        { name: 'main.pdf', content: fakePdf(400_000) },
+      ],
+      'RHP'
+    );
+    expect(chosen!.name).toBe('main.pdf');
+  });
+
+  it('T34d needs no choosing for a single-member zip, and reports its name', () => {
+    const r = verifyDownload(makeMultiZip([rhp]), ZIP_META, { wantedType: 'RHP' });
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.zipMember).toBe('RHP_SKYWAYS/RHP Skyways.pdf');
+    expect(selectZipMemberForType([], 'RHP')).toBeNull();
+  });
+
+  it('T34e two different types NEVER resolve to the same bytes from one archive', () => {
+    // The signal that exposed the bug: distinct document types coming out with
+    // an identical sha256.
+    const asRhp = verifyDownload(skywaysZip(), ZIP_META, { wantedType: 'RHP' });
+    const asCorr = verifyDownload(skywaysZip(), ZIP_META, { wantedType: 'CORRIGENDUM' });
+    expect(asRhp.ok && asCorr.ok).toBe(true);
+    if (asRhp.ok && asCorr.ok) expect(asRhp.sha256).not.toBe(asCorr.sha256);
   });
 });

@@ -191,6 +191,62 @@
       "failThreshold": "a source has >=7 consecutive non-SUCCESS-or-zero-record cycles and is not listed in docs/reviews/dead-source-retirement.json",
       "severity": "P2",
       "unverifiableWhen": "scraper_logs table not present"
+    },
+    {
+      "id": "m_document_state",
+      "findingClass": "the document_fetch_state table is absent, so the whole document pipeline is invisible to the audit tonight",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "never FAILs — reports UNVERIFIABLE, because \"the audit could not see\" is not \"documents are healthy\"",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present (migration 0035 not applied)"
+    },
+    {
+      "id": "m_blocked_all_age",
+      "findingClass": "a filing has been unreachable on every source for a day or more and nobody noticed, because the P2 alert fires once on entry and then scrolls away",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "any document_fetch_state row in BLOCKED_ALL with blocked_since_at older than 24h (aged from blocked_since_at, NOT last_attempt_at: a row retried every 30 min has a fresh last-attempt forever)",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
+      "id": "m_found_not_extracted",
+      "findingClass": "a document was downloaded and then never read, so the fields it carries stay empty while the pipeline looks healthy",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "any row FOUND for more than 48h once the extractor is wired; deliberately INERT while ENABLE_DRHP_EXTRACTION is off, since FOUND is terminal by design until WP C",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
+      "id": "m_extract_failed",
+      "findingClass": "a document repeatedly fails extraction, which is a parse bug needing a human rather than a data outage",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "WARN-level only: any row in EXTRACT_FAILED",
+      "severity": "P3",
+      "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
+      "id": "m_live_ipo_has_state",
+      "findingClass": "the document job silently stopped: a live IPO has no state rows at all, so nothing was even attempted for it",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "any UPCOMING/OPEN/CLOSED IPO with zero document_fetch_state rows. This is the only check that notices the machine wrote NOTHING — every other check reads rows it wrote",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
+      "id": "m_brlm_count",
+      "findingClass": "the BSE payload lists more lead managers than we stored (the co-BRLM parser drops entries after the first \"#\"-separated one)",
+      "round7Findings": [
+        "F17"
+      ],
+      "sourceTask": "T-403",
+      "failThreshold": "array_length(lead_managers) < ipos.bse_payload_lead_manager_count for any IPO. Storing MORE is not flagged: other sources legitimately add managers BSE omits",
+      "severity": "P2",
+      "unverifiableWhen": "no IPO has a recorded bse_payload_lead_manager_count yet"
     }
   ],
   "notCoveredByThisManifest": [

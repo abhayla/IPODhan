@@ -23,7 +23,9 @@
  */
 
 import { createHash } from 'node:crypto';
-import { extractPdfFromZipBuffer, looksLikePdf } from './primary-source-discovery.js';
+import { extractPdfMembersFromZip, looksLikePdf, type ZipPdfMember } from './primary-source-discovery.js';
+import { classifyByTitle } from './document-classifier.js';
+import type { DocumentType } from './document-types.js';
 
 /** Minimum plausible size for a real filing. The BSE error page is 164 bytes. */
 export const MIN_DOCUMENT_BYTES = 50 * 1024;
@@ -63,18 +65,39 @@ export interface VerifyOptions {
    * needs no change here. Defaults to MAX_DOCUMENT_BYTES.
    */
   maxBytes?: number;
+  /**
+   * Which document this download is supposed to BE. Used to pick the right
+   * member out of a multi-PDF zip — see `selectZipMemberForType`.
+   */
+  wantedType?: DocumentType;
 }
 
-export type VerifyResult =
-  | {
-      ok: true;
-      /** The PDF bytes — unwrapped from the zip when the download was a zip. */
-      pdf: Buffer;
-      sha256: string;
-      bytes: number;
-      wasZip: boolean;
-    }
-  | { ok: false; reason: VerifyFailureReason; detail: string };
+/**
+ * Split into named arms with an explicit guard because this workspace compiles
+ * with `strict: false` (deliberate — see shared-package-build.md), and without
+ * strictNullChecks TypeScript will not narrow a `ok: true | false` discriminant
+ * through `if (verdict.ok)`. `isVerifyFailure` gives consumers the narrowing the
+ * compiler flags cannot.
+ */
+export type VerifySuccess = {
+  ok: true;
+  /** The PDF bytes — unwrapped from the zip when the download was a zip. */
+  pdf: Buffer;
+  sha256: string;
+  bytes: number;
+  wasZip: boolean;
+  /** The zip member chosen, when the download was a zip. For the attempt log. */
+  zipMember?: string;
+};
+
+export type VerifyFailure = { ok: false; reason: VerifyFailureReason; detail: string };
+
+/** True when the verdict is a failure — and narrows it for the caller. */
+export function isVerifyFailure(result: VerifyResult): result is VerifyFailure {
+  return result.ok === false;
+}
+
+export type VerifyResult = VerifySuccess | VerifyFailure;
 
 const fail = (reason: VerifyFailureReason, detail: string): VerifyResult => ({
   ok: false,
@@ -155,6 +178,49 @@ export function coverNamesCompany(coverText: string, companyName: string): boole
 }
 
 /**
+ * Choose which PDF inside a multi-member zip is the document we asked for.
+ *
+ * THE DEFECT THIS EXISTS FOR. NSE's `RHP_SKYWAYS.zip` (captured live
+ * 2026-08-28) holds three PDFs — CorrigendumofRHPSkyways.pdf (1.4 MB),
+ * GID_Skyways.pdf (2.7 MB) and `RHP Skyways.pdf` (19.9 MB). Taking the first
+ * member stored the CORRIGENDUM under the RHP's type, and the BSE addendum zip
+ * stored the real RHP under ADDENDUM. Both passed every check: valid PDFs, of
+ * the right company, of a plausible size. Nothing was broken; everything was
+ * wrong. Only the acceptance run noticed, because two document types came out
+ * with the same sha256.
+ *
+ * Selection order:
+ *   1. a member whose NAME classifies as the wanted type (the same classifier
+ *      used everywhere else, so the rules cannot drift);
+ *   2. failing that, the LARGEST member — a prospectus-class filing is an order
+ *      of magnitude bigger than the covering letters shipped beside it, so this
+ *      is the better guess than 'whichever came first';
+ *   3. a single-member zip needs no choosing.
+ */
+export function selectZipMemberForType(
+  members: ZipPdfMember[],
+  wantedType?: DocumentType
+): ZipPdfMember | null {
+  if (members.length === 0) return null;
+  if (members.length === 1) return members[0];
+
+  if (wantedType) {
+    const named = members.filter((m) => classifyByTitle(baseName(m.name)) === wantedType);
+    if (named.length > 0) {
+      // More than one member of the right type: take the biggest, on the same
+      // reasoning as step 2.
+      return named.reduce((a, b) => (b.content.length > a.content.length ? b : a));
+    }
+  }
+  return members.reduce((a, b) => (b.content.length > a.content.length ? b : a));
+}
+
+/** The file name inside a zip path ('RHP_SKYWAYS/RHP Skyways.pdf' -> 'RHP Skyways.pdf'). */
+function baseName(name: string): string {
+  return name.split(/[\/]/).pop() ?? name;
+}
+
+/**
  * Verify one downloaded body against every §3 rule that can be checked from
  * bytes. Order matters: cheapest and most diagnostic first, so the failure
  * REASON recorded on the state row names the real problem (an HTML error page
@@ -201,12 +267,15 @@ export function verifyDownload(
   // 3. Unwrap a zip to its first PDF member (NSE/BSE serve zip wrappers).
   let pdf = body;
   let wasZip = false;
+  let zipMember: string | undefined;
   const isZip = body.length > 4 && body.readUInt32LE(0) === 0x04034b50;
   if (isZip) {
     wasZip = true;
-    const member = extractPdfFromZipBuffer(body);
-    if (!member) return fail('zip_without_pdf', `zip at ${meta.url} contains no PDF member`);
-    pdf = member;
+    const members = extractPdfMembersFromZip(body);
+    const chosen = selectZipMemberForType(members, options.wantedType);
+    if (!chosen) return fail('zip_without_pdf', `zip at ${meta.url} contains no PDF member`);
+    pdf = chosen.content;
+    zipMember = chosen.name;
   }
 
   if (!looksLikePdf(pdf)) {
@@ -224,5 +293,5 @@ export function verifyDownload(
     }
   }
 
-  return { ok: true, pdf, sha256: sha256Hex(pdf), bytes: pdf.length, wasZip };
+  return { ok: true, pdf, sha256: sha256Hex(pdf), bytes: pdf.length, wasZip, zipMember };
 }

@@ -221,19 +221,36 @@ function inflateZipMember(buf: Buffer, localHeaderOffset: number, method: number
   return null;
 }
 
-/**
- * Extract the first `%PDF` member from a `.zip` buffer (NSE/BSE serve docs as `.zip`
- * wrappers — C-1) using Node's built-in `zlib` (NO new dependency). Parses the ZIP
- * CENTRAL DIRECTORY (authoritative for sizes) so it handles real NSE archives that use
- * a streaming data descriptor — the local-header compressed size is 0 there, which a
- * naive local-header walk cannot follow (verified against a real 16 MB RHP_*.zip).
- * Falls back to a local-header scan for trivial single-member zips. Never throws.
- */
-export function extractPdfFromZipBuffer(buf: Buffer): Buffer | null {
-  if (!Buffer.isBuffer(buf) || buf.length < 22) return null;
+/** One PDF found inside a zip, with the member name it was stored under. */
+export interface ZipPdfMember {
+  name: string;
+  content: Buffer;
+}
 
-  // 1) Central-directory path (robust). Find the EOCD record by scanning back from the
-  // end (it is within the last 64 KB + 22 bytes; comment is usually empty).
+/**
+ * EVERY `%PDF` member inside a zip, in central-directory order, with names.
+ *
+ * The names are load-bearing and their absence was a real, silent defect. NSE's
+ * `RHP_SKYWAYS.zip` (23 MB, captured live 2026-08-28) contains FOUR entries:
+ *
+ *   RHP_SKYWAYS/CorrigendumofRHPSkyways.pdf   1,391,575 bytes
+ *   RHP_SKYWAYS/GID_Skyways.pdf               2,744,810 bytes
+ *   RHP_SKYWAYS/RHP Skyways.pdf              19,866,505 bytes   <- the actual RHP
+ *
+ * Taking the FIRST PDF member — which is all the previous helper could do —
+ * stored the CORRIGENDUM under the RHP's document type. It passed every check we
+ * had: a valid PDF, of the right company, of a plausible size. The T-403
+ * acceptance run caught it only because two different document types came out
+ * with an identical sha256. This is the wrong-but-working class exactly.
+ *
+ * Never throws; returns [] for anything that is not a readable zip.
+ */
+export function extractPdfMembersFromZip(buf: Buffer): ZipPdfMember[] {
+  if (!Buffer.isBuffer(buf) || buf.length < 22) return [];
+  const members: ZipPdfMember[] = [];
+
+  // Central-directory path (authoritative for sizes; real NSE archives use a
+  // streaming data descriptor, so the local header's compressed size is 0).
   const minEocd = Math.max(0, buf.length - 22 - 0xffff);
   for (let i = buf.length - 22; i >= minEocd; i--) {
     if (buf.readUInt32LE(i) !== ZIP_EOCD_SIG) continue;
@@ -247,14 +264,15 @@ export function extractPdfFromZipBuffer(buf: Buffer): Buffer | null {
       const extraLen = buf.readUInt16LE(cdOffset + 30);
       const commentLen = buf.readUInt16LE(cdOffset + 32);
       const localHeaderOffset = buf.readUInt32LE(cdOffset + 42);
+      const name = buf.subarray(cdOffset + 46, cdOffset + 46 + nameLen).toString('latin1');
       const content = inflateZipMember(buf, localHeaderOffset, method, compSize);
-      if (content && looksLikePdf(content)) return content;
+      if (content && looksLikePdf(content)) members.push({ name, content });
       cdOffset += 46 + nameLen + extraLen + commentLen;
     }
-    break; // found the EOCD; central-dir walked
+    return members;
   }
 
-  // 2) Fallback: simple local-header scan (member sizes present in the local header).
+  // Fallback: local-header scan (trivial single-member zips with real sizes).
   let offset = 0;
   while (offset + ZIP_LOCAL_HEADER_SIZE <= buf.length && buf.readUInt32LE(offset) === ZIP_LOCAL_FILE_SIG) {
     const flags = buf.readUInt16LE(offset + 6);
@@ -263,11 +281,26 @@ export function extractPdfFromZipBuffer(buf: Buffer): Buffer | null {
     const nameLen = buf.readUInt16LE(offset + 26);
     const extraLen = buf.readUInt16LE(offset + 28);
     const dataStart = offset + ZIP_LOCAL_HEADER_SIZE + nameLen + extraLen;
-    if ((flags & 0x08) !== 0 && compSize === 0) break; // data descriptor — handled by path 1
+    if ((flags & 0x08) !== 0 && compSize === 0) break; // data descriptor
     if (dataStart + compSize > buf.length) break;
+    const name = buf.subarray(offset + ZIP_LOCAL_HEADER_SIZE, offset + ZIP_LOCAL_HEADER_SIZE + nameLen).toString('latin1');
     const content = inflateZipMember(buf, offset, method, compSize);
-    if (content && looksLikePdf(content)) return content;
+    if (content && looksLikePdf(content)) members.push({ name, content });
     offset = dataStart + compSize;
   }
-  return null;
+  return members;
 }
+
+/**
+ * The FIRST `%PDF` member of a zip.
+ *
+ * Retained for callers that genuinely want any PDF out of a single-member
+ * archive. Anything that cares WHICH document it gets must use
+ * `extractPdfMembersFromZip` plus `selectZipMemberForType`
+ * (`document-download-verifier.ts`) — see that function's note on the
+ * Skyways multi-member archive.
+ */
+export function extractPdfFromZipBuffer(buf: Buffer): Buffer | null {
+  return extractPdfMembersFromZip(buf)[0]?.content ?? null;
+}
+

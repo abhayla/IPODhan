@@ -8,6 +8,14 @@
  * next thing to wire, they are not silently pretended to exist).
  * SME order is NSE first, because BSE's mainboard board does not carry SME.
  *
+ * KNOWN LIMITATION, stated rather than hidden: NSE is consulted only when BSE
+ * left at least one due type without a candidate link. So in the rare cycle
+ * where BSE supplies a link for EVERY due type and one of those downloads then
+ * fails, there is no NSE copy in hand to fall back to and the type goes
+ * BLOCKED_ALL until the next cycle retries it. Closing that would mean a second
+ * exchange pass on download failure; the 30-minute retry ladder covers it at no
+ * extra traffic, so it is deliberately left to a later WP.
+ *
  * What replaces what: the old `runPrimaryDocBackfill` fetched NSE for EVERY
  * candidate IPO, once a day, with a 15 s cap and no retry, and kept no record of
  * what happened. This runner asks the state machine what is outstanding FIRST
@@ -28,7 +36,7 @@ import {
 } from './primary-source-discovery.js';
 import { parseBseBoard, resolveBseBoardRow, extractBseCoreRow, type BseBoardRow } from './bse-ipo-board.js';
 import { parseBseParties } from './bse-party-parser.js';
-import { verifyDownload, type VerifyResult } from './document-download-verifier.js';
+import { verifyDownload, isVerifyFailure, type VerifyResult } from './document-download-verifier.js';
 import { storeDocument, getStoreDir } from './document-store.js';
 import {
   planIpoCycle,
@@ -85,8 +93,19 @@ const NSE_HEADERS = {
  */
 export const NSE_RETRY_BACKOFF_MS = [2_000, 4_000, 8_000];
 
-/** Per-request ceiling. Generous vs the old 15 s cap because retries follow. */
+/** Per-request ceiling for a JSON API call. Generous vs the old 15 s cap. */
 export const FETCH_TIMEOUT_MS = 20_000;
+
+/**
+ * Per-request ceiling for a DOCUMENT download. Six times the API budget,
+ * because they are not the same kind of request: an RHP is 15-25 MB (Skyways'
+ * NSE zip is 23 MB) and the acceptance run caught the original single-budget
+ * design timing the Skyways RHP out at exactly 20,018 ms while every small
+ * document beside it downloaded fine. One timeout for a 6 KB JSON payload and a
+ * 25 MB PDF guarantees that the single most important filing is the one that
+ * fails.
+ */
+export const DOWNLOAD_TIMEOUT_MS = 120_000;
 
 // ---------------------------------------------------------------------------
 // Injected dependencies
@@ -222,10 +241,11 @@ export class DocumentDiscoveryRunner {
   private async request(
     url: string,
     headers: Record<string, string>,
-    ipoKey?: string
+    ipoKey?: string,
+    timeoutMs: number = FETCH_TIMEOUT_MS
   ): Promise<HttpResponse> {
     const started = Date.now();
-    const res = await this.deps.fetcher(url, { headers, timeoutMs: FETCH_TIMEOUT_MS });
+    const res = await this.deps.fetcher(url, { headers, timeoutMs });
     this.deps.counter.record({
       host: hostOf(url),
       url,
@@ -364,22 +384,34 @@ export class DocumentDiscoveryRunner {
   private async fetchAndVerify(
     doc: DiscoveredDocument,
     ipo: DiscoveryIpo,
-    attempts: FetchAttempt[]
+    attempts: FetchAttempt[],
+    wantedType: DocumentType
   ): Promise<VerifyResult | null> {
     const url = encodeDocumentUrl(doc.url);
     const headers = doc.source === 'BSE' ? BSE_HEADERS : NSE_HEADERS;
     const started = Date.now();
-    const res = await this.request(url, { ...headers, Accept: '*/*' }, ipo.id);
+    const res = await this.request(url, { ...headers, Accept: '*/*' }, ipo.id, DOWNLOAD_TIMEOUT_MS);
     const verdict = verifyDownload(
       res.body,
       { status: res.status, contentType: res.contentType, url: res.url },
-      { expectedCompanyName: ipo.companyName }
+      { expectedCompanyName: ipo.companyName, wantedType }
     );
+    // if/else rather than a ternary: this workspace compiles with `strict: false`
+    // (see shared-package-build.md — the asymmetry is deliberate), and without
+    // strictNullChecks the boolean discriminant does not narrow inside a
+    // conditional expression. `reason` exists only on the failure arm and
+    // `zipMember` only on the success arm.
+    let outcome: string;
+    if (isVerifyFailure(verdict)) {
+      outcome = `rejected:${verdict.reason}`;
+    } else {
+      outcome = `downloaded${verdict.zipMember ? ` (zip member: ${verdict.zipMember})` : ''}`;
+    }
     attempts.push({
       source: doc.source,
       http: res.status,
       ms: Date.now() - started,
-      outcome: verdict.ok ? 'downloaded' : `rejected:${verdict.reason}`,
+      outcome,
       url,
     });
     return verdict;
@@ -431,19 +463,42 @@ export class DocumentDiscoveryRunner {
       return result;
     }
 
+    /**
+     * sha256 -> the document row already stored for it THIS run (matrix E7/R2:
+     * 'same hash from BSE and NSE = one row, two URLs').
+     *
+     * Not hypothetical. Verified live 2026-08-28: Skyways' BSE
+     * `PriceBandAdvertisementSkyways.pdf` and NSE's `RATIOS_SKYWAYS.zip` are
+     * byte-identical (6,585,368 bytes, same sha256) — in India the price-band
+     * advertisement IS the document carrying the basis of issue price, and the
+     * two exchanges publish it under different labels. Without this index we
+     * store the same 6.5 MB twice and create two documents rows for one filing.
+     */
+    const seenBySha = new Map<string, { documentId: string; docType: DocumentType }>();
+
     // ONE exchange call set covers EVERY due type (§7.2).
-    const discovered = new Map<DocumentType, DiscoveredDocument>();
+    // EVERY candidate link per type, in source-preference order — not just the
+    // first. Matrix F2: 'BSE API up, link present, download fails -> try the NSE
+    // archive copy'. Keeping only the first link made that impossible, and the
+    // acceptance run caught exactly that: Skyways' BSE RHP download timed out and
+    // the NSE RHP zip, already discovered in the same cycle, was never tried.
+    const discovered = new Map<DocumentType, DiscoveredDocument[]>();
     const isSme = ipo.segment === 'SME';
 
     const takeAll = (docs: DiscoveredDocument[]) => {
       for (const doc of docs) {
-        // First verified source wins (R2); a later source never displaces it.
-        if (!discovered.has(doc.type)) discovered.set(doc.type, doc);
+        const list = discovered.get(doc.type);
+        if (list) {
+          // Same URL twice is not a second candidate.
+          if (!list.some((d) => d.url === doc.url)) list.push(doc);
+        } else {
+          discovered.set(doc.type, [doc]);
+        }
       }
     };
 
-    /** True when every due type now has a candidate link. */
-    const allDueCovered = () => plan.due.every((t) => discovered.has(t));
+    /** True when every due type now has at least one candidate link. */
+    const allDueCovered = () => plan.due.every((t) => (discovered.get(t)?.length ?? 0) > 0);
 
     if (!isSme) {
       const bse = await this.fetchBseCore(ipo, attempts);
@@ -472,12 +527,12 @@ export class DocumentDiscoveryRunner {
         existingRows.find((r) => r.docType === docType) ??
         toStateRow(stateRow);
 
-      const candidate = discovered.get(docType);
+      const candidates = discovered.get(docType) ?? [];
       let outcome: AttemptOutcome;
       let documentId: string | null = null;
       let bytes: number | undefined;
 
-      if (!candidate) {
+      if (candidates.length === 0) {
         // F3 vs F6: an exchange that ANSWERED with an empty field means the
         // filing does not exist yet; no exchange answering at all is a failure.
         // Conflating the two is what would turn "the anchor report is not filed
@@ -486,8 +541,30 @@ export class DocumentDiscoveryRunner {
       } else if (this.deps.skipDownload) {
         outcome = 'found';
       } else {
-        const verdict = await this.fetchAndVerify(candidate, ipo, attempts);
-        if (verdict && verdict.ok) {
+        // Try each source's copy in order until one verifies (F2). Only when
+        // EVERY host has failed is this BLOCKED_ALL.
+        outcome = 'all_sources_failed';
+        for (const candidate of candidates) {
+          const verdict = await this.fetchAndVerify(candidate, ipo, attempts, docType);
+          if (!verdict || !verdict.ok) continue;
+
+          // Same bytes as a document already stored this run: reuse that row
+          // and that file. The alternative URL is recorded in the attempt log.
+          const alias = seenBySha.get(verdict.sha256);
+          if (alias) {
+            documentId = alias.documentId;
+            bytes = verdict.bytes;
+            outcome = 'found';
+            attempts.push({
+              source: candidate.source,
+              http: 200,
+              ms: 0,
+              outcome: `deduped_by_sha256_to:${alias.docType}`,
+              url: candidate.url,
+            });
+            break;
+          }
+
           const stored = await storeDocument({
             ipoId: ipo.id,
             docType,
@@ -495,28 +572,28 @@ export class DocumentDiscoveryRunner {
             sha256: verdict.sha256,
             storeDir: this.deps.storeDir ?? getStoreDir(),
           });
-          if (stored.stored) {
-            const doc = await this.deps.documents.upsertDocument({
-              ipoId: ipo.id,
-              type: docType,
-              title: candidate.title,
-              url: candidate.url,
-              exchange: candidate.source,
-              mediaType: 'PDF',
-              extractionStatus: 'PENDING',
-              isActive: true,
-              fileSize: verdict.bytes,
-            });
-            documentId = doc.id;
-            bytes = verdict.bytes;
-            outcome = 'found';
-          } else {
+          if (!stored.stored) {
             // The store is full. That is an infrastructure failure, not a
-            // missing filing — it must not be recorded as NOT_YET_FILED.
+            // missing filing, and trying another host will not fix it.
             outcome = 'all_sources_failed';
+            break;
           }
-        } else {
-          outcome = 'all_sources_failed';
+          const doc = await this.deps.documents.upsertDocument({
+            ipoId: ipo.id,
+            type: docType,
+            title: candidate.title,
+            url: candidate.url,
+            exchange: candidate.source,
+            mediaType: 'PDF',
+            extractionStatus: 'PENDING',
+            isActive: true,
+            fileSize: verdict.bytes,
+          });
+          documentId = doc.id;
+          seenBySha.set(verdict.sha256, { documentId: doc.id, docType });
+          bytes = verdict.bytes;
+          outcome = 'found';
+          break;
         }
       }
 

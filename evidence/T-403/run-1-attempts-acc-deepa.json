@@ -1,0 +1,37 @@
+{
+  "ipoId": "acc-deepa",
+  "companyName": "Deepa Jewellers Ltd.",
+  "stage": "UPCOMING",
+  "skipped": false,
+  "skipReason": "1 document type(s) due at stage UPCOMING",
+  "due": [
+    "DRHP"
+  ],
+  "found": [],
+  "notYetFiled": [
+    "DRHP"
+  ],
+  "blocked": [],
+  "notApplicable": [],
+  "leadManagers": [
+    "Emkay Global Financial Services Limited",
+    "Valmiki Leela Capital Private Limited"
+  ],
+  "attempts": [
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 511,
+      "outcome": "ok",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7922"
+    },
+    {
+      "source": "NSE",
+      "http": 0,
+      "ms": 0,
+      "outcome": "no_symbol"
+    }
+  ],
+  "networkCalls": 1,
+  "resolvedBseIpoNo": 7922
+}
