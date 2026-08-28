@@ -131,9 +131,20 @@ describe('purgeIpoDocuments', () => {
   });
 
   it('T57b is a no-op (not an error) when the IPO has no local directory', async () => {
-    const result = await purgeIpoDocuments('no-such-ipo', storeDir);
+    // A real UUID that simply has nothing stored.
+    const result = await purgeIpoDocuments('22222222-3333-4444-5555-666666666666', storeDir);
     expect(result).toMatchObject({ purged: false, filesDeleted: 0, bytesFreed: 0 });
     expect(result.error).toBeUndefined();
+  });
+
+  it('N5 REFUSES to purge when the id is not a UUID — this function ends in rm -r', async () => {
+    for (const bad of ['', '..', 'no-such-ipo', '../../etc', 'a'.repeat(40)]) {
+      const result = await purgeIpoDocuments(bad, storeDir);
+      expect(result.purged).toBe(false);
+      expect(result.error).toBe('ipoId is not a UUID');
+    }
+    // ...and the store itself is untouched.
+    expect(fs.existsSync(storeDir)).toBe(true);
   });
 });
 

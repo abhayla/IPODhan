@@ -112,6 +112,39 @@ export async function getStoreSizeBytes(storeDir: string = getStoreDir()): Promi
   return total;
 }
 
+/**
+ * N3: cached total bytes per store directory.
+ *
+ * `getStoreSizeBytes` walks the whole tree, and the cap check runs before EVERY
+ * write — so a cycle storing 10 documents re-walked a multi-gigabyte directory
+ * 10 times. The cache is seeded by one walk and then adjusted by the deltas we
+ * ourselves cause (a write adds, a purge subtracts), with a short TTL so an
+ * external change is picked up rather than trusted forever.
+ */
+const storeSizeCache = new Map<string, { bytes: number; at: number }>();
+const STORE_SIZE_TTL_MS = 60_000;
+
+async function cachedStoreSize(storeDir: string): Promise<number> {
+  const hit = storeSizeCache.get(storeDir);
+  if (hit && Date.now() - hit.at < STORE_SIZE_TTL_MS) return hit.bytes;
+  const bytes = await getStoreSizeBytes(storeDir);
+  storeSizeCache.set(storeDir, { bytes, at: Date.now() });
+  return bytes;
+}
+
+/** Adjust the cached size after a write or a purge, keeping the TTL window. */
+function adjustCachedStoreSize(storeDir: string, delta: number): void {
+  const hit = storeSizeCache.get(storeDir);
+  if (!hit) return;
+  storeSizeCache.set(storeDir, { bytes: Math.max(0, hit.bytes + delta), at: hit.at });
+}
+
+/** Drop the cache for a directory — used by tests and after an external change. */
+export function resetStoreSizeCache(storeDir?: string): void {
+  if (storeDir) storeSizeCache.delete(storeDir);
+  else storeSizeCache.clear();
+}
+
 export type StoreResult =
   | { stored: true; filePath: string; bytes: number; sha256: string; alreadyPresent: boolean }
   | { stored: false; reason: 'store_full'; detail: string };
@@ -142,7 +175,7 @@ export async function storeDocument(params: {
   }
 
   // Cap check BEFORE the write, not after: the point is to never exceed it.
-  const currentBytes = await getStoreSizeBytes(storeDir);
+  const currentBytes = await cachedStoreSize(storeDir);
   if (currentBytes + params.pdf.length > maxBytes) {
     const detail =
       `document store is full: ${currentBytes} bytes held + ${params.pdf.length} incoming ` +
@@ -165,6 +198,7 @@ export async function storeDocument(params: {
     throw error;
   }
 
+  adjustCachedStoreSize(storeDir, params.pdf.length);
   logger.info(
     { ipoId: params.ipoId, docType: params.docType, bytes: params.pdf.length, sha256: sha256.slice(0, 8), filePath },
     'Stored document PDF'
@@ -287,10 +321,21 @@ export interface PurgeResult {
  * Never throws: a purge failure must not fail the cycle
  * (`non-fatal-side-effects.md`). The failure is logged and returned instead.
  */
+/** Our IPO ids are UUIDs; anything else must never reach a recursive delete. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export async function purgeIpoDocuments(
   ipoId: string,
   storeDir: string = getStoreDir()
 ): Promise<PurgeResult> {
+  // N5: this function ends in `rm -r`. A malformed id ('', '..', an injected
+  // path) would resolve outside the IPO's directory, so the shape is checked
+  // before anything is deleted rather than trusted from the caller.
+  if (!UUID_RE.test(ipoId)) {
+    logger.error({ ipoId }, 'Refusing to purge: ipoId is not a UUID');
+    return { ipoId, purged: false, filesDeleted: 0, bytesFreed: 0, error: 'ipoId is not a UUID' };
+  }
+
   const dir = path.join(storeDir, ipoId);
   let filesDeleted = 0;
   let bytesFreed = 0;
@@ -311,6 +356,7 @@ export async function purgeIpoDocuments(
     await fsp.rm(dir, { recursive: true, force: true });
 
     // One log line per purged IPO — the audit trail for "where did the PDFs go".
+    adjustCachedStoreSize(storeDir, -bytesFreed);
     logger.info({ ipoId, filesDeleted, bytesFreed, dir }, 'Purged local IPO document PDFs (rows retained)');
     return { ipoId, purged: true, filesDeleted, bytesFreed };
   } catch (error) {

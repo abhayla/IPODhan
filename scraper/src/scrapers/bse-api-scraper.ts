@@ -118,30 +118,15 @@ export function parseBSERegistrar(raw?: string): string | null {
  * `parseBseParties` splits on `#` before `^`, fixing every consumer at once.
  */
 export function parseLeadManagers(brlm?: string, co?: string): string[] {
-  const { leadManagers } = parseBseParties({
+  // T2: the legacy secondary split on `,;/` is GONE. `#` is the separator BSE
+  // actually uses (verified live on the Skyways payload), and splitting again on
+  // punctuation fragments legitimate names — 'Nuvama Wealth Management, Limited'
+  // or a firm with a slash in its style would become two managers, silently
+  // inflating the count the nightly m_brlm_count check compares against.
+  return parseBseParties({
     Book_Running_Lead_Manager: brlm ?? null,
     Co_Book_Running_Lead_Manager: co ?? null,
-  });
-
-  // LEGACY secondary split, kept deliberately. `#` is the separator BSE actually
-  // uses (verified live), and it is the one this function got wrong. But some
-  // older BSE rows pack managers into one name segment with `,`/`;`/`/`, and
-  // this adapter has split on those since it shipped. Dropping that here would
-  // be an unrelated behaviour change smuggled into a bug fix, so the legacy
-  // split stays — applied AFTER the `#` split, never instead of it. It lives
-  // here rather than in `bse-party-parser.ts`, which stays faithful to the
-  // one format the live payload demonstrates.
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const name of leadManagers) {
-    for (const part of name.split(/[,;/]+/).map((x) => x.trim()).filter(Boolean)) {
-      const key = part.toLowerCase();
-      if (seen.has(key)) continue;
-      seen.add(key);
-      out.push(part);
-    }
-  }
-  return out;
+  }).leadManagers;
 }
 
 /** Issue size in RUPEES = shares × top-of-band price; 0 if either missing. */

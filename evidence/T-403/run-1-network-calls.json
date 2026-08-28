@@ -3,7 +3,7 @@
   "byIpo": {
     "acc-skyways": 9,
     "acc-madhurknit": 4,
-    "(none)": 1,
+    "(shared:bse-board)": 1,
     "acc-esds": 6,
     "acc-deepa": 1
   },
@@ -20,7 +20,7 @@
       "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
       "ipoKey": "acc-skyways",
       "status": 200,
-      "ms": 282,
+      "ms": 249,
       "bytes": 6363
     },
     {
@@ -28,7 +28,7 @@
       "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
       "ipoKey": "acc-skyways",
       "status": 200,
-      "ms": 5289,
+      "ms": 4947,
       "bytes": 12546
     },
     {
@@ -36,7 +36,7 @@
       "url": "https://listing.bseindia.com/Download//PreAnchor/RHPSkyways_20260818181315.pdf",
       "ipoKey": "acc-skyways",
       "status": 0,
-      "ms": 120010,
+      "ms": 120027,
       "bytes": 0
     },
     {
@@ -44,7 +44,7 @@
       "url": "https://nsearchives.nseindia.com/content/ipo/RHP_SKYWAYS.zip",
       "ipoKey": "acc-skyways",
       "status": 200,
-      "ms": 5996,
+      "ms": 2657,
       "bytes": 23013856
     },
     {
@@ -52,7 +52,7 @@
       "url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf",
       "ipoKey": "acc-skyways",
       "status": 200,
-      "ms": 8271,
+      "ms": 12006,
       "bytes": 6585368
     },
     {
@@ -60,7 +60,7 @@
       "url": "https://listing.bseindia.com/Download//PreAnchor/CorrigendumofRHPSkyways_20260818181316.pdf",
       "ipoKey": "acc-skyways",
       "status": 200,
-      "ms": 5259,
+      "ms": 6746,
       "bytes": 1391575
     },
     {
@@ -68,7 +68,7 @@
       "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip",
       "ipoKey": "acc-skyways",
       "status": 200,
-      "ms": 2241,
+      "ms": 4181,
       "bytes": 5702249
     },
     {
@@ -76,7 +76,7 @@
       "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_SKYWAYS.zip",
       "ipoKey": "acc-skyways",
       "status": 200,
-      "ms": 971,
+      "ms": 769,
       "bytes": 1916081
     },
     {
@@ -84,7 +84,7 @@
       "url": "https://www.bseindia.com/downloads/ipo/Addendum%20to%20RHP_250820261220.zip",
       "ipoKey": "acc-skyways",
       "status": 200,
-      "ms": 1326,
+      "ms": 5301,
       "bytes": 21082828
     },
     {
@@ -92,7 +92,7 @@
       "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
       "ipoKey": "acc-madhurknit",
       "status": 200,
-      "ms": 5239,
+      "ms": 324,
       "bytes": 10320
     },
     {
@@ -100,7 +100,7 @@
       "url": "https://nsearchives.nseindia.com/content/ipo/RHP_MADHURKNIT.zip",
       "ipoKey": "acc-madhurknit",
       "status": 200,
-      "ms": 7265,
+      "ms": 3099,
       "bytes": 7412186
     },
     {
@@ -108,7 +108,7 @@
       "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_MADHURKNIT.zip",
       "ipoKey": "acc-madhurknit",
       "status": 200,
-      "ms": 1655,
+      "ms": 3937,
       "bytes": 5293610
     },
     {
@@ -116,14 +116,15 @@
       "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MADHURKNIT.zip",
       "ipoKey": "acc-madhurknit",
       "status": 200,
-      "ms": 221,
+      "ms": 266,
       "bytes": 315743
     },
     {
       "host": "api.bseindia.com",
       "url": "https://api.bseindia.com/BseIndiaAPI/api/IPO_HomePageDetail/w",
+      "ipoKey": "(shared:bse-board)",
       "status": 200,
-      "ms": 139,
+      "ms": 164,
       "bytes": 5415
     },
     {
@@ -131,23 +132,23 @@
       "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
       "ipoKey": "acc-esds",
       "status": 200,
-      "ms": 204,
-      "bytes": 9018
+      "ms": 366,
+      "bytes": 9096
     },
     {
       "host": "www.nseindia.com",
       "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
       "ipoKey": "acc-esds",
       "status": 200,
-      "ms": 337,
-      "bytes": 19528
+      "ms": 311,
+      "bytes": 19711
     },
     {
       "host": "listing.bseindia.com",
       "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/RHPGID_20260825191135.zip",
       "ipoKey": "acc-esds",
       "status": 200,
-      "ms": 20045,
+      "ms": 44714,
       "bytes": 21420754
     },
     {
@@ -155,7 +156,7 @@
       "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf",
       "ipoKey": "acc-esds",
       "status": 200,
-      "ms": 11020,
+      "ms": 7526,
       "bytes": 3229058
     },
     {
@@ -163,7 +164,7 @@
       "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
       "ipoKey": "acc-esds",
       "status": 200,
-      "ms": 1156,
+      "ms": 5215,
       "bytes": 6858110
     },
     {
@@ -171,7 +172,7 @@
       "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ESDS.zip",
       "ipoKey": "acc-esds",
       "status": 200,
-      "ms": 166,
+      "ms": 236,
       "bytes": 301828
     },
     {
@@ -179,7 +180,7 @@
       "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7922",
       "ipoKey": "acc-deepa",
       "status": 200,
-      "ms": 354,
+      "ms": 1545,
       "bytes": 4019
     }
   ]
