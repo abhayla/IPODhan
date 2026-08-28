@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { extractBseCoreRow } from '../../../src/services/bse-ipo-board.js';
 import * as zlib from 'node:zlib';
 import {
   parseNSEDocuments,
@@ -6,6 +9,7 @@ import {
   parseSEBIDrhpListing,
   looksLikePdf,
   extractPdfFromZipBuffer,
+  encodeDocumentUrl,
   type DiscoveredDocument,
 } from '../../../src/services/primary-source-discovery.js';
 
@@ -134,9 +138,13 @@ describe('parseBSEDocuments', () => {
     expect(rhp!.type).toBe('RHP');
     expect(rhp!.source).toBe('BSE');
 
-    // Addendum/Corrigendum/Price-band-advertisement all map to ADDENDUM (revision/supersede class)
-    const addendumish = docs.filter((d) => d.type === 'ADDENDUM');
-    expect(addendumish.length).toBe(3);
+    // T-403 RC2: these three used to ALL collapse into ADDENDUM. That assertion
+    // was a shape lock on the bug — a corrigendum losing its date precedence and
+    // the price-band ad disappearing entirely. Each now keeps its own type.
+    expect(docs.find((d) => d.url.includes('ADD_500001'))!.type).toBe('ADDENDUM');
+    expect(docs.find((d) => d.url.includes('COR_500001'))!.type).toBe('CORRIGENDUM');
+    expect(docs.find((d) => d.url.includes('PBA_500001'))!.type).toBe('PRICE_BAND_AD');
+    expect(docs.filter((d) => d.type === 'ADDENDUM')).toHaveLength(1);
     expect(docs.every((d) => d.source === 'BSE')).toBe(true);
   });
 
@@ -259,5 +267,64 @@ describe('extractPdfFromZipBuffer (built-in zlib, no new dep)', () => {
   it('returns null for garbage / empty input', () => {
     expect(extractPdfFromZipBuffer(Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x01, 0x02]))).toBeNull();
     expect(extractPdfFromZipBuffer(Buffer.alloc(0))).toBeNull();
+  });
+});
+
+describe('T-403 — real captured exchange payloads', () => {
+  const FIXTURES = join(__dirname, '../../fixtures/documents');
+  const readFixture = (n: string) => JSON.parse(readFileSync(join(FIXTURES, n), 'utf8'));
+
+  it('T21 Skyways BSE core row yields >=4 docs typed RHP/CORRIGENDUM/ADDENDUM/PRICE_BAND_AD', () => {
+    const row = extractBseCoreRow(readFixture('bse-skyways-core.json'))!;
+    const docs = parseBSEDocuments(row);
+    expect(docs.length).toBeGreaterThanOrEqual(4);
+    expect(docs.map((d) => d.type).sort()).toEqual(
+      ['ADDENDUM', 'CORRIGENDUM', 'PRICE_BAND_AD', 'RHP'].sort()
+    );
+    expect(docs.every((d) => d.source === 'BSE')).toBe(true);
+  });
+
+  it('T22 an EMPTY Anchor_Details produces no document (matrix F3, NOT_YET_FILED)', () => {
+    const row = extractBseCoreRow(readFixture('bse-skyways-core.json'))!;
+    expect(row.Anchor_Details).toBe('');
+    expect(parseBSEDocuments(row).some((d) => d.type === 'ANCHOR_ALLOCATION_REPORT')).toBe(false);
+  });
+
+  it('T23 the BSE Addendum URL with LITERAL SPACES survives and encodes cleanly', () => {
+    const row = extractBseCoreRow(readFixture('bse-skyways-core.json'))!;
+    const addendum = parseBSEDocuments(row).find((d) => d.type === 'ADDENDUM')!;
+    // Verified live: BSE serves this path with real spaces in it.
+    expect(addendum.url).toContain('Addendum to RHP');
+    expect(encodeDocumentUrl(addendum.url)).toContain('Addendum%20to%20RHP');
+    // Encoding twice must not double-escape (%20 -> %2520 would 404).
+    expect(encodeDocumentUrl(encodeDocumentUrl(addendum.url))).toBe(
+      encodeDocumentUrl(addendum.url)
+    );
+  });
+
+  it('T24 Skyways NSE issueInfo yields all seven archive documents, correctly typed', () => {
+    const docs = parseNSEDocuments(readFixture('nse-skyways.json').issueInfo, 'SKYWAYS');
+    expect(docs.map((d) => d.type).sort()).toEqual(
+      [
+        'ANCHOR_ALLOCATION_REPORT',
+        'BIDDING_CENTERS',
+        'RATIOS_BASIS_ISSUE_PRICE',
+        'RHP',
+        'SAMPLE_APPLICATION_FORMS',
+        'SECURITY_PARAMS_POST_ANCHOR',
+        'SECURITY_PARAMS_PRE_ANCHOR',
+      ].sort()
+    );
+    expect(docs.every((d) => d.url.startsWith('https://nsearchives.nseindia.com/'))).toBe(true);
+  });
+
+  it('T25 Madhur (SME) bare "Security Parameters " row is typed PRE_ANCHOR (F11)', () => {
+    const docs = parseNSEDocuments(readFixture('nse-madhurknit.json').issueInfo, 'MADHURKNIT');
+    const pre = docs.find((d) => d.type === 'SECURITY_PARAMS_PRE_ANCHOR')!;
+    expect(pre).toBeDefined();
+    expect(pre.sourceField).toBe('Security Parameters ');
+    expect(pre.url).toContain('PREANCHOR_PARAMETERS_MADHURKNIT.zip');
+    // and it must NOT have been swallowed by the anchor rule
+    expect(docs.filter((d) => d.type === 'ANCHOR_ALLOCATION_REPORT')).toHaveLength(1);
   });
 });

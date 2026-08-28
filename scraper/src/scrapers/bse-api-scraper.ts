@@ -13,6 +13,7 @@
 
 import logger from '../utils/logger.js';
 import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
+import { parseBseParties } from '../services/bse-party-parser.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 
 const BSE_API_BASE = 'https://api.bseindia.com/BseIndiaAPI/api/';
@@ -91,34 +92,53 @@ export function parseBSEDate(s: string): string | null {
 }
 
 /**
- * BSE entity fields pack the NAME plus address/email as one blob, separated by
- * `^` then `|`s ("Mudra RTA Ventures Private Limited^B-117, ...||||ipo@x.com").
- * Keep only the name segment (before `^`/`|`/newline) and trim.
+ * Registrar NAME only, capped to the column width.
+ *
+ * T-403 RC1: the packed-entity format (`Name^address|...|email|contact`, with a
+ * literal `#` between MULTIPLE parties) is now parsed in ONE place --
+ * `services/bse-party-parser.ts`. The local `cleanBSEEntityName` this used to
+ * call split on `^`/`|` but never on `#`, so any field carrying more than one
+ * party silently lost every party after the first.
  */
-function cleanBSEEntityName(raw: string): string {
-  return raw.split(/[\^|]/)[0].split('\n')[0].trim();
-}
-
-/** Registrar NAME only (BSE packs name^address|email); capped to the column width. */
 export function parseBSERegistrar(raw?: string): string | null {
   if (!raw) return null;
-  const name = cleanBSEEntityName(raw);
+  const name = parseBseParties({ Registrar: raw }).registrar;
   if (!name) return null;
   return name.length > 100 ? name.slice(0, 100).trim() : name;
 }
 
 /**
- * Combine BRLM + co-managers into clean names. Each field is `Name^address|email`
- * (the address itself contains commas), so strip the `^address` blob FIRST, then
- * split the remaining name on , ; / for the rare multi-manager field; trim; dedup.
+ * Every lead manager: the BRLM followed by ALL co-BRLMs, in payload order.
+ *
+ * T-403 RC1 (matrix F17). BSE packs co-managers as
+ * `A^...|a@x.com#B^...|b@x.com` -- `#`-separated. The previous implementation
+ * stripped the `^` tail FIRST and then split the remainder on `,;/`, so the `#`
+ * and everything after it stayed inside the discarded tail: Skyways' three
+ * managers (Holani + Shannon + Dolat Finserv) came back as two. Delegating to
+ * `parseBseParties` splits on `#` before `^`, fixing every consumer at once.
  */
 export function parseLeadManagers(brlm?: string, co?: string): string[] {
+  const { leadManagers } = parseBseParties({
+    Book_Running_Lead_Manager: brlm ?? null,
+    Co_Book_Running_Lead_Manager: co ?? null,
+  });
+
+  // LEGACY secondary split, kept deliberately. `#` is the separator BSE actually
+  // uses (verified live), and it is the one this function got wrong. But some
+  // older BSE rows pack managers into one name segment with `,`/`;`/`/`, and
+  // this adapter has split on those since it shipped. Dropping that here would
+  // be an unrelated behaviour change smuggled into a bug fix, so the legacy
+  // split stays — applied AFTER the `#` split, never instead of it. It lives
+  // here rather than in `bse-party-parser.ts`, which stays faithful to the
+  // one format the live payload demonstrates.
   const out: string[] = [];
-  for (const field of [brlm, co]) {
-    if (!field) continue;
-    const cleaned = cleanBSEEntityName(field);
-    for (const name of cleaned.split(/[,;/]+/).map((x) => x.trim()).filter(Boolean)) {
-      if (!out.includes(name)) out.push(name);
+  const seen = new Set<string>();
+  for (const name of leadManagers) {
+    for (const part of name.split(/[,;/]+/).map((x) => x.trim()).filter(Boolean)) {
+      const key = part.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push(part);
     }
   }
   return out;
