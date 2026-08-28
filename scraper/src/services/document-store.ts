@@ -295,12 +295,17 @@ export function decidePurge(params: {
 export function hasStoredFile(
   ipoId: string,
   docType: string,
-  storeDir: string = getStoreDir()
+  storeDir: string = getStoreDir(),
+  sha256?: string | null
 ): boolean {
   try {
-    return fs
-      .readdirSync(path.join(storeDir, ipoId))
-      .some((f) => f.startsWith(`${docType}-`) && f.endsWith('.pdf'));
+    const files = fs.readdirSync(path.join(storeDir, ipoId));
+    // W-1: when the persisted hash is known, check for THAT file rather than
+    // for any file of this type. The name-prefix check alone calls a row
+    // healthy when the bytes on disk belong to a different document — which is
+    // exactly the case the hash exists to detect.
+    if (sha256) return files.includes(documentFileName(docType, sha256));
+    return files.some((f) => f.startsWith(`${docType}-`) && f.endsWith('.pdf'));
   } catch {
     return false;
   }

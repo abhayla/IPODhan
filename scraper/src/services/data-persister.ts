@@ -1,4 +1,5 @@
 import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDataRepository, IPOInsert, SubscriptionInsert, GMPRecordInsert, FinancialDataInsert, IPO } from '@ipodhan/shared';
+import { normalizeCompanyUrl, isVerifierUrl } from './company-host-source.js';
 import logger from '../utils/logger.js';
 import { sql as sqlOp } from 'drizzle-orm';
 import { config } from '../config.js';
@@ -1314,14 +1315,44 @@ export async function recordBseDiscoveryMetadata(
  * cover must not overwrite a value an admin may have corrected. `verifierUrl`
  * refreshes, because the source re-slugs its URLs.
  */
+/**
+ * The one thing this function needs from a repository (H-1).
+ *
+ * Narrowed to `updateDocumentSourceHints`, a method that writes exactly these
+ * two columns and returns only the id. The wide `update()` cannot be used: it
+ * ends in a bare `.returning()`, which asks for all 55 columns `schema.ts`
+ * declares, and a journal-built `ipos` has 32 — so a two-column patch fails
+ * there on columns it never touched. Narrowing it is also what lets the
+ * acceptance harness pass the REAL repository rather than a raw-SQL stand-in,
+ * which would have put an `ipos` writer outside the shared write path (the
+ * write ratchet catches exactly that, and was right to).
+ */
+export interface DocumentSourceHintWriter {
+  updateDocumentSourceHints(
+    id: string,
+    hints: { companyWebsite?: string; verifierUrl?: string }
+  ): Promise<unknown>;
+}
+
 export async function recordDocumentSourceHints(
-  ipoRepository: IPORepository,
+  ipoRepository: DocumentSourceHintWriter,
   ipoId: string,
   hints: { companyWebsite?: string | null; verifierUrl?: string | null },
   existing?: { companyWebsite?: string | null }
 ): Promise<void> {
-  const website = hints.companyWebsite?.trim() || null;
-  const verifier = hints.verifierUrl?.trim() || null;
+  // M-b: validate the HOST on the way in, not only where it is read. Both of
+  // these are fetched later by the discovery runner, and a row written by any
+  // other process (a backfill, an admin edit, a future scraper) reaches that
+  // fetch through this same column. `normalizeCompanyUrl` also refuses
+  // loopback / private / link-local hosts and non-default ports.
+  const website = normalizeCompanyUrl(hints.companyWebsite);
+  const verifier = isVerifierUrl(hints.verifierUrl) ? (hints.verifierUrl as string).trim() : null;
+  if (hints.companyWebsite && !website) {
+    logger.warn({ ipoId, value: hints.companyWebsite }, 'Rejected company website hint — unsafe or non-issuer host');
+  }
+  if (hints.verifierUrl && !verifier) {
+    logger.warn({ ipoId, value: hints.verifierUrl }, 'Rejected verifier hint — not a chittorgarh.com https URL');
+  }
 
   const patch: Record<string, unknown> = {};
   // Write-once: only set a website when we do not already hold one.
@@ -1329,7 +1360,6 @@ export async function recordDocumentSourceHints(
   if (verifier) patch.verifierUrl = verifier.slice(0, 512);
   if (Object.keys(patch).length === 0) return;
 
-  patch.updatedAt = new Date();
-  await ipoRepository.update(ipoId, patch as never);
+  await ipoRepository.updateDocumentSourceHints(ipoId, patch as never);
   logger.debug({ ipoId, website: Boolean(patch.companyWebsite), verifier: Boolean(verifier) }, 'Recorded document source hints');
 }

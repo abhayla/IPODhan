@@ -129,6 +129,42 @@ export function notApplicableTypes(issue: IssueShape): DocumentType[] {
   return ['PRICE_BAND_AD', 'ANCHOR_ALLOCATION_REPORT'];
 }
 
+/**
+ * Which types a filing we ALREADY HAVE replaces (F-3, matrix "a later filing
+ * supersedes").
+ *
+ * The DRHP is the draft of the RHP and the RHP is the draft of the Prospectus.
+ * Once the later one is in hand, chasing the earlier one is not merely wasted —
+ * it is actively harmful, because it ends as BLOCKED_ALL and fires a P2 alert.
+ * Observed live 2026-08-28: a CLOSED IPO whose RHP was FOUND alerted on its
+ * DRHP, because SEBI's draft-filings list no longer shows a June-2026 draft. An
+ * alert nobody can act on is noise, and noise is how real alerts get ignored.
+ */
+export const SUPERSEDED_BY: Partial<Record<DocumentType, DocumentType[]>> = {
+  PROSPECTUS: ['RHP', 'DRHP'],
+  RHP: ['DRHP'],
+};
+
+/** States that mean "we hold this document". */
+const HELD_STATES: DocumentFetchStateValue[] = ['FOUND', 'EXTRACTED', 'EXTRACT_FAILED'];
+
+/** Types made moot by a document this IPO already holds (F-3). */
+export function supersededTypes(rows: StateRow[]): DocumentType[] {
+  const byType = new Map(rows.map((r) => [r.docType, r]));
+  const out = new Set<DocumentType>();
+  for (const [later, earlier] of Object.entries(SUPERSEDED_BY) as [DocumentType, DocumentType[]][]) {
+    const laterRow = byType.get(later);
+    if (!laterRow || !HELD_STATES.includes(laterRow.state)) continue;
+    for (const t of earlier) {
+      const row = byType.get(t);
+      // Only rows still being chased. A DRHP we actually hold stays FOUND —
+      // supersession closes the HUNT, it does not discard a document.
+      if (row && OPEN_STATES.includes(row.state)) out.add(t);
+    }
+  }
+  return [...out];
+}
+
 // ---------------------------------------------------------------------------
 // Which states are still open
 // ---------------------------------------------------------------------------
@@ -187,6 +223,10 @@ export interface CyclePlan {
   /** Types to mark NOT_APPLICABLE once (R9). */
   toMarkNotApplicable: DocumentType[];
   /**
+   * Types a LATER filing has already replaced, to mark SUPERSEDED once (F-3).
+   */
+  toMarkSuperseded: DocumentType[];
+  /**
    * TRUE when this IPO must be skipped entirely, WITHOUT a single network call.
    * The whole point of the state table (§7.2, "found + read = don't touch").
    */
@@ -226,6 +266,7 @@ export function planIpoCycle(params: {
       due: [],
       missingRows: [],
       toMarkNotApplicable: stillOpen,
+      toMarkSuperseded: [],
       // Skip only once there is nothing left to close — so the marking pass
       // happens on the first cycle after withdrawal and never again.
       skipIpo: stillOpen.length === 0,
@@ -242,11 +283,16 @@ export function planIpoCycle(params: {
     (t) => (byType.get(t)?.state ?? 'WANTED') !== 'NOT_APPLICABLE'
   );
 
+  // F-3: a later filing in hand closes the hunt for its drafts, BEFORE anything
+  // is called due — otherwise the superseded type is fetched, fails, and alerts.
+  const superseded = supersededTypes(params.rows);
+
   const due: DocumentType[] = [];
   const missingRows: DocumentType[] = [];
 
   for (const docType of dueDocTypesForStage(params.stage)) {
     if (notApplicable.includes(docType)) continue;
+    if (superseded.includes(docType)) continue;
 
     const row = byType.get(docType);
     if (!row) {
@@ -264,11 +310,13 @@ export function planIpoCycle(params: {
     due.push(docType);
   }
 
-  const skipIpo = due.length === 0 && toMarkNotApplicable.length === 0;
+  const skipIpo =
+    due.length === 0 && toMarkNotApplicable.length === 0 && superseded.length === 0;
   return {
     due,
     missingRows,
     toMarkNotApplicable,
+    toMarkSuperseded: superseded,
     skipIpo,
     reason: skipIpo
       ? 'nothing due — every document is found or not yet retryable (zero network calls)'

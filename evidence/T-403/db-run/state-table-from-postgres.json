@@ -1,44 +1,34 @@
 {
-  "takenAt": "2026-08-28T11:58:08.125Z",
-  "database": "ipodhan_test, journal-replayed from empty (20/20 entries)",
-  "countsByState": [
-    {
-      "state": "NOT_YET_FILED",
-      "n": 12
-    },
-    {
-      "state": "FOUND",
-      "n": 13
-    }
-  ],
-  "discoveryHints": [
+  "generatedAt": "2026-08-28T13:27:50.795Z",
+  "database": "ipodhan_test",
+  "rowCount": 25,
+  "byState": {
+    "NOT_YET_FILED": 9,
+    "SUPERSEDED": 3,
+    "FOUND": 13
+  },
+  "withLastAttempt": 25,
+  "foundWithSha256": 13,
+  "ipos": [
     {
       "company_name": "Deepa Jewellers Ltd.",
       "company_website": null,
-      "verifier_url": null,
-      "bse_ipo_no": null,
-      "bse_payload_lead_manager_count": null
+      "verifier_url": "https://www.chittorgarh.com/ipo/deepa-jewellers-ipo/2827/"
     },
     {
       "company_name": "ESDS Software Solution Limited",
       "company_website": null,
-      "verifier_url": null,
-      "bse_ipo_no": null,
-      "bse_payload_lead_manager_count": null
+      "verifier_url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/"
     },
     {
       "company_name": "Madhur Knit Crafts Ltd.",
       "company_website": null,
-      "verifier_url": null,
-      "bse_ipo_no": null,
-      "bse_payload_lead_manager_count": null
+      "verifier_url": null
     },
     {
       "company_name": "Skyways Air Services Ltd.",
-      "company_website": null,
-      "verifier_url": null,
-      "bse_ipo_no": null,
-      "bse_payload_lead_manager_count": null
+      "company_website": "https://www.skyways-air.in",
+      "verifier_url": null
     }
   ],
   "documents": [
@@ -46,86 +36,98 @@
       "company_name": "ESDS Software Solution Limited",
       "type": "RHP",
       "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/RHPGID_20260825191135.zip",
-      "file_size": "21900385"
+      "file_size": "21900385",
+      "sha256": "2b1500da163d971da74e9af5b0a60120ea2b8d696e2a7dc23471a832a95903ca"
     },
     {
       "company_name": "ESDS Software Solution Limited",
       "type": "PRICE_BAND_AD",
       "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf",
-      "file_size": "3229058"
+      "file_size": "3229058",
+      "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4"
     },
     {
       "company_name": "ESDS Software Solution Limited",
       "type": "ANCHOR_ALLOCATION_REPORT",
       "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ESDS.zip",
-      "file_size": "310858"
+      "file_size": "310858",
+      "sha256": "4e5a4f9de9ef11f31f98a3ff303df1fad1ff9ea7f880fff9348c1d3d5f80802d"
     },
     {
       "company_name": "Madhur Knit Crafts Ltd.",
       "type": "RHP",
       "url": "https://nsearchives.nseindia.com/content/ipo/RHP_MADHURKNIT.zip",
-      "file_size": "3469130"
+      "file_size": "3469130",
+      "sha256": "69dcb28b1fe18c9da2399339a6959a9cff610ddca144615b7fb1ddc3a39c1af2"
     },
     {
       "company_name": "Madhur Knit Crafts Ltd.",
       "type": "RATIOS_BASIS_ISSUE_PRICE",
       "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_MADHURKNIT.zip",
-      "file_size": "2389805"
+      "file_size": "2389805",
+      "sha256": "04a1caf10d84731d42bb9026cf2d915fe2709ecd79fd2602b0ce5923ae5df6bc"
     },
     {
       "company_name": "Madhur Knit Crafts Ltd.",
       "type": "ANCHOR_ALLOCATION_REPORT",
       "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MADHURKNIT.zip",
-      "file_size": "337661"
+      "file_size": "337661",
+      "sha256": "3ccd79ad85c15c35a17725ee59a5c33a72bc10a195a88affc2a7c275fc3fef35"
     },
     {
       "company_name": "Skyways Air Services Ltd.",
       "type": "RHP",
       "url": "https://listing.bseindia.com/Download//PreAnchor/RHPSkyways_20260818181315.pdf",
-      "file_size": "46922851"
+      "file_size": "46922851",
+      "sha256": "b4971a1aa3ef27ccb9375622081b4abf9b03e4646e8b725ae4971930742500b1"
     },
     {
       "company_name": "Skyways Air Services Ltd.",
       "type": "ADDENDUM",
       "url": "https://www.bseindia.com/downloads/ipo/Addendum to RHP_250820261220.zip",
-      "file_size": "1625685"
+      "file_size": "1625685",
+      "sha256": "971b265a1d22ee9350d2c353585953c5cbae1f41bb5812906f1f8eee2b38dea1"
     },
     {
       "company_name": "Skyways Air Services Ltd.",
       "type": "PRICE_BAND_AD",
       "url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf",
-      "file_size": "6585368"
+      "file_size": "6585368",
+      "sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea"
     },
     {
       "company_name": "Skyways Air Services Ltd.",
       "type": "CORRIGENDUM",
       "url": "https://listing.bseindia.com/Download//PreAnchor/CorrigendumofRHPSkyways_20260818181316.pdf",
-      "file_size": "1391575"
+      "file_size": "1391575",
+      "sha256": "d3a6094a2a23371ec38432ec9a34ec91def2b2d3cecf6546fd375ff45e2dee1c"
     },
     {
       "company_name": "Skyways Air Services Ltd.",
       "type": "ANCHOR_ALLOCATION_REPORT",
       "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_SKYWAYS.zip",
-      "file_size": "2118875"
+      "file_size": "2118875",
+      "sha256": "8a68e38b94b77ef5664452390338271c54672f3687331a35fa515d085c760ef0"
     }
   ],
-  "stateRows": [
+  "rows": [
     {
       "company_name": "Deepa Jewellers Ltd.",
       "doc_type": "DRHP",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T06:56:54.306Z",
-      "first_seen_at": "2026-08-28T06:26:55.789Z",
+      "next_retry_at": "2026-08-28T13:57:20.584Z",
       "blocked_since_at": null,
+      "last_attempt_at": "2026-08-28T13:27:20.584Z",
       "document_id": null,
       "document_url": null,
-      "file_size": null,
       "document_sha256": null,
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": null,
+      "company_website": null,
+      "verifier_url": "https://www.chittorgarh.com/ipo/deepa-jewellers-ipo/2827/",
       "last_attempt": [
         {
-          "ms": 615,
+          "ms": 776,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7922",
           "http": 200,
           "source": "BSE",
@@ -138,48 +140,65 @@
           "outcome": "no_symbol"
         },
         {
+          "ms": 435,
+          "url": "https://www.chittorgarh.com/ipo/deepa-jewellers-ipo/2827/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
+        },
+        {
           "ms": 0,
           "http": 0,
           "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
+          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:no_new_link"
         }
-      ]
+      ],
+      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:no_new_link"
     },
     {
       "company_name": "ESDS Software Solution Limited",
       "doc_type": "DRHP",
-      "state": "NOT_YET_FILED",
+      "state": "SUPERSEDED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T06:56:12.306Z",
-      "first_seen_at": "2026-08-28T06:26:14.429Z",
+      "next_retry_at": null,
       "blocked_since_at": null,
+      "last_attempt_at": "2026-08-28T13:26:46.286Z",
       "document_id": null,
       "document_url": null,
-      "file_size": null,
       "document_sha256": null,
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": null,
+      "company_website": null,
+      "verifier_url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
       "last_attempt": [
         {
-          "ms": 511,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 309,
+          "ms": 5649,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
+          "ms": 409,
+          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
+        },
+        {
           "ms": 0,
           "http": 0,
           "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
+          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:no_new_link"
         }
-      ]
+      ],
+      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:no_new_link"
     },
     {
       "company_name": "ESDS Software Solution Limited",
@@ -187,36 +206,38 @@
       "state": "FOUND",
       "attempts": 1,
       "next_retry_at": null,
-      "first_seen_at": "2026-08-28T06:26:15.942Z",
       "blocked_since_at": null,
-      "document_id": "95327aa4-aa6c-447a-a7cc-480a6a925453",
+      "last_attempt_at": "2026-08-28T13:26:46.286Z",
+      "document_id": "1fb7bbf0-7cf8-4139-a4f7-7773ef9711e3",
       "document_url": "https://listing.bseindia.com/Download/8888888/PreAnchor/RHPGID_20260825191135.zip",
-      "file_size": "21900385",
       "document_sha256": "2b1500da163d971da74e9af5b0a60120ea2b8d696e2a7dc23471a832a95903ca",
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": "21900385",
+      "company_website": null,
+      "verifier_url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
       "last_attempt": [
         {
-          "ms": 511,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 309,
+          "ms": 5649,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
+          "ms": 409,
+          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
         },
         {
-          "ms": 13900,
+          "ms": 4041,
           "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/RHPGID_20260825191135.zip",
           "http": 200,
           "sha256": "2b1500da163d971da74e9af5b0a60120ea2b8d696e2a7dc23471a832a95903ca",
@@ -229,7 +250,8 @@
           "source": "CHAIN",
           "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "ESDS Software Solution Limited",
@@ -237,42 +259,38 @@
       "state": "FOUND",
       "attempts": 1,
       "next_retry_at": null,
-      "first_seen_at": "2026-08-28T06:26:35.504Z",
       "blocked_since_at": null,
-      "document_id": "c0f8ad93-0c00-4532-ba93-d5e96e2800fd",
+      "last_attempt_at": "2026-08-28T13:26:46.286Z",
+      "document_id": "7e53cb84-9a3e-430a-acd9-c4e8ec490215",
       "document_url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf",
-      "file_size": "3229058",
       "document_sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4",
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": "3229058",
+      "company_website": null,
+      "verifier_url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
       "last_attempt": [
         {
-          "ms": 511,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 309,
+          "ms": 5649,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
+          "ms": 409,
+          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 6255,
+          "ms": 1844,
           "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf",
           "http": 200,
           "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4",
@@ -285,53 +303,44 @@
           "source": "CHAIN",
           "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "ESDS Software Solution Limited",
       "doc_type": "CORRIGENDUM",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T06:56:12.306Z",
-      "first_seen_at": "2026-08-28T06:26:44.613Z",
+      "next_retry_at": "2026-08-28T13:56:46.286Z",
       "blocked_since_at": null,
+      "last_attempt_at": "2026-08-28T13:26:46.286Z",
       "document_id": null,
       "document_url": null,
-      "file_size": null,
       "document_sha256": null,
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": null,
+      "company_website": null,
+      "verifier_url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
       "last_attempt": [
         {
-          "ms": 511,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 309,
+          "ms": 5649,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+          "ms": 409,
+          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
         },
         {
           "ms": 0,
@@ -339,7 +348,8 @@
           "source": "CHAIN",
           "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "ESDS Software Solution Limited",
@@ -347,54 +357,38 @@
       "state": "FOUND",
       "attempts": 1,
       "next_retry_at": null,
-      "first_seen_at": "2026-08-28T06:26:46.100Z",
       "blocked_since_at": null,
-      "document_id": "c0f8ad93-0c00-4532-ba93-d5e96e2800fd",
+      "last_attempt_at": "2026-08-28T13:26:46.286Z",
+      "document_id": "7e53cb84-9a3e-430a-acd9-c4e8ec490215",
       "document_url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf",
-      "file_size": "3229058",
       "document_sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4",
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": "3229058",
+      "company_website": null,
+      "verifier_url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
       "last_attempt": [
         {
-          "ms": 511,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 309,
+          "ms": 5649,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
+          "ms": 409,
+          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 3952,
+          "ms": 6968,
           "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
           "http": 200,
           "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4",
@@ -415,7 +409,8 @@
           "source": "CHAIN",
           "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "ESDS Software Solution Limited",
@@ -423,60 +418,38 @@
       "state": "FOUND",
       "attempts": 1,
       "next_retry_at": null,
-      "first_seen_at": "2026-08-28T06:26:51.289Z",
       "blocked_since_at": null,
-      "document_id": "12107fc2-ff3a-4957-9581-bf1aa3c8848a",
+      "last_attempt_at": "2026-08-28T13:26:46.286Z",
+      "document_id": "4fbc011c-80cf-4d5c-8517-b954f42409e6",
       "document_url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ESDS.zip",
-      "file_size": "310858",
       "document_sha256": "4e5a4f9de9ef11f31f98a3ff303df1fad1ff9ea7f880fff9348c1d3d5f80802d",
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": "310858",
+      "company_website": null,
+      "verifier_url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
       "last_attempt": [
         {
-          "ms": 511,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 309,
+          "ms": 5649,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
+          "ms": 409,
+          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 219,
+          "ms": 601,
           "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ESDS.zip",
           "http": 200,
           "sha256": "4e5a4f9de9ef11f31f98a3ff303df1fad1ff9ea7f880fff9348c1d3d5f80802d",
@@ -489,24 +462,26 @@
           "source": "CHAIN",
           "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Madhur Knit Crafts Ltd.",
       "doc_type": "DRHP",
-      "state": "NOT_YET_FILED",
+      "state": "SUPERSEDED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T06:55:41.903Z",
-      "first_seen_at": "2026-08-28T06:25:48.720Z",
+      "next_retry_at": null,
       "blocked_since_at": null,
+      "last_attempt_at": "2026-08-28T13:26:16.606Z",
       "document_id": null,
       "document_url": null,
-      "file_size": null,
       "document_sha256": null,
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": null,
+      "company_website": null,
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5956,
+          "ms": 5217,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
@@ -518,7 +493,8 @@
           "source": "CHAIN",
           "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
         }
-      ]
+      ],
+      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
     },
     {
       "company_name": "Madhur Knit Crafts Ltd.",
@@ -526,29 +502,24 @@
       "state": "FOUND",
       "attempts": 1,
       "next_retry_at": null,
-      "first_seen_at": "2026-08-28T06:25:50.146Z",
       "blocked_since_at": null,
-      "document_id": "413cd597-f397-4389-8137-81c414c3cc26",
+      "last_attempt_at": "2026-08-28T13:26:16.606Z",
+      "document_id": "427f10cb-1acc-4ddf-bc34-44edc3eb580c",
       "document_url": "https://nsearchives.nseindia.com/content/ipo/RHP_MADHURKNIT.zip",
-      "file_size": "3469130",
       "document_sha256": "69dcb28b1fe18c9da2399339a6959a9cff610ddca144615b7fb1ddc3a39c1af2",
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": "3469130",
+      "company_website": null,
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5956,
+          "ms": 5217,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 3810,
+          "ms": 3561,
           "url": "https://nsearchives.nseindia.com/content/ipo/RHP_MADHURKNIT.zip",
           "http": 200,
           "sha256": "69dcb28b1fe18c9da2399339a6959a9cff610ddca144615b7fb1ddc3a39c1af2",
@@ -561,24 +532,26 @@
           "source": "CHAIN",
           "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Madhur Knit Crafts Ltd.",
       "doc_type": "PROSPECTUS",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T06:55:41.903Z",
-      "first_seen_at": "2026-08-28T06:26:09.742Z",
+      "next_retry_at": "2026-08-28T13:56:16.606Z",
       "blocked_since_at": null,
+      "last_attempt_at": "2026-08-28T13:26:16.606Z",
       "document_id": null,
       "document_url": null,
-      "file_size": null,
       "document_sha256": null,
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": null,
+      "company_website": null,
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5956,
+          "ms": 5217,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
@@ -588,68 +561,28 @@
           "ms": 0,
           "http": 0,
           "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[ADDENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
           "outcome": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Madhur Knit Crafts Ltd.",
       "doc_type": "ADDENDUM",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T06:55:41.903Z",
-      "first_seen_at": "2026-08-28T06:26:08.173Z",
+      "next_retry_at": "2026-08-28T13:56:16.606Z",
       "blocked_since_at": null,
+      "last_attempt_at": "2026-08-28T13:26:16.606Z",
       "document_id": null,
       "document_url": null,
-      "file_size": null,
       "document_sha256": null,
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": null,
+      "company_website": null,
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5956,
+          "ms": 5217,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
@@ -659,62 +592,28 @@
           "ms": 0,
           "http": 0,
           "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
           "outcome": "rungs[ADDENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[ADDENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Madhur Knit Crafts Ltd.",
       "doc_type": "PRICE_BAND_AD",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T06:55:41.903Z",
-      "first_seen_at": "2026-08-28T06:25:56.675Z",
+      "next_retry_at": "2026-08-28T13:56:16.606Z",
       "blocked_since_at": null,
+      "last_attempt_at": "2026-08-28T13:26:16.606Z",
       "document_id": null,
       "document_url": null,
-      "file_size": null,
       "document_sha256": null,
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": null,
+      "company_website": null,
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5956,
+          "ms": 5217,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
@@ -724,60 +623,32 @@
           "ms": 0,
           "http": 0,
           "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
           "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[PRICE_BAND_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Madhur Knit Crafts Ltd.",
       "doc_type": "CORRIGENDUM",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T06:55:41.903Z",
-      "first_seen_at": "2026-08-28T06:25:58.292Z",
+      "next_retry_at": "2026-08-28T13:56:16.606Z",
       "blocked_since_at": null,
+      "last_attempt_at": "2026-08-28T13:26:16.606Z",
       "document_id": null,
       "document_url": null,
-      "file_size": null,
       "document_sha256": null,
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": null,
+      "company_website": null,
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5956,
+          "ms": 5217,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         },
         {
           "ms": 0,
@@ -785,76 +656,30 @@
           "source": "CHAIN",
           "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Madhur Knit Crafts Ltd.",
       "doc_type": "BASIS_OF_ALLOTMENT_AD",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T06:55:41.903Z",
-      "first_seen_at": "2026-08-28T06:26:11.394Z",
+      "next_retry_at": "2026-08-28T13:56:16.606Z",
       "blocked_since_at": null,
+      "last_attempt_at": "2026-08-28T13:26:16.606Z",
       "document_id": null,
       "document_url": null,
-      "file_size": null,
       "document_sha256": null,
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": null,
+      "company_website": null,
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5956,
+          "ms": 5217,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[ADDENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         },
         {
           "ms": 0,
@@ -862,7 +687,8 @@
           "source": "CHAIN",
           "outcome": "rungs[BASIS_OF_ALLOTMENT_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[BASIS_OF_ALLOTMENT_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Madhur Knit Crafts Ltd.",
@@ -870,47 +696,24 @@
       "state": "FOUND",
       "attempts": 1,
       "next_retry_at": null,
-      "first_seen_at": "2026-08-28T06:25:59.841Z",
       "blocked_since_at": null,
-      "document_id": "cca878ca-407a-441e-8bc4-0e309b332c2e",
+      "last_attempt_at": "2026-08-28T13:26:16.606Z",
+      "document_id": "593f07c7-1a9f-45cb-87bd-7213cc689e8e",
       "document_url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_MADHURKNIT.zip",
-      "file_size": "2389805",
       "document_sha256": "04a1caf10d84731d42bb9026cf2d915fe2709ecd79fd2602b0ce5923ae5df6bc",
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": "2389805",
+      "company_website": null,
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5956,
+          "ms": 5217,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 2650,
+          "ms": 2266,
           "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_MADHURKNIT.zip",
           "http": 200,
           "sha256": "04a1caf10d84731d42bb9026cf2d915fe2709ecd79fd2602b0ce5923ae5df6bc",
@@ -923,7 +726,8 @@
           "source": "CHAIN",
           "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Madhur Knit Crafts Ltd.",
@@ -931,53 +735,24 @@
       "state": "FOUND",
       "attempts": 1,
       "next_retry_at": null,
-      "first_seen_at": "2026-08-28T06:26:05.385Z",
       "blocked_since_at": null,
-      "document_id": "6ed71e98-835c-46f8-a512-6a8cd071f7b5",
+      "last_attempt_at": "2026-08-28T13:26:16.606Z",
+      "document_id": "bed0f577-0900-4cdc-8bb4-8316aabfafe2",
       "document_url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MADHURKNIT.zip",
-      "file_size": "337661",
       "document_sha256": "3ccd79ad85c15c35a17725ee59a5c33a72bc10a195a88affc2a7c275fc3fef35",
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": "337661",
+      "company_website": null,
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5956,
+          "ms": 5217,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 458,
+          "ms": 425,
           "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MADHURKNIT.zip",
           "http": 200,
           "sha256": "3ccd79ad85c15c35a17725ee59a5c33a72bc10a195a88affc2a7c275fc3fef35",
@@ -990,38 +765,40 @@
           "source": "CHAIN",
           "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Skyways Air Services Ltd.",
       "doc_type": "DRHP",
-      "state": "NOT_YET_FILED",
+      "state": "SUPERSEDED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T06:54:51.323Z",
-      "first_seen_at": "2026-08-28T06:24:57.314Z",
+      "next_retry_at": null,
       "blocked_since_at": null,
+      "last_attempt_at": "2026-08-28T13:25:07.051Z",
       "document_id": null,
       "document_url": null,
-      "file_size": null,
       "document_sha256": null,
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": null,
+      "company_website": "https://www.skyways-air.in",
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 340,
+          "ms": 236,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4786,
+          "ms": 4425,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 548,
+          "ms": 550,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
@@ -1033,7 +810,8 @@
           "source": "CHAIN",
           "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
         }
-      ]
+      ],
+      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
     },
     {
       "company_name": "Skyways Air Services Ltd.",
@@ -1041,43 +819,38 @@
       "state": "FOUND",
       "attempts": 1,
       "next_retry_at": null,
-      "first_seen_at": "2026-08-28T06:24:59.074Z",
       "blocked_since_at": null,
-      "document_id": "92596082-ac54-4703-a8e3-05947567c3f2",
+      "last_attempt_at": "2026-08-28T13:25:07.051Z",
+      "document_id": "0cf6d9a5-240e-43cd-8c0b-f6704ec8ba24",
       "document_url": "https://listing.bseindia.com/Download//PreAnchor/RHPSkyways_20260818181315.pdf",
-      "file_size": "46922851",
       "document_sha256": "b4971a1aa3ef27ccb9375622081b4abf9b03e4646e8b725ae4971930742500b1",
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": "46922851",
+      "company_website": "https://www.skyways-air.in",
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 340,
+          "ms": 236,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4786,
+          "ms": 4425,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 548,
+          "ms": 550,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
           "outcome": "listing_rows:25"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 6644,
+          "ms": 10817,
           "url": "https://listing.bseindia.com/Download//PreAnchor/RHPSkyways_20260818181315.pdf",
           "http": 200,
           "sha256": "b4971a1aa3ef27ccb9375622081b4abf9b03e4646e8b725ae4971930742500b1",
@@ -1090,84 +863,44 @@
           "source": "CHAIN",
           "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Skyways Air Services Ltd.",
       "doc_type": "PROSPECTUS",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T06:54:51.323Z",
-      "first_seen_at": "2026-08-28T06:25:38.890Z",
+      "next_retry_at": "2026-08-28T13:55:07.051Z",
       "blocked_since_at": null,
+      "last_attempt_at": "2026-08-28T13:25:07.051Z",
       "document_id": null,
       "document_url": null,
-      "file_size": null,
       "document_sha256": null,
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": null,
+      "company_website": "https://www.skyways-air.in",
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 340,
+          "ms": 236,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4786,
+          "ms": 4425,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 548,
+          "ms": 550,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
           "outcome": "listing_rows:25"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[ADDENDUM]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         },
         {
           "ms": 0,
@@ -1175,7 +908,8 @@
           "source": "CHAIN",
           "outcome": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Skyways Air Services Ltd.",
@@ -1183,70 +917,35 @@
       "state": "FOUND",
       "attempts": 1,
       "next_retry_at": null,
-      "first_seen_at": "2026-08-28T06:25:29.419Z",
       "blocked_since_at": null,
-      "document_id": "83b0a131-a9bf-48b0-874e-02f90b56a8ac",
+      "last_attempt_at": "2026-08-28T13:25:07.051Z",
+      "document_id": "651770ba-ddb9-4a41-9410-fee2b6bc3a2a",
       "document_url": "https://www.bseindia.com/downloads/ipo/Addendum to RHP_250820261220.zip",
-      "file_size": "1625685",
-      "document_sha256": null,
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_sha256": "971b265a1d22ee9350d2c353585953c5cbae1f41bb5812906f1f8eee2b38dea1",
+      "document_file_size": "1625685",
+      "company_website": "https://www.skyways-air.in",
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 340,
+          "ms": 236,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4786,
+          "ms": 4425,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 548,
+          "ms": 550,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
           "outcome": "listing_rows:25"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         },
         {
           "ms": 0,
@@ -1254,7 +953,8 @@
           "source": "CHAIN",
           "outcome": "rungs[ADDENDUM]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[ADDENDUM]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Skyways Air Services Ltd.",
@@ -1262,49 +962,38 @@
       "state": "FOUND",
       "attempts": 1,
       "next_retry_at": null,
-      "first_seen_at": "2026-08-28T06:25:08.592Z",
       "blocked_since_at": null,
-      "document_id": "c3c6ccf5-3865-43a3-9a65-9d0156f6ddd2",
+      "last_attempt_at": "2026-08-28T13:25:07.051Z",
+      "document_id": "a0c38830-132b-434d-81cd-1508008b6204",
       "document_url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf",
-      "file_size": "6585368",
       "document_sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea",
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": "6585368",
+      "company_website": "https://www.skyways-air.in",
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 340,
+          "ms": 236,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4786,
+          "ms": 4425,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 548,
+          "ms": 550,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
           "outcome": "listing_rows:25"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 1442,
+          "ms": 10142,
           "url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf",
           "http": 200,
           "sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea",
@@ -1317,7 +1006,8 @@
           "source": "CHAIN",
           "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Skyways Air Services Ltd.",
@@ -1325,55 +1015,38 @@
       "state": "FOUND",
       "attempts": 1,
       "next_retry_at": null,
-      "first_seen_at": "2026-08-28T06:25:13.191Z",
       "blocked_since_at": null,
-      "document_id": "6fa9eacf-f5d7-48cc-8772-3a68342681e7",
+      "last_attempt_at": "2026-08-28T13:25:07.051Z",
+      "document_id": "3f3a68f3-89fa-48bc-a492-a3a4f130ef81",
       "document_url": "https://listing.bseindia.com/Download//PreAnchor/CorrigendumofRHPSkyways_20260818181316.pdf",
-      "file_size": "1391575",
       "document_sha256": "d3a6094a2a23371ec38432ec9a34ec91def2b2d3cecf6546fd375ff45e2dee1c",
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": "1391575",
+      "company_website": "https://www.skyways-air.in",
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 340,
+          "ms": 236,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4786,
+          "ms": 4425,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 548,
+          "ms": 550,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
           "outcome": "listing_rows:25"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 483,
+          "ms": 1379,
           "url": "https://listing.bseindia.com/Download//PreAnchor/CorrigendumofRHPSkyways_20260818181316.pdf",
           "http": 200,
           "sha256": "d3a6094a2a23371ec38432ec9a34ec91def2b2d3cecf6546fd375ff45e2dee1c",
@@ -1386,90 +1059,44 @@
           "source": "CHAIN",
           "outcome": "rungs[CORRIGENDUM]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[CORRIGENDUM]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Skyways Air Services Ltd.",
       "doc_type": "BASIS_OF_ALLOTMENT_AD",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T06:54:51.323Z",
-      "first_seen_at": "2026-08-28T06:25:40.515Z",
+      "next_retry_at": "2026-08-28T13:55:07.051Z",
       "blocked_since_at": null,
+      "last_attempt_at": "2026-08-28T13:25:07.051Z",
       "document_id": null,
       "document_url": null,
-      "file_size": null,
       "document_sha256": null,
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": null,
+      "company_website": "https://www.skyways-air.in",
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 340,
+          "ms": 236,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4786,
+          "ms": 4425,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 548,
+          "ms": 550,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
           "outcome": "listing_rows:25"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[ADDENDUM]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         },
         {
           "ms": 0,
@@ -1477,7 +1104,8 @@
           "source": "CHAIN",
           "outcome": "rungs[BASIS_OF_ALLOTMENT_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[BASIS_OF_ALLOTMENT_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Skyways Air Services Ltd.",
@@ -1485,61 +1113,38 @@
       "state": "FOUND",
       "attempts": 1,
       "next_retry_at": null,
-      "first_seen_at": "2026-08-28T06:25:16.754Z",
       "blocked_since_at": null,
-      "document_id": "c3c6ccf5-3865-43a3-9a65-9d0156f6ddd2",
+      "last_attempt_at": "2026-08-28T13:25:07.051Z",
+      "document_id": "a0c38830-132b-434d-81cd-1508008b6204",
       "document_url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf",
-      "file_size": "6585368",
       "document_sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea",
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": "6585368",
+      "company_website": "https://www.skyways-air.in",
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 340,
+          "ms": 236,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4786,
+          "ms": 4425,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 548,
+          "ms": 550,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
           "outcome": "listing_rows:25"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 6951,
+          "ms": 5181,
           "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip",
           "http": 200,
           "sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea",
@@ -1560,7 +1165,8 @@
           "source": "CHAIN",
           "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
       "company_name": "Skyways Air Services Ltd.",
@@ -1568,67 +1174,38 @@
       "state": "FOUND",
       "attempts": 1,
       "next_retry_at": null,
-      "first_seen_at": "2026-08-28T06:25:24.805Z",
       "blocked_since_at": null,
-      "document_id": "963bacc0-7590-4961-a123-de7959a50298",
+      "last_attempt_at": "2026-08-28T13:25:07.051Z",
+      "document_id": "ed963da6-a401-41c9-bfaf-af0516a1cda0",
       "document_url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_SKYWAYS.zip",
-      "file_size": "2118875",
       "document_sha256": "8a68e38b94b77ef5664452390338271c54672f3687331a35fa515d085c760ef0",
-      "rung_chain": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url",
+      "document_file_size": "2118875",
+      "company_website": "https://www.skyways-air.in",
+      "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 340,
+          "ms": 236,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4786,
+          "ms": 4425,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 548,
+          "ms": 550,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
           "outcome": "listing_rows:25"
         },
         {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        },
-        {
-          "ms": 1910,
+          "ms": 928,
           "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_SKYWAYS.zip",
           "http": 200,
           "sha256": "8a68e38b94b77ef5664452390338271c54672f3687331a35fa515d085c760ef0",
@@ -1641,7 +1218,8 @@
           "source": "CHAIN",
           "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
         }
-      ]
+      ],
+      "rung_chain": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     }
   ]
 }

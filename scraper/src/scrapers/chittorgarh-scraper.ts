@@ -9,6 +9,7 @@
  */
 
 import logger from '../utils/logger.js';
+import { isVerifierUrl } from '../services/company-host-source.js';
 import { sanitizeText, retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import type { ChittorgarhIPO } from '../utils/validators.js';
 import { offeringTypeFromBusinessTrustName } from '../utils/data-validation.js';
@@ -54,14 +55,26 @@ interface ChittorgarhAPIRecord {
  * absolute Chittorgarh URL. Used ONLY to record a link-VERIFIER page for
  * document discovery (T-403 M-6); a document is never stored from this host.
  */
+/**
+ * The verifier-page URL from a row's company anchor.
+ *
+ * M-b: an ABSOLUTE href used to be returned verbatim on the strength of
+ * `startsWith('http')` alone. This value is persisted and later FETCHED by the
+ * discovery runner, so an off-host absolute link on a scraped page was a
+ * server-side request we would make on its behalf. Both branches now end at the
+ * same host check, and a link that is not a Chittorgarh page is simply dropped —
+ * the verifier rung then records `no_verifier_url`, which is the truth.
+ */
 function extractHrefFromAnchor(html: string): string | undefined {
   if (!html) return undefined;
   const m = html.match(/href\s*=\s*['"]([^'"]+)['"]/i);
   if (!m) return undefined;
   const href = m[1].trim();
   if (href === '') return undefined;
-  if (href.startsWith('http')) return href;
-  return `https://www.chittorgarh.com${href.startsWith('/') ? '' : '/'}${href}`;
+  const absolute = /^https?:\/\//i.test(href)
+    ? href
+    : `https://www.chittorgarh.com${href.startsWith('/') ? '' : '/'}${href}`;
+  return isVerifierUrl(absolute) ? absolute : undefined;
 }
 
 function extractTextFromAnchor(html: string): string {

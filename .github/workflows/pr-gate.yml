@@ -124,3 +124,72 @@ jobs:
         # .claude/rules/scraper-test-layout.md).
         run: npx vitest run --config vitest.config.ts
         working-directory: ./scraper
+
+  # M-c: this job used to live in test.yml, which is workflow_dispatch-only —
+  # so the gate that replays the journal from empty ran only when a human
+  # remembered to click it. The two defects it exists to catch (0035's enum/table
+  # name collision, the enum values stranded in an unapplied _repair/ file) are
+  # both invisible to a schema that was built from a dump, which is every
+  # environment except a fresh one. A gate nobody triggers is a gate.
+  scraper-document-integration:
+    name: Scraper Document Integration (T-403)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: ipodhan_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7.2-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build the shared package
+        working-directory: ./packages/shared
+        run: npx tsc
+
+      - name: Replay the journal from empty
+        # MIN-7: `drizzle-kit migrate`, not db:push - this job must prove the
+        # JOURNAL can build the schema. A push would paper over exactly the
+        # drift (the 0035 enum/table name collision, the missing document_type
+        # values) that only a replay from empty exposes.
+        working-directory: ./web
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
+        run: npx drizzle-kit migrate
+
+      - name: Run the document-state integration tests
+        working-directory: ./scraper
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
+          REDIS_URL: redis://localhost:6379
+        run: npx vitest run -c vitest.integration.config.ts tests/integration/document-fetch-state-repository.integration.test.ts

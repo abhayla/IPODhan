@@ -185,8 +185,33 @@ describe('THE acceptance property — run 2 makes ZERO network calls', () => {
       }))
     );
 
-    expect(run2.skipped).toBe(true);
+    // ZERO CALLS is the property. `skipped` is a weaker, different claim, and
+    // F-3 separated the two: run 1 found the RHP, so run 2 has one piece of
+    // bookkeeping left — marking the now-superseded DRHP — which is not a skip
+    // and still touches no network. Asserting `skipped` here would have made
+    // the supersession pass look like a regression.
     expect(run2.networkCalls).toBe(0);
+    expect(run2.due).toEqual([]);
+    expect(run2.superseded).toEqual(['DRHP']);
+    expect(counter.count(SKYWAYS.id)).toBe(afterRun1);
+
+    // Convergence: with that bookkeeping written, the next cycle is a pure skip.
+    const rows2 = await store.listForIpo(SKYWAYS.id);
+    const run3 = await runner.runIpo(
+      SKYWAYS,
+      rows2.map((r) => ({
+        docType: r.docType as never,
+        state: r.state,
+        attempts: r.attempts,
+        nextRetryAt: r.nextRetryAt,
+        blockedSinceAt: r.blockedSinceAt,
+        filingDate: r.filingDate,
+        extractorVersion: r.extractorVersion,
+        lastAttemptAt: r.lastAttemptAt,
+      }))
+    );
+    expect(run3.skipped).toBe(true);
+    expect(run3.networkCalls).toBe(0);
     expect(counter.count(SKYWAYS.id)).toBe(afterRun1);
   });
 });

@@ -1,5 +1,6 @@
 import {
   pgTable,
+  char,
   uuid,
   varchar,
   text,
@@ -558,6 +559,17 @@ export const documents = pgTable(
     title: varchar('title', { length: 255 }).notNull(),
     url: text('url').notNull(), // file path or external URL
     fileSize: bigint('file_size', { mode: 'number' }), // in bytes
+    /**
+     * sha256 of the stored bytes (T-403 W-1).
+     *
+     * The dedup rule the discovery runner implements — matrix E7/R2, "the same
+     * bytes served by BSE and by NSE are ONE document, not two" — was computed
+     * per run and then thrown away: nothing persisted the hash, so the rule
+     * could not survive a restart and no query could prove two rows were the
+     * same filing. char(64) because a sha256 hex digest is exactly 64
+     * characters, always.
+     */
+    sha256: char('sha256', { length: 64 }),
     uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
     exchange: varchar('exchange', { length: 10 }), // 'NSE' | 'BSE' - source exchange
 

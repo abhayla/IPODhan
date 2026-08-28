@@ -1,28 +1,57 @@
 {
-  "declaredCount": 50,
-  "liveCount": 30,
-  "missingFromJournalBuiltDb": [
-    "bse_scrip_code",
-    "current_gain_amount",
-    "current_gain_percentage",
-    "current_price",
-    "current_price_updated_at",
-    "gmp_percentage_historical",
-    "gmp_price",
-    "gmp_updated_at_historical",
-    "historical_data_scraped_at",
-    "historical_data_source",
-    "last_manual_edit_at",
-    "listing_date_historical",
-    "listing_gain_amount",
-    "listing_gain_percentage",
-    "listing_price_historical",
-    "objectives",
-    "scraper_lock_note",
-    "scraper_locked",
-    "subscription_hni",
-    "subscription_qib",
-    "subscription_retail",
-    "subscription_total"
-  ]
+  "generatedAt": "2026-08-28T13:37:16.473Z",
+  "note": "What `drizzle-kit migrate` from empty actually builds, vs what schema.ts declares. Pre-existing drift, NOT introduced by T-403: production was built from dumps plus hand-applied _repair/ files. Recorded, not repaired - repairing it is a schema-ownership decision.",
+  "tables": {
+    "ipos": {
+      "declaredInSchemaTs": 55,
+      "presentOnJournalBuiltDb": 32,
+      "missingFromDb": [
+        "bse_scrip_code",
+        "segment",
+        "offering_type",
+        "scraper_locked",
+        "scraper_lock_note",
+        "last_manual_edit_at",
+        "subscription_retail",
+        "subscription_hni",
+        "subscription_qib",
+        "subscription_total",
+        "gmp_price",
+        "gmp_percentage_historical",
+        "gmp_updated_at_historical",
+        "listing_price_historical",
+        "listing_gain_percentage",
+        "listing_gain_amount",
+        "listing_date_historical",
+        "current_price",
+        "current_gain_percentage",
+        "current_gain_amount",
+        "current_price_updated_at",
+        "historical_data_source",
+        "historical_data_scraped_at",
+        "objectives"
+      ],
+      "onlyOnDb": [
+        "category"
+      ]
+    },
+    "documents": {
+      "declaredInSchemaTs": 19,
+      "presentOnJournalBuiltDb": 8,
+      "missingFromDb": [
+        "media_type",
+        "sequence_number",
+        "is_active",
+        "exchange",
+        "extraction_status",
+        "extraction_confidence",
+        "extracted_at",
+        "extraction_error",
+        "retry_count",
+        "created_at",
+        "updated_at"
+      ],
+      "onlyOnDb": []
+    }
+  }
 }

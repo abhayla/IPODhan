@@ -2,22 +2,27 @@
  * T-403 acceptance harness — runs the REAL discovery runner against the REAL
  * exchange APIs, twice, and writes the evidence.
  *
- * WHY IT HAS ITS OWN IPO LIST INSTEAD OF QUERYING THE DATABASE
- * ------------------------------------------------------------
- * The dev database (`ipodhan_wpab`, a restored prod dump) was dropped mid-task
- * when its host ran out of disk — an owner-handled production incident on
- * 2026-08-28. Rather than fabricate a database-backed run, this harness keeps
- * the four acceptance IPOs as literals, using the values READ FROM that database
- * before it went away (recorded in each entry), and swaps only the persistence
- * layer for `InMemoryDocumentFetchStateStore`.
+ * TWO MODES, AND ONLY ONE OF THEM IS EVIDENCE
+ * -------------------------------------------
+ * `--db` is the mode that counts. It persists through the real
+ * `DocumentFetchStateRepository` into a Postgres whose name must end in `_test`
+ * (`assertTestDatabase`), writes the source hints through the real
+ * `recordDocumentSourceHints`, and finishes by reading the result back out with
+ * SQL via `scripts/readback-document-state.ts`. Everything the pipeline claims
+ * is then checkable in the database rather than in this process's memory.
  *
- * What that costs and what it does not: the discovery logic, the classifier, the
- * BSE/NSE payload parsing, the download verification, the state transitions and
- * the network accounting are all the SAME code that runs in production against
- * the SAME live hosts. What is NOT exercised is Postgres persistence — the
- * repository's SQL, the unique constraint, and the migration itself. That gap is
- * real and is reported as such; it is closed by re-running with `--db` once the
- * host is back.
+ * Without `--db` the same decision logic runs against the same live hosts with
+ * an in-memory store. That mode exists so the chain can be exercised with no
+ * database at all; it proves nothing about persistence, the migration, or the
+ * constraints, and its output must never be presented as if it did.
+ *
+ * WHY THE IPO LIST IS LITERAL EITHER WAY
+ * -------------------------------------
+ * The four acceptance IPOs are pinned here (`status`, `segment` and the dates
+ * are the values read from a restored prod dump on 2026-08-28) so the run is
+ * reproducible against a fixed set rather than against whatever the database
+ * happens to hold that day. In `--db` mode each one is resolved to its real
+ * `ipos.id` by company name, because the state table has a foreign key to it.
  *
  * Usage (from scraper/):
  *   npx tsx scripts/run-document-discovery.ts
@@ -33,8 +38,9 @@
  * is a genuine first run — without it the persistent state table makes run 1
  * cost zero calls and the run-2 assertions pass vacuously.
  *
- * EXERCISED: yes, against `ipodhan_test` on 2026-08-28 after replaying the
- * journal into an empty schema (20/20 entries). See evidence/T-403/db-run/.
+ * EXERCISED: yes, against `ipodhan_test` after replaying the journal into an
+ * empty schema. See evidence/T-403/db-run/ and its README for what that run
+ * does and does not prove.
  *
  * `assertTestDatabase` refuses any --db write unless the database name ends in
  * `_test`: this harness INSERTs and, with --reset, DELETEs, and `scraper/.env`
@@ -53,6 +59,11 @@ import {
 } from '../src/services/document-discovery-runner.js';
 import { InMemoryDocumentFetchStateStore } from '../src/services/in-memory-document-fetch-state-store.js';
 import { DocumentFetchStateRepository } from '@ipodhan/shared/repositories/document-fetch-state-repository';
+import {
+  recordDocumentSourceHints,
+  type DocumentSourceHintWriter,
+} from '../src/services/data-persister.js';
+import { readback } from './readback-document-state.js';
 import { NetworkCounter } from '../src/utils/network-counter.js';
 
 /**
@@ -101,6 +112,11 @@ const ACCEPTANCE_IPOS: (DiscoveryIpo & { dbStatus: string; closeDate: string; ac
     dbStatus: 'UPCOMING',
     closeDate: '2026-09-01',
     bseIpoNo: null, // still on the board, so it resolves by name
+    // Read from Chittorgarh's live mainboard list on 2026-08-28 — the same page
+    // the Chittorgarh orchestrator scrapes in production, which is what puts
+    // this value in `ipos.verifier_url`. Used ONLY to check which exchange URL
+    // is the right one; a document is never stored from this host.
+    verifierUrl: 'https://www.chittorgarh.com/ipo/esds-software-ipo/1198/',
   },
   {
     id: 'acc-deepa',
@@ -112,6 +128,7 @@ const ACCEPTANCE_IPOS: (DiscoveryIpo & { dbStatus: string; closeDate: string; ac
     dbStatus: 'UPCOMING',
     closeDate: '2026-09-03',
     bseIpoNo: null,
+    verifierUrl: 'https://www.chittorgarh.com/ipo/deepa-jewellers-ipo/2827/',
   },
 ];
 
@@ -166,12 +183,25 @@ export function assertTestDatabase(databaseUrl: string): void {
 async function makeStore(useDb: boolean): Promise<{
   store: InMemoryDocumentFetchStateStore | DocumentFetchStateRepository;
   documents: { upsertDocument: (doc: never) => Promise<{ id: string }> } | null;
+  /**
+   * H-1: the real `recordDocumentSourceHints` write path, or null in memory
+   * mode. Present so the harness EXERCISES the hint write rather than asserting
+   * about a code path it never runs — `ipos.verifier_url` was NULL for every IPO
+   * in production and no acceptance run noticed, because none of them wrote one.
+   */
+  hintWriter: DocumentSourceHintWriter | null;
   dump: () => Promise<unknown[]>;
   close: () => Promise<void>;
 }> {
   if (!useDb) {
     const store = new InMemoryDocumentFetchStateStore();
-    return { store, documents: null, dump: async () => store.all(), close: async () => undefined };
+    return {
+      store,
+      documents: null,
+      hintWriter: null,
+      dump: async () => store.all(),
+      close: async () => undefined,
+    };
   }
 
   const url = process.env.DATABASE_URL;
@@ -224,6 +254,7 @@ async function makeStore(useDb: boolean): Promise<{
       title: string;
       url: string;
       fileSize?: number;
+      sha256?: string;
     }): Promise<{ id: string }> {
       const existing = await db.execute(
         sql`SELECT id FROM documents WHERE url = ${doc.url} LIMIT 1`
@@ -231,10 +262,13 @@ async function makeStore(useDb: boolean): Promise<{
       const found = ((existing as unknown as { rows?: { id: string }[] }).rows ?? [])[0];
       if (found) return { id: found.id };
 
+      // W-1: sha256 is written here, not derived later. It is the persisted form
+      // of the E7/R2 dedup rule, and a readback that cannot show it cannot show
+      // the rule was applied.
       const inserted = await db.execute(sql`
-        INSERT INTO documents (ipo_id, type, title, url, file_size)
+        INSERT INTO documents (ipo_id, type, title, url, file_size, sha256)
         VALUES (${doc.ipoId}::uuid, ${doc.type}::document_type, ${doc.title.slice(0, 255)},
-                ${doc.url}, ${doc.fileSize ?? null})
+                ${doc.url}, ${doc.fileSize ?? null}, ${doc.sha256 ?? null})
         RETURNING id
       `);
       const row = ((inserted as unknown as { rows?: { id: string }[] }).rows ?? [])[0];
@@ -252,9 +286,28 @@ async function makeStore(useDb: boolean): Promise<{
     }
   }
 
+  /**
+   * The REAL repository, for the real write path (H-1).
+   *
+   * An earlier cut of this used raw SQL here, because `IPORepository.update`
+   * cannot run against a journal-built `ipos`. The write ratchet caught that
+   * immediately and correctly: it put a new `ipos` writer outside the shared
+   * write path, which is the precise thing the ratchet exists to stop. The fix
+   * belonged in the repository — `updateDocumentSourceHints` writes the two
+   * columns and returns only the id — not in a stand-in here.
+   */
+  const { IPORepository } = await import('@ipodhan/shared/repositories');
+  const hintWriter = new IPORepository(db as never, {
+    get: async () => null,
+    set: async () => 'OK',
+    del: async () => 0,
+    keys: async () => [],
+  } as never) as unknown as DocumentSourceHintWriter;
+
   return {
     store,
     documents: documents as never,
+    hintWriter,
     dump: async () => {
       const out: unknown[] = [];
       for (const ipo of ACCEPTANCE_IPOS) out.push(...(await store.listForIpo(ipo.id)));
@@ -345,14 +398,44 @@ async function main(): Promise<void> {
   mkdirSync(evidenceDir, { recursive: true });
 
   const useDb = process.argv.includes('--db');
-  const { store, documents: realDocuments, dump, close } = await makeStore(useDb);
+  const { store, documents: realDocuments, hintWriter, dump, close } = await makeStore(useDb);
 
   console.log('=== T-403 acceptance run 1 (discovery) ===');
   const run1 = await runOnce(1, store, realDocuments, dump, download, storeDir);
+
+  // H-1: write the source hints through the REAL `recordDocumentSourceHints`,
+  // between the runs — which is also when production writes them. Two sources:
+  // the issuer website the runner read off a filing cover, and the verifier page
+  // the Chittorgarh orchestrator supplies. Doing this here is what makes the
+  // readback's `company_website` / `verifier_url` columns mean something; the
+  // previous rounds asserted about a rung whose input no code ever populated.
+  if (hintWriter) {
+    for (const ipo of ACCEPTANCE_IPOS) {
+      const learned = run1.results.find((r) => r.ipoId === ipo.id)?.learnedCompanyWebsite;
+      if (!learned && !ipo.verifierUrl) continue;
+      try {
+        await recordDocumentSourceHints(hintWriter, ipo.id, {
+          companyWebsite: learned ?? null,
+          verifierUrl: ipo.verifierUrl ?? null,
+        });
+        console.log(
+          `  hints written for ${ipo.companyName}: website=${learned ?? '-'} verifier=${ipo.verifierUrl ?? '-'}`
+        );
+      } catch (error) {
+        console.error(
+          `  hint write FAILED for ${ipo.companyName}:`,
+          error instanceof Error ? error.message : String(error)
+        );
+      }
+    }
+  }
+
   console.log('=== T-403 acceptance run 2 (must cost ZERO calls for found IPOs) ===');
   const run2 = await runOnce(2, store, realDocuments, dump, download, storeDir);
+  console.log('=== T-403 acceptance run 3 (must be a pure skip — convergence) ===');
+  const run3 = await runOnce(3, store, realDocuments, dump, download, storeDir);
 
-  for (const evidence of [run1, run2]) {
+  for (const evidence of [run1, run2, run3]) {
     writeFileSync(
       join(evidenceDir, `run-${evidence.run}-network-calls.json`),
       JSON.stringify(evidence.network, null, 2)
@@ -396,9 +479,15 @@ async function main(): Promise<void> {
     },
     {
       id: 'A2',
-      name: 'Skyways: 3 lead managers parsed from the BSE payload',
+      // F-2: this used to say "from the BSE payload" and fail whenever BSE was
+      // down — which it was on 2026-08-28, even though NSE's payload listed the
+      // same three firms and the run had them in memory. An acceptance check
+      // that fails on one source's outage is testing the weather, not the code.
+      // What is under test is that all THREE book running lead managers are
+      // captured (the co-BRLM undercount, F17), from whichever exchange answered.
+      name: 'Skyways: all 3 book running lead managers captured (from whichever exchange answered)',
       pass: skyways1.leadManagers.length === 3,
-      detail: skyways1.leadManagers.join(' | '),
+      detail: `${skyways1.leadManagers.join(' | ')} (source: ${skyways1.leadManagerSource ?? 'none'})`,
     },
     {
       id: 'A3',
@@ -442,33 +531,47 @@ async function main(): Promise<void> {
       // check passed for the wrong reason. The real contract is narrower: a rung
       // beyond the exchanges is consulted ONLY for a type the exchanges did not
       // settle, and no document host outside the exchanges + SEBI is ever used.
-      name: 'Fallback rungs are consulted ONLY for types the exchanges did not settle',
+      // F-2: asserted PER TYPE, from the rung chains — not from the set of
+      // hosts the run happened to touch. The host-list form failed the moment
+      // BSE went down for one IPO, because then EVERY type legitimately
+      // escalated and the issuer's own host legitimately appeared. That is the
+      // chain working, and the check called it a failure.
+      //
+      // The invariant that actually holds in every weather: a type the
+      // exchanges SETTLED must show only skips after the exchange rung, and a
+      // type they did NOT settle must have gone on to a later rung.
+      name: 'Fallback rungs are consulted for exactly the types the exchanges did not settle',
       pass: (() => {
         const rungLines = run1.results.flatMap((r) =>
           r.attempts.filter((a) => a.source === 'CHAIN').map((a) => a.outcome)
         );
-        // A settled type's line must carry ONLY skips after the exchange rung.
         const settledButEscalated = rungLines.filter(
           (line) =>
             line.includes('exchanges_settled_it') &&
             /(?:SEBI|COMPANY|VERIFIER):(?!skipped)/.test(line)
         );
-        const nonExchangeHosts = Object.keys(run1.network.byHost).filter(
-          (h) => !EXCHANGE_HOSTS.includes(h)
+        // The converse: a line that did NOT settle must record all three later
+        // rungs (found, failed, or an explicit skip reason) — never silence.
+        const unsettledWithoutRungs = rungLines.filter(
+          (line) =>
+            !line.includes('exchanges_settled_it') &&
+            !(line.includes('SEBI:') && line.includes('COMPANY:') && line.includes('VERIFIER:')) &&
+            !line.includes(':found')
         );
-        const onlySebi = nonExchangeHosts.every((h) => h === 'www.sebi.gov.in');
-        return settledButEscalated.length === 0 && onlySebi && rungLines.length > 0;
+        return (
+          settledButEscalated.length === 0 && unsettledWithoutRungs.length === 0 && rungLines.length > 0
+        );
       })(),
       detail: (() => {
+        const rungLines = run1.results.flatMap((r) =>
+          r.attempts.filter((a) => a.source === 'CHAIN').map((a) => a.outcome)
+        );
+        const settled = rungLines.filter((l) => l.includes('exchanges_settled_it')).length;
+        const escalated = rungLines.length - settled;
         const nonExchangeHosts = Object.keys(run1.network.byHost).filter(
           (h) => !EXCHANGE_HOSTS.includes(h)
         );
-        const escalated = run1.results.flatMap((r) =>
-          r.attempts
-            .filter((a) => a.source === 'CHAIN' && !a.outcome.includes('exchanges_settled_it'))
-            .map((a) => a.outcome.split(':')[0].replace('rungs', ''))
-        );
-        return `non-exchange hosts=[${nonExchangeHosts.join(', ')}] escalated types=${escalated.length}`;
+        return `types settled by exchanges=${settled} escalated=${escalated} non-exchange hosts=[${nonExchangeHosts.join(', ')}]`;
       })(),
     },
     {
@@ -515,15 +618,35 @@ async function main(): Promise<void> {
     },
     {
       id: 'A6',
+      // The contract is ZERO NETWORK CALLS, and that is what is asserted.
+      // `skipped` is not the same claim: after run 1 finds an RHP, run 2 has one
+      // piece of bookkeeping left — marking the superseded DRHP (F-3) — so it is
+      // not a "skip", and it still costs nothing on the wire. Asserting
+      // `skipped` here would have forced the marking pass to be deferred to keep
+      // a check green, which is backwards. A9 asserts the convergence instead.
       name: 'Run 2: ZERO network calls for Skyways',
-      pass: skyways2.networkCalls === 0 && skyways2.skipped,
-      detail: `calls=${skyways2.networkCalls} skipped=${skyways2.skipped} reason=${skyways2.skipReason}`,
+      pass: skyways2.networkCalls === 0,
+      detail: `calls=${skyways2.networkCalls} skipped=${skyways2.skipped} superseded=[${skyways2.superseded.join(', ')}] reason=${skyways2.skipReason}`,
     },
     {
       id: 'A7',
       name: 'Run 2: ZERO network calls for Madhur',
-      pass: madhur2.networkCalls === 0 && madhur2.skipped,
-      detail: `calls=${madhur2.networkCalls} skipped=${madhur2.skipped} reason=${madhur2.skipReason}`,
+      pass: madhur2.networkCalls === 0,
+      detail: `calls=${madhur2.networkCalls} skipped=${madhur2.skipped} superseded=[${madhur2.superseded.join(', ')}] reason=${madhur2.skipReason}`,
+    },
+    {
+      id: 'A9',
+      // Convergence, which is the claim `skipped` was standing in for: once run
+      // 2's bookkeeping is written, run 3 is a pure skip for every IPO whose
+      // documents are settled. Without this the state machine could churn
+      // forever at zero cost and nobody would notice.
+      name: 'Run 3: every settled IPO is a pure skip, no work left at all',
+      pass:
+        run3.results.every((r) => r.networkCalls === 0) &&
+        [find(run3, 'acc-skyways'), find(run3, 'acc-madhurknit')].every((r) => r.skipped),
+      detail: run3.results
+        .map((r) => `${r.companyName}: calls=${r.networkCalls} skipped=${r.skipped}`)
+        .join(' | '),
     },
   ];
 
@@ -537,20 +660,62 @@ async function main(): Promise<void> {
     storeDir,
     run1Calls: run1.network.total,
     run2Calls: run2.network.total,
+    run3Calls: run3.network.total,
     checks,
     allPassed: checks.every((c) => c.pass),
   };
-  writeFileSync(join(evidenceDir, 'acceptance-summary.json'), JSON.stringify(summary, null, 2));
+  // W-2: the SQL readback, by the committed script, as the last thing the run
+  // does. The round-3 evidence carried a `state-table-from-postgres.json` whose
+  // producer was never committed — unreproducible, unreadable, and therefore an
+  // assertion rather than evidence. This is the same file, from a script anyone
+  // can read and re-run.
+  if (useDb && process.env.DATABASE_URL) {
+    try {
+      const rb = await readback(
+        process.env.DATABASE_URL,
+        ACCEPTANCE_IPOS.map((i) => i.companyName)
+      );
+      writeFileSync(
+        join(evidenceDir, 'state-table-from-postgres.json'),
+        JSON.stringify(rb, null, 2)
+      );
+      const hinted = rb.ipos.filter((i) => i.company_website || i.verifier_url).length;
+      console.log(
+        `readback: ${rb.rowCount} state row(s), ${rb.documents.length} document(s), ` +
+          `${rb.withLastAttempt} with last_attempt, ${rb.foundWithSha256} FOUND row(s) with a sha256, ` +
+          `${hinted}/${rb.ipos.length} ipos carrying a source hint`
+      );
+    } catch (error) {
+      console.error('readback FAILED:', error instanceof Error ? error.message : String(error));
+    }
+  }
 
   console.log('');
   for (const c of checks) console.log(`[${c.pass ? 'PASS' : 'FAIL'}] ${c.id} ${c.name} — ${c.detail}`);
-  console.log(`\nrun1 calls=${run1.network.total}  run2 calls=${run2.network.total}`);
+  console.log(
+    `\nrun1 calls=${run1.network.total}  run2 calls=${run2.network.total}  run3 calls=${run3.network.total}`
+  );
   console.log(`evidence: ${evidenceDir}`);
   await close();
   process.exit(summary.allPassed ? 0 : 1);
 }
 
-main().catch((error) => {
-  console.error('acceptance run failed:', error);
-  process.exit(2);
-});
+/**
+ * Only run when this file IS the entry point.
+ *
+ * Found by importing `assertTestDatabase` from a unit test: the bare `main()`
+ * call meant merely importing anything from this module launched a live
+ * acceptance run — real network requests, and with --db in the environment,
+ * real writes. A script that cannot be imported without being executed cannot
+ * have its pieces tested.
+ */
+const isEntryPoint = /run-document-discovery[.]ts$/.test(
+  String(process.argv[1] ?? '').split(/[/\\]/).pop() ?? ''
+);
+
+if (isEntryPoint) {
+  main().catch((error) => {
+    console.error('acceptance run failed:', error);
+    process.exit(2);
+  });
+}

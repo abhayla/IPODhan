@@ -757,6 +757,44 @@ export class IPORepository extends BaseRepository implements IIPORepository {
    * @param rating - Calculated rating (1-5 stars, 0.5 increments)
    * @param rationale - Human-readable explanation of the rating
    */
+  /**
+   * Update ONLY the two document-source hint columns (T-403 H-1/W-1).
+   *
+   * A narrow sibling of `update()` for a reason that is not cosmetic: `update()`
+   * ends in a bare `.returning()`, which asks Postgres for every column
+   * `schema.ts` declares. A database built purely from the migration journal has
+   * 32 of those 55 (measured — evidence/T-403/journal-schema-drift.json), so a
+   * two-column patch fails there on columns it never touched. This selects the
+   * two columns it writes and returns the id, which works on any environment
+   * and is what lets the acceptance harness exercise the REAL write path
+   * instead of a raw-SQL stand-in.
+   *
+   * Returns null when no row matched, rather than throwing: this is bookkeeping
+   * on the side of a scrape, and a missing IPO must not fail a cycle.
+   */
+  async updateDocumentSourceHints(
+    ipoId: string,
+    hints: { companyWebsite?: string; verifierUrl?: string }
+  ): Promise<{ id: string; slug: string } | null> {
+    const patch: Record<string, unknown> = { updatedAt: new Date() };
+    if (hints.companyWebsite !== undefined) patch.companyWebsite = hints.companyWebsite;
+    if (hints.verifierUrl !== undefined) patch.verifierUrl = hints.verifierUrl;
+
+    const [row] = await this.db
+      .update(ipos)
+      .set(patch as never)
+      .where(eq(ipos.id, ipoId))
+      .returning({ id: ipos.id, slug: ipos.slug });
+
+    if (!row) return null;
+
+    await this.invalidateCache(
+      [getIPOByIdKey(ipoId), getIPOBySlugKey(row.slug)],
+      ['ipo:list:*', 'ipo:search:*', `ipo:detail:${row.slug}`]
+    );
+    return row;
+  }
+
   async updateRating(
     ipoId: string,
     rating: number | null,

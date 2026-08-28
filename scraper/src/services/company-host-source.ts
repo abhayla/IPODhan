@@ -97,10 +97,17 @@ export function extractWebsiteFromCoverText(coverText: string): string | null {
     if (INTERMEDIARY_CONTEXT.some((w) => before.includes(w))) continue;
 
     const raw = m[1].trim().replace(/[.,;]+$/, '');
-    const host = raw.replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
-    if (!host.includes('.')) continue;
-    if (NON_ISSUER_DOMAINS.some((d) => host.includes(d))) continue;
-    return `https://${host}`;
+    // M-a: the SSRF guard belongs HERE, at the point of extraction, not at each
+    // use site. This value is read off a scraped PDF cover and was previously
+    // returned raw: the runner stored it, fetched it on the company rung, and
+    // persisted it — three uses, one of which (the fetch) never called
+    // `normalizeCompanyUrl`. A cover reading "Website: metadata.google.internal"
+    // was therefore fetchable. Normalising at extraction makes the guard
+    // unforgettable, which is the only version of it worth having.
+    const normalized = normalizeCompanyUrl(raw);
+    if (!normalized) continue;
+    if (NON_ISSUER_DOMAINS.some((d) => new URL(normalized).hostname.includes(d))) continue;
+    return normalized;
   }
   return null;
 }
@@ -216,14 +223,45 @@ export function parseCompanyHostLinks(html: string, pageUrl: string): CompanyHos
 // Chittorgarh — VERIFIER ONLY
 // ---------------------------------------------------------------------------
 
-/** Hosts a verified document may legitimately come from. */
+/**
+ * Hosts a verified document may legitimately come from.
+ *
+ * NIT-6: `listing.bseindia.com` and `nsearchives.nseindia.com` used to be listed
+ * here too. Since M-1 made matching exact-or-DNS-suffix, both are already
+ * covered by their parent domains, and a redundant entry in an allowlist is
+ * worse than no entry: it invites the reader to believe the list is exhaustive
+ * and to add a subdomain rather than trust the suffix rule.
+ */
 export const TRUSTED_DOCUMENT_HOSTS = [
   'bseindia.com',
   'nseindia.com',
-  'nsearchives.nseindia.com',
-  'listing.bseindia.com',
   'sebi.gov.in',
 ];
+
+/**
+ * Hosts the link VERIFIER may be pointed at (M-b).
+ *
+ * `ipos.verifier_url` is scraped data that this process later FETCHES, so the
+ * host is validated on the way in (the persister, the schema) and again on the
+ * way out (the runner reads it back from a database another process can write).
+ * One-sided validation is how a value that was legitimate when written becomes a
+ * request to somewhere else after an edit.
+ */
+export const VERIFIER_HOSTS = ['chittorgarh.com'];
+
+/** Is this a usable Chittorgarh verifier page URL? https only, host-checked. */
+export function isVerifierUrl(value: string | null | undefined): boolean {
+  if (typeof value !== 'string' || value.trim() === '') return false;
+  try {
+    const parsed = new URL(value.trim());
+    if (parsed.protocol !== 'https:') return false;
+    if (parsed.port !== '') return false;
+    const host = parsed.hostname.toLowerCase();
+    return VERIFIER_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Is this URL on an exchange or SEBI host?

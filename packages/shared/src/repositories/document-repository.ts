@@ -164,6 +164,11 @@ export class DocumentRepository
             updatedAt: new Date(),
             isActive: true,
             ...(shouldRetype ? { type: data.type } : {}),
+            // W-1: fill the hash in on a row stored before this column existed,
+            // and refresh it when the bytes at a URL change (a corrigendum
+            // re-published under the same file name is a real occurrence).
+            // Never overwrite a known hash with nothing.
+            ...(data.sha256 ? { sha256: data.sha256 } : {}),
           })
           .where(eq(documents.url, data.url))
           .returning();

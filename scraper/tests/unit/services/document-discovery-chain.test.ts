@@ -262,7 +262,10 @@ describe('G4 — BLOCKED_ALL only after all four rungs, each with an outcome', (
     expect(parts).toHaveLength(4);
     expect(parts[0]).toBe('rungs[RHP]: EXCHANGES:failed');
     expect(parts[1]).toBe('SEBI:not_listed');
-    expect(parts[2]).toBe('COMPANY:failed:no_usable_link');
+    // H-2 sharpened this label: all three investor paths 404, so no page
+    // ANSWERED — a different fact from "a page answered and had no link", and
+    // the one that must not be read as evidence the filing does not exist.
+    expect(parts[2]).toBe('COMPANY:failed:no_page');
     expect(parts[3]).toBe('VERIFIER:no_new_link');
   }, 60_000);
 
