@@ -109,6 +109,22 @@ export const FEATURE_FLAGS = {
   ENABLE_STAGE_RECONCILER: process.env.ENABLE_STAGE_RECONCILER === 'true',
 
   /**
+   * Enable the per-document fetch STATE MACHINE (T-403 WP B): replace the
+   * once-daily, NSE-only, memoryless discovery pass with a per-cycle,
+   * BSE-first pass that asks `document_fetch_state` what is still missing and
+   * makes zero network calls for an IPO whose filings are all accounted for.
+   *
+   * Separate from ENABLE_PRIMARY_SOURCE_DISCOVERY (already true in prod) on
+   * purpose: that flag gates whether document discovery runs at all, this one
+   * gates WHICH implementation runs. With this off, the old backfill path is
+   * unchanged, so turning the new machine on and off is a one-variable,
+   * reversible decision — and state rows persist across the flip (R13).
+   * GATED OFF by default; activation in prod is Abhay's call (deploy). (T-403)
+   * Default: false
+   */
+  ENABLE_DOCUMENT_STATE_MACHINE: process.env.ENABLE_DOCUMENT_STATE_MACHINE === 'true',
+
+  /**
    * Enable the periodic duplicate-IPO sweep job (P2-2b, round-4 review, T-293):
    * re-runs `merge-duplicate-ipos.ts`'s two-tier clustering (exact-normalized-
    * name UNION Levenshtein-typo) every cycle so a duplicate pair that slips

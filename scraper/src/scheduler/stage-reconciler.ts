@@ -29,19 +29,35 @@ export type FetchKind =
   | 'demand'           // ipo_demand_graph
   | 'gmp'              // gmp_records
   | 'listing'          // listing_performance
-  | 'allotment';       // allotment_date
+  | 'allotment'        // allotment_date
+  // T-403 WP B: per-DOCUMENT fetch kinds. The pre-existing 'documents' kind is
+  // one coarse flag for 'has any document at all', which cannot express 'the RHP
+  // is in but the Prospectus is still due' — the distinction the whole state
+  // machine turns on. These name each filing so the reconciler and the
+  // document-fetch-state machine derive due-ness from the same stage model,
+  // rather than two lists drifting apart.
+  | 'docDrhp'
+  | 'docRhp'
+  | 'docPriceBandAd'
+  | 'docCorrigendum'
+  | 'docAnchorReport'
+  | 'docProspectus'
+  | 'purgePdfs';       // delete local PDFs, close_date + PROSPECTUS_RETENTION_DAYS (D4)
 
 // Stage -> fetches that BECOME due at that stage (non-cumulative).
 const STAGE_FETCHES: Record<LifecycleStage, FetchKind[]> = {
-  UPCOMING: ['documents', 'financials', 'peers', 'objectives'],
-  PRE_OPEN: ['anchor'],
+  UPCOMING: ['documents', 'financials', 'peers', 'objectives', 'docDrhp'],
+  PRE_OPEN: ['anchor', 'docRhp', 'docPriceBandAd', 'docCorrigendum', 'docAnchorReport'],
   // P3-2 (T-287): allotment becomes due at OPEN, not CLOSED — source detail
   // pages (Chittorgarh) publish the tentative allotment date while an IPO is
   // still open for subscription (Tempsens shape). CLOSED remains a covered
   // catch-up stage because `dueFetchKindsForStage` is cumulative.
   OPEN: ['subscription', 'demand', 'gmp', 'allotment'],
-  CLOSED: [],
-  LISTED: ['listing'],
+  CLOSED: ['docProspectus'],
+  // purgePdfs becomes due at LISTED, but only fires once close_date +
+  // PROSPECTUS_RETENTION_DAYS has passed — that date test lives in
+  // `document-store.isPurgeDue`, which owns the D4 retention rule.
+  LISTED: ['listing', 'purgePdfs'],
 };
 
 /** A minimal IPO row the reconciler reasons over. */
