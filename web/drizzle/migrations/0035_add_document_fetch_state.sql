@@ -12,6 +12,14 @@
 -- column is dropped, retyped or backfilled, so it needs no owner sign-off gate.
 -- Every statement is idempotent (IF NOT EXISTS), so a re-run is a no-op.
 --
+-- ENUM NAME: `document_fetch_status`, deliberately NOT `document_fetch_state`.
+-- Postgres creates an implicit composite type for every table, so an enum and a
+-- table with the same name collide: the CREATE TABLE below would fail with
+-- `42710 type "document_fetch_state" already exists`. Caught by applying this
+-- file to an empty database; in production it would have failed the deploy at
+-- the migrate step. Guarded from here on by
+-- scripts/tests/migration-name-collision.test.mjs.
+--
 -- NOTE ON ENUM VALUES: `ALTER TYPE ... ADD VALUE` cannot run inside a
 -- transaction block in PostgreSQL < 12; this project targets PostgreSQL 16,
 -- where it can, so drizzle-kit's transactional apply is safe. The new values are
@@ -41,7 +49,7 @@ ALTER TYPE "document_type" ADD VALUE IF NOT EXISTS 'BASIS_OF_ALLOTMENT_AD';
 --> statement-breakpoint
 
 DO $$ BEGIN
-  CREATE TYPE "document_fetch_state" AS ENUM (
+  CREATE TYPE "document_fetch_status" AS ENUM (
     'WANTED',
     'NOT_YET_FILED',
     'FOUND',
@@ -60,7 +68,7 @@ CREATE TABLE IF NOT EXISTS "document_fetch_state" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"ipo_id" uuid NOT NULL REFERENCES "ipos"("id") ON DELETE CASCADE,
 	"doc_type" "document_type" NOT NULL,
-	"state" "document_fetch_state" DEFAULT 'WANTED' NOT NULL,
+	"state" "document_fetch_status" DEFAULT 'WANTED' NOT NULL,
 	-- SET NULL, not CASCADE: purging a documents row must not erase the memory
 	-- that we already looked for this filing and found it.
 	"document_id" uuid REFERENCES "documents"("id") ON DELETE SET NULL,

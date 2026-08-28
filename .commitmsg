@@ -1,43 +1,31 @@
-feat(scraper): T-403 G1+G2+G4 — SEBI and company-host rungs, honest four-rung chain
+fix(db): T-403 — rename the fetch-state ENUM; it collided with the table name
 
-G1 SEBI rung (sebi-source.ts). Listings verified live 2026-08-28 by probing smid
-and reading each listing's own rows: smid=10 Draft Offer Documents (DRHP), 11
-Red Herring (RHP), 12 Final Prospectus. Two traps in the markup, both handled:
-the row href is a DETAIL PAGE (the PDF costs a second GET and lives under
-/sebi_data/attachdocs/), and the row title embeds a NESTED anchor for the
-Abridged Prospectus, so naive parsing yields a SUMMARY instead of the filing.
-Company match is exact-key then fuzzy at >=0.85, refusing ambiguity.
-parseSebiDetailPdfUrl accepts only attachdocs, never commondocs. Consulted only
-when both exchanges failed, and never for a type SEBI does not host.
+BLOCKER, found by applying 0035 to an empty database. Migration 0035 created an
+ENUM named `document_fetch_state` AND a TABLE named `document_fetch_state`.
+Postgres creates an implicit composite type for every table, so the second
+CREATE is refused:
 
-G2 company-host rung (company-host-source.ts). The website comes off the filing
-cover, which we already extract for the M1 company check, so it costs nothing
-extra. Intermediaries are rejected by CONTEXT, not a domain list: merchant banks
-cannot be enumerated (a new one appears with every issue) but the cover always
-labels whose website it is, and each match is bounded to its own label region so
-"Registrar Website: ... Company Website: ..." still resolves to the issuer. At
-most 3 GETs (R12). Only links whose anchor text or filename CLASSIFY are taken.
+    error: type "document_fetch_state" already exists   (SQLSTATE 42710)
 
-Chittorgarh is a VERIFIER ONLY, enforced structurally: extractVerifierLinks
-drops anything not on an exchange/SEBI host, so no later code has to remember.
+Reproduced here on ipodhan_test: `drizzle-kit migrate` exited 1 mid-journal.
+In production this would have failed the deploy at the migrate step, and
+assert-migrations-applied.sh would have blocked the release — the first symptom
+would have been a failed deploy, not a test.
 
-G4 the chain records every rung it tried, in order, with an outcome — including
-the ones it skipped and why (not_served_by_sebi, no_company_url,
-no_verifier_url, exchanges_settled_it, download_disabled). BLOCKED_ALL asserts
-four rung entries; a short chain is a bug in the chain, not evidence the
-document is unreachable, so it is logged loudly and the row stays retryable.
-Escalation does NOT fire when the exchanges merely said "not filed yet" (F3).
+Fix: the enum is now `document_fetch_status`; the TABLE keeps its name. Renamed
+in schema.ts (documentFetchStatusEnum) and in the journaled 0035 file, which has
+never been applied anywhere, so hand-editing it is allowed and the journal entry
+is unchanged. Both places carry a comment explaining why the names must differ.
 
-Also: a structurally broken PDF (0 readable pages, the live SEBI DRHP case) is
-REJECTED as unreadable_pdf, distinct from a scanned filing with no text layer,
-which is still correctly skipped (E4).
+PROOF (evidence/T-403/migration-readback.json): the full journal now replays on
+an empty database, exit 0 — 19 of 19 journal entries applied, 17 tables created,
+document_fetch_state has all 16 columns with `state` typed document_fetch_status,
+all four indexes plus unique_doc_fetch_state_per_ipo_type present, document_type
+carries the three new values, and ipos has bse_ipo_no and
+bse_payload_lead_manager_count.
 
-TWO REAL BUGS the chain tests caught:
-1. `outcome` was left unassigned when every download failed, so applyOutcome
-   returned undefined and the state write threw three frames away. strict:false
-   does not catch that. It is now initialised, and applyOutcome has a default
-   arm that throws where the mistake actually is.
-2. The G4 guard fired when downloads were disabled (no rung could run), masking
-   a genuine BLOCKED_ALL. That case now records its own skip reason.
-
-Tests: +16 SEBI, +14 company-host/verifier, +7 full-chain.
+GUARD so the class cannot recur: scripts/lib/migration-name-collision.mjs plus a
+node self-test wired into pr-gate.yml. It parses EVERY journaled migration and
+fails when any CREATE TYPE name equals any CREATE TABLE name — including the
+harder case where the enum lands in one release and the table in a later one.
+Verified against the original 0035: the guard catches it.

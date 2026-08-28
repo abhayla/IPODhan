@@ -73,6 +73,14 @@ jobs:
         # its fixture red here rather than silently disarming the audit.
         run: node --test scripts/tests/document-state-checks.test.mjs
 
+      - name: Migration name-collision gate (T-403)
+        # Postgres gives every table an implicit composite type of the same name,
+        # so an enum and a table sharing a name fail with 42710 the first time the
+        # migration is applied - i.e. at a production deploy's migrate step. This
+        # gate parses every journaled migration and fails here instead. It is
+        # mutation-proof: the fixtures encode the exact 0035 shape that broke.
+        run: node --test scripts/tests/migration-name-collision.test.mjs
+
       - name: Write ratchet — no new direct `ipos` writers (T-316/R0)
         # Grep-based gate, not ESLint (T-313C amendment): catches raw .sql/.mjs
         # writers and the runtime-resolved dynamic-table admin route that a

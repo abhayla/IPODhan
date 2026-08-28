@@ -85,7 +85,7 @@ export const documentTypeEnum = pgEnum('document_type', [
  * NOT_APPLICABLE this type cannot exist for this issue (e.g. a price band ad on a
  *                fixed-price issue) — never retried (R9).
  */
-export const documentFetchStateEnum = pgEnum('document_fetch_state', [
+export const documentFetchStatusEnum = pgEnum('document_fetch_status', [
   'WANTED',
   'NOT_YET_FILED',
   'FOUND',
@@ -592,7 +592,7 @@ export const documentFetchState = pgTable(
       .notNull()
       .references(() => ipos.id, { onDelete: 'cascade' }),
     docType: documentTypeEnum('doc_type').notNull(),
-    state: documentFetchStateEnum('state').notNull().default('WANTED'),
+    state: documentFetchStatusEnum('state').notNull().default('WANTED'),
 
     // Set once the document is FOUND. ON DELETE SET NULL, not CASCADE: purging a
     // documents row must not erase the memory that we already looked for it.
