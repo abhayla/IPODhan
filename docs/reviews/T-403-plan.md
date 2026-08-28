@@ -157,3 +157,42 @@ Expected — run 1: Skyways gets >=4 docs (RHP / CORRIGENDUM / ADDENDUM / PRICE_
 ## Contract expectation that turned out to be factually wrong
 
 The DoD expected ESDS's anchor report to be `NOT_YET_FILED` with zero fallback calls. ESDS opens 28 Aug, so its anchor round was 27 Aug and NSE was already serving `ANCHOR_ESDS.zip`. The underlying behaviour (F3: an exchange answering with no link yields `NOT_YET_FILED`, never a failure, with no fall-through) is verified on the types ESDS genuinely has not filed. See `evidence/T-403/README.md`.
+
+---
+
+# 9. Round-1 review response (2026-08-28)
+
+## Fixed, each with the test that proves it
+
+| Item | Fix | Test |
+|---|---|---|
+| B1 | `ipos` writes routed through `data-persister.recordBseDiscoveryMetadata`; ratchet baseline NOT widened | `bse-discovery-metadata-write-path.test.ts` (5) — incl. running the REAL ratchet as a subprocess |
+| M1 | `pdf-cover-text.ts` wired into the runner; the cover check actually runs; skips are visible | `pdf-cover-text.test.ts` (5), `document-discovery-runner-download.test.ts` M1 (3) |
+| M2 | `deriveIssueShape` populates `DiscoveryIpo.issue`, so R9 is reachable | `document-cycle-issue-shape.test.ts` M2 (5) |
+| M3 | Withdrawal closes open rows as `NOT_APPLICABLE` once, then skips | `document-cycle-issue-shape.test.ts` M3 (4), F15 cases in `document-state-machine.test.ts` (2) |
+| M4 | `DOWNLOAD_TIMEOUT_MS` asserted; F2 fallback + on-demand NSE rescue | `document-discovery-runner-download.test.ts` M4a/M4b/M4c (3) |
+| M5 | `toPre0035DocumentType` guards the flag-OFF path; flag and index comments corrected | `pre-0035-document-types.test.ts` (6) |
+| M6 | `upsertDocument` re-types along a closed allowlist; re-type script; `m_document_type_classifier` check | `document-retype.test.ts` (9), audit self-tests 65a-e (5) |
+| M7 | `decidePurge` three arms + 30-day hard cap; `demoteMissingFiles` | `document-purge-policy.test.ts` (14) |
+| M8 | Repository integration tests written | `tests/integration/document-fetch-state-repository.integration.test.ts` (8) — **NOT RUN**, see below |
+| V1-V3 | README corrected to the machine numbers, real file names, Deepa's real result | evidence README |
+| V4 | `--db` implemented | — (not exercised; no DB) |
+| V5 | A8 fails instead of passing vacuously under `--no-download` | harness |
+| V6 | Full sha256 in the attempt log | `FetchAttempt.sha256` |
+| V7 | `--evidence-dir`, timestamped default | harness |
+| V8 | Member/type disagreement recorded, not "corrected" | verifier `memberTypeMismatch` |
+| N1-N9, T1-T3 | see the round-1 minors commit | `document-store.test.ts` N5, `bse-api-scraper.test.ts` T2, reconciler tests N6 |
+
+## Two further defects the round-1 re-runs caught
+
+1. **BSE had no retry while NSE had three**, and the **board** call had none even after the core call got one. A single transport failure lost the whole BSE payload for an IPO — every BSE-only type and all three lead managers — or, on the board, the whole cycle's BSE coverage. Both now use the same 2/4/8 s ladder.
+2. **A failed exchange was being reported as `NOT_YET_FILED`.** Because NSE had answered, BSE-only types were recorded as "the company has not filed it" — a claim with no evidence, which suppresses both the retry ladder and the alert. `NOT_YET_FILED` now requires that **every** consulted exchange answered; `not_on_board` / `no_symbol` still do not count as failures (F13).
+
+## Still NOT done — unchanged from §8 unless noted
+
+1. **M8 tests are written but have never been run.** The permitted credentials (`ipodhan_app`) are refused DDL on `ipodhan_test`: `permission denied for schema public` for `CREATE TABLE`/`CREATE TYPE`, and `permission denied for database ipodhan_test` for drizzle-kit's `CREATE SCHEMA drizzle`. Neither `push` nor `migrate` can run, so the schema cannot be brought up. Granting `CREATE ON SCHEMA public` (and on the database) to that role unblocks both the tests and `--db`.
+2. **Migration 0035 is still unapplied anywhere.** Same cause.
+3. **G1 (SEBI rung) and G2 (company-host rung) are NOT implemented.** Discovery still stops at the two exchanges. These are new source integrations — a SEBI public-issues listing parser and a per-company investor-page resolver — not adjustments to existing code, and they were not attempted in this round.
+4. **G3 is done**: `ipos.bse_ipo_no` is persisted through the sanctioned write path (B1), so discovery no longer depends on the board still listing a closed IPO.
+5. `decideSupersession`, `isStaleInProgress`, `markSuperseded`, `repointToSurvivor` remain implemented, tested and **NOT WIRED** — each is marked as such in its own doc comment. They need `filing_date` and an extraction claim, both of which arrive with WP C.
+6. No `documents` lineage table; the alternative URL lives in the attempt log.
