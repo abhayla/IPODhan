@@ -448,6 +448,9 @@ export class DocumentDiscoveryRunner {
       ms: Date.now() - started,
       outcome,
       url,
+      // Full hash, not the 8-char filename prefix: it is what proves two
+      // sources served identical bytes, and what a document can be looked up by.
+      ...(isVerifyFailure(verdict) ? {} : { sha256: verdict.sha256 }),
     });
     return verdict;
   }
@@ -616,6 +619,7 @@ export class DocumentDiscoveryRunner {
               ms: 0,
               outcome: `deduped_by_sha256_to:${alias.docType}`,
               url: candidate.url,
+              sha256: verdict.sha256,
             });
             break;
           }

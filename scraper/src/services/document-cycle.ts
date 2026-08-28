@@ -36,7 +36,15 @@ import {
 import { NetworkCounter } from '../utils/network-counter.js';
 import { deriveLifecycleStage } from '../scheduler/stage-reconciler.js';
 import { isInLiveWindow, CYCLE_BUDGET, type IssueShape } from './document-state-machine.js';
-import { isPurgeDue, purgeIpoDocuments, getRetentionDays } from './document-store.js';
+import type { DocumentFetchStateRow } from '@ipodhan/shared/repositories/document-fetch-state-repository';
+import {
+  decidePurge,
+  purgeIpoDocuments,
+  getRetentionDays,
+  getMaxRetentionDays,
+  hasStoredFile,
+  getStoreDir,
+} from './document-store.js';
 
 export interface DocumentCycleSummary {
   ipos: number;
@@ -141,6 +149,38 @@ export async function loadCandidateIpos(): Promise<DiscoveryIpo[]> {
 }
 
 /**
+ * Demote any FOUND row whose file is no longer on disk back to WANTED (M7).
+ *
+ * Purged too early, disk wiped, a failed rename — whatever the cause, without
+ * this the state says FOUND forever and the document is silently absent: the
+ * worst of both outcomes, because nothing re-fetches it and nothing reports it.
+ *
+ * Mutates `rows` in place as well as writing, so the caller's plan sees the
+ * demoted state in the SAME cycle rather than a cycle later.
+ */
+export async function demoteMissingFiles(
+  store: Pick<DocumentFetchStateRepository, 'update'>,
+  ipoId: string,
+  rows: DocumentFetchStateRow[],
+  storeDir: string = getStoreDir()
+): Promise<number> {
+  let demoted = 0;
+  for (const row of rows) {
+    if (row.state !== 'FOUND') continue;
+    if (hasStoredFile(ipoId, row.docType, storeDir)) continue;
+    logger.warn(
+      { ipoId, docType: row.docType },
+      'FOUND document has no file on disk — demoting to WANTED so it is re-fetched'
+    );
+    await store.update(row.id, { state: 'WANTED', nextRetryAt: null, documentId: null });
+    row.state = 'WANTED';
+    row.documentId = null;
+    demoted++;
+  }
+  return demoted;
+}
+
+/**
  * Run one document-discovery cycle.
  *
  * The wall-clock budget (R12) is checked between IPOs: discovery must never
@@ -178,7 +218,11 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
       break;
     }
     try {
-      const rows = (await store.listForIpo(ipo.id)).map(toStateRow);
+      const persisted = await store.listForIpo(ipo.id);
+
+      await demoteMissingFiles(store, ipo.id, persisted);
+
+      const rows = persisted.map(toStateRow);
       const result = await runner.runIpo(ipo, rows);
       results.push(result);
 
@@ -254,9 +298,27 @@ export interface PurgeSummary {
  */
 export async function runDocumentPurge(): Promise<PurgeSummary> {
   const retentionDays = getRetentionDays();
+  const maxRetentionDays = getMaxRetentionDays();
+
+  // One query, bounded to IPOs that can possibly be due: a close date exists and
+  // is already past the soft window. The first cut scanned every IPO row with a
+  // close date, which grows without limit as the table does (N4).
   const result = await db.execute(sql`
-    SELECT id, close_date, status FROM ipos
-     WHERE offering_type = 'IPO' AND close_date IS NOT NULL
+    SELECT i.id,
+           i.close_date,
+           i.status,
+           count(s.id) FILTER (
+             WHERE s.state NOT IN ('EXTRACTED', 'NOT_APPLICABLE')
+           )::int AS unread_count
+      FROM ipos i
+      LEFT JOIN document_fetch_state s ON s.ipo_id = i.id
+     WHERE i.offering_type = 'IPO'
+       AND i.close_date IS NOT NULL
+       AND (
+         i.close_date < now() - make_interval(days => ${retentionDays})
+         OR upper(i.status) IN ('WITHDRAWN', 'POSTPONED')
+       )
+     GROUP BY i.id, i.close_date, i.status
   `);
   const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<
     string,
@@ -265,14 +327,23 @@ export async function runDocumentPurge(): Promise<PurgeSummary> {
 
   const summary: PurgeSummary = { candidates: 0, purged: 0, filesDeleted: 0, bytesFreed: 0 };
   for (const row of rows) {
-    const withdrawn = String(row.status ?? '').toUpperCase() === 'WITHDRAWN';
-    if (!isPurgeDue({ closeDate: row.close_date as Date | null, withdrawn, retentionDays })) continue;
+    const status = String(row.status ?? '').toUpperCase();
+    const decision = decidePurge({
+      closeDate: row.close_date as Date | null,
+      withdrawn: status === 'WITHDRAWN' || status === 'POSTPONED',
+      allDocumentsRead: Number(row.unread_count ?? 0) === 0,
+      retentionDays,
+      maxRetentionDays,
+    });
+    if (!decision.purge) continue;
+
     summary.candidates++;
     const purge = await purgeIpoDocuments(String(row.id));
     if (!purge.purged) continue;
     summary.purged++;
     summary.filesDeleted += purge.filesDeleted;
     summary.bytesFreed += purge.bytesFreed;
+    logger.info({ ipoId: String(row.id), reason: decision.reason }, 'Purged IPO document PDFs');
   }
   return summary;
 }
