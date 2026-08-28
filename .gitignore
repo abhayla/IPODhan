@@ -235,6 +235,10 @@ temp_*.sql
 temp_*.html
 pgpass.txt
 *.ps1
+# ...but scripts/ holds real, tracked PowerShell ops scripts (backup-database.ps1,
+# disk-free-heartbeat.ps1, ...). Without this negation the blanket *.ps1 above silently
+# swallows every new ops script - the existing ones had to be force-added.
+!scripts/**/*.ps1
 chittorgarh_detail_sample.html
 scraper/*-page.html
 scraper/scripts/inspect-*.ts
