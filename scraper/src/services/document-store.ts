@@ -30,6 +30,19 @@ import * as path from 'node:path';
 import logger from '../utils/logger.js';
 
 export const DEFAULT_RETENTION_DAYS = 7;
+
+/**
+ * Hard ceiling on keeping a downloaded-but-unread filing (T-403 M7).
+ *
+ * The soft retention (7 days after close) assumes the document has been read.
+ * Deleting a FOUND-but-unextracted file at 7 days would throw away the only
+ * copy of something we fetched and never used — and WP C would have to re-fetch
+ * it from an exchange that has often already taken it down. So an unread file is
+ * kept longer. It is not kept FOREVER: RHPs are 15-25 MB, and this project has
+ * already lost prod's database, SSH and runner to a full disk once (2026-06-13),
+ * so 30 days is the point where disk safety outranks the unread copy.
+ */
+export const DEFAULT_MAX_RETENTION_DAYS = 30;
 export const DEFAULT_MAX_STORE_GB = 5;
 const BYTES_PER_GB = 1024 * 1024 * 1024;
 
@@ -40,6 +53,11 @@ export function getStoreDir(env: NodeJS.ProcessEnv = process.env): string {
   // Default mirrors the deploy layout: a `prospectus/<slot>` dir beside the app.
   const slot = env.DEPLOY_SLOT && env.DEPLOY_SLOT.trim() !== '' ? env.DEPLOY_SLOT.trim() : 'default';
   return path.join(process.cwd(), 'prospectus', slot);
+}
+
+export function getMaxRetentionDays(env: NodeJS.ProcessEnv = process.env): number {
+  const n = Number(env.PROSPECTUS_MAX_RETENTION_DAYS);
+  return Number.isFinite(n) && n >= 0 ? n : DEFAULT_MAX_RETENTION_DAYS;
 }
 
 export function getRetentionDays(env: NodeJS.ProcessEnv = process.env): number {
@@ -155,11 +173,26 @@ export async function storeDocument(params: {
 }
 
 /**
+ * Days elapsed since `closeDate`, compared as whole days so the boundary does
+ * not move with the time of day. Null when there is no usable close date.
+ */
+function daysSinceClose(closeDate: Date | string | null, now: Date): number | null {
+  if (!closeDate) return null;
+  const close = closeDate instanceof Date ? closeDate : new Date(closeDate);
+  if (Number.isNaN(close.getTime())) return null;
+  const dayMs = 24 * 60 * 60 * 1000;
+  return Math.floor(now.getTime() / dayMs) - Math.floor(close.getTime() / dayMs);
+}
+
+/**
  * Is this IPO's local PDF directory due for deletion?
  *
- * Due when `close_date + retentionDays` is strictly BEFORE today, or immediately
- * on withdrawal (matrix F15). An IPO with no close date is never purged on a
+ * Due when `close_date + retentionDays` has passed, or immediately on
+ * withdrawal (matrix F15). An IPO with no close date is never purged on a
  * schedule — guessing a date here would delete a live IPO's filings.
+ *
+ * NOTE: this is the DATE test only. `decidePurge` is what the cycle uses; it
+ * adds the extraction-state rule (M7).
  */
 export function isPurgeDue(params: {
   closeDate: Date | string | null;
@@ -168,17 +201,75 @@ export function isPurgeDue(params: {
   now?: Date;
 }): boolean {
   if (params.withdrawn === true) return true;
-  if (!params.closeDate) return false;
-  const close = params.closeDate instanceof Date ? params.closeDate : new Date(params.closeDate);
-  if (Number.isNaN(close.getTime())) return false;
+  const elapsed = daysSinceClose(params.closeDate, params.now ?? new Date());
+  if (elapsed === null) return false;
+  return elapsed > (params.retentionDays ?? DEFAULT_RETENTION_DAYS);
+}
 
-  const retentionDays = params.retentionDays ?? DEFAULT_RETENTION_DAYS;
-  const now = params.now ?? new Date();
-  const dayMs = 24 * 60 * 60 * 1000;
-  // Compare whole days so the boundary does not move with the time of day.
-  const closeDay = Math.floor(close.getTime() / dayMs);
-  const today = Math.floor(now.getTime() / dayMs);
-  return today - closeDay > retentionDays;
+export type PurgeDecision =
+  | { purge: true; reason: 'withdrawn' | 'read_and_expired' | 'hard_cap' }
+  | { purge: false; reason: 'not_due' | 'unread_within_hard_cap' | 'no_close_date' };
+
+/**
+ * Should the cycle delete this IPO's local PDFs? (T-403 M7.)
+ *
+ * The first cut deleted on the date alone, which would throw away files that had
+ * been downloaded and never read — WP C would then have to re-fetch them from an
+ * exchange that has often already taken them down. The rule now has three arms:
+ *
+ *  - withdrawn                                        -> purge (F15)
+ *  - past the SOFT window AND every document is read   -> purge
+ *  - past the SOFT window but something is still unread-> KEEP, until the hard cap
+ *  - past the HARD cap                                 -> purge regardless
+ *
+ * `allDocumentsRead` means every state row is EXTRACTED or NOT_APPLICABLE. Note
+ * that while WP C is unwired nothing ever reaches EXTRACTED, so in this build
+ * the practical effect is that files live until the 30-day hard cap. That is the
+ * intended behaviour for a pipeline whose reader is not switched on yet.
+ */
+export function decidePurge(params: {
+  closeDate: Date | string | null;
+  withdrawn?: boolean;
+  allDocumentsRead: boolean;
+  retentionDays?: number;
+  maxRetentionDays?: number;
+  now?: Date;
+}): PurgeDecision {
+  if (params.withdrawn === true) return { purge: true, reason: 'withdrawn' };
+
+  const elapsed = daysSinceClose(params.closeDate, params.now ?? new Date());
+  if (elapsed === null) return { purge: false, reason: 'no_close_date' };
+
+  const soft = params.retentionDays ?? DEFAULT_RETENTION_DAYS;
+  const hard = params.maxRetentionDays ?? DEFAULT_MAX_RETENTION_DAYS;
+
+  if (elapsed > hard) return { purge: true, reason: 'hard_cap' };
+  if (elapsed <= soft) return { purge: false, reason: 'not_due' };
+  return params.allDocumentsRead
+    ? { purge: true, reason: 'read_and_expired' }
+    : { purge: false, reason: 'unread_within_hard_cap' };
+}
+
+/**
+ * Does a stored file exist for this (IPO, document type)?
+ *
+ * The file name carries the sha prefix, which the state row does not hold, so
+ * existence is checked by type prefix. Used to demote a FOUND row whose file has
+ * gone missing (M7): without this a lost file is silently absent forever — the
+ * state says FOUND, so nothing ever re-fetches it.
+ */
+export function hasStoredFile(
+  ipoId: string,
+  docType: string,
+  storeDir: string = getStoreDir()
+): boolean {
+  try {
+    return fs
+      .readdirSync(path.join(storeDir, ipoId))
+      .some((f) => f.startsWith(`${docType}-`) && f.endsWith('.pdf'));
+  } catch {
+    return false;
+  }
 }
 
 export interface PurgeResult {

@@ -40,6 +40,12 @@ export interface FetchAttempt {
   ms: number;
   outcome: string;
   url?: string;
+  /**
+   * FULL sha256 of the stored document, when this attempt produced one.
+   * The file name carries only an 8-character prefix, which is not enough to
+   * prove two sources served identical bytes or to look a document up by hash.
+   */
+  sha256?: string;
 }
 
 export interface DocumentFetchStateRow {
