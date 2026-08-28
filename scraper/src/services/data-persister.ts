@@ -1248,3 +1248,45 @@ export async function updateIPOObjectives(
     'IPO objectives updated successfully'
   );
 }
+
+/**
+ * Record the BSE discovery bookkeeping the document pipeline depends on (T-403).
+ *
+ * Two columns, neither of them scraped IPO CONTENT — they are not in the field
+ * priority matrix and no source competes for them:
+ *
+ *  - `bseIpoNo`: the key BSE's core document API is addressed by. It has to be
+ *    remembered because `IPO_HomePageDetail` lists only LIVE and FORTHCOMING
+ *    issues — verified 2026-08-28, Skyways (IPO_NO 7903) had already left the
+ *    board the day after it closed, which is exactly when its final Prospectus
+ *    becomes due. Written once and never overwritten (`??=` semantics below).
+ *  - `bsePayloadLeadManagerCount`: how many lead managers the BSE payload
+ *    ACTUALLY listed, so the nightly audit can FAIL when fewer were stored.
+ *    Refreshed every time, because the payload can gain a co-BRLM.
+ *
+ * Lives HERE rather than in the document cycle because `scraper-write-path.md`
+ * and the R0 write ratchet both require every `ipos` write to go through the
+ * shared write path. The first cut of T-403 issued `UPDATE ipos SET ...` as raw
+ * SQL from `document-cycle.ts` and `check-write-ratchet.mjs` correctly failed it.
+ */
+export async function recordBseDiscoveryMetadata(
+  ipoRepository: IPORepository,
+  ipoId: string,
+  metadata: { bseIpoNo?: number | null; bsePayloadLeadManagerCount?: number | null }
+): Promise<void> {
+  const patch: Record<string, unknown> = {};
+  if (metadata.bseIpoNo !== undefined && metadata.bseIpoNo !== null) {
+    patch.bseIpoNo = metadata.bseIpoNo;
+  }
+  if (
+    metadata.bsePayloadLeadManagerCount !== undefined &&
+    metadata.bsePayloadLeadManagerCount !== null
+  ) {
+    patch.bsePayloadLeadManagerCount = metadata.bsePayloadLeadManagerCount;
+  }
+  if (Object.keys(patch).length === 0) return;
+
+  patch.updatedAt = new Date();
+  await ipoRepository.update(ipoId, patch as never);
+  logger.debug({ ipoId, ...patch }, 'Recorded BSE discovery metadata');
+}
