@@ -64,3 +64,11 @@ Order A → B → C → D → E → F. One PR each (< 400 lines), Sonnet impleme
 ## 5. Skyways today (2026-08-28) mapped onto the stages
 
 S0 ✔ DRHP (30 Jun 2025) · S1 ✔ RHP 11 Aug + PBA 14 Aug + Corrigendum 12 Aug · S2 ✔ anchor day 21 Aug (report not yet fetched) · S3 ✔ Addenda 24 + 26 Aug · **S4 ← now**: basis of allotment 28 Aug, Prospectus expected 28–31 Aug (not published at 23:50 IST 27 Aug) · S5 listing 1 Sep · S6 purge PDFs 3 Sep.
+
+## 6. Delivery protocol (owner-agreed 2026-08-28 11:07 IST — binds every WP)
+
+1. **Build locally against a restored copy of the prod DB** (no writes to prod or staging while building). Fixed real test set: Skyways (mainboard, closed, superseded filings), Madhur Knit Crafts (NSE SME), ESDS Software (opens 28 Aug — "not yet filed" path), Deepa Jewellers (upcoming SME). Each WP has a written acceptance list; runs are captured as evidence files.
+2. **Three independent checks before merge:** red→green tests + full unit suites; fresh-context Opus code review (root-cause-or-patch, scope); blind verifier with acceptance list + evidence only, prompted to refute; Fable reproduces the gate.
+3. **Staging soak ≥ 2 days (~96 cycles)** with flags ON in staging only; acceptance: zero repeated downloads, zero avoidable BLOCKED_ALL, every OPEN IPO has documents. Any miss returns to step 1.
+4. **Production in two owner steps:** deploy with flags OFF; owner flips `ENABLE_STAGE_RECONCILER`, then a day later `ENABLE_DRHP_EXTRACTION`. Re-audit on the next closing IPO; success = zero recurrences.
+Order: A+B → C → D+E → F. Approx. 3 weeks including soaks.
