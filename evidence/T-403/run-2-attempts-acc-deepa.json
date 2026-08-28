@@ -1,0 +1,15 @@
+{
+  "ipoId": "acc-deepa",
+  "companyName": "Deepa Jewellers Ltd.",
+  "stage": "UPCOMING",
+  "skipped": true,
+  "skipReason": "nothing due — every document is found or not yet retryable (zero network calls)",
+  "due": [],
+  "found": [],
+  "notYetFiled": [],
+  "blocked": [],
+  "notApplicable": [],
+  "leadManagers": [],
+  "attempts": [],
+  "networkCalls": 0
+}

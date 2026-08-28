@@ -9,6 +9,7 @@ export * from './repositories/document-repository';
 export * from './repositories/financial-data-repository';
 export * from './repositories/field-sources-repository';
 export * from './repositories/data-conflicts-repository';
+export * from './repositories/document-fetch-state-repository';
 export * from './repositories/ipo-identity';
 // Export utility functions
 export * from './utils/slug';

@@ -1,0 +1,15 @@
+{
+  "ipoId": "acc-esds",
+  "companyName": "ESDS Software Solution Limited",
+  "stage": "PRE_OPEN",
+  "skipped": true,
+  "skipReason": "nothing due — every document is found or not yet retryable (zero network calls)",
+  "due": [],
+  "found": [],
+  "notYetFiled": [],
+  "blocked": [],
+  "notApplicable": [],
+  "leadManagers": [],
+  "attempts": [],
+  "networkCalls": 0
+}

@@ -1,0 +1,60 @@
+{
+  "task": "T-403",
+  "ranAt": "2026-08-28T08:10:46.164Z",
+  "persistence": "IN-MEMORY (dev database ipodhan_wpab dropped 2026-08-28 — host out of disk)",
+  "downloadsEnabled": true,
+  "storeDir": "D:/Abhay/Ventures/IPODhan-backups/prospectus-wpab",
+  "run1Calls": 20,
+  "run2Calls": 0,
+  "checks": [
+    {
+      "id": "A1",
+      "name": "Skyways: >=4 documents typed RHP/CORRIGENDUM/ADDENDUM/PRICE_BAND_AD",
+      "pass": true,
+      "detail": "RHP, PRICE_BAND_AD, CORRIGENDUM, RATIOS_BASIS_ISSUE_PRICE, ANCHOR_ALLOCATION_REPORT, ADDENDUM"
+    },
+    {
+      "id": "A2",
+      "name": "Skyways: 3 lead managers parsed from the BSE payload",
+      "pass": true,
+      "detail": "Holani Consultants Private Limited | Shannon Advisors Private Limited | Dolat Finserv Private Limited"
+    },
+    {
+      "id": "A3",
+      "name": "Madhur (SME): documents discovered from NSE",
+      "pass": true,
+      "detail": "RHP, RATIOS_BASIS_ISSUE_PRICE, ANCHOR_ALLOCATION_REPORT"
+    },
+    {
+      "id": "A4",
+      "name": "ESDS: unfiled document types are NOT_YET_FILED, never BLOCKED_ALL (F3)",
+      "pass": true,
+      "detail": "not_yet=[DRHP, CORRIGENDUM] blocked=[] found=[RHP, PRICE_BAND_AD, RATIOS_BASIS_ISSUE_PRICE, ANCHOR_ALLOCATION_REPORT]"
+    },
+    {
+      "id": "A5",
+      "name": "ESDS: ZERO fallback (non-exchange) calls",
+      "pass": true,
+      "detail": "0 non-exchange call(s) in run 1; hosts=api.bseindia.com, www.nseindia.com, listing.bseindia.com, nsearchives.nseindia.com, www.bseindia.com"
+    },
+    {
+      "id": "A8",
+      "name": "No IPO holds the same bytes on disk under two document types (E7/R2)",
+      "pass": true,
+      "detail": "acc-skyways: 5 file(s), 1 deduped | acc-madhurknit: 3 file(s), 0 deduped | acc-esds: 3 file(s), 1 deduped | acc-deepa: 0 file(s), 0 deduped"
+    },
+    {
+      "id": "A6",
+      "name": "Run 2: ZERO network calls for Skyways",
+      "pass": true,
+      "detail": "calls=0 skipped=true reason=nothing due — every document is found or not yet retryable (zero network calls)"
+    },
+    {
+      "id": "A7",
+      "name": "Run 2: ZERO network calls for Madhur",
+      "pass": true,
+      "detail": "calls=0 skipped=true reason=nothing due — every document is found or not yet retryable (zero network calls)"
+    }
+  ],
+  "allPassed": true
+}

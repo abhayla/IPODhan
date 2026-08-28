@@ -1,0 +1,104 @@
+{
+  "ipoId": "acc-skyways",
+  "companyName": "Skyways Air Services Ltd.",
+  "stage": "CLOSED",
+  "skipped": false,
+  "skipReason": "9 document type(s) due at stage CLOSED",
+  "due": [
+    "DRHP",
+    "RHP",
+    "PRICE_BAND_AD",
+    "CORRIGENDUM",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "ANCHOR_ALLOCATION_REPORT",
+    "ADDENDUM",
+    "PROSPECTUS",
+    "BASIS_OF_ALLOTMENT_AD"
+  ],
+  "found": [
+    "RHP",
+    "PRICE_BAND_AD",
+    "CORRIGENDUM",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "ANCHOR_ALLOCATION_REPORT",
+    "ADDENDUM"
+  ],
+  "notYetFiled": [
+    "DRHP",
+    "PROSPECTUS",
+    "BASIS_OF_ALLOTMENT_AD"
+  ],
+  "blocked": [],
+  "notApplicable": [],
+  "leadManagers": [
+    "Holani Consultants Private Limited",
+    "Shannon Advisors Private Limited",
+    "Dolat Finserv Private Limited"
+  ],
+  "attempts": [
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 503,
+      "outcome": "ok",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 5219,
+      "outcome": "ok",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ"
+    },
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 46730,
+      "outcome": "downloaded",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/RHPSkyways_20260818181315.pdf"
+    },
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 23382,
+      "outcome": "downloaded",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf"
+    },
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 6256,
+      "outcome": "downloaded",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/CorrigendumofRHPSkyways_20260818181316.pdf"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 4558,
+      "outcome": "downloaded (zip member: RATIOS_SKYWAYS/PriceBandAdvertisementSkyways.pdf)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 0,
+      "outcome": "deduped_by_sha256_to:PRICE_BAND_AD",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 865,
+      "outcome": "downloaded (zip member: ANCHOR_SKYWAYS/Company_ANCHOR_FORMAT - Mainboard IPO.pdf)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_SKYWAYS.zip"
+    },
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 3829,
+      "outcome": "downloaded (zip member: Addendum.pdf)",
+      "url": "https://www.bseindia.com/downloads/ipo/Addendum%20to%20RHP_250820261220.zip"
+    }
+  ],
+  "networkCalls": 8
+}
