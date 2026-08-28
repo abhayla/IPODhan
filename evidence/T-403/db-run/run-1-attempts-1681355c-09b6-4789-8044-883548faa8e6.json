@@ -1,0 +1,125 @@
+{
+  "ipoId": "1681355c-09b6-4789-8044-883548faa8e6",
+  "companyName": "ESDS Software Solution Limited",
+  "stage": "PRE_OPEN",
+  "skipped": false,
+  "skipReason": "6 document type(s) due at stage PRE_OPEN",
+  "due": [
+    "DRHP",
+    "RHP",
+    "PRICE_BAND_AD",
+    "CORRIGENDUM",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "ANCHOR_ALLOCATION_REPORT"
+  ],
+  "found": [
+    "RHP",
+    "PRICE_BAND_AD",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "ANCHOR_ALLOCATION_REPORT"
+  ],
+  "notYetFiled": [
+    "DRHP",
+    "CORRIGENDUM"
+  ],
+  "blocked": [],
+  "notApplicable": [],
+  "leadManagers": [
+    "DAM Capital Advisors Limited",
+    "Systematix Corporate Services Limited"
+  ],
+  "attempts": [
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 267,
+      "outcome": "ok",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 506,
+      "outcome": "ok",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 28709,
+      "outcome": "downloaded (zip member: ESDSRHP.pdf; cover_check: passed)",
+      "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/RHPGID_20260825191135.zip",
+      "sha256": "2b1500da163d971da74e9af5b0a60120ea2b8d696e2a7dc23471a832a95903ca"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 1566,
+      "outcome": "downloaded (cover_check: skipped_no_text_layer)",
+      "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf",
+      "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 1744,
+      "outcome": "downloaded (zip member: RATIOS_ESDS/FINANCIAL EXPRESS-MUMBAI-ENGLISH-ESDS SOFTWARE SOLUTION LTD-PRICE BAND AD-25.08.2026.pdf; member classifies as: PRICE_BAND_AD; cover_check: skipped_no_text_layer)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
+      "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 0,
+      "outcome": "deduped_by_sha256_to:PRICE_BAND_AD",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
+      "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 329,
+      "outcome": "downloaded (zip member: ANCHOR_ESDS/Anchor Intimation to SEBI and Stock Exchanges_Final.pdf; cover_check: passed)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ESDS.zip",
+      "sha256": "4e5a4f9de9ef11f31f98a3ff303df1fad1ff9ea7f880fff9348c1d3d5f80802d"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    }
+  ],
+  "networkCalls": 6,
+  "resolvedBseIpoNo": 7916
+}

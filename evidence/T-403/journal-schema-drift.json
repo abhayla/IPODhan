@@ -1,0 +1,28 @@
+{
+  "declaredCount": 50,
+  "liveCount": 30,
+  "missingFromJournalBuiltDb": [
+    "bse_scrip_code",
+    "current_gain_amount",
+    "current_gain_percentage",
+    "current_price",
+    "current_price_updated_at",
+    "gmp_percentage_historical",
+    "gmp_price",
+    "gmp_updated_at_historical",
+    "historical_data_scraped_at",
+    "historical_data_source",
+    "last_manual_edit_at",
+    "listing_date_historical",
+    "listing_gain_amount",
+    "listing_gain_percentage",
+    "listing_price_historical",
+    "objectives",
+    "scraper_lock_note",
+    "scraper_locked",
+    "subscription_hni",
+    "subscription_qib",
+    "subscription_retail",
+    "subscription_total"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "ipoId": "e24851a3-9789-4c2f-8c6d-65d79a64748b",
+  "companyName": "Madhur Knit Crafts Ltd.",
+  "stage": "CLOSED",
+  "skipped": true,
+  "skipReason": "nothing due — every document is found or not yet retryable (zero network calls)",
+  "due": [],
+  "found": [],
+  "notYetFiled": [],
+  "blocked": [],
+  "notApplicable": [],
+  "leadManagers": [],
+  "attempts": [],
+  "networkCalls": 0
+}
