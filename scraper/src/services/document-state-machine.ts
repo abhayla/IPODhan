@@ -13,6 +13,14 @@
  * retry, and forgot every failure. Skyways' filings were never fetched because
  * the one call it got timed out twice.
  *
+ * NOT YET CALLED BY THE RUNNER, and deliberately so — stated here rather than
+ * left to look live (`wire-or-retire`): `decideSupersession` and
+ * `isStaleInProgress` are specified and unit-tested in this WP because the
+ * contract requires the §7.1 transitions and R1-R13 in full, but both need data
+ * this WP does not yet produce. Supersession orders by `filing_date`, which is
+ * read OFF the document, and staleness only matters once a FOUND row can be
+ * claimed for extraction. Both become live in WP C, against these tests.
+ *
  * Companion modules: `document-classifier.ts` (what a link IS),
  * `document-download-verifier.ts` (whether a download is real),
  * `document-discovery-runner.ts` (the network/DB side that consumes this).
@@ -384,6 +392,10 @@ export type SupersessionDecision =
  * R3 is handled here too: an identical sha256 means the same bytes reached us by
  * a different URL, so nothing is superseded and nothing is re-extracted — only
  * the URL list on the existing row grows.
+ *
+ * NOT YET WIRED — WP C consumes this (see the module header). Implemented and
+ * tested now because the ordering rule is the part that is easy to get wrong
+ * later and expensive to notice: it decides which of two filings wins.
  */
 export function decideSupersession(
   existing: { docType: DocumentType; filingDate: string | null; sha256?: string | null } | null,
@@ -446,6 +458,9 @@ export const IN_PROGRESS_STALE_MINUTES = 30;
 /**
  * R6 — a row left mid-extraction by a crashed process is treated as FOUND again
  * so it is picked up next cycle. No row is ever left stuck.
+ *
+ * NOT YET WIRED: nothing claims a FOUND row for extraction until WP C, so there
+ * is no in-progress state to recover from yet.
  */
 export function isStaleInProgress(row: StateRow, now: Date = new Date()): boolean {
   if (row.state !== 'FOUND') return false;
