@@ -28,6 +28,7 @@
 
 import {
   DOCUMENT_PRECEDENCE,
+  DOCUMENT_TYPES,
   SUPERSEDING_TYPES,
   type DocumentType,
 } from './document-types.js';
@@ -117,7 +118,12 @@ export interface IssueShape {
  * BLOCKED_ALL that would drown the real alerts.
  */
 export function notApplicableTypes(issue: IssueShape): DocumentType[] {
-  if (issue.withdrawn === true) return [];
+  // A withdrawn issue will never file ANYTHING further, so every type is
+  // permanently not applicable (matrix F15). Returning [] here — as the first
+  // cut did — meant `planIpoCycle` merely SKIPPED the IPO, leaving any
+  // BLOCKED_ALL row blocked forever and the nightly m_blocked_all_age check
+  // failing every night with nothing anyone could do about it.
+  if (issue.withdrawn === true) return [...DOCUMENT_TYPES];
   if (issue.isFixedPrice !== true) return [];
   // No band to advertise, and no anchor round in a fixed-price issue.
   return ['PRICE_BAND_AD', 'ANCHOR_ALLOCATION_REPORT'];
@@ -140,6 +146,9 @@ export interface CycleOptions {
   extractorVersion?: string;
   now?: Date;
 }
+
+/** The states from which a document may still be fetched. */
+export const OPEN_STATES: DocumentFetchStateValue[] = ['WANTED', 'NOT_YET_FILED', 'BLOCKED_ALL'];
 
 /** States that need no further work this cycle. */
 export function closedStates(options: CycleOptions = {}): DocumentFetchStateValue[] {
@@ -204,18 +213,28 @@ export function planIpoCycle(params: {
   const now = options.now ?? new Date();
   const issue = params.issue ?? {};
 
+  const byType = new Map(params.rows.map((r) => [r.docType, r]));
+
   // R10 / F15: a withdrawn issue stops fetching entirely; documents are kept.
+  // It must first CLOSE every still-open row, exactly once, or a BLOCKED_ALL row
+  // stays blocked forever and the nightly age check fails permanently.
   if (issue.withdrawn === true) {
+    const stillOpen = params.rows
+      .filter((r) => OPEN_STATES.includes(r.state))
+      .map((r) => r.docType);
     return {
       due: [],
       missingRows: [],
-      toMarkNotApplicable: [],
-      skipIpo: true,
-      reason: 'issue withdrawn — fetching stopped, documents retained (F15)',
+      toMarkNotApplicable: stillOpen,
+      // Skip only once there is nothing left to close — so the marking pass
+      // happens on the first cycle after withdrawal and never again.
+      skipIpo: stillOpen.length === 0,
+      reason:
+        stillOpen.length === 0
+          ? 'issue withdrawn — fetching stopped, documents retained (F15)'
+          : `issue withdrawn — closing ${stillOpen.length} open row(s) as NOT_APPLICABLE (F15)`,
     };
   }
-
-  const byType = new Map(params.rows.map((r) => [r.docType, r]));
   const closed = new Set(closedStates(options));
   const notApplicable = notApplicableTypes(issue);
 
