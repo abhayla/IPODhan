@@ -22,7 +22,8 @@
 
 import { sql } from 'drizzle-orm';
 import { db, getRedisClient } from '@ipodhan/shared';
-import { DocumentRepository, DocumentFetchStateRepository } from '@ipodhan/shared';
+import { DocumentRepository, DocumentFetchStateRepository, IPORepository } from '@ipodhan/shared';
+import { recordBseDiscoveryMetadata } from './data-persister.js';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
 import logger from '../utils/logger.js';
 import {
@@ -122,6 +123,7 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
   const redis = getRedisClient();
   const store = new DocumentFetchStateRepository(db as never, redis as never);
   const documents = new DocumentRepository(db as never, redis as never);
+  const ipoRepository = new IPORepository(db as never, redis as never);
   const counter = new NetworkCounter();
 
   const runner = new DocumentDiscoveryRunner({
@@ -149,36 +151,26 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
       const result = await runner.runIpo(ipo, rows);
       results.push(result);
 
-      // Remember the IPO_NO while the IPO is still on the board — it leaves the
-      // board once closed, which is exactly when the Prospectus becomes due.
-      if (result.resolvedBseIpoNo) {
-        await db
-          .execute(
-            sql`UPDATE ipos SET bse_ipo_no = ${result.resolvedBseIpoNo} WHERE id = ${ipo.id}::uuid AND bse_ipo_no IS NULL`
-          )
-          .catch((error: unknown) => {
-            logger.warn(
-              { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
-              'Failed to persist bse_ipo_no (non-fatal)'
-            );
+      // Remember the IPO_NO while the IPO is still on the board (it leaves once
+      // closed, exactly when the Prospectus becomes due) and how many lead
+      // managers BSE listed (so the nightly audit can catch the co-BRLM class).
+      //
+      // Routed through data-persister, NOT written here: `scraper-write-path.md`
+      // and the R0 write ratchet require every `ipos` write to go through the
+      // shared write path. Non-fatal — bookkeeping must never fail a cycle.
+      if (result.resolvedBseIpoNo || result.leadManagers.length > 0) {
+        try {
+          await recordBseDiscoveryMetadata(ipoRepository, ipo.id, {
+            bseIpoNo: result.resolvedBseIpoNo ?? null,
+            bsePayloadLeadManagerCount:
+              result.leadManagers.length > 0 ? result.leadManagers.length : null,
           });
-      }
-
-      // Record how many lead managers the BSE payload ACTUALLY listed, so the
-      // nightly audit can FAIL when fewer than that were stored. Without this
-      // number the F17 class stays exactly as invisible as it was: the co-BRLM
-      // bug survived because nothing ever compared the two counts.
-      if (result.leadManagers.length > 0) {
-        await db
-          .execute(
-            sql`UPDATE ipos SET bse_payload_lead_manager_count = ${result.leadManagers.length} WHERE id = ${ipo.id}::uuid`
-          )
-          .catch((error: unknown) => {
-            logger.warn(
-              { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
-              'Failed to persist bse_payload_lead_manager_count (non-fatal)'
-            );
-          });
+        } catch (error) {
+          logger.warn(
+            { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+            'Failed to record BSE discovery metadata (non-fatal)'
+          );
+        }
       }
     } catch (error) {
       logger.error(
