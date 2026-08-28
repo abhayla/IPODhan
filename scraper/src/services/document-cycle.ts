@@ -35,7 +35,7 @@ import {
 } from './document-discovery-runner.js';
 import { NetworkCounter } from '../utils/network-counter.js';
 import { deriveLifecycleStage } from '../scheduler/stage-reconciler.js';
-import { isInLiveWindow, CYCLE_BUDGET } from './document-state-machine.js';
+import { isInLiveWindow, CYCLE_BUDGET, type IssueShape } from './document-state-machine.js';
 import { isPurgeDue, purgeIpoDocuments, getRetentionDays } from './document-store.js';
 
 export interface DocumentCycleSummary {
@@ -75,14 +75,40 @@ export function summarize(
   };
 }
 
+/**
+ * What we know about the issue that makes some document types impossible (R9/F15).
+ *
+ * The first cut never populated this, so `notApplicableTypes` could never fire:
+ * a fixed-price issue would be asked for a PRICE_BAND_AD and an anchor report
+ * every 30 minutes forever, find neither, and eventually drift into BLOCKED_ALL
+ * — a self-inflicted alert that would drown the real ones.
+ *
+ * `isFixedPrice` is derived from the band we already store: a fixed-price issue
+ * has one price, so min === max (and a book-built issue never does). The BSE
+ * board's `IR_FLAG_FULL` refines this inside the runner when it is fetched, but
+ * that arrives after the plan is computed, so the DB-derived value is what makes
+ * the FIRST cycle correct.
+ */
+export function deriveIssueShape(row: Record<string, unknown>): IssueShape {
+  const status = String(row.status ?? '').toUpperCase();
+  const min = row.price_range_min === null || row.price_range_min === undefined ? null : Number(row.price_range_min);
+  const max = row.price_range_max === null || row.price_range_max === undefined ? null : Number(row.price_range_max);
+  const isFixedPrice =
+    min !== null && max !== null && Number.isFinite(min) && Number.isFinite(max) && min > 0 && min === max;
+  return {
+    isFixedPrice,
+    withdrawn: status === 'WITHDRAWN' || status === 'POSTPONED',
+  };
+}
+
 /** Candidate IPOs: live-window only (R10 — history is WP F's job, not the cycle's). */
 export async function loadCandidateIpos(): Promise<DiscoveryIpo[]> {
   const result = await db.execute(sql`
     SELECT id, company_name, symbol, segment, status, price_range_min,
-           listing_date, bse_ipo_no
+           price_range_max, listing_date, bse_ipo_no
       FROM ipos
      WHERE offering_type = 'IPO'
-       AND status IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED')
+       AND status IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED')
   `);
   const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<
     string,
@@ -90,12 +116,16 @@ export async function loadCandidateIpos(): Promise<DiscoveryIpo[]> {
   >[];
 
   return rows
-    .filter((r) =>
-      isInLiveWindow({
+    .filter((r) => {
+      // A WITHDRAWN/POSTPONED issue is outside the live window but must still be
+      // visited once, to close its open rows as NOT_APPLICABLE (F15/M3).
+      const status = String(r.status ?? '').toUpperCase();
+      if (status === 'WITHDRAWN' || status === 'POSTPONED') return true;
+      return isInLiveWindow({
         status: r.status as string | null,
         listingDate: (r.listing_date as Date | null) ?? null,
-      })
-    )
+      });
+    })
     .map((r) => ({
       id: String(r.id),
       companyName: String(r.company_name ?? ''),
@@ -106,6 +136,7 @@ export async function loadCandidateIpos(): Promise<DiscoveryIpo[]> {
         priceRangeMin: (r.price_range_min as string | null) ?? null,
       }),
       bseIpoNo: r.bse_ipo_no === null || r.bse_ipo_no === undefined ? null : Number(r.bse_ipo_no),
+      issue: deriveIssueShape(r),
     }));
 }
 

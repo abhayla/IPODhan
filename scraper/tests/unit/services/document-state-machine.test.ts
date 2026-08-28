@@ -417,8 +417,26 @@ describe('F15 withdrawn issues', () => {
       issue: { withdrawn: true },
       options: { now: NOW },
     });
-    expect(plan.skipIpo).toBe(true);
+    // `due` is what costs network calls, and it is empty — fetching has stopped.
     expect(plan.due).toEqual([]);
     expect(plan.reason).toContain('withdrawn');
+
+    // M3: this assertion used to read `skipIpo === true`, which locked in the
+    // defect. Skipping straight away leaves every open row open forever — a
+    // BLOCKED_ALL row would then fail the nightly age check every night with no
+    // possible remedy. The first cycle after withdrawal CLOSES the open rows.
+    expect(plan.skipIpo).toBe(false);
+    expect(plan.toMarkNotApplicable).toEqual(['RHP']);
+  });
+
+  it('skip only once every row is closed, so the marking happens exactly once', () => {
+    const plan = planIpoCycle({
+      stage: 'OPEN',
+      rows: [row('RHP', 'NOT_APPLICABLE')],
+      issue: { withdrawn: true },
+      options: { now: NOW },
+    });
+    expect(plan.skipIpo).toBe(true);
+    expect(plan.toMarkNotApplicable).toEqual([]);
   });
 });
