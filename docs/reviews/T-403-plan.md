@@ -1,0 +1,127 @@
+# T-403 — WP A+B implementation plan (BSE-first document discovery + per-document state machine)
+
+Contract: `T-403-ipodhan-wp-ab-document-discovery-state`. Sources of truth:
+`docs/reviews/ipo-document-lifecycle-plan.md` (WP A/B rows, §6 protocol) and
+`docs/reviews/ipo-document-source-decision-matrix.md` (§0 hosts, §1 tree, §3 verification,
+§4 F1–F20, §7 state machine incl. 7.1–7.6 and R1–R13).
+
+Scope: **discovery + state only.** Extraction is WP C — `FOUND` is the terminal state here.
+
+## 0. Facts re-verified live before writing code (2026-08-28, this PC)
+
+| Fact | Evidence |
+|---|---|
+| BSE board `IPO_HomePageDetail/w` returns `{Table:[...]}` — 22 rows, 9 of them non-IPO (`Takeover`/`Buyback`/`Debt Issue`/`RI`/`BuyBack`) | `scraper/tests/fixtures/documents/bse-ipo-homepage.json` |
+| Board row keys: `Scrip_name, Start_Dt, End_Dt, Status(L/F), IR_flag, IR_FLAG_FULL, IPO_NO, Scrip_cd` | same |
+| BSE core `GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903` returns `{IPONO_0:[row], IPONO_1..4, status}` — the detail row is `IPONO_0[0]`, **not** the top level | `bse-skyways-core.json` |
+| Skyways BRLMs = 3: `Book_Running_Lead_Manager` = Holani; `Co_Book_Running_Lead_Manager` = `Shannon...#Dolat Finserv...` (`#`-separated, each `Name^||...|email|contact`) | same |
+| Skyways doc links: `Prospectus_GID` (RHP pdf), `Corrigendum` (pdf), `Addendum` (**zip, URL contains literal spaces**), `Price_Band_Advertisement` (pdf); `Anchor_Details` is `""` | same |
+| NSE `ipo-detail?symbol=SKYWAYS&series=EQ` returned 200 (12,626 B) with `issueInfo.dataList` titled rows pointing at `nsearchives` zips | `nse-skyways.json` |
+| NSE SME `MADHURKNIT&series=SME` returned 200; its row title is **`"Security Parameters "`** (trailing space, no `(Pre Anchor)`) | `nse-madhurknit.json` |
+| NSE homepage gave **403** at the same minute the API gave 200 (matrix §0 confirmed) | curl log |
+| **BSE wrong URL** gives `HTTP/1.1 302` to `/notfound.htm`, `Content-Type: text/html`, a 164-byte `<h1>Object Moved</h1>` body. A redirect-following client lands on `notfound.htm` at **200 text/html** — the matrix's "200 + Object Moved". The verifier must reject on **content-type + size + HTML sniff**, never on status alone. | curl `-D -` on a mangled `listing.bseindia.com` path |
+| Dev DB `ipodhan_wpab`: 309 ipos, 129 documents, 18 applied migrations. All four acceptance IPOs present; **`bse_scrip_code` is NULL for all four**, so IPO_NO must be resolved by normalized name from the board. | node/pg probe |
+
+All fixtures are **real captured payloads**; none are synthetic.
+
+## 1. Root causes being fixed (not one-spot patches)
+
+| # | Root cause | Every call site swept |
+|---|---|---|
+| RC1 | BSE `Co_Book_Running_Lead_Manager` is `#`-separated and each entry is `Name^|...`; code that splits on `^` and takes `[0]` keeps only the first co-BRLM (F17: Skyways shows 2 of 3) | new `bse-party-parser.ts` becomes the single parser; **all** BSE BRLM / registrar / sponsor-bank parsing in `bse-api-scraper.ts`, `bse-detail-scraper.ts`, `bse-scraper.ts`, `bse-scraper-orchestrator-v2.ts` is re-pointed at it |
+| RC2 | Classifier types a final Prospectus as RHP (`t.includes('prospectus')` returns `'RHP'`), and BSE's `Price_Band_Advertisement` / `Corrigendum` both collapse to `ADDENDUM` | new `document-classifier.ts` becomes the single classifier used by `parseNSEDocuments`, `parseBSEDocuments` and the runner |
+| RC3 | Discovery is NSE-only, 15 s cap, no retry, 24 h cadence, and has **no memory** — it re-fetches what it already has and forgets what it failed | state machine + BSE-first runner, per cycle |
+| RC4 | A 200 response is trusted as a document | download verifier (matrix §3) |
+
+## 2. State-transition table implemented (matrix §7.1, verbatim)
+
+States: `WANTED`, `NOT_YET_FILED`, `FOUND`, `EXTRACTED`, `EXTRACT_FAILED`, `BLOCKED_ALL`, `SUPERSEDED`, `NOT_APPLICABLE`
+
+| From | Event | To | Side effects |
+|---|---|---|---|
+| (none) | doc type becomes due at the IPO's stage | `WANTED` | row created, `first_seen_at` |
+| `WANTED` / `NOT_YET_FILED` | exchange answered, **field/title empty** | `NOT_YET_FILED` | `next_retry_at = now + 30 min`; **not a failure** |
+| `WANTED` / `NOT_YET_FILED` / `BLOCKED_ALL` | link found **and** download verified (§3) | `FOUND` | `documents` row upserted, `document_id`, `filing_date` |
+| `WANTED` / `NOT_YET_FILED` | every source failed (timeout/4xx/5xx/bad file) | `BLOCKED_ALL` | P2 alert on entry; retry every cycle for 24 h, then every 6 h |
+| `FOUND` | extractor SUCCESS *(WP C)* | `EXTRACTED` | `extracted_at`, `extractor_version` |
+| `FOUND` | extractor FAILED x3 *(WP C)* | `EXTRACT_FAILED` | admin flag; no retry until `extractor_version` bumps |
+| `FOUND` / `EXTRACTED` | newer superseding filing appears (Corrigendum / Prospectus / Addendum n+1, ordered by **`filing_date`**) | `SUPERSEDED` | old `documents.is_active=false`; new row starts at `WANTED` |
+| any | IPO withdrawn, or the type is impossible for this issue (PBA on fixed-price; anchor on SME fixed-price) | `NOT_APPLICABLE` | never retried (R9) |
+| `FOUND` stale > 30 min mid-extraction | crash recovery (R6) | `FOUND` | no row is ever left stuck |
+
+Terminal for this WP: `FOUND` (extraction is WP C) — so run 2 of the acceptance run must make **zero** calls for Skyways and Madhur.
+
+Cycle behaviour (§7.2): per IPO compute `due = dueDocTypes(stage) minus {EXTRACTED, SUPERSEDED, NOT_APPLICABLE, FOUND}`; **`due` empty means the IPO is skipped with zero network calls**; otherwise **one** exchange call covers every due type; exchanges are tried first every cycle while anything is missing; fallbacks are only consulted for the types still missing.
+
+Retry policy (§7.3) is encoded in `next_retry_at`: `NOT_YET_FILED` 30 min; `BLOCKED_ALL` 30 min for the first 24 h then 6 h; `EXTRACT_FAILED` stops after 3; Prospectus every cycle until listing day, then alert.
+
+R1–R13 (§7.6) each get a fixture test — see §5.
+
+## 3. Files
+
+**New / edited — `packages/shared`**
+- `src/db/schema.ts` (edit): `documentFetchStateEnum`; `documentFetchState` table; `documentTypeEnum` gains `PRICE_BAND_AD`, `CORRIGENDUM`, `BASIS_OF_ALLOTMENT_AD`.
+- `src/repositories/document-fetch-state-repository.ts` (new): row CRUD, `listForIpo`, `upsertState`, `markSuperseded`, audit queries. Extends `BaseRepository`.
+- `package.json` (edit): exports-map entry for the new repository (per `shared-package-source-imports.md`, the file and the export land together).
+
+**New — `web/drizzle/migrations`**
+- `0035_add_document_fetch_state.sql`, hand-authored per `drizzle-migration-gated-ddl.md` (the journal is still blocked by the pre-existing `extraction_status` enum prompt, same as 0032/0033/0034), plus a `meta/_journal.json` entry at idx 18. Non-destructive: `CREATE TABLE IF NOT EXISTS` + `ALTER TYPE ... ADD VALUE IF NOT EXISTS`. It is neither `_gated/` (nothing destructive) nor `_repair/`.
+
+**New — `scraper/src/services`**
+- `document-types.ts` — the doc-type vocabulary and `DocSource` union shared by parser, classifier and state machine.
+- `document-classifier.ts` — RC2. `classifyByTitle(title)` and `classifyBseField(field, url)`; `PROSPECTUS` only when the title/filename lacks `red herring` / `rhp` / `draft`; a bare `Security Parameters` maps to `SECURITY_PARAMS_PRE_ANCHOR`.
+- `bse-party-parser.ts` — RC1. `parseBseParties(row)` returns `{ leadManagers[], registrar, sponsorBanks[] }`; splits on `#` first, then `^`, preserving order (BRLM first, then co-BRLMs).
+- `bse-ipo-board.ts` — `parseBseBoard(json)` returns IPO_NO rows filtered to `IR_FLAG_FULL` in `{Book Building, Fixed Price}` (F12); `resolveIpoNo(board, companyName)` uses the shared normalizer plus similarity.
+- `document-download-verifier.ts` — matrix §3 steps 1, 2, 5 plus an HTML sniff, the cover-page company-name check (step 4) and size caps (F20).
+- `document-store.ts` — `PROSPECTUS_STORE_DIR`, temp-then-rename, zip unpack and removal, `PROSPECTUS_STORE_MAX_GB=5` refusal, `purgeIpoDocuments()` with `PROSPECTUS_RETENTION_DAYS=7`.
+- `document-state-machine.ts` — **pure**: `dueDocTypesForStage`, `notApplicableTypes`, `nextState`, `computeNextRetryAt`, `planIpoCycle`, supersession ordered by `filing_date`.
+- `document-discovery-runner.ts` — the live orchestrator (network + DB) implementing the §1 decision tree.
+
+**New — `scraper/src/utils`**
+- `network-counter.ts` — a process-scoped counter wrapping every outbound call this feature makes, so run 2's "zero calls" is *measured*, not asserted from reading code.
+
+**New — `scraper/src/scripts`**
+- `run-document-discovery.ts` — the acceptance-run CLI; writes `evidence/T-403/`.
+
+**Edited**
+- `scraper/src/services/primary-source-discovery.ts` — delegates to the classifier; BSE fieldMap yields the correct types; keeps its pure / no-network contract.
+- `scraper/src/scheduler/stage-reconciler.ts` — `FetchKind` gains `docDrhp`, `docRhp`, `docPriceBandAd`, `docCorrigendum`, `docAnchorReport`, `docProspectus`; `STAGE_FETCHES` updated; `purgePdfs` added.
+- `scraper/src/index.ts` — `triggerPrimarySourceDiscovery` becomes per-cycle and state-driven behind `ENABLE_DOCUMENT_STATE_MACHINE`; a new `documentPurge` step joins `STEP_NAMES`; one `scraper_logs` row with `source='DOCUMENTS'` per cycle.
+- `scraper/src/config/feature-flags.ts` — `ENABLE_DOCUMENT_STATE_MACHINE`, default OFF, §GATE.
+- `scraper/src/scrapers/bse-*.ts` — BRLM parsing re-pointed at `bse-party-parser.ts` (the RC1 sweep).
+- `scripts/lib/document-state-checks.mjs` (new) and `scripts/audit-detection-floor.mjs` (edit) — the five nightly checks.
+
+## 4. Storage and purge
+
+`PROSPECTUS_STORE_DIR` (default `<shared>/prospectus/<slot>`) holds `<ipo_id>/<doc_type>-<sha8>.pdf`.
+Files are written to `<name>.tmp-<pid>` and then renamed (atomic). Zips have their first `%PDF` member unpacked; the PDF is stored and the zip deleted. Writes are refused, with an alert, once the store exceeds `PROSPECTUS_STORE_MAX_GB` (5). `PURGE_PDFS` deletes `<ipo_id>/` when `close_date + PROSPECTUS_RETENTION_DAYS (7) < today`, or on withdrawal — **files only, rows stay** — emitting one log line per purged IPO.
+
+## 5. Test list (all under `scraper/tests/unit/` per `scraper-test-layout.md`; fixtures in `tests/fixtures/documents/`)
+
+`document-classifier.test.ts` — 1 RHP vs Prospectus (the Skyways trap); 2 draft to DRHP; 3 BSE `Price_Band_Advertisement` to `PRICE_BAND_AD`; 4 BSE `Corrigendum` to `CORRIGENDUM`; 5 BSE `Addendum` to `ADDENDUM`; 6 bare `Security Parameters ` to `PRE_ANCHOR` (F11, Madhur payload); 7 `(Post Anchor)` to post; 8 `Anchor Allocation Report` to anchor; 9 unknown title to null.
+
+`bse-party-parser.test.ts` — 10 **Skyways real payload yields exactly 3 lead managers, in order** (F17); 11 emails and contacts preserved; 12 single BRLM with no co-BRLM; 13 empty/whitespace fields yield `[]`; 14 registrar single; 15 sponsor banks `#`-split into 2.
+
+`bse-ipo-board.test.ts` — 16 real board drops the 9 non-IPO rows (F12); 17 `resolveIpoNo('Skyways Air Services Ltd.')` gives 7903; 18 `'Deepa Jewellers Ltd.'` gives 7922 (status F); 19 an SME name absent from the board gives null (F13); 20 a shape change (missing `Table`) throws, never a silent null (F18).
+
+`primary-source-discovery.test.ts` (extended) — 21 **Skyways BSE core yields >=4 docs typed RHP / CORRIGENDUM / ADDENDUM / PRICE_BAND_AD**; 22 `Anchor_Details:""` yields no doc (F3); 23 the space-containing Addendum URL is encoded, not dropped; 24 NSE Skyways dataList yields 7 typed docs; 25 NSE Madhur yields PRE_ANCHOR from the bare title.
+
+`document-download-verifier.test.ts` — 26 **BSE `Object Moved` HTML body is rejected** even at 200; 27 wrong content-type rejected; 28 under 50 KB rejected; 29 zip with no PDF rejected; 30 zip with a PDF accepted; 31 sha256 dedup gives one row and two URLs (E7/R2); 32 cover-page company mismatch rejected (F8); 33 over 150 MB refused (F20).
+
+`document-state-machine.test.ts` — 34-46 are R1 through R13, one test each; 47 an empty `due` costs zero calls (§7.2); 48 `NOT_YET_FILED` is not a failure; 49 the `BLOCKED_ALL` retry ladder moves 30 min to 6 h at the 24 h mark; 50 supersession is ordered by `filing_date`, not fetch order (E1/E8); 51 the stage-to-due-type table (UPCOMING / PRE_OPEN / OPEN / CLOSED / LISTED); 52 a fixed-price SME marks PBA `NOT_APPLICABLE` (R9).
+
+`document-store.test.ts` — 53 temp-then-rename leaves no `.tmp` behind; 54 zip unpacked then removed; 55 a store over 5 GB refuses and alerts; 56 purge deletes at close+8 and keeps close+6; 57 purge removes files and keeps rows.
+
+`stage-reconciler.test.ts` (extended) — 58 document FetchKinds appear at the right stages; 59 `purgePdfs` becomes due after close+7.
+
+`scripts/tests/document-audit-checks.test.mjs` — 60 `BLOCKED_ALL` older than 24 h FAILs; 61 `FOUND` unread for over 48 h FAILs; 62 an OPEN IPO with 0 state rows FAILs; 63 `EXTRACT_FAILED` WARNs; 64 a BRLM count below the BSE payload FAILs.
+
+## 6. Acceptance run (`evidence/T-403/`)
+
+`run-document-discovery.ts --ipos SKYWAYS,MADHURKNIT,ESDS,"Deepa Jewellers"` runs twice against `ipodhan_wpab`, writing per run: `state-table.json`, `attempts-<slug>.json`, `network-calls.json`.
+
+Expected — run 1: Skyways gets >=4 docs (RHP / CORRIGENDUM / ADDENDUM / PRICE_BAND_AD) and 3 lead managers; Madhur gets RHP, ratios, params and anchor; **ESDS's anchor is `NOT_YET_FILED` with zero fallback calls** (BSE answered with an empty field, so F3 applies and there is no fall-through); Deepa is upcoming. Run 2: **`networkCalls == 0` for Skyways and Madhur.**
+
+## 7. Order of work (one commit per item)
+
+1. fixtures + this plan. 2. classifier, party parser, board (with tests). 3. schema, migration, repository. 4. verifier and store. 5. state machine (R1-R13). 6. runner and network counter. 7. stage-reconciler, `index.ts` wiring, flag. 8. audit checks. 9. acceptance run and evidence. 10. gates.
