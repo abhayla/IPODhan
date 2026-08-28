@@ -18,6 +18,14 @@
 -- APPENDED (no ordering dependency anywhere in the code) so no type rewrite and
 -- no table rewrite is triggered — the statement is O(1) regardless of table size.
 
+-- BSE's IPO_NO, the key its core document API is addressed by. Remembered rather
+-- than re-derived, because IPO_HomePageDetail lists only LIVE and FORTHCOMING
+-- issues: verified 2026-08-28, Skyways (IPO_NO 7903) was already off the board the
+-- day after it closed — exactly when its final Prospectus becomes due. Nullable
+-- ADD COLUMN, so no table rewrite and no backfill.
+ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "bse_ipo_no" integer;
+--> statement-breakpoint
+
 ALTER TYPE "document_type" ADD VALUE IF NOT EXISTS 'PRICE_BAND_AD';
 --> statement-breakpoint
 ALTER TYPE "document_type" ADD VALUE IF NOT EXISTS 'CORRIGENDUM';

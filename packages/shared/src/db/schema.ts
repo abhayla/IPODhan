@@ -175,6 +175,14 @@ export const ipos = pgTable(
     symbol: varchar('symbol', { length: 20 }), // Stock ticker symbol (nullable - upcoming IPOs may not have symbols yet)
     isin: varchar('isin', { length: 12 }), // International Securities Identification Number (nullable)
     bseScripCode: varchar('bse_scrip_code', { length: 20 }), // BSE numeric scrip code (e.g. "543320"); used by listing-performance-updater to fetch BSE prices (nullable)
+    // T-403: BSE's IPO_NO — the key its core document API (GetMkt_ISSUE_BBS_IPO)
+    // is addressed by. It is NOT the scrip code and there is no way to derive one
+    // from the other outside the board payload. It must be REMEMBERED, because
+    // IPO_HomePageDetail only lists live and forthcoming issues: verified
+    // 2026-08-28, Skyways (IPO_NO 7903) had already dropped off the board the day
+    // after it closed — which is exactly when its final Prospectus becomes due.
+    // Captured while the IPO is still on the board, then used for the rest of its life.
+    bseIpoNo: integer('bse_ipo_no'),
     segment: segmentEnum('segment'), // Exchange segment (MAINBOARD | SME) - nullable for RIGHTS/InvITs/REITs
     offeringType: offeringTypeEnum('offering_type').notNull(), // Type of offering (IPO, RIGHTS, TENDER, etc.)
     sector: varchar('sector', { length: 100 }),
