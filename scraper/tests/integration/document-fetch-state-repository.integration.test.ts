@@ -23,13 +23,11 @@ import { DocumentFetchStateRepository } from '@ipodhan/shared/repositories/docum
  *   2. `DATABASE_URL=postgresql://user:pass@host:port/db npx vitest run \
  *        -c vitest.integration.config.ts tests/integration/document-fetch-state-repository.integration.test.ts`
  *
- * NOT RUN as of 2026-08-28: the only credentials this task is permitted to use
- * (`ipodhan_app` against `ipodhan_test`) are refused DDL —
- * `permission denied for schema public` — so the schema cannot be created and
- * `drizzle-kit migrate` cannot create its `drizzle` bookkeeping schema either
- * (`permission denied for database ipodhan_test`). Granting
- * `CREATE ON SCHEMA public` (and on the database) to that role, or supplying a
- * role that already has it, makes this file run unchanged.
+ * RUN: against `ipodhan_test` after replaying the journal from empty, and in CI
+ * by the `scraper-document-integration` job in pr-gate.yml, which replays the
+ * journal into a fresh `postgres:16` service container before running this file.
+ * That job is the reason the replay is checked on every PR rather than whenever
+ * someone remembers to trigger it.
  */
 
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -89,6 +87,7 @@ afterAll(async () => {
   const ids = IPOS.map((i) => i.id);
   const db = drizzle(pool, { schema });
   await db.delete(schema.documentFetchState).where(inArray(schema.documentFetchState.ipoId, ids));
+  await db.execute(sql`DELETE FROM documents WHERE ipo_id = ANY(${sql.raw("ARRAY['" + ids.join("','") + "']::uuid[]")})`);
   await db.delete(schema.ipos).where(inArray(schema.ipos.id, ids));
   await pool.end();
 });
@@ -194,6 +193,57 @@ describe.skipIf(!DATABASE_URL)(`DocumentFetchStateRepository against real Postgr
     // The colliding row stayed behind rather than blowing up the constraint.
     const leftBehind = (await repo!.listForIpo(DEEPA)).map((r) => r.docType);
     expect(leftBehind).toEqual(['RHP']);
+  });
+
+  it('W-1: a document round-trips its sha256, and the state row can be joined to it', async () => {
+    // The dedup rule (E7/R2 — the same bytes from two exchanges are ONE
+    // document) was computed per run and thrown away: nothing persisted the
+    // hash, so the rule could not survive a restart and no query could prove
+    // two rows were the same filing. This is that column, end to end.
+    const db = drizzle(pool!, { schema });
+    const sha = 'a'.repeat(64);
+    const inserted = await db.execute(sql`
+      INSERT INTO documents (ipo_id, type, title, url, file_size, sha256)
+      VALUES (${ESDS}::uuid, 'RHP'::document_type, 'T403 RHP', 'https://example.test/t403-rhp.pdf',
+              12345, ${sha})
+      RETURNING id
+    `);
+    const documentId = ((inserted as unknown as { rows?: { id: string }[] }).rows ?? [])[0].id;
+
+    const row = await repo!.ensureRow(ESDS, 'RHP');
+    await repo!.update(row.id, { state: 'FOUND', documentId, nextRetryAt: null });
+
+    const joined = await db.execute(sql`
+      SELECT s.state, d.sha256, d.file_size
+        FROM document_fetch_state s JOIN documents d ON d.id = s.document_id
+       WHERE s.id = ${row.id}::uuid
+    `);
+    const read = ((joined as unknown as { rows?: Record<string, unknown>[] }).rows ?? [])[0];
+    expect(read.state).toBe('FOUND');
+    // char(64) is blank-padded on read in some drivers; the hash must compare
+    // equal after trimming, and must be the full digest, not a prefix.
+    expect(String(read.sha256).trim()).toBe(sha);
+
+    await db.execute(sql`DELETE FROM documents WHERE id = ${documentId}::uuid`);
+  });
+
+  it('W-1/H-1: the two source-hint columns exist on ipos and hold what is written', async () => {
+    // `company_website` and `verifier_url` are what make rung 4 and the verifier
+    // reachable at all. Before 0035 nothing in the schema held either, so both
+    // rungs could only ever record "skipped:no_..." — unreachable code in
+    // production, which no unit test could reveal.
+    const db = drizzle(pool!, { schema });
+    await db.execute(sql`
+      UPDATE ipos SET company_website = 'https://skyways-air.in',
+                      verifier_url = 'https://www.chittorgarh.com/ipo/x/1/'
+       WHERE id = ${SKYWAYS}::uuid
+    `);
+    const read = await db.execute(sql`
+      SELECT company_website, verifier_url FROM ipos WHERE id = ${SKYWAYS}::uuid
+    `);
+    const got = ((read as unknown as { rows?: Record<string, unknown>[] }).rows ?? [])[0];
+    expect(got.company_website).toBe('https://skyways-air.in');
+    expect(got.verifier_url).toBe('https://www.chittorgarh.com/ipo/x/1/');
   });
 
   it('document_fetch_state rows disappear with their IPO (ON DELETE CASCADE)', async () => {

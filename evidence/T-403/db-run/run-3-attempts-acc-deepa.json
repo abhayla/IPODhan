@@ -1,0 +1,16 @@
+{
+  "ipoId": "fee61b59-64fe-4863-9405-902bc07213d9",
+  "companyName": "Deepa Jewellers Ltd.",
+  "stage": "UPCOMING",
+  "skipped": true,
+  "skipReason": "nothing due — every document is found or not yet retryable (zero network calls)",
+  "due": [],
+  "found": [],
+  "notYetFiled": [],
+  "blocked": [],
+  "notApplicable": [],
+  "superseded": [],
+  "leadManagers": [],
+  "attempts": [],
+  "networkCalls": 0
+}

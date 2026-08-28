@@ -165,12 +165,20 @@ export async function demoteMissingFiles(
   store: Pick<DocumentFetchStateRepository, 'update'>,
   ipoId: string,
   rows: DocumentFetchStateRow[],
-  storeDir: string = getStoreDir()
+  storeDir: string = getStoreDir(),
+  /**
+   * documentId -> persisted sha256 (W-1). With it, a FOUND row is checked
+   * against the exact file its document row names; without it, the older
+   * "any file of this type" check still applies, so a row stored before the
+   * column existed is not demoted for lacking a hash.
+   */
+  sha256ByDocumentId: Map<string, string | null> = new Map()
 ): Promise<number> {
   let demoted = 0;
   for (const row of rows) {
     if (row.state !== 'FOUND') continue;
-    if (hasStoredFile(ipoId, row.docType, storeDir)) continue;
+    const sha = row.documentId ? sha256ByDocumentId.get(row.documentId) ?? null : null;
+    if (hasStoredFile(ipoId, row.docType, storeDir, sha)) continue;
     logger.warn(
       { ipoId, docType: row.docType },
       'FOUND document has no file on disk — demoting to WANTED so it is re-fetched'
@@ -223,7 +231,22 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
     try {
       const persisted = await store.listForIpo(ipo.id);
 
-      await demoteMissingFiles(store, ipo.id, persisted);
+      // W-1: hand demotion the persisted hashes so a FOUND row is checked
+      // against the exact file its document row names.
+      const shaByDocId = new Map<string, string | null>();
+      try {
+        for (const d of await documents.findByIPO(ipo.id)) {
+          shaByDocId.set(d.id, (d as { sha256?: string | null }).sha256 ?? null);
+        }
+      } catch (error) {
+        // Non-fatal: without the map, demotion falls back to the older
+        // any-file-of-this-type check rather than skipping the pass.
+        logger.warn(
+          { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+          'Could not load document hashes for demotion (non-fatal)'
+        );
+      }
+      await demoteMissingFiles(store, ipo.id, persisted, getStoreDir(), shaByDocId);
 
       const rows = persisted.map(toStateRow);
       const result = await runner.runIpo(ipo, rows);
@@ -259,8 +282,15 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
         try {
           await recordBseDiscoveryMetadata(ipoRepository, ipo.id, {
             bseIpoNo: result.resolvedBseIpoNo ?? null,
+            // F-2: the column counts what the BSE PAYLOAD listed, and that is
+            // what the nightly co-BRLM check compares against. A count NSE
+            // supplied is not a BSE payload count, so it is deliberately not
+            // written here — the lead managers themselves are still carried on
+            // the result and consumed by the caller.
             bsePayloadLeadManagerCount:
-              result.leadManagers.length > 0 ? result.leadManagers.length : null,
+              result.leadManagerSource === 'BSE' && result.leadManagers.length > 0
+                ? result.leadManagers.length
+                : null,
           });
         } catch (error) {
           logger.warn(

@@ -467,3 +467,54 @@ describe('F15 withdrawn issues', () => {
     expect(plan.toMarkNotApplicable).toEqual([]);
   });
 });
+
+describe('F-3 a later filing closes the hunt for its drafts', () => {
+  it('an RHP in hand supersedes an open DRHP instead of alerting on it', () => {
+    // Observed live 2026-08-28: a CLOSED IPO whose RHP was FOUND went
+    // BLOCKED_ALL on its DRHP and fired a P2, because SEBI's draft list no
+    // longer shows a June-2026 draft. Nobody could act on that alert — the
+    // document it wants has been replaced by one we already hold. An alert
+    // nobody can act on is how real alerts come to be ignored.
+    const plan = planIpoCycle({
+      stage: 'CLOSED',
+      rows: [row('RHP', 'FOUND'), row('DRHP', 'BLOCKED_ALL')],
+      options: { now: NOW },
+    });
+
+    expect(plan.toMarkSuperseded).toEqual(['DRHP']);
+    expect(plan.due).not.toContain('DRHP');
+  });
+
+  it('a PROSPECTUS in hand supersedes both the RHP and the DRHP', () => {
+    const plan = planIpoCycle({
+      stage: 'CLOSED',
+      rows: [row('PROSPECTUS', 'FOUND'), row('RHP', 'NOT_YET_FILED'), row('DRHP', 'WANTED')],
+      options: { now: NOW },
+    });
+
+    expect(plan.toMarkSuperseded.sort()).toEqual(['DRHP', 'RHP']);
+    expect(plan.due).not.toContain('RHP');
+    expect(plan.due).not.toContain('DRHP');
+  });
+
+  it('does NOT touch a draft we actually hold — supersession closes the hunt, not the document', () => {
+    const plan = planIpoCycle({
+      stage: 'CLOSED',
+      rows: [row('RHP', 'FOUND'), row('DRHP', 'FOUND')],
+      options: { now: NOW },
+    });
+    expect(plan.toMarkSuperseded).toEqual([]);
+  });
+
+  it('does nothing while the later filing is still being chased', () => {
+    // The guard against over-firing: an RHP we do not have cannot supersede
+    // anything, or a DRHP would be abandoned the moment the RHP row appeared.
+    const plan = planIpoCycle({
+      stage: 'OPEN',
+      rows: [row('RHP', 'NOT_YET_FILED'), row('DRHP', 'WANTED')],
+      options: { now: NOW },
+    });
+    expect(plan.toMarkSuperseded).toEqual([]);
+    expect(plan.due).toContain('DRHP');
+  });
+});

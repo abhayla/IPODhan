@@ -226,8 +226,8 @@ from nothing — exposed three defects that no unit test could have:
 ## Still NOT done
 
 1. **The wider journal/schema drift is unrepaired.** A journal-built `ipos` has
-   32 columns where `schema.ts` declares 52, `documents` has 7 where the schema
-   declares ~18, and the journal builds a NOT NULL `category` column the schema
+   32 columns where `schema.ts` declares 55, `documents` has 8 where the schema
+   declares 19, and the journal builds a NOT NULL `category` column the schema
    replaced with `segment`/`offering_type`. Production is fine (built from dumps
    plus `_repair/`), but no environment can be rebuilt from the journal. Measured
    in `evidence/T-403/journal-schema-drift.json`. Repairing it is a
@@ -238,6 +238,31 @@ from nothing — exposed three defects that no unit test could have:
    `repointToSurvivor` are implemented and tested but NOT called; each says so in
    its own doc comment. They need `filing_date` and an extraction claim.
 3. **No `documents` lineage table.** "Same hash, two URLs" is honoured by storing
-   one file and recording the alternative URL in the attempt log.
+   one file, persisting its sha256 on the `documents` row (W-1) and recording the
+   alternative URL in the attempt log. A row-per-URL lineage table is WP C's call.
 4. **BSE SME (`bsesme.com`) is not parsed.** SME coverage is NSE Emerge + SEBI +
    the company host, as the matrix's Q3 assumed.
+
+## Round 4 — the ordered chain, and what each rung may conclude
+
+The chain, in the order it runs, with the ONE thing each rung is allowed to
+decide. The distinction that took four rounds to get right is in the last column:
+
+| # | Rung | Fetches | May conclude FOUND | May conclude ABSENT | May conclude FAILED |
+|---|---|---|---|---|---|
+| 1 | BSE | board (once per cycle, shared) + core payload per IPO, 2/4/8 s ladder, every try logged | link downloaded and verified | `no_link` — the payload answered and carries no such document | http/timeout/shape error. `not_on_board` is neither: BSE does not carry this issue |
+| 2 | NSE | `ipo-detail` per IPO, same ladder | as above | as above | as above. `no_symbol` is neither |
+| — | (settle?) | — | A type the exchanges CAN serve, with every applicable exchange `ok`, settles here. A DRHP never settles here — no exchange publishes drafts | | |
+| 3 | SEBI | filing list per type (cached per cycle, including a cached FAILURE), then the detail page, then the PDF | listed → detail → PDF → verified | the list answered and does not name this company | list or detail HTTP error; a listed filing whose detail page has no PDF; a cached failure from earlier in the cycle |
+| 4 | Company host | up to 3 investor pages per ISSUER per CYCLE (cached), within a 12-GET per-IPO escalation budget | an issuer-hosted or exchange-hosted link, downloaded and verified | a page answered and carries no such filing | no page answered at all; a linked filing that failed to download |
+| 5 | Verifier (Chittorgarh) | the IPO's page, links only | an exchange/SEBI link we had not tried, downloaded and verified | the page answered and shows no untried exchange link | page HTTP error; a corrected link that then failed |
+
+Two rules make this hold together:
+
+- **ABSENT is evidence; FAILED is the absence of evidence.** Only ABSENT from
+  every rung may write NOT_YET_FILED. Any FAILED anywhere writes BLOCKED_ALL,
+  which is the state that carries the retry ladder and the alert. Rounds 1-3 had
+  every SEBI failure path returning `null`, which the caller read as ABSENT.
+- **A later filing closes the hunt.** Holding the RHP supersedes an open DRHP;
+  holding the Prospectus supersedes both. Without it a CLOSED IPO alerts P2 every
+  night about a draft that no longer exists anywhere.

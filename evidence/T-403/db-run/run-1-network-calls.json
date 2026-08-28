@@ -1,11 +1,11 @@
 {
-  "total": 21,
+  "total": 23,
   "byIpo": {
-    "0ad71e91-6c63-4f24-b561-082d485d5013": 9,
-    "0223abf7-ac2b-46c5-9f31-1427177059ed": 4,
+    "20adaefe-0080-40f9-8598-4ec0406dcb8d": 9,
+    "f2d07d7e-dca3-468c-8571-83b1ebae4cb8": 4,
     "(shared:bse-board)": 1,
-    "599b5365-85ac-4d01-8ac4-fbeb86de8d33": 6,
-    "4aeee8b1-a944-4744-9772-47e5e6bd9c4d": 1
+    "f6f4e02e-49a8-49aa-bf35-d28a65dc14c3": 7,
+    "fee61b59-64fe-4863-9405-902bc07213d9": 2
   },
   "byHost": {
     "api.bseindia.com": 4,
@@ -13,111 +13,112 @@
     "www.sebi.gov.in": 1,
     "listing.bseindia.com": 5,
     "nsearchives.nseindia.com": 7,
-    "www.bseindia.com": 1
+    "www.bseindia.com": 1,
+    "www.chittorgarh.com": 2
   },
   "calls": [
     {
       "host": "api.bseindia.com",
       "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "20adaefe-0080-40f9-8598-4ec0406dcb8d",
       "status": 200,
-      "ms": 340,
+      "ms": 236,
       "bytes": 6363
     },
     {
       "host": "www.nseindia.com",
       "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "20adaefe-0080-40f9-8598-4ec0406dcb8d",
       "status": 200,
-      "ms": 4786,
+      "ms": 4424,
       "bytes": 12546
     },
     {
       "host": "www.sebi.gov.in",
       "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "20adaefe-0080-40f9-8598-4ec0406dcb8d",
       "status": 200,
-      "ms": 518,
+      "ms": 509,
       "bytes": 46110
     },
     {
       "host": "listing.bseindia.com",
       "url": "https://listing.bseindia.com/Download//PreAnchor/RHPSkyways_20260818181315.pdf",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "20adaefe-0080-40f9-8598-4ec0406dcb8d",
       "status": 200,
-      "ms": 4671,
+      "ms": 8914,
       "bytes": 46922851
     },
     {
       "host": "listing.bseindia.com",
       "url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "20adaefe-0080-40f9-8598-4ec0406dcb8d",
       "status": 200,
-      "ms": 1402,
+      "ms": 10111,
       "bytes": 6585368
     },
     {
       "host": "listing.bseindia.com",
       "url": "https://listing.bseindia.com/Download//PreAnchor/CorrigendumofRHPSkyways_20260818181316.pdf",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "20adaefe-0080-40f9-8598-4ec0406dcb8d",
       "status": 200,
-      "ms": 360,
+      "ms": 1237,
       "bytes": 1391575
     },
     {
       "host": "nsearchives.nseindia.com",
       "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "20adaefe-0080-40f9-8598-4ec0406dcb8d",
       "status": 200,
-      "ms": 6867,
+      "ms": 5124,
       "bytes": 5702249
     },
     {
       "host": "nsearchives.nseindia.com",
       "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_SKYWAYS.zip",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "20adaefe-0080-40f9-8598-4ec0406dcb8d",
       "status": 200,
-      "ms": 1882,
+      "ms": 905,
       "bytes": 1916081
     },
     {
       "host": "www.bseindia.com",
       "url": "https://www.bseindia.com/downloads/ipo/Addendum%20to%20RHP_250820261220.zip",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "20adaefe-0080-40f9-8598-4ec0406dcb8d",
       "status": 200,
-      "ms": 6350,
+      "ms": 9849,
       "bytes": 21082828
     },
     {
       "host": "www.nseindia.com",
       "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
-      "ipoKey": "0223abf7-ac2b-46c5-9f31-1427177059ed",
+      "ipoKey": "f2d07d7e-dca3-468c-8571-83b1ebae4cb8",
       "status": 200,
-      "ms": 5956,
+      "ms": 5217,
       "bytes": 10320
     },
     {
       "host": "nsearchives.nseindia.com",
       "url": "https://nsearchives.nseindia.com/content/ipo/RHP_MADHURKNIT.zip",
-      "ipoKey": "0223abf7-ac2b-46c5-9f31-1427177059ed",
+      "ipoKey": "f2d07d7e-dca3-468c-8571-83b1ebae4cb8",
       "status": 200,
-      "ms": 3650,
+      "ms": 3385,
       "bytes": 7412186
     },
     {
       "host": "nsearchives.nseindia.com",
       "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_MADHURKNIT.zip",
-      "ipoKey": "0223abf7-ac2b-46c5-9f31-1427177059ed",
+      "ipoKey": "f2d07d7e-dca3-468c-8571-83b1ebae4cb8",
       "status": 200,
-      "ms": 2606,
+      "ms": 2213,
       "bytes": 5293610
     },
     {
       "host": "nsearchives.nseindia.com",
       "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MADHURKNIT.zip",
-      "ipoKey": "0223abf7-ac2b-46c5-9f31-1427177059ed",
+      "ipoKey": "f2d07d7e-dca3-468c-8571-83b1ebae4cb8",
       "status": 200,
-      "ms": 433,
+      "ms": 404,
       "bytes": 315743
     },
     {
@@ -125,64 +126,80 @@
       "url": "https://api.bseindia.com/BseIndiaAPI/api/IPO_HomePageDetail/w",
       "ipoKey": "(shared:bse-board)",
       "status": 200,
-      "ms": 432,
+      "ms": 602,
       "bytes": 5415
     },
     {
       "host": "api.bseindia.com",
       "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
-      "ipoKey": "599b5365-85ac-4d01-8ac4-fbeb86de8d33",
+      "ipoKey": "f6f4e02e-49a8-49aa-bf35-d28a65dc14c3",
       "status": 200,
-      "ms": 511,
+      "ms": 417,
       "bytes": 9205
     },
     {
       "host": "www.nseindia.com",
       "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
-      "ipoKey": "599b5365-85ac-4d01-8ac4-fbeb86de8d33",
+      "ipoKey": "f6f4e02e-49a8-49aa-bf35-d28a65dc14c3",
       "status": 200,
-      "ms": 309,
+      "ms": 5649,
       "bytes": 20277
+    },
+    {
+      "host": "www.chittorgarh.com",
+      "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+      "ipoKey": "f6f4e02e-49a8-49aa-bf35-d28a65dc14c3",
+      "status": 200,
+      "ms": 313,
+      "bytes": 309485
     },
     {
       "host": "listing.bseindia.com",
       "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/RHPGID_20260825191135.zip",
-      "ipoKey": "599b5365-85ac-4d01-8ac4-fbeb86de8d33",
+      "ipoKey": "f6f4e02e-49a8-49aa-bf35-d28a65dc14c3",
       "status": 200,
-      "ms": 13608,
+      "ms": 3605,
       "bytes": 21420754
     },
     {
       "host": "listing.bseindia.com",
       "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf",
-      "ipoKey": "599b5365-85ac-4d01-8ac4-fbeb86de8d33",
+      "ipoKey": "f6f4e02e-49a8-49aa-bf35-d28a65dc14c3",
       "status": 200,
-      "ms": 6247,
+      "ms": 1832,
       "bytes": 3229058
     },
     {
       "host": "nsearchives.nseindia.com",
       "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
-      "ipoKey": "599b5365-85ac-4d01-8ac4-fbeb86de8d33",
+      "ipoKey": "f6f4e02e-49a8-49aa-bf35-d28a65dc14c3",
       "status": 200,
-      "ms": 3888,
+      "ms": 6848,
       "bytes": 6858110
     },
     {
       "host": "nsearchives.nseindia.com",
       "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ESDS.zip",
-      "ipoKey": "599b5365-85ac-4d01-8ac4-fbeb86de8d33",
+      "ipoKey": "f6f4e02e-49a8-49aa-bf35-d28a65dc14c3",
       "status": 200,
-      "ms": 172,
+      "ms": 507,
       "bytes": 301828
     },
     {
       "host": "api.bseindia.com",
       "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7922",
-      "ipoKey": "4aeee8b1-a944-4744-9772-47e5e6bd9c4d",
+      "ipoKey": "fee61b59-64fe-4863-9405-902bc07213d9",
       "status": 200,
-      "ms": 615,
+      "ms": 776,
       "bytes": 4019
+    },
+    {
+      "host": "www.chittorgarh.com",
+      "url": "https://www.chittorgarh.com/ipo/deepa-jewellers-ipo/2827/",
+      "ipoKey": "fee61b59-64fe-4863-9405-902bc07213d9",
+      "status": 200,
+      "ms": 378,
+      "bytes": 285997
     }
   ]
 }

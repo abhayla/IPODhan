@@ -1,0 +1,16 @@
+{
+  "ipoId": "20adaefe-0080-40f9-8598-4ec0406dcb8d",
+  "companyName": "Skyways Air Services Ltd.",
+  "stage": "CLOSED",
+  "skipped": true,
+  "skipReason": "nothing due — every document is found or not yet retryable (zero network calls)",
+  "due": [],
+  "found": [],
+  "notYetFiled": [],
+  "blocked": [],
+  "notApplicable": [],
+  "superseded": [],
+  "leadManagers": [],
+  "attempts": [],
+  "networkCalls": 0
+}

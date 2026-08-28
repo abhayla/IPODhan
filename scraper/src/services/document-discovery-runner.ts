@@ -3,13 +3,14 @@
  * (decision-matrix §1) driven by the state machine (§7).
  *
  * BSE-FIRST, per the owner's 2026-08-28 rule: "BSE or NSE first, always."
- * Mainboard order is BSE core API -> NSE ipo-detail -> (SEBI, company host:
- * WP A+B stops at the exchanges; those two rungs are declared here and are the
- * next thing to wire, they are not silently pretended to exist).
- * SME order is NSE first, because BSE's mainboard board does not carry SME.
  *
- * The full chain is BSE -> NSE -> SEBI -> the issuer's own investor page, with
- * Chittorgarh consulted last as a link VERIFIER only (never a document source).
+ * All four rungs are SHIPPED and wired (the header used to say the last two
+ * were "the next thing to wire" — they were built in round 2 and the stale
+ * sentence outlived them, which is exactly how a reader ends up believing a
+ * live rung is a stub). Mainboard order is BSE core API -> NSE ipo-detail ->
+ * SEBI's filing lists -> the issuer's own investor page, with Chittorgarh
+ * consulted last as a link VERIFIER only (never a document source).
+ * SME order is NSE first, because BSE's mainboard board does not carry SME.
  * NSE is fetched on demand: when BSE covered every due type and one of those
  * downloads then fails, the NSE copy is fetched at that point rather than the
  * type going BLOCKED_ALL with an untried source in reach (matrix F2).
@@ -20,10 +21,13 @@
  * and makes no request at all for an IPO with nothing due.
  *
  * Every dependency — fetching, the state store, the document sink, the clock —
- * is injected. That is what lets the acceptance harness run the real decision
- * logic against real exchange payloads with an in-memory store, which is the
- * only way to demonstrate the zero-calls property while the dev database is
- * unavailable.
+ * is injected. The acceptance harness (`scraper/scripts/run-document-discovery.ts`)
+ * uses that to run this exact decision logic against real exchange payloads in
+ * either of two modes: an in-memory store, or `--db`, which persists to a real
+ * Postgres whose name must end in `_test` (`assertTestDatabase`) and reads the
+ * result back out with SQL. The `--db` mode is the one whose evidence counts;
+ * the in-memory mode exists so the chain can be exercised with no database at
+ * all.
  */
 
 import {
@@ -34,6 +38,7 @@ import {
 } from './primary-source-discovery.js';
 import { parseBseBoard, resolveBseBoardRow, extractBseCoreRow, type BseBoardRow } from './bse-ipo-board.js';
 import { parseBseParties } from './bse-party-parser.js';
+import { parseNseLeadManagers } from './nse-party-parser.js';
 import { verifyDownload, isVerifyFailure, type VerifyResult } from './document-download-verifier.js';
 import { storeDocument, getStoreDir } from './document-store.js';
 import { extractCoverText as extractCoverTextFromPdf } from './pdf-cover-text.js';
@@ -146,6 +151,28 @@ export const EXCHANGE_FAILURE_OUTCOMES = [
 export const FETCH_TIMEOUT_MS = 20_000;
 
 /**
+ * Which source served this URL, decided by HOST (NIT-4).
+ *
+ * The substring version this replaces (`url.includes('bseindia')`) mislabels
+ * `https://cdn.example.com/?ref=bseindia` as BSE, and any path containing the
+ * word. The verifier only ever hands us allowlisted hosts, so this is a
+ * labelling bug rather than a hole — but a label that can be wrong is a label
+ * that will be wrong in an audit trail, which is what the log is for.
+ */
+export function sourceOfDocumentUrl(url: string): DiscoveredDocument['source'] {
+  let host = '';
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return 'NSE';
+  }
+  const on = (domain: string) => host === domain || host.endsWith(`.${domain}`);
+  if (on('sebi.gov.in')) return 'SEBI';
+  if (on('bseindia.com')) return 'BSE';
+  return 'NSE';
+}
+
+/**
  * A URL that points at a downloadable document. Used to decide which attempts
  * belong to one document type's log. The dot IS escaped (NIT-2): `/.(pdf|zip)/`
  * matches "apdf" and any three-character run ending in "pdf".
@@ -162,6 +189,33 @@ const DOC_URL_RE = /\.(pdf|zip)(\?|#|$)/i;
  * fails.
  */
 export const DOWNLOAD_TIMEOUT_MS = 120_000;
+
+/**
+ * The budget for ONE IPO's escalation GETs in ONE cycle (M-d).
+ *
+ * Without it, an IPO the exchanges cannot cover pays the escalation cost per DUE
+ * TYPE: Skyways' 2026-08-28 run escalated nine types, and the company rung alone
+ * is three page GETs each. The per-cycle page cache below removes most of that
+ * (the same investor page was being fetched once per type); this cap is the
+ * backstop for the rest, so one unreachable issuer cannot consume a cycle.
+ */
+export const ESCALATION_GET_BUDGET_PER_IPO = 12;
+
+/**
+ * What a rung concluded (H-2).
+ *
+ * The distinction that matters is `failed` vs `absent`. Every SEBI failure path
+ * used to `return null`, indistinguishable from "SEBI does not list this" — so a
+ * DRHP that SEBI returned 503 for was written NOT_YET_FILED, i.e. "the company
+ * has not filed it", from evidence that says nothing of the sort. `failed` now
+ * propagates and lands the row in BLOCKED_ALL with its retry ladder.
+ */
+export type RungResult = { documentId: string; bytes: number } | 'failed' | 'absent';
+
+/** Narrowing helper — `strict: false` will not do it for us. */
+export function isRungFound(r: RungResult): r is { documentId: string; bytes: number } {
+  return typeof r === 'object' && r !== null;
+}
 
 // ---------------------------------------------------------------------------
 // Injected dependencies
@@ -199,6 +253,8 @@ export interface DocumentSinkInput {
   extractionStatus: string;
   isActive: boolean;
   fileSize?: number;
+  /** sha256 of the stored bytes (W-1) — the persisted form of the E7/R2 rule. */
+  sha256?: string;
 }
 
 export interface DocumentSink {
@@ -270,7 +326,11 @@ export interface IpoRunResult {
   notYetFiled: DocumentType[];
   blocked: DocumentType[];
   notApplicable: DocumentType[];
+  /** Types closed because a later filing replaced them this cycle (F-3). */
+  superseded: DocumentType[];
   leadManagers: string[];
+  /** Which exchange the lead managers came from (F-2). */
+  leadManagerSource?: 'BSE' | 'NSE';
   attempts: FetchAttempt[];
   networkCalls: number;
   /**
@@ -323,8 +383,32 @@ export const defaultFetcher: HttpFetcher = async (url, init) => {
 
 export class DocumentDiscoveryRunner {
   private boardCache: BseBoardRow[] | null = null;
-  /** SEBI listings fetched this cycle, keyed by listing URL (one GET each). */
-  private readonly sebiListings = new Map<string, SebiListingRow[]>();
+  /**
+   * SEBI listings fetched this cycle, keyed by listing URL (one GET each).
+   *
+   * H-3: the value may be the literal 'failed'. It used to be `[]` on an HTTP
+   * error, which is indistinguishable from "SEBI listed nothing" — so the first
+   * IPO recorded `SEBI:failed:http_error` and every later IPO in the same cycle
+   * recorded `SEBI:not_listed` about a request that was never made. That is not
+   * a cache miss, it is an audit trail that lies.
+   */
+  private readonly sebiListings = new Map<string, SebiListingRow[] | 'failed'>();
+  /**
+   * Investor pages fetched this cycle, keyed by URL (M-d). The company rung is
+   * driven per DOCUMENT TYPE but the pages are per ISSUER, so without this the
+   * same three URLs were re-fetched for every due type — four GETs of
+   * `skyways-air.in/investors` in one observed cycle.
+   */
+  private readonly companyPages = new Map<string, { status: number; html: string }>();
+  /** Escalation GETs spent per IPO this cycle (M-d). */
+  private readonly escalationGets = new Map<string, number>();
+  /**
+   * Per-try lines for the SHARED board fetch (F-1). The board is fetched once
+   * per cycle for the whole market, so its retries are recorded here and copied
+   * onto the attempt log of whichever IPO triggered the fetch — the retries stay
+   * visible without being charged to every IPO.
+   */
+  private readonly boardAttempts: FetchAttempt[] = [];
   /** Issuer website learned from a filing cover, so rung 4 costs no extra fetch. */
   private readonly companyUrlByIpo = new Map<string, string>();
   private boardFetched = false;
@@ -339,6 +423,56 @@ export class DocumentDiscoveryRunner {
   private async sleep(ms: number): Promise<void> {
     if (this.deps.sleep) return this.deps.sleep(ms);
     await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  /**
+   * A counted request with the shared 2/4/8 s ladder, logging EVERY try (F-1).
+   *
+   * The ladder was already here; what was missing was the record of it. The
+   * 2026-08-28 run shows a single BSE attempt reading `http 0, ms 6762` — three
+   * real requests and two sleeps, collapsed into one line that looks like one
+   * request that hung for seven seconds. A reviewer reading that log concluded
+   * the retry was not wired. An attempt log that hides the retries cannot be
+   * used to check the retries.
+   *
+   * The FINAL outcome line is still written by the caller with its plain
+   * outcome label, so the F3/F6 coverage logic keeps matching on exact strings.
+   */
+  private async requestWithLadder(
+    url: string,
+    headers: Record<string, string>,
+    ipoKey: string | undefined,
+    source: string,
+    attempts: FetchAttempt[],
+    backoff: readonly number[] = BSE_RETRY_BACKOFF_MS
+  ): Promise<HttpResponse> {
+    let res: HttpResponse = { status: 0, contentType: null, body: Buffer.alloc(0), url };
+    for (let attempt = 0; attempt < backoff.length; attempt++) {
+      const started = Date.now();
+      res = await this.request(url, headers, ipoKey);
+      const ms = Date.now() - started;
+      if (res.status === 200) {
+        if (attempt > 0) {
+          attempts.push({
+            source,
+            http: 200,
+            ms,
+            outcome: `ok_after_retry:try${attempt + 1}of${backoff.length}`,
+            url,
+          });
+        }
+        return res;
+      }
+      attempts.push({
+        source,
+        http: res.status,
+        ms,
+        outcome: `${res.status === 0 ? 'timeout' : 'http_error'}:try${attempt + 1}of${backoff.length}`,
+        url,
+      });
+      if (attempt < backoff.length - 1) await this.sleep(backoff[attempt]);
+    }
+    return res;
   }
 
   /** One counted request. Records the call before returning, success or not. */
@@ -379,11 +513,14 @@ export class DocumentDiscoveryRunner {
     // the whole cycle's BSE coverage for every mainboard IPO at once — strictly
     // worse than losing one IPO's core payload. Observed live on 2026-08-28.
     const boardUrl = `${BSE_API_BASE}IPO_HomePageDetail/w`;
-    let res = await this.request(boardUrl, BSE_HEADERS, '(shared:bse-board)');
-    for (let attempt = 0; res.status !== 200 && attempt < BSE_RETRY_BACKOFF_MS.length - 1; attempt++) {
-      await this.sleep(BSE_RETRY_BACKOFF_MS[attempt]);
-      res = await this.request(boardUrl, BSE_HEADERS, '(shared:bse-board)');
-    }
+    const res = await this.requestWithLadder(
+      boardUrl,
+      BSE_HEADERS,
+      '(shared:bse-board)',
+      'BSE',
+      this.boardAttempts,
+      BSE_RETRY_BACKOFF_MS
+    );
     if (res.status !== 200) {
       logger.warn({ status: res.status }, 'BSE board unavailable this cycle');
       this.boardCache = null;
@@ -413,7 +550,10 @@ export class DocumentDiscoveryRunner {
     let boardRow: BseBoardRow | null = null;
 
     if (ipoNo === null) {
+      const before = this.boardAttempts.length;
       const board = await this.getBoard();
+      // F-1: replay the shared board's per-try lines onto this IPO's log, once.
+      for (const a of this.boardAttempts.slice(before)) attempts.push(a);
       if (!board) {
         attempts.push({ source: 'BSE', http: 0, ms: 0, outcome: 'board_unavailable' });
         return null;
@@ -431,11 +571,14 @@ export class DocumentDiscoveryRunner {
 
     const url = `${BSE_API_BASE}GetMkt_ISSUE_BBS_IPO/w?IPO_NO=${ipoNo}`;
     const started = Date.now();
-    let res = await this.request(url, BSE_HEADERS, ipo.id);
-    for (let attempt = 0; res.status !== 200 && attempt < BSE_RETRY_BACKOFF_MS.length - 1; attempt++) {
-      await this.sleep(BSE_RETRY_BACKOFF_MS[attempt]);
-      res = await this.request(url, BSE_HEADERS, ipo.id);
-    }
+    const res = await this.requestWithLadder(
+      url,
+      BSE_HEADERS,
+      ipo.id,
+      'BSE',
+      attempts,
+      BSE_RETRY_BACKOFF_MS
+    );
     if (res.status !== 200) {
       attempts.push({ source: 'BSE', http: res.status, ms: Date.now() - started, outcome: 'http_error', url });
       return null;
@@ -638,6 +781,7 @@ export class DocumentDiscoveryRunner {
       extractionStatus: 'PENDING',
       isActive: true,
       fileSize: verdict.bytes,
+      sha256: verdict.sha256,
     });
     seenBySha.set(verdict.sha256, { documentId: doc.id, docType });
 
@@ -669,14 +813,21 @@ export class DocumentDiscoveryRunner {
     rungs: string[],
     triedUrls: Set<string>,
     seenBySha: Map<string, { documentId: string; docType: DocumentType }>
-  ): Promise<{ documentId: string; bytes: number } | null> {
+  ): Promise<RungResult> {
+    // H-2: 'a rung could not answer' is tracked separately from 'a rung
+    // answered and this filing is not there'. Any failure makes the whole
+    // escalation `failed`, which is what puts the row in BLOCKED_ALL with its
+    // retry ladder instead of the silent, un-retried NOT_YET_FILED.
+    let anyRungFailed = false;
+
     // ---- Rung 3: SEBI ----------------------------------------------------
     const listingUrl = sebiListingUrlFor(docType);
     if (!listingUrl) {
       rungs.push('SEBI:skipped:not_served_by_sebi');
     } else {
-      const found = await this.trySebi(ipo, docType, listingUrl, attempts, rungs, triedUrls, seenBySha);
-      if (found) return found;
+      const sebi = await this.trySebi(ipo, docType, listingUrl, attempts, rungs, triedUrls, seenBySha);
+      if (isRungFound(sebi)) return sebi;
+      if (sebi === 'failed') anyRungFailed = true;
     }
 
     // ---- Rung 4: the issuer's investor page -------------------------------
@@ -685,16 +836,31 @@ export class DocumentDiscoveryRunner {
     if (!companyUrl) {
       rungs.push('COMPANY:skipped:no_company_url');
     } else {
-      const found = await this.tryCompanyHost(ipo, docType, companyUrl, attempts, rungs, triedUrls, seenBySha);
-      if (found) return found;
+      const company = await this.tryCompanyHost(ipo, docType, companyUrl, attempts, rungs, triedUrls, seenBySha);
+      if (isRungFound(company)) return company;
+      if (company === 'failed') anyRungFailed = true;
     }
 
     // ---- Verifier: Chittorgarh (links only, never a source) ---------------
     if (!ipo.verifierUrl) {
       rungs.push('VERIFIER:skipped:no_verifier_url');
-      return null;
+      return anyRungFailed ? 'failed' : 'absent';
     }
-    return this.tryVerifier(ipo, docType, attempts, rungs, triedUrls, seenBySha);
+    const verifier = await this.tryVerifier(ipo, docType, attempts, rungs, triedUrls, seenBySha);
+    if (isRungFound(verifier)) return verifier;
+    if (verifier === 'failed') anyRungFailed = true;
+    return anyRungFailed ? 'failed' : 'absent';
+  }
+
+  /**
+   * Spend one escalation GET from this IPO's per-cycle budget (M-d).
+   * Returns false when the budget is exhausted; the caller records the reason.
+   */
+  private spendEscalationGet(ipoId: string): boolean {
+    const spent = this.escalationGets.get(ipoId) ?? 0;
+    if (spent >= ESCALATION_GET_BUDGET_PER_IPO) return false;
+    this.escalationGets.set(ipoId, spent + 1);
+    return true;
   }
 
   /** Rung 3. Listing (cached per cycle) to row match to detail page to PDF. */
@@ -706,9 +872,21 @@ export class DocumentDiscoveryRunner {
     rungs: string[],
     triedUrls: Set<string>,
     seenBySha: Map<string, { documentId: string; docType: DocumentType }>
-  ): Promise<{ documentId: string; bytes: number } | null> {
-    let rows = this.sebiListings.get(listingUrl);
+  ): Promise<RungResult> {
+    const cached = this.sebiListings.get(listingUrl);
+    // H-3: a cached FAILURE is reported as a failure, for every IPO in the
+    // cycle. It is still cached — one 503 should not become one request per IPO
+    // — but the later IPOs now say what actually happened.
+    if (cached === 'failed') {
+      rungs.push('SEBI:failed:cached_http_error');
+      return 'failed';
+    }
+    let rows = cached;
     if (rows === undefined) {
+      if (!this.spendEscalationGet(ipo.id)) {
+        rungs.push('SEBI:skipped:budget');
+        return 'absent';
+      }
       const started = Date.now();
       const res = await this.request(listingUrl, SEBI_HEADERS, ipo.id);
       if (res.status !== 200) {
@@ -720,8 +898,8 @@ export class DocumentDiscoveryRunner {
           url: listingUrl,
         });
         rungs.push('SEBI:failed:http_error');
-        this.sebiListings.set(listingUrl, []);
-        return null;
+        this.sebiListings.set(listingUrl, 'failed');
+        return 'failed';
       }
       rows = parseSebiListing(res.body.toString('utf8'));
       this.sebiListings.set(listingUrl, rows);
@@ -737,9 +915,13 @@ export class DocumentDiscoveryRunner {
     const row = matchSebiRow(rows, ipo.companyName, docType);
     if (!row) {
       rungs.push('SEBI:not_listed');
-      return null;
+      return 'absent';
     }
 
+    if (!this.spendEscalationGet(ipo.id)) {
+      rungs.push('SEBI:skipped:budget');
+      return 'absent';
+    }
     const detailStarted = Date.now();
     const detail = await this.request(row.detailUrl, SEBI_HEADERS, ipo.id);
     if (detail.status !== 200) {
@@ -751,7 +933,7 @@ export class DocumentDiscoveryRunner {
         url: row.detailUrl,
       });
       rungs.push('SEBI:failed:detail_http_error');
-      return null;
+      return 'failed';
     }
 
     const pdfUrl = parseSebiDetailPdfUrl(detail.body.toString('utf8'));
@@ -763,13 +945,15 @@ export class DocumentDiscoveryRunner {
         outcome: 'no_pdf_on_detail_page',
         url: row.detailUrl,
       });
+      // SEBI listed the filing and its detail page carried no PDF: the page
+      // answered, so this is a failure of the SOURCE, not evidence of absence.
       rungs.push('SEBI:failed:no_pdf_on_detail_page');
-      return null;
+      return 'failed';
     }
 
     if (triedUrls.has(pdfUrl)) {
       rungs.push('SEBI:skipped:already_tried');
-      return null;
+      return 'absent';
     }
     triedUrls.add(pdfUrl);
 
@@ -781,10 +965,48 @@ export class DocumentDiscoveryRunner {
       seenBySha
     );
     rungs.push(stored ? 'SEBI:found' : 'SEBI:failed:rejected');
-    return stored;
+    // A listed filing whose download or verification failed is a failure, not
+    // an absence — it exists, we could not get it.
+    return stored ?? 'failed';
   }
 
-  /** Rung 4. At most three GETs against the issuer's own host (R12). */
+  /**
+   * One investor page, fetched at most once per CYCLE (M-d).
+   *
+   * The rung runs per document type but the pages are per issuer, so the
+   * un-cached version fetched the same URL once per due type — four GETs of one
+   * investor page in the 2026-08-28 run, and up to 27 for an IPO with nine due
+   * types. The cache also means a 404 is learned once.
+   */
+  private async fetchCompanyPage(
+    ipo: DiscoveryIpo,
+    pageUrl: string,
+    attempts: FetchAttempt[]
+  ): Promise<{ status: number; html: string } | 'budget'> {
+    const cached = this.companyPages.get(pageUrl);
+    if (cached) return cached;
+    if (!this.spendEscalationGet(ipo.id)) return 'budget';
+
+    const started = Date.now();
+    const res = await this.request(pageUrl, BROWSER_PAGE_HEADERS, ipo.id);
+    const page = {
+      status: res.status,
+      html: res.status === 200 ? res.body.toString('utf8') : '',
+    };
+    this.companyPages.set(pageUrl, page);
+    if (res.status !== 200) {
+      attempts.push({
+        source: 'COMPANY',
+        http: res.status,
+        ms: Date.now() - started,
+        outcome: 'http_error',
+        url: pageUrl,
+      });
+    }
+    return page;
+  }
+
+  /** Rung 4. At most three page GETs per issuer per CYCLE (R12 + M-d). */
   private async tryCompanyHost(
     ipo: DiscoveryIpo,
     docType: DocumentType,
@@ -793,22 +1015,25 @@ export class DocumentDiscoveryRunner {
     rungs: string[],
     triedUrls: Set<string>,
     seenBySha: Map<string, { documentId: string; docType: DocumentType }>
-  ): Promise<{ documentId: string; bytes: number } | null> {
+  ): Promise<RungResult> {
+    let anyPageFailed = false;
+    let anyPageAnswered = false;
     for (const pageUrl of companyInvestorUrls(companyUrl)) {
       const started = Date.now();
-      const res = await this.request(pageUrl, BROWSER_PAGE_HEADERS, ipo.id);
-      if (res.status !== 200) {
-        attempts.push({
-          source: 'COMPANY',
-          http: res.status,
-          ms: Date.now() - started,
-          outcome: 'http_error',
-          url: pageUrl,
-        });
+      const page = await this.fetchCompanyPage(ipo, pageUrl, attempts);
+      if (page === 'budget') {
+        rungs.push('COMPANY:skipped:budget');
+        return anyPageFailed ? 'failed' : 'absent';
+      }
+      if (page.status !== 200) {
+        // A 404 on `/investor-relations` is not a failure — most issuers simply
+        // do not have that path. Only a server error or a transport failure is.
+        if (page.status === 0 || page.status >= 500) anyPageFailed = true;
         continue;
       }
+      anyPageAnswered = true;
 
-      const links = parseCompanyHostLinks(res.body.toString('utf8'), pageUrl).filter(
+      const links = parseCompanyHostLinks(page.html, pageUrl).filter(
         (l) =>
           l.docType === docType &&
           !triedUrls.has(l.url) &&
@@ -839,10 +1064,25 @@ export class DocumentDiscoveryRunner {
           rungs.push('COMPANY:found');
           return stored;
         }
+        // The page linked this filing and the download failed: it exists.
+        anyPageFailed = true;
       }
     }
-    rungs.push('COMPANY:failed:no_usable_link');
-    return null;
+    // H-2: three outcomes, three labels, because they are three different
+    // facts and only two of them are failures:
+    //   a link we could not download        -> failed  (the filing exists)
+    //   no investor page answered at all    -> failed  (we learned nothing)
+    //   a page answered and does not carry it -> absent (real evidence)
+    if (anyPageFailed) {
+      rungs.push('COMPANY:failed:no_usable_link');
+      return 'failed';
+    }
+    if (!anyPageAnswered) {
+      rungs.push('COMPANY:failed:no_page');
+      return 'failed';
+    }
+    rungs.push('COMPANY:no_link');
+    return 'absent';
   }
 
   /**
@@ -858,8 +1098,12 @@ export class DocumentDiscoveryRunner {
     rungs: string[],
     triedUrls: Set<string>,
     seenBySha: Map<string, { documentId: string; docType: DocumentType }>
-  ): Promise<{ documentId: string; bytes: number } | null> {
+  ): Promise<RungResult> {
     const verifierUrl = ipo.verifierUrl as string;
+    if (!this.spendEscalationGet(ipo.id)) {
+      rungs.push('VERIFIER:skipped:budget');
+      return 'absent';
+    }
     const started = Date.now();
     const res = await this.request(verifierUrl, BROWSER_PAGE_HEADERS, ipo.id);
     if (res.status !== 200) {
@@ -871,7 +1115,7 @@ export class DocumentDiscoveryRunner {
         url: verifierUrl,
       });
       rungs.push('VERIFIER:failed:http_error');
-      return null;
+      return 'failed';
     }
 
     const links = extractVerifierLinks(res.body.toString('utf8'), verifierUrl, triedUrls).filter(
@@ -885,13 +1129,10 @@ export class DocumentDiscoveryRunner {
       url: verifierUrl,
     });
 
+    let anyLinkFailed = false;
     for (const link of links) {
       triedUrls.add(link.url);
-      const source: DiscoveredDocument['source'] = link.url.includes('sebi.gov.in')
-        ? 'SEBI'
-        : link.url.includes('bseindia')
-          ? 'BSE'
-          : 'NSE';
+      const source = sourceOfDocumentUrl(link.url);
       const stored = await this.tryStoreCandidate(
         { type: docType, url: link.url, source, title: link.text },
         ipo,
@@ -903,9 +1144,12 @@ export class DocumentDiscoveryRunner {
         rungs.push('VERIFIER:found_via_corrected_link');
         return stored;
       }
+      // The verifier pointed at an exchange URL and that download failed. The
+      // filing exists; we could not fetch it.
+      anyLinkFailed = true;
     }
-    rungs.push('VERIFIER:no_new_link');
-    return null;
+    rungs.push(anyLinkFailed ? 'VERIFIER:failed:corrected_link_failed' : 'VERIFIER:no_new_link');
+    return anyLinkFailed ? 'failed' : 'absent';
   }
 
   /**
@@ -937,6 +1181,7 @@ export class DocumentDiscoveryRunner {
       notYetFiled: [],
       blocked: [],
       notApplicable: plan.toMarkNotApplicable,
+      superseded: plan.toMarkSuperseded,
       leadManagers: [],
       attempts,
       networkCalls: 0,
@@ -946,6 +1191,18 @@ export class DocumentDiscoveryRunner {
     for (const docType of plan.toMarkNotApplicable) {
       const row = await this.deps.store.ensureRow(ipo.id, docType);
       await this.deps.store.update(row.id, { state: 'NOT_APPLICABLE', nextRetryAt: null });
+    }
+
+    // F-3: close the hunt for drafts a later filing has replaced. Also no
+    // network, and it clears any BLOCKED_ALL that was alerting nightly about a
+    // document nobody needs any more.
+    for (const docType of plan.toMarkSuperseded) {
+      const row = await this.deps.store.ensureRow(ipo.id, docType);
+      await this.deps.store.update(row.id, {
+        state: 'SUPERSEDED',
+        nextRetryAt: null,
+        blockedSinceAt: null,
+      });
     }
 
     if (plan.skipIpo) {
@@ -991,11 +1248,23 @@ export class DocumentDiscoveryRunner {
     /** True when every due type now has at least one candidate link. */
     const allDueCovered = () => plan.due.every((t) => (discovered.get(t)?.length ?? 0) > 0);
 
+    // Nothing to FETCH is not the same as nothing to DO. A cycle whose only
+    // work is bookkeeping — marking a superseded draft or a not-applicable type
+    // — has already done it above, and must not then go and ask an exchange
+    // about documents it is not looking for. Caught by the acceptance run: the
+    // cycle after an RHP was found still made a BSE call for an IPO with an
+    // empty due list.
+    if (plan.due.length === 0) {
+      result.networkCalls = this.deps.counter.count(ipo.id) - callsBefore;
+      return result;
+    }
+
     if (!isSme) {
       const bse = await this.fetchBseCore(ipo, attempts);
       if (bse) {
         takeAll(parseBSEDocuments(bse.row));
         result.leadManagers = parseBseParties(bse.row as never).leadManagers;
+        if (result.leadManagers.length > 0) result.leadManagerSource = 'BSE';
         if (ipo.bseIpoNo == null) result.resolvedBseIpoNo = bse.ipoNo;
         if (bse.boardRow?.isFixedPrice) ipo.issue = { ...ipo.issue, isFixedPrice: true };
       }
@@ -1016,6 +1285,17 @@ export class DocumentDiscoveryRunner {
       const issueInfo = await this.fetchNseIssueInfo(ipo, attempts);
       if (!issueInfo) return false;
       takeAll(parseNSEDocuments(issueInfo, ipo.symbol ?? ''));
+      // F-2: BSE is the preferred source for parties, but "preferred" must not
+      // mean "only". When BSE could not answer, NSE's payload is already in
+      // memory and lists the same book running lead managers — discarding them
+      // because a different source was down is a self-inflicted data loss.
+      if (result.leadManagers.length === 0) {
+        const fromNse = parseNseLeadManagers(issueInfo);
+        if (fromNse.length > 0) {
+          result.leadManagers = fromNse;
+          result.leadManagerSource = 'NSE';
+        }
+      }
       return true;
     };
 
@@ -1149,10 +1429,16 @@ export class DocumentDiscoveryRunner {
           triedUrls,
           seenBySha
         );
-        if (escalated) {
+        if (isRungFound(escalated)) {
           documentId = escalated.documentId;
           bytes = escalated.bytes;
           outcome = 'found';
+        } else if (escalated === 'failed') {
+          // H-2: a rung was asked and could not answer. That is never evidence
+          // that the company has not filed the document, so the row must not
+          // settle as NOT_YET_FILED — it goes to BLOCKED_ALL, which is the state
+          // that carries the retry ladder and the alert.
+          outcome = 'all_sources_failed';
         }
       } else if (needsEscalation) {
         // Downloads are disabled for this run (call-counting / dry mode), so no
@@ -1170,12 +1456,17 @@ export class DocumentDiscoveryRunner {
         rungs.push('VERIFIER:skipped:exchanges_settled_it');
       }
 
-      attempts.push({
+      // F-4: this type's chain line, kept as a reference so the per-row filter
+      // below can keep THIS one and drop the other types'. Without the identity
+      // check, `!a.url` matched every CHAIN entry in the cycle and each row's
+      // last_attempt carried the rung chains of every other document type.
+      const chainAttempt: FetchAttempt = {
         source: 'CHAIN',
         http: 0,
         ms: 0,
         outcome: `rungs[${docType}]: ${rungs.join(' -> ')}`,
-      });
+      };
+      attempts.push(chainAttempt);
 
       // G4 guard: BLOCKED_ALL asserts that every rung was consulted. If the
       // chain somehow ran short, that is a bug in the chain, not evidence that
@@ -1205,7 +1496,15 @@ export class DocumentDiscoveryRunner {
         // exchange URLs, so every SEBI / COMPANY / VERIFIER attempt was dropped
         // from the persisted row — deleting the audit trail from precisely the
         // BLOCKED_ALL rows whose whole value is that trail.
-        lastAttempt: attempts.filter((a) => !a.url || triedUrls.has(a.url) || !DOC_URL_RE.test(a.url)),
+        //
+        // F-4: CHAIN lines are matched by IDENTITY, not by "has no url" — every
+        // type's chain line lacks a url, so the old predicate put all of them on
+        // every row.
+        lastAttempt: attempts.filter((a) =>
+          a.source === 'CHAIN'
+            ? a === chainAttempt
+            : !a.url || triedUrls.has(a.url) || !DOC_URL_RE.test(a.url)
+        ),
       };
       if (documentId) patch.documentId = documentId;
       await this.deps.store.update(stateRow.id, patch);

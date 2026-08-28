@@ -1,24 +1,7 @@
 {
-  "takenAt": "2026-08-28T11:58:26.565Z",
-  "note": "Measured on a database built by replaying the journal into an EMPTY schema. After migration 0036 journaled the eight previously-missing values, this is 0.",
-  "liveOnJournalBuiltDb": [
-    "DRHP",
-    "RHP",
-    "PROSPECTUS",
-    "ADDENDUM",
-    "PRICE_BAND_AD",
-    "CORRIGENDUM",
-    "BASIS_OF_ALLOTMENT_AD",
-    "BASIS_OF_ALLOTMENT",
-    "RATIOS_BASIS_ISSUE_PRICE",
-    "BIDDING_CENTERS",
-    "SAMPLE_APPLICATION_FORMS",
-    "SECURITY_PARAMS_PRE_ANCHOR",
-    "SECURITY_PARAMS_POST_ANCHOR",
-    "ANCHOR_ALLOCATION_REPORT",
-    "ASBA_PROCESSING_CIRCULAR"
-  ],
-  "declaredInSchemaTs": [
+  "generatedAt": "2026-08-28T13:37:14.719Z",
+  "note": "Values declared in schema.ts vs values present on the journal-built database. 0036 folded these into the journal; before it they existed only in an unapplied _repair/ file.",
+  "declared": [
     "DRHP",
     "RHP",
     "PROSPECTUS",
@@ -35,5 +18,23 @@
     "CORRIGENDUM",
     "BASIS_OF_ALLOTMENT_AD"
   ],
-  "missing": []
+  "present": [
+    "PRICE_BAND_AD",
+    "CORRIGENDUM",
+    "BASIS_OF_ALLOTMENT_AD",
+    "BASIS_OF_ALLOTMENT",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "BIDDING_CENTERS",
+    "SAMPLE_APPLICATION_FORMS",
+    "SECURITY_PARAMS_PRE_ANCHOR",
+    "SECURITY_PARAMS_POST_ANCHOR",
+    "ANCHOR_ALLOCATION_REPORT",
+    "ASBA_PROCESSING_CIRCULAR",
+    "DRHP",
+    "RHP",
+    "PROSPECTUS",
+    "ADDENDUM"
+  ],
+  "missing": [],
+  "extra": []
 }

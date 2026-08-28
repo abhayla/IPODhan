@@ -1,9 +1,9 @@
 {
+  "generatedAt": "2026-08-28T13:36:42.883Z",
+  "note": "Journal replayed into an empty schema on 2026-08-28 (round 4). DROP SCHEMA public + drizzle, CREATE SCHEMA public, then drizzle-kit migrate.",
   "appliedMigrations": 20,
   "journalEntries": 20,
   "tables": 17,
-  "leftoverBvRows": 0,
-  "iposRowCount": 0,
   "documentTypeValues": [
     "DRHP",
     "RHP",
@@ -21,7 +21,7 @@
     "ANCHOR_ALLOCATION_REPORT",
     "ASBA_PROCESSING_CIRCULAR"
   ],
-  "documentFetchStatusValues": [
+  "documentFetchStateEnum": [
     "WANTED",
     "NOT_YET_FILED",
     "FOUND",
@@ -37,70 +37,17 @@
     "company_website",
     "verifier_url"
   ],
-  "documentFetchStateColumns": [
-    {
-      "column_name": "id",
-      "udt_name": "uuid"
-    },
-    {
-      "column_name": "ipo_id",
-      "udt_name": "uuid"
-    },
-    {
-      "column_name": "doc_type",
-      "udt_name": "document_type"
-    },
-    {
-      "column_name": "state",
-      "udt_name": "document_fetch_status"
-    },
-    {
-      "column_name": "document_id",
-      "udt_name": "uuid"
-    },
-    {
-      "column_name": "attempts",
-      "udt_name": "int4"
-    },
-    {
-      "column_name": "last_attempt_at",
-      "udt_name": "timestamp"
-    },
-    {
-      "column_name": "next_retry_at",
-      "udt_name": "timestamp"
-    },
-    {
-      "column_name": "last_attempt",
-      "udt_name": "jsonb"
-    },
-    {
-      "column_name": "first_seen_at",
-      "udt_name": "timestamp"
-    },
-    {
-      "column_name": "blocked_since_at",
-      "udt_name": "timestamp"
-    },
-    {
-      "column_name": "extracted_at",
-      "udt_name": "timestamp"
-    },
-    {
-      "column_name": "extractor_version",
-      "udt_name": "varchar"
-    },
-    {
-      "column_name": "filing_date",
-      "udt_name": "date"
-    },
-    {
-      "column_name": "created_at",
-      "udt_name": "timestamp"
-    },
-    {
-      "column_name": "updated_at",
-      "udt_name": "timestamp"
-    }
+  "documentsColumns": [
+    "file_size",
+    "id",
+    "ipo_id",
+    "sha256",
+    "title",
+    "type",
+    "uploaded_at",
+    "url"
+  ],
+  "documentsSha256Index": [
+    "idx_documents_sha256"
   ]
 }

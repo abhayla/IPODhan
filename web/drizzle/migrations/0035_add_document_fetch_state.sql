@@ -58,6 +58,18 @@ ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "company_website" varchar(255);
 --> statement-breakpoint
 ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "verifier_url" varchar(512);
 --> statement-breakpoint
+-- T-403 W-1: where the dedup rule actually lives.
+--
+-- The runner computes a sha256 for every verified download and uses it to spot
+-- the same bytes arriving from two exchanges under two labels (matrix E7/R2 —
+-- Skyways' BSE price-band advertisement and NSE ratios zip are byte-identical
+-- at 6,585,368 bytes). That hash was per-run state and nothing wrote it down,
+-- so the rule died with the process and no query could ask "are these two rows
+-- the same filing?". char(64): a sha256 hex digest is exactly 64 characters.
+ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "sha256" char(64);
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_documents_sha256" ON "documents" USING btree ("sha256");
+--> statement-breakpoint
 
 ALTER TYPE "document_type" ADD VALUE IF NOT EXISTS 'PRICE_BAND_AD';
 --> statement-breakpoint
