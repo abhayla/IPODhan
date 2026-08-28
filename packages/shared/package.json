@@ -21,7 +21,8 @@
     "./utils/company-name-similarity": "./src/utils/company-name-similarity.ts",
     "./utils/registrar-matcher": "./src/utils/registrar-matcher.ts",
     "./utils/offering-type": "./src/utils/offering-type.ts",
-    "./errors/db-cause": "./src/errors/db-cause.ts"
+    "./errors/db-cause": "./src/errors/db-cause.ts",
+    "./repositories/document-fetch-state-repository": "./src/repositories/document-fetch-state-repository.ts"
   },
   "scripts": {
     "build": "tsc",

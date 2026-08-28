@@ -61,6 +61,39 @@ export const documentTypeEnum = pgEnum('document_type', [
   'SECURITY_PARAMS_POST_ANCHOR',
   'ANCHOR_ALLOCATION_REPORT',
   'ASBA_PROCESSING_CIRCULAR',
+  // T-403 (lifecycle-plan E14): three filings that previously had nowhere to go.
+  // The price-band advertisement and the corrigendum were both being stored as
+  // ADDENDUM, which loses the corrigendum's date precedence over the RHP and
+  // loses the price-band ad entirely; the basis-of-allotment ADVERTISEMENT is a
+  // distinct document from the existing BASIS_OF_ALLOTMENT.
+  'PRICE_BAND_AD',
+  'CORRIGENDUM',
+  'BASIS_OF_ALLOTMENT_AD',
+]);
+
+/**
+ * Per-(IPO, document type) fetch state — T-403 WP B, matrix §7.1 verbatim.
+ *
+ * WANTED         due at this stage, not yet looked for (or looked for and still open)
+ * NOT_YET_FILED  the exchange ANSWERED and the field/title was empty. NOT a failure —
+ *                the filing simply does not exist yet. Retried next cycle.
+ * FOUND          link found AND the download passed verification (matrix §3).
+ * EXTRACTED      WP C read it. Terminal for the live cycle.
+ * EXTRACT_FAILED WP C failed 3x. No automatic retry until extractor_version bumps.
+ * BLOCKED_ALL    every source failed. P2 alert; retried every cycle for 24h then 6-hourly.
+ * SUPERSEDED     a newer filing of a superseding type replaced this one (by filing_date).
+ * NOT_APPLICABLE this type cannot exist for this issue (e.g. a price band ad on a
+ *                fixed-price issue) — never retried (R9).
+ */
+export const documentFetchStateEnum = pgEnum('document_fetch_state', [
+  'WANTED',
+  'NOT_YET_FILED',
+  'FOUND',
+  'EXTRACTED',
+  'EXTRACT_FAILED',
+  'BLOCKED_ALL',
+  'SUPERSEDED',
+  'NOT_APPLICABLE',
 ]);
 
 export const exchangeEnum = pgEnum('exchange', ['NSE', 'BSE', 'BOTH']);
@@ -519,6 +552,76 @@ export const documents = pgTable(
 
     // Keep URL unique globally to prevent exact duplicates
     uniqueUrl: unique('unique_url').on(table.url),
+  })
+);
+
+// ==================== TABLE 5b: DOCUMENT_FETCH_STATE (T-403 WP B) ====================
+
+/**
+ * One row per (ipo_id, doc_type): what we WANT, what we have, and what happened.
+ *
+ * Why a new table rather than a column on `documents`: `documents` only has rows
+ * for things already FOUND, so "wanted but not filed yet", "blocked on every
+ * source" and "not applicable to this issue" have nowhere to live — which is why
+ * the old discovery job had no memory and re-fetched the same NSE payload every
+ * day (matrix §7.1).
+ *
+ * `last_attempt` is the per-run attempt log the admin page and the nightly audit
+ * read, e.g.
+ *   [{"source":"BSE","http":200,"ms":812,"outcome":"no_link"},
+ *    {"source":"NSE","http":0,"ms":15000,"outcome":"timeout"}]
+ */
+export const documentFetchState = pgTable(
+  'document_fetch_state',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    docType: documentTypeEnum('doc_type').notNull(),
+    state: documentFetchStateEnum('state').notNull().default('WANTED'),
+
+    // Set once the document is FOUND. ON DELETE SET NULL, not CASCADE: purging a
+    // documents row must not erase the memory that we already looked for it.
+    documentId: uuid('document_id').references(() => documents.id, {
+      onDelete: 'set null',
+    }),
+
+    attempts: integer('attempts').default(0).notNull(),
+    lastAttemptAt: timestamp('last_attempt_at'),
+    nextRetryAt: timestamp('next_retry_at'),
+    /** Every source tried in the last run, in order (see the example above). */
+    lastAttempt: jsonb('last_attempt'),
+
+    firstSeenAt: timestamp('first_seen_at').defaultNow().notNull(),
+    /** When BLOCKED_ALL was first entered — drives the 24h -> 6h retry ladder (§7.3). */
+    blockedSinceAt: timestamp('blocked_since_at'),
+    extractedAt: timestamp('extracted_at'),
+    extractorVersion: varchar('extractor_version', { length: 50 }),
+
+    /**
+     * The date printed ON the document. Supersession is decided by this, never by
+     * fetch order — a late-discovered IPO fetches its filings newest-first and an
+     * older filing must not overwrite a newer one (lifecycle-plan E1/E8).
+     */
+    filingDate: date('filing_date'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    // One state row per (IPO, doc type) — the identity the whole machine is keyed on.
+    uniqueStatePerIpoType: unique('unique_doc_fetch_state_per_ipo_type').on(
+      table.ipoId,
+      table.docType
+    ),
+    stateIdx: index('idx_document_fetch_state_state').on(table.state),
+    // The cycle's hot query: "which rows are due to be retried now?"
+    nextRetryIdx: index('idx_document_fetch_state_next_retry').on(
+      table.state,
+      table.nextRetryAt
+    ),
+    ipoIdx: index('idx_document_fetch_state_ipo').on(table.ipoId),
   })
 );
 
