@@ -1,0 +1,155 @@
+// Mutation-proof self-tests for scripts/lib/document-state-checks.mjs (T-403).
+//
+// Imports the ACTUAL predicates — not a re-implementation — so weakening or
+// deleting a check turns its fixture RED. Each check has a fixture matching the
+// failure SHAPE it exists to catch (which MUST fail) and a clean fixture (which
+// MUST pass). Run: node --test scripts/tests/document-state-checks.test.mjs
+
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  checkBlockedAllAge,
+  checkFoundNotExtracted,
+  checkLiveIpoHasStateRows,
+  checkExtractFailed,
+  checkLeadManagerCount,
+  countBsePayloadLeadManagers,
+  BLOCKED_ALL_MAX_HOURS,
+  FOUND_UNREAD_MAX_HOURS,
+} from '../lib/document-state-checks.mjs';
+
+const NOW = '2026-08-28T06:00:00Z';
+const hoursAgo = (h) => new Date(Date.parse(NOW) - h * 3_600_000).toISOString();
+
+// --- 60: BLOCKED_ALL > 24h --------------------------------------------------
+
+test('60 FAILs a document blocked on every source for over 24h', () => {
+  const violation = checkBlockedAllAge(
+    { docType: 'RHP', state: 'BLOCKED_ALL', blockedSinceAt: hoursAgo(30), lastAttemptAt: hoursAgo(0.2) },
+    NOW
+  );
+  assert.match(violation, /BLOCKED_ALL for 30\.0h/);
+});
+
+test('60b ages from blockedSinceAt, NOT lastAttemptAt', () => {
+  // A row retried every 30 min has a fresh last-attempt forever, so measuring
+  // from it would mean this check could never fire. That is the mutation.
+  const row = { docType: 'RHP', state: 'BLOCKED_ALL', blockedSinceAt: hoursAgo(72), lastAttemptAt: hoursAgo(0.1) };
+  assert.ok(checkBlockedAllAge(row, NOW), 'a 3-day outage must fail despite a fresh attempt');
+});
+
+test('60c PASSes a fresh block and any non-blocked state', () => {
+  assert.equal(
+    checkBlockedAllAge({ docType: 'RHP', state: 'BLOCKED_ALL', blockedSinceAt: hoursAgo(2) }, NOW),
+    null
+  );
+  assert.equal(checkBlockedAllAge({ docType: 'RHP', state: 'FOUND' }, NOW), null);
+  assert.equal(checkBlockedAllAge({ docType: 'RHP', state: 'NOT_YET_FILED' }, NOW), null);
+  assert.equal(BLOCKED_ALL_MAX_HOURS, 24);
+});
+
+// --- 61: FOUND but unread > 48h --------------------------------------------
+
+test('61 FAILs a document found over 48h ago and never extracted', () => {
+  const violation = checkFoundNotExtracted(
+    { docType: 'RHP', state: 'FOUND', lastAttemptAt: hoursAgo(60) },
+    NOW,
+    true
+  );
+  assert.match(violation, /FOUND but unread for 60\.0h/);
+  assert.equal(FOUND_UNREAD_MAX_HOURS, 48);
+});
+
+test('61b is INERT until the extractor is wired (WP C)', () => {
+  // While extraction is off, FOUND is terminal by design — firing here would
+  // fail every row on day one and train everyone to ignore the check.
+  assert.equal(
+    checkFoundNotExtracted({ docType: 'RHP', state: 'FOUND', lastAttemptAt: hoursAgo(500) }, NOW, false),
+    null
+  );
+});
+
+test('61c PASSes a recently found document and an already-extracted one', () => {
+  assert.equal(
+    checkFoundNotExtracted({ docType: 'RHP', state: 'FOUND', lastAttemptAt: hoursAgo(3) }, NOW, true),
+    null
+  );
+  assert.equal(
+    checkFoundNotExtracted({ docType: 'RHP', state: 'EXTRACTED', lastAttemptAt: hoursAgo(500) }, NOW, true),
+    null
+  );
+});
+
+// --- 62: a live IPO with no state rows --------------------------------------
+
+test('62 FAILs an OPEN IPO with zero state rows — the job forgot it', () => {
+  const violation = checkLiveIpoHasStateRows({
+    companyName: 'Skyways Air Services Ltd.',
+    status: 'OPEN',
+    stateRowCount: 0,
+  });
+  assert.match(violation, /0 document_fetch_state rows/);
+});
+
+test('62b covers UPCOMING and CLOSED too — a DRHP and a Prospectus are due there', () => {
+  for (const status of ['UPCOMING', 'CLOSED']) {
+    assert.ok(checkLiveIpoHasStateRows({ companyName: 'X', status, stateRowCount: 0 }));
+  }
+});
+
+test('62c PASSes a live IPO with rows, and ignores LISTED/WITHDRAWN', () => {
+  assert.equal(checkLiveIpoHasStateRows({ companyName: 'X', status: 'OPEN', stateRowCount: 6 }), null);
+  assert.equal(checkLiveIpoHasStateRows({ companyName: 'X', status: 'LISTED', stateRowCount: 0 }), null);
+  assert.equal(checkLiveIpoHasStateRows({ companyName: 'X', status: 'WITHDRAWN', stateRowCount: 0 }), null);
+});
+
+// --- 63: EXTRACT_FAILED (WARN) ----------------------------------------------
+
+test('63 WARNs on EXTRACT_FAILED and names the extractor version', () => {
+  const violation = checkExtractFailed({ docType: 'RHP', state: 'EXTRACT_FAILED', extractorVersion: 'v3' });
+  assert.match(violation, /EXTRACT_FAILED/);
+  assert.match(violation, /v3/);
+  assert.equal(checkExtractFailed({ docType: 'RHP', state: 'FOUND' }), null);
+});
+
+// --- 64: BRLM count vs the BSE payload --------------------------------------
+
+test('64 FAILs when fewer lead managers are stored than BSE lists (the F17 class)', () => {
+  // The exact live defect: Skyways' payload lists 3, the old parser stored 2,
+  // and nothing compared the two numbers, so it was invisible for as long as it
+  // existed. This check is the detection upgrade for that class.
+  const violation = checkLeadManagerCount({
+    companyName: 'Skyways Air Services Ltd.',
+    storedLeadManagerCount: 2,
+    bsePayloadLeadManagerCount: 3,
+  });
+  assert.match(violation, /2 lead manager\(s\) stored but the BSE payload lists 3/);
+});
+
+test('64b PASSes an exact match, and does NOT flag storing MORE than BSE lists', () => {
+  assert.equal(
+    checkLeadManagerCount({ companyName: 'X', storedLeadManagerCount: 3, bsePayloadLeadManagerCount: 3 }),
+    null
+  );
+  // Other sources legitimately add managers BSE omits.
+  assert.equal(
+    checkLeadManagerCount({ companyName: 'X', storedLeadManagerCount: 4, bsePayloadLeadManagerCount: 3 }),
+    null
+  );
+  // No BSE payload to compare against is not a violation.
+  assert.equal(
+    checkLeadManagerCount({ companyName: 'X', storedLeadManagerCount: 0, bsePayloadLeadManagerCount: 0 }),
+    null
+  );
+});
+
+test('64c counts the REAL Skyways payload as 3 lead managers', () => {
+  // Verbatim from api.bseindia.com GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903, 2026-08-28.
+  const brlm = 'Holani Consultants Private Limited^||||||||ipo@holaniconsultants.co.in|Payal Jain';
+  const co =
+    'Shannon Advisors Private Limited^||||||||pavan@shannon.co.in' +
+    '#Dolat Finserv Private Limited^||||||||skyways.ipo@dolatfinserv.com';
+  assert.equal(countBsePayloadLeadManagers(brlm, co), 3);
+  assert.equal(countBsePayloadLeadManagers(brlm, ''), 1);
+  assert.equal(countBsePayloadLeadManagers('', ''), 0);
+});

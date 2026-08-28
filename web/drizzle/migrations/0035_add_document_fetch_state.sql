@@ -26,6 +26,13 @@
 ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "bse_ipo_no" integer;
 --> statement-breakpoint
 
+-- How many lead managers the BSE payload listed at write time. The nightly audit
+-- FAILs when lead_managers is shorter than this — the detection upgrade for the
+-- co-BRLM bug (Skyways: 3 listed, 2 stored), which survived only because nothing
+-- ever compared the two counts.
+ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "bse_payload_lead_manager_count" integer;
+--> statement-breakpoint
+
 ALTER TYPE "document_type" ADD VALUE IF NOT EXISTS 'PRICE_BAND_AD';
 --> statement-breakpoint
 ALTER TYPE "document_type" ADD VALUE IF NOT EXISTS 'CORRIGENDUM';
