@@ -1298,48 +1298,38 @@ export async function recordBseDiscoveryMetadata(
  * Record the document-source hints the discovery chain's later rungs need
  * (T-403 M-6): the issuer's own website and the third-party verifier page.
  *
- * Both live on `ipo_details`, not `ipos`: they are not IPO facts a source
- * competes over, they are pointers this pipeline uses to find filings. Neither
- * is in the field-priority matrix.
- *
  * WHY IT EXISTS. Rung 4 (the issuer's investor page) and the Chittorgarh
- * verifier were unreachable in production before this: nothing in the schema
+ * verifier were unreachable in production before this — nothing in the schema
  * held either URL, so the chain could only ever record
  * `COMPANY:skipped:no_company_url` / `VERIFIER:skipped:no_verifier_url`. Two
  * rungs of the decision tree existed only in tests.
  *
+ * Neither is scraped CONTENT: no source competes over them and neither is in
+ * the field-priority matrix. They are pointers this pipeline uses to find
+ * filings. They still go through the shared write path, like
+ * `recordBseDiscoveryMetadata` — `scraper-write-path.md` and the R0 ratchet
+ * make no exception for bookkeeping.
+ *
  * WRITE-ONCE for `companyWebsite`: it is read off a filing cover, and a later
- * cover should not overwrite a value an admin may have corrected. `verifierUrl`
- * refreshes, because Chittorgarh re-slugs its URLs.
+ * cover must not overwrite a value an admin may have corrected. `verifierUrl`
+ * refreshes, because the source re-slugs its URLs.
  */
 export async function recordDocumentSourceHints(
-  database: typeof db,
+  ipoRepository: IPORepository,
   ipoId: string,
-  hints: { companyWebsite?: string | null; verifierUrl?: string | null }
+  hints: { companyWebsite?: string | null; verifierUrl?: string | null },
+  existing?: { companyWebsite?: string | null }
 ): Promise<void> {
   const website = hints.companyWebsite?.trim() || null;
   const verifier = hints.verifierUrl?.trim() || null;
-  if (!website && !verifier) return;
 
-  await database
-    .insert(ipoDetails)
-    .values({
-      ipoId,
-      companyWebsite: website ? website.slice(0, 255) : null,
-      verifierUrl: verifier ? verifier.slice(0, 512) : null,
-    } as never)
-    .onConflictDoUpdate({
-      target: ipoDetails.ipoId,
-      set: {
-        // COALESCE keeps the first website we ever learned (write-once);
-        // the verifier URL is refreshed each time.
-        companyWebsite: website
-          ? sqlOp`COALESCE(${ipoDetails.companyWebsite}, ${website.slice(0, 255)})`
-          : ipoDetails.companyWebsite,
-        ...(verifier ? { verifierUrl: verifier.slice(0, 512) } : {}),
-        updatedAt: new Date(),
-      } as never,
-    });
+  const patch: Record<string, unknown> = {};
+  // Write-once: only set a website when we do not already hold one.
+  if (website && !existing?.companyWebsite) patch.companyWebsite = website.slice(0, 255);
+  if (verifier) patch.verifierUrl = verifier.slice(0, 512);
+  if (Object.keys(patch).length === 0) return;
 
-  logger.debug({ ipoId, website: Boolean(website), verifier: Boolean(verifier) }, 'Recorded document source hints');
+  patch.updatedAt = new Date();
+  await ipoRepository.update(ipoId, patch as never);
+  logger.debug({ ipoId, website: Boolean(patch.companyWebsite), verifier: Boolean(verifier) }, 'Recorded document source hints');
 }

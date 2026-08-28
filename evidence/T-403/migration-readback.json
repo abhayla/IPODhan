@@ -1,147 +1,27 @@
 {
-  "appliedMigrations": 19,
-  "journalEntries": 19,
+  "appliedMigrations": 20,
+  "journalEntries": 20,
   "tables": 17,
-  "documentFetchStateColumns": [
-    {
-      "column_name": "id",
-      "data_type": "uuid",
-      "udt_name": "uuid",
-      "is_nullable": "NO",
-      "column_default": "gen_random_uuid()"
-    },
-    {
-      "column_name": "ipo_id",
-      "data_type": "uuid",
-      "udt_name": "uuid",
-      "is_nullable": "NO",
-      "column_default": null
-    },
-    {
-      "column_name": "doc_type",
-      "data_type": "USER-DEFINED",
-      "udt_name": "document_type",
-      "is_nullable": "NO",
-      "column_default": null
-    },
-    {
-      "column_name": "state",
-      "data_type": "USER-DEFINED",
-      "udt_name": "document_fetch_status",
-      "is_nullable": "NO",
-      "column_default": "'WANTED'::document_fetch_status"
-    },
-    {
-      "column_name": "document_id",
-      "data_type": "uuid",
-      "udt_name": "uuid",
-      "is_nullable": "YES",
-      "column_default": null
-    },
-    {
-      "column_name": "attempts",
-      "data_type": "integer",
-      "udt_name": "int4",
-      "is_nullable": "NO",
-      "column_default": "0"
-    },
-    {
-      "column_name": "last_attempt_at",
-      "data_type": "timestamp without time zone",
-      "udt_name": "timestamp",
-      "is_nullable": "YES",
-      "column_default": null
-    },
-    {
-      "column_name": "next_retry_at",
-      "data_type": "timestamp without time zone",
-      "udt_name": "timestamp",
-      "is_nullable": "YES",
-      "column_default": null
-    },
-    {
-      "column_name": "last_attempt",
-      "data_type": "jsonb",
-      "udt_name": "jsonb",
-      "is_nullable": "YES",
-      "column_default": null
-    },
-    {
-      "column_name": "first_seen_at",
-      "data_type": "timestamp without time zone",
-      "udt_name": "timestamp",
-      "is_nullable": "NO",
-      "column_default": "now()"
-    },
-    {
-      "column_name": "blocked_since_at",
-      "data_type": "timestamp without time zone",
-      "udt_name": "timestamp",
-      "is_nullable": "YES",
-      "column_default": null
-    },
-    {
-      "column_name": "extracted_at",
-      "data_type": "timestamp without time zone",
-      "udt_name": "timestamp",
-      "is_nullable": "YES",
-      "column_default": null
-    },
-    {
-      "column_name": "extractor_version",
-      "data_type": "character varying",
-      "udt_name": "varchar",
-      "is_nullable": "YES",
-      "column_default": null
-    },
-    {
-      "column_name": "filing_date",
-      "data_type": "date",
-      "udt_name": "date",
-      "is_nullable": "YES",
-      "column_default": null
-    },
-    {
-      "column_name": "created_at",
-      "data_type": "timestamp without time zone",
-      "udt_name": "timestamp",
-      "is_nullable": "NO",
-      "column_default": "now()"
-    },
-    {
-      "column_name": "updated_at",
-      "data_type": "timestamp without time zone",
-      "udt_name": "timestamp",
-      "is_nullable": "NO",
-      "column_default": "now()"
-    }
+  "leftoverBvRows": 0,
+  "iposRowCount": 0,
+  "documentTypeValues": [
+    "DRHP",
+    "RHP",
+    "PROSPECTUS",
+    "ADDENDUM",
+    "PRICE_BAND_AD",
+    "CORRIGENDUM",
+    "BASIS_OF_ALLOTMENT_AD",
+    "BASIS_OF_ALLOTMENT",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "BIDDING_CENTERS",
+    "SAMPLE_APPLICATION_FORMS",
+    "SECURITY_PARAMS_PRE_ANCHOR",
+    "SECURITY_PARAMS_POST_ANCHOR",
+    "ANCHOR_ALLOCATION_REPORT",
+    "ASBA_PROCESSING_CIRCULAR"
   ],
-  "indexes": [
-    "document_fetch_state_pkey",
-    "idx_document_fetch_state_ipo",
-    "idx_document_fetch_state_next_retry",
-    "idx_document_fetch_state_state",
-    "unique_doc_fetch_state_per_ipo_type"
-  ],
-  "constraints": [
-    {
-      "conname": "document_fetch_state_document_id_fkey",
-      "def": "FOREIGN KEY (document_id) REFERENCES documents(id) ON DELETE SET NULL"
-    },
-    {
-      "conname": "document_fetch_state_ipo_id_fkey",
-      "def": "FOREIGN KEY (ipo_id) REFERENCES ipos(id) ON DELETE CASCADE"
-    },
-    {
-      "conname": "document_fetch_state_pkey",
-      "def": "PRIMARY KEY (id)"
-    },
-    {
-      "conname": "unique_doc_fetch_state_per_ipo_type",
-      "def": "UNIQUE (ipo_id, doc_type)"
-    }
-  ],
-  "statusEnumValues": [
+  "documentFetchStatusValues": [
     "WANTED",
     "NOT_YET_FILED",
     "FOUND",
@@ -151,13 +31,76 @@
     "SUPERSEDED",
     "NOT_APPLICABLE"
   ],
-  "documentTypeHasNewValues": [
-    "BASIS_OF_ALLOTMENT_AD",
-    "CORRIGENDUM",
-    "PRICE_BAND_AD"
-  ],
-  "iposNewColumns": [
+  "iposDiscoveryColumns": [
     "bse_ipo_no",
-    "bse_payload_lead_manager_count"
+    "bse_payload_lead_manager_count",
+    "company_website",
+    "verifier_url"
+  ],
+  "documentFetchStateColumns": [
+    {
+      "column_name": "id",
+      "udt_name": "uuid"
+    },
+    {
+      "column_name": "ipo_id",
+      "udt_name": "uuid"
+    },
+    {
+      "column_name": "doc_type",
+      "udt_name": "document_type"
+    },
+    {
+      "column_name": "state",
+      "udt_name": "document_fetch_status"
+    },
+    {
+      "column_name": "document_id",
+      "udt_name": "uuid"
+    },
+    {
+      "column_name": "attempts",
+      "udt_name": "int4"
+    },
+    {
+      "column_name": "last_attempt_at",
+      "udt_name": "timestamp"
+    },
+    {
+      "column_name": "next_retry_at",
+      "udt_name": "timestamp"
+    },
+    {
+      "column_name": "last_attempt",
+      "udt_name": "jsonb"
+    },
+    {
+      "column_name": "first_seen_at",
+      "udt_name": "timestamp"
+    },
+    {
+      "column_name": "blocked_since_at",
+      "udt_name": "timestamp"
+    },
+    {
+      "column_name": "extracted_at",
+      "udt_name": "timestamp"
+    },
+    {
+      "column_name": "extractor_version",
+      "udt_name": "varchar"
+    },
+    {
+      "column_name": "filing_date",
+      "udt_name": "date"
+    },
+    {
+      "column_name": "created_at",
+      "udt_name": "timestamp"
+    },
+    {
+      "column_name": "updated_at",
+      "udt_name": "timestamp"
+    }
   ]
 }

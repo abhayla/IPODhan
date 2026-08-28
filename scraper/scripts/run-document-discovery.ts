@@ -26,13 +26,19 @@
  *   npx tsx scripts/run-document-discovery.ts --evidence-dir=path/to/dir
  *   DATABASE_URL=... npx tsx scripts/run-document-discovery.ts --db --reset
  *
- * `--db` (V4) swaps the in-memory store for the real
- * `DocumentFetchStateRepository` against `DATABASE_URL`. It requires the four
- * acceptance IPO rows to already exist there (matched by company name) and
- * migration 0035 to be applied. NOT EXERCISED as of 2026-08-28: the only
- * credentials this task may use are refused DDL on the available test database,
- * so no database with the 0035 schema was reachable. It is implemented rather
- * than documented-and-missing, which is what the review flagged.
+ * `--db` swaps the in-memory store for the real `DocumentFetchStateRepository`
+ * against `DATABASE_URL`. It requires the four acceptance IPO rows to exist
+ * there (matched by company name) and the journal to have been replayed.
+ * `--reset` clears those four IPOs' state and document rows first, so "run 1"
+ * is a genuine first run — without it the persistent state table makes run 1
+ * cost zero calls and the run-2 assertions pass vacuously.
+ *
+ * EXERCISED: yes, against `ipodhan_test` on 2026-08-28 after replaying the
+ * journal into an empty schema (20/20 entries). See evidence/T-403/db-run/.
+ *
+ * `assertTestDatabase` refuses any --db write unless the database name ends in
+ * `_test`: this harness INSERTs and, with --reset, DELETEs, and `scraper/.env`
+ * points DATABASE_URL at the production host.
  */
 
 import { mkdirSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
@@ -431,9 +437,39 @@ async function main(): Promise<void> {
     },
     {
       id: 'A5',
-      name: 'ESDS: ZERO fallback (non-exchange) calls',
-      pass: run1.fallbackCalls === 0,
-      detail: `${run1.fallbackCalls} non-exchange call(s) in run 1; hosts=${Object.keys(run1.network.byHost).join(', ')}`,
+      // This used to assert ZERO non-exchange calls, which was asserting the
+      // B-1 BUG: the chain never escalated, so SEBI was never called and the
+      // check passed for the wrong reason. The real contract is narrower: a rung
+      // beyond the exchanges is consulted ONLY for a type the exchanges did not
+      // settle, and no document host outside the exchanges + SEBI is ever used.
+      name: 'Fallback rungs are consulted ONLY for types the exchanges did not settle',
+      pass: (() => {
+        const rungLines = run1.results.flatMap((r) =>
+          r.attempts.filter((a) => a.source === 'CHAIN').map((a) => a.outcome)
+        );
+        // A settled type's line must carry ONLY skips after the exchange rung.
+        const settledButEscalated = rungLines.filter(
+          (line) =>
+            line.includes('exchanges_settled_it') &&
+            /(?:SEBI|COMPANY|VERIFIER):(?!skipped)/.test(line)
+        );
+        const nonExchangeHosts = Object.keys(run1.network.byHost).filter(
+          (h) => !EXCHANGE_HOSTS.includes(h)
+        );
+        const onlySebi = nonExchangeHosts.every((h) => h === 'www.sebi.gov.in');
+        return settledButEscalated.length === 0 && onlySebi && rungLines.length > 0;
+      })(),
+      detail: (() => {
+        const nonExchangeHosts = Object.keys(run1.network.byHost).filter(
+          (h) => !EXCHANGE_HOSTS.includes(h)
+        );
+        const escalated = run1.results.flatMap((r) =>
+          r.attempts
+            .filter((a) => a.source === 'CHAIN' && !a.outcome.includes('exchanges_settled_it'))
+            .map((a) => a.outcome.split(':')[0].replace('rungs', ''))
+        );
+        return `non-exchange hosts=[${nonExchangeHosts.join(', ')}] escalated types=${escalated.length}`;
+      })(),
     },
     {
       id: 'A8',

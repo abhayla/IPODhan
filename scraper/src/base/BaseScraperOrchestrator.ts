@@ -512,7 +512,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       const verifierUrl = (validatedIPO as { verifierUrl?: string }).verifierUrl;
       if (upsertedIPOId && verifierUrl) {
         try {
-          await recordDocumentSourceHints(db, upsertedIPOId, { verifierUrl });
+          await recordDocumentSourceHints(this.ipoRepository, upsertedIPOId, { verifierUrl });
         } catch (error) {
           logger.warn(
             { ipoId: upsertedIPOId, error: error instanceof Error ? error.message : String(error) },

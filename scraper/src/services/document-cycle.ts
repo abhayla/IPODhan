@@ -113,10 +113,11 @@ export function deriveIssueShape(row: Record<string, unknown>): IssueShape {
 export async function loadCandidateIpos(): Promise<DiscoveryIpo[]> {
   const result = await db.execute(sql`
     SELECT id, company_name, symbol, segment, status, price_range_min,
-           price_range_max, listing_date, bse_ipo_no
+           price_range_max, listing_date, bse_ipo_no,
+           company_website, verifier_url
       FROM ipos
      WHERE offering_type = 'IPO'
-       AND i.status IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED')
+       AND status IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED')
   `);
   const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<
     string,
@@ -240,9 +241,12 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
       // needs. Non-fatal, and routed through data-persister.
       if (result.learnedCompanyWebsite) {
         try {
-          await recordDocumentSourceHints(db, ipo.id, {
-            companyWebsite: result.learnedCompanyWebsite,
-          });
+          await recordDocumentSourceHints(
+            ipoRepository,
+            ipo.id,
+            { companyWebsite: result.learnedCompanyWebsite },
+            { companyWebsite: ipo.companyWebsite }
+          );
         } catch (error) {
           logger.warn(
             { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },

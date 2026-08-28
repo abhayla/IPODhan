@@ -1,10 +1,10 @@
 {
   "task": "T-403",
-  "ranAt": "2026-08-28T11:57:05.676Z",
+  "ranAt": "2026-08-28T10:46:48.825Z",
   "persistence": "POSTGRES via DATABASE_URL (--db)",
   "downloadsEnabled": true,
   "storeDir": "D:/Abhay/Ventures/IPODhan-backups/prospectus-wpab",
-  "run1Calls": 21,
+  "run1Calls": 20,
   "run2Calls": 0,
   "checks": [
     {
@@ -33,15 +33,15 @@
     },
     {
       "id": "A5",
-      "name": "Fallback rungs are consulted ONLY for types the exchanges did not settle",
+      "name": "ESDS: ZERO fallback (non-exchange) calls",
       "pass": true,
-      "detail": "non-exchange hosts=[www.sebi.gov.in] escalated types=4"
+      "detail": "0 non-exchange call(s) in run 1; hosts=api.bseindia.com, www.nseindia.com, listing.bseindia.com, nsearchives.nseindia.com, www.bseindia.com"
     },
     {
       "id": "A8",
       "name": "No IPO holds the same bytes on disk under two document types (E7/R2)",
       "pass": true,
-      "detail": "0ad71e91-6c63-4f24-b561-082d485d5013: 5 file(s), 1 deduped | 0223abf7-ac2b-46c5-9f31-1427177059ed: 3 file(s), 0 deduped | 599b5365-85ac-4d01-8ac4-fbeb86de8d33: 3 file(s), 1 deduped | 4aeee8b1-a944-4744-9772-47e5e6bd9c4d: 0 file(s), 0 deduped"
+      "detail": "4ba154f7-fa71-41ea-97c1-f9784e707e54: 5 file(s), 1 deduped | e24851a3-9789-4c2f-8c6d-65d79a64748b: 3 file(s), 0 deduped | 1681355c-09b6-4789-8044-883548faa8e6: 3 file(s), 1 deduped | 3f0845bf-cb57-455f-b170-b13f0798abe1: 0 file(s), 0 deduped"
     },
     {
       "id": "A6",

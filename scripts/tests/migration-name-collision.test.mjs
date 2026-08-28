@@ -4,9 +4,15 @@
 // Two halves:
 //   1. Fixture tests over the pure predicates — deleting or weakening the check
 //      turns them red.
-//   2. A LIVE gate over every journaled migration in this repo, so a future
+//   2. A LIVE gate over every JOURNALED migration in this repo, so a future
 //      migration that reintroduces the collision fails here rather than at a
 //      production deploy's migrate step.
+//
+// SCOPE, stated plainly: only migrations listed in meta/_journal.json are
+// checked. Files under `_gated/` and `_repair/` are NOT — they are applied by
+// hand, deliberately outside the journal, so a collision there would surface at
+// apply time in front of the person running it rather than silently in a deploy.
+// If either directory ever becomes auto-applied, this gate must widen with it.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
