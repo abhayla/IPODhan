@@ -36,6 +36,13 @@ import { dirname, join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import pg from 'pg';
 import {
+  checkBlockedAllAge,
+  checkFoundNotExtracted,
+  checkLiveIpoHasStateRows,
+  checkExtractFailed,
+  checkLeadManagerCount,
+} from './lib/document-state-checks.mjs';
+import {
   checkNoUnresolvedConflictOnLiveIpo, HIGH_VALUE_FIELDS, LIVE_STATUSES,
   checkIssueSizeSegmentFloor, checkIssueSizeSharesConsistency,
   checkLotBandSebiWindow, checkCorporateActionShape,
@@ -350,6 +357,85 @@ async function checkF() {
   const cls = classifyConflictNoiseRatio(total, noise);
   if (cls.fail) notify('f_conflict_noise_ratio', 'P2', 'aggregate', 'data_conflicts noise ratio too high', `${noise}/${total} (${(cls.ratio * 100).toFixed(1)}%) unresolved conflicts are noise (empty value2 or value1==value2)`);
   record('f_conflict_noise_ratio', 'unresolved data_conflicts noise ratio < 5%', cls.fail ? 'FAIL' : 'PASS', `${noise}/${total} = ${(cls.ratio * 100).toFixed(1)}%`);
+}
+
+// ---- (m): document_fetch_state — did the document machine do its job? ---------
+// T-403 WP B, decision-matrix 7.4 item 4. Four FAIL-level checks plus one WARN.
+// The most important is m_live_ipo_has_state: every other check reads rows the
+// job wrote, and only that one notices it wrote NONE — i.e. that the whole
+// machine silently stopped.
+async function checkM() {
+  if (!(await tableExists('document_fetch_state'))) {
+    // UNVERIFIABLE, never PASS: a missing table means the audit is BLIND to
+    // documents tonight, which is not the same as documents being healthy.
+    record('m_document_state', 'document_fetch_state checks', 'UNVERIFIABLE',
+      'document_fetch_state table not present (migration 0035 not applied here)');
+    return;
+  }
+
+  const now = new Date().toISOString();
+  // Only meaningful once WP C wires the extractor; until then FOUND is terminal
+  // by design and this check is deliberately inert rather than noisily wrong.
+  const extractionWired = process.env.ENABLE_DRHP_EXTRACTION === 'true';
+
+  const rows = await q(`
+    SELECT s.doc_type, s.state, s.blocked_since_at, s.last_attempt_at, s.first_seen_at,
+           s.extractor_version, i.company_name
+      FROM document_fetch_state s JOIN ipos i ON i.id = s.ipo_id
+     WHERE i.offering_type = 'IPO'
+  `);
+
+  const norm = (r) => ({
+    docType: r.doc_type, state: r.state, blockedSinceAt: r.blocked_since_at,
+    lastAttemptAt: r.last_attempt_at, firstSeenAt: r.first_seen_at,
+    extractorVersion: r.extractor_version, companyName: r.company_name,
+  });
+
+  const blocked = rows.map(norm).map((r) => checkBlockedAllAge(r, now)).filter(Boolean);
+  for (const v of blocked) notify('m_blocked_all_age', 'P2', v, 'Document blocked on every source > 24h', v);
+  record('m_blocked_all_age', 'no document BLOCKED_ALL for more than 24h',
+    blocked.length === 0 ? 'PASS' : 'FAIL', blocked.slice(0, MAX_OFFENDERS).join('; '));
+
+  const unread = rows.map(norm).map((r) => checkFoundNotExtracted(r, now, extractionWired)).filter(Boolean);
+  for (const v of unread) notify('m_found_not_extracted', 'P2', v, 'Document found but never read', v);
+  record('m_found_not_extracted',
+    `no document FOUND-but-unextracted for more than 48h${extractionWired ? '' : ' (inert: extractor not wired)'}`,
+    unread.length === 0 ? 'PASS' : 'FAIL', unread.slice(0, MAX_OFFENDERS).join('; '));
+
+  const failedExtractions = rows.map(norm).map(checkExtractFailed).filter(Boolean);
+  record('m_extract_failed', 'no document stuck in EXTRACT_FAILED (WARN-level)',
+    failedExtractions.length === 0 ? 'PASS' : 'WARN', failedExtractions.slice(0, MAX_OFFENDERS).join('; '));
+
+  const liveIpos = await q(`
+    SELECT i.company_name, i.status, count(s.id)::int AS state_row_count
+      FROM ipos i LEFT JOIN document_fetch_state s ON s.ipo_id = i.id
+     WHERE i.${REAL_IPO} AND i.status IN ('UPCOMING','OPEN','CLOSED')
+     GROUP BY i.id, i.company_name, i.status
+  `);
+  const forgotten = liveIpos
+    .map((r) => checkLiveIpoHasStateRows({ companyName: r.company_name, status: r.status, stateRowCount: r.state_row_count }))
+    .filter(Boolean);
+  for (const v of forgotten) notify('m_live_ipo_has_state', 'P2', v, 'Live IPO has no document state rows', v);
+  record('m_live_ipo_has_state', 'every UPCOMING/OPEN/CLOSED IPO has document_fetch_state rows',
+    forgotten.length === 0 ? 'PASS' : 'FAIL', forgotten.slice(0, MAX_OFFENDERS).join('; '));
+
+  // BRLM count vs the BSE payload (F17). We cannot re-fetch BSE from the audit
+  // (read-only, and it would double the traffic), so the comparison is against
+  // the count the scraper recorded at write time; a row with no recorded payload
+  // count is skipped rather than assumed healthy.
+  const brlm = await q(`
+    SELECT company_name,
+           coalesce(array_length(lead_managers, 1), 0)::int AS stored_count,
+           bse_payload_lead_manager_count::int AS payload_count
+      FROM ipos
+     WHERE ${REAL_IPO} AND bse_payload_lead_manager_count IS NOT NULL
+  `);
+  const short = brlm
+    .map((r) => checkLeadManagerCount({ companyName: r.company_name, storedLeadManagerCount: r.stored_count, bsePayloadLeadManagerCount: r.payload_count }))
+    .filter(Boolean);
+  for (const v of short) notify('m_brlm_count', 'P2', v, 'Fewer lead managers stored than BSE lists', v);
+  record('m_brlm_count', `stored lead managers >= the BSE payload count (${brlm.length} row(s) with a recorded payload count)`,
+    short.length === 0 ? 'PASS' : 'FAIL', short.slice(0, MAX_OFFENDERS).join('; '));
 }
 
 // ---- (g): newest-row age per offering_type ------------------------------------
@@ -709,6 +795,7 @@ async function main() {
   await checkK();
   await checkL();
   await checkJ();
+  await checkM();
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');

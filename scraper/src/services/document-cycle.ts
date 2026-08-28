@@ -163,6 +163,23 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
             );
           });
       }
+
+      // Record how many lead managers the BSE payload ACTUALLY listed, so the
+      // nightly audit can FAIL when fewer than that were stored. Without this
+      // number the F17 class stays exactly as invisible as it was: the co-BRLM
+      // bug survived because nothing ever compared the two counts.
+      if (result.leadManagers.length > 0) {
+        await db
+          .execute(
+            sql`UPDATE ipos SET bse_payload_lead_manager_count = ${result.leadManagers.length} WHERE id = ${ipo.id}::uuid`
+          )
+          .catch((error: unknown) => {
+            logger.warn(
+              { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+              'Failed to persist bse_payload_lead_manager_count (non-fatal)'
+            );
+          });
+      }
     } catch (error) {
       logger.error(
         {

@@ -183,6 +183,11 @@ export const ipos = pgTable(
     // after it closed — which is exactly when its final Prospectus becomes due.
     // Captured while the IPO is still on the board, then used for the rest of its life.
     bseIpoNo: integer('bse_ipo_no'),
+    // T-403 detection upgrade for the F17 class. How many lead managers the BSE
+    // payload ACTUALLY listed at write time. The co-BRLM bug (Skyways: 3 in the
+    // payload, 2 stored) survived because nothing ever compared the two numbers;
+    // the nightly audit now FAILs when lead_managers is shorter than this.
+    bsePayloadLeadManagerCount: integer('bse_payload_lead_manager_count'),
     segment: segmentEnum('segment'), // Exchange segment (MAINBOARD | SME) - nullable for RIGHTS/InvITs/REITs
     offeringType: offeringTypeEnum('offering_type').notNull(), // Type of offering (IPO, RIGHTS, TENDER, etc.)
     sector: varchar('sector', { length: 100 }),

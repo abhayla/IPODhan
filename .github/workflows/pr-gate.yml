@@ -66,6 +66,13 @@ jobs:
         # bash, both present on ubuntu-latest).
         run: node --test scripts/tests/preflight-runtime.test.mjs
 
+      - name: Document-state check self-tests (T-403)
+        # Mutation-proof: scripts/tests/document-state-checks.test.mjs imports
+        # the real predicates from scripts/lib/document-state-checks.mjs, so
+        # weakening or deleting one of the five nightly document checks turns
+        # its fixture red here rather than silently disarming the audit.
+        run: node --test scripts/tests/document-state-checks.test.mjs
+
       - name: Write ratchet — no new direct `ipos` writers (T-316/R0)
         # Grep-based gate, not ESLint (T-313C amendment): catches raw .sql/.mjs
         # writers and the runtime-resolved dynamic-table admin route that a
