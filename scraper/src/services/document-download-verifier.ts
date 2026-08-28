@@ -46,7 +46,8 @@ export type VerifyFailureReason =
   | 'zip_without_pdf'
   | 'not_a_pdf'
   | 'wrong_company'
-  | 'unzipped_too_small';
+  | 'unzipped_too_small'
+  | 'unreadable_pdf';
 
 export interface DownloadResponseMeta {
   status: number;
@@ -78,6 +79,18 @@ export interface VerifyOptions {
    * font-subsetted filing (matrix E4), not a reason to reject one.
    */
   coverText?: string;
+  /**
+   * True when page-1 extraction FAILED STRUCTURALLY (a parse error), as opposed
+   * to succeeding with no usable text.
+   *
+   * The distinction is the whole point. A scanned or font-subsetted filing has a
+   * valid structure and an empty text layer — normal, and the cover check is
+   * skipped (E4). A PDF the parser cannot open at all has 0 readable pages, and
+   * the matrix records exactly that case live: SEBI's copy of one DRHP was
+   * structurally broken. Storing it would hand WP C a file it can never read,
+   * so it is rejected here instead.
+   */
+  coverExtractFailed?: boolean;
 }
 
 /**
@@ -328,6 +341,13 @@ export function verifyDownload(
   // 4. Cover page names the expected company (F8 — wrong company's filing).
   let coverCheck: 'passed' | 'skipped_no_text_layer' | 'skipped_not_requested' =
     'skipped_not_requested';
+  if (options.coverExtractFailed === true) {
+    return fail(
+      'unreadable_pdf',
+      `page 1 of ${meta.url} could not be parsed at all (0 readable pages) — refusing to store a file nothing can read`
+    );
+  }
+
   if (options.expectedCompanyName) {
     const cover = (options.coverText ?? '').trim();
     if (cover === '') {

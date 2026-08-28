@@ -383,6 +383,13 @@ export function applyOutcome(
         reason: 'every source failed',
       };
     }
+    default: {
+      // Not reachable through the type system, but `strict: false` lets an
+      // unassigned `outcome` arrive here as undefined — which previously made
+      // this function return undefined and the caller throw on `.state`, three
+      // frames away from the actual mistake. Fail where the mistake is.
+      throw new Error(`applyOutcome: unknown outcome ${String(outcome)}`);
+    }
   }
 }
 
