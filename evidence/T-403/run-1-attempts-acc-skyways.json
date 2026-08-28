@@ -39,66 +39,80 @@
     {
       "source": "BSE",
       "http": 200,
-      "ms": 503,
+      "ms": 282,
       "outcome": "ok",
       "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903"
     },
     {
       "source": "NSE",
       "http": 200,
-      "ms": 5219,
+      "ms": 5289,
       "outcome": "ok",
       "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ"
     },
     {
       "source": "BSE",
-      "http": 200,
-      "ms": 46730,
-      "outcome": "downloaded",
+      "http": 0,
+      "ms": 120010,
+      "outcome": "rejected:http_error",
       "url": "https://listing.bseindia.com/Download//PreAnchor/RHPSkyways_20260818181315.pdf"
-    },
-    {
-      "source": "BSE",
-      "http": 200,
-      "ms": 23382,
-      "outcome": "downloaded",
-      "url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf"
-    },
-    {
-      "source": "BSE",
-      "http": 200,
-      "ms": 6256,
-      "outcome": "downloaded",
-      "url": "https://listing.bseindia.com/Download//PreAnchor/CorrigendumofRHPSkyways_20260818181316.pdf"
     },
     {
       "source": "NSE",
       "http": 200,
-      "ms": 4558,
-      "outcome": "downloaded (zip member: RATIOS_SKYWAYS/PriceBandAdvertisementSkyways.pdf)",
-      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip"
+      "ms": 8596,
+      "outcome": "downloaded (zip member: RHP_SKYWAYS/RHP Skyways.pdf; cover_check: passed)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_SKYWAYS.zip",
+      "sha256": "147c471e7921f5a0862e5460b128ec55ef0a7f47d4d4e8df15cc3f5b75382a9b"
+    },
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 8303,
+      "outcome": "downloaded (cover_check: skipped_no_text_layer)",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf",
+      "sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea"
+    },
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 5402,
+      "outcome": "downloaded (cover_check: skipped_no_text_layer)",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/CorrigendumofRHPSkyways_20260818181316.pdf",
+      "sha256": "d3a6094a2a23371ec38432ec9a34ec91def2b2d3cecf6546fd375ff45e2dee1c"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 2325,
+      "outcome": "downloaded (zip member: RATIOS_SKYWAYS/PriceBandAdvertisementSkyways.pdf; member classifies as: PRICE_BAND_AD; cover_check: skipped_no_text_layer)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip",
+      "sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea"
     },
     {
       "source": "NSE",
       "http": 200,
       "ms": 0,
       "outcome": "deduped_by_sha256_to:PRICE_BAND_AD",
-      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip"
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip",
+      "sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea"
     },
     {
       "source": "NSE",
       "http": 200,
-      "ms": 865,
-      "outcome": "downloaded (zip member: ANCHOR_SKYWAYS/Company_ANCHOR_FORMAT - Mainboard IPO.pdf)",
-      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_SKYWAYS.zip"
+      "ms": 999,
+      "outcome": "downloaded (zip member: ANCHOR_SKYWAYS/Company_ANCHOR_FORMAT - Mainboard IPO.pdf; cover_check: skipped_no_text_layer)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_SKYWAYS.zip",
+      "sha256": "8a68e38b94b77ef5664452390338271c54672f3687331a35fa515d085c760ef0"
     },
     {
       "source": "BSE",
       "http": 200,
-      "ms": 3829,
-      "outcome": "downloaded (zip member: Addendum.pdf)",
-      "url": "https://www.bseindia.com/downloads/ipo/Addendum%20to%20RHP_250820261220.zip"
+      "ms": 1461,
+      "outcome": "downloaded (zip member: Addendum.pdf; cover_check: skipped_no_text_layer)",
+      "url": "https://www.bseindia.com/downloads/ipo/Addendum%20to%20RHP_250820261220.zip",
+      "sha256": "971b265a1d22ee9350d2c353585953c5cbae1f41bb5812906f1f8eee2b38dea1"
     }
   ],
-  "networkCalls": 8
+  "networkCalls": 9
 }

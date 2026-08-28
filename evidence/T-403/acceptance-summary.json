@@ -1,10 +1,10 @@
 {
   "task": "T-403",
-  "ranAt": "2026-08-28T08:10:46.164Z",
-  "persistence": "IN-MEMORY (dev database ipodhan_wpab dropped 2026-08-28 — host out of disk)",
+  "ranAt": "2026-08-28T09:20:34.134Z",
+  "persistence": "IN-MEMORY (no database with the 0035 schema was reachable — see the module header)",
   "downloadsEnabled": true,
   "storeDir": "D:/Abhay/Ventures/IPODhan-backups/prospectus-wpab",
-  "run1Calls": 20,
+  "run1Calls": 21,
   "run2Calls": 0,
   "checks": [
     {

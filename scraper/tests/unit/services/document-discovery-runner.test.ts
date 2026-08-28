@@ -102,21 +102,42 @@ describe('DocumentDiscoveryRunner — BSE-first discovery on REAL payloads', () 
     expect(store.all().filter((r) => r.state === 'FOUND').length).toBeGreaterThanOrEqual(4);
   });
 
-  it('treats an EMPTY BSE Anchor_Details as NOT_YET_FILED, never as a failure (F3)', async () => {
-    // BSE answers 200 with Anchor_Details:"" until anchor day. Conflating that
-    // with 'no source answered' would page the owner every 30 minutes for a
-    // filing that simply does not exist yet.
-    const { fetcher } = fixtureFetcher({ 'ipo-detail': { status: 0, contentType: null, body: Buffer.alloc(0), url: 'x' } });
+  it('NOT_YET_FILED requires EVERY consulted exchange to have answered (F3 vs F6)', async () => {
+    // Both exchanges answer. A type neither of them carries is genuinely not
+    // filed yet, and nothing is BLOCKED_ALL.
+    const { fetcher } = fixtureFetcher();
     const { runner } = makeRunner(fetcher);
 
-    const result = await runner.runIpo({ ...SKYWAYS, stage: 'PRE_OPEN' }, []);
+    const result = await runner.runIpo({ ...SKYWAYS, stage: 'CLOSED' }, []);
 
     expect(result.attempts.some((a) => a.source === 'BSE' && a.outcome === 'ok')).toBe(true);
-    // BSE answered, so the types it has no link for are NOT_YET_FILED...
-    expect(result.notYetFiled).toContain('ANCHOR_ALLOCATION_REPORT');
-    // ...and nothing is BLOCKED_ALL even though NSE timed out entirely.
+    expect(result.attempts.some((a) => a.source === 'NSE' && a.outcome === 'ok')).toBe(true);
+    expect(result.notYetFiled).toContain('PROSPECTUS');
     expect(result.blocked).toEqual([]);
   }, 30_000);
+
+  it('a FAILED exchange must NOT produce NOT_YET_FILED for the types it carries', async () => {
+    // The 2026-08-28 re-run made this concrete: BSE timed out for Skyways while
+    // NSE answered, and every BSE-ONLY type (price-band ad, corrigendum,
+    // addendum) was recorded as NOT_YET_FILED — 'the company has not filed it' —
+    // which we had no evidence for, and which both suppresses the retry ladder
+    // and silences the alert. BLOCKED_ALL is the honest state.
+    const { fetcher } = fixtureFetcher({
+      GetMkt_ISSUE_BBS_IPO: { status: 0, contentType: null, body: Buffer.alloc(0), url: 'x' },
+    });
+    const { runner } = makeRunner(fetcher);
+
+    const result = await runner.runIpo(SKYWAYS, []);
+
+    expect(result.attempts.some((a) => a.source === 'BSE' && a.outcome === 'http_error')).toBe(true);
+    expect(result.attempts.some((a) => a.source === 'NSE' && a.outcome === 'ok')).toBe(true);
+    // BSE-only types are BLOCKED_ALL, not silently 'not filed yet'.
+    expect(result.blocked).toContain('PRICE_BAND_AD');
+    expect(result.blocked).toContain('CORRIGENDUM');
+    expect(result.notYetFiled).toEqual([]);
+    // ...while what NSE did carry is still FOUND.
+    expect(result.found).toContain('RHP');
+  }, 60_000);
 
   it('uses a remembered IPO_NO directly and skips the board fetch', async () => {
     const { fetcher, seen } = fixtureFetcher();
