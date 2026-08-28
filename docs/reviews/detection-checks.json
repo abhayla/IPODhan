@@ -247,6 +247,17 @@
       "failThreshold": "array_length(lead_managers) < ipos.bse_payload_lead_manager_count for any IPO. Storing MORE is not flagged: other sources legitimately add managers BSE omits",
       "severity": "P2",
       "unverifiableWhen": "no IPO has a recorded bse_payload_lead_manager_count yet"
+    },
+    {
+      "id": "m_document_type_classifier",
+      "findingClass": "a stored documents.type disagrees with what the classifier says the URL/title is — the classifier fix was forward-only, so rows stored under the old wrong type stayed wrong and invisible",
+      "round7Findings": [
+        "E14"
+      ],
+      "sourceTask": "T-403",
+      "failThreshold": "any documents row whose stored type has a permitted REFINEMENT to what the classifier returns (RHP->PROSPECTUS, ADDENDUM->CORRIGENDUM/PRICE_BAND_AD, BASIS_OF_ALLOTMENT->BASIS_OF_ALLOTMENT_AD). An UNRELATED reclassification is not a nightly FAIL — that is a source/classifier change for a human, surfaced by scraper/src/scripts/retype-misclassified-documents.ts",
+      "severity": "P2",
+      "unverifiableWhen": "documents table not present"
     }
   ],
   "notCoveredByThisManifest": [

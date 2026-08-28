@@ -12,6 +12,7 @@ import { BaseRepository } from './base-repository';
 import { documents } from '../db/schema';
 import type * as schema from '../db/schema';
 import { CacheTTL, getDocumentsKey } from '../cache/cache-keys';
+import { isMoreSpecificDocumentType } from '../db/document-type-refinement';
 import { DatabaseError, EntityNotFoundError } from '../errors/repository-errors';
 import type {
   Document,
@@ -144,12 +145,25 @@ export class DocumentRepository
         .limit(1);
 
       if (existing.length > 0) {
-        // URL exists - update timestamp and set active
+        // URL exists - update timestamp and set active.
+        //
+        // T-403 M6: also RE-TYPE when the incoming classification is a
+        // permitted refinement of the stored one. Without this the classifier
+        // fix was forward-only: a final Prospectus already stored as RHP, or a
+        // corrigendum stored as ADDENDUM, stayed wrong forever, and a second
+        // type resolving to the same URL silently adopted the first type's row.
+        // The allowlist is closed and one-directional, so a classifier
+        // regression cannot relabel the corpus (see document-type-refinement.ts).
+        const currentType = String(existing[0].type);
+        const incomingType = String(data.type);
+        const shouldRetype = isMoreSpecificDocumentType(currentType, incomingType);
+
         const [updated] = await this.db
           .update(documents)
           .set({
             updatedAt: new Date(),
             isActive: true,
+            ...(shouldRetype ? { type: data.type } : {}),
           })
           .where(eq(documents.url, data.url))
           .returning();

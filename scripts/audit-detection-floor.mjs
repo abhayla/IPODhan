@@ -41,6 +41,7 @@ import {
   checkLiveIpoHasStateRows,
   checkExtractFailed,
   checkLeadManagerCount,
+  checkDocumentTypeMatchesClassifier,
 } from './lib/document-state-checks.mjs';
 import {
   checkNoUnresolvedConflictOnLiveIpo, HIGH_VALUE_FIELDS, LIVE_STATUSES,
@@ -436,6 +437,37 @@ async function checkM() {
   for (const v of short) notify('m_brlm_count', 'P2', v, 'Fewer lead managers stored than BSE lists', v);
   record('m_brlm_count', `stored lead managers >= the BSE payload count (${brlm.length} row(s) with a recorded payload count)`,
     short.length === 0 ? 'PASS' : 'FAIL', short.slice(0, MAX_OFFENDERS).join('; '));
+
+  // T-403 M6: does the stored type still agree with the classifier? Fixing the
+  // classifier only helped documents discovered afterwards; nothing compared the
+  // corpus against it, so a Prospectus stored as RHP stayed invisible.
+  // The classifier itself is TypeScript and this audit runs as plain Node on the
+  // box, so the rules are mirrored here — same convention as HIGH_VALUE_FIELDS.
+  const REFINEMENTS = {
+    RHP: ['PROSPECTUS'],
+    ADDENDUM: ['CORRIGENDUM', 'PRICE_BAND_AD'],
+    BASIS_OF_ALLOTMENT: ['BASIS_OF_ALLOTMENT_AD'],
+  };
+  const classifyUrlOrTitle = (url, title) => {
+    const name = String(url || '').split(/[?#]/)[0].split('/').pop() || '';
+    for (const text of [decodeURIComponent(name).toLowerCase(), String(title || '').toLowerCase()]) {
+      if (!text) continue;
+      if (text.includes('price band') || text.includes('pricebandad')) return 'PRICE_BAND_AD';
+      if (text.includes('corrigendum')) return 'CORRIGENDUM';
+      if (text.includes('basis of allot') || text.includes('allotment advert')) return 'BASIS_OF_ALLOTMENT_AD';
+      if (text.includes('draft') || text.includes('drhp')) return 'DRHP';
+      if (text.includes('red herring') || /rhp/.test(text)) return 'RHP';
+      if (text.includes('prospectus')) return 'PROSPECTUS';
+    }
+    return null;
+  };
+  const docRows = await q(`SELECT d.id, d.url, d.title, d.type::text AS type FROM documents d`);
+  const mistyped = docRows
+    .map((r) => checkDocumentTypeMatchesClassifier(r, classifyUrlOrTitle, REFINEMENTS))
+    .filter(Boolean);
+  for (const v of mistyped) notify('m_document_type_classifier', 'P2', v, 'Stored document type disagrees with the classifier', v);
+  record('m_document_type_classifier', 'documents.type agrees with the classifier for every stored row',
+    mistyped.length === 0 ? 'PASS' : 'FAIL', mistyped.slice(0, MAX_OFFENDERS).join('; '));
 }
 
 // ---- (g): newest-row age per offering_type ------------------------------------
