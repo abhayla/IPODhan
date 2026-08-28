@@ -123,9 +123,20 @@ export const FEATURE_FLAGS = {
    *
    * Separate from ENABLE_PRIMARY_SOURCE_DISCOVERY (already true in prod) on
    * purpose: that flag gates whether document discovery runs at all, this one
-   * gates WHICH implementation runs. With this off, the old backfill path is
-   * unchanged, so turning the new machine on and off is a one-variable,
-   * reversible decision — and state rows persist across the flip (R13).
+   * gates WHICH implementation runs. Turning the new machine on and off is a
+   * one-variable, reversible decision, and state rows persist across the flip (R13).
+   *
+   * HONEST SCOPE (T-403 M5): this flag does NOT gate everything in T-403. The
+   * CLASSIFIER fix lives in `primary-source-discovery.ts`, which the flag-OFF
+   * legacy backfill also calls, so with the flag off that path still classifies
+   * better than it used to. It is prevented from emitting a post-0035 enum value
+   * into a database that lacks it by `toPre0035DocumentType`.
+   *
+   * DEPLOY DEPENDENCY: migration 0035 MUST be applied before this flag is turned
+   * on. `deploy-linux.sh` migrates before flipping traffic and
+   * `assert-migrations-applied.sh` blocks the deploy on any gap, so the ordering
+   * is enforced rather than assumed — but flipping the flag on a database
+   * without 0035 would fail on the first document write.
    * GATED OFF by default; activation in prod is Abhay's call (deploy). (T-403)
    * Default: false
    */

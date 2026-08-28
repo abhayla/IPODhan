@@ -70,3 +70,53 @@ export const DOCUMENT_PRECEDENCE: Record<DocumentType, number> = {
 export function isDocumentType(value: unknown): value is DocumentType {
   return typeof value === 'string' && (DOCUMENT_TYPES as readonly string[]).includes(value);
 }
+
+/**
+ * The `document_type` enum values that existed BEFORE migration 0035 (T-403 M5).
+ *
+ * The classifier fix is NOT behind `ENABLE_DOCUMENT_STATE_MACHINE`: it lives in
+ * `primary-source-discovery.ts`, which the flag-OFF legacy backfill path also
+ * calls. So the legacy path could emit `CORRIGENDUM` / `PRICE_BAND_AD` /
+ * `BASIS_OF_ALLOTMENT_AD` into a database where the enum does not yet have them,
+ * and the insert would fail at runtime.
+ *
+ * `deploy-linux.sh` migrates before it flips traffic, and
+ * `assert-migrations-applied.sh` blocks the deploy on any gap, so in practice the
+ * enum is always present first. This list plus `toPre0035DocumentType` make that
+ * a guarantee rather than an ordering assumption.
+ */
+export const PRE_0035_DOCUMENT_TYPES: readonly string[] = [
+  'DRHP',
+  'RHP',
+  'PROSPECTUS',
+  'BASIS_OF_ALLOTMENT',
+  'ADDENDUM',
+  'RATIOS_BASIS_ISSUE_PRICE',
+  'BIDDING_CENTERS',
+  'SAMPLE_APPLICATION_FORMS',
+  'SECURITY_PARAMS_PRE_ANCHOR',
+  'SECURITY_PARAMS_POST_ANCHOR',
+  'ANCHOR_ALLOCATION_REPORT',
+  'ASBA_PROCESSING_CIRCULAR',
+];
+
+/**
+ * Map a post-0035 type down to the value the pre-0035 enum would have held.
+ *
+ * Used ONLY by the legacy backfill path, so it cannot insert a value the
+ * database may not know. It deliberately reproduces the OLD, less precise
+ * behaviour (a corrigendum and a price-band ad both became ADDENDUM) — the
+ * legacy path is being replaced, and not crashing matters more there than
+ * being precise. The state-machine path always uses the true type.
+ */
+export function toPre0035DocumentType(type: DocumentType): string {
+  switch (type) {
+    case 'CORRIGENDUM':
+    case 'PRICE_BAND_AD':
+      return 'ADDENDUM';
+    case 'BASIS_OF_ALLOTMENT_AD':
+      return 'BASIS_OF_ALLOTMENT';
+    default:
+      return type;
+  }
+}
