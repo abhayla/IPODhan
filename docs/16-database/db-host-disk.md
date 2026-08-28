@@ -73,15 +73,23 @@ Windows VPS could not supply these**:
   VPS. Off-VPS callers (this Windows box) must use the public ingress
   `https://firekaro.com/notifier-gw`.
 
-Both are therefore set as **machine-level environment variables** on the Windows VPS, which
-a SYSTEM scheduled task does inherit:
+Both are therefore written into `C:\Abhay\GLOBAL.env` on the Windows VPS, which the
+script reads directly:
 
-```powershell
-[Environment]::SetEnvironmentVariable('NOTIFIER_KEY_IPODHAN', '<key>', 'Machine')
-[Environment]::SetEnvironmentVariable('NOTIFIER_URL', 'https://firekaro.com/notifier-gw', 'Machine')
+```
+NOTIFIER_URL=https://firekaro.com/notifier-gw
+NOTIFIER_KEY_IPODHAN=<48-char key copied from /root/notifier/.env on the Linux VPS>
 ```
 
-Verified 2026-08-28: a forced P1 returned `[NOTIFY] sent P1`. Before this, the task ran
+**Why the file and not environment variables.** They were first set as machine-level env
+vars, and that appeared to work. It is not safe: the Task Scheduler service caches the
+machine environment block at service start, so a task can keep running with a stale
+environment until the service (or the box) restarts. A monitor that silently loses its
+credentials after a reboot is the exact failure this whole page exists to prevent. Reading
+the file removes the dependency — the env vars are still honoured first if present.
+
+Verified 2026-08-28 with **both env vars explicitly cleared**, so the file path alone was
+exercised: a forced P1 returned `[NOTIFY] sent P1`. Before this, the task ran
 every 15 minutes and logged `[NOTIFY-SKIP]` — green-looking, and completely deaf. **Prove a
 page by sending one, never by reading config files.**
 
