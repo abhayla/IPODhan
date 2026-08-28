@@ -23,7 +23,7 @@
 import { sql } from 'drizzle-orm';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { DocumentRepository, DocumentFetchStateRepository, IPORepository } from '@ipodhan/shared';
-import { recordBseDiscoveryMetadata } from './data-persister.js';
+import { recordBseDiscoveryMetadata, recordDocumentSourceHints } from './data-persister.js';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
 import logger from '../utils/logger.js';
 import {
@@ -116,7 +116,7 @@ export async function loadCandidateIpos(): Promise<DiscoveryIpo[]> {
            price_range_max, listing_date, bse_ipo_no
       FROM ipos
      WHERE offering_type = 'IPO'
-       AND status IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED')
+       AND i.status IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED')
   `);
   const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<
     string,
@@ -144,6 +144,8 @@ export async function loadCandidateIpos(): Promise<DiscoveryIpo[]> {
         priceRangeMin: (r.price_range_min as string | null) ?? null,
       }),
       bseIpoNo: r.bse_ipo_no === null || r.bse_ipo_no === undefined ? null : Number(r.bse_ipo_no),
+      companyWebsite: (r.company_website as string | null) ?? null,
+      verifierUrl: (r.verifier_url as string | null) ?? null,
       issue: deriveIssueShape(r),
     }));
 }
@@ -233,6 +235,22 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
       // Routed through data-persister, NOT written here: `scraper-write-path.md`
       // and the R0 write ratchet require every `ipos` write to go through the
       // shared write path. Non-fatal — bookkeeping must never fail a cycle.
+      // T-403 M-6: persist the issuer website read off a filing cover, so rung
+      // 4 (the investor page) becomes reachable for the NEXT document this IPO
+      // needs. Non-fatal, and routed through data-persister.
+      if (result.learnedCompanyWebsite) {
+        try {
+          await recordDocumentSourceHints(db, ipo.id, {
+            companyWebsite: result.learnedCompanyWebsite,
+          });
+        } catch (error) {
+          logger.warn(
+            { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+            'Failed to record company website (non-fatal)'
+          );
+        }
+      }
+
       if (result.resolvedBseIpoNo || result.leadManagers.length > 0) {
         try {
           await recordBseDiscoveryMetadata(ipoRepository, ipo.id, {

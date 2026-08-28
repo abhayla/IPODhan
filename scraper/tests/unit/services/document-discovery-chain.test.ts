@@ -106,6 +106,8 @@ function makeRunner(responses: Record<string, HttpResponse>, coverCompany = 'ESD
     counter: new NetworkCounter(),
     now: () => new Date('2026-08-28T06:00:00Z'),
     storeDir,
+    // MIN-4: no-op sleep — the retry ladder's timing is not what these test.
+    sleep: async () => undefined,
     // Cover text is stubbed: the chain, not the PDF parser, is under test here.
     // The cover must name the company under test, or §3 step 4 correctly
     // rejects the download as another company's filing.
@@ -147,10 +149,13 @@ describe('G1 — chain reaches SEBI when both exchanges fail', () => {
     expect(result.blocked).toEqual([]);
     expect(documents.rows.find((d) => d.type === 'RHP')?.exchange).toBe('SEBI');
 
-    // The order is the matrix's, and it is visible in the log.
-    const rungs = rungsFor(result.attempts as never, 'RHP');
-    expect(rungs).toContain('EXCHANGES:failed');
-    expect(rungs).toContain('SEBI:found');
+    // V-3: assert the EXACT ordered chain, not merely that the parts appear.
+    // A rung firing out of order, or an extra rung, is a defect a `toContain`
+    // pair would happily pass.
+    expect(rungsFor(result.attempts as never, 'RHP').split(' -> ')).toEqual([
+      'rungs[RHP]: EXCHANGES:failed',
+      'SEBI:found',
+    ]);
 
     // SEBI cost exactly two GETs: the listing and the detail page.
     expect(seen.filter((u) => u.includes('sebi.gov.in')).length).toBeGreaterThanOrEqual(3);

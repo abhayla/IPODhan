@@ -1,5 +1,6 @@
 import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDataRepository, IPOInsert, SubscriptionInsert, GMPRecordInsert, FinancialDataInsert, IPO } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
+import { sql as sqlOp } from 'drizzle-orm';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { generateSlug, sanitizeCompanyName, coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeLeadManagers, sanitizeIpoWriteFields } from '../utils/validators.js';
@@ -18,7 +19,7 @@ import { DataConsolidationService } from './data-consolidation-service.js';
 import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
-import { ipoDemandGraph } from '@ipodhan/shared/db/schema';
+import { ipoDemandGraph, ipoDetails } from '@ipodhan/shared/db/schema';
 import { resolveRegistrarId } from '@ipodhan/shared/utils/registrar-matcher';
 
 /**
@@ -1259,7 +1260,9 @@ export async function updateIPOObjectives(
  *    remembered because `IPO_HomePageDetail` lists only LIVE and FORTHCOMING
  *    issues — verified 2026-08-28, Skyways (IPO_NO 7903) had already left the
  *    board the day after it closed, which is exactly when its final Prospectus
- *    becomes due. Written once and never overwritten (`??=` semantics below).
+ *    becomes due. Written whenever a value arrives; there is no write-once
+ *    guard here, and none is needed — the IPO_NO is immutable, so a later write
+ *    can only ever set the same number.
  *  - `bsePayloadLeadManagerCount`: how many lead managers the BSE payload
  *    ACTUALLY listed, so the nightly audit can FAIL when fewer were stored.
  *    Refreshed every time, because the payload can gain a co-BRLM.
@@ -1289,4 +1292,54 @@ export async function recordBseDiscoveryMetadata(
   patch.updatedAt = new Date();
   await ipoRepository.update(ipoId, patch as never);
   logger.debug({ ipoId, ...patch }, 'Recorded BSE discovery metadata');
+}
+
+/**
+ * Record the document-source hints the discovery chain's later rungs need
+ * (T-403 M-6): the issuer's own website and the third-party verifier page.
+ *
+ * Both live on `ipo_details`, not `ipos`: they are not IPO facts a source
+ * competes over, they are pointers this pipeline uses to find filings. Neither
+ * is in the field-priority matrix.
+ *
+ * WHY IT EXISTS. Rung 4 (the issuer's investor page) and the Chittorgarh
+ * verifier were unreachable in production before this: nothing in the schema
+ * held either URL, so the chain could only ever record
+ * `COMPANY:skipped:no_company_url` / `VERIFIER:skipped:no_verifier_url`. Two
+ * rungs of the decision tree existed only in tests.
+ *
+ * WRITE-ONCE for `companyWebsite`: it is read off a filing cover, and a later
+ * cover should not overwrite a value an admin may have corrected. `verifierUrl`
+ * refreshes, because Chittorgarh re-slugs its URLs.
+ */
+export async function recordDocumentSourceHints(
+  database: typeof db,
+  ipoId: string,
+  hints: { companyWebsite?: string | null; verifierUrl?: string | null }
+): Promise<void> {
+  const website = hints.companyWebsite?.trim() || null;
+  const verifier = hints.verifierUrl?.trim() || null;
+  if (!website && !verifier) return;
+
+  await database
+    .insert(ipoDetails)
+    .values({
+      ipoId,
+      companyWebsite: website ? website.slice(0, 255) : null,
+      verifierUrl: verifier ? verifier.slice(0, 512) : null,
+    } as never)
+    .onConflictDoUpdate({
+      target: ipoDetails.ipoId,
+      set: {
+        // COALESCE keeps the first website we ever learned (write-once);
+        // the verifier URL is refreshed each time.
+        companyWebsite: website
+          ? sqlOp`COALESCE(${ipoDetails.companyWebsite}, ${website.slice(0, 255)})`
+          : ipoDetails.companyWebsite,
+        ...(verifier ? { verifierUrl: verifier.slice(0, 512) } : {}),
+        updatedAt: new Date(),
+      } as never,
+    });
+
+  logger.debug({ ipoId, website: Boolean(website), verifier: Boolean(verifier) }, 'Recorded document source hints');
 }

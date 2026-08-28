@@ -41,6 +41,19 @@ ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "bse_ipo_no" integer;
 ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "bse_payload_lead_manager_count" integer;
 --> statement-breakpoint
 
+-- T-403 M-6: the two columns the chain's later rungs need.
+--
+-- Before these existed, rung 4 (the issuer's investor page) and the Chittorgarh
+-- verifier had NO production data source: nothing in the schema held a company
+-- website or a verifier URL, so both could only ever record
+-- "skipped:no_company_url" / "skipped:no_verifier_url" — unreachable code in
+-- production. company_website is read off the RHP/DRHP cover; verifier_url is
+-- recorded by the Chittorgarh orchestrator, which already fetches that page.
+ALTER TABLE "ipo_details" ADD COLUMN IF NOT EXISTS "company_website" varchar(255);
+--> statement-breakpoint
+ALTER TABLE "ipo_details" ADD COLUMN IF NOT EXISTS "verifier_url" varchar(512);
+--> statement-breakpoint
+
 ALTER TYPE "document_type" ADD VALUE IF NOT EXISTS 'PRICE_BAND_AD';
 --> statement-breakpoint
 ALTER TYPE "document_type" ADD VALUE IF NOT EXISTS 'CORRIGENDUM';

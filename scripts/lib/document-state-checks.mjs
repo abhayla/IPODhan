@@ -126,3 +126,67 @@ export function checkDocumentTypeMatchesClassifier(row, classifyUrlOrTitle, refi
   if (!allowed.includes(suggested)) return null; // unrelated — not a nightly FAIL
   return `${row.title || row.url}: stored as ${row.type} but classifies as ${suggested}`;
 }
+// --- M-4: NOT_YET_FILED that has aged past the point of plausibility ---------
+//
+// THE SHAPE THIS CATCHES. `NOT_YET_FILED` is deliberately not a failure — it
+// means the exchange answered and the company has not filed the document yet —
+// so nothing about it is alarming on its own. That is exactly what makes it
+// dangerous: a document the pipeline can never reach settles here and stays,
+// silently, forever. T-403's B-1 was precisely that shape — the SEBI rung could
+// never fire for a DRHP, so every DRHP sat NOT_YET_FILED for the life of the
+// IPO and no check anywhere would have noticed.
+//
+// The thresholds are the filing calendar, not round numbers:
+//   DRHP        14 d at UPCOMING — a DRHP exists months before the IPO reaches
+//               an exchange, so two weeks with none found means we cannot see it
+//   RHP          2 d before open — the RHP is filed T-7..T-3; still missing two
+//               days out is a real gap (matrix §2 "after T-2 with no RHP = P2")
+//   PROSPECTUS   3 d after close — listing is T+3 and a company cannot list
+//               before the Prospectus is filed with the RoC (matrix §8 Q1)
+//   ANCHOR       1 d after open — the anchor round is T-1; a day into the issue
+//               it exists
+
+export const NOT_YET_FILED_MAX_DAYS = {
+  DRHP: 14,
+  RHP: 2,
+  PROSPECTUS: 3,
+  ANCHOR_ALLOCATION_REPORT: 1,
+};
+
+const daysBetween = (later, earlier) =>
+  (new Date(later).getTime() - new Date(earlier).getTime()) / 86_400_000;
+
+/**
+ * FAIL when a NOT_YET_FILED row has aged past what its filing calendar allows.
+ *
+ * Each type is measured from the date that actually governs it — open date for
+ * the RHP and the anchor report, close date for the Prospectus, first-seen for
+ * the DRHP (which has no exchange milestone). A row whose governing date is
+ * missing is SKIPPED rather than guessed at: firing on absent data would train
+ * everyone to ignore this check.
+ */
+export function checkNotYetFiledAge(row, now) {
+  if (row.state !== 'NOT_YET_FILED') return null;
+  const limit = NOT_YET_FILED_MAX_DAYS[row.docType];
+  if (limit === undefined) return null;
+
+  let governingDate = null;
+  let label = '';
+  if (row.docType === 'DRHP') {
+    governingDate = row.firstSeenAt;
+    label = 'first seen';
+  } else if (row.docType === 'PROSPECTUS') {
+    governingDate = row.closeDate;
+    label = 'close';
+  } else {
+    governingDate = row.openDate;
+    label = 'open';
+  }
+  if (!governingDate) return null;
+
+  const age = daysBetween(now, governingDate);
+  // Not yet past the milestone at all — nothing is late.
+  if (age <= limit) return null;
+
+  return `${row.companyName}: ${row.docType} still NOT_YET_FILED ${age.toFixed(1)}d after ${label} (limit ${limit}d)`;
+}

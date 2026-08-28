@@ -105,12 +105,58 @@ export function extractWebsiteFromCoverText(coverText: string): string | null {
   return null;
 }
 
-/** Normalise a stored website value into an origin we can fetch. */
+/**
+ * Hosts that must never be fetched, whatever a database row says (MIN-8).
+ *
+ * The company URL comes from a scraped PDF cover or a scraped field, so it is
+ * attacker-influenceable input that this process then fetches. Loopback,
+ * private and link-local addresses would turn that into a request against our
+ * own infrastructure (169.254.169.254 is the cloud metadata endpoint), so they
+ * are refused outright rather than trusted.
+ */
+const PRIVATE_HOST_PATTERNS = [
+  /^localhost$/i,
+  /^127\./,
+  /^0\./,
+  /^10\./,
+  /^192\.168\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^169\.254\./,
+  /^\[?::1\]?$/,
+  /^\[?f[cd][0-9a-f]{2}:/i,
+  /\.local$/i,
+  /\.internal$/i,
+];
+
+/**
+ * Normalise a stored website value into an origin we can safely fetch.
+ *
+ * Refuses anything that is not plain http(s), any private/loopback/link-local
+ * address, and any non-standard port — a URL from scraped data must not be able
+ * to point this process at an internal service.
+ */
 export function normalizeCompanyUrl(value: string | null | undefined): string | null {
   if (typeof value !== 'string' || value.trim() === '') return null;
-  const host = value.trim().replace(/^https?:\/\//i, '').split('/')[0].toLowerCase();
+
+  const raw = value.trim();
+  let parsed: URL;
+  try {
+    parsed = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
+  } catch {
+    return null;
+  }
+
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return null;
+  // Only the default ports. An issuer serving its investor page on :8080 is not
+  // a case worth opening this up for.
+  if (parsed.port !== '') return null;
+
+  const host = parsed.hostname.toLowerCase();
   if (!host.includes('.')) return null;
-  if (NON_ISSUER_DOMAINS.some((d) => host.includes(d))) return null;
+  if (PRIVATE_HOST_PATTERNS.some((re) => re.test(host))) return null;
+  if (NON_ISSUER_DOMAINS.some((d) => host === d || host.endsWith(`.${d}`) || host.includes(d))) {
+    return null;
+  }
   return `https://${host}`;
 }
 
@@ -179,10 +225,44 @@ export const TRUSTED_DOCUMENT_HOSTS = [
   'sebi.gov.in',
 ];
 
+/**
+ * Is this URL on an exchange or SEBI host?
+ *
+ * M-1: the `host.includes(h)` arm this used to carry made the allowlist
+ * meaningless — `bseindia.com.attacker.net` contains "bseindia.com" and passed.
+ * Matching is now exact or a true DNS-suffix match, and the scheme must be
+ * https/http, so a crafted hostname cannot smuggle a download past the verifier.
+ */
 export function isTrustedDocumentHost(url: string): boolean {
   try {
-    const host = new URL(url).host.toLowerCase();
-    return TRUSTED_DOCUMENT_HOSTS.some((h) => host === h || host.endsWith(`.${h}`) || host.includes(h));
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+    const host = parsed.hostname.toLowerCase();
+    return TRUSTED_DOCUMENT_HOSTS.some((h) => host === h || host.endsWith(`.${h}`));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * MIN-6: may a document found on the COMPANY rung be stored from this URL?
+ *
+ * Only when it is served by the issuer's OWN host, or by an exchange/SEBI. An
+ * investor page routinely links documents parked on a third party — a CDN, a
+ * merchant bank, a document-hosting service — and the owner's rule is that we
+ * never store a filing from a third party, on ANY rung. Without this the
+ * company rung was the one hole in that rule.
+ */
+export function isStorableFromCompanyPage(url: string, companyOrigin: string): boolean {
+  if (isTrustedDocumentHost(url)) return true;
+  try {
+    const link = new URL(url);
+    if (link.protocol !== 'https:' && link.protocol !== 'http:') return false;
+    const issuer = new URL(companyOrigin).hostname.toLowerCase();
+    const host = link.hostname.toLowerCase();
+    // The issuer's own host, or a subdomain of it (investors.example.com).
+    const root = issuer.replace(/^www\./, '');
+    return host === issuer || host === root || host.endsWith(`.${root}`);
   } catch {
     return false;
   }

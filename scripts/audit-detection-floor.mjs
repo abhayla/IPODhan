@@ -42,6 +42,7 @@ import {
   checkExtractFailed,
   checkLeadManagerCount,
   checkDocumentTypeMatchesClassifier,
+  checkNotYetFiledAge,
 } from './lib/document-state-checks.mjs';
 import {
   checkNoUnresolvedConflictOnLiveIpo, HIGH_VALUE_FIELDS, LIVE_STATUSES,
@@ -381,7 +382,7 @@ async function checkM() {
 
   const rows = await q(`
     SELECT s.doc_type, s.state, s.blocked_since_at, s.last_attempt_at, s.first_seen_at,
-           s.extractor_version, i.company_name
+           s.extractor_version, i.company_name, i.open_date, i.close_date
       FROM document_fetch_state s JOIN ipos i ON i.id = s.ipo_id
      WHERE i.offering_type = 'IPO'
   `);
@@ -390,6 +391,7 @@ async function checkM() {
     docType: r.doc_type, state: r.state, blockedSinceAt: r.blocked_since_at,
     lastAttemptAt: r.last_attempt_at, firstSeenAt: r.first_seen_at,
     extractorVersion: r.extractor_version, companyName: r.company_name,
+    openDate: r.open_date, closeDate: r.close_date,
   });
 
   const blocked = rows.map(norm).map((r) => checkBlockedAllAge(r, now)).filter(Boolean);
@@ -402,6 +404,14 @@ async function checkM() {
   record('m_found_not_extracted',
     `no document FOUND-but-unextracted for more than 48h${extractionWired ? '' : ' (inert: extractor not wired)'}`,
     unread.length === 0 ? 'PASS' : 'FAIL', unread.slice(0, MAX_OFFENDERS).join('; '));
+
+  // M-4: a document the pipeline can never REACH settles as NOT_YET_FILED and
+  // stays there silently. That is the shape T-403's B-1 produced for every DRHP,
+  // and nothing would have noticed it without this check.
+  const staleUnfiled = rows.map(norm).map((r) => checkNotYetFiledAge(r, now)).filter(Boolean);
+  for (const v of staleUnfiled) notify('m_not_yet_filed_age', 'P2', v, 'Document NOT_YET_FILED past its filing calendar', v);
+  record('m_not_yet_filed_age', 'no document NOT_YET_FILED past its filing calendar (DRHP 14d / RHP 2d / Prospectus 3d / anchor 1d)',
+    staleUnfiled.length === 0 ? 'PASS' : 'FAIL', staleUnfiled.slice(0, MAX_OFFENDERS).join('; '));
 
   const failedExtractions = rows.map(norm).map(checkExtractFailed).filter(Boolean);
   record('m_extract_failed', 'no document stuck in EXTRACT_FAILED (WARN-level)',

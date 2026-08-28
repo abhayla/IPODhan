@@ -37,6 +37,7 @@ import {
 import logger from '../utils/logger.js';
 import { generateSlug } from '../utils/validators.js';
 import { upsertIPO, createSubscriptionSnapshot, normalizeCompanyNameForMatching } from '../services/data-persister.js';
+import { recordDocumentSourceHints } from '../services/data-persister.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { ScraperMetricsTracker } from '../services/scraper-metrics-tracker.js';
@@ -502,6 +503,23 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       // Traditional upsert (no consolidation) — pass the row already
       // resolved at Step 2 (T-307).
       upsertedIPOId = await upsertIPO(this.ipoRepository, filteredIPOData, scraperName, existingIPO);
+
+      // T-403 M-6: record the source's own IPO page as a link VERIFIER for
+      // document discovery. One choke point, after the IPO id is known, so every
+      // source that supplies one is covered. Non-fatal by discipline
+      // (non-fatal-side-effects.md) — bookkeeping must never fail a scrape, and
+      // routed through data-persister, never written here.
+      const verifierUrl = (validatedIPO as { verifierUrl?: string }).verifierUrl;
+      if (upsertedIPOId && verifierUrl) {
+        try {
+          await recordDocumentSourceHints(db, upsertedIPOId, { verifierUrl });
+        } catch (error) {
+          logger.warn(
+            { ipoId: upsertedIPOId, error: error instanceof Error ? error.message : String(error) },
+            'Failed to record verifier URL (non-fatal)'
+          );
+        }
+      }
 
       if (existingIPO) {
         processResult.updated = true;

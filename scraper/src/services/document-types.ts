@@ -120,3 +120,26 @@ export function toPre0035DocumentType(type: DocumentType): string {
       return type;
   }
 }
+/**
+ * Document types the EXCHANGES actually host (T-403 B-1).
+ *
+ * Everything except the DRHP. Neither BSE nor NSE publishes a draft prospectus:
+ * a company's DRHP sits with SEBI for months before an exchange has any listing
+ * for it at all (decision-matrix §2, row S0 — "BSE/NSE do not host DRHPs before
+ * the RHP").
+ *
+ * This is load-bearing, not documentation. The first cut escalated to SEBI only
+ * when the exchanges FAILED, and an exchange that answers cleanly with no DRHP
+ * link is not a failure — it is `no_link`. So the DRHP settled as NOT_YET_FILED
+ * on every cycle forever and the SEBI rung, whose whole reason for existing is
+ * the DRHP, could never fire. `no_link` may only settle a type the exchanges can
+ * actually serve.
+ */
+export const EXCHANGE_SERVED_TYPES: readonly DocumentType[] = DOCUMENT_TYPES.filter(
+  (t) => t !== 'DRHP'
+);
+
+/** True when an exchange could, in principle, serve this document type. */
+export function isExchangeServedType(docType: DocumentType): boolean {
+  return EXCHANGE_SERVED_TYPES.includes(docType);
+}

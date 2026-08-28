@@ -14,6 +14,8 @@ import {
   checkExtractFailed,
   checkLeadManagerCount,
   checkDocumentTypeMatchesClassifier,
+  checkNotYetFiledAge,
+  NOT_YET_FILED_MAX_DAYS,
   countBsePayloadLeadManagers,
   BLOCKED_ALL_MAX_HOURS,
   FOUND_UNREAD_MAX_HOURS,
@@ -230,4 +232,91 @@ test('65e never degrades: PROSPECTUS stored, RHP suggested, is not a FAIL', () =
     ),
     null
   );
+});
+
+// --- M-4: NOT_YET_FILED age --------------------------------------------------
+
+test('66 FAILs a DRHP still NOT_YET_FILED 14+ days after first sight (the B-1 shape)', () => {
+  // This is the exact shape T-403's B-1 produced: the SEBI rung could never fire
+  // for a DRHP, so it sat NOT_YET_FILED for the life of the IPO and NOTHING
+  // would have noticed. That is why this check exists.
+  const violation = checkNotYetFiledAge(
+    { state: 'NOT_YET_FILED', docType: 'DRHP', companyName: 'Acme Ltd', firstSeenAt: hoursAgo(24 * 20) },
+    NOW
+  );
+  assert.match(violation, /DRHP still NOT_YET_FILED/);
+  assert.match(violation, /limit 14d/);
+});
+
+test('66b FAILs an RHP still unfiled 2 days past open, and a Prospectus 3 days past close', () => {
+  assert.ok(
+    checkNotYetFiledAge(
+      { state: 'NOT_YET_FILED', docType: 'RHP', companyName: 'A', openDate: hoursAgo(24 * 5) },
+      NOW
+    )
+  );
+  assert.ok(
+    checkNotYetFiledAge(
+      { state: 'NOT_YET_FILED', docType: 'PROSPECTUS', companyName: 'A', closeDate: hoursAgo(24 * 6) },
+      NOW
+    )
+  );
+  assert.ok(
+    checkNotYetFiledAge(
+      { state: 'NOT_YET_FILED', docType: 'ANCHOR_ALLOCATION_REPORT', companyName: 'A', openDate: hoursAgo(24 * 3) },
+      NOW
+    )
+  );
+});
+
+test('66c PASSes inside the filing window — NOT_YET_FILED is normal there', () => {
+  assert.equal(
+    checkNotYetFiledAge(
+      { state: 'NOT_YET_FILED', docType: 'RHP', companyName: 'A', openDate: hoursAgo(12) },
+      NOW
+    ),
+    null
+  );
+  assert.equal(
+    checkNotYetFiledAge(
+      { state: 'NOT_YET_FILED', docType: 'DRHP', companyName: 'A', firstSeenAt: hoursAgo(24 * 3) },
+      NOW
+    ),
+    null
+  );
+});
+
+test('66d SKIPS rather than guesses when the governing date is missing', () => {
+  // Firing on absent data would train everyone to ignore this check.
+  assert.equal(
+    checkNotYetFiledAge({ state: 'NOT_YET_FILED', docType: 'RHP', companyName: 'A', openDate: null }, NOW),
+    null
+  );
+  assert.equal(
+    checkNotYetFiledAge({ state: 'NOT_YET_FILED', docType: 'PROSPECTUS', companyName: 'A' }, NOW),
+    null
+  );
+});
+
+test('66e ignores states that are not NOT_YET_FILED, and untracked types', () => {
+  assert.equal(
+    checkNotYetFiledAge({ state: 'FOUND', docType: 'DRHP', companyName: 'A', firstSeenAt: hoursAgo(24 * 99) }, NOW),
+    null
+  );
+  assert.equal(
+    checkNotYetFiledAge(
+      { state: 'NOT_YET_FILED', docType: 'BIDDING_CENTERS', companyName: 'A', openDate: hoursAgo(24 * 99) },
+      NOW
+    ),
+    null
+  );
+});
+
+test('66f the thresholds are the filing calendar, and are pinned', () => {
+  assert.deepEqual(NOT_YET_FILED_MAX_DAYS, {
+    DRHP: 14,
+    RHP: 2,
+    PROSPECTUS: 3,
+    ANCHOR_ALLOCATION_REPORT: 1,
+  });
 });

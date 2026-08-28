@@ -49,6 +49,21 @@ interface ChittorgarhAPIRecord {
  * @param html - HTML string like "<a href='/ipo/slug/id/'>Company Name</a>"
  * @returns Plain text "Company Name"
  */
+/**
+ * Extract the href from an anchor ("<a href='/ipo/slug/id/'>X</a>") as an
+ * absolute Chittorgarh URL. Used ONLY to record a link-VERIFIER page for
+ * document discovery (T-403 M-6); a document is never stored from this host.
+ */
+function extractHrefFromAnchor(html: string): string | undefined {
+  if (!html) return undefined;
+  const m = html.match(/href\s*=\s*['"]([^'"]+)['"]/i);
+  if (!m) return undefined;
+  const href = m[1].trim();
+  if (href === '') return undefined;
+  if (href.startsWith('http')) return href;
+  return `https://www.chittorgarh.com${href.startsWith('/') ? '' : '/'}${href}`;
+}
+
 function extractTextFromAnchor(html: string): string {
   if (!html) return '';
 
@@ -314,6 +329,9 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
         // Extract company name (from HTML anchor tag)
         const companyName = extractTextFromAnchor(record['Company']);
         if (!companyName) continue;
+        // The same anchor carries this IPO's Chittorgarh page. Recorded as a
+        // link verifier only (T-403 M-6) — never as a document source.
+        const verifierUrl = extractHrefFromAnchor(record['Company']);
 
         // Parse dates (prefer ISO metadata over display date)
         const openDate = parseChittorgarhDate(
@@ -390,6 +408,7 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
           openDate,
           closeDate: effectiveCloseDate,
           listingDate,
+          verifierUrl,
           listingExchange: listingInfo.exchange,
           // T-287F2: null (not MAINBOARD) for a detected business trust.
           segment: trustOfferingType ? null : listingInfo.segment,
