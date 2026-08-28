@@ -22,7 +22,8 @@
     "./utils/registrar-matcher": "./src/utils/registrar-matcher.ts",
     "./utils/offering-type": "./src/utils/offering-type.ts",
     "./errors/db-cause": "./src/errors/db-cause.ts",
-    "./repositories/document-fetch-state-repository": "./src/repositories/document-fetch-state-repository.ts"
+    "./repositories/document-fetch-state-repository": "./src/repositories/document-fetch-state-repository.ts",
+    "./db/document-type-refinement": "./src/db/document-type-refinement.ts"
   },
   "scripts": {
     "build": "tsc",

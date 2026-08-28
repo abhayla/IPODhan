@@ -13,6 +13,7 @@ import {
   checkLiveIpoHasStateRows,
   checkExtractFailed,
   checkLeadManagerCount,
+  checkDocumentTypeMatchesClassifier,
   countBsePayloadLeadManagers,
   BLOCKED_ALL_MAX_HOURS,
   FOUND_UNREAD_MAX_HOURS,
@@ -152,4 +153,81 @@ test('64c counts the REAL Skyways payload as 3 lead managers', () => {
   assert.equal(countBsePayloadLeadManagers(brlm, co), 3);
   assert.equal(countBsePayloadLeadManagers(brlm, ''), 1);
   assert.equal(countBsePayloadLeadManagers('', ''), 0);
+});
+
+// --- M6: stored type vs the classifier -------------------------------------
+
+const REFINEMENTS = {
+  RHP: ['PROSPECTUS'],
+  ADDENDUM: ['CORRIGENDUM', 'PRICE_BAND_AD'],
+  BASIS_OF_ALLOTMENT: ['BASIS_OF_ALLOTMENT_AD'],
+};
+const classify = (url, title) => {
+  const text = `${url} ${title}`.toLowerCase();
+  if (text.includes('price band')) return 'PRICE_BAND_AD';
+  if (text.includes('corrigendum')) return 'CORRIGENDUM';
+  if (text.includes('red herring') || text.includes('rhp')) return 'RHP';
+  if (text.includes('prospectus')) return 'PROSPECTUS';
+  return null;
+};
+
+test('65 FAILs a final Prospectus still stored as RHP (the forward-only gap)', () => {
+  const violation = checkDocumentTypeMatchesClassifier(
+    { url: 'https://x/Prospectus_Skyways.pdf', title: 'Prospectus', type: 'RHP' },
+    classify,
+    REFINEMENTS
+  );
+  assert.match(violation, /stored as RHP but classifies as PROSPECTUS/);
+});
+
+test('65b FAILs a corrigendum and a price-band ad still stored as ADDENDUM', () => {
+  assert.ok(
+    checkDocumentTypeMatchesClassifier(
+      { url: 'https://x/CorrigendumofRHP.pdf', title: 'Corrigendum', type: 'ADDENDUM' },
+      classify,
+      REFINEMENTS
+    )
+  );
+  assert.ok(
+    checkDocumentTypeMatchesClassifier(
+      { url: 'https://x/a.pdf', title: 'Price Band Advertisement', type: 'ADDENDUM' },
+      classify,
+      REFINEMENTS
+    )
+  );
+});
+
+test('65c PASSes a correctly-typed row', () => {
+  assert.equal(
+    checkDocumentTypeMatchesClassifier(
+      { url: 'https://x/RHP_SKYWAYS.zip', title: 'Red Herring Prospectus', type: 'RHP' },
+      classify,
+      REFINEMENTS
+    ),
+    null
+  );
+});
+
+test('65d does NOT page nightly for an UNRELATED reclassification', () => {
+  // That is a source or classifier change for a human, surfaced by the re-type
+  // script — not something to page about every night.
+  assert.equal(
+    checkDocumentTypeMatchesClassifier(
+      { url: 'https://x/anchor.zip', title: 'Anchor Allocation Report', type: 'BIDDING_CENTERS' },
+      classify,
+      REFINEMENTS
+    ),
+    null
+  );
+});
+
+test('65e never degrades: PROSPECTUS stored, RHP suggested, is not a FAIL', () => {
+  assert.equal(
+    checkDocumentTypeMatchesClassifier(
+      { url: 'https://x/RHP.pdf', title: 'rhp', type: 'PROSPECTUS' },
+      classify,
+      REFINEMENTS
+    ),
+    null
+  );
 });

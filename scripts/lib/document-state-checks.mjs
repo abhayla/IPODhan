@@ -103,3 +103,26 @@ export function countBsePayloadLeadManagers(brlmField, coField) {
       .filter((s) => s !== '').length;
   return count(brlmField) + count(coField);
 }
+
+/**
+ * FAIL — a stored `documents.type` disagrees with what the classifier says the
+ * URL/title is (T-403 M6).
+ *
+ * The detection upgrade for the mis-classification class. Fixing the classifier
+ * only helped documents discovered afterwards; nothing compared the corpus
+ * against it, so a Prospectus stored as RHP was invisible. `classifyUrlOrTitle`
+ * is injected (the audit runs as plain Node on the box with no TS toolchain, so
+ * it cannot import the TypeScript classifier — same convention as this repo's
+ * other mirrored constants).
+ *
+ * Only a REFINEMENT mismatch is a FAIL: an unrelated reclassification is a
+ * source/classifier change for a human, and is reported separately by the
+ * re-type script rather than paged nightly.
+ */
+export function checkDocumentTypeMatchesClassifier(row, classifyUrlOrTitle, refinements) {
+  const suggested = classifyUrlOrTitle(row.url ?? '', row.title ?? '');
+  if (!suggested || suggested === row.type) return null;
+  const allowed = (refinements ?? {})[row.type] ?? [];
+  if (!allowed.includes(suggested)) return null; // unrelated — not a nightly FAIL
+  return `${row.title || row.url}: stored as ${row.type} but classifies as ${suggested}`;
+}
