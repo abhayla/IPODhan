@@ -62,6 +62,29 @@ were 861 MB, WAL 80 MB. The space goes to:
 3. Postgres logs older than 30 days under `C:\Program Files\PostgreSQL\16\data\log`
    are safe. **Never** touch anything else under the data directory.
 
+## Credentials the task needs (learned the hard way, 2026-08-28)
+
+A scheduled task does not inherit your interactive environment, and **GLOBAL.env on the
+Windows VPS could not supply these**:
+
+- `NOTIFIER_KEY` in `C:\Abhay\GLOBAL.env` is **empty**. The real per-project key is
+  `NOTIFIER_KEY_IPODHAN` in `/root/notifier/.env` on the Linux VPS.
+- `NOTIFIER_URL` in that file is `http://127.0.0.1:3300`, which only works **on** the Linux
+  VPS. Off-VPS callers (this Windows box) must use the public ingress
+  `https://firekaro.com/notifier-gw`.
+
+Both are therefore set as **machine-level environment variables** on the Windows VPS, which
+a SYSTEM scheduled task does inherit:
+
+```powershell
+[Environment]::SetEnvironmentVariable('NOTIFIER_KEY_IPODHAN', '<key>', 'Machine')
+[Environment]::SetEnvironmentVariable('NOTIFIER_URL', 'https://firekaro.com/notifier-gw', 'Machine')
+```
+
+Verified 2026-08-28: a forced P1 returned `[NOTIFY] sent P1`. Before this, the task ran
+every 15 minutes and logged `[NOTIFY-SKIP]` — green-looking, and completely deaf. **Prove a
+page by sending one, never by reading config files.**
+
 ## Known gap
 
 There is no automatic garbage collection of fleet worktrees yet — see the

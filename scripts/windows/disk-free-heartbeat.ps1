@@ -140,8 +140,29 @@ $body = @{
 if ($DryRun) { "[DRY-RUN] would POST: $body"; exit 0 }
 
 # --- page (fail-open: a Notifier outage must never break the box) ----------
+# A scheduled task does NOT inherit an interactive user's environment, so fall back to
+# GLOBAL.env (the box's credential SSOT). Without this the task would run every 15 minutes
+# and silently never page - a monitor that cannot alert is worse than no monitor, because
+# its green looks like health.
 $key = $env:NOTIFIER_KEY_IPODHAN
-$url = ($(if ($env:NOTIFIER_URL) { $env:NOTIFIER_URL } else { 'http://127.0.0.1:3300' })) + '/notify'
+$url = $env:NOTIFIER_URL
+$fallbackKey = $null
+if (-not $key -or -not $url) {
+    foreach ($p in @('C:\Abhay\GLOBAL.env', 'D:\Abhay\GLOBAL.env')) {
+        if (-not (Test-Path $p)) { continue }
+        foreach ($line in Get-Content $p) {
+            # NOTIFIER_KEY_IPODHAN is the project-specific name the gateway validates;
+            # GLOBAL.env currently only carries the generic NOTIFIER_KEY, so accept either.
+            if (-not $key -and $line -match '^\s*NOTIFIER_KEY_IPODHAN\s*=\s*(.+?)\s*$') { $key = $Matches[1].Trim('"').Trim("'") }
+            if (-not $url -and $line -match '^\s*NOTIFIER_URL\s*=\s*(.+?)\s*$')          { $url = $Matches[1].Trim('"').Trim("'") }
+            if (-not $fallbackKey -and $line -match '^\s*NOTIFIER_KEY\s*=\s*(.+?)\s*$')  { $fallbackKey = $Matches[1].Trim('"').Trim("'") }
+        }
+        break
+    }
+}
+if (-not $key) { $key = $fallbackKey }
+if (-not $url) { $url = 'http://127.0.0.1:3300' }
+$url = $url.TrimEnd('/') + '/notify'
 if (-not $key) {
     "[NOTIFY-SKIP] NOTIFIER_KEY_IPODHAN not set - would page $severity ($dedupeKey)"
     exit 0
