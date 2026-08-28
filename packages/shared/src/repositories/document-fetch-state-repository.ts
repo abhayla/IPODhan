@@ -161,6 +161,11 @@ export class DocumentFetchStateRepository
     }
   }
 
+  /**
+   * NOT YET CALLED — WP C wires supersession (see document-state-machine.ts's
+   * header). Present because the store contract is what the runner is written
+   * against; flagged rather than left looking live.
+   */
   async markSuperseded(ipoId: string, docTypes: string[]): Promise<number> {
     if (docTypes.length === 0) return 0;
     try {
@@ -207,6 +212,9 @@ export class DocumentFetchStateRepository
   }
 
   /**
+   * NOT YET CALLED — the duplicate-merge sweep will invoke this when it runs
+   * with merges enabled (it is dry-run only today).
+   *
    * Re-point every state row from a merged-away IPO onto the survivor (matrix
    * R8), dropping any row whose (survivor, docType) pair already exists so the
    * unique key holds. Documents are never re-fetched as a result.

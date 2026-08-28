@@ -125,3 +125,35 @@ Expected — run 1: Skyways gets >=4 docs (RHP / CORRIGENDUM / ADDENDUM / PRICE_
 ## 7. Order of work (one commit per item)
 
 1. fixtures + this plan. 2. classifier, party parser, board (with tests). 3. schema, migration, repository. 4. verifier and store. 5. state machine (R1-R13). 6. runner and network counter. 7. stage-reconciler, `index.ts` wiring, flag. 8. audit checks. 9. acceptance run and evidence. 10. gates.
+
+---
+
+# 8. What was delivered, and what was NOT (written after the work, 2026-08-28)
+
+## Delivered against the contract's `dod:` list
+
+| DoD item | Status |
+|---|---|
+| BSE-first discovery: board -> IPO_NO -> core API, `IR_FLAG_FULL` filtered, all BRLM + `#`-separated co-BRLMs, links mapped to typed documents | DONE |
+| NSE second with retry x3 backoff 2/4/8 s, `nsearchives` links, SME via `series=SME` | DONE |
+| Classifier fix: PROSPECTUS only without "red herring"/"draft"; `PRICE_BAND_AD`, `CORRIGENDUM`, `BASIS_OF_ALLOTMENT_AD`; bare "Security Parameters" to PRE_ANCHOR; fixture tests on the real Skyways and MADHURKNIT payloads | DONE |
+| Download verification: status + content-type + >50 KB, zip contains a PDF, sha256 dedup, cover-page company check, BSE "Object Moved" never stored | DONE |
+| `document_fetch_state` table + the §7.1 transitions, §7.2 cycle behaviour, §7.3 retry policy, R1-R13 each with a fixture test | DONE |
+| Storage: `PROSPECTUS_STORE_DIR/<ipo_id>/<doc_type>-<sha8>.pdf`, temp-then-rename, zips unpacked, `PROSPECTUS_STORE_MAX_GB` refusal, `PURGE_PDFS` at close + 7 days, files-only with a per-IPO log line | DONE |
+| Logging: `last_attempt` json, step-ledger rows with counts in `reason`, one `scraper_logs` row per cycle at `source='DOCUMENTS'`, five nightly audit checks | DONE |
+| Wiring behind `ENABLE_PRIMARY_SOURCE_DISCOVERY` + new `ENABLE_DOCUMENT_STATE_MACHINE` (default off) | DONE |
+| Acceptance run for SKYWAYS / MADHURKNIT / ESDS / Deepa Jewellers with evidence files | DONE against the LIVE exchanges — but with an IN-MEMORY store, see below |
+| Suites green, tsc clean | DONE |
+
+## NOT delivered — stated plainly
+
+1. **The database-backed acceptance run.** The dev database `ipodhan_wpab` was dropped mid-task when its host ran out of disk (owner-handled incident, 2026-08-28). The acceptance run therefore exercises every piece of logic against the real exchanges but substitutes `InMemoryDocumentFetchStateStore` for Postgres. **PENDING** until the host returns.
+2. **Migration `0035` is authored but NOT APPLIED** anywhere, for the same reason. Nothing has verified that it applies cleanly, that `ON CONFLICT` hits the new unique constraint, or that the `ALTER TYPE ... ADD VALUE` statements run inside drizzle-kit's transaction. **PENDING.**
+3. **The SEBI and company-host fallback rungs are not implemented.** Discovery stops at the two exchanges. The decision tree's rungs 3 and 4 (SEBI public-issues listing, the company investor page) and the Chittorgarh link-verifier are declared in the runner's header and left for a later WP. In practice both exchanges answered for all four acceptance IPOs, so nothing needed them — but a genuine `BLOCKED_ALL` today has fewer places to go than the matrix specifies.
+4. **`decideSupersession`, `isStaleInProgress`, `markSuperseded` and `repointToSurvivor` are implemented and unit-tested but NOT called.** They need `filing_date` (read off the document) and an extraction claim, neither of which exists until WP C. Each is marked `NOT YET WIRED` in its own doc comment so it does not read as live code.
+5. **A `documents` lineage table does not exist.** "Same hash = one row, two URLs" is honoured by storing one file and recording the alternative URL in the attempt log; a second URL column/table is not added.
+6. **One residual F2 gap:** NSE is consulted only when BSE left a due type without a link, so in the rare cycle where BSE covers everything due and one of those downloads then fails, there is no second copy in hand. The 30-minute retry ladder covers it; noted in the runner's header.
+
+## Contract expectation that turned out to be factually wrong
+
+The DoD expected ESDS's anchor report to be `NOT_YET_FILED` with zero fallback calls. ESDS opens 28 Aug, so its anchor round was 27 Aug and NSE was already serving `ANCHOR_ESDS.zip`. The underlying behaviour (F3: an exchange answering with no link yields `NOT_YET_FILED`, never a failure, with no fall-through) is verified on the types ESDS genuinely has not filed. See `evidence/T-403/README.md`.
