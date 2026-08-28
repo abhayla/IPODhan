@@ -8,13 +8,11 @@
  * next thing to wire, they are not silently pretended to exist).
  * SME order is NSE first, because BSE's mainboard board does not carry SME.
  *
- * KNOWN LIMITATION, stated rather than hidden: NSE is consulted only when BSE
- * left at least one due type without a candidate link. So in the rare cycle
- * where BSE supplies a link for EVERY due type and one of those downloads then
- * fails, there is no NSE copy in hand to fall back to and the type goes
- * BLOCKED_ALL until the next cycle retries it. Closing that would mean a second
- * exchange pass on download failure; the 30-minute retry ladder covers it at no
- * extra traffic, so it is deliberately left to a later WP.
+ * The full chain is BSE -> NSE -> SEBI -> the issuer's own investor page, with
+ * Chittorgarh consulted last as a link VERIFIER only (never a document source).
+ * NSE is fetched on demand: when BSE covered every due type and one of those
+ * downloads then fails, the NSE copy is fetched at that point rather than the
+ * type going BLOCKED_ALL with an untried source in reach (matrix F2).
  *
  * What replaces what: the old `runPrimaryDocBackfill` fetched NSE for EVERY
  * candidate IPO, once a day, with a 15 s cap and no retry, and kept no record of
@@ -52,6 +50,7 @@ import {
   extractVerifierLinks,
   extractWebsiteFromCoverText,
   normalizeCompanyUrl,
+  isStorableFromCompanyPage,
 } from './company-host-source.js';
 import {
   planIpoCycle,
@@ -61,7 +60,7 @@ import {
   type IssueShape,
   type StateRow,
 } from './document-state-machine.js';
-import type { DocumentType } from './document-types.js';
+import { isExchangeServedType, type DocumentType } from './document-types.js';
 import type { LifecycleStage } from '../scheduler/stage-reconciler.js';
 import type {
   DocumentFetchStatePatch,
@@ -145,6 +144,13 @@ export const EXCHANGE_FAILURE_OUTCOMES = [
 
 /** Per-request ceiling for a JSON API call. Generous vs the old 15 s cap. */
 export const FETCH_TIMEOUT_MS = 20_000;
+
+/**
+ * A URL that points at a downloadable document. Used to decide which attempts
+ * belong to one document type's log. The dot IS escaped (NIT-2): `/.(pdf|zip)/`
+ * matches "apdf" and any three-character run ending in "pdf".
+ */
+const DOC_URL_RE = /\.(pdf|zip)(\?|#|$)/i;
 
 /**
  * Per-request ceiling for a DOCUMENT download. Six times the API budget,
@@ -237,6 +243,15 @@ export interface RunnerDeps {
   /** Skip writing PDFs to disk (acceptance runs that only prove call counts). */
   skipDownload?: boolean;
   /**
+   * Retry backoff sleep, injectable (MIN-4).
+   *
+   * The BSE and NSE ladders wait 2 s + 4 s per exhausted source. Real in
+   * production; in the chain tests, where three exchange failures are the SETUP
+   * rather than the thing under test, it added ~73 s of pure sleeping to the
+   * unit budget. Tests pass a no-op; nothing about the ladder's logic changes.
+   */
+  sleep?: (ms: number) => Promise<void>;
+  /**
    * Page-1 text extractor for the cover-page company check (matrix §3 step 4).
    * Injected so a test can drive F8 without building a real PDF; defaults to
    * the pdf-parse-backed implementation, which is what runs in production.
@@ -264,6 +279,12 @@ export interface IpoRunResult {
    * DiscoveryIpo.bseIpoNo for why re-deriving it later is not possible.
    */
   resolvedBseIpoNo?: number;
+  /**
+   * The issuer website read off a filing cover this cycle (T-403 M-6). The
+   * caller persists it to `ipo_details.company_website`, which is what makes
+   * rung 4 reachable on the NEXT document this IPO needs.
+   */
+  learnedCompanyWebsite?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -314,6 +335,12 @@ export class DocumentDiscoveryRunner {
     return this.deps.now ? this.deps.now() : new Date();
   }
 
+  /** Retry backoff. Injectable so tests do not actually sleep (MIN-4). */
+  private async sleep(ms: number): Promise<void> {
+    if (this.deps.sleep) return this.deps.sleep(ms);
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   /** One counted request. Records the call before returning, success or not. */
   private async request(
     url: string,
@@ -354,7 +381,7 @@ export class DocumentDiscoveryRunner {
     const boardUrl = `${BSE_API_BASE}IPO_HomePageDetail/w`;
     let res = await this.request(boardUrl, BSE_HEADERS, '(shared:bse-board)');
     for (let attempt = 0; res.status !== 200 && attempt < BSE_RETRY_BACKOFF_MS.length - 1; attempt++) {
-      await new Promise((r) => setTimeout(r, BSE_RETRY_BACKOFF_MS[attempt]));
+      await this.sleep(BSE_RETRY_BACKOFF_MS[attempt]);
       res = await this.request(boardUrl, BSE_HEADERS, '(shared:bse-board)');
     }
     if (res.status !== 200) {
@@ -406,7 +433,7 @@ export class DocumentDiscoveryRunner {
     const started = Date.now();
     let res = await this.request(url, BSE_HEADERS, ipo.id);
     for (let attempt = 0; res.status !== 200 && attempt < BSE_RETRY_BACKOFF_MS.length - 1; attempt++) {
-      await new Promise((r) => setTimeout(r, BSE_RETRY_BACKOFF_MS[attempt]));
+      await this.sleep(BSE_RETRY_BACKOFF_MS[attempt]);
       res = await this.request(url, BSE_HEADERS, ipo.id);
     }
     if (res.status !== 200) {
@@ -467,7 +494,7 @@ export class DocumentDiscoveryRunner {
         url,
       });
       if (attempt < NSE_RETRY_BACKOFF_MS.length - 1) {
-        await new Promise((r) => setTimeout(r, NSE_RETRY_BACKOFF_MS[attempt]));
+        await this.sleep(NSE_RETRY_BACKOFF_MS[attempt]);
       }
     }
     return null;
@@ -481,7 +508,11 @@ export class DocumentDiscoveryRunner {
     wantedType: DocumentType
   ): Promise<VerifyResult | null> {
     const url = encodeDocumentUrl(doc.url);
-    const headers = doc.source === 'BSE' ? BSE_HEADERS : NSE_HEADERS;
+    // MIN-5: an exchange Referer belongs only on that exchange's own host.
+    // Sending `Referer: nseindia.com` to SEBI or to an issuer's website is both
+    // wrong and needlessly identifying; those hosts get neutral browser headers.
+    const headers =
+      doc.source === 'BSE' ? BSE_HEADERS : doc.source === 'NSE' ? NSE_HEADERS : BROWSER_PAGE_HEADERS;
     const started = Date.now();
     const res = await this.request(url, { ...headers, Accept: '*/*' }, ipo.id, DOWNLOAD_TIMEOUT_MS);
     // Two passes, deliberately. The cover check needs the UNWRAPPED pdf, which
@@ -778,7 +809,14 @@ export class DocumentDiscoveryRunner {
       }
 
       const links = parseCompanyHostLinks(res.body.toString('utf8'), pageUrl).filter(
-        (l) => l.docType === docType && !triedUrls.has(l.url)
+        (l) =>
+          l.docType === docType &&
+          !triedUrls.has(l.url) &&
+          // MIN-6: never store a filing a third party happens to host. An
+          // investor page routinely links documents parked on a CDN or a
+          // merchant bank; the owner's rule is issuer-or-exchange only, and it
+          // applies on THIS rung too.
+          isStorableFromCompanyPage(l.url, companyUrl)
       );
       attempts.push({
         source: 'COMPANY',
@@ -999,6 +1037,20 @@ export class DocumentDiscoveryRunner {
     const anyExchangeFailed = consulted.some((a) => EXCHANGE_FAILURE_OUTCOMES.includes(a.outcome));
     const exchangesAnswered = consulted.some((a) => a.outcome === 'ok') && !anyExchangeFailed;
 
+    // B-1: did every exchange APPLICABLE to this IPO actually cover it?
+    //
+    // `exchangesAnswered` above only asks "did someone answer and nobody fail".
+    // That is too weak to settle a type as "not filed yet": a mainboard IPO that
+    // has dropped off the BSE board reports `not_on_board` — not a failure, but
+    // BSE plainly did not cover it — and NSE answering alone must not be taken
+    // as proof that a Prospectus does not exist. Same for an IPO with no NSE
+    // symbol. Coverage is complete only when each applicable exchange said 'ok'.
+    const bseApplicable = !isSme;
+    const nseApplicable = Boolean(ipo.symbol);
+    const bseOk = consulted.some((a) => a.source === 'BSE' && a.outcome === 'ok');
+    const nseOk = consulted.some((a) => a.source === 'NSE' && a.outcome === 'ok');
+    const exchangeCoverageComplete = (!bseApplicable || bseOk) && (!nseApplicable || nseOk);
+
     for (const docType of plan.due) {
       const stateRow = await this.deps.store.ensureRow(ipo.id, docType);
       const prior: StateRow =
@@ -1074,10 +1126,21 @@ export class DocumentDiscoveryRunner {
         rungs.push(stored ? 'EXCHANGES:found' : 'EXCHANGES:failed');
       }
 
-      // Rungs 3 and 4 (G1/G2). Only reached once the exchanges have genuinely
-      // failed for this type -- never as a shortcut, and never when the
-      // exchanges simply said "not filed yet" (F3), which is not a failure.
-      if (outcome === 'all_sources_failed' && !this.deps.skipDownload) {
+      // B-1: may the exchanges' answer SETTLE this type?
+      //
+      // Only when they can serve it at all (never the DRHP) AND every applicable
+      // exchange actually covered this IPO. Otherwise a clean `no_link` is not
+      // evidence of anything and the later rungs must still be consulted —
+      // which is the whole point of having them.
+      const settledByExchanges =
+        isExchangeServedType(docType) && exchangeCoverageComplete;
+      const needsEscalation =
+        outcome === 'all_sources_failed' || (outcome === 'no_link' && !settledByExchanges);
+
+      // Rungs 3 and 4 (G1/G2). Reached when the exchanges failed, or when they
+      // answered but cannot settle this type (a DRHP, or an IPO one of them no
+      // longer lists).
+      if (needsEscalation && !this.deps.skipDownload) {
         const escalated = await this.escalateBeyondExchanges(
           ipo,
           docType,
@@ -1091,7 +1154,7 @@ export class DocumentDiscoveryRunner {
           bytes = escalated.bytes;
           outcome = 'found';
         }
-      } else if (outcome === 'all_sources_failed') {
+      } else if (needsEscalation) {
         // Downloads are disabled for this run (call-counting / dry mode), so no
         // rung could produce a file. Recorded explicitly rather than left empty:
         // the G4 guard below asserts four entries, and an unrecorded skip would
@@ -1133,12 +1196,16 @@ export class DocumentDiscoveryRunner {
         blockedSinceAt: transition.blockedSinceAt,
         attempts: (stateRow.attempts ?? 0) + 1,
         lastAttemptAt: now,
-        // N8: only the attempts that concern THIS document type, plus the shared
-        // exchange calls. Storing the whole cycle's log on every row made each row
-        // grow with the number of due types and buried the relevant lines.
-        lastAttempt: attempts.filter(
-          (a) => !a.url || !/.(pdf|zip)/i.test(a.url) || (candidates ?? []).some((c) => c.url === a.url)
-        ),
+        // Only the attempts that concern THIS document type, plus the shared
+        // exchange calls (N8 — storing the whole cycle's log on every row grew
+        // with the number of due types and buried the relevant lines).
+        //
+        // M-3: filtered against `triedUrls`, which every rung adds to, NOT
+        // against the exchange `candidates` list. The old filter kept only
+        // exchange URLs, so every SEBI / COMPANY / VERIFIER attempt was dropped
+        // from the persisted row — deleting the audit trail from precisely the
+        // BLOCKED_ALL rows whose whole value is that trail.
+        lastAttempt: attempts.filter((a) => !a.url || triedUrls.has(a.url) || !DOC_URL_RE.test(a.url)),
       };
       if (documentId) patch.documentId = documentId;
       await this.deps.store.update(stateRow.id, patch);
@@ -1157,6 +1224,9 @@ export class DocumentDiscoveryRunner {
         logger.info({ ipoId: ipo.id, docType, bytes }, 'Document FOUND and stored');
       }
     }
+
+    const learned = this.companyUrlByIpo.get(ipo.id);
+    if (learned && !ipo.companyWebsite) result.learnedCompanyWebsite = learned;
 
     result.networkCalls = this.deps.counter.count(ipo.id) - callsBefore;
     return result;

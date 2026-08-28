@@ -986,6 +986,24 @@ export const ipoDetails = pgTable(
       .unique()
       .references(() => ipos.id, { onDelete: 'cascade' }),
 
+    /**
+     * The issuer's own website, read off the RHP/DRHP cover (T-403 M-6).
+     *
+     * Load-bearing, not decoration: the document chain's fourth rung is the
+     * issuer's investor page, and before this column NOTHING supplied a URL for
+     * it — the rung was unreachable in production and could only ever record
+     * `COMPANY:skipped:no_company_url`.
+     */
+    companyWebsite: varchar('company_website', { length: 255 }),
+
+    /**
+     * The third-party IPO page (Chittorgarh) used ONLY to verify which exchange
+     * URL is correct — never as a document source (owner rule, 2026-08-28).
+     * Recorded by the Chittorgarh orchestrator, which already fetches this page,
+     * so it costs no extra request.
+     */
+    verifierUrl: varchar('verifier_url', { length: 512 }),
+
     // Issue structure fields (Story 4.11)
     issueType: issueTypeEnum('issue_type'),
     // in INR RUPEES (same convention as ipos.issue_size, which fresh+ofs sum to;

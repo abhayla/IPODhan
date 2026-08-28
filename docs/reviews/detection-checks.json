@@ -258,6 +258,15 @@
       "failThreshold": "any documents row whose stored type has a permitted REFINEMENT to what the classifier returns (RHP->PROSPECTUS, ADDENDUM->CORRIGENDUM/PRICE_BAND_AD, BASIS_OF_ALLOTMENT->BASIS_OF_ALLOTMENT_AD). An UNRELATED reclassification is not a nightly FAIL — that is a source/classifier change for a human, surfaced by scraper/src/scripts/retype-misclassified-documents.ts",
       "severity": "P2",
       "unverifiableWhen": "documents table not present"
+    },
+    {
+      "id": "m_not_yet_filed_age",
+      "findingClass": "a document the pipeline can never reach settles as NOT_YET_FILED and stays there silently forever — NOT_YET_FILED is deliberately not a failure, which is exactly what makes an unreachable document invisible (T-403 B-1: the SEBI rung could never fire for a DRHP)",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "NOT_YET_FILED past its filing calendar: DRHP >14d from first sight, RHP >2d after open, PROSPECTUS >3d after close (listing is T+3 and a company cannot list before the Prospectus is filed), anchor report >1d after open. A row whose governing date is missing is skipped, never guessed at",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
     }
   ],
   "notCoveredByThisManifest": [

@@ -127,6 +127,36 @@ interface RunEvidence {
  * `ipos.id`, because the state table has a foreign key to it — the literal ids
  * used in memory would violate it.
  */
+/**
+ * Refuse to run --db against anything that is not an obvious test database
+ * (T-403 M-5).
+ *
+ * This harness INSERTS state rows and, with --reset, DELETEs them. `scraper/.env`
+ * points DATABASE_URL at the PRODUCTION Postgres host, so a stray `--db` in the
+ * wrong shell was one keystroke from writing to prod — the exact incident class
+ * `tests/helpers/db-safety-guard.ts` exists for (GitHub #163). The check is on
+ * EVERY --db write, not only --reset: an INSERT into prod is not acceptable
+ * either.
+ *
+ * Deliberately fail-closed and name-based: an unparseable URL, or one whose
+ * database name does not end in `_test`, is refused rather than interpreted.
+ */
+export function assertTestDatabase(databaseUrl: string): void {
+  let dbName: string;
+  try {
+    dbName = new URL(databaseUrl).pathname.replace(/^\//, '');
+  } catch {
+    throw new Error('--db refused: DATABASE_URL is not parseable, so the target cannot be confirmed');
+  }
+  if (!/_test$/i.test(dbName)) {
+    throw new Error(
+      `--db refused: database "${dbName}" does not end in _test. ` +
+        'This harness writes (and with --reset deletes) rows; it will only ever ' +
+        'do that against an obvious test database.'
+    );
+  }
+}
+
 async function makeStore(useDb: boolean): Promise<{
   store: InMemoryDocumentFetchStateStore | DocumentFetchStateRepository;
   documents: { upsertDocument: (doc: never) => Promise<{ id: string }> } | null;
@@ -140,6 +170,7 @@ async function makeStore(useDb: boolean): Promise<{
 
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error('--db requires DATABASE_URL');
+  assertTestDatabase(url);
 
   const { Pool } = await import('pg');
   const { drizzle } = await import('drizzle-orm/node-postgres');
@@ -294,8 +325,10 @@ async function runOnce(
 
 async function main(): Promise<void> {
   const download = !process.argv.includes('--no-download');
+  // NIT-1: no machine-specific absolute path. The env var is the real control;
+  // the fallback is relative to the repo so this runs anywhere.
   const storeDir =
-    process.env.PROSPECTUS_STORE_DIR ?? 'D:/Abhay/Ventures/IPODhan-backups/prospectus-wpab';
+    process.env.PROSPECTUS_STORE_DIR ?? join(process.cwd(), '..', '.prospectus-acceptance');
   // V7: never silently overwrite a previous run's evidence. Each run gets its
   // own timestamped directory unless one is named explicitly.
   const dirArg = process.argv.find((a) => a.startsWith('--evidence-dir='));

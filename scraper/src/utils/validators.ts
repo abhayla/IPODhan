@@ -136,7 +136,18 @@ export const ChittorgarhIPOSchema = ScrapedIPOSchema.merge(z.object({
   ),
 }));
 
-export type ChittorgarhIPO = z.infer<typeof ChittorgarhIPOSchema>;
+/**
+ * A Chittorgarh row, plus the link-VERIFIER page the row's anchor pointed at
+ * (T-403 M-6).
+ *
+ * Deliberately OUTSIDE the zod schema: it is not IPO data and no source competes
+ * over it. It is a pointer document discovery uses to check whether an exchange
+ * URL we failed on was simply the wrong URL — a document is NEVER stored from
+ * that host (`company-host-source.ts` enforces this structurally).
+ */
+export type ChittorgarhIPO = z.infer<typeof ChittorgarhIPOSchema> & {
+  verifierUrl?: string;
+};
 
 /**
  * Validate Chittorgarh scraped IPO data
