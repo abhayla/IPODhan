@@ -24,6 +24,7 @@
  *   npx tsx scripts/run-document-discovery.ts --no-download   (skip PDFs)
  *   DATABASE_URL=... npx tsx scripts/run-document-discovery.ts --db
  *   npx tsx scripts/run-document-discovery.ts --evidence-dir=path/to/dir
+ *   DATABASE_URL=... npx tsx scripts/run-document-discovery.ts --db --reset
  *
  * `--db` (V4) swaps the in-memory store for the real
  * `DocumentFetchStateRepository` against `DATABASE_URL`. It requires the four
@@ -35,6 +36,7 @@
  */
 
 import { mkdirSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import {
   DocumentDiscoveryRunner,
@@ -53,9 +55,10 @@ import { NetworkCounter } from '../src/utils/network-counter.js';
  * before the host went down. `stage` is derived from those dates against the run
  * date, exactly as `deriveLifecycleStage` would.
  */
-const ACCEPTANCE_IPOS: (DiscoveryIpo & { dbStatus: string; closeDate: string })[] = [
+const ACCEPTANCE_IPOS: (DiscoveryIpo & { dbStatus: string; closeDate: string; accId: string })[] = [
   {
     id: 'acc-skyways',
+    accId: 'acc-skyways',
     companyName: 'Skyways Air Services Ltd.',
     symbol: 'SKYWAYS',
     segment: 'MAINBOARD',
@@ -70,6 +73,7 @@ const ACCEPTANCE_IPOS: (DiscoveryIpo & { dbStatus: string; closeDate: string })[
   },
   {
     id: 'acc-madhurknit',
+    accId: 'acc-madhurknit',
     companyName: 'Madhur Knit Crafts Ltd.',
     symbol: 'MADHURKNIT',
     segment: 'SME',
@@ -80,6 +84,7 @@ const ACCEPTANCE_IPOS: (DiscoveryIpo & { dbStatus: string; closeDate: string })[
   },
   {
     id: 'acc-esds',
+    accId: 'acc-esds',
     companyName: 'ESDS Software Solution Limited',
     symbol: 'ESDS',
     segment: 'MAINBOARD',
@@ -93,6 +98,7 @@ const ACCEPTANCE_IPOS: (DiscoveryIpo & { dbStatus: string; closeDate: string })[
   },
   {
     id: 'acc-deepa',
+    accId: 'acc-deepa',
     companyName: 'Deepa Jewellers Ltd.',
     symbol: null, // no NSE symbol in our data yet
     segment: 'MAINBOARD',
@@ -123,12 +129,13 @@ interface RunEvidence {
  */
 async function makeStore(useDb: boolean): Promise<{
   store: InMemoryDocumentFetchStateStore | DocumentFetchStateRepository;
+  documents: { upsertDocument: (doc: never) => Promise<{ id: string }> } | null;
   dump: () => Promise<unknown[]>;
   close: () => Promise<void>;
 }> {
   if (!useDb) {
     const store = new InMemoryDocumentFetchStateStore();
-    return { store, dump: async () => store.all(), close: async () => undefined };
+    return { store, documents: null, dump: async () => store.all(), close: async () => undefined };
   }
 
   const url = process.env.DATABASE_URL;
@@ -162,8 +169,55 @@ async function makeStore(useDb: boolean): Promise<{
     ipo.id = rows[0].id;
   }
 
+  // A REAL documents writer in --db mode, but a minimal one.
+  //
+  // `document_fetch_state.document_id` is a uuid FK, so the in-memory stub's
+  // 'doc-1' cannot be used here. `DocumentRepository` cannot be used either: the
+  // journal-built `documents` table has SEVEN columns where schema.ts declares
+  // about eighteen (no media_type, sequence_number, is_active, exchange,
+  // extraction_*), so the repository's SELECT fails on media_type. That drift is
+  // pre-existing and out of T-403's scope — recorded in
+  // evidence/T-403/journal-schema-drift.json — so this writer names only the
+  // columns the journal actually creates. `document_fetch_state`, which IS what
+  // WP B is being proven against, goes through its real repository unchanged.
+  const documents = {
+    async upsertDocument(doc: {
+      ipoId: string;
+      type: string;
+      title: string;
+      url: string;
+      fileSize?: number;
+    }): Promise<{ id: string }> {
+      const existing = await db.execute(
+        sql`SELECT id FROM documents WHERE url = ${doc.url} LIMIT 1`
+      );
+      const found = ((existing as unknown as { rows?: { id: string }[] }).rows ?? [])[0];
+      if (found) return { id: found.id };
+
+      const inserted = await db.execute(sql`
+        INSERT INTO documents (ipo_id, type, title, url, file_size)
+        VALUES (${doc.ipoId}::uuid, ${doc.type}::document_type, ${doc.title.slice(0, 255)},
+                ${doc.url}, ${doc.fileSize ?? null})
+        RETURNING id
+      `);
+      const row = ((inserted as unknown as { rows?: { id: string }[] }).rows ?? [])[0];
+      return { id: row.id };
+    },
+  };
+
+  // --reset clears ONLY these four IPOs' state and document rows, so "run 1" is a
+  // genuine first run. Without it the state table remembers the previous run and
+  // run 1 legitimately costs zero calls — which would make A6/A7 pass vacuously.
+  if (process.argv.includes('--reset')) {
+    for (const ipo of ACCEPTANCE_IPOS) {
+      await db.execute(sql`DELETE FROM document_fetch_state WHERE ipo_id = ${ipo.id}::uuid`);
+      await db.execute(sql`DELETE FROM documents WHERE ipo_id = ${ipo.id}::uuid`);
+    }
+  }
+
   return {
     store,
+    documents: documents as never,
     dump: async () => {
       const out: unknown[] = [];
       for (const ipo of ACCEPTANCE_IPOS) out.push(...(await store.listForIpo(ipo.id)));
@@ -175,19 +229,27 @@ async function makeStore(useDb: boolean): Promise<{
   };
 }
 
+/** The stable `acc-*` key for a company, so evidence file names never change. */
+function stableIdFor(companyName: string): string {
+  return ACCEPTANCE_IPOS.find((i) => i.companyName === companyName)?.accId ?? 'unknown';
+}
+
 async function runOnce(
   run: number,
   store: InMemoryDocumentFetchStateStore | DocumentFetchStateRepository,
+  realDocuments: { upsertDocument: (doc: never) => Promise<{ id: string }> } | null,
   dump: () => Promise<unknown[]>,
   download: boolean,
   storeDir: string
 ): Promise<RunEvidence> {
   const counter = new NetworkCounter();
-  const documents = {
+  const documents = realDocuments ?? {
     rows: [] as Record<string, unknown>[],
     async upsertDocument(doc: Record<string, unknown>) {
-      this.rows.push(doc);
-      return { id: `doc-${this.rows.length}` };
+      (this.rows as Record<string, unknown>[]).push(doc);
+      // A UUID, not 'doc-1': document_fetch_state.document_id is uuid-typed, so
+      // an obviously-fake id would only fail once a real database is behind it.
+      return { id: randomUUID() };
     },
   };
 
@@ -244,12 +306,12 @@ async function main(): Promise<void> {
   mkdirSync(evidenceDir, { recursive: true });
 
   const useDb = process.argv.includes('--db');
-  const { store, dump, close } = await makeStore(useDb);
+  const { store, documents: realDocuments, dump, close } = await makeStore(useDb);
 
   console.log('=== T-403 acceptance run 1 (discovery) ===');
-  const run1 = await runOnce(1, store, dump, download, storeDir);
+  const run1 = await runOnce(1, store, realDocuments, dump, download, storeDir);
   console.log('=== T-403 acceptance run 2 (must cost ZERO calls for found IPOs) ===');
-  const run2 = await runOnce(2, store, dump, download, storeDir);
+  const run2 = await runOnce(2, store, realDocuments, dump, download, storeDir);
 
   for (const evidence of [run1, run2]) {
     writeFileSync(
@@ -262,7 +324,7 @@ async function main(): Promise<void> {
     );
     for (const result of evidence.results) {
       writeFileSync(
-        join(evidenceDir, `run-${evidence.run}-attempts-${result.ipoId}.json`),
+        join(evidenceDir, `run-${evidence.run}-attempts-${stableIdFor(result.companyName)}.json`),
         JSON.stringify(result, null, 2)
       );
     }
@@ -270,7 +332,12 @@ async function main(): Promise<void> {
 
   // The acceptance assertions, evaluated here so the harness itself reports
   // pass/fail rather than leaving it to a human reading json.
-  const find = (e: RunEvidence, id: string) => e.results.find((r) => r.ipoId === id)!;
+  // Matched by COMPANY NAME, not id: in --db mode each acceptance IPO's id is
+  // replaced with its real `ipos.id`, so an id lookup silently returns undefined.
+  const find = (e: RunEvidence, accId: string) => {
+    const wanted = ACCEPTANCE_IPOS.find((i) => i.id === accId || i.accId === accId);
+    return e.results.find((r) => r.companyName === wanted?.companyName)!;
+  };
   const skyways1 = find(run1, 'acc-skyways');
   const madhur1 = find(run1, 'acc-madhurknit');
   const esds1 = find(run1, 'acc-esds');

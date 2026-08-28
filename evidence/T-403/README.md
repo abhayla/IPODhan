@@ -169,3 +169,90 @@ DATABASE_URL=... npx tsx scripts/run-document-discovery.ts --db # real repositor
 The default evidence directory is timestamped, so a run never silently overwrites an
 earlier one. `--no-download` deliberately makes A8 FAIL rather than pass vacuously:
 with no files on disk it proves nothing, and a vacuous PASS is worse than an honest FAIL.
+
+---
+
+# Round 2: the database-backed run (2026-08-28)
+
+The owner approved ONE exception — an empty `ipodhan_test` on 127.0.0.1:15432
+where `ipodhan_app` owns schema `public`. Everything below was produced against
+it. No other database was created.
+
+## The migration was broken, and applying it is what found that
+
+`drizzle-kit migrate` on the empty database failed mid-journal:
+
+```
+error: type "document_fetch_state" already exists   (SQLSTATE 42710)
+```
+
+Migration 0035 created an ENUM and a TABLE with the same name, and Postgres
+gives every table an implicit composite type of that name. **In production this
+would have failed the deploy at the migrate step** — the first symptom would
+have been a failed release, not a red test. The enum is now
+`document_fetch_status`; the table keeps its name.
+
+`evidence/T-403/migration-readback.json` is the proof after the fix: **19 of 19
+journal entries applied, exit 0**, 17 tables, `document_fetch_state` with all 16
+columns (`state` typed `document_fetch_status`), all four indexes plus
+`unique_doc_fetch_state_per_ipo_type`, `document_type` carrying the three new
+values, and `ipos` carrying `bse_ipo_no` + `bse_payload_lead_manager_count`.
+
+`scripts/tests/migration-name-collision.test.mjs` (wired into `pr-gate.yml`)
+parses every journaled migration and fails on any `CREATE TYPE` name that equals
+a `CREATE TABLE` name — including the harder case where the two land in
+different releases. Verified against the original 0035: it catches it.
+
+## The journal does not rebuild the schema — a wider, pre-existing drift
+
+Building from nothing but the journal exposed far more than the enum collision.
+Measured, not assumed (`journal-schema-drift.json`, `document-type-enum-drift.json`):
+
+| Object | Journal builds | schema.ts declares |
+|---|---|---|
+| `ipos` columns | 30, including a NOT NULL `category` the schema no longer has | 50, with `segment` / `offering_type` instead |
+| `documents` columns | 7 | ~18 (no `media_type`, `sequence_number`, `is_active`, `exchange`, `extraction_*`) |
+| `document_type` values | 7 | 15 |
+
+Production is fine — it was built from dumps plus the `_repair/` files — but the
+claim that the journal can rebuild the schema is false, and any environment built
+from it (fresh staging, a CI database, disaster recovery) would reject every NSE
+document type the scraper writes.
+
+**Repaired here (enum only):**
+`_repair/2026-08-28_document_type_enum_journal_drift.sql` restores the eight
+missing `document_type` values, idempotently. **NOT repaired:** the `ipos` and
+`documents` column drift. That is a schema-ownership decision for the owner, not
+something to slip into a document-discovery task, so it is reported rather than
+silently patched.
+
+## M8 integration tests: 8/8 against real Postgres
+
+`vitest.integration.config.ts`, `DATABASE_URL` set:
+`Test Files 1 passed | Tests 8 passed`, 34.9 s.
+
+Exercised for real: `ensureRow` idempotency, `ensureRow` under three CONCURRENT
+calls (a read-then-insert would race the unique key), the `update` patch and its
+jsonb round-trip, `findDue`'s inclusion/exclusion rules, `markSuperseded`,
+`repointToSurvivor` leaving the colliding row behind, and `ON DELETE CASCADE`.
+
+## DB-backed acceptance: 8/8, run 1 = 20 calls, run 2 = 0
+
+`npx tsx scripts/run-document-discovery.ts --db --reset` against `ipodhan_test`,
+with the four IPOs seeded as real `ipos` rows. Evidence in
+`evidence/T-403/db-run/`, including `state-table-from-postgres.json` — the state
+read back **out of the database**, not out of memory:
+
+```
+25 document_fetch_state rows, 11 documents rows
+by state: FOUND=13, NOT_YET_FILED=12   (nothing BLOCKED_ALL)
+```
+
+Skyways, from Postgres: RHP, ADDENDUM, PRICE_BAND_AD, CORRIGENDUM,
+RATIOS_BASIS_ISSUE_PRICE and ANCHOR_ALLOCATION_REPORT all `FOUND` with a
+`document_id`; DRHP, PROSPECTUS and BASIS_OF_ALLOTMENT_AD `NOT_YET_FILED` with a
+30-minute `next_retry_at`.
+
+`--reset` exists because the state table is persistent: without clearing these
+four IPOs, "run 1" would legitimately cost zero calls and A6/A7 would pass
+vacuously. It deletes rows for those four ids only.

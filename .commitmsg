@@ -1,31 +1,38 @@
-fix(db): T-403 — rename the fetch-state ENUM; it collided with the table name
+test(scraper,db): T-403 — M8 and the acceptance run against real Postgres, plus journal drift found doing it
 
-BLOCKER, found by applying 0035 to an empty database. Migration 0035 created an
-ENUM named `document_fetch_state` AND a TABLE named `document_fetch_state`.
-Postgres creates an implicit composite type for every table, so the second
-CREATE is refused:
+With the owner-approved ipodhan_test available, everything that was PENDING is
+now run for real — and running it found more than it proved.
 
-    error: type "document_fetch_state" already exists   (SQLSTATE 42710)
+M8 INTEGRATION TESTS: 8/8 against real Postgres (34.9s). ensureRow idempotency,
+ensureRow under three CONCURRENT calls, the update patch and its jsonb
+round-trip, findDue's inclusion/exclusion, markSuperseded, repointToSurvivor
+leaving the colliding row behind, and ON DELETE CASCADE.
 
-Reproduced here on ipodhan_test: `drizzle-kit migrate` exited 1 mid-journal.
-In production this would have failed the deploy at the migrate step, and
-assert-migrations-applied.sh would have blocked the release — the first symptom
-would have been a failed deploy, not a test.
+DB-BACKED ACCEPTANCE: 8/8, run 1 = 20 network calls, run 2 = 0, with the state
+table read back OUT OF POSTGRES (25 state rows, 11 documents rows, FOUND=13
+NOT_YET_FILED=12, nothing BLOCKED_ALL). --db now uses a real documents writer
+and --reset clears only the four acceptance IPOs, because without it the
+persistent state table makes "run 1" cost zero calls and A6/A7 pass vacuously.
 
-Fix: the enum is now `document_fetch_status`; the TABLE keeps its name. Renamed
-in schema.ts (documentFetchStatusEnum) and in the journaled 0035 file, which has
-never been applied anywhere, so hand-editing it is allowed and the journal entry
-is unchanged. Both places carry a comment explaining why the names must differ.
+THE JOURNAL DOES NOT REBUILD THE SCHEMA. Building from nothing but the journal
+exposed drift far wider than the enum collision:
+  ipos          journal builds 30 columns incl. a NOT NULL `category` the schema
+                no longer has; schema.ts declares 50 with segment/offering_type
+  documents     journal builds 7 columns; schema.ts declares ~18
+  document_type journal builds 7 values; schema.ts declares 15
+Production is fine (built from dumps plus _repair/), but any environment built
+from the journal — fresh staging, a CI database, disaster recovery — would
+reject every NSE document type the scraper writes.
 
-PROOF (evidence/T-403/migration-readback.json): the full journal now replays on
-an empty database, exit 0 — 19 of 19 journal entries applied, 17 tables created,
-document_fetch_state has all 16 columns with `state` typed document_fetch_status,
-all four indexes plus unique_doc_fetch_state_per_ipo_type present, document_type
-carries the three new values, and ipos has bse_ipo_no and
-bse_payload_lead_manager_count.
+Repaired here, ENUM ONLY: _repair/2026-08-28_document_type_enum_journal_drift.sql
+restores the eight missing document_type values, idempotently, per
+drizzle-migration-gated-ddl.md Part D. NOT repaired: the ipos and documents
+column drift. That is a schema-ownership decision for the owner, not something
+to slip into a document-discovery task, so it is measured and reported
+(evidence/T-403/journal-schema-drift.json) rather than silently patched.
 
-GUARD so the class cannot recur: scripts/lib/migration-name-collision.mjs plus a
-node self-test wired into pr-gate.yml. It parses EVERY journaled migration and
-fails when any CREATE TYPE name equals any CREATE TABLE name — including the
-harder case where the enum lands in one release and the table in a later one.
-Verified against the original 0035: the guard catches it.
+The integration test inserts via raw SQL naming only journal-built columns, with
+a comment saying why the typed builder cannot be used — so the drift is visible
+at the point it bites rather than rediscovered later.
+
+.env.test is gitignored and stays local.

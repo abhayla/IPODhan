@@ -1,0 +1,122 @@
+{
+  "ipoId": "e24851a3-9789-4c2f-8c6d-65d79a64748b",
+  "companyName": "Madhur Knit Crafts Ltd.",
+  "stage": "CLOSED",
+  "skipped": false,
+  "skipReason": "9 document type(s) due at stage CLOSED",
+  "due": [
+    "DRHP",
+    "RHP",
+    "PRICE_BAND_AD",
+    "CORRIGENDUM",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "ANCHOR_ALLOCATION_REPORT",
+    "ADDENDUM",
+    "PROSPECTUS",
+    "BASIS_OF_ALLOTMENT_AD"
+  ],
+  "found": [
+    "RHP",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "ANCHOR_ALLOCATION_REPORT"
+  ],
+  "notYetFiled": [
+    "DRHP",
+    "PRICE_BAND_AD",
+    "CORRIGENDUM",
+    "ADDENDUM",
+    "PROSPECTUS",
+    "BASIS_OF_ALLOTMENT_AD"
+  ],
+  "blocked": [],
+  "notApplicable": [],
+  "leadManagers": [],
+  "attempts": [
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 7100,
+      "outcome": "ok",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 5938,
+      "outcome": "downloaded (zip member: RHP_MADHURKNIT/MKCL RHP.pdf; cover_check: passed)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_MADHURKNIT.zip",
+      "sha256": "69dcb28b1fe18c9da2399339a6959a9cff610ddca144615b7fb1ddc3a39c1af2"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 708,
+      "outcome": "downloaded (zip member: RATIOS_MADHURKNIT/PRICE BAND JANSATTA.pdf; member classifies as: PRICE_BAND_AD; cover_check: skipped_no_text_layer)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_MADHURKNIT.zip",
+      "sha256": "04a1caf10d84731d42bb9026cf2d915fe2709ecd79fd2602b0ce5923ae5df6bc"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 107,
+      "outcome": "downloaded (zip member: ANCHOR_MADHURKNIT/ANCHOR Letter.pdf; cover_check: passed)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MADHURKNIT.zip",
+      "sha256": "3ccd79ad85c15c35a17725ee59a5c33a72bc10a195a88affc2a7c275fc3fef35"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[ADDENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[BASIS_OF_ALLOTMENT_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    }
+  ],
+  "networkCalls": 4
+}

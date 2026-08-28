@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { sql } from 'drizzle-orm';
+import { sql, inArray, eq } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 import { DocumentFetchStateRepository } from '@ipodhan/shared/repositories/document-fetch-state-repository';
 
@@ -60,14 +60,26 @@ beforeAll(async () => {
   const db = drizzle(pool, { schema });
   repo = new DocumentFetchStateRepository(db as never, noRedis);
 
-  // Clean slate for these four ids only — never a wholesale truncate.
+  // Clean slate for these four ids ONLY — never a wholesale truncate. The
+  // query builder is used rather than a raw `= ANY(${ids})`: drizzle expands a
+  // JS array in a template as a record tuple, which Postgres refuses to cast to
+  // uuid[] (42846).
   const ids = IPOS.map((i) => i.id);
-  await db.execute(sql`DELETE FROM document_fetch_state WHERE ipo_id = ANY(${ids}::uuid[])`);
-  await db.execute(sql`DELETE FROM ipos WHERE id = ANY(${ids}::uuid[])`);
+  await db.delete(schema.documentFetchState).where(inArray(schema.documentFetchState.ipoId, ids));
+  await db.delete(schema.ipos).where(inArray(schema.ipos.id, ids));
+  // Raw INSERT naming only the columns a JOURNAL-BUILT database actually has.
+  //
+  // The journal does NOT build the current schema: a database created purely by
+  // `drizzle-kit migrate` gets the OLD `ipos` shape — a NOT NULL `category`
+  // (ipo_category enum) and no `offering_type`/`segment` at all, plus 20-odd
+  // other columns schema.ts declares and no migration creates. Measured and
+  // recorded in evidence/T-403/journal-schema-drift.json. That is pre-existing
+  // drift, not a T-403 one (prod was built from dumps plus the _repair/ files),
+  // but it is why the typed query builder cannot be used here.
   for (const ipo of IPOS) {
     await db.execute(sql`
-      INSERT INTO ipos (id, company_name, slug, offering_type, status, open_date, close_date)
-      VALUES (${ipo.id}::uuid, ${ipo.name}, ${ipo.slug}, 'IPO', 'OPEN', '2026-08-24', '2026-08-27')
+      INSERT INTO ipos (id, company_name, slug, category, status, open_date, close_date)
+      VALUES (${ipo.id}::uuid, ${ipo.name}, ${ipo.slug}, 'MAINBOARD', 'OPEN', '2026-08-24', '2026-08-27')
     `);
   }
 });
@@ -76,8 +88,8 @@ afterAll(async () => {
   if (!pool) return;
   const ids = IPOS.map((i) => i.id);
   const db = drizzle(pool, { schema });
-  await db.execute(sql`DELETE FROM document_fetch_state WHERE ipo_id = ANY(${ids}::uuid[])`);
-  await db.execute(sql`DELETE FROM ipos WHERE id = ANY(${ids}::uuid[])`);
+  await db.delete(schema.documentFetchState).where(inArray(schema.documentFetchState.ipoId, ids));
+  await db.delete(schema.ipos).where(inArray(schema.ipos.id, ids));
   await pool.end();
 });
 
@@ -188,13 +200,13 @@ describe.skipIf(!DATABASE_URL)(`DocumentFetchStateRepository against real Postgr
     const db = drizzle(pool!, { schema });
     const id = '00000000-0000-4000-8000-0000000000ff';
     await db.execute(sql`
-      INSERT INTO ipos (id, company_name, slug, offering_type, status)
-      VALUES (${id}::uuid, 'T403 Cascade Probe Ltd.', 't403-cascade', 'IPO', 'OPEN')
+      INSERT INTO ipos (id, company_name, slug, category, status)
+      VALUES (${id}::uuid, 'T403 Cascade Probe Ltd.', 't403-cascade', 'MAINBOARD', 'OPEN')
     `);
     await repo!.ensureRow(id, 'RHP');
     expect(await repo!.listForIpo(id)).toHaveLength(1);
 
-    await db.execute(sql`DELETE FROM ipos WHERE id = ${id}::uuid`);
+    await db.delete(schema.ipos).where(eq(schema.ipos.id, id));
     expect(await repo!.listForIpo(id)).toHaveLength(0);
   });
 });
