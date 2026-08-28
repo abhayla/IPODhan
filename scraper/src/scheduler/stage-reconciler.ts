@@ -15,6 +15,9 @@
  * "what is covered"; this decides "what to fetch") — kept in deliberate lock-step.
  */
 
+import { STAGE_DOCUMENT_TYPES } from '../services/document-state-machine.js';
+import type { DocumentType } from '../services/document-types.js';
+
 export type LifecycleStage = 'UPCOMING' | 'PRE_OPEN' | 'OPEN' | 'CLOSED' | 'LISTED';
 const STAGE_ORDER: LifecycleStage[] = ['UPCOMING', 'PRE_OPEN', 'OPEN', 'CLOSED', 'LISTED'];
 
@@ -45,19 +48,46 @@ export type FetchKind =
   | 'purgePdfs';       // delete local PDFs, close_date + PROSPECTUS_RETENTION_DAYS (D4)
 
 // Stage -> fetches that BECOME due at that stage (non-cumulative).
+/**
+ * N6: the DOCUMENT fetch kinds are DERIVED from the state machine's own stage map
+ * rather than hand-listed a second time.
+ *
+ * Two hand-maintained copies of 'which filings are due at which stage' is exactly
+ * the class `scraper/src/index.ts`'s STEP_NAMES comment warns about: a type added
+ * to one and forgotten in the other produces a reconciler that thinks a document
+ * is due while the machine never fetches it, with no error anywhere. The mapping
+ * below is the ONLY place the two vocabularies meet, and a document type with no
+ * entry here is a compile-time gap rather than a silent one.
+ */
+export const DOC_TYPE_TO_FETCH_KIND: Partial<Record<DocumentType, FetchKind>> = {
+  DRHP: 'docDrhp',
+  RHP: 'docRhp',
+  PRICE_BAND_AD: 'docPriceBandAd',
+  CORRIGENDUM: 'docCorrigendum',
+  ANCHOR_ALLOCATION_REPORT: 'docAnchorReport',
+  PROSPECTUS: 'docProspectus',
+};
+
+/** The document fetch kinds that become due at `stage`, from the ONE stage map. */
+function documentKindsAt(stage: LifecycleStage): FetchKind[] {
+  return STAGE_DOCUMENT_TYPES[stage]
+    .map((t) => DOC_TYPE_TO_FETCH_KIND[t])
+    .filter((k): k is FetchKind => k !== undefined);
+}
+
 const STAGE_FETCHES: Record<LifecycleStage, FetchKind[]> = {
-  UPCOMING: ['documents', 'financials', 'peers', 'objectives', 'docDrhp'],
-  PRE_OPEN: ['anchor', 'docRhp', 'docPriceBandAd', 'docCorrigendum', 'docAnchorReport'],
+  UPCOMING: ['documents', 'financials', 'peers', 'objectives', ...documentKindsAt('UPCOMING')],
+  PRE_OPEN: ['anchor', ...documentKindsAt('PRE_OPEN')],
   // P3-2 (T-287): allotment becomes due at OPEN, not CLOSED — source detail
   // pages (Chittorgarh) publish the tentative allotment date while an IPO is
   // still open for subscription (Tempsens shape). CLOSED remains a covered
   // catch-up stage because `dueFetchKindsForStage` is cumulative.
-  OPEN: ['subscription', 'demand', 'gmp', 'allotment'],
-  CLOSED: ['docProspectus'],
+  OPEN: ['subscription', 'demand', 'gmp', 'allotment', ...documentKindsAt('OPEN')],
+  CLOSED: [...documentKindsAt('CLOSED')],
   // purgePdfs becomes due at LISTED, but only fires once close_date +
   // PROSPECTUS_RETENTION_DAYS has passed — that date test lives in
   // `document-store.isPurgeDue`, which owns the D4 retention rule.
-  LISTED: ['listing', 'purgePdfs'],
+  LISTED: ['listing', 'purgePdfs', ...documentKindsAt('LISTED')],
 };
 
 /** A minimal IPO row the reconciler reasons over. */

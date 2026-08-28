@@ -20,10 +20,10 @@
  * host is back.
  *
  * Usage (from scraper/):
- *   npx tsx src/scripts/run-document-discovery.ts
- *   npx tsx src/scripts/run-document-discovery.ts --no-download   (skip PDFs)
- *   DATABASE_URL=... npx tsx src/scripts/run-document-discovery.ts --db
- *   npx tsx src/scripts/run-document-discovery.ts --evidence-dir=path/to/dir
+ *   npx tsx scripts/run-document-discovery.ts
+ *   npx tsx scripts/run-document-discovery.ts --no-download   (skip PDFs)
+ *   DATABASE_URL=... npx tsx scripts/run-document-discovery.ts --db
+ *   npx tsx scripts/run-document-discovery.ts --evidence-dir=path/to/dir
  *
  * `--db` (V4) swaps the in-memory store for the real
  * `DocumentFetchStateRepository` against `DATABASE_URL`. It requires the four
@@ -42,10 +42,10 @@ import {
   toStateRow,
   type DiscoveryIpo,
   type IpoRunResult,
-} from '../services/document-discovery-runner.js';
-import { InMemoryDocumentFetchStateStore } from '../services/in-memory-document-fetch-state-store.js';
+} from '../src/services/document-discovery-runner.js';
+import { InMemoryDocumentFetchStateStore } from '../src/services/in-memory-document-fetch-state-store.js';
 import { DocumentFetchStateRepository } from '@ipodhan/shared/repositories/document-fetch-state-repository';
-import { NetworkCounter } from '../utils/network-counter.js';
+import { NetworkCounter } from '../src/utils/network-counter.js';
 
 /**
  * The four acceptance IPOs. `status`, `segment` and the dates are the values
@@ -302,16 +302,32 @@ async function main(): Promise<void> {
     },
     {
       id: 'A4',
-      // The contract expected ESDS's ANCHOR report to be NOT_YET_FILED. That
-      // expectation was written on 28 Aug and is factually wrong: ESDS opens on
-      // 28 Aug, so its anchor round was 27 Aug and NSE was already serving
-      // ANCHOR_ESDS.zip when this ran. The behaviour under test is the F3 rule —
-      // an exchange that answers with no link yields NOT_YET_FILED and never a
-      // failure — so the check asserts that on the types ESDS genuinely has not
-      // filed, rather than asserting a fact about the market that is untrue.
-      name: 'ESDS: unfiled document types are NOT_YET_FILED, never BLOCKED_ALL (F3)',
-      pass: esds1.notYetFiled.length > 0 && esds1.blocked.length === 0,
-      detail: `not_yet=[${esds1.notYetFiled.join(', ')}] blocked=[${esds1.blocked.join(', ')}] found=[${esds1.found.join(', ')}]`,
+      // The contract expected ESDS's ANCHOR report to be NOT_YET_FILED. That was
+      // factually wrong: ESDS opened 28 Aug, so its anchor round was 27 Aug and
+      // NSE was already serving ANCHOR_ESDS.zip.
+      //
+      // What IS under test is the F3-vs-F6 distinction, and it is asserted in
+      // BOTH directions so the check does not depend on BSE's mood on the day:
+      //   every consulted exchange answered -> missing types are NOT_YET_FILED,
+      //                                        and nothing is BLOCKED_ALL;
+      //   an exchange FAILED               -> nothing may be called NOT_YET_FILED
+      //                                        (we have no evidence it is unfiled),
+      //                                        and the missing types are BLOCKED_ALL.
+      // Round 1 got the second branch wrong, which is why it is pinned here.
+      name: 'ESDS: F3 vs F6 — NOT_YET_FILED only when every consulted exchange answered',
+      pass: (() => {
+        const exchangeCalls = esds1.attempts.filter(
+          (a) => (a.source === 'BSE' || a.source === 'NSE') && (!a.url || !/.(pdf|zip)/i.test(a.url))
+        );
+        const anyFailed = exchangeCalls.some((a) => a.outcome !== 'ok');
+        return anyFailed
+          ? esds1.notYetFiled.length === 0 && esds1.blocked.length > 0
+          : esds1.notYetFiled.length > 0 && esds1.blocked.length === 0;
+      })(),
+      detail: `not_yet=[${esds1.notYetFiled.join(', ')}] blocked=[${esds1.blocked.join(', ')}] found=[${esds1.found.join(', ')}] exchanges=${esds1.attempts
+        .filter((a) => (a.source === 'BSE' || a.source === 'NSE') && (!a.url || !/.(pdf|zip)/i.test(a.url)))
+        .map((a) => `${a.source}:${a.outcome}`)
+        .join(',')}`,
     },
     {
       id: 'A5',

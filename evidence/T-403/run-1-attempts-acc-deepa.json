@@ -21,7 +21,7 @@
     {
       "source": "BSE",
       "http": 200,
-      "ms": 354,
+      "ms": 1545,
       "outcome": "ok",
       "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7922"
     },

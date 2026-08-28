@@ -148,19 +148,29 @@ export type HttpFetcher = (
   init: { headers: Record<string, string>; timeoutMs: number }
 ) => Promise<HttpResponse>;
 
-/** Where a verified document is recorded. Implemented by DocumentRepository. */
+/**
+ * Where a verified document is recorded — structurally satisfied by
+ * `DocumentRepository.upsertDocument`.
+ *
+ * N1: the argument is typed loosely enough (a widened `type`, an optional-rich
+ * return) that the real repository assigns WITHOUT a cast at the call site. The
+ * first cut passed `documents as never`, which silenced exactly the mismatch
+ * this interface exists to catch.
+ */
+export interface DocumentSinkInput {
+  ipoId: string;
+  type: DocumentType;
+  title: string;
+  url: string;
+  exchange: string;
+  mediaType: string;
+  extractionStatus: string;
+  isActive: boolean;
+  fileSize?: number;
+}
+
 export interface DocumentSink {
-  upsertDocument(doc: {
-    ipoId: string;
-    type: string;
-    title: string;
-    url: string;
-    exchange: string;
-    mediaType: string;
-    extractionStatus: string;
-    isActive: boolean;
-    fileSize?: number;
-  }): Promise<{ id: string }>;
+  upsertDocument(doc: DocumentSinkInput): Promise<{ id: string }>;
 }
 
 export interface DiscoveryIpo {
@@ -297,7 +307,19 @@ export class DocumentDiscoveryRunner {
   private async getBoard(): Promise<BseBoardRow[] | null> {
     if (this.boardFetched) return this.boardCache;
     this.boardFetched = true;
-    const res = await this.request(`${BSE_API_BASE}IPO_HomePageDetail/w`, BSE_HEADERS);
+    // N7: the board is a whole-market payload fetched once per cycle, so it is
+    // attributed to a shared key rather than to whichever IPO happened to trigger
+    // it — charging it to one IPO would misreport that IPO's per-cycle cost.
+    // The board gets the SAME retry ladder as the core call. It was the one BSE
+    // request still left un-retried, and a single transport failure there loses
+    // the whole cycle's BSE coverage for every mainboard IPO at once — strictly
+    // worse than losing one IPO's core payload. Observed live on 2026-08-28.
+    const boardUrl = `${BSE_API_BASE}IPO_HomePageDetail/w`;
+    let res = await this.request(boardUrl, BSE_HEADERS, '(shared:bse-board)');
+    for (let attempt = 0; res.status !== 200 && attempt < BSE_RETRY_BACKOFF_MS.length - 1; attempt++) {
+      await new Promise((r) => setTimeout(r, BSE_RETRY_BACKOFF_MS[attempt]));
+      res = await this.request(boardUrl, BSE_HEADERS, '(shared:bse-board)');
+    }
     if (res.status !== 200) {
       logger.warn({ status: res.status }, 'BSE board unavailable this cycle');
       this.boardCache = null;
@@ -673,7 +695,17 @@ export class DocumentDiscoveryRunner {
           });
           if (!stored.stored) {
             // The store is full. That is an infrastructure failure, not a
-            // missing filing, and trying another host will not fix it.
+            // missing filing, and trying another host will not fix it. N9: it
+            // gets its own attempt outcome so 'the disk is full' is never read
+            // as 'every exchange failed' when someone triages the alert.
+            attempts.push({
+              source: candidate.source,
+              http: 200,
+              ms: 0,
+              outcome: 'store_full',
+              url: candidate.url,
+              sha256: verdict.sha256,
+            });
             outcome = 'all_sources_failed';
             break;
           }
@@ -714,7 +746,12 @@ export class DocumentDiscoveryRunner {
         blockedSinceAt: transition.blockedSinceAt,
         attempts: (stateRow.attempts ?? 0) + 1,
         lastAttemptAt: now,
-        lastAttempt: attempts,
+        // N8: only the attempts that concern THIS document type, plus the shared
+        // exchange calls. Storing the whole cycle's log on every row made each row
+        // grow with the number of due types and buried the relevant lines.
+        lastAttempt: attempts.filter(
+          (a) => !a.url || !/.(pdf|zip)/i.test(a.url) || (candidates ?? []).some((c) => c.url === a.url)
+        ),
       };
       if (documentId) patch.documentId = documentId;
       await this.deps.store.update(stateRow.id, patch);

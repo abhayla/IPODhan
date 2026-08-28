@@ -70,8 +70,20 @@ describe('parseBSEDate', () => {
 });
 
 describe('parseLeadManagers', () => {
-  it('combines BRLM + co-managers, splits, trims, dedups', () => {
-    expect(parseLeadManagers('A Capital, B Securities', 'A Capital')).toEqual(['A Capital', 'B Securities']);
+  it('combines BRLM + co-managers on the # separator, trims and dedups', () => {
+    // T-403 T2: this used to assert that 'A Capital, B Securities' split into
+    // two managers. BSE's real separator is `#` (verified on the Skyways
+    // payload); splitting again on punctuation FRAGMENTS legitimate names —
+    // 'Nuvama Wealth Management, Limited' would become two managers and
+    // silently inflate the count the nightly m_brlm_count check compares
+    // against. A comma inside a name is now kept.
+    expect(parseLeadManagers('A Capital#B Securities', 'A Capital')).toEqual([
+      'A Capital',
+      'B Securities',
+    ]);
+    expect(parseLeadManagers('Nuvama Wealth Management, Limited', '')).toEqual([
+      'Nuvama Wealth Management, Limited',
+    ]);
   });
   it('strips the ^address|email blob BSE packs onto each name', () => {
     expect(parseLeadManagers('Beeline Capital Advisors Pvt Ltd^4th Floor, ...||||x@y.com', '')).toEqual([

@@ -45,7 +45,8 @@ export type VerifyFailureReason =
   | 'too_large'
   | 'zip_without_pdf'
   | 'not_a_pdf'
-  | 'wrong_company';
+  | 'wrong_company'
+  | 'unzipped_too_small';
 
 export interface DownloadResponseMeta {
   status: number;
@@ -312,6 +313,16 @@ export function verifyDownload(
 
   if (!looksLikePdf(pdf)) {
     return fail('not_a_pdf', `body at ${meta.url} does not start with the %PDF magic bytes`);
+  }
+
+  // N2: the size floor was checked on the DOWNLOAD. A 60 KB zip can unpack to a
+  // 2 KB stub, which would sail past it — so the floor is re-applied to the PDF
+  // we are actually going to store.
+  if (wasZip && pdf.length < MIN_DOCUMENT_BYTES) {
+    return fail(
+      'unzipped_too_small',
+      `zip member ${zipMember ?? '(unnamed)'} unpacked to ${pdf.length} bytes, under the ${MIN_DOCUMENT_BYTES}-byte floor`
+    );
   }
 
   // 4. Cover page names the expected company (F8 — wrong company's filing).

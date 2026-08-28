@@ -1,6 +1,6 @@
 # T-403 acceptance evidence — WP A+B document discovery + state machine
 
-Produced by `scraper/src/scripts/run-document-discovery.ts`, run twice against the
+Produced by `scraper/scripts/run-document-discovery.ts`, run twice against the
 **live** BSE and NSE APIs on 2026-08-28, after the round-1 review fixes. Every
 number below is copied from the machine output in this directory — not from memory.
 
@@ -41,7 +41,7 @@ available; `--db` runs this harness against a real database the same way.
 | A1 | Skyways: >=4 documents typed RHP / CORRIGENDUM / ADDENDUM / PRICE_BAND_AD | PASS — 6 found |
 | A2 | Skyways: 3 lead managers from the BSE payload | PASS — Holani, Shannon, Dolat Finserv |
 | A3 | Madhur (SME): documents discovered from NSE | PASS — RHP, Ratios, Anchor |
-| A4 | ESDS: unfiled types are NOT_YET_FILED, never BLOCKED_ALL (F3) | PASS |
+| A4 | ESDS: F3 vs F6 — NOT_YET_FILED only when every consulted exchange answered | PASS |
 | A5 | ESDS: ZERO fallback (non-exchange) calls | PASS — 0 |
 | A6 | Run 2: ZERO network calls for Skyways | PASS — 0, IPO skipped |
 | A7 | Run 2: ZERO network calls for Madhur | PASS — 0, IPO skipped |
@@ -122,6 +122,23 @@ for their own source, so this is **recorded** (`member classifies as: PRICE_BAND
 in the attempt log) rather than "corrected": rewriting NSE's type to BSE's would
 misrepresent what NSE actually served. The sha256 dedup links them when the bytes match.
 
+## BSE is intermittently unreachable, and it cost three acceptance re-runs
+
+Across the round-1 re-runs BSE failed transiently three times — `http 0` on the core
+call, then `board_unavailable` on the board — while a manual `curl` returned 200 in
+under a second each time. Two real fixes came out of it:
+
+1. BSE now has the same 2/4/8 s retry ladder as NSE, on the **board** call as well as
+   the core one. The board was the last un-retried BSE request, and losing it costs
+   the whole cycle's BSE coverage for every mainboard IPO at once — strictly worse
+   than losing one IPO's core payload.
+2. A4 asserts the F3-vs-F6 contract in BOTH directions instead of assuming BSE is up:
+   every exchange answered -> missing types must be NOT_YET_FILED and nothing
+   BLOCKED_ALL; an exchange FAILED -> nothing may be called NOT_YET_FILED and the
+   missing types must be BLOCKED_ALL. Both branches were observed and passed.
+
+The numbers above are from the final run, whose A4 detail reads `exchanges=BSE:ok,NSE:ok`.
+
 ## One contract expectation that was factually wrong
 
 The DoD expected ESDS's anchor report to be `NOT_YET_FILED`. It is not: ESDS opened on
@@ -143,10 +160,10 @@ Reproduce:
 
 ```
 cd scraper
-npx tsx src/scripts/run-document-discovery.ts                       # timestamped evidence dir
-npx tsx src/scripts/run-document-discovery.ts --evidence-dir=DIR    # explicit dir
-npx tsx src/scripts/run-document-discovery.ts --no-download         # call counts only (A8 then fails by design)
-DATABASE_URL=... npx tsx src/scripts/run-document-discovery.ts --db # real repository
+npx tsx scripts/run-document-discovery.ts                       # timestamped evidence dir
+npx tsx scripts/run-document-discovery.ts --evidence-dir=DIR    # explicit dir
+npx tsx scripts/run-document-discovery.ts --no-download         # call counts only (A8 then fails by design)
+DATABASE_URL=... npx tsx scripts/run-document-discovery.ts --db # real repository
 ```
 
 The default evidence directory is timestamped, so a run never silently overwrites an

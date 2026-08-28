@@ -200,7 +200,7 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
   const runner = new DocumentDiscoveryRunner({
     fetcher: defaultFetcher,
     store,
-    documents: documents as never,
+    documents,
     counter,
   });
 
