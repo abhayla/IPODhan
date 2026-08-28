@@ -1,16 +1,15 @@
 {
-  "total": 21,
+  "total": 20,
   "byIpo": {
-    "0ad71e91-6c63-4f24-b561-082d485d5013": 9,
-    "0223abf7-ac2b-46c5-9f31-1427177059ed": 4,
+    "4ba154f7-fa71-41ea-97c1-f9784e707e54": 8,
+    "e24851a3-9789-4c2f-8c6d-65d79a64748b": 4,
     "(shared:bse-board)": 1,
-    "599b5365-85ac-4d01-8ac4-fbeb86de8d33": 6,
-    "4aeee8b1-a944-4744-9772-47e5e6bd9c4d": 1
+    "1681355c-09b6-4789-8044-883548faa8e6": 6,
+    "3f0845bf-cb57-455f-b170-b13f0798abe1": 1
   },
   "byHost": {
     "api.bseindia.com": 4,
     "www.nseindia.com": 3,
-    "www.sebi.gov.in": 1,
     "listing.bseindia.com": 5,
     "nsearchives.nseindia.com": 7,
     "www.bseindia.com": 1
@@ -19,105 +18,97 @@
     {
       "host": "api.bseindia.com",
       "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "4ba154f7-fa71-41ea-97c1-f9784e707e54",
       "status": 200,
-      "ms": 340,
+      "ms": 242,
       "bytes": 6363
     },
     {
       "host": "www.nseindia.com",
       "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "4ba154f7-fa71-41ea-97c1-f9784e707e54",
       "status": 200,
-      "ms": 4786,
+      "ms": 4694,
       "bytes": 12546
-    },
-    {
-      "host": "www.sebi.gov.in",
-      "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
-      "status": 200,
-      "ms": 518,
-      "bytes": 46110
     },
     {
       "host": "listing.bseindia.com",
       "url": "https://listing.bseindia.com/Download//PreAnchor/RHPSkyways_20260818181315.pdf",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "4ba154f7-fa71-41ea-97c1-f9784e707e54",
       "status": 200,
-      "ms": 4671,
+      "ms": 3935,
       "bytes": 46922851
     },
     {
       "host": "listing.bseindia.com",
       "url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "4ba154f7-fa71-41ea-97c1-f9784e707e54",
       "status": 200,
-      "ms": 1402,
+      "ms": 10198,
       "bytes": 6585368
     },
     {
       "host": "listing.bseindia.com",
       "url": "https://listing.bseindia.com/Download//PreAnchor/CorrigendumofRHPSkyways_20260818181316.pdf",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "4ba154f7-fa71-41ea-97c1-f9784e707e54",
       "status": 200,
-      "ms": 360,
+      "ms": 700,
       "bytes": 1391575
     },
     {
       "host": "nsearchives.nseindia.com",
       "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "4ba154f7-fa71-41ea-97c1-f9784e707e54",
       "status": 200,
-      "ms": 6867,
+      "ms": 1359,
       "bytes": 5702249
     },
     {
       "host": "nsearchives.nseindia.com",
       "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_SKYWAYS.zip",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "4ba154f7-fa71-41ea-97c1-f9784e707e54",
       "status": 200,
-      "ms": 1882,
+      "ms": 409,
       "bytes": 1916081
     },
     {
       "host": "www.bseindia.com",
       "url": "https://www.bseindia.com/downloads/ipo/Addendum%20to%20RHP_250820261220.zip",
-      "ipoKey": "0ad71e91-6c63-4f24-b561-082d485d5013",
+      "ipoKey": "4ba154f7-fa71-41ea-97c1-f9784e707e54",
       "status": 200,
-      "ms": 6350,
+      "ms": 1551,
       "bytes": 21082828
     },
     {
       "host": "www.nseindia.com",
       "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
-      "ipoKey": "0223abf7-ac2b-46c5-9f31-1427177059ed",
+      "ipoKey": "e24851a3-9789-4c2f-8c6d-65d79a64748b",
       "status": 200,
-      "ms": 5956,
+      "ms": 4695,
       "bytes": 10320
     },
     {
       "host": "nsearchives.nseindia.com",
       "url": "https://nsearchives.nseindia.com/content/ipo/RHP_MADHURKNIT.zip",
-      "ipoKey": "0223abf7-ac2b-46c5-9f31-1427177059ed",
+      "ipoKey": "e24851a3-9789-4c2f-8c6d-65d79a64748b",
       "status": 200,
-      "ms": 3650,
+      "ms": 4719,
       "bytes": 7412186
     },
     {
       "host": "nsearchives.nseindia.com",
       "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_MADHURKNIT.zip",
-      "ipoKey": "0223abf7-ac2b-46c5-9f31-1427177059ed",
+      "ipoKey": "e24851a3-9789-4c2f-8c6d-65d79a64748b",
       "status": 200,
-      "ms": 2606,
+      "ms": 2360,
       "bytes": 5293610
     },
     {
       "host": "nsearchives.nseindia.com",
       "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MADHURKNIT.zip",
-      "ipoKey": "0223abf7-ac2b-46c5-9f31-1427177059ed",
+      "ipoKey": "e24851a3-9789-4c2f-8c6d-65d79a64748b",
       "status": 200,
-      "ms": 433,
+      "ms": 715,
       "bytes": 315743
     },
     {
@@ -125,63 +116,63 @@
       "url": "https://api.bseindia.com/BseIndiaAPI/api/IPO_HomePageDetail/w",
       "ipoKey": "(shared:bse-board)",
       "status": 200,
-      "ms": 432,
+      "ms": 263,
       "bytes": 5415
     },
     {
       "host": "api.bseindia.com",
       "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
-      "ipoKey": "599b5365-85ac-4d01-8ac4-fbeb86de8d33",
+      "ipoKey": "1681355c-09b6-4789-8044-883548faa8e6",
       "status": 200,
-      "ms": 511,
+      "ms": 85,
       "bytes": 9205
     },
     {
       "host": "www.nseindia.com",
       "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
-      "ipoKey": "599b5365-85ac-4d01-8ac4-fbeb86de8d33",
+      "ipoKey": "1681355c-09b6-4789-8044-883548faa8e6",
       "status": 200,
-      "ms": 309,
-      "bytes": 20277
+      "ms": 521,
+      "bytes": 20080
     },
     {
       "host": "listing.bseindia.com",
       "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/RHPGID_20260825191135.zip",
-      "ipoKey": "599b5365-85ac-4d01-8ac4-fbeb86de8d33",
+      "ipoKey": "1681355c-09b6-4789-8044-883548faa8e6",
       "status": 200,
-      "ms": 13608,
+      "ms": 3049,
       "bytes": 21420754
     },
     {
       "host": "listing.bseindia.com",
       "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf",
-      "ipoKey": "599b5365-85ac-4d01-8ac4-fbeb86de8d33",
+      "ipoKey": "1681355c-09b6-4789-8044-883548faa8e6",
       "status": 200,
-      "ms": 6247,
+      "ms": 1532,
       "bytes": 3229058
     },
     {
       "host": "nsearchives.nseindia.com",
       "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
-      "ipoKey": "599b5365-85ac-4d01-8ac4-fbeb86de8d33",
+      "ipoKey": "1681355c-09b6-4789-8044-883548faa8e6",
       "status": 200,
-      "ms": 3888,
+      "ms": 5026,
       "bytes": 6858110
     },
     {
       "host": "nsearchives.nseindia.com",
       "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ESDS.zip",
-      "ipoKey": "599b5365-85ac-4d01-8ac4-fbeb86de8d33",
+      "ipoKey": "1681355c-09b6-4789-8044-883548faa8e6",
       "status": 200,
-      "ms": 172,
+      "ms": 308,
       "bytes": 301828
     },
     {
       "host": "api.bseindia.com",
       "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7922",
-      "ipoKey": "4aeee8b1-a944-4744-9772-47e5e6bd9c4d",
+      "ipoKey": "3f0845bf-cb57-455f-b170-b13f0798abe1",
       "status": 200,
-      "ms": 615,
+      "ms": 206,
       "bytes": 4019
     }
   ]

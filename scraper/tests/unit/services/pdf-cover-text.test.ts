@@ -55,3 +55,30 @@ describe('extractCoverText — never throws', () => {
     if (!result.usable) expect(['extract_failed', 'no_text_layer']).toContain(result.reason);
   }, 60_000);
 });
+
+describe('V-5 — scanned / font-subsetted filings', () => {
+  it('classifies a corrigendum or price-band ad cover as unusable, not as a mismatch', () => {
+    // Measured on the real acceptance PDFs: Skyways' 10,621-character price-band
+    // advertisement and its 7,710-character corrigendum both extract as mojibake
+    // (4-6 alphanumerics) because the newspaper typesetting subsets fonts with no
+    // ToUnicode map. Judging a company name against that text would REJECT two
+    // perfectly good filings, so the cover check must skip instead.
+    const newspaperAdTextLayer = '�� '.repeat(3000) + 'ab12';
+    const verdict = judgeCoverText(newspaperAdTextLayer);
+    expect(verdict.usable).toBe(false);
+    if (!verdict.usable) expect(verdict.reason).toBe('no_text_layer');
+  });
+
+  it('the classifier does not depend on cover text for these types', async () => {
+    // Corrigenda and price-band ads are typed BY SOURCE FIELD and file name
+    // (classifyBseField / classifyByTitle), never by reading the PDF — which is
+    // what makes an unreadable text layer harmless for them.
+    const { classifyBseField } = await import('../../../src/services/document-classifier.js');
+    expect(
+      classifyBseField('Corrigendum', 'https://x/CorrigendumofRHPSkyways_1.pdf')
+    ).toBe('CORRIGENDUM');
+    expect(
+      classifyBseField('Price_Band_Advertisement', 'https://x/PriceBandAdvertisementSkyways_1.pdf')
+    ).toBe('PRICE_BAND_AD');
+  });
+});

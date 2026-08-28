@@ -188,6 +188,30 @@ export const ipos = pgTable(
     // payload, 2 stored) survived because nothing ever compared the two numbers;
     // the nightly audit now FAILs when lead_managers is shorter than this.
     bsePayloadLeadManagerCount: integer('bse_payload_lead_manager_count'),
+
+    /**
+     * The issuer's own website, read off the RHP/DRHP cover (T-403 M-6).
+     *
+     * Load-bearing: the document chain's fourth rung is the issuer's investor
+     * page, and before this column NOTHING supplied a URL for it — the rung was
+     * unreachable in production and could only record
+     * `COMPANY:skipped:no_company_url`.
+     *
+     * ON `ipos`, NOT `ipo_details`, deliberately: no journaled migration creates
+     * `ipo_details` at all (verified by replaying the journal into an empty
+     * database), so a column added there would not exist on any journal-built
+     * environment and the rung would stay unreachable — the same "a repair
+     * nobody applies" trap as the enum values in 0036. These sit beside
+     * `bse_ipo_no`, which is the same kind of discovery bookkeeping.
+     */
+    companyWebsite: varchar('company_website', { length: 255 }),
+
+    /**
+     * The third-party IPO page (Chittorgarh) used ONLY to verify which exchange
+     * URL is correct — never a document source (owner rule, 2026-08-28).
+     * Recorded by the scraper orchestrator, which already fetches that page.
+     */
+    verifierUrl: varchar('verifier_url', { length: 512 }),
     segment: segmentEnum('segment'), // Exchange segment (MAINBOARD | SME) - nullable for RIGHTS/InvITs/REITs
     offeringType: offeringTypeEnum('offering_type').notNull(), // Type of offering (IPO, RIGHTS, TENDER, etc.)
     sector: varchar('sector', { length: 100 }),
@@ -985,24 +1009,6 @@ export const ipoDetails = pgTable(
       .notNull()
       .unique()
       .references(() => ipos.id, { onDelete: 'cascade' }),
-
-    /**
-     * The issuer's own website, read off the RHP/DRHP cover (T-403 M-6).
-     *
-     * Load-bearing, not decoration: the document chain's fourth rung is the
-     * issuer's investor page, and before this column NOTHING supplied a URL for
-     * it — the rung was unreachable in production and could only ever record
-     * `COMPANY:skipped:no_company_url`.
-     */
-    companyWebsite: varchar('company_website', { length: 255 }),
-
-    /**
-     * The third-party IPO page (Chittorgarh) used ONLY to verify which exchange
-     * URL is correct — never as a document source (owner rule, 2026-08-28).
-     * Recorded by the Chittorgarh orchestrator, which already fetches this page,
-     * so it costs no extra request.
-     */
-    verifierUrl: varchar('verifier_url', { length: 512 }),
 
     // Issue structure fields (Story 4.11)
     issueType: issueTypeEnum('issue_type'),

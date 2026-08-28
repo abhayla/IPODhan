@@ -49,9 +49,14 @@ ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "bse_payload_lead_manager_count" int
 -- "skipped:no_company_url" / "skipped:no_verifier_url" — unreachable code in
 -- production. company_website is read off the RHP/DRHP cover; verifier_url is
 -- recorded by the Chittorgarh orchestrator, which already fetches that page.
-ALTER TABLE "ipo_details" ADD COLUMN IF NOT EXISTS "company_website" varchar(255);
+-- ON `ipos`, NOT `ipo_details`: replaying the journal into an empty database
+-- proves that NO journaled migration creates `ipo_details`, so an ALTER against
+-- it fails outright ('relation "ipo_details" does not exist') and, if guarded,
+-- would leave the columns absent on every journal-built environment — the same
+-- "a repair nobody applies" trap 0036 exists to undo.
+ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "company_website" varchar(255);
 --> statement-breakpoint
-ALTER TABLE "ipo_details" ADD COLUMN IF NOT EXISTS "verifier_url" varchar(512);
+ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "verifier_url" varchar(512);
 --> statement-breakpoint
 
 ALTER TYPE "document_type" ADD VALUE IF NOT EXISTS 'PRICE_BAND_AD';

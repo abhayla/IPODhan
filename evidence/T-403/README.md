@@ -1,258 +1,134 @@
 # T-403 acceptance evidence — WP A+B document discovery + state machine
 
-Produced by `scraper/scripts/run-document-discovery.ts`, run twice against the
-**live** BSE and NSE APIs on 2026-08-28, after the round-1 review fixes. Every
-number below is copied from the machine output in this directory — not from memory.
-
-## Honest limits of this run — read first
-
-**The database-backed acceptance run has NOT been performed.** The dev database
-`ipodhan_wpab` was dropped mid-task when its host ran out of disk. The permitted
-fallback, the existing `ipodhan_test`, is unusable for this: the only credentials
-this task may use (`ipodhan_app`) are refused DDL there —
-
-```
-CREATE TABLE / CREATE TYPE  ->  permission denied for schema public
-drizzle-kit migrate         ->  permission denied for database ipodhan_test
-                                (it cannot create its own `drizzle` schema)
-```
-
-so the schema cannot be brought up and neither `drizzle-kit push` nor `migrate`
-can run. This run therefore uses `InMemoryDocumentFetchStateStore`.
-
-| Exercised by this run | NOT exercised |
-|---|---|
-| BSE board + core API parsing, IPO_NO resolution and retry | `DocumentFetchStateRepository`'s SQL |
-| NSE `ipo-detail` (EQ and SME), retry ladder | the `(ipo_id, doc_type)` unique constraint and its `ON CONFLICT` upsert |
-| The classifier, on real payloads | migration `0035` applying cleanly |
-| Real downloads, verification, zip-member selection, cover-page check | `ipos.bse_ipo_no` / `bse_payload_lead_manager_count` writes |
-| The state transitions and the zero-call property | `scraper_logs` `source='DOCUMENTS'` row |
-| The network accounting | the nightly audit against real tables |
-
-Everything on the left is the same code that runs in production, against the same
-live hosts. The right column is a real gap. `scraper/tests/integration/document-fetch-state-repository.integration.test.ts`
-covers it and runs unchanged the moment a role with `CREATE ON SCHEMA public` is
-available; `--db` runs this harness against a real database the same way.
-
-## Result: 8 / 8 acceptance checks PASS
-
-| # | Check | Result |
-|---|---|---|
-| A1 | Skyways: >=4 documents typed RHP / CORRIGENDUM / ADDENDUM / PRICE_BAND_AD | PASS — 6 found |
-| A2 | Skyways: 3 lead managers from the BSE payload | PASS — Holani, Shannon, Dolat Finserv |
-| A3 | Madhur (SME): documents discovered from NSE | PASS — RHP, Ratios, Anchor |
-| A4 | ESDS: F3 vs F6 — NOT_YET_FILED only when every consulted exchange answered | PASS |
-| A5 | ESDS: ZERO fallback (non-exchange) calls | PASS — 0 |
-| A6 | Run 2: ZERO network calls for Skyways | PASS — 0, IPO skipped |
-| A7 | Run 2: ZERO network calls for Madhur | PASS — 0, IPO skipped |
-| A8 | No IPO holds the same bytes on disk under two types (E7/R2) | PASS |
-
-**Run 1: 21 network calls. Run 2: 0** (`acceptance-summary.json`, `run1Calls` /
-`run2Calls`). That zero is the headline property of WP B, measured by
-`scraper/src/utils/network-counter.ts` — the same counter the production path uses.
-
-## Documents actually downloaded and stored (63 MB, 11 files)
-
-```
-acc-skyways/   ADDENDUM-971b265a.pdf                  1,625,685
-               ANCHOR_ALLOCATION_REPORT-8a68e38b.pdf  2,118,875
-               CORRIGENDUM-d3a6094a.pdf               1,391,575
-               PRICE_BAND_AD-e8d5d395.pdf             6,585,368
-               RHP-147c471e.pdf                      19,866,505
-acc-madhurknit/ANCHOR_ALLOCATION_REPORT-3ccd79ad.pdf    337,661
-               RATIOS_BASIS_ISSUE_PRICE-04a1caf1.pdf  2,389,805
-               RHP-69dcb28b.pdf                       3,469,130
-acc-esds/      ANCHOR_ALLOCATION_REPORT-4e5a4f9d.pdf    310,858
-               PRICE_BAND_AD-3a4a7b9d.pdf             3,229,058
-               RHP-2b1500da.pdf                      21,900,385
-```
-
-All start with `%PDF`; zero `.tmp-*` files remain (the temp-then-rename contract).
-Skyways and ESDS each recorded one `deduped_by_sha256` attempt, so 6 and 4 document
-types respectively are backed by 5 and 3 files.
-
-**Deepa Jewellers has no documents, and that is correct.** BSE's core API answered
-200 for it (IPO_NO 7922, forthcoming) but carries no filing links yet, and we hold
-no NSE symbol for it, so the attempt log reads `BSE ok` then `NSE no_symbol` and
-its only due type (DRHP) is `NOT_YET_FILED`. Nothing is BLOCKED_ALL.
-
-## Defects the live runs caught that the unit tests did not
-
-**1. The RHP download timed out while everything smaller succeeded.** One timeout
-budget covered a 6 KB JSON payload and a 25 MB PDF; the Skyways RHP failed at
-exactly 20,018 ms. Fixed: `DOWNLOAD_TIMEOUT_MS = 120_000`, separate from the API budget.
-
-**2. A failed download never tried the other exchange's copy.** Only the first link
-per type was kept, so when BSE's RHP timed out the NSE zip — discovered in the same
-cycle — was never attempted (matrix F2). Fixed: all candidates are kept and tried in
-order, and NSE is now consulted on demand even when BSE had covered every due type.
-
-**3. Multi-member zips silently yielded the WRONG document.** `RHP_SKYWAYS.zip`
-holds `CorrigendumofRHPSkyways.pdf` (1.4 MB), `GID_Skyways.pdf` (2.7 MB) and
-`RHP Skyways.pdf` (19.9 MB). Taking the first `%PDF` member stored the **corrigendum
-as the RHP**, and the BSE addendum zip stored the **real RHP as the ADDENDUM**. Valid
-PDFs, right company, plausible sizes — everything passed and everything was wrong. It
-surfaced only because two types came out with the same sha256. Fixed:
-`selectZipMemberForType` picks by member name, falling back to the largest member,
-and logs the choice.
-
-**4. BSE had no retry, and its failure was mislabelled "not filed yet".** (Round-1
-re-run.) A single BSE transport failure lost the whole core payload for Skyways —
-every BSE-only type *and* all three lead managers — while a manual request seconds
-later returned 200. Worse, because NSE had answered, the BSE-only types were recorded
-as `NOT_YET_FILED`: a claim that the company had not filed them, for which there was
-no evidence, and which suppresses both the retry ladder and the alert. Fixed: BSE gets
-the same 2/4/8 s ladder as NSE, and `NOT_YET_FILED` now requires that **every**
-consulted exchange answered. `not_on_board` / `no_symbol` still do not count as
-failures — they mean the exchange does not carry the issue at all (F13).
-
-## Two findings about the sources themselves
-
-**A closed mainboard IPO drops off the BSE board.** `IPO_HomePageDetail` lists only
-live and forthcoming issues; Skyways (IPO_NO 7903) was already absent the day after
-it closed — exactly when its Prospectus becomes due. So resolving IPO_NO by name from
-the board works only while we need it least. Fixed by remembering it in
-`ipos.bse_ipo_no`, written through the shared write path.
-
-**The same PDF is published under different labels by the two exchanges.** NSE's
-`RATIOS_<SYM>.zip` ("Ratios / Basis of Issue Price") contains the price-band newspaper
-advertisement, because in India that ad *is* the document carrying the basis of issue
-price — while BSE publishes it as `Price_Band_Advertisement`. Both are correctly typed
-for their own source, so this is **recorded** (`member classifies as: PRICE_BAND_AD`
-in the attempt log) rather than "corrected": rewriting NSE's type to BSE's would
-misrepresent what NSE actually served. The sha256 dedup links them when the bytes match.
-
-## BSE is intermittently unreachable, and it cost three acceptance re-runs
-
-Across the round-1 re-runs BSE failed transiently three times — `http 0` on the core
-call, then `board_unavailable` on the board — while a manual `curl` returned 200 in
-under a second each time. Two real fixes came out of it:
-
-1. BSE now has the same 2/4/8 s retry ladder as NSE, on the **board** call as well as
-   the core one. The board was the last un-retried BSE request, and losing it costs
-   the whole cycle's BSE coverage for every mainboard IPO at once — strictly worse
-   than losing one IPO's core payload.
-2. A4 asserts the F3-vs-F6 contract in BOTH directions instead of assuming BSE is up:
-   every exchange answered -> missing types must be NOT_YET_FILED and nothing
-   BLOCKED_ALL; an exchange FAILED -> nothing may be called NOT_YET_FILED and the
-   missing types must be BLOCKED_ALL. Both branches were observed and passed.
-
-The numbers above are from the final run, whose A4 detail reads `exchanges=BSE:ok,NSE:ok`.
-
-## One contract expectation that was factually wrong
-
-The DoD expected ESDS's anchor report to be `NOT_YET_FILED`. It is not: ESDS opened on
-28 Aug, so its anchor round was 27 Aug and NSE was already serving `ANCHOR_ESDS.zip`.
-A4 therefore asserts the behaviour actually under test — F3, an exchange answering with
-no link yields `NOT_YET_FILED` and never a failure, with no fall-through to a
-non-exchange host — on the types ESDS genuinely has not filed (DRHP, CORRIGENDUM).
-
-## Files
-
-| File | Contents |
-|---|---|
-| `acceptance-summary.json` | the 8 checks, pass/fail, and the run-1 / run-2 call counts |
-| `run-{1,2}-network-calls.json` | every outbound call: host, URL, IPO, status, ms, bytes |
-| `run-{1,2}-state-table.json` | the full state table after that run |
-| `run-{1,2}-attempts-acc-*.json` | per-IPO result and the ordered attempt log, with full sha256 |
+**One current evidence set.** Everything here was produced on 2026-08-28 after
+review round 3, against `ipodhan_test` rebuilt from nothing. Earlier generations
+are under `archive/` and are superseded — do not read them as current.
 
 Reproduce:
 
 ```
 cd scraper
-npx tsx scripts/run-document-discovery.ts                       # timestamped evidence dir
-npx tsx scripts/run-document-discovery.ts --evidence-dir=DIR    # explicit dir
-npx tsx scripts/run-document-discovery.ts --no-download         # call counts only (A8 then fails by design)
-DATABASE_URL=... npx tsx scripts/run-document-discovery.ts --db # real repository
+DATABASE_URL=postgresql://…/…_test npx tsx scripts/run-document-discovery.ts --db --reset
 ```
 
-The default evidence directory is timestamped, so a run never silently overwrites an
-earlier one. `--no-download` deliberately makes A8 FAIL rather than pass vacuously:
-with no files on disk it proves nothing, and a vacuous PASS is worse than an honest FAIL.
+## How this database was built
 
----
+`DROP SCHEMA public CASCADE` + `DROP SCHEMA drizzle CASCADE`, then
+`npx drizzle-kit migrate` from empty. **Exit 0, 20 of 20 journal entries applied**
+(`migration-readback.json`): 17 tables, `document_type` carrying all 15 declared
+values, `document_fetch_state` with `state` typed `document_fetch_status`, and
+`ipos` carrying `bse_ipo_no`, `bse_payload_lead_manager_count`,
+`company_website`, `verifier_url`. Zero rows in `ipos` before seeding — the
+verifier's four `bv-*` rows are gone with the schema.
 
-# Round 2: the database-backed run (2026-08-28)
+## Result: 8 / 8, run 1 = 21 calls, run 2 = 0
 
-The owner approved ONE exception — an empty `ipodhan_test` on 127.0.0.1:15432
-where `ipodhan_app` owns schema `public`. Everything below was produced against
-it. No other database was created.
-
-## The migration was broken, and applying it is what found that
-
-`drizzle-kit migrate` on the empty database failed mid-journal:
-
-```
-error: type "document_fetch_state" already exists   (SQLSTATE 42710)
-```
-
-Migration 0035 created an ENUM and a TABLE with the same name, and Postgres
-gives every table an implicit composite type of that name. **In production this
-would have failed the deploy at the migrate step** — the first symptom would
-have been a failed release, not a red test. The enum is now
-`document_fetch_status`; the table keeps its name.
-
-`evidence/T-403/migration-readback.json` is the proof after the fix: **19 of 19
-journal entries applied, exit 0**, 17 tables, `document_fetch_state` with all 16
-columns (`state` typed `document_fetch_status`), all four indexes plus
-`unique_doc_fetch_state_per_ipo_type`, `document_type` carrying the three new
-values, and `ipos` carrying `bse_ipo_no` + `bse_payload_lead_manager_count`.
-
-`scripts/tests/migration-name-collision.test.mjs` (wired into `pr-gate.yml`)
-parses every journaled migration and fails on any `CREATE TYPE` name that equals
-a `CREATE TABLE` name — including the harder case where the two land in
-different releases. Verified against the original 0035: it catches it.
-
-## The journal does not rebuild the schema — a wider, pre-existing drift
-
-Building from nothing but the journal exposed far more than the enum collision.
-Measured, not assumed (`journal-schema-drift.json`, `document-type-enum-drift.json`):
-
-| Object | Journal builds | schema.ts declares |
+| # | Check | Result |
 |---|---|---|
-| `ipos` columns | 30, including a NOT NULL `category` the schema no longer has | 50, with `segment` / `offering_type` instead |
-| `documents` columns | 7 | ~18 (no `media_type`, `sequence_number`, `is_active`, `exchange`, `extraction_*`) |
-| `document_type` values | 7 | 15 |
+| A1 | Skyways: >=4 documents typed RHP / CORRIGENDUM / ADDENDUM / PRICE_BAND_AD | PASS — 6 found |
+| A2 | Skyways: 3 lead managers from the BSE payload | PASS |
+| A3 | Madhur (SME): documents discovered from NSE | PASS |
+| A4 | ESDS: F3 vs F6 — NOT_YET_FILED only when every consulted exchange answered | PASS |
+| A5 | Fallback rungs consulted ONLY for types the exchanges did not settle | PASS |
+| A6 | Run 2: ZERO network calls for Skyways | PASS |
+| A7 | Run 2: ZERO network calls for Madhur | PASS |
+| A8 | No IPO holds the same bytes on disk under two types (E7/R2) | PASS |
 
-Production is fine — it was built from dumps plus the `_repair/` files — but the
-claim that the journal can rebuild the schema is false, and any environment built
-from it (fresh staging, a CI database, disaster recovery) would reject every NSE
-document type the scraper writes.
+### Call accounting (NIT-3)
 
-**Repaired here (enum only):**
-`_repair/2026-08-28_document_type_enum_journal_drift.sql` restores the eight
-missing `document_type` values, idempotently. **NOT repaired:** the `ipos` and
-`documents` column drift. That is a schema-ownership decision for the owner, not
-something to slip into a document-discovery task, so it is reported rather than
-silently patched.
-
-## M8 integration tests: 8/8 against real Postgres
-
-`vitest.integration.config.ts`, `DATABASE_URL` set:
-`Test Files 1 passed | Tests 8 passed`, 34.9 s.
-
-Exercised for real: `ensureRow` idempotency, `ensureRow` under three CONCURRENT
-calls (a read-then-insert would race the unique key), the `update` patch and its
-jsonb round-trip, `findDue`'s inclusion/exclusion rules, `markSuperseded`,
-`repointToSurvivor` leaving the colliding row behind, and `ON DELETE CASCADE`.
-
-## DB-backed acceptance: 8/8, run 1 = 20 calls, run 2 = 0
-
-`npx tsx scripts/run-document-discovery.ts --db --reset` against `ipodhan_test`,
-with the four IPOs seeded as real `ipos` rows. Evidence in
-`evidence/T-403/db-run/`, including `state-table-from-postgres.json` — the state
-read back **out of the database**, not out of memory:
+Run 1 made **21 calls in total**. The per-IPO figures below do **not** sum to 21:
+the BSE board is a whole-market payload fetched once per cycle and is attributed
+to the shared key `(shared:bse-board)`, not to whichever IPO happened to trigger it.
 
 ```
-25 document_fetch_state rows, 11 documents rows
-by state: FOUND=13, NOT_YET_FILED=12   (nothing BLOCKED_ALL)
+by IPO      Skyways 9 · ESDS 6 · Madhur 4 · Deepa 1 · (shared:bse-board) 1   = 21
+by host     nsearchives.nseindia.com 7 · listing.bseindia.com 5 ·
+            api.bseindia.com 4 · www.nseindia.com 3 ·
+            www.bseindia.com 1 · www.sebi.gov.in 1                          = 21
 ```
 
-Skyways, from Postgres: RHP, ADDENDUM, PRICE_BAND_AD, CORRIGENDUM,
-RATIOS_BASIS_ISSUE_PRICE and ANCHOR_ALLOCATION_REPORT all `FOUND` with a
-`document_id`; DRHP, PROSPECTUS and BASIS_OF_ALLOTMENT_AD `NOT_YET_FILED` with a
-30-minute `next_retry_at`.
+Run 2 made **0** calls in total.
 
-`--reset` exists because the state table is persistent: without clearing these
-four IPOs, "run 1" would legitimately cost zero calls and A6/A7 would pass
-vacuously. It deletes rows for those four ids only.
+## The state, read back out of Postgres
+
+`db-run/state-table-from-postgres.json` — taken with SQL, including the full
+`last_attempt` json per row and each document's sha256 joined from `documents`:
+
+```
+25 document_fetch_state rows · 11 documents rows
+by state: FOUND = 13, NOT_YET_FILED = 12   (nothing BLOCKED_ALL)
+12 rows carry a document sha256
+e.g. ESDS / RHP  sha256 2b1500da163d971da74e…  21,900,385 bytes
+```
+
+Every row also carries its rung chain, e.g.
+
+```
+rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed
+             -> COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url
+```
+
+That line is the point of round 3: SEBI is now **consulted** for a DRHP. It never
+was before — see below.
+
+## What round 3 found, and what it says about the earlier evidence
+
+**The SEBI rung could never fire for a DRHP or a post-close Prospectus** — the two
+documents it exists for. Escalation was gated on `all_sources_failed`, but at
+UPCOMING both exchanges answer normally and simply have no DRHP link, which is
+`no_link`, not a failure. The chain recorded `SEBI:skipped:exchanges_settled_it`
+and the row sat NOT_YET_FILED forever.
+
+**Round 2's evidence certified that as a pass.** A5 asserted ZERO non-exchange
+calls — true only while escalation never happens. An acceptance check written
+after the code, from the code's observed behaviour, ratifies whatever the code
+does. A4 and A5 now assert the contract instead of the behaviour.
+
+Replaying the journal from empty also found three defects no unit test could:
+
+1. **0035 created an enum and a table with the same name** — `42710 type
+   "document_fetch_state" already exists`. In production that fails the deploy at
+   the migrate step. Enum renamed to `document_fetch_status`; a CI gate
+   (`migration-name-collision.test.mjs`) now parses every journaled migration.
+2. **Eight `document_type` values were in no migration.** They had been put in
+   `_repair/`, which nothing runs — the deploy is migrate-only — so a
+   journal-built database threw `invalid input value for enum` and the cycle's
+   non-fatal catch swallowed it. Now journaled as 0036;
+   `document-type-enum-drift.json` shows **0 missing**.
+3. **`ipo_details` is not created by the journal at all** — the M-6 columns were
+   first added there and the replay failed with `relation "ipo_details" does not
+   exist`. They now live on `ipos`.
+
+## Known limit, unrepaired
+
+The journal still cannot rebuild the schema: `ipos` gets 32 of the 52 columns
+`schema.ts` declares (including a NOT NULL `category` the schema replaced with
+`segment`/`offering_type`), and `documents` gets 7 of ~18. Production is fine —
+it was built from dumps plus `_repair/` — but no environment can be rebuilt from
+the journal. Measured in `journal-schema-drift.json`. Repairing it is a
+schema-ownership decision for the owner, not something to fold into this task.
+
+**This has a cost you should know about.** `ipodhan_test` used to be built from a
+dump, and the pre-existing scraper integration suite passed against it. Rebuilt
+from the journal for V-1, that suite now runs 98 passed / 15 failed across 9
+files — every failure is the missing columns above (`expected undefined to be
+'MAINBOARD'` is `ipos.segment` not existing; `expected +0 to be 3` is a
+`documents` insert with nowhere to put its columns), plus Redis not listening on
+6399. None of them touch T-403 code. T-403's own integration test
+(`document-fetch-state-repository.integration.test.ts`) is **8/8** on this
+database, because `document_fetch_state` is fully journaled by 0035. Restoring
+that suite means either repairing the journal or rebuilding `ipodhan_test` from a
+dump — the owner's call, either way.
+
+## Files
+
+| File | Contents |
+|---|---|
+| `migration-readback.json` | the journal replay from empty: 20/20, schema shape, enum values |
+| `document-type-enum-drift.json` | enum values on a journal-built DB vs `schema.ts` — now 0 missing |
+| `journal-schema-drift.json` | the wider, unrepaired column drift |
+| `db-run/acceptance-summary.json` | the 8 checks and the run-1 / run-2 call counts |
+| `db-run/state-table-from-postgres.json` | the state read back with SQL: full `last_attempt`, sha256, rung chains |
+| `db-run/run-{1,2}-network-calls.json` | every outbound call: host, URL, IPO, status, ms, bytes |
+| `db-run/run-{1,2}-attempts-*.json` | per-IPO result and ordered attempt log |
+| `archive/` | superseded round-2 generations, kept for history only |

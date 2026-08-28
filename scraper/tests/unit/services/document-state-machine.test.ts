@@ -429,6 +429,33 @@ describe('F15 withdrawn issues', () => {
     expect(plan.toMarkNotApplicable).toEqual(['RHP']);
   });
 
+  it('V-2: a BLOCKED_ALL row becomes NOT_APPLICABLE after ONE cycle', () => {
+    // The previous test used a WANTED row, which is the easy case. BLOCKED_ALL
+    // is the one that matters: it is the state that would otherwise stay blocked
+    // forever on a withdrawn IPO and fail the nightly m_blocked_all_age check
+    // every night, with no possible remedy.
+    const blocked = row('RHP', 'BLOCKED_ALL');
+    const first = planIpoCycle({
+      stage: 'OPEN',
+      rows: [blocked],
+      issue: { withdrawn: true },
+      options: { now: NOW },
+    });
+    expect(first.toMarkNotApplicable).toEqual(['RHP']);
+    expect(first.skipIpo).toBe(false);
+    expect(first.due).toEqual([]);
+
+    // After that cycle wrote NOT_APPLICABLE, the next cycle is a pure skip.
+    const second = planIpoCycle({
+      stage: 'OPEN',
+      rows: [row('RHP', 'NOT_APPLICABLE')],
+      issue: { withdrawn: true },
+      options: { now: NOW },
+    });
+    expect(second.skipIpo).toBe(true);
+    expect(second.toMarkNotApplicable).toEqual([]);
+  });
+
   it('skip only once every row is closed, so the marking happens exactly once', () => {
     const plan = planIpoCycle({
       stage: 'OPEN',

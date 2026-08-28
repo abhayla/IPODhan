@@ -160,39 +160,84 @@ The DoD expected ESDS's anchor report to be `NOT_YET_FILED` with zero fallback c
 
 ---
 
-# 9. Round-1 review response (2026-08-28)
+# 9. Review rounds 1-3 — current status (rewritten 2026-08-28)
 
-## Fixed, each with the test that proves it
+The previous §9 was written after round 1 and went stale within a day: it said
+G1/G2 were not implemented, M8 had never been run, and migration 0035 was
+unapplied. All three are now false. This section replaces it.
 
-| Item | Fix | Test |
+## Delivered and verified
+
+| Area | Status | Proof |
 |---|---|---|
-| B1 | `ipos` writes routed through `data-persister.recordBseDiscoveryMetadata`; ratchet baseline NOT widened | `bse-discovery-metadata-write-path.test.ts` (5) — incl. running the REAL ratchet as a subprocess |
-| M1 | `pdf-cover-text.ts` wired into the runner; the cover check actually runs; skips are visible | `pdf-cover-text.test.ts` (5), `document-discovery-runner-download.test.ts` M1 (3) |
-| M2 | `deriveIssueShape` populates `DiscoveryIpo.issue`, so R9 is reachable | `document-cycle-issue-shape.test.ts` M2 (5) |
-| M3 | Withdrawal closes open rows as `NOT_APPLICABLE` once, then skips | `document-cycle-issue-shape.test.ts` M3 (4), F15 cases in `document-state-machine.test.ts` (2) |
-| M4 | `DOWNLOAD_TIMEOUT_MS` asserted; F2 fallback + on-demand NSE rescue | `document-discovery-runner-download.test.ts` M4a/M4b/M4c (3) |
-| M5 | `toPre0035DocumentType` guards the flag-OFF path; flag and index comments corrected | `pre-0035-document-types.test.ts` (6) |
-| M6 | `upsertDocument` re-types along a closed allowlist; re-type script; `m_document_type_classifier` check | `document-retype.test.ts` (9), audit self-tests 65a-e (5) |
-| M7 | `decidePurge` three arms + 30-day hard cap; `demoteMissingFiles` | `document-purge-policy.test.ts` (14) |
-| M8 | Repository integration tests written | `tests/integration/document-fetch-state-repository.integration.test.ts` (8) — **NOT RUN**, see below |
-| V1-V3 | README corrected to the machine numbers, real file names, Deepa's real result | evidence README |
-| V4 | `--db` implemented | — (not exercised; no DB) |
-| V5 | A8 fails instead of passing vacuously under `--no-download` | harness |
-| V6 | Full sha256 in the attempt log | `FetchAttempt.sha256` |
-| V7 | `--evidence-dir`, timestamped default | harness |
-| V8 | Member/type disagreement recorded, not "corrected" | verifier `memberTypeMismatch` |
-| N1-N9, T1-T3 | see the round-1 minors commit | `document-store.test.ts` N5, `bse-api-scraper.test.ts` T2, reconciler tests N6 |
+| WP A discovery, BSE-first, all four rungs | DONE | `document-discovery-runner.ts`; chain tests |
+| G1 SEBI rung (DRHP smid=10, RHP 11, Prospectus 12) | DONE | `sebi-source.ts`, 16 tests, live fixtures |
+| G2 company-host rung + Chittorgarh link verifier | DONE | `company-host-source.ts`, 14 tests |
+| G3 remembered `bse_ipo_no` | DONE | migration 0035, write path B1 |
+| G4 per-rung attempt log, BLOCKED_ALL only after four rungs | DONE | chain tests |
+| Classifier fix (E14) + forward-only repair (M6) | DONE | 18 + 9 tests, `m_document_type_classifier` |
+| Download verification (matrix §3) incl. unreadable-PDF reject | DONE | 22 tests |
+| WP B state machine, R1-R13 | DONE | 37 tests |
+| Storage, D4 purge, missing-file demotion | DONE | 14 tests |
+| Nightly checks (6) incl. `m_not_yet_filed_age` | DONE | 24 self-tests, registered in `detection-checks.json` |
+| Migration 0035 + 0036 | APPLIED and replayed from empty | `evidence/T-403/migration-readback.json` (20/20) |
+| M8 repository integration tests | RUN, 8/8 | against `ipodhan_test` |
+| DB-backed acceptance | RUN, 8/8 | `evidence/T-403/db-run/` |
 
-## Two further defects the round-1 re-runs caught
+## Round 3 — the blocker, and what it says about the evidence
 
-1. **BSE had no retry while NSE had three**, and the **board** call had none even after the core call got one. A single transport failure lost the whole BSE payload for an IPO — every BSE-only type and all three lead managers — or, on the board, the whole cycle's BSE coverage. Both now use the same 2/4/8 s ladder.
-2. **A failed exchange was being reported as `NOT_YET_FILED`.** Because NSE had answered, BSE-only types were recorded as "the company has not filed it" — a claim with no evidence, which suppresses both the retry ladder and the alert. `NOT_YET_FILED` now requires that **every** consulted exchange answered; `not_on_board` / `no_symbol` still do not count as failures (F13).
+**B-1.** The SEBI rung could never fire for a DRHP or a post-close Prospectus —
+the two documents it exists for. Escalation was gated on
+`outcome === 'all_sources_failed'`, but at UPCOMING both exchanges answer
+normally and simply have no DRHP link, which is `no_link`, not a failure. The
+chain recorded `SEBI:skipped:exchanges_settled_it` and the row sat
+NOT_YET_FILED forever.
 
-## Still NOT done — unchanged from §8 unless noted
+The uncomfortable part is that **round 2's acceptance evidence certified that as
+a pass**. A4 and A5 were written against the broken behaviour: A5 literally
+asserted ZERO non-exchange calls, which is only true while escalation never
+happens. An acceptance test written after the code, from the code's actual
+behaviour, will ratify whatever the code does. Both checks now assert the
+contract instead: A5 says a rung beyond the exchanges is consulted ONLY for a
+type the exchanges did not settle.
 
-1. **M8 tests are written but have never been run.** The permitted credentials (`ipodhan_app`) are refused DDL on `ipodhan_test`: `permission denied for schema public` for `CREATE TABLE`/`CREATE TYPE`, and `permission denied for database ipodhan_test` for drizzle-kit's `CREATE SCHEMA drizzle`. Neither `push` nor `migrate` can run, so the schema cannot be brought up. Granting `CREATE ON SCHEMA public` (and on the database) to that role unblocks both the tests and `--db`.
-2. **Migration 0035 is still unapplied anywhere.** Same cause.
-3. **G1 (SEBI rung) and G2 (company-host rung) are NOT implemented.** Discovery still stops at the two exchanges. These are new source integrations — a SEBI public-issues listing parser and a per-company investor-page resolver — not adjustments to existing code, and they were not attempted in this round.
-4. **G3 is done**: `ipos.bse_ipo_no` is persisted through the sanctioned write path (B1), so discovery no longer depends on the board still listing a closed IPO.
-5. `decideSupersession`, `isStaleInProgress`, `markSuperseded`, `repointToSurvivor` remain implemented, tested and **NOT WIRED** — each is marked as such in its own doc comment. They need `filing_date` and an extraction claim, both of which arrive with WP C.
-6. No `documents` lineage table; the alternative URL lives in the attempt log.
+Fix: `EXCHANGE_SERVED_TYPES` (everything but the DRHP) plus a real coverage test
+— `no_link` may settle a type only when the exchanges can serve it AND every
+applicable exchange answered `ok`. `not_on_board` and `no_symbol` are facts, not
+coverage.
+
+## What replaying the journal from empty found
+
+Doing it properly — `DROP SCHEMA public CASCADE`, then `drizzle-kit migrate`
+from nothing — exposed three defects that no unit test could have:
+
+1. **0035 created an enum and a table with the same name** (`42710 type
+   "document_fetch_state" already exists`). In production this fails the deploy
+   at the migrate step. Enum renamed to `document_fetch_status`; guarded by
+   `scripts/tests/migration-name-collision.test.mjs` in CI.
+2. **Eight `document_type` values existed in no migration.** They had been put
+   in `_repair/`, which nothing runs — the deploy is migrate-only — so a
+   journal-built database threw `invalid input value for enum` and `runIpo`'s
+   non-fatal catch swallowed it. Now journaled as 0036.
+3. **`ipo_details` is not created by the journal at all.** The M-6 columns were
+   first added there and the replay failed with `relation "ipo_details" does not
+   exist`. They now live on `ipos`, beside `bse_ipo_no`.
+
+## Still NOT done
+
+1. **The wider journal/schema drift is unrepaired.** A journal-built `ipos` has
+   32 columns where `schema.ts` declares 52, `documents` has 7 where the schema
+   declares ~18, and the journal builds a NOT NULL `category` column the schema
+   replaced with `segment`/`offering_type`. Production is fine (built from dumps
+   plus `_repair/`), but no environment can be rebuilt from the journal. Measured
+   in `evidence/T-403/journal-schema-drift.json`. Repairing it is a
+   schema-ownership decision for the owner, not something to fold into a
+   document-discovery task.
+2. **Extraction is WP C.** `FOUND` is terminal here.
+   `decideSupersession`, `isStaleInProgress`, `markSuperseded` and
+   `repointToSurvivor` are implemented and tested but NOT called; each says so in
+   its own doc comment. They need `filing_date` and an extraction claim.
+3. **No `documents` lineage table.** "Same hash, two URLs" is honoured by storing
+   one file and recording the alternative URL in the attempt log.
+4. **BSE SME (`bsesme.com`) is not parsed.** SME coverage is NSE Emerge + SEBI +
+   the company host, as the matrix's Q3 assumed.
