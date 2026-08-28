@@ -15,6 +15,7 @@ import { DocumentRepository } from '@ipodhan/shared';
 import logger from '../utils/logger.js';
 import { fetchNSEIssueInfo } from '../scrapers/nse-api-client.js';
 import { parseNSEDocuments } from '../services/primary-source-discovery.js';
+import { toPre0035DocumentType } from '../services/document-types.js';
 
 // T-311F MEDIUM: this backfill is `await`ed from index.ts's
 // triggerPrimarySourceDiscovery(), itself inside the same one-shot
@@ -95,7 +96,10 @@ export async function runPrimaryDocBackfill(opts: { execute?: boolean; statuses?
       for (const d of docs) {
         await documentRepository.upsertDocument({
           ipoId: row.id,
-          type: d.type as any,
+          // T-403 M5: this LEGACY path may run against a database that has not
+          // had migration 0035 applied, so it must never emit an enum value that
+          // predates it. The state-machine path stores the true type.
+          type: toPre0035DocumentType(d.type) as any,
           title: d.title,
           url: d.url,
           exchange: 'NSE',

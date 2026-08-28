@@ -761,6 +761,10 @@ export async function triggerPrimarySourceDiscovery(): Promise<StepResult> {
   // T-403 WP B. Two implementations behind one step, selected by a second flag,
   // so switching between them is one reversible env change and the state rows
   // survive the flip in either direction (matrix R13).
+  //
+  // The flag selects the IMPLEMENTATION, not every T-403 change: the classifier
+  // fix is shared by both paths (see ENABLE_DOCUMENT_STATE_MACHINE's note), and
+  // migration 0035 must be applied before the flag is turned on.
   if (process.env.ENABLE_DOCUMENT_STATE_MACHINE === 'true') {
     // PER-CYCLE, not daily. The daily cadence below exists only because the old
     // pass re-fetched NSE for every candidate IPO unconditionally; the state
