@@ -40,7 +40,7 @@ export type DiscoveredDocumentType = DocumentType;
 export interface DiscoveredDocument {
   type: DiscoveredDocumentType;
   url: string;
-  source: 'NSE' | 'BSE' | 'SEBI';
+  source: 'NSE' | 'BSE' | 'SEBI' | 'COMPANY';
   title: string;
   /** The BSE field or NSE row title the link came from — kept for the attempt log. */
   sourceField?: string;

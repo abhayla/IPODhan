@@ -1,0 +1,43 @@
+feat(scraper): T-403 G1+G2+G4 — SEBI and company-host rungs, honest four-rung chain
+
+G1 SEBI rung (sebi-source.ts). Listings verified live 2026-08-28 by probing smid
+and reading each listing's own rows: smid=10 Draft Offer Documents (DRHP), 11
+Red Herring (RHP), 12 Final Prospectus. Two traps in the markup, both handled:
+the row href is a DETAIL PAGE (the PDF costs a second GET and lives under
+/sebi_data/attachdocs/), and the row title embeds a NESTED anchor for the
+Abridged Prospectus, so naive parsing yields a SUMMARY instead of the filing.
+Company match is exact-key then fuzzy at >=0.85, refusing ambiguity.
+parseSebiDetailPdfUrl accepts only attachdocs, never commondocs. Consulted only
+when both exchanges failed, and never for a type SEBI does not host.
+
+G2 company-host rung (company-host-source.ts). The website comes off the filing
+cover, which we already extract for the M1 company check, so it costs nothing
+extra. Intermediaries are rejected by CONTEXT, not a domain list: merchant banks
+cannot be enumerated (a new one appears with every issue) but the cover always
+labels whose website it is, and each match is bounded to its own label region so
+"Registrar Website: ... Company Website: ..." still resolves to the issuer. At
+most 3 GETs (R12). Only links whose anchor text or filename CLASSIFY are taken.
+
+Chittorgarh is a VERIFIER ONLY, enforced structurally: extractVerifierLinks
+drops anything not on an exchange/SEBI host, so no later code has to remember.
+
+G4 the chain records every rung it tried, in order, with an outcome — including
+the ones it skipped and why (not_served_by_sebi, no_company_url,
+no_verifier_url, exchanges_settled_it, download_disabled). BLOCKED_ALL asserts
+four rung entries; a short chain is a bug in the chain, not evidence the
+document is unreachable, so it is logged loudly and the row stays retryable.
+Escalation does NOT fire when the exchanges merely said "not filed yet" (F3).
+
+Also: a structurally broken PDF (0 readable pages, the live SEBI DRHP case) is
+REJECTED as unreadable_pdf, distinct from a scanned filing with no text layer,
+which is still correctly skipped (E4).
+
+TWO REAL BUGS the chain tests caught:
+1. `outcome` was left unassigned when every download failed, so applyOutcome
+   returned undefined and the state write threw three frames away. strict:false
+   does not catch that. It is now initialised, and applyOutcome has a default
+   arm that throws where the mistake actually is.
+2. The G4 guard fired when downloads were disabled (no rung could run), masking
+   a genuine BLOCKED_ALL. That case now records its own skip reason.
+
+Tests: +16 SEBI, +14 company-host/verifier, +7 full-chain.

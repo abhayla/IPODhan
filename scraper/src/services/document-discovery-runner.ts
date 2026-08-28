@@ -40,6 +40,20 @@ import { verifyDownload, isVerifyFailure, type VerifyResult } from './document-d
 import { storeDocument, getStoreDir } from './document-store.js';
 import { extractCoverText as extractCoverTextFromPdf } from './pdf-cover-text.js';
 import {
+  parseSebiListing,
+  matchSebiRow,
+  parseSebiDetailPdfUrl,
+  sebiListingUrlFor,
+  type SebiListingRow,
+} from './sebi-source.js';
+import {
+  parseCompanyHostLinks,
+  companyInvestorUrls,
+  extractVerifierLinks,
+  extractWebsiteFromCoverText,
+  normalizeCompanyUrl,
+} from './company-host-source.js';
+import {
   planIpoCycle,
   applyOutcome,
   type AttemptOutcome,
@@ -79,6 +93,18 @@ const BSE_HEADERS = {
   Origin: 'https://www.bseindia.com',
   Referer: 'https://www.bseindia.com/',
   Accept: 'application/json',
+};
+
+/** SEBI serves plain HTML; it wants a browser UA but no exchange Referer. */
+const SEBI_HEADERS = {
+  'User-Agent': BROWSER_UA,
+  Accept: 'text/html,application/xhtml+xml',
+};
+
+/** Generic page fetch for an issuer host or the verifier. */
+const BROWSER_PAGE_HEADERS = {
+  'User-Agent': BROWSER_UA,
+  Accept: 'text/html,application/xhtml+xml',
 };
 
 const NSE_HEADERS = {
@@ -191,6 +217,13 @@ export interface DiscoveryIpo {
    * the board fetch entirely.
    */
   bseIpoNo?: number | null;
+  /** Issuer website from `ipos` / `ipo_details`, when we store one (G2). */
+  companyWebsite?: string | null;
+  /**
+   * A third-party IPO page (Chittorgarh) used ONLY to verify which exchange URL
+   * is the right one. Never a document source (owner rule, 2026-08-28).
+   */
+  verifierUrl?: string | null;
 }
 
 export interface RunnerDeps {
@@ -269,6 +302,10 @@ export const defaultFetcher: HttpFetcher = async (url, init) => {
 
 export class DocumentDiscoveryRunner {
   private boardCache: BseBoardRow[] | null = null;
+  /** SEBI listings fetched this cycle, keyed by listing URL (one GET each). */
+  private readonly sebiListings = new Map<string, SebiListingRow[]>();
+  /** Issuer website learned from a filing cover, so rung 4 costs no extra fetch. */
+  private readonly companyUrlByIpo = new Map<string, string>();
   private boardFetched = false;
 
   constructor(private readonly deps: RunnerDeps) {}
@@ -463,6 +500,10 @@ export class DocumentDiscoveryRunner {
     if (!isVerifyFailure(firstPass)) {
       const extract = this.deps.extractCoverText ?? extractCoverTextFromPdf;
       const cover = await extract(firstPass.pdf);
+      // A structural parse failure is a REJECT, not a skip (G1) — see
+      // VerifyOptions.coverExtractFailed.
+      const coverExtractFailed =
+        !cover.usable && (cover as { reason?: string }).reason === 'extract_failed';
       verdict = verifyDownload(
         res.body,
         { status: res.status, contentType: res.contentType, url: res.url },
@@ -470,6 +511,7 @@ export class DocumentDiscoveryRunner {
           wantedType,
           expectedCompanyName: ipo.companyName,
           coverText: cover.usable ? cover.text : undefined,
+          coverExtractFailed,
         }
       );
     }
@@ -503,6 +545,329 @@ export class DocumentDiscoveryRunner {
       ...(isVerifyFailure(verdict) ? {} : { sha256: verdict.sha256 }),
     });
     return verdict;
+  }
+
+  /**
+   * Download one candidate, verify it, store it, and record the `documents` row.
+   * Returns null when the candidate did not survive verification or storage.
+   *
+   * Shared by all four rungs, so a document fetched from SEBI or a company host
+   * goes through the SAME verification, sha-dedup and storage as an exchange one
+   * — a rung that stored files by its own rules would be a hole in §3.
+   */
+  private async tryStoreCandidate(
+    candidate: DiscoveredDocument,
+    ipo: DiscoveryIpo,
+    docType: DocumentType,
+    attempts: FetchAttempt[],
+    seenBySha: Map<string, { documentId: string; docType: DocumentType }>
+  ): Promise<{ documentId: string; bytes: number } | null> {
+    const verdict = await this.fetchAndVerify(candidate, ipo, attempts, docType);
+    if (!verdict || isVerifyFailure(verdict)) return null;
+
+    const alias = seenBySha.get(verdict.sha256);
+    if (alias) {
+      attempts.push({
+        source: candidate.source,
+        http: 200,
+        ms: 0,
+        outcome: `deduped_by_sha256_to:${alias.docType}`,
+        url: candidate.url,
+        sha256: verdict.sha256,
+      });
+      return { documentId: alias.documentId, bytes: verdict.bytes };
+    }
+
+    const stored = await storeDocument({
+      ipoId: ipo.id,
+      docType,
+      pdf: verdict.pdf,
+      sha256: verdict.sha256,
+      storeDir: this.deps.storeDir ?? getStoreDir(),
+    });
+    if (!stored.stored) {
+      attempts.push({
+        source: candidate.source,
+        http: 200,
+        ms: 0,
+        outcome: 'store_full',
+        url: candidate.url,
+        sha256: verdict.sha256,
+      });
+      return null;
+    }
+
+    const doc = await this.deps.documents.upsertDocument({
+      ipoId: ipo.id,
+      type: docType,
+      title: candidate.title,
+      url: candidate.url,
+      exchange: candidate.source,
+      mediaType: 'PDF',
+      extractionStatus: 'PENDING',
+      isActive: true,
+      fileSize: verdict.bytes,
+    });
+    seenBySha.set(verdict.sha256, { documentId: doc.id, docType });
+
+    // G2: the issuer's website is printed on the filing cover. Capturing it here
+    // means the company-host rung costs nothing extra to become usable for the
+    // NEXT document this IPO needs.
+    if (!this.companyUrlByIpo.has(ipo.id)) {
+      const cover = await (this.deps.extractCoverText ?? extractCoverTextFromPdf)(verdict.pdf);
+      const site = cover.usable ? extractWebsiteFromCoverText(cover.text ?? '') : null;
+      if (site) this.companyUrlByIpo.set(ipo.id, site);
+    }
+
+    logger.info({ ipoId: ipo.id, docType, bytes: verdict.bytes }, 'Document FOUND and stored');
+    return { documentId: doc.id, bytes: verdict.bytes };
+  }
+
+  /**
+   * Rungs 3 and 4 of the decision tree, plus the verifier (G1/G2/G4).
+   *
+   * Order is the matrix's: SEBI, then the issuer's own host, then Chittorgarh as
+   * a link verifier only. Every rung appends to `rungs` even when it does
+   * nothing, with the reason — that record is what lets BLOCKED_ALL mean "all
+   * four were consulted" rather than "we stopped early".
+   */
+  private async escalateBeyondExchanges(
+    ipo: DiscoveryIpo,
+    docType: DocumentType,
+    attempts: FetchAttempt[],
+    rungs: string[],
+    triedUrls: Set<string>,
+    seenBySha: Map<string, { documentId: string; docType: DocumentType }>
+  ): Promise<{ documentId: string; bytes: number } | null> {
+    // ---- Rung 3: SEBI ----------------------------------------------------
+    const listingUrl = sebiListingUrlFor(docType);
+    if (!listingUrl) {
+      rungs.push('SEBI:skipped:not_served_by_sebi');
+    } else {
+      const found = await this.trySebi(ipo, docType, listingUrl, attempts, rungs, triedUrls, seenBySha);
+      if (found) return found;
+    }
+
+    // ---- Rung 4: the issuer's investor page -------------------------------
+    const companyUrl =
+      normalizeCompanyUrl(ipo.companyWebsite) ?? this.companyUrlByIpo.get(ipo.id) ?? null;
+    if (!companyUrl) {
+      rungs.push('COMPANY:skipped:no_company_url');
+    } else {
+      const found = await this.tryCompanyHost(ipo, docType, companyUrl, attempts, rungs, triedUrls, seenBySha);
+      if (found) return found;
+    }
+
+    // ---- Verifier: Chittorgarh (links only, never a source) ---------------
+    if (!ipo.verifierUrl) {
+      rungs.push('VERIFIER:skipped:no_verifier_url');
+      return null;
+    }
+    return this.tryVerifier(ipo, docType, attempts, rungs, triedUrls, seenBySha);
+  }
+
+  /** Rung 3. Listing (cached per cycle) to row match to detail page to PDF. */
+  private async trySebi(
+    ipo: DiscoveryIpo,
+    docType: DocumentType,
+    listingUrl: string,
+    attempts: FetchAttempt[],
+    rungs: string[],
+    triedUrls: Set<string>,
+    seenBySha: Map<string, { documentId: string; docType: DocumentType }>
+  ): Promise<{ documentId: string; bytes: number } | null> {
+    let rows = this.sebiListings.get(listingUrl);
+    if (rows === undefined) {
+      const started = Date.now();
+      const res = await this.request(listingUrl, SEBI_HEADERS, ipo.id);
+      if (res.status !== 200) {
+        attempts.push({
+          source: 'SEBI',
+          http: res.status,
+          ms: Date.now() - started,
+          outcome: 'http_error',
+          url: listingUrl,
+        });
+        rungs.push('SEBI:failed:http_error');
+        this.sebiListings.set(listingUrl, []);
+        return null;
+      }
+      rows = parseSebiListing(res.body.toString('utf8'));
+      this.sebiListings.set(listingUrl, rows);
+      attempts.push({
+        source: 'SEBI',
+        http: 200,
+        ms: Date.now() - started,
+        outcome: `listing_rows:${rows.length}`,
+        url: listingUrl,
+      });
+    }
+
+    const row = matchSebiRow(rows, ipo.companyName, docType);
+    if (!row) {
+      rungs.push('SEBI:not_listed');
+      return null;
+    }
+
+    const detailStarted = Date.now();
+    const detail = await this.request(row.detailUrl, SEBI_HEADERS, ipo.id);
+    if (detail.status !== 200) {
+      attempts.push({
+        source: 'SEBI',
+        http: detail.status,
+        ms: Date.now() - detailStarted,
+        outcome: 'detail_http_error',
+        url: row.detailUrl,
+      });
+      rungs.push('SEBI:failed:detail_http_error');
+      return null;
+    }
+
+    const pdfUrl = parseSebiDetailPdfUrl(detail.body.toString('utf8'));
+    if (!pdfUrl) {
+      attempts.push({
+        source: 'SEBI',
+        http: 200,
+        ms: Date.now() - detailStarted,
+        outcome: 'no_pdf_on_detail_page',
+        url: row.detailUrl,
+      });
+      rungs.push('SEBI:failed:no_pdf_on_detail_page');
+      return null;
+    }
+
+    if (triedUrls.has(pdfUrl)) {
+      rungs.push('SEBI:skipped:already_tried');
+      return null;
+    }
+    triedUrls.add(pdfUrl);
+
+    const stored = await this.tryStoreCandidate(
+      { type: docType, url: pdfUrl, source: 'SEBI', title: row.title },
+      ipo,
+      docType,
+      attempts,
+      seenBySha
+    );
+    rungs.push(stored ? 'SEBI:found' : 'SEBI:failed:rejected');
+    return stored;
+  }
+
+  /** Rung 4. At most three GETs against the issuer's own host (R12). */
+  private async tryCompanyHost(
+    ipo: DiscoveryIpo,
+    docType: DocumentType,
+    companyUrl: string,
+    attempts: FetchAttempt[],
+    rungs: string[],
+    triedUrls: Set<string>,
+    seenBySha: Map<string, { documentId: string; docType: DocumentType }>
+  ): Promise<{ documentId: string; bytes: number } | null> {
+    for (const pageUrl of companyInvestorUrls(companyUrl)) {
+      const started = Date.now();
+      const res = await this.request(pageUrl, BROWSER_PAGE_HEADERS, ipo.id);
+      if (res.status !== 200) {
+        attempts.push({
+          source: 'COMPANY',
+          http: res.status,
+          ms: Date.now() - started,
+          outcome: 'http_error',
+          url: pageUrl,
+        });
+        continue;
+      }
+
+      const links = parseCompanyHostLinks(res.body.toString('utf8'), pageUrl).filter(
+        (l) => l.docType === docType && !triedUrls.has(l.url)
+      );
+      attempts.push({
+        source: 'COMPANY',
+        http: 200,
+        ms: Date.now() - started,
+        outcome: `links:${links.length}`,
+        url: pageUrl,
+      });
+
+      for (const link of links) {
+        triedUrls.add(link.url);
+        const stored = await this.tryStoreCandidate(
+          { type: docType, url: link.url, source: 'COMPANY', title: link.text },
+          ipo,
+          docType,
+          attempts,
+          seenBySha
+        );
+        if (stored) {
+          rungs.push('COMPANY:found');
+          return stored;
+        }
+      }
+    }
+    rungs.push('COMPANY:failed:no_usable_link');
+    return null;
+  }
+
+  /**
+   * The verifier. Reads the links Chittorgarh displays and follows one ONLY when
+   * it points at an exchange or SEBI and we have not tried that exact URL. A
+   * document is never stored from Chittorgarh's own host (owner rule) — that
+   * filter lives in `extractVerifierLinks`, so no code here has to remember it.
+   */
+  private async tryVerifier(
+    ipo: DiscoveryIpo,
+    docType: DocumentType,
+    attempts: FetchAttempt[],
+    rungs: string[],
+    triedUrls: Set<string>,
+    seenBySha: Map<string, { documentId: string; docType: DocumentType }>
+  ): Promise<{ documentId: string; bytes: number } | null> {
+    const verifierUrl = ipo.verifierUrl as string;
+    const started = Date.now();
+    const res = await this.request(verifierUrl, BROWSER_PAGE_HEADERS, ipo.id);
+    if (res.status !== 200) {
+      attempts.push({
+        source: 'VERIFIER',
+        http: res.status,
+        ms: Date.now() - started,
+        outcome: 'http_error',
+        url: verifierUrl,
+      });
+      rungs.push('VERIFIER:failed:http_error');
+      return null;
+    }
+
+    const links = extractVerifierLinks(res.body.toString('utf8'), verifierUrl, triedUrls).filter(
+      (l) => l.docType === docType
+    );
+    attempts.push({
+      source: 'VERIFIER',
+      http: 200,
+      ms: Date.now() - started,
+      outcome: `untried_exchange_links:${links.length}`,
+      url: verifierUrl,
+    });
+
+    for (const link of links) {
+      triedUrls.add(link.url);
+      const source: DiscoveredDocument['source'] = link.url.includes('sebi.gov.in')
+        ? 'SEBI'
+        : link.url.includes('bseindia')
+          ? 'BSE'
+          : 'NSE';
+      const stored = await this.tryStoreCandidate(
+        { type: docType, url: link.url, source, title: link.text },
+        ipo,
+        docType,
+        attempts,
+        seenBySha
+      );
+      if (stored) {
+        rungs.push('VERIFIER:found_via_corrected_link');
+        return stored;
+      }
+    }
+    rungs.push('VERIFIER:no_new_link');
+    return null;
   }
 
   /**
@@ -645,98 +1010,120 @@ export class DocumentDiscoveryRunner {
       let documentId: string | null = null;
       let bytes: number | undefined;
 
+      // G4: every rung tried for THIS type, in order, with its outcome. A rung
+      // that was not applicable is recorded with an explicit reason rather than
+      // omitted -- the state may not become BLOCKED_ALL until all four have an
+      // entry, so silence is not an acceptable substitute for "we skipped it".
+      const rungs: string[] = [];
+      const triedUrls = new Set<string>();
+
       if (candidates.length === 0) {
-        // F3 vs F6: an exchange that ANSWERED with an empty field means the
-        // filing does not exist yet; no exchange answering at all is a failure.
-        // Conflating the two is what would turn "the anchor report is not filed
-        // until tomorrow" into a P2 page every 30 minutes.
+        // Two very different facts, recorded distinctly: the exchanges ANSWERED
+        // and had no link (the filing does not exist yet), versus the exchanges
+        // could not be reached at all. Collapsing them into one label is the
+        // same conflation F3-vs-F6 exists to prevent.
+        rungs.push(exchangesAnswered ? 'EXCHANGES:no_link' : 'EXCHANGES:failed');
+        // F3 vs F6: only when EVERY consulted exchange answered may we say the
+        // filing does not exist yet.
         outcome = exchangesAnswered ? 'no_link' : 'all_sources_failed';
       } else if (this.deps.skipDownload) {
+        rungs.push('EXCHANGES:found');
         outcome = 'found';
       } else {
-        // Try each source's copy in order until one verifies (F2). Only when
-        // EVERY host has failed is this BLOCKED_ALL.
-        //
-        // `tried` lets the rescue pass below skip URLs already attempted, so a
-        // second pass costs at most the links NSE newly contributed.
+        // Default to failure and let a successful store overwrite it. This
+        // initialiser is load-bearing: without it `outcome` stays undefined when
+        // every candidate is rejected, and `applyOutcome` then returns undefined
+        // and the state write throws. `strict: false` does not catch that.
         outcome = 'all_sources_failed';
-        const tried = new Set<string>();
+
+        // A separate flag rather than comparing `outcome`: assigning a literal
+        // narrows its type, so `outcome !== 'found'` is a compile error in this
+        // workspace. The flag says the same thing without fighting it.
+        let stored: { documentId: string; bytes: number } | null = null;
         const attemptCandidates = async (list: DiscoveredDocument[]): Promise<void> => {
-        for (const candidate of list) {
-          if (tried.has(candidate.url)) continue;
-          tried.add(candidate.url);
-          const verdict = await this.fetchAndVerify(candidate, ipo, attempts, docType);
-          if (!verdict || !verdict.ok) continue;
-
-          // Same bytes as a document already stored this run: reuse that row
-          // and that file. The alternative URL is recorded in the attempt log.
-          const alias = seenBySha.get(verdict.sha256);
-          if (alias) {
-            documentId = alias.documentId;
-            bytes = verdict.bytes;
-            outcome = 'found';
-            attempts.push({
-              source: candidate.source,
-              http: 200,
-              ms: 0,
-              outcome: `deduped_by_sha256_to:${alias.docType}`,
-              url: candidate.url,
-              sha256: verdict.sha256,
-            });
-            break;
+          for (const candidate of list) {
+            if (triedUrls.has(candidate.url)) continue;
+            triedUrls.add(candidate.url);
+            const attempt = await this.tryStoreCandidate(
+              candidate,
+              ipo,
+              docType,
+              attempts,
+              seenBySha
+            );
+            if (!attempt) continue;
+            stored = attempt;
+            return;
           }
-
-          const stored = await storeDocument({
-            ipoId: ipo.id,
-            docType,
-            pdf: verdict.pdf,
-            sha256: verdict.sha256,
-            storeDir: this.deps.storeDir ?? getStoreDir(),
-          });
-          if (!stored.stored) {
-            // The store is full. That is an infrastructure failure, not a
-            // missing filing, and trying another host will not fix it. N9: it
-            // gets its own attempt outcome so 'the disk is full' is never read
-            // as 'every exchange failed' when someone triages the alert.
-            attempts.push({
-              source: candidate.source,
-              http: 200,
-              ms: 0,
-              outcome: 'store_full',
-              url: candidate.url,
-              sha256: verdict.sha256,
-            });
-            outcome = 'all_sources_failed';
-            break;
-          }
-          const doc = await this.deps.documents.upsertDocument({
-            ipoId: ipo.id,
-            type: docType,
-            title: candidate.title,
-            url: candidate.url,
-            exchange: candidate.source,
-            mediaType: 'PDF',
-            extractionStatus: 'PENDING',
-            isActive: true,
-            fileSize: verdict.bytes,
-          });
-          documentId = doc.id;
-          seenBySha.set(verdict.sha256, { documentId: doc.id, docType });
-          bytes = verdict.bytes;
-          outcome = 'found';
-          break;
-        }
         };
 
         await attemptCandidates(candidates);
 
-        // F2 rescue: every link we had failed, and NSE has not been asked yet
-        // (BSE covered every due type, so the cheap path skipped it). Ask now
-        // and retry ONLY this type with whatever NSE adds.
-        if (outcome === 'all_sources_failed' && !nseConsulted && !isSme) {
+        // F2 rescue: everything we had failed and NSE has not been asked yet
+        // (BSE covered every due type, so the cheap path skipped it).
+        if (!stored && !nseConsulted && !isSme) {
           const gained = await ensureNseCandidates();
           if (gained) await attemptCandidates(discovered.get(docType) ?? []);
         }
+
+        if (stored) {
+          documentId = stored.documentId;
+          bytes = stored.bytes;
+          outcome = 'found';
+        }
+        rungs.push(stored ? 'EXCHANGES:found' : 'EXCHANGES:failed');
+      }
+
+      // Rungs 3 and 4 (G1/G2). Only reached once the exchanges have genuinely
+      // failed for this type -- never as a shortcut, and never when the
+      // exchanges simply said "not filed yet" (F3), which is not a failure.
+      if (outcome === 'all_sources_failed' && !this.deps.skipDownload) {
+        const escalated = await this.escalateBeyondExchanges(
+          ipo,
+          docType,
+          attempts,
+          rungs,
+          triedUrls,
+          seenBySha
+        );
+        if (escalated) {
+          documentId = escalated.documentId;
+          bytes = escalated.bytes;
+          outcome = 'found';
+        }
+      } else if (outcome === 'all_sources_failed') {
+        // Downloads are disabled for this run (call-counting / dry mode), so no
+        // rung could produce a file. Recorded explicitly rather than left empty:
+        // the G4 guard below asserts four entries, and an unrecorded skip would
+        // make it fire and mask a genuine BLOCKED_ALL.
+        rungs.push('SEBI:skipped:download_disabled');
+        rungs.push('COMPANY:skipped:download_disabled');
+        rungs.push('VERIFIER:skipped:download_disabled');
+      } else {
+        // The exchanges settled it (found, or an honest "not filed yet"), so the
+        // later rungs are not consulted — and that is recorded, not implied.
+        rungs.push('SEBI:skipped:exchanges_settled_it');
+        rungs.push('COMPANY:skipped:exchanges_settled_it');
+        rungs.push('VERIFIER:skipped:exchanges_settled_it');
+      }
+
+      attempts.push({
+        source: 'CHAIN',
+        http: 0,
+        ms: 0,
+        outcome: `rungs[${docType}]: ${rungs.join(' -> ')}`,
+      });
+
+      // G4 guard: BLOCKED_ALL asserts that every rung was consulted. If the
+      // chain somehow ran short, that is a bug in the chain, not evidence that
+      // the document is unreachable -- so it is logged loudly and the row is
+      // left retryable rather than being marked blocked on incomplete evidence.
+      if (outcome === 'all_sources_failed' && rungs.length < 4) {
+        logger.error(
+          { ipoId: ipo.id, docType, rungs },
+          'Refusing BLOCKED_ALL: fewer than four rungs were consulted (G4)'
+        );
+        outcome = 'no_link';
       }
 
       const transition = applyOutcome(prior, outcome, now);
