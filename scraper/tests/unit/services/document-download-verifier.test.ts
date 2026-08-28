@@ -155,7 +155,7 @@ describe('verifyDownload — matrix §3', () => {
   it('T32 REJECTS a PDF whose cover names a different company (F8)', () => {
     const r = verifyDownload(fakePdf(), PDF_META, {
       expectedCompanyName: 'Skyways Air Services Limited',
-      extractCoverText: () => 'RED HERRING PROSPECTUS\nMadhur Knit Crafts Limited\nDated 11 August 2026',
+      coverText: 'RED HERRING PROSPECTUS\nMadhur Knit Crafts Limited\nDated 11 August 2026',
     });
     expect(r.ok).toBe(false);
     if (!r.ok) expect(r.reason).toBe('wrong_company');
@@ -164,7 +164,7 @@ describe('verifyDownload — matrix §3', () => {
   it('T32b ACCEPTS a cover whose tokens match despite legal-suffix variance', () => {
     const r = verifyDownload(fakePdf(), PDF_META, {
       expectedCompanyName: 'Skyways Air Services Ltd.',
-      extractCoverText: () => 'RED HERRING PROSPECTUS\nSKYWAYS AIR SERVICES LIMITED\nDated 11 August 2026',
+      coverText: 'RED HERRING PROSPECTUS\nSKYWAYS AIR SERVICES LIMITED\nDated 11 August 2026',
     });
     expect(r.ok).toBe(true);
   });
@@ -174,9 +174,11 @@ describe('verifyDownload — matrix §3', () => {
     // price-band ads; the OCR path (WP C) handles those.
     const r = verifyDownload(fakePdf(), PDF_META, {
       expectedCompanyName: 'Skyways Air Services Limited',
-      extractCoverText: () => '',
+      coverText: '',
     });
     expect(r.ok).toBe(true);
+    // and the SKIP is visible, never reported as a pass.
+    if (r.ok) expect(r.coverCheck).toBe('skipped_no_text_layer');
   });
 
   it('T33 REFUSES a body over the 150 MB cap (F20, zip bomb)', () => {

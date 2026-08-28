@@ -33,8 +33,6 @@ export const MIN_DOCUMENT_BYTES = 50 * 1024;
 /** Hard ceiling (matrix F20 — zip bombs / pathological scans). */
 export const MAX_DOCUMENT_BYTES = 150 * 1024 * 1024;
 
-/** How much of the PDF text layer we scan for the cover-page company name. */
-export const COVER_SCAN_BYTES = 200 * 1024;
 
 /** Fuzzy threshold for the cover-page company-name check (matrix §3 step 4). */
 export const COVER_NAME_MIN_TOKEN_RATIO = 0.6;
@@ -70,6 +68,15 @@ export interface VerifyOptions {
    * member out of a multi-PDF zip — see `selectZipMemberForType`.
    */
   wantedType?: DocumentType;
+  /**
+   * Page-1 text, ALREADY extracted by the caller (`pdf-cover-text.ts`).
+   *
+   * Passed in rather than extracted here so this module stays pure and
+   * synchronous — every rule in it is decidable from bytes. Absent or empty
+   * means the check is skipped, which is the correct behaviour for a scanned or
+   * font-subsetted filing (matrix E4), not a reason to reject one.
+   */
+  coverText?: string;
 }
 
 /**
@@ -88,6 +95,12 @@ export type VerifySuccess = {
   wasZip: boolean;
   /** The zip member chosen, when the download was a zip. For the attempt log. */
   zipMember?: string;
+  /**
+   * Whether the cover-page company check actually RAN. Recorded so a skip is
+   * visible in the attempt log instead of looking like a pass — the failure mode
+   * this whole check was silently in for the first cut of T-403.
+   */
+  coverCheck: 'passed' | 'skipped_no_text_layer' | 'skipped_not_requested';
 };
 
 export type VerifyFailure = { ok: false; reason: VerifyFailureReason; detail: string };
@@ -233,7 +246,7 @@ function baseName(name: string): string {
 export function verifyDownload(
   body: Buffer,
   meta: DownloadResponseMeta,
-  options: VerifyOptions & { extractCoverText?: (pdf: Buffer) => string } = {}
+  options: VerifyOptions = {}
 ): VerifyResult {
   if (!Buffer.isBuffer(body)) return fail('not_a_pdf', 'body is not a buffer');
 
@@ -283,15 +296,31 @@ export function verifyDownload(
   }
 
   // 4. Cover page names the expected company (F8 — wrong company's filing).
-  if (options.expectedCompanyName && options.extractCoverText) {
-    const cover = options.extractCoverText(pdf.subarray(0, COVER_SCAN_BYTES));
-    if (cover && cover.trim() !== '' && !coverNamesCompany(cover, options.expectedCompanyName)) {
+  let coverCheck: 'passed' | 'skipped_no_text_layer' | 'skipped_not_requested' =
+    'skipped_not_requested';
+  if (options.expectedCompanyName) {
+    const cover = (options.coverText ?? '').trim();
+    if (cover === '') {
+      // Scanned or font-subsetted cover (matrix E4). Skipping is correct;
+      // rejecting would drop legitimate newspaper-advertisement filings.
+      coverCheck = 'skipped_no_text_layer';
+    } else if (!coverNamesCompany(cover, options.expectedCompanyName)) {
       return fail(
         'wrong_company',
         `cover page does not name "${options.expectedCompanyName}" — refusing to store ${meta.url}`
       );
+    } else {
+      coverCheck = 'passed';
     }
   }
 
-  return { ok: true, pdf, sha256: sha256Hex(pdf), bytes: pdf.length, wasZip, zipMember };
+  return {
+    ok: true,
+    pdf,
+    sha256: sha256Hex(pdf),
+    bytes: pdf.length,
+    wasZip,
+    zipMember,
+    coverCheck,
+  };
 }

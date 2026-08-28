@@ -38,6 +38,7 @@ import { parseBseBoard, resolveBseBoardRow, extractBseCoreRow, type BseBoardRow 
 import { parseBseParties } from './bse-party-parser.js';
 import { verifyDownload, isVerifyFailure, type VerifyResult } from './document-download-verifier.js';
 import { storeDocument, getStoreDir } from './document-store.js';
+import { extractCoverText as extractCoverTextFromPdf } from './pdf-cover-text.js';
 import {
   planIpoCycle,
   applyOutcome,
@@ -169,6 +170,12 @@ export interface RunnerDeps {
   storeDir?: string;
   /** Skip writing PDFs to disk (acceptance runs that only prove call counts). */
   skipDownload?: boolean;
+  /**
+   * Page-1 text extractor for the cover-page company check (matrix §3 step 4).
+   * Injected so a test can drive F8 without building a real PDF; defaults to
+   * the pdf-parse-backed implementation, which is what runs in production.
+   */
+  extractCoverText?: (pdf: Buffer) => Promise<{ usable: boolean; text?: string }>;
 }
 
 export interface IpoRunResult {
@@ -391,11 +398,32 @@ export class DocumentDiscoveryRunner {
     const headers = doc.source === 'BSE' ? BSE_HEADERS : NSE_HEADERS;
     const started = Date.now();
     const res = await this.request(url, { ...headers, Accept: '*/*' }, ipo.id, DOWNLOAD_TIMEOUT_MS);
-    const verdict = verifyDownload(
+    // Two passes, deliberately. The cover check needs the UNWRAPPED pdf, which
+    // only the first pass can produce (the download may be a zip). Pass 1 does
+    // every byte-level rule; if it succeeds we extract page 1 and re-run the
+    // cheap checks with the cover text so the company check can actually fire.
+    // The first cut passed `expectedCompanyName` with no extractor at all, so
+    // step 4 silently never ran and F8 was unguarded in production.
+    const firstPass = verifyDownload(
       res.body,
       { status: res.status, contentType: res.contentType, url: res.url },
-      { expectedCompanyName: ipo.companyName, wantedType }
+      { wantedType }
     );
+
+    let verdict = firstPass;
+    if (!isVerifyFailure(firstPass)) {
+      const extract = this.deps.extractCoverText ?? extractCoverTextFromPdf;
+      const cover = await extract(firstPass.pdf);
+      verdict = verifyDownload(
+        res.body,
+        { status: res.status, contentType: res.contentType, url: res.url },
+        {
+          wantedType,
+          expectedCompanyName: ipo.companyName,
+          coverText: cover.usable ? cover.text : undefined,
+        }
+      );
+    }
     // if/else rather than a ternary: this workspace compiles with `strict: false`
     // (see shared-package-build.md — the asymmetry is deliberate), and without
     // strictNullChecks the boolean discriminant does not narrow inside a
@@ -405,7 +433,14 @@ export class DocumentDiscoveryRunner {
     if (isVerifyFailure(verdict)) {
       outcome = `rejected:${verdict.reason}`;
     } else {
-      outcome = `downloaded${verdict.zipMember ? ` (zip member: ${verdict.zipMember})` : ''}`;
+      // Both facts belong in the log: WHICH zip member was chosen (the
+      // multi-member defect) and WHETHER the cover check ran (the silently-off
+      // defect). A skip that reads like a pass is how M1 stayed hidden.
+      const parts = [
+        verdict.zipMember ? `zip member: ${verdict.zipMember}` : null,
+        `cover_check: ${verdict.coverCheck}`,
+      ].filter(Boolean);
+      outcome = `downloaded (${parts.join('; ')})`;
     }
     attempts.push({
       source: doc.source,
@@ -510,12 +545,25 @@ export class DocumentDiscoveryRunner {
       }
     }
 
-    // NSE second for mainboard, FIRST-and-only-exchange for SME. Skipped when
-    // BSE already produced a link for every due type — the cheapest correct move.
-    if (!allDueCovered()) {
+    // NSE second for mainboard, FIRST-and-only-exchange for SME.
+    //
+    // Idempotent, and callable again LATER in this cycle. The first cut fetched
+    // NSE only when BSE had left a due type without a link, which meant that if
+    // BSE supplied every link and one of those downloads then failed, the NSE
+    // copy was never consulted and the type went BLOCKED_ALL — the F2 rule says
+    // to try the other exchange's copy. The download loop below calls this on
+    // demand for exactly that case.
+    let nseConsulted = false;
+    const ensureNseCandidates = async (): Promise<boolean> => {
+      if (nseConsulted) return false;
+      nseConsulted = true;
       const issueInfo = await this.fetchNseIssueInfo(ipo, attempts);
-      if (issueInfo) takeAll(parseNSEDocuments(issueInfo, ipo.symbol ?? ''));
-    }
+      if (!issueInfo) return false;
+      takeAll(parseNSEDocuments(issueInfo, ipo.symbol ?? ''));
+      return true;
+    };
+
+    if (!allDueCovered()) await ensureNseCandidates();
 
     const exchangesAnswered = attempts.some(
       (a) => (a.source === 'BSE' || a.source === 'NSE') && a.outcome === 'ok'
@@ -543,8 +591,15 @@ export class DocumentDiscoveryRunner {
       } else {
         // Try each source's copy in order until one verifies (F2). Only when
         // EVERY host has failed is this BLOCKED_ALL.
+        //
+        // `tried` lets the rescue pass below skip URLs already attempted, so a
+        // second pass costs at most the links NSE newly contributed.
         outcome = 'all_sources_failed';
-        for (const candidate of candidates) {
+        const tried = new Set<string>();
+        const attemptCandidates = async (list: DiscoveredDocument[]): Promise<void> => {
+        for (const candidate of list) {
+          if (tried.has(candidate.url)) continue;
+          tried.add(candidate.url);
           const verdict = await this.fetchAndVerify(candidate, ipo, attempts, docType);
           if (!verdict || !verdict.ok) continue;
 
@@ -594,6 +649,17 @@ export class DocumentDiscoveryRunner {
           bytes = verdict.bytes;
           outcome = 'found';
           break;
+        }
+        };
+
+        await attemptCandidates(candidates);
+
+        // F2 rescue: every link we had failed, and NSE has not been asked yet
+        // (BSE covered every due type, so the cheap path skipped it). Ask now
+        // and retry ONLY this type with whatever NSE adds.
+        if (outcome === 'all_sources_failed' && !nseConsulted && !isSme) {
+          const gained = await ensureNseCandidates();
+          if (gained) await attemptCandidates(discovered.get(docType) ?? []);
         }
       }
 
