@@ -437,3 +437,91 @@ describe('NIT-4 the source label is decided by host', () => {
     expect(sourceOfDocumentUrl('')).toBe('UNKNOWN');
   });
 });
+
+// ---------------------------------------------------------------------------
+// W-72 / H-4 + H-5 — an ABORTED SEBI walk is a failure, never an absence
+// ---------------------------------------------------------------------------
+
+const SEBI_DIR = join(__dirname, '../../fixtures/sebi');
+const SEBI_PAGE1_WITH_FORM = readFileSync(join(SEBI_DIR, 'sebi-drhp-page1-with-form.html'), 'utf8');
+const SEBI_OTHER_COMPANY = readFileSync(join(SEBI_DIR, 'sebi-drhp-search-match.html'), 'utf8');
+
+/**
+ * A runner whose SEBI page-1 GET always answers 200 with the real search form,
+ * while every subsequent POST (the search, then each paged fetch) is decided by
+ * `onPost`, numbered from 1. `'throw'` makes that POST blow up in transport.
+ */
+function makeSebiWalkRunner(onPost: (n: number) => HttpResponse | 'throw') {
+  let posts = 0;
+  const fetcher: HttpFetcher = async (url, init) => {
+    if (url.includes('sebiweb/home/HomeAction.do')) {
+      if ((init.method ?? 'GET') === 'GET') {
+        return html(SEBI_PAGE1_WITH_FORM, url);
+      }
+      posts += 1;
+      const answer = onPost(posts);
+      if (answer === 'throw') throw new Error('socket hang up');
+      return answer;
+    }
+    for (const [needle, response] of Object.entries(CLEAN_EXCHANGES)) {
+      if (url.includes(needle)) return response;
+    }
+    return { status: 404, contentType: 'text/html', body: Buffer.from('x'), url };
+  };
+  const store = new InMemoryDocumentFetchStateStore();
+  const documents = {
+    rows: [] as unknown[],
+    async upsertDocument(doc: unknown) {
+      this.rows.push(doc);
+      return { id: 'doc-' + this.rows.length };
+    },
+  };
+  const runner = new DocumentDiscoveryRunner({
+    fetcher,
+    store,
+    documents: documents as never,
+    counter: new NetworkCounter(),
+    now: () => new Date('2026-08-28T06:00:00Z'),
+    storeDir,
+    sleep: async () => undefined,
+    extractCoverText: async () => ({ usable: true, text: 'Acme Industries Limited prospectus' }),
+  });
+  return { runner, store, postCount: () => posts };
+}
+
+describe('W-72 a SEBI walk aborted after page 1 is a FAILURE, not "not listed"', () => {
+  it('H-4: page 1 answers, the search POST 503s — blocked, never an absence', async () => {
+    // Page 1 alone is the newest ~25 filings; a company off it is decided by
+    // the SEARCH. When the search dies, nothing has been LOOKED at for this
+    // company — recording `SEBI:not_listed` there mints an absence out of a 503.
+    const { runner } = makeSebiWalkRunner(() => fail(503));
+
+    const result = await runner.runIpo(upcoming(), []);
+
+    expect(result.due).toEqual(['DRHP']);
+    expect(result.blocked).toEqual(['DRHP']);
+    expect(result.notFound).toEqual([]);
+    expect(result.notYetFiled).toEqual([]);
+    const chain = rungsFor(result.attempts as never, 'DRHP');
+    expect(chain).toContain('SEBI:page1');
+    expect(chain).toContain('SEBI:failed:search');
+    expect(chain).not.toContain('SEBI:not_listed');
+  }, 60_000);
+
+  it('H-5: the second paging POST throws — SEBI:failed:page:2, no absence', async () => {
+    // POST 1 is the search, POST 2 is paged page 1, POST 3 is paged page 2.
+    const { runner } = makeSebiWalkRunner((n) =>
+      n >= 3 ? 'throw' : html(SEBI_OTHER_COMPANY, 'https://www.sebi.gov.in/sebiweb/home/HomeAction.do')
+    );
+
+    const result = await runner.runIpo(upcoming(), []);
+
+    expect(result.blocked).toEqual(['DRHP']);
+    expect(result.notFound).toEqual([]);
+    expect(result.notYetFiled).toEqual([]);
+    const chain = rungsFor(result.attempts as never, 'DRHP');
+    expect(chain).toContain('SEBI:searched');
+    expect(chain).toContain('SEBI:failed:page:2');
+    expect(chain).not.toContain('SEBI:not_listed');
+  }, 60_000);
+});

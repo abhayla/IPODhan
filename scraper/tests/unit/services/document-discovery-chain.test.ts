@@ -189,6 +189,10 @@ describe('G2 — chain reaches the company host when SEBI does not list the comp
       ...EXCHANGES_DOWN,
       // SEBI answers, but this company is not on the listing.
       'smid=11': html(fixture('sebi-rhp-listing.html')),
+      // W-72: the search + paging POSTs must ANSWER too, otherwise the walk is
+      // aborted rather than completed and "not listed" would be a claim about
+      // requests that failed. Same listing back: a completed walk, no match.
+      jsessionid: html(fixture('sebi-rhp-listing.html')),
       '/investors': html(
         '<a href="/docs/RHP_Unlisted.pdf">Red Herring Prospectus</a>',
         'https://unlisted.example.com/investors'

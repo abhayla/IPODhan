@@ -299,6 +299,22 @@ export interface FetchSebiListingRowsOptions {
   maxPages?: number;
 }
 
+/**
+ * W-72: the step at which a walk was ABORTED by a failed request — a non-200
+ * or a transport throw on the search POST or a paging POST. `status` is the
+ * HTTP status, or 0 when the request threw / never left the caller.
+ *
+ * The distinction this exists for: an aborted walk has NOT looked for the
+ * company, so its empty `matched` is not evidence of absence. Page 1 is
+ * deliberately NOT reported here — a failed page 1 returns no evidence at all,
+ * which the caller already treats as a failure.
+ */
+export interface SebiWalkAbort {
+  /** `search` or `page:<n>`. */
+  step: string;
+  status: number;
+}
+
 export interface FetchSebiListingRowsResult {
   /** Rows from whichever fetch last succeeded (page 1, the search, or a page). */
   rows: SebiListingRow[];
@@ -308,6 +324,26 @@ export interface FetchSebiListingRowsResult {
    * `SEBI:paged:<n>`, or an `:http_error:<status>` / `:no_form_found` /
    * `:exhausted` suffix on any step that did not proceed further. */
   rungs: string[];
+  /** Set when the walk stopped because a step FAILED (W-72), null when it ran
+   * to completion — whether or not it matched. */
+  aborted: SebiWalkAbort | null;
+}
+
+/**
+ * One walk request that cannot throw. A transport error is an abort exactly
+ * like a 5xx, and the walk's contract is that it never throws (a throw out of
+ * here used to escape the whole discovery run).
+ */
+async function walkFetch(
+  fetchImpl: SebiFetcher,
+  url: string,
+  init: Parameters<SebiFetcher>[1]
+): Promise<{ status: number; body: string }> {
+  try {
+    return await fetchImpl(url, init);
+  } catch {
+    return { status: 0, body: '' };
+  }
 }
 
 /**
@@ -348,33 +384,33 @@ export async function fetchSebiListingRows(
   const listingUrl = sebiListingUrlFor(docType);
   if (!listingUrl) {
     rungs.push('SEBI:skipped:not_served_by_sebi');
-    return { rows: [], matched: null, rungs };
+    return { rows: [], matched: null, rungs, aborted: null };
   }
 
   const { companyName, fetchImpl, maxPages = 6 } = options;
 
-  const page1 = await fetchImpl(listingUrl, { method: 'GET', headers: {} });
+  const page1 = await walkFetch(fetchImpl, listingUrl, { method: 'GET', headers: {} });
   if (page1.status !== 200) {
     rungs.push(`SEBI:page1:http_error:${page1.status}`);
-    return { rows: [], matched: null, rungs };
+    return { rows: [], matched: null, rungs, aborted: null };
   }
   rungs.push('SEBI:page1');
 
   let rows = parseSebiListing(page1.body);
   let matched = companyName ? matchAnyKindRow(rows, companyName, docType) : null;
   if (matched || !companyName) {
-    return { rows, matched, rungs };
+    return { rows, matched, rungs, aborted: null };
   }
 
   const form = extractSebiSearchForm(page1.body);
   if (!form) {
     rungs.push('SEBI:search:no_form_found');
-    return { rows, matched: null, rungs };
+    return { rows, matched: null, rungs, aborted: null };
   }
 
   const requestHeaders = { ...SEBI_FORM_HEADERS, Referer: listingUrl, Origin: SEBI_BASE };
 
-  const searchRes = await fetchImpl(form.actionUrl, {
+  const searchRes = await walkFetch(fetchImpl, form.actionUrl, {
     method: 'POST',
     headers: requestHeaders,
     body: encodeFormBody({
@@ -387,31 +423,31 @@ export async function fetchSebiListingRows(
   });
   if (searchRes.status !== 200) {
     rungs.push(`SEBI:searched:http_error:${searchRes.status}`);
-    return { rows, matched: null, rungs };
+    return { rows, matched: null, rungs, aborted: { step: 'search', status: searchRes.status } };
   }
   rungs.push('SEBI:searched');
   rows = parseSebiListing(searchRes.body);
   matched = matchAnyKindRow(rows, companyName, docType);
-  if (matched) return { rows, matched, rungs };
+  if (matched) return { rows, matched, rungs, aborted: null };
 
   // The search ran but did not surface the row (SEBI's search can be title-only
   // or otherwise miss a valid company) — fall back to paging.
   for (let page = 1; page <= maxPages; page++) {
-    const pageRes = await fetchImpl(form.actionUrl, {
+    const pageRes = await walkFetch(fetchImpl, form.actionUrl, {
       method: 'POST',
       headers: requestHeaders,
       body: encodeFormBody({ ...form.fields, search: '', fromDate: '', toDate: '', nextValue: String(page) }),
     });
     if (pageRes.status !== 200) {
       rungs.push(`SEBI:paged:${page}:http_error:${pageRes.status}`);
-      return { rows, matched: null, rungs };
+      return { rows, matched: null, rungs, aborted: { step: `page:${page}`, status: pageRes.status } };
     }
     rungs.push(`SEBI:paged:${page}`);
     rows = parseSebiListing(pageRes.body);
     matched = matchAnyKindRow(rows, companyName, docType);
-    if (matched) return { rows, matched, rungs };
+    if (matched) return { rows, matched, rungs, aborted: null };
   }
 
   rungs.push('SEBI:paged:exhausted');
-  return { rows, matched: null, rungs };
+  return { rows, matched: null, rungs, aborted: null };
 }

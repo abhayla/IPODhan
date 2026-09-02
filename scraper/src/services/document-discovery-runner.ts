@@ -1221,6 +1221,28 @@ export class DocumentDiscoveryRunner {
       row = result.matched;
       listingEvidence = lastEvidence;
 
+      if (result.aborted) {
+        // W-72: the walk STOPPED because one of its steps failed, so it never
+        // finished looking for this company. Its empty `matched` is the absence
+        // of a completed search, not the absence of a filing — minting
+        // `SEBI:not_listed` here (as it did) is exactly the H-2 lie, one rung
+        // deeper. The budget check comes first: a walk cut short by our OWN cap
+        // is a budget failure, not SEBI's.
+        if (budgetExhausted) {
+          rungs.push('SEBI:failed:budget');
+          return failed('escalation budget exhausted mid-SEBI walk');
+        }
+        // A transport error or a 5xx is the SERVER, so it is company-
+        // independent and cached under the bare listing URL for the cycle
+        // (H-3). A 4xx answers THIS company's search POST and is cached only
+        // against this company's key.
+        const { step, status } = result.aborted;
+        const companyIndependent = status === 0 || status >= 500;
+        this.sebiListings.set(companyIndependent ? listingUrl : cacheKey, 'failed');
+        rungs.push(`SEBI:failed:${step}`);
+        return failed(`SEBI listing walk aborted at ${step} (http ${status})`);
+      }
+
       if (!listingEvidence) {
         // Nothing ever answered 200 — either a hard HTTP failure or the
         // escalation budget ran out before the first successful fetch.
