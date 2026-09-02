@@ -741,15 +741,37 @@ report_wired_jobs() {
   # ran. Match EITHER form so the next wiring refactor doesn't silently make
   # this report lie again, and require a real call (not a comment) so a job
   # name merely mentioned in a comment/string never counts as wired.
+  #
+  # #264 round 2: a `runStep(...)` sitting inside a `/* */` block comment or
+  # after a trailing `// ...` was still reported WIRED, because the old
+  # filter only dropped lines that were ENTIRELY a `//` comment. Strip block
+  # comments (delete the `/* ... */` line range) and trailing `//` comments
+  # before matching. A naive `s://.*$::` would also truncate a real call
+  # whose argument contains `https://` — protect any `<alnum>://` sequence
+  # (http://, https://, ws://, ...) behind a placeholder first, strip the
+  # real `//` comment marker, then restore the placeholder.
+  #
+  # #264 round 2 (LOW): T-340-wired calls are sometimes wrapped across
+  # lines (`runStep(cycleId,'x',\n triggerX)`) or via an inline arrow
+  # (`runStep(cycleId,'x', async () => triggerX())` — real form used by the
+  # `heartbeat` step at index.ts:434). Collapse newlines to spaces so a
+  # wrapped call reads as one statement, and match the call name anywhere
+  # up to the statement's closing `;` (`[^;]*?`, non-greedy) instead of
+  # requiring it immediately after the job name — this also tolerates the
+  # nested `()` an arrow wrapper introduces.
   local non_comment_content
-  non_comment_content="$(printf '%s\n' "$idx_content" | grep -Ev '^[[:space:]]*//')"
+  non_comment_content="$(printf '%s\n' "$idx_content" \
+    | sed -E '/\/\*/,/\*\//d' \
+    | sed -E '/^[[:space:]]*\/\//d' \
+    | sed -E 's#([[:alnum:]_])://#\1@@CS@@#g; s#//.*$##; s#@@CS@@#://#g' \
+    | tr '\n' ' ')"
   local entry job rest call flag flag_val
   for entry in "duplicateSweep:triggerDuplicateSweep:" "stageReconciler:triggerStageReconciler:ENABLE_STAGE_RECONCILER" "primarySourceDiscovery:triggerPrimarySourceDiscovery:ENABLE_PRIMARY_SOURCE_DISCOVERY"; do
     job="${entry%%:*}"
     rest="${entry#*:}"
     call="${rest%%:*}"
     flag="${rest#*:}"
-    if printf '%s\n' "$non_comment_content" | grep -Eq "runStep\\([^)]*,[[:space:]]*'${job}'[[:space:]]*,[[:space:]]*${call}[[:space:]]*\\)|await[[:space:]]+${call}\\(\\)"; then
+    if printf '%s' "$non_comment_content" | grep -Pq "runStep\\([^;]*?,[[:space:]]*'${job}'[[:space:]]*,[^;]*?${call}[^;]*?\\)[^;]*?;|await[[:space:]]+${call}\\(\\)"; then
       if [ -n "$flag" ]; then
         flag_val="unset"
         if (( ! DRY_RUN )); then
