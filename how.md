@@ -108,7 +108,7 @@ state, not a running one.
 
 The one piece that DOES run, on demand, is a standalone financials extractor:
 `scraper/scripts/extract_financials_pdf.py` (Python + pdfplumber), invoked via
-`scripts/backfill-financials-pdf.ts --apply` against an already-downloaded PDF. It pulls:
+`scraper/scripts/backfill-financials-pdf.ts --apply` against an already-downloaded PDF. It pulls:
 
 - **Financials** — revenue/profit/EBITDA across recent years, EPS, RoE, net worth, market cap,
   promoter holding → stored in `financial_data`.
@@ -121,7 +121,7 @@ non-blocking or blocking with respect to a scrape, because a scrape never calls 
 
 - *Where:* `scraper/src/services/primary-source-discovery.ts` (discovery core, flagged off);
   `scraper/src/config/feature-flags.ts` (`ENABLE_PRIMARY_SOURCE_DISCOVERY`);
-  `scraper/scripts/extract_financials_pdf.py` + `scripts/backfill-financials-pdf.ts` (the live
+  `scraper/scripts/extract_financials_pdf.py` + `scraper/scripts/backfill-financials-pdf.ts` (the live
   extractor, CLI-only); persistence in `scraper/src/services/data-persister.ts`
   (`createFinancialData`, `updateIPOObjectives`, `createPeerCompanies`).
 - *Planned:* wiring discovery → download → extraction → persistence into the live cycle is
