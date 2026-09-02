@@ -460,3 +460,76 @@ errors against a 732 baseline, unchanged) and `web && npx tsc --noEmit` clean;
 4. **`scraper && npx tsc --noEmit -p tsconfig.json` is still not clean** — the
    same 159 pre-existing error lines recorded in round 5, none in the files this
    round touched, none added.
+
+## Round 7 — delivered vs not
+
+### Delivered
+
+| Review finding | What changed | Where |
+|---|---|---|
+| MAJOR — `m_absence_without_evidence` scoped to DRHP only | Re-scoped by CHAIN SHAPE: FAILs any NOT_YET_FILED row whose non-EXCHANGES rungs are all `skipped`/`failed` AND none is `skipped:exchanges_settled_it`, regardless of `docType`. A CORRIGENDUM (or any other type) hitting the same unobserved-absence shape now FAILs; a chain the exchanges genuinely settled (the `exchanges_settled_it` skip label) still PASSes | `scripts/lib/document-state-checks.mjs` (`checkAbsenceWithoutEvidence`, `parseChainTokens`) |
+| MINOR — `all_sources_failed` reused `blockedSinceAt` only from a row already BLOCKED_ALL | `row.blockedSinceAt ?? now` — a row that passed through `chain_incomplete` (state WANTED) but carried an outage clock from an earlier cycle now keeps it | `scraper/src/services/document-state-machine.ts` (`applyOutcome`, `all_sources_failed` case) |
+| MINOR — `answeredRungsIn` counted any unrecognised label as an answer | Inverted to an explicit `ANSWERED_RUNG_VERDICTS` allow-list (`found`, `not_listed`, `no_link`, `found_via_corrected_link`, `no_new_link`) mirroring every non-skip/non-failed `rungs.push` in the runner. An unknown verdict is now NOT an answer (the safe direction) | `scripts/lib/document-state-checks.mjs` |
+| MINOR — G4 short-chain downgrade lived in the caller as a `let outcome` reassignment | Folded into `resolveFinalOutcome` via a new `rungCount` argument (`MIN_RUNGS_FOR_ALL_SOURCES_FAILED = 4`); the caller's `outcome` is now a `const`. The G4 log line fires only when the computed outcome is actually `chain_incomplete` on a short chain | `scraper/src/services/document-discovery-runner.ts` (`resolveFinalOutcome`, its call site) |
+| Test hygiene | `resolve-final-outcome.test.ts`: `EXPECTED` typed as `Record<string, AttemptOutcome>`, moved to module scope, extended with a hand-written (not derived) short-chain matrix + a boundary test at exactly `MIN_RUNGS_FOR_ALL_SOURCES_FAILED`. `round6-chain.test.ts`: added `blockedSinceAt`/no-P2-alert assertions, scoped per docType (the fixture legitimately blocks other doc types via a real SEBI failure) | `document-discovery-resolve-final-outcome.test.ts`, `document-discovery-round6-chain.test.ts` |
+| Self-tests | New cases: a CORRIGENDUM with the r6 nobody-answered chain (FAILs), a chain carrying `skipped:exchanges_settled_it` (PASSes), and a direct `answeredRungsIn` unknown-label test | `scripts/tests/document-state-checks.test.mjs` |
+
+Commits: `a40f2a83` (item 1), `a63baa2d` (item 2), `fced5b72` (items 3+4 + test hygiene).
+
+### Rebase (Part B)
+
+Rebased `feat/wp-ab-document-discovery-state-r5` onto `origin/main` (T-407 dead-DRHP-code
+deletion, T-406 preflight gate, T-404 Notifier heartbeat). Two conflicts, both resolved by
+keeping BOTH sides:
+- `.github/workflows/pr-gate.yml` — kept T-406's `VPS runtime preflight self-test` step
+  AND this branch's `Document-state check self-tests (T-403)` step, back to back.
+- `.gitignore` — kept T-407's `HANDOFF-*.md` / `IPODhan-t*/` entries AND this branch's
+  `.prospectus-acceptance/` entry.
+
+One non-conflict blocker: an untracked `.prospectus-acceptance/` directory left over from a
+prior local acceptance-harness run collided with tracked fixture paths an earlier commit in
+this branch's own history was replaying; removed (it is gitignored scratch, never a repo
+file) and the rebase proceeded.
+
+`git diff origin/main --name-status | grep '^A'` lists 122 added paths, none of them the
+eight files T-407 deleted (`drhp-downloader.ts`, `drhp-orchestrator.ts`, `drhp-extractor.ts`,
+`exchange-monitor.ts`, `sebi-monitor.ts`, `manual-review-queue.ts`,
+`drhp-extractor-service.ts`, `ecosystem.config.js`) — confirmed absent from the tree by a
+direct `find`. Pushed with `--force-with-lease` (this branch has had no other writer since
+round 6 landed).
+
+### Gates (run once, after the rebase)
+
+- `packages/shared && npx tsc` — clean.
+- `web && npx tsc --noEmit` — clean.
+- Every step in `.github/workflows/pr-gate.yml`'s `gate` job:
+  - 4 `node --test` self-tests (write-ratchet 23, detection-floor 78, preflight-runtime 19,
+    document-state-checks 33) + migration-name-collision (6) — all passing, 0 failing.
+  - `node scripts/check-write-ratchet.mjs` — PASS, 58 files match baseline.
+  - `web`: `npm run lint:ci` — PASSED (723 errors vs a 732 baseline, below baseline).
+  - `web`: `npm run test:unit` — 2 failed / 2360 passed / 17 skipped, both failures in
+    `tests/unit/components/rights/RightsIssuesTabs*.test.tsx` (5s hydration-probe timeouts),
+    a file this round and round 6 never touched (only `web/drizzle/migrations/*.sql` changed
+    in `web/`) — pre-existing, not caused by this branch.
+  - `scraper && npx vitest run --config vitest.config.ts` and, per this round's explicit
+    instruction, `scraper && npx vitest run --pool=forks` — 149 files, 1706 passed,
+    1 skipped, 2 failed, both in
+    `tests/unit/base-scraper-orchestrator-fuzzy-guard-parity.test.ts` (last touched by an
+    unrelated PR #210, T-307 identity-resolution work) — pre-existing, not caused by this
+    round or by round 6.
+- `scraper-document-integration` job (needs a Postgres built by replaying the journal from
+  empty) was **not run** — same NOT-delivered item round 6 recorded; this box still has no
+  disposable Postgres to replay into. No file in scope for that job (`web/drizzle/migrations`,
+  `document-fetch-state-repository.integration.test.ts`) changed this round.
+
+### NOT delivered, stated plainly
+
+1. **The two pre-existing scraper failures (`base-scraper-orchestrator-fuzzy-guard-parity.test.ts`)
+   and the two pre-existing web failures (`RightsIssuesTabs*.test.tsx`) were not investigated
+   or fixed** — out of this round's four-item scope, unrelated files, unrelated PRs.
+2. **The `scraper-document-integration` CI job was not run locally** (see above) — same gap
+   round 6 recorded, unchanged this round.
+3. **The live acceptance harness was not re-run** — no behaviour change this round touches a
+   cell the harness exercises differently; items 1-3 change nightly-audit and internal-refactor
+   surfaces only, item 2 only affects a row that already carried a `blockedSinceAt` from a prior
+   cycle (untested by the 9/9 fresh-run harness, which never ages a row across cycles).
