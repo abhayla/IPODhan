@@ -729,6 +729,302 @@ else
   rm -rf "$ENVDIR13"
 fi
 
+# --- Case 13b: #259 negative — a job name that appears ONLY inside a ------
+# --- comment (never in a real `runStep(cycleId, 'job', triggerX)` or ------
+# --- legacy `await triggerX()` call) MUST be reported NOT wired. Proves ---
+# --- the substance check isn't fooled by a mention in prose, and that a ---
+# --- genuinely-wired sibling job in the same file still reports wired. ----
+if [ -z "$REPORT_FN" ]; then
+  fail "case 13b: could not extract report_wired_jobs() from $DEPLOY_SCRIPT — function renamed?"
+else
+  set +e
+  (
+    set -euo pipefail
+    eval "$REPORT_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=1
+    SHORT_SHA="deadbee"
+    SHA="deadbee"
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    # Shadow `git` so report_wired_jobs() (which shells out to
+    # `git show "$SHA:scraper/src/index.ts"`) reads this synthetic file
+    # instead of the real committed tree.
+    git() {
+      if [ "$1" = "show" ]; then
+        cat <<'IDXEOF'
+      // duplicateSweep used to run via runStep(cycleId, 'duplicateSweep', triggerDuplicateSweep)
+      // but that call was removed below - only this comment still names it.
+      await runStep(cycleId, 'stageReconciler', triggerStageReconciler);
+      await runStep(cycleId, 'primarySourceDiscovery', triggerPrimarySourceDiscovery);
+IDXEOF
+      fi
+    }
+    report_wired_jobs
+  ) >/tmp/deploy-test-13b.log 2>&1
+  RC13B=$?
+  set -e
+
+  if [ "$RC13B" -ne 0 ]; then
+    fail "case 13b: report_wired_jobs() exited non-zero ($RC13B) on a comment-only mention — should warn, not crash"
+    cat /tmp/deploy-test-13b.log
+  fi
+
+  if grep -q "job NOT wired: duplicateSweep" /tmp/deploy-test-13b.log; then
+    pass "case 13b: a job mentioned only in a comment is reported NOT wired"
+  else
+    fail "case 13b: expected 'job NOT wired: duplicateSweep' when the only mention is a comment"
+    cat /tmp/deploy-test-13b.log
+  fi
+
+  if grep -q "job wired: stageReconciler" /tmp/deploy-test-13b.log; then
+    pass "case 13b: a genuinely-wired sibling job in the same file still reports wired"
+  else
+    fail "case 13b: expected 'job wired: stageReconciler' for a genuinely wired sibling job"
+    cat /tmp/deploy-test-13b.log
+  fi
+fi
+
+# --- Case 13c: #264 round 2 negative — a `runStep(...)` call sitting -------
+# --- entirely inside a `/* ... */` block comment MUST be reported NOT ------
+# --- wired, even though the substance check in 13b already excludes bare ---
+# --- `//` mentions. Proves the block-comment strip actually deletes the ----
+# --- commented-out call rather than leaving it visible to the matcher. -----
+if [ -z "$REPORT_FN" ]; then
+  fail "case 13c: could not extract report_wired_jobs() from $DEPLOY_SCRIPT — function renamed?"
+else
+  set +e
+  (
+    set -euo pipefail
+    eval "$REPORT_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=1
+    SHORT_SHA="deadbee"
+    SHA="deadbee"
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    git() {
+      if [ "$1" = "show" ]; then
+        cat <<'IDXEOF'
+      /*
+      await runStep(cycleId, 'duplicateSweep', triggerDuplicateSweep);
+      */
+      await runStep(cycleId, 'stageReconciler', triggerStageReconciler);
+      await runStep(cycleId, 'primarySourceDiscovery', triggerPrimarySourceDiscovery);
+IDXEOF
+      fi
+    }
+    report_wired_jobs
+  ) >/tmp/deploy-test-13c.log 2>&1
+  RC13C=$?
+  set -e
+
+  if [ "$RC13C" -ne 0 ]; then
+    fail "case 13c: report_wired_jobs() exited non-zero ($RC13C) on a block-comment-only mention — should warn, not crash"
+    cat /tmp/deploy-test-13c.log
+  fi
+
+  if grep -q "job NOT wired: duplicateSweep" /tmp/deploy-test-13c.log; then
+    pass "case 13c: a job mentioned only inside a /* */ block comment is reported NOT wired"
+  else
+    fail "case 13c: expected 'job NOT wired: duplicateSweep' when the only mention is inside a block comment"
+    cat /tmp/deploy-test-13c.log
+  fi
+
+  if grep -q "job wired: stageReconciler" /tmp/deploy-test-13c.log; then
+    pass "case 13c: a genuinely-wired sibling job outside the block comment still reports wired"
+  else
+    fail "case 13c: expected 'job wired: stageReconciler' for a genuinely wired sibling job"
+    cat /tmp/deploy-test-13c.log
+  fi
+fi
+
+# --- Case 13d: #264 round 2 negative — a `runStep(...)` call appearing -----
+# --- only after a trailing `// ...` comment marker on the SAME line as -----
+# --- real code MUST be reported NOT wired. 13b already covers a line that --
+# --- IS a comment start-to-end; this covers a line that has real code -----
+# --- BEFORE the `//`, which the old "drop whole-comment lines" filter -----
+# --- could not catch. -------------------------------------------------------
+if [ -z "$REPORT_FN" ]; then
+  fail "case 13d: could not extract report_wired_jobs() from $DEPLOY_SCRIPT — function renamed?"
+else
+  set +e
+  (
+    set -euo pipefail
+    eval "$REPORT_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=1
+    SHORT_SHA="deadbee"
+    SHA="deadbee"
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    git() {
+      if [ "$1" = "show" ]; then
+        cat <<'IDXEOF'
+      noOpMarker(); // await runStep(cycleId, 'duplicateSweep', triggerDuplicateSweep);
+      await runStep(cycleId, 'stageReconciler', triggerStageReconciler);
+      await runStep(cycleId, 'primarySourceDiscovery', triggerPrimarySourceDiscovery);
+IDXEOF
+      fi
+    }
+    report_wired_jobs
+  ) >/tmp/deploy-test-13d.log 2>&1
+  RC13D=$?
+  set -e
+
+  if [ "$RC13D" -ne 0 ]; then
+    fail "case 13d: report_wired_jobs() exited non-zero ($RC13D) on a trailing-comment-only mention — should warn, not crash"
+    cat /tmp/deploy-test-13d.log
+  fi
+
+  if grep -q "job NOT wired: duplicateSweep" /tmp/deploy-test-13d.log; then
+    pass "case 13d: a job mentioned only after a trailing // comment is reported NOT wired"
+  else
+    fail "case 13d: expected 'job NOT wired: duplicateSweep' when the only mention trails a // comment"
+    cat /tmp/deploy-test-13d.log
+  fi
+
+  if grep -q "job wired: stageReconciler" /tmp/deploy-test-13d.log; then
+    pass "case 13d: a genuinely-wired sibling job on its own line still reports wired"
+  else
+    fail "case 13d: expected 'job wired: stageReconciler' for a genuinely wired sibling job"
+    cat /tmp/deploy-test-13d.log
+  fi
+fi
+
+# --- Case 13e: #264 round 2 positive — a genuinely-wired call whose --------
+# --- argument list contains a `https://` URL must NOT be truncated by the --
+# --- trailing-`//`-comment strip (13d) and must still report wired. --------
+# --- Guards against a naive `s://.*$::` that would truncate the real call -
+# --- at the first `//` inside the URL. -------------------------------------
+if [ -z "$REPORT_FN" ]; then
+  fail "case 13e: could not extract report_wired_jobs() from $DEPLOY_SCRIPT — function renamed?"
+else
+  set +e
+  (
+    set -euo pipefail
+    eval "$REPORT_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=1
+    SHORT_SHA="deadbee"
+    SHA="deadbee"
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    git() {
+      if [ "$1" = "show" ]; then
+        cat <<'IDXEOF'
+      await runStep(cycleId, 'duplicateSweep', triggerDuplicateSweep); // notifies https://hooks.example.com/x
+      await runStep(cycleId, 'stageReconciler', triggerStageReconciler);
+      await runStep(cycleId, 'primarySourceDiscovery', triggerPrimarySourceDiscovery);
+IDXEOF
+      fi
+    }
+    report_wired_jobs
+  ) >/tmp/deploy-test-13e.log 2>&1
+  RC13E=$?
+  set -e
+
+  if [ "$RC13E" -ne 0 ]; then
+    fail "case 13e: report_wired_jobs() exited non-zero ($RC13E) on a call with a https:// trailing comment"
+    cat /tmp/deploy-test-13e.log
+  fi
+
+  if grep -q "job wired: duplicateSweep" /tmp/deploy-test-13e.log; then
+    pass "case 13e: a real call followed by a https:// trailing comment still reports wired"
+  else
+    fail "case 13e: expected 'job wired: duplicateSweep' — the https:// comment strip must not truncate the real call"
+    cat /tmp/deploy-test-13e.log
+  fi
+fi
+
+# --- Case 13f: #264 round 2 positive — a `runStep(...)` call wrapped -------
+# --- across multiple lines (the job name and the callback on separate ------
+# --- lines) must still report wired once newlines are collapsed. -----------
+if [ -z "$REPORT_FN" ]; then
+  fail "case 13f: could not extract report_wired_jobs() from $DEPLOY_SCRIPT — function renamed?"
+else
+  set +e
+  (
+    set -euo pipefail
+    eval "$REPORT_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=1
+    SHORT_SHA="deadbee"
+    SHA="deadbee"
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    git() {
+      if [ "$1" = "show" ]; then
+        cat <<'IDXEOF'
+      await runStep(cycleId, 'duplicateSweep',
+        triggerDuplicateSweep);
+      await runStep(cycleId, 'stageReconciler', triggerStageReconciler);
+      await runStep(cycleId, 'primarySourceDiscovery', triggerPrimarySourceDiscovery);
+IDXEOF
+      fi
+    }
+    report_wired_jobs
+  ) >/tmp/deploy-test-13f.log 2>&1
+  RC13F=$?
+  set -e
+
+  if [ "$RC13F" -ne 0 ]; then
+    fail "case 13f: report_wired_jobs() exited non-zero ($RC13F) on a call wrapped across lines"
+    cat /tmp/deploy-test-13f.log
+  fi
+
+  if grep -q "job wired: duplicateSweep" /tmp/deploy-test-13f.log; then
+    pass "case 13f: a runStep(...) call wrapped across multiple lines still reports wired"
+  else
+    fail "case 13f: expected 'job wired: duplicateSweep' for a call wrapped across lines"
+    cat /tmp/deploy-test-13f.log
+  fi
+fi
+
+# --- Case 13g: #264 round 2 positive — a `runStep(...)` call whose third --
+# --- argument is an inline arrow wrapping the trigger call (the real form -
+# --- used by the `heartbeat` step at index.ts:434) must still report -------
+# --- wired, despite the extra nested `()` the arrow introduces. ------------
+if [ -z "$REPORT_FN" ]; then
+  fail "case 13g: could not extract report_wired_jobs() from $DEPLOY_SCRIPT — function renamed?"
+else
+  set +e
+  (
+    set -euo pipefail
+    eval "$REPORT_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=1
+    SHORT_SHA="deadbee"
+    SHA="deadbee"
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    git() {
+      if [ "$1" = "show" ]; then
+        cat <<'IDXEOF'
+      await runStep(cycleId, 'duplicateSweep', async () => triggerDuplicateSweep());
+      await runStep(cycleId, 'stageReconciler', triggerStageReconciler);
+      await runStep(cycleId, 'primarySourceDiscovery', triggerPrimarySourceDiscovery);
+IDXEOF
+      fi
+    }
+    report_wired_jobs
+  ) >/tmp/deploy-test-13g.log 2>&1
+  RC13G=$?
+  set -e
+
+  if [ "$RC13G" -ne 0 ]; then
+    fail "case 13g: report_wired_jobs() exited non-zero ($RC13G) on an arrow-wrapped call"
+    cat /tmp/deploy-test-13g.log
+  fi
+
+  if grep -q "job wired: duplicateSweep" /tmp/deploy-test-13g.log; then
+    pass "case 13g: a runStep(...) call wrapping the trigger in an arrow function still reports wired"
+  else
+    fail "case 13g: expected 'job wired: duplicateSweep' for an arrow-wrapped call"
+    cat /tmp/deploy-test-13g.log
+  fi
+fi
+
 # --- Case 14: T-321F — ERR trap must fire inside FUNCTION bodies too -------
 # --- (checker finding: `set -euo pipefail` w/o `-E` does not inherit the ---
 # --- ERR trap into functions/subshells/command substitutions, so the exact -
