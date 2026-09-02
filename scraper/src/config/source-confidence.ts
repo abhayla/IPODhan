@@ -76,6 +76,14 @@ export function confidenceFor(
   source: ScraperSource,
   adjustments: ConfidenceAdjustments = {}
 ): number {
+  // F6 round 2 (owner decision): ADMIN is EXEMPT from every adjustment. An
+  // admin value is the definition of truth for a field — D-10 and the priority
+  // matrix both put it above every scraper — so a scraper disagreeing with it
+  // is evidence about the SCRAPER, never a reason to trust the admin less.
+  if (source === 'ADMIN') {
+    return BASE_SOURCE_CONFIDENCE.ADMIN;
+  }
+
   const base = BASE_SOURCE_CONFIDENCE[source] ?? UNKNOWN_SOURCE_CONFIDENCE;
 
   const penalty = (adjustments.conflicts ?? []).reduce(

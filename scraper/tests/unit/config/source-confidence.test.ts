@@ -65,9 +65,15 @@ describe('confidenceFor — conflict penalties', () => {
     expect(confidenceFor('API_FALLBACK', { conflicts: Array(10).fill('CRITICAL') })).toBe(
       CONFIDENCE_FLOOR
     );
-    expect(confidenceFor('ADMIN', { conflicts: Array(50).fill('CRITICAL') })).toBe(
-      CONFIDENCE_FLOOR
-    );
+  });
+
+  it('ADMIN is EXEMPT: an admin value stays 100 however many sources disagree', () => {
+    expect(confidenceFor('ADMIN', { conflicts: ['CRITICAL'] })).toBe(100);
+    expect(confidenceFor('ADMIN', { conflicts: ['CRITICAL', 'WARNING'] })).toBe(100);
+    expect(confidenceFor('ADMIN', { conflicts: Array(50).fill('CRITICAL') })).toBe(100);
+    expect(
+      confidenceFor('ADMIN', { conflicts: Array(50).fill('CRITICAL'), confirmations: 0 })
+    ).toBe(100);
   });
 });
 

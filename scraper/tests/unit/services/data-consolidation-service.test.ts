@@ -457,9 +457,9 @@ describe('DataConsolidationService', () => {
             fieldName: 'lot_size',
             source: 'ADMIN',
             value: 150,
-            // F6 (W-37): ADMIN base 100, minus 10 for the CRITICAL lot_size
-            // disagreement it had to win.
-            confidence: 90,
+            // F6 round 2: ADMIN is exempt from conflict penalties — an admin
+            // value is the definition of truth for the field.
+            confidence: 100,
             previousValue: '100',
             previousSource: 'NSE',
           })
