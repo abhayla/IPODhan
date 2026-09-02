@@ -88,6 +88,6 @@ green there) → 5 → 6 → 7 → 8. Stages 5–7 are WP C/D. Stage 8 is WP E.
 
 ## 7. Decisions the owner must make (nothing else is blocked)
 
-1. **Resume or restart T-403?** 155 files / 20k lines, 4 review rounds, r4 unreviewed. Recommended: one more fresh Opus review of r4 only, then merge behind its off-by-default flag. Restarting throws away stages 2–4.
-2. **Schema/journal repair (stage 0)** — owner called it a schema-ownership decision on 28 Aug. It is the first blocker of every stage test. Recommended: fold `_repair/` into journaled migrations (T-id, P1).
-3. **Delete the dead DRHP code path** (`drhp-downloader.ts`, `drhp-orchestrator.ts`, `drhp-extractor.ts`, web `drhp-extractor-service.ts` + its API route, `ecosystem.config.js`). Recommended: yes, in the same PR that rewrites `how.md` Step 7.
+1. **Resume or restart T-403?** (tracked in #258 stage 2–4) 155 files / 20k lines, 4 review rounds, r4 unreviewed. Recommended: one more fresh Opus review of r4 only, then merge behind its off-by-default flag. Restarting throws away stages 2–4.
+2. **Schema/journal repair (stage 0)** (#256) — owner called it a schema-ownership decision on 28 Aug. It is the first blocker of every stage test. Recommended: fold `_repair/` into journaled migrations (T-id, P1).
+3. **Delete the dead DRHP code path** (#257) (`drhp-downloader.ts`, `drhp-orchestrator.ts`, `drhp-extractor.ts`, web `drhp-extractor-service.ts` + its API route, `ecosystem.config.js`). Recommended: yes, in the same PR that rewrites `how.md` Step 7.
