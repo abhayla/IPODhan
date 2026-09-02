@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-02 23:41 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-02 23:52 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -24,7 +24,7 @@ Last updated: 2026-09-02 23:41 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 
 | # | Step | In plain words | Plan | Status |
 |---|---|---|---|---|
-| 1 | D6 text check / OCR | Some exchanges publish the price-band ad as a scanned image with no readable text. Round 1 built a reader (92814b1a) but it glued words together, so only 3 of ~70 fields came out. | Round 2: split words apart. Pass bar on the scanned DEEPA ad: band 168/177, face value 2, lot 84, fresh issue 2,500 mn, open/close dates, no wrong value. | Round 2 running (started 23:35, 30-min budget) |
+| 1 | D6 text check / OCR | Some exchanges publish the price-band ad as a scanned image with no readable text. Round 1 built a reader (92814b1a); round 2 (c39ec63a) split words apart: 3 -> 30 fields recovered. Still failing: offer-for-sale amount came out as 1.0 (OCR dropped a digit and the extractor emitted it without an arithmetic check), fresh issue amount and open date null (OCR digit noise in the table and in a date). | Round 3: gate every offer-table amount on the shares x price check; read fresh amount and OFS shares from the clean prose sentence when the table fails; tolerate one noise token in dates. Pass bar: band, face, lot, fresh 2,500, OFS 11,848,340, all three dates, 50/15/35, zero wrong values. | Round 3 running (started 23:52, 30-min budget) |
 | 2 | I4 leftover (W-60) | I4 passes (4a96ab7d): WITHDRAWN/POSTPONED exist, exchange signals map to them, the site never downgrades them. Hole: the scraper's merge step can still overwrite WITHDRAWN with a later "Closed". | Guard in the consolidation service; a test proving WITHDRAWN survives a later "Closed". | Queued after D6 |
 | 3 | G4 persist filing data | Seven fix rounds; the DEEPA page now shows the right issue size, financials, peers, promoters, documents. Last review said "not mergeable"; round 7 (1298065a) fixed those points. | Final fresh-context Tier A review of round 7. | Queued after item 2 |
 | 4 | F2 Moneycontrol | Moneycontrol's list page does not show DEEPA. Not a scraper defect. | None; noted as a coverage gap. | Closed as not applicable |
@@ -40,3 +40,4 @@ Last updated: 2026-09-02 23:41 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 ## 4. Change log of this report
 
 - 2026-09-02 23:41: created. F6 PASS (23:27), I4 PASS with W-60 (23:30), E5/E8/H4/G4/J2 rows corrected to the landed commits.
+- 2026-09-02 23:52: D6 round 2 landed (c39ec63a, 16 pytest reproduced, 30/70 fields live) but NOT a pass: ofs_amount wrong (1.0), fresh amount + open date null. Fable read the raw OCR text and diagnosed; round 3 dispatched.
