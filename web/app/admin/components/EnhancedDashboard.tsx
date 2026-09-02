@@ -43,14 +43,6 @@ const quickActions = [
     stats: '17 tables • 450+ fields'
   },
   {
-    title: 'DRHP Extraction',
-    description: 'Extract financial data from PDFs',
-    href: '/admin/drhp-extraction',
-    icon: '📄',
-    color: 'bg-purple-500',
-    stats: 'AI-powered • 94% accuracy'
-  },
-  {
     title: 'Traditional Admin',
     description: 'Original 9-tab IPO editor',
     href: '/admin/ipos',
