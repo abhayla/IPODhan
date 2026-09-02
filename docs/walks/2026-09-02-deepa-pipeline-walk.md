@@ -76,6 +76,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | D-06 | 18:20 | Walk continues as planned. Everything discussed/decided is written as a detailed SPEC now (`docs/specs/per-ipo-due-step-pipeline.md`); implementation only after the walk is complete. S-01..S-04 are NOT built during the walk. |
 | D-07 | 18:45 | No worktree cleanup inside this walk. It is a separate task for another session (20 stale worktrees listed 18:41: 11 `IPODhan-*`, 8 under `D:\Abhay\wt`). From now on fixes for this walk are made in THIS checkout on the walk branch (ledger + fixes together), no new worktrees; `IPODhan-wt-nse-face` is removed with one command after PR #277 merges. |
 | D-08 | 19:17 | Owner: build the IPO-tracking spec item (S-01, per-IPO step ledger + admin grid) NOW in parallel with the B7 fix. S-02 (due-step scheduling) stays deferred. Wiring of the ledger into `upsertIPO` and document jobs waits until W-16/17/18 land, to avoid two workers editing the same file. |
+| D-09 | 19:24 | Fix and test LOCALLY only. No deploy of any walk output until the walk ends; everything deploys together at the end (PR #277 stays open and unmerged until then). No worktree cleanup work in this walk. |
 
 ## 4. Recommendations pending owner decision (S-nn)
 
