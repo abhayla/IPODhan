@@ -135,6 +135,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | W-53 | G4 r3 | The anchor parser resolves the stored PDF via `getStoreDir()` (default `./prospectus/<slot>`); without `PROSPECTUS_STORE_DIR` it falls back to an HTTP download and refuses on a non-PDF. Production needs the store dir configured (deploy checklist) or the download path fixed. | deploy env + document-store.ts | open, deploy item |
 | W-54 | G4 r3 | A blank investor name (OCR) persists as an empty string in the published anchor list. Names are not gates by design; add a `name_present` gate or a confidence column. | anchor-persister gates / schema | open, minor |
 | W-55 | W-49 sweep | Priority-matrix keys registered under BOTH spellings with DIVERGING rules: pe_ratio/peRatio, debt_to_equity/debtToEquity, issue_size/issueSize, listing_date/listingDate, allotment_date/allotmentDate; and companyName/leadManagers are consolidation keys registered only as snake_case (DEFAULT rule applies). Which rule wins depends on who spells the key. G4 added DRHP to the camelCase issueSize only. | field-priority-matrix.ts: one canonical entry per field with a normalising lookup | FIXED c643c95d: `getFieldRules` normalises snake -> camel; five pairs merged into the camelCase rule with the stricter bounds (peRatio max 1000, debtToEquity max 50, issueSize min 1e6, listingDate/allotmentDate keep DRHP last); companyName/leadManagers now registered; 80/80 config tests + 16 guards reproduced by Fable. |
+| W-56 | gates | `web npm run lint:ci` is red on main with 246 pre-existing errors (all in untouched files, mostly `tests/**`); the pr-gate CI therefore cannot be green for any web PR until the baseline is fixed or the gate scoped to changed files. | web lint baseline (separate task) | open, blocks CI green, not this branch's code |
 | W-09 | inventory | 18 of 54 ad/RHP fields have no DB column; 44 of 54 never written by prod code | migration drafted in price-band-ad-field-inventory.md §"Schema changes"; not approved | open, blocks G5 |
 
 ## 3. Owner decisions (D-nn)
@@ -204,8 +205,7 @@ W-30, W-37, W-40, W-41, W-44, W-53, W-54.
    final review pending), step ledger (c4a2d04b..5c0d5505), migrations 0044/0045; Tier B: face value (#277),
    classifier (ea6dfa32, 6bd607dc), SEBI search (55732d0a), runner (fab553de, 2738d33f), anchor parser
    (8cdde82d..68e239ec), extractors (e4ecd449), Chittorgarh name (a2c6973f), conflicts page (aada09a7, cedee55b),
-   W-38/W-48/W-49/W-15/W-55; Tier C: docs. A branch-wide `npm run test:unit` + `cd web && npm run lint:ci`
-   run precedes the PRs (not yet run in this session: suites were run per file).
+   W-38/W-48/W-49/W-15/W-55; Tier C: docs. Branch-wide gates run 22:50: packages/shared 203/203; web unit 2,364 pass, 2 timeouts in `RightsIssuesTabs` tests that this branch does not touch and that pass in isolation (5/5; load-induced, pre-existing flake class); `web lint:ci` red with 246 pre-existing errors, none in files this branch changed (baseline red, W-56). Scraper-wide suite runs once after the final G4 review (the reviewer mutates scraper files).
 
 **Fleet items opened by this walk:** registry rows main-checkout-not-runnable, concurrent-commit-sweep-one-checkout
 (T-439), worker-budget-overrun-unsupervised, dispatcher-blind-stash-pop-applies-stale-stash (bumped to 3, T-438).
