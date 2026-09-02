@@ -307,9 +307,15 @@ actual extraction source), and the anchor letter all had real text. BSE's own sc
 ad (4 pages, 71 garbage chars — broken font encoding) correctly triggered
 `skipped_no_text_layer`.
 
-*Status:* **BUILT, verified only against a text-layer PDF locally** — the OCR branch itself needs
-`tesseract`, which is on the VPS but not this dev laptop (see Precondition), so it could not be
-exercised end-to-end in this walk. For DEEPA the NSE text copy made OCR unnecessary anyway.
+*Status:* **BUILT AND VERIFIED (2026-09-03).** The walk found there was no OCR at all (W-57):
+the extractor only emitted `NEEDS_OCR`, and tesseract was on neither machine. `ocr_pages.py` now
+OCRs only the pages that fail the text-layer check (rapidocr-onnxruntime, no system binary),
+splits words on the pixel gaps (the PP-OCR model never emits spaces on dense English), and the
+extractor gates every offer-table amount on the shares x price check, falls back to the prose
+sentence when the table is damaged, tolerates one noise token in a date, and cuts a spliced
+newspaper column off prose fields. Live on BSE's scanned copy of the DEEPA ad: 34 fields, 27
+oracle-checked correct, 0 wrong numbers or dates. VPS needs `pip install rapidocr-onnxruntime
+pypdfium2` (deploy bundle). ~1.3 min per scanned page.
 
 *Where:* `scraper/scripts/extract_financials_pdf.py` / the PDF router (text-layer check).
 
@@ -367,7 +373,7 @@ margin, NAV not yet extracted.
 *What DEEPA produced:* nothing — DEEPA's price-band ad has no objects section, and the RHP path
 for this field isn't built yet.
 
-*Status:* **MISSING.**
+*Status:* **BUILT (f38cc4a2, 2026-09-02 23:17)** — objects of the offer are read from the RHP; DEEPA's objects extracted and oracle-matched.
 
 ### Step E6 — Peer comparison
 
@@ -388,7 +394,7 @@ promoter names, OFS share counts, and WACA not yet extracted.
 *What DEEPA produced:* FAIL — the RHP's `risk_factor_count` heading matcher returned 0 against a
 required minimum of 20; this is a pre-existing bug, untouched by this walk.
 
-*Status:* **MISSING / broken**, open.
+*Status:* **FIXED (f38cc4a2)** — RHP `risk_factor_count` and headings extracted; DEEPA count passes the >= 20 check.
 
 ### Step E9 — Arithmetic checks
 
@@ -457,7 +463,7 @@ size promoted to outrank the exchange figure (tracked for Step G1, not yet built
 *What DEEPA produced:* every `field_sources.confidence` value was `100`, regardless of source
 (NSE, BSE, Chittorgarh all `100`) — no confidence scoring exists at all.
 
-*Status:* **MISSING.**
+*Status:* **BUILT (44e11d40 + c05c524f, 2026-09-02 23:27)** — confidence is now tier-based (filings 100, exchanges 90, aggregators 60, API fallback 40), lowered on conflict, raised on confirmation; ADMIN is never penalised.
 
 ### Step G1 — Merge via the priority matrix
 
@@ -565,7 +571,7 @@ tables is Step G4's job, not yet wired. Not deployed.
 *What DEEPA produced:* skipped — this walk's B2 payload didn't capture the NSE bid-demand points
 needed. To be exercised on a future OPEN IPO during live market hours.
 
-*Status:* **NOT EXERCISED** this walk; code path unverified.
+*Status:* **VERIFIED (dc69b328, 2026-09-02 23:10)** — demand-graph snapshot written from the live NSE payload with the source timestamps. Open: NSE's `demandDataBSE` totals equal the whole-market total (W-59).
 
 ### Step I1 — Stage from status + band
 
@@ -606,7 +612,7 @@ it is dead: `ipo_status` has no `WITHDRAWN`/`POSTPONED` value in its enum, and n
 a withdrawal signal from BSE/NSE, so the branch that stops fetches and purges data on withdrawal
 can never execute.
 
-*Status:* **MISSING** (dead code path) — needs a schema enum extension + a status mapper.
+*Status:* **BUILT (4a96ab7d + f3fda19b, 2026-09-03)** — `ipo_status` gained WITHDRAWN/POSTPONED (migration 0046); BSE free-text notices and NSE status text map to them; the web status updater and the scraper's consolidation both refuse to downgrade a terminal status unless ADMIN sets it.
 
 *Where:* `scraper/src/services/document-cycle.ts`.
 
