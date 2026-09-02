@@ -38,7 +38,8 @@ export type DocumentFetchStateValue =
   | 'WANTED'
   | 'NOT_YET_FILED'
   // W-28: "we looked and could not find it" — NOT "the issuer has not filed it".
-  // See NOT_FOUND_PERSISTED_AS for why this value does not reach the database yet.
+  // W-46: `document_fetch_status` gained a NOT_FOUND member (migration 0044) —
+  // this state persists as itself now, no aliasing.
   | 'NOT_FOUND'
   | 'FOUND'
   | 'EXTRACTED'
@@ -230,23 +231,18 @@ export const OPEN_STATES: DocumentFetchStateValue[] = [
 ];
 
 /**
- * The database enum (`document_fetch_status`) has no NOT_FOUND member yet, and
- * adding one is a schema change this work package is not permitted to make.
- * Until it lands, a NOT_FOUND decision persists as WANTED — still OPEN, still on
- * its backoff via `next_retry_at`, and no longer claiming the issuer has not
- * filed. The INTENDED state is written into the row's `last_attempt` lineage
- * (`state_intent`) so the badge and the audit can already read the truth.
+ * W-46: the `document_fetch_status` DB enum gained a NOT_FOUND member
+ * (migration 0044), so every decided state now persists as itself. A
+ * decided-vs-persisted split may return for a future state the enum still
+ * lacks — `toPersistedState` stays as the single choke point for that
+ * mapping (currently the identity function) so the runner's `state_intent`
+ * lineage logic (`document-discovery-runner.ts`) needs no change either way.
  */
-export const NOT_FOUND_PERSISTED_AS: DocumentFetchStateValue = 'WANTED';
-
-/** A state the `document_fetch_status` DB enum actually has a member for. */
-export type PersistedFetchStateValue = Exclude<DocumentFetchStateValue, 'NOT_FOUND'>;
+export type PersistedFetchStateValue = DocumentFetchStateValue;
 
 /** Map a decided state onto a value the `document_fetch_status` enum accepts. */
 export function toPersistedState(state: DocumentFetchStateValue): PersistedFetchStateValue {
-  return state === 'NOT_FOUND'
-    ? (NOT_FOUND_PERSISTED_AS as PersistedFetchStateValue)
-    : (state as PersistedFetchStateValue);
+  return state;
 }
 
 /** States that need no further work this cycle. */

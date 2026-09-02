@@ -89,6 +89,7 @@ export const documentTypeEnum = pgEnum('document_type', [
 export const documentFetchStatusEnum = pgEnum('document_fetch_status', [
   'WANTED',
   'NOT_YET_FILED',
+  'NOT_FOUND',
   'FOUND',
   'EXTRACTED',
   'EXTRACT_FAILED',

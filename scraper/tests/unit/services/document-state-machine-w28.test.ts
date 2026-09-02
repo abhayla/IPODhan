@@ -89,8 +89,8 @@ describe('W-28 — a due filing that no source carried is NOT_FOUND, not NOT_YET
     expect(t.alert).toBe(false);
   });
 
-  it('NOT_FOUND persists as WANTED until the DB enum gains a member — still open, still backed off', () => {
-    expect(toPersistedState('NOT_FOUND')).toBe('WANTED');
+  it('W-46: NOT_FOUND persists as itself now that the DB enum has the member', () => {
+    expect(toPersistedState('NOT_FOUND')).toBe('NOT_FOUND');
     expect(toPersistedState('NOT_YET_FILED')).toBe('NOT_YET_FILED');
     expect(toPersistedState('BLOCKED_ALL')).toBe('BLOCKED_ALL');
   });
