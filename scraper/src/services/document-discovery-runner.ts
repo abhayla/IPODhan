@@ -47,8 +47,11 @@ import {
   matchSebiRow,
   parseSebiDetailPdfUrl,
   sebiListingUrlFor,
+  fetchSebiListingRows,
   type SebiListingRow,
+  type SebiFetcher,
 } from './sebi-source.js';
+import { compactCompanyNameKey } from '@ipodhan/shared/utils/company-name-normalizer';
 import {
   parseCompanyHostLinks,
   companyInvestorUrls,
@@ -105,6 +108,10 @@ const SEBI_HEADERS = {
   'User-Agent': BROWSER_UA,
   Accept: 'text/html,application/xhtml+xml',
 };
+
+/** W-27: extra paged POSTs `trySebi` will attempt after an unmatched search,
+ * on top of the page-1 GET and the search POST — see `fetchSebiListingRows`. */
+const SEBI_MAX_SEARCH_PAGES = 6;
 
 /** Generic page fetch for an issuer host or the verifier. */
 const BROWSER_PAGE_HEADERS = {
@@ -403,7 +410,9 @@ export interface HttpResponse {
 
 export type HttpFetcher = (
   url: string,
-  init: { headers: Record<string, string>; timeoutMs: number }
+  /** `method`/`body` are optional (default GET) — added for W-27's SEBI
+   * search POST; every existing GET-only caller is unaffected. */
+  init: { headers: Record<string, string>; timeoutMs: number; method?: 'GET' | 'POST'; body?: string }
 ) => Promise<HttpResponse>;
 
 /**
@@ -536,7 +545,12 @@ export const defaultFetcher: HttpFetcher = async (url, init) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), init.timeoutMs);
   try {
-    const res = await fetch(url, { headers: init.headers, signal: controller.signal });
+    const res = await fetch(url, {
+      method: init.method ?? 'GET',
+      headers: init.headers,
+      body: init.body,
+      signal: controller.signal,
+    });
     const body = Buffer.from(await res.arrayBuffer());
     return {
       status: res.status,
@@ -564,17 +578,23 @@ export const defaultFetcher: HttpFetcher = async (url, init) => {
 export class DocumentDiscoveryRunner {
   private boardCache: BseBoardRow[] | null = null;
   /**
-   * SEBI listings fetched this cycle, keyed by listing URL (one GET each).
+   * SEBI listings fetched this cycle, keyed by `<listingUrl>::<companyKey>`
+   * (W-27) — NOT by listing URL alone. Page 1 alone only carries the newest 25
+   * of 2,193+ DRHP filings, so a real result for one company now depends on
+   * whether ITS search/paging walk found a match, not just on the shared
+   * page-1 GET. Keying the cache by listing URL alone (as before W-27) would
+   * mean the FIRST company's search/paging outcome (found or not) gets
+   * silently reused as the answer for every later company in the cycle.
    *
-   * H-3: the value may be the literal 'failed'. It used to be `[]` on an HTTP
-   * error, which is indistinguishable from "SEBI listed nothing" — so the first
-   * IPO recorded `SEBI:failed:http_error` and every later IPO in the same cycle
-   * recorded `SEBI:not_listed` about a request that was never made. That is not
-   * a cache miss, it is an audit trail that lies.
+   * H-3 (pre-W-27, still true): the value may be the literal 'failed'. It used
+   * to be `[]` on an HTTP error, which is indistinguishable from "SEBI listed
+   * nothing" — so the first IPO recorded `SEBI:failed:http_error` and every
+   * later IPO in the same cycle recorded `SEBI:not_listed` about a request
+   * that was never made. That is not a cache miss, it is an audit trail that lies.
    */
   private readonly sebiListings = new Map<
     string,
-    { rows: SebiListingRow[]; evidence: AnsweredResponse } | 'failed'
+    { rows: SebiListingRow[]; matched: SebiListingRow | null; evidence: AnsweredResponse } | 'failed'
   >();
   /**
    * Investor pages fetched this cycle, keyed by URL (M-d). The company rung is
@@ -676,10 +696,11 @@ export class DocumentDiscoveryRunner {
     url: string,
     headers: Record<string, string>,
     ipoKey?: string,
-    timeoutMs: number = FETCH_TIMEOUT_MS
+    timeoutMs: number = FETCH_TIMEOUT_MS,
+    post?: { method: 'POST'; body: string }
   ): Promise<HttpResponse> {
     const started = Date.now();
-    const res = await this.deps.fetcher(url, { headers, timeoutMs });
+    const res = await this.deps.fetcher(url, { headers, timeoutMs, ...(post ?? {}) });
     this.deps.counter.record({
       host: hostOf(url),
       url,
@@ -1087,7 +1108,12 @@ export class DocumentDiscoveryRunner {
     triedUrls: Set<string>,
     seenBySha: Map<string, { documentId: string; docType: DocumentType }>
   ): Promise<RungOutcome> {
-    const cached = this.sebiListings.get(listingUrl);
+    // W-27: keyed by listing URL + company, not the listing URL alone — see
+    // the field's doc comment. A miss for one company's search/paging walk
+    // must not poison the cache entry another company would otherwise get a
+    // fresh walk for.
+    const cacheKey = `${listingUrl}::${compactCompanyNameKey(ipo.companyName)}`;
+    const cached = this.sebiListings.get(cacheKey);
     // H-3: a cached FAILURE is reported as a failure, for every IPO in the
     // cycle. It is still cached — one 503 should not become one request per IPO
     // — but the later IPOs now say what actually happened.
@@ -1095,50 +1121,72 @@ export class DocumentDiscoveryRunner {
       rungs.push('SEBI:failed:cached_http_error');
       return failed('cached SEBI listing http error');
     }
-    let rows = cached ? cached.rows : undefined;
-    let listingEvidence: AnsweredResponse | null = cached ? cached.evidence : null;
-    if (rows === undefined) {
-      if (!this.spendEscalationGet(ipo.id)) {
-        // r5, Class 1: a request we DECLINED to make says nothing about whether
-        // the company filed. This used to return 'absent' - i.e. NOT_YET_FILED
-        // written from a budget counter.
-        rungs.push('SEBI:failed:budget');
-        return failed('escalation budget exhausted before the SEBI listing');
-      }
-      const started = Date.now();
-      const res = await this.request(listingUrl, SEBI_HEADERS, ipo.id);
-      if (res.status !== 200) {
+
+    let rows: SebiListingRow[];
+    let row: SebiListingRow | null;
+    let listingEvidence: AnsweredResponse | null;
+
+    if (cached) {
+      rungs.push('SEBI:cached');
+      rows = cached.rows;
+      row = cached.matched;
+      listingEvidence = cached.evidence;
+    } else {
+      let lastEvidence: AnsweredResponse | null = null;
+      let budgetExhausted = false;
+      const sebiFetch: SebiFetcher = async (url, init) => {
+        if (!this.spendEscalationGet(ipo.id)) {
+          budgetExhausted = true;
+          return { status: 0, body: '' };
+        }
+        const started = Date.now();
+        const res = await this.request(
+          url,
+          { ...SEBI_HEADERS, ...init.headers },
+          ipo.id,
+          FETCH_TIMEOUT_MS,
+          init.method === 'POST' ? { method: 'POST', body: init.body ?? '' } : undefined
+        );
         attempts.push({
           source: 'SEBI',
           http: res.status,
           ms: Date.now() - started,
-          outcome: 'http_error',
-          url: listingUrl,
+          outcome: res.status === 200 ? `listing_rows:${init.method}` : 'http_error',
+          url,
         });
-        rungs.push('SEBI:failed:http_error');
-        this.sebiListings.set(listingUrl, 'failed');
-        return failed('SEBI listing http ' + res.status);
-      }
-      rows = parseSebiListing(res.body.toString('utf8'));
-      listingEvidence = answeredFrom(res, listingUrl);
-      if (listingEvidence) this.sebiListings.set(listingUrl, { rows, evidence: listingEvidence });
-      attempts.push({
-        source: 'SEBI',
-        http: 200,
-        ms: Date.now() - started,
-        outcome: `listing_rows:${rows.length}`,
-        url: listingUrl,
+        const answered = answeredFrom(res, url);
+        if (answered) lastEvidence = answered;
+        return { status: res.status, body: res.body.toString('utf8') };
+      };
+
+      const result = await fetchSebiListingRows(docType, {
+        companyName: ipo.companyName,
+        fetchImpl: sebiFetch,
+        maxPages: SEBI_MAX_SEARCH_PAGES,
       });
+      rungs.push(...result.rungs);
+      rows = result.rows;
+      row = result.matched;
+      listingEvidence = lastEvidence;
+
+      if (!listingEvidence) {
+        // Nothing ever answered 200 — either a hard HTTP failure or the
+        // escalation budget ran out before the first successful fetch.
+        if (budgetExhausted) {
+          rungs.push('SEBI:failed:budget');
+          return failed('escalation budget exhausted before any SEBI listing fetch');
+        }
+        this.sebiListings.set(cacheKey, 'failed');
+        rungs.push('SEBI:failed:http_error');
+        return failed('SEBI listing fetch failed');
+      }
+      this.sebiListings.set(cacheKey, { rows, matched: row, evidence: listingEvidence });
     }
 
-    const row = matchSebiRow(rows, ipo.companyName, docType);
     if (!row) {
-      // The listing ANSWERED and does not name this company: real evidence, and
-      // the 200 that carries it is what the absent arm is built from.
-      if (!listingEvidence) {
-        rungs.push('SEBI:failed:listing_without_evidence');
-        return failed('SEBI listing parsed without a 200 behind it');
-      }
+      // The listing ANSWERED (page 1, the search, or a paged fetch) and none
+      // of it named this company: real evidence, and the 200 that carries it
+      // is what the absent arm is built from.
       rungs.push('SEBI:not_listed');
       return absent(listingEvidence);
     }

@@ -6,8 +6,12 @@ import {
   matchSebiRow,
   parseSebiDetailPdfUrl,
   sebiListingUrlFor,
+  extractSebiSearchForm,
+  fetchSebiListingRows,
   SEBI_LISTINGS,
+  SEBI_BASE,
   SEBI_NAME_MATCH_THRESHOLD,
+  type SebiFetcher,
 } from '../../../src/services/sebi-source.js';
 
 /**
@@ -149,5 +153,143 @@ describe('sebiListingUrlFor — SEBI only serves three types', () => {
     for (const t of ['PRICE_BAND_AD', 'CORRIGENDUM', 'ADDENDUM', 'ANCHOR_ALLOCATION_REPORT'] as const) {
       expect(sebiListingUrlFor(t)).toBeNull();
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// W-27 — search + paging beyond the newest-25 page 1 (`fetchSebiListingRows`)
+// ---------------------------------------------------------------------------
+
+const SEBI_FIXTURES = join(__dirname, '../../fixtures/sebi');
+const sebiFixture = (n: string) => readFileSync(join(SEBI_FIXTURES, n), 'utf8');
+
+const PAGE1_HTML = sebiFixture('sebi-drhp-page1-with-form.html');
+const SEARCH_MATCH_HTML = sebiFixture('sebi-drhp-search-match.html');
+
+/** A company on page 1 of the captured DRHP listing (no search needed). */
+const PAGE1_COMPANY = 'Kataria Dhulchand Pannalal Jewellers Limited';
+/** Not on page 1; found only via the search fixture (real 2026-09-02 capture). */
+const SEARCH_ONLY_COMPANY = 'Deepa Jewellers Limited';
+
+describe('extractSebiSearchForm — the POST recipe read off a live page', () => {
+  it('reads the action (jsessionid preserved, ?doListing=yes appended) and every hidden/select field', () => {
+    const form = extractSebiSearchForm(PAGE1_HTML);
+    expect(form).not.toBeNull();
+    expect(form!.actionUrl).toMatch(/^https:\/\/www\.sebi\.gov\.in\/sebiweb\/home\/HomeAction\.do;jsessionid=.*\?doListing=yes$/);
+    expect(form!.fields.sid).toBe('3');
+    expect(form!.fields.ssidhidden).toBe('15');
+    expect(form!.fields.smidhidden).toBe('10');
+    expect(form!.fields.sectName).toBe('Filings');
+    expect(form!.fields.ssid).toBe('15');
+    expect(form!.fields.smid).toBe('10');
+  });
+
+  it('returns null when the page carries no homeForm', () => {
+    expect(extractSebiSearchForm('<html><body>no form</body></html>')).toBeNull();
+    expect(extractSebiSearchForm('')).toBeNull();
+  });
+});
+
+describe('fetchSebiListingRows — search then page beyond page 1', () => {
+  it('(d) a match on page 1 returns immediately — zero extra requests', async () => {
+    const calls: string[] = [];
+    const fetchImpl: SebiFetcher = async (url) => {
+      calls.push(url);
+      return { status: 200, body: PAGE1_HTML };
+    };
+
+    const result = await fetchSebiListingRows('DRHP', { companyName: PAGE1_COMPANY, fetchImpl });
+
+    expect(calls.length).toBe(1);
+    expect(result.rungs).toEqual(['SEBI:page1']);
+    expect(result.matched?.companyName).toBe(PAGE1_COMPANY);
+  });
+
+  it('(a) no match on page 1 triggers a search POST carrying the search term + the hidden form fields', async () => {
+    const requests: { url: string; init: Parameters<SebiFetcher>[1] }[] = [];
+    const fetchImpl: SebiFetcher = async (url, init) => {
+      requests.push({ url, init });
+      if (init.method === 'GET') return { status: 200, body: PAGE1_HTML };
+      // No real search endpoint here — just prove the request shape.
+      return { status: 200, body: PAGE1_HTML };
+    };
+
+    await fetchSebiListingRows('DRHP', { companyName: SEARCH_ONLY_COMPANY, fetchImpl });
+
+    expect(requests.length).toBeGreaterThanOrEqual(2);
+    const search = requests[1];
+    expect(search.init.method).toBe('POST');
+    expect(search.init.headers.Referer).toBe(SEBI_LISTINGS.DRHP);
+    expect(search.init.headers.Origin).toBe(SEBI_BASE);
+    expect(search.init.body).toContain('search=deepa+jewellers');
+    expect(search.init.body).toContain('sid=3');
+    expect(search.init.body).toContain('ssidhidden=15');
+    expect(search.init.body).toContain('smidhidden=10');
+  });
+
+  it('(b) a search result carrying the match returns it without paging', async () => {
+    const requests: string[] = [];
+    const fetchImpl: SebiFetcher = async (url, init) => {
+      requests.push(init.method);
+      if (init.method === 'GET') return { status: 200, body: PAGE1_HTML };
+      return { status: 200, body: SEARCH_MATCH_HTML };
+    };
+
+    const result = await fetchSebiListingRows('DRHP', { companyName: SEARCH_ONLY_COMPANY, fetchImpl });
+
+    expect(requests).toEqual(['GET', 'POST']);
+    expect(result.rungs).toEqual(['SEBI:page1', 'SEBI:searched']);
+    expect(result.matched?.companyName).toBe(SEARCH_ONLY_COMPANY);
+    expect(result.matched?.detailUrl).toContain('deepa-jewellers-limited');
+  });
+
+  it('(c) a search the site ignores pages up to maxPages then gives up with a clear note', async () => {
+    let calls = 0;
+    const fetchImpl: SebiFetcher = async () => {
+      calls += 1;
+      // Every request (GET, search POST, or a paged POST) answers with the
+      // SAME no-match page — simulating a site that ignores the search term.
+      return { status: 200, body: PAGE1_HTML };
+    };
+
+    const result = await fetchSebiListingRows('DRHP', {
+      companyName: SEARCH_ONLY_COMPANY,
+      fetchImpl,
+      maxPages: 3,
+    });
+
+    // 1 GET (page 1) + 1 search POST + 3 paged POSTs = 5.
+    expect(calls).toBe(5);
+    expect(result.matched).toBeNull();
+    expect(result.rungs).toEqual([
+      'SEBI:page1',
+      'SEBI:searched',
+      'SEBI:paged:1',
+      'SEBI:paged:2',
+      'SEBI:paged:3',
+      'SEBI:paged:exhausted',
+    ]);
+  });
+
+  it('page 1 HTTP failure is recorded and never followed by a search attempt', async () => {
+    const calls: string[] = [];
+    const fetchImpl: SebiFetcher = async (url) => {
+      calls.push(url);
+      return { status: 503, body: '' };
+    };
+
+    const result = await fetchSebiListingRows('DRHP', { companyName: SEARCH_ONLY_COMPANY, fetchImpl });
+
+    expect(calls.length).toBe(1);
+    expect(result.rungs).toEqual(['SEBI:page1:http_error:503']);
+    expect(result.matched).toBeNull();
+  });
+
+  it('a docType SEBI does not serve is skipped without any request', async () => {
+    const fetchImpl: SebiFetcher = async () => {
+      throw new Error('must not be called');
+    };
+    const result = await fetchSebiListingRows('PRICE_BAND_AD' as never, { fetchImpl });
+    expect(result.rungs).toEqual(['SEBI:skipped:not_served_by_sebi']);
   });
 });
