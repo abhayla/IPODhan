@@ -191,6 +191,91 @@
       "failThreshold": "a source has >=7 consecutive non-SUCCESS-or-zero-record cycles and is not listed in docs/reviews/dead-source-retirement.json",
       "severity": "P2",
       "unverifiableWhen": "scraper_logs table not present"
+    },
+    {
+      "id": "m_document_state",
+      "findingClass": "the document_fetch_state table is absent, so the whole document pipeline is invisible to the audit tonight",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "never FAILs — reports UNVERIFIABLE, because \"the audit could not see\" is not \"documents are healthy\"",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present (migration 0035 not applied)"
+    },
+    {
+      "id": "m_blocked_all_age",
+      "findingClass": "a filing has been unreachable on every source for a day or more and nobody noticed, because the P2 alert fires once on entry and then scrolls away",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "any document_fetch_state row in BLOCKED_ALL with blocked_since_at older than 24h (aged from blocked_since_at, NOT last_attempt_at: a row retried every 30 min has a fresh last-attempt forever)",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
+      "id": "m_found_not_extracted",
+      "findingClass": "a document was downloaded and then never read, so the fields it carries stay empty while the pipeline looks healthy",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "any row FOUND for more than 48h once the extractor is wired; deliberately INERT while ENABLE_DRHP_EXTRACTION is off, since FOUND is terminal by design until WP C",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
+      "id": "m_extract_failed",
+      "findingClass": "a document repeatedly fails extraction, which is a parse bug needing a human rather than a data outage",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "WARN-level only: any row in EXTRACT_FAILED",
+      "severity": "P3",
+      "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
+      "id": "m_live_ipo_has_state",
+      "findingClass": "the document job silently stopped: a live IPO has no state rows at all, so nothing was even attempted for it",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "any UPCOMING/OPEN/CLOSED IPO with zero document_fetch_state rows. This is the only check that notices the machine wrote NOTHING — every other check reads rows it wrote",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
+      "id": "m_brlm_count",
+      "findingClass": "the BSE payload lists more lead managers than we stored (the co-BRLM parser drops entries after the first \"#\"-separated one)",
+      "round7Findings": [
+        "F17"
+      ],
+      "sourceTask": "T-403",
+      "failThreshold": "array_length(lead_managers) < ipos.bse_payload_lead_manager_count for any IPO. Storing MORE is not flagged: other sources legitimately add managers BSE omits",
+      "severity": "P2",
+      "unverifiableWhen": "no IPO has a recorded bse_payload_lead_manager_count yet"
+    },
+    {
+      "id": "m_document_type_classifier",
+      "findingClass": "a stored documents.type disagrees with what the classifier says the URL/title is — the classifier fix was forward-only, so rows stored under the old wrong type stayed wrong and invisible",
+      "round7Findings": [
+        "E14"
+      ],
+      "sourceTask": "T-403",
+      "failThreshold": "any documents row whose stored type has a permitted REFINEMENT to what the classifier returns (RHP->PROSPECTUS, ADDENDUM->CORRIGENDUM/PRICE_BAND_AD, BASIS_OF_ALLOTMENT->BASIS_OF_ALLOTMENT_AD). An UNRELATED reclassification is not a nightly FAIL — that is a source/classifier change for a human, surfaced by scraper/src/scripts/retype-misclassified-documents.ts",
+      "severity": "P2",
+      "unverifiableWhen": "documents table not present"
+    },
+    {
+      "id": "m_not_yet_filed_age",
+      "findingClass": "a document the pipeline can never reach settles as NOT_YET_FILED and stays there silently forever — NOT_YET_FILED is deliberately not a failure, which is exactly what makes an unreachable document invisible (T-403 B-1: the SEBI rung could never fire for a DRHP)",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "NOT_YET_FILED past its filing calendar: DRHP >14d from first sight, RHP >2d after open, PROSPECTUS >3d after close (listing is T+3 and a company cannot list before the Prospectus is filed), anchor report >1d after open. A row whose governing date is missing is skipped, never guessed at",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
+      "id": "m_absence_without_evidence",
+      "findingClass": "a row settles NOT_YET_FILED - 'the company has not filed it', no retry, no alert - on a rung chain in which not one source ANSWERED. T-403 Class 1, found in four consecutive rounds through four different doors (SEBI failures returning null; a 503 written as not-filed; escalation-budget refusals returning 'absent'; an unsettled EXCHANGES:no_link inherited through an escalation whose every rung was skipped). Each code fix closed the door it could see; this check watches the room",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "state = NOT_YET_FILED AND doc_type is one the exchanges cannot serve (DRHP) AND the row's own last_attempt chain for that type has zero answered rungs (every non-EXCHANGES rung is skipped: or failed:). A row with no chain recorded is skipped, never guessed at",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
     }
   ],
   "notCoveredByThisManifest": [

@@ -1,0 +1,126 @@
+-- T-403 WP B: per-(IPO, document type) fetch state + the three document types
+-- the classifier fix needs.
+--
+-- Hand-authored (not `drizzle-kit generate`) for the same reason as 0032, 0033
+-- and 0034: the journal is still blocked by a pre-existing, unrelated
+-- `extraction_status` enum-rename prompt documented in
+-- .claude/rules/drizzle-migration-gated-ddl.md. This migration does not touch
+-- that column.
+--
+-- NON-DESTRUCTIVE by construction, which is why it belongs in the journal and
+-- NOT in `_gated/`: it only CREATEs a new table and APPENDs enum values. No
+-- column is dropped, retyped or backfilled, so it needs no owner sign-off gate.
+-- Every statement is idempotent (IF NOT EXISTS), so a re-run is a no-op.
+--
+-- ENUM NAME: `document_fetch_status`, deliberately NOT `document_fetch_state`.
+-- Postgres creates an implicit composite type for every table, so an enum and a
+-- table with the same name collide: the CREATE TABLE below would fail with
+-- `42710 type "document_fetch_state" already exists`. Caught by applying this
+-- file to an empty database; in production it would have failed the deploy at
+-- the migrate step. Guarded from here on by
+-- scripts/tests/migration-name-collision.test.mjs.
+--
+-- NOTE ON ENUM VALUES: `ALTER TYPE ... ADD VALUE` cannot run inside a
+-- transaction block in PostgreSQL < 12; this project targets PostgreSQL 16,
+-- where it can, so drizzle-kit's transactional apply is safe. The new values are
+-- APPENDED (no ordering dependency anywhere in the code) so no type rewrite and
+-- no table rewrite is triggered — the statement is O(1) regardless of table size.
+
+-- BSE's IPO_NO, the key its core document API is addressed by. Remembered rather
+-- than re-derived, because IPO_HomePageDetail lists only LIVE and FORTHCOMING
+-- issues: verified 2026-08-28, Skyways (IPO_NO 7903) was already off the board the
+-- day after it closed — exactly when its final Prospectus becomes due. Nullable
+-- ADD COLUMN, so no table rewrite and no backfill.
+ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "bse_ipo_no" integer;
+--> statement-breakpoint
+
+-- How many lead managers the BSE payload listed at write time. The nightly audit
+-- FAILs when lead_managers is shorter than this — the detection upgrade for the
+-- co-BRLM bug (Skyways: 3 listed, 2 stored), which survived only because nothing
+-- ever compared the two counts.
+ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "bse_payload_lead_manager_count" integer;
+--> statement-breakpoint
+
+-- T-403 M-6: the two columns the chain's later rungs need.
+--
+-- Before these existed, rung 4 (the issuer's investor page) and the Chittorgarh
+-- verifier had NO production data source: nothing in the schema held a company
+-- website or a verifier URL, so both could only ever record
+-- "skipped:no_company_url" / "skipped:no_verifier_url" — unreachable code in
+-- production. company_website is read off the RHP/DRHP cover; verifier_url is
+-- recorded by the Chittorgarh orchestrator, which already fetches that page.
+-- ON `ipos`, NOT `ipo_details`: replaying the journal into an empty database
+-- proves that NO journaled migration creates `ipo_details`, so an ALTER against
+-- it fails outright ('relation "ipo_details" does not exist') and, if guarded,
+-- would leave the columns absent on every journal-built environment — the same
+-- "a repair nobody applies" trap 0036 exists to undo.
+ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "company_website" varchar(255);
+--> statement-breakpoint
+ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "verifier_url" varchar(512);
+--> statement-breakpoint
+-- T-403 W-1: where the dedup rule actually lives.
+--
+-- The runner computes a sha256 for every verified download and uses it to spot
+-- the same bytes arriving from two exchanges under two labels (matrix E7/R2 —
+-- Skyways' BSE price-band advertisement and NSE ratios zip are byte-identical
+-- at 6,585,368 bytes). That hash was per-run state and nothing wrote it down,
+-- so the rule died with the process and no query could ask "are these two rows
+-- the same filing?". char(64): a sha256 hex digest is exactly 64 characters.
+ALTER TABLE "documents" ADD COLUMN IF NOT EXISTS "sha256" char(64);
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_documents_sha256" ON "documents" USING btree ("sha256");
+--> statement-breakpoint
+
+ALTER TYPE "document_type" ADD VALUE IF NOT EXISTS 'PRICE_BAND_AD';
+--> statement-breakpoint
+ALTER TYPE "document_type" ADD VALUE IF NOT EXISTS 'CORRIGENDUM';
+--> statement-breakpoint
+ALTER TYPE "document_type" ADD VALUE IF NOT EXISTS 'BASIS_OF_ALLOTMENT_AD';
+--> statement-breakpoint
+
+DO $$ BEGIN
+  CREATE TYPE "document_fetch_status" AS ENUM (
+    'WANTED',
+    'NOT_YET_FILED',
+    'FOUND',
+    'EXTRACTED',
+    'EXTRACT_FAILED',
+    'BLOCKED_ALL',
+    'SUPERSEDED',
+    'NOT_APPLICABLE'
+  );
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+--> statement-breakpoint
+
+CREATE TABLE IF NOT EXISTS "document_fetch_state" (
+	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"ipo_id" uuid NOT NULL REFERENCES "ipos"("id") ON DELETE CASCADE,
+	"doc_type" "document_type" NOT NULL,
+	"state" "document_fetch_status" DEFAULT 'WANTED' NOT NULL,
+	-- SET NULL, not CASCADE: purging a documents row must not erase the memory
+	-- that we already looked for this filing and found it.
+	"document_id" uuid REFERENCES "documents"("id") ON DELETE SET NULL,
+	"attempts" integer DEFAULT 0 NOT NULL,
+	"last_attempt_at" timestamp,
+	"next_retry_at" timestamp,
+	"last_attempt" jsonb,
+	"first_seen_at" timestamp DEFAULT now() NOT NULL,
+	"blocked_since_at" timestamp,
+	"extracted_at" timestamp,
+	"extractor_version" varchar(50),
+	-- Supersession is decided by the date printed ON the document, never by fetch
+	-- order (lifecycle-plan E1/E8).
+	"filing_date" date,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "unique_doc_fetch_state_per_ipo_type" UNIQUE ("ipo_id","doc_type")
+);
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_document_fetch_state_state" ON "document_fetch_state" USING btree ("state");
+--> statement-breakpoint
+-- The cycle's hot query: "which rows are due to be retried now?"
+CREATE INDEX IF NOT EXISTS "idx_document_fetch_state_next_retry" ON "document_fetch_state" USING btree ("state","next_retry_at");
+--> statement-breakpoint
+CREATE INDEX IF NOT EXISTS "idx_document_fetch_state_ipo" ON "document_fetch_state" USING btree ("ipo_id");

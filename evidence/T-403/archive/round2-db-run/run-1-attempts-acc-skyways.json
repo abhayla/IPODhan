@@ -1,0 +1,165 @@
+{
+  "ipoId": "4ba154f7-fa71-41ea-97c1-f9784e707e54",
+  "companyName": "Skyways Air Services Ltd.",
+  "stage": "CLOSED",
+  "skipped": false,
+  "skipReason": "9 document type(s) due at stage CLOSED",
+  "due": [
+    "DRHP",
+    "RHP",
+    "PRICE_BAND_AD",
+    "CORRIGENDUM",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "ANCHOR_ALLOCATION_REPORT",
+    "ADDENDUM",
+    "PROSPECTUS",
+    "BASIS_OF_ALLOTMENT_AD"
+  ],
+  "found": [
+    "RHP",
+    "PRICE_BAND_AD",
+    "CORRIGENDUM",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "ANCHOR_ALLOCATION_REPORT",
+    "ADDENDUM"
+  ],
+  "notYetFiled": [
+    "DRHP",
+    "PROSPECTUS",
+    "BASIS_OF_ALLOTMENT_AD"
+  ],
+  "blocked": [],
+  "notApplicable": [],
+  "leadManagers": [
+    "Holani Consultants Private Limited",
+    "Shannon Advisors Private Limited",
+    "Dolat Finserv Private Limited"
+  ],
+  "attempts": [
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 243,
+      "outcome": "ok",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 4694,
+      "outcome": "ok",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 7214,
+      "outcome": "downloaded (cover_check: passed)",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/RHPSkyways_20260818181315.pdf",
+      "sha256": "b4971a1aa3ef27ccb9375622081b4abf9b03e4646e8b725ae4971930742500b1"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 10231,
+      "outcome": "downloaded (cover_check: skipped_no_text_layer)",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf",
+      "sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 810,
+      "outcome": "downloaded (cover_check: skipped_no_text_layer)",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/CorrigendumofRHPSkyways_20260818181316.pdf",
+      "sha256": "d3a6094a2a23371ec38432ec9a34ec91def2b2d3cecf6546fd375ff45e2dee1c"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[CORRIGENDUM]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 1465,
+      "outcome": "downloaded (zip member: RATIOS_SKYWAYS/PriceBandAdvertisementSkyways.pdf; member classifies as: PRICE_BAND_AD; cover_check: skipped_no_text_layer)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip",
+      "sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 0,
+      "outcome": "deduped_by_sha256_to:PRICE_BAND_AD",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip",
+      "sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 443,
+      "outcome": "downloaded (zip member: ANCHOR_SKYWAYS/Company_ANCHOR_FORMAT - Mainboard IPO.pdf; cover_check: skipped_no_text_layer)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_SKYWAYS.zip",
+      "sha256": "8a68e38b94b77ef5664452390338271c54672f3687331a35fa515d085c760ef0"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 1728,
+      "outcome": "downloaded (zip member: Addendum.pdf; cover_check: skipped_no_text_layer)",
+      "url": "https://www.bseindia.com/downloads/ipo/Addendum%20to%20RHP_250820261220.zip",
+      "sha256": "971b265a1d22ee9350d2c353585953c5cbae1f41bb5812906f1f8eee2b38dea1"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[ADDENDUM]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[PROSPECTUS]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[BASIS_OF_ALLOTMENT_AD]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    }
+  ],
+  "networkCalls": 8
+}

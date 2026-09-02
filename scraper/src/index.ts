@@ -23,6 +23,7 @@ import { reresolveRegistrarIds } from './services/registrar-reresolve.js';
 import { runDuplicateSweepJob } from './scheduler/jobs/duplicate-sweep-job.js';
 import { runStageReconcilerJob } from './scheduler/jobs/stage-reconciler-job.js';
 import { runPrimaryDocBackfill } from './scripts/backfill-primary-source-documents.js';
+import { runDocumentCycle, runDocumentPurge, formatCycleReason } from './services/document-cycle.js';
 import { shouldRunOnCatchUpCadence } from './scheduler/catch-up-cadence.js';
 import { randomUUID } from 'crypto';
 import { db, ScraperLogRepository, getRedisClient } from '@ipodhan/shared';
@@ -75,6 +76,7 @@ export const STEP_NAMES = [
   'duplicateSweep',
   'stageReconciler',
   'primarySourceDiscovery',
+  'documentPurge',
   'deployDriftMonitor',
   'pruneScraperLogs',
   'pruneDataConflicts',
@@ -418,6 +420,7 @@ export async function main() {
       await runStep(cycleId, 'duplicateSweep', triggerDuplicateSweep);
       await runStep(cycleId, 'stageReconciler', triggerStageReconciler);
       await runStep(cycleId, 'primarySourceDiscovery', triggerPrimarySourceDiscovery);
+      await runStep(cycleId, 'documentPurge', triggerDocumentPurge);
       await runStep(cycleId, 'deployDriftMonitor', triggerDeployDriftMonitor);
       await runStep(cycleId, 'pruneScraperLogs', pruneScraperLogs);
       await runStep(cycleId, 'pruneDataConflicts', pruneDataConflicts);
@@ -754,6 +757,32 @@ export async function triggerPrimarySourceDiscovery(): Promise<StepResult> {
   if (process.env.ENABLE_PRIMARY_SOURCE_DISCOVERY !== 'true') {
     return { status: 'skipped', reason: 'ENABLE_PRIMARY_SOURCE_DISCOVERY not true (§GATE)' };
   }
+
+  // T-403 WP B. Two implementations behind one step, selected by a second flag,
+  // so switching between them is one reversible env change and the state rows
+  // survive the flip in either direction (matrix R13).
+  //
+  // The flag selects the IMPLEMENTATION, not every T-403 change: the classifier
+  // fix is shared by both paths (see ENABLE_DOCUMENT_STATE_MACHINE's note), and
+  // migration 0035 must be applied before the flag is turned on.
+  if (process.env.ENABLE_DOCUMENT_STATE_MACHINE === 'true') {
+    // PER-CYCLE, not daily. The daily cadence below exists only because the old
+    // pass re-fetched NSE for every candidate IPO unconditionally; the state
+    // machine makes a no-change cycle cost zero requests, so there is no reason
+    // to wait a day to notice that a Prospectus has been filed.
+    try {
+      const summary = await runDocumentCycle();
+      logger.info(summary, 'Document discovery cycle (state machine) complete');
+      return { status: 'ok', reason: formatCycleReason(summary) };
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Document discovery cycle failed (non-fatal)'
+      );
+      return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
+    }
+  }
+
   const redis = getRedisClient();
   const shouldRun = await shouldRunOnCatchUpCadence(redis, 'primary-source-discovery', PRIMARY_SOURCE_DISCOVERY_INTERVAL_MINUTES);
   if (!shouldRun) {
@@ -768,6 +797,35 @@ export async function triggerPrimarySourceDiscovery(): Promise<StepResult> {
     logger.error(
       { error: error instanceof Error ? error.message : String(error) },
       'Primary-source discovery trigger failed (non-fatal)'
+    );
+    return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * T-403 D4: delete local filing PDFs once `close_date +
+ * PROSPECTUS_RETENTION_DAYS` (7) has passed, or on withdrawal. FILES ONLY —
+ * every `documents` / `document_fetch_state` row and everything extracted from
+ * the PDFs is retained. RHPs are 15-25 MB each and this project has already lost
+ * prod's database, SSH and runner to a full disk once (2026-06-13), so the purge
+ * runs in the same cycle as discovery rather than on a separate schedule that
+ * could silently stop.
+ */
+export async function triggerDocumentPurge(): Promise<StepResult> {
+  if (process.env.ENABLE_DOCUMENT_STATE_MACHINE !== 'true') {
+    return { status: 'skipped', reason: 'ENABLE_DOCUMENT_STATE_MACHINE not true (§GATE)' };
+  }
+  try {
+    const summary = await runDocumentPurge();
+    return {
+      status: 'ok',
+      reason: `candidates=${summary.candidates} purged=${summary.purged} files=${summary.filesDeleted} bytes=${summary.bytesFreed}`,
+    };
+  } catch (error) {
+    // Non-fatal: a purge failure must never fail the cycle.
+    logger.error(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Document purge failed (non-fatal)'
     );
     return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
   }

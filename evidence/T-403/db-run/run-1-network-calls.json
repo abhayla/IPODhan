@@ -1,0 +1,189 @@
+{
+  "total": 21,
+  "byIpo": {
+    "efa2fdd4-01dd-447c-9e1e-e9f1bad0956b": 9,
+    "ee650b32-7de0-485f-a20c-456b45afa47b": 4,
+    "(shared:bse-board)": 1,
+    "c20b06ea-a153-4f1b-a18f-fc1f1120d285": 5,
+    "4712cb67-ee90-4715-bc7e-53a7f6cb7d3d": 2
+  },
+  "byHost": {
+    "api.bseindia.com": 3,
+    "www.nseindia.com": 3,
+    "www.sebi.gov.in": 1,
+    "listing.bseindia.com": 3,
+    "nsearchives.nseindia.com": 8,
+    "www.bseindia.com": 1,
+    "www.chittorgarh.com": 2
+  },
+  "calls": [
+    {
+      "host": "api.bseindia.com",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
+      "ipoKey": "efa2fdd4-01dd-447c-9e1e-e9f1bad0956b",
+      "status": 200,
+      "ms": 417,
+      "bytes": 6363
+    },
+    {
+      "host": "www.nseindia.com",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
+      "ipoKey": "efa2fdd4-01dd-447c-9e1e-e9f1bad0956b",
+      "status": 200,
+      "ms": 4861,
+      "bytes": 12973
+    },
+    {
+      "host": "www.sebi.gov.in",
+      "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
+      "ipoKey": "efa2fdd4-01dd-447c-9e1e-e9f1bad0956b",
+      "status": 200,
+      "ms": 524,
+      "bytes": 46360
+    },
+    {
+      "host": "listing.bseindia.com",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/RHPSkyways_20260818181315.pdf",
+      "ipoKey": "efa2fdd4-01dd-447c-9e1e-e9f1bad0956b",
+      "status": 200,
+      "ms": 29713,
+      "bytes": 46922851
+    },
+    {
+      "host": "listing.bseindia.com",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf",
+      "ipoKey": "efa2fdd4-01dd-447c-9e1e-e9f1bad0956b",
+      "status": 200,
+      "ms": 18845,
+      "bytes": 6585368
+    },
+    {
+      "host": "listing.bseindia.com",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/CorrigendumofRHPSkyways_20260818181316.pdf",
+      "ipoKey": "efa2fdd4-01dd-447c-9e1e-e9f1bad0956b",
+      "status": 200,
+      "ms": 860,
+      "bytes": 1391575
+    },
+    {
+      "host": "nsearchives.nseindia.com",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip",
+      "ipoKey": "efa2fdd4-01dd-447c-9e1e-e9f1bad0956b",
+      "status": 200,
+      "ms": 629,
+      "bytes": 5702249
+    },
+    {
+      "host": "nsearchives.nseindia.com",
+      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_SKYWAYS.zip",
+      "ipoKey": "efa2fdd4-01dd-447c-9e1e-e9f1bad0956b",
+      "status": 200,
+      "ms": 241,
+      "bytes": 1916081
+    },
+    {
+      "host": "www.bseindia.com",
+      "url": "https://www.bseindia.com/downloads/ipo/Addendum%20to%20RHP_250820261220.zip",
+      "ipoKey": "efa2fdd4-01dd-447c-9e1e-e9f1bad0956b",
+      "status": 200,
+      "ms": 1476,
+      "bytes": 21082828
+    },
+    {
+      "host": "www.nseindia.com",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
+      "ipoKey": "ee650b32-7de0-485f-a20c-456b45afa47b",
+      "status": 200,
+      "ms": 5537,
+      "bytes": 10732
+    },
+    {
+      "host": "nsearchives.nseindia.com",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_MADHURKNIT.zip",
+      "ipoKey": "ee650b32-7de0-485f-a20c-456b45afa47b",
+      "status": 200,
+      "ms": 2705,
+      "bytes": 7412186
+    },
+    {
+      "host": "nsearchives.nseindia.com",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_MADHURKNIT.zip",
+      "ipoKey": "ee650b32-7de0-485f-a20c-456b45afa47b",
+      "status": 200,
+      "ms": 778,
+      "bytes": 5293610
+    },
+    {
+      "host": "nsearchives.nseindia.com",
+      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MADHURKNIT.zip",
+      "ipoKey": "ee650b32-7de0-485f-a20c-456b45afa47b",
+      "status": 200,
+      "ms": 411,
+      "bytes": 315743
+    },
+    {
+      "host": "api.bseindia.com",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/IPO_HomePageDetail/w",
+      "ipoKey": "(shared:bse-board)",
+      "status": 200,
+      "ms": 180,
+      "bytes": 4421
+    },
+    {
+      "host": "www.nseindia.com",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
+      "ipoKey": "c20b06ea-a153-4f1b-a18f-fc1f1120d285",
+      "status": 200,
+      "ms": 235,
+      "bytes": 13353
+    },
+    {
+      "host": "www.chittorgarh.com",
+      "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+      "ipoKey": "c20b06ea-a153-4f1b-a18f-fc1f1120d285",
+      "status": 200,
+      "ms": 253,
+      "bytes": 328665
+    },
+    {
+      "host": "nsearchives.nseindia.com",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_ESDS.zip",
+      "ipoKey": "c20b06ea-a153-4f1b-a18f-fc1f1120d285",
+      "status": 200,
+      "ms": 5763,
+      "bytes": 21415321
+    },
+    {
+      "host": "nsearchives.nseindia.com",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
+      "ipoKey": "c20b06ea-a153-4f1b-a18f-fc1f1120d285",
+      "status": 200,
+      "ms": 4712,
+      "bytes": 6858110
+    },
+    {
+      "host": "nsearchives.nseindia.com",
+      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ESDS.zip",
+      "ipoKey": "c20b06ea-a153-4f1b-a18f-fc1f1120d285",
+      "status": 200,
+      "ms": 223,
+      "bytes": 301828
+    },
+    {
+      "host": "api.bseindia.com",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7922",
+      "ipoKey": "4712cb67-ee90-4715-bc7e-53a7f6cb7d3d",
+      "status": 200,
+      "ms": 388,
+      "bytes": 6442
+    },
+    {
+      "host": "www.chittorgarh.com",
+      "url": "https://www.chittorgarh.com/ipo/deepa-jewellers-ipo/2827/",
+      "ipoKey": "4712cb67-ee90-4715-bc7e-53a7f6cb7d3d",
+      "status": 200,
+      "ms": 204,
+      "bytes": 318489
+    }
+  ]
+}

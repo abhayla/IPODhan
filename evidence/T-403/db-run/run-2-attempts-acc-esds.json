@@ -1,0 +1,18 @@
+{
+  "ipoId": "c20b06ea-a153-4f1b-a18f-fc1f1120d285",
+  "companyName": "ESDS Software Solution Limited",
+  "stage": "PRE_OPEN",
+  "skipped": false,
+  "skipReason": "0 document type(s) due at stage PRE_OPEN",
+  "due": [],
+  "found": [],
+  "notYetFiled": [],
+  "blocked": [],
+  "notApplicable": [],
+  "superseded": [
+    "DRHP"
+  ],
+  "leadManagers": [],
+  "attempts": [],
+  "networkCalls": 0
+}

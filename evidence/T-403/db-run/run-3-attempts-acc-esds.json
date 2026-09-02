@@ -1,0 +1,16 @@
+{
+  "ipoId": "c20b06ea-a153-4f1b-a18f-fc1f1120d285",
+  "companyName": "ESDS Software Solution Limited",
+  "stage": "PRE_OPEN",
+  "skipped": true,
+  "skipReason": "nothing due — every document is found or not yet retryable (zero network calls)",
+  "due": [],
+  "found": [],
+  "notYetFiled": [],
+  "blocked": [],
+  "notApplicable": [],
+  "superseded": [],
+  "leadManagers": [],
+  "attempts": [],
+  "networkCalls": 0
+}

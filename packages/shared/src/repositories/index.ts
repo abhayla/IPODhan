@@ -16,6 +16,14 @@ export { MarketHolidayRepository } from './market-holiday-repository';
 export { ScraperLogRepository } from './scraper-log-repository';
 export { FieldSourcesRepository } from './field-sources-repository';
 export { DataConflictsRepository } from './data-conflicts-repository';
+export { DocumentFetchStateRepository } from './document-fetch-state-repository';
+export type {
+  IDocumentFetchStateStore,
+  DocumentFetchStateRow,
+  DocumentFetchStatePatch,
+  DocumentFetchStateValue,
+  FetchAttempt,
+} from './document-fetch-state-repository';
 
 // Base Repository
 export { BaseRepository } from './base-repository';

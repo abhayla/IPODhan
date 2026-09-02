@@ -1,5 +1,7 @@
 import type { IPORepository, SubscriptionRepository, GMPRepository, FinancialDataRepository, IPOInsert, SubscriptionInsert, GMPRecordInsert, FinancialDataInsert, IPO } from '@ipodhan/shared';
+import { normalizeCompanyUrl, isVerifierUrl } from './company-host-source.js';
 import logger from '../utils/logger.js';
+import { sql as sqlOp } from 'drizzle-orm';
 import { config } from '../config.js';
 import type { ScrapedIPO, ScrapedSubscription } from '../utils/validators.js';
 import { generateSlug, sanitizeCompanyName, coercePositiveOrNull, sanitizeIpoDates, sanitizeRegistrar, sanitizeLeadManagers, sanitizeIpoWriteFields } from '../utils/validators.js';
@@ -18,7 +20,7 @@ import { DataConsolidationService } from './data-consolidation-service.js';
 import { FieldSourcesRepository, DataConflictsRepository, RegistrarRepository, resolveIpoRow } from '@ipodhan/shared/repositories';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
-import { ipoDemandGraph } from '@ipodhan/shared/db/schema';
+import { ipoDemandGraph, ipoDetails } from '@ipodhan/shared/db/schema';
 import { resolveRegistrarId } from '@ipodhan/shared/utils/registrar-matcher';
 
 /**
@@ -1247,4 +1249,117 @@ export async function updateIPOObjectives(
     },
     'IPO objectives updated successfully'
   );
+}
+
+/**
+ * Record the BSE discovery bookkeeping the document pipeline depends on (T-403).
+ *
+ * Two columns, neither of them scraped IPO CONTENT — they are not in the field
+ * priority matrix and no source competes for them:
+ *
+ *  - `bseIpoNo`: the key BSE's core document API is addressed by. It has to be
+ *    remembered because `IPO_HomePageDetail` lists only LIVE and FORTHCOMING
+ *    issues — verified 2026-08-28, Skyways (IPO_NO 7903) had already left the
+ *    board the day after it closed, which is exactly when its final Prospectus
+ *    becomes due. Written whenever a value arrives; there is no write-once
+ *    guard here, and none is needed — the IPO_NO is immutable, so a later write
+ *    can only ever set the same number.
+ *  - `bsePayloadLeadManagerCount`: how many lead managers the BSE payload
+ *    ACTUALLY listed, so the nightly audit can FAIL when fewer were stored.
+ *    Refreshed every time, because the payload can gain a co-BRLM.
+ *
+ * Lives HERE rather than in the document cycle because `scraper-write-path.md`
+ * and the R0 write ratchet both require every `ipos` write to go through the
+ * shared write path. The first cut of T-403 issued `UPDATE ipos SET ...` as raw
+ * SQL from `document-cycle.ts` and `check-write-ratchet.mjs` correctly failed it.
+ */
+export async function recordBseDiscoveryMetadata(
+  ipoRepository: IPORepository,
+  ipoId: string,
+  metadata: { bseIpoNo?: number | null; bsePayloadLeadManagerCount?: number | null }
+): Promise<void> {
+  const patch: Record<string, unknown> = {};
+  if (metadata.bseIpoNo !== undefined && metadata.bseIpoNo !== null) {
+    patch.bseIpoNo = metadata.bseIpoNo;
+  }
+  if (
+    metadata.bsePayloadLeadManagerCount !== undefined &&
+    metadata.bsePayloadLeadManagerCount !== null
+  ) {
+    patch.bsePayloadLeadManagerCount = metadata.bsePayloadLeadManagerCount;
+  }
+  if (Object.keys(patch).length === 0) return;
+
+  patch.updatedAt = new Date();
+  await ipoRepository.update(ipoId, patch as never);
+  logger.debug({ ipoId, ...patch }, 'Recorded BSE discovery metadata');
+}
+
+/**
+ * Record the document-source hints the discovery chain's later rungs need
+ * (T-403 M-6): the issuer's own website and the third-party verifier page.
+ *
+ * WHY IT EXISTS. Rung 4 (the issuer's investor page) and the Chittorgarh
+ * verifier were unreachable in production before this — nothing in the schema
+ * held either URL, so the chain could only ever record
+ * `COMPANY:skipped:no_company_url` / `VERIFIER:skipped:no_verifier_url`. Two
+ * rungs of the decision tree existed only in tests.
+ *
+ * Neither is scraped CONTENT: no source competes over them and neither is in
+ * the field-priority matrix. They are pointers this pipeline uses to find
+ * filings. They still go through the shared write path, like
+ * `recordBseDiscoveryMetadata` — `scraper-write-path.md` and the R0 ratchet
+ * make no exception for bookkeeping.
+ *
+ * WRITE-ONCE for `companyWebsite`: it is read off a filing cover, and a later
+ * cover must not overwrite a value an admin may have corrected. `verifierUrl`
+ * refreshes, because the source re-slugs its URLs.
+ */
+/**
+ * The one thing this function needs from a repository (H-1).
+ *
+ * Narrowed to `updateDocumentSourceHints`, a method that writes exactly these
+ * two columns and returns only the id. The wide `update()` cannot be used: it
+ * ends in a bare `.returning()`, which asks for all 55 columns `schema.ts`
+ * declares, and a journal-built `ipos` has 32 — so a two-column patch fails
+ * there on columns it never touched. Narrowing it is also what lets the
+ * acceptance harness pass the REAL repository rather than a raw-SQL stand-in,
+ * which would have put an `ipos` writer outside the shared write path (the
+ * write ratchet catches exactly that, and was right to).
+ */
+export interface DocumentSourceHintWriter {
+  updateDocumentSourceHints(
+    id: string,
+    hints: { companyWebsite?: string; verifierUrl?: string }
+  ): Promise<unknown>;
+}
+
+export async function recordDocumentSourceHints(
+  ipoRepository: DocumentSourceHintWriter,
+  ipoId: string,
+  hints: { companyWebsite?: string | null; verifierUrl?: string | null },
+  existing?: { companyWebsite?: string | null }
+): Promise<void> {
+  // M-b: validate the HOST on the way in, not only where it is read. Both of
+  // these are fetched later by the discovery runner, and a row written by any
+  // other process (a backfill, an admin edit, a future scraper) reaches that
+  // fetch through this same column. `normalizeCompanyUrl` also refuses
+  // loopback / private / link-local hosts and non-default ports.
+  const website = normalizeCompanyUrl(hints.companyWebsite);
+  const verifier = isVerifierUrl(hints.verifierUrl) ? (hints.verifierUrl as string).trim() : null;
+  if (hints.companyWebsite && !website) {
+    logger.warn({ ipoId, value: hints.companyWebsite }, 'Rejected company website hint — unsafe or non-issuer host');
+  }
+  if (hints.verifierUrl && !verifier) {
+    logger.warn({ ipoId, value: hints.verifierUrl }, 'Rejected verifier hint — not a chittorgarh.com https URL');
+  }
+
+  const patch: Record<string, unknown> = {};
+  // Write-once: only set a website when we do not already hold one.
+  if (website && !existing?.companyWebsite) patch.companyWebsite = website.slice(0, 255);
+  if (verifier) patch.verifierUrl = verifier.slice(0, 512);
+  if (Object.keys(patch).length === 0) return;
+
+  await ipoRepository.updateDocumentSourceHints(ipoId, patch as never);
+  logger.debug({ ipoId, website: Boolean(patch.companyWebsite), verifier: Boolean(verifier) }, 'Recorded document source hints');
 }

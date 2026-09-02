@@ -30,7 +30,7 @@
     "build": "tsc && tsc-alias",
     "test": "vitest",
     "test:unit": "vitest --config vitest.config.ts",
-    "test:integration": "vitest --config vitest.integration.config.ts",
+    "test:integration": "vitest run -c vitest.integration.config.ts",
     "test:e2e": "vitest --config vitest.e2e.config.ts",
     "test:load": "vitest --run --config vitest.load.config.ts",
     "test:coverage": "vitest --coverage"

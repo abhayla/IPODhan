@@ -1,0 +1,271 @@
+{
+  "stateRows": [
+    {
+      "company_name": "Deepa Jewellers Ltd.",
+      "doc_type": "DRHP",
+      "state": "NOT_YET_FILED",
+      "attempts": 1,
+      "has_doc": false,
+      "next_retry_at": "2026-08-28T05:46:37.452Z"
+    },
+    {
+      "company_name": "ESDS Software Solution Limited",
+      "doc_type": "DRHP",
+      "state": "NOT_YET_FILED",
+      "attempts": 1,
+      "has_doc": false,
+      "next_retry_at": "2026-08-28T05:46:12.022Z"
+    },
+    {
+      "company_name": "ESDS Software Solution Limited",
+      "doc_type": "RHP",
+      "state": "FOUND",
+      "attempts": 1,
+      "has_doc": true,
+      "next_retry_at": null
+    },
+    {
+      "company_name": "ESDS Software Solution Limited",
+      "doc_type": "PRICE_BAND_AD",
+      "state": "FOUND",
+      "attempts": 1,
+      "has_doc": true,
+      "next_retry_at": null
+    },
+    {
+      "company_name": "ESDS Software Solution Limited",
+      "doc_type": "CORRIGENDUM",
+      "state": "NOT_YET_FILED",
+      "attempts": 1,
+      "has_doc": false,
+      "next_retry_at": "2026-08-28T05:46:12.022Z"
+    },
+    {
+      "company_name": "ESDS Software Solution Limited",
+      "doc_type": "RATIOS_BASIS_ISSUE_PRICE",
+      "state": "FOUND",
+      "attempts": 1,
+      "has_doc": true,
+      "next_retry_at": null
+    },
+    {
+      "company_name": "ESDS Software Solution Limited",
+      "doc_type": "ANCHOR_ALLOCATION_REPORT",
+      "state": "FOUND",
+      "attempts": 1,
+      "has_doc": true,
+      "next_retry_at": null
+    },
+    {
+      "company_name": "Madhur Knit Crafts Ltd.",
+      "doc_type": "DRHP",
+      "state": "NOT_YET_FILED",
+      "attempts": 1,
+      "has_doc": false,
+      "next_retry_at": "2026-08-28T05:45:40.211Z"
+    },
+    {
+      "company_name": "Madhur Knit Crafts Ltd.",
+      "doc_type": "RHP",
+      "state": "FOUND",
+      "attempts": 1,
+      "has_doc": true,
+      "next_retry_at": null
+    },
+    {
+      "company_name": "Madhur Knit Crafts Ltd.",
+      "doc_type": "PROSPECTUS",
+      "state": "NOT_YET_FILED",
+      "attempts": 1,
+      "has_doc": false,
+      "next_retry_at": "2026-08-28T05:45:40.211Z"
+    },
+    {
+      "company_name": "Madhur Knit Crafts Ltd.",
+      "doc_type": "ADDENDUM",
+      "state": "NOT_YET_FILED",
+      "attempts": 1,
+      "has_doc": false,
+      "next_retry_at": "2026-08-28T05:45:40.211Z"
+    },
+    {
+      "company_name": "Madhur Knit Crafts Ltd.",
+      "doc_type": "PRICE_BAND_AD",
+      "state": "NOT_YET_FILED",
+      "attempts": 1,
+      "has_doc": false,
+      "next_retry_at": "2026-08-28T05:45:40.211Z"
+    },
+    {
+      "company_name": "Madhur Knit Crafts Ltd.",
+      "doc_type": "CORRIGENDUM",
+      "state": "NOT_YET_FILED",
+      "attempts": 1,
+      "has_doc": false,
+      "next_retry_at": "2026-08-28T05:45:40.211Z"
+    },
+    {
+      "company_name": "Madhur Knit Crafts Ltd.",
+      "doc_type": "BASIS_OF_ALLOTMENT_AD",
+      "state": "NOT_YET_FILED",
+      "attempts": 1,
+      "has_doc": false,
+      "next_retry_at": "2026-08-28T05:45:40.211Z"
+    },
+    {
+      "company_name": "Madhur Knit Crafts Ltd.",
+      "doc_type": "RATIOS_BASIS_ISSUE_PRICE",
+      "state": "FOUND",
+      "attempts": 1,
+      "has_doc": true,
+      "next_retry_at": null
+    },
+    {
+      "company_name": "Madhur Knit Crafts Ltd.",
+      "doc_type": "ANCHOR_ALLOCATION_REPORT",
+      "state": "FOUND",
+      "attempts": 1,
+      "has_doc": true,
+      "next_retry_at": null
+    },
+    {
+      "company_name": "Skyways Air Services Ltd.",
+      "doc_type": "DRHP",
+      "state": "NOT_YET_FILED",
+      "attempts": 1,
+      "has_doc": false,
+      "next_retry_at": "2026-08-28T05:44:49.193Z"
+    },
+    {
+      "company_name": "Skyways Air Services Ltd.",
+      "doc_type": "RHP",
+      "state": "FOUND",
+      "attempts": 1,
+      "has_doc": true,
+      "next_retry_at": null
+    },
+    {
+      "company_name": "Skyways Air Services Ltd.",
+      "doc_type": "PROSPECTUS",
+      "state": "NOT_YET_FILED",
+      "attempts": 1,
+      "has_doc": false,
+      "next_retry_at": "2026-08-28T05:44:49.193Z"
+    },
+    {
+      "company_name": "Skyways Air Services Ltd.",
+      "doc_type": "ADDENDUM",
+      "state": "FOUND",
+      "attempts": 1,
+      "has_doc": true,
+      "next_retry_at": null
+    },
+    {
+      "company_name": "Skyways Air Services Ltd.",
+      "doc_type": "PRICE_BAND_AD",
+      "state": "FOUND",
+      "attempts": 1,
+      "has_doc": true,
+      "next_retry_at": null
+    },
+    {
+      "company_name": "Skyways Air Services Ltd.",
+      "doc_type": "CORRIGENDUM",
+      "state": "FOUND",
+      "attempts": 1,
+      "has_doc": true,
+      "next_retry_at": null
+    },
+    {
+      "company_name": "Skyways Air Services Ltd.",
+      "doc_type": "BASIS_OF_ALLOTMENT_AD",
+      "state": "NOT_YET_FILED",
+      "attempts": 1,
+      "has_doc": false,
+      "next_retry_at": "2026-08-28T05:44:49.193Z"
+    },
+    {
+      "company_name": "Skyways Air Services Ltd.",
+      "doc_type": "RATIOS_BASIS_ISSUE_PRICE",
+      "state": "FOUND",
+      "attempts": 1,
+      "has_doc": true,
+      "next_retry_at": null
+    },
+    {
+      "company_name": "Skyways Air Services Ltd.",
+      "doc_type": "ANCHOR_ALLOCATION_REPORT",
+      "state": "FOUND",
+      "attempts": 1,
+      "has_doc": true,
+      "next_retry_at": null
+    }
+  ],
+  "documents": [
+    {
+      "company_name": "ESDS Software Solution Limited",
+      "type": "RHP",
+      "file_size": "21900385"
+    },
+    {
+      "company_name": "ESDS Software Solution Limited",
+      "type": "PRICE_BAND_AD",
+      "file_size": "3229058"
+    },
+    {
+      "company_name": "ESDS Software Solution Limited",
+      "type": "ANCHOR_ALLOCATION_REPORT",
+      "file_size": "310858"
+    },
+    {
+      "company_name": "Madhur Knit Crafts Ltd.",
+      "type": "RHP",
+      "file_size": "3469130"
+    },
+    {
+      "company_name": "Madhur Knit Crafts Ltd.",
+      "type": "RATIOS_BASIS_ISSUE_PRICE",
+      "file_size": "2389805"
+    },
+    {
+      "company_name": "Madhur Knit Crafts Ltd.",
+      "type": "ANCHOR_ALLOCATION_REPORT",
+      "file_size": "337661"
+    },
+    {
+      "company_name": "Skyways Air Services Ltd.",
+      "type": "RHP",
+      "file_size": "46922851"
+    },
+    {
+      "company_name": "Skyways Air Services Ltd.",
+      "type": "ADDENDUM",
+      "file_size": "1625685"
+    },
+    {
+      "company_name": "Skyways Air Services Ltd.",
+      "type": "PRICE_BAND_AD",
+      "file_size": "6585368"
+    },
+    {
+      "company_name": "Skyways Air Services Ltd.",
+      "type": "CORRIGENDUM",
+      "file_size": "1391575"
+    },
+    {
+      "company_name": "Skyways Air Services Ltd.",
+      "type": "ANCHOR_ALLOCATION_REPORT",
+      "file_size": "2118875"
+    }
+  ],
+  "countsByState": [
+    {
+      "state": "NOT_YET_FILED",
+      "n": 12
+    },
+    {
+      "state": "FOUND",
+      "n": 13
+    }
+  ]
+}

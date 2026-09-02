@@ -1,0 +1,36 @@
+{
+  "_note": "Trimmed live NSE /api/ipo-detail?symbol=SKYWAYS&series=EQ payload, captured 2026-08-28 IST. Only the rows the party parser and the document parser read are kept.",
+  "issueInfo": {
+    "dataList": [
+      {
+        "title": "Symbol",
+        "value": "SKYWAYS"
+      },
+      {
+        "title": "Issue Period",
+        "value": "24-Aug-2026 to 27-Aug-2026"
+      },
+      {
+        "title": "Book Running Lead Managers",
+        "value": "\"Holani Consultants Private Limited, Shannon Advisors Private Limited and Dolat Finserv Private Limited\""
+      },
+      {
+        "title": "Name of the Registrar",
+        "value": "Bigshare Services Private Limited"
+      },
+      {
+        "title": "Ratios / Basis of Issue Price",
+        "value": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip"
+      },
+      {
+        "title": "Red Herring Prospectus",
+        "value": "https://nsearchives.nseindia.com/content/ipo/RHP_SKYWAYS.zip"
+      },
+      {
+        "title": "Anchor Allocation Report",
+        "value": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_SKYWAYS.zip"
+      }
+    ]
+  },
+  "symbol": "SKYWAYS"
+}

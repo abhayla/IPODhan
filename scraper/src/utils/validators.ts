@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isVerifierUrl } from '../services/company-host-source.js';
 import { generateIPOSlug } from '@ipodhan/shared/utils/slug';
 import { sanitizeDisplayCompanyName } from '@ipodhan/shared/utils/company-name-normalizer';
 
@@ -128,6 +129,25 @@ export function validateMoneycontrolIPOData(data: unknown): {
 
 export const ChittorgarhIPOSchema = ScrapedIPOSchema.merge(z.object({
   dataSource: z.literal('CHITTORGARH'),
+  /**
+   * The link-VERIFIER page this row's anchor pointed at (T-403 M-6/H-1).
+   *
+   * H-1: this lived OUTSIDE the schema, as a type-level intersection only. zod
+   * strips unknown keys, so `ChittorgarhIPOSchema.parse()` deleted it on every
+   * row and the orchestrator's `validatedIPO.verifierUrl` was ALWAYS undefined —
+   * `ipos.verifier_url` was NULL for every IPO in production and the verifier
+   * rung could never run. A field the pipeline reads must be a field the schema
+   * keeps.
+   *
+   * Host-validated here as well as at the write (`recordDocumentSourceHints`)
+   * and at the read (`loadCandidateIpos`): this value is fetched later, so the
+   * host is not a formality.
+   */
+  verifierUrl: z
+    .string()
+    .url()
+    .refine(isVerifierUrl, 'verifierUrl must be an https URL on chittorgarh.com')
+    .optional(),
   gmp: z.number().optional(), // Grey Market Premium in INR
   gmpPercentage: z.number().optional(), // GMP as percentage of issue price
   gmpUpdatedAt: z.string().optional().refine(
@@ -136,6 +156,17 @@ export const ChittorgarhIPOSchema = ScrapedIPOSchema.merge(z.object({
   ),
 }));
 
+/**
+ * A Chittorgarh row, including the link-VERIFIER page the row's anchor pointed
+ * at (T-403 M-6/H-1).
+ *
+ * `verifierUrl` is not IPO data — no source competes over it and it is not in
+ * the field-priority matrix. It is a pointer document discovery uses to check
+ * whether an exchange URL we failed on was simply the wrong URL; a document is
+ * NEVER stored from that host (`company-host-source.ts` enforces that
+ * structurally). It is nonetheless part of the SCHEMA rather than a type-level
+ * add-on, because anything not in the schema is deleted by `parse()`.
+ */
 export type ChittorgarhIPO = z.infer<typeof ChittorgarhIPOSchema>;
 
 /**

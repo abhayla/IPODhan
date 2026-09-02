@@ -1,5 +1,6 @@
 import {
   pgTable,
+  char,
   uuid,
   varchar,
   text,
@@ -61,6 +62,39 @@ export const documentTypeEnum = pgEnum('document_type', [
   'SECURITY_PARAMS_POST_ANCHOR',
   'ANCHOR_ALLOCATION_REPORT',
   'ASBA_PROCESSING_CIRCULAR',
+  // T-403 (lifecycle-plan E14): three filings that previously had nowhere to go.
+  // The price-band advertisement and the corrigendum were both being stored as
+  // ADDENDUM, which loses the corrigendum's date precedence over the RHP and
+  // loses the price-band ad entirely; the basis-of-allotment ADVERTISEMENT is a
+  // distinct document from the existing BASIS_OF_ALLOTMENT.
+  'PRICE_BAND_AD',
+  'CORRIGENDUM',
+  'BASIS_OF_ALLOTMENT_AD',
+]);
+
+/**
+ * Per-(IPO, document type) fetch state — T-403 WP B, matrix §7.1 verbatim.
+ *
+ * WANTED         due at this stage, not yet looked for (or looked for and still open)
+ * NOT_YET_FILED  the exchange ANSWERED and the field/title was empty. NOT a failure —
+ *                the filing simply does not exist yet. Retried next cycle.
+ * FOUND          link found AND the download passed verification (matrix §3).
+ * EXTRACTED      WP C read it. Terminal for the live cycle.
+ * EXTRACT_FAILED WP C failed 3x. No automatic retry until extractor_version bumps.
+ * BLOCKED_ALL    every source failed. P2 alert; retried every cycle for 24h then 6-hourly.
+ * SUPERSEDED     a newer filing of a superseding type replaced this one (by filing_date).
+ * NOT_APPLICABLE this type cannot exist for this issue (e.g. a price band ad on a
+ *                fixed-price issue) — never retried (R9).
+ */
+export const documentFetchStatusEnum = pgEnum('document_fetch_status', [
+  'WANTED',
+  'NOT_YET_FILED',
+  'FOUND',
+  'EXTRACTED',
+  'EXTRACT_FAILED',
+  'BLOCKED_ALL',
+  'SUPERSEDED',
+  'NOT_APPLICABLE',
 ]);
 
 export const exchangeEnum = pgEnum('exchange', ['NSE', 'BSE', 'BOTH']);
@@ -142,6 +176,43 @@ export const ipos = pgTable(
     symbol: varchar('symbol', { length: 20 }), // Stock ticker symbol (nullable - upcoming IPOs may not have symbols yet)
     isin: varchar('isin', { length: 12 }), // International Securities Identification Number (nullable)
     bseScripCode: varchar('bse_scrip_code', { length: 20 }), // BSE numeric scrip code (e.g. "543320"); used by listing-performance-updater to fetch BSE prices (nullable)
+    // T-403: BSE's IPO_NO — the key its core document API (GetMkt_ISSUE_BBS_IPO)
+    // is addressed by. It is NOT the scrip code and there is no way to derive one
+    // from the other outside the board payload. It must be REMEMBERED, because
+    // IPO_HomePageDetail only lists live and forthcoming issues: verified
+    // 2026-08-28, Skyways (IPO_NO 7903) had already dropped off the board the day
+    // after it closed — which is exactly when its final Prospectus becomes due.
+    // Captured while the IPO is still on the board, then used for the rest of its life.
+    bseIpoNo: integer('bse_ipo_no'),
+    // T-403 detection upgrade for the F17 class. How many lead managers the BSE
+    // payload ACTUALLY listed at write time. The co-BRLM bug (Skyways: 3 in the
+    // payload, 2 stored) survived because nothing ever compared the two numbers;
+    // the nightly audit now FAILs when lead_managers is shorter than this.
+    bsePayloadLeadManagerCount: integer('bse_payload_lead_manager_count'),
+
+    /**
+     * The issuer's own website, read off the RHP/DRHP cover (T-403 M-6).
+     *
+     * Load-bearing: the document chain's fourth rung is the issuer's investor
+     * page, and before this column NOTHING supplied a URL for it — the rung was
+     * unreachable in production and could only record
+     * `COMPANY:skipped:no_company_url`.
+     *
+     * ON `ipos`, NOT `ipo_details`, deliberately: no journaled migration creates
+     * `ipo_details` at all (verified by replaying the journal into an empty
+     * database), so a column added there would not exist on any journal-built
+     * environment and the rung would stay unreachable — the same "a repair
+     * nobody applies" trap as the enum values in 0036. These sit beside
+     * `bse_ipo_no`, which is the same kind of discovery bookkeeping.
+     */
+    companyWebsite: varchar('company_website', { length: 255 }),
+
+    /**
+     * The third-party IPO page (Chittorgarh) used ONLY to verify which exchange
+     * URL is correct — never a document source (owner rule, 2026-08-28).
+     * Recorded by the scraper orchestrator, which already fetches that page.
+     */
+    verifierUrl: varchar('verifier_url', { length: 512 }),
     segment: segmentEnum('segment'), // Exchange segment (MAINBOARD | SME) - nullable for RIGHTS/InvITs/REITs
     offeringType: offeringTypeEnum('offering_type').notNull(), // Type of offering (IPO, RIGHTS, TENDER, etc.)
     sector: varchar('sector', { length: 100 }),
@@ -488,6 +559,17 @@ export const documents = pgTable(
     title: varchar('title', { length: 255 }).notNull(),
     url: text('url').notNull(), // file path or external URL
     fileSize: bigint('file_size', { mode: 'number' }), // in bytes
+    /**
+     * sha256 of the stored bytes (T-403 W-1).
+     *
+     * The dedup rule the discovery runner implements — matrix E7/R2, "the same
+     * bytes served by BSE and by NSE are ONE document, not two" — was computed
+     * per run and then thrown away: nothing persisted the hash, so the rule
+     * could not survive a restart and no query could prove two rows were the
+     * same filing. char(64) because a sha256 hex digest is exactly 64
+     * characters, always.
+     */
+    sha256: char('sha256', { length: 64 }),
     uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
     exchange: varchar('exchange', { length: 10 }), // 'NSE' | 'BSE' - source exchange
 
@@ -519,6 +601,76 @@ export const documents = pgTable(
 
     // Keep URL unique globally to prevent exact duplicates
     uniqueUrl: unique('unique_url').on(table.url),
+  })
+);
+
+// ==================== TABLE 5b: DOCUMENT_FETCH_STATE (T-403 WP B) ====================
+
+/**
+ * One row per (ipo_id, doc_type): what we WANT, what we have, and what happened.
+ *
+ * Why a new table rather than a column on `documents`: `documents` only has rows
+ * for things already FOUND, so "wanted but not filed yet", "blocked on every
+ * source" and "not applicable to this issue" have nowhere to live — which is why
+ * the old discovery job had no memory and re-fetched the same NSE payload every
+ * day (matrix §7.1).
+ *
+ * `last_attempt` is the per-run attempt log the admin page and the nightly audit
+ * read, e.g.
+ *   [{"source":"BSE","http":200,"ms":812,"outcome":"no_link"},
+ *    {"source":"NSE","http":0,"ms":15000,"outcome":"timeout"}]
+ */
+export const documentFetchState = pgTable(
+  'document_fetch_state',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    docType: documentTypeEnum('doc_type').notNull(),
+    state: documentFetchStatusEnum('state').notNull().default('WANTED'),
+
+    // Set once the document is FOUND. ON DELETE SET NULL, not CASCADE: purging a
+    // documents row must not erase the memory that we already looked for it.
+    documentId: uuid('document_id').references(() => documents.id, {
+      onDelete: 'set null',
+    }),
+
+    attempts: integer('attempts').default(0).notNull(),
+    lastAttemptAt: timestamp('last_attempt_at'),
+    nextRetryAt: timestamp('next_retry_at'),
+    /** Every source tried in the last run, in order (see the example above). */
+    lastAttempt: jsonb('last_attempt'),
+
+    firstSeenAt: timestamp('first_seen_at').defaultNow().notNull(),
+    /** When BLOCKED_ALL was first entered — drives the 24h -> 6h retry ladder (§7.3). */
+    blockedSinceAt: timestamp('blocked_since_at'),
+    extractedAt: timestamp('extracted_at'),
+    extractorVersion: varchar('extractor_version', { length: 50 }),
+
+    /**
+     * The date printed ON the document. Supersession is decided by this, never by
+     * fetch order — a late-discovered IPO fetches its filings newest-first and an
+     * older filing must not overwrite a newer one (lifecycle-plan E1/E8).
+     */
+    filingDate: date('filing_date'),
+
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    // One state row per (IPO, doc type) — the identity the whole machine is keyed on.
+    uniqueStatePerIpoType: unique('unique_doc_fetch_state_per_ipo_type').on(
+      table.ipoId,
+      table.docType
+    ),
+    stateIdx: index('idx_document_fetch_state_state').on(table.state),
+    // The cycle's hot query: "which rows are due to be retried now?"
+    nextRetryIdx: index('idx_document_fetch_state_next_retry').on(
+      table.state,
+      table.nextRetryAt
+    ),
+    ipoIdx: index('idx_document_fetch_state_ipo').on(table.ipoId),
   })
 );
 

@@ -1,0 +1,53 @@
+{
+  "generatedAt": "2026-08-28T13:36:42.883Z",
+  "note": "Journal replayed into an empty schema on 2026-08-28 (round 4). DROP SCHEMA public + drizzle, CREATE SCHEMA public, then drizzle-kit migrate.",
+  "appliedMigrations": 20,
+  "journalEntries": 20,
+  "tables": 17,
+  "documentTypeValues": [
+    "DRHP",
+    "RHP",
+    "PROSPECTUS",
+    "ADDENDUM",
+    "PRICE_BAND_AD",
+    "CORRIGENDUM",
+    "BASIS_OF_ALLOTMENT_AD",
+    "BASIS_OF_ALLOTMENT",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "BIDDING_CENTERS",
+    "SAMPLE_APPLICATION_FORMS",
+    "SECURITY_PARAMS_PRE_ANCHOR",
+    "SECURITY_PARAMS_POST_ANCHOR",
+    "ANCHOR_ALLOCATION_REPORT",
+    "ASBA_PROCESSING_CIRCULAR"
+  ],
+  "documentFetchStateEnum": [
+    "WANTED",
+    "NOT_YET_FILED",
+    "FOUND",
+    "EXTRACTED",
+    "EXTRACT_FAILED",
+    "BLOCKED_ALL",
+    "SUPERSEDED",
+    "NOT_APPLICABLE"
+  ],
+  "iposDiscoveryColumns": [
+    "bse_ipo_no",
+    "bse_payload_lead_manager_count",
+    "company_website",
+    "verifier_url"
+  ],
+  "documentsColumns": [
+    "file_size",
+    "id",
+    "ipo_id",
+    "sha256",
+    "title",
+    "type",
+    "uploaded_at",
+    "url"
+  ],
+  "documentsSha256Index": [
+    "idx_documents_sha256"
+  ]
+}

@@ -37,6 +37,7 @@ import {
 import logger from '../utils/logger.js';
 import { generateSlug } from '../utils/validators.js';
 import { upsertIPO, createSubscriptionSnapshot, normalizeCompanyNameForMatching } from '../services/data-persister.js';
+import { recordDocumentSourceHints } from '../services/data-persister.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { scraperFailureTracker } from '../services/scraper-failure-tracker.js';
 import { ScraperMetricsTracker } from '../services/scraper-metrics-tracker.js';
@@ -302,6 +303,30 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
    * @param result - Result object to update
    * @returns Processing result with counters
    */
+  /**
+   * The single writer of the document-discovery source hints, called from EVERY
+   * exit of `processIPO` that resolves an IPO id.
+   *
+   * Non-fatal by discipline (non-fatal-side-effects.md): bookkeeping must never
+   * fail a scrape. Routed through data-persister, which validates the host —
+   * nothing is written to `ipos` from here.
+   */
+  private async recordVerifierHint(
+    ipoId: string | undefined | null,
+    validatedIPO: unknown
+  ): Promise<void> {
+    const verifierUrl = (validatedIPO as { verifierUrl?: string } | null)?.verifierUrl;
+    if (!ipoId || !verifierUrl) return;
+    try {
+      await recordDocumentSourceHints(this.ipoRepository, ipoId, { verifierUrl });
+    } catch (error) {
+      logger.warn(
+        { ipoId, error: error instanceof Error ? error.message : String(error) },
+        'Failed to record verifier URL (non-fatal)'
+      );
+    }
+  }
+
   private async processIPO(
     scrapedIPO: TIPO,
     subscriptions: TSubscription[],
@@ -434,6 +459,11 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
           { scraperName, companyName: validatedIPO.companyName, ipoId },
           'All fields are protected - skipping IPO update'
         );
+        // T-403 r5: this exit returns BEFORE the upsert, and the hint is not
+        // part of the protected payload — it records WHERE this IPO's documents
+        // live. Protecting the IPO's fields must not also suppress the only
+        // writer of `ipos.verifier_url`.
+        await this.recordVerifierHint(ipoId, validatedIPO);
         processResult.skipped = true;
         return processResult;
       }
@@ -509,6 +539,14 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
         processResult.inserted = true;
       }
     }
+
+    // T-403 M-6, hoisted in r5: record the source's own IPO page as a link
+    // VERIFIER for document discovery. This sat inside the `else` branch of the
+    // consolidation flag above, under a comment claiming "one choke point" —
+    // with the flag ON in production, `ipos.verifier_url` stayed NULL for every
+    // IPO and the verifier rung logged `skipped:no_verifier_url` forever. A
+    // choke point that lives in one branch of an if/else is not a choke point.
+    await this.recordVerifierHint(upsertedIPOId, validatedIPO);
 
     processResult.processed = true;
 

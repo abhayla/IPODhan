@@ -1,0 +1,40 @@
+{
+  "generatedAt": "2026-08-28T13:37:14.719Z",
+  "note": "Values declared in schema.ts vs values present on the journal-built database. 0036 folded these into the journal; before it they existed only in an unapplied _repair/ file.",
+  "declared": [
+    "DRHP",
+    "RHP",
+    "PROSPECTUS",
+    "BASIS_OF_ALLOTMENT",
+    "ADDENDUM",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "BIDDING_CENTERS",
+    "SAMPLE_APPLICATION_FORMS",
+    "SECURITY_PARAMS_PRE_ANCHOR",
+    "SECURITY_PARAMS_POST_ANCHOR",
+    "ANCHOR_ALLOCATION_REPORT",
+    "ASBA_PROCESSING_CIRCULAR",
+    "PRICE_BAND_AD",
+    "CORRIGENDUM",
+    "BASIS_OF_ALLOTMENT_AD"
+  ],
+  "present": [
+    "PRICE_BAND_AD",
+    "CORRIGENDUM",
+    "BASIS_OF_ALLOTMENT_AD",
+    "BASIS_OF_ALLOTMENT",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "BIDDING_CENTERS",
+    "SAMPLE_APPLICATION_FORMS",
+    "SECURITY_PARAMS_PRE_ANCHOR",
+    "SECURITY_PARAMS_POST_ANCHOR",
+    "ANCHOR_ALLOCATION_REPORT",
+    "ASBA_PROCESSING_CIRCULAR",
+    "DRHP",
+    "RHP",
+    "PROSPECTUS",
+    "ADDENDUM"
+  ],
+  "missing": [],
+  "extra": []
+}

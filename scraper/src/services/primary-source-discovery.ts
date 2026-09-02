@@ -22,25 +22,32 @@
 
 import * as cheerio from 'cheerio';
 import * as zlib from 'node:zlib';
+import type { DocumentType } from './document-types.js';
+import {
+  classifyByTitle,
+  classifyBseField,
+  BSE_DOCUMENT_FIELDS,
+  type BseDocumentField,
+} from './document-classifier.js';
 
-/** A `document_type` enum value relevant to primary-source discovery. */
-export type DiscoveredDocumentType =
-  | 'DRHP'
-  | 'RHP'
-  | 'PROSPECTUS'
-  | 'ADDENDUM'
-  | 'ANCHOR_ALLOCATION_REPORT'
-  | 'RATIOS_BASIS_ISSUE_PRICE'
-  | 'BIDDING_CENTERS'
-  | 'SAMPLE_APPLICATION_FORMS'
-  | 'SECURITY_PARAMS_PRE_ANCHOR'
-  | 'SECURITY_PARAMS_POST_ANCHOR';
+/**
+ * The document vocabulary now lives in `document-types.ts` (T-403) so the
+ * classifier, the fetch-state machine and these parsers cannot drift apart.
+ * Re-exported under the historical name for the existing callers.
+ */
+export type DiscoveredDocumentType = DocumentType;
 
 export interface DiscoveredDocument {
   type: DiscoveredDocumentType;
   url: string;
-  source: 'NSE' | 'BSE' | 'SEBI';
+  /**
+   * T-403 r5 (7): 'UNKNOWN' exists so a URL we could not even parse is not
+   * labelled with a real exchange's name in the audit trail.
+   */
+  source: 'NSE' | 'BSE' | 'SEBI' | 'COMPANY' | 'UNKNOWN';
   title: string;
+  /** The BSE field or NSE row title the link came from — kept for the attempt log. */
+  sourceField?: string;
 }
 
 export interface SEBIDrhpListingRow {
@@ -64,32 +71,6 @@ function looksLikeDocumentUrl(value: unknown): value is string {
 }
 
 /**
- * Map an NSE dataList row TITLE to a document_type, mirroring the title strings
- * `extractAdditionalNSEFields()` already keys on (nse-api-client.ts:723-752).
- * Returns null for titles that are not tracked document rows.
- */
-function nseTitleToDocType(title: string): DiscoveredDocumentType | null {
-  // Case-insensitive; matched against the REAL NSE dataList titles (verified live):
-  // "Security Parameters (Pre Anchor)" / "(Post Anchor)" / bare "Security Parameters",
-  // "Anchor Allocation Report", "Red Herring Prospectus", "Ratios / Basis of Issue Price",
-  // "Bidding Centers", "Sample Application Forms".
-  const t = title.toLowerCase();
-  // Security-parameters rows contain "anchor" — match them BEFORE the broad anchor rule,
-  // or they'd be misclassified as ANCHOR_ALLOCATION_REPORT (the live-caught bug). A bare
-  // "Security Parameters" (no Pre/Post qualifier) is the pre-anchor file by NSE convention.
-  if (t.includes('security parameter')) {
-    return t.includes('post') ? 'SECURITY_PARAMS_POST_ANCHOR' : 'SECURITY_PARAMS_PRE_ANCHOR';
-  }
-  if (t.includes('red herring') || t.includes('prospectus')) return 'RHP';
-  if (t.includes('anchor allocation') || t.includes('anchor')) return 'ANCHOR_ALLOCATION_REPORT';
-  if (t.includes('addendum') || t.includes('corrigendum')) return 'ADDENDUM';
-  if (t.includes('ratios') || t.includes('basis of issue price')) return 'RATIOS_BASIS_ISSUE_PRICE';
-  if (t.includes('bidding center')) return 'BIDDING_CENTERS';
-  if (t.includes('sample application form')) return 'SAMPLE_APPLICATION_FORMS';
-  return null;
-}
-
-/**
  * Parse NSE `issueInfo.dataList` (`{title, value}[]`) into discovered documents.
  * The row VALUE is the archive URL (taken verbatim, never templated). A row is
  * kept only when its title maps to a tracked doc type AND its value is a real
@@ -106,7 +87,7 @@ export function parseNSEDocuments(issueInfo: any, symbol: string): DiscoveredDoc
     const value = item.value;
     if (!title) continue;
 
-    const type = nseTitleToDocType(title);
+    const type = classifyByTitle(title);
     if (!type) continue;
     if (!looksLikeDocumentUrl(value)) continue;
 
@@ -114,39 +95,65 @@ export function parseNSEDocuments(issueInfo: any, symbol: string): DiscoveredDoc
       type,
       url: (value as string).trim(),
       source: 'NSE',
-      title: symbol ? `${symbol} — ${title}` : title,
+      title: symbol ? `${symbol} — ${title.trim()}` : title.trim(),
+      sourceField: title,
     });
   }
   return docs;
 }
 
 /**
- * BSE detail-row fields → discovered documents. The C-1 research found the
- * `GetMkt_ISSUE_BBS_IPO` detail row carries the RHP under `Prospectus_GID` plus
- * `Addendum` / `Corrigendum` / `Price_Band_Advertisement`. The existing BSE doc
- * code (`scrapeBSEDocuments`) parses URLs straight from the response and there is
- * NO GID→URL builder in the codebase — so we accept a PRE-RESOLVED URL in each
- * field and DEFER URL construction: a bare GID (non-URL) is skipped, never
+ * BSE core-API (`GetMkt_ISSUE_BBS_IPO`) detail-row fields to discovered documents.
+ *
+ * T-403 RC2. This used to hard-code one type per field, and folded THREE distinct
+ * filings into `ADDENDUM`:
+ *
+ *   Prospectus_GID          -> RHP        (always, even after the final Prospectus lands)
+ *   Addendum                -> ADDENDUM
+ *   Corrigendum             -> ADDENDUM   (loses the date precedence a corrigendum carries)
+ *   Price_Band_Advertisement-> ADDENDUM   (loses the price-band ad entirely)
+ *
+ * Typing is now delegated to `classifyBseField`, which reads the file NAME first
+ * (so `Prospectus_GID` correctly flips from RHP to PROSPECTUS after close --
+ * lifecycle-plan S4) and falls back to the field default. `Anchor_Details` is
+ * covered too; it is empty until anchor day, which is F3 (NOT_YET_FILED), not a
+ * failure, and simply produces no document here.
+ *
+ * URL construction is still DEFERRED: a bare GID (non-URL) is skipped, never
  * invented into a URL. Returns [] when no field resolves to a document URL.
  */
 export function parseBSEDocuments(detailRow: any): DiscoveredDocument[] {
   if (!detailRow || typeof detailRow !== 'object') return [];
 
-  const fieldMap: { field: string; type: DiscoveredDocumentType; label: string }[] = [
-    { field: 'Prospectus_GID', type: 'RHP', label: 'Red Herring Prospectus' },
-    { field: 'Addendum', type: 'ADDENDUM', label: 'Addendum' },
-    { field: 'Corrigendum', type: 'ADDENDUM', label: 'Corrigendum' },
-    { field: 'Price_Band_Advertisement', type: 'ADDENDUM', label: 'Price Band Advertisement' },
-  ];
-
   const docs: DiscoveredDocument[] = [];
-  for (const { field, type, label } of fieldMap) {
+  for (const field of Object.keys(BSE_DOCUMENT_FIELDS) as BseDocumentField[]) {
     const value = detailRow[field];
     // DEFER URL construction: only take values that are already resolvable URLs.
     if (!looksLikeDocumentUrl(value)) continue;
-    docs.push({ type, url: (value as string).trim(), source: 'BSE', title: label });
+    const url = (value as string).trim();
+    const type = classifyBseField(field, url);
+    if (!type) continue;
+    docs.push({ type, url, source: 'BSE', title: field.replace(/_/g, ' ').trim(), sourceField: field });
   }
   return docs;
+}
+
+/**
+ * Percent-encode the parts of a document URL that a raw `fetch` would choke on.
+ *
+ * BSE serves real links with LITERAL SPACES in the path -- verified live
+ * 2026-08-28 on IPO_NO=7903:
+ *   https://www.bseindia.com/downloads/ipo/Addendum to RHP_250820261220.zip
+ * `new URL()` normalises those to %20; anything already encoded is left alone
+ * (encoding twice would turn %20 into %2520 and 404). Returns the input
+ * unchanged when it is not parseable as a URL.
+ */
+export function encodeDocumentUrl(url: string): string {
+  try {
+    return new URL(url).toString();
+  } catch {
+    return url;
+  }
 }
 
 /**
@@ -218,19 +225,36 @@ function inflateZipMember(buf: Buffer, localHeaderOffset: number, method: number
   return null;
 }
 
-/**
- * Extract the first `%PDF` member from a `.zip` buffer (NSE/BSE serve docs as `.zip`
- * wrappers — C-1) using Node's built-in `zlib` (NO new dependency). Parses the ZIP
- * CENTRAL DIRECTORY (authoritative for sizes) so it handles real NSE archives that use
- * a streaming data descriptor — the local-header compressed size is 0 there, which a
- * naive local-header walk cannot follow (verified against a real 16 MB RHP_*.zip).
- * Falls back to a local-header scan for trivial single-member zips. Never throws.
- */
-export function extractPdfFromZipBuffer(buf: Buffer): Buffer | null {
-  if (!Buffer.isBuffer(buf) || buf.length < 22) return null;
+/** One PDF found inside a zip, with the member name it was stored under. */
+export interface ZipPdfMember {
+  name: string;
+  content: Buffer;
+}
 
-  // 1) Central-directory path (robust). Find the EOCD record by scanning back from the
-  // end (it is within the last 64 KB + 22 bytes; comment is usually empty).
+/**
+ * EVERY `%PDF` member inside a zip, in central-directory order, with names.
+ *
+ * The names are load-bearing and their absence was a real, silent defect. NSE's
+ * `RHP_SKYWAYS.zip` (23 MB, captured live 2026-08-28) contains FOUR entries:
+ *
+ *   RHP_SKYWAYS/CorrigendumofRHPSkyways.pdf   1,391,575 bytes
+ *   RHP_SKYWAYS/GID_Skyways.pdf               2,744,810 bytes
+ *   RHP_SKYWAYS/RHP Skyways.pdf              19,866,505 bytes   <- the actual RHP
+ *
+ * Taking the FIRST PDF member — which is all the previous helper could do —
+ * stored the CORRIGENDUM under the RHP's document type. It passed every check we
+ * had: a valid PDF, of the right company, of a plausible size. The T-403
+ * acceptance run caught it only because two different document types came out
+ * with an identical sha256. This is the wrong-but-working class exactly.
+ *
+ * Never throws; returns [] for anything that is not a readable zip.
+ */
+export function extractPdfMembersFromZip(buf: Buffer): ZipPdfMember[] {
+  if (!Buffer.isBuffer(buf) || buf.length < 22) return [];
+  const members: ZipPdfMember[] = [];
+
+  // Central-directory path (authoritative for sizes; real NSE archives use a
+  // streaming data descriptor, so the local header's compressed size is 0).
   const minEocd = Math.max(0, buf.length - 22 - 0xffff);
   for (let i = buf.length - 22; i >= minEocd; i--) {
     if (buf.readUInt32LE(i) !== ZIP_EOCD_SIG) continue;
@@ -244,14 +268,15 @@ export function extractPdfFromZipBuffer(buf: Buffer): Buffer | null {
       const extraLen = buf.readUInt16LE(cdOffset + 30);
       const commentLen = buf.readUInt16LE(cdOffset + 32);
       const localHeaderOffset = buf.readUInt32LE(cdOffset + 42);
+      const name = buf.subarray(cdOffset + 46, cdOffset + 46 + nameLen).toString('latin1');
       const content = inflateZipMember(buf, localHeaderOffset, method, compSize);
-      if (content && looksLikePdf(content)) return content;
+      if (content && looksLikePdf(content)) members.push({ name, content });
       cdOffset += 46 + nameLen + extraLen + commentLen;
     }
-    break; // found the EOCD; central-dir walked
+    return members;
   }
 
-  // 2) Fallback: simple local-header scan (member sizes present in the local header).
+  // Fallback: local-header scan (trivial single-member zips with real sizes).
   let offset = 0;
   while (offset + ZIP_LOCAL_HEADER_SIZE <= buf.length && buf.readUInt32LE(offset) === ZIP_LOCAL_FILE_SIG) {
     const flags = buf.readUInt16LE(offset + 6);
@@ -260,11 +285,26 @@ export function extractPdfFromZipBuffer(buf: Buffer): Buffer | null {
     const nameLen = buf.readUInt16LE(offset + 26);
     const extraLen = buf.readUInt16LE(offset + 28);
     const dataStart = offset + ZIP_LOCAL_HEADER_SIZE + nameLen + extraLen;
-    if ((flags & 0x08) !== 0 && compSize === 0) break; // data descriptor — handled by path 1
+    if ((flags & 0x08) !== 0 && compSize === 0) break; // data descriptor
     if (dataStart + compSize > buf.length) break;
+    const name = buf.subarray(offset + ZIP_LOCAL_HEADER_SIZE, offset + ZIP_LOCAL_HEADER_SIZE + nameLen).toString('latin1');
     const content = inflateZipMember(buf, offset, method, compSize);
-    if (content && looksLikePdf(content)) return content;
+    if (content && looksLikePdf(content)) members.push({ name, content });
     offset = dataStart + compSize;
   }
-  return null;
+  return members;
 }
+
+/**
+ * The FIRST `%PDF` member of a zip.
+ *
+ * Retained for callers that genuinely want any PDF out of a single-member
+ * archive. Anything that cares WHICH document it gets must use
+ * `extractPdfMembersFromZip` plus `selectZipMemberForType`
+ * (`document-download-verifier.ts`) — see that function's note on the
+ * Skyways multi-member archive.
+ */
+export function extractPdfFromZipBuffer(buf: Buffer): Buffer | null {
+  return extractPdfMembersFromZip(buf)[0]?.content ?? null;
+}
+

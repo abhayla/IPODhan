@@ -1,0 +1,67 @@
+{
+  "task": "T-403",
+  "ranAt": "2026-09-02T05:07:26.515Z",
+  "persistence": "POSTGRES via DATABASE_URL (--db)",
+  "downloadsEnabled": true,
+  "storeDir": "D:\\Abhay\\Ventures\\IPODhan-wpab\\.prospectus-acceptance",
+  "run1Calls": 21,
+  "run2Calls": 0,
+  "run3Calls": 0,
+  "checks": [
+    {
+      "id": "A1",
+      "name": "Skyways: >=4 documents typed RHP/CORRIGENDUM/ADDENDUM/PRICE_BAND_AD",
+      "pass": true,
+      "detail": "RHP, PRICE_BAND_AD, CORRIGENDUM, RATIOS_BASIS_ISSUE_PRICE, ANCHOR_ALLOCATION_REPORT, ADDENDUM"
+    },
+    {
+      "id": "A2",
+      "name": "Skyways: all 3 book running lead managers captured (from whichever exchange answered)",
+      "pass": true,
+      "detail": "Holani Consultants Private Limited | Shannon Advisors Private Limited | Dolat Finserv Private Limited (source: BSE)"
+    },
+    {
+      "id": "A3",
+      "name": "Madhur (SME): documents discovered from NSE",
+      "pass": true,
+      "detail": "RHP, RATIOS_BASIS_ISSUE_PRICE, ANCHOR_ALLOCATION_REPORT"
+    },
+    {
+      "id": "A4",
+      "name": "ESDS: F3 vs F6 — NOT_YET_FILED only when every consulted exchange answered",
+      "pass": true,
+      "detail": "not_yet=[DRHP, PRICE_BAND_AD, CORRIGENDUM] blocked=[] found=[RHP, RATIOS_BASIS_ISSUE_PRICE, ANCHOR_ALLOCATION_REPORT] exchanges=BSE:not_on_board,NSE:ok"
+    },
+    {
+      "id": "A5",
+      "name": "Fallback rungs are consulted for exactly the types the exchanges did not settle",
+      "pass": true,
+      "detail": "types settled by exchanges=19 escalated=6 non-exchange hosts=[www.sebi.gov.in, www.chittorgarh.com]"
+    },
+    {
+      "id": "A8",
+      "name": "No IPO holds the same bytes on disk under two document types (E7/R2)",
+      "pass": true,
+      "detail": "efa2fdd4-01dd-447c-9e1e-e9f1bad0956b: 6 file(s), 1 deduped | ee650b32-7de0-485f-a20c-456b45afa47b: 3 file(s), 0 deduped | c20b06ea-a153-4f1b-a18f-fc1f1120d285: 3 file(s), 0 deduped | 4712cb67-ee90-4715-bc7e-53a7f6cb7d3d: 0 file(s), 0 deduped"
+    },
+    {
+      "id": "A6",
+      "name": "Run 2: ZERO network calls for Skyways",
+      "pass": true,
+      "detail": "calls=0 skipped=false superseded=[DRHP] reason=0 document type(s) due at stage CLOSED"
+    },
+    {
+      "id": "A7",
+      "name": "Run 2: ZERO network calls for Madhur",
+      "pass": true,
+      "detail": "calls=0 skipped=false superseded=[DRHP] reason=0 document type(s) due at stage CLOSED"
+    },
+    {
+      "id": "A9",
+      "name": "Run 3: every settled IPO is a pure skip, no work left at all",
+      "pass": true,
+      "detail": "Skyways Air Services Ltd.: calls=0 skipped=true | Madhur Knit Crafts Ltd.: calls=0 skipped=true | ESDS Software Solution Limited: calls=0 skipped=true | Deepa Jewellers Ltd.: calls=0 skipped=true"
+    }
+  ],
+  "allPassed": true
+}
