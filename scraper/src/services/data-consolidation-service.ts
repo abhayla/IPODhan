@@ -185,6 +185,19 @@ function serializeFieldValue(value: any): string {
   return typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value);
 }
 
+/**
+ * M-1: may `source` replace a stored value that has NO provenance row? Only if
+ * the matrix ranks it for this field AND strictly better than the worst source
+ * it lists — an unranked or bottom-ranked source (e.g. API_FALLBACK for
+ * `registrar`) can never silently replace a value whose origin is unknown.
+ */
+function outranksUntrackedValue(fieldName: string, source: ScraperSource): boolean {
+  const rank = getSourcePriority(fieldName, source);
+  if (rank === -1) return false;
+  const worstRank = getFieldRules(fieldName).sources.length - 1;
+  return rank < worstRank;
+}
+
 /** Fields whose value is a SET the sources each report a partial view of. */
 const SET_VALUED_FIELDS = new Set<string>(['listingExchanges']);
 
@@ -713,12 +726,17 @@ export class DataConsolidationService {
 
     // Normalize both values for comparison
     const normalizedIncoming = normalize(fieldName, incomingValue, rules);
-    const normalizedExisting = existingValue
-      ? normalize(fieldName, existingValue, rules)
-      : null;
-    const normalizedStored = storedValue
-      ? normalize(fieldName, storedValue, rules)
-      : null;
+    // m-1: a falsy test here read a stored `0` / `''` / `false` as "nothing
+    // stored", which is exactly the absent-overwrites-present class this fix
+    // exists to close.
+    const normalizedExisting =
+      existingValue !== null && existingValue !== undefined
+        ? normalize(fieldName, existingValue, rules)
+        : null;
+    const normalizedStored =
+      storedValue !== null && storedValue !== undefined
+        ? normalize(fieldName, storedValue, rules)
+        : null;
 
     // T-309 (T-305 round-6 P3) — the dominant root cause of the non-converging
     // conflict churn: a MISSING incoming value (the source genuinely has no
@@ -782,8 +800,122 @@ export class DataConsolidationService {
       };
     }
 
+    // M-1 (round-2 review): a stored value with NO `field_sources` row is still
+    // a real value. Case 1 used to gate on `normalizedExisting` (provenance
+    // only), so a pre-source-tracking row's `registrar='Bigshare'` looked empty
+    // and the LOWEST-priority source could replace it with no priority check and
+    // no conflict row. The row carries no source column, so the stored value's
+    // true origin is unknowable — it is therefore treated as untracked and only
+    // a source the matrix ranks STRICTLY better than its worst listed source may
+    // replace it. The replacement records the pre-existing value with a NULL
+    // previous_source (unknown, never fabricated).
+    if (
+      normalizedStored !== null &&
+      normalizedStored !== undefined &&
+      (normalizedExisting === null || normalizedExisting === undefined) &&
+      existingSource === undefined &&
+      !(Array.isArray(normalizedIncoming) && Array.isArray(normalizedStored))
+    ) {
+      if (areEquivalent(normalizedIncoming, normalizedStored)) {
+        return {
+          fieldName,
+          finalValue: storedValue,
+          chosenSource: incomingSource,
+          hadConflict: false,
+        };
+      }
+
+      if (!outranksUntrackedValue(fieldName, incomingSource)) {
+        logger.warn(
+          { ipoId, tableName, fieldName, incomingSource, storedValue, incomingValue },
+          'untracked_existing_value_kept: incoming source does not outrank an untracked stored value'
+        );
+        return {
+          fieldName,
+          finalValue: storedValue,
+          chosenSource: incomingSource,
+          hadConflict: false,
+          rejectedSources: [
+            {
+              source: incomingSource,
+              value: incomingValue,
+              reason: 'UNTRACKED_EXISTING_VALUE_KEPT',
+            },
+          ],
+        };
+      }
+
+      await this.trackFieldSource({
+        ipoId,
+        tableName,
+        fieldName,
+        value: incomingValue,
+        source: incomingSource,
+        confidence,
+        previousValue: storedValue,
+      });
+
+      return {
+        fieldName,
+        finalValue: incomingValue,
+        chosenSource: incomingSource,
+        hadConflict: false,
+        conflictReason: 'UNTRACKED_EXISTING_VALUE_REPLACED',
+      };
+    }
+
+    // Case 2b (W-18(ii), Deepa walk): two array-valued reports of the same
+    // field are a MERGE, not a disagreement — `listingExchanges` ['BSE','NSE']
+    // vs an NSE scrape's ['NSE'] was written to `data_conflicts` every cycle
+    // even though the exchanges are a set the persister merges anyway. A
+    // union that adds a member keeps the PRIOR source (there is no 'MERGED'
+    // member in the `scraper_source` enum and this task adds no schema
+    // change) and records the pre-merge value as provenance history.
+    if (Array.isArray(normalizedIncoming) && Array.isArray(normalizedStored)) {
+      const merged = unionSetValues(normalizedStored, normalizedIncoming);
+      const addsNothing = merged.length === normalizedStored.length;
+
+      if (addsNothing || !SET_VALUED_FIELDS.has(fieldName)) {
+        // Incoming adds no member (subset/equal) — never a reason to shrink or
+        // dispute the stored list. A non-set array field that genuinely adds a
+        // member still falls through to normal conflict resolution below.
+        if (addsNothing) {
+          return {
+            fieldName,
+            finalValue: storedValue,
+            chosenSource: existingSource || incomingSource,
+            hadConflict: false,
+            rejectedSources: [
+              { source: incomingSource, value: incomingValue, reason: 'SET_MERGE_NO_NEW_MEMBERS' },
+            ],
+          };
+        }
+      } else {
+        await this.trackFieldSource({
+          ipoId,
+          tableName,
+          fieldName,
+          value: merged,
+          source: existingSource || incomingSource,
+          confidence,
+          previousValue: storedValue,
+          previousSource: existingSource,
+        });
+
+        return {
+          fieldName,
+          finalValue: merged,
+          chosenSource: existingSource || incomingSource,
+          hadConflict: false,
+          rejectedSources: [
+            { source: incomingSource, value: incomingValue, reason: 'SET_MERGED' },
+          ],
+        };
+      }
+    }
+
     // Case 1: No existing value - accept incoming
-    if (normalizedExisting === null || normalizedExisting === undefined) {
+    if (normalizedStored === null || normalizedStored === undefined) {
       await this.trackFieldSource({
         ipoId,
         tableName,
@@ -829,56 +961,6 @@ export class DataConsolidationService {
         chosenSource: existingSource!, // Keep existing source
         hadConflict: false,
       };
-    }
-
-    // Case 2b (W-18(ii), Deepa walk): two array-valued reports of the same
-    // field are a MERGE, not a disagreement — `listingExchanges` ['BSE','NSE']
-    // vs an NSE scrape's ['NSE'] was written to `data_conflicts` every cycle
-    // even though the exchanges are a set the persister merges anyway. A
-    // union that adds a member keeps the PRIOR source (there is no 'MERGED'
-    // member in the `scraper_source` enum and this task adds no schema
-    // change) and records the pre-merge value as provenance history.
-    if (Array.isArray(normalizedIncoming) && Array.isArray(normalizedExisting)) {
-      const merged = unionSetValues(normalizedExisting, normalizedIncoming);
-      const addsNothing = merged.length === normalizedExisting.length;
-
-      if (addsNothing || !SET_VALUED_FIELDS.has(fieldName)) {
-        // Incoming adds no member (subset/equal) — never a reason to shrink or
-        // dispute the stored list. A non-set array field that genuinely adds a
-        // member still falls through to normal conflict resolution below.
-        if (addsNothing) {
-          return {
-            fieldName,
-            finalValue: existingValue,
-            chosenSource: existingSource || incomingSource,
-            hadConflict: false,
-            rejectedSources: [
-              { source: incomingSource, value: incomingValue, reason: 'SET_MERGE_NO_NEW_MEMBERS' },
-            ],
-          };
-        }
-      } else {
-        await this.trackFieldSource({
-          ipoId,
-          tableName,
-          fieldName,
-          value: merged,
-          source: existingSource || incomingSource,
-          confidence,
-          previousValue: existingValue,
-          previousSource: existingSource,
-        });
-
-        return {
-          fieldName,
-          finalValue: merged,
-          chosenSource: existingSource || incomingSource,
-          hadConflict: false,
-          rejectedSources: [
-            { source: incomingSource, value: incomingValue, reason: 'SET_MERGED' },
-          ],
-        };
-      }
     }
 
     // Case 3: Conflict detected - resolve based on priority

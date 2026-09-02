@@ -58,7 +58,7 @@ vi.mock('../../../src/services/data-consolidation-service.js', () => ({
   })),
 }));
 
-const { upsertIPO } = await import('../../../src/services/data-persister.js');
+const { upsertIPO, buildNonDestructiveUpdate } = await import('../../../src/services/data-persister.js');
 
 const LEAD_MANAGERS = [
   'Emkay Global Financial Services Limited',
@@ -69,6 +69,7 @@ function existingDeepaRow() {
   return {
     id: 'deepa-id',
     slug: 'deepa-jewellers-limited',
+    symbol: 'DEEPA',
     companyName: 'Deepa Jewellers Limited',
     segment: 'SME',
     offeringType: 'IPO',
@@ -166,5 +167,27 @@ describe('upsertIPO update path — Deepa walk guards', () => {
     expect(patch.symbol).toBe('DEEPA');
     expect(patch.status).toBe('CLOSED');
     expect(patch.lastScrapedAt).toBeInstanceOf(Date);
+  });
+
+  it('M-3: buildNonDestructiveUpdate drops an undefined key rather than passing it to the repository', () => {
+    const patch = buildNonDestructiveUpdate(
+      { leadManagers: LEAD_MANAGERS, registrar: 'Bigshare', symbol: 'DEEPA' },
+      { leadManagers: undefined, registrar: null, symbol: 'DEEPA', status: 'CLOSED' }
+    );
+
+    expect(patch).not.toHaveProperty('leadManagers');
+    expect(patch).not.toHaveProperty('registrar');
+    expect(patch).toMatchObject({ symbol: 'DEEPA', status: 'CLOSED' });
+  });
+
+  it('M-3: the fallback patch carries no key for a field this scrape did not report', async () => {
+    consolidateIPODataMock.mockRejectedValue(new Error('consolidation boom'));
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(ipoRepository, nseScrape(), 'NSE', existingDeepaRow());
+
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch).not.toHaveProperty('symbol');
+    expect(patch).not.toHaveProperty('leadManagers');
   });
 });

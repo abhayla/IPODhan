@@ -19,6 +19,7 @@ import {
   normalizeCompanyName,
   getConflictSeverity,
   calculatePercentageDifference,
+  areEquivalent,
 } from '../../../src/services/normalization-engine.js';
 import type { FieldRules } from '../../../src/config/field-priority-matrix.js';
 
@@ -564,5 +565,37 @@ describe('Normalization Engine', () => {
 
       expect(duration).toBeLessThan(100); // 50 IPOs * 7 fields < 100ms
     });
+  });
+});
+
+/**
+ * M-2 (round-2 review): the array branch of `areEquivalent` had no direct test —
+ * reverting it to reference equality kept every other test green while
+ * re-opening the identical-lists-logged-as-a-conflict defect (W-18(ii)).
+ */
+describe('areEquivalent — array-valued fields (W-18(ii))', () => {
+  it('treats identical arrays in the same order as equivalent', () => {
+    expect(areEquivalent(['BSE', 'NSE'], ['BSE', 'NSE'])).toBe(true);
+  });
+
+  it('treats identical arrays in a different order as equivalent', () => {
+    expect(areEquivalent(['NSE', 'BSE'], ['BSE', 'NSE'])).toBe(true);
+    expect(
+      areEquivalent(
+        ['Emkay Global Financial Services Limited', 'Valmiki Leela Capital Private Limited'],
+        ['Valmiki Leela Capital Private Limited', 'emkay global financial services limited']
+      )
+    ).toBe(true);
+  });
+
+  it('treats arrays differing by one member as NOT equivalent', () => {
+    expect(areEquivalent(['BSE', 'NSE'], ['BSE'])).toBe(false);
+    expect(areEquivalent(['BSE', 'NSE'], ['BSE', 'MSE'])).toBe(false);
+  });
+
+  it('treats an array against a non-array as NOT equivalent', () => {
+    expect(areEquivalent(['BSE'], 'BSE')).toBe(false);
+    expect(areEquivalent(['BSE'], 1)).toBe(false);
+    expect(areEquivalent([], {})).toBe(false);
   });
 });

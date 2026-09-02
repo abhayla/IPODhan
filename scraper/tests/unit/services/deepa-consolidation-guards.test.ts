@@ -187,4 +187,66 @@ describe('consolidation write-path guards (Deepa walk)', () => {
     expect(track.previousValue).toBe('2');
     expect(track.previousSource).toBe('BSE');
   });
+
+  it('M-1: an untracked stored value is not replaced by a source the matrix does not rank', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'deepa',
+      tableName: 'ipos',
+      incomingData: { registrar: 'Skyline Financial Services Private Limited' },
+      source: 'API_FALLBACK',
+      existingData: { registrar: 'Bigshare Services Pvt Ltd' } as any,
+    });
+
+    expect(result.consolidatedData.registrar).toBe('Bigshare Services Pvt Ltd');
+    expect(trackCallFor('registrar')).toHaveLength(0);
+  });
+
+  it('M-1: a better-ranked source DOES replace an untracked stored value, recording it with an unknown previous source', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'deepa',
+      tableName: 'ipos',
+      incomingData: { registrar: 'Skyline Financial Services Private Limited' },
+      source: 'NSE',
+      existingData: { registrar: 'Bigshare Services Pvt Ltd' } as any,
+    });
+
+    expect(result.consolidatedData.registrar).toBe('Skyline Financial Services Private Limited');
+    const track = trackCallFor('registrar')[0];
+    expect(track.previousValue).toBe('Bigshare Services Pvt Ltd');
+    expect(track.previousSource).toBeUndefined();
+  });
+
+  it('m-1: a stored falsy value (0) is a value, not an absence, for the untracked gate too', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'deepa',
+      tableName: 'ipos',
+      incomingData: { faceValue: 10 },
+      source: 'API_FALLBACK',
+      existingData: { faceValue: 0 } as any,
+    });
+
+    expect(result.consolidatedData.faceValue).toBe(0);
+    expect(trackCallFor('faceValue')).toHaveLength(0);
+  });
+
+  it('M-1 does not pre-empt the set merge: an UNTRACKED exchange list still merges', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'deepa',
+      tableName: 'ipos',
+      incomingData: { listingExchanges: ['NSE'] },
+      source: 'NSE',
+      existingData: { listingExchanges: ['BSE'] } as any,
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['BSE', 'NSE']);
+    expect(mockConflictsRepo.upsertConflict).not.toHaveBeenCalled();
+  });
 });
