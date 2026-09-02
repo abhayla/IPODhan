@@ -542,3 +542,31 @@ describe('extract_filing — OCR-mangled price band advertisement (synthetic, of
     expect(out.fields.close_date.value).toBe('2026-09-03');
   });
 });
+
+describe('extract_filing — business_description column-splice guard (synthetic, offline)', () => {
+  it('a spliced-in ALL-CAPS neighbouring column is cut, keeping only the prose sentence', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const spliced =
+      'Our Company processes and supplies 22K hallmarked gold jewellery, including plain ' +
+      'and precious-stone studded ornaments, through an outsourced manufacturing model. ' +
+      'THE EQUITY SHARES OF THE COMPANY WILL GET LISTED ON THE MAIN BOARDS OF BSE AND NSE. ' +
+      'BSE SHALL BE THE DESIGNATED STOCK EXCHANGE. QIB PORTION: NOT MORE THAN 50%.';
+    const out = runOnTexts([[0, spliced]], 'PRICE_BAND_AD');
+    const f = out.fields.business_description;
+    expect(f.value).toBe(
+      'Our Company processes and supplies 22K hallmarked gold jewellery, including plain ' +
+      'and precious-stone studded ornaments, through an outsourced manufacturing model.',
+    );
+  });
+
+  it('a clean two-sentence description is left unchanged', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const clean =
+      'Our Company designs and manufactures furniture products, including wooden furniture ' +
+      'and home decor items. We also provide interior design consultancy services to retail ' +
+      'and corporate clients.';
+    const out = runOnTexts([[0, clean]], 'PRICE_BAND_AD');
+    const f = out.fields.business_description;
+    expect(f.value).toBe(clean);
+  });
+});

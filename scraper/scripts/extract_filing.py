@@ -59,6 +59,34 @@ DATE_RX = re.compile(_MONTH_ALT + r"\s+(\d{1,2}),?\s*(20\d{2})", re.I)
 DATE_OCR_NOISE_RX = re.compile(
     _MONTH_ALT + r"\s+(\d{1,2})\s*[.,]?\s+(?:[^\w\s]|\d)\s+(20\d{2})", re.I)
 
+_SENTENCE_SPLIT_RX = re.compile(r"(?<=[.!?])\s+")
+
+
+def _cut_column_splice(text):
+    """(cut_text, was_cut) — a prose field (business_description) whose
+    neighbouring newspaper column got spliced in shows up as a sentence that is
+    almost all upper-case (a heading/notice line from the other column). Keep
+    sentences from the start while each one still reads as sentence-case prose
+    (upper-case-letter ratio below 0.6) or is too short to judge (<4 words);
+    stop at the first sentence that fails both. Applies to text-layer AND OCR
+    routes alike — a text-layer ad with a bad column order can splice too."""
+    if not text:
+        return text, False
+    sentences = [s.strip() for s in _SENTENCE_SPLIT_RX.split(text.strip()) if s.strip()]
+    kept = []
+    cut = False
+    for s in sentences:
+        words = s.split()
+        letters = [c for c in s if c.isalpha()]
+        upper_ratio = (sum(1 for c in letters if c.isupper()) / len(letters)) if letters else 0.0
+        if len(words) < 4 or upper_ratio < 0.6:
+            kept.append(s)
+        else:
+            cut = True
+            break
+    return " ".join(kept).strip(), cut
+
+
 CIN_RX = re.compile(r"\b([UL]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6})\b")
 # A figure printed WITH the rupee mark — pdfplumber renders the sign as "`" in
 # newspaper ads and as "₹" in prospectuses.
@@ -1344,8 +1372,14 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
                 break
             buf.append(ln.strip())
         desc = " ".join(buf).strip()
-    emit.put("business_description", desc, page_for(bd_start), "description_within_length",
-             check_text_length(desc, 1200))
+    spliced = False
+    if desc:
+        desc, spliced = _cut_column_splice(desc)
+    if spliced and (not desc or len(desc) < 60):
+        emit.null("business_description", "description_column_splice", page_for(bd_start))
+    else:
+        emit.put("business_description", desc, page_for(bd_start), "description_within_length",
+                 check_text_length(desc, 1200))
 
     # Objects of the offer — many price band advertisements do not reprint them.
     obj_idx = _find(lines, re.compile(r"^\s*OBJECTS OF THE (?:OFFER|ISSUE)\b", re.I))
