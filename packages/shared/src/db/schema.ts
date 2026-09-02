@@ -1675,8 +1675,8 @@ export const ipoValuation = pgTable(
     pricingEvent: pricingEventEnum('pricing_event').notNull(),
     priceFloor: numeric('price_floor', { precision: 18, scale: 2 }),
     priceCap: numeric('price_cap', { precision: 18, scale: 2 }),
-    sharesAtFloor: numeric('shares_at_floor', { precision: 18, scale: 2 }),
-    sharesAtCap: numeric('shares_at_cap', { precision: 18, scale: 2 }),
+    sharesAtFloor: bigint('shares_at_floor', { mode: 'number' }), // share count -- never numeric; round-7 class
+    sharesAtCap: bigint('shares_at_cap', { mode: 'number' }), // share count -- never numeric; round-7 class
     mcapAtFloor: numeric('mcap_at_floor', { precision: 18, scale: 2 }),
     mcapAtCap: numeric('mcap_at_cap', { precision: 18, scale: 2 }),
     peAtFloor: numeric('pe_at_floor', { precision: 18, scale: 2 }),

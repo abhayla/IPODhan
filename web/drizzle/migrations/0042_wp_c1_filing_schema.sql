@@ -80,8 +80,8 @@ CREATE TABLE IF NOT EXISTS "ipo_valuation" (
 	"pricing_event" "pricing_event" NOT NULL,
 	"price_floor" numeric(18, 2),
 	"price_cap" numeric(18, 2),
-	"shares_at_floor" numeric(18, 2),
-	"shares_at_cap" numeric(18, 2),
+	"shares_at_floor" bigint, -- share count -- never numeric; round-7 class
+	"shares_at_cap" bigint, -- share count -- never numeric; round-7 class
 	"mcap_at_floor" numeric(18, 2),
 	"mcap_at_cap" numeric(18, 2),
 	"pe_at_floor" numeric(18, 2),
