@@ -700,6 +700,31 @@ export function resolveSubscriptionSnapshotTimestamp(
 }
 
 /**
+ * W-03: derive the market-coverage label to persist on a subscription
+ * snapshot. NSE's consolidated payload (`coverage: 'CONSOLIDATED'`) always
+ * wins; otherwise fall back to the writing source's own book (BSE/NSE);
+ * unrecognized/absent source -> null (old-shape rows stay valid via the
+ * nullable column).
+ */
+export function resolveSubscriptionScope(
+  scrapedSubscription: Pick<ScrapedSubscription, 'coverage'>,
+  options: { source?: string }
+): 'BSE_ONLY' | 'NSE_ONLY' | 'CONSOLIDATED' | null {
+  if (scrapedSubscription.coverage === 'CONSOLIDATED') {
+    return 'CONSOLIDATED';
+  }
+
+  switch (options.source?.toUpperCase()) {
+    case 'BSE':
+      return 'BSE_ONLY';
+    case 'NSE':
+      return 'NSE_ONLY';
+    default:
+      return null;
+  }
+}
+
+/**
  * Create subscription snapshot with retry logic and validation
  * Enhanced for Story 11.3 - validates subscription data before persistence (AC4, AC6)
  * @param subscriptionRepository - Subscription repository instance
@@ -792,7 +817,9 @@ export async function createSubscriptionSnapshot(
         retailOthersSubscription: scrapedSubscription.retailOthersSubscription?.toString(),
         // T-266: the share counts behind the multiples, when the source ships them.
         totalSharesBid: scrapedSubscription.totalSharesBid,
-        sharesOffered: scrapedSubscription.sharesOffered
+        sharesOffered: scrapedSubscription.sharesOffered,
+        // W-03: BSE_ONLY | NSE_ONLY | CONSOLIDATED | null.
+        scope: resolveSubscriptionScope(scrapedSubscription, { source: options.source })
       };
 
       // Validate foreign key constraint (IPO must exist) before insert (AC4)

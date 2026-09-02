@@ -121,6 +121,15 @@ export const scraperSourceEnum = pgEnum('scraper_source', [
   'CHITTORGARH',
 ]);
 
+// W-03: what market a subscriptions row covers. NSE ships CONSOLIDATED
+// (both exchange books) via /api/ipo-active-category; BSE's own API is its
+// own book only. Nullable — old rows predate this label and stay valid.
+export const subscriptionScopeEnum = pgEnum('subscription_scope', [
+  'BSE_ONLY',
+  'NSE_ONLY',
+  'CONSOLIDATED',
+]);
+
 export const dataSourceEnum = pgEnum('data_source', [
   'MANUAL',
   'SCRAPER',
@@ -412,6 +421,10 @@ export const subscriptions = pgTable(
     totalBidsNSE: bigint('total_bids_nse', { mode: 'number' }),
     totalBidsBSE: bigint('total_bids_bse', { mode: 'number' }),
     totalBidsCombined: bigint('total_bids_combined', { mode: 'number' }),
+
+    // W-03: BSE_ONLY | NSE_ONLY | CONSOLIDATED. Nullable — rows written before
+    // this column existed have no scope label.
+    scope: subscriptionScopeEnum('scope'),
   },
   (table) => ({
     ipoTimestampIdx: index('idx_subscriptions_ipo_timestamp').on(
