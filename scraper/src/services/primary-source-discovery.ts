@@ -40,7 +40,11 @@ export type DiscoveredDocumentType = DocumentType;
 export interface DiscoveredDocument {
   type: DiscoveredDocumentType;
   url: string;
-  source: 'NSE' | 'BSE' | 'SEBI' | 'COMPANY';
+  /**
+   * T-403 r5 (7): 'UNKNOWN' exists so a URL we could not even parse is not
+   * labelled with a real exchange's name in the audit trail.
+   */
+  source: 'NSE' | 'BSE' | 'SEBI' | 'COMPANY' | 'UNKNOWN';
   title: string;
   /** The BSE field or NSE row title the link came from — kept for the attempt log. */
   sourceField?: string;

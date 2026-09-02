@@ -57,7 +57,9 @@ describe('structural: absence is unconstructible without an AnsweredResponse', (
   });
 
   it('mints an AnsweredResponse in exactly one place, and only from a 200', () => {
-    const brandWrites = RUNNER_SRC.match(/\[ANSWERED\]:\s*true/g) ?? [];
+    // The declaration on the interface ends in a semicolon; the one CONSTRUCTION
+    // site, inside answeredFrom, ends in a comma. Only the latter mints a value.
+    const brandWrites = RUNNER_SRC.match(/\[ANSWERED\]:\s*true,/g) ?? [];
     expect(brandWrites.length).toBe(1);
     expect(
       answeredFrom({ status: 503, contentType: null, body: Buffer.alloc(0), url: 'u' })

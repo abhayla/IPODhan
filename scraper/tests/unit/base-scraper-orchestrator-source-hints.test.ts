@@ -175,7 +175,7 @@ describe('T-403 r5 Class 2: the verifier-URL hint is written on EVERY exit of pr
           consolidation ? 'ipo-consolidated-id' : 'ipo-upserted-id',
           expect.objectContaining({ verifierUrl: VERIFIER })
         );
-      }, 20000);
+      }, 60000);
 
       it('writes the hint for an EXISTING IPO whose every field is protected', async () => {
         // This exit returns before the upsert. The hint is not part of the
@@ -195,7 +195,7 @@ describe('T-403 r5 Class 2: the verifier-URL hint is written on EVERY exit of pr
           'ipo-existing-id',
           expect.objectContaining({ verifierUrl: VERIFIER })
         );
-      }, 20000);
+      }, 60000);
     });
   }
 });

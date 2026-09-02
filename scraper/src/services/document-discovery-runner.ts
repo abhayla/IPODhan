@@ -56,6 +56,7 @@ import {
   extractWebsiteFromCoverText,
   normalizeCompanyUrl,
   isStorableFromCompanyPage,
+  isVerifierUrl,
 } from './company-host-source.js';
 import {
   planIpoCycle,
@@ -164,7 +165,10 @@ export function sourceOfDocumentUrl(url: string): DiscoveredDocument['source'] {
   try {
     host = new URL(url).hostname.toLowerCase();
   } catch {
-    return 'NSE';
+    // T-403 r5 (7): an unparseable URL is not an NSE URL. Defaulting to 'NSE'
+    // stamped a real exchange name onto something we could not even parse, in
+    // the one record whose whole job is to say where a file came from.
+    return 'UNKNOWN';
   }
   const on = (domain: string) => host === domain || host.endsWith(`.${domain}`);
   if (on('sebi.gov.in')) return 'SEBI';
@@ -210,11 +214,78 @@ export const ESCALATION_GET_BUDGET_PER_IPO = 12;
  * has not filed it", from evidence that says nothing of the sort. `failed` now
  * propagates and lands the row in BLOCKED_ALL with its retry ladder.
  */
-export type RungResult = { documentId: string; bytes: number } | 'failed' | 'absent';
+
+/**
+ * The brand key. Module-private: nothing outside this file can spell it, so
+ * nothing outside `answeredFrom` can mint an `AnsweredResponse`.
+ */
+const ANSWERED: unique symbol = Symbol('t403.answered-response');
+
+/**
+ * Proof that a source ANSWERED: a real HTTP 200, with the URL that served it
+ * and how many bytes came back.
+ *
+ * This type is the round-5 class fix. Rounds 3 and 4 each removed the instances
+ * of "a non-answer recorded as absence" that were visible at the time, and the
+ * next round found three more, because the outcome was a bare string union and
+ * nothing stopped a code path that never made a request from returning
+ * `'absent'`. Absence is now a value that CARRIES its evidence, and the evidence
+ * cannot be forged.
+ */
+export interface AnsweredResponse {
+  readonly [ANSWERED]: true;
+  readonly status: number;
+  readonly url: string;
+  readonly bytes: number;
+}
+
+/**
+ * The ONLY way to build an `AnsweredResponse`. Returns null unless the source
+ * actually answered — so a 403, a 503, a timeout (status 0) or a budget refusal
+ * (no response at all) has nothing to hand the `absent` arm.
+ */
+export function answeredFrom(
+  res: { status: number; body?: Buffer; url?: string },
+  url?: string
+): AnsweredResponse | null {
+  if (res.status !== 200) return null;
+  return {
+    [ANSWERED]: true,
+    status: res.status,
+    url: res.url || url || '',
+    bytes: res.body ? res.body.length : 0,
+  };
+}
+
+/**
+ * What a rung concluded (H-2, hardened in r5).
+ *
+ * `absent` means "this source answered and this filing is not there" and can
+ * only be constructed with the answer that says so. `failed` means "we learned
+ * nothing" and carries the reason into the audit trail. Only ABSENT from every
+ * rung may write NOT_YET_FILED; any FAILED writes BLOCKED_ALL, which is the
+ * state that carries the retry ladder and the alert.
+ */
+export type RungOutcome =
+  | { kind: 'found'; documentId: string; bytes: number }
+  | { kind: 'absent'; evidence: AnsweredResponse }
+  | { kind: 'failed'; reason: string };
+
+/** The absent arm's only constructor — it cannot be called without evidence. */
+function absent(evidence: AnsweredResponse): RungOutcome {
+  return { kind: 'absent', evidence };
+}
+
+/** The failed arm. A reason string, never silence. */
+function failed(reason: string): RungOutcome {
+  return { kind: 'failed', reason };
+}
 
 /** Narrowing helper — `strict: false` will not do it for us. */
-export function isRungFound(r: RungResult): r is { documentId: string; bytes: number } {
-  return typeof r === 'object' && r !== null;
+export function isRungFound(
+  r: RungOutcome
+): r is { kind: 'found'; documentId: string; bytes: number } {
+  return r.kind === 'found';
 }
 
 // ---------------------------------------------------------------------------
@@ -313,6 +384,14 @@ export interface RunnerDeps {
    * the pdf-parse-backed implementation, which is what runs in production.
    */
   extractCoverText?: (pdf: Buffer) => Promise<{ usable: boolean; text?: string }>;
+  /**
+   * Override for `ESCALATION_GET_BUDGET_PER_IPO`, so a test can exhaust the
+   * budget in one GET instead of manufacturing thirteen. The budget's EFFECT on
+   * the row is the thing worth testing (r5 detection-gap upgrade: every test of
+   * a cap must assert the state the cap leaves behind), and that effect is
+   * identical at 1 and at 12.
+   */
+  escalationBudget?: number;
 }
 
 export interface IpoRunResult {
@@ -392,14 +471,30 @@ export class DocumentDiscoveryRunner {
    * recorded `SEBI:not_listed` about a request that was never made. That is not
    * a cache miss, it is an audit trail that lies.
    */
-  private readonly sebiListings = new Map<string, SebiListingRow[] | 'failed'>();
+  private readonly sebiListings = new Map<
+    string,
+    { rows: SebiListingRow[]; evidence: AnsweredResponse } | 'failed'
+  >();
   /**
    * Investor pages fetched this cycle, keyed by URL (M-d). The company rung is
    * driven per DOCUMENT TYPE but the pages are per ISSUER, so without this the
    * same three URLs were re-fetched for every due type — four GETs of
    * `skyways-air.in/investors` in one observed cycle.
    */
-  private readonly companyPages = new Map<string, { status: number; html: string }>();
+  private readonly companyPages = new Map<
+    string,
+    { status: number; html: string; evidence: AnsweredResponse | null }
+  >();
+  /**
+   * Chittorgarh pages fetched this cycle, keyed by URL. The verifier rung runs
+   * per DOCUMENT TYPE but the page is per IPO, so the un-cached version spent
+   * one escalation GET per due type on the same URL — the same defect M-d fixed
+   * for the company rung, left standing on this one.
+   */
+  private readonly verifierPages = new Map<
+    string,
+    { status: number; html: string; evidence: AnsweredResponse | null }
+  >();
   /** Escalation GETs spent per IPO this cycle (M-d). */
   private readonly escalationGets = new Map<string, number>();
   /**
@@ -813,12 +908,17 @@ export class DocumentDiscoveryRunner {
     rungs: string[],
     triedUrls: Set<string>,
     seenBySha: Map<string, { documentId: string; docType: DocumentType }>
-  ): Promise<RungResult> {
+  ): Promise<RungOutcome | null> {
     // H-2: 'a rung could not answer' is tracked separately from 'a rung
     // answered and this filing is not there'. Any failure makes the whole
     // escalation `failed`, which is what puts the row in BLOCKED_ALL with its
     // retry ladder instead of the silent, un-retried NOT_YET_FILED.
     let anyRungFailed = false;
+    // The answer a later `absent` would be built from. Null at the end means no
+    // rung could be consulted at all: nothing was learned, so the exchanges'
+    // verdict stands unchanged. That is deliberately NOT `absent` - the absent
+    // arm is a claim, and a claim needs the response that supports it.
+    let lastAnswer: AnsweredResponse | null = null;
 
     // ---- Rung 3: SEBI ----------------------------------------------------
     const listingUrl = sebiListingUrlFor(docType);
@@ -827,7 +927,8 @@ export class DocumentDiscoveryRunner {
     } else {
       const sebi = await this.trySebi(ipo, docType, listingUrl, attempts, rungs, triedUrls, seenBySha);
       if (isRungFound(sebi)) return sebi;
-      if (sebi === 'failed') anyRungFailed = true;
+      if (sebi.kind === 'failed') anyRungFailed = true;
+      else lastAnswer = sebi.evidence;
     }
 
     // ---- Rung 4: the issuer's investor page -------------------------------
@@ -838,18 +939,29 @@ export class DocumentDiscoveryRunner {
     } else {
       const company = await this.tryCompanyHost(ipo, docType, companyUrl, attempts, rungs, triedUrls, seenBySha);
       if (isRungFound(company)) return company;
-      if (company === 'failed') anyRungFailed = true;
+      if (company.kind === 'failed') anyRungFailed = true;
+      else lastAnswer = company.evidence;
     }
 
     // ---- Verifier: Chittorgarh (links only, never a source) ---------------
-    if (!ipo.verifierUrl) {
-      rungs.push('VERIFIER:skipped:no_verifier_url');
-      return anyRungFailed ? 'failed' : 'absent';
+    //
+    // r5 (3): the host is re-validated HERE, on the READ, not only in
+    // `recordDocumentSourceHints` on the write. The column is reachable by a
+    // backfill, an admin edit or any future scraper, and this rung fetches
+    // whatever it finds there.
+    if (!isVerifierUrl(ipo.verifierUrl)) {
+      rungs.push(
+        ipo.verifierUrl ? 'VERIFIER:skipped:invalid_verifier_url' : 'VERIFIER:skipped:no_verifier_url'
+      );
+    } else {
+      const verifier = await this.tryVerifier(ipo, docType, attempts, rungs, triedUrls, seenBySha);
+      if (isRungFound(verifier)) return verifier;
+      if (verifier.kind === 'failed') anyRungFailed = true;
+      else lastAnswer = verifier.evidence;
     }
-    const verifier = await this.tryVerifier(ipo, docType, attempts, rungs, triedUrls, seenBySha);
-    if (isRungFound(verifier)) return verifier;
-    if (verifier === 'failed') anyRungFailed = true;
-    return anyRungFailed ? 'failed' : 'absent';
+
+    if (anyRungFailed) return failed('an escalation rung could not answer');
+    return lastAnswer ? absent(lastAnswer) : null;
   }
 
   /**
@@ -857,8 +969,9 @@ export class DocumentDiscoveryRunner {
    * Returns false when the budget is exhausted; the caller records the reason.
    */
   private spendEscalationGet(ipoId: string): boolean {
+    const budget = this.deps.escalationBudget ?? ESCALATION_GET_BUDGET_PER_IPO;
     const spent = this.escalationGets.get(ipoId) ?? 0;
-    if (spent >= ESCALATION_GET_BUDGET_PER_IPO) return false;
+    if (spent >= budget) return false;
     this.escalationGets.set(ipoId, spent + 1);
     return true;
   }
@@ -872,20 +985,24 @@ export class DocumentDiscoveryRunner {
     rungs: string[],
     triedUrls: Set<string>,
     seenBySha: Map<string, { documentId: string; docType: DocumentType }>
-  ): Promise<RungResult> {
+  ): Promise<RungOutcome> {
     const cached = this.sebiListings.get(listingUrl);
     // H-3: a cached FAILURE is reported as a failure, for every IPO in the
     // cycle. It is still cached — one 503 should not become one request per IPO
     // — but the later IPOs now say what actually happened.
     if (cached === 'failed') {
       rungs.push('SEBI:failed:cached_http_error');
-      return 'failed';
+      return failed('cached SEBI listing http error');
     }
-    let rows = cached;
+    let rows = cached ? cached.rows : undefined;
+    let listingEvidence: AnsweredResponse | null = cached ? cached.evidence : null;
     if (rows === undefined) {
       if (!this.spendEscalationGet(ipo.id)) {
-        rungs.push('SEBI:skipped:budget');
-        return 'absent';
+        // r5, Class 1: a request we DECLINED to make says nothing about whether
+        // the company filed. This used to return 'absent' - i.e. NOT_YET_FILED
+        // written from a budget counter.
+        rungs.push('SEBI:failed:budget');
+        return failed('escalation budget exhausted before the SEBI listing');
       }
       const started = Date.now();
       const res = await this.request(listingUrl, SEBI_HEADERS, ipo.id);
@@ -899,10 +1016,11 @@ export class DocumentDiscoveryRunner {
         });
         rungs.push('SEBI:failed:http_error');
         this.sebiListings.set(listingUrl, 'failed');
-        return 'failed';
+        return failed('SEBI listing http ' + res.status);
       }
       rows = parseSebiListing(res.body.toString('utf8'));
-      this.sebiListings.set(listingUrl, rows);
+      listingEvidence = answeredFrom(res, listingUrl);
+      if (listingEvidence) this.sebiListings.set(listingUrl, { rows, evidence: listingEvidence });
       attempts.push({
         source: 'SEBI',
         http: 200,
@@ -914,13 +1032,19 @@ export class DocumentDiscoveryRunner {
 
     const row = matchSebiRow(rows, ipo.companyName, docType);
     if (!row) {
+      // The listing ANSWERED and does not name this company: real evidence, and
+      // the 200 that carries it is what the absent arm is built from.
+      if (!listingEvidence) {
+        rungs.push('SEBI:failed:listing_without_evidence');
+        return failed('SEBI listing parsed without a 200 behind it');
+      }
       rungs.push('SEBI:not_listed');
-      return 'absent';
+      return absent(listingEvidence);
     }
 
     if (!this.spendEscalationGet(ipo.id)) {
-      rungs.push('SEBI:skipped:budget');
-      return 'absent';
+      rungs.push('SEBI:failed:budget');
+      return failed('escalation budget exhausted before the SEBI detail page');
     }
     const detailStarted = Date.now();
     const detail = await this.request(row.detailUrl, SEBI_HEADERS, ipo.id);
@@ -933,7 +1057,7 @@ export class DocumentDiscoveryRunner {
         url: row.detailUrl,
       });
       rungs.push('SEBI:failed:detail_http_error');
-      return 'failed';
+      return failed('SEBI detail http ' + detail.status);
     }
 
     const pdfUrl = parseSebiDetailPdfUrl(detail.body.toString('utf8'));
@@ -948,12 +1072,15 @@ export class DocumentDiscoveryRunner {
       // SEBI listed the filing and its detail page carried no PDF: the page
       // answered, so this is a failure of the SOURCE, not evidence of absence.
       rungs.push('SEBI:failed:no_pdf_on_detail_page');
-      return 'failed';
+      return failed('SEBI listed the filing and its detail page carried no PDF');
     }
 
     if (triedUrls.has(pdfUrl)) {
-      rungs.push('SEBI:skipped:already_tried');
-      return 'absent';
+      // An earlier rung already tried this exact URL and did not return FOUND,
+      // so it failed. SEBI naming the same URL is not evidence that the filing
+      // does not exist - it is evidence that it does.
+      rungs.push('SEBI:failed:already_tried');
+      return failed('SEBI names a URL an earlier rung already failed to fetch');
     }
     triedUrls.add(pdfUrl);
 
@@ -967,7 +1094,9 @@ export class DocumentDiscoveryRunner {
     rungs.push(stored ? 'SEBI:found' : 'SEBI:failed:rejected');
     // A listed filing whose download or verification failed is a failure, not
     // an absence — it exists, we could not get it.
-    return stored ?? 'failed';
+    return stored
+      ? { kind: 'found', documentId: stored.documentId, bytes: stored.bytes }
+      : failed('SEBI PDF download or verification failed');
   }
 
   /**
@@ -982,7 +1111,7 @@ export class DocumentDiscoveryRunner {
     ipo: DiscoveryIpo,
     pageUrl: string,
     attempts: FetchAttempt[]
-  ): Promise<{ status: number; html: string } | 'budget'> {
+  ): Promise<{ status: number; html: string; evidence: AnsweredResponse | null } | 'budget'> {
     const cached = this.companyPages.get(pageUrl);
     if (cached) return cached;
     if (!this.spendEscalationGet(ipo.id)) return 'budget';
@@ -992,6 +1121,10 @@ export class DocumentDiscoveryRunner {
     const page = {
       status: res.status,
       html: res.status === 200 ? res.body.toString('utf8') : '',
+      // The page's own proof that it answered, cached with it: a later type
+      // reading this cache must be able to build `absent` from the SAME 200
+      // that the first type saw, not from the fact that a map has a key.
+      evidence: answeredFrom(res, pageUrl),
     };
     this.companyPages.set(pageUrl, page);
     if (res.status !== 200) {
@@ -1015,23 +1148,29 @@ export class DocumentDiscoveryRunner {
     rungs: string[],
     triedUrls: Set<string>,
     seenBySha: Map<string, { documentId: string; docType: DocumentType }>
-  ): Promise<RungResult> {
+  ): Promise<RungOutcome> {
     let anyPageFailed = false;
-    let anyPageAnswered = false;
+    let answer: AnsweredResponse | null = null;
     for (const pageUrl of companyInvestorUrls(companyUrl)) {
       const started = Date.now();
       const page = await this.fetchCompanyPage(ipo, pageUrl, attempts);
       if (page === 'budget') {
-        rungs.push('COMPANY:skipped:budget');
-        return anyPageFailed ? 'failed' : 'absent';
+        // r5, Class 1: the remaining pages were never requested. Whatever the
+        // pages we DID read said, we do not know what the unread ones carry, so
+        // this rung cannot conclude the filing is absent.
+        rungs.push('COMPANY:failed:budget');
+        return failed('escalation budget exhausted before an investor page');
       }
       if (page.status !== 200) {
-        // A 404 on `/investor-relations` is not a failure — most issuers simply
-        // do not have that path. Only a server error or a transport failure is.
-        if (page.status === 0 || page.status >= 500) anyPageFailed = true;
+        // r5 (6): only a MISSING path is evidence. Most issuers simply do not
+        // have `/investor-relations`, so 404/410 is normal and says the page is
+        // not there. Everything else — 403, 429, 5xx, a transport failure — is
+        // the server declining to tell us anything, which is not evidence of
+        // anything either way.
+        if (page.status !== 404 && page.status !== 410) anyPageFailed = true;
         continue;
       }
-      anyPageAnswered = true;
+      if (page.evidence) answer = page.evidence;
 
       const links = parseCompanyHostLinks(page.html, pageUrl).filter(
         (l) =>
@@ -1062,7 +1201,7 @@ export class DocumentDiscoveryRunner {
         );
         if (stored) {
           rungs.push('COMPANY:found');
-          return stored;
+          return { kind: 'found', documentId: stored.documentId, bytes: stored.bytes };
         }
         // The page linked this filing and the download failed: it exists.
         anyPageFailed = true;
@@ -1075,14 +1214,14 @@ export class DocumentDiscoveryRunner {
     //   a page answered and does not carry it -> absent (real evidence)
     if (anyPageFailed) {
       rungs.push('COMPANY:failed:no_usable_link');
-      return 'failed';
+      return failed('an investor page failed, or a linked filing would not download');
     }
-    if (!anyPageAnswered) {
+    if (!answer) {
       rungs.push('COMPANY:failed:no_page');
-      return 'failed';
+      return failed('no investor page answered');
     }
     rungs.push('COMPANY:no_link');
-    return 'absent';
+    return absent(answer);
   }
 
   /**
@@ -1098,33 +1237,57 @@ export class DocumentDiscoveryRunner {
     rungs: string[],
     triedUrls: Set<string>,
     seenBySha: Map<string, { documentId: string; docType: DocumentType }>
-  ): Promise<RungResult> {
+  ): Promise<RungOutcome> {
     const verifierUrl = ipo.verifierUrl as string;
-    if (!this.spendEscalationGet(ipo.id)) {
-      rungs.push('VERIFIER:skipped:budget');
-      return 'absent';
-    }
-    const started = Date.now();
-    const res = await this.request(verifierUrl, BROWSER_PAGE_HEADERS, ipo.id);
-    if (res.status !== 200) {
-      attempts.push({
-        source: 'VERIFIER',
-        http: res.status,
-        ms: Date.now() - started,
-        outcome: 'http_error',
-        url: verifierUrl,
-      });
-      rungs.push('VERIFIER:failed:http_error');
-      return 'failed';
+    // Defence in depth: the caller filters on `isVerifierUrl` too. This rung is
+    // the one that puts a stored URL on the wire, so it re-checks at the point
+    // of use rather than trusting a guard three frames up.
+    if (!isVerifierUrl(verifierUrl)) {
+      rungs.push('VERIFIER:skipped:invalid_verifier_url');
+      return failed('verifier_url is not an https chittorgarh.com URL');
     }
 
-    const links = extractVerifierLinks(res.body.toString('utf8'), verifierUrl, triedUrls).filter(
+    // r5 (2): the page is per IPO but this rung runs per DOCUMENT TYPE, so the
+    // un-cached version spent one escalation GET per due type on one URL — the
+    // same defect M-d fixed for the company rung, left standing on this one.
+    let page = this.verifierPages.get(verifierUrl);
+    if (!page) {
+      if (!this.spendEscalationGet(ipo.id)) {
+        // r5, Class 1: the verifier page was never fetched.
+        rungs.push('VERIFIER:failed:budget');
+        return failed('escalation budget exhausted before the verifier page');
+      }
+      const started = Date.now();
+      const res = await this.request(verifierUrl, BROWSER_PAGE_HEADERS, ipo.id);
+      page = {
+        status: res.status,
+        html: res.status === 200 ? res.body.toString('utf8') : '',
+        evidence: answeredFrom(res, verifierUrl),
+      };
+      this.verifierPages.set(verifierUrl, page);
+      if (res.status !== 200) {
+        attempts.push({
+          source: 'VERIFIER',
+          http: res.status,
+          ms: Date.now() - started,
+          outcome: 'http_error',
+          url: verifierUrl,
+        });
+      }
+    }
+    if (page.status !== 200 || !page.evidence) {
+      rungs.push('VERIFIER:failed:http_error');
+      return failed('verifier page http ' + page.status);
+    }
+    const answer = page.evidence;
+
+    const links = extractVerifierLinks(page.html, verifierUrl, triedUrls).filter(
       (l) => l.docType === docType
     );
     attempts.push({
       source: 'VERIFIER',
       http: 200,
-      ms: Date.now() - started,
+      ms: 0,
       outcome: `untried_exchange_links:${links.length}`,
       url: verifierUrl,
     });
@@ -1142,14 +1305,16 @@ export class DocumentDiscoveryRunner {
       );
       if (stored) {
         rungs.push('VERIFIER:found_via_corrected_link');
-        return stored;
+        return { kind: 'found', documentId: stored.documentId, bytes: stored.bytes };
       }
       // The verifier pointed at an exchange URL and that download failed. The
       // filing exists; we could not fetch it.
       anyLinkFailed = true;
     }
     rungs.push(anyLinkFailed ? 'VERIFIER:failed:corrected_link_failed' : 'VERIFIER:no_new_link');
-    return anyLinkFailed ? 'failed' : 'absent';
+    return anyLinkFailed
+      ? failed('the verifier pointed at an exchange URL that would not download')
+      : absent(answer);
   }
 
   /**
@@ -1429,11 +1594,11 @@ export class DocumentDiscoveryRunner {
           triedUrls,
           seenBySha
         );
-        if (isRungFound(escalated)) {
+        if (escalated && isRungFound(escalated)) {
           documentId = escalated.documentId;
           bytes = escalated.bytes;
           outcome = 'found';
-        } else if (escalated === 'failed') {
+        } else if (escalated && escalated.kind === 'failed') {
           // H-2: a rung was asked and could not answer. That is never evidence
           // that the company has not filed the document, so the row must not
           // settle as NOT_YET_FILED — it goes to BLOCKED_ALL, which is the state
@@ -1477,7 +1642,11 @@ export class DocumentDiscoveryRunner {
           { ipoId: ipo.id, docType, rungs },
           'Refusing BLOCKED_ALL: fewer than four rungs were consulted (G4)'
         );
-        outcome = 'no_link';
+        // r5 (4): this used to downgrade to `no_link`, i.e. NOT_YET_FILED — the
+        // row settled as "the company has not filed it" on the strength of a
+        // chain that did not finish. `chain_incomplete` says the one true thing:
+        // we do not know, so stay WANTED and come back.
+        outcome = 'chain_incomplete';
       }
 
       const transition = applyOutcome(prior, outcome, now);

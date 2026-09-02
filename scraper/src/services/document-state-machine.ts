@@ -49,6 +49,11 @@ export type AttemptOutcome =
   | 'found' // link present AND the download verified (matrix §3)
   | 'no_link' // the exchange ANSWERED and the field/title was empty — F3
   | 'all_sources_failed' // every source errored/timed out/served a bad file
+  // T-403 r5 (4): the rung chain did not finish, so nothing was concluded. Not
+  // a failure of the sources (BLOCKED_ALL would alert a P2 about an outage that
+  // did not happen) and emphatically not "the company has not filed it" — which
+  // is what the old `no_link` downgrade wrote. The row stays WANTED and retries.
+  | 'chain_incomplete'
   | 'not_applicable'; // the type cannot exist for this issue — R9
 
 /** The subset of a `document_fetch_state` row the pure rules reason over. */
@@ -408,6 +413,15 @@ export function applyOutcome(
         blockedSinceAt: null,
         alert: false,
         reason: 'document type cannot exist for this issue (R9)',
+      };
+
+    case 'chain_incomplete':
+      return {
+        state: 'WANTED',
+        nextRetryAt: computeNextRetryAt('WANTED', now),
+        blockedSinceAt: null,
+        alert: false,
+        reason: 'the rung chain ran short — nothing was concluded, retry (G4)',
       };
 
     case 'no_link':

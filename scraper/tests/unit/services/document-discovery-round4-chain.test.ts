@@ -71,7 +71,8 @@ afterEach(async () => {
 
 function makeRunner(
   responses: Record<string, HttpResponse>,
-  coverCompany = 'Acme Industries Limited'
+  coverCompany = 'Acme Industries Limited',
+  escalationBudget?: number
 ) {
   const seen: string[] = [];
   const fetcher: HttpFetcher = async (url) => {
@@ -97,6 +98,7 @@ function makeRunner(
     now: () => new Date('2026-08-28T06:00:00Z'),
     storeDir,
     sleep: async () => undefined,
+    escalationBudget,
     extractCoverText: async () => ({ usable: true, text: coverCompany + ' prospectus' }),
   });
   return { runner, store, documents, seen };
@@ -328,7 +330,7 @@ describe('M-d escalation is budgeted, and investor pages are fetched once per cy
   }, 60_000);
 
   it('never exceeds the per-IPO escalation budget', async () => {
-    const { runner, seen } = makeRunner({
+    const { runner, seen, store } = makeRunner({
       IPO_HomePageDetail: json(fixture('bse-ipo-homepage.json')),
       'ipo-detail': json(JSON.stringify({ issueInfo: { dataList: [] } })),
       'sebi.gov.in': html('<table id="sample_1"></table>'),
@@ -355,6 +357,59 @@ describe('M-d escalation is budgeted, and investor pages are fetched once per cy
     ).length;
     expect(escalationGets).toBeGreaterThan(0);
     expect(escalationGets).toBeLessThanOrEqual(ESCALATION_GET_BUDGET_PER_IPO);
+
+    // T-403 r5 detection-gap upgrade, part 1: assert the row STATE, not just
+    // the call count. Here the budget is never reached, every rung answers, and
+    // NOT_YET_FILED is the CORRECT settlement - so the assertion is that the
+    // rows exist, carry their own chain, and none of them concluded anything
+    // from a rung that did not answer.
+    const rows = await store.listForIpo('ipo-cap');
+    expect(rows.length).toBe(result.due.length);
+    for (const row of rows) {
+      const chain = rungsFor((row.lastAttempt ?? []) as never, row.docType);
+      expect(chain).not.toBe('');
+      if (/budget/.test(chain)) expect(row.state).not.toBe('NOT_YET_FILED');
+    }
+  }, 60_000);
+
+  it('when the cap DOES bite, the row stays retryable and never says "not filed"', async () => {
+    // Part 2, and the finding itself: this is the case the old test never
+    // built. A budget refusal is a request we chose not to make, so it can say
+    // nothing about whether the company filed - yet all three refusal sites
+    // returned 'absent', and the row settled NOT_YET_FILED with its retry
+    // ladder cleared. The budget is injected rather than manufactured with
+    // thirteen fixtures: its EFFECT on the row is identical at 1 and at 12.
+    const { runner, store } = makeRunner(
+      {
+        IPO_HomePageDetail: json(fixture('bse-ipo-homepage.json')),
+        'ipo-detail': json(JSON.stringify({ issueInfo: { dataList: [] } })),
+        'sebi.gov.in': html('<table id="sample_1"></table>'),
+        'cap.example.com': html('<p>nothing here</p>'),
+      },
+      'Acme Industries Limited',
+      1
+    );
+
+    const result = await runner.runIpo(
+      upcoming({
+        id: 'ipo-cap-bites',
+        companyName: 'Cap Industries Limited',
+        stage: 'OPEN',
+        bseIpoNo: null,
+        companyWebsite: 'https://cap.example.com',
+      }),
+      []
+    );
+
+    const rows = await store.listForIpo('ipo-cap-bites');
+    expect(rows.length).toBe(result.due.length);
+    expect(rows.map((r) => r.state)).not.toContain('NOT_YET_FILED');
+    expect(rows.every((r) => r.state === 'BLOCKED_ALL')).toBe(true);
+    // and the reason is in the audit trail, not inferred
+    const chains = rows
+      .map((r) => rungsFor((r.lastAttempt ?? []) as never, r.docType))
+      .join('\n');
+    expect(chains).toMatch(/budget/);
   }, 60_000);
 });
 
@@ -371,5 +426,10 @@ describe('NIT-4 the source label is decided by host', () => {
     // The substring version labelled this BSE.
     expect(sourceOfDocumentUrl('https://cdn.example.com/f.pdf?ref=bseindia')).toBe('NSE');
     expect(sourceOfDocumentUrl('https://evil.test/sebi.gov.in/f.pdf')).toBe('NSE');
+    // r5 (7): a string that is not a URL at all was labelled 'NSE' - a real
+    // exchange's name stamped on something we could not parse, in the one
+    // record whose job is to say where a file came from.
+    expect(sourceOfDocumentUrl('not a url')).toBe('UNKNOWN');
+    expect(sourceOfDocumentUrl('')).toBe('UNKNOWN');
   });
 });
