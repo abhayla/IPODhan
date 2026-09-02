@@ -974,8 +974,10 @@ The DRHP (Draft Red Herring Prospectus) extraction system automatically download
 Enable DRHP extraction in `scraper/.env`:
 
 ```bash
-# DRHP Extraction (Phase 3.3-4)
-ENABLE_DRHP_EXTRACTION=true          # Master switch (default: false)
+# DRHP Extraction (Phase 3.3-4) — HISTORICAL: this pipeline was deleted (T-407,
+# 2026-09-02); the flag below and the orchestrator/downloader/extractor it gated
+# no longer exist. Live financials extraction is CLI-only: see
+# scraper/scripts/extract_financials_pdf.py via scripts/backfill-financials-pdf.ts.
 ENABLE_DRHP_AUTO_DOWNLOAD=true       # Auto-download PDFs (default: true)
 ENABLE_DRHP_AUTO_EXTRACTION=true     # Auto-extract financials (default: true)
 

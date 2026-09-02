@@ -45,13 +45,6 @@ export const FEATURE_FLAGS = {
   ENABLE_DATA_CONSOLIDATION: process.env.ENABLE_DATA_CONSOLIDATION === 'true',
 
   /**
-   * Enable DRHP extraction pipeline
-   * When enabled, automatically extracts financial data from DRHP PDFs
-   * Default: false (Phase 2)
-   */
-  ENABLE_DRHP_EXTRACTION: process.env.ENABLE_DRHP_EXTRACTION === 'true',
-
-  /**
    * Enable early IPO detection (SEBI monitoring)
    * When enabled, detects IPOs 30-60 days before opening
    * Default: false (Phase 3)
@@ -247,7 +240,6 @@ export function getFeatureStatus(): Record<string, boolean | number | string[]> 
     SOURCE_TRACKING: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
     CONFLICT_DETECTION: FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION,
     DATA_CONSOLIDATION: FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION,
-    DRHP_EXTRACTION: FEATURE_FLAGS.ENABLE_DRHP_EXTRACTION,
     EARLY_DETECTION: FEATURE_FLAGS.ENABLE_EARLY_DETECTION,
     SOURCE_TRACKING_PCT: FEATURE_FLAGS.SOURCE_TRACKING_PERCENTAGE,
     CONFLICT_DETECTION_PCT: FEATURE_FLAGS.CONFLICT_DETECTION_PERCENTAGE,

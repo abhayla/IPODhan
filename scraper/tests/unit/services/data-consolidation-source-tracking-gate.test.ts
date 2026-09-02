@@ -41,7 +41,6 @@ vi.mock('../../../src/config/feature-flags.js', () => ({
     ENABLE_DATA_CONSOLIDATION: true, // confirmed on in prod (3760 fields/cycle)
     SHADOW_MODE: false,
     DEBUG_DATA_FLOW: false,
-    ENABLE_DRHP_EXTRACTION: false,
     ENABLE_EARLY_DETECTION: false,
     SOURCE_TRACKING_PERCENTAGE: 0,
     CONFLICT_DETECTION_PERCENTAGE: 0,
