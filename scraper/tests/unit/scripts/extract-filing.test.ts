@@ -452,3 +452,93 @@ describe('extract_filing — objects/risk-factor edge cases (synthetic, offline)
     expect(risks[20].heading).toBe('Risk number 21 exists.');
   });
 });
+
+/**
+ * T-434 — the SCANNED (BSE) copy of the same Deepa Jewellers advertisement, whose
+ * text comes from OCR. The strings below are the OCR output VERBATIM: the offer
+ * table loses the leading digit of `1,990.52` and splits `11,848,340`, and the
+ * comma after the bid-open day is read as a `1`. Each case pins the behaviour
+ * that keeps a mangled cell from being published as a value.
+ */
+describe('extract_filing — OCR-mangled price band advertisement (synthetic, offline)', () => {
+  const OCR_OFFER_SENTENCE =
+    'MILLION ("OFFER"). THE OFFER COMPRISES OF A FRESH ISSUE OF UP TO O EQUITY SHARES ' +
+    'AGGREGATING UP TO ?2,500.00 MILLION CTHE "FRESH ISSUE") AND AN OFFER FOR SALE OF UP TO ' +
+    '11 848340 EQUITY SHARES AGGREGATING UP TO [] MILLION (THE "OFFER FOR SALE").';
+  const OCR_PRICE_BAND =
+    'PRICE BAND: ` 168 TO ` 177 PER EQUITY SHARE OF FACE VALUE OF ` 2 EACH.';
+
+  function ocrPage(extra: string[]): [number, string][] {
+    return [[0, [OCR_PRICE_BAND, OCR_OFFER_SENTENCE, ...extra].join('\n')]];
+  }
+
+  it('a fresh-issue row whose cells OCR inconsistently falls back to the offer sentence', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts(ocrPage([
+      'Fresh Issue 1 14.880952 2,500.00 14 1 24,293 2,500.00',
+      'Offer for Sales 11,848,340 1,990.52 11,848,340 2,097.16',
+    ]), 'PRICE_BAND_AD');
+    const f = out.fields.fresh_issue_amount;
+    expect(f.value).toBe(2500.0);
+    expect(f.check.name).toBe('prose_fallback');
+    expect((f as unknown as { source_text?: string }).source_text).toBe('prose');
+  });
+
+  it('an OFS share count split by OCR is rejoined from the offer sentence', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts(ocrPage([
+      'Fresh Issue 14,880,952 2,500.00 14,124,293 2,500.00',
+      'Offer for Sales ,990.52 1 848,340 2,097.16',
+    ]), 'PRICE_BAND_AD');
+    const f = out.fields.ofs_shares;
+    expect(f.value).toBe(11848340);
+    expect(f.check.name).toBe('prose_fallback');
+  });
+
+  it('a stray "1" in the OFS amount cell is NULLED, never emitted as the offer size', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts(ocrPage([
+      'Fresh Issue 14,880,952 2,500.00 14,124,293 2,500.00',
+      'Offer for Sales ,990.52 1 848,340 2,097.16',
+    ]), 'PRICE_BAND_AD');
+    for (const key of ['ofs_amount', 'ofs_amount_at_cap']) {
+      const f = out.fields[key];
+      expect(f.value).toBeNull();
+      expect(f.check.name).toBe('ofs_shares_x_price_equals_amount');
+      expect(f.check.detail).toContain('check_failed');
+    }
+  });
+
+  it('an offer table whose amount cannot be arithmetic-checked emits no amount at all', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts([[0, [OCR_PRICE_BAND, 'Offer for Sales 1'].join('\n')]],
+      'PRICE_BAND_AD');
+    expect(out.fields.ofs_amount.value).toBeNull();
+    expect(out.fields.ofs_amount.check.detail)
+      .toBe('offer_for_sale_amount_not_arithmetic_checkable');
+  });
+
+  it('a comma OCR-read as a digit still yields the bid-open date', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts(ocrPage([
+      'ANCHOR INVESTOR BID/ OFFER PERIOD OPENS AND CLOSES ON Monday. August 31, 2026',
+      'BI D/OFFER BID/OFFER OPENS ON: TUESDAY, SEPTEMBER 01 1 2026',
+      'BID/OFFER CLOSES ON: THURSDAY, SEPTEMBER 03, 2026',
+    ]), 'PRICE_BAND_AD');
+    expect(out.fields.open_date.value).toBe('2026-09-01');
+    expect(out.fields.close_date.value).toBe('2026-09-03');
+    expect(out.fields.anchor_bid_date.value).toBe('2026-08-31');
+  });
+
+  it('an OCR-repaired date that breaks the timetable order is nulled with its own reason', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts(ocrPage([
+      'ANCHOR INVESTOR BID/ OFFER PERIOD OPENS AND CLOSES ON Monday. August 31, 2026',
+      'BI D/OFFER BID/OFFER OPENS ON: TUESDAY, SEPTEMBER 09 1 2026',
+      'BID/OFFER CLOSES ON: THURSDAY, SEPTEMBER 03, 2026',
+    ]), 'PRICE_BAND_AD');
+    expect(out.fields.open_date.value).toBeNull();
+    expect(out.fields.open_date.check.detail).toBe('date_order_after_ocr_repair');
+    expect(out.fields.close_date.value).toBe('2026-09-03');
+  });
+});

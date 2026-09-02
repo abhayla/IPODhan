@@ -48,9 +48,16 @@ TBD = re.compile(r"\[\s*[•●○▪·.\-]\s*\]")
 MONTHS = {m: i + 1 for i, m in enumerate(
     ["january", "february", "march", "april", "may", "june",
      "july", "august", "september", "october", "november", "december"])}
-DATE_RX = re.compile(
-    r"(January|February|March|April|May|June|July|August|September|October|November|December)"
-    r"\s+(\d{1,2}),?\s*(20\d{2})", re.I)
+_MONTH_ALT = (r"(January|February|March|April|May|June|July|August|September|October"
+              r"|November|December)")
+DATE_RX = re.compile(_MONTH_ALT + r"\s+(\d{1,2}),?\s*(20\d{2})", re.I)
+# OCR of a SCANNED newspaper reads the comma after the day as a digit or a speck
+# ("BID/OFFER OPENS ON: TUESDAY, SEPTEMBER 01 1 2026"). Tolerate at most ONE such
+# noise token between the day and the four-digit year. A month NAME must still
+# precede the day, so a bare run of numbers can never be read as a date, and the
+# timetable ordering check still guards whatever this repair produces.
+DATE_OCR_NOISE_RX = re.compile(
+    _MONTH_ALT + r"\s+(\d{1,2})\s*[.,]?\s+(?:[^\w\s]|\d)\s+(20\d{2})", re.I)
 
 CIN_RX = re.compile(r"\b([UL]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6})\b")
 # A figure printed WITH the rupee mark — pdfplumber renders the sign as "`" in
@@ -468,6 +475,80 @@ def _iso(text):
     return "%04d-%02d-%02d" % (int(m.group(3)), MONTHS[m.group(1).lower()], int(m.group(2)))
 
 
+def _iso_ocr(text):
+    """(iso, repaired) — the strict reading first, then the one-noise-token OCR
+    repair. `repaired` is True only when the tolerant pattern was needed, so the
+    caller can drop the date if it breaks the timetable ordering."""
+    iso = _iso(text)
+    if iso:
+        return iso, False
+    m = DATE_OCR_NOISE_RX.search(text or "")
+    if not m:
+        return None, False
+    return ("%04d-%02d-%02d" % (int(m.group(3)), MONTHS[m.group(1).lower()],
+                                int(m.group(2))), True)
+
+
+# The offer sentence on the cover restates the fresh-issue SIZE and the OFS SHARE
+# COUNT in prose. On a scanned copy the table cells are the first thing OCR
+# mangles (a leading digit dropped, a share count split across a space) while the
+# sentence survives — so it is the fallback source for exactly those two figures.
+_PROSE_FRESH_RX = re.compile(
+    r"FRESH ISSUE OF UP TO[^\n]{0,120}?AGGREGATING UP TO\s*[^\d\n]{0,4}"
+    r"([\d,]+(?:\.\d+)?)\s*MILLION", re.I)
+_PROSE_OFS_SHARES_RX = re.compile(
+    r"OFFER FOR SALE OF UP TO\s+(\d[\d,\s]{4,14}?)\s*EQUITY SHARES", re.I)
+
+
+def _prose_fresh_issue_amount_line(lines):
+    """(amount_mn, line_index) from the offer sentence, or (None, -1)."""
+    for i, ln in enumerate(lines):
+        m = _PROSE_FRESH_RX.search(ln)
+        if m:
+            return _num(m.group(1)), i
+    return None, -1
+
+
+def _prose_ofs_shares_line(lines):
+    """(share_count, line_index) from the offer sentence, or (None, -1).
+
+    OCR splits the count into groups ("11 848340"). The groups are joined ONLY
+    when the joined number is 6-9 digits, so a genuinely small printed count is
+    never inflated by swallowing the digits of a neighbouring figure."""
+    for i, ln in enumerate(lines):
+        m = _PROSE_OFS_SHARES_RX.search(ln)
+        if m:
+            digits = re.sub(r"[,\s]", "", m.group(1))
+            if 6 <= len(digits) <= 9:
+                return float(digits), i
+    return None, -1
+
+
+def _agrees_within(a, b, tol=0.005):
+    if a is None or b is None or a == 0:
+        return False
+    return abs(a - b) / abs(a) <= tol
+
+
+def _put_table_or_prose(emit, name, table_value, table_page, check_name, check_result,
+                        prose_value, prose_page):
+    """Offer-table field precedence: an arithmetic-checked table value wins; a
+    table value whose check FAILS falls back to the same figure read from the
+    offer sentence; a passing table value the prose contradicts is nulled rather
+    than published (one of the two was mis-read and we cannot tell which)."""
+    passed = bool(check_result[0])
+    if passed and prose_value is not None and not _agrees_within(table_value, prose_value):
+        emit.null(name, "table_prose_disagree", table_page)
+        return
+    if passed or prose_value is None:
+        emit.put(name, table_value, table_page, check_name, check_result)
+        return
+    emit.put(name, prose_value, prose_page, "prose_fallback",
+             (True, "table check %s failed (%s); offer sentence reads %s"
+                    % (check_name, check_result[1], prose_value)))
+    emit.fields[name]["source_text"] = "prose"
+
+
 def _find_row(lines, rx, minvals, start=0):
     """First line matching `rx` that actually CARRIES at least `minvals` numbers.
 
@@ -626,13 +707,27 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
              check_shares_amount(shares_floor, floor, amt_floor))
     emit.put("shares_at_cap", shares_cap, page_for(fi), "shares_x_price_equals_amount",
              check_shares_amount(shares_cap, cap, amt_cap))
-    emit.put("fresh_issue_amount", amt_floor, page_for(fi), "fresh_issue_amount_consistent",
-             (amt_floor is not None and amt_cap == amt_floor,
-              "%s at both prices" % amt_floor if amt_floor == amt_cap
-              else "%s vs %s" % (amt_floor, amt_cap)))
-    emit.put("ofs_amount", ofs_amount, page_for(oi), "ofs_non_negative",
-             (ofs_amount is not None and ofs_amount >= 0, "%s" % ofs_amount))
-    if ofs_shares is None:
+    prose_fresh_amt, pf_idx = _prose_fresh_issue_amount_line(lines)
+    prose_ofs_shares, po_idx = _prose_ofs_shares_line(lines)
+
+    _put_table_or_prose(
+        emit, "fresh_issue_amount", amt_floor, page_for(fi), "fresh_issue_amount_consistent",
+        (amt_floor is not None and amt_cap == amt_floor,
+         "%s at both prices" % amt_floor if amt_floor == amt_cap
+         else "%s vs %s" % (amt_floor, amt_cap)),
+        prose_fresh_amt, page_for(pf_idx))
+
+    # An offer-table AMOUNT is only ever published when the shares x price
+    # arithmetic of its own row holds. A scanned copy loses a leading digit
+    # ("1,990.52" read as ",990.52" -> 1) and a non-negativity test would happily
+    # publish that stray 1 as the offer-for-sale size.
+    ofs_row_empty = oi >= 0 and ofs_shares is None and ofs_amount == 0.0
+    if ofs_row_empty:
+        emit.put("ofs_amount", 0.0, page_for(oi), "ofs_row_carries_no_amount", (True, "0"))
+        emit.null("ofs_shares", "offer_for_sale_row_has_no_share_count", page_for(oi))
+        emit.null("ofs_amount_at_cap", "offer_for_sale_row_has_no_cap_amount", page_for(oi))
+    elif ofs_shares is None and prose_ofs_shares is None:
+        emit.null("ofs_amount", "offer_for_sale_amount_not_arithmetic_checkable", page_for(oi))
         emit.null("ofs_shares", "offer_for_sale_row_has_no_share_count", page_for(oi))
         emit.null("ofs_amount_at_cap", "offer_for_sale_row_has_no_cap_amount", page_for(oi))
     else:
@@ -640,7 +735,10 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
             check_shares_amount(ofs_shares, floor, ofs_amount),
             check_shares_amount(ofs_shares, cap, ofs_amount_cap),
         )
-        emit.put("ofs_shares", ofs_shares, page_for(oi),
+        _put_table_or_prose(emit, "ofs_shares", ofs_shares, page_for(oi),
+                            "ofs_shares_x_price_equals_amount", ofs_check,
+                            prose_ofs_shares, page_for(po_idx))
+        emit.put("ofs_amount", ofs_amount, page_for(oi),
                  "ofs_shares_x_price_equals_amount", ofs_check)
         emit.put("ofs_amount_at_cap", ofs_amount_cap, page_for(oi),
                  "ofs_shares_x_price_equals_amount", ofs_check)
@@ -755,7 +853,7 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
         "listing_date": re.compile(r"Commencement of trading of the Equity Shares", re.I),
     }
     tt = _find(lines, re.compile(r"indicative timetable", re.I))
-    dates, date_pages = {}, {}
+    dates, date_pages, repaired = {}, {}, set()
     for name, rx in labels.items():
         idx = _find(lines, rx, max(tt, 0))
         if idx < 0:
@@ -765,19 +863,37 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
         # The newspaper's two-column layout splits "On or about" from its date, and
         # the intervening line belongs to the OTHER column — so look ahead up to two
         # lines, stopping at the next event label so a date is never stolen from it.
-        iso = None
+        iso, was_repaired = None, False
         for look in range(idx, min(idx + 3, len(lines))):
             if look > idx and any(r.search(lines[look]) for n, r in labels.items() if n != name):
                 break
-            iso = _iso(lines[look])
+            iso, was_repaired = _iso_ocr(lines[look])
             if iso:
                 break
         if iso:
             dates[name] = iso
             date_pages[name] = page_for(idx)
+            if was_repaired:
+                repaired.add(name)
     tl = check_timeline(dates)
+    # A date that only parsed because of the OCR-noise repair and then breaks the
+    # anchor < open < close ordering is a bad REPAIR, not a bad document: drop it
+    # (with its own reason) and re-check the rest, rather than nulling the whole
+    # timetable on it.
+    dropped = set()
+    if not tl[0]:
+        for name in sorted(repaired):
+            trial = {k: v for k, v in dates.items() if k != name}
+            if check_timeline(trial)[0]:
+                dropped.add(name)
+                dates = trial
+                tl = check_timeline(dates)
+                break
     for name in labels:
-        emit.put(name, dates.get(name), date_pages.get(name), "timeline_ordering", tl)
+        if name in dropped:
+            emit.null(name, "date_order_after_ocr_repair", date_pages.get(name))
+        else:
+            emit.put(name, dates.get(name), date_pages.get(name), "timeline_ordering", tl)
 
     ui = _find(lines, re.compile(r"UPI mandate end time", re.I))
     upi = None
