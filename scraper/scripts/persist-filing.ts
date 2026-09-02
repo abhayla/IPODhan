@@ -190,9 +190,13 @@ async function main(): Promise<void> {
     console.log(JSON.stringify(agreement, null, 2));
 
     if (agreement.skipped_cross_document_unit_unknown) {
+      // Two calls rather than one embedded newline: a patching script turned an
+      // escaped-newline sequence into a REAL line break here and esbuild refused
+      // the whole file, so the CLI would not start at all. Guarded by
+      // tests/unit/scripts/scripts-parse.test.ts.
+      console.error('');
       console.error(
-        '
-REFUSED: ' + agreement.skipped_cross_document_unit_unknown +
+        `REFUSED: ${agreement.skipped_cross_document_unit_unknown}` +
           ' - the two documents cannot be compared, so neither financial series is written.'
       );
     }
