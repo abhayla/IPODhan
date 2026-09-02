@@ -1,0 +1,144 @@
+{
+  "ipoId": "06549215-abe2-46fd-b1e0-629e27db38e7",
+  "companyName": "Purple Style Labs Limited",
+  "stage": "OPEN",
+  "skipped": false,
+  "skipReason": "7 document type(s) due at stage OPEN",
+  "due": [
+    "DRHP",
+    "RHP",
+    "PRICE_BAND_AD",
+    "CORRIGENDUM",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "ANCHOR_ALLOCATION_REPORT",
+    "ADDENDUM"
+  ],
+  "found": [
+    "DRHP",
+    "RHP",
+    "PRICE_BAND_AD",
+    "RATIOS_BASIS_ISSUE_PRICE",
+    "ANCHOR_ALLOCATION_REPORT"
+  ],
+  "notYetFiled": [
+    "CORRIGENDUM",
+    "ADDENDUM"
+  ],
+  "blocked": [],
+  "notApplicable": [],
+  "superseded": [],
+  "leadManagers": [
+    "Axis Capital Limited",
+    "IIFL Capital Services Limited (formerly known as IIFL Securities Limited)"
+  ],
+  "attempts": [
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 340,
+      "outcome": "ok",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7918"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 5411,
+      "outcome": "ok",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=PERNIASPOP&series=EQ"
+    },
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 5724,
+      "outcome": "downloaded (cover_check: passed)",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/PurpleStyleLabsLimitedRHP_20260826133641.pdf",
+      "sha256": "700fce509849fa36e45136e32f6d333c533cd4cc55950ff6a6c45c15ed6bb0fa"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[DRHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 1440,
+      "outcome": "downloaded (zip member: RHP_PERNIASPOP/Purple Style Labs Limited - RHP.pdf; cover_check: passed)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_PERNIASPOP.zip",
+      "sha256": "700fce509849fa36e45136e32f6d333c533cd4cc55950ff6a6c45c15ed6bb0fa"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 0,
+      "outcome": "deduped_by_sha256_to:DRHP",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_PERNIASPOP.zip",
+      "sha256": "700fce509849fa36e45136e32f6d333c533cd4cc55950ff6a6c45c15ed6bb0fa"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "BSE",
+      "http": 200,
+      "ms": 593,
+      "outcome": "downloaded (cover_check: passed)",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/PURPLESTYLELABSLIMITEDPriceBandad_20260826133641.pdf",
+      "sha256": "cebd80369bf44a7fcfd49bd4f45c343782d33964004543df51a259f1c79a9b0d"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 1572,
+      "outcome": "downloaded (zip member: RATIOS_PERNIASPOP/Purplestyle PB ad Navshakti.pdf; cover_check: skipped_no_text_layer)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_PERNIASPOP.zip",
+      "sha256": "2fb67097f6a72e83603567ee0054c1075f669c3c98f1549da7a3052fe7710298"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "NSE",
+      "http": 200,
+      "ms": 287,
+      "outcome": "downloaded (zip member: ANCHOR_PERNIASPOP/Purple Style Labs -Anchor Allocation - SE Intimation Letter 28Aug2026.pdf; cover_check: passed)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_PERNIASPOP.zip",
+      "sha256": "db6fa947caf69fae338c21f1862a4faa46285bf5f6c35564c7fc104147280926"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    },
+    {
+      "source": "CHAIN",
+      "http": 0,
+      "ms": 0,
+      "outcome": "rungs[ADDENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+    }
+  ],
+  "networkCalls": 7,
+  "leadManagerSource": "BSE",
+  "resolvedBseIpoNo": 7918,
+  "learnedCompanyWebsite": "https://www.purplestylelabs.com"
+}

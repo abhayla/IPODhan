@@ -1,0 +1,375 @@
+{
+  "documents": [
+    {
+      "id": "d71212bd-dd52-43b8-811e-4d3353bc1a6f",
+      "ipo_id": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "type": "DRHP",
+      "title": "Prospectus GID",
+      "is_active": true,
+      "media_type": "PDF",
+      "extraction_status": "PENDING",
+      "sha256": "700fce509849fa36e45136e32f6d333c533cd4cc55950ff6a6c45c15ed6bb0fa",
+      "file_size": "9463961",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/PurpleStyleLabsLimitedRHP_20260826133641.pdf"
+    },
+    {
+      "id": "8412d8af-cc12-4e60-b963-095e0b91d22d",
+      "ipo_id": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "type": "PRICE_BAND_AD",
+      "title": "Corrigendum",
+      "is_active": true,
+      "media_type": "PDF",
+      "extraction_status": "PENDING",
+      "sha256": "cebd80369bf44a7fcfd49bd4f45c343782d33964004543df51a259f1c79a9b0d",
+      "file_size": "1102578",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/PURPLESTYLELABSLIMITEDPriceBandad_20260826133641.pdf"
+    },
+    {
+      "id": "fa209729-ae13-4183-818b-5798e26c8947",
+      "ipo_id": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "type": "RATIOS_BASIS_ISSUE_PRICE",
+      "title": "PERNIASPOP — Ratios / Basis of Issue Price",
+      "is_active": true,
+      "media_type": "PDF",
+      "extraction_status": "PENDING",
+      "sha256": "2fb67097f6a72e83603567ee0054c1075f669c3c98f1549da7a3052fe7710298",
+      "file_size": "12529900",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_PERNIASPOP.zip"
+    },
+    {
+      "id": "9bf8ed62-8698-4f1a-a021-8e3517d8c818",
+      "ipo_id": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "type": "ANCHOR_ALLOCATION_REPORT",
+      "title": "PERNIASPOP — Anchor Allocation Report",
+      "is_active": true,
+      "media_type": "PDF",
+      "extraction_status": "PENDING",
+      "sha256": "db6fa947caf69fae338c21f1862a4faa46285bf5f6c35564c7fc104147280926",
+      "file_size": "1087360",
+      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_PERNIASPOP.zip"
+    }
+  ],
+  "document_fetch_state": [
+    {
+      "id": "1a308522-32a3-4880-a745-502b813c454a",
+      "ipo_id": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "doc_type": "DRHP",
+      "state": "FOUND",
+      "document_id": "d71212bd-dd52-43b8-811e-4d3353bc1a6f",
+      "attempts": 1,
+      "last_attempt_at": "2026-09-02T05:29:02.712Z",
+      "next_retry_at": null,
+      "last_attempt": [
+        {
+          "ms": 340,
+          "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7918",
+          "http": 200,
+          "source": "BSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 5411,
+          "url": "https://www.nseindia.com/api/ipo-detail?symbol=PERNIASPOP&series=EQ",
+          "http": 200,
+          "source": "NSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 5724,
+          "url": "https://listing.bseindia.com/Download//PreAnchor/PurpleStyleLabsLimitedRHP_20260826133641.pdf",
+          "http": 200,
+          "sha256": "700fce509849fa36e45136e32f6d333c533cd4cc55950ff6a6c45c15ed6bb0fa",
+          "source": "BSE",
+          "outcome": "downloaded (cover_check: passed)"
+        },
+        {
+          "ms": 0,
+          "http": 0,
+          "source": "CHAIN",
+          "outcome": "rungs[DRHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+        }
+      ],
+      "first_seen_at": "2026-09-02T05:29:10.182Z",
+      "blocked_since_at": null,
+      "extracted_at": null,
+      "extractor_version": null,
+      "filing_date": null,
+      "created_at": "2026-09-02T05:29:10.182Z",
+      "updated_at": "2026-09-02T05:29:17.283Z"
+    },
+    {
+      "id": "8f470517-494d-4b15-8ee5-1da47581738e",
+      "ipo_id": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "doc_type": "RHP",
+      "state": "FOUND",
+      "document_id": "d71212bd-dd52-43b8-811e-4d3353bc1a6f",
+      "attempts": 1,
+      "last_attempt_at": "2026-09-02T05:29:02.712Z",
+      "next_retry_at": null,
+      "last_attempt": [
+        {
+          "ms": 340,
+          "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7918",
+          "http": 200,
+          "source": "BSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 5411,
+          "url": "https://www.nseindia.com/api/ipo-detail?symbol=PERNIASPOP&series=EQ",
+          "http": 200,
+          "source": "NSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 1440,
+          "url": "https://nsearchives.nseindia.com/content/ipo/RHP_PERNIASPOP.zip",
+          "http": 200,
+          "sha256": "700fce509849fa36e45136e32f6d333c533cd4cc55950ff6a6c45c15ed6bb0fa",
+          "source": "NSE",
+          "outcome": "downloaded (zip member: RHP_PERNIASPOP/Purple Style Labs Limited - RHP.pdf; cover_check: passed)"
+        },
+        {
+          "ms": 0,
+          "url": "https://nsearchives.nseindia.com/content/ipo/RHP_PERNIASPOP.zip",
+          "http": 200,
+          "sha256": "700fce509849fa36e45136e32f6d333c533cd4cc55950ff6a6c45c15ed6bb0fa",
+          "source": "NSE",
+          "outcome": "deduped_by_sha256_to:DRHP"
+        },
+        {
+          "ms": 0,
+          "http": 0,
+          "source": "CHAIN",
+          "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+        }
+      ],
+      "first_seen_at": "2026-09-02T05:29:19.593Z",
+      "blocked_since_at": null,
+      "extracted_at": null,
+      "extractor_version": null,
+      "filing_date": null,
+      "created_at": "2026-09-02T05:29:19.593Z",
+      "updated_at": "2026-09-02T05:29:20.013Z"
+    },
+    {
+      "id": "dd91c38a-5bea-43dd-ac5a-e34248c50721",
+      "ipo_id": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "doc_type": "ADDENDUM",
+      "state": "NOT_YET_FILED",
+      "document_id": null,
+      "attempts": 1,
+      "last_attempt_at": "2026-09-02T05:29:02.712Z",
+      "next_retry_at": "2026-09-02T05:59:02.712Z",
+      "last_attempt": [
+        {
+          "ms": 340,
+          "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7918",
+          "http": 200,
+          "source": "BSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 5411,
+          "url": "https://www.nseindia.com/api/ipo-detail?symbol=PERNIASPOP&series=EQ",
+          "http": 200,
+          "source": "NSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 0,
+          "http": 0,
+          "source": "CHAIN",
+          "outcome": "rungs[ADDENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+        }
+      ],
+      "first_seen_at": "2026-09-02T05:29:37.040Z",
+      "blocked_since_at": null,
+      "extracted_at": null,
+      "extractor_version": null,
+      "filing_date": null,
+      "created_at": "2026-09-02T05:29:37.040Z",
+      "updated_at": "2026-09-02T05:29:35.989Z"
+    },
+    {
+      "id": "a5c4174f-d6a1-4ff7-9e42-5fe7eb0f0769",
+      "ipo_id": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "doc_type": "PRICE_BAND_AD",
+      "state": "FOUND",
+      "document_id": "8412d8af-cc12-4e60-b963-095e0b91d22d",
+      "attempts": 1,
+      "last_attempt_at": "2026-09-02T05:29:02.712Z",
+      "next_retry_at": null,
+      "last_attempt": [
+        {
+          "ms": 340,
+          "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7918",
+          "http": 200,
+          "source": "BSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 5411,
+          "url": "https://www.nseindia.com/api/ipo-detail?symbol=PERNIASPOP&series=EQ",
+          "http": 200,
+          "source": "NSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 593,
+          "url": "https://listing.bseindia.com/Download//PreAnchor/PURPLESTYLELABSLIMITEDPriceBandad_20260826133641.pdf",
+          "http": 200,
+          "sha256": "cebd80369bf44a7fcfd49bd4f45c343782d33964004543df51a259f1c79a9b0d",
+          "source": "BSE",
+          "outcome": "downloaded (cover_check: passed)"
+        },
+        {
+          "ms": 0,
+          "http": 0,
+          "source": "CHAIN",
+          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+        }
+      ],
+      "first_seen_at": "2026-09-02T05:29:22.114Z",
+      "blocked_since_at": null,
+      "extracted_at": null,
+      "extractor_version": null,
+      "filing_date": null,
+      "created_at": "2026-09-02T05:29:22.114Z",
+      "updated_at": "2026-09-02T05:29:23.622Z"
+    },
+    {
+      "id": "3b0c432a-6fcb-40b6-aba1-275031cec49c",
+      "ipo_id": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "doc_type": "CORRIGENDUM",
+      "state": "NOT_YET_FILED",
+      "document_id": null,
+      "attempts": 1,
+      "last_attempt_at": "2026-09-02T05:29:02.712Z",
+      "next_retry_at": "2026-09-02T05:59:02.712Z",
+      "last_attempt": [
+        {
+          "ms": 340,
+          "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7918",
+          "http": 200,
+          "source": "BSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 5411,
+          "url": "https://www.nseindia.com/api/ipo-detail?symbol=PERNIASPOP&series=EQ",
+          "http": 200,
+          "source": "NSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 0,
+          "http": 0,
+          "source": "CHAIN",
+          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+        }
+      ],
+      "first_seen_at": "2026-09-02T05:29:26.177Z",
+      "blocked_since_at": null,
+      "extracted_at": null,
+      "extractor_version": null,
+      "filing_date": null,
+      "created_at": "2026-09-02T05:29:26.177Z",
+      "updated_at": "2026-09-02T05:29:25.231Z"
+    },
+    {
+      "id": "bc042a9e-849d-48e6-8882-e90b94062b16",
+      "ipo_id": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "doc_type": "RATIOS_BASIS_ISSUE_PRICE",
+      "state": "FOUND",
+      "document_id": "fa209729-ae13-4183-818b-5798e26c8947",
+      "attempts": 1,
+      "last_attempt_at": "2026-09-02T05:29:02.712Z",
+      "next_retry_at": null,
+      "last_attempt": [
+        {
+          "ms": 340,
+          "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7918",
+          "http": 200,
+          "source": "BSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 5411,
+          "url": "https://www.nseindia.com/api/ipo-detail?symbol=PERNIASPOP&series=EQ",
+          "http": 200,
+          "source": "NSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 1572,
+          "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_PERNIASPOP.zip",
+          "http": 200,
+          "sha256": "2fb67097f6a72e83603567ee0054c1075f669c3c98f1549da7a3052fe7710298",
+          "source": "NSE",
+          "outcome": "downloaded (zip member: RATIOS_PERNIASPOP/Purplestyle PB ad Navshakti.pdf; cover_check: skipped_no_text_layer)"
+        },
+        {
+          "ms": 0,
+          "http": 0,
+          "source": "CHAIN",
+          "outcome": "rungs[RATIOS_BASIS_ISSUE_PRICE]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+        }
+      ],
+      "first_seen_at": "2026-09-02T05:29:27.801Z",
+      "blocked_since_at": null,
+      "extracted_at": null,
+      "extractor_version": null,
+      "filing_date": null,
+      "created_at": "2026-09-02T05:29:27.801Z",
+      "updated_at": "2026-09-02T05:29:30.696Z"
+    },
+    {
+      "id": "2fb2bbac-d983-4897-ae51-3345e67faad2",
+      "ipo_id": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "doc_type": "ANCHOR_ALLOCATION_REPORT",
+      "state": "FOUND",
+      "document_id": "9bf8ed62-8698-4f1a-a021-8e3517d8c818",
+      "attempts": 1,
+      "last_attempt_at": "2026-09-02T05:29:02.712Z",
+      "next_retry_at": null,
+      "last_attempt": [
+        {
+          "ms": 340,
+          "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7918",
+          "http": 200,
+          "source": "BSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 5411,
+          "url": "https://www.nseindia.com/api/ipo-detail?symbol=PERNIASPOP&series=EQ",
+          "http": 200,
+          "source": "NSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 287,
+          "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_PERNIASPOP.zip",
+          "http": 200,
+          "sha256": "db6fa947caf69fae338c21f1862a4faa46285bf5f6c35564c7fc104147280926",
+          "source": "NSE",
+          "outcome": "downloaded (zip member: ANCHOR_PERNIASPOP/Purple Style Labs -Anchor Allocation - SE Intimation Letter 28Aug2026.pdf; cover_check: passed)"
+        },
+        {
+          "ms": 0,
+          "http": 0,
+          "source": "CHAIN",
+          "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+        }
+      ],
+      "first_seen_at": "2026-09-02T05:29:33.023Z",
+      "blocked_since_at": null,
+      "extracted_at": null,
+      "extractor_version": null,
+      "filing_date": null,
+      "created_at": "2026-09-02T05:29:33.023Z",
+      "updated_at": "2026-09-02T05:29:34.436Z"
+    }
+  ]
+}

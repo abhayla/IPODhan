@@ -1,0 +1,19 @@
+{
+  "task": "T-403",
+  "ranAt": "2026-09-02T10:59:41.607Z",
+  "persistence": "POSTGRES via DATABASE_URL (--db)",
+  "downloadsEnabled": true,
+  "storeDir": "D:/Abhay/Ventures/IPODhan-t405/.prospectus-acceptance/psl-walk",
+  "run1Calls": 8,
+  "run2Calls": 0,
+  "run3Calls": 0,
+  "checks": [
+    {
+      "id": "IPOS-PERNIASPOP",
+      "name": "Purple Style Labs Limited: run 2 costs ZERO network calls",
+      "pass": true,
+      "detail": "run1 found=[DRHP, RHP, PRICE_BAND_AD, RATIOS_BASIS_ISSUE_PRICE, ANCHOR_ALLOCATION_REPORT] run1 calls=7 run2 calls=0 skipped=true"
+    }
+  ],
+  "allPassed": true
+}

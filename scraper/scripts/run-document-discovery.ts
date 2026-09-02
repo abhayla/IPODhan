@@ -30,6 +30,13 @@
  *   DATABASE_URL=... npx tsx scripts/run-document-discovery.ts --db
  *   npx tsx scripts/run-document-discovery.ts --evidence-dir=path/to/dir
  *   DATABASE_URL=... npx tsx scripts/run-document-discovery.ts --db --reset
+ *   DATABASE_URL=... npx tsx scripts/run-document-discovery.ts --db --ipos=PERNIASPOP   (T-433)
+ *
+ * `--ipos <symbol|name,...>` (T-433) replaces the four hardcoded acceptance
+ * IPOs with real row(s) loaded from `DATABASE_URL`'s `ipos` table, one per
+ * comma-separated selector, matched by `symbol = selector OR company_name
+ * ILIKE '%selector%'`. Requires `--db`. Without `--ipos` nothing changes —
+ * the four-IPO acceptance fixture below stays the default.
  *
  * `--db` swaps the in-memory store for the real `DocumentFetchStateRepository`
  * against `DATABASE_URL`. It requires the four acceptance IPO rows to exist
@@ -66,6 +73,7 @@ import {
 } from '../src/services/data-persister.js';
 import { readback } from './readback-document-state.js';
 import { NetworkCounter } from '../src/utils/network-counter.js';
+import { deriveLifecycleStage } from '../src/scheduler/stage-reconciler.js';
 
 /**
  * The four acceptance IPOs. `status`, `segment` and the dates are the values
@@ -179,6 +187,107 @@ export function assertTestDatabase(databaseUrl: string): void {
         'do that against an obvious test database.'
     );
   }
+}
+
+/**
+ * T-433: one row of `ipos` as returned by the `--ipos <symbol|name,...>`
+ * selector query — the columns the acceptance-fixture shape (`DiscoveryIpo`
+ * + `dbStatus`/`closeDate`/`accId`) is built from.
+ */
+export interface IposSelectorRow {
+  id: string;
+  companyName: string;
+  symbol: string | null;
+  segment: string | null;
+  status: string;
+  priceRangeMin: number | string | null;
+  closeDate: string | null;
+  bseIpoNo: number | null;
+  companyWebsite: string | null;
+  verifierUrl: string | null;
+}
+
+/** A selector's row-fetch: `symbol = selector OR company_name ILIKE '%'||selector||'%'`. */
+export type IposSelectorQuery = (selector: string) => Promise<IposSelectorRow[]>;
+
+/**
+ * T-433: resolve `--ipos <symbol|name,...>` selectors to real `ipos` rows, in
+ * the same literal shape `ACCEPTANCE_IPOS` uses, so the rest of this harness
+ * (which is written against that shape) needs no other change. Pulled out as
+ * a pure function of an injectable query so it is unit-testable with a mock —
+ * no live DB required.
+ */
+export async function resolveIposFromSelectors(
+  selectors: string[],
+  query: IposSelectorQuery
+): Promise<(DiscoveryIpo & { dbStatus: string; closeDate: string; accId: string })[]> {
+  if (selectors.length === 0) {
+    throw new Error('--ipos requires at least one symbol or name, comma-separated');
+  }
+  const out: (DiscoveryIpo & { dbStatus: string; closeDate: string; accId: string })[] = [];
+  for (const selector of selectors) {
+    const rows = await query(selector);
+    if (rows.length === 0) {
+      throw new Error(
+        `--ipos: no ipos row matched "${selector}" (symbol = or company_name ILIKE '%${selector}%')`
+      );
+    }
+    const row = rows[0];
+    out.push({
+      id: row.id,
+      accId: row.id,
+      companyName: row.companyName,
+      symbol: row.symbol,
+      segment: row.segment,
+      stage: deriveLifecycleStage({ status: row.status, priceRangeMin: row.priceRangeMin }),
+      dbStatus: row.status,
+      closeDate: row.closeDate ?? '',
+      bseIpoNo: row.bseIpoNo,
+      companyWebsite: row.companyWebsite,
+      verifierUrl: row.verifierUrl,
+    });
+  }
+  return out;
+}
+
+/** Real Postgres-backed `IposSelectorQuery`, used by `main()` for a live `--ipos` run. */
+async function makeDbIposSelectorQuery(databaseUrl: string): Promise<{
+  query: IposSelectorQuery;
+  close: () => Promise<void>;
+}> {
+  const { Pool } = await import('pg');
+  const { drizzle } = await import('drizzle-orm/node-postgres');
+  const schema = await import('@ipodhan/shared/db/schema');
+  const { sql } = await import('drizzle-orm');
+  const pool = new Pool({ connectionString: databaseUrl, max: 2, options: '-c timezone=UTC' });
+  const db = drizzle(pool, { schema });
+  return {
+    query: async (selector: string) => {
+      const found = await db.execute(
+        sql`SELECT id, company_name, symbol, segment, status, price_range_min, close_date,
+                   bse_ipo_no, company_website, verifier_url
+            FROM ipos
+            WHERE symbol = ${selector} OR company_name ILIKE ${'%' + selector + '%'}
+            LIMIT 1`
+      );
+      const rows = (found as unknown as { rows?: Record<string, unknown>[] }).rows ?? [];
+      return rows.map((r) => ({
+        id: String(r.id),
+        companyName: String(r.company_name),
+        symbol: (r.symbol as string | null) ?? null,
+        segment: (r.segment as string | null) ?? null,
+        status: String(r.status),
+        priceRangeMin: (r.price_range_min as number | string | null) ?? null,
+        closeDate: r.close_date ? String(r.close_date) : null,
+        bseIpoNo: (r.bse_ipo_no as number | null) ?? null,
+        companyWebsite: (r.company_website as string | null) ?? null,
+        verifierUrl: (r.verifier_url as string | null) ?? null,
+      }));
+    },
+    close: async () => {
+      await pool.end();
+    },
+  };
 }
 
 async function makeStore(useDb: boolean): Promise<{
@@ -376,6 +485,32 @@ async function main(): Promise<void> {
   mkdirSync(evidenceDir, { recursive: true });
 
   const useDb = process.argv.includes('--db');
+
+  // T-433: `--ipos <symbol|name,...>` swaps the hardcoded 4-IPO
+  // ACCEPTANCE_IPOS fixture for real row(s) loaded from the target DB, by
+  // symbol or ILIKE company-name match. Default (no `--ipos`) behavior — the
+  // T-403 acceptance fixture — is unchanged.
+  const iposFlag = process.argv.find((a) => a.startsWith('--ipos='));
+  const iposMode = Boolean(iposFlag);
+  if (iposMode) {
+    if (!useDb) throw new Error('--ipos requires --db (the IPO list is loaded from the target DB)');
+    const url = process.env.DATABASE_URL;
+    if (!url) throw new Error('--ipos requires DATABASE_URL');
+    assertTestDatabase(url);
+    const selectors = iposFlag!
+      .slice('--ipos='.length)
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const { query, close: closeSelectorQuery } = await makeDbIposSelectorQuery(url);
+    try {
+      const resolved = await resolveIposFromSelectors(selectors, query);
+      ACCEPTANCE_IPOS.splice(0, ACCEPTANCE_IPOS.length, ...resolved);
+    } finally {
+      await closeSelectorQuery();
+    }
+  }
+
   const { store, documents: realDocuments, hintWriter, dump, close } = await makeStore(useDb);
 
   console.log('=== T-403 acceptance run 1 (discovery) ===');
@@ -434,6 +569,12 @@ async function main(): Promise<void> {
   // pass/fail rather than leaving it to a human reading json.
   // Matched by COMPANY NAME, not id: in --db mode each acceptance IPO's id is
   // replaced with its real `ipos.id`, so an id lookup silently returns undefined.
+  // T-433: the fixed A1-A9 checks below are literal to the 4-IPO acceptance
+  // fixture (hardcoded accIds/company names). In `--ipos` mode the resolved
+  // IPO(s) are arbitrary, so a generic per-IPO check set is built instead —
+  // see the `else` branch below.
+  let checks: { id: string; name: string; pass: boolean; detail: string }[];
+  if (!iposMode) {
   const find = (e: RunEvidence, accId: string) => {
     const wanted = ACCEPTANCE_IPOS.find((i) => i.id === accId || i.accId === accId);
     return e.results.find((r) => r.companyName === wanted?.companyName)!;
@@ -444,7 +585,7 @@ async function main(): Promise<void> {
   const skyways2 = find(run2, 'acc-skyways');
   const madhur2 = find(run2, 'acc-madhurknit');
 
-  const checks = [
+  checks = [
     {
       id: 'A1',
       name: 'Skyways: >=4 documents typed RHP/CORRIGENDUM/ADDENDUM/PRICE_BAND_AD',
@@ -638,6 +779,23 @@ async function main(): Promise<void> {
         .join(' | '),
     },
   ];
+  } else {
+    // T-433: generic per-IPO checks for `--ipos` mode — only claim run2 costs
+    // zero network calls (the contract actually asked for), never the
+    // fixture-specific document-shape assertions above.
+    checks = ACCEPTANCE_IPOS.map((ipo) => {
+      const r1 = run1.results.find((r) => r.companyName === ipo.companyName);
+      const r2 = run2.results.find((r) => r.companyName === ipo.companyName);
+      return {
+        id: `IPOS-${ipo.symbol ?? ipo.companyName}`,
+        name: `${ipo.companyName}: run 2 costs ZERO network calls`,
+        pass: (r2?.networkCalls ?? -1) === 0,
+        detail:
+          `run1 found=[${r1?.found.join(', ') ?? '-'}] run1 calls=${r1?.networkCalls} ` +
+          `run2 calls=${r2?.networkCalls} skipped=${r2?.skipped}`,
+      };
+    });
+  }
 
   const summary = {
     task: 'T-403',

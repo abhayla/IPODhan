@@ -1,0 +1,79 @@
+{
+  "total": 8,
+  "byIpo": {
+    "(shared:bse-board)": 1,
+    "06549215-abe2-46fd-b1e0-629e27db38e7": 7
+  },
+  "byHost": {
+    "api.bseindia.com": 2,
+    "www.nseindia.com": 1,
+    "listing.bseindia.com": 2,
+    "nsearchives.nseindia.com": 3
+  },
+  "calls": [
+    {
+      "host": "api.bseindia.com",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/IPO_HomePageDetail/w",
+      "ipoKey": "(shared:bse-board)",
+      "status": 200,
+      "ms": 213,
+      "bytes": 4631
+    },
+    {
+      "host": "api.bseindia.com",
+      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7918",
+      "ipoKey": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "status": 200,
+      "ms": 340,
+      "bytes": 9501
+    },
+    {
+      "host": "www.nseindia.com",
+      "url": "https://www.nseindia.com/api/ipo-detail?symbol=PERNIASPOP&series=EQ",
+      "ipoKey": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "status": 200,
+      "ms": 5411,
+      "bytes": 19177
+    },
+    {
+      "host": "listing.bseindia.com",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/PurpleStyleLabsLimitedRHP_20260826133641.pdf",
+      "ipoKey": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "status": 200,
+      "ms": 2150,
+      "bytes": 9463961
+    },
+    {
+      "host": "nsearchives.nseindia.com",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_PERNIASPOP.zip",
+      "ipoKey": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "status": 200,
+      "ms": 1137,
+      "bytes": 9353239
+    },
+    {
+      "host": "listing.bseindia.com",
+      "url": "https://listing.bseindia.com/Download//PreAnchor/PURPLESTYLELABSLIMITEDPriceBandad_20260826133641.pdf",
+      "ipoKey": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "status": 200,
+      "ms": 503,
+      "bytes": 1102578
+    },
+    {
+      "host": "nsearchives.nseindia.com",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_PERNIASPOP.zip",
+      "ipoKey": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "status": 200,
+      "ms": 1211,
+      "bytes": 17238657
+    },
+    {
+      "host": "nsearchives.nseindia.com",
+      "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_PERNIASPOP.zip",
+      "ipoKey": "06549215-abe2-46fd-b1e0-629e27db38e7",
+      "status": 200,
+      "ms": 179,
+      "bytes": 990595
+    }
+  ]
+}
