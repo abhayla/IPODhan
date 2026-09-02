@@ -734,13 +734,22 @@ report_wired_jobs() {
     warn "report_wired_jobs: could not read scraper/src/index.ts at $SHORT_SHA — cannot verify job wiring"
     return 0
   fi
+  # T-340 moved wiring from bare `await triggerX()` calls to
+  # `runStep(cycleId, 'stepName', triggerX)` (the step-ledger wrapper) —
+  # #259: this grep still looked for the old bare-call form only, so every
+  # T-340-wired job reported "NOT wired" here even though it demonstrably
+  # ran. Match EITHER form so the next wiring refactor doesn't silently make
+  # this report lie again, and require a real call (not a comment) so a job
+  # name merely mentioned in a comment/string never counts as wired.
+  local non_comment_content
+  non_comment_content="$(printf '%s\n' "$idx_content" | grep -Ev '^[[:space:]]*//')"
   local entry job rest call flag flag_val
   for entry in "duplicateSweep:triggerDuplicateSweep:" "stageReconciler:triggerStageReconciler:ENABLE_STAGE_RECONCILER" "primarySourceDiscovery:triggerPrimarySourceDiscovery:ENABLE_PRIMARY_SOURCE_DISCOVERY"; do
     job="${entry%%:*}"
     rest="${entry#*:}"
     call="${rest%%:*}"
     flag="${rest#*:}"
-    if printf '%s' "$idx_content" | grep -q "await ${call}()"; then
+    if printf '%s\n' "$non_comment_content" | grep -Eq "runStep\\([^)]*,[[:space:]]*'${job}'[[:space:]]*,[[:space:]]*${call}[[:space:]]*\\)|await[[:space:]]+${call}\\(\\)"; then
       if [ -n "$flag" ]; then
         flag_val="unset"
         if (( ! DRY_RUN )); then
@@ -764,7 +773,7 @@ report_wired_jobs() {
         log "job wired: $job (${call}(), always-on/cadence-gated)"
       fi
     else
-      warn "job NOT wired: $job — expected 'await ${call}()' in scraper/src/index.ts at $SHORT_SHA"
+      warn "job NOT wired: $job — expected \"runStep(cycleId, '${job}', ${call})\" or 'await ${call}()' in scraper/src/index.ts at $SHORT_SHA"
     fi
   done
 }

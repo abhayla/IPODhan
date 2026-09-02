@@ -729,6 +729,62 @@ else
   rm -rf "$ENVDIR13"
 fi
 
+# --- Case 13b: #259 negative — a job name that appears ONLY inside a ------
+# --- comment (never in a real `runStep(cycleId, 'job', triggerX)` or ------
+# --- legacy `await triggerX()` call) MUST be reported NOT wired. Proves ---
+# --- the substance check isn't fooled by a mention in prose, and that a ---
+# --- genuinely-wired sibling job in the same file still reports wired. ----
+if [ -z "$REPORT_FN" ]; then
+  fail "case 13b: could not extract report_wired_jobs() from $DEPLOY_SCRIPT — function renamed?"
+else
+  set +e
+  (
+    set -euo pipefail
+    eval "$REPORT_FN"
+    log() { echo "==> $*"; }
+    warn() { echo "WARN: $*" >&2; }
+    DRY_RUN=1
+    SHORT_SHA="deadbee"
+    SHA="deadbee"
+    REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+    # Shadow `git` so report_wired_jobs() (which shells out to
+    # `git show "$SHA:scraper/src/index.ts"`) reads this synthetic file
+    # instead of the real committed tree.
+    git() {
+      if [ "$1" = "show" ]; then
+        cat <<'IDXEOF'
+      // duplicateSweep used to run via runStep(cycleId, 'duplicateSweep', triggerDuplicateSweep)
+      // but that call was removed below - only this comment still names it.
+      await runStep(cycleId, 'stageReconciler', triggerStageReconciler);
+      await runStep(cycleId, 'primarySourceDiscovery', triggerPrimarySourceDiscovery);
+IDXEOF
+      fi
+    }
+    report_wired_jobs
+  ) >/tmp/deploy-test-13b.log 2>&1
+  RC13B=$?
+  set -e
+
+  if [ "$RC13B" -ne 0 ]; then
+    fail "case 13b: report_wired_jobs() exited non-zero ($RC13B) on a comment-only mention — should warn, not crash"
+    cat /tmp/deploy-test-13b.log
+  fi
+
+  if grep -q "job NOT wired: duplicateSweep" /tmp/deploy-test-13b.log; then
+    pass "case 13b: a job mentioned only in a comment is reported NOT wired"
+  else
+    fail "case 13b: expected 'job NOT wired: duplicateSweep' when the only mention is a comment"
+    cat /tmp/deploy-test-13b.log
+  fi
+
+  if grep -q "job wired: stageReconciler" /tmp/deploy-test-13b.log; then
+    pass "case 13b: a genuinely-wired sibling job in the same file still reports wired"
+  else
+    fail "case 13b: expected 'job wired: stageReconciler' for a genuinely wired sibling job"
+    cat /tmp/deploy-test-13b.log
+  fi
+fi
+
 # --- Case 14: T-321F — ERR trap must fire inside FUNCTION bodies too -------
 # --- (checker finding: `set -euo pipefail` w/o `-E` does not inherit the ---
 # --- ERR trap into functions/subshells/command substitutions, so the exact -
