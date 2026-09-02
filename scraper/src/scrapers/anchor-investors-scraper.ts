@@ -1,26 +1,41 @@
 /**
  * Anchor Investors Scraper
  *
- * Extracts anchor investor allocation data from DRHP PDFs.
+ * Extracts anchor investor allocation from the exchange's ANCHOR_ALLOCATION_REPORT
+ * (NSE "Anchor Allocation Report", BSE "Anchor_Details") - the "Anchor Intimation
+ * letter" the issuer files on T-1.
  *
- * Features:
- * - Downloads and parses DRHP PDF documents
- * - Extracts "Anchor Investor Allocation" section
- * - Parses investor table (name, type, shares, amount, % of issue)
- * - Calculates aggregates (total shares, total amount, investor count)
- * - Computes lock-in dates (30 days, 90 days from bid date)
- * - Handles multiple DRHP formats and layouts
+ * SOURCE CHANGE (W-39, 2026-09-02). This scraper used to start from the DRHP and
+ * give up with "No DRHP found". That was wrong twice over:
+ *
+ *   * A DRHP cannot carry anchor investors. Anchors are allotted the day before
+ *     the issue opens; the DRHP is filed months earlier and names nobody.
+ *   * The DRHP lookup could not have worked in any case: it filtered on
+ *     `documents.documentType` / `documentName` / `documentUrl`, none of which
+ *     exist - the columns are `type`, `title`, `url`. `scraper/` compiles with
+ *     `strict: false` and has no commit-time type gate, so the dead property
+ *     reads were silently `undefined` and the lookup returned null for every IPO
+ *     on every run. No git history, test, or row shows it ever producing data.
+ *
+ * The DRHP path is therefore deleted rather than kept as a fallback: a fallback
+ * that has never returned a row is not a fallback, it is a place for bugs to hide.
  *
  * @module scrapers/anchor-investors-scraper
  */
 
-import * as pdfParse from 'pdf-parse';
+import { existsSync } from 'fs';
+import { mkdtemp, writeFile } from 'fs/promises';
+import { spawnSync } from 'child_process';
+import { tmpdir } from 'os';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import axios from 'axios';
 import { logger } from '../utils/logger';
-import { DocumentRepository } from '../repositories/document-repository';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '@ipodhan/shared/db/schema';
-import { eq } from 'drizzle-orm';
+import { and, desc, eq } from 'drizzle-orm';
+import { documentPath, getStoreDir } from '../services/document-store';
+import { parseAnchorReport } from './anchor-report-parser';
 
 /**
  * Individual anchor investor data
@@ -57,13 +72,30 @@ interface ScrapeResult {
   companyName: string;
 }
 
+const RUPEES_PER_CRORE = 10_000_000;
+/** SEBI ICDR: the anchor portion may not exceed 60% of the QIB portion. */
+const MAX_ANCHOR_SHARE_OF_QIB = 0.6;
+/** QIB portion of a book-built issue. */
+const QIB_SHARE_OF_ISSUE = 0.5;
+/** Slack on the issue-size check - `issue_size` is a scraped, rounded figure. */
+const ISSUE_SIZE_SLACK = 0.02;
+const SIDECAR_TIMEOUT_MS = 120_000;
+
+const SIDECAR = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../scripts/anchor_report_text.py'
+);
+
 /**
- * Scrapes anchor investor data from DRHP PDF
+ * Scrapes anchor investor data from the IPO's anchor allocation report.
+ *
+ * Returns null - never a partial figure - when the letter cannot be read or its
+ * arithmetic does not check out. A half-parsed anchor book published as fact is
+ * worse than an empty one.
  *
  * @param db - Database instance
  * @param ipoId - IPO identifier
  * @param companyName - Company name (for logging)
- * @returns Anchor investor data or null if not available
  */
 export async function scrapeAnchorInvestors(
   db: NodePgDatabase<typeof schema>,
@@ -73,104 +105,170 @@ export async function scrapeAnchorInvestors(
   try {
     logger.info(`[Anchor Investors] Starting scrape for ${companyName} (${ipoId})`);
 
-    // Step 1: Get DRHP URL from documents table
-    const drhpUrl = await getDRHPUrl(db, ipoId);
-    if (!drhpUrl) {
-      logger.warn(`[Anchor Investors] No DRHP found for ${companyName}`);
+    const document = await getAnchorReport(db, ipoId);
+    if (!document) {
+      logger.warn(`[Anchor Investors] No anchor allocation report on file for ${companyName}`);
       return null;
     }
 
-    logger.info(`[Anchor Investors] DRHP URL found: ${drhpUrl}`);
-
-    // Step 2: Download PDF
-    const pdfBuffer = await downloadPDF(drhpUrl);
-    if (!pdfBuffer) {
-      logger.error(`[Anchor Investors] Failed to download PDF for ${companyName}`);
+    const pdfPath = await resolvePdfPath(document, ipoId);
+    if (!pdfPath) {
+      logger.error(`[Anchor Investors] Anchor report ${document.id} could not be read for ${companyName}`);
       return null;
     }
 
-    logger.info(`[Anchor Investors] PDF downloaded, size: ${pdfBuffer.length} bytes`);
-
-    // Step 3: Extract text from PDF
-    const pdfData = await (pdfParse as any).default(pdfBuffer);
-    const text = pdfData.text;
-
-    logger.info(`[Anchor Investors] PDF parsed, text length: ${text.length} characters`);
-
-    // Step 4: Find anchor investor section
-    const anchorSection = extractAnchorSection(text);
-    if (!anchorSection) {
-      logger.warn(`[Anchor Investors] No anchor investor section found for ${companyName}`);
+    const pages = extractPageTexts(pdfPath);
+    if (!pages) {
+      logger.error(`[Anchor Investors] Text extraction failed for ${companyName}`);
       return null;
     }
 
-    logger.info(`[Anchor Investors] Anchor section found, length: ${anchorSection.length} characters`);
+    const parsed = parseAnchorReport(pages);
+    if (!parsed.ok) {
+      logger.warn(`[Anchor Investors] ${companyName}: ${parsed.reason}`);
+      return null;
+    }
+    const report = parsed.value;
 
-    // Step 5: Parse investor table
-    const investors = parseInvestorTable(anchorSection);
-    if (investors.length === 0) {
-      logger.warn(`[Anchor Investors] No investors parsed for ${companyName}`);
+    const qibReason = await checkAgainstIssueSize(db, ipoId, report.totalAmountRupees);
+    if (qibReason) {
+      logger.warn(`[Anchor Investors] ${companyName}: ${qibReason}`);
       return null;
     }
 
-    logger.info(`[Anchor Investors] Parsed ${investors.length} investors`);
+    const bidDate = report.letterDate;
+    const mutualFunds = new Set(report.mutualFundShares);
 
-    // Step 6: Calculate aggregates
-    const totalShares = investors.reduce((sum, inv) => sum + inv.shares, 0);
-    const totalAmount = investors.reduce((sum, inv) => sum + inv.amount, 0);
-    const investorCount = investors.length;
-
-    // Extract bid date (typically 1 day before IPO open)
-    const bidDate = extractBidDate(anchorSection);
-
-    // Calculate lock-in dates
-    const lockIn50Date = bidDate ? addDays(bidDate, 30) : null;  // 30 days
-    const lockIn100Date = bidDate ? addDays(bidDate, 90) : null; // 90 days
-
-    logger.info(`[Anchor Investors] ✓ Successfully scraped ${investorCount} investors, Total: ₹${totalAmount.toFixed(2)} Cr`);
+    logger.info(
+      `[Anchor Investors] ${companyName}: ${report.rows.length} investors, ` +
+        `${report.totalShares} shares at Rs ${report.bidPrice}, ` +
+        `Rs ${(report.totalAmountRupees / RUPEES_PER_CRORE).toFixed(2)} Cr`
+    );
 
     return {
       bidDate,
-      totalSharesOffered: totalShares,
-      totalAmountRaised: totalAmount,
-      anchorInvestorsCount: investorCount,
-      lockIn50PercentDate: lockIn50Date,
-      lockInRemainingDate: lockIn100Date,
-      investorList: investors
+      totalSharesOffered: report.totalShares,
+      totalAmountRaised: report.totalAmountRupees / RUPEES_PER_CRORE,
+      anchorInvestorsCount: report.rows.length,
+      lockIn50PercentDate: bidDate ? addDays(bidDate, 30) : null,
+      lockInRemainingDate: bidDate ? addDays(bidDate, 90) : null,
+      investorList: report.rows.map((row) => ({
+        name: row.name,
+        // The letter names the mutual-fund allottees in a sub-table and nowhere
+        // states a category for anyone else, so anything not in that sub-table
+        // is reported as unknown rather than guessed at.
+        type: mutualFunds.has(row.shares) ? 'Mutual Fund' : 'Unknown',
+        shares: row.shares,
+        amount: row.amountRupees / RUPEES_PER_CRORE,
+        percentOfIssue: row.percentOfAnchorPortion,
+      })),
     };
-
   } catch (error) {
     logger.error(`[Anchor Investors] Error scraping ${companyName}:`, error);
     return null;
   }
 }
 
+/** The IPO's live anchor allocation report, newest sequence first. */
+async function getAnchorReport(db: NodePgDatabase<typeof schema>, ipoId: string) {
+  const rows = await db
+    .select()
+    .from(schema.documents)
+    .where(
+      and(
+        eq(schema.documents.ipoId, ipoId),
+        eq(schema.documents.type, 'ANCHOR_ALLOCATION_REPORT'),
+        eq(schema.documents.isActive, true)
+      )
+    )
+    .orderBy(desc(schema.documents.sequenceNumber))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
 /**
- * Get DRHP document URL from database
+ * Where the PDF lives on this machine: the document store if the bytes were
+ * kept, the row's own path if it points at a file, otherwise a fresh download.
  */
-async function getDRHPUrl(
-  db: NodePgDatabase<typeof schema>,
+async function resolvePdfPath(
+  document: { url: string; sha256: string | null },
   ipoId: string
 ): Promise<string | null> {
-  try {
-    const documents = await db
-      .select()
-      .from(schema.documents)
-      .where(eq(schema.documents.ipoId, ipoId))
-      .limit(10);
+  if (document.sha256) {
+    const stored = documentPath(ipoId, 'ANCHOR_ALLOCATION_REPORT', document.sha256, getStoreDir());
+    if (existsSync(stored)) return stored;
+  }
+  if (!/^https?:/i.test(document.url) && existsSync(document.url)) return document.url;
 
-    // Look for DRHP document
-    const drhp = documents.find(doc =>
-      doc.documentType === 'DRHP' ||
-      doc.documentName?.toUpperCase().includes('DRHP') ||
-      doc.documentName?.toUpperCase().includes('RED HERRING')
-    );
+  const pdf = await downloadPDF(document.url);
+  if (!pdf) return null;
+  const dir = await mkdtemp(path.join(tmpdir(), 'anchor-report-'));
+  const file = path.join(dir, 'anchor-allocation-report.pdf');
+  await writeFile(file, pdf);
+  return file;
+}
 
-    return drhp?.documentUrl || null;
-  } catch (error) {
-    logger.error('[Anchor Investors] Error fetching DRHP URL:', error);
+/**
+ * Page texts, via the pdfplumber sidecar.
+ *
+ * The letter is a scan whose text layer has no reading order, so `pdf-parse`
+ * returns the table's digits interleaved between rows. Only word coordinates can
+ * rebuild it - see `scripts/anchor_report_text.py`.
+ */
+function extractPageTexts(pdfPath: string): string[] | null {
+  const res = spawnSync('python', [SIDECAR, pdfPath], {
+    encoding: 'utf8',
+    timeout: SIDECAR_TIMEOUT_MS,
+    maxBuffer: 32 * 1024 * 1024,
+    env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+  });
+  if (!res.stdout) {
+    logger.error(`[Anchor Investors] Text sidecar produced no output: ${res.stderr?.slice(0, 300)}`);
     return null;
   }
+  try {
+    const parsed = JSON.parse(res.stdout.trim().split('\n').pop() || '{}');
+    if (parsed.error) {
+      logger.error(`[Anchor Investors] Text sidecar failed: ${parsed.error}`);
+      return null;
+    }
+    return Array.isArray(parsed.pages) ? parsed.pages : null;
+  } catch {
+    logger.error('[Anchor Investors] Text sidecar output was not JSON');
+    return null;
+  }
+}
+
+/**
+ * SEBI caps the anchor portion at 60% of the QIB portion, which is half of a
+ * book-built issue - so the anchor book can never exceed ~30% of the offer.
+ * Checked only when the IPO row carries an issue size; a missing size is not
+ * evidence of anything and must not fail the parse.
+ *
+ * Returns a reason when the letter contradicts the offer, null when it does not.
+ */
+async function checkAgainstIssueSize(
+  db: NodePgDatabase<typeof schema>,
+  ipoId: string,
+  anchorAmountRupees: number
+): Promise<string | null> {
+  const rows = await db
+    .select({ issueSize: schema.ipos.issueSize })
+    .from(schema.ipos)
+    .where(eq(schema.ipos.id, ipoId))
+    .limit(1);
+  const issueSize = Number(rows[0]?.issueSize ?? 0);
+  if (!Number.isFinite(issueSize) || issueSize <= 0) return null;
+
+  const cap = issueSize * QIB_SHARE_OF_ISSUE * MAX_ANCHOR_SHARE_OF_QIB * (1 + ISSUE_SIZE_SLACK);
+  if (anchorAmountRupees > cap) {
+    return (
+      `anchor allocation Rs ${(anchorAmountRupees / RUPEES_PER_CRORE).toFixed(2)} Cr exceeds ` +
+      `60% of the QIB portion (Rs ${(cap / RUPEES_PER_CRORE).toFixed(2)} Cr) for an issue of ` +
+      `Rs ${(issueSize / RUPEES_PER_CRORE).toFixed(2)} Cr`
+    );
+  }
+  return null;
 }
 
 /**
@@ -189,12 +287,11 @@ async function downloadPDF(url: string): Promise<Buffer | null> {
         timeout: 60000, // 60 seconds
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'application/pdf'
-        }
+          Accept: 'application/pdf',
+        },
       });
 
       return Buffer.from(response.data);
-
     } catch (error) {
       lastError = error as Error;
       logger.warn(`[Anchor Investors] Download attempt ${attempt} failed: ${error}`);
@@ -202,7 +299,7 @@ async function downloadPDF(url: string): Promise<Buffer | null> {
       if (attempt < maxRetries) {
         // Exponential backoff: 2s, 4s, 8s
         const delay = Math.pow(2, attempt) * 1000;
-        await new Promise(resolve => setTimeout(resolve, delay));
+        await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
   }
@@ -211,196 +308,6 @@ async function downloadPDF(url: string): Promise<Buffer | null> {
   return null;
 }
 
-/**
- * Extract anchor investor section from PDF text
- *
- * Searches for common section headers:
- * - "Anchor Investor Allocation"
- * - "Details of Anchor Investors"
- * - "Allocation to Anchor Investors"
- */
-function extractAnchorSection(text: string): string | null {
-  // Normalize text (remove extra whitespace, normalize case)
-  const normalized = text.replace(/\s+/g, ' ');
-
-  // Common section headers
-  const sectionHeaders = [
-    /anchor\s+investor\s+allocation/i,
-    /details\s+of\s+anchor\s+investors/i,
-    /allocation\s+to\s+anchor\s+investors/i,
-    /anchor\s+investor\s+portion/i,
-    /issue\s+to\s+anchor\s+investors/i
-  ];
-
-  // Find section start
-  let sectionStart = -1;
-  let matchedHeader = '';
-
-  for (const pattern of sectionHeaders) {
-    const match = normalized.match(pattern);
-    if (match && match.index !== undefined) {
-      sectionStart = match.index;
-      matchedHeader = match[0];
-      break;
-    }
-  }
-
-  if (sectionStart === -1) {
-    logger.warn('[Anchor Investors] No anchor section header found');
-    return null;
-  }
-
-  logger.info(`[Anchor Investors] Found section header: "${matchedHeader}" at position ${sectionStart}`);
-
-  // Extract text from section start to next major section (typically 5000-10000 characters)
-  // Look for next section indicators
-  const nextSectionPatterns = [
-    /\b(issue\s+procedure|basis\s+of\s+allotment|refund\s+procedure|market\s+lot|capitalization)/i
-  ];
-
-  let sectionEnd = sectionStart + 15000; // Default: 15000 chars
-  for (const pattern of nextSectionPatterns) {
-    const match = normalized.substring(sectionStart + 500).match(pattern);
-    if (match && match.index !== undefined) {
-      sectionEnd = sectionStart + 500 + match.index;
-      break;
-    }
-  }
-
-  const section = normalized.substring(sectionStart, sectionEnd);
-  return section;
-}
-
-/**
- * Parse investor table from anchor section text
- *
- * Handles multiple table formats:
- * - Tab-separated
- * - Pipe-separated
- * - Space-separated with alignment
- */
-function parseInvestorTable(text: string): AnchorInvestor[] {
-  const investors: AnchorInvestor[] = [];
-
-  // Pattern 1: Pipe-separated table
-  // Example: "SBI Mutual Fund | Mutual Fund | 150,000 | ₹10.43 Cr | 13.04%"
-  const pipePattern = /([A-Za-z0-9\s&\(\)\-\.,']+?)\s*[\|\│]\s*([A-Za-z\s]+?)\s*[\|\│]\s*([\d,]+)\s*[\|\│]\s*(?:₹|Rs\.?)?\s*([\d,\.]+)\s*(?:Cr|crore|Crore)?\s*[\|\│]\s*([\d\.]+)\s*%?/g;
-
-  let match;
-  while ((match = pipePattern.exec(text)) !== null) {
-    const name = match[1].trim();
-    const type = match[2].trim();
-    const shares = parseInt(match[3].replace(/,/g, ''));
-    const amount = parseFloat(match[4].replace(/,/g, ''));
-    const percentOfIssue = parseFloat(match[5]);
-
-    // Validation: Skip header rows and invalid data
-    if (
-      name.toLowerCase().includes('investor') ||
-      name.toLowerCase().includes('total') ||
-      isNaN(shares) ||
-      isNaN(amount) ||
-      isNaN(percentOfIssue) ||
-      shares <= 0 ||
-      amount <= 0
-    ) {
-      continue;
-    }
-
-    investors.push({
-      name,
-      type,
-      shares,
-      amount,
-      percentOfIssue
-    });
-  }
-
-  // Pattern 2: Tab or multi-space separated (fallback)
-  if (investors.length === 0) {
-    const tabPattern = /([A-Za-z0-9\s&\(\)\-\.,']+?)\s{2,}([A-Za-z\s]+?)\s{2,}([\d,]+)\s{2,}(?:₹|Rs\.?)?\s*([\d,\.]+)\s*(?:Cr|crore)?\s{2,}([\d\.]+)\s*%?/g;
-
-    while ((match = tabPattern.exec(text)) !== null) {
-      const name = match[1].trim();
-      const type = match[2].trim();
-      const shares = parseInt(match[3].replace(/,/g, ''));
-      const amount = parseFloat(match[4].replace(/,/g, ''));
-      const percentOfIssue = parseFloat(match[5]);
-
-      if (
-        name.toLowerCase().includes('investor') ||
-        name.toLowerCase().includes('total') ||
-        isNaN(shares) ||
-        isNaN(amount) ||
-        isNaN(percentOfIssue) ||
-        shares <= 0 ||
-        amount <= 0
-      ) {
-        continue;
-      }
-
-      investors.push({
-        name,
-        type,
-        shares,
-        amount,
-        percentOfIssue
-      });
-    }
-  }
-
-  // Pattern 3: Named capture groups for specific formats
-  if (investors.length === 0) {
-    // Example: "1. SBI Mutual Fund Mutual Fund 150,000 shares ₹10.43 Crores 13.04%"
-    const namedPattern = /\d+\.\s+([A-Za-z0-9\s&\(\)\-\.,']+?)\s+([A-Za-z\s]+?)\s+([\d,]+)\s+(?:shares?)?\s*(?:₹|Rs\.?)?\s*([\d,\.]+)\s*(?:Cr|crore|Crores)\s*([\d\.]+)\s*%/gi;
-
-    while ((match = namedPattern.exec(text)) !== null) {
-      const name = match[1].trim();
-      const type = match[2].trim();
-      const shares = parseInt(match[3].replace(/,/g, ''));
-      const amount = parseFloat(match[4].replace(/,/g, ''));
-      const percentOfIssue = parseFloat(match[5]);
-
-      if (
-        name.toLowerCase().includes('investor') ||
-        name.toLowerCase().includes('total') ||
-        isNaN(shares) ||
-        isNaN(amount) ||
-        isNaN(percentOfIssue) ||
-        shares <= 0 ||
-        amount <= 0
-      ) {
-        continue;
-      }
-
-      investors.push({
-        name,
-        type,
-        shares,
-        amount,
-        percentOfIssue
-      });
-    }
-  }
-
-  logger.info(`[Anchor Investors] Parsed ${investors.length} investors from table`);
-
-  // Log first few investors for debugging
-  if (investors.length > 0) {
-    logger.debug(`[Anchor Investors] Sample: ${investors.slice(0, 3).map(i => i.name).join(', ')}`);
-  }
-
-  return investors;
-}
-
-/**
- * Extract anchor bid date from section text
- *
- * Looks for patterns like:
- * - "Anchor Investor Bidding Date: October 27, 2025"
- * - "Bid Date: 27/10/2025"
- * - "Anchor Portion opened on: 27 Oct 2025"
- */
 // T-327 (round-7 P1-1 class sweep): every branch below builds the returned
 // Date via Date.UTC(...), never `new Date(localString)` / `new Date(y, m, d)`
 // (both construct at LOCAL midnight and drift a day on a non-UTC host when
@@ -416,8 +323,15 @@ const ABBR_MONTH_MAP: Record<string, number> = {
   Jul: 6, Aug: 7, Sep: 8, Oct: 9, Nov: 10, Dec: 11,
 };
 
-// Exported purely for direct unit testing (T-327 class sweep) — same pattern
-// as `parseNSEDate` (T-308/T-327), no other behavior change.
+/**
+ * Extract an anchor bid date from free text.
+ *
+ * Retained for callers that hold a date sentence rather than a filing; the
+ * anchor report's own date is read by the parser (`letterDate`).
+ *
+ * Exported purely for direct unit testing (T-327 class sweep) — same pattern
+ * as `parseNSEDate` (T-308/T-327), no other behavior change.
+ */
 export function extractBidDate(text: string): Date | null {
   // Pattern 1: "Month DD, YYYY"
   const pattern1 = /(?:bid\s+date|anchor\s+.*?date|opened\s+on).*?(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2}),?\s+(\d{4})/i;
@@ -480,7 +394,7 @@ export function extractBidDate(text: string): Date | null {
  */
 function addDays(date: Date, days: number): Date {
   const result = new Date(date);
-  result.setDate(result.getDate() + days);
+  result.setUTCDate(result.getUTCDate() + days);
   return result;
 }
 
@@ -505,12 +419,11 @@ export async function batchScrapeAnchorInvestors(
         success: data !== null,
         data,
         ipoId: ipo.id,
-        companyName: ipo.companyName
+        companyName: ipo.companyName,
       });
 
       // Rate limiting: 5 seconds between IPOs (PDF processing is CPU-intensive)
-      await new Promise(resolve => setTimeout(resolve, 5000));
-
+      await new Promise((resolve) => setTimeout(resolve, 5000));
     } catch (error) {
       logger.error(`[Anchor Investors] Batch scrape error for ${ipo.companyName}:`, error);
       results.push({
@@ -518,12 +431,12 @@ export async function batchScrapeAnchorInvestors(
         data: null,
         error: (error as Error).message,
         ipoId: ipo.id,
-        companyName: ipo.companyName
+        companyName: ipo.companyName,
       });
     }
   }
 
-  const successCount = results.filter(r => r.success).length;
+  const successCount = results.filter((r) => r.success).length;
   logger.info(`[Anchor Investors] Batch complete: ${successCount}/${ipos.length} successful`);
 
   return results;
