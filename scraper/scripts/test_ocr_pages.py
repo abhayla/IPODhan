@@ -129,3 +129,64 @@ def test_scanned_fixture_text_beats_the_needs_ocr_gate():
     """OCR output must be good enough that the page no longer needs OCR."""
     text, _conf = ocr_pages.ocr_image(FIXTURE)
     assert ocr_pages.needs_ocr(text) is False
+
+
+@backend_missing
+@fixture_missing
+def test_ocr_recovers_word_spacing_on_the_scanned_fixture():
+    """Words must come back separated — the failure this route was fixed for.
+
+    The recogniser never decodes the space character on dense all-caps English,
+    so a whole line used to arrive as
+    `PRICEBAND:R168TOR177PEREQUITYSHAREOFFACEVALUEOFR2EACH.` — every field
+    regex misses it. `split_words` recovers the boundaries from the image.
+    """
+    text, _conf = ocr_pages.ocr_image(FIXTURE)
+    upper = text.upper()
+    assert "168" in upper, text
+    assert "177" in upper, text
+    assert "84" in upper, text
+    assert "PRICE BAND" in upper, text
+    assert "FACE VALUE" in upper, text
+    # ...and the glued form must be gone, not merely accompanied.
+    assert "PRICEBAND" not in upper.replace(" ", "!"), text
+
+
+# --------------------------------------------------------------------------- #
+# word splitting (pure geometry — no backend needed)
+# --------------------------------------------------------------------------- #
+def _text_strip(words, height=40, char_gap=5, word_gap=16, margin=6):
+    """Render a synthetic text line: ink blocks separated by gaps."""
+    np = pytest.importorskip("numpy")
+    columns = [255] * margin
+    for wi, word in enumerate(words):
+        if wi:
+            columns.extend([255] * word_gap)
+        for ci in range(word):
+            if ci:
+                columns.extend([255] * char_gap)
+            columns.extend([0] * 8)  # one "character" of ink
+    columns.extend([255] * margin)
+    strip = np.tile(np.array(columns, dtype="uint8"), (height, 1))
+    return np.dstack([strip] * 3)
+
+
+def test_split_words_finds_word_boundaries_not_character_gaps():
+    crop = _text_strip([3, 5, 2])
+    assert len(ocr_pages.split_words(crop)) == 3
+
+
+def test_split_words_keeps_a_single_word_whole():
+    crop = _text_strip([6])
+    assert len(ocr_pages.split_words(crop)) == 1
+
+
+def test_split_words_returns_the_crop_for_a_blank_image():
+    np = pytest.importorskip("numpy")
+    blank = np.full((30, 200, 3), 255, dtype="uint8")
+    assert len(ocr_pages.split_words(blank)) == 1
+
+
+def test_split_words_handles_light_text_on_a_dark_ground():
+    crop = 255 - _text_strip([3, 4])
+    assert len(ocr_pages.split_words(crop)) == 2
