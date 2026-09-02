@@ -266,3 +266,58 @@ Two rules make this hold together:
 - **A later filing closes the hunt.** Holding the RHP supersedes an open DRHP;
   holding the Prospectus supersedes both. Without it a CLOSED IPO alerts P2 every
   night about a draft that no longer exists anywhere.
+
+## Round 5 plan
+
+Written BEFORE any code edit, per the round-5 brief. Red-then-green: the two new
+tests (structural + orchestrator matrix) are written and run RED first.
+
+### The class fix (Class 1) — absence unconstructible without evidence
+
+`RungResult = {documentId,bytes} | 'failed' | 'absent'` becomes a discriminated
+union whose `absent` arm carries a **branded** `AnsweredResponse`:
+
+```ts
+const ANSWERED: unique symbol;                       // runtime Symbol, module-private
+interface AnsweredResponse { readonly [ANSWERED]: true; status; url; bytes }
+function answeredFrom(res: HttpResponse, url): AnsweredResponse | null  // null unless 200
+type RungOutcome =
+  | { kind: 'found'; documentId; bytes }
+  | { kind: 'absent'; evidence: AnsweredResponse }
+  | { kind: 'failed'; reason: string };
+```
+
+Nothing outside `answeredFrom` can mint an `AnsweredResponse` (the brand key is a
+module-private symbol), so a budget refusal, a timeout, a cached failure or a
+shape error **cannot type-check as absent**. Every per-cycle cache that a later
+`absent` is derived from (SEBI listing, company page, verifier page) stores its
+evidence alongside its parsed body.
+
+### Files to change
+
+| File | Change |
+|---|---|
+| `scraper/src/services/document-discovery-runner.ts` | `AnsweredResponse` + `RungOutcome` + `answeredFrom`; every rung return re-expressed; budget refusals → `failed`; SEBI/company/verifier caches carry evidence; **verifier page cached per cycle**; `tryVerifier` re-validates the host with `isVerifierUrl`; company rung: only 404/410 are non-failures (a 403 is `failed`); `sourceOfDocumentUrl` returns `'UNKNOWN'` for an unparseable URL; the G4 short-chain guard emits `chain_incomplete`, not `no_link` |
+| `scraper/src/services/document-state-machine.ts` | new `AttemptOutcome` `'chain_incomplete'` → state `WANTED`, retryable, no alert, asserts nothing about filing |
+| `scraper/src/services/primary-source-discovery.ts` | `DiscoveredDocument['source']` gains `'UNKNOWN'` |
+| `scraper/src/services/document-cycle.ts` | `loadCandidateIpos` filters `verifier_url` through `isVerifierUrl` on the READ side |
+| `scraper/src/base/BaseScraperOrchestrator.ts` | hoist the `recordDocumentSourceHints` write out of the `ENABLE_DATA_CONSOLIDATION` else-branch: one private helper, called before the all-protected early return AND after the if/else |
+
+### Tests to write (red first)
+
+| Test file | What it pins |
+|---|---|
+| `tests/unit/services/document-discovery-absence-evidence.test.ts` (new) | **Structural**: parse the runner source, find every `kind: 'absent'` construction site, assert each passes an `evidence` argument that traces to `answeredFrom`; plus behavioural cases — budget-exhausted SEBI/company/verifier and a page-2 403 all leave the row **BLOCKED_ALL**, never NOT_YET_FILED |
+| `tests/unit/scrapers/orchestrator-source-hints.test.ts` (new) | **Flag matrix** {consolidation ON, OFF} × {new IPO, existing all-protected IPO} — the hint writer is called in all four |
+| `tests/unit/services/document-discovery-round4-chain.test.ts` (M-d) | the cap test also asserts the ROW STATE the cap leaves behind (BLOCKED_ALL + a `skipped:budget`/`failed:budget` rung, not NOT_YET_FILED) |
+| `tests/unit/services/document-discovery-round4-chain.test.ts` (NIT-4) | `sourceOfDocumentUrl('not a url')` → `'UNKNOWN'` |
+| `tests/unit/services/document-cycle-*.test.ts` | a non-chittorgarh `verifier_url` in the DB row is dropped on read |
+| `tests/integration/document-fetch-state-repository.integration.test.ts` | W-1 and W-1/H-1 route through `DocumentRepository.upsertDocument` and `IPORepository.updateDocumentSourceHints` instead of raw SQL |
+| `tests/unit/services/document-state-machine*.test.ts` | `chain_incomplete` → WANTED, retryable, no alert |
+
+### Gates
+
+`packages/shared && npx tsc`; `scraper && npx tsc --noEmit`; full scraper vitest
+(`--pool=forks`); `web && npx vitest run`; the M8 integration file against
+`ipodhan_test`; and the acceptance harness re-run with `--db --reset`, refreshing
+`evidence/T-403/db-run/` (item 8 — migration 0035 was edited in place).
