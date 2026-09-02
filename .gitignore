@@ -320,3 +320,15 @@ test-db-connection.js
 
 # T-270 local investigation scratch (evidence lives in GetWorkDone/evidence)
 .t270/
+
+# Session handoff artifacts written by a dispatcher/agent session. Useful
+# locally, dated the moment they land, and they carry local machine paths --
+# they are working notes, not repo documentation.
+HANDOFF-*.md
+
+# Fleet worktrees. These are REGISTERED git worktrees (git worktree list), not
+# copies -- IPODhan-t310 currently sits INSIDE this working tree. Unignored, a
+# `git add .` would stage a whole second checkout (~3.7k files). Never delete
+# one by hand or with `git worktree remove --force`: doing that through the
+# node_modules junctions wiped 442 tracked files in the main checkout (T-311C).
+IPODhan-t*/
