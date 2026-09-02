@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ipoStatusEnumMock } from '../helpers/schema-mock.js';
 import loggerModule from '../../src/utils/logger.js';
 
 /**
@@ -136,6 +137,7 @@ vi.mock('@ipodhan/shared', () => ({
 vi.mock('@ipodhan/shared/db/schema', () => ({
   scraperLogs: { createdAt: 'created_at' },
   scraperSteps: {},
+  ipoStatusEnum: ipoStatusEnumMock,
 }));
 vi.mock('drizzle-orm', () => ({
   lt: vi.fn(),
