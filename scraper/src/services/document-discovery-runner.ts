@@ -590,6 +590,10 @@ export class DocumentDiscoveryRunner {
    * mean the FIRST company's search/paging outcome (found or not) gets
    * silently reused as the answer for every later company in the cycle.
    *
+   * The one exception is a page-1 HTTP FAILURE, cached under the bare listing
+   * URL: that GET is identical for every company, so re-issuing it per IPO buys
+   * nothing (H-3).
+   *
    * H-3 (pre-W-27, still true): the value may be the literal 'failed'. It used
    * to be `[]` on an HTTP error, which is indistinguishable from "SEBI listed
    * nothing" — so the first IPO recorded `SEBI:failed:http_error` and every
@@ -1155,10 +1159,16 @@ export class DocumentDiscoveryRunner {
     // must not poison the cache entry another company would otherwise get a
     // fresh walk for.
     const cacheKey = `${listingUrl}::${compactCompanyNameKey(ipo.companyName)}`;
-    const cached = this.sebiListings.get(cacheKey);
-    // H-3: a cached FAILURE is reported as a failure, for every IPO in the
-    // cycle. It is still cached — one 503 should not become one request per IPO
-    // — but the later IPOs now say what actually happened.
+    // H-3: the page-1 GET is the SAME request for every company, so a hard
+    // failure of it is company-INDEPENDENT and is cached under the bare listing
+    // URL. Keying the failure by company too (as the first W-27 draft did) turned
+    // one 503 back into one request per IPO — the exact waste H-3 exists to stop —
+    // while the per-company key stays correct for a SUCCESSFUL walk, whose result
+    // does depend on that company's own search/paging.
+    const cached = this.sebiListings.get(listingUrl) ?? this.sebiListings.get(cacheKey);
+    // A cached FAILURE is reported as a failure, for every IPO in the cycle: the
+    // later IPOs now say what actually happened instead of claiming a not_listed
+    // about a request that was never made.
     if (cached === 'failed') {
       rungs.push('SEBI:failed:cached_http_error');
       return failed('cached SEBI listing http error');
@@ -1218,7 +1228,10 @@ export class DocumentDiscoveryRunner {
           rungs.push('SEBI:failed:budget');
           return failed('escalation budget exhausted before any SEBI listing fetch');
         }
-        this.sebiListings.set(cacheKey, 'failed');
+        // Keyed by the listing URL alone — see the lookup above. Only page 1
+        // can land here (a non-200 page 1 short-circuits `fetchSebiListingRows`
+        // before any search or paging runs), and page 1 carries no company.
+        this.sebiListings.set(listingUrl, 'failed');
         rungs.push('SEBI:failed:http_error');
         return failed('SEBI listing fetch failed');
       }

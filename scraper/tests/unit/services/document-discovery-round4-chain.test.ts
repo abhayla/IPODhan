@@ -175,7 +175,11 @@ describe('H-2 an escalation rung that FAILS must not mint NOT_YET_FILED', () => 
 
     const result = await runner.runIpo(upcoming(), []);
 
-    expect(result.notYetFiled).toEqual(['DRHP']);
+    // W-28/W-46: an absence at a stage where the filing IS due is a discovery
+    // miss (NOT_FOUND, retried on a 60-min ladder), not "the issuer has not
+    // filed it". H-2's direction still holds: an ABSENCE, never a BLOCKED_ALL.
+    expect(result.notFound).toEqual(['DRHP']);
+    expect(result.notYetFiled).toEqual([]);
     expect(result.blocked).toEqual([]);
     expect(rungsFor(result.attempts as never, 'DRHP')).toContain('SEBI:not_listed');
   }, 60_000);

@@ -152,8 +152,12 @@ describe('G1 — chain reaches SEBI when both exchanges fail', () => {
     // V-3: assert the EXACT ordered chain, not merely that the parts appear.
     // A rung firing out of order, or an extra rung, is a defect a `toContain`
     // pair would happily pass.
+    // W-27: the SEBI rung is now a WALK (page 1, then search, then paging), so
+    // the sub-step it actually resolved on is part of the honest chain. Here the
+    // company is on page 1, so the walk stops there.
     expect(rungsFor(result.attempts as never, 'RHP').split(' -> ')).toEqual([
       'rungs[RHP]: EXCHANGES:failed',
+      'SEBI:page1',
       'SEBI:found',
     ]);
 
@@ -234,6 +238,10 @@ describe('G4 — BLOCKED_ALL only after all four rungs, each with an outcome', (
     const { runner, store } = makeRunner({
       ...EXCHANGES_DOWN,
       'smid=11': html(fixture('sebi-rhp-listing.html')), // answers, company absent
+      // W-27: the SEBI rung now searches and pages beyond page 1. SEBI answers
+      // every one of those POSTs and still never names this company — which is
+      // what makes 'SEBI:not_listed' below evidence rather than a guess.
+      'HomeAction.do;jsessionid': html('<table id="sample_1"></table>'),
       // Checked BEFORE the company paths: a real Chittorgarh IPO URL contains
       // "/ipo", which would otherwise match the company-host path key first.
       chittorgarh: html('<a href="https://www.chittorgarh.com/own/copy.pdf">RHP</a>'),
@@ -256,17 +264,36 @@ describe('G4 — BLOCKED_ALL only after all four rungs, each with an outcome', (
     expect(result.blocked).toEqual(['RHP']);
     expect(store.all().find((r) => r.docType === 'RHP')!.state).toBe('BLOCKED_ALL');
 
-    // FOUR rungs, in order, each with its own outcome.
+    // FOUR rungs, in order, each with its own outcome — the SEBI rung spelling
+    // out its whole W-27 walk (page 1 -> search -> pages -> exhausted) before it
+    // is allowed to say 'not_listed'.
     const rungs = rungsFor(result.attempts as never, 'RHP');
     const parts = rungs.split(' -> ');
-    expect(parts).toHaveLength(4);
-    expect(parts[0]).toBe('rungs[RHP]: EXCHANGES:failed');
-    expect(parts[1]).toBe('SEBI:not_listed');
-    // H-2 sharpened this label: all three investor paths 404, so no page
-    // ANSWERED — a different fact from "a page answered and had no link", and
-    // the one that must not be read as evidence the filing does not exist.
-    expect(parts[2]).toBe('COMPANY:failed:no_page');
-    expect(parts[3]).toBe('VERIFIER:no_new_link');
+    expect(parts).toEqual([
+      'rungs[RHP]: EXCHANGES:failed',
+      'SEBI:page1',
+      'SEBI:searched',
+      'SEBI:paged:1',
+      'SEBI:paged:2',
+      'SEBI:paged:3',
+      'SEBI:paged:4',
+      'SEBI:paged:5',
+      'SEBI:paged:6',
+      'SEBI:paged:exhausted',
+      'SEBI:not_listed',
+      // H-2 sharpened this label: all three investor paths 404, so no page
+      // ANSWERED — a different fact from "a page answered and had no link", and
+      // the one that must not be read as evidence the filing does not exist.
+      'COMPANY:failed:no_page',
+      'VERIFIER:no_new_link',
+    ]);
+    // The four rung FAMILIES, still in order and still each accounted for.
+    expect(parts.map((p) => p.replace('rungs[RHP]: ', '').split(':')[0]).filter((f, i, a) => f !== a[i - 1])).toEqual([
+      'EXCHANGES',
+      'SEBI',
+      'COMPANY',
+      'VERIFIER',
+    ]);
   }, 60_000);
 
   it('NEVER stores a document from the verifier\'s own host', async () => {
@@ -320,7 +347,12 @@ describe('G4 — BLOCKED_ALL only after all four rungs, each with an outcome', (
 
     const result = await runner.runIpo(ESDS, onlyRhpDue as never);
 
-    expect(result.notYetFiled).toEqual(['RHP']);
+    // W-28/W-46: the RHP IS due at PRE_OPEN, so a clean exchange miss is a
+    // discovery miss (NOT_FOUND, 60-min backoff) — NOT_YET_FILED is now reserved
+    // for a type the stage says is not due yet, or an optional one. The point of
+    // this test is unchanged: no escalation was spent on it.
+    expect(result.notFound).toEqual(['RHP']);
+    expect(result.notYetFiled).toEqual([]);
     expect(result.blocked).toEqual([]);
     expect(seen.some((u) => u.includes('sebi.gov.in'))).toBe(false);
     expect(rungsFor(result.attempts as never, 'RHP')).toContain('SEBI:skipped:exchanges_settled_it');
