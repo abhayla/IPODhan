@@ -13,7 +13,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DataConsolidationService } from '../../../src/services/data-consolidation-service.js';
 import type { FieldSourcesRepository, DataConflictsRepository } from '@ipodhan/shared';
 
-vi.mock('../../../src/config/feature-flags.js', () => ({
+// F-1 sweep: same enumerated-mock hazard — spread the real module first.
+vi.mock('../../../src/config/feature-flags.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/config/feature-flags.js')>()),
   FEATURE_FLAGS: {
     ENABLE_SOURCE_TRACKING: true,
     ENABLE_CONFLICT_DETECTION: true,
@@ -248,5 +250,78 @@ describe('consolidation write-path guards (Deepa walk)', () => {
 
     expect(result.consolidatedData.listingExchanges).toEqual(['BSE', 'NSE']);
     expect(mockConflictsRepo.upsertConflict).not.toHaveBeenCalled();
+  });
+
+  it('F-2: an untracked NON-set array goes through priority resolution, not a blind Case 1 accept', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'deepa',
+      tableName: 'ipos',
+      incomingData: { leadManagers: ['Nuvama Wealth Management Limited'] },
+      source: 'NSE',
+      existingData: { leadManagers: ['Anand Rathi', 'IIFL'] } as any,
+    });
+
+    expect(result.consolidatedData.leadManagers).toEqual(['Nuvama Wealth Management Limited']);
+    const track = trackCallFor('leadManagers')[0];
+    expect(track).toBeDefined();
+    expect(track.previousValue).toBe('["Anand Rathi","IIFL"]');
+  });
+
+  it('F-3: a non-set array can SHRINK when a higher-ranked source reports a corrected list', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      fieldSourceRow('leadManagers', 'CHITTORGARH', ['A Capital', 'B Securities', 'C Artefact']),
+    ]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'deepa',
+      tableName: 'ipos',
+      incomingData: { leadManagers: ['A Capital', 'B Securities'] },
+      source: 'NSE',
+      existingData: { leadManagers: ['A Capital', 'B Securities', 'C Artefact'] } as any,
+    });
+
+    expect(result.consolidatedData.leadManagers).toEqual(['A Capital', 'B Securities']);
+    expect(mockConflictsRepo.upsertConflict).toHaveBeenCalledTimes(1);
+    const conflict = vi.mocked(mockConflictsRepo.upsertConflict).mock.calls[0][0] as any;
+    expect(conflict.fieldName).toBe('leadManagers');
+  });
+
+  it('W-24: a LOSING incoming write leaves the provenance row untouched', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([
+      { ...fieldSourceRow('faceValue', 'NSE', 10), previousValue: '2', previousSource: 'BSE' },
+    ]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'deepa',
+      tableName: 'ipos',
+      incomingData: { faceValue: 2 },
+      source: 'BSE',
+      existingData: { faceValue: 10 } as any,
+    });
+
+    expect(result.consolidatedData.faceValue).toBe(10);
+    expect(mockConflictsRepo.upsertConflict).toHaveBeenCalledTimes(1);
+    expect(trackCallFor('faceValue')).toHaveLength(0);
+  });
+
+  it('W-25: a source confirming an untracked value creates the provenance row', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'deepa',
+      tableName: 'ipos',
+      incomingData: { registrar: 'Bigshare Services Pvt Ltd' },
+      source: 'BSE',
+      existingData: { registrar: 'Bigshare Services Pvt Ltd' } as any,
+    });
+
+    expect(result.consolidatedData.registrar).toBe('Bigshare Services Pvt Ltd');
+    const track = trackCallFor('registrar')[0];
+    expect(track).toBeDefined();
+    expect(track.source).toBe('BSE');
+    expect(track.previousValue).toBeUndefined();
+    expect(track.previousSource).toBeUndefined();
   });
 });

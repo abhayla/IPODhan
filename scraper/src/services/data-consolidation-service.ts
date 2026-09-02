@@ -198,6 +198,11 @@ function outranksUntrackedValue(fieldName: string, source: ScraperSource): boole
   return rank < worstRank;
 }
 
+/** W-24 helper: normalize a resolved value for the "did anything change?" test. */
+function normalizeChosen(fieldName: string, value: any, rules: FieldRules): any {
+  return value !== null && value !== undefined ? normalize(fieldName, value, rules) : null;
+}
+
 /** Fields whose value is a SET the sources each report a partial view of. */
 const SET_VALUED_FIELDS = new Set<string>(['listingExchanges']);
 
@@ -814,14 +819,32 @@ export class DataConsolidationService {
       normalizedStored !== undefined &&
       (normalizedExisting === null || normalizedExisting === undefined) &&
       existingSource === undefined &&
-      !(Array.isArray(normalizedIncoming) && Array.isArray(normalizedStored))
+      !(
+        SET_VALUED_FIELDS.has(fieldName) &&
+        Array.isArray(normalizedIncoming) &&
+        Array.isArray(normalizedStored)
+      )
     ) {
       if (areEquivalent(normalizedIncoming, normalizedStored)) {
+        // W-25: a source CONFIRMING an untracked value is how the field earns
+        // provenance — without this row the value stays untracked forever and
+        // the M-1 keep-rule above can never unfreeze on its own. No previous
+        // value/source: nothing changed and the prior origin is unknown.
+        await this.trackFieldSource({
+          ipoId,
+          tableName,
+          fieldName,
+          value: storedValue,
+          source: incomingSource,
+          confidence,
+        });
+
         return {
           fieldName,
           finalValue: storedValue,
           chosenSource: incomingSource,
           hadConflict: false,
+          conflictReason: 'CONFIRMED_UNTRACKED',
         };
       }
 
@@ -875,10 +898,12 @@ export class DataConsolidationService {
       const merged = unionSetValues(normalizedStored, normalizedIncoming);
       const addsNothing = merged.length === normalizedStored.length;
 
-      if (addsNothing || !SET_VALUED_FIELDS.has(fieldName)) {
-        // Incoming adds no member (subset/equal) — never a reason to shrink or
-        // dispute the stored list. A non-set array field that genuinely adds a
-        // member still falls through to normal conflict resolution below.
+      // F-3: this keep-stored return used to fire for EVERY array field, so a
+      // non-set list (leadManagers) could grow but never shrink — a higher-
+      // ranked source reporting a SHORTER, corrected list was discarded every
+      // cycle with no conflict row. Only genuinely set-valued fields merge;
+      // every other array falls through to normal priority resolution.
+      if (SET_VALUED_FIELDS.has(fieldName)) {
         if (addsNothing) {
           return {
             fieldName,
@@ -890,7 +915,7 @@ export class DataConsolidationService {
             ],
           };
         }
-      } else {
+
         await this.trackFieldSource({
           ipoId,
           tableName,
@@ -1217,8 +1242,17 @@ export class DataConsolidationService {
       });
     }
 
+    // W-24 (live probe, Deepa): a LOSING incoming write changed nothing on the
+    // row, yet it still upserted `field_sources` — and because `previousValue`
+    // is undefined on this path the repository wrote NULL over the real history
+    // (faceValue's previous_value went "2" -> null when BSE re-sent 2 and lost).
+    // A write that neither changes the value nor the owning source must not
+    // touch the provenance row at all.
+    const provenanceUnchanged =
+      chosenSource === existingSource && areEquivalent(params.existingValueNormalized, normalizeChosen(fieldName, chosenValue, rules));
+
     // Track chosen source
-    if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && !this.currentShadowMode) {
+    if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && !this.currentShadowMode && !provenanceUnchanged) {
       await this.trackFieldSource({
         ipoId,
         tableName,

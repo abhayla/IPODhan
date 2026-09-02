@@ -16,17 +16,23 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const bulkTrackFieldUpdatesMock = vi.fn().mockResolvedValue(1);
 const consolidateIPODataMock = vi.fn();
 
-vi.mock('@ipodhan/shared', () => ({
+// F-1: these mocks used to ENUMERATE their exports, so the moment another
+// module started importing a symbol they did not list (S-01 made
+// ipo-pipeline-steps-repository import `ipoStatusEnum`), the whole file failed
+// to COLLECT — vitest reported "1 failed" while all five guards silently ran
+// zero assertions. Spread the real module and override only what must be fake.
+vi.mock('@ipodhan/shared', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@ipodhan/shared')>()),
   db: {},
   getRedisClient: () => ({}),
 }));
 
-vi.mock('@ipodhan/shared/db/schema', () => ({
-  ipoDemandGraph: {},
-  ipoDetails: {},
-}));
+vi.mock('@ipodhan/shared/db/schema', async (importOriginal) =>
+  await importOriginal<typeof import('@ipodhan/shared/db/schema')>()
+);
 
-vi.mock('@ipodhan/shared/utils/registrar-matcher', () => ({
+vi.mock('@ipodhan/shared/utils/registrar-matcher', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@ipodhan/shared/utils/registrar-matcher')>()),
   resolveRegistrarId: () => null,
 }));
 
@@ -44,7 +50,8 @@ vi.mock('@ipodhan/shared/repositories', async (importOriginal) => {
   };
 });
 
-vi.mock('../../../src/config/feature-flags.js', () => ({
+vi.mock('../../../src/config/feature-flags.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/config/feature-flags.js')>()),
   FEATURE_FLAGS: {
     ENABLE_DATA_CONSOLIDATION: true,
     ENABLE_SOURCE_TRACKING: true,
@@ -52,7 +59,8 @@ vi.mock('../../../src/config/feature-flags.js', () => ({
   shouldUseFeature: () => true,
 }));
 
-vi.mock('../../../src/services/data-consolidation-service.js', () => ({
+vi.mock('../../../src/services/data-consolidation-service.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/services/data-consolidation-service.js')>()),
   DataConsolidationService: vi.fn().mockImplementation(() => ({
     consolidateIPOData: consolidateIPODataMock,
   })),
