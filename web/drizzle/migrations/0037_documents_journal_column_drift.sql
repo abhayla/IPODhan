@@ -27,7 +27,12 @@
 --     catalogue-only change, no table rewrite, so it is safe on a large table.
 --   * On production and staging every one of these already exists, so this
 --     migration is a no-op there.
---   * The two UNIQUE constraints are added only when absent. If a database
+--   * The two UNIQUE constraints are added only when absent — and the guard is
+--     qualified by `conrelid = 'documents'::regclass` (r6 item 3). Constraint
+--     names are per-table in Postgres, not global, so an unqualified
+--     `conname = 'unique_url'` matches a same-named constraint on ANY table and
+--     silently skips the ADD here — leaving `documents` without the constraint
+--     the migration claims to have created. If a database
 --     somehow holds the columns without the constraint AND carries duplicate
 --     rows, this fails loudly rather than silently skipping — which is the
 --     correct outcome: duplicates under `unique_url` are a data defect.
@@ -65,7 +70,8 @@ CREATE INDEX IF NOT EXISTS "idx_documents_extraction_status" ON "documents" ("ex
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'unique_doc_per_ipo'
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'unique_doc_per_ipo' AND conrelid = 'documents'::regclass
   ) THEN
     ALTER TABLE "documents" ADD CONSTRAINT "unique_doc_per_ipo"
       UNIQUE ("ipo_id", "type", "media_type", "exchange", "sequence_number");
@@ -75,7 +81,8 @@ END $$;
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'unique_url'
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'unique_url' AND conrelid = 'documents'::regclass
   ) THEN
     ALTER TABLE "documents" ADD CONSTRAINT "unique_url" UNIQUE ("url");
   END IF;
