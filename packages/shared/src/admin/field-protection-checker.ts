@@ -306,6 +306,16 @@ export class FieldProtectionService {
   }
 
   /**
+   * Invalidate ALL protection cache entries for an IPO (field-level + the
+   * IPO-level lock flag). Belt-and-braces helper for write paths that touch
+   * multiple fields/tables in one request (e.g. bulk protection toggles) so a
+   * caller cannot forget to clear a table it didn't have the field name for.
+   */
+  async invalidateProtectionCacheForIpo(ipoId: string): Promise<void> {
+    await this.invalidateProtectionCache(ipoId);
+  }
+
+  /**
    * Store notification about blocked scraper update in Redis
    * Notifications stored in sorted set (by timestamp) for admin dashboard
    */
@@ -476,4 +486,13 @@ export async function filterProtectedFields(
 ): Promise<FilterProtectedFieldsResult> {
   const service = new FieldProtectionService(db, redis);
   return service.filterProtectedFields(ipoId, tableName, data, scraperName);
+}
+
+export async function invalidateProtectionCacheForIpo(
+  ipoId: string,
+  db: NodePgDatabase<typeof schema>,
+  redis: Redis | null
+): Promise<void> {
+  const service = new FieldProtectionService(db, redis);
+  return service.invalidateProtectionCacheForIpo(ipoId);
 }

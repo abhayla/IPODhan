@@ -90,6 +90,16 @@ export async function invalidateProtectionCache(
 }
 
 /**
+ * Invalidate ALL protection cache entries for an IPO (field-level + the
+ * IPO-level lock flag). Use after a write that touches multiple
+ * tables/fields for the same IPO in one request (e.g. bulk protection toggles).
+ */
+export async function invalidateProtectionCacheForIpo(ipoId: string): Promise<void> {
+  const service = await getService();
+  return service.invalidateProtectionCacheForIpo(ipoId);
+}
+
+/**
  * Get recent blocked update notifications (for admin dashboard)
  */
 export async function getBlockedUpdateNotifications(
