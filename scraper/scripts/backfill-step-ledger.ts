@@ -25,6 +25,7 @@
  * SHARED_DB_POOL_MAX=3 (T-433) or initForIpo times out on the first insert.
  */
 import { readFileSync } from 'node:fs';
+import { pathToFileURL } from 'node:url';
 import { db, getRedisClient, IpoPipelineStepsRepository } from '@ipodhan/shared';
 import type { IpoStepStatus } from '@ipodhan/shared';
 import { isPipelineStepId } from '@ipodhan/shared/pipeline/step-catalogue';
@@ -41,7 +42,7 @@ function argValue(flag: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
-function parseSet(raw: string): Array<{ stepId: string; status: IpoStepStatus }> {
+export function parseSet(raw: string): Array<{ stepId: string; status: IpoStepStatus }> {
   return raw
     .split(',')
     .map((pair) => pair.trim())
@@ -130,12 +131,18 @@ async function main(): Promise<void> {
   console.log('');
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    logger.error(
-      { error: err instanceof Error ? err.message : String(err) },
-      '[backfill-step-ledger] failed'
-    );
-    process.exit(1);
-  });
+// Only run when invoked directly -- importing parseSet from a test must not
+// launch a backfill against whatever DATABASE_URL happens to be set.
+const isMain = import.meta.url === pathToFileURL(process.argv[1] ?? '').href;
+
+if (isMain) {
+  main()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      logger.error(
+        { error: err instanceof Error ? err.message : String(err) },
+        '[backfill-step-ledger] failed'
+      );
+      process.exit(1);
+    });
+}

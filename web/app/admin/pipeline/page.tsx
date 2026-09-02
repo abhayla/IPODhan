@@ -66,6 +66,10 @@ export default async function PipelinePage({
 }) {
   const { stage } = await searchParams;
   const validStage = resolveStageFilter(stage);
+  // A stage that was asked for but is not a real ipo_status must say so --
+  // silently falling back to Active makes the page look like it answered the
+  // question it was asked.
+  const unknownStage = stage && !validStage ? stage : null;
 
   const repo = new IpoPipelineStepsRepository(db, getRedisClient());
   const grid = await repo.findGrid({ stage: validStage, limit: 50 });
@@ -86,6 +90,12 @@ export default async function PipelinePage({
           timestamp, source and error.
         </p>
       </div>
+
+      {unknownStage && (
+        <p className="mb-4 rounded border border-amber-600 bg-amber-950 px-3 py-2 text-sm text-amber-200">
+          Unknown stage {unknownStage}, showing active
+        </p>
+      )}
 
       <div className="mb-6 flex flex-wrap items-center gap-2 text-sm">
         <span className="text-gray-400">Stage:</span>

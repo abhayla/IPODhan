@@ -38,15 +38,24 @@ export function resolveStageFilter(value: string | undefined | null): PipelineSt
 }
 
 /**
- * How `attempts` moves for a given target status. `attempts` counts FINISHED
- * run attempts, so it increments on a failure, and on a RUNNING step that
- * completes -- never on merely marking a step RUNNING or on a DUE -> DONE
- * bookkeeping write.
+ * How `attempts` moves for a given target status. `attempts` counts FINISHED,
+ * FAILED run attempts:
+ *
+ * - FAILED and BLOCKED increment. BLOCKED is a finished failed attempt -- it is
+ *   what a step becomes after its retry budget is spent, so it must be counted
+ *   like the failure it is, not silently dropped.
+ * - DONE increments only when the step was RUNNING (the attempt it completes);
+ *   a DUE -> DONE bookkeeping write is not an attempt.
+ * - SKIPPED and NOT_AVAILABLE_YET never increment. Nothing was attempted --
+ *   the step was deliberately passed over, or its input does not exist yet --
+ *   so counting them would inflate the backoff and push a healthy step toward
+ *   BLOCKED for reasons that were never failures.
+ * - NOT_DUE / DUE / RUNNING never increment: nothing has finished.
  */
 export type AttemptsRule = 'increment' | 'increment-if-running' | 'leave';
 
 export function resolveAttemptsRule(status: IpoStepStatus): AttemptsRule {
-  if (status === 'FAILED') return 'increment';
+  if (status === 'FAILED' || status === 'BLOCKED') return 'increment';
   if (status === 'DONE') return 'increment-if-running';
   return 'leave';
 }
@@ -234,7 +243,10 @@ export class IpoPipelineStepsRepository extends BaseRepository {
           })
           .from(ipos)
           .where(stage ? eq(ipos.status, stage) : activeIpoFilter())
-          .orderBy(desc(ipos.openDate))
+          // NULLS LAST: an undated IPO must not crowd real ones out of the
+          // page (Postgres sorts NULLs FIRST on DESC). id is the tiebreaker so
+          // the 50-row boundary is stable instead of flickering between runs.
+          .orderBy(sql`${ipos.openDate} DESC NULLS LAST`, desc(ipos.id))
           .limit(limit)) as unknown as PipelineGridIpo[];
 
         const ids = ipoRows.map((r) => r.ipoId);

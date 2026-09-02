@@ -27,6 +27,9 @@ interface DbCalls {
   conflictSets: any[];
   /** How many times the builder chose ON CONFLICT DO NOTHING. */
   conflictDoNothing: number;
+  /** Every argument handed to .where() / .orderBy(), in call order. */
+  whereArgs: any[];
+  orderByArgs: any[][];
   selectResults: any[][];
 }
 
@@ -35,6 +38,8 @@ function makeDb(selectResults: any[][] = [[]], returning: any = { id: 'row-1' })
     insertValues: [],
     conflictSets: [],
     conflictDoNothing: 0,
+    whereArgs: [],
+    orderByArgs: [],
     selectResults,
   };
   let selectIdx = 0;
@@ -45,8 +50,14 @@ function makeDb(selectResults: any[][] = [[]], returning: any = { id: 'row-1' })
       from: () => chain,
       innerJoin: () => chain,
       leftJoin: () => chain,
-      where: () => chain,
-      orderBy: () => chain,
+      where: (w: any) => {
+        calls.whereArgs.push(w);
+        return chain;
+      },
+      orderBy: (...args: any[]) => {
+        calls.orderByArgs.push(args);
+        return chain;
+      },
       limit: () => chain,
       offset: () => chain,
       then: (resolve: any, reject: any) => Promise.resolve(result).then(resolve, reject),
@@ -105,15 +116,17 @@ describe('resolveAttemptsRule', () => {
     expect(resolveAttemptsRule('DONE')).toBe('increment-if-running');
   });
 
+  it('increments on BLOCKED — a spent retry budget is a finished failed attempt', () => {
+    expect(resolveAttemptsRule('BLOCKED')).toBe('increment');
+  });
+
+  it('leaves attempts alone for SKIPPED and NOT_AVAILABLE_YET — nothing was attempted', () => {
+    expect(resolveAttemptsRule('SKIPPED')).toBe('leave');
+    expect(resolveAttemptsRule('NOT_AVAILABLE_YET')).toBe('leave');
+  });
+
   it('leaves attempts alone for every non-finishing status', () => {
-    const nonFinishing = [
-      'NOT_DUE',
-      'DUE',
-      'RUNNING',
-      'BLOCKED',
-      'SKIPPED',
-      'NOT_AVAILABLE_YET',
-    ] as const;
+    const nonFinishing = ['NOT_DUE', 'DUE', 'RUNNING', 'SKIPPED', 'NOT_AVAILABLE_YET'] as const;
     for (const status of nonFinishing) {
       expect(resolveAttemptsRule(status)).toBe('leave');
     }
@@ -169,6 +182,26 @@ describe('IpoPipelineStepsRepository.upsertStep — attempts (counted in SQL)', 
     await repo.upsertStep({ ipoId: IPO_ID, stepId: 'C1', status: 'RUNNING' });
 
     expect('attempts' in calls.conflictSets[0]).toBe(false);
+  });
+
+  it('increments attempts in SQL on BLOCKED, and starts a new BLOCKED row at 1', async () => {
+    const { repo, calls } = makeRepo();
+
+    await repo.upsertStep({ ipoId: IPO_ID, stepId: 'C1', status: 'BLOCKED', error: 'gave up' });
+
+    expect(calls.conflictSets[0].attempts).toBeDefined();
+    expect(typeof calls.conflictSets[0].attempts).not.toBe('number');
+    expect(calls.insertValues[0].attempts).toBe(1);
+  });
+
+  it('leaves attempts out of the set for SKIPPED and NOT_AVAILABLE_YET', async () => {
+    const { repo, calls } = makeRepo();
+
+    await repo.upsertStep({ ipoId: IPO_ID, stepId: 'C1', status: 'SKIPPED' });
+    await repo.upsertStep({ ipoId: IPO_ID, stepId: 'C2', status: 'NOT_AVAILABLE_YET' });
+
+    expect('attempts' in calls.conflictSets[0]).toBe(false);
+    expect('attempts' in calls.conflictSets[1]).toBe(false);
   });
 
   it('starts a first-ever FAILED row at attempts = 1, and any other status at 0', async () => {
@@ -301,6 +334,74 @@ describe('IpoPipelineStepsRepository.upsertStep — error and timestamps', () =>
     await repo.upsertStep({ ipoId: IPO_ID, stepId: 'B1', status: 'DONE' });
 
     expect(redis.del).toHaveBeenCalled();
+  });
+});
+
+/**
+ * Flatten a drizzle SQL fragment into the literal text it carries plus every
+ * bound parameter value, so a test can assert on what actually reaches
+ * Postgres rather than on the builder object's shape.
+ */
+function flattenSql(node: any, out: { text: string[]; params: unknown[] } = { text: [], params: [] }) {
+  if (node == null) return out;
+  if (Array.isArray(node)) {
+    for (const n of node) flattenSql(n, out);
+    return out;
+  }
+  if (Array.isArray(node.queryChunks)) {
+    for (const chunk of node.queryChunks) flattenSql(chunk, out);
+    return out;
+  }
+  // StringChunk carries `value: string[]`; Param carries a single `value`.
+  if (Array.isArray(node.value)) {
+    out.text.push(node.value.join(''));
+    return out;
+  }
+  if ('value' in node && typeof node.value !== 'object') {
+    out.params.push(node.value);
+    return out;
+  }
+  if (typeof node.name === 'string') {
+    out.text.push(node.name);
+    return out;
+  }
+  return out;
+}
+
+describe('IpoPipelineStepsRepository.findGrid — filtering and ordering', () => {
+  it('applies a real stage as an equality filter on ipos.status', async () => {
+    const { repo, calls } = makeRepo([[]]);
+
+    await repo.findGrid({ stage: 'OPEN' });
+
+    const where = flattenSql(calls.whereArgs[0]);
+    expect(where.params).toContain('OPEN');
+  });
+
+  it('never lets an invalid stage reach the where clause (WITHDRAWN is not an ipo_status)', async () => {
+    const { repo, calls } = makeRepo([[]]);
+
+    await repo.findGrid({ stage: 'WITHDRAWN' });
+
+    const where = flattenSql(calls.whereArgs[0]);
+    // No bound parameter carries the bad value, and the clause is the
+    // active-IPO fallback (which mentions LISTED) rather than a status filter.
+    expect(where.params).not.toContain('WITHDRAWN');
+    expect(where.text.join(' ')).toContain('LISTED');
+  });
+
+  it('orders by open_date DESC NULLS LAST with an id tiebreaker', async () => {
+    const { repo, calls } = makeRepo([[]]);
+
+    await repo.findGrid({});
+
+    const [primary, tiebreaker] = calls.orderByArgs[0];
+    // NULLS LAST: Postgres would otherwise sort undated IPOs FIRST on DESC and
+    // let them crowd real ones out of the page.
+    expect(flattenSql(primary).text.join(' ')).toContain('DESC NULLS LAST');
+    // A second key makes the 50-row boundary stable between runs.
+    expect(tiebreaker).toBeDefined();
+    expect(flattenSql(tiebreaker).text.join(' ')).toContain('id');
   });
 });
 
