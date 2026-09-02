@@ -324,4 +324,42 @@ describe('consolidation write-path guards (Deepa walk)', () => {
     expect(track.previousValue).toBeUndefined();
     expect(track.previousSource).toBeUndefined();
   });
+
+  it('W-25 round 4: a confirming source gives an untracked SET-valued list its provenance row', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'deepa',
+      tableName: 'ipos',
+      incomingData: { listingExchanges: ['BSE'] },
+      source: 'BSE',
+      existingData: { listingExchanges: ['BSE', 'NSE'] } as any,
+    });
+
+    expect(result.consolidatedData.listingExchanges).toEqual(['BSE', 'NSE']);
+    const track = trackCallFor('listingExchanges')[0];
+    expect(track).toBeDefined();
+    expect(track.source).toBe('BSE');
+    expect(track.value).toEqual(['BSE', 'NSE']);
+    expect(track.previousValue).toBeUndefined();
+    expect(track.previousSource).toBeUndefined();
+  });
+
+  it('W-25 round 4: a confirming source gives an untracked NON-set list its provenance row', async () => {
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue([]);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'deepa',
+      tableName: 'ipos',
+      incomingData: { leadManagers: [...LEAD_MANAGERS] },
+      source: 'BSE',
+      existingData: { leadManagers: LEAD_MANAGERS } as any,
+    });
+
+    expect(result.consolidatedData.leadManagers).toEqual(LEAD_MANAGERS);
+    const track = trackCallFor('leadManagers')[0];
+    expect(track).toBeDefined();
+    expect(track.source).toBe('BSE');
+    expect(track.previousValue).toBeUndefined();
+  });
 });

@@ -905,6 +905,20 @@ export class DataConsolidationService {
       // every other array falls through to normal priority resolution.
       if (SET_VALUED_FIELDS.has(fieldName)) {
         if (addsNothing) {
+          // W-25 (round 4): a confirming source also gives an UNTRACKED set its
+          // provenance row — otherwise a merged list stays untracked forever,
+          // exactly as scalars did before W-25.
+          if (existingSource === undefined) {
+            await this.trackFieldSource({
+              ipoId,
+              tableName,
+              fieldName,
+              value: storedValue,
+              source: incomingSource,
+              confidence,
+            });
+          }
+
           return {
             fieldName,
             finalValue: storedValue,
