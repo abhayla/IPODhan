@@ -112,19 +112,41 @@ export const EXPECTED_MATVIEWS: MatviewExpectation[] = [
 // red over a gap that is not this job's to close.
 //
 // Remove an entry the moment its _gated/ file is applied AND journaled.
-export const KNOWN_GATED_TYPE_DRIFT: { tableName: string; columnName: string; gatedFile: string }[] = [
-  { tableName: 'gmp_records', columnName: 'gmp', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
-  { tableName: 'gmp_records', columnName: 'expected_listing_price', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
-  { tableName: 'gmp_records', columnName: 'subject_rate', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
-  { tableName: 'gmp_records', columnName: 'kostak_rate', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
-  { tableName: 'listing_performance', columnName: 'listing_price', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
-  { tableName: 'listing_performance', columnName: 'issue_price', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
-  { tableName: 'listing_performance', columnName: 'listing_gain_percent', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
-  { tableName: 'listing_performance', columnName: 'current_price', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
-  { tableName: 'listing_performance', columnName: 'current_price_bse', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
-  { tableName: 'listing_performance', columnName: 'current_price_nse', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
-  { tableName: 'listing_performance', columnName: 'current_gain_percent', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
+//
+// `expected`/`actual` are the EXACT parenthesized type strings this script
+// prints (see isColumnDrifted() below) — e.g. "numeric(10,2)" / "numeric(32,0)".
+// isKnownGatedDrift() requires all four fields (table, column, expected,
+// actual) to match verbatim, so any FUTURE drift on these columns — a
+// different live type than the one captured here — still FAILS instead of
+// being silently swallowed by a same-column prefix match.
+export const KNOWN_GATED_TYPE_DRIFT: { tableName: string; columnName: string; expected: string; actual: string; gatedFile: string }[] = [
+  { tableName: 'gmp_records', columnName: 'gmp', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
+  { tableName: 'gmp_records', columnName: 'expected_listing_price', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
+  { tableName: 'gmp_records', columnName: 'subject_rate', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
+  { tableName: 'gmp_records', columnName: 'kostak_rate', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
+  { tableName: 'listing_performance', columnName: 'listing_price', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
+  { tableName: 'listing_performance', columnName: 'issue_price', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
+  { tableName: 'listing_performance', columnName: 'listing_gain_percent', expected: 'numeric(7,2)', actual: 'numeric(5,2)', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
+  { tableName: 'listing_performance', columnName: 'current_price', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
+  { tableName: 'listing_performance', columnName: 'current_price_bse', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
+  { tableName: 'listing_performance', columnName: 'current_price_nse', expected: 'numeric(10,2)', actual: 'numeric(32,0)', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
+  { tableName: 'listing_performance', columnName: 'current_gain_percent', expected: 'numeric(7,2)', actual: 'numeric(5,2)', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
 ];
+
+/**
+ * Exact-match predicate for KNOWN_GATED_TYPE_DRIFT (T-405). A drift is
+ * considered "known-gated" only when its kind, table.column, AND the exact
+ * expected/actual type strings all match a registry entry — a same-column
+ * drift with a DIFFERENT actual type (or a different column entirely) is
+ * NOT gated and must still fail the check.
+ */
+export function isKnownGatedDrift(d: Drift): boolean {
+  if (d.kind !== 'COLUMN_TYPE_MISMATCH') return false;
+  return KNOWN_GATED_TYPE_DRIFT.some(
+    (g) =>
+      d.detail === `"${g.tableName}.${g.columnName}" expects ${g.expected}, live column is ${g.actual}`
+  );
+}
 
 function collectExpectedColumns(): ColumnExpectation[] {
   const expectations: ColumnExpectation[] = [];
@@ -330,11 +352,7 @@ async function main() {
     // checkColumns() itself keeps reporting the full truth for every other
     // caller (the self-test included).
     const ignoreGated = process.env.SCHEMA_DRIFT_IGNORE_GATED === '1';
-    const isKnownGated = (d: Drift) =>
-      d.kind === 'COLUMN_TYPE_MISMATCH' &&
-      KNOWN_GATED_TYPE_DRIFT.some((g) => d.detail.startsWith(`"${g.tableName}.${g.columnName}"`));
-
-    const knownGated = ignoreGated ? [...columnDrifts, ...matviewDrifts].filter(isKnownGated) : [];
+    const knownGated = ignoreGated ? [...columnDrifts, ...matviewDrifts].filter(isKnownGatedDrift) : [];
     const allDrifts = [...columnDrifts, ...matviewDrifts].filter((d) => !knownGated.includes(d));
 
     if (knownGated.length > 0) {
