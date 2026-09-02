@@ -33,6 +33,25 @@ export function fileNameFromUrl(url: string | null | undefined): string {
 }
 
 /**
+ * Normalize a lower-cased title/file-name for word-boundary matching: BSE
+ * glues words with `_`/`-` in real file names ("Red_Herring_Prospectus",
+ * "Red-Herring-Prospectus") and appends the file extension with `.` — none of
+ * that reads as a space to `.includes('red herring')`. Strip the extension,
+ * fold every `_`/`-`/`.` run into a single space, and collapse whitespace so
+ * every phrase check below sees word-separated text regardless of source.
+ * (2026-09-02, IPO_NO 7922 Deepa Jewellers: `Prospectus_GID` held
+ * "..._Red_Herring_Prospectus_and_GID_....zip" and was mistyped PROSPECTUS
+ * because the underscores defeated the `red herring` phrase check.)
+ */
+function normalizeTitle(t: string): string {
+  return t
+    .replace(/\.[a-z0-9]{2,5}$/, '')
+    .replace(/[_\-.]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
  * True when the text names a DRAFT red-herring prospectus. Checked before
  * anything else that mentions "prospectus" so a DRHP never lands as RHP.
  */
@@ -60,7 +79,7 @@ function isRedHerring(t: string): boolean {
  */
 export function classifyByTitle(rawTitle: string | null | undefined): DocumentType | null {
   if (typeof rawTitle !== 'string') return null;
-  const t = rawTitle.toLowerCase().trim();
+  const t = normalizeTitle(rawTitle.toLowerCase().trim());
   if (t === '') return null;
 
   // 1. Security-parameter rows contain the word "anchor", so they MUST be
