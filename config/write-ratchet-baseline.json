@@ -1,7 +1,7 @@
 {
   "_comment": "Write-ratchet baseline (T-316/R0). Shrink-only allowlist of files that write to `ipos` directly or via a runtime-resolved table name. Regenerate with `node scripts/check-write-ratchet.mjs --update` only when REMOVING an entry (a file was fixed to route through the shared write path). NEVER add a new entry to grandfather a new violation — route the new write through the shared path instead. See docs/architecture/write-path-hardening.md.",
   "generated_by": "scripts/check-write-ratchet.mjs --update",
-  "count": 61,
+  "count": 58,
   "files": [
     {
       "file": "packages/shared/src/admin/field-protection-checker.ts",
@@ -184,19 +184,7 @@
       ]
     },
     {
-      "file": "scraper/src/services/exchange-monitor.ts",
-      "patterns": [
-        "drizzle"
-      ]
-    },
-    {
       "file": "scraper/src/services/registrar-reresolve.ts",
-      "patterns": [
-        "drizzle"
-      ]
-    },
-    {
-      "file": "scraper/src/services/sebi-monitor.ts",
       "patterns": [
         "drizzle"
       ]
@@ -209,12 +197,6 @@
     },
     {
       "file": "web/app/api/admin/conflicts/resolve/route.ts",
-      "patterns": [
-        "drizzle"
-      ]
-    },
-    {
-      "file": "web/app/api/admin/drhp/extract/route.ts",
       "patterns": [
         "drizzle"
       ]

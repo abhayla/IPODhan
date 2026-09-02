@@ -27,8 +27,10 @@ cron (it is **not** an always-on loop — that previously caused a crash-loop). 
 reads a `--source` argument (`nse`, `bse`, `moneycontrol`, `chittorgarh`, `gmp`, `fallback`,
 `api`, or `all`) and dispatches to the matching source orchestrator.
 
-- *Where:* `scraper/src/index.ts` (arg parse + dispatch); `ecosystem.config.js`
-  (`cron_restart: '*/30 * * * *'`, `autorestart: false`).
+- *Where:* `scraper/src/index.ts` (arg parse + dispatch); `scripts/deploy-linux.sh`
+  (`pm2 start … --no-autorestart --cron-restart=*/30_*_*_*_* -- src/index.ts --source=all` —
+  the real cron mechanism on the live Linux VPS). A root `ecosystem.config.js` used to document
+  a different, unread shape for this; it was deleted (T-407) because PM2 never actually loaded it.
 
 ### Step 2 — Each source fetches its data the cheapest way that works
 
@@ -95,12 +97,18 @@ financials. Each source contributes what it knows; conflicts are resolved in Ste
 
 - *Where:* the per-source orchestrators (`scraper/src/scrapers/*-v2.ts`).
 
-### Step 7 — **Download and read the prospectus (DRHP/RHP) PDF**
+### Step 7 — **Find the prospectus (DRHP/RHP) — document discovery is wired but off; extraction is CLI-only** *(planned)*
 
-For each IPO, the system locates the prospectus by searching NSE → BSE → SEBI, downloads the
-PDF, and records it in the `documents` table (idempotent — it won't re-download). It then runs a
-**Python + pdfplumber** extractor (as a child process) that reads through the PDF and pulls out
-the numbers a human would otherwise extract by hand:
+What actually runs today, in the live 30-minute cycle: a pure, no-network document-discovery
+core (`scraper/src/services/primary-source-discovery.ts`) can parse NSE/BSE/SEBI payloads
+(incl. SME boards) into typed document links (RHP/DRHP/ADDENDUM/ANCHOR), gated behind
+`ENABLE_PRIMARY_SOURCE_DISCOVERY` — **default `false`**. There is no live download step and no
+live extraction step wired to this cycle; low-confidence-review claims below describe a planned
+state, not a running one.
+
+The one piece that DOES run, on demand, is a standalone financials extractor:
+`scraper/scripts/extract_financials_pdf.py` (Python + pdfplumber), invoked via
+`scraper/scripts/backfill-financials-pdf.ts --apply` against an already-downloaded PDF. It pulls:
 
 - **Financials** — revenue/profit/EBITDA across recent years, EPS, RoE, net worth, market cap,
   promoter holding → stored in `financial_data`.
@@ -108,13 +116,20 @@ the numbers a human would otherwise extract by hand:
 - **Peer comparison** companies and their ratios → stored in `peer_companies` (peers also come
   from Moneycontrol by sector).
 
-Each extraction carries a confidence score; low-confidence results are flagged for human review.
-DRHP extraction is **non-blocking** — if it fails, the IPO record is still created/updated.
+This is a manual/CLI backfill, not part of the scheduled `--source=all` cycle — it is not
+non-blocking or blocking with respect to a scrape, because a scrape never calls it.
 
-- *Where:* `scraper/src/services/drhp-downloader.ts` (find + download + record document),
-  `scraper/src/services/drhp-orchestrator.ts` (coordinates), `scraper/src/services/drhp-extractor.ts`
-  (spawns the pdfplumber Python extractor); persistence in `scraper/src/services/data-persister.ts`
+- *Where:* `scraper/src/services/primary-source-discovery.ts` (discovery core, flagged off);
+  `scraper/src/config/feature-flags.ts` (`ENABLE_PRIMARY_SOURCE_DISCOVERY`);
+  `scraper/scripts/extract_financials_pdf.py` + `scraper/scripts/backfill-financials-pdf.ts` (the live
+  extractor, CLI-only); persistence in `scraper/src/services/data-persister.ts`
   (`createFinancialData`, `updateIPOObjectives`, `createPeerCompanies`).
+- *Planned:* wiring discovery → download → extraction → persistence into the live cycle is
+  tracked in `docs/reviews/ipo-document-lifecycle-plan.md` (WP A–F); current build status is in
+  `docs/reviews/T-403-plan.md` §8–9. The three old scraper services this step used to cite (a
+  downloader, an orchestrator, and a Python-bridging extractor) had 0 callers and were deleted
+  rather than fixed (T-407, `docs/reviews/T-407-plan.md`) — their stubbed NSE/BSE/SEBI search
+  methods never worked.
 
 ### Step 8 — Reconcile conflicting sources into one authoritative value (per field)
 
@@ -173,16 +188,18 @@ Subscription figures, GMP, and the demand graph change constantly, so they are s
 
 ## Phase C — Keep the data fresh, and show it to the user
 
-### Step 12 — Re-scrape on a market-aware schedule (IST)
+### Step 12 — Re-scrape on a flat 30-minute cron (the tiered IST scheduler is built but does not run)
 
-A scheduler runs each source on a tiered cron, anchored to **Indian market hours** (`Asia/Kolkata`):
-densest during trading hours (e.g. NSE every 30 min 9:15–15:30 on weekdays, BSE every 15 min),
-relaxed after hours, hourly on weekends — so live data (subscription, GMP) is captured when it
-actually moves, without hammering sources overnight. A separate status-updater promotes IPOs
-through UPCOMING → OPEN → CLOSED → LISTED.
+`scraper/src/scheduler/config.ts` defines a tiered cron anchored to **Indian market hours**
+(`Asia/Kolkata`): denser during trading hours, relaxed after hours and on weekends. It does
+**not** run in production — prod is a flat PM2 `cron_restart` firing `--source=all` every 30
+minutes, all day, every day (`scripts/deploy-linux.sh`). The status updater
+(`triggerStatusUpdate`, promoting IPOs UPCOMING → OPEN → CLOSED → LISTED) runs inside that same
+one-shot `--source=all` cycle, not from the tiered scheduler.
 
-- *Where:* `scraper/src/scheduler/config.ts` (the tier tables, `timezone: 'Asia/Kolkata'`);
-  PM2 `cron_restart` in `ecosystem.config.js`.
+- *Where:* `scraper/src/index.ts` (`triggerStatusUpdate`, the flat cycle that actually runs);
+  `scripts/deploy-linux.sh` (`--cron-restart=*/30_*_*_*_*`); `scraper/src/scheduler/config.ts`
+  (the tiered tables — built, unused in prod).
 
 ### Step 13 — Keep the data store lean (prune transient logs)
 
@@ -223,10 +240,13 @@ than its cache.
 The home and listing pages (mainboard, SME, NCD, OFS, rights, history) show the IPO tables. The
 detail page (`/ipos/[slug]`) fetches the IPO with its relations, guards out non-IPO offerings,
 and renders header, timeline, metrics, financials, peers, objectives, documents, etc. — server-
-rendered for speed and SEO.
+rendered for speed and SEO. Plainly: because Step 7's document pipeline is not wired into the
+live cycle, the financials/peers/objectives/documents sections render "Awaiting data" for every
+IPO scraped since launch — that section of the page has real markup and no real data behind it
+yet.
 
 - *Where:* `web/app/page.tsx`, `web/app/mainboard-ipos/page.tsx`, … ,
-  `web/app/ipos/[slug]/page.tsx`.
+  `web/app/ipos/[slug]/page.tsx` (the "Awaiting data" fallback for financials/peers/documents).
 
 ### Step 17 — Format every number and date for an Indian audience
 
@@ -268,7 +288,9 @@ end-to-end debugging.
 
                     PHASE B — gather, reconcile, protect, store
   collect details from all sources
-        └─> download DRHP/RHP PDF ──> pdfplumber reads pages ──> financials/objectives/peers
+        └─> [PLANNED, see docs/reviews/ipo-document-lifecycle-plan.md + T-403-plan.md §8–9]
+            find DRHP/RHP link (flagged off) ──> download ──> pdfplumber ──> financials/objectives/peers
+            (today: financials/objectives/peers are extracted CLI-only, on demand, not in this cycle)
         └─> reconcile conflicts via field-priority matrix (ADMIN>DRHP>NSE>BSE>…)
         └─> respect human-locked fields (field protection)
         └─> upsertIPO()  [single write door + Redis lock]  ──> PostgreSQL
@@ -276,7 +298,8 @@ end-to-end debugging.
                + time-series: subscriptions / gmp_records / ipo_demand_graph)
 
                     PHASE C — keep fresh & serve
-  scheduler re-scrapes on IST market-hours tiers ──> data stays current
+  flat 30-min cron re-runs --source=all ──> data stays current
+        (the tiered IST market-hours scheduler in scraper/src/scheduler/config.ts is built but unused in prod)
         └─> prune scraper_logs > 30 days (non-fatal) ──> DB stays lean
   user visits ──> page ──> service ──> repository ──> Redis (2s, fail-open) ──> Postgres
         └─> format (₹/Cr/x/%, IST dates) + SEO/JSON-LD ──> rendered IPO page

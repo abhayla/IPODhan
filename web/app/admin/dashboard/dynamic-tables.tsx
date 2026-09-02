@@ -240,16 +240,6 @@ export function DynamicTablesDashboard() {
                 Add New
               </Link>
             </div>
-
-            {/* Special Actions for Specific Tables */}
-            {table.name === 'extractionLogs' && (
-              <Link
-                href="/admin/drhp-extraction"
-                className="mt-2 block w-full px-3 py-2 bg-purple-100 text-purple-700 text-sm font-medium rounded-md hover:bg-purple-200 text-center"
-              >
-                DRHP Extraction UI →
-              </Link>
-            )}
           </div>
         ))}
       </div>

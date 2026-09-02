@@ -490,19 +490,6 @@ export default function MetricsPage() {
           </Link>
 
           <Link
-            href="/admin/drhp-extraction"
-            className="p-4 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors flex items-center justify-between group"
-          >
-            <div>
-              <div className="text-white font-medium">Review Queue</div>
-              <div className="text-purple-200 text-sm mt-1">
-                {metrics.drhp.queuedForReview} pending review
-              </div>
-            </div>
-            <span className="text-2xl group-hover:scale-110 transition-transform">→</span>
-          </Link>
-
-          <Link
             href="/admin/audit"
             className="p-4 bg-gray-600 hover:bg-gray-700 rounded-lg transition-colors flex items-center justify-between group"
           >

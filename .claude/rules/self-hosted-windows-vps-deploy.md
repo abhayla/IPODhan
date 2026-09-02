@@ -12,6 +12,8 @@ private: true
 
 # Self-Hosted Windows VPS Deploy
 
+> **NOTE (T-407, 2026-09-02):** ecosystem.config.js was deleted; the PM2 flags now live in scripts/deploy-linux.sh. This rule's ecosystem.config.js references are historical.
+
 > **RETIRED 2026-08-21 (T-252) — HISTORICAL.** IPODhan no longer deploys to the Windows VPS.
 > Serving moved to the Linux VPS `72.61.240.224` (`.github/workflows/deploy-linux.yml`), and
 > `deploy.yml` + the four `vps-*.yml` workflows were moved to `.github/workflows-disabled/`.

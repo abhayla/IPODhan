@@ -3,7 +3,8 @@
  *
  * WHY THIS EXISTS (root cause, verified 2026-06-16):
  *   The `documents` table is 0% because nothing ever WRITES extracted prospectus links:
- *   - The DRHP downloader's search methods (`drhp-downloader.ts`) are 100% stubbed (`return null`).
+ *   - The old DRHP downloader's search methods were 100% stubbed (`return null`); that dead
+ *     module was deleted (T-407) rather than fixed — see `docs/reviews/T-407-plan.md`.
  *   - The BSE detail path (`bse-detail-scraper` + `scrapeBSEIPODetailWithDocuments`) is dead:
  *     BSE's `DisplayIPO.aspx` is now a JS-rendered SPA — a static fetch returns a ~12KB shell
  *     with zero IPO fields and zero document links.
