@@ -9,6 +9,15 @@
  *
  * Run from scraper/ (DB creds from ../web/.env.local, override:true - same
  * convention as backfill-financials-pdf.ts).
+ *
+ * UNIT CONTRACT (read before comparing two market-cap numbers):
+ *   ipos.issue_size, ipo_details.fresh_issue / ofs_issue and
+ *   ipo_valuation.mcap_at_floor / mcap_at_cap are stored in RUPEES.
+ *   financial_data.market_cap is stored in CRORE.
+ *   financial_statements keeps its own published unit per row (MILLION | LAKH |
+ *   CRORE) and a later filing is converted INTO the stored row's unit.
+ * A filing whose `unit` is absent or unrecognised has every unit-dependent
+ * write skipped and reported under `skipped_no_unit` — nothing is guessed.
  */
 import { config as loadEnv } from 'dotenv';
 loadEnv({ path: '../web/.env.local', override: true });
@@ -18,6 +27,7 @@ import { eq, or, ilike } from 'drizzle-orm';
 import {
   db,
   getRedisClient,
+  filterProtectedFields,
   IPORepository,
   FinancialStatementsRepository,
   IpoValuationRepository,
@@ -129,6 +139,8 @@ async function main(): Promise<void> {
       financialData: new FinancialDataRepository(db, redis),
       fieldSources: new FieldSourcesRepository(db, redis),
       ipoDetailsWriter: makeIpoDetailsWriter(),
+      protectionFilter: (id, table, data, scraperName) =>
+        filterProtectedFields(id, table, data as Record<string, unknown>, scraperName, db, redis),
     }
   );
 

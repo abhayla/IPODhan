@@ -24,6 +24,8 @@ import {
   persistFilingExtraction,
   toRupees,
   toCrore,
+  parseFilingUnit,
+  convertUnit,
   scraperSourceForDocType,
   type FilingExtraction,
   type FilingPersisterDeps,
@@ -157,10 +159,25 @@ function makeDeps(): Spies {
 
 describe('filing-persister — unit conversion', () => {
   it('converts published units to rupees and crores', () => {
-    expect(toRupees(4597.16, 'millions')).toBeCloseTo(4_597_160_000, 0);
-    expect(toRupees(10, 'crores')).toBe(100_000_000);
-    expect(toRupees(100, 'lakhs')).toBe(10_000_000);
-    expect(toCrore(19266.76, 'millions')).toBeCloseTo(1926.676, 3);
+    expect(toRupees(4597.16, 'MILLION')).toBeCloseTo(4_597_160_000, 0);
+    expect(toRupees(10, 'CRORE')).toBe(100_000_000);
+    expect(toRupees(100, 'LAKH')).toBe(10_000_000);
+    expect(toRupees(500, 'RUPEES')).toBe(500);
+    expect(toCrore(19266.76, 'MILLION')).toBeCloseTo(1926.676, 3);
+    expect(convertUnit(1000, 'MILLION', 'CRORE')).toBe(100);
+    expect(convertUnit(100, 'CRORE', 'MILLION')).toBe(1000);
+  });
+
+  it('refuses to guess a unit it does not recognise (F1)', () => {
+    expect(parseFilingUnit('millions')).toBe('MILLION');
+    expect(parseFilingUnit('Crore')).toBe('CRORE');
+    expect(parseFilingUnit('rupees')).toBe('RUPEES');
+    // The old code defaulted every one of these to millions.
+    expect(parseFilingUnit(null)).toBeNull();
+    expect(parseFilingUnit(undefined)).toBeNull();
+    expect(parseFilingUnit('')).toBeNull();
+    expect(parseFilingUnit('billions')).toBeNull();
+    expect(parseFilingUnit('INR')).toBeNull();
   });
 
   it('maps every filing doc type onto the DRHP scraper_source member', () => {
@@ -361,6 +378,9 @@ describe('filing-persister — failed checks are never written', () => {
       // The extractor read a number but its own consistency check rejected it.
       fresh_issue_amount: { value: 999999, passed: false },
       ofs_amount_at_cap: { value: 2097.16, passed: false },
+      // The fallback leg too — otherwise issue_size would be computed from the
+      // OFS alone, which understates the offer by the whole fresh component.
+      ofs_amount: { value: 1990.52, passed: false },
       upi_cutoff_time: { value: '17:00', passed: false },
       market_cap_at_cap: { value: 17014.0, passed: false },
     });
@@ -419,7 +439,7 @@ describe('filing-persister — failed checks are never written', () => {
     expect(s.finStmt).not.toHaveBeenCalled();
     expect(summary.written.financial_statements).toBeUndefined();
     expect(
-      summary.skipped_failed_check.some((x) => x.startsWith('financial_statements: unit'))
+      summary.skipped_no_unit.some((x) => x.startsWith('financial_statements'))
     ).toBe(true);
   });
 });
@@ -526,7 +546,14 @@ describe('filing-persister — RHP', () => {
     // The ad already wrote FY2026 operating cash flow; the RHP has no such row.
     (s.deps.financialStatements as unknown as { listByIpo: ReturnType<typeof vi.fn> }).listByIpo =
       vi.fn(async () => [
-        { ipoId: IPO_ID, fiscalYear: 2026, basis: 'RESTATED', opCashFlow: '-147.3', dscr: null },
+        {
+          ipoId: IPO_ID,
+          fiscalYear: 2026,
+          basis: 'RESTATED',
+          unit: 'MILLION',
+          opCashFlow: '-147.3',
+          dscr: null,
+        },
       ]);
     await persistFilingExtraction(
       IPO_ID,
@@ -562,5 +589,242 @@ describe('filing-persister — RHP', () => {
     expect(fy2026.basis).toBe('RESTATED');
     // The RHP carries no price band, so nothing goes to ipos.issueSize.
     expect(summary.ipos_fields).not.toContain('issueSize');
+  });
+});
+
+describe('filing-persister — unit safety (F1/F2)', () => {
+  beforeEach(() => upsertIPOMock.mockClear());
+
+  it('writes no issue_size, fresh/ofs or market cap when the filing states no unit', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('PRICE_BAND_AD');
+    extraction.unit = null;
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+
+    const scraped = (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
+    expect(scraped.issueSize).toBeUndefined();
+    expect(summary.ipos_fields).not.toContain('issueSize');
+
+    const details = s.detailsUpsert.mock.calls[0][1] as Record<string, unknown>;
+    expect(details.freshIssue).toBeUndefined();
+    expect(details.ofsIssue).toBeUndefined();
+
+    const valuation = s.valuation.mock.calls[0][0] as Record<string, unknown>;
+    expect(valuation.mcapAtFloor).toBeNull();
+    expect(valuation.mcapAtCap).toBeNull();
+
+    // Price band and share counts are NOT unit-dependent and still land.
+    expect(scraped.priceRangeMin).toBe(168);
+    expect(valuation.sharesAtCap).toBe(14124293);
+
+    for (const f of [
+      'ipos.issueSize',
+      'ipo_details.freshIssue',
+      'ipo_details.ofsIssue',
+      'ipo_valuation.mcapAtFloor',
+      'ipo_valuation.mcapAtCap',
+      'financial_data.marketCap',
+      'financial_statements',
+    ]) {
+      expect(summary.skipped_no_unit.some((x) => x.startsWith(f))).toBe(true);
+    }
+  });
+
+  it('does not multiply an already-in-rupees amount by a million', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('PRICE_BAND_AD');
+    extraction.unit = 'rupees';
+    extraction.fields.fresh_issue_amount = {
+      value: 2_500_000_000,
+      check: { name: 'fresh_issue_amount_consistent', passed: true },
+    };
+    extraction.fields.ofs_amount_at_cap = {
+      value: 2_097_160_000,
+      check: { name: 'ofs_at_cap_consistent', passed: true },
+    };
+    await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const scraped = (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
+    // The old millions default made this 4.597e15.
+    expect(scraped.issueSize).toBe(4_597_160_000);
+  });
+
+  it('converts a later crore filing into the stored million row, keeping one unit (F2)', async () => {
+    const s = makeDeps();
+    (s.deps.financialStatements as unknown as { listByIpo: ReturnType<typeof vi.fn> }).listByIpo =
+      vi.fn(async () => [
+        {
+          ipoId: IPO_ID,
+          fiscalYear: 2026,
+          basis: 'RESTATED',
+          unit: 'MILLION',
+          revenue: '19266.76',
+          opCashFlow: '-147.3',
+        },
+      ]);
+    const extraction = extractionFromOracle('RHP');
+    extraction.unit = 'crores';
+    // The same FY2026 figures, restated in crores.
+    extraction.fields.revenue_by_fy = {
+      value: { '2026': 1926.676 },
+      check: { name: 'revenue_year_series', passed: true },
+    };
+    extraction.fields.net_worth_by_fy = {
+      value: { '2026': 238.07 },
+      check: { name: 'net_worth_year_series', passed: true },
+    };
+    extraction.fields.eps_basic_by_fy = {
+      value: { '2026': 12.78 },
+      check: { name: 'eps_year_series', passed: true },
+    };
+    delete extraction.fields.total_income_by_fy;
+    delete extraction.fields.pat_by_fy;
+    delete extraction.fields.ebitda_by_fy;
+
+    await persistFilingExtraction(IPO_ID, extraction, { docType: 'RHP', apply: true }, s.deps);
+
+    const row = s.finStmt.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((r) => r.fiscalYear === 2026)!;
+    // The STORED unit wins and the incoming crore figures are converted into it.
+    expect(row.unit).toBe('MILLION');
+    expect(row.revenue).toBe('19266.76');
+    expect(row.netWorth).toBe('2380.7');
+    // EPS is per-share — it must NOT be unit-converted.
+    expect(row.epsBasic).toBe('12.78');
+    // And the earlier filing's column survives.
+    expect(row.opCashFlow).toBe('-147.3');
+  });
+});
+
+describe('filing-persister — basis casing (F3)', () => {
+  beforeEach(() => upsertIPOMock.mockClear());
+
+  it('classifies a capitalised "Standalone" label as STANDALONE, not RESTATED', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('PRICE_BAND_AD', {
+      financial_basis: { value: 'Standalone', passed: true },
+    });
+    await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const bases = new Set(
+      s.finStmt.mock.calls.map((c) => (c[0] as Record<string, unknown>).basis)
+    );
+    expect([...bases]).toEqual(['STANDALONE']);
+  });
+
+  it('still reads a mixed-case "Restated Standalone" label as RESTATED', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('PRICE_BAND_AD', {
+      financial_basis: { value: 'Restated Standalone', passed: true },
+    });
+    await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const bases = new Set(
+      s.finStmt.mock.calls.map((c) => (c[0] as Record<string, unknown>).basis)
+    );
+    expect([...bases]).toEqual(['RESTATED']);
+  });
+
+  it('does not merge a STANDALONE extraction into the stored RESTATED row', async () => {
+    const s = makeDeps();
+    (s.deps.financialStatements as unknown as { listByIpo: ReturnType<typeof vi.fn> }).listByIpo =
+      vi.fn(async () => [
+        { ipoId: IPO_ID, fiscalYear: 2026, basis: 'RESTATED', unit: 'MILLION', opCashFlow: '-147.3' },
+      ]);
+    const extraction = extractionFromOracle('PRICE_BAND_AD', {
+      financial_basis: { value: 'Standalone', passed: true },
+    });
+    extraction.fields.op_cash_flow_by_fy = {
+      value: {},
+      check: { name: 'op_cash_flow_year_series', passed: true },
+    };
+    await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const row = s.finStmt.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((r) => r.fiscalYear === 2026)!;
+    expect(row.basis).toBe('STANDALONE');
+    // The RESTATED row's value must not leak into the STANDALONE one.
+    expect(row.opCashFlow).toBeNull();
+  });
+});
+
+describe('filing-persister — lock and field protection (F5)', () => {
+  beforeEach(() => upsertIPOMock.mockClear());
+
+  it('refuses the whole run and writes nothing when the IPO is scraper_locked', async () => {
+    const s = makeDeps();
+    const findById = s.deps.ipoRepository.findById as unknown as ReturnType<typeof vi.fn>;
+    const base = await findById();
+    findById.mockResolvedValue({ ...base, scraperLocked: true });
+
+    await expect(
+      persistFilingExtraction(
+        IPO_ID,
+        extractionFromOracle('PRICE_BAND_AD'),
+        { docType: 'PRICE_BAND_AD', apply: true },
+        s.deps
+      )
+    ).rejects.toThrow(/scraper_locked/);
+
+    expect(upsertIPOMock).not.toHaveBeenCalled();
+    expect(s.detailsUpsert).not.toHaveBeenCalled();
+    expect(s.finStmt).not.toHaveBeenCalled();
+    expect(s.valuation).not.toHaveBeenCalled();
+    expect(s.replacePromoters).not.toHaveBeenCalled();
+    expect(s.peerCreate).not.toHaveBeenCalled();
+    expect(s.brlm).not.toHaveBeenCalled();
+    expect(s.finData).not.toHaveBeenCalled();
+  });
+
+  it('never writes an ipo_details column the protection gate removed', async () => {
+    const s = makeDeps();
+    s.deps.protectionFilter = vi.fn(async (_id, _t, data: Record<string, unknown>) => {
+      const filtered = { ...data };
+      delete filtered.upiCutoffTime;
+      return { filtered };
+    });
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    expect(s.deps.protectionFilter).toHaveBeenCalledWith(
+      IPO_ID,
+      'ipo_details',
+      expect.any(Object),
+      'DRHP'
+    );
+    const values = s.detailsUpsert.mock.calls[0][1] as Record<string, unknown>;
+    expect(values.upiCutoffTime).toBeUndefined();
+    expect(values.complianceOfficer).toBe('Vandana Modani');
+    expect(
+      summary.skipped_no_column.some((x) => x === 'ipo_details.upiCutoffTime (field is protected)')
+    ).toBe(true);
+    const tracked = s.trackField.mock.calls.map((c) => (c[0] as Record<string, unknown>).fieldName);
+    expect(tracked).not.toContain('upiCutoffTime');
   });
 });
