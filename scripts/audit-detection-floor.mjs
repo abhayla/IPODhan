@@ -60,6 +60,7 @@ import {
   STEP_LEDGER_WINDOW_HOURS,
   crossCheckNseStatuses,
 } from './lib/detection-floor-checks.mjs';
+import { checkFixMergedNotServed } from './lib/fix-served-checks.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
@@ -809,6 +810,74 @@ async function checkJ() {
   }
 }
 
+// ---- (n): a merged fixes-live-bug PR that is not actually being served -------
+// T-425, mechanism for registry class merged-fix-never-deployed-while-bug-live
+// (#265; first occurrence T-327 — fix merged 26 Aug, not served until 28 Aug).
+// The served SHA is read the SAME WAY the T-324 SHA-drift monitor reads it: a
+// GET against {BASE_URL}/api/version (see .github/workflows/deploy-linux.yml
+// "Verify /api/version reflects the deployed SHA"), then dated locally via
+// `git log` (this checkout has full history — see actions/checkout fetch-depth
+// 0 in that same workflow). gh failures and an unreachable/unknown served SHA
+// are UNVERIFIABLE, never a silent PASS.
+const FIX_LIVE_BUG_REPO = 'abhayla/IPODhan';
+
+function getRepoSlug() {
+  try {
+    const url = execFileSync('git', ['config', '--get', 'remote.origin.url'], { encoding: 'utf8', timeout: 5000 }).trim();
+    const m = url.match(/[:/]([^/]+\/[^/]+?)(\.git)?$/);
+    return m ? m[1] : FIX_LIVE_BUG_REPO;
+  } catch { return FIX_LIVE_BUG_REPO; }
+}
+
+function fetchMergedFixLiveBugPRs(repo) {
+  try {
+    const raw = execFileSync('gh', ['pr', 'list', '--repo', repo, '--state', 'merged', '--label', 'fixes-live-bug', '--json', 'number,mergedAt', '--limit', '100'], { encoding: 'utf8', timeout: 15000 });
+    return JSON.parse(raw);
+  } catch (e) {
+    console.log(`[m_fix_merged_not_served] gh pr list failed: ${e.message}`);
+    return null;
+  }
+}
+
+async function fetchServedSha(baseUrl) {
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 10000);
+    const res = await fetch(`${baseUrl}/api/version`, { signal: ctrl.signal }).finally(() => clearTimeout(t));
+    if (!res.ok) return null;
+    const data = await res.json();
+    const sha = data?.data?.sha;
+    return sha && sha !== 'unknown' ? sha : null;
+  } catch (e) {
+    console.log(`[m_fix_merged_not_served] served-SHA fetch failed: ${e.message}`);
+    return null;
+  }
+}
+
+function getCommitTime(sha) {
+  if (!sha) return null;
+  try {
+    const out = execFileSync('git', ['log', '-1', '--format=%cI', sha], { encoding: 'utf8', timeout: 5000, cwd: REPO_ROOT }).trim();
+    return out || null;
+  } catch (e) {
+    console.log(`[m_fix_merged_not_served] could not date commit ${sha} from local git history: ${e.message}`);
+    return null;
+  }
+}
+
+async function checkN() {
+  const repo = getRepoSlug();
+  const mergedPRs = fetchMergedFixLiveBugPRs(repo);
+  const servedSha = await fetchServedSha(BASE_URL);
+  const servedCommitTime = getCommitTime(servedSha);
+
+  const result = checkFixMergedNotServed({ mergedPRs, servedSha, servedCommitTime });
+  if (result.status === 'FAIL') {
+    for (const o of result.offenders) notify('m_fix_merged_not_served', 'P1', o.number, `Merged fixes-live-bug PR #${o.number} not served for ${o.ageHours}h`, result.reason);
+  }
+  record('m_fix_merged_not_served', 'every merged fixes-live-bug PR is served within 24h', result.status, result.reason);
+}
+
 async function sendNotifications(payloads) {
   const key = process.env.NOTIFIER_KEY_IPODHAN;
   const url = (process.env.NOTIFIER_URL || 'http://127.0.0.1:3300') + '/notify';
@@ -852,6 +921,7 @@ async function main() {
   await checkL();
   await checkJ();
   await checkM();
+  await checkN();
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');
