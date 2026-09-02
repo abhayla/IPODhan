@@ -1,0 +1,88 @@
+No config path provided, using default 'drizzle.config.ts'
+Reading config file 'D:\Abhay\Ventures\IPODhan-t405\web\drizzle.config.ts'
+[dotenv@17.2.3] injecting env (1) from .env.local -- tip: ⚙️  suppress all logs with { quiet: true }
+Using 'pg' driver for database querying
+[⣷] applying migrations...[2K[1G[⣯] applying migrations...[2K[1G[⣟] applying migrations...[2K[1G[⡿] applying migrations...[2K[1G[⢿] applying migrations...[2K[1G[⣻] applying migrations...[2K[1G[⣽] applying migrations...[2K[1G[⣷] applying migrations...[2K[1G[⣯] applying migrations...[2K[1G[⣟] applying migrations...[2K[1G[⡿] applying migrations...[2K[1G[⢿] applying migrations...[2K[1G[⣻] applying migrations...[2K[1G[⣽] applying migrations...[2K[1G[⣷] applying migrations...[2K[1G[⣯] applying migrations...[2K[1G[⣟] applying migrations...[2K[1G[⡿] applying migrations...[2K[1G[⢿] applying migrations...[2K[1G[⣻] applying migrations...[2K[1G[⣽] applying migrations...[2K[1G[⣷] applying migrations...[2K[1G[⣯] applying migrations...[2K[1G[⣟] applying migrations...[2K[1G[⡿] applying migrations...[2K[1G[⢿] applying migrations...[2K[1G[⣻] applying migrations...[2K[1G[⣽] applying migrations...[2K[1G[⣷] applying migrations...[2K[1G[⣯] applying migrations...[2K[1G[⣟] applying migrations...[2K[1G[⡿] applying migrations...[2K[1G[⢿] applying migrations...[2K[1G[⣻] applying migrations...[2K[1G[⣽] applying migrations...[2K[1G[⣷] applying migrations...[2K[1G[⣯] applying migrations...[2K[1G[⣟] applying migrations...[2K[1G[⡿] applying migrations...[2K[1G[⢿] applying migrations...[2K[1G[⣻] applying migrations...[2K[1G[⣽] applying migrations...[2K[1G[⣷] applying migrations...[2K[1G[⣯] applying migrations...[2K[1G[⣟] applying migrations...[2K[1G[⡿] applying migrations...[2K[1G[⢿] applying migrations...[2K[1G[⣻] applying migrations...[2K[1G[⣽] applying migrations...[2K[1G[⣷] applying migrations...[2K[1G[⣯] applying migrations...[2K[1G[⣟] applying migrations...[2K[1G[⡿] applying migrations...[2K[1G[⢿] applying migrations...[2K[1G[⣻] applying migrations...[2K[1G[⣽] applying migrations...DrizzleQueryError: Failed query: -- T-405 (#256) -- stage 0: additive columns schema.ts declares that no
+-- journaled migration ever added, on tables that DO exist on a journal-built
+-- database (unlike 0038, which covers tables missing entirely).
+--
+-- Same root cause as 0038: these columns were added to schema.ts alongside a
+-- hand-authored migration file that was never registered in
+-- meta/_journal.json, so drizzle-kit migrate never ran it. Production has
+-- them already (that history is documented against each source file below);
+-- every ADD COLUMN here is IF NOT EXISTS, so it is a no-op there and additive
+-- everywhere else. Nothing is dropped or retyped -- the seven live
+-- COLUMN_TYPE_MISMATCH findings on gmp_records/listing_performance
+-- (int -> numeric widening) stay OUT of scope here: they are destructive/
+-- type-changing and already tracked in web/drizzle/migrations/_gated/
+-- (B2_gmp_int_to_numeric.sql, C3_listing_performance_widen_precision.sql)
+-- pending owner sign-off. See docs/reviews/T-405-plan.md for the full drift
+-- table and this decision.
+
+-- ipos -- 0015_restructure_category_to_segment_offering_type introduced
+-- segment/offering_type; bse_scrip_code came later (_gated/C2, marked
+-- additive-safe there but re-derived here as a plain journaled column so an
+-- empty database gets it without a manual _gated apply); the rest are
+-- historical/GMP snapshot columns from 0009_add_historical_ipo_fields and
+-- 0018_add_scraper_locked_index.
+ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "bse_scrip_code" varchar(20);
+
+params: 
+    at NodePgPreparedQuery.queryWithCache (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\session.ts:73:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\dialect.ts:102:7)
+    ... 2 lines matching cause stack trace ...
+    at async migrate (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\migrator.ts:10:2) {
+  query: '-- T-405 (#256) -- stage 0: additive columns schema.ts declares that no\n' +
+    '-- journaled migration ever added, on tables that DO exist on a journal-built\n' +
+    '-- database (unlike 0038, which covers tables missing entirely).\n' +
+    '--\n' +
+    '-- Same root cause as 0038: these columns were added to schema.ts alongside a\n' +
+    '-- hand-authored migration file that was never registered in\n' +
+    '-- meta/_journal.json, so drizzle-kit migrate never ran it. Production has\n' +
+    '-- them already (that history is documented against each source file below);\n' +
+    '-- every ADD COLUMN here is IF NOT EXISTS, so it is a no-op there and additive\n' +
+    '-- everywhere else. Nothing is dropped or retyped -- the seven live\n' +
+    '-- COLUMN_TYPE_MISMATCH findings on gmp_records/listing_performance\n' +
+    '-- (int -> numeric widening) stay OUT of scope here: they are destructive/\n' +
+    '-- type-changing and already tracked in web/drizzle/migrations/_gated/\n' +
+    '-- (B2_gmp_int_to_numeric.sql, C3_listing_performance_widen_precision.sql)\n' +
+    '-- pending owner sign-off. See docs/reviews/T-405-plan.md for the full drift\n' +
+    '-- table and this decision.\n' +
+    '\n' +
+    '-- ipos -- 0015_restructure_category_to_segment_offering_type introduced\n' +
+    '-- segment/offering_type; bse_scrip_code came later (_gated/C2, marked\n' +
+    '-- additive-safe there but re-derived here as a plain journaled column so an\n' +
+    '-- empty database gets it without a manual _gated apply); the rest are\n' +
+    '-- historical/GMP snapshot columns from 0009_add_historical_ipo_fields and\n' +
+    '-- 0018_add_scraper_locked_index.\n' +
+    'ALTER TABLE "ipos" ADD COLUMN IF NOT EXISTS "bse_scrip_code" varchar(20);\n',
+  params: [],
+  cause: error: relation "ipos" does not exist
+      at D:\Abhay\Ventures\IPODhan-t405\node_modules\pg\lib\client.js:545:17
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:149:14)
+      at async NodePgPreparedQuery.queryWithCache (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\session.ts:71:12)
+      at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\dialect.ts:102:7)
+      at async NodePgSession.transaction (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:258:19)
+      at async PgDialect.migrate (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\dialect.ts:95:3)
+      at async migrate (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\migrator.ts:10:2) {
+    length: 102,
+    severity: 'ERROR',
+    code: '42P01',
+    detail: undefined,
+    hint: undefined,
+    position: undefined,
+    internalPosition: undefined,
+    internalQuery: undefined,
+    where: undefined,
+    schema: undefined,
+    table: undefined,
+    column: undefined,
+    dataType: undefined,
+    constraint: undefined,
+    file: 'namespace.c',
+    line: '437',
+    routine: 'RangeVarGetRelidExtended'
+  }
+}

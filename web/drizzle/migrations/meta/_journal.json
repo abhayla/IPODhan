@@ -176,6 +176,13 @@
       "when": 1787916411450,
       "tag": "0041_journal_drift_repair_backport",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1788427200000,
+      "tag": "0042_wp_c1_filing_schema",
+      "breakpoints": true
     }
   ]
 }

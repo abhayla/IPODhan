@@ -25,6 +25,40 @@ export type {
   FetchAttempt,
 } from './document-fetch-state-repository';
 
+// T-428 WP C-1: filing-field repositories
+export { FinancialStatementsRepository } from './financial-statements-repository';
+export type {
+  FinancialStatementRow,
+  FinancialStatementUpsert,
+  FinancialStatementBasis,
+  FinancialUnit,
+} from './financial-statements-repository';
+
+export { IpoValuationRepository } from './ipo-valuation-repository';
+export type { IpoValuationRow, IpoValuationUpsert, PricingEvent } from './ipo-valuation-repository';
+
+export { PromotersRepository } from './promoters-repository';
+export type {
+  PromoterRow,
+  PromoterInsert,
+  PromoterAcquisitionRangeRow,
+  PromoterAcquisitionRangeInsert,
+  AcquisitionPeriod,
+} from './promoters-repository';
+
+export { IpoIntermediariesRepository } from './ipo-intermediaries-repository';
+export type {
+  IpoIntermediaryRow,
+  IpoIntermediaryInsert,
+  IntermediaryRole,
+} from './ipo-intermediaries-repository';
+
+export { BrlmTrackRecordRepository } from './brlm-track-record-repository';
+export type { BrlmTrackRecordRow, BrlmTrackRecordInsert } from './brlm-track-record-repository';
+
+export { IpoRiskFactorsRepository } from './ipo-risk-factors-repository';
+export type { IpoRiskFactorRow, IpoRiskFactorInsert } from './ipo-risk-factors-repository';
+
 // Base Repository
 export { BaseRepository } from './base-repository';
 

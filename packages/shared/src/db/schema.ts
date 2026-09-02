@@ -165,6 +165,45 @@ export const issueTypeEnum = pgEnum('issue_type', [
   'HYBRID',
 ]);
 
+// ==================== T-428 WP C-1: filing-field enums ====================
+//
+// `financial_statement_basis` is deliberately NOT named/reused from the existing
+// `financial_statement_type` enum (CONSOLIDATED|STANDALONE, backs `ipo_financials`):
+// the price-band-ad filing fields use a different axis (RESTATED|STANDALONE per
+// docs/reviews/price-band-ad-field-inventory.md), and the T-403 round-2 lesson was
+// exactly this — an enum named like an existing table/enum silently collides.
+
+export const pricingEventEnum = pgEnum('pricing_event', [
+  'PRICE_BAND_AD',
+  'PROSPECTUS',
+]);
+
+export const financialStatementBasisEnum = pgEnum('financial_statement_basis', [
+  'RESTATED',
+  'STANDALONE',
+]);
+
+export const financialUnitEnum = pgEnum('financial_unit', [
+  'MILLION',
+  'LAKH',
+  'CRORE',
+]);
+
+export const acquisitionPeriodEnum = pgEnum('acquisition_period', [
+  '1Y',
+  '18M',
+  '3Y',
+]);
+
+export const intermediaryRoleEnum = pgEnum('intermediary_role', [
+  'BRLM',
+  'REGISTRAR',
+  'SYNDICATE',
+  'SPONSOR_BANK',
+  'ESCROW_BANK',
+  'PUBLIC_ISSUE_BANK',
+]);
+
 // ==================== TABLE 1: IPOS (Core Entity) ====================
 
 export const ipos = pgTable(
@@ -213,6 +252,11 @@ export const ipos = pgTable(
      * Recorded by the scraper orchestrator, which already fetches that page.
      */
     verifierUrl: varchar('verifier_url', { length: 512 }),
+
+    // T-428 WP C-1: Corporate Identification Number, printed on every price-band
+    // ad / prospectus cover. 21 chars is the fixed CIN length (India, MCA format).
+    cin: varchar('cin', { length: 21 }),
+
     segment: segmentEnum('segment'), // Exchange segment (MAINBOARD | SME) - nullable for RIGHTS/InvITs/REITs
     offeringType: offeringTypeEnum('offering_type').notNull(), // Type of offering (IPO, RIGHTS, TENDER, etc.)
     sector: varchar('sector', { length: 100 }),
@@ -570,6 +614,9 @@ export const documents = pgTable(
      * characters, always.
      */
     sha256: char('sha256', { length: 64 }),
+    // T-428 WP C-1: the date the filing was made with the exchange/registrar
+    // (distinct from uploadedAt, which is when WE fetched it).
+    filingDate: date('filing_date'),
     uploadedAt: timestamp('uploaded_at').defaultNow().notNull(),
     exchange: varchar('exchange', { length: 10 }), // 'NSE' | 'BSE' - source exchange
 
@@ -1087,6 +1134,14 @@ export const ipoDetails = pgTable(
     videoLinkBHIM: varchar('video_link_bhim', { length: 500 }),
     mobileAppsUPILink: varchar('mobile_apps_upi_link', { length: 500 }),
 
+    // T-428 WP C-1: price-band-ad fields (docs/reviews/price-band-ad-field-inventory.md).
+    // designatedExchange stays a plain varchar (not an enum) — the DoD did not specify
+    // an enum for it and the ad copy is free text (e.g. "BSE" vs "BSE Limited").
+    designatedExchange: varchar('designated_exchange', { length: 10 }),
+    lotMultiple: integer('lot_multiple'),
+    allocationPct: jsonb('allocation_pct'),
+    preIpoPlacement: boolean('pre_ipo_placement'),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -1559,6 +1614,236 @@ export const ipoSlugRedirectsRelations = relations(ipoSlugRedirects, ({ one }) =
 export const dataConflictsRelations = relations(dataConflicts, ({ one }) => ({
   ipo: one(ipos, {
     fields: [dataConflicts.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+// ==================== T-428 WP C-1: filing-field tables ====================
+// Source: docs/reviews/wp-c-extraction-contract.md section 4,
+// docs/reviews/price-band-ad-field-inventory.md "Schema changes this implies".
+// Write target for WP C (extraction happens in WP C-2, persistence wiring in WP
+// C-3 behind ENABLE_FILING_EXTRACTION, default OFF) -- nothing writes here yet.
+// Existing financial_data FY2022-2024 columns stay untouched (gated drop later).
+
+export const financialStatements = pgTable(
+  'financial_statements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    fiscalYear: integer('fiscal_year').notNull(),
+    basis: financialStatementBasisEnum('basis').notNull(),
+    unit: financialUnitEnum('unit').notNull(),
+    revenue: numeric('revenue', { precision: 18, scale: 2 }),
+    totalIncome: numeric('total_income', { precision: 18, scale: 2 }),
+    ebitda: numeric('ebitda', { precision: 18, scale: 2 }),
+    pat: numeric('pat', { precision: 18, scale: 2 }),
+    netWorth: numeric('net_worth', { precision: 18, scale: 2 }),
+    epsBasic: numeric('eps_basic', { precision: 18, scale: 2 }),
+    epsDiluted: numeric('eps_diluted', { precision: 18, scale: 2 }),
+    opCashFlow: numeric('op_cash_flow', { precision: 18, scale: 2 }),
+    dscr: numeric('dscr', { precision: 18, scale: 2 }),
+    rentExpense: numeric('rent_expense', { precision: 18, scale: 2 }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoIdIdx: index('idx_financial_statements_ipo_id').on(table.ipoId),
+    uniqueIpoFyBasis: unique('unique_financial_statements_ipo_fy_basis').on(
+      table.ipoId,
+      table.fiscalYear,
+      table.basis
+    ),
+  })
+);
+
+export const financialStatementsRelations = relations(financialStatements, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [financialStatements.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const ipoValuation = pgTable(
+  'ipo_valuation',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    pricingEvent: pricingEventEnum('pricing_event').notNull(),
+    priceFloor: numeric('price_floor', { precision: 18, scale: 2 }),
+    priceCap: numeric('price_cap', { precision: 18, scale: 2 }),
+    sharesAtFloor: bigint('shares_at_floor', { mode: 'number' }), // share count -- never numeric; round-7 class
+    sharesAtCap: bigint('shares_at_cap', { mode: 'number' }), // share count -- never numeric; round-7 class
+    mcapAtFloor: numeric('mcap_at_floor', { precision: 18, scale: 2 }),
+    mcapAtCap: numeric('mcap_at_cap', { precision: 18, scale: 2 }),
+    peAtFloor: numeric('pe_at_floor', { precision: 18, scale: 2 }),
+    peAtCap: numeric('pe_at_cap', { precision: 18, scale: 2 }),
+    peNotAscertainableReason: text('pe_not_ascertainable_reason'),
+    ronwWeighted3y: numeric('ronw_weighted_3y', { precision: 18, scale: 2 }),
+    faceValueMultipleFloor: numeric('face_value_multiple_floor', { precision: 18, scale: 2 }),
+    faceValueMultipleCap: numeric('face_value_multiple_cap', { precision: 18, scale: 2 }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoIdIdx: index('idx_ipo_valuation_ipo_id').on(table.ipoId),
+    uniqueIpoPricingEvent: unique('unique_ipo_valuation_ipo_pricing_event').on(
+      table.ipoId,
+      table.pricingEvent
+    ),
+  })
+);
+
+export const ipoValuationRelations = relations(ipoValuation, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [ipoValuation.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const promoters = pgTable(
+  'promoters',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    name: varchar('name', { length: 255 }).notNull(),
+    sharesHeld: bigint('shares_held', { mode: 'number' }),
+    waca: numeric('waca', { precision: 18, scale: 2 }),
+    wacaLastYear: numeric('waca_last_year', { precision: 18, scale: 2 }),
+    isPromoterGroup: boolean('is_promoter_group').default(false).notNull(),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoIdIdx: index('idx_promoters_ipo_id').on(table.ipoId),
+  })
+);
+
+export const promotersRelations = relations(promoters, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [promoters.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const promoterAcquisitionRanges = pgTable(
+  'promoter_acquisition_ranges',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    period: acquisitionPeriodEnum('period').notNull(),
+    waca: numeric('waca', { precision: 18, scale: 2 }),
+    capMultiple: numeric('cap_multiple', { precision: 18, scale: 2 }),
+    priceLow: numeric('price_low', { precision: 18, scale: 2 }),
+    priceHigh: numeric('price_high', { precision: 18, scale: 2 }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoIdIdx: index('idx_promoter_acquisition_ranges_ipo_id').on(table.ipoId),
+  })
+);
+
+export const promoterAcquisitionRangesRelations = relations(
+  promoterAcquisitionRanges,
+  ({ one }) => ({
+    ipo: one(ipos, {
+      fields: [promoterAcquisitionRanges.ipoId],
+      references: [ipos.id],
+    }),
+  })
+);
+
+export const ipoIntermediaries = pgTable(
+  'ipo_intermediaries',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    role: intermediaryRoleEnum('role').notNull(),
+    name: varchar('name', { length: 255 }).notNull(),
+    sebiRegNo: varchar('sebi_reg_no', { length: 50 }),
+    contactPerson: varchar('contact_person', { length: 255 }),
+    phone: varchar('phone', { length: 50 }),
+    email: varchar('email', { length: 255 }),
+    grievanceEmail: varchar('grievance_email', { length: 255 }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoIdIdx: index('idx_ipo_intermediaries_ipo_id').on(table.ipoId),
+    ipoIdRoleIdx: index('idx_ipo_intermediaries_ipo_id_role').on(table.ipoId, table.role),
+  })
+);
+
+export const ipoIntermediariesRelations = relations(ipoIntermediaries, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [ipoIntermediaries.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const brlmTrackRecord = pgTable(
+  'brlm_track_record',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    brlmName: varchar('brlm_name', { length: 255 }).notNull(),
+    asOfDate: date('as_of_date').notNull(),
+    issues3y: integer('issues_3y'),
+    closedBelowIssuePrice: integer('closed_below_issue_price'),
+    // Provenance FK: which IPO's filing this track-record row was read off of.
+    // The same BRLM track record repeats across every ad it appears in -- this
+    // is the ipo_id FK + index every new row-table gets, per the DoD.
+    sourceIpoId: uuid('source_ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    sourceIpoIdIdx: index('idx_brlm_track_record_source_ipo_id').on(table.sourceIpoId),
+    brlmNameIdx: index('idx_brlm_track_record_brlm_name').on(table.brlmName),
+  })
+);
+
+export const brlmTrackRecordRelations = relations(brlmTrackRecord, ({ one }) => ({
+  sourceIpo: one(ipos, {
+    fields: [brlmTrackRecord.sourceIpoId],
+    references: [ipos.id],
+  }),
+}));
+
+export const ipoRiskFactors = pgTable(
+  'ipo_risk_factors',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    seq: integer('seq').notNull(),
+    heading: varchar('heading', { length: 500 }).notNull(),
+    body: text('body'),
+    kpis: jsonb('kpis'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+    updatedAt: timestamp('updated_at').defaultNow().notNull(),
+  },
+  (table) => ({
+    ipoIdIdx: index('idx_ipo_risk_factors_ipo_id').on(table.ipoId),
+    uniqueIpoSeq: unique('unique_ipo_risk_factors_ipo_seq').on(table.ipoId, table.seq),
+  })
+);
+
+export const ipoRiskFactorsRelations = relations(ipoRiskFactors, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [ipoRiskFactors.ipoId],
     references: [ipos.id],
   }),
 }));

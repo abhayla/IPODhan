@@ -20,6 +20,10 @@ export const CacheTTL = {
   FINANCIAL_DATA: 1800, // 30 minutes
   DOCUMENTS: 3600, // 1 hour
   LISTING_PERFORMANCE: 600, // 10 minutes
+  // T-428 WP C-1: filing-field tables. Same 30-minute TTL as FINANCIAL_DATA --
+  // these are read on the IPO detail page and written by an infrequent
+  // (per-filing) scraper cycle, not a hot real-time path.
+  FILING_SCHEMA: 1800, // 30 minutes
 } as const;
 
 /**
