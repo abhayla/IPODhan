@@ -24,7 +24,7 @@
 
 import { Client } from 'pg';
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
-import { detectOfferingTypeFromBSEIRFlag } from '../utils/detect-offering-type.js';
+import { detectOfferingTypeFromBSEIRFlag, NON_IPO_UNMAPPED_SENTINEL } from '../utils/detect-offering-type.js';
 import logger from '../utils/logger.js';
 
 const BSE_API = 'https://api.bseindia.com/BseIndiaAPI/api/IPO_HomePageDetail/w';
@@ -81,7 +81,9 @@ async function main() {
         continue;
       }
       const correct = detectOfferingTypeFromBSEIRFlag(match.IR_flag, match.IR_FLAG_FULL);
-      if (correct === null) {
+      if (correct === NON_IPO_UNMAPPED_SENTINEL) {
+        // Confirmed non-IPO (e.g. CMN — Call Money Notice) but no matching enum
+        // value to write — flag for manual review rather than guessing a category.
         unknown.push({ name: ipo.company_name, flag: `${match.IR_flag}/${match.IR_FLAG_FULL}` });
         continue;
       }

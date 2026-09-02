@@ -12,6 +12,7 @@ import {
   detectOfferingType,
   resolveOfferingTypeKeepingClassification,
   guardSmeOfferingTypeAgainstFpo,
+  NON_IPO_UNMAPPED_SENTINEL,
 } from '../../../src/utils/detect-offering-type';
 
 describe('resolveOfferingTypeKeepingClassification (anti-repollution guard)', () => {
@@ -80,13 +81,32 @@ describe('detectOfferingTypeFromBSEIRFlag (authoritative BSE classification)', (
     expect(detectOfferingTypeFromBSEIRFlag('RI', 'RI')).toBe('RIGHTS');
   });
 
-  it('returns null for an unknown flag (e.g. CMN) — never guesses IPO', () => {
-    expect(detectOfferingTypeFromBSEIRFlag('CMN', 'CMN')).toBeNull();
+  it('classifies a standalone BuyBack flag (e.g. ADVENZYMES, SIS) as BUYBACK — not IPO', () => {
+    // W-13 live rows: IR_flag literally "BuyBack" (distinct from the OTB/Buyback-tender variant)
+    expect(detectOfferingTypeFromBSEIRFlag('BuyBack', 'BuyBack')).toBe('BUYBACK');
   });
 
-  it('returns null for empty/missing flag', () => {
-    expect(detectOfferingTypeFromBSEIRFlag('', '')).toBeNull();
-    expect(detectOfferingTypeFromBSEIRFlag(null, null)).toBeNull();
+  it('classifies BuyBack variants (case, spacing, hyphen) as BUYBACK', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('buyback')).toBe('BUYBACK');
+    expect(detectOfferingTypeFromBSEIRFlag('BUY BACK')).toBe('BUYBACK');
+    expect(detectOfferingTypeFromBSEIRFlag('Buy-Back')).toBe('BUYBACK');
+  });
+
+  it('classifies CMN (Call Money Notice — a call on partly-paid shares from an earlier allotment) as the non-IPO sentinel, never IPO', () => {
+    // Verified live 2026-09-02: ACE SOFTWARE EXPORTS LTD (IPO_NO=7937) — BSE detail API
+    // Notes: "Call Notice for First Call Money ... per Partly Paid-up Equity Share".
+    expect(detectOfferingTypeFromBSEIRFlag('CMN', 'CMN')).toBe(NON_IPO_UNMAPPED_SENTINEL);
+  });
+
+  it('returns the non-IPO sentinel (never null, never IPO) for an unrecognized flag', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('SOME_NEW_FLAG', 'Some New Flag')).toBe(NON_IPO_UNMAPPED_SENTINEL);
+    expect(detectOfferingTypeFromBSEIRFlag('SOME_NEW_FLAG')).not.toBeNull();
+    expect(detectOfferingTypeFromBSEIRFlag('SOME_NEW_FLAG')).not.toBe('IPO');
+  });
+
+  it('returns the non-IPO sentinel for empty/missing flag', () => {
+    expect(detectOfferingTypeFromBSEIRFlag('', '')).toBe(NON_IPO_UNMAPPED_SENTINEL);
+    expect(detectOfferingTypeFromBSEIRFlag(null, null)).toBe(NON_IPO_UNMAPPED_SENTINEL);
   });
 
   it('is case- and whitespace-insensitive', () => {

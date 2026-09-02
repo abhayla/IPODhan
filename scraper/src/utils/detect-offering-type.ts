@@ -229,6 +229,20 @@ export function detectOfferingType(params: {
 }
 
 /**
+ * Sentinel returned by `detectOfferingTypeFromBSEIRFlag` for a BSE board row that is
+ * authoritatively NOT an IPO, but whose specific corporate-action category is not
+ * (yet) mapped to a value in `offeringTypeEnum` (packages/shared/src/db/schema.ts).
+ *
+ * This is deliberately NOT a valid `offering_type` enum value — it is not meant to be
+ * persisted directly. Callers (e.g. the reclassifier) MUST treat it as "confirmed
+ * non-IPO, needs human/schema follow-up before a DB write", the same way they already
+ * treat `null` from OTB/DPI/RI-adjacent unknowns, except this signal is unambiguous:
+ * unlike `null` (which could mean "flag not recognized at all"), this sentinel means
+ * "BSE flag WAS recognized and IS confirmed non-IPO."
+ */
+export const NON_IPO_UNMAPPED_SENTINEL = 'NON_IPO_UNMAPPED';
+
+/**
  * Detect offering type from BSE's authoritative `IR_flag` (and `IR_FLAG_FULL`)
  * returned by the BSE public-issues JSON API (`IPO_HomePageDetail/w`).
  *
@@ -240,16 +254,26 @@ export function detectOfferingType(params: {
  * correct the classification so non-IPO corporate actions are excluded from IPO views.
  *
  * BSE IR_flag values observed: IPO (Book Building), OTB (Offer To Buy — Takeover or
- * Buyback), DPI (Debt Public Issue), RI (Rights Issue), CMN (unknown/other).
+ * Buyback), DPI (Debt Public Issue), RI (Rights Issue), BuyBack (a standalone flag —
+ * distinct from the OTB/Buyback-tender variant, seen live on ADVENZYMES/SIS), CMN
+ * (verified live 2026-09-02 against ACE SOFTWARE EXPORTS LTD, IPO_NO=7937, via
+ * `GetMkt_ISSUE_BBS_IPO/w`: `Notes` = "Call Notice for First Call Money ... per
+ * Partly Paid-up Equity Share" — CMN = "Call Money Notice", a call for the remaining
+ * instalment on shares from an EARLIER partly-paid allotment. It is not a new public
+ * issue and has no matching `offeringTypeEnum` value — mapped to
+ * `NON_IPO_UNMAPPED_SENTINEL`, never to 'IPO').
  *
- * @returns the mapped offering type, or `null` when the flag is unknown (caller
- *          MUST log and leave the row unchanged rather than guess).
+ * @returns the mapped offering type; `NON_IPO_UNMAPPED_SENTINEL` when the flag is
+ *          confirmed non-IPO but has no matching enum value (e.g. CMN) or is
+ *          genuinely unrecognized. Callers MUST NOT write this sentinel to the
+ *          `offering_type` column as-is — it is a "definitely not IPO, needs
+ *          review" signal, never a guess at 'IPO'.
  */
 export function detectOfferingTypeFromBSEIRFlag(
   irFlag: string | null | undefined,
   irFlagFull?: string | null | undefined
-): string | null {
-  if (!irFlag) return null;
+): string {
+  if (!irFlag) return NON_IPO_UNMAPPED_SENTINEL;
 
   const flag = irFlag.toUpperCase().trim();
   const full = (irFlagFull || '').toUpperCase();
@@ -260,6 +284,12 @@ export function detectOfferingTypeFromBSEIRFlag(
     case 'OTB':
       // Offer To Buy: a takeover open offer or a buyback tender — NOT an IPO.
       return full.includes('BUYBACK') ? 'BUYBACK' : 'TENDER';
+    case 'BUYBACK':
+    case 'BUY BACK':
+    case 'BUY-BACK':
+      // Standalone BuyBack flag (distinct from OTB/Buyback tender variant above) —
+      // live rows: ADVENZYMES, SIS (2026-09-02).
+      return 'BUYBACK';
     case 'DPI':
       return 'NCD'; // Debt Public Issue
     case 'RI':
@@ -268,8 +298,12 @@ export function detectOfferingTypeFromBSEIRFlag(
       return 'FPO';
     case 'OFS':
       return 'OFS';
+    case 'CMN':
+      // Call Money Notice — a call for a remaining instalment on partly-paid shares
+      // from an earlier allotment, not a new public issue. No matching enum value.
+      return NON_IPO_UNMAPPED_SENTINEL;
     default:
-      return null; // unknown (e.g. CMN) — do not guess; caller logs + leaves as-is
+      return NON_IPO_UNMAPPED_SENTINEL; // unrecognized — never guess IPO
   }
 }
 
