@@ -39,6 +39,28 @@ export interface AnchorReportParse {
   /** Share counts that the letter's mutual-fund sub-table repeats. */
   mutualFundShares: number[];
   letterDate: Date | null;
+
+  // ---------------------------------------------------------------- printed
+  // The letter's OWN "Total" row and prose, read INDEPENDENTLY of the investor
+  // rows. `totalShares`/`totalAmountRupees` above are SUMS of the rows, so
+  // comparing the two is a real reconciliation; comparing a sum against itself
+  // (which the round-3 gates did) proves nothing. Any of these is null when the
+  // scan left it unreadable — a null means "not checkable", never "agrees".
+  /** Share count printed on the letter's Total row. */
+  printedTotalShares: number | null;
+  /** Total allocation in RUPEES printed on the letter's Total row. */
+  printedTotalAmountRupees: number | null;
+  /** Investor count stated in the letter's prose ("15 anchor investors"). */
+  printedCount: number | null;
+
+  // -------------------------------------------------- independent-check flags
+  // Both are true whenever this parse succeeded (a failure returns ok:false),
+  // but they are surfaced explicitly so a consumer can STATE the rule it relies
+  // on rather than infer it from the absence of an error.
+  /** Each row's printed % matched its share of the summed total, and the printed percentages summed to 100. */
+  percentageCheckPassed: boolean;
+  /** The summed amounts matched summed shares x the derived bid price. */
+  sharesTimesPriceCheckPassed: boolean;
 }
 
 export type AnchorReportResult =
@@ -232,6 +254,58 @@ function readRow(rec: RawRecord): Candidate | null {
   return { name: rec.name, shares, percent, splits: splitPriceAndAmount(tail, shares) };
 }
 
+/**
+ * Read the letter's printed "Total" row: its share count and its total amount.
+ *
+ * The row has no percentage cell of its own in most letters, so `readRow`
+ * cannot be reused. Cells run through the SAME confusable map as every other
+ * number here (normalizeNumeric via parseAmount), so an OCR-damaged total is
+ * still read where it can be read — and left null where it cannot, because a
+ * guessed total would defeat the whole point of checking against it.
+ *
+ * Which cell is which: the share count is a whole number of at least four
+ * printed digits; the amount is the largest remaining value that is not the
+ * share count. A row that does not yield both leaves both null.
+ */
+export function readPrintedTotals(rec: RawRecord | undefined): {
+  shares: number | null;
+  amountRupees: number | null;
+} {
+  if (!rec) return { shares: null, amountRupees: null };
+  const values: number[] = [];
+  for (const cell of rec.cells) {
+    const printedDigits = (cell.match(/\d/g) || []).length;
+    if (printedDigits < 3) continue;
+    const v = parseAmount(cell);
+    if (v !== null && v > 0) values.push(v);
+  }
+  if (values.length === 0) return { shares: null, amountRupees: null };
+
+  const shareLike = values.filter((v) => Number.isInteger(v) && v >= 1000);
+  const shares = shareLike.length > 0 ? Math.min(...shareLike) : null;
+  const rest = shares === null ? values : values.filter((v) => v !== shares);
+  const amountRupees = rest.length > 0 ? Math.max(...rest) : null;
+  return { shares, amountRupees };
+}
+
+/**
+ * The investor count the letter states in prose ("allocated to 15 anchor
+ * investors"). Null when no such sentence survives the scan.
+ */
+export function readPrintedCount(text: string): number | null {
+  const m = text.match(/\b(\d{1,3})\s+anchor\s+investors?\b/i);
+  if (m) {
+    const n = Number(m[1]);
+    if (Number.isFinite(n) && n > 0 && n < 1000) return n;
+  }
+  const m2 = text.match(/\banchor\s+investors?\s*[:\-]?\s*(\d{1,3})\b/i);
+  if (m2) {
+    const n = Number(m2[1]);
+    if (Number.isFinite(n) && n > 0 && n < 1000) return n;
+  }
+  return null;
+}
+
 /** The mode of a set of prices, bucketed to the paise; ties go to the lowest. */
 function modalPrice(prices: number[]): number | null {
   const counts = new Map<string, number>();
@@ -336,6 +410,9 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
     mutualFundShares.push(parsed.shares);
   }
 
+  const fullText = pages.join('\n');
+  const printed = readPrintedTotals(totalAt === -1 ? undefined : all[totalAt]);
+
   return {
     ok: true,
     value: {
@@ -344,7 +421,13 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
       totalShares,
       totalAmountRupees,
       mutualFundShares,
-      letterDate: parseLetterDate(pages.join('\n')),
+      letterDate: parseLetterDate(fullText),
+      printedTotalShares: printed.shares,
+      printedTotalAmountRupees: printed.amountRupees,
+      printedCount: readPrintedCount(fullText),
+      // Reaching here means neither check returned ok:false above.
+      percentageCheckPassed: true,
+      sharesTimesPriceCheckPassed: true,
     },
   };
 }

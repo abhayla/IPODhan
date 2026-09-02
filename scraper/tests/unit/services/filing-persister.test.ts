@@ -629,6 +629,12 @@ describe('filing-persister — unit safety (F1/F2)', () => {
       'ipo_valuation.mcapAtFloor',
       'ipo_valuation.mcapAtCap',
       'financial_data.marketCap',
+      // MIN-8: the per-FY putCrore path is unit-dependent too and was missing
+      // from this list, so a regression in it would not have been caught here.
+      // (netWorth is asserted on the RHP below - the ad has no net-worth row.)
+      'financial_data.revenueFy2024',
+      'financial_data.profitFy2024',
+      'financial_data.ebitdaFy2024',
       'financial_statements',
     ]) {
       expect(summary.skipped_no_unit.some((x) => x.startsWith(f))).toBe(true);
@@ -821,10 +827,298 @@ describe('filing-persister — lock and field protection (F5)', () => {
     const values = s.detailsUpsert.mock.calls[0][1] as Record<string, unknown>;
     expect(values.upiCutoffTime).toBeUndefined();
     expect(values.complianceOfficer).toBe('Vandana Modani');
-    expect(
-      summary.skipped_no_column.some((x) => x === 'ipo_details.upiCutoffTime (field is protected)')
-    ).toBe(true);
+    expect(summary.skipped_protected).toContain('ipo_details.upiCutoffTime');
     const tracked = s.trackField.mock.calls.map((c) => (c[0] as Record<string, unknown>).fieldName);
     expect(tracked).not.toContain('upiCutoffTime');
+  });
+});
+
+describe('filing-persister — never fabricates a date or an exchange (MAJOR-1, MIN-9)', () => {
+  beforeEach(() => upsertIPOMock.mockClear());
+
+  it('writes NO date keys when neither the extraction nor the row has one', async () => {
+    const s = makeDeps();
+    const findById = s.deps.ipoRepository.findById as unknown as ReturnType<typeof vi.fn>;
+    const base = await findById();
+    findById.mockResolvedValue({ ...base, openDate: null, closeDate: null });
+
+    const extraction = extractionFromOracle('PRICE_BAND_AD');
+    for (const f of ['open_date', 'close_date', 'basis_of_allotment_date', 'listing_date']) {
+      delete extraction.fields[f];
+    }
+
+    await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const scraped = (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
+
+    // The old code wrote TODAY here, as source DRHP at confidence 100 — a
+    // fabricated date that outranks every scraped source in the matrix.
+    expect('openDate' in scraped).toBe(false);
+    expect('closeDate' in scraped).toBe(false);
+    expect('allotmentDate' in scraped).toBe(false);
+    expect('listingDate' in scraped).toBe(false);
+    // And nothing that looks like today's date leaked in under any key.
+    const today = new Date().toISOString().slice(0, 10);
+    expect(Object.values(scraped)).not.toContain(today);
+  });
+
+  it('still falls back to the row own dates, which are real', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('PRICE_BAND_AD');
+    delete extraction.fields.open_date;
+    delete extraction.fields.close_date;
+    await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const scraped = (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
+    expect(scraped.openDate).toBe('2026-09-01');
+    expect(scraped.closeDate).toBe('2026-09-03');
+  });
+
+  it('writes no listingExchange when the row lists none (MIN-9)', async () => {
+    const s = makeDeps();
+    const findById = s.deps.ipoRepository.findById as unknown as ReturnType<typeof vi.fn>;
+    const base = await findById();
+    findById.mockResolvedValue({ ...base, listingExchanges: [] });
+    await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const scraped = (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
+    // 'BSE' used to be invented here for a row that never named an exchange.
+    expect('listingExchange' in scraped).toBe(false);
+  });
+
+  it('passes through a single real exchange and BOTH for two', async () => {
+    const s = makeDeps();
+    const findById = s.deps.ipoRepository.findById as unknown as ReturnType<typeof vi.fn>;
+    const base = await findById();
+    findById.mockResolvedValue({ ...base, listingExchanges: ['NSE'] });
+    await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    expect(
+      (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1]
+        .listingExchange
+    ).toBe('NSE');
+  });
+});
+
+describe('filing-persister — field protection on EVERY child table (MAJOR-4)', () => {
+  beforeEach(() => upsertIPOMock.mockClear());
+
+  function protectFields(protectedCols: Record<string, string[]>) {
+    return vi.fn(async (_id: string, table: string, data: Record<string, unknown>) => {
+      const filtered = { ...data };
+      for (const col of protectedCols[table] ?? []) delete filtered[col];
+      return { filtered };
+    });
+  }
+
+  it('keeps an admin-protected financial_data.ronw out of the write', async () => {
+    const s = makeDeps();
+    s.deps.protectionFilter = protectFields({ financial_data: ['ronw'] });
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const fd = s.finData.mock.calls[0][0] as Record<string, unknown>;
+    expect(fd.ronw).toBeUndefined();
+    // The rest of the row still lands, and the ipoId is preserved.
+    expect(fd.ipoId).toBe(IPO_ID);
+    expect(fd.eps).toBe('12.78');
+    expect(summary.skipped_protected).toContain('financial_data.ronw');
+    const tracked = s.trackField.mock.calls.map((c) => (c[0] as Record<string, unknown>).fieldName);
+    expect(tracked).not.toContain('ronw');
+  });
+
+  it('runs the gate for every table it writes, not just ipo_details', async () => {
+    const s = makeDeps();
+    s.deps.protectionFilter = protectFields({});
+    await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const tables = new Set(
+      (s.deps.protectionFilter as unknown as ReturnType<typeof vi.fn>).mock.calls.map(
+        (c) => c[1] as string
+      )
+    );
+    for (const t of [
+      'ipo_details',
+      'ipo_valuation',
+      'promoters',
+      'ipo_intermediaries',
+      'brlm_track_record',
+      'peer_companies',
+      'financial_data',
+    ]) {
+      expect(tables).toContain(t);
+    }
+  });
+
+  it('refuses a whole-row replace when any field of that table is protected', async () => {
+    const s = makeDeps();
+    s.deps.protectionFilter = protectFields({ promoters: ['waca'] });
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    // A replace deletes the rows first, so the protected value cannot survive a
+    // partial application — the replace is abandoned entirely.
+    expect(s.replacePromoters).not.toHaveBeenCalled();
+    expect(summary.written.promoters).toBeUndefined();
+    expect(
+      summary.skipped_protected.some((x) => x.startsWith('promoters (whole-row replace refused'))
+    ).toBe(true);
+    // Unrelated tables still write.
+    expect(s.peerCreate).toHaveBeenCalled();
+  });
+});
+
+describe('filing-persister — dry run matches apply, and single-doc agreement (MOD-5, MOD-6)', () => {
+  beforeEach(() => upsertIPOMock.mockClear());
+
+  it('reads the stored statements in dry-run mode too', async () => {
+    const s = makeDeps();
+    const listByIpo = (
+      s.deps.financialStatements as unknown as { listByIpo: ReturnType<typeof vi.fn> }
+    ).listByIpo;
+    await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD' },
+      s.deps
+    );
+    // Round 3 read priors only when applying, so the dry-run plan was computed
+    // from a different starting state than the write it was previewing.
+    expect(listByIpo).toHaveBeenCalled();
+  });
+
+  it('produces the SAME plan dry and applied when a stored row blocks a write', async () => {
+    // A stored row whose unit this code cannot read refuses that fiscal year.
+    // If the dry run does not read priors it will not see the refusal, and the
+    // preview will promise rows the apply would drop. Asserting the call alone
+    // is not enough - MOD-6 reads the same table, which masks the regression.
+    const priors = [
+      { ipoId: IPO_ID, fiscalYear: 2026, basis: 'RESTATED', unit: 'TONNES', revenue: '1' },
+    ];
+    const dry = makeDeps();
+    (dry.deps.financialStatements as unknown as { listByIpo: ReturnType<typeof vi.fn> }).listByIpo =
+      vi.fn(async () => priors);
+    const applied = makeDeps();
+    (applied.deps.financialStatements as unknown as { listByIpo: ReturnType<typeof vi.fn> }).listByIpo =
+      vi.fn(async () => priors);
+
+    const dryRun = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD' },
+      dry.deps
+    );
+    const applyRun = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      applied.deps
+    );
+
+    expect(dryRun.written.financial_statements).toBe(applyRun.written.financial_statements);
+    expect(dryRun.skipped_unit_mismatch).toEqual(applyRun.skipped_unit_mismatch);
+    expect(dryRun.skipped_unit_mismatch.some((x) => x.includes('FY2026'))).toBe(true);
+  });
+
+  it('checks a single document against rows an earlier filing already stored', async () => {
+    const s = makeDeps();
+    (s.deps.financialStatements as unknown as { listByIpo: ReturnType<typeof vi.fn> }).listByIpo =
+      vi.fn(async () => [
+        {
+          ipoId: IPO_ID,
+          fiscalYear: 2026,
+          basis: 'RESTATED',
+          unit: 'MILLION',
+          revenue: '19266.76',
+          // The ad stored a PAT 20% away from what this extraction reports.
+          pat: String(1047.88 * 1.2),
+          epsBasic: '12.78',
+        },
+      ]);
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+
+    // MOD-6 + MOD-7: the disagreement condemns the whole financial block, so no
+    // statement row is written at all.
+    expect(s.finStmt).not.toHaveBeenCalled();
+    expect(summary.skipped_cross_document_disagreement.length).toBeGreaterThan(0);
+    expect(
+      summary.skipped_cross_document_disagreement.some((x) => x.includes('pat_by_fy'))
+    ).toBe(true);
+  });
+
+  it('persists normally when the stored rows agree', async () => {
+    const s = makeDeps();
+    (s.deps.financialStatements as unknown as { listByIpo: ReturnType<typeof vi.fn> }).listByIpo =
+      vi.fn(async () => [
+        {
+          ipoId: IPO_ID,
+          fiscalYear: 2026,
+          basis: 'RESTATED',
+          unit: 'MILLION',
+          revenue: '19266.76',
+          pat: '1047.88',
+          epsBasic: '12.78',
+        },
+      ]);
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    expect(summary.written.financial_statements).toBe(3);
+    expect(summary.skipped_cross_document_disagreement).toEqual([]);
+  });
+});
+
+describe('filing-persister — MIN-8 net worth is unit-guarded too', () => {
+  it('skips financial_data.netWorth when the RHP states no unit', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('RHP');
+    extraction.unit = null;
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+    expect(summary.skipped_no_unit.some((x) => x.startsWith('financial_data.netWorth'))).toBe(true);
+    // total_income only appears in the RHP, so its putCrore path is asserted here.
+    expect(
+      summary.skipped_no_unit.some((x) => x.startsWith('financial_data.totalIncomeFy2024'))
+    ).toBe(true);
+    const fd = s.finData.mock.calls[0]?.[0] as Record<string, unknown> | undefined;
+    expect(fd?.netWorth).toBeUndefined();
   });
 });

@@ -20,6 +20,7 @@ import {
   checkCrossDocumentAgreement,
   comparableSeries,
   withholdDisagreeingMetrics,
+  expandWithheldMetrics,
   CROSS_DOC_TOLERANCE,
 } from '../../../src/services/cross-document-agreement';
 import {
@@ -144,19 +145,32 @@ describe('cross-document agreement — the check itself', () => {
     ]);
   });
 
-  it('withholds the WHOLE series, not just the offending year', () => {
+  it('withholds the WHOLE financial block, not just the offending series (MOD-7)', () => {
     const ex = extractionFrom(AD_SERIES);
     const stripped = withholdDisagreeingMetrics(ex, ['pat_by_fy']);
+    // Every metric read off the same restated table goes, because if one column
+    // was mis-parsed the table was mis-parsed.
     expect(stripped.fields.pat_by_fy).toBeUndefined();
-    expect(stripped.fields.revenue_by_fy).toBeDefined();
+    expect(stripped.fields.revenue_by_fy).toBeUndefined();
+    expect(stripped.fields.eps_basic_by_fy).toBeUndefined();
+    expect(stripped.fields.eps_diluted_by_fy).toBeUndefined();
+    // Non-financial fields are untouched.
+    expect(stripped.fields.unit).toBeDefined();
     // The original is untouched.
     expect(ex.fields.pat_by_fy).toBeDefined();
   });
 
-  it('drops the diluted EPS series with the basic one it is read alongside', () => {
-    const stripped = withholdDisagreeingMetrics(extractionFrom(AD_SERIES), ['eps_basic_by_fy']);
-    expect(stripped.fields.eps_basic_by_fy).toBeUndefined();
-    expect(stripped.fields.eps_diluted_by_fy).toBeUndefined();
+  it('names the whole block, including the metrics it never compared', () => {
+    expect(expandWithheldMetrics([])).toEqual([]);
+    const expanded = expandWithheldMetrics(['pat_by_fy']);
+    for (const m of [
+      'total_income_by_fy',
+      'ebitda_by_fy',
+      'net_worth_by_fy',
+      'op_cash_flow_by_fy',
+    ]) {
+      expect(expanded).toContain(m);
+    }
   });
 });
 
@@ -204,11 +218,9 @@ describe('cross-document agreement — effect on what gets persisted', () => {
         { docType: 'PRICE_BAND_AD', apply: true },
         deps
       );
-      const rows = finStmt.mock.calls.map((c) => c[0] as Record<string, unknown>);
-      // Every year's PAT is withheld, from BOTH documents — not just FY26.
-      expect(rows.every((r) => r.pat === null)).toBe(true);
-      // Revenue, which agreed, still lands.
-      expect(rows.find((r) => r.fiscalYear === 2026)!.revenue).toBe('19266.76');
+      // MOD-7: the whole financial block is withheld, so there is no statement
+      // row left to write at all — not even the revenue series that agreed.
+      expect(finStmt).not.toHaveBeenCalled();
     }
 
     // The report carries both values so a human can see which is wrong.
@@ -218,5 +230,75 @@ describe('cross-document agreement — effect on what gets persisted', () => {
     expect(reported).toHaveLength(1);
     expect(reported[0]).toContain('pat_by_fy FY2026');
     expect(reported[0]).toContain('1047.88');
+  });
+});
+
+describe('cross-document agreement — units (MAJOR-3)', () => {
+  it('agrees when the ad prints lakh and the RHP prints million for the same money', () => {
+    // Rs 1,926.676 crore: 192,667.6 lakh === 19,266.76 million.
+    const adLakh = { revenue_by_fy: { '2026': 192667.6 }, pat_by_fy: { '2026': 10478.8 } };
+    const rhpMillion = { revenue_by_fy: { '2026': 19266.76 }, pat_by_fy: { '2026': 1047.88 } };
+
+    // Without units this is a 10x "disagreement" between two agreeing documents.
+    expect(checkCrossDocumentAgreement(adLakh, rhpMillion).agree).toBe(false);
+
+    const withUnits = checkCrossDocumentAgreement(
+      adLakh,
+      rhpMillion,
+      undefined,
+      'PRICE_BAND_AD',
+      'RHP',
+      'LAKH',
+      'MILLION'
+    );
+    expect(withUnits.agree).toBe(true);
+    expect(withUnits.comparedCount).toBe(2);
+  });
+
+  it('still catches a real disagreement across different units', () => {
+    const adLakh = { pat_by_fy: { '2026': 10478.8 } };
+    const rhpMillionWrong = { pat_by_fy: { '2026': 1047.88 * 1.2 } };
+    const r = checkCrossDocumentAgreement(
+      adLakh,
+      rhpMillionWrong,
+      undefined,
+      'PRICE_BAND_AD',
+      'RHP',
+      'LAKH',
+      'MILLION'
+    );
+    expect(r.agree).toBe(false);
+    expect(r.disagreeingMetrics).toEqual(['pat_by_fy']);
+  });
+
+  it('never unit-converts a per-share figure', () => {
+    // EPS is Rs 12.78 regardless of the table's unit beside it.
+    const r = checkCrossDocumentAgreement(
+      { eps_basic_by_fy: { '2026': 12.78 } },
+      { eps_basic_by_fy: { '2026': 12.78 } },
+      undefined,
+      'PRICE_BAND_AD',
+      'RHP',
+      'LAKH',
+      'MILLION'
+    );
+    expect(r.agree).toBe(true);
+  });
+
+  it('refuses the comparison when one document has no parseable unit', () => {
+    const r = checkCrossDocumentAgreement(
+      { pat_by_fy: { '2026': 1047.88 } },
+      { pat_by_fy: { '2026': 1047.88 } },
+      undefined,
+      'PRICE_BAND_AD',
+      'RHP',
+      null,
+      'MILLION'
+    );
+    expect(r.agree).toBe(false);
+    expect(r.skipped_cross_document_unit_unknown).toContain('PRICE_BAND_AD');
+    expect(r.comparedCount).toBe(0);
+    // Not a disagreement either — there is nothing to blame on a metric.
+    expect(r.disagreeingMetrics).toEqual([]);
   });
 });

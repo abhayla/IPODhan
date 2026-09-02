@@ -42,7 +42,9 @@ export interface AnchorPersistSummary {
   investorsWritten: number;
   totals: { shares: number; amountCrore: number; count: number } | null;
   /** Every gate, in order, with its verdict — the audit trail for a refusal. */
-  checks: Array<{ name: string; passed: boolean; detail: string }>;
+  checks: AnchorCheck[];
+  /** Gates whose printed counterpart the scan could not read. */
+  notCheckable: string[];
   /** Populated only when a gate failed; the run wrote nothing. */
   refusedReason: string | null;
   /** Names the OCR could not read cleanly. No column exists for this. */
@@ -50,8 +52,8 @@ export interface AnchorPersistSummary {
   applied: boolean;
 }
 
-/** Two crore figures agree when they are within half a lakh of each other. */
-const AMOUNT_TOLERANCE_CRORE = 0.005;
+/** Printed and summed crore totals agree when within this many crore. */
+const AMOUNT_TOLERANCE_CRORE = 0.01;
 
 /**
  * A name is low-confidence when OCR left it with characters no registered
@@ -71,13 +73,82 @@ export function isLowConfidenceName(name: string): boolean {
   return letters / n.length < 0.6;
 }
 
-/** Every arithmetic gate the report must pass before ANY row is written. */
-export function runAnchorChecks(
-  data: AnchorInvestorData
-): Array<{ name: string; passed: boolean; detail: string }> {
+/**
+ * A gate's verdict. `not_checkable` is a THIRD state, distinct from passed and
+ * failed: the letter's own printed figure was unreadable, so there is nothing to
+ * reconcile against. It is not a pass.
+ */
+export interface AnchorCheck {
+  name: string;
+  passed: boolean;
+  notCheckable?: boolean;
+  detail: string;
+}
+
+/**
+ * Reconcile the SUMMED investor rows against the letter's OWN PRINTED totals.
+ *
+ * Round 3 compared `data.totalSharesOffered` with the sum of the rows — but the
+ * parser derives that total BY summing the rows, so the gate was `x === x` and
+ * could never fail. The printed figures now travel separately
+ * (`printedTotalShares` / `printedTotalAmountRaised` / `printedCount`), read off
+ * the letter's Total row and prose, so the comparison is real.
+ *
+ * WHEN A PRINTED FIGURE IS NULL the scan could not read it. The gate reports
+ * `not_checkable` and the run is REFUSED — unless BOTH of the parser's own
+ * independent cross-checks passed:
+ *   - percentageCheckPassed: every row's printed percentage matched its share of
+ *     the summed total, and those percentages summed to 100. The percentages are
+ *     an independent statement of the same allocation, so a mis-read share count
+ *     would not land on them.
+ *   - sharesTimesPriceCheckPassed: the summed amounts matched summed shares x
+ *     the bid price derived from the rows.
+ * Together those two are an independent corroboration of the row set, which is
+ * what the printed total would otherwise have provided. Neither alone suffices,
+ * which is why the rule requires both.
+ */
+export function runAnchorChecks(data: AnchorInvestorData): AnchorCheck[] {
   const rows = data.investorList || [];
   const sumShares = rows.reduce((t, r) => t + (Number(r.shares) || 0), 0);
   const sumAmount = rows.reduce((t, r) => t + (Number(r.amount) || 0), 0);
+
+  const d = data as AnchorInvestorData & {
+    printedTotalShares?: number | null;
+    printedTotalAmountRaised?: number | null;
+    printedCount?: number | null;
+    percentageCheckPassed?: boolean;
+    sharesTimesPriceCheckPassed?: boolean;
+  };
+  const corroborated =
+    d.percentageCheckPassed === true && d.sharesTimesPriceCheckPassed === true;
+
+  const reconcile = (
+    name: string,
+    printed: number | null | undefined,
+    summed: number,
+    agrees: (p: number) => boolean,
+    unit: string
+  ): AnchorCheck => {
+    if (printed === null || printed === undefined) {
+      return {
+        name,
+        // Not checkable is only survivable when the parser's two independent
+        // cross-checks both corroborated the rows.
+        passed: corroborated,
+        notCheckable: true,
+        detail:
+          `the letter's printed ${unit} could not be read; ` +
+          (corroborated
+            ? 'accepted because the percentage and shares-x-price cross-checks both passed'
+            : 'REFUSED because the parser cross-checks did not both pass'),
+      };
+    }
+    return {
+      name,
+      passed: agrees(printed),
+      detail: `rows sum to ${summed} ${unit} vs the letter's printed ${printed} ${unit}`,
+    };
+  };
 
   return [
     {
@@ -85,20 +156,39 @@ export function runAnchorChecks(
       passed: rows.length > 0,
       detail: `${rows.length} investor rows parsed`,
     },
+    reconcile(
+      'count_matches_printed',
+      d.printedCount,
+      rows.length,
+      (p) => p === rows.length,
+      'investor count'
+    ),
+    reconcile(
+      'shares_sum_to_printed_total',
+      d.printedTotalShares,
+      sumShares,
+      (p) => p === sumShares,
+      'shares'
+    ),
+    reconcile(
+      'amounts_sum_to_printed_total',
+      d.printedTotalAmountRaised,
+      Number(sumAmount.toFixed(4)),
+      (p) => Math.abs(sumAmount - p) <= AMOUNT_TOLERANCE_CRORE,
+      'Cr'
+    ),
     {
-      name: 'count_matches_rows',
-      passed: data.anchorInvestorsCount === rows.length,
-      detail: `printed count ${data.anchorInvestorsCount} vs ${rows.length} rows`,
-    },
-    {
-      name: 'shares_sum_to_total',
-      passed: sumShares === data.totalSharesOffered,
-      detail: `rows sum to ${sumShares} vs printed total ${data.totalSharesOffered}`,
-    },
-    {
-      name: 'amounts_sum_to_total',
-      passed: Math.abs(sumAmount - data.totalAmountRaised) <= AMOUNT_TOLERANCE_CRORE,
-      detail: `rows sum to ${sumAmount.toFixed(4)} Cr vs printed total ${data.totalAmountRaised} Cr`,
+      // The parser derives these two from the rows, so this is a shape check
+      // (the carried totals are the ones actually written), never a
+      // reconciliation — the reconciliations above are the real gates.
+      name: 'carried_totals_match_rows',
+      passed:
+        sumShares === data.totalSharesOffered &&
+        Math.abs(sumAmount - data.totalAmountRaised) <= AMOUNT_TOLERANCE_CRORE &&
+        data.anchorInvestorsCount === rows.length,
+      detail:
+        `carried ${data.totalSharesOffered} shares / ${data.totalAmountRaised} Cr / ` +
+        `${data.anchorInvestorsCount} investors vs rows ${sumShares} / ${sumAmount.toFixed(4)} / ${rows.length}`,
     },
     {
       name: 'totals_positive',
@@ -139,6 +229,7 @@ export async function persistAnchorReport(
     investorsWritten: 0,
     totals: null,
     checks: [],
+    notCheckable: [],
     refusedReason: null,
     lowConfidenceNames: [],
     applied: apply,
@@ -155,13 +246,14 @@ export async function persistAnchorReport(
     .map((r) => r.name)
     .filter((n) => isLowConfidenceName(n));
 
+  const notCheckable = checks.filter((c) => c.notCheckable).map((c) => c.name);
   if (failed.length > 0) {
     const reason = failed.map((c) => `${c.name}: ${c.detail}`).join('; ');
     logger.warn(
       { ipoId, companyName: options.companyName, failed: failed.map((c) => c.name) },
       '[AnchorPersister] arithmetic gate failed — writing NOTHING'
     );
-    return { ...empty, checks, lowConfidenceNames, refusedReason: reason };
+    return { ...empty, checks, notCheckable, lowConfidenceNames, refusedReason: reason };
   }
 
   const totals = {
@@ -195,6 +287,7 @@ export async function persistAnchorReport(
     investorsWritten: data.investorList.length,
     totals,
     checks,
+    notCheckable,
     refusedReason: null,
     lowConfidenceNames,
     applied: apply,

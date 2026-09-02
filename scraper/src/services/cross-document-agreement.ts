@@ -17,6 +17,8 @@
  * tell which. So neither series is written.
  */
 
+import { convertUnit, type FilingUnit } from './filing-persister.js';
+
 export interface AgreementDisagreement {
   metric: string;
   fiscalYear: string;
@@ -32,6 +34,12 @@ export interface AgreementResult {
   disagreeingMetrics: string[];
   disagreements: AgreementDisagreement[];
   comparedCount: number;
+  /**
+   * Set when the comparison could not be MADE because one document's unit is
+   * unparseable. Not an agreement and not a disagreement — the caller must
+   * report it and withhold rather than assume either.
+   */
+  skipped_cross_document_unit_unknown?: string;
 }
 
 export type MetricSeries = Record<string, Record<string, number> | null | undefined>;
@@ -39,15 +47,45 @@ export type MetricSeries = Record<string, Record<string, number> | null | undefi
 /** The default tolerance of the python original: 1%. */
 export const CROSS_DOC_TOLERANCE = 0.01;
 
+/**
+ * Metrics that are PER-SHARE or a RATIO, not an amount. They are exempt from
+ * unit conversion: EPS of Rs 12.78 is Rs 12.78 whether the table beside it is
+ * printed in millions or crores, and multiplying it by 10 to "convert" it would
+ * manufacture a disagreement out of two documents that agree perfectly.
+ */
+const PER_SHARE_METRICS = new Set(['eps_basic_by_fy', 'eps_diluted_by_fy', 'dscr_by_fy']);
+
 export function checkCrossDocumentAgreement(
   a: MetricSeries | null | undefined,
   b: MetricSeries | null | undefined,
   tol: number = CROSS_DOC_TOLERANCE,
   labelA = 'PRICE_BAND_AD',
-  labelB = 'RHP'
+  labelB = 'RHP',
+  // MAJOR-3: the two documents need not publish in the same unit. The ad may
+  // print lakhs where the RHP prints millions; comparing the raw numbers then
+  // reports a 10x "disagreement" between two documents that agree exactly, and
+  // withholds correct data. Amounts are converted to a common unit first.
+  unitA?: FilingUnit | null,
+  unitB?: FilingUnit | null
 ): AgreementResult {
   const seriesA = a ?? {};
   const seriesB = b ?? {};
+
+  // A unit is REQUIRED once either side supplies one: comparing a converted
+  // series against an unconvertible one is exactly the silent mistake this
+  // guards. Both absent means the caller is comparing pre-normalised numbers.
+  const unitsSupplied = unitA !== undefined || unitB !== undefined;
+  if (unitsSupplied && (!unitA || !unitB)) {
+    const which = !unitA ? labelA : labelB;
+    return {
+      agree: false,
+      detail: `cannot compare: ${which} states no unit this code can parse`,
+      disagreeingMetrics: [],
+      disagreements: [],
+      comparedCount: 0,
+      skipped_cross_document_unit_unknown: `${which} has no parseable unit`,
+    };
+  }
   const disagreements: AgreementDisagreement[] = [];
   let compared = 0;
 
@@ -57,9 +95,14 @@ export function checkCrossDocumentAgreement(
     if (!sa || !sb) continue;
     for (const year of Object.keys(sa).sort()) {
       if (!(year in sb)) continue;
-      const va = Number(sa[year]);
-      const vb = Number(sb[year]);
-      if (!Number.isFinite(va) || !Number.isFinite(vb)) continue;
+      const rawA = Number(sa[year]);
+      const rawB = Number(sb[year]);
+      if (!Number.isFinite(rawA) || !Number.isFinite(rawB)) continue;
+      // Amounts are brought onto document A's unit; per-share figures and
+      // ratios are compared as printed.
+      const convertible = unitA && unitB && !PER_SHARE_METRICS.has(metric);
+      const va = rawA;
+      const vb = convertible ? convertUnit(rawB, unitB, unitA) : rawB;
       compared += 1;
       const denom = Math.max(Math.abs(va), Math.abs(vb), 1e-9);
       const rel = Math.abs(va - vb) / denom;
@@ -135,6 +178,33 @@ export function comparableSeries(extraction: ExtractionLike): MetricSeries {
 }
 
 /**
+ * The full financial block. A disagreement on ANY compared metric condemns the
+ * WHOLE block, because every one of these is read off the same restated summary
+ * table: if the PAT column was mis-parsed, the total-income and EBITDA columns
+ * beside it were read from the same mis-parsed table and cannot be trusted
+ * either. Withholding only the compared series left the un-compared neighbours
+ * (total income, EBITDA, net worth, operating cash flow) to ship as fact.
+ */
+export const FINANCIAL_BLOCK_METRICS = [
+  'revenue_by_fy',
+  'total_income_by_fy',
+  'ebitda_by_fy',
+  'pat_by_fy',
+  'net_worth_by_fy',
+  'eps_basic_by_fy',
+  'eps_diluted_by_fy',
+  'op_cash_flow_by_fy',
+  'dscr_by_fy',
+  'rent_by_fy',
+  'ronw_by_fy',
+] as const;
+
+/** Any disagreement expands to the whole financial block (MOD-7). */
+export function expandWithheldMetrics(disagreeingMetrics: string[]): string[] {
+  return disagreeingMetrics.length === 0 ? [] : [...FINANCIAL_BLOCK_METRICS];
+}
+
+/**
  * Strip every disagreeing metric from an extraction so the persister cannot
  * write it. The whole SERIES goes, not just the offending year: if FY26 PAT was
  * mis-parsed, the FY25 and FY24 figures from the same mis-read table cannot be
@@ -146,12 +216,8 @@ export function withholdDisagreeingMetrics<T extends ExtractionLike>(
 ): T {
   if (disagreeingMetrics.length === 0) return extraction;
   const fields = { ...(extraction.fields ?? {}) };
-  for (const metric of disagreeingMetrics) {
+  for (const metric of expandWithheldMetrics(disagreeingMetrics)) {
     if (metric in fields) delete fields[metric];
-    // eps_basic disagreeing also invalidates the diluted series it is read with.
-    if (metric === 'eps_basic_by_fy' && 'eps_diluted_by_fy' in fields) {
-      delete fields.eps_diluted_by_fy;
-    }
   }
   return { ...extraction, fields };
 }

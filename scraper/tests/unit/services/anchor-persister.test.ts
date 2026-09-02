@@ -63,6 +63,13 @@ function deepaAnchorFixture(): AnchorInvestorData {
     totalSharesOffered: totalShares,
     totalAmountRaised: totalAmount,
     anchorInvestorsCount: rows.length,
+    // The letter's OWN printed figures, read off its Total row and prose —
+    // independent of the summed rows, which is what makes the gates real.
+    printedTotalShares: 7_791_789,
+    printedTotalAmountRaised: 137.9147,
+    printedCount: 15,
+    percentageCheckPassed: true,
+    sharesTimesPriceCheckPassed: true,
     lockIn50PercentDate: LOCK50,
     lockInRemainingDate: LOCKREST,
     investorList: rows.map((r) => ({
@@ -172,27 +179,28 @@ describe('anchor-persister — a report whose arithmetic does not close writes N
     expect(summary.written).toBe(0);
     expect(summary.investorsWritten).toBe(0);
     expect(summary.totals).toBeNull();
-    expect(summary.refusedReason).toContain('shares_sum_to_total');
+    expect(summary.refusedReason).toContain('shares_sum_to_printed_total');
+    // The summed rows and the letter's PRINTED total, side by side.
     expect(summary.refusedReason).toContain('7691789');
     expect(summary.refusedReason).toContain('7791789');
   });
 
   it('refuses when the printed count disagrees with the number of rows', async () => {
     const bad = deepaAnchorFixture();
-    bad.anchorInvestorsCount = 16;
+    (bad as unknown as { printedCount: number }).printedCount = 16;
     const { deps, persist } = makeDeps(bad);
     const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
     expect(persist).not.toHaveBeenCalled();
-    expect(summary.refusedReason).toContain('count_matches_rows');
+    expect(summary.refusedReason).toContain('count_matches_printed');
   });
 
   it('refuses when the amounts do not reconcile with the printed total', async () => {
     const bad = deepaAnchorFixture();
-    bad.totalAmountRaised = 140.0;
+    (bad as unknown as { printedTotalAmountRaised: number }).printedTotalAmountRaised = 140.0;
     const { deps, persist } = makeDeps(bad);
     const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
     expect(persist).not.toHaveBeenCalled();
-    expect(summary.refusedReason).toContain('amounts_sum_to_total');
+    expect(summary.refusedReason).toContain('amounts_sum_to_printed_total');
   });
 
   it('refuses when a NOT NULL date is missing rather than letting the insert throw', async () => {
@@ -225,6 +233,67 @@ describe('anchor-persister — a report whose arithmetic does not close writes N
     const bad = deepaAnchorFixture();
     bad.investorList[0].shares += 1;
     const failed = runAnchorChecks(bad).filter((c) => !c.passed);
-    expect(failed.map((c) => c.name)).toEqual(['shares_sum_to_total']);
+    // Only the printed-vs-summed shares gate fails; the amount still ties out
+    // because the row's amount was not touched.
+    expect(failed.map((c) => c.name)).toContain('shares_sum_to_printed_total');
+  });
+});
+
+describe('anchor-persister — the gates compare against the PRINTED figures (MAJOR-2)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('fails when the letter prints a different total from the rows it lists', async () => {
+    const bad = deepaAnchorFixture();
+    // Rows unchanged and self-consistent; the LETTER's total row says otherwise.
+    // Round 3 compared the summed rows with themselves and could never see this.
+    (bad as unknown as { printedTotalShares: number }).printedTotalShares = 7_691_789;
+    const { deps, persist } = makeDeps(bad);
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(persist).not.toHaveBeenCalled();
+    expect(summary.written).toBe(0);
+    expect(summary.refusedReason).toContain('shares_sum_to_printed_total');
+    expect(summary.refusedReason).toContain('7791789');
+    expect(summary.refusedReason).toContain('7691789');
+  });
+
+  it('accepts an unreadable printed total ONLY when both parser cross-checks passed', async () => {
+    const d = deepaAnchorFixture();
+    (d as unknown as { printedTotalShares: number | null }).printedTotalShares = null;
+    (d as unknown as { printedTotalAmountRaised: number | null }).printedTotalAmountRaised = null;
+    (d as unknown as { printedCount: number | null }).printedCount = null;
+    const { deps, persist } = makeDeps(d);
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(summary.refusedReason).toBeNull();
+    expect(persist).toHaveBeenCalledTimes(1);
+    // The three gates are reported as not-checkable, never as clean passes.
+    expect(summary.notCheckable.sort()).toEqual([
+      'amounts_sum_to_printed_total',
+      'count_matches_printed',
+      'shares_sum_to_printed_total',
+    ]);
+  });
+
+  it('refuses an unreadable printed total when a parser cross-check did not pass', async () => {
+    const d = deepaAnchorFixture();
+    (d as unknown as { printedTotalShares: number | null }).printedTotalShares = null;
+    (d as unknown as { printedTotalAmountRaised: number | null }).printedTotalAmountRaised = null;
+    (d as unknown as { printedCount: number | null }).printedCount = null;
+    (d as unknown as { percentageCheckPassed: boolean }).percentageCheckPassed = false;
+    const { deps, persist } = makeDeps(d);
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(persist).not.toHaveBeenCalled();
+    expect(summary.written).toBe(0);
+    expect(summary.refusedReason).toContain('REFUSED because the parser cross-checks');
+  });
+
+  it('treats a missing printed figure as not-checkable, never as agreement', () => {
+    const d = deepaAnchorFixture();
+    (d as unknown as { printedTotalShares: number | null }).printedTotalShares = null;
+    const check = runAnchorChecks(d).find((c) => c.name === 'shares_sum_to_printed_total')!;
+    expect(check.notCheckable).toBe(true);
+    expect(check.detail).toContain('could not be read');
   });
 });

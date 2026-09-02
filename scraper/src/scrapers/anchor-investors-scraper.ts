@@ -59,6 +59,18 @@ export interface AnchorInvestorData {
   lockIn50PercentDate: Date | null; // 30 days from bid date
   lockInRemainingDate: Date | null; // 90 days from bid date
   investorList: AnchorInvestor[];
+
+  // T-434 round 4 (MAJOR-2): the letter'''s OWN printed totals, carried through
+  // UNCHANGED from the parser so the persistence gates can reconcile the summed
+  // rows against an INDEPENDENT statement of the same figures. Null where the
+  // scan left the value unreadable — never defaulted to the summed value, which
+  // would make the check compare a number with itself.
+  printedTotalShares: number | null;
+  printedTotalAmountRaised: number | null; // crores, matching totalAmountRaised
+  printedCount: number | null;
+  /** Both parser-internal cross-checks passed (an ok parse implies both). */
+  percentageCheckPassed: boolean;
+  sharesTimesPriceCheckPassed: boolean;
 }
 
 /**
@@ -159,6 +171,14 @@ export async function scrapeAnchorInvestors(
       anchorInvestorsCount: report.rows.length,
       lockIn50PercentDate: bidDate ? addDays(bidDate, 30) : null,
       lockInRemainingDate: bidDate ? addDays(bidDate, 90) : null,
+      printedTotalShares: report.printedTotalShares,
+      printedTotalAmountRaised:
+        report.printedTotalAmountRupees === null
+          ? null
+          : report.printedTotalAmountRupees / RUPEES_PER_CRORE,
+      printedCount: report.printedCount,
+      percentageCheckPassed: report.percentageCheckPassed,
+      sharesTimesPriceCheckPassed: report.sharesTimesPriceCheckPassed,
       investorList: report.rows.map((row) => ({
         name: row.name,
         // The letter names the mutual-fund allottees in a sub-table and nowhere

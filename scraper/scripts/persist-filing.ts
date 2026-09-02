@@ -43,6 +43,7 @@ import {
   persistFilingExtraction,
   type FilingDocType,
   type FilingExtraction,
+  parseFilingUnit,
   type IpoDetailsWriter,
 } from '../src/services/filing-persister.js';
 import { persistAnchorReport } from '../src/services/anchor-persister.js';
@@ -174,10 +175,27 @@ async function main(): Promise<void> {
     let ad = JSON.parse(readFileSync(adPath as string, 'utf8')) as FilingExtraction;
     let rhp = JSON.parse(readFileSync(rhpPath as string, 'utf8')) as FilingExtraction;
 
-    const agreement = checkCrossDocumentAgreement(comparableSeries(ad), comparableSeries(rhp));
+    // MAJOR-3: the two documents need not be printed in the same unit, so the
+    // units go in and amounts are converted before comparison.
+    const agreement = checkCrossDocumentAgreement(
+      comparableSeries(ad),
+      comparableSeries(rhp),
+      undefined,
+      'PRICE_BAND_AD',
+      'RHP',
+      parseFilingUnit(ad.unit),
+      parseFilingUnit(rhp.unit)
+    );
     console.log('\n=== CROSS-DOCUMENT AGREEMENT (W-45) ===');
     console.log(JSON.stringify(agreement, null, 2));
 
+    if (agreement.skipped_cross_document_unit_unknown) {
+      console.error(
+        '
+REFUSED: ' + agreement.skipped_cross_document_unit_unknown +
+          ' - the two documents cannot be compared, so neither financial series is written.'
+      );
+    }
     if (!agreement.agree) {
       // Same issuer, same day, same restated accounts - a disagreement means
       // one of the two was mis-parsed and there is no way to tell which, so

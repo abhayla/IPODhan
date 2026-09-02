@@ -36,6 +36,11 @@ import type {
 } from '@ipodhan/shared';
 import type { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 import { upsertIPO } from './data-persister.js';
+import {
+  checkCrossDocumentAgreement,
+  expandWithheldMetrics,
+  CROSS_DOC_TOLERANCE,
+} from './cross-document-agreement.js';
 import logger from '../utils/logger.js';
 
 // ---------------------------------------------------------------- extraction
@@ -98,6 +103,10 @@ export interface FilingPersisterDeps {
 
 export interface PersistFilingSummary {
   written: Record<string, number>;
+  /** Fields (or whole tables) the admin field-protection gate withheld. */
+  skipped_protected: string[];
+  /** Metric series withheld because two documents disagree about them. */
+  skipped_cross_document_disagreement: string[];
   skipped_failed_check: string[];
   skipped_no_column: string[];
   /** Unit-dependent writes refused because the filing states no usable unit. */
@@ -239,6 +248,13 @@ export function scraperSourceForDocType(_docType: FilingDocType): 'DRHP' {
   return 'DRHP';
 }
 
+/** A numeric column read back off a stored row (drizzle returns strings). */
+function numOrNullNum(v: unknown): number | null {
+  if (v === null || v === undefined) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
 function numOrNull(v: unknown): string | null {
   return typeof v === 'number' && Number.isFinite(v) ? v.toString() : null;
 }
@@ -251,10 +267,19 @@ function asCount(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) ? Math.round(v) : null;
 }
 
-function toIso(d: unknown): string {
-  if (d instanceof Date) return d.toISOString().slice(0, 10);
-  if (typeof d === 'string' && d) return d.slice(0, 10);
-  return new Date().toISOString().slice(0, 10);
+/**
+ * A stored date as an ISO day string, or UNDEFINED when there is none.
+ *
+ * This used to fall back to `new Date()` — TODAY — so an IPO row with a null
+ * open_date and a filing that carried none had today's date written into
+ * ipos.open_date as source DRHP at confidence 100. A fabricated date outranks
+ * every scraped source in the matrix and looks authoritative forever. The
+ * column is nullable; absent means absent.
+ */
+function toIsoOrUndefined(d: unknown): string | undefined {
+  if (d instanceof Date && !Number.isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+  if (typeof d === 'string' && d.trim() !== '') return d.slice(0, 10);
+  return undefined;
 }
 
 /**
@@ -311,7 +336,53 @@ export async function persistFilingExtraction(
   const skippedNoColumn: string[] = [];
   const skippedNoUnit: string[] = [];
   const skippedUnitMismatch: string[] = [];
+  const skippedProtected: string[] = [];
+  const skippedCrossDoc: string[] = [];
   const iposFields: string[] = [];
+
+  /**
+   * Run a table's payload through the admin field-protection gate.
+   *
+   * Round 3 applied this to `ipo_details` only, so an admin who hand-corrected
+   * financial_data.ronw (the admin editor's own screen) had it silently
+   * overwritten by the next filing run. Every table this module writes now goes
+   * through the gate, under the table name the admin route stores.
+   *
+   * Returns null when the whole write must be abandoned (see `filterOrRefuse`).
+   */
+  const filterFields = async (
+    tableName: string,
+    data: Record<string, unknown>
+  ): Promise<Record<string, unknown>> => {
+    if (!deps.protectionFilter) return data;
+    const result = await deps.protectionFilter(ipoId, tableName, data, source);
+    const kept = result.filtered as Record<string, unknown>;
+    for (const col of Object.keys(data)) {
+      if (!(col in kept)) skippedProtected.push(`${tableName}.${col}`);
+    }
+    return kept;
+  };
+
+  /**
+   * A whole-row REPLACE (promoters, intermediaries, peer companies) deletes the
+   * existing rows before inserting. There is no way to honour a protected field
+   * inside that: the protected value would be deleted with its row. So if ANY
+   * field of the table is protected for this IPO, the replace is refused
+   * entirely — never partially applied.
+   */
+  const replaceAllowed = async (tableName: string, probe: Record<string, unknown>) => {
+    if (!deps.protectionFilter) return true;
+    const result = await deps.protectionFilter(ipoId, tableName, probe, source);
+    const kept = result.filtered as Record<string, unknown>;
+    const blocked = Object.keys(probe).filter((c) => !(c in kept));
+    if (blocked.length > 0) {
+      skippedProtected.push(
+        `${tableName} (whole-row replace refused: ${blocked.join(', ')} protected)`
+      );
+      return false;
+    }
+    return true;
+  };
 
   /**
    * Guard for EVERY rupee/crore conversion. `unit === null` means the filing
@@ -417,15 +488,23 @@ export async function persistFilingExtraction(
     segment: existing.segment ?? undefined,
     offeringType: existing.offeringType,
     status: existing.status,
-    listingExchange:
-      (existing.listingExchanges || []).length > 1
-        ? 'BOTH'
-        : ((existing.listingExchanges || [])[0] ?? 'BSE'),
-    // upsertIPO requires open/close; fall back to the row's own so a filing
-    // that did not carry them never nulls what is already there.
-    openDate: openDate ?? toIso(existing.openDate),
-    closeDate: closeDate ?? toIso(existing.closeDate),
   };
+
+  // MIN-9, same class as the dates: 'BSE' was a FABRICATED default for a row
+  // with no listing exchange on file. Only a real value is sent.
+  const exchanges = (existing.listingExchanges || []).filter(Boolean);
+  if (exchanges.length > 1) {
+    scraped.listingExchange = 'BOTH';
+  } else if (exchanges.length === 1) {
+    scraped.listingExchange = exchanges[0];
+  }
+
+  // The row's own dates are a legitimate fallback (they stop a filing that did
+  // not carry a date from nulling one that is already there); TODAY is not.
+  const openForWrite = openDate ?? toIsoOrUndefined(existing.openDate);
+  const closeForWrite = closeDate ?? toIsoOrUndefined(existing.closeDate);
+  if (openForWrite !== undefined) scraped.openDate = openForWrite;
+  if (closeForWrite !== undefined) scraped.closeDate = closeForWrite;
   if (issueSizeRupees !== null) {
     scraped.issueSize = issueSizeRupees;
     iposFields.push('issueSize');
@@ -518,14 +597,7 @@ export async function persistFilingExtraction(
     // must not have it overwritten by the next filing run. The raw Drizzle
     // upsert cannot see field_protection_metadata, so the payload is filtered
     // BEFORE it reaches the writer, exactly as the orchestrators do for `ipos`.
-    let writable = details;
-    if (deps.protectionFilter) {
-      const result = await deps.protectionFilter(ipoId, 'ipo_details', details, source);
-      writable = result.filtered as Record<string, unknown>;
-      for (const col of Object.keys(details)) {
-        if (!(col in writable)) skippedNoColumn.push(`ipo_details.${col} (field is protected)`);
-      }
-    }
+    const writable = await filterFields('ipo_details', details);
     if (Object.keys(writable).length > 0) {
       if (apply) {
         await deps.ipoDetailsWriter.upsert(ipoId, { ...writable, dataSource: source });
@@ -563,15 +635,90 @@ export async function persistFilingExtraction(
   const dscr = byFy(extraction, 'dscr_by_fy');
   const rent = byFy(extraction, 'rent_by_fy');
 
+  // ------------------------------------------------------ MOD-6 (W-45, single doc)
+  // The paired invocation runs the cross-document check before either document
+  // is persisted. A SINGLE-document run had no such gate, so persisting the RHP
+  // on Tuesday could silently contradict the ad persisted on Monday. When rows
+  // from a DIFFERENT filing already exist, this extraction is checked against
+  // them — converted into a common unit first — and every disagreeing metric is
+  // withheld, exactly as in paired mode.
+  const priorRowsForAgreement = await deps.financialStatements.listByIpo(ipoId);
+  const withheldMetrics = new Set<string>();
+  if (unit !== null && priorRowsForAgreement.length > 0) {
+    const storedUnit = asStatementUnit(
+      (priorRowsForAgreement[0] as { unit?: StatementUnit }).unit ?? null
+    );
+    if (storedUnit) {
+      const stored: Record<string, Record<string, number>> = {};
+      const incoming: Record<string, Record<string, number>> = {};
+      const put = (
+        bag: Record<string, Record<string, number>>,
+        metric: string,
+        fy: string | number,
+        value: number | null
+      ) => {
+        if (value === null || !Number.isFinite(value)) return;
+        (bag[metric] ||= {})[String(fy)] = value;
+      };
+      for (const r of priorRowsForAgreement) {
+        const row = r as unknown as Record<string, unknown>;
+        put(stored, 'revenue_by_fy', row.fiscalYear as number, numOrNullNum(row.revenue));
+        put(stored, 'pat_by_fy', row.fiscalYear as number, numOrNullNum(row.pat));
+        put(stored, 'eps_basic_by_fy', row.fiscalYear as number, numOrNullNum(row.epsBasic));
+      }
+      for (const [fy, v] of Object.entries(revenue)) put(incoming, 'revenue_by_fy', fy, v);
+      for (const [fy, v] of Object.entries(pat)) put(incoming, 'pat_by_fy', fy, v);
+      for (const [fy, v] of Object.entries(epsBasic)) put(incoming, 'eps_basic_by_fy', fy, v);
+
+      const agreement = checkCrossDocumentAgreement(
+        stored,
+        incoming,
+        CROSS_DOC_TOLERANCE,
+        `stored (${storedUnit})`,
+        `${options.docType} (${unit})`,
+        storedUnit,
+        unit
+      );
+      if (!agreement.agree) {
+        for (const m of expandWithheldMetrics(agreement.disagreeingMetrics)) {
+          withheldMetrics.add(m);
+        }
+        skippedCrossDoc.push(...agreement.detail.split('; '));
+      }
+    }
+  }
+
+  // MOD-7: a disagreement on ANY compared metric withholds the WHOLE financial
+  // block, not just the offending series. The compared metrics come off the
+  // same restated table as total income, EBITDA, net worth and operating cash
+  // flow — if one column was mis-parsed the table was mis-parsed.
+  const withholdAll = withheldMetrics.size > 0;
+  const keep = (m: Record<string, number>) => (withholdAll ? {} : m);
+  const revenueW = keep(revenue);
+  const totalIncomeW = keep(totalIncome);
+  const ebitdaW = keep(ebitda);
+  const patW = keep(pat);
+  const netWorthW = keep(netWorth);
+  const epsBasicW = keep(epsBasic);
+  const epsDilutedW = keep(epsDiluted);
+  const opCashFlowW = keep(opCashFlow);
+  const dscrW = keep(dscr);
+  const rentW = keep(rent);
+  if (withholdAll) {
+    skippedCrossDoc.push(
+      'whole financial block withheld (revenue, total_income, ebitda, pat, net_worth, eps, op_cash_flow)'
+    );
+  }
+
   const fyKeys = new Set<string>([
-    ...Object.keys(revenue),
-    ...Object.keys(totalIncome),
-    ...Object.keys(ebitda),
-    ...Object.keys(pat),
-    ...Object.keys(netWorth),
-    ...Object.keys(epsBasic),
-    ...Object.keys(epsDiluted),
-    ...Object.keys(opCashFlow),
+    ...Object.keys(revenueW),
+    ...Object.keys(totalIncomeW),
+    ...Object.keys(ebitdaW),
+    ...Object.keys(patW),
+    ...Object.keys(netWorthW),
+    ...Object.keys(epsBasicW),
+    ...Object.keys(epsDilutedW),
+    ...Object.keys(opCashFlowW),
   ]);
 
   if (!unitEnum && fyKeys.size > 0) {
@@ -585,7 +732,11 @@ export async function persistFilingExtraction(
     // carries fewer columns (the RHP has no operating-cash-flow row) would null
     // what the first filing already stored. Read the existing rows and keep any
     // value this extraction does not carry — enrich, never erase.
-    const existingStatements = apply ? await deps.financialStatements.listByIpo(ipoId) : [];
+    // Read UNCONDITIONALLY. Reading only when applying made the dry-run plan a
+    // different computation from the real one: with no priors the dry run saw
+    // no unit mismatch and no carried-forward columns, so it could report rows
+    // the apply would refuse. A dry run must exercise the same decisions.
+    const existingStatements = await deps.financialStatements.listByIpo(ipoId);
     let n = 0;
     for (const fy of [...fyKeys].sort()) {
       const fiscalYear = Number(fy);
@@ -627,18 +778,18 @@ export async function persistFilingExtraction(
           fiscalYear,
           basis,
           unit: rowUnit,
-          revenue: s(revenue, 'revenue'),
-          totalIncome: s(totalIncome, 'totalIncome'),
-          ebitda: s(ebitda, 'ebitda'),
-          pat: s(pat, 'pat'),
-          netWorth: s(netWorth, 'netWorth'),
+          revenue: s(revenueW, 'revenue'),
+          totalIncome: s(totalIncomeW, 'totalIncome'),
+          ebitda: s(ebitdaW, 'ebitda'),
+          pat: s(patW, 'pat'),
+          netWorth: s(netWorthW, 'netWorth'),
           // Per-share figures are NOT amounts — they are never unit-converted.
-          epsBasic: perShare(epsBasic, prior?.epsBasic ?? null),
-          epsDiluted: perShare(epsDiluted, prior?.epsDiluted ?? null),
-          opCashFlow: s(opCashFlow, 'opCashFlow'),
+          epsBasic: perShare(epsBasicW, prior?.epsBasic ?? null),
+          epsDiluted: perShare(epsDilutedW, prior?.epsDiluted ?? null),
+          opCashFlow: s(opCashFlowW, 'opCashFlow'),
           // A ratio, not an amount.
-          dscr: perShare(dscr, prior?.dscr ?? null),
-          rentExpense: s(rent, 'rentExpense'),
+          dscr: perShare(dscrW, prior?.dscr ?? null),
+          rentExpense: s(rentW, 'rentExpense'),
         });
       }
       n += 1;
@@ -680,7 +831,10 @@ export async function persistFilingExtraction(
   if (Object.keys(valuation).length > 0) {
     const pricingEvent: 'PRICE_BAND_AD' | 'PROSPECTUS' =
       options.docType === 'PRICE_BAND_AD' ? 'PRICE_BAND_AD' : 'PROSPECTUS';
-    if (apply) {
+    const valuationWritable = await filterFields('ipo_valuation', valuation);
+    if (Object.keys(valuationWritable).length === 0) {
+      skippedProtected.push('ipo_valuation (every field protected)');
+    } else if (apply) {
       await deps.ipoValuation.upsert({
         ipoId,
         pricingEvent,
@@ -731,11 +885,13 @@ export async function persistFilingExtraction(
       wacaLastYear: null,
       isPromoterGroup: false,
     }));
-    if (apply) {
-      await deps.promoters.replacePromoters(ipoId, rows);
-      await trackField('promoters', 'rows');
+    if (await replaceAllowed('promoters', { name: null, sharesHeld: null, waca: null })) {
+      if (apply) {
+        await deps.promoters.replacePromoters(ipoId, rows);
+        await trackField('promoters', 'rows');
+      }
+      bump(written, 'promoters', rows.length);
     }
-    bump(written, 'promoters', rows.length);
   }
   if (num(extraction, 'promoter_shares_held') !== null) {
     skippedNoColumn.push(
@@ -801,20 +957,29 @@ export async function persistFilingExtraction(
     skippedNoColumn.push('brlm_sebi_regs (no name->registration mapping in the extraction)');
   }
   if (intermediaries.length > 0) {
-    if (apply) {
-      await deps.intermediaries.replaceForIpo(ipoId, intermediaries);
-      await trackField('ipo_intermediaries', 'rows');
+    if (
+      await replaceAllowed('ipo_intermediaries', { name: null, role: null, sebiRegNo: null })
+    ) {
+      if (apply) {
+        await deps.intermediaries.replaceForIpo(ipoId, intermediaries);
+        await trackField('ipo_intermediaries', 'rows');
+      }
+      bump(written, 'ipo_intermediaries', intermediaries.length);
     }
-    bump(written, 'ipo_intermediaries', intermediaries.length);
   }
 
   // -------------------------------------------------- 8. brlm_track_record
   const asOfDate = str(extraction, 'rhp_filing_date');
-  if (asOfDate) {
+  const brlmAllowed = await replaceAllowed('brlm_track_record', {
+    brlmName: null,
+    issues3y: null,
+    closedBelowIssuePrice: null,
+  });
+  if (asOfDate && brlmAllowed) {
     let n = 0;
     for (const row of trackRows) {
       if (!row?.brlm) continue;
-      if (apply) {
+      if (apply && brlmAllowed) {
         await deps.brlmTrackRecord.upsert({
           brlmName: row.brlm,
           asOfDate,
@@ -849,12 +1014,22 @@ export async function persistFilingExtraction(
         lastUpdated: new Date(),
       }));
     if (peerRows.length > 0) {
-      if (apply) {
-        await deps.peerCompanies.deleteByIPOId(ipoId);
-        await deps.peerCompanies.batchCreate(peerRows as never);
-        await trackField('peer_companies', 'rows');
+      if (
+        await replaceAllowed('peer_companies', {
+          companyName: null,
+          peRatio: null,
+          eps: null,
+          ronw: null,
+          nav: null,
+        })
+      ) {
+        if (apply) {
+          await deps.peerCompanies.deleteByIPOId(ipoId);
+          await deps.peerCompanies.batchCreate(peerRows as never);
+          await trackField('peer_companies', 'rows');
+        }
+        bump(written, 'peer_companies', peerRows.length);
       }
-      bump(written, 'peer_companies', peerRows.length);
       for (const col of ['face_value', 'closing_price', 'revenue_from_operations', 'market_cap']) {
         skippedNoColumn.push(`peer_companies.${col} (no column on peer_companies)`);
       }
@@ -879,25 +1054,25 @@ export async function persistFilingExtraction(
     fdFields += 1;
   };
   for (const fy of [2022, 2023, 2024]) {
-    putCrore(`revenueFy${fy}`, revenue, fy);
-    putCrore(`profitFy${fy}`, pat, fy);
-    putCrore(`ebitdaFy${fy}`, ebitda, fy);
-    putCrore(`totalIncomeFy${fy}`, totalIncome, fy);
+    putCrore(`revenueFy${fy}`, revenueW, fy);
+    putCrore(`profitFy${fy}`, patW, fy);
+    putCrore(`ebitdaFy${fy}`, ebitdaW, fy);
+    putCrore(`totalIncomeFy${fy}`, totalIncomeW, fy);
   }
   for (const fy of [...fyKeys].map(Number).filter((f) => f > 2024)) {
     skippedNoColumn.push(`financial_data FY${fy} (columns exist only for FY2022-FY2024)`);
   }
   if (latestFy !== undefined) {
     const lk = String(latestFy);
-    if (netWorth[lk] !== undefined) {
-      const nw = withUnit('financial_data.netWorth', (u) => round2(toCrore(netWorth[lk], u)));
+    if (netWorthW[lk] !== undefined) {
+      const nw = withUnit('financial_data.netWorth', (u) => round2(toCrore(netWorthW[lk], u)));
       if (nw !== null) {
         fd.netWorth = nw.toString();
         fdFields += 1;
       }
     }
-    if (epsBasic[lk] !== undefined) {
-      fd.eps = round2(epsBasic[lk]).toString(); // per-share: never unit-scaled
+    if (epsBasicW[lk] !== undefined) {
+      fd.eps = round2(epsBasicW[lk]).toString(); // per-share: never unit-scaled
       fdFields += 1;
     }
     const ronw = byFy(extraction, 'ronw_by_fy');
@@ -930,13 +1105,19 @@ export async function persistFilingExtraction(
     fdFields += 1;
   }
   if (fdFields > 0) {
-    if (apply) {
-      await deps.financialData.upsert(fd as never);
-      for (const col of Object.keys(fd)) {
-        if (col !== 'ipoId') await trackField('financial_data', col);
+    // financial_data is the table the admin editor protects field-by-field
+    // (ronw, eps, marketCap ...), so an admin correction must survive a filing.
+    const { ipoId: _fdIpoId, ...fdFieldsOnly } = fd as Record<string, unknown>;
+    const fdWritable = await filterFields('financial_data', fdFieldsOnly);
+    if (Object.keys(fdWritable).length === 0) {
+      skippedProtected.push('financial_data (every field protected)');
+    } else {
+      if (apply) {
+        await deps.financialData.upsert({ ipoId, ...fdWritable } as never);
+        for (const col of Object.keys(fdWritable)) await trackField('financial_data', col);
       }
+      bump(written, 'financial_data', 1);
     }
-    bump(written, 'financial_data', 1);
   }
 
   // ------------------------------------------------- unmapped-but-extracted
@@ -955,6 +1136,8 @@ export async function persistFilingExtraction(
     skipped_no_column: [...new Set(skippedNoColumn)].sort(),
     skipped_no_unit: [...new Set(skippedNoUnit)].sort(),
     skipped_unit_mismatch: [...new Set(skippedUnitMismatch)].sort(),
+    skipped_protected: [...new Set(skippedProtected)].sort(),
+    skipped_cross_document_disagreement: [...new Set(skippedCrossDoc)].sort(),
     ipos_fields: iposFields,
     applied: apply,
   };
