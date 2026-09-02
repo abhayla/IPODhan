@@ -716,6 +716,35 @@ report_wired_jobs() {
   done
 }
 
+# ------------------------------------------- 9.5 runtime preflight (T-406)
+# Stage 9 of the test ladder: the box PM2 is about to be restarted on needs
+# more than green migrations — python3+pdfplumber (DRHP PDF extraction),
+# tesseract (WARN-only until E4), an ambient TZ sane per the T-327 decision,
+# a writable prospectus store with headroom, node >= 20, and
+# ADMIN_API_TOKEN for the scraper's --source=all cycle. Runs AFTER the
+# atomic flip (so a FAIL still leaves `current` pointing at the new release,
+# recoverable by fixing the box and re-running restart_pm2 by hand) but
+# BEFORE anything already-running is touched — the OLD pm2 process keeps
+# serving the OLD release's code until this passes. No `|| true` here: a
+# FAIL must abort the deploy loudly, same as assert-env-keys.sh / the
+# migrations step above.
+run_runtime_preflight() {
+  if (( DRY_RUN )); then
+    log "[dry-run] skipping runtime preflight (no real box/env to check)"
+    return 0
+  fi
+  set -a
+  # shellcheck disable=SC1090  # per-slot generated env file, path known at runtime
+  . "$SCRAPER_ENV_FILE"
+  set +a
+  log "Running VPS runtime preflight (T-406)"
+  bash "$SCRIPT_DIR/preflight-runtime.sh"
+}
+
+if ! run_runtime_preflight; then
+  fatal "runtime preflight failed for $RELEASE_NAME (T-406) — 'current' already points at the new release but PM2 was NOT restarted; fix the box and re-run restart_pm2 by hand, or redeploy."
+fi
+
 log "Restarting PM2 apps"
 restart_pm2
 assert_pm2_logrotate_installed
