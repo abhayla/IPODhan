@@ -16,19 +16,20 @@ import { db } from '@/lib/db/index';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import {
   IpoPipelineStepsRepository,
+  PIPELINE_STAGES,
+  resolveStageFilter,
   type PipelineStepRow,
 } from '@ipodhan/shared/repositories/ipo-pipeline-steps-repository';
 import { getPipelineStepsByGroup } from '@ipodhan/shared/pipeline/step-catalogue';
 
 export const dynamic = 'force-dynamic';
 
-const STAGES = [
-  'UPCOMING',
-  'OPEN',
-  'CLOSED',
-  'LISTED',
-  'WITHDRAWN',
-] as const;
+/**
+ * Derived from the `ipo_status` pgEnum, never hand-listed. A hand-listed stage
+ * that is not a real enum value renders a link whose query reaches Postgres as
+ * `invalid input value for enum ipo_status` and 500s the page (WITHDRAWN did).
+ */
+const STAGES = PIPELINE_STAGES;
 
 /**
  * Cell colours per status (spec section 7). SKIPPED is striped rather than a
@@ -64,7 +65,7 @@ export default async function PipelinePage({
   searchParams: Promise<{ stage?: string }>;
 }) {
   const { stage } = await searchParams;
-  const validStage = STAGES.includes(stage as (typeof STAGES)[number]) ? stage : undefined;
+  const validStage = resolveStageFilter(stage);
 
   const repo = new IpoPipelineStepsRepository(db, getRedisClient());
   const grid = await repo.findGrid({ stage: validStage, limit: 50 });

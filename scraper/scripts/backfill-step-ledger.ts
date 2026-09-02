@@ -27,20 +27,14 @@
 import { readFileSync } from 'node:fs';
 import { db, getRedisClient, IpoPipelineStepsRepository } from '@ipodhan/shared';
 import type { IpoStepStatus } from '@ipodhan/shared';
+import { isPipelineStepId } from '@ipodhan/shared/pipeline/step-catalogue';
 import * as schema from '@ipodhan/shared/db/schema';
 import { eq, or } from 'drizzle-orm';
 import logger from '../src/utils/logger.js';
 
-const VALID_STATUSES: IpoStepStatus[] = [
-  'NOT_DUE',
-  'DUE',
-  'RUNNING',
-  'DONE',
-  'FAILED',
-  'NOT_AVAILABLE_YET',
-  'BLOCKED',
-  'SKIPPED',
-];
+// Read off the pgEnum, never hand-copied -- a hand-written list silently rots
+// the moment a status is added to or removed from the schema.
+const VALID_STATUSES: readonly IpoStepStatus[] = schema.ipoStepStatusEnum.enumValues;
 
 function argValue(flag: string): string | undefined {
   const i = process.argv.indexOf(flag);
@@ -56,6 +50,12 @@ function parseSet(raw: string): Array<{ stepId: string; status: IpoStepStatus }>
       const [stepId, status] = pair.split('=').map((p) => p.trim());
       if (!stepId || !status) {
         throw new Error(`Bad --set entry "${pair}" (expected STEP=STATUS)`);
+      }
+      if (!isPipelineStepId(stepId)) {
+        throw new Error(
+          `Unknown step id "${stepId}" in "${pair}" -- not in the catalogue ` +
+            '(packages/shared/src/pipeline/step-catalogue.ts)'
+        );
       }
       if (!VALID_STATUSES.includes(status as IpoStepStatus)) {
         throw new Error(`Bad status "${status}" in "${pair}" (one of ${VALID_STATUSES.join(', ')})`);
@@ -89,6 +89,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  // Parsed (and fully validated) BEFORE any DB work, so one bad pair aborts
+  // the whole run rather than leaving a half-applied ledger.
   const pairs = parseSet(setArg);
   const evidence = evidenceFile ? JSON.parse(readFileSync(evidenceFile, 'utf8')) : undefined;
   const ipoId = ipoIdArg ?? (await resolveIpoId(ipoArg as string));

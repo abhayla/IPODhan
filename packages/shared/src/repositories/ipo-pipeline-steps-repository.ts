@@ -6,12 +6,12 @@
  * available", with evidence and timestamps, in one query.
  */
 
-import { and, desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
+import { desc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { BaseRepository } from './base-repository';
 import * as schema from '../db/schema';
-import { ipoPipelineSteps, ipos } from '../db/schema';
+import { ipoPipelineSteps, ipoStatusEnum, ipoStepStatusEnum, ipos } from '../db/schema';
 import { PIPELINE_STEPS, isPipelineStepId } from '../pipeline/step-catalogue';
 import {
   CacheTTL,
@@ -21,15 +21,35 @@ import {
   PIPELINE_GRID_KEY_PATTERN,
 } from '../cache/cache-keys';
 
-export type IpoStepStatus =
-  | 'NOT_DUE'
-  | 'DUE'
-  | 'RUNNING'
-  | 'DONE'
-  | 'FAILED'
-  | 'NOT_AVAILABLE_YET'
-  | 'BLOCKED'
-  | 'SKIPPED';
+/** Derived from the pgEnum so the union can never drift from the column. */
+export type IpoStepStatus = (typeof ipoStepStatusEnum.enumValues)[number];
+
+/**
+ * The stages findGrid / the admin page may filter by. Derived from
+ * `ipoStatusEnum` so a stage that is not a real `ipo_status` value can never be
+ * offered (a bad value reaches Postgres as `invalid input value for enum`).
+ */
+export const PIPELINE_STAGES = ipoStatusEnum.enumValues;
+export type PipelineStage = (typeof PIPELINE_STAGES)[number];
+
+/** undefined (= no stage filter) for anything that is not a real ipo_status. */
+export function resolveStageFilter(value: string | undefined | null): PipelineStage | undefined {
+  return PIPELINE_STAGES.includes(value as PipelineStage) ? (value as PipelineStage) : undefined;
+}
+
+/**
+ * How `attempts` moves for a given target status. `attempts` counts FINISHED
+ * run attempts, so it increments on a failure, and on a RUNNING step that
+ * completes -- never on merely marking a step RUNNING or on a DUE -> DONE
+ * bookkeeping write.
+ */
+export type AttemptsRule = 'increment' | 'increment-if-running' | 'leave';
+
+export function resolveAttemptsRule(status: IpoStepStatus): AttemptsRule {
+  if (status === 'FAILED') return 'increment';
+  if (status === 'DONE') return 'increment-if-running';
+  return 'leave';
+}
 
 /**
  * Statuses that end a run attempt. Reaching one stamps `last_run_at`;
@@ -111,50 +131,61 @@ export class IpoPipelineStepsRepository extends BaseRepository {
       );
     }
 
-    const existing = (await this.db
-      .select()
-      .from(ipoPipelineSteps)
-      .where(
-        and(eq(ipoPipelineSteps.ipoId, input.ipoId), eq(ipoPipelineSteps.stepId, input.stepId))
-      )
-      .limit(1)) as Array<{ attempts: number; status: IpoStepStatus }>;
-
-    const previous = existing[0];
-    const previousAttempts = previous?.attempts ?? 0;
-    const completesARun =
-      input.status === 'FAILED' || (input.status === 'DONE' && previous?.status === 'RUNNING');
-    const attempts = completesARun ? previousAttempts + 1 : previousAttempts;
-
     const now = new Date();
     const isTerminal = TERMINAL_STATUSES.has(input.status);
-    const error = input.status === 'DONE' ? null : (input.error ?? null);
+    const attemptsRule = resolveAttemptsRule(input.status);
 
-    const common = {
+    // PARTIAL UPDATE: only fields the caller actually provided go into the
+    // conflict set. `undefined` means "leave whatever is stored alone" -- a
+    // later status-only write must not wipe the evidence/source/version a
+    // previous run recorded. An explicit `null` still clears the column.
+    const set: Record<string, unknown> = { status: input.status, updatedAt: now };
+    if (input.source !== undefined) set.source = input.source;
+    if (input.inputRef !== undefined) set.inputRef = input.inputRef;
+    if (input.evidence !== undefined) set.evidence = input.evidence;
+    if (input.version !== undefined) set.version = input.version;
+    if (input.nextDueAt !== undefined) set.nextDueAt = input.nextDueAt;
+
+    // DONE always clears the error, so a stale failure never outlives its fix.
+    if (input.status === 'DONE') {
+      set.error = null;
+    } else if (input.error !== undefined) {
+      set.error = input.error;
+    }
+
+    // Only stamp last_run_at when something actually finished.
+    if (isTerminal) set.lastRunAt = now;
+
+    // Counted in SQL against the stored row, not read-then-written, so two
+    // concurrent writers cannot both read N and both write N+1.
+    if (attemptsRule === 'increment') {
+      set.attempts = sql`${ipoPipelineSteps.attempts} + 1`;
+    } else if (attemptsRule === 'increment-if-running') {
+      set.attempts = sql`CASE WHEN ${ipoPipelineSteps.status} = 'RUNNING' THEN ${ipoPipelineSteps.attempts} + 1 ELSE ${ipoPipelineSteps.attempts} END`;
+    }
+
+    const values: Record<string, unknown> = {
+      ipoId: input.ipoId,
+      stepId: input.stepId,
       status: input.status,
-      attempts,
-      source: input.source ?? null,
-      inputRef: input.inputRef ?? null,
-      evidence: (input.evidence ?? null) as never,
-      error,
-      version: input.version ?? null,
-      nextDueAt: input.nextDueAt ?? null,
-      updatedAt: now,
+      // A brand-new row has no prior RUNNING state, so only an outright
+      // failure starts the counter above zero.
+      attempts: attemptsRule === 'increment' ? 1 : 0,
     };
-    // Only stamp last_run_at when something actually finished; leaving the key
-    // out entirely keeps the previous value on an update.
-    const timing = isTerminal ? { lastRunAt: now } : {};
+    if (input.source !== undefined) values.source = input.source;
+    if (input.inputRef !== undefined) values.inputRef = input.inputRef;
+    if (input.evidence !== undefined) values.evidence = input.evidence;
+    if (input.version !== undefined) values.version = input.version;
+    if (input.nextDueAt !== undefined) values.nextDueAt = input.nextDueAt;
+    if (input.status !== 'DONE' && input.error !== undefined) values.error = input.error;
+    if (isTerminal) values.lastRunAt = now;
 
     await this.db
       .insert(ipoPipelineSteps)
-      .values({
-        ipoId: input.ipoId,
-        stepId: input.stepId,
-        ...common,
-        ...timing,
-      } as never)
+      .values(values as never)
       .onConflictDoUpdate({
         target: [ipoPipelineSteps.ipoId, ipoPipelineSteps.stepId],
-        set: { ...common, ...timing } as never,
+        set: set as never,
       });
 
     await this.invalidateCache(getPipelineInvalidationKeys(input.ipoId), [
@@ -185,7 +216,9 @@ export class IpoPipelineStepsRepository extends BaseRepository {
    */
   async findGrid(options: { stage?: string; limit?: number } = {}): Promise<PipelineGrid> {
     const limit = options.limit ?? 50;
-    const stage = options.stage;
+    // Defence in depth: an unknown stage degrades to "no filter" rather than
+    // reaching Postgres as an invalid ipo_status enum value.
+    const stage = resolveStageFilter(options.stage);
 
     return this.getFromCache(
       getPipelineGridKey(stage, limit),
@@ -200,7 +233,7 @@ export class IpoPipelineStepsRepository extends BaseRepository {
             listingDate: ipos.listingDate,
           })
           .from(ipos)
-          .where(stage ? eq(ipos.status, stage as never) : activeIpoFilter())
+          .where(stage ? eq(ipos.status, stage) : activeIpoFilter())
           .orderBy(desc(ipos.openDate))
           .limit(limit)) as unknown as PipelineGridIpo[];
 

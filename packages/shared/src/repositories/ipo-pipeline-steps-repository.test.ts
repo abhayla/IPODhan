@@ -1,16 +1,22 @@
 /**
  * S-01 — ipo_pipeline_steps repository tests.
  *
- * Covers the upsert transition rules the ledger's usefulness depends on:
- * attempts counting (a FAILED step, and a RUNNING -> DONE completion),
- * error clearing on DONE, last_run_at only on terminal statuses, and an
- * idempotent initForIpo that creates exactly one row per catalogue step.
+ * Covers the upsert rules the ledger's usefulness depends on: attempts counted
+ * in SQL (never read-then-write), partial updates that cannot wipe stored
+ * provenance, error clearing on DONE, last_run_at only on terminal statuses,
+ * enum-derived stage validation, and an idempotent initForIpo that creates
+ * exactly one row per catalogue step.
  *
  * The db is a hand-rolled chainable mock (the drizzle query builder shape) so
  * these stay unit tests -- no Postgres, no Redis.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { IpoPipelineStepsRepository } from './ipo-pipeline-steps-repository';
+import { describe, it, expect, vi } from 'vitest';
+import {
+  IpoPipelineStepsRepository,
+  PIPELINE_STAGES,
+  resolveAttemptsRule,
+  resolveStageFilter,
+} from './ipo-pipeline-steps-repository';
 import { PIPELINE_STEPS } from '../pipeline/step-catalogue';
 
 const IPO_ID = '0b7e81cd-3426-4376-9bc8-1b3b07fa9a93';
@@ -19,11 +25,18 @@ const IPO_ID = '0b7e81cd-3426-4376-9bc8-1b3b07fa9a93';
 interface DbCalls {
   insertValues: any[];
   conflictSets: any[];
+  /** How many times the builder chose ON CONFLICT DO NOTHING. */
+  conflictDoNothing: number;
   selectResults: any[][];
 }
 
 function makeDb(selectResults: any[][] = [[]], returning: any = { id: 'row-1' }) {
-  const calls: DbCalls = { insertValues: [], conflictSets: [], selectResults };
+  const calls: DbCalls = {
+    insertValues: [],
+    conflictSets: [],
+    conflictDoNothing: 0,
+    selectResults,
+  };
   let selectIdx = 0;
 
   const selectChain = () => {
@@ -53,10 +66,12 @@ function makeDb(selectResults: any[][] = [[]], returning: any = { id: 'row-1' })
           calls.conflictSets.push(cfg.set);
           return chain;
         },
-        onConflictDoNothing: () => chain,
+        onConflictDoNothing: () => {
+          calls.conflictDoNothing += 1;
+          return chain;
+        },
         returning: () => Promise.resolve([returning]),
-        then: (resolve: any, reject: any) =>
-          Promise.resolve([returning]).then(resolve, reject),
+        then: (resolve: any, reject: any) => Promise.resolve([returning]).then(resolve, reject),
       };
       return chain;
     }),
@@ -81,59 +96,162 @@ function makeRepo(selectResults?: any[][]) {
   return { repo: new IpoPipelineStepsRepository(db, redis), calls, redis, db };
 }
 
-describe('IpoPipelineStepsRepository.upsertStep — attempts', () => {
-  it('increments attempts when the new status is FAILED', async () => {
-    const { repo, calls } = makeRepo([[{ id: 'r', attempts: 2, status: 'RUNNING' }]]);
+describe('resolveAttemptsRule', () => {
+  it('increments on FAILED', () => {
+    expect(resolveAttemptsRule('FAILED')).toBe('increment');
+  });
+
+  it('increments only from RUNNING on DONE', () => {
+    expect(resolveAttemptsRule('DONE')).toBe('increment-if-running');
+  });
+
+  it('leaves attempts alone for every non-finishing status', () => {
+    const nonFinishing = [
+      'NOT_DUE',
+      'DUE',
+      'RUNNING',
+      'BLOCKED',
+      'SKIPPED',
+      'NOT_AVAILABLE_YET',
+    ] as const;
+    for (const status of nonFinishing) {
+      expect(resolveAttemptsRule(status)).toBe('leave');
+    }
+  });
+});
+
+describe('resolveStageFilter', () => {
+  it('accepts every real ipo_status value', () => {
+    expect(PIPELINE_STAGES.length).toBeGreaterThan(0);
+    for (const stage of PIPELINE_STAGES) {
+      expect(resolveStageFilter(stage)).toBe(stage);
+    }
+  });
+
+  it('rejects a stage outside the ipo_status enum (WITHDRAWN was the 500)', () => {
+    expect(resolveStageFilter('WITHDRAWN')).toBeUndefined();
+    expect(resolveStageFilter('nonsense')).toBeUndefined();
+    expect(resolveStageFilter(undefined)).toBeUndefined();
+  });
+});
+
+describe('IpoPipelineStepsRepository.upsertStep — attempts (counted in SQL)', () => {
+  it('increments attempts in SQL when the new status is FAILED', async () => {
+    const { repo, calls } = makeRepo();
 
     await repo.upsertStep({ ipoId: IPO_ID, stepId: 'B7', status: 'FAILED', error: 'boom' });
 
-    expect(calls.conflictSets[0].attempts).toBe(3);
+    // An SQL expression, never a number read out of a prior SELECT.
+    expect(calls.conflictSets[0].attempts).toBeDefined();
+    expect(typeof calls.conflictSets[0].attempts).not.toBe('number');
   });
 
-  it('increments attempts on a RUNNING -> DONE completion', async () => {
-    const { repo, calls } = makeRepo([[{ id: 'r', attempts: 1, status: 'RUNNING' }]]);
+  it('makes the RUNNING -> DONE increment conditional in SQL, not read-then-write', async () => {
+    const { repo, calls } = makeRepo();
 
     await repo.upsertStep({ ipoId: IPO_ID, stepId: 'B1', status: 'DONE' });
 
-    expect(calls.conflictSets[0].attempts).toBe(2);
+    expect(calls.conflictSets[0].attempts).toBeDefined();
+    expect(typeof calls.conflictSets[0].attempts).not.toBe('number');
   });
 
-  it('does NOT increment attempts on a DUE -> DONE transition', async () => {
-    const { repo, calls } = makeRepo([[{ id: 'r', attempts: 4, status: 'DUE' }]]);
+  it('never issues a SELECT before writing (no read-then-write race)', async () => {
+    const { repo, db } = makeRepo();
 
-    await repo.upsertStep({ ipoId: IPO_ID, stepId: 'B1', status: 'DONE' });
+    await repo.upsertStep({ ipoId: IPO_ID, stepId: 'B7', status: 'FAILED', error: 'x' });
 
-    expect(calls.conflictSets[0].attempts).toBe(4);
+    expect(db.select).not.toHaveBeenCalled();
   });
 
-  it('does NOT increment attempts when merely marking a step RUNNING', async () => {
-    const { repo, calls } = makeRepo([[{ id: 'r', attempts: 0, status: 'DUE' }]]);
+  it('leaves attempts entirely out of the conflict set when marking a step RUNNING', async () => {
+    const { repo, calls } = makeRepo();
 
     await repo.upsertStep({ ipoId: IPO_ID, stepId: 'C1', status: 'RUNNING' });
 
-    expect(calls.conflictSets[0].attempts).toBe(0);
+    expect('attempts' in calls.conflictSets[0]).toBe(false);
   });
 
-  it('starts a first-ever FAILED row at attempts = 1', async () => {
-    const { repo, calls } = makeRepo([[]]);
+  it('starts a first-ever FAILED row at attempts = 1, and any other status at 0', async () => {
+    const { repo, calls } = makeRepo();
 
     await repo.upsertStep({ ipoId: IPO_ID, stepId: 'C3', status: 'FAILED', error: 'x' });
+    await repo.upsertStep({ ipoId: IPO_ID, stepId: 'C4', status: 'RUNNING' });
 
     expect(calls.insertValues[0].attempts).toBe(1);
+    expect(calls.insertValues[1].attempts).toBe(0);
+  });
+});
+
+describe('IpoPipelineStepsRepository.upsertStep — partial updates never wipe stored fields', () => {
+  it('writes the fields the caller provided into the conflict set', async () => {
+    const { repo, calls } = makeRepo();
+
+    await repo.upsertStep({
+      ipoId: IPO_ID,
+      stepId: 'B1',
+      status: 'DONE',
+      source: 'WALK',
+      version: 'v1',
+      evidence: { walk: 'docs/walks/2026-09-02-deepa-pipeline-walk.md' },
+    });
+
+    const set = calls.conflictSets[0];
+    expect(set.source).toBe('WALK');
+    expect(set.version).toBe('v1');
+    expect(set.evidence).toEqual({ walk: 'docs/walks/2026-09-02-deepa-pipeline-walk.md' });
+  });
+
+  it('a later status-only write leaves source/evidence/version/input_ref/next_due_at untouched', async () => {
+    const { repo, calls } = makeRepo();
+
+    // First: the backfill records real provenance.
+    await repo.upsertStep({
+      ipoId: IPO_ID,
+      stepId: 'B1',
+      status: 'DONE',
+      source: 'WALK',
+      version: 'v1',
+      inputRef: 'sha256:abc',
+      nextDueAt: new Date('2026-09-03T00:00:00Z'),
+      evidence: { walk: 'x' },
+    });
+    // Then: a scraper marks the same step RUNNING with nothing else.
+    await repo.upsertStep({ ipoId: IPO_ID, stepId: 'B1', status: 'RUNNING' });
+
+    const set = calls.conflictSets[1];
+    for (const key of ['source', 'evidence', 'version', 'inputRef', 'nextDueAt']) {
+      expect(key in set).toBe(false);
+    }
+  });
+
+  it('an explicit null still clears a field', async () => {
+    const { repo, calls } = makeRepo();
+
+    await repo.upsertStep({ ipoId: IPO_ID, stepId: 'B1', status: 'RUNNING', source: null });
+
+    expect('source' in calls.conflictSets[0]).toBe(true);
+    expect(calls.conflictSets[0].source).toBeNull();
   });
 });
 
 describe('IpoPipelineStepsRepository.upsertStep — error and timestamps', () => {
-  it('clears the error on DONE even when a previous error is stored', async () => {
-    const { repo, calls } = makeRepo([[{ id: 'r', attempts: 1, status: 'FAILED', error: 'old' }]]);
+  it('clears a previously stored error on DONE even though the caller passed no error', async () => {
+    const { repo, calls } = makeRepo();
+
+    // A failure is recorded first, so there IS a stored error to clear.
+    await repo.upsertStep({ ipoId: IPO_ID, stepId: 'B7', status: 'FAILED', error: 'old failure' });
+    expect(calls.conflictSets[0].error).toBe('old failure');
 
     await repo.upsertStep({ ipoId: IPO_ID, stepId: 'B7', status: 'DONE' });
 
-    expect(calls.conflictSets[0].error).toBeNull();
+    // The clearing branch must put an explicit null in the set -- omitting the
+    // key would leave 'old failure' stored forever.
+    expect('error' in calls.conflictSets[1]).toBe(true);
+    expect(calls.conflictSets[1].error).toBeNull();
   });
 
   it('keeps the supplied error on FAILED', async () => {
-    const { repo, calls } = makeRepo([[{ id: 'r', attempts: 0, status: 'DUE' }]]);
+    const { repo, calls } = makeRepo();
 
     await repo.upsertStep({
       ipoId: IPO_ID,
@@ -145,8 +263,16 @@ describe('IpoPipelineStepsRepository.upsertStep — error and timestamps', () =>
     expect(calls.conflictSets[0].error).toBe('W-16/W-17/W-18 open');
   });
 
+  it('leaves a stored error alone on a non-DONE status with no error supplied', async () => {
+    const { repo, calls } = makeRepo();
+
+    await repo.upsertStep({ ipoId: IPO_ID, stepId: 'B7', status: 'RUNNING' });
+
+    expect('error' in calls.conflictSets[0]).toBe(false);
+  });
+
   it('sets last_run_at on a terminal status', async () => {
-    const { repo, calls } = makeRepo([[{ id: 'r', attempts: 0, status: 'RUNNING' }]]);
+    const { repo, calls } = makeRepo();
 
     await repo.upsertStep({ ipoId: IPO_ID, stepId: 'B1', status: 'DONE' });
 
@@ -154,7 +280,7 @@ describe('IpoPipelineStepsRepository.upsertStep — error and timestamps', () =>
   });
 
   it('does NOT set last_run_at on a non-terminal status', async () => {
-    const { repo, calls } = makeRepo([[{ id: 'r', attempts: 0, status: 'NOT_DUE' }]]);
+    const { repo, calls } = makeRepo();
 
     await repo.upsertStep({ ipoId: IPO_ID, stepId: 'B1', status: 'RUNNING' });
 
@@ -162,15 +288,15 @@ describe('IpoPipelineStepsRepository.upsertStep — error and timestamps', () =>
   });
 
   it('rejects a step id that is not in the catalogue', async () => {
-    const { repo } = makeRepo([[]]);
+    const { repo } = makeRepo();
 
-    await expect(
-      repo.upsertStep({ ipoId: IPO_ID, stepId: 'Z9', status: 'DONE' })
-    ).rejects.toThrow(/Z9/);
+    await expect(repo.upsertStep({ ipoId: IPO_ID, stepId: 'Z9', status: 'DONE' })).rejects.toThrow(
+      /Z9/
+    );
   });
 
   it('invalidates the IPO grid cache after an upsert', async () => {
-    const { repo, redis } = makeRepo([[{ id: 'r', attempts: 0, status: 'DUE' }]]);
+    const { repo, redis } = makeRepo();
 
     await repo.upsertStep({ ipoId: IPO_ID, stepId: 'B1', status: 'DONE' });
 
@@ -180,7 +306,7 @@ describe('IpoPipelineStepsRepository.upsertStep — error and timestamps', () =>
 
 describe('IpoPipelineStepsRepository.initForIpo', () => {
   it('creates one NOT_DUE row per catalogue step in a single insert', async () => {
-    const { repo, calls, db } = makeRepo([[]]);
+    const { repo, calls, db } = makeRepo();
 
     await repo.initForIpo(IPO_ID);
 
@@ -192,13 +318,15 @@ describe('IpoPipelineStepsRepository.initForIpo', () => {
     expect(new Set(rows.map((r: any) => r.stepId)).size).toBe(PIPELINE_STEPS.length);
   });
 
-  it('is idempotent — a second init does not overwrite existing rows', async () => {
-    const { repo, calls } = makeRepo([[]]);
+  it('is idempotent — it uses ON CONFLICT DO NOTHING, never DO UPDATE', async () => {
+    const { repo, calls } = makeRepo();
 
     await repo.initForIpo(IPO_ID);
     await repo.initForIpo(IPO_ID);
 
-    // onConflictDoNothing, never onConflictDoUpdate: existing statuses survive.
+    // Observed on the builder itself: DO NOTHING was chosen both times, and no
+    // DO UPDATE set was ever built, so existing statuses cannot be reset.
+    expect(calls.conflictDoNothing).toBe(2);
     expect(calls.conflictSets).toHaveLength(0);
   });
 });
