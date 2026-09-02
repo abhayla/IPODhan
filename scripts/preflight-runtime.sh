@@ -94,12 +94,21 @@ check_tesseract() {
 # T-327 actually depends on for date parsing) AND the box's ambient TZ via
 # /etc/timezone or timedatectl (defense-in-depth against the box itself
 # drifting even if scraper.env is correct). Accepted value for either
-# signal: Asia/Kolkata (this VPS's real host TZ, India-hosted) or UTC.
-# FAIL if a determined value is not one of those, or if NEITHER signal is
-# determinable at all.
+# signal: Asia/Kolkata (this VPS's real host TZ, India-hosted) or UTC —
+# including the equivalent spellings a distro/runner may report (glibc's
+# Etc/UTC, Etc/GMT, GMT, POSIX Universal/Zulu for UTC; the legacy
+# Asia/Calcutta alias for Kolkata). FAIL if a determined value normalizes
+# to neither, or if NEITHER signal is determinable at all.
+#
+# T-406 round-4: CI (ubuntu-latest) reports ambient /etc/timezone as
+# "Etc/UTC", which the un-normalized comparison rejected — a false FAIL
+# baked into the ambient ("ground truth") ubuntu ships with, not a real
+# misconfiguration. The two-signal design stays; only the string compare
+# needed to accept UTC's aliases (T-406 round-4, PR #262).
 tz_is_accepted() {
   case "$1" in
-    Asia/Kolkata|UTC) return 0 ;;
+    Asia/Kolkata|Asia/Calcutta) return 0 ;;
+    UTC|Etc/UTC|Etc/GMT|GMT|Universal|Zulu) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -108,9 +117,15 @@ check_tz() {
   env_tz="${TZ:-}"
   ambient_tz=""
   ambient_source=""
-  if [ -r /etc/timezone ]; then
-    ambient_tz="$(cat /etc/timezone 2>/dev/null | tr -d '[:space:]')"
-    ambient_source="/etc/timezone"
+  # PREFLIGHT_ETC_TIMEZONE_FILE lets the self-test suite point this check at
+  # a temp file it controls instead of the real /etc/timezone — so the
+  # result is identical on Windows/macOS dev machines (no such file) and
+  # ubuntu-latest CI (real file, real "Etc/UTC" content), never leaking the
+  # runner's own ambient TZ into a test case (T-406 round-4).
+  etc_timezone_file="${PREFLIGHT_ETC_TIMEZONE_FILE:-/etc/timezone}"
+  if [ -r "$etc_timezone_file" ]; then
+    ambient_tz="$(cat "$etc_timezone_file" 2>/dev/null | tr -d '[:space:]')"
+    ambient_source="$etc_timezone_file"
   elif command -v timedatectl >/dev/null 2>&1; then
     ambient_tz="$(timedatectl show -p Timezone --value 2>/dev/null | tr -d '[:space:]')"
     ambient_source="timedatectl"

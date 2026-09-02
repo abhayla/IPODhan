@@ -100,8 +100,32 @@ function pathWith(shimDir) {
 // first, an ambient value already set in the runner's OWN shell (e.g. a dev
 // machine or CI runner with $TZ or $ADMIN_API_TOKEN exported) would leak
 // into `...process.env` below and silently change a case's inputs from
-// what its test body declares (T-406 F6).
-const CONTROLLED_VARS = ['ADMIN_API_TOKEN', 'PROSPECTUS_STORE_DIR', 'TZ'];
+// what its test body declares (T-406 F6). PREFLIGHT_ETC_TIMEZONE_FILE is
+// the same category of leak, just for the AMBIENT signal: ubuntu-latest CI
+// has a real /etc/timezone (content "Etc/UTC"); a Windows/macOS dev box has
+// none. Every case below sets it explicitly so results are identical on
+// all three (T-406 round-4).
+const CONTROLLED_VARS = [
+  'ADMIN_API_TOKEN',
+  'PROSPECTUS_STORE_DIR',
+  'TZ',
+  'PREFLIGHT_ETC_TIMEZONE_FILE',
+];
+
+// A path that is guaranteed not to exist, so check_tz's `[ -r "$file" ]`
+// is false and the ambient signal comes back <undeterminable> — the
+// "no ambient /etc/timezone" case a Windows/macOS dev box is naturally in.
+const NO_AMBIENT_TZ_FILE = join(tmpdir(), 'preflight-test-no-such-etc-timezone');
+
+// Writes a real temp file with `content` as its (whitespace-trimmed, per
+// the script's own `tr -d '[:space:]'`) body, standing in for /etc/timezone
+// so a test can drive the REAL ambient-file-read branch of check_tz.
+function writeAmbientTzFile(content) {
+  const dir = mkdtempSync(join(tmpdir(), 'preflight-ambient-tz-'));
+  const file = join(dir, 'timezone');
+  writeFileSync(file, `${content}\n`);
+  return file;
+}
 
 function run({ shimDir, env = {}, args = [] }) {
   const fullEnv = {
@@ -124,6 +148,7 @@ function baseGoodEnv(storeDir) {
     TZ: 'UTC',
     ADMIN_API_TOKEN: 'test-token-value',
     PROSPECTUS_STORE_DIR: storeDir,
+    PREFLIGHT_ETC_TIMEZONE_FILE: NO_AMBIENT_TZ_FILE,
   };
 }
 
@@ -198,6 +223,47 @@ test('TZ=Asia/Kolkata is accepted (OK), per T-327 ambient-TZ allowance', () => {
   rmSync(storeDir, { recursive: true, force: true });
 });
 
+// T-406 round-4: ubuntu-latest CI reports its ambient /etc/timezone as
+// "Etc/UTC" (not bare "UTC") — this drives the REAL ambient-file-read
+// branch of check_tz with that exact content so a future regression to the
+// un-normalized comparison (T-406 round-3 shape) turns this red again.
+test('ambient /etc/timezone reads "Etc/UTC" -> OK (CI runner shape)', () => {
+  const shimDir = makeShimDir();
+  const storeDir = mkdtempSync(join(tmpdir(), 'prospectus-'));
+  goodPython(shimDir);
+  goodTesseract(shimDir);
+  goodNode('v20.11.0')(shimDir);
+  const ambientFile = writeAmbientTzFile('Etc/UTC');
+  const res = run({
+    shimDir,
+    env: { ...baseGoodEnv(storeDir), TZ: 'UTC', PREFLIGHT_ETC_TIMEZONE_FILE: ambientFile },
+  });
+  assert.match(res.stdout, /OK .*TZ/);
+  assert.equal(res.status, 0);
+  rmSync(shimDir, { recursive: true, force: true });
+  rmSync(storeDir, { recursive: true, force: true });
+  rmSync(dirname(ambientFile), { recursive: true, force: true });
+});
+
+test('ambient /etc/timezone reads "Europe/London" with $TZ=UTC -> FAIL naming the ambient value', () => {
+  const shimDir = makeShimDir();
+  const storeDir = mkdtempSync(join(tmpdir(), 'prospectus-'));
+  goodPython(shimDir);
+  goodTesseract(shimDir);
+  goodNode('v20.11.0')(shimDir);
+  const ambientFile = writeAmbientTzFile('Europe/London');
+  const res = run({
+    shimDir,
+    env: { ...baseGoodEnv(storeDir), TZ: 'UTC', PREFLIGHT_ETC_TIMEZONE_FILE: ambientFile },
+  });
+  assert.match(res.stdout, /FAIL .*TZ/);
+  assert.match(res.stdout, /Europe\/London/);
+  assert.notEqual(res.status, 0);
+  rmSync(shimDir, { recursive: true, force: true });
+  rmSync(storeDir, { recursive: true, force: true });
+  rmSync(dirname(ambientFile), { recursive: true, force: true });
+});
+
 test('PROSPECTUS_STORE_DIR set to a non-existent path -> FAIL', () => {
   const shimDir = makeShimDir();
   goodPython(shimDir);
@@ -209,6 +275,7 @@ test('PROSPECTUS_STORE_DIR set to a non-existent path -> FAIL', () => {
       TZ: 'UTC',
       ADMIN_API_TOKEN: 'x',
       PROSPECTUS_STORE_DIR: '/definitely/does/not/exist/prospectus',
+      PREFLIGHT_ETC_TIMEZONE_FILE: NO_AMBIENT_TZ_FILE,
     },
   });
   assert.match(res.stdout, /FAIL .*[Ss]tore/);
@@ -225,7 +292,12 @@ test('PROSPECTUS_STORE_DIR unset -> falls back to checking the parent shared dir
   goodNode('v20.11.0')(shimDir);
   const res = run({
     shimDir,
-    env: { TZ: 'UTC', ADMIN_API_TOKEN: 'x', DEPLOY_ROOT: deployRoot },
+    env: {
+      TZ: 'UTC',
+      ADMIN_API_TOKEN: 'x',
+      DEPLOY_ROOT: deployRoot,
+      PREFLIGHT_ETC_TIMEZONE_FILE: NO_AMBIENT_TZ_FILE,
+    },
   });
   assert.match(res.stdout, /OK .*[Ss]tore/);
   assert.equal(res.status, 0);
@@ -254,7 +326,11 @@ test('ADMIN_API_TOKEN unset -> FAIL', () => {
   goodNode('v20.11.0')(shimDir);
   const res = run({
     shimDir,
-    env: { TZ: 'UTC', PROSPECTUS_STORE_DIR: storeDir },
+    env: {
+      TZ: 'UTC',
+      PROSPECTUS_STORE_DIR: storeDir,
+      PREFLIGHT_ETC_TIMEZONE_FILE: NO_AMBIENT_TZ_FILE,
+    },
   });
   assert.match(res.stdout, /FAIL ADMIN_API_TOKEN/);
   assert.notEqual(res.status, 0);
@@ -270,7 +346,12 @@ test('ADMIN_API_TOKEN blank -> FAIL', () => {
   goodNode('v20.11.0')(shimDir);
   const res = run({
     shimDir,
-    env: { TZ: 'UTC', PROSPECTUS_STORE_DIR: storeDir, ADMIN_API_TOKEN: '' },
+    env: {
+      TZ: 'UTC',
+      PROSPECTUS_STORE_DIR: storeDir,
+      ADMIN_API_TOKEN: '',
+      PREFLIGHT_ETC_TIMEZONE_FILE: NO_AMBIENT_TZ_FILE,
+    },
   });
   assert.match(res.stdout, /FAIL ADMIN_API_TOKEN/);
   assert.notEqual(res.status, 0);
@@ -298,7 +379,7 @@ test('every check runs even after an earlier FAIL — report-everything, not fai
   goodNode('v20.11.0')(shimDir);
   const res = run({
     shimDir,
-    env: { TZ: 'America/New_York' },
+    env: { TZ: 'America/New_York', PREFLIGHT_ETC_TIMEZONE_FILE: NO_AMBIENT_TZ_FILE },
   });
   assert.match(res.stdout, /FAIL python3/);
   assert.match(res.stdout, /FAIL .*TZ/);
@@ -312,7 +393,7 @@ test('--report mode: prints FAIL lines but always exits 0', () => {
   goodNode('v20.11.0')(shimDir);
   const res = run({
     shimDir,
-    env: { TZ: 'America/New_York' },
+    env: { TZ: 'America/New_York', PREFLIGHT_ETC_TIMEZONE_FILE: NO_AMBIENT_TZ_FILE },
     args: ['--report'],
   });
   assert.match(res.stdout, /FAIL python3/);
