@@ -37,6 +37,9 @@ DOC_TYPES = ("RHP", "PRICE_BAND_AD", "PROSPECTUS", "DRHP")
 STATUS_OK = "OK"
 STATUS_PARTIAL = "PARTIAL"
 STATUS_NEEDS_OCR = "NEEDS_OCR"
+# D6/W-57: a run whose text came (wholly or partly) from the OCR route.
+STATUS_OK_OCR = "OK_OCR"
+STATUS_PARTIAL_OCR = "PARTIAL_OCR"
 
 # `[●]` (and the `[•]`/`[.]` variants pdfplumber emits) marks a cell that cannot be
 # filled until the issue is priced — E3: null with reason, never a guess.
@@ -379,6 +382,31 @@ def check_min_count(n, minimum):
     if n < minimum:
         return False, "%s < required %s" % (n, minimum)
     return True, "%s" % n
+
+
+def check_objects_total(listed_sum, unpriced, fresh_issue, tol=0.01):
+    """E5: the printed object amounts must reconcile with the fresh issue size.
+
+    A red herring prospectus prints the general-corporate-purposes row as
+    `[bullet]` — that amount is finalised only once the Offer Price is known —
+    so exact equality is NOT verifiable at RHP stage and asserting it would
+    fail every honest RHP. When a row is unpriced the check falls back to the
+    bound that IS verifiable: the priced objects can never exceed the fresh
+    issue. When every row carries an amount, the sum must equal the fresh issue
+    within `tol`."""
+    if listed_sum is None:
+        return False, "no object amount printed"
+    if fresh_issue is None:
+        return False, "fresh issue amount not printed"
+    if unpriced:
+        if listed_sum > fresh_issue * (1 + tol):
+            return False, "priced objects %.2f exceed fresh issue %.2f" % (listed_sum, fresh_issue)
+        return True, ("priced objects %.2f <= fresh issue %.2f; %d object(s) unpriced "
+                      "([bullet]), exact sum not verifiable at RHP stage"
+                      % (listed_sum, fresh_issue, unpriced))
+    if abs(listed_sum - fresh_issue) > fresh_issue * tol:
+        return False, "objects sum %.2f != fresh issue %.2f" % (listed_sum, fresh_issue)
+    return True, "%.2f == %.2f" % (listed_sum, fresh_issue)
 
 
 def check_date_before(a, b, label):
@@ -1304,6 +1332,133 @@ def concentration_kpis(all_lines, fiscal_years):
 # --------------------------------------------------------------------------- #
 # RHP / PROSPECTUS / DRHP extraction (group C from the restated P&L, F2 count)
 # --------------------------------------------------------------------------- #
+_UTILISATION_RX = re.compile(r"^\s*Utilisation of (?:the )?Net Proceeds\s*:?\s*$", re.I)
+_OBJ_STOP_RX = re.compile(
+    r"^(?:\(\d+\)|Proposed schedule|Means of finance|Details of Objects|Offer|Total\b)", re.I)
+_OBJ_SKIP_RX = re.compile(r"^(?:\(?in\s+.{0,14}(?:million|lakh|crore)|Sr\.?\s*No\b)", re.I)
+# A trailing cell: either a printed amount (2,150.00) or an unpriced placeholder
+# the prospectus writes as [bullet] / [•] / [●] because the price is not yet set.
+_AMT_TAIL_RX = re.compile(r"(\[\s*\S{0,3}\s*\]|[\d,]+\.\d{2})\s*$")
+
+
+def _fresh_issue_amount(page_texts):
+    """The fresh issue size the objects table must reconcile against."""
+    for idx, text in page_texts:
+        m = re.search(r"Gross Proceeds of the Fresh Issue[^\d\n]*([\d,]+\.\d{2})",
+                      text or "", re.I)
+        if m:
+            return _num(m.group(1)), idx
+    for idx, text in page_texts:
+        m = re.search(r"Fresh Issue of up to.{0,240}?aggregating up to\s*([\d,]+(?:\.\d+)?)\s*"
+                      r"\n?\s*million", text or "", re.I | re.S)
+        if m:
+            return _num(m.group(1)), idx
+    return None, None
+
+
+def extract_objects_of_offer(page_texts):
+    """E5: the 'Utilisation of Net Proceeds' table of the OBJECTS OF THE OFFER
+    chapter — one row per object, amount in the document's own million unit.
+
+    Returns (items, page). A row whose amount cell is an unpriced `[bullet]`
+    yields `amount_mn: None` with `check: "not_priced_yet"` rather than a
+    guessed number."""
+    for idx, text in page_texts:
+        lines = (text or "").split("\n")
+        start = None
+        for i, ln in enumerate(lines):
+            if _UTILISATION_RX.match(ln):
+                start = i + 1
+                break
+        if start is None:
+            continue
+        rows = []
+        for ln in lines[start:]:
+            s = ln.strip()
+            if not s:
+                if rows:
+                    break
+                continue
+            if _OBJ_STOP_RX.match(s):
+                break
+            if _OBJ_SKIP_RX.match(s):
+                continue
+            m = re.match(r"^(\d{1,3})\.\s+(.*)$", s)
+            if m:
+                rows.append([m.group(2)])
+            elif rows:
+                rows[-1].append(s)
+        items = []
+        for row in rows:
+            amount_tok, label_parts = None, []
+            for part in row:
+                mm = _AMT_TAIL_RX.search(part)
+                if mm and amount_tok is None:
+                    amount_tok = mm.group(1)
+                    part = part[:mm.start()]
+                label_parts.append(part.strip())
+            label = re.sub(r"\s+", " ", " ".join(p for p in label_parts if p)).strip()
+            label = re.sub(r"\(\d+\)$", "", label).strip()
+            if not label:
+                continue
+            if amount_tok is None:
+                items.append({"label": label, "amount_mn": None, "check": "no_amount_printed"})
+            elif amount_tok.startswith("["):
+                items.append({"label": label, "amount_mn": None, "check": "not_priced_yet"})
+            else:
+                items.append({"label": label, "amount_mn": _num(amount_tok), "check": "priced"})
+        if items:
+            return items, idx
+    return [], None
+
+
+_RF_HEAD_RX = re.compile(r"^\s*(?:SECTION\s+[IVXL]+\s*[-–—:]?\s*)?RISK FACTORS\s*$", re.I)
+_SECTION_RX = re.compile(r"^\s*SECTION\s+[IVXL]+\b", re.I)
+
+
+def extract_risk_factors(page_texts, limit=200):
+    """E8: the numbered risk factors of the RISK FACTORS chapter.
+
+    The chapter heading is matched in ANY of its printed forms ("SECTION II -
+    RISK FACTORS" as well as a bare "RISK FACTORS"); a line carrying dot
+    leaders is the table of contents, not the chapter. Items are accepted only
+    in strict sequence (n == previous + 1), which is what separates a real risk
+    factor from the nested lists and wrapped line numbers that also start with
+    "<digits>." inside the chapter."""
+    items, first_page, expected, in_section = [], None, 1, False
+    for idx, text in page_texts:
+        lines = [ln.strip() for ln in (text or "").split("\n")]
+        headings = [ln for ln in lines if "...." not in ln]
+        if not in_section:
+            if any(_RF_HEAD_RX.match(ln) for ln in headings):
+                in_section = True
+                first_page = idx
+            else:
+                continue
+        elif any(_SECTION_RX.match(ln) and not _RF_HEAD_RX.match(ln) for ln in headings):
+            break
+        current = None
+        for ln in lines:
+            m = re.match(r"^(\d{1,3})\.\s+(.+)$", ln)
+            if m and int(m.group(1)) == expected:
+                current = {"n": expected, "parts": [m.group(2)]}
+                items.append(current)
+                expected += 1
+                continue
+            if current is not None:
+                if not ln or re.match(r"^\d{1,4}$", ln) or re.match(r"^\d{1,3}\.\s", ln):
+                    current = None
+                else:
+                    current["parts"].append(ln)
+    out = []
+    for item in items:
+        joined = re.sub(r"\s+", " ", " ".join(item["parts"])).strip()
+        sentence = re.match(r"^(.+?[.?!])(?:\s|$)", joined)
+        out.append({"n": item["n"],
+                    "heading": (sentence.group(1) if sentence else joined)[:limit].strip()})
+    return out, first_page
+
+
 def extract_rhp(page_texts, emit):
     # Strip the rupee glyphs before the shared core: prospectuses write
     # "(<glyph> in million)", and the unit detector's "in <unit>" pattern will not
@@ -1359,23 +1514,24 @@ def extract_rhp(page_texts, emit):
         if name:
             emit.put(name, None, None, "plausibility_rejected", (False, reason))
 
-    # F2: numbered risk-factor headings inside the "Risk Factors" section.
-    headings, first_page = set(), None
-    in_section = False
-    for idx, text in page_texts:
-        t = text or ""
-        if re.search(r"^\s*RISK FACTORS\s*$", t, re.I | re.M):
-            in_section = True
-            if first_page is None:
-                first_page = idx
-        if not in_section:
-            continue
-        for ln in t.split("\n"):
-            m = re.match(r"^\s*(\d{1,3})\.\s+[A-Z]", ln)
-            if m:
-                headings.add(int(m.group(1)))
-    emit.put("risk_factor_count", len(headings) or None, first_page, "risk_factor_minimum_count",
-             check_min_count(len(headings), 20))
+    # E5: objects of the offer — the price band advertisement has no objects
+    # section at all, so this is an RHP-only field.
+    objects, obj_page = extract_objects_of_offer(cleaned)
+    if not objects:
+        emit.null("objects_of_offer", "no 'Utilisation of Net Proceeds' table found")
+    else:
+        priced = [o["amount_mn"] for o in objects if o["amount_mn"] is not None]
+        fresh_issue, _fresh_page = _fresh_issue_amount(cleaned)
+        emit.put("objects_of_offer", objects, obj_page, "objects_sum_vs_fresh_issue",
+                 check_objects_total(sum(priced) if priced else None,
+                                     len(objects) - len(priced), fresh_issue))
+
+    # E8/F2: the numbered risk factors of the RISK FACTORS chapter.
+    risks, first_page = extract_risk_factors(page_texts)
+    emit.put("risk_factor_count", len(risks) or None, first_page, "risk_factor_minimum_count",
+             check_min_count(len(risks), 20))
+    emit.put("risk_factors", risks or None, first_page, "risk_factor_headings_complete",
+             check_min_count(len(risks), 20))
 
     found = None
     for idx, text in page_texts:
@@ -1389,7 +1545,9 @@ def extract_rhp(page_texts, emit):
 
 
 # --------------------------------------------------------------------------- #
-def run(page_texts, doc_type, source_doc, segment="MAINBOARD"):
+def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=None):
+    """`ocr_confidence` (D6/W-57): {page_index: confidence} for pages whose text
+    came from OCR rather than from the PDF's own text layer."""
     emit = Emitter(source_doc)
     # E4/E5: a document with no text layer is classified, never guessed at.
     if not any((t or "").strip() for _i, t in page_texts):
@@ -1402,22 +1560,52 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD"):
     else:
         meta = extract_rhp(page_texts, emit)
 
+    status = STATUS_PARTIAL if emit.failed else STATUS_OK
+    fields = emit.fields
+    if ocr_confidence:
+        from ocr_pages import annotate_fields, CONFIDENCE_FLOOR
+        fields = annotate_fields(fields, ocr_confidence, CONFIDENCE_FLOOR)
+        status = STATUS_OK_OCR if status == STATUS_OK else STATUS_PARTIAL_OCR
+
     return {
         "doc_type": doc_type,
         "source_doc": source_doc,
         "pages": len(page_texts),
-        "extraction_status": STATUS_PARTIAL if emit.failed else STATUS_OK,
+        "extraction_status": status,
         "unit": meta.get("unit"),
         "fiscal_years": meta.get("fiscal_years") or [],
-        "fields": emit.fields,
+        "fields": fields,
     }
 
 
-def extract(pdf_path, doc_type, segment="MAINBOARD"):
+def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
+            ocr_dpi=None, ocr_backend=None):
+    """Read the PDF's text layer; for any page that has none worth trusting,
+    fall back to the OCR route (D6/W-57) instead of stopping at NEEDS_OCR."""
     import pdfplumber
     with pdfplumber.open(pdf_path) as pdf:
         page_texts = [(i, p.extract_text() or "") for i, p in enumerate(pdf.pages)]
-    return run(page_texts, doc_type, os.path.basename(pdf_path), segment)
+
+    ocr_confidence = {}
+    if ocr:
+        import ocr_pages
+        scanned = [i for i, t in page_texts if ocr_pages.needs_ocr(t)]
+        if scanned:
+            backend = ocr_backend or ocr_pages.DEFAULT_BACKEND
+            if not ocr_pages.backend_available(backend):
+                sys.stderr.write("ocr backend %s unavailable; pages %s left as-is\n"
+                                 % (backend, scanned))
+            else:
+                recovered = ocr_pages.ocr_pdf_pages(
+                    pdf_path, scanned, ocr_dpi or ocr_pages.DEFAULT_DPI, backend)
+                by_page = dict(page_texts)
+                for idx, text, conf in recovered:
+                    by_page[idx] = text
+                    ocr_confidence[idx] = conf
+                page_texts = sorted(by_page.items())
+
+    return run(page_texts, doc_type, os.path.basename(pdf_path), segment,
+               ocr_confidence or None)
 
 
 def main():
@@ -1437,7 +1625,10 @@ def main():
         out = run([(int(p[0]), p[1]) for p in pages], doc_type,
                   os.path.basename(positional[0]), segment)
     else:
-        out = extract(positional[0], doc_type, segment)
+        ocr_dpi = int(argv[argv.index("--ocr-dpi") + 1]) if "--ocr-dpi" in argv else None
+        backend = argv[argv.index("--backend") + 1] if "--backend" in argv else None
+        out = extract(positional[0], doc_type, segment, ocr="--no-ocr" not in argv,
+                      ocr_dpi=ocr_dpi, ocr_backend=backend)
     print(json.dumps(out, indent=2, default=str))
 
 

@@ -379,4 +379,76 @@ describe('extract_filing — Deepa Jewellers RHP (captured page text)', () => {
     ]));
     for (const n of names) expect(out.fields[n].check.passed, n).toBe(true);
   });
+
+  it('E5: the objects of the offer are read from the RHP with the printed amounts', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const field = out.fields.objects_of_offer;
+    expect(field.value).toEqual(DEEPA.RHP.objects_of_offer);
+    expect(field.page).toBe(104);
+    expect(field.check.name).toBe('objects_sum_vs_fresh_issue');
+    // The general-corporate-purposes row is [•] at RHP stage, so the check
+    // asserts the bound that IS verifiable, and says so.
+    expect(field.check.passed).toBe(true);
+    expect(field.check.detail).toContain('2150.00');
+    expect(field.check.detail).toContain('2500.00');
+    expect(field.check.detail).toContain('not verifiable');
+  });
+
+  it('E8: every numbered risk factor is counted, with its first-sentence heading', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const count = out.fields.risk_factor_count;
+    expect(count.value).toBe(DEEPA.RHP.risk_factor_count);
+    expect(count.check.passed).toBe(true);
+    expect(count.page).toBe(DEEPA.RHP.risk_factor_first_page);
+
+    const risks = out.fields.risk_factors.value as { n: number; heading: string }[];
+    expect(risks).toHaveLength(DEEPA.RHP.risk_factor_count as number);
+    expect(risks.map((r) => r.n)).toEqual(
+      risks.map((_r, i) => i + 1), // strictly sequential — no nested list is counted
+    );
+    expect(risks[0].heading).toContain(DEEPA.RHP.risk_factor_first_heading);
+    expect(risks[risks.length - 1].heading).toBe(DEEPA.RHP.risk_factor_last_heading);
+    for (const r of risks) {
+      expect(r.heading.length, `heading ${r.n}`).toBeGreaterThan(0);
+      expect(r.heading.length, `heading ${r.n}`).toBeLessThanOrEqual(200);
+    }
+  });
+});
+
+describe('extract_filing — objects/risk-factor edge cases (synthetic, offline)', () => {
+  it('E5: a fully-priced objects table whose amounts miss the fresh issue FAILS', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const page = [
+      'OBJECTS OF THE OFFER',
+      'Gross Proceeds of the Fresh Issue 1,000.00',
+      'Utilisation of Net Proceeds',
+      '(in  million)',
+      'Sr. No. Particulars Estimated Amount',
+      '1. Funding working capital 400.00',
+      '2. General corporate purposes 100.00',
+      'Means of finance',
+    ].join('\n');
+    const out = runOnTexts([[0, page]], 'RHP');
+    const field = out.fields.objects_of_offer;
+    expect(field.value).toBeNull();
+    expect(field.check.passed).toBe(false);
+    expect(field.check.detail).toContain('500.00');
+    expect(field.check.detail).toContain('1000.00');
+  });
+
+  it('E8: only strictly sequential numbers count — a nested list is not a risk factor', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const heading = ['SECTION II - RISK FACTORS', 'INTERNAL RISK FACTORS'];
+    const items = Array.from({ length: 21 }, (_v, i) => `${i + 1}. Risk number ${i + 1} exists. More prose follows.`);
+    // A nested enumeration inside item 21 and a wrapped line number, neither a risk factor.
+    const noise = ['1. Form CHG-1 for creation of charges;', '2. Form ADT-1 for auditors;', '192. Further, in addition to the above'];
+    const out = runOnTexts([
+      [0, [...heading, ...items, ...noise].join('\n')],
+      [1, 'SECTION III - INTRODUCTION\n22. This number is past the end of the chapter.'],
+    ], 'RHP');
+    expect(out.fields.risk_factor_count.value).toBe(21);
+    const risks = out.fields.risk_factors.value as { n: number; heading: string }[];
+    expect(risks[0].heading).toBe('Risk number 1 exists.');
+    expect(risks[20].heading).toBe('Risk number 21 exists.');
+  });
 });
