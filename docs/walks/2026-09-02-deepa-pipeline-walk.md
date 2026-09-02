@@ -177,3 +177,40 @@ runs, plus a raw view of the same endpoint where the function hides it.
 - `how.md`: replace steps 1-11 with the B-J breakdown; add precondition; add the source-tier model once S-03 is decided.
 - `docs/reviews/ipo-pipeline-stage-gap-analysis.md` §6: point to this file.
 - Each open W-nn becomes a GitHub issue (or a T-id contract) at the end of the walk, with this file as evidence.
+
+## 6. End of walk (2026-09-02 22:45 IST)
+
+**Branch `docs/deepa-walk-ledger`:** 99 commits over main, 99 files, +13,758 / -759 lines. Nothing pushed
+except PR #277 (face value; its two commits are also on this branch). Nothing deployed (D-09).
+
+**Verdicts:** B 7/7 PASS; C 5/5 PASS; D 5/6 PASS + D6 partial (OCR only on the VPS); E 8/10 PASS (E5 not in
+the ad, E8 risk count still failing); F 4/6 (F2 Moneycontrol does not list DEEPA, F6 confidence not scored);
+G 4/5 PASS (G5 blocked on the W-09 migration); H 3/4 (H4 needs a live demand payload); I 3/6 (I4 dead path,
+I5/I6 not due before 8 Sep); J 3/3 PASS.
+
+**Defects:** 55 W rows (W-42 unassigned). Fixed on the branch: W-02, W-03, W-13, W-15, W-16, W-17, W-18,
+W-21..W-29, W-31, W-32..W-36, W-38, W-39, W-43, W-45..W-49, W-51, W-52, W-55; local hygiene W-50; closed
+by lifecycle W-01, W-11, W-23. Open: W-04, W-05, W-09 (owner: 18-column migration), W-14, W-19, W-20,
+W-30, W-37, W-40, W-41, W-44, W-53, W-54.
+
+**Deploy bundle (one deploy at the end, D-09):**
+1. Migrations 0043 (ipo_pipeline_steps), 0044 (document_fetch_status NOT_FOUND), 0045 (subscriptions.scope):
+   all additive, applied and verified on ipodhan_test.
+2. Backfills to run on prod after deploy: `backfill-anchor-investor-list-json.ts --apply` (W-52, remove the
+   `_test`-only guard first); the provenance backfill for untracked values (spec 4.2, D-10) is NOT written yet.
+3. Env on the VPS: `PROSPECTUS_STORE_DIR` (W-53); the walk did not change ENABLE_* flags (GMP job, stage
+   reconciler, document state machine, DRHP extraction stay off until S-02).
+4. PR plan, all cut from this branch: Tier A: write door (d3ef1e88..144d6f48), G4 persister (25f96187..174f57fd,
+   final review pending), step ledger (c4a2d04b..5c0d5505), migrations 0044/0045; Tier B: face value (#277),
+   classifier (ea6dfa32, 6bd607dc), SEBI search (55732d0a), runner (fab553de, 2738d33f), anchor parser
+   (8cdde82d..68e239ec), extractors (e4ecd449), Chittorgarh name (a2c6973f), conflicts page (aada09a7, cedee55b),
+   W-38/W-48/W-49/W-15/W-55; Tier C: docs. A branch-wide `npm run test:unit` + `cd web && npm run lint:ci`
+   run precedes the PRs (not yet run in this session: suites were run per file).
+
+**Fleet items opened by this walk:** registry rows main-checkout-not-runnable, concurrent-commit-sweep-one-checkout
+(T-439), worker-budget-overrun-unsupervised, dispatcher-blind-stash-pop-applies-stale-stash (bumped to 3, T-438).
+
+**What the walk proved about the product:** the exchanges were wrong or incomplete on face value, issue size,
+listing exchange and document typing for one ordinary mainboard IPO; the filings were right every time; and
+the site showed the wrong issue size and no financials for DEEPA before this branch. The per-IPO due-step
+pipeline in the spec is the structural fix; this branch fixes the data it feeds on.
