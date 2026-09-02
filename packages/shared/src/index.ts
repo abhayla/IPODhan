@@ -12,6 +12,15 @@ export * from './repositories/data-conflicts-repository';
 export * from './repositories/document-fetch-state-repository';
 export * from './repositories/ipo-identity';
 export * from './repositories/ipo-pipeline-steps-repository';
+// T-434 (walk step G4): the filing tables' repositories, so the scraper's
+// filing persister can construct them from the package root like every other
+// repository it uses.
+export * from './repositories/financial-statements-repository';
+export * from './repositories/ipo-valuation-repository';
+export * from './repositories/promoters-repository';
+export * from './repositories/ipo-intermediaries-repository';
+export * from './repositories/brlm-track-record-repository';
+export * from './repositories/ipo-risk-factors-repository';
 // Export utility functions
 export * from './utils/slug';
 export * from './utils/offering-type';

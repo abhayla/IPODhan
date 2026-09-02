@@ -412,8 +412,15 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // cannot see `segment`/`priceRangeMax` from the same row, so it cannot
   // express either check. Do not "fix" this by narrowing max here; extend
   // the record-level guard instead.
+  // T-434 (walk step G4, W-11): DRHP added between ADMIN and NSE. The offer
+  // document itself PRINTS the total offer size (fresh issue + OFS at the cap);
+  // the exchanges publish a share-count-derived figure that disagrees (Deepa
+  // Jewellers: ad Rs 4,597.16 mn vs NSE/BSE Rs 3,278.06 mn). Without DRHP in
+  // this list getSourcePriority() returns -1 for a filing write and the ad's
+  // own number can never win. It sits BELOW ADMIN (a human override still
+  // beats the filing) and ABOVE every scraped source.
   issueSize: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL'],
     normalization: 'currency',
     confidenceThreshold: 80,
     description: 'Total issue size (₹) - amounts may arrive as Cr text or raw rupees depending on source. Plausibility (segment floor + shares x band coherence) is enforced record-level, not here — see collectImplausibleIssueSizeFields.',
