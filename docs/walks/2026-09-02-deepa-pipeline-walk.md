@@ -263,7 +263,7 @@ W-09 (owner: 18-column migration -> G5), W-14, W-19, W-20, W-30 (tesseract no lo
 
 **Suites (final, branch-wide):** shared 206/206; web 2,383 pass / 17 skipped; scraper by directory
 (the parallel full run segfaults the runner on this laptop, twice, at no test: runner memory, not code):
-result recorded in the status report once the last run completes.
+final result 02:28: services 952, scrapers 405, scripts 303, utils 350, config 100, repositories 28, pipelines 4, scheduler 51, db 5, errors 5, helpers 19, module-resolution 3, wiring 89 = 2,314 pass, 6 skipped, 0 failed.
 
 **Deploy bundle additions since section 6:** migration 0046 (ipo_status WITHDRAWN/POSTPONED, idempotent,
 applied on ipodhan_test); VPS `pip install rapidocr-onnxruntime pypdfium2` (W-53 companion); no new
