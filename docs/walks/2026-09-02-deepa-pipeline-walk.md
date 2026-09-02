@@ -64,6 +64,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | D-03 | 17:56 | After every step answer 5 questions in order: issue? fixed? learned? prevention? output? |
 | D-04 | 18:05 | Walk IPO = DEEPA for all stages from here. |
 | D-05 | 18:11 | Every field on the photographed price-band ad (54-field inventory) is in scope for scraping; steps E1-E8 map to inventory groups A-F by ID. |
+| D-06 | 18:20 | Walk continues as planned. Everything discussed/decided is written as a detailed SPEC now (`docs/specs/per-ipo-due-step-pipeline.md`); implementation only after the walk is complete. S-01..S-04 are NOT built during the walk. |
 
 ## 4. Recommendations pending owner decision (S-nn)
 
