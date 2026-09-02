@@ -65,6 +65,22 @@ function goodTesseract(dir) {
   shim(dir, 'tesseract', 'echo "tesseract 5.3.0"');
 }
 
+// Shims `df -Pk <path>` with a fixed two-line report so check_disk_free's
+// `awk 'NR==2 {print $4}'` (the "Available" 1K-block column) sees exactly
+// `availKb`, regardless of the real free space on whatever machine runs
+// this suite (T-406 F3 — the disk check was previously wholly uncovered).
+function dfWithAvailKb(availKb) {
+  return (dir) =>
+    shim(
+      dir,
+      'df',
+      [
+        'echo "Filesystem     1024-blocks      Used Available Capacity Mounted on"',
+        `echo "shimfs                 0         0 ${availKb}       0% /"`,
+      ].join('\n')
+    );
+}
+
 function goodNode(version) {
   return (dir) => shim(dir, 'node', `echo "${version}"`);
 }
@@ -80,12 +96,22 @@ function pathWith(shimDir) {
   return `${shimDir}${delimiter}${process.env.PATH}`;
 }
 
+// Vars this suite deliberately controls per-case. Without stripping them
+// first, an ambient value already set in the runner's OWN shell (e.g. a dev
+// machine or CI runner with $TZ or $ADMIN_API_TOKEN exported) would leak
+// into `...process.env` below and silently change a case's inputs from
+// what its test body declares (T-406 F6).
+const CONTROLLED_VARS = ['ADMIN_API_TOKEN', 'PROSPECTUS_STORE_DIR', 'TZ'];
+
 function run({ shimDir, env = {}, args = [] }) {
   const fullEnv = {
     ...process.env,
-    ...env,
     PATH: pathWith(shimDir),
   };
+  for (const key of CONTROLLED_VARS) {
+    if (!(key in env)) delete fullEnv[key];
+  }
+  Object.assign(fullEnv, env);
   const result = spawnSync('bash', [SCRIPT, ...args], {
     env: fullEnv,
     encoding: 'utf8',
@@ -303,6 +329,69 @@ test('WARN-only case (everything green except tesseract) still exits 0', () => {
   const res = run({ shimDir, env: baseGoodEnv(storeDir) });
   assert.doesNotMatch(res.stdout, /^FAIL/m);
   assert.match(res.stdout, /WARN tesseract/);
+  assert.equal(res.status, 0);
+  rmSync(shimDir, { recursive: true, force: true });
+  rmSync(storeDir, { recursive: true, force: true });
+});
+
+// T-406 F3: check_disk_free was previously uncovered by this suite — deleting
+// the whole function from the script left all 14 (now more) cases green.
+// These two drive the REAL df-parsing branch via a shimmed `df`.
+test('free disk < 2GB -> FAIL for the disk check only', () => {
+  const shimDir = makeShimDir();
+  const storeDir = mkdtempSync(join(tmpdir(), 'prospectus-'));
+  goodPython(shimDir);
+  goodTesseract(shimDir);
+  goodNode('v20.11.0')(shimDir);
+  dfWithAvailKb(1048576)(shimDir); // 1GB available < 2GB threshold
+  const res = run({ shimDir, env: baseGoodEnv(storeDir) });
+  assert.match(res.stdout, /FAIL free disk >= 2GB/);
+  assert.notEqual(res.status, 0);
+  rmSync(shimDir, { recursive: true, force: true });
+  rmSync(storeDir, { recursive: true, force: true });
+});
+
+test('free disk >= 2GB -> OK for the disk check, all-green case exits 0', () => {
+  const shimDir = makeShimDir();
+  const storeDir = mkdtempSync(join(tmpdir(), 'prospectus-'));
+  goodPython(shimDir);
+  goodTesseract(shimDir);
+  goodNode('v20.11.0')(shimDir);
+  dfWithAvailKb(5242880)(shimDir); // 5GB available >= 2GB threshold
+  const res = run({ shimDir, env: baseGoodEnv(storeDir) });
+  assert.match(res.stdout, /OK free disk >= 2GB/);
+  assert.doesNotMatch(res.stdout, /^FAIL/m);
+  assert.equal(res.status, 0);
+  rmSync(shimDir, { recursive: true, force: true });
+  rmSync(storeDir, { recursive: true, force: true });
+});
+
+// T-406 F3: guard against a check being silently dropped from the script —
+// e.g. a future edit that deletes a `check_*` call from the bottom of the
+// file would otherwise pass every existing pass/fail assertion above (they
+// each match on ONE check's output, never on the full set). Assert all 8
+// check names show up in --report output regardless of individual verdicts.
+test('all 8 checks are present in --report output (coverage guard)', () => {
+  const shimDir = makeShimDir();
+  const storeDir = mkdtempSync(join(tmpdir(), 'prospectus-'));
+  goodPython(shimDir);
+  goodTesseract(shimDir);
+  goodNode('v20.11.0')(shimDir);
+  dfWithAvailKb(5242880)(shimDir);
+  const res = run({ shimDir, env: baseGoodEnv(storeDir), args: ['--report'] });
+  const expectedChecks = [
+    /python3 on PATH/,
+    /python3 pdfplumber import/,
+    /tesseract on PATH/,
+    /process TZ \(T-327\)/,
+    /prospectus store dir/,
+    /free disk >= 2GB/,
+    /node >= 20/,
+    /ADMIN_API_TOKEN set/,
+  ];
+  for (const pattern of expectedChecks) {
+    assert.match(res.stdout, pattern, `missing check line matching ${pattern}`);
+  }
   assert.equal(res.status, 0);
   rmSync(shimDir, { recursive: true, force: true });
   rmSync(storeDir, { recursive: true, force: true });

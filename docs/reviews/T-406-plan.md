@@ -21,14 +21,22 @@ of the test ladder: catch it BEFORE the restart, not after, in production logs.
 (lines ~537, ~544, ~576) — this is the actual fix for the T-327 P2-7 NSE date-drift
 class (see the comment block there and `scripts/assert-env-keys.sh`'s `TZ` required-key
 entries, same T-327 P2-7 note). `ecosystem.config.js`'s own `TZ: 'UTC'` is documented
-DEAD config (never read on the Linux path). So the pm2-started process's TZ is always
-forced to UTC regardless of the box's ambient TZ — this preflight check is a
-defense-in-depth signal on the AMBIENT (shell/`/etc/timezone`) TZ, not the pm2 process
-TZ (which the deploy already controls). Per the contract's DoD line, the accepted
-ambient values are `Asia/Kolkata` (the box's likely real ambient, since this is an
-India-hosted VPS and IST is a legitimate admin-facing default) or `UTC` — anything else
-(or unreadable) is a FAIL, since it signals host drift the T-327 fix's belt-and-braces
-posture depends on noticing.
+DEAD config (never read on the Linux path).
+
+**Round-2 correction (T-406 F4):** `$TZ` is a REQUIRED key in `scraper.env` in prod, and
+`deploy-linux.sh`'s `run_runtime_preflight()` always sources `scraper.env` before calling
+this script — so in the real deploy path `$TZ` is ALWAYS set, and a check that only fell
+back to `/etc/timezone`/`timedatectl` when `$TZ` was unset had an unreachable branch in
+production; it only ever exercised the ambient-TZ path inside a test harness that
+happened to leave `$TZ` unset. The check now validates the `$TZ` env value AND the box's
+ambient TZ (`/etc/timezone`, else `timedatectl show -p Timezone --value`) as two
+INDEPENDENT signals, reporting both in its detail line — `$TZ` because that's what
+scraper.env actually sets and what T-327 depends on, ambient as a genuine
+defense-in-depth signal against host drift even when scraper.env itself is correct. Per
+the contract's DoD line, the accepted value for EITHER signal is `Asia/Kolkata` (the
+box's likely real ambient, since this is an India-hosted VPS and IST is a legitimate
+admin-facing default) or `UTC` — any determined value outside that set is a FAIL, and so
+is having neither signal determinable at all.
 
 ## The T-403 PROSPECTUS_STORE_DIR decision (read, not guessed)
 
@@ -51,9 +59,10 @@ BOX section and `ENV_DIR="$ROOT/shared/env/$SLOT"`), with `ROOT` defaulting to
 1. `python3` on PATH — FAIL if absent.
 2. `python3 -c 'import pdfplumber'` — FAIL if python3 absent OR import fails.
 3. `tesseract` on PATH — WARN only (contract: "until E4 lands").
-4. TZ sanity — `$TZ` env var if set, else `/etc/timezone` contents, else `timedatectl
-   show -p Timezone --value` as a last resort — value must be exactly `Asia/Kolkata` or
-   `UTC` — FAIL otherwise (including "could not determine").
+4. TZ sanity — checks BOTH the `$TZ` env var AND the ambient TZ (`/etc/timezone`
+   contents, else `timedatectl show -p Timezone --value`) as independent signals; each
+   determined value must be exactly `Asia/Kolkata` or `UTC` — FAIL if either signal is
+   out of range, or if neither signal is determinable.
 5. `PROSPECTUS_STORE_DIR` writable — per the T-403 fallback logic above — FAIL if the
    resolved directory (or its parent, when the dir itself is the not-yet-created
    default) is missing or not writable.
@@ -76,23 +85,37 @@ BOX section and `ENV_DIR="$ROOT/shared/env/$SLOT"`), with `ROOT` defaulting to
 
 ## Wiring into scripts/deploy-linux.sh
 
-Inserted immediately before the `log "Restarting PM2 apps"` / `restart_pm2` call (end of
-step 9, before step 10's restart), following the same "source the slot's env file, then
-assert, `fatal` on failure" shape as `apply_migrations`/`assert-env-keys.sh`:
+**Round-2 correction (T-406 F1):** round 1 placed this call literally "immediately
+before the pm2 restart step" — i.e. AFTER `atomic_flip_current` and after
+`SCRAPER_RESUME_TARGET="new"` was set. That placement had a hard bug: this script's
+`fatal()` exits through the `trap resume_scraper EXIT` installed earlier in the file,
+and with `SCRAPER_RESUME_TARGET="new"` already set, a preflight FAIL would make that trap
+START THE SCRAPER on the NEW release directory — the exact box the preflight had just
+declared unfit — and PM2's `cron_restart` would keep relaunching it every 30 minutes.
+`current` was already flipped too, so a FAIL did not actually protect anything.
+
+The call now lives in the **pre-flip gate block**, immediately after the required-keys
+assert (`assert-env-keys.sh`) and BEFORE `pm2 stop`/`wait_for_scraper_idle` — i.e. before
+anything is stopped, before the atomic flip, before `SCRAPER_RESUME_TARGET` is ever set
+to `"new"`. At this point the `resume_scraper` EXIT trap has not even been installed
+yet, so a FAIL here just calls `fatal` and exits: `current` was never touched, PM2 was
+never stopped, and the scraper keeps running exactly as it was — there is nothing to
+roll back.
 
 - Skipped entirely in `--dry-run` mode (no real release/env/box to check), same as the
   required-keys assert and migrations step.
-- Sources `$SCRAPER_ENV_FILE` (`set -a; . "$SCRAPER_ENV_FILE"; set +a`) so
-  `ADMIN_API_TOKEN` / `PROSPECTUS_STORE_DIR` (if hand-provisioned there) are visible to
-  the check, mirroring `apply_migrations`'s handling of `$WEB_ENV_FILE`.
-- Runs `bash "$SCRIPT_DIR/preflight-runtime.sh"`; on non-zero exit, `fatal "runtime
-  preflight failed for $RELEASE_NAME (T-406) — 'current' already points at the new
-  release but PM2 was NOT restarted; fix the box and re-run restart_pm2 by hand, or
-  redeploy."` — no `|| true` anywhere on this call. This intentionally runs AFTER the
-  atomic flip (per the contract's literal placement: "immediately before the pm2 restart
-  step") — a FAIL here still leaves `current` pointing at the new release but the OLD pm2
-  process still running the OLD release's code, so the failure is loud and recoverable,
-  never silently serving a half-restarted box.
+- Guards `[ -r "$SCRAPER_ENV_FILE" ]` first and `fatal`s with a clear message if the file
+  is missing/unreadable, rather than letting a missing-file sourcing failure look like a
+  preflight FAIL (T-406 F7).
+- Sources `$SCRAPER_ENV_FILE` and runs `preflight-runtime.sh` inside a **subshell**
+  (`( set -a; . "$SCRAPER_ENV_FILE"; set +a; bash preflight-runtime.sh )`) — round 1
+  sourced it into the main shell, which let `scraper.env`'s `DATABASE_URL`/`REDIS_*`/
+  `NODE_ENV`/`ADMIN_API_TOKEN` silently overwrite the web env this script already
+  exported for the later `pm2 start ipodhan-web` call (T-406 F2). The subshell contains
+  the leak to just this one check.
+- On non-zero exit, `fatal "runtime preflight failed for $RELEASE_NAME (T-406) —
+  'current' was NOT touched, still serving the previous release; PM2 was not stopped.
+  Fix the box and redeploy."` — no `|| true` anywhere on this call.
 
 ## Self-test: scripts/tests/preflight-runtime.test.mjs
 

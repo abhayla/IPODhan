@@ -82,36 +82,59 @@ check_tesseract() {
 # `pm2 start` with `TZ=UTC` explicitly — that is the real fix (belt-and-
 # braces; the date-parse fix in scraper/src/utils/date-string-parsing.ts no
 # longer even depends on it). ecosystem.config.js's own TZ:'UTC' is
-# documented DEAD config on the Linux path. So this check is a
-# defense-in-depth signal on the box's AMBIENT TZ, not the pm2 process TZ
-# (which the deploy already forces). Accepted ambient values: Asia/Kolkata
-# (this VPS's real host TZ, India-hosted) or UTC — anything else, or an
-# undeterminable TZ, is a FAIL.
+# documented DEAD config on the Linux path.
+#
+# T-406 round-2 F4 fix: `$TZ` is a REQUIRED key in scraper.env in prod (this
+# script is always run with `set -a; . scraper.env; set +a` ahead of it —
+# see deploy-linux.sh's run_runtime_preflight), so the round-1 shape's
+# "elif [ -r /etc/timezone ]" branch was unreachable dead code in the real
+# deploy path — it only ever ran in a test harness that happened to leave
+# $TZ unset. This check now validates BOTH signals independently and prints
+# both in the detail: the `$TZ` env value (what scraper.env sets, and what
+# T-327 actually depends on for date parsing) AND the box's ambient TZ via
+# /etc/timezone or timedatectl (defense-in-depth against the box itself
+# drifting even if scraper.env is correct). Accepted value for either
+# signal: Asia/Kolkata (this VPS's real host TZ, India-hosted) or UTC.
+# FAIL if a determined value is not one of those, or if NEITHER signal is
+# determinable at all.
+tz_is_accepted() {
+  case "$1" in
+    Asia/Kolkata|UTC) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 check_tz() {
-  tz_value=""
-  tz_source=""
-  if [ -n "${TZ:-}" ]; then
-    tz_value="$TZ"
-    tz_source='$TZ env'
-  elif [ -r /etc/timezone ]; then
-    tz_value="$(cat /etc/timezone 2>/dev/null | tr -d '[:space:]')"
-    tz_source="/etc/timezone"
+  env_tz="${TZ:-}"
+  ambient_tz=""
+  ambient_source=""
+  if [ -r /etc/timezone ]; then
+    ambient_tz="$(cat /etc/timezone 2>/dev/null | tr -d '[:space:]')"
+    ambient_source="/etc/timezone"
   elif command -v timedatectl >/dev/null 2>&1; then
-    tz_value="$(timedatectl show -p Timezone --value 2>/dev/null | tr -d '[:space:]')"
-    tz_source="timedatectl"
+    ambient_tz="$(timedatectl show -p Timezone --value 2>/dev/null | tr -d '[:space:]')"
+    ambient_source="timedatectl"
   fi
 
-  case "$tz_value" in
-    Asia/Kolkata|UTC)
-      emit OK "process TZ (T-327) — $tz_source=$tz_value"
-      ;;
-    "")
-      emit FAIL "process TZ (T-327) — could not determine ambient TZ (no \$TZ, /etc/timezone, or timedatectl)"
-      ;;
-    *)
-      emit FAIL "process TZ (T-327) — $tz_source=$tz_value, expected Asia/Kolkata or UTC"
-      ;;
-  esac
+  if [ -n "$ambient_source" ]; then
+    detail="\$TZ=${env_tz:-<unset>}, ambient($ambient_source)=${ambient_tz:-<empty>}"
+  else
+    detail="\$TZ=${env_tz:-<unset>}, ambient=<undeterminable: no /etc/timezone, no timedatectl>"
+  fi
+
+  if [ -z "$env_tz" ] && [ -z "$ambient_tz" ]; then
+    emit FAIL "process TZ (T-327) — could not determine either signal ($detail)"
+    return
+  fi
+  if [ -n "$env_tz" ] && ! tz_is_accepted "$env_tz"; then
+    emit FAIL "process TZ (T-327) — $detail (expected Asia/Kolkata or UTC)"
+    return
+  fi
+  if [ -n "$ambient_tz" ] && ! tz_is_accepted "$ambient_tz"; then
+    emit FAIL "process TZ (T-327) — $detail (expected Asia/Kolkata or UTC)"
+    return
+  fi
+  emit OK "process TZ (T-327) — $detail"
 }
 
 # --------------------------------------------------- 5. PROSPECTUS_STORE_DIR

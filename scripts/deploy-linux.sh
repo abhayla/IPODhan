@@ -232,6 +232,47 @@ else
   bash "$SCRIPT_DIR/assert-env-keys.sh" "$WEB_ENV_FILE" "$SCRAPER_ENV_FILE" "$REPO_ROOT/scraper/src"
 fi
 
+# ------------------------------------------- 1.5 runtime preflight (T-406)
+# Stage 9 of the test ladder: the box PM2 is about to be restarted on needs
+# more than green migrations — python3+pdfplumber (DRHP PDF extraction),
+# tesseract (WARN-only until E4), an ambient TZ sane per the T-327 decision,
+# a writable prospectus store with headroom, node >= 20, and
+# ADMIN_API_TOKEN for the scraper's --source=all cycle. Runs BEFORE `pm2
+# stop`/the atomic flip (T-406 round-2 F1 fix) — a FAIL here leaves
+# `current` untouched, PM2 untouched, and the scraper running exactly as it
+# was; there is nothing to roll back. Running this AFTER the flip (the
+# round-1 shape) was the bug: a FAIL there still exited through the
+# `resume_scraper` EXIT trap with SCRAPER_RESUME_TARGET="new", which started
+# the scraper on the NEW release directory — the box this preflight had just
+# declared unfit — and cron would restart it every 30 min. No `|| true`
+# here: a FAIL must abort the deploy loudly, same as assert-env-keys.sh /
+# the migrations step above.
+run_runtime_preflight() {
+  if (( DRY_RUN )); then
+    log "[dry-run] skipping runtime preflight (no real box/env to check)"
+    return 0
+  fi
+  if [ ! -r "$SCRAPER_ENV_FILE" ]; then
+    fatal "scraper env file missing/unreadable: $SCRAPER_ENV_FILE (cannot run runtime preflight)"
+  fi
+  log "Running VPS runtime preflight (T-406)"
+  # T-406 round-2 F2 fix: source scraper.env and run the preflight check in
+  # a SUBSHELL. Sourcing it in the main shell (the round-1 shape) let
+  # scraper.env's DATABASE_URL/REDIS_*/NODE_ENV/ADMIN_API_TOKEN overwrite
+  # the web env this script already exported for `pm2 start ipodhan-web`
+  # later on — the subshell contains the leak to just this one check.
+  ( set -a
+    # shellcheck disable=SC1090  # per-slot generated env file, path known at runtime
+    . "$SCRAPER_ENV_FILE"
+    set +a
+    bash "$SCRIPT_DIR/preflight-runtime.sh"
+  )
+}
+
+if ! run_runtime_preflight; then
+  fatal "runtime preflight failed for $RELEASE_NAME (T-406) — 'current' was NOT touched, still serving the previous release; PM2 was not stopped. Fix the box and redeploy."
+fi
+
 # --------------------------------------------- 2. build/scrape mutual exclusion
 # Refuse to build while a scraper cycle is in flight (PM2 fork + autorestart:false
 # + cron_restart means "online" == actively mid-cycle; "stopped" == idle between
@@ -715,35 +756,6 @@ report_wired_jobs() {
     fi
   done
 }
-
-# ------------------------------------------- 9.5 runtime preflight (T-406)
-# Stage 9 of the test ladder: the box PM2 is about to be restarted on needs
-# more than green migrations — python3+pdfplumber (DRHP PDF extraction),
-# tesseract (WARN-only until E4), an ambient TZ sane per the T-327 decision,
-# a writable prospectus store with headroom, node >= 20, and
-# ADMIN_API_TOKEN for the scraper's --source=all cycle. Runs AFTER the
-# atomic flip (so a FAIL still leaves `current` pointing at the new release,
-# recoverable by fixing the box and re-running restart_pm2 by hand) but
-# BEFORE anything already-running is touched — the OLD pm2 process keeps
-# serving the OLD release's code until this passes. No `|| true` here: a
-# FAIL must abort the deploy loudly, same as assert-env-keys.sh / the
-# migrations step above.
-run_runtime_preflight() {
-  if (( DRY_RUN )); then
-    log "[dry-run] skipping runtime preflight (no real box/env to check)"
-    return 0
-  fi
-  set -a
-  # shellcheck disable=SC1090  # per-slot generated env file, path known at runtime
-  . "$SCRAPER_ENV_FILE"
-  set +a
-  log "Running VPS runtime preflight (T-406)"
-  bash "$SCRIPT_DIR/preflight-runtime.sh"
-}
-
-if ! run_runtime_preflight; then
-  fatal "runtime preflight failed for $RELEASE_NAME (T-406) — 'current' already points at the new release but PM2 was NOT restarted; fix the box and re-run restart_pm2 by hand, or redeploy."
-fi
 
 log "Restarting PM2 apps"
 restart_pm2

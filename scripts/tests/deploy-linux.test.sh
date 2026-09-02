@@ -61,6 +61,23 @@ else
   cat /tmp/deploy-test-1.log
 fi
 
+# --- Case 1.5: T-406 F1/F5 — preflight runs BEFORE pm2 stop / the flip ------
+# Ordering, not just presence: the runtime preflight (T-406) must be gated
+# ahead of `pm2 stop`/the atomic flip (round-2 F1 fix moved it out of the
+# post-flip position where a FAIL used to start the scraper on the release
+# it had just condemned). A future regression that moves the call back down
+# would still print the same line — only its POSITION relative to the
+# stop/flip lines proves the placement is correct.
+PREFLIGHT_LINE="$(grep -n '^==> \[dry-run\] skipping runtime preflight' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
+STOP_LINE="$(grep -n "^==> \[dry-run\] skipping real 'pm2 stop" /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
+FLIP_LINE="$(grep -n '^==> Flipping .* -> .* (atomic)$' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
+if [ -n "$PREFLIGHT_LINE" ] && [ -n "$STOP_LINE" ] && [ -n "$FLIP_LINE" ] \
+  && [ "$PREFLIGHT_LINE" -lt "$STOP_LINE" ] && [ "$STOP_LINE" -lt "$FLIP_LINE" ]; then
+  pass "case 1.5: runtime preflight line ($PREFLIGHT_LINE) precedes pm2 stop ($STOP_LINE) and the atomic flip ($FLIP_LINE)"
+else
+  fail "case 1.5: expected preflight < pm2-stop < flip ordering (preflight=$PREFLIGHT_LINE stop=$STOP_LINE flip=$FLIP_LINE)"
+fi
+
 # --- Case 2: a deliberately-broken build aborts, current untouched ----------
 BEFORE_TARGET="$(current_target "$ROOT1/current")"
 
