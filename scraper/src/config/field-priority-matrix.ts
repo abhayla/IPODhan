@@ -454,7 +454,28 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'IPO open date - critical field',
   },
 
+  // W-49: camelCase sibling of `open_date`. `data-persister.ts` builds
+  // `ipoData` (the `incomingData` passed to consolidateIPOData) with
+  // `openDate`/`closeDate` keys — without this entry that lookup fell to the
+  // DEFAULT rule (no ADMIN>NSE>BSE priority, no dedicated confidenceThreshold),
+  // exactly like the `open_date`/`close_date`-only gap this fixes. Kept
+  // identical to `open_date` on purpose; if you change one, change both.
+  openDate: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'date',
+    confidenceThreshold: 95,
+    description: 'IPO open date - critical field',
+  },
+
   close_date: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'date',
+    confidenceThreshold: 95,
+    description: 'IPO close date - critical field',
+  },
+
+  // W-49: camelCase sibling of `close_date` - see `openDate` comment above.
+  closeDate: {
     sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'date',
     confidenceThreshold: 95,
