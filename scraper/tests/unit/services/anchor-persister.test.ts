@@ -297,3 +297,75 @@ describe('anchor-persister — the gates compare against the PRINTED figures (MA
     expect(check.detail).toContain('could not be read');
   });
 });
+
+describe('anchor-persister — a mangled printed total must not refuse a good report (round 6)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  /** What the parser now emits for DEEPA: the mangled totals nulled out. */
+  function deepaWithMangledPrintedTotals() {
+    const d = deepaAnchorFixture();
+    const x = d as unknown as Record<string, unknown>;
+    // The scan printed "77 9 749" / "1 7 9 653.OO"; neither is plausible against
+    // the summed rows, so the parser reports them as unreadable rather than as a
+    // figure that disagrees.
+    x.printedTotalShares = null;
+    x.printedTotalAmountRaised = null;
+    return d;
+  }
+
+  it('(1) accepts DEEPA: printed gates not_checkable, both cross-checks passed', async () => {
+    const { deps, persist } = makeDeps(deepaWithMangledPrintedTotals());
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(summary.refusedReason).toBeNull();
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(summary.investorsWritten).toBe(15);
+    expect(summary.notCheckable.sort()).toEqual([
+      'amounts_sum_to_printed_total',
+      'shares_sum_to_printed_total',
+    ]);
+    // Not-checkable is never reported as a clean pass.
+    const shares = summary.checks.find((c) => c.name === 'shares_sum_to_printed_total')!;
+    expect(shares.notCheckable).toBe(true);
+    expect(shares.detail).toContain('could not be read');
+  });
+
+  it('(2) refuses the same report when a parser cross-check did not pass', async () => {
+    const d = deepaWithMangledPrintedTotals();
+    (d as unknown as Record<string, unknown>).percentageCheckPassed = false;
+    const { deps, persist } = makeDeps(d);
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(persist).not.toHaveBeenCalled();
+    expect(summary.written).toBe(0);
+    expect(summary.refusedReason).toContain('REFUSED because the parser cross-checks');
+  });
+
+  it('(3) still hard-FAILS a READABLE printed total that is off by 3%', async () => {
+    const d = deepaAnchorFixture();
+    // 8,025,542 is plausible (same digit count, well inside a factor of 2) and
+    // therefore a real disagreement — exactly the corroboration this mechanism
+    // exists for. Loosening this would restore the round-3 x === x hole.
+    (d as unknown as Record<string, unknown>).printedTotalShares = 8_025_542;
+    const { deps, persist } = makeDeps(d);
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(persist).not.toHaveBeenCalled();
+    expect(summary.written).toBe(0);
+    expect(summary.refusedReason).toContain('shares_sum_to_printed_total');
+    expect(summary.notCheckable).not.toContain('shares_sum_to_printed_total');
+    expect(summary.refusedReason).toContain('8025542');
+  });
+
+  it('(4) passes a readable printed total that matches the summed rows', async () => {
+    const { deps, persist } = makeDeps(deepaAnchorFixture());
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(summary.refusedReason).toBeNull();
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(summary.notCheckable).toEqual([]);
+    const shares = summary.checks.find((c) => c.name === 'shares_sum_to_printed_total')!;
+    expect(shares.passed).toBe(true);
+    expect(shares.notCheckable).toBeUndefined();
+  });
+});

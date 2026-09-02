@@ -8,6 +8,10 @@
  * external oracle, not a snapshot of whatever the code happens to produce.
  */
 import { describe, it, expect } from 'vitest';
+import {
+  isPrintedTotalReadable,
+  readPrintedTotals,
+} from '../../../src/scrapers/anchor-report-parser';
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -141,5 +145,92 @@ describe('scanned-glyph normalisation', () => {
     expect(withinOneGlyph('4.77', '4.71')).toBe(true);
     expect(withinOneGlyph('4.77', '4.11')).toBe(false);
     expect(withinOneGlyph('4.77', '14.71')).toBe(false);
+  });
+});
+
+describe('printed totals: a mangled figure is unreadable, not a contradiction (round 6)', () => {
+  it('rejects the DEEPA Total row the scan mangled', () => {
+    // The letter prints "77 9 749" and "1 7 9 653.OO"; the cell splitter reads
+    // those as Rs 779,749 and 179,653 shares - well-formed numbers that are
+    // simply not what the letter says. Against the correctly summed 7,791,789
+    // shares / Rs 137.91 Cr they used to produce a hard FAIL and refuse a report
+    // whose rows are demonstrably right.
+    const SUMMED_SHARES = 7_791_789;
+    const SUMMED_RUPEES = 1_379_146_653;
+
+    expect(isPrintedTotalReadable(179653, '179653', SUMMED_SHARES)).toBe(false);
+    expect(isPrintedTotalReadable(779749, '779749', SUMMED_RUPEES)).toBe(false);
+  });
+
+  it('accepts a printed total that is genuinely readable', () => {
+    expect(isPrintedTotalReadable(7_791_789, '7791789', 7_791_789)).toBe(true);
+    // Off by 3%: readable, and therefore a real disagreement the gate must keep.
+    expect(isPrintedTotalReadable(8_025_542, '8025542', 7_791_789)).toBe(true);
+  });
+
+  it('rejects a value whose digit count is more than one off', () => {
+    // A dropped digit is a mis-read, not a disagreement.
+    expect(isPrintedTotalReadable(779_178, '779178', 7_791_789)).toBe(false);
+    // One digit of slack is allowed, so long as the magnitude still agrees.
+    expect(isPrintedTotalReadable(9_999_999, '9999999', 7_791_789)).toBe(true);
+  });
+
+  it('rejects a value more than a factor of two away even at the same length', () => {
+    expect(isPrintedTotalReadable(2_500_000, '2500000', 7_791_789)).toBe(false);
+    expect(isPrintedTotalReadable(4_500_000, '4500000', 7_791_789)).toBe(true);
+  });
+
+  it('treats an absent printed figure as unreadable', () => {
+    expect(isPrintedTotalReadable(null, null, 7_791_789)).toBe(false);
+    expect(isPrintedTotalReadable(100, null, 7_791_789)).toBe(false);
+  });
+
+  it('reads both the value and the digit string off a Total row', () => {
+    const totals = readPrintedTotals({
+      name: 'Total',
+      cells: ['7,791,789', '1,37,91,46,653.00'],
+    } as never);
+    expect(totals.shares).toBe(7_791_789);
+    expect(totals.sharesDigits).toBe('7791789');
+    expect(totals.amountRupees).toBe(1_379_146_653);
+  });
+});
+
+describe('the readability rule is actually APPLIED by parseAnchorReport (round 6)', () => {
+  it('nulls the mangled printed totals on the real DEEPA scan', () => {
+    const result = parseAnchorReport(pages());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    // The rows are read correctly...
+    expect(result.value.totalShares).toBe(7791789);
+
+    // ...but the letter's Total row is scanned as "77 9 749" / "1 7 9 653.OO",
+    // which the cell splitter reads as well-formed numbers that are simply not
+    // what the letter says. They must arrive as UNREADABLE (null), not as
+    // figures that contradict the rows - that false contradiction refused this
+    // whole report in the round-5 live run.
+    expect(result.value.printedTotalShares).toBeNull();
+    expect(result.value.printedTotalAmountRupees).toBeNull();
+  });
+
+  it('passes a Total row through when the scan did read it', () => {
+    // Same letter with a clean Total row appended: the rule must not swallow a
+    // figure that is genuinely readable, or the corroboration is lost entirely.
+    expect(isPrintedTotalReadable(7791789, '7791789', 7791789)).toBe(true);
+  });
+});
+
+describe('the digit-count clause rejects on its own (round 6)', () => {
+  it('rejects a printed string carrying extra digits even when the VALUE matches', () => {
+    // OCR glues noise onto the cell: the parsed value is exactly right, so the
+    // factor-of-2 clause is satisfied, and only the digit-count clause can
+    // reject it. Without a case like this the two clauses cannot be told apart.
+    expect(isPrintedTotalReadable(7791789, '000007791789', 7791789)).toBe(false);
+    expect(isPrintedTotalReadable(7791789, '77917890', 7791789)).toBe(true);
+  });
+
+  it('rejects a printed string missing digits even when the VALUE is close', () => {
+    expect(isPrintedTotalReadable(7791789, '77917', 7791789)).toBe(false);
   });
 });

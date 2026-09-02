@@ -267,25 +267,93 @@ function readRow(rec: RawRecord): Candidate | null {
  * printed digits; the amount is the largest remaining value that is not the
  * share count. A row that does not yield both leaves both null.
  */
-export function readPrintedTotals(rec: RawRecord | undefined): {
+export interface PrintedTotals {
   shares: number | null;
   amountRupees: number | null;
-} {
-  if (!rec) return { shares: null, amountRupees: null };
-  const values: number[] = [];
+  /** The normalised digit string each value was parsed from, for the readability rule. */
+  sharesDigits: string | null;
+  amountDigits: string | null;
+}
+
+/** Digits only, after confusable normalisation and with separators dropped. */
+function digitCountOf(cell: string): number {
+  return normalizeNumeric(cell).replace(/[.,]/g, '').length;
+}
+
+export function readPrintedTotals(rec: RawRecord | undefined): PrintedTotals {
+  const none: PrintedTotals = {
+    shares: null,
+    amountRupees: null,
+    sharesDigits: null,
+    amountDigits: null,
+  };
+  if (!rec) return none;
+  const values: Array<{ value: number; digits: string }> = [];
   for (const cell of rec.cells) {
     const printedDigits = (cell.match(/\d/g) || []).length;
     if (printedDigits < 3) continue;
     const v = parseAmount(cell);
-    if (v !== null && v > 0) values.push(v);
+    if (v !== null && v > 0) {
+      values.push({ value: v, digits: normalizeNumeric(cell).replace(/[.,]/g, '') });
+    }
   }
-  if (values.length === 0) return { shares: null, amountRupees: null };
+  if (values.length === 0) return none;
 
-  const shareLike = values.filter((v) => Number.isInteger(v) && v >= 1000);
-  const shares = shareLike.length > 0 ? Math.min(...shareLike) : null;
-  const rest = shares === null ? values : values.filter((v) => v !== shares);
-  const amountRupees = rest.length > 0 ? Math.max(...rest) : null;
-  return { shares, amountRupees };
+  const shareLike = values.filter((c) => Number.isInteger(c.value) && c.value >= 1000);
+  const sharesCell =
+    shareLike.length > 0
+      ? shareLike.reduce((a, b) => (b.value < a.value ? b : a))
+      : null;
+  const rest = sharesCell === null ? values : values.filter((c) => c !== sharesCell);
+  const amountCell =
+    rest.length > 0 ? rest.reduce((a, b) => (b.value > a.value ? b : a)) : null;
+  return {
+    shares: sharesCell ? sharesCell.value : null,
+    sharesDigits: sharesCell ? sharesCell.digits : null,
+    amountRupees: amountCell ? amountCell.value : null,
+    amountDigits: amountCell ? amountCell.digits : null,
+  };
+}
+
+/**
+ * Is a printed total READABLE, or did the scan mangle it beyond use?
+ *
+ * WHY THIS EXISTS (the false refusal it fixes): Deepa Jewellers' Total row is
+ * scanned as "77 9 749" and "1 7 9 653.OO". The cell splitter reads those as
+ * 179,653 shares and Rs 779,749 — well-formed numbers that are simply not what
+ * the letter says. Comparing them against the correctly summed 7,791,789 shares
+ * and Rs 137.91 Cr produced a hard FAIL and refused a report whose rows are
+ * demonstrably right (both parser cross-checks passed). A mangled total is
+ * MISSING information, not contradicting information, and must not be treated
+ * as a contradiction.
+ *
+ * The rule: a printed total counts as readable only if its parse is plausible —
+ *   (a) the digit count of the printed string, after confusable normalisation
+ *       and with separators dropped, is within 1 of the summed value's digit
+ *       count (a dropped or doubled digit is a mis-read, not a disagreement); AND
+ *   (b) the printed value is within a factor of 2 of the summed value.
+ * Anything else is treated as null -> `not_checkable`, which the persister
+ * already handles by accepting ONLY when both parser cross-checks passed and
+ * refusing otherwise.
+ *
+ * A printed total that IS readable and still disagrees beyond tolerance stays a
+ * hard FAIL — that case is the real corroboration this whole mechanism exists
+ * for, and loosening it would put the round-3 x === x hole back.
+ */
+export const PRINTED_DIGIT_SLACK = 1;
+export const PRINTED_FACTOR_LIMIT = 2;
+
+export function isPrintedTotalReadable(
+  printed: number | null,
+  printedDigits: string | null,
+  summed: number
+): boolean {
+  if (printed === null || printedDigits === null) return false;
+  if (!Number.isFinite(printed) || printed <= 0 || summed <= 0) return false;
+  const summedDigits = Math.round(summed).toString().length;
+  if (Math.abs(printedDigits.length - summedDigits) > PRINTED_DIGIT_SLACK) return false;
+  const ratio = printed > summed ? printed / summed : summed / printed;
+  return ratio <= PRINTED_FACTOR_LIMIT;
 }
 
 /**
@@ -412,6 +480,18 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
 
   const fullText = pages.join('\n');
   const printed = readPrintedTotals(totalAt === -1 ? undefined : all[totalAt]);
+  // A total the scan mangled is MISSING, not contradicting — see
+  // isPrintedTotalReadable. Null here becomes `not_checkable` downstream.
+  const printedShares = isPrintedTotalReadable(printed.shares, printed.sharesDigits, totalShares)
+    ? printed.shares
+    : null;
+  const printedAmount = isPrintedTotalReadable(
+    printed.amountRupees,
+    printed.amountDigits,
+    totalAmountRupees
+  )
+    ? printed.amountRupees
+    : null;
 
   return {
     ok: true,
@@ -422,8 +502,8 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
       totalAmountRupees,
       mutualFundShares,
       letterDate: parseLetterDate(fullText),
-      printedTotalShares: printed.shares,
-      printedTotalAmountRupees: printed.amountRupees,
+      printedTotalShares: printedShares,
+      printedTotalAmountRupees: printedAmount,
       printedCount: readPrintedCount(fullText),
       // Reaching here means neither check returned ok:false above.
       percentageCheckPassed: true,
