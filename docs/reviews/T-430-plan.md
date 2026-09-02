@@ -47,3 +47,18 @@ loud message when `.prospectus-acceptance/psl-1/` is absent), asserts every fixt
 and every emitted check passed; asserts a non-fixture field is null-with-reason. Plus three
 offline negative tests on the check functions via a `--selftest` seam (category sum ≠ total →
 check fails; `[•]` → `not_priced_yet`; empty text layer → `NEEDS_OCR`).
+
+## Result, and the one locator that does NOT work yet (honest gap)
+
+Run on the real documents: **63 of 63** fields from the price band advertisement extract with
+every check passing (`extraction_status = OK`), and all 63 match the hand-transcribed fixture.
+The RHP path reads its fiscal years (2026/2025/2024), unit (millions), CIN and the restated P&L;
+its PAT series `(2,853.99) / (1,883.83) / (477.10)` reproduces the advertisement's table exactly —
+an independent cross-document agreement, not a self-check.
+
+**`risk_factor_count` (F2) does not extract from this RHP.** The "Risk Factors" section-range
+locator finds zero numbered headings, so the check fails and the field is emitted as
+`null` with `check_failed: 0 < required 20`, and the RHP run is `PARTIAL`. That is the designed
+behaviour for a locator that cannot prove its answer — but it IS a gap, not a pass: the RHP's risk
+headings are not the `^\d{1,3}\.\s` shape the ad's are. Next contract (WP C-3) should take the
+heading shape from the RHP's table of contents rather than from the advertisement's numbering.

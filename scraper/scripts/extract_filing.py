@@ -693,7 +693,12 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
 # RHP / PROSPECTUS / DRHP extraction (group C from the restated P&L, F2 count)
 # --------------------------------------------------------------------------- #
 def extract_rhp(page_texts, emit):
-    pnl = extract_pnl_from_texts(page_texts)
+    # Strip the rupee glyphs before the shared core: prospectuses write
+    # "(<glyph> in million)", and the unit detector's "in <unit>" pattern will not
+    # match across the glyph, so it would silently fall back to the SME default.
+    # Money parsing is unaffected (the glyph is never part of a number token).
+    cleaned = [(i, re.sub(r"[`₹]", " ", t or "")) for i, t in page_texts]
+    pnl = extract_pnl_from_texts(cleaned)
     fiscal_years = pnl.get("annualYears") or []
     unit = pnl.get("unit")
     metrics = pnl.get("metrics") or {}
