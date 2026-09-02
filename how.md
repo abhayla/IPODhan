@@ -489,12 +489,31 @@ observed in logs; the legacy (non-consolidation) fallback path is now non-destru
 
 *Where:* `scraper/src/services/data-persister.ts` (`upsertIPO`).
 
-### Step G4 — Persist extracted filing data (financials, peers, objectives, promoters, intermediaries), filing outranking exchange
+### Step G4 — Persist extracted filing data, filing outranking exchange
 
-*What DEEPA produced:* nothing yet — this step needs the Step E extraction fixes as an input and
-was not built during this walk.
+Take the extractor's JSON for a filing (price band ad, RHP) and write every field whose
+arithmetic check passed into the right table: `ipos` scalars through the single write door
+(source DRHP, so the matrix, provenance and conflict rows apply), `ipo_details` (timetable,
+category split, fresh/OFS amounts, UPI cut-off, compliance officer), `financial_statements`
+(one row per fiscal year), `ipo_valuation`, `promoters`, `ipo_intermediaries`,
+`brlm_track_record`, `peer_companies`, `financial_data`. A second filing merges into existing
+rows without erasing the first one's columns.
 
-*Status:* **MISSING**, pending.
+*What DEEPA produced:* issue size became the ad total (Rs 459.72 crore, fresh 250 + offer for
+sale 209.72) and outranked the exchanges' 327.81 crore with a CRITICAL conflict row; face value
+2 outranked NSE's fabricated 10; three financial-year rows with the true revenue, EBITDA, PAT,
+net worth, EPS and operating cash flow; valuation, 3 promoters, 3 intermediaries, BRLM track
+record, 5 peers. Skipped with reason: unpriced fields, DSCR, rent, objects (not in the ad).
+
+*Status:* **FIXED on branch `docs/deepa-walk-ledger`** (built in this walk, Tier A review),
+not deployed. The `scraper_source` enum has no RHP or PRICE_BAND_AD value, so both write as
+DRHP with the document identity kept in `field_sources.dataLineage`. Anchor investors and
+risk factors are not persisted yet (W-51).
+
+*Where:* `scraper/src/services/filing-persister.ts`; CLI `scraper/scripts/persist-filing.ts
+--ipo <id> --doc-type PRICE_BAND_AD|RHP --json <extractor output> --apply`;
+`scraper/src/config/field-priority-matrix.ts` (DRHP added for issueSize, faceValue, and last
+for allotmentDate, listingDate).
 
 ### Step G5 — Write the 18 new inventory columns
 
@@ -612,13 +631,17 @@ can never execute.
 
 ### Step J2 — Detail page renders
 
-*What DEEPA produced:* `/ipos/deepa-jewellers-ltd` returned HTTP 200 against `ipodhan_test`;
-financials/peers/objectives sections render "Awaiting data" as expected, since Step G4 (which
-would populate them) is not yet built.
+*What DEEPA produced:* before G4, `/ipos/deepa-jewellers-ltd` showed the wrong issue size
+(327.81 crore), "TBA" for basis of allotment and "Awaiting data" for financials, peers and
+promoters. After G4 the same page shows issue size 459.72 crore with the fresh/OFS split, the
+full timetable to the 8 September listing, the business overview, promoter holding 48.79% to
+35.45%, KPIs, the five-peer table, five documents including the DRHP, and the compliance
+officer. Still "awaiting": IPODhan score, broker reviews, anchor investors.
 
-*Status:* **LIVE**, correctly showing the current data gap.
+*Status:* **LIVE** page code; the data behind it comes from steps fixed on the branch.
 
-*Where:* `web/app/ipos/[slug]/page.tsx`.
+*Where:* `web/app/ipos/[slug]/page.tsx`. Evidence:
+`docs/walks/evidence/ipo-page-deepa-before-g4-2026-09-02.png` and `...-after-g4-...png`.
 
 ### Step J3 — Admin conflict view
 
