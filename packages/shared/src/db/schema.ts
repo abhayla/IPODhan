@@ -46,6 +46,13 @@ export const ipoStatusEnum = pgEnum('ipo_status', [
   'OPEN',
   'CLOSED',
   'LISTED',
+  // I4 / W-41: terminal states an exchange (or Chittorgarh) can declare. Before
+  // these existed nothing could set them, so a pulled issue kept sliding along
+  // the date-derived ladder to CLOSED/LISTED and the document cycle kept
+  // fetching for it. They are appended (never reordered) — enum order is
+  // physical in Postgres, so migration 0046 only ADDs VALUEs.
+  'WITHDRAWN',
+  'POSTPONED',
 ]);
 
 export const documentTypeEnum = pgEnum('document_type', [

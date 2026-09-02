@@ -15,7 +15,23 @@ import { eq } from 'drizzle-orm';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
 
-export type IPOStatus = 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED';
+export type IPOStatus = 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' | 'WITHDRAWN' | 'POSTPONED';
+
+/**
+ * I4 / W-41 — TERMINAL statuses. These are set by an exchange signal (a BSE
+ * public notice, an NSE status text), never by the calendar, and the calendar
+ * must never take them back: a withdrawn IPO's close_date still passes and its
+ * (never-happening) listing date may still exist, so an unguarded
+ * computeTargetStatus would silently walk it WITHDRAWN -> CLOSED -> LISTED and
+ * republish a dead issue as a listed company. Only a source that can observe
+ * the issue coming back (or a manual admin edit) may clear these.
+ */
+export const TERMINAL_STATUSES = ['WITHDRAWN', 'POSTPONED'] as const;
+
+/** Pure guard: is this stored status one the date ladder must not overwrite? */
+export function isTerminalStatus(status: string | null | undefined): boolean {
+  return (TERMINAL_STATUSES as readonly string[]).includes(String(status ?? '').toUpperCase());
+}
 
 /**
  * T-328 (LIFECYCLE-1, belt-and-suspenders half of HOLD): the date field that
@@ -126,6 +142,7 @@ export async function updateIPOStatuses(): Promise<StatusUpdateResult> {
 
   for (const r of rows) {
     if (r.scraperLocked) continue; // respect manual lock
+    if (isTerminalStatus(r.status)) continue; // W-41: never downgrade WITHDRAWN/POSTPONED
     const target = computeTargetStatus(
       { openDate: r.openDate, closeDate: r.closeDate, listingDate: r.listingDate },
       today
@@ -216,6 +233,7 @@ export async function getOutdatedStatusCount(): Promise<{
 
   for (const r of rows) {
     if (r.scraperLocked) continue;
+    if (isTerminalStatus(r.status)) continue; // W-41: terminal rows are not "outdated"
     const target = computeTargetStatus(
       { openDate: r.openDate, closeDate: r.closeDate, listingDate: r.listingDate },
       today

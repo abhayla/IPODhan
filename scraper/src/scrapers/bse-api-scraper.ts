@@ -49,6 +49,11 @@ export interface BSEDetailRow {
   Registrar?: string;
   Book_Running_Lead_Manager?: string;
   Co_Book_Running_Lead_Manager?: string;
+  // I4 / W-41: BSE's only free-text channel for "this issue was pulled". All
+  // three are empty on a healthy issue (verified live 2026-09-02, IPO_NO 7922).
+  Notes?: string;
+  Remarks?: string;
+  Public_Notices?: string;
   [k: string]: unknown;
 }
 
@@ -137,9 +142,57 @@ export function computeBSEIssueSize(shares: number, priceMax?: number): number {
 }
 
 /**
- * Derive IPO status from the open/close window. BSE's JSON `Status` is an opaque
- * code ('L'), so the window is the reliable signal. `today`/`open`/`close` are
- * 'YYYY-MM-DD' strings (lexicographic compare is correct for that format).
+ * I4 / W-41 — the terminal statuses. A pulled issue is NOT a date problem: its
+ * window keeps passing, so a purely date-derived ladder marches it to CLOSED
+ * and then LISTED, and the document cycle keeps fetching for a company that
+ * will never list.
+ */
+export type BSEDerivedStatus = 'UPCOMING' | 'OPEN' | 'CLOSED' | 'WITHDRAWN' | 'POSTPONED';
+
+/**
+ * BSE `Status` codes observed on the live board (2026-09-02, 24 rows):
+ *   L — currently on the board (open or just-closed issues)
+ *   F — forthcoming
+ * Neither carries withdrawal information, so a code alone NEVER produces a
+ * terminal status. Any other code is unknown: the date-derived status stands
+ * and the code is logged once (per process) so a new code is discovered from
+ * production logs instead of being silently mapped to a guess.
+ */
+const KNOWN_BSE_STATUS_CODES = new Set(['L', 'F']);
+const loggedUnknownBSEStatusCodes = new Set<string>();
+
+/**
+ * Conservative free-text classifier for BSE's `Notes` / `Remarks` /
+ * `Public_Notices`. It deliberately requires the wording to attach to the ISSUE
+ * — "the issue has been withdrawn" — and never fires on the many benign uses of
+ * the same verbs in IPO notes ("withdrawal of bids by retail investors is
+ * permitted until…"), which would wrongly kill a live IPO.
+ * Returns null when nothing clearly says the issue was pulled.
+ */
+export function classifyWithdrawalText(text: string | null | undefined): 'WITHDRAWN' | 'POSTPONED' | null {
+  if (!text) return null;
+  const t = text.replace(/\s+/g, ' ');
+  const subject = '(?:public\\s+)?(?:issue|ipo|offer|offering)';
+  const withdrawn = new RegExp(
+    `(?:${subject}\\s+(?:has\\s+been\\s+|is\\s+|stands\\s+)?withdrawn)` +
+      `|(?:withdrawal\\s+of\\s+(?:the\\s+)?${subject})`,
+    'i',
+  );
+  const postponed = new RegExp(
+    `(?:${subject}\\s+(?:has\\s+been\\s+|is\\s+|stands\\s+)?(?:postponed|deferred|rescheduled))` +
+      `|(?:(?:postponement|deferment)\\s+of\\s+(?:the\\s+)?${subject})`,
+    'i',
+  );
+  // Withdrawn wins: an issue that is both postponed and later withdrawn is dead.
+  if (withdrawn.test(t)) return 'WITHDRAWN';
+  if (postponed.test(t)) return 'POSTPONED';
+  return null;
+}
+
+/**
+ * Derive IPO status from the open/close window, overridden by an explicit
+ * withdrawal/postponement signal when BSE publishes one. `today`/`open`/`close`
+ * are 'YYYY-MM-DD' strings (lexicographic compare is correct for that format).
  * LISTED needs a listing date this endpoint doesn't carry, so it is left to
  * other sources / the time-based priority matrix to set.
  */
@@ -147,7 +200,22 @@ export function deriveBSEStatus(
   open: string | null,
   close: string | null,
   today: string,
-): 'UPCOMING' | 'OPEN' | 'CLOSED' {
+  signal?: { statusCode?: string | null; notes?: (string | null | undefined)[] },
+): BSEDerivedStatus {
+  if (signal) {
+    for (const note of signal.notes ?? []) {
+      const terminal = classifyWithdrawalText(note);
+      if (terminal) return terminal;
+    }
+    const code = (signal.statusCode || '').trim().toUpperCase();
+    if (code && !KNOWN_BSE_STATUS_CODES.has(code) && !loggedUnknownBSEStatusCodes.has(code)) {
+      loggedUnknownBSEStatusCodes.add(code);
+      logger.warn(
+        { statusCode: code },
+        'bse_unknown_status_code: keeping date-derived status (add to KNOWN_BSE_STATUS_CODES once its meaning is confirmed)',
+      );
+    }
+  }
   if (!open || !close) return 'UPCOMING';
   if (today < open) return 'UPCOMING';
   if (today > close) return 'CLOSED';
@@ -185,6 +253,7 @@ function buildScrapedIPO(
   companyName: string,
   openDate: string | null,
   closeDate: string | null,
+  listStatusCode?: string | null,
 ): ScrapedIPO {
   const band = parsePriceBand(detail.Price_Band || '');
   const shares = parseInt(String(detail.Issue_Size_No_of_shares || '0').replace(/[,\s]/g, ''), 10);
@@ -202,7 +271,10 @@ function buildScrapedIPO(
     openDate: openDate || today,
     closeDate: closeDate || today,
     listingExchange: 'BSE',
-    status: deriveBSEStatus(openDate, closeDate, today),
+    status: deriveBSEStatus(openDate, closeDate, today, {
+      statusCode: listStatusCode ?? null,
+      notes: [detail.Notes, detail.Remarks, detail.Public_Notices],
+    }),
     // BSE's JSON API exposes no segment field (the old HTML scraper read a
     // `platform` column that no longer exists). The IR_flag=IPO board carries
     // both SME and mainboard IPOs, so asserting a segment here mislabels them
@@ -225,6 +297,7 @@ export function mapBSEToScrapedIPO(list: BSEListRow, detail: BSEDetailRow): Scra
     (list.Scrip_name || detail.ScripName || '').trim(),
     parseBSEDate(list.Start_Dt),
     parseBSEDate(list.End_Dt),
+    list.Status,
   );
 }
 

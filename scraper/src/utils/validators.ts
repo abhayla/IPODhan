@@ -43,8 +43,11 @@ export const ScrapedIPOSchema = z.object({
     message: 'Invalid offering type'
   }),
   sector: z.string().max(100).optional(),
-  status: z.enum(['UPCOMING', 'OPEN', 'CLOSED', 'LISTED'], {
-    message: 'Invalid IPO status - must be UPCOMING, OPEN, CLOSED, or LISTED'
+  // I4 / W-41: WITHDRAWN/POSTPONED are terminal states an exchange declares
+  // (BSE public notice, NSE status text). Additive — no previously valid status
+  // stops validating.
+  status: z.enum(['UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED'], {
+    message: 'Invalid IPO status - must be UPCOMING, OPEN, CLOSED, LISTED, WITHDRAWN or POSTPONED'
   }),
   lotSize: z.number().int().positive().optional(),
   faceValue: z.number().int().positive().optional(),
@@ -603,7 +606,7 @@ export const IPOAlertsAPIIPOSchema = z.object({
     (date) => !isNaN(Date.parse(date)),
     'Close date must be a valid date string'
   ),
-  status: z.enum(['OPEN', 'UPCOMING', 'CLOSED', 'LISTED'], {
+  status: z.enum(['OPEN', 'UPCOMING', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED'], {
     message: 'Invalid IPO status'
   }),
   category: z.enum(['MAINBOARD', 'SME', 'RIGHTS', 'NCD'], {
