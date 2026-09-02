@@ -26,6 +26,10 @@ from extract_financials_pdf import (  # noqa: E402
     money_values,
     _normalize_numbers,
     extract_from_texts as extract_pnl_from_texts,
+    check_pat_not_above_revenue,
+    check_ebitda_at_least_pat,
+    check_yoy_ratio_within_bounds,
+    check_cross_document_agreement,
 )
 
 DOC_TYPES = ("RHP", "PRICE_BAND_AD", "PROSPECTUS", "DRHP")
@@ -46,6 +50,9 @@ DATE_RX = re.compile(
     r"\s+(\d{1,2}),?\s*(20\d{2})", re.I)
 
 CIN_RX = re.compile(r"\b([UL]\d{5}[A-Z]{2}\d{4}[A-Z]{3}\d{6})\b")
+# A figure printed WITH the rupee mark — pdfplumber renders the sign as "`" in
+# newspaper ads and as "₹" in prospectuses.
+CURRENCY_AMOUNT = re.compile(r"[`₹]\s*(\(?-?[\d,]+(?:\.\d+)?\)?)")
 
 
 # --------------------------------------------------------------------------- #
@@ -133,6 +140,57 @@ def check_mcap_consistency(mcap_floor, floor, shares_floor, mcap_cap, cap, share
     return True, "implied pre-issue shares %.0f ~= %.0f (%.4f%%)" % (pre_floor, pre_cap, drift * 100)
 
 
+def check_sum_equals(parts, total, label, tol=0.5):
+    """Component rows must add up to the printed total (offer size, selling
+    shareholders vs the offer for sale)."""
+    parts = [x for x in parts if x is not None]
+    if total is None or not parts:
+        return False, "%s: missing parts or total" % label
+    s = sum(parts)
+    if abs(s - total) > tol:
+        return False, "%s: parts sum %s != printed total %s" % (label, s, total)
+    return True, "%s: %s == %s" % (label, s, total)
+
+
+def check_ratio_equals(numerator, denominator, printed, label, tol=0.01):
+    """numerator/denominator must reproduce a printed ratio (P/E from price and
+    EPS, cap price over WACA) within +/-1%."""
+    if None in (numerator, denominator, printed) or not denominator:
+        return False, "%s: missing input" % label
+    computed = numerator / denominator
+    drift = abs(computed - printed) / max(abs(printed), 1e-9)
+    if drift > tol:
+        return False, "%s: %s/%s = %.4f vs printed %s (%.2f%%)" % (
+            label, numerator, denominator, computed, printed, drift * 100)
+    return True, "%s: %.4f ~= %s" % (label, computed, printed)
+
+
+def check_weighted_average(series, weights, printed, label, tol=0.01):
+    """A printed weighted average must be reproducible from the year series and
+    the printed weights — the check that catches a mis-read year column."""
+    if printed is None or not series or not weights:
+        return False, "%s: missing series, weights or printed average" % label
+    years = [y for y in series if y in weights]
+    if not years:
+        return False, "%s: no year has both a value and a weight" % label
+    total_w = sum(weights[y] for y in years)
+    if not total_w:
+        return False, "%s: weights sum to zero" % label
+    computed = sum(series[y] * weights[y] for y in years) / total_w
+    if abs(computed - printed) > max(tol * abs(printed), 0.005):
+        return False, "%s: computed %.4f != printed %s" % (label, computed, printed)
+    return True, "%s: %.4f ~= %s" % (label, computed, printed)
+
+
+def check_mean_equals(values, printed, label, tol=0.005):
+    if printed is None or not values:
+        return False, "%s: missing values or printed average" % label
+    computed = sum(values) / len(values)
+    if abs(computed - printed) > max(tol * abs(printed), 0.005):
+        return False, "%s: mean %.4f != printed %s" % (label, computed, printed)
+    return True, "%s: mean %.4f ~= %s" % (label, computed, printed)
+
+
 def _combine(*results):
     """Chain multiple (passed, detail) check results — first failure wins."""
     for passed, detail in results:
@@ -217,7 +275,8 @@ def check_track_record(total_issues, closed_below):
     return True, "%s of %s" % (closed_below, total_issues)
 
 
-def check_holding_dilution(pre_pct, post_pct, shares_held=None, fresh_shares=None, tol=0.01):
+def check_holding_dilution(pre_pct, post_pct, shares_held=None, fresh_shares=None, tol=0.01,
+                           sold_shares=0.0):
     """A fresh issue can only dilute: post % must be below pre %.
 
     When the promoter's absolute pre-issue share count AND the fresh-issue share
@@ -231,8 +290,12 @@ def check_holding_dilution(pre_pct, post_pct, shares_held=None, fresh_shares=Non
     if not post_pct < pre_pct:
         return False, "post-issue %s%% not < pre-issue %s%%" % (post_pct, pre_pct)
     if shares_held and fresh_shares and pre_pct:
+        # A promoter who is ALSO a selling shareholder is diluted twice: by the
+        # fresh issue AND by the shares they sell in the offer for sale. Ignoring
+        # the sale made this check fail on every fresh-issue-plus-OFS book
+        # (Deepa Jewellers: printed 35.45%, fresh-only formula says 41.62%).
         pre_shares = shares_held * 100.0 / pre_pct
-        expected_post = pre_pct * pre_shares / (pre_shares + fresh_shares)
+        expected_post = (shares_held - (sold_shares or 0.0)) * 100.0 / (pre_shares + fresh_shares)
         drift = abs(expected_post - post_pct) / max(abs(expected_post), 1e-6)
         if drift > tol:
             return False, "formula post %.4f%% != printed %s%% (%.4f%%)" % (
@@ -265,6 +328,13 @@ def check_fy_series(series, fiscal_years):
         return False, "fiscal years not consecutive: %s" % years
     if sorted(int(k) for k in series) != years:
         return False, "series years %s != header years %s" % (sorted(series), years)
+    # A prose sentence enumerates its periods ("for Fiscal 2026, Fiscal 2025 and
+    # Fiscal 2024 were `(147.30) million, ...") and those year tokens parse as
+    # money. If one survived into a value slot the row was mis-read: null it.
+    leaked = [k for k, v in series.items() if float(v) in {float(y) for y in years}]
+    if leaked:
+        return False, "year token leaked into the value of %s (%s)" % (
+            sorted(leaked), [series[k] for k in sorted(leaked)])
     return True, "%s years %s" % (len(series), years)
 
 
@@ -370,6 +440,22 @@ def _iso(text):
     return "%04d-%02d-%02d" % (int(m.group(3)), MONTHS[m.group(1).lower()], int(m.group(2)))
 
 
+def _find_row(lines, rx, minvals, start=0):
+    """First line matching `rx` that actually CARRIES at least `minvals` numbers.
+
+    A price band advertisement mentions its own table headings in prose one
+    paragraph earlier ("...and the post Offer market capitalization of the
+    Company, each at the Floor Price..."). Taking the first textual match read the
+    prose line, found no numbers, and nulled a field the document does print.
+    """
+    idx = _find(lines, rx, start)
+    while idx >= 0:
+        if len(money_values(lines[idx])) >= minvals:
+            return idx
+        idx = _find(lines, rx, idx + 1)
+    return -1
+
+
 def _find(lines, rx, start=0):
     for i in range(start, len(lines)):
         if rx.search(lines[i]):
@@ -449,12 +535,21 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
               else "%s != lot %s" % (lot_multiple, lot)))
 
     # ---- A4: floor/cap as multiples of face value --------------------------
-    k = _find(lines, re.compile(r"FLOOR PRICE AND THE CAP PRICE ARE", re.I))
+    # Two printed wordings: "THE FLOOR PRICE AND THE CAP PRICE ARE x TIMES AND y
+    # TIMES the face value" and, split into two clauses, "THE FLOOR PRICE IS x
+    # TIMES ... AND THE CAP PRICE IS y TIMES ..." (Deepa Jewellers).
+    k = _find(lines, re.compile(r"FLOOR PRICE (?:AND THE CAP PRICE ARE|IS)", re.I))
     fm_floor = fm_cap = None
     if k >= 0:
-        m = re.search(r"ARE\s+([\d.]+)\s+TIMES\s+AND\s+([\d.]+)\s+TIMES", lines[k], re.I)
+        block = " ".join(lines[k:k + 3])
+        m = re.search(r"ARE\s+([\d.]+)\s+TIMES\s+AND\s+([\d.]+)\s+TIMES", block, re.I)
         if m:
             fm_floor, fm_cap = float(m.group(1)), float(m.group(2))
+        else:
+            f = re.search(r"FLOOR PRICE IS\s+([\d.]+)\s+TIMES", block, re.I)
+            c = re.search(r"CAP PRICE IS\s+([\d.]+)\s+TIMES", block, re.I)
+            fm_floor = float(f.group(1)) if f else None
+            fm_cap = float(c.group(1)) if c else None
     emit.put("floor_multiple_of_face", fm_floor, page_for(k), "floor_multiple_recomputed",
              check_face_multiple(floor, face, fm_floor))
     emit.put("cap_multiple_of_face", fm_cap, page_for(k), "cap_multiple_recomputed",
@@ -462,22 +557,42 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
 
     # ---- A7/A8: the fresh-issue / market-cap table -------------------------
     shares_floor = amt_floor = shares_cap = amt_cap = None
-    fi = _find(lines, re.compile(r"^\s*Fresh Issue\s+[\d,]", re.I))
+    fi = _find_row(lines, re.compile(r"^\s*Fresh Issue\s+[\d,]", re.I), 4)
     if fi >= 0:
         vals = money_values(lines[fi])
         if len(vals) >= 4:
             shares_floor, amt_floor, shares_cap, amt_cap = vals[-4:]
-    ofs_amount = None
-    oi = _find(lines, re.compile(r"^\s*Offer for sale\b", re.I))
+    # The offer-for-sale row: singular OR the "Offer for Sales" plural the Deepa
+    # Jewellers ad prints, and either the 4-cell (shares + amount at each price)
+    # or the amount-only shape.
+    ofs_amount = ofs_amount_cap = ofs_shares = None
+    oi = _find_row(lines, re.compile(r"^\s*Offer for sales?\b", re.I), 1)
     if oi >= 0:
         vals = money_values(lines[oi])
-        ofs_amount = 0.0 if not vals else vals[-1]
+        if len(vals) >= 4:
+            ofs_shares, ofs_amount, _shares_cap, ofs_amount_cap = vals[-4:]
+        elif vals:
+            ofs_amount = vals[-1]
+        else:
+            ofs_amount = 0.0
+    # Market capitalisation row: "Post-Issue" / "Post Offer", and either two cells
+    # (amount at floor, amount at cap) or four (share COUNT precedes each amount).
     mcap_floor = mcap_cap = None
-    mi = _find(lines, re.compile(r"Post-?Issue market capitali[sz]ation", re.I))
+    post_shares_floor = post_shares_cap = None
+    mi = _find_row(lines, re.compile(
+        r"Post[- ]?(?:Issue|Offer)\s+market\s+capitali[sz]ation", re.I), 2)
     if mi >= 0:
         vals = money_values(lines[mi])
-        if len(vals) >= 2:
+        if len(vals) >= 4:
+            post_shares_floor, mcap_floor, post_shares_cap, mcap_cap = vals[-4:]
+        elif len(vals) >= 2:
             mcap_floor, mcap_cap = vals[-2:]
+    total_shares_floor = total_amount_floor = None
+    ti2 = _find(lines, re.compile(r"^\s*Total Offer Size\b", re.I))
+    if ti2 >= 0:
+        vals = money_values(lines[ti2])
+        if len(vals) >= 4:
+            total_shares_floor, total_amount_floor = vals[-4], vals[-3]
 
     emit.put("shares_at_floor", shares_floor, page_for(fi), "shares_x_price_equals_amount",
              check_shares_amount(shares_floor, floor, amt_floor))
@@ -489,6 +604,32 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
               else "%s vs %s" % (amt_floor, amt_cap)))
     emit.put("ofs_amount", ofs_amount, page_for(oi), "ofs_non_negative",
              (ofs_amount is not None and ofs_amount >= 0, "%s" % ofs_amount))
+    if ofs_shares is None:
+        emit.null("ofs_shares", "offer_for_sale_row_has_no_share_count", page_for(oi))
+        emit.null("ofs_amount_at_cap", "offer_for_sale_row_has_no_cap_amount", page_for(oi))
+    else:
+        ofs_check = _combine(
+            check_shares_amount(ofs_shares, floor, ofs_amount),
+            check_shares_amount(ofs_shares, cap, ofs_amount_cap),
+        )
+        emit.put("ofs_shares", ofs_shares, page_for(oi),
+                 "ofs_shares_x_price_equals_amount", ofs_check)
+        emit.put("ofs_amount_at_cap", ofs_amount_cap, page_for(oi),
+                 "ofs_shares_x_price_equals_amount", ofs_check)
+    if total_shares_floor is None:
+        emit.null("total_offer_shares_at_floor", "total_offer_size_row_not_in_document", page_for(ti2))
+        emit.null("total_offer_amount_at_floor", "total_offer_size_row_not_in_document", page_for(ti2))
+    else:
+        tot_check = _combine(
+            check_sum_equals([shares_floor, ofs_shares], total_shares_floor,
+                             "fresh + OFS shares at floor", tol=1.0),
+            check_sum_equals([amt_floor, ofs_amount], total_amount_floor,
+                             "fresh + OFS amount at floor", tol=0.02),
+        )
+        emit.put("total_offer_shares_at_floor", total_shares_floor, page_for(ti2),
+                 "total_offer_size_reconciles", tot_check)
+        emit.put("total_offer_amount_at_floor", total_amount_floor, page_for(ti2),
+                 "total_offer_size_reconciles", tot_check)
     emit.put("shares_monotonic", shares_floor is not None and shares_cap is not None,
              page_for(fi), "more_shares_at_floor_than_cap",
              check_monotonic_shares(shares_floor, shares_cap))
@@ -500,6 +641,18 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
              "market_cap_ordering_and_consistency", mcap_check)
     emit.put("market_cap_at_cap", mcap_cap, page_for(mi),
              "market_cap_ordering_and_consistency", mcap_check)
+    if post_shares_floor is None:
+        emit.null("post_offer_shares_at_floor", "market_cap_row_has_no_share_count", page_for(mi))
+        emit.null("post_offer_shares_at_cap", "market_cap_row_has_no_share_count", page_for(mi))
+    else:
+        ps_check = _combine(
+            check_shares_amount(post_shares_floor, floor, mcap_floor),
+            check_shares_amount(post_shares_cap, cap, mcap_cap),
+        )
+        emit.put("post_offer_shares_at_floor", post_shares_floor, page_for(mi),
+                 "post_offer_shares_x_price_equals_market_cap", ps_check)
+        emit.put("post_offer_shares_at_cap", post_shares_cap, page_for(mi),
+                 "post_offer_shares_x_price_equals_market_cap", ps_check)
     emit.put("issue_structure", "FRESH_ONLY" if ofs_amount == 0 else "FRESH_AND_OFS", page_for(oi),
              "issue_structure_from_ofs_row", (ofs_amount is not None, "ofs=%s" % ofs_amount))
 
@@ -525,13 +678,18 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
         reg = m.group(1) if m else None
     emit.put("book_building_regulation", reg, page_for(gi), "regulation_cited",
              (reg is not None, "%s" % reg))
+    # Under Regulation 6(2) the QIB portion is "NOT LESS THAN 75%"; under 6(1) it
+    # is "NOT MORE THAN 50%" with NII/Retail as "NOT LESS THAN". Accept either
+    # direction for every category, and read across the 3 lines the ad wraps the
+    # bullet list over.
     ai = _find(lines, re.compile(r"QIB PORTION\s*:", re.I))
     qib = nii = retail = None
     if ai >= 0:
-        m = re.search(r"QIB PORTION\s*:\s*NOT LESS THAN\s*([\d.]+)\s*%", lines[ai], re.I)
-        n = re.search(r"NON-?\s?INSTITUTIONAL PORTION\s*:\s*NOT MORE THAN\s*([\d.]+)\s*%",
-                      lines[ai], re.I)
-        r = re.search(r"RETAIL PORTION\s*:\s*NOT MORE THAN\s*([\d.]+)\s*%", lines[ai], re.I)
+        block = " ".join(lines[ai:ai + 3])
+        bound = r"\s*:\s*NOT\s+(?:MORE|LESS)\s+THAN\s*([\d.]+)\s*%"
+        m = re.search(r"QIB PORTION" + bound, block, re.I)
+        n = re.search(r"NON-?\s?INSTITUTIONAL PORTION" + bound, block, re.I)
+        r = re.search(r"RETAIL PORTION" + bound, block, re.I)
         qib = float(m.group(1)) if m else None
         nii = float(n.group(1)) if n else None
         retail = float(r.group(1)) if r else None
@@ -553,19 +711,27 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
         emit.null("issue_price", "not_priced_yet", page_for(ip))
 
     # ---- B: the indicative timetable ---------------------------------------
+    # Every label is printed in several shapes across issuers ("BID/OFFER OPENS
+    # ON" vs "Bid/Issue opens on", "Anchor Investor bidding date" vs "ANCHOR
+    # INVESTOR BID/ OFFER PERIOD OPENS AND CLOSES ON", "Credit of the Equity
+    # Shares to depository accounts" vs "...to dematerialised accounts").
     labels = {
-        "anchor_bid_date": re.compile(r"Anchor Investor bidding date", re.I),
-        "open_date": re.compile(r"Bid/\s?Issue opens on", re.I),
-        "close_date": re.compile(r"Bid/\s?Issue closes on", re.I),
+        "anchor_bid_date": re.compile(
+            r"Anchor Investor bidding date|Anchor Investor Bid\s*/?\s*Offer Period", re.I),
+        "open_date": re.compile(r"Bid\s*/\s?(?:Issue|Offer)\s+opens on", re.I),
+        "close_date": re.compile(r"Bid\s*/\s?(?:Issue|Offer)\s+closes on", re.I),
         "basis_of_allotment_date": re.compile(r"Finalisation of Basis of Allotment", re.I),
         "refund_date": re.compile(r"Initiation of refunds", re.I),
-        "credit_date": re.compile(r"Credit of Equity Shares to demateriali", re.I),
+        "credit_date": re.compile(
+            r"Credit of (?:the )?Equity Shares to (?:demateriali|depository)", re.I),
         "listing_date": re.compile(r"Commencement of trading of the Equity Shares", re.I),
     }
     tt = _find(lines, re.compile(r"indicative timetable", re.I))
     dates, date_pages = {}, {}
     for name, rx in labels.items():
         idx = _find(lines, rx, max(tt, 0))
+        if idx < 0:
+            idx = _find(lines, rx)  # some ads print the headline dates above the table
         if idx < 0:
             continue
         # The newspaper's two-column layout splits "On or about" from its date, and
@@ -597,35 +763,101 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
     emit.put("upi_cutoff_time", upi, page_for(ui), "upi_cutoff_parsed", (upi is not None, "%s" % upi))
 
     # ---- B9: RHP filing date (cover) ---------------------------------------
-    fi2 = _find(lines, re.compile(r"red herring prospectus dated", re.I))
-    rhp_date = _iso(lines[fi2]) if fi2 >= 0 else None
+    # Read the date that FOLLOWS "dated" — the sentence often carries an earlier,
+    # unrelated date (incorporation, conversion) that a whole-line scan would take.
+    dated_rx = re.compile(r"red herring prospectus\s+dated\s*:?\s*", re.I)
+    fi2 = _find(lines, dated_rx)
+    rhp_date = None
+    if fi2 >= 0:
+        m = dated_rx.search(lines[fi2])
+        rhp_date = _iso(lines[fi2][m.end():])
     emit.put("rhp_filing_date", rhp_date, page_for(fi2), "rhp_filed_before_open",
              check_date_before(rhp_date, dates.get("open_date"), "RHP filing before bid open"))
 
     # ---- C: fiscal years + the reprinted financial rows --------------------
     fiscal_years = []
     hy = _find(lines, re.compile(r"^\s*20\d{2}\s+20\d{2}\s+20\d{2}\s*$"))
+    if hy < 0:
+        # KPI-table header form: "Particulars Fiscal 2026 Fiscal 2025 Fiscal 2024".
+        hy = _find(lines, re.compile(r"Fiscal\s+20\d{2}\s+Fiscal\s+20\d{2}\s+Fiscal\s+20\d{2}", re.I))
     if hy >= 0:
-        fiscal_years = [int(y) for y in re.findall(r"20\d{2}", lines[hy])]
+        seen = []
+        for y in re.findall(r"20\d{2}", lines[hy]):
+            if int(y) not in seen:
+                seen.append(int(y))
+        fiscal_years = seen
     # MAJOR-1 (C7): the unit must be read EXPLICITLY, never defaulted — search the
     # whole ad (it is a single/few-page cover document) for an "in <unit>" line.
     unit, unit_page = _find_unit(page_texts)
 
     def series_row(rx, count, start=0):
+        """First line matching `rx` that actually CARRIES the year columns.
+
+        The old version took the first textual match and gave up when it had too
+        few numbers — so a prose mention ("negative cash flows from operating
+        activities:") shadowed the sentence three lines later that holds the
+        three yearly figures.
+        """
+        if not fiscal_years:
+            return None, None
         idx = _find(lines, rx, start)
-        if idx < 0 or not fiscal_years:
+        while idx >= 0:
+            vals = money_values(lines[idx])
+            if len(vals) >= count:
+                tail = vals[-count:]
+                return {str(fiscal_years[n]): tail[n] for n in range(count)}, page_for(idx)
+            idx = _find(lines, rx, idx + 1)
+        return None, None
+
+    YEAR_TOKEN = re.compile(r"\b(?:Fiscal|FY|March\s+31,)\s*20\d{2}", re.I)
+
+    def prose_series(rx, count, span=3):
+        """Read a year series out of a SENTENCE rather than a table row.
+
+        The advertisement states some figures only in prose ("Net cash (used in) /
+        generated from operating activities for Fiscal 2026, Fiscal 2025 and
+        Fiscal 2024 were `(147.30) million, `(98.64) million and `48.45 million"),
+        and the newspaper's two-column layout wraps that sentence over several
+        lines with the neighbouring column spliced in. Join the following lines,
+        drop the period tokens, and take the leading `count` figures.
+        """
+        if not fiscal_years:
             return None, None
-        vals = money_values(lines[idx])
-        if len(vals) < count:
-            return None, None
-        tail = vals[-count:]
-        return {str(fiscal_years[n]): tail[n] for n in range(count)}, page_for(idx)
+        idx = _find(lines, rx)
+        while idx >= 0:
+            joined = YEAR_TOKEN.sub(" ", " ".join(lines[idx:idx + span]))
+            # Only figures printed WITH the currency mark are data; the list
+            # numbering of the risk factors ("9.", "18.") is not.
+            vals = [money_values(m.group(1))[0]
+                    for m in CURRENCY_AMOUNT.finditer(joined)
+                    if money_values(m.group(1))]
+            if len(vals) >= count:
+                head = vals[:count]
+                return {str(fiscal_years[n]): head[n] for n in range(count)}, page_for(idx)
+            idx = _find(lines, rx, idx + 1)
+        return None, None
+
+    def optional_series(name, rx, count, reason):
+        """A row many ads simply do not print: null WITH a reason, not a failed
+        arithmetic check (a document that never carried the row is not a defect)."""
+        series, page = series_row(rx, count)
+        if series is None:
+            emit.null(name, reason)
+            return None
+        emit.put_c_money(unit, name, series, page, "%s_year_series" % name,
+                         check_fy_series(series, fiscal_years))
+        return series
 
     ncols = len(fiscal_years) or 3
-    pat, pat_page = series_row(re.compile(r"Profit/\(Loss\) after tax", re.I), ncols)
-    ocf, ocf_page = series_row(re.compile(r"operating activities", re.I), ncols)
-    dscr, dscr_page = series_row(re.compile(r"Debt service coverage ratio", re.I), ncols)
-    rent, rent_page = series_row(re.compile(r"Rent expenses", re.I), ncols)
+    pat, pat_page = series_row(
+        re.compile(r"Profit/\(Loss\) after tax|Profit after tax\s*\(PAT\)", re.I), ncols)
+    # The newspaper's two-column layout can split the phrase "operating
+    # activities" across lines, so the sentence that CARRIES the figures reads
+    # "activities for Fiscal 2026, ... were `(147.30) million, ...".
+    ocf_rx = re.compile(r"operating activities|activities for Fiscal\s+20\d{2}", re.I)
+    ocf, ocf_page = series_row(ocf_rx, ncols)
+    if ocf is None or not check_fy_series(ocf, fiscal_years)[0]:
+        ocf, ocf_page = prose_series(ocf_rx, ncols)
 
     emit.put("fiscal_years", fiscal_years, page_for(hy), "fiscal_years_consecutive",
              check_fy_series({str(y): 0 for y in fiscal_years}, fiscal_years))
@@ -635,26 +867,52 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
                       check_fy_series(pat or {}, fiscal_years))
     emit.put_c_money(unit, "op_cash_flow_by_fy", ocf, ocf_page, "op_cash_flow_year_series",
                       check_fy_series(ocf or {}, fiscal_years))
-    emit.put_c_money(unit, "dscr_by_fy", dscr, dscr_page, "dscr_year_series",
-                      check_fy_series(dscr or {}, fiscal_years))
-    emit.put_c_money(unit, "rent_by_fy", rent, rent_page, "rent_year_series",
-                      check_fy_series(rent or {}, fiscal_years))
+    optional_series("dscr_by_fy", re.compile(r"Debt service coverage ratio", re.I), ncols,
+                    "row_not_in_document")
+    optional_series("rent_by_fy", re.compile(r"Rent expenses", re.I), ncols,
+                    "row_not_in_document")
+    revenue = optional_series(
+        "revenue_by_fy", re.compile(r"Revenue from operations\s*\(", re.I), ncols,
+        "row_not_in_document")
+    ebitda = optional_series(
+        "ebitda_by_fy", re.compile(r"\bEBITDA\s*(?:\([ivx]+\))?\s*\(", re.I), ncols,
+        "row_not_in_document")
+    # Plausibility, on the ad's own reprinted rows (W-33): the same named checks
+    # the RHP path runs, so an absurd-but-well-formed series is nulled here too.
+    fin_metrics = {k: {int(y): v for y, v in (series or {}).items()}
+                   for k, series in (("revenue", revenue), ("profit", pat), ("ebitda", ebitda))
+                   if series}
+    plaus = {
+        "pat_not_above_revenue": check_pat_not_above_revenue(fin_metrics),
+        "ebitda_at_least_pat": check_ebitda_at_least_pat(fin_metrics),
+        "yoy_ratio_within_bounds": check_yoy_ratio_within_bounds(fin_metrics),
+    }
+    for cname, (passed, detail, offenders) in plaus.items():
+        emit.put("financial_plausibility_%s" % cname, bool(passed) or None, None, cname,
+                 (passed, detail))
+        if not passed:
+            for key in offenders:
+                field = {"revenue": "revenue_by_fy", "profit": "pat_by_fy",
+                         "ebitda": "ebitda_by_fy"}[key]
+                emit.put(field, None, None, cname, (False, detail))
 
     # EPS: "March 31, 2026 (41.98) (41.98) 3" — basic, diluted, weight, per year.
-    eps_basic, eps_diluted, eps_page = {}, {}, None
+    # "March 31, 2026 (41.98) (41.98) 3" / "Fiscal 2026 12.78 12.78 3". The cells
+    # are matched positionally FROM THE START of the line: a newspaper's two-column
+    # merge appends the neighbouring column's prose (and its digits) to the same
+    # line, so the old "the line has exactly four numbers" rule dropped every EPS
+    # row that happened to sit beside a footnote.
+    NUM = r"\(?-?[\d,]*\.?\d+\)?"
+    EPS_ROW = re.compile(
+        r"^\s*(?:March\s+31,\s*|Fiscal\s+)(20\d{2})\s+(%s)\s+(%s)\s+(\d+)(?!\S)" % (NUM, NUM))
+    eps_basic, eps_diluted, eps_weight, eps_page = {}, {}, {}, None
     for idx, ln in enumerate(lines):
-        m = re.match(r"\s*March\s+31,\s*(20\d{2})\b", ln)
-        if not m:
+        m = EPS_ROW.match(ln)
+        if not m or m.group(1) in eps_basic:
             continue
-        if m.group(1) in eps_basic:
-            continue  # first occurrence is the EPS table; later ones are prose
-        vals = money_values(ln)
-        # The EPS row is exactly: [year-token, basic, diluted, weight]. Anything else
-        # on a line starting with the same date is prose, not the table.
-        if len(vals) == 4:
-            basic, diluted, _weight = vals[-3:]
-            eps_basic[m.group(1)] = basic
-            eps_diluted[m.group(1)] = diluted
+        cells = money_values(" ".join(m.group(2, 3, 4)))
+        if len(cells) == 3:
+            eps_basic[m.group(1)], eps_diluted[m.group(1)], eps_weight[m.group(1)] = cells
             eps_page = page_for(idx)
     emit.put_c_money(unit, "eps_basic_by_fy", eps_basic or None, eps_page, "eps_year_series",
                       check_fy_series(eps_basic, fiscal_years))
@@ -662,21 +920,113 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
                       check_fy_series(eps_diluted, fiscal_years))
     emit.put_c_money(unit, "eps_sign_matches_pat", bool(eps_basic and pat), eps_page,
                       "eps_sign_matches_pat", check_sign_consistency(eps_basic, pat or {}))
+    # Weighted average EPS: recomputable from the year series and the printed
+    # weights — the check that would have caught a mis-read EPS column.
+    wi_eps = _find(lines, re.compile(r"^\s*Weighted Average\s+[\d.]+", re.I))
+    weighted_eps = None
+    if wi_eps >= 0:
+        vals = money_values(lines[wi_eps])
+        weighted_eps = vals[0] if vals else None
+    if weighted_eps is None:
+        emit.null("eps_weighted_average", "weighted_average_eps_row_not_in_document")
+    else:
+        emit.put("eps_weighted_average", weighted_eps, page_for(wi_eps),
+                 "weighted_eps_matches_year_series",
+                 check_weighted_average(eps_basic, eps_weight, weighted_eps, "weighted EPS"))
+
+    # RoNW year series: "Fiscal 2026 56.45% 3".
+    ronw_series, ronw_weight, ronw_page = {}, {}, None
+    for idx, ln in enumerate(lines):
+        m = re.match(r"\s*Fiscal\s+(20\d{2})\s+([\d.]+)\s*%\s+(\d+)(?!\S)", ln)
+        if m and m.group(1) not in ronw_series:
+            ronw_series[m.group(1)] = float(m.group(2))
+            ronw_weight[m.group(1)] = float(m.group(3))
+            ronw_page = page_for(idx)
+    if not ronw_series:
+        emit.null("ronw_by_fy", "ronw_year_table_not_in_document")
+    else:
+        emit.put("ronw_by_fy", ronw_series, ronw_page, "weighted_ronw_matches_year_series",
+                 check_weighted_average(ronw_series, ronw_weight, ronw, "weighted RoNW"))
+
+    # P/E at each end of the band, recomputed from price / diluted EPS.
+    pe_floor = pe_cap = None
+    pei = _find_row(lines, re.compile(r"^\s*Based on diluted EPS", re.I), 3)
+    if pei >= 0:
+        # "Based on diluted EPS for Fiscal 2026 13.15 13.85" — the year token
+        # leads, the two P/E cells trail.
+        vals = money_values(lines[pei])
+        if len(vals) >= 3:
+            pe_floor, pe_cap = vals[1], vals[2]
+    eps_latest = None
+    if eps_diluted and fiscal_years:
+        eps_latest = eps_diluted.get(str(max(fiscal_years)))
+    if pe_floor is None:
+        if not emit.fields.get("pe_at_floor"):
+            emit.null("pe_at_floor", "pe_table_not_in_document")
+            emit.null("pe_at_cap", "pe_table_not_in_document")
+    else:
+        pe_check = _combine(
+            check_ratio_equals(floor, eps_latest, pe_floor, "P/E at floor"),
+            check_ratio_equals(cap, eps_latest, pe_cap, "P/E at cap"),
+        )
+        emit.put("pe_at_floor", pe_floor, page_for(pei), "pe_equals_price_over_diluted_eps", pe_check)
+        emit.put("pe_at_cap", pe_cap, page_for(pei), "pe_equals_price_over_diluted_eps", pe_check)
+
     bi = _find(lines, re.compile(r"Restated Consolidated Financial Information", re.I))
-    emit.put("financial_basis", "restated_consolidated" if bi >= 0 else None, page_for(bi),
-             "financial_basis_stated", (bi >= 0, "restated consolidated"))
+    bs = _find(lines, re.compile(r"Restated Financial Information", re.I))
+    basis = "restated_consolidated" if bi >= 0 else ("restated_standalone" if bs >= 0 else None)
+    if basis is None:
+        emit.null("financial_basis", "financial_basis_not_stated")
+    else:
+        emit.put("financial_basis", basis, page_for(bi if bi >= 0 else bs),
+                 "financial_basis_stated", (True, basis))
 
     # ---- D: promoter and cost of acquisition -------------------------------
-    prom = None
-    pn = _find(lines, re.compile(r"^\s*OUR PROMOTER\s*:", re.I))
+    # "OUR PROMOTER: X" and "OUR PROMOTERS: A, B AND C" — the plural form was
+    # silently unmatched, which then broke every promoter-row lookup downstream.
+    prom, prom_names = None, []
+    pn = _find(lines, re.compile(r"^\s*OUR PROMOTERS?\s*:", re.I))
     if pn >= 0:
-        prom = lines[pn].split(":", 1)[1].strip().title()
+        raw = lines[pn].split(":", 1)[1].strip()
+        raw = re.split(r"\s{2,}|(?<=[a-z])\s+INITIAL PUBLIC", raw)[0]
+        for part in re.split(r",|\bAND\b", raw, flags=re.I):
+            name = part.strip().strip(".").title()
+            if 3 <= len(name) <= 60 and re.match(r"^[A-Za-z][A-Za-z .'\-]+$", name):
+                prom_names.append(name)
+        prom = prom_names[0] if prom_names else None
     emit.put("promoter_name", prom, page_for(pn), "promoter_name_present", (bool(prom), "%s" % prom))
+    emit.put("promoter_names", prom_names or None, page_for(pn), "promoter_names_present",
+             (bool(prom_names), "%s" % prom_names))
+
+    # Promoter selling shareholders: name, shares offered and WACA per share. The
+    # share counts must add up to the offer for sale — a real arithmetic tie
+    # between two different tables of the same advertisement.
+    pss, pss_page = [], None
+    for idx, ln in enumerate(lines):
+        if not re.search(r"Promoter Selling Shareholder", ln, re.I):
+            continue
+        name = re.split(r"Promoter Selling Shareholder", ln, flags=re.I)[0].strip()
+        if not re.match(r"^[A-Za-z][A-Za-z .'\-]{2,59}$", name):
+            continue
+        vals = money_values(ln)
+        big = [v for v in vals if v >= 1000]
+        if not big:
+            continue
+        pss.append({"name": name.title(), "shares_offered": max(big), "waca": vals[-1]})
+        pss_page = page_for(idx)
+    if not pss:
+        emit.null("promoter_selling_shareholders", "no_promoter_selling_shareholder_table")
+    else:
+        emit.put("promoter_selling_shareholders", pss, pss_page,
+                 "selling_shareholder_shares_sum_equals_ofs",
+                 check_sum_equals([r["shares_offered"] for r in pss], ofs_shares,
+                                  "promoter selling shareholders vs offer for sale", tol=1.0))
 
     shares_held = pre_pct = post_pct_cap = None
     sh_page = None
     if prom:
-        si = _find(lines, re.compile(r"^\s*1\.\s+" + re.escape(prom) + r"\s+[\d,]", re.I))
+        si = _find(lines, re.compile(
+            r"^\s*1\.\s+" + re.escape(prom) + r"[\^*#\u00b0]*\s+[\d,]", re.I))
         if si >= 0:
             vals = money_values(lines[si])
             if len(vals) >= 7:
@@ -685,7 +1035,10 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
             sh_page = page_for(si)
     emit.put("promoter_shares_held", shares_held, sh_page, "promoter_shares_positive",
              (shares_held is not None and shares_held > 0, "%s" % shares_held))
-    dil = check_holding_dilution(pre_pct, post_pct_cap, shares_held, shares_cap)
+    sold_by_prom = next((r["shares_offered"] for r in pss
+                         if prom and r["name"].lower() == prom.lower()), 0.0)
+    dil = check_holding_dilution(pre_pct, post_pct_cap, shares_held, shares_cap,
+                                 sold_shares=sold_by_prom)
     emit.put("promoter_holding_pre_pct", pre_pct, sh_page, "fresh_issue_dilutes_promoter", dil)
     emit.put("promoter_holding_post_pct_at_cap", post_pct_cap, sh_page,
              "fresh_issue_dilutes_promoter", dil)
@@ -699,23 +1052,56 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
             vals = money_values(lines[wi])
             if len(vals) >= 2:
                 waca = vals[1]
-    emit.put("promoter_waca", waca, page_for(wi), "promoter_waca_positive",
+    if waca is None and pss:
+        # The cost-of-acquisition column of the selling-shareholder table carries
+        # the same figure when the standalone WACA table is not printed.
+        waca = next((r["waca"] for r in pss if prom and r["name"].lower() == prom.lower()), None)
+        wi = -1 if waca is None else wi
+    emit.put("promoter_waca", waca, page_for(wi) if wi >= 0 else pss_page,
+             "promoter_waca_positive",
              (waca is not None and waca > 0, "%s" % waca))
     if wi >= 0 and re.search(r"\bNil\b", lines[wi], re.I):
         emit.null("waca_last_1y", "bonus_nil", page_for(wi))
 
     waca_3y = mult_3y = None
     t3 = _find(lines, re.compile(r"^\s*Last three years\b", re.I))
-    if t3 >= 0:
-        vals = money_values(lines[t3])
-        if len(vals) >= 2:
-            waca_3y, mult_3y = vals[0], vals[1]
-    wc = check_waca_multiple(cap, waca_3y, mult_3y)
-    emit.put("waca_last_3y", waca_3y, page_for(t3), "cap_over_waca_equals_printed_multiple", wc)
-    emit.put("cap_multiple_last_3y", mult_3y, page_for(t3),
-             "cap_over_waca_equals_printed_multiple", wc)
+    if t3 >= 0 and re.search(r"Not Applicable", lines[t3], re.I):
+        emit.null("waca_last_3y", "not_applicable_no_qualifying_transaction", page_for(t3))
+        emit.null("cap_multiple_last_3y", "not_applicable_no_qualifying_transaction", page_for(t3))
+    else:
+        if t3 >= 0:
+            vals = money_values(lines[t3])
+            if len(vals) >= 2:
+                waca_3y, mult_3y = vals[0], vals[1]
+        wc = check_waca_multiple(cap, waca_3y, mult_3y)
+        emit.put("waca_last_3y", waca_3y, page_for(t3), "cap_over_waca_equals_printed_multiple", wc)
+        emit.put("cap_multiple_last_3y", mult_3y, page_for(t3),
+                 "cap_over_waca_equals_printed_multiple", wc)
 
-    pp = _find(lines, re.compile(r"has not undertaken a pre-?IPO placement", re.I))
+    # "- Based on secondary transactions 70.20 2.39 times 2.52 times": the WACA
+    # and BOTH printed multiples, each recomputable from the price band.
+    sec = _find(lines, re.compile(r"Based on secondary transactions\s+[\d.]+", re.I))
+    if sec < 0:
+        emit.null("waca_secondary_transactions", "secondary_transaction_waca_row_not_in_document")
+        emit.null("floor_multiple_of_waca_secondary", "secondary_transaction_waca_row_not_in_document")
+        emit.null("cap_multiple_of_waca_secondary", "secondary_transaction_waca_row_not_in_document")
+    else:
+        vals = money_values(lines[sec])
+        w_sec = f_mult = c_mult = None
+        if len(vals) >= 3:
+            w_sec, f_mult, c_mult = vals[-3:]
+        sec_check = _combine(
+            check_ratio_equals(floor, w_sec, f_mult, "floor / secondary WACA"),
+            check_ratio_equals(cap, w_sec, c_mult, "cap / secondary WACA"),
+        )
+        emit.put("waca_secondary_transactions", w_sec, page_for(sec),
+                 "price_over_secondary_waca_equals_printed_multiple", sec_check)
+        emit.put("floor_multiple_of_waca_secondary", f_mult, page_for(sec),
+                 "price_over_secondary_waca_equals_printed_multiple", sec_check)
+        emit.put("cap_multiple_of_waca_secondary", c_mult, page_for(sec),
+                 "price_over_secondary_waca_equals_printed_multiple", sec_check)
+
+    pp = _find(lines, re.compile(r"has not undertaken (?:a |any )?pre-?IPO placement", re.I))
     emit.put("pre_ipo_placement", False if pp >= 0 else None, page_for(pp),
              "pre_ipo_placement_stated", (pp >= 0, "explicitly stated as none"))
 
@@ -752,6 +1138,39 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
     emit.put("brlm_issues_3y_total", total_issues, tr_page, "closed_below_le_total", trec)
     emit.put("brlm_closed_below_total", closed_below, tr_page, "closed_below_le_total", trec)
 
+    # Listed-peer comparison table. A peer row is a company name followed by the
+    # full 10-column accounting-ratio set; the issuer's own row is excluded by the
+    # same rule (its price-dependent cells are still "[.]").
+    peers, peers_page = [], None
+    for idx, ln in enumerate(lines):
+        m = re.match(r"^\s*(.{3,60}?(?:Limited|Ltd\.?))\s+(\d.*)$", ln)
+        if not m:
+            continue
+        vals = money_values(m.group(2))
+        if len(vals) < 10:
+            continue
+        face, price, revenue_ops, mcap, pb, pe, eps_b, eps_d, ronw_pct, nav = vals[:10]
+        peers.append({"name": m.group(1).strip(), "face_value": face, "closing_price": price,
+                      "revenue_from_operations": revenue_ops, "market_cap": mcap,
+                      "pb": pb, "pe": pe, "eps_basic": eps_b, "eps_diluted": eps_d,
+                      "ronw_pct": ronw_pct, "nav": nav})
+        peers_page = page_for(idx)
+    peer_avg = None
+    pa = _find(lines, re.compile(r"^\s*Average\s+[\d.]+\s*$", re.I))
+    if pa >= 0:
+        vals = money_values(lines[pa])
+        peer_avg = vals[-1] if vals else None
+    peer_check = check_mean_equals([r["pe"] for r in peers], peer_avg,
+                                   "industry peer group P/E")
+    if not peers:
+        emit.null("peer_companies", "peer_comparison_table_not_in_document")
+        emit.null("industry_peer_pe_average", "peer_comparison_table_not_in_document")
+    else:
+        emit.put("peer_companies", peers, peers_page,
+                 "peer_pe_average_matches_printed", peer_check)
+        emit.put("industry_peer_pe_average", peer_avg, page_for(pa),
+                 "peer_pe_average_matches_printed", peer_check)
+
     gk = _find(lines, re.compile(r"Contact person\s*:", re.I))
     co = None
     if gk >= 0:
@@ -767,33 +1186,119 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
     emit.put("cin", cin, page_for(cidx), "cin_matches_mca_pattern", check_cin(cin))
 
     # ---- F1 / F3 -----------------------------------------------------------
-    bd_start = _find(lines, re.compile(r"^\s*WE ARE A\b", re.I))
+    # The one-paragraph business description sits between the offer tables and the
+    # "THE OFFER IS BEING MADE THROUGH THE BOOK BUILDING PROCESS" line. Issuers
+    # open it with "WE ARE A ..." or "Our Company <verb> ...".
+    bd_start = _find(lines, re.compile(
+        r"^\s*(?:WE ARE A\b|Our Company (?:is|processes|manufactures|operates|provides|"
+        r"designs|develops|owns|distributes)\b)", re.I))
     desc = None
     if bd_start >= 0:
         buf = []
         for ln in lines[bd_start:bd_start + 8]:
-            if re.match(r"^\s*THE ISSUE IS BEING MADE", ln, re.I):
+            if re.match(r"^\s*THE (?:ISSUE|OFFER) IS BEING MADE", ln, re.I):
                 break
             buf.append(ln.strip())
         desc = " ".join(buf).strip()
     emit.put("business_description", desc, page_for(bd_start), "description_within_length",
              check_text_length(desc, 1200))
 
-    def first_pct(rx):
-        idx = _find(lines, rx)
-        if idx < 0:
-            return None, None
-        m = re.search(r"(\d{1,3}\.\d{2})\s*%", lines[idx])
-        return (float(m.group(1)) if m else None), page_for(idx)
+    # Objects of the offer — many price band advertisements do not reprint them.
+    obj_idx = _find(lines, re.compile(r"^\s*OBJECTS OF THE (?:OFFER|ISSUE)\b", re.I))
+    if obj_idx < 0:
+        emit.null("objects_of_offer", "objects_section_not_in_document")
+    else:
+        objs = []
+        for ln in lines[obj_idx + 1:obj_idx + 12]:
+            t = ln.strip()
+            if not t or re.match(r"^[A-Z ]{12,}$", t):
+                break
+            objs.append(t)
+        emit.put("objects_of_offer", objs or None, page_for(obj_idx), "objects_listed",
+                 (bool(objs), "%s entries" % len(objs)))
 
-    top10, p1 = first_pct(re.compile(r"^\s*contributed\s+\d{1,3}\.\d{2}%", re.I))
-    women, p2 = first_pct(re.compile(r"contributing\s+\d{1,3}\.\d{2}%", re.I))
-    city, p3 = first_pct(re.compile(r"^\s*\d{1,3}\.\d{2}% and \d{1,3}\.\d{2}%, respectively", re.I))
-    emit.put("top10_brands_pct_fy2026", top10, p1, "percentage_in_range", check_percentage(top10))
-    emit.put("womenswear_pct_fy2026", women, p2, "percentage_in_range", check_percentage(women))
-    emit.put("mumbai_gmv_pct_fy2026", city, p3, "percentage_in_range", check_percentage(city))
+    # W-32: concentration KPIs are read GENERICALLY from the risk-factor /
+    # justification sentences ("<subject> ... representing X%, Y% and Z% of ..."),
+    # not as issuer-specific named fields. Each entry keeps the sentence's own
+    # subject as its label plus one percentage per fiscal year.
+    kpis, kpi_page = concentration_kpis(all_lines, fiscal_years)
+    if not kpis:
+        emit.null("concentration_kpis", "no_concentration_sentence_found")
+    else:
+        bad = [k for k in kpis if not (0 < k["value_pct"] <= 100)]
+        emit.put("concentration_kpis", kpis, kpi_page, "concentration_percentages_in_range",
+                 (not bad, "%s entries" % len(kpis) if not bad else "out of range: %s" % bad))
 
     return {"unit": unit, "fiscal_years": fiscal_years}
+
+
+CONCENTRATION_TRIGGER = re.compile(
+    r"\b(?:representing|accounted for|contributed|contributing|comprising|constituting)\b", re.I)
+# A concentration sentence is ABOUT a concentration; the trigger word alone also
+# appears in unrelated prose that happens to sit beside a percentage column.
+CONCENTRATION_SUBJECT = re.compile(
+    r"\b(?:top\s+\d+\s+\w+|concentrat\w*|significant portion|"
+    r"(?:southern|northern|eastern|western|south|north|east|west)\s+india|"
+    r"geograph\w*|single (?:customer|supplier|brand)|largest\s+\w+)\b", re.I)
+PCT = re.compile(r"(\d{1,3}(?:\.\d{1,2})?)\s*%")
+# The sentence's SUBJECT is what the percentages are about — take the words that
+# immediately precede the first predicate verb.
+_PREDICATE = re.compile(
+    r"\b(amounted|accounted|contributed|contributing|represent\w*|stood|was|were|is|are|had)\b",
+    re.I)
+_LEAD_NOISE = re.compile(r"^(?:our|we|the|its|their|a|an|of|for|and|in|to)$", re.I)
+
+
+def _kpi_label(prefix):
+    """Slug of the sentence subject that the percentages describe."""
+    verb = _PREDICATE.search(prefix)
+    subject = prefix[:verb.start()] if verb else prefix
+    words = [w for w in re.findall(r"[A-Za-z0-9]+", subject)
+             if not re.fullmatch(r"(?:19|20)\d{2}", w)][-6:]
+    while words and (_LEAD_NOISE.match(words[0]) or words[0].isdigit()):
+        words.pop(0)
+    if len(words) < 2 or any(len(w) >= 3 and w.isdigit() for w in words):
+        return None
+    return "_".join(w.lower() for w in words)
+
+
+def concentration_kpis(all_lines, fiscal_years):
+    """Generic replacement for the three Purple-Style-Labs-specific fields (W-32).
+
+    Scans concentration sentences in the risk-factor / justification prose for a
+    run of percentages and returns [{label, value_pct, fiscal_year}]. Lines are
+    read pairwise because the newspaper layout wraps a sentence across two lines,
+    and a repeated percentage tuple is emitted once (the same fact is restated in
+    the "Justification for Basis for the Offer Price" section).
+    """
+    out, page, seen_label, seen_values = [], None, set(), set()
+    texts = [ln for _i, ln in all_lines]
+    for idx in range(len(texts)):
+        # Three lines: the newspaper wraps a long concentration sentence over up
+        # to three physical lines of its column.
+        joined = " ".join(texts[idx:idx + 3])
+        for sentence in re.split(r"(?<=[.])\s+(?=[A-Z0-9])", joined):
+            trig = CONCENTRATION_TRIGGER.search(sentence)
+            if not trig or not CONCENTRATION_SUBJECT.search(sentence):
+                continue
+            pcts = [float(m.group(1)) for m in PCT.finditer(sentence[trig.start():])]
+            label = _kpi_label(sentence[:trig.start()])
+            if not pcts or not label or label in seen_label:
+                continue
+            years = [int(y) for y in re.findall(r"Fiscal\s+(20\d{2})", sentence)]
+            years = sorted(set(years), reverse=True) or sorted(fiscal_years, reverse=True)
+            pcts = pcts[:len(years)] if years else pcts
+            key = tuple(pcts)
+            if not pcts or key in seen_values:
+                continue
+            seen_label.add(label)
+            seen_values.add(key)
+            for n, value in enumerate(pcts):
+                out.append({"label": label, "value_pct": value,
+                            "fiscal_year": years[n] if n < len(years) else None})
+            if page is None:
+                page = all_lines[idx][0]
+    return out, page
 
 
 # --------------------------------------------------------------------------- #
@@ -825,6 +1330,34 @@ def extract_rhp(page_texts, emit):
         series = {str(k): v for k, v in (metrics.get(key) or {}).items()}
         emit.put_c_money(unit, name, series or None, None, "%s_year_series" % name,
                           check_fy_series(series, fiscal_years))
+
+    # The RHP cover states its own date: "RED HERRING PROSPECTUS / Dated: August 25, 2026".
+    rhp_date = None
+    rhp_page = None
+    dated_rx = re.compile(r"red herring prospectus\s*(?:\n|\s)*dated\s*:?\s*", re.I)
+    for idx, text in page_texts[:3]:
+        m = dated_rx.search(text or "")
+        if m:
+            rhp_date = _iso((text or "")[m.end():m.end() + 60])
+            rhp_page = idx
+            break
+    emit.put("rhp_filing_date", rhp_date, rhp_page, "rhp_filing_date_on_cover",
+             (rhp_date is not None, "%s" % rhp_date))
+
+    # W-33: surface the shared core's named plausibility checks, and the metric it
+    # rejected, instead of silently emitting a number that failed one.
+    for chk in pnl.get("checks") or []:
+        emit.put("financial_plausibility_%s" % chk["name"], chk["passed"] or None, None,
+                 chk["name"], (chk["passed"], chk["detail"]))
+    # When no unit line exists at all, put_c_money has already nulled every money
+    # field with the C7 reason `unit_unknown`; do not overwrite that clearer
+    # classification with the same finding worded as a plausibility failure.
+    for key, reason in ((pnl.get("rejected") or {}) if unit is not None else {}).items():
+        name = {"revenue": "revenue_by_fy", "totalIncome": "total_income_by_fy",
+                "profit": "pat_by_fy", "eps": "eps_basic_by_fy",
+                "ebitda": "ebitda_by_fy", "netWorth": "net_worth_by_fy"}.get(key)
+        if name:
+            emit.put(name, None, None, "plausibility_rejected", (False, reason))
 
     # F2: numbered risk-factor headings inside the "Risk Factors" section.
     headings, first_page = set(), None

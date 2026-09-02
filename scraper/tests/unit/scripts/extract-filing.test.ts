@@ -267,3 +267,116 @@ describe('extract_filing — check functions reject bad documents (synthetic, of
     expect(mutated.extraction_status).toBe('PARTIAL');
   });
 });
+
+/**
+ * Deepa Jewellers (DEEPA) — W-32/W-33/W-34/W-35.
+ *
+ * Runs OFFLINE through the `--texts` seam on page text captured once from the
+ * two real documents (scraper/tests/fixtures/extractor/deepa-*.json), so unlike
+ * the Purple Style Labs blocks above these run everywhere, CI included. The
+ * oracle `docs/reviews/fixtures/deepa-jewellers-expected.json` is transcribed by
+ * hand from the printed documents, never from extractor output.
+ */
+const DEEPA = JSON.parse(
+  readFileSync(path.join(REPO_ROOT, 'docs/reviews/fixtures/deepa-jewellers-expected.json'), 'utf-8'),
+);
+const DEEPA_AD_PAGES = 'tests/fixtures/extractor/deepa-price-band-ad-pages.json';
+const DEEPA_RHP_PAGES = 'tests/fixtures/extractor/deepa-rhp-pages.json';
+
+describe('extract_filing — Deepa Jewellers price band advertisement (captured page text)', () => {
+  let out: Extraction;
+  beforeAll(() => {
+    if (!pythonAvailable) return;
+    out = runPython(['--texts', DEEPA_AD_PAGES, '--doc-type', 'PRICE_BAND_AD']);
+  });
+
+  it('every oracle field matches the printed advertisement', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const mismatches: string[] = [];
+    for (const [key, expected] of Object.entries(DEEPA.PRICE_BAND_AD)) {
+      const field = out.fields[key];
+      if (!field) {
+        mismatches.push(`${key}: not emitted`);
+        continue;
+      }
+      if (JSON.stringify(field.value) !== JSON.stringify(expected)) {
+        mismatches.push(`${key}: got ${JSON.stringify(field.value)} want ${JSON.stringify(expected)}`);
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it('every emitted check passed — no field is written on a failed check', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const failed = Object.entries(out.fields)
+      .filter(([, f]) => !f.check.passed)
+      .map(([k, f]) => `${k}: ${f.check.detail}`);
+    expect(failed).toEqual([]);
+    expect(out.extraction_status).toBe('OK');
+  });
+
+  it('fields the advertisement does not carry are null WITH a reason', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    for (const [key, reason] of Object.entries(DEEPA._null_with_reason.PRICE_BAND_AD)) {
+      const field = out.fields[key];
+      expect(field, key).toBeDefined();
+      expect(field.value, key).toBeNull();
+      expect(field.check.detail, key).toBe(reason);
+    }
+  });
+
+  it('W-32: no issuer-specific KPI field exists; concentration KPIs are a generic list', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    for (const gone of ['top10_brands_pct_fy2026', 'womenswear_pct_fy2026', 'mumbai_gmv_pct_fy2026']) {
+      expect(Object.keys(out.fields), gone).not.toContain(gone);
+    }
+    const kpis = out.fields.concentration_kpis.value as { label: string; value_pct: number }[];
+    expect(kpis.length).toBeGreaterThan(0);
+    for (const entry of kpis) {
+      expect(entry.label).toMatch(/^[a-z0-9_]+$/);
+      expect(entry.value_pct).toBeGreaterThan(0);
+      expect(entry.value_pct).toBeLessThanOrEqual(100);
+    }
+  });
+});
+
+describe('extract_filing — Deepa Jewellers RHP (captured page text)', () => {
+  let out: Extraction;
+  beforeAll(() => {
+    if (!pythonAvailable) return;
+    out = runPython(['--texts', DEEPA_RHP_PAGES, '--doc-type', 'RHP']);
+  });
+
+  it('W-33/W-35: the restated P&L reads exactly what the prospectus prints, in millions', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    expect(out.unit).toBe(DEEPA.RHP.unit);
+    expect(out.fiscal_years).toEqual(DEEPA.RHP.fiscal_years);
+    // net_worth_by_fy is asserted only in the live full-PDF run: the net-worth
+    // row sits on an annexure page outside the four pages captured here.
+    for (const key of ['revenue_by_fy', 'total_income_by_fy', 'pat_by_fy', 'eps_basic_by_fy',
+      'ebitda_by_fy', 'cin', 'rhp_filing_date']) {
+      expect(out.fields[key].value, key).toEqual((DEEPA.RHP as Record<string, unknown>)[key]);
+      expect(out.fields[key].check.passed, key).toBe(true);
+    }
+  });
+
+  it('the advertisement and the prospectus agree on every shared figure', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const ad = runPython(['--texts', DEEPA_AD_PAGES, '--doc-type', 'PRICE_BAND_AD']);
+    for (const key of ['revenue_by_fy', 'pat_by_fy', 'ebitda_by_fy', 'eps_basic_by_fy']) {
+      expect(ad.fields[key].value, key).toEqual(out.fields[key].value);
+    }
+  });
+
+  it('the named plausibility checks all ran and passed', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const names = Object.keys(out.fields).filter((k) => k.startsWith('financial_plausibility_'));
+    expect(names).toEqual(expect.arrayContaining([
+      'financial_plausibility_pat_not_above_revenue',
+      'financial_plausibility_ebitda_at_least_pat',
+      'financial_plausibility_yoy_ratio_within_bounds',
+      'financial_plausibility_unit_stated_near_table',
+    ]));
+    for (const n of names) expect(out.fields[n].check.passed, n).toBe(true);
+  });
+});

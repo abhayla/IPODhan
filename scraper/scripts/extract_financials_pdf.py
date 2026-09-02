@@ -44,6 +44,9 @@ MARCH = re.compile(r"(?:March\s+31,?\s*|31\s+March\s+)(20\d{2})", re.I)
 # Interim (nine-month / stub) column period-ends — used to count leading interim
 # columns so they are read and then DROPPED (we only keep annual fiscal years).
 DEC_INTERIM = re.compile(r"(?:December\s+31,?\s*|31\s+December\s+)(20\d{2})", re.I)
+# Continuation form of a wrapped "March 31, YYYY" header cell — only consulted
+# when a full MARCH anchor already matched on the same header (see _parse_pnl_page).
+MARCH_LOOSE = re.compile(r"(?<!\d)31,\s*(20\d{2})")
 
 # Metric label -> output key. Order matters (first match wins per line).
 # `profit` matches loss-makers too — a loss-making issuer's bottom line reads
@@ -77,7 +80,28 @@ def _normalize_numbers(line):
     line = re.sub(r"\s+\)", ")", line)            # "(23 )"  -> "(23)"
     line = re.sub(r"(\d)\s+,(\d)", r"\1,\2", line)  # "4 ,089" -> "4,089"
     line = re.sub(r"(\d),\s+(\d)", r"\1,\2", line)  # "4, 089" -> "4,089"
-    return line
+    return _repair_split_digits(line)
+
+
+# W-33 root cause. On some prospectus annexure pages pdfplumber inserts a space
+# after the FIRST character of every numeric cell: "19,266.76" comes back as
+# "1 9,266.76", "12.78" as "1 2.78", "0.73" as "0 .73". The old repairs covered
+# only a space ADJACENT TO THE COMMA ("4 ,089" / "4, 089"), so the leading digit
+# became its own token and the row's trailing-N alignment silently read
+# 13,970.10 as 3,970.10 and 10,245.68 as 245.68 (Deepa Jewellers RHP, page 256).
+#
+# The repair is deliberately conservative: it fires only when a line carries at
+# least TWO isolated single-digit tokens each followed by whitespace and a
+# decimal number. On a correctly tokenised money row ("19,277.25 14,001.00") the
+# digit before every space is part of a longer number, so the lookbehind blocks
+# every match and the line is returned untouched.
+SPLIT_DIGIT = re.compile(r"(?<![\d.,])(\d)\s+(?=[\d,]*\.\d)")
+
+
+def _repair_split_digits(line):
+    if len(SPLIT_DIGIT.findall(line)) < 2:
+        return line
+    return SPLIT_DIGIT.sub(r"\1", line)
 
 
 def money_values(line):
@@ -96,15 +120,32 @@ def money_values(line):
     return out
 
 
+# W-35: the unit phrase may carry a currency glyph/word between "in" and the unit
+# ("(All amounts are in Rs million)", "(in ` millions)"), and pdfplumber emits the
+# rupee sign as a glyph. Matching "in <unit>" literally missed those and silently
+# fell through to the "lakhs" default on a document that says million.
+UNIT_PHRASE = re.compile(
+    r"in\s+(?:(?:₹|`|rs\.?|inr|rupees?|indian\s+rupees)\s*)?(lakh|cror|million)", re.I)
+
+
+def detect_unit_detail(text):
+    """(unit, phrase) read from THIS text, or (None, None) when unstated.
+
+    Returns the matched phrase so the caller can report WHICH statement it used
+    (W-35) instead of an unattributable unit.
+    """
+    m = UNIT_PHRASE.search(text or "")
+    if not m:
+        return None, None
+    stem = m.group(1).lower()
+    unit = {"lakh": "lakhs", "cror": "crores", "million": "millions"}[stem]
+    return unit, m.group(0).strip()
+
+
 def detect_unit(text):
-    t = text.lower()
-    if re.search(r"in\s+lakh", t):
-        return "lakhs"
-    if re.search(r"in\s+cror", t):
-        return "crores"
-    if re.search(r"in\s+million", t):
-        return "millions"
-    return "lakhs"  # SME RHP default; consumer still applies plausibility bounds
+    unit, _phrase = detect_unit_detail(text)
+    # SME RHP default; the caller still gates on `unitStated` before writing money.
+    return unit or "lakhs"
 
 
 def extract(pdf_path):
@@ -169,6 +210,17 @@ def _parse_pnl_page(text):
         yi = int(y)
         if yi not in annual_years:
             annual_years.append(yi)
+    if annual_years:
+        # W-33 (second cause): a wrapped summary header prints
+        # "For the year ending March 31, 2026 / 31, 2024 / March 31, 2025" — the
+        # middle column loses its "March" to the line break, so the strict
+        # pattern saw only TWO annual columns and the trailing-N alignment then
+        # dropped a real column. Once at least one full "March 31, YYYY" anchor
+        # is present, also accept the bare "31, YYYY" continuation form.
+        for y in MARCH_LOOSE.findall(header):
+            yi = int(y)
+            if yi not in annual_years:
+                annual_years.append(yi)
     annual_years.sort(reverse=True)
     if not annual_years:
         return None
@@ -189,13 +241,166 @@ def _parse_pnl_page(text):
                 break
     if not metrics:
         return None
+    unit, phrase = detect_unit_detail(text)
     return {
-        "unit": detect_unit(text),
+        "unit": unit or "lakhs",
+        "unitStated": unit is not None,
+        "unitPhrase": phrase,
         "years": annual_years,
         "metrics": metrics,
         "align": align,
         "score": len(metrics),
     }
+
+
+# --------------------------------------------------------------------------- #
+# W-33 plausibility gate. Column mis-alignment and number-token damage produce
+# values that are individually well-formed and arithmetically absurd (PAT larger
+# than revenue, a 3,970x year-on-year jump, EPS of 95 on a PAT of 5.8). Every
+# check below is NAMED, runs on the parsed series, and REJECTS the offending
+# metric — the extractor then emits null with the failing check's reason instead
+# of a wrong number.
+# --------------------------------------------------------------------------- #
+YOY_MIN, YOY_MAX = 0.2, 5.0
+
+
+def _shared_years(a, b):
+    return sorted(set(a) & set(b), reverse=True)
+
+
+def check_pat_not_above_revenue(metrics):
+    """Profit after tax can never exceed revenue from operations."""
+    rev, pat = metrics.get("revenue") or {}, metrics.get("profit") or {}
+    years = _shared_years(rev, pat)
+    if not years:
+        return True, "not applicable (revenue or PAT missing)", []
+    bad = [y for y in years if pat[y] > rev[y] * 1.0001]
+    if bad:
+        return (False,
+                "PAT above revenue in %s (%s)" % (
+                    bad, ", ".join("%s: %s > %s" % (y, pat[y], rev[y]) for y in bad)),
+                ["profit"])
+    return True, "PAT <= revenue for %s years" % len(years), []
+
+
+def check_ebitda_at_least_pat(metrics):
+    """For a profitable year EBITDA (pre-interest, pre-tax, pre-depreciation)
+    cannot be below PAT."""
+    ebitda, pat = metrics.get("ebitda") or {}, metrics.get("profit") or {}
+    years = [y for y in _shared_years(ebitda, pat) if pat[y] > 0]
+    if not years:
+        return True, "not applicable (no profitable year with EBITDA)", []
+    bad = [y for y in years if ebitda[y] < pat[y] * 0.99]
+    if bad:
+        return False, "EBITDA below PAT in %s" % bad, ["ebitda"]
+    return True, "EBITDA >= PAT for %s profitable years" % len(years), []
+
+
+def check_yoy_ratio_within_bounds(metrics):
+    """No published annual series moves by less than 0.2x or more than 5x in a
+    single year without the parse being suspect. A dropped leading digit
+    (13,970.10 read as 3,970.10) shows up here as a 3,970x step."""
+    failed, details, ok = [], [], 0
+    for key, series in sorted(metrics.items()):
+        years = sorted(series, reverse=True)
+        for newer, older in zip(years, years[1:]):
+            a, b = series[newer], series[older]
+            if a == 0 or b == 0:
+                continue
+            ratio = abs(a) / abs(b)
+            if ratio < YOY_MIN or ratio > YOY_MAX:
+                failed.append(key)
+                details.append("%s %s/%s = %.2fx" % (key, newer, older, ratio))
+            else:
+                ok += 1
+    if failed:
+        return False, "year-on-year step outside %sx..%sx: %s" % (
+            YOY_MIN, YOY_MAX, "; ".join(details)), sorted(set(failed))
+    return True, "%s year-on-year steps within %sx..%sx" % (ok, YOY_MIN, YOY_MAX), []
+
+
+def check_eps_times_shares_matches_pat(metrics, weighted_shares, tol=0.02):
+    """EPS x weighted average shares must reproduce PAT. Skipped (not failed)
+    when the share count is not available to this document."""
+    eps, pat = metrics.get("eps") or {}, metrics.get("profit") or {}
+    if not weighted_shares:
+        return True, "skipped: weighted share count unavailable", []
+    years = _shared_years(eps, pat)
+    if not years:
+        return True, "not applicable (EPS or PAT missing)", []
+    bad = []
+    for y in years:
+        shares = weighted_shares.get(y) or weighted_shares.get(str(y))
+        if not shares or pat[y] == 0:
+            continue
+        implied = eps[y] * shares
+        if abs(implied - pat[y]) / abs(pat[y]) > tol:
+            bad.append("%s: EPS %s x %s shares = %.2f vs PAT %s" % (y, eps[y], shares, implied, pat[y]))
+    if bad:
+        return False, "; ".join(bad), ["eps"]
+    return True, "EPS x shares reproduces PAT", []
+
+
+def check_unit_stated_near_table(unit_stated, unit_phrase, unit_page, table_page):
+    """W-35: the magnitude of every parsed number depends on the unit, so the
+    unit must come from a statement ON (or adjacent to) the table that was read
+    — never from a global first match elsewhere in a 400-page document."""
+    if not unit_stated:
+        return False, "no explicit unit statement on the parsed table's page", []
+    if unit_page is not None and table_page is not None and abs(unit_page - table_page) > 1:
+        return False, "unit statement on page %s is not adjacent to the table on page %s" % (
+            unit_page, table_page), []
+    return True, "read %r from page %s" % (unit_phrase, unit_page), []
+
+
+def check_cross_document_agreement(a, b, tol=0.01, label_a="doc A", label_b="doc B"):
+    """Agreement between the same metric series read from two documents (the
+    price band advertisement's KPI table and the RHP's restated summary). Both
+    are published by the same issuer on the same day, so a disagreement means one
+    of the two was mis-parsed and NEITHER may be written."""
+    a = a or {}
+    b = b or {}
+    compared, bad = 0, []
+    for key in sorted(set(a) & set(b)):
+        sa, sb = a[key] or {}, b[key] or {}
+        for y in _shared_years(sa, sb):
+            va, vb = float(sa[y]), float(sb[y])
+            denom = max(abs(va), abs(vb), 1e-9)
+            compared += 1
+            if abs(va - vb) / denom > tol:
+                bad.append("%s %s: %s (%s) vs %s (%s)" % (key, y, va, label_a, vb, label_b))
+    if not compared:
+        return True, "no overlapping metric/year between the two documents", []
+    if bad:
+        return False, "; ".join(bad), sorted({x.split()[0] for x in bad})
+    return True, "%s values agree within %.1f%%" % (compared, tol * 100), []
+
+
+def run_plausibility(metrics, unit_stated, unit_phrase, unit_page, table_page,
+                     weighted_shares=None):
+    """Run every named check; return (checks, surviving metrics, rejected)."""
+    results = [
+        ("pat_not_above_revenue",) + check_pat_not_above_revenue(metrics),
+        ("ebitda_at_least_pat",) + check_ebitda_at_least_pat(metrics),
+        ("yoy_ratio_within_bounds",) + check_yoy_ratio_within_bounds(metrics),
+        ("eps_times_shares_matches_pat",) + check_eps_times_shares_matches_pat(
+            metrics, weighted_shares),
+        ("unit_stated_near_table",) + check_unit_stated_near_table(
+            unit_stated, unit_phrase, unit_page, table_page),
+    ]
+    checks, rejected = [], {}
+    for name, passed, detail, offenders in results:
+        checks.append({"name": name, "passed": bool(passed), "detail": detail})
+        if not passed:
+            for key in offenders:
+                rejected.setdefault(key, "%s: %s" % (name, detail))
+    # The unit gate is document-wide: with no trustworthy unit NO magnitude may be
+    # written, so every metric is rejected, not just one.
+    if not results[-1][1]:
+        for key in list(metrics):
+            rejected.setdefault(key, "unit_stated_near_table: %s" % results[-1][2])
+    kept = {k: v for k, v in metrics.items() if k not in rejected}
+    return checks, kept, rejected
 
 
 def extract_from_texts(page_texts):
@@ -206,19 +411,31 @@ def extract_from_texts(page_texts):
     "extractor produced nothing" rather than persist silently-empty financials.
     """
     result = {
-        "unit": "lakhs", "annualYears": [], "metrics": {}, "pages": 0,
-        "metricsFound": 0, "lowConfidence": True,
+        "unit": "lakhs", "unitStated": False, "unitPage": None, "unitPhrase": None,
+        "annualYears": [], "metrics": {}, "pages": 0,
+        "metricsFound": 0, "lowConfidence": True, "checks": [], "rejected": {},
     }
 
     # 1. Parse EVERY candidate P&L page; keep the richest (most metrics, then most
     #    annual columns). This skips summary/index pages that carry the title but no
     #    data rows, and reads the unit from the chosen DATA page (issue #67).
-    candidates = [c for c in (_parse_pnl_page(t) for _i, t in page_texts) if c]
+    candidates = []
+    for idx, text in page_texts:
+        parsed = _parse_pnl_page(text)
+        if parsed:
+            parsed["page"] = idx
+            candidates.append(parsed)
     if not candidates:
         return result
-    best = max(candidates, key=lambda c: (c["score"], len(c["years"])))
+    # A page that states its own unit and carries more annual columns is a better
+    # read of the same statement than a garbled annexure page (W-33/W-35).
+    best = max(candidates, key=lambda c: (c["score"], len(c["years"]), c["unitStated"]))
 
     result["unit"] = best["unit"]
+    result["unitStated"] = best["unitStated"]
+    result["unitPhrase"] = best["unitPhrase"]
+    result["unitPage"] = best["page"] if best["unitStated"] else None
+    result["pnlPage"] = best["page"]
     result["annualYears"] = best["years"]
     result["metrics"] = dict(best["metrics"])
     align = best["align"]
@@ -236,7 +453,17 @@ def extract_from_texts(page_texts):
         if all(k2 in result["metrics"] for _, k2 in OTHER_METRICS):
             break
 
-    # 3. Confidence signal — empty, or no revenue/total-income anchor, is low-confidence.
+    # 3. Plausibility gate (W-33): a metric that fails a named check is DROPPED,
+    #    so the consumer sees null-with-a-reason rather than a confident wrong
+    #    number. `rejected` carries the failing check and its detail per metric.
+    checks, kept, rejected = run_plausibility(
+        result["metrics"], result["unitStated"], result["unitPhrase"],
+        result["unitPage"], result.get("pnlPage"))
+    result["checks"] = checks
+    result["metrics"] = kept
+    result["rejected"] = rejected
+
+    # 4. Confidence signal — empty, or no revenue/total-income anchor, is low-confidence.
     result["metricsFound"] = len(result["metrics"])
     result["lowConfidence"] = result["metricsFound"] == 0 or not (
         "revenue" in result["metrics"] or "totalIncome" in result["metrics"]
