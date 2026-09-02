@@ -60,7 +60,8 @@ import {
   STEP_LEDGER_WINDOW_HOURS,
   crossCheckNseStatuses,
 } from './lib/detection-floor-checks.mjs';
-import { checkFixMergedNotServed } from './lib/fix-served-checks.mjs';
+import { checkFixMergedNotServed, checkDeployFailureOpen } from './lib/fix-served-checks.mjs';
+import { DEPLOY_STATUS_FILE } from './deploy-status.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..');
@@ -831,11 +832,38 @@ function getRepoSlug() {
 
 function fetchMergedFixLiveBugPRs(repo) {
   try {
-    const raw = execFileSync('gh', ['pr', 'list', '--repo', repo, '--state', 'merged', '--label', 'fixes-live-bug', '--json', 'number,mergedAt', '--limit', '100'], { encoding: 'utf8', timeout: 15000 });
-    return JSON.parse(raw);
+    const raw = execFileSync('gh', ['pr', 'list', '--repo', repo, '--state', 'merged', '--label', 'fixes-live-bug', '--json', 'number,mergedAt,mergeCommit', '--limit', '100'], { encoding: 'utf8', timeout: 15000 });
+    const prs = JSON.parse(raw);
+    // mergeSha powers the T-425 m2 ancestry check below; mergeCommit can be
+    // null/absent on very old gh CLI versions - the predicate falls back to
+    // the time compare when it is.
+    return prs.map((pr) => ({ number: pr.number, mergedAt: pr.mergedAt, mergeSha: pr.mergeCommit?.oid ?? null }));
   } catch (e) {
     console.log(`[m_fix_merged_not_served] gh pr list failed: ${e.message}`);
     return null;
+  }
+}
+
+// T-425 m2: ground truth over the time-compare heuristic when both SHAs are
+// actually present in this checkout (actions/checkout fetch-depth 0 in
+// deploy-linux.yml gives the runner full history). `git cat-file -e` first,
+// so a SHA missing locally falls back to the time compare instead of a
+// misleading git error; `merge-base --is-ancestor` exit 0/1 is git's own
+// documented ancestry answer.
+function isAncestorLocal(mergeSha, servedSha) {
+  if (!mergeSha || !servedSha) return null;
+  try {
+    execFileSync('git', ['cat-file', '-e', mergeSha], { cwd: REPO_ROOT, timeout: 5000 });
+    execFileSync('git', ['cat-file', '-e', servedSha], { cwd: REPO_ROOT, timeout: 5000 });
+  } catch {
+    return null; // not both in the local checkout - fall back to time compare
+  }
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', mergeSha, servedSha], { cwd: REPO_ROOT, timeout: 5000 });
+    return true; // exit 0: mergeSha IS an ancestor of servedSha -> served
+  } catch (e) {
+    if (e.status === 1) return false; // exit 1: git's documented "not an ancestor"
+    return null; // any other error (e.g. unrelated histories) - fall back
   }
 }
 
@@ -871,11 +899,35 @@ async function checkN() {
   const servedSha = await fetchServedSha(BASE_URL);
   const servedCommitTime = getCommitTime(servedSha);
 
-  const result = checkFixMergedNotServed({ mergedPRs, servedSha, servedCommitTime });
+  const result = checkFixMergedNotServed({ mergedPRs, servedSha, servedCommitTime, isAncestor: isAncestorLocal });
   if (result.status === 'FAIL') {
     for (const o of result.offenders) notify('m_fix_merged_not_served', 'P1', o.number, `Merged fixes-live-bug PR #${o.number} not served for ${o.ageHours}h`, result.reason);
   }
   record('m_fix_merged_not_served', 'every merged fixes-live-bug PR is served within 24h', result.status, result.reason);
+}
+
+// ---- (o): a deploy-failure STATUS row that was never read back -----------
+// T-425 review finding: the STATUS row scripts/deploy-status.mjs writes/clears
+// is otherwise write-only - nothing ever reads it back, so a row left open
+// (a slot that never redeploys, or a clear that itself failed) sits invisible
+// on disk forever. This is that missing read.
+function readDeployStatusMapForAudit() {
+  if (!existsSync(DEPLOY_STATUS_FILE)) return {}; // no deploy has ever failed - a real PASS, not unreadable
+  try {
+    return JSON.parse(readFileSync(DEPLOY_STATUS_FILE, 'utf8'));
+  } catch (e) {
+    console.log(`[m_deploy_failure_open] could not read/parse ${DEPLOY_STATUS_FILE}: ${e.message}`);
+    return null; // unreadable/corrupt - UNVERIFIABLE, never a silent PASS
+  }
+}
+
+function checkO() {
+  const statusMap = readDeployStatusMapForAudit();
+  const result = checkDeployFailureOpen({ statusMap });
+  if (result.status === 'FAIL') {
+    for (const o of result.offenders) notify('m_deploy_failure_open', 'P1', o.slot, `Deploy-failure STATUS row for slot ${o.slot} open for ${o.ageHours}h`, result.reason);
+  }
+  record('m_deploy_failure_open', 'no deploy-failure STATUS row is open for more than 24h', result.status, result.reason);
 }
 
 async function sendNotifications(payloads) {
@@ -922,6 +974,7 @@ async function main() {
   await checkJ();
   await checkM();
   await checkN();
+  checkO();
 
   const failed = results.filter((r) => r.status === 'FAIL');
   const unverifiable = results.filter((r) => r.status === 'UNVERIFIABLE');

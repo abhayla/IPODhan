@@ -287,6 +287,17 @@
       "warnThreshold": "same comparison, but the merge is under 24h old — a normal deploy-lag window, not yet an outage",
       "severity": "P1",
       "unverifiableWhen": "gh could not list merged fixes-live-bug PRs, OR the served SHA could not be read (unreachable / returned \"unknown\"), OR the served SHA has no locally-known commit time"
+    },
+    {
+      "id": "m_deploy_failure_open",
+      "findingClass": "the deploy-failure STATUS row (scripts/deploy-status.mjs) is write-only - written on failure, cleared on the next success, but never read back - so a row can sit open on disk indefinitely with nothing surfacing it",
+      "round7Findings": [],
+      "sourceTask": "T-425",
+      "registryClass": "merged-fix-never-deployed-while-bug-live",
+      "failThreshold": "any slot's deploy-failure STATUS row (deploy-failure-status.json) has been open for more than 24h",
+      "warnThreshold": "a slot's row is open but under 24h old - a normal in-progress-fix window, not yet an outage",
+      "severity": "P1",
+      "unverifiableWhen": "the deploy-failure-status.json file exists but could not be read/parsed (an ABSENT file is a legitimate PASS - no deploy has ever failed)"
     }
   ],
   "notCoveredByThisManifest": [
