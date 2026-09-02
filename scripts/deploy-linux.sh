@@ -104,10 +104,13 @@
 # DEPLOY_MUTEX_MAX_WAIT_SECONDS, DEPLOY_MUTEX_POLL_SECONDS,
 # DEPLOY_HEALTH_TIMEOUT_SECONDS, DEPLOY_FAIL_BUILD (dry-run test hook — set
 # to force the "build" step to fail so the abort/no-flip path is exercised),
-# DEPLOY_DRYRUN_PM2_RELEASE_DIRS (dry-run test hook — colon-separated release
-# dirs to simulate as "still referenced by a live pm2 process" during
-# pruning), DEPLOY_DRYRUN_VERSION_MISMATCH (dry-run test hook — set to force
-# the post-flip /api/version sha check to simulate a mismatch).
+# DEPLOY_FAIL_PREFLIGHT (dry-run test hook — set to force the T-406 runtime
+# preflight to fail even in --dry-run, so the abort/no-flip/no-pm2-stop path
+# is exercised without a real box), DEPLOY_DRYRUN_PM2_RELEASE_DIRS (dry-run
+# test hook — colon-separated release dirs to simulate as "still referenced
+# by a live pm2 process" during pruning), DEPLOY_DRYRUN_VERSION_MISMATCH
+# (dry-run test hook — set to force the post-flip /api/version sha check to
+# simulate a mismatch).
 
 set -Eeuo pipefail
 
@@ -230,6 +233,56 @@ if (( DRY_RUN )); then
 else
   log "Required-keys assert against $WEB_ENV_FILE / $SCRAPER_ENV_FILE"
   bash "$SCRIPT_DIR/assert-env-keys.sh" "$WEB_ENV_FILE" "$SCRAPER_ENV_FILE" "$REPO_ROOT/scraper/src"
+fi
+
+# ------------------------------------------- 1.5 runtime preflight (T-406)
+# Stage 9 of the test ladder: the box PM2 is about to be restarted on needs
+# more than green migrations — python3+pdfplumber (DRHP PDF extraction),
+# tesseract (WARN-only until E4), an ambient TZ sane per the T-327 decision,
+# a writable prospectus store with headroom, node >= 20, and
+# ADMIN_API_TOKEN for the scraper's --source=all cycle. Runs BEFORE `pm2
+# stop`/the atomic flip (T-406 round-2 F1 fix) — a FAIL here leaves
+# `current` untouched, PM2 untouched, and the scraper running exactly as it
+# was; there is nothing to roll back. Running this AFTER the flip (the
+# round-1 shape) was the bug: a FAIL there still exited through the
+# `resume_scraper` EXIT trap with SCRAPER_RESUME_TARGET="new", which started
+# the scraper on the NEW release directory — the box this preflight had just
+# declared unfit — and cron would restart it every 30 min. No `|| true`
+# here: a FAIL must abort the deploy loudly, same as assert-env-keys.sh /
+# the migrations step above.
+run_runtime_preflight() {
+  if (( DRY_RUN )); then
+    if [ "${DEPLOY_FAIL_PREFLIGHT:-0}" = "1" ]; then
+      echo "[dry-run] simulated runtime preflight FAILURE (DEPLOY_FAIL_PREFLIGHT=1)" >&2
+      return 1
+    fi
+    log "[dry-run] skipping runtime preflight (no real box/env to check)"
+    return 0
+  fi
+  if [ ! -r "$SCRAPER_ENV_FILE" ]; then
+    fatal "scraper env file missing/unreadable: $SCRAPER_ENV_FILE (cannot run runtime preflight)"
+  fi
+  log "Running VPS runtime preflight (T-406)"
+  # T-406 round-2 F2 fix: source scraper.env and run the preflight check in
+  # a SUBSHELL. This is defense-in-depth, not the only guard against the web
+  # env's values leaking downstream: the web env (WEB_ENV_FILE) is sourced
+  # fresh, in the main shell, later in build_release() and restart_pm2()
+  # (deploy-linux.sh:446,483) — those re-sources are what actually make
+  # `pm2 start ipodhan-web` see the correct web env regardless of what this
+  # preflight sourced. The subshell here additionally means scraper.env's
+  # DATABASE_URL/REDIS_*/NODE_ENV/ADMIN_API_TOKEN never touch the main
+  # shell's exported env at all, so this check can't perturb anything that
+  # runs between here and the later re-sources (e.g. the mutex/status calls).
+  ( set -a
+    # shellcheck disable=SC1090  # per-slot generated env file, path known at runtime
+    . "$SCRAPER_ENV_FILE" || exit 1
+    set +a
+    bash "$SCRIPT_DIR/preflight-runtime.sh"
+  )
+}
+
+if ! run_runtime_preflight; then
+  fatal "runtime preflight failed for $RELEASE_NAME (T-406) — 'current' was NOT touched, still serving the previous release; PM2 was not stopped. Fix the box and redeploy."
 fi
 
 # --------------------------------------------- 2. build/scrape mutual exclusion

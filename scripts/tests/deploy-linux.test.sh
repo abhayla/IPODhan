@@ -61,6 +61,23 @@ else
   cat /tmp/deploy-test-1.log
 fi
 
+# --- Case 1.5: T-406 F1/F5 — preflight runs BEFORE pm2 stop / the flip ------
+# Ordering, not just presence: the runtime preflight (T-406) must be gated
+# ahead of `pm2 stop`/the atomic flip (round-2 F1 fix moved it out of the
+# post-flip position where a FAIL used to start the scraper on the release
+# it had just condemned). A future regression that moves the call back down
+# would still print the same line — only its POSITION relative to the
+# stop/flip lines proves the placement is correct.
+PREFLIGHT_LINE="$(grep -n '^==> \[dry-run\] skipping runtime preflight' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
+STOP_LINE="$(grep -n "^==> \[dry-run\] skipping real 'pm2 stop" /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
+FLIP_LINE="$(grep -n '^==> Flipping .* -> .* (atomic)$' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
+if [ -n "$PREFLIGHT_LINE" ] && [ -n "$STOP_LINE" ] && [ -n "$FLIP_LINE" ] \
+  && [ "$PREFLIGHT_LINE" -lt "$STOP_LINE" ] && [ "$STOP_LINE" -lt "$FLIP_LINE" ]; then
+  pass "case 1.5: runtime preflight line ($PREFLIGHT_LINE) precedes pm2 stop ($STOP_LINE) and the atomic flip ($FLIP_LINE)"
+else
+  fail "case 1.5: expected preflight < pm2-stop < flip ordering (preflight=$PREFLIGHT_LINE stop=$STOP_LINE flip=$FLIP_LINE)"
+fi
+
 # --- Case 2: a deliberately-broken build aborts, current untouched ----------
 BEFORE_TARGET="$(current_target "$ROOT1/current")"
 
@@ -83,6 +100,46 @@ if grep -q "was NOT touched" /tmp/deploy-test-2.log; then
   pass "case 2: script logged that 'current' was not touched"
 else
   fail "case 2: expected 'was NOT touched' message not found in output"
+fi
+
+# --- Case 2.5: T-406 round-3 — a failed runtime preflight aborts BEFORE ----
+# pm2 stop / the flip, same as case 2's broken build. This is the dry-run
+# self-test for run_runtime_preflight()'s FAIL path (deploy-linux.sh) —
+# without DEPLOY_FAIL_PREFLIGHT, --dry-run always skips the real preflight
+# and returns 0, so this path was previously UNEXERCISED by this suite.
+BEFORE_TARGET_25="$(current_target "$ROOT1/current")"
+
+DEPLOY_FAIL_PREFLIGHT=1 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-2.5.log 2>&1
+RC25=$?
+if [ "$RC25" -ne 0 ]; then
+  pass "case 2.5: failed runtime preflight exits non-zero"
+else
+  fail "case 2.5: failed runtime preflight exited 0 (expected failure)"
+fi
+
+AFTER_TARGET_25="$(current_target "$ROOT1/current")"
+if [ "$BEFORE_TARGET_25" = "$AFTER_TARGET_25" ] && [ -n "$AFTER_TARGET_25" ]; then
+  pass "case 2.5: 'current' untouched by the failed preflight ($AFTER_TARGET_25)"
+else
+  fail "case 2.5: 'current' CHANGED after a failed preflight (before=$BEFORE_TARGET_25 after=$AFTER_TARGET_25)"
+fi
+
+if grep -q "^==> \[dry-run\] skipping real 'pm2 stop" /tmp/deploy-test-2.5.log; then
+  fail "case 2.5: found a 'pm2 stop' line even though the preflight failed — preflight gate did not block it"
+else
+  pass "case 2.5: no 'pm2 stop' line logged after the failed preflight"
+fi
+
+if grep -q '^==> Flipping .* -> .* (atomic)$' /tmp/deploy-test-2.5.log; then
+  fail "case 2.5: found the atomic flip line even though the preflight failed — flip was not gated"
+else
+  pass "case 2.5: no atomic flip line logged after the failed preflight"
+fi
+
+if grep -q "current' was NOT touched" /tmp/deploy-test-2.5.log; then
+  pass "case 2.5: script logged that 'current' was NOT touched"
+else
+  fail "case 2.5: expected \"current' was NOT touched\" message not found in output"
 fi
 
 # --- Case 3: a second clean deploy succeeds after the broken one ------------
