@@ -148,7 +148,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | W-66 | G4 | `decidePairedPersist` tested only as a pure function; nothing asserts the script exits on a refusal before persisting. | `persist-filing-wiring.test.ts` | FIXED cf662143; Tier A review round 2 (00:55) MERGEABLE, mutation killed |
 | W-67 | G4 | Sweep of W-63's class (round 8): `ipos` writes from the filing persister bypassed field protection (`upsertIPO` applies the priority matrix, not `field_protection_metadata`; orchestrators filter before calling it, this module did not) and `financial_statements` had no gate at all. Both fixed in cf662143 (ipos: filtered candidate; statements: protected columns pinned to the stored value because the row is rewritten whole). | filing-persister | FIXED cf662143; review round 2 pending |
 | W-68 | H4 | Branch-wide suite: `date-tz-parse-ratchet` red. dc69b328 added a second local-TZ `new Date(raw).toISOString()` chain in `nse-api-client.ts` (T-327 class). Per-file runs never execute the ratchet, so H4 passed with it open. | restructure to the ratchet's safe form; TZ-independence test across 4 zones | FIXED 19ec9636: the arithmetic was already UTC-correct (Date.UTC minus offset), the ratchet regex flagged the shape; 24 tests reproduced. Net: false alarm, now proven by test. |
-| W-69 | tooling | `scripts/check-write-ratchet.mjs` scans the disk, so eight gitignored leftover scripts from Oct/Nov 2025 on this laptop are reported as NEW direct `ipos` writers and `bse-discovery-metadata-write-path.test.ts` is red locally (green in CI). | ratchet enumerates `git ls-files`, not the directory tree | fix running (Sonnet) |
+| W-69 | tooling | `scripts/check-write-ratchet.mjs` scans the disk, so eight gitignored leftover scripts from Oct/Nov 2025 on this laptop are reported as NEW direct `ipos` writers and `bse-discovery-metadata-write-path.test.ts` is red locally (green in CI). | ratchet enumerates `git ls-files`, not the directory tree | FIXED 3d1fa6df (walker kept as a no-git fallback with a warning); the two cleanup-test-data paths are two distinct leftover files, not a path bug; ratchet PASS 58 files, 24+5 tests reproduced |
 | W-70 | C3/C4 | Branch-wide suite: 8 tests in `document-discovery-chain`, `-b1-chain`, `-round4-chain` red: they pin the old 2-rung / 4-rung chains and NOT_YET_FILED semantics; fab553de/2738d33f added the company-website rung and NOT_FOUND states. Needs a per-test decision (intended change vs regression). | reconcile tests with the W-28/W-29/W-31/W-46 contract; fix code where a regression | FIXED b41cb971: 7 of 8 were superseded expectations (SEBI walk rungs, NOT_FOUND), 1 was a REAL regression: W-27 keyed the per-cycle SEBI failure cache by company, so one 503 cost one GET per IPO and later IPOs re-reported the error; runner fixed. 66 tests reproduced. |
 | W-71 | I4 | Branch-wide suite: 40 `index-*-wiring` tests red with one cause: their `@ipodhan/shared/db/schema` mock lacks `ipoStatusEnum`, which the widened validators (4a96ab7d) now read at load. | shared mock helper exporting the enum | FIXED 5bbfaeab: real trigger was `ipo-pipeline-steps-repository.ts` reading `ipoStatusEnum.enumValues` at load (pulled in by index.ts); helper `tests/helpers/schema-mock.ts`; 89/89 reproduced |
 | W-72 | C3 | Found during W-70: if the SEBI search/paging POST fails (non-200) after a successful page 1, `fetchSebiListingRows` returns `matched: null` and the runner records `SEBI:not_listed`, an ABSENCE minted from a failed sub-step (the H-2 class). `document-discovery-runner.ts:~1225-1232`. | treat a failed search/paging step as `SEBI:failed`, never `not_listed`; test pins it | FIXED 8b7ac1a0: walk reports `aborted {step,status}`; runner returns failed with `SEBI:failed:<step>` (5xx/throw cached per listing URL, 4xx per company); a thrown search fetch used to escape `runIpo` entirely. H-4/H-5 red then green; 68 tests reproduced. |
@@ -242,3 +242,36 @@ pipeline in the spec is the structural fix; this branch fixes the data it feeds 
 - G4 five questions (01:12): Issue? Yes, many: the persister overwrote admin-protected values on three tables, ignored the row lock on the anchor door, wrote issue size from one leg, and its refusal exit was untested. Fixed? Yes, rounds 8-9 (cf662143, 5bcf03bd), proven by mutation tests in a second fresh review. Learned? A test that checks 'the gate was called' proves nothing about what was written; every table a module writes needs its own substance test; a sweep of the same class found two more holes the review had not listed. Prevention? Per-table substance tests, mutation-killed; detection RCA doc `docs/reviews/g4-round-7-detection-rca.md`; branch-wide suite before PRs. Output? DEEPA on ipodhan_test: issue_size 4,597,160,000, band 168/177, lot 84, face 2, 3 FY statements, valuation, 5 peers, 3 promoters, via the production consolidation door.
 - Note 01:10: a local persist run without ENABLE_DATA_CONSOLIDATION takes the legacy fallback door (expected: flags unset in the local shell). Verification re-run with the production flags. Walk convention: every live write probe sets the prod flags explicitly.
 - 01:40 Branch-wide scraper suite (first ever this branch): segfault in the parallel full run (exit 139, twice; none per directory: a runner memory issue, not a test); per directory 9+2+40+1 failures -> W-68..W-71. Lesson: per-file runs cannot see ratchet tests; the branch-wide run is a hard step before any PR.
+
+## 6b. End of walk, revised (2026-09-03 02:20 IST)
+
+Supersedes the counts in section 6 (22:45). After the owner's 22:54 challenge every partial was
+re-fixed, serially from 23:34 onward (one fix, one verification, one record, then the next).
+
+**Branch `docs/deepa-walk-ledger`:** 148 commits over main, 140 files, +18,500 / -848. Nothing pushed
+except PR #277. Nothing deployed (D-09).
+
+**Verdicts:** B 7/7; C 5/5; D 6/6; E 10/10; F 5/6 (F2 Moneycontrol does not list DEEPA, not a defect);
+G 4/5 (G5 owner-gated W-09); H 4/4; I 4/6 (I5/I6 not due before 8 Sep); J 3/3. Every step that could
+be tested on DEEPA today passes; the three non-passes are not scraper defects.
+
+**Defects:** W-01..W-72. Fixed on the branch tonight (after 22:54): W-37 (F6), W-39, W-41 + W-60 (I4),
+W-57/W-61/W-62 (D6 OCR, 4 rounds), W-63..W-67 (G4 rounds 8-9, two Tier A reviews), W-58, W-59 noted,
+W-68 (false alarm, test-proven), W-69, W-70 (1 real regression), W-71, W-72. Still open: W-04, W-05,
+W-09 (owner: 18-column migration -> G5), W-14, W-19, W-20, W-30 (tesseract no longer needed), W-40
+(spec S-02), W-44, W-53 (VPS env), W-54, W-56 (web lint baseline), W-59.
+
+**Suites (final, branch-wide):** shared 206/206; web 2,383 pass / 17 skipped; scraper by directory
+(the parallel full run segfaults the runner on this laptop, twice, at no test: runner memory, not code):
+result recorded in the status report once the last run completes.
+
+**Deploy bundle additions since section 6:** migration 0046 (ipo_status WITHDRAWN/POSTPONED, idempotent,
+applied on ipodhan_test); VPS `pip install rapidocr-onnxruntime pypdfium2` (W-53 companion); no new
+ENABLE_* flags. PR plan additions: Tier A: I4 (4a96ab7d + f3fda19b, migration), G4 rounds 8-9
+(cf662143, 5bcf03bd) folded into the G4 PR; Tier B: D6 OCR (92814b1a, c39ec63a, 91164725, 87b4ed07),
+F6 confidence (44e11d40, c05c524f), H4 (dc69b328, 19ec9636), E5/E8 (f38cc4a2), discovery fixes
+(b41cb971, 8b7ac1a0), ratchet (3d1fa6df), wiring mocks (5bbfaeab), shared test (7e782b05),
+backfill cause (dea73837); Tier C: walk docs, how.md, detection RCA.
+
+**Fleet items since section 6:** T-440 (agent budget enforcer, 2nd+ overrun), stash class bumped to 4
+(T-438), sweep class 3 (T-439).
