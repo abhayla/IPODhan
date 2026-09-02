@@ -270,7 +270,7 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
             startDate,
             endDate,
             offerPrice,
-            faceValue: faceValue && faceValue !== '--' ? faceValue : '10',
+            faceValue: faceValue && faceValue !== '--' ? faceValue : undefined,
             typeOfIssue,
             issueStatus,
             segment, // Story 11.8: Store segment instead of category
@@ -324,7 +324,7 @@ export async function scrapeBSEIPOs(): Promise<BSEScrapeResult> {
           sector: undefined, // Not available in BSE main table — never write '' (it plants a blank that blocks real backfills)
           status,
           lotSize: undefined, // Let detail page scraper populate this (don't default to 100)
-          faceValue: parseInt(rawIPO.faceValue, 10) || 10 // Integer face value
+          faceValue: parseInt(rawIPO.faceValue, 10) || undefined // Integer face value
         };
 
         scrapedIPOs.push(ipoData);

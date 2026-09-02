@@ -368,7 +368,7 @@ export class DataConsolidationOrchestrator {
       priceRangeMin: consolidated.priceRangeMin,
       priceRangeMax: consolidated.priceRangeMax,
       lotSize: consolidated.lotSize,
-      faceValue: consolidated.faceValue || 10,
+      faceValue: consolidated.faceValue,
       status: consolidated.status || originalScraped.status,
       openDate: consolidated.openDate || originalScraped.openDate,
       closeDate: consolidated.closeDate || originalScraped.closeDate,

@@ -595,7 +595,9 @@ function extractAdditionalNSEFields(issueInfo: any): any {
     // issueInfo.dataList does, e.g. "Rs. 2 per Equity Share" or "Rs.10/-")
     if (title.includes('Face Value')) {
       const match = value.match(/([\d,]+(?:\.\d+)?)/);
-      fields.faceValue = match ? parseFloat(match[1].replace(/,/g, '')) : undefined;
+      if (match) {
+        fields.faceValue = parseFloat(match[1].replace(/,/g, ''));
+      }
     }
 
     // UPI Cut-off time

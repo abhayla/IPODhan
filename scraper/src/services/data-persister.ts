@@ -312,7 +312,7 @@ export async function upsertIPO(
           ? Math.round(scrapedIPO.priceRangeMax)
           : undefined,
         lotSize: validateLotSize(scrapedIPO.lotSize, scrapedIPO.segment, scrapedIPO.companyName) ?? undefined, // Validate and reject lot_size = 1
-        faceValue: scrapedIPO.faceValue || 10, // Default to 10 if not provided
+        faceValue: scrapedIPO.faceValue || undefined,
         status: scrapedIPO.status as any,
         openDate: (safeDates.openDate as Date | undefined) ?? undefined,
         closeDate: (safeDates.closeDate as Date | undefined) ?? undefined,
