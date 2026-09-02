@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-03 01:12 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-03 01:32 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -33,7 +33,7 @@ Last updated: 2026-09-03 01:12 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 
 ## 3. After the fixes
 
-1. Full scraper unit suite once, web unit suite once.
+1. Branch-wide suites (final run 01:15): shared 206/206 (after fixing two stale tests that asserted WITHDRAWN was invalid, 7e782b05); web 2,383 pass / 17 skipped; scraper: the Node process crashes with a segmentation fault mid-suite (twice), so the suite is being run directory by directory to find the crashing file. Not a test failure; a native-module crash.
 2. Cut the branch into pull requests as listed in the ledger section 6 (Tier A: write door, G4, step ledger, migrations 0044-0046; Tier B: the rest).
 3. Deploy everything together with owner approval (D-09).
 
@@ -49,3 +49,4 @@ Last updated: 2026-09-03 01:12 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 - 2026-09-03 00:52: G4 round 8 landed (cf662143; W-63..W-66 + two sibling gates), 79 tests reproduced. Review round 2 dispatched.
 - 2026-09-03 00:58: G4 review round 2: MERGEABLE (6/6 mutations killed). Round 9 dispatched for the 3 minors.
 - 2026-09-03 01:12: G4 PASS (round 9 5bcf03bd, 82 tests reproduced, live run with prod flags clean). Step ledger G4=DONE. Branch-wide suites running (final pre-PR run).
+- 2026-09-03 01:32: suites: shared green after test fix, web green, scraper suite segfaults mid-run (exit 139) -> per-directory bisect running.
