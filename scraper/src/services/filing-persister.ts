@@ -464,13 +464,30 @@ export async function persistFilingExtraction(
   // (walk ledger W-11).
   const freshMn = num(extraction, 'fresh_issue_amount');
   const ofsAtCapMn = num(extraction, 'ofs_amount_at_cap') ?? num(extraction, 'ofs_amount');
-  // The fresh issue is REQUIRED: an offer total computed from the OFS leg
-  // alone silently understates the issue by the whole fresh component, so a
-  // dropped fresh_issue_amount means no issue_size at all. The OFS leg is
-  // optional (a pure fresh issue has none).
+  const statedTotalMn = num(extraction, 'total_offer_amount_at_cap');
+  // BOTH legs, or a total the document itself prints. Round 7 required only the
+  // fresh leg and treated a missing OFS as zero, so the RHP (which prints the
+  // fresh issue and no OFS line) wrote issue_size = the fresh leg alone —
+  // understating Deepa's offer by Rs 2,097.16 mn. That is the exact mirror of
+  // the OFS-only case guarded above it, and a wrong issue_size outranks the
+  // exchanges' correct one because it is written as source DRHP.
+  // A genuinely pure-fresh offer is still writable: its filing states the OFS
+  // leg as 0, which is a PRESENT leg (`num` returns 0, not null).
+  const offerTotalMn =
+    statedTotalMn !== null
+      ? statedTotalMn
+      : freshMn !== null && ofsAtCapMn !== null
+        ? freshMn + ofsAtCapMn
+        : null;
+  if (offerTotalMn === null && (freshMn !== null || ofsAtCapMn !== null)) {
+    skippedFailedCheck.push(
+      `ipos.issueSize: only the ${freshMn !== null ? 'fresh' : 'OFS'} leg is present ` +
+        '(a one-leg total would understate the offer)'
+    );
+  }
   const issueSizeRupees =
-    freshMn !== null
-      ? withUnit('ipos.issueSize', (u) => Math.round(toRupees(freshMn + (ofsAtCapMn ?? 0), u)))
+    offerTotalMn !== null
+      ? withUnit('ipos.issueSize', (u) => Math.round(toRupees(offerTotalMn, u)))
       : null;
 
   const floor = num(extraction, 'price_band_floor');
@@ -505,39 +522,36 @@ export async function persistFilingExtraction(
   const closeForWrite = closeDate ?? toIsoOrUndefined(existing.closeDate);
   if (openForWrite !== undefined) scraped.openDate = openForWrite;
   if (closeForWrite !== undefined) scraped.closeDate = closeForWrite;
-  if (issueSizeRupees !== null) {
-    scraped.issueSize = issueSizeRupees;
-    iposFields.push('issueSize');
+  // Every `ipos` column this filing wants to write, gathered BEFORE the write so
+  // the admin-protection gate can drop individual columns. Round 7 sent these
+  // straight into `scraped`: upsertIPO applies the field-priority matrix but NOT
+  // field_protection_metadata (the orchestrators filter before calling it), so a
+  // hand-corrected ipos.issue_size was overwritten by the next filing run.
+  const iposCandidate: Record<string, unknown> = {};
+  if (issueSizeRupees !== null) iposCandidate.issueSize = issueSizeRupees;
+  if (floor !== null) iposCandidate.priceRangeMin = floor;
+  if (cap !== null) iposCandidate.priceRangeMax = cap;
+  if (lotSize !== null) iposCandidate.lotSize = Math.round(lotSize);
+  if (faceValue !== null) iposCandidate.faceValue = Math.round(faceValue);
+  if (openDate) iposCandidate.openDate = openDate;
+  if (closeDate) iposCandidate.closeDate = closeDate;
+  if (allotmentDate) iposCandidate.allotmentDate = allotmentDate;
+  if (listingDate) iposCandidate.listingDate = listingDate;
+  if (description) iposCandidate.companyDescription = description;
+
+  const iposWritable =
+    Object.keys(iposCandidate).length > 0 ? await filterFields('ipos', iposCandidate) : {};
+  for (const [col, v] of Object.entries(iposWritable)) {
+    // openDate/closeDate already carry the row's own value as a fallback; only
+    // overwrite that with the filing's value when the gate kept the column.
+    scraped[col] = v;
+    iposFields.push(col);
   }
-  if (floor !== null) {
-    scraped.priceRangeMin = floor;
-    iposFields.push('priceRangeMin');
-  }
-  if (cap !== null) {
-    scraped.priceRangeMax = cap;
-    iposFields.push('priceRangeMax');
-  }
-  if (lotSize !== null) {
-    scraped.lotSize = Math.round(lotSize);
-    iposFields.push('lotSize');
-  }
-  if (faceValue !== null) {
-    scraped.faceValue = Math.round(faceValue);
-    iposFields.push('faceValue');
-  }
-  if (openDate) iposFields.push('openDate');
-  if (closeDate) iposFields.push('closeDate');
-  if (allotmentDate) {
-    scraped.allotmentDate = allotmentDate;
-    iposFields.push('allotmentDate');
-  }
-  if (listingDate) {
-    scraped.listingDate = listingDate;
-    iposFields.push('listingDate');
-  }
-  if (description) {
-    scraped.companyDescription = description;
-    iposFields.push('companyDescription');
+  // A protected open/close date must not be re-written through the fallback
+  // either — the fallback exists to preserve the stored value, and the stored
+  // value IS what the admin protected.
+  for (const col of ['openDate', 'closeDate']) {
+    if (col in iposCandidate && !(col in iposWritable)) delete scraped[col];
   }
 
   if (iposFields.length > 0) {
@@ -758,6 +772,31 @@ export async function persistFilingExtraction(
     // no unit mismatch and no carried-forward columns, so it could report rows
     // the apply would refuse. A dry run must exercise the same decisions.
     const existingStatements = await deps.financialStatements.listByIpo(ipoId);
+
+    // financial_statements is admin-editable like the other tables, and until
+    // now it was the ONE table this module wrote with no protection gate at all
+    // (the gate ran for ipo_details, ipo_valuation and financial_data only).
+    // The row is rewritten whole, so a protected column cannot simply be
+    // omitted — it is pinned to the value already stored, i.e. the admin's.
+    const STATEMENT_COLUMNS = [
+      'revenue',
+      'totalIncome',
+      'ebitda',
+      'pat',
+      'netWorth',
+      'epsBasic',
+      'epsDiluted',
+      'opCashFlow',
+      'dscr',
+      'rentExpense',
+    ] as const;
+    const statementWritable = await filterFields(
+      'financial_statements',
+      Object.fromEntries(STATEMENT_COLUMNS.map((c) => [c, null]))
+    );
+    const statementProtected = new Set(
+      STATEMENT_COLUMNS.filter((c) => !(c in statementWritable))
+    );
     let n = 0;
     for (const fy of [...fyKeys].sort()) {
       const fiscalYear = Number(fy);
@@ -781,9 +820,18 @@ export async function persistFilingExtraction(
         continue;
       }
       const rowUnit: StatementUnit = priorUnit ?? unitEnum;
-      const perShare = (m: Record<string, number>, kept: string | null): string | null =>
-        m[fy] !== undefined ? m[fy].toString() : kept;
+      const perShare = (
+        m: Record<string, number>,
+        col: string,
+        kept: string | null
+      ): string | null => {
+        if (statementProtected.has(col as (typeof STATEMENT_COLUMNS)[number])) return kept;
+        return m[fy] !== undefined ? m[fy].toString() : kept;
+      };
       const s = (m: Record<string, number>, col: keyof typeof prior): string | null => {
+        if (statementProtected.has(col as (typeof STATEMENT_COLUMNS)[number])) {
+          return prior ? ((prior[col] as string | null) ?? null) : null;
+        }
         if (m[fy] !== undefined) {
           const raw = m[fy];
           return rowUnit === unitEnum
@@ -805,11 +853,11 @@ export async function persistFilingExtraction(
           pat: s(patW, 'pat'),
           netWorth: s(netWorthW, 'netWorth'),
           // Per-share figures are NOT amounts — they are never unit-converted.
-          epsBasic: perShare(epsBasicW, prior?.epsBasic ?? null),
-          epsDiluted: perShare(epsDilutedW, prior?.epsDiluted ?? null),
+          epsBasic: perShare(epsBasicW, 'epsBasic', prior?.epsBasic ?? null),
+          epsDiluted: perShare(epsDilutedW, 'epsDiluted', prior?.epsDiluted ?? null),
           opCashFlow: s(opCashFlowW, 'opCashFlow'),
           // A ratio, not an amount.
-          dscr: perShare(dscrW, prior?.dscr ?? null),
+          dscr: perShare(dscrW, 'dscr', prior?.dscr ?? null),
           rentExpense: s(rentW, 'rentExpense'),
         });
       }
@@ -856,21 +904,31 @@ export async function persistFilingExtraction(
     if (Object.keys(valuationWritable).length === 0) {
       skippedProtected.push('ipo_valuation (every field protected)');
     } else if (apply) {
+      // The payload is built from `valuationWritable`, NEVER from `valuation`.
+      // Round 7 computed the filtered set, used it only for the emptiness check,
+      // and then read every column off the UNFILTERED object — so a protected
+      // ipo_valuation column was written anyway. A protected column is OMITTED
+      // from the payload (not sent as null, which would erase it just as surely).
+      const w = valuationWritable;
+      const num_ = (col: string): Record<string, string | null> =>
+        col in w ? { [col]: asNumeric(w[col]) } : {};
+      const count_ = (col: string): Record<string, number | null> =>
+        col in w ? { [col]: asCount(w[col]) } : {};
       await deps.ipoValuation.upsert({
         ipoId,
         pricingEvent,
-        priceFloor: asNumeric(valuation.priceFloor),
-        priceCap: asNumeric(valuation.priceCap),
-        sharesAtFloor: asCount(valuation.sharesAtFloor),
-        sharesAtCap: asCount(valuation.sharesAtCap),
-        mcapAtFloor: asNumeric(valuation.mcapAtFloor),
-        mcapAtCap: asNumeric(valuation.mcapAtCap),
-        peAtFloor: asNumeric(valuation.peAtFloor),
-        peAtCap: asNumeric(valuation.peAtCap),
+        ...num_('priceFloor'),
+        ...num_('priceCap'),
+        ...count_('sharesAtFloor'),
+        ...count_('sharesAtCap'),
+        ...num_('mcapAtFloor'),
+        ...num_('mcapAtCap'),
+        ...num_('peAtFloor'),
+        ...num_('peAtCap'),
         peNotAscertainableReason: null,
-        ronwWeighted3y: asNumeric(valuation.ronwWeighted3y),
-        faceValueMultipleFloor: asNumeric(valuation.faceValueMultipleFloor),
-        faceValueMultipleCap: asNumeric(valuation.faceValueMultipleCap),
+        ...num_('ronwWeighted3y'),
+        ...num_('faceValueMultipleFloor'),
+        ...num_('faceValueMultipleCap'),
       } as never);
       await trackField('ipo_valuation', pricingEvent);
     }

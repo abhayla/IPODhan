@@ -33,6 +33,17 @@ export interface AnchorPersisterDeps {
   /** scrapeAnchorInvestors from anchor-investors-scraper, injected for tests. */
   scrapeAnchorReport: (ipoId: string, companyName: string) => Promise<AnchorInvestorData | null>;
   anchorInvestorRepository: unknown;
+  /**
+   * Reads the `ipos` row so this door can honour `ipos.scraper_locked`, the
+   * admin "hands off this row" flag. REQUIRED, not optional: the filing
+   * persister refuses a locked IPO outright, but the anchor path wrote straight
+   * past the flag, so `--doc-type ANCHOR_ALLOCATION_REPORT` was a hole in the
+   * lock. Typing it as required means a caller cannot re-open that hole by
+   * simply forgetting a dependency.
+   */
+  ipoRepository: {
+    findById(id: string): Promise<{ companyName?: string; scraperLocked?: boolean } | null>;
+  };
   /** Overridable only so a test can assert the payload without a database. */
   persist?: typeof createAnchorInvestors;
   /**
@@ -261,6 +272,22 @@ export async function persistAnchorReport(
     lowConfidenceNames: [],
     applied: apply,
   };
+
+  // `ipos.scraper_locked` — the admin "hands off this row" flag. persistFilingExtraction
+  // refuses a locked IPO before its first write; this door did not check it at all, so
+  // `--doc-type ANCHOR_ALLOCATION_REPORT` wrote through the lock. Checked HERE, in the
+  // door, rather than in the CLI, so every caller of the persister is covered.
+  const existing = await deps.ipoRepository.findById(ipoId);
+  if (!existing) {
+    return { ...empty, refusedReason: `persistAnchorReport: no IPO row for id ${ipoId}` };
+  }
+  if (existing.scraperLocked === true) {
+    const reason =
+      `IPO ${ipoId} (${existing.companyName ?? 'unknown'}) is scraper_locked — ` +
+      'refusing the entire anchor write. Clear the lock in admin to allow it.';
+    logger.warn({ ipoId }, '[AnchorPersister] IPO is scraper_locked — writing NOTHING');
+    return { ...empty, refusedReason: reason };
+  }
 
   const data = await deps.scrapeAnchorReport(ipoId, options.companyName);
   if (!data) {

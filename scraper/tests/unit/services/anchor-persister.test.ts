@@ -79,16 +79,26 @@ function deepaAnchorFixture(): AnchorInvestorData {
   } as AnchorInvestorData;
 }
 
-function makeDeps(data: AnchorInvestorData | null): {
+function makeDeps(
+  data: AnchorInvestorData | null,
+  ipoRow: { companyName?: string; scraperLocked?: boolean } | null = {
+    companyName: COMPANY,
+    scraperLocked: false,
+  }
+): {
   deps: AnchorPersisterDeps;
   persist: ReturnType<typeof vi.fn>;
+  scrape: ReturnType<typeof vi.fn>;
 } {
   const persist = vi.fn(async () => 'anchor-row-id');
+  const scrape = vi.fn(async () => data);
   return {
     persist,
+    scrape,
     deps: {
-      scrapeAnchorReport: vi.fn(async () => data),
+      scrapeAnchorReport: scrape as unknown as AnchorPersisterDeps['scrapeAnchorReport'],
       anchorInvestorRepository: { findByIPOId: vi.fn(), create: vi.fn(), update: vi.fn() },
+      ipoRepository: { findById: vi.fn(async () => ipoRow) },
       persist: persist as unknown as AnchorPersisterDeps['persist'],
     },
   };
@@ -428,5 +438,44 @@ describe('anchor-persister — admin field protection (MAJOR-2)', () => {
     expect(summary.checks.every((c) => c.passed)).toBe(true);
     expect(persist).not.toHaveBeenCalled();
     expect(summary.refusedReason).toContain('investorList');
+  });
+});
+
+describe('anchor-persister — ipos.scraper_locked (CRITICAL-2)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('refuses the whole anchor write for a locked IPO, before it even reads the report', async () => {
+    // persistFilingExtraction refuses a locked IPO outright; this door did not
+    // check the flag at all, so --doc-type ANCHOR_ALLOCATION_REPORT wrote through
+    // an admin lock. The check lives in the persister, not the CLI.
+    const { deps, persist, scrape } = makeDeps(deepaAnchorFixture(), {
+      companyName: COMPANY,
+      scraperLocked: true,
+    });
+
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(persist).not.toHaveBeenCalled();
+    expect(scrape).not.toHaveBeenCalled();
+    expect(summary.written).toBe(0);
+    expect(summary.investorsWritten).toBe(0);
+    expect(summary.refusedReason).toContain('scraper_locked');
+    // Same refusal shape as every other refusal on this path — the CLI turns a
+    // non-null refusedReason into exit code 1.
+    expect(summary.refusedReason).toContain(IPO_ID);
+  });
+
+  it('refuses when the IPO row does not exist', async () => {
+    const { deps, persist } = makeDeps(deepaAnchorFixture(), null);
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+    expect(persist).not.toHaveBeenCalled();
+    expect(summary.refusedReason).toContain('no IPO row');
+  });
+
+  it('writes normally when the row is not locked', async () => {
+    const { deps, persist } = makeDeps(deepaAnchorFixture());
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(summary.refusedReason).toBeNull();
   });
 });

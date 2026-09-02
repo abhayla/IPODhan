@@ -401,7 +401,9 @@ describe('filing-persister — failed checks are never written', () => {
     expect(details.freshIssue).toBeUndefined();
 
     const valuation = s.valuation.mock.calls[0][0] as Record<string, unknown>;
-    expect(valuation.mcapAtCap).toBeNull();
+    // Absent, not null: the payload is assembled from the writable columns only,
+    // and sending null would erase whatever the row already held.
+    expect(valuation.mcapAtCap).toBeUndefined();
 
     for (const f of ['fresh_issue_amount', 'upi_cutoff_time', 'market_cap_at_cap']) {
       expect(summary.skipped_failed_check.some((x) => x.startsWith(`${f}:`))).toBe(true);
@@ -615,8 +617,11 @@ describe('filing-persister — unit safety (F1/F2)', () => {
     expect(details.ofsIssue).toBeUndefined();
 
     const valuation = s.valuation.mock.calls[0][0] as Record<string, unknown>;
-    expect(valuation.mcapAtFloor).toBeNull();
-    expect(valuation.mcapAtCap).toBeNull();
+    // The payload is now assembled column-by-column from the writable set, so a
+    // column the filing could not compute is ABSENT rather than written as null
+    // (an upsert that sends null erases whatever the row already held).
+    expect(valuation.mcapAtFloor).toBeUndefined();
+    expect(valuation.mcapAtCap).toBeUndefined();
 
     // Price band and share counts are NOT unit-dependent and still land.
     expect(scraped.priceRangeMin).toBe(168);
@@ -961,8 +966,10 @@ describe('filing-persister — field protection on EVERY child table (MAJOR-4)',
       )
     );
     for (const t of [
+      'ipos',
       'ipo_details',
       'ipo_valuation',
+      'financial_statements',
       'promoters',
       'ipo_intermediaries',
       'brlm_track_record',
@@ -1214,5 +1221,173 @@ describe('filing-persister — each stored row keeps its OWN unit (MOD-4)', () =
     // Unreadable unit is not comparable at any scale, so it contributes no
     // disagreement - it must not be read as millions and blow the whole block away.
     expect(summary.skipped_cross_document_disagreement).toEqual([]);
+  });
+});
+
+describe('filing-persister - protected columns never reach a write payload (CRITICAL-1)', () => {
+  beforeEach(() => upsertIPOMock.mockClear());
+
+  /**
+   * WHY THIS BLOCK EXISTS: round 7 asserted only that the gate was CALLED for
+   * each table. ipo_valuation computed the filtered set, used it for the
+   * emptiness check, and then built the upsert payload from the UNFILTERED
+   * object - so the assertion passed while every protected value was still
+   * overwritten. These are substance assertions: the protected column must be
+   * absent from the payload that actually reaches the writer, and the
+   * unprotected columns must still be written.
+   */
+  function protectFields(protectedCols: Record<string, string[]>) {
+    return vi.fn(async (_id: string, table: string, data: Record<string, unknown>) => {
+      const filtered = { ...data };
+      for (const col of protectedCols[table] ?? []) delete filtered[col];
+      return { filtered };
+    });
+  }
+
+  it('ipo_valuation: a protected mcapAtCap is absent from the upsert, the rest still writes', async () => {
+    const s = makeDeps();
+    s.deps.protectionFilter = protectFields({ ipo_valuation: ['mcapAtCap'] });
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+
+    expect(s.valuation).toHaveBeenCalledTimes(1);
+    const row = s.valuation.mock.calls[0][0] as Record<string, unknown>;
+    expect('mcapAtCap' in row).toBe(false);
+    // Not written as null either - null would erase the admin's value.
+    expect(row.mcapAtCap).toBeUndefined();
+    // Unprotected columns still land.
+    expect(row.mcapAtFloor).not.toBeUndefined();
+    expect(row.ipoId).toBe(IPO_ID);
+    expect(summary.skipped_protected).toContain('ipo_valuation.mcapAtCap');
+  });
+
+  it('ipos: a protected issueSize never reaches upsertIPO, the other scalars do', async () => {
+    const s = makeDeps();
+    s.deps.protectionFilter = protectFields({ ipos: ['issueSize'] });
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+
+    const scraped = (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
+    expect(scraped.issueSize).toBeUndefined();
+    expect(scraped.priceRangeMin).toBe(168);
+    expect(scraped.priceRangeMax).toBe(177);
+    expect(summary.ipos_fields).not.toContain('issueSize');
+    expect(summary.ipos_fields).toContain('priceRangeMin');
+    expect(summary.skipped_protected).toContain('ipos.issueSize');
+  });
+
+  it('ipo_details: a protected freshIssue is absent from the details upsert', async () => {
+    const s = makeDeps();
+    s.deps.protectionFilter = protectFields({ ipo_details: ['freshIssue'] });
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const details = s.detailsUpsert.mock.calls[0][1] as Record<string, unknown>;
+    expect('freshIssue' in details).toBe(false);
+    expect(details.ofsIssue).not.toBeUndefined();
+    expect(summary.skipped_protected).toContain('ipo_details.freshIssue');
+  });
+
+  it('financial_data: a protected marketCap is absent from the row that is written', async () => {
+    const s = makeDeps();
+    s.deps.protectionFilter = protectFields({ financial_data: ['marketCap'] });
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const fd = s.finData.mock.calls[0][0] as Record<string, unknown>;
+    expect('marketCap' in fd).toBe(false);
+    expect(fd.peRatio).toBe('13.85');
+    expect(summary.skipped_protected).toContain('financial_data.marketCap');
+  });
+
+  it('financial_statements: a protected revenue keeps the stored value, never the filing value', async () => {
+    const s = makeDeps();
+    // The statement row is rewritten WHOLE, so a protected column cannot simply
+    // be omitted (that writes null and erases it) - it is pinned to the stored
+    // value, which is the admin's.
+    // The stored value stays within the cross-document tolerance of the filing's
+    // (19266.76) — a wildly different prior would trip the disagreement gate and
+    // withhold the whole block, which is a different behaviour from this one.
+    (s.deps.financialStatements as unknown as { listByIpo: ReturnType<typeof vi.fn> }).listByIpo =
+      vi.fn(async () => [
+        { fiscalYear: 2026, basis: 'RESTATED', unit: 'MILLION', revenue: '19270.00', pat: null },
+      ]);
+    s.deps.protectionFilter = protectFields({ financial_statements: ['revenue'] });
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const fy2026 = s.finStmt.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((r) => r.fiscalYear === 2026)!;
+    // The admin's stored value, NOT the filing's 19266.76.
+    expect(fy2026.revenue).toBe('19270.00');
+    // Unprotected columns of the same row still take the filing's values.
+    expect(fy2026.pat).toBe('1047.88');
+    expect(summary.skipped_protected).toContain('financial_statements.revenue');
+  });
+});
+
+describe('filing-persister - issue_size needs BOTH legs (MAJOR-1)', () => {
+  beforeEach(() => upsertIPOMock.mockClear());
+
+  it('writes no issueSize when the document carries the fresh leg alone', async () => {
+    // The RHP prints fresh_issue_amount and no OFS line. Summing the fresh leg
+    // with an assumed zero OFS understated Deepa's offer by Rs 2,097.16 mn - and
+    // it is written as source DRHP, which outranks the exchanges' correct value.
+    const s = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('RHP'),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+    // The RHP carries no other ipos scalar either, so upsertIPO may not run at
+    // all — what matters is that no issue_size is written on any path.
+    const scraped =
+      (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>] | undefined)?.[1] ??
+      {};
+    expect(scraped.issueSize).toBeUndefined();
+    expect(summary.ipos_fields).not.toContain('issueSize');
+    expect(summary.skipped_failed_check.some((x) => x.startsWith('ipos.issueSize'))).toBe(true);
+  });
+
+  it('still writes issueSize when both legs are present', async () => {
+    const s = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const scraped = (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
+    expect(scraped.issueSize).toBe(4_597_160_000);
+    expect(summary.ipos_fields).toContain('issueSize');
+  });
+
+  it('a pure fresh issue is still writable when the filing states the OFS leg as 0', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('RHP', {
+      ofs_amount_at_cap: { value: 0, passed: true },
+    });
+    await persistFilingExtraction(IPO_ID, extraction, { docType: 'RHP', apply: true }, s.deps);
+    const scraped = (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
+    expect(scraped.issueSize).toBe(2_500_000_000);
   });
 });

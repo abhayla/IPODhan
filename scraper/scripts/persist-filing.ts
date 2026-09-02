@@ -23,6 +23,8 @@ import { config as loadEnv } from 'dotenv';
 loadEnv({ path: '../web/.env.local', override: true });
 
 import { readFileSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { eq, or, ilike } from 'drizzle-orm';
 import {
   db,
@@ -56,9 +58,16 @@ import {
   withholdDisagreeingMetrics,
 } from '../src/services/cross-document-agreement.js';
 
-function arg(name: string): string | undefined {
-  const i = process.argv.indexOf(`--${name}`);
-  return i >= 0 ? process.argv[i + 1] : undefined;
+/**
+ * Injection seam for the wiring test (MAJOR-2). `decidePairedPersist` was tested
+ * as a pure function, but nothing proved this script CALLS it before persisting —
+ * deleting the refusal branch left every test green. `run()` is importable so a
+ * test can drive the paired path with the DB-touching steps replaced.
+ */
+export interface RunOverrides {
+  resolveIpoId?: (needle: string) => Promise<string>;
+  persistFiling?: typeof persistFilingExtraction;
+  persistAnchor?: typeof persistAnchorReport;
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -122,11 +131,21 @@ async function resolveIpoId(needle: string): Promise<string> {
   return rows[0].id;
 }
 
-async function main(): Promise<void> {
+export async function run(
+  argv: string[] = process.argv,
+  overrides: RunOverrides = {}
+): Promise<void> {
+  const arg = (name: string): string | undefined => {
+    const i = argv.indexOf(`--${name}`);
+    return i >= 0 ? argv[i + 1] : undefined;
+  };
+  const persistFiling = overrides.persistFiling ?? persistFilingExtraction;
+  const persistAnchor = overrides.persistAnchor ?? persistAnchorReport;
+
   const ipoArg = arg('ipo');
   const docType = arg('doc-type') as FilingDocType | undefined;
   const jsonPath = arg('json');
-  const apply = process.argv.includes('--apply');
+  const apply = argv.includes('--apply');
 
   const adPath = arg('json-ad');
   const rhpPath = arg('json-rhp');
@@ -149,16 +168,19 @@ async function main(): Promise<void> {
   }
 
   const redis = getRedisClient();
-  const ipoId = await resolveIpoId(ipoArg);
+  const ipoId = await (overrides.resolveIpoId ?? resolveIpoId)(ipoArg);
 
   // ------------------------------------------------------------------ W-51
   if (anchorMode) {
-    const summary = await persistAnchorReport(
+    const summary = await persistAnchor(
       ipoId,
       { companyName: arg('company') ?? '', apply },
       {
         scrapeAnchorReport: (id, name) => scrapeAnchorInvestors(db, id, name),
         anchorInvestorRepository: new AnchorInvestorRepository(db),
+        // The anchor door reads ipos.scraper_locked through this; without it the
+        // CLI could write through an admin lock (it did, until CRITICAL-2).
+        ipoRepository: new IPORepository(db, redis),
         protectionFilter: (
           id: string,
           table: string,
@@ -222,7 +244,7 @@ async function main(): Promise<void> {
       ['RHP', rhp],
     ];
     for (const [dt, ex] of pairs) {
-      const summary = await persistFilingExtraction(
+      const summary = await persistFiling(
         ipoId,
         ex,
         {
@@ -265,7 +287,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  const summary = await persistFilingExtraction(
+  const summary = await persistFiling(
     ipoId,
     extraction,
     {
@@ -282,9 +304,17 @@ async function main(): Promise<void> {
   if (!apply) console.log('\nRe-run with --apply to write.');
 }
 
-main()
-  .then(() => process.exit(0))
-  .catch((err) => {
-    console.error(err);
-    process.exit(1);
-  });
+// Only the CLI entry point runs; importing this module (the wiring test does)
+// must not start a run.
+const invokedDirectly =
+  typeof process.argv[1] === 'string' &&
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+
+if (invokedDirectly) {
+  run()
+    .then(() => process.exit(0))
+    .catch((err) => {
+      console.error(err);
+      process.exit(1);
+    });
+}
