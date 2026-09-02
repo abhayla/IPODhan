@@ -167,6 +167,8 @@ runs, plus a raw view of the same endpoint where the function hides it.
 
 ## 5. Documentation due after the walk
 
+- Incident 23:17 (Fable's dispatch error): two workers (E5/E8 and the D6 OCR build) were given the same file `extract_filing.py`; the E5/E8 commit f38cc4a2 carried the OCR worker's in-flight edits, which import `ocr_pages.py`, still untracked at that moment, so the branch tip was briefly unimportable. The OCR worker was told to commit the module first. Registry class concurrent-commit-sweep bumped to 3 (T-439). Rule: one file, one worker.
+
 - Tooling lesson (22:36): patching source through a quoted shell heredoc into python strips one backslash level, so `\n` in a string literal becomes a real newline; it broke `persist-filing.ts` twice (round 4 and the first round-5 repair). Rule for briefs: edit source with the Write/Edit tools, never via heredoc+python; the new `scripts-parse.test.ts` guard catches the outcome.
 
 - Clock note: turn timestamps in section 1 after 20:18 IST were estimated by Fable and run about two hours ahead of wall-clock (the hook clock read 21:15 IST when the anchor and runner rounds landed). Correct them from the git commit times in the documentation pass.
