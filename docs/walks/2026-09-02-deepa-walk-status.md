@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-03 01:32 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-03 01:42 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -27,6 +27,7 @@ Last updated: 2026-09-03 01:32 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 | 1 | D6 text check / OCR | Scanned ads had no reader at all. Four rounds built one: rapidocr reader with confidence gate (92814b1a), word splitting (c39ec63a), extractor safe against OCR digit damage with prose fallback and arithmetic gates (91164725), column-splice cut on prose (87b4ed07). | Done. Fable's own live run on the scanned DEEPA ad: 27 oracle-checked fields correct, 0 wrong numbers or dates, description true but first sentence only (the text copy outranks it). VPS needs `pip install rapidocr-onnxruntime pypdfium2` in the deploy bundle. | **PASS** 00:17 |
 | 2 | I4 leftover (W-60) | Closed (f3fda19b). Strict review verdict: MERGEABLE; both mutation tests killed. | None. | **PASS** 00:35 |
 | 3 | G4 persist filing data | Nine rounds in total. Final state: every table the persister writes honours admin field protection and the row lock; issue size is written only when both legs are known; refusal exits are tested at script level; two strict reviews, the second one MERGEABLE with all 6 mutations caught; the three minor edges closed in round 9 (5bcf03bd). Fable's live run on DEEPA with production flags: consolidation handled the write, no fallback, no critical conflict, 9 tables written, issue size 459.72 Cr. | Done. | **PASS** 01:12 |
+| 3a | Suite fallout (W-68..W-71) | The first branch-wide scraper run found four groups the per-file runs could not see: a new local-timezone date conversion in the NSE client (real bug, same class as an old production incident); 8 document-discovery tests pinning the old chain before the company-website rung was added; 40 wiring tests whose schema mock lacks the new status enum; and a write-ratchet that scans gitignored leftover files on this laptop. | One at a time: timezone fix (running) -> discovery tests reconciled -> wiring mock -> ratchet reads git. Then the scraper suite again by directory. | In progress (01:42) |
 | 4 | F2 Moneycontrol | Moneycontrol's list page does not show DEEPA. Not a scraper defect. | None; noted as a coverage gap. | Closed as not applicable |
 | 5 | G5 18 new columns from the ad | Needs database change W-09 (18 columns on the IPO table). | Owner approval of W-09, then migration + write. | Blocked on owner |
 | 6 | I5 listing price, I6 PDF purge | Cannot run until DEEPA lists on 8 Sep and a week after close. | Run on those dates. | Not due |
@@ -50,3 +51,4 @@ Last updated: 2026-09-03 01:32 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 - 2026-09-03 00:58: G4 review round 2: MERGEABLE (6/6 mutations killed). Round 9 dispatched for the 3 minors.
 - 2026-09-03 01:12: G4 PASS (round 9 5bcf03bd, 82 tests reproduced, live run with prod flags clean). Step ledger G4=DONE. Branch-wide suites running (final pre-PR run).
 - 2026-09-03 01:32: suites: shared green after test fix, web green, scraper suite segfaults mid-run (exit 139) -> per-directory bisect running.
+- 2026-09-03 01:42: scraper per-directory run: 52 failures in 4 groups (W-68..W-71); serial fixes started with the timezone one.
