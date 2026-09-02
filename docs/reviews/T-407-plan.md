@@ -160,3 +160,17 @@ Config:
 - Did not edit the `/api/admin/metrics/data-pipeline` DRHP metrics section — it reads the
   generic `documents` table and has no import from the deleted files; rewriting it is out of
   scope for this contract.
+
+## Round 2 corrections (2026-09-02)
+
+The round-2 review's `cd scraper && npx vitest run` segfaulted at teardown on the reviewer's
+box. Re-ran once with `npx vitest run --pool=forks`: no segfault. Result: 1 test file / 3 tests
+failed (`tests/unit/base-scraper-orchestrator-fuzzy-guard-parity.test.ts` — a fuzzy-tier
+guard/write-parity assertion, timeout + call-count mismatches), 123 files / 1359 tests passed,
+1 skipped. That file is untouched by this branch's diff against `main` — pre-existing flake,
+unrelated to the T-407 deletions.
+
+Two numbers in this session's earlier (round-1) report were wrong and are corrected here:
+- The two "flaky" web tests: the reviewer verified they pass in isolation on both `main` and
+  this branch. They are not a T-407 regression.
+- The scraper `tsc` baseline on `main` is **127 errors**, not 118 as earlier reported.
