@@ -149,9 +149,28 @@ describe('T-403 r5: an incomplete rung chain concludes nothing', () => {
   it('does not clear an existing block into a clean slate silently', () => {
     // Coming from BLOCKED_ALL it still returns to WANTED - the chain told us
     // nothing, so the row goes back in the queue - but it raises no NEW alert.
-    const t = applyOutcome(row('RHP', 'BLOCKED_ALL', { blockedSinceAt: NOW }), 'chain_incomplete', NOW);
+    //
+    // r6 (4): this test's NAME said "does not clear the block silently" while
+    // its assertions checked only the state and the alert; the transition was
+    // nulling `blockedSinceAt`, which is precisely the silent clearing. That
+    // matters because `blockedSinceAt` is the outage clock: the BLOCKED_ALL
+    // retry ladder measures from it, and the nightly `m_blocked_all_age` check
+    // ages rows by it. A chain that concluded NOTHING must not reset either -
+    // an unreachable document would otherwise look freshly blocked forever.
+    const blockedSince = new Date(NOW.getTime() - minutes(30 * 60));
+    const t = applyOutcome(
+      row('RHP', 'BLOCKED_ALL', { blockedSinceAt: blockedSince }),
+      'chain_incomplete',
+      NOW
+    );
     expect(t.state).toBe('WANTED');
     expect(t.alert).toBe(false);
+    expect(t.blockedSinceAt).toEqual(blockedSince);
+  });
+
+  it('does not invent a block for a row that never had one', () => {
+    const t = applyOutcome(row('RHP', 'WANTED', { blockedSinceAt: null }), 'chain_incomplete', NOW);
+    expect(t.blockedSinceAt).toBeNull();
   });
 });
 

@@ -419,7 +419,13 @@ export function applyOutcome(
       return {
         state: 'WANTED',
         nextRetryAt: computeNextRetryAt('WANTED', now),
-        blockedSinceAt: null,
+        // r6 (4): PRESERVED, not cleared. `blockedSinceAt` is the outage clock —
+        // the BLOCKED_ALL ladder backs off by it and the nightly
+        // `m_blocked_all_age` check ages rows by it. A chain that concluded
+        // nothing has learned nothing about the outage either, so resetting the
+        // clock here would make a document that has been unreachable for a week
+        // look freshly blocked on every cycle it fails to finish.
+        blockedSinceAt: row.blockedSinceAt ?? null,
         alert: false,
         reason: 'the rung chain ran short — nothing was concluded, retry (G4)',
       };
