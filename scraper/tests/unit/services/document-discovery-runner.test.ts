@@ -102,9 +102,11 @@ describe('DocumentDiscoveryRunner — BSE-first discovery on REAL payloads', () 
     expect(store.all().filter((r) => r.state === 'FOUND').length).toBeGreaterThanOrEqual(4);
   });
 
-  it('NOT_YET_FILED requires EVERY consulted exchange to have answered (F3 vs F6)', async () => {
-    // Both exchanges answer. A type neither of them carries is genuinely not
-    // filed yet, and nothing is BLOCKED_ALL.
+  it('a settled miss on a DUE type is NOT_FOUND, not NOT_YET_FILED (F3 vs F6, W-28)', async () => {
+    // Both exchanges answer, so the miss is SETTLED — no BLOCKED_ALL, no alert.
+    // But the Prospectus is DUE at CLOSED, so "settled" cannot mean "the company
+    // has not filed it" (W-28): that reading is what the E12 badge renders and
+    // what made a discovery gap look like an issuer's timetable.
     const { fetcher } = fixtureFetcher();
     const { runner } = makeRunner(fetcher);
 
@@ -112,7 +114,8 @@ describe('DocumentDiscoveryRunner — BSE-first discovery on REAL payloads', () 
 
     expect(result.attempts.some((a) => a.source === 'BSE' && a.outcome === 'ok')).toBe(true);
     expect(result.attempts.some((a) => a.source === 'NSE' && a.outcome === 'ok')).toBe(true);
-    expect(result.notYetFiled).toContain('PROSPECTUS');
+    expect(result.notFound).toContain('PROSPECTUS');
+    expect(result.notYetFiled).not.toContain('PROSPECTUS');
     expect(result.blocked).toEqual([]);
   }, 30_000);
 

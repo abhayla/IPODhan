@@ -37,6 +37,9 @@ import type { LifecycleStage } from '../scheduler/stage-reconciler.js';
 export type DocumentFetchStateValue =
   | 'WANTED'
   | 'NOT_YET_FILED'
+  // W-28: "we looked and could not find it" — NOT "the issuer has not filed it".
+  // See NOT_FOUND_PERSISTED_AS for why this value does not reach the database yet.
+  | 'NOT_FOUND'
   | 'FOUND'
   | 'EXTRACTED'
   | 'EXTRACT_FAILED'
@@ -107,6 +110,36 @@ export function dueDocTypesForStage(stage: LifecycleStage): DocumentType[] {
     for (const t of STAGE_DOCUMENT_TYPES[STAGE_ORDER[i]]) if (!out.includes(t)) out.push(t);
   }
   return out;
+}
+
+/**
+ * Types an issuer MAY never file at all (W-28 / spec A6).
+ *
+ * A corrigendum or an addendum only exists if something needed correcting. Their
+ * absence is never evidence of a discovery failure, so a miss on one of these
+ * stays NOT_YET_FILED for as long as the issue can still produce one — and once
+ * the IPO has LISTED, no further corrigendum or addendum can ever be filed, so
+ * the row becomes NOT_APPLICABLE and the IPO stops generating fetches forever
+ * (ledger W-40: a listed IPO was still burning a full rung chain every cycle).
+ */
+export const OPTIONAL_DOCUMENT_TYPES: DocumentType[] = ['CORRIGENDUM', 'ADDENDUM'];
+
+export function isOptionalDocType(docType: DocumentType): boolean {
+  return OPTIONAL_DOCUMENT_TYPES.includes(docType);
+}
+
+/** True once no further filing of `docType` can ever be made for this issue. */
+export function isPermanentlyPastDue(docType: DocumentType, stage: LifecycleStage): boolean {
+  return stage === 'LISTED' && isOptionalDocType(docType);
+}
+
+/**
+ * True when the stage says this filing is not DUE yet — the only honest reason
+ * to write NOT_YET_FILED (W-28). Everything else that fails to find a filing is
+ * a discovery miss, not a statement about what the issuer has done.
+ */
+export function isNotDueYet(docType: DocumentType, stage: LifecycleStage): boolean {
+  return !dueDocTypesForStage(stage).includes(docType);
 }
 
 /** What we know about the issue that makes some document types impossible. */
@@ -189,7 +222,32 @@ export interface CycleOptions {
 }
 
 /** The states from which a document may still be fetched. */
-export const OPEN_STATES: DocumentFetchStateValue[] = ['WANTED', 'NOT_YET_FILED', 'BLOCKED_ALL'];
+export const OPEN_STATES: DocumentFetchStateValue[] = [
+  'WANTED',
+  'NOT_YET_FILED',
+  'NOT_FOUND',
+  'BLOCKED_ALL',
+];
+
+/**
+ * The database enum (`document_fetch_status`) has no NOT_FOUND member yet, and
+ * adding one is a schema change this work package is not permitted to make.
+ * Until it lands, a NOT_FOUND decision persists as WANTED — still OPEN, still on
+ * its backoff via `next_retry_at`, and no longer claiming the issuer has not
+ * filed. The INTENDED state is written into the row's `last_attempt` lineage
+ * (`state_intent`) so the badge and the audit can already read the truth.
+ */
+export const NOT_FOUND_PERSISTED_AS: DocumentFetchStateValue = 'WANTED';
+
+/** A state the `document_fetch_status` DB enum actually has a member for. */
+export type PersistedFetchStateValue = Exclude<DocumentFetchStateValue, 'NOT_FOUND'>;
+
+/** Map a decided state onto a value the `document_fetch_status` enum accepts. */
+export function toPersistedState(state: DocumentFetchStateValue): PersistedFetchStateValue {
+  return state === 'NOT_FOUND'
+    ? (NOT_FOUND_PERSISTED_AS as PersistedFetchStateValue)
+    : (state as PersistedFetchStateValue);
+}
 
 /** States that need no further work this cycle. */
 export function closedStates(options: CycleOptions = {}): DocumentFetchStateValue[] {
@@ -282,7 +340,16 @@ export function planIpoCycle(params: {
     };
   }
   const closed = new Set(closedStates(options));
-  const notApplicable = notApplicableTypes(issue);
+  // W-40/A6: once the IPO has LISTED, no corrigendum or addendum can ever be
+  // filed. Left out of this list they stayed due forever (they are cumulative
+  // from PRE_OPEN/OPEN), so every listed IPO in the live window burned a full
+  // four-rung chain per type per cycle for filings that cannot exist.
+  const notApplicable = [
+    ...notApplicableTypes(issue),
+    ...dueDocTypesForStage(params.stage).filter((t) =>
+      isPermanentlyPastDue(t, params.stage)
+    ),
+  ];
 
   const toMarkNotApplicable = notApplicable.filter(
     (t) => (byType.get(t)?.state ?? 'WANTED') !== 'NOT_APPLICABLE'
@@ -337,11 +404,25 @@ export function planIpoCycle(params: {
 export const RETRY_MINUTES = {
   /** A filing can appear any time and the call is one cheap API hit. */
   NOT_YET_FILED: 30,
+  /**
+   * A discovery miss (W-28). Slower than NOT_YET_FILED on purpose: nothing about
+   * the issue changed, only our search failed, so hammering the same four rungs
+   * every 30 minutes buys nothing and costs a full chain per cycle.
+   */
+  NOT_FOUND: 60,
   /** Every cycle for the first 24 h — NSE stalls clear within minutes. */
   BLOCKED_FRESH: 30,
   /** After a day of total failure it is an outage or a wrong link, not a blip. */
   BLOCKED_AGED: 6 * 60,
 } as const;
+
+/**
+ * How many consecutive NOT_FOUND cycles before the row is escalated to
+ * BLOCKED_ALL and the owner is alerted (W-28). Five hours of "every rung
+ * answered and nobody has it" is no longer a transient miss — either the
+ * document is somewhere we do not look, or a source's shape changed.
+ */
+export const NOT_FOUND_MAX_ATTEMPTS = 5;
 
 /** How long BLOCKED_ALL stays on the fast ladder before backing off. */
 export const BLOCKED_FAST_LADDER_HOURS = 24;
@@ -360,6 +441,8 @@ export function computeNextRetryAt(
     case 'WANTED':
     case 'NOT_YET_FILED':
       return plus(RETRY_MINUTES.NOT_YET_FILED);
+    case 'NOT_FOUND':
+      return plus(RETRY_MINUTES.NOT_FOUND);
     case 'BLOCKED_ALL': {
       const since = blockedSinceAt ?? now;
       const blockedHours = (now.getTime() - since.getTime()) / 3_600_000;
@@ -391,10 +474,16 @@ export interface Transition {
  * the 30-minute ladder. Treating "the company has not filed it yet" as an error
  * is what would fill the audit with noise and hide the real BLOCKED_ALL rows.
  */
+export interface OutcomeContext {
+  /** The IPO's lifecycle stage — decides what a miss MEANS (W-28). */
+  stage?: LifecycleStage;
+}
+
 export function applyOutcome(
   row: StateRow,
   outcome: AttemptOutcome,
-  now: Date = new Date()
+  now: Date = new Date(),
+  context: OutcomeContext = {}
 ): Transition {
   switch (outcome) {
     case 'found':
@@ -430,14 +519,65 @@ export function applyOutcome(
         reason: 'the rung chain ran short — nothing was concluded, retry (G4)',
       };
 
-    case 'no_link':
+    case 'no_link': {
+      // W-28. "Every rung answered and none of them had it" is TWO different
+      // facts depending on the stage, and the old code wrote the flattering one
+      // for both. A DRHP missing on an UPCOMING IPO is a DISCOVERY MISS — the
+      // issuer filed it months ago — yet the row said NOT_YET_FILED, which the
+      // E12 badge renders as "not filed yet" and the scheduler reads as "just
+      // wait". NOT_YET_FILED is now reserved for the two cases where it is true:
+      // the stage says the filing is not due yet, and an optional filing the
+      // issue may still produce.
+      const stage = context.stage;
+
+      if (stage && isPermanentlyPastDue(row.docType, stage)) {
+        return {
+          state: 'NOT_APPLICABLE',
+          nextRetryAt: null,
+          blockedSinceAt: null,
+          alert: false,
+          reason: `${row.docType} can no longer be filed once the IPO has LISTED (A6/W-40) — terminal, no further fetches`,
+        };
+      }
+
+      const notYetFiled =
+        !stage || isNotDueYet(row.docType, stage) || isOptionalDocType(row.docType);
+      if (notYetFiled) {
+        return {
+          state: 'NOT_YET_FILED',
+          nextRetryAt: computeNextRetryAt('NOT_YET_FILED', now),
+          blockedSinceAt: null,
+          alert: false,
+          reason: stage
+            ? `${row.docType} is not due (or is optional) at stage ${stage} — not filed yet (F3), not a failure`
+            : 'exchange answered with an empty field — not filed yet (F3), not a failure',
+        };
+      }
+
+      // Due at this stage and still not found: a miss, with a backoff ladder and
+      // an escalation to BLOCKED_ALL so the owner eventually hears about it
+      // rather than the row sitting in a permanently reassuring state.
+      const attempts = (row.attempts ?? 0) + 1;
+      if (attempts >= NOT_FOUND_MAX_ATTEMPTS) {
+        const blockedSinceAt = row.blockedSinceAt ?? now;
+        return {
+          state: 'BLOCKED_ALL',
+          nextRetryAt: computeNextRetryAt('BLOCKED_ALL', now, blockedSinceAt),
+          blockedSinceAt,
+          alert: row.state !== 'BLOCKED_ALL',
+          reason: `${row.docType} is due at stage ${stage} and was not found in ${attempts} attempts — escalated (W-28)`,
+        };
+      }
       return {
-        state: 'NOT_YET_FILED',
-        nextRetryAt: computeNextRetryAt('NOT_YET_FILED', now),
-        blockedSinceAt: null,
+        state: 'NOT_FOUND',
+        nextRetryAt: computeNextRetryAt('NOT_FOUND', now),
+        // The outage clock is not ours to reset: every rung ANSWERED here, so we
+        // learned nothing about any prior outage this row was carrying.
+        blockedSinceAt: row.blockedSinceAt ?? null,
         alert: false,
-        reason: 'exchange answered with an empty field — not filed yet (F3), not a failure',
+        reason: `${row.docType} is due at stage ${stage} but no source carried it — discovery miss, attempt ${attempts}/${NOT_FOUND_MAX_ATTEMPTS} (W-28)`,
       };
+    }
 
     case 'all_sources_failed': {
       // Keep the ORIGINAL blockedSinceAt so the 24 h ladder measures the outage,

@@ -64,6 +64,7 @@ import {
 import {
   planIpoCycle,
   applyOutcome,
+  toPersistedState,
   type AttemptOutcome,
   type CycleOptions,
   type IssueShape,
@@ -79,6 +80,7 @@ import type {
 } from '@ipodhan/shared/repositories/document-fetch-state-repository';
 import { NetworkCounter, hostOf } from '../utils/network-counter.js';
 import logger from '../utils/logger.js';
+import { notifyOwner } from './owner-notify.js';
 
 // ---------------------------------------------------------------------------
 // Wire-level configuration
@@ -513,6 +515,8 @@ export interface IpoRunResult {
   due: DocumentType[];
   found: DocumentType[];
   notYetFiled: DocumentType[];
+  /** W-28: due at this stage, every rung answered, nobody had it — a miss. */
+  notFound: DocumentType[];
   blocked: DocumentType[];
   notApplicable: DocumentType[];
   /** Types closed because a later filing replaced them this cycle (F-3). */
@@ -952,7 +956,7 @@ export class DocumentDiscoveryRunner {
     docType: DocumentType,
     attempts: FetchAttempt[],
     seenBySha: Map<string, { documentId: string; docType: DocumentType }>
-  ): Promise<{ documentId: string; bytes: number } | null> {
+  ): Promise<{ documentId: string; bytes: number; storedType: DocumentType } | null> {
     const verdict = await this.fetchAndVerify(candidate, ipo, attempts, docType);
     if (!verdict || isVerifyFailure(verdict)) return null;
 
@@ -966,12 +970,39 @@ export class DocumentDiscoveryRunner {
         url: candidate.url,
         sha256: verdict.sha256,
       });
-      return { documentId: alias.documentId, bytes: verdict.bytes };
+      return { documentId: alias.documentId, bytes: verdict.bytes, storedType: alias.docType };
     }
+
+    // W-31 + W-29: ONE cover read, two uses. The issuer's website is printed on
+    // the filing cover, so reading it here makes the company-host rung reachable
+    // for the NEXT document this IPO needs without a single extra fetch — the
+    // DEEPA walk skipped that rung with `no_company_url` on every type because
+    // nothing had ever stored a website. The same read tells us whether this PDF
+    // has a usable text layer at all, which decides which of two copies of the
+    // same filing an extractor should prefer.
+    const cover = await (this.deps.extractCoverText ?? extractCoverTextFromPdf)(verdict.pdf);
+    const hasTextLayer = cover.usable === true;
+    if (!this.companyUrlByIpo.has(ipo.id) && cover.usable) {
+      const site = extractWebsiteFromCoverText(cover.text ?? '');
+      if (site) this.companyUrlByIpo.set(ipo.id, site);
+    }
+
+    // W-29: the zip member's OWN classification wins over the fetch kind.
+    // NSE serves `RATIOS_DEEPA.zip` whose only member is
+    // "Deepa Jewellers Limited - Price Band Advertisement.pdf". The runner
+    // already LOGGED "member classifies as: PRICE_BAND_AD" and then stored the
+    // row as RATIOS_BASIS_ISSUE_PRICE anyway, so the price-band ad was filed
+    // under a type it is not and the real one still read as missing. The member
+    // name is a confident, title-based classification of the bytes we actually
+    // hold; the fetch kind is only the question we asked. Bytes win, and the
+    // question is kept in the lineage below.
+    const storedType: DocumentType =
+      (verdict.memberTypeMismatch as DocumentType | undefined) ?? docType;
+    const retyped = storedType !== docType;
 
     const stored = await storeDocument({
       ipoId: ipo.id,
-      docType,
+      docType: storedType,
       pdf: verdict.pdf,
       sha256: verdict.sha256,
       storeDir: this.deps.storeDir ?? getStoreDir(),
@@ -990,7 +1021,7 @@ export class DocumentDiscoveryRunner {
 
     const doc = await this.deps.documents.upsertDocument({
       ipoId: ipo.id,
-      type: docType,
+      type: storedType,
       title: candidate.title,
       url: candidate.url,
       exchange: candidate.source,
@@ -1000,19 +1031,30 @@ export class DocumentDiscoveryRunner {
       fileSize: verdict.bytes,
       sha256: verdict.sha256,
     });
-    seenBySha.set(verdict.sha256, { documentId: doc.id, docType });
+    seenBySha.set(verdict.sha256, { documentId: doc.id, docType: storedType });
 
-    // G2: the issuer's website is printed on the filing cover. Capturing it here
-    // means the company-host rung costs nothing extra to become usable for the
-    // NEXT document this IPO needs.
-    if (!this.companyUrlByIpo.has(ipo.id)) {
-      const cover = await (this.deps.extractCoverText ?? extractCoverTextFromPdf)(verdict.pdf);
-      const site = cover.usable ? extractWebsiteFromCoverText(cover.text ?? '') : null;
-      if (site) this.companyUrlByIpo.set(ipo.id, site);
-    }
+    // Lineage. `documents` has no metadata column, so the fetch kind, the chosen
+    // type and whether the stored PDF carries a usable text layer are recorded on
+    // the state row's `last_attempt` — the only lineage json this table has. The
+    // text-layer flag is what lets a later extraction prefer THIS copy over a
+    // scanned one of the same filing served by the other exchange (both are kept:
+    // different sha, different exchange, so the unique index admits both rows).
+    attempts.push({
+      source: candidate.source,
+      http: 200,
+      ms: 0,
+      outcome: retyped
+        ? `stored_as:${storedType} (fetch_kind:${docType}; member:${verdict.zipMember ?? '-'}; text_layer:${hasTextLayer ? 'yes' : 'no'})`
+        : `stored_as:${storedType} (text_layer:${hasTextLayer ? 'yes' : 'no'})`,
+      url: candidate.url,
+      sha256: verdict.sha256,
+    });
 
-    logger.info({ ipoId: ipo.id, docType, bytes: verdict.bytes }, 'Document FOUND and stored');
-    return { documentId: doc.id, bytes: verdict.bytes };
+    logger.info(
+      { ipoId: ipo.id, fetchKind: docType, storedType, bytes: verdict.bytes, hasTextLayer },
+      'Document FOUND and stored'
+    );
+    return { documentId: doc.id, bytes: verdict.bytes, storedType };
   }
 
   /**
@@ -1493,6 +1535,7 @@ export class DocumentDiscoveryRunner {
       due: plan.due,
       found: [],
       notYetFiled: [],
+      notFound: [],
       blocked: [],
       notApplicable: plan.toMarkNotApplicable,
       superseded: plan.toMarkSuperseded,
@@ -1691,7 +1734,7 @@ export class DocumentDiscoveryRunner {
         // A separate flag rather than comparing `exchanges`: assigning a literal
         // narrows its type, so `exchanges !== 'found'` is a compile error in this
         // workspace. The flag says the same thing without fighting it.
-        let stored: { documentId: string; bytes: number } | null = null;
+        let stored: { documentId: string; bytes: number; storedType: DocumentType } | null = null;
         const attemptCandidates = async (list: DiscoveredDocument[]): Promise<void> => {
           for (const candidate of list) {
             if (triedUrls.has(candidate.url)) continue;
@@ -1723,7 +1766,17 @@ export class DocumentDiscoveryRunner {
           bytes = stored.bytes;
           exchanges = 'found';
         }
-        rungs.push(stored ? 'EXCHANGES:found' : 'EXCHANGES:failed');
+        // W-29: FOUND_AS says the bytes were filed under a DIFFERENT type than
+        // the one we asked for. The fetch-kind row still goes to FOUND, which is
+        // what stops the state machine re-fetching the same zip forever; the
+        // chain line is where a reader learns what actually landed.
+        rungs.push(
+          stored
+            ? stored.storedType === docType
+              ? 'EXCHANGES:found'
+              : `EXCHANGES:FOUND_AS:${stored.storedType}`
+            : 'EXCHANGES:failed'
+        );
       }
 
       // B-1: may the exchanges' answer SETTLE this type?
@@ -1810,9 +1863,26 @@ export class DocumentDiscoveryRunner {
         );
       }
 
-      const transition = applyOutcome(prior, outcome, now);
+      // W-28: the stage is what decides whether a miss means "not filed yet" or
+      // "we could not find it". Without it every dead end read as NOT_YET_FILED.
+      const transition = applyOutcome(prior, outcome, now, { stage: ipo.stage });
+      // W-28: NOT_FOUND has no `document_fetch_status` enum member yet (the enum
+      // change is reported, not made, by this work package), so it persists as
+      // WANTED — open, on its backoff, and no longer claiming the issuer has not
+      // filed. `state_intent` below carries the decided state until the enum lands.
+      const persistedState = toPersistedState(transition.state);
+      let stateIntentAttempt: FetchAttempt | null = null;
+      if (persistedState !== transition.state) {
+        stateIntentAttempt = {
+          source: 'CHAIN',
+          http: 0,
+          ms: 0,
+          outcome: `state_intent[${docType}]: ${transition.state} — ${transition.reason}`,
+        };
+        attempts.push(stateIntentAttempt);
+      }
       const patch: DocumentFetchStatePatch = {
-        state: transition.state,
+        state: persistedState,
         nextRetryAt: transition.nextRetryAt,
         blockedSinceAt: transition.blockedSinceAt,
         attempts: (stateRow.attempts ?? 0) + 1,
@@ -1832,7 +1902,7 @@ export class DocumentDiscoveryRunner {
         // every row.
         lastAttempt: attempts.filter((a) =>
           a.source === 'CHAIN'
-            ? a === chainAttempt
+            ? a === chainAttempt || a === stateIntentAttempt
             : !a.url || triedUrls.has(a.url) || !DOC_URL_RE.test(a.url)
         ),
       };
@@ -1841,6 +1911,8 @@ export class DocumentDiscoveryRunner {
 
       if (transition.state === 'FOUND') result.found.push(docType);
       else if (transition.state === 'NOT_YET_FILED') result.notYetFiled.push(docType);
+      else if (transition.state === 'NOT_FOUND') result.notFound.push(docType);
+      else if (transition.state === 'NOT_APPLICABLE') result.notApplicable.push(docType);
       else if (transition.state === 'BLOCKED_ALL') result.blocked.push(docType);
 
       if (transition.alert) {
@@ -1848,6 +1920,14 @@ export class DocumentDiscoveryRunner {
           { ipoId: ipo.id, company: ipo.companyName, docType, attempts },
           'Document BLOCKED_ALL — every source failed (P2)'
         );
+        // W-28: the owner hears about it once, on entry. Fire-and-forget and a
+        // no-op without NOTIFIER_URL/NOTIFIER_KEY, so this can never disturb a
+        // scrape run (notifier-integration.md, non-fatal-side-effects.md).
+        notifyOwner('P2', `Document unreachable: ${docType}`, {
+          body: `${ipo.companyName} (${ipo.stage}): ${transition.reason}`,
+          type: 'document-discovery-blocked',
+          dedupeKey: `doc-blocked:${ipo.id}:${docType}`,
+        });
       }
       if (bytes !== undefined) {
         logger.info({ ipoId: ipo.id, docType, bytes }, 'Document FOUND and stored');

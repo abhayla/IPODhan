@@ -109,6 +109,53 @@ export function extractWebsiteFromCoverText(coverText: string): string | null {
     if (NON_ISSUER_DOMAINS.some((d) => new URL(normalized).hostname.includes(d))) continue;
     return normalized;
   }
+  return extractWebsiteFromTableLayout(coverText);
+}
+
+/**
+ * How far past a bare `WEBSITE` column header to look for its value.
+ *
+ * W-31. A mainboard RHP cover is a TABLE: a header row reading
+ * "REGISTERED OFFICE | CONTACT PERSON | TELEPHONE AND E-MAIL | WEBSITE", then
+ * the cells underneath. Extracted linearly that puts the word WEBSITE hundreds
+ * of characters before its own value, with the whole registered-office address
+ * in between — so the label-then-url regex above matched nothing and the DEEPA
+ * walk skipped the company rung with `no_company_url` on every document type,
+ * for want of a website printed on page 1 of a filing we already held. Measured
+ * on the DEEPA RHP cover the gap is ~330 characters; 900 leaves room for a
+ * longer address without reaching the next section of the page.
+ */
+const TABLE_HEADER_WINDOW = 900;
+
+/**
+ * Fallback for the table-layout cover: a bare `WEBSITE` header with its value in
+ * a cell further down. Deliberately narrower than the labelled form — it only
+ * fires when the header carries NO url of its own, and it still rejects
+ * intermediary and non-issuer domains, so the loosened distance cannot smuggle
+ * in a registrar's or a lead manager's site.
+ */
+function extractWebsiteFromTableLayout(coverText: string): string | null {
+  for (const header of coverText.matchAll(/\bwebsite\b/gi)) {
+    const start = (header.index ?? 0) + header[0].length;
+    const window = coverText.slice(start, start + TABLE_HEADER_WINDOW);
+    for (const m of window.matchAll(
+      /(?:^|[\s(])((?:https?:\/\/)?www\.[\w.-]+\.[a-z]{2,}[^\s,;)]*)/gi
+    )) {
+      // An e-mail's domain is not a website; `www.` is required above precisely
+      // so `cs@deepajewel.com` on the same cover cannot be mistaken for one.
+      const raw = m[1].trim().replace(/[.,;]+$/, '');
+      const normalized = normalizeCompanyUrl(raw);
+      if (!normalized) continue;
+      if (NON_ISSUER_DOMAINS.some((d) => new URL(normalized).hostname.includes(d))) continue;
+      // Same discipline as the labelled form: look only at the text IMMEDIATELY
+      // before this url for the label that says whose it is. Scanning the whole
+      // window would drag in every party named anywhere on the cover page.
+      const start = m.index ?? 0;
+      const before = window.slice(Math.max(0, start - CONTEXT_WINDOW), start).toLowerCase();
+      if (INTERMEDIARY_CONTEXT.some((w) => before.includes(w))) continue;
+      return normalized;
+    }
+  }
   return null;
 }
 
