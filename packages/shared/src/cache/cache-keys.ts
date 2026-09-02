@@ -24,6 +24,9 @@ export const CacheTTL = {
   // these are read on the IPO detail page and written by an infrequent
   // (per-filing) scraper cycle, not a hot real-time path.
   FILING_SCHEMA: 1800, // 30 minutes
+  // S-01: per-IPO pipeline step ledger. Short TTL -- the admin grid is a
+  // live operational view and every write invalidates it anyway.
+  PIPELINE_STEPS: 60, // 1 minute
 } as const;
 
 /**
@@ -232,4 +235,27 @@ export function getRegistrarInvalidationKeys(id?: string): string[] {
     keys.push('registrar:name:*');
   }
   return keys;
+}
+
+/**
+ * S-01 per-IPO pipeline step ledger keys.
+ * Pattern: {entity}:{operation}:{identifier}
+ */
+export function getPipelineStepsByIpoKey(ipoId: string): string {
+  return `pipeline:steps:${ipoId}`;
+}
+
+export function getPipelineGridKey(stage: string | undefined, limit: number): string {
+  return `pipeline:grid:${stage ?? 'active'}:${limit}`;
+}
+
+/** Every grid page/stage combination — invalidated as a pattern on any write. */
+export const PIPELINE_GRID_KEY_PATTERN = 'pipeline:grid:*';
+
+/**
+ * Exact keys to drop when one IPO's ledger changes. Pair with
+ * PIPELINE_GRID_KEY_PATTERN, which covers the cross-IPO grid pages.
+ */
+export function getPipelineInvalidationKeys(ipoId: string): string[] {
+  return [getPipelineStepsByIpoKey(ipoId)];
 }

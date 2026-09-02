@@ -68,3 +68,13 @@ export type { IpoIdentity } from './ipo-identity';
 
 // Types and Interfaces
 export type * from './types';
+
+// S-01: per-IPO pipeline step ledger
+export { IpoPipelineStepsRepository } from './ipo-pipeline-steps-repository';
+export type {
+  IpoStepStatus,
+  UpsertStepInput,
+  PipelineStepRow,
+  PipelineGrid,
+  PipelineGridIpo,
+} from './ipo-pipeline-steps-repository';

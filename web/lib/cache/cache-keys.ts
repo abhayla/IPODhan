@@ -29,6 +29,7 @@ export const CacheTTL = {
   REFERENCE: 604800, // 7 days - registrars, holidays, sectors (static data)
   ANCHOR_INVESTOR: 86400, // 24 hours (Story 11.10 requirement)
   REVIEW_SUMMARY: 900, // 15 minutes (Story 11.16 requirement)
+  PIPELINE_STEPS: 60, // 1 minute - S-01 per-IPO step ledger / admin grid
   SLUG_REDIRECT: 604800, // 7 days — retired slugs are immutable once written (P3-1, T-278)
 } as const;
 
@@ -376,4 +377,31 @@ export function getRegistrarInvalidationKeys(id?: string): string[] {
     keys.push('registrar:name:*');
   }
   return keys;
+}
+
+/**
+ * S-01 per-IPO pipeline step ledger keys.
+ *
+ * Mirrors packages/shared/src/cache/cache-keys.ts, which the shared
+ * IpoPipelineStepsRepository reads (this repo keeps two parallel cache-key
+ * modules -- see .claude/rules/cache-key-and-ttl-ssot.md). The two MUST stay
+ * byte-identical in the key shape they produce.
+ */
+export function getPipelineStepsByIpoKey(ipoId: string): string {
+  return `pipeline:steps:${ipoId}`;
+}
+
+export function getPipelineGridKey(stage: string | undefined, limit: number): string {
+  return `pipeline:grid:${stage ?? 'active'}:${limit}`;
+}
+
+/** Every grid page/stage combination - invalidated as a pattern on any write. */
+export const PIPELINE_GRID_KEY_PATTERN = 'pipeline:grid:*';
+
+/**
+ * Exact keys to drop when one IPO's ledger changes. Pair with
+ * PIPELINE_GRID_KEY_PATTERN, which covers the cross-IPO grid pages.
+ */
+export function getPipelineInvalidationKeys(ipoId: string): string[] {
+  return [getPipelineStepsByIpoKey(ipoId)];
 }
