@@ -72,7 +72,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | I6 | PDF purge at close+7d | NOT_DUE | | |
 | J1 | Cache invalidation per slug | PASS | 21:20 | Every upsert logged `DEL ipo:id:<id>, ipo:slug:deepa-jewellers-ltd` and the field-sources/conflicts keys. |
 | J2 | Detail page renders | BASELINE captured, verdict after G4 | 22:10 | `/ipos/deepa-jewellers-ltd` HTTP 200 on the dev server against ipodhan_test; screenshot `docs/walks/evidence/ipo-page-deepa-before-g4-2026-09-02.png`. Financials/peers/objects sections expected empty until G4. |
-| J3 | Admin conflict view | pending | | issueSize CRITICAL conflict re-created for DEEPA at 21:55 for this check. |
+| J3 | Admin conflict view | FAIL -> fix running | 22:20 | `/admin/conflicts` crashes client-side: `TypeError: Cannot read properties of undefined (reading 'map')` (GlobalError, unhandled render error) while `/api/admin/conflicts` and `/stats` both return 200. The visibility surface for S-04 is broken (W-43). Screenshot `docs/walks/evidence/admin-conflicts-crash-2026-09-02.png`. |
 
 ## 2. Defects and observations found (W-nn)
 
@@ -118,6 +118,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | W-39 | H3 | Anchor investors are sourced from the DRHP (which never lists them); the ANCHOR_ALLOCATION_REPORT is stored and unread. H3 can never succeed on the current code. | `anchor-investors-scraper.ts` re-sourced to the anchor report | fix running (Opus) |
 | W-40 | I2 | On a LISTED IPO with every document present, the due list still contains docDrhp and docCorrigendum every cycle (optional/never-filed kinds never settle), so a listed IPO keeps generating fetches. Spec goal G1/A6 ("zero fetches ten days after listing") needs a terminal NOT_APPLICABLE for optional kinds after listing. | `stage-reconciler.ts` due map + `document_fetch_state` terminal state | open, spec item |
 | W-41 | I4 | `ipo_status` enum = UPCOMING/OPEN/CLOSED/LISTED only; WITHDRAWN/POSTPONED handling in `document-cycle.ts` is unreachable; BSE board `Status` codes and NSE status text are never mapped to a withdrawal. | schema enum extension (migration) + status updater mapping BSE/NSE withdrawal signals | open, spec item (E10) |
+| W-43 | J3 | Admin conflicts page renders a GlobalError (`.map` on undefined) although both admin conflict APIs return 200: the page reads a response shape the API does not send (or an empty-list case). The one place an admin is supposed to see CRITICAL source disagreements is unusable. | `web/app/admin/conflicts` page vs `web/app/api/admin/conflicts` response shape; add an empty-state and a shape guard; a Playwright smoke behind the admin token | fix running |
 | W-09 | inventory | 18 of 54 ad/RHP fields have no DB column; 44 of 54 never written by prod code | migration drafted in price-band-ad-field-inventory.md §"Schema changes"; not approved | open, blocks G5 |
 
 ## 3. Owner decisions (D-nn)
