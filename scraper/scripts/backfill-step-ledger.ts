@@ -139,8 +139,11 @@ if (isMain) {
   main()
     .then(() => process.exit(0))
     .catch((err) => {
+      // Drizzle wraps the pg error as "Failed query: <sql>"; the real reason
+      // (timeout, enum, constraint) is on `cause`. Print it or the log is useless.
+      const cause = err instanceof Error && err.cause instanceof Error ? err.cause.message : undefined;
       logger.error(
-        { error: err instanceof Error ? err.message : String(err) },
+        { error: err instanceof Error ? err.message.split('\n')[0].slice(0, 200) : String(err), cause },
         '[backfill-step-ledger] failed'
       );
       process.exit(1);
