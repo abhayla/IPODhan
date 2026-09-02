@@ -22,7 +22,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Quick Reference
 
-**Commands (root proxies dev/dev:scraper/scraper:nse/lint/build/test:unit + audit:prod — the rest run from web/):**
+**Commands (root proxies dev/dev:scraper/scraper:nse/lint/build/test:unit + the audit:* scripts — the rest run from web/):**
 ```bash
 # Development
 npm run dev                    # Next.js dev server (port 3000, Turbopack; web/ has dev:webpack fallback)
@@ -56,6 +56,7 @@ cd scraper && npx vitest run tests/unit/path/to/test.test.ts  # Single scraper t
 npm run audit:prod                   # Read-only API + data-integrity audit of live site (exit 1 = real failure)
 npm run audit:data                   # audit:coverage (--gate) + audit:prod — run this, not audit:prod alone
 npm run audit:substance              # Plausibility gate: absurd-but-rendering values (exit 1 = real failure)
+npm run audit:schema-drift           # schema.ts vs live DB drift (the class that broke the T-330 staging deploy)
 cd web && npm run test:prod-verify   # Browser-level Playwright sweep of prod routes (console errors, blank pages)
 cd web && npm run lint:ci            # The lint gate CI actually runs (scripts/lint-ci-gate.mjs), not bare eslint
 ```
@@ -235,6 +236,8 @@ export async function GET(request: NextRequest) {
   in `.github/workflows-disabled/` (inert — GitHub only reads `.github/workflows/`); the Windows
   runner `windows-vps-ipodhan` is stopped. Windows-era runbooks under `docs/` and
   `.claude/skills/windows-deployment-expert/` describe that retired path — read them as history.
+- **Commit gate (husky pre-commit):** staged-secret scan → workflow-file ASCII check → lint-staged
+  (`tsc --noEmit` on `web/**` only). Nothing type-checks `scraper/` or `packages/shared/` at commit time.
 - **Shared package must be compiled before web/scraper builds:** `cd packages/shared && npx tsc` — CI verifies `dist/db/schema.d.ts` exists. If types from `@ipodhan/shared` seem stale locally, rebuild it.
 
 ---
@@ -269,6 +272,6 @@ export async function GET(request: NextRequest) {
 
 ## Claude Code Configuration
 
-The `.claude/` directory contains 157 skills, 37 agents, and 81 rules for Claude Code.
+The `.claude/` directory contains 157 skills, 43 agents, and 81 rules for Claude Code.
 
 <!-- hub:best-practices:end -->
