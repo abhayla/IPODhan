@@ -38,6 +38,8 @@ import {
   getConflictSeverity,
   validateValue,
 } from './normalization-engine';
+import { confidenceFor } from '../config/source-confidence';
+import type { ConflictSeverity } from '../config/source-confidence';
 import { FEATURE_FLAGS, shouldUseFeature } from '../config/feature-flags';
 import logger from '../utils/logger.js';
 
@@ -541,7 +543,6 @@ export class DataConsolidationService {
           fieldName,
           value: input.incomingData[fieldName],
           source: input.source,
-          confidence: input.confidence,
           previousValue: existingField?.value ?? input.existingData?.[fieldName],
           previousSource: existingField?.source,
         });
@@ -633,7 +634,6 @@ export class DataConsolidationService {
             // value travels alongside so the absent-never-overwrites-present
             // guard sees it regardless of provenance state.
             existingRowValue: input.existingData?.[fieldName],
-            confidence: input.confidence,
             scrapedAt: input.scrapedAt,
             existingUpdatedAt: existingSourceMap.get(fieldName)?.updatedAt,
             // T-328: threaded so resolveConflict can HOLD a disputed
@@ -718,7 +718,6 @@ export class DataConsolidationService {
     existingValue?: any;
     existingSource?: ScraperSource;
     existingRowValue?: any;
-    confidence?: number;
     scrapedAt?: Date;
     existingUpdatedAt?: Date;
     ipoStatus?: string;
@@ -731,7 +730,6 @@ export class DataConsolidationService {
       incomingSource,
       existingValue,
       existingSource,
-      confidence = 100,
     } = params;
 
     const rules = getFieldRules(fieldName);
@@ -847,7 +845,6 @@ export class DataConsolidationService {
           fieldName,
           value: storedValue,
           source: incomingSource,
-          confidence,
         });
 
         return {
@@ -885,7 +882,6 @@ export class DataConsolidationService {
         fieldName,
         value: incomingValue,
         source: incomingSource,
-        confidence,
         previousValue: storedValue,
       });
 
@@ -926,7 +922,6 @@ export class DataConsolidationService {
               fieldName,
               value: storedValue,
               source: incomingSource,
-              confidence,
             });
           }
 
@@ -947,7 +942,6 @@ export class DataConsolidationService {
           fieldName,
           value: merged,
           source: existingSource || incomingSource,
-          confidence,
           previousValue: storedValue,
           previousSource: existingSource,
         });
@@ -972,7 +966,6 @@ export class DataConsolidationService {
         fieldName,
         value: incomingValue, // Track original value, not normalized
         source: incomingSource,
-        confidence,
       });
 
       return {
@@ -1004,7 +997,33 @@ export class DataConsolidationService {
         }
       }
 
-      // Don't track or update - values are identical
+      // F6 (W-37): the VALUE doesn't change, but a SECOND source independently
+      // reporting it is real evidence — it raises the stored confidence by one
+      // confirmation step (NSE 90 -> 95). Only a DIFFERENT source counts; the
+      // same source repeating itself confirms nothing and must not touch the
+      // provenance row at all (that is the W-24 losing-write class).
+      if (
+        FEATURE_FLAGS.ENABLE_SOURCE_TRACKING &&
+        !this.currentShadowMode &&
+        existingSource !== undefined &&
+        existingSource !== incomingSource
+      ) {
+        await this.trackFieldSource({
+          ipoId,
+          tableName,
+          fieldName,
+          value: existingValue,
+          source: existingSource,
+          confirmations: 1,
+          // W-24: previous_value/previous_source are what the row held BEFORE
+          // this write — the same value from the same source. Passing them
+          // keeps the confirmation from nulling real history.
+          previousValue: existingValue,
+          previousSource: existingSource,
+        });
+      }
+
+      // Value and owning source are unchanged - keep existing
       return {
         fieldName,
         finalValue: normalizedExisting, // Keep existing value
@@ -1287,6 +1306,9 @@ export class DataConsolidationService {
         fieldName,
         value: chosenValue,
         source: chosenSource,
+        // F6 (W-37): the chosen value had to win a real disagreement — that
+        // costs confidence (CRITICAL -10, WARNING -5, floor 20).
+        conflicts: [severity],
         previousValue: chosenSource !== existingSource ? existingValue : undefined,
         previousSource: chosenSource !== existingSource ? existingSource : undefined,
       });
@@ -1318,7 +1340,10 @@ export class DataConsolidationService {
     fieldName: string;
     value: any;
     source: ScraperSource;
-    confidence?: number;
+    /** F6/W-37: severities this value had to win to be chosen (lowers confidence). */
+    conflicts?: ConflictSeverity[];
+    /** F6/W-37: number of OTHER sources that independently reported an equal value. */
+    confirmations?: number;
     previousValue?: any;
     previousSource?: ScraperSource;
   }): Promise<void> {
@@ -1349,7 +1374,15 @@ export class DataConsolidationService {
         fieldName: params.fieldName,
         value: params.value,
         source: params.source,
-        confidence: params.confidence || 100,
+        // F6 (W-37): the written confidence describes the source that actually
+        // OWNS the value after resolution, adjusted for how contested it was.
+        // It is derived here, never taken from the caller's per-payload hint —
+        // that hint describes the INCOMING source, which is frequently the one
+        // that just lost. Before this every row was a constant 100.
+        confidence: confidenceFor(params.source, {
+          conflicts: params.conflicts,
+          confirmations: params.confirmations,
+        }),
         previousValue: params.previousValue !== undefined
           ? serializeFieldValue(params.previousValue)
           : undefined,

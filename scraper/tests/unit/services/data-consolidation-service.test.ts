@@ -418,7 +418,9 @@ describe('DataConsolidationService', () => {
             fieldName: 'company_name',
             source: 'NSE',
             value: 'Test Company',
-            confidence: 95,
+            // F6 (W-37): derived from the source tier (NSE = 90), NOT from the
+            // caller's per-payload `confidence` hint.
+            confidence: 90,
           })
         );
       });
@@ -455,14 +457,21 @@ describe('DataConsolidationService', () => {
             fieldName: 'lot_size',
             source: 'ADMIN',
             value: 150,
-            confidence: 100,
+            // F6 (W-37): ADMIN base 100, minus 10 for the CRITICAL lot_size
+            // disagreement it had to win.
+            confidence: 90,
             previousValue: '100',
             previousSource: 'NSE',
           })
         );
       });
 
-      it('should NOT track field source if value identical to existing', async () => {
+      // F6 (W-37) supersedes the pre-F6 "identical value writes nothing" rule for
+      // a DIFFERENT source: a second source independently reporting the same
+      // value is evidence, and it raises the stored confidence by one
+      // confirmation step. The same source repeating itself still writes nothing
+      // (covered in consolidation-field-confidence.test.ts).
+      it('should record a confirmation (not a value change) when another source reports the identical value', async () => {
         const existingFieldSources = [{
           ipoId: 'test-ipo',
           tableName: 'ipos',
@@ -488,7 +497,16 @@ describe('DataConsolidationService', () => {
         });
 
         expect(result.fieldsUpdated).toBe(0);
-        expect(mockFieldSourcesRepo.trackFieldUpdate).not.toHaveBeenCalled();
+        expect(mockFieldSourcesRepo.trackFieldUpdate).toHaveBeenCalledWith(
+          expect.objectContaining({
+            fieldName: 'lot_size',
+            source: 'NSE', // owning source unchanged
+            value: '100',
+            confidence: 95, // NSE 90 + 5 (one confirmation)
+            previousValue: '100',
+            previousSource: 'NSE',
+          })
+        );
       });
     });
 
