@@ -1,0 +1,86 @@
+{
+  "_source": "Transcribed by hand from docs/reviews/price-band-ad-field-inventory.md tables A-F and the printed Purple Style Labs pre-issue / price band advertisement (Economic Times, 2 September 2026). Values are EXACTLY as printed: amounts in Rs million, percentages as plain numbers (negatives from the accounting parentheses), dates ISO-8601. This file is the oracle for scraper/tests/unit/scripts/extract-filing.test.ts and must be edited only against the document, never against extractor output.",
+  "_ipo": "Purple Style Labs Limited",
+  "_documents": {
+    "PRICE_BAND_AD": "PRICE_BAND_AD-cebd8036.pdf (BSE listing.bseindia.com, 4 pages)",
+    "RHP": "DRHP-700fce50.pdf (BSE listing.bseindia.com, red herring prospectus dated 24 August 2026)"
+  },
+
+  "PRICE_BAND_AD": {
+    "price_band_floor": 546.0,
+    "price_band_cap": 575.0,
+    "face_value": 10.0,
+    "lot_size": 26.0,
+    "lot_multiple": 26.0,
+    "floor_multiple_of_face": 54.6,
+    "cap_multiple_of_face": 57.5,
+    "shares_at_floor": 12454212.0,
+    "shares_at_cap": 11826086.0,
+    "fresh_issue_amount": 6800.0,
+    "ofs_amount": 0.0,
+    "market_cap_at_floor": 44056.31,
+    "market_cap_at_cap": 46035.12,
+    "issue_structure": "FRESH_ONLY",
+    "weighted_average_ronw": -147.14,
+    "book_building_regulation": "6(2)",
+    "qib_pct": 75.0,
+    "nii_pct": 15.0,
+    "retail_pct": 10.0,
+    "designated_stock_exchange": "NSE",
+
+    "anchor_bid_date": "2026-08-28",
+    "open_date": "2026-08-31",
+    "close_date": "2026-09-02",
+    "basis_of_allotment_date": "2026-09-03",
+    "refund_date": "2026-09-04",
+    "credit_date": "2026-09-04",
+    "listing_date": "2026-09-07",
+    "upi_cutoff_time": "17:00",
+    "rhp_filing_date": "2026-08-24",
+
+    "fiscal_years": [2026, 2025, 2024],
+    "unit": "millions",
+    "financial_basis": "restated_consolidated",
+    "pat_by_fy": { "2026": -2853.99, "2025": -1883.83, "2024": -477.1 },
+    "op_cash_flow_by_fy": { "2026": -348.95, "2025": -451.85, "2024": -313.44 },
+    "dscr_by_fy": { "2026": 0.08, "2025": 0.37, "2024": 0.27 },
+    "rent_by_fy": { "2026": 847.83, "2025": 482.95, "2024": 350.07 },
+    "eps_basic_by_fy": { "2026": -41.98, "2025": -29.0, "2024": -7.46 },
+    "eps_diluted_by_fy": { "2026": -41.98, "2025": -29.0, "2024": -7.46 },
+
+    "promoter_name": "Abhishek Agarwal",
+    "promoter_shares_held": 19100000.0,
+    "promoter_waca": 8.52,
+    "waca_last_3y": 1.45,
+    "cap_multiple_last_3y": 396.55,
+    "promoter_holding_pre_pct": 26.09,
+    "promoter_holding_post_pct_at_cap": 22.46,
+    "pre_ipo_placement": false,
+
+    "brlm_sebi_regs": ["INM000012029", "INM000010940"],
+    "registrar_sebi_reg": "INR000000221",
+    "brlm_issues_3y_total": 85.0,
+    "brlm_closed_below_total": 19.0,
+    "compliance_officer": "Gulshan Mumtaz Khan",
+    "cin": "U18204MH2015PLC267215",
+
+    "top10_brands_pct_fy2026": 30.24,
+    "womenswear_pct_fy2026": 77.7,
+    "mumbai_gmv_pct_fy2026": 28.42
+  },
+
+  "_null_with_reason": {
+    "PRICE_BAND_AD": {
+      "pe_at_floor": "not_ascertainable_loss",
+      "pe_at_cap": "not_ascertainable_loss",
+      "issue_price": "not_priced_yet",
+      "waca_last_1y": "bonus_nil"
+    }
+  },
+
+  "RHP": {
+    "unit": "millions",
+    "fiscal_years": [2026, 2025, 2024],
+    "cin": "U18204MH2015PLC267215"
+  }
+}
