@@ -85,6 +85,16 @@ jobs:
             bash scripts/deploy-linux.sh "${{ steps.slot.outputs.slot }}" 2>&1 | tee "$LOG_FILE"
           fi
 
+      # T-425: a successful deploy clears any open deploy-failure STATUS row for
+      # THIS slot (a different slot's open failure is untouched - see
+      # scripts/lib/fix-served-checks.mjs clearDeployStatus). Runs on the Deploy
+      # step's own success, before the (best-effort, non-blocking) SHA-drift
+      # check below, so clearing never depends on that check's own outcome.
+      - name: Clear deploy-failure STATUS (this slot deployed successfully)
+        if: success()
+        shell: bash
+        run: node scripts/deploy-status.mjs clear --slot "${{ steps.slot.outputs.slot }}"
+
       - name: Verify /api/version reflects the deployed SHA
         if: always()
         shell: bash
@@ -153,6 +163,14 @@ jobs:
               GATE_REASON="$(tail -n 1 "$LOG_FILE" || true)"
             fi
           fi
+
+          # T-425: the Notifier page above is one-shot - it says nothing once it
+          # scrolls off, even if the deploy is STILL broken hours later (the
+          # #265 class: T-327's fix merged 26 Aug, not served until 28 Aug, and
+          # nothing on disk said the deploy was still failing in between). This
+          # writes a STATUS row that stays open until a later deploy of the SAME
+          # slot clears it (see the "Clear deploy-failure STATUS" step below).
+          node scripts/deploy-status.mjs set --slot "$SLOT" --sha "$SHA" --run-url "$RUN_URL" --reason "$GATE_REASON" || echo "WARNING: could not write the deploy-failure STATUS row (non-fatal - the Notifier page above is still the primary alert)." >&2
 
           if [ -z "${NOTIFIER_URL:-}" ] || [ -z "${NOTIFIER_KEY:-}" ]; then
             echo "WARNING: NOTIFIER_URL/NOTIFIER_KEY not set in the runner's env - cannot page the owner for this failure (see runner .env setup in GLOBAL.md section 2)." >&2
