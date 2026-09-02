@@ -87,6 +87,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | D-08 | 19:17 | Owner: build the IPO-tracking spec item (S-01, per-IPO step ledger + admin grid) NOW in parallel with the B7 fix. S-02 (due-step scheduling) stays deferred. Wiring of the ledger into `upsertIPO` and document jobs waits until W-16/17/18 land, to avoid two workers editing the same file. |
 | D-09 | 19:24 | Fix and test LOCALLY only. No deploy of any walk output until the walk ends; everything deploys together at the end (PR #277 stays open and unmerged until then). No worktree cleanup work in this walk. |
 | D-10 | 19:57 | Fable decision on the round-2 reviewer's two design calls (reversible, owner may override): (1) an untracked stored value that only the weakest-ranked source ever reports stays frozen until a better source or ADMIN reports it; the unfreeze is a one-off provenance backfill, not a looser guard. (2) replacing an untracked value writes no `data_conflicts` row (old source unknown, enum has no UNKNOWN); the replacement is recorded in `field_sources` with previous_value set and previous_source NULL; the admin pipeline/conflicts surface must show that query (spec 4.2). |
+| D-11 | 20:18 | Owner leaves; Fable continues AUTONOMOUSLY step after step (C1 -> J3) without confirmation: each step run, tested, verified, defects fixed and tested before moving on, ledger updated per step. Stops only for: deploy (none until walk end, D-09), destructive action on data Fable did not create, or a true product fork. |
 
 ## 4. Recommendations pending owner decision (S-nn)
 
