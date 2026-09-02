@@ -24,8 +24,13 @@ function makeMockRedis() {
 /** A tx double that records call order so we can assert delete-before-insert. */
 function makeMockTx(insertedRows: unknown[]) {
   const calls: string[] = [];
+  // T-431 (T-428 review carry-over): capture the array actually handed to
+  // .values(). Asserting only the delete-then-insert call ORDER lets a repository
+  // that inserts the WRONG rows -- or a truncated set -- pass green.
+  const valuesArgs: unknown[][] = [];
   return {
     calls,
+    valuesArgs,
     tx: {
       delete: vi.fn().mockReturnValue({
         where: vi.fn(() => {
@@ -34,11 +39,14 @@ function makeMockTx(insertedRows: unknown[]) {
         }),
       }),
       insert: vi.fn().mockReturnValue({
-        values: vi.fn().mockReturnValue({
-          returning: vi.fn(() => {
-            calls.push('insert');
-            return Promise.resolve(insertedRows);
-          }),
+        values: vi.fn((rows: unknown[]) => {
+          valuesArgs.push(rows);
+          return {
+            returning: vi.fn(() => {
+              calls.push('insert');
+              return Promise.resolve(insertedRows);
+            }),
+          };
         }),
       }),
     },
@@ -59,7 +67,7 @@ describe('PromotersRepository', () => {
     ];
 
     it('deletes the existing rows before inserting the new set, in one transaction', async () => {
-      const { calls, tx } = makeMockTx([{ id: 'p-1', ...rows[0] }]);
+      const { calls, valuesArgs, tx } = makeMockTx([{ id: 'p-1', ...rows[0] }]);
       const mockDb = {
         transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(tx)),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -69,6 +77,8 @@ describe('PromotersRepository', () => {
       const result = await repo.replacePromoters('ipo-1', rows);
 
       expect(calls).toEqual(['delete', 'insert']);
+      expect(valuesArgs).toHaveLength(1);
+      expect(valuesArgs[0]).toEqual(rows);
       expect(result).toEqual([{ id: 'p-1', ...rows[0] }]);
     });
 
@@ -106,7 +116,7 @@ describe('PromotersRepository', () => {
     ];
 
     it('deletes the existing rows before inserting the new set, in one transaction', async () => {
-      const { calls, tx } = makeMockTx([{ id: 'r-1', ...rows[0] }]);
+      const { calls, valuesArgs, tx } = makeMockTx([{ id: 'r-1', ...rows[0] }]);
       const mockDb = {
         transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(tx)),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -116,6 +126,8 @@ describe('PromotersRepository', () => {
       const result = await repo.replaceAcquisitionRanges('ipo-1', rows);
 
       expect(calls).toEqual(['delete', 'insert']);
+      expect(valuesArgs).toHaveLength(1);
+      expect(valuesArgs[0]).toEqual(rows);
       expect(result).toEqual([{ id: 'r-1', ...rows[0] }]);
     });
 

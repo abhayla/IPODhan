@@ -1811,6 +1811,17 @@ export const brlmTrackRecord = pgTable(
   (table) => ({
     sourceIpoIdIdx: index('idx_brlm_track_record_source_ipo_id').on(table.sourceIpoId),
     brlmNameIdx: index('idx_brlm_track_record_brlm_name').on(table.brlmName),
+    // T-431 (T-428 review carry-over): the repository's upsert was check-then-write,
+    // so two concurrent filing extractions reading the same BRLM's table both saw
+    // "absent" and both inserted. This unique makes the upsert atomic via
+    // onConflictDoUpdate. The key includes sourceIpoId on purpose: the same BRLM's
+    // track record legitimately appears in many ads on the same as-of date, and each
+    // filing keeps its own provenance row rather than overwriting another filing's.
+    uniqueNameDateSource: unique('unique_brlm_track_record_name_date_source').on(
+      table.brlmName,
+      table.asOfDate,
+      table.sourceIpoId
+    ),
   })
 );
 
