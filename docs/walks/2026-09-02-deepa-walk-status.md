@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-03 00:40 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-03 00:52 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -26,7 +26,7 @@ Last updated: 2026-09-03 00:40 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 |---|---|---|---|---|
 | 1 | D6 text check / OCR | Scanned ads had no reader at all. Four rounds built one: rapidocr reader with confidence gate (92814b1a), word splitting (c39ec63a), extractor safe against OCR digit damage with prose fallback and arithmetic gates (91164725), column-splice cut on prose (87b4ed07). | Done. Fable's own live run on the scanned DEEPA ad: 27 oracle-checked fields correct, 0 wrong numbers or dates, description true but first sentence only (the text copy outranks it). VPS needs `pip install rapidocr-onnxruntime pypdfium2` in the deploy bundle. | **PASS** 00:17 |
 | 2 | I4 leftover (W-60) | Closed (f3fda19b). Strict review verdict: MERGEABLE; both mutation tests killed. | None. | **PASS** 00:35 |
-| 3 | G4 persist filing data | Strict review of round 7: NOT MERGEABLE. Two critical holes: (a) admin-protected valuation values are overwritten because the write uses the unfiltered data; (b) the anchor-report path ignores the admin row lock. Plus one red test (RHP writes issue size from the fresh leg alone, understating the offer) and the refusal exit is untested at script level. | Round 8 fixes all four with substance tests (protected column absent from the written payload, per table), a lock test on the anchor door, both-legs rule for issue size, and a wiring test. Detection RCA: `docs/reviews/g4-round-7-detection-rca.md`. | Round 8 running (00:38, 45-min budget) |
+| 3 | G4 persist filing data | Round 8 (cf662143) closed all four review findings and found two more of the same class in its sweep: the main IPO row and the financial statements table had no admin-protection gate in this module either. Now every table this module writes honours admin protection and the row lock; issue size is written only when both legs are known; the refusal exit is tested at script level. 79 tests reproduced by Fable. | Second strict review (mutation tests) running, as the first round had criticals. Then live re-run on DEEPA and the branch-wide suites. | Round 8 done, review 2 running (00:52, 25-min budget) |
 | 4 | F2 Moneycontrol | Moneycontrol's list page does not show DEEPA. Not a scraper defect. | None; noted as a coverage gap. | Closed as not applicable |
 | 5 | G5 18 new columns from the ad | Needs database change W-09 (18 columns on the IPO table). | Owner approval of W-09, then migration + write. | Blocked on owner |
 | 6 | I5 listing price, I6 PDF purge | Cannot run until DEEPA lists on 8 Sep and a week after close. | Run on those dates. | Not due |
@@ -46,3 +46,4 @@ Last updated: 2026-09-03 00:40 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 - 2026-09-03 00:25: step ledger backfill needed DATABASE_* tunnel vars (root .env points at the VPS); backfill script now prints the pg cause (dea73837). W-60 fix dispatched.
 - 2026-09-03 00:30: W-60 fixed (f3fda19b, 53 tests reproduced). Worker used git stash against the brief (no damage; registry bumped). Tier A review of G4 round 7 + W-60 dispatched.
 - 2026-09-03 00:40: Tier A review: W-60 MERGEABLE, G4 round 7 NOT MERGEABLE (C1 valuation protection discarded, C2 anchor path ignores scraper_locked, M1 red RHP test, M2 wiring untested). Round 8 dispatched; detection RCA written.
+- 2026-09-03 00:52: G4 round 8 landed (cf662143; W-63..W-66 + two sibling gates), 79 tests reproduced. Review round 2 dispatched.
