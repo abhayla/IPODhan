@@ -434,9 +434,16 @@ export async function persistFilingExtraction(
 
   // ------------------------------------------------- 3. financial_statements
   const basisRaw = str(extraction, 'financial_basis');
-  const basis: 'RESTATED' | 'STANDALONE' = basisRaw?.includes('restated')
-    ? 'RESTATED'
-    : 'STANDALONE';
+  // Every document this persister reads (price band ad, DRHP, RHP, prospectus)
+  // publishes RESTATED financial information — SEBI ICDR requires it. Defaulting
+  // an unlabelled block to STANDALONE was a real defect: the ad states its basis
+  // and the RHP does not, so the SAME three years landed twice under two
+  // different bases (6 rows for 3 fiscal years), the RHP's copy mislabelled.
+  // Only an explicit "standalone"-without-"restated" label downgrades it.
+  const basis: 'RESTATED' | 'STANDALONE' =
+    basisRaw && basisRaw.includes('standalone') && !basisRaw.includes('restated')
+      ? 'STANDALONE'
+      : 'RESTATED';
   const unitEnum = UNIT_ENUM[(unit || '').toLowerCase()];
   const revenue = byFy(extraction, 'revenue_by_fy');
   const totalIncome = byFy(extraction, 'total_income_by_fy');
@@ -465,28 +472,39 @@ export async function persistFilingExtraction(
     // waiting to render - refuse the whole block rather than guess.
     skippedFailedCheck.push(`financial_statements: unit '${unit}' not one of MILLION/LAKH/CRORE`);
   } else {
+    // The repository upsert writes the WHOLE row, so a second filing that
+    // carries fewer columns (the RHP has no operating-cash-flow row) would null
+    // what the first filing already stored. Read the existing rows and keep any
+    // value this extraction does not carry — enrich, never erase.
+    const existingStatements = apply ? await deps.financialStatements.listByIpo(ipoId) : [];
     let n = 0;
     for (const fy of [...fyKeys].sort()) {
       const fiscalYear = Number(fy);
       if (!Number.isInteger(fiscalYear)) continue;
-      const s = (m: Record<string, number>): string | null =>
-        m[fy] === undefined ? null : m[fy].toString();
+      const prior = existingStatements.find(
+        (r) => r.fiscalYear === fiscalYear && r.basis === basis
+      );
+      const s = (m: Record<string, number>, col: keyof typeof prior): string | null => {
+        if (m[fy] !== undefined) return m[fy].toString();
+        const kept = prior ? (prior[col] as string | null) : null;
+        return kept ?? null;
+      };
       if (apply) {
         await deps.financialStatements.upsert({
           ipoId,
           fiscalYear,
           basis,
           unit: unitEnum,
-          revenue: s(revenue),
-          totalIncome: s(totalIncome),
-          ebitda: s(ebitda),
-          pat: s(pat),
-          netWorth: s(netWorth),
-          epsBasic: s(epsBasic),
-          epsDiluted: s(epsDiluted),
-          opCashFlow: s(opCashFlow),
-          dscr: s(dscr),
-          rentExpense: s(rent),
+          revenue: s(revenue, 'revenue'),
+          totalIncome: s(totalIncome, 'totalIncome'),
+          ebitda: s(ebitda, 'ebitda'),
+          pat: s(pat, 'pat'),
+          netWorth: s(netWorth, 'netWorth'),
+          epsBasic: s(epsBasic, 'epsBasic'),
+          epsDiluted: s(epsDiluted, 'epsDiluted'),
+          opCashFlow: s(opCashFlow, 'opCashFlow'),
+          dscr: s(dscr, 'dscr'),
+          rentExpense: s(rent, 'rentExpense'),
         });
       }
       n += 1;

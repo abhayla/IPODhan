@@ -427,8 +427,12 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: 0, max: 999999990000 }, // 999,999.9 Cr ceiling, mirrors the NUMERIC(15,2) cap in financial-column-precision
   },
 
+  // T-434 (walk step G4): DRHP added at rank 2. Face value is a charter fact
+  // the offer document PRINTS; the exchanges frequently carry a default 10.
+  // Deepa Jewellers: ad Rs 2 vs NSE Rs 10, and without this entry the filing
+  // write scored -1 and the wrong 10 survived.
   faceValue: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL'],
     normalization: 'number',
     confidenceThreshold: 75,
     description: 'Per-share face value (₹) - typically a small whole number (1/2/5/10)',
@@ -471,8 +475,9 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // writes it). Without this twin, getFieldRules('listingDate') falls through to
   // DEFAULT rules and the CHITTORGARH registration above is never applied to the
   // #70 stuck-listing backfill. Mirrors the lotSize/allotmentDate dual-key pattern.
+  // T-434: DRHP appended LAST — same reasoning as allotmentDate above.
   listingDate: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH', 'DRHP'],
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'Listing date (camelCase consolidation key) - CHITTORGARH for #70 backfill',
@@ -487,8 +492,12 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'Basis-of-allotment date - Moneycontrol most reliable',
   },
   // camelCase variant - consolidation service keys on this for some paths
+  // T-434: DRHP appended LAST on purpose. The ad prints an INDICATIVE
+  // timeline; the exchanges publish the actual one and can revise it after
+  // the ad is printed. Last place lets a filing fill an empty value without
+  // ever overriding a live exchange date.
   allotmentDate: {
-    sources: ['ADMIN', 'MONEYCONTROL', 'NSE', 'BSE'],
+    sources: ['ADMIN', 'MONEYCONTROL', 'NSE', 'BSE', 'DRHP'],
     normalization: 'date',
     confidenceThreshold: 90,
     description: 'Basis-of-allotment date (camelCase)',

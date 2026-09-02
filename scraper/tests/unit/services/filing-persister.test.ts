@@ -122,7 +122,7 @@ function makeDeps(): Spies {
         ],
       })),
     },
-    financialStatements: { upsert: finStmt },
+    financialStatements: { upsert: finStmt, listByIpo: vi.fn(async () => []) },
     ipoValuation: { upsert: valuation },
     promoters: {
       replacePromoters,
@@ -521,6 +521,26 @@ describe('filing-persister — dry run and idempotency', () => {
 describe('filing-persister — RHP', () => {
   beforeEach(() => upsertIPOMock.mockClear());
 
+  it('keeps a value the earlier filing stored when this one does not carry it', async () => {
+    const s = makeDeps();
+    // The ad already wrote FY2026 operating cash flow; the RHP has no such row.
+    (s.deps.financialStatements as unknown as { listByIpo: ReturnType<typeof vi.fn> }).listByIpo =
+      vi.fn(async () => [
+        { ipoId: IPO_ID, fiscalYear: 2026, basis: 'RESTATED', opCashFlow: '-147.3', dscr: null },
+      ]);
+    await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('RHP'),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+    const fy2026 = s.finStmt.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((r) => r.fiscalYear === 2026)!;
+    expect(fy2026.opCashFlow).toBe('-147.3');
+    expect(fy2026.netWorth).toBe('2380.7');
+  });
+
   it('writes the RHP financials as a PROSPECTUS-side statement set', async () => {
     const s = makeDeps();
     const extraction = extractionFromOracle('RHP');
@@ -536,6 +556,10 @@ describe('filing-persister — RHP', () => {
       .find((r) => r.fiscalYear === 2026)!;
     expect(fy2026.totalIncome).toBe('19277.25');
     expect(fy2026.netWorth).toBe('2380.7');
+    // The RHP states no basis. It is still a SEBI-restated statement set, so it
+    // must land on the SAME (ipoId, fy, RESTATED) key as the ad — not a second
+    // STANDALONE copy of the same three years.
+    expect(fy2026.basis).toBe('RESTATED');
     // The RHP carries no price band, so nothing goes to ipos.issueSize.
     expect(summary.ipos_fields).not.toContain('issueSize');
   });
