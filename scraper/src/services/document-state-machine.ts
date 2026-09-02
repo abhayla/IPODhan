@@ -441,8 +441,13 @@ export function applyOutcome(
 
     case 'all_sources_failed': {
       // Keep the ORIGINAL blockedSinceAt so the 24 h ladder measures the outage,
-      // not the time since the most recent attempt.
-      const blockedSinceAt = row.state === 'BLOCKED_ALL' && row.blockedSinceAt ? row.blockedSinceAt : now;
+      // not the time since the most recent attempt. r7: read it regardless of
+      // the row's PRIOR state, not only when that state was already
+      // BLOCKED_ALL — a row that passed through `chain_incomplete` (WANTED)
+      // still carries a `blockedSinceAt` clock from before it entered that
+      // state (chain_incomplete preserves it too, per the case above), and
+      // that clock must survive into BLOCKED_ALL rather than being reset here.
+      const blockedSinceAt = row.blockedSinceAt ?? now;
       return {
         state: 'BLOCKED_ALL',
         nextRetryAt: computeNextRetryAt('BLOCKED_ALL', now, blockedSinceAt),

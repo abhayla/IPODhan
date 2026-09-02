@@ -213,6 +213,20 @@ describe('T49 BLOCKED_ALL retry ladder', () => {
     expect(t.nextRetryAt!.getTime() - NOW.getTime()).toBe(minutes(RETRY_MINUTES.BLOCKED_AGED));
   });
 
+  it('keeps a blockedSinceAt inherited from a prior chain_incomplete cycle, even though the row is not currently BLOCKED_ALL (r7)', () => {
+    // r6's guard was `row.state === 'BLOCKED_ALL' && row.blockedSinceAt`: a row
+    // that passed through chain_incomplete (state WANTED) but still carries a
+    // blockedSinceAt clock from an EARLIER all_sources_failed cycle had that
+    // clock reset to `now` here, because its CURRENT state was WANTED, not
+    // BLOCKED_ALL — silently losing the outage age chain_incomplete itself
+    // took care to preserve.
+    const blockedSince = new Date(NOW.getTime() - 25 * 3_600_000);
+    const t = applyOutcome(row('RHP', 'WANTED', { blockedSinceAt: blockedSince }), 'all_sources_failed', NOW);
+    expect(t.state).toBe('BLOCKED_ALL');
+    expect(t.blockedSinceAt).toEqual(blockedSince);
+    expect(t.nextRetryAt!.getTime() - NOW.getTime()).toBe(minutes(RETRY_MINUTES.BLOCKED_AGED));
+  });
+
   it('never schedules a retry for a closed state', () => {
     for (const s of ['FOUND', 'EXTRACTED', 'SUPERSEDED', 'NOT_APPLICABLE', 'EXTRACT_FAILED'] as const) {
       expect(computeNextRetryAt(s, NOW)).toBeNull();
