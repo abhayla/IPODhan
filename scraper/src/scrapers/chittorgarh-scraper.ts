@@ -77,11 +77,19 @@ function extractHrefFromAnchor(html: string): string | undefined {
   return isVerifierUrl(absolute) ? absolute : undefined;
 }
 
-function extractTextFromAnchor(html: string): string {
+export function extractTextFromAnchor(html: string): string {
   if (!html) return '';
 
-  // Remove HTML tags
-  const text = html.replace(/<\/?[^>]+(>|$)/g, '');
+  // W-36: the report-table cell can carry a status badge/span alongside the
+  // anchor (e.g. Chittorgarh's "Open" pill: `<span class="badge ...">O</span>`,
+  // sibling to or nested inside the <a>). Blindly stripping all tags and
+  // concatenating the leftover text turned "Deepa Jewellers Ltd." into
+  // "Deepa Jewellers Ltd. O". Strip badge/status elements FIRST, then keep
+  // only the anchor's own text (falling back to the remaining cell text when
+  // there is no anchor at all).
+  const withoutBadges = html.replace(/<(span|sup|sub)\b[^>]*>[\s\S]*?<\/\1>/gi, '');
+  const anchorMatch = withoutBadges.match(/<a\b[^>]*>([\s\S]*?)<\/a>/i);
+  const text = anchorMatch ? anchorMatch[1] : withoutBadges;
   return sanitizeText(text);
 }
 
