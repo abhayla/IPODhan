@@ -226,3 +226,20 @@ against the class, not just the original row.
 - **Root cause:** the rung outcome was a bare string union, so any early return could mint `'absent'`; the prose rule "ABSENT is evidence" cannot constrain a string literal. Tests of a limit checked the mechanism, not the contract the mechanism must not violate.
 - **Rule:** (1) a state that means "we have evidence" must be unconstructible without the evidence object (type-level, not prose). (2) Every test of a cap / budget / guard / retry limit MUST also assert the row/state it leaves behind. (3) A write described as "one choke point" must sit outside every feature-flag `if/else`; the review checklist asks "is this reachable with the PROD flag value?".
 - **Mechanism:** MECHANISM-DUE rows `non-answer-recorded-as-evidence-of-absence` (occ 3) and `write-hung-on-one-branch-of-a-feature-flag`; structural test + flag-matrix test in T-403 r5.
+
+## 2026-09-02 10:30 — worker burned ~30 min re-running the full vitest suite (T-403 r5)
+- **Mistake:** my dispatch brief listed "full scraper suite" as a gate without saying WHEN; the Opus worker ran it 7 times (3–5 min each) plus repeated acceptance runs against live exchanges. Owner noticed 52 min wall-clock.
+- **Root cause:** the fleet already knew this trap (HANDOFF 2026-08-26: "the vitest suite is slow and it is what killed two workers — run it once, late"), but it lived in a handoff doc, not in the brief template. Second occurrence of the class.
+- **Rule:** every code-changing brief MUST say: single-file tests while iterating; full suites exactly ONCE before the final commit; acceptance/live-network runs at most twice (red, green). Report counts, not reruns.
+- **Mechanism:** T-409 (hook counting full-suite invocations per subagent; block the 3rd with a message).
+
+## 2026-09-02 10:35 — T-407 worker missed the write-ratchet gate; brief enumerated gates by hand
+- **Mistake:** my brief listed tsc + vitest + a grep as "the gates"; pr-gate.yml also runs `check-write-ratchet.mjs`, which the deletion broke (stale baseline entries). Fresh review caught it, not the worker.
+- **Root cause:** hand-enumerated gate lists drift from CI. The worker did exactly what it was told.
+- **Rule:** every code brief says "run every step that .github/workflows/pr-gate.yml runs, locally, ONCE at the end" and names the file — never a hand-typed subset. Reviewer prompt asks "did the worker run every pr-gate step?".
+- Also: a `.gitignore` line for an untracked-but-present directory is protection, not a reference; deleting references ≠ deleting ignores.
+
+## 2026-09-02 11:05 — `git stash` is repo-wide; a worker in one worktree popped another worktree's stash
+- **Mistake:** T-403 r5 worker stashed for a baseline comparison; T-406 r3 worker in a sibling worktree did a bare `git stash pop` and got the T-403 stash → conflicts on files it never touched. Recovered without loss.
+- **Root cause:** the stash list is shared by every worktree of the repo; two concurrent workers assume it is private.
+- **Rule:** workers MUST NOT use `git stash` in a shared-worktree repo. Baseline comparisons use `git worktree add <tmp> <ref>` or `git diff > x.patch`; if a stash is unavoidable, `git stash push -m "<T-id>"` and `git stash pop stash^{/<T-id>}` by name, never bare pop. Add to every dispatch brief.
