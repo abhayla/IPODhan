@@ -91,6 +91,41 @@ export const EXPECTED_MATVIEWS: MatviewExpectation[] = [
   // verified migration.
 ];
 
+// ==================== KNOWN-GATED TYPE DRIFT (T-405) ====================
+// Small, explicit, human-maintained — same convention as EXPECTED_MATVIEWS
+// above. These are int/numeric-precision widenings that are DESTRUCTIVE/
+// type-changing DDL (table rewrite), so they live in
+// web/drizzle/migrations/_gated/ pending Abhay's sign-off rather than being
+// journaled (drizzle-migration-gated-ddl.md) — journaling a type change is
+// explicitly out of scope for T-405 (#256).
+//
+// Production ALREADY has the widened types (verified 2026-09-02: prod
+// gmp_records/listing_performance are numeric(10,2)/numeric(7,2), matching
+// schema.ts) via a historical out-of-band change — so this registry does
+// NOT affect prod's deploy gate or the nightly audit, both of which call
+// this script bare (no ignoreGatedTypeDrift) and therefore still see and
+// FAIL on drift here the moment it's real on THAT environment. It exists
+// only so the T-405 "replay the journal from empty" CI job — which,
+// correctly, gets the narrow pre-widen types because a type change cannot
+// be journaled — has a way to say "yes, that specific, already-known,
+// already-approved-elsewhere gap, nothing else" instead of being permanently
+// red over a gap that is not this job's to close.
+//
+// Remove an entry the moment its _gated/ file is applied AND journaled.
+export const KNOWN_GATED_TYPE_DRIFT: { tableName: string; columnName: string; gatedFile: string }[] = [
+  { tableName: 'gmp_records', columnName: 'gmp', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
+  { tableName: 'gmp_records', columnName: 'expected_listing_price', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
+  { tableName: 'gmp_records', columnName: 'subject_rate', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
+  { tableName: 'gmp_records', columnName: 'kostak_rate', gatedFile: '_gated/B2_gmp_int_to_numeric.sql' },
+  { tableName: 'listing_performance', columnName: 'listing_price', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
+  { tableName: 'listing_performance', columnName: 'issue_price', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
+  { tableName: 'listing_performance', columnName: 'listing_gain_percent', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
+  { tableName: 'listing_performance', columnName: 'current_price', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
+  { tableName: 'listing_performance', columnName: 'current_price_bse', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
+  { tableName: 'listing_performance', columnName: 'current_price_nse', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
+  { tableName: 'listing_performance', columnName: 'current_gain_percent', gatedFile: '_gated/C3_listing_performance_widen_precision.sql' },
+];
+
 function collectExpectedColumns(): ColumnExpectation[] {
   const expectations: ColumnExpectation[] = [];
   for (const value of Object.values(schema)) {
@@ -287,7 +322,27 @@ async function main() {
       checkColumns(client),
       checkMatviews(client),
     ]);
-    const allDrifts = [...columnDrifts, ...matviewDrifts];
+
+    // SCHEMA_DRIFT_IGNORE_GATED=1 is set ONLY by the T-405 "replay the journal
+    // from empty" CI job (pr-gate.yml scraper-document-integration), never by
+    // deploy-linux.sh or the nightly audit — see KNOWN_GATED_TYPE_DRIFT above
+    // for why. Filtering happens here, at the CLI/exit-code boundary, so
+    // checkColumns() itself keeps reporting the full truth for every other
+    // caller (the self-test included).
+    const ignoreGated = process.env.SCHEMA_DRIFT_IGNORE_GATED === '1';
+    const isKnownGated = (d: Drift) =>
+      d.kind === 'COLUMN_TYPE_MISMATCH' &&
+      KNOWN_GATED_TYPE_DRIFT.some((g) => d.detail.startsWith(`"${g.tableName}.${g.columnName}"`));
+
+    const knownGated = ignoreGated ? [...columnDrifts, ...matviewDrifts].filter(isKnownGated) : [];
+    const allDrifts = [...columnDrifts, ...matviewDrifts].filter((d) => !knownGated.includes(d));
+
+    if (knownGated.length > 0) {
+      console.log(`INFO: ${knownGated.length} known-gated type drift finding(s) ignored (SCHEMA_DRIFT_IGNORE_GATED=1):`);
+      for (const drift of knownGated) {
+        console.log(`  [${drift.kind}] ${drift.detail}`);
+      }
+    }
 
     if (allDrifts.length > 0) {
       console.error(`FATAL: schema drift detected (${allDrifts.length} finding(s)):`);

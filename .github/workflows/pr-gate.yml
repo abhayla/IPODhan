@@ -194,6 +194,21 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
         run: npx drizzle-kit migrate
 
+      - name: Assert schema drift (T-405 stage 0 — journal must rebuild the schema)
+        # The journal-only rebuild above must match packages/shared/src/db/schema.ts.
+        # SCHEMA_DRIFT_IGNORE_GATED=1 tolerates ONLY the exact, documented,
+        # already-approved-elsewhere type-widenings in KNOWN_GATED_TYPE_DRIFT
+        # (scripts/assert-schema-drift.ts) — destructive/type-changing DDL that
+        # cannot be journaled (drizzle-migration-gated-ddl.md) and that prod
+        # already carries via a historical out-of-band change. Any OTHER drift
+        # still fails this step. deploy-linux.sh and the nightly audit call this
+        # same script WITHOUT this env var, so they see (and fail on) the full,
+        # unfiltered truth against their real environment.
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
+          SCHEMA_DRIFT_IGNORE_GATED: '1'
+        run: npm run audit:schema-drift
+
       - name: Run the document-state integration tests
         working-directory: ./scraper
         env:
