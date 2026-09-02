@@ -362,3 +362,101 @@ second, drifting definition.
    `ipodhan_test` from empty required capturing and re-inserting them by hand.
    Anyone reproducing the run from a truly empty database will hit
    `no ipos row for <company>`. Recorded, not fixed.
+
+## Round 6 plan
+
+Round-5's review found the FOURTH instance of Class 1. The three earlier fixes all
+constrained how absence is *constructed*; this path never constructs it — it
+*inherits* a mutable `outcome` variable set 80 lines earlier and never overwritten.
+The class fix is therefore not another guard: the final outcome must be **derived**
+from the three facts that decide it, by a pure function with an exhaustive match,
+so "not overwritten" stops being a reachable state.
+
+### Files to change
+
+| File | Change |
+|---|---|
+| `scraper/src/services/document-discovery-runner.ts` | new exported-for-test `resolveFinalOutcome(exchanges, settledByExchanges, escalation)` — pure, exhaustive, `never` default arm; the per-type loop keeps an `ExchangeVerdict` and an `EscalationVerdict` and calls the resolver ONCE at the end instead of mutating `outcome`; `answeredFrom` and `AnsweredResponse` become module-private (the brand `ANSWERED` already was) |
+| `scraper/src/services/document-state-machine.ts` (~:421) | `chain_incomplete` preserves `row.blockedSinceAt` instead of nulling it — nothing was concluded, so the outage clock must not be reset |
+| `web/drizzle/migrations/0037_documents_journal_column_drift.sql` | both `pg_constraint` guards qualified with `AND conrelid = 'documents'::regclass` — a same-named constraint on any other table currently makes the guard skip silently |
+| `scripts/lib/document-state-checks.mjs` | new nightly check `checkAbsenceWithoutEvidence` + `chainFromLastAttempt` (the detection upgrade) |
+| `scripts/audit-detection-floor.mjs` | select `s.last_attempt`, run the new check, `record`/`notify` as `m_absence_without_evidence` |
+| `docs/reviews/detection-checks.json` | register `m_absence_without_evidence` |
+
+### Tests to write (red first)
+
+| Test file | What it pins |
+|---|---|
+| `tests/unit/services/document-discovery-resolve-final-outcome.test.ts` (NEW) | the FULL input matrix — exchanges ∈ {found, no_link, failed} × settled ∈ {t,f} × escalation ∈ {found, absent, failed, null}. The round-5 cell (`no_link`, settled=false, escalation=null) must be `chain_incomplete`, never `no_link`. Also pins `EXCHANGE_FAILURE_OUTCOMES` as a literal set (item 5) |
+| `tests/unit/services/document-discovery-absence-evidence.test.ts` | drop the `answeredFrom` import (item 2); the mint-only-from-200 rule is asserted BEHAVIOURALLY (a 403 investor page → BLOCKED_ALL, an answering page → NOT_YET_FILED) with the source regex kept as a secondary guard |
+| `tests/unit/services/document-discovery-round6-chain.test.ts` (NEW) | the behavioural half of item 1: BSE `not_on_board` + NSE `ok` (coverage incomplete, nothing failed) for a type SEBI does not serve, with no company URL and no verifier URL — every rung skipped, escalation `null` — the row is **WANTED**, retryable, no alert, and NOT `NOT_YET_FILED` |
+| `tests/unit/services/document-state-machine.test.ts` (~:150) | the "does not clear an existing block" case asserts what its name says: `blockedSinceAt` survives `chain_incomplete` |
+| `scripts/tests/document-state-checks.test.mjs` | `m_absence_without_evidence` self-test: a DRHP row NOT_YET_FILED whose chain is all `skipped`/`failed` FAILs; one with an `ok`-answered rung PASSes; an exchange-served type is out of scope |
+
+### One deliberate deviation from the RCA's wording, stated up front
+
+The RCA says the resolver returns `chain_incomplete` when `escalation === null &&
+!settledByExchanges`. Taken literally that also covers `exchanges === 'failed'`,
+where `settledByExchanges` is false by construction — and it would downgrade a
+genuine exchange OUTAGE from `BLOCKED_ALL` (retry ladder + P2 alert) to a silent
+`WANTED`. That contradicts the r4 fix ("a rung asked and could not answer is never
+absence, and must alert"). So the resolver returns `all_sources_failed` whenever the
+exchanges failed and escalation did not find the document; `chain_incomplete` is the
+answer for the `no_link`-but-unsettled cell the review actually found. The matrix
+test pins both.
+
+### Gates (run ONCE, before the final commit)
+
+`packages/shared && npx tsc`; the four `node --test` self-tests and the write-ratchet
+gate from `.github/workflows/pr-gate.yml`; `scraper && npx vitest run --pool=forks`.
+The web suite is untouched by this round and is not re-run; the live acceptance
+harness is not re-run either — the only behaviour change outside the resolver's own
+cell is that a dry (`skipDownload`) run of an unsettled `no_link` type now records
+`chain_incomplete` instead of `no_link`, which is the same correction.
+
+## Round 6 — delivered vs not
+
+### Delivered
+
+| Round-5 review finding | What changed | Where |
+|---|---|---|
+| BLOCKER — absence INHERITED through a mutable `outcome` | `resolveFinalOutcome(exchanges, settledByExchanges, escalation)`: pure, exhaustive, `never` default arms, called ONCE at the end of the per-type decision. The mutable `outcome` is gone; the loop now carries two verdicts of raw fact. `escalation === null` is a recorded verdict ("NOT ASKED") and yields `chain_incomplete` when the exchanges could not settle the type | `document-discovery-runner.ts:339` (resolver), `:1616` (the single call), `:1520-1600` (verdicts) |
+| MAJOR — `answeredFrom` / the brand exported for a test | Both module-private again; the mint-only-from-200 rule is asserted behaviourally, the source regex kept as a secondary guard | `document-discovery-runner.ts:247`, `document-discovery-absence-evidence.test.ts:62` |
+| MINOR — 0037 constraint guards unqualified | `AND conrelid = 'documents'::regclass` on both; run against `ipodhan_test` as a no-op to prove the syntax and the idempotency | `0037_documents_journal_column_drift.sql:70,82` |
+| MINOR — `chain_incomplete` cleared `blockedSinceAt` | Preserved. The test whose NAME already claimed this now asserts it | `document-state-machine.ts:428`, `document-state-machine.test.ts:150` |
+| MINOR — `EXCHANGE_FAILURE_OUTCOMES` only ever imported | Pinned as a literal set in a unit test; A4 still imports the constant, so the two cannot drift silently | `document-discovery-resolve-final-outcome.test.ts:130` |
+| DETECTION — nothing would notice this class returning | Nightly `m_absence_without_evidence`: NOT_YET_FILED for an exchange-unserved type whose own chain has zero answered rungs → FAIL. Self-tested, wired into the audit, registered as the manifest's 27th check | `document-state-checks.mjs:196`, `audit-detection-floor.mjs:415`, `detection-checks.json` |
+
+Red→green proof for the blocker: the matrix test failed 28/30 before the fix
+(`resolveFinalOutcome is not a function`) and the behavioural runner test failed
+with `expected 'NOT_YET_FILED' to be 'WANTED'` on the exact
+`EXCHANGES:no_link -> SEBI:skipped -> COMPANY:skipped -> VERIFIER:skipped` chain
+the review described. Both green after.
+
+Gates, run once: `packages/shared && npx tsc` (clean, `dist/db/schema.d.ts`
+present); the four pr-gate `node --test` self-tests (23 / 78 / 31 / 6 passing,
+0 failing) and `check-write-ratchet.mjs` (exit 0); `web` lint gate PASSED (732
+errors against a 732 baseline, unchanged) and `web && npx tsc --noEmit` clean;
+`scraper && npx vitest run --pool=forks` — **149 files, 1680 passed, 1 skipped,
+0 failed**.
+
+### NOT delivered, stated plainly
+
+1. **The `scraper-document-integration` CI job was not run locally.** It needs a
+   Postgres built by replaying the journal from empty, which this box does not
+   have. The only file in it that this round touched is migration 0037, whose two
+   edited DO blocks WERE executed against `ipodhan_test` (no-ops there, both
+   constraints already on `documents`) — that proves the syntax and the
+   idempotent path, not the from-empty replay. CI covers the rest.
+2. **The live acceptance harness was not re-run.** Deliberate: the only
+   behaviour change outside the resolver's own cells is that a dry
+   (`skipDownload`) run of an unsettled `no_link` type now records
+   `chain_incomplete` instead of `no_link` — the same correction, applied to the
+   dry path. If a reviewer wants the 9/9 evidence refreshed under the new
+   resolver, that is a `--db --reset` run, not a code change.
+3. **The web unit suite was not re-run** — no web source changed this round
+   (the only `web/` file touched is a migration `.sql`). Lint and type-check
+   were run.
+4. **`scraper && npx tsc --noEmit -p tsconfig.json` is still not clean** — the
+   same 159 pre-existing error lines recorded in round 5, none in the files this
+   round touched, none added.
