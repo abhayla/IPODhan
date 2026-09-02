@@ -27,6 +27,8 @@ import sys
 DEFAULT_DPI = 260
 DEFAULT_BACKEND = "rapidocr"
 CONFIDENCE_FLOOR = 0.6
+# Cap on the rendered image's longest side (see render_pages).
+MAX_EDGE_PX = 3600
 
 # A page with fewer usable alphanumeric characters than this has no text layer
 # worth extracting from — a scanned page yields ~0, a page with a broken font
@@ -93,9 +95,19 @@ _ENGINE = {}
 
 
 def _rapidocr_engine():
+    """RapidOCR, with the wide-image detection shortcut disabled.
+
+    RapidOCR skips detection entirely for any image wider than
+    `width_height_ratio` (8) times its height and recognises it as ONE text
+    line — on a wide crop of a filing (a price band block, a date table row)
+    that returns nothing at all. `-1` means "always detect", which is the only
+    correct behaviour for document pages and crops.
+    """
     if "rapidocr" not in _ENGINE:
         from rapidocr_onnxruntime import RapidOCR
-        _ENGINE["rapidocr"] = RapidOCR()
+        engine = RapidOCR()
+        engine.width_height_ratio = -1
+        _ENGINE["rapidocr"] = engine
     return _ENGINE["rapidocr"]
 
 
@@ -193,16 +205,26 @@ def _ocr_image_tesseract(image):
 # --------------------------------------------------------------------------- #
 # rendering + page OCR
 # --------------------------------------------------------------------------- #
-def render_pages(pdf_path, pages=None, dpi=DEFAULT_DPI):
-    """Yield (page_index, PIL image) for the requested pages (all when None)."""
+def render_pages(pdf_path, pages=None, dpi=DEFAULT_DPI, max_edge=MAX_EDGE_PX):
+    """Yield (page_index, PIL image) for the requested pages (all when None).
+
+    `max_edge` caps the rendered pixel size. A newspaper-format price band ad is
+    a physically huge page: at 260 dpi it renders ~5400x8600, which the detector
+    spends minutes on for no accuracy gain. The cap keeps a full page inside a
+    few seconds of OCR while leaving normal A4 filings at the requested dpi.
+    """
     import pypdfium2 as pdfium
     doc = pdfium.PdfDocument(pdf_path)
     try:
         wanted = range(len(doc)) if pages is None else pages
         for idx in wanted:
             page = doc[idx]
-            bitmap = page.render(scale=dpi / 72.0)
-            yield idx, bitmap.to_pil()
+            scale = dpi / 72.0
+            if max_edge:
+                longest = max(page.get_width(), page.get_height()) * scale
+                if longest > max_edge:
+                    scale *= max_edge / longest
+            yield idx, page.render(scale=scale).to_pil()
     finally:
         doc.close()
 
@@ -210,7 +232,7 @@ def render_pages(pdf_path, pages=None, dpi=DEFAULT_DPI):
 def ocr_pdf_pages(pdf_path, pages=None, dpi=DEFAULT_DPI, backend=DEFAULT_BACKEND):
     """OCR the given pages of a PDF. Returns [(page_index, text, confidence)]."""
     out = []
-    for idx, image in render_pages(pdf_path, pages, dpi):
+    for idx, image in render_pages(pdf_path, pages, dpi, MAX_EDGE_PX):
         text, conf = ocr_image(image, backend)
         out.append((idx, text, conf))
     return out
