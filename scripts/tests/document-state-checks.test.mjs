@@ -16,6 +16,7 @@ import {
   checkDocumentTypeMatchesClassifier,
   checkNotYetFiledAge,
   checkAbsenceWithoutEvidence,
+  answeredRungsIn,
   chainFromLastAttempt,
   EXCHANGE_UNSERVED_DOC_TYPES,
   NOT_YET_FILED_MAX_DAYS,
@@ -366,18 +367,36 @@ test('67b PASSes when a rung actually answered', () => {
   assert.equal(checkAbsenceWithoutEvidence(drhpRow(CHAIN_SEBI_ANSWERED)), null);
 });
 
-test('67c ignores exchange-served types and non-NOT_YET_FILED states', () => {
-  // For a type the exchanges CAN serve, `EXCHANGES:no_link` from a complete
-  // coverage IS the evidence — that row is out of this check's scope.
-  assert.equal(
-    checkAbsenceWithoutEvidence({
-      ...drhpRow(CHAIN_NOBODY_ANSWERED),
-      docType: 'RHP',
-    }),
-    null
-  );
+test('67c ignores non-NOT_YET_FILED states, and scopes by CHAIN SHAPE not doc type', () => {
   assert.equal(
     checkAbsenceWithoutEvidence({ ...drhpRow(CHAIN_NOBODY_ANSWERED), state: 'WANTED' }),
+    null
+  );
+  // r7: the check used to exempt every non-DRHP doc type outright. A
+  // CORRIGENDUM whose non-EXCHANGES rungs all skipped/failed is the exact same
+  // unobserved-absence shape and must FAIL too.
+  const corrigendumViolation = checkAbsenceWithoutEvidence({
+    ...drhpRow(CHAIN_NOBODY_ANSWERED),
+    docType: 'CORRIGENDUM',
+  });
+  assert.ok(corrigendumViolation, 'a non-DRHP type with the same unanswered chain must FAIL');
+  assert.match(corrigendumViolation, /CORRIGENDUM/);
+});
+
+test('67g PASSes when the exchanges settled it and everything else stood down on purpose', () => {
+  // Mirrors document-discovery-runner.ts:1708-1710 — once EXCHANGES answers,
+  // SEBI/COMPANY/VERIFIER are skipped with this exact label, on purpose, and
+  // that is the evidence, not a gap.
+  const CHAIN_EXCHANGES_SETTLED_IT =
+    'rungs[RHP]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> ' +
+    'COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it';
+  assert.equal(
+    checkAbsenceWithoutEvidence({
+      state: 'NOT_YET_FILED',
+      docType: 'RHP',
+      companyName: 'Nowhere Industries Limited',
+      chain: CHAIN_EXCHANGES_SETTLED_IT,
+    }),
     null
   );
 });
@@ -405,6 +424,21 @@ test('67e reads the chain for THIS doc type out of last_attempt', () => {
       lastAttempt,
     })
   );
+});
+
+test('67h answeredRungsIn requires an explicit answered label — an unknown label is NOT an answer', () => {
+  // r6's shape counted anything that wasn't `failed*`/`skipped*` as answered —
+  // a false-PASS trap: a typo'd or renamed verdict silently started passing.
+  // r7 inverts to an allow-list: an unrecognised verdict must NOT count.
+  const chainWithUnknownVerdict =
+    'rungs[DRHP]: EXCHANGES:no_link -> SEBI:some_new_unlisted_verdict -> ' +
+    'COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url';
+  assert.deepEqual(answeredRungsIn(chainWithUnknownVerdict), []);
+  // But every currently-real answered label from the runner IS recognised.
+  for (const verdict of ['found', 'not_listed', 'no_link', 'found_via_corrected_link', 'no_new_link']) {
+    const chain = `rungs[DRHP]: SEBI:${verdict}`;
+    assert.equal(answeredRungsIn(chain).length, 1, `${verdict} must count as answered`);
+  }
 });
 
 test('67f the exchange-unserved set mirrors the runner and is pinned', () => {

@@ -223,6 +223,41 @@ export const EXCHANGE_UNSERVED_DOC_TYPES = ['DRHP'];
 const OUT_OF_SCOPE_RUNG_SOURCES = ['EXCHANGES'];
 
 /**
+ * A rung is skipped once the exchanges have already settled the question for
+ * this cycle — that skip is itself the answer, not a gap. Mirrors the runner's
+ * `*:skipped:exchanges_settled_it` rungs (document-discovery-runner.ts).
+ */
+const EXCHANGES_SETTLED_SKIP_VERDICT = 'skipped:exchanges_settled_it';
+
+/**
+ * Verdicts that mean a rung ANSWERED the question — an explicit allow-list
+ * (r7), not "anything that isn't failed/skipped" (r6's shape, which counted an
+ * unrecognised label as an answer by default — the false-PASS direction).
+ * Mirrors every non-skip/non-failed outcome `rungs.push`ed in
+ * document-discovery-runner.ts: `found`, `not_listed`, `no_link`,
+ * `found_via_corrected_link`, `no_new_link`. A new answered label added to the
+ * runner without being added here is a SKIP miss, not a silent PASS — the safe
+ * failure direction for a detection check.
+ */
+const ANSWERED_RUNG_VERDICTS = ['found', 'not_listed', 'no_link', 'found_via_corrected_link', 'no_new_link'];
+
+/** Parse a `rungs[<docType>]: A:v -> B:v -> ...` chain into `{source, verdict}` tokens. */
+function parseChainTokens(chain) {
+  const body = String(chain).replace(/^rungs\[[^\]]*\]:\s*/, '');
+  return body
+    .split('->')
+    .map((t) => t.trim())
+    .filter((t) => t !== '')
+    .map((token) => {
+      const idx = token.indexOf(':');
+      return {
+        source: idx === -1 ? token : token.slice(0, idx),
+        verdict: idx === -1 ? '' : token.slice(idx + 1),
+      };
+    });
+}
+
+/**
  * Pull the `rungs[<docType>]: ...` line this cycle wrote for one document type
  * out of a `document_fetch_state.last_attempt` payload. Returns null when the
  * row carries no chain for that type — a row we cannot judge, never a FAIL.
@@ -245,39 +280,40 @@ export function chainFromLastAttempt(lastAttempt, docType) {
 }
 
 /**
- * The rungs in a chain that ANSWERED — neither skipped nor failed.
- *
- * Deliberately defined by exclusion rather than by an allow-list of labels
- * (`SEBI:not_listed`, `COMPANY:no_link`, `VERIFIER:no_new_link`, `*:found`): a
- * new rung label added to the runner is then counted as an answer only if it is
- * spelled as one, and a renamed failure label cannot quietly start passing.
+ * The rungs in a chain that ANSWERED — an explicit allow-list of verdicts
+ * (`ANSWERED_RUNG_VERDICTS`), never "neither skipped nor failed" (see that
+ * constant's comment for why the allow-list direction is the safe one).
  */
 export function answeredRungsIn(chain) {
-  const body = String(chain).replace(/^rungs\[[^\]]*\]:\s*/, '');
-  return body
-    .split('->')
-    .map((t) => t.trim())
-    .filter((t) => t !== '')
-    .map((token) => {
-      const idx = token.indexOf(':');
-      return {
-        source: idx === -1 ? token : token.slice(0, idx),
-        verdict: idx === -1 ? '' : token.slice(idx + 1),
-      };
-    })
+  return parseChainTokens(chain)
     .filter((r) => !OUT_OF_SCOPE_RUNG_SOURCES.includes(r.source))
-    .filter((r) => !r.verdict.startsWith('failed') && !r.verdict.startsWith('skipped'));
+    .filter((r) => ANSWERED_RUNG_VERDICTS.includes(r.verdict));
 }
 
 /**
  * FAIL — the row claims the document is not filed, and its own chain shows that
  * nobody who could have known was ever able to answer.
+ *
+ * SCOPE (r7): by CHAIN SHAPE, not by `row.docType` membership in
+ * `EXCHANGE_UNSERVED_DOC_TYPES`. r6 scoped this check to DRHP only, on the
+ * theory that an exchange-served type's own `EXCHANGES:no_link` from complete
+ * coverage IS the evidence — true, but it silently exempted every OTHER
+ * doc type from ever being checked, even when its non-EXCHANGES rungs also
+ * all skipped or failed (a CORRIGENDUM or RHP can hit the same unconstructible
+ * shape the DRHP did). The chain itself already says whether the exchanges
+ * settled it: a `*:skipped:exchanges_settled_it` rung on a non-EXCHANGES
+ * source means the exchanges answered and everything else stood down on
+ * purpose — that is a PASS regardless of doc type. Any other all-skipped/
+ * all-failed chain is the same unobserved-absence shape T-403 keeps finding,
+ * whatever the doc type.
  */
 export function checkAbsenceWithoutEvidence(row) {
   if (row.state !== 'NOT_YET_FILED') return null;
-  if (!EXCHANGE_UNSERVED_DOC_TYPES.includes(row.docType)) return null;
   const chain = row.chain ?? chainFromLastAttempt(row.lastAttempt, row.docType);
   if (!chain) return null; // nothing recorded to judge — skipped, never guessed
+  const inScopeRungs = parseChainTokens(chain).filter((r) => !OUT_OF_SCOPE_RUNG_SOURCES.includes(r.source));
+  if (inScopeRungs.length === 0) return null; // nothing to judge
   if (answeredRungsIn(chain).length > 0) return null;
+  if (inScopeRungs.some((r) => r.verdict === EXCHANGES_SETTLED_SKIP_VERDICT)) return null;
   return `${row.companyName}: ${row.docType} is NOT_YET_FILED but no rung answered — ${chain}`;
 }
