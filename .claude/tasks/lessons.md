@@ -220,3 +220,9 @@ against the class, not just the original row.
   world's rows. (e) Measure a review loop by METHOD COVERAGE promoted per round, not by
   findings per round — the latter is flat by construction. Full matrix and the 14 remaining
   uncovered cells: `docs/data-quality/discovery-coverage.md`.
+
+## 2026-09-02 — T-403 round-4 review (Fable RCA)
+- **Mistake:** three rounds "fixed" the same class (a lookup with no HTTP response recorded as "not filed yet"); the cap test asserted the cap exists, not the row state it leaves.
+- **Root cause:** the rung outcome was a bare string union, so any early return could mint `'absent'`; the prose rule "ABSENT is evidence" cannot constrain a string literal. Tests of a limit checked the mechanism, not the contract the mechanism must not violate.
+- **Rule:** (1) a state that means "we have evidence" must be unconstructible without the evidence object (type-level, not prose). (2) Every test of a cap / budget / guard / retry limit MUST also assert the row/state it leaves behind. (3) A write described as "one choke point" must sit outside every feature-flag `if/else`; the review checklist asks "is this reachable with the PROD flag value?".
+- **Mechanism:** MECHANISM-DUE rows `non-answer-recorded-as-evidence-of-absence` (occ 3) and `write-hung-on-one-branch-of-a-feature-flag`; structural test + flag-matrix test in T-403 r5.
