@@ -94,4 +94,39 @@ describe('extractDemandGraphData timestamp handling (live DEEPA fixture)', () =>
     const nseAtLowestPrice = points.find((p: any) => p.exchange === 'NSE' && p.pricePoint === 168);
     expect(nseAtLowestPrice.cumulativeQuantity).toBe(Number(fixture.demandGraph.totalBidRecieved));
   });
+
+  it('parses the IST observation timestamp to the same UTC instant regardless of process.env.TZ', () => {
+    // Regression guard for the T-327-class bug this fixture's fix round closed:
+    // a `new Date(rawIstString).toISOString()` chain would parse the string in
+    // the PROCESS's local timezone, so the same input yields a different UTC
+    // instant depending on the host's TZ. The sanctioned fix (Date.UTC(...)
+    // inlined directly into `new Date(...)`, see nse-api-client.ts) must be
+    // TZ-invariant: the same known IST string -> the same UTC instant, no
+    // matter what process.env.TZ is set to.
+    const originalTz = process.env.TZ;
+    const demandGraph = {
+      timestamp: 'As on 02-Sep-2026 18:02:00 IST', // IST (UTC+5:30) -> 12:32:00 UTC
+      plotData: { '170': '100' },
+      totalBidRecieved: '100',
+    };
+
+    try {
+      const tzCandidates = ['UTC', 'America/New_York', 'Asia/Kolkata', 'Pacific/Kiritimati'];
+      const results = tzCandidates.map((tz) => {
+        process.env.TZ = tz;
+        const points = extractDemandGraphData(demandGraph, [], [], 'DEEPA');
+        return points[0]?.timestamp;
+      });
+
+      for (const result of results) {
+        expect(result).toBe('2026-09-02T12:32:00.000Z');
+      }
+    } finally {
+      if (originalTz === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = originalTz;
+      }
+    }
+  });
 });

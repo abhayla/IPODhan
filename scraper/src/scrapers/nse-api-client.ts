@@ -744,9 +744,13 @@ function parseNseObservedTimestampIST(raw: unknown): string | null {
   const second = Number(secRaw);
 
   // IST is UTC+5:30 with no DST; subtract the offset from the IST wall-clock
-  // reading to get the true UTC instant.
-  const utcMs = Date.UTC(year, Number(month) - 1, day, hour, minute, second) - (5 * 60 + 30) * 60 * 1000;
-  return new Date(utcMs).toISOString();
+  // reading to get the true UTC instant. Date.UTC(...) is inlined directly
+  // into new Date(...) (not bound to an intermediate identifier) so this is
+  // the TZ-invariant-by-construction form the T-327 ratchet recognizes as
+  // safe — see tests/unit/utils/date-tz-parse-ratchet.test.ts.
+  return new Date(
+    Date.UTC(year, Number(month) - 1, day, hour, minute, second) - (5 * 60 + 30) * 60 * 1000
+  ).toISOString();
 }
 
 /**
