@@ -179,6 +179,48 @@ function mergeListingExchanges(
   return merged;
 }
 
+/**
+ * W-16a: the exchange half of the non-destructive fallback — same rule the
+ * consolidation path applies (`mergeListingExchanges`), so the safety net can
+ * never replace ['BSE'] with ['NSE'] just because NSE scraped the row.
+ */
+export function mergeListingExchangesForSource(
+  existingExchanges: ('NSE' | 'BSE')[] | null | undefined,
+  source: ScraperSource,
+  scrapedListingExchange: 'NSE' | 'BSE' | 'BOTH' | undefined
+): ('NSE' | 'BSE')[] {
+  const existing = existingExchanges ?? [];
+  if (source !== 'NSE' && source !== 'BSE') {
+    return existing.length > 0 ? existing : (scrapedListingExchange === 'BOTH' ? ['NSE', 'BSE'] : scrapedListingExchange ? [scrapedListingExchange] : []);
+  }
+  const incoming = scrapedListingExchange === 'BOTH' ? source : (scrapedListingExchange ?? source);
+  return mergeListingExchanges(existing, incoming);
+}
+
+/**
+ * W-16a: drop every key whose incoming value would replace a stored value with
+ * nothing. `undefined` is always dropped; an explicit `null` is dropped only
+ * when the row currently holds a value (a deliberate null on an already-empty
+ * column is harmless and keeps RIGHTS/NCD segment semantics intact).
+ */
+export function buildNonDestructiveUpdate(
+  existingRow: Record<string, any>,
+  incoming: Record<string, any>
+): Record<string, any> {
+  const patch: Record<string, any> = {};
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === undefined) continue;
+    const existingValue = existingRow?.[key];
+    const existingIsPresent =
+      existingValue !== undefined &&
+      existingValue !== null &&
+      !(Array.isArray(existingValue) && existingValue.length === 0);
+    if (value === null && existingIsPresent) continue;
+    patch[key] = value;
+  }
+  return patch;
+}
+
 // The canonical company-name normalizer now lives in the shared package so the
 // JS path (here) and the SQL path (ipo-repository) share ONE definition and stay
 // in lock-step (A3 / #6 #8 #16). Imported for local use in upsertIPO AND
@@ -465,26 +507,17 @@ export async function upsertIPO(
             // Update IPO with consolidated data
             await ipoRepository.update(existingIPO.id, finalData);
 
-            // Track field sources for all updated fields
-            if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && consolidationResult.fieldResults.length > 0) {
-              const fieldSourcesRepo = new FieldSourcesRepository(db, getRedisClient());
-              const fieldsToTrack = consolidationResult.fieldResults
-                .filter(fr => fr.chosenSource === source) // Only track fields we provided
-                .map(fr => ({
-                  fieldName: fr.fieldName,
-                  source: source,
-                  confidence: 100,
-                  previousValue: fr.existingValue ? String(fr.existingValue) : null,
-                }));
-
-              if (fieldsToTrack.length > 0) {
-                await fieldSourcesRepo.bulkTrackFieldUpdates(
-                  existingIPO.id,
-                  'ipos',
-                  fieldsToTrack
-                );
-              }
-            }
+            // W-17/W-18(i) (Deepa walk, 2026-09-02): the consolidation service is
+            // the SINGLE writer of `field_sources` on this path. The re-track that
+            // used to run here re-wrote every field whose `chosenSource` equalled
+            // this scrape's source — including values it had merely KEPT (the
+            // NO_INCOMING_VALUE branch reports `chosenSource = incomingSource`
+            // when the field has no provenance row) — with `source = <this
+            // scrape>` and `previousValue = fr.existingValue`, a property that
+            // does not exist on FieldConsolidationResult and was therefore always
+            // null. Result: every provenance row lost its history, and a BSE value
+            // got re-badged as NSE, after which resolveConflict's same-source
+            // short-circuit dropped the next real cross-source conflict.
 
             // Log successful consolidation
             logger.info({
@@ -539,12 +572,21 @@ export async function upsertIPO(
           ipoId: existingIPO.id,
           slug,
           source,
-        }, '[LEGACY PATH] Reached unreachable code - consolidation should have handled this');
+        }, '[LEGACY PATH] consolidation did not handle this update - applying the non-destructive fallback');
 
-        // Fallback: Simple update without merge logic
-        // This is a safety net that should rarely/never execute
+        // Fallback: non-destructive update (W-16a, Deepa walk 2026-09-02).
+        // This safety net used to write the raw incoming payload, so a source
+        // that simply has no data for a field (NSE carries no lead managers)
+        // nulled it, and `listingExchanges` was replaced rather than merged.
+        // It stays reachable by design — it is what runs when consolidation
+        // throws — so it is made SAFE rather than declared unreachable.
         const fallbackData: any = {
-          ...ipoData,
+          ...buildNonDestructiveUpdate(existingIPO as any, ipoData),
+          listingExchanges: mergeListingExchangesForSource(
+            (existingIPO as any).listingExchanges,
+            source,
+            scrapedIPO.listingExchange
+          ),
           lastScrapedAt: new Date(),
           updatedAt: new Date(),
         };

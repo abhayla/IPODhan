@@ -1,0 +1,170 @@
+/**
+ * W-16a / W-17 / W-18(i) — Deepa Jewellers per-IPO walk (2026-09-02).
+ *
+ * Both defects live on the UPDATE half of `upsertIPO`:
+ *  - the "unreachable" legacy fallback wrote the raw incoming payload, so an
+ *    NSE scrape (which carries no lead managers) nulled `lead_managers` and
+ *    replaced `listing_exchanges` ['BSE'] with ['NSE'];
+ *  - the post-consolidation re-track wrote `field_sources` rows attributing
+ *    every kept value to THIS scrape's source with `previous_value = null`,
+ *    which both erased provenance history (W-17) and mis-attributed a BSE
+ *    value to NSE — after which the same-source short-circuit in
+ *    `resolveConflict` silently dropped the real faceValue conflict (W-18(i)).
+ */
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const bulkTrackFieldUpdatesMock = vi.fn().mockResolvedValue(1);
+const consolidateIPODataMock = vi.fn();
+
+vi.mock('@ipodhan/shared', () => ({
+  db: {},
+  getRedisClient: () => ({}),
+}));
+
+vi.mock('@ipodhan/shared/db/schema', () => ({
+  ipoDemandGraph: {},
+  ipoDetails: {},
+}));
+
+vi.mock('@ipodhan/shared/utils/registrar-matcher', () => ({
+  resolveRegistrarId: () => null,
+}));
+
+vi.mock('@ipodhan/shared/repositories', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@ipodhan/shared/repositories')>();
+  return {
+    ...actual,
+    FieldSourcesRepository: vi.fn().mockImplementation(() => ({
+      bulkTrackFieldUpdates: bulkTrackFieldUpdatesMock,
+    })),
+    DataConflictsRepository: vi.fn().mockImplementation(() => ({})),
+    RegistrarRepository: vi.fn().mockImplementation(() => ({
+      findAll: vi.fn().mockResolvedValue([]),
+    })),
+  };
+});
+
+vi.mock('../../../src/config/feature-flags.js', () => ({
+  FEATURE_FLAGS: {
+    ENABLE_DATA_CONSOLIDATION: true,
+    ENABLE_SOURCE_TRACKING: true,
+  },
+  shouldUseFeature: () => true,
+}));
+
+vi.mock('../../../src/services/data-consolidation-service.js', () => ({
+  DataConsolidationService: vi.fn().mockImplementation(() => ({
+    consolidateIPOData: consolidateIPODataMock,
+  })),
+}));
+
+const { upsertIPO } = await import('../../../src/services/data-persister.js');
+
+const LEAD_MANAGERS = [
+  'Emkay Global Financial Services Limited',
+  'Valmiki Leela Capital Private Limited',
+];
+
+function existingDeepaRow() {
+  return {
+    id: 'deepa-id',
+    slug: 'deepa-jewellers-limited',
+    companyName: 'Deepa Jewellers Limited',
+    segment: 'SME',
+    offeringType: 'IPO',
+    faceValue: 2,
+    leadManagers: LEAD_MANAGERS,
+    listingExchanges: ['BSE'],
+    status: 'OPEN',
+  } as any;
+}
+
+function nseScrape(overrides: Record<string, any> = {}) {
+  return {
+    companyName: 'Deepa Jewellers Limited',
+    listingExchange: 'NSE',
+    segment: 'SME',
+    offeringType: 'IPO',
+    status: 'OPEN',
+    ...overrides,
+  } as any;
+}
+
+function makeIpoRepository() {
+  return {
+    findByNormalizedName: vi.fn().mockResolvedValue(null),
+    findBySlug: vi.fn().mockResolvedValue(null),
+    findByFuzzyName: vi.fn().mockResolvedValue(null),
+    findByIsin: vi.fn().mockResolvedValue(null),
+    findBySymbol: vi.fn().mockResolvedValue(null),
+    create: vi.fn(),
+    update: vi.fn().mockResolvedValue({}),
+  } as any;
+}
+
+describe('upsertIPO update path — Deepa walk guards', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    bulkTrackFieldUpdatesMock.mockResolvedValue(1);
+  });
+
+  it('W-17/W-18(i): the consolidation path never re-writes field_sources itself', async () => {
+    consolidateIPODataMock.mockResolvedValue({
+      ipoId: 'deepa-id',
+      fieldsProcessed: 2,
+      fieldsUpdated: 0,
+      conflictsDetected: 0,
+      conflictsBySeverity: { INFO: 0, WARNING: 0, CRITICAL: 0 },
+      // Shape produced by the NO_INCOMING_VALUE branch when the field has no
+      // provenance row: the value is the stored BSE one, but chosenSource
+      // falls back to the incoming source.
+      fieldResults: [
+        { fieldName: 'faceValue', finalValue: 2, chosenSource: 'NSE', hadConflict: false },
+        { fieldName: 'leadManagers', finalValue: LEAD_MANAGERS, chosenSource: 'NSE', hadConflict: false },
+      ],
+      consolidatedData: { faceValue: 2, leadManagers: LEAD_MANAGERS },
+      errors: [],
+      performanceMs: 1,
+    });
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(ipoRepository, nseScrape(), 'NSE', existingDeepaRow());
+
+    expect(bulkTrackFieldUpdatesMock).not.toHaveBeenCalled();
+  });
+
+  it('W-16a: the fallback update never nulls a present value and merges listing exchanges', async () => {
+    consolidateIPODataMock.mockRejectedValue(new Error('consolidation boom'));
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(ipoRepository, nseScrape(), 'NSE', existingDeepaRow());
+
+    expect(ipoRepository.update).toHaveBeenCalledTimes(1);
+    const [id, patch] = ipoRepository.update.mock.calls[0];
+    expect(id).toBe('deepa-id');
+    expect(patch.leadManagers ?? LEAD_MANAGERS).toEqual(LEAD_MANAGERS);
+    expect(patch.listingExchanges).toEqual(['BSE', 'NSE']);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value === null || value === undefined) {
+        expect((existingDeepaRow() as any)[key] ?? null).toBeNull();
+      }
+    }
+  });
+
+  it('W-16a: the fallback still writes values the scrape actually carries', async () => {
+    consolidateIPODataMock.mockRejectedValue(new Error('consolidation boom'));
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      nseScrape({ symbol: 'DEEPA', status: 'CLOSED' }),
+      'NSE',
+      existingDeepaRow()
+    );
+
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch.symbol).toBe('DEEPA');
+    expect(patch.status).toBe('CLOSED');
+    expect(patch.lastScrapedAt).toBeInstanceOf(Date);
+  });
+});

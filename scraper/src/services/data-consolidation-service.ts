@@ -176,6 +176,31 @@ function resolveTzSignatureTiebreak(
 }
 
 
+/**
+ * `field_sources.previous_value` is a text column; `String(['BSE','NSE'])`
+ * writes the lossy `BSE,NSE`, so objects/arrays are JSON-encoded (matching how
+ * `data_conflicts.value1/value2` are stored).
+ */
+function serializeFieldValue(value: any): string {
+  return typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value);
+}
+
+/** Fields whose value is a SET the sources each report a partial view of. */
+const SET_VALUED_FIELDS = new Set<string>(['listingExchanges']);
+
+function unionSetValues(existing: any[], incoming: any[]): any[] {
+  const key = (v: any) => (typeof v === 'string' ? v.toLowerCase().trim() : JSON.stringify(v));
+  const seen = new Set(existing.map(key));
+  const merged = [...existing];
+  for (const value of incoming) {
+    if (!seen.has(key(value))) {
+      seen.add(key(value));
+      merged.push(value);
+    }
+  }
+  return merged;
+}
+
 function toFiniteNumber(value: any): number | null {
   if (value === null || value === undefined || value === '') return null;
   const n = typeof value === 'number' ? value : Number(String(value).replace(/[^0-9.\-]/g, ''));
@@ -571,6 +596,14 @@ export class DataConsolidationService {
             incomingSource: input.source,
             existingValue: existingSourceMap.get(fieldName)?.value,
             existingSource: existingSourceMap.get(fieldName)?.source,
+            // W-16b (Deepa walk, 2026-09-02): `existingSourceMap` is built ONLY
+            // from tracked `field_sources` rows, so a field stored before source
+            // tracking existed looked empty here — an incoming `undefined` then
+            // hit "no existing value, accept incoming" and nulled a real stored
+            // value (observed: NSE update wiped `lead_managers`). The raw stored
+            // value travels alongside so the absent-never-overwrites-present
+            // guard sees it regardless of provenance state.
+            existingRowValue: input.existingData?.[fieldName],
             confidence: input.confidence,
             scrapedAt: input.scrapedAt,
             existingUpdatedAt: existingSourceMap.get(fieldName)?.updatedAt,
@@ -655,6 +688,7 @@ export class DataConsolidationService {
     incomingSource: ScraperSource;
     existingValue?: any;
     existingSource?: ScraperSource;
+    existingRowValue?: any;
     confidence?: number;
     scrapedAt?: Date;
     existingUpdatedAt?: Date;
@@ -673,10 +707,17 @@ export class DataConsolidationService {
 
     const rules = getFieldRules(fieldName);
 
+    // W-16b: the stored value as it exists on the row, whether or not it has a
+    // `field_sources` row to prove where it came from.
+    const storedValue = existingValue ?? params.existingRowValue;
+
     // Normalize both values for comparison
     const normalizedIncoming = normalize(fieldName, incomingValue, rules);
     const normalizedExisting = existingValue
       ? normalize(fieldName, existingValue, rules)
+      : null;
+    const normalizedStored = storedValue
+      ? normalize(fieldName, storedValue, rules)
       : null;
 
     // T-309 (T-305 round-6 P3) — the dominant root cause of the non-converging
@@ -706,12 +747,12 @@ export class DataConsolidationService {
     // existing, no conflict logged.
     if (
       (normalizedIncoming === null || normalizedIncoming === undefined) &&
-      normalizedExisting !== null &&
-      normalizedExisting !== undefined
+      normalizedStored !== null &&
+      normalizedStored !== undefined
     ) {
       return {
         fieldName,
-        finalValue: existingValue,
+        finalValue: storedValue,
         chosenSource: existingSource || incomingSource,
         hadConflict: false,
         rejectedSources: [
@@ -728,7 +769,7 @@ export class DataConsolidationService {
     if (!validateValue(normalizedIncoming, rules)) {
       return {
         fieldName,
-        finalValue: existingValue, // Keep existing
+        finalValue: storedValue, // Keep existing
         chosenSource: existingSource || incomingSource,
         hadConflict: false,
         rejectedSources: [
@@ -788,6 +829,56 @@ export class DataConsolidationService {
         chosenSource: existingSource!, // Keep existing source
         hadConflict: false,
       };
+    }
+
+    // Case 2b (W-18(ii), Deepa walk): two array-valued reports of the same
+    // field are a MERGE, not a disagreement — `listingExchanges` ['BSE','NSE']
+    // vs an NSE scrape's ['NSE'] was written to `data_conflicts` every cycle
+    // even though the exchanges are a set the persister merges anyway. A
+    // union that adds a member keeps the PRIOR source (there is no 'MERGED'
+    // member in the `scraper_source` enum and this task adds no schema
+    // change) and records the pre-merge value as provenance history.
+    if (Array.isArray(normalizedIncoming) && Array.isArray(normalizedExisting)) {
+      const merged = unionSetValues(normalizedExisting, normalizedIncoming);
+      const addsNothing = merged.length === normalizedExisting.length;
+
+      if (addsNothing || !SET_VALUED_FIELDS.has(fieldName)) {
+        // Incoming adds no member (subset/equal) — never a reason to shrink or
+        // dispute the stored list. A non-set array field that genuinely adds a
+        // member still falls through to normal conflict resolution below.
+        if (addsNothing) {
+          return {
+            fieldName,
+            finalValue: existingValue,
+            chosenSource: existingSource || incomingSource,
+            hadConflict: false,
+            rejectedSources: [
+              { source: incomingSource, value: incomingValue, reason: 'SET_MERGE_NO_NEW_MEMBERS' },
+            ],
+          };
+        }
+      } else {
+        await this.trackFieldSource({
+          ipoId,
+          tableName,
+          fieldName,
+          value: merged,
+          source: existingSource || incomingSource,
+          confidence,
+          previousValue: existingValue,
+          previousSource: existingSource,
+        });
+
+        return {
+          fieldName,
+          finalValue: merged,
+          chosenSource: existingSource || incomingSource,
+          hadConflict: false,
+          rejectedSources: [
+            { source: incomingSource, value: incomingValue, reason: 'SET_MERGED' },
+          ],
+        };
+      }
     }
 
     // Case 3: Conflict detected - resolve based on priority
@@ -1116,7 +1207,7 @@ export class DataConsolidationService {
         source: params.source,
         confidence: params.confidence || 100,
         previousValue: params.previousValue !== undefined
-          ? String(params.previousValue)
+          ? serializeFieldValue(params.previousValue)
           : undefined,
         previousSource: params.previousSource,
       });

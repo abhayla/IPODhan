@@ -423,6 +423,19 @@ export function areEquivalent(val1: any, val2: any, tolerance: number = 0.01): b
     return Math.abs(val1 - val2) <= tolerance;
   }
 
+  // W-18(ii): array-valued fields (leadManagers, listingExchanges) reached the
+  // `return false` below on every cycle because `===` is reference equality —
+  // two IDENTICAL lists from two sources were logged as a `data_conflicts` row
+  // forever. Compared as order-insensitive multisets of trimmed, lower-cased
+  // members.
+  if (Array.isArray(val1) && Array.isArray(val2)) {
+    if (val1.length !== val2.length) return false;
+    const key = (v: any) => (typeof v === 'string' ? v.toLowerCase().trim() : JSON.stringify(v));
+    const sorted1 = val1.map(key).sort();
+    const sorted2 = val2.map(key).sort();
+    return sorted1.every((v, i) => v === sorted2[i]);
+  }
+
   // String comparison (case-insensitive, trimmed)
   if (typeof val1 === 'string' && typeof val2 === 'string') {
     return val1.toLowerCase().trim() === val2.toLowerCase().trim();
