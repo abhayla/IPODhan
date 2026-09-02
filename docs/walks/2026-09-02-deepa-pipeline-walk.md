@@ -75,12 +75,13 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | D-05 | 18:11 | Every field on the photographed price-band ad (54-field inventory) is in scope for scraping; steps E1-E8 map to inventory groups A-F by ID. |
 | D-06 | 18:20 | Walk continues as planned. Everything discussed/decided is written as a detailed SPEC now (`docs/specs/per-ipo-due-step-pipeline.md`); implementation only after the walk is complete. S-01..S-04 are NOT built during the walk. |
 | D-07 | 18:45 | No worktree cleanup inside this walk. It is a separate task for another session (20 stale worktrees listed 18:41: 11 `IPODhan-*`, 8 under `D:\Abhay\wt`). From now on fixes for this walk are made in THIS checkout on the walk branch (ledger + fixes together), no new worktrees; `IPODhan-wt-nse-face` is removed with one command after PR #277 merges. |
+| D-08 | 19:17 | Owner: build the IPO-tracking spec item (S-01, per-IPO step ledger + admin grid) NOW in parallel with the B7 fix. S-02 (due-step scheduling) stays deferred. Wiring of the ledger into `upsertIPO` and document jobs waits until W-16/17/18 land, to avoid two workers editing the same file. |
 
 ## 4. Recommendations pending owner decision (S-nn)
 
 | ID | Raised | Recommendation | Decision |
 |---|---|---|---|
-| S-01 | 18:14 | Per-IPO step ledger table (ipo_id × step_id: status NOT_DUE/DUE/DONE/FAILED/NOT_AVAILABLE_YET, last_run, attempts, next_due, source, evidence, error) + admin grid view. Generalises `document_fetch_state`. | pending |
+| S-01 | 18:14 | APPROVED 19:17 (D-08), build started. Per-IPO step ledger table (ipo_id × step_id: status NOT_DUE/DUE/DONE/FAILED/NOT_AVAILABLE_YET, last_run, attempts, next_due, source, evidence, error) + admin grid view. Generalises `document_fetch_state`. | pending |
 | S-02 | 18:17 | Replace "all sources every 30 min" with "due steps per IPO": rare discovery; stage-driven document checks; live numbers only for OPEN IPOs in market hours; closed/listed go quiet. Reuses stage-reconciler + fetch-state machine. | pending |
 | S-03 | 17:14 | Three-tier source model: filings = truth for static fields; exchange APIs = truth for live fields + document discovery; aggregators (Moneycontrol, Chittorgarh, InvestorGain) = verification only, except GMP where they are the source. | pending (owner stated the intent; formal yes pending) |
 | S-04 | 18:05 | A static-field mismatch between sources is a visible conflict, never a silent pick. | pending |
