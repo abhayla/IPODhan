@@ -1,0 +1,16 @@
+{
+  "ipoId": "06549215-abe2-46fd-b1e0-629e27db38e7",
+  "companyName": "Purple Style Labs Limited",
+  "stage": "OPEN",
+  "skipped": true,
+  "skipReason": "nothing due — every document is found or not yet retryable (zero network calls)",
+  "due": [],
+  "found": [],
+  "notYetFiled": [],
+  "blocked": [],
+  "notApplicable": [],
+  "superseded": [],
+  "leadManagers": [],
+  "attempts": [],
+  "networkCalls": 0
+}

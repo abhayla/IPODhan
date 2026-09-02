@@ -38,6 +38,25 @@ export function resolveDatabaseSsl(env: NodeJS.ProcessEnv = process.env): false 
 }
 
 /**
+ * Resolve the pg pool's connectionTimeoutMillis from PG_CONNECTION_TIMEOUT_MS
+ * (T-433). Default 2000 preserves current prod behavior unchanged — a slow
+ * SSH-tunnel path (e.g. the ipodhan_test dev tunnel) can override this without
+ * touching prod's default.
+ */
+export function resolvePgConnectionTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  const ms = parseInt(env.PG_CONNECTION_TIMEOUT_MS || '2000', 10);
+  return Number.isFinite(ms) && ms > 0 ? ms : 2000;
+}
+
+/**
+ * Resolve the pg pool's keepAlive flag from PG_KEEPALIVE (T-433). Default
+ * false (pg's own default) preserves current prod behavior unchanged.
+ */
+export function resolvePgKeepAlive(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env.PG_KEEPALIVE || '').toLowerCase() === 'true';
+}
+
+/**
  * Initialize the database pool lazily
  */
 function initPool(): Pool {
@@ -51,6 +70,8 @@ function initPool(): Pool {
   // UTC-naive and naive<->timestamptz comparisons treat naive values as UTC (#28).
   const { max } = resolveSharedPoolSize();
   const ssl = resolveDatabaseSsl();
+  const connectionTimeoutMillis = resolvePgConnectionTimeoutMs();
+  const keepAlive = resolvePgKeepAlive();
   _pool = new Pool(
     process.env.DATABASE_HOST && process.env.DATABASE_PASSWORD
       ? {
@@ -62,7 +83,8 @@ function initPool(): Pool {
           options: '-c timezone=UTC',
           max,
           idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 2000,
+          connectionTimeoutMillis,
+          keepAlive,
           ssl,
         }
       : {
@@ -70,7 +92,8 @@ function initPool(): Pool {
           options: '-c timezone=UTC',
           max,
           idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 2000,
+          connectionTimeoutMillis,
+          keepAlive,
           ssl,
         }
   );
