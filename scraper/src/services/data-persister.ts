@@ -1176,7 +1176,7 @@ export async function createAnchorInvestors(
           anchorInvestorsCount: anchorData.anchorInvestorsCount,
           lockIn50PercentDate: anchorData.lockIn50PercentDate,
           lockInRemainingDate: anchorData.lockInRemainingDate,
-          investorList: JSON.stringify(anchorData.investorList)
+          investorList: anchorData.investorList
         });
 
         logger.info({ ipoId, anchorInvestorId: existing.id }, 'Updated anchor investor record');
@@ -1191,7 +1191,7 @@ export async function createAnchorInvestors(
           anchorInvestorsCount: anchorData.anchorInvestorsCount,
           lockIn50PercentDate: anchorData.lockIn50PercentDate,
           lockInRemainingDate: anchorData.lockInRemainingDate,
-          investorList: JSON.stringify(anchorData.investorList)
+          investorList: anchorData.investorList
         });
 
         logger.info({ ipoId, anchorInvestorId: anchorInvestor.id }, 'Created anchor investor record');
