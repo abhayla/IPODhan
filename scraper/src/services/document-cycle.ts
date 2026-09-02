@@ -34,6 +34,7 @@ import {
   type IpoRunResult,
 } from './document-discovery-runner.js';
 import { NetworkCounter } from '../utils/network-counter.js';
+import { isVerifierUrl } from './company-host-source.js';
 import { deriveLifecycleStage } from '../scheduler/stage-reconciler.js';
 import { isInLiveWindow, CYCLE_BUDGET, type IssueShape } from './document-state-machine.js';
 import type { DocumentFetchStateRow } from '@ipodhan/shared/repositories/document-fetch-state-repository';
@@ -146,7 +147,12 @@ export async function loadCandidateIpos(): Promise<DiscoveryIpo[]> {
       }),
       bseIpoNo: r.bse_ipo_no === null || r.bse_ipo_no === undefined ? null : Number(r.bse_ipo_no),
       companyWebsite: (r.company_website as string | null) ?? null,
-      verifierUrl: (r.verifier_url as string | null) ?? null,
+      // T-403 r5 (3): validated on the READ, not only on the write. The column
+      // is reachable by a backfill, an admin edit or a future scraper, and the
+      // verifier rung fetches whatever is in it.
+      verifierUrl: isVerifierUrl(r.verifier_url as string | null)
+        ? String(r.verifier_url).trim()
+        : null,
       issue: deriveIssueShape(r),
     }));
 }
