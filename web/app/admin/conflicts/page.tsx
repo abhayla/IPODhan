@@ -44,22 +44,21 @@ interface Conflict {
   detectedAt: string;
 }
 
+// Matches ConflictStats from packages/shared/src/repositories/data-conflicts-repository.ts,
+// as returned by GET /api/admin/conflicts/stats under `stats`. There is no per-IPO
+// breakdown field (`byIPO`) on this shape — the backend never computed one.
 interface ConflictStats {
-  totalUnresolved: number;
-  bySeverity: {
-    INFO: number;
-    WARNING: number;
-    CRITICAL: number;
-  };
-  byIPO: Array<{
-    ipoId: string;
-    ipoName: string;
-    conflictCount: number;
-  }>;
-  mostProblematicFields: Array<{
-    fieldName: string;
-    conflictCount: number;
-  }>;
+  total: number;
+  unresolved: number;
+  resolved: number;
+  bySource: Record<string, number>;
+  bySeverity: Record<string, number>;
+}
+
+// Matches the `problematicFields` field returned alongside `stats` by the same endpoint.
+interface ProblematicField {
+  fieldName: string;
+  conflictCount: number;
 }
 
 interface Filters {
@@ -70,6 +69,7 @@ interface Filters {
 export default function ConflictsPage() {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [stats, setStats] = useState<ConflictStats | null>(null);
+  const [problematicFields, setProblematicFields] = useState<ProblematicField[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [resolving, setResolving] = useState<string | null>(null);
@@ -111,8 +111,9 @@ export default function ConflictsPage() {
         adminGet('/api/admin/conflicts/stats'),
       ]);
 
-      setConflicts(conflictsData.conflicts);
-      setStats(statsData.stats);
+      setConflicts(conflictsData.conflicts ?? []);
+      setStats(statsData.stats ?? null);
+      setProblematicFields(statsData.problematicFields ?? []);
       setSelectedConflicts(new Set()); // Clear selection
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch conflicts');
@@ -351,28 +352,28 @@ export default function ConflictsPage() {
           <div className="bg-gray-800 rounded-lg p-6">
             <div className="text-gray-400 text-sm font-medium">Total Conflicts</div>
             <div className="text-3xl font-bold text-white mt-2">
-              {stats.totalUnresolved}
+              {stats.unresolved ?? 0}
             </div>
           </div>
 
           <div className="bg-red-900/30 border border-red-600 rounded-lg p-6">
             <div className="text-red-300 text-sm font-medium">Critical</div>
             <div className="text-3xl font-bold text-red-400 mt-2">
-              {stats.bySeverity.CRITICAL}
+              {stats.bySeverity?.CRITICAL ?? 0}
             </div>
           </div>
 
           <div className="bg-yellow-900/30 border border-yellow-600 rounded-lg p-6">
             <div className="text-yellow-300 text-sm font-medium">Warning</div>
             <div className="text-3xl font-bold text-yellow-400 mt-2">
-              {stats.bySeverity.WARNING}
+              {stats.bySeverity?.WARNING ?? 0}
             </div>
           </div>
 
           <div className="bg-blue-900/30 border border-blue-600 rounded-lg p-6">
             <div className="text-blue-300 text-sm font-medium">Info</div>
             <div className="text-3xl font-bold text-blue-400 mt-2">
-              {stats.bySeverity.INFO}
+              {stats.bySeverity?.INFO ?? 0}
             </div>
           </div>
         </div>
@@ -402,23 +403,41 @@ export default function ConflictsPage() {
 
           {/* IPO Filter */}
           <div>
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              IPO
+            <label htmlFor="ipo-id-filter" className="block text-sm font-medium text-gray-300 mb-2">
+              IPO ID
             </label>
-            <select
+            {/* The stats API has no per-IPO breakdown (no `byIPO` field), so this is a
+                plain ID filter rather than a populated dropdown — see conflict-resolution.ts
+                getConflictStats(). */}
+            <input
+              id="ipo-id-filter"
+              type="text"
               value={filters.ipoId}
               onChange={(e) => setFilters({ ...filters, ipoId: e.target.value })}
-              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">All IPOs</option>
-              {stats?.byIPO.map((ipo) => (
-                <option key={ipo.ipoId} value={ipo.ipoId}>
-                  {ipo.ipoName} ({ipo.conflictCount})
-                </option>
-              ))}
-            </select>
+              placeholder="All IPOs (paste an IPO ID to filter)"
+              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
           </div>
         </div>
+
+        {/* Most Problematic Fields */}
+        {problematicFields.length > 0 && (
+          <div>
+            <label className="block text-sm font-medium text-gray-300 mb-2">
+              Most Problematic Fields
+            </label>
+            <div className="flex flex-wrap gap-2">
+              {problematicFields.map((field) => (
+                <span
+                  key={field.fieldName}
+                  className="px-2 py-1 text-xs font-mono bg-gray-700 text-gray-200 rounded"
+                >
+                  {field.fieldName} ({field.conflictCount})
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Filter Actions */}
         <div className="flex space-x-4">
