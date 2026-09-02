@@ -161,8 +161,8 @@ function parseLotSize(minApplicationStr: string): number {
 /**
  * Parse face value
  */
-function parseFaceValue(faceValueStr: string): number {
-  if (!faceValueStr) return 10; // Default
+function parseFaceValue(faceValueStr: string): number | undefined {
+  if (!faceValueStr) return undefined;
 
   try {
     const cleaned = faceValueStr.replace(/[,\s]/g, '');
@@ -175,7 +175,7 @@ function parseFaceValue(faceValueStr: string): number {
     logger.warn({ faceValueStr, error }, 'Failed to parse face value');
   }
 
-  return 10; // Default
+  return undefined;
 }
 
 /**

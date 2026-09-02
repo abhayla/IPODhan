@@ -38,7 +38,7 @@ export interface BSEDetailPageData {
   priceRangeMax: number;
   issueSize: number; // In basic units (not crores)
   lotSize: number;
-  faceValue: number;
+  faceValue: number | undefined;
   registrar: string | null;
   leadManagers: string[] | null;
   sponsorBanks: string[] | null;
@@ -263,7 +263,7 @@ export function parseACQDispPage($: cheerio.CheerioAPI): BSEDetailPageData {
   const issueSize = calculateIssueSize(issueShares, priceRangeMax);
 
   // Parse numeric fields
-  const faceValue = faceValueStr ? parseInt(parseFloat(faceValueStr).toString(), 10) : 10;
+  const faceValue = faceValueStr ? parseInt(parseFloat(faceValueStr).toString(), 10) : undefined;
   const lotSize = lotSizeStr ? parseInt(lotSizeStr, 10) : 100;
 
   // Parse lists
@@ -337,7 +337,7 @@ export function parseDisplayIPOPage($: cheerio.CheerioAPI): BSEDetailPageData {
   const { openDate, closeDate } = parseIssuePeriod(issuePeriod);
 
   const faceValueStr = extractFieldValue($, 'Face Value');
-  const faceValue = faceValueStr ? parseInt(parseFloat(faceValueStr).toString(), 10) : 10;
+  const faceValue = faceValueStr ? parseInt(parseFloat(faceValueStr).toString(), 10) : undefined;
 
   const registrar = extractFieldValue($, 'Registrar');
   const sponsorBanksStr = extractFieldValue($, 'Sponsor Bank');
