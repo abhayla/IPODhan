@@ -102,6 +102,46 @@ else
   fail "case 2: expected 'was NOT touched' message not found in output"
 fi
 
+# --- Case 2.5: T-406 round-3 — a failed runtime preflight aborts BEFORE ----
+# pm2 stop / the flip, same as case 2's broken build. This is the dry-run
+# self-test for run_runtime_preflight()'s FAIL path (deploy-linux.sh) —
+# without DEPLOY_FAIL_PREFLIGHT, --dry-run always skips the real preflight
+# and returns 0, so this path was previously UNEXERCISED by this suite.
+BEFORE_TARGET_25="$(current_target "$ROOT1/current")"
+
+DEPLOY_FAIL_PREFLIGHT=1 bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-2.5.log 2>&1
+RC25=$?
+if [ "$RC25" -ne 0 ]; then
+  pass "case 2.5: failed runtime preflight exits non-zero"
+else
+  fail "case 2.5: failed runtime preflight exited 0 (expected failure)"
+fi
+
+AFTER_TARGET_25="$(current_target "$ROOT1/current")"
+if [ "$BEFORE_TARGET_25" = "$AFTER_TARGET_25" ] && [ -n "$AFTER_TARGET_25" ]; then
+  pass "case 2.5: 'current' untouched by the failed preflight ($AFTER_TARGET_25)"
+else
+  fail "case 2.5: 'current' CHANGED after a failed preflight (before=$BEFORE_TARGET_25 after=$AFTER_TARGET_25)"
+fi
+
+if grep -q "^==> \[dry-run\] skipping real 'pm2 stop" /tmp/deploy-test-2.5.log; then
+  fail "case 2.5: found a 'pm2 stop' line even though the preflight failed — preflight gate did not block it"
+else
+  pass "case 2.5: no 'pm2 stop' line logged after the failed preflight"
+fi
+
+if grep -q '^==> Flipping .* -> .* (atomic)$' /tmp/deploy-test-2.5.log; then
+  fail "case 2.5: found the atomic flip line even though the preflight failed — flip was not gated"
+else
+  pass "case 2.5: no atomic flip line logged after the failed preflight"
+fi
+
+if grep -q "current' was NOT touched" /tmp/deploy-test-2.5.log; then
+  pass "case 2.5: script logged that 'current' was NOT touched"
+else
+  fail "case 2.5: expected \"current' was NOT touched\" message not found in output"
+fi
+
 # --- Case 3: a second clean deploy succeeds after the broken one ------------
 if bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-3.log 2>&1; then
   pass "case 3: second clean deploy after a broken build succeeds"
