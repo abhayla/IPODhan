@@ -67,7 +67,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | I1 | Stage from status + band | PASS | 21:30 | OPEN/168 -> OPEN; UPCOMING/null -> UPCOMING; UPCOMING/168 -> PRE_OPEN; CLOSED -> CLOSED; LISTED -> LISTED. |
 | I2 | Due list per stage | PASS with W-40 | 21:32 | DEEPA OPEN with RHP/PBA/anchor present: due = financials, peers, objectives, docDrhp, anchor, docCorrigendum, demand, allotment (correct). CLOSED adds docProspectus. LISTED with everything present still lists docDrhp + docCorrigendum forever (W-40). Prod: ENABLE_STAGE_RECONCILER unset, so none of this runs there. |
 | I3 | Supersession | PASS | 21:40 | PROSPECTUS supersedes RHP + PRICE_BAND_AD; CORRIGENDUM supersedes RHP; newer corrigendum deactivates the older; OLDER filing arriving later is ignored (E1); same sha via other URL = update_url_only; late DRHP supersedes nothing; null filing date is kept as-is. Functions exist but are unwired in prod (ENABLE_DOCUMENT_STATE_MACHINE unset). |
-| I4 | Withdrawn / postponed | pending | | |
+| I4 | Withdrawn / postponed | FAIL (dead path) | 21:50 | `document-cycle.ts` stops fetches and purges on status WITHDRAWN/POSTPONED, but `ipo_status` enum has neither value and no scraper detects a withdrawal, so the branch can never run (W-41). |
 | I5 | Listing: price, gain, ISIN | NOT_AVAILABLE_YET | | DEEPA lists 8 Sep. |
 | I6 | PDF purge at close+7d | NOT_DUE | | |
 | J1-J3 | Cache, render, admin conflict view | pending | | |
@@ -115,6 +115,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | W-38 | H1 | `subscriptions.timestamp` is the persistence time, not the payload's observation time: a reading NSE stamped 18:02 IST was stored as 20:39 IST. Charts and freshness checks read a wrong time; a stale re-write looks fresh. GMP records keep the source time correctly. | `createSubscriptionSnapshot` (use `scrapedSubscription.timestamp` when present) | open |
 | W-39 | H3 | Anchor investors are sourced from the DRHP (which never lists them); the ANCHOR_ALLOCATION_REPORT is stored and unread. H3 can never succeed on the current code. | `anchor-investors-scraper.ts` re-sourced to the anchor report | fix running (Opus) |
 | W-40 | I2 | On a LISTED IPO with every document present, the due list still contains docDrhp and docCorrigendum every cycle (optional/never-filed kinds never settle), so a listed IPO keeps generating fetches. Spec goal G1/A6 ("zero fetches ten days after listing") needs a terminal NOT_APPLICABLE for optional kinds after listing. | `stage-reconciler.ts` due map + `document_fetch_state` terminal state | open, spec item |
+| W-41 | I4 | `ipo_status` enum = UPCOMING/OPEN/CLOSED/LISTED only; WITHDRAWN/POSTPONED handling in `document-cycle.ts` is unreachable; BSE board `Status` codes and NSE status text are never mapped to a withdrawal. | schema enum extension (migration) + status updater mapping BSE/NSE withdrawal signals | open, spec item (E10) |
 | W-09 | inventory | 18 of 54 ad/RHP fields have no DB column; 44 of 54 never written by prod code | migration drafted in price-band-ad-field-inventory.md §"Schema changes"; not approved | open, blocks G5 |
 
 ## 3. Owner decisions (D-nn)
