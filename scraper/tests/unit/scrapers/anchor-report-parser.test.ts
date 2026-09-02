@@ -234,3 +234,29 @@ describe('the digit-count clause rejects on its own (round 6)', () => {
     expect(isPrintedTotalReadable(7791789, '77917', 7791789)).toBe(false);
   });
 });
+
+describe('the cross-check flags are COMPUTED, not asserted (MAJOR-3)', () => {
+  it('reports percentageCheckPassed:false from the PARSER on a mismatched fixture', () => {
+    // Damage ONE printed percentage so the row no longer matches its share of
+    // the total. The flag must come back false from the parser itself - it used
+    // to be written into the result as the literal `true`, which made the
+    // persister's corroboration rule a tautology.
+    const damaged = pages().map((p) => p.replace('26.07', '96.07'));
+    const result = parseAnchorReport(damaged);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.percentageCheckPassed).toBe(false);
+    // The other check is independent and still passes - the flags are separate
+    // results, not one verdict copied twice.
+    expect(result.sharesTimesPriceCheckPassed).toBe(true);
+  });
+
+  it('reports both flags true on the clean fixture', () => {
+    const result = parseAnchorReport(pages());
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.percentageCheckPassed).toBe(true);
+    expect(result.value.sharesTimesPriceCheckPassed).toBe(true);
+  });
+});

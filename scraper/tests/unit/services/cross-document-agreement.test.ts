@@ -21,6 +21,7 @@ import {
   comparableSeries,
   withholdDisagreeingMetrics,
   expandWithheldMetrics,
+  decidePairedPersist,
   CROSS_DOC_TOLERANCE,
 } from '../../../src/services/cross-document-agreement';
 import {
@@ -300,5 +301,58 @@ describe('cross-document agreement — units (MAJOR-3)', () => {
     expect(r.comparedCount).toBe(0);
     // Not a disagreement either — there is nothing to blame on a metric.
     expect(r.disagreeingMetrics).toEqual([]);
+  });
+});
+
+describe('paired-run decision (MAJOR-1)', () => {
+  it('REFUSES both documents when a unit is unparseable', () => {
+    const agreement = checkCrossDocumentAgreement(
+      { pat_by_fy: { '2026': 1047.88 } },
+      { pat_by_fy: { '2026': 1047.88 } },
+      undefined,
+      'PRICE_BAND_AD',
+      'RHP',
+      null,
+      'MILLION'
+    );
+    const d = decidePairedPersist(agreement);
+
+    // The script used to print REFUSED and then persist BOTH documents in full,
+    // because disagreeingMetrics is empty in this case and the withhold step
+    // was therefore a no-op.
+    expect(d.proceed).toBe(false);
+    expect(d.exitCode).toBe(1);
+    expect(d.reason).toContain('NEITHER is persisted');
+    expect(d.withhold).toEqual([]);
+  });
+
+  it('proceeds and withholds on an ordinary disagreement', () => {
+    const agreement = checkCrossDocumentAgreement(
+      { pat_by_fy: { '2026': 1047.88 } },
+      { pat_by_fy: { '2026': 1047.88 * 1.2 } },
+      undefined,
+      'PRICE_BAND_AD',
+      'RHP',
+      'MILLION',
+      'MILLION'
+    );
+    const d = decidePairedPersist(agreement);
+    expect(d.proceed).toBe(true);
+    expect(d.exitCode).toBe(0);
+    expect(d.withhold).toEqual(['pat_by_fy']);
+  });
+
+  it('proceeds cleanly when the documents agree', () => {
+    const agreement = checkCrossDocumentAgreement(
+      { pat_by_fy: { '2026': 1047.88 } },
+      { pat_by_fy: { '2026': 1047.88 } },
+      undefined,
+      'PRICE_BAND_AD',
+      'RHP',
+      'MILLION',
+      'MILLION'
+    );
+    const d = decidePairedPersist(agreement);
+    expect(d).toEqual({ proceed: true, exitCode: 0, reason: null, withhold: [] });
   });
 });

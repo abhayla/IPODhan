@@ -199,6 +199,54 @@ export const FINANCIAL_BLOCK_METRICS = [
   'ronw_by_fy',
 ] as const;
 
+/**
+ * What the paired (--json-ad + --json-rhp) run should DO with an agreement
+ * result. Extracted as a pure function so the decision is testable without
+ * running the CLI, which is exactly how the bug it encodes survived:
+ *
+ * On `skipped_cross_document_unit_unknown` the script printed REFUSED and then
+ * carried on. `disagreeingMetrics` is EMPTY in that case (nothing was compared,
+ * so nothing can be blamed on a metric), so `withholdDisagreeingMetrics` was a
+ * no-op and BOTH documents persisted in full — the opposite of what the word
+ * REFUSED on the console told the operator. An unknown unit means the two
+ * documents could not be compared at all; that is a reason to write neither,
+ * not a reason to write both.
+ */
+export interface PairedPersistDecision {
+  /** Persist the two documents at all? */
+  proceed: boolean;
+  /** Process exit code the CLI must use. */
+  exitCode: number;
+  /** Operator-facing reason, null when proceeding cleanly. */
+  reason: string | null;
+  /** Metrics to withhold when proceeding after an ordinary disagreement. */
+  withhold: string[];
+}
+
+export function decidePairedPersist(agreement: AgreementResult): PairedPersistDecision {
+  if (agreement.skipped_cross_document_unit_unknown) {
+    return {
+      proceed: false,
+      exitCode: 1,
+      reason:
+        `${agreement.skipped_cross_document_unit_unknown} - the two documents cannot be ` +
+        'compared, so NEITHER is persisted.',
+      withhold: [],
+    };
+  }
+  if (!agreement.agree) {
+    // An ordinary disagreement is still persistable: the documents agree about
+    // everything except the financial block, which is withheld from both.
+    return {
+      proceed: true,
+      exitCode: 0,
+      reason: agreement.detail,
+      withhold: agreement.disagreeingMetrics,
+    };
+  }
+  return { proceed: true, exitCode: 0, reason: null, withhold: [] };
+}
+
 /** Any disagreement expands to the whole financial block (MOD-7). */
 export function expandWithheldMetrics(disagreeingMetrics: string[]): string[] {
   return disagreeingMetrics.length === 0 ? [] : [...FINANCIAL_BLOCK_METRICS];

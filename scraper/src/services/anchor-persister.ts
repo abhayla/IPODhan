@@ -35,6 +35,23 @@ export interface AnchorPersisterDeps {
   anchorInvestorRepository: unknown;
   /** Overridable only so a test can assert the payload without a database. */
   persist?: typeof createAnchorInvestors;
+  /**
+   * The admin field-protection gate. `anchor_investors` is an admin-editable
+   * table (web/lib/admin/table-map-generator.ts), so a hand-corrected total
+   * must survive a re-run of this persister — it did not, because this path
+   * called createAnchorInvestors directly with no gate at all.
+   *
+   * Whole-row semantics, like the other replace-style writes: createAnchorInvestors
+   * rewrites every column of the single anchor row, so a protected field cannot
+   * be preserved through a partial write. If ANY field is protected the write is
+   * refused outright.
+   */
+  protectionFilter?: (
+    ipoId: string,
+    tableName: string,
+    data: Record<string, unknown>,
+    scraperName: string
+  ) => Promise<{ filtered: Record<string, unknown> }>;
 }
 
 export interface AnchorPersistSummary {
@@ -43,7 +60,17 @@ export interface AnchorPersistSummary {
   totals: { shares: number; amountCrore: number; count: number } | null;
   /** Every gate, in order, with its verdict — the audit trail for a refusal. */
   checks: AnchorCheck[];
-  /** Gates whose printed counterpart the scan could not read. */
+  /**
+   * Gates whose printed counterpart the scan could not read.
+   *
+   * A name here does NOT imply the run succeeded, and this list can be
+   * non-empty alongside a non-null `refusedReason`. Three ways that happens:
+   * the parser's own cross-checks did not both pass (then every not-checkable
+   * gate is itself a failure and the run is refused); a DIFFERENT gate failed
+   * (a date, or a readable printed total that disagrees); or the write was
+   * refused later by admin field protection. Read `refusedReason` for the
+   * verdict and this list only for which reconciliations were unavailable.
+   */
   notCheckable: string[];
   /** Populated only when a gate failed; the run wrote nothing. */
   refusedReason: string | null;
@@ -261,6 +288,31 @@ export async function persistAnchorReport(
     amountCrore: data.totalAmountRaised,
     count: data.anchorInvestorsCount,
   };
+
+  // Admin field protection. Whole-row semantics: createAnchorInvestors rewrites
+  // every column of the single anchor row, so a protected field cannot survive a
+  // partial write — if any is protected, nothing is written.
+  if (deps.protectionFilter) {
+    const payload: Record<string, unknown> = {
+      bidDate: data.bidDate,
+      totalSharesOffered: data.totalSharesOffered,
+      totalAmountRaised: data.totalAmountRaised,
+      anchorInvestorsCount: data.anchorInvestorsCount,
+      lockIn50PercentDate: data.lockIn50PercentDate,
+      lockInRemainingDate: data.lockInRemainingDate,
+      investorList: data.investorList,
+    };
+    const result = await deps.protectionFilter(ipoId, 'anchor_investors', payload, 'DRHP');
+    const kept = result.filtered as Record<string, unknown>;
+    const blocked = Object.keys(payload).filter((c) => !(c in kept));
+    if (blocked.length > 0) {
+      const reason =
+        `anchor_investors write refused: ${blocked.join(', ')} ` +
+        'protected by an admin edit, and this row is rewritten whole';
+      logger.warn({ ipoId, blocked }, '[AnchorPersister] protected field — writing NOTHING');
+      return { ...empty, checks, notCheckable, lowConfidenceNames, refusedReason: reason };
+    }
+  }
 
   if (apply) {
     const write = deps.persist ?? createAnchorInvestors;

@@ -1122,3 +1122,97 @@ describe('filing-persister — MIN-8 net worth is unit-guarded too', () => {
     expect(fd?.netWorth).toBeUndefined();
   });
 });
+
+describe('filing-persister — each stored row keeps its OWN unit (MOD-4)', () => {
+  beforeEach(() => upsertIPOMock.mockClear());
+
+  it('agrees when FY2024 is stored in MILLION and FY2025 in CRORE', async () => {
+    const s = makeDeps();
+    // The unique key is (ipo_id, fiscal_year, basis) and does NOT include the
+    // unit, so a table legitimately holds different units per year. Taking
+    // row[0]'s unit for the whole set compared FY2025 as if it were millions
+    // and reported a 10x disagreement that does not exist.
+    (s.deps.financialStatements as unknown as { listByIpo: ReturnType<typeof vi.fn> }).listByIpo =
+      vi.fn(async () => [
+        {
+          ipoId: IPO_ID,
+          fiscalYear: 2024,
+          basis: 'RESTATED',
+          unit: 'MILLION',
+          revenue: '10245.68',
+          pat: '243.47',
+          epsBasic: '2.97',
+        },
+        {
+          ipoId: IPO_ID,
+          fiscalYear: 2025,
+          basis: 'RESTATED',
+          unit: 'CRORE',
+          // Rs 13,970.10 million === Rs 1,397.010 crore. Same money.
+          revenue: '1397.010',
+          pat: '40.580',
+          epsBasic: '4.95',
+        },
+      ]);
+
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+
+    expect(summary.skipped_cross_document_disagreement).toEqual([]);
+    expect(summary.written.financial_statements).toBe(3);
+  });
+
+  it('still catches a real disagreement in a row stored in another unit', async () => {
+    const s = makeDeps();
+    (s.deps.financialStatements as unknown as { listByIpo: ReturnType<typeof vi.fn> }).listByIpo =
+      vi.fn(async () => [
+        {
+          ipoId: IPO_ID,
+          fiscalYear: 2025,
+          basis: 'RESTATED',
+          unit: 'CRORE',
+          // 20% away from the ad's 13,970.10 million once converted.
+          revenue: '1676.412',
+          pat: '40.580',
+          epsBasic: '4.95',
+        },
+      ]);
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    expect(summary.skipped_cross_document_disagreement.length).toBeGreaterThan(0);
+    expect(s.finStmt).not.toHaveBeenCalled();
+  });
+
+  it('skips a stored row whose unit cannot be read rather than guessing', async () => {
+    const s = makeDeps();
+    (s.deps.financialStatements as unknown as { listByIpo: ReturnType<typeof vi.fn> }).listByIpo =
+      vi.fn(async () => [
+        {
+          ipoId: IPO_ID,
+          fiscalYear: 2025,
+          basis: 'RESTATED',
+          unit: 'TONNES',
+          revenue: '1',
+          pat: '1',
+          epsBasic: '1',
+        },
+      ]);
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    // Unreadable unit is not comparable at any scale, so it contributes no
+    // disagreement - it must not be read as millions and blow the whole block away.
+    expect(summary.skipped_cross_document_disagreement).toEqual([]);
+  });
+});

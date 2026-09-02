@@ -54,9 +54,11 @@ export interface AnchorReportParse {
   printedCount: number | null;
 
   // -------------------------------------------------- independent-check flags
-  // Both are true whenever this parse succeeded (a failure returns ok:false),
-  // but they are surfaced explicitly so a consumer can STATE the rule it relies
-  // on rather than infer it from the absence of an error.
+  // COMPUTED, not asserted. Both are necessarily true on this branch (either
+  // failing returns ok:false, and the failure branch carries the real flags
+  // too), but they are computed from the rows rather than written as literals:
+  // the persister's corroboration rule reads them, and a rule that reads two
+  // constants is a tautology, not a check.
   /** Each row's printed % matched its share of the summed total, and the printed percentages summed to 100. */
   percentageCheckPassed: boolean;
   /** The summed amounts matched summed shares x the derived bid price. */
@@ -65,7 +67,18 @@ export interface AnchorReportParse {
 
 export type AnchorReportResult =
   | { ok: true; value: AnchorReportParse }
-  | { ok: false; reason: string };
+  | {
+      ok: false;
+      reason: string;
+      /**
+       * The two cross-check results, reported on the FAILURE branch too. They
+       * are what the persister's corroboration rule reads, so they must be the
+       * real outcomes; a caller (and a test) can see which check actually failed
+       * rather than inferring it from the prose reason.
+       */
+      percentageCheckPassed?: boolean;
+      sharesTimesPriceCheckPassed?: boolean;
+    };
 
 /** Plausible per-share price band for an Indian IPO, in rupees. */
 const MIN_PRICE = 5;
@@ -449,23 +462,49 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
   // The totals are cross-checked against the printed percentages, which are an
   // INDEPENDENT statement of each row's share of the anchor portion: had a share
   // count been misread, the percentages would not land on the total it produces.
+  // Both cross-checks are COMPUTED, and their real results are returned on the
+  // failure branch as well as the success one. They used to be written into the
+  // result as the literals `true`/`true`, which made the persister's
+  // `corroborated` test a tautology: it asked "did both checks pass?" of two
+  // constants that could only say yes. Behaviour is unchanged — either failure
+  // still returns ok:false — but the flags now report what actually happened,
+  // so a test can drive a real false through the parser.
+  let percentageCheckPassed = true;
+  let percentageReason: string | null = null;
   for (const row of rows) {
     const expected = ((row.shares / totalShares) * 100).toFixed(2);
     const printed = row.percentOfAnchorPortion.toFixed(2);
     if (!withinOneGlyph(printed, expected)) {
-      return {
-        ok: false,
-        reason: `row "${row.name || row.shares}" prints ${printed}% but holds ${expected}% of the anchor portion`,
-      };
+      percentageCheckPassed = false;
+      percentageReason = `row "${row.name || row.shares}" prints ${printed}% but holds ${expected}% of the anchor portion`;
+      break;
     }
   }
   const percentSum = rows.reduce((s, r) => s + r.percentOfAnchorPortion, 0);
-  if (Math.abs(percentSum - 100) > PERCENT_SUM_TOLERANCE) {
-    return { ok: false, reason: `investor percentages add up to ${percentSum.toFixed(2)}%, not 100%` };
+  if (percentageCheckPassed && Math.abs(percentSum - 100) > PERCENT_SUM_TOLERANCE) {
+    percentageCheckPassed = false;
+    percentageReason = `investor percentages add up to ${percentSum.toFixed(2)}%, not 100%`;
   }
+
   const implied = totalShares * price;
-  if (Math.abs(totalAmountRupees - implied) / implied > PRICE_TOLERANCE) {
-    return { ok: false, reason: 'the investor amounts do not add up to the total allocation' };
+  const sharesTimesPriceCheckPassed =
+    Math.abs(totalAmountRupees - implied) / implied <= PRICE_TOLERANCE;
+
+  if (!percentageCheckPassed) {
+    return {
+      ok: false,
+      reason: percentageReason as string,
+      percentageCheckPassed,
+      sharesTimesPriceCheckPassed,
+    };
+  }
+  if (!sharesTimesPriceCheckPassed) {
+    return {
+      ok: false,
+      reason: 'the investor amounts do not add up to the total allocation',
+      percentageCheckPassed,
+      sharesTimesPriceCheckPassed,
+    };
   }
 
   // The sub-table repeats the mutual-fund allottees. Every share count it lists
@@ -505,9 +544,8 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
       printedTotalShares: printedShares,
       printedTotalAmountRupees: printedAmount,
       printedCount: readPrintedCount(fullText),
-      // Reaching here means neither check returned ok:false above.
-      percentageCheckPassed: true,
-      sharesTimesPriceCheckPassed: true,
+      percentageCheckPassed,
+      sharesTimesPriceCheckPassed,
     },
   };
 }

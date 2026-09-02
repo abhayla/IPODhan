@@ -369,3 +369,64 @@ describe('anchor-persister — a mangled printed total must not refuse a good re
     expect(shares.notCheckable).toBeUndefined();
   });
 });
+
+describe('anchor-persister — admin field protection (MAJOR-2)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('refuses the write when an admin has protected a field', async () => {
+    const { deps, persist } = makeDeps(deepaAnchorFixture());
+    // anchor_investors is admin-editable (web/lib/admin/table-map-generator.ts).
+    deps.protectionFilter = vi.fn(async (_id, _t, data: Record<string, unknown>) => {
+      const filtered = { ...data };
+      delete filtered.totalAmountRaised;
+      return { filtered };
+    });
+
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    // createAnchorInvestors rewrites the single anchor row whole, so a protected
+    // field cannot survive a partial write - nothing is written at all.
+    expect(persist).not.toHaveBeenCalled();
+    expect(summary.written).toBe(0);
+    expect(summary.investorsWritten).toBe(0);
+    expect(summary.refusedReason).toContain('anchor_investors write refused');
+    expect(summary.refusedReason).toContain('totalAmountRaised');
+  });
+
+  it('asks the gate about the anchor_investors table by name', async () => {
+    const { deps } = makeDeps(deepaAnchorFixture());
+    deps.protectionFilter = vi.fn(async (_id, _t, data: Record<string, unknown>) => ({
+      filtered: data,
+    }));
+    await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+    expect(deps.protectionFilter).toHaveBeenCalledWith(
+      IPO_ID,
+      'anchor_investors',
+      expect.objectContaining({ totalSharesOffered: 7791789 }),
+      'DRHP'
+    );
+  });
+
+  it('writes normally when nothing is protected', async () => {
+    const { deps, persist } = makeDeps(deepaAnchorFixture());
+    deps.protectionFilter = vi.fn(async (_id, _t, data: Record<string, unknown>) => ({
+      filtered: data,
+    }));
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+    expect(persist).toHaveBeenCalledTimes(1);
+    expect(summary.refusedReason).toBeNull();
+  });
+
+  it('refuses BEFORE writing even when the arithmetic gates all pass', async () => {
+    const { deps, persist } = makeDeps(deepaAnchorFixture());
+    deps.protectionFilter = vi.fn(async (_id, _t, data: Record<string, unknown>) => {
+      const filtered = { ...data };
+      delete filtered.investorList;
+      return { filtered };
+    });
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+    expect(summary.checks.every((c) => c.passed)).toBe(true);
+    expect(persist).not.toHaveBeenCalled();
+    expect(summary.refusedReason).toContain('investorList');
+  });
+});

@@ -52,6 +52,7 @@ import { AnchorInvestorRepository } from '../src/repositories/anchor-investor-re
 import {
   checkCrossDocumentAgreement,
   comparableSeries,
+  decidePairedPersist,
   withholdDisagreeingMetrics,
 } from '../src/services/cross-document-agreement.js';
 
@@ -158,6 +159,12 @@ async function main(): Promise<void> {
       {
         scrapeAnchorReport: (id, name) => scrapeAnchorInvestors(db, id, name),
         anchorInvestorRepository: new AnchorInvestorRepository(db),
+        protectionFilter: (
+          id: string,
+          table: string,
+          data: Record<string, unknown>,
+          scraperName: string
+        ) => filterProtectedFields(id, table, data, scraperName, db, redis),
       }
     );
     console.log(`\n=== ${apply ? 'APPLIED' : 'DRY RUN (no writes)'} - ANCHOR_ALLOCATION_REPORT ===`);
@@ -189,23 +196,25 @@ async function main(): Promise<void> {
     console.log('\n=== CROSS-DOCUMENT AGREEMENT (W-45) ===');
     console.log(JSON.stringify(agreement, null, 2));
 
-    if (agreement.skipped_cross_document_unit_unknown) {
+    // The decision itself lives in decidePairedPersist so it can be tested
+    // without running this script. Printing REFUSED and then persisting anyway
+    // is exactly what this used to do.
+    const decision = decidePairedPersist(agreement);
+    if (!decision.proceed) {
       // Two calls rather than one embedded newline: a patching script turned an
       // escaped-newline sequence into a REAL line break here and esbuild refused
       // the whole file, so the CLI would not start at all. Guarded by
       // tests/unit/scripts/scripts-parse.test.ts.
       console.error('');
-      console.error(
-        `REFUSED: ${agreement.skipped_cross_document_unit_unknown}` +
-          ' - the two documents cannot be compared, so neither financial series is written.'
-      );
+      console.error(`REFUSED: ${decision.reason}`);
+      process.exit(decision.exitCode);
     }
-    if (!agreement.agree) {
+    if (decision.withhold.length > 0) {
       // Same issuer, same day, same restated accounts - a disagreement means
       // one of the two was mis-parsed and there is no way to tell which, so
       // NEITHER series is written.
-      ad = withholdDisagreeingMetrics(ad, agreement.disagreeingMetrics);
-      rhp = withholdDisagreeingMetrics(rhp, agreement.disagreeingMetrics);
+      ad = withholdDisagreeingMetrics(ad, decision.withhold);
+      rhp = withholdDisagreeingMetrics(rhp, decision.withhold);
     }
 
     const pairs: Array<[FilingDocType, FilingExtraction]> = [

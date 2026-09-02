@@ -645,10 +645,18 @@ export async function persistFilingExtraction(
   const priorRowsForAgreement = await deps.financialStatements.listByIpo(ipoId);
   const withheldMetrics = new Set<string>();
   if (unit !== null && priorRowsForAgreement.length > 0) {
-    const storedUnit = asStatementUnit(
-      (priorRowsForAgreement[0] as { unit?: StatementUnit }).unit ?? null
-    );
-    if (storedUnit) {
+    // MOD-4: each stored row carries its OWN unit. Taking row[0]'s unit for the
+    // whole set silently re-denominated every other year — a table holding
+    // FY2024 in MILLION and FY2025 in CRORE (which the merge rule allows,
+    // because the unique key is (ipo_id, fiscal_year, basis) and does NOT
+    // include the unit) would have had FY2025 compared as if it were millions
+    // and reported a 10x disagreement that does not exist. Each row's amounts
+    // are converted from its own unit into the comparison unit instead.
+    //
+    // The comparison unit is this extraction's, so the incoming series needs no
+    // conversion at all and only the stored side moves.
+    const comparisonUnit = asStatementUnit(unit);
+    if (comparisonUnit) {
       const stored: Record<string, Record<string, number>> = {};
       const incoming: Record<string, Record<string, number>> = {};
       const put = (
@@ -662,8 +670,17 @@ export async function persistFilingExtraction(
       };
       for (const r of priorRowsForAgreement) {
         const row = r as unknown as Record<string, unknown>;
-        put(stored, 'revenue_by_fy', row.fiscalYear as number, numOrNullNum(row.revenue));
-        put(stored, 'pat_by_fy', row.fiscalYear as number, numOrNullNum(row.pat));
+        const rowUnit = asStatementUnit((row.unit as StatementUnit) ?? null);
+        // A row whose unit this code cannot read is not comparable at any
+        // scale; skip it rather than guess which denomination it is in.
+        if (!rowUnit) continue;
+        const amount = (v: unknown): number | null => {
+          const n = numOrNullNum(v);
+          return n === null ? null : convertUnit(n, rowUnit, comparisonUnit);
+        };
+        put(stored, 'revenue_by_fy', row.fiscalYear as number, amount(row.revenue));
+        put(stored, 'pat_by_fy', row.fiscalYear as number, amount(row.pat));
+        // EPS is per-share — never unit-converted.
         put(stored, 'eps_basic_by_fy', row.fiscalYear as number, numOrNullNum(row.epsBasic));
       }
       for (const [fy, v] of Object.entries(revenue)) put(incoming, 'revenue_by_fy', fy, v);
@@ -674,10 +691,14 @@ export async function persistFilingExtraction(
         stored,
         incoming,
         CROSS_DOC_TOLERANCE,
-        `stored (${storedUnit})`,
+        `stored (converted to ${comparisonUnit})`,
         `${options.docType} (${unit})`,
-        storedUnit,
-        unit
+        // Both sides are already in comparisonUnit: the stored rows were each
+        // converted from their own unit above, and the incoming series is
+        // native to it. Passing the same unit twice keeps the per-share
+        // exemption active without re-converting anything.
+        comparisonUnit,
+        comparisonUnit
       );
       if (!agreement.agree) {
         for (const m of expandWithheldMetrics(agreement.disagreeingMetrics)) {
