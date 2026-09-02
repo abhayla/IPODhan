@@ -1847,3 +1847,61 @@ export const ipoRiskFactorsRelations = relations(ipoRiskFactors, ({ one }) => ({
     references: [ipos.id],
   }),
 }));
+
+// ==================== PER-IPO PIPELINE STEP LEDGER (S-01) ====================
+
+// Status of a single catalogue step for a single IPO.
+// Spec: docs/specs/per-ipo-due-step-pipeline.md section 4.1
+export const ipoStepStatusEnum = pgEnum('ipo_step_status', [
+  'NOT_DUE',
+  'DUE',
+  'RUNNING',
+  'DONE',
+  'FAILED',
+  'NOT_AVAILABLE_YET',
+  'BLOCKED',
+  'SKIPPED',
+]);
+
+export const ipoPipelineSteps = pgTable(
+  'ipo_pipeline_steps',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    // Catalogue id (B1..J3) — enum-checked in code via packages/shared/src/pipeline/step-catalogue.ts
+    stepId: text('step_id').notNull(),
+    status: ipoStepStatusEnum('status').notNull().default('NOT_DUE'),
+    attempts: integer('attempts').notNull().default(0),
+    lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+    nextDueAt: timestamp('next_due_at', { withTimezone: true }),
+    // Which source satisfied the step (BSE, NSE, RHP, WALK, ...)
+    source: text('source'),
+    // sha256 / document id / upstream step run id
+    inputRef: text('input_ref'),
+    evidence: jsonb('evidence'),
+    error: text('error'),
+    // Extractor/parser version that produced DONE
+    version: text('version'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    uniqueIpoStep: unique('unique_ipo_pipeline_steps_ipo_step').on(table.ipoId, table.stepId),
+    statusDueIdx: index('idx_ipo_pipeline_steps_status_next_due_at').on(
+      table.status,
+      table.nextDueAt
+    ),
+  })
+);
+
+export const ipoPipelineStepsRelations = relations(ipoPipelineSteps, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [ipoPipelineSteps.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export type IpoPipelineStep = typeof ipoPipelineSteps.$inferSelect;
+export type NewIpoPipelineStep = typeof ipoPipelineSteps.$inferInsert;

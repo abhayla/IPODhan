@@ -14,6 +14,8 @@ export * from './repositories/ipo-identity';
 // Export utility functions
 export * from './utils/slug';
 export * from './utils/offering-type';
+// Per-IPO pipeline step catalogue (S-01)
+export * from './pipeline/step-catalogue';
 // Export field protection functions
 export * from './admin/field-protection-checker';
 // Export repository interfaces and pagination types only
