@@ -109,6 +109,14 @@ interface ConflictInfo {
   normalizedIncoming: any;
   severity: 'INFO' | 'WARNING' | 'CRITICAL';
   reason: string;
+  // W-48: the source whose VALUE was actually kept/written after all
+  // resolution branches ran (priority, untracked replace, set merge, tiebreak
+  // etc). MUST be passed by the caller, never re-derived from `reason` here —
+  // `reason === 'SOURCE_PRIORITY'` does not imply existingSource won (incoming
+  // wins SOURCE_PRIORITY too when it outranks existing), and DEEPA's
+  // faceValue/issueSize conflict rows were mislabeled NSE while DRHP's value
+  // was the one actually stored.
+  chosenSource: ScraperSource;
 }
 
 const PRICE_BAND_FIELDS = ['priceRangeMin', 'priceRangeMax'] as const;
@@ -578,6 +586,9 @@ export class DataConsolidationService {
             normalizedIncoming: input.incomingData[fieldName],
             severity: 'CRITICAL',
             reason: implausibleIssueSize.reason!,
+            // The implausible incoming value is rejected outright — nothing
+            // is written, so the existing value/source stands.
+            chosenSource: existingSource,
           });
         }
 
@@ -1253,6 +1264,9 @@ export class DataConsolidationService {
         normalizedIncoming: params.incomingValueNormalized,
         severity,
         reason: resolutionReason,
+        // W-48: pass the source actually kept by the resolution above —
+        // never re-derive it from `resolutionReason` in logConflict.
+        chosenSource,
       });
     }
 
@@ -1372,10 +1386,12 @@ export class DataConsolidationService {
         value1: JSON.stringify(conflict.existingValue),
         source2: conflict.incomingSource,
         value2: JSON.stringify(conflict.incomingValue),
-        resolvedSource:
-          conflict.reason === 'SOURCE_PRIORITY'
-            ? conflict.existingSource
-            : conflict.incomingSource,
+        // W-48: resolvedSource is the source whose value the caller actually
+        // kept/wrote, passed in explicitly — never re-derived from `reason`
+        // (that derivation assumed SOURCE_PRIORITY always means the existing
+        // source wins, which is false: incoming wins SOURCE_PRIORITY too when
+        // it outranks the existing source).
+        resolvedSource: conflict.chosenSource,
         resolutionReason: conflict.reason,
         severity: conflict.severity,
       });

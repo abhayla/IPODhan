@@ -45,6 +45,14 @@ import {
   type FilingExtraction,
   type IpoDetailsWriter,
 } from '../src/services/filing-persister.js';
+import { persistAnchorReport } from '../src/services/anchor-persister.js';
+import { scrapeAnchorInvestors } from '../src/scrapers/anchor-investors-scraper.js';
+import { AnchorInvestorRepository } from '../src/repositories/anchor-investor-repository.js';
+import {
+  checkCrossDocumentAgreement,
+  comparableSeries,
+  withholdDisagreeingMetrics,
+} from '../src/services/cross-document-agreement.js';
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
@@ -65,6 +73,27 @@ function makeIpoDetailsWriter(): IpoDetailsWriter {
           set: { ...values, updatedAt: new Date() } as never,
         });
     },
+  };
+}
+
+function buildDeps(redis: ReturnType<typeof getRedisClient>) {
+  return {
+    ipoRepository: new IPORepository(db, redis),
+    financialStatements: new FinancialStatementsRepository(db, redis),
+    ipoValuation: new IpoValuationRepository(db, redis),
+    promoters: new PromotersRepository(db, redis),
+    intermediaries: new IpoIntermediariesRepository(db, redis),
+    brlmTrackRecord: new BrlmTrackRecordRepository(db, redis),
+    peerCompanies: new PeerCompanyRepository(db),
+    financialData: new FinancialDataRepository(db, redis),
+    fieldSources: new FieldSourcesRepository(db, redis),
+    ipoDetailsWriter: makeIpoDetailsWriter(),
+    protectionFilter: (
+      id: string,
+      table: string,
+      data: Record<string, unknown>,
+      scraperName: string
+    ) => filterProtectedFields(id, table, data, scraperName, db, redis),
   };
 }
 
@@ -97,21 +126,22 @@ async function main(): Promise<void> {
   const jsonPath = arg('json');
   const apply = process.argv.includes('--apply');
 
-  if (!ipoArg || !docType || !jsonPath) {
-    console.error(
-      'usage: persist-filing.ts --ipo <slug|uuid|name> --doc-type PRICE_BAND_AD|RHP|DRHP|PROSPECTUS --json <path> [--apply]'
-    );
-    process.exit(2);
-  }
-  if (!['PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS'].includes(docType)) {
-    console.error(`unknown --doc-type ${docType}`);
-    process.exit(2);
-  }
+  const adPath = arg('json-ad');
+  const rhpPath = arg('json-rhp');
+  const paired = Boolean(adPath && rhpPath);
 
-  const extraction = JSON.parse(readFileSync(jsonPath, 'utf8')) as FilingExtraction;
-  if (extraction.doc_type && extraction.doc_type !== docType) {
+  // The anchor report is read from the stored PDF, not from an extraction
+  // JSON, so it is the one doc type that needs no --json.
+  const anchorMode = !paired && docType === 'ANCHOR_ALLOCATION_REPORT';
+  if (!ipoArg || (!paired && !anchorMode && (!docType || !jsonPath))) {
     console.error(
-      `--doc-type ${docType} disagrees with the extraction's own doc_type ${extraction.doc_type}; refusing.`
+      [
+        'usage: persist-filing.ts --ipo <slug|uuid|name>',
+        '         --doc-type PRICE_BAND_AD|RHP|DRHP|PROSPECTUS|ANCHOR_ALLOCATION_REPORT',
+        '         --json <path> [--apply]',
+        '   or: persist-filing.ts --ipo <..> --json-ad <ad.json> --json-rhp <rhp.json> [--apply]',
+        '       (paired mode runs the W-45 cross-document agreement gate first)',
+      ].join('\n')
     );
     process.exit(2);
   }
@@ -119,29 +149,101 @@ async function main(): Promise<void> {
   const redis = getRedisClient();
   const ipoId = await resolveIpoId(ipoArg);
 
+  // ------------------------------------------------------------------ W-51
+  if (anchorMode) {
+    const summary = await persistAnchorReport(
+      ipoId,
+      { companyName: arg('company') ?? '', apply },
+      {
+        scrapeAnchorReport: (id, name) => scrapeAnchorInvestors(db, id, name),
+        anchorInvestorRepository: new AnchorInvestorRepository(db),
+      }
+    );
+    console.log(`\n=== ${apply ? 'APPLIED' : 'DRY RUN (no writes)'} - ANCHOR_ALLOCATION_REPORT ===`);
+    console.log(JSON.stringify(summary, null, 2));
+    if (summary.refusedReason) {
+      console.error(`\nREFUSED (nothing written): ${summary.refusedReason}`);
+      process.exit(1);
+    }
+    if (!apply) console.log('\nRe-run with --apply to write.');
+    return;
+  }
+
+  // ------------------------------------------------------------------ W-45
+  if (paired) {
+    let ad = JSON.parse(readFileSync(adPath as string, 'utf8')) as FilingExtraction;
+    let rhp = JSON.parse(readFileSync(rhpPath as string, 'utf8')) as FilingExtraction;
+
+    const agreement = checkCrossDocumentAgreement(comparableSeries(ad), comparableSeries(rhp));
+    console.log('\n=== CROSS-DOCUMENT AGREEMENT (W-45) ===');
+    console.log(JSON.stringify(agreement, null, 2));
+
+    if (!agreement.agree) {
+      // Same issuer, same day, same restated accounts - a disagreement means
+      // one of the two was mis-parsed and there is no way to tell which, so
+      // NEITHER series is written.
+      ad = withholdDisagreeingMetrics(ad, agreement.disagreeingMetrics);
+      rhp = withholdDisagreeingMetrics(rhp, agreement.disagreeingMetrics);
+    }
+
+    const pairs: Array<[FilingDocType, FilingExtraction]> = [
+      ['PRICE_BAND_AD', ad],
+      ['RHP', rhp],
+    ];
+    for (const [dt, ex] of pairs) {
+      const summary = await persistFilingExtraction(
+        ipoId,
+        ex,
+        {
+          docType: dt,
+          documentId: arg('document-id') ?? null,
+          sourceSha: arg('source-sha') ?? null,
+          apply,
+        },
+        buildDeps(redis)
+      );
+      console.log(`\n=== ${apply ? 'APPLIED' : 'DRY RUN (no writes)'} - ${dt} (paired) ===`);
+      console.log(
+        JSON.stringify(
+          {
+            ...summary,
+            skipped_cross_document_disagreement: agreement.disagreements.map(
+              (d) =>
+                `${d.metric} FY${d.fiscalYear}: ${d.valueA} (PRICE_BAND_AD) vs ${d.valueB} (RHP)`
+            ),
+          },
+          null,
+          2
+        )
+      );
+    }
+    if (!apply) console.log('\nRe-run with --apply to write.');
+    return;
+  }
+
+  if (!['PRICE_BAND_AD', 'RHP', 'DRHP', 'PROSPECTUS'].includes(docType as string)) {
+    console.error(`unknown --doc-type ${docType}`);
+    process.exit(2);
+  }
+
+  const extraction = JSON.parse(readFileSync(jsonPath as string, 'utf8')) as FilingExtraction;
+  if (extraction.doc_type && extraction.doc_type !== docType) {
+    console.error(
+      `--doc-type ${docType} disagrees with the extraction's own doc_type ${extraction.doc_type}; refusing.`
+    );
+    process.exit(2);
+  }
+
   const summary = await persistFilingExtraction(
     ipoId,
     extraction,
     {
-      docType,
+      docType: docType as FilingDocType,
       documentId: arg('document-id') ?? null,
       sourceSha: arg('source-sha') ?? null,
       apply,
     },
-    {
-      ipoRepository: new IPORepository(db, redis),
-      financialStatements: new FinancialStatementsRepository(db, redis),
-      ipoValuation: new IpoValuationRepository(db, redis),
-      promoters: new PromotersRepository(db, redis),
-      intermediaries: new IpoIntermediariesRepository(db, redis),
-      brlmTrackRecord: new BrlmTrackRecordRepository(db, redis),
-      peerCompanies: new PeerCompanyRepository(db),
-      financialData: new FinancialDataRepository(db, redis),
-      fieldSources: new FieldSourcesRepository(db, redis),
-      ipoDetailsWriter: makeIpoDetailsWriter(),
-      protectionFilter: (id, table, data, scraperName) =>
-        filterProtectedFields(id, table, data as Record<string, unknown>, scraperName, db, redis),
-    }
+    buildDeps(redis)
   );
 
   console.log(`\n=== ${apply ? 'APPLIED' : 'DRY RUN (no writes)'} — ${docType} ===`);

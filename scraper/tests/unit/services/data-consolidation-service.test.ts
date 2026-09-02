@@ -319,6 +319,84 @@ describe('DataConsolidationService', () => {
         expect(result.conflictsDetected).toBeGreaterThan(0);
         expect(result.conflictsBySeverity.CRITICAL).toBeGreaterThan(0);
       });
+
+      // W-48: data_conflicts.resolved_source must record the source whose
+      // VALUE was actually kept/written, not a label re-derived from the
+      // resolution reason. Regression for the DEEPA case: resolved_source
+      // said NSE while faceValue/issueSize were actually written from DRHP.
+      it('W-48: a DRHP-over-NSE priority win writes resolved_source = DRHP', async () => {
+        const existingFieldSources = [{
+          ipoId: 'test-ipo',
+          tableName: 'ipos',
+          fieldName: 'faceValue',
+          source: 'NSE',
+          value: '10',
+          confidence: 95,
+          dataLineage: null,
+          previousValue: null,
+          previousSource: null,
+          updatedAt: new Date(),
+          createdAt: new Date(),
+        }];
+
+        vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(existingFieldSources);
+        vi.mocked(mockConflictsRepo.upsertConflict).mockResolvedValue({} as any);
+
+        await service.consolidateIPOData({
+          ipoId: 'test-ipo',
+          tableName: 'ipos',
+          incomingData: { faceValue: 2 },
+          source: 'DRHP',
+          confidence: 95,
+        });
+
+        expect(mockConflictsRepo.upsertConflict).toHaveBeenCalledWith(
+          expect.objectContaining({
+            resolvedSource: 'DRHP',
+            resolutionReason: 'SOURCE_PRIORITY',
+          })
+        );
+      });
+
+      it('W-48: a losing incoming (both sources unranked for the field) keeps resolved_source = existing source', async () => {
+        const existingFieldSources = [{
+          ipoId: 'test-ipo',
+          tableName: 'ipos',
+          fieldName: 'peer_companies',
+          source: 'NSE',
+          value: 'existing text',
+          confidence: 95,
+          dataLineage: null,
+          previousValue: null,
+          previousSource: null,
+          updatedAt: new Date(),
+          createdAt: new Date(),
+        }];
+
+        vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(existingFieldSources);
+        vi.mocked(mockConflictsRepo.upsertConflict).mockResolvedValue({} as any);
+
+        // peer_companies' matrix entry lists only ['ADMIN','DRHP','CHITTORGARH',
+        // 'MONEYCONTROL'] — NSE and BSE both rank -1 (unrecognized), so
+        // existingPriority === incomingPriority and resolution falls through
+        // to DEFAULT_KEEP_EXISTING (existing wins). The old logConflict
+        // derivation treated any reason != 'SOURCE_PRIORITY' as "incoming
+        // wins" and would have mislabeled resolved_source as BSE.
+        await service.consolidateIPOData({
+          ipoId: 'test-ipo',
+          tableName: 'ipos',
+          incomingData: { peer_companies: 'incoming text' },
+          source: 'BSE',
+          confidence: 90,
+        });
+
+        expect(mockConflictsRepo.upsertConflict).toHaveBeenCalledWith(
+          expect.objectContaining({
+            resolvedSource: 'NSE',
+            resolutionReason: 'DEFAULT_KEEP_EXISTING',
+          })
+        );
+      });
     });
 
     describe('Field source tracking', () => {
