@@ -240,6 +240,63 @@ describe('extract_filing — check functions reject bad documents (synthetic, of
     }
   });
 
+  // MAJOR-3 (T-430 round 2): `_find_unit` used to match PROSE. Every C-group money
+  // field is scaled by the detected unit, so a prose match is a silent 10x/100x
+  // error carrying a GREEN check. These two probes are the exact sentences from the
+  // review; both must leave the unit null.
+  it.each([
+    ['We serve 3 million customers in millions of cities across India.'],
+    ['Our sarees are present in lakhs of homes across the country.'],
+  ])('prose mentioning a unit does not become the document unit: %s', (prose: string) => {
+    if (!pythonAvailable) return;
+    const page = [
+      prose,
+      'Restated Consolidated Statement of Profit and Loss',
+      '                          March 31, 2026    March 31, 2025    March 31, 2024',
+      'Revenue from operations        17,538             15,000             12,000',
+      'Profit for the year               500                400               300',
+    ].join('\n');
+    const out = runOnTexts([[0, page]], 'RHP');
+    expect(out.fields.unit.value).toBeNull();
+    expect(out.fields.unit.check.passed).toBe(false);
+    expect(out.fields.pat_by_fy.value).toBeNull();
+    expect(out.fields.pat_by_fy.check.detail).toBe('unit_unknown');
+  });
+
+  it('a units caption IS accepted where prose is not', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts([[0, 'Restated Statement of Profit and Loss (` in million)']], 'RHP');
+    expect(out.fields.unit.value).toBe('millions');
+  });
+
+  it('two pages stating different units null the unit with reason unit_conflict', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts(
+      [[0, '(₹ in million)'], [3, '(₹ in crores)']],
+      'RHP',
+    );
+    expect(out.fields.unit.value).toBeNull();
+    expect(out.fields.unit.check.passed).toBe(false);
+    expect(out.fields.unit.check.detail).toContain('unit_conflict');
+  });
+
+  // MAJOR-3, second half: the market-cap consistency check used to hard-code
+  // Rs million. A crore-denominated advertisement must fail CLOSED with a reason,
+  // never pass a comparison that is silently 10x wrong.
+  it('market cap fails closed with unit_unknown when no unit caption exists', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const page = [
+      'PRICE BAND : ` 546 TO ` 575 PER EQUITY SHARE OF FACE VALUE OF ` 10 EACH.',
+      'Fresh Issue 12,454,212 6,800.00 11,826,086 6,800.00',
+      'Post-Issue market capitalisation 44,056.31 46,035.12',
+    ].join('\n');
+    const out = runOnTexts([[0, page]], 'PRICE_BAND_AD');
+    expect(out.fields.market_cap_at_cap.value).toBeNull();
+    expect(out.fields.market_cap_at_cap.check.detail).toContain('unit_unknown');
+    expect(out.fields.shares_at_floor.value).toBeNull();
+    expect(out.fields.shares_at_floor.check.detail).toContain('unit_unknown');
+  });
+
   // MAJOR-2 mutation proof: the floor-side and cap-side implied pre-issue share
   // counts must independently reproduce the same number. Bumping mcap_cap by 1%
   // (leaving shares/prices untouched) must flip the combined check from green to
@@ -248,6 +305,7 @@ describe('extract_filing — check functions reject bad documents (synthetic, of
   it('mcap consistency FAILS when mcap_cap disagrees with the floor-side implied share count', (ctx) => {
     if (!pythonAvailable) return ctx.skip();
     const buildPage = (mcapCap: string) => [
+      '(` in million)',
       'PRICE BAND : ` 546 TO ` 575 PER EQUITY SHARE OF FACE VALUE OF ` 10 EACH.',
       'Fresh Issue 12,454,212 6,800.00 11,826,086 6,800.00',
       'Post-Issue market capitalisation 44,056.31 ' + mcapCap,
