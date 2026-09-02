@@ -6,11 +6,15 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { readStatusMap, writeStatusMap } from '../deploy-status.mjs';
 import { buildDeployFailureStatusRow, setDeployFailureStatus, clearDeployStatus } from '../lib/fix-served-checks.mjs';
+
+const DEPLOY_STATUS_SCRIPT = fileURLToPath(new URL('../deploy-status.mjs', import.meta.url));
 
 function withTempFile(fn) {
   const dir = mkdtempSync(join(tmpdir(), 'deploy-status-test-'));
@@ -55,4 +59,35 @@ test('clearing a slot that was never open is a harmless no-op', () => {
     writeStatusMap(clearDeployStatus(readStatusMap(file), 'prod'), file);
     assert.deepEqual(readStatusMap(file), {});
   });
+});
+
+// --- fail-open on a write error (T-425 blocker) -----------------------------
+// The workflow's "Clear deploy-failure STATUS" step must never fail a
+// successful deploy just because this side-record couldn't be written. Force
+// a real write error (mkdirSync fails because the "directory" segment is
+// actually a file) and assert the CLI process itself still exits 0, with a
+// stderr note — belt-and-braces alongside the `|| echo ... non-fatal` guard
+// in deploy-linux.yml.
+test('CLI exits 0 with a stderr WARNING when the status file cannot be written (unwritable dir)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'deploy-status-unwritable-'));
+  try {
+    const blockerFile = join(dir, 'not-a-directory');
+    writeFileSync(blockerFile, 'this is a file, not a directory');
+    // The state "directory" path is itself a file, so mkdirSync(recursive) on
+    // any path nested under it throws ENOTDIR - a real, reproducible write error.
+    const unwritableStatusFile = join(blockerFile, 'nested', 'deploy-failure-status.json');
+
+    const result = spawnSync(process.execPath, [
+      DEPLOY_STATUS_SCRIPT, 'set',
+      '--slot', 'prod', '--sha', 'abc123', '--run-url', 'https://x/run/1', '--reason', 'FATAL: test',
+    ], {
+      env: { ...process.env, DEPLOY_STATUS_FILE: unwritableStatusFile },
+      encoding: 'utf8',
+    });
+
+    assert.equal(result.status, 0, `expected exit 0 (fail-open), got ${result.status}. stderr: ${result.stderr}`);
+    assert.match(result.stderr, /WARNING/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

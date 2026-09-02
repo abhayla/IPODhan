@@ -82,4 +82,16 @@ function main() {
 }
 
 const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (isDirectRun) main();
+if (isDirectRun) {
+  // Fail-open (T-425 blocker): a write error here (unwritable state dir, full
+  // disk, permission issue) must NEVER fail the calling workflow step - this
+  // script is a best-effort side record, not the deploy gate. `main()`'s own
+  // explicit usage checks still exit(2) directly (process.exit terminates
+  // before this catch runs); only unexpected thrown errors land here.
+  try {
+    main();
+  } catch (e) {
+    console.error(`WARNING: deploy-status.mjs failed non-fatally: ${e.message}`);
+    process.exit(0);
+  }
+}

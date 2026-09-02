@@ -93,7 +93,7 @@ jobs:
       - name: Clear deploy-failure STATUS (this slot deployed successfully)
         if: success()
         shell: bash
-        run: node scripts/deploy-status.mjs clear --slot "${{ steps.slot.outputs.slot }}"
+        run: node scripts/deploy-status.mjs clear --slot "${{ steps.slot.outputs.slot }}" || echo "WARNING: could not clear the deploy-failure STATUS row (non-fatal)." >&2
 
       - name: Verify /api/version reflects the deployed SHA
         if: always()
@@ -169,7 +169,7 @@ jobs:
           # #265 class: T-327's fix merged 26 Aug, not served until 28 Aug, and
           # nothing on disk said the deploy was still failing in between). This
           # writes a STATUS row that stays open until a later deploy of the SAME
-          # slot clears it (see the "Clear deploy-failure STATUS" step below).
+          # slot clears it (see the "Clear deploy-failure STATUS" step above).
           node scripts/deploy-status.mjs set --slot "$SLOT" --sha "$SHA" --run-url "$RUN_URL" --reason "$GATE_REASON" || echo "WARNING: could not write the deploy-failure STATUS row (non-fatal - the Notifier page above is still the primary alert)." >&2
 
           if [ -z "${NOTIFIER_URL:-}" ] || [ -z "${NOTIFIER_KEY:-}" ]; then
