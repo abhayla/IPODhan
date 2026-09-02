@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-03 00:30 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-03 00:40 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -25,8 +25,8 @@ Last updated: 2026-09-03 00:30 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 | # | Step | In plain words | Plan | Status |
 |---|---|---|---|---|
 | 1 | D6 text check / OCR | Scanned ads had no reader at all. Four rounds built one: rapidocr reader with confidence gate (92814b1a), word splitting (c39ec63a), extractor safe against OCR digit damage with prose fallback and arithmetic gates (91164725), column-splice cut on prose (87b4ed07). | Done. Fable's own live run on the scanned DEEPA ad: 27 oracle-checked fields correct, 0 wrong numbers or dates, description true but first sentence only (the text copy outranks it). VPS needs `pip install rapidocr-onnxruntime pypdfium2` in the deploy bundle. | **PASS** 00:17 |
-| 2 | I4 leftover (W-60) | I4 passes (4a96ab7d). The merge-step hole is now closed (f3fda19b): a stored WITHDRAWN/POSTPONED only leaves via ADMIN; a later 'Closed' from any exchange is kept out and shown as a warning conflict. 5 new tests, red then green; 53 tests reproduced by Fable. | Strict review running together with G4 (one fresh-context pass, mutation tests). | Fixed, review running (00:30) |
-| 3 | G4 persist filing data | Seven fix rounds; the DEEPA page now shows the right issue size, financials, peers, promoters, documents. Last review said 'not mergeable'; round 7 (1298065a) fixed those points. | Final fresh-context strict review of round 7, with mutation tests, running now (with W-60). | Review running (00:30, 30-min budget) |
+| 2 | I4 leftover (W-60) | Closed (f3fda19b). Strict review verdict: MERGEABLE; both mutation tests killed. | None. | **PASS** 00:35 |
+| 3 | G4 persist filing data | Strict review of round 7: NOT MERGEABLE. Two critical holes: (a) admin-protected valuation values are overwritten because the write uses the unfiltered data; (b) the anchor-report path ignores the admin row lock. Plus one red test (RHP writes issue size from the fresh leg alone, understating the offer) and the refusal exit is untested at script level. | Round 8 fixes all four with substance tests (protected column absent from the written payload, per table), a lock test on the anchor door, both-legs rule for issue size, and a wiring test. Detection RCA: `docs/reviews/g4-round-7-detection-rca.md`. | Round 8 running (00:38, 45-min budget) |
 | 4 | F2 Moneycontrol | Moneycontrol's list page does not show DEEPA. Not a scraper defect. | None; noted as a coverage gap. | Closed as not applicable |
 | 5 | G5 18 new columns from the ad | Needs database change W-09 (18 columns on the IPO table). | Owner approval of W-09, then migration + write. | Blocked on owner |
 | 6 | I5 listing price, I6 PDF purge | Cannot run until DEEPA lists on 8 Sep and a week after close. | Run on those dates. | Not due |
@@ -45,3 +45,4 @@ Last updated: 2026-09-03 00:30 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 - 2026-09-03 00:17: D6 PASS after round 4 (87b4ed07), reproduced by Fable (25 vitest, live run 27/27 correct). Step ledger D6/F6/I4 = DONE. Next in order: W-60 (I4 consolidation guard).
 - 2026-09-03 00:25: step ledger backfill needed DATABASE_* tunnel vars (root .env points at the VPS); backfill script now prints the pg cause (dea73837). W-60 fix dispatched.
 - 2026-09-03 00:30: W-60 fixed (f3fda19b, 53 tests reproduced). Worker used git stash against the brief (no damage; registry bumped). Tier A review of G4 round 7 + W-60 dispatched.
+- 2026-09-03 00:40: Tier A review: W-60 MERGEABLE, G4 round 7 NOT MERGEABLE (C1 valuation protection discarded, C2 anchor path ignores scraper_locked, M1 red RHP test, M2 wiring untested). Round 8 dispatched; detection RCA written.
