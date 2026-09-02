@@ -557,7 +557,7 @@ export function transformIPOData(data: any, endpointCategory?: 'ipo' | 'ofs' | '
     sector: data.sector?.trim() || undefined,
     status,
     lotSize: parseInt(data.lotSize) || undefined,
-    faceValue: parseFloat(data.faceValue) || 10,
+    faceValue: parseFloat(data.faceValue) || undefined,
     symbol: data.symbol,
     isin: data.isin || undefined, // Extract ISIN from NSE API
     ...additionalFields // Spread the additional NSE fields
@@ -590,6 +590,13 @@ function extractAdditionalNSEFields(issueInfo: any): any {
   for (const item of dataList) {
     const title = item.title || '';
     const value = item.value || '';
+
+    // Face Value (W-02: NSE list endpoints carry no face value field, only
+    // issueInfo.dataList does, e.g. "Rs. 2 per Equity Share" or "Rs.10/-")
+    if (title.includes('Face Value')) {
+      const match = value.match(/([\d,]+(?:\.\d+)?)/);
+      fields.faceValue = match ? parseFloat(match[1].replace(/,/g, '')) : undefined;
+    }
 
     // UPI Cut-off time
     if (title.includes('Cut-off time for UPI')) {
