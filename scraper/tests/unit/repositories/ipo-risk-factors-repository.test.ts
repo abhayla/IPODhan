@@ -18,8 +18,13 @@ function makeMockRedis() {
 
 function makeMockTx(insertedRows: unknown[]) {
   const calls: string[] = [];
+  // T-431 (T-428 review carry-over): capture the array actually handed to
+  // .values(). Asserting only the delete-then-insert call ORDER lets a repository
+  // that inserts the WRONG rows -- or a truncated set -- pass green.
+  const valuesArgs: unknown[][] = [];
   return {
     calls,
+    valuesArgs,
     tx: {
       delete: vi.fn().mockReturnValue({
         where: vi.fn(() => {
@@ -28,11 +33,14 @@ function makeMockTx(insertedRows: unknown[]) {
         }),
       }),
       insert: vi.fn().mockReturnValue({
-        values: vi.fn().mockReturnValue({
-          returning: vi.fn(() => {
-            calls.push('insert');
-            return Promise.resolve(insertedRows);
-          }),
+        values: vi.fn((rows: unknown[]) => {
+          valuesArgs.push(rows);
+          return {
+            returning: vi.fn(() => {
+              calls.push('insert');
+              return Promise.resolve(insertedRows);
+            }),
+          };
         }),
       }),
     },
@@ -54,7 +62,7 @@ describe('IpoRiskFactorsRepository', () => {
     ];
 
     it('deletes existing rows before inserting the new set, in one transaction', async () => {
-      const { calls, tx } = makeMockTx(rows.map((r, i) => ({ id: `rf-${i}`, ...r })));
+      const { calls, valuesArgs, tx } = makeMockTx(rows.map((r, i) => ({ id: `rf-${i}`, ...r })));
       const mockDb = {
         transaction: vi.fn((cb: (tx: unknown) => unknown) => cb(tx)),
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -64,6 +72,8 @@ describe('IpoRiskFactorsRepository', () => {
       const result = await repo.replaceForIpo('ipo-1', rows);
 
       expect(calls).toEqual(['delete', 'insert']);
+      expect(valuesArgs).toHaveLength(1);
+      expect(valuesArgs[0]).toEqual(rows);
       expect(result).toHaveLength(2);
     });
 

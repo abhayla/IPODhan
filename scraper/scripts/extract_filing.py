@@ -85,16 +85,25 @@ def check_face_multiple(price, face, printed):
     return True, "%s/%s = %s == %s" % (price, face, computed, printed)
 
 
-def check_shares_amount(shares, price, amount_mn, tol=0.005):
-    """shares x price ~= the issue amount, in Rs million, within +/-0.5%."""
+def check_shares_amount(shares, price, amount_mn, unit="millions", tol=0.005):
+    """shares x price ~= the printed issue amount, within +/-0.5%.
+
+    MAJOR-3: the printed amount is in the document's OWN money unit, so the
+    divisor comes from the detected unit, never a hard-coded ₹ million. With no
+    detected unit the check fails CLOSED — a crore-denominated ad must surface a
+    reason, not silently pass a 10x-wrong comparison.
+    """
+    mult = unit_multiplier(unit)
+    if mult is None:
+        return False, "unit_unknown: cannot compare shares x price to a printed amount"
     if None in (shares, price, amount_mn) or amount_mn == 0:
         return False, "shares, price or amount missing"
-    computed = shares * price / 1_000_000.0
+    computed = shares * price / mult
     drift = abs(computed - amount_mn) / abs(amount_mn)
     if drift > tol:
-        return False, "%sx%s = %.2fmn vs printed %s (%.4f%%)" % (
-            shares, price, computed, amount_mn, drift * 100)
-    return True, "%.2fmn ~= %s (%.4f%%)" % (computed, amount_mn, drift * 100)
+        return False, "%sx%s = %.2f %s vs printed %s (%.4f%%)" % (
+            shares, price, computed, unit, amount_mn, drift * 100)
+    return True, "%.2f %s ~= %s (%.4f%%)" % (computed, unit, amount_mn, drift * 100)
 
 
 def check_monotonic_shares(shares_floor, shares_cap):
@@ -113,7 +122,8 @@ def check_monotonic_mcap(mcap_floor, mcap_cap):
     return True, "%s < %s" % (mcap_floor, mcap_cap)
 
 
-def check_mcap_consistency(mcap_floor, floor, shares_floor, mcap_cap, cap, shares_cap, tol=0.005):
+def check_mcap_consistency(mcap_floor, floor, shares_floor, mcap_cap, cap, shares_cap,
+                           unit="millions", tol=0.005):
     """Market cap, price and fresh-issue share count must be mutually consistent,
     not just individually monotonic (MAJOR-2). mcap (Rs million) / price gives the
     POST-issue share count at that price point; subtracting the fresh-issue shares
@@ -121,10 +131,13 @@ def check_mcap_consistency(mcap_floor, floor, shares_floor, mcap_cap, cap, share
     count must agree whether computed at floor or at cap, within +/-0.5% — a
     mismatch means at least one of mcap/shares/price was misread from the table.
     """
+    mult = unit_multiplier(unit)
+    if mult is None:
+        return False, "unit_unknown: market capitalisation has no known money unit"
     if None in (mcap_floor, floor, shares_floor, mcap_cap, cap, shares_cap) or not floor or not cap:
         return False, "missing inputs"
-    pre_floor = mcap_floor * 1_000_000.0 / floor - shares_floor
-    pre_cap = mcap_cap * 1_000_000.0 / cap - shares_cap
+    pre_floor = mcap_floor * mult / floor - shares_floor
+    pre_cap = mcap_cap * mult / cap - shares_cap
     denom = max(abs(pre_floor), abs(pre_cap), 1.0)
     drift = abs(pre_floor - pre_cap) / denom
     if drift > tol:
@@ -383,30 +396,80 @@ def _find(lines, rx, start=0):
 # requires an EXPLICIT unit line for any C-group money field to be written — so
 # this extractor does its own presence check, over the cover page and every
 # other page, and never falls back to a default.
-UNIT_RX = re.compile(r"(?:₹|rs\.?|rupees?)?\s*in\s+(million|millions|lakh|lakhs|crore|crores)",
-                     re.I)
+#
+# MAJOR-3 (T-430 round 2): the presence check itself must not false-match PROSE.
+# "3 million customers in millions of cities" and "in lakhs of homes" both used to
+# match, and every C-group money field is scaled by the detected unit — so a prose
+# match is a silent 10x/100x error carrying a GREEN check. Only two shapes count:
+#   (a) currency-anchored — "₹ in million", "Rs. in lakhs", "INR in crores";
+#   (b) caption-anchored  — "in million)" / "in lakhs, unless otherwise stated" /
+#       "in million, except per share data" — the shape a units caption takes.
+# "in <unit> of ..." is rejected outright: that is always prose.
+UNIT_WORD = r"(million|millions|lakh|lakhs|crore|crores)"
+UNIT_CURRENCY_RX = re.compile(r"(?:₹|`|rs\.?|inr|rupees?)\s*in\s+" + UNIT_WORD + r"\b", re.I)
+UNIT_CAPTION_RX = re.compile(
+    r"\bin\s+" + UNIT_WORD + r"\b\s*(?:\)|,?\s*unless\s+otherwise\s+stated|,?\s*except\b)", re.I)
+
+
+def _canonical_unit(word):
+    w = word.lower()
+    if w.startswith("lakh"):
+        return "lakhs"
+    if w.startswith("cror"):
+        return "crores"
+    return "millions"
+
+
+def _unit_hits(rx, cleaned, idx, out):
+    """Collect (unit, page) for every match of `rx` that is not prose ("in X of")."""
+    for m in rx.finditer(cleaned):
+        if re.match(r"\s+of\b", cleaned[m.end():m.end() + 4]):
+            continue  # "in millions of cities" — prose, never a units caption
+        out.append((_canonical_unit(m.group(1)), idx))
 
 
 def _find_unit(page_texts):
-    """Explicit unit-line detection (C7). Returns (unit, page) or (None, None) —
-    never a guess, never the shared module's silent default."""
+    """Explicit unit-line detection (C7 + MAJOR-3). Returns (unit, page, detail).
+
+    Currency-anchored matches are a stronger tier than caption-anchored ones and
+    win outright when present. Within the surviving tier, two DIFFERENT units
+    across the document is a contradiction we refuse to resolve: the unit is
+    nulled with reason `unit_conflict` so every C-group money field fails closed.
+    """
+    currency, caption = [], []
     for idx, text in page_texts:
-        cleaned = re.sub(r"[`₹’]", " ", text or "")
-        m = UNIT_RX.search(cleaned)
-        if m:
-            u = m.group(1).lower()
-            if u.startswith("lakh"):
-                return "lakhs", idx
-            if u.startswith("cror"):
-                return "crores", idx
-            return "millions", idx
-    return None, None
+        raw = text or ""
+        # The rupee glyph survives for the currency anchor; the caption anchor runs
+        # on a glyph-stripped copy so "(` in million)" still closes on ")".
+        _unit_hits(UNIT_CURRENCY_RX, raw, idx, currency)
+        _unit_hits(UNIT_CAPTION_RX, re.sub(r"[`₹’]", " ", raw), idx, caption)
+    hits = currency or caption
+    if not hits:
+        return None, None, "no explicit unit line found"
+    units = {u for u, _ in hits}
+    if len(units) > 1:
+        pages = sorted({p for _u, p in hits})
+        return None, None, "unit_conflict: %s across pages %s" % (
+            ", ".join(sorted(units)), pages)
+    unit, page = hits[0]
+    return unit, page, unit
+
+
+UNIT_MULTIPLIER = {"millions": 1_000_000.0, "lakhs": 100_000.0, "crores": 10_000_000.0}
+
+
+def unit_multiplier(unit):
+    """Rupees per printed money unit, or None when the unit is unknown."""
+    return UNIT_MULTIPLIER.get(unit)
 
 
 # --------------------------------------------------------------------------- #
 # PRICE_BAND_AD extraction (groups A, B, C-as-reprinted, D, E, F)
 # --------------------------------------------------------------------------- #
 def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
+    # MAJOR-3: the A/B market-cap and issue-amount checks are money-unit dependent,
+    # so the unit must be known BEFORE them, not only before the C block below.
+    unit, unit_page, unit_detail = _find_unit(page_texts)
     all_lines = [(i, _normalize_numbers(ln)) for i, t in page_texts for ln in (t or "").split("\n")]
     lines = [ln for _i, ln in all_lines]
     page_of = [i for i, _ln in all_lines]
@@ -480,9 +543,9 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
             mcap_floor, mcap_cap = vals[-2:]
 
     emit.put("shares_at_floor", shares_floor, page_for(fi), "shares_x_price_equals_amount",
-             check_shares_amount(shares_floor, floor, amt_floor))
+             check_shares_amount(shares_floor, floor, amt_floor, unit))
     emit.put("shares_at_cap", shares_cap, page_for(fi), "shares_x_price_equals_amount",
-             check_shares_amount(shares_cap, cap, amt_cap))
+             check_shares_amount(shares_cap, cap, amt_cap, unit))
     emit.put("fresh_issue_amount", amt_floor, page_for(fi), "fresh_issue_amount_consistent",
              (amt_floor is not None and amt_cap == amt_floor,
               "%s at both prices" % amt_floor if amt_floor == amt_cap
@@ -494,7 +557,7 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
              check_monotonic_shares(shares_floor, shares_cap))
     mcap_check = _combine(
         check_monotonic_mcap(mcap_floor, mcap_cap),
-        check_mcap_consistency(mcap_floor, floor, shares_floor, mcap_cap, cap, shares_cap),
+        check_mcap_consistency(mcap_floor, floor, shares_floor, mcap_cap, cap, shares_cap, unit),
     )
     emit.put("market_cap_at_floor", mcap_floor, page_for(mi),
              "market_cap_ordering_and_consistency", mcap_check)
@@ -609,8 +672,6 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
         fiscal_years = [int(y) for y in re.findall(r"20\d{2}", lines[hy])]
     # MAJOR-1 (C7): the unit must be read EXPLICITLY, never defaulted — search the
     # whole ad (it is a single/few-page cover document) for an "in <unit>" line.
-    unit, unit_page = _find_unit(page_texts)
-
     def series_row(rx, count, start=0):
         idx = _find(lines, rx, start)
         if idx < 0 or not fiscal_years:
@@ -629,8 +690,7 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
 
     emit.put("fiscal_years", fiscal_years, page_for(hy), "fiscal_years_consecutive",
              check_fy_series({str(y): 0 for y in fiscal_years}, fiscal_years))
-    emit.put("unit", unit, unit_page, "unit_not_stated",
-             (unit is not None, "%s" % unit if unit else "no explicit unit line found"))
+    emit.put("unit", unit, unit_page, "unit_not_stated", (unit is not None, unit_detail))
     emit.put_c_money(unit, "pat_by_fy", pat, pat_page, "pat_year_series",
                       check_fy_series(pat or {}, fiscal_years))
     emit.put_c_money(unit, "op_cash_flow_by_fy", ocf, ocf_page, "op_cash_flow_year_series",
@@ -813,12 +873,11 @@ def extract_rhp(page_texts, emit):
     # exists only so numeric column alignment never crashes; it is not a claim the
     # unit is known). This extractor does its own presence check, over every page
     # including the cover, and writes null when no explicit unit line exists.
-    unit, unit_page = _find_unit(cleaned)
+    unit, unit_page, unit_detail = _find_unit(cleaned)
 
     emit.put("fiscal_years", fiscal_years, None, "fiscal_years_consecutive",
              check_fy_series({str(y): 0 for y in fiscal_years}, fiscal_years))
-    emit.put("unit", unit, unit_page, "unit_not_stated",
-             (unit is not None, "%s" % unit if unit else "no explicit unit line found"))
+    emit.put("unit", unit, unit_page, "unit_not_stated", (unit is not None, unit_detail))
     for key, name in (("revenue", "revenue_by_fy"), ("totalIncome", "total_income_by_fy"),
                       ("profit", "pat_by_fy"), ("eps", "eps_basic_by_fy"),
                       ("ebitda", "ebitda_by_fy"), ("netWorth", "net_worth_by_fy")):

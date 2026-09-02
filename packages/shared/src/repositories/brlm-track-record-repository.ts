@@ -8,7 +8,7 @@
  * provenance (which filing this row was read off of), not an identity key.
  */
 
-import { and, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { BaseRepository } from './base-repository';
@@ -79,31 +79,35 @@ export class BrlmTrackRecordRepository extends BaseRepository {
   }
 
   /**
-   * Insert-if-absent on (brlmName, asOfDate) — there is no DB unique
-   * constraint on that pair (a BRLM can legitimately have its track record
-   * re-read from multiple ads on the same as-of date with the same figures),
-   * so this checks-then-inserts rather than relying on onConflictDoUpdate.
+   * Atomic upsert on (brlmName, asOfDate, sourceIpoId) — T-431, carry-over from
+   * the T-428 review. This was previously check-then-write, which is a lost
+   * update under concurrency: two filing extractions reading the same BRLM's
+   * 3-year table at the same moment both saw "absent" and both inserted. The
+   * unique index `unique_brlm_track_record_name_date_source` now backs a single
+   * INSERT ... ON CONFLICT DO UPDATE, so the race cannot produce a duplicate.
+   *
+   * sourceIpoId is part of the key by design: the same BRLM's track record
+   * legitimately appears in many ads on the same as-of date, and each filing
+   * keeps its own provenance row instead of overwriting another filing's.
    */
   async upsert(row: BrlmTrackRecordInsert): Promise<BrlmTrackRecordRow> {
     try {
-      const [existing] = await this.db
-        .select()
-        .from(brlmTrackRecord)
-        .where(
-          and(eq(brlmTrackRecord.brlmName, row.brlmName), eq(brlmTrackRecord.asOfDate, row.asOfDate))
-        )
-        .limit(1);
-
-      let result: unknown;
-      if (existing) {
-        [result] = await this.db
-          .update(brlmTrackRecord)
-          .set({ ...(row as Record<string, unknown>), updatedAt: new Date() } as never)
-          .where(eq(brlmTrackRecord.id, (existing as { id: string }).id))
-          .returning();
-      } else {
-        [result] = await this.db.insert(brlmTrackRecord).values(row as never).returning();
-      }
+      const [result] = await this.db
+        .insert(brlmTrackRecord)
+        .values(row as never)
+        .onConflictDoUpdate({
+          target: [
+            brlmTrackRecord.brlmName,
+            brlmTrackRecord.asOfDate,
+            brlmTrackRecord.sourceIpoId,
+          ],
+          set: {
+            issues3y: row.issues3y,
+            closedBelowIssuePrice: row.closedBelowIssuePrice,
+            updatedAt: new Date(),
+          } as never,
+        })
+        .returning();
 
       await this.deleteCache(getBrlmTrackRecordKey(row.brlmName));
       return result as BrlmTrackRecordRow;

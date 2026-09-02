@@ -1,12 +1,16 @@
 /**
- * Direct unit tests for BrlmTrackRecordRepository (T-428 WP C-1).
+ * Direct unit tests for BrlmTrackRecordRepository.
  *
- * `upsert` is check-then-write (no DB unique constraint on brlmName+asOfDate)
- * -- these tests prove BOTH branches: insert when nothing matches, update
- * when a (brlmName, asOfDate) row already exists.
+ * T-431 (T-428 review carry-over): `upsert` is now a SINGLE atomic
+ * INSERT ... ON CONFLICT DO UPDATE on the unique
+ * (brlm_name, as_of_date, source_ipo_id) -- it used to be check-then-write,
+ * which loses an update when two filing extractions read the same BRLM's
+ * 3-year table at once. These tests assert the values array and the conflict
+ * target actually handed to drizzle, not merely that some call happened.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BrlmTrackRecordRepository } from '@ipodhan/shared/repositories';
+import { brlmTrackRecord } from '@ipodhan/shared/db/schema';
 import type Redis from 'ioredis';
 
 function makeMockRedis() {
@@ -16,8 +20,28 @@ function makeMockRedis() {
     set: vi.fn(),
     del: vi.fn().mockResolvedValue(1),
     keys: vi.fn().mockResolvedValue([]),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as unknown as Redis;
+}
+
+function makeMockDb(returned: unknown[]) {
+  const captured: { values?: unknown; conflict?: any } = {};
+  const mockDb = {
+    select: vi.fn(),
+    update: vi.fn(),
+    insert: vi.fn().mockReturnValue({
+      values: vi.fn((row: unknown) => {
+        captured.values = row;
+        return {
+          onConflictDoUpdate: vi.fn((cfg: any) => {
+            captured.conflict = cfg;
+            return { returning: vi.fn().mockResolvedValue(returned) };
+          }),
+        };
+      }),
+    }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } as any;
+  return { mockDb, captured };
 }
 
 describe('BrlmTrackRecordRepository', () => {
@@ -37,75 +61,43 @@ describe('BrlmTrackRecordRepository', () => {
       sourceIpoId: 'ipo-1',
     };
 
-    it('inserts when no matching (brlmName, asOfDate) row exists', async () => {
-      const mockDb = {
-        select: vi.fn().mockReturnValue({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([]),
-            }),
-          }),
-        }),
-        insert: vi.fn().mockReturnValue({
-          values: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([{ id: 'b-1', ...row }]),
-          }),
-        }),
-        update: vi.fn(),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any;
-
+    it('writes the row in ONE statement, with the exact values handed to drizzle', async () => {
+      const { mockDb, captured } = makeMockDb([{ id: 'b-1', ...row }]);
       const repo = new BrlmTrackRecordRepository(mockDb, mockRedis);
       const result = await repo.upsert(row);
 
-      expect(mockDb.insert).toHaveBeenCalled();
+      expect(mockDb.insert).toHaveBeenCalledTimes(1);
+      expect(captured.values).toEqual(row);
+      // The old implementation read first, then branched -- proving no read
+      // happens is what proves the race is gone, not just that insert ran.
+      expect(mockDb.select).not.toHaveBeenCalled();
       expect(mockDb.update).not.toHaveBeenCalled();
       expect(result.id).toBe('b-1');
     });
 
-    it('updates in place when a matching (brlmName, asOfDate) row already exists', async () => {
-      const mockDb = {
-        select: vi.fn().mockReturnValue({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              limit: vi.fn().mockResolvedValue([{ id: 'b-1', ...row }]),
-            }),
-          }),
-        }),
-        insert: vi.fn(),
-        update: vi.fn().mockReturnValue({
-          set: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({
-              returning: vi.fn().mockResolvedValue([{ id: 'b-1', ...row, issues3y: 13 }]),
-            }),
-          }),
-        }),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any;
-
+    it('resolves the conflict on (brlmName, asOfDate, sourceIpoId) and updates only the figures', async () => {
+      const { mockDb, captured } = makeMockDb([{ id: 'b-1', ...row, issues3y: 13 }]);
       const repo = new BrlmTrackRecordRepository(mockDb, mockRedis);
       const result = await repo.upsert({ ...row, issues3y: 13 });
 
-      expect(mockDb.update).toHaveBeenCalled();
-      expect(mockDb.insert).not.toHaveBeenCalled();
+      expect(captured.conflict.target).toEqual([
+        brlmTrackRecord.brlmName,
+        brlmTrackRecord.asOfDate,
+        brlmTrackRecord.sourceIpoId,
+      ]);
+      // sourceIpoId is provenance and part of the key -- it must never be
+      // rewritten by a conflicting write from another filing.
+      expect(Object.keys(captured.conflict.set).sort()).toEqual([
+        'closedBelowIssuePrice',
+        'issues3y',
+        'updatedAt',
+      ]);
+      expect(captured.conflict.set.issues3y).toBe(13);
       expect(result.issues3y).toBe(13);
     });
 
     it('invalidates the by-brlm-name cache after a successful upsert', async () => {
-      const mockDb = {
-        select: vi.fn().mockReturnValue({
-          from: vi.fn().mockReturnValue({
-            where: vi.fn().mockReturnValue({ limit: vi.fn().mockResolvedValue([]) }),
-          }),
-        }),
-        insert: vi.fn().mockReturnValue({
-          values: vi.fn().mockReturnValue({
-            returning: vi.fn().mockResolvedValue([{ id: 'b-1', ...row }]),
-          }),
-        }),
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } as any;
-
+      const { mockDb } = makeMockDb([{ id: 'b-1', ...row }]);
       const repo = new BrlmTrackRecordRepository(mockDb, mockRedis);
       await repo.upsert(row);
 
