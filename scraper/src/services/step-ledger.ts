@@ -31,12 +31,15 @@ export async function recordStep(input: RecordStepInput): Promise<boolean> {
     await repo.upsertStep(input);
     return true;
   } catch (error) {
-    logger.warn('[step-ledger] failed to record step (scrape continues)', {
-      ipoId: input.ipoId,
-      stepId: input.stepId,
-      status: input.status,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.warn(
+      {
+        ipoId: input.ipoId,
+        stepId: input.stepId,
+        status: input.status,
+        error: error instanceof Error ? error.message : String(error),
+      },
+      '[step-ledger] failed to record step (non-fatal)'
+    );
     return false;
   }
 }
@@ -51,10 +54,10 @@ export async function initStepLedger(ipoId: string): Promise<boolean> {
     await repo.initForIpo(ipoId);
     return true;
   } catch (error) {
-    logger.warn('[step-ledger] failed to initialise ledger (scrape continues)', {
-      ipoId,
-      error: error instanceof Error ? error.message : String(error),
-    });
+    logger.warn(
+      { ipoId, error: error instanceof Error ? error.message : String(error) },
+      '[step-ledger] failed to initialise ledger (non-fatal)'
+    );
     return false;
   }
 }
