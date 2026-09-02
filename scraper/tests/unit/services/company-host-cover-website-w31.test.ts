@@ -38,6 +38,30 @@ describe('W-31 — issuer website read off the filing cover', () => {
     expect(extractWebsiteFromCoverText(cover)).toBeNull();
   });
 
+  it('picks the issuer, not the banker, when a table-layout cover lists both', () => {
+    // The shape that broke the first cut: the issuer's own block first, then the
+    // BRLM's block with its OWN website column. Read forward-only from the word
+    // "Website", the banker's site is just as reachable as the issuer's — the
+    // label that disowns it sits BEFORE the header, and the issuer's block ends
+    // at the "BOOK RUNNING LEAD MANAGER" heading.
+    const cover = [
+      'ISSUER LIMITED',
+      'CORPORATE IDENTITY NUMBER: U12345MH2016PLC000001',
+      'REGISTERED OFFICE  CONTACT PERSON  TELEPHONE AND E-MAIL  WEBSITE',
+      '12 Some Road, Mumbai-400001, Maharashtra, India.',
+      'A Person, Company Secretary and Compliance Officer',
+      'Telephone: +91 22 1234 5678',
+      'E-mail: cs@issuerltd.com',
+      'www.issuerltd.com',
+      'BOOK RUNNING LEAD MANAGER',
+      'Holani Consultants Private Limited',
+      'Telephone: +91 141 000 0000',
+      'WEBSITE',
+      'www.holaniconsultants.co.in',
+    ].join('\n');
+    expect(extractWebsiteFromCoverText(cover)).toBe('https://www.issuerltd.com');
+  });
+
   it('returns null when the cover carries no website at all', () => {
     expect(extractWebsiteFromCoverText('RED HERRING PROSPECTUS\nDated: August 25, 2026')).toBeNull();
   });
