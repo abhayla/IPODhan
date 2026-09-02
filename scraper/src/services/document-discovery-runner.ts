@@ -328,14 +328,32 @@ export type EscalationVerdict = 'found' | 'absent' | 'failed' | null;
  * construction). Returning `chain_incomplete` there would downgrade a genuine
  * exchange OUTAGE from BLOCKED_ALL — retry ladder plus P2 alert — to a silent
  * WANTED, undoing the round-4 fix. A failure is a failure in every cell.
+ *
+ * MINIMUM RUNGS FOR AN `all_sources_failed` VERDICT (G4, r7). `rungCount` is
+ * the number of entries the cycle actually pushed onto `rungs` — the caller's
+ * evidence that every rung was truly consulted, not merely that the exchanges
+ * failed or an escalation rung answered `failed`. This used to be a guard
+ * applied to the caller's mutable `outcome` local AFTER this function ran,
+ * which meant that local had to stay a `let`; folding it in here — the one
+ * place that already owns "what does this combination of facts mean" — lets
+ * the caller treat its `outcome` as a `const`. When fewer than four rungs were
+ * consulted, `all_sources_failed` is downgraded to `chain_incomplete`: the
+ * chain ran short, which is a bug in the chain, not evidence the document is
+ * unreachable — see the case above for why `chain_incomplete` (not `no_link`)
+ * is the honest verdict for "we do not know yet".
  */
+export const MIN_RUNGS_FOR_ALL_SOURCES_FAILED = 4;
+
 export function resolveFinalOutcome(
   exchanges: ExchangeVerdict,
   settledByExchanges: boolean,
-  escalation: EscalationVerdict
+  escalation: EscalationVerdict,
+  rungCount: number
 ): AttemptOutcome {
   // The document is in hand: nothing downstream can make that untrue.
   if (exchanges === 'found' || escalation === 'found') return 'found';
+
+  const chainComplete = rungCount >= MIN_RUNGS_FOR_ALL_SOURCES_FAILED;
 
   switch (exchanges) {
     case 'no_link':
@@ -347,7 +365,7 @@ export function resolveFinalOutcome(
           return 'no_link';
         // Asked and could not answer — never evidence of absence (H-2).
         case 'failed':
-          return 'all_sources_failed';
+          return chainComplete ? 'all_sources_failed' : 'chain_incomplete';
         // NOT ASKED. If the exchanges could settle this type themselves the
         // rungs were skipped because there was no question left; otherwise
         // nobody answered and we know nothing at all.
@@ -361,8 +379,9 @@ export function resolveFinalOutcome(
     case 'failed':
       // An exchange we consulted could not answer. A SEBI/company/verifier
       // `absent` says nothing about the link the broken exchange would have
-      // carried, so the honest state stays BLOCKED_ALL with its retry ladder.
-      return 'all_sources_failed';
+      // carried, so the honest state stays BLOCKED_ALL with its retry ladder
+      // (G4 permitting — a short chain still downgrades below).
+      return chainComplete ? 'all_sources_failed' : 'chain_incomplete';
     default: {
       const unreachable: never = exchanges;
       return unreachable;
@@ -1724,22 +1743,23 @@ export class DocumentDiscoveryRunner {
 
       // r6: ONE derivation, at the end, from the facts each stage established.
       // There is no longer a variable that can carry a stale claim to the write.
-      let outcome: AttemptOutcome = resolveFinalOutcome(exchanges, settledByExchanges, escalation);
+      //
+      // r7: the G4 short-chain downgrade (all_sources_failed -> chain_incomplete
+      // when fewer than four rungs were consulted) is now folded INTO
+      // `resolveFinalOutcome` via `rungs.length` — see that function's doc
+      // comment. `outcome` is therefore never reassigned after this point.
+      const outcome: AttemptOutcome = resolveFinalOutcome(exchanges, settledByExchanges, escalation, rungs.length);
 
-      // G4 guard: BLOCKED_ALL asserts that every rung was consulted. If the
-      // chain somehow ran short, that is a bug in the chain, not evidence that
-      // the document is unreachable -- so it is logged loudly and the row is
-      // left retryable rather than being marked blocked on incomplete evidence.
-      if (outcome === 'all_sources_failed' && rungs.length < 4) {
+      // G4 guard: BLOCKED_ALL asserts that every rung was consulted. This is
+      // now advisory logging only — `resolveFinalOutcome` already refused to
+      // return `all_sources_failed` on a short chain -- but a short chain
+      // that produced `chain_incomplete` is still a bug in the chain worth
+      // paging on, not evidence that the document is unreachable.
+      if (outcome === 'chain_incomplete' && rungs.length < MIN_RUNGS_FOR_ALL_SOURCES_FAILED) {
         logger.error(
           { ipoId: ipo.id, docType, rungs },
           'Refusing BLOCKED_ALL: fewer than four rungs were consulted (G4)'
         );
-        // r5 (4): this used to downgrade to `no_link`, i.e. NOT_YET_FILED — the
-        // row settled as "the company has not filed it" on the strength of a
-        // chain that did not finish. `chain_incomplete` says the one true thing:
-        // we do not know, so stay WANTED and come back.
-        outcome = 'chain_incomplete';
       }
 
       const transition = applyOutcome(prior, outcome, now);

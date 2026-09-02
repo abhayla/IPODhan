@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import * as fsp from 'node:fs/promises';
 import * as os from 'node:os';
@@ -11,6 +11,7 @@ import {
 } from '../../../src/services/document-discovery-runner.js';
 import { InMemoryDocumentFetchStateStore } from '../../../src/services/in-memory-document-fetch-state-store.js';
 import { NetworkCounter } from '../../../src/utils/network-counter.js';
+import logger from '../../../src/utils/logger.js';
 
 /**
  * T-403 round 6 — the behavioural half of the Class-1 fix.
@@ -94,6 +95,7 @@ const NO_ESCALATION_POSSIBLE = (chain: string) =>
 describe('a chain in which no rung answered concludes nothing', () => {
   it('leaves the row WANTED and retryable — never NOT_YET_FILED', async () => {
     const { runner, store } = makeRunner();
+    const errorSpy = vi.spyOn(logger, 'error');
 
     const ipo: DiscoveryIpo = {
       id: 'ipo-r6',
@@ -125,6 +127,21 @@ describe('a chain in which no rung answered concludes nothing', () => {
       expect(row.state).toBe('WANTED');
       expect(row.state).not.toBe('NOT_YET_FILED');
       expect(row.nextRetryAt).not.toBeNull();
+      // chain_incomplete is not a block — nothing was learned about an outage,
+      // so there is nothing to age. A prior BLOCKED_ALL clock would have been
+      // preserved (document-state-machine.ts `chain_incomplete` case); this is
+      // this row's FIRST cycle, so it has none to preserve.
+      expect(row.blockedSinceAt).toBeNull();
+      // chain_incomplete never carries a P2 page — that is BLOCKED_ALL's signal
+      // alone (transition.alert, document-discovery-runner.ts). Scoped to THIS
+      // row's docType: other docTypes on the same IPO legitimately hit a real
+      // SEBI failure (http_error, not skipped) and DO block — that is correct
+      // and must not be masked by a blanket "nothing blocked" assertion.
+      expect(result.blocked).not.toContain(row.docType);
+      expect(errorSpy).not.toHaveBeenCalledWith(
+        expect.objectContaining({ docType: row.docType }),
+        'Document BLOCKED_ALL — every source failed (P2)'
+      );
     }
   }, 60_000);
 
