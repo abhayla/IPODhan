@@ -143,6 +143,17 @@ const HIGH_VALUE_LIVE_FIELDS = new Set<string>([
 /** IPO lifecycle states in which a HIGH_VALUE field dispute must HOLD rather than assert one-sided. */
 const LIVE_STATUSES = new Set<string>(['UPCOMING', 'OPEN']);
 
+/**
+ * W-60: terminal `ipo_status` values (commit 4a96ab7d). Once an IPO is
+ * WITHDRAWN or POSTPONED, the web updater's own `TERMINAL_STATUSES` guard
+ * (`web/lib/services/status-updater-service.ts`) refuses to move it back —
+ * but the scraper's per-field resolver had no matching guard, so a stored
+ * terminal value was silently overwritten by the next ordinary NSE/BSE
+ * status write via plain source priority. Defined locally (not imported
+ * from web) to keep the scraper package dependency-free of web.
+ */
+const TERMINAL_IPO_STATUSES = new Set<string>(['WITHDRAWN', 'POSTPONED']);
+
 const DATE_FIELDS_WITH_TZ_TIEBREAK = new Set<string>(['openDate', 'closeDate']);
 
 /**
@@ -1171,6 +1182,57 @@ export class DataConsolidationService {
           ],
         };
       }
+    }
+
+    // W-60: an `ipo_status` already at a terminal value (WITHDRAWN/POSTPONED)
+    // must never be overwritten by a non-ADMIN source — the web updater
+    // already refuses to move OFF these terminals (`TERMINAL_STATUSES` in
+    // status-updater-service.ts); the scraper side of the same guard was
+    // missing, so a next-cycle NSE/BSE "Closed"/"Open" write clobbered a
+    // withdrawal notice via plain source priority. ADMIN may still move a
+    // terminal status anywhere (including back to UPCOMING) — never held.
+    // A terminal INCOMING value is still allowed to win over a non-terminal
+    // existing value by the normal rules below (only existing-terminal is
+    // guarded here).
+    if (
+      fieldName === 'status' &&
+      TERMINAL_IPO_STATUSES.has(String(existingValue)) &&
+      incomingSource !== 'ADMIN'
+    ) {
+      if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+        try {
+          await this.dataConflictsRepository.upsertConflict({
+            ipoId,
+            tableName,
+            fieldName,
+            source1: existingSource,
+            value1: existingValue === null || existingValue === undefined ? null : String(existingValue),
+            source2: incomingSource,
+            value2: incomingValue === null || incomingValue === undefined ? null : String(incomingValue),
+            resolvedSource: existingSource,
+            resolutionReason: 'TERMINAL_STATUS_KEPT',
+            severity: 'WARNING',
+          });
+        } catch (error) {
+          console.error('[DataConsolidation] Failed to record TERMINAL_STATUS_KEPT conflict (non-fatal):', error);
+        }
+      }
+
+      return {
+        fieldName,
+        finalValue: existingValue,
+        chosenSource: existingSource,
+        hadConflict: true,
+        conflictSeverity: 'WARNING',
+        conflictReason: 'TERMINAL_STATUS_KEPT',
+        rejectedSources: [
+          {
+            source: incomingSource,
+            value: incomingValue,
+            reason: 'TERMINAL_STATUS_KEPT',
+          },
+        ],
+      };
     }
 
     // CRITICAL: Check source priority FIRST (before time-based)
