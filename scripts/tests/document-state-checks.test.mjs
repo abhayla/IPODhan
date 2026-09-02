@@ -15,6 +15,9 @@ import {
   checkLeadManagerCount,
   checkDocumentTypeMatchesClassifier,
   checkNotYetFiledAge,
+  checkAbsenceWithoutEvidence,
+  chainFromLastAttempt,
+  EXCHANGE_UNSERVED_DOC_TYPES,
   NOT_YET_FILED_MAX_DAYS,
   countBsePayloadLeadManagers,
   BLOCKED_ALL_MAX_HOURS,
@@ -319,4 +322,95 @@ test('66f the thresholds are the filing calendar, and are pinned', () => {
     PROSPECTUS: 3,
     ANCHOR_ALLOCATION_REPORT: 1,
   });
+});
+
+// --- 67: m_absence_without_evidence (T-403 r6) -------------------------------
+//
+// THE SHAPE THIS CATCHES. A row settles NOT_YET_FILED — "the company has not
+// filed it" — on a chain in which not one rung ANSWERED. That is what the
+// round-5 review found in production shape: for a type the exchanges cannot
+// serve, `EXCHANGES:no_link` was carried through an escalation whose every rung
+// was skipped, and the row was written as an absence nobody observed. The code
+// fix makes it unconstructible; this check makes it visible if it ever returns
+// through another door (a backfill, a different writer, a rolled-back deploy).
+
+const CHAIN_NOBODY_ANSWERED =
+  'rungs[DRHP]: EXCHANGES:no_link -> SEBI:skipped:not_served_by_sebi -> ' +
+  'COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url';
+const CHAIN_SEBI_ANSWERED =
+  'rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> ' +
+  'COMPANY:skipped:no_company_url -> VERIFIER:skipped:no_verifier_url';
+const CHAIN_ONLY_FAILURES =
+  'rungs[DRHP]: EXCHANGES:no_link -> SEBI:failed:http_error -> ' +
+  'COMPANY:failed:no_page -> VERIFIER:failed:budget';
+
+const drhpRow = (chain) => ({
+  state: 'NOT_YET_FILED',
+  docType: 'DRHP',
+  companyName: 'Nowhere Industries Limited',
+  chain,
+});
+
+test('67 FAILs NOT_YET_FILED whose chain has no answered rung', () => {
+  const violation = checkAbsenceWithoutEvidence(drhpRow(CHAIN_NOBODY_ANSWERED));
+  assert.ok(violation, 'an absence nobody observed must FAIL');
+  assert.match(violation, /DRHP/);
+});
+
+test('67a FAILs when every rung was asked and every one of them failed', () => {
+  // A failure is not an answer either — that is the r4 rule, checked nightly.
+  assert.ok(checkAbsenceWithoutEvidence(drhpRow(CHAIN_ONLY_FAILURES)));
+});
+
+test('67b PASSes when a rung actually answered', () => {
+  assert.equal(checkAbsenceWithoutEvidence(drhpRow(CHAIN_SEBI_ANSWERED)), null);
+});
+
+test('67c ignores exchange-served types and non-NOT_YET_FILED states', () => {
+  // For a type the exchanges CAN serve, `EXCHANGES:no_link` from a complete
+  // coverage IS the evidence — that row is out of this check's scope.
+  assert.equal(
+    checkAbsenceWithoutEvidence({
+      ...drhpRow(CHAIN_NOBODY_ANSWERED),
+      docType: 'RHP',
+    }),
+    null
+  );
+  assert.equal(
+    checkAbsenceWithoutEvidence({ ...drhpRow(CHAIN_NOBODY_ANSWERED), state: 'WANTED' }),
+    null
+  );
+});
+
+test('67d SKIPS rather than guesses when no chain was recorded', () => {
+  assert.equal(checkAbsenceWithoutEvidence(drhpRow(null)), null);
+  assert.equal(checkAbsenceWithoutEvidence({ ...drhpRow(null), lastAttempt: [] }), null);
+});
+
+test('67e reads the chain for THIS doc type out of last_attempt', () => {
+  const lastAttempt = [
+    { source: 'NSE', outcome: 'ok' },
+    { source: 'CHAIN', outcome: 'rungs[RHP]: EXCHANGES:no_link -> SEBI:not_listed' },
+    { source: 'CHAIN', outcome: CHAIN_NOBODY_ANSWERED },
+  ];
+  assert.equal(chainFromLastAttempt(lastAttempt, 'DRHP'), CHAIN_NOBODY_ANSWERED);
+  assert.equal(chainFromLastAttempt(lastAttempt, 'CORRIGENDUM'), null);
+  // Postgres hands jsonb back as a string in some drivers; both shapes work.
+  assert.equal(chainFromLastAttempt(JSON.stringify(lastAttempt), 'DRHP'), CHAIN_NOBODY_ANSWERED);
+  assert.ok(
+    checkAbsenceWithoutEvidence({
+      state: 'NOT_YET_FILED',
+      docType: 'DRHP',
+      companyName: 'X',
+      lastAttempt,
+    })
+  );
+});
+
+test('67f the exchange-unserved set mirrors the runner and is pinned', () => {
+  // scraper/src/services/document-types.ts: EXCHANGE_SERVED_TYPES is every type
+  // EXCEPT the DRHP — the exchanges list an issue once it reaches a board, and
+  // the DRHP predates that. The audit runs as plain Node on the box with no TS
+  // toolchain, so the constant is mirrored; this pins the mirror.
+  assert.deepEqual([...EXCHANGE_UNSERVED_DOC_TYPES], ['DRHP']);
 });

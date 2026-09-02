@@ -43,6 +43,7 @@ import {
   checkLeadManagerCount,
   checkDocumentTypeMatchesClassifier,
   checkNotYetFiledAge,
+  checkAbsenceWithoutEvidence,
 } from './lib/document-state-checks.mjs';
 import {
   checkNoUnresolvedConflictOnLiveIpo, HIGH_VALUE_FIELDS, LIVE_STATUSES,
@@ -382,7 +383,7 @@ async function checkM() {
 
   const rows = await q(`
     SELECT s.doc_type, s.state, s.blocked_since_at, s.last_attempt_at, s.first_seen_at,
-           s.extractor_version, i.company_name, i.open_date, i.close_date
+           s.last_attempt, s.extractor_version, i.company_name, i.open_date, i.close_date
       FROM document_fetch_state s JOIN ipos i ON i.id = s.ipo_id
      WHERE i.offering_type = 'IPO'
   `);
@@ -390,6 +391,7 @@ async function checkM() {
   const norm = (r) => ({
     docType: r.doc_type, state: r.state, blockedSinceAt: r.blocked_since_at,
     lastAttemptAt: r.last_attempt_at, firstSeenAt: r.first_seen_at,
+    lastAttempt: r.last_attempt,
     extractorVersion: r.extractor_version, companyName: r.company_name,
     openDate: r.open_date, closeDate: r.close_date,
   });
@@ -412,6 +414,18 @@ async function checkM() {
   for (const v of staleUnfiled) notify('m_not_yet_filed_age', 'P2', v, 'Document NOT_YET_FILED past its filing calendar', v);
   record('m_not_yet_filed_age', 'no document NOT_YET_FILED past its filing calendar (DRHP 14d / RHP 2d / Prospectus 3d / anchor 1d)',
     staleUnfiled.length === 0 ? 'PASS' : 'FAIL', staleUnfiled.slice(0, MAX_OFFENDERS).join('; '));
+
+  // r6: an absence NOBODY OBSERVED. `m_not_yet_filed_age` above only notices
+  // days later, once the filing calendar has run out; this reads the row's own
+  // rung chain on the first night and fails when a NOT_YET_FILED for a type the
+  // exchanges cannot serve has no answered rung behind it. Four rounds of T-403
+  // Class 1 arrived through four different doors; this check does not care which.
+  const unevidenced = rows.map(norm).map((r) => checkAbsenceWithoutEvidence(r)).filter(Boolean);
+  for (const v of unevidenced)
+    notify('m_absence_without_evidence', 'P2', v, 'Document NOT_YET_FILED with no rung that answered', v);
+  record('m_absence_without_evidence',
+    'no NOT_YET_FILED row whose rung chain contains zero answered rungs',
+    unevidenced.length === 0 ? 'PASS' : 'FAIL', unevidenced.slice(0, MAX_OFFENDERS).join('; '));
 
   const failedExtractions = rows.map(norm).map(checkExtractFailed).filter(Boolean);
   record('m_extract_failed', 'no document stuck in EXTRACT_FAILED (WARN-level)',

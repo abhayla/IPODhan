@@ -267,6 +267,15 @@
       "failThreshold": "NOT_YET_FILED past its filing calendar: DRHP >14d from first sight, RHP >2d after open, PROSPECTUS >3d after close (listing is T+3 and a company cannot list before the Prospectus is filed), anchor report >1d after open. A row whose governing date is missing is skipped, never guessed at",
       "severity": "P2",
       "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
+      "id": "m_absence_without_evidence",
+      "findingClass": "a row settles NOT_YET_FILED - 'the company has not filed it', no retry, no alert - on a rung chain in which not one source ANSWERED. T-403 Class 1, found in four consecutive rounds through four different doors (SEBI failures returning null; a 503 written as not-filed; escalation-budget refusals returning 'absent'; an unsettled EXCHANGES:no_link inherited through an escalation whose every rung was skipped). Each code fix closed the door it could see; this check watches the room",
+      "round7Findings": [],
+      "sourceTask": "T-403",
+      "failThreshold": "state = NOT_YET_FILED AND doc_type is one the exchanges cannot serve (DRHP) AND the row's own last_attempt chain for that type has zero answered rungs (every non-EXCHANGES rung is skipped: or failed:). A row with no chain recorded is skipped, never guessed at",
+      "severity": "P2",
+      "unverifiableWhen": "document_fetch_state table not present"
     }
   ],
   "notCoveredByThisManifest": [

@@ -190,3 +190,94 @@ export function checkNotYetFiledAge(row, now) {
 
   return `${row.companyName}: ${row.docType} still NOT_YET_FILED ${age.toFixed(1)}d after ${label} (limit ${limit}d)`;
 }
+
+// --- M-6 (r6): NOT_YET_FILED written on a chain in which nobody answered -----
+//
+// THE SHAPE THIS CATCHES, and why it is not covered by any check above.
+// `m_not_yet_filed_age` fires when an absence has aged past its filing calendar
+// — days later. This one fires the FIRST night, on the evidence itself: a row
+// that claims "the company has not filed it" while its own recorded rung chain
+// shows that not one source ANSWERED the question. That is the exact shape of
+// T-403's Class 1, found four rounds running: r3 (SEBI failures returned null),
+// r4 (a 503 written as "not filed"), r5-review (budget refusals returning
+// 'absent'), r6 (an unsettled `no_link` inherited through an escalation whose
+// every rung was skipped). Each fix removed the instances that were visible; the
+// next round found another. A nightly check does not care which door it came
+// through.
+//
+// SCOPE. Only types the exchanges cannot serve. For an exchange-served type a
+// clean `EXCHANGES:no_link` from complete coverage IS the evidence, and flagging
+// it would fire on every legitimately-unfiled document in the system.
+
+/**
+ * Mirror of `EXCHANGE_SERVED_TYPES` in
+ * scraper/src/services/document-types.ts, inverted: the exchanges list an issue
+ * only once it reaches a board, and the DRHP predates that. Mirrored (not
+ * imported) because the audit runs as plain Node on the VPS with no TypeScript
+ * toolchain — same convention as this file's other mirrored constants — and
+ * pinned by its self-test so the mirror cannot drift unnoticed.
+ */
+export const EXCHANGE_UNSERVED_DOC_TYPES = ['DRHP'];
+
+/** Rung sources whose answer says nothing about a type the exchanges cannot serve. */
+const OUT_OF_SCOPE_RUNG_SOURCES = ['EXCHANGES'];
+
+/**
+ * Pull the `rungs[<docType>]: ...` line this cycle wrote for one document type
+ * out of a `document_fetch_state.last_attempt` payload. Returns null when the
+ * row carries no chain for that type — a row we cannot judge, never a FAIL.
+ */
+export function chainFromLastAttempt(lastAttempt, docType) {
+  let attempts = lastAttempt;
+  if (typeof attempts === 'string') {
+    try {
+      attempts = JSON.parse(attempts);
+    } catch {
+      return null;
+    }
+  }
+  if (!Array.isArray(attempts)) return null;
+  const prefix = `rungs[${docType}]`;
+  const hit = attempts.find(
+    (a) => a && a.source === 'CHAIN' && String(a.outcome ?? '').startsWith(prefix)
+  );
+  return hit ? String(hit.outcome) : null;
+}
+
+/**
+ * The rungs in a chain that ANSWERED — neither skipped nor failed.
+ *
+ * Deliberately defined by exclusion rather than by an allow-list of labels
+ * (`SEBI:not_listed`, `COMPANY:no_link`, `VERIFIER:no_new_link`, `*:found`): a
+ * new rung label added to the runner is then counted as an answer only if it is
+ * spelled as one, and a renamed failure label cannot quietly start passing.
+ */
+export function answeredRungsIn(chain) {
+  const body = String(chain).replace(/^rungs\[[^\]]*\]:\s*/, '');
+  return body
+    .split('->')
+    .map((t) => t.trim())
+    .filter((t) => t !== '')
+    .map((token) => {
+      const idx = token.indexOf(':');
+      return {
+        source: idx === -1 ? token : token.slice(0, idx),
+        verdict: idx === -1 ? '' : token.slice(idx + 1),
+      };
+    })
+    .filter((r) => !OUT_OF_SCOPE_RUNG_SOURCES.includes(r.source))
+    .filter((r) => !r.verdict.startsWith('failed') && !r.verdict.startsWith('skipped'));
+}
+
+/**
+ * FAIL — the row claims the document is not filed, and its own chain shows that
+ * nobody who could have known was ever able to answer.
+ */
+export function checkAbsenceWithoutEvidence(row) {
+  if (row.state !== 'NOT_YET_FILED') return null;
+  if (!EXCHANGE_UNSERVED_DOC_TYPES.includes(row.docType)) return null;
+  const chain = row.chain ?? chainFromLastAttempt(row.lastAttempt, row.docType);
+  if (!chain) return null; // nothing recorded to judge — skipped, never guessed
+  if (answeredRungsIn(chain).length > 0) return null;
+  return `${row.companyName}: ${row.docType} is NOT_YET_FILED but no rung answered — ${chain}`;
+}
