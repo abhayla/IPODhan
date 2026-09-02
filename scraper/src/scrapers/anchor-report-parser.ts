@@ -53,6 +53,8 @@ export const PRICE_TOLERANCE = 0.005;
 /** Percentages must add up to 100 within this many points. */
 const PERCENT_SUM_TOLERANCE = 1;
 const MIN_ROWS = 2;
+/** Longest a percentage cell can be before it is prose, not a value. */
+const MAX_PERCENT_TEXT = 10;
 
 const MONTHS: Record<string, number> = {
   january: 0,
@@ -78,6 +80,9 @@ const MONTHS: Record<string, number> = {
  */
 export function normalizeNumeric(cell: string): string {
   return cell
+    // A footnote marker is dropped BEFORE anything else: "(1)" would otherwise
+    // leave a stray 1 glued to the share count.
+    .replace(/\((\d{1,2})\)|\[\d{1,2}\]|[*#]/g, '')
     .replace(/[lLiI|]/g, '1')
     .replace(/[sS]/g, '5')
     .replace(/[bB]/g, '8')
@@ -92,12 +97,15 @@ export function normalizeNumeric(cell: string): string {
 export function parsePercent(cell: string): number | null {
   const marked = cell.replace(/[oO0]\s*\/\s*[oO0aA]|Vo/g, '%');
   if (!marked.includes('%')) return null;
-  const digits = marked.slice(0, marked.indexOf('%'));
-  // A column HEADER also ends in "o/o" ("as a o/o of Anchor Investor Portion").
-  // Without a real digit in front of the marker it is a caption, not a value.
-  if (!/\d/.test(digits)) return null;
+  const digits = marked.slice(0, marked.indexOf('%')).trim();
+  // A column HEADER also ends in "o/o" ("as a o/o of Anchor Investor Portion"),
+  // and a caption normalises to some large nonsense number. A percentage is
+  // short and lands in (0, 100] - which is also why the digits are not required
+  // to be digits: the scan writes 100.00% as "lOO.OO".
+  if (digits.length > MAX_PERCENT_TEXT) return null;
   const value = Number(normalizeNumeric(digits).replace(/\s/g, '').replace(',', '.'));
-  return Number.isFinite(value) ? value : null;
+  if (!Number.isFinite(value) || value <= 0 || value > 100) return null;
+  return value;
 }
 
 /**

@@ -75,8 +75,15 @@ interface ScrapeResult {
 const RUPEES_PER_CRORE = 10_000_000;
 /** SEBI ICDR: the anchor portion may not exceed 60% of the QIB portion. */
 const MAX_ANCHOR_SHARE_OF_QIB = 0.6;
-/** QIB portion of a book-built issue. */
-const QIB_SHARE_OF_ISSUE = 0.5;
+/**
+ * Largest QIB portion an issue can have: 50% of a Reg 6(1) book-built offer, but
+ * 75% when the issuer does not meet the profitability test (Reg 6(2)). The row
+ * does not say which regime applies, so the check uses the loosest lawful figure
+ * - its job is to catch an impossible anchor book, not to adjudicate the split.
+ * Deepa Jewellers is a live example: an anchor book of 42% of the offer is legal
+ * under 6(2) and would be wrongly rejected by assuming 50%.
+ */
+const MAX_QIB_SHARE_OF_ISSUE = 0.75;
 /** Slack on the issue-size check - `issue_size` is a scraped, rounded figure. */
 const ISSUE_SIZE_SLACK = 0.02;
 const SIDECAR_TIMEOUT_MS = 120_000;
@@ -260,7 +267,7 @@ async function checkAgainstIssueSize(
   const issueSize = Number(rows[0]?.issueSize ?? 0);
   if (!Number.isFinite(issueSize) || issueSize <= 0) return null;
 
-  const cap = issueSize * QIB_SHARE_OF_ISSUE * MAX_ANCHOR_SHARE_OF_QIB * (1 + ISSUE_SIZE_SLACK);
+  const cap = issueSize * MAX_QIB_SHARE_OF_ISSUE * MAX_ANCHOR_SHARE_OF_QIB * (1 + ISSUE_SIZE_SLACK);
   if (anchorAmountRupees > cap) {
     return (
       `anchor allocation Rs ${(anchorAmountRupees / RUPEES_PER_CRORE).toFixed(2)} Cr exceeds ` +
