@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-03 02:28 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-03 02:32 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -35,7 +35,7 @@ Last updated: 2026-09-03 02:28 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 ## 3. After the fixes
 
 1. Branch-wide suites (final, 02:28): scraper 2,314 pass by directory, shared 206, web 2,383. Earlier note: shared 206/206 (after fixing two stale tests that asserted WITHDRAWN was invalid, 7e782b05); web 2,383 pass / 17 skipped; scraper: the Node process crashes with a segmentation fault mid-suite (twice), so the suite is being run directory by directory to find the crashing file. Not a test failure; a native-module crash.
-2. Cut the branch into pull requests as listed in the ledger section 6 (Tier A: write door, G4, step ledger, migrations 0044-0046; Tier B: the rest).
+2. Draft PR #278 holds the whole branch as the review container. Cutting it into smaller PRs by file set (Tier A write door + migrations; Tier B scraper; docs) is the owner's call because the commits interleave.
 3. Deploy everything together with owner approval (D-09).
 
 ## 4. Change log of this report
@@ -58,3 +58,4 @@ Last updated: 2026-09-03 02:28 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 - 2026-09-03 02:15: W-72 done (8b7ac1a0, 68 tests reproduced). W-69 ratchet running, last in the queue.
 - 2026-09-03 02:20: W-69 done (3d1fa6df). All suite fallout fixed. Final scraper per-directory run started. Ledger section 6b (revised end of walk) written.
 - 2026-09-03 02:28: final scraper run green (2,314 pass). Walk fixes complete. Branch pushed as backup; PR cut is the next step.
+- 2026-09-03 02:32: branch pushed; draft PR #278 opened as the review container (split by file set is the owner's call). Deploy waits for owner approval (D-09).

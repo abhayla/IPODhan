@@ -275,3 +275,4 @@ backfill cause (dea73837); Tier C: walk docs, how.md, detection RCA.
 
 **Fleet items since section 6:** T-440 (agent budget enforcer, 2nd+ overrun), stash class bumped to 4
 (T-438), sweep class 3 (T-439).
+- 02:32: branch pushed to origin; draft PR #278 = review container; PR body carries the tier split and the deploy bundle.
