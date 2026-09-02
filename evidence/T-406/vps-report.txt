@@ -1,0 +1,25 @@
+# T-406 evidence — scripts/preflight-runtime.sh --report run on the live
+# Linux VPS (72.61.240.224), read-only, via:
+#   ssh root@72.61.240.224 'bash -s -- --report' < scripts/preflight-runtime.sh
+# No file was written on the VPS; nothing was restarted. Command exit code: 0
+# (as expected for --report mode, regardless of the checks below).
+#
+# Caveat on the ADMIN_API_TOKEN line: this ad-hoc SSH shell does not source
+# /var/www/ipodhan/shared/env/prod/scraper.env (only the script body was
+# piped over stdin, no env sourcing) — the FAIL below reflects that this
+# shell's environment has no ADMIN_API_TOKEN, NOT that the real deploy's
+# provisioned shared/env/prod/scraper.env is missing the key (the real
+# deploy-linux.sh wiring sources that file before calling this script, per
+# docs/reviews/T-406-plan.md). Every other line reflects the box's real,
+# ambient state.
+#
+# Captured 2026-09-02.
+
+OK python3 on PATH — /usr/bin/python3
+OK python3 pdfplumber import — 'import pdfplumber' succeeds
+WARN tesseract on PATH — not found (OCR fallback unavailable; WARN-only until E4 lands)
+OK process TZ (T-327) — /etc/timezone=Asia/Kolkata
+OK prospectus store dir — PROSPECTUS_STORE_DIR unset; fallback parent /var/www/ipodhan/shared is writable (default <shared>/prospectus owned by T-403)
+OK free disk >= 2GB — 27GB free at /var/www/ipodhan/shared
+OK node >= 20 — found v22.22.2
+FAIL ADMIN_API_TOKEN set — unset or blank (required for --source=all)
