@@ -141,8 +141,8 @@ describe('resolveStageFilter', () => {
     }
   });
 
-  it('rejects a stage outside the ipo_status enum (WITHDRAWN was the 500)', () => {
-    expect(resolveStageFilter('WITHDRAWN')).toBeUndefined();
+  it('rejects a stage outside the ipo_status enum (a bogus value was the 500)', () => {
+    expect(resolveStageFilter('NOT_A_STATUS')).toBeUndefined();
     expect(resolveStageFilter('nonsense')).toBeUndefined();
     expect(resolveStageFilter(undefined)).toBeUndefined();
   });
@@ -378,15 +378,15 @@ describe('IpoPipelineStepsRepository.findGrid — filtering and ordering', () =>
     expect(where.params).toContain('OPEN');
   });
 
-  it('never lets an invalid stage reach the where clause (WITHDRAWN is not an ipo_status)', async () => {
+  it('never lets an invalid stage reach the where clause (NOT_A_STATUS is not an ipo_status)', async () => {
     const { repo, calls } = makeRepo([[]]);
 
-    await repo.findGrid({ stage: 'WITHDRAWN' });
+    await repo.findGrid({ stage: 'NOT_A_STATUS' });
 
     const where = flattenSql(calls.whereArgs[0]);
     // No bound parameter carries the bad value, and the clause is the
     // active-IPO fallback (which mentions LISTED) rather than a status filter.
-    expect(where.params).not.toContain('WITHDRAWN');
+    expect(where.params).not.toContain('NOT_A_STATUS');
     expect(where.text.join(' ')).toContain('LISTED');
   });
 
