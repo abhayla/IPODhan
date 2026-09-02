@@ -76,6 +76,7 @@ derived from it by the reconciler (no double bookkeeping of document state).
 - `data_conflicts`: F5 writes one row per static-field mismatch, severity CRITICAL for
   filing-vs-exchange, WARNING for exchange-vs-aggregator. Never auto-resolved.
 - `documents` + `document_fetch_state`: unchanged.
+- Untracked values (rows written before source tracking): a value with no `field_sources` row is replaced only by a source ranked strictly above the field's weakest listed source (D-10). A replacement is recorded as a `field_sources` row with `previous_value` set and `previous_source` NULL, reason `UNTRACKED_EXISTING_VALUE_REPLACED`; a confirmation by a ranked source creates the provenance row (W-25). The admin surface lists `field_sources WHERE previous_value IS NOT NULL AND previous_source IS NULL` as "replaced values of unknown origin". A one-off backfill job writes provenance rows for existing values (source = best guess, low confidence) so old rows unfreeze; that job is part of the implementation, not the walk.
 
 ### 4.3 Subscription scope (W-03)
 
