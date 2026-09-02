@@ -152,6 +152,8 @@ runs, plus a raw view of the same endpoint where the function hides it.
 
 ## 5. Documentation due after the walk
 
+- Supervision 22:58: three workers ran past their budgets (extractors 110 min vs 75; SEBI 99 calls vs 60; conflicts page 30 min vs 20) because the 30-minute supervision cron fires only when the session is idle and the session was never idle. Wrap-up orders sent at 22:58; registry class `worker-budget-overrun-unsupervised` added (mechanism: harness-enforced budget hook, supervision on task-notification).
+
 - Incident 20:22: commit fad21e85 (message 'docs(walk): B7 PASS ...') also contains the S-01 round-3 code (repository, its test, backfill script + test, admin page) because the S-01 worker had those files staged when Fable committed the ledger in the same checkout. Content is correct and complete; only the message is wrong. Not rewritten (worker active). Registry class `concurrent-commit-sweep-one-checkout` added; rule from now on in this walk: Fable commits with explicit pathspecs (`git commit -- <path>`).
 
 - Worker lesson (18:43): the W-02 worker used `git stash` to prove red-then-green inside its own worktree. Harmless there, but `git stash` is forbidden by the session rule (cross-worker incident 2026-09-02). Briefs must say: prove red by checking out the parent commit of the source file, never stash.
