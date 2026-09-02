@@ -4,14 +4,18 @@
 // not a re-implementation — so deleting any one pattern from the script
 // turns its corresponding fixture assertion RED. Run: node --test scripts/tests/check-write-ratchet.test.mjs
 
-import { test } from 'node:test';
+import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   detectPatterns,
   PATTERNS,
   SCAN_EXTENSIONS,
   EXCLUDED_DIR_NAMES,
   EXCLUDED_PATH_SEGMENTS,
+  ROOT,
+  scanRepo,
 } from '../check-write-ratchet.mjs';
 
 test('exactly the four documented pattern classes exist', () => {
@@ -156,4 +160,31 @@ test('a file can match more than one pattern class', () => {
     await pool.query('UPDATE ipos SET last_scraped_at = now() WHERE id = $1', [id]);
   `;
   assert.deepEqual(detectPatterns(fixture), ['drizzle', 'raw_sql']);
+});
+
+// W-69: scanRepo() must only scan git-TRACKED files. A gitignored/untracked
+// leftover script sitting in a dev's working tree (never committed) must
+// never be reported as a new baseline violation — the ratchet guards what
+// gets committed, not the whole working tree.
+const TMP_RATCHET_DIR = join(ROOT, 'scraper', '.tmp-ratchet-test');
+
+afterEach(() => {
+  rmSync(TMP_RATCHET_DIR, { recursive: true, force: true });
+});
+
+test('scanRepo() ignores a gitignored/untracked file that matches a write pattern', () => {
+  mkdirSync(TMP_RATCHET_DIR, { recursive: true });
+  writeFileSync(join(TMP_RATCHET_DIR, '.gitignore'), '*\n');
+  writeFileSync(
+    join(TMP_RATCHET_DIR, 'leftover-write.ts'),
+    `await pool.query('UPDATE ipos SET lot_size = 100 WHERE id = $1', [id]);\n`
+  );
+
+  const found = scanRepo(ROOT);
+
+  assert.equal(
+    found.has('scraper/.tmp-ratchet-test/leftover-write.ts'),
+    false,
+    'a gitignored/untracked file must not be reported by scanRepo()'
+  );
 });

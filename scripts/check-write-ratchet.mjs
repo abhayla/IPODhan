@@ -24,6 +24,7 @@
  */
 
 import { readFileSync, readdirSync, statSync, writeFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join, relative, extname, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -118,19 +119,59 @@ function walk(dir, out) {
 }
 
 /**
+ * Enumerates candidate files via the walker (readdirSync). This scans the
+ * WHOLE working tree, including gitignored/untracked files — which is why
+ * it is only the fallback (see listCandidateRelPaths). W-69: local leftover
+ * scripts (never committed) were being reported as new baseline violations.
+ * @returns {string[]} relative POSIX paths, already extension-filtered
+ */
+function walkCandidateRelPaths(root) {
+  const files = [];
+  walk(root, files);
+  return files.map((absPath) => toPosix(relative(root, absPath)));
+}
+
+/**
+ * Enumerates candidate files via `git ls-files -z` — TRACKED files only.
+ * The ratchet guards what gets COMMITTED, so gitignored/untracked leftover
+ * scripts (common on a dev machine) must never be scanned (W-69). Falls
+ * back to the readdirSync walker (which does not distinguish tracked from
+ * ignored) when git itself is unavailable, printing a one-line warning.
+ * @returns {string[]} relative POSIX paths, already extension-filtered
+ */
+function listCandidateRelPaths(root) {
+  let out;
+  try {
+    out = execFileSync('git', ['ls-files', '-z'], {
+      cwd: root,
+      maxBuffer: 1024 * 1024 * 64,
+    });
+  } catch (err) {
+    console.error(
+      `[write-ratchet] WARNING: \`git ls-files\` unavailable (${err.message}); ` +
+        'falling back to a full directory walk, which may also scan gitignored files.'
+    );
+    return walkCandidateRelPaths(root);
+  }
+  return out
+    .toString('utf8')
+    .split('\0')
+    .filter(Boolean)
+    .filter((relPath) => SCAN_EXTENSIONS.has(extname(relPath)));
+}
+
+/**
  * Scans the repo tree for files matching any write-ratchet pattern.
  * @returns {Map<string, string[]>} relative POSIX path -> matched pattern kinds
  */
 export function scanRepo(root = ROOT) {
-  const files = [];
-  walk(root, files);
+  const candidates = listCandidateRelPaths(root);
   const found = new Map();
-  for (const absPath of files) {
-    const relPath = toPosix(relative(root, absPath));
+  for (const relPath of candidates) {
     if (isExcludedPath(relPath)) continue;
     let content;
     try {
-      content = readFileSync(absPath, 'utf8');
+      content = readFileSync(join(root, ...relPath.split('/')), 'utf8');
     } catch {
       continue;
     }
