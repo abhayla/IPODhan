@@ -130,6 +130,8 @@ timestamps; filter by stage; a "re-run step" button that sets DUE. This replaces
 
 ## 9. Open questions (filled in as the walk answers them)
 
+- W-14 (B5): domain validation (lot, band width, dates) must run on the merged record after consolidation, where segment AND lot AND band are all present, in addition to the per-source pre-check. Today each rule is effectively checked by at most one source and band width by none for BSE.
+
 - Exact market-hours window for H-steps (10:00-17:00 IST assumed).
 - Whether E-steps re-run automatically on an extractor version bump or only on owner request.
 - Where the 18 missing columns (W-09) land: `ipo_details` vs new tables (inventory draft exists).
