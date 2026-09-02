@@ -18,7 +18,8 @@ vi.mock('@ipodhan/shared', () => ({
   getRedisClient: () => ({}),
 }));
 
-vi.mock('@ipodhan/shared/db/schema', () => ({
+vi.mock('@ipodhan/shared/db/schema', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@ipodhan/shared/db/schema')>()),
   ipoDemandGraph: {},
 }));
 

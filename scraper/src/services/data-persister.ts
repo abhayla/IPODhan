@@ -647,6 +647,58 @@ export async function upsertIPO(
   return result;
 }
 
+const SUBSCRIPTION_TIMESTAMP_MAX_FUTURE_MS = 5 * 60 * 1000; // 5 minutes
+const SUBSCRIPTION_TIMESTAMP_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+/**
+ * W-38: resolve the timestamp to persist on a subscription snapshot. The source
+ * (NSE/BSE) stamps `scrapedSubscription.timestamp` with the actual observation
+ * time; that MUST win over "now" or every re-write of a stale scrape looks fresh
+ * and charts plot the wrong x-axis. Falls back to now() only when the source
+ * didn't ship a timestamp; a source timestamp that is implausible (garbage guard:
+ * >5 min in the future, or >30 days old) is rejected rather than trusted.
+ */
+export function resolveSubscriptionSnapshotTimestamp(
+  rawTimestamp: string | Date | undefined,
+  context: { ipoId: string; companyName?: string }
+): { timestamp: Date } | { skip: true; reason: string } {
+  const now = new Date();
+
+  if (rawTimestamp === undefined || rawTimestamp === null) {
+    return { timestamp: now };
+  }
+
+  const parsed = rawTimestamp instanceof Date ? rawTimestamp : new Date(rawTimestamp);
+  if (isNaN(parsed.getTime())) {
+    logger.warn(
+      { ipoId: context.ipoId, companyName: context.companyName, rawTimestamp },
+      'Subscription source timestamp unparseable — falling back to now() (W-38)'
+    );
+    return { timestamp: now };
+  }
+
+  const deltaMs = parsed.getTime() - now.getTime();
+  if (deltaMs > SUBSCRIPTION_TIMESTAMP_MAX_FUTURE_MS) {
+    const reason = 'source timestamp more than 5 minutes in the future';
+    logger.warn(
+      { ipoId: context.ipoId, companyName: context.companyName, sourceTimestamp: parsed.toISOString(), now: now.toISOString() },
+      `Subscription snapshot skipped — ${reason} (W-38)`
+    );
+    return { skip: true, reason };
+  }
+
+  if (-deltaMs > SUBSCRIPTION_TIMESTAMP_MAX_AGE_MS) {
+    const reason = 'source timestamp older than 30 days';
+    logger.warn(
+      { ipoId: context.ipoId, companyName: context.companyName, sourceTimestamp: parsed.toISOString(), now: now.toISOString() },
+      `Subscription snapshot skipped — ${reason} (W-38)`
+    );
+    return { skip: true, reason };
+  }
+
+  return { timestamp: parsed };
+}
+
 /**
  * Create subscription snapshot with retry logic and validation
  * Enhanced for Story 11.3 - validates subscription data before persistence (AC4, AC6)
@@ -702,6 +754,16 @@ export async function createSubscriptionSnapshot(
     return null;
   }
 
+  // W-38: honour the source's own observation time instead of always stamping
+  // "now" — a stale re-write must not masquerade as a fresh reading.
+  const resolvedTimestamp = resolveSubscriptionSnapshotTimestamp(scrapedSubscription.timestamp, {
+    ipoId,
+    companyName: scrapedSubscription.ipoCompanyName,
+  });
+  if ('skip' in resolvedTimestamp) {
+    return null;
+  }
+
   logger.debug({
     ipoId,
     companyName: scrapedSubscription.ipoCompanyName,
@@ -716,8 +778,8 @@ export async function createSubscriptionSnapshot(
       // Prepare subscription data for database insert (AC4)
       const subscriptionData: SubscriptionInsert = {
         ipoId,
-        // Timestamp set to current date/time in ISO 8601 format (AC4)
-        timestamp: new Date(), // Current time for this snapshot
+        // W-38: source observation time (falls back to now() only when absent).
+        timestamp: resolvedTimestamp.timestamp,
         qibSubscription: scrapedSubscription.qibSubscription.toString(),
         niiSubscription: scrapedSubscription.niiSubscription.toString(),
         retailSubscription: scrapedSubscription.retailSubscription.toString(),
