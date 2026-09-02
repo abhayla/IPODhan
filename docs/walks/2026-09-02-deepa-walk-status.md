@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-03 00:17 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-03 00:25 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -25,7 +25,7 @@ Last updated: 2026-09-03 00:17 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 | # | Step | In plain words | Plan | Status |
 |---|---|---|---|---|
 | 1 | D6 text check / OCR | Scanned ads had no reader at all. Four rounds built one: rapidocr reader with confidence gate (92814b1a), word splitting (c39ec63a), extractor safe against OCR digit damage with prose fallback and arithmetic gates (91164725), column-splice cut on prose (87b4ed07). | Done. Fable's own live run on the scanned DEEPA ad: 27 oracle-checked fields correct, 0 wrong numbers or dates, description true but first sentence only (the text copy outranks it). VPS needs `pip install rapidocr-onnxruntime pypdfium2` in the deploy bundle. | **PASS** 00:17 |
-| 2 | I4 leftover (W-60) | I4 passes (4a96ab7d): WITHDRAWN/POSTPONED exist, exchange signals map to them, the site never downgrades them. Hole: the scraper's merge step can still overwrite WITHDRAWN with a later "Closed". | Guard in the consolidation service; a test proving WITHDRAWN survives a later "Closed". | Queued after D6 |
+| 2 | I4 leftover (W-60) | I4 passes (4a96ab7d). Hole: in the scraper's merge step the status rule is 'NSE beats BSE, then newest wins', so a WITHDRAWN written from a BSE notice is overwritten by NSE's next ordinary 'Closed'. | Guard in the per-field resolver: a stored WITHDRAWN/POSTPONED only leaves via ADMIN; five tests, red then green. Strict (Tier A) review afterwards. | Fix running (started 00:25, 25-min budget) |
 | 3 | G4 persist filing data | Seven fix rounds; the DEEPA page now shows the right issue size, financials, peers, promoters, documents. Last review said "not mergeable"; round 7 (1298065a) fixed those points. | Final fresh-context Tier A review of round 7. | Queued after item 2 |
 | 4 | F2 Moneycontrol | Moneycontrol's list page does not show DEEPA. Not a scraper defect. | None; noted as a coverage gap. | Closed as not applicable |
 | 5 | G5 18 new columns from the ad | Needs database change W-09 (18 columns on the IPO table). | Owner approval of W-09, then migration + write. | Blocked on owner |
@@ -43,3 +43,4 @@ Last updated: 2026-09-03 00:17 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 - 2026-09-02 23:52: D6 round 2 landed (c39ec63a, 16 pytest reproduced, 30/70 fields live) but NOT a pass: ofs_amount wrong (1.0), fresh amount + open date null. Fable read the raw OCR text and diagnosed; round 3 dispatched.
 - 2026-09-03 00:05: D6 round 3 landed and reproduced by Fable (23 vitest, live run 27/27 numeric+date fields correct, 0 wrong). Only the spliced business description remains; round 4 dispatched.
 - 2026-09-03 00:17: D6 PASS after round 4 (87b4ed07), reproduced by Fable (25 vitest, live run 27/27 correct). Step ledger D6/F6/I4 = DONE. Next in order: W-60 (I4 consolidation guard).
+- 2026-09-03 00:25: step ledger backfill needed DATABASE_* tunnel vars (root .env points at the VPS); backfill script now prints the pg cause (dea73837). W-60 fix dispatched.
