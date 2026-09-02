@@ -289,7 +289,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           );
         }
       },
-      CacheTTL.IPO_DETAIL
+      CacheTTL.IPO_DETAIL,
+      // W-15: identity lookup — never cache a miss. A slug miss followed
+      // moments later by an insert of that exact IPO would otherwise stay
+      // shadowed behind the cached `null` for the full 900s TTL, and a
+      // caller relying on "not found -> safe to create" duplicates the row.
+      { cacheNullResult: false }
     );
   }
 
@@ -505,7 +510,9 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           );
         }
       },
-      CacheTTL.IPO_DETAIL
+      CacheTTL.IPO_DETAIL,
+      // W-15 sibling: same identity-lookup negative-cache hazard as findBySlug.
+      { cacheNullResult: false }
     );
   }
 
