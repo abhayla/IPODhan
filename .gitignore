@@ -333,3 +333,6 @@ HANDOFF-*.md
 # one by hand or with `git worktree remove --force`: doing that through the
 # node_modules junctions wiped 442 tracked files in the main checkout (T-311C).
 IPODhan-t*/
+
+# T-403 acceptance-run scratch store (PDFs downloaded from the exchanges) — never commit
+.prospectus-acceptance/

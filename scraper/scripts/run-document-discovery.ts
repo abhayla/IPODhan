@@ -51,6 +51,7 @@ import { mkdirSync, writeFileSync, readdirSync, existsSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import {
+  EXCHANGE_FAILURE_OUTCOMES,
   DocumentDiscoveryRunner,
   defaultFetcher,
   toStateRow,
@@ -236,45 +237,22 @@ async function makeStore(useDb: boolean): Promise<{
     ipo.id = rows[0].id;
   }
 
-  // A REAL documents writer in --db mode, but a minimal one.
+  // The REAL documents writer in --db mode.
   //
-  // `document_fetch_state.document_id` is a uuid FK, so the in-memory stub's
-  // 'doc-1' cannot be used here. `DocumentRepository` cannot be used either: the
-  // journal-built `documents` table has SEVEN columns where schema.ts declares
-  // about eighteen (no media_type, sequence_number, is_active, exchange,
-  // extraction_*), so the repository's SELECT fails on media_type. That drift is
-  // pre-existing and out of T-403's scope — recorded in
-  // evidence/T-403/journal-schema-drift.json — so this writer names only the
-  // columns the journal actually creates. `document_fetch_state`, which IS what
-  // WP B is being proven against, goes through its real repository unchanged.
-  const documents = {
-    async upsertDocument(doc: {
-      ipoId: string;
-      type: string;
-      title: string;
-      url: string;
-      fileSize?: number;
-      sha256?: string;
-    }): Promise<{ id: string }> {
-      const existing = await db.execute(
-        sql`SELECT id FROM documents WHERE url = ${doc.url} LIMIT 1`
-      );
-      const found = ((existing as unknown as { rows?: { id: string }[] }).rows ?? [])[0];
-      if (found) return { id: found.id };
-
-      // W-1: sha256 is written here, not derived later. It is the persisted form
-      // of the E7/R2 dedup rule, and a readback that cannot show it cannot show
-      // the rule was applied.
-      const inserted = await db.execute(sql`
-        INSERT INTO documents (ipo_id, type, title, url, file_size, sha256)
-        VALUES (${doc.ipoId}::uuid, ${doc.type}::document_type, ${doc.title.slice(0, 255)},
-                ${doc.url}, ${doc.fileSize ?? null}, ${doc.sha256 ?? null})
-        RETURNING id
-      `);
-      const row = ((inserted as unknown as { rows?: { id: string }[] }).rows ?? [])[0];
-      return { id: row.id };
-    },
-  };
+  // Until r5 this was a hand-rolled raw INSERT, because `DocumentRepository`
+  // could not run against a journal-built `documents` table: the journal created
+  // EIGHT of the nineteen columns `schema.ts` declares, and the repository's
+  // SELECT died on `media_type`. Migration 0037 repairs that one table, so the
+  // acceptance run now writes documents through the SAME repository the
+  // production cycle uses — which is what makes this run evidence about the
+  // shipped write path rather than about a stand-in that resembles it.
+  const { DocumentRepository } = await import('@ipodhan/shared/repositories');
+  const documents = new DocumentRepository(db as never, {
+    get: async () => null,
+    set: async () => 'OK',
+    del: async () => 0,
+    keys: async () => [],
+  } as never);
 
   // --reset clears ONLY these four IPOs' state and document rows, so "run 1" is a
   // genuine first run. Without it the state table remembers the previous run and
@@ -514,7 +492,18 @@ async function main(): Promise<void> {
         const exchangeCalls = esds1.attempts.filter(
           (a) => (a.source === 'BSE' || a.source === 'NSE') && (!a.url || !/.(pdf|zip)/i.test(a.url))
         );
-        const anyFailed = exchangeCalls.some((a) => a.outcome !== 'ok');
+        // r5: `outcome !== 'ok'` was WRONG, and it passed for four rounds only
+        // because ESDS happened to still be on the BSE board every time this ran.
+        // The moment it closed and BSE dropped it, `not_on_board` was read as a
+        // FAILURE and the check demanded BLOCKED_ALL rows for a day on which
+        // nothing failed. The runner has always used EXCHANGE_FAILURE_OUTCOMES
+        // for exactly this distinction (matrix section 9: `not_on_board` and
+        // `no_symbol` are neither an answer nor a failure — that exchange does
+        // not carry this issue); the check now uses the same set, from the same
+        // module, instead of a second definition that could drift.
+        const anyFailed = exchangeCalls.some((a) =>
+          EXCHANGE_FAILURE_OUTCOMES.includes(a.outcome)
+        );
         return anyFailed
           ? esds1.notYetFiled.length === 0 && esds1.blocked.length > 0
           : esds1.notYetFiled.length > 0 && esds1.blocked.length === 0;
@@ -664,6 +653,11 @@ async function main(): Promise<void> {
     checks,
     allPassed: checks.every((c) => c.pass),
   };
+  // r5: the summary was BUILT and printed but never written. `db-run/acceptance-summary.json`
+  // therefore had no producer in the repo - the same defect W-2 fixed for the SQL
+  // readback, still standing on the file that states the verdict.
+  writeFileSync(join(evidenceDir, 'acceptance-summary.json'), JSON.stringify(summary, null, 2));
+
   // W-2: the SQL readback, by the committed script, as the last thing the run
   // does. The round-3 evidence carried a `state-table-from-postgres.json` whose
   // producer was never committed — unreproducible, unreadable, and therefore an

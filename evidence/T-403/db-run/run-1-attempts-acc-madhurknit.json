@@ -1,5 +1,5 @@
 {
-  "ipoId": "f2d07d7e-dca3-468c-8571-83b1ebae4cb8",
+  "ipoId": "ee650b32-7de0-485f-a20c-456b45afa47b",
   "companyName": "Madhur Knit Crafts Ltd.",
   "stage": "CLOSED",
   "skipped": false,
@@ -38,7 +38,7 @@
     {
       "source": "NSE",
       "http": 200,
-      "ms": 5217,
+      "ms": 5537,
       "outcome": "ok",
       "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME"
     },
@@ -51,7 +51,7 @@
     {
       "source": "NSE",
       "http": 200,
-      "ms": 3561,
+      "ms": 2898,
       "outcome": "downloaded (zip member: RHP_MADHURKNIT/MKCL RHP.pdf; cover_check: passed)",
       "url": "https://nsearchives.nseindia.com/content/ipo/RHP_MADHURKNIT.zip",
       "sha256": "69dcb28b1fe18c9da2399339a6959a9cff610ddca144615b7fb1ddc3a39c1af2"
@@ -77,7 +77,7 @@
     {
       "source": "NSE",
       "http": 200,
-      "ms": 2266,
+      "ms": 821,
       "outcome": "downloaded (zip member: RATIOS_MADHURKNIT/PRICE BAND JANSATTA.pdf; member classifies as: PRICE_BAND_AD; cover_check: skipped_no_text_layer)",
       "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_MADHURKNIT.zip",
       "sha256": "04a1caf10d84731d42bb9026cf2d915fe2709ecd79fd2602b0ce5923ae5df6bc"
@@ -91,7 +91,7 @@
     {
       "source": "NSE",
       "http": 200,
-      "ms": 425,
+      "ms": 431,
       "outcome": "downloaded (zip member: ANCHOR_MADHURKNIT/ANCHOR Letter.pdf; cover_check: passed)",
       "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MADHURKNIT.zip",
       "sha256": "3ccd79ad85c15c35a17725ee59a5c33a72bc10a195a88affc2a7c275fc3fef35"

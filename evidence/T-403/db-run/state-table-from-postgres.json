@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-08-28T13:27:50.795Z",
+  "generatedAt": "2026-09-02T05:07:32.254Z",
   "database": "ipodhan_test",
   "rowCount": 25,
   "byState": {
-    "NOT_YET_FILED": 9,
+    "NOT_YET_FILED": 10,
     "SUPERSEDED": 3,
-    "FOUND": 13
+    "FOUND": 12
   },
   "withLastAttempt": 25,
-  "foundWithSha256": 13,
+  "foundWithSha256": 12,
   "ipos": [
     {
       "company_name": "Deepa Jewellers Ltd.",
@@ -35,14 +35,14 @@
     {
       "company_name": "ESDS Software Solution Limited",
       "type": "RHP",
-      "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/RHPGID_20260825191135.zip",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_ESDS.zip",
       "file_size": "21900385",
       "sha256": "2b1500da163d971da74e9af5b0a60120ea2b8d696e2a7dc23471a832a95903ca"
     },
     {
       "company_name": "ESDS Software Solution Limited",
-      "type": "PRICE_BAND_AD",
-      "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf",
+      "type": "RATIOS_BASIS_ISSUE_PRICE",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
       "file_size": "3229058",
       "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4"
     },
@@ -116,9 +116,9 @@
       "doc_type": "DRHP",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T13:57:20.584Z",
+      "next_retry_at": "2026-09-02T05:37:01.394Z",
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:27:20.584Z",
+      "last_attempt_at": "2026-09-02T05:07:01.394Z",
       "document_id": null,
       "document_url": null,
       "document_sha256": null,
@@ -127,7 +127,7 @@
       "verifier_url": "https://www.chittorgarh.com/ipo/deepa-jewellers-ipo/2827/",
       "last_attempt": [
         {
-          "ms": 776,
+          "ms": 388,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7922",
           "http": 200,
           "source": "BSE",
@@ -140,7 +140,7 @@
           "outcome": "no_symbol"
         },
         {
-          "ms": 435,
+          "ms": 0,
           "url": "https://www.chittorgarh.com/ipo/deepa-jewellers-ipo/2827/",
           "http": 200,
           "source": "VERIFIER",
@@ -162,7 +162,7 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:46.286Z",
+      "last_attempt_at": "2026-09-02T05:06:33.514Z",
       "document_id": null,
       "document_url": null,
       "document_sha256": null,
@@ -171,21 +171,20 @@
       "verifier_url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
       "last_attempt": [
         {
-          "ms": 417,
-          "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
+          "ms": 0,
           "http": 200,
           "source": "BSE",
-          "outcome": "ok"
+          "outcome": "not_on_board"
         },
         {
-          "ms": 5649,
+          "ms": 235,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 409,
+          "ms": 0,
           "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
           "http": 200,
           "source": "VERIFIER",
@@ -207,42 +206,41 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:46.286Z",
-      "document_id": "1fb7bbf0-7cf8-4139-a4f7-7773ef9711e3",
-      "document_url": "https://listing.bseindia.com/Download/8888888/PreAnchor/RHPGID_20260825191135.zip",
+      "last_attempt_at": "2026-09-02T05:06:33.514Z",
+      "document_id": "24a20951-dfdd-4105-b2ed-d65f0b053b13",
+      "document_url": "https://nsearchives.nseindia.com/content/ipo/RHP_ESDS.zip",
       "document_sha256": "2b1500da163d971da74e9af5b0a60120ea2b8d696e2a7dc23471a832a95903ca",
       "document_file_size": "21900385",
       "company_website": null,
       "verifier_url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
       "last_attempt": [
         {
-          "ms": 417,
-          "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
+          "ms": 0,
           "http": 200,
           "source": "BSE",
-          "outcome": "ok"
+          "outcome": "not_on_board"
         },
         {
-          "ms": 5649,
+          "ms": 235,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 409,
+          "ms": 0,
           "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
           "http": 200,
           "source": "VERIFIER",
           "outcome": "untried_exchange_links:0"
         },
         {
-          "ms": 4041,
-          "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/RHPGID_20260825191135.zip",
+          "ms": 6053,
+          "url": "https://nsearchives.nseindia.com/content/ipo/RHP_ESDS.zip",
           "http": 200,
           "sha256": "2b1500da163d971da74e9af5b0a60120ea2b8d696e2a7dc23471a832a95903ca",
-          "source": "BSE",
-          "outcome": "downloaded (zip member: ESDSRHP.pdf; cover_check: passed)"
+          "source": "NSE",
+          "outcome": "downloaded (zip member: RHP_ESDS/RHP.pdf; cover_check: passed)"
         },
         {
           "ms": 0,
@@ -256,64 +254,11 @@
     {
       "company_name": "ESDS Software Solution Limited",
       "doc_type": "PRICE_BAND_AD",
-      "state": "FOUND",
-      "attempts": 1,
-      "next_retry_at": null,
-      "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:46.286Z",
-      "document_id": "7e53cb84-9a3e-430a-acd9-c4e8ec490215",
-      "document_url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf",
-      "document_sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4",
-      "document_file_size": "3229058",
-      "company_website": null,
-      "verifier_url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
-      "last_attempt": [
-        {
-          "ms": 417,
-          "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
-          "http": 200,
-          "source": "BSE",
-          "outcome": "ok"
-        },
-        {
-          "ms": 5649,
-          "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
-          "http": 200,
-          "source": "NSE",
-          "outcome": "ok"
-        },
-        {
-          "ms": 409,
-          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
-          "http": 200,
-          "source": "VERIFIER",
-          "outcome": "untried_exchange_links:0"
-        },
-        {
-          "ms": 1844,
-          "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf",
-          "http": 200,
-          "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4",
-          "source": "BSE",
-          "outcome": "downloaded (cover_check: skipped_no_text_layer)"
-        },
-        {
-          "ms": 0,
-          "http": 0,
-          "source": "CHAIN",
-          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-        }
-      ],
-      "rung_chain": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
-    },
-    {
-      "company_name": "ESDS Software Solution Limited",
-      "doc_type": "CORRIGENDUM",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T13:56:46.286Z",
+      "next_retry_at": "2026-09-02T05:36:33.514Z",
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:46.286Z",
+      "last_attempt_at": "2026-09-02T05:06:33.514Z",
       "document_id": null,
       "document_url": null,
       "document_sha256": null,
@@ -322,21 +267,27 @@
       "verifier_url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
       "last_attempt": [
         {
-          "ms": 417,
-          "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
+          "ms": 0,
           "http": 200,
           "source": "BSE",
-          "outcome": "ok"
+          "outcome": "not_on_board"
         },
         {
-          "ms": 5649,
+          "ms": 235,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 409,
+          "ms": 0,
+          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
+        },
+        {
+          "ms": 0,
           "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
           "http": 200,
           "source": "VERIFIER",
@@ -346,10 +297,68 @@
           "ms": 0,
           "http": 0,
           "source": "CHAIN",
-          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+          "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:no_link -> SEBI:skipped:not_served_by_sebi -> COMPANY:skipped:no_company_url -> VERIFIER:no_new_link"
         }
       ],
-      "rung_chain": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+      "rung_chain": "rungs[PRICE_BAND_AD]: EXCHANGES:no_link -> SEBI:skipped:not_served_by_sebi -> COMPANY:skipped:no_company_url -> VERIFIER:no_new_link"
+    },
+    {
+      "company_name": "ESDS Software Solution Limited",
+      "doc_type": "CORRIGENDUM",
+      "state": "NOT_YET_FILED",
+      "attempts": 1,
+      "next_retry_at": "2026-09-02T05:36:33.514Z",
+      "blocked_since_at": null,
+      "last_attempt_at": "2026-09-02T05:06:33.514Z",
+      "document_id": null,
+      "document_url": null,
+      "document_sha256": null,
+      "document_file_size": null,
+      "company_website": null,
+      "verifier_url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+      "last_attempt": [
+        {
+          "ms": 0,
+          "http": 200,
+          "source": "BSE",
+          "outcome": "not_on_board"
+        },
+        {
+          "ms": 235,
+          "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
+          "http": 200,
+          "source": "NSE",
+          "outcome": "ok"
+        },
+        {
+          "ms": 0,
+          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
+        },
+        {
+          "ms": 0,
+          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
+        },
+        {
+          "ms": 0,
+          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
+        },
+        {
+          "ms": 0,
+          "http": 0,
+          "source": "CHAIN",
+          "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:not_served_by_sebi -> COMPANY:skipped:no_company_url -> VERIFIER:no_new_link"
+        }
+      ],
+      "rung_chain": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:not_served_by_sebi -> COMPANY:skipped:no_company_url -> VERIFIER:no_new_link"
     },
     {
       "company_name": "ESDS Software Solution Limited",
@@ -358,50 +367,55 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:46.286Z",
-      "document_id": "7e53cb84-9a3e-430a-acd9-c4e8ec490215",
-      "document_url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf",
+      "last_attempt_at": "2026-09-02T05:06:33.514Z",
+      "document_id": "6471c172-58c4-459d-93b3-24cf1e0d886d",
+      "document_url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
       "document_sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4",
       "document_file_size": "3229058",
       "company_website": null,
       "verifier_url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
       "last_attempt": [
         {
-          "ms": 417,
-          "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
+          "ms": 0,
           "http": 200,
           "source": "BSE",
-          "outcome": "ok"
+          "outcome": "not_on_board"
         },
         {
-          "ms": 5649,
+          "ms": 235,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 409,
+          "ms": 0,
           "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
           "http": 200,
           "source": "VERIFIER",
           "outcome": "untried_exchange_links:0"
         },
         {
-          "ms": 6968,
+          "ms": 0,
+          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
+        },
+        {
+          "ms": 0,
+          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
+        },
+        {
+          "ms": 4796,
           "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
           "http": 200,
           "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4",
           "source": "NSE",
           "outcome": "downloaded (zip member: RATIOS_ESDS/FINANCIAL EXPRESS-MUMBAI-ENGLISH-ESDS SOFTWARE SOLUTION LTD-PRICE BAND AD-25.08.2026.pdf; member classifies as: PRICE_BAND_AD; cover_check: skipped_no_text_layer)"
-        },
-        {
-          "ms": 0,
-          "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
-          "http": 200,
-          "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4",
-          "source": "NSE",
-          "outcome": "deduped_by_sha256_to:PRICE_BAND_AD"
         },
         {
           "ms": 0,
@@ -419,8 +433,8 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:46.286Z",
-      "document_id": "4fbc011c-80cf-4d5c-8517-b954f42409e6",
+      "last_attempt_at": "2026-09-02T05:06:33.514Z",
+      "document_id": "9567055e-2585-4cfe-b413-4e6e31d7e19d",
       "document_url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ESDS.zip",
       "document_sha256": "4e5a4f9de9ef11f31f98a3ff303df1fad1ff9ea7f880fff9348c1d3d5f80802d",
       "document_file_size": "310858",
@@ -428,28 +442,41 @@
       "verifier_url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
       "last_attempt": [
         {
-          "ms": 417,
-          "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916",
+          "ms": 0,
           "http": 200,
           "source": "BSE",
-          "outcome": "ok"
+          "outcome": "not_on_board"
         },
         {
-          "ms": 5649,
+          "ms": 235,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 409,
+          "ms": 0,
           "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
           "http": 200,
           "source": "VERIFIER",
           "outcome": "untried_exchange_links:0"
         },
         {
-          "ms": 601,
+          "ms": 0,
+          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
+        },
+        {
+          "ms": 0,
+          "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/",
+          "http": 200,
+          "source": "VERIFIER",
+          "outcome": "untried_exchange_links:0"
+        },
+        {
+          "ms": 291,
           "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ESDS.zip",
           "http": 200,
           "sha256": "4e5a4f9de9ef11f31f98a3ff303df1fad1ff9ea7f880fff9348c1d3d5f80802d",
@@ -472,7 +499,7 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:16.606Z",
+      "last_attempt_at": "2026-09-02T05:06:02.289Z",
       "document_id": null,
       "document_url": null,
       "document_sha256": null,
@@ -481,7 +508,7 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5217,
+          "ms": 5537,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
@@ -503,8 +530,8 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:16.606Z",
-      "document_id": "427f10cb-1acc-4ddf-bc34-44edc3eb580c",
+      "last_attempt_at": "2026-09-02T05:06:02.289Z",
+      "document_id": "58c39878-2238-457b-bc50-f62510a63cf1",
       "document_url": "https://nsearchives.nseindia.com/content/ipo/RHP_MADHURKNIT.zip",
       "document_sha256": "69dcb28b1fe18c9da2399339a6959a9cff610ddca144615b7fb1ddc3a39c1af2",
       "document_file_size": "3469130",
@@ -512,14 +539,14 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5217,
+          "ms": 5537,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 3561,
+          "ms": 2898,
           "url": "https://nsearchives.nseindia.com/content/ipo/RHP_MADHURKNIT.zip",
           "http": 200,
           "sha256": "69dcb28b1fe18c9da2399339a6959a9cff610ddca144615b7fb1ddc3a39c1af2",
@@ -540,9 +567,9 @@
       "doc_type": "PROSPECTUS",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T13:56:16.606Z",
+      "next_retry_at": "2026-09-02T05:36:02.289Z",
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:16.606Z",
+      "last_attempt_at": "2026-09-02T05:06:02.289Z",
       "document_id": null,
       "document_url": null,
       "document_sha256": null,
@@ -551,7 +578,7 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5217,
+          "ms": 5537,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
@@ -571,9 +598,9 @@
       "doc_type": "ADDENDUM",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T13:56:16.606Z",
+      "next_retry_at": "2026-09-02T05:36:02.289Z",
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:16.606Z",
+      "last_attempt_at": "2026-09-02T05:06:02.289Z",
       "document_id": null,
       "document_url": null,
       "document_sha256": null,
@@ -582,7 +609,7 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5217,
+          "ms": 5537,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
@@ -602,9 +629,9 @@
       "doc_type": "PRICE_BAND_AD",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T13:56:16.606Z",
+      "next_retry_at": "2026-09-02T05:36:02.289Z",
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:16.606Z",
+      "last_attempt_at": "2026-09-02T05:06:02.289Z",
       "document_id": null,
       "document_url": null,
       "document_sha256": null,
@@ -613,7 +640,7 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5217,
+          "ms": 5537,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
@@ -633,9 +660,9 @@
       "doc_type": "CORRIGENDUM",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T13:56:16.606Z",
+      "next_retry_at": "2026-09-02T05:36:02.289Z",
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:16.606Z",
+      "last_attempt_at": "2026-09-02T05:06:02.289Z",
       "document_id": null,
       "document_url": null,
       "document_sha256": null,
@@ -644,7 +671,7 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5217,
+          "ms": 5537,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
@@ -664,9 +691,9 @@
       "doc_type": "BASIS_OF_ALLOTMENT_AD",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T13:56:16.606Z",
+      "next_retry_at": "2026-09-02T05:36:02.289Z",
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:16.606Z",
+      "last_attempt_at": "2026-09-02T05:06:02.289Z",
       "document_id": null,
       "document_url": null,
       "document_sha256": null,
@@ -675,7 +702,7 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5217,
+          "ms": 5537,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
@@ -697,8 +724,8 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:16.606Z",
-      "document_id": "593f07c7-1a9f-45cb-87bd-7213cc689e8e",
+      "last_attempt_at": "2026-09-02T05:06:02.289Z",
+      "document_id": "be1ef9a5-bc78-4780-9680-fa159e4310c8",
       "document_url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_MADHURKNIT.zip",
       "document_sha256": "04a1caf10d84731d42bb9026cf2d915fe2709ecd79fd2602b0ce5923ae5df6bc",
       "document_file_size": "2389805",
@@ -706,14 +733,14 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5217,
+          "ms": 5537,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 2266,
+          "ms": 821,
           "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_MADHURKNIT.zip",
           "http": 200,
           "sha256": "04a1caf10d84731d42bb9026cf2d915fe2709ecd79fd2602b0ce5923ae5df6bc",
@@ -736,8 +763,8 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:26:16.606Z",
-      "document_id": "bed0f577-0900-4cdc-8bb4-8316aabfafe2",
+      "last_attempt_at": "2026-09-02T05:06:02.289Z",
+      "document_id": "097d899f-c92e-4b0a-9e7a-c2b8cfe6fd6f",
       "document_url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MADHURKNIT.zip",
       "document_sha256": "3ccd79ad85c15c35a17725ee59a5c33a72bc10a195a88affc2a7c275fc3fef35",
       "document_file_size": "337661",
@@ -745,14 +772,14 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 5217,
+          "ms": 5537,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=MADHURKNIT&series=SME",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 425,
+          "ms": 431,
           "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_MADHURKNIT.zip",
           "http": 200,
           "sha256": "3ccd79ad85c15c35a17725ee59a5c33a72bc10a195a88affc2a7c275fc3fef35",
@@ -775,7 +802,7 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:25:07.051Z",
+      "last_attempt_at": "2026-09-02T05:04:31.554Z",
       "document_id": null,
       "document_url": null,
       "document_sha256": null,
@@ -784,21 +811,21 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 236,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4425,
+          "ms": 4861,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 550,
+          "ms": 560,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
@@ -820,8 +847,8 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:25:07.051Z",
-      "document_id": "0cf6d9a5-240e-43cd-8c0b-f6704ec8ba24",
+      "last_attempt_at": "2026-09-02T05:04:31.554Z",
+      "document_id": "e98c7da9-1aa7-496f-a0b9-fc9c0c914e4d",
       "document_url": "https://listing.bseindia.com/Download//PreAnchor/RHPSkyways_20260818181315.pdf",
       "document_sha256": "b4971a1aa3ef27ccb9375622081b4abf9b03e4646e8b725ae4971930742500b1",
       "document_file_size": "46922851",
@@ -829,28 +856,28 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 236,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4425,
+          "ms": 4861,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 550,
+          "ms": 560,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
           "outcome": "listing_rows:25"
         },
         {
-          "ms": 10817,
+          "ms": 31420,
           "url": "https://listing.bseindia.com/Download//PreAnchor/RHPSkyways_20260818181315.pdf",
           "http": 200,
           "sha256": "b4971a1aa3ef27ccb9375622081b4abf9b03e4646e8b725ae4971930742500b1",
@@ -871,9 +898,9 @@
       "doc_type": "PROSPECTUS",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T13:55:07.051Z",
+      "next_retry_at": "2026-09-02T05:34:31.554Z",
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:25:07.051Z",
+      "last_attempt_at": "2026-09-02T05:04:31.554Z",
       "document_id": null,
       "document_url": null,
       "document_sha256": null,
@@ -882,21 +909,21 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 236,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4425,
+          "ms": 4861,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 550,
+          "ms": 560,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
@@ -918,8 +945,8 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:25:07.051Z",
-      "document_id": "651770ba-ddb9-4a41-9410-fee2b6bc3a2a",
+      "last_attempt_at": "2026-09-02T05:04:31.554Z",
+      "document_id": "2b159ac9-5973-4976-a27f-064590f1c6ca",
       "document_url": "https://www.bseindia.com/downloads/ipo/Addendum to RHP_250820261220.zip",
       "document_sha256": "971b265a1d22ee9350d2c353585953c5cbae1f41bb5812906f1f8eee2b38dea1",
       "document_file_size": "1625685",
@@ -927,21 +954,21 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 236,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4425,
+          "ms": 4861,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 550,
+          "ms": 560,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
@@ -963,8 +990,8 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:25:07.051Z",
-      "document_id": "a0c38830-132b-434d-81cd-1508008b6204",
+      "last_attempt_at": "2026-09-02T05:04:31.554Z",
+      "document_id": "1c5202d7-5b59-4fd2-bc14-1e6354edced0",
       "document_url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf",
       "document_sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea",
       "document_file_size": "6585368",
@@ -972,28 +999,28 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 236,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4425,
+          "ms": 4861,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 550,
+          "ms": 560,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
           "outcome": "listing_rows:25"
         },
         {
-          "ms": 10142,
+          "ms": 18870,
           "url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf",
           "http": 200,
           "sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea",
@@ -1016,8 +1043,8 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:25:07.051Z",
-      "document_id": "3f3a68f3-89fa-48bc-a492-a3a4f130ef81",
+      "last_attempt_at": "2026-09-02T05:04:31.554Z",
+      "document_id": "c49bf721-cc6c-447c-b449-74213e4a9a77",
       "document_url": "https://listing.bseindia.com/Download//PreAnchor/CorrigendumofRHPSkyways_20260818181316.pdf",
       "document_sha256": "d3a6094a2a23371ec38432ec9a34ec91def2b2d3cecf6546fd375ff45e2dee1c",
       "document_file_size": "1391575",
@@ -1025,28 +1052,28 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 236,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4425,
+          "ms": 4861,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 550,
+          "ms": 560,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
           "outcome": "listing_rows:25"
         },
         {
-          "ms": 1379,
+          "ms": 1008,
           "url": "https://listing.bseindia.com/Download//PreAnchor/CorrigendumofRHPSkyways_20260818181316.pdf",
           "http": 200,
           "sha256": "d3a6094a2a23371ec38432ec9a34ec91def2b2d3cecf6546fd375ff45e2dee1c",
@@ -1067,9 +1094,9 @@
       "doc_type": "BASIS_OF_ALLOTMENT_AD",
       "state": "NOT_YET_FILED",
       "attempts": 1,
-      "next_retry_at": "2026-08-28T13:55:07.051Z",
+      "next_retry_at": "2026-09-02T05:34:31.554Z",
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:25:07.051Z",
+      "last_attempt_at": "2026-09-02T05:04:31.554Z",
       "document_id": null,
       "document_url": null,
       "document_sha256": null,
@@ -1078,21 +1105,21 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 236,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4425,
+          "ms": 4861,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 550,
+          "ms": 560,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
@@ -1114,8 +1141,8 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:25:07.051Z",
-      "document_id": "a0c38830-132b-434d-81cd-1508008b6204",
+      "last_attempt_at": "2026-09-02T05:04:31.554Z",
+      "document_id": "1c5202d7-5b59-4fd2-bc14-1e6354edced0",
       "document_url": "https://listing.bseindia.com/Download//PreAnchor/PriceBandAdvertisementSkyways_20260818181316.pdf",
       "document_sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea",
       "document_file_size": "6585368",
@@ -1123,28 +1150,28 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 236,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4425,
+          "ms": 4861,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 550,
+          "ms": 560,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
           "outcome": "listing_rows:25"
         },
         {
-          "ms": 5181,
+          "ms": 740,
           "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_SKYWAYS.zip",
           "http": 200,
           "sha256": "e8d5d3955a0d0de79c0cc958e4a1e12a69a66c641eeef10f44664627485bd9ea",
@@ -1175,8 +1202,8 @@
       "attempts": 1,
       "next_retry_at": null,
       "blocked_since_at": null,
-      "last_attempt_at": "2026-08-28T13:25:07.051Z",
-      "document_id": "ed963da6-a401-41c9-bfaf-af0516a1cda0",
+      "last_attempt_at": "2026-09-02T05:04:31.554Z",
+      "document_id": "5c9405aa-98c8-4aeb-88ee-f04bda6ff075",
       "document_url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_SKYWAYS.zip",
       "document_sha256": "8a68e38b94b77ef5664452390338271c54672f3687331a35fa515d085c760ef0",
       "document_file_size": "2118875",
@@ -1184,28 +1211,28 @@
       "verifier_url": null,
       "last_attempt": [
         {
-          "ms": 236,
+          "ms": 417,
           "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7903",
           "http": 200,
           "source": "BSE",
           "outcome": "ok"
         },
         {
-          "ms": 4425,
+          "ms": 4861,
           "url": "https://www.nseindia.com/api/ipo-detail?symbol=SKYWAYS&series=EQ",
           "http": 200,
           "source": "NSE",
           "outcome": "ok"
         },
         {
-          "ms": 550,
+          "ms": 560,
           "url": "https://www.sebi.gov.in/sebiweb/home/HomeAction.do?doListing=yes&sid=3&ssid=15&smid=10",
           "http": 200,
           "source": "SEBI",
           "outcome": "listing_rows:25"
         },
         {
-          "ms": 928,
+          "ms": 273,
           "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_SKYWAYS.zip",
           "http": 200,
           "sha256": "8a68e38b94b77ef5664452390338271c54672f3687331a35fa515d085c760ef0",

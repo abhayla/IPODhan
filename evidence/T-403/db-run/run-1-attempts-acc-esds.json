@@ -1,5 +1,5 @@
 {
-  "ipoId": "f6f4e02e-49a8-49aa-bf35-d28a65dc14c3",
+  "ipoId": "c20b06ea-a153-4f1b-a18f-fc1f1120d285",
   "companyName": "ESDS Software Solution Limited",
   "stage": "PRE_OPEN",
   "skipped": false,
@@ -14,12 +14,12 @@
   ],
   "found": [
     "RHP",
-    "PRICE_BAND_AD",
     "RATIOS_BASIS_ISSUE_PRICE",
     "ANCHOR_ALLOCATION_REPORT"
   ],
   "notYetFiled": [
     "DRHP",
+    "PRICE_BAND_AD",
     "CORRIGENDUM"
   ],
   "blocked": [],
@@ -33,21 +33,20 @@
     {
       "source": "BSE",
       "http": 200,
-      "ms": 417,
-      "outcome": "ok",
-      "url": "https://api.bseindia.com/BseIndiaAPI/api/GetMkt_ISSUE_BBS_IPO/w?IPO_NO=7916"
+      "ms": 0,
+      "outcome": "not_on_board"
     },
     {
       "source": "NSE",
       "http": 200,
-      "ms": 5649,
+      "ms": 235,
       "outcome": "ok",
       "url": "https://www.nseindia.com/api/ipo-detail?symbol=ESDS&series=EQ"
     },
     {
       "source": "VERIFIER",
       "http": 200,
-      "ms": 409,
+      "ms": 0,
       "outcome": "untried_exchange_links:0",
       "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/"
     },
@@ -58,11 +57,11 @@
       "outcome": "rungs[DRHP]: EXCHANGES:no_link -> SEBI:not_listed -> COMPANY:skipped:no_company_url -> VERIFIER:no_new_link"
     },
     {
-      "source": "BSE",
+      "source": "NSE",
       "http": 200,
-      "ms": 4041,
-      "outcome": "downloaded (zip member: ESDSRHP.pdf; cover_check: passed)",
-      "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/RHPGID_20260825191135.zip",
+      "ms": 6053,
+      "outcome": "downloaded (zip member: RHP_ESDS/RHP.pdf; cover_check: passed)",
+      "url": "https://nsearchives.nseindia.com/content/ipo/RHP_ESDS.zip",
       "sha256": "2b1500da163d971da74e9af5b0a60120ea2b8d696e2a7dc23471a832a95903ca"
     },
     {
@@ -72,38 +71,36 @@
       "outcome": "rungs[RHP]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     },
     {
-      "source": "BSE",
+      "source": "VERIFIER",
       "http": 200,
-      "ms": 1844,
-      "outcome": "downloaded (cover_check: skipped_no_text_layer)",
-      "url": "https://listing.bseindia.com/Download/8888888/PreAnchor/FE_20260825173230.pdf",
-      "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4"
+      "ms": 0,
+      "outcome": "untried_exchange_links:0",
+      "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/"
     },
     {
       "source": "CHAIN",
       "http": 0,
       "ms": 0,
-      "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+      "outcome": "rungs[PRICE_BAND_AD]: EXCHANGES:no_link -> SEBI:skipped:not_served_by_sebi -> COMPANY:skipped:no_company_url -> VERIFIER:no_new_link"
+    },
+    {
+      "source": "VERIFIER",
+      "http": 200,
+      "ms": 0,
+      "outcome": "untried_exchange_links:0",
+      "url": "https://www.chittorgarh.com/ipo/esds-software-ipo/1198/"
     },
     {
       "source": "CHAIN",
       "http": 0,
       "ms": 0,
-      "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
+      "outcome": "rungs[CORRIGENDUM]: EXCHANGES:no_link -> SEBI:skipped:not_served_by_sebi -> COMPANY:skipped:no_company_url -> VERIFIER:no_new_link"
     },
     {
       "source": "NSE",
       "http": 200,
-      "ms": 6968,
+      "ms": 4796,
       "outcome": "downloaded (zip member: RATIOS_ESDS/FINANCIAL EXPRESS-MUMBAI-ENGLISH-ESDS SOFTWARE SOLUTION LTD-PRICE BAND AD-25.08.2026.pdf; member classifies as: PRICE_BAND_AD; cover_check: skipped_no_text_layer)",
-      "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
-      "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4"
-    },
-    {
-      "source": "NSE",
-      "http": 200,
-      "ms": 0,
-      "outcome": "deduped_by_sha256_to:PRICE_BAND_AD",
       "url": "https://nsearchives.nseindia.com/content/ipo/RATIOS_ESDS.zip",
       "sha256": "3a4a7b9dabcb1a60a6ff297632a0f05e3ef9b7068a8fe7ccb017a1267152dea4"
     },
@@ -116,7 +113,7 @@
     {
       "source": "NSE",
       "http": 200,
-      "ms": 601,
+      "ms": 291,
       "outcome": "downloaded (zip member: ANCHOR_ESDS/Anchor Intimation to SEBI and Stock Exchanges_Final.pdf; cover_check: passed)",
       "url": "https://nsearchives.nseindia.com/content/ipo/ANCHOR_ESDS.zip",
       "sha256": "4e5a4f9de9ef11f31f98a3ff303df1fad1ff9ea7f880fff9348c1d3d5f80802d"
@@ -128,7 +125,6 @@
       "outcome": "rungs[ANCHOR_ALLOCATION_REPORT]: EXCHANGES:found -> SEBI:skipped:exchanges_settled_it -> COMPANY:skipped:exchanges_settled_it -> VERIFIER:skipped:exchanges_settled_it"
     }
   ],
-  "networkCalls": 7,
-  "leadManagerSource": "BSE",
-  "resolvedBseIpoNo": 7916
+  "networkCalls": 5,
+  "leadManagerSource": "NSE"
 }
