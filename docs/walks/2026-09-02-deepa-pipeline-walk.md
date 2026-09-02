@@ -28,7 +28,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | B1 | Fetch BSE IPO board JSON | PASS | 17:40 | 22 board rows, 4 IPO. DEEPA row present, IR_flag IPO. |
 | B2 | Fetch NSE current + all-upcoming lists | PASS | 18:02 | NSE reachable (no 403 today). DEEPA in both lists. |
 | B3 | Parse candidate row (exchange fields) | **PASS** (18:45) | 18:35-18:45 | BSE: 10/10 parsers correct on raw detail (48 keys). NSE: fabricated faceValue=10 (W-02 root cause); fix dispatched (fix/nse-face-value-default). W-01 confirmed. |
-| B4 | Classify offering type | pending | | |
+| B4 | Classify offering type | **PASS** | 18:50 | IR_flag IPO -> IPO; symbol/name checks agree; segment MAINBOARD; keep-classification guard holds (TENDER not downgraded). Board sweep: 22/22 sane; W-13 noted. |
 | B5 | Validate raw record | pending | | |
 | B6 | Identity match new vs existing | pending | | |
 | B7 | Create `ipos` row | pending | | |
@@ -56,6 +56,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | W-10 | B3 | `fetchIPODetail('DEEPA')` returns companyName = symbol, openDate = closeDate = today, faceValue 10. Only callers are two backfill scripts (demand-graph, subscription), so prod is not writing it today, but it is a trap for C2. | `nse-api-client.ts` fetchIPODetail mapping | open |
 | W-11 | B3 | Issue-size composition not reconcilable from exchange data: BSE shares 18,520,085; NSE text says fresh Rs 2,500 mn + OFS 11,848,340 shares incl. anchor 7,791,789. No arithmetic closes. Needs the RHP (E2/E9). | E2 category/structure extraction + E9 arithmetic | open |
 | W-12 | B3 | POSITIVE: BSE detail carries 48 keys incl. Price_Band_Advertisement link, RHP zip (Prospectus_GID), IPO_Market_Timings, UPI cut-off, Syndicate_Member, Sponsor_Bank, Eligible_Banks, max bid qty per category, Rating, Security_Type. NSE issueInfo has 38 titled rows incl. Face Value, Issue Size text, max bid qty, registrar contact, ratios zip. Inventory fields A13/B7/B8/E5/E6 are obtainable from exchange JSON at B3/C1, not only from the PDF. | B3 mappers (extend), field inventory doc | open |
+| W-13 | B4 | `detectOfferingTypeFromBSEIRFlag` returns null for BSE flags `BuyBack` (2 rows) and `CMN` (1 row); it knows `OTB` but not the literal `BuyBack`. No prod impact on the BSE API path (rows are filtered to IR_flag=IPO before mapping), but the post-scrape reclassifier gets null for these and cannot correct a polluted row. Also `detectOfferingType` defaults to 'IPO' when unknown (guess-a-value class, mitigated by the keep-classification guard). | `detect-offering-type.ts` + reclassify job | open, low |
 | W-09 | inventory | 18 of 54 ad/RHP fields have no DB column; 44 of 54 never written by prod code | migration drafted in price-band-ad-field-inventory.md §"Schema changes"; not approved | open, blocks G5 |
 
 ## 3. Owner decisions (D-nn)
