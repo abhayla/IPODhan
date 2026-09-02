@@ -73,6 +73,17 @@ jobs:
         # its fixture red here rather than silently disarming the audit.
         run: node --test scripts/tests/document-state-checks.test.mjs
 
+      - name: Fix-served / deploy-status self-tests (T-425)
+        # Mutation-proof: scripts/tests/fix-served-checks.test.mjs imports the
+        # real m_fix_merged_not_served predicate from
+        # scripts/lib/fix-served-checks.mjs (mechanism for registry class
+        # merged-fix-never-deployed-while-bug-live, #265), and
+        # scripts/tests/deploy-status.test.mjs drives the real deploy-status.mjs
+        # set/clear file I/O against a throwaway temp file.
+        run: |
+          node --test scripts/tests/fix-served-checks.test.mjs
+          node --test scripts/tests/deploy-status.test.mjs
+
       - name: Migration name-collision gate (T-403)
         # Postgres gives every table an implicit composite type of the same name,
         # so an enum and a table sharing a name fail with 42710 the first time the

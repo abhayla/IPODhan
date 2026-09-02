@@ -276,6 +276,28 @@
       "failThreshold": "state = NOT_YET_FILED AND doc_type is one the exchanges cannot serve (DRHP) AND the row's own last_attempt chain for that type has zero answered rungs (every non-EXCHANGES rung is skipped: or failed:). A row with no chain recorded is skipped, never guessed at",
       "severity": "P2",
       "unverifiableWhen": "document_fetch_state table not present"
+    },
+    {
+      "id": "m_fix_merged_not_served",
+      "findingClass": "a merged PR labelled fixes-live-bug is not yet being served in production — the bug it fixed is still live",
+      "round7Findings": [],
+      "sourceTask": "T-425",
+      "registryClass": "merged-fix-never-deployed-while-bug-live",
+      "failThreshold": "for every merged PR carrying the `fixes-live-bug` label, the served SHA's commit time (read via git log against the SHA from GET {BASE_URL}/api/version — the same way the T-324 SHA-drift monitor reads it) is older than the PR's mergedAt for more than 24h",
+      "warnThreshold": "same comparison, but the merge is under 24h old — a normal deploy-lag window, not yet an outage",
+      "severity": "P1",
+      "unverifiableWhen": "gh could not list merged fixes-live-bug PRs, OR the served SHA could not be read (unreachable / returned \"unknown\"), OR the served SHA has no locally-known commit time"
+    },
+    {
+      "id": "m_deploy_failure_open",
+      "findingClass": "the deploy-failure STATUS row (scripts/deploy-status.mjs) is write-only - written on failure, cleared on the next success, but never read back - so a row can sit open on disk indefinitely with nothing surfacing it",
+      "round7Findings": [],
+      "sourceTask": "T-425",
+      "registryClass": "merged-fix-never-deployed-while-bug-live",
+      "failThreshold": "any slot's deploy-failure STATUS row (deploy-failure-status.json) has been open for more than 24h",
+      "warnThreshold": "a slot's row is open but under 24h old - a normal in-progress-fix window, not yet an outage",
+      "severity": "P1",
+      "unverifiableWhen": "the deploy-failure-status.json file exists but could not be read/parsed (an ABSENT file is a legitimate PASS - no deploy has ever failed)"
     }
   ],
   "notCoveredByThisManifest": [
