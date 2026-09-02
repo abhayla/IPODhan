@@ -131,6 +131,30 @@ describe('T48 NOT_YET_FILED is not a failure', () => {
   });
 });
 
+describe('T-403 r5: an incomplete rung chain concludes nothing', () => {
+  it('leaves the row WANTED and retryable, and does not claim the filing is absent', () => {
+    // The G4 guard used to downgrade `all_sources_failed` to `no_link` when the
+    // chain ran short, i.e. it wrote NOT_YET_FILED - "the company has not filed
+    // it" - because the CHAIN was broken. Two wrong claims in one: an outage
+    // that did not happen, then an absence nobody observed.
+    const t = applyOutcome(row('DRHP', 'WANTED'), 'chain_incomplete', NOW);
+    expect(t.state).toBe('WANTED');
+    expect(t.state).not.toBe('NOT_YET_FILED');
+    expect(t.alert).toBe(false);
+    expect(t.blockedSinceAt).toBeNull();
+    expect(t.nextRetryAt).not.toBeNull();
+    expect(t.nextRetryAt!.getTime()).toBeGreaterThan(NOW.getTime());
+  });
+
+  it('does not clear an existing block into a clean slate silently', () => {
+    // Coming from BLOCKED_ALL it still returns to WANTED - the chain told us
+    // nothing, so the row goes back in the queue - but it raises no NEW alert.
+    const t = applyOutcome(row('RHP', 'BLOCKED_ALL', { blockedSinceAt: NOW }), 'chain_incomplete', NOW);
+    expect(t.state).toBe('WANTED');
+    expect(t.alert).toBe(false);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // §7.3 retry ladder (test 49)
 // ---------------------------------------------------------------------------

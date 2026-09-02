@@ -141,6 +141,13 @@
       "when": 1787916406450,
       "tag": "0036_document_type_enum_journal_drift",
       "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1787916407450,
+      "tag": "0037_documents_journal_column_drift",
+      "breakpoints": true
     }
   ]
 }

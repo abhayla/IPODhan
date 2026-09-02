@@ -4,6 +4,8 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql, inArray, eq } from 'drizzle-orm';
 import * as schema from '@ipodhan/shared/db/schema';
 import { DocumentFetchStateRepository } from '@ipodhan/shared/repositories/document-fetch-state-repository';
+import { DocumentRepository, IPORepository } from '@ipodhan/shared';
+import { recordDocumentSourceHints } from '../../src/services/data-persister.js';
 
 /**
  * T-403 M8 — the ONLY tests that exercise the Postgres side of the state machine.
@@ -43,6 +45,12 @@ const IPOS = [
 
 let pool: Pool | null = null;
 let repo: DocumentFetchStateRepository | null = null;
+// T-403 r5 (5): the write path under test is the SHARED one. These two tests
+// used raw INSERT/UPDATE, which proves the COLUMN exists and proves nothing
+// about the code that production actually runs - the exact bypass the r1
+// blocker was about, reintroduced inside the test that was supposed to close it.
+let documents: DocumentRepository | null = null;
+let ipoRepo: IPORepository | null = null;
 
 /** A Redis-shaped no-op: this repository is deliberately uncached. */
 const noRedis = {
@@ -57,6 +65,8 @@ beforeAll(async () => {
   pool = new Pool({ connectionString: DATABASE_URL, max: 4, options: '-c timezone=UTC' });
   const db = drizzle(pool, { schema });
   repo = new DocumentFetchStateRepository(db as never, noRedis);
+  documents = new DocumentRepository(db as never, noRedis);
+  ipoRepo = new IPORepository(db as never, noRedis);
 
   // Clean slate for these four ids ONLY — never a wholesale truncate. The
   // query builder is used rather than a raw `= ANY(${ids})`: drizzle expands a
@@ -202,13 +212,22 @@ describe.skipIf(!DATABASE_URL)(`DocumentFetchStateRepository against real Postgr
     // two rows were the same filing. This is that column, end to end.
     const db = drizzle(pool!, { schema });
     const sha = 'a'.repeat(64);
-    const inserted = await db.execute(sql`
-      INSERT INTO documents (ipo_id, type, title, url, file_size, sha256)
-      VALUES (${ESDS}::uuid, 'RHP'::document_type, 'T403 RHP', 'https://example.test/t403-rhp.pdf',
-              12345, ${sha})
-      RETURNING id
-    `);
-    const documentId = ((inserted as unknown as { rows?: { id: string }[] }).rows ?? [])[0].id;
+    // Written through the SAME repository method the discovery runner calls, so
+    // the test proves the write PATH persists the hash, not merely that the
+    // column accepts one.
+    const stored = await documents!.upsertDocument({
+      ipoId: ESDS,
+      type: 'RHP',
+      title: 'T403 RHP',
+      url: 'https://example.test/t403-rhp.pdf',
+      exchange: 'NSE',
+      mediaType: 'PDF',
+      extractionStatus: 'PENDING',
+      isActive: true,
+      fileSize: 12345,
+      sha256: sha,
+    } as never);
+    const documentId = stored.id;
 
     const row = await repo!.ensureRow(ESDS, 'RHP');
     await repo!.update(row.id, { state: 'FOUND', documentId, nextRetryAt: null });
@@ -233,17 +252,31 @@ describe.skipIf(!DATABASE_URL)(`DocumentFetchStateRepository against real Postgr
     // rungs could only ever record "skipped:no_..." — unreachable code in
     // production, which no unit test could reveal.
     const db = drizzle(pool!, { schema });
-    await db.execute(sql`
-      UPDATE ipos SET company_website = 'https://skyways-air.in',
-                      verifier_url = 'https://www.chittorgarh.com/ipo/x/1/'
-       WHERE id = ${SKYWAYS}::uuid
-    `);
+    // Written through `recordDocumentSourceHints` -> `updateDocumentSourceHints`,
+    // the only writer production uses. A raw UPDATE here proved the columns
+    // exist while leaving the host validation and the cache invalidation on that
+    // path completely unexercised.
+    await recordDocumentSourceHints(ipoRepo as never, SKYWAYS, {
+      companyWebsite: 'https://skyways-air.in',
+      verifierUrl: 'https://www.chittorgarh.com/ipo/x/1/',
+    });
     const read = await db.execute(sql`
       SELECT company_website, verifier_url FROM ipos WHERE id = ${SKYWAYS}::uuid
     `);
     const got = ((read as unknown as { rows?: Record<string, unknown>[] }).rows ?? [])[0];
     expect(got.company_website).toBe('https://skyways-air.in');
     expect(got.verifier_url).toBe('https://www.chittorgarh.com/ipo/x/1/');
+
+    // and the same writer REFUSES a non-chittorgarh verifier host, on the write
+    // as well as on the read (r5-3) - the stored value is unchanged.
+    await recordDocumentSourceHints(ipoRepo as never, SKYWAYS, {
+      verifierUrl: 'https://evil.test/ipo/x/1/',
+    });
+    const after = await db.execute(sql`
+      SELECT verifier_url FROM ipos WHERE id = ${SKYWAYS}::uuid
+    `);
+    const stillGot = ((after as unknown as { rows?: Record<string, unknown>[] }).rows ?? [])[0];
+    expect(stillGot.verifier_url).toBe('https://www.chittorgarh.com/ipo/x/1/');
   });
 
   it('document_fetch_state rows disappear with their IPO (ON DELETE CASCADE)', async () => {

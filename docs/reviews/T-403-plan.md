@@ -321,3 +321,44 @@ evidence alongside its parsed body.
 (`--pool=forks`); `web && npx vitest run`; the M8 integration file against
 `ipodhan_test`; and the acceptance harness re-run with `--db --reset`, refreshing
 `evidence/T-403/db-run/` (item 8 — migration 0035 was edited in place).
+
+
+## Round 5 — delivered vs not
+
+### Delivered
+
+| Round-4 finding | What changed |
+|---|---|
+| BLOCKER — hint write only in the else-branch | `BaseScraperOrchestrator.recordVerifierHint()` is one private helper called from BOTH exits: after the consolidation if/else, and on the all-fields-protected early return. Matrix test {ON,OFF} x {new, all-protected} — 3 of its 4 cells failed before the fix |
+| MAJOR — budget refusals return 'absent'; verifier page not cached | `RungOutcome` is a discriminated union; `absent` carries a branded `AnsweredResponse` that only `answeredFrom()` mints, and only from a 200. All three refusal sites are now `failed`. The verifier page is cached per cycle |
+| MAJOR — no read-side `isVerifierUrl` | Filtered in `loadCandidateIpos`, re-checked in `escalateBeyondExchanges`, and again at the point of use in `tryVerifier` |
+| `:1475` downgrades to `no_link` | New `chain_incomplete` outcome — WANTED, retryable, no alert, asserts nothing about filing |
+| Integration tests use raw SQL | Both now go through `DocumentRepository.upsertDocument` and `recordDocumentSourceHints` -> `IPORepository.updateDocumentSourceHints`. This required migration **0037**: on a journal-built database `documents` had 8 of 19 columns, so the shared writer could not run at all. The acceptance harness's own raw-SQL documents writer is gone for the same reason |
+| Company rung page-2 403 yields absent | Only 404/410 is evidence; 403/429/5xx/transport is `failed` |
+| `sourceOfDocumentUrl` returns 'NSE' for unparseable | Returns `'UNKNOWN'`; the union gained that member |
+| 0035 edited in place | `ipodhan_test` was dropped to empty and replayed: 21/21 entries, 17 tables, `documents` 19/19 columns. Acceptance re-run on it: **9/9, allPassed true** |
+
+Detection-gap upgrades shipped alongside: the M-d cap test asserts the row STATE
+the cap leaves behind (and a second case that actually exhausts the budget);
+`acceptance-summary.json` is now written by the harness instead of only printed;
+the A4 predicate uses the runner's own `EXCHANGE_FAILURE_OUTCOMES` instead of a
+second, drifting definition.
+
+### NOT delivered, stated plainly
+
+1. **The `ipos` journal drift is still unrepaired.** 0037 repairs `documents`
+   only. A journal-built `ipos` still gets 32 of the 55 columns `schema.ts`
+   declares, with a NOT NULL `category` the model dropped, so `IPORepository.update`
+   (a bare `.returning()`) still cannot run on such a database and the wider
+   scraper integration suite still fails there. That is a schema-ownership call
+   for the owner, unchanged from round 4.
+2. **`npx tsc --noEmit -p tsconfig.json` in `scraper/` is NOT clean** — 159 error
+   lines, all pre-existing and byte-identical before and after this round
+   (verified by diffing the output against a stashed tree). None are in the five
+   files this round touched. Round 5 did not fix them; it also did not add one.
+3. **No fresh Opus review of the round-5 diff has run yet** — that is the next
+   step in the exit criteria and is the reviewer's job, not the implementer's.
+4. **The four acceptance IPO rows have no committed seeder.** Rebuilding
+   `ipodhan_test` from empty required capturing and re-inserting them by hand.
+   Anyone reproducing the run from a truly empty database will hit
+   `no ipos row for <company>`. Recorded, not fixed.

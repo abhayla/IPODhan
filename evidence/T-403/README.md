@@ -1,8 +1,29 @@
 # T-403 acceptance evidence — WP A+B document discovery + state machine
 
-**One current evidence set.** Everything here was produced on 2026-08-28 after
-review round 4, against `ipodhan_test` rebuilt from nothing. Earlier generations
-are under `archive/` and are superseded — do not read them as current.
+**One current evidence set.** Everything under `db-run/` was produced on
+2026-09-02 after review round 5, against `ipodhan_test` rebuilt from nothing
+(`DROP SCHEMA public CASCADE` + `DROP SCHEMA drizzle CASCADE`, then
+`drizzle-kit migrate` from empty: **21 of 21 journal entries applied, 17
+tables**). Earlier generations are under `archive/` and are superseded — do not
+read them as current.
+
+**Round 5 changed three things about how this evidence is made:**
+
+1. Migration **0037** repairs the `documents` column drift, so a journal-built
+   database now gets all nineteen columns `schema.ts` declares instead of eight.
+   That is what lets the acceptance run and the M8 integration test write
+   documents through the REAL `DocumentRepository.upsertDocument` rather than
+   through a raw INSERT that resembles it. The `ipos` drift is untouched and
+   remains an owner-level decision.
+2. `acceptance-summary.json` is now WRITTEN by the harness. It was built and
+   printed but never persisted, so the file stating the verdict had no producer
+   in the repo — the same defect W-2 fixed for the SQL readback.
+3. The A4 check's failure predicate was wrong (`outcome !== 'ok'`) and had passed
+   for four rounds only because ESDS was still on the BSE board every time it
+   ran. On 2026-09-02 ESDS had closed, BSE reported `not_on_board`, and the check
+   demanded BLOCKED_ALL rows for a day on which nothing failed. It now uses
+   `EXCHANGE_FAILURE_OUTCOMES` from the runner — the same set the runner itself
+   has always used for this distinction.
 
 Reproduce:
 
@@ -47,7 +68,7 @@ These hold on every run, and are what the checks assert. They are the contract:
 | Run 2 costs zero network calls; run 3 is a pure skip | Convergence — the state machine must stop, not churn |
 | Lead managers are captured from whichever exchange answered | One exchange being down must not lose data the other supplied (F-2) |
 
-## This run: 9 / 9, run 1 = 23 calls, run 2 = 0, run 3 = 0
+## This run (2026-09-02, round 5): 9 / 9, run 1 = 21 calls, run 2 = 0, run 3 = 0
 
 The numbers below describe THIS run against live exchanges on 2026-08-28. They
 are not the contract — the invariants above are. A different day, or one
