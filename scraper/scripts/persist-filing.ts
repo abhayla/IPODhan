@@ -306,9 +306,19 @@ export async function run(
 
 // Only the CLI entry point runs; importing this module (the wiring test does)
 // must not start a run.
+//
+// MINOR-3: `path.resolve` returns the OS's native casing, and on Windows
+// argv[1] can carry a different drive-letter case than `import.meta.url`
+// (`d:\...` vs `D:\...`) — a case-sensitive `===` then fails even though both
+// paths name the same file, silently no-op'ing the CLI. Compare
+// case-insensitively on win32 only (POSIX paths are case-sensitive by design).
+const resolvedArgv1 = typeof process.argv[1] === 'string' ? path.resolve(process.argv[1]) : null;
+const resolvedModuleUrl = fileURLToPath(import.meta.url);
+const normalizeForCompare = (p: string): string =>
+  process.platform === 'win32' ? p.toLowerCase() : p;
 const invokedDirectly =
-  typeof process.argv[1] === 'string' &&
-  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  resolvedArgv1 !== null &&
+  normalizeForCompare(resolvedArgv1) === normalizeForCompare(resolvedModuleUrl);
 
 if (invokedDirectly) {
   run()
@@ -317,4 +327,11 @@ if (invokedDirectly) {
       console.error(err);
       process.exit(1);
     });
+} else if (resolvedArgv1 !== null && resolvedArgv1.endsWith('persist-filing.ts')) {
+  // The guard did not match while argv[1] is clearly this script — never fail
+  // silently; a mismatch here (e.g. an unhandled case/path quirk) must be
+  // visible, not a no-op CLI.
+  console.error(
+    `persist-filing.ts: main-guard did not match (argv[1]=${resolvedArgv1}, module=${resolvedModuleUrl}) — CLI not started.`
+  );
 }

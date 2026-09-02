@@ -871,6 +871,33 @@ describe('filing-persister — never fabricates a date or an exchange (MAJOR-1, 
     expect(Object.values(scraped)).not.toContain(today);
   });
 
+  it('MINOR-1: a protected openDate with no filing date is absent from the upsertIPO payload', async () => {
+    // The filing carries no open_date, so the row's own openDate is only a
+    // fallback — but the admin protected ipos.openDate, so the fallback must
+    // not ride into the write either (it would re-attribute field_sources to
+    // this filing's source for a column the admin owns).
+    const s = makeDeps();
+    s.deps.protectionFilter = vi.fn(async (_id, table, data: Record<string, unknown>) => {
+      if (table !== 'ipos') return { filtered: data };
+      const filtered = { ...data };
+      delete filtered.openDate;
+      return { filtered };
+    });
+    const extraction = extractionFromOracle('PRICE_BAND_AD');
+    delete extraction.fields.open_date;
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const scraped = (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
+    expect('openDate' in scraped).toBe(false);
+    expect(summary.skipped_protected).toContain('ipos.openDate');
+    // Unprotected closeDate (also carried by the filing here) still lands.
+    expect(scraped.closeDate).toBe('2026-09-03');
+  });
+
   it('still falls back to the row own dates, which are real', async () => {
     const s = makeDeps();
     const extraction = extractionFromOracle('PRICE_BAND_AD');
@@ -1341,6 +1368,27 @@ describe('filing-persister - protected columns never reach a write payload (CRIT
     // Unprotected columns of the same row still take the filing's values.
     expect(fy2026.pat).toBe('1047.88');
     expect(summary.skipped_protected).toContain('financial_statements.revenue');
+  });
+
+  it('MINOR-2: with no stored financial_statements row, a "protected" revenue still gets the filing value and is not reported skipped', async () => {
+    // Protection means "do not overwrite the admin's stored value." With no
+    // row at all for this IPO (the default listByIpo() in makeDeps()), there
+    // is no admin value to protect, so the insert must carry the filing's
+    // revenue rather than a bare null, and skipped_protected must not claim a
+    // skip that never actually withheld anything.
+    const s = makeDeps();
+    s.deps.protectionFilter = protectFields({ financial_statements: ['revenue'] });
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const fy2026 = s.finStmt.mock.calls
+      .map((c) => c[0] as Record<string, unknown>)
+      .find((r) => r.fiscalYear === 2026)!;
+    expect(fy2026.revenue).toBe('19266.76');
+    expect(summary.skipped_protected).not.toContain('financial_statements.revenue');
   });
 });
 

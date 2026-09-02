@@ -182,3 +182,31 @@ describe('persist-filing.ts paired run — refusal is wired to process.exit', ()
     expect(exitSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('persist-filing.ts main guard — MINOR-3 case-insensitive drive letter on win32', () => {
+  it('still runs (prints usage) when invoked with a lowercase drive letter', { timeout: 20000 }, async () => {
+    if (process.platform !== 'win32') return; // the bug is win32-only; nothing to reproduce elsewhere
+    const { execFileSync } = await import('child_process');
+    const scriptPath = path.resolve(__dirname, '../../../scripts/persist-filing.ts');
+    // Force a drive-letter case mismatch against import.meta.url's native casing.
+    const lowerCasePath = scriptPath[0].toLowerCase() + scriptPath.slice(1);
+    // Invoked with no args, the CLI itself exits non-zero after printing its
+    // usage banner to stderr — that non-zero exit is expected and is NOT the
+    // bug under test; execFileSync throws on it, so capture the thrown
+    // error's output instead of the (never reached) return value.
+    let stderr = '';
+    try {
+      execFileSync('npx', ['tsx', lowerCasePath], {
+        cwd: path.resolve(__dirname, '../../..'),
+        encoding: 'utf8',
+        shell: true,
+      });
+    } catch (err) {
+      stderr = String((err as { stderr?: string }).stderr ?? '');
+    }
+    // A silent no-op (the pre-fix bug: the guard mismatched, `run()` never
+    // called) prints nothing at all; the guard matching means the CLI
+    // actually ran and printed its usage banner.
+    expect(stderr).toContain('usage: persist-filing.ts');
+  });
+});

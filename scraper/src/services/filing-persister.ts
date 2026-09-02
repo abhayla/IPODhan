@@ -520,8 +520,6 @@ export async function persistFilingExtraction(
   // not carry a date from nulling one that is already there); TODAY is not.
   const openForWrite = openDate ?? toIsoOrUndefined(existing.openDate);
   const closeForWrite = closeDate ?? toIsoOrUndefined(existing.closeDate);
-  if (openForWrite !== undefined) scraped.openDate = openForWrite;
-  if (closeForWrite !== undefined) scraped.closeDate = closeForWrite;
   // Every `ipos` column this filing wants to write, gathered BEFORE the write so
   // the admin-protection gate can drop individual columns. Round 7 sent these
   // straight into `scraped`: upsertIPO applies the field-priority matrix but NOT
@@ -542,16 +540,30 @@ export async function persistFilingExtraction(
   const iposWritable =
     Object.keys(iposCandidate).length > 0 ? await filterFields('ipos', iposCandidate) : {};
   for (const [col, v] of Object.entries(iposWritable)) {
-    // openDate/closeDate already carry the row's own value as a fallback; only
-    // overwrite that with the filing's value when the gate kept the column.
     scraped[col] = v;
     iposFields.push(col);
   }
-  // A protected open/close date must not be re-written through the fallback
-  // either — the fallback exists to preserve the stored value, and the stored
-  // value IS what the admin protected.
-  for (const col of ['openDate', 'closeDate']) {
-    if (col in iposCandidate && !(col in iposWritable)) delete scraped[col];
+  // MINOR-1: the row-fallback above must ride along ONLY when a write is
+  // already happening for other reasons (iposFields non-empty) — a
+  // fallback-only date must never itself trigger a write — and even then the
+  // fallback is probed through the SAME protection gate, unconditionally
+  // (independent of whether the filing itself carried a date), because the
+  // fallback exists to preserve the stored value, and the stored value IS
+  // what the admin protected. Skipped when the filing's own date already won
+  // the gate above (`col in scraped`).
+  if (iposFields.length > 0) {
+    const dateFallback: Record<string, unknown> = {};
+    if (openForWrite !== undefined && !('openDate' in scraped)) {
+      dateFallback.openDate = openForWrite;
+    }
+    if (closeForWrite !== undefined && !('closeDate' in scraped)) {
+      dateFallback.closeDate = closeForWrite;
+    }
+    const dateFallbackWritable =
+      Object.keys(dateFallback).length > 0 ? await filterFields('ipos', dateFallback) : {};
+    for (const [col, v] of Object.entries(dateFallbackWritable)) {
+      scraped[col] = v;
+    }
   }
 
   if (iposFields.length > 0) {
@@ -790,10 +802,20 @@ export async function persistFilingExtraction(
       'dscr',
       'rentExpense',
     ] as const;
+    // MINOR-2: this probe runs once for the whole IPO, independent of any
+    // specific fiscal-year row. Protection means "do not overwrite the
+    // admin's stored value" — with NO stored financial_statements row at
+    // all, there is nothing to protect, so a "protected" verdict here must
+    // not (a) block the insert (handled per-row below via `prior`) or (b)
+    // report a skip that never actually withheld anything.
+    const skippedProtectedBeforeProbe = skippedProtected.length;
     const statementWritable = await filterFields(
       'financial_statements',
       Object.fromEntries(STATEMENT_COLUMNS.map((c) => [c, null]))
     );
+    if (existingStatements.length === 0) {
+      skippedProtected.length = skippedProtectedBeforeProbe;
+    }
     const statementProtected = new Set(
       STATEMENT_COLUMNS.filter((c) => !(c in statementWritable))
     );
@@ -820,17 +842,23 @@ export async function persistFilingExtraction(
         continue;
       }
       const rowUnit: StatementUnit = priorUnit ?? unitEnum;
+      // MINOR-2: protection only applies when there is a STORED value to
+      // protect — `prior` is this exact (fiscal_year, basis) row. With no
+      // prior row, "protected" has nothing to preserve, so the filing's
+      // value is written rather than a null.
       const perShare = (
         m: Record<string, number>,
         col: string,
         kept: string | null
       ): string | null => {
-        if (statementProtected.has(col as (typeof STATEMENT_COLUMNS)[number])) return kept;
+        if (prior && statementProtected.has(col as (typeof STATEMENT_COLUMNS)[number])) {
+          return kept;
+        }
         return m[fy] !== undefined ? m[fy].toString() : kept;
       };
       const s = (m: Record<string, number>, col: keyof typeof prior): string | null => {
-        if (statementProtected.has(col as (typeof STATEMENT_COLUMNS)[number])) {
-          return prior ? ((prior[col] as string | null) ?? null) : null;
+        if (prior && statementProtected.has(col as (typeof STATEMENT_COLUMNS)[number])) {
+          return (prior[col] as string | null) ?? null;
         }
         if (m[fy] !== undefined) {
           const raw = m[fy];
