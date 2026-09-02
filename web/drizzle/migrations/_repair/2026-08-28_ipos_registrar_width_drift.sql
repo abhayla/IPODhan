@@ -1,3 +1,4 @@
+-- journaled as 0041_journal_drift_repair_backport.sql (T-405, #256)
 -- Repair: ipos.registrar live column is varchar(100); schema.ts and migration 0000 declare varchar(255).
 -- Found by the T-330 schema-drift assert during the 2026-08-27 staging deploy of 47da0a74
 -- ("[COLUMN_TYPE_MISMATCH] ipos.registrar expects varchar(255), live column is varchar(100)").
