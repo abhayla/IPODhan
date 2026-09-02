@@ -44,7 +44,15 @@ vi.mock('@ipodhan/shared', async (importOriginal) => {
   return {
     ...actual,
     db: {},
-    getRedisClient: () => ({}),
+    // #261: MUST be `null`, not `{}`. DistributedLock.acquire()/release() only
+    // take their fast, non-throwing "Redis unavailable, allow operation" path
+    // when `this.redis` is falsy -- a truthy empty object makes it call
+    // `this.redis.set(...)`/`.eval(...)`, which don't exist on `{}`, throwing
+    // a TypeError on every ENABLE_DATA_CONSOLIDATION=true run (caught and
+    // "failed open", so it never flipped an assertion, but it is real,
+    // order-sensitive noise on the shared console/stdout pipe that the fuzzy
+    // parity assertions have no business depending on).
+    getRedisClient: () => null,
     IPORepository: vi.fn().mockImplementation(() => ({
       findBySlug: mockFindBySlug,
       findByNormalizedName: mockFindByNormalizedName,
@@ -150,6 +158,21 @@ describe('BaseScraperOrchestrator.processIPO() — guard/write parity on the fuz
     mockFindBySlug.mockReset();
     mockFindByNormalizedName.mockReset();
     mockFindByFuzzyName.mockReset();
+    // #261: the comment above claims "no test's leftover once-value can leak
+    // into whichever test runs next, regardless of ordering" but only reset
+    // 3 of the 7 mocks this file defines -- mockIsIPOLocked,
+    // mockFilterProtectedFields, mockUpdate, and mockCreate were left to
+    // vi.clearAllMocks() alone, which clears call history but NOT a queued
+    // mockImplementation/mockResolvedValueOnce. Every test in this file does
+    // set its own implementation for each of these before using it, so this
+    // was not observed to flip an assertion -- but it is exactly the class
+    // of shared-mock-state gap the parity checker (bug-triage-discipline.md)
+    // flags: complete the reset so the file's own stated guarantee is true.
+    mockIsIPOLocked.mockReset();
+    mockFilterProtectedFields.mockReset();
+    mockUpdate.mockReset();
+    mockCreate.mockReset();
+    mockConsolidateIPOData.mockReset();
   });
 
   afterEach(() => {
@@ -213,7 +236,7 @@ describe('BaseScraperOrchestrator.processIPO() — guard/write parity on the fuz
     // The locked value survives: the write is never even attempted.
     expect(mockUpdate).not.toHaveBeenCalled();
     expect(result.iposSkipped).toBeGreaterThan(0);
-  }, 20000);
+  }, 45000); // #261: widened from 20s -- this file drives the REAL (unmocked) upsertIPO/consolidatedUpsertIPO write path (dynamic import + real retry/backoff code, only its repository calls are mocked), and measured runs on a contended dev/CI box (many concurrent node processes) intermittently exceeded 20s on cold module transform, timing the FIRST test out mid-flight; the timed-out promise then kept running in the background and its late mock calls corrupted the NEXT test's call-count assertions. Same class + same fix precedent as vitest.config.ts's file-level testTimeout comment (measured contention, not a hang).
 
   it('threads the guard-resolved row down to the write instead of re-resolving (T-307C Finding 1) -- write targets the FIRST resolution, not a second independent one', async () => {
     // T-307C (independent checker) found that the DoD's second test called
@@ -280,7 +303,7 @@ describe('BaseScraperOrchestrator.processIPO() — guard/write parity on the fuz
     // is null, and the write silently becomes a CREATE of a duplicate row
     // instead of an update of the row the guard just cleared.
     expect(mockCreate).not.toHaveBeenCalled();
-  }, 20000);
+  }, 45000); // #261: widened from 20s -- this file drives the REAL (unmocked) upsertIPO/consolidatedUpsertIPO write path (dynamic import + real retry/backoff code, only its repository calls are mocked), and measured runs on a contended dev/CI box (many concurrent node processes) intermittently exceeded 20s on cold module transform, timing the FIRST test out mid-flight; the timed-out promise then kept running in the background and its late mock calls corrupted the NEXT test's call-count assertions. Same class + same fix precedent as vitest.config.ts's file-level testTimeout comment (measured contention, not a hang).
 
   it('threads the guard-resolved row into consolidatedUpsertIPO when ENABLE_DATA_CONSOLIDATION=true (T-307C2 Finding 1) -- the branch that actually runs in production', async () => {
     // T-307C2 (independent checker, round 2) found that the test above only
@@ -361,5 +384,5 @@ describe('BaseScraperOrchestrator.processIPO() — guard/write parity on the fuz
     expect(mockUpdate).toHaveBeenCalledWith('hybrid-canonical-id', expect.anything());
     // ...and never CREATEs a duplicate.
     expect(mockCreate).not.toHaveBeenCalled();
-  }, 20000);
+  }, 45000); // #261: widened from 20s -- this file drives the REAL (unmocked) upsertIPO/consolidatedUpsertIPO write path (dynamic import + real retry/backoff code, only its repository calls are mocked), and measured runs on a contended dev/CI box (many concurrent node processes) intermittently exceeded 20s on cold module transform, timing the FIRST test out mid-flight; the timed-out promise then kept running in the background and its late mock calls corrupted the NEXT test's call-count assertions. Same class + same fix precedent as vitest.config.ts's file-level testTimeout comment (measured contention, not a hang).
 });
