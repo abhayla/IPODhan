@@ -5,7 +5,6 @@ import * as os from 'node:os';
 import { join } from 'node:path';
 import {
   DocumentDiscoveryRunner,
-  answeredFrom,
   type DiscoveryIpo,
   type HttpFetcher,
   type HttpResponse,
@@ -57,28 +56,23 @@ describe('structural: absence is unconstructible without an AnsweredResponse', (
   });
 
   it('mints an AnsweredResponse in exactly one place, and only from a 200', () => {
+    // r6 (2): this used to CALL `answeredFrom` directly, which meant the runner
+    // had to export its evidence factory and its brand purely so a test could
+    // reach them — widening the module's surface to prove the surface is narrow.
+    // The factory is module-private again; what it does is asserted through
+    // BEHAVIOUR (the 403-vs-answering cases below, and the full outcome matrix
+    // in document-discovery-resolve-final-outcome.test.ts), with the source
+    // shape kept here only as a secondary guard.
+    //
     // The declaration on the interface ends in a semicolon; the one CONSTRUCTION
     // site, inside answeredFrom, ends in a comma. Only the latter mints a value.
     const brandWrites = RUNNER_SRC.match(/\[ANSWERED\]:\s*true,/g) ?? [];
     expect(brandWrites.length).toBe(1);
-    expect(
-      answeredFrom({ status: 503, contentType: null, body: Buffer.alloc(0), url: 'u' })
-    ).toBeNull();
-    expect(
-      answeredFrom({ status: 404, contentType: null, body: Buffer.alloc(0), url: 'u' })
-    ).toBeNull();
-    expect(
-      answeredFrom({ status: 0, contentType: null, body: Buffer.alloc(0), url: 'u' })
-    ).toBeNull();
-    const ok = answeredFrom({
-      status: 200,
-      contentType: 'text/html',
-      body: Buffer.from('hello'),
-      url: 'https://x/p',
-    });
-    expect(ok).not.toBeNull();
-    expect(ok!.status).toBe(200);
-    expect(ok!.bytes).toBe(5);
+    // The factory refuses anything that is not a 200 — one branch, one line.
+    expect(RUNNER_SRC).toMatch(/function answeredFrom\([\s\S]{0,200}res\.status !== 200\) return null;/);
+    // ...and neither it nor the brand is exported.
+    expect(RUNNER_SRC).not.toMatch(/export function answeredFrom/);
+    expect(RUNNER_SRC).not.toMatch(/export (interface AnsweredResponse|const ANSWERED)/);
   });
 
   it('no rung returns the bare string literals the old union used', () => {

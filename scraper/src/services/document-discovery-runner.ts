@@ -232,7 +232,7 @@ const ANSWERED: unique symbol = Symbol('t403.answered-response');
  * `'absent'`. Absence is now a value that CARRIES its evidence, and the evidence
  * cannot be forged.
  */
-export interface AnsweredResponse {
+interface AnsweredResponse {
   readonly [ANSWERED]: true;
   readonly status: number;
   readonly url: string;
@@ -244,7 +244,7 @@ export interface AnsweredResponse {
  * actually answered — so a 403, a 503, a timeout (status 0) or a budget refusal
  * (no response at all) has nothing to hand the `absent` arm.
  */
-export function answeredFrom(
+function answeredFrom(
   res: { status: number; body?: Buffer; url?: string },
   url?: string
 ): AnsweredResponse | null {
@@ -286,6 +286,88 @@ export function isRungFound(
   r: RungOutcome
 ): r is { kind: 'found'; documentId: string; bytes: number } {
   return r.kind === 'found';
+}
+
+// ---------------------------------------------------------------------------
+// The final outcome is DERIVED, never inherited (T-403 r6, Class 1 #4)
+// ---------------------------------------------------------------------------
+
+/** What the exchange stage concluded for ONE document type. */
+export type ExchangeVerdict =
+  | 'found' // a link was present and (unless downloads are off) it stored
+  | 'no_link' // every consulted exchange ANSWERED and none carried a link
+  | 'failed'; // an exchange we asked could not answer
+
+/**
+ * What the escalation chain concluded. `null` is its own answer and the one the
+ * round-5 review turned on: not "absent", not "failed" — NOT ASKED. Every rung
+ * was skipped (SEBI does not serve this type, the row has no company URL, the
+ * row has no verifier URL), so nothing was learned by anyone.
+ */
+export type EscalationVerdict = 'found' | 'absent' | 'failed' | null;
+
+/**
+ * The whole per-type decision, as a pure function of the three facts that make it.
+ *
+ * WHY THIS EXISTS. Rounds 3, 4 and 5 each fixed "a non-answer recorded as
+ * evidence of absence" by constraining how absence is CONSTRUCTED — the r5
+ * branded `AnsweredResponse` makes it impossible to mint `absent` without a real
+ * 200. The r5 review then found the fourth instance, which constructs nothing:
+ * `outcome` was a mutable local set 80 lines earlier and overwritten only for
+ * `found`/`failed`, so a `no_link` the exchanges were not entitled to settle
+ * SURVIVED an escalation in which every rung was skipped, and the row was
+ * written NOT_YET_FILED. A guard cannot catch a value that is merely not
+ * overwritten; only removing the mutable variable can. Hence: one call, at the
+ * end, over an exhaustive match, with a `never` arm so a new verdict member
+ * cannot be added without deciding this table.
+ *
+ * ONE DEVIATION from the RCA's wording, deliberate and recorded in
+ * docs/reviews/T-403-plan.md: the RCA says `chain_incomplete` whenever
+ * `escalation === null && !settledByExchanges`, which literally also covers
+ * `exchanges === 'failed'` (where `settledByExchanges` is false by
+ * construction). Returning `chain_incomplete` there would downgrade a genuine
+ * exchange OUTAGE from BLOCKED_ALL — retry ladder plus P2 alert — to a silent
+ * WANTED, undoing the round-4 fix. A failure is a failure in every cell.
+ */
+export function resolveFinalOutcome(
+  exchanges: ExchangeVerdict,
+  settledByExchanges: boolean,
+  escalation: EscalationVerdict
+): AttemptOutcome {
+  // The document is in hand: nothing downstream can make that untrue.
+  if (exchanges === 'found' || escalation === 'found') return 'found';
+
+  switch (exchanges) {
+    case 'no_link':
+      switch (escalation) {
+        // A later rung ANSWERED and the filing is not there. That, and the
+        // settled-by-exchanges case below, are the only two routes to
+        // NOT_YET_FILED in the whole runner.
+        case 'absent':
+          return 'no_link';
+        // Asked and could not answer — never evidence of absence (H-2).
+        case 'failed':
+          return 'all_sources_failed';
+        // NOT ASKED. If the exchanges could settle this type themselves the
+        // rungs were skipped because there was no question left; otherwise
+        // nobody answered and we know nothing at all.
+        case null:
+          return settledByExchanges ? 'no_link' : 'chain_incomplete';
+        default: {
+          const unreachable: never = escalation;
+          return unreachable;
+        }
+      }
+    case 'failed':
+      // An exchange we consulted could not answer. A SEBI/company/verifier
+      // `absent` says nothing about the link the broken exchange would have
+      // carried, so the honest state stays BLOCKED_ALL with its retry ladder.
+      return 'all_sources_failed';
+    default: {
+      const unreachable: never = exchanges;
+      return unreachable;
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1503,7 +1585,13 @@ export class DocumentDiscoveryRunner {
         toStateRow(stateRow);
 
       const candidates = discovered.get(docType) ?? [];
-      let outcome: AttemptOutcome;
+      // r6 (Class 1, 4th instance): NOT a mutable `outcome`. The two verdicts
+      // below are the raw FACTS each stage established; the single
+      // `resolveFinalOutcome` call at the end derives the outcome from them.
+      // The bug this replaces was a `no_link` assigned here and never
+      // overwritten, which the write then read as "the company has not filed it".
+      let exchanges: ExchangeVerdict;
+      let escalation: EscalationVerdict = null;
       let documentId: string | null = null;
       let bytes: number | undefined;
 
@@ -1520,21 +1608,21 @@ export class DocumentDiscoveryRunner {
         // could not be reached at all. Collapsing them into one label is the
         // same conflation F3-vs-F6 exists to prevent.
         rungs.push(exchangesAnswered ? 'EXCHANGES:no_link' : 'EXCHANGES:failed');
-        // F3 vs F6: only when EVERY consulted exchange answered may we say the
-        // filing does not exist yet.
-        outcome = exchangesAnswered ? 'no_link' : 'all_sources_failed';
+        // F3 vs F6: only when EVERY consulted exchange answered may the chain
+        // even consider saying the filing does not exist yet.
+        exchanges = exchangesAnswered ? 'no_link' : 'failed';
       } else if (this.deps.skipDownload) {
         rungs.push('EXCHANGES:found');
-        outcome = 'found';
+        exchanges = 'found';
       } else {
         // Default to failure and let a successful store overwrite it. This
-        // initialiser is load-bearing: without it `outcome` stays undefined when
-        // every candidate is rejected, and `applyOutcome` then returns undefined
-        // and the state write throws. `strict: false` does not catch that.
-        outcome = 'all_sources_failed';
+        // initialiser is load-bearing: without it `exchanges` stays undefined
+        // when every candidate is rejected, and the resolver's exhaustive match
+        // then falls through. `strict: false` does not catch that.
+        exchanges = 'failed';
 
-        // A separate flag rather than comparing `outcome`: assigning a literal
-        // narrows its type, so `outcome !== 'found'` is a compile error in this
+        // A separate flag rather than comparing `exchanges`: assigning a literal
+        // narrows its type, so `exchanges !== 'found'` is a compile error in this
         // workspace. The flag says the same thing without fighting it.
         let stored: { documentId: string; bytes: number } | null = null;
         const attemptCandidates = async (list: DiscoveredDocument[]): Promise<void> => {
@@ -1566,7 +1654,7 @@ export class DocumentDiscoveryRunner {
         if (stored) {
           documentId = stored.documentId;
           bytes = stored.bytes;
-          outcome = 'found';
+          exchanges = 'found';
         }
         rungs.push(stored ? 'EXCHANGES:found' : 'EXCHANGES:failed');
       }
@@ -1580,7 +1668,7 @@ export class DocumentDiscoveryRunner {
       const settledByExchanges =
         isExchangeServedType(docType) && exchangeCoverageComplete;
       const needsEscalation =
-        outcome === 'all_sources_failed' || (outcome === 'no_link' && !settledByExchanges);
+        exchanges === 'failed' || (exchanges === 'no_link' && !settledByExchanges);
 
       // Rungs 3 and 4 (G1/G2). Reached when the exchanges failed, or when they
       // answered but cannot settle this type (a DRHP, or an IPO one of them no
@@ -1594,16 +1682,17 @@ export class DocumentDiscoveryRunner {
           triedUrls,
           seenBySha
         );
+        // r6: the chain's verdict is RECORDED, including its `null` — "no rung
+        // could be consulted". The old code acted on `found`/`failed` only, so
+        // `null` left the earlier `outcome` standing and an unsettled `no_link`
+        // was written as NOT_YET_FILED. `resolveFinalOutcome` now decides what
+        // each verdict means, `null` included.
         if (escalated && isRungFound(escalated)) {
           documentId = escalated.documentId;
           bytes = escalated.bytes;
-          outcome = 'found';
-        } else if (escalated && escalated.kind === 'failed') {
-          // H-2: a rung was asked and could not answer. That is never evidence
-          // that the company has not filed the document, so the row must not
-          // settle as NOT_YET_FILED — it goes to BLOCKED_ALL, which is the state
-          // that carries the retry ladder and the alert.
-          outcome = 'all_sources_failed';
+          escalation = 'found';
+        } else if (escalated) {
+          escalation = escalated.kind;
         }
       } else if (needsEscalation) {
         // Downloads are disabled for this run (call-counting / dry mode), so no
@@ -1632,6 +1721,10 @@ export class DocumentDiscoveryRunner {
         outcome: `rungs[${docType}]: ${rungs.join(' -> ')}`,
       };
       attempts.push(chainAttempt);
+
+      // r6: ONE derivation, at the end, from the facts each stage established.
+      // There is no longer a variable that can carry a stale claim to the write.
+      let outcome: AttemptOutcome = resolveFinalOutcome(exchanges, settledByExchanges, escalation);
 
       // G4 guard: BLOCKED_ALL asserts that every rung was consulted. If the
       // chain somehow ran short, that is a bug in the chain, not evidence that
