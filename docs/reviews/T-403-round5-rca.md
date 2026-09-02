@@ -66,3 +66,30 @@ before the protected-field early return at `:432–439`. Add an orchestrator tes
 - Items 3–8 done.
 - Full scraper suite green; tsc clean; acceptance run 8/8 re-run on a `--reset` DB; evidence refreshed.
 - One fresh Opus review of the round-5 diff only.
+
+## Round-5 review (2026-09-02 11:10 IST) — Class 1, 4th instance: absence INHERITED, not minted
+
+`escalateBeyondExchanges` returns `null` when every rung was skipped; the caller
+(`document-discovery-runner.ts:1594–1605`) acts only on `found`/`failed`, so a pre-escalation
+`outcome = 'no_link'` (set when the exchanges answered) survives even though
+`settledByExchanges` was false. Chain
+`EXCHANGES:no_link → SEBI:skipped → COMPANY:skipped → VERIFIER:skipped` → NOT_YET_FILED, no retry,
+no alert. Reachable for every prod row until `verifier_url` is populated.
+
+**Why the round-5 mechanism missed it.** The branded type constrains how absence is
+*constructed*. This path never constructs it; it *inherits* a mutable `outcome` variable set
+earlier in a 200-line function. The "structural" test is a source regex for `kind: 'absent'`
+and cannot see a value that is merely not overwritten.
+
+**Class fix (round 6).** The final outcome must be *derived*, never inherited: replace the
+mutable `outcome` with a pure `resolveFinalOutcome(exchanges, settledByExchanges, escalation)`
+that pattern-matches exhaustively (`never` on the default arm) and returns
+`chain_incomplete` for `escalation === null && !settledByExchanges`. Unit-test that function
+over the full input matrix (exchanges ∈ {ok/no_link, not_on_board, failed} × settled ∈ {t,f} ×
+escalation ∈ {found, failed, null}); the runner calls it once at the end. The regex test stays
+as a secondary guard. Also: `answeredFrom` not exported (test via behaviour); 0037 constraint
+guard qualified by `conrelid`; `chain_incomplete` preserves `blockedSinceAt`; A4's expected
+failure set pinned as a literal in a unit test.
+
+**Detection upgrade.** Nightly check: any row that reached NOT_YET_FILED whose chain has zero
+`ok`-answered rungs for a type the exchanges cannot serve → FAIL (`m_absence_without_evidence`).
