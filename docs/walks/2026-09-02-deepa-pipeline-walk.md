@@ -27,7 +27,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 |---|---|---|---|---|
 | B1 | Fetch BSE IPO board JSON | PASS | 17:40 | 22 board rows, 4 IPO. DEEPA row present, IR_flag IPO. |
 | B2 | Fetch NSE current + all-upcoming lists | PASS | 18:02 | NSE reachable (no 403 today). DEEPA in both lists. |
-| B3 | Parse candidate row (14 exchange fields) | pending | | expect FAIL on listing exchange (W-01) |
+| B3 | Parse candidate row (exchange fields) | BSE PASS / NSE FAIL | 18:35 | BSE: 10/10 parsers correct on raw detail (48 keys). NSE: fabricated faceValue=10 (W-02 root cause); fix dispatched (fix/nse-face-value-default). W-01 confirmed. |
 | B4 | Classify offering type | pending | | |
 | B5 | Validate raw record | pending | | |
 | B6 | Identity match new vs existing | pending | | |
@@ -46,13 +46,16 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | ID | Found at | What | Fix lives in | Status |
 |---|---|---|---|---|
 | W-01 | B1/B2 | `listingExchange`: BSE mapper writes "BSE", NSE mapper writes "NSE", last writer wins. DEEPA lists on both. Must be a merged list. | scraper mappers (`bse-api-scraper.ts`, `nse-api-client.ts`) + consolidation | open, fix at B3 |
-| W-02 | B1/B2 | Face value conflict: BSE says 2, NSE says 10 for DEEPA. Matrix silently picks one. No conflict row. | F4/F5 cross-verify; filing value wins; conflict row visible | open, acceptance test for F |
+| W-02 | B1/B2 | Face value conflict: BSE says 2, NSE says 10 for DEEPA. ROOT CAUSE (B3): NSE list payload has no face value; `transformIPOData` hard-codes `\|\| 10`. NSE's own issueInfo says "Rs. 2 per Equity Share". A fabricated value outranked BSE's correct one. | `nse-api-client.ts` transformIPOData + extractAdditionalNSEFields; tests | fix in progress (Sonnet, worktree IPODhan-wt-nse-face). Still the F4/F5 acceptance case: silent pick must become a conflict row. |
 | W-03 | B1/B2 | Subscription rows from BSE (own book, 17:00) and NSE (consolidated, 18:02) stored under one name with no scope label | H1 writer + schema label | open |
 | W-04 | B2 | NSE `sharesOffered` meaning differs per IPO (PSL: net-of-anchor at floor; DEEPA: full issue at cap) | H1 / E2 | open |
 | W-05 | B2 | SME IPOs (Ashutosh Fibre, Shanti Inorganics): NSE gives no band → issueSize skipped; no Total row → subscription snapshot rejected | NSE client SME path (E11 in lifecycle plan) | open, matters for an SME walk |
 | W-06 | B1/B2 | Discovery (B1/B2) and detail (C1) and subscription (H1) run inside ONE function per source; cannot run B1 alone | design note for the due-step refactor (S-02) | note |
 | W-07 | B1 | Main checkout had no node_modules; every prior walk ran in a worktree | precondition §0; registry row `main-checkout-not-runnable` (bus, 2026-09-02) | done |
 | W-08 | B1 | Probe outside the package fails on top-level await | convention §0 | done |
+| W-10 | B3 | `fetchIPODetail('DEEPA')` returns companyName = symbol, openDate = closeDate = today, faceValue 10. Only callers are two backfill scripts (demand-graph, subscription), so prod is not writing it today, but it is a trap for C2. | `nse-api-client.ts` fetchIPODetail mapping | open |
+| W-11 | B3 | Issue-size composition not reconcilable from exchange data: BSE shares 18,520,085; NSE text says fresh Rs 2,500 mn + OFS 11,848,340 shares incl. anchor 7,791,789. No arithmetic closes. Needs the RHP (E2/E9). | E2 category/structure extraction + E9 arithmetic | open |
+| W-12 | B3 | POSITIVE: BSE detail carries 48 keys incl. Price_Band_Advertisement link, RHP zip (Prospectus_GID), IPO_Market_Timings, UPI cut-off, Syndicate_Member, Sponsor_Bank, Eligible_Banks, max bid qty per category, Rating, Security_Type. NSE issueInfo has 38 titled rows incl. Face Value, Issue Size text, max bid qty, registrar contact, ratios zip. Inventory fields A13/B7/B8/E5/E6 are obtainable from exchange JSON at B3/C1, not only from the PDF. | B3 mappers (extend), field inventory doc | open |
 | W-09 | inventory | 18 of 54 ad/RHP fields have no DB column; 44 of 54 never written by prod code | migration drafted in price-band-ad-field-inventory.md §"Schema changes"; not approved | open, blocks G5 |
 
 ## 3. Owner decisions (D-nn)
