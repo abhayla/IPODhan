@@ -27,7 +27,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 |---|---|---|---|---|
 | B1 | Fetch BSE IPO board JSON | PASS | 17:40 | 22 board rows, 4 IPO. DEEPA row present, IR_flag IPO. |
 | B2 | Fetch NSE current + all-upcoming lists | PASS | 18:02 | NSE reachable (no 403 today). DEEPA in both lists. |
-| B3 | Parse candidate row (exchange fields) | BSE PASS / NSE FAIL | 18:35 | BSE: 10/10 parsers correct on raw detail (48 keys). NSE: fabricated faceValue=10 (W-02 root cause); fix dispatched (fix/nse-face-value-default). W-01 confirmed. |
+| B3 | Parse candidate row (exchange fields) | **PASS** (18:45) | 18:35-18:45 | BSE: 10/10 parsers correct on raw detail (48 keys). NSE: fabricated faceValue=10 (W-02 root cause); fix dispatched (fix/nse-face-value-default). W-01 confirmed. |
 | B4 | Classify offering type | pending | | |
 | B5 | Validate raw record | pending | | |
 | B6 | Identity match new vs existing | pending | | |
@@ -46,7 +46,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | ID | Found at | What | Fix lives in | Status |
 |---|---|---|---|---|
 | W-01 | B1/B2 | `listingExchange`: BSE mapper writes "BSE", NSE mapper writes "NSE", last writer wins. DEEPA lists on both. Must be a merged list. | scraper mappers (`bse-api-scraper.ts`, `nse-api-client.ts`) + consolidation | reclassified 18:40: parsers correctly report their own exchange; the merge into a list exists in `data-persister.ts` update path (`mergeListingExchanges`) but NOT in `data-consolidation-orchestrator.extractListingExchanges` (single value). Verify at B7 with a real write. |
-| W-02 | B1/B2 | Face value conflict: BSE says 2, NSE says 10 for DEEPA. ROOT CAUSE (B3): NSE list payload has no face value; `transformIPOData` hard-codes `\|\| 10`. NSE's own issueInfo says "Rs. 2 per Equity Share". A fabricated value outranked BSE's correct one. | `nse-api-client.ts` transformIPOData + extractAdditionalNSEFields; tests | round 1 committed 52cc7789 (nse-api-client + legacy nse-scraper + 5 tests), reproduced 35/35 by Fable. Round 2 dispatched 18:41: same fabrication in `data-persister.ts:315` (insert path, LIVE in prod), `data-consolidation-orchestrator.ts:371`, `bse-scraper.ts` x2, `bse-detail-scraper.ts` x2, chittorgarh rights/debt adapter. Round 1 alone would NOT have changed the stored value. Still the F4/F5 acceptance case. |
+| W-02 | B1/B2 | Face value conflict: BSE says 2, NSE says 10 for DEEPA. ROOT CAUSE (B3): NSE list payload has no face value; `transformIPOData` hard-codes `\|\| 10`. NSE's own issueInfo says "Rs. 2 per Equity Share". A fabricated value outranked BSE's correct one. | `nse-api-client.ts` transformIPOData + extractAdditionalNSEFields; tests | round 1 committed 52cc7789 (nse-api-client + legacy nse-scraper + 5 tests), reproduced 35/35 by Fable. Round 2 dispatched 18:41: same fabrication in `data-persister.ts:315` (insert path, LIVE in prod), `data-consolidation-orchestrator.ts:371`, `bse-scraper.ts` x2, `bse-detail-scraper.ts` x2, chittorgarh rights/debt adapter. Round 2 committed 89b4c2cc (7 sites, 12 tests, 73/73 reproduced by Fable). PR #277 open, CI pending. Verified on DEEPA's real NSE payload: missing -> undefined, issueInfo -> 2. Still the F4/F5 acceptance case (silent pick must become a conflict row). Note: `force-nse-scrape.ts` script still has a literal 10 (debug script, not a prod path). |
 | W-03 | B1/B2 | Subscription rows from BSE (own book, 17:00) and NSE (consolidated, 18:02) stored under one name with no scope label | H1 writer + schema label | open |
 | W-04 | B2 | NSE `sharesOffered` meaning differs per IPO (PSL: net-of-anchor at floor; DEEPA: full issue at cap) | H1 / E2 | open |
 | W-05 | B2 | SME IPOs (Ashutosh Fibre, Shanti Inorganics): NSE gives no band → issueSize skipped; no Total row → subscription snapshot rejected | NSE client SME path (E11 in lifecycle plan) | open, matters for an SME walk |
@@ -68,6 +68,7 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | D-04 | 18:05 | Walk IPO = DEEPA for all stages from here. |
 | D-05 | 18:11 | Every field on the photographed price-band ad (54-field inventory) is in scope for scraping; steps E1-E8 map to inventory groups A-F by ID. |
 | D-06 | 18:20 | Walk continues as planned. Everything discussed/decided is written as a detailed SPEC now (`docs/specs/per-ipo-due-step-pipeline.md`); implementation only after the walk is complete. S-01..S-04 are NOT built during the walk. |
+| D-07 | 18:45 | No worktree cleanup inside this walk. It is a separate task for another session (20 stale worktrees listed 18:41: 11 `IPODhan-*`, 8 under `D:\Abhay\wt`). From now on fixes for this walk are made in THIS checkout on the walk branch (ledger + fixes together), no new worktrees; `IPODhan-wt-nse-face` is removed with one command after PR #277 merges. |
 
 ## 4. Recommendations pending owner decision (S-nn)
 
@@ -79,6 +80,8 @@ runs, plus a raw view of the same endpoint where the function hides it.
 | S-04 | 18:05 | A static-field mismatch between sources is a visible conflict, never a silent pick. | pending |
 
 ## 5. Documentation due after the walk
+
+- Worker lesson (18:43): the W-02 worker used `git stash` to prove red-then-green inside its own worktree. Harmless there, but `git stash` is forbidden by the session rule (cross-worker incident 2026-09-02). Briefs must say: prove red by checking out the parent commit of the source file, never stash.
 
 - `how.md`: replace steps 1-11 with the B-J breakdown; add precondition; add the source-tier model once S-03 is decided.
 - `docs/reviews/ipo-pipeline-stage-gap-analysis.md` §6: point to this file.
