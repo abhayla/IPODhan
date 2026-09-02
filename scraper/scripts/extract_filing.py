@@ -25,7 +25,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from extract_financials_pdf import (  # noqa: E402
     money_values,
     _normalize_numbers,
-    detect_unit,
     extract_from_texts as extract_pnl_from_texts,
 )
 
@@ -114,6 +113,34 @@ def check_monotonic_mcap(mcap_floor, mcap_cap):
     return True, "%s < %s" % (mcap_floor, mcap_cap)
 
 
+def check_mcap_consistency(mcap_floor, floor, shares_floor, mcap_cap, cap, shares_cap, tol=0.005):
+    """Market cap, price and fresh-issue share count must be mutually consistent,
+    not just individually monotonic (MAJOR-2). mcap (Rs million) / price gives the
+    POST-issue share count at that price point; subtracting the fresh-issue shares
+    at that same price point gives the implied PRE-issue share count. That implied
+    count must agree whether computed at floor or at cap, within +/-0.5% — a
+    mismatch means at least one of mcap/shares/price was misread from the table.
+    """
+    if None in (mcap_floor, floor, shares_floor, mcap_cap, cap, shares_cap) or not floor or not cap:
+        return False, "missing inputs"
+    pre_floor = mcap_floor * 1_000_000.0 / floor - shares_floor
+    pre_cap = mcap_cap * 1_000_000.0 / cap - shares_cap
+    denom = max(abs(pre_floor), abs(pre_cap), 1.0)
+    drift = abs(pre_floor - pre_cap) / denom
+    if drift > tol:
+        return False, "implied pre-issue shares %.0f (floor) != %.0f (cap) (%.4f%%)" % (
+            pre_floor, pre_cap, drift * 100)
+    return True, "implied pre-issue shares %.0f ~= %.0f (%.4f%%)" % (pre_floor, pre_cap, drift * 100)
+
+
+def _combine(*results):
+    """Chain multiple (passed, detail) check results — first failure wins."""
+    for passed, detail in results:
+        if not passed:
+            return False, detail
+    return True, "; ".join(detail for _passed, detail in results)
+
+
 def check_allocation(qib, nii, retail):
     """QIB+NII+Retail <= 100 and, book-built, QIB >= 50."""
     parts = [p for p in (qib, nii, retail) if p is not None]
@@ -127,8 +154,27 @@ def check_allocation(qib, nii, retail):
     return True, "QIB %s + NII %s + Retail %s = %s" % (qib, nii, retail, total)
 
 
+def _working_days_between(a, b):
+    """Weekdays strictly after `a` up to and including `b` (Mon-Fri only).
+
+    Holidays are deliberately NOT accounted for — the exchange holiday calendar
+    is not available to this offline extractor. This is a documented
+    approximation (WP C-3 follow-up: wire the real holiday calendar), not a claim
+    of exact settlement-day accuracy.
+    """
+    from datetime import timedelta
+    n = 0
+    d = a + timedelta(days=1)
+    while d <= b:
+        if d.weekday() < 5:  # Mon=0 .. Fri=4
+            n += 1
+        d += timedelta(days=1)
+    return n
+
+
 def check_timeline(dates):
-    """anchor < open <= close < allotment <= refund <= credit < listing, and T+7."""
+    """anchor < open <= close < allotment <= refund <= credit < listing, and T+3
+    WORKING days (Sat/Sun skipped; holidays ignored — see _working_days_between)."""
     from datetime import date
     order = ["anchor_bid_date", "open_date", "close_date", "basis_of_allotment_date",
              "refund_date", "credit_date", "listing_date"]
@@ -146,8 +192,10 @@ def check_timeline(dates):
     if dates.get("close_date") and dates.get("listing_date"):
         c = date(*[int(x) for x in dates["close_date"].split("-")])
         l = date(*[int(x) for x in dates["listing_date"].split("-")])
-        if (l - c).days > 7:
-            return False, "listing %s more than 7 calendar days after close %s" % (l, c)
+        wd = _working_days_between(c, l)
+        if wd > 3:
+            return False, ("listing %s more than 3 working days after close %s "
+                            "(%s working days, Sat/Sun skipped, holidays ignored)" % (l, c, wd))
     return True, " < ".join("%s=%s" % (k, v) for k, v in present)
 
 
@@ -169,12 +217,28 @@ def check_track_record(total_issues, closed_below):
     return True, "%s of %s" % (closed_below, total_issues)
 
 
-def check_holding_dilution(pre_pct, post_pct):
-    """A fresh issue can only dilute: post % must be below pre %."""
+def check_holding_dilution(pre_pct, post_pct, shares_held=None, fresh_shares=None, tol=0.01):
+    """A fresh issue can only dilute: post % must be below pre %.
+
+    When the promoter's absolute pre-issue share count AND the fresh-issue share
+    count are both known (D8), also recompute post = pre * pre_shares /
+    (pre_shares + fresh) — where pre_shares (total pre-issue outstanding shares)
+    is derived from the promoter's own held shares and pre-issue percentage — and
+    require it to reproduce the printed post-issue %% within +/-1%%.
+    """
     if pre_pct is None or post_pct is None:
         return False, "missing"
     if not post_pct < pre_pct:
         return False, "post-issue %s%% not < pre-issue %s%%" % (post_pct, pre_pct)
+    if shares_held and fresh_shares and pre_pct:
+        pre_shares = shares_held * 100.0 / pre_pct
+        expected_post = pre_pct * pre_shares / (pre_shares + fresh_shares)
+        drift = abs(expected_post - post_pct) / max(abs(expected_post), 1e-6)
+        if drift > tol:
+            return False, "formula post %.4f%% != printed %s%% (%.4f%%)" % (
+                expected_post, post_pct, drift * 100)
+        return True, "%s%% -> %s%% (formula %.4f%% within %.1f%%)" % (
+            pre_pct, post_pct, expected_post, tol * 100)
     return True, "%s%% -> %s%%" % (pre_pct, post_pct)
 
 
@@ -283,6 +347,16 @@ class Emitter:
             "check": {"name": "not_extractable", "passed": True, "detail": reason},
         }
 
+    def put_c_money(self, unit, name, value, page, check_name, check_result):
+        """A C-group money field (MAJOR-1 / C7): writable ONLY when an explicit
+        unit line was found. `unit` is None -> null with reason unit_unknown,
+        regardless of whether the value itself would otherwise pass its check —
+        a number with no known unit is not a value, it is a guess."""
+        if unit is None:
+            self.null(name, "unit_unknown", page)
+        else:
+            self.put(name, value, page, check_name, check_result)
+
 
 def _num(tok):
     vals = money_values(tok)
@@ -301,6 +375,32 @@ def _find(lines, rx, start=0):
         if rx.search(lines[i]):
             return i
     return -1
+
+
+# MAJOR-1: `extract_financials_pdf.detect_unit` silently defaults to "lakhs" when
+# no "in <unit>" line is found (it is a numeric-column-alignment helper, not a
+# write-gate, and its default must NOT change). C7 of the extraction contract
+# requires an EXPLICIT unit line for any C-group money field to be written — so
+# this extractor does its own presence check, over the cover page and every
+# other page, and never falls back to a default.
+UNIT_RX = re.compile(r"(?:₹|rs\.?|rupees?)?\s*in\s+(million|millions|lakh|lakhs|crore|crores)",
+                     re.I)
+
+
+def _find_unit(page_texts):
+    """Explicit unit-line detection (C7). Returns (unit, page) or (None, None) —
+    never a guess, never the shared module's silent default."""
+    for idx, text in page_texts:
+        cleaned = re.sub(r"[`₹’]", " ", text or "")
+        m = UNIT_RX.search(cleaned)
+        if m:
+            u = m.group(1).lower()
+            if u.startswith("lakh"):
+                return "lakhs", idx
+            if u.startswith("cror"):
+                return "crores", idx
+            return "millions", idx
+    return None, None
 
 
 # --------------------------------------------------------------------------- #
@@ -392,9 +492,14 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
     emit.put("shares_monotonic", shares_floor is not None and shares_cap is not None,
              page_for(fi), "more_shares_at_floor_than_cap",
              check_monotonic_shares(shares_floor, shares_cap))
-    mono = check_monotonic_mcap(mcap_floor, mcap_cap)
-    emit.put("market_cap_at_floor", mcap_floor, page_for(mi), "market_cap_ordering", mono)
-    emit.put("market_cap_at_cap", mcap_cap, page_for(mi), "market_cap_ordering", mono)
+    mcap_check = _combine(
+        check_monotonic_mcap(mcap_floor, mcap_cap),
+        check_mcap_consistency(mcap_floor, floor, shares_floor, mcap_cap, cap, shares_cap),
+    )
+    emit.put("market_cap_at_floor", mcap_floor, page_for(mi),
+             "market_cap_ordering_and_consistency", mcap_check)
+    emit.put("market_cap_at_cap", mcap_cap, page_for(mi),
+             "market_cap_ordering_and_consistency", mcap_check)
     emit.put("issue_structure", "FRESH_ONLY" if ofs_amount == 0 else "FRESH_AND_OFS", page_for(oi),
              "issue_structure_from_ofs_row", (ofs_amount is not None, "ofs=%s" % ofs_amount))
 
@@ -502,9 +607,9 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
     hy = _find(lines, re.compile(r"^\s*20\d{2}\s+20\d{2}\s+20\d{2}\s*$"))
     if hy >= 0:
         fiscal_years = [int(y) for y in re.findall(r"20\d{2}", lines[hy])]
-    # The ad writes "(in ` million)" — strip the currency glyph so the shared
-    # detector's "in <unit>" pattern matches.
-    unit = detect_unit(re.sub(r"[`₹’]", " ", whole))
+    # MAJOR-1 (C7): the unit must be read EXPLICITLY, never defaulted — search the
+    # whole ad (it is a single/few-page cover document) for an "in <unit>" line.
+    unit, unit_page = _find_unit(page_texts)
 
     def series_row(rx, count, start=0):
         idx = _find(lines, rx, start)
@@ -524,14 +629,16 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
 
     emit.put("fiscal_years", fiscal_years, page_for(hy), "fiscal_years_consecutive",
              check_fy_series({str(y): 0 for y in fiscal_years}, fiscal_years))
-    emit.put("unit", unit, page_for(hy), "unit_line_found", (unit is not None, "%s" % unit))
-    emit.put("pat_by_fy", pat, pat_page, "pat_year_series", check_fy_series(pat or {}, fiscal_years))
-    emit.put("op_cash_flow_by_fy", ocf, ocf_page, "op_cash_flow_year_series",
-             check_fy_series(ocf or {}, fiscal_years))
-    emit.put("dscr_by_fy", dscr, dscr_page, "dscr_year_series",
-             check_fy_series(dscr or {}, fiscal_years))
-    emit.put("rent_by_fy", rent, rent_page, "rent_year_series",
-             check_fy_series(rent or {}, fiscal_years))
+    emit.put("unit", unit, unit_page, "unit_not_stated",
+             (unit is not None, "%s" % unit if unit else "no explicit unit line found"))
+    emit.put_c_money(unit, "pat_by_fy", pat, pat_page, "pat_year_series",
+                      check_fy_series(pat or {}, fiscal_years))
+    emit.put_c_money(unit, "op_cash_flow_by_fy", ocf, ocf_page, "op_cash_flow_year_series",
+                      check_fy_series(ocf or {}, fiscal_years))
+    emit.put_c_money(unit, "dscr_by_fy", dscr, dscr_page, "dscr_year_series",
+                      check_fy_series(dscr or {}, fiscal_years))
+    emit.put_c_money(unit, "rent_by_fy", rent, rent_page, "rent_year_series",
+                      check_fy_series(rent or {}, fiscal_years))
 
     # EPS: "March 31, 2026 (41.98) (41.98) 3" — basic, diluted, weight, per year.
     eps_basic, eps_diluted, eps_page = {}, {}, None
@@ -549,12 +656,12 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
             eps_basic[m.group(1)] = basic
             eps_diluted[m.group(1)] = diluted
             eps_page = page_for(idx)
-    emit.put("eps_basic_by_fy", eps_basic or None, eps_page, "eps_year_series",
-             check_fy_series(eps_basic, fiscal_years))
-    emit.put("eps_diluted_by_fy", eps_diluted or None, eps_page, "eps_year_series",
-             check_fy_series(eps_diluted, fiscal_years))
-    emit.put("eps_sign_matches_pat", bool(eps_basic and pat), eps_page, "eps_sign_matches_pat",
-             check_sign_consistency(eps_basic, pat or {}))
+    emit.put_c_money(unit, "eps_basic_by_fy", eps_basic or None, eps_page, "eps_year_series",
+                      check_fy_series(eps_basic, fiscal_years))
+    emit.put_c_money(unit, "eps_diluted_by_fy", eps_diluted or None, eps_page, "eps_year_series",
+                      check_fy_series(eps_diluted, fiscal_years))
+    emit.put_c_money(unit, "eps_sign_matches_pat", bool(eps_basic and pat), eps_page,
+                      "eps_sign_matches_pat", check_sign_consistency(eps_basic, pat or {}))
     bi = _find(lines, re.compile(r"Restated Consolidated Financial Information", re.I))
     emit.put("financial_basis", "restated_consolidated" if bi >= 0 else None, page_for(bi),
              "financial_basis_stated", (bi >= 0, "restated consolidated"))
@@ -578,7 +685,7 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
             sh_page = page_for(si)
     emit.put("promoter_shares_held", shares_held, sh_page, "promoter_shares_positive",
              (shares_held is not None and shares_held > 0, "%s" % shares_held))
-    dil = check_holding_dilution(pre_pct, post_pct_cap)
+    dil = check_holding_dilution(pre_pct, post_pct_cap, shares_held, shares_cap)
     emit.put("promoter_holding_pre_pct", pre_pct, sh_page, "fresh_issue_dilutes_promoter", dil)
     emit.put("promoter_holding_post_pct_at_cap", post_pct_cap, sh_page,
              "fresh_issue_dilutes_promoter", dil)
@@ -700,18 +807,24 @@ def extract_rhp(page_texts, emit):
     cleaned = [(i, re.sub(r"[`₹]", " ", t or "")) for i, t in page_texts]
     pnl = extract_pnl_from_texts(cleaned)
     fiscal_years = pnl.get("annualYears") or []
-    unit = pnl.get("unit")
     metrics = pnl.get("metrics") or {}
+    # MAJOR-1 (C7): do NOT trust `pnl["unit"]` — the shared module's own detector
+    # silently defaults to "lakhs" when no "in <unit>" line is found (that default
+    # exists only so numeric column alignment never crashes; it is not a claim the
+    # unit is known). This extractor does its own presence check, over every page
+    # including the cover, and writes null when no explicit unit line exists.
+    unit, unit_page = _find_unit(cleaned)
 
     emit.put("fiscal_years", fiscal_years, None, "fiscal_years_consecutive",
              check_fy_series({str(y): 0 for y in fiscal_years}, fiscal_years))
-    emit.put("unit", unit, None, "unit_line_found", (bool(unit), "%s" % unit))
+    emit.put("unit", unit, unit_page, "unit_not_stated",
+             (unit is not None, "%s" % unit if unit else "no explicit unit line found"))
     for key, name in (("revenue", "revenue_by_fy"), ("totalIncome", "total_income_by_fy"),
                       ("profit", "pat_by_fy"), ("eps", "eps_basic_by_fy"),
                       ("ebitda", "ebitda_by_fy"), ("netWorth", "net_worth_by_fy")):
         series = {str(k): v for k, v in (metrics.get(key) or {}).items()}
-        emit.put(name, series or None, None, "%s_year_series" % name,
-                 check_fy_series(series, fiscal_years))
+        emit.put_c_money(unit, name, series or None, None, "%s_year_series" % name,
+                          check_fy_series(series, fiscal_years))
 
     # F2: numbered risk-factor headings inside the "Risk Factors" section.
     headings, first_page = set(), None

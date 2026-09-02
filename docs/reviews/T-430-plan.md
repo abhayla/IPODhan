@@ -38,8 +38,12 @@ reprints. The **RHP** is used for the C group proper (restated P&L, via the exis
 whole C group is skipped, never mapped onto assumed years.
 
 ## Reuse
-`money_values`, `_normalize_numbers`, `detect_unit`, `extract_from_texts` are **imported** from
-`extract_financials_pdf.py`, not copied.
+`money_values`, `_normalize_numbers`, `extract_from_texts` are **imported** from
+`extract_financials_pdf.py`, not copied. `detect_unit` (the shared module's own unit detector,
+which silently defaults to `"lakhs"` when no `"in <unit>"` line is found — a numeric-alignment
+convenience, not a write-gate) is deliberately NOT used for the C7 unit field: `extract_filing.py`
+runs its own explicit presence check (`_find_unit`) over the cover and every other page, and
+writes `unit = null` (never a default) when no unit line exists — see the round-2 fix note below.
 
 ## Tests
 `tests/unit/scripts/extract-filing.test.ts`: runs the script on both stored PDFs (skipped with a
@@ -62,3 +66,57 @@ locator finds zero numbered headings, so the check fails and the field is emitte
 behaviour for a locator that cannot prove its answer — but it IS a gap, not a pass: the RHP's risk
 headings are not the `^\d{1,3}\.\s` shape the ad's are. Next contract (WP C-3) should take the
 heading shape from the RHP's table of contents rather than from the advertisement's numbering.
+
+## Round-2 fix wave (T-430 fleet/wp-c2-filing-extractor)
+
+- **MAJOR-1 (C7 unit gate).** `pnl.get("unit")` from the shared extractor silently defaulted to
+  `"lakhs"` whenever no `"in <unit>"` line matched — so a document that never states its unit
+  would still emit every C-group money field, in the wrong scale, with a passing check. Fixed:
+  `extract_filing.py` now does its own explicit `_find_unit()` presence check (cover + every
+  page); when absent, `unit = null` (`unit_not_stated` check fails, `extraction_status =
+  PARTIAL`), and every C-group money field (`pat_by_fy`, `op_cash_flow_by_fy`, `dscr_by_fy`,
+  `rent_by_fy`, `eps_basic_by_fy`, `eps_diluted_by_fy`, `eps_sign_matches_pat`,
+  `revenue_by_fy`, `total_income_by_fy`, `ebitda_by_fy`, `net_worth_by_fy`) is written `null`
+  with reason `unit_unknown`, regardless of whether the underlying arithmetic check would have
+  passed. Covered by a synthetic negative test (P&L table present, no unit line anywhere).
+- **MAJOR-2 (mcap consistency).** Market cap at floor/cap was checked only for monotonicity
+  (`mcap_floor < mcap_cap`) — a self-consistent-looking pair could still be arithmetically wrong
+  against the same table's own share counts. Added `check_mcap_consistency`: the pre-issue share
+  count implied by `mcap/price - shares_at_price` must agree at floor and at cap within ±0.5%.
+  Mutation proof (mcap_cap × 1.01 on the real PSL fixture numbers: 46,035.12 → 46,495.47): the
+  unmutated pair is consistent to ~0.00001% drift; after the mutation the combined
+  `market_cap_ordering_and_consistency` check FAILS — implied pre-issue shares 68,235,000 (floor)
+  vs 69,035,603 (mutated cap), a 1.16% drift, over the 0.5% tolerance. Covered by an offline
+  synthetic test (`mcap consistency FAILS when mcap_cap disagrees with the floor-side implied
+  share count`) and re-verified directly against the real fixture — recorded in the PR.
+- **MINOR (T+3 working days).** `check_timeline`'s listing-after-close gate compared calendar
+  days (`> 7`); replaced with a Mon–Fri working-day count (`_working_days_between`) and a `> 3`
+  bound. Holidays are NOT modeled — the exchange holiday calendar is not available to this
+  offline script — documented explicitly in the function's docstring rather than silently assumed
+  correct. **Follow-up for WP C-3:** wire the real NSE/BSE trading-holiday calendar so this stops
+  being a weekday-only approximation.
+- **MINOR (D8 promoter dilution formula).** `check_holding_dilution` only asserted `post < pre`;
+  now also recomputes `post = pre × pre_shares / (pre_shares + fresh)` (deriving `pre_shares` from
+  the promoter's own held-share count and pre-issue %) whenever both the promoter's share count
+  and the fresh-issue share count are available, within ±1%.
+- **MINOR (fixture-test skip discipline).** `extract-filing.test.ts`'s PDF-fixture-dependent tests
+  now call `ctx.skip()` when the gitignored PDFs or the `python` binary are absent, instead of a
+  bare `return` after a `console.warn` — a silently-passed (green, zero-assertion) test is no
+  longer indistinguishable from a real pass in CI/local runs without the fixture store.
+
+### Named, not yet fixed — WP C-3 follow-ups
+
+- **Heading consecutiveness.** F2's risk-factor-count locator (see the RHP gap noted above) does
+  not check that the numbered headings it does find are *consecutive* (1, 2, 3, … with no gaps) —
+  only that there are enough of them (`check_min_count`). A heading extractor that skips a
+  section (OCR noise, a merged heading) would currently pass silently as long as the total count
+  clears the floor. WP C-3 should add a `check_headings_consecutive` alongside `check_min_count`
+  once the RHP-shaped heading locator (noted above) is built.
+- **Per-page NEEDS_OCR.** `run()` classifies a document `NEEDS_OCR` only when NO page anywhere has
+  a text layer (`not any((t or "").strip() for _i, t in page_texts)`). A real prospectus can be a
+  text-layer PDF with a handful of SCANNED pages mixed in (a signature page, an annexure photocopy)
+  — those pages currently read as empty text and simply fail to match any locator, with no signal
+  that the miss is because the page has no text layer at all versus because the locator itself is
+  wrong. WP C-3 should record a per-page `needs_ocr: bool[]` alongside the existing
+  document-level `extraction_status`, so a field miss on a scanned page is distinguishable from a
+  field miss on a text page the locator failed to match.
