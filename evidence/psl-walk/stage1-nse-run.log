@@ -1,0 +1,296 @@
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+[10:30:24 UTC] [32mINFO[39m: [36mIPO Scraper CLI started[39m
+    source: "nse"
+[10:30:24 UTC] [32mINFO[39m: [36mScraper process timezone at startup[39m
+    processTz: "Asia/Calcutta"
+[10:30:24 UTC] [32mINFO[39m: [36mFeature flag status at scraper startup[39m
+    SOURCE_TRACKING: false
+    CONFLICT_DETECTION: false
+    DATA_CONSOLIDATION: false
+    EARLY_DETECTION: false
+    SOURCE_TRACKING_PCT: 0
+    CONFLICT_DETECTION_PCT: 0
+    CONSOLIDATION_PCT: 0
+    DEBUG_MODE: false
+    ENABLED_SCRAPERS: []
+[10:30:24 UTC] [32mINFO[39m: [36mRunning NSE scraper[39m
+[10:30:24 UTC] [32mINFO[39m: [36mNSE scraper orchestrator started (Phase 1 consolidation + Phase 2 protection)[39m
+[10:30:24 UTC] [32mINFO[39m: [36mTesting NSE API connection[39m
+[10:30:26 UTC] [32mINFO[39m: [36mNSE session cookies obtained successfully (AC1)[39m
+    cookieCount: 7
+    cookieNames: "browse-url, AKA_A2, ak_bmsc, bm_mi, bm_sz, _abck, bm_sv"
+    hasNsit: false
+    hasNseappid: false
+    hasBmSv: true
+[10:30:27 UTC] [32mINFO[39m: [36mNSE API request successful (AC2)[39m
+    endpoint: "/api/all-upcoming-issues"
+    status: 200
+    hasData: true
+    dataType: "array"
+    itemCount: 6
+[10:30:27 UTC] [32mINFO[39m: [36mNSE API connection test completed[39m
+    success: true
+    recordCount: 6
+[10:30:27 UTC] [32mINFO[39m: [36mNSE API is available, using API-first approach[39m
+[10:30:27 UTC] [32mINFO[39m: [36mStarting NSE API scraping[39m
+[10:30:27 UTC] [32mINFO[39m: [36mFetching all IPOs from NSE API[39m
+    category: "ipo"
+[10:30:27 UTC] [32mINFO[39m: [36mNSE API request successful (AC2)[39m
+    endpoint: "/api/all-upcoming-issues"
+    status: 200
+    hasData: true
+    dataType: "array"
+    itemCount: 6
+[10:30:27 UTC] [32mINFO[39m: [36mNSE API returned 6 items[39m
+    count: 6
+[10:30:27 UTC] [32mINFO[39m: [36mNSE API fetch completed[39m
+    category: "ipo"
+    iposFound: 6
+    subscriptionsFound: 0
+    duration: 162
+[10:30:27 UTC] [32mINFO[39m: [36mFetching all IPOs from NSE API[39m
+    category: "rights"
+[10:30:27 UTC] [32mINFO[39m: [36mNSE API request successful (AC2)[39m
+    endpoint: "/api/all-upcoming-issues"
+    status: 200
+    hasData: true
+    dataType: "object"
+    itemCount: "N/A"
+[10:30:27 UTC] [32mINFO[39m: [36mNSE API fetch completed[39m
+    category: "rights"
+    iposFound: 0
+    subscriptionsFound: 0
+    duration: 58
+[10:30:27 UTC] [32mINFO[39m: [36mFetching current IPOs from NSE API (Priority: /api/ipo-current-issue)[39m
+[10:30:27 UTC] [32mINFO[39m: [36mNSE API request successful (AC2)[39m
+    endpoint: "/api/ipo-current-issue"
+    status: 200
+    hasData: true
+    dataType: "array"
+    itemCount: 5
+[10:30:27 UTC] [32mINFO[39m: [36mNSE API returned current issues[39m
+    count: 5
+[10:30:27 UTC] [32mINFO[39m: [36mNSE API request successful (AC2)[39m
+    endpoint: "/api/ipo-active-category"
+    status: 200
+    hasData: true
+    dataType: "object"
+    itemCount: "N/A"
+[10:30:27 UTC] [32mINFO[39m: [36mNSE consolidated subscription fetched from /api/ipo-active-category (T-266)[39m
+    symbol: "DEEPA"
+    total: 3.1053550780139507
+    qib: 0.44968361563071846
+    nii: 3.825007968785308
+    retail: 4.260404288371464
+    coverage: "CONSOLIDATED"
+[10:30:27 UTC] [32mINFO[39m: [36mNSE API request successful (AC2)[39m
+    endpoint: "/api/ipo-active-category"
+    status: 200
+    hasData: true
+    dataType: "object"
+    itemCount: "N/A"
+[10:30:27 UTC] [32mINFO[39m: [36mNSE consolidated subscription fetched from /api/ipo-active-category (T-266)[39m
+    symbol: "MOMSBELIEF"
+    total: 3.212418852639261
+    qib: 0.0014227098141844825
+    nii: 1.6225111536010197
+    retail: 16.834600382409178
+    coverage: "CONSOLIDATED"
+[10:30:27 UTC] [32mINFO[39m: [36mNSE API request successful (AC2)[39m
+    endpoint: "/api/ipo-active-category"
+    status: 200
+    hasData: true
+    dataType: "object"
+    itemCount: "N/A"
+[10:30:27 UTC] [32mINFO[39m: [36mNSE consolidated subscription fetched from /api/ipo-active-category (T-266)[39m
+    symbol: "PERNIASPOP"
+    total: 1.2790635544078848
+    qib: 1.4258141287660615
+    nii: 0.8302297858126652
+    retail: 1.5120621862004897
+    coverage: "CONSOLIDATED"
+[10:30:27 UTC] [33mWARN[39m: [36m[NSE] issueSize omitted: share count known but no price band to convert to rupees (T-329)[39m
+    companyName: "Ashutosh Fibre Limited"
+    shares: 4381200
+[10:30:28 UTC] [32mINFO[39m: [36mNSE API request successful (AC2)[39m
+    endpoint: "/api/ipo-active-category"
+    status: 200
+    hasData: true
+    dataType: "object"
+    itemCount: "N/A"
+[10:30:28 UTC] [33mWARN[39m: [36mNSE ipo-active-category had category rows but no Total row - snapshot rejected[39m
+    symbol: "ASHUTOSH"
+    companyName: "Ashutosh Fibre Limited"
+    qib: 0
+    nii: 0
+[10:30:28 UTC] [33mWARN[39m: [36mNSE /api/ipo-active-category yielded no usable subscription[39m
+    symbol: "ASHUTOSH"
+    companyName: "Ashutosh Fibre Limited"
+[10:30:28 UTC] [33mWARN[39m: [36mFalling back to the NSE-only subscription figure - this is ONE exchange book, not the whole market[39m
+    symbol: "ASHUTOSH"
+    companyName: "Ashutosh Fibre Limited"
+    total: 122.25
+    coverage: "EXCHANGE_ONLY"
+[10:30:28 UTC] [33mWARN[39m: [36m[NSE] issueSize omitted: share count known but no price band to convert to rupees (T-329)[39m
+    companyName: "Shanti Inorganics Limited"
+    shares: 4072000
+[10:30:28 UTC] [32mINFO[39m: [36mNSE API request successful (AC2)[39m
+    endpoint: "/api/ipo-active-category"
+    status: 200
+    hasData: true
+    dataType: "object"
+    itemCount: "N/A"
+[10:30:28 UTC] [33mWARN[39m: [36mNSE ipo-active-category had category rows but no Total row - snapshot rejected[39m
+    symbol: "SHANTIINOR"
+    companyName: "Shanti Inorganics Limited"
+    qib: 0
+    nii: 0
+[10:30:28 UTC] [33mWARN[39m: [36mNSE /api/ipo-active-category yielded no usable subscription[39m
+    symbol: "SHANTIINOR"
+    companyName: "Shanti Inorganics Limited"
+[10:30:28 UTC] [33mWARN[39m: [36mFalling back to the NSE-only subscription figure - this is ONE exchange book, not the whole market[39m
+    symbol: "SHANTIINOR"
+    companyName: "Shanti Inorganics Limited"
+    total: 130.91
+    coverage: "EXCHANGE_ONLY"
+[10:30:28 UTC] [32mINFO[39m: [36mNSE API fetch completed (AC4)[39m
+    iposFound: 5
+    subscriptionsFound: 5
+    consolidated: 3
+    duration: 769
+[10:30:28 UTC] [32mINFO[39m: [36mNSE API scraping completed successfully[39m
+    totalIPOs: 6
+    totalSubscriptions: 5
+    duration: 989
+[10:30:28 UTC] [32mINFO[39m: [36mNSE scrape completed successfully using API (AC6, AC7, Task 13)[39m
+    iposFound: 6
+    subscriptionsFound: 5
+    openIPOs: 3
+    coverage: "166.67%"
+    coverageTarget: "100%"
+    source: "api"
+    duration: 3390
+    consecutiveFailures: 0
+[10:30:28 UTC] [32mINFO[39m: [36mScraped data received from NSE[39m
+    totalIPOs: 6
+    totalSubscriptions: 5
+[10:30:30 UTC] [31mERROR[39m: [36mFailed to process IPO[39m
+    scraperName: "NSE"
+    error: "Failed to fetch IPO by symbol: DEEPA"
+[10:30:32 UTC] [31mERROR[39m: [36mFailed to process IPO[39m
+    scraperName: "NSE"
+    error: "Failed to fetch IPO by symbol: MOMSBELIEF"
+[10:30:34 UTC] [31mERROR[39m: [36mFailed to process IPO[39m
+    scraperName: "NSE"
+    error: "Failed to fetch IPO by symbol: PERNIASPOP"
+[10:30:36 UTC] [31mERROR[39m: [36mFailed to process IPO[39m
+    scraperName: "NSE"
+    error: "Failed to fetch IPO by symbol: PRIORITY"
+[10:30:38 UTC] [31mERROR[39m: [36mFailed to process IPO[39m
+    scraperName: "NSE"
+    error: "Failed to fetch IPO by symbol: ESDS"
+[10:30:40 UTC] [31mERROR[39m: [36mFailed to process IPO[39m
+    scraperName: "NSE"
+    error: "Failed to fetch IPO by symbol: QUALIANCE"
+[DB] scraper_log.create FAILED - 2016ms { source: 'NSE', status: 'SUCCESS' } DrizzleQueryError: Failed query: insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"
+params: NSE,SUCCESS,0,6,15477,,
+    at NodePgPreparedQuery.queryWithCache (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\session.ts:73:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:154:19)
+    ... 4 lines matching cause stack trace ...
+    at async runNSEScraper (D:\Abhay\Ventures\IPODhan-t405\scraper\src\scrapers\nse-scraper-orchestrator-v2.ts:235:22)
+    at async main (D:\Abhay\Ventures\IPODhan-t405\scraper\src\index.ts:250:25) {
+  query: 'insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"',
+  params: [ 'NSE', 'SUCCESS', 0, 6, 15477, null, null ],
+  cause: Error: Connection terminated due to connection timeout
+      at D:\Abhay\Ventures\IPODhan-t405\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:161:13)
+      at async NodePgPreparedQuery.queryWithCache (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\session.ts:71:12)
+      at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:154:19)
+      at async executeQuery.source (D:\Abhay\Ventures\IPODhan-t405\packages\shared\src\repositories\scraper-log-repository.ts:47:28)
+      at async ScraperLogRepository.executeQuery (D:\Abhay\Ventures\IPODhan-t405\packages\shared\src\repositories\base-repository.ts:192:22)
+      at async NSEScraperOrchestratorV2.logSuccess (D:\Abhay\Ventures\IPODhan-t405\scraper\src\base\BaseScraperOrchestrator.ts:723:5)
+      at async NSEScraperOrchestratorV2.run (D:\Abhay\Ventures\IPODhan-t405\scraper\src\base\BaseScraperOrchestrator.ts:253:7)
+      at async runNSEScraper (D:\Abhay\Ventures\IPODhan-t405\scraper\src\scrapers\nse-scraper-orchestrator-v2.ts:235:22) {
+    [cause]: Error: Connection terminated unexpectedly
+        at Connection.<anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\pg\lib\client.js:136:73)
+        at Object.onceWrapper (node:events:633:28)
+        at Connection.emit (node:events:519:28)
+        at Socket.<anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\pg\lib\connection.js:62:12)
+        at Socket.emit (node:events:519:28)
+        at TCP.<anonymous> (node:net:346:12)
+  }
+}
+[10:30:42 UTC] [31mERROR[39m: [36mNSE scraper orchestrator failed[39m
+    duration: 17506
+    error: "Failed query: insert into \"scraper_logs\" (\"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning \"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\"\nparams: NSE,SUCCESS,0,6,15477,,"
+[10:30:42 UTC] [33mWARN[39m: [36mNSE scraper failure recorded (1/3)[39m
+    scraperType: "NSE"
+    failureCount: 1
+    fallbackThreshold: 3
+    error: "Failed query: insert into \"scraper_logs\" (\"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning \"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\"\nparams: NSE,SUCCESS,0,6,15477,,"
+[DB] scraper_log.create FAILED - 2007ms { source: 'NSE', status: 'FAILURE' } DrizzleQueryError: Failed query: insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"
+params: NSE,FAILURE,0,6,17506,Failed query: insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"
+params: NSE,SUCCESS,0,6,15477,,,Error: Failed query: insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"
+params: NSE,SUCCESS,0,6,15477,,
+    at NodePgPreparedQuery.queryWithCache (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\session.ts:73:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:154:19)
+    at async executeQuery.source (D:\Abhay\Ventures\IPODhan-t405\packages\shared\src\repositories\scraper-log-repository.ts:47:28)
+    at async ScraperLogRepository.executeQuery (D:\Abhay\Ventures\IPODhan-t405\packages\shared\src\repositories\base-repository.ts:192:22)
+    at async NSEScraperOrchestratorV2.logSuccess (D:\Abhay\Ventures\IPODhan-t405\scraper\src\base\BaseScraperOrchestrator.ts:723:5)
+    at async NSEScraperOrchestratorV2.run (D:\Abhay\Ventures\IPODhan-t405\scraper\src\base\BaseScraperOrchestrator.ts:253:7)
+    at async runNSEScraper (D:\Abhay\Ventures\IPODhan-t405\scraper\src\scrapers\nse-scraper-orchestrator-v2.ts:235:22)
+    at async main (D:\Abhay\Ventures\IPODhan-t405\scraper\src\index.ts:250:25)
+    at NodePgPreparedQuery.queryWithCache (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\session.ts:73:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:154:19)
+    ... 4 lines matching cause stack trace ...
+    at async runNSEScraper (D:\Abhay\Ventures\IPODhan-t405\scraper\src\scrapers\nse-scraper-orchestrator-v2.ts:235:22)
+    at async main (D:\Abhay\Ventures\IPODhan-t405\scraper\src\index.ts:250:25) {
+  query: 'insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"',
+  params: [
+    'NSE',
+    'FAILURE',
+    0,
+    6,
+    17506,
+    'Failed query: insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"\n' +
+      'params: NSE,SUCCESS,0,6,15477,,',
+    'Error: Failed query: insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"\n' +
+      'params: NSE,SUCCESS,0,6,15477,,\n' +
+      '    at NodePgPreparedQuery.queryWithCache (D:\\Abhay\\Ventures\\IPODhan-t405\\node_modules\\src\\pg-core\\session.ts:73:11)\n' +
+      '    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n' +
+      '    at async <anonymous> (D:\\Abhay\\Ventures\\IPODhan-t405\\node_modules\\src\\node-postgres\\session.ts:154:19)\n' +
+      '    at async executeQuery.source (D:\\Abhay\\Ventures\\IPODhan-t405\\packages\\shared\\src\\repositories\\scraper-log-repository.ts:47:28)\n' +
+      '    at async ScraperLogRepository.executeQuery (D:\\Abhay\\Ventures\\IPODhan-t405\\packages\\shared\\src\\repositories\\base-repository.ts:192:22)\n' +
+      '    at async NSEScraperOrchestratorV2.logSuccess (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\base\\BaseScraperOrchestrator.ts:723:5)\n' +
+      '    at async NSEScraperOrchestratorV2.run (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\base\\BaseScraperOrchestrator.ts:253:7)\n' +
+      '    at async runNSEScraper (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\scrapers\\nse-scraper-orchestrator-v2.ts:235:22)\n' +
+      '    at async main (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\index.ts:250:25)'
+  ],
+  cause: Error: Connection terminated due to connection timeout
+      at D:\Abhay\Ventures\IPODhan-t405\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:161:13)
+      at async NodePgPreparedQuery.queryWithCache (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\session.ts:71:12)
+      at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:154:19)
+      at async executeQuery.source (D:\Abhay\Ventures\IPODhan-t405\packages\shared\src\repositories\scraper-log-repository.ts:47:28)
+      at async ScraperLogRepository.executeQuery (D:\Abhay\Ventures\IPODhan-t405\packages\shared\src\repositories\base-repository.ts:192:22)
+      at async NSEScraperOrchestratorV2.logFailure (D:\Abhay\Ventures\IPODhan-t405\scraper\src\base\BaseScraperOrchestrator.ts:753:5)
+      at async NSEScraperOrchestratorV2.run (D:\Abhay\Ventures\IPODhan-t405\scraper\src\base\BaseScraperOrchestrator.ts:285:7)
+      at async runNSEScraper (D:\Abhay\Ventures\IPODhan-t405\scraper\src\scrapers\nse-scraper-orchestrator-v2.ts:235:22) {
+    [cause]: Error: Connection terminated unexpectedly
+        at Connection.<anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\pg\lib\client.js:136:73)
+        at Object.onceWrapper (node:events:633:28)
+        at Connection.emit (node:events:519:28)
+        at Socket.<anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\pg\lib\connection.js:62:12)
+        at Socket.emit (node:events:519:28)
+        at TCP.<anonymous> (node:net:346:12)
+  }
+}
+[10:30:44 UTC] [31mERROR[39m: [36mScraper CLI failed with unhandled error[39m
+    error: "Failed query: insert into \"scraper_logs\" (\"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning \"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\"\nparams: NSE,FAILURE,0,6,17506,Failed query: insert into \"scraper_logs\" (\"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning \"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\"\nparams: NSE,SUCCESS,0,6,15477,,,Error: Failed query: insert into \"scraper_logs\" (\"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning \"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\"\nparams: NSE,SUCCESS,0,6,15477,,\n    at NodePgPreparedQuery.queryWithCache (D:\\Abhay\\Ventures\\IPODhan-t405\\node_modules\\src\\pg-core\\session.ts:73:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async <anonymous> (D:\\Abhay\\Ventures\\IPODhan-t405\\node_modules\\src\\node-postgres\\session.ts:154:19)\n    at async executeQuery.source (D:\\Abhay\\Ventures\\IPODhan-t405\\packages\\shared\\src\\repositories\\scraper-log-repository.ts:47:28)\n    at async ScraperLogRepository.executeQuery (D:\\Abhay\\Ventures\\IPODhan-t405\\packages\\shared\\src\\repositories\\base-repository.ts:192:22)\n    at async NSEScraperOrchestratorV2.logSuccess (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\base\\BaseScraperOrchestrator.ts:723:5)\n    at async NSEScraperOrchestratorV2.run (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\base\\BaseScraperOrchestrator.ts:253:7)\n    at async runNSEScraper (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\scrapers\\nse-scraper-orchestrator-v2.ts:235:22)\n    at async main (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\index.ts:250:25)"

@@ -1,0 +1,149 @@
+[Redis] Neither REDIS_URL nor REDIS_HOST is set — falling back to localhost:6379. If this process is writing to a REMOTE database (e.g. via an SSH tunnel), this Redis connection is almost certainly NOT the one production reads from; cache invalidation will silently no-op against prod. Set REDIS_URL/REDIS_HOST explicitly, or accept that the change becomes visible only after the cache TTL expires.
+[Redis] Connected successfully
+[Redis] Ready to accept commands
+[10:29:30 UTC] [32mINFO[39m: [36mIPO Scraper CLI started[39m
+    source: "bse"
+[10:29:30 UTC] [32mINFO[39m: [36mScraper process timezone at startup[39m
+    processTz: "Asia/Calcutta"
+[10:29:30 UTC] [32mINFO[39m: [36mFeature flag status at scraper startup[39m
+    SOURCE_TRACKING: false
+    CONFLICT_DETECTION: false
+    DATA_CONSOLIDATION: false
+    EARLY_DETECTION: false
+    SOURCE_TRACKING_PCT: 0
+    CONFLICT_DETECTION_PCT: 0
+    CONSOLIDATION_PCT: 0
+    DEBUG_MODE: false
+    ENABLED_SCRAPERS: []
+[10:29:30 UTC] [32mINFO[39m: [36mRunning BSE scraper[39m
+[10:29:30 UTC] [32mINFO[39m: [36mBSE scraper orchestrator started (Phase 1 consolidation + Phase 2 protection)[39m
+[10:29:30 UTC] [32mINFO[39m: [36mStarting BSE scraper[39m
+    url: "https://www.bseindia.com/publicissue.html"
+[10:29:32 UTC] [33mWARN[39m: [36mPage error (console error)[39m
+    errorType: "object"
+    error: "__name is not defined"
+[10:29:34 UTC] [32mINFO[39m: [36mPhase 2: Starting BSE detail page scraping[39m
+[10:29:34 UTC] [32mINFO[39m: [36mFound detail page URLs[39m
+    detailUrlsFound: 0
+    totalIPOs: 0
+[10:29:34 UTC] [33mWARN[39m: [36mNo detail page URLs found, skipping detail scraping[39m
+[10:29:34 UTC] [32mINFO[39m: [36mPhase 2B: Starting Rights/Debt issue enrichment from Chittorgarh[39m
+[10:29:34 UTC] [32mINFO[39m: [36mFound Rights/Debt IPOs needing enrichment[39m
+    rightsCount: 0
+    debtCount: 0
+[10:29:34 UTC] [32mINFO[39m: [36mBSE scrape completed successfully[39m
+    iposFound: 0
+    detailsEnriched: 0
+    rightsEnriched: 0
+    debtEnriched: 0
+    smeCount: 0
+    mainboardCount: 0
+    subscriptionsFound: 0
+    duration: 4720
+[10:29:34 UTC] [32mINFO[39m: [36mScraped data received from BSE[39m
+    totalIPOs: 0
+    totalSubscriptions: 0
+[DB] scraper_log.create FAILED - 2032ms { source: 'BSE', status: 'SUCCESS' } DrizzleQueryError: Failed query: insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"
+params: BSE,SUCCESS,0,0,4729,,
+    at NodePgPreparedQuery.queryWithCache (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\session.ts:73:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:154:19)
+    ... 4 lines matching cause stack trace ...
+    at async BSEScraperOrchestratorV2.run (D:\Abhay\Ventures\IPODhan-t405\scraper\src\scrapers\bse-scraper-orchestrator-v2.ts:229:24)
+    at async runBSEScraper (D:\Abhay\Ventures\IPODhan-t405\scraper\src\scrapers\bse-scraper-orchestrator-v2.ts:250:10)
+    at async main (D:\Abhay\Ventures\IPODhan-t405\scraper\src\index.ts:278:25) {
+  query: 'insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"',
+  params: [ 'BSE', 'SUCCESS', 0, 0, 4729, null, null ],
+  cause: Error: Connection terminated due to connection timeout
+      at D:\Abhay\Ventures\IPODhan-t405\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:161:13)
+      at async NodePgPreparedQuery.queryWithCache (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\session.ts:71:12)
+      at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:154:19)
+      at async executeQuery.source (D:\Abhay\Ventures\IPODhan-t405\packages\shared\src\repositories\scraper-log-repository.ts:47:28)
+      at async ScraperLogRepository.executeQuery (D:\Abhay\Ventures\IPODhan-t405\packages\shared\src\repositories\base-repository.ts:192:22)
+      at async BSEScraperOrchestratorV2.logSuccess (D:\Abhay\Ventures\IPODhan-t405\scraper\src\base\BaseScraperOrchestrator.ts:723:5)
+      at async BSEScraperOrchestratorV2.run (D:\Abhay\Ventures\IPODhan-t405\scraper\src\base\BaseScraperOrchestrator.ts:253:7)
+      at async BSEScraperOrchestratorV2.run (D:\Abhay\Ventures\IPODhan-t405\scraper\src\scrapers\bse-scraper-orchestrator-v2.ts:229:24) {
+    [cause]: Error: Connection terminated unexpectedly
+        at Connection.<anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\pg\lib\client.js:136:73)
+        at Object.onceWrapper (node:events:633:28)
+        at Connection.emit (node:events:519:28)
+        at Socket.<anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\pg\lib\connection.js:62:12)
+        at Socket.emit (node:events:519:28)
+        at TCP.<anonymous> (node:net:346:12)
+  }
+}
+[10:29:37 UTC] [31mERROR[39m: [36mBSE scraper orchestrator failed[39m
+    duration: 6780
+    error: "Failed query: insert into \"scraper_logs\" (\"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning \"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\"\nparams: BSE,SUCCESS,0,0,4729,,"
+[10:29:37 UTC] [33mWARN[39m: [36mBSE scraper failure recorded (1/3)[39m
+    scraperType: "BSE"
+    failureCount: 1
+    fallbackThreshold: 3
+    error: "Failed query: insert into \"scraper_logs\" (\"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning \"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\"\nparams: BSE,SUCCESS,0,0,4729,,"
+[DB] scraper_log.create FAILED - 2005ms { source: 'BSE', status: 'FAILURE' } DrizzleQueryError: Failed query: insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"
+params: BSE,FAILURE,0,0,6780,Failed query: insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"
+params: BSE,SUCCESS,0,0,4729,,,Error: Failed query: insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"
+params: BSE,SUCCESS,0,0,4729,,
+    at NodePgPreparedQuery.queryWithCache (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\session.ts:73:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:154:19)
+    at async executeQuery.source (D:\Abhay\Ventures\IPODhan-t405\packages\shared\src\repositories\scraper-log-repository.ts:47:28)
+    at async ScraperLogRepository.executeQuery (D:\Abhay\Ventures\IPODhan-t405\packages\shared\src\repositories\base-repository.ts:192:22)
+    at async BSEScraperOrchestratorV2.logSuccess (D:\Abhay\Ventures\IPODhan-t405\scraper\src\base\BaseScraperOrchestrator.ts:723:5)
+    at async BSEScraperOrchestratorV2.run (D:\Abhay\Ventures\IPODhan-t405\scraper\src\base\BaseScraperOrchestrator.ts:253:7)
+    at async BSEScraperOrchestratorV2.run (D:\Abhay\Ventures\IPODhan-t405\scraper\src\scrapers\bse-scraper-orchestrator-v2.ts:229:24)
+    at async runBSEScraper (D:\Abhay\Ventures\IPODhan-t405\scraper\src\scrapers\bse-scraper-orchestrator-v2.ts:250:10)
+    at async main (D:\Abhay\Ventures\IPODhan-t405\scraper\src\index.ts:278:25)
+    at NodePgPreparedQuery.queryWithCache (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\session.ts:73:11)
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+    at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:154:19)
+    ... 4 lines matching cause stack trace ...
+    at async BSEScraperOrchestratorV2.run (D:\Abhay\Ventures\IPODhan-t405\scraper\src\scrapers\bse-scraper-orchestrator-v2.ts:229:24)
+    at async runBSEScraper (D:\Abhay\Ventures\IPODhan-t405\scraper\src\scrapers\bse-scraper-orchestrator-v2.ts:250:10)
+    at async main (D:\Abhay\Ventures\IPODhan-t405\scraper\src\index.ts:278:25) {
+  query: 'insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"',
+  params: [
+    'BSE',
+    'FAILURE',
+    0,
+    0,
+    6780,
+    'Failed query: insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"\n' +
+      'params: BSE,SUCCESS,0,0,4729,,',
+    'Error: Failed query: insert into "scraper_logs" ("id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning "id", "source", "status", "records_processed", "records_failed", "duration_ms", "error_message", "error_stack", "created_at"\n' +
+      'params: BSE,SUCCESS,0,0,4729,,\n' +
+      '    at NodePgPreparedQuery.queryWithCache (D:\\Abhay\\Ventures\\IPODhan-t405\\node_modules\\src\\pg-core\\session.ts:73:11)\n' +
+      '    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n' +
+      '    at async <anonymous> (D:\\Abhay\\Ventures\\IPODhan-t405\\node_modules\\src\\node-postgres\\session.ts:154:19)\n' +
+      '    at async executeQuery.source (D:\\Abhay\\Ventures\\IPODhan-t405\\packages\\shared\\src\\repositories\\scraper-log-repository.ts:47:28)\n' +
+      '    at async ScraperLogRepository.executeQuery (D:\\Abhay\\Ventures\\IPODhan-t405\\packages\\shared\\src\\repositories\\base-repository.ts:192:22)\n' +
+      '    at async BSEScraperOrchestratorV2.logSuccess (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\base\\BaseScraperOrchestrator.ts:723:5)\n' +
+      '    at async BSEScraperOrchestratorV2.run (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\base\\BaseScraperOrchestrator.ts:253:7)\n' +
+      '    at async BSEScraperOrchestratorV2.run (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\scrapers\\bse-scraper-orchestrator-v2.ts:229:24)\n' +
+      '    at async runBSEScraper (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\scrapers\\bse-scraper-orchestrator-v2.ts:250:10)\n' +
+      '    at async main (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\index.ts:278:25)'
+  ],
+  cause: Error: Connection terminated due to connection timeout
+      at D:\Abhay\Ventures\IPODhan-t405\node_modules\pg-pool\index.js:45:11
+      at process.processTicksAndRejections (node:internal/process/task_queues:105:5)
+      at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:161:13)
+      at async NodePgPreparedQuery.queryWithCache (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\pg-core\session.ts:71:12)
+      at async <anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\src\node-postgres\session.ts:154:19)
+      at async executeQuery.source (D:\Abhay\Ventures\IPODhan-t405\packages\shared\src\repositories\scraper-log-repository.ts:47:28)
+      at async ScraperLogRepository.executeQuery (D:\Abhay\Ventures\IPODhan-t405\packages\shared\src\repositories\base-repository.ts:192:22)
+      at async BSEScraperOrchestratorV2.logFailure (D:\Abhay\Ventures\IPODhan-t405\scraper\src\base\BaseScraperOrchestrator.ts:753:5)
+      at async BSEScraperOrchestratorV2.run (D:\Abhay\Ventures\IPODhan-t405\scraper\src\base\BaseScraperOrchestrator.ts:285:7)
+      at async BSEScraperOrchestratorV2.run (D:\Abhay\Ventures\IPODhan-t405\scraper\src\scrapers\bse-scraper-orchestrator-v2.ts:229:24) {
+    [cause]: Error: Connection terminated unexpectedly
+        at Connection.<anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\pg\lib\client.js:136:73)
+        at Object.onceWrapper (node:events:633:28)
+        at Connection.emit (node:events:519:28)
+        at Socket.<anonymous> (D:\Abhay\Ventures\IPODhan-t405\node_modules\pg\lib\connection.js:62:12)
+        at Socket.emit (node:events:519:28)
+        at TCP.<anonymous> (node:net:346:12)
+  }
+}
+[10:29:39 UTC] [31mERROR[39m: [36mScraper CLI failed with unhandled error[39m
+    error: "Failed query: insert into \"scraper_logs\" (\"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning \"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\"\nparams: BSE,FAILURE,0,0,6780,Failed query: insert into \"scraper_logs\" (\"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning \"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\"\nparams: BSE,SUCCESS,0,0,4729,,,Error: Failed query: insert into \"scraper_logs\" (\"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\") values (default, $1, $2, $3, $4, $5, $6, $7, default) returning \"id\", \"source\", \"status\", \"records_processed\", \"records_failed\", \"duration_ms\", \"error_message\", \"error_stack\", \"created_at\"\nparams: BSE,SUCCESS,0,0,4729,,\n    at NodePgPreparedQuery.queryWithCache (D:\\Abhay\\Ventures\\IPODhan-t405\\node_modules\\src\\pg-core\\session.ts:73:11)\n    at process.processTicksAndRejections (node:internal/process/task_queues:105:5)\n    at async <anonymous> (D:\\Abhay\\Ventures\\IPODhan-t405\\node_modules\\src\\node-postgres\\session.ts:154:19)\n    at async executeQuery.source (D:\\Abhay\\Ventures\\IPODhan-t405\\packages\\shared\\src\\repositories\\scraper-log-repository.ts:47:28)\n    at async ScraperLogRepository.executeQuery (D:\\Abhay\\Ventures\\IPODhan-t405\\packages\\shared\\src\\repositories\\base-repository.ts:192:22)\n    at async BSEScraperOrchestratorV2.logSuccess (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\base\\BaseScraperOrchestrator.ts:723:5)\n    at async BSEScraperOrchestratorV2.run (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\base\\BaseScraperOrchestrator.ts:253:7)\n    at async BSEScraperOrchestratorV2.run (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\scrapers\\bse-scraper-orchestrator-v2.ts:229:24)\n    at async runBSEScraper (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\scrapers\\bse-scraper-orchestrator-v2.ts:250:10)\n    at async main (D:\\Abhay\\Ventures\\IPODhan-t405\\scraper\\src\\index.ts:278:25)"
