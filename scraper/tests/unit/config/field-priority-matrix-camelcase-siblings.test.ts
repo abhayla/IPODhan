@@ -63,18 +63,17 @@ describe('field priority matrix — snake_case/camelCase sibling pairs stay in s
     expect(snakeKeysWithCamelSibling.length).toBeGreaterThan(0);
   });
 
-  // openDate/closeDate are asserted equal above; this table lists every OTHER
-  // known sibling pair and whether its rules currently agree. Pairs marked
-  // `false` are pre-existing, out-of-scope-for-W-49 divergences (reported,
-  // not fixed here) — flipping one to `true` without fixing the matrix will
-  // fail this test on purpose.
-  const knownDivergent = new Set([
-    'pe_ratio', // vs peRatio - different sources/threshold/validation
-    'debt_to_equity', // vs debtToEquity - different threshold/validation
-    'issue_size', // vs issueSize - different sources order/threshold
-    'listing_date', // vs listingDate - camelCase adds DRHP
-    'allotment_date', // vs allotmentDate - camelCase adds DRHP
-  ]);
+  // openDate/closeDate are asserted equal above. The five pairs that used to
+  // diverge here (pe_ratio/peRatio, debt_to_equity/debtToEquity,
+  // issue_size/issueSize, listing_date/listingDate, allotment_date/
+  // allotmentDate) were fixed by W-55: each snake_case duplicate was deleted
+  // and merged into one canonical camelCase entry, resolved by
+  // getFieldRules()'s snake->camel normaliser (see the W-55 describe block
+  // below). They no longer appear in `snakeKeysWithCamelSibling` (the
+  // snake_case key is gone from FIELD_PRIORITY_MATRIX), so this set is empty
+  // — kept as a named type so a REGRESSION (someone re-adding a diverging
+  // snake_case twin) still fails loudly instead of silently skipping.
+  const knownDivergent = new Set<string>([]);
 
   for (const [snakeKey, camelKey] of snakeKeysWithCamelSibling) {
     if (knownDivergent.has(snakeKey)) {
@@ -87,4 +86,63 @@ describe('field priority matrix — snake_case/camelCase sibling pairs stay in s
       expect(camelRule).toEqual(snakeRule);
     });
   }
+});
+
+/**
+ * W-55 — five fields were registered under BOTH spellings with DIVERGING
+ * rules (pe_ratio/peRatio, debt_to_equity/debtToEquity, issue_size/issueSize,
+ * listing_date/listingDate, allotment_date/allotmentDate), plus two
+ * consolidation keys (companyName/leadManagers) that were registered ONLY
+ * under their snake_case spelling and so fell through to the DEFAULT rule.
+ * Fix: one canonical camelCase entry per field (the snake_case duplicate is
+ * deleted, not kept as a second rule object) and a normalising
+ * getFieldRules() that resolves a snake_case lookup to it.
+ */
+describe('field priority matrix — W-55 canonical camelCase entries + normalising lookup', () => {
+  const migratedFields: Array<[snake: string, camel: string]> = [
+    ['pe_ratio', 'peRatio'],
+    ['debt_to_equity', 'debtToEquity'],
+    ['issue_size', 'issueSize'],
+    ['listing_date', 'listingDate'],
+    ['allotment_date', 'allotmentDate'],
+    ['company_name', 'companyName'],
+    ['lead_managers', 'leadManagers'],
+  ];
+
+  for (const [snakeKey, camelKey] of migratedFields) {
+    it(`${camelKey} is registered as the sole canonical entry (${snakeKey} is NOT a separate matrix key)`, () => {
+      expect(FIELD_PRIORITY_MATRIX[camelKey], `${camelKey} missing from FIELD_PRIORITY_MATRIX`).toBeDefined();
+      expect(FIELD_PRIORITY_MATRIX[snakeKey], `${snakeKey} should have been deleted as a duplicate`).toBeUndefined();
+    });
+
+    it(`getFieldRules('${snakeKey}') resolves to the same object as getFieldRules('${camelKey}') via the normaliser`, () => {
+      expect(getFieldRules(snakeKey)).toEqual(getFieldRules(camelKey));
+    });
+
+    it(`getFieldRules('${snakeKey}') is NOT the generic DEFAULT rule (a real matrix entry, not a fallback)`, () => {
+      const defaultRule = getFieldRules('__totally_unregistered_probe_field__');
+      expect(getFieldRules(snakeKey)).not.toEqual(defaultRule);
+    });
+  }
+
+  // Every FIELD_PRIORITY_MATRIX key that CONTAINS an underscore and also
+  // co-exists with its camelCase form must have been eliminated by the merge
+  // above — i.e. no diverging snake/camel pair can exist post-fix. This is a
+  // structural regression guard, not a claim that every matrix key is
+  // camelCase (many fields — company_description, min_investment,
+  // total_subscription, etc. — are legitimately snake_case-only call sites).
+  it('no snake_case key in the matrix still has a co-registered camelCase sibling with different rules', () => {
+    const toCamel = (snake: string) => snake.replace(/_([a-z0-9])/g, (_m, c: string) => c.toUpperCase());
+    const allKeys = Object.keys(FIELD_PRIORITY_MATRIX);
+    const divergent = allKeys
+      .filter((k) => k.includes('_'))
+      .map((k) => [k, toCamel(k)] as const)
+      .filter(([, camel]) => allKeys.includes(camel))
+      .filter(([snake, camel]) => {
+        const { description: _d1, ...camelRule } = FIELD_PRIORITY_MATRIX[camel];
+        const { description: _d2, ...snakeRule } = FIELD_PRIORITY_MATRIX[snake];
+        return JSON.stringify(camelRule) !== JSON.stringify(snakeRule);
+      });
+    expect(divergent, `diverging sibling pairs found: ${JSON.stringify(divergent)}`).toEqual([]);
+  });
 });
