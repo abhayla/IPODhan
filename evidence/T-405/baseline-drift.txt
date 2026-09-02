@@ -1,0 +1,85 @@
+FATAL: schema drift detected (84 finding(s)):
+  [MISSING_TABLE] table "admin_settings" is declared in schema.ts but does not exist on the live database
+  [MISSING_TABLE] table "anchor_investors" is declared in schema.ts but does not exist on the live database
+  [MISSING_TABLE] table "audit_logs" is declared in schema.ts but does not exist on the live database
+  [MISSING_TABLE] table "data_conflicts" is declared in schema.ts but does not exist on the live database
+  [MISSING_TABLE] table "extraction_logs" is declared in schema.ts but does not exist on the live database
+  [MISSING_TABLE] table "field_protection_metadata" is declared in schema.ts but does not exist on the live database
+  [MISSING_TABLE] table "field_sources" is declared in schema.ts but does not exist on the live database
+  [MISSING_TABLE] table "ipo_demand_graph" is declared in schema.ts but does not exist on the live database
+  [MISSING_TABLE] table "ipo_details" is declared in schema.ts but does not exist on the live database
+  [MISSING_TABLE] table "ipo_financials" is declared in schema.ts but does not exist on the live database
+  [MISSING_COLUMN] "financial_data.market_cap" is declared in schema.ts (numeric(15, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "financial_data.pre_ipo_eps" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "financial_data.post_ipo_eps" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "financial_data.ronw" is declared in schema.ts (numeric(5, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "financial_data.ebitda_fy2022" is declared in schema.ts (numeric(12, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "financial_data.ebitda_fy2023" is declared in schema.ts (numeric(12, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "financial_data.ebitda_fy2024" is declared in schema.ts (numeric(12, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "financial_data.total_income_fy2022" is declared in schema.ts (numeric(12, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "financial_data.total_income_fy2023" is declared in schema.ts (numeric(12, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "financial_data.total_income_fy2024" is declared in schema.ts (numeric(12, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "financial_data.total_borrowings" is declared in schema.ts (numeric(12, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "financial_data.current_ratio" is declared in schema.ts (numeric(5, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "financial_data.quick_ratio" is declared in schema.ts (numeric(5, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "financial_data.inventory_turnover" is declared in schema.ts (numeric(5, 2)) but does not exist on the live table
+  [COLUMN_TYPE_MISMATCH] "gmp_records.gmp" expects numeric(10,2), live column is numeric(32,0)
+  [MISSING_COLUMN] "gmp_records.gmp_percentage" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [COLUMN_TYPE_MISMATCH] "gmp_records.expected_listing_price" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "gmp_records.subject_rate" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "gmp_records.kostak_rate" expects numeric(10,2), live column is numeric(32,0)
+  [MISSING_COLUMN] "ipo_reviews.segment" is declared in schema.ts (segment) but does not exist on the live table
+  [MISSING_COLUMN] "ipo_reviews.is_approved" is declared in schema.ts (boolean) but does not exist on the live table
+  [MISSING_COLUMN] "ipo_reviews.moderated_by" is declared in schema.ts (varchar(255)) but does not exist on the live table
+  [MISSING_COLUMN] "ipo_reviews.moderated_at" is declared in schema.ts (timestamp) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.bse_scrip_code" is declared in schema.ts (varchar(20)) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.segment" is declared in schema.ts (segment) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.offering_type" is declared in schema.ts (offering_type) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.scraper_locked" is declared in schema.ts (boolean) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.scraper_lock_note" is declared in schema.ts (text) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.last_manual_edit_at" is declared in schema.ts (timestamp) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.subscription_retail" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.subscription_hni" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.subscription_qib" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.subscription_total" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.gmp_price" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.gmp_percentage_historical" is declared in schema.ts (numeric(5, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.gmp_updated_at_historical" is declared in schema.ts (timestamp) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.listing_price_historical" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.listing_gain_percentage" is declared in schema.ts (numeric(5, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.listing_gain_amount" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.listing_date_historical" is declared in schema.ts (date) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.current_price" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.current_gain_percentage" is declared in schema.ts (numeric(5, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.current_gain_amount" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.current_price_updated_at" is declared in schema.ts (timestamp) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.historical_data_source" is declared in schema.ts (varchar(100)) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.historical_data_scraped_at" is declared in schema.ts (timestamp) but does not exist on the live table
+  [MISSING_COLUMN] "ipos.objectives" is declared in schema.ts (jsonb) but does not exist on the live table
+  [COLUMN_TYPE_MISMATCH] "listing_performance.listing_price" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "listing_performance.issue_price" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "listing_performance.listing_gain_percent" expects numeric(7,2), live column is numeric(5,2)
+  [COLUMN_TYPE_MISMATCH] "listing_performance.current_price" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "listing_performance.current_price_bse" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "listing_performance.current_price_nse" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "listing_performance.current_gain_percent" expects numeric(7,2), live column is numeric(5,2)
+  [MISSING_COLUMN] "listing_performance.listing_open_price" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "listing_performance.listing_high_price" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "listing_performance.listing_low_price" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "listing_performance.listing_close_price" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "listing_performance.last_traded_price" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.qib_fii_subscription" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.qib_domestic_fi_subscription" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.qib_mutual_fund_subscription" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.qib_others_subscription" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.nii_corporates_subscription" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.nii_individuals_subscription" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.nii_others_subscription" is declared in schema.ts (numeric(10, 2)) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.retail_cut_off_shares" is declared in schema.ts (bigint) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.retail_price_bid_shares" is declared in schema.ts (bigint) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.employee_cut_off_shares" is declared in schema.ts (bigint) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.employee_price_bid_shares" is declared in schema.ts (bigint) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.cut_off_bids_total" is declared in schema.ts (bigint) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.total_bids_nse" is declared in schema.ts (bigint) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.total_bids_bse" is declared in schema.ts (bigint) but does not exist on the live table
+  [MISSING_COLUMN] "subscriptions.total_bids_combined" is declared in schema.ts (bigint) but does not exist on the live table

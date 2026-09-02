@@ -1,0 +1,18 @@
+
+> ipodhan@1.0.0 audit:schema-drift
+> npx tsx scripts/assert-schema-drift.ts
+
+INFO: 11 known-gated type drift finding(s) ignored (SCHEMA_DRIFT_IGNORE_GATED=1):
+  [COLUMN_TYPE_MISMATCH] "gmp_records.gmp" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "gmp_records.expected_listing_price" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "gmp_records.subject_rate" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "gmp_records.kostak_rate" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "listing_performance.listing_price" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "listing_performance.issue_price" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "listing_performance.listing_gain_percent" expects numeric(7,2), live column is numeric(5,2)
+  [COLUMN_TYPE_MISMATCH] "listing_performance.current_price" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "listing_performance.current_price_bse" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "listing_performance.current_price_nse" expects numeric(10,2), live column is numeric(32,0)
+  [COLUMN_TYPE_MISMATCH] "listing_performance.current_gain_percent" expects numeric(7,2), live column is numeric(5,2)
+OK: no schema drift — live database matches packages/shared/src/db/schema.ts and the matview registry.
+exit=0

@@ -148,6 +148,34 @@
       "when": 1787916407450,
       "tag": "0037_documents_journal_column_drift",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1787916408450,
+      "tag": "0038_journal_drift_new_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1787916409450,
+      "tag": "0039_journal_drift_add_missing_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1787916410450,
+      "tag": "0040_journal_drift_category_nullable",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1787916411450,
+      "tag": "0041_journal_drift_repair_backport",
+      "breakpoints": true
     }
   ]
 }

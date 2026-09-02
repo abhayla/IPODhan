@@ -1,3 +1,4 @@
+-- journaled as 0041_journal_drift_repair_backport.sql (T-405, #256)
 -- Repair: listing_performance NOT NULL drift (GitHub #139)
 --
 -- WHY THIS FILE EXISTS
