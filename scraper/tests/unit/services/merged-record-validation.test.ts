@@ -114,7 +114,13 @@ function mockConsolidated(consolidatedData: Record<string, any>) {
   consolidateIPODataMock.mockResolvedValue({
     ipoId: 'ipo-id',
     fieldsProcessed: Object.keys(consolidatedData).length,
-    fieldsUpdated: 0,
+    // S-02 §5: the persister now SKIPS `ipoRepository.update()` when
+    // `fieldsUpdated === 0` (no-op write suppression). This double stands in
+    // for a real consolidation result, which reports the fields it actually
+    // resolved a value for — never 0 while `consolidatedData` is non-empty.
+    // A hardcoded 0 here would make every one of this file's assertions on
+    // `ipoRepository.update`'s call arguments silently stop being exercised.
+    fieldsUpdated: Object.keys(consolidatedData).length,
     conflictsDetected: 0,
     conflictsBySeverity: { INFO: 0, WARNING: 0, CRITICAL: 0 },
     fieldResults: [],

@@ -247,8 +247,11 @@ describe('upsertIPO update path — Deepa walk guards', () => {
     const ipoRepository = makeIpoRepository();
     await upsertIPO(ipoRepository, nseScrape(), 'NSE', existingDeepaRow());
 
-    const [, patch] = ipoRepository.update.mock.calls[0];
-    expect(patch).not.toHaveProperty('cin');
+    // S-02 §5: consolidatedData is empty and fieldsUpdated is 0 — a genuine
+    // no-op — so the persister now skips `ipoRepository.update()` entirely
+    // rather than calling it with a patch that happens to omit `cin`. Not
+    // calling update at all is the stronger, now-correct assertion.
+    expect(ipoRepository.update).not.toHaveBeenCalled();
   });
 
   it('W-82 round 2: the fallback path carries cin through to the update payload', async () => {

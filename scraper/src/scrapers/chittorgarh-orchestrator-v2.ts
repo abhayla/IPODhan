@@ -225,8 +225,11 @@ export class ChittorgarhScraperOrchestratorV2 extends BaseScraperOrchestrator<an
 /**
  * Run Chittorgarh scraper with protection checks
  */
-export async function runChittorgarhScraper(): Promise<ChittorgarhScraperResult> {
+export async function runChittorgarhScraper(
+  opts: { allowedStatuses?: readonly string[] } = {}
+): Promise<ChittorgarhScraperResult> {
   const orchestrator = new ChittorgarhScraperOrchestratorV2();
+  if (opts.allowedStatuses) orchestrator.restrictToStatuses(opts.allowedStatuses);
   const baseResult = await orchestrator.run();
   return {
     ...baseResult,

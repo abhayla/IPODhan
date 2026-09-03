@@ -245,7 +245,10 @@ export class BSEScraperOrchestratorV2 extends BaseScraperOrchestrator<ScrapedIPO
  *
  * @returns Promise<BSEScraperResult> - Scraper execution summary with SME counts
  */
-export async function runBSEScraper(): Promise<BSEScraperResult> {
+export async function runBSEScraper(
+  opts: { allowedStatuses?: readonly string[] } = {}
+): Promise<BSEScraperResult> {
   const orchestrator = new BSEScraperOrchestratorV2();
+  if (opts.allowedStatuses) orchestrator.restrictToStatuses(opts.allowedStatuses);
   return await orchestrator.run();
 }

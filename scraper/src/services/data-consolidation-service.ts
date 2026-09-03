@@ -700,10 +700,27 @@ export class DataConsolidationService {
 
           // Track if field was updated (value actually changed from existing)
           // Field is updated if: (1) no existing value, (2) chose incoming over different source, OR (3) same source but value changed (time-based fields)
+          //
+          // S-02 §5 write-suppression fix: this used to be a raw `!==` between
+          // `fieldResult.finalValue` (a JS number/string from the scraper) and
+          // `existingValueFromMap.value` (whatever was stored — a pg NUMERIC
+          // column round-trips as a STRING, e.g. "6800000000.00", and a date
+          // column round-trips as a `Date`). `6800000000 !== "6800000000.00"`
+          // is true even though nothing changed, so every re-scrape of an
+          // unchanged numeric/date field counted as a write. Reuse the SAME
+          // normalize+areEquivalent pair `provenanceUnchanged` (below) already
+          // uses for the field_sources decision, so the `ipos` row-update
+          // decision and the provenance decision can no longer disagree.
           const existingValueFromMap = existingSourceMap.get(fieldResult.fieldName);
           const choseIncoming = fieldResult.chosenSource === input.source;
           const hadDifferentSource = existingValueFromMap && existingValueFromMap.source !== input.source;
-          const valueActuallyChanged = existingValueFromMap && fieldResult.finalValue !== existingValueFromMap.value;
+          const rulesForField = getFieldRules(fieldResult.fieldName);
+          const normalizedFinal = normalizeChosen(fieldResult.fieldName, fieldResult.finalValue, rulesForField);
+          const normalizedExistingFromMap = existingValueFromMap
+            ? normalizeChosen(fieldResult.fieldName, existingValueFromMap.value, rulesForField)
+            : null;
+          const valueActuallyChanged =
+            !!existingValueFromMap && !areEquivalent(normalizedFinal, normalizedExistingFromMap);
           const valueChanged = !existingValueFromMap || (choseIncoming && (hadDifferentSource || valueActuallyChanged));
           if (valueChanged) {
             result.fieldsUpdated++;

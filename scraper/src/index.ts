@@ -25,18 +25,21 @@ import { runStageReconcilerJob } from './scheduler/jobs/stage-reconciler-job.js'
 import { runPrimaryDocBackfill } from './scripts/backfill-primary-source-documents.js';
 import { runDocumentCycle, runDocumentPurge, formatCycleReason } from './services/document-cycle.js';
 import { shouldRunOnCatchUpCadence } from './scheduler/catch-up-cadence.js';
+import { isDiscoveryDue, isMarketHoursIST, mostRecentDiscoverySlotLabel } from './scheduler/due-step-cycle.js';
+import { runDemandBackfill } from './scripts/backfill-demand-graph.js';
+import { DistributedLock } from './utils/distributed-lock.js';
 import { randomUUID } from 'crypto';
 import { db, ScraperLogRepository, getRedisClient } from '@ipodhan/shared';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories';
-import { scraperLogs, scraperSteps } from '@ipodhan/shared/db/schema';
-import { lt } from 'drizzle-orm';
+import { scraperLogs, scraperSteps, ipos } from '@ipodhan/shared/db/schema';
+import { lt, inArray, count } from 'drizzle-orm';
 import logger from './utils/logger.js';
 import { heartbeat, flushOwnerNotify } from './services/owner-notify.js';
 import { evaluateFreshness } from './services/freshness-monitor.js';
 import { checkDeployDrift, getMainShaFromOrigin, getServedShaForSlot } from './services/deploy-drift-monitor.js';
 import { checkCrossSourceDisagreements } from './services/cross-source-disagreement-monitor.js';
 import { getKeylessCoverage } from './services/keyless-coverage-monitor.js';
-import { validateFeatureFlags, getFeatureStatus } from './config/feature-flags.js';
+import { FEATURE_FLAGS, validateFeatureFlags, getFeatureStatus } from './config/feature-flags.js';
 
 /** Days of scraper_logs history to retain. */
 const SCRAPER_LOG_RETENTION_DAYS = 30;
@@ -137,6 +140,164 @@ async function runStep(cycleId: string, step: StepName, fn: () => Promise<StepRe
 }
 
 /**
+ * S-02 §5 (`ENABLE_DUE_STEP_SCHEDULER`): resource id for the whole-cycle Redis
+ * lock. PM2's `cron_restart` (every 30 minutes) FORCE-RESTARTS the process --
+ * it does not wait for the current cycle to finish -- so a cycle
+ * that runs long (discovery + live + aggregators can all fire on the same
+ * invocation) can overlap with the next one unless something refuses to start
+ * a second cycle while the first is still in flight. TTL (55 min) is longer
+ * than the 30-min restart interval so a genuinely stuck cycle still self-heals
+ * without a human clearing the key by hand.
+ */
+const CYCLE_LOCK_RESOURCE = 'scraper:cycle';
+const CYCLE_LOCK_TTL_MS = 55 * 60 * 1000;
+
+/** Redis key tracking the last discovery (NSE+BSE) run, for the 4-slot/day catch-up cadence. */
+const DISCOVERY_LAST_RUN_KEY = 'due-step:last-discovery';
+
+/** Aggregator refresh (Moneycontrol/Chittorgarh) cadence: at most once per day. */
+const AGGREGATOR_INTERVAL_MINUTES = 24 * 60;
+
+async function countIposByStatus(statuses: readonly ('UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED')[]): Promise<number> {
+  // NOTE (bug found + fixed during the S-02 §5 live proof run, 2026-09-03):
+  // the first version of this helper used `sql\`status = ANY(${statuses})\``
+  // (a raw drizzle sql tagged template) — drizzle renders an array parameter
+  // as a row-value tuple `($1, $2)`, and `ANY(($1, $2))` is invalid Postgres
+  // syntax for the ANY() array form, so the query threw on every call and
+  // silently fell back to "treat as non-zero" (fail-open-on-freshness). The
+  // query builder's `inArray()` renders a proper `IN ($1, $2)` and is the
+  // correct tool for a fixed status list — never hand-roll `ANY($1)` here.
+  const [row] = await db.select({ c: count() }).from(ipos).where(inArray(ipos.status, statuses));
+  return row ? Number(row.c) : 0;
+}
+
+/**
+ * S-02 §5: the due-step cycle. Replaces the flat "every source, every
+ * 30-minute cycle, regardless of IPO status or time of day" shape with a
+ * schedule-aware one:
+ *   (a) discovery (NSE+BSE) only at 4 fixed IST slots/day, with catch-up
+ *   (b) reconcile every cycle -- already covered by the existing
+ *       `stageReconciler` post-step below (runs unconditionally on 'all'),
+ *       so it is NOT duplicated here
+ *   (c) live data (subscription refresh + GMP + demand graph) only during
+ *       market hours, and only for OPEN IPOs
+ *   (d) aggregator refresh (Moneycontrol, Chittorgarh) only for
+ *       UPCOMING/OPEN IPOs, at most once/day
+ * Only called when `source === 'all' && FEATURE_FLAGS.ENABLE_DUE_STEP_SCHEDULER`.
+ * The caller (`main()`) owns the whole-cycle lock (`CYCLE_LOCK_RESOURCE`) and
+ * still runs the post-steps (statusUpdate, stageReconciler, etc.) exactly as
+ * the legacy 'all' path does, right after this returns.
+ */
+async function runDueStepCycle(): Promise<void> {
+  const redis = getRedisClient();
+  const now = new Date();
+
+  // (a) discovery — 4 IST slots/day, catch-up safe.
+  let lastDiscoveryRun: Date | null = null;
+  try {
+    const raw = await redis.get(DISCOVERY_LAST_RUN_KEY);
+    lastDiscoveryRun = raw ? new Date(raw) : null;
+    if (lastDiscoveryRun !== null && Number.isNaN(lastDiscoveryRun.getTime())) lastDiscoveryRun = null;
+  } catch (error) {
+    logger.debug(
+      { error: error instanceof Error ? error.message : String(error) },
+      'Due-step cycle: discovery last-run lookup failed (non-fatal) — treating as due (fail open)'
+    );
+  }
+
+  if (isDiscoveryDue(now, lastDiscoveryRun)) {
+    logger.info({ slot: mostRecentDiscoverySlotLabel(now) }, 'Due-step cycle: discovery is due — running NSE + BSE');
+    try {
+      await runNSEScraper();
+      await runBSEScraper();
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Due-step cycle: discovery run failed (non-fatal to the cycle)'
+      );
+    }
+    try {
+      await redis.set(DISCOVERY_LAST_RUN_KEY, now.toISOString());
+    } catch (error) {
+      logger.debug(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Due-step cycle: discovery last-run persist failed (non-fatal)'
+      );
+    }
+  } else {
+    logger.info(
+      { slot: mostRecentDiscoverySlotLabel(now) },
+      'Due-step cycle: discovery not due at this slot — skipped'
+    );
+  }
+
+  // (c) live data — market hours only, OPEN IPOs only.
+  if (isMarketHoursIST(now)) {
+    let openCount = 0;
+    try {
+      openCount = await countIposByStatus(['OPEN']);
+    } catch (error) {
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Due-step cycle: OPEN-IPO count query failed — treating as non-zero to fail open on freshness'
+      );
+      openCount = 1;
+    }
+    if (openCount === 0) {
+      logger.info('Due-step cycle: market hours, but zero OPEN IPOs — live step makes ZERO network calls');
+    } else {
+      logger.info({ openCount }, 'Due-step cycle: market hours + OPEN IPOs present — running live data (subscription/GMP/demand graph)');
+      try {
+        await runNSEScraper({ allowedStatuses: ['OPEN'] });
+        await runBSEScraper({ allowedStatuses: ['OPEN'] });
+      } catch (error) {
+        logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Due-step cycle: live subscription refresh failed (non-fatal)');
+      }
+      try {
+        await runInvestorgainGMPScraper();
+      } catch (error) {
+        logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Due-step cycle: live GMP refresh failed (non-fatal)');
+      }
+      try {
+        await runDemandBackfill({ execute: true });
+      } catch (error) {
+        logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Due-step cycle: live demand-graph refresh failed (non-fatal)');
+      }
+    }
+  } else {
+    logger.info('Due-step cycle: outside market hours (weekday 10:00-17:00 IST) — live step makes ZERO network calls');
+  }
+
+  // (d) aggregators — UPCOMING/OPEN only, at most once/day.
+  const aggregatorsDue = await shouldRunOnCatchUpCadence(redis, 'due-step-aggregators', AGGREGATOR_INTERVAL_MINUTES, now);
+  if (!aggregatorsDue) {
+    logger.info('Due-step cycle: aggregator refresh (Moneycontrol/Chittorgarh) not due yet (< 24h since last run) — skipped');
+  } else {
+    let candidateCount = 0;
+    try {
+      candidateCount = await countIposByStatus(['UPCOMING', 'OPEN']);
+    } catch (error) {
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Due-step cycle: UPCOMING/OPEN-IPO count query failed — treating as non-zero to fail open on freshness'
+      );
+      candidateCount = 1;
+    }
+    if (candidateCount === 0) {
+      logger.info('Due-step cycle: aggregator cadence due, but zero UPCOMING/OPEN IPOs — skipped (zero network calls)');
+    } else {
+      logger.info({ candidateCount }, 'Due-step cycle: aggregator cadence due — running Moneycontrol + Chittorgarh for UPCOMING/OPEN IPOs');
+      try {
+        await runMoneycontrolScraper({ allowedStatuses: ['UPCOMING', 'OPEN'] });
+        await runChittorgarhScraper({ allowedStatuses: ['UPCOMING', 'OPEN'] });
+      } catch (error) {
+        logger.error({ error: error instanceof Error ? error.message : String(error) }, 'Due-step cycle: aggregator refresh failed (non-fatal)');
+      }
+    }
+  }
+}
+
+/**
  * T-340 DoD item 3: the scraper refuses to START a `--source=all` cycle
  * (never runs any post-scrape step, exits non-zero, names the missing key)
  * when a required env var for that cycle is absent. Previously
@@ -182,6 +343,22 @@ export function assertRequiredEnvForCycle(source: string, env: NodeJS.ProcessEnv
  *   npm run start:all                 (NSE + BSE + Moneycontrol + Chittorgarh + API fallback + GMP sequentially)
  */
 export async function main() {
+  // S-02 §5: declared OUTSIDE the try block so the outer catch (unhandled
+  // error) can still release the lock — a `let`/`const` declared inside
+  // `try { }` is not visible to its own `catch { }` block.
+  let cycleLock: { lock: DistributedLock; token?: string } | null = null;
+  const releaseCycleLock = async (): Promise<void> => {
+    if (!cycleLock) return;
+    try {
+      await cycleLock.lock.release(CYCLE_LOCK_RESOURCE, cycleLock.token);
+    } catch (error) {
+      logger.debug(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Due-step cycle: lock release failed (non-fatal — TTL will expire it)'
+      );
+    }
+  };
+
   try {
     // Parse CLI arguments
     const args = process.argv.slice(2);
@@ -231,6 +408,29 @@ export async function main() {
       process.exit(1);
     }
 
+    // S-02 §5 (`ENABLE_DUE_STEP_SCHEDULER`): whole-cycle Redis lock so PM2's
+    // force-restarting `cron_restart */30 * * * *` never overlaps two
+    // due-step cycles (see CYCLE_LOCK_RESOURCE's doc comment above). Held for
+    // the ENTIRE `source === 'all'` cycle, including the post-steps below —
+    // released right before every exit point in this function (`cycleLock` /
+    // `releaseCycleLock` declared above the try block). Flag OFF, or
+    // `source !== 'all'`: no-op (legacy behavior, unchanged).
+    if (source === 'all' && FEATURE_FLAGS.ENABLE_DUE_STEP_SCHEDULER) {
+      const lock = new DistributedLock(getRedisClient());
+      const lockResult = await lock.acquire(CYCLE_LOCK_RESOURCE, { ttl: CYCLE_LOCK_TTL_MS });
+      if (!lockResult.acquired) {
+        logger.warn('Due-step cycle: previous cycle still running (scraper:cycle Redis lock held) — exiting 0 without doing anything');
+        process.exit(0);
+      }
+      cycleLock = { lock, token: lockResult.token };
+    }
+
+    // S-02 §5 (ENABLE_DUE_STEP_SCHEDULER): when the flag is ON, the top-level
+    // per-source blocks below are skipped for 'all' -- runDueStepCycle() owns
+    // discovery/live/aggregator gating instead. With the flag OFF this is
+    // exactly the legacy 'all' behavior (the rollback path).
+    const runsLegacyAllPath = source === 'all' && !FEATURE_FLAGS.ENABLE_DUE_STEP_SCHEDULER;
+
     let combinedResult = {
       success: true,
       iposProcessed: 0,
@@ -245,7 +445,7 @@ export async function main() {
     };
 
     // Run NSE scraper
-    if (source === 'nse' || source === 'all') {
+    if (source === 'nse' || runsLegacyAllPath) {
       logger.info('Running NSE scraper');
       const nseResult = await runNSEScraper();
 
@@ -273,7 +473,7 @@ export async function main() {
     }
 
     // Run BSE scraper
-    if (source === 'bse' || source === 'all') {
+    if (source === 'bse' || runsLegacyAllPath) {
       logger.info('Running BSE scraper');
       const bseResult = await runBSEScraper();
 
@@ -304,7 +504,7 @@ export async function main() {
     }
 
     // Run Moneycontrol scraper
-    if (source === 'moneycontrol' || source === 'all') {
+    if (source === 'moneycontrol' || runsLegacyAllPath) {
       logger.info('Running Moneycontrol scraper');
       const moneycontrolResult = await runMoneycontrolScraper();
 
@@ -331,7 +531,7 @@ export async function main() {
     }
 
     // Run Chittorgarh scraper
-    if (source === 'chittorgarh' || source === 'all') {
+    if (source === 'chittorgarh' || runsLegacyAllPath) {
       logger.info('Running Chittorgarh scraper');
       const chittorgarhResult = await runChittorgarhScraper();
 
@@ -358,7 +558,7 @@ export async function main() {
     }
 
     // Run IPO Alerts API fallback scraper
-    if (source === 'fallback' || source === 'api' || source === 'all') {
+    if (source === 'fallback' || source === 'api' || runsLegacyAllPath) {
       logger.info('Running IPO Alerts API fallback scraper (manual execution)');
 
       const fallbackResult = await runIPOAlertsFallback('manual');
@@ -386,7 +586,7 @@ export async function main() {
     }
 
     // Run Investorgain GMP scraper (populates gmp_records table)
-    if (source === 'gmp' || source === 'all') {
+    if (source === 'gmp' || runsLegacyAllPath) {
       logger.info('Running Investorgain GMP scraper');
       const gmpResult = await runInvestorgainGMPScraper();
 
@@ -403,6 +603,16 @@ export async function main() {
         },
         'Investorgain GMP scraper completed'
       );
+    }
+
+    // S-02 §5: the due-step cycle runs INSTEAD of the flat per-source blocks
+    // above (which are already gated off for 'all' when this flag is on —
+    // see `runsLegacyAllPath`). It owns discovery/live/aggregator gating;
+    // the post-steps block right below (unchanged) still runs unconditionally,
+    // and already includes `stageReconciler` — design point (b) "reconcile
+    // every cycle" needs no separate call here.
+    if (source === 'all' && FEATURE_FLAGS.ENABLE_DUE_STEP_SCHEDULER) {
+      await runDueStepCycle();
     }
 
     // After scraping, apply time-based IPO status transitions (GitHub #4) and
@@ -461,6 +671,7 @@ export async function main() {
     if (combinedResult.success) {
       logger.info('Scraper completed successfully');
       await flushOwnerNotify();
+      await releaseCycleLock();
       process.exit(0);
     } else {
       logger.error('Scraper completed with errors');
@@ -468,6 +679,7 @@ export async function main() {
         logger.error({ errors: combinedResult.errors }, 'Error details');
       }
       await flushOwnerNotify();
+      await releaseCycleLock();
       process.exit(1);
     }
 
@@ -477,6 +689,7 @@ export async function main() {
       'Scraper CLI failed with unhandled error'
     );
     await flushOwnerNotify();
+    await releaseCycleLock();
     process.exit(1);
   }
 }

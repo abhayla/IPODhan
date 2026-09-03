@@ -149,6 +149,21 @@ export const FEATURE_FLAGS = {
   ENABLE_DUPLICATE_SWEEP_JOB: process.env.ENABLE_DUPLICATE_SWEEP_JOB === 'true',
 
   /**
+   * Enable the "due-step" cycle (S-02 §5): replaces the flat "run every
+   * source every 30 minutes regardless of IPO status or time of day" shape
+   * of `--source=all` with a schedule-aware cycle — NSE/BSE discovery only at
+   * 4 fixed IST slots/day (with catch-up), the stage reconciler every cycle,
+   * live data (subscription/GMP/demand graph) only during market hours for
+   * OPEN IPOs, and aggregator refresh (Moneycontrol/Chittorgarh) only for
+   * UPCOMING/OPEN IPOs at most once/day. A Redis lock (`scraper:cycle`)
+   * makes this safe under PM2's 30-minute `cron_restart` force-kill.
+   * With the flag OFF (default), `--source=all` is UNCHANGED — this is the
+   * rollback path. See `scraper/src/scheduler/due-step-cycle.ts`.
+   * Default: false
+   */
+  ENABLE_DUE_STEP_SCHEDULER: process.env.ENABLE_DUE_STEP_SCHEDULER === 'true',
+
+  /**
    * Enable AUTOMATIC filing extraction + persistence inside the document cycle
    * (S-02). MAJOR-4: this flag gates ONLY the python extraction + persist
    * block below — it does NOT gate the step ledger. With the flag OFF, which

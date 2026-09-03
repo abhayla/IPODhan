@@ -746,8 +746,29 @@ export async function upsertIPO(
               delete finalData[field];
             }
 
-            // Update IPO with consolidated data
-            await ipoRepository.update(existingIPO.id, finalData);
+            // S-02 §5 no-op write suppression: `consolidationResult.fieldsUpdated`
+            // now reflects a NORMALIZED comparison (see the `valueActuallyChanged`
+            // fix in data-consolidation-service.ts) — a re-scrape that changed
+            // nothing (a pg NUMERIC string equal to the incoming number, a Date
+            // equal to the incoming date string, etc.) reports 0 here. Skipping the
+            // write when nothing changed skips BOTH the `ipos` row write AND the
+            // per-row cache invalidation `ipoRepository.update()` performs
+            // internally (BaseRepository cache-aside) — exactly the pair the S-02
+            // §5 write-suppression design calls out. `lastScrapedAt`/`updatedAt`
+            // bumps are deliberately foregone on a true no-op cycle; the next
+            // cycle that DOES change a field still refreshes them via `finalData`.
+            const isNoopUpdate = (consolidationResult.fieldsUpdated ?? 0) === 0;
+            if (isNoopUpdate) {
+              logger.debug({
+                ipoId: existingIPO.id,
+                companyName: scrapedIPO.companyName,
+                source,
+                noop: true,
+              }, '[DataConsolidation] No field actually changed — skipping ipos row update + cache invalidation');
+            } else {
+              // Update IPO with consolidated data
+              await ipoRepository.update(existingIPO.id, finalData);
+            }
 
             // S-02: the consolidation door is also the F4/F5/F6 evidence — it is
             // the thing that compared sources and wrote the conflict + provenance

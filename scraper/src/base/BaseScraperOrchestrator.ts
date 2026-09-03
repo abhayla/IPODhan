@@ -123,6 +123,25 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
   // T-195: selector-degradation detection
   protected redis!: Redis;
 
+  /**
+   * S-02 §5 (due-step scheduler, `ENABLE_DUE_STEP_SCHEDULER`): when set, an
+   * IPO is processed ONLY if it already exists with a status in this set —
+   * a brand-new IPO (`existingIPO === null`) is also skipped. Lets a
+   * status-scoped caller (aggregator refresh restricted to UPCOMING/OPEN,
+   * live refresh restricted to OPEN) reuse the SAME orchestrator + the same
+   * single write door instead of duplicating scrape logic, per
+   * `plan-before-coding.md`'s "smallest existing entry point" guidance.
+   * `undefined` (the default) means "no restriction" — today's unfiltered
+   * behavior, unchanged.
+   */
+  protected allowedStatuses?: Set<string>;
+
+  /** Sets the status restriction described on `allowedStatuses` above. Chainable. */
+  public restrictToStatuses(statuses: readonly string[]): this {
+    this.allowedStatuses = new Set(statuses);
+    return this;
+  }
+
   // Scraper name (e.g., 'NSE', 'BSE', 'MONEYCONTROL')
   protected abstract getScraperName(): ScraperSource;
 
@@ -408,6 +427,18 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       symbol: validatedIPO.symbol,
     }) as IPO | null;
     const ipoId = existingIPO?.id;
+
+    // S-02 §5: status-restricted callers (aggregator/live refresh under the
+    // due-step scheduler) never create new rows and never touch a row whose
+    // status is outside the restriction — skip before any write/lock work.
+    if (this.allowedStatuses && (!existingIPO || !this.allowedStatuses.has(existingIPO.status))) {
+      logger.debug(
+        { scraperName, companyName: validatedIPO.companyName, status: existingIPO?.status ?? 'NEW' },
+        'IPO outside allowedStatuses restriction - skipping (due-step scheduler)'
+      );
+      processResult.skipped = true;
+      return processResult;
+    }
 
     // Step 3: PROTECTION CHECK - IPO-level lock
     if (ipoId && await this.fieldProtectionService.isIPOLocked(ipoId)) {
