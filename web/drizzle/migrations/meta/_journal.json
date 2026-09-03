@@ -225,6 +225,13 @@
       "when": 1788945600000,
       "tag": "0048_ipo_valuation_share_legs",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789031999000,
+      "tag": "0049_ipo_details_ad_fields",
+      "breakpoints": true
     }
   ]
 }

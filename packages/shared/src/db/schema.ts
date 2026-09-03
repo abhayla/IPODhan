@@ -1164,6 +1164,22 @@ export const ipoDetails = pgTable(
     allocationPct: jsonb('allocation_pct'),
     preIpoPlacement: boolean('pre_ipo_placement'),
 
+    // W-88 (migration 0049): price-band-advertisement facts with no prior home.
+    // bidWindows is [{activity, window}] - the per-investor-class clock windows
+    // the ad prints under "Submission of Bids (other than Bids from Anchor
+    // Investors)". Deliberately NOT ipoMarketTimings, which is a varchar(50)
+    // the NSE API scraper fills with the exchange's trading hours.
+    bidWindows: jsonb('bid_windows'),
+    // The AGGREGATE promoter holding; promoters.shares_held is per promoter.
+    promoterSharesHeld: bigint('promoter_shares_held', { mode: 'number' }),
+    // The SEBI ICDR regulation the book-building offer is made under, as cited
+    // by the ad, e.g. "Regulation 6(1)".
+    sebiRegulationCited: varchar('sebi_regulation_cited', { length: 32 }),
+    // [{summary}] - promoter/promoter-group share transactions of 1% or more
+    // since the DRHP. An EMPTY array means the ad states there were none, which
+    // is an answer; null means the ad does not carry the statement.
+    promoterGroupTransactionsSinceDrhp: jsonb('promoter_group_transactions_since_drhp'),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
