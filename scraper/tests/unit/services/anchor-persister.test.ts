@@ -168,6 +168,52 @@ describe('anchor-persister — the DEEPA report', () => {
     expect(isLowConfidenceName('Ab')).toBe(true);
   });
 
+  /**
+   * W-89b — the 15 real DEEPA (commit 792f5387) strings, LOW verdicts, plus
+   * the CLEAN abbreviated/normal names that must NOT be flagged. Mirrors the
+   * same 26-case table in scripts/test_anchor_report_text.py (port fidelity).
+   */
+  const W89B_LOW_CONFIDENCE_NAMES = [
+    'M OTI LA FI NV E ST LI M ITE D',
+    'CA PITA 心 EQUITY FUND',
+    'NOMURA SINGAPORE LIMITED GI RI K M LTI CA P G RO WTH EQUITY FUND- 1 INVESTMENT',
+    'ACCOU NT',
+    'SERIES 1',
+    'INVESTMENT TRUST PLC HIGH CO N VI CTI 0 N FUND',
+    'ALCHEMY LONG TERM VENTURES FUND SERIES 3 AS 0 KA',
+    '360 ONE EQ UITY OPPORTUNITIES FUND - SERIES',
+    '',
+  ];
+
+  const W89B_CLEAN_NAMES = [
+    'CP CAPITAL LTD',
+    'LRSD SECURITIES PVT LTD',
+    'MAYBANK SECURITIES PTE LTD ODI',
+    'FLEXI CAP FUND',
+    'TATA INDIA CONSUMER FUND TATA DIVIDEND YIELD FUND MUTUAL FUND',
+    'GROUP MAURITIUS PRIVATE LIMITED',
+    'Motilal Oswal Finvest Limited',
+    'WhiteOak Capital Equity Fund',
+    '360 ONE Equity Opportunities Fund - Series 2',
+    'HDFC Mutual Fund',
+    'SBI Life Insurance Co Ltd',
+    'Kotak Mahindra (International) Ltd',
+    'ICICI Prudential Life Insurance Company Limited',
+    'Abu Dhabi Investment Authority - Behave',
+    'Goldman Sachs (Singapore) Pte',
+    'LIC of India',
+    'Fund 2 Ltd',
+  ];
+
+  it('W-89b: flags every real DEEPA shrapnel name and passes every clean name', () => {
+    for (const name of W89B_LOW_CONFIDENCE_NAMES) {
+      expect(isLowConfidenceName(name)).toBe(true);
+    }
+    for (const name of W89B_CLEAN_NAMES) {
+      expect(isLowConfidenceName(name)).toBe(false);
+    }
+  });
+
   it('writes nothing in dry-run mode but still reports the plan', async () => {
     const { deps, persist } = makeDeps(deepaAnchorFixture());
     const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY }, deps);

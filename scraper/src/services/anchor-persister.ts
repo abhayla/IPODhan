@@ -107,19 +107,79 @@ export interface AnchorPersistSummary {
 const AMOUNT_TOLERANCE_CRORE = 0.01;
 
 /**
+ * Short tokens (<=2 letters) legitimately appearing in real entity names —
+ * country/currency/legal-form abbreviations. A short token in this list does
+ * not count toward the "run of OCR-shrapnel tokens" signal below.
+ */
+const SHORT_TOKEN_ALLOWLIST = new Set([
+  'OF', '&', 'AND', 'CO', 'LTD', 'PTE', 'PLC', 'LP', 'LLC', 'LLP', 'SA', 'AG', 'NV', 'BV', 'SE',
+  'AB', 'AS', 'OY', 'KK', 'DE', 'LA', 'LE', 'DU', 'ON', 'IN', 'TO', 'BY', 'UK', 'US', 'UAE', 'ODI',
+  'FPI', 'FII', 'MF', 'IT', 'II', 'III', 'IV', 'VI', 'PE', 'VC', 'HK', 'SG', 'CH',
+]);
+
+/** The minimum consecutive run of non-allow-listed 1-2 letter tokens that reads as
+ * OCR shrapnel rather than a real short-form name (W-89b: a run of 4 single
+ * letters was the old bar; word-fragment shrapnel is often 1-2 letters, not
+ * always exactly 1, so the run is measured on token length <= 2). */
+const SHRAPNEL_RUN_THRESHOLD = 4;
+
+/**
  * A name is low-confidence when OCR left it with characters no registered
- * investor name contains, or it is too short to be a real entity name.
+ * investor name contains, too short to be a real entity name, or shaped like
+ * word-fragment shrapnel (W-89b): a run of short OCR-split tokens, a lone
+ * "0"/"1" standing in for a misread "O"/"I" between two words, too few real
+ * words to be an entity name, or a dangling "SERIES"/"ACCOUNT" fragment with
+ * no identifier after it.
  */
 export function isLowConfidenceName(name: string): boolean {
   const n = (name || '').trim();
   if (n.length < 4) return true;
   if (/[^A-Za-z0-9 .,&()'\/-]/.test(n)) return true;
-  // Runs of single letters separated by spaces are OCR shrapnel, not a name.
-  if (/(^|\s)[A-Za-z](\s[A-Za-z]){3,}(\s|$)/.test(n)) return true;
   // A digit welded into an alphabetic word is the classic OCR substitution
   // ("G1oba1", "M0rgan", "Vant4ge"). Real entity names never do this, while
   // legitimate digits in a name stand alone ("Fund 2 Ltd").
   if (/[A-Za-z]\d|\d[A-Za-z]/.test(n)) return true;
+
+  const tokens = n.split(/\s+/).filter(Boolean);
+
+  // A run of short (<=2 letter) tokens is OCR letter/word shrapnel
+  // ("M OTI LA FI NV E ST LI M ITE D", "GI RI K M"), not a real name — unless
+  // most of the run is legitimate short-form abbreviations.
+  let shortRun: string[] = [];
+  for (const t of [...tokens, '']) {
+    const isShort = /^[A-Za-z]{1,2}$/.test(t);
+    if (isShort) {
+      shortRun.push(t);
+    } else {
+      const nonAllowed = shortRun.filter((s) => !SHORT_TOKEN_ALLOWLIST.has(s.toUpperCase()));
+      if (nonAllowed.length >= SHRAPNEL_RUN_THRESHOLD) return true;
+      shortRun = [];
+    }
+  }
+
+  // A lone "0" or "1" standing between two word tokens is a misread "O"/"I"
+  // ("CTI 0 N" for "CONVICTION", "AS 0 KA" for "ASOKA") — real names never
+  // isolate a single digit between two letter-only tokens.
+  for (let i = 1; i < tokens.length - 1; i++) {
+    if (
+      (tokens[i] === '0' || tokens[i] === '1') &&
+      /^[A-Za-z]+$/.test(tokens[i - 1]) &&
+      /^[A-Za-z]+$/.test(tokens[i + 1])
+    ) {
+      return true;
+    }
+  }
+
+  // Fewer than 2 real (3+ letter) words means the string is a fragment, not
+  // an entity name ("SERIES 1", "ACCOU NT" — a word split by OCR into two
+  // pieces, one too short to count).
+  const realWords = tokens.filter((t) => /^[A-Za-z]{3,}$/.test(t.replace(/[^A-Za-z]/g, ''))).length;
+  if (realWords < 2) return true;
+
+  // A name that trails off in a bare "SERIES"/"ACCOUNT" with no identifier
+  // after it is an incomplete OCR read of a series/account-linked investor.
+  if (/\b(SERIES|ACCOUNT)\s*$/i.test(n)) return true;
+
   const letters = n.replace(/[^A-Za-z]/g, '').length;
   return letters / n.length < 0.6;
 }

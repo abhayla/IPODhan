@@ -238,8 +238,25 @@ JOIN_DICTIONARY = (
 MAX_JOIN_FRAGMENT = 3
 
 _NAME_ALLOWED_RE = re.compile(r"[^A-Za-z0-9 .,&()'/-]")
-_LETTER_RUN_RE = re.compile(r"(^|\s)[A-Za-z](\s[A-Za-z]){3,}(\s|$)")
 _DIGIT_IN_WORD_RE = re.compile(r"[A-Za-z]\d|\d[A-Za-z]")
+_SHORT_TOKEN_RE = re.compile(r"^[A-Za-z]{1,2}$")
+_REAL_WORD_RE = re.compile(r"^[A-Za-z]{3,}$")
+_DANGLING_SERIES_RE = re.compile(r"\b(SERIES|ACCOUNT)\s*$", re.IGNORECASE)
+
+# Short tokens (<=2 letters) legitimately appearing in real entity names --
+# country/currency/legal-form abbreviations. A short token in this list does
+# not count toward the "run of OCR-shrapnel tokens" signal below.
+SHORT_TOKEN_ALLOWLIST = {
+    "OF", "&", "AND", "CO", "LTD", "PTE", "PLC", "LP", "LLC", "LLP", "SA", "AG", "NV", "BV", "SE",
+    "AB", "AS", "OY", "KK", "DE", "LA", "LE", "DU", "ON", "IN", "TO", "BY", "UK", "US", "UAE", "ODI",
+    "FPI", "FII", "MF", "IT", "II", "III", "IV", "VI", "PE", "VC", "HK", "SG", "CH",
+}
+
+# The minimum consecutive run of non-allow-listed 1-2 letter tokens that reads
+# as OCR shrapnel rather than a real short-form name (W-89b: a run of 4 single
+# letters was the old bar; word-fragment shrapnel is often 1-2 letters, not
+# always exactly 1, so the run is measured on token length <= 2).
+SHRAPNEL_RUN_THRESHOLD = 4
 
 
 def is_low_confidence_name(name):
@@ -247,16 +264,61 @@ def is_low_confidence_name(name):
 
     Kept deliberately identical so the extractor's own judgement of "this name
     did not read" is the same judgement the persister's publication gate makes.
+    A name is low-confidence when OCR left it with characters no registered
+    investor name contains, too short to be a real entity name, or shaped like
+    word-fragment shrapnel (W-89b): a run of short OCR-split tokens, a lone
+    "0"/"1" standing in for a misread "O"/"I" between two words, too few real
+    words to be an entity name, or a dangling "SERIES"/"ACCOUNT" fragment with
+    no identifier after it.
     """
     n = (name or "").strip()
     if len(n) < 4:
         return True
     if _NAME_ALLOWED_RE.search(n):
         return True
-    if _LETTER_RUN_RE.search(n):
-        return True
     if _DIGIT_IN_WORD_RE.search(n):
         return True
+
+    tokens = n.split()
+
+    # A run of short (<=2 letter) tokens is OCR letter/word shrapnel
+    # ("M OTI LA FI NV E ST LI M ITE D", "GI RI K M"), not a real name --
+    # unless most of the run is legitimate short-form abbreviations.
+    short_run = []
+    for t in tokens + [""]:
+        if _SHORT_TOKEN_RE.match(t):
+            short_run.append(t)
+        else:
+            non_allowed = [s for s in short_run if s.upper() not in SHORT_TOKEN_ALLOWLIST]
+            if len(non_allowed) >= SHRAPNEL_RUN_THRESHOLD:
+                return True
+            short_run = []
+
+    # A lone "0" or "1" standing between two word tokens is a misread "O"/"I"
+    # ("CTI 0 N" for "CONVICTION", "AS 0 KA" for "ASOKA") -- real names never
+    # isolate a single digit between two letter-only tokens.
+    for i in range(1, len(tokens) - 1):
+        if (
+            tokens[i] in ("0", "1")
+            and tokens[i - 1].isalpha()
+            and tokens[i - 1].isascii()
+            and tokens[i + 1].isalpha()
+            and tokens[i + 1].isascii()
+        ):
+            return True
+
+    # Fewer than 2 real (3+ letter) words means the string is a fragment, not
+    # an entity name ("SERIES 1", "ACCOU NT" -- a word split by OCR into two
+    # pieces, one too short to count).
+    real_words = sum(1 for t in tokens if _REAL_WORD_RE.match(re.sub(r"[^A-Za-z]", "", t)))
+    if real_words < 2:
+        return True
+
+    # A name that trails off in a bare "SERIES"/"ACCOUNT" with no identifier
+    # after it is an incomplete OCR read of a series/account-linked investor.
+    if _DANGLING_SERIES_RE.search(n):
+        return True
+
     letters = sum(1 for c in n if c.isalpha())
     return letters / float(len(n)) < 0.6
 

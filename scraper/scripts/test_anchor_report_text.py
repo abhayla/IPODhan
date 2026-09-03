@@ -156,12 +156,11 @@ def test_join_leaves_a_clean_name_untouched():
 def test_is_low_confidence_name_matches_the_persister_rule():
     assert is_low_confidence_name("OSWAL OT] LAL FINVEST N4 LI I\4ITE D") is True
     assert is_low_confidence_name("") is True
-    # KNOWN GAP, documented not asserted-away: the persister's rule needs a run
-    # of FOUR single letters, so two-character shrapnel slips through it. This
-    # is the shape the DEEPA row 1 name takes after OCR, and the 30% gate does
-    # not catch it. Fixing the rule is the persister's call, not this module's -
-    # asserted here so the gap is visible when someone tightens it.
-    assert is_low_confidence_name("M OTI LA OS WA FI N V EST") is False
+    # W-89b FIXED this gap: the old rule needed a run of FOUR single letters,
+    # so two-and-three-character shrapnel slipped through it. This is the
+    # shape the DEEPA row 1 name takes after OCR; the run-of-short-tokens
+    # signal now catches it (see test_w89b_deepa_name_verdicts below).
+    assert is_low_confidence_name("M OTI LA OS WA FI N V EST") is True
     assert is_low_confidence_name("MAYBANK SECURITIES PTE LTD") is False
     assert is_low_confidence_name("360 ONE EQUITY OPPORTUNITIES FUND") is False
 
@@ -169,6 +168,51 @@ def test_is_low_confidence_name_matches_the_persister_rule():
 def test_low_confidence_share_counts_blank_rows():
     assert low_confidence_share(["MAYBANK SECURITIES PTE LTD", ""]) == 0.5
     assert low_confidence_share([]) == 0.0
+
+
+# --------------------------------------------------------------------------- #
+# W-89b - the 15 real DEEPA (commit 792f5387) strings, LOW verdicts, plus the
+# CLEAN abbreviated/normal names that must NOT be flagged. Mirrors the same
+# 26-case table in tests/unit/services/anchor-persister.test.ts (port fidelity).
+# --------------------------------------------------------------------------- #
+W89B_LOW_CONFIDENCE_NAMES = [
+    "M OTI LA FI NV E ST LI M ITE D",
+    "CA PITA 心 EQUITY FUND",
+    "NOMURA SINGAPORE LIMITED GI RI K M LTI CA P G RO WTH EQUITY FUND- 1 INVESTMENT",
+    "ACCOU NT",
+    "SERIES 1",
+    "INVESTMENT TRUST PLC HIGH CO N VI CTI 0 N FUND",
+    "ALCHEMY LONG TERM VENTURES FUND SERIES 3 AS 0 KA",
+    "360 ONE EQ UITY OPPORTUNITIES FUND - SERIES",
+    "",
+]
+
+W89B_CLEAN_NAMES = [
+    "CP CAPITAL LTD",
+    "LRSD SECURITIES PVT LTD",
+    "MAYBANK SECURITIES PTE LTD ODI",
+    "FLEXI CAP FUND",
+    "TATA INDIA CONSUMER FUND TATA DIVIDEND YIELD FUND MUTUAL FUND",
+    "GROUP MAURITIUS PRIVATE LIMITED",
+    "Motilal Oswal Finvest Limited",
+    "WhiteOak Capital Equity Fund",
+    "360 ONE Equity Opportunities Fund - Series 2",
+    "HDFC Mutual Fund",
+    "SBI Life Insurance Co Ltd",
+    "Kotak Mahindra (International) Ltd",
+    "ICICI Prudential Life Insurance Company Limited",
+    "Abu Dhabi Investment Authority - Behave",
+    "Goldman Sachs (Singapore) Pte",
+    "LIC of India",
+    "Fund 2 Ltd",
+]
+
+
+def test_w89b_deepa_name_verdicts():
+    for name in W89B_LOW_CONFIDENCE_NAMES:
+        assert is_low_confidence_name(name) is True, f"expected LOW: {name!r}"
+    for name in W89B_CLEAN_NAMES:
+        assert is_low_confidence_name(name) is False, f"expected CLEAN: {name!r}"
 
 
 # --------------------------------------------------------------------------- #
