@@ -10,14 +10,45 @@ import { AlertTriangle } from 'lucide-react';
 
 interface MinimumInvestmentDisplayProps {
   minInvestment: string | number | null | undefined;
+  /** Shares per lot — used to derive the minimum when it is not stored. */
+  lotSize?: number | null;
+  /** Cap of the price band — used to derive the minimum when it is not stored. */
+  priceRangeMax?: number | null;
   className?: string;
+}
+
+/**
+ * W-85(a): `ipo_details.min_investment` is frequently empty even when the lot
+ * size and the cap of the band are both known, which rendered "Not Available"
+ * beside a fact ribbon that already showed the figure. Derive it (one lot at
+ * the cap) rather than showing nothing; a stored value always wins.
+ */
+function resolveMinInvestment(
+  stored: string | number | null | undefined,
+  lotSize: number | null | undefined,
+  priceRangeMax: number | null | undefined
+): number | null {
+  // Same truthiness gate the component always used, so a stored 0 / negative
+  // keeps rendering exactly as before — only the empty case gains a fallback.
+  if (stored) return parseFloat(stored.toString());
+
+  const lots = typeof lotSize === 'number' ? lotSize : null;
+  const cap = typeof priceRangeMax === 'number' ? priceRangeMax : null;
+  if (lots === null || cap === null || lots <= 0 || cap <= 0) return null;
+
+  const derived = lots * cap;
+  return Number.isFinite(derived) ? derived : null;
 }
 
 export function MinimumInvestmentDisplay({
   minInvestment,
+  lotSize = null,
+  priceRangeMax = null,
   className = '',
 }: MinimumInvestmentDisplayProps) {
-  if (!minInvestment) {
+  const investmentAmount = resolveMinInvestment(minInvestment, lotSize, priceRangeMax);
+
+  if (investmentAmount === null) {
     return (
       <div className={`text-center ${className}`}>
         <p className="text-sm text-gray-500">Not Available</p>
@@ -25,7 +56,6 @@ export function MinimumInvestmentDisplay({
     );
   }
 
-  const investmentAmount = parseFloat(minInvestment.toString());
   const isHighInvestment = investmentAmount > 50000;
 
   return (

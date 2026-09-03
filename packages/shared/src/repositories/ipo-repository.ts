@@ -32,6 +32,7 @@ import {
   getHistoricalIPOsKey,
 } from '../cache/cache-keys';
 import { EntityNotFoundError, DatabaseError } from '../errors/repository-errors';
+import { logger } from '../logger';
 import {
   normalizedCompanyNameSql,
   compactNormalizedCompanyNameSql,
@@ -50,6 +51,68 @@ import type {
   HistoricalIPO,
   HistoricalIPOQueryParams,
 } from './types';
+
+/**
+ * The kind of boundary at which the SHORTER of two already-normalized names
+ * is a prefix of the LONGER one — 'exact' (equal strings), 'punctuation'
+ * (the longer string's next character is punctuation: hyphen, comma,
+ * parenthesis, dot, ...), 'whitespace' (the next character is a plain
+ * space), or `null` (no prefix relationship at all, including a mid-word
+ * split like "ray" vs "rays").
+ *
+ * T-403 Tier-A review (item 2): a punctuation boundary is a STRONG signal
+ * that one source appended a whole descriptive suffix to the SAME company
+ * ("Rays of Belief Limited" -> "Rays of Belief Limited- For Profit Social
+ * Enterprise"). A whitespace boundary is a WEAK signal — "Rays of Belief
+ * Limited Holdings" reads as a genuinely DIFFERENT legal entity, not a
+ * disagreement about the same company's full name — so callers MUST require
+ * stronger corroboration (both open_date AND price_range_min, not either)
+ * before treating a whitespace-boundary candidate as a match. See
+ * `resolveIpoRow` in `ipo-identity.ts` for where that corroboration rule is
+ * applied; this function only classifies the boundary, it never decides.
+ */
+export type PrefixBoundaryKind = 'exact' | 'punctuation' | 'whitespace' | null;
+
+export function classifyPrefixBoundary(normalizedA: string, normalizedB: string): PrefixBoundaryKind {
+  if (!normalizedA || !normalizedB) {
+    return null;
+  }
+  if (normalizedA === normalizedB) {
+    return 'exact';
+  }
+
+  const [shorter, longer] =
+    normalizedA.length < normalizedB.length ? [normalizedA, normalizedB] : [normalizedB, normalizedA];
+
+  if (!longer.startsWith(shorter)) {
+    return null;
+  }
+
+  const boundaryChar = longer.charAt(shorter.length);
+  if (/[^a-z0-9 ]/i.test(boundaryChar)) {
+    return 'punctuation';
+  }
+  if (boundaryChar === ' ') {
+    return 'whitespace';
+  }
+  return null;
+}
+
+/**
+ * True when the SHORTER of two already-normalized names is a prefix of the
+ * LONGER one at an 'exact' or 'punctuation' boundary (see
+ * `classifyPrefixBoundary`) — the STRICT, single-corroborating-key-eligible
+ * signal. A 'whitespace' boundary ("rays of belief" vs "rays of belief
+ * limited holdings") is deliberately NOT included here (T-403 item 2) —
+ * whitespace-separated extensions are a weaker signal that a caller may
+ * still consider, but only under the stronger both-keys corroboration rule,
+ * via `classifyPrefixBoundary` directly (see `findByNormalizedNamePrefix`
+ * and `resolveIpoRow`).
+ */
+export function isWordBoundaryPrefixMatch(normalizedA: string, normalizedB: string): boolean {
+  const kind = classifyPrefixBoundary(normalizedA, normalizedB);
+  return kind === 'exact' || kind === 'punctuation';
+}
 
 export class IPORepository extends BaseRepository implements IIPORepository {
   constructor(db: NodePgDatabase<typeof schema>, redis: Redis) {
@@ -289,7 +352,12 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           );
         }
       },
-      CacheTTL.IPO_DETAIL
+      CacheTTL.IPO_DETAIL,
+      // W-15: identity lookup — never cache a miss. A slug miss followed
+      // moments later by an insert of that exact IPO would otherwise stay
+      // shadowed behind the cached `null` for the full 900s TTL, and a
+      // caller relying on "not found -> safe to create" duplicates the row.
+      { cacheNullResult: false }
     );
   }
 
@@ -481,6 +549,98 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Find existing rows whose normalized company name is a WORD-BOUNDARY
+   * PREFIX of `normalizedName`, or vice versa (W-108, tier 3b of
+   * `resolveIpoRow`). Catches the case a spelling-typo fuzzy check
+   * (`findByFuzzyName`) cannot: two sources genuinely disagree on the FULL
+   * name — one appends a whole descriptive suffix the other omits
+   * ("Rays of Belief Limited" vs "Rays of Belief Limited- For Profit Social
+   * Enterprise") — not a few mis-typed letters.
+   *
+   * Deliberately NOT a match by itself: this is a candidate-narrowing read
+   * only. The caller (`resolveIpoRow`) is responsible for requiring a
+   * corroborating key (open_date / price_range_min) before treating any
+   * returned row as a match, and for declining to match when more than one
+   * candidate corroborates — a bare prefix relationship between two
+   * genuinely different companies ("Rays of Belief Limited" vs "Rays of
+   * Hope Limited" both start with "Rays of") MUST NOT resolve on name alone.
+   *
+   * Uncached (identity read, same reasoning as `findByFuzzyName`) and capped
+   * at 5 rows — a prefix hint, not a full-table scan.
+   *
+   * @param normalizedName - normalizeCompanyNameForMatching() output for the
+   *   INCOMING row being resolved.
+   */
+  async findByNormalizedNamePrefix(normalizedName: string): Promise<IPO[]> {
+    if (!normalizedName) {
+      return [];
+    }
+
+    try {
+      // Same cheap pre-filter as findByFuzzyName: only rows sharing the
+      // candidate's first word can possibly be in a prefix relationship
+      // with it (in either direction), so this keeps the scan bounded.
+      const firstWord = normalizedName.split(' ')[0];
+      if (!firstWord || firstWord.length < 3) {
+        return [];
+      }
+
+      // T-403 Tier-A review (item 5): fetch one row past the intended 200-row
+      // cap so an overflow is DETECTABLE rather than silently truncated — a
+      // silent truncation can turn "two candidates, decline (ambiguous)"
+      // into "one candidate, accept" purely because the second candidate
+      // fell off the end of an un-ordered LIMIT. On overflow, decline rather
+      // than guess which 200 of 201+ rows to keep.
+      const candidates = await this.db
+        .select()
+        .from(ipos)
+        .where(sql`${normalizedCompanyNameSql(sql`${ipos.companyName}`)} LIKE ${firstWord + '%'}`)
+        .limit(201);
+
+      if (candidates.length > 200) {
+        logger.warn(
+          { normalizedName, candidateCount: candidates.length },
+          '[W-108] prefix pre-filter overflow, declining'
+        );
+        return [];
+      }
+
+      // Broader-than-`isWordBoundaryPrefixMatch` net on purpose: this
+      // candidate-narrowing read includes BOTH punctuation- and
+      // whitespace-boundary prefix relationships (see `classifyPrefixBoundary`)
+      // — the caller (`resolveIpoRow`) decides how much corroboration each
+      // boundary kind needs before treating a candidate as a match. This
+      // function stays a hint, never a match decision.
+      const prefixMatches: IPO[] = [];
+      for (const candidate of candidates) {
+        const candidateNormalized = normalizeCompanyNameForMatching(candidate.companyName);
+        if (classifyPrefixBoundary(candidateNormalized, normalizedName) !== null) {
+          prefixMatches.push(candidate);
+          if (prefixMatches.length > 5) {
+            // T-403 Tier-A review (item 5): a 6th corroborating candidate
+            // means the pre-filter is too coarse to trust a 5-row truncation
+            // — decline rather than silently hand the caller an arbitrary
+            // first-5 subset.
+            logger.warn(
+              { normalizedName, candidateCount: prefixMatches.length },
+              '[W-108] prefix candidate cap overflow (6th match found), declining'
+            );
+            return [];
+          }
+        }
+      }
+
+      return prefixMatches;
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to fetch IPO by normalized name prefix: ${normalizedName}`,
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
    * Find IPO by ID with cache-aside pattern
    */
   async findById(id: string): Promise<IPO | null> {
@@ -505,8 +665,36 @@ export class IPORepository extends BaseRepository implements IIPORepository {
           );
         }
       },
-      CacheTTL.IPO_DETAIL
+      CacheTTL.IPO_DETAIL,
+      // W-15 sibling: same identity-lookup negative-cache hazard as findBySlug.
+      { cacheNullResult: false }
     );
+  }
+
+  /**
+   * Round-4 M-LOW: uncached read of a single row by id, for callers that MUST
+   * NOT trust the `IPO_DETAIL` (900s) cache — e.g. the scraper write-diff gate
+   * (`diffFieldsForWrite` in `scraper/src/services/data-persister.ts`), which
+   * decides whether to write by comparing against the ROW, not a snapshot up
+   * to 15 minutes stale. Bypasses `getFromCache` entirely: no read, no write,
+   * so it can never populate or extend the cache's staleness window.
+   */
+  async findByIdUncached(id: string): Promise<IPO | null> {
+    try {
+      const [ipo] = await this.db
+        .select()
+        .from(ipos)
+        .where(eq(ipos.id, id))
+        .limit(1);
+
+      return ipo || null;
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to fetch IPO by ID (uncached): ${id}`,
+        undefined,
+        error
+      );
+    }
   }
 
   /**

@@ -9,6 +9,9 @@ import { isDateSequenceCoherent } from './ipo-date-plausibility.js';
 import { shouldPersistSubscriptionSnapshot, recordSuppressionOutcome, type SuppressionCounterStore } from './subscription-coverage-registry.js';
 import { retryWithExponentialBackoff } from '../utils/scraper-utils.js';
 import { validateLotSize } from '../utils/lot-size-validator.js';
+// W-14: the SAME per-source rule set, re-run once on the MERGED record at the
+// consolidation write door (see the block in upsertIPO for why).
+import { validateIPOData } from '../utils/data-validation.js';
 import { resolveOfferingTypeKeepingClassification, guardSmeOfferingTypeAgainstFpo } from '../utils/detect-offering-type.js';
 import { isAuthoritativeForHardDatesOnCreate } from '../utils/hard-date-source-trust.js';
 import type { ScraperSource } from './types.js';
@@ -22,6 +25,12 @@ import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { ipoDemandGraph, ipoDetails } from '@ipodhan/shared/db/schema';
 import { resolveRegistrarId } from '@ipodhan/shared/utils/registrar-matcher';
+import { initStepLedger } from './step-ledger.js';
+import {
+  recordDiscoverySteps,
+  recordLiveStep,
+  type DiscoveryStepInput,
+} from './step-ledger-recorders.js';
 
 /**
  * Resolve a sanitized registrar name to its `registrars.id` FK (P3-2, T-278).
@@ -46,22 +55,378 @@ async function resolveRegistrarIdSafe(registrarName: string | null | undefined):
 }
 
 /**
+ * Round-3 C1/C2/M3 (Tier-A review of round 1): fields whose only job is
+ * bookkeeping. They change on EVERY cycle by construction, so including them
+ * in the write diff would make every cycle a "change" and suppress nothing.
+ * They ride along on a write that happens for a real reason.
+ */
+const WRITE_DIFF_IGNORED_FIELDS = new Set(['lastScrapedAt', 'updatedAt', 'scrapedAt', 'createdAt', 'id']);
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '' || !/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(trimmed)) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function toTimestamp(value: unknown): number | null {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.getTime();
+  if (typeof value === 'string') {
+    // Only treat date-SHAPED strings as dates; a plain "12" must stay a number.
+    if (!/^\d{4}-\d{2}-\d{2}/.test(value.trim())) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+  }
+  return null;
+}
+
+function isBlank(value: unknown): boolean {
+  return value === null || value === undefined || value === '';
+}
+
+/**
+ * Round-4 L3: pg `date` columns (openDate/closeDate/allotmentDate/listingDate)
+ * come back as bare 'YYYY-MM-DD' strings, while the incoming scraped value can
+ * be a full `Date` at some other clock time on the SAME calendar day. Compared
+ * as epoch timestamps those never match, so the field looks "changed" every
+ * cycle and the no-op write skip (`diffFieldsForWrite`) never fires. When
+ * EITHER side is a date-only string, or the field is a known pg `date` column,
+ * compare by calendar day (UTC, matching the codebase's UTC-naive timestamp
+ * convention — see `.claude/rules/utc-naive-timestamp-normalization.md`)
+ * instead of by exact epoch.
+ */
+const DATE_ONLY_FIELDS = new Set([
+  'openDate',
+  'closeDate',
+  'allotmentDate',
+  'listingDate',
+  'listingDateHistorical',
+]);
+
+function isDateOnlyString(value: unknown): boolean {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
+}
+
+function toCalendarDayUTC(value: unknown): string | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const match = trimmed.match(/^\d{4}-\d{2}-\d{2}/);
+    if (!match) return null;
+    // Validate it actually parses as a real date (rejects e.g. "2026-13-40").
+    const parsed = new Date(trimmed.length === 10 ? `${trimmed}T00:00:00Z` : trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : match[0];
+  }
+  return null;
+}
+
+/**
+ * Round-3 M3: the WRITE gate's equality test. Deliberately STRICTER than
+ * `normalization-engine.areEquivalent` (which tolerates 0.01 on numbers and
+ * compares dates by calendar day only, both correct for provenance/conflict
+ * reporting): for deciding whether the `ipos` row must be written,
+ * 100.00 vs 100.01 IS a change and 09:00 vs 14:00 on the same date IS a
+ * change. What is NOT a change is a pure representation difference — the pg
+ * NUMERIC string "6800000000.00" against the JS number 6800000000, or a Date
+ * against its own ISO string.
+ */
+export function valuesEqualForWrite(a: unknown, b: unknown, fieldName?: string): boolean {
+  if (a === b) return true;
+  if (isBlank(a) && isBlank(b)) return true;
+  if (isBlank(a) !== isBlank(b)) return false;
+
+  const isDateOnlyField =
+    isDateOnlyString(a) || isDateOnlyString(b) || (fieldName !== undefined && DATE_ONLY_FIELDS.has(fieldName));
+  if (isDateOnlyField) {
+    const aDay = toCalendarDayUTC(a);
+    const bDay = toCalendarDayUTC(b);
+    if (aDay !== null || bDay !== null) {
+      if (aDay === null || bDay === null) return false;
+      return aDay === bDay;
+    }
+  }
+
+  const aTime = toTimestamp(a);
+  const bTime = toTimestamp(b);
+  if (aTime !== null || bTime !== null) {
+    if (aTime === null || bTime === null) return false;
+    return aTime === bTime;
+  }
+
+  const aNum = toFiniteNumber(a);
+  const bNum = toFiniteNumber(b);
+  if (aNum !== null && bNum !== null) return aNum === bNum;
+  if ((aNum !== null) !== (bNum !== null)) return false;
+
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    const key = (v: unknown) => (typeof v === 'string' ? v.trim().toLowerCase() : JSON.stringify(v));
+    const sortedA = a.map(key).sort();
+    const sortedB = b.map(key).sort();
+    return sortedA.every((v, i) => v === sortedB[i]);
+  }
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+
+  if (typeof a === 'string' && typeof b === 'string') return a.trim() === b.trim();
+
+  if (typeof a === 'object' && typeof b === 'object') {
+    try {
+      return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Round-3 C1/C2: which fields of `finalData` actually differ from the stored
+ * `ipos` row. This — not `consolidationResult.fieldsUpdated` — is what decides
+ * whether the update is a no-op.
+ *
+ * Why the change: `fieldsUpdated` counts PROVENANCE rows (`field_sources`), and
+ * it is computed BEFORE the persister adds `listingExchanges`, `registrarId`,
+ * `offeringType` and the re-applied write-field sanitizers. Two real bugs
+ * followed. (a) A cycle where consolidation changed nothing but the merged
+ * exchange list gained 'BSE', or a null `registrarId` finally resolved, was
+ * skipped — the row never got the value. (b) A row repaired by a direct write
+ * (provenance says 100, the row says 90) never converged: provenance already
+ * agreed with the incoming value, so `fieldsUpdated` was 0 forever while the
+ * row stayed at 90. Diffing the payload against the ROW closes both.
+ */
+export function diffFieldsForWrite(
+  finalData: Record<string, unknown>,
+  existingIPO: Record<string, unknown>
+): string[] {
+  const changed: string[] = [];
+  for (const [field, value] of Object.entries(finalData)) {
+    if (WRITE_DIFF_IGNORED_FIELDS.has(field)) continue;
+    // `undefined` is never written by drizzle — it is "leave this column alone".
+    if (value === undefined) continue;
+    if (!valuesEqualForWrite(value, existingIPO[field], field)) changed.push(field);
+  }
+  return changed;
+}
+
+/**
  * Phase 2: Lazy singleton for Data Consolidation Service
  * Initialized once on first use to avoid overhead
  */
 let consolidationServiceInstance: DataConsolidationService | null = null;
 
+/**
+ * Module-level singleton for the conflicts repository, shared by the
+ * consolidation service and by the merged-record validation pass below, so a
+ * write never constructs a second repo (and a second Redis handle) per IPO.
+ */
+let dataConflictsRepoInstance: DataConflictsRepository | null = null;
+
+function getDataConflictsRepository(): DataConflictsRepository {
+  if (!dataConflictsRepoInstance) {
+    dataConflictsRepoInstance = new DataConflictsRepository(db, getRedisClient());
+  }
+  return dataConflictsRepoInstance;
+}
+
+/**
+ * Module-level singleton for the field-sources repository, shared with the
+ * merged-record validation pass below (same reasoning as the conflicts
+ * repository above — one repo/Redis handle per process, not per write).
+ */
+let fieldSourcesRepoInstance: FieldSourcesRepository | null = null;
+
+function getFieldSourcesRepository(): FieldSourcesRepository {
+  if (!fieldSourcesRepoInstance) {
+    fieldSourcesRepoInstance = new FieldSourcesRepository(db, getRedisClient());
+  }
+  return fieldSourcesRepoInstance;
+}
+
 async function getConsolidationService(): Promise<DataConsolidationService> {
   if (!consolidationServiceInstance) {
     const redis = getRedisClient();
     const fieldSourcesRepo = new FieldSourcesRepository(db, redis);
-    const dataConflictsRepo = new DataConflictsRepository(db, redis);
     consolidationServiceInstance = new DataConsolidationService(
       fieldSourcesRepo,
-      dataConflictsRepo
+      getDataConflictsRepository()
     );
   }
   return consolidationServiceInstance;
+}
+
+/**
+ * The rules the merged pass OWNS, and the fields each one refuses to write.
+ * Everything else `validateIPOData` can report (offering-type shape guards,
+ * required-field, date ordering, lot economics) is already enforced per source
+ * and on the create path - re-acting on it here would silently widen this
+ * guard's blast radius far past W-14.
+ */
+const MERGED_RULE_FIELDS: Record<string, string[]> = {
+  PRICE_BAND_INVERTED: ['priceRangeMin', 'priceRangeMax'],
+  PRICE_BAND_TOO_WIDE_MAINBOARD: ['priceRangeMin', 'priceRangeMax'],
+  PRICE_BAND_TOO_WIDE_SME: ['priceRangeMin', 'priceRangeMax'],
+  LOT_SIZE_INVALID: ['lotSize'],
+  LOT_SIZE_TOO_LOW: ['lotSize'],
+};
+
+/**
+ * ===== W-14: MERGED-RECORD VALIDATION (Deepa walk, 2026-09-02) =====
+ *
+ * `validateIPOData` runs PER SOURCE inside each orchestrator, on only the
+ * fields that one source happens to carry. Several of its rules are
+ * segment-conditional or need two fields at once, so they never fire there:
+ * BSE list rows carry no `segment` (undefined by design), so the SEBI
+ * band-width rules never evaluate for BSE data; NSE list rows carry no lot
+ * size, so the lot-size rules never evaluate for NSE rows. A 25% band on a
+ * mainboard IPO arriving from BSE was accepted outright.
+ *
+ * The MERGED view of `existingIPO` + this scrape has segment + band + lot
+ * together, so the SAME rules run once more here - BEFORE either write door
+ * (consolidation, and the legacy fallback it falls through to). Running it
+ * before the doors is load-bearing, not cosmetic: `consolidateIPOData` is the
+ * single writer of `field_sources`, so a field validated only AFTER
+ * consolidation would already have been recorded as this source's while `ipos`
+ * kept the old value - provenance would claim a value the row does not hold.
+ * Dropping the field from the INCOMING payload means consolidation never sees
+ * it, writes no provenance for it, and the fallback door (which consumes the
+ * same payload) is guarded by construction.
+ *
+ * Behaviour: an ERROR-severity hit drops the offending fields from the incoming
+ * payload (the stored values survive), records a CRITICAL data_conflicts row
+ * tagged `MERGED_RECORD_VALIDATION:<rule>`, and logs at warn; the rest of the
+ * update proceeds. A WARNING-severity hit (an unusual-but-legal lot) logs only.
+ * An ADMIN write is exempt - a manual override is never dropped.
+ *
+ * Mutates `incomingData` and returns the names of the fields it dropped, so the
+ * consolidation door can re-apply the same decision to consolidation's merged
+ * output (whose per-field winner may still be a previously-persisted bad value
+ * for that field).
+ */
+async function applyMergedRecordValidation(
+  existingIPO: Record<string, any>,
+  incomingData: Record<string, any>,
+  source: ScraperSource,
+  companyName: string
+): Promise<string[]> {
+  if (source === 'ADMIN') return [];
+
+  // Segment: the STORED classification governs whenever the row has one - an
+  // incoming row claiming SME must not relax the band gate for its own band
+  // value in the same write. Only a row with no segment at all takes the
+  // incoming one.
+  const storedSegment = (existingIPO as any).segment ?? null;
+  const incomingSegment = ('segment' in incomingData ? incomingData.segment : null) ?? null;
+  const mergedSegment = storedSegment !== null ? storedSegment : incomingSegment;
+
+  const mergedValue = (field: string) => incomingData[field] ?? (existingIPO as any)[field] ?? undefined;
+  const mergedRecord: Record<string, any> = {
+    companyName: incomingData.companyName ?? existingIPO.companyName,
+    segment: mergedSegment,
+    lotSize: mergedValue('lotSize'),
+    priceRangeMin: mergedValue('priceRangeMin'),
+    priceRangeMax: mergedValue('priceRangeMax'),
+    issueType: mergedValue('issueType'),
+  };
+
+  const mergedValidation = validateIPOData(mergedRecord as any, source);
+
+  for (const warning of mergedValidation.warnings) {
+    if (warning.field === 'lotSize' || warning.field === 'priceBand') {
+      logger.warn({
+        ipoId: existingIPO.id,
+        companyName,
+        source,
+        rule: warning.rule,
+        segment: mergedSegment,
+      }, `[MergedRecordValidation] ${warning.rule} on the merged record (W-14) - written, warning only`);
+    }
+  }
+
+  const droppedFields: string[] = [];
+  for (const error of mergedValidation.errors) {
+    const fieldsToDrop = MERGED_RULE_FIELDS[error.rule];
+    if (!fieldsToDrop) continue;
+
+    const rejectedValues: Record<string, any> = {};
+    const keptValues: Record<string, any> = {};
+    for (const field of fieldsToDrop) {
+      rejectedValues[field] = mergedRecord[field];
+      keptValues[field] = (existingIPO as any)[field] ?? null;
+      delete incomingData[field];
+      if (!droppedFields.includes(field)) droppedFields.push(field);
+    }
+
+    logger.warn({
+      ipoId: existingIPO.id,
+      companyName,
+      source,
+      rule: error.rule,
+      segment: mergedSegment,
+      droppedFields: fieldsToDrop,
+      rejectedValues,
+      keptValues,
+    }, `[MergedRecordValidation] ${error.rule} on the merged record (W-14) - offending fields NOT written`);
+
+    // T-286/P1-2 invariant (data-consolidation-service.ts ~L1358-1369): a
+    // data_conflicts row must NEVER have source1 === source2 — that shape
+    // once destroyed the alert channel with self-comparisons. `source` here
+    // is only the INCOMING scrape; source1 MUST be the STORED value's actual
+    // owner, looked up via field_sources (the same provenance consolidation
+    // itself reads). No owner row is a data gap, not a conflict — skip the
+    // write and log instead of guessing.
+    const ownerField = fieldsToDrop[0];
+    try {
+      const ownerRecord = await getFieldSourcesRepository().findByField(existingIPO.id, 'ipos', ownerField);
+
+      if (!ownerRecord) {
+        logger.warn({
+          ipoId: existingIPO.id,
+          source,
+          rule: error.rule,
+          field: ownerField,
+          reason: 'merged_validation_no_stored_owner',
+        }, '[MergedRecordValidation] no field_sources provenance for the stored value - conflict not recorded');
+      } else if (ownerRecord.source === source) {
+        logger.warn({
+          ipoId: existingIPO.id,
+          source,
+          rule: error.rule,
+          field: ownerField,
+          reason: 'merged_validation_same_source',
+        }, '[MergedRecordValidation] stored owner equals incoming source - conflict not recorded');
+      } else {
+        // Best-effort provenance for the admin queue (non-fatal-side-effects.md):
+        // a failure to record the conflict must never block the primary write.
+        await getDataConflictsRepository().upsertConflict({
+          ipoId: existingIPO.id,
+          tableName: 'ipos',
+          fieldName: error.field,
+          source1: ownerRecord.source as any,
+          value1: JSON.stringify(keptValues),
+          source2: source as any,
+          value2: JSON.stringify(rejectedValues),
+          resolutionReason: `MERGED_RECORD_VALIDATION:${error.rule}`,
+          severity: 'CRITICAL',
+        });
+      }
+    } catch (conflictError: any) {
+      logger.warn({
+        ipoId: existingIPO.id,
+        source,
+        rule: error.rule,
+        error: conflictError?.message,
+      }, '[MergedRecordValidation] failed to record merged-record conflict (non-fatal)');
+    }
+  }
+
+  return droppedFields;
 }
 
 /**
@@ -179,6 +544,48 @@ function mergeListingExchanges(
   return merged;
 }
 
+/**
+ * W-16a: the exchange half of the non-destructive fallback — same rule the
+ * consolidation path applies (`mergeListingExchanges`), so the safety net can
+ * never replace ['BSE'] with ['NSE'] just because NSE scraped the row.
+ */
+export function mergeListingExchangesForSource(
+  existingExchanges: ('NSE' | 'BSE')[] | null | undefined,
+  source: ScraperSource,
+  scrapedListingExchange: 'NSE' | 'BSE' | 'BOTH' | undefined
+): ('NSE' | 'BSE')[] {
+  const existing = existingExchanges ?? [];
+  if (source !== 'NSE' && source !== 'BSE') {
+    return existing.length > 0 ? existing : (scrapedListingExchange === 'BOTH' ? ['NSE', 'BSE'] : scrapedListingExchange ? [scrapedListingExchange] : []);
+  }
+  const incoming = scrapedListingExchange === 'BOTH' ? source : (scrapedListingExchange ?? source);
+  return mergeListingExchanges(existing, incoming);
+}
+
+/**
+ * W-16a: drop every key whose incoming value would replace a stored value with
+ * nothing. `undefined` is always dropped; an explicit `null` is dropped only
+ * when the row currently holds a value (a deliberate null on an already-empty
+ * column is harmless and keeps RIGHTS/NCD segment semantics intact).
+ */
+export function buildNonDestructiveUpdate(
+  existingRow: Record<string, any>,
+  incoming: Record<string, any>
+): Record<string, any> {
+  const patch: Record<string, any> = {};
+  for (const [key, value] of Object.entries(incoming)) {
+    if (value === undefined) continue;
+    const existingValue = existingRow?.[key];
+    const existingIsPresent =
+      existingValue !== undefined &&
+      existingValue !== null &&
+      !(Array.isArray(existingValue) && existingValue.length === 0);
+    if (value === null && existingIsPresent) continue;
+    patch[key] = value;
+  }
+  return patch;
+}
+
 // The canonical company-name normalizer now lives in the shared package so the
 // JS path (here) and the SQL path (ipo-repository) share ONE definition and stay
 // in lock-step (A3 / #6 #8 #16). Imported for local use in upsertIPO AND
@@ -213,6 +620,18 @@ export async function upsertIPO(
   const slug = generateSlug(scrapedIPO.companyName);
   const normalizedName = normalizeCompanyNameForMatching(scrapedIPO.companyName);
 
+  /**
+   * S-02 step-ledger facts for this write (B1..B7, F1/F2/F4/F5/F6).
+   *
+   * Captured inside the retried closure but WRITTEN once, after
+   * `retryWithBackoff` returns — so a retried write records one set of ledger
+   * rows, not one per attempt, and a write that ultimately threw records none.
+   * `upsertIPO` is the only door to `ipos` (`scraper-write-path.md`), which is
+   * precisely why the hook belongs here: every source that reaches the database
+   * at all reaches this line.
+   */
+  let ledgerFacts: DiscoveryStepInput | null = null;
+
   logger.debug({
     companyName: scrapedIPO.companyName,
     normalizedName,
@@ -241,6 +660,11 @@ export async function upsertIPO(
             companyName: scrapedIPO.companyName,
             normalizedName,
             slug,
+            isin: scrapedIPO.isin,
+            symbol: scrapedIPO.symbol,
+            openDate: scrapedIPO.openDate ?? null,
+            priceRangeMin: scrapedIPO.priceRangeMin ?? null,
+            segment: scrapedIPO.segment ?? null,
           }) as IPO | null;
 
       if (existingIPO && normalizeCompanyNameForMatching(existingIPO.companyName) === normalizedName) {
@@ -312,7 +736,7 @@ export async function upsertIPO(
           ? Math.round(scrapedIPO.priceRangeMax)
           : undefined,
         lotSize: validateLotSize(scrapedIPO.lotSize, scrapedIPO.segment, scrapedIPO.companyName) ?? undefined, // Validate and reject lot_size = 1
-        faceValue: scrapedIPO.faceValue || 10, // Default to 10 if not provided
+        faceValue: scrapedIPO.faceValue || undefined,
         status: scrapedIPO.status as any,
         openDate: (safeDates.openDate as Date | undefined) ?? undefined,
         closeDate: (safeDates.closeDate as Date | undefined) ?? undefined,
@@ -332,8 +756,25 @@ export async function upsertIPO(
         // Symbol: Only set if scraper explicitly provides it (NSE/BSE have symbols, upcoming IPOs may not)
         symbol: scrapedIPO.symbol || undefined,
         // ISIN: Only set if scraper provides it (NSE API / BSE Detail may have it)
-        isin: scrapedIPO.isin || undefined
+        isin: scrapedIPO.isin || undefined,
+        // W-82 round 2: CIN from the filing persister was validated (T-329 fix)
+        // but never copied into ipoData, so it never reached the consolidation
+        // or non-destructive-fallback write paths — same undefined-when-absent
+        // convention as faceValue/isin so it never nulls a stored CIN.
+        cin: scrapedIPO.cin || undefined
       } as any;
+
+      // W-104: the public slug is a canonical URL key and is generated ONLY at
+      // row creation. On every UPDATE path (the consolidation `incomingData`
+      // below, and the non-destructive fallback via `buildNonDestructiveUpdate`)
+      // the freshly-generated slug MUST be dropped before it reaches either
+      // write door — a companyName correction from ANY scrape (even DRHP, see
+      // the "Rays of Belief" live incident) would otherwise silently re-slug an
+      // existing row and break every stored link, the sitemap, and the search
+      // index. ADMIN is the sole source trusted to intentionally change a slug.
+      if (existingIPO && source !== 'ADMIN') {
+        delete (ipoData as any).slug;
+      }
 
       // A scraper that returns `undefined` segment (e.g. BSE-API, whose JSON board
       // carries both SME and mainboard IPOs with no segment field) cannot determine
@@ -371,6 +812,17 @@ export async function upsertIPO(
       }
 
       if (existingIPO) {
+        // W-14: run the merged-record rule set ONCE, before EITHER write door, on
+        // the merged view of the stored row + this scrape. See
+        // `applyMergedRecordValidation` for why it cannot run after consolidation
+        // (field_sources provenance) and why the fallback door needs it too.
+        const mergedValidationDroppedFields = await applyMergedRecordValidation(
+          existingIPO as any,
+          ipoData as any,
+          source,
+          scrapedIPO.companyName
+        );
+
         // ========== PHASE 4: PRODUCTION CONSOLIDATION (100% ROLLOUT) ==========
         // All IPO updates use intelligent data consolidation
         if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
@@ -462,29 +914,88 @@ export async function upsertIPO(
               );
             }
 
-            // Update IPO with consolidated data
-            await ipoRepository.update(existingIPO.id, finalData);
-
-            // Track field sources for all updated fields
-            if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && consolidationResult.fieldResults.length > 0) {
-              const fieldSourcesRepo = new FieldSourcesRepository(db, getRedisClient());
-              const fieldsToTrack = consolidationResult.fieldResults
-                .filter(fr => fr.chosenSource === source) // Only track fields we provided
-                .map(fr => ({
-                  fieldName: fr.fieldName,
-                  source: source,
-                  confidence: 100,
-                  previousValue: fr.existingValue ? String(fr.existingValue) : null,
-                }));
-
-              if (fieldsToTrack.length > 0) {
-                await fieldSourcesRepo.bulkTrackFieldUpdates(
-                  existingIPO.id,
-                  'ipos',
-                  fieldsToTrack
-                );
-              }
+            // W-14: the merged-record pass already ran ONCE, before this door, and
+            // removed these fields from the incoming payload (so consolidation never
+            // saw them and wrote no `field_sources` provenance for them). Re-apply the
+            // SAME decision to consolidation's merged output: its per-field winner for
+            // a dropped field can still be a previously-persisted bad value, and this
+            // update must leave the stored value alone.
+            for (const field of mergedValidationDroppedFields) {
+              delete finalData[field];
             }
+
+            // S-02 §5 no-op write suppression, corrected in round 3 (C1/C2/M3).
+            // The skip is decided by an actual field-by-field diff of the FINAL
+            // payload against the STORED ROW — not by
+            // `consolidationResult.fieldsUpdated`, which counts `field_sources`
+            // provenance rows and is computed before `listingExchanges`,
+            // `registrarId`, `offeringType` and the write-field sanitizers are
+            // applied above. See `diffFieldsForWrite` for the two bugs that
+            // caused. Skipping the write skips BOTH the `ipos` row write AND the
+            // per-row cache invalidation `ipoRepository.update()` performs
+            // internally (BaseRepository cache-aside) — exactly the pair the S-02
+            // §5 write-suppression design calls out. `lastScrapedAt`/`updatedAt`
+            // bumps are deliberately foregone on a true no-op cycle; the next
+            // cycle that DOES change a field still refreshes them via `finalData`.
+            // Round-4 M-LOW: `existingIPO` can be the resolver's cached
+            // `findBySlug` result (IPO_DETAIL, 900s TTL — see `resolveIpoRow`'s
+            // name/slug tiers). A row repaired by a direct write while the
+            // cache still holds the old snapshot would be diffed against that
+            // stale snapshot and the real change skipped for up to 15 minutes.
+            // Re-read uncached, by id, right before the diff decides whether to
+            // write — non-fatal: on any failure, fall back to the already-
+            // resolved row rather than blocking the write.
+            let diffAgainst: Record<string, unknown> = existingIPO as unknown as Record<string, unknown>;
+            try {
+              const uncached = await ipoRepository.findByIdUncached(existingIPO.id);
+              if (uncached) diffAgainst = uncached as unknown as Record<string, unknown>;
+            } catch (error) {
+              logger.warn({
+                ipoId: existingIPO.id,
+                error: error instanceof Error ? error.message : String(error),
+              }, 'Uncached re-read before write-diff failed (non-fatal) — diffing against the already-resolved row');
+            }
+            const changedFields = diffFieldsForWrite(finalData, diffAgainst);
+            const isNoopUpdate = changedFields.length === 0;
+            if (isNoopUpdate) {
+              logger.debug({
+                ipoId: existingIPO.id,
+                companyName: scrapedIPO.companyName,
+                source,
+                noop: true,
+                fieldsUpdated: consolidationResult.fieldsUpdated ?? 0,
+              }, '[DataConsolidation] No field actually changed — skipping ipos row update + cache invalidation');
+            } else {
+              // Update IPO with consolidated data
+              await ipoRepository.update(existingIPO.id, finalData);
+            }
+
+            // S-02: the consolidation door is also the F4/F5/F6 evidence — it is
+            // the thing that compared sources and wrote the conflict + provenance
+            // rows, so its own result is what the ledger records.
+            ledgerFacts = {
+              source,
+              created: false,
+              fields: Object.keys(finalData),
+              offeringType: (finalData as { offeringType?: string }).offeringType ?? null,
+              consolidated: true,
+              conflictsDetected: consolidationResult.conflictsDetected ?? 0,
+              conflictsBySeverity: consolidationResult.conflictsBySeverity ?? {},
+              fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
+              companyName: scrapedIPO.companyName,
+            };
+
+            // W-17/W-18(i) (Deepa walk, 2026-09-02): the consolidation service is
+            // the SINGLE writer of `field_sources` on this path. The re-track that
+            // used to run here re-wrote every field whose `chosenSource` equalled
+            // this scrape's source — including values it had merely KEPT (the
+            // NO_INCOMING_VALUE branch reports `chosenSource = incomingSource`
+            // when the field has no provenance row) — with `source = <this
+            // scrape>` and `previousValue = fr.existingValue`, a property that
+            // does not exist on FieldConsolidationResult and was therefore always
+            // null. Result: every provenance row lost its history, and a BSE value
+            // got re-badged as NSE, after which resolveConflict's same-source
+            // short-circuit dropped the next real cross-source conflict.
 
             // Log successful consolidation
             logger.info({
@@ -539,12 +1050,21 @@ export async function upsertIPO(
           ipoId: existingIPO.id,
           slug,
           source,
-        }, '[LEGACY PATH] Reached unreachable code - consolidation should have handled this');
+        }, '[LEGACY PATH] consolidation did not handle this update - applying the non-destructive fallback');
 
-        // Fallback: Simple update without merge logic
-        // This is a safety net that should rarely/never execute
+        // Fallback: non-destructive update (W-16a, Deepa walk 2026-09-02).
+        // This safety net used to write the raw incoming payload, so a source
+        // that simply has no data for a field (NSE carries no lead managers)
+        // nulled it, and `listingExchanges` was replaced rather than merged.
+        // It stays reachable by design — it is what runs when consolidation
+        // throws — so it is made SAFE rather than declared unreachable.
         const fallbackData: any = {
-          ...ipoData,
+          ...buildNonDestructiveUpdate(existingIPO as any, ipoData),
+          listingExchanges: mergeListingExchangesForSource(
+            (existingIPO as any).listingExchanges,
+            source,
+            scrapedIPO.listingExchange
+          ),
           lastScrapedAt: new Date(),
           updatedAt: new Date(),
         };
@@ -558,6 +1078,20 @@ export async function upsertIPO(
           );
         }
         await ipoRepository.update(existingIPO.id, fallbackData);
+
+        // S-02: the fallback door wrote the row but ran no consolidation, so F4
+        // and F5 are deliberately NOT claimed here — nothing compared sources
+        // this time. Recording them anyway would make the ledger lie about the
+        // one path where cross-verification did not happen.
+        ledgerFacts = {
+          source,
+          created: false,
+          fields: Object.keys(fallbackData),
+          offeringType: fallbackData.offeringType ?? null,
+          consolidated: false,
+          fieldSourcesWritten: false,
+          companyName: scrapedIPO.companyName,
+        };
 
         return existingIPO.id;
       } else {
@@ -589,6 +1123,16 @@ export async function upsertIPO(
           }
         }
 
+        ledgerFacts = {
+          source,
+          created: true,
+          fields: Object.keys(ipoData).filter((k) => (ipoData as Record<string, unknown>)[k] !== undefined),
+          offeringType: (ipoData as { offeringType?: string }).offeringType ?? null,
+          consolidated: false,
+          fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
+          companyName: scrapedIPO.companyName,
+        };
+
         logger.info({ slug, source }, `New ${source} IPO ${slug} created`);
         return newIPO.id;
       }
@@ -602,7 +1146,94 @@ export async function upsertIPO(
     'IPO upserted successfully'
   );
 
+  // S-02 hook — the step ledger. Best-effort, after the primary write, exactly
+  // like every other post-write side effect (`non-fatal-side-effects.md`): the
+  // recorders never throw, and the ledger is bookkeeping about the scrape, not
+  // part of it. `initStepLedger` runs on the CREATE path so a brand-new IPO has
+  // all 52 catalogue rows without anyone running the backfill script.
+  if (ledgerFacts) {
+    if (ledgerFacts.created) await initStepLedger(result);
+    await recordDiscoverySteps(result, ledgerFacts);
+  }
+
   return result;
+}
+
+const SUBSCRIPTION_TIMESTAMP_MAX_FUTURE_MS = 5 * 60 * 1000; // 5 minutes
+const SUBSCRIPTION_TIMESTAMP_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+/**
+ * W-38: resolve the timestamp to persist on a subscription snapshot. The source
+ * (NSE/BSE) stamps `scrapedSubscription.timestamp` with the actual observation
+ * time; that MUST win over "now" or every re-write of a stale scrape looks fresh
+ * and charts plot the wrong x-axis. Falls back to now() only when the source
+ * didn't ship a timestamp; a source timestamp that is implausible (garbage guard:
+ * >5 min in the future, or >30 days old) is rejected rather than trusted.
+ */
+export function resolveSubscriptionSnapshotTimestamp(
+  rawTimestamp: string | Date | undefined,
+  context: { ipoId: string; companyName?: string }
+): { timestamp: Date } | { skip: true; reason: string } {
+  const now = new Date();
+
+  if (rawTimestamp === undefined || rawTimestamp === null) {
+    return { timestamp: now };
+  }
+
+  const parsed = rawTimestamp instanceof Date ? rawTimestamp : new Date(rawTimestamp);
+  if (isNaN(parsed.getTime())) {
+    logger.warn(
+      { ipoId: context.ipoId, companyName: context.companyName, rawTimestamp },
+      'Subscription source timestamp unparseable — falling back to now() (W-38)'
+    );
+    return { timestamp: now };
+  }
+
+  const deltaMs = parsed.getTime() - now.getTime();
+  if (deltaMs > SUBSCRIPTION_TIMESTAMP_MAX_FUTURE_MS) {
+    const reason = 'source timestamp more than 5 minutes in the future';
+    logger.warn(
+      { ipoId: context.ipoId, companyName: context.companyName, sourceTimestamp: parsed.toISOString(), now: now.toISOString() },
+      `Subscription snapshot skipped — ${reason} (W-38)`
+    );
+    return { skip: true, reason };
+  }
+
+  if (-deltaMs > SUBSCRIPTION_TIMESTAMP_MAX_AGE_MS) {
+    const reason = 'source timestamp older than 30 days';
+    logger.warn(
+      { ipoId: context.ipoId, companyName: context.companyName, sourceTimestamp: parsed.toISOString(), now: now.toISOString() },
+      `Subscription snapshot skipped — ${reason} (W-38)`
+    );
+    return { skip: true, reason };
+  }
+
+  return { timestamp: parsed };
+}
+
+/**
+ * W-03: derive the market-coverage label to persist on a subscription
+ * snapshot. NSE's consolidated payload (`coverage: 'CONSOLIDATED'`) always
+ * wins; otherwise fall back to the writing source's own book (BSE/NSE);
+ * unrecognized/absent source -> null (old-shape rows stay valid via the
+ * nullable column).
+ */
+export function resolveSubscriptionScope(
+  scrapedSubscription: Pick<ScrapedSubscription, 'coverage'>,
+  options: { source?: string }
+): 'BSE_ONLY' | 'NSE_ONLY' | 'CONSOLIDATED' | null {
+  if (scrapedSubscription.coverage === 'CONSOLIDATED') {
+    return 'CONSOLIDATED';
+  }
+
+  switch (options.source?.toUpperCase()) {
+    case 'BSE':
+      return 'BSE_ONLY';
+    case 'NSE':
+      return 'NSE_ONLY';
+    default:
+      return null;
+  }
 }
 
 /**
@@ -660,6 +1291,16 @@ export async function createSubscriptionSnapshot(
     return null;
   }
 
+  // W-38: honour the source's own observation time instead of always stamping
+  // "now" — a stale re-write must not masquerade as a fresh reading.
+  const resolvedTimestamp = resolveSubscriptionSnapshotTimestamp(scrapedSubscription.timestamp, {
+    ipoId,
+    companyName: scrapedSubscription.ipoCompanyName,
+  });
+  if ('skip' in resolvedTimestamp) {
+    return null;
+  }
+
   logger.debug({
     ipoId,
     companyName: scrapedSubscription.ipoCompanyName,
@@ -674,8 +1315,8 @@ export async function createSubscriptionSnapshot(
       // Prepare subscription data for database insert (AC4)
       const subscriptionData: SubscriptionInsert = {
         ipoId,
-        // Timestamp set to current date/time in ISO 8601 format (AC4)
-        timestamp: new Date(), // Current time for this snapshot
+        // W-38: source observation time (falls back to now() only when absent).
+        timestamp: resolvedTimestamp.timestamp,
         qibSubscription: scrapedSubscription.qibSubscription.toString(),
         niiSubscription: scrapedSubscription.niiSubscription.toString(),
         retailSubscription: scrapedSubscription.retailSubscription.toString(),
@@ -688,7 +1329,9 @@ export async function createSubscriptionSnapshot(
         retailOthersSubscription: scrapedSubscription.retailOthersSubscription?.toString(),
         // T-266: the share counts behind the multiples, when the source ships them.
         totalSharesBid: scrapedSubscription.totalSharesBid,
-        sharesOffered: scrapedSubscription.sharesOffered
+        sharesOffered: scrapedSubscription.sharesOffered,
+        // W-03: BSE_ONLY | NSE_ONLY | CONSOLIDATED | null.
+        scope: resolveSubscriptionScope(scrapedSubscription, { source: options.source })
       };
 
       // Validate foreign key constraint (IPO must exist) before insert (AC4)
@@ -699,6 +1342,18 @@ export async function createSubscriptionSnapshot(
           subscriptionId: snapshot.id,
           timestamp: subscriptionData.timestamp
         }, 'Subscription snapshot persisted successfully (AC4)');
+        // S-02 hook — H1. One row per IPO per run; the snapshot's own scope and
+        // total are the evidence, so the ledger answers "when did subscription
+        // last actually land, and what did it say?" without a second query.
+        await recordLiveStep(ipoId, 'H1', {
+          source: options.source ?? null,
+          evidence: {
+            subscriptionId: snapshot.id,
+            scope: subscriptionData.scope ?? null,
+            total: subscriptionData.totalSubscription ?? null,
+            timestamp: subscriptionData.timestamp,
+          },
+        });
         return snapshot.id;
       } catch (dbError: any) {
         // Enhanced PostgreSQL error logging (Story 11.2, AC4)
@@ -795,6 +1450,11 @@ export async function createDemandGraphSnapshot(
   }
   await db.insert(ipoDemandGraph).values(rows);
   logger.info({ ipoId, points: rows.length, exchange: rows[0].exchange }, 'Demand graph snapshot persisted');
+  // S-02 hook — H4.
+  await recordLiveStep(ipoId, 'H4', {
+    source: rows[0].exchange ?? null,
+    evidence: { points: rows.length, exchange: rows[0].exchange ?? null },
+  });
   return rows.length;
 }
 
@@ -836,6 +1496,17 @@ export async function createGMPRecord(
     { ipoId, gmpRecordId: result, gmp, duration },
     'GMP record created successfully'
   );
+
+  // S-02 hook — H2 (the GMP write) and F3 (InvestorGain is the only GMP source,
+  // so a GMP landing IS the InvestorGain cross-verification touching this IPO).
+  await recordLiveStep(ipoId, 'H2', {
+    source: 'INVESTORGAIN_GMP',
+    evidence: { gmpRecordId: result, gmp, gmpPercentage, timestamp },
+  });
+  await recordLiveStep(ipoId, 'F3', {
+    source: 'INVESTORGAIN_GMP',
+    evidence: { matchedBy: 'gmp record', gmp },
+  });
 
   return result;
 }
@@ -1045,7 +1716,7 @@ export async function createAnchorInvestors(
           anchorInvestorsCount: anchorData.anchorInvestorsCount,
           lockIn50PercentDate: anchorData.lockIn50PercentDate,
           lockInRemainingDate: anchorData.lockInRemainingDate,
-          investorList: JSON.stringify(anchorData.investorList)
+          investorList: anchorData.investorList
         });
 
         logger.info({ ipoId, anchorInvestorId: existing.id }, 'Updated anchor investor record');
@@ -1060,7 +1731,7 @@ export async function createAnchorInvestors(
           anchorInvestorsCount: anchorData.anchorInvestorsCount,
           lockIn50PercentDate: anchorData.lockIn50PercentDate,
           lockInRemainingDate: anchorData.lockInRemainingDate,
-          investorList: JSON.stringify(anchorData.investorList)
+          investorList: anchorData.investorList
         });
 
         logger.info({ ipoId, anchorInvestorId: anchorInvestor.id }, 'Created anchor investor record');

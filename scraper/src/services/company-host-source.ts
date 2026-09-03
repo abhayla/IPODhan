@@ -109,6 +109,107 @@ export function extractWebsiteFromCoverText(coverText: string): string | null {
     if (NON_ISSUER_DOMAINS.some((d) => new URL(normalized).hostname.includes(d))) continue;
     return normalized;
   }
+  return extractWebsiteFromTableLayout(coverText);
+}
+
+/**
+ * How far past a bare `WEBSITE` column header to look for its value.
+ *
+ * W-31. A mainboard RHP cover is a TABLE: a header row reading
+ * "REGISTERED OFFICE | CONTACT PERSON | TELEPHONE AND E-MAIL | WEBSITE", then
+ * the cells underneath. Extracted linearly that puts the word WEBSITE hundreds
+ * of characters before its own value, with the whole registered-office address
+ * in between — so the label-then-url regex above matched nothing and the DEEPA
+ * walk skipped the company rung with `no_company_url` on every document type,
+ * for want of a website printed on page 1 of a filing we already held. Measured
+ * on the DEEPA RHP cover the gap is ~330 characters; 900 leaves room for a
+ * longer address without reaching the next section of the page.
+ */
+const TABLE_HEADER_WINDOW = 900;
+
+/**
+ * Where the issuer's own block on a cover page ENDS.
+ *
+ * A cover reads: issuer name / CIN / registered office / contact / website,
+ * THEN the intermediaries — "BOOK RUNNING LEAD MANAGER", "REGISTRAR TO THE
+ * OFFER" — each with their own address and website. The first of these headings
+ * is the boundary: anything past it belongs to somebody else.
+ */
+const ISSUER_BLOCK_TERMINATORS =
+  /\b(book\s+running\s+lead\s+manager|lead\s+manager|brlm|registrar\s+to\s+the|registrar|banker[s]?\s+to\s+the|syndicate\s+member|sponsor\s+bank|merchant\s+bank)\b/i;
+
+/** Domains a cover prints NEXT TO an intermediary label, anywhere on the page. */
+function intermediaryDomains(coverText: string): Set<string> {
+  const out = new Set<string>();
+  for (const m of coverText.matchAll(
+    /((?:https?:\/\/)?(?:www\.)?[\w.-]+\.[a-z]{2,}[^\s,;)]*)/gi
+  )) {
+    const normalized = normalizeCompanyUrl(m[1].trim().replace(/[.,;]+$/, ''));
+    if (!normalized) continue;
+    const before = coverText
+      .slice(Math.max(0, (m.index ?? 0) - CONTEXT_WINDOW), m.index ?? 0)
+      .toLowerCase();
+    if (INTERMEDIARY_CONTEXT.some((w) => before.includes(w))) {
+      out.add(new URL(normalized).hostname.toLowerCase());
+    }
+  }
+  return out;
+}
+
+/**
+ * Fallback for the table-layout cover: a bare `WEBSITE` COLUMN HEADER whose
+ * value sits in a cell further down (the DEEPA RHP puts ~330 characters of
+ * registered-office address in between, which is why the labelled form above
+ * cannot see it).
+ *
+ * W-31 regression, found by `company-host-source.test.ts`: the first cut looked
+ * only at the text AFTER the header, so on
+ * "Book Running Lead Manager Website: www.holaniconsultants.co.in" it read the
+ * BRLM's site as the issuer's — the label that disowns it sits BEFORE the word
+ * "Website", exactly where the fallback was not looking. Three guards now, each
+ * closing one route in:
+ *
+ *  1. the header itself must not be labelled with an intermediary (look BEHIND it);
+ *  2. the search window stops at the first BRLM/registrar/banker heading — the
+ *     end of the issuer's own block;
+ *  3. a domain the cover prints next to an intermediary label ANYWHERE is
+ *     rejected, however it is reached.
+ */
+function extractWebsiteFromTableLayout(coverText: string): string | null {
+  const disowned = intermediaryDomains(coverText);
+
+  for (const header of coverText.matchAll(/\bwebsite\b/gi)) {
+    const headerAt = header.index ?? 0;
+    // 1. Whose website column is this? The label precedes the header.
+    const labelContext = coverText
+      .slice(Math.max(0, headerAt - CONTEXT_WINDOW), headerAt)
+      .toLowerCase();
+    if (INTERMEDIARY_CONTEXT.some((w) => labelContext.includes(w))) continue;
+
+    // 2. The issuer's block ends at the first intermediary heading after it.
+    const start = headerAt + header[0].length;
+    let window = coverText.slice(start, start + TABLE_HEADER_WINDOW);
+    const boundary = window.search(ISSUER_BLOCK_TERMINATORS);
+    if (boundary >= 0) window = window.slice(0, boundary);
+
+    for (const m of window.matchAll(
+      /(?:^|[\s(])((?:https?:\/\/)?www\.[\w.-]+\.[a-z]{2,}[^\s,;)]*)/gi
+    )) {
+      // An e-mail's domain is not a website; `www.` is required above precisely
+      // so `cs@deepajewel.com` on the same cover cannot be mistaken for one.
+      const raw = m[1].trim().replace(/[.,;]+$/, '');
+      const normalized = normalizeCompanyUrl(raw);
+      if (!normalized) continue;
+      const host = new URL(normalized).hostname.toLowerCase();
+      if (NON_ISSUER_DOMAINS.some((d) => host.includes(d))) continue;
+      // 3. Named as an intermediary's site anywhere on this cover.
+      if (disowned.has(host)) continue;
+      const at = m.index ?? 0;
+      const before = window.slice(Math.max(0, at - CONTEXT_WINDOW), at).toLowerCase();
+      if (INTERMEDIARY_CONTEXT.some((w) => before.includes(w))) continue;
+      return normalized;
+    }
+  }
   return null;
 }
 

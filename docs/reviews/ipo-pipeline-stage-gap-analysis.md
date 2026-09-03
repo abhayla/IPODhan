@@ -86,6 +86,20 @@ except the "live" variant, which runs once per stage after the fixture variant i
 Order of work: 0 → 9 (both are pure infrastructure and block everything) → merge T-403 (2, 3, 4 already
 green there) → 5 → 6 → 7 → 8. Stages 5–7 are WP C/D. Stage 8 is WP E.
 
+**This staged plan has since been executed.** `docs/walks/2026-09-02-deepa-pipeline-walk.md` is
+the walked version of the table above, run step-by-step on a real IPO (Deepa Jewellers, DEEPA)
+instead of on fixtures, with its own step ids (B1–J3) covering the same ground as stages 1–8
+here plus the reconciliation/protection/time-series/lifecycle/serving steps this table doesn't
+break out separately. Per-section verdicts: **B (discover+write) 7/7 PASS; C (document links)
+5/5 PASS; D (download/store/OCR) 5/6 PASS + D6 partial (no tesseract on the dev laptop); E
+(extraction) 8/10 PASS; F (aggregator compare) 4/6; G (merge/protect/persist) 3/5; H
+(time-series) 3/4; I (lifecycle/stage machine) 3/6; J (cache/render/admin) 2/3, pending G4.** The
+walk found **46 defects** (W-01..W-47, W-42 never assigned), of which **24 are fixed and tested**
+on branch `docs/deepa-walk-ledger` (Tier A reviewed where the change touched the write path) and
+**22 remain open**. Nothing from the walk is deployed yet (walk decision D-09) — `how.md` Steps
+B1–J3 carry the per-step LIVE/FIXED-not-deployed/MISSING/BLOCKED status this table's "Exists
+today?" column used to approximate from code reading alone.
+
 ## 7. Decisions the owner must make (nothing else is blocked)
 
 1. **Resume or restart T-403?** (tracked in #258 stage 2–4) 155 files / 20k lines, 4 review rounds, r4 unreviewed. Recommended: one more fresh Opus review of r4 only, then merge behind its off-by-default flag. Restarting throws away stages 2–4.

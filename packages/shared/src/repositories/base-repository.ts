@@ -39,8 +39,21 @@ export abstract class BaseRepository {
   protected async getFromCache<T>(
     cacheKey: string,
     dbQuery: () => Promise<T>,
-    ttl?: number
+    ttl?: number,
+    options?: {
+      /**
+       * W-15: whether a `null`/`undefined` dbQuery result gets written to
+       * cache. Defaults to true (existing behavior — every caller before
+       * W-15 relied on a miss being cached like any other value). Identity
+       * lookups (findBySlug et al) MUST pass `false`: caching a miss for the
+       * full TTL means a row inserted moments after the miss stays
+       * invisible to readers until the TTL expires — a duplicate-row hazard
+       * when the insert follows a "does this slug exist?" miss.
+       */
+      cacheNullResult?: boolean;
+    }
   ): Promise<T> {
+    const cacheNullResult = options?.cacheNullResult ?? true;
     try {
       // Try to get from cache first with timeout protection
       const cacheTimeout = new Promise<null>((_, reject) =>
@@ -68,6 +81,16 @@ export abstract class BaseRepository {
 
     // Cache miss or error - query database
     const data = await dbQuery();
+
+    // W-15: a null/undefined result is a negative lookup — for identity
+    // reads (cacheNullResult: false) never write it, so a row created right
+    // after this miss is visible on the next read instead of staying
+    // shadowed by a cached "null" for the full TTL.
+    if (data === null || data === undefined) {
+      if (!cacheNullResult) {
+        return data;
+      }
+    }
 
     // Try to set cache (non-blocking with timeout)
     const setCacheWithTimeout = async () => {

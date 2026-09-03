@@ -42,6 +42,8 @@ The project is pre-configured to use a VPS PostgreSQL instance at:
 
 The database is already created and accessible via the `DATABASE_URL` in `.env.local`.
 
+Local dev DB tunnel (VPS Postgres on localhost:15432): `powershell -File scripts/dev-db-tunnel.ps1 -Detach`  (`-Status` to check, `-Stop` to end)
+
 #### Option B: Using Local PostgreSQL
 If you prefer to use a local PostgreSQL instance:
 

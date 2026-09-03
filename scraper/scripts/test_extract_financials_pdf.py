@@ -58,3 +58,108 @@ def test_empty_input_yields_nothing():
     r = efp.extract_from_texts([(0, "no financial statement here")])
     assert r["metrics"] == {}
     assert r["annualYears"] == []
+
+
+# --------------------------------------------------------------------------- #
+# W-33 — the Deepa Jewellers RHP annexure page. pdfplumber inserts a space after
+# the FIRST character of every numeric cell ("1 9,266.76"), so the old tokenizer
+# read 13,970.10 as 3,970.10 and 10,245.68 as 245.68. These tests assert (a) the
+# repaired parse equals what the document prints and (b) the named plausibility
+# checks REJECT the old, wrong output.
+# --------------------------------------------------------------------------- #
+DEEPA_FIXTURE = os.path.join(HERE, "..", "tests", "fixtures", "extractor", "deepa-rhp-pages.json")
+
+WRONG_PRE_FIX = {
+    "revenue": {2026: 3970.1, 2025: 1.0, 2024: 245.68},
+    "profit": {2026: 5.8, 2025: 2.0, 2024: 43.47},
+    "eps": {2026: 95.0, 2025: 2.0, 2024: 97.0},
+}
+TRUE_VALUES = {
+    "revenue": {2026: 19266.76, 2025: 13970.10, 2024: 10245.68},
+    "profit": {2026: 1047.88, 2025: 405.80, 2024: 243.47},
+    "eps": {2026: 12.78, 2025: 4.95, 2024: 2.97},
+    "ebitda": {2026: 1463.37, 2025: 560.06, 2024: 357.71},
+}
+
+
+def load_deepa():
+    with open(DEEPA_FIXTURE, encoding="utf-8") as f:
+        return [(int(idx), text) for idx, text in json.load(f)]
+
+
+def test_deepa_split_digit_cells_are_repaired():
+    """"1 9,266.76" must tokenise as one number, not as 1 and 9,266.76."""
+    assert efp.money_values("I. Revenue from operations 23 1 9,266.76 1 3,970.10 1 0,245.68")[-3:] == [
+        19266.76, 13970.10, 10245.68]
+    # A correctly tokenised row must be left ALONE by the same repair.
+    assert efp.money_values("III. Total income 19,277.25 14,001.00 10,257.29") == [
+        19277.25, 14001.00, 10257.29]
+
+
+def test_deepa_metrics_match_the_printed_statement():
+    r = efp.extract_from_texts(load_deepa())
+    assert r["unit"] == "millions"          # W-35: "(All amounts are in Rs million...)"
+    assert r["unitStated"] is True
+    assert r["annualYears"] == [2026, 2025, 2024]
+    for key, expected in TRUE_VALUES.items():
+        assert r["metrics"][key] == expected, key
+    assert r["rejected"] == {}
+
+
+def test_plausibility_rejects_the_pre_fix_output():
+    """Every check that should have caught the W-33 numbers actually fails on
+    them — and passes on the true ones."""
+    ok, detail, offenders = efp.check_yoy_ratio_within_bounds(WRONG_PRE_FIX)
+    assert ok is False and "revenue" in offenders, detail
+    ok, _d, _o = efp.check_yoy_ratio_within_bounds(TRUE_VALUES)
+    assert ok is True
+
+    # PAT 5.8 vs revenue 3970.1 passes the revenue test, but EPS 95 on a PAT of
+    # 5.8 million cannot be: 95 x 82,000,000 shares is nowhere near 5.8.
+    shares = {2026: 82_000_000, 2025: 82_000_000, 2024: 82_000_000}
+    ok, detail, offenders = efp.check_eps_times_shares_matches_pat(WRONG_PRE_FIX, shares)
+    assert ok is False and offenders == ["eps"], detail
+
+    # A mis-read that puts PAT above revenue is rejected outright.
+    ok, detail, offenders = efp.check_pat_not_above_revenue(
+        {"revenue": {2026: 100.0}, "profit": {2026: 250.0}})
+    assert ok is False and offenders == ["profit"], detail
+
+    # EBITDA below PAT in a profitable year is impossible.
+    ok, detail, offenders = efp.check_ebitda_at_least_pat(
+        {"profit": {2026: 1047.88}, "ebitda": {2026: 5.8}})
+    assert ok is False and offenders == ["ebitda"], detail
+
+
+def test_unit_must_be_stated_next_to_the_table():
+    ok, detail, _o = efp.check_unit_stated_near_table(True, "in Rs million", 73, 73)
+    assert ok is True and "73" in detail
+    ok, detail, _o = efp.check_unit_stated_near_table(True, "in Rs million", 21, 255)
+    assert ok is False and "not adjacent" in detail
+    ok, detail, _o = efp.check_unit_stated_near_table(False, None, None, 255)
+    assert ok is False
+
+
+def test_cross_document_agreement():
+    ad = {"revenue": {2026: 19266.76}, "profit": {2026: 1047.88}}
+    rhp = {"revenue": {2026: 19266.76}, "profit": {2026: 1047.88}}
+    ok, _d, _o = efp.check_cross_document_agreement(ad, rhp)
+    assert ok is True
+    ok, detail, offenders = efp.check_cross_document_agreement(
+        ad, {"revenue": {2026: 3970.10}, "profit": {2026: 5.8}})
+    assert ok is False and offenders == ["profit", "revenue"], detail
+
+
+def test_metrics_that_fail_a_check_are_dropped_not_emitted():
+    """A page whose numbers are implausible yields NO metric for the offender."""
+    page = "\n".join([
+        "Restated Statement of Profit and Loss",
+        "(All amounts are in Rs million)",
+        "31 March 2026 31 March 2025 31 March 2024",
+        "Revenue from operations 19,266.76 13,970.10 10,245.68",
+        "Profit for the year 40,000.00 405.80 243.47",
+    ])
+    r = efp.extract_from_texts([(0, page)])
+    assert "profit" not in r["metrics"]
+    assert "pat_not_above_revenue" in r["rejected"]["profit"]
+    assert r["metrics"]["revenue"] == {2026: 19266.76, 2025: 13970.10, 2024: 10245.68}

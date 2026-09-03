@@ -5,7 +5,7 @@
  * Implements optimized queries for historical subscription data.
  */
 
-import { eq, and, gte, lte, desc } from 'drizzle-orm';
+import { eq, and, gte, lte, desc, or, isNull } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type Redis from 'ioredis';
 import { BaseRepository } from './base-repository';
@@ -25,6 +25,23 @@ import type {
   ISubscriptionRepository,
 } from './types';
 
+/**
+ * W-03 follow-up: which scope of subscription rows a caller wants back.
+ *
+ * The chart endpoints (`findByIPO`/`findLatest`) default to CONSOLIDATED
+ * (plus pre-W-03 rows, which have no scope label and stay valid) so a
+ * BSE-only book never plots as if it were the same series as the
+ * consolidated book. 'ALL' removes the scope predicate entirely for a
+ * caller that genuinely wants every row regardless of scope.
+ */
+export type SubscriptionScopeOption =
+  | 'BSE_ONLY'
+  | 'NSE_ONLY'
+  | 'CONSOLIDATED'
+  | 'ALL';
+
+const DEFAULT_SCOPE: SubscriptionScopeOption = 'CONSOLIDATED';
+
 export class SubscriptionRepository
   extends BaseRepository
   implements ISubscriptionRepository
@@ -34,17 +51,36 @@ export class SubscriptionRepository
   }
 
   /**
+   * Builds the scope predicate for the subscriptions.scope column.
+   * - 'ALL' -> no predicate (every row, any scope, including null).
+   * - 'CONSOLIDATED' (default) -> CONSOLIDATED rows plus pre-W-03 rows
+   *   that predate the scope label (null).
+   * - 'BSE_ONLY' / 'NSE_ONLY' -> exactly that exchange-only book.
+   */
+  private buildScopeCondition(scope: SubscriptionScopeOption = DEFAULT_SCOPE) {
+    if (scope === 'ALL') {
+      return undefined;
+    }
+    if (scope === 'CONSOLIDATED') {
+      return or(eq(subscriptions.scope, 'CONSOLIDATED'), isNull(subscriptions.scope));
+    }
+    return eq(subscriptions.scope, scope);
+  }
+
+  /**
    * Find subscription history for an IPO
    */
-  async findByIPO(filters: SubscriptionFilters): Promise<Subscription[]> {
-    const { ipoId, fromDate, toDate, limit = 100 } = filters;
+  async findByIPO(
+    filters: SubscriptionFilters & { scope?: SubscriptionScopeOption }
+  ): Promise<Subscription[]> {
+    const { ipoId, fromDate, toDate, limit = 100, scope = DEFAULT_SCOPE } = filters;
 
-    const cacheKey = getSubscriptionHistoryKey(
+    const cacheKey = `${getSubscriptionHistoryKey(
       ipoId,
       fromDate && toDate
         ? Math.ceil((toDate.getTime() - fromDate.getTime()) / (1000 * 60 * 60 * 24))
         : undefined
-    );
+    )}:scope:${scope}`;
 
     return this.getFromCache(
       cacheKey,
@@ -58,6 +94,11 @@ export class SubscriptionRepository
 
           if (toDate) {
             conditions.push(lte(subscriptions.timestamp, toDate));
+          }
+
+          const scopeCondition = this.buildScopeCondition(scope);
+          if (scopeCondition) {
+            conditions.push(scopeCondition);
           }
 
           const whereClause = and(...conditions);
@@ -85,17 +126,27 @@ export class SubscriptionRepository
   /**
    * Find latest subscription snapshot for an IPO
    */
-  async findLatest(ipoId: string): Promise<Subscription | null> {
-    const cacheKey = getLatestSubscriptionKey(ipoId);
+  async findLatest(
+    ipoId: string,
+    options?: { scope?: SubscriptionScopeOption }
+  ): Promise<Subscription | null> {
+    const scope = options?.scope ?? DEFAULT_SCOPE;
+    const cacheKey = `${getLatestSubscriptionKey(ipoId)}:scope:${scope}`;
 
     return this.getFromCache(
       cacheKey,
       async () => {
         try {
+          const conditions = [eq(subscriptions.ipoId, ipoId)];
+          const scopeCondition = this.buildScopeCondition(scope);
+          if (scopeCondition) {
+            conditions.push(scopeCondition);
+          }
+
           const [latest] = await this.db
             .select()
             .from(subscriptions)
-            .where(eq(subscriptions.ipoId, ipoId))
+            .where(and(...conditions))
             .orderBy(desc(subscriptions.timestamp))
             .limit(1);
 

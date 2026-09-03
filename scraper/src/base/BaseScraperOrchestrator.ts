@@ -123,6 +123,25 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
   // T-195: selector-degradation detection
   protected redis!: Redis;
 
+  /**
+   * S-02 §5 (due-step scheduler, `ENABLE_DUE_STEP_SCHEDULER`): when set, an
+   * IPO is processed ONLY if it already exists with a status in this set —
+   * a brand-new IPO (`existingIPO === null`) is also skipped. Lets a
+   * status-scoped caller (aggregator refresh restricted to UPCOMING/OPEN,
+   * live refresh restricted to OPEN) reuse the SAME orchestrator + the same
+   * single write door instead of duplicating scrape logic, per
+   * `plan-before-coding.md`'s "smallest existing entry point" guidance.
+   * `undefined` (the default) means "no restriction" — today's unfiltered
+   * behavior, unchanged.
+   */
+  protected allowedStatuses?: Set<string>;
+
+  /** Sets the status restriction described on `allowedStatuses` above. Chainable. */
+  public restrictToStatuses(statuses: readonly string[]): this {
+    this.allowedStatuses = new Set(statuses);
+    return this;
+  }
+
   // Scraper name (e.g., 'NSE', 'BSE', 'MONEYCONTROL')
   protected abstract getScraperName(): ScraperSource;
 
@@ -173,6 +192,12 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
 
       // Track updated IPO slugs for cache invalidation
       const updatedIPOSlugs: string[] = [];
+      // Round-3 H1: rows dropped by the `allowedStatuses` restriction were only
+      // visible as a per-row DEBUG line (off in production), so a mis-set
+      // restriction silently scraped nothing and looked like a healthy run.
+      // One INFO summary line per run makes the skip count visible without a
+      // line per row.
+      let statusRestrictedSkips = 0;
 
       // Step 1: Scrape data (subclass-specific)
       const scrapedData = await this.scrapeData();
@@ -198,6 +223,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
           // Update result counters
           result.iposProcessed += processResult.processed ? 1 : 0;
           result.iposSkipped += processResult.skipped ? 1 : 0;
+          statusRestrictedSkips += processResult.statusRestricted ? 1 : 0;
           result.iposInserted += processResult.inserted ? 1 : 0;
           result.iposUpdated += processResult.updated ? 1 : 0;
           result.iposFailed += processResult.failed ? 1 : 0;
@@ -214,6 +240,19 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
           result.iposFailed++;
           result.errors.push(`Processing error: ${errorMsg}`);
         }
+      }
+
+      // Round-3 H1: one line per run, not per row.
+      if (this.allowedStatuses) {
+        logger.info(
+          {
+            scraperName,
+            allowedStatuses: [...this.allowedStatuses],
+            statusRestrictedSkips,
+            scrapedRows: scrapedData.ipos.length,
+          },
+          'Status restriction active (due-step scheduler) — rows outside the allowed statuses were skipped before the write door'
+        );
       }
 
       // Step 3: Comprehensive cache invalidation
@@ -335,6 +374,8 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     slug: string | null;
     processed: boolean;
     skipped: boolean;
+    /** Round-3 H1: skipped specifically by the `allowedStatuses` restriction (counted per run). */
+    statusRestricted: boolean;
     inserted: boolean;
     updated: boolean;
     failed: boolean;
@@ -347,6 +388,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       slug: null as string | null,
       processed: false,
       skipped: false,
+      statusRestricted: false,
       inserted: false,
       updated: false,
       failed: false,
@@ -406,8 +448,24 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       slug,
       isin: validatedIPO.isin,
       symbol: validatedIPO.symbol,
+      openDate: validatedIPO.openDate ?? null,
+      priceRangeMin: validatedIPO.priceRangeMin ?? null,
+      segment: validatedIPO.segment ?? null,
     }) as IPO | null;
     const ipoId = existingIPO?.id;
+
+    // S-02 §5: status-restricted callers (aggregator/live refresh under the
+    // due-step scheduler) never create new rows and never touch a row whose
+    // status is outside the restriction — skip before any write/lock work.
+    if (this.allowedStatuses && (!existingIPO || !this.allowedStatuses.has(existingIPO.status))) {
+      logger.debug(
+        { scraperName, companyName: validatedIPO.companyName, status: existingIPO?.status ?? 'NEW' },
+        'IPO outside allowedStatuses restriction - skipping (due-step scheduler)'
+      );
+      processResult.skipped = true;
+      processResult.statusRestricted = true;
+      return processResult;
+    }
 
     // Step 3: PROTECTION CHECK - IPO-level lock
     if (ipoId && await this.fieldProtectionService.isIPOLocked(ipoId)) {

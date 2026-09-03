@@ -5,7 +5,14 @@
  * Closing soon = amber, Upcoming = accent blue, Closed/Listed = muted.
  */
 
-export type DisplayStatus = 'open' | 'closingSoon' | 'upcoming' | 'closed' | 'listed';
+export type DisplayStatus =
+  | 'open'
+  | 'closingSoon'
+  | 'upcoming'
+  | 'closed'
+  | 'listed'
+  | 'withdrawn'
+  | 'postponed';
 
 /** Minimal shape needed to derive a status — satisfied by both IPO rows and the
  * lighter HomeIPOTableData. */
@@ -34,6 +41,14 @@ const startOfDay = (d: Date): Date => {
 export function getDisplayStatus(ipo: StatusInput): StatusMeta {
   const today = startOfDay(new Date());
 
+  // I4 / W-41: a pulled issue is checked BEFORE the dates. Its bidding window
+  // still exists and still passes, so date-first logic would label a withdrawn
+  // IPO "Open" during its old window and "Closed" after it — telling the reader
+  // it is a live/completed issue when it will never happen.
+  const stored = (ipo.status || '').toUpperCase();
+  if (stored === 'WITHDRAWN') return { status: 'withdrawn', label: 'Withdrawn' };
+  if (stored === 'POSTPONED') return { status: 'postponed', label: 'Postponed' };
+
   if (ipo.openDate && ipo.closeDate) {
     const open = startOfDay(new Date(ipo.openDate));
     const close = startOfDay(new Date(ipo.closeDate));
@@ -61,6 +76,10 @@ const TONE: Record<DisplayStatus, { chip: string; dot: string }> = {
   upcoming: { chip: 'bg-primary/10 text-primary', dot: 'bg-primary' },
   closed: { chip: 'bg-gray-100 text-gray-600', dot: 'bg-gray-400' },
   listed: { chip: 'bg-emerald-50 text-emerald-700', dot: 'bg-emerald-500' },
+  // Terminal states read as a warning, not as neutral "closed" — the reader must
+  // not mistake a dead issue for a completed one.
+  withdrawn: { chip: 'bg-red-50 text-red-700', dot: 'bg-red-500' },
+  postponed: { chip: 'bg-amber-50 text-amber-800', dot: 'bg-amber-600' },
 };
 
 /** Just the colored status dot — used inside the pinned Company cell on mobile so

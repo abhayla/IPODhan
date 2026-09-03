@@ -309,7 +309,7 @@ async function scrapeNSEWithBrowser(): Promise<NSEScrapeResult> {
             offeringType: offeringType as 'IPO' | 'FPO' | 'RIGHTS' | 'OFS' | 'BUYBACK' | 'DELISTING' | 'TENDER' | 'NCD' | 'BONDS' | 'INVITS' | 'REITS' | 'IPP' | 'QIP' | 'PREFERENTIAL',
             status: status,
             lotSize: undefined, // NSE doesn't always show lot size in listing
-            faceValue: 10 // NSE default face value
+            faceValue: undefined // W-02: NSE list page doesn't carry face value; don't fabricate it
           };
 
           ipos.push(ipo);

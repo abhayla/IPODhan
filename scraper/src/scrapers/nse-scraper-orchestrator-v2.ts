@@ -230,8 +230,11 @@ export class NSEScraperOrchestratorV2 extends BaseScraperOrchestrator<ScrapedIPO
  *
  * @returns Promise<NSEScraperResult> - Scraper execution summary, incl. segment counts
  */
-export async function runNSEScraper(): Promise<NSEScraperResult> {
+export async function runNSEScraper(
+  opts: { allowedStatuses?: readonly string[] } = {}
+): Promise<NSEScraperResult> {
   const orchestrator = new NSEScraperOrchestratorV2();
+  if (opts.allowedStatuses) orchestrator.restrictToStatuses(opts.allowedStatuses);
   const baseResult = await orchestrator.run();
   return {
     ...baseResult,

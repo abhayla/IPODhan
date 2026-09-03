@@ -43,8 +43,11 @@ export const ScrapedIPOSchema = z.object({
     message: 'Invalid offering type'
   }),
   sector: z.string().max(100).optional(),
-  status: z.enum(['UPCOMING', 'OPEN', 'CLOSED', 'LISTED'], {
-    message: 'Invalid IPO status - must be UPCOMING, OPEN, CLOSED, or LISTED'
+  // I4 / W-41: WITHDRAWN/POSTPONED are terminal states an exchange declares
+  // (BSE public notice, NSE status text). Additive — no previously valid status
+  // stops validating.
+  status: z.enum(['UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED'], {
+    message: 'Invalid IPO status - must be UPCOMING, OPEN, CLOSED, LISTED, WITHDRAWN or POSTPONED'
   }),
   lotSize: z.number().int().positive().optional(),
   faceValue: z.number().int().positive().optional(),
@@ -60,7 +63,11 @@ export const ScrapedIPOSchema = z.object({
   registrar: z.string().max(255).nullable().optional(), // Allow null when not available
   leadManagers: z.array(z.string()).nullable().optional(),
   symbol: z.string().nullable().optional(), // NSE/BSE stock symbol (nullable for RIGHTS/NCD)
-  isin: z.string().length(12).nullable().optional() // ISIN code (12 characters, nullable when not available)
+  isin: z.string().length(12).nullable().optional(), // ISIN code (12 characters, nullable when not available)
+  // W-82 round 2: filing persister sent `cin` in the upsertIPO payload but this
+  // schema had no field for it, so it was silently dropped before ipoData was
+  // ever built. CIN format: 21 chars, uppercase letters + digits only.
+  cin: z.string().regex(/^[A-Z0-9]{21}$/, 'CIN must be 21 uppercase alphanumeric characters').optional()
 }).refine(
   (data) => new Date(data.closeDate) >= new Date(data.openDate),
   {
@@ -603,7 +610,7 @@ export const IPOAlertsAPIIPOSchema = z.object({
     (date) => !isNaN(Date.parse(date)),
     'Close date must be a valid date string'
   ),
-  status: z.enum(['OPEN', 'UPCOMING', 'CLOSED', 'LISTED'], {
+  status: z.enum(['OPEN', 'UPCOMING', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED'], {
     message: 'Invalid IPO status'
   }),
   category: z.enum(['MAINBOARD', 'SME', 'RIGHTS', 'NCD'], {

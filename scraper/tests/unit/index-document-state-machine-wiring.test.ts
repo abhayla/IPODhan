@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { ipoStatusEnumMock } from '../helpers/schema-mock.js';
 
 /**
  * T-403 WP B wiring test. Proves, in the ONLY process PM2 runs
@@ -149,6 +150,7 @@ vi.mock('@ipodhan/shared', () => ({
 vi.mock('@ipodhan/shared/db/schema', () => ({
   scraperLogs: { createdAt: 'created_at' },
   scraperSteps: {},
+  ipoStatusEnum: ipoStatusEnumMock,
 }));
 vi.mock('drizzle-orm', () => ({
   lt: vi.fn(),
@@ -156,7 +158,7 @@ vi.mock('drizzle-orm', () => ({
 
 
 const runDocumentCycleMock = vi.fn().mockResolvedValue({
-  ipos: 4, skipped: 2, found: 3, notYetFiled: 1, blocked: 0, networkCalls: 5,
+  ipos: 4, skipped: 2, found: 3, notYetFiled: 1, blocked: 0, networkCalls: 5, extractionBlocked: 0, extractionFailed: 0,
   durationMs: 1234, budgetExhausted: false,
 });
 const runDocumentPurgeMock = vi.fn().mockResolvedValue({
@@ -195,7 +197,7 @@ describe('T-403 — document state machine wiring in the one-shot cycle', () => 
     expect(result.status).toBe('ok');
     // The ledger reason carries the counts, so a cycle that did nothing is
     // distinguishable from a cycle that found nothing.
-    expect(result.reason).toBe('ipos=4 skipped=2 found=3 not_yet=1 blocked=0 calls=5');
+    expect(result.reason).toBe('ipos=4 skipped=2 found=3 not_yet=1 blocked=0 calls=5 extraction_blocked=0 extraction_failed=0');
   });
 
   it('runs the OLD backfill and not the state machine when the flag is off', async () => {

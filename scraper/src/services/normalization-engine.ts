@@ -288,7 +288,15 @@ export function normalizeDate(value: string | number | Date): string | null {
  * - Case variations
  * - Special characters (&, ', -, _, parentheses)
  *
- * Returns: normalized lowercase name without legal suffixes
+ * Returns: normalized lowercase name without legal suffixes.
+ *
+ * COMPARISON ONLY — W-83. The return value is a matching key, never a value to
+ * persist: it is lowercased, suffix-stripped and punctuation-stripped, so
+ * storing it turns `Deepa Jewellers Limited` into `deepa jewellers` on the row.
+ * Consolidation MUST return the RAW winning value as `finalValue`
+ * (data-consolidation-service.ts, Case 2), because
+ * data-consolidation-orchestrator.ts copies every `finalValue` onto the written
+ * row.
  */
 export function normalizeCompanyName(value: string): string {
   if (!value) return '';
@@ -421,6 +429,19 @@ export function areEquivalent(val1: any, val2: any, tolerance: number = 0.01): b
   // Number comparison with tolerance
   if (typeof val1 === 'number' && typeof val2 === 'number') {
     return Math.abs(val1 - val2) <= tolerance;
+  }
+
+  // W-18(ii): array-valued fields (leadManagers, listingExchanges) reached the
+  // `return false` below on every cycle because `===` is reference equality —
+  // two IDENTICAL lists from two sources were logged as a `data_conflicts` row
+  // forever. Compared as order-insensitive multisets of trimmed, lower-cased
+  // members.
+  if (Array.isArray(val1) && Array.isArray(val2)) {
+    if (val1.length !== val2.length) return false;
+    const key = (v: any) => (typeof v === 'string' ? v.toLowerCase().trim() : JSON.stringify(v));
+    const sorted1 = val1.map(key).sort();
+    const sorted2 = val2.map(key).sort();
+    return sorted1.every((v, i) => v === sorted2[i]);
   }
 
   // String comparison (case-insensitive, trimmed)

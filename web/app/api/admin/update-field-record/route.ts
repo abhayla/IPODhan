@@ -204,6 +204,12 @@ export const PATCH = withAdminAuth(async (request: NextRequest, adminContext) =>
       console.warn('[Admin API] Cache invalidation failed:', error);
     }
 
+    // Invalidate the field-protection cache the scraper write path reads
+    // (W-58) — the keys above never covered `protection:field:...`, so a
+    // scraper run within PROTECTION_CACHE_TTL kept reading a stale
+    // isProtected:false and overwrote this edit.
+    await fieldProtectionService.invalidateProtectionCache(ipoId, compositeTableName, fieldName);
+
     console.log(
       `[Admin API] Record field updated: ${tableName}.${fieldName} = ${value} for record ${recordId} (IPO ${ipoId}) by ${adminContext.adminName}`
     );

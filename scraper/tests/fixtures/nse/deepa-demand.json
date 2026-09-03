@@ -1,0 +1,177 @@
+{
+  "demandGraph": {
+    "plotData": {
+      "168": "4,42,03,908",
+      "169": "4,41,84,924",
+      "170": "4,41,82,740",
+      "171": "4,41,78,708",
+      "172": "4,41,77,028",
+      "173": "4,41,76,272",
+      "174": "4,41,76,104",
+      "175": "4,41,75,768",
+      "176": "4,41,74,256",
+      "177": "4,41,69,048",
+      "Cut-Off": "1,98,44,496"
+    },
+    "timestamp": "As on 02-Sep-2026 17:00:13 IST",
+    "totalBidRecieved": "44203908"
+  },
+  "demandDataNSE": [
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "1,98,44,496",
+      "price": "Cut-Off",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:13"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "4,41,69,048",
+      "price": "177",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:13"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "4,41,74,256",
+      "price": "176",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:13"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "4,41,75,768",
+      "price": "175",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:13"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "4,41,76,104",
+      "price": "174",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:13"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "4,41,76,272",
+      "price": "173",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:13"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "4,41,77,028",
+      "price": "172",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:13"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "4,41,78,708",
+      "price": "171",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:13"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "4,41,82,740",
+      "price": "170",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:13"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "4,41,84,924",
+      "price": "169",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:13"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "4,42,03,908",
+      "price": "168",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:13"
+    }
+  ],
+  "demandDataBSE": [
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "3,68,02,584",
+      "price": "Cut-Off",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:00"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "6,68,45,436",
+      "price": "177",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:00"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "6,68,56,692",
+      "price": "176",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:00"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "6,68,67,276",
+      "price": "175",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:00"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "6,68,69,124",
+      "price": "174",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:00"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "6,68,74,500",
+      "price": "173",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:00"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "6,68,79,288",
+      "price": "172",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:00"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "6,68,82,984",
+      "price": "171",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:00"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "6,69,00,624",
+      "price": "170",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:00"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "6,69,05,412",
+      "price": "169",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:00"
+    },
+    {
+      "company": "Deepa Jewellers Limited",
+      "cumQty": "6,69,55,476",
+      "price": "168",
+      "symbol": "DEEPA",
+      "timestamp": "02-Sep-2026 17:00:00"
+    }
+  ]
+}

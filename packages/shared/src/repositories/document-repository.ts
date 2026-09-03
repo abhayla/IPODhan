@@ -218,6 +218,36 @@ export class DocumentRepository
   }
 
   /**
+   * Update `filing_date` on the RHP document row for an IPO (T-433 WP G4 —
+   * `DocumentFilingDateWriter`). This is an UPDATE only: it never inserts a
+   * `documents` row, so a filing extraction with no matching discovery-runner
+   * row for `type = 'RHP'` updates zero rows rather than fabricating one.
+   */
+  async setFilingDateForRhp(ipoId: string, filingDate: string): Promise<number> {
+    try {
+      const { and } = await import('drizzle-orm');
+
+      const updated = await this.db
+        .update(documents)
+        .set({ filingDate, updatedAt: new Date() })
+        .where(and(eq(documents.ipoId, ipoId), eq(documents.type, 'RHP')))
+        .returning({ id: documents.id });
+
+      if (updated.length > 0) {
+        await this.deleteCache(getDocumentsKey(ipoId));
+      }
+
+      return updated.length;
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to set RHP filing date for IPO: ${ipoId}`,
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
    * Upsert multiple documents in batch
    * Returns success and failure counts
    */

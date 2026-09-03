@@ -9,6 +9,7 @@ import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { FieldProtectionRepository } from '@/lib/repositories/field-protection-repository';
 import { sendNotification } from '@/lib/services/notification-service';
+import { invalidateProtectionCacheForIpo } from '@/lib/admin/field-protection-checker';
 import { ipos } from '@ipodhan/shared/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -47,6 +48,12 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext) => 
       fieldNames,
       isProtected
     );
+
+    // Belt-and-braces: the repository invalidates each field's cache key on
+    // write, but a bulk toggle can affect (ipoId, table, field) triples the
+    // route never enumerates individually — clear the whole IPO's protection
+    // cache (field-level + IPO lock) so no stale entry survives (W-58).
+    await invalidateProtectionCacheForIpo(ipoId);
 
     console.log(
       `[Admin API] Bulk ${isProtected ? 'protected' : 'unprotected'} ${updatedCount} fields in ${tableName} by ${adminContext.adminName}`

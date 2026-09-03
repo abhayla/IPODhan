@@ -29,7 +29,9 @@
     "./repositories/promoters-repository": "./src/repositories/promoters-repository.ts",
     "./repositories/ipo-intermediaries-repository": "./src/repositories/ipo-intermediaries-repository.ts",
     "./repositories/brlm-track-record-repository": "./src/repositories/brlm-track-record-repository.ts",
-    "./repositories/ipo-risk-factors-repository": "./src/repositories/ipo-risk-factors-repository.ts"
+    "./repositories/ipo-risk-factors-repository": "./src/repositories/ipo-risk-factors-repository.ts",
+    "./repositories/ipo-pipeline-steps-repository": "./src/repositories/ipo-pipeline-steps-repository.ts",
+    "./pipeline/step-catalogue": "./src/pipeline/step-catalogue.ts"
   },
   "scripts": {
     "build": "tsc",

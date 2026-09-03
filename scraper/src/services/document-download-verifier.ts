@@ -24,7 +24,7 @@
 
 import { createHash } from 'node:crypto';
 import { extractPdfMembersFromZip, looksLikePdf, type ZipPdfMember } from './primary-source-discovery.js';
-import { classifyByTitle } from './document-classifier.js';
+import { classifyByTitle, isNseRatiosArchiveUrl } from './document-classifier.js';
 import type { DocumentType } from './document-types.js';
 
 /** Minimum plausible size for a real filing. The BSE error page is 164 bytes. */
@@ -319,7 +319,10 @@ export function verifyDownload(
     pdf = chosen.content;
     zipMember = chosen.name;
     const memberType = classifyByTitle(baseName(chosen.name));
-    if (memberType && options.wantedType && memberType !== options.wantedType) {
+    // W-90: NSE's own RATIOS_<SYM>.zip archive name is an exchange-controlled
+    // signal stronger than an arbitrary member name inside it — a member named
+    // "... - Price Band Advertisement.pdf" must NOT retype the ratios filing.
+    if (memberType && options.wantedType && memberType !== options.wantedType && !isNseRatiosArchiveUrl(meta.url)) {
       memberTypeMismatch = memberType;
     }
   }

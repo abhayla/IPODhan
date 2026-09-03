@@ -183,6 +183,55 @@
       "when": 1788427200000,
       "tag": "0042_wp_c1_filing_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1788513600000,
+      "tag": "0043_ipo_pipeline_steps",
+      "breakpoints": true
+    },
+    {
+      "idx": 27,
+      "version": "7",
+      "when": 1788600000000,
+      "tag": "0044_document_fetch_status_not_found",
+      "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1788686400000,
+      "tag": "0045_subscriptions_scope",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1788772800000,
+      "tag": "0046_ipo_status_withdrawn_postponed",
+      "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1788859200000,
+      "tag": "0047_intermediary_role_sub_syndicate",
+      "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1788945600000,
+      "tag": "0048_ipo_valuation_share_legs",
+      "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789031999000,
+      "tag": "0049_ipo_details_ad_fields",
+      "breakpoints": true
     }
   ]
 }

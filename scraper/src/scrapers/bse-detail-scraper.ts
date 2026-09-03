@@ -38,7 +38,7 @@ export interface BSEDetailPageData {
   priceRangeMax: number;
   issueSize: number; // In basic units (not crores)
   lotSize: number;
-  faceValue: number;
+  faceValue: number | undefined;
   registrar: string | null;
   leadManagers: string[] | null;
   sponsorBanks: string[] | null;
@@ -176,14 +176,23 @@ function parseShareCount(sharesStr: string | null): number {
 }
 
 /**
- * Calculate issue size in basic units (not crores)
- * Formula: shares × price_max
+ * Calculate issue size in basic units (not crores).
+ * Formula: shares x price.
+ *
+ * W-109 (round-8, Glass Wall Systems): the published share count is the
+ * count AT THE FLOOR price ("up to N shares"). When a real band exists,
+ * callers MUST pass the band's floor (priceRangeMin) — floor-count x
+ * cap-price produces a total that appears nowhere in the filing (Glass
+ * Wall: 23,702,094 x Rs182 cap = Rs431.38 Cr, never published; the real
+ * floor total is 23,702,094 x Rs172 = Rs407.68 Cr, matching the ad). When
+ * there is no band (a single fixed price), that fixed price is both the
+ * floor and the cap, so it is passed unchanged.
  */
-function calculateIssueSize(shares: number, priceMax: number): number {
-  if (shares === 0 || priceMax === 0) return 0;
+export function calculateIssueSize(shares: number, price: number): number {
+  if (shares === 0 || price === 0) return 0;
 
   // Return in basic units (rupees), not crores
-  return shares * priceMax;
+  return shares * price;
 }
 
 /**
@@ -259,11 +268,12 @@ export function parseACQDispPage($: cheerio.CheerioAPI): BSEDetailPageData {
   // Parse share count
   const issueShares = parseShareCount(issueSharesStr);
 
-  // Calculate issue size
-  const issueSize = calculateIssueSize(issueShares, priceRangeMax);
+  // Calculate issue size from the band FLOOR (W-109) — the exchange's share
+  // count is the count at the floor price, not the cap.
+  const issueSize = calculateIssueSize(issueShares, priceRangeMin);
 
   // Parse numeric fields
-  const faceValue = faceValueStr ? parseInt(parseFloat(faceValueStr).toString(), 10) : 10;
+  const faceValue = faceValueStr ? parseInt(parseFloat(faceValueStr).toString(), 10) : undefined;
   const lotSize = lotSizeStr ? parseInt(lotSizeStr, 10) : 100;
 
   // Parse lists
@@ -337,7 +347,7 @@ export function parseDisplayIPOPage($: cheerio.CheerioAPI): BSEDetailPageData {
   const { openDate, closeDate } = parseIssuePeriod(issuePeriod);
 
   const faceValueStr = extractFieldValue($, 'Face Value');
-  const faceValue = faceValueStr ? parseInt(parseFloat(faceValueStr).toString(), 10) : 10;
+  const faceValue = faceValueStr ? parseInt(parseFloat(faceValueStr).toString(), 10) : undefined;
 
   const registrar = extractFieldValue($, 'Registrar');
   const sponsorBanksStr = extractFieldValue($, 'Sponsor Bank');

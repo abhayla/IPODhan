@@ -36,6 +36,8 @@ import {
   LOCK_DEFAULTS,
 } from '../utils/distributed-lock.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { initStepLedger } from './step-ledger.js';
+import { recordDiscoverySteps } from './step-ledger-recorders.js';
 import type { Redis } from 'ioredis';
 
 /**
@@ -142,6 +144,9 @@ export class DataConsolidationOrchestrator {
             slug,
             isin: scrapedIPO.isin,
             symbol: scrapedIPO.symbol,
+            openDate: scrapedIPO.openDate ?? null,
+            priceRangeMin: scrapedIPO.priceRangeMin ?? null,
+            segment: scrapedIPO.segment ?? null,
           }) as IPO | null;
       const isNew = !existingIPO;
 
@@ -201,6 +206,15 @@ export class DataConsolidationOrchestrator {
 
       let ipoId: string;
 
+      // W-104: `slug` MUST be written only on the create branch below.
+      // `consolidatedIPOData` (from `extractConsolidatedData`) never carries a
+      // `slug` key — `mapScrapedIPOToConsolidationInput` never puts one into
+      // `incomingData` — so the update branch's `ipoRepository.update()` call
+      // structurally cannot touch the stored slug. Keep it that way: never add
+      // `slug` to `mapScrapedIPOToConsolidationInput`/`extractConsolidatedData`,
+      // or a companyName correction from any non-ADMIN source will silently
+      // re-slug an existing row (see the parallel guard + incident note in
+      // `data-persister.ts` `upsertIPO`).
       if (isNew) {
         // Create new IPO
         const newIPO = await this.ipoRepository.create({
@@ -247,6 +261,42 @@ export class DataConsolidationOrchestrator {
           consolidationMs: consolidationResult.performanceMs,
           totalMs: duration,
         }, '[DataConsolidation] Upsert complete');
+      }
+
+      // S-02 hook — the step ledger (B1..B7, F1/F2/F4/F5/F6).
+      //
+      // THIS is the door the live orchestrators actually use.
+      // `BaseScraperOrchestrator` writes through here, NOT through
+      // `data-persister.upsertIPO`, so a hook placed only on that function fires
+      // for backfill scripts and never for a real scrape — which is exactly what
+      // the S-02 proof run caught: after NSE and BSE both wrote Rays of Belief,
+      // its ledger still had no B rows. Both doors are hooked, because "the write
+      // path" is two functions, not one.
+      //
+      // Best-effort, after the primary write, like every other post-write side
+      // effect (`non-fatal-side-effects.md`).
+      try {
+        if (isNew) await initStepLedger(ipoId);
+        await recordDiscoverySteps(ipoId, {
+          source,
+          created: isNew,
+          fields: Object.keys(consolidatedIPOData),
+          offeringType: (consolidatedIPOData as { offeringType?: string }).offeringType ?? null,
+          consolidated: true,
+          conflictsDetected: consolidationResult.conflictsDetected ?? 0,
+          conflictsBySeverity: consolidationResult.conflictsBySeverity ?? {},
+          fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
+          companyName: scrapedIPO.companyName,
+        });
+      } catch (ledgerError) {
+        logger.warn(
+          {
+            ipoId,
+            source,
+            error: ledgerError instanceof Error ? ledgerError.message : String(ledgerError),
+          },
+          '[DataConsolidation] step-ledger write failed (non-fatal)'
+        );
       }
 
       return {
@@ -368,7 +418,7 @@ export class DataConsolidationOrchestrator {
       priceRangeMin: consolidated.priceRangeMin,
       priceRangeMax: consolidated.priceRangeMax,
       lotSize: consolidated.lotSize,
-      faceValue: consolidated.faceValue || 10,
+      faceValue: consolidated.faceValue,
       status: consolidated.status || originalScraped.status,
       openDate: consolidated.openDate || originalScraped.openDate,
       closeDate: consolidated.closeDate || originalScraped.closeDate,

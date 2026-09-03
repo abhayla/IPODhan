@@ -423,6 +423,11 @@ function calculateStatusDistribution(total: number): Record<IPOStatus, number> {
     CLOSED: closedCount,
     LISTED: listedCount,
     UPCOMING: upcomingCount,
+    // I4 / W-41: seed data models the ordinary lifecycle only. WITHDRAWN and
+    // POSTPONED are exchange-declared exceptions — seeding them would put fake
+    // dead IPOs in a dev database and mask the real ones.
+    WITHDRAWN: 0,
+    POSTPONED: 0,
   };
 }
 

@@ -38,6 +38,8 @@ import {
   getConflictSeverity,
   validateValue,
 } from './normalization-engine';
+import { confidenceFor } from '../config/source-confidence';
+import type { ConflictSeverity } from '../config/source-confidence';
 import { FEATURE_FLAGS, shouldUseFeature } from '../config/feature-flags';
 import logger from '../utils/logger.js';
 
@@ -109,6 +111,14 @@ interface ConflictInfo {
   normalizedIncoming: any;
   severity: 'INFO' | 'WARNING' | 'CRITICAL';
   reason: string;
+  // W-48: the source whose VALUE was actually kept/written after all
+  // resolution branches ran (priority, untracked replace, set merge, tiebreak
+  // etc). MUST be passed by the caller, never re-derived from `reason` here —
+  // `reason === 'SOURCE_PRIORITY'` does not imply existingSource won (incoming
+  // wins SOURCE_PRIORITY too when it outranks existing), and DEEPA's
+  // faceValue/issueSize conflict rows were mislabeled NSE while DRHP's value
+  // was the one actually stored.
+  chosenSource: ScraperSource;
 }
 
 const PRICE_BAND_FIELDS = ['priceRangeMin', 'priceRangeMax'] as const;
@@ -132,6 +142,17 @@ const HIGH_VALUE_LIVE_FIELDS = new Set<string>([
 
 /** IPO lifecycle states in which a HIGH_VALUE field dispute must HOLD rather than assert one-sided. */
 const LIVE_STATUSES = new Set<string>(['UPCOMING', 'OPEN']);
+
+/**
+ * W-60: terminal `ipo_status` values (commit 4a96ab7d). Once an IPO is
+ * WITHDRAWN or POSTPONED, the web updater's own `TERMINAL_STATUSES` guard
+ * (`web/lib/services/status-updater-service.ts`) refuses to move it back —
+ * but the scraper's per-field resolver had no matching guard, so a stored
+ * terminal value was silently overwritten by the next ordinary NSE/BSE
+ * status write via plain source priority. Defined locally (not imported
+ * from web) to keep the scraper package dependency-free of web.
+ */
+const TERMINAL_IPO_STATUSES = new Set<string>(['WITHDRAWN', 'POSTPONED']);
 
 const DATE_FIELDS_WITH_TZ_TIEBREAK = new Set<string>(['openDate', 'closeDate']);
 
@@ -175,6 +196,49 @@ function resolveTzSignatureTiebreak(
     : { chosenValue: existingValue, chosenSource: existingSource };
 }
 
+
+/**
+ * `field_sources.previous_value` is a text column; `String(['BSE','NSE'])`
+ * writes the lossy `BSE,NSE`, so objects/arrays are JSON-encoded (matching how
+ * `data_conflicts.value1/value2` are stored).
+ */
+function serializeFieldValue(value: any): string {
+  return typeof value === 'object' && value !== null ? JSON.stringify(value) : String(value);
+}
+
+/**
+ * M-1: may `source` replace a stored value that has NO provenance row? Only if
+ * the matrix ranks it for this field AND strictly better than the worst source
+ * it lists — an unranked or bottom-ranked source (e.g. API_FALLBACK for
+ * `registrar`) can never silently replace a value whose origin is unknown.
+ */
+function outranksUntrackedValue(fieldName: string, source: ScraperSource): boolean {
+  const rank = getSourcePriority(fieldName, source);
+  if (rank === -1) return false;
+  const worstRank = getFieldRules(fieldName).sources.length - 1;
+  return rank < worstRank;
+}
+
+/** W-24 helper: normalize a resolved value for the "did anything change?" test. */
+function normalizeChosen(fieldName: string, value: any, rules: FieldRules): any {
+  return value !== null && value !== undefined ? normalize(fieldName, value, rules) : null;
+}
+
+/** Fields whose value is a SET the sources each report a partial view of. */
+const SET_VALUED_FIELDS = new Set<string>(['listingExchanges']);
+
+function unionSetValues(existing: any[], incoming: any[]): any[] {
+  const key = (v: any) => (typeof v === 'string' ? v.toLowerCase().trim() : JSON.stringify(v));
+  const seen = new Set(existing.map(key));
+  const merged = [...existing];
+  for (const value of incoming) {
+    if (!seen.has(key(value))) {
+      seen.add(key(value));
+      merged.push(value);
+    }
+  }
+  return merged;
+}
 
 function toFiniteNumber(value: any): number | null {
   if (value === null || value === undefined || value === '') return null;
@@ -313,10 +377,32 @@ export function collectDegenerateBandFieldsToWiden(
  * Rs3 Cr, mainboard issues are materially larger) - these are floors, not
  * medians, chosen to reject-with-margin rather than flag borderline-real data.
  *
- * The coherence check (`|issueSize - shares*band_max| / issueSize > 0.5`)
- * catches the shape even when a segment floor alone would not (e.g. a small
- * MAINBOARD SHARE COUNT that happens to clear Rs10 Cr as a raw number but
- * disagrees wildly with shares x band).
+ * The coherence check catches the shape even when a segment floor alone
+ * would not (e.g. a small MAINBOARD SHARE COUNT that happens to clear Rs10
+ * Cr as a raw number but disagrees wildly with shares x band).
+ *
+ * W-04 (walk ledger, round-2): the original symmetric coherence check
+ * (`|issueSize - shares*bandMax| / issueSize > 0.25`) assumed
+ * `noOfSharesOffered`/`sharesOffered` always means "the full issue at the
+ * cap price" - it does not. Two real, both-correct shapes coexist on NSE:
+ *   1. Purple Style Labs: NSE's share count was the NET offer AFTER the
+ *      anchor portion, at the FLOOR price - anchors can take up to 60% of
+ *      the QIB 50% (i.e. up to ~30% of the total issue), so the real
+ *      issueSize can run to ~1.43x (shares * floor).
+ *   2. Deepa Jewellers: NSE's share count was the FULL issue, at the CAP
+ *      price - issueSize == shares * bandMax exactly.
+ * A symmetric +/-25% band around `shares * bandMax` rejects case 1 outright.
+ * The check is now asymmetric and only fires on genuinely incoherent shapes:
+ * reject if issueSize is smaller than even the net-of-anchor offer priced at
+ * the FLOOR (with a small tolerance), or larger than a full offer at the CAP
+ * with room for an anchor share on top.
+ *
+ * Sources whose `issueSize` is the FILING's own total (`DRHP`, `ADMIN`) are
+ * exempt from the coherence check entirely: the filing states the total
+ * directly, and an exchange share count (of ambiguous net/full meaning)
+ * cannot overrule it. The segment floor still applies to every source - it
+ * is a plausibility check on the issueSize value itself, not on how it
+ * relates to shares x band.
  *
  * Violations are rejected (never written) and logged to `data_conflicts`
  * with a named reason (`ISSUE_SIZE_IMPLAUSIBLE_SEGMENT_FLOOR` /
@@ -325,7 +411,13 @@ export function collectDegenerateBandFieldsToWiden(
  */
 const MAINBOARD_ISSUE_SIZE_FLOOR = 10_00_00_000; // Rs10 Cr
 const SME_ISSUE_SIZE_FLOOR = 1_00_00_000; // Rs1 Cr
-const ISSUE_SIZE_COHERENCE_TOLERANCE = 0.25; // 25%
+const ISSUE_SIZE_COHERENCE_TOLERANCE = 0.25; // 25% slack below the floor-priced net offer
+const ISSUE_SIZE_COHERENCE_CEILING_MULTIPLIER = 1.5; // full offer at cap + room for anchor share
+
+// Sources whose issueSize is the filing's own stated total - the exchange
+// share count cannot overrule a filing-stated total, so these are exempt
+// from the shares-x-band coherence check (segment floor still applies).
+const ISSUE_SIZE_FILING_TOTAL_SOURCES = new Set<ScraperSource>(['DRHP', 'ADMIN']);
 
 export interface ImplausibleIssueSizeResult {
   fields: Set<string>;
@@ -334,7 +426,8 @@ export interface ImplausibleIssueSizeResult {
 
 export function collectImplausibleIssueSizeFields(
   incomingData: Record<string, any>,
-  existingData?: Record<string, any> | null
+  existingData?: Record<string, any> | null,
+  source?: ScraperSource
 ): ImplausibleIssueSizeResult {
   const empty: ImplausibleIssueSizeResult = { fields: new Set() };
   if (!('issueSize' in incomingData)) return empty;
@@ -350,12 +443,17 @@ export function collectImplausibleIssueSizeFields(
     return { fields: new Set(['issueSize']), reason: 'ISSUE_SIZE_IMPLAUSIBLE_SEGMENT_FLOOR' };
   }
 
+  if (source && ISSUE_SIZE_FILING_TOTAL_SOURCES.has(source)) return empty;
+
   const shares = toFiniteNumber(incomingData.noOfSharesOffered ?? incomingData.sharesOffered);
   const bandMax = toFiniteNumber(incomingData.priceRangeMax ?? existingData?.priceRangeMax);
-  if (shares !== null && shares > 0 && bandMax !== null && bandMax > 0) {
-    const expected = shares * bandMax;
-    const relativeDiff = Math.abs(issueSize - expected) / issueSize;
-    if (relativeDiff > ISSUE_SIZE_COHERENCE_TOLERANCE) {
+  const bandMin = toFiniteNumber(incomingData.priceRangeMin ?? existingData?.priceRangeMin) ?? bandMax;
+  if (shares !== null && shares > 0 && bandMax !== null && bandMax > 0 && bandMin !== null && bandMin > 0) {
+    const netOfferAtFloor = shares * bandMin;
+    const fullOfferAtCap = shares * bandMax;
+    const lowerBound = netOfferAtFloor * (1 - ISSUE_SIZE_COHERENCE_TOLERANCE);
+    const upperBound = fullOfferAtCap * ISSUE_SIZE_COHERENCE_CEILING_MULTIPLIER;
+    if (issueSize < lowerBound || issueSize > upperBound) {
       return { fields: new Set(['issueSize']), reason: 'ISSUE_SIZE_INCOHERENT_WITH_SHARES_BAND' };
     }
   }
@@ -490,7 +588,6 @@ export class DataConsolidationService {
           fieldName,
           value: input.incomingData[fieldName],
           source: input.source,
-          confidence: input.confidence,
           previousValue: existingField?.value ?? input.existingData?.[fieldName],
           previousSource: existingField?.source,
         });
@@ -511,7 +608,8 @@ export class DataConsolidationService {
       // why a source's issueSize was refused.
       const implausibleIssueSize = collectImplausibleIssueSizeFields(
         input.incomingData,
-        input.existingData
+        input.existingData,
+        input.source
       );
       for (const fieldName of implausibleIssueSize.fields) {
         result.fieldsProcessed++;
@@ -535,6 +633,9 @@ export class DataConsolidationService {
             normalizedIncoming: input.incomingData[fieldName],
             severity: 'CRITICAL',
             reason: implausibleIssueSize.reason!,
+            // The implausible incoming value is rejected outright — nothing
+            // is written, so the existing value/source stands.
+            chosenSource: existingSource,
           });
         }
 
@@ -571,7 +672,14 @@ export class DataConsolidationService {
             incomingSource: input.source,
             existingValue: existingSourceMap.get(fieldName)?.value,
             existingSource: existingSourceMap.get(fieldName)?.source,
-            confidence: input.confidence,
+            // W-16b (Deepa walk, 2026-09-02): `existingSourceMap` is built ONLY
+            // from tracked `field_sources` rows, so a field stored before source
+            // tracking existed looked empty here — an incoming `undefined` then
+            // hit "no existing value, accept incoming" and nulled a real stored
+            // value (observed: NSE update wiped `lead_managers`). The raw stored
+            // value travels alongside so the absent-never-overwrites-present
+            // guard sees it regardless of provenance state.
+            existingRowValue: input.existingData?.[fieldName],
             scrapedAt: input.scrapedAt,
             existingUpdatedAt: existingSourceMap.get(fieldName)?.updatedAt,
             // T-328: threaded so resolveConflict can HOLD a disputed
@@ -592,10 +700,27 @@ export class DataConsolidationService {
 
           // Track if field was updated (value actually changed from existing)
           // Field is updated if: (1) no existing value, (2) chose incoming over different source, OR (3) same source but value changed (time-based fields)
+          //
+          // S-02 §5 write-suppression fix: this used to be a raw `!==` between
+          // `fieldResult.finalValue` (a JS number/string from the scraper) and
+          // `existingValueFromMap.value` (whatever was stored — a pg NUMERIC
+          // column round-trips as a STRING, e.g. "6800000000.00", and a date
+          // column round-trips as a `Date`). `6800000000 !== "6800000000.00"`
+          // is true even though nothing changed, so every re-scrape of an
+          // unchanged numeric/date field counted as a write. Reuse the SAME
+          // normalize+areEquivalent pair `provenanceUnchanged` (below) already
+          // uses for the field_sources decision, so the `ipos` row-update
+          // decision and the provenance decision can no longer disagree.
           const existingValueFromMap = existingSourceMap.get(fieldResult.fieldName);
           const choseIncoming = fieldResult.chosenSource === input.source;
           const hadDifferentSource = existingValueFromMap && existingValueFromMap.source !== input.source;
-          const valueActuallyChanged = existingValueFromMap && fieldResult.finalValue !== existingValueFromMap.value;
+          const rulesForField = getFieldRules(fieldResult.fieldName);
+          const normalizedFinal = normalizeChosen(fieldResult.fieldName, fieldResult.finalValue, rulesForField);
+          const normalizedExistingFromMap = existingValueFromMap
+            ? normalizeChosen(fieldResult.fieldName, existingValueFromMap.value, rulesForField)
+            : null;
+          const valueActuallyChanged =
+            !!existingValueFromMap && !areEquivalent(normalizedFinal, normalizedExistingFromMap);
           const valueChanged = !existingValueFromMap || (choseIncoming && (hadDifferentSource || valueActuallyChanged));
           if (valueChanged) {
             result.fieldsUpdated++;
@@ -655,7 +780,7 @@ export class DataConsolidationService {
     incomingSource: ScraperSource;
     existingValue?: any;
     existingSource?: ScraperSource;
-    confidence?: number;
+    existingRowValue?: any;
     scrapedAt?: Date;
     existingUpdatedAt?: Date;
     ipoStatus?: string;
@@ -668,16 +793,27 @@ export class DataConsolidationService {
       incomingSource,
       existingValue,
       existingSource,
-      confidence = 100,
     } = params;
 
     const rules = getFieldRules(fieldName);
 
+    // W-16b: the stored value as it exists on the row, whether or not it has a
+    // `field_sources` row to prove where it came from.
+    const storedValue = existingValue ?? params.existingRowValue;
+
     // Normalize both values for comparison
     const normalizedIncoming = normalize(fieldName, incomingValue, rules);
-    const normalizedExisting = existingValue
-      ? normalize(fieldName, existingValue, rules)
-      : null;
+    // m-1: a falsy test here read a stored `0` / `''` / `false` as "nothing
+    // stored", which is exactly the absent-overwrites-present class this fix
+    // exists to close.
+    const normalizedExisting =
+      existingValue !== null && existingValue !== undefined
+        ? normalize(fieldName, existingValue, rules)
+        : null;
+    const normalizedStored =
+      storedValue !== null && storedValue !== undefined
+        ? normalize(fieldName, storedValue, rules)
+        : null;
 
     // T-309 (T-305 round-6 P3) — the dominant root cause of the non-converging
     // conflict churn: a MISSING incoming value (the source genuinely has no
@@ -706,12 +842,12 @@ export class DataConsolidationService {
     // existing, no conflict logged.
     if (
       (normalizedIncoming === null || normalizedIncoming === undefined) &&
-      normalizedExisting !== null &&
-      normalizedExisting !== undefined
+      normalizedStored !== null &&
+      normalizedStored !== undefined
     ) {
       return {
         fieldName,
-        finalValue: existingValue,
+        finalValue: storedValue,
         chosenSource: existingSource || incomingSource,
         hadConflict: false,
         rejectedSources: [
@@ -728,7 +864,7 @@ export class DataConsolidationService {
     if (!validateValue(normalizedIncoming, rules)) {
       return {
         fieldName,
-        finalValue: existingValue, // Keep existing
+        finalValue: storedValue, // Keep existing
         chosenSource: existingSource || incomingSource,
         hadConflict: false,
         rejectedSources: [
@@ -741,15 +877,158 @@ export class DataConsolidationService {
       };
     }
 
+    // M-1 (round-2 review): a stored value with NO `field_sources` row is still
+    // a real value. Case 1 used to gate on `normalizedExisting` (provenance
+    // only), so a pre-source-tracking row's `registrar='Bigshare'` looked empty
+    // and the LOWEST-priority source could replace it with no priority check and
+    // no conflict row. The row carries no source column, so the stored value's
+    // true origin is unknowable — it is therefore treated as untracked and only
+    // a source the matrix ranks STRICTLY better than its worst listed source may
+    // replace it. The replacement records the pre-existing value with a NULL
+    // previous_source (unknown, never fabricated).
+    if (
+      normalizedStored !== null &&
+      normalizedStored !== undefined &&
+      (normalizedExisting === null || normalizedExisting === undefined) &&
+      existingSource === undefined &&
+      !(
+        SET_VALUED_FIELDS.has(fieldName) &&
+        Array.isArray(normalizedIncoming) &&
+        Array.isArray(normalizedStored)
+      )
+    ) {
+      if (areEquivalent(normalizedIncoming, normalizedStored)) {
+        // W-25: a source CONFIRMING an untracked value is how the field earns
+        // provenance — without this row the value stays untracked forever and
+        // the M-1 keep-rule above can never unfreeze on its own. No previous
+        // value/source: nothing changed and the prior origin is unknown.
+        await this.trackFieldSource({
+          ipoId,
+          tableName,
+          fieldName,
+          value: storedValue,
+          source: incomingSource,
+        });
+
+        return {
+          fieldName,
+          finalValue: storedValue,
+          chosenSource: incomingSource,
+          hadConflict: false,
+          conflictReason: 'CONFIRMED_UNTRACKED',
+        };
+      }
+
+      if (!outranksUntrackedValue(fieldName, incomingSource)) {
+        logger.warn(
+          { ipoId, tableName, fieldName, incomingSource, storedValue, incomingValue },
+          'untracked_existing_value_kept: incoming source does not outrank an untracked stored value'
+        );
+        return {
+          fieldName,
+          finalValue: storedValue,
+          chosenSource: incomingSource,
+          hadConflict: false,
+          rejectedSources: [
+            {
+              source: incomingSource,
+              value: incomingValue,
+              reason: 'UNTRACKED_EXISTING_VALUE_KEPT',
+            },
+          ],
+        };
+      }
+
+      await this.trackFieldSource({
+        ipoId,
+        tableName,
+        fieldName,
+        value: incomingValue,
+        source: incomingSource,
+        previousValue: storedValue,
+      });
+
+      return {
+        fieldName,
+        finalValue: incomingValue,
+        chosenSource: incomingSource,
+        hadConflict: false,
+        conflictReason: 'UNTRACKED_EXISTING_VALUE_REPLACED',
+      };
+    }
+
+    // Case 2b (W-18(ii), Deepa walk): two array-valued reports of the same
+    // field are a MERGE, not a disagreement — `listingExchanges` ['BSE','NSE']
+    // vs an NSE scrape's ['NSE'] was written to `data_conflicts` every cycle
+    // even though the exchanges are a set the persister merges anyway. A
+    // union that adds a member keeps the PRIOR source (there is no 'MERGED'
+    // member in the `scraper_source` enum and this task adds no schema
+    // change) and records the pre-merge value as provenance history.
+    if (Array.isArray(normalizedIncoming) && Array.isArray(normalizedStored)) {
+      const merged = unionSetValues(normalizedStored, normalizedIncoming);
+      const addsNothing = merged.length === normalizedStored.length;
+
+      // F-3: this keep-stored return used to fire for EVERY array field, so a
+      // non-set list (leadManagers) could grow but never shrink — a higher-
+      // ranked source reporting a SHORTER, corrected list was discarded every
+      // cycle with no conflict row. Only genuinely set-valued fields merge;
+      // every other array falls through to normal priority resolution.
+      if (SET_VALUED_FIELDS.has(fieldName)) {
+        if (addsNothing) {
+          // W-25 (round 4): a confirming source also gives an UNTRACKED set its
+          // provenance row — otherwise a merged list stays untracked forever,
+          // exactly as scalars did before W-25.
+          if (existingSource === undefined) {
+            await this.trackFieldSource({
+              ipoId,
+              tableName,
+              fieldName,
+              value: storedValue,
+              source: incomingSource,
+            });
+          }
+
+          return {
+            fieldName,
+            finalValue: storedValue,
+            chosenSource: existingSource || incomingSource,
+            hadConflict: false,
+            rejectedSources: [
+              { source: incomingSource, value: incomingValue, reason: 'SET_MERGE_NO_NEW_MEMBERS' },
+            ],
+          };
+        }
+
+        await this.trackFieldSource({
+          ipoId,
+          tableName,
+          fieldName,
+          value: merged,
+          source: existingSource || incomingSource,
+          previousValue: storedValue,
+          previousSource: existingSource,
+        });
+
+        return {
+          fieldName,
+          finalValue: merged,
+          chosenSource: existingSource || incomingSource,
+          hadConflict: false,
+          rejectedSources: [
+            { source: incomingSource, value: incomingValue, reason: 'SET_MERGED' },
+          ],
+        };
+      }
+    }
+
     // Case 1: No existing value - accept incoming
-    if (normalizedExisting === null || normalizedExisting === undefined) {
+    if (normalizedStored === null || normalizedStored === undefined) {
       await this.trackFieldSource({
         ipoId,
         tableName,
         fieldName,
         value: incomingValue, // Track original value, not normalized
         source: incomingSource,
-        confidence,
       });
 
       return {
@@ -781,10 +1060,45 @@ export class DataConsolidationService {
         }
       }
 
-      // Don't track or update - values are identical
+      // F6 (W-37): the VALUE doesn't change, but a SECOND source independently
+      // reporting it is real evidence — it raises the stored confidence by one
+      // confirmation step (NSE 90 -> 95). Only a DIFFERENT source counts; the
+      // same source repeating itself confirms nothing and must not touch the
+      // provenance row at all (that is the W-24 losing-write class).
+      if (
+        FEATURE_FLAGS.ENABLE_SOURCE_TRACKING &&
+        !this.currentShadowMode &&
+        existingSource !== undefined &&
+        existingSource !== incomingSource
+      ) {
+        await this.trackFieldSource({
+          ipoId,
+          tableName,
+          fieldName,
+          value: existingValue,
+          source: existingSource,
+          confirmations: 1,
+          // W-24: previous_value/previous_source are what the row held BEFORE
+          // this write — the same value from the same source. Passing them
+          // keeps the confirmation from nulling real history.
+          previousValue: existingValue,
+          previousSource: existingSource,
+        });
+      }
+
+      // W-83 (Deepa walk, 2026-09-02): this used to return `normalizedExisting`.
+      // Normalization is a COMPARISON form, not a storable value — for a
+      // `company_name` field it lowercases and strips the legal suffix
+      // (normalization-engine.ts `normalizeCompanyName`), and every `finalValue`
+      // is copied straight onto the written row by
+      // data-consolidation-orchestrator.ts `extractConsolidatedData`. So the
+      // "nothing changed, keep existing" branch was silently rewriting
+      // `Deepa Jewellers Limited` to `deepa jewellers` on the first equivalent
+      // re-scrape. A branch that decided nothing changed must write back the
+      // RAW stored value, byte for byte.
       return {
         fieldName,
-        finalValue: normalizedExisting, // Keep existing value
+        finalValue: existingValue, // Keep the existing value AS STORED (never normalized)
         chosenSource: existingSource!, // Keep existing source
         hadConflict: false,
       };
@@ -931,6 +1245,57 @@ export class DataConsolidationService {
       }
     }
 
+    // W-60: an `ipo_status` already at a terminal value (WITHDRAWN/POSTPONED)
+    // must never be overwritten by a non-ADMIN source — the web updater
+    // already refuses to move OFF these terminals (`TERMINAL_STATUSES` in
+    // status-updater-service.ts); the scraper side of the same guard was
+    // missing, so a next-cycle NSE/BSE "Closed"/"Open" write clobbered a
+    // withdrawal notice via plain source priority. ADMIN may still move a
+    // terminal status anywhere (including back to UPCOMING) — never held.
+    // A terminal INCOMING value is still allowed to win over a non-terminal
+    // existing value by the normal rules below (only existing-terminal is
+    // guarded here).
+    if (
+      fieldName === 'status' &&
+      TERMINAL_IPO_STATUSES.has(String(existingValue)) &&
+      incomingSource !== 'ADMIN'
+    ) {
+      if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+        try {
+          await this.dataConflictsRepository.upsertConflict({
+            ipoId,
+            tableName,
+            fieldName,
+            source1: existingSource,
+            value1: existingValue === null || existingValue === undefined ? null : String(existingValue),
+            source2: incomingSource,
+            value2: incomingValue === null || incomingValue === undefined ? null : String(incomingValue),
+            resolvedSource: existingSource,
+            resolutionReason: 'TERMINAL_STATUS_KEPT',
+            severity: 'WARNING',
+          });
+        } catch (error) {
+          console.error('[DataConsolidation] Failed to record TERMINAL_STATUS_KEPT conflict (non-fatal):', error);
+        }
+      }
+
+      return {
+        fieldName,
+        finalValue: existingValue,
+        chosenSource: existingSource,
+        hadConflict: true,
+        conflictSeverity: 'WARNING',
+        conflictReason: 'TERMINAL_STATUS_KEPT',
+        rejectedSources: [
+          {
+            source: incomingSource,
+            value: incomingValue,
+            reason: 'TERMINAL_STATUS_KEPT',
+          },
+        ],
+      };
+    }
+
     // CRITICAL: Check source priority FIRST (before time-based)
     // This ensures ADMIN and other high-priority sources can never be overridden
     // by lower-priority sources, even for time-based fields
@@ -1041,17 +1406,32 @@ export class DataConsolidationService {
         normalizedIncoming: params.incomingValueNormalized,
         severity,
         reason: resolutionReason,
+        // W-48: pass the source actually kept by the resolution above —
+        // never re-derive it from `resolutionReason` in logConflict.
+        chosenSource,
       });
     }
 
+    // W-24 (live probe, Deepa): a LOSING incoming write changed nothing on the
+    // row, yet it still upserted `field_sources` — and because `previousValue`
+    // is undefined on this path the repository wrote NULL over the real history
+    // (faceValue's previous_value went "2" -> null when BSE re-sent 2 and lost).
+    // A write that neither changes the value nor the owning source must not
+    // touch the provenance row at all.
+    const provenanceUnchanged =
+      chosenSource === existingSource && areEquivalent(params.existingValueNormalized, normalizeChosen(fieldName, chosenValue, rules));
+
     // Track chosen source
-    if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && !this.currentShadowMode) {
+    if (FEATURE_FLAGS.ENABLE_SOURCE_TRACKING && !this.currentShadowMode && !provenanceUnchanged) {
       await this.trackFieldSource({
         ipoId,
         tableName,
         fieldName,
         value: chosenValue,
         source: chosenSource,
+        // F6 (W-37): the chosen value had to win a real disagreement — that
+        // costs confidence (CRITICAL -10, WARNING -5, floor 20).
+        conflicts: [severity],
         previousValue: chosenSource !== existingSource ? existingValue : undefined,
         previousSource: chosenSource !== existingSource ? existingSource : undefined,
       });
@@ -1083,7 +1463,10 @@ export class DataConsolidationService {
     fieldName: string;
     value: any;
     source: ScraperSource;
-    confidence?: number;
+    /** F6/W-37: severities this value had to win to be chosen (lowers confidence). */
+    conflicts?: ConflictSeverity[];
+    /** F6/W-37: number of OTHER sources that independently reported an equal value. */
+    confirmations?: number;
     previousValue?: any;
     previousSource?: ScraperSource;
   }): Promise<void> {
@@ -1114,9 +1497,17 @@ export class DataConsolidationService {
         fieldName: params.fieldName,
         value: params.value,
         source: params.source,
-        confidence: params.confidence || 100,
+        // F6 (W-37): the written confidence describes the source that actually
+        // OWNS the value after resolution, adjusted for how contested it was.
+        // It is derived here, never taken from the caller's per-payload hint —
+        // that hint describes the INCOMING source, which is frequently the one
+        // that just lost. Before this every row was a constant 100.
+        confidence: confidenceFor(params.source, {
+          conflicts: params.conflicts,
+          confirmations: params.confirmations,
+        }),
         previousValue: params.previousValue !== undefined
-          ? String(params.previousValue)
+          ? serializeFieldValue(params.previousValue)
           : undefined,
         previousSource: params.previousSource,
       });
@@ -1151,10 +1542,12 @@ export class DataConsolidationService {
         value1: JSON.stringify(conflict.existingValue),
         source2: conflict.incomingSource,
         value2: JSON.stringify(conflict.incomingValue),
-        resolvedSource:
-          conflict.reason === 'SOURCE_PRIORITY'
-            ? conflict.existingSource
-            : conflict.incomingSource,
+        // W-48: resolvedSource is the source whose value the caller actually
+        // kept/wrote, passed in explicitly — never re-derived from `reason`
+        // (that derivation assumed SOURCE_PRIORITY always means the existing
+        // source wins, which is false: incoming wins SOURCE_PRIORITY too when
+        // it outranks the existing source).
+        resolvedSource: conflict.chosenSource,
         resolutionReason: conflict.reason,
         severity: conflict.severity,
       });

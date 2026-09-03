@@ -251,8 +251,11 @@ export class MoneycontrolScraperOrchestratorV2 extends BaseScraperOrchestrator<a
 /**
  * Run Moneycontrol scraper with protection checks
  */
-export async function runMoneycontrolScraper(): Promise<MoneycontrolScraperResult> {
+export async function runMoneycontrolScraper(
+  opts: { allowedStatuses?: readonly string[] } = {}
+): Promise<MoneycontrolScraperResult> {
   const orchestrator = new MoneycontrolScraperOrchestratorV2();
+  if (opts.allowedStatuses) orchestrator.restrictToStatuses(opts.allowedStatuses);
   const baseResult = await orchestrator.run();
   return {
     ...baseResult,

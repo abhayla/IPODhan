@@ -219,23 +219,23 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   eps: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'number', confidenceThreshold: 85, description: 'Earnings per share (post-issue ₹)', validation: { ...FINANCIAL_FIELD_BOUNDS.eps } },
   preIpoEps: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'number', confidenceThreshold: 85, description: 'Pre-IPO EPS (₹)', validation: { ...FINANCIAL_FIELD_BOUNDS.eps } },
   postIpoEps: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'number', confidenceThreshold: 85, description: 'Post-IPO EPS (₹)', validation: { ...FINANCIAL_FIELD_BOUNDS.eps } },
-  peRatio: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'number', confidenceThreshold: 85, description: 'Price-to-Earnings ratio (post-issue)', validation: { ...FINANCIAL_FIELD_BOUNDS.peRatio } },
+  // W-55: canonical entry for pe_ratio/peRatio (was two diverging entries —
+  // pe_ratio used {min:0,max:1000}, peRatio used FINANCIAL_FIELD_BOUNDS.peRatio
+  // {min:0,max:100000}). Sources/threshold from the camelCase rule (consolidation's
+  // actual lookup key); validation is the STRICTER of the two bounds.
+  peRatio: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'number', confidenceThreshold: 85, description: 'Price-to-Earnings ratio (post-issue)', validation: { min: 0, max: 1000 } },
   roe: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'percentage', confidenceThreshold: 85, description: 'Return on Equity (%)', validation: { ...FINANCIAL_FIELD_BOUNDS.roe } },
   ronw: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'percentage', confidenceThreshold: 85, description: 'Return on Net Worth (%)', validation: { ...FINANCIAL_FIELD_BOUNDS.ronw } },
-  debtToEquity: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'number', confidenceThreshold: 85, description: 'Debt-to-Equity ratio', validation: { ...FINANCIAL_FIELD_BOUNDS.debtToEquity } },
+  // W-55: canonical entry for debt_to_equity/debtToEquity (was two diverging
+  // entries — debt_to_equity used {min:0,max:50}, debtToEquity used
+  // FINANCIAL_FIELD_BOUNDS.debtToEquity {min:0,max:1000}). Sources/threshold from
+  // the camelCase rule; validation is the STRICTER of the two bounds.
+  debtToEquity: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'number', confidenceThreshold: 85, description: 'Debt-to-Equity ratio', validation: { min: 0, max: 50 } },
   promoterHoldingPreIssue: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'percentage', confidenceThreshold: 85, description: 'Promoter holding pre-issue (%)', validation: { ...FINANCIAL_FIELD_BOUNDS.promoterHolding } },
   promoterHoldingPostIssue: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'percentage', confidenceThreshold: 85, description: 'Promoter holding post-issue (%)', validation: { ...FINANCIAL_FIELD_BOUNDS.promoterHolding } },
   marketCap: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'NSE', 'BSE', 'MONEYCONTROL'], normalization: 'currency', confidenceThreshold: 85, description: 'Market capitalization (₹ Cr)', validation: { ...FINANCIAL_FIELD_BOUNDS.marketCap } },
   peer_companies: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL'], normalization: 'none', confidenceThreshold: 80, description: 'Peer-comparison payload (one-to-many) from the detail page peer table' },
   objectives: { sources: ['ADMIN', 'DRHP', 'CHITTORGARH', 'MONEYCONTROL'], normalization: 'none', confidenceThreshold: 80, description: 'Objects-of-issue payload (ipos.objectives jsonb) from the detail page' },
-
-  pe_ratio: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'number',
-    confidenceThreshold: 75,
-    description: 'Price-to-Earnings ratio',
-    validation: { min: 0, max: 1000 },
-  },
 
   roe_percentage: {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
@@ -261,23 +261,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: 0, max: 100 },
   },
 
-  debt_to_equity: {
-    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
-    normalization: 'number',
-    confidenceThreshold: 75,
-    description: 'Debt-to-Equity ratio',
-    validation: { min: 0, max: 50 },
-  },
-
   // ==================== IPO CORE DATA (NSE is primary) ====================
-
-  issue_size: {
-    sources: ['ADMIN', 'NSE', 'DRHP', 'BSE', 'MONEYCONTROL'],
-    normalization: 'currency',
-    confidenceThreshold: 85,
-    description: 'Total issue size - NSE is most reliable',
-    validation: { min: 1e6, max: 1e12 }, // 1 Cr to 10 Lakh Cr
-  },
 
   fresh_issue_size: {
     sources: ['ADMIN', 'NSE', 'DRHP', 'BSE', 'MONEYCONTROL'],
@@ -412,16 +396,34 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // cannot see `segment`/`priceRangeMax` from the same row, so it cannot
   // express either check. Do not "fix" this by narrowing max here; extend
   // the record-level guard instead.
+  // T-434 (walk step G4, W-11): DRHP added between ADMIN and NSE. The offer
+  // document itself PRINTS the total offer size (fresh issue + OFS at the cap);
+  // the exchanges publish a share-count-derived figure that disagrees (Deepa
+  // Jewellers: ad Rs 4,597.16 mn vs NSE/BSE Rs 3,278.06 mn). Without DRHP in
+  // this list getSourcePriority() returns -1 for a filing write and the ad's
+  // own number can never win. It sits BELOW ADMIN (a human override still
+  // beats the filing) and ABOVE every scraped source.
+  // W-55: canonical entry for issue_size/issueSize (was two diverging entries —
+  // issue_size ranked NSE above DRHP and used {min:1e6,max:1e12}; issueSize ranked
+  // DRHP above NSE (T-434, filing beats a share-count-derived exchange figure) and
+  // used {min:0,max:999999990000}). Sources/order/threshold from the camelCase
+  // rule (consolidation's actual lookup key, and the more deliberate T-434
+  // ordering); validation is the STRICTER of the two bounds (min:1e6 from
+  // issue_size, max:999999990000 from issueSize).
   issueSize: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL'],
     normalization: 'currency',
     confidenceThreshold: 80,
     description: 'Total issue size (₹) - amounts may arrive as Cr text or raw rupees depending on source. Plausibility (segment floor + shares x band coherence) is enforced record-level, not here — see collectImplausibleIssueSizeFields.',
-    validation: { min: 0, max: 999999990000 }, // 999,999.9 Cr ceiling, mirrors the NUMERIC(15,2) cap in financial-column-precision
+    validation: { min: 1e6, max: 999999990000 }, // 1 Cr floor (issue_size) to 999,999.9 Cr ceiling (issueSize, mirrors NUMERIC(15,2) cap)
   },
 
+  // T-434 (walk step G4): DRHP added at rank 2. Face value is a charter fact
+  // the offer document PRINTS; the exchanges frequently carry a default 10.
+  // Deepa Jewellers: ad Rs 2 vs NSE Rs 10, and without this entry the filing
+  // write scored -1 and the wrong 10 survived.
   faceValue: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL'],
     normalization: 'number',
     confidenceThreshold: 75,
     description: 'Per-share face value (₹) - typically a small whole number (1/2/5/10)',
@@ -443,6 +445,19 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'IPO open date - critical field',
   },
 
+  // W-49: camelCase sibling of `open_date`. `data-persister.ts` builds
+  // `ipoData` (the `incomingData` passed to consolidateIPOData) with
+  // `openDate`/`closeDate` keys — without this entry that lookup fell to the
+  // DEFAULT rule (no ADMIN>NSE>BSE priority, no dedicated confidenceThreshold),
+  // exactly like the `open_date`/`close_date`-only gap this fixes. Kept
+  // identical to `open_date` on purpose; if you change one, change both.
+  openDate: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    normalization: 'date',
+    confidenceThreshold: 95,
+    description: 'IPO open date - critical field',
+  },
+
   close_date: {
     sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'date',
@@ -450,38 +465,37 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'IPO close date - critical field',
   },
 
-  listing_date: {
-    // CHITTORGARH added (#70): report-25 is the only working post-close listing-date
-    // source; without it the stuck-listing backfill's listing_date write is dropped
-    // by consolidation on any row that already has a value / on re-run.
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
+  // W-49: camelCase sibling of `close_date` - see `openDate` comment above.
+  closeDate: {
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'date',
     confidenceThreshold: 95,
-    description: 'Expected listing date',
+    description: 'IPO close date - critical field',
   },
 
-  // camelCase variant - consolidation keys on `listingDate` (data-persister
-  // writes it). Without this twin, getFieldRules('listingDate') falls through to
-  // DEFAULT rules and the CHITTORGARH registration above is never applied to the
-  // #70 stuck-listing backfill. Mirrors the lotSize/allotmentDate dual-key pattern.
+  // W-55: canonical entry for listing_date/listingDate (was two diverging
+  // entries — listing_date lacked DRHP, listingDate (the actual consolidation
+  // lookup key) added it, T-434). CHITTORGARH is in both (#70 stuck-listing
+  // backfill, report-25 is the only working post-close listing-date source).
+  // No validation bounds to merge — camelCase's source list is already a
+  // strict superset of the deleted snake_case entry's.
   listingDate: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
+    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH', 'DRHP'],
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'Listing date (camelCase consolidation key) - CHITTORGARH for #70 backfill',
   },
 
-  // B7: allotment_date was missing — consolidation silently dropped it (allotment_date ~1%).
-  // Moneycontrol publishes it most reliably; NSE/BSE as fallbacks.
-  allotment_date: {
-    sources: ['ADMIN', 'MONEYCONTROL', 'NSE', 'BSE'],
-    normalization: 'date',
-    confidenceThreshold: 90,
-    description: 'Basis-of-allotment date - Moneycontrol most reliable',
-  },
-  // camelCase variant - consolidation service keys on this for some paths
+  // W-55: canonical entry for allotment_date/allotmentDate (was two diverging
+  // entries — allotment_date lacked DRHP, allotmentDate (the actual
+  // consolidation lookup key) added it, T-434: DRHP appended LAST on purpose —
+  // the ad prints an INDICATIVE timeline; the exchanges publish the actual one
+  // and can revise it after the ad is printed. Moneycontrol publishes it most
+  // reliably (B7); NSE/BSE as fallbacks). No validation bounds to merge —
+  // camelCase's source list is already a strict superset of the deleted
+  // snake_case entry's.
   allotmentDate: {
-    sources: ['ADMIN', 'MONEYCONTROL', 'NSE', 'BSE'],
+    sources: ['ADMIN', 'MONEYCONTROL', 'NSE', 'BSE', 'DRHP'],
     normalization: 'date',
     confidenceThreshold: 90,
     description: 'Basis-of-allotment date (camelCase)',
@@ -502,6 +516,16 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     normalization: 'none',
     confidenceThreshold: 85,
     description: 'Stock ticker symbol - NSE symbol is canonical',
+  },
+  // W-82 round 2: the filing persister scrapes CIN but the field had no matrix
+  // entry, so consolidation could not arbitrate a conflict on it.
+  cin: {
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE'],
+    normalization: 'none',
+    confidenceThreshold: 90,
+    timeBased: false,
+    validation: { regex: '^[A-Z0-9]{21}$' },
+    description: 'Corporate Identification Number from the filing',
   },
 
   // ==================== LOT SIZE (BSE is more accurate) ====================
@@ -635,7 +659,12 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
 
   // ==================== COMPANY INFO ====================
 
-  company_name: {
+  // W-55: renamed from `company_name` — `data-persister.ts` builds
+  // `incomingData` in camelCase (`companyName`), so the snake_case key was
+  // never the consolidation lookup key and fell through to the DEFAULT rule
+  // (no normalization, no source priority). The normaliser in getFieldRules()
+  // still resolves a `company_name` lookup to this entry.
+  companyName: {
     sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL'],
     normalization: 'company_name',
     confidenceThreshold: 85,
@@ -656,7 +685,12 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'Registrar name',
   },
 
-  lead_managers: {
+  // W-55: renamed from `lead_managers` — `data-persister.ts` builds
+  // `incomingData` in camelCase (`leadManagers`), so the snake_case key was
+  // never the consolidation lookup key and fell through to the DEFAULT rule.
+  // The normaliser in getFieldRules() still resolves a `lead_managers` lookup
+  // to this entry.
+  leadManagers: {
     sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL'],
     normalization: 'none',
     confidenceThreshold: 80,
@@ -690,13 +724,33 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
  * Get field rules for a specific field
  * Returns default rules if field not in matrix
  */
+/**
+ * W-55: normalise a snake_case field key to its camelCase spelling
+ * (`company_name` -> `companyName`). Several matrix entries were registered
+ * under BOTH spellings with DIVERGING rules (pe_ratio/peRatio,
+ * debt_to_equity/debtToEquity, issue_size/issueSize, listing_date/listingDate,
+ * allotment_date/allotmentDate) — which rule applied depended on which
+ * spelling the caller happened to use. The camelCase spelling is now the
+ * single canonical entry for those fields (it is what data-persister.ts /
+ * data-consolidation-orchestrator.ts actually build incomingData with); a
+ * snake_case lookup is normalised to it here rather than kept as a second,
+ * driftable rule object.
+ */
+function toCamelKey(fieldName: string): string {
+  return fieldName.replace(/_([a-z0-9])/g, (_m, c: string) => c.toUpperCase());
+}
+
 export function getFieldRules(fieldName: string): FieldRules {
-  return FIELD_PRIORITY_MATRIX[fieldName] || {
-    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL', 'CHITTORGARH', 'API_FALLBACK'],
-    normalization: 'none',
-    confidenceThreshold: 75,
-    description: 'Default rules - NSE priority',
-  };
+  const canonical = toCamelKey(fieldName);
+  return (
+    FIELD_PRIORITY_MATRIX[canonical] ||
+    FIELD_PRIORITY_MATRIX[fieldName] || {
+      sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL', 'CHITTORGARH', 'API_FALLBACK'],
+      normalization: 'none',
+      confidenceThreshold: 75,
+      description: 'Default rules - NSE priority',
+    }
+  );
 }
 
 /**

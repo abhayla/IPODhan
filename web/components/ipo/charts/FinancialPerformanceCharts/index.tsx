@@ -9,7 +9,7 @@
 
 import React, { useState } from 'react';
 import { ChevronDown, ChevronUp, TrendingUp, DollarSign, PieChart } from 'lucide-react';
-import type { FinancialPerformanceChartsProps } from './types';
+import type { FinancialPerformanceChartsProps, FinancialStatementView } from './types';
 import {
   transformFinancialDataWithMargins,
   hasMinimumFinancialData,
@@ -51,17 +51,29 @@ export default function FinancialPerformanceCharts({
   status,
   industryBenchmarks,
   peerData,
+  statements = [],
   defaultExpanded = false,
   showAdvanced = false,
 }: FinancialPerformanceChartsProps): React.ReactElement | null {
   // State for collapsible sections
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
 
+  const hasCharts = hasMinimumFinancialData(financialData);
+
   // No data → render nothing. A full "Financial Performance Data Unavailable"
   // card is exactly the empty-state noise R17 #1 flagged; the detail page's
-  // one-line "Awaiting data" strip acknowledges it once instead.
-  if (!hasMinimumFinancialData(financialData)) {
+  // one-line "Awaiting data" strip acknowledges it once instead. The restated
+  // statements table can still stand on its own when the chart series is absent.
+  if (!hasCharts && statements.length === 0) {
     return null;
+  }
+
+  if (!hasCharts) {
+    return (
+      <section className="space-y-6" aria-label="Restated financial statements">
+        <RestatedStatementsTable statements={statements} />
+      </section>
+    );
   }
 
   // Transform data with margins and growth
@@ -257,6 +269,7 @@ export default function FinancialPerformanceCharts({
           </div>
         </div>
       )}
+      <RestatedStatementsTable statements={statements} />
     </section>
   );
 }
@@ -265,3 +278,112 @@ export default function FinancialPerformanceCharts({
  * Export display name for debugging
  */
 FinancialPerformanceCharts.displayName = 'FinancialPerformanceCharts';
+
+/**
+ * Per-year restated statements exactly as the offer document reports them:
+ * revenue, EBITDA, PAT, net worth, operating cash flow, basic EPS and the
+ * derived RoNW, plus DSCR / rent when the extractor found them. Columns whose
+ * every cell is empty are dropped rather than rendered as a wall of dashes.
+ */
+function RestatedStatementsTable({
+  statements,
+}: {
+  statements: FinancialStatementView[];
+}): React.ReactElement | null {
+  if (!statements || statements.length === 0) return null;
+
+  const years = [...statements].sort((a, b) => a.fiscalYear - b.fiscalYear);
+
+  const toNumber = (v: string | null): number | null => {
+    if (v === null || v === '') return null;
+    const n = parseFloat(v);
+    return Number.isFinite(n) ? n : null;
+  };
+
+  // Amount columns are stored in the row's own unit; show every figure in the
+  // crores the rest of the page uses so years can be compared at a glance.
+  const toCrore = (v: string | null, unit: string): number | null => {
+    const n = toNumber(v);
+    if (n === null) return null;
+    if (unit === 'MILLION') return n / 10;
+    if (unit === 'LAKH') return n / 100;
+    return n;
+  };
+
+  const fmt = (n: number | null, suffix = ''): string =>
+    n === null ? '—' : `${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}${suffix}`;
+
+  const rows: Array<{ label: string; values: Array<number | null>; suffix?: string }> = [
+    { label: 'Revenue from operations (₹ Cr)', values: years.map((y) => toCrore(y.revenue, y.unit)) },
+    { label: 'Total income (₹ Cr)', values: years.map((y) => toCrore(y.totalIncome, y.unit)) },
+    { label: 'EBITDA (₹ Cr)', values: years.map((y) => toCrore(y.ebitda, y.unit)) },
+    { label: 'Profit after tax (₹ Cr)', values: years.map((y) => toCrore(y.pat, y.unit)) },
+    { label: 'Net worth (₹ Cr)', values: years.map((y) => toCrore(y.netWorth, y.unit)) },
+    {
+      label: 'Operating cash flow (₹ Cr)',
+      values: years.map((y) => toCrore(y.opCashFlow, y.unit)),
+    },
+    { label: 'Basic EPS (₹)', values: years.map((y) => toNumber(y.epsBasic)) },
+    {
+      label: 'RoNW (%)',
+      suffix: '%',
+      values: years.map((y) => {
+        const pat = toNumber(y.pat);
+        const nw = toNumber(y.netWorth);
+        return pat === null || nw === null || nw === 0 ? null : (pat / nw) * 100;
+      }),
+    },
+    { label: 'DSCR', values: years.map((y) => toNumber(y.dscr)) },
+    { label: 'Rent expense (₹ Cr)', values: years.map((y) => toCrore(y.rentExpense, y.unit)) },
+  ].filter((r) => r.values.some((v) => v !== null));
+
+  if (rows.length === 0) return null;
+
+  const bases = Array.from(new Set(years.map((y) => y.basis))).join(' / ');
+
+  return (
+    <div className="bg-card rounded-lg border p-6">
+      <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+        Financial statements from the offer document
+      </h3>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {bases === 'RESTATED'
+          ? 'Restated'
+          : bases === 'STANDALONE'
+            ? 'Standalone'
+            : bases}{' '}
+        basis, as filed
+      </p>
+
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b bg-muted/50">
+              <th className="py-3 px-4 text-left font-semibold">Metric</th>
+              {years.map((y) => (
+                <th key={y.fiscalYear} className="py-3 px-4 text-right font-semibold">
+                  FY{y.fiscalYear}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.label} className="border-b last:border-0">
+                <td className="py-3 px-4 text-gray-700 dark:text-gray-300">{row.label}</td>
+                {row.values.map((v, i) => (
+                  <td
+                    key={`${row.label}-${years[i].fiscalYear}`}
+                    className="py-3 px-4 text-right font-medium"
+                  >
+                    {fmt(v, row.suffix ?? '')}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}

@@ -93,7 +93,8 @@ jobs:
       - name: Clear deploy-failure STATUS (this slot deployed successfully)
         if: success()
         shell: bash
-        run: node scripts/deploy-status.mjs clear --slot "${{ steps.slot.outputs.slot }}" || echo "WARNING: could not clear the deploy-failure STATUS row (non-fatal)." >&2
+        run: |
+          node scripts/deploy-status.mjs clear --slot "${{ steps.slot.outputs.slot }}" || echo "WARNING: could not clear the deploy-failure STATUS row (non-fatal)." >&2
 
       - name: Verify /api/version reflects the deployed SHA
         if: always()

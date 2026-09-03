@@ -1,0 +1,427 @@
+{
+  "_source": "Transcribed BY HAND from the two printed Deepa Jewellers documents, never from extractor output: (a) the price band advertisement (4 pages; NSE ships it inside the 'ratios / basis for issue price' zip, filename RATIOS_BASIS_ISSUE_PRICE-121b6dd4.pdf) and (b) the Red Herring Prospectus dated 25 August 2026 (433 pages, RHP-37097bf3.pdf). Amounts are EXACTLY as printed: rupee figures in millions, share counts in absolute shares, percentages as plain numbers (accounting parentheses carried as negatives), dates ISO-8601. This file is the oracle for scraper/tests/unit/scripts/extract-filing.test.ts and MUST be edited only against the documents.",
+  "_ipo": "Deepa Jewellers Limited",
+  "_documents": {
+    "PRICE_BAND_AD": "RATIOS_BASIS_ISSUE_PRICE-121b6dd4.pdf (NSE, 4 pages) — page text captured at scraper/tests/fixtures/extractor/deepa-price-band-ad-pages.json",
+    "RHP": "RHP-37097bf3.pdf (433 pages, red herring prospectus dated 25 August 2026) — pages 0 (cover), 23–68 (SECTION II - RISK FACTORS, all 82 numbered items), 73 (Summary of Restated Statement of Profit and Loss), 104–105 (OBJECTS OF THE OFFER, 'Utilisation of Net Proceeds'), 119 (KPI table with EBITDA / net worth) and 255 (Annexure II restated P&L) captured at scraper/tests/fixtures/extractor/deepa-rhp-pages.json"
+  },
+  "PRICE_BAND_AD": {
+    "price_band_floor": 168.0,
+    "price_band_cap": 177.0,
+    "face_value": 2.0,
+    "lot_size": 84.0,
+    "lot_multiple": 84.0,
+    "floor_multiple_of_face": 84.0,
+    "cap_multiple_of_face": 88.5,
+    "shares_at_floor": 14880952.0,
+    "shares_at_cap": 14124293.0,
+    "fresh_issue_amount": 2500.0,
+    "ofs_shares": 11848340.0,
+    "ofs_amount": 1990.52,
+    "ofs_amount_at_cap": 2097.16,
+    "total_offer_shares_at_floor": 26729292.0,
+    "total_offer_shares_at_cap": 25972633.0,
+    "total_offer_amount_at_floor": 4490.52,
+    "market_cap_at_floor": 16276.0,
+    "market_cap_at_cap": 17014.0,
+    "post_offer_shares_at_floor": 96880952.0,
+    "post_offer_shares_at_cap": 96124293.0,
+    "issue_structure": "FRESH_AND_OFS",
+    "shares_monotonic": true,
+    "pe_at_floor": 13.15,
+    "pe_at_cap": 13.85,
+    "industry_peer_pe_average": 23.92,
+    "weighted_average_ronw": 45.26,
+    "book_building_regulation": "6(1)",
+    "qib_pct": 50.0,
+    "nii_pct": 15.0,
+    "retail_pct": 35.0,
+    "designated_stock_exchange": "BSE",
+    "anchor_bid_date": "2026-08-31",
+    "open_date": "2026-09-01",
+    "close_date": "2026-09-03",
+    "basis_of_allotment_date": "2026-09-04",
+    "refund_date": "2026-09-07",
+    "credit_date": "2026-09-07",
+    "listing_date": "2026-09-08",
+    "upi_cutoff_time": "17:00",
+    "rhp_filing_date": "2026-08-25",
+    "fiscal_years": [
+      2026,
+      2025,
+      2024
+    ],
+    "unit": "millions",
+    "financial_basis": "restated_standalone",
+    "revenue_by_fy": {
+      "2026": 19266.76,
+      "2025": 13970.1,
+      "2024": 10245.68
+    },
+    "ebitda_by_fy": {
+      "2026": 1463.37,
+      "2025": 560.06,
+      "2024": 357.71
+    },
+    "pat_by_fy": {
+      "2026": 1047.88,
+      "2025": 405.8,
+      "2024": 243.47
+    },
+    "op_cash_flow_by_fy": {
+      "2026": -147.3,
+      "2025": -98.64,
+      "2024": 48.45
+    },
+    "eps_basic_by_fy": {
+      "2026": 12.78,
+      "2025": 4.95,
+      "2024": 2.97
+    },
+    "eps_diluted_by_fy": {
+      "2026": 12.78,
+      "2025": 4.95,
+      "2024": 2.97
+    },
+    "eps_weighted_average": 8.54,
+    "ronw_by_fy": {
+      "2026": 56.45,
+      "2025": 35.95,
+      "2024": 30.3
+    },
+    "promoter_name": "Ashish Agarwal",
+    "promoter_names": [
+      "Ashish Agarwal",
+      "Seema Agarwal",
+      "Dev Agarwal"
+    ],
+    "promoter_selling_shareholders": [
+      {
+        "name": "Ashish Agarwal",
+        "shares_offered": 5924170.0,
+        "waca": 0.5
+      },
+      {
+        "name": "Seema Agarwal",
+        "shares_offered": 5924170.0,
+        "waca": 0.5
+      }
+    ],
+    "promoter_shares_held": 40005000.0,
+    "promoter_holding_pre_pct": 48.79,
+    "promoter_holding_post_pct_at_cap": 35.45,
+    "promoter_waca": 0.5,
+    "waca_secondary_transactions": 70.2,
+    "floor_multiple_of_waca_secondary": 2.39,
+    "cap_multiple_of_waca_secondary": 2.52,
+    "pre_ipo_placement": false,
+    "brlm_sebi_regs": [
+      "INM000011229",
+      "INM000013341"
+    ],
+    "registrar_sebi_reg": "INR000001385",
+    "brlm_issues_3y_total": 4.0,
+    "brlm_closed_below_total": 2.0,
+    "compliance_officer": "Vandana Modani",
+    "cin": "U74999TG2016PLC109435",
+    "peer_companies": [
+      {
+        "name": "Sky Gold and Diamonds Limited",
+        "face_value": 10.0,
+        "closing_price": 803.6,
+        "revenue_from_operations": 47083.78,
+        "market_cap": 124456.7,
+        "pb": 11.17,
+        "pe": 57.56,
+        "eps_basic": 13.97,
+        "eps_diluted": 13.96,
+        "ronw_pct": 23.88,
+        "nav": 72.02
+      },
+      {
+        "name": "Shanti Gold International Limited",
+        "face_value": 10.0,
+        "closing_price": 269.9,
+        "revenue_from_operations": 20187.09,
+        "market_cap": 20712.0,
+        "pb": 3.25,
+        "pe": 12.72,
+        "eps_basic": 21.22,
+        "eps_diluted": 21.22,
+        "ronw_pct": 37.34,
+        "nav": 83.0
+      },
+      {
+        "name": "Shringar House of Mangalsutra Limited",
+        "face_value": 10.0,
+        "closing_price": 230.65,
+        "revenue_from_operations": 22458.17,
+        "market_cap": 22242.06,
+        "pb": 3.3,
+        "pe": 17.02,
+        "eps_basic": 13.55,
+        "eps_diluted": 13.55,
+        "ronw_pct": 26.29,
+        "nav": 70.29
+      },
+      {
+        "name": "RBZ Jewellers Ltd",
+        "face_value": 10.0,
+        "closing_price": 138.15,
+        "revenue_from_operations": 6364.8,
+        "market_cap": 5526.0,
+        "pb": 1.86,
+        "pe": 10.08,
+        "eps_basic": 13.7,
+        "eps_diluted": 13.7,
+        "ronw_pct": 20.11,
+        "nav": 74.96
+      },
+      {
+        "name": "Khazanchi Jewellers Limited",
+        "face_value": 10.0,
+        "closing_price": 802.85,
+        "revenue_from_operations": 20492.16,
+        "market_cap": 19868.0,
+        "pb": 6.21,
+        "pe": 22.22,
+        "eps_basic": 36.1,
+        "eps_diluted": 36.1,
+        "ronw_pct": 32.45,
+        "nav": 129.14
+      }
+    ],
+    "concentration_kpis": [
+      {
+        "label": "top_10_customers",
+        "value_pct": 64.67,
+        "fiscal_year": 2026
+      },
+      {
+        "label": "top_10_customers",
+        "value_pct": 63.27,
+        "fiscal_year": 2025
+      },
+      {
+        "label": "top_10_customers",
+        "value_pct": 67.36,
+        "fiscal_year": 2024
+      },
+      {
+        "label": "top_10_suppliers",
+        "value_pct": 91.81,
+        "fiscal_year": 2026
+      },
+      {
+        "label": "top_10_suppliers",
+        "value_pct": 82.32,
+        "fiscal_year": 2025
+      }
+    ],
+    "syndicate_members": [
+      {
+        "name": "Emkay Global Financial Services Limited",
+        "role": "SYNDICATE"
+      },
+      {
+        "name": "Anand Rathi Share & Stock Brokers Limited",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "Axis Capital Ltd.",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "Asit C. Metha Investment Interrmediates Ltd",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "Centrum Finverse Ltd.",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "ICICI Securities Limited",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "JM Financial Services Ltd",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "Keynote Capitals Ltd",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "KJMC Capital Market Services Limited",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "Kotak Securities Limited",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "LKP Securities Limited",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "Motilal Oswal Financial Services Limited",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "Nuvama Wealth",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "Prabhudas Lilladher Pvt Ltd",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "RR Equity Brokers Pvt. Ltd",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "Sharekhan Limited",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "SMC Global Securities Ltd",
+        "role": "SUB_SYNDICATE"
+      },
+      {
+        "name": "Yes Securities (India) Ltd.",
+        "role": "SUB_SYNDICATE"
+      }
+    ],
+    "business_description": "Our Company processes and supplies 22K hallmarked gold jewellery, including plain and precious-stone studded ornaments, through an outsourced manufacturing model. We also undertake jewellery job-work and trade in silver ornaments, 18K/20K gold jewellery, precious stones, and gold bullion.",
+    "issue_banks": [
+      {
+        "name": "HDFC Bank Limited",
+        "role": "SPONSOR_BANK"
+      },
+      {
+        "name": "ICICI Bank Limited",
+        "role": "SPONSOR_BANK"
+      },
+      {
+        "name": "ICICI Bank Limited",
+        "role": "ESCROW_BANK"
+      },
+      {
+        "name": "HDFC Bank Limited",
+        "role": "PUBLIC_ISSUE_BANK"
+      }
+    ],
+    "compliance_officer_phone": "+ 91 76809 62117",
+    "compliance_officer_email": "cs@deepajewel.com",
+    "bid_windows": [
+      {
+        "activity": "Submission and revision in Bids",
+        "window": "Only between 10.00 a.m. and 5.00 p.m. IST"
+      },
+      {
+        "activity": "Submission of electronic applications (online ASBA through 3-in-1 accounts) for RIBs",
+        "window": "Only between 10.00 a.m. and up to 5.00 p.m. IST"
+      },
+      {
+        "activity": "Submission of electronic application (bank ASBA through online channels like internet banking, mobile banking and syndicate ASBA applications through UPI as a payment mechanism where Bid Amount is up to Rs 0.50 million)",
+        "window": "Only between 10.00 a.m. and up to 4.00 p.m. IST"
+      },
+      {
+        "activity": "Submission of electronic applications (syndicate non-retail, non-individual applications of QIBs and NIIs)",
+        "window": "Only between 10.00 a.m. and up to 3.00 p.m. IST"
+      },
+      {
+        "activity": "Submission of Physical Applications (Bank ASBA)",
+        "window": "Only between 10.00 a.m. and up to 1.00 p.m. IST"
+      },
+      {
+        "activity": "Submission of physical applications (syndicate non-retail, non-individual applications where Bid Amount is more than Rs 0.50 million)",
+        "window": "Only between 10.00 a.m. and up to 12.00 p.m. IST"
+      },
+      {
+        "activity": "Upward revision of Bids by QIBs and Non-Institutional Bidders categories",
+        "window": "Only between 10.00 a.m. and up to 4.00 p.m. IST on Bid/ Offer Closing Date"
+      },
+      {
+        "activity": "Upward or downward revision of Bids or cancellation of Bids by RIBs",
+        "window": "Only between 10.00 a.m. and up to 5.00 p.m. IST on Bid/ Offer Closing Date"
+      }
+    ],
+    "promoter_group_transactions_since_drhp": []
+  },
+  "_null_with_reason": {
+    "PRICE_BAND_AD": {
+      "issue_price": "not_priced_yet",
+      "dscr_by_fy": "row_not_in_document",
+      "rent_by_fy": "row_not_in_document",
+      "objects_of_offer": "objects_section_not_in_document",
+      "litigation_notices": "section_not_found",
+      "waca_last_3y": "not_applicable_no_qualifying_transaction",
+      "cap_multiple_last_3y": "not_applicable_no_qualifying_transaction"
+    }
+  },
+  "RHP": {
+    "unit": "millions",
+    "fiscal_years": [
+      2026,
+      2025,
+      2024
+    ],
+    "cin": "U74999TG2016PLC109435",
+    "rhp_filing_date": "2026-08-25",
+    "revenue_by_fy": {
+      "2026": 19266.76,
+      "2025": 13970.1,
+      "2024": 10245.68
+    },
+    "total_income_by_fy": {
+      "2026": 19277.25,
+      "2025": 14001.0,
+      "2024": 10257.29
+    },
+    "pat_by_fy": {
+      "2026": 1047.88,
+      "2025": 405.8,
+      "2024": 243.47
+    },
+    "eps_basic_by_fy": {
+      "2026": 12.78,
+      "2025": 4.95,
+      "2024": 2.97
+    },
+    "ebitda_by_fy": {
+      "2026": 1463.37,
+      "2025": 560.06,
+      "2024": 357.71
+    },
+    "net_worth_by_fy": {
+      "2026": 2380.7,
+      "2025": 1332.08,
+      "2024": 925.53
+    },
+    "_objects_source": "Transcribed by hand from RHP page 104 (0-indexed; printed page 101), chapter 'SECTION IV – PARTICULARS OF THE OFFER / OBJECTS OF THE OFFER', table 'Utilisation of Net Proceeds' (in ₹ million). The same page prints 'Gross Proceeds of the Fresh Issue 2,500.00'. The general-corporate-purposes amount is printed as [●] — it is finalised only once the Offer Price is set — so the priced objects (2,150.00) are BELOW the fresh issue by design and an exact sum check is not verifiable at RHP stage.",
+    "fresh_issue_amount": 2500.0,
+    "objects_of_offer": [
+      {
+        "label": "Funding long-term working capital requirements towards procurement, maintenance and scaling up of inventory by our Company",
+        "amount_mn": 2150.0,
+        "check": "priced"
+      },
+      {
+        "label": "General corporate purposes",
+        "amount_mn": null,
+        "check": "not_priced_yet"
+      }
+    ],
+    "_risk_factors_source": "Counted by hand from the RHP chapter 'SECTION II - RISK FACTORS', pages 23 to 68 (0-indexed; printed pages 20 to 65), ending immediately before 'SECTION III – INTRODUCTION' on page 69. Items are numbered 1 to 82 continuously across the INTERNAL RISK FACTORS (1–54) and EXTERNAL RISK FACTORS (55–82) sub-headings. Nested lists inside items 25 and 42, and wrapped line numbers ('192.', '213.'), are NOT risk factors and are excluded.",
+    "risk_factor_count": 82,
+    "risk_factor_first_page": 23,
+    "risk_factor_first_heading": "Our top 10 customers accounted for",
+    "risk_factor_last_heading": "The insolvency laws of India may differ from those of other jurisdictions with which investors are familiar."
+  },
+  "_known_gaps": {
+    "brlm_track_record": "The advertisement prints two BRLM rows — 'Emkay Global Financial Services Limited 4 2' and 'Valmiki Leela Capital Private Limited Nil Nil'. The extractor reads only the numeric row; the 'Nil Nil' row is not machine-readable as a count, so the list holds one entry while the printed Total (4 / 2) is read separately and reconciles. Not asserted field-by-field here.",
+    "concentration_kpis.southern_india": "The advertisement also states revenue from Southern India of 94.37% / 98.33% / 99.55% (Fiscal 2026 / 2025 / 2024). Both printings of that sentence are split by the newspaper's two-column layout, which splices the neighbouring column's text ('(` per Equity Share) INR 168.00) INR 177.00)') into the middle of the sentence; the generic parser refuses the corrupted sentence rather than emit a garbled label. Recorded here so the value is not lost, and deliberately NOT asserted as extractor output.",
+    "net_worth_by_fy_on_captured_pages": "net_worth_by_fy is asserted only against the live full-PDF run: the net-worth row sits on an annexure page outside the pages captured in the fixture, so the captured-text run leaves that one field null with a failed check. Pre-existing, unchanged by this work."
+  }
+}

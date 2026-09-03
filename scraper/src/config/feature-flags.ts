@@ -148,6 +148,63 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_DUPLICATE_SWEEP_JOB: process.env.ENABLE_DUPLICATE_SWEEP_JOB === 'true',
 
+  /**
+   * Enable the "due-step" cycle (S-02 §5): replaces the flat "run every
+   * source every 30 minutes regardless of IPO status or time of day" shape
+   * of `--source=all` with a schedule-aware cycle — NSE/BSE discovery only at
+   * 4 fixed IST slots/day (with catch-up), the stage reconciler every cycle,
+   * live data (subscription/GMP/demand graph) only during market hours for
+   * OPEN IPOs, and aggregator refresh (Moneycontrol/Chittorgarh) only for
+   * UPCOMING/OPEN IPOs at most once/day. A Redis lock (`scraper:cycle`)
+   * makes this safe under PM2's 30-minute `cron_restart` force-kill.
+   * With the flag OFF (default), the SCHEDULE is unchanged — every source runs
+   * on every 30-minute cycle, the legacy rollback path.
+   *
+   * What the flag does NOT gate (round-3 correction): the no-op write
+   * suppression and the strict normalized field comparison at the `ipos` write
+   * door (`data-persister.ts#diffFieldsForWrite`) apply on BOTH paths. They are
+   * correctness fixes — do not write a row that is already identical, and do
+   * write one that differs — not scheduling behaviour.
+   *
+   * Also flag-gated, alongside the schedule: the freshness SLO set
+   * (`config/freshness-slo.ts#getActiveFreshnessSLOs`), because the flat-cadence
+   * thresholds would page P1 hourly against the spaced-out due-step schedule.
+   * See `scraper/src/scheduler/due-step-cycle.ts`.
+   * Default: false
+   */
+  ENABLE_DUE_STEP_SCHEDULER: process.env.ENABLE_DUE_STEP_SCHEDULER === 'true',
+
+  /**
+   * Enable AUTOMATIC filing extraction + persistence inside the document cycle
+   * (S-02). MAJOR-4: this flag gates ONLY the python extraction + persist
+   * block below — it does NOT gate the step ledger. With the flag OFF, which
+   * is the default and what production runs today, the discovery, document,
+   * live-number, and reconciler hooks in `step-ledger-recorders.ts` still run
+   * on every cycle and still write `ipo_pipeline_steps` rows (52 rows per new
+   * IPO via `initStepLedger`, plus per-cycle step upserts; `writeSteps` never
+   * throws, so a ledger failure cannot fail a scrape). What does NOT happen
+   * with the flag off: the document cycle discovers and stores PDFs and stops
+   * there — a stored RHP / price-band ad is turned into `ipos`,
+   * `financial_statements`, `promoters`, `ipo_valuation`, … rows only by a
+   * human running `scripts/persist-filing.ts`.
+   *
+   * With the flag on, `processPendingFilings` spawns the deterministic python
+   * extractor for every stored-but-not-yet-extracted document and writes the
+   * result through the SAME write door the CLI uses (`persistFilingExtraction`
+   * with the admin protection filter and the W-45 paired-agreement gate) —
+   * never a second write path. It is capped at `DEFAULT_MAX_SPAWNS_PER_CYCLE`
+   * python spawns per document cycle and serialized across cycles by a Redis
+   * lock (`filing-auto-persist.ts` / `document-cycle.ts`, MAJOR-1).
+   *
+   * Separate from ENABLE_DOCUMENT_STATE_MACHINE on purpose: that flag decides
+   * whether documents are FOUND at all; this one decides whether finding one
+   * automatically changes published data. Turning it on in production is a
+   * distinct owner decision (§GATE) because it is the first time a scrape can
+   * rewrite a static field with no human in the loop.
+   * Default: false
+   */
+  ENABLE_FILING_AUTO_PERSIST: process.env.ENABLE_FILING_AUTO_PERSIST === 'true',
+
   // ==================== ROLLOUT CONTROLS ====================
 
   /**
@@ -271,6 +328,7 @@ export function getFeatureStatus(): Record<string, boolean | number | string[]> 
     SOURCE_TRACKING_PCT: FEATURE_FLAGS.SOURCE_TRACKING_PERCENTAGE,
     CONFLICT_DETECTION_PCT: FEATURE_FLAGS.CONFLICT_DETECTION_PERCENTAGE,
     CONSOLIDATION_PCT: FEATURE_FLAGS.CONSOLIDATION_PERCENTAGE,
+    FILING_AUTO_PERSIST: FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST,
     DEBUG_MODE: FEATURE_FLAGS.DEBUG_DATA_FLOW,
     ENABLED_SCRAPERS: FEATURE_FLAGS.ENABLED_SCRAPERS,
   };

@@ -137,6 +137,20 @@ describe('extract_filing — Purple Style Labs price band advertisement (real PD
     expect(out.fields.pe_at_cap.value).toBeNull();
     expect(out.fields.pe_at_cap.check.detail).toBe('not_ascertainable_loss');
   });
+
+  it('W-44: no issuer-specific KPI field exists; concentration KPIs are a generic list', (ctx) => {
+    if (!have || !pythonAvailable) return ctx.skip();
+    for (const gone of ['top10_brands_pct_fy2026', 'womenswear_pct_fy2026', 'mumbai_gmv_pct_fy2026']) {
+      expect(Object.keys(out.fields), gone).not.toContain(gone);
+    }
+    const kpis = out.fields.concentration_kpis.value as { label: string; value_pct: number }[];
+    expect(kpis).toEqual(EXPECTED.PRICE_BAND_AD.concentration_kpis);
+    for (const entry of kpis) {
+      expect(entry.label).toMatch(/^[a-z0-9_]+$/);
+      expect(entry.value_pct).toBeGreaterThan(0);
+      expect(entry.value_pct).toBeLessThanOrEqual(100);
+    }
+  });
 });
 
 describe('extract_filing — Purple Style Labs RHP (real PDF)', () => {
@@ -265,5 +279,580 @@ describe('extract_filing — check functions reject bad documents (synthetic, of
     expect(mutated.fields.market_cap_at_floor.value).toBeNull();
     expect(mutated.fields.market_cap_at_cap.check.detail).toContain('implied pre-issue shares');
     expect(mutated.extraction_status).toBe('PARTIAL');
+  });
+});
+
+/**
+ * Deepa Jewellers (DEEPA) — W-32/W-33/W-34/W-35.
+ *
+ * Runs OFFLINE through the `--texts` seam on page text captured once from the
+ * two real documents (scraper/tests/fixtures/extractor/deepa-*.json), so unlike
+ * the Purple Style Labs blocks above these run everywhere, CI included. The
+ * oracle `docs/reviews/fixtures/deepa-jewellers-expected.json` is transcribed by
+ * hand from the printed documents, never from extractor output.
+ */
+const DEEPA = JSON.parse(
+  readFileSync(path.join(REPO_ROOT, 'docs/reviews/fixtures/deepa-jewellers-expected.json'), 'utf-8'),
+);
+const DEEPA_AD_PAGES = 'tests/fixtures/extractor/deepa-price-band-ad-pages.json';
+const DEEPA_RHP_PAGES = 'tests/fixtures/extractor/deepa-rhp-pages.json';
+
+describe('extract_filing — Deepa Jewellers price band advertisement (captured page text)', () => {
+  let out: Extraction;
+  beforeAll(() => {
+    if (!pythonAvailable) return;
+    out = runPython(['--texts', DEEPA_AD_PAGES, '--doc-type', 'PRICE_BAND_AD']);
+  });
+
+  it('every oracle field matches the printed advertisement', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const mismatches: string[] = [];
+    for (const [key, expected] of Object.entries(DEEPA.PRICE_BAND_AD)) {
+      const field = out.fields[key];
+      if (!field) {
+        mismatches.push(`${key}: not emitted`);
+        continue;
+      }
+      if (JSON.stringify(field.value) !== JSON.stringify(expected)) {
+        mismatches.push(`${key}: got ${JSON.stringify(field.value)} want ${JSON.stringify(expected)}`);
+      }
+    }
+    expect(mismatches).toEqual([]);
+  });
+
+  it('every emitted check passed — no field is written on a failed check', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const failed = Object.entries(out.fields)
+      .filter(([, f]) => !f.check.passed)
+      .map(([k, f]) => `${k}: ${f.check.detail}`);
+    expect(failed).toEqual([]);
+    expect(out.extraction_status).toBe('OK');
+  });
+
+  it('fields the advertisement does not carry are null WITH a reason', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    for (const [key, reason] of Object.entries(DEEPA._null_with_reason.PRICE_BAND_AD)) {
+      const field = out.fields[key];
+      expect(field, key).toBeDefined();
+      expect(field.value, key).toBeNull();
+      expect(field.check.detail, key).toBe(reason);
+    }
+  });
+
+  it('W-32: no issuer-specific KPI field exists; concentration KPIs are a generic list', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    for (const gone of ['top10_brands_pct_fy2026', 'womenswear_pct_fy2026', 'mumbai_gmv_pct_fy2026']) {
+      expect(Object.keys(out.fields), gone).not.toContain(gone);
+    }
+    const kpis = out.fields.concentration_kpis.value as { label: string; value_pct: number }[];
+    expect(kpis.length).toBeGreaterThan(0);
+    for (const entry of kpis) {
+      expect(entry.label).toMatch(/^[a-z0-9_]+$/);
+      expect(entry.value_pct).toBeGreaterThan(0);
+      expect(entry.value_pct).toBeLessThanOrEqual(100);
+    }
+  });
+
+  it('W-74 E5: the lead Syndicate Member and every sub-syndicate broker', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    expect(out.fields.syndicate_members.check.passed).toBe(true);
+    expect(out.fields.syndicate_members.value).toEqual(DEEPA.PRICE_BAND_AD.syndicate_members);
+  });
+
+  it('W-74 F5: the advertisement carries no litigation notice', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    expect(out.fields.litigation_notices.value).toBeNull();
+    expect(out.fields.litigation_notices.check.detail).toBe('section_not_found');
+  });
+});
+
+/**
+ * W-74 — the two sections the price band ad extractor used not to read, driven
+ * through the `--texts` seam on VERBATIM snippets. The sub-syndicate snippet is
+ * copied character-for-character out of the Deepa advertisement, two-column
+ * merge and all: the broker list is the RIGHT column glued to the tail of the
+ * left column's prose, and one name ("ICICI Securities Limited") is split
+ * across the line break.
+ */
+describe('extract_filing — W-74 syndicate members and litigation notices', () => {
+  const SUB_SYNDICATE_PAGE = [
+    'AVAILABILITY OF THE RHP: Investors are advised to refer to the RHP and the "Risk Factors" beginning on page 20 of the RHP before applying in the Offer. A copy of the SUB-SYNDICATE MEMBERS: Anand Rathi Share & Stock Brokers Limited; Axis Capital Ltd.; Asit C. Metha Investment Interrmediates Ltd , Centrum Finverse Ltd.; ICICI',
+    'RHP will be made available on the website of SEBI at www.sebi.gov.in and is available on the websites of the BRLMs, Emkay Global Financial Services Limited at Securities Limited; JM Financial Services Ltd; Keynote Capitals Ltd, KJMC Capital Market Services Limited, Kotak Securities Limited; LKP Securities Limited; Motilal Oswal',
+    'www.emkayglobal.com and Valmiki Leela Capital Private Limited at www.valmikileela.com and at the website of the Company, Deepa Jewellers Limited at Financial Services Limited; Nuvama Wealth; Prabhudas Lilladher Pvt Ltd, RR Equity Brokers Pvt. Ltd;, Sharekhan Limited; SMC Global Securities Ltd; Yes Securities (India) Ltd.',
+    'www.deepajewel.com and the websites of the Stock Exchanges, for BSE Limited at www.bseindia.com and for National Stock Exchange of India Limited at www.nseindia.com. ESCROW COLLECTION BANK(s): ICICI Bank Limited. | REFUND BANK(s): ICICI Bank Limited.',
+    'Syndicate Member: Emkay Global Financial Services Limited, Tel.: +91 22 6612 1212, Registered Brokers, SCSBs, Designated RTA Locations and Designated CDP',
+  ].join('\n');
+
+  it('reads the lead member and reassembles a name split across the column break', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts([[0, SUB_SYNDICATE_PAGE]], 'PRICE_BAND_AD');
+    const members = out.fields.syndicate_members.value as { name: string; role: string }[];
+    expect(members[0]).toEqual({
+      name: 'Emkay Global Financial Services Limited',
+      role: 'SYNDICATE',
+    });
+    expect(members.filter((m) => m.role === 'SUB_SYNDICATE')).toHaveLength(17);
+    // Split as "... Centrum Finverse Ltd.; ICICI" / "... at Securities Limited;".
+    expect(members.map((m) => m.name)).toContain('ICICI Securities Limited');
+    // The left column's prose must not leak in as a broker name.
+    expect(members.every((m) => !m.name.includes('www.'))).toBe(true);
+    expect(members.every((m) => !/\bat\b/.test(m.name))).toBe(true);
+  });
+
+  it('an advertisement with no syndicate block is null WITH a reason', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts([[0, 'PRICE BAND: ` 100 TO ` 105 PER EQUITY SHARE OF FACE VALUE OF ` 10 EACH']], 'PRICE_BAND_AD');
+    expect(out.fields.syndicate_members.value).toBeNull();
+    expect(out.fields.syndicate_members.check.detail).toBe('section_not_found');
+  });
+
+  it('F5: an IP licence termination notice is read as a litigation notice', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    // A notice sentence is read from ONE printed line: in a two-column
+    // advertisement the text layer merges both columns into every line, so
+    // joining consecutive lines would splice the neighbouring column's prose
+    // into the middle of the summary.
+    const page =
+      '19. Trademark licence dispute: Our Company has received a legal notice purporting to terminate the trade mark licence agreement under which we operate 12 of our stores.';
+    const out = runOnTexts([[0, page]], 'PRICE_BAND_AD');
+    const notices = out.fields.litigation_notices.value as { summary: string }[];
+    expect(notices).toHaveLength(1);
+    expect(notices[0].summary).toContain('received a legal notice purporting to terminate');
+    expect(notices[0].summary).toContain('trade mark licence agreement');
+    expect(notices.every((n) => n.summary.length <= 500)).toBe(true);
+    expect(out.fields.litigation_notices.check.passed).toBe(true);
+  });
+
+  it('the bid-period "public notice/ press release" boilerplate is NOT a litigation notice', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const page =
+      'Any revision in the Price Band and the revised Bid/Offer Period, if applicable, shall be widely disseminated by notification to the Stock Exchanges, by issuing a public notice/ press release, and also by indicating the change on the respective websites of the BRLMs.';
+    const out = runOnTexts([[0, page]], 'PRICE_BAND_AD');
+    expect(out.fields.litigation_notices.value).toBeNull();
+    expect(out.fields.litigation_notices.check.detail).toBe('section_not_found');
+  });
+});
+
+describe('extract_filing - W-88 B8 bid submission windows / D7 promoter-group transactions', () => {
+  // VERBATIM from the Deepa Jewellers price band advertisement's text layer
+  // (PRICE_BAND_AD-121b6dd4.pdf). The newspaper sets the bid-window table beside
+  // the indicative timetable, so the text layer interleaves the two and every
+  // wrapped activity arrives lines below its own row, with the other table's
+  // rows in between. That splicing is the point of the fixture: a helper that
+  // simply joins the next line reads "An indicative timetable in respect of the
+  // Offer is set out below:" into the middle of a bid-window label.
+  const AD_BID_WINDOW_BLOCK = [
+    "AN INDICATIVE TIMETABLE IN RESPECT OF THE OFFER IS SET OUT BELOW:",
+    "Submission of Bids (other than Bids from Anchor Investors): Bid/Offer Period",
+    "Bid/Offer Period (except the Bid/Offer Closing Date) EVENT INDICATIVE DATE",
+    "ANCHOR INVESTOR BID/ OFFER PERIOD OPENS AND CLOSES ON Monday, August 31, 2026",
+    "Submission and revision in Bids Only between 10.00 a.m. and 5.00 p.m. IST",
+    "BID/ OFFER OPENS ON Tuesday, September 01, 2026",
+    "Bid/Offer Closing Date",
+    "BID/ OFFER CLOSES ON^ Thursday, September 03, 2026",
+    "Submission of electronic applications (online ASBA through 3-in-1 accounts) for RIBs Only between 10.00 a.m. and up to 5.00 p.m. IST",
+    "^UPI mandate end time and date shall be at 5:00 p.m. on Bid/Offer Closing Date.",
+    "Submission of electronic application (bank ASBA through online channels like internet Only between 10.00 a.m. and up to 4.00 p.m. IST",
+    "An indicative timetable in respect of the Offer is set out below:",
+    "banking, mobile banking and syndicate ASBA applications through UPI as a payment",
+    "Event Indicative Date",
+    "mechanism where Bid Amount is up to `0.50 million)",
+    "Finalisation of Basis of Allotment with the Designated Stock Exchange On or about Friday, September 04, 2026",
+    "Submission of electronic applications (syndicate non-retail, non-individual applications Only between 10.00 a.m. and up to 3.00 p.m. IST",
+    "Initiation of refunds (if any, for Anchor Investors) / unblocking of funds from ASBA Account* On or about, Monday, September 07, 2026",
+    "of QIBs and NIIs)",
+    "Credit of the Equity Shares to depository accounts of Allottees On or about, Monday, September 07, 2026",
+    "Submission of Physical Applications (Bank ASBA) Only between 10.00 a.m. and up to 1.00 p.m. IST",
+    "Commencement of trading of the Equity Shares on the Stock Exchanges On or about, Tuesday, September 08, 2026",
+    "Submission of physical applications (syndicate non-retail, non-individual applications where Only between 10.00 a.m. and up to 12.00 p.m. IST *In case of any delay in unblocking of amounts in the ASBA Accounts (including amounts blocked through the UPI Mechanism) exceeding two",
+    "Bid Amount is more than `0.50 million) Working Days from the Bid/Offer Closing Date for cancelled / withdrawn / deleted ASBA Forms, the Bidder shall be compensated at a uniform rate",
+    "Modification/Revision/cancelled of Bids of `100 per day or 15% per annum of the Bid Amount, whichever is higher from the date on which the request for cancellation/ withdrawal/ deletion",
+    "Upward revision of Bids by QIBs and Non-Institutional Bidders categories# Only between 10.00 a.m. and up to 4.00 p.m. IST is placed in the Stock Exchanges bidding platform until the date on which the amounts are unblocked (ii) any blocking of multiple amounts for the",
+    "same ASBA Form (for amounts blocked through the UPI Mechanism), the Bidder shall be compensated at a uniform rate `100 per day or 15% per",
+    "on Bid/ Offer Closing Date",
+    "annum of the total cumulative blocked amount except the original application amount, whichever is higher from the date on which such multiple",
+    "Upward or downward revision of Bids or cancellation of Bids by RIBs Only between 10.00 a.m. and up to 5.00 p.m. IST",
+    "amounts were blocked till the date of actual unblock; (iii) any blocking of amounts more than the Bid Amount, the Bidder shall be compensated at a",
+    "on Bid/ Offer Closing Date",
+  ].join("\n");
+
+  it('reads all eight printed rows and reassembles the wrapped activities', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts([[0, AD_BID_WINDOW_BLOCK]], 'PRICE_BAND_AD');
+    const rows = out.fields.bid_windows.value as { activity: string; window: string }[];
+    expect(out.fields.bid_windows.check.passed).toBe(true);
+    expect(rows).toHaveLength(8);
+    expect(rows[0]).toEqual({
+      activity: 'Submission and revision in Bids',
+      window: 'Only between 10.00 a.m. and 5.00 p.m. IST',
+    });
+    // Wrapped over three physical lines with the OTHER table's rows in between.
+    expect(rows[2].activity).toBe(
+      'Submission of electronic application (bank ASBA through online channels like internet ' +
+        'banking, mobile banking and syndicate ASBA applications through UPI as a payment ' +
+        'mechanism where Bid Amount is up to Rs 0.50 million)',
+    );
+    expect(rows[2].window).toBe('Only between 10.00 a.m. and up to 4.00 p.m. IST');
+    expect(rows[3].activity).toBe(
+      'Submission of electronic applications (syndicate non-retail, non-individual applications ' +
+        'of QIBs and NIIs)',
+    );
+    // This row's wrap starts with a CAPITAL letter and still belongs to it.
+    expect(rows[5].activity).toBe(
+      'Submission of physical applications (syndicate non-retail, non-individual applications ' +
+        'where Bid Amount is more than Rs 0.50 million)',
+    );
+    // The window's second printed line carries only the day it applies on.
+    expect(rows[7]).toEqual({
+      activity: 'Upward or downward revision of Bids or cancellation of Bids by RIBs',
+      window: 'Only between 10.00 a.m. and up to 5.00 p.m. IST on Bid/ Offer Closing Date',
+    });
+    // The neighbouring timetable must never leak into an activity label.
+    expect(
+      rows.every((r) => !/indicative timetable|Initiation of refunds/i.test(r.activity)),
+    ).toBe(true);
+    expect(rows.every((r) => /(IST|Closing Date)$/.test(r.window))).toBe(true);
+  });
+
+  it('an advertisement without the submission heading is null WITH a reason', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts(
+      [[0, 'PRICE BAND: ` 100 TO ` 105 PER EQUITY SHARE OF FACE VALUE OF ` 10 EACH']],
+      'PRICE_BAND_AD',
+    );
+    expect(out.fields.bid_windows.value).toBeNull();
+    expect(out.fields.bid_windows.check.detail).toBe('submission_of_bids_heading_not_found');
+  });
+
+  it('D7: "have not undertaken any transaction" is an EMPTY list, not a missing answer', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const page =
+      '2. The Promoters or members of the Promoter Group have not undertaken any transaction of ' +
+      'shares aggregating up to 1% or more of the paid-up equity share capital of the Company ' +
+      'from the DRHP till date.';
+    const out = runOnTexts([[0, page]], 'PRICE_BAND_AD');
+    expect(out.fields.promoter_group_transactions_since_drhp.value).toEqual([]);
+    expect(out.fields.promoter_group_transactions_since_drhp.check.passed).toBe(true);
+  });
+
+  it('D7: a disclosed transaction is kept as its printed sentence', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const page =
+      '2. The Promoters or members of the Promoter Group have undertaken a transaction of shares ' +
+      'aggregating to 1.4% of the paid-up equity share capital of the Company from the DRHP till ' +
+      'date.';
+    const out = runOnTexts([[0, page]], 'PRICE_BAND_AD');
+    const txns = out.fields.promoter_group_transactions_since_drhp.value as { summary: string }[];
+    expect(txns).toHaveLength(1);
+    expect(txns[0].summary).toContain('have undertaken a transaction of shares');
+  });
+
+  it('D7: an advertisement that never states it is null WITH a reason', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts([[0, 'PRICE BAND: ` 100 TO ` 105 PER EQUITY SHARE']], 'PRICE_BAND_AD');
+    expect(out.fields.promoter_group_transactions_since_drhp.value).toBeNull();
+    expect(out.fields.promoter_group_transactions_since_drhp.check.detail).toBe(
+      'statement_not_found',
+    );
+  });
+});
+
+describe('extract_filing — Deepa Jewellers RHP (captured page text)', () => {
+  let out: Extraction;
+  beforeAll(() => {
+    if (!pythonAvailable) return;
+    out = runPython(['--texts', DEEPA_RHP_PAGES, '--doc-type', 'RHP']);
+  });
+
+  it('W-33/W-35: the restated P&L reads exactly what the prospectus prints, in millions', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    expect(out.unit).toBe(DEEPA.RHP.unit);
+    expect(out.fiscal_years).toEqual(DEEPA.RHP.fiscal_years);
+    // net_worth_by_fy is asserted only in the live full-PDF run: the net-worth
+    // row sits on an annexure page outside the four pages captured here.
+    for (const key of ['revenue_by_fy', 'total_income_by_fy', 'pat_by_fy', 'eps_basic_by_fy',
+      'ebitda_by_fy', 'cin', 'rhp_filing_date']) {
+      expect(out.fields[key].value, key).toEqual((DEEPA.RHP as Record<string, unknown>)[key]);
+      expect(out.fields[key].check.passed, key).toBe(true);
+    }
+  });
+
+  it('the advertisement and the prospectus agree on every shared figure', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const ad = runPython(['--texts', DEEPA_AD_PAGES, '--doc-type', 'PRICE_BAND_AD']);
+    for (const key of ['revenue_by_fy', 'pat_by_fy', 'ebitda_by_fy', 'eps_basic_by_fy']) {
+      expect(ad.fields[key].value, key).toEqual(out.fields[key].value);
+    }
+  });
+
+  it('the named plausibility checks all ran and passed', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const names = Object.keys(out.fields).filter((k) => k.startsWith('financial_plausibility_'));
+    expect(names).toEqual(expect.arrayContaining([
+      'financial_plausibility_pat_not_above_revenue',
+      'financial_plausibility_ebitda_at_least_pat',
+      'financial_plausibility_yoy_ratio_within_bounds',
+      'financial_plausibility_unit_stated_near_table',
+    ]));
+    for (const n of names) expect(out.fields[n].check.passed, n).toBe(true);
+  });
+
+  it('E5: the objects of the offer are read from the RHP with the printed amounts', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const field = out.fields.objects_of_offer;
+    expect(field.value).toEqual(DEEPA.RHP.objects_of_offer);
+    expect(field.page).toBe(104);
+    expect(field.check.name).toBe('objects_sum_vs_fresh_issue');
+    // The general-corporate-purposes row is [•] at RHP stage, so the check
+    // asserts the bound that IS verifiable, and says so.
+    expect(field.check.passed).toBe(true);
+    expect(field.check.detail).toContain('2150.00');
+    expect(field.check.detail).toContain('2500.00');
+    expect(field.check.detail).toContain('not verifiable');
+  });
+
+  it('E8: every numbered risk factor is counted, with its first-sentence heading', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const count = out.fields.risk_factor_count;
+    expect(count.value).toBe(DEEPA.RHP.risk_factor_count);
+    expect(count.check.passed).toBe(true);
+    expect(count.page).toBe(DEEPA.RHP.risk_factor_first_page);
+
+    const risks = out.fields.risk_factors.value as { n: number; heading: string }[];
+    expect(risks).toHaveLength(DEEPA.RHP.risk_factor_count as number);
+    expect(risks.map((r) => r.n)).toEqual(
+      risks.map((_r, i) => i + 1), // strictly sequential — no nested list is counted
+    );
+    expect(risks[0].heading).toContain(DEEPA.RHP.risk_factor_first_heading);
+    expect(risks[risks.length - 1].heading).toBe(DEEPA.RHP.risk_factor_last_heading);
+    for (const r of risks) {
+      expect(r.heading.length, `heading ${r.n}`).toBeGreaterThan(0);
+      // ipo_risk_factors.heading is varchar(500) — W-80.
+      expect(r.heading.length, `heading ${r.n}`).toBeLessThanOrEqual(500);
+    }
+  });
+
+  it('W-80: a real DEEPA heading past the old 200-char cap is not truncated mid-word', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const risks = out.fields.risk_factors.value as { n: number; heading: string }[];
+    // The item-4 inventory heading is 245 chars — comfortably past the old
+    // limit=200 default that used to cut it to "...revenue from opera". It has
+    // a first sentence under the new 480-char limit, so it must come through
+    // verbatim and complete, ending on the actual sentence terminator.
+    const inventoryHeading = risks.find((r) => r.n === 4)!.heading;
+    expect(inventoryHeading).toBe(
+      'Our inventories as of Fiscal 2026, Fiscal 2025 and Fiscal 2024 were ₹ 873.62 million, ' +
+        '₹827.87 million and ₹722.56 million representing 4.53%, 5.93%, and 7.05% as a percentage of ' +
+        'our revenue from operations for the indicated periods respectively.',
+    );
+    expect(inventoryHeading.length).toBe(245);
+    expect(inventoryHeading.endsWith('respectively.')).toBe(true);
+  });
+});
+
+describe('extract_filing — W-80 risk-factor heading truncation (synthetic, offline)', () => {
+  // risk_factor_count/risk_factors both gate on a minimum-20 check (check_min_count)
+  // that nulls the field on failure — pad every case with 19 trivial filler
+  // items ahead of the item under test so the field actually carries a value.
+  const FILLER = Array.from({ length: 19 }, (_v, i) => `${i + 1}. Filler risk number ${i + 1} exists.`);
+
+  it('a heading with a first sentence under 480 chars comes through exactly as that sentence', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const sentence = 'This is a short risk heading sentence that ends cleanly.';
+    const page = [
+      'RISK FACTORS',
+      ...FILLER,
+      `20. ${sentence} More trailing prose that must never appear in the heading.`,
+    ].join('\n');
+    const out = runOnTexts([[0, page]], 'RHP');
+    const risks = out.fields.risk_factors.value as { n: number; heading: string }[];
+    expect(risks.find((r) => r.n === 20)!.heading).toBe(sentence);
+  });
+
+  it('a heading with NO sentence terminator within 480 chars is cut at the last word boundary, never mid-word or mid-number, with an ellipsis appended', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    // Build a >480-char run-on with no '.', '?' or '!' anywhere, made of words
+    // and a multi-digit number token, so a mid-token cut would be detectable.
+    const words = [];
+    let len = 0;
+    let i = 0;
+    while (len < 500) {
+      const tok = i % 5 === 0 ? '123456789012' : 'word';
+      words.push(tok);
+      len += tok.length + 1;
+      i++;
+    }
+    const body = words.join(' ');
+    const page = ['RISK FACTORS', ...FILLER, `20. ${body}`].join('\n');
+    const out = runOnTexts([[0, page]], 'RHP');
+    const risks = out.fields.risk_factors.value as { n: number; heading: string }[];
+    const heading = risks.find((r) => r.n === 20)!.heading;
+
+    expect(heading.length).toBeLessThanOrEqual(481); // limit(480) + 1 ellipsis char
+    expect(heading.endsWith('…')).toBe(true); // ellipsis marks the cut
+    const withoutEllipsis = heading.slice(0, -1);
+    // Every token before the ellipsis must be a COMPLETE token from the source
+    // (never a partial word, never a partial number) — no cut inside a token.
+    for (const tok of withoutEllipsis.split(' ')) {
+      if (tok === '') continue;
+      expect(['word', '123456789012'], `token "${tok}" must be a whole token`).toContain(tok);
+    }
+    expect(body.startsWith(withoutEllipsis)).toBe(true);
+  });
+});
+
+describe('extract_filing — objects/risk-factor edge cases (synthetic, offline)', () => {
+  it('E5: a fully-priced objects table whose amounts miss the fresh issue FAILS', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const page = [
+      'OBJECTS OF THE OFFER',
+      'Gross Proceeds of the Fresh Issue 1,000.00',
+      'Utilisation of Net Proceeds',
+      '(in  million)',
+      'Sr. No. Particulars Estimated Amount',
+      '1. Funding working capital 400.00',
+      '2. General corporate purposes 100.00',
+      'Means of finance',
+    ].join('\n');
+    const out = runOnTexts([[0, page]], 'RHP');
+    const field = out.fields.objects_of_offer;
+    expect(field.value).toBeNull();
+    expect(field.check.passed).toBe(false);
+    expect(field.check.detail).toContain('500.00');
+    expect(field.check.detail).toContain('1000.00');
+  });
+
+  it('E8: only strictly sequential numbers count — a nested list is not a risk factor', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const heading = ['SECTION II - RISK FACTORS', 'INTERNAL RISK FACTORS'];
+    const items = Array.from({ length: 21 }, (_v, i) => `${i + 1}. Risk number ${i + 1} exists. More prose follows.`);
+    // A nested enumeration inside item 21 and a wrapped line number, neither a risk factor.
+    const noise = ['1. Form CHG-1 for creation of charges;', '2. Form ADT-1 for auditors;', '192. Further, in addition to the above'];
+    const out = runOnTexts([
+      [0, [...heading, ...items, ...noise].join('\n')],
+      [1, 'SECTION III - INTRODUCTION\n22. This number is past the end of the chapter.'],
+    ], 'RHP');
+    expect(out.fields.risk_factor_count.value).toBe(21);
+    const risks = out.fields.risk_factors.value as { n: number; heading: string }[];
+    expect(risks[0].heading).toBe('Risk number 1 exists.');
+    expect(risks[20].heading).toBe('Risk number 21 exists.');
+  });
+});
+
+/**
+ * T-434 — the SCANNED (BSE) copy of the same Deepa Jewellers advertisement, whose
+ * text comes from OCR. The strings below are the OCR output VERBATIM: the offer
+ * table loses the leading digit of `1,990.52` and splits `11,848,340`, and the
+ * comma after the bid-open day is read as a `1`. Each case pins the behaviour
+ * that keeps a mangled cell from being published as a value.
+ */
+describe('extract_filing — OCR-mangled price band advertisement (synthetic, offline)', () => {
+  const OCR_OFFER_SENTENCE =
+    'MILLION ("OFFER"). THE OFFER COMPRISES OF A FRESH ISSUE OF UP TO O EQUITY SHARES ' +
+    'AGGREGATING UP TO ?2,500.00 MILLION CTHE "FRESH ISSUE") AND AN OFFER FOR SALE OF UP TO ' +
+    '11 848340 EQUITY SHARES AGGREGATING UP TO [] MILLION (THE "OFFER FOR SALE").';
+  const OCR_PRICE_BAND =
+    'PRICE BAND: ` 168 TO ` 177 PER EQUITY SHARE OF FACE VALUE OF ` 2 EACH.';
+
+  function ocrPage(extra: string[]): [number, string][] {
+    return [[0, [OCR_PRICE_BAND, OCR_OFFER_SENTENCE, ...extra].join('\n')]];
+  }
+
+  it('a fresh-issue row whose cells OCR inconsistently falls back to the offer sentence', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts(ocrPage([
+      'Fresh Issue 1 14.880952 2,500.00 14 1 24,293 2,500.00',
+      'Offer for Sales 11,848,340 1,990.52 11,848,340 2,097.16',
+    ]), 'PRICE_BAND_AD');
+    const f = out.fields.fresh_issue_amount;
+    expect(f.value).toBe(2500.0);
+    expect(f.check.name).toBe('prose_fallback');
+    expect((f as unknown as { source_text?: string }).source_text).toBe('prose');
+  });
+
+  it('an OFS share count split by OCR is rejoined from the offer sentence', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts(ocrPage([
+      'Fresh Issue 14,880,952 2,500.00 14,124,293 2,500.00',
+      'Offer for Sales ,990.52 1 848,340 2,097.16',
+    ]), 'PRICE_BAND_AD');
+    const f = out.fields.ofs_shares;
+    expect(f.value).toBe(11848340);
+    expect(f.check.name).toBe('prose_fallback');
+  });
+
+  it('a stray "1" in the OFS amount cell is NULLED, never emitted as the offer size', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts(ocrPage([
+      'Fresh Issue 14,880,952 2,500.00 14,124,293 2,500.00',
+      'Offer for Sales ,990.52 1 848,340 2,097.16',
+    ]), 'PRICE_BAND_AD');
+    for (const key of ['ofs_amount', 'ofs_amount_at_cap']) {
+      const f = out.fields[key];
+      expect(f.value).toBeNull();
+      expect(f.check.name).toBe('ofs_shares_x_price_equals_amount');
+      expect(f.check.detail).toContain('check_failed');
+    }
+  });
+
+  it('an offer table whose amount cannot be arithmetic-checked emits no amount at all', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts([[0, [OCR_PRICE_BAND, 'Offer for Sales 1'].join('\n')]],
+      'PRICE_BAND_AD');
+    expect(out.fields.ofs_amount.value).toBeNull();
+    expect(out.fields.ofs_amount.check.detail)
+      .toBe('offer_for_sale_amount_not_arithmetic_checkable');
+  });
+
+  it('a comma OCR-read as a digit still yields the bid-open date', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts(ocrPage([
+      'ANCHOR INVESTOR BID/ OFFER PERIOD OPENS AND CLOSES ON Monday. August 31, 2026',
+      'BI D/OFFER BID/OFFER OPENS ON: TUESDAY, SEPTEMBER 01 1 2026',
+      'BID/OFFER CLOSES ON: THURSDAY, SEPTEMBER 03, 2026',
+    ]), 'PRICE_BAND_AD');
+    expect(out.fields.open_date.value).toBe('2026-09-01');
+    expect(out.fields.close_date.value).toBe('2026-09-03');
+    expect(out.fields.anchor_bid_date.value).toBe('2026-08-31');
+  });
+
+  it('an OCR-repaired date that breaks the timetable order is nulled with its own reason', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts(ocrPage([
+      'ANCHOR INVESTOR BID/ OFFER PERIOD OPENS AND CLOSES ON Monday. August 31, 2026',
+      'BI D/OFFER BID/OFFER OPENS ON: TUESDAY, SEPTEMBER 09 1 2026',
+      'BID/OFFER CLOSES ON: THURSDAY, SEPTEMBER 03, 2026',
+    ]), 'PRICE_BAND_AD');
+    expect(out.fields.open_date.value).toBeNull();
+    expect(out.fields.open_date.check.detail).toBe('date_order_after_ocr_repair');
+    expect(out.fields.close_date.value).toBe('2026-09-03');
+  });
+});
+
+describe('extract_filing — business_description column-splice guard (synthetic, offline)', () => {
+  it('a spliced-in ALL-CAPS neighbouring column is cut, keeping only the prose sentence', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const spliced =
+      'Our Company processes and supplies 22K hallmarked gold jewellery, including plain ' +
+      'and precious-stone studded ornaments, through an outsourced manufacturing model. ' +
+      'THE EQUITY SHARES OF THE COMPANY WILL GET LISTED ON THE MAIN BOARDS OF BSE AND NSE. ' +
+      'BSE SHALL BE THE DESIGNATED STOCK EXCHANGE. QIB PORTION: NOT MORE THAN 50%.';
+    const out = runOnTexts([[0, spliced]], 'PRICE_BAND_AD');
+    const f = out.fields.business_description;
+    expect(f.value).toBe(
+      'Our Company processes and supplies 22K hallmarked gold jewellery, including plain ' +
+      'and precious-stone studded ornaments, through an outsourced manufacturing model.',
+    );
+  });
+
+  it('a clean two-sentence description is left unchanged', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const clean =
+      'Our Company designs and manufactures furniture products, including wooden furniture ' +
+      'and home decor items. We also provide interior design consultancy services to retail ' +
+      'and corporate clients.';
+    const out = runOnTexts([[0, clean]], 'PRICE_BAND_AD');
+    const f = out.fields.business_description;
+    expect(f.value).toBe(clean);
   });
 });

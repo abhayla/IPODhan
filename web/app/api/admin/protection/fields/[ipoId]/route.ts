@@ -11,6 +11,7 @@ import { getDb } from '@/lib/db';
 import { getRedisClient } from '@/lib/cache/redis-client';
 import { FieldProtectionRepository } from '@/lib/repositories/field-protection-repository';
 import { sendNotification } from '@/lib/services/notification-service';
+import { invalidateProtectionCache } from '@/lib/admin/field-protection-checker';
 import { ipos } from '@ipodhan/shared/db/schema';
 import { eq } from 'drizzle-orm';
 
@@ -110,6 +111,11 @@ export const POST = withAdminAuth(async (request: NextRequest, adminContext, { p
       editNote,
     });
 
+    // Belt-and-braces: the repository invalidates its own cache keys on
+    // write, but the canonical field-protection-checker cache (read by the
+    // scraper write path) is invalidated explicitly here too (W-58).
+    await invalidateProtectionCache(ipoId, tableName, fieldName);
+
     console.log(
       `[Admin API] Field protection ${isProtected ? 'enabled' : 'disabled'} for ${tableName}.${fieldName} by ${adminContext.adminName}`
     );
@@ -182,6 +188,9 @@ export const DELETE = withAdminAuth(async (request: NextRequest, adminContext, {
         { status: 404 }
       );
     }
+
+    // Belt-and-braces cache invalidation (W-58) — see POST handler above.
+    await invalidateProtectionCache(ipoId, tableName, fieldName);
 
     console.log(
       `[Admin API] Field protection deleted for ${tableName}.${fieldName} by ${adminContext.adminName}`

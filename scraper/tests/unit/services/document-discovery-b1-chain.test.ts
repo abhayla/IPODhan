@@ -165,9 +165,12 @@ describe('B-1 (a) UPCOMING, exchanges clean, SEBI serves the DRHP', () => {
     expect(documents.rows.find((d) => d.type === 'DRHP')?.exchange).toBe('SEBI');
     expect(seen.some((u) => u.includes('smid=10'))).toBe(true);
 
+    // W-27: the SEBI rung is a WALK now — page 1, then search, then paging — so
+    // the sub-step it resolved on is recorded. Acme is on page 1.
     const parts = rungsFor(result.attempts as never, 'DRHP').split(' -> ');
     expect(parts[0]).toBe('rungs[DRHP]: EXCHANGES:no_link');
-    expect(parts[1]).toBe('SEBI:found');
+    expect(parts[1]).toBe('SEBI:page1');
+    expect(parts[2]).toBe('SEBI:found');
   }, 60_000);
 });
 
@@ -218,7 +221,14 @@ describe('B-1 (b) CLOSED IPO off the BSE board, SEBI lists the Prospectus', () =
 describe('B-1 (c) SEBI has nothing', () => {
   it('settles NOT_YET_FILED with SEBI CONSULTED, not skipped', async () => {
     const { runner, seen } = makeRunner(
-      { ...CLEAN_EXCHANGES, 'smid=10': html(fixture('sebi-drhp-listing.html')) },
+      {
+        ...CLEAN_EXCHANGES,
+        'smid=10': html(fixture('sebi-drhp-listing.html')),
+        // W-27: SEBI answers the search and every paged POST too, and still
+        // never names this company — which is what makes 'SEBI:not_listed'
+        // evidence rather than a guess about pages we never asked for.
+        'HomeAction.do;jsessionid': html('<table id="sample_1"></table>'),
+      },
       'Nowhere Industries Limited'
     );
 
@@ -233,7 +243,12 @@ describe('B-1 (c) SEBI has nothing', () => {
 
     const result = await runner.runIpo(upcoming, []);
 
-    expect(result.notYetFiled).toEqual(['DRHP']);
+    // W-28/W-46: the DRHP IS due at UPCOMING, so "SEBI has nothing" is a
+    // discovery miss (NOT_FOUND, 60-min backoff), not the flattering claim that
+    // the issuer has not filed it. The B-1 point is unchanged: SEBI was asked,
+    // the row is not BLOCKED_ALL, and the chain says so.
+    expect(result.notFound).toEqual(['DRHP']);
+    expect(result.notYetFiled).toEqual([]);
     expect(result.blocked).toEqual([]);
     // The whole point: SEBI was actually asked. Before B-1 it never was.
     expect(seen.some((u) => u.includes('smid=10'))).toBe(true);
@@ -275,7 +290,11 @@ describe('B-1 must not make EVERY clean no_link escalate', () => {
     const result = await runner.runIpo(preOpen, allButPba as never);
 
     expect(result.due).toEqual(['PRICE_BAND_AD']);
-    expect(result.notYetFiled).toEqual(['PRICE_BAND_AD']);
+    // W-28/W-46: the price-band ad is due at PRE_OPEN, so a clean exchange miss
+    // settles as NOT_FOUND. What this test pins is unchanged: the exchanges
+    // settled it and NO escalation GET was spent.
+    expect(result.notFound).toEqual(['PRICE_BAND_AD']);
+    expect(result.notYetFiled).toEqual([]);
     expect(seen.some((u) => u.includes('sebi.gov.in'))).toBe(false);
     expect(rungsFor(result.attempts as never, 'PRICE_BAND_AD')).toContain('exchanges_settled_it');
   }, 60_000);

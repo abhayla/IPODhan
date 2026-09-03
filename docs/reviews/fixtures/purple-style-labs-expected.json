@@ -64,9 +64,11 @@
     "compliance_officer": "Gulshan Mumtaz Khan",
     "cin": "U18204MH2015PLC267215",
 
-    "top10_brands_pct_fy2026": 30.24,
-    "womenswear_pct_fy2026": 77.7,
-    "mumbai_gmv_pct_fy2026": 28.42
+    "concentration_kpis": [
+      { "label": "top_10_brands", "value_pct": 30.24, "fiscal_year": 2026 },
+      { "label": "womenswear", "value_pct": 77.7, "fiscal_year": 2026 },
+      { "label": "mumbai_gmv", "value_pct": 28.42, "fiscal_year": 2026 }
+    ]
   },
 
   "_null_with_reason": {

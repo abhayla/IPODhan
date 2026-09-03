@@ -22,7 +22,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db, getRedisClient } from '@ipodhan/shared';
-import { DocumentRepository, DocumentFetchStateRepository, IPORepository } from '@ipodhan/shared';
+import { DocumentRepository, DocumentFetchStateRepository, IPORepository, IpoPipelineStepsRepository } from '@ipodhan/shared';
 import { recordBseDiscoveryMetadata, recordDocumentSourceHints } from './data-persister.js';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
 import logger from '../utils/logger.js';
@@ -46,6 +46,41 @@ import {
   hasStoredFile,
   getStoreDir,
 } from './document-store.js';
+import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { initStepLedger } from './step-ledger.js';
+import { recordDocumentRunSteps } from './step-ledger-recorders.js';
+import {
+  processPendingFilings,
+  buildAutoPersistDeps,
+  DEFAULT_MAX_SPAWNS_PER_CYCLE,
+  type AutoPersistDeps,
+  type SpawnBudget,
+} from './filing-auto-persist.js';
+import { DistributedLock } from '../utils/distributed-lock.js';
+
+/** MAJOR-1: key + TTL for the cycle-level extraction lock (document-cycle.ts). */
+const FILING_EXTRACTION_LOCK_KEY = 'filing-auto-persist:cycle';
+/**
+ * Exported (F3, S-02 round 6) so a static test can assert the spawn cap can
+ * never outlive the lock: `DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS`
+ * (worst case, every spawn takes the full extractor timeout) plus slack MUST
+ * stay under this TTL, or a future cap raise could let extraction keep
+ * running after the lock protecting it from a second overlapping cycle has
+ * already expired.
+ */
+export const FILING_EXTRACTION_LOCK_TTL_MS = 45 * 60 * 1000;
+
+/**
+ * W-102: whole-extraction-pass (PASS 2) wall-clock ceiling across all
+ * candidate IPOs, checked BETWEEN IPOs (never interrupting a
+ * `processPendingFilings` call already in flight) — python extraction runs
+ * (minutes, not milliseconds) must never be charged against
+ * `CYCLE_BUDGET.DISCOVERY_MS`, but they still need a ceiling so pass 2 cannot
+ * run unbounded inside a 30-minute cron cycle. Local to this file (not
+ * `CYCLE_BUDGET` in document-state-machine.ts) — this round's touch-scope
+ * kept that file untouched.
+ */
+const DEFAULT_EXTRACTION_BUDGET_MS = 25 * 60 * 1000;
 
 export interface DocumentCycleSummary {
   ipos: number;
@@ -56,13 +91,18 @@ export interface DocumentCycleSummary {
   networkCalls: number;
   durationMs: number;
   budgetExhausted: boolean;
+  /** S-02 round 4 item 7: documents in MANUAL_REVIEW among this cycle's candidate IPOs. */
+  extractionBlocked: number;
+  /** S-02 round 4 item 7: documents currently FAILED among this cycle's candidate IPOs. */
+  extractionFailed: number;
 }
 
-/** `ipos=4 skipped=2 found=3 not_yet=1 blocked=0 calls=5` — the ledger `reason`. */
+/** `ipos=4 skipped=2 found=3 not_yet=1 blocked=0 calls=5 extraction_blocked=0 extraction_failed=0` — the ledger `reason`. */
 export function formatCycleReason(s: DocumentCycleSummary): string {
   return (
     `ipos=${s.ipos} skipped=${s.skipped} found=${s.found} not_yet=${s.notYetFiled} ` +
-    `blocked=${s.blocked} calls=${s.networkCalls}${s.budgetExhausted ? ' budget=exhausted' : ''}`
+    `blocked=${s.blocked} calls=${s.networkCalls} extraction_blocked=${s.extractionBlocked} ` +
+    `extraction_failed=${s.extractionFailed}${s.budgetExhausted ? ' budget=exhausted' : ''}`
   );
 }
 
@@ -70,7 +110,8 @@ export function formatCycleReason(s: DocumentCycleSummary): string {
 export function summarize(
   results: IpoRunResult[],
   durationMs: number,
-  budgetExhausted = false
+  budgetExhausted = false,
+  extraction: { blocked: number; failed: number } = { blocked: 0, failed: 0 }
 ): DocumentCycleSummary {
   return {
     ipos: results.length,
@@ -81,6 +122,8 @@ export function summarize(
     networkCalls: results.reduce((n, r) => n + r.networkCalls, 0),
     durationMs,
     budgetExhausted,
+    extractionBlocked: extraction.blocked,
+    extractionFailed: extraction.failed,
   };
 }
 
@@ -113,7 +156,7 @@ export function deriveIssueShape(row: Record<string, unknown>): IssueShape {
 /** Candidate IPOs: live-window only (R10 — history is WP F's job, not the cycle's). */
 export async function loadCandidateIpos(): Promise<DiscoveryIpo[]> {
   const result = await db.execute(sql`
-    SELECT id, company_name, symbol, segment, status, price_range_min,
+    SELECT id, company_name, slug, symbol, segment, status, price_range_min,
            price_range_max, listing_date, bse_ipo_no,
            company_website, verifier_url
       FROM ipos
@@ -139,6 +182,7 @@ export async function loadCandidateIpos(): Promise<DiscoveryIpo[]> {
     .map((r) => ({
       id: String(r.id),
       companyName: String(r.company_name ?? ''),
+      slug: (r.slug as string | null) ?? null,
       symbol: (r.symbol as string | null) ?? null,
       segment: (r.segment as string | null) ?? null,
       stage: deriveLifecycleStage({
@@ -205,28 +249,73 @@ export async function demoteMissingFiles(
  * lost, they are simply next cycle's work — which is safe precisely because the
  * state table remembers where we stopped.
  */
-export async function runDocumentCycle(options: { budgetMs?: number } = {}): Promise<DocumentCycleSummary> {
+export async function runDocumentCycle(
+  options: { budgetMs?: number; extractionBudgetMs?: number; now?: () => number } = {}
+): Promise<DocumentCycleSummary> {
   const budgetMs = options.budgetMs ?? CYCLE_BUDGET.DISCOVERY_MS;
-  const startedAt = Date.now();
+  const extractionBudgetMs = options.extractionBudgetMs ?? DEFAULT_EXTRACTION_BUDGET_MS;
+  const now = options.now ?? Date.now;
+  const startedAt = now();
   const redis = getRedisClient();
   const store = new DocumentFetchStateRepository(db as never, redis as never);
   const documents = new DocumentRepository(db as never, redis as never);
   const ipoRepository = new IPORepository(db as never, redis as never);
+  const stepsRepository = new IpoPipelineStepsRepository(db as never, redis as never);
   const counter = new NetworkCounter();
 
-  const runner = new DocumentDiscoveryRunner({
-    fetcher: defaultFetcher,
-    store,
-    documents,
-    counter,
-  });
+  // Built lazily and reused across IPOs: the dependency set opens repositories
+  // and a cache invalidator, and rebuilding it per IPO would be pure waste.
+  // Stays undefined entirely when the flag is off.
+  let autoPersistDeps: AutoPersistDeps | undefined;
 
-  const candidates = await loadCandidateIpos();
-  const results: IpoRunResult[] = [];
-  let budgetExhausted = false;
+  // MAJOR-1: ONE budget object for the WHOLE cycle (every IPO shares it — not
+  // reset per IPO), and one Redis lock so a second, overlapping cycle cannot
+  // start extracting the same IN_PROGRESS rows while this one is still
+  // running. `lockToken` is undefined when the flag is off (no lock needed)
+  // or when the lock could not be acquired (extraction skipped this cycle).
+  const distributedLock = new DistributedLock(redis as never);
+  let lockToken: string | undefined;
+  const spawnBudget: SpawnBudget = { remaining: DEFAULT_MAX_SPAWNS_PER_CYCLE };
+  if (FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST) {
+    const lock = await distributedLock.acquire(FILING_EXTRACTION_LOCK_KEY, { ttl: FILING_EXTRACTION_LOCK_TTL_MS });
+    if (lock.acquired) {
+      lockToken = lock.token;
+    } else {
+      logger.warn(
+        { key: FILING_EXTRACTION_LOCK_KEY },
+        'Filing auto-persist lock already held by another cycle — skipping extraction this cycle (non-fatal)'
+      );
+    }
+  }
 
-  for (const ipo of candidates) {
-    if (Date.now() - startedAt >= budgetMs) {
+  // MINOR-C: everything that can run while the extraction lock is held is
+  // wrapped in try/finally so a throw ANYWHERE in the cycle body — not just
+  // inside the per-IPO try/catch below — still releases the lock. Before this,
+  // a throw between acquire() (above) and release() (previously at the very
+  // end of the function) leaked the lock for its full 45-minute TTL, since
+  // nothing between those two points ran under a finally.
+  try {
+    const runner = new DocumentDiscoveryRunner({
+      fetcher: defaultFetcher,
+      store,
+      documents,
+      counter,
+    });
+
+    const candidates = await loadCandidateIpos();
+    const results: IpoRunResult[] = [];
+    let budgetExhausted = false;
+    // Item 7 / F4: tallied AFTER pass 2 (below), across every candidate — see
+    // the loop right before `summarize()`.
+    let extractionBlocked = 0;
+    let extractionFailed = 0;
+
+    // PASS 1 — discovery, exactly as before (ledger hooks, hints, demotion),
+    // under the discovery budget. W-102: this pass no longer runs extraction
+    // (see PASS 2 below) — python extraction time must never be charged
+    // against the discovery budget.
+    for (const ipo of candidates) {
+    if (now() - startedAt >= budgetMs) {
       budgetExhausted = true;
       logger.warn(
         { processed: results.length, remaining: candidates.length - results.length, budgetMs },
@@ -239,6 +328,11 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
 
       // W-1: hand demotion the persisted hashes so a FOUND row is checked
       // against the exact file its document row names.
+      // F4 (S-02 round 6): extraction_blocked/extraction_failed are NOT
+      // tallied here any more — this snapshot is taken BEFORE pass 2 (below)
+      // has written anything, and only for the IPOs pass 1 reaches before its
+      // own discovery budget runs out. The real tally runs after pass 2, over
+      // every candidate.
       const shaByDocId = new Map<string, string | null>();
       try {
         for (const d of await documents.findByIPO(ipo.id)) {
@@ -257,6 +351,37 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
       const rows = persisted.map(toStateRow);
       const result = await runner.runIpo(ipo, rows);
       results.push(result);
+
+      // S-02 hook 1 — defensive ledger init. An IPO whose row was created before
+      // the ledger existed (or by a path that somehow bypassed upsertIPO) has no
+      // step rows at all, and every recordStep below would then be the only row
+      // it ever gets. Idempotent (`onConflictDoNothing`), so this costs one
+      // no-op insert per IPO per cycle and guarantees the grid is never ragged.
+      await initStepLedger(ipo.id);
+
+      // S-02 hook 2 — C1..C5, D1..D5, I3, I4 from the run that just happened.
+      // The existing rows are read first so a rung that failed THIS cycle cannot
+      // overwrite a DONE an earlier cycle earned (see planDocumentRunSteps).
+      // Cached by the repository, so this is not a per-IPO round trip every time.
+      let existingSteps: Record<string, { status: string }> | undefined;
+      try {
+        existingSteps = {};
+        for (const row of await stepsRepository.findByIpo(ipo.id)) {
+          existingSteps[row.stepId] = { status: row.status };
+        }
+      } catch (error) {
+        // Without the map the recorder falls back to "write everything", which is
+        // the pre-existing behaviour — never a reason to skip recording.
+        existingSteps = undefined;
+        logger.warn(
+          { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+          'Could not read the step ledger for the no-downgrade check (non-fatal)'
+        );
+      }
+      await recordDocumentRunSteps(result, {
+        withdrawn: ipo.issue?.withdrawn === true,
+        existing: existingSteps,
+      });
 
       // Remember the IPO_NO while the IPO is still on the board (it leaves once
       // closed, exactly when the Prospectus becomes due) and how many lead
@@ -317,28 +442,127 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
     }
   }
 
-  const summary = summarize(results, Date.now() - startedAt, budgetExhausted);
+    // PASS 2 — extraction. W-102: over EVERY candidate (not only the ones pass
+    // 1 reached before its own budget ran out), so a slow discovery pass never
+    // starves extraction. Runs only when the flag is on AND the cycle lock was
+    // acquired above; gated the same way the old per-IPO hook was, just moved
+    // out from under the discovery budget. Non-fatal per candidate — one IPO's
+    // extraction failure must not stop the rest.
+    if (FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST) {
+      if (!lockToken) {
+        // Logged once above when the lock failed.
+      } else {
+        const extractionStartedAt = now();
+        for (const ipo of candidates) {
+          if (now() - extractionStartedAt >= extractionBudgetMs) {
+            logger.warn(
+              { extractionBudgetMs },
+              'Document extraction budget exhausted — remaining candidates resume next cycle (spawn budget/state persisted)'
+            );
+            break;
+          }
+          try {
+            if (!autoPersistDeps) {
+              autoPersistDeps = buildAutoPersistDeps();
+              autoPersistDeps.spawnBudget = spawnBudget;
+            }
+            // F3: same absolute deadline + clock on every call this cycle, so
+            // the per-document deadline check inside `processPendingFilings`
+            // reads consistently with this loop's own extraction-budget check.
+            autoPersistDeps.deadlineMs = extractionStartedAt + extractionBudgetMs;
+            autoPersistDeps.now = now;
+            const autoPersist = await processPendingFilings(
+              {
+                id: ipo.id,
+                companyName: ipo.companyName,
+                slug: ipo.slug ?? null,
+                segment: ipo.segment ?? null,
+              },
+              autoPersistDeps
+            );
+            if (autoPersist.spawned > 0 || autoPersist.failed > 0 || autoPersist.skippedBudget > 0) {
+              logger.info(
+                { ipoId: ipo.id, company: ipo.companyName, ...autoPersist },
+                'Filing auto-persist complete for one IPO'
+              );
+            }
+          } catch (error) {
+            logger.error(
+              { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+              'Filing auto-persist threw (non-fatal) — continuing the cycle'
+            );
+          }
+        }
+      }
+    }
 
-  // One scraper_logs row per cycle for source=DOCUMENTS, so the existing metrics
-  // tracker and alert thresholds cover documents like any other source (§7.4).
-  // Non-fatal: a logging failure must never fail the cycle.
-  try {
-    await db.insert(scraperLogs).values({
-      source: 'DOCUMENTS',
-      status: summary.blocked > 0 ? 'PARTIAL' : 'SUCCESS',
-      recordsProcessed: summary.found,
-      recordsFailed: summary.blocked,
-      durationMs: summary.durationMs,
-    } as never);
-  } catch (error) {
-    logger.error(
-      { error: error instanceof Error ? error.message : String(error) },
-      'Failed to write DOCUMENTS scraper_logs row (non-fatal)'
-    );
+    // F4 (S-02 round 6): tally extraction_blocked/extraction_failed AFTER
+    // pass 2 has run, across EVERY candidate IPO — not only the ones pass 1
+    // reached before its own budget ran out, and reading state AFTER pass 2
+    // had a chance to write it. A document pass 2 just pushed into
+    // MANUAL_REVIEW or FAILED shows up in THIS cycle's summary, not a cycle
+    // late. Non-fatal per IPO — a read failure here must not fail the cycle.
+    for (const ipo of candidates) {
+      try {
+        for (const d of await documents.findByIPO(ipo.id)) {
+          const extractionStatus = (d as { extractionStatus?: string | null }).extractionStatus;
+          if (extractionStatus === 'MANUAL_REVIEW') extractionBlocked++;
+          else if (extractionStatus === 'FAILED') extractionFailed++;
+        }
+      } catch (error) {
+        logger.warn(
+          { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+          'Could not load document extraction status for the cycle summary (non-fatal)'
+        );
+      }
+    }
+
+    const summary = summarize(results, now() - startedAt, budgetExhausted, {
+      blocked: extractionBlocked,
+      failed: extractionFailed,
+    });
+
+    // One scraper_logs row per cycle for source=DOCUMENTS, so the existing metrics
+    // tracker and alert thresholds cover documents like any other source (§7.4).
+    // Item 7: extractionBlocked > 0 also forces PARTIAL and carries
+    // `extraction_blocked=<n>` in error_message, so MANUAL_REVIEW documents are
+    // visible to the SAME alert path as a discovery block — no new machinery.
+    // Non-fatal: a logging failure must never fail the cycle.
+    try {
+      await db.insert(scraperLogs).values({
+        source: 'DOCUMENTS',
+        status: summary.blocked > 0 || summary.extractionBlocked > 0 ? 'PARTIAL' : 'SUCCESS',
+        recordsProcessed: summary.found,
+        recordsFailed: summary.blocked,
+        durationMs: summary.durationMs,
+        errorMessage: summary.extractionBlocked > 0 ? `extraction_blocked=${summary.extractionBlocked}` : null,
+      } as never);
+    } catch (error) {
+      logger.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Failed to write DOCUMENTS scraper_logs row (non-fatal)'
+      );
+    }
+
+    logger.info({ ...summary, byHost: counter.byHost() }, 'Document discovery cycle complete');
+    return summary;
+  } finally {
+    // MAJOR-1 + MINOR-C: release the extraction lock so the NEXT cycle can
+    // acquire it — non-fatal, skipped entirely when this cycle never held it
+    // (flag off, or another cycle already had it), and now guaranteed to run
+    // on EVERY exit path (return above, or a throw anywhere in the try block)
+    // rather than only the successful-fallthrough path.
+    if (lockToken) {
+      try {
+        await distributedLock.release(FILING_EXTRACTION_LOCK_KEY, lockToken);
+      } catch (error) {
+        logger.warn(
+          { error: error instanceof Error ? error.message : String(error) },
+          'Failed to release filing auto-persist lock (non-fatal — it will expire via TTL)'
+        );
+      }
+    }
   }
-
-  logger.info({ ...summary, byHost: counter.byHost() }, 'Document discovery cycle complete');
-  return summary;
 }
 
 export interface PurgeSummary {
@@ -349,19 +573,23 @@ export interface PurgeSummary {
 }
 
 /**
- * PURGE_PDFS (D4). Deletes local PDFs for IPOs past
- * `close_date + PROSPECTUS_RETENTION_DAYS`, or withdrawn. FILES ONLY — the
- * `documents` and `document_fetch_state` rows and everything extracted from the
- * PDFs are retained, so nothing we learned is lost with the bytes.
+ * W-101: bounded to IPOs that can possibly be due — a close date exists and is
+ * already past the soft window (the first cut scanned every IPO row with a
+ * close date, which grows without limit as the table does — N4).
+ *
+ * `{{RETENTION_DAYS}}` is substituted with a validated, `Math.trunc`-ed
+ * integer (see `getRetentionDays()`) before execution — never user input, so
+ * this is not a SQL-injection surface — which keeps this string a plain,
+ * test-inspectable constant (see `stage-reconciler-job.ts`'s
+ * `RECONCILER_PRESENCE_SQL` for the same pattern) instead of a parameter-bound
+ * template that a regex test cannot read without a live database.
+ *
+ * Found live 2026-09-03: `upper(i.status)` failed with Postgres 42883
+ * ("function upper(ipo_status) does not exist") on EVERY run — `ipos.status`
+ * is the `ipo_status` enum, not text, and `upper()` has no enum overload.
+ * `upper(i.status::text)` fixes it.
  */
-export async function runDocumentPurge(): Promise<PurgeSummary> {
-  const retentionDays = getRetentionDays();
-  const maxRetentionDays = getMaxRetentionDays();
-
-  // One query, bounded to IPOs that can possibly be due: a close date exists and
-  // is already past the soft window. The first cut scanned every IPO row with a
-  // close date, which grows without limit as the table does (N4).
-  const result = await db.execute(sql`
+export const PURGE_CANDIDATES_SQL = `
     SELECT i.id,
            i.close_date,
            i.status,
@@ -373,11 +601,27 @@ export async function runDocumentPurge(): Promise<PurgeSummary> {
      WHERE i.offering_type = 'IPO'
        AND i.close_date IS NOT NULL
        AND (
-         i.close_date < now() - make_interval(days => ${retentionDays})
-         OR upper(i.status) IN ('WITHDRAWN', 'POSTPONED')
+         i.close_date < now() - make_interval(days => {{RETENTION_DAYS}})
+         OR upper(i.status::text) IN ('WITHDRAWN', 'POSTPONED')
        )
      GROUP BY i.id, i.close_date, i.status
-  `);
+`;
+
+/**
+ * PURGE_PDFS (D4). Deletes local PDFs for IPOs past
+ * `close_date + PROSPECTUS_RETENTION_DAYS`, or withdrawn. FILES ONLY — the
+ * `documents` and `document_fetch_state` rows and everything extracted from the
+ * PDFs are retained, so nothing we learned is lost with the bytes.
+ */
+export async function runDocumentPurge(): Promise<PurgeSummary> {
+  const retentionDays = getRetentionDays();
+  const maxRetentionDays = getMaxRetentionDays();
+
+  // W-101: retentionDays is validated finite/>=0 by getRetentionDays(); Math.trunc
+  // guards against a non-integer env value producing invalid SQL syntax.
+  const result = await db.execute(
+    sql.raw(PURGE_CANDIDATES_SQL.replace('{{RETENTION_DAYS}}', String(Math.trunc(retentionDays))))
+  );
   const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<
     string,
     unknown

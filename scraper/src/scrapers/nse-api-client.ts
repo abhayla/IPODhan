@@ -26,7 +26,7 @@ import {
   transformCurrentIssueSubscription,
 } from './nse-subscription-parser.js';
 import { notifyOwner } from '../services/owner-notify.js';
-import { parseDdMmmYyyy } from '../utils/date-string-parsing.js';
+import { parseDdMmmYyyy, MONTH_ABBR_TO_NUM } from '../utils/date-string-parsing.js';
 
 const BASE_URL = 'https://www.nseindia.com';
 
@@ -403,9 +403,22 @@ export function parsePriceRange(priceStr: string | null | undefined): { min: num
  * Determine IPO status from NSE data
  * Maps NSE status to IPODhan schema (NSE 'OPEN' -> IPODhan 'LIVE')
  */
-function determineStatus(statusStr: string | null | undefined, startDate: string, endDate: string): 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' {
+export function determineStatus(statusStr: string | null | undefined, startDate: string, endDate: string): 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' | 'WITHDRAWN' | 'POSTPONED' {
   if (statusStr) {
     const status = statusStr.toUpperCase();
+    // I4 / W-41 — terminal states first: a pulled issue must never fall through
+    // to the date ladder below, which would march it to CLOSED and then LISTED.
+    // NSE's `status` is free text; the values seen live on
+    // /api/all-upcoming-issues?category=ipo (2026-09-02) are only "Active",
+    // "Closed" and "Forthcoming", so these two branches are dormant until NSE
+    // publishes a pulled issue. Matched on the stems so "Withdrawn",
+    // "Issue Withdrawn" and "WITHDRAWAL" all map.
+    if (status.includes('WITHDRAW')) {
+      return 'WITHDRAWN';
+    }
+    if (status.includes('POSTPON') || status.includes('DEFER') || status.includes('RESCHEDUL')) {
+      return 'POSTPONED';
+    }
     if (status.includes('ACTIVE') || status.includes('OPEN') || status.includes('LIVE')) {
       return 'OPEN';
     }
@@ -439,9 +452,17 @@ function determineStatus(statusStr: string | null | undefined, startDate: string
  * into the rupee column `ipos.issue_size`, producing "Issue Size Rs1.77
  * Crores" for an IPO whose real size is Rs175 Cr (17,683,000 sh x Rs99).
  *
- * This computes the true rupee issue size as shares x price (upper band
- * preferred, issue price as fallback), and returns undefined (never a share
- * count) when neither price signal is available — undefined lets a
+ * This computes the true rupee issue size as shares x price. W-109
+ * (round-8, found on Glass Wall Systems' price-band ad): the exchange's
+ * share count is the count AT THE FLOOR price — "up to N shares" prices out
+ * to a lower total at the floor and a smaller share count at the cap, so
+ * floor-count x cap-price is a number that never appears in the filing
+ * (Glass Wall: 23,702,094 sh (floor count) x Rs182 (cap) = Rs431.38 Cr,
+ * appears nowhere; the real floor total is 23,702,094 x Rs172 = Rs407.68
+ * Cr, matching the ad). So this prefers the FLOOR price (priceRangeMin),
+ * falling back to priceRangeMax only when no floor is known (e.g. a single
+ * fixed price reported as max with no min). Returns undefined (never a
+ * share count) when neither price signal is available — undefined lets a
  * higher-confidence source (BSE/Chittorgarh) win instead of writing a wrong
  * number. `noOfSharesOffered` is preferred over `issueSize` as the share
  * count because it is NSE's correctly-named field for the same value.
@@ -455,7 +476,7 @@ export function computeNSEIssueSizeRupees(
   const shares = sharesRaw != null ? parseFloat(String(sharesRaw)) : NaN;
   if (!Number.isFinite(shares) || shares <= 0) return undefined;
 
-  const price = priceRangeMax ?? priceRangeMin;
+  const price = priceRangeMin ?? priceRangeMax;
   if (price == null || !Number.isFinite(price) || price <= 0) {
     logger.warn(
       { companyName: data.companyName || data.company, shares },
@@ -557,7 +578,7 @@ export function transformIPOData(data: any, endpointCategory?: 'ipo' | 'ofs' | '
     sector: data.sector?.trim() || undefined,
     status,
     lotSize: parseInt(data.lotSize) || undefined,
-    faceValue: parseFloat(data.faceValue) || 10,
+    faceValue: parseFloat(data.faceValue) || undefined,
     symbol: data.symbol,
     isin: data.isin || undefined, // Extract ISIN from NSE API
     ...additionalFields // Spread the additional NSE fields
@@ -590,6 +611,15 @@ function extractAdditionalNSEFields(issueInfo: any): any {
   for (const item of dataList) {
     const title = item.title || '';
     const value = item.value || '';
+
+    // Face Value (W-02: NSE list endpoints carry no face value field, only
+    // issueInfo.dataList does, e.g. "Rs. 2 per Equity Share" or "Rs.10/-")
+    if (title.includes('Face Value')) {
+      const match = value.match(/([\d,]+(?:\.\d+)?)/);
+      if (match) {
+        fields.faceValue = parseFloat(match[1].replace(/,/g, ''));
+      }
+    }
 
     // UPI Cut-off time
     if (title.includes('Cut-off time for UPI')) {
@@ -695,6 +725,43 @@ function extractAdditionalNSEFields(issueInfo: any): any {
 }
 
 /**
+ * Parse NSE's demand-graph observation timestamp strings to a proper UTC ISO string.
+ *
+ * Two shapes seen from `/api/ipo-detail`:
+ *   - `demandGraph.timestamp`: "As on 02-Sep-2026 17:00:13 IST" (whole-block observation time)
+ *   - `demandDataNSE[]`/`demandDataBSE[]` per-row `entry.timestamp`: "02-Sep-2026 17:00:13" (no suffix)
+ *
+ * Both are IST wall-clock with no numeric offset, so `new Date(str)` cannot be trusted
+ * (same class as the UTC-naive-timestamp bug documented in
+ * `.claude/rules/utc-naive-timestamp-normalization.md` / lesson `scraper-timestamp-tz-skew`).
+ * Returns null when the string doesn't match, so callers can fall back safely.
+ */
+function parseNseObservedTimestampIST(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const match = raw.match(/(\d{1,2})-([A-Za-z]{3})-(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})/);
+  if (!match) return null;
+
+  const [, dayRaw, monRaw, yearRaw, hourRaw, minRaw, secRaw] = match;
+  const month = MONTH_ABBR_TO_NUM[monRaw.toLowerCase()];
+  if (!month) return null;
+
+  const day = Number(dayRaw);
+  const year = Number(yearRaw);
+  const hour = Number(hourRaw);
+  const minute = Number(minRaw);
+  const second = Number(secRaw);
+
+  // IST is UTC+5:30 with no DST; subtract the offset from the IST wall-clock
+  // reading to get the true UTC instant. Date.UTC(...) is inlined directly
+  // into new Date(...) (not bound to an intermediate identifier) so this is
+  // the TZ-invariant-by-construction form the T-327 ratchet recognizes as
+  // safe — see tests/unit/utils/date-tz-parse-ratchet.test.ts.
+  return new Date(
+    Date.UTC(year, Number(month) - 1, day, hour, minute, second) - (5 * 60 + 30) * 60 * 1000
+  ).toISOString();
+}
+
+/**
  * Extract price-wise demand data from NSE API
  * New function to capture demand graph data for visualization
  */
@@ -710,7 +777,13 @@ export function extractDemandGraphData(
     return entries;
   }
 
-  const timestamp = new Date().toISOString();
+  // The block's own observation time ("As on DD-MMM-YYYY HH:mm:ss IST") is the
+  // correct stamp for plotData-derived rows, which carry no per-row timestamp of
+  // their own. `new Date()` (wall-clock "now") was previously used unconditionally
+  // here, which recorded when the SCRAPE ran, not when NSE captured the snapshot -
+  // the same defect class as the historic scraper-timestamp-tz-skew bug.
+  const observedAt = parseNseObservedTimestampIST(demandGraph?.timestamp);
+  const timestamp = observedAt || new Date().toISOString();
 
   // Process NSE demand graph data
   if (demandGraph && demandGraph.plotData) {
@@ -745,13 +818,16 @@ export function extractDemandGraphData(
       );
 
       if (!existing && quantity > 0) {
+        // NSE's field is lowercase `timestamp` (e.g. "02-Sep-2026 17:00:13"), not
+        // `timeStamp` - the previous camelCase lookup never matched, so this
+        // branch silently fell through to wall-clock "now" every time.
         entries.push({
           symbol,
           pricePoint,
           isCutOff,
           cumulativeQuantity: quantity,
           exchange: 'NSE',
-          timestamp: entry.timeStamp || timestamp,
+          timestamp: parseNseObservedTimestampIST(entry.timestamp) || timestamp,
         });
       }
     }
@@ -771,7 +847,7 @@ export function extractDemandGraphData(
           isCutOff,
           cumulativeQuantity: quantity,
           exchange: 'BSE',
-          timestamp: entry.timeStamp || timestamp,
+          timestamp: parseNseObservedTimestampIST(entry.timestamp) || timestamp,
         });
       }
     }

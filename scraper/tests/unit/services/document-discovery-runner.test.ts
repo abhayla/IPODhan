@@ -102,9 +102,11 @@ describe('DocumentDiscoveryRunner — BSE-first discovery on REAL payloads', () 
     expect(store.all().filter((r) => r.state === 'FOUND').length).toBeGreaterThanOrEqual(4);
   });
 
-  it('NOT_YET_FILED requires EVERY consulted exchange to have answered (F3 vs F6)', async () => {
-    // Both exchanges answer. A type neither of them carries is genuinely not
-    // filed yet, and nothing is BLOCKED_ALL.
+  it('a settled miss on a DUE type is NOT_FOUND, not NOT_YET_FILED (F3 vs F6, W-28)', async () => {
+    // Both exchanges answer, so the miss is SETTLED — no BLOCKED_ALL, no alert.
+    // But the Prospectus is DUE at CLOSED, so "settled" cannot mean "the company
+    // has not filed it" (W-28): that reading is what the E12 badge renders and
+    // what made a discovery gap look like an issuer's timetable.
     const { fetcher } = fixtureFetcher();
     const { runner } = makeRunner(fetcher);
 
@@ -112,7 +114,8 @@ describe('DocumentDiscoveryRunner — BSE-first discovery on REAL payloads', () 
 
     expect(result.attempts.some((a) => a.source === 'BSE' && a.outcome === 'ok')).toBe(true);
     expect(result.attempts.some((a) => a.source === 'NSE' && a.outcome === 'ok')).toBe(true);
-    expect(result.notYetFiled).toContain('PROSPECTUS');
+    expect(result.notFound).toContain('PROSPECTUS');
+    expect(result.notYetFiled).not.toContain('PROSPECTUS');
     expect(result.blocked).toEqual([]);
   }, 30_000);
 
@@ -341,5 +344,81 @@ describe('a closed mainboard IPO drops off the BSE board (found live, 2026-08-28
       []
     );
     expect(result.resolvedBseIpoNo).toBe(7916);
+  }, 30_000);
+});
+
+describe('SEBI search + paging beyond page 1 (W-27, wired via trySebi)', () => {
+  const SEBI_FIXTURES = join(__dirname, '../../fixtures/sebi');
+  const sebiFixture = (n: string) => readFileSync(join(SEBI_FIXTURES, n), 'utf8');
+  const PAGE1_HTML = sebiFixture('sebi-drhp-page1-with-form.html');
+  const SEARCH_MATCH_HTML = sebiFixture('sebi-drhp-search-match.html');
+
+  const DEEPA: DiscoveryIpo = {
+    id: 'ipo-deepa',
+    companyName: 'Deepa Jewellers Limited',
+    symbol: null,
+    segment: 'MAINBOARD',
+    stage: 'UPCOMING', // dueDocTypesForStage('UPCOMING') === ['DRHP']
+  };
+
+  function sebiSearchFetcher() {
+    const methodsByUrl: string[] = [];
+    const fetcher: HttpFetcher = async (url, init) => {
+      if (url.includes('sebiweb/home/HomeAction.do')) {
+        methodsByUrl.push(init.method ?? 'GET');
+        if ((init.method ?? 'GET') === 'GET') {
+          return { status: 200, contentType: 'text/html', body: Buffer.from(PAGE1_HTML), url };
+        }
+        // The search/paged POST — Deepa's row lives only in the search result.
+        return { status: 200, contentType: 'text/html', body: Buffer.from(SEARCH_MATCH_HTML), url };
+      }
+      // BSE board / NSE lookups and the SEBI detail page: none of them matter
+      // to this test, which only proves the SEARCH rung was reached and cached.
+      return { status: 404, contentType: 'text/html', body: Buffer.from('nope'), url };
+    };
+    return { fetcher, methodsByUrl };
+  }
+
+  it('records SEBI:searched in the chain and caches the walk per company', async () => {
+    const { fetcher, methodsByUrl } = sebiSearchFetcher();
+    const store = new InMemoryDocumentFetchStateStore();
+    const counter = new NetworkCounter();
+    const documents = {
+      upserted: [] as unknown[],
+      async upsertDocument(doc: Record<string, unknown>) {
+        this.upserted.push(doc);
+        return { id: `doc-${this.upserted.length}` };
+      },
+    };
+    const runner = new DocumentDiscoveryRunner({
+      fetcher,
+      store,
+      documents,
+      counter,
+      now: () => NOW,
+      skipDownload: false, // W-27's search rung only runs on the escalation path
+    });
+
+    const result = await runner.runIpo(DEEPA, []);
+
+    const chain = result.attempts.find(
+      (a) => a.source === 'CHAIN' && a.outcome.includes('rungs[DRHP]')
+    );
+    expect(chain).toBeDefined();
+    expect(chain!.outcome).toContain('SEBI:page1');
+    expect(chain!.outcome).toContain('SEBI:searched');
+    // The search POST carries doListing=yes and hits the same action URL twice
+    // (GET page 1, POST search) — never more, since the match came back on
+    // the search itself.
+    expect(methodsByUrl).toEqual(['GET', 'POST']);
+
+    // A second IPO on the SAME listing but a DIFFERENT company must not reuse
+    // Deepa's cached search result — the cache key is per company (W-27).
+    const OTHER: DiscoveryIpo = { ...DEEPA, id: 'ipo-other', companyName: 'Totally Different Co Ltd' };
+    const before = methodsByUrl.length;
+    await runner.runIpo(OTHER, []);
+    // A fresh GET + POST walk ran for the second company — the cache did not
+    // short-circuit it with Deepa's answer.
+    expect(methodsByUrl.length).toBeGreaterThan(before);
   }, 30_000);
 });

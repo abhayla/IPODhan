@@ -46,6 +46,13 @@ export const ipoStatusEnum = pgEnum('ipo_status', [
   'OPEN',
   'CLOSED',
   'LISTED',
+  // I4 / W-41: terminal states an exchange (or Chittorgarh) can declare. Before
+  // these existed nothing could set them, so a pulled issue kept sliding along
+  // the date-derived ladder to CLOSED/LISTED and the document cycle kept
+  // fetching for it. They are appended (never reordered) — enum order is
+  // physical in Postgres, so migration 0046 only ADDs VALUEs.
+  'WITHDRAWN',
+  'POSTPONED',
 ]);
 
 export const documentTypeEnum = pgEnum('document_type', [
@@ -89,6 +96,7 @@ export const documentTypeEnum = pgEnum('document_type', [
 export const documentFetchStatusEnum = pgEnum('document_fetch_status', [
   'WANTED',
   'NOT_YET_FILED',
+  'NOT_FOUND',
   'FOUND',
   'EXTRACTED',
   'EXTRACT_FAILED',
@@ -118,6 +126,15 @@ export const scraperSourceEnum = pgEnum('scraper_source', [
   'API_FALLBACK',
   'MONEYCONTROL',
   'CHITTORGARH',
+]);
+
+// W-03: what market a subscriptions row covers. NSE ships CONSOLIDATED
+// (both exchange books) via /api/ipo-active-category; BSE's own API is its
+// own book only. Nullable — old rows predate this label and stay valid.
+export const subscriptionScopeEnum = pgEnum('subscription_scope', [
+  'BSE_ONLY',
+  'NSE_ONLY',
+  'CONSOLIDATED',
 ]);
 
 export const dataSourceEnum = pgEnum('data_source', [
@@ -199,6 +216,7 @@ export const intermediaryRoleEnum = pgEnum('intermediary_role', [
   'BRLM',
   'REGISTRAR',
   'SYNDICATE',
+  'SUB_SYNDICATE',
   'SPONSOR_BANK',
   'ESCROW_BANK',
   'PUBLIC_ISSUE_BANK',
@@ -411,6 +429,10 @@ export const subscriptions = pgTable(
     totalBidsNSE: bigint('total_bids_nse', { mode: 'number' }),
     totalBidsBSE: bigint('total_bids_bse', { mode: 'number' }),
     totalBidsCombined: bigint('total_bids_combined', { mode: 'number' }),
+
+    // W-03: BSE_ONLY | NSE_ONLY | CONSOLIDATED. Nullable — rows written before
+    // this column existed have no scope label.
+    scope: subscriptionScopeEnum('scope'),
   },
   (table) => ({
     ipoTimestampIdx: index('idx_subscriptions_ipo_timestamp').on(
@@ -1142,6 +1164,22 @@ export const ipoDetails = pgTable(
     allocationPct: jsonb('allocation_pct'),
     preIpoPlacement: boolean('pre_ipo_placement'),
 
+    // W-88 (migration 0049): price-band-advertisement facts with no prior home.
+    // bidWindows is [{activity, window}] - the per-investor-class clock windows
+    // the ad prints under "Submission of Bids (other than Bids from Anchor
+    // Investors)". Deliberately NOT ipoMarketTimings, which is a varchar(50)
+    // the NSE API scraper fills with the exchange's trading hours.
+    bidWindows: jsonb('bid_windows'),
+    // The AGGREGATE promoter holding; promoters.shares_held is per promoter.
+    promoterSharesHeld: bigint('promoter_shares_held', { mode: 'number' }),
+    // The SEBI ICDR regulation the book-building offer is made under, as cited
+    // by the ad, e.g. "Regulation 6(1)".
+    sebiRegulationCited: varchar('sebi_regulation_cited', { length: 32 }),
+    // [{summary}] - promoter/promoter-group share transactions of 1% or more
+    // since the DRHP. An EMPTY array means the ad states there were none, which
+    // is an answer; null means the ad does not carry the statement.
+    promoterGroupTransactionsSinceDrhp: jsonb('promoter_group_transactions_since_drhp'),
+
     createdAt: timestamp('created_at').defaultNow().notNull(),
     updatedAt: timestamp('updated_at').defaultNow().notNull(),
   },
@@ -1675,8 +1713,17 @@ export const ipoValuation = pgTable(
     pricingEvent: pricingEventEnum('pricing_event').notNull(),
     priceFloor: numeric('price_floor', { precision: 18, scale: 2 }),
     priceCap: numeric('price_cap', { precision: 18, scale: 2 }),
+    // W-88: shares_at_floor/shares_at_cap hold the FRESH-issue leg only (that is
+    // the row extract_filing.py reads them off). They keep that meaning for
+    // backward compatibility; fresh_shares_at_floor/at_cap carry the same value
+    // under an unambiguous name, and the OFS / total legs are their own columns.
     sharesAtFloor: bigint('shares_at_floor', { mode: 'number' }), // share count -- never numeric; round-7 class
     sharesAtCap: bigint('shares_at_cap', { mode: 'number' }), // share count -- never numeric; round-7 class
+    freshSharesAtFloor: bigint('fresh_shares_at_floor', { mode: 'number' }),
+    freshSharesAtCap: bigint('fresh_shares_at_cap', { mode: 'number' }),
+    ofsShares: bigint('ofs_shares', { mode: 'number' }),
+    totalSharesAtFloor: bigint('total_shares_at_floor', { mode: 'number' }),
+    totalSharesAtCap: bigint('total_shares_at_cap', { mode: 'number' }),
     mcapAtFloor: numeric('mcap_at_floor', { precision: 18, scale: 2 }),
     mcapAtCap: numeric('mcap_at_cap', { precision: 18, scale: 2 }),
     peAtFloor: numeric('pe_at_floor', { precision: 18, scale: 2 }),
@@ -1847,3 +1894,61 @@ export const ipoRiskFactorsRelations = relations(ipoRiskFactors, ({ one }) => ({
     references: [ipos.id],
   }),
 }));
+
+// ==================== PER-IPO PIPELINE STEP LEDGER (S-01) ====================
+
+// Status of a single catalogue step for a single IPO.
+// Spec: docs/specs/per-ipo-due-step-pipeline.md section 4.1
+export const ipoStepStatusEnum = pgEnum('ipo_step_status', [
+  'NOT_DUE',
+  'DUE',
+  'RUNNING',
+  'DONE',
+  'FAILED',
+  'NOT_AVAILABLE_YET',
+  'BLOCKED',
+  'SKIPPED',
+]);
+
+export const ipoPipelineSteps = pgTable(
+  'ipo_pipeline_steps',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ipoId: uuid('ipo_id')
+      .notNull()
+      .references(() => ipos.id, { onDelete: 'cascade' }),
+    // Catalogue id (B1..J3) — enum-checked in code via packages/shared/src/pipeline/step-catalogue.ts
+    stepId: text('step_id').notNull(),
+    status: ipoStepStatusEnum('status').notNull().default('NOT_DUE'),
+    attempts: integer('attempts').notNull().default(0),
+    lastRunAt: timestamp('last_run_at', { withTimezone: true }),
+    nextDueAt: timestamp('next_due_at', { withTimezone: true }),
+    // Which source satisfied the step (BSE, NSE, RHP, WALK, ...)
+    source: text('source'),
+    // sha256 / document id / upstream step run id
+    inputRef: text('input_ref'),
+    evidence: jsonb('evidence'),
+    error: text('error'),
+    // Extractor/parser version that produced DONE
+    version: text('version'),
+    createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => ({
+    uniqueIpoStep: unique('unique_ipo_pipeline_steps_ipo_step').on(table.ipoId, table.stepId),
+    statusDueIdx: index('idx_ipo_pipeline_steps_status_next_due_at').on(
+      table.status,
+      table.nextDueAt
+    ),
+  })
+);
+
+export const ipoPipelineStepsRelations = relations(ipoPipelineSteps, ({ one }) => ({
+  ipo: one(ipos, {
+    fields: [ipoPipelineSteps.ipoId],
+    references: [ipos.id],
+  }),
+}));
+
+export type IpoPipelineStep = typeof ipoPipelineSteps.$inferSelect;
+export type NewIpoPipelineStep = typeof ipoPipelineSteps.$inferInsert;

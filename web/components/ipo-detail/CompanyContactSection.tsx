@@ -25,6 +25,8 @@ interface CompanyContactData {
   complianceOfficer: string | null;
   complianceOfficerPhone: string | null;
   complianceOfficerEmail: string | null;
+  /** Corporate Identity Number from the company's filings (`ipos.cin`). */
+  cin?: string | null;
 }
 
 interface CompanyContactSectionProps {
@@ -53,6 +55,7 @@ export function CompanyContactSection({ contactData }: CompanyContactSectionProp
 
   // Check if we have any contact information to display
   const hasContactInfo =
+    Boolean(contactData.cin) ||
     contactData.companyAddress !== null ||
     contactData.companyPhone !== null ||
     contactData.companyEmail !== null ||
@@ -60,13 +63,15 @@ export function CompanyContactSection({ contactData }: CompanyContactSectionProp
     contactData.companyState !== null ||
     contactData.companyPincode !== null;
 
+  const hasCin = Boolean(contactData.cin);
+
   const hasComplianceInfo =
     contactData.complianceOfficer !== null ||
     contactData.complianceOfficerPhone !== null ||
     contactData.complianceOfficerEmail !== null;
 
   // Don't render if no data available
-  if (!hasContactInfo && !hasComplianceInfo) {
+  if (!hasContactInfo && !hasComplianceInfo && !hasCin) {
     return null;
   }
 
@@ -90,6 +95,18 @@ export function CompanyContactSection({ contactData }: CompanyContactSectionProp
             <div>
               <h3 className="text-lg font-semibold mb-4">Registered Office</h3>
               <div className="space-y-3">
+                {contactData.cin && (
+                  <div className="flex items-start gap-3">
+                    <Building className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">
+                        Corporate Identity Number (CIN)
+                      </p>
+                      <p className="font-medium break-all">{contactData.cin}</p>
+                    </div>
+                  </div>
+                )}
+
                 {fullAddress && (
                   <div className="flex items-start gap-3">
                     <MapPin className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />

@@ -47,8 +47,11 @@ import {
   matchSebiRow,
   parseSebiDetailPdfUrl,
   sebiListingUrlFor,
+  fetchSebiListingRows,
   type SebiListingRow,
+  type SebiFetcher,
 } from './sebi-source.js';
+import { compactCompanyNameKey } from '@ipodhan/shared/utils/company-name-normalizer';
 import {
   parseCompanyHostLinks,
   companyInvestorUrls,
@@ -61,6 +64,7 @@ import {
 import {
   planIpoCycle,
   applyOutcome,
+  toPersistedState,
   type AttemptOutcome,
   type CycleOptions,
   type IssueShape,
@@ -76,6 +80,7 @@ import type {
 } from '@ipodhan/shared/repositories/document-fetch-state-repository';
 import { NetworkCounter, hostOf } from '../utils/network-counter.js';
 import logger from '../utils/logger.js';
+import { notifyOwner } from './owner-notify.js';
 
 // ---------------------------------------------------------------------------
 // Wire-level configuration
@@ -105,6 +110,10 @@ const SEBI_HEADERS = {
   'User-Agent': BROWSER_UA,
   Accept: 'text/html,application/xhtml+xml',
 };
+
+/** W-27: extra paged POSTs `trySebi` will attempt after an unmatched search,
+ * on top of the page-1 GET and the search POST — see `fetchSebiListingRows`. */
+const SEBI_MAX_SEARCH_PAGES = 6;
 
 /** Generic page fetch for an issuer host or the verifier. */
 const BROWSER_PAGE_HEADERS = {
@@ -403,7 +412,9 @@ export interface HttpResponse {
 
 export type HttpFetcher = (
   url: string,
-  init: { headers: Record<string, string>; timeoutMs: number }
+  /** `method`/`body` are optional (default GET) — added for W-27's SEBI
+   * search POST; every existing GET-only caller is unaffected. */
+  init: { headers: Record<string, string>; timeoutMs: number; method?: 'GET' | 'POST'; body?: string }
 ) => Promise<HttpResponse>;
 
 /**
@@ -458,6 +469,12 @@ export interface DiscoveryIpo {
    * is the right one. Never a document source (owner rule, 2026-08-28).
    */
   verifierUrl?: string | null;
+  /**
+   * The public slug. The runner itself never uses it; it is carried here (S-02)
+   * so the cycle can invalidate the IPO's caches after an automatic filing
+   * persist without a second query per IPO.
+   */
+  slug?: string | null;
 }
 
 export interface RunnerDeps {
@@ -504,6 +521,8 @@ export interface IpoRunResult {
   due: DocumentType[];
   found: DocumentType[];
   notYetFiled: DocumentType[];
+  /** W-28: due at this stage, every rung answered, nobody had it — a miss. */
+  notFound: DocumentType[];
   blocked: DocumentType[];
   notApplicable: DocumentType[];
   /** Types closed because a later filing replaced them this cycle (F-3). */
@@ -536,7 +555,12 @@ export const defaultFetcher: HttpFetcher = async (url, init) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), init.timeoutMs);
   try {
-    const res = await fetch(url, { headers: init.headers, signal: controller.signal });
+    const res = await fetch(url, {
+      method: init.method ?? 'GET',
+      headers: init.headers,
+      body: init.body,
+      signal: controller.signal,
+    });
     const body = Buffer.from(await res.arrayBuffer());
     return {
       status: res.status,
@@ -564,17 +588,27 @@ export const defaultFetcher: HttpFetcher = async (url, init) => {
 export class DocumentDiscoveryRunner {
   private boardCache: BseBoardRow[] | null = null;
   /**
-   * SEBI listings fetched this cycle, keyed by listing URL (one GET each).
+   * SEBI listings fetched this cycle, keyed by `<listingUrl>::<companyKey>`
+   * (W-27) — NOT by listing URL alone. Page 1 alone only carries the newest 25
+   * of 2,193+ DRHP filings, so a real result for one company now depends on
+   * whether ITS search/paging walk found a match, not just on the shared
+   * page-1 GET. Keying the cache by listing URL alone (as before W-27) would
+   * mean the FIRST company's search/paging outcome (found or not) gets
+   * silently reused as the answer for every later company in the cycle.
    *
-   * H-3: the value may be the literal 'failed'. It used to be `[]` on an HTTP
-   * error, which is indistinguishable from "SEBI listed nothing" — so the first
-   * IPO recorded `SEBI:failed:http_error` and every later IPO in the same cycle
-   * recorded `SEBI:not_listed` about a request that was never made. That is not
-   * a cache miss, it is an audit trail that lies.
+   * The one exception is a page-1 HTTP FAILURE, cached under the bare listing
+   * URL: that GET is identical for every company, so re-issuing it per IPO buys
+   * nothing (H-3).
+   *
+   * H-3 (pre-W-27, still true): the value may be the literal 'failed'. It used
+   * to be `[]` on an HTTP error, which is indistinguishable from "SEBI listed
+   * nothing" — so the first IPO recorded `SEBI:failed:http_error` and every
+   * later IPO in the same cycle recorded `SEBI:not_listed` about a request
+   * that was never made. That is not a cache miss, it is an audit trail that lies.
    */
   private readonly sebiListings = new Map<
     string,
-    { rows: SebiListingRow[]; evidence: AnsweredResponse } | 'failed'
+    { rows: SebiListingRow[]; matched: SebiListingRow | null; evidence: AnsweredResponse } | 'failed'
   >();
   /**
    * Investor pages fetched this cycle, keyed by URL (M-d). The company rung is
@@ -676,10 +710,11 @@ export class DocumentDiscoveryRunner {
     url: string,
     headers: Record<string, string>,
     ipoKey?: string,
-    timeoutMs: number = FETCH_TIMEOUT_MS
+    timeoutMs: number = FETCH_TIMEOUT_MS,
+    post?: { method: 'POST'; body: string }
   ): Promise<HttpResponse> {
     const started = Date.now();
-    const res = await this.deps.fetcher(url, { headers, timeoutMs });
+    const res = await this.deps.fetcher(url, { headers, timeoutMs, ...(post ?? {}) });
     this.deps.counter.record({
       host: hostOf(url),
       url,
@@ -931,7 +966,7 @@ export class DocumentDiscoveryRunner {
     docType: DocumentType,
     attempts: FetchAttempt[],
     seenBySha: Map<string, { documentId: string; docType: DocumentType }>
-  ): Promise<{ documentId: string; bytes: number } | null> {
+  ): Promise<{ documentId: string; bytes: number; storedType: DocumentType } | null> {
     const verdict = await this.fetchAndVerify(candidate, ipo, attempts, docType);
     if (!verdict || isVerifyFailure(verdict)) return null;
 
@@ -945,12 +980,39 @@ export class DocumentDiscoveryRunner {
         url: candidate.url,
         sha256: verdict.sha256,
       });
-      return { documentId: alias.documentId, bytes: verdict.bytes };
+      return { documentId: alias.documentId, bytes: verdict.bytes, storedType: alias.docType };
     }
+
+    // W-31 + W-29: ONE cover read, two uses. The issuer's website is printed on
+    // the filing cover, so reading it here makes the company-host rung reachable
+    // for the NEXT document this IPO needs without a single extra fetch — the
+    // DEEPA walk skipped that rung with `no_company_url` on every type because
+    // nothing had ever stored a website. The same read tells us whether this PDF
+    // has a usable text layer at all, which decides which of two copies of the
+    // same filing an extractor should prefer.
+    const cover = await (this.deps.extractCoverText ?? extractCoverTextFromPdf)(verdict.pdf);
+    const hasTextLayer = cover.usable === true;
+    if (!this.companyUrlByIpo.has(ipo.id) && cover.usable) {
+      const site = extractWebsiteFromCoverText(cover.text ?? '');
+      if (site) this.companyUrlByIpo.set(ipo.id, site);
+    }
+
+    // W-29: the zip member's OWN classification wins over the fetch kind.
+    // NSE serves `RATIOS_DEEPA.zip` whose only member is
+    // "Deepa Jewellers Limited - Price Band Advertisement.pdf". The runner
+    // already LOGGED "member classifies as: PRICE_BAND_AD" and then stored the
+    // row as RATIOS_BASIS_ISSUE_PRICE anyway, so the price-band ad was filed
+    // under a type it is not and the real one still read as missing. The member
+    // name is a confident, title-based classification of the bytes we actually
+    // hold; the fetch kind is only the question we asked. Bytes win, and the
+    // question is kept in the lineage below.
+    const storedType: DocumentType =
+      (verdict.memberTypeMismatch as DocumentType | undefined) ?? docType;
+    const retyped = storedType !== docType;
 
     const stored = await storeDocument({
       ipoId: ipo.id,
-      docType,
+      docType: storedType,
       pdf: verdict.pdf,
       sha256: verdict.sha256,
       storeDir: this.deps.storeDir ?? getStoreDir(),
@@ -969,7 +1031,7 @@ export class DocumentDiscoveryRunner {
 
     const doc = await this.deps.documents.upsertDocument({
       ipoId: ipo.id,
-      type: docType,
+      type: storedType,
       title: candidate.title,
       url: candidate.url,
       exchange: candidate.source,
@@ -979,19 +1041,30 @@ export class DocumentDiscoveryRunner {
       fileSize: verdict.bytes,
       sha256: verdict.sha256,
     });
-    seenBySha.set(verdict.sha256, { documentId: doc.id, docType });
+    seenBySha.set(verdict.sha256, { documentId: doc.id, docType: storedType });
 
-    // G2: the issuer's website is printed on the filing cover. Capturing it here
-    // means the company-host rung costs nothing extra to become usable for the
-    // NEXT document this IPO needs.
-    if (!this.companyUrlByIpo.has(ipo.id)) {
-      const cover = await (this.deps.extractCoverText ?? extractCoverTextFromPdf)(verdict.pdf);
-      const site = cover.usable ? extractWebsiteFromCoverText(cover.text ?? '') : null;
-      if (site) this.companyUrlByIpo.set(ipo.id, site);
-    }
+    // Lineage. `documents` has no metadata column, so the fetch kind, the chosen
+    // type and whether the stored PDF carries a usable text layer are recorded on
+    // the state row's `last_attempt` — the only lineage json this table has. The
+    // text-layer flag is what lets a later extraction prefer THIS copy over a
+    // scanned one of the same filing served by the other exchange (both are kept:
+    // different sha, different exchange, so the unique index admits both rows).
+    attempts.push({
+      source: candidate.source,
+      http: 200,
+      ms: 0,
+      outcome: retyped
+        ? `stored_as:${storedType} (fetch_kind:${docType}; member:${verdict.zipMember ?? '-'}; text_layer:${hasTextLayer ? 'yes' : 'no'})`
+        : `stored_as:${storedType} (text_layer:${hasTextLayer ? 'yes' : 'no'})`,
+      url: candidate.url,
+      sha256: verdict.sha256,
+    });
 
-    logger.info({ ipoId: ipo.id, docType, bytes: verdict.bytes }, 'Document FOUND and stored');
-    return { documentId: doc.id, bytes: verdict.bytes };
+    logger.info(
+      { ipoId: ipo.id, fetchKind: docType, storedType, bytes: verdict.bytes, hasTextLayer },
+      'Document FOUND and stored'
+    );
+    return { documentId: doc.id, bytes: verdict.bytes, storedType };
   }
 
   /**
@@ -1087,58 +1160,116 @@ export class DocumentDiscoveryRunner {
     triedUrls: Set<string>,
     seenBySha: Map<string, { documentId: string; docType: DocumentType }>
   ): Promise<RungOutcome> {
-    const cached = this.sebiListings.get(listingUrl);
-    // H-3: a cached FAILURE is reported as a failure, for every IPO in the
-    // cycle. It is still cached — one 503 should not become one request per IPO
-    // — but the later IPOs now say what actually happened.
+    // W-27: keyed by listing URL + company, not the listing URL alone — see
+    // the field's doc comment. A miss for one company's search/paging walk
+    // must not poison the cache entry another company would otherwise get a
+    // fresh walk for.
+    const cacheKey = `${listingUrl}::${compactCompanyNameKey(ipo.companyName)}`;
+    // H-3: the page-1 GET is the SAME request for every company, so a hard
+    // failure of it is company-INDEPENDENT and is cached under the bare listing
+    // URL. Keying the failure by company too (as the first W-27 draft did) turned
+    // one 503 back into one request per IPO — the exact waste H-3 exists to stop —
+    // while the per-company key stays correct for a SUCCESSFUL walk, whose result
+    // does depend on that company's own search/paging.
+    const cached = this.sebiListings.get(listingUrl) ?? this.sebiListings.get(cacheKey);
+    // A cached FAILURE is reported as a failure, for every IPO in the cycle: the
+    // later IPOs now say what actually happened instead of claiming a not_listed
+    // about a request that was never made.
     if (cached === 'failed') {
       rungs.push('SEBI:failed:cached_http_error');
       return failed('cached SEBI listing http error');
     }
-    let rows = cached ? cached.rows : undefined;
-    let listingEvidence: AnsweredResponse | null = cached ? cached.evidence : null;
-    if (rows === undefined) {
-      if (!this.spendEscalationGet(ipo.id)) {
-        // r5, Class 1: a request we DECLINED to make says nothing about whether
-        // the company filed. This used to return 'absent' - i.e. NOT_YET_FILED
-        // written from a budget counter.
-        rungs.push('SEBI:failed:budget');
-        return failed('escalation budget exhausted before the SEBI listing');
-      }
-      const started = Date.now();
-      const res = await this.request(listingUrl, SEBI_HEADERS, ipo.id);
-      if (res.status !== 200) {
+
+    let rows: SebiListingRow[];
+    let row: SebiListingRow | null;
+    let listingEvidence: AnsweredResponse | null;
+
+    if (cached) {
+      rungs.push('SEBI:cached');
+      rows = cached.rows;
+      row = cached.matched;
+      listingEvidence = cached.evidence;
+    } else {
+      let lastEvidence: AnsweredResponse | null = null;
+      let budgetExhausted = false;
+      const sebiFetch: SebiFetcher = async (url, init) => {
+        if (!this.spendEscalationGet(ipo.id)) {
+          budgetExhausted = true;
+          return { status: 0, body: '' };
+        }
+        const started = Date.now();
+        const res = await this.request(
+          url,
+          { ...SEBI_HEADERS, ...init.headers },
+          ipo.id,
+          FETCH_TIMEOUT_MS,
+          init.method === 'POST' ? { method: 'POST', body: init.body ?? '' } : undefined
+        );
         attempts.push({
           source: 'SEBI',
           http: res.status,
           ms: Date.now() - started,
-          outcome: 'http_error',
-          url: listingUrl,
+          outcome: res.status === 200 ? `listing_rows:${init.method}` : 'http_error',
+          url,
         });
-        rungs.push('SEBI:failed:http_error');
-        this.sebiListings.set(listingUrl, 'failed');
-        return failed('SEBI listing http ' + res.status);
-      }
-      rows = parseSebiListing(res.body.toString('utf8'));
-      listingEvidence = answeredFrom(res, listingUrl);
-      if (listingEvidence) this.sebiListings.set(listingUrl, { rows, evidence: listingEvidence });
-      attempts.push({
-        source: 'SEBI',
-        http: 200,
-        ms: Date.now() - started,
-        outcome: `listing_rows:${rows.length}`,
-        url: listingUrl,
+        const answered = answeredFrom(res, url);
+        if (answered) lastEvidence = answered;
+        return { status: res.status, body: res.body.toString('utf8') };
+      };
+
+      const result = await fetchSebiListingRows(docType, {
+        companyName: ipo.companyName,
+        fetchImpl: sebiFetch,
+        maxPages: SEBI_MAX_SEARCH_PAGES,
       });
+      rungs.push(...result.rungs);
+      rows = result.rows;
+      row = result.matched;
+      listingEvidence = lastEvidence;
+
+      if (result.aborted) {
+        // W-72: the walk STOPPED because one of its steps failed, so it never
+        // finished looking for this company. Its empty `matched` is the absence
+        // of a completed search, not the absence of a filing — minting
+        // `SEBI:not_listed` here (as it did) is exactly the H-2 lie, one rung
+        // deeper. The budget check comes first: a walk cut short by our OWN cap
+        // is a budget failure, not SEBI's.
+        if (budgetExhausted) {
+          rungs.push('SEBI:failed:budget');
+          return failed('escalation budget exhausted mid-SEBI walk');
+        }
+        // A transport error or a 5xx is the SERVER, so it is company-
+        // independent and cached under the bare listing URL for the cycle
+        // (H-3). A 4xx answers THIS company's search POST and is cached only
+        // against this company's key.
+        const { step, status } = result.aborted;
+        const companyIndependent = status === 0 || status >= 500;
+        this.sebiListings.set(companyIndependent ? listingUrl : cacheKey, 'failed');
+        rungs.push(`SEBI:failed:${step}`);
+        return failed(`SEBI listing walk aborted at ${step} (http ${status})`);
+      }
+
+      if (!listingEvidence) {
+        // Nothing ever answered 200 — either a hard HTTP failure or the
+        // escalation budget ran out before the first successful fetch.
+        if (budgetExhausted) {
+          rungs.push('SEBI:failed:budget');
+          return failed('escalation budget exhausted before any SEBI listing fetch');
+        }
+        // Keyed by the listing URL alone — see the lookup above. Only page 1
+        // can land here (a non-200 page 1 short-circuits `fetchSebiListingRows`
+        // before any search or paging runs), and page 1 carries no company.
+        this.sebiListings.set(listingUrl, 'failed');
+        rungs.push('SEBI:failed:http_error');
+        return failed('SEBI listing fetch failed');
+      }
+      this.sebiListings.set(cacheKey, { rows, matched: row, evidence: listingEvidence });
     }
 
-    const row = matchSebiRow(rows, ipo.companyName, docType);
     if (!row) {
-      // The listing ANSWERED and does not name this company: real evidence, and
-      // the 200 that carries it is what the absent arm is built from.
-      if (!listingEvidence) {
-        rungs.push('SEBI:failed:listing_without_evidence');
-        return failed('SEBI listing parsed without a 200 behind it');
-      }
+      // The listing ANSWERED (page 1, the search, or a paged fetch) and none
+      // of it named this company: real evidence, and the 200 that carries it
+      // is what the absent arm is built from.
       rungs.push('SEBI:not_listed');
       return absent(listingEvidence);
     }
@@ -1445,6 +1576,7 @@ export class DocumentDiscoveryRunner {
       due: plan.due,
       found: [],
       notYetFiled: [],
+      notFound: [],
       blocked: [],
       notApplicable: plan.toMarkNotApplicable,
       superseded: plan.toMarkSuperseded,
@@ -1643,7 +1775,7 @@ export class DocumentDiscoveryRunner {
         // A separate flag rather than comparing `exchanges`: assigning a literal
         // narrows its type, so `exchanges !== 'found'` is a compile error in this
         // workspace. The flag says the same thing without fighting it.
-        let stored: { documentId: string; bytes: number } | null = null;
+        let stored: { documentId: string; bytes: number; storedType: DocumentType } | null = null;
         const attemptCandidates = async (list: DiscoveredDocument[]): Promise<void> => {
           for (const candidate of list) {
             if (triedUrls.has(candidate.url)) continue;
@@ -1675,7 +1807,17 @@ export class DocumentDiscoveryRunner {
           bytes = stored.bytes;
           exchanges = 'found';
         }
-        rungs.push(stored ? 'EXCHANGES:found' : 'EXCHANGES:failed');
+        // W-29: FOUND_AS says the bytes were filed under a DIFFERENT type than
+        // the one we asked for. The fetch-kind row still goes to FOUND, which is
+        // what stops the state machine re-fetching the same zip forever; the
+        // chain line is where a reader learns what actually landed.
+        rungs.push(
+          stored
+            ? stored.storedType === docType
+              ? 'EXCHANGES:found'
+              : `EXCHANGES:FOUND_AS:${stored.storedType}`
+            : 'EXCHANGES:failed'
+        );
       }
 
       // B-1: may the exchanges' answer SETTLE this type?
@@ -1762,9 +1904,26 @@ export class DocumentDiscoveryRunner {
         );
       }
 
-      const transition = applyOutcome(prior, outcome, now);
+      // W-28: the stage is what decides whether a miss means "not filed yet" or
+      // "we could not find it". Without it every dead end read as NOT_YET_FILED.
+      const transition = applyOutcome(prior, outcome, now, { stage: ipo.stage });
+      // W-28: NOT_FOUND has no `document_fetch_status` enum member yet (the enum
+      // change is reported, not made, by this work package), so it persists as
+      // WANTED — open, on its backoff, and no longer claiming the issuer has not
+      // filed. `state_intent` below carries the decided state until the enum lands.
+      const persistedState = toPersistedState(transition.state);
+      let stateIntentAttempt: FetchAttempt | null = null;
+      if (persistedState !== transition.state) {
+        stateIntentAttempt = {
+          source: 'CHAIN',
+          http: 0,
+          ms: 0,
+          outcome: `state_intent[${docType}]: ${transition.state} — ${transition.reason}`,
+        };
+        attempts.push(stateIntentAttempt);
+      }
       const patch: DocumentFetchStatePatch = {
-        state: transition.state,
+        state: persistedState,
         nextRetryAt: transition.nextRetryAt,
         blockedSinceAt: transition.blockedSinceAt,
         attempts: (stateRow.attempts ?? 0) + 1,
@@ -1784,7 +1943,7 @@ export class DocumentDiscoveryRunner {
         // every row.
         lastAttempt: attempts.filter((a) =>
           a.source === 'CHAIN'
-            ? a === chainAttempt
+            ? a === chainAttempt || a === stateIntentAttempt
             : !a.url || triedUrls.has(a.url) || !DOC_URL_RE.test(a.url)
         ),
       };
@@ -1793,6 +1952,8 @@ export class DocumentDiscoveryRunner {
 
       if (transition.state === 'FOUND') result.found.push(docType);
       else if (transition.state === 'NOT_YET_FILED') result.notYetFiled.push(docType);
+      else if (transition.state === 'NOT_FOUND') result.notFound.push(docType);
+      else if (transition.state === 'NOT_APPLICABLE') result.notApplicable.push(docType);
       else if (transition.state === 'BLOCKED_ALL') result.blocked.push(docType);
 
       if (transition.alert) {
@@ -1800,6 +1961,14 @@ export class DocumentDiscoveryRunner {
           { ipoId: ipo.id, company: ipo.companyName, docType, attempts },
           'Document BLOCKED_ALL — every source failed (P2)'
         );
+        // W-28: the owner hears about it once, on entry. Fire-and-forget and a
+        // no-op without NOTIFIER_URL/NOTIFIER_KEY, so this can never disturb a
+        // scrape run (notifier-integration.md, non-fatal-side-effects.md).
+        notifyOwner('P2', `Document unreachable: ${docType}`, {
+          body: `${ipo.companyName} (${ipo.stage}): ${transition.reason}`,
+          type: 'document-discovery-blocked',
+          dedupeKey: `doc-blocked:${ipo.id}:${docType}`,
+        });
       }
       if (bytes !== undefined) {
         logger.info({ ipoId: ipo.id, docType, bytes }, 'Document FOUND and stored');

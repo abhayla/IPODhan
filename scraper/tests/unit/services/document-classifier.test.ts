@@ -6,6 +6,7 @@ import {
   classifyBseField,
   fileNameFromUrl,
   BSE_DOCUMENT_FIELDS,
+  isNseRatiosArchiveUrl,
 } from '../../../src/services/document-classifier.js';
 import { extractBseCoreRow } from '../../../src/services/bse-ipo-board.js';
 
@@ -61,6 +62,30 @@ describe('classifyByTitle — the E14 / Skyways-trap fixes', () => {
     expect(classifyByTitle('Ratios / Basis of Issue Price')).toBe('RATIOS_BASIS_ISSUE_PRICE');
   });
 
+  it('T10 types the DEEPA JEWELLERS live filename (underscored) as RHP, not PROSPECTUS (2026-09-02)', () => {
+    expect(
+      classifyByTitle(
+        'deepa_jewellers_limited_red_herring_prospectus_and_gid_20260827180720.zip'
+      )
+    ).toBe('RHP');
+  });
+
+  it('T11 types an underscored Draft Red Herring Prospectus as DRHP', () => {
+    expect(classifyByTitle('Draft_Red_Herring_Prospectus_Acme.pdf')).toBe('DRHP');
+  });
+
+  it('T12 types an underscored final Prospectus (no red herring) as PROSPECTUS', () => {
+    expect(classifyByTitle('Deepa_Jewellers_Prospectus_20260905.zip')).toBe('PROSPECTUS');
+  });
+
+  it('T13 still types an underscored Price Band Advertisement as PRICE_BAND_AD', () => {
+    expect(classifyByTitle('Price_band_advt_20260827180721.zip')).toBe('PRICE_BAND_AD');
+  });
+
+  it('T14 types a hyphenated Red-Herring-Prospectus as RHP', () => {
+    expect(classifyByTitle('Red-Herring-Prospectus-X.pdf')).toBe('RHP');
+  });
+
   it('T9 returns null for titles that are not tracked documents', () => {
     for (const title of ['Issue Period', 'Sponsor Bank', 'e-form link', '', '   ']) {
       expect(classifyByTitle(title)).toBeNull();
@@ -99,6 +124,15 @@ describe('classifyBseField — against the REAL Skyways core payload', () => {
     expect(classifyBseField('Price_Band_Advertisement', row.Price_Band_Advertisement)).toBe('PRICE_BAND_AD');
   });
 
+  it('T15 types the live DEEPA JEWELLERS Prospectus_GID payload as RHP, not PROSPECTUS (2026-09-02, IPO_NO 7922)', () => {
+    expect(
+      classifyBseField(
+        'Prospectus_GID',
+        'https://listing.bseindia.com/Download//PreAnchor/Deepa_Jewellers_Limited_Red_Herring_Prospectus_and_GID_20260827180720.zip'
+      )
+    ).toBe('RHP');
+  });
+
   it('falls back to the field default when the filename says nothing', () => {
     expect(classifyBseField('Anchor_Details', 'https://x/anchor_20260821.pdf')).toBe(
       'ANCHOR_ALLOCATION_REPORT'
@@ -119,5 +153,25 @@ describe('classifyBseField — against the REAL Skyways core payload', () => {
       'Price_Band_Advertisement',
       'Anchor_Details',
     ]);
+  });
+});
+
+describe('isNseRatiosArchiveUrl — W-90 exchange-controlled archive naming', () => {
+  it('matches NSE\'s real RATIOS_DEEPA.zip url', () => {
+    expect(isNseRatiosArchiveUrl('https://nsearchives.nseindia.com/content/ipo/RATIOS_DEEPA.zip')).toBe(
+      true
+    );
+  });
+
+  it('does not match a BSE price-band zip url', () => {
+    expect(isNseRatiosArchiveUrl('https://listing.bseindia.com/Price_Band_Advertisement.zip')).toBe(
+      false
+    );
+  });
+
+  it('does not match a non-archive url', () => {
+    expect(isNseRatiosArchiveUrl('https://x/RHP_SKYWAYS/RHP Skyways.pdf')).toBe(false);
+    expect(isNseRatiosArchiveUrl(null)).toBe(false);
+    expect(isNseRatiosArchiveUrl(undefined)).toBe(false);
   });
 });

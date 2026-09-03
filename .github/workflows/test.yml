@@ -27,7 +27,6 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: ./web
         run: npm ci
 
       - name: Run ESLint
@@ -50,7 +49,6 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: ./web
         run: npm ci
 
       - name: Run unit tests
@@ -98,7 +96,6 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: ./web
         run: npm ci
 
       - name: Run database migrations
@@ -155,7 +152,6 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: ./web
         run: npm ci
 
       - name: Run tests with coverage
@@ -203,12 +199,12 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: ./web
         run: npm ci
 
       - name: Install Playwright browsers
         working-directory: ./web
-        run: npx playwright install --with-deps ${{ matrix.browser }}
+        # The Playwright project is named "edge" but the installable browser is "msedge" (W-98).
+        run: npx playwright install --with-deps ${{ matrix.browser == 'edge' && 'msedge' || matrix.browser }}
 
       - name: Run E2E tests
         working-directory: ./web
@@ -242,7 +238,6 @@ jobs:
           cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: ./web
         run: npm ci
 
       - name: Install Playwright browsers
