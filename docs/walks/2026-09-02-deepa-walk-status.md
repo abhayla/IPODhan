@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-03 08:40 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-03 08:50 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -60,3 +60,4 @@ Last updated: 2026-09-03 08:40 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 - 2026-09-03 02:28: final scraper run green (2,314 pass). Walk fixes complete. Branch pushed as backup; PR cut is the next step.
 - 2026-09-03 02:32: branch pushed; draft PR #278 opened as the review container (split by file set is the owner's call). Deploy waits for owner approval (D-09).
 - 2026-09-03 08:40: W-09 was stale (0042 already has the schema); replaced by W-73/W-74/W-75. Owner: W-56 lint errors in a separate PR later.
+- 2026-09-03 08:50: W-73 round 1 (3e896798): writers + gates; also found and closed an unprotected whole-row write of promoter acquisition ranges. Round 2 (wiring into the CLI) running.
