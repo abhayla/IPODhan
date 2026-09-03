@@ -188,7 +188,7 @@ describe('processPendingFilings — the happy path', () => {
     expect(persistCall[3].protectionFilter).toBeDefined();
 
     expect(withFile.setDocumentExtractionState).toHaveBeenCalledWith(
-      expect.objectContaining({ documentId: 'doc-1', status: 'IN_PROGRESS' })
+      expect.objectContaining({ documentId: 'doc-1', status: 'IN_PROGRESS', retryCount: 1 })
     );
     expect(withFile.setDocumentExtractionState).toHaveBeenCalledWith(
       expect.objectContaining({ documentId: 'doc-1', status: 'COMPLETED' })
@@ -222,7 +222,7 @@ describe('processPendingFilings — the happy path', () => {
 });
 
 describe('processPendingFilings — failures are recorded, never fatal', () => {
-  it('an extractor failure writes FAILED E-rows with a backoff and marks the document FAILED with retryCount 1', async () => {
+  it('an extractor failure writes FAILED E-rows with a backoff, marks IN_PROGRESS with retryCount 1, and FAILED with retryCount unchanged', async () => {
     const d = deps({ runExtractor: vi.fn(() => ({ ok: false as const, error: 'extractor exited 1: boom' })) });
 
     const result = await processPendingFilings(IPO, d);
@@ -238,15 +238,21 @@ describe('processPendingFilings — failures are recorded, never fatal', () => {
       expect((w as { error?: string }).error).toContain('boom');
       expect((w as { nextDueAt?: Date }).nextDueAt).toBeInstanceOf(Date);
     }
-    // MAJOR-A: FAILED (not PENDING) is what makes `documentExtractionBlocked`
-    // apply this document's own backoff on the next cycle; retryCount is the
-    // document's own counter (1, from 0), never a shared/ledger value.
+    // Round 4: the attempt is counted at the IN_PROGRESS stamp (transition 1) —
+    // retryCount 1 written THERE, and the subsequent FAILED write (transition
+    // 3) leaves retryCount unchanged (no retryCount key at all).
     expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
-      expect.objectContaining({ documentId: 'doc-1', status: 'FAILED', retryCount: 1 })
+      expect.objectContaining({ documentId: 'doc-1', status: 'IN_PROGRESS', retryCount: 1 })
     );
+    const failedCall = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'FAILED'
+    );
+    expect(failedCall[0]).not.toHaveProperty('retryCount');
+    expect(failedCall[0].error).toContain('extractor: ');
+    expect(failedCall[0].error).toContain('boom');
   });
 
-  it('a persist failure is recorded as a FAILED G3 and does not throw out of the service', async () => {
+  it('(e) a persist throw is FAILED (never PENDING), retryCount unchanged, and does not throw out of the service', async () => {
     const d = deps({
       persistFiling: vi.fn(async () => {
         throw new Error('unique constraint violated');
@@ -258,6 +264,13 @@ describe('processPendingFilings — failures are recorded, never fatal', () => {
     const g3 = recordedSteps.flatMap((r) => r.writes).find((w) => w.stepId === 'G3');
     expect(g3.status).toBe('FAILED');
     expect(d.invalidateCaches).not.toHaveBeenCalled();
+
+    const failedCall = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'FAILED'
+    );
+    expect(failedCall[0].error).toContain('persist: ');
+    expect(failedCall[0].error).toContain('unique constraint violated');
+    expect(failedCall[0]).not.toHaveProperty('retryCount');
   });
 
   it('a document-load failure returns an empty result instead of throwing', async () => {
@@ -344,17 +357,32 @@ describe('processPendingFilings — the W-45 paired-agreement gate is not skippe
 
 describe('documentExtractionBlocked — pure per-document gate logic', () => {
   const now = new Date('2026-09-03T10:00:00Z');
+  const V1 = EXTRACTOR_VERSION;
 
   it('a never-tried document (PENDING, retryCount 0) never blocks', () => {
-    expect(documentExtractionBlocked({ extractionStatus: 'PENDING', retryCount: 0, updatedAt: null }, now).blocked).toBe(
-      false
-    );
+    expect(
+      documentExtractionBlocked({ extractionStatus: 'PENDING', retryCount: 0, updatedAt: null }, V1, now).blocked
+    ).toBe(false);
   });
 
-  it('MANUAL_REVIEW always blocks, regardless of updatedAt', () => {
+  it('(g) MANUAL_REVIEW at the CURRENT version blocks, regardless of updatedAt', () => {
     expect(
-      documentExtractionBlocked({ extractionStatus: 'MANUAL_REVIEW', retryCount: 10, updatedAt: now }, now).blocked
+      documentExtractionBlocked(
+        { extractionStatus: 'MANUAL_REVIEW', extractionError: `${EXTRACTION_BLOCKED_ERROR}@${V1}`, retryCount: 10, updatedAt: now },
+        V1,
+        now
+      ).blocked
     ).toBe(true);
+  });
+
+  it('(g) MANUAL_REVIEW at a DIFFERENT (older) version does not block — eligible again', () => {
+    expect(
+      documentExtractionBlocked(
+        { extractionStatus: 'MANUAL_REVIEW', extractionError: `${EXTRACTION_BLOCKED_ERROR}@old-version`, retryCount: 10, updatedAt: now },
+        V1,
+        now
+      ).blocked
+    ).toBe(false);
   });
 
   it('FAILED with retryCount 1 blocks 5 minutes later, and is clear 20 minutes later', () => {
@@ -362,10 +390,23 @@ describe('documentExtractionBlocked — pure per-document gate logic', () => {
     const twentyMinAgo = new Date(now.getTime() - 20 * 60_000);
     // attemptsBefore = retryCount(1) - 1 = 0 -> backoff = 15 min.
     expect(
-      documentExtractionBlocked({ extractionStatus: 'FAILED', retryCount: 1, updatedAt: fiveMinAgo }, now).blocked
+      documentExtractionBlocked({ extractionStatus: 'FAILED', retryCount: 1, updatedAt: fiveMinAgo }, V1, now).blocked
     ).toBe(true);
     expect(
-      documentExtractionBlocked({ extractionStatus: 'FAILED', retryCount: 1, updatedAt: twentyMinAgo }, now).blocked
+      documentExtractionBlocked({ extractionStatus: 'FAILED', retryCount: 1, updatedAt: twentyMinAgo }, V1, now).blocked
+    ).toBe(false);
+  });
+
+  it('(c) a killed-mid-extraction IN_PROGRESS row is gated by the SAME backoff as FAILED', () => {
+    const fiveMinAgo = new Date(now.getTime() - 5 * 60_000);
+    const twentyMinAgo = new Date(now.getTime() - 20 * 60_000);
+    expect(
+      documentExtractionBlocked({ extractionStatus: 'IN_PROGRESS', retryCount: 1, updatedAt: fiveMinAgo }, V1, now)
+        .blocked
+    ).toBe(true);
+    expect(
+      documentExtractionBlocked({ extractionStatus: 'IN_PROGRESS', retryCount: 1, updatedAt: twentyMinAgo }, V1, now)
+        .blocked
     ).toBe(false);
   });
 });
@@ -403,11 +444,35 @@ describe('selectPendingFilings — the per-document retry gate (MAJOR-A)', () =>
     expect(pending.map((d) => d.id)).toEqual(['doc-x']);
   });
 
-  it('(c) a document at retryCount 10 / MANUAL_REVIEW is never selected', () => {
-    const x = doc({ id: 'doc-x', type: 'RHP', extractionStatus: 'MANUAL_REVIEW', retryCount: MAX_EXTRACTION_ATTEMPTS });
+  it('(c) a document at retryCount 10 / MANUAL_REVIEW at the current version is never selected', () => {
+    const x = doc({
+      id: 'doc-x',
+      type: 'RHP',
+      extractionStatus: 'MANUAL_REVIEW',
+      extractionError: `${EXTRACTION_BLOCKED_ERROR}@${EXTRACTOR_VERSION}`,
+      retryCount: MAX_EXTRACTION_ATTEMPTS,
+    });
     const { pending, skipped } = selectPendingFilings('ipo-1', [x], twoStates, { fileExists: () => true, now });
     expect(pending).toHaveLength(0);
     expect(skipped[0]).toContain(EXTRACTION_BLOCKED_ERROR);
+  });
+
+  it('(g) a document MANUAL_REVIEW at an OLDER version is selected again, resetting to retryCount 1', async () => {
+    const x = doc({
+      id: 'doc-x',
+      type: 'RHP',
+      extractionStatus: 'MANUAL_REVIEW',
+      extractionError: `${EXTRACTION_BLOCKED_ERROR}@old-version`,
+      retryCount: MAX_EXTRACTION_ATTEMPTS,
+    });
+    const { pending } = selectPendingFilings('ipo-1', [x], twoStates, { fileExists: () => true, now });
+    expect(pending.map((d) => d.id)).toEqual(['doc-x']);
+
+    const d = deps({ loadDocuments: vi.fn(async () => [x]) });
+    await processPendingFilings(IPO, d);
+    expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
+      expect.objectContaining({ documentId: 'doc-x', status: 'IN_PROGRESS', retryCount: 1 })
+    );
   });
 
   it('one document backing off does NOT block an unrelated sibling document of the same IPO', () => {
@@ -418,6 +483,7 @@ describe('selectPendingFilings — the per-document retry gate (MAJOR-A)', () =>
       id: 'doc-blocked',
       type: 'RHP',
       extractionStatus: 'MANUAL_REVIEW',
+      extractionError: `${EXTRACTION_BLOCKED_ERROR}@${EXTRACTOR_VERSION}`,
       retryCount: MAX_EXTRACTION_ATTEMPTS,
     });
     const ok = doc({ id: 'doc-ok', type: 'PROSPECTUS', sha256: 'c'.repeat(64), extractionStatus: 'PENDING' });
@@ -435,47 +501,118 @@ describe('processPendingFilings — per-document retry bookkeeping (MAJOR-A)', (
     );
   });
 
-  it('a failure passes this document own retryCount as attemptsBefore, producing the matching backoff', async () => {
+  it('a failure passes this document own PREVIOUS retryCount as attemptsBefore, producing the matching backoff', async () => {
     const d = deps({
       loadDocuments: vi.fn(async () => [doc({ retryCount: 4 })]),
       runExtractor: vi.fn(() => ({ ok: false as const, error: 'boom' })),
     });
     await processPendingFilings(IPO, d);
     const eWrite = recordedSteps.flatMap((r) => r.writes).find((w) => w.stepId === 'E1') as { nextDueAt?: Date };
-    // attemptsBefore=4 -> 2^4 x 15min = 4h.
+    // attemptsBefore=4 (the value BEFORE the IN_PROGRESS stamp) -> 2^4 x 15min = 4h.
     expect(eWrite.nextDueAt).toBeInstanceOf(Date);
+    // Round 4: the IN_PROGRESS stamp writes retryCount 5 (4+1); the later
+    // FAILED write carries no retryCount at all (unchanged from that stamp).
     expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
-      expect.objectContaining({ documentId: 'doc-1', status: 'FAILED', retryCount: 5 })
+      expect.objectContaining({ documentId: 'doc-1', status: 'IN_PROGRESS', retryCount: 5 })
     );
+    const failedCall = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'FAILED'
+    );
+    expect(failedCall[0]).not.toHaveProperty('retryCount');
   });
 
-  it('(e) the 10th failure (retryCount 9 -> 10) is recorded MANUAL_REVIEW with the blocked error', async () => {
+  it('(f) the 10th stamp (retryCount 9 -> 10) is recorded MANUAL_REVIEW with the version in the error', async () => {
     const d = deps({
       loadDocuments: vi.fn(async () => [doc({ retryCount: MAX_EXTRACTION_ATTEMPTS - 1 })]),
       runExtractor: vi.fn(() => ({ ok: false as const, error: 'boom' })),
     });
     await processPendingFilings(IPO, d);
+    const expectedError = `${EXTRACTION_BLOCKED_ERROR}@${EXTRACTOR_VERSION}`;
     expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
       expect.objectContaining({
         documentId: 'doc-1',
         status: 'MANUAL_REVIEW',
-        error: EXTRACTION_BLOCKED_ERROR,
+        error: expectedError,
         retryCount: MAX_EXTRACTION_ATTEMPTS,
       })
     );
     const eWrites = recordedSteps.flatMap((r) => r.writes).filter((w) => w.stepId.startsWith('E'));
-    for (const w of eWrites) expect((w as { error?: string }).error).toBe(EXTRACTION_BLOCKED_ERROR);
+    for (const w of eWrites) expect((w as { error?: string }).error).toBe(expectedError);
   });
 
-  it('a document already at the cap (MANUAL_REVIEW) is blocked before spawning at all', async () => {
+  it('a document already at the cap (MANUAL_REVIEW at the current version) is blocked before spawning at all', async () => {
     const d = deps({
       loadDocuments: vi.fn(async () => [
-        doc({ extractionStatus: 'MANUAL_REVIEW', retryCount: MAX_EXTRACTION_ATTEMPTS }),
+        doc({
+          extractionStatus: 'MANUAL_REVIEW',
+          extractionError: `${EXTRACTION_BLOCKED_ERROR}@${EXTRACTOR_VERSION}`,
+          retryCount: MAX_EXTRACTION_ATTEMPTS,
+        }),
       ]),
     });
     const result = await processPendingFilings(IPO, d);
     expect(result.spawned).toBe(0);
     expect(d.runExtractor).not.toHaveBeenCalled();
+  });
+});
+
+describe('processPendingFilings — the W-45 disagreement failure path (round 4)', () => {
+  it('(d) a W-45 refusal is FAILED (not MANUAL_REVIEW), with retryCount unchanged from the extract-time stamp', async () => {
+    // decidePairedPersist only refuses outright (proceed:false) when the two
+    // documents cannot be compared at all — an ordinary numeric disagreement
+    // instead proceeds with the metric withheld (see the withholding test
+    // above). No comparable unit is the refusal path this test exercises.
+    const withRevenue = (revenue: number, unit: string | null) =>
+      ({
+        doc_type: 'RHP',
+        extraction_status: 'OK',
+        unit,
+        fiscal_years: [2024],
+        fields: {
+          revenue_by_fy: {
+            value: { '2024': revenue },
+            page: 1,
+            check: { name: 'revenue_year_series', passed: true, detail: 'ok' },
+          },
+        },
+      }) as unknown as FilingExtraction;
+
+    const d = deps({
+      loadDocuments: vi.fn(async () => [
+        doc({ id: 'doc-ad', type: 'PRICE_BAND_AD', sha256: 'b'.repeat(64) }),
+        doc({ id: 'doc-rhp', type: 'RHP' }),
+      ]),
+      loadStates: vi.fn(async () => [
+        { id: 's1', docType: 'PRICE_BAND_AD', documentId: 'doc-ad', extractedAt: null, extractorVersion: null },
+        { id: 's2', docType: 'RHP', documentId: 'doc-rhp', extractedAt: null, extractorVersion: null },
+      ]),
+      runExtractor: vi.fn(({ docType }) => ({
+        ok: true as const,
+        extraction: withRevenue(docType === 'RHP' ? 1000 : 10, null),
+      })),
+    });
+
+    await processPendingFilings(IPO, d);
+
+    const calls = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls;
+    const failedCalls = calls.filter((c) => c[0].status === 'FAILED');
+    expect(failedCalls).toHaveLength(2);
+    for (const call of failedCalls) {
+      expect(call[0].error).toContain('w45_disagreement');
+      expect(call[0]).not.toHaveProperty('retryCount');
+    }
+
+    // Selected again once its own backoff (retryCount 1 -> 15 min) elapses.
+    const failedDoc = doc({
+      id: 'doc-ad',
+      type: 'PRICE_BAND_AD',
+      sha256: 'b'.repeat(64),
+      extractionStatus: 'FAILED',
+      retryCount: 1,
+      updatedAt: new Date(Date.now() - 20 * 60_000),
+    });
+    const { pending } = selectPendingFilings('ipo-1', [failedDoc], [], { fileExists: () => true });
+    expect(pending.map((x) => x.id)).toEqual(['doc-ad']);
   });
 });
 

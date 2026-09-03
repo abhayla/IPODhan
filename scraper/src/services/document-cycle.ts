@@ -71,13 +71,18 @@ export interface DocumentCycleSummary {
   networkCalls: number;
   durationMs: number;
   budgetExhausted: boolean;
+  /** S-02 round 4 item 7: documents in MANUAL_REVIEW among this cycle's candidate IPOs. */
+  extractionBlocked: number;
+  /** S-02 round 4 item 7: documents currently FAILED among this cycle's candidate IPOs. */
+  extractionFailed: number;
 }
 
-/** `ipos=4 skipped=2 found=3 not_yet=1 blocked=0 calls=5` — the ledger `reason`. */
+/** `ipos=4 skipped=2 found=3 not_yet=1 blocked=0 calls=5 extraction_blocked=0 extraction_failed=0` — the ledger `reason`. */
 export function formatCycleReason(s: DocumentCycleSummary): string {
   return (
     `ipos=${s.ipos} skipped=${s.skipped} found=${s.found} not_yet=${s.notYetFiled} ` +
-    `blocked=${s.blocked} calls=${s.networkCalls}${s.budgetExhausted ? ' budget=exhausted' : ''}`
+    `blocked=${s.blocked} calls=${s.networkCalls} extraction_blocked=${s.extractionBlocked} ` +
+    `extraction_failed=${s.extractionFailed}${s.budgetExhausted ? ' budget=exhausted' : ''}`
   );
 }
 
@@ -85,7 +90,8 @@ export function formatCycleReason(s: DocumentCycleSummary): string {
 export function summarize(
   results: IpoRunResult[],
   durationMs: number,
-  budgetExhausted = false
+  budgetExhausted = false,
+  extraction: { blocked: number; failed: number } = { blocked: 0, failed: 0 }
 ): DocumentCycleSummary {
   return {
     ipos: results.length,
@@ -96,6 +102,8 @@ export function summarize(
     networkCalls: results.reduce((n, r) => n + r.networkCalls, 0),
     durationMs,
     budgetExhausted,
+    extractionBlocked: extraction.blocked,
+    extractionFailed: extraction.failed,
   };
 }
 
@@ -273,6 +281,10 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
     const candidates = await loadCandidateIpos();
     const results: IpoRunResult[] = [];
     let budgetExhausted = false;
+    // Item 7: tallied from the SAME `documents.findByIPO` rows already loaded
+    // below for `shaByDocId` — no extra query.
+    let extractionBlocked = 0;
+    let extractionFailed = 0;
 
     for (const ipo of candidates) {
     if (Date.now() - startedAt >= budgetMs) {
@@ -292,6 +304,9 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
       try {
         for (const d of await documents.findByIPO(ipo.id)) {
           shaByDocId.set(d.id, (d as { sha256?: string | null }).sha256 ?? null);
+          const extractionStatus = (d as { extractionStatus?: string | null }).extractionStatus;
+          if (extractionStatus === 'MANUAL_REVIEW') extractionBlocked++;
+          else if (extractionStatus === 'FAILED') extractionFailed++;
         }
       } catch (error) {
         // Non-fatal: without the map, demotion falls back to the older
@@ -442,18 +457,25 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
     }
   }
 
-    const summary = summarize(results, Date.now() - startedAt, budgetExhausted);
+    const summary = summarize(results, Date.now() - startedAt, budgetExhausted, {
+      blocked: extractionBlocked,
+      failed: extractionFailed,
+    });
 
     // One scraper_logs row per cycle for source=DOCUMENTS, so the existing metrics
     // tracker and alert thresholds cover documents like any other source (§7.4).
+    // Item 7: extractionBlocked > 0 also forces PARTIAL and carries
+    // `extraction_blocked=<n>` in error_message, so MANUAL_REVIEW documents are
+    // visible to the SAME alert path as a discovery block — no new machinery.
     // Non-fatal: a logging failure must never fail the cycle.
     try {
       await db.insert(scraperLogs).values({
         source: 'DOCUMENTS',
-        status: summary.blocked > 0 ? 'PARTIAL' : 'SUCCESS',
+        status: summary.blocked > 0 || summary.extractionBlocked > 0 ? 'PARTIAL' : 'SUCCESS',
         recordsProcessed: summary.found,
         recordsFailed: summary.blocked,
         durationMs: summary.durationMs,
+        errorMessage: summary.extractionBlocked > 0 ? `extraction_blocked=${summary.extractionBlocked}` : null,
       } as never);
     } catch (error) {
       logger.error(

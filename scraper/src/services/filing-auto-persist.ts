@@ -38,35 +38,50 @@
  *
  * RETRY GATE IS PER DOCUMENT, NOT PER IPO (MAJOR-A, round 3).
  *
- * Before this fix, `selectPendingFilings` read ONE ledger row (E1, keyed by
- * ipoId only — the step ledger has no document dimension) and used its
- * `attempts`/`next_due_at` to decide whether THIS CYCLE could spawn python
- * for the WHOLE IPO. A scanned price-band ad that never parses therefore
- * blocked every other document belonging to the same IPO — including the RHP
- * — forever, because the shared gate never advanced past that one document's
- * failures.
+ * The gate lives on the `documents` row itself, one gate per document, using
+ * the columns that already exist for exactly this purpose: `retry_count`,
+ * `extraction_status`, `extraction_error`, `extracted_at`, `updated_at`.
  *
- * The gate now lives on the `documents` row itself, one gate per document,
- * using the columns that already exist for exactly this purpose:
- * `retry_count`, `extraction_status`, `extraction_error`, `extracted_at`,
- * `updated_at`. A document is a candidate when its file is stored, its
- * `extraction_status` is not COMPLETED-at-the-current-`EXTRACTOR_VERSION` and
- * not MANUAL_REVIEW, and — if it is FAILED — `now >= updated_at +
- * backoff(retry_count)`, where `backoff` is the SAME exponential function
- * `step-ledger-recorders.ts` already exports as `backoffNextDueAt` (2^n x 15
- * min, capped at 6 hours; `n` is the attempt count BEFORE the failure that set
- * `updated_at`, i.e. `retry_count - 1`). After 10 failed attempts the document
- * is marked MANUAL_REVIEW with error `blocked_after_10_attempts` and stays
- * blocked until `EXTRACTOR_VERSION` changes (a version bump does not reset
- * `retry_count` — it changes the "already extracted" check upstream of this
- * gate, so a blocked document becomes eligible again under the new version
- * exactly the way an ordinary un-extracted document is).
+ * THE COMPLETE STATE MACHINE (round 4). Every status write goes through the
+ * ONE pure function `buildExtractionStatePatch(transition, ctx, now)`, which
+ * returns the exact `documents` column patch, and `setDocumentExtractionState`
+ * applies it with `db.update(documents).set(patch)`. The patch ALWAYS
+ * includes `updatedAt: now` (round-3 review MAJOR-1: `documents.updated_at`
+ * has no `$onUpdate` and no trigger — without this write the backoff clock
+ * never advances).
+ *
+ *  1. select -> IN_PROGRESS: `{status IN_PROGRESS, retryCount: prev+1,
+ *     updatedAt}`. The attempt is counted HERE, at the stamp — a process
+ *     killed mid-extraction (row left IN_PROGRESS) still consumes an attempt
+ *     (round-3 MINOR-6). An IN_PROGRESS row is eligible for selection again
+ *     on the NEXT cycle (crash recovery), subject to the same retry/backoff
+ *     rule as FAILED, reading its own `retry_count`/`updated_at`.
+ *  2. extractor ok + persist ok -> COMPLETED: `{status COMPLETED, retryCount:
+ *     0, extractionError: null, extractedAt: now, updatedAt}`.
+ *  3. extractor failure OR persist throw OR a W-45 cross-document
+ *     disagreement -> FAILED: `{status FAILED, extractionError: <reason>,
+ *     updatedAt}`; `retryCount` is left UNCHANGED — it was already counted at
+ *     the IN_PROGRESS stamp (1). Round-3 MAJOR-4/MINOR-5: neither a W-45
+ *     refusal nor a persist throw is MANUAL_REVIEW or PENDING any more — both
+ *     are retried with backoff exactly like an extractor failure.
+ *  4. Selection gate: skip when FAILED or IN_PROGRESS and
+ *     `now < backoffNextDueAt(retryCount - 1, updatedAt)` (2^n x 15 min,
+ *     capped at 6 h). Skip when COMPLETED at the current `EXTRACTOR_VERSION`.
+ *  5. When the retryCount the IN_PROGRESS stamp (1) already wrote has reached
+ *     `MAX_EXTRACTION_ATTEMPTS` (10), a subsequent failure (3) writes
+ *     MANUAL_REVIEW instead of FAILED, with `extractionError:
+ *     "blocked_after_10_attempts@<EXTRACTOR_VERSION>"` — the version lives
+ *     INSIDE the error string, no schema change.
+ *  6. MANUAL_REVIEW gate: blocked ONLY while the version encoded in
+ *     `extraction_error` equals the CURRENT `EXTRACTOR_VERSION` (round-3
+ *     MAJOR-2: a permanent block was a lie the comment told). On a version
+ *     bump the document is eligible again, and its NEXT IN_PROGRESS stamp
+ *     resets `retryCount` to 1 rather than incrementing from 10.
  *
  * The E1..E10 ledger rows are still WRITTEN on every extraction attempt (with
  * `attemptsBefore` taken from the document's own `retry_count`, not a shared
  * ledger counter) — they remain the audit trail of what happened — but they
- * are no longer READ to decide whether this cycle may spawn python. That
- * decision is now per-document, so it can never starve a sibling document.
+ * are no longer READ to decide whether this cycle may spawn python.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -135,8 +150,20 @@ export const EXTRACTION_BLOCKED_ERROR = 'blocked_after_10_attempts';
  */
 export interface DocumentGate {
   extractionStatus: string | null;
+  extractionError?: string | null;
   retryCount: number;
   updatedAt: Date | null;
+}
+
+/**
+ * `"blocked_after_10_attempts@<version>"` -> `"<version>"`, or `null` when the
+ * string does not match (round-3 MAJOR-2: the version lives IN the error
+ * string, not a column, so this is the only place that reads it back out).
+ */
+export function parseBlockedVersion(error: string | null | undefined): string | null {
+  if (!error) return null;
+  const match = new RegExp(`^${EXTRACTION_BLOCKED_ERROR}@(.+)$`).exec(error);
+  return match ? match[1] : null;
 }
 
 /**
@@ -144,35 +171,71 @@ export interface DocumentGate {
  *
  * Two independent reasons, both scoped to the one document — never to the
  * whole IPO (MAJOR-A):
- *  - permanently blocked: `extractionStatus === 'MANUAL_REVIEW'` (set once
- *    `retryCount` reaches `MAX_EXTRACTION_ATTEMPTS`). A version bump does not
- *    clear this directly — it is `selectPendingFilings`' "already extracted by
- *    the CURRENT version" check that makes a document eligible again, exactly
- *    like any other un-extracted document; this gate does not need to know
- *    about `EXTRACTOR_VERSION` at all.
- *  - backing off: the document's last attempt FAILED and the exponential
- *    backoff window (`backoffNextDueAt`, reused verbatim from
+ *  - blocked-at-this-version: `extractionStatus === 'MANUAL_REVIEW'` AND the
+ *    version encoded in `extractionError` equals `version` (round-4 MAJOR-2:
+ *    a bare MANUAL_REVIEW check made the block permanent even across an
+ *    `EXTRACTOR_VERSION` bump). A different/missing encoded version means the
+ *    document is eligible again — exactly like an ordinary un-extracted one.
+ *  - backing off: the document's last stamp was FAILED, or is still
+ *    IN_PROGRESS from a run that died mid-extraction (round-4 MINOR-6), and
+ *    the exponential backoff window (`backoffNextDueAt`, reused verbatim from
  *    `step-ledger-recorders.ts`) measured from `updatedAt` has not elapsed.
- *    `retryCount` is the count AFTER that failure, so the attempt count the
- *    backoff formula wants (the count BEFORE the failure) is `retryCount - 1`.
+ *    `retryCount` already includes the attempt that set `updatedAt`, so the
+ *    attempt count the backoff formula wants (the count BEFORE that attempt)
+ *    is `retryCount - 1`.
  */
 export function documentExtractionBlocked(
   doc: DocumentGate,
+  version: string,
   now: Date = new Date()
 ): { blocked: boolean; reason?: string } {
   if (doc.extractionStatus === 'MANUAL_REVIEW') {
-    return {
-      blocked: true,
-      reason: `extraction blocked after ${doc.retryCount} failed attempts (${EXTRACTION_BLOCKED_ERROR})`,
-    };
+    const blockedVersion = parseBlockedVersion(doc.extractionError);
+    if (blockedVersion === version) {
+      return {
+        blocked: true,
+        reason: `extraction blocked after ${doc.retryCount} failed attempts (${EXTRACTION_BLOCKED_ERROR}@${version})`,
+      };
+    }
+    return { blocked: false };
   }
-  if (doc.extractionStatus === 'FAILED' && doc.retryCount > 0) {
+  if ((doc.extractionStatus === 'FAILED' || doc.extractionStatus === 'IN_PROGRESS') && doc.retryCount > 0) {
     const nextDueAt = backoffNextDueAt(doc.retryCount - 1, doc.updatedAt ?? now);
     if (nextDueAt.getTime() > now.getTime()) {
       return { blocked: true, reason: `extraction backing off until ${nextDueAt.toISOString()}` };
     }
   }
   return { blocked: false };
+}
+
+/** The status values `buildExtractionStatePatch` (and the `documents` column) accept. */
+export type ExtractionStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'PENDING' | 'MANUAL_REVIEW';
+
+export interface ExtractionStatePatchContext {
+  /** Explicit `undefined` leaves `extraction_error` untouched; pass `null` to clear it. */
+  error?: string | null;
+  retryCount?: number;
+}
+
+/**
+ * THE single function every extraction-status write goes through. Pure, so
+ * every transition in the module doc comment's state table is a plain
+ * input/output test with no database. Always stamps `updatedAt: now` — the
+ * ONE thing every transition in the table has in common (round-3 MAJOR-1).
+ */
+export function buildExtractionStatePatch(
+  transition: ExtractionStatus,
+  ctx: ExtractionStatePatchContext = {},
+  now: Date = new Date()
+): Record<string, unknown> {
+  const patch: Record<string, unknown> = {
+    extractionStatus: transition,
+    updatedAt: now,
+  };
+  if (ctx.error !== undefined) patch.extractionError = ctx.error;
+  if (transition === 'COMPLETED') patch.extractedAt = now;
+  if (ctx.retryCount !== undefined) patch.retryCount = ctx.retryCount;
+  return patch;
 }
 
 export interface AutoPersistIpo {
@@ -193,6 +256,8 @@ export interface CandidateDocument {
   retryCount: number;
   /** MAJOR-A: when this document's extraction state was last written — the backoff anchor. */
   updatedAt: Date | null;
+  /** Round 4: read by the gate to decode a `MANUAL_REVIEW` block's `EXTRACTOR_VERSION`. */
+  extractionError?: string | null;
 }
 
 export interface AutoPersistResult {
@@ -294,11 +359,18 @@ export function selectPendingFilings(
       skipped.push(`${type}: already extracted by ${version}`);
       continue;
     }
-    // MAJOR-A: per-document gate — MANUAL_REVIEW or still within this
-    // document's own backoff window. Never reads any other document's state,
-    // so one permanently-unparseable file can no longer block its siblings.
+    // MAJOR-A: per-document gate — MANUAL_REVIEW at this version, or still
+    // within this document's own backoff window (FAILED or crash-recovered
+    // IN_PROGRESS). Never reads any other document's state, so one
+    // permanently-unparseable file can no longer block its siblings.
     const gate = documentExtractionBlocked(
-      { extractionStatus: doc.extractionStatus, retryCount: doc.retryCount ?? 0, updatedAt: doc.updatedAt },
+      {
+        extractionStatus: doc.extractionStatus,
+        extractionError: doc.extractionError,
+        retryCount: doc.retryCount ?? 0,
+        updatedAt: doc.updatedAt,
+      },
+      version,
       options.now
     );
     if (gate.blocked) {
@@ -306,9 +378,10 @@ export function selectPendingFilings(
       continue;
     }
     if (doc.extractionStatus === 'IN_PROGRESS') {
-      // A row left IN_PROGRESS means a previous cycle died mid-extract. Retry it
-      // rather than leaving it stuck forever — the extractor is deterministic
-      // and the persist door is idempotent, so a duplicate run costs time, not
+      // A row left IN_PROGRESS means a previous cycle died mid-extract, and its
+      // own backoff window (checked above) has elapsed. Retry it rather than
+      // leaving it stuck forever — the extractor is deterministic and the
+      // persist door is idempotent, so a duplicate run costs time, not
       // correctness.
       logger.warn({ ipoId, docType: type }, 'Document left IN_PROGRESS by an earlier run — retrying');
     }
@@ -469,6 +542,7 @@ export function buildAutoPersistDeps(
         extractedAt: (r as { extractedAt?: Date | null }).extractedAt ?? null,
         retryCount: (r as { retryCount?: number | null }).retryCount ?? 0,
         updatedAt: (r as { updatedAt?: Date | null }).updatedAt ?? null,
+        extractionError: (r as { extractionError?: string | null }).extractionError ?? null,
       }));
     },
     async loadStates(ipoId) {
@@ -480,19 +554,16 @@ export function buildAutoPersistDeps(
     persistFiling: persistFilingExtraction,
     persisterDeps: buildFilingPersistDeps(redis),
     async setDocumentExtractionState({ documentId, status, error, retryCount }) {
-      // `extracted_at` is stamped ONLY on COMPLETED and never cleared: it records
-      // when this document last yielded a usable extraction, and a subsequent
-      // IN_PROGRESS/PENDING must not erase that history. `extraction_error` is
-      // cleared on success so a stale failure never outlives its fix — the same
-      // rule the ledger applies to `error` on DONE. `retry_count` is written
-      // verbatim when the caller supplies it (MAJOR-A) — see the AutoPersistDeps
-      // doc comment for why the increment lives at the call site, not here.
-      const patch: Record<string, unknown> = {
-        extractionStatus: status,
-        extractionError: error ?? null,
-      };
-      if (status === 'COMPLETED') patch.extractedAt = new Date();
-      if (retryCount !== undefined) patch.retryCount = retryCount;
+      // Round 4: the REAL writer. It does not compute the patch itself — it
+      // hands `buildExtractionStatePatch` (the ONE pure function every status
+      // write goes through) the same args the caller already decided, and
+      // applies whatever comes back unchanged. `error` is passed through as
+      // given (including `undefined`, which leaves `extraction_error`
+      // untouched — see `ExtractionStatePatchContext`); `retry_count` is
+      // written verbatim when the caller supplies it (MAJOR-A) — the
+      // increment/reset arithmetic lives at the call site (`processPendingFilings`),
+      // never here.
+      const patch = buildExtractionStatePatch(status as ExtractionStatus, { error, retryCount }, new Date());
       await db.update(documentsTable).set(patch as never).where(eq(documentsTable.id, documentId));
     },
     async setFetchStateExtracted({ stateId, extractedAt, extractorVersion }) {
@@ -504,6 +575,24 @@ export function buildAutoPersistDeps(
       await invalidator.invalidateAfterScrape('ALL', slug ? [slug] : []);
     },
   };
+}
+
+/**
+ * Transition 3 vs 5: a FAILED write (extractor / persist / W-45 disagreement)
+ * becomes MANUAL_REVIEW instead when the retryCount already stamped at
+ * IN_PROGRESS (transition 1) has reached `MAX_EXTRACTION_ATTEMPTS`. One
+ * function so all three failure sites in `processPendingFilings` decide the
+ * same way.
+ */
+function classifyFailure(
+  retryCountAtStamp: number,
+  version: string,
+  rawError: string
+): { status: 'FAILED' | 'MANUAL_REVIEW'; error: string } {
+  if (retryCountAtStamp >= MAX_EXTRACTION_ATTEMPTS) {
+    return { status: 'MANUAL_REVIEW', error: `${EXTRACTION_BLOCKED_ERROR}@${version}` };
+  }
+  return { status: 'FAILED', error: rawError };
 }
 
 /**
@@ -578,8 +667,22 @@ export async function processPendingFilings(
     const docType = doc.type as FilingDocType;
     const pdfPath = documentPath(ipo.id, docType, doc.sha256 as string, deps.storeDir ?? getStoreDir());
 
+    // Transition 1 (select -> IN_PROGRESS). The attempt is counted HERE, at
+    // the stamp — round-4 MINOR-6: a process killed mid-extraction leaves the
+    // row IN_PROGRESS with this attempt already consumed, not free. Reviving a
+    // document blocked at an OLD EXTRACTOR_VERSION (transition 6) resets to 1
+    // rather than incrementing from MAX_EXTRACTION_ATTEMPTS — `documentExtractionBlocked`
+    // only admits such a document once the encoded version no longer matches.
+    const previousRetryCount = doc.retryCount ?? 0;
+    const revivingAfterManualReview = doc.extractionStatus === 'MANUAL_REVIEW';
+    const newRetryCount = revivingAfterManualReview ? 1 : previousRetryCount + 1;
+    // Mutate the shared reference: the W-45 and persist failure paths below
+    // read `doc.retryCount` for the SAME "already counted at the stamp" value
+    // — one increment, read wherever this document is handled again this run.
+    doc.retryCount = newRetryCount;
+
     try {
-      await deps.setDocumentExtractionState({ documentId: doc.id, status: 'IN_PROGRESS' });
+      await deps.setDocumentExtractionState({ documentId: doc.id, status: 'IN_PROGRESS', retryCount: newRetryCount });
     } catch (error) {
       logger.warn(
         { ipoId: ipo.id, docType, error: error instanceof Error ? error.message : String(error) },
@@ -592,47 +695,43 @@ export async function processPendingFilings(
     const run = deps.runExtractor({ pdfPath, docType, sme });
 
     if (isExtractorFailure(run)) {
-      const failure = run.error;
       result.failed++;
-      // MAJOR-A: attemptsBefore is THIS document's own retry_count, never a
-      // shared ledger counter — so one document's failures cannot inflate
-      // another document's backoff or cap. This write is the one that pushes
-      // it from (attemptsBefore) to (attemptsBefore + 1). Once that reaches
-      // MAX_EXTRACTION_ATTEMPTS, record the block explicitly so the row
-      // self-documents WHY the next cycle will not retry it, rather than
-      // leaving that fact implicit in a number nobody reads.
-      const attemptsBefore = doc.retryCount ?? 0;
-      const newRetryCount = attemptsBefore + 1;
-      const willReachAttemptCap = newRetryCount >= MAX_EXTRACTION_ATTEMPTS;
-      const recordedError = willReachAttemptCap ? EXTRACTION_BLOCKED_ERROR : failure;
+      // Transition 3 / 5: retryCount is NOT re-incremented here — it was
+      // already counted at the IN_PROGRESS stamp above. Once that count has
+      // reached MAX_EXTRACTION_ATTEMPTS, classifyFailure writes MANUAL_REVIEW
+      // (with EXTRACTOR_VERSION embedded in the error) instead of FAILED, so
+      // the row self-documents WHY the next cycle will not retry it.
+      const classified = classifyFailure(newRetryCount, version, `extractor: ${run.error}`);
+      const blocked = classified.status === 'MANUAL_REVIEW';
       logger.error(
-        { ipoId: ipo.id, docType, error: failure, attemptsBefore, blocked: willReachAttemptCap },
-        willReachAttemptCap
+        { ipoId: ipo.id, docType, error: run.error, retryCount: newRetryCount, blocked },
+        blocked
           ? 'Filing extraction failed for the 10th time — blocked until EXTRACTOR_VERSION changes'
           : 'Filing extraction failed (non-fatal) — recorded as FAILED with a backoff'
       );
       await writeSteps(
         ipo.id,
-        planExtractionFailureSteps(recordedError, {
+        planExtractionFailureSteps(classified.error, {
           docType,
           documentId: doc.id,
           sourceSha: doc.sha256,
           version,
-          attemptsBefore,
+          attemptsBefore: previousRetryCount,
         })
       );
       // MAJOR-A: the document's own extraction_status becomes FAILED (not
       // PENDING) — `documentExtractionBlocked` reads FAILED + retry_count +
       // updated_at to compute this document's backoff window, so the status
       // must say FAILED for the gate to hold it until that window elapses.
-      // MANUAL_REVIEW once it hits the attempt cap, so it stops silently
-      // cycling PENDING->IN_PROGRESS->FAILED forever with nobody told.
+      // retryCount is omitted here — it is unchanged from the IN_PROGRESS
+      // stamp above, except for MANUAL_REVIEW where it is written again for
+      // an auditable row (same value, no arithmetic).
       try {
         await deps.setDocumentExtractionState({
           documentId: doc.id,
-          status: willReachAttemptCap ? 'MANUAL_REVIEW' : 'FAILED',
-          error: recordedError.slice(0, 1000),
-          retryCount: newRetryCount,
+          status: classified.status,
+          error: classified.error.slice(0, 1000),
+          ...(blocked ? { retryCount: newRetryCount } : {}),
         });
       } catch {
         /* already logged by the writer; a stuck status must not fail the cycle */
@@ -696,12 +795,18 @@ export async function processPendingFilings(
 
   if (refusedReason) {
     result.failed += extractions.length;
+    // Transition 3: a W-45 refusal is FAILED-with-backoff, never MANUAL_REVIEW
+    // or PENDING (round-3 MAJOR-4) — it is retried like any other extraction
+    // failure. `doc.retryCount` already holds the value the IN_PROGRESS stamp
+    // wrote for THIS document earlier in this run.
     for (const { doc } of extractions) {
+      const classified = classifyFailure(doc.retryCount ?? 0, version, `w45_disagreement: ${refusedReason}`);
       await deps
         .setDocumentExtractionState({
           documentId: doc.id,
-          status: 'MANUAL_REVIEW',
-          error: `W-45 refused: ${refusedReason}`,
+          status: classified.status,
+          error: classified.error.slice(0, 1000),
+          ...(classified.status === 'MANUAL_REVIEW' ? { retryCount: doc.retryCount } : {}),
         })
         .catch(() => undefined);
     }
@@ -733,6 +838,11 @@ export async function processPendingFilings(
       result.failed++;
       const message = error instanceof Error ? error.message : String(error);
       logger.error({ ipoId: ipo.id, docType, error: message }, 'Filing persist failed (non-fatal)');
+      // Transition 3: a persist throw is FAILED-with-backoff, never PENDING
+      // (round-3 MINOR-5 — PENDING would drop the document straight back to
+      // the front of the queue with no backoff at all). `doc.retryCount`
+      // already holds the value the IN_PROGRESS stamp wrote earlier this run.
+      const classified = classifyFailure(doc.retryCount ?? 0, version, `persist: ${message}`);
       await writeSteps(ipo.id, [
         {
           stepId: 'G3',
@@ -740,11 +850,16 @@ export async function processPendingFilings(
           source: docType,
           inputRef: doc.sha256 ?? doc.id,
           version,
-          error: message.slice(0, 1000),
+          error: classified.error.slice(0, 1000),
         },
       ]);
       await deps
-        .setDocumentExtractionState({ documentId: doc.id, status: 'PENDING', error: message.slice(0, 1000) })
+        .setDocumentExtractionState({
+          documentId: doc.id,
+          status: classified.status,
+          error: classified.error.slice(0, 1000),
+          ...(classified.status === 'MANUAL_REVIEW' ? { retryCount: doc.retryCount } : {}),
+        })
         .catch(() => undefined);
       continue;
     }
