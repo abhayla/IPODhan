@@ -490,7 +490,7 @@ describe('extract_filing - W-88 B8 bid submission windows / D7 promoter-group tr
     expect(rows[2].activity).toBe(
       'Submission of electronic application (bank ASBA through online channels like internet ' +
         'banking, mobile banking and syndicate ASBA applications through UPI as a payment ' +
-        'mechanism where Bid Amount is up to `0.50 million)',
+        'mechanism where Bid Amount is up to Rs 0.50 million)',
     );
     expect(rows[2].window).toBe('Only between 10.00 a.m. and up to 4.00 p.m. IST');
     expect(rows[3].activity).toBe(
@@ -500,7 +500,7 @@ describe('extract_filing - W-88 B8 bid submission windows / D7 promoter-group tr
     // This row's wrap starts with a CAPITAL letter and still belongs to it.
     expect(rows[5].activity).toBe(
       'Submission of physical applications (syndicate non-retail, non-individual applications ' +
-        'where Bid Amount is more than `0.50 million)',
+        'where Bid Amount is more than Rs 0.50 million)',
     );
     // The window's second printed line carries only the day it applies on.
     expect(rows[7]).toEqual({

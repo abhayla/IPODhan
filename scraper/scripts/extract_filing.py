@@ -45,6 +45,18 @@ STATUS_PARTIAL_OCR = "PARTIAL_OCR"
 # filled until the issue is priced — E3: null with reason, never a guess.
 TBD = re.compile(r"\[\s*[•●○▪·.\-]\s*\]")
 
+# W-92: some filings' font encoding maps the Rupee glyph (₹) to a backtick or a
+# question mark instead — pdfplumber then reads "Bid Amount is more than
+# `0.50 million)" or "?0.50 million" verbatim. Only a backtick/`?` DIRECTLY
+# against a digit (optionally one space between) is a rupee-symbol misread;
+# nothing else about the line is touched.
+RUPEE_GLYPH_RX = re.compile(r"[`?]\s*(?=\d)")
+
+
+def _normalize_rupee_glyph(line):
+    """Repair a misencoded ₹ glyph (backtick or `?`) immediately before a digit."""
+    return RUPEE_GLYPH_RX.sub("Rs ", line)
+
 MONTHS = {m: i + 1 for i, m in enumerate(
     ["january", "february", "march", "april", "may", "june",
      "july", "august", "september", "october", "november", "december"])}
@@ -825,6 +837,12 @@ def bid_windows(lines):
     """[{activity, window}] for every bid-submission row the advertisement
     prints under its "Submission of Bids" heading. Returns ([], None) when the
     heading is absent."""
+    # W-92: scoped to this field only — a global rupee-glyph normalisation
+    # broke PRICE_BAND_RX's `\S?\s*<digit>` match (it expects at most one
+    # non-space char before the number, not the two of "Rs "), so the repair
+    # is applied on a LOCAL copy of the lines, never the shared `lines`/
+    # `all_lines` every other field in extract_price_band_ad reads.
+    lines = [_normalize_rupee_glyph(ln) for ln in lines]
     start = _find(lines, BID_WINDOW_HEADING_RX)
     if start < 0:
         return [], None
