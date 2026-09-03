@@ -33,6 +33,9 @@ import type {
   FinancialDataRepository,
   PromoterInsert,
   IpoIntermediaryInsert,
+  IpoRiskFactorsRepository,
+  IpoRiskFactorInsert,
+  PromoterAcquisitionRangeInsert,
 } from '@ipodhan/shared';
 import type { PeerCompanyRepository } from '../repositories/peer-company-repository.js';
 import { upsertIPO } from './data-persister.js';
@@ -76,6 +79,25 @@ export interface IpoDetailsWriter {
   upsert(ipoId: string, values: Record<string, unknown>): Promise<void>;
 }
 
+/**
+ * The one `documents` write this module needs, narrowed the same way
+ * `IpoDetailsWriter` is (W-73).
+ *
+ * `filing_date` is an UPDATE on the row the discovery runner already created
+ * for that doc type — this module never inserts a `documents` row, because a
+ * row invented from an extraction would have no URL, no sha256 and no
+ * provenance. `DocumentRepository` has no such method today and is outside
+ * this work package's edit scope, so the capability is injected.
+ */
+export interface DocumentFilingDateWriter {
+  /** Returns the number of rows updated (0 when no such document row exists). */
+  setFilingDate(args: {
+    ipoId: string;
+    docType: FilingDocType;
+    filingDate: string;
+  }): Promise<number>;
+}
+
 export interface FilingPersisterDeps {
   ipoRepository: IPORepository;
   financialStatements: FinancialStatementsRepository;
@@ -87,6 +109,15 @@ export interface FilingPersisterDeps {
   financialData: FinancialDataRepository;
   fieldSources: FieldSourcesRepository;
   ipoDetailsWriter: IpoDetailsWriter;
+  /**
+   * W-73 writers. Optional ONLY because the CLI that builds these deps
+   * (scraper/scripts/persist-filing.ts) is outside this work package's edit
+   * scope. When one is absent the rows it would have written are reported in
+   * `skipped_no_column` with the reason — never silently dropped, and never
+   * counted in `written`.
+   */
+  riskFactors?: Pick<IpoRiskFactorsRepository, 'replaceForIpo'>;
+  documentFilingDateWriter?: DocumentFilingDateWriter;
   /**
    * The same field-protection gate every orchestrator runs
    * (packages/shared admin/field-protection-checker). Injected so the write
@@ -1006,24 +1037,135 @@ export async function persistFilingExtraction(
     );
   }
 
-  // ------------------------------------ 6. promoter_acquisition_ranges (3Y)
-  const waca3y = num(extraction, 'waca_last_3y');
-  const capMult3y = num(extraction, 'cap_multiple_last_3y');
-  if (waca3y !== null || capMult3y !== null) {
-    if (apply) {
-      await deps.promoters.replaceAcquisitionRanges(ipoId, [
-        {
-          ipoId,
-          period: '3Y',
-          waca: waca3y?.toString() ?? null,
-          capMultiple: capMult3y?.toString() ?? null,
-          priceLow: null,
-          priceHigh: null,
-        },
-      ]);
-      await trackField('promoter_acquisition_ranges', 'rows');
+  // --------------------------- 6. promoter_acquisition_ranges (1Y/18M/3Y)
+  //
+  // W-73: round 1 wrote the 3Y row only, and wrote it with NO field-protection
+  // gate — an admin-corrected WACA was deleted by the replace. Both fixed here:
+  // every period the `acquisition_period` enum defines is mapped, and the whole
+  // set goes through `replaceAllowed` exactly like `promoters`.
+  //
+  // priceLow/priceHigh stay null: the extractor prints no per-period price
+  // range today (only the aggregate band, which is an `ipos` field). The
+  // columns exist; nothing in the document fills them, and inventing a range
+  // from the band would publish a figure the filing never printed.
+  const ACQUISITION_PERIODS: Array<{
+    period: '1Y' | '18M' | '3Y';
+    wacaField: string;
+    capField: string;
+  }> = [
+    { period: '1Y', wacaField: 'waca_last_1y', capField: 'cap_multiple_last_1y' },
+    { period: '18M', wacaField: 'waca_last_18m', capField: 'cap_multiple_last_18m' },
+    { period: '3Y', wacaField: 'waca_last_3y', capField: 'cap_multiple_last_3y' },
+  ];
+  const acquisitionRows: PromoterAcquisitionRangeInsert[] = [];
+  for (const spec of ACQUISITION_PERIODS) {
+    const waca = num(extraction, spec.wacaField);
+    const capMultiple = num(extraction, spec.capField);
+    if (waca === null && capMultiple === null) continue;
+    acquisitionRows.push({
+      ipoId,
+      period: spec.period,
+      waca: waca?.toString() ?? null,
+      capMultiple: capMultiple?.toString() ?? null,
+      priceLow: null,
+      priceHigh: null,
+    });
+  }
+  if (acquisitionRows.length > 0) {
+    if (
+      await replaceAllowed('promoter_acquisition_ranges', {
+        period: null,
+        waca: null,
+        capMultiple: null,
+        priceLow: null,
+        priceHigh: null,
+      })
+    ) {
+      if (apply) {
+        await deps.promoters.replaceAcquisitionRanges(ipoId, acquisitionRows);
+        await trackField('promoter_acquisition_ranges', 'rows');
+      }
+      bump(written, 'promoter_acquisition_ranges', acquisitionRows.length);
     }
-    bump(written, 'promoter_acquisition_ranges', 1);
+  }
+
+  // ------------------------------------------------- 6b. ipo_risk_factors
+  //
+  // The numbered RISK FACTORS chapter (extractor E8, `risk_factors`). Whole-set
+  // replace per IPO, like `promoters`: the seq numbering itself shifts between
+  // the ad and the final prospectus, so there is no stable per-row identity.
+  const riskItems = list<{
+    n?: number;
+    seq?: number;
+    heading?: string;
+    body?: string | null;
+    kpis?: unknown;
+  }>(extraction, 'risk_factors');
+  const riskRows: IpoRiskFactorInsert[] = [];
+  riskItems.forEach((item, idx) => {
+    const heading = typeof item?.heading === 'string' ? item.heading.trim() : '';
+    // heading is NOT NULL in the schema; a row without one is not a risk factor.
+    if (heading === '') return;
+    const seq = typeof item?.n === 'number' ? item.n : typeof item?.seq === 'number' ? item.seq : idx + 1;
+    riskRows.push({
+      ipoId,
+      seq,
+      heading: heading.slice(0, 500),
+      body: typeof item?.body === 'string' && item.body.trim() !== '' ? item.body : null,
+      kpis: item?.kpis ?? null,
+    });
+  });
+  if (riskRows.length > 0) {
+    if (!deps.riskFactors) {
+      skippedNoColumn.push(
+        `risk_factors (${riskRows.length} rows: no ipo_risk_factors repository wired into this run)`
+      );
+    } else if (
+      await replaceAllowed('ipo_risk_factors', {
+        seq: null,
+        heading: null,
+        body: null,
+        kpis: null,
+      })
+    ) {
+      if (apply) {
+        await deps.riskFactors.replaceForIpo(ipoId, riskRows);
+        await trackField('ipo_risk_factors', 'rows');
+      }
+      bump(written, 'ipo_risk_factors', riskRows.length);
+    }
+  }
+
+  // -------------------------------------------- 6c. documents.filing_date
+  //
+  // `rhp_filing_date` is the date the RHP was filed with the RoC. BOTH doc
+  // types print it (the price-band ad states it on its face), so the row this
+  // updates is always the IPO's RHP document — never "the document currently
+  // being persisted", which for an ad would stamp the ad's row with the RHP's
+  // date. UPDATE only: a documents row is created by the discovery runner with
+  // a URL and a sha256, neither of which an extraction carries.
+  const rhpFilingDate = toIsoOrUndefined(trusted(extraction, 'rhp_filing_date'));
+  if (rhpFilingDate !== undefined) {
+    const documentsWritable = await filterFields('documents', { filingDate: rhpFilingDate });
+    if ('filingDate' in documentsWritable) {
+      if (!deps.documentFilingDateWriter) {
+        skippedNoColumn.push(
+          'rhp_filing_date (no documents filing-date writer wired into this run)'
+        );
+      } else {
+        let updatedRows = 1;
+        if (apply) {
+          updatedRows = await deps.documentFilingDateWriter.setFilingDate({
+            ipoId,
+            docType: 'RHP',
+            filingDate: rhpFilingDate,
+          });
+          if (updatedRows > 0) await trackField('documents', 'filingDate');
+        }
+        if (updatedRows > 0) bump(written, 'documents', updatedRows);
+        else skippedNoColumn.push('rhp_filing_date (no stored RHP documents row to update)');
+      }
+    }
   }
 
   // ------------------------------------------------- 7. ipo_intermediaries

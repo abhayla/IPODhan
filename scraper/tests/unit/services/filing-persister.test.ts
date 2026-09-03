@@ -1439,3 +1439,231 @@ describe('filing-persister - issue_size needs BOTH legs (MAJOR-1)', () => {
     expect(scraped.issueSize).toBe(2_500_000_000);
   });
 });
+
+/**
+ * W-73 — the three tables migration 0042 created and the persister never wrote:
+ * ipo_risk_factors, promoter_acquisition_ranges (1Y/18M/3Y) and
+ * documents.filing_date. Each assertion is on the SUBSTANCE that reaches the
+ * repository (seq/heading/body/kpis, one row per period, the date and the doc
+ * type it lands on), not on "a call happened".
+ */
+function withW73Writers(s: ReturnType<typeof makeDeps>) {
+  const replaceRiskFactors = vi.fn(async () => []);
+  const setFilingDate = vi.fn(async () => 1);
+  const bag = s.deps as unknown as Record<string, unknown>;
+  bag.riskFactors = { replaceForIpo: replaceRiskFactors };
+  bag.documentFilingDateWriter = { setFilingDate };
+  return { replaceRiskFactors, setFilingDate };
+}
+
+const RISK_FACTORS_FIXTURE = [
+  {
+    n: 1,
+    heading:
+      'Our business is concentrated in Southern India and any adverse development in the region could affect our results.',
+    body: 'For Fiscals 2026, 2025 and 2024, our revenue from Southern India was 98.12%, 97.44% and 96.81% of total revenue.',
+    kpis: { southern_india_revenue_pct_fy2026: 98.12 },
+  },
+  {
+    n: 2,
+    heading: 'We depend on a limited number of suppliers for gold procurement.',
+  },
+  // Not a risk factor: the schema's heading column is NOT NULL.
+  { n: 3, heading: '   ' },
+];
+
+function w73Extraction(section: 'PRICE_BAND_AD' | 'RHP' = 'RHP'): FilingExtraction {
+  const extraction = extractionFromOracle(section);
+  const pass = (value: unknown, name: string) => ({
+    value,
+    page: 23,
+    check: { name, passed: true },
+  });
+  extraction.fields.risk_factors = pass(RISK_FACTORS_FIXTURE, 'risk_factor_headings_complete');
+  extraction.fields.waca_last_1y = pass(12.5, 'cap_over_waca_equals_printed_multiple');
+  extraction.fields.cap_multiple_last_1y = pass(6.4, 'cap_over_waca_equals_printed_multiple');
+  extraction.fields.waca_last_18m = pass(18.75, 'cap_over_waca_equals_printed_multiple');
+  extraction.fields.waca_last_3y = pass(20, 'cap_over_waca_equals_printed_multiple');
+  extraction.fields.cap_multiple_last_3y = pass(4, 'cap_over_waca_equals_printed_multiple');
+  return extraction;
+}
+
+describe('filing-persister — W-73 risk factors / acquisition ranges / filing date', () => {
+  beforeEach(() => {
+    upsertIPOMock.mockClear();
+  });
+
+  it('(1) writes the risk factors with seq, heading, body and kpis from the extraction', async () => {
+    const s = makeDeps();
+    const w = withW73Writers(s);
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      w73Extraction(),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+
+    expect(w.replaceRiskFactors).toHaveBeenCalledTimes(1);
+    const [ipoIdArg, rows] = w.replaceRiskFactors.mock.calls[0] as unknown as [
+      string,
+      Array<Record<string, unknown>>,
+    ];
+    expect(ipoIdArg).toBe(IPO_ID);
+    // The blank-heading item is dropped, not written as an empty risk factor.
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual({
+      ipoId: IPO_ID,
+      seq: 1,
+      heading: RISK_FACTORS_FIXTURE[0].heading,
+      body: RISK_FACTORS_FIXTURE[0].body,
+      kpis: { southern_india_revenue_pct_fy2026: 98.12 },
+    });
+    expect(rows[1]).toEqual({
+      ipoId: IPO_ID,
+      seq: 2,
+      heading: RISK_FACTORS_FIXTURE[1].heading,
+      body: null,
+      kpis: null,
+    });
+    expect(summary.written.ipo_risk_factors).toBe(2);
+  });
+
+  it('(2) refuses the risk-factor replace when a column is admin-protected', async () => {
+    const s = makeDeps();
+    const w = withW73Writers(s);
+    (s.deps as unknown as Record<string, unknown>).protectionFilter = vi.fn(
+      async (_ipoId: string, tableName: string, data: Record<string, unknown>) => {
+        if (tableName !== 'ipo_risk_factors') return { filtered: data };
+        const { body: _protected, ...rest } = data;
+        return { filtered: rest };
+      }
+    );
+
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      w73Extraction(),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+
+    // A whole-set replace deletes the stored rows first, so a protected column
+    // can only be honoured by refusing the replace outright.
+    expect(w.replaceRiskFactors).not.toHaveBeenCalled();
+    expect(summary.written.ipo_risk_factors).toBeUndefined();
+    expect(summary.skipped_protected).toContain(
+      'ipo_risk_factors (whole-row replace refused: body protected)'
+    );
+  });
+
+  it('(3) writes one acquisition-range row per period the filing prints (1Y/18M/3Y)', async () => {
+    const s = makeDeps();
+    withW73Writers(s);
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      w73Extraction(),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+
+    expect(s.replaceRanges).toHaveBeenCalledTimes(1);
+    const [, rows] = s.replaceRanges.mock.calls[0] as unknown as [
+      string,
+      Array<Record<string, unknown>>,
+    ];
+    expect(rows.map((r) => r.period)).toEqual(['1Y', '18M', '3Y']);
+    expect(rows[0]).toMatchObject({ period: '1Y', waca: '12.5', capMultiple: '6.4' });
+    // 18M prints a WACA but no multiple — the multiple stays null, not 0.
+    expect(rows[1]).toMatchObject({ period: '18M', waca: '18.75', capMultiple: null });
+    expect(rows[2]).toMatchObject({ period: '3Y', waca: '20', capMultiple: '4' });
+    // The extractor prints no per-period price range; nothing is invented.
+    expect(rows.every((r) => r.priceLow === null && r.priceHigh === null)).toBe(true);
+    expect(summary.written.promoter_acquisition_ranges).toBe(3);
+  });
+
+  it('(4) sets filing_date on the RHP documents row, from either document', async () => {
+    const fromRhp = makeDeps();
+    const wRhp = withW73Writers(fromRhp);
+    const rhpSummary = await persistFilingExtraction(
+      IPO_ID,
+      w73Extraction('RHP'),
+      { docType: 'RHP', apply: true },
+      fromRhp.deps
+    );
+    expect(wRhp.setFilingDate).toHaveBeenCalledWith({
+      ipoId: IPO_ID,
+      docType: 'RHP',
+      filingDate: '2026-08-25',
+    });
+    expect(rhpSummary.written.documents).toBe(1);
+
+    // The price-band ad PRINTS the RHP's filing date on its face. It must land
+    // on the RHP's row — stamping the ad's own row with it would be wrong.
+    const fromAd = makeDeps();
+    const wAd = withW73Writers(fromAd);
+    await persistFilingExtraction(
+      IPO_ID,
+      w73Extraction('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', documentId: 'the-ad-document-id', apply: true },
+      fromAd.deps
+    );
+    expect(wAd.setFilingDate).toHaveBeenCalledTimes(1);
+    const arg = wAd.setFilingDate.mock.calls[0][0] as { docType: string };
+    expect(arg.docType).toBe('RHP');
+    expect(arg.docType).not.toBe('PRICE_BAND_AD');
+  });
+
+  it('(5) writes none of the three when the IPO row is scraper_locked', async () => {
+    const s = makeDeps();
+    const w = withW73Writers(s);
+    (s.deps.ipoRepository as unknown as { findById: ReturnType<typeof vi.fn> }).findById = vi.fn(
+      async () => ({
+        id: IPO_ID,
+        companyName: 'Deepa Jewellers Limited',
+        scraperLocked: true,
+        leadManagers: [],
+      })
+    );
+
+    await expect(
+      persistFilingExtraction(IPO_ID, w73Extraction(), { docType: 'RHP', apply: true }, s.deps)
+    ).rejects.toThrow(/scraper_locked/);
+
+    expect(w.replaceRiskFactors).not.toHaveBeenCalled();
+    expect(s.replaceRanges).not.toHaveBeenCalled();
+    expect(w.setFilingDate).not.toHaveBeenCalled();
+  });
+
+  it('(6) a dry run writes none of the three but reports all of them', async () => {
+    const s = makeDeps();
+    const w = withW73Writers(s);
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      w73Extraction(),
+      { docType: 'RHP' },
+      s.deps
+    );
+
+    expect(w.replaceRiskFactors).not.toHaveBeenCalled();
+    expect(s.replaceRanges).not.toHaveBeenCalled();
+    expect(w.setFilingDate).not.toHaveBeenCalled();
+    expect(s.trackField).not.toHaveBeenCalled();
+    expect(summary.applied).toBe(false);
+    expect(summary.written.ipo_risk_factors).toBe(2);
+    expect(summary.written.promoter_acquisition_ranges).toBe(3);
+    expect(summary.written.documents).toBe(1);
+  });
+
+  it('reports the rows instead of dropping them when a writer is not wired', async () => {
+    const s = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      w73Extraction(),
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+    expect(summary.written.ipo_risk_factors).toBeUndefined();
+    expect(summary.written.documents).toBeUndefined();
+    expect(summary.skipped_no_column.some((x) => x.startsWith('risk_factors (2 rows'))).toBe(true);
+    expect(summary.skipped_no_column.some((x) => x.startsWith('rhp_filing_date ('))).toBe(true);
+  });
+});
