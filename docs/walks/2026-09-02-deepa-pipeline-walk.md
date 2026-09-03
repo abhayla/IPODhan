@@ -312,3 +312,17 @@ backfill cause (dea73837); Tier C: walk docs, how.md, detection RCA.
 - 17:20 Fable decision on anchor names: never publish a partly-garbled list; the scan quality of the exchange's own PDF is the limit, not our parser. Page shows anchor totals + 'details not available' for DEEPA. W-89b (gate) running.
 - Incident 18:10: the W-90/W-92 worker stalled (no output for 600 s) mid-edit; its partial diff (an `isNseRatiosArchiveUrl` helper + import) was sound and is kept; re-dispatched with commit-early instructions. Root cause of W-90 found by it: NSE's `RATIOS_<SYMBOL>.zip` holds a member named '... Price Band Advertisement.pdf', so the W-29 member-name rule mistypes it. Registry: worker-instant-death-empty-result bumped.
 - 18:40 Owner approved the page (4th run). Fable gap checks: an IPO WITHOUT the new data (purple-style-labs-ltd) renders as before, 0 console errors; DEEPA at 390 px wide reads correctly (tables scroll in their boxes); PR #278 checks GREEN (lint/type/unit + scraper document integration). Tunnel drops explained: ssh started inside a tool call dies with that call's process group; replaced by a detached self-restarting keeper (tunnel-keeper.ps1 in the session scratchpad; to be moved to scripts/ as a dev tool, W-93).
+
+## 6c. Deploy checklist (final, 2026-09-03 18:50 IST; owner approved the page)
+
+Deploying the branch alone changes nothing visible: the filing data exists only on ipodhan_test and the extract/persist steps have no production caller. The deploy is one action with these steps, in order:
+1. Merge PR #278 (checks green). Deploy via deploy-linux.yml.
+2. Migrations 0043-0049 apply with the deploy (all additive; 0046-0049 idempotent). Then `npm run audit:schema-drift` against production; the gated GMP/listing precision migrations (B2, C3) stay owner-gated and will still show as drift.
+3. VPS env: `PROSPECTUS_STORE_DIR`; `pip install rapidocr-onnxruntime pypdfium2` (no apt). No ENABLE_* flag changes in this deploy.
+4. Production backfill, run once from the VPS with the prod flags (`ENABLE_DATA_CONSOLIDATION=true ENABLE_SOURCE_TRACKING=true ENABLE_CONFLICT_DETECTION=true CONSOLIDATION_PERCENTAGE=100`):
+   a. `extract_filing.py` on the stored DEEPA price-band ad (NSE text copy) and RHP, then `persist-filing.ts --apply` for each (this brings issue size 459.72 Cr, face value 2, statements, valuation, promoters, intermediaries, banks, risk factors, CIN, bid windows to the live row).
+   b. `retype-ratios-documents.ts --apply` (W-90 stored rows).
+   c. `backfill-anchor-investor-list-json.ts --apply` (W-52; remove the `_test`-only guard first).
+   d. Audit query: `select count(*) from ipos where company_name = lower(company_name) and company_name <> ''` must be 0 (W-83 exposure); any hit is repaired from the exchange name via an ADMIN correction.
+5. Post-deploy: `npm run audit:data`, `npm run audit:substance`, `cd web && npm run test:prod-verify`; open ipodhan.com/ipos/deepa-jewellers and compare with evidence/ipo-page-deepa-r4-fable-2026-09-03.png.
+6. Still not automatic after this deploy: C/D/E/G4 for NEW IPOs (flags off, no cron caller) -> S-02 wiring is the owner decision that makes the next IPO run through the deployed scraper alone.
