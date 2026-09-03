@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-03 10:45 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-03 10:52 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -72,3 +72,4 @@ Last updated: 2026-09-03 10:45 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 - 2026-09-03 10:15: W-14 fixed (17c6dcfd): a 25% band from BSE on a mainboard IPO is now caught on the merged record and kept out, with a conflict row. Strict review running.
 - 2026-09-03 10:32: W-14 review: guard sound, but the provenance table could record a value that was kept out. Round 2 moves the check ahead of both write doors.
 - 2026-09-03 10:45: W-14 round 2 landed (1200fc00, 76 tests reproduced). Review round 2 running. W-78 opened: the scraper's type check has 90 old errors (same class as the web lint baseline, separate PR).
+- 2026-09-03 10:52: W-14 review 2: earlier holes closed, one new one (conflict row names the same source twice, a banned shape). Round 3 running. W-79 opened: make the conflicts table itself refuse that shape.
