@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-03 13:00 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-03 13:20 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -81,3 +81,4 @@ Last updated: 2026-09-03 13:00 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 - 2026-09-03 12:20: the real page with the additions is built on the branch (e63a3a95) and verified locally by Fable. Before/after pictures for the owner: https://claude.ai/code/artifact/637544e6-7692-4c47-9d08-74bad670168a. Four data defects visible on it (W-80 heading cut, W-81 garbled anchor names, W-82 CIN missing, W-83 lowercase company name) are being fixed one at a time before final approval. Nothing deployed.
 - 2026-09-03 12:40: W-83 fixed (b836563b). Important: the lowercase-name bug is in production code today; prod rows are spared only by a thin condition that the next deploy would remove, so this fix must ship together with the branch (it does: same PR). W-80 (heading cut) running.
 - 2026-09-03 13:00: W-80 fixed and verified live (82 full headings). Owner's page feedback recorded as W-85/W-86/W-87 (page) and W-88 (remaining ad fields). W-81 anchor names running.
+- 2026-09-03 13:20: W-81: the anchor report's own text layer is damaged (a bad OCR layer inside the exchange's PDF), so names cannot be read correctly from it; word order fixed, and a quality gate now refuses to publish a garbled anchor list. DEEPA's anchor names will show as 'not available' until W-89 (OCR with word positions, or the exchange's own list) lands. W-82 running.
