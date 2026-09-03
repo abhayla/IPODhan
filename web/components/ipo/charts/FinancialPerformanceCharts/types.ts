@@ -59,6 +59,27 @@ export interface FinancialDataFromDB {
 }
 
 /**
+ * One fiscal year of the restated financial statements extracted from the
+ * offer document (`financial_statements`). Amounts are numeric strings in the
+ * row's own `unit`; EPS and DSCR are plain ratios.
+ */
+export interface FinancialStatementView {
+  fiscalYear: number;
+  basis: string;
+  unit: string;
+  revenue: string | null;
+  totalIncome: string | null;
+  ebitda: string | null;
+  pat: string | null;
+  netWorth: string | null;
+  epsBasic: string | null;
+  epsDiluted: string | null;
+  opCashFlow: string | null;
+  dscr: string | null;
+  rentExpense: string | null;
+}
+
+/**
  * Transformed financial data point with calculated margins
  * Used for chart rendering
  */
@@ -158,6 +179,11 @@ export interface FinancialRatioItem {
  * Component Props: FinancialPerformanceCharts
  */
 export interface FinancialPerformanceChartsProps {
+  /**
+   * Per-year restated statements from the RHP. When present they render as a
+   * table beneath the charts; the charts keep using `financialData`.
+   */
+  statements?: FinancialStatementView[];
   /** Financial data from database (primary source) */
   financialData: FinancialDataFromDB | null;
 

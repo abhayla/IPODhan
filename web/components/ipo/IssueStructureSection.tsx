@@ -13,17 +13,68 @@ import { IssueBreakdownChart } from './IssueBreakdownChart';
 import { MinimumInvestmentDisplay } from './MinimumInvestmentDisplay';
 import type { IpoDetails } from '@/lib/repositories/types';
 
+/**
+ * Valuation figures extracted from the price-band advertisement / prospectus
+ * (`ipo_valuation`). Every field is optional - a row with only a price band
+ * renders only the price rows.
+ */
+export interface IssueValuation {
+  pricingEvent: string;
+  priceFloor: string | null;
+  priceCap: string | null;
+  sharesAtFloor: string | null;
+  sharesAtCap: string | null;
+  mcapAtFloor: string | null;
+  mcapAtCap: string | null;
+  peAtFloor: string | null;
+  peAtCap: string | null;
+  peNotAscertainableReason: string | null;
+  ronwWeighted3y: string | null;
+  faceValueMultipleFloor: string | null;
+  faceValueMultipleCap: string | null;
+}
+
 interface IssueStructureSectionProps {
   ipoDetails: IpoDetails | null | undefined;
+  /** Valuation at the floor and cap of the band (`ipo_valuation`). */
+  valuation?: IssueValuation | null;
+  /** Face value per share, for the "price as a multiple of face value" row. */
+  faceValue?: number | string | null;
+  /** Average P/E of the listed peers, for reading the issue P/E in context. */
+  peerAveragePe?: number | null;
   className?: string;
+}
+
+function num(v: string | number | null | undefined): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'string' ? parseFloat(v) : v;
+  return Number.isFinite(n) ? n : null;
+}
+
+function fmtInt(v: number | null): string | null {
+  return v === null ? null : v.toLocaleString('en-IN', { maximumFractionDigits: 0 });
+}
+
+/** Absolute rupees to crores, the unit every other number on this page uses. */
+function fmtCrore(v: number | null): string | null {
+  return v === null
+    ? null
+    : `₹${(v / 10000000).toLocaleString('en-IN', { maximumFractionDigits: 2 })} Cr`;
+}
+
+function fmtNum(v: number | null, suffix = ''): string | null {
+  return v === null ? null : `${v.toLocaleString('en-IN', { maximumFractionDigits: 2 })}${suffix}`;
 }
 
 export function IssueStructureSection({
   ipoDetails,
+  valuation = null,
+  faceValue = null,
+  peerAveragePe = null,
   className = '',
 }: IssueStructureSectionProps) {
   // If no details available, show empty state
-  if (!ipoDetails) {
+  if (!ipoDetails && !valuation) {
     return (
       <div
         className={`bg-white rounded-lg border border-gray-200 p-6 ${className}`}
@@ -45,7 +96,7 @@ export function IssueStructureSection({
     minInvestment,
     cutOffPrice,
     registrarLink,
-  } = ipoDetails;
+  } = ipoDetails ?? ({} as IpoDetails);
 
   const hasFreshIssue = freshIssue && parseFloat(freshIssue.toString()) > 0;
   const hasOfsIssue = ofsIssue && parseFloat(ofsIssue.toString()) > 0;
@@ -128,12 +179,139 @@ export function IssueStructureSection({
         </div>
       </div>
 
+      {/* Valuation at the floor and the cap of the price band - the numbers the
+          issuer itself published in the price-band ad / prospectus. Renders only
+          the rows that actually have values. */}
+      <ValuationAtBandTable
+        valuation={valuation}
+        faceValue={faceValue}
+        peerAveragePe={peerAveragePe}
+      />
+
       {/* Additional Information */}
       {!hasFreshIssue && !hasOfsIssue && (
         <div className="bg-gray-50 rounded-lg p-4 text-center">
           <p className="text-sm text-gray-600">
             Detailed issue breakdown information is not yet available for this IPO
           </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Two-column (floor / cap) valuation table. Rendered inside Issue Structure so
+ * the offer's own arithmetic sits next to the offer's mechanics.
+ */
+function ValuationAtBandTable({
+  valuation,
+  faceValue,
+  peerAveragePe,
+}: {
+  valuation: IssueValuation | null;
+  faceValue: number | string | null;
+  peerAveragePe: number | null;
+}) {
+  if (!valuation) return null;
+
+  const floor = num(valuation.priceFloor);
+  const cap = num(valuation.priceCap);
+  const fv = num(faceValue);
+
+  const rows: Array<{ label: string; floor: string | null; cap: string | null }> = [
+    { label: 'Price per share', floor: fmtNum(floor), cap: fmtNum(cap) },
+    {
+      label: 'Equity shares offered',
+      floor: fmtInt(num(valuation.sharesAtFloor)),
+      cap: fmtInt(num(valuation.sharesAtCap)),
+    },
+    {
+      label: 'Market capitalisation',
+      floor: fmtCrore(num(valuation.mcapAtFloor)),
+      cap: fmtCrore(num(valuation.mcapAtCap)),
+    },
+    {
+      label: 'P/E ratio',
+      floor: fmtNum(num(valuation.peAtFloor), 'x'),
+      cap: fmtNum(num(valuation.peAtCap), 'x'),
+    },
+    {
+      label: 'Price as a multiple of face value',
+      floor: fmtNum(num(valuation.faceValueMultipleFloor), 'x'),
+      cap: fmtNum(num(valuation.faceValueMultipleCap), 'x'),
+    },
+  ].filter((r) => r.floor !== null || r.cap !== null);
+
+  const peerAvg = peerAveragePe !== null && peerAveragePe > 0 ? peerAveragePe : null;
+  const ronw3y = num(valuation.ronwWeighted3y);
+
+  if (rows.length === 0 && peerAvg === null && ronw3y === null) return null;
+
+  return (
+    <div className="border border-gray-200 rounded-lg p-4 mb-6">
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">
+        Valuation at the price band
+      </h3>
+      <p className="text-xs text-gray-500 mb-4">
+        As published by the issuer
+        {valuation.pricingEvent === 'PROSPECTUS'
+          ? ' in the prospectus'
+          : ' in the price band advertisement'}
+        {fv !== null ? ` · face value ₹${fv}` : ''}
+      </p>
+
+      {rows.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-gray-50">
+                <th className="py-2 px-3 text-left font-semibold text-gray-700"></th>
+                <th className="py-2 px-3 text-right font-semibold text-gray-700">
+                  At floor{floor !== null ? ` (₹${floor})` : ''}
+                </th>
+                <th className="py-2 px-3 text-right font-semibold text-gray-700">
+                  At cap{cap !== null ? ` (₹${cap})` : ''}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr key={row.label} className="border-b last:border-0">
+                  <td className="py-2 px-3 text-gray-700">{row.label}</td>
+                  <td className="py-2 px-3 text-right font-medium text-gray-900">
+                    {row.floor ?? '—'}
+                  </td>
+                  <td className="py-2 px-3 text-right font-medium text-gray-900">
+                    {row.cap ?? '—'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {(peerAvg !== null || ronw3y !== null || valuation.peNotAscertainableReason) && (
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {peerAvg !== null && (
+            <div className="border border-gray-200 rounded-lg p-3">
+              <p className="text-xs text-gray-600">Peer average P/E</p>
+              <p className="text-lg font-bold text-gray-900">{peerAvg.toFixed(2)}x</p>
+            </div>
+          )}
+          {ronw3y !== null && (
+            <div className="border border-gray-200 rounded-lg p-3">
+              <p className="text-xs text-gray-600">Weighted average RoNW (3 years)</p>
+              <p className="text-lg font-bold text-gray-900">{ronw3y.toFixed(2)}%</p>
+            </div>
+          )}
+          {valuation.peNotAscertainableReason && (
+            <div className="border border-gray-200 rounded-lg p-3 sm:col-span-2">
+              <p className="text-xs text-gray-600">P/E not ascertainable</p>
+              <p className="text-sm text-gray-900">{valuation.peNotAscertainableReason}</p>
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -23,6 +23,12 @@ interface IPOTimelineWidgetProps {
     initiationOfRefundsDate: Date | string | null;
     creditOfSharesDate: Date | string | null;
   } | null;
+  /** Anchor bidding date (`anchor_investors.bid_date`) - one day before open. */
+  anchorBidDate?: Date | string | null;
+  /** Date the RHP was filed with the exchange (`documents.filing_date`). */
+  rhpFilingDate?: Date | string | null;
+  /** UPI mandate cut-off, e.g. "5:00 PM on the last day" (`ipo_details`). */
+  upiCutoffTime?: string | null;
   /** Show in compact mode (smaller, horizontal only) */
   compact?: boolean;
   /** Custom class name */
@@ -49,7 +55,36 @@ interface IPOTimelineWidgetProps {
  * <IPOTimelineWidget ipo={ipoData} ipoDetails={detailsData} />
  * ```
  */
-export function IPOTimelineWidget({ ipo, ipoDetails, compact = false, className }: IPOTimelineWidgetProps) {
+export function IPOTimelineWidget({
+  ipo,
+  ipoDetails,
+  anchorBidDate = null,
+  rhpFilingDate = null,
+  upiCutoffTime = null,
+  compact = false,
+  className,
+}: IPOTimelineWidgetProps) {
+  // Dates that sit outside the eight-milestone track but still belong to the
+  // bidding calendar. Rendered as a plain fact row under the timeline so the
+  // milestone indices above stay untouched. Absent values render nothing.
+  const formatDate = (d: Date | string | null): string | null => {
+    if (!d) return null;
+    const parsed = new Date(d);
+    return Number.isNaN(parsed.getTime())
+      ? null
+      : parsed.toLocaleDateString('en-IN', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+          timeZone: 'Asia/Kolkata',
+        });
+  };
+
+  const extraDates: Array<{ label: string; value: string }> = [
+    { label: 'Anchor bidding', value: formatDate(anchorBidDate) ?? '' },
+    { label: 'RHP filed', value: formatDate(rhpFilingDate) ?? '' },
+    { label: 'UPI mandate cut-off', value: upiCutoffTime ?? '' },
+  ].filter((d) => d.value !== '');
   // Determine current milestone based on IPO status and dates
   const getCurrentMilestone = (): number => {
     const now = new Date();
@@ -193,6 +228,17 @@ export function IPOTimelineWidget({ ipo, ipoDetails, compact = false, className 
           dateFormat="dd MMM"
           dotSize="small"
         />
+
+        {extraDates.length > 0 && (
+          <div className="mt-6 grid grid-cols-1 gap-3 border-t pt-4 sm:grid-cols-3">
+            {extraDates.map((d) => (
+              <div key={d.label}>
+                <p className="text-xs text-muted-foreground">{d.label}</p>
+                <p className="text-sm font-medium">{d.value}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

@@ -27,7 +27,26 @@ interface CategoryReservationData {
 
 interface CategoryReservationSectionProps {
   reservationData: CategoryReservationData | null;
+  /**
+   * Allocation percentages as stated in the price-band advertisement
+   * (`ipo_details.allocation_pct`), e.g. `{ qib: 50, nii: 15, retail: 35 }`.
+   * Independent of the share counts above - an issue can publish the split
+   * before the per-category share counts are known.
+   */
+  allocationPct?: Record<string, number> | null;
+  /** Exchange designated for the basis of allotment (`ipo_details`). */
+  designatedExchange?: string | null;
 }
+
+/** Human labels for the keys the price-band ad uses. */
+const ALLOCATION_LABELS: Record<string, string> = {
+  qib: 'Qualified Institutional Buyers (QIB)',
+  nii: 'Non-Institutional Investors (NII)',
+  retail: 'Retail Individual Investors (RII)',
+  employee: 'Employee Reservation',
+  anchor: 'Anchor Investors',
+  shareholder: 'Shareholder Reservation',
+};
 
 /**
  * Category definition for table display
@@ -54,16 +73,24 @@ function calculatePercentage(shares: number, total: number): string {
   return `${((shares / total) * 100).toFixed(2)}%`;
 }
 
-export function CategoryReservationSection({ reservationData }: CategoryReservationSectionProps) {
-  // Don't render if no reservation data
-  if (!reservationData) {
+export function CategoryReservationSection({
+  reservationData,
+  allocationPct = null,
+  designatedExchange = null,
+}: CategoryReservationSectionProps) {
+  const allocationEntries = allocationPct
+    ? Object.entries(allocationPct).filter(([, v]) => Number.isFinite(v))
+    : [];
+
+  // Don't render if there is nothing at all to show
+  if (!reservationData && allocationEntries.length === 0 && !designatedExchange) {
     return null;
   }
 
   // Build categories array based on available data
   const categories: Category[] = [];
 
-  if (reservationData.qibSharesOffered !== null && reservationData.qibSharesOffered > 0) {
+  if (reservationData && reservationData.qibSharesOffered !== null && reservationData.qibSharesOffered > 0) {
     categories.push({
       name: 'Qualified Institutional Buyers (QIB)',
       sharesOffered: reservationData.qibSharesOffered,
@@ -71,7 +98,7 @@ export function CategoryReservationSection({ reservationData }: CategoryReservat
     });
   }
 
-  if (reservationData.niiSharesOffered !== null && reservationData.niiSharesOffered > 0) {
+  if (reservationData && reservationData.niiSharesOffered !== null && reservationData.niiSharesOffered > 0) {
     categories.push({
       name: 'Non-Institutional Investors (NII)',
       sharesOffered: reservationData.niiSharesOffered,
@@ -79,7 +106,7 @@ export function CategoryReservationSection({ reservationData }: CategoryReservat
     });
   }
 
-  if (reservationData.retailSharesOffered !== null && reservationData.retailSharesOffered > 0) {
+  if (reservationData && reservationData.retailSharesOffered !== null && reservationData.retailSharesOffered > 0) {
     categories.push({
       name: 'Retail Individual Investors (RII)',
       sharesOffered: reservationData.retailSharesOffered,
@@ -88,7 +115,7 @@ export function CategoryReservationSection({ reservationData }: CategoryReservat
     });
   }
 
-  if (reservationData.employeeSharesOffered !== null && reservationData.employeeSharesOffered > 0) {
+  if (reservationData && reservationData.employeeSharesOffered !== null && reservationData.employeeSharesOffered > 0) {
     categories.push({
       name: 'Employee Reservation',
       sharesOffered: reservationData.employeeSharesOffered,
@@ -96,7 +123,7 @@ export function CategoryReservationSection({ reservationData }: CategoryReservat
     });
   }
 
-  if (reservationData.anchorSharesOffered !== null && reservationData.anchorSharesOffered > 0) {
+  if (reservationData && reservationData.anchorSharesOffered !== null && reservationData.anchorSharesOffered > 0) {
     categories.push({
       name: 'Anchor Investors',
       sharesOffered: reservationData.anchorSharesOffered,
@@ -104,8 +131,8 @@ export function CategoryReservationSection({ reservationData }: CategoryReservat
     });
   }
 
-  // Don't render if no categories to display
-  if (categories.length === 0) {
+  // Don't render if there is neither a category table nor a published split
+  if (categories.length === 0 && allocationEntries.length === 0 && !designatedExchange) {
     return null;
   }
 
@@ -125,7 +152,45 @@ export function CategoryReservationSection({ reservationData }: CategoryReservat
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
+          {/* Allocation split as published in the price-band advertisement.
+              Shown even when the per-category share counts are not out yet. */}
+          {allocationEntries.length > 0 && (
+            <div className="overflow-x-auto">
+              <p className="text-sm font-semibold mb-3">Allocation as offered</p>
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="py-3 px-4 text-left font-semibold">Category</th>
+                    <th className="py-3 px-4 text-right font-semibold">Allocation %</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {allocationEntries.map(([key, value]) => (
+                    <tr key={key} className="border-b last:border-0">
+                      <td className="py-3 px-4 font-medium">
+                        {ALLOCATION_LABELS[key.toLowerCase()] ?? key.toUpperCase()}
+                      </td>
+                      <td className="py-3 px-4 text-right font-semibold text-primary">
+                        {Number(value).toFixed(2)}%
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {designatedExchange && (
+            <div className="bg-muted/50 rounded-lg p-4">
+              <p className="text-sm font-medium text-muted-foreground">
+                Designated exchange for the basis of allotment
+              </p>
+              <p className="text-lg font-bold">{designatedExchange}</p>
+            </div>
+          )}
+
           {/* Total Shares Summary */}
+          {categories.length > 0 && (
           <div className="bg-primary/5 border border-primary/20 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-1">
               <Users className="h-4 w-4 text-primary" />
@@ -133,8 +198,10 @@ export function CategoryReservationSection({ reservationData }: CategoryReservat
             </div>
             <p className="text-2xl font-bold text-primary">{formatNumber(totalSharesOffered)}</p>
           </div>
+          )}
 
           {/* Category-wise Table */}
+          {categories.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -176,8 +243,10 @@ export function CategoryReservationSection({ reservationData }: CategoryReservat
               </tbody>
             </table>
           </div>
+          )}
 
           {/* Visual Percentage Bars */}
+          {categories.length > 0 && (
           <div className="space-y-2">
             <p className="text-sm font-semibold mb-3">Reservation Distribution</p>
             {categories.map((category, index) => {
@@ -198,6 +267,7 @@ export function CategoryReservationSection({ reservationData }: CategoryReservat
               );
             })}
           </div>
+          )}
 
           {/* Information Note */}
           <div className="text-xs text-muted-foreground border-t pt-4">

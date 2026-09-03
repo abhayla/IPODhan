@@ -61,6 +61,12 @@ import { getRedisClient } from '@/lib/cache/redis-client';
 import { IPORepository } from '@/lib/repositories/ipo-repository';
 import { ReviewRepository } from '@/lib/repositories/review-repository';
 import { DataConflictsRepository } from '@ipodhan/shared/repositories/data-conflicts-repository';
+import { IpoValuationRepository } from '@ipodhan/shared/repositories/ipo-valuation-repository';
+import { PromotersRepository } from '@ipodhan/shared/repositories/promoters-repository';
+import { IpoIntermediariesRepository } from '@ipodhan/shared/repositories/ipo-intermediaries-repository';
+import { IpoRiskFactorsRepository } from '@ipodhan/shared/repositories/ipo-risk-factors-repository';
+import { FinancialStatementsRepository } from '@ipodhan/shared/repositories/financial-statements-repository';
+import { BrlmTrackRecordRepository } from '@ipodhan/shared/repositories/brlm-track-record-repository';
 import { SEARCH_CONFIG } from '@/lib/config/search';
 import { isRealIPO } from '@ipodhan/shared/utils/offering-type';
 import type { IPODetailResponse } from '@/lib/db/types';
@@ -280,6 +286,79 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
         )
       : new Set<string>();
 
+  // ── W-75: extraction-fed tables (filing extractor output). Each load is
+  // wrapped so a missing table / empty result never breaks the page; every
+  // consumer below is null-safe, so an IPO without these rows renders exactly
+  // as it did before.
+  const safeLoad = async <T,>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await fn();
+    } catch {
+      return fallback;
+    }
+  };
+
+  const [
+    valuationRows,
+    promoterRows,
+    acquisitionRangeRows,
+    intermediaryRows,
+    riskFactorRows,
+    financialStatementRows,
+    brlmTrackRecordRows,
+  ] = await Promise.all([
+    safeLoad(() => new IpoValuationRepository(db, redis).listByIpo(ipo.id), []),
+    safeLoad(() => new PromotersRepository(db, redis).listPromotersByIpo(ipo.id), []),
+    safeLoad(() => new PromotersRepository(db, redis).listAcquisitionRangesByIpo(ipo.id), []),
+    safeLoad(() => new IpoIntermediariesRepository(db, redis).listByIpo(ipo.id), []),
+    safeLoad(() => new IpoRiskFactorsRepository(db, redis).listByIpo(ipo.id), []),
+    safeLoad(() => new FinancialStatementsRepository(db, redis).listByIpo(ipo.id), []),
+    safeLoad(() => new BrlmTrackRecordRepository(db, redis).listBySourceIpo(ipo.id), []),
+  ]);
+
+  // The prospectus supersedes the price-band ad when both were extracted.
+  const valuation =
+    valuationRows.find((v) => v.pricingEvent === 'PROSPECTUS') ??
+    valuationRows.find((v) => v.pricingEvent === 'PRICE_BAND_AD') ??
+    null;
+
+  // Peer-average P/E, for reading the issue's own P/E against its comparables.
+  const peerPeValues = (peerCompanies ?? [])
+    .map((p) => toNum(p.peRatio as string | number | null))
+    .filter((n): n is number => n !== null && n > 0);
+  const peerAveragePe =
+    peerPeValues.length > 0
+      ? peerPeValues.reduce((a, b) => a + b, 0) / peerPeValues.length
+      : null;
+
+  // RHP filing date — the date the prospectus was filed, not when we fetched it.
+  const rhpFilingDate =
+    (documents ?? []).find((d) => d.type === 'RHP' && d.filingDate)?.filingDate ?? null;
+
+  // Concentration KPIs ride on the risk-factor rows that state them.
+  const concentrationKpis = riskFactorRows.flatMap((rf) => {
+    const raw = rf.kpis;
+    if (!Array.isArray(raw)) return [];
+    return (raw as Array<Record<string, unknown>>)
+      .map((k) => ({
+        label: typeof k?.label === 'string' ? k.label : null,
+        valuePct: toNum(k?.value_pct as number | string | null),
+        fiscalYear: typeof k?.fiscal_year === 'number' ? k.fiscal_year : null,
+      }))
+      .filter((k): k is { label: string; valuePct: number; fiscalYear: number | null } =>
+        Boolean(k.label) && k.valuePct !== null
+      );
+  });
+
+  const allocationPct = (() => {
+    const raw = ipoDetails?.allocationPct as Record<string, unknown> | null | undefined;
+    if (!raw || typeof raw !== 'object') return null;
+    const entries = Object.entries(raw)
+      .map(([k, v]) => [k, toNum(v as number | string | null)] as const)
+      .filter((e): e is readonly [string, number] => e[1] !== null);
+    return entries.length > 0 ? Object.fromEntries(entries) : null;
+  })();
+
   // Empty-prone sections render nothing when their data is absent; one compact
   // PendingDataNotice names what's awaited instead of a stack of dead cards
   // (2026-07-02 UI review). Presence flags are computed server-side, once.
@@ -446,6 +525,9 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                     }
                   : null
               }
+              anchorBidDate={anchorInvestor?.bidDate ?? null}
+              rhpFilingDate={rhpFilingDate}
+              upiCutoffTime={ipoDetails?.upiCutoffTime ?? null}
             />
 
             {/* Sticky section navigation — Screener puts it right under the
@@ -482,7 +564,14 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             )}
 
             {/* 3. Issue Structure Section */}
-            {hasIssueStructure && <IssueStructureSection ipoDetails={ipoDetails || null} />}
+            {(hasIssueStructure || valuation) && (
+              <IssueStructureSection
+                ipoDetails={ipoDetails || null}
+                valuation={valuation}
+                faceValue={ipo.faceValue ?? null}
+                peerAveragePe={peerAveragePe}
+              />
+            )}
 
             {/* 3a. Lot Details Section */}
             <LotDetailsSection
@@ -499,6 +588,11 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 <CompanyOverview
                   companyDescription={ipo.companyDescription || ''}
                   riskFactors={[]}
+                  riskFactorItems={riskFactorRows.map((r) => ({
+                    seq: r.seq,
+                    heading: r.heading,
+                    body: r.body,
+                  }))}
                 />
               </section>
             )}
@@ -524,12 +618,13 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             )}
 
             {/* 9. Financial Performance Charts */}
-            {hasFinancials && (
+            {(hasFinancials || financialStatementRows.length > 0) && (
             <section id="financials" className="scroll-mt-28">
             <FinancialPerformanceCharts
               financialData={financialData}
               companyName={ipo.companyName}
               status={ipo.status}
+              statements={financialStatementRows}
             />
             </section>
             )}
@@ -562,15 +657,22 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             )}
 
             {/* 12a. Lead Managers Section */}
-            {ipoDetails?.leadManagers && (
-              <LeadManagerSection leadManagers={ipoDetails.leadManagers} />
+            {(ipoDetails?.leadManagers || intermediaryRows.length > 0) && (
+              <LeadManagerSection
+                leadManagers={ipoDetails?.leadManagers ?? null}
+                intermediaries={intermediaryRows}
+                brlmTrackRecords={brlmTrackRecordRows}
+              />
             )}
 
             {/* 13. Promoter Holding Section */}
-            {hasPromoterHolding && (
+            {(hasPromoterHolding || promoterRows.length > 0 || acquisitionRangeRows.length > 0) && (
               <PromoterHoldingSection
                 promoterHoldingPreIssue={financialData?.promoterHoldingPreIssue ? Number(financialData.promoterHoldingPreIssue) : null}
                 promoterHoldingPostIssue={financialData?.promoterHoldingPostIssue ? Number(financialData.promoterHoldingPostIssue) : null}
+                promoters={promoterRows}
+                acquisitionRanges={acquisitionRangeRows}
+                preIpoPlacement={ipoDetails?.preIpoPlacement ?? null}
               />
             )}
 
@@ -585,6 +687,8 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                   employeeSharesOffered: ipoDetails.employeeSharesOffered,
                   anchorSharesOffered: ipoDetails.anchorSharesOffered,
                 }}
+                allocationPct={allocationPct}
+                designatedExchange={ipoDetails.designatedExchange ?? null}
               />
             )}
 
@@ -602,7 +706,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             )}
 
             {/* 15. KPI Highlight Section */}
-            {hasKpis && (
+            {(hasKpis || financialStatementRows.length > 0 || concentrationKpis.length > 0) && (
             <KPIHighlightSection
               financialData={financialData ? {
                 marketCap: financialData.marketCap ? Number(financialData.marketCap) : null,
@@ -616,6 +720,8 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 priceRangeMax: ipo.priceRangeMax,
                 issueSize: ipo.issueSize ? Number(ipo.issueSize) : null,
               }}
+              statements={financialStatementRows}
+              concentrationKpis={concentrationKpis}
             />
             )}
 
@@ -695,6 +801,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 complianceOfficer: ipoDetails?.complianceOfficer ?? null,
                 complianceOfficerPhone: ipoDetails?.complianceOfficerPhone ?? null,
                 complianceOfficerEmail: ipoDetails?.complianceOfficerEmail ?? null,
+                cin: ipo.cin ?? null,
               }}
             />
 

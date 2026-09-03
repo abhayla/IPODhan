@@ -43,9 +43,37 @@ export interface IPOData {
   issueSize?: number | null;
 }
 
+/** One fiscal year of statements, for the DSCR / rent / basis strip. */
+export interface StatementKpiView {
+  fiscalYear: number;
+  basis: string;
+  unit: string;
+  dscr: string | null;
+  rentExpense: string | null;
+}
+
+/** A concentration percentage stated in a risk factor (`ipo_risk_factors.kpis`). */
+export interface ConcentrationKpiView {
+  label: string;
+  valuePct: number;
+  fiscalYear: number | null;
+}
+
 export interface KPIHighlightSectionProps {
   financialData: FinancialData | null;
   ipoData: IPOData | null;
+  /** Per-year statement extras (DSCR, rent, reporting basis). */
+  statements?: StatementKpiView[];
+  /** Customer / product / geography concentration, from the risk factors. */
+  concentrationKpis?: ConcentrationKpiView[];
+}
+
+const UNIT_DIVISOR: Record<string, number> = { MILLION: 10, LAKH: 100, CRORE: 1 };
+
+function toNumberOrNull(v: string | null): number | null {
+  if (v === null || v === '') return null;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 /**
@@ -54,9 +82,21 @@ export interface KPIHighlightSectionProps {
 export function KPIHighlightSection({
   financialData,
   ipoData,
+  statements = [],
+  concentrationKpis = [],
 }: KPIHighlightSectionProps) {
+  const statementExtras = (
+    <StatementAndConcentrationKpis
+      statements={statements}
+      concentrationKpis={concentrationKpis}
+    />
+  );
+  const hasExtras =
+    statements.some((s) => s.dscr !== null || s.rentExpense !== null || Boolean(s.basis)) ||
+    concentrationKpis.length > 0;
+
   // Case 1: No data available
-  if (!financialData || !ipoData) {
+  if ((!financialData || !ipoData) && !hasExtras) {
     return (
       <Card className="border-dashed">
         <CardContent className="pt-6">
@@ -84,9 +124,9 @@ export function KPIHighlightSection({
     ronw,
     roe,
     netWorth,
-  } = financialData;
+  } = financialData ?? ({} as FinancialData);
 
-  const { priceRangeMax, issueSize } = ipoData;
+  const { priceRangeMax, issueSize } = ipoData ?? ({} as IPOData);
 
   // Calculate derived metrics
   const preIPO_PE = calculatePreIPO_PE(priceRangeMax ?? null, preIpoEps ?? null);
@@ -114,7 +154,7 @@ export function KPIHighlightSection({
     preIPO_PE !== null ||
     postIPO_PE !== null;
 
-  if (!hasAnyData) {
+  if (!hasAnyData && !hasExtras) {
     return (
       <Card className="border-dashed">
         <CardContent className="pt-6">
@@ -159,7 +199,8 @@ export function KPIHighlightSection({
             icon={TrendingUp}
             title="Return on Equity (ROE)"
             value={formatPercentage(roe ? Number(roe) : null)}
-            tooltip="Return on Equity - measures profitability relative to shareholder equity. Higher ROE indicates better efficiency in generating profits from investments."
+            tooltip="Return on Equity - measures profitability relative to shareholder equity. Higher ROE indicates better efficiency in generating profits from investments."
+
           />
 
           {/* 3. Return on Net Worth (RoNW) */}
@@ -167,7 +208,8 @@ export function KPIHighlightSection({
             icon={DollarSign}
             title="Return on Net Worth (RoNW)"
             value={formatPercentage(ronw ? Number(ronw) : null)}
-            tooltip="Return on Net Worth - net profit as percentage of net worth. Similar to ROE, it shows how effectively the company uses its net worth to generate profits."
+            tooltip="Return on Net Worth - net profit as percentage of net worth. Similar to ROE, it shows how effectively the company uses its net worth to generate profits."
+
           />
 
           {/* 4. Price-to-Book Value (P/BV) */}
@@ -175,7 +217,8 @@ export function KPIHighlightSection({
             icon={Banknote}
             title="Price-to-Book Value"
             value={formatRatio(priceToBook)}
-            tooltip="Price-to-Book Value ratio - market price relative to book value. A ratio > 1 means the market values the company higher than its book value."
+            tooltip="Price-to-Book Value ratio - market price relative to book value. A ratio > 1 means the market values the company higher than its book value."
+
           />
 
           {/* 5. EPS Comparison (Pre vs Post) */}
@@ -187,7 +230,8 @@ export function KPIHighlightSection({
             postLabel="Post-IPO EPS"
             postValue={formatEPS(postIpoEps ? Number(postIpoEps) : null)}
             changePercent={epsChange}
-            tooltip="Earnings Per Share comparison before and after IPO. This shows the impact of IPO dilution on per-share earnings. Higher post-IPO EPS is generally positive."
+            tooltip="Earnings Per Share comparison before and after IPO. This shows the impact of IPO dilution on per-share earnings. Higher post-IPO EPS is generally positive."
+
           />
 
           {/* 6. P/E Ratio Comparison (Pre vs Post) */}
@@ -199,10 +243,16 @@ export function KPIHighlightSection({
             postLabel="Post-IPO P/E"
             postValue={formatPE(postIPO_PE)}
             changePercent={peChange}
-            tooltip="Price-to-Earnings ratio comparison before and after IPO. Lower post-IPO P/E (due to dilution) is generally viewed positively as it indicates better valuation for new investors."
+            tooltip="Price-to-Earnings ratio comparison before and after IPO. Lower post-IPO P/E (due to dilution) is generally viewed positively as it indicates better valuation for new investors."
+
             invertColors={true}
           />
         </div>
+
+        {/* Extras the offer document publishes that the six cards above do not
+            carry: debt service cover, rent, the reporting basis, and the
+            concentration percentages quoted in the risk factors. */}
+        {statementExtras}
 
         {/* Footer Note */}
         <div className="mt-6 text-xs text-muted-foreground border-t pt-4">
@@ -214,5 +264,105 @@ export function KPIHighlightSection({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * DSCR / rent / reporting basis per fiscal year, plus the concentration
+ * percentages the risk factors state. Renders nothing when neither exists.
+ */
+function StatementAndConcentrationKpis({
+  statements,
+  concentrationKpis,
+}: {
+  statements: StatementKpiView[];
+  concentrationKpis: ConcentrationKpiView[];
+}) {
+  const years = [...statements].sort((a, b) => a.fiscalYear - b.fiscalYear);
+  const hasDscr = years.some((y) => toNumberOrNull(y.dscr) !== null);
+  const hasRent = years.some((y) => toNumberOrNull(y.rentExpense) !== null);
+  const bases = Array.from(new Set(years.map((y) => y.basis).filter(Boolean)));
+
+  if (!hasDscr && !hasRent && bases.length === 0 && concentrationKpis.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-6 space-y-4 border-t pt-6">
+      {(hasDscr || hasRent) && (
+        <div className="overflow-x-auto">
+          <p className="text-sm font-semibold mb-3">Other reported metrics</p>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b bg-muted/50">
+                <th className="py-3 px-4 text-left font-semibold">Metric</th>
+                {years.map((y) => (
+                  <th key={y.fiscalYear} className="py-3 px-4 text-right font-semibold">
+                    FY{y.fiscalYear}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {hasDscr && (
+                <tr className="border-b last:border-0">
+                  <td className="py-3 px-4">Debt service coverage ratio (DSCR)</td>
+                  {years.map((y) => {
+                    const v = toNumberOrNull(y.dscr);
+                    return (
+                      <td key={y.fiscalYear} className="py-3 px-4 text-right font-medium">
+                        {v === null ? '—' : v.toFixed(2)}
+                      </td>
+                    );
+                  })}
+                </tr>
+              )}
+              {hasRent && (
+                <tr className="border-b last:border-0">
+                  <td className="py-3 px-4">Rent expense (₹ Cr)</td>
+                  {years.map((y) => {
+                    const v = toNumberOrNull(y.rentExpense);
+                    const divisor = UNIT_DIVISOR[y.unit] ?? 1;
+                    return (
+                      <td key={y.fiscalYear} className="py-3 px-4 text-right font-medium">
+                        {v === null
+                          ? '—'
+                          : (v / divisor).toLocaleString('en-IN', {
+                              maximumFractionDigits: 2,
+                            })}
+                      </td>
+                    );
+                  })}
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {bases.length > 0 && (
+        <p className="text-xs text-muted-foreground">
+          Reported on a{' '}
+          <strong>{bases.map((b) => b.toLowerCase()).join(' / ')}</strong> basis.
+        </p>
+      )}
+
+      {concentrationKpis.length > 0 && (
+        <div>
+          <p className="text-sm font-semibold mb-3">Concentration</p>
+          <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+            {concentrationKpis.map((k, i) => (
+              <div key={`${k.label}-${i}`} className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">
+                  {k.label}
+                  {k.fiscalYear ? ` (FY${k.fiscalYear})` : ''}
+                </p>
+                <p className="text-lg font-bold">{k.valuePct.toFixed(2)}%</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

@@ -10,9 +10,50 @@ import { AlertCircle, TrendingDown, Users } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { computeEquityDilution } from '@/lib/utils/kpi-calculations';
 
+/** One promoter as named in the offer document (`promoters`). */
+export interface PromoterRowView {
+  name: string;
+  sharesHeld: number | null;
+  /** Weighted average cost of acquisition per share, in rupees. */
+  waca: string | null;
+  isPromoterGroup?: boolean;
+}
+
+/** Promoter acquisitions over a look-back window (`promoter_acquisition_ranges`). */
+export interface PromoterAcquisitionRangeView {
+  period: string;
+  waca: string | null;
+  capMultiple: string | null;
+  priceLow?: string | null;
+  priceHigh?: string | null;
+}
+
 interface PromoterHoldingSectionProps {
   promoterHoldingPreIssue: number | null;
   promoterHoldingPostIssue: number | null;
+  /** Named promoters with shares held and cost per share. */
+  promoters?: PromoterRowView[];
+  /** 1Y / 18M / 3Y acquisition windows with their cost and cap multiple. */
+  acquisitionRanges?: PromoterAcquisitionRangeView[];
+  /** Whether a pre-IPO placement was made (`ipo_details.pre_ipo_placement`). */
+  preIpoPlacement?: boolean | null;
+}
+
+const PERIOD_LABELS: Record<string, string> = {
+  '1Y': 'Last 1 year',
+  '18M': 'Last 18 months',
+  '3Y': 'Last 3 years',
+};
+
+function parseNum(v: string | number | null | undefined): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'string' ? parseFloat(v) : v;
+  return Number.isFinite(n) ? n : null;
+}
+
+function rupees(v: string | number | null | undefined): string {
+  const n = parseNum(v);
+  return n === null ? '—' : `₹${n.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
 }
 
 /**
@@ -50,11 +91,19 @@ function getDilutionBgClass(dilution: number): string {
 export function PromoterHoldingSection({
   promoterHoldingPreIssue,
   promoterHoldingPostIssue,
+  promoters = [],
+  acquisitionRanges = [],
+  preIpoPlacement = null,
 }: PromoterHoldingSectionProps) {
-  // Case 1: Both fields are null - show "not available"
+  const hasPromoterRows = promoters.length > 0;
+  const hasRanges = acquisitionRanges.length > 0;
+
+  // Case 1: no percentages AND no named promoters - show "not available"
   if (
     promoterHoldingPreIssue === null &&
-    promoterHoldingPostIssue === null
+    promoterHoldingPostIssue === null &&
+    !hasPromoterRows &&
+    !hasRanges
   ) {
     return (
       <Card className="border-dashed">
@@ -166,6 +215,92 @@ export function PromoterHoldingSection({
                   </p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Named promoters and their cost of acquisition - the figures the
+              offer document publishes alongside the holding percentages. */}
+          {hasPromoterRows && (
+            <div className="overflow-x-auto">
+              <p className="text-sm font-semibold mb-3">Promoters</p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="py-3 px-4 text-left font-semibold">Name</th>
+                    <th className="py-3 px-4 text-right font-semibold">Shares held</th>
+                    <th className="py-3 px-4 text-right font-semibold">Cost per share</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {promoters.map((p) => (
+                    <tr key={p.name} className="border-b last:border-0">
+                      <td className="py-3 px-4 font-medium">
+                        {p.name}
+                        {p.isPromoterGroup && (
+                          <span className="ml-2 text-xs text-muted-foreground">
+                            (promoter group)
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        {p.sharesHeld !== null && p.sharesHeld !== undefined
+                          ? p.sharesHeld.toLocaleString('en-IN')
+                          : '—'}
+                      </td>
+                      <td className="py-3 px-4 text-right">{rupees(p.waca)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Acquisitions in the look-back windows SEBI requires the issuer to
+              disclose, with the cap price expressed as a multiple of the cost. */}
+          {hasRanges && (
+            <div className="overflow-x-auto">
+              <p className="text-sm font-semibold mb-3">
+                Promoter acquisitions before the offer
+              </p>
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="py-3 px-4 text-left font-semibold">Period</th>
+                    <th className="py-3 px-4 text-right font-semibold">
+                      Weighted average cost
+                    </th>
+                    <th className="py-3 px-4 text-right font-semibold">
+                      Cap price as a multiple
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {acquisitionRanges.map((r) => (
+                    <tr key={r.period} className="border-b last:border-0">
+                      <td className="py-3 px-4 font-medium">
+                        {PERIOD_LABELS[r.period] ?? r.period}
+                      </td>
+                      <td className="py-3 px-4 text-right">{rupees(r.waca)}</td>
+                      <td className="py-3 px-4 text-right">
+                        {parseNum(r.capMultiple) !== null
+                          ? `${parseNum(r.capMultiple)!.toFixed(2)}x`
+                          : '—'}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {preIpoPlacement !== null && (
+            <div className="p-4 rounded-lg bg-muted/50">
+              <p className="text-sm font-medium text-muted-foreground">
+                Pre-IPO placement
+              </p>
+              <p className="text-lg font-bold text-foreground">
+                {preIpoPlacement ? 'Yes' : 'No'}
+              </p>
             </div>
           )}
 
