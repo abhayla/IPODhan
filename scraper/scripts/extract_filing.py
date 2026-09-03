@@ -738,7 +738,7 @@ def _bank_names(blob):
     "|" or "." — reading to end-of-line would swallow the NEXT role's banks.
     Two banks in one role are joined by "and" (never a comma inside a name).
     """
-    value = re.split(r"[|.]", blob, 1)[0]
+    value = re.split(r"[|.]", blob, maxsplit=1)[0]
     out = []
     for piece in re.split(r"\s+and\s+|[;,]", value, flags=re.I):
         name = piece.strip()
