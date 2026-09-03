@@ -44,6 +44,26 @@ import { logger } from '../logger';
 import type { IPORepository } from './ipo-repository';
 import type { IPO, IPOWithRelations } from './types';
 
+/**
+ * Normalize an open-date value (a `Date` object, an ISO string, or a bare
+ * `YYYY-MM-DD` string) to its calendar-date string for tier 3b corroboration
+ * (W-108b). `Date -> toISOString().slice(0, 10)` takes the UTC calendar day
+ * (this codebase's UTC-date convention — see the module doc comment); a
+ * string is truncated to its first 10 characters so an ISO-with-time value
+ * ('2026-09-01T18:30:00.000Z') and a bare date ('2026-09-01') that name the
+ * same UTC day compare equal. `null`/`undefined` pass through unchanged so
+ * callers can still null-guard before comparing.
+ */
+function toCalendarDateString(value: string | Date | null | undefined): string | null {
+  if (value == null) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10);
+  }
+  return value.slice(0, 10);
+}
+
 export interface IpoIdentity {
   /** Raw (un-normalized) company name — carried through for log context only. */
   companyName: string;
@@ -65,13 +85,27 @@ export interface IpoIdentity {
    * keyspace (see module doc comment).
    */
   symbol?: string | null;
+  /**
+   * Incoming open_date (YYYY-MM-DD), when the caller has one. Used ONLY as a
+   * corroborating key for tier 3b (W-108, prefix-name matching) — never a
+   * primary identity key on its own. Optional/nullable: a caller that omits
+   * it simply cannot corroborate via this key (price_range_min may still
+   * corroborate) — see `resolveIpoRow`.
+   */
+  openDate?: string | Date | null;
+  /**
+   * Incoming price_range_min (integer, whole rupees), when the caller has
+   * one. Same role as `openDate`: a corroborating key for tier 3b only.
+   */
+  priceRangeMin?: number | null;
 }
 
 /**
  * Resolve the existing `ipos` row (if any) that an incoming write or guard
  * check should treat as "this company" — priority order:
  * isin (exact, normalized) -> nse/bse symbol (exact, normalized) ->
- * normalized-name -> slug -> fuzzy (typo) name.
+ * normalized-name -> prefix-name with corroboration (W-108) -> slug ->
+ * fuzzy (typo) name.
  *
  * Callers MUST resolve identity ONCE per request and pass the SAME resolved
  * row to every downstream step (guard check + write) rather than calling
@@ -82,7 +116,7 @@ export async function resolveIpoRow(
   ipoRepository: IPORepository,
   identity: IpoIdentity
 ): Promise<IPO | IPOWithRelations | null> {
-  const { companyName, normalizedName, slug, isin, symbol } = identity;
+  const { companyName, normalizedName, slug, isin, symbol, openDate, priceRangeMin } = identity;
 
   // Tier 1: ISIN (exact, normalized). Highest-confidence natural key — a
   // 12-character code unique to the security. NULL-safe: findByIsin returns
@@ -103,6 +137,68 @@ export async function resolveIpoRow(
   let nameMatch: IPO | IPOWithRelations | null = normalizedName
     ? await ipoRepository.findByNormalizedName(normalizedName)
     : null;
+
+  if (!nameMatch) {
+    // Tier 3b (W-108): exact/compact-whitespace name matching (tier 3) and
+    // spelling-typo fuzzy matching (tier 5, below) both miss the case where
+    // two legitimate sources genuinely disagree on the FULL company name —
+    // one carries a whole extra descriptive suffix the other omits
+    // ("Rays of Belief Limited" vs "Rays of Belief Limited- For Profit
+    // Social Enterprise"). That is a real, recurring disagreement between
+    // exchanges/aggregators, not a typo, so it needs its own tier — but a
+    // prefix relationship ALONE is too weak a signal on its own ("Rays of
+    // Belief Limited" is also a prefix-neighbor of an unrelated "Rays of
+    // Hope Limited" by first-word overlap in the candidate pre-filter, and
+    // two genuinely different companies can share a name prefix). This tier
+    // therefore REQUIRES at least one corroborating key (open_date or
+    // price_range_min agreement) before it will resolve, and declines to
+    // match (same conflict-avoidance posture as the T-318 key/name
+    // disagreement below) when more than one candidate corroborates.
+    try {
+      const prefixCandidates = normalizedName
+        ? await ipoRepository.findByNormalizedNamePrefix(normalizedName)
+        : [];
+
+      const corroborated = prefixCandidates.filter((candidate) => {
+        const normalizedOpenDate = toCalendarDateString(openDate);
+        const normalizedCandidateOpenDate = toCalendarDateString(candidate.openDate);
+        const openDateMatches =
+          normalizedOpenDate != null &&
+          normalizedCandidateOpenDate != null &&
+          normalizedOpenDate === normalizedCandidateOpenDate;
+        const priceMatches =
+          priceRangeMin != null &&
+          candidate.priceRangeMin != null &&
+          Number(candidate.priceRangeMin) === Number(priceRangeMin);
+        return openDateMatches || priceMatches;
+      });
+
+      if (corroborated.length === 1) {
+        nameMatch = corroborated[0];
+        logger.info({
+          companyName,
+          normalizedName,
+          existingCompanyName: corroborated[0].companyName,
+          existingSlug: corroborated[0].slug,
+          newSlug: slug,
+        }, '[W-108] Found existing IPO via tier 3b prefix-name matching with corroboration - preventing duplicate!');
+      } else if (corroborated.length > 1) {
+        logger.warn({
+          companyName,
+          normalizedName,
+          candidateIds: corroborated.map((c) => c.id),
+        }, '[W-108] Multiple tier 3b prefix candidates corroborated - declining to match (ambiguous)');
+      }
+    } catch (prefixError) {
+      // Advisory, same posture as the fuzzy tier below: a lookup failure
+      // must never fail resolution — fall through to the remaining tiers.
+      logger.warn({
+        companyName,
+        normalizedName,
+        error: prefixError instanceof Error ? prefixError.message : String(prefixError),
+      }, '[W-108] Tier 3b prefix-name check failed (non-fatal) - continuing without it');
+    }
+  }
 
   if (!nameMatch) {
     // Tier 4: slug-based lookup (existing behavior)

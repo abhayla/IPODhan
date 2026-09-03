@@ -30,6 +30,7 @@ function makeRepo(overrides: Partial<Record<keyof IPORepository, any>> = {}) {
     findByIsin: vi.fn().mockResolvedValue(null),
     findBySymbol: vi.fn().mockResolvedValue(null),
     findByNormalizedName: vi.fn().mockResolvedValue(null),
+    findByNormalizedNamePrefix: vi.fn().mockResolvedValue([]),
     findBySlug: vi.fn().mockResolvedValue(null),
     findByFuzzyName: vi.fn().mockResolvedValue(null),
     ...overrides,
@@ -174,6 +175,177 @@ describe('resolveIpoRow — conflict detection', () => {
     expect(warnSpy).not.toHaveBeenCalled();
 
     warnSpy.mockRestore();
+  });
+});
+
+describe('resolveIpoRow — tier 3b: prefix-name matching with corroboration (W-108)', () => {
+  const raysIncoming: IpoIdentity = {
+    companyName: 'Rays of Belief Limited',
+    normalizedName: 'rays of belief',
+    slug: 'rays-of-belief-ltd',
+    isin: null,
+    symbol: null,
+    openDate: '2026-09-01',
+    priceRangeMin: 227,
+  };
+
+  it('(a) matches the existing longer-name row when open_date corroborates (the live W-108 case)', async () => {
+    const existing = makeIpo({
+      id: 'row-rays',
+      companyName: 'Rays of Belief Limited- For Profit Social Enterprise',
+      symbol: 'MOMSBELIEF',
+      slug: 'rays-of-belief-limited-for-profit-social-enterprise',
+      openDate: '2026-09-01',
+      priceRangeMin: 227,
+    } as Partial<IPO>);
+    const repo = makeRepo({
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([existing]),
+    });
+
+    const result = await resolveIpoRow(repo, raysIncoming);
+
+    expect(result).toEqual(existing);
+    expect(repo.findByNormalizedNamePrefix).toHaveBeenCalledWith('rays of belief');
+  });
+
+  it('(a2) matches on price_range_min corroboration alone when open_date is absent', async () => {
+    const existing = makeIpo({
+      id: 'row-rays',
+      companyName: 'Rays of Belief Limited- For Profit Social Enterprise',
+      openDate: '2026-09-05', // deliberately different — must not be required
+      priceRangeMin: 227,
+    } as Partial<IPO>);
+    const repo = makeRepo({
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([existing]),
+    });
+
+    const result = await resolveIpoRow(repo, { ...raysIncoming, openDate: null });
+
+    expect(result).toEqual(existing);
+  });
+
+  it('(b) does NOT match when the candidate has NO corroborating key (open_date and price differ)', async () => {
+    const existing = makeIpo({
+      id: 'row-rays',
+      companyName: 'Rays of Belief Limited- For Profit Social Enterprise',
+      openDate: '2026-09-15',
+      priceRangeMin: 999,
+    } as Partial<IPO>);
+    const repo = makeRepo({
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([existing]),
+    });
+
+    const result = await resolveIpoRow(repo, raysIncoming);
+
+    expect(result).toBeNull();
+  });
+
+  it('(c) declines to match when two candidates BOTH corroborate (ambiguous)', async () => {
+    const candidateA = makeIpo({
+      id: 'row-A',
+      companyName: 'Rays of Belief Limited- For Profit Social Enterprise',
+      openDate: '2026-09-01',
+    } as Partial<IPO>);
+    const candidateB = makeIpo({
+      id: 'row-B',
+      companyName: 'Rays of Belief Limited- Another Branch',
+      priceRangeMin: 227,
+    } as Partial<IPO>);
+    const repo = makeRepo({
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([candidateA, candidateB]),
+    });
+
+    const { logger } = await import('../logger');
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
+
+    const result = await resolveIpoRow(repo, raysIncoming);
+
+    expect(result).toBeNull();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ candidateIds: ['row-A', 'row-B'] }),
+      expect.stringContaining('[W-108]')
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it('(d) a genuinely different company sharing a prefix does not match, even with corroboration, when the repo read correctly excludes it', async () => {
+    // "Rays of Hope Limited" is NOT a word-boundary prefix match of
+    // "Rays of Belief Limited" (they diverge at "belief" vs "hope") — the
+    // real IPORepository.findByNormalizedNamePrefix would never return it
+    // as a candidate. This test locks that resolveIpoRow trusts the repo's
+    // candidate set and applies ONLY the corroboration/ambiguity rules on
+    // top of it, so an empty candidate list (the correct real-world result
+    // for two different companies) falls through to "no match".
+    const repo = makeRepo({
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([]),
+    });
+
+    const result = await resolveIpoRow(repo, raysIncoming);
+
+    expect(result).toBeNull();
+    expect(repo.findBySlug).toHaveBeenCalled(); // falls through to tier 4
+  });
+
+  it('a fuzzy-tier-catchable typo pair is unaffected: tier 3b is skipped when tier 3 (exact/compact name) already hit', async () => {
+    const existing = makeIpo({ id: 'row-1', companyName: 'Acme Ltd' });
+    const repo = makeRepo({ findByNormalizedName: vi.fn().mockResolvedValue(existing) });
+
+    const result = await resolveIpoRow(repo, baseIdentity);
+
+    expect(result).toEqual(existing);
+    expect(repo.findByNormalizedNamePrefix).not.toHaveBeenCalled();
+  });
+
+  it('a tier 3b lookup failure is non-fatal and resolution falls through to the remaining tiers', async () => {
+    const existing = makeIpo({ id: 'row-slug' });
+    const repo = makeRepo({
+      findByNormalizedNamePrefix: vi.fn().mockRejectedValue(new Error('connection reset')),
+      findBySlug: vi.fn().mockResolvedValue(existing),
+    });
+
+    const result = await resolveIpoRow(repo, raysIncoming);
+
+    expect(result).toEqual(existing);
+  });
+
+  // W-108b: openDate corroboration must be type-safe across the shapes a
+  // live caller can hand in (a JS Date object) and the shapes a candidate
+  // row can carry (a bare YYYY-MM-DD string) — same calendar day, either
+  // representation, must corroborate.
+  it('(e) matches when the candidate row is a Date object and the incoming openDate is a bare date string', async () => {
+    const existing = makeIpo({
+      id: 'row-rays',
+      companyName: 'Rays of Belief Limited- For Profit Social Enterprise',
+      openDate: new Date('2026-09-01T00:00:00.000Z') as unknown as string,
+      priceRangeMin: null,
+    } as Partial<IPO>);
+    const repo = makeRepo({
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([existing]),
+    });
+
+    const result = await resolveIpoRow(repo, { ...raysIncoming, openDate: '2026-09-01', priceRangeMin: null });
+
+    expect(result).toEqual(existing);
+  });
+
+  // W-108b: an ISO datetime string and a bare date string that name the
+  // same UTC calendar day must corroborate — this is the codebase's
+  // UTC-date convention (see the module doc comment), not a coincidence.
+  it('(f) matches when one side is an ISO datetime string and the other a bare date string naming the same UTC day', async () => {
+    const existing = makeIpo({
+      id: 'row-rays',
+      companyName: 'Rays of Belief Limited- For Profit Social Enterprise',
+      openDate: '2026-09-01T18:30:00.000Z',
+      priceRangeMin: null,
+    } as Partial<IPO>);
+    const repo = makeRepo({
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([existing]),
+    });
+
+    const result = await resolveIpoRow(repo, { ...raysIncoming, openDate: '2026-09-01', priceRangeMin: null });
+
+    expect(result).toEqual(existing);
   });
 });
 

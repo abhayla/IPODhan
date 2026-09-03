@@ -144,6 +144,8 @@ export class DataConsolidationOrchestrator {
             slug,
             isin: scrapedIPO.isin,
             symbol: scrapedIPO.symbol,
+            openDate: scrapedIPO.openDate ?? null,
+            priceRangeMin: scrapedIPO.priceRangeMin ?? null,
           }) as IPO | null;
       const isNew = !existingIPO;
 

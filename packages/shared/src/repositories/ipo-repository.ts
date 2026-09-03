@@ -51,6 +51,34 @@ import type {
   HistoricalIPOQueryParams,
 } from './types';
 
+/**
+ * True when the SHORTER of two already-normalized names is a prefix of the
+ * LONGER one, ending at a word boundary (the longer string's next character
+ * is non-alphanumeric, or the strings are equal length). Used by
+ * `findByNormalizedNamePrefix` (W-108, tier 3b) so "rays of belief" counts
+ * as a prefix of "rays of belief- for profit social enterprise" (boundary =
+ * the hyphen) but "ray" is NOT treated as a prefix of "rays of belief"
+ * (mid-word — "ray" vs "rays", no boundary at that position).
+ */
+function isWordBoundaryPrefixMatch(normalizedA: string, normalizedB: string): boolean {
+  if (!normalizedA || !normalizedB) {
+    return false;
+  }
+  if (normalizedA === normalizedB) {
+    return true;
+  }
+
+  const [shorter, longer] =
+    normalizedA.length < normalizedB.length ? [normalizedA, normalizedB] : [normalizedB, normalizedA];
+
+  if (!longer.startsWith(shorter)) {
+    return false;
+  }
+
+  const boundaryChar = longer.charAt(shorter.length);
+  return !/[a-z0-9]/i.test(boundaryChar);
+}
+
 export class IPORepository extends BaseRepository implements IIPORepository {
   constructor(db: NodePgDatabase<typeof schema>, redis: Redis) {
     super(db, redis);
@@ -479,6 +507,70 @@ export class IPORepository extends BaseRepository implements IIPORepository {
     } catch (error) {
       throw new DatabaseError(
         `Failed to fetch IPO by fuzzy name: ${normalizedName}`,
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
+   * Find existing rows whose normalized company name is a WORD-BOUNDARY
+   * PREFIX of `normalizedName`, or vice versa (W-108, tier 3b of
+   * `resolveIpoRow`). Catches the case a spelling-typo fuzzy check
+   * (`findByFuzzyName`) cannot: two sources genuinely disagree on the FULL
+   * name — one appends a whole descriptive suffix the other omits
+   * ("Rays of Belief Limited" vs "Rays of Belief Limited- For Profit Social
+   * Enterprise") — not a few mis-typed letters.
+   *
+   * Deliberately NOT a match by itself: this is a candidate-narrowing read
+   * only. The caller (`resolveIpoRow`) is responsible for requiring a
+   * corroborating key (open_date / price_range_min) before treating any
+   * returned row as a match, and for declining to match when more than one
+   * candidate corroborates — a bare prefix relationship between two
+   * genuinely different companies ("Rays of Belief Limited" vs "Rays of
+   * Hope Limited" both start with "Rays of") MUST NOT resolve on name alone.
+   *
+   * Uncached (identity read, same reasoning as `findByFuzzyName`) and capped
+   * at 5 rows — a prefix hint, not a full-table scan.
+   *
+   * @param normalizedName - normalizeCompanyNameForMatching() output for the
+   *   INCOMING row being resolved.
+   */
+  async findByNormalizedNamePrefix(normalizedName: string): Promise<IPO[]> {
+    if (!normalizedName) {
+      return [];
+    }
+
+    try {
+      // Same cheap pre-filter as findByFuzzyName: only rows sharing the
+      // candidate's first word can possibly be in a prefix relationship
+      // with it (in either direction), so this keeps the scan bounded.
+      const firstWord = normalizedName.split(' ')[0];
+      if (!firstWord || firstWord.length < 3) {
+        return [];
+      }
+
+      const candidates = await this.db
+        .select()
+        .from(ipos)
+        .where(sql`${normalizedCompanyNameSql(sql`${ipos.companyName}`)} LIKE ${firstWord + '%'}`)
+        .limit(200);
+
+      const prefixMatches: IPO[] = [];
+      for (const candidate of candidates) {
+        const candidateNormalized = normalizeCompanyNameForMatching(candidate.companyName);
+        if (isWordBoundaryPrefixMatch(candidateNormalized, normalizedName)) {
+          prefixMatches.push(candidate);
+          if (prefixMatches.length >= 5) {
+            break;
+          }
+        }
+      }
+
+      return prefixMatches;
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to fetch IPO by normalized name prefix: ${normalizedName}`,
         undefined,
         error
       );
