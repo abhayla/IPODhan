@@ -197,6 +197,18 @@ export function documentExtractionBlocked(
         reason: `extraction blocked after ${doc.retryCount} failed attempts (${EXTRACTION_BLOCKED_ERROR}@${version})`,
       };
     }
+    // F6 (S-02 round 6): a MANUAL_REVIEW row whose extraction_error carries NO
+    // `@<version>` at all (an operator set MANUAL_REVIEW by hand, or a legacy
+    // row predating this encoding) is NOT the same as "blocked at an older
+    // build" — there is no version to compare against, so treating it as
+    // revivable silently un-blocks a row a human deliberately parked. Only a
+    // DIFFERENT, encoded version is grounds for revival.
+    if (blockedVersion === null) {
+      return {
+        blocked: true,
+        reason: 'extraction blocked — MANUAL_REVIEW with no encoded extractor version in extraction_error (operator-set or legacy row)',
+      };
+    }
     return { blocked: false };
   }
   if ((doc.extractionStatus === 'FAILED' || doc.extractionStatus === 'IN_PROGRESS') && doc.retryCount > 0) {
@@ -522,6 +534,16 @@ export interface AutoPersistDeps {
   version?: string;
   /** MAJOR-1: shared across the whole document cycle. `undefined` = unbounded (existing callers/tests). */
   spawnBudget?: SpawnBudget;
+  /**
+   * F3 (S-02 round 6): absolute epoch ms (per `now()`) after which no NEW
+   * spawn may start. Checked BEFORE each spawn inside the extract loop —
+   * never mid-extraction — so `document-cycle.ts`'s 25-minute extraction cap
+   * is honoured PER DOCUMENT within an IPO, not only between IPOs.
+   * `undefined` = no deadline (existing callers/tests are unaffected).
+   */
+  deadlineMs?: number;
+  /** Clock used against `deadlineMs`. Defaults to `Date.now`. */
+  now?: () => number;
 }
 
 /** The real dependency set, wired to the database and the filesystem. */
@@ -617,6 +639,20 @@ export async function processPendingFilings(
     skippedBudget: 0,
   };
 
+  // F5 (S-02 round 6): the budget is a CYCLE-wide counter (MAJOR-1) — once it
+  // is spent, every remaining candidate IPO is guaranteed to be all-skipped-
+  // budget regardless of what documents it has. Loading documents + fetch
+  // states for it first was pure waste (two DB round trips per candidate,
+  // every cycle, for data that gets thrown away unread). Check BEFORE any
+  // read.
+  if (deps.spawnBudget && deps.spawnBudget.remaining <= 0) {
+    logger.info(
+      { ipoId: ipo.id },
+      'Spawn budget already exhausted this cycle — skipping document load for this IPO (non-fatal)'
+    );
+    return result;
+  }
+
   let docs: CandidateDocument[];
   let states: Awaited<ReturnType<AutoPersistDeps['loadStates']>>;
   try {
@@ -663,7 +699,23 @@ export async function processPendingFilings(
   const extractions: Array<{ doc: CandidateDocument; extraction: FilingExtraction }> = [];
 
   // ---------------------------------------------------------------- extract
-  for (const doc of pendingForThisCall) {
+  for (let pendingIdx = 0; pendingIdx < pendingForThisCall.length; pendingIdx++) {
+    const doc = pendingForThisCall[pendingIdx];
+
+    // F3: the deadline is checked BEFORE starting a new spawn, never inside
+    // one already running — an extraction in flight always finishes. Once
+    // past the deadline, every remaining document in THIS call is left
+    // PENDING and reported the same way the spawn-budget cutoff already is.
+    if (deps.deadlineMs !== undefined && (deps.now ?? Date.now)() >= deps.deadlineMs) {
+      const remaining = pendingForThisCall.length - pendingIdx;
+      result.skippedBudget += remaining;
+      result.skipped = [
+        ...result.skipped,
+        `${remaining} document(s) left PENDING — extraction deadline reached`,
+      ];
+      break;
+    }
+
     const docType = doc.type as FilingDocType;
     const pdfPath = documentPath(ipo.id, docType, doc.sha256 as string, deps.storeDir ?? getStoreDir());
 

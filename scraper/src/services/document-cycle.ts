@@ -60,7 +60,15 @@ import { DistributedLock } from '../utils/distributed-lock.js';
 
 /** MAJOR-1: key + TTL for the cycle-level extraction lock (document-cycle.ts). */
 const FILING_EXTRACTION_LOCK_KEY = 'filing-auto-persist:cycle';
-const FILING_EXTRACTION_LOCK_TTL_MS = 45 * 60 * 1000;
+/**
+ * Exported (F3, S-02 round 6) so a static test can assert the spawn cap can
+ * never outlive the lock: `DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS`
+ * (worst case, every spawn takes the full extractor timeout) plus slack MUST
+ * stay under this TTL, or a future cap raise could let extraction keep
+ * running after the lock protecting it from a second overlapping cycle has
+ * already expired.
+ */
+export const FILING_EXTRACTION_LOCK_TTL_MS = 45 * 60 * 1000;
 
 /**
  * W-102: whole-extraction-pass (PASS 2) wall-clock ceiling across all
@@ -297,8 +305,8 @@ export async function runDocumentCycle(
     const candidates = await loadCandidateIpos();
     const results: IpoRunResult[] = [];
     let budgetExhausted = false;
-    // Item 7: tallied from the SAME `documents.findByIPO` rows already loaded
-    // below for `shaByDocId` — no extra query.
+    // Item 7 / F4: tallied AFTER pass 2 (below), across every candidate — see
+    // the loop right before `summarize()`.
     let extractionBlocked = 0;
     let extractionFailed = 0;
 
@@ -320,13 +328,15 @@ export async function runDocumentCycle(
 
       // W-1: hand demotion the persisted hashes so a FOUND row is checked
       // against the exact file its document row names.
+      // F4 (S-02 round 6): extraction_blocked/extraction_failed are NOT
+      // tallied here any more — this snapshot is taken BEFORE pass 2 (below)
+      // has written anything, and only for the IPOs pass 1 reaches before its
+      // own discovery budget runs out. The real tally runs after pass 2, over
+      // every candidate.
       const shaByDocId = new Map<string, string | null>();
       try {
         for (const d of await documents.findByIPO(ipo.id)) {
           shaByDocId.set(d.id, (d as { sha256?: string | null }).sha256 ?? null);
-          const extractionStatus = (d as { extractionStatus?: string | null }).extractionStatus;
-          if (extractionStatus === 'MANUAL_REVIEW') extractionBlocked++;
-          else if (extractionStatus === 'FAILED') extractionFailed++;
         }
       } catch (error) {
         // Non-fatal: without the map, demotion falls back to the older
@@ -456,6 +466,11 @@ export async function runDocumentCycle(
               autoPersistDeps = buildAutoPersistDeps();
               autoPersistDeps.spawnBudget = spawnBudget;
             }
+            // F3: same absolute deadline + clock on every call this cycle, so
+            // the per-document deadline check inside `processPendingFilings`
+            // reads consistently with this loop's own extraction-budget check.
+            autoPersistDeps.deadlineMs = extractionStartedAt + extractionBudgetMs;
+            autoPersistDeps.now = now;
             const autoPersist = await processPendingFilings(
               {
                 id: ipo.id,
@@ -478,6 +493,27 @@ export async function runDocumentCycle(
             );
           }
         }
+      }
+    }
+
+    // F4 (S-02 round 6): tally extraction_blocked/extraction_failed AFTER
+    // pass 2 has run, across EVERY candidate IPO — not only the ones pass 1
+    // reached before its own budget ran out, and reading state AFTER pass 2
+    // had a chance to write it. A document pass 2 just pushed into
+    // MANUAL_REVIEW or FAILED shows up in THIS cycle's summary, not a cycle
+    // late. Non-fatal per IPO — a read failure here must not fail the cycle.
+    for (const ipo of candidates) {
+      try {
+        for (const d of await documents.findByIPO(ipo.id)) {
+          const extractionStatus = (d as { extractionStatus?: string | null }).extractionStatus;
+          if (extractionStatus === 'MANUAL_REVIEW') extractionBlocked++;
+          else if (extractionStatus === 'FAILED') extractionFailed++;
+        }
+      } catch (error) {
+        logger.warn(
+          { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+          'Could not load document extraction status for the cycle summary (non-fatal)'
+        );
       }
     }
 

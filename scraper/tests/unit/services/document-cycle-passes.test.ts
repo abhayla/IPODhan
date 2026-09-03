@@ -21,6 +21,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
 import { ipos } from '@ipodhan/shared/db/schema';
+import { DocumentRepository } from '@ipodhan/shared';
 
 // ---------------------------------------------------------------------------
 // Mocks — every dependency runDocumentCycle touches, fake-deps style (see
@@ -113,16 +114,24 @@ vi.mock('../../../src/services/step-ledger-recorders.js', () => ({
   recordDocumentRunSteps: vi.fn().mockResolvedValue(undefined),
 }));
 
-const processPendingFilingsMock = vi.fn().mockResolvedValue({
-  ipoId: 'x',
-  considered: 0,
-  extracted: 0,
-  persisted: 0,
-  failed: 0,
-  skipped: [],
-  spawned: 0,
-  skippedBudget: 0,
-});
+// F2: decrement the SHARED spawnBudget when the mock is given one (mirrors
+// what the real processPendingFilings does), so a test can observe whether
+// the second candidate sees the FIRST candidate's spend or a fresh budget.
+const processPendingFilingsMock = vi.fn(
+  async (ipo: { id: string }, deps: { spawnBudget?: { remaining: number } } | undefined) => {
+    if (deps?.spawnBudget) deps.spawnBudget.remaining -= 1;
+    return {
+      ipoId: ipo.id,
+      considered: 0,
+      extracted: 0,
+      persisted: 0,
+      failed: 0,
+      skipped: [],
+      spawned: 0,
+      skippedBudget: 0,
+    };
+  }
+);
 const buildAutoPersistDepsMock = vi.fn().mockImplementation(() => ({}));
 
 vi.mock('../../../src/services/filing-auto-persist.js', () => ({
@@ -166,6 +175,25 @@ beforeEach(() => {
   vi.clearAllMocks();
   FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST = true;
   lockAcquireMock.mockResolvedValue({ acquired: true, token: 'tok-1' });
+  // Restore the default implementation every test — `clearAllMocks()` clears
+  // call history but NOT a `mockImplementation` a previous test installed
+  // (e.g. the F2 spawn-budget-observation test below), so tests must not rely
+  // on implementation ordering.
+  processPendingFilingsMock.mockImplementation(
+    async (ipo: { id: string }, deps: { spawnBudget?: { remaining: number } } | undefined) => {
+      if (deps?.spawnBudget) deps.spawnBudget.remaining -= 1;
+      return {
+        ipoId: ipo.id,
+        considered: 0,
+        extracted: 0,
+        persisted: 0,
+        failed: 0,
+        skipped: [],
+        spawned: 0,
+        skippedBudget: 0,
+      };
+    }
+  );
   runIpoMock.mockImplementation((ipo: { id: string }) => ({
     ipoId: ipo.id,
     companyName: 'Test Co',
@@ -214,6 +242,51 @@ describe('W-102 — the spawn budget object is the SAME instance across both can
     const deps2 = processPendingFilingsMock.mock.calls[1][1];
     expect(deps1).toBe(deps2);
   });
+
+  // F2 (S-02 round 6): identity alone doesn't prove the budget is SPENT
+  // across candidates — a fresh `{remaining: N}` object could be assigned to
+  // the same `deps.spawnBudget` property every iteration and `deps1 === deps2`
+  // would still hold. Assert the actual counter value the second candidate
+  // observes is the FIRST candidate's spend, not a reset one.
+  it('the second candidate observes the budget the FIRST candidate already spent (3 then 2), not a fresh one', async () => {
+    const observedRemaining: number[] = [];
+    processPendingFilingsMock.mockImplementation(
+      async (ipo: { id: string }, deps: { spawnBudget?: { remaining: number } } | undefined) => {
+        observedRemaining.push(deps?.spawnBudget?.remaining as number);
+        if (deps?.spawnBudget) deps.spawnBudget.remaining -= 1;
+        return {
+          ipoId: ipo.id,
+          considered: 0,
+          extracted: 0,
+          persisted: 0,
+          failed: 0,
+          skipped: [],
+          spawned: 1,
+          skippedBudget: 0,
+        };
+      }
+    );
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    // DEFAULT_MAX_SPAWNS_PER_CYCLE is mocked to 3 (line above) — the SAME
+    // value real production uses today.
+    expect(observedRemaining).toEqual([3, 2]);
+  });
+});
+
+describe('F1 — the cycle lock NOT being acquired skips extraction but never discovery', () => {
+  it('lock unavailable: processPendingFilings and lock.release are never called; discovery still runs for every candidate', async () => {
+    lockAcquireMock.mockResolvedValue({ acquired: false });
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(processPendingFilingsMock).not.toHaveBeenCalled();
+    expect(lockReleaseMock).not.toHaveBeenCalled();
+    // Discovery (pass 1) is independent of the extraction lock — both
+    // candidates still get a discovery pass.
+    expect(runIpoMock).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('W-102 — pass 2 stops BETWEEN IPOs once EXTRACTION_MS is exceeded', () => {
@@ -244,6 +317,26 @@ describe('W-102 — pass 2 stops BETWEEN IPOs once EXTRACTION_MS is exceeded', (
  * Same pattern as `stage-reconciler-job.test.ts` (W-100) — every `i.<column>`
  * reference must be a real `ipos` column, checked without a live database.
  */
+describe('F4 — extraction_blocked/extraction_failed tally covers pass 2, over every candidate', () => {
+  it('a document that PASS 2 pushed into MANUAL_REVIEW is counted in THIS cycle summary', async () => {
+    // ipo-2 is only reached because the tally now runs AFTER pass 2, over
+    // every candidate — not from the snapshot pass 1 took before pass 2 had
+    // written anything.
+    vi.mocked(DocumentRepository).mockImplementationOnce(
+      () =>
+        ({
+          findByIPO: vi.fn((ipoId: string) =>
+            Promise.resolve(ipoId === 'ipo-2' ? [{ extractionStatus: 'MANUAL_REVIEW' }] : [])
+          ),
+        }) as never
+    );
+
+    const summary = await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    expect(summary.extractionBlocked).toBe(1);
+  });
+});
+
 describe('W-101 — PURGE_CANDIDATES_SQL', () => {
   it('casts status to text before upper() — no bare upper(i.status)', () => {
     expect(PURGE_CANDIDATES_SQL).toContain('i.status::text');

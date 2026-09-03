@@ -38,6 +38,8 @@ import {
   EXTRACTOR_VERSION,
   MAX_EXTRACTION_ATTEMPTS,
   EXTRACTION_BLOCKED_ERROR,
+  DEFAULT_MAX_SPAWNS_PER_CYCLE as DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL,
+  EXTRACT_TIMEOUT_MS as EXTRACT_TIMEOUT_MS_REAL,
   type AutoPersistDeps,
   type CandidateDocument,
 } from '../../../src/services/filing-auto-persist.js';
@@ -385,6 +387,30 @@ describe('documentExtractionBlocked — pure per-document gate logic', () => {
     ).toBe(false);
   });
 
+  // F6 (S-02 round 6): a MANUAL_REVIEW row with NO encoded version at all —
+  // an operator set it by hand, or it predates the `@<version>` encoding —
+  // must NOT be treated the same as "blocked at an older build". There is no
+  // version to compare, so it must stay blocked until a human clears it.
+  it('F6 — MANUAL_REVIEW with NO encoded version (operator-set / legacy) BLOCKS, not revives', () => {
+    expect(
+      documentExtractionBlocked(
+        { extractionStatus: 'MANUAL_REVIEW', extractionError: 'operator flagged for manual check', retryCount: 3, updatedAt: now },
+        V1,
+        now
+      ).blocked
+    ).toBe(true);
+  });
+
+  it('F6 — MANUAL_REVIEW with a null/undefined extractionError BLOCKS, not revives', () => {
+    expect(
+      documentExtractionBlocked({ extractionStatus: 'MANUAL_REVIEW', extractionError: null, retryCount: 0, updatedAt: now }, V1, now)
+        .blocked
+    ).toBe(true);
+    expect(
+      documentExtractionBlocked({ extractionStatus: 'MANUAL_REVIEW', retryCount: 0, updatedAt: now }, V1, now).blocked
+    ).toBe(true);
+  });
+
   it('FAILED with retryCount 1 blocks 5 minutes later, and is clear 20 minutes later', () => {
     const fiveMinAgo = new Date(now.getTime() - 5 * 60_000);
     const twentyMinAgo = new Date(now.getTime() - 20 * 60_000);
@@ -645,7 +671,7 @@ describe('processPendingFilings — the per-cycle spawn budget (MAJOR-1)', () =>
     expect(result.skipped.join(' ')).toContain('spawn budget exhausted');
   });
 
-  it('a budget already at zero spawns nothing for this IPO', async () => {
+  it('a budget already at zero spawns nothing for this IPO, and (F5) never loads its documents', async () => {
     const budget = { remaining: 0 };
     const d = deps({
       loadDocuments: vi.fn(async () => FIVE_DOCS),
@@ -656,8 +682,14 @@ describe('processPendingFilings — the per-cycle spawn budget (MAJOR-1)', () =>
     const result = await processPendingFilings(IPO, d);
 
     expect(result.spawned).toBe(0);
-    expect(result.skippedBudget).toBe(5);
+    // F5: the budget is exhausted BEFORE this IPO's documents are even
+    // loaded, so there is no document count left to report — the earlier
+    // behaviour (loading all 5, then reporting skippedBudget=5) cost two DB
+    // round trips for data that was thrown away unread.
+    expect(result.skippedBudget).toBe(0);
     expect(d.runExtractor).not.toHaveBeenCalled();
+    expect(d.loadDocuments).not.toHaveBeenCalled();
+    expect(d.loadStates).not.toHaveBeenCalled();
   });
 
   it('with no spawnBudget dep at all (unset), behaviour is unbounded — existing callers are unaffected', async () => {
@@ -668,6 +700,67 @@ describe('processPendingFilings — the per-cycle spawn budget (MAJOR-1)', () =>
     const result = await processPendingFilings(IPO, d);
     expect(result.spawned).toBe(5);
     expect(result.skippedBudget).toBe(0);
+  });
+});
+
+// -------------------------------------------------- F3: extraction deadline
+
+describe('processPendingFilings — the per-document extraction deadline (F3)', () => {
+  const FIVE_DOCS = Array.from({ length: 5 }, (_, i) => doc({ id: `doc-${i}`, sha256: SHA }));
+  const FIVE_STATES = FIVE_DOCS.map((d) => ({
+    id: `state-${d.id}`,
+    docType: 'RHP',
+    documentId: d.id,
+    extractedAt: null,
+    extractorVersion: null,
+  }));
+
+  it('stops spawning once the deadline is reached BEFORE a new spawn, never interrupting one in flight', async () => {
+    // Clock advances by 1 tick per read; deadlineMs=2 means: doc 0 checked at
+    // t=0 (spawns), doc 1 checked at t=1 (spawns), doc 2 checked at t=2 -> at
+    // the deadline, stop before spawning it (and every doc after it).
+    let t = -1;
+    const now = () => {
+      t++;
+      return t;
+    };
+    const d = deps({
+      loadDocuments: vi.fn(async () => FIVE_DOCS),
+      loadStates: vi.fn(async () => FIVE_STATES),
+      deadlineMs: 2,
+      now,
+    });
+
+    const result = await processPendingFilings(IPO, d);
+
+    expect(d.runExtractor).toHaveBeenCalledTimes(2);
+    expect(result.spawned).toBe(2);
+    expect(result.skippedBudget).toBe(3);
+    expect(result.skipped.join(' ')).toContain('extraction deadline reached');
+  });
+
+  it('with no deadlineMs set, all pending documents are spawned (existing callers unaffected)', async () => {
+    const d = deps({
+      loadDocuments: vi.fn(async () => FIVE_DOCS),
+      loadStates: vi.fn(async () => FIVE_STATES),
+    });
+    const result = await processPendingFilings(IPO, d);
+    expect(result.spawned).toBe(5);
+    expect(result.skippedBudget).toBe(0);
+  });
+});
+
+/**
+ * F3 static invariant: the cap MUST never let extraction outlive the lock
+ * that protects it from a second overlapping cycle. Worst case, every spawn
+ * takes the full extractor timeout — that total, plus slack, must stay under
+ * the lock TTL.
+ */
+describe('F3 — spawn cap cannot outlive the extraction lock', () => {
+  it('DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS + 60s < FILING_EXTRACTION_LOCK_TTL_MS', async () => {
+    const { FILING_EXTRACTION_LOCK_TTL_MS } = await import('../../../src/services/document-cycle.js');
+    const worstCaseMs = DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL * EXTRACT_TIMEOUT_MS_REAL + 60_000;
+    expect(worstCaseMs).toBeLessThan(FILING_EXTRACTION_LOCK_TTL_MS);
   });
 });
 
