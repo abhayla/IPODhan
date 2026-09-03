@@ -338,6 +338,85 @@ describe('extract_filing — Deepa Jewellers price band advertisement (captured 
       expect(entry.value_pct).toBeLessThanOrEqual(100);
     }
   });
+
+  it('W-74 E5: the lead Syndicate Member and every sub-syndicate broker', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    expect(out.fields.syndicate_members.check.passed).toBe(true);
+    expect(out.fields.syndicate_members.value).toEqual(DEEPA.PRICE_BAND_AD.syndicate_members);
+  });
+
+  it('W-74 F5: the advertisement carries no litigation notice', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    expect(out.fields.litigation_notices.value).toBeNull();
+    expect(out.fields.litigation_notices.check.detail).toBe('section_not_found');
+  });
+});
+
+/**
+ * W-74 — the two sections the price band ad extractor used not to read, driven
+ * through the `--texts` seam on VERBATIM snippets. The sub-syndicate snippet is
+ * copied character-for-character out of the Deepa advertisement, two-column
+ * merge and all: the broker list is the RIGHT column glued to the tail of the
+ * left column's prose, and one name ("ICICI Securities Limited") is split
+ * across the line break.
+ */
+describe('extract_filing — W-74 syndicate members and litigation notices', () => {
+  const SUB_SYNDICATE_PAGE = [
+    'AVAILABILITY OF THE RHP: Investors are advised to refer to the RHP and the "Risk Factors" beginning on page 20 of the RHP before applying in the Offer. A copy of the SUB-SYNDICATE MEMBERS: Anand Rathi Share & Stock Brokers Limited; Axis Capital Ltd.; Asit C. Metha Investment Interrmediates Ltd , Centrum Finverse Ltd.; ICICI',
+    'RHP will be made available on the website of SEBI at www.sebi.gov.in and is available on the websites of the BRLMs, Emkay Global Financial Services Limited at Securities Limited; JM Financial Services Ltd; Keynote Capitals Ltd, KJMC Capital Market Services Limited, Kotak Securities Limited; LKP Securities Limited; Motilal Oswal',
+    'www.emkayglobal.com and Valmiki Leela Capital Private Limited at www.valmikileela.com and at the website of the Company, Deepa Jewellers Limited at Financial Services Limited; Nuvama Wealth; Prabhudas Lilladher Pvt Ltd, RR Equity Brokers Pvt. Ltd;, Sharekhan Limited; SMC Global Securities Ltd; Yes Securities (India) Ltd.',
+    'www.deepajewel.com and the websites of the Stock Exchanges, for BSE Limited at www.bseindia.com and for National Stock Exchange of India Limited at www.nseindia.com. ESCROW COLLECTION BANK(s): ICICI Bank Limited. | REFUND BANK(s): ICICI Bank Limited.',
+    'Syndicate Member: Emkay Global Financial Services Limited, Tel.: +91 22 6612 1212, Registered Brokers, SCSBs, Designated RTA Locations and Designated CDP',
+  ].join('\n');
+
+  it('reads the lead member and reassembles a name split across the column break', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts([[0, SUB_SYNDICATE_PAGE]], 'PRICE_BAND_AD');
+    const members = out.fields.syndicate_members.value as { name: string; role: string }[];
+    expect(members[0]).toEqual({
+      name: 'Emkay Global Financial Services Limited',
+      role: 'SYNDICATE',
+    });
+    expect(members.filter((m) => m.role === 'SUB_SYNDICATE')).toHaveLength(17);
+    // Split as "... Centrum Finverse Ltd.; ICICI" / "... at Securities Limited;".
+    expect(members.map((m) => m.name)).toContain('ICICI Securities Limited');
+    // The left column's prose must not leak in as a broker name.
+    expect(members.every((m) => !m.name.includes('www.'))).toBe(true);
+    expect(members.every((m) => !/\bat\b/.test(m.name))).toBe(true);
+  });
+
+  it('an advertisement with no syndicate block is null WITH a reason', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts([[0, 'PRICE BAND: ` 100 TO ` 105 PER EQUITY SHARE OF FACE VALUE OF ` 10 EACH']], 'PRICE_BAND_AD');
+    expect(out.fields.syndicate_members.value).toBeNull();
+    expect(out.fields.syndicate_members.check.detail).toBe('section_not_found');
+  });
+
+  it('F5: an IP licence termination notice is read as a litigation notice', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    // A notice sentence is read from ONE printed line: in a two-column
+    // advertisement the text layer merges both columns into every line, so
+    // joining consecutive lines would splice the neighbouring column's prose
+    // into the middle of the summary.
+    const page =
+      '19. Trademark licence dispute: Our Company has received a legal notice purporting to terminate the trade mark licence agreement under which we operate 12 of our stores.';
+    const out = runOnTexts([[0, page]], 'PRICE_BAND_AD');
+    const notices = out.fields.litigation_notices.value as { summary: string }[];
+    expect(notices).toHaveLength(1);
+    expect(notices[0].summary).toContain('received a legal notice purporting to terminate');
+    expect(notices[0].summary).toContain('trade mark licence agreement');
+    expect(notices.every((n) => n.summary.length <= 500)).toBe(true);
+    expect(out.fields.litigation_notices.check.passed).toBe(true);
+  });
+
+  it('the bid-period "public notice/ press release" boilerplate is NOT a litigation notice', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const page =
+      'Any revision in the Price Band and the revised Bid/Offer Period, if applicable, shall be widely disseminated by notification to the Stock Exchanges, by issuing a public notice/ press release, and also by indicating the change on the respective websites of the BRLMs.';
+    const out = runOnTexts([[0, page]], 'PRICE_BAND_AD');
+    expect(out.fields.litigation_notices.value).toBeNull();
+    expect(out.fields.litigation_notices.check.detail).toBe('section_not_found');
+  });
 });
 
 describe('extract_filing — Deepa Jewellers RHP (captured page text)', () => {

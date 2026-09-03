@@ -629,6 +629,118 @@ def _find_unit(page_texts):
 # --------------------------------------------------------------------------- #
 # PRICE_BAND_AD extraction (groups A, B, C-as-reprinted, D, E, F)
 # --------------------------------------------------------------------------- #
+# --- W-74 (E5/F5): syndicate members and litigation notices -----------------
+#
+# Both sections sit in the small print of the price band advertisement, which a
+# newspaper sets in two columns. The PDF text layer merges the columns into one
+# physical line, so the right column arrives glued to the tail of the left
+# column's prose. The helpers below recover the right column from the shape of
+# the list itself rather than from x-coordinates the text layer has already lost.
+
+SUB_SYNDICATE_RX = re.compile(r"SUB[\s-]?SYNDICATE\s+MEMBERS?\s*:", re.I)
+SYNDICATE_RX = re.compile(r"(?<!SUB-)(?<!SUB )SYNDICATE\s+MEMBERS?\s*:", re.I)
+_NAME_END_RX = re.compile(r"(?:Limited|Ltd|LLP|Inc|Corporation)\.?\)?\s*$", re.I)
+_NAME_START_RX = re.compile(r"^[(\"']?[A-Z0-9&]")
+
+# A notice worth publishing names a legal instrument, not the word "notice" on
+# its own - the ad prints "public notice/ press release" in its own bid-period
+# boilerplate, which is not litigation.
+LITIGATION_RX = re.compile(
+    r"(?:received\s+(?:a|an)\s+(?:legal\s+|show[\s-]cause\s+|termination\s+|"
+    r"cease[\s-]and[\s-]desist\s+)?notice"
+    r"|show[\s-]cause\s+notice|legal\s+notice|termination\s+notice"
+    r"|cease[\s-]and[\s-]desist"
+    r"|(?:trade\s?mark|patent|copyright|licen[cs]e)[^.]{0,80}?(?:infringement|terminat)"
+    r"|infringement\s+(?:notice|proceedings?|suit)"
+    r"|arbitration\s+proceedings?|civil\s+suit|criminal\s+(?:complaint|proceedings?))",
+    re.I)
+
+LITIGATION_SUMMARY_MAX = 500
+
+
+def _column_tail(line):
+    """The right-hand column of a merged two-column line, when that column is a
+    semicolon-separated list of firm names. Walks back from the first ';' over
+    the capitalised tokens of the entry it closes; the first lower-case prose
+    word ("... Limited at | Securities Limited;") is the column boundary."""
+    semi = line.find(";")
+    if semi < 0:
+        return None
+    start = semi
+    for m in reversed(list(re.finditer(r"\S+", line[:semi]))):
+        if _NAME_START_RX.match(m.group(0)):
+            start = m.start()
+        else:
+            break
+    return line[start:].strip()
+
+
+def _split_firm_names(blob):
+    """';' and ',' both separate entries in the printed list; no entry in it
+    carries an internal comma. Trailing separators leave empty pieces."""
+    out = []
+    for piece in re.split(r"[;,]", blob):
+        name = piece.strip().strip(";")
+        if len(name) > 3 and _NAME_START_RX.match(name):
+            out.append(name)
+    return out
+
+
+def syndicate_members(lines):
+    """[{name, role}] for the lead Syndicate Member and every sub-syndicate
+    member the advertisement lists. Returns ([], None) when neither is printed."""
+    members = []
+    anchor = None
+
+    li = _find(lines, SYNDICATE_RX)
+    if li >= 0:
+        m = SYNDICATE_RX.search(lines[li])
+        lead = lines[li][m.end():].split(",")[0].strip()
+        if len(lead) > 3:
+            members.append({"name": lead, "role": "SYNDICATE"})
+            anchor = li
+
+    si = _find(lines, SUB_SYNDICATE_RX)
+    if si >= 0:
+        m = SUB_SYNDICATE_RX.search(lines[si])
+        parts = [lines[si][m.end():].strip()]
+        # The list runs on into the same column of the following lines until an
+        # entry ends on a corporate suffix - the only in-text signal that the
+        # last name is complete.
+        for nxt in lines[si + 1:si + 5]:
+            if _NAME_END_RX.search(parts[-1]):
+                break
+            tail = _column_tail(nxt)
+            if not tail:
+                break
+            parts.append(tail)
+        for name in _split_firm_names(" ".join(parts)):
+            members.append({"name": name, "role": "SUB_SYNDICATE"})
+        if anchor is None:
+            anchor = si
+
+    return members, anchor
+
+
+def litigation_notices(lines):
+    """[{summary}] for each litigation / IP-dispute notice the advertisement
+    describes. Each summary is the sentence carrying the notice, capped at
+    LITIGATION_SUMMARY_MAX characters. Returns ([], None) when none is printed."""
+    found, anchor, seen = [], None, set()
+    for idx, line in enumerate(lines):
+        for sentence in re.split(r"(?<=\.)\s+", line):
+            if not LITIGATION_RX.search(sentence):
+                continue
+            summary = " ".join(sentence.split())[:LITIGATION_SUMMARY_MAX].strip()
+            if len(summary) < 20 or summary in seen:
+                continue
+            seen.add(summary)
+            found.append({"summary": summary})
+            if anchor is None:
+                anchor = idx
+    return found, anchor
+
+
 def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
     all_lines = [(i, _normalize_numbers(ln)) for i, t in page_texts for ln in (t or "").split("\n")]
     lines = [ln for _i, ln in all_lines]
@@ -1406,6 +1518,28 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
         bad = [k for k in kpis if not (0 < k["value_pct"] <= 100)]
         emit.put("concentration_kpis", kpis, kpi_page, "concentration_percentages_in_range",
                  (not bad, "%s entries" % len(kpis) if not bad else "out of range: %s" % bad))
+
+    # ---- E5/F5 (W-74): syndicate members + litigation notices --------------
+    members, syn_idx = syndicate_members(lines)
+    if not members:
+        emit.null("syndicate_members", "section_not_found")
+    else:
+        overlong = [m["name"] for m in members if len(m["name"]) > 255]
+        emit.put("syndicate_members", members, page_for(syn_idx),
+                 "syndicate_member_names_storable",
+                 (not overlong, "%s members" % len(members) if not overlong
+                  else "names over 255 chars: %s" % overlong))
+
+    notices, lit_idx = litigation_notices(lines)
+    if not notices:
+        emit.null("litigation_notices", "section_not_found")
+    else:
+        overlong = [n["summary"] for n in notices
+                    if len(n["summary"]) > LITIGATION_SUMMARY_MAX]
+        emit.put("litigation_notices", notices, page_for(lit_idx),
+                 "litigation_summaries_bounded",
+                 (not overlong, "%s notices" % len(notices) if not overlong
+                  else "summaries over %d chars: %s" % (LITIGATION_SUMMARY_MAX, overlong)))
 
     return {"unit": unit, "fiscal_years": fiscal_years}
 

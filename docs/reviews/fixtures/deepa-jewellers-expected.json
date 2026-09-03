@@ -101,6 +101,27 @@
       { "label": "top_10_suppliers", "value_pct": 82.32, "fiscal_year": 2025 }
     ],
 
+    "syndicate_members": [
+      { "name": "Emkay Global Financial Services Limited", "role": "SYNDICATE" },
+      { "name": "Anand Rathi Share & Stock Brokers Limited", "role": "SUB_SYNDICATE" },
+      { "name": "Axis Capital Ltd.", "role": "SUB_SYNDICATE" },
+      { "name": "Asit C. Metha Investment Interrmediates Ltd", "role": "SUB_SYNDICATE" },
+      { "name": "Centrum Finverse Ltd.", "role": "SUB_SYNDICATE" },
+      { "name": "ICICI Securities Limited", "role": "SUB_SYNDICATE" },
+      { "name": "JM Financial Services Ltd", "role": "SUB_SYNDICATE" },
+      { "name": "Keynote Capitals Ltd", "role": "SUB_SYNDICATE" },
+      { "name": "KJMC Capital Market Services Limited", "role": "SUB_SYNDICATE" },
+      { "name": "Kotak Securities Limited", "role": "SUB_SYNDICATE" },
+      { "name": "LKP Securities Limited", "role": "SUB_SYNDICATE" },
+      { "name": "Motilal Oswal Financial Services Limited", "role": "SUB_SYNDICATE" },
+      { "name": "Nuvama Wealth", "role": "SUB_SYNDICATE" },
+      { "name": "Prabhudas Lilladher Pvt Ltd", "role": "SUB_SYNDICATE" },
+      { "name": "RR Equity Brokers Pvt. Ltd", "role": "SUB_SYNDICATE" },
+      { "name": "Sharekhan Limited", "role": "SUB_SYNDICATE" },
+      { "name": "SMC Global Securities Ltd", "role": "SUB_SYNDICATE" },
+      { "name": "Yes Securities (India) Ltd.", "role": "SUB_SYNDICATE" }
+    ],
+
     "business_description": "Our Company processes and supplies 22K hallmarked gold jewellery, including plain and precious-stone studded ornaments, through an outsourced manufacturing model. We also undertake jewellery job-work and trade in silver ornaments, 18K/20K gold jewellery, precious stones, and gold bullion."
   },
 
@@ -110,6 +131,7 @@
       "dscr_by_fy": "row_not_in_document",
       "rent_by_fy": "row_not_in_document",
       "objects_of_offer": "objects_section_not_in_document",
+      "litigation_notices": "section_not_found",
       "waca_last_3y": "not_applicable_no_qualifying_transaction",
       "cap_multiple_last_3y": "not_applicable_no_qualifying_transaction"
     }

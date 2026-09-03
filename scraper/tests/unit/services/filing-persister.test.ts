@@ -333,12 +333,35 @@ describe('filing-persister — PRICE_BAND_AD mapping (DEEPA oracle)', () => {
       s.deps
     );
     const rows = s.replaceIntermediaries.mock.calls[0][1] as Array<Record<string, unknown>>;
-    expect(rows).toHaveLength(3);
+    // 2 BRLMs + registrar + the lead Syndicate Member (W-74 E5).
+    expect(rows).toHaveLength(4);
     expect(rows.filter((r) => r.role === 'BRLM').every((r) => r.sebiRegNo === null)).toBe(true);
     const registrar = rows.find((r) => r.role === 'REGISTRAR')!;
     expect(registrar.name).toBe('Bigshare Services Private Limited');
     expect(registrar.sebiRegNo).toBe('INR000001385');
     expect(summary.skipped_no_column.some((x) => x.startsWith('brlm_sebi_regs'))).toBe(true);
+  });
+
+  it('W-74: writes the lead Syndicate Member and skips sub-syndicate members', async () => {
+    const s = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const rows = s.replaceIntermediaries.mock.calls[0][1] as Array<Record<string, unknown>>;
+    const syndicate = rows.filter((r) => r.role === 'SYNDICATE');
+    expect(syndicate).toHaveLength(1);
+    expect(syndicate[0].name).toBe('Emkay Global Financial Services Limited');
+    // `intermediary_role` has no SUB_SYNDICATE value, so the 17 sub-syndicate
+    // brokers must NOT be filed under SYNDICATE - they are reported as skipped.
+    expect(rows.some((r) => r.name === 'Sharekhan Limited')).toBe(false);
+    expect(
+      summary.skipped_no_column.some(
+        (x) => x.startsWith('syndicate_members') && x.includes('17 sub-syndicate')
+      )
+    ).toBe(true);
   });
 
   it('writes the peer table and financial_data in crores', async () => {
