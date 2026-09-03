@@ -38,6 +38,8 @@ import {
   BrlmTrackRecordRepository,
   FinancialDataRepository,
   FieldSourcesRepository,
+  IpoRiskFactorsRepository,
+  DocumentRepository,
 } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
 import { PeerCompanyRepository } from '../src/repositories/peer-company-repository.js';
@@ -47,6 +49,7 @@ import {
   type FilingExtraction,
   parseFilingUnit,
   type IpoDetailsWriter,
+  type DocumentFilingDateWriter,
 } from '../src/services/filing-persister.js';
 import { persistAnchorReport } from '../src/services/anchor-persister.js';
 import { scrapeAnchorInvestors } from '../src/scrapers/anchor-investors-scraper.js';
@@ -87,6 +90,23 @@ function makeIpoDetailsWriter(): IpoDetailsWriter {
   };
 }
 
+/**
+ * `documents.filing_date` is an UPDATE on the RHP row the discovery runner
+ * already created — never an insert (see `DocumentFilingDateWriter`'s own
+ * doc comment). Only RHP is wired here because that is the one doc type this
+ * work package's writer scope covers; other doc types report 0 rows updated.
+ */
+function makeDocumentFilingDateWriter(
+  documentRepository: DocumentRepository
+): DocumentFilingDateWriter {
+  return {
+    async setFilingDate({ ipoId, docType, filingDate }) {
+      if (docType !== 'RHP') return 0;
+      return documentRepository.setFilingDateForRhp(ipoId, filingDate);
+    },
+  };
+}
+
 function buildDeps(redis: ReturnType<typeof getRedisClient>) {
   return {
     ipoRepository: new IPORepository(db, redis),
@@ -99,6 +119,8 @@ function buildDeps(redis: ReturnType<typeof getRedisClient>) {
     financialData: new FinancialDataRepository(db, redis),
     fieldSources: new FieldSourcesRepository(db, redis),
     ipoDetailsWriter: makeIpoDetailsWriter(),
+    riskFactors: new IpoRiskFactorsRepository(db, redis),
+    documentFilingDateWriter: makeDocumentFilingDateWriter(new DocumentRepository(db, redis)),
     protectionFilter: (
       id: string,
       table: string,

@@ -32,6 +32,8 @@ vi.mock('@ipodhan/shared', () => ({
   BrlmTrackRecordRepository: class {},
   FinancialDataRepository: class {},
   FieldSourcesRepository: class {},
+  IpoRiskFactorsRepository: class {},
+  DocumentRepository: class {},
 }));
 vi.mock('../../../src/repositories/peer-company-repository.js', () => ({
   PeerCompanyRepository: class {},
@@ -180,6 +182,16 @@ describe('persist-filing.ts paired run — refusal is wired to process.exit', ()
 
     expect(persistFiling).toHaveBeenCalledTimes(2);
     expect(exitSpy).not.toHaveBeenCalled();
+
+    // W-73: the CLI's dep bag must actually wire the two optional deps —
+    // riskFactors and documentFilingDateWriter — not leave them undefined
+    // (which silently routes real runs to skipped_no_column / no filing_date
+    // write). Assert on the deps object every persistFiling call received.
+    for (const call of persistFiling.mock.calls) {
+      const deps = call[3] as { riskFactors?: unknown; documentFilingDateWriter?: unknown };
+      expect(deps.riskFactors).toBeDefined();
+      expect(deps.documentFilingDateWriter).toBeDefined();
+    }
   });
 });
 
