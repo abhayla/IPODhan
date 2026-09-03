@@ -140,8 +140,8 @@ export function parseLeadManagers(brlm?: string, co?: string): string[] {
  * W-109 (round-8, Glass Wall Systems): the exchange's published share count
  * is the count AT THE FLOOR price ("up to N shares"), so multiplying that
  * count by the CAP price produces a total that appears nowhere in the
- * filing (Glass Wall: 23,702,094 sh x Rs182 cap = Rs4,313.78 Cr — never
- * published; the real floor total is 23,702,094 x Rs172 = Rs4,076.76 Cr,
+ * filing (Glass Wall: 23,702,094 sh x Rs182 cap = Rs431.38 Cr — never
+ * published; the real floor total is 23,702,094 x Rs172 = Rs407.68 Cr,
  * matching the issue ad). Callers pass the band's minimum here.
  */
 export function computeBSEIssueSize(shares: number, priceFloor?: number): number {

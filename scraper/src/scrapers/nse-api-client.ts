@@ -457,8 +457,8 @@ export function determineStatus(statusStr: string | null | undefined, startDate:
  * share count is the count AT THE FLOOR price — "up to N shares" prices out
  * to a lower total at the floor and a smaller share count at the cap, so
  * floor-count x cap-price is a number that never appears in the filing
- * (Glass Wall: 23,702,094 sh (floor count) x Rs182 (cap) = Rs4,313.78 Cr,
- * appears nowhere; the real floor total is 23,702,094 x Rs172 = Rs4,076.76
+ * (Glass Wall: 23,702,094 sh (floor count) x Rs182 (cap) = Rs431.38 Cr,
+ * appears nowhere; the real floor total is 23,702,094 x Rs172 = Rs407.68
  * Cr, matching the ad). So this prefers the FLOOR price (priceRangeMin),
  * falling back to priceRangeMax only when no floor is known (e.g. a single
  * fixed price reported as max with no min). Returns undefined (never a

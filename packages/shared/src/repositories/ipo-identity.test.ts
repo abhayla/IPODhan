@@ -349,6 +349,182 @@ describe('resolveIpoRow — tier 3b: prefix-name matching with corroboration (W-
   });
 });
 
+// T-403 Tier-A review item 2: a WHITESPACE-separated extension ("Rays of
+// Belief Limited" -> "Rays of Belief Limited Holdings") is a weaker signal
+// than a punctuation-separated one — "Holdings" reads as a different legal
+// entity, not the same company under a longer name — so it needs BOTH
+// corroborating keys, not either.
+describe('resolveIpoRow — tier 3b: whitespace-boundary extensions require BOTH corroborating keys (T-403 item 2)', () => {
+  const raysIncomingWhitespace: IpoIdentity = {
+    companyName: 'Rays of Belief Limited',
+    normalizedName: 'rays of belief',
+    slug: 'rays-of-belief-ltd',
+    isin: null,
+    symbol: null,
+    openDate: '2026-09-01',
+    priceRangeMin: 227,
+  };
+
+  it('matches when BOTH open_date AND price_range_min corroborate a whitespace-boundary extension', async () => {
+    const existing = makeIpo({
+      id: 'row-holdings',
+      companyName: 'Rays of Belief Limited Holdings',
+      openDate: '2026-09-01',
+      priceRangeMin: 227,
+    } as Partial<IPO>);
+    const repo = makeRepo({
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([existing]),
+    });
+
+    const result = await resolveIpoRow(repo, raysIncomingWhitespace);
+
+    expect(result).toEqual(existing);
+  });
+
+  it('does NOT match a whitespace-boundary extension when only ONE key corroborates (a different legal entity)', async () => {
+    const existing = makeIpo({
+      id: 'row-holdings',
+      companyName: 'Rays of Belief Limited Holdings',
+      openDate: '2026-09-01', // matches
+      priceRangeMin: 999, // does NOT match
+    } as Partial<IPO>);
+    const repo = makeRepo({
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([existing]),
+    });
+
+    const result = await resolveIpoRow(repo, raysIncomingWhitespace);
+
+    expect(result).toBeNull();
+  });
+});
+
+// T-403 Tier-A review item 3: an SME and a MAINBOARD offering of the same
+// name (or a shared name prefix) must never merge on a shared corroborating
+// key alone — they are different listings.
+describe('resolveIpoRow — segment guard (T-403 item 3)', () => {
+  it('declines a tier 3 (exact normalized-name) match when segments disagree', async () => {
+    const smeExisting = makeIpo({ id: 'row-sme', companyName: 'Acme Ltd', segment: 'SME' } as Partial<IPO>);
+    const repo = makeRepo({
+      findByNormalizedName: vi.fn().mockResolvedValue(smeExisting),
+    });
+
+    const result = await resolveIpoRow(repo, { ...baseIdentity, segment: 'MAINBOARD' });
+
+    expect(result).toBeNull();
+  });
+
+  it('accepts a tier 3 match when segments agree', async () => {
+    const smeExisting = makeIpo({ id: 'row-sme', companyName: 'Acme Ltd', segment: 'SME' } as Partial<IPO>);
+    const repo = makeRepo({
+      findByNormalizedName: vi.fn().mockResolvedValue(smeExisting),
+    });
+
+    const result = await resolveIpoRow(repo, { ...baseIdentity, segment: 'SME' });
+
+    expect(result).toEqual(smeExisting);
+  });
+
+  it('accepts a tier 3 match when the incoming identity has no segment opinion (never excludes on missing info)', async () => {
+    const smeExisting = makeIpo({ id: 'row-sme', companyName: 'Acme Ltd', segment: 'SME' } as Partial<IPO>);
+    const repo = makeRepo({
+      findByNormalizedName: vi.fn().mockResolvedValue(smeExisting),
+    });
+
+    const result = await resolveIpoRow(repo, { ...baseIdentity, segment: null });
+
+    expect(result).toEqual(smeExisting);
+  });
+
+  it('excludes a segment-mismatched candidate from tier 3b corroboration, even though it would otherwise corroborate', async () => {
+    const raysIncoming: IpoIdentity = {
+      companyName: 'Rays of Belief Limited',
+      normalizedName: 'rays of belief',
+      slug: 'rays-of-belief-ltd',
+      isin: null,
+      symbol: null,
+      openDate: '2026-09-01',
+      priceRangeMin: 227,
+      segment: 'MAINBOARD',
+    };
+    const wrongSegment = makeIpo({
+      id: 'row-sme',
+      companyName: 'Rays of Belief Limited- For Profit Social Enterprise',
+      openDate: '2026-09-01',
+      priceRangeMin: 227,
+      segment: 'SME',
+    } as Partial<IPO>);
+    const repo = makeRepo({
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([wrongSegment]),
+    });
+
+    const result = await resolveIpoRow(repo, raysIncoming);
+
+    expect(result).toBeNull();
+  });
+});
+
+// T-403 Tier-A review item 4: when the key tier (isin/symbol) and the name
+// tier disagree, WHICH row wins now depends on how weak the name match is.
+describe('resolveIpoRow — key/name conflict resolution by name-match tier (T-403 item 4)', () => {
+  it('prefers the KEY match over a tier 3b (prefix + corroboration) name match', async () => {
+    const keyRow = makeIpo({ id: 'row-key', companyName: 'Rays of Belief Ltd', isin: 'INE123A01011' });
+    const tier3bRow = makeIpo({
+      id: 'row-3b',
+      companyName: 'Rays of Belief Limited- For Profit Social Enterprise',
+      openDate: '2026-09-01',
+      priceRangeMin: 227,
+    } as Partial<IPO>);
+    const repo = makeRepo({
+      findByIsin: vi.fn().mockResolvedValue(keyRow),
+      findByNormalizedNamePrefix: vi.fn().mockResolvedValue([tier3bRow]),
+    });
+
+    const { logger } = await import('../logger');
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
+
+    const result = await resolveIpoRow(repo, {
+      companyName: 'Rays of Belief Limited',
+      normalizedName: 'rays of belief',
+      slug: 'rays-of-belief-ltd',
+      isin: 'INE123A01011',
+      openDate: '2026-09-01',
+      priceRangeMin: 227,
+    });
+
+    expect(result).toEqual(keyRow); // key match wins — tier 3b is the weaker signal
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ keyMatchId: 'row-key', nameMatchId: 'row-3b', resolution: 'key-match' }),
+      expect.stringContaining('identity_conflict')
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it('still prefers the NAME match (tier 3, exact) over the key match — pre-T-318 behavior unchanged', async () => {
+    // Regression lock for the order the OTHER way round: an exact-name (tier
+    // 3) conflict is NOT downgraded by T-403 item 4 — only tier 3b is.
+    const keyRow = makeIpo({ id: 'row-A', companyName: 'Acme Ltd', isin: 'INE123A01011' });
+    const exactNameRow = makeIpo({ id: 'row-B', companyName: 'Acme Limited', slug: 'acme-ltd' });
+    const repo = makeRepo({
+      findByIsin: vi.fn().mockResolvedValue(keyRow),
+      findByNormalizedName: vi.fn().mockResolvedValue(exactNameRow),
+    });
+
+    const { logger } = await import('../logger');
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
+
+    const result = await resolveIpoRow(repo, { ...baseIdentity, isin: 'INE123A01011' });
+
+    expect(result).toEqual(exactNameRow);
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ resolution: 'name-match' }),
+      expect.stringContaining('identity_conflict')
+    );
+
+    warnSpy.mockRestore();
+  });
+});
+
 describe('resolveIpoRow — existing behavior preserved (regression coverage)', () => {
   it('normalizedName tier still resolves when no key present', async () => {
     const existing = makeIpo({ id: 'row-1' });

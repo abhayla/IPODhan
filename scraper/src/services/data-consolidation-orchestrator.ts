@@ -146,6 +146,7 @@ export class DataConsolidationOrchestrator {
             symbol: scrapedIPO.symbol,
             openDate: scrapedIPO.openDate ?? null,
             priceRangeMin: scrapedIPO.priceRangeMin ?? null,
+            segment: scrapedIPO.segment ?? null,
           }) as IPO | null;
       const isNew = !existingIPO;
 

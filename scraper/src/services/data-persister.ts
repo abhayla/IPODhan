@@ -660,6 +660,11 @@ export async function upsertIPO(
             companyName: scrapedIPO.companyName,
             normalizedName,
             slug,
+            isin: scrapedIPO.isin,
+            symbol: scrapedIPO.symbol,
+            openDate: scrapedIPO.openDate ?? null,
+            priceRangeMin: scrapedIPO.priceRangeMin ?? null,
+            segment: scrapedIPO.segment ?? null,
           }) as IPO | null;
 
       if (existingIPO && normalizeCompanyNameForMatching(existingIPO.companyName) === normalizedName) {

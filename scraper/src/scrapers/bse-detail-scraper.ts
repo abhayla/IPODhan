@@ -183,8 +183,8 @@ function parseShareCount(sharesStr: string | null): number {
  * count AT THE FLOOR price ("up to N shares"). When a real band exists,
  * callers MUST pass the band's floor (priceRangeMin) — floor-count x
  * cap-price produces a total that appears nowhere in the filing (Glass
- * Wall: 23,702,094 x Rs182 cap = Rs4,313.78 Cr, never published; the real
- * floor total is 23,702,094 x Rs172 = Rs4,076.76 Cr, matching the ad). When
+ * Wall: 23,702,094 x Rs182 cap = Rs431.38 Cr, never published; the real
+ * floor total is 23,702,094 x Rs172 = Rs407.68 Cr, matching the ad). When
  * there is no band (a single fixed price), that fixed price is both the
  * floor and the cap, so it is passed unchanged.
  */
