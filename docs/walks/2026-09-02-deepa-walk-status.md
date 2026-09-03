@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-03 08:50 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-03 08:58 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -29,7 +29,7 @@ Last updated: 2026-09-03 08:50 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 | 3 | G4 persist filing data | Nine rounds in total. Final state: every table the persister writes honours admin field protection and the row lock; issue size is written only when both legs are known; refusal exits are tested at script level; two strict reviews, the second one MERGEABLE with all 6 mutations caught; the three minor edges closed in round 9 (5bcf03bd). Fable's live run on DEEPA with production flags: consolidation handled the write, no fallback, no critical conflict, 9 tables written, issue size 459.72 Cr. | Done. | **PASS** 01:12 |
 | 3a | Suite fallout (W-68..W-71) | The first branch-wide scraper run found four groups the per-file runs could not see: a new local-timezone date conversion in the NSE client (real bug, same class as an old production incident); 8 document-discovery tests pinning the old chain before the company-website rung was added; 40 wiring tests whose schema mock lacks the new status enum; and a write-ratchet that scans gitignored leftover files on this laptop. | One at a time: timezone (done 19ec9636: the code was already correct, the checker's pattern was a false alarm; a four-timezone test now proves it) -> discovery tests (done b41cb971: 7 stale expectations updated, 1 real regression fixed: a SEBI outage was retried once per IPO instead of once per run) -> wiring mock (done 5bbfaeab, 89/89) -> SEBI search failure must not count as 'not listed' (done 8b7ac1a0; also stopped a thrown network error from aborting the whole run) -> ratchet reads git (done 3d1fa6df). Final scraper run by directory in progress. Then the scraper suite again by directory. | **DONE** 02:28: scraper 2,314 pass / 6 skipped / 0 fail (by directory); shared 206/206; web 2,383 pass |
 | 4 | F2 Moneycontrol | Moneycontrol's list page does not show DEEPA. Not a scraper defect. | None; noted as a coverage gap. | Closed as not applicable |
-| 5 | G5 remaining ad fields | Correction: the columns already exist (migration 0042 on main), so no approval is needed. What is missing is writing three of them (risk factors, promoter acquisition ranges, RHP filing date) and parsing two sections (syndicate members, litigation notices). The IPO page shows only about a third of the stored fields. | W-73 persister writers (next serial fix), W-74 parser sections, W-75 page sections after a mockup you approve. | Open, unblocked |
+| 5 | G5 remaining ad fields | Schema existed (0042). Persister gaps closed (W-73, 3e896798 + e51082c7): risk factors (82 rows for DEEPA), RHP filing date, promoter acquisition ranges (empty for DEEPA by the oracle), all live-proven on the test database with production flags. Left: two parser sections (syndicate members, litigation notices, W-74) and the page (W-75). | W-74 running; W-75 mockup for you after that. | Persister done 08:58; parser running |
 | 6 | I5 listing price, I6 PDF purge | Cannot run until DEEPA lists on 8 Sep and a week after close. | Run on those dates. | Not due |
 
 ## 3. After the fixes
@@ -61,3 +61,4 @@ Last updated: 2026-09-03 08:50 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 - 2026-09-03 02:32: branch pushed; draft PR #278 opened as the review container (split by file set is the owner's call). Deploy waits for owner approval (D-09).
 - 2026-09-03 08:40: W-09 was stale (0042 already has the schema); replaced by W-73/W-74/W-75. Owner: W-56 lint errors in a separate PR later.
 - 2026-09-03 08:50: W-73 round 1 (3e896798): writers + gates; also found and closed an unprotected whole-row write of promoter acquisition ranges. Round 2 (wiring into the CLI) running.
+- 2026-09-03 08:58: W-73 closed (live-proven). W-74 parser sections running.
