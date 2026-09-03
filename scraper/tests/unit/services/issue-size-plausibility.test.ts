@@ -198,3 +198,134 @@ describe('DataConsolidationService.consolidateIPOData — implausible issueSize 
 // kept in sync deliberately (not imported) so the mutation test still fails
 // if the source constant changes without this file being reviewed.
 const MAINBOARD_FLOOR_FOR_MUTATION_TEST = 10_00_00_000;
+
+/**
+ * W-04 (walk ledger, round-2) — NSE's noOfSharesOffered/sharesOffered means
+ * different things per IPO: Purple Style Labs' share count was the NET offer
+ * (after the anchor portion) priced at the FLOOR; Deepa Jewellers' share
+ * count was the FULL issue priced at the CAP. The old symmetric
+ * `|issueSize - shares*bandMax| / issueSize > 0.25` check rejected the PSL
+ * shape outright because anchors can be up to ~30% of the total issue,
+ * pushing the true issueSize to ~1.43x (shares * floor). The fix replaces it
+ * with an asymmetric band: [shares*bandMin*0.75, shares*bandMax*1.5].
+ */
+describe('collectImplausibleIssueSizeFields — W-04 asymmetric shares x band coherence', () => {
+  it('RED (pre-fix shape): the old symmetric +/-25% check around shares*bandMax would have rejected the PSL net-of-anchor shape', () => {
+    // PSL shape: net (post-anchor) shares = 10,000,000; floor 100, cap 105;
+    // true issueSize = 1.43x (net_shares * floor) because anchors took ~30%
+    // of the full issue.
+    const netShares = 10_000_000;
+    const bandMin = 100;
+    const bandMax = 105;
+    const issueSize = 1_430_000_000; // Rs143 Cr — the correct total issue size
+
+    const oldExpected = netShares * bandMax; // the OLD check's only reference point
+    const oldRelativeDiff = Math.abs(issueSize - oldExpected) / issueSize;
+    const OLD_TOLERANCE = 0.25;
+
+    // Proves the old shape was broken: it would have rejected a CORRECT value.
+    expect(oldRelativeDiff).toBeGreaterThan(OLD_TOLERANCE);
+  });
+
+  it('GREEN: the fixed asymmetric check accepts the same PSL net-of-anchor shape', () => {
+    const result = collectImplausibleIssueSizeFields(
+      {
+        issueSize: 1_430_000_000,
+        segment: 'MAINBOARD',
+        priceRangeMin: 100,
+        priceRangeMax: 105,
+        noOfSharesOffered: 10_000_000,
+      },
+      {},
+      'NSE'
+    );
+    expect(result.fields.size).toBe(0);
+  });
+
+  it('accepts the Deepa Jewellers shape: full issue shares priced exactly at the cap', () => {
+    const result = collectImplausibleIssueSizeFields(
+      {
+        issueSize: 1_000_000_000, // 5,000,000 shares * Rs200 cap, exact
+        segment: 'MAINBOARD',
+        priceRangeMin: 190,
+        priceRangeMax: 200,
+        noOfSharesOffered: 5_000_000,
+      },
+      {},
+      'NSE'
+    );
+    expect(result.fields.size).toBe(0);
+  });
+
+  it('rejects an issueSize ~10x too large for the shares x band (genuinely incoherent)', () => {
+    const result = collectImplausibleIssueSizeFields(
+      {
+        issueSize: 10_000_000_000, // 10x the true ~Rs100 Cr full-offer-at-cap value
+        segment: 'MAINBOARD',
+        priceRangeMin: 190,
+        priceRangeMax: 200,
+        noOfSharesOffered: 5_000_000,
+      },
+      {},
+      'NSE'
+    );
+    expect(result.fields.has('issueSize')).toBe(true);
+    expect(result.reason).toBe('ISSUE_SIZE_INCOHERENT_WITH_SHARES_BAND');
+  });
+
+  it('rejects an issueSize smaller than even the net offer at the floor, with tolerance (genuinely incoherent)', () => {
+    const result = collectImplausibleIssueSizeFields(
+      {
+        issueSize: 475_000_000, // 0.5x the net-offer-at-floor value (950M)
+        segment: 'MAINBOARD',
+        priceRangeMin: 190,
+        priceRangeMax: 200,
+        noOfSharesOffered: 5_000_000,
+      },
+      {},
+      'NSE'
+    );
+    expect(result.fields.has('issueSize')).toBe(true);
+    expect(result.reason).toBe('ISSUE_SIZE_INCOHERENT_WITH_SHARES_BAND');
+  });
+
+  it('exempts DRHP source from the shares x band coherence check entirely — the filing states the total directly', () => {
+    const result = collectImplausibleIssueSizeFields(
+      {
+        issueSize: 200_000_000, // Rs20 Cr, above the MAINBOARD floor
+        segment: 'MAINBOARD',
+        priceRangeMin: 99,
+        priceRangeMax: 99,
+        noOfSharesOffered: 1, // absurd share count — would fail coherence for a non-filing source
+      },
+      {},
+      'DRHP'
+    );
+    expect(result.fields.size).toBe(0);
+  });
+
+  it('exempts ADMIN source from the shares x band coherence check the same way', () => {
+    const result = collectImplausibleIssueSizeFields(
+      {
+        issueSize: 200_000_000,
+        segment: 'MAINBOARD',
+        priceRangeMin: 99,
+        priceRangeMax: 99,
+        noOfSharesOffered: 1,
+      },
+      {},
+      'ADMIN'
+    );
+    expect(result.fields.size).toBe(0);
+  });
+
+  it('DRHP source still enforces the segment floor — the exemption is coherence-only, not a blanket bypass', () => {
+    const result = collectImplausibleIssueSizeFields(
+      { issueSize: 4_800_000, segment: 'SME' }, // below the Rs1 Cr SME floor
+      {},
+      'DRHP'
+    );
+    expect(result.fields.has('issueSize')).toBe(true);
+    expect(result.reason).toBe('ISSUE_SIZE_IMPLAUSIBLE_SEGMENT_FLOOR');
+  });
+});

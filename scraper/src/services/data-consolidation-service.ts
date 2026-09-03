@@ -377,10 +377,32 @@ export function collectDegenerateBandFieldsToWiden(
  * Rs3 Cr, mainboard issues are materially larger) - these are floors, not
  * medians, chosen to reject-with-margin rather than flag borderline-real data.
  *
- * The coherence check (`|issueSize - shares*band_max| / issueSize > 0.5`)
- * catches the shape even when a segment floor alone would not (e.g. a small
- * MAINBOARD SHARE COUNT that happens to clear Rs10 Cr as a raw number but
- * disagrees wildly with shares x band).
+ * The coherence check catches the shape even when a segment floor alone
+ * would not (e.g. a small MAINBOARD SHARE COUNT that happens to clear Rs10
+ * Cr as a raw number but disagrees wildly with shares x band).
+ *
+ * W-04 (walk ledger, round-2): the original symmetric coherence check
+ * (`|issueSize - shares*bandMax| / issueSize > 0.25`) assumed
+ * `noOfSharesOffered`/`sharesOffered` always means "the full issue at the
+ * cap price" - it does not. Two real, both-correct shapes coexist on NSE:
+ *   1. Purple Style Labs: NSE's share count was the NET offer AFTER the
+ *      anchor portion, at the FLOOR price - anchors can take up to 60% of
+ *      the QIB 50% (i.e. up to ~30% of the total issue), so the real
+ *      issueSize can run to ~1.43x (shares * floor).
+ *   2. Deepa Jewellers: NSE's share count was the FULL issue, at the CAP
+ *      price - issueSize == shares * bandMax exactly.
+ * A symmetric +/-25% band around `shares * bandMax` rejects case 1 outright.
+ * The check is now asymmetric and only fires on genuinely incoherent shapes:
+ * reject if issueSize is smaller than even the net-of-anchor offer priced at
+ * the FLOOR (with a small tolerance), or larger than a full offer at the CAP
+ * with room for an anchor share on top.
+ *
+ * Sources whose `issueSize` is the FILING's own total (`DRHP`, `ADMIN`) are
+ * exempt from the coherence check entirely: the filing states the total
+ * directly, and an exchange share count (of ambiguous net/full meaning)
+ * cannot overrule it. The segment floor still applies to every source - it
+ * is a plausibility check on the issueSize value itself, not on how it
+ * relates to shares x band.
  *
  * Violations are rejected (never written) and logged to `data_conflicts`
  * with a named reason (`ISSUE_SIZE_IMPLAUSIBLE_SEGMENT_FLOOR` /
@@ -389,7 +411,13 @@ export function collectDegenerateBandFieldsToWiden(
  */
 const MAINBOARD_ISSUE_SIZE_FLOOR = 10_00_00_000; // Rs10 Cr
 const SME_ISSUE_SIZE_FLOOR = 1_00_00_000; // Rs1 Cr
-const ISSUE_SIZE_COHERENCE_TOLERANCE = 0.25; // 25%
+const ISSUE_SIZE_COHERENCE_TOLERANCE = 0.25; // 25% slack below the floor-priced net offer
+const ISSUE_SIZE_COHERENCE_CEILING_MULTIPLIER = 1.5; // full offer at cap + room for anchor share
+
+// Sources whose issueSize is the filing's own stated total - the exchange
+// share count cannot overrule a filing-stated total, so these are exempt
+// from the shares-x-band coherence check (segment floor still applies).
+const ISSUE_SIZE_FILING_TOTAL_SOURCES = new Set<ScraperSource>(['DRHP', 'ADMIN']);
 
 export interface ImplausibleIssueSizeResult {
   fields: Set<string>;
@@ -398,7 +426,8 @@ export interface ImplausibleIssueSizeResult {
 
 export function collectImplausibleIssueSizeFields(
   incomingData: Record<string, any>,
-  existingData?: Record<string, any> | null
+  existingData?: Record<string, any> | null,
+  source?: ScraperSource
 ): ImplausibleIssueSizeResult {
   const empty: ImplausibleIssueSizeResult = { fields: new Set() };
   if (!('issueSize' in incomingData)) return empty;
@@ -414,12 +443,17 @@ export function collectImplausibleIssueSizeFields(
     return { fields: new Set(['issueSize']), reason: 'ISSUE_SIZE_IMPLAUSIBLE_SEGMENT_FLOOR' };
   }
 
+  if (source && ISSUE_SIZE_FILING_TOTAL_SOURCES.has(source)) return empty;
+
   const shares = toFiniteNumber(incomingData.noOfSharesOffered ?? incomingData.sharesOffered);
   const bandMax = toFiniteNumber(incomingData.priceRangeMax ?? existingData?.priceRangeMax);
-  if (shares !== null && shares > 0 && bandMax !== null && bandMax > 0) {
-    const expected = shares * bandMax;
-    const relativeDiff = Math.abs(issueSize - expected) / issueSize;
-    if (relativeDiff > ISSUE_SIZE_COHERENCE_TOLERANCE) {
+  const bandMin = toFiniteNumber(incomingData.priceRangeMin ?? existingData?.priceRangeMin) ?? bandMax;
+  if (shares !== null && shares > 0 && bandMax !== null && bandMax > 0 && bandMin !== null && bandMin > 0) {
+    const netOfferAtFloor = shares * bandMin;
+    const fullOfferAtCap = shares * bandMax;
+    const lowerBound = netOfferAtFloor * (1 - ISSUE_SIZE_COHERENCE_TOLERANCE);
+    const upperBound = fullOfferAtCap * ISSUE_SIZE_COHERENCE_CEILING_MULTIPLIER;
+    if (issueSize < lowerBound || issueSize > upperBound) {
       return { fields: new Set(['issueSize']), reason: 'ISSUE_SIZE_INCOHERENT_WITH_SHARES_BAND' };
     }
   }
@@ -574,7 +608,8 @@ export class DataConsolidationService {
       // why a source's issueSize was refused.
       const implausibleIssueSize = collectImplausibleIssueSizeFields(
         input.incomingData,
-        input.existingData
+        input.existingData,
+        input.source
       );
       for (const fieldName of implausibleIssueSize.fields) {
         result.fieldsProcessed++;
