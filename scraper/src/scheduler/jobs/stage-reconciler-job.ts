@@ -55,14 +55,17 @@ export interface StageReconcilerResult {
 }
 
 /**
- * Run one reconciliation cycle. dryRun (default true) logs the plan only — no enqueue.
+ * Per-IPO presence query across the child tables the reconciler reasons over.
+ *
+ * Every `i.<column>` reference here MUST be a real column of the `ipos`
+ * pgTable (packages/shared/src/db/schema.ts) — Postgres rejects the whole
+ * statement on the first bad reference, so a single typo fails EVERY cycle,
+ * not just the affected field. Exported as a plain string (rather than kept
+ * inline in a `sql` tagged template) so a unit test can extract and verify
+ * every `i.` reference against the live schema (see
+ * stage-reconciler-job.test.ts).
  */
-export async function runStageReconcilerJob(opts: { dryRun?: boolean } = {}): Promise<StageReconcilerResult> {
-  const dryRun = opts.dryRun !== false;
-  logger.info({ dryRun }, '[stage-reconciler-job] cycle start');
-
-  // Per-IPO presence across the child tables the reconciler reasons over.
-  const rows = await db.execute(sql`
+export const RECONCILER_PRESENCE_SQL = `
     SELECT i.id, i.company_name AS "companyName", i.status, i.price_range_min AS "priceRangeMin",
       EXISTS(SELECT 1 FROM documents d WHERE d.ipo_id=i.id)            AS "documents",
       EXISTS(SELECT 1 FROM financial_data f WHERE f.ipo_id=i.id)       AS "financials",
@@ -71,11 +74,21 @@ export async function runStageReconcilerJob(opts: { dryRun?: boolean } = {}): Pr
       EXISTS(SELECT 1 FROM anchor_investors a WHERE a.ipo_id=i.id)     AS "anchor",
       (i.subscription_total IS NOT NULL OR EXISTS(SELECT 1 FROM subscriptions s WHERE s.ipo_id=i.id)) AS "subscription",
       EXISTS(SELECT 1 FROM ipo_demand_graph g WHERE g.ipo_id=i.id)     AS "demand",
-      (i.gmp IS NOT NULL OR EXISTS(SELECT 1 FROM gmp_records r WHERE r.ipo_id=i.id)) AS "gmp",
+      (i.gmp_price IS NOT NULL OR EXISTS(SELECT 1 FROM gmp_records r WHERE r.ipo_id=i.id)) AS "gmp",
       (i.listing_price_historical IS NOT NULL OR EXISTS(SELECT 1 FROM listing_performance lp WHERE lp.ipo_id=i.id)) AS "listing",
       (i.allotment_date IS NOT NULL)                                   AS "allotment"
     FROM ipos i WHERE i.offering_type = 'IPO'
-  `);
+`;
+
+/**
+ * Run one reconciliation cycle. dryRun (default true) logs the plan only — no enqueue.
+ */
+export async function runStageReconcilerJob(opts: { dryRun?: boolean } = {}): Promise<StageReconcilerResult> {
+  const dryRun = opts.dryRun !== false;
+  logger.info({ dryRun }, '[stage-reconciler-job] cycle start');
+
+  // Per-IPO presence across the child tables the reconciler reasons over.
+  const rows = await db.execute(sql.raw(RECONCILER_PRESENCE_SQL));
   const raw = (rows as any).rows ?? rows;
 
   const PRESENCE_KEYS: FetchKind[] = ['documents', 'financials', 'peers', 'objectives', 'anchor', 'subscription', 'demand', 'gmp', 'listing', 'allotment'];
