@@ -39,13 +39,17 @@ export function resolveDatabaseSsl(env: NodeJS.ProcessEnv = process.env): false 
 
 /**
  * Resolve the pg pool's connectionTimeoutMillis from PG_CONNECTION_TIMEOUT_MS
- * (T-433). Default 2000 preserves current prod behavior unchanged — a slow
- * SSH-tunnel path (e.g. the ipodhan_test dev tunnel) can override this without
- * touching prod's default.
+ * (T-433, revised W-20). Default is env-dependent: `NODE_ENV === 'production'`
+ * keeps 2000 (prod behavior byte-for-byte unchanged); any other/unset
+ * NODE_ENV (dev, test, local walks over the ipodhan_test SSH tunnel) defaults
+ * to 20000, since a 52-row insert over the tunnel was killing the pool at
+ * 2000ms unless PG_CONNECTION_TIMEOUT_MS was set by hand. An explicit
+ * PG_CONNECTION_TIMEOUT_MS always wins over either default.
  */
 export function resolvePgConnectionTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
-  const ms = parseInt(env.PG_CONNECTION_TIMEOUT_MS || '2000', 10);
-  return Number.isFinite(ms) && ms > 0 ? ms : 2000;
+  const defaultMs = env.NODE_ENV === 'production' ? 2000 : 20000;
+  const ms = parseInt(env.PG_CONNECTION_TIMEOUT_MS || String(defaultMs), 10);
+  return Number.isFinite(ms) && ms > 0 ? ms : defaultMs;
 }
 
 /**
