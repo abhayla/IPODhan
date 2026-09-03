@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-03 17:45 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-03 18:40 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -89,3 +89,4 @@ Last updated: 2026-09-03 17:45 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 - 2026-09-03 16:35: W-88 complete (bid windows, regulation, promoter shares held, promoter-group transactions; migration 0049). Fourth page run at the same link. Left: W-89 anchor names (next), W-90 ratios file type, W-92 rupee glyph.
 - 2026-09-03 17:20: W-89: names are now read from the page pixels when the text layer is damaged; on DEEPA that gives 3 of 15 fully right, so the list stays unpublished (totals shown) and the quality gate is being tightened so partial garbage can never publish (W-89b running).
 - 2026-09-03 17:45: W-89b done: the anchor-name quality gate now catches OCR fragments, so a partly garbled list can never publish. W-90 (ratios file type) and W-92 (rupee glyph) running together as the last two small items.
+- 2026-09-03 18:40: owner approved the page. W-90 and W-92 done. Other-IPO page and phone width checked; PR checks green. Final suites running. Gap review delivered to the owner.
