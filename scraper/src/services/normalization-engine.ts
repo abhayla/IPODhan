@@ -288,7 +288,15 @@ export function normalizeDate(value: string | number | Date): string | null {
  * - Case variations
  * - Special characters (&, ', -, _, parentheses)
  *
- * Returns: normalized lowercase name without legal suffixes
+ * Returns: normalized lowercase name without legal suffixes.
+ *
+ * COMPARISON ONLY — W-83. The return value is a matching key, never a value to
+ * persist: it is lowercased, suffix-stripped and punctuation-stripped, so
+ * storing it turns `Deepa Jewellers Limited` into `deepa jewellers` on the row.
+ * Consolidation MUST return the RAW winning value as `finalValue`
+ * (data-consolidation-service.ts, Case 2), because
+ * data-consolidation-orchestrator.ts copies every `finalValue` onto the written
+ * row.
  */
 export function normalizeCompanyName(value: string): string {
   if (!value) return '';

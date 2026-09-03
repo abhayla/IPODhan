@@ -1069,10 +1069,19 @@ export class DataConsolidationService {
         });
       }
 
-      // Value and owning source are unchanged - keep existing
+      // W-83 (Deepa walk, 2026-09-02): this used to return `normalizedExisting`.
+      // Normalization is a COMPARISON form, not a storable value — for a
+      // `company_name` field it lowercases and strips the legal suffix
+      // (normalization-engine.ts `normalizeCompanyName`), and every `finalValue`
+      // is copied straight onto the written row by
+      // data-consolidation-orchestrator.ts `extractConsolidatedData`. So the
+      // "nothing changed, keep existing" branch was silently rewriting
+      // `Deepa Jewellers Limited` to `deepa jewellers` on the first equivalent
+      // re-scrape. A branch that decided nothing changed must write back the
+      // RAW stored value, byte for byte.
       return {
         fieldName,
-        finalValue: normalizedExisting, // Keep existing value
+        finalValue: existingValue, // Keep the existing value AS STORED (never normalized)
         chosenSource: existingSource!, // Keep existing source
         hadConflict: false,
       };
