@@ -203,7 +203,8 @@ jobs:
 
       - name: Install Playwright browsers
         working-directory: ./web
-        run: npx playwright install --with-deps ${{ matrix.browser }}
+        # The Playwright project is named "edge" but the installable browser is "msedge" (W-98).
+        run: npx playwright install --with-deps ${{ matrix.browser == 'edge' && 'msedge' || matrix.browser }}
 
       - name: Run E2E tests
         working-directory: ./web
