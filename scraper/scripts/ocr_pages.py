@@ -142,6 +142,71 @@ def _otsu_threshold(values):
     return best_t
 
 
+def split_word_spans(crop):
+    """Column bounds `[(x_start, x_end), ...]` of the words inside one line crop.
+
+    The geometry half of `split_words` — see that function for the method. It
+    is separated out because a caller that needs word BOXES (the anchor-report
+    aligner, W-89) needs the x bounds, not only the pixels.
+
+    Returns `[(0, width)]` when the line cannot be split.
+    """
+    import cv2
+    import numpy as np
+
+    whole = [(0, crop.shape[1])] if crop is not None and getattr(crop, "size", 0) else [(0, 0)]
+    if crop is None or getattr(crop, "size", 0) == 0:
+        return whole
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
+    _t, bright = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    # Which side is the ink is decided by the CORNERS, not by how much ink
+    # there is: a dense all-caps line can be more than half ink, so an
+    # ink-share test inverts exactly the lines this route exists for. The
+    # corners of a detected line crop are background in either polarity.
+    k = max(1, min(3, min(crop.shape[0], crop.shape[1]) // 4))
+    corners = np.concatenate([
+        gray[:k, :k].ravel(), gray[:k, -k:].ravel(),
+        gray[-k:, :k].ravel(), gray[-k:, -k:].ravel()])
+    ink = (bright > 0) if np.median(corners) < 128 else (bright == 0)
+
+    profile = ink.sum(axis=0)
+    ink_cols = np.nonzero(profile > 0)[0]
+    if ink_cols.size == 0:
+        return whole
+    left, right = int(ink_cols[0]), int(ink_cols[-1]) + 1
+
+    runs, start = [], None
+    for i, blank in enumerate(profile == 0):
+        if blank and start is None:
+            start = i
+        elif not blank and start is not None:
+            runs.append((start, i - start))
+            start = None
+    if start is not None:
+        runs.append((start, len(profile) - start))
+    interior = [(s, w) for s, w in runs if s > left and s + w < right]
+    if not interior:
+        return whole
+
+    height = float(crop.shape[0])
+    widths = [w for _s, w in interior]
+    threshold = _otsu_threshold(widths) if len(widths) >= MIN_GAPS_FOR_OTSU else None
+    if threshold is None:
+        threshold = WORD_GAP_DEFAULT_RATIO * height
+    threshold = max(WORD_GAP_MIN_RATIO * height,
+                    min(WORD_GAP_MAX_RATIO * height, float(threshold)))
+
+    cuts = [s + w // 2 for s, w in interior if w > threshold]
+    bounds = [left] + [c for c in cuts if left < c < right] + [right]
+    spans = []
+    for a, b in zip(bounds[:-1], bounds[1:]):
+        lo = max(0, a - WORD_PAD_PX)
+        hi = min(crop.shape[1], b + WORD_PAD_PX)
+        if hi - lo >= MIN_WORD_WIDTH_PX:
+            spans.append((lo, hi))
+    return spans if len(spans) > 1 else whole
+
+
 def split_words(crop):
     """Split one detected text-line crop into word-level crops.
 
@@ -161,58 +226,12 @@ def split_words(crop):
 
     Returns the sub-images left to right; `[crop]` when it cannot split.
     """
-    import cv2
-    import numpy as np
-
     if crop is None or getattr(crop, "size", 0) == 0:
         return [crop]
-    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY) if crop.ndim == 3 else crop
-    _t, bright = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-    # Which side is the ink is decided by the CORNERS, not by how much ink
-    # there is: a dense all-caps line can be more than half ink, so an
-    # ink-share test inverts exactly the lines this route exists for. The
-    # corners of a detected line crop are background in either polarity.
-    k = max(1, min(3, min(crop.shape[0], crop.shape[1]) // 4))
-    corners = np.concatenate([
-        gray[:k, :k].ravel(), gray[:k, -k:].ravel(),
-        gray[-k:, :k].ravel(), gray[-k:, -k:].ravel()])
-    ink = (bright > 0) if np.median(corners) < 128 else (bright == 0)
-
-    profile = ink.sum(axis=0)
-    ink_cols = np.nonzero(profile > 0)[0]
-    if ink_cols.size == 0:
+    spans = split_word_spans(crop)
+    if len(spans) < 2:
         return [crop]
-    left, right = int(ink_cols[0]), int(ink_cols[-1]) + 1
-
-    runs, start = [], None
-    for i, blank in enumerate(profile == 0):
-        if blank and start is None:
-            start = i
-        elif not blank and start is not None:
-            runs.append((start, i - start))
-            start = None
-    if start is not None:
-        runs.append((start, len(profile) - start))
-    interior = [(s, w) for s, w in runs if s > left and s + w < right]
-    if not interior:
-        return [crop]
-
-    height = float(crop.shape[0])
-    widths = [w for _s, w in interior]
-    threshold = _otsu_threshold(widths) if len(widths) >= MIN_GAPS_FOR_OTSU else None
-    if threshold is None:
-        threshold = WORD_GAP_DEFAULT_RATIO * height
-    threshold = max(WORD_GAP_MIN_RATIO * height,
-                    min(WORD_GAP_MAX_RATIO * height, float(threshold)))
-
-    cuts = [s + w // 2 for s, w in interior if w > threshold]
-    bounds = [left] + [c for c in cuts if left < c < right] + [right]
-    words = []
-    for a, b in zip(bounds[:-1], bounds[1:]):
-        sub = crop[:, max(0, a - WORD_PAD_PX):min(crop.shape[1], b + WORD_PAD_PX)]
-        if sub.shape[1] >= MIN_WORD_WIDTH_PX:
-            words.append(sub)
-    return words if len(words) > 1 else [crop]
+    return [crop[:, a:b] for a, b in spans]
 
 
 def _reading_order(boxes):
@@ -263,13 +282,15 @@ def ocr_image(image, backend=DEFAULT_BACKEND):
     return _ocr_image_rapidocr(image)
 
 
-def _ocr_image_rapidocr(image):
+def _rapidocr_lines(image):
     """Detect lines, split each into words, recognise the words.
 
     This deliberately replaces `RapidOCR.__call__`: its one-crop-per-line
     recognition is where the spaces are lost (see `split_words`). Detection,
     cropping, angle classification, scoring and box filtering are still
     RapidOCR's — only the unit of recognition changes from a line to a word.
+
+    Returns the structured lines described by `ocr_image_lines`.
     """
     engine = _rapidocr_engine()
     if hasattr(image, "convert"):  # PIL -> ndarray, RapidOCR wants BGR/RGB array
@@ -279,7 +300,7 @@ def _ocr_image_rapidocr(image):
 
     boxes, _elapse = engine.text_detector(img)
     if boxes is None or len(boxes) < 1:
-        return "", 0.0
+        return []
     boxes = engine.sorted_boxes(boxes)
     crops = engine.get_crop_img_list(img, boxes)
     if engine.use_angle_cls:
@@ -287,30 +308,114 @@ def _ocr_image_rapidocr(image):
 
     word_crops, spans = [], []
     for crop in crops:
-        words = split_words(crop)
-        spans.append((len(word_crops), len(words)))
-        word_crops.extend(words)
+        cols = split_word_spans(crop)
+        width = float(crop.shape[1]) or 1.0
+        spans.append((len(word_crops), cols, width))
+        word_crops.extend(crop[:, a:b] for a, b in cols)
     if not word_crops:
-        return "", 0.0
+        return []
 
     rec_res, _rec_elapse = engine.text_recognizer(word_crops)
 
-    result = []
-    for box, (start, count) in zip(boxes, spans):
-        parts = [rec_res[start + i] for i in range(count)]
-        words = [(p[0] or "").strip() for p in parts]
-        scores = [float(p[1]) for p, w in zip(parts, words) if w]
-        text = " ".join(w for w in words if w)
+    lines = []
+    for box, (start, cols, width) in zip(boxes, spans):
+        quad = box.tolist()
+        xs = [float(p[0]) for p in quad]
+        ys = [float(p[1]) for p in quad]
+        x0, x1, top, bottom = min(xs), max(xs), min(ys), max(ys)
+        parts = [rec_res[start + i] for i in range(len(cols))]
+        words, scores = [], []
+        for (a, b), part in zip(cols, parts):
+            text = (part[0] or "").strip()
+            if not text:
+                continue
+            score = float(part[1])
+            scores.append(score)
+            # The word's x range is the line box's, scaled by where the word
+            # sits inside the crop. The crop is a perspective-corrected
+            # rectangle, so this is linear and exact enough for a y-aligned
+            # column read; a 180-degree cls rotation would mirror it, which is
+            # not a case these upright filing scans produce.
+            words.append({
+                "text": text, "score": score,
+                "box": [x0 + (a / width) * (x1 - x0), top,
+                        x0 + (b / width) * (x1 - x0), bottom],
+            })
+        text = " ".join(w["text"] for w in words)
         if not text or not scores:
             continue
         score = sum(scores) / len(scores)
         if score < engine.text_score:
             continue
-        result.append((box.tolist(), text, score))
-    if not result:
+        lines.append({"box": quad, "text": text, "score": score, "words": words})
+    return lines
+
+
+def _tesseract_lines(image):
+    import pytesseract
+    from PIL import Image
+    if isinstance(image, str):
+        image = Image.open(image)
+    elif not hasattr(image, "convert"):
+        image = Image.fromarray(image)
+    data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+    grouped, order = {}, []
+    for i, word in enumerate(data["text"]):
+        text = (word or "").strip()
+        conf = float(data["conf"][i])
+        if not text or conf < 0:
+            continue
+        key = (data["block_num"][i], data["par_num"][i], data["line_num"][i])
+        if key not in grouped:
+            grouped[key] = []
+            order.append(key)
+        x0, top = float(data["left"][i]), float(data["top"][i])
+        grouped[key].append({
+            "text": text, "score": conf / 100.0,
+            "box": [x0, top, x0 + float(data["width"][i]), top + float(data["height"][i])],
+        })
+    lines = []
+    for key in order:
+        words = grouped[key]
+        x0 = min(w["box"][0] for w in words)
+        x1 = max(w["box"][2] for w in words)
+        top = min(w["box"][1] for w in words)
+        bottom = max(w["box"][3] for w in words)
+        scores = [w["score"] for w in words]
+        lines.append({
+            "box": [[x0, top], [x1, top], [x1, bottom], [x0, bottom]],
+            "text": " ".join(w["text"] for w in words),
+            "score": sum(scores) / len(scores),
+            "words": words,
+        })
+    return lines
+
+
+def ocr_image_lines(image, backend=DEFAULT_BACKEND):
+    """OCR one image and return the boxes, not only the text (W-89).
+
+    `ocr_image` throws the geometry away, which is fine for a field regex but
+    useless to a caller that must place each word in a table column. This is
+    the same OCR pass, exposed:
+
+        [{"box": [[x, y] x 4],        # the detected LINE quad, image pixels
+          "text": "TATA INDIA",       # the line, words joined by a space
+          "score": 0.91,              # mean of its word scores
+          "words": [{"text": "TATA", "score": 0.93,
+                     "box": [x0, top, x1, bottom]}, ...]}, ...]
+
+    Boxes are in image pixels, y down from the top edge — the coordinate frame
+    of the rendered page, which `ocr_pdf_page_boxes` converts to PDF points.
+    """
+    return _tesseract_lines(image) if backend == "tesseract" else _rapidocr_lines(image)
+
+
+def _ocr_image_rapidocr(image):
+    lines = _rapidocr_lines(image)
+    if not lines:
         return "", 0.0
-    text = _reading_order(result)
-    scores = [float(r[2]) for r in result]
+    text = _reading_order([(ln["box"], ln["text"], ln["score"]) for ln in lines])
+    scores = [ln["score"] for ln in lines]
     return text, sum(scores) / len(scores)
 
 
@@ -355,6 +460,17 @@ def render_pages(pdf_path, pages=None, dpi=DEFAULT_DPI, max_edge=MAX_EDGE_PX):
     spends minutes on for no accuracy gain. The cap keeps a full page inside a
     few seconds of OCR while leaving normal A4 filings at the requested dpi.
     """
+    for idx, image, _scale in render_pages_scaled(pdf_path, pages, dpi, max_edge):
+        yield idx, image
+
+
+def render_pages_scaled(pdf_path, pages=None, dpi=DEFAULT_DPI, max_edge=MAX_EDGE_PX):
+    """`render_pages`, plus the pixels-per-point scale each page was drawn at.
+
+    A caller that maps OCR boxes back onto the PDF's own coordinates (points,
+    72 per inch) needs the scale actually used, which is NOT `dpi / 72` when
+    `max_edge` clamped a large page.
+    """
     import pypdfium2 as pdfium
     doc = pdfium.PdfDocument(pdf_path)
     try:
@@ -366,9 +482,33 @@ def render_pages(pdf_path, pages=None, dpi=DEFAULT_DPI, max_edge=MAX_EDGE_PX):
                 longest = max(page.get_width(), page.get_height()) * scale
                 if longest > max_edge:
                     scale *= max_edge / longest
-            yield idx, page.render(scale=scale).to_pil()
+            yield idx, page.render(scale=scale).to_pil(), scale
     finally:
         doc.close()
+
+
+def ocr_pdf_page_boxes(pdf_path, pages=None, dpi=DEFAULT_DPI, backend=DEFAULT_BACKEND,
+                       max_edge=MAX_EDGE_PX):
+    """OCR pages and return their word boxes in PDF POINTS (W-89).
+
+    Returns `[{"page": i, "confidence": c, "lines": [...]}]` with every box
+    already divided by the render scale, so the coordinates line up with
+    pdfplumber's `extract_words()` on the same file (x0/x1 from the left edge,
+    top down from the top edge).
+    """
+    out = []
+    for idx, image, scale in render_pages_scaled(pdf_path, pages, dpi, max_edge):
+        lines = ocr_image_lines(image, backend)
+        for line in lines:
+            line["box"] = [[p[0] / scale, p[1] / scale] for p in line["box"]]
+            for word in line["words"]:
+                word["box"] = [v / scale for v in word["box"]]
+        scores = [ln["score"] for ln in lines]
+        out.append({
+            "page": idx, "lines": lines,
+            "confidence": (sum(scores) / len(scores)) if scores else 0.0,
+        })
+    return out
 
 
 def ocr_pdf_pages(pdf_path, pages=None, dpi=DEFAULT_DPI, backend=DEFAULT_BACKEND):

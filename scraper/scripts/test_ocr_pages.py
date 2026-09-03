@@ -190,3 +190,34 @@ def test_split_words_returns_the_crop_for_a_blank_image():
 def test_split_words_handles_light_text_on_a_dark_ground():
     crop = 255 - _text_strip([3, 4])
     assert len(ocr_pages.split_words(crop)) == 2
+
+
+# --------------------------------------------------------------------------- #
+# W-89 — word BOXES, not only word text
+#
+# A caller that must place each word in a table column (the anchor-report name
+# aligner) needs the geometry, which `ocr_image`'s text-only return throws away.
+# --------------------------------------------------------------------------- #
+def test_split_word_spans_reports_the_column_bounds_of_each_word():
+    crop = _text_strip([3, 5, 2])
+    spans = ocr_pages.split_word_spans(crop)
+    assert len(spans) == 3
+    # Left to right and inside the image. Consecutive spans may overlap by up
+    # to 2 * WORD_PAD_PX — each is padded so a clipped stroke is not lost.
+    assert spans == sorted(spans)
+    assert all(a < b for a, b in spans)
+    assert all(b - a2 <= 2 * ocr_pages.WORD_PAD_PX
+               for (_a, b), (a2, _b2) in zip(spans[:-1], spans[1:]))
+    assert spans[0][0] >= 0 and spans[-1][1] <= crop.shape[1]
+
+
+def test_split_word_spans_and_split_words_agree():
+    crop = _text_strip([3, 5, 2])
+    spans = ocr_pages.split_word_spans(crop)
+    words = ocr_pages.split_words(crop)
+    assert len(spans) == len(words)
+    assert [b - a for a, b in spans] == [w.shape[1] for w in words]
+
+
+def test_split_word_spans_returns_one_span_for_a_single_word():
+    assert len(ocr_pages.split_word_spans(_text_strip([6]))) == 1
