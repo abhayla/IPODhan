@@ -137,6 +137,20 @@ describe('extract_filing — Purple Style Labs price band advertisement (real PD
     expect(out.fields.pe_at_cap.value).toBeNull();
     expect(out.fields.pe_at_cap.check.detail).toBe('not_ascertainable_loss');
   });
+
+  it('W-44: no issuer-specific KPI field exists; concentration KPIs are a generic list', (ctx) => {
+    if (!have || !pythonAvailable) return ctx.skip();
+    for (const gone of ['top10_brands_pct_fy2026', 'womenswear_pct_fy2026', 'mumbai_gmv_pct_fy2026']) {
+      expect(Object.keys(out.fields), gone).not.toContain(gone);
+    }
+    const kpis = out.fields.concentration_kpis.value as { label: string; value_pct: number }[];
+    expect(kpis).toEqual(EXPECTED.PRICE_BAND_AD.concentration_kpis);
+    for (const entry of kpis) {
+      expect(entry.label).toMatch(/^[a-z0-9_]+$/);
+      expect(entry.value_pct).toBeGreaterThan(0);
+      expect(entry.value_pct).toBeLessThanOrEqual(100);
+    }
+  });
 });
 
 describe('extract_filing — Purple Style Labs RHP (real PDF)', () => {
