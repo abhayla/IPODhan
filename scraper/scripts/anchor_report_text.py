@@ -110,14 +110,19 @@ def column_bands(pages_words):
     return [(b, n) for b, n in scored if n >= max(MIN_NUMERIC_ROWS, 0.5 * best)]
 
 
-def _cells(words, centres, numeric):
-    """Split one column into cells and attach each to its nearest row centre."""
+def _cell_groups(words, centres):
+    """Split one column into cells, attaching each to its nearest row centre."""
     cells = [[] for _ in centres]
     for group in _clusters(words, lambda w: w["top"], ROW_GAP_PT):
         c = _centre(group)
         idx = min(range(len(centres)), key=lambda i: abs(centres[i] - c))
         if abs(centres[idx] - c) <= ROW_ATTACH_PT:
             cells[idx].extend(group)
+    return cells
+
+
+def _cells(words, centres, numeric):
+    cells = _cell_groups(words, centres)
     if numeric:
         return [" ".join(w["text"] for w in sorted(c, key=lambda w: w["x0"])) for c in cells]
     return [_cell_text(c) for c in cells]
@@ -143,11 +148,21 @@ def _cell_text(words):
     )
 
 
-def page_text(words, bands):
+def page_rows(words, bands):
+    """Split one page into its table rows. None when the page is not a table.
+
+    Returns
+        {"preamble": str,          # everything printed above the table
+         "centres": [float],       # the y centre of each row, in points
+         "serials": [str],         # serial cell, per row
+         "names":   [str],         # name cell from the TEXT LAYER, per row
+         "columns": [[str]],       # the numeric columns, each a list per row
+         "name_band": (lo, hi)}    # the name column's x range, in points
+    """
     if not words:
-        return ""
+        return None
     if len(bands) < 3:
-        return _plain(words)
+        return None
 
     serial_band, value_bands = bands[0][0], [b for b, _ in bands[1:]]
     # The row spine is the column with a cell on the most rows - in practice the
@@ -157,44 +172,291 @@ def page_text(words, bands):
     spine_band = max(bands[1:], key=lambda item: item[1])[0]
     spine = _clusters(_in_band(words, spine_band), lambda w: w["top"], ROW_GAP_PT)
     if not spine:
-        return _plain(words)
+        return None
     centres = [_centre(g) for g in spine]
 
     name_lo, name_hi = serial_band[1] + BAND_PAD_PT, value_bands[0][0] - BAND_PAD_PT
     name_words = [w for w in words if name_lo <= w["x0"] < name_hi]
-    serials = _cells(_in_band(words, serial_band), centres, numeric=True)
-    names = _cells(name_words, centres, numeric=False)
-    columns = [_cells(_in_band(words, b), centres, numeric=True) for b in value_bands]
-
-    lines = []
+    name_groups = _cell_groups(name_words, centres)
     top_of_table = min(w["top"] for g in spine for w in g)
     preamble = [w for w in words if w["top"] < top_of_table - ROW_GAP_PT]
-    if preamble:
-        lines.append(_plain(preamble))
-    for i in range(len(centres)):
-        head = serials[i].split(" ")[0] if serials[i] else ""
+    return {
+        "preamble": _plain(preamble) if preamble else "",
+        "centres": centres,
+        "serials": _cells(_in_band(words, serial_band), centres, numeric=True),
+        "names": [_cell_text(g) for g in name_groups],
+        "name_groups": name_groups,
+        "columns": [_cells(_in_band(words, b), centres, numeric=True) for b in value_bands],
+        "name_band": (name_lo, name_hi),
+    }
+
+
+def render_rows(rows):
+    """The `# serial | name | value | ...` page text the TS parser consumes."""
+    lines = []
+    if rows["preamble"]:
+        lines.append(rows["preamble"])
+    for i in range(len(rows["centres"])):
+        head = rows["serials"][i].split(" ")[0] if rows["serials"][i] else ""
         m = SERIAL_RE.match(head)
-        lines.append(
-            "# " + " | ".join([m.group(1) if m else "", names[i]] + [c[i] for c in columns])
-        )
+        lines.append("# " + " | ".join(
+            [m.group(1) if m else "", rows["names"][i]] + [c[i] for c in rows["columns"]]))
     return NL.join(lines)
 
 
-def extract(path):
+def page_text(words, bands):
+    if not words:
+        return ""
+    rows = page_rows(words, bands)
+    return render_rows(rows) if rows else _plain(words)
+
+
+# --------------------------------------------------------------------------- #
+# W-89 — the scanned-report path
+#
+# Some of these letters carry a DAMAGED machine-OCR text layer rather than a
+# clean one: the glyphs themselves are wrong (M -> "N4", I -> "]", W -> "I\4",
+# % -> "o/o"), so no amount of positional work recovers the investor NAMES.
+# The numeric columns survive that damage well enough to reconcile (the
+# published totals check out), and only the name column is unreadable.
+#
+# So: keep every number from the text layer, and read the names again from the
+# pixels — render the page, OCR it with word boxes, and attach each OCR word to
+# the text-layer row whose y centre it sits on.
+# --------------------------------------------------------------------------- #
+NAME_QUALITY_FLOOR = 0.3
+OCR_DPI = 300
+
+# Words a run of OCR letter-shrapnel is allowed to be re-joined into. Anything
+# outside this list is NOT invented: "M OTI LA OS WA" stays as it is and the
+# row stays flagged, because "MOTILAL OSWAL" is a guess, not a read.
+JOIN_DICTIONARY = (
+    "OPPORTUNITIES", "SECURITIES", "MAURITIUS", "MARKETS", "PRIVATE", "CAPITAL",
+    "LIMITED", "MUTUAL", "GLOBAL", "SERIES", "EQUITY", "TRUST", "INDIA", "FUND",
+    "PVT", "LTD",
+)
+MAX_JOIN_FRAGMENT = 3
+
+_NAME_ALLOWED_RE = re.compile(r"[^A-Za-z0-9 .,&()'/-]")
+_LETTER_RUN_RE = re.compile(r"(^|\s)[A-Za-z](\s[A-Za-z]){3,}(\s|$)")
+_DIGIT_IN_WORD_RE = re.compile(r"[A-Za-z]\d|\d[A-Za-z]")
+
+
+def is_low_confidence_name(name):
+    """Python port of `isLowConfidenceName` in src/services/anchor-persister.ts.
+
+    Kept deliberately identical so the extractor's own judgement of "this name
+    did not read" is the same judgement the persister's publication gate makes.
+    """
+    n = (name or "").strip()
+    if len(n) < 4:
+        return True
+    if _NAME_ALLOWED_RE.search(n):
+        return True
+    if _LETTER_RUN_RE.search(n):
+        return True
+    if _DIGIT_IN_WORD_RE.search(n):
+        return True
+    letters = sum(1 for c in n if c.isalpha())
+    return letters / float(len(n)) < 0.6
+
+
+def low_confidence_share(names):
+    """Share of rows whose name is unreadable (blank rows count as unreadable)."""
+    if not names:
+        return 0.0
+    bad = sum(1 for n in names if is_low_confidence_name(n))
+    return bad / float(len(names))
+
+
+def _segment(blob):
+    """Split `blob` into dictionary words, or None when it does not split.
+
+    Word-break DP, not greedy: greedy longest-match fails on the overlaps this
+    dictionary has ("SECURITIESERIES"-style tails).
+    """
+    n = len(blob)
+    best = [None] * (n + 1)
+    best[0] = []
+    for i in range(1, n + 1):
+        for word in JOIN_DICTIONARY:
+            j = i - len(word)
+            if j >= 0 and best[j] is not None and blob[j:i] == word:
+                best[i] = best[j] + [word]
+                break
+    return best[n]
+
+
+def join_letter_runs(text):
+    """Re-join OCR letter shrapnel, but only into words we can name.
+
+    "F U N D" -> "FUND" and "L I M I T E D" -> "LIMITED", because those are in
+    the dictionary. "M OTI LA OS WA" is left alone: joining it to "MOTILAL
+    OSWAL" would be inventing three characters the OCR never read.
+    """
+    tokens = (text or "").split()
+    out, run = [], []
+
+    def flush():
+        if not run:
+            return
+        if len(run) > 1:
+            parts = _segment("".join(run))
+            if parts:
+                out.extend(parts)
+                return
+        out.extend(run)
+
+    for token in tokens:
+        if token.isalpha() and token.isupper() and len(token) <= MAX_JOIN_FRAGMENT:
+            run.append(token)
+            continue
+        flush()
+        del run[:]
+        out.append(token)
+    flush()
+    return " ".join(out)
+
+
+def _overlap(a0, a1, b0, b1):
+    return max(0.0, min(a1, b1) - max(a0, b0))
+
+
+def _row_tolerance(centres):
+    gaps = [b - a for a, b in zip(centres[:-1], centres[1:]) if b - a > 0]
+    median_gap = sorted(gaps)[len(gaps) // 2] if gaps else 2 * ROW_ATTACH_PT
+    return max(ROW_ATTACH_PT, 0.5 * median_gap)
+
+
+def _nearest_row(top, x0, text, centres, name_band):
+    """Row index for an OCR word that overlapped no text-layer name word."""
+    lo, hi = name_band
+    if not (lo <= x0 < hi):
+        return None
+    # A serial that the OCR drew slightly wider than the printed column would
+    # otherwise be adopted as the first word of the name ("1. NOMURA ...").
+    if SERIAL_RE.match(text):
+        return None
+    idx = min(range(len(centres)), key=lambda i: abs(centres[i] - top))
+    return idx if abs(centres[idx] - top) <= _row_tolerance(centres) else None
+
+
+def ocr_name_cells(ocr_lines, name_groups, centres=None, name_band=None):
+    """Attach OCR words to rows by OVERLAP with the text layer's own name words.
+
+    `ocr_lines` is `ocr_pages.ocr_pdf_page_boxes(...)["lines"]` — boxes already
+    converted to PDF points, the same frame pdfplumber reports.
+
+    Why overlap and not "nearest row centre": the damage in these text layers is
+    in the GLYPHS, never in the geometry, so the text layer already knows where
+    every name word sits and which row it belongs to. Matching against those
+    boxes is self-correcting — it cannot pull a serial number into a name (a
+    serial is not a name word) and it cannot drop a wrapped second line onto the
+    row above (the measured failure of centre-matching: row 8 swallowed row 9's
+    "MAYBANK SECURITIES PTE LTD"). An OCR word overlapping no name word is
+    dropped, UNLESS the fallback below can place it.
+
+    The fallback (`centres` + `name_band` given): a row whose name the text layer
+    lost entirely has no boxes to overlap, and without it that row's OCR name
+    lands on the row below — DEEPA row 4, "TATA INDIA CONSUMER FUND". Such a word
+    is attached to the nearest row centre, guarded by the same `x0` name-column
+    test the text layer applies, so it still cannot pull in a serial or a number.
+    """
+    cells = [[] for _ in name_groups]
+    placed = [(i, w) for i, group in enumerate(name_groups) for w in group]
+    for line in ocr_lines:
+        for word in line.get("words", []):
+            x0, top, x1, bottom = word["box"]
+            best_idx, best_area = None, 0.0
+            for i, w in placed:
+                area = (_overlap(x0, x1, w["x0"], w["x1"])
+                        * _overlap(top, bottom, w["top"], w["bottom"]))
+                if area > best_area:
+                    best_idx, best_area = i, area
+            if best_idx is None and centres and name_band:
+                best_idx = _nearest_row(top, x0, word["text"], centres, name_band)
+            if best_idx is not None:
+                cells[best_idx].append((top, x0, word["text"]))
+    out = []
+    for cell in cells:
+        # Same rule as the text layer: sub-lines top to bottom, words within a
+        # sub-line left to right.
+        lines_of_cell, current = [], []
+        for top, x0, text in sorted(cell):
+            if current and top - current[0][0] > ROW_GAP_PT:
+                lines_of_cell.append(current)
+                current = []
+            current.append((top, x0, text))
+        if current:
+            lines_of_cell.append(current)
+        out.append(" ".join(
+            " ".join(t for _top, _x, t in sorted(ln, key=lambda it: it[1]))
+            for ln in lines_of_cell))
+    return out
+
+
+def apply_ocr_names(rows, ocr_lines):
+    """Replace a page's unreadable name column with the OCR read of it.
+
+    Per row, the text-layer name is kept when the OCR read of that row is itself
+    unreadable and the text-layer one is not — the OCR route exists to recover
+    names, never to downgrade one that already reads.
+    """
+    ocr_names = ocr_name_cells(
+        ocr_lines, rows["name_groups"], rows["centres"], rows["name_band"])
+    names = []
+    for i, existing in enumerate(rows["names"]):
+        candidate = join_letter_runs(ocr_names[i]) if i < len(ocr_names) else ""
+        # Only INVESTOR rows (the ones carrying a serial) are re-read. The
+        # table's own "Total" line and its column headings read fine from the
+        # text layer, and the OCR degrades them: it read "Total" as "Tota",
+        # which the parser then took for a 16th investor and refused the whole
+        # letter.
+        if not SERIAL_RE.match((rows["serials"][i] or "").split(" ")[0]):
+            names.append(existing)
+        elif not candidate:
+            names.append(existing)
+        elif is_low_confidence_name(candidate) and not is_low_confidence_name(existing):
+            names.append(existing)
+        else:
+            names.append(candidate)
+    rows = dict(rows)
+    rows["names"] = names
+    return rows
+
+
+def extract(path, ocr=True):
     with pdfplumber.open(path) as pdf:
         pages_words = [
             p.extract_words(y_tolerance=1, x_tolerance=1.5) for p in pdf.pages
         ]
     bands = column_bands(pages_words)
-    return [page_text(w, bands) for w in pages_words]
+    pages = [page_rows(w, bands) for w in pages_words]
+
+    scanned = [
+        i for i, rows in enumerate(pages)
+        if rows and low_confidence_share(rows["names"]) > NAME_QUALITY_FLOOR
+    ]
+    if ocr and scanned:
+        import ocr_pages  # local: the OCR stack is only needed on damaged scans
+
+        if ocr_pages.backend_available():
+            for page in ocr_pages.ocr_pdf_page_boxes(path, scanned, dpi=OCR_DPI):
+                pages[page["page"]] = apply_ocr_names(pages[page["page"]], page["lines"])
+
+    return [
+        render_rows(rows) if rows else (_plain(w) if w else "")
+        for rows, w in zip(pages, pages_words)
+    ]
 
 
 def main():
-    if len(sys.argv) < 2:
-        print(json.dumps({"error": "usage: anchor_report_text.py <pdf-path>"}))
+    argv = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if not argv:
+        print(json.dumps({"error": "usage: anchor_report_text.py <pdf-path> [--no-ocr]"}))
         return 1
     try:
-        pages = extract(sys.argv[1])
+        pages = extract(argv[0], ocr="--no-ocr" not in sys.argv[1:])
     except Exception as exc:  # noqa: BLE001 - the caller only needs the reason
         print(json.dumps({"error": "%s: %s" % (type(exc).__name__, exc)}))
         return 1
