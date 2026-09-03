@@ -99,7 +99,13 @@ function isBlank(value: unknown): boolean {
  * convention — see `.claude/rules/utc-naive-timestamp-normalization.md`)
  * instead of by exact epoch.
  */
-const DATE_ONLY_FIELDS = new Set(['openDate', 'closeDate', 'allotmentDate', 'listingDate']);
+const DATE_ONLY_FIELDS = new Set([
+  'openDate',
+  'closeDate',
+  'allotmentDate',
+  'listingDate',
+  'listingDateHistorical',
+]);
 
 function isDateOnlyString(value: unknown): boolean {
   return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
