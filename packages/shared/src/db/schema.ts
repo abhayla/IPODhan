@@ -216,6 +216,7 @@ export const intermediaryRoleEnum = pgEnum('intermediary_role', [
   'BRLM',
   'REGISTRAR',
   'SYNDICATE',
+  'SUB_SYNDICATE',
   'SPONSOR_BANK',
   'ESCROW_BANK',
   'PUBLIC_ISSUE_BANK',

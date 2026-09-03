@@ -3,8 +3,8 @@
  *
  * Replaces the free-text `ipos.leadManagers` / `ipo_details.sponsorBanks`
  * arrays with a proper per-role table (BRLM, REGISTRAR, SYNDICATE,
- * SPONSOR_BANK, ESCROW_BANK, PUBLIC_ISSUE_BANK) carrying contact details the
- * price-band ad prints (SEBI reg no, grievance email, etc).
+ * SUB_SYNDICATE, SPONSOR_BANK, ESCROW_BANK, PUBLIC_ISSUE_BANK) carrying
+ * contact details the price-band ad prints (SEBI reg no, grievance email, etc).
  *
  * Full-replace per IPO on write, same reasoning as PromotersRepository: the
  * intermediary list has no natural per-row key stable across filings.
@@ -23,6 +23,7 @@ export type IntermediaryRole =
   | 'BRLM'
   | 'REGISTRAR'
   | 'SYNDICATE'
+  | 'SUB_SYNDICATE'
   | 'SPONSOR_BANK'
   | 'ESCROW_BANK'
   | 'PUBLIC_ISSUE_BANK';

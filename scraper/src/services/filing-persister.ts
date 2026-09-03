@@ -1205,16 +1205,18 @@ export async function persistFilingExtraction(
   if (list<string>(extraction, 'brlm_sebi_regs').length > 0) {
     skippedNoColumn.push('brlm_sebi_regs (no name->registration mapping in the extraction)');
   }
-  // W-74 E5: the price band advertisement names a lead Syndicate Member and a
-  // sub-syndicate broker list. `intermediary_role` carries SYNDICATE but has no
-  // SUB_SYNDICATE value, so only the lead member is storable; the sub-syndicate
-  // names are reported as skipped rather than filed under the wrong role.
+  // W-74/W-76: the price band advertisement names a lead Syndicate Member and
+  // a sub-syndicate broker list. `intermediary_role` now carries both
+  // SYNDICATE and SUB_SYNDICATE, so every named member is filed under its own
+  // role.
   const syndicate = list<{ name?: string; role?: string }>(extraction, 'syndicate_members');
   for (const member of syndicate) {
-    if (member.role !== 'SYNDICATE' || !member.name) continue;
+    if ((member.role !== 'SYNDICATE' && member.role !== 'SUB_SYNDICATE') || !member.name) {
+      continue;
+    }
     intermediaries.push({
       ipoId,
-      role: 'SYNDICATE',
+      role: member.role,
       name: member.name,
       sebiRegNo: null,
       contactPerson: null,
@@ -1222,12 +1224,6 @@ export async function persistFilingExtraction(
       email: null,
       grievanceEmail: null,
     });
-  }
-  const subSyndicate = syndicate.filter((m) => m.role === 'SUB_SYNDICATE').length;
-  if (subSyndicate > 0) {
-    skippedNoColumn.push(
-      `syndicate_members (${subSyndicate} sub-syndicate members; intermediary_role has no SUB_SYNDICATE value)`
-    );
   }
   if (intermediaries.length > 0) {
     if (

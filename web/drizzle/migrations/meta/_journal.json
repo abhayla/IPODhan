@@ -211,6 +211,13 @@
       "when": 1788772800000,
       "tag": "0046_ipo_status_withdrawn_postponed",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1788859200000,
+      "tag": "0047_intermediary_role_sub_syndicate",
+      "breakpoints": true
     }
   ]
 }
