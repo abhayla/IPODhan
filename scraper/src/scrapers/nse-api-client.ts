@@ -452,9 +452,17 @@ export function determineStatus(statusStr: string | null | undefined, startDate:
  * into the rupee column `ipos.issue_size`, producing "Issue Size Rs1.77
  * Crores" for an IPO whose real size is Rs175 Cr (17,683,000 sh x Rs99).
  *
- * This computes the true rupee issue size as shares x price (upper band
- * preferred, issue price as fallback), and returns undefined (never a share
- * count) when neither price signal is available — undefined lets a
+ * This computes the true rupee issue size as shares x price. W-109
+ * (round-8, found on Glass Wall Systems' price-band ad): the exchange's
+ * share count is the count AT THE FLOOR price — "up to N shares" prices out
+ * to a lower total at the floor and a smaller share count at the cap, so
+ * floor-count x cap-price is a number that never appears in the filing
+ * (Glass Wall: 23,702,094 sh (floor count) x Rs182 (cap) = Rs4,313.78 Cr,
+ * appears nowhere; the real floor total is 23,702,094 x Rs172 = Rs4,076.76
+ * Cr, matching the ad). So this prefers the FLOOR price (priceRangeMin),
+ * falling back to priceRangeMax only when no floor is known (e.g. a single
+ * fixed price reported as max with no min). Returns undefined (never a
+ * share count) when neither price signal is available — undefined lets a
  * higher-confidence source (BSE/Chittorgarh) win instead of writing a wrong
  * number. `noOfSharesOffered` is preferred over `issueSize` as the share
  * count because it is NSE's correctly-named field for the same value.
@@ -468,7 +476,7 @@ export function computeNSEIssueSizeRupees(
   const shares = sharesRaw != null ? parseFloat(String(sharesRaw)) : NaN;
   if (!Number.isFinite(shares) || shares <= 0) return undefined;
 
-  const price = priceRangeMax ?? priceRangeMin;
+  const price = priceRangeMin ?? priceRangeMax;
   if (price == null || !Number.isFinite(price) || price <= 0) {
     logger.warn(
       { companyName: data.companyName || data.company, shares },

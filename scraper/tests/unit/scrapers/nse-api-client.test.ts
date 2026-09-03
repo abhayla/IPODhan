@@ -47,25 +47,42 @@ describe('nse-api-client parsePriceRange (T-308 fix)', () => {
  *      matches IPOWatch's independently reported "Rs175 Cr").
  * The bug wrote 17,683,000 verbatim into the rupee column ("Rs1.77 Cr").
  */
-describe('computeNSEIssueSizeRupees (T-329 fix)', () => {
-  it('Annu Projects replay: converts the share count to rupees using the upper price band', () => {
+describe('computeNSEIssueSizeRupees (T-329 fix; W-109 floor-price fix)', () => {
+  it('Annu Projects replay: converts the share count to rupees using the FLOOR price', () => {
+    // W-109: the exchange share count is the count AT THE FLOOR — floor x
+    // shares is the number that exists in the filing, not cap x shares.
     const data = { companyName: 'Annu Projects Limited', issueSize: '17683000', noOfSharesOffered: '1.7683E7' };
-    expect(computeNSEIssueSizeRupees(data, 99, 95)).toBe(1750617000);
+    expect(computeNSEIssueSizeRupees(data, 99, 95)).toBe(1679885000);
   });
 
-  it('Priority Jewels replay: 4,575,000 sh x Rs200 = Rs91.5 Cr, not the raw share count', () => {
+  it('Priority Jewels replay: 4,575,000 sh x Rs190 floor = Rs86.925 Cr, not the raw share count', () => {
     const data = { companyName: 'Priority Jewels Limited', issueSize: '4575000', noOfSharesOffered: '4575000' };
-    expect(computeNSEIssueSizeRupees(data, 200, 190)).toBe(915000000);
+    expect(computeNSEIssueSizeRupees(data, 200, 190)).toBe(869250000);
   });
 
   it('prefers noOfSharesOffered over issueSize as the share-count source', () => {
     // issueSize and noOfSharesOffered disagree — noOfSharesOffered is NSE's
     // correctly-named field for the share count and must win.
     const data = { issueSize: '999', noOfSharesOffered: '17683000' };
-    expect(computeNSEIssueSizeRupees(data, 99, 95)).toBe(1750617000);
+    expect(computeNSEIssueSizeRupees(data, 99, 95)).toBe(1679885000);
   });
 
-  it('falls back to priceRangeMin when priceRangeMax is unavailable', () => {
+  it('W-109 (round-8, Glass Wall Systems): floor-priced total, never the cap-priced total', () => {
+    // 23,702,094 sh (the exchange's floor-priced count) x band 172-182.
+    // Real filing total (floor): 23,702,094 x 172 = 4,076,760,168.
+    // The old cap-multiplied bug: 23,702,094 x 182 = 4,313,781,108 — appears
+    // nowhere in the filing and must never be produced again.
+    const data = { companyName: 'Glass Wall Systems Limited', noOfSharesOffered: '23702094' };
+    expect(computeNSEIssueSizeRupees(data, 182, 172)).toBe(4076760168);
+    expect(computeNSEIssueSizeRupees(data, 182, 172)).not.toBe(4313781108);
+  });
+
+  it('falls back to priceRangeMax when priceRangeMin (the floor) is unavailable', () => {
+    const data = { issueSize: '17683000' };
+    expect(computeNSEIssueSizeRupees(data, 99, undefined)).toBe(1750617000);
+  });
+
+  it('uses priceRangeMin directly when priceRangeMax is unavailable', () => {
     const data = { issueSize: '17683000' };
     expect(computeNSEIssueSizeRupees(data, undefined, 95)).toBe(1679885000);
   });
@@ -103,7 +120,8 @@ describe('transformIPOData issueSize (T-329 fix, RED against the old parseFloat(
     const result = transformIPOData(data, 'ipo');
     // The bug: issueSize === 17683000 (the raw share count). The fix: a real
     // rupee value (or undefined) — never equal to the share count itself.
+    // W-109: the rupee value uses the FLOOR price (95), not the cap (99).
     expect(result.issueSize).not.toBe(17683000);
-    expect(result.issueSize).toBe(1750617000);
+    expect(result.issueSize).toBe(1679885000);
   });
 });

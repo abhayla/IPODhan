@@ -6,6 +6,8 @@ import {
   detectBSEDetailPageType,
   validateBSEDetailData,
   parseDisplayIPOPage,
+  parseACQDispPage,
+  calculateIssueSize,
   type BSEDetailPageData,
   type BSEDetailPageType
 } from '../../../src/scrapers/bse-detail-scraper.js';
@@ -150,6 +152,35 @@ describe('parseACQDispPage - REGRESSION (MAINBOARD/SME)', () => {
     expect(parts.length).toBe(2);
     expect(parseFloat(parts[0])).toBe(1014.00);
     expect(parseFloat(parts[1])).toBe(1065.00);
+  });
+
+  // W-109 (round-8, Glass Wall Systems): the exchange's published share
+  // count is the count AT THE FLOOR price ("up to N shares"). Multiplying
+  // that count by the CAP price produces a total that appears nowhere in
+  // the filing. calculateIssueSize() must be fed the band FLOOR.
+  it('W-109: calculateIssueSize uses the floor price, never the cap', () => {
+    // Glass Wall Systems: 23,702,094 sh, band 172-182.
+    // Real filing total (floor): 23,702,094 x 172 = 4,076,760,168.
+    expect(calculateIssueSize(23702094, 172)).toBe(4076760168);
+    // The old bug: 23,702,094 x 182 (cap) = 4,313,781,108 — never published.
+    expect(calculateIssueSize(23702094, 172)).not.toBe(4313781108);
+  });
+
+  it('W-109: a fixed-price IPO (floor === cap) is unchanged', () => {
+    expect(calculateIssueSize(100000, 250)).toBe(25000000);
+  });
+
+  it('W-109: parseACQDispPage computes issueSize from the band FLOOR (MIDWESTLTD fixture: 1014-1065)', () => {
+    const $ = cheerio.load(mainboardAcqDispHTML);
+    const result = parseACQDispPage($);
+    expect(result.priceRangeMin).toBe(1014);
+    expect(result.priceRangeMax).toBe(1065);
+    expect(result.issueShares).toBe(3117460);
+    // Floor-priced total: 3,117,460 x 1,014 = 3,161,104,440.
+    expect(result.issueSize).toBe(3161104440);
+    // Never the cap-multiplied total (the pre-fix bug):
+    // 3,117,460 x 1,065 = 3,320,094,900.
+    expect(result.issueSize).not.toBe(3320094900);
   });
 });
 

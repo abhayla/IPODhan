@@ -110,13 +110,23 @@ describe('parseBSERegistrar — name only, capped to varchar(100)', () => {
   });
 });
 
-describe('computeBSEIssueSize', () => {
-  it('shares × top-band price (in rupees), guarded', () => {
-    expect(computeBSEIssueSize(4019000, 127)).toBe(510413000);
+describe('computeBSEIssueSize (W-109: floor-of-band price, never the cap)', () => {
+  it('shares × FLOOR-band price (in rupees), guarded', () => {
+    // T-403 fixture used to assert 4,019,000 x 127 (cap) = 510,413,000; the
+    // exchange share count is the count at the floor, so the correct total
+    // uses the floor price 120.
+    expect(computeBSEIssueSize(4019000, 120)).toBe(482280000);
   });
   it('0 when shares or price missing/zero', () => {
-    expect(computeBSEIssueSize(0, 127)).toBe(0);
+    expect(computeBSEIssueSize(0, 120)).toBe(0);
     expect(computeBSEIssueSize(4019000, undefined)).toBe(0);
+  });
+  it('W-109 (round-8, Glass Wall Systems): floor-priced total, never cap-priced', () => {
+    // 23,702,094 sh x band 172-182. Real filing total (floor):
+    // 23,702,094 x 172 = 4,076,760,168. Never the cap-multiplied
+    // 23,702,094 x 182 = 4,313,781,108, which appears nowhere in the filing.
+    expect(computeBSEIssueSize(23702094, 172)).toBe(4076760168);
+    expect(computeBSEIssueSize(23702094, 172)).not.toBe(4313781108);
   });
 });
 
@@ -154,7 +164,7 @@ describe('mapBSEToScrapedIPO', () => {
     expect(ipo.symbol).toBe('SUSAN');
     expect(ipo.registrar).toBe('Bigshare Services Pvt Ltd');
     expect(ipo.leadManagers).toContain('Beeline Capital Advisors Pvt Ltd');
-    expect(ipo.issueSize).toBe(510413000); // 4019000 × 127
+    expect(ipo.issueSize).toBe(482280000); // 4019000 × 120 (floor, W-109)
   });
 
   it('produces a row the real ScrapedIPO validator accepts (persister gate)', () => {
@@ -204,7 +214,7 @@ describe('mapBSEDetailToScrapedIPO — build a ScrapedIPO from detail alone (bac
     expect(ipo!.priceRangeMin).toBe(141);
     expect(ipo!.priceRangeMax).toBe(149);
     expect(ipo!.lotSize).toBe(1000);
-    expect(ipo!.issueSize).toBe(501236000); // 3364000 × 149
+    expect(ipo!.issueSize).toBe(474324000); // 3364000 × 141 (floor, W-109)
     expect(ipo!.listingExchange).toBe('BSE');
     expect(validateIPOData(ipo!).success).toBe(true);
   });

@@ -134,10 +134,19 @@ export function parseLeadManagers(brlm?: string, co?: string): string[] {
   }).leadManagers;
 }
 
-/** Issue size in RUPEES = shares × top-of-band price; 0 if either missing. */
-export function computeBSEIssueSize(shares: number, priceMax?: number): number {
-  if (!shares || !priceMax || !Number.isFinite(shares) || !Number.isFinite(priceMax)) return 0;
-  const v = shares * priceMax;
+/**
+ * Issue size in RUPEES = shares x floor-of-band price; 0 if either missing.
+ *
+ * W-109 (round-8, Glass Wall Systems): the exchange's published share count
+ * is the count AT THE FLOOR price ("up to N shares"), so multiplying that
+ * count by the CAP price produces a total that appears nowhere in the
+ * filing (Glass Wall: 23,702,094 sh x Rs182 cap = Rs4,313.78 Cr — never
+ * published; the real floor total is 23,702,094 x Rs172 = Rs4,076.76 Cr,
+ * matching the issue ad). Callers pass the band's minimum here.
+ */
+export function computeBSEIssueSize(shares: number, priceFloor?: number): number {
+  if (!shares || !priceFloor || !Number.isFinite(shares) || !Number.isFinite(priceFloor)) return 0;
+  const v = shares * priceFloor;
   return Number.isFinite(v) && v > 0 ? Math.round(v) : 0;
 }
 
@@ -265,7 +274,7 @@ function buildScrapedIPO(
 
   return {
     companyName,
-    issueSize: computeBSEIssueSize(shares, band.max),
+    issueSize: computeBSEIssueSize(shares, band.min),
     priceRangeMin: band.min,
     priceRangeMax: band.max,
     openDate: openDate || today,
