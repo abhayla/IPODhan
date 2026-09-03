@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-03 09:20 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-03 09:25 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -15,7 +15,7 @@ Last updated: 2026-09-03 09:20 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 | D (6) Download and store PDFs | download, dedup, store, no re-download, text check | 6/6 | none |
 | E (10) Extract from the filings | terms, categories, financials, KPIs, objects, peers, promoters, risks, arithmetic, placeholders | 10/10 | none |
 | F (6) Cross-check with websites | Chittorgarh, Moneycontrol, InvestorGain, compare, conflicts, confidence | 5/6 | F2 (not a defect) |
-| G (5) Merge and write | priority merge, admin lock, write door, persist filing data, new columns | 4/5 | G5 (owner approval) |
+| G (5) Merge and write | priority merge, admin lock, write door, persist filing data, new columns | 5/5 | none (page sections await your mockup approval) |
 | H (4) Live data | subscription, GMP, anchors, demand graph | 4/4 | none |
 | I (6) Lifecycle | stage, due list, supersession, withdrawn, listing, purge | 4/6 | I5, I6 (not due yet) |
 | J (3) Site | cache, IPO page, admin conflicts | 3/3 | none |
@@ -29,7 +29,7 @@ Last updated: 2026-09-03 09:20 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 | 3 | G4 persist filing data | Nine rounds in total. Final state: every table the persister writes honours admin field protection and the row lock; issue size is written only when both legs are known; refusal exits are tested at script level; two strict reviews, the second one MERGEABLE with all 6 mutations caught; the three minor edges closed in round 9 (5bcf03bd). Fable's live run on DEEPA with production flags: consolidation handled the write, no fallback, no critical conflict, 9 tables written, issue size 459.72 Cr. | Done. | **PASS** 01:12 |
 | 3a | Suite fallout (W-68..W-71) | The first branch-wide scraper run found four groups the per-file runs could not see: a new local-timezone date conversion in the NSE client (real bug, same class as an old production incident); 8 document-discovery tests pinning the old chain before the company-website rung was added; 40 wiring tests whose schema mock lacks the new status enum; and a write-ratchet that scans gitignored leftover files on this laptop. | One at a time: timezone (done 19ec9636: the code was already correct, the checker's pattern was a false alarm; a four-timezone test now proves it) -> discovery tests (done b41cb971: 7 stale expectations updated, 1 real regression fixed: a SEBI outage was retried once per IPO instead of once per run) -> wiring mock (done 5bbfaeab, 89/89) -> SEBI search failure must not count as 'not listed' (done 8b7ac1a0; also stopped a thrown network error from aborting the whole run) -> ratchet reads git (done 3d1fa6df). Final scraper run by directory in progress. Then the scraper suite again by directory. | **DONE** 02:28: scraper 2,314 pass / 6 skipped / 0 fail (by directory); shared 206/206; web 2,383 pass |
 | 4 | F2 Moneycontrol | Moneycontrol's list page does not show DEEPA. Not a scraper defect. | None; noted as a coverage gap. | Closed as not applicable |
-| 5 | G5 remaining ad fields | Schema existed (0042). Persister gaps closed (W-73, 3e896798 + e51082c7): risk factors (82 rows for DEEPA), RHP filing date, promoter acquisition ranges (empty for DEEPA by the oracle), all live-proven on the test database with production flags. Left: two parser sections (syndicate members, litigation notices, W-74) and the page (W-75). | W-74 done (4f412dba): 18 syndicate members read from the ad; no litigation notice on this ad. W-76 (running): one additive enum value so all 18 are stored. W-75 page mockup ready for your approval: https://claude.ai/code/artifact/37875e3c-58ff-41cb-aabc-c8783cfb1511 | Persister done 08:58; parser running |
+| 5 | G5 remaining ad fields | Done. Everything on the ad that has a home is now stored: 82 risk factors, RHP filing date, 18 syndicate members (migration 0047 adds the sub-syndicate role), promoter cost ranges. Litigation notices: parser present, none on DEEPA's ad. | Page sections (W-75) once you approve the mockup. | **PASS** 09:25 |
 | 6 | I5 listing price, I6 PDF purge | Cannot run until DEEPA lists on 8 Sep and a week after close. | Run on those dates. | Not due |
 
 ## 3. After the fixes
@@ -64,3 +64,4 @@ Last updated: 2026-09-03 09:20 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 - 2026-09-03 08:58: W-73 closed (live-proven). W-74 parser sections running.
 - 2026-09-03 09:10: IPO page mockup (W-75) published for owner approval.
 - 2026-09-03 09:20: W-74 done and reproduced. W-76 (SUB_SYNDICATE enum, migration 0047) running. W-77 opened (column-aware text, after the walk).
+- 2026-09-03 09:25: W-76 done (9de4828c, migration 0047). G5 PASS. Serial queue continues with the tooling rows (W-04, W-54, W-44, W-20, W-14, W-19).
