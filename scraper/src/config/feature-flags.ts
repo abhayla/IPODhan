@@ -150,17 +150,25 @@ export const FEATURE_FLAGS = {
 
   /**
    * Enable AUTOMATIC filing extraction + persistence inside the document cycle
-   * (S-02). With the flag off — which is the default, and what production runs
-   * today — the document cycle behaves EXACTLY as it did before S-02: it
-   * discovers and stores PDFs and stops there. A stored RHP / price-band ad is
-   * turned into `ipos`, `financial_statements`, `promoters`, `ipo_valuation`,
-   * … rows only by a human running `scripts/persist-filing.ts`.
+   * (S-02). MAJOR-4: this flag gates ONLY the python extraction + persist
+   * block below — it does NOT gate the step ledger. With the flag OFF, which
+   * is the default and what production runs today, the discovery, document,
+   * live-number, and reconciler hooks in `step-ledger-recorders.ts` still run
+   * on every cycle and still write `ipo_pipeline_steps` rows (52 rows per new
+   * IPO via `initStepLedger`, plus per-cycle step upserts; `writeSteps` never
+   * throws, so a ledger failure cannot fail a scrape). What does NOT happen
+   * with the flag off: the document cycle discovers and stores PDFs and stops
+   * there — a stored RHP / price-band ad is turned into `ipos`,
+   * `financial_statements`, `promoters`, `ipo_valuation`, … rows only by a
+   * human running `scripts/persist-filing.ts`.
    *
    * With the flag on, `processPendingFilings` spawns the deterministic python
    * extractor for every stored-but-not-yet-extracted document and writes the
    * result through the SAME write door the CLI uses (`persistFilingExtraction`
    * with the admin protection filter and the W-45 paired-agreement gate) —
-   * never a second write path.
+   * never a second write path. It is capped at `DEFAULT_MAX_SPAWNS_PER_CYCLE`
+   * python spawns per document cycle and serialized across cycles by a Redis
+   * lock (`filing-auto-persist.ts` / `document-cycle.ts`, MAJOR-1).
    *
    * Separate from ENABLE_DOCUMENT_STATE_MACHINE on purpose: that flag decides
    * whether documents are FOUND at all; this one decides whether finding one

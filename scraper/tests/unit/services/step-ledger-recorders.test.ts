@@ -315,6 +315,14 @@ describe('planExtractionFailureSteps — a failed extractor is loud, not silent'
     expect(backoffNextDueAt(4, now).getTime() - now.getTime()).toBe(4 * 60 * 60 * 1000);
     expect(backoffNextDueAt(20, now).getTime() - now.getTime()).toBe(BACKOFF_CAP_MS);
   });
+
+  it('MAJOR-2: attempts 0/1/5/10 produce 15min/30min/6h(cap)/6h(cap) offsets', () => {
+    const now = new Date('2026-09-03T10:00:00Z');
+    expect(backoffNextDueAt(0, now).getTime() - now.getTime()).toBe(15 * 60 * 1000);
+    expect(backoffNextDueAt(1, now).getTime() - now.getTime()).toBe(30 * 60 * 1000);
+    expect(backoffNextDueAt(5, now).getTime() - now.getTime()).toBe(BACKOFF_CAP_MS);
+    expect(backoffNextDueAt(10, now).getTime() - now.getTime()).toBe(BACKOFF_CAP_MS);
+  });
 });
 
 describe('planPersistSteps — G1..G5 project the persister summary', () => {

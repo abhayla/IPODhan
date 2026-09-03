@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+/** MINOR-1: spawnSync is mocked at the module boundary so the ENOENT/python3 retry is testable. */
+const spawnSyncMock = vi.fn();
+vi.mock('node:child_process', () => ({ spawnSync: (...args: unknown[]) => spawnSyncMock(...args) }));
+
 /**
  * S-02 — the automatic extract + persist path.
  *
@@ -29,7 +33,11 @@ import {
   selectPendingFilings,
   processPendingFilings,
   autoPersistEnabled,
+  extractionGateBlocksThisCycle,
+  defaultExtractorRunner,
   EXTRACTOR_VERSION,
+  MAX_EXTRACTION_ATTEMPTS,
+  EXTRACTION_BLOCKED_ERROR,
   type AutoPersistDeps,
   type CandidateDocument,
 } from '../../../src/services/filing-auto-persist.js';
@@ -74,6 +82,7 @@ function deps(overrides: Partial<AutoPersistDeps> = {}): AutoPersistDeps {
     loadStates: vi.fn(async () => [
       { id: 'state-1', docType: 'RHP', documentId: 'doc-1', extractedAt: null, extractorVersion: null },
     ]),
+    loadExtractionGate: vi.fn(async () => null),
     runExtractor: vi.fn(() => ({ ok: true as const, extraction: extraction() })),
     persistFiling: vi.fn(async () => summary()) as never,
     persisterDeps: { protectionFilter: vi.fn() } as never,
@@ -321,5 +330,201 @@ describe('processPendingFilings — the W-45 paired-agreement gate is not skippe
     // The refusal is visible in the ledger, not just in a log line.
     const blocked = recordedSteps.flatMap((r) => r.writes).find((w) => w.status === 'BLOCKED');
     expect(blocked?.stepId).toBe('G1');
+  });
+});
+
+// ------------------------------------------------- MAJOR-2: backoff honoured
+
+describe('extractionGateBlocksThisCycle — pure gate logic', () => {
+  const now = new Date('2026-09-03T10:00:00Z');
+
+  it('no gate row yet — never blocks', () => {
+    expect(extractionGateBlocksThisCycle(null, EXTRACTOR_VERSION, now)).toBe(false);
+  });
+
+  it('a future next_due_at blocks; a past one does not', () => {
+    const future = new Date(now.getTime() + 60_000);
+    const past = new Date(now.getTime() - 60_000);
+    expect(
+      extractionGateBlocksThisCycle({ attempts: 1, nextDueAt: future, version: EXTRACTOR_VERSION }, EXTRACTOR_VERSION, now)
+    ).toBe(true);
+    expect(
+      extractionGateBlocksThisCycle({ attempts: 1, nextDueAt: past, version: EXTRACTOR_VERSION }, EXTRACTOR_VERSION, now)
+    ).toBe(false);
+  });
+
+  it('attempts >= 10 under the SAME version blocks; a version bump lifts it', () => {
+    expect(
+      extractionGateBlocksThisCycle(
+        { attempts: MAX_EXTRACTION_ATTEMPTS, nextDueAt: null, version: EXTRACTOR_VERSION },
+        EXTRACTOR_VERSION,
+        now
+      )
+    ).toBe(true);
+    expect(
+      extractionGateBlocksThisCycle(
+        { attempts: MAX_EXTRACTION_ATTEMPTS, nextDueAt: null, version: 'old-version' },
+        EXTRACTOR_VERSION,
+        now
+      )
+    ).toBe(false);
+  });
+});
+
+describe('selectPendingFilings — the backoff gate (MAJOR-2)', () => {
+  const states = [{ docType: 'RHP', documentId: 'doc-1', extractedAt: null, extractorVersion: null }];
+
+  it('a doc with a future next_due_at is not selected', () => {
+    const now = new Date('2026-09-03T10:00:00Z');
+    const { pending, skipped } = selectPendingFilings('ipo-1', [doc()], states, {
+      fileExists: () => true,
+      now,
+      gate: { attempts: 1, nextDueAt: new Date(now.getTime() + 60_000), version: EXTRACTOR_VERSION },
+    });
+    expect(pending).toHaveLength(0);
+    expect(skipped[0]).toContain('backing off');
+  });
+
+  it('a doc with a past next_due_at is selected', () => {
+    const now = new Date('2026-09-03T10:00:00Z');
+    const { pending } = selectPendingFilings('ipo-1', [doc()], states, {
+      fileExists: () => true,
+      now,
+      gate: { attempts: 1, nextDueAt: new Date(now.getTime() - 60_000), version: EXTRACTOR_VERSION },
+    });
+    expect(pending).toHaveLength(1);
+  });
+
+  it('a doc whose gate has hit the attempt cap under the current version is blocked', () => {
+    const { pending, skipped } = selectPendingFilings('ipo-1', [doc()], states, {
+      fileExists: () => true,
+      gate: { attempts: MAX_EXTRACTION_ATTEMPTS, nextDueAt: null, version: EXTRACTOR_VERSION },
+    });
+    expect(pending).toHaveLength(0);
+    expect(skipped[0]).toContain(EXTRACTION_BLOCKED_ERROR);
+  });
+});
+
+describe('processPendingFilings — attemptsBefore reaches the failure planner (MAJOR-2)', () => {
+  it('passes the gate attempts as attemptsBefore, producing the right backoff', async () => {
+    const d = deps({
+      loadExtractionGate: vi.fn(async () => ({ attempts: 4, nextDueAt: null, version: EXTRACTOR_VERSION })),
+      runExtractor: vi.fn(() => ({ ok: false as const, error: 'boom' })),
+    });
+    await processPendingFilings(IPO, d);
+    const eWrite = recordedSteps.flatMap((r) => r.writes).find((w) => w.stepId === 'E1') as {
+      nextDueAt?: Date;
+    };
+    // attemptsBefore=4 -> 2^4 x 15min = 4h.
+    expect(eWrite.nextDueAt).toBeInstanceOf(Date);
+  });
+
+  it('the 10th failure is recorded with the blocked error and MANUAL_REVIEW, not PENDING', async () => {
+    const d = deps({
+      loadExtractionGate: vi.fn(async () => ({ attempts: MAX_EXTRACTION_ATTEMPTS - 1, nextDueAt: null, version: EXTRACTOR_VERSION })),
+      runExtractor: vi.fn(() => ({ ok: false as const, error: 'boom' })),
+    });
+    await processPendingFilings(IPO, d);
+    expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
+      expect.objectContaining({ documentId: 'doc-1', status: 'MANUAL_REVIEW', error: EXTRACTION_BLOCKED_ERROR })
+    );
+    const eWrites = recordedSteps.flatMap((r) => r.writes).filter((w) => w.stepId.startsWith('E'));
+    for (const w of eWrites) expect((w as { error?: string }).error).toBe(EXTRACTION_BLOCKED_ERROR);
+  });
+
+  it('attempt 11 (gate already at the cap) is blocked before spawning at all', async () => {
+    const d = deps({
+      loadExtractionGate: vi.fn(async () => ({ attempts: MAX_EXTRACTION_ATTEMPTS, nextDueAt: null, version: EXTRACTOR_VERSION })),
+    });
+    const result = await processPendingFilings(IPO, d);
+    expect(result.spawned).toBe(0);
+    expect(d.runExtractor).not.toHaveBeenCalled();
+  });
+});
+
+// ------------------------------------------------------- MAJOR-1: spawn cap
+
+describe('processPendingFilings — the per-cycle spawn budget (MAJOR-1)', () => {
+  const FIVE_DOCS = Array.from({ length: 5 }, (_, i) => doc({ id: `doc-${i}`, sha256: SHA }));
+  const FIVE_STATES = FIVE_DOCS.map((d) => ({
+    id: `state-${d.id}`,
+    docType: 'RHP',
+    documentId: d.id,
+    extractedAt: null,
+    extractorVersion: null,
+  }));
+
+  it('5 pending docs with a budget of 3 spawn exactly 3 and leave 2 as skipped_budget', async () => {
+    const budget = { remaining: 3 };
+    const d = deps({
+      loadDocuments: vi.fn(async () => FIVE_DOCS),
+      loadStates: vi.fn(async () => FIVE_STATES),
+      spawnBudget: budget,
+    });
+
+    const result = await processPendingFilings(IPO, d);
+
+    expect(result.spawned).toBe(3);
+    expect(result.skippedBudget).toBe(2);
+    expect(d.runExtractor).toHaveBeenCalledTimes(3);
+    expect(budget.remaining).toBe(0);
+    expect(result.skipped.join(' ')).toContain('spawn budget exhausted');
+  });
+
+  it('a budget already at zero spawns nothing for this IPO', async () => {
+    const budget = { remaining: 0 };
+    const d = deps({
+      loadDocuments: vi.fn(async () => FIVE_DOCS),
+      loadStates: vi.fn(async () => FIVE_STATES),
+      spawnBudget: budget,
+    });
+
+    const result = await processPendingFilings(IPO, d);
+
+    expect(result.spawned).toBe(0);
+    expect(result.skippedBudget).toBe(5);
+    expect(d.runExtractor).not.toHaveBeenCalled();
+  });
+
+  it('with no spawnBudget dep at all (unset), behaviour is unbounded — existing callers are unaffected', async () => {
+    const d = deps({
+      loadDocuments: vi.fn(async () => FIVE_DOCS),
+      loadStates: vi.fn(async () => FIVE_STATES),
+    });
+    const result = await processPendingFilings(IPO, d);
+    expect(result.spawned).toBe(5);
+    expect(result.skippedBudget).toBe(0);
+  });
+});
+
+// --------------------------------------------------- MINOR-1: python binary
+
+describe('defaultExtractorRunner — python binary resolution', () => {
+  beforeEach(() => {
+    spawnSyncMock.mockReset();
+    delete process.env.PYTHON_BIN;
+  });
+
+  it('an ENOENT on the first spawn retries once with python3', () => {
+    spawnSyncMock
+      .mockReturnValueOnce({ error: Object.assign(new Error('not found'), { code: 'ENOENT' }) })
+      .mockReturnValueOnce({ status: 0, stdout: JSON.stringify({ doc_type: 'RHP', fields: {} }), stderr: '' });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(spawnSyncMock).toHaveBeenCalledTimes(2);
+    expect(spawnSyncMock.mock.calls[0][0]).toBe('python');
+    expect(spawnSyncMock.mock.calls[1][0]).toBe('python3');
+    expect(result.ok).toBe(true);
+  });
+
+  it('honours PYTHON_BIN when set, with no retry needed', () => {
+    process.env.PYTHON_BIN = 'python3.11';
+    spawnSyncMock.mockReturnValueOnce({ status: 0, stdout: JSON.stringify({ doc_type: 'RHP', fields: {} }), stderr: '' });
+
+    defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(spawnSyncMock).toHaveBeenCalledTimes(1);
+    expect(spawnSyncMock.mock.calls[0][0]).toBe('python3.11');
   });
 });

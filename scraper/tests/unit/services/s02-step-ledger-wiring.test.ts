@@ -12,11 +12,31 @@
  * but still fails loudly if the call is deleted.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const src = (p: string) => readFileSync(join(__dirname, '../../../src', p), 'utf8');
+const srcRoot = join(__dirname, '../../../src');
+const src = (p: string) => readFileSync(join(srcRoot, p), 'utf8');
 const script = (p: string) => readFileSync(join(__dirname, '../../../scripts', p), 'utf8');
+
+/**
+ * Every `.ts` file under `dir` (recursively), as `{ relPath, text }`. Fixed R2-1
+ * (MAJOR-3): the old version of this test named exactly two files by hand, so a
+ * THIRD write door that logs "Updated IPO with consolidated data" without
+ * calling `recordDiscoverySteps` would pass silently. Scanning finds it.
+ */
+function tsFilesUnder(dir: string, base = dir): { relPath: string; text: string }[] {
+  const out: { relPath: string; text: string }[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      out.push(...tsFilesUnder(full, base));
+    } else if (entry.isFile() && entry.name.endsWith('.ts')) {
+      out.push({ relPath: full.slice(base.length + 1).replace(/\\/g, '/'), text: readFileSync(full, 'utf8') });
+    }
+  }
+  return out;
+}
 
 // --------------------------------------------------------------------------
 // The real hook: upsertIPO
@@ -149,15 +169,28 @@ describe('HOOK A2 — the OTHER ipos write door is hooked too', () => {
     expect(orchestrator).toContain('await initStepLedger(ipoId)');
   });
 
-  it('every function that writes the ipos table records the ledger', () => {
-    // Both writers log this line; both must call the recorder. If a third write
-    // door appears and logs it, this test names the gap instead of silently
-    // leaving that door unhooked.
-    for (const file of ['services/data-persister.ts', 'services/data-consolidation-orchestrator.ts']) {
-      const text = src(file);
-      expect(text).toContain('Updated IPO with consolidated data');
-      expect(text).toContain('recordDiscoverySteps(');
+  it('every file that logs the consolidated-write line calls recordDiscoverySteps — scanned, not hand-listed', () => {
+    // MAJOR-3 fix: a hard-coded two-file list would pass even after a THIRD
+    // write door was added that logs the same line without hooking the
+    // recorder. Scanning services/ and scrapers/ recursively closes that gap —
+    // any file that logs this line, wherever it lives, must call the recorder.
+    const marker = 'Updated IPO with consolidated data';
+    const files = [
+      ...tsFilesUnder(join(srcRoot, 'services')),
+      ...tsFilesUnder(join(srcRoot, 'scrapers')),
+    ];
+    const doorsFound = files.filter((f) => f.text.includes(marker));
+
+    expect(doorsFound.length).toBeGreaterThan(0);
+    for (const door of doorsFound) {
+      expect(door.text, `${door.relPath} logs "${marker}" but never calls recordDiscoverySteps(`).toContain(
+        'recordDiscoverySteps('
+      );
     }
+
+    const relPaths = doorsFound.map((f) => f.relPath);
+    expect(relPaths).toContain('data-persister.ts');
+    expect(relPaths).toContain('data-consolidation-orchestrator.ts');
   });
 });
 
@@ -200,10 +233,14 @@ describe('HOOK F — the document cycle', () => {
   });
 
   it('runs auto-persist for EVERY candidate, not only the ones that found a document this cycle', () => {
-    // A `result.found.length` guard around the call would strand documents found
-    // in an earlier cycle and never extracted — the regression this pins.
-    const callBlock = cycle.slice(cycle.indexOf('ENABLE_FILING_AUTO_PERSIST'));
-    const beforeCall = callBlock.slice(0, callBlock.indexOf('processPendingFilings('));
+    // A `result.found.length` guard directly around the call would strand
+    // documents found in an earlier cycle and never extracted — the regression
+    // this pins. MAJOR-1 added an EARLIER `ENABLE_FILING_AUTO_PERSIST` check
+    // (the cycle-level lock), so anchor on the flag reference CLOSEST to
+    // (immediately before) the actual call, not the first one in the file.
+    const callIdx = cycle.indexOf('processPendingFilings(');
+    const guardIdx = cycle.lastIndexOf('ENABLE_FILING_AUTO_PERSIST', callIdx);
+    const beforeCall = cycle.slice(guardIdx, callIdx);
     expect(beforeCall).not.toContain('result.found.length');
   });
 });

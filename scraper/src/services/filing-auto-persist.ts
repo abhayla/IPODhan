@@ -26,10 +26,20 @@
  *     `persistFilingExtraction` -> `upsertIPO` -> consolidation, so the field-
  *     priority matrix and the admin locks still decide the outcome.
  *   - It never fails the cycle. An extractor crash, a malformed JSON, a missing
- *     python — each becomes FAILED ledger rows with the error and a backoff, and
- *     the document returns to PENDING so the next cycle retries it.
+ *     python — each becomes FAILED ledger rows with the error and a backoff
+ *     (`2^attempts x 15 min`, capped at 6 hours), and the document returns to
+ *     PENDING so a LATER cycle retries it once that backoff has elapsed — a
+ *     cycle before `next_due_at` skips the document entirely, spawning no
+ *     python for it (MAJOR-2). After 10 failed attempts under the SAME
+ *     extractor version the document is marked MANUAL_REVIEW with error
+ *     `blocked_after_10_attempts` and is never re-spawned until
+ *     `EXTRACTOR_VERSION` changes.
  *   - It never re-extracts a document that the current extractor version has
  *     already extracted, so a steady-state cycle spawns no python at all.
+ *   - It never spawns more than `maxSpawnsPerCycle` python processes across
+ *     the WHOLE document cycle (all IPOs, not per IPO), and never runs two
+ *     overlapping cycles' extractions at once — see `document-cycle.ts` and
+ *     the `filing-auto-persist:cycle` Redis lock (MAJOR-1).
  */
 
 import { spawnSync } from 'node:child_process';
@@ -88,6 +98,49 @@ export const EXTRACTABLE_DOC_TYPES: readonly FilingDocType[] = [
 /** 10 minutes: an OCR pass over a 600-page RHP is slow, but not unbounded. */
 export const EXTRACT_TIMEOUT_MS = 10 * 60 * 1000;
 
+/**
+ * MAJOR-2 fix. Before this, `planExtractionFailureSteps` accepted an
+ * `attemptsBefore` the backoff formula needed, but no caller ever passed it —
+ * so every failure backed off as if it were the first — and
+ * `selectPendingFilings` never read `next_due_at`, so a permanently unreadable
+ * PDF was re-spawned every 30-minute cycle forever. The E1 ledger row (one per
+ * IPO — the step ledger is keyed by ipoId+stepId, not per document) is the
+ * gate: its `attempts` and `next_due_at` decide whether this cycle may spawn
+ * python at all.
+ */
+export const MAX_EXTRACTION_ATTEMPTS = 10;
+export const EXTRACTION_BLOCKED_ERROR = 'blocked_after_10_attempts';
+
+/** What `selectPendingFilings` needs from the E1 ledger row to gate a cycle. */
+export interface ExtractionGate {
+  attempts: number;
+  nextDueAt: Date | null;
+  /** The extractor version the last FAILED row was written under. */
+  version: string | null;
+}
+
+/**
+ * True when this cycle must not spawn the extractor for this IPO at all.
+ *
+ * Two independent reasons:
+ *  - backoff: `nextDueAt` is still in the future.
+ *  - permanently blocked: 10 attempts have already failed UNDER THE CURRENT
+ *    extractor version. A version bump clears this — `EXTRACTOR_VERSION` is the
+ *    documented, deliberate re-extraction trigger (see its own doc comment),
+ *    and a permanently-blocked document must be eligible again once a new
+ *    build might parse it differently.
+ */
+export function extractionGateBlocksThisCycle(
+  gate: ExtractionGate | null | undefined,
+  version: string,
+  now: Date = new Date()
+): boolean {
+  if (!gate) return false;
+  if (gate.attempts >= MAX_EXTRACTION_ATTEMPTS && gate.version === version) return true;
+  if (gate.nextDueAt && gate.nextDueAt.getTime() > now.getTime()) return true;
+  return false;
+}
+
 export interface AutoPersistIpo {
   id: string;
   companyName: string;
@@ -112,7 +165,27 @@ export interface AutoPersistResult {
   failed: number;
   skipped: string[];
   spawned: number;
+  /** MAJOR-1: pending docs left unextracted this cycle because the spawn budget ran out. */
+  skippedBudget: number;
 }
+
+/**
+ * MAJOR-1 fix. Before this, one document cycle could spawn UNBOUNDED python
+ * processes: 20 IPOs x 2 filings x up to `EXTRACT_TIMEOUT_MS` (10 min) each
+ * could run for hours, and nothing stopped a SECOND cycle from starting
+ * extraction on the same IN_PROGRESS rows while the first was still running.
+ *
+ * `SpawnBudget` is a single mutable counter object created ONCE per document
+ * cycle in `document-cycle.ts` (never per IPO) and threaded through every
+ * `processPendingFilings` call for that cycle, so the cap is enforced ACROSS
+ * the whole cycle, not per IPO.
+ */
+export interface SpawnBudget {
+  remaining: number;
+}
+
+/** Default cap on python spawns per document cycle, across every IPO. */
+export const DEFAULT_MAX_SPAWNS_PER_CYCLE = 3;
 
 /**
  * Which stored documents still need extracting.
@@ -137,11 +210,26 @@ export function selectPendingFilings(
   ipoId: string,
   docs: CandidateDocument[],
   states: Pick<DocumentFetchStateRow, 'docType' | 'documentId' | 'extractedAt' | 'extractorVersion'>[],
-  options: { storeDir?: string; version?: string; fileExists?: (p: string) => boolean } = {}
+  options: {
+    storeDir?: string;
+    version?: string;
+    fileExists?: (p: string) => boolean;
+    /** MAJOR-2: the E1 ledger row's attempts/backoff. `undefined` = not read (never blocks); `null` = read, no row yet. */
+    gate?: ExtractionGate | null;
+    now?: Date;
+  } = {}
 ): { pending: CandidateDocument[]; skipped: string[] } {
   const storeDir = options.storeDir ?? getStoreDir();
   const version = options.version ?? EXTRACTOR_VERSION;
   const fileExists = options.fileExists ?? existsSync;
+
+  if (extractionGateBlocksThisCycle(options.gate, version, options.now)) {
+    const reason =
+      options.gate && options.gate.attempts >= MAX_EXTRACTION_ATTEMPTS
+        ? `extraction blocked after ${options.gate.attempts} failed attempts (${EXTRACTION_BLOCKED_ERROR})`
+        : `extraction backing off until ${options.gate?.nextDueAt?.toISOString()}`;
+    return { pending: [], skipped: [reason] };
+  }
 
   const versionByDocumentId = new Map<string, string | null>();
   const versionByDocType = new Map<string, string | null>();
@@ -217,6 +305,18 @@ export interface ExtractorRunner {
   (args: { pdfPath: string; docType: string; sme: boolean }): ExtractorResult;
 }
 
+/** The one `spawnSync` call, factored so the ENOENT-retry can call it twice with a different binary. */
+function spawnExtractor(bin: string, script: string, pdfPath: string, docType: string, sme: boolean) {
+  const args = [script, pdfPath, '--doc-type', docType];
+  if (sme) args.push('--sme');
+  return spawnSync(bin, args, {
+    encoding: 'utf8',
+    timeout: EXTRACT_TIMEOUT_MS,
+    maxBuffer: 64 * 1024 * 1024,
+    cwd: path.dirname(script),
+  });
+}
+
 /**
  * Spawn the python extractor and parse its stdout.
  *
@@ -224,18 +324,23 @@ export interface ExtractorRunner {
  * `scrapers/anchor-investors-scraper.ts`; the cycle is already sequential per
  * IPO, so there is nothing to gain from making this concurrent and a real cost
  * (several hundred MB of pdfplumber/OCR per parallel process) to pay for it.
+ *
+ * MINOR-1: the binary name is `PYTHON_BIN` when set (some hosts, notably
+ * several Linux distros, ship no `python` symlink — only `python3`), else
+ * `'python'`. If that first spawn returns ENOENT (`result.error.code`), retry
+ * ONCE with `'python3'` before giving up — one extra spawn on a
+ * misconfigured host beats a permanently FAILED document.
  */
 export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme }) => {
   const script = extractorScriptPath();
-  const args = [script, pdfPath, '--doc-type', docType];
-  if (sme) args.push('--sme');
+  const primaryBin = process.env.PYTHON_BIN ?? 'python';
 
-  const result = spawnSync('python', args, {
-    encoding: 'utf8',
-    timeout: EXTRACT_TIMEOUT_MS,
-    maxBuffer: 64 * 1024 * 1024,
-    cwd: path.dirname(script),
-  });
+  let result = spawnExtractor(primaryBin, script, pdfPath, docType, sme);
+  if (result.error && (result.error as NodeJS.ErrnoException).code === 'ENOENT' && primaryBin !== 'python3') {
+    logger.warn({ triedBin: primaryBin }, 'python binary not found — retrying once with python3');
+    result = spawnExtractor('python3', script, pdfPath, docType, sme);
+    if (!result.error) logger.info({ usedBin: 'python3' }, 'extractor spawned with python3 fallback');
+  }
 
   if (result.error) return { ok: false, error: `spawn failed: ${result.error.message}` };
   if (result.status !== 0) {
@@ -267,6 +372,8 @@ export interface AutoPersistDeps {
   ) => Promise<
     Pick<DocumentFetchStateRow, 'id' | 'docType' | 'documentId' | 'extractedAt' | 'extractorVersion'>[]
   >;
+  /** MAJOR-2: the E1 ledger row (attempts/next_due_at/version) that gates this cycle. */
+  loadExtractionGate: (ipoId: string) => Promise<ExtractionGate | null>;
   runExtractor: ExtractorRunner;
   persistFiling: typeof persistFilingExtraction;
   persisterDeps: FilingPersisterDeps;
@@ -293,6 +400,8 @@ export interface AutoPersistDeps {
   fileExists?: (path: string) => boolean;
   storeDir?: string;
   version?: string;
+  /** MAJOR-1: shared across the whole document cycle. `undefined` = unbounded (existing callers/tests). */
+  spawnBudget?: SpawnBudget;
 }
 
 /** The real dependency set, wired to the database and the filesystem. */
@@ -317,6 +426,14 @@ export function buildAutoPersistDeps(
       const { DocumentFetchStateRepository } = await import('@ipodhan/shared');
       const store = new DocumentFetchStateRepository(db as never, redis as never);
       return store.listForIpo(ipoId);
+    },
+    async loadExtractionGate(ipoId) {
+      const { IpoPipelineStepsRepository } = await import('@ipodhan/shared');
+      const steps = new IpoPipelineStepsRepository(db as never, redis as never);
+      const rows = await steps.findByIpo(ipoId);
+      const e1 = rows.find((r) => r.stepId === 'E1');
+      if (!e1) return null;
+      return { attempts: e1.attempts, nextDueAt: e1.nextDueAt, version: e1.version ?? null };
     },
     runExtractor: defaultExtractorRunner,
     persistFiling: persistFilingExtraction,
@@ -364,13 +481,16 @@ export async function processPendingFilings(
     failed: 0,
     skipped: [],
     spawned: 0,
+    skippedBudget: 0,
   };
 
   let docs: CandidateDocument[];
   let states: Awaited<ReturnType<AutoPersistDeps['loadStates']>>;
+  let gate: ExtractionGate | null = null;
   try {
     docs = await deps.loadDocuments(ipo.id);
     states = await deps.loadStates(ipo.id);
+    gate = await deps.loadExtractionGate(ipo.id);
   } catch (error) {
     logger.error(
       { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
@@ -378,22 +498,43 @@ export async function processPendingFilings(
     );
     return result;
   }
+  const attemptsBefore = gate?.attempts ?? 0;
 
   const { pending, skipped } = selectPendingFilings(ipo.id, docs, states, {
     storeDir: deps.storeDir,
     version,
     fileExists: deps.fileExists,
+    gate,
   });
   result.considered = docs.length;
   result.skipped = skipped;
-  if (pending.length === 0) return result;
+
+  // MAJOR-1: apply the cross-cycle spawn budget BEFORE extracting anything.
+  // Docs beyond the remaining budget are left PENDING (untouched) and reported
+  // as skipped_budget — they are simply next cycle's (or a later IPO's, since
+  // the same counter is shared) work, exactly like the wall-clock budget in
+  // `runDocumentCycle` already treats unprocessed IPOs.
+  let budgeted = pending;
+  if (deps.spawnBudget) {
+    const allowed = Math.max(0, deps.spawnBudget.remaining);
+    if (pending.length > allowed) {
+      budgeted = pending.slice(0, allowed);
+      result.skippedBudget = pending.length - allowed;
+      result.skipped = [
+        ...result.skipped,
+        `${result.skippedBudget} document(s) left PENDING — spawn budget exhausted this cycle`,
+      ];
+    }
+  }
+  if (budgeted.length === 0) return result;
+  const pendingForThisCall = budgeted;
 
   const stateIdByDocType = new Map(states.map((s) => [s.docType, s.id]));
   const sme = String(ipo.segment ?? '').toUpperCase() === 'SME';
   const extractions: Array<{ doc: CandidateDocument; extraction: FilingExtraction }> = [];
 
   // ---------------------------------------------------------------- extract
-  for (const doc of pending) {
+  for (const doc of pendingForThisCall) {
     const docType = doc.type as FilingDocType;
     const pdfPath = documentPath(ipo.id, docType, doc.sha256 as string, deps.storeDir ?? getStoreDir());
 
@@ -407,31 +548,43 @@ export async function processPendingFilings(
     }
 
     result.spawned++;
+    if (deps.spawnBudget) deps.spawnBudget.remaining--;
     const run = deps.runExtractor({ pdfPath, docType, sme });
 
     if (isExtractorFailure(run)) {
       const failure = run.error;
       result.failed++;
+      // MAJOR-2: this write is the one that pushes `attempts` from
+      // (attemptsBefore) to (attemptsBefore + 1). Once that reaches
+      // MAX_EXTRACTION_ATTEMPTS, record the block explicitly so the row
+      // self-documents WHY the next cycle will not retry it, rather than
+      // leaving that fact implicit in a number nobody reads.
+      const willReachAttemptCap = attemptsBefore + 1 >= MAX_EXTRACTION_ATTEMPTS;
+      const recordedError = willReachAttemptCap ? EXTRACTION_BLOCKED_ERROR : failure;
       logger.error(
-        { ipoId: ipo.id, docType, error: failure },
-        'Filing extraction failed (non-fatal) — recorded as FAILED with a backoff'
+        { ipoId: ipo.id, docType, error: failure, attemptsBefore, blocked: willReachAttemptCap },
+        willReachAttemptCap
+          ? 'Filing extraction failed for the 10th time — blocked until EXTRACTOR_VERSION changes'
+          : 'Filing extraction failed (non-fatal) — recorded as FAILED with a backoff'
       );
       await writeSteps(
         ipo.id,
-        planExtractionFailureSteps(failure, {
+        planExtractionFailureSteps(recordedError, {
           docType,
           documentId: doc.id,
           sourceSha: doc.sha256,
           version,
+          attemptsBefore,
         })
       );
-      // Back to PENDING (not FAILED-forever) so the next cycle retries it; the
-      // ledger row carries the error and the backoff.
+      // Back to PENDING (not FAILED-forever) so the next cycle retries it, UNLESS
+      // it just hit the attempt cap — then MANUAL_REVIEW so it stops silently
+      // cycling PENDING->IN_PROGRESS->FAILED forever with nobody told.
       try {
         await deps.setDocumentExtractionState({
           documentId: doc.id,
-          status: 'PENDING',
-          error: failure.slice(0, 1000),
+          status: willReachAttemptCap ? 'MANUAL_REVIEW' : 'PENDING',
+          error: recordedError.slice(0, 1000),
         });
       } catch {
         /* already logged by the writer; a stuck status must not fail the cycle */

@@ -52,8 +52,15 @@ import { recordDocumentRunSteps } from './step-ledger-recorders.js';
 import {
   processPendingFilings,
   buildAutoPersistDeps,
+  DEFAULT_MAX_SPAWNS_PER_CYCLE,
   type AutoPersistDeps,
+  type SpawnBudget,
 } from './filing-auto-persist.js';
+import { DistributedLock } from '../utils/distributed-lock.js';
+
+/** MAJOR-1: key + TTL for the cycle-level extraction lock (document-cycle.ts). */
+const FILING_EXTRACTION_LOCK_KEY = 'filing-auto-persist:cycle';
+const FILING_EXTRACTION_LOCK_TTL_MS = 45 * 60 * 1000;
 
 export interface DocumentCycleSummary {
   ipos: number;
@@ -229,6 +236,26 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
   // Stays undefined entirely when the flag is off.
   let autoPersistDeps: AutoPersistDeps | undefined;
 
+  // MAJOR-1: ONE budget object for the WHOLE cycle (every IPO shares it — not
+  // reset per IPO), and one Redis lock so a second, overlapping cycle cannot
+  // start extracting the same IN_PROGRESS rows while this one is still
+  // running. `lockToken` is undefined when the flag is off (no lock needed)
+  // or when the lock could not be acquired (extraction skipped this cycle).
+  const distributedLock = new DistributedLock(redis as never);
+  let lockToken: string | undefined;
+  const spawnBudget: SpawnBudget = { remaining: DEFAULT_MAX_SPAWNS_PER_CYCLE };
+  if (FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST) {
+    const lock = await distributedLock.acquire(FILING_EXTRACTION_LOCK_KEY, { ttl: FILING_EXTRACTION_LOCK_TTL_MS });
+    if (lock.acquired) {
+      lockToken = lock.token;
+    } else {
+      logger.warn(
+        { key: FILING_EXTRACTION_LOCK_KEY },
+        'Filing auto-persist lock already held by another cycle — skipping extraction this cycle (non-fatal)'
+      );
+    }
+  }
+
   const runner = new DocumentDiscoveryRunner({
     fetcher: defaultFetcher,
     store,
@@ -312,27 +339,40 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
       // Gating on "found something this cycle" would leave exactly those
       // documents unextracted forever, which is the bug this hook exists to fix.
       if (FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST) {
-        try {
-          const autoPersist = await processPendingFilings(
-            {
-              id: ipo.id,
-              companyName: ipo.companyName,
-              slug: ipo.slug ?? null,
-              segment: ipo.segment ?? null,
-            },
-            autoPersistDeps ?? (autoPersistDeps = buildAutoPersistDeps())
-          );
-          if (autoPersist.spawned > 0 || autoPersist.failed > 0) {
-            logger.info(
-              { ipoId: ipo.id, company: ipo.companyName, ...autoPersist },
-              'Filing auto-persist complete for one IPO'
+        // MAJOR-1: no cycle-level lock, no extraction — a second overlapping
+        // cycle must not touch the same IN_PROGRESS rows this one may still be
+        // working through. Non-fatal: the rest of the cycle (discovery,
+        // storage) proceeds exactly as if the flag were off for this IPO.
+        if (!lockToken) {
+          // Logged once above when the lock failed; per-IPO silence here
+          // avoids one warning per candidate IPO for the same cause.
+        } else {
+          try {
+            if (!autoPersistDeps) {
+              autoPersistDeps = buildAutoPersistDeps();
+              autoPersistDeps.spawnBudget = spawnBudget;
+            }
+            const autoPersist = await processPendingFilings(
+              {
+                id: ipo.id,
+                companyName: ipo.companyName,
+                slug: ipo.slug ?? null,
+                segment: ipo.segment ?? null,
+              },
+              autoPersistDeps
+            );
+            if (autoPersist.spawned > 0 || autoPersist.failed > 0 || autoPersist.skippedBudget > 0) {
+              logger.info(
+                { ipoId: ipo.id, company: ipo.companyName, ...autoPersist },
+                'Filing auto-persist complete for one IPO'
+              );
+            }
+          } catch (error) {
+            logger.error(
+              { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+              'Filing auto-persist threw (non-fatal) — continuing the cycle'
             );
           }
-        } catch (error) {
-          logger.error(
-            { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
-            'Filing auto-persist threw (non-fatal) — continuing the cycle'
-          );
         }
       }
 
@@ -413,6 +453,20 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
       { error: error instanceof Error ? error.message : String(error) },
       'Failed to write DOCUMENTS scraper_logs row (non-fatal)'
     );
+  }
+
+  // MAJOR-1: release the extraction lock so the NEXT cycle can acquire it —
+  // non-fatal, and skipped entirely when this cycle never held it (flag off,
+  // or another cycle already had it).
+  if (lockToken) {
+    try {
+      await distributedLock.release(FILING_EXTRACTION_LOCK_KEY, lockToken);
+    } catch (error) {
+      logger.warn(
+        { error: error instanceof Error ? error.message : String(error) },
+        'Failed to release filing auto-persist lock (non-fatal — it will expire via TTL)'
+      );
+    }
   }
 
   logger.info({ ...summary, byHost: counter.byHost() }, 'Document discovery cycle complete');
