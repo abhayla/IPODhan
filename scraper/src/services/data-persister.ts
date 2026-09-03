@@ -55,6 +55,118 @@ async function resolveRegistrarIdSafe(registrarName: string | null | undefined):
 }
 
 /**
+ * Round-3 C1/C2/M3 (Tier-A review of round 1): fields whose only job is
+ * bookkeeping. They change on EVERY cycle by construction, so including them
+ * in the write diff would make every cycle a "change" and suppress nothing.
+ * They ride along on a write that happens for a real reason.
+ */
+const WRITE_DIFF_IGNORED_FIELDS = new Set(['lastScrapedAt', 'updatedAt', 'scrapedAt', 'createdAt', 'id']);
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '' || !/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(trimmed)) return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function toTimestamp(value: unknown): number | null {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.getTime();
+  if (typeof value === 'string') {
+    // Only treat date-SHAPED strings as dates; a plain "12" must stay a number.
+    if (!/^\d{4}-\d{2}-\d{2}/.test(value.trim())) return null;
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+  }
+  return null;
+}
+
+function isBlank(value: unknown): boolean {
+  return value === null || value === undefined || value === '';
+}
+
+/**
+ * Round-3 M3: the WRITE gate's equality test. Deliberately STRICTER than
+ * `normalization-engine.areEquivalent` (which tolerates 0.01 on numbers and
+ * compares dates by calendar day only, both correct for provenance/conflict
+ * reporting): for deciding whether the `ipos` row must be written,
+ * 100.00 vs 100.01 IS a change and 09:00 vs 14:00 on the same date IS a
+ * change. What is NOT a change is a pure representation difference — the pg
+ * NUMERIC string "6800000000.00" against the JS number 6800000000, or a Date
+ * against its own ISO string.
+ */
+export function valuesEqualForWrite(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (isBlank(a) && isBlank(b)) return true;
+  if (isBlank(a) !== isBlank(b)) return false;
+
+  const aTime = toTimestamp(a);
+  const bTime = toTimestamp(b);
+  if (aTime !== null || bTime !== null) {
+    if (aTime === null || bTime === null) return false;
+    return aTime === bTime;
+  }
+
+  const aNum = toFiniteNumber(a);
+  const bNum = toFiniteNumber(b);
+  if (aNum !== null && bNum !== null) return aNum === bNum;
+  if ((aNum !== null) !== (bNum !== null)) return false;
+
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    const key = (v: unknown) => (typeof v === 'string' ? v.trim().toLowerCase() : JSON.stringify(v));
+    const sortedA = a.map(key).sort();
+    const sortedB = b.map(key).sort();
+    return sortedA.every((v, i) => v === sortedB[i]);
+  }
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+
+  if (typeof a === 'string' && typeof b === 'string') return a.trim() === b.trim();
+
+  if (typeof a === 'object' && typeof b === 'object') {
+    try {
+      return JSON.stringify(a) === JSON.stringify(b);
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Round-3 C1/C2: which fields of `finalData` actually differ from the stored
+ * `ipos` row. This — not `consolidationResult.fieldsUpdated` — is what decides
+ * whether the update is a no-op.
+ *
+ * Why the change: `fieldsUpdated` counts PROVENANCE rows (`field_sources`), and
+ * it is computed BEFORE the persister adds `listingExchanges`, `registrarId`,
+ * `offeringType` and the re-applied write-field sanitizers. Two real bugs
+ * followed. (a) A cycle where consolidation changed nothing but the merged
+ * exchange list gained 'BSE', or a null `registrarId` finally resolved, was
+ * skipped — the row never got the value. (b) A row repaired by a direct write
+ * (provenance says 100, the row says 90) never converged: provenance already
+ * agreed with the incoming value, so `fieldsUpdated` was 0 forever while the
+ * row stayed at 90. Diffing the payload against the ROW closes both.
+ */
+export function diffFieldsForWrite(
+  finalData: Record<string, unknown>,
+  existingIPO: Record<string, unknown>
+): string[] {
+  const changed: string[] = [];
+  for (const [field, value] of Object.entries(finalData)) {
+    if (WRITE_DIFF_IGNORED_FIELDS.has(field)) continue;
+    // `undefined` is never written by drizzle — it is "leave this column alone".
+    if (value === undefined) continue;
+    if (!valuesEqualForWrite(value, existingIPO[field])) changed.push(field);
+  }
+  return changed;
+}
+
+/**
  * Phase 2: Lazy singleton for Data Consolidation Service
  * Initialized once on first use to avoid overhead
  */
@@ -758,24 +870,28 @@ export async function upsertIPO(
               delete finalData[field];
             }
 
-            // S-02 §5 no-op write suppression: `consolidationResult.fieldsUpdated`
-            // now reflects a NORMALIZED comparison (see the `valueActuallyChanged`
-            // fix in data-consolidation-service.ts) — a re-scrape that changed
-            // nothing (a pg NUMERIC string equal to the incoming number, a Date
-            // equal to the incoming date string, etc.) reports 0 here. Skipping the
-            // write when nothing changed skips BOTH the `ipos` row write AND the
+            // S-02 §5 no-op write suppression, corrected in round 3 (C1/C2/M3).
+            // The skip is decided by an actual field-by-field diff of the FINAL
+            // payload against the STORED ROW — not by
+            // `consolidationResult.fieldsUpdated`, which counts `field_sources`
+            // provenance rows and is computed before `listingExchanges`,
+            // `registrarId`, `offeringType` and the write-field sanitizers are
+            // applied above. See `diffFieldsForWrite` for the two bugs that
+            // caused. Skipping the write skips BOTH the `ipos` row write AND the
             // per-row cache invalidation `ipoRepository.update()` performs
             // internally (BaseRepository cache-aside) — exactly the pair the S-02
             // §5 write-suppression design calls out. `lastScrapedAt`/`updatedAt`
             // bumps are deliberately foregone on a true no-op cycle; the next
             // cycle that DOES change a field still refreshes them via `finalData`.
-            const isNoopUpdate = (consolidationResult.fieldsUpdated ?? 0) === 0;
+            const changedFields = diffFieldsForWrite(finalData, existingIPO as unknown as Record<string, unknown>);
+            const isNoopUpdate = changedFields.length === 0;
             if (isNoopUpdate) {
               logger.debug({
                 ipoId: existingIPO.id,
                 companyName: scrapedIPO.companyName,
                 source,
                 noop: true,
+                fieldsUpdated: consolidationResult.fieldsUpdated ?? 0,
               }, '[DataConsolidation] No field actually changed — skipping ipos row update + cache invalidation');
             } else {
               // Update IPO with consolidated data

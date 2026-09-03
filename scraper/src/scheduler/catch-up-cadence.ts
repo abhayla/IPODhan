@@ -83,3 +83,63 @@ export async function shouldRunOnCatchUpCadence(
     return true;
   }
 }
+
+/**
+ * Round-3 M2 (Tier-A review of round 1): `shouldRunOnCatchUpCadence` stamps the
+ * key at CHECK time. That is right for a job whose only cost of a double-run is
+ * duplicate work, but wrong for the due-step cycle: PM2 force-restarts the
+ * process every 30 minutes, so a kill (or a throw) between the stamp and the
+ * job actually finishing left the key stamped and the job skipped for the whole
+ * 24h interval — one lost aggregator/API-fallback day per unlucky restart.
+ *
+ * `isCatchUpCadenceDue` is the READ-ONLY half (no write, so a crash right after
+ * it changes nothing) and `markCatchUpCadenceRan` is the explicit stamp the
+ * caller makes AFTER the work succeeded. Both fail OPEN on a Redis error, same
+ * as the combined function, which stays exactly as it is for its existing
+ * callers (listing-performance / registrar-health-check).
+ *
+ * Trade-off, stated plainly: split check-then-mark is NOT atomic, so two
+ * genuinely concurrent cycles could both see "due". The due-step cycle is
+ * already serialized by the `scraper:cycle` whole-cycle Redis lock in
+ * `index.ts`, so that window does not exist on this path; the combined atomic
+ * function remains the right tool for callers with no such lock.
+ */
+export async function isCatchUpCadenceDue(
+  redis: Redis,
+  jobName: string,
+  intervalMinutes: number,
+  now: Date = new Date()
+): Promise<boolean> {
+  const key = `${KEY_PREFIX}${jobName}`;
+  try {
+    const raw = await redis.get(key);
+    const lastRun = Number(raw);
+    if (!raw || !Number.isFinite(lastRun) || lastRun <= 0) return true;
+    return now.getTime() - lastRun >= intervalMinutes * 60_000;
+  } catch (error) {
+    logger.warn(
+      { jobName, error: error instanceof Error ? error.message : String(error) },
+      '[catch-up-cadence] Redis unavailable on due check — failing open (running this cycle)'
+    );
+    return true;
+  }
+}
+
+/** Stamp `jobName` as having run at `now`. Call only AFTER the work succeeded. */
+export async function markCatchUpCadenceRan(
+  redis: Redis,
+  jobName: string,
+  intervalMinutes: number,
+  now: Date = new Date()
+): Promise<void> {
+  const key = `${KEY_PREFIX}${jobName}`;
+  const ttlSeconds = Math.max(60, intervalMinutes * 60 * 4);
+  try {
+    await redis.set(key, String(now.getTime()), 'EX', ttlSeconds);
+  } catch (error) {
+    logger.warn(
+      { jobName, error: error instanceof Error ? error.message : String(error) },
+      '[catch-up-cadence] Redis unavailable on mark-ran — cadence key not stamped (job may re-run next cycle)'
+    );
+  }
+}

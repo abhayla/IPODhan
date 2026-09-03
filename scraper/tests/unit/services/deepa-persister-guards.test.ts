@@ -245,12 +245,16 @@ describe('upsertIPO update path — Deepa walk guards', () => {
     });
 
     const ipoRepository = makeIpoRepository();
-    await upsertIPO(ipoRepository, nseScrape(), 'NSE', existingDeepaRow());
+    // Round-3 C1: the scrape reports the exchange the row ALREADY has, so the
+    // merged exchange list is unchanged too — this is now a genuine no-op end
+    // to end. (Previously this scrape reported 'NSE' against a ['BSE'] row, so
+    // the payload really did differ and the old fieldsUpdated-based skip was
+    // suppressing a write the row needed — the exact C1 bug.)
+    await upsertIPO(ipoRepository, nseScrape({ listingExchange: 'BSE' }), 'NSE', existingDeepaRow());
 
-    // S-02 §5: consolidatedData is empty and fieldsUpdated is 0 — a genuine
-    // no-op — so the persister now skips `ipoRepository.update()` entirely
-    // rather than calling it with a patch that happens to omit `cin`. Not
-    // calling update at all is the stronger, now-correct assertion.
+    // consolidatedData is empty and nothing differs from the stored row — a
+    // genuine no-op — so the persister skips `ipoRepository.update()` entirely
+    // rather than calling it with a patch that happens to omit `cin`.
     expect(ipoRepository.update).not.toHaveBeenCalled();
   });
 
@@ -421,7 +425,11 @@ describe('upsertIPO — no-op write suppression is persister-level tested (round
     });
 
     const ipoRepository = makeIpoRepository();
-    await upsertIPO(ipoRepository, nseScrape(), 'NSE', existingDeepaRow());
+    // Round-3 C1: 'BSE' is the exchange the row already carries, so the merged
+    // exchange list does not change either — nothing at all differs from the
+    // stored row. With the previous 'NSE' scrape this row GAINED an exchange,
+    // and the old fieldsUpdated-based skip dropped that write (the C1 bug).
+    await upsertIPO(ipoRepository, nseScrape({ listingExchange: 'BSE' }), 'NSE', existingDeepaRow());
 
     expect(ipoRepository.update).not.toHaveBeenCalled();
   });

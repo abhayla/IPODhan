@@ -157,8 +157,19 @@ export const FEATURE_FLAGS = {
    * OPEN IPOs, and aggregator refresh (Moneycontrol/Chittorgarh) only for
    * UPCOMING/OPEN IPOs at most once/day. A Redis lock (`scraper:cycle`)
    * makes this safe under PM2's 30-minute `cron_restart` force-kill.
-   * With the flag OFF (default), `--source=all` is UNCHANGED — this is the
-   * rollback path. See `scraper/src/scheduler/due-step-cycle.ts`.
+   * With the flag OFF (default), the SCHEDULE is unchanged — every source runs
+   * on every 30-minute cycle, the legacy rollback path.
+   *
+   * What the flag does NOT gate (round-3 correction): the no-op write
+   * suppression and the strict normalized field comparison at the `ipos` write
+   * door (`data-persister.ts#diffFieldsForWrite`) apply on BOTH paths. They are
+   * correctness fixes — do not write a row that is already identical, and do
+   * write one that differs — not scheduling behaviour.
+   *
+   * Also flag-gated, alongside the schedule: the freshness SLO set
+   * (`config/freshness-slo.ts#getActiveFreshnessSLOs`), because the flat-cadence
+   * thresholds would page P1 hourly against the spaced-out due-step schedule.
+   * See `scraper/src/scheduler/due-step-cycle.ts`.
    * Default: false
    */
   ENABLE_DUE_STEP_SCHEDULER: process.env.ENABLE_DUE_STEP_SCHEDULER === 'true',

@@ -15,7 +15,8 @@
  * lastRun means 'never ran', NOT 'stale'".
  */
 import type { ScraperLogRepository } from '@ipodhan/shared';
-import { FRESHNESS_SLOS, type FreshnessSLO } from '../config/freshness-slo.js';
+import { getActiveFreshnessSLOs, type FreshnessSLO } from '../config/freshness-slo.js';
+import { isMarketHoursIST } from '../scheduler/due-step-cycle.js';
 import { notifyOwner } from './owner-notify.js';
 import logger from '../utils/logger.js';
 
@@ -27,6 +28,8 @@ export interface FreshnessEvaluation {
   stalenessMs: number | null;
   breached: boolean;
   coldStart: boolean;
+  /** Round-3 C4: true when the source was skipped because it is off-duty at `now` (marketHoursOnly). */
+  outsideEvaluationWindow?: boolean;
 }
 
 /**
@@ -40,7 +43,7 @@ export async function evaluateFreshness(
 ): Promise<FreshnessEvaluation[]> {
   const evaluations: FreshnessEvaluation[] = [];
 
-  for (const slo of FRESHNESS_SLOS) {
+  for (const slo of getActiveFreshnessSLOs()) {
     const evaluation = await evaluateSource(scraperLogRepository, slo, now);
     evaluations.push(evaluation);
 
@@ -71,6 +74,23 @@ async function evaluateSource(
   slo: FreshnessSLO,
   now: Date
 ): Promise<FreshnessEvaluation> {
+  // Round-3 C4: a `marketHoursOnly` source is only SCHEDULED inside weekday
+  // 10:00-17:00 IST. Outside that window it is not stale, it is off-duty —
+  // evaluating it there is how a correctly-behaving system pages the owner P1
+  // at 02:00 on a Saturday.
+  if (slo.marketHoursOnly && !isMarketHoursIST(now)) {
+    return {
+      source: slo.source,
+      dataClass: slo.dataClass,
+      maxStalenessMs: slo.maxStalenessMs,
+      lastSuccessAt: null,
+      stalenessMs: null,
+      breached: false,
+      coldStart: false,
+      outsideEvaluationWindow: true,
+    };
+  }
+
   try {
     const lastSuccess = await scraperLogRepository.getLastSuccess(slo.source);
 

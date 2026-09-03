@@ -256,7 +256,11 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
       ipoRepository,
       scrape({ listingExchange: 'BSE', lotSize: 5, priceRangeMin: 100, priceRangeMax: 110 }),
       'CHITTORGARH',
-      existingRow()
+      // Round-3 C1: the band on the stored row differs from the consolidated
+      // one, so there IS a real change to write. Without that, the whole patch
+      // equals the row (lotSize having been dropped) and the write is correctly
+      // suppressed — which would leave nothing to assert the dropped lot against.
+      existingRow({ priceRangeMax: 105 })
     );
 
     const [, patch] = ipoRepository.update.mock.calls[0];

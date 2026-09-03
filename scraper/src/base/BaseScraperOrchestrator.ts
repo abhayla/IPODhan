@@ -192,6 +192,12 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
 
       // Track updated IPO slugs for cache invalidation
       const updatedIPOSlugs: string[] = [];
+      // Round-3 H1: rows dropped by the `allowedStatuses` restriction were only
+      // visible as a per-row DEBUG line (off in production), so a mis-set
+      // restriction silently scraped nothing and looked like a healthy run.
+      // One INFO summary line per run makes the skip count visible without a
+      // line per row.
+      let statusRestrictedSkips = 0;
 
       // Step 1: Scrape data (subclass-specific)
       const scrapedData = await this.scrapeData();
@@ -217,6 +223,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
           // Update result counters
           result.iposProcessed += processResult.processed ? 1 : 0;
           result.iposSkipped += processResult.skipped ? 1 : 0;
+          statusRestrictedSkips += processResult.statusRestricted ? 1 : 0;
           result.iposInserted += processResult.inserted ? 1 : 0;
           result.iposUpdated += processResult.updated ? 1 : 0;
           result.iposFailed += processResult.failed ? 1 : 0;
@@ -233,6 +240,19 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
           result.iposFailed++;
           result.errors.push(`Processing error: ${errorMsg}`);
         }
+      }
+
+      // Round-3 H1: one line per run, not per row.
+      if (this.allowedStatuses) {
+        logger.info(
+          {
+            scraperName,
+            allowedStatuses: [...this.allowedStatuses],
+            statusRestrictedSkips,
+            scrapedRows: scrapedData.ipos.length,
+          },
+          'Status restriction active (due-step scheduler) — rows outside the allowed statuses were skipped before the write door'
+        );
       }
 
       // Step 3: Comprehensive cache invalidation
@@ -354,6 +374,8 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
     slug: string | null;
     processed: boolean;
     skipped: boolean;
+    /** Round-3 H1: skipped specifically by the `allowedStatuses` restriction (counted per run). */
+    statusRestricted: boolean;
     inserted: boolean;
     updated: boolean;
     failed: boolean;
@@ -366,6 +388,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
       slug: null as string | null,
       processed: false,
       skipped: false,
+      statusRestricted: false,
       inserted: false,
       updated: false,
       failed: false,
@@ -437,6 +460,7 @@ export abstract class BaseScraperOrchestrator<TIPO, TSubscription = any> {
         'IPO outside allowedStatuses restriction - skipping (due-step scheduler)'
       );
       processResult.skipped = true;
+      processResult.statusRestricted = true;
       return processResult;
     }
 
