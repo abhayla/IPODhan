@@ -27,7 +27,7 @@
     "test:load": "artillery run artillery.yml",
     "test:load:quick": "artillery quick --count 10 --num 100 http://localhost:3000",
     "test:all": "npm run lint && npm run test && npm run test:e2e",
-    "db:generate": "drizzle-kit generate",
+    "db:generate": "drizzle-kit generate --prefix=timestamp",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",

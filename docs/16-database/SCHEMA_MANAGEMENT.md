@@ -13,6 +13,62 @@ All database changes MUST flow through this file and proper migrations.
 
 ---
 
+## 🧩 Migration snapshot baseline (W-19, 2026-09-03)
+
+**What was broken.** `web/drizzle/migrations/meta/` held snapshots `0000`–`0013` only.
+Migrations `0014`–`0047` (journal idx 14–30) were **hand-written SQL** — no snapshot was
+ever committed for them. drizzle-kit always diffs `schema.ts` against the **last snapshot
+in `meta/` (sorted by filename)**, so `npm run db:generate` diffed against the 2025-era
+`0013_snapshot.json` and proposed re-creating the entire schema (35 `CREATE TABLE`s,
+814 lines of SQL, plus interactive "is this enum created or renamed?" prompts). Nobody
+could safely use `db:generate`.
+
+**What was done.** A single **baseline snapshot** `meta/0047_snapshot.json` was generated
+from the current `packages/shared/src/db/schema.ts` and installed as the snapshot for the
+last journal entry (idx 30, tag `0047_intermediary_role_sub_syndicate`). Its `prevId` is
+set to the `id` of `0013_snapshot.json`, i.e. the chain skips the hand-written range.
+**No SQL migration was added and nothing was run against any database.**
+
+drizzle-kit tolerates this gap: `validateWithReport()` (drizzle-kit 0.31.7) only rejects
+*malformed* snapshots and *`prevId` collisions* (two snapshots claiming the same parent).
+Missing intermediate snapshots are not checked — `prepareOutFolder()` simply lists
+`meta/*.json`, sorts by name, and diffs against the last one.
+
+Verified after install:
+
+```
+$ npx drizzle-kit generate
+...
+No schema changes, nothing to migrate 😴
+```
+
+(no files created; `git status` clean apart from the new snapshot).
+
+**Filename-collision guard.** drizzle-kit's default `index` prefix names the next
+migration after `journal.entries.length` — which is **31**, colliding with the existing
+`0031_add_ipo_slug_redirects.sql` and, worse, writing `meta/0031_snapshot.json`, which
+sorts *before* `0047_snapshot.json` and would silently make the baseline the "latest"
+snapshot again. `db:generate` therefore now runs with `--prefix=timestamp`, so new
+migrations are named `YYYYMMDDHHMMSS_*` and always sort last:
+
+```json
+"db:generate": "drizzle-kit generate --prefix=timestamp"
+```
+
+**Rules going forward.**
+
+- `db:generate` is usable again, but **review its output before trusting it**. It diffs
+  against the baseline snapshot, i.e. against `schema.ts` — it does **not** know what the
+  live database actually contains. Confirm with `npm run audit:schema-drift`
+  (schema.ts vs live DB) before applying anything.
+- Migrations `0014`–`0047` remain hand-written and **must not be regenerated**; their
+  snapshots cannot be reconstructed.
+- Never hand-edit `meta/_journal.json` to add a migration that drizzle-kit did not
+  generate without also adding a matching snapshot — that is exactly how this defect was
+  created.
+- Destructive DDL still goes to `web/drizzle/migrations/_gated/` (kept out of the journal)
+  and needs owner sign-off.
+
 ## 📋 Schema Management Workflow
 
 ### Making Schema Changes
