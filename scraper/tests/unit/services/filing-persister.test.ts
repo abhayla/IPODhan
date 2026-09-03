@@ -306,6 +306,31 @@ describe('filing-persister — PRICE_BAND_AD mapping (DEEPA oracle)', () => {
     expect(row.faceValueMultipleCap).toBe('88.5');
   });
 
+  // W-88 A7: the offer's three share legs each get their own column. The
+  // pre-existing shares_at_floor/at_cap keep holding the FRESH leg so readers
+  // written before migration 0048 do not silently change meaning.
+  it('writes the fresh, OFS and total share legs, and total = fresh + OFS at each price', async () => {
+    const s = makeDeps();
+    await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const row = s.valuation.mock.calls[0][0] as Record<string, number>;
+    expect(row.freshSharesAtFloor).toBe(14880952);
+    expect(row.freshSharesAtCap).toBe(14124293);
+    expect(row.ofsShares).toBe(11848340);
+    expect(row.totalSharesAtFloor).toBe(26729292);
+    expect(row.totalSharesAtCap).toBe(25972633);
+    // Substance, not shape: the stored legs must reconcile.
+    expect(row.freshSharesAtFloor + row.ofsShares).toBe(row.totalSharesAtFloor);
+    expect(row.freshSharesAtCap + row.ofsShares).toBe(row.totalSharesAtCap);
+    // Backward compatibility: the legacy pair still carries the fresh leg.
+    expect(row.sharesAtFloor).toBe(row.freshSharesAtFloor);
+    expect(row.sharesAtCap).toBe(row.freshSharesAtCap);
+  });
+
   it('writes one promoter row per named promoter, never the aggregate holding', async () => {
     const s = makeDeps();
     const summary = await persistFilingExtraction(
@@ -1294,6 +1319,22 @@ describe('filing-persister - protected columns never reach a write payload (CRIT
       return { filtered };
     });
   }
+
+  it('a protected total_shares_at_cap is omitted from the upsert, the other legs still write', async () => {
+    const s = makeDeps();
+    s.deps.protectionFilter = protectFields({ ipo_valuation: ['totalSharesAtCap'] });
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const row = s.valuation.mock.calls[0][0] as Record<string, unknown>;
+    expect('totalSharesAtCap' in row).toBe(false);
+    expect(row.totalSharesAtFloor).toBe(26729292);
+    expect(row.ofsShares).toBe(11848340);
+    expect(summary.skipped_protected).toContain('ipo_valuation.totalSharesAtCap');
+  });
 
   it('ipo_valuation: a protected mcapAtCap is absent from the upsert, the rest still writes', async () => {
     const s = makeDeps();

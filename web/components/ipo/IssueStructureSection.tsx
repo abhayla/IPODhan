@@ -24,6 +24,11 @@ export interface IssueValuation {
   priceCap: string | null;
   sharesAtFloor: string | null;
   sharesAtCap: string | null;
+  freshSharesAtFloor?: string | null;
+  freshSharesAtCap?: string | null;
+  ofsShares?: string | null;
+  totalSharesAtFloor?: string | null;
+  totalSharesAtCap?: string | null;
   mcapAtFloor: string | null;
   mcapAtCap: string | null;
   peAtFloor: string | null;
@@ -232,14 +237,25 @@ function ValuationAtBandTable({
   const rows: Array<{ label: string; floor: string | null; cap: string | null }> = [
     { label: 'Price per share', floor: fmtNum(floor), cap: fmtNum(cap) },
     {
-      // W-85(b): `shares_at_floor`/`shares_at_cap` hold the FRESH-issue share
-      // count, not the total offer (fresh + offer for sale). Neither
-      // `ipo_details` nor `ipo_valuation` stores a total-offer share count
-      // today, so this row is labelled for what it actually holds and the
-      // footnote below says the total is not yet stored.
+      // W-88: the offer's three share legs are stored separately now. The fresh
+      // leg still falls back to shares_at_floor/at_cap, which held the fresh
+      // count before migration 0048 and keep that meaning for old rows.
       label: 'Fresh issue shares',
-      floor: fmtInt(num(valuation.sharesAtFloor)),
-      cap: fmtInt(num(valuation.sharesAtCap)),
+      floor: fmtInt(num(valuation.freshSharesAtFloor ?? valuation.sharesAtFloor)),
+      cap: fmtInt(num(valuation.freshSharesAtCap ?? valuation.sharesAtCap)),
+    },
+    {
+      // The offer-for-sale leg is a fixed share count: the selling shareholders
+      // offer the same shares whatever the price settles at, so floor and cap
+      // carry the identical figure rather than the cap column being blank.
+      label: 'Offer for sale shares',
+      floor: fmtInt(num(valuation.ofsShares)),
+      cap: fmtInt(num(valuation.ofsShares)),
+    },
+    {
+      label: 'Total offer shares',
+      floor: fmtInt(num(valuation.totalSharesAtFloor)),
+      cap: fmtInt(num(valuation.totalSharesAtCap)),
     },
     {
       label: 'Market capitalisation',
@@ -257,8 +273,6 @@ function ValuationAtBandTable({
       cap: fmtNum(num(valuation.faceValueMultipleCap), 'x'),
     },
   ].filter((r) => r.floor !== null || r.cap !== null);
-
-  const showsFreshIssueShares = rows.some((r) => r.label === 'Fresh issue shares');
 
   const peerAvg = peerAveragePe !== null && peerAveragePe > 0 ? peerAveragePe : null;
   const ronw3y = num(valuation.ronwWeighted3y);
@@ -307,12 +321,6 @@ function ValuationAtBandTable({
             </tbody>
           </table>
         </div>
-      )}
-
-      {showsFreshIssueShares && (
-        <p className="text-xs text-gray-500 mt-2">
-          Total offer shares including the offer for sale will be shown once stored
-        </p>
       )}
 
       {(peerAvg !== null || ronw3y !== null || valuation.peNotAscertainableReason) && (

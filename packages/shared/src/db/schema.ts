@@ -1697,8 +1697,17 @@ export const ipoValuation = pgTable(
     pricingEvent: pricingEventEnum('pricing_event').notNull(),
     priceFloor: numeric('price_floor', { precision: 18, scale: 2 }),
     priceCap: numeric('price_cap', { precision: 18, scale: 2 }),
+    // W-88: shares_at_floor/shares_at_cap hold the FRESH-issue leg only (that is
+    // the row extract_filing.py reads them off). They keep that meaning for
+    // backward compatibility; fresh_shares_at_floor/at_cap carry the same value
+    // under an unambiguous name, and the OFS / total legs are their own columns.
     sharesAtFloor: bigint('shares_at_floor', { mode: 'number' }), // share count -- never numeric; round-7 class
     sharesAtCap: bigint('shares_at_cap', { mode: 'number' }), // share count -- never numeric; round-7 class
+    freshSharesAtFloor: bigint('fresh_shares_at_floor', { mode: 'number' }),
+    freshSharesAtCap: bigint('fresh_shares_at_cap', { mode: 'number' }),
+    ofsShares: bigint('ofs_shares', { mode: 'number' }),
+    totalSharesAtFloor: bigint('total_shares_at_floor', { mode: 'number' }),
+    totalSharesAtCap: bigint('total_shares_at_cap', { mode: 'number' }),
     mcapAtFloor: numeric('mcap_at_floor', { precision: 18, scale: 2 }),
     mcapAtCap: numeric('mcap_at_cap', { precision: 18, scale: 2 }),
     peAtFloor: numeric('pe_at_floor', { precision: 18, scale: 2 }),

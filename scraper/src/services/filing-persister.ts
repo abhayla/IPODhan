@@ -323,10 +323,9 @@ const NO_COLUMN_FIELDS: Record<string, string> = {
   // issue leg (extract_filing.py reads them off the fresh-issue row), so they
   // are NOT a home for the OFS leg, the fresh+OFS total, or the post-issue
   // capital. Splitting them is W-88's schema question; no column is added here.
-  ofs_shares:
-    'no OFS share-count column (ipo_valuation.shares_at_floor/at_cap hold the FRESH leg) — W-88',
-  total_offer_shares_at_floor:
-    'no total-offer share-count column (ipo_valuation.shares_at_floor/at_cap hold the FRESH leg, not fresh+OFS) — W-88',
+  // W-88 closed the three offer-side share legs: ofs_shares,
+  // total_offer_shares_at_floor and total_offer_shares_at_cap now have their own
+  // ipo_valuation columns (migration 0048) and are written below.
   total_offer_amount_at_floor: 'no floor-total-amount column (issue_size is the cap total)',
   post_offer_shares_at_floor:
     'no post-issue share-capital column (the ipo_valuation share columns are offer-side) — W-88',
@@ -974,8 +973,20 @@ export async function persistFilingExtraction(
   };
   vset('priceFloor', floor);
   vset('priceCap', cap);
-  vset('sharesAtFloor', num(extraction, 'shares_at_floor'));
-  vset('sharesAtCap', num(extraction, 'shares_at_cap'));
+  // shares_at_floor/shares_at_cap are the FRESH-issue leg (extract_filing.py
+  // reads them off the "Fresh Issue" row). They keep that meaning for backward
+  // compatibility with readers written before W-88; fresh_shares_at_floor/at_cap
+  // carry the identical value under an unambiguous name, and the OFS and total
+  // legs get their own columns instead of being folded into these two.
+  const freshFloor = num(extraction, 'shares_at_floor');
+  const freshCap = num(extraction, 'shares_at_cap');
+  vset('sharesAtFloor', freshFloor);
+  vset('sharesAtCap', freshCap);
+  vset('freshSharesAtFloor', freshFloor);
+  vset('freshSharesAtCap', freshCap);
+  vset('ofsShares', num(extraction, 'ofs_shares'));
+  vset('totalSharesAtFloor', num(extraction, 'total_offer_shares_at_floor'));
+  vset('totalSharesAtCap', num(extraction, 'total_offer_shares_at_cap'));
   // F7 UNIT CONTRACT: ipo_valuation.mcap_at_floor / mcap_at_cap are stored in
   // RUPEES, while financial_data.market_cap (below) is stored in CRORE. Same
   // source number, two different denominations — do not copy one to the other.
@@ -1017,6 +1028,11 @@ export async function persistFilingExtraction(
         ...num_('priceCap'),
         ...count_('sharesAtFloor'),
         ...count_('sharesAtCap'),
+        ...count_('freshSharesAtFloor'),
+        ...count_('freshSharesAtCap'),
+        ...count_('ofsShares'),
+        ...count_('totalSharesAtFloor'),
+        ...count_('totalSharesAtCap'),
         ...num_('mcapAtFloor'),
         ...num_('mcapAtCap'),
         ...num_('peAtFloor'),

@@ -218,6 +218,13 @@
       "when": 1788859200000,
       "tag": "0047_intermediary_role_sub_syndicate",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1788945600000,
+      "tag": "0048_ipo_valuation_share_legs",
+      "breakpoints": true
     }
   ]
 }

@@ -836,12 +836,13 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
             post_shares_floor, mcap_floor, post_shares_cap, mcap_cap = vals[-4:]
         elif len(vals) >= 2:
             mcap_floor, mcap_cap = vals[-2:]
-    total_shares_floor = total_amount_floor = None
+    total_shares_floor = total_amount_floor = total_shares_cap = None
     ti2 = _find(lines, re.compile(r"^\s*Total Offer Size\b", re.I))
     if ti2 >= 0:
         vals = money_values(lines[ti2])
         if len(vals) >= 4:
             total_shares_floor, total_amount_floor = vals[-4], vals[-3]
+            total_shares_cap = vals[-2]
 
     emit.put("shares_at_floor", shares_floor, page_for(fi), "shares_x_price_equals_amount",
              check_shares_amount(shares_floor, floor, amt_floor))
@@ -896,6 +897,18 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
                  "total_offer_size_reconciles", tot_check)
         emit.put("total_offer_amount_at_floor", total_amount_floor, page_for(ti2),
                  "total_offer_size_reconciles", tot_check)
+    # The cap-side total is checked on its own arithmetic (fresh at cap + OFS),
+    # never inferred from the floor-side total: at the cap the fresh leg buys
+    # fewer shares while the OFS leg is a fixed share count, so the two totals
+    # differ and one cannot stand in for the other.
+    if total_shares_cap is None:
+        emit.null("total_offer_shares_at_cap", "total_offer_size_row_has_no_cap_share_count",
+                  page_for(ti2))
+    else:
+        emit.put("total_offer_shares_at_cap", total_shares_cap, page_for(ti2),
+                 "total_offer_size_reconciles",
+                 check_sum_equals([shares_cap, ofs_shares], total_shares_cap,
+                                  "fresh + OFS shares at cap", tol=1.0))
     emit.put("shares_monotonic", shares_floor is not None and shares_cap is not None,
              page_for(fi), "more_shares_at_floor_than_cap",
              check_monotonic_shares(shares_floor, shares_cap))

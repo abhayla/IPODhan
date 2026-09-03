@@ -25,6 +25,11 @@ export interface IpoValuationRow {
   priceCap: string | null;
   sharesAtFloor: string | null;
   sharesAtCap: string | null;
+  freshSharesAtFloor: string | null;
+  freshSharesAtCap: string | null;
+  ofsShares: string | null;
+  totalSharesAtFloor: string | null;
+  totalSharesAtCap: string | null;
   mcapAtFloor: string | null;
   mcapAtCap: string | null;
   peAtFloor: string | null;

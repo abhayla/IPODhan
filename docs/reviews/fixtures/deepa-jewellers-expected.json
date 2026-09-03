@@ -22,6 +22,7 @@
     "ofs_amount": 1990.52,
     "ofs_amount_at_cap": 2097.16,
     "total_offer_shares_at_floor": 26729292.0,
+    "total_offer_shares_at_cap": 25972633.0,
     "total_offer_amount_at_floor": 4490.52,
     "market_cap_at_floor": 16276.0,
     "market_cap_at_cap": 17014.0,

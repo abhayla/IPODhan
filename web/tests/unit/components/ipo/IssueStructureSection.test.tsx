@@ -260,15 +260,21 @@ describe('IssueStructureSection', () => {
     });
   });
 
-  // W-85(b): shares_at_floor/shares_at_cap hold the FRESH-issue share count,
-  // not the total offer, and no total-offer share count is stored anywhere.
-  describe('Valuation table share row (W-85b)', () => {
+  // W-88: the offer's three share legs (fresh / OFS / total) each have their
+  // own ipo_valuation column, so the table shows all three and the
+  // "not stored yet" footnote is gone.
+  describe('Valuation table share legs (W-88)', () => {
     const valuation = {
       pricingEvent: 'PRICE_BAND_AD',
       priceFloor: '140',
       priceCap: '147',
       sharesAtFloor: '14880952',
       sharesAtCap: '14124293',
+      freshSharesAtFloor: '14880952',
+      freshSharesAtCap: '14124293',
+      ofsShares: '11848340',
+      totalSharesAtFloor: '26729292',
+      totalSharesAtCap: '25972633',
       mcapAtFloor: null,
       mcapAtCap: null,
       peAtFloor: null,
@@ -279,33 +285,41 @@ describe('IssueStructureSection', () => {
       faceValueMultipleCap: null,
     };
 
-    it('labels the share row as the fresh issue, not the whole offer', () => {
+    it('shows the fresh, offer-for-sale and total share legs with their values', () => {
       render(<IssueStructureSection ipoDetails={mockIpoDetails} valuation={valuation} />);
 
       expect(screen.getByText('Fresh issue shares')).toBeInTheDocument();
-      expect(screen.queryByText('Equity shares offered')).not.toBeInTheDocument();
+      expect(screen.getByText('Offer for sale shares')).toBeInTheDocument();
+      expect(screen.getByText('Total offer shares')).toBeInTheDocument();
+      // Substance, not shape: the printed figures themselves.
       expect(screen.getByText('1,48,80,952')).toBeInTheDocument();
+      expect(screen.getByText('1,41,24,293')).toBeInTheDocument();
+      expect(screen.getAllByText('1,18,48,340')).toHaveLength(2);
+      expect(screen.getByText('2,67,29,292')).toBeInTheDocument();
+      expect(screen.getByText('2,59,72,633')).toBeInTheDocument();
     });
 
-    it('footnotes that the total offer share count is not stored yet', () => {
+    it('no longer footnotes that the total offer share count is unstored', () => {
       render(<IssueStructureSection ipoDetails={mockIpoDetails} valuation={valuation} />);
 
-      expect(
-        screen.getByText(
-          'Total offer shares including the offer for sale will be shown once stored'
-        )
-      ).toBeInTheDocument();
+      expect(screen.queryByText(/will be shown once stored/)).not.toBeInTheDocument();
     });
 
-    it('omits the footnote when no share counts are stored', () => {
-      render(
-        <IssueStructureSection
-          ipoDetails={mockIpoDetails}
-          valuation={{ ...valuation, sharesAtFloor: null, sharesAtCap: null }}
-        />
-      );
+    it('falls back to shares_at_floor/at_cap for rows written before migration 0048', () => {
+      const legacy = {
+        ...valuation,
+        freshSharesAtFloor: null,
+        freshSharesAtCap: null,
+        ofsShares: null,
+        totalSharesAtFloor: null,
+        totalSharesAtCap: null,
+      };
+      render(<IssueStructureSection ipoDetails={mockIpoDetails} valuation={legacy} />);
 
-      expect(screen.queryByText(/Total offer shares including/)).not.toBeInTheDocument();
+      expect(screen.getByText('Fresh issue shares')).toBeInTheDocument();
+      expect(screen.getByText('1,48,80,952')).toBeInTheDocument();
+      expect(screen.queryByText('Offer for sale shares')).not.toBeInTheDocument();
+      expect(screen.queryByText('Total offer shares')).not.toBeInTheDocument();
     });
   });
 });
