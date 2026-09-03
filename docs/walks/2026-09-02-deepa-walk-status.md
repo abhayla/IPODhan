@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-03 09:25 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-03 09:35 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -65,3 +65,4 @@ Last updated: 2026-09-03 09:25 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 - 2026-09-03 09:10: IPO page mockup (W-75) published for owner approval.
 - 2026-09-03 09:20: W-74 done and reproduced. W-76 (SUB_SYNDICATE enum, migration 0047) running. W-77 opened (column-aware text, after the walk).
 - 2026-09-03 09:25: W-76 done (9de4828c, migration 0047). G5 PASS. Serial queue continues with the tooling rows (W-04, W-54, W-44, W-20, W-14, W-19).
+- 2026-09-03 09:35: W-04 fixed (0aa8237d): the merge step no longer rejects a correct issue size when NSE's share count is net of anchors. W-54 (blank anchor names) running.
