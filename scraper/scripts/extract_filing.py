@@ -1521,6 +1521,35 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
     emit.put("compliance_officer", co, page_for(gk), "compliance_officer_present",
              (bool(co), "%s" % co))
 
+    # W-88 E4: the same cover line that names the compliance officer prints the
+    # company's telephone and e-mail. They are read off THAT line only -- the
+    # advertisement repeats "Telephone:" and "E-mail:" for every BRLM and for
+    # the registrar, so a document-wide search would file a bank's switchboard
+    # as the issuer's grievance contact.
+    co_phone = co_email = None
+    if gk >= 0:
+        pm = re.search(r"Telephone\s*:\s*([+0-9][0-9 ()+\-]{6,30})", lines[gk], re.I)
+        if pm:
+            co_phone = " ".join(pm.group(1).split()).strip(" -")
+        em = re.search(r"E-?mail\s*:\s*([^\s;,]+@[^\s;,]+)", lines[gk], re.I)
+        if em:
+            co_email = em.group(1).rstrip(".;,")
+    if co_phone is None:
+        emit.null("compliance_officer_phone", "no_telephone_on_the_contact_person_line",
+                  page_for(gk))
+    else:
+        emit.put("compliance_officer_phone", co_phone, page_for(gk),
+                 "phone_fits_column_and_has_enough_digits",
+                 (len(co_phone) <= 50 and sum(c.isdigit() for c in co_phone) >= 8,
+                  co_phone))
+    if co_email is None:
+        emit.null("compliance_officer_email", "no_email_on_the_contact_person_line",
+                  page_for(gk))
+    else:
+        emit.put("compliance_officer_email", co_email, page_for(gk),
+                 "email_fits_column_and_is_addressable",
+                 (len(co_email) <= 255 and co_email.count("@") == 1, co_email))
+
     cin = None
     cidx = _find(lines, CIN_RX)
     if cidx >= 0:

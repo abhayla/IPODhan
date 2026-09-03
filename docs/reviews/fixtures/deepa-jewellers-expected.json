@@ -310,7 +310,9 @@
         "name": "HDFC Bank Limited",
         "role": "PUBLIC_ISSUE_BANK"
       }
-    ]
+    ],
+    "compliance_officer_phone": "+ 91 76809 62117",
+    "compliance_officer_email": "cs@deepajewel.com"
   },
   "_null_with_reason": {
     "PRICE_BAND_AD": {

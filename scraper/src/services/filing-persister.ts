@@ -658,6 +658,8 @@ export async function persistFilingExtraction(
   mark('upiCutoffTime', str(extraction, 'upi_cutoff_time'));
   mark('designatedExchange', str(extraction, 'designated_stock_exchange'));
   mark('complianceOfficer', str(extraction, 'compliance_officer'));
+  mark('complianceOfficerPhone', str(extraction, 'compliance_officer_phone'));
+  mark('complianceOfficerEmail', str(extraction, 'compliance_officer_email'));
   mark('companyDescription', description);
   if (faceValue !== null) mark('faceValue', faceValue.toString());
   const lotMultiple = num(extraction, 'lot_multiple');

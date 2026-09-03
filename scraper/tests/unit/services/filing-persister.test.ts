@@ -432,6 +432,22 @@ describe('filing-persister — PRICE_BAND_AD mapping (DEEPA oracle)', () => {
     ]);
   });
 
+  // W-88 E4: ipo_details already had compliance_officer_phone/_email columns;
+  // nothing wrote them because the extractor read only the officer's name.
+  it('W-88: writes the compliance officer phone and e-mail off the cover line', async () => {
+    const s = makeDeps();
+    await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const row = s.detailsUpsert.mock.calls[0][1] as Record<string, unknown>;
+    expect(row.complianceOfficer).toBe('Vandana Modani');
+    expect(row.complianceOfficerPhone).toBe('+ 91 76809 62117');
+    expect(row.complianceOfficerEmail).toBe('cs@deepajewel.com');
+  });
+
   it('writes the peer table and financial_data in crores', async () => {
     const s = makeDeps();
     const summary = await persistFilingExtraction(
