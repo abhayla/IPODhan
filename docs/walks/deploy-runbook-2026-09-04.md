@@ -6,7 +6,7 @@ Preconditions (all done on 2026-09-03 night): W-108b + W-109 landed and reproduc
 - `gh pr ready 278`
 - `gh pr merge 278 --merge --subject "DEEPA pipeline walk + S-02 + due-step scheduler (PR #278)"` (merge commit; keeps per-fix commits)
 - `gh pr close 277 --comment "Superseded: both commits are in #278"`
-- Push to main auto-deploys STAGING (deploy-linux.yml push guard). Wait for it: `gh run list --workflow deploy-linux.yml --limit 1`; then `curl -s https://staging.<host>/api/version` (find the staging host in scripts/deploy-linux.sh / nginx) and open one IPO page on staging.
+- Push to main auto-deploys STAGING (deploy-linux.yml push guard). Wait for it: `gh run list --workflow deploy-linux.yml --limit 1`; then `curl -s https://staging.ipodhan.com/api/version` (nginx `sites-enabled/staging.ipodhan.com` -> 127.0.0.1:3012; prod ipodhan.com -> 3011) and open one IPO page on staging.
 
 ## 2. Production deploy
 - `gh workflow run deploy-linux.yml -f slot=prod` ; watch `gh run watch <id>`.
