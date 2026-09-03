@@ -767,6 +767,130 @@ def issue_banks(lines):
     return banks, anchor
 
 
+# --- W-88 (B8): per-investor-class bid submission windows -------------------
+#
+# The advertisement prints, under "Submission of Bids (other than Bids from
+# Anchor Investors)", one row per investor class and application channel with
+# the clock window that class may bid in. The newspaper sets this beside a
+# SECOND table (the indicative timetable), so the PDF text layer interleaves
+# the two: a row's own wrap lines arrive several lines below it with the other
+# table's rows in between. The helper therefore never joins "the next line" —
+# it joins only a line that is unmistakably the continuation of an activity
+# whose parentheses are still open (see _is_activity_wrap).
+
+BID_WINDOW_HEADING_RX = re.compile(
+    r"SUBMISSION\s+OF\s+BIDS\s*\(\s*OTHER\s+THAN\s+BIDS\s+FROM\s+ANCHOR\s+INVESTORS",
+    re.I)
+# The window itself always runs "Only between <time> ... IST"; everything after
+# the IST is the other column spliced onto the same physical line.
+BID_WINDOW_RX = re.compile(r"(Only\s+between\b.*?\bIST)", re.I)
+# Two rows print their window over two lines, the second carrying only the day.
+BID_WINDOW_TAIL_RX = re.compile(r"^on\s+Bid\s*/\s*Offer\s+Closing\s+Date\.?$", re.I)
+BID_WINDOW_SCAN_LINES = 60
+BID_WINDOW_WRAP_LOOKAHEAD = 8
+BID_ACTIVITY_MAX = 300
+
+
+def _paren_balanced(text):
+    return text.count("(") <= text.count(")")
+
+
+def _is_activity_wrap(line):
+    """(accept, text) for a line that MIGHT continue an activity label whose
+    parentheses are still open.
+
+    Two shapes are accepted, and nothing else:
+      * a mid-sentence wrap, which starts with a lower-case letter
+        ("banking, mobile banking and syndicate ASBA applications ...");
+      * a CLOSING wrap, whose text up to its first ')' closes more parentheses
+        than it opens ("Bid Amount is more than `0.50 million)").
+    The second test is what keeps the neighbouring timetable out: its rows
+    ("Initiation of refunds (if any, for Anchor Investors) / unblocking ...")
+    do carry a ')', but they OPEN their own bracket first, so the prefix is
+    balanced and the line is rejected. A closing wrap is cut at that ')', so
+    the right-hand column glued to its tail never enters the label.
+    """
+    if not line.strip():
+        return False, ""
+    close = line.find(")")
+    prefix = line[:close + 1] if close >= 0 else line
+    if close >= 0 and prefix.count(")") > prefix.count("("):
+        return True, prefix
+    if line.lstrip()[:1].islower():
+        return True, prefix if close >= 0 else line
+    return False, ""
+
+
+def bid_windows(lines):
+    """[{activity, window}] for every bid-submission row the advertisement
+    prints under its "Submission of Bids" heading. Returns ([], None) when the
+    heading is absent."""
+    start = _find(lines, BID_WINDOW_HEADING_RX)
+    if start < 0:
+        return [], None
+    end = min(len(lines), start + BID_WINDOW_SCAN_LINES)
+    hits = [i for i in range(start, end) if BID_WINDOW_RX.search(lines[i])]
+
+    rows, anchor = [], None
+    for n, idx in enumerate(hits):
+        m = BID_WINDOW_RX.search(lines[idx])
+        activity = " ".join(lines[idx][:m.start()].split())
+        j, joined = idx + 1, 0
+        while (not _paren_balanced(activity)
+               and j < end and joined < BID_WINDOW_WRAP_LOOKAHEAD):
+            accept, text = _is_activity_wrap(lines[j])
+            if accept:
+                activity = "%s %s" % (activity, " ".join(text.split()))
+                joined += 1
+            j += 1
+        activity = activity.rstrip("#^*. ").strip()
+
+        window = " ".join(m.group(1).split())
+        tail_end = hits[n + 1] if n + 1 < len(hits) else min(end, idx + 4)
+        for k in range(idx + 1, tail_end):
+            if BID_WINDOW_TAIL_RX.match(lines[k].strip()):
+                window = "%s %s" % (window, " ".join(lines[k].split()))
+                break
+
+        if not activity or not _paren_balanced(activity):
+            continue
+        rows.append({"activity": activity[:BID_ACTIVITY_MAX], "window": window})
+        if anchor is None:
+            anchor = idx
+    return rows, anchor
+
+
+# --- W-88 (D7): promoter-group transactions since the DRHP ------------------
+#
+# The ad states, in one sentence, whether the promoters or promoter group have
+# transacted shares of 1% or more of the paid-up capital since the DRHP. The
+# NEGATIVE form ("have not undertaken any transaction ...") is a real answer,
+# not a missing one, and is emitted as an empty list.
+PROMOTER_GROUP_TXN_RX = re.compile(
+    r"promoters?\s+or\s+members?\s+of\s+the\s+promoter\s+group.{0,240}?"
+    # `.` not `[^.]`: the sentence is already the bound (the caller splits on
+    # ". "), and a printed percentage carries its own dot ("1.4%").
+    r"transaction.{0,240}?(?:from|since)\s+the\s+DRHP", re.I)
+PROMOTER_GROUP_TXN_NEGATIVE_RX = re.compile(r"\bhave\s+not\b|\bhas\s+not\b|\bno\s+transaction",
+                                            re.I)
+PROMOTER_GROUP_TXN_MAX = 500
+
+
+def promoter_group_transactions(lines):
+    """([{summary}], anchor) — the promoter-group transactions the ad discloses
+    since the DRHP. [] when the ad states there were none; (None, None) when the
+    ad does not carry the sentence at all, which is NOT the same answer."""
+    for idx, line in enumerate(lines):
+        for sentence in re.split(r"(?<=\.)\s+", line):
+            if not PROMOTER_GROUP_TXN_RX.search(sentence):
+                continue
+            summary = " ".join(sentence.split())[:PROMOTER_GROUP_TXN_MAX].strip()
+            if PROMOTER_GROUP_TXN_NEGATIVE_RX.search(summary):
+                return [], idx
+            return [{"summary": summary}], idx
+    return None, None
+
+
 def litigation_notices(lines):
     """[{summary}] for each litigation / IP-dispute notice the advertisement
     describes. Each summary is the sentence carrying the notice, capped at
@@ -1625,6 +1749,25 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
         emit.put("issue_banks", banks, page_for(bank_idx), "issue_bank_names_storable",
                  (not overlong, "%s banks" % len(banks) if not overlong
                   else "names over 255 chars: %s" % overlong))
+
+    # ---- B8 (W-88): per-investor-class bid submission windows -------------
+    windows, win_idx = bid_windows(lines)
+    if not windows:
+        emit.null("bid_windows", "submission_of_bids_heading_not_found")
+    else:
+        bad = [w["activity"] for w in windows if len(w["activity"]) > BID_ACTIVITY_MAX]
+        emit.put("bid_windows", windows, page_for(win_idx), "bid_window_rows_bounded",
+                 (not bad, "%s rows" % len(windows) if not bad
+                  else "activities over %d chars: %s" % (BID_ACTIVITY_MAX, bad)))
+
+    # ---- D7 (W-88): promoter-group transactions since the DRHP ------------
+    pg_txns, pg_idx = promoter_group_transactions(lines)
+    if pg_txns is None:
+        emit.null("promoter_group_transactions_since_drhp", "statement_not_found")
+    else:
+        emit.put("promoter_group_transactions_since_drhp", pg_txns, page_for(pg_idx),
+                 "promoter_group_transactions_stated",
+                 (True, "%s disclosed transactions" % len(pg_txns)))
 
     notices, lit_idx = litigation_notices(lines)
     if not notices:

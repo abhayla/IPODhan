@@ -354,7 +354,6 @@ const NO_COLUMN_FIELDS: Record<string, string> = {
   // it would replace an actual bid date with a planned one.
   anchor_bid_date:
     'anchor_investors.bid_date is NOT NULL on a row with 5 further NOT NULL columns no filing carries; an existing row holds the date from the anchor allocation report, which must not be overwritten',
-  book_building_regulation: 'no regulation-citation column (mapped to issue_type only)',
   brlm_issues_3y_total: 'totals row; the per-BRLM rows carry the figures',
   brlm_closed_below_total: 'totals row; the per-BRLM rows carry the figures',
   promoter_name: 'covered by the promoters table',
@@ -685,7 +684,37 @@ export async function persistFilingExtraction(
   }
 
   // The ad cites SEBI ICDR Reg 6(1)/6(2) only for a book-built offer.
-  if (str(extraction, 'book_building_regulation')) mark('issueType', 'BOOK_BUILDING');
+  const regulation = str(extraction, 'book_building_regulation');
+  if (regulation) mark('issueType', 'BOOK_BUILDING');
+  // W-88 (A12): the citation itself now has a column, so the offer's regulation
+  // survives instead of collapsing into the issue_type enum. Stored in the
+  // form the ad prints it ("Regulation 6(1)"), inside the column's 32 chars.
+  if (regulation) {
+    const cited = `Regulation ${regulation}`;
+    if (cited.length <= 32) mark('sebiRegulationCited', cited);
+  }
+
+  // W-88 (B8): the per-investor-class bid submission windows. Written only as a
+  // whole list - a partial list would read as "these are the only windows".
+  const windows = list<{ activity?: string; window?: string }>(extraction, 'bid_windows')
+    .filter((w) => typeof w.activity === 'string' && typeof w.window === 'string')
+    .map((w) => ({ activity: w.activity as string, window: w.window as string }));
+  if (windows.length > 0) mark('bidWindows', windows);
+
+  // W-88 (D2): the AGGREGATE promoter holding. promoters.shares_held stays null
+  // (it is per-promoter and the ad never prints a per-person split).
+  const promoterShares = num(extraction, 'promoter_shares_held');
+  if (promoterShares !== null && Number.isFinite(promoterShares) && promoterShares >= 0) {
+    mark('promoterSharesHeld', Math.round(promoterShares));
+  }
+
+  // W-88 (D7): promoter-group transactions since the DRHP. An EMPTY array is a
+  // real answer ("there were none") and IS written; the extractor emits null,
+  // not [], when the ad does not carry the statement at all.
+  const pgTxns = extraction.fields?.promoter_group_transactions_since_drhp;
+  if (pgTxns && pgTxns.check?.passed && Array.isArray(pgTxns.value)) {
+    mark('promoterGroupTransactionsSinceDrhp', pgTxns.value);
+  }
 
   if (Object.keys(details).length > 0) {
     // Per-field protection: an admin who hand-corrected one ipo_details column
@@ -1071,7 +1100,8 @@ export async function persistFilingExtraction(
       name,
       // promoter_shares_held is the AGGREGATE promoter holding; assigning it to
       // one named promoter would invent a per-person figure the ad never
-      // printed. Left null; the aggregate is reported as skipped_no_column.
+      // printed. Left null; the aggregate goes to ipo_details.promoter_shares_held
+      // (W-88, migration 0049).
       sharesHeld: null,
       waca:
         (wacaByName.get(name) ?? (names.length === 1 ? soloWaca : null))?.toString() ?? null,
@@ -1085,11 +1115,6 @@ export async function persistFilingExtraction(
       }
       bump(written, 'promoters', rows.length);
     }
-  }
-  if (num(extraction, 'promoter_shares_held') !== null) {
-    skippedNoColumn.push(
-      'promoter_shares_held (aggregate promoter holding; promoters.shares_held is per-promoter)'
-    );
   }
 
   // --------------------------- 6. promoter_acquisition_ranges (1Y/18M/3Y)

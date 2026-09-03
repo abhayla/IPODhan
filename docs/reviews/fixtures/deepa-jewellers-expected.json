@@ -312,7 +312,42 @@
       }
     ],
     "compliance_officer_phone": "+ 91 76809 62117",
-    "compliance_officer_email": "cs@deepajewel.com"
+    "compliance_officer_email": "cs@deepajewel.com",
+    "bid_windows": [
+      {
+        "activity": "Submission and revision in Bids",
+        "window": "Only between 10.00 a.m. and 5.00 p.m. IST"
+      },
+      {
+        "activity": "Submission of electronic applications (online ASBA through 3-in-1 accounts) for RIBs",
+        "window": "Only between 10.00 a.m. and up to 5.00 p.m. IST"
+      },
+      {
+        "activity": "Submission of electronic application (bank ASBA through online channels like internet banking, mobile banking and syndicate ASBA applications through UPI as a payment mechanism where Bid Amount is up to `0.50 million)",
+        "window": "Only between 10.00 a.m. and up to 4.00 p.m. IST"
+      },
+      {
+        "activity": "Submission of electronic applications (syndicate non-retail, non-individual applications of QIBs and NIIs)",
+        "window": "Only between 10.00 a.m. and up to 3.00 p.m. IST"
+      },
+      {
+        "activity": "Submission of Physical Applications (Bank ASBA)",
+        "window": "Only between 10.00 a.m. and up to 1.00 p.m. IST"
+      },
+      {
+        "activity": "Submission of physical applications (syndicate non-retail, non-individual applications where Bid Amount is more than `0.50 million)",
+        "window": "Only between 10.00 a.m. and up to 12.00 p.m. IST"
+      },
+      {
+        "activity": "Upward revision of Bids by QIBs and Non-Institutional Bidders categories",
+        "window": "Only between 10.00 a.m. and up to 4.00 p.m. IST on Bid/ Offer Closing Date"
+      },
+      {
+        "activity": "Upward or downward revision of Bids or cancellation of Bids by RIBs",
+        "window": "Only between 10.00 a.m. and up to 5.00 p.m. IST on Bid/ Offer Closing Date"
+      }
+    ],
+    "promoter_group_transactions_since_drhp": []
   },
   "_null_with_reason": {
     "PRICE_BAND_AD": {

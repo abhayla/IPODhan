@@ -346,7 +346,13 @@ describe('filing-persister — PRICE_BAND_AD mapping (DEEPA oracle)', () => {
     expect(rows.every((r) => r.sharesHeld === null)).toBe(true);
     expect(rows.find((r) => r.name === 'Ashish Agarwal')!.waca).toBe('0.5');
     expect(rows.find((r) => r.name === 'Dev Agarwal')!.waca).toBeNull();
-    expect(summary.skipped_no_column.some((x) => x.startsWith('promoter_shares_held'))).toBe(true);
+    // W-88 (migration 0049): the aggregate now lands on its own ipo_details
+    // column instead of being reported as a field with nowhere to go.
+    expect(summary.skipped_no_column.some((x) => x.startsWith('promoter_shares_held'))).toBe(
+      false
+    );
+    const details = s.detailsUpsert.mock.calls[0][1] as Record<string, unknown>;
+    expect(details.promoterSharesHeld).toBe(40005000);
   });
 
   it('writes BRLM + registrar intermediaries and leaves unmapped SEBI regs null', async () => {
@@ -446,6 +452,100 @@ describe('filing-persister — PRICE_BAND_AD mapping (DEEPA oracle)', () => {
     expect(row.complianceOfficer).toBe('Vandana Modani');
     expect(row.complianceOfficerPhone).toBe('+ 91 76809 62117');
     expect(row.complianceOfficerEmail).toBe('cs@deepajewel.com');
+  });
+
+  // W-88 B8: the per-investor-class bid submission windows. NOT ipoMarketTimings
+  // - that column is varchar(50) and the NSE scraper fills it with the
+  // exchange's trading hours; migration 0049 gave the windows their own jsonb.
+  it('W-88: writes the eight bid submission windows to ipo_details.bidWindows', async () => {
+    const s = makeDeps();
+    await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const row = s.detailsUpsert.mock.calls[0][1] as Record<string, unknown>;
+    const windows = row.bidWindows as { activity: string; window: string }[];
+    expect(windows).toHaveLength(8);
+    expect(windows[0]).toEqual({
+      activity: 'Submission and revision in Bids',
+      window: 'Only between 10.00 a.m. and 5.00 p.m. IST',
+    });
+    expect(windows.every((w) => w.window.includes('IST'))).toBe(true);
+    // The NSE trading-hours column must not be touched by this write.
+    expect(row.ipoMarketTimings).toBeUndefined();
+  });
+
+  it('W-88: a bid window missing its activity or window text is dropped', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('PRICE_BAND_AD');
+    (extraction.fields as Record<string, unknown>).bid_windows = {
+      value: [
+        { activity: 'Submission and revision in Bids', window: 'Only between 10.00 a.m. IST' },
+        { activity: 'Submission of Physical Applications (Bank ASBA)' },
+        { window: 'Only between 10.00 a.m. and up to 1.00 p.m. IST' },
+      ],
+      check: { passed: true, detail: '3 rows' },
+    };
+    await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const row = s.detailsUpsert.mock.calls[0][1] as Record<string, unknown>;
+    expect(row.bidWindows).toEqual([
+      { activity: 'Submission and revision in Bids', window: 'Only between 10.00 a.m. IST' },
+    ]);
+  });
+
+  // W-88 D2/A12/D7 (migration 0049): three fields that used to be reported as
+  // skipped_no_column now have ipo_details columns.
+  it('W-88: writes the aggregate promoter holding, regulation cited and D7 list', async () => {
+    const s = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const row = s.detailsUpsert.mock.calls[0][1] as Record<string, unknown>;
+    expect(row.promoterSharesHeld).toBe(40005000);
+    expect(row.sebiRegulationCited).toBe('Regulation 6(1)');
+    // The ad states there were NO promoter-group transactions since the DRHP -
+    // an empty list is that answer, and it is stored, not skipped.
+    expect(row.promoterGroupTransactionsSinceDrhp).toEqual([]);
+    expect(row.issueType).toBe('BOOK_BUILDING');
+    // The aggregate holding is NOT smeared onto a named promoter.
+    const promoters = s.replacePromoters.mock.calls[0][1] as Array<Record<string, unknown>>;
+    expect(promoters.every((r) => r.sharesHeld === null)).toBe(true);
+    // ... and it is no longer reported as a field with no column.
+    expect(
+      summary.skipped_no_column.filter(
+        (f) =>
+          f.startsWith('promoter_shares_held') ||
+          f.startsWith('book_building_regulation') ||
+          f.startsWith('promoter_group_transactions_since_drhp')
+      )
+    ).toEqual([]);
+  });
+
+  it('W-88: a promoter-group statement the ad never printed writes no column', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('PRICE_BAND_AD');
+    (extraction.fields as Record<string, unknown>).promoter_group_transactions_since_drhp = {
+      value: null,
+      check: { passed: true, detail: 'statement_not_found' },
+    };
+    await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const row = s.detailsUpsert.mock.calls[0][1] as Record<string, unknown>;
+    expect('promoterGroupTransactionsSinceDrhp' in row).toBe(false);
   });
 
   it('writes the peer table and financial_data in crores', async () => {

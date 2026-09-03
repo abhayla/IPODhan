@@ -433,6 +433,130 @@ describe('extract_filing — W-74 syndicate members and litigation notices', () 
   });
 });
 
+describe('extract_filing - W-88 B8 bid submission windows / D7 promoter-group transactions', () => {
+  // VERBATIM from the Deepa Jewellers price band advertisement's text layer
+  // (PRICE_BAND_AD-121b6dd4.pdf). The newspaper sets the bid-window table beside
+  // the indicative timetable, so the text layer interleaves the two and every
+  // wrapped activity arrives lines below its own row, with the other table's
+  // rows in between. That splicing is the point of the fixture: a helper that
+  // simply joins the next line reads "An indicative timetable in respect of the
+  // Offer is set out below:" into the middle of a bid-window label.
+  const AD_BID_WINDOW_BLOCK = [
+    "AN INDICATIVE TIMETABLE IN RESPECT OF THE OFFER IS SET OUT BELOW:",
+    "Submission of Bids (other than Bids from Anchor Investors): Bid/Offer Period",
+    "Bid/Offer Period (except the Bid/Offer Closing Date) EVENT INDICATIVE DATE",
+    "ANCHOR INVESTOR BID/ OFFER PERIOD OPENS AND CLOSES ON Monday, August 31, 2026",
+    "Submission and revision in Bids Only between 10.00 a.m. and 5.00 p.m. IST",
+    "BID/ OFFER OPENS ON Tuesday, September 01, 2026",
+    "Bid/Offer Closing Date",
+    "BID/ OFFER CLOSES ON^ Thursday, September 03, 2026",
+    "Submission of electronic applications (online ASBA through 3-in-1 accounts) for RIBs Only between 10.00 a.m. and up to 5.00 p.m. IST",
+    "^UPI mandate end time and date shall be at 5:00 p.m. on Bid/Offer Closing Date.",
+    "Submission of electronic application (bank ASBA through online channels like internet Only between 10.00 a.m. and up to 4.00 p.m. IST",
+    "An indicative timetable in respect of the Offer is set out below:",
+    "banking, mobile banking and syndicate ASBA applications through UPI as a payment",
+    "Event Indicative Date",
+    "mechanism where Bid Amount is up to `0.50 million)",
+    "Finalisation of Basis of Allotment with the Designated Stock Exchange On or about Friday, September 04, 2026",
+    "Submission of electronic applications (syndicate non-retail, non-individual applications Only between 10.00 a.m. and up to 3.00 p.m. IST",
+    "Initiation of refunds (if any, for Anchor Investors) / unblocking of funds from ASBA Account* On or about, Monday, September 07, 2026",
+    "of QIBs and NIIs)",
+    "Credit of the Equity Shares to depository accounts of Allottees On or about, Monday, September 07, 2026",
+    "Submission of Physical Applications (Bank ASBA) Only between 10.00 a.m. and up to 1.00 p.m. IST",
+    "Commencement of trading of the Equity Shares on the Stock Exchanges On or about, Tuesday, September 08, 2026",
+    "Submission of physical applications (syndicate non-retail, non-individual applications where Only between 10.00 a.m. and up to 12.00 p.m. IST *In case of any delay in unblocking of amounts in the ASBA Accounts (including amounts blocked through the UPI Mechanism) exceeding two",
+    "Bid Amount is more than `0.50 million) Working Days from the Bid/Offer Closing Date for cancelled / withdrawn / deleted ASBA Forms, the Bidder shall be compensated at a uniform rate",
+    "Modification/Revision/cancelled of Bids of `100 per day or 15% per annum of the Bid Amount, whichever is higher from the date on which the request for cancellation/ withdrawal/ deletion",
+    "Upward revision of Bids by QIBs and Non-Institutional Bidders categories# Only between 10.00 a.m. and up to 4.00 p.m. IST is placed in the Stock Exchanges bidding platform until the date on which the amounts are unblocked (ii) any blocking of multiple amounts for the",
+    "same ASBA Form (for amounts blocked through the UPI Mechanism), the Bidder shall be compensated at a uniform rate `100 per day or 15% per",
+    "on Bid/ Offer Closing Date",
+    "annum of the total cumulative blocked amount except the original application amount, whichever is higher from the date on which such multiple",
+    "Upward or downward revision of Bids or cancellation of Bids by RIBs Only between 10.00 a.m. and up to 5.00 p.m. IST",
+    "amounts were blocked till the date of actual unblock; (iii) any blocking of amounts more than the Bid Amount, the Bidder shall be compensated at a",
+    "on Bid/ Offer Closing Date",
+  ].join("\n");
+
+  it('reads all eight printed rows and reassembles the wrapped activities', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts([[0, AD_BID_WINDOW_BLOCK]], 'PRICE_BAND_AD');
+    const rows = out.fields.bid_windows.value as { activity: string; window: string }[];
+    expect(out.fields.bid_windows.check.passed).toBe(true);
+    expect(rows).toHaveLength(8);
+    expect(rows[0]).toEqual({
+      activity: 'Submission and revision in Bids',
+      window: 'Only between 10.00 a.m. and 5.00 p.m. IST',
+    });
+    // Wrapped over three physical lines with the OTHER table's rows in between.
+    expect(rows[2].activity).toBe(
+      'Submission of electronic application (bank ASBA through online channels like internet ' +
+        'banking, mobile banking and syndicate ASBA applications through UPI as a payment ' +
+        'mechanism where Bid Amount is up to `0.50 million)',
+    );
+    expect(rows[2].window).toBe('Only between 10.00 a.m. and up to 4.00 p.m. IST');
+    expect(rows[3].activity).toBe(
+      'Submission of electronic applications (syndicate non-retail, non-individual applications ' +
+        'of QIBs and NIIs)',
+    );
+    // This row's wrap starts with a CAPITAL letter and still belongs to it.
+    expect(rows[5].activity).toBe(
+      'Submission of physical applications (syndicate non-retail, non-individual applications ' +
+        'where Bid Amount is more than `0.50 million)',
+    );
+    // The window's second printed line carries only the day it applies on.
+    expect(rows[7]).toEqual({
+      activity: 'Upward or downward revision of Bids or cancellation of Bids by RIBs',
+      window: 'Only between 10.00 a.m. and up to 5.00 p.m. IST on Bid/ Offer Closing Date',
+    });
+    // The neighbouring timetable must never leak into an activity label.
+    expect(
+      rows.every((r) => !/indicative timetable|Initiation of refunds/i.test(r.activity)),
+    ).toBe(true);
+    expect(rows.every((r) => /(IST|Closing Date)$/.test(r.window))).toBe(true);
+  });
+
+  it('an advertisement without the submission heading is null WITH a reason', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts(
+      [[0, 'PRICE BAND: ` 100 TO ` 105 PER EQUITY SHARE OF FACE VALUE OF ` 10 EACH']],
+      'PRICE_BAND_AD',
+    );
+    expect(out.fields.bid_windows.value).toBeNull();
+    expect(out.fields.bid_windows.check.detail).toBe('submission_of_bids_heading_not_found');
+  });
+
+  it('D7: "have not undertaken any transaction" is an EMPTY list, not a missing answer', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const page =
+      '2. The Promoters or members of the Promoter Group have not undertaken any transaction of ' +
+      'shares aggregating up to 1% or more of the paid-up equity share capital of the Company ' +
+      'from the DRHP till date.';
+    const out = runOnTexts([[0, page]], 'PRICE_BAND_AD');
+    expect(out.fields.promoter_group_transactions_since_drhp.value).toEqual([]);
+    expect(out.fields.promoter_group_transactions_since_drhp.check.passed).toBe(true);
+  });
+
+  it('D7: a disclosed transaction is kept as its printed sentence', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const page =
+      '2. The Promoters or members of the Promoter Group have undertaken a transaction of shares ' +
+      'aggregating to 1.4% of the paid-up equity share capital of the Company from the DRHP till ' +
+      'date.';
+    const out = runOnTexts([[0, page]], 'PRICE_BAND_AD');
+    const txns = out.fields.promoter_group_transactions_since_drhp.value as { summary: string }[];
+    expect(txns).toHaveLength(1);
+    expect(txns[0].summary).toContain('have undertaken a transaction of shares');
+  });
+
+  it('D7: an advertisement that never states it is null WITH a reason', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const out = runOnTexts([[0, 'PRICE BAND: ` 100 TO ` 105 PER EQUITY SHARE']], 'PRICE_BAND_AD');
+    expect(out.fields.promoter_group_transactions_since_drhp.value).toBeNull();
+    expect(out.fields.promoter_group_transactions_since_drhp.check.detail).toBe(
+      'statement_not_found',
+    );
+  });
+});
+
 describe('extract_filing — Deepa Jewellers RHP (captured page text)', () => {
   let out: Extraction;
   beforeAll(() => {
