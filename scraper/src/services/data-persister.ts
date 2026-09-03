@@ -25,6 +25,12 @@ import { FEATURE_FLAGS } from '../config/feature-flags.js';
 import { db, getRedisClient } from '@ipodhan/shared';
 import { ipoDemandGraph, ipoDetails } from '@ipodhan/shared/db/schema';
 import { resolveRegistrarId } from '@ipodhan/shared/utils/registrar-matcher';
+import { initStepLedger } from './step-ledger.js';
+import {
+  recordDiscoverySteps,
+  recordLiveStep,
+  type DiscoveryStepInput,
+} from './step-ledger-recorders.js';
 
 /**
  * Resolve a sanitized registrar name to its `registrars.id` FK (P3-2, T-278).
@@ -453,6 +459,18 @@ export async function upsertIPO(
   const slug = generateSlug(scrapedIPO.companyName);
   const normalizedName = normalizeCompanyNameForMatching(scrapedIPO.companyName);
 
+  /**
+   * S-02 step-ledger facts for this write (B1..B7, F1/F2/F4/F5/F6).
+   *
+   * Captured inside the retried closure but WRITTEN once, after
+   * `retryWithBackoff` returns — so a retried write records one set of ledger
+   * rows, not one per attempt, and a write that ultimately threw records none.
+   * `upsertIPO` is the only door to `ipos` (`scraper-write-path.md`), which is
+   * precisely why the hook belongs here: every source that reaches the database
+   * at all reaches this line.
+   */
+  let ledgerFacts: DiscoveryStepInput | null = null;
+
   logger.debug({
     companyName: scrapedIPO.companyName,
     normalizedName,
@@ -731,6 +749,21 @@ export async function upsertIPO(
             // Update IPO with consolidated data
             await ipoRepository.update(existingIPO.id, finalData);
 
+            // S-02: the consolidation door is also the F4/F5/F6 evidence — it is
+            // the thing that compared sources and wrote the conflict + provenance
+            // rows, so its own result is what the ledger records.
+            ledgerFacts = {
+              source,
+              created: false,
+              fields: Object.keys(finalData),
+              offeringType: (finalData as { offeringType?: string }).offeringType ?? null,
+              consolidated: true,
+              conflictsDetected: consolidationResult.conflictsDetected ?? 0,
+              conflictsBySeverity: consolidationResult.conflictsBySeverity ?? {},
+              fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
+              companyName: scrapedIPO.companyName,
+            };
+
             // W-17/W-18(i) (Deepa walk, 2026-09-02): the consolidation service is
             // the SINGLE writer of `field_sources` on this path. The re-track that
             // used to run here re-wrote every field whose `chosenSource` equalled
@@ -825,6 +858,20 @@ export async function upsertIPO(
         }
         await ipoRepository.update(existingIPO.id, fallbackData);
 
+        // S-02: the fallback door wrote the row but ran no consolidation, so F4
+        // and F5 are deliberately NOT claimed here — nothing compared sources
+        // this time. Recording them anyway would make the ledger lie about the
+        // one path where cross-verification did not happen.
+        ledgerFacts = {
+          source,
+          created: false,
+          fields: Object.keys(fallbackData),
+          offeringType: fallbackData.offeringType ?? null,
+          consolidated: false,
+          fieldSourcesWritten: false,
+          companyName: scrapedIPO.companyName,
+        };
+
         return existingIPO.id;
       } else {
         // Create new IPO
@@ -855,6 +902,16 @@ export async function upsertIPO(
           }
         }
 
+        ledgerFacts = {
+          source,
+          created: true,
+          fields: Object.keys(ipoData).filter((k) => (ipoData as Record<string, unknown>)[k] !== undefined),
+          offeringType: (ipoData as { offeringType?: string }).offeringType ?? null,
+          consolidated: false,
+          fieldSourcesWritten: FEATURE_FLAGS.ENABLE_SOURCE_TRACKING,
+          companyName: scrapedIPO.companyName,
+        };
+
         logger.info({ slug, source }, `New ${source} IPO ${slug} created`);
         return newIPO.id;
       }
@@ -867,6 +924,16 @@ export async function upsertIPO(
     { companyName: scrapedIPO.companyName, ipoId: result, source, duration },
     'IPO upserted successfully'
   );
+
+  // S-02 hook — the step ledger. Best-effort, after the primary write, exactly
+  // like every other post-write side effect (`non-fatal-side-effects.md`): the
+  // recorders never throw, and the ledger is bookkeeping about the scrape, not
+  // part of it. `initStepLedger` runs on the CREATE path so a brand-new IPO has
+  // all 52 catalogue rows without anyone running the backfill script.
+  if (ledgerFacts) {
+    if (ledgerFacts.created) await initStepLedger(result);
+    await recordDiscoverySteps(result, ledgerFacts);
+  }
 
   return result;
 }
@@ -1054,6 +1121,18 @@ export async function createSubscriptionSnapshot(
           subscriptionId: snapshot.id,
           timestamp: subscriptionData.timestamp
         }, 'Subscription snapshot persisted successfully (AC4)');
+        // S-02 hook — H1. One row per IPO per run; the snapshot's own scope and
+        // total are the evidence, so the ledger answers "when did subscription
+        // last actually land, and what did it say?" without a second query.
+        await recordLiveStep(ipoId, 'H1', {
+          source: options.source ?? null,
+          evidence: {
+            subscriptionId: snapshot.id,
+            scope: subscriptionData.scope ?? null,
+            total: subscriptionData.totalSubscription ?? null,
+            timestamp: subscriptionData.timestamp,
+          },
+        });
         return snapshot.id;
       } catch (dbError: any) {
         // Enhanced PostgreSQL error logging (Story 11.2, AC4)
@@ -1150,6 +1229,11 @@ export async function createDemandGraphSnapshot(
   }
   await db.insert(ipoDemandGraph).values(rows);
   logger.info({ ipoId, points: rows.length, exchange: rows[0].exchange }, 'Demand graph snapshot persisted');
+  // S-02 hook — H4.
+  await recordLiveStep(ipoId, 'H4', {
+    source: rows[0].exchange ?? null,
+    evidence: { points: rows.length, exchange: rows[0].exchange ?? null },
+  });
   return rows.length;
 }
 
@@ -1191,6 +1275,17 @@ export async function createGMPRecord(
     { ipoId, gmpRecordId: result, gmp, duration },
     'GMP record created successfully'
   );
+
+  // S-02 hook — H2 (the GMP write) and F3 (InvestorGain is the only GMP source,
+  // so a GMP landing IS the InvestorGain cross-verification touching this IPO).
+  await recordLiveStep(ipoId, 'H2', {
+    source: 'INVESTORGAIN_GMP',
+    evidence: { gmpRecordId: result, gmp, gmpPercentage, timestamp },
+  });
+  await recordLiveStep(ipoId, 'F3', {
+    source: 'INVESTORGAIN_GMP',
+    evidence: { matchedBy: 'gmp record', gmp },
+  });
 
   return result;
 }

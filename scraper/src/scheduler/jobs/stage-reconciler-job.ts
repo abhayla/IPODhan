@@ -10,8 +10,42 @@
  */
 import { sql } from 'drizzle-orm';
 import { db } from '@ipodhan/shared/db';
+import { getRedisClient, IpoPipelineStepsRepository } from '@ipodhan/shared';
 import logger from '../../utils/logger.js';
 import { planStageReconciliation, type ReconcilerIpoRow, type FetchKind } from '../stage-reconciler.js';
+import { initStepLedger } from '../../services/step-ledger.js';
+import { planLifecycleSteps, writeSteps } from '../../services/step-ledger-recorders.js';
+
+/**
+ * Which catalogue steps a due fetch kind stands for (S-02).
+ *
+ * The reconciler reasons in FETCH KINDS ("this IPO still has no peers"); the
+ * ledger reasons in STEPS ("E6 extract peer comparison"). This table is the one
+ * translation between the two vocabularies — without it the two models drift,
+ * which spec §G5 exists to prevent.
+ */
+export const STEPS_BY_FETCH_KIND: Partial<Record<FetchKind, string[]>> = {
+  documents: ['C1', 'C2', 'C3', 'C4'],
+  docDrhp: ['C1', 'C2', 'C3'],
+  docRhp: ['C1', 'C2', 'C3'],
+  docPriceBandAd: ['C1', 'C2', 'C4'],
+  docCorrigendum: ['C1', 'C2'],
+  financials: ['E3'],
+  peers: ['E6'],
+  objectives: ['E5'],
+  anchor: ['H3'],
+  subscription: ['H1'],
+  demand: ['H4'],
+  gmp: ['H2'],
+  listing: ['I5'],
+};
+
+/** Distinct, catalogue-ordered step ids for a set of due fetch kinds. */
+export function dueStepIdsFor(kinds: FetchKind[]): string[] {
+  const ids = new Set<string>();
+  for (const kind of kinds) for (const id of STEPS_BY_FETCH_KIND[kind] ?? []) ids.add(id);
+  return [...ids];
+}
 
 export interface StageReconcilerResult {
   totalIpos: number;
@@ -55,10 +89,47 @@ export async function runStageReconcilerJob(opts: { dryRun?: boolean } = {}): Pr
   const dueByKind: Record<string, number> = {};
   const byStage: Record<string, number> = {};
   let iposWithDueFetches = 0;
+
+  // S-02: the ledger repository, built once for the whole cycle.
+  const stepsRepository = new IpoPipelineStepsRepository(db as never, getRedisClient() as never);
+
   for (const p of plans) {
     byStage[p.stage] = (byStage[p.stage] || 0) + 1;
     if (p.dueFetches.length > 0) iposWithDueFetches++;
     for (const k of p.dueFetches) dueByKind[k] = (dueByKind[k] || 0) + 1;
+
+    // S-02 hook — I1 (stage derived) + I2 (due list computed), and a DUE row for
+    // each step whose window is open.
+    //
+    // This is the ONE place the reconciler stops being a pure dry run: it may now
+    // write ledger rows. It still enqueues nothing and fetches nothing — the
+    // §GATE below is untouched — because writing "this step is outstanding" is
+    // bookkeeping, while triggering the fetch is the irreversible act the owner
+    // gates. The existing rows are read first so a DUE write can never downgrade
+    // a step an earlier cycle already completed.
+    try {
+      await initStepLedger(p.id);
+      const existingRows = await stepsRepository.findByIpo(p.id);
+      const existing: Record<string, { status: string; nextDueAt?: Date | null }> = {};
+      for (const row of existingRows) existing[row.stepId] = { status: row.status, nextDueAt: row.nextDueAt };
+
+      await writeSteps(
+        p.id,
+        planLifecycleSteps({
+          stage: p.stage,
+          dueStepIds: dueStepIdsFor(p.dueFetches),
+          dueFetchKinds: p.dueFetches,
+          existing,
+        })
+      );
+    } catch (error) {
+      // Non-fatal: a ledger write must never fail the reconciler cycle.
+      logger.warn(
+        { ipoId: p.id, error: error instanceof Error ? error.message : String(error) },
+        '[stage-reconciler-job] step-ledger write failed (non-fatal)'
+      );
+    }
+
     if (!dryRun) {
       // §GATE: enqueue/trigger the due fetches here once activated. Intentionally a
       // no-op in this build — activation (job triggers + cron) is Abhay's call.

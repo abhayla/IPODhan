@@ -469,6 +469,12 @@ export interface DiscoveryIpo {
    * is the right one. Never a document source (owner rule, 2026-08-28).
    */
   verifierUrl?: string | null;
+  /**
+   * The public slug. The runner itself never uses it; it is carried here (S-02)
+   * so the cycle can invalidate the IPO's caches after an automatic filing
+   * persist without a second query per IPO.
+   */
+  slug?: string | null;
 }
 
 export interface RunnerDeps {

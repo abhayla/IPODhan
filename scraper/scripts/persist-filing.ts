@@ -31,26 +31,15 @@ import {
   getRedisClient,
   filterProtectedFields,
   IPORepository,
-  FinancialStatementsRepository,
-  IpoValuationRepository,
-  PromotersRepository,
-  IpoIntermediariesRepository,
-  BrlmTrackRecordRepository,
-  FinancialDataRepository,
-  FieldSourcesRepository,
-  IpoRiskFactorsRepository,
-  DocumentRepository,
 } from '@ipodhan/shared';
 import * as schema from '@ipodhan/shared/db/schema';
-import { PeerCompanyRepository } from '../src/repositories/peer-company-repository.js';
 import {
   persistFilingExtraction,
   type FilingDocType,
   type FilingExtraction,
   parseFilingUnit,
-  type IpoDetailsWriter,
-  type DocumentFilingDateWriter,
 } from '../src/services/filing-persister.js';
+import { buildFilingPersistDeps } from '../src/services/filing-persist-deps.js';
 import { persistAnchorReport } from '../src/services/anchor-persister.js';
 import { scrapeAnchorInvestors } from '../src/scrapers/anchor-investors-scraper.js';
 import { AnchorInvestorRepository } from '../src/repositories/anchor-investor-repository.js';
@@ -75,60 +64,13 @@ export interface RunOverrides {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** ipo_details has no repository - this is the single write path for it. */
-function makeIpoDetailsWriter(): IpoDetailsWriter {
-  return {
-    async upsert(ipoId, values) {
-      await db
-        .insert(schema.ipoDetails)
-        .values({ ipoId, ...values, updatedAt: new Date() } as never)
-        .onConflictDoUpdate({
-          target: schema.ipoDetails.ipoId,
-          set: { ...values, updatedAt: new Date() } as never,
-        });
-    },
-  };
-}
-
 /**
- * `documents.filing_date` is an UPDATE on the RHP row the discovery runner
- * already created — never an insert (see `DocumentFilingDateWriter`'s own
- * doc comment). Only RHP is wired here because that is the one doc type this
- * work package's writer scope covers; other doc types report 0 rows updated.
+ * S-02: the dependency builder moved to
+ * `src/services/filing-persist-deps.ts` so the document cycle can use the SAME
+ * write door. It is imported, never re-declared here — a second copy is exactly
+ * how the two doors would drift apart.
  */
-function makeDocumentFilingDateWriter(
-  documentRepository: DocumentRepository
-): DocumentFilingDateWriter {
-  return {
-    async setFilingDate({ ipoId, docType, filingDate }) {
-      if (docType !== 'RHP') return 0;
-      return documentRepository.setFilingDateForRhp(ipoId, filingDate);
-    },
-  };
-}
-
-function buildDeps(redis: ReturnType<typeof getRedisClient>) {
-  return {
-    ipoRepository: new IPORepository(db, redis),
-    financialStatements: new FinancialStatementsRepository(db, redis),
-    ipoValuation: new IpoValuationRepository(db, redis),
-    promoters: new PromotersRepository(db, redis),
-    intermediaries: new IpoIntermediariesRepository(db, redis),
-    brlmTrackRecord: new BrlmTrackRecordRepository(db, redis),
-    peerCompanies: new PeerCompanyRepository(db),
-    financialData: new FinancialDataRepository(db, redis),
-    fieldSources: new FieldSourcesRepository(db, redis),
-    ipoDetailsWriter: makeIpoDetailsWriter(),
-    riskFactors: new IpoRiskFactorsRepository(db, redis),
-    documentFilingDateWriter: makeDocumentFilingDateWriter(new DocumentRepository(db, redis)),
-    protectionFilter: (
-      id: string,
-      table: string,
-      data: Record<string, unknown>,
-      scraperName: string
-    ) => filterProtectedFields(id, table, data, scraperName, db, redis),
-  };
-}
+const buildDeps = buildFilingPersistDeps;
 
 async function resolveIpoId(needle: string): Promise<string> {
   if (UUID_RE.test(needle)) return needle;

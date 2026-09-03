@@ -22,7 +22,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db, getRedisClient } from '@ipodhan/shared';
-import { DocumentRepository, DocumentFetchStateRepository, IPORepository } from '@ipodhan/shared';
+import { DocumentRepository, DocumentFetchStateRepository, IPORepository, IpoPipelineStepsRepository } from '@ipodhan/shared';
 import { recordBseDiscoveryMetadata, recordDocumentSourceHints } from './data-persister.js';
 import { scraperLogs } from '@ipodhan/shared/db/schema';
 import logger from '../utils/logger.js';
@@ -46,6 +46,14 @@ import {
   hasStoredFile,
   getStoreDir,
 } from './document-store.js';
+import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import { initStepLedger } from './step-ledger.js';
+import { recordDocumentRunSteps } from './step-ledger-recorders.js';
+import {
+  processPendingFilings,
+  buildAutoPersistDeps,
+  type AutoPersistDeps,
+} from './filing-auto-persist.js';
 
 export interface DocumentCycleSummary {
   ipos: number;
@@ -113,7 +121,7 @@ export function deriveIssueShape(row: Record<string, unknown>): IssueShape {
 /** Candidate IPOs: live-window only (R10 — history is WP F's job, not the cycle's). */
 export async function loadCandidateIpos(): Promise<DiscoveryIpo[]> {
   const result = await db.execute(sql`
-    SELECT id, company_name, symbol, segment, status, price_range_min,
+    SELECT id, company_name, slug, symbol, segment, status, price_range_min,
            price_range_max, listing_date, bse_ipo_no,
            company_website, verifier_url
       FROM ipos
@@ -139,6 +147,7 @@ export async function loadCandidateIpos(): Promise<DiscoveryIpo[]> {
     .map((r) => ({
       id: String(r.id),
       companyName: String(r.company_name ?? ''),
+      slug: (r.slug as string | null) ?? null,
       symbol: (r.symbol as string | null) ?? null,
       segment: (r.segment as string | null) ?? null,
       stage: deriveLifecycleStage({
@@ -212,7 +221,13 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
   const store = new DocumentFetchStateRepository(db as never, redis as never);
   const documents = new DocumentRepository(db as never, redis as never);
   const ipoRepository = new IPORepository(db as never, redis as never);
+  const stepsRepository = new IpoPipelineStepsRepository(db as never, redis as never);
   const counter = new NetworkCounter();
+
+  // Built lazily and reused across IPOs: the dependency set opens repositories
+  // and a cache invalidator, and rebuilding it per IPO would be pure waste.
+  // Stays undefined entirely when the flag is off.
+  let autoPersistDeps: AutoPersistDeps | undefined;
 
   const runner = new DocumentDiscoveryRunner({
     fetcher: defaultFetcher,
@@ -257,6 +272,69 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
       const rows = persisted.map(toStateRow);
       const result = await runner.runIpo(ipo, rows);
       results.push(result);
+
+      // S-02 hook 1 — defensive ledger init. An IPO whose row was created before
+      // the ledger existed (or by a path that somehow bypassed upsertIPO) has no
+      // step rows at all, and every recordStep below would then be the only row
+      // it ever gets. Idempotent (`onConflictDoNothing`), so this costs one
+      // no-op insert per IPO per cycle and guarantees the grid is never ragged.
+      await initStepLedger(ipo.id);
+
+      // S-02 hook 2 — C1..C5, D1..D5, I3, I4 from the run that just happened.
+      // The existing rows are read first so a rung that failed THIS cycle cannot
+      // overwrite a DONE an earlier cycle earned (see planDocumentRunSteps).
+      // Cached by the repository, so this is not a per-IPO round trip every time.
+      let existingSteps: Record<string, { status: string }> | undefined;
+      try {
+        existingSteps = {};
+        for (const row of await stepsRepository.findByIpo(ipo.id)) {
+          existingSteps[row.stepId] = { status: row.status };
+        }
+      } catch (error) {
+        // Without the map the recorder falls back to "write everything", which is
+        // the pre-existing behaviour — never a reason to skip recording.
+        existingSteps = undefined;
+        logger.warn(
+          { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+          'Could not read the step ledger for the no-downgrade check (non-fatal)'
+        );
+      }
+      await recordDocumentRunSteps(result, {
+        withdrawn: ipo.issue?.withdrawn === true,
+        existing: existingSteps,
+      });
+
+      // S-02 hook 3 — extract + persist anything stored but not yet extracted.
+      //
+      // Runs for EVERY candidate, not only `result.found.length > 0`: a document
+      // found in an earlier cycle and never extracted (the flag was off, python
+      // was missing, the extractor crashed) must be picked up on a later cycle.
+      // Gating on "found something this cycle" would leave exactly those
+      // documents unextracted forever, which is the bug this hook exists to fix.
+      if (FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST) {
+        try {
+          const autoPersist = await processPendingFilings(
+            {
+              id: ipo.id,
+              companyName: ipo.companyName,
+              slug: ipo.slug ?? null,
+              segment: ipo.segment ?? null,
+            },
+            autoPersistDeps ?? (autoPersistDeps = buildAutoPersistDeps())
+          );
+          if (autoPersist.spawned > 0 || autoPersist.failed > 0) {
+            logger.info(
+              { ipoId: ipo.id, company: ipo.companyName, ...autoPersist },
+              'Filing auto-persist complete for one IPO'
+            );
+          }
+        } catch (error) {
+          logger.error(
+            { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+            'Filing auto-persist threw (non-fatal) — continuing the cycle'
+          );
+        }
+      }
 
       // Remember the IPO_NO while the IPO is still on the board (it leaves once
       // closed, exactly when the Prospectus becomes due) and how many lead

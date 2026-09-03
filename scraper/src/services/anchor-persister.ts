@@ -25,6 +25,7 @@
 
 import type { AnchorInvestorData } from '../scrapers/anchor-investors-scraper.js';
 import { createAnchorInvestors } from './data-persister.js';
+import { recordLiveStep } from './step-ledger-recorders.js';
 import logger from '../utils/logger.js';
 
 export interface AnchorPersistOptions {
@@ -488,6 +489,22 @@ export async function persistAnchorReport(
     { ipoId, apply, ...totals, lowConfidenceNames: lowConfidenceNames.length, skippedBlankNames },
     '[AnchorPersister] anchor report persisted'
   );
+
+  // S-02 hook — H3. Recorded only on the applied path: a dry run computed a plan
+  // and wrote nothing, so claiming the step DONE would be a lie. Every refusal
+  // above returns before this point, and each of those refusals is already
+  // reported to the caller in `refusedReason`.
+  if (apply) {
+    await recordLiveStep(ipoId, 'H3', {
+      source: 'ANCHOR_ALLOCATION_REPORT',
+      evidence: {
+        investorsWritten: publishableRows.length,
+        totals,
+        lowConfidenceNames: lowConfidenceNames.length,
+        skippedBlankNames,
+      },
+    });
+  }
 
   return {
     written: 1,

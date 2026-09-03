@@ -148,6 +148,29 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_DUPLICATE_SWEEP_JOB: process.env.ENABLE_DUPLICATE_SWEEP_JOB === 'true',
 
+  /**
+   * Enable AUTOMATIC filing extraction + persistence inside the document cycle
+   * (S-02). With the flag off — which is the default, and what production runs
+   * today — the document cycle behaves EXACTLY as it did before S-02: it
+   * discovers and stores PDFs and stops there. A stored RHP / price-band ad is
+   * turned into `ipos`, `financial_statements`, `promoters`, `ipo_valuation`,
+   * … rows only by a human running `scripts/persist-filing.ts`.
+   *
+   * With the flag on, `processPendingFilings` spawns the deterministic python
+   * extractor for every stored-but-not-yet-extracted document and writes the
+   * result through the SAME write door the CLI uses (`persistFilingExtraction`
+   * with the admin protection filter and the W-45 paired-agreement gate) —
+   * never a second write path.
+   *
+   * Separate from ENABLE_DOCUMENT_STATE_MACHINE on purpose: that flag decides
+   * whether documents are FOUND at all; this one decides whether finding one
+   * automatically changes published data. Turning it on in production is a
+   * distinct owner decision (§GATE) because it is the first time a scrape can
+   * rewrite a static field with no human in the loop.
+   * Default: false
+   */
+  ENABLE_FILING_AUTO_PERSIST: process.env.ENABLE_FILING_AUTO_PERSIST === 'true',
+
   // ==================== ROLLOUT CONTROLS ====================
 
   /**
@@ -271,6 +294,7 @@ export function getFeatureStatus(): Record<string, boolean | number | string[]> 
     SOURCE_TRACKING_PCT: FEATURE_FLAGS.SOURCE_TRACKING_PERCENTAGE,
     CONFLICT_DETECTION_PCT: FEATURE_FLAGS.CONFLICT_DETECTION_PERCENTAGE,
     CONSOLIDATION_PCT: FEATURE_FLAGS.CONSOLIDATION_PERCENTAGE,
+    FILING_AUTO_PERSIST: FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST,
     DEBUG_MODE: FEATURE_FLAGS.DEBUG_DATA_FLOW,
     ENABLED_SCRAPERS: FEATURE_FLAGS.ENABLED_SCRAPERS,
   };
