@@ -87,6 +87,15 @@ export interface AnchorPersistSummary {
   refusedReason: string | null;
   /** Names the OCR could not read cleanly. No column exists for this. */
   lowConfidenceNames: string[];
+  /**
+   * Investor rows dropped from the write because their name was blank (or
+   * whitespace-only) after trim — an OCR/text-layer read failure on that row.
+   * The row's arithmetic already passed the sum gates (names are not an
+   * arithmetic gate by design), so it is not a refusal by itself; it is
+   * simply not publishable without a name and is excluded from the written
+   * `investorList`, counted here for the run summary / admin conflicts page.
+   */
+  skippedBlankNames: number;
   applied: boolean;
 }
 
@@ -270,6 +279,7 @@ export async function persistAnchorReport(
     notCheckable: [],
     refusedReason: null,
     lowConfidenceNames: [],
+    skippedBlankNames: 0,
     applied: apply,
   };
 
@@ -296,19 +306,42 @@ export async function persistAnchorReport(
 
   const checks = runAnchorChecks(data);
   const failed = checks.filter((c) => !c.passed);
-  const lowConfidenceNames = (data.investorList || [])
-    .map((r) => r.name)
-    .filter((n) => isLowConfidenceName(n));
-
   const notCheckable = checks.filter((c) => c.notCheckable).map((c) => c.name);
   if (failed.length > 0) {
     const reason = failed.map((c) => `${c.name}: ${c.detail}`).join('; ');
+    const lowConfidenceNames = (data.investorList || [])
+      .map((r) => r.name)
+      .filter((n) => isLowConfidenceName(n));
     logger.warn(
       { ipoId, companyName: options.companyName, failed: failed.map((c) => c.name) },
       '[AnchorPersister] arithmetic gate failed — writing NOTHING'
     );
     return { ...empty, checks, notCheckable, lowConfidenceNames, refusedReason: reason };
   }
+
+  // Names are not an arithmetic gate by design (WHY GATES, top of file) — a
+  // blank/whitespace-only name is an OCR read failure on that ONE row, not a
+  // reason to refuse the whole filing. Drop it from what gets written and
+  // count it; a garbled-but-present name is still real allocation data and is
+  // written as-is (below), only flagged in `lowConfidenceNames`.
+  const rows = data.investorList || [];
+  const publishableRows = rows.filter((r) => r.name && r.name.trim().length > 0);
+  const skippedBlankNames = rows.length - publishableRows.length;
+
+  if (rows.length > 0 && publishableRows.length === 0) {
+    const reason =
+      `anchor write refused: all ${rows.length} investor rows have a blank name — ` +
+      'nothing to publish';
+    logger.warn(
+      { ipoId, rows: rows.length },
+      '[AnchorPersister] every investor row has a blank name — writing NOTHING'
+    );
+    return { ...empty, checks, notCheckable, skippedBlankNames, refusedReason: reason };
+  }
+
+  const lowConfidenceNames = publishableRows
+    .map((r) => r.name)
+    .filter((n) => isLowConfidenceName(n));
 
   const totals = {
     shares: data.totalSharesOffered,
@@ -327,7 +360,7 @@ export async function persistAnchorReport(
       anchorInvestorsCount: data.anchorInvestorsCount,
       lockIn50PercentDate: data.lockIn50PercentDate,
       lockInRemainingDate: data.lockInRemainingDate,
-      investorList: data.investorList,
+      investorList: publishableRows,
     };
     const result = await deps.protectionFilter(ipoId, 'anchor_investors', payload, 'DRHP');
     const kept = result.filtered as Record<string, unknown>;
@@ -337,7 +370,7 @@ export async function persistAnchorReport(
         `anchor_investors write refused: ${blocked.join(', ')} ` +
         'protected by an admin edit, and this row is rewritten whole';
       logger.warn({ ipoId, blocked }, '[AnchorPersister] protected field — writing NOTHING');
-      return { ...empty, checks, notCheckable, lowConfidenceNames, refusedReason: reason };
+      return { ...empty, checks, notCheckable, lowConfidenceNames, skippedBlankNames, refusedReason: reason };
     }
   }
 
@@ -351,24 +384,27 @@ export async function persistAnchorReport(
       lockIn50PercentDate: data.lockIn50PercentDate,
       lockInRemainingDate: data.lockInRemainingDate,
       // Names are stored exactly as the OCR read them — never "cleaned up" into
-      // a plausible-looking name the document does not contain.
-      investorList: data.investorList,
+      // a plausible-looking name the document does not contain. Blank names are
+      // excluded above (they are not a name at all); garbled-but-present names
+      // are written as-is and only flagged via `lowConfidenceNames`.
+      investorList: publishableRows,
     });
   }
 
   logger.info(
-    { ipoId, apply, ...totals, lowConfidenceNames: lowConfidenceNames.length },
+    { ipoId, apply, ...totals, lowConfidenceNames: lowConfidenceNames.length, skippedBlankNames },
     '[AnchorPersister] anchor report persisted'
   );
 
   return {
     written: 1,
-    investorsWritten: data.investorList.length,
+    investorsWritten: publishableRows.length,
     totals,
     checks,
     notCheckable,
     refusedReason: null,
     lowConfidenceNames,
+    skippedBlankNames,
     applied: apply,
   };
 }

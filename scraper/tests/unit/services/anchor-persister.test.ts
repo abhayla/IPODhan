@@ -479,3 +479,86 @@ describe('anchor-persister — ipos.scraper_locked (CRITICAL-2)', () => {
     expect(summary.refusedReason).toBeNull();
   });
 });
+
+describe('anchor-persister — blank investor names (W-54)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('drops a blank-name row before writing and counts it, without touching the arithmetic gates', async () => {
+    const bad = deepaAnchorFixture();
+    // A whitespace-only OCR read on one row's name. Shares/amount untouched, so
+    // the printed-total gates (computed from the fixture's original sums) still
+    // agree — names are not an arithmetic gate.
+    bad.investorList[5].name = '   ';
+    const { deps, persist } = makeDeps(bad);
+
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(summary.refusedReason).toBeNull();
+    expect(summary.checks.every((c) => c.passed || c.notCheckable)).toBe(true);
+    expect(summary.skippedBlankNames).toBe(1);
+    expect(summary.investorsWritten).toBe(14);
+    // Totals still reflect the letter's verified printed figures — unaffected
+    // by dropping one unnamed row from the published list.
+    expect(summary.totals).toEqual({ shares: 7_791_789, amountCrore: 137.9147, count: 15 });
+
+    expect(persist).toHaveBeenCalledTimes(1);
+    const payload = (persist.mock.calls[0] as unknown as [unknown, string, Record<string, unknown>])[2];
+    const names = (payload.investorList as Array<{ name: string }>).map((r) => r.name);
+    expect(names).toHaveLength(14);
+    expect(names.every((n) => n.trim().length > 0)).toBe(true);
+  });
+
+  it('also drops a truly empty-string name (not just whitespace)', async () => {
+    const bad = deepaAnchorFixture();
+    bad.investorList[10].name = '';
+    const { deps, persist } = makeDeps(bad);
+
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(summary.refusedReason).toBeNull();
+    expect(summary.skippedBlankNames).toBe(1);
+    expect(summary.investorsWritten).toBe(14);
+    expect(persist).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses the ENTIRE write when every investor row has a blank name — nothing to publish', async () => {
+    const bad = deepaAnchorFixture();
+    bad.investorList.forEach((r) => {
+      r.name = '  ';
+    });
+    const { deps, persist } = makeDeps(bad);
+
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(persist).not.toHaveBeenCalled();
+    expect(summary.written).toBe(0);
+    expect(summary.investorsWritten).toBe(0);
+    expect(summary.totals).toBeNull();
+    expect(summary.skippedBlankNames).toBe(15);
+    expect(summary.refusedReason).toContain('blank name');
+    expect(summary.refusedReason).toContain('nothing to publish');
+  });
+
+  it('still writes a garbled-but-present name as-is and lists it under lowConfidenceNames', async () => {
+    const { deps, persist } = makeDeps(deepaAnchorFixture());
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(summary.skippedBlankNames).toBe(0);
+    expect(summary.lowConfidenceNames).toContain('Aq u1la G1oba1 Fund L td');
+
+    const payload = (persist.mock.calls[0] as unknown as [unknown, string, Record<string, unknown>])[2];
+    const names = (payload.investorList as Array<{ name: string }>).map((r) => r.name);
+    expect(names).toContain('Aq u1la G1oba1 Fund L td');
+  });
+
+  it('leaves normal, fully-named reports unchanged (no blanks, nothing skipped)', async () => {
+    const { deps, persist } = makeDeps(deepaAnchorFixture());
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(summary.skippedBlankNames).toBe(0);
+    expect(summary.investorsWritten).toBe(15);
+    expect(persist).toHaveBeenCalledTimes(1);
+    const payload = (persist.mock.calls[0] as unknown as [unknown, string, Record<string, unknown>])[2];
+    expect((payload.investorList as unknown[]).length).toBe(15);
+  });
+});
