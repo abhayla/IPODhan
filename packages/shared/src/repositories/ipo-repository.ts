@@ -517,6 +517,32 @@ export class IPORepository extends BaseRepository implements IIPORepository {
   }
 
   /**
+   * Round-4 M-LOW: uncached read of a single row by id, for callers that MUST
+   * NOT trust the `IPO_DETAIL` (900s) cache — e.g. the scraper write-diff gate
+   * (`diffFieldsForWrite` in `scraper/src/services/data-persister.ts`), which
+   * decides whether to write by comparing against the ROW, not a snapshot up
+   * to 15 minutes stale. Bypasses `getFromCache` entirely: no read, no write,
+   * so it can never populate or extend the cache's staleness window.
+   */
+  async findByIdUncached(id: string): Promise<IPO | null> {
+    try {
+      const [ipo] = await this.db
+        .select()
+        .from(ipos)
+        .where(eq(ipos.id, id))
+        .limit(1);
+
+      return ipo || null;
+    } catch (error) {
+      throw new DatabaseError(
+        `Failed to fetch IPO by ID (uncached): ${id}`,
+        undefined,
+        error
+      );
+    }
+  }
+
+  /**
    * Find IPOs by date range (for GMP matching)
    * Used to match external GMP data to database IPOs by dates
    */

@@ -45,6 +45,12 @@ const lockAcquireMock = vi.fn().mockResolvedValue({ acquired: true, token: 'tok-
 const lockReleaseMock = vi.fn().mockResolvedValue(true);
 const lockExtendMock = vi.fn().mockResolvedValue(true);
 
+// Round-4 MEDIUM/LOW: stable mock refs (not a fresh object per `getRedisClient()`
+// call) so tests can assert on `redis.set` calls (the discovery cadence stamp)
+// across the whole `main()` run.
+const redisGetMock = vi.fn().mockResolvedValue(null);
+const redisSetMock = vi.fn().mockResolvedValue('OK');
+
 vi.mock('../../src/scrapers/nse-scraper-orchestrator-v2.js', () => ({ runNSEScraper: runNSEScraperMock }));
 vi.mock('../../src/scrapers/bse-scraper-orchestrator-v2.js', () => ({ runBSEScraper: runBSEScraperMock }));
 vi.mock('../../src/scrapers/moneycontrol-orchestrator-v2.js', () => ({ runMoneycontrolScraper: runMoneycontrolScraperMock }));
@@ -103,7 +109,7 @@ vi.mock('@ipodhan/shared', () => ({
     delete: () => ({ where: () => ({ returning: dbReturningMock }) }),
     select: () => ({ from: () => ({ where: dbCountRowsMock }) }),
   },
-  getRedisClient: () => ({ get: vi.fn().mockResolvedValue(null), set: vi.fn().mockResolvedValue('OK') }),
+  getRedisClient: () => ({ get: redisGetMock, set: redisSetMock }),
   ScraperLogRepository: vi.fn().mockImplementation(() => ({})),
 }));
 vi.mock('@ipodhan/shared/db/schema', () => ({
@@ -137,6 +143,8 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
     markCatchUpCadenceRanMock.mockResolvedValue(undefined);
     lockExtendMock.mockResolvedValue(true);
     dbCountRowsMock.mockResolvedValue([{ c: 0 }]);
+    redisGetMock.mockReset().mockResolvedValue(null);
+    redisSetMock.mockReset().mockResolvedValue('OK');
   });
 
   afterEach(() => {
@@ -332,6 +340,31 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
     });
 
     /**
+     * Round-4 MEDIUM: round 3 stamped `DISCOVERY_LAST_RUN_KEY` unconditionally
+     * after the NSE + BSE steps — a thrown NSE at the 17:30 slot still marked
+     * discovery "done", so the next `isDiscoveryDue` check stayed silent until
+     * 08:30 even though NSE never actually ran.
+     */
+    it('R4-MEDIUM: NSE throws -> the discovery cadence key is never stamped', async () => {
+      isDiscoveryDueMock.mockReturnValue(true);
+      runNSEScraperMock.mockRejectedValueOnce(new Error('NSE returned 503'));
+      const { main } = await import('../../src/index.js');
+      await main();
+
+      expect(redisSetMock).not.toHaveBeenCalledWith('due-step:last-discovery', expect.any(String));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('R4-MEDIUM: NSE + BSE both succeed -> the discovery cadence key is stamped exactly once', async () => {
+      isDiscoveryDueMock.mockReturnValue(true);
+      const { main } = await import('../../src/index.js');
+      await main();
+
+      const stampCalls = redisSetMock.mock.calls.filter((call) => call[0] === 'due-step:last-discovery');
+      expect(stampCalls).toHaveLength(1);
+    });
+
+    /**
      * Round-3 M1: TTL 55min > PM2's 30min restart meant a killed cycle blocked
      * the next one. TTL is now 25min, extended every 5min by the live cycle,
      * and released on SIGTERM.
@@ -360,6 +393,65 @@ describe('scraper/src/index.ts one-shot --source=all path (due-step scheduler wi
       await new Promise((resolve) => setImmediate(resolve));
 
       expect(lockReleaseMock).toHaveBeenCalledWith('scraper:cycle', 'tok-1');
+    });
+
+    /**
+     * Round-4 LOW: the SIGTERM handler used to hardcode `process.exit(0)`
+     * regardless of whether a step had already failed — a signal landing
+     * mid-cycle after a recorded error still reported "success" to PM2.
+     */
+    it('R4-LOW: SIGTERM after a recorded cycle error exits 1, not 0', async () => {
+      isDiscoveryDueMock.mockReturnValue(true);
+      runNSEScraperMock.mockRejectedValueOnce(new Error('NSE returned 503'));
+      const { main } = await import('../../src/index.js');
+      await main();
+      exitSpy.mockClear();
+
+      process.emit('SIGTERM' as NodeJS.Signals);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('R4-LOW: SIGTERM on a clean cycle exits 130 (terminated-by-signal), not 0', async () => {
+      const { main } = await import('../../src/index.js');
+      await main();
+      exitSpy.mockClear();
+
+      process.emit('SIGTERM' as NodeJS.Signals);
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(exitSpy).toHaveBeenCalledWith(130);
+    });
+
+    /**
+     * Round-4 LOW: a `false` return from `extendLock` (lock lost/expired to
+     * another writer) was previously ignored entirely — only the rejection
+     * path was handled. The cycle kept issuing further due-step writes under
+     * a lock it no longer held.
+     */
+    it('R4-LOW: extendLock resolving false mid-cycle stops the NEXT due-step-cycle step', async () => {
+      const setIntervalSpy = vi.spyOn(globalThis, 'setInterval');
+      isDiscoveryDueMock.mockReturnValue(true);
+      // The NSE step (discovery's first step) fires the keep-alive callback
+      // itself, as a false-returning `extendLock` would mid-flight — proving
+      // the flag it sets is observed by the VERY NEXT step (BSE), not just a
+      // future cycle.
+      runNSEScraperMock.mockImplementationOnce(async () => {
+        lockExtendMock.mockResolvedValueOnce(false);
+        const keepAlive = setIntervalSpy.mock.calls.find((call) => call[1] === 5 * 60 * 1000);
+        expect(keepAlive).toBeDefined();
+        (keepAlive![0] as () => void)();
+        await Promise.resolve();
+        await Promise.resolve();
+        return { ...baseScraperResult, smeCount: 0, mainboardCount: 0 };
+      });
+      const { main } = await import('../../src/index.js');
+      await main();
+
+      expect(runBSEScraperMock).not.toHaveBeenCalled();
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      setIntervalSpy.mockRestore();
     });
 
     it('never calls the legacy unconditional per-source blocks (NSE/BSE/MC/CG/GMP/fallback) directly on "all"', async () => {

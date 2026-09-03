@@ -100,6 +100,10 @@ function makeIpoRepository() {
     findByFuzzyName: vi.fn().mockResolvedValue(null),
     findByIsin: vi.fn().mockResolvedValue(null),
     findBySymbol: vi.fn().mockResolvedValue(null),
+    // Round-4 M-LOW: defaults to "no uncached row available" (null), which
+    // makes `upsertIPO` fall back to the already-resolved row — i.e. the
+    // pre-fix behavior — so every OTHER test in this file is unaffected.
+    findByIdUncached: vi.fn().mockResolvedValue(null),
     create: vi.fn(),
     update: vi.fn().mockResolvedValue({}),
   } as any;
@@ -191,6 +195,84 @@ describe('round-3 C1/C2: the write skip is decided by a diff against the ROW, no
     );
 
     expect(ipoRepository.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('round-4 M-LOW: the write-diff gate re-reads uncached before deciding no-op', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resolveRegistrarIdMock.mockReturnValue(null);
+  });
+
+  it('cached row equals the payload but the uncached row differs => update IS called', async () => {
+    // The pre-resolved row (stands in for a stale `findBySlug`/`findById`
+    // cache hit) already agrees with the incoming faceValue — a diff against
+    // IT alone would wrongly call this a no-op.
+    consolidateIPODataMock.mockResolvedValue(consolidationResult({ status: 'OPEN', faceValue: 100 }, 0));
+    const ipoRepository = makeIpoRepository();
+    // The REAL row (direct write repaired it moments ago) still says 90 —
+    // this is what the uncached re-read must return and be diffed against.
+    ipoRepository.findByIdUncached.mockResolvedValue(existingRow({ listingExchanges: ['NSE'], faceValue: 90 }));
+
+    await upsertIPO(
+      ipoRepository,
+      scrape({ listingExchange: 'NSE' }),
+      'NSE',
+      existingRow({ listingExchanges: ['NSE'], faceValue: 100 })
+    );
+
+    expect(ipoRepository.findByIdUncached).toHaveBeenCalledWith('ipo-1');
+    expect(ipoRepository.update).toHaveBeenCalledTimes(1);
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch.faceValue).toBe(100);
+  });
+
+  it('uncached re-read also equals the payload => update is NOT called (still a real no-op)', async () => {
+    consolidateIPODataMock.mockResolvedValue(consolidationResult({ status: 'OPEN', faceValue: 2 }, 0));
+    const ipoRepository = makeIpoRepository();
+    ipoRepository.findByIdUncached.mockResolvedValue(existingRow({ listingExchanges: ['NSE'], faceValue: 2 }));
+
+    await upsertIPO(
+      ipoRepository,
+      scrape({ listingExchange: 'NSE' }),
+      'NSE',
+      existingRow({ listingExchanges: ['NSE'], faceValue: 2 })
+    );
+
+    expect(ipoRepository.update).not.toHaveBeenCalled();
+  });
+
+  it('uncached re-read throwing is non-fatal — falls back to the already-resolved row', async () => {
+    consolidateIPODataMock.mockResolvedValue(consolidationResult({ status: 'OPEN', faceValue: 2 }, 0));
+    const ipoRepository = makeIpoRepository();
+    ipoRepository.findByIdUncached.mockRejectedValue(new Error('DB unreachable'));
+
+    await upsertIPO(
+      ipoRepository,
+      scrape({ listingExchange: 'NSE' }),
+      'NSE',
+      existingRow({ listingExchanges: ['NSE'], faceValue: 2 })
+    );
+
+    // Falls back to diffing against the resolved row (identical) => no-op, no throw.
+    expect(ipoRepository.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('round-4 L3: the write-diff gate compares pg `date` columns by calendar day', () => {
+  it('a date-only string equals a full-timestamp Date on the SAME UTC calendar day', () => {
+    expect(valuesEqualForWrite('2026-09-01', new Date('2026-09-01T00:00:00Z'), 'listingDate')).toBe(true);
+    expect(valuesEqualForWrite('2026-09-01', new Date('2026-09-01T18:45:00Z'), 'openDate')).toBe(true);
+    expect(diffFieldsForWrite({ closeDate: new Date('2026-09-01T18:45:00Z') }, { closeDate: '2026-09-01' })).toEqual([]);
+  });
+
+  it('a date-only string differs from a Date on a DIFFERENT calendar day', () => {
+    expect(valuesEqualForWrite('2026-09-01', new Date('2026-09-02T00:00:00Z'), 'listingDate')).toBe(false);
+    expect(diffFieldsForWrite({ allotmentDate: new Date('2026-09-02T00:00:00Z') }, { allotmentDate: '2026-09-01' })).toEqual(['allotmentDate']);
+  });
+
+  it('two full timestamps a minute apart on a non-date-only field are STILL a change (unaffected by the calendar-day rule)', () => {
+    expect(valuesEqualForWrite(new Date('2026-09-01T09:00:00Z'), new Date('2026-09-01T09:01:00Z'))).toBe(false);
   });
 });
 

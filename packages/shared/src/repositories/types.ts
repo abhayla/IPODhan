@@ -160,6 +160,7 @@ export interface IIPORepository {
   findAll(filters?: IPOFilters): Promise<PaginatedResponse<IPO>>;
   findBySlug(slug: string): Promise<IPOWithRelations | null>;
   findById(id: string): Promise<IPO | null>;
+  findByIdUncached(id: string): Promise<IPO | null>;
   search(query: string, limit?: number): Promise<IPO[]>;
   findByDates(params: { openDate: string; closeDate?: string }): Promise<IPO[]>;
   create(ipo: IPOInsert): Promise<IPO>;

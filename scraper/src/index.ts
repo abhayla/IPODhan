@@ -223,7 +223,13 @@ async function countIposByStatus(statuses: readonly ('UPCOMING' | 'OPEN' | 'CLOS
  * still runs the post-steps (statusUpdate, stageReconciler, etc.) exactly as
  * the legacy 'all' path does, right after this returns.
  */
-async function runDueStepCycle(): Promise<DueStepCycleResult> {
+async function runDueStepCycle(
+  // Round-4 LOW: checked before every step so a cycle that has lost its
+  // distributed lock (keep-alive `extendLock` returned false — see `main()`)
+  // stops issuing further writes instead of continuing under a lock another
+  // process may already hold.
+  isLockLost: () => boolean = () => false
+): Promise<DueStepCycleResult> {
   const redis = getRedisClient();
   const now = new Date();
   const cycleResult: DueStepCycleResult = { success: true, errors: [] };
@@ -237,6 +243,12 @@ async function runDueStepCycle(): Promise<DueStepCycleResult> {
     label: string,
     fn: () => Promise<{ success?: boolean; errors?: string[] } | void>
   ): Promise<boolean> => {
+    if (isLockLost()) {
+      cycleResult.success = false;
+      cycleResult.errors.push(`${label}: skipped — cycle lock lost`);
+      logger.error({ step: label }, 'Due-step cycle: skipping step — cycle lock was lost');
+      return false;
+    }
     try {
       const stepResult = await fn();
       if (stepResult && stepResult.success === false) {
@@ -272,14 +284,26 @@ async function runDueStepCycle(): Promise<DueStepCycleResult> {
 
   if (isDiscoveryDue(now, lastDiscoveryRun)) {
     logger.info({ slot: mostRecentDiscoverySlotLabel(now) }, 'Due-step cycle: discovery is due — running NSE + BSE');
-    await runCycleStep('discovery:NSE', () => runNSEScraper());
-    await runCycleStep('discovery:BSE', () => runBSEScraper());
-    try {
-      await redis.set(DISCOVERY_LAST_RUN_KEY, now.toISOString());
-    } catch (error) {
-      logger.debug(
-        { error: error instanceof Error ? error.message : String(error) },
-        'Due-step cycle: discovery last-run persist failed (non-fatal)'
+    const nseOk = await runCycleStep('discovery:NSE', () => runNSEScraper());
+    const bseOk = await runCycleStep('discovery:BSE', () => runBSEScraper());
+    // Round-4 MEDIUM: only stamp the cadence key when BOTH steps actually
+    // succeeded — matching the aggregator block's pattern below. Stamping
+    // unconditionally meant a thrown NSE at the 17:30 slot still marked
+    // discovery "done", so the next `isDiscoveryDue` check stayed silent
+    // until 08:30 even though NSE never ran.
+    if (nseOk && bseOk) {
+      try {
+        await redis.set(DISCOVERY_LAST_RUN_KEY, now.toISOString());
+      } catch (error) {
+        logger.debug(
+          { error: error instanceof Error ? error.message : String(error) },
+          'Due-step cycle: discovery last-run persist failed (non-fatal)'
+        );
+      }
+    } else {
+      logger.warn(
+        { nseOk, bseOk, slot: mostRecentDiscoverySlotLabel(now) },
+        'Due-step cycle: discovery step(s) failed — leaving the cadence key unstamped so the next cycle retries'
       );
     }
   } else {
@@ -416,6 +440,12 @@ export async function main() {
   // `try { }` is not visible to its own `catch { }` block.
   let cycleLock: { lock: DistributedLock; token?: string } | null = null;
   let cycleLockKeepAlive: ReturnType<typeof setInterval> | null = null;
+  // Round-4 LOW: flipped when a keep-alive `extendLock` call resolves `false`
+  // (another writer holds — or has expired — this token's lock). The current
+  // cycle no longer owns the lock past that point; `lockLost` is checked
+  // before the next due-step, so the run stops instead of continuing to
+  // write under a lock it has actually lost.
+  let lockLost = false;
   const releaseCycleLock = async (): Promise<void> => {
     if (cycleLockKeepAlive) {
       clearInterval(cycleLockKeepAlive);
@@ -505,12 +535,26 @@ export async function main() {
       if (lockResult.token) {
         const keepAliveToken = lockResult.token;
         cycleLockKeepAlive = setInterval(() => {
-          void lock.extendLock(CYCLE_LOCK_RESOURCE, keepAliveToken, CYCLE_LOCK_TTL_MS).catch((error: unknown) => {
-            logger.debug(
-              { error: error instanceof Error ? error.message : String(error) },
-              'Due-step cycle: lock extend failed (non-fatal — TTL still covers the next interval)'
-            );
-          });
+          lock.extendLock(CYCLE_LOCK_RESOURCE, keepAliveToken, CYCLE_LOCK_TTL_MS)
+            .then((extended) => {
+              if (!extended) {
+                // Round-4 LOW: a `false` return means the token no longer owns
+                // the lock (lost/expired) — this was previously ignored (only
+                // the rejection path was handled), so the cycle kept writing
+                // as if it still held the lock it had actually lost.
+                lockLost = true;
+                logger.error(
+                  { resource: CYCLE_LOCK_RESOURCE },
+                  'Due-step cycle: lock extend returned false — this cycle no longer holds the lock; stopping before the next step'
+                );
+              }
+            })
+            .catch((error: unknown) => {
+              logger.debug(
+                { error: error instanceof Error ? error.message : String(error) },
+                'Due-step cycle: lock extend failed (non-fatal — TTL still covers the next interval)'
+              );
+            });
         }, CYCLE_LOCK_EXTEND_INTERVAL_MS);
         cycleLockKeepAlive.unref?.();
       }
@@ -518,9 +562,20 @@ export async function main() {
       // Round-3 M1: PM2 sends SIGTERM before SIGKILL on `cron_restart`. Release
       // the lock on the way out so the next cycle starts immediately instead of
       // waiting for the TTL.
+      // Round-4 LOW: the exit code used to be a hardcoded 0 regardless of
+      // whether a step had already failed — a SIGTERM landing mid-cycle after
+      // a recorded error reported "success" to PM2/the process supervisor.
+      // Exit 1 when an error was already recorded; otherwise 130 (128 + SIGTERM's
+      // signal number 2), the conventional "terminated by signal" exit code —
+      // never a bare 0 for a signal-interrupted run.
       const onSignal = (signal: NodeJS.Signals) => {
         logger.warn({ signal }, 'Due-step cycle: signal received — releasing the cycle lock before exit');
-        void releaseCycleLock().finally(() => process.exit(0));
+        // `combinedResult` is declared just below this registration with no
+        // `await` in between (synchronous code only) — a signal handler can
+        // only ever fire on a later event-loop tick, after it is initialized.
+        const hadError = combinedResult.errors.length > 0;
+        const exitCode = hadError ? 1 : 130;
+        void releaseCycleLock().finally(() => process.exit(exitCode));
       };
       process.once('SIGTERM', onSignal);
       process.once('SIGINT', onSignal);
@@ -716,7 +771,7 @@ export async function main() {
       // Round-3 H2: the cycle's step failures land in `combinedResult` exactly
       // like the legacy path's per-source results, so a cycle in which a source
       // threw exits non-zero instead of silently exiting 0.
-      const dueStepResult = await runDueStepCycle();
+      const dueStepResult = await runDueStepCycle(() => lockLost);
       combinedResult.success = combinedResult.success && dueStepResult.success;
       combinedResult.errors.push(...dueStepResult.errors);
     }

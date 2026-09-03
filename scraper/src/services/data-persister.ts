@@ -89,6 +89,38 @@ function isBlank(value: unknown): boolean {
 }
 
 /**
+ * Round-4 L3: pg `date` columns (openDate/closeDate/allotmentDate/listingDate)
+ * come back as bare 'YYYY-MM-DD' strings, while the incoming scraped value can
+ * be a full `Date` at some other clock time on the SAME calendar day. Compared
+ * as epoch timestamps those never match, so the field looks "changed" every
+ * cycle and the no-op write skip (`diffFieldsForWrite`) never fires. When
+ * EITHER side is a date-only string, or the field is a known pg `date` column,
+ * compare by calendar day (UTC, matching the codebase's UTC-naive timestamp
+ * convention — see `.claude/rules/utc-naive-timestamp-normalization.md`)
+ * instead of by exact epoch.
+ */
+const DATE_ONLY_FIELDS = new Set(['openDate', 'closeDate', 'allotmentDate', 'listingDate']);
+
+function isDateOnlyString(value: unknown): boolean {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value.trim());
+}
+
+function toCalendarDayUTC(value: unknown): string | null {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value.toISOString().slice(0, 10);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    const match = trimmed.match(/^\d{4}-\d{2}-\d{2}/);
+    if (!match) return null;
+    // Validate it actually parses as a real date (rejects e.g. "2026-13-40").
+    const parsed = new Date(trimmed.length === 10 ? `${trimmed}T00:00:00Z` : trimmed);
+    return Number.isNaN(parsed.getTime()) ? null : match[0];
+  }
+  return null;
+}
+
+/**
  * Round-3 M3: the WRITE gate's equality test. Deliberately STRICTER than
  * `normalization-engine.areEquivalent` (which tolerates 0.01 on numbers and
  * compares dates by calendar day only, both correct for provenance/conflict
@@ -98,10 +130,21 @@ function isBlank(value: unknown): boolean {
  * NUMERIC string "6800000000.00" against the JS number 6800000000, or a Date
  * against its own ISO string.
  */
-export function valuesEqualForWrite(a: unknown, b: unknown): boolean {
+export function valuesEqualForWrite(a: unknown, b: unknown, fieldName?: string): boolean {
   if (a === b) return true;
   if (isBlank(a) && isBlank(b)) return true;
   if (isBlank(a) !== isBlank(b)) return false;
+
+  const isDateOnlyField =
+    isDateOnlyString(a) || isDateOnlyString(b) || (fieldName !== undefined && DATE_ONLY_FIELDS.has(fieldName));
+  if (isDateOnlyField) {
+    const aDay = toCalendarDayUTC(a);
+    const bDay = toCalendarDayUTC(b);
+    if (aDay !== null || bDay !== null) {
+      if (aDay === null || bDay === null) return false;
+      return aDay === bDay;
+    }
+  }
 
   const aTime = toTimestamp(a);
   const bTime = toTimestamp(b);
@@ -161,7 +204,7 @@ export function diffFieldsForWrite(
     if (WRITE_DIFF_IGNORED_FIELDS.has(field)) continue;
     // `undefined` is never written by drizzle — it is "leave this column alone".
     if (value === undefined) continue;
-    if (!valuesEqualForWrite(value, existingIPO[field])) changed.push(field);
+    if (!valuesEqualForWrite(value, existingIPO[field], field)) changed.push(field);
   }
   return changed;
 }
@@ -883,7 +926,25 @@ export async function upsertIPO(
             // §5 write-suppression design calls out. `lastScrapedAt`/`updatedAt`
             // bumps are deliberately foregone on a true no-op cycle; the next
             // cycle that DOES change a field still refreshes them via `finalData`.
-            const changedFields = diffFieldsForWrite(finalData, existingIPO as unknown as Record<string, unknown>);
+            // Round-4 M-LOW: `existingIPO` can be the resolver's cached
+            // `findBySlug` result (IPO_DETAIL, 900s TTL — see `resolveIpoRow`'s
+            // name/slug tiers). A row repaired by a direct write while the
+            // cache still holds the old snapshot would be diffed against that
+            // stale snapshot and the real change skipped for up to 15 minutes.
+            // Re-read uncached, by id, right before the diff decides whether to
+            // write — non-fatal: on any failure, fall back to the already-
+            // resolved row rather than blocking the write.
+            let diffAgainst: Record<string, unknown> = existingIPO as unknown as Record<string, unknown>;
+            try {
+              const uncached = await ipoRepository.findByIdUncached(existingIPO.id);
+              if (uncached) diffAgainst = uncached as unknown as Record<string, unknown>;
+            } catch (error) {
+              logger.warn({
+                ipoId: existingIPO.id,
+                error: error instanceof Error ? error.message : String(error),
+              }, 'Uncached re-read before write-diff failed (non-fatal) — diffing against the already-resolved row');
+            }
+            const changedFields = diffFieldsForWrite(finalData, diffAgainst);
             const isNoopUpdate = changedFields.length === 0;
             if (isNoopUpdate) {
               logger.debug({
