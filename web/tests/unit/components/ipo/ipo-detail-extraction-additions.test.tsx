@@ -19,6 +19,9 @@ import { CompanyOverview } from '@/components/ipo/CompanyOverview';
 import { KPIHighlightSection } from '@/components/ipo-detail/KPIHighlightSection';
 import { CompanyContactSection } from '@/components/ipo-detail/CompanyContactSection';
 import type { IpoDetails } from '@/lib/repositories/types';
+import { IPOTimelineWidget } from '@/components/ipo/IPOTimelineWidget';
+import { PromoterHoldingSection } from '@/components/ipo/PromoterHoldingSection';
+import { IssueStructureSection } from '@/components/ipo/IssueStructureSection';
 
 const valuation = {
   pricingEvent: 'PRICE_BAND_AD',
@@ -268,5 +271,123 @@ describe('CompanyContactSection — CIN', () => {
     );
     expect(screen.getByText('Corporate Identity Number (CIN)')).toBeInTheDocument();
     expect(screen.getByText('U36911TN2010PLC078123')).toBeInTheDocument();
+  });
+});
+
+
+describe('IPOTimelineWidget - W-88 bid submission windows', () => {
+  const IPO = {
+    openDate: new Date('2026-09-01'),
+    closeDate: new Date('2026-09-03'),
+    allotmentDate: new Date('2026-09-04'),
+    listingDate: new Date('2026-09-08'),
+    status: 'OPEN',
+  } as never;
+
+  it('renders one row per printed window with its clock time', () => {
+    render(
+      <IPOTimelineWidget
+        ipo={IPO}
+        bidWindows={[
+          {
+            activity: 'Submission and revision in Bids',
+            window: 'Only between 10.00 a.m. and 5.00 p.m. IST',
+          },
+          {
+            activity: 'Submission of Physical Applications (Bank ASBA)',
+            window: 'Only between 10.00 a.m. and up to 1.00 p.m. IST',
+          },
+        ]}
+      />
+    );
+    expect(screen.getByText('Bid submission windows')).toBeInTheDocument();
+    expect(screen.getByText('Submission and revision in Bids')).toBeInTheDocument();
+    expect(screen.getByText('Only between 10.00 a.m. and 5.00 p.m. IST')).toBeInTheDocument();
+    expect(
+      screen.getByText('Submission of Physical Applications (Bank ASBA)')
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText('Only between 10.00 a.m. and up to 1.00 p.m. IST')
+    ).toBeInTheDocument();
+  });
+
+  it('renders nothing extra when the advertisement was never parsed', () => {
+    render(<IPOTimelineWidget ipo={IPO} bidWindows={null} />);
+    expect(screen.queryByText('Bid submission windows')).not.toBeInTheDocument();
+  });
+});
+
+describe('PromoterHoldingSection - W-88 aggregate holding and D7 transactions', () => {
+  const PROMOTERS = [{ name: 'Ashish Agarwal', sharesHeld: null, waca: '0.5' }];
+
+  it('shows the aggregate promoter holding beside the promoters table', () => {
+    render(
+      <PromoterHoldingSection
+        promoterHoldingPreIssue={73.4}
+        promoterHoldingPostIssue={54.1}
+        promoters={PROMOTERS}
+        promoterSharesHeld={40005000}
+      />
+    );
+    expect(screen.getByText('Total shares held:')).toBeInTheDocument();
+    expect(screen.getByText('4,00,05,000')).toBeInTheDocument();
+  });
+
+  it('an EMPTY transaction list is an answer, not a blank', () => {
+    render(
+      <PromoterHoldingSection
+        promoterHoldingPreIssue={73.4}
+        promoterHoldingPostIssue={54.1}
+        promoters={PROMOTERS}
+        promoterGroupTransactionsSinceDrhp={[]}
+      />
+    );
+    expect(screen.getByText('Promoter-group transactions since the DRHP')).toBeInTheDocument();
+    expect(
+      screen.getByText('None disclosed of 1% or more of the paid-up equity share capital.')
+    ).toBeInTheDocument();
+  });
+
+  it('renders each disclosed transaction, and nothing at all when unknown', () => {
+    const { unmount } = render(
+      <PromoterHoldingSection
+        promoterHoldingPreIssue={73.4}
+        promoterHoldingPostIssue={54.1}
+        promoters={PROMOTERS}
+        promoterGroupTransactionsSinceDrhp={[{ summary: 'Sold 1.4% of the paid-up capital.' }]}
+      />
+    );
+    expect(screen.getByText('Sold 1.4% of the paid-up capital.')).toBeInTheDocument();
+    unmount();
+
+    render(
+      <PromoterHoldingSection
+        promoterHoldingPreIssue={73.4}
+        promoterHoldingPostIssue={54.1}
+        promoters={PROMOTERS}
+        promoterGroupTransactionsSinceDrhp={null}
+      />
+    );
+    expect(
+      screen.queryByText('Promoter-group transactions since the DRHP')
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('IssueStructureSection - W-88 regulation cited', () => {
+  it('shows the SEBI ICDR regulation beside the issue type', () => {
+    render(
+      <IssueStructureSection
+        ipoDetails={
+          { issueType: 'BOOK_BUILDING', sebiRegulationCited: 'Regulation 6(1)' } as never
+        }
+      />
+    );
+    expect(screen.getByText('SEBI ICDR Regulation 6(1)')).toBeInTheDocument();
+  });
+
+  it('shows no regulation line when the advertisement cited none', () => {
+    render(<IssueStructureSection ipoDetails={{ issueType: 'BOOK_BUILDING' } as never} />);
+    expect(screen.queryByText(/SEBI ICDR/)).not.toBeInTheDocument();
   });
 });

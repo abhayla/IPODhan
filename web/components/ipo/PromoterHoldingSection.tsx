@@ -37,6 +37,14 @@ interface PromoterHoldingSectionProps {
   acquisitionRanges?: PromoterAcquisitionRangeView[];
   /** Whether a pre-IPO placement was made (`ipo_details.pre_ipo_placement`). */
   preIpoPlacement?: boolean | null;
+  /** Aggregate promoter holding (`ipo_details.promoter_shares_held`). */
+  promoterSharesHeld?: number | null;
+  /**
+   * Promoter / promoter-group share transactions of 1% or more since the DRHP
+   * (`ipo_details.promoter_group_transactions_since_drhp`). An EMPTY array is a
+   * real answer ("there were none") and renders as such; null renders nothing.
+   */
+  promoterGroupTransactionsSinceDrhp?: { summary: string }[] | null;
 }
 
 const PERIOD_LABELS: Record<string, string> = {
@@ -94,6 +102,8 @@ export function PromoterHoldingSection({
   promoters = [],
   acquisitionRanges = [],
   preIpoPlacement = null,
+  promoterSharesHeld = null,
+  promoterGroupTransactionsSinceDrhp = null,
 }: PromoterHoldingSectionProps) {
   const hasPromoterRows = promoters.length > 0;
   const hasRanges = acquisitionRanges.length > 0;
@@ -222,7 +232,17 @@ export function PromoterHoldingSection({
               offer document publishes alongside the holding percentages. */}
           {hasPromoterRows && (
             <div className="overflow-x-auto">
-              <p className="text-sm font-semibold mb-3">Promoters</p>
+              <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+                <p className="text-sm font-semibold">Promoters</p>
+                {promoterSharesHeld !== null && promoterSharesHeld !== undefined && (
+                  <p className="text-xs text-muted-foreground">
+                    Total shares held:{' '}
+                    <span className="font-medium text-foreground">
+                      {promoterSharesHeld.toLocaleString('en-IN')}
+                    </span>
+                  </p>
+                )}
+              </div>
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b bg-muted/50">
@@ -252,6 +272,27 @@ export function PromoterHoldingSection({
                   ))}
                 </tbody>
               </table>
+
+              {promoterGroupTransactionsSinceDrhp && (
+                <div className="mt-4 rounded-md border bg-muted/30 p-3">
+                  <p className="text-xs font-semibold mb-1">
+                    Promoter-group transactions since the DRHP
+                  </p>
+                  {promoterGroupTransactionsSinceDrhp.length === 0 ? (
+                    <p className="text-xs text-muted-foreground">
+                      None disclosed of 1% or more of the paid-up equity share capital.
+                    </p>
+                  ) : (
+                    <ul className="list-disc pl-4 space-y-1">
+                      {promoterGroupTransactionsSinceDrhp.map((t) => (
+                        <li key={t.summary} className="text-xs text-muted-foreground">
+                          {t.summary}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

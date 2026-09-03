@@ -29,6 +29,12 @@ interface IPOTimelineWidgetProps {
   rhpFilingDate?: Date | string | null;
   /** UPI mandate cut-off, e.g. "5:00 PM on the last day" (`ipo_details`). */
   upiCutoffTime?: string | null;
+  /**
+   * Per-investor-class bid submission windows as the price band advertisement
+   * prints them (`ipo_details.bid_windows`). Null/empty renders nothing - most
+   * IPOs in the table have no advertisement parsed yet.
+   */
+  bidWindows?: { activity: string; window: string }[] | null;
   /** Show in compact mode (smaller, horizontal only) */
   compact?: boolean;
   /** Custom class name */
@@ -58,6 +64,7 @@ interface IPOTimelineWidgetProps {
 export function IPOTimelineWidget({
   ipo,
   ipoDetails,
+  bidWindows,
   anchorBidDate = null,
   rhpFilingDate = null,
   upiCutoffTime = null,
@@ -237,6 +244,30 @@ export function IPOTimelineWidget({
                 <p className="text-sm font-medium">{d.value}</p>
               </div>
             ))}
+          </div>
+        )}
+
+        {bidWindows && bidWindows.length > 0 && (
+          <div className="mt-6 border-t pt-4">
+            <p className="text-sm font-semibold mb-3">Bid submission windows</p>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b bg-muted/50">
+                    <th className="py-2 px-3 text-left font-semibold">Application</th>
+                    <th className="py-2 px-3 text-left font-semibold">Window</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {bidWindows.map((w) => (
+                    <tr key={w.activity} className="border-b last:border-0 align-top">
+                      <td className="py-2 px-3">{w.activity}</td>
+                      <td className="py-2 px-3 whitespace-nowrap">{w.window}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         )}
       </CardContent>

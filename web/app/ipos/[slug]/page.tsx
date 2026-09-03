@@ -528,6 +528,9 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               anchorBidDate={anchorInvestor?.bidDate ?? null}
               rhpFilingDate={rhpFilingDate}
               upiCutoffTime={ipoDetails?.upiCutoffTime ?? null}
+              bidWindows={
+                (ipoDetails?.bidWindows as { activity: string; window: string }[] | null) ?? null
+              }
             />
 
             {/* Sticky section navigation — Screener puts it right under the
@@ -666,6 +669,12 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 promoters={promoterRows}
                 acquisitionRanges={acquisitionRangeRows}
                 preIpoPlacement={ipoDetails?.preIpoPlacement ?? null}
+                promoterSharesHeld={ipoDetails?.promoterSharesHeld ?? null}
+                promoterGroupTransactionsSinceDrhp={
+                  (ipoDetails?.promoterGroupTransactionsSinceDrhp as
+                    | { summary: string }[]
+                    | null) ?? null
+                }
               />
             )}
 

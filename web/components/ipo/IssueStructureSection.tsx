@@ -129,7 +129,16 @@ export function IssueStructureSection({
       {/* Issue Type Badge */}
       <div className="mb-6">
         <h3 className="text-sm font-semibold text-gray-700 mb-2">Issue Type</h3>
-        <IssueTypeBadge issueType={issueType} />
+        <div className="flex flex-wrap items-center gap-2">
+          <IssueTypeBadge issueType={issueType} />
+          {/* The SEBI ICDR regulation the offer is made under, as the price band
+              advertisement cites it (`ipo_details.sebi_regulation_cited`). */}
+          {ipoDetails?.sebiRegulationCited && (
+            <span className="text-xs text-gray-600">
+              SEBI ICDR {ipoDetails.sebiRegulationCited}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Grid Layout: Chart + Metrics */}
