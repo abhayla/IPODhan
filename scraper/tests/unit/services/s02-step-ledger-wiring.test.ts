@@ -232,6 +232,29 @@ describe('HOOK F — the document cycle', () => {
     expect(cycle.match(/processPendingFilings\(/g)).toHaveLength(1);
   });
 
+  it('MINOR-D: spawnBudget is declared before the candidates loop — one budget for the whole cycle', () => {
+    // Red proof (round 3): moving `const spawnBudget = ...` to just inside
+    // `for (const ipo of candidates) {` and re-running this test turns it red,
+    // because the declaration index then falls AFTER the loop index. Moved back
+    // once confirmed red — see the fix-round transcript.
+    const spawnBudgetIdx = cycle.indexOf('const spawnBudget');
+    const loopIdx = cycle.indexOf('for (const ipo of candidates)');
+    expect(spawnBudgetIdx).toBeGreaterThan(-1);
+    expect(loopIdx).toBeGreaterThan(-1);
+    expect(spawnBudgetIdx).toBeLessThan(loopIdx);
+  });
+
+  it('MINOR-D: the extraction lock release runs inside a finally block', () => {
+    // A throw anywhere between acquire() and the end of the cycle body must
+    // still release the lock — a release call that is NOT inside `finally`
+    // leaks the lock for its full TTL on any such throw.
+    expect(cycle).toMatch(/\}\s*finally\s*\{[\s\S]*?distributedLock\.release\(/);
+  });
+
+  it('MINOR-D: DEFAULT_MAX_SPAWNS_PER_CYCLE is referenced', () => {
+    expect(cycle).toContain('DEFAULT_MAX_SPAWNS_PER_CYCLE');
+  });
+
   it('runs auto-persist for EVERY candidate, not only the ones that found a document this cycle', () => {
     // A `result.found.length` guard directly around the call would strand
     // documents found in an earlier cycle and never extracted — the regression

@@ -28,18 +28,45 @@
  *   - It never fails the cycle. An extractor crash, a malformed JSON, a missing
  *     python — each becomes FAILED ledger rows with the error and a backoff
  *     (`2^attempts x 15 min`, capped at 6 hours), and the document returns to
- *     PENDING so a LATER cycle retries it once that backoff has elapsed — a
- *     cycle before `next_due_at` skips the document entirely, spawning no
- *     python for it (MAJOR-2). After 10 failed attempts under the SAME
- *     extractor version the document is marked MANUAL_REVIEW with error
- *     `blocked_after_10_attempts` and is never re-spawned until
- *     `EXTRACTOR_VERSION` changes.
+ *     PENDING so a LATER cycle retries it once that backoff has elapsed.
  *   - It never re-extracts a document that the current extractor version has
  *     already extracted, so a steady-state cycle spawns no python at all.
  *   - It never spawns more than `maxSpawnsPerCycle` python processes across
  *     the WHOLE document cycle (all IPOs, not per IPO), and never runs two
  *     overlapping cycles' extractions at once — see `document-cycle.ts` and
  *     the `filing-auto-persist:cycle` Redis lock (MAJOR-1).
+ *
+ * RETRY GATE IS PER DOCUMENT, NOT PER IPO (MAJOR-A, round 3).
+ *
+ * Before this fix, `selectPendingFilings` read ONE ledger row (E1, keyed by
+ * ipoId only — the step ledger has no document dimension) and used its
+ * `attempts`/`next_due_at` to decide whether THIS CYCLE could spawn python
+ * for the WHOLE IPO. A scanned price-band ad that never parses therefore
+ * blocked every other document belonging to the same IPO — including the RHP
+ * — forever, because the shared gate never advanced past that one document's
+ * failures.
+ *
+ * The gate now lives on the `documents` row itself, one gate per document,
+ * using the columns that already exist for exactly this purpose:
+ * `retry_count`, `extraction_status`, `extraction_error`, `extracted_at`,
+ * `updated_at`. A document is a candidate when its file is stored, its
+ * `extraction_status` is not COMPLETED-at-the-current-`EXTRACTOR_VERSION` and
+ * not MANUAL_REVIEW, and — if it is FAILED — `now >= updated_at +
+ * backoff(retry_count)`, where `backoff` is the SAME exponential function
+ * `step-ledger-recorders.ts` already exports as `backoffNextDueAt` (2^n x 15
+ * min, capped at 6 hours; `n` is the attempt count BEFORE the failure that set
+ * `updated_at`, i.e. `retry_count - 1`). After 10 failed attempts the document
+ * is marked MANUAL_REVIEW with error `blocked_after_10_attempts` and stays
+ * blocked until `EXTRACTOR_VERSION` changes (a version bump does not reset
+ * `retry_count` — it changes the "already extracted" check upstream of this
+ * gate, so a blocked document becomes eligible again under the new version
+ * exactly the way an ordinary un-extracted document is).
+ *
+ * The E1..E10 ledger rows are still WRITTEN on every extraction attempt (with
+ * `attemptsBefore` taken from the document's own `retry_count`, not a shared
+ * ledger counter) — they remain the audit trail of what happened — but they
+ * are no longer READ to decide whether this cycle may spawn python. That
+ * decision is now per-document, so it can never starve a sibling document.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -74,6 +101,7 @@ import {
   planPersistSteps,
   recordLiveStep,
   writeSteps,
+  backoffNextDueAt,
 } from './step-ledger-recorders.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 
@@ -98,47 +126,53 @@ export const EXTRACTABLE_DOC_TYPES: readonly FilingDocType[] = [
 /** 10 minutes: an OCR pass over a 600-page RHP is slow, but not unbounded. */
 export const EXTRACT_TIMEOUT_MS = 10 * 60 * 1000;
 
-/**
- * MAJOR-2 fix. Before this, `planExtractionFailureSteps` accepted an
- * `attemptsBefore` the backoff formula needed, but no caller ever passed it —
- * so every failure backed off as if it were the first — and
- * `selectPendingFilings` never read `next_due_at`, so a permanently unreadable
- * PDF was re-spawned every 30-minute cycle forever. The E1 ledger row (one per
- * IPO — the step ledger is keyed by ipoId+stepId, not per document) is the
- * gate: its `attempts` and `next_due_at` decide whether this cycle may spawn
- * python at all.
- */
 export const MAX_EXTRACTION_ATTEMPTS = 10;
 export const EXTRACTION_BLOCKED_ERROR = 'blocked_after_10_attempts';
 
-/** What `selectPendingFilings` needs from the E1 ledger row to gate a cycle. */
-export interface ExtractionGate {
-  attempts: number;
-  nextDueAt: Date | null;
-  /** The extractor version the last FAILED row was written under. */
-  version: string | null;
+/**
+ * The per-document gate. Pure, so the backoff arithmetic is testable without a
+ * database. `doc` is the subset of `documents` columns the gate reads.
+ */
+export interface DocumentGate {
+  extractionStatus: string | null;
+  retryCount: number;
+  updatedAt: Date | null;
 }
 
 /**
- * True when this cycle must not spawn the extractor for this IPO at all.
+ * True when this cycle must not spawn the extractor for THIS document.
  *
- * Two independent reasons:
- *  - backoff: `nextDueAt` is still in the future.
- *  - permanently blocked: 10 attempts have already failed UNDER THE CURRENT
- *    extractor version. A version bump clears this — `EXTRACTOR_VERSION` is the
- *    documented, deliberate re-extraction trigger (see its own doc comment),
- *    and a permanently-blocked document must be eligible again once a new
- *    build might parse it differently.
+ * Two independent reasons, both scoped to the one document — never to the
+ * whole IPO (MAJOR-A):
+ *  - permanently blocked: `extractionStatus === 'MANUAL_REVIEW'` (set once
+ *    `retryCount` reaches `MAX_EXTRACTION_ATTEMPTS`). A version bump does not
+ *    clear this directly — it is `selectPendingFilings`' "already extracted by
+ *    the CURRENT version" check that makes a document eligible again, exactly
+ *    like any other un-extracted document; this gate does not need to know
+ *    about `EXTRACTOR_VERSION` at all.
+ *  - backing off: the document's last attempt FAILED and the exponential
+ *    backoff window (`backoffNextDueAt`, reused verbatim from
+ *    `step-ledger-recorders.ts`) measured from `updatedAt` has not elapsed.
+ *    `retryCount` is the count AFTER that failure, so the attempt count the
+ *    backoff formula wants (the count BEFORE the failure) is `retryCount - 1`.
  */
-export function extractionGateBlocksThisCycle(
-  gate: ExtractionGate | null | undefined,
-  version: string,
+export function documentExtractionBlocked(
+  doc: DocumentGate,
   now: Date = new Date()
-): boolean {
-  if (!gate) return false;
-  if (gate.attempts >= MAX_EXTRACTION_ATTEMPTS && gate.version === version) return true;
-  if (gate.nextDueAt && gate.nextDueAt.getTime() > now.getTime()) return true;
-  return false;
+): { blocked: boolean; reason?: string } {
+  if (doc.extractionStatus === 'MANUAL_REVIEW') {
+    return {
+      blocked: true,
+      reason: `extraction blocked after ${doc.retryCount} failed attempts (${EXTRACTION_BLOCKED_ERROR})`,
+    };
+  }
+  if (doc.extractionStatus === 'FAILED' && doc.retryCount > 0) {
+    const nextDueAt = backoffNextDueAt(doc.retryCount - 1, doc.updatedAt ?? now);
+    if (nextDueAt.getTime() > now.getTime()) {
+      return { blocked: true, reason: `extraction backing off until ${nextDueAt.toISOString()}` };
+    }
+  }
+  return { blocked: false };
 }
 
 export interface AutoPersistIpo {
@@ -155,6 +189,10 @@ export interface CandidateDocument {
   sha256: string | null;
   extractionStatus: string | null;
   extractedAt: Date | null;
+  /** MAJOR-A: attempts so far — the per-document retry counter the gate reads. */
+  retryCount: number;
+  /** MAJOR-A: when this document's extraction state was last written — the backoff anchor. */
+  updatedAt: Date | null;
 }
 
 export interface AutoPersistResult {
@@ -198,13 +236,16 @@ export const DEFAULT_MAX_SPAWNS_PER_CYCLE = 3;
  *   - it has a sha256 (no hash means we cannot name the file on disk, and an
  *     un-hashed row predates the store — re-fetching it is the runner's job);
  *   - a file for that hash exists in the store;
- *   - it has not already been extracted BY THIS EXTRACTOR VERSION.
+ *   - it has not already been extracted BY THIS EXTRACTOR VERSION;
+ *   - its OWN per-document gate (`documentExtractionBlocked`) does not block it
+ *     (MAJOR-A) — MANUAL_REVIEW, or FAILED and still within its backoff window.
  *
- * The last clause reads BOTH tables on purpose. `documents.extraction_status`
- * says whether we have tried; `document_fetch_state.extractor_version` says
- * which build produced the result. Either alone is insufficient: status alone
- * would never re-extract after a version bump, version alone would re-extract a
- * document that failed for a reason a new build does not fix.
+ * The "already extracted" clause reads BOTH tables on purpose.
+ * `documents.extraction_status` says whether we have tried; `document_fetch_
+ * state.extractor_version` says which build produced the result. Either alone
+ * is insufficient: status alone would never re-extract after a version bump,
+ * version alone would re-extract a document that failed for a reason a new
+ * build does not fix.
  */
 export function selectPendingFilings(
   ipoId: string,
@@ -214,22 +255,12 @@ export function selectPendingFilings(
     storeDir?: string;
     version?: string;
     fileExists?: (p: string) => boolean;
-    /** MAJOR-2: the E1 ledger row's attempts/backoff. `undefined` = not read (never blocks); `null` = read, no row yet. */
-    gate?: ExtractionGate | null;
     now?: Date;
   } = {}
 ): { pending: CandidateDocument[]; skipped: string[] } {
   const storeDir = options.storeDir ?? getStoreDir();
   const version = options.version ?? EXTRACTOR_VERSION;
   const fileExists = options.fileExists ?? existsSync;
-
-  if (extractionGateBlocksThisCycle(options.gate, version, options.now)) {
-    const reason =
-      options.gate && options.gate.attempts >= MAX_EXTRACTION_ATTEMPTS
-        ? `extraction blocked after ${options.gate.attempts} failed attempts (${EXTRACTION_BLOCKED_ERROR})`
-        : `extraction backing off until ${options.gate?.nextDueAt?.toISOString()}`;
-    return { pending: [], skipped: [reason] };
-  }
 
   const versionByDocumentId = new Map<string, string | null>();
   const versionByDocType = new Map<string, string | null>();
@@ -261,6 +292,17 @@ export function selectPendingFilings(
       doc.extractionStatus === 'COMPLETED' && doc.extractedAt && recordedVersion === version;
     if (alreadyDone) {
       skipped.push(`${type}: already extracted by ${version}`);
+      continue;
+    }
+    // MAJOR-A: per-document gate — MANUAL_REVIEW or still within this
+    // document's own backoff window. Never reads any other document's state,
+    // so one permanently-unparseable file can no longer block its siblings.
+    const gate = documentExtractionBlocked(
+      { extractionStatus: doc.extractionStatus, retryCount: doc.retryCount ?? 0, updatedAt: doc.updatedAt },
+      options.now
+    );
+    if (gate.blocked) {
+      skipped.push(`${type}: ${gate.reason}`);
       continue;
     }
     if (doc.extractionStatus === 'IN_PROGRESS') {
@@ -372,16 +414,21 @@ export interface AutoPersistDeps {
   ) => Promise<
     Pick<DocumentFetchStateRow, 'id' | 'docType' | 'documentId' | 'extractedAt' | 'extractorVersion'>[]
   >;
-  /** MAJOR-2: the E1 ledger row (attempts/next_due_at/version) that gates this cycle. */
-  loadExtractionGate: (ipoId: string) => Promise<ExtractionGate | null>;
   runExtractor: ExtractorRunner;
   persistFiling: typeof persistFilingExtraction;
   persisterDeps: FilingPersisterDeps;
-  /** Stamp `documents.extraction_status` + friends. */
+  /**
+   * Stamp `documents.extraction_status` + friends. `retryCount`, when given,
+   * is written verbatim (MAJOR-A) — the caller has already computed the new
+   * value (0 on success, `previous + 1` on failure); this deps function never
+   * increments/decrements on its own, so the arithmetic stays in one place
+   * (`processPendingFilings`) and is unit-testable without a database.
+   */
   setDocumentExtractionState: (args: {
     documentId: string;
     status: 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'PENDING' | 'MANUAL_REVIEW';
     error?: string | null;
+    retryCount?: number;
   }) => Promise<void>;
   /** Stamp `document_fetch_state.extracted_at` + `extractor_version`. */
   setFetchStateExtracted: (args: {
@@ -420,6 +467,8 @@ export function buildAutoPersistDeps(
         sha256: (r as { sha256?: string | null }).sha256 ?? null,
         extractionStatus: (r as { extractionStatus?: string | null }).extractionStatus ?? null,
         extractedAt: (r as { extractedAt?: Date | null }).extractedAt ?? null,
+        retryCount: (r as { retryCount?: number | null }).retryCount ?? 0,
+        updatedAt: (r as { updatedAt?: Date | null }).updatedAt ?? null,
       }));
     },
     async loadStates(ipoId) {
@@ -427,28 +476,23 @@ export function buildAutoPersistDeps(
       const store = new DocumentFetchStateRepository(db as never, redis as never);
       return store.listForIpo(ipoId);
     },
-    async loadExtractionGate(ipoId) {
-      const { IpoPipelineStepsRepository } = await import('@ipodhan/shared');
-      const steps = new IpoPipelineStepsRepository(db as never, redis as never);
-      const rows = await steps.findByIpo(ipoId);
-      const e1 = rows.find((r) => r.stepId === 'E1');
-      if (!e1) return null;
-      return { attempts: e1.attempts, nextDueAt: e1.nextDueAt, version: e1.version ?? null };
-    },
     runExtractor: defaultExtractorRunner,
     persistFiling: persistFilingExtraction,
     persisterDeps: buildFilingPersistDeps(redis),
-    async setDocumentExtractionState({ documentId, status, error }) {
+    async setDocumentExtractionState({ documentId, status, error, retryCount }) {
       // `extracted_at` is stamped ONLY on COMPLETED and never cleared: it records
       // when this document last yielded a usable extraction, and a subsequent
       // IN_PROGRESS/PENDING must not erase that history. `extraction_error` is
       // cleared on success so a stale failure never outlives its fix — the same
-      // rule the ledger applies to `error` on DONE.
+      // rule the ledger applies to `error` on DONE. `retry_count` is written
+      // verbatim when the caller supplies it (MAJOR-A) — see the AutoPersistDeps
+      // doc comment for why the increment lives at the call site, not here.
       const patch: Record<string, unknown> = {
         extractionStatus: status,
         extractionError: error ?? null,
       };
       if (status === 'COMPLETED') patch.extractedAt = new Date();
+      if (retryCount !== undefined) patch.retryCount = retryCount;
       await db.update(documentsTable).set(patch as never).where(eq(documentsTable.id, documentId));
     },
     async setFetchStateExtracted({ stateId, extractedAt, extractorVersion }) {
@@ -486,11 +530,9 @@ export async function processPendingFilings(
 
   let docs: CandidateDocument[];
   let states: Awaited<ReturnType<AutoPersistDeps['loadStates']>>;
-  let gate: ExtractionGate | null = null;
   try {
     docs = await deps.loadDocuments(ipo.id);
     states = await deps.loadStates(ipo.id);
-    gate = await deps.loadExtractionGate(ipo.id);
   } catch (error) {
     logger.error(
       { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
@@ -498,13 +540,11 @@ export async function processPendingFilings(
     );
     return result;
   }
-  const attemptsBefore = gate?.attempts ?? 0;
 
   const { pending, skipped } = selectPendingFilings(ipo.id, docs, states, {
     storeDir: deps.storeDir,
     version,
     fileExists: deps.fileExists,
-    gate,
   });
   result.considered = docs.length;
   result.skipped = skipped;
@@ -554,12 +594,16 @@ export async function processPendingFilings(
     if (isExtractorFailure(run)) {
       const failure = run.error;
       result.failed++;
-      // MAJOR-2: this write is the one that pushes `attempts` from
-      // (attemptsBefore) to (attemptsBefore + 1). Once that reaches
+      // MAJOR-A: attemptsBefore is THIS document's own retry_count, never a
+      // shared ledger counter — so one document's failures cannot inflate
+      // another document's backoff or cap. This write is the one that pushes
+      // it from (attemptsBefore) to (attemptsBefore + 1). Once that reaches
       // MAX_EXTRACTION_ATTEMPTS, record the block explicitly so the row
       // self-documents WHY the next cycle will not retry it, rather than
       // leaving that fact implicit in a number nobody reads.
-      const willReachAttemptCap = attemptsBefore + 1 >= MAX_EXTRACTION_ATTEMPTS;
+      const attemptsBefore = doc.retryCount ?? 0;
+      const newRetryCount = attemptsBefore + 1;
+      const willReachAttemptCap = newRetryCount >= MAX_EXTRACTION_ATTEMPTS;
       const recordedError = willReachAttemptCap ? EXTRACTION_BLOCKED_ERROR : failure;
       logger.error(
         { ipoId: ipo.id, docType, error: failure, attemptsBefore, blocked: willReachAttemptCap },
@@ -577,14 +621,18 @@ export async function processPendingFilings(
           attemptsBefore,
         })
       );
-      // Back to PENDING (not FAILED-forever) so the next cycle retries it, UNLESS
-      // it just hit the attempt cap — then MANUAL_REVIEW so it stops silently
+      // MAJOR-A: the document's own extraction_status becomes FAILED (not
+      // PENDING) — `documentExtractionBlocked` reads FAILED + retry_count +
+      // updated_at to compute this document's backoff window, so the status
+      // must say FAILED for the gate to hold it until that window elapses.
+      // MANUAL_REVIEW once it hits the attempt cap, so it stops silently
       // cycling PENDING->IN_PROGRESS->FAILED forever with nobody told.
       try {
         await deps.setDocumentExtractionState({
           documentId: doc.id,
-          status: willReachAttemptCap ? 'MANUAL_REVIEW' : 'PENDING',
+          status: willReachAttemptCap ? 'MANUAL_REVIEW' : 'FAILED',
           error: recordedError.slice(0, 1000),
+          retryCount: newRetryCount,
         });
       } catch {
         /* already logged by the writer; a stuck status must not fail the cycle */
@@ -709,8 +757,12 @@ export async function processPendingFilings(
     );
 
     const now = new Date();
+    // MAJOR-A: a successful extraction resets this document's own retry
+    // counter to 0 — a document that failed nine times and then succeeded
+    // must not carry that history into its next unrelated extraction attempt
+    // (e.g. after a future EXTRACTOR_VERSION bump).
     await deps
-      .setDocumentExtractionState({ documentId: doc.id, status: 'COMPLETED', error: null })
+      .setDocumentExtractionState({ documentId: doc.id, status: 'COMPLETED', error: null, retryCount: 0 })
       .catch(() => undefined);
     const stateId = stateIdByDocType.get(docType);
     if (stateId) {

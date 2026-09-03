@@ -33,7 +33,7 @@ import {
   selectPendingFilings,
   processPendingFilings,
   autoPersistEnabled,
-  extractionGateBlocksThisCycle,
+  documentExtractionBlocked,
   defaultExtractorRunner,
   EXTRACTOR_VERSION,
   MAX_EXTRACTION_ATTEMPTS,
@@ -52,6 +52,8 @@ const doc = (o: Partial<CandidateDocument> = {}): CandidateDocument => ({
   sha256: SHA,
   extractionStatus: 'PENDING',
   extractedAt: null,
+  retryCount: 0,
+  updatedAt: null,
   ...o,
 });
 
@@ -82,7 +84,6 @@ function deps(overrides: Partial<AutoPersistDeps> = {}): AutoPersistDeps {
     loadStates: vi.fn(async () => [
       { id: 'state-1', docType: 'RHP', documentId: 'doc-1', extractedAt: null, extractorVersion: null },
     ]),
-    loadExtractionGate: vi.fn(async () => null),
     runExtractor: vi.fn(() => ({ ok: true as const, extraction: extraction() })),
     persistFiling: vi.fn(async () => summary()) as never,
     persisterDeps: { protectionFilter: vi.fn() } as never,
@@ -192,6 +193,9 @@ describe('processPendingFilings — the happy path', () => {
     expect(withFile.setDocumentExtractionState).toHaveBeenCalledWith(
       expect.objectContaining({ documentId: 'doc-1', status: 'COMPLETED' })
     );
+    expect(withFile.setDocumentExtractionState).toHaveBeenCalledWith(
+      expect.objectContaining({ documentId: 'doc-1', status: 'COMPLETED', retryCount: 0 })
+    );
     expect(withFile.setFetchStateExtracted).toHaveBeenCalledWith({
       stateId: 'state-1',
       extractedAt: expect.any(Date),
@@ -218,7 +222,7 @@ describe('processPendingFilings — the happy path', () => {
 });
 
 describe('processPendingFilings — failures are recorded, never fatal', () => {
-  it('an extractor failure writes FAILED E-rows with a backoff and returns the document to PENDING', async () => {
+  it('an extractor failure writes FAILED E-rows with a backoff and marks the document FAILED with retryCount 1', async () => {
     const d = deps({ runExtractor: vi.fn(() => ({ ok: false as const, error: 'extractor exited 1: boom' })) });
 
     const result = await processPendingFilings(IPO, d);
@@ -234,8 +238,11 @@ describe('processPendingFilings — failures are recorded, never fatal', () => {
       expect((w as { error?: string }).error).toContain('boom');
       expect((w as { nextDueAt?: Date }).nextDueAt).toBeInstanceOf(Date);
     }
+    // MAJOR-A: FAILED (not PENDING) is what makes `documentExtractionBlocked`
+    // apply this document's own backoff on the next cycle; retryCount is the
+    // document's own counter (1, from 0), never a shared/ledger value.
     expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
-      expect.objectContaining({ documentId: 'doc-1', status: 'PENDING' })
+      expect.objectContaining({ documentId: 'doc-1', status: 'FAILED', retryCount: 1 })
     );
   });
 
@@ -333,108 +340,138 @@ describe('processPendingFilings — the W-45 paired-agreement gate is not skippe
   });
 });
 
-// ------------------------------------------------- MAJOR-2: backoff honoured
+// ---------------------------------------- MAJOR-A: per-document retry gate
 
-describe('extractionGateBlocksThisCycle — pure gate logic', () => {
+describe('documentExtractionBlocked — pure per-document gate logic', () => {
   const now = new Date('2026-09-03T10:00:00Z');
 
-  it('no gate row yet — never blocks', () => {
-    expect(extractionGateBlocksThisCycle(null, EXTRACTOR_VERSION, now)).toBe(false);
+  it('a never-tried document (PENDING, retryCount 0) never blocks', () => {
+    expect(documentExtractionBlocked({ extractionStatus: 'PENDING', retryCount: 0, updatedAt: null }, now).blocked).toBe(
+      false
+    );
   });
 
-  it('a future next_due_at blocks; a past one does not', () => {
-    const future = new Date(now.getTime() + 60_000);
-    const past = new Date(now.getTime() - 60_000);
+  it('MANUAL_REVIEW always blocks, regardless of updatedAt', () => {
     expect(
-      extractionGateBlocksThisCycle({ attempts: 1, nextDueAt: future, version: EXTRACTOR_VERSION }, EXTRACTOR_VERSION, now)
+      documentExtractionBlocked({ extractionStatus: 'MANUAL_REVIEW', retryCount: 10, updatedAt: now }, now).blocked
     ).toBe(true);
-    expect(
-      extractionGateBlocksThisCycle({ attempts: 1, nextDueAt: past, version: EXTRACTOR_VERSION }, EXTRACTOR_VERSION, now)
-    ).toBe(false);
   });
 
-  it('attempts >= 10 under the SAME version blocks; a version bump lifts it', () => {
+  it('FAILED with retryCount 1 blocks 5 minutes later, and is clear 20 minutes later', () => {
+    const fiveMinAgo = new Date(now.getTime() - 5 * 60_000);
+    const twentyMinAgo = new Date(now.getTime() - 20 * 60_000);
+    // attemptsBefore = retryCount(1) - 1 = 0 -> backoff = 15 min.
     expect(
-      extractionGateBlocksThisCycle(
-        { attempts: MAX_EXTRACTION_ATTEMPTS, nextDueAt: null, version: EXTRACTOR_VERSION },
-        EXTRACTOR_VERSION,
-        now
-      )
+      documentExtractionBlocked({ extractionStatus: 'FAILED', retryCount: 1, updatedAt: fiveMinAgo }, now).blocked
     ).toBe(true);
     expect(
-      extractionGateBlocksThisCycle(
-        { attempts: MAX_EXTRACTION_ATTEMPTS, nextDueAt: null, version: 'old-version' },
-        EXTRACTOR_VERSION,
-        now
-      )
+      documentExtractionBlocked({ extractionStatus: 'FAILED', retryCount: 1, updatedAt: twentyMinAgo }, now).blocked
     ).toBe(false);
   });
 });
 
-describe('selectPendingFilings — the backoff gate (MAJOR-2)', () => {
-  const states = [{ docType: 'RHP', documentId: 'doc-1', extractedAt: null, extractorVersion: null }];
+describe('selectPendingFilings — the per-document retry gate (MAJOR-A)', () => {
+  const twoStates = [
+    { docType: 'RHP', documentId: 'doc-x', extractedAt: null, extractorVersion: null },
+    { docType: 'PROSPECTUS', documentId: 'doc-y', extractedAt: null, extractorVersion: null },
+  ];
+  const now = new Date('2026-09-03T10:00:00Z');
 
-  it('a doc with a future next_due_at is not selected', () => {
-    const now = new Date('2026-09-03T10:00:00Z');
-    const { pending, skipped } = selectPendingFilings('ipo-1', [doc()], states, {
-      fileExists: () => true,
-      now,
-      gate: { attempts: 1, nextDueAt: new Date(now.getTime() + 60_000), version: EXTRACTOR_VERSION },
+  it('(a) doc X FAILED 1 attempt 5 min ago and doc Y PENDING -> only Y is selected', () => {
+    const x = doc({
+      id: 'doc-x',
+      type: 'RHP',
+      extractionStatus: 'FAILED',
+      retryCount: 1,
+      updatedAt: new Date(now.getTime() - 5 * 60_000),
     });
-    expect(pending).toHaveLength(0);
-    expect(skipped[0]).toContain('backing off');
+    const y = doc({ id: 'doc-y', type: 'PROSPECTUS', sha256: 'b'.repeat(64), extractionStatus: 'PENDING' });
+    const { pending, skipped } = selectPendingFilings('ipo-1', [x, y], twoStates, { fileExists: () => true, now });
+    expect(pending.map((d) => d.id)).toEqual(['doc-y']);
+    expect(skipped.join(' ')).toContain('backing off');
   });
 
-  it('a doc with a past next_due_at is selected', () => {
-    const now = new Date('2026-09-03T10:00:00Z');
-    const { pending } = selectPendingFilings('ipo-1', [doc()], states, {
-      fileExists: () => true,
-      now,
-      gate: { attempts: 1, nextDueAt: new Date(now.getTime() - 60_000), version: EXTRACTOR_VERSION },
+  it('(b) doc X FAILED 1 attempt 20 min ago -> X is selected — its own backoff window has elapsed', () => {
+    const x = doc({
+      id: 'doc-x',
+      type: 'RHP',
+      extractionStatus: 'FAILED',
+      retryCount: 1,
+      updatedAt: new Date(now.getTime() - 20 * 60_000),
     });
-    expect(pending).toHaveLength(1);
+    const { pending } = selectPendingFilings('ipo-1', [x], twoStates, { fileExists: () => true, now });
+    expect(pending.map((d) => d.id)).toEqual(['doc-x']);
   });
 
-  it('a doc whose gate has hit the attempt cap under the current version is blocked', () => {
-    const { pending, skipped } = selectPendingFilings('ipo-1', [doc()], states, {
-      fileExists: () => true,
-      gate: { attempts: MAX_EXTRACTION_ATTEMPTS, nextDueAt: null, version: EXTRACTOR_VERSION },
-    });
+  it('(c) a document at retryCount 10 / MANUAL_REVIEW is never selected', () => {
+    const x = doc({ id: 'doc-x', type: 'RHP', extractionStatus: 'MANUAL_REVIEW', retryCount: MAX_EXTRACTION_ATTEMPTS });
+    const { pending, skipped } = selectPendingFilings('ipo-1', [x], twoStates, { fileExists: () => true, now });
     expect(pending).toHaveLength(0);
     expect(skipped[0]).toContain(EXTRACTION_BLOCKED_ERROR);
   });
+
+  it('one document backing off does NOT block an unrelated sibling document of the same IPO', () => {
+    // Regression pin for MAJOR-A: before the fix, a shared per-IPO gate meant
+    // ANY document's failure blocked every OTHER document belonging to the
+    // same IPO. Two documents, one blocked, one not — both decided independently.
+    const blocked = doc({
+      id: 'doc-blocked',
+      type: 'RHP',
+      extractionStatus: 'MANUAL_REVIEW',
+      retryCount: MAX_EXTRACTION_ATTEMPTS,
+    });
+    const ok = doc({ id: 'doc-ok', type: 'PROSPECTUS', sha256: 'c'.repeat(64), extractionStatus: 'PENDING' });
+    const { pending } = selectPendingFilings('ipo-1', [blocked, ok], twoStates, { fileExists: () => true, now });
+    expect(pending.map((d) => d.id)).toEqual(['doc-ok']);
+  });
 });
 
-describe('processPendingFilings — attemptsBefore reaches the failure planner (MAJOR-2)', () => {
-  it('passes the gate attempts as attemptsBefore, producing the right backoff', async () => {
+describe('processPendingFilings — per-document retry bookkeeping (MAJOR-A)', () => {
+  it('(d) success resets retryCount to 0 and clears the error', async () => {
+    const d = deps({ loadDocuments: vi.fn(async () => [doc({ retryCount: 4 })]) });
+    await processPendingFilings(IPO, d);
+    expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
+      expect.objectContaining({ documentId: 'doc-1', status: 'COMPLETED', error: null, retryCount: 0 })
+    );
+  });
+
+  it('a failure passes this document own retryCount as attemptsBefore, producing the matching backoff', async () => {
     const d = deps({
-      loadExtractionGate: vi.fn(async () => ({ attempts: 4, nextDueAt: null, version: EXTRACTOR_VERSION })),
+      loadDocuments: vi.fn(async () => [doc({ retryCount: 4 })]),
       runExtractor: vi.fn(() => ({ ok: false as const, error: 'boom' })),
     });
     await processPendingFilings(IPO, d);
-    const eWrite = recordedSteps.flatMap((r) => r.writes).find((w) => w.stepId === 'E1') as {
-      nextDueAt?: Date;
-    };
+    const eWrite = recordedSteps.flatMap((r) => r.writes).find((w) => w.stepId === 'E1') as { nextDueAt?: Date };
     // attemptsBefore=4 -> 2^4 x 15min = 4h.
     expect(eWrite.nextDueAt).toBeInstanceOf(Date);
+    expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
+      expect.objectContaining({ documentId: 'doc-1', status: 'FAILED', retryCount: 5 })
+    );
   });
 
-  it('the 10th failure is recorded with the blocked error and MANUAL_REVIEW, not PENDING', async () => {
+  it('(e) the 10th failure (retryCount 9 -> 10) is recorded MANUAL_REVIEW with the blocked error', async () => {
     const d = deps({
-      loadExtractionGate: vi.fn(async () => ({ attempts: MAX_EXTRACTION_ATTEMPTS - 1, nextDueAt: null, version: EXTRACTOR_VERSION })),
+      loadDocuments: vi.fn(async () => [doc({ retryCount: MAX_EXTRACTION_ATTEMPTS - 1 })]),
       runExtractor: vi.fn(() => ({ ok: false as const, error: 'boom' })),
     });
     await processPendingFilings(IPO, d);
     expect(d.setDocumentExtractionState).toHaveBeenCalledWith(
-      expect.objectContaining({ documentId: 'doc-1', status: 'MANUAL_REVIEW', error: EXTRACTION_BLOCKED_ERROR })
+      expect.objectContaining({
+        documentId: 'doc-1',
+        status: 'MANUAL_REVIEW',
+        error: EXTRACTION_BLOCKED_ERROR,
+        retryCount: MAX_EXTRACTION_ATTEMPTS,
+      })
     );
     const eWrites = recordedSteps.flatMap((r) => r.writes).filter((w) => w.stepId.startsWith('E'));
     for (const w of eWrites) expect((w as { error?: string }).error).toBe(EXTRACTION_BLOCKED_ERROR);
   });
 
-  it('attempt 11 (gate already at the cap) is blocked before spawning at all', async () => {
+  it('a document already at the cap (MANUAL_REVIEW) is blocked before spawning at all', async () => {
     const d = deps({
-      loadExtractionGate: vi.fn(async () => ({ attempts: MAX_EXTRACTION_ATTEMPTS, nextDueAt: null, version: EXTRACTOR_VERSION })),
+      loadDocuments: vi.fn(async () => [
+        doc({ extractionStatus: 'MANUAL_REVIEW', retryCount: MAX_EXTRACTION_ATTEMPTS }),
+      ]),
     });
     const result = await processPendingFilings(IPO, d);
     expect(result.spawned).toBe(0);

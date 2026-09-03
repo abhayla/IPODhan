@@ -256,18 +256,25 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
     }
   }
 
-  const runner = new DocumentDiscoveryRunner({
-    fetcher: defaultFetcher,
-    store,
-    documents,
-    counter,
-  });
+  // MINOR-C: everything that can run while the extraction lock is held is
+  // wrapped in try/finally so a throw ANYWHERE in the cycle body — not just
+  // inside the per-IPO try/catch below — still releases the lock. Before this,
+  // a throw between acquire() (above) and release() (previously at the very
+  // end of the function) leaked the lock for its full 45-minute TTL, since
+  // nothing between those two points ran under a finally.
+  try {
+    const runner = new DocumentDiscoveryRunner({
+      fetcher: defaultFetcher,
+      store,
+      documents,
+      counter,
+    });
 
-  const candidates = await loadCandidateIpos();
-  const results: IpoRunResult[] = [];
-  let budgetExhausted = false;
+    const candidates = await loadCandidateIpos();
+    const results: IpoRunResult[] = [];
+    let budgetExhausted = false;
 
-  for (const ipo of candidates) {
+    for (const ipo of candidates) {
     if (Date.now() - startedAt >= budgetMs) {
       budgetExhausted = true;
       logger.warn(
@@ -435,42 +442,45 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
     }
   }
 
-  const summary = summarize(results, Date.now() - startedAt, budgetExhausted);
+    const summary = summarize(results, Date.now() - startedAt, budgetExhausted);
 
-  // One scraper_logs row per cycle for source=DOCUMENTS, so the existing metrics
-  // tracker and alert thresholds cover documents like any other source (§7.4).
-  // Non-fatal: a logging failure must never fail the cycle.
-  try {
-    await db.insert(scraperLogs).values({
-      source: 'DOCUMENTS',
-      status: summary.blocked > 0 ? 'PARTIAL' : 'SUCCESS',
-      recordsProcessed: summary.found,
-      recordsFailed: summary.blocked,
-      durationMs: summary.durationMs,
-    } as never);
-  } catch (error) {
-    logger.error(
-      { error: error instanceof Error ? error.message : String(error) },
-      'Failed to write DOCUMENTS scraper_logs row (non-fatal)'
-    );
-  }
-
-  // MAJOR-1: release the extraction lock so the NEXT cycle can acquire it —
-  // non-fatal, and skipped entirely when this cycle never held it (flag off,
-  // or another cycle already had it).
-  if (lockToken) {
+    // One scraper_logs row per cycle for source=DOCUMENTS, so the existing metrics
+    // tracker and alert thresholds cover documents like any other source (§7.4).
+    // Non-fatal: a logging failure must never fail the cycle.
     try {
-      await distributedLock.release(FILING_EXTRACTION_LOCK_KEY, lockToken);
+      await db.insert(scraperLogs).values({
+        source: 'DOCUMENTS',
+        status: summary.blocked > 0 ? 'PARTIAL' : 'SUCCESS',
+        recordsProcessed: summary.found,
+        recordsFailed: summary.blocked,
+        durationMs: summary.durationMs,
+      } as never);
     } catch (error) {
-      logger.warn(
+      logger.error(
         { error: error instanceof Error ? error.message : String(error) },
-        'Failed to release filing auto-persist lock (non-fatal — it will expire via TTL)'
+        'Failed to write DOCUMENTS scraper_logs row (non-fatal)'
       );
     }
-  }
 
-  logger.info({ ...summary, byHost: counter.byHost() }, 'Document discovery cycle complete');
-  return summary;
+    logger.info({ ...summary, byHost: counter.byHost() }, 'Document discovery cycle complete');
+    return summary;
+  } finally {
+    // MAJOR-1 + MINOR-C: release the extraction lock so the NEXT cycle can
+    // acquire it — non-fatal, skipped entirely when this cycle never held it
+    // (flag off, or another cycle already had it), and now guaranteed to run
+    // on EVERY exit path (return above, or a throw anywhere in the try block)
+    // rather than only the successful-fallthrough path.
+    if (lockToken) {
+      try {
+        await distributedLock.release(FILING_EXTRACTION_LOCK_KEY, lockToken);
+      } catch (error) {
+        logger.warn(
+          { error: error instanceof Error ? error.message : String(error) },
+          'Failed to release filing auto-persist lock (non-fatal — it will expire via TTL)'
+        );
+      }
+    }
+  }
 }
 
 export interface PurgeSummary {
