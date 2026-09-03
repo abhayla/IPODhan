@@ -54,17 +54,170 @@ async function resolveRegistrarIdSafe(registrarName: string | null | undefined):
  */
 let consolidationServiceInstance: DataConsolidationService | null = null;
 
+/**
+ * Module-level singleton for the conflicts repository, shared by the
+ * consolidation service and by the merged-record validation pass below, so a
+ * write never constructs a second repo (and a second Redis handle) per IPO.
+ */
+let dataConflictsRepoInstance: DataConflictsRepository | null = null;
+
+function getDataConflictsRepository(): DataConflictsRepository {
+  if (!dataConflictsRepoInstance) {
+    dataConflictsRepoInstance = new DataConflictsRepository(db, getRedisClient());
+  }
+  return dataConflictsRepoInstance;
+}
+
 async function getConsolidationService(): Promise<DataConsolidationService> {
   if (!consolidationServiceInstance) {
     const redis = getRedisClient();
     const fieldSourcesRepo = new FieldSourcesRepository(db, redis);
-    const dataConflictsRepo = new DataConflictsRepository(db, redis);
     consolidationServiceInstance = new DataConsolidationService(
       fieldSourcesRepo,
-      dataConflictsRepo
+      getDataConflictsRepository()
     );
   }
   return consolidationServiceInstance;
+}
+
+/**
+ * The rules the merged pass OWNS, and the fields each one refuses to write.
+ * Everything else `validateIPOData` can report (offering-type shape guards,
+ * required-field, date ordering, lot economics) is already enforced per source
+ * and on the create path - re-acting on it here would silently widen this
+ * guard's blast radius far past W-14.
+ */
+const MERGED_RULE_FIELDS: Record<string, string[]> = {
+  PRICE_BAND_INVERTED: ['priceRangeMin', 'priceRangeMax'],
+  PRICE_BAND_TOO_WIDE_MAINBOARD: ['priceRangeMin', 'priceRangeMax'],
+  PRICE_BAND_TOO_WIDE_SME: ['priceRangeMin', 'priceRangeMax'],
+  LOT_SIZE_INVALID: ['lotSize'],
+  LOT_SIZE_TOO_LOW: ['lotSize'],
+};
+
+/**
+ * ===== W-14: MERGED-RECORD VALIDATION (Deepa walk, 2026-09-02) =====
+ *
+ * `validateIPOData` runs PER SOURCE inside each orchestrator, on only the
+ * fields that one source happens to carry. Several of its rules are
+ * segment-conditional or need two fields at once, so they never fire there:
+ * BSE list rows carry no `segment` (undefined by design), so the SEBI
+ * band-width rules never evaluate for BSE data; NSE list rows carry no lot
+ * size, so the lot-size rules never evaluate for NSE rows. A 25% band on a
+ * mainboard IPO arriving from BSE was accepted outright.
+ *
+ * The MERGED view of `existingIPO` + this scrape has segment + band + lot
+ * together, so the SAME rules run once more here - BEFORE either write door
+ * (consolidation, and the legacy fallback it falls through to). Running it
+ * before the doors is load-bearing, not cosmetic: `consolidateIPOData` is the
+ * single writer of `field_sources`, so a field validated only AFTER
+ * consolidation would already have been recorded as this source's while `ipos`
+ * kept the old value - provenance would claim a value the row does not hold.
+ * Dropping the field from the INCOMING payload means consolidation never sees
+ * it, writes no provenance for it, and the fallback door (which consumes the
+ * same payload) is guarded by construction.
+ *
+ * Behaviour: an ERROR-severity hit drops the offending fields from the incoming
+ * payload (the stored values survive), records a CRITICAL data_conflicts row
+ * tagged `MERGED_RECORD_VALIDATION:<rule>`, and logs at warn; the rest of the
+ * update proceeds. A WARNING-severity hit (an unusual-but-legal lot) logs only.
+ * An ADMIN write is exempt - a manual override is never dropped.
+ *
+ * Mutates `incomingData` and returns the names of the fields it dropped, so the
+ * consolidation door can re-apply the same decision to consolidation's merged
+ * output (whose per-field winner may still be a previously-persisted bad value
+ * for that field).
+ */
+async function applyMergedRecordValidation(
+  existingIPO: Record<string, any>,
+  incomingData: Record<string, any>,
+  source: ScraperSource,
+  companyName: string
+): Promise<string[]> {
+  if (source === 'ADMIN') return [];
+
+  // Segment: the STORED classification governs whenever the row has one - an
+  // incoming row claiming SME must not relax the band gate for its own band
+  // value in the same write. Only a row with no segment at all takes the
+  // incoming one.
+  const storedSegment = (existingIPO as any).segment ?? null;
+  const incomingSegment = ('segment' in incomingData ? incomingData.segment : null) ?? null;
+  const mergedSegment = storedSegment !== null ? storedSegment : incomingSegment;
+
+  const mergedValue = (field: string) => incomingData[field] ?? (existingIPO as any)[field] ?? undefined;
+  const mergedRecord: Record<string, any> = {
+    companyName: incomingData.companyName ?? existingIPO.companyName,
+    segment: mergedSegment,
+    lotSize: mergedValue('lotSize'),
+    priceRangeMin: mergedValue('priceRangeMin'),
+    priceRangeMax: mergedValue('priceRangeMax'),
+    issueType: mergedValue('issueType'),
+  };
+
+  const mergedValidation = validateIPOData(mergedRecord as any, source);
+
+  for (const warning of mergedValidation.warnings) {
+    if (warning.field === 'lotSize' || warning.field === 'priceBand') {
+      logger.warn({
+        ipoId: existingIPO.id,
+        companyName,
+        source,
+        rule: warning.rule,
+        segment: mergedSegment,
+      }, `[MergedRecordValidation] ${warning.rule} on the merged record (W-14) - written, warning only`);
+    }
+  }
+
+  const droppedFields: string[] = [];
+  for (const error of mergedValidation.errors) {
+    const fieldsToDrop = MERGED_RULE_FIELDS[error.rule];
+    if (!fieldsToDrop) continue;
+
+    const rejectedValues: Record<string, any> = {};
+    const keptValues: Record<string, any> = {};
+    for (const field of fieldsToDrop) {
+      rejectedValues[field] = mergedRecord[field];
+      keptValues[field] = (existingIPO as any)[field] ?? null;
+      delete incomingData[field];
+      if (!droppedFields.includes(field)) droppedFields.push(field);
+    }
+
+    logger.warn({
+      ipoId: existingIPO.id,
+      companyName,
+      source,
+      rule: error.rule,
+      segment: mergedSegment,
+      droppedFields: fieldsToDrop,
+      rejectedValues,
+      keptValues,
+    }, `[MergedRecordValidation] ${error.rule} on the merged record (W-14) - offending fields NOT written`);
+
+    // Best-effort provenance for the admin queue (non-fatal-side-effects.md):
+    // a failure to record the conflict must never block the primary write.
+    try {
+      await getDataConflictsRepository().upsertConflict({
+        ipoId: existingIPO.id,
+        tableName: 'ipos',
+        fieldName: error.field,
+        source1: source as any,
+        value1: JSON.stringify(keptValues),
+        source2: source as any,
+        value2: JSON.stringify(rejectedValues),
+        resolutionReason: `MERGED_RECORD_VALIDATION:${error.rule}`,
+        severity: 'CRITICAL',
+      });
+    } catch (conflictError: any) {
+      logger.warn({
+        ipoId: existingIPO.id,
+        source,
+        rule: error.rule,
+        error: conflictError?.message,
+      }, '[MergedRecordValidation] failed to record merged-record conflict (non-fatal)');
+    }
+  }
+
+  return droppedFields;
 }
 
 /**
@@ -416,6 +569,17 @@ export async function upsertIPO(
       }
 
       if (existingIPO) {
+        // W-14: run the merged-record rule set ONCE, before EITHER write door, on
+        // the merged view of the stored row + this scrape. See
+        // `applyMergedRecordValidation` for why it cannot run after consolidation
+        // (field_sources provenance) and why the fallback door needs it too.
+        const mergedValidationDroppedFields = await applyMergedRecordValidation(
+          existingIPO as any,
+          ipoData as any,
+          source,
+          scrapedIPO.companyName
+        );
+
         // ========== PHASE 4: PRODUCTION CONSOLIDATION (100% ROLLOUT) ==========
         // All IPO updates use intelligent data consolidation
         if (FEATURE_FLAGS.ENABLE_DATA_CONSOLIDATION) {
@@ -507,113 +671,15 @@ export async function upsertIPO(
               );
             }
 
-            // ===== W-14: MERGED-RECORD VALIDATION (Deepa walk, 2026-09-02) =====
-            // `validateIPOData` runs PER SOURCE inside each orchestrator, on only
-            // the fields that one source happens to carry. Several of its rules are
-            // segment-conditional or need two fields at once, so they never fire
-            // there: BSE list rows carry no `segment` (undefined by design), so the
-            // SEBI band-width rules never evaluate for BSE data; NSE list rows carry
-            // no lot size, so the lot-size rules never evaluate for NSE rows. A 25%
-            // band on a mainboard IPO arriving from BSE was accepted outright.
-            //
-            // The MERGED record has segment + band + lot together, so the SAME rules
-            // are run once more here, at the write door, on the values about to land.
-            // This is a SECOND pass — the per-source validation is untouched.
-            //
-            // Behaviour: an ERROR-severity hit does not write the offending fields
-            // (the stored values survive), records a CRITICAL data_conflicts row
-            // tagged `MERGED_RECORD_VALIDATION:<rule>`, and logs at warn; the rest of
-            // the update proceeds. A WARNING-severity hit (an unusual-but-legal lot)
-            // logs only. An ADMIN write is exempt — a manual override is never dropped.
-            if (source !== 'ADMIN') {
-              const mergedSegment =
-                (finalData.segment !== undefined ? finalData.segment : (existingIPO as any).segment) ?? null;
-              const mergedValidation = validateIPOData(
-                {
-                  companyName: finalData.companyName ?? existingIPO.companyName,
-                  segment: mergedSegment,
-                  lotSize: finalData.lotSize ?? undefined,
-                  priceRangeMin: finalData.priceRangeMin ?? undefined,
-                  priceRangeMax: finalData.priceRangeMax ?? undefined,
-                  issueType: finalData.issueType ?? (existingIPO as any).issueType ?? undefined,
-                },
-                source
-              );
-
-              // Only the rules this merged pass owns act on the write. Everything
-              // else `validateIPOData` can report (offering-type shape guards,
-              // required-field, date ordering, lot economics) is already enforced
-              // per source and on the create path — re-acting on it here would
-              // silently widen this guard's blast radius far past W-14.
-              const MERGED_RULE_FIELDS: Record<string, string[]> = {
-                PRICE_BAND_INVERTED: ['priceRangeMin', 'priceRangeMax'],
-                PRICE_BAND_TOO_WIDE_MAINBOARD: ['priceRangeMin', 'priceRangeMax'],
-                PRICE_BAND_TOO_WIDE_SME: ['priceRangeMin', 'priceRangeMax'],
-                LOT_SIZE_INVALID: ['lotSize'],
-                LOT_SIZE_TOO_LOW: ['lotSize'],
-              };
-
-              for (const warning of mergedValidation.warnings) {
-                if (warning.rule in MERGED_RULE_FIELDS || warning.field === 'lotSize' || warning.field === 'priceBand') {
-                  logger.warn({
-                    ipoId: existingIPO.id,
-                    companyName: scrapedIPO.companyName,
-                    source,
-                    rule: warning.rule,
-                    segment: mergedSegment,
-                  }, `[MergedRecordValidation] ${warning.rule} on the merged record (W-14) — written, warning only`);
-                }
-              }
-
-              for (const error of mergedValidation.errors) {
-                const droppedFields = MERGED_RULE_FIELDS[error.rule];
-                if (!droppedFields) continue;
-
-                const rejectedValues: Record<string, any> = {};
-                const keptValues: Record<string, any> = {};
-                for (const field of droppedFields) {
-                  rejectedValues[field] = finalData[field];
-                  keptValues[field] = (existingIPO as any)[field] ?? null;
-                  delete finalData[field];
-                }
-
-                logger.warn({
-                  ipoId: existingIPO.id,
-                  companyName: scrapedIPO.companyName,
-                  source,
-                  rule: error.rule,
-                  segment: mergedSegment,
-                  droppedFields,
-                  rejectedValues,
-                  keptValues,
-                }, `[MergedRecordValidation] ${error.rule} on the merged record (W-14) — offending fields NOT written`);
-
-                // Best-effort provenance for the admin queue (non-fatal-side-effects.md):
-                // a failure to record the conflict must never block the primary write.
-                try {
-                  const conflictsRepo = new DataConflictsRepository(db, getRedisClient());
-                  await conflictsRepo.upsertConflict({
-                    ipoId: existingIPO.id,
-                    tableName: 'ipos',
-                    fieldName: error.field,
-                    source1: source as any,
-                    value1: JSON.stringify(keptValues),
-                    source2: source as any,
-                    value2: JSON.stringify(rejectedValues),
-                    resolutionReason: `MERGED_RECORD_VALIDATION:${error.rule}`,
-                    severity: 'CRITICAL',
-                  });
-                } catch (conflictError: any) {
-                  logger.warn({
-                    ipoId: existingIPO.id,
-                    source,
-                    rule: error.rule,
-                    error: conflictError?.message,
-                  }, '[MergedRecordValidation] failed to record merged-record conflict (non-fatal)');
-                }
-              }
+            // W-14: the merged-record pass already ran ONCE, before this door, and
+            // removed these fields from the incoming payload (so consolidation never
+            // saw them and wrote no `field_sources` provenance for them). Re-apply the
+            // SAME decision to consolidation's merged output: its per-field winner for
+            // a dropped field can still be a previously-persisted bad value, and this
+            // update must leave the stored value alone.
+            for (const field of mergedValidationDroppedFields) {
+              delete finalData[field];
             }
-            // ===== END W-14 MERGED-RECORD VALIDATION =====
 
             // Update IPO with consolidated data
             await ipoRepository.update(existingIPO.id, finalData);

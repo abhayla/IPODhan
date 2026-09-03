@@ -18,6 +18,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 const consolidateIPODataMock = vi.fn();
 const upsertConflictMock = vi.fn().mockResolvedValue({});
+/**
+ * One shared field_sources double so a test can assert on the provenance the
+ * REAL consolidation service would write (test (g)).
+ */
+const fieldSourcesMock = {
+  findByIPOId: vi.fn().mockResolvedValue([]),
+  findByField: vi.fn().mockResolvedValue(null),
+  trackFieldUpdate: vi.fn().mockResolvedValue({}),
+  bulkTrackFieldUpdates: vi.fn().mockResolvedValue(1),
+};
 
 vi.mock('@ipodhan/shared', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@ipodhan/shared')>()),
@@ -38,9 +48,7 @@ vi.mock('@ipodhan/shared/repositories', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@ipodhan/shared/repositories')>();
   return {
     ...actual,
-    FieldSourcesRepository: vi.fn().mockImplementation(() => ({
-      bulkTrackFieldUpdates: vi.fn().mockResolvedValue(1),
-    })),
+    FieldSourcesRepository: vi.fn().mockImplementation(() => fieldSourcesMock),
     DataConflictsRepository: vi.fn().mockImplementation(() => ({
       upsertConflict: upsertConflictMock,
     })),
@@ -67,6 +75,12 @@ vi.mock('../../../src/services/data-consolidation-service.js', async (importOrig
 }));
 
 const { upsertIPO } = await import('../../../src/services/data-persister.js');
+
+// The REAL consolidation service (mocks bypassed for this module only) — used by
+// test (g) to prove what provenance a dropped field does/does not leave behind.
+const { DataConsolidationService: RealDataConsolidationService } = await vi.importActual<
+  typeof import('../../../src/services/data-consolidation-service.js')
+>('../../../src/services/data-consolidation-service.js');
 
 function existingRow(overrides: Record<string, any> = {}) {
   return {
@@ -124,7 +138,12 @@ function makeIpoRepository() {
 describe('upsertIPO consolidation path — merged-record validation (W-14)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    consolidateIPODataMock.mockReset();
     upsertConflictMock.mockResolvedValue({});
+    fieldSourcesMock.findByIPOId.mockResolvedValue([]);
+    fieldSourcesMock.findByField.mockResolvedValue(null);
+    fieldSourcesMock.trackFieldUpdate.mockResolvedValue({});
+    fieldSourcesMock.bulkTrackFieldUpdates.mockResolvedValue(1);
   });
 
   it('(a) drops a 25% band on a MAINBOARD row arriving from BSE with no segment, and records a CRITICAL conflict', async () => {
@@ -136,7 +155,12 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     });
 
     const ipoRepository = makeIpoRepository();
-    await upsertIPO(ipoRepository, scrape(), 'BSE', existingRow());
+    await upsertIPO(
+      ipoRepository,
+      scrape({ priceRangeMin: 100, priceRangeMax: 125, symbol: 'ACME' }),
+      'BSE',
+      existingRow()
+    );
 
     expect(ipoRepository.update).toHaveBeenCalledTimes(1);
     const [id, patch] = ipoRepository.update.mock.calls[0];
@@ -165,7 +189,12 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     });
 
     const ipoRepository = makeIpoRepository();
-    await upsertIPO(ipoRepository, scrape(), 'BSE', existingRow({ segment: 'SME', lotSize: 1200 }));
+    await upsertIPO(
+      ipoRepository,
+      scrape({ priceRangeMin: 100, priceRangeMax: 135 }),
+      'BSE',
+      existingRow({ segment: 'SME', lotSize: 1200 })
+    );
 
     const [, patch] = ipoRepository.update.mock.calls[0];
     expect(patch.priceRangeMin).toBe(100);
@@ -184,7 +213,7 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     const ipoRepository = makeIpoRepository();
     await upsertIPO(
       ipoRepository,
-      scrape({ listingExchange: 'NSE', status: 'CLOSED' }),
+      scrape({ listingExchange: 'NSE', status: 'CLOSED', priceRangeMin: 100, priceRangeMax: 110 }),
       'NSE',
       existingRow()
     );
@@ -196,16 +225,24 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     expect(upsertConflictMock).not.toHaveBeenCalled();
   });
 
-  it('(d) drops lot_size = 1 from CHITTORGARH and records a CRITICAL conflict', async () => {
+  it('(d) drops a below-threshold lot from CHITTORGARH and records a CRITICAL conflict', async () => {
+    // lot_size = 1 never reaches this pass: `validateLotSize` already nulls it
+    // while the incoming payload is built. The invalid-lot class that DOES reach
+    // the merged view is a below-threshold lot (< 10) - LOT_SIZE_TOO_LOW.
     mockConsolidated({
       companyName: 'Acme Industries Limited',
-      lotSize: 1,
+      lotSize: 5,
       priceRangeMin: 100,
       priceRangeMax: 110,
     });
 
     const ipoRepository = makeIpoRepository();
-    await upsertIPO(ipoRepository, scrape({ listingExchange: 'BSE' }), 'CHITTORGARH', existingRow());
+    await upsertIPO(
+      ipoRepository,
+      scrape({ listingExchange: 'BSE', lotSize: 5, priceRangeMin: 100, priceRangeMax: 110 }),
+      'CHITTORGARH',
+      existingRow()
+    );
 
     const [, patch] = ipoRepository.update.mock.calls[0];
     expect(patch).not.toHaveProperty('lotSize');
@@ -216,7 +253,7 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     expect(conflict).toMatchObject({
       fieldName: 'lotSize',
       severity: 'CRITICAL',
-      resolutionReason: 'MERGED_RECORD_VALIDATION:LOT_SIZE_INVALID',
+      resolutionReason: 'MERGED_RECORD_VALIDATION:LOT_SIZE_TOO_LOW',
     });
   });
 
@@ -228,7 +265,12 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     });
 
     const ipoRepository = makeIpoRepository();
-    await upsertIPO(ipoRepository, scrape(), 'ADMIN' as any, existingRow());
+    await upsertIPO(
+      ipoRepository,
+      scrape({ priceRangeMin: 100, priceRangeMax: 130 }),
+      'ADMIN' as any,
+      existingRow()
+    );
 
     const [, patch] = ipoRepository.update.mock.calls[0];
     expect(patch.priceRangeMin).toBe(100);
@@ -245,10 +287,131 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     });
 
     const ipoRepository = makeIpoRepository();
-    await upsertIPO(ipoRepository, scrape(), 'BSE', existingRow());
+    await upsertIPO(
+      ipoRepository,
+      scrape({ lotSize: 40, priceRangeMin: 100, priceRangeMax: 110 }),
+      'BSE',
+      existingRow()
+    );
 
     const [, patch] = ipoRepository.update.mock.calls[0];
     expect(patch.lotSize).toBe(40);
+    expect(upsertConflictMock).not.toHaveBeenCalled();
+  });
+  it('(g) a band dropped by the merged pass leaves NO field_sources provenance, while an accepted field still does', async () => {
+    // Real consolidation, mocked repositories: the service is the single writer
+    // of `field_sources`, and it runs BEFORE the old in-branch validation did —
+    // so a field the pass drops must never reach it (else provenance claims this
+    // source owns a value the row does not hold).
+    const realService = new RealDataConsolidationService(
+      fieldSourcesMock as any,
+      { upsertConflict: upsertConflictMock, logConflict: vi.fn(), autoResolveConverged: vi.fn(), findUnresolvedForIPO: vi.fn() } as any
+    );
+    consolidateIPODataMock.mockImplementation((input: any) => realService.consolidateIPOData(input));
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ priceRangeMin: 100, priceRangeMax: 125, symbol: 'ACME' }),
+      'BSE',
+      existingRow()
+    );
+
+    const trackedFields = fieldSourcesMock.trackFieldUpdate.mock.calls.map((c: any[]) => c[0]?.fieldName);
+    expect(trackedFields).not.toContain('priceRangeMax');
+    expect(trackedFields).not.toContain('priceRangeMin');
+    expect(trackedFields).toContain('symbol');
+  });
+
+  it('(h) the legacy fallback door (consolidation threw) never writes the 25% band either', async () => {
+    consolidateIPODataMock.mockRejectedValue(new Error('consolidation exploded'));
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ priceRangeMin: 100, priceRangeMax: 125, symbol: 'ACME' }),
+      'BSE',
+      existingRow()
+    );
+
+    expect(ipoRepository.update).toHaveBeenCalledTimes(1);
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch.priceRangeMax).not.toBe(125);
+    expect(patch).not.toHaveProperty('priceRangeMax');
+    expect(patch.symbol).toBe('ACME');
+  });
+  it('(i) a failed conflict upsert is non-fatal: the primary update still runs once and the band is still dropped', async () => {
+    mockConsolidated({
+      companyName: 'Acme Industries Limited',
+      priceRangeMin: 100,
+      priceRangeMax: 125,
+      symbol: 'ACME',
+    });
+    upsertConflictMock.mockRejectedValue(new Error('data_conflicts insert failed'));
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ priceRangeMin: 100, priceRangeMax: 125, symbol: 'ACME' }),
+      'BSE',
+      existingRow()
+    );
+
+    expect(upsertConflictMock).toHaveBeenCalledTimes(1);
+    expect(ipoRepository.update).toHaveBeenCalledTimes(1);
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch).not.toHaveProperty('priceRangeMin');
+    expect(patch).not.toHaveProperty('priceRangeMax');
+    expect(patch.symbol).toBe('ACME');
+  });
+
+  it('(j) an incoming row cannot flip segment to SME and relax the band gate for its own band in the same write', async () => {
+    mockConsolidated({
+      companyName: 'Acme Industries Limited',
+      segment: 'SME',
+      priceRangeMin: 100,
+      priceRangeMax: 130,
+    });
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ segment: 'SME', priceRangeMin: 100, priceRangeMax: 130 }),
+      'BSE',
+      existingRow() // stored segment MAINBOARD - it governs
+    );
+
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch).not.toHaveProperty('priceRangeMin');
+    expect(patch).not.toHaveProperty('priceRangeMax');
+
+    expect(upsertConflictMock).toHaveBeenCalledTimes(1);
+    expect(upsertConflictMock.mock.calls[0][0]).toMatchObject({
+      fieldName: 'priceBand',
+      severity: 'CRITICAL',
+      resolutionReason: 'MERGED_RECORD_VALIDATION:PRICE_BAND_TOO_WIDE_MAINBOARD',
+    });
+  });
+
+  it('(k) a stored row with NO segment takes the incoming SME classification, so a 30% band is accepted', async () => {
+    mockConsolidated({
+      companyName: 'Acme Industries Limited',
+      segment: 'SME',
+      priceRangeMin: 100,
+      priceRangeMax: 130,
+    });
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ segment: 'SME', priceRangeMin: 100, priceRangeMax: 130 }),
+      'BSE',
+      existingRow({ segment: null, lotSize: 1200 })
+    );
+
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch.priceRangeMin).toBe(100);
+    expect(patch.priceRangeMax).toBe(130);
     expect(upsertConflictMock).not.toHaveBeenCalled();
   });
 });
