@@ -69,6 +69,12 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)"
 # "§GATE (needs Abhay)". These are escalation STATEMENTS, not permission-to-START
 # over-asks (those still match the A/B patterns below), so exempting them does not
 # reopen the over-ask hole — it stops looping a genuinely-blocked run to the 12-cap.
+if printf '%s' "$full" | grep -qiE "running background agent|background agent (is|whose|is still) |a running (background )?agent|arrives by notification|waiting on (a |the )?(running|background|dispatched) (agent|task)|^blocker:|blocker: " ; then
+  # (2026-09-03, W-91) A turn that ends because a dispatched agent / background task
+  # is still running is a genuine wait, not narrate-and-stop: the result arrives
+  # as a task-notification and nothing can be executed until then.
+  exit 0
+fi
 if printf '%s' "$full" | grep -qE "push to prod|deploy|dns|cutover|force[- ]push|--force|spend|publish|destructive|drop (table|column)|delete (the )?(branch|remote)|escalat|blocked on|need (your|you to)|your (credential|password|approval|login|call|decision|two|sign-?off|go-?ahead)|waiting on (you|the user)|holding for your|awaiting your|act without|will not (act|force|revert|push)|not autonomously|gate \(needs|log in yourself|run .* yourself|requires? your|sync-check"; then
   exit 0
 fi
