@@ -503,8 +503,77 @@ describe('extract_filing — Deepa Jewellers RHP (captured page text)', () => {
     expect(risks[risks.length - 1].heading).toBe(DEEPA.RHP.risk_factor_last_heading);
     for (const r of risks) {
       expect(r.heading.length, `heading ${r.n}`).toBeGreaterThan(0);
-      expect(r.heading.length, `heading ${r.n}`).toBeLessThanOrEqual(200);
+      // ipo_risk_factors.heading is varchar(500) — W-80.
+      expect(r.heading.length, `heading ${r.n}`).toBeLessThanOrEqual(500);
     }
+  });
+
+  it('W-80: a real DEEPA heading past the old 200-char cap is not truncated mid-word', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const risks = out.fields.risk_factors.value as { n: number; heading: string }[];
+    // The item-4 inventory heading is 245 chars — comfortably past the old
+    // limit=200 default that used to cut it to "...revenue from opera". It has
+    // a first sentence under the new 480-char limit, so it must come through
+    // verbatim and complete, ending on the actual sentence terminator.
+    const inventoryHeading = risks.find((r) => r.n === 4)!.heading;
+    expect(inventoryHeading).toBe(
+      'Our inventories as of Fiscal 2026, Fiscal 2025 and Fiscal 2024 were ₹ 873.62 million, ' +
+        '₹827.87 million and ₹722.56 million representing 4.53%, 5.93%, and 7.05% as a percentage of ' +
+        'our revenue from operations for the indicated periods respectively.',
+    );
+    expect(inventoryHeading.length).toBe(245);
+    expect(inventoryHeading.endsWith('respectively.')).toBe(true);
+  });
+});
+
+describe('extract_filing — W-80 risk-factor heading truncation (synthetic, offline)', () => {
+  // risk_factor_count/risk_factors both gate on a minimum-20 check (check_min_count)
+  // that nulls the field on failure — pad every case with 19 trivial filler
+  // items ahead of the item under test so the field actually carries a value.
+  const FILLER = Array.from({ length: 19 }, (_v, i) => `${i + 1}. Filler risk number ${i + 1} exists.`);
+
+  it('a heading with a first sentence under 480 chars comes through exactly as that sentence', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    const sentence = 'This is a short risk heading sentence that ends cleanly.';
+    const page = [
+      'RISK FACTORS',
+      ...FILLER,
+      `20. ${sentence} More trailing prose that must never appear in the heading.`,
+    ].join('\n');
+    const out = runOnTexts([[0, page]], 'RHP');
+    const risks = out.fields.risk_factors.value as { n: number; heading: string }[];
+    expect(risks.find((r) => r.n === 20)!.heading).toBe(sentence);
+  });
+
+  it('a heading with NO sentence terminator within 480 chars is cut at the last word boundary, never mid-word or mid-number, with an ellipsis appended', (ctx) => {
+    if (!pythonAvailable) return ctx.skip();
+    // Build a >480-char run-on with no '.', '?' or '!' anywhere, made of words
+    // and a multi-digit number token, so a mid-token cut would be detectable.
+    const words = [];
+    let len = 0;
+    let i = 0;
+    while (len < 500) {
+      const tok = i % 5 === 0 ? '123456789012' : 'word';
+      words.push(tok);
+      len += tok.length + 1;
+      i++;
+    }
+    const body = words.join(' ');
+    const page = ['RISK FACTORS', ...FILLER, `20. ${body}`].join('\n');
+    const out = runOnTexts([[0, page]], 'RHP');
+    const risks = out.fields.risk_factors.value as { n: number; heading: string }[];
+    const heading = risks.find((r) => r.n === 20)!.heading;
+
+    expect(heading.length).toBeLessThanOrEqual(481); // limit(480) + 1 ellipsis char
+    expect(heading.endsWith('…')).toBe(true); // ellipsis marks the cut
+    const withoutEllipsis = heading.slice(0, -1);
+    // Every token before the ellipsis must be a COMPLETE token from the source
+    // (never a partial word, never a partial number) — no cut inside a token.
+    for (const tok of withoutEllipsis.split(' ')) {
+      if (tok === '') continue;
+      expect(['word', '123456789012'], `token "${tok}" must be a whole token`).toContain(tok);
+    }
+    expect(body.startsWith(withoutEllipsis)).toBe(true);
   });
 });
 

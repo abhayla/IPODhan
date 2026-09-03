@@ -1700,7 +1700,7 @@ _RF_HEAD_RX = re.compile(r"^\s*(?:SECTION\s+[IVXL]+\s*[-–—:]?\s*)?RISK FACTO
 _SECTION_RX = re.compile(r"^\s*SECTION\s+[IVXL]+\b", re.I)
 
 
-def extract_risk_factors(page_texts, limit=200):
+def extract_risk_factors(page_texts, limit=480):
     """E8: the numbered risk factors of the RISK FACTORS chapter.
 
     The chapter heading is matched in ANY of its printed forms ("SECTION II -
@@ -1738,8 +1738,25 @@ def extract_risk_factors(page_texts, limit=200):
     for item in items:
         joined = re.sub(r"\s+", " ", " ".join(item["parts"])).strip()
         sentence = re.match(r"^(.+?[.?!])(?:\s|$)", joined)
-        out.append({"n": item["n"],
-                    "heading": (sentence.group(1) if sentence else joined)[:limit].strip()})
+        if sentence:
+            # A found first sentence is used verbatim — W-80: never truncate it,
+            # even past `limit`, so a short heading is never mangled by a cap
+            # meant for the no-sentence fallback below.
+            heading = sentence.group(1)
+        elif len(joined) <= limit:
+            heading = joined
+        else:
+            # No sentence-ending punctuation within reach: cut at the last word
+            # boundary before `limit` chars (never mid-word, never mid-number —
+            # both are single unbroken tokens with no internal whitespace) and
+            # mark the cut with an ellipsis so a truncated heading is visibly
+            # partial rather than looking like a complete, un-terminated one.
+            cut = joined[:limit].rstrip()
+            last_space = cut.rfind(" ")
+            if last_space > 0:
+                cut = cut[:last_space]
+            heading = cut.rstrip() + "…"
+        out.append({"n": item["n"], "heading": heading.strip()})
     return out, first_page
 
 
