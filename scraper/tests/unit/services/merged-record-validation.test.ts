@@ -15,6 +15,7 @@
  * write is exempt entirely.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import logger from '../../../src/utils/logger.js';
 
 const consolidateIPODataMock = vi.fn();
 const upsertConflictMock = vi.fn().mockResolvedValue({});
@@ -141,7 +142,11 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     consolidateIPODataMock.mockReset();
     upsertConflictMock.mockResolvedValue({});
     fieldSourcesMock.findByIPOId.mockResolvedValue([]);
-    fieldSourcesMock.findByField.mockResolvedValue(null);
+    // Default stored owner for the merged-validation conflict lookup: a
+    // source distinct from every test's incoming source (BSE/CHITTORGARH),
+    // so tests that don't care about provenance still get a conflict row.
+    // Tests (l)/(m) override this per-case.
+    fieldSourcesMock.findByField.mockResolvedValue({ source: 'NSE' });
     fieldSourcesMock.trackFieldUpdate.mockResolvedValue({});
     fieldSourcesMock.bulkTrackFieldUpdates.mockResolvedValue(1);
   });
@@ -170,15 +175,19 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     // The rest of the update still proceeds.
     expect(patch.symbol).toBe('ACME');
 
+    expect(fieldSourcesMock.findByField).toHaveBeenCalledWith('ipo-id', 'ipos', 'priceRangeMin');
     expect(upsertConflictMock).toHaveBeenCalledTimes(1);
     const conflict = upsertConflictMock.mock.calls[0][0];
     expect(conflict).toMatchObject({
       ipoId: 'ipo-id',
       tableName: 'ipos',
       fieldName: 'priceBand',
+      source1: 'NSE',
+      source2: 'BSE',
       severity: 'CRITICAL',
       resolutionReason: 'MERGED_RECORD_VALIDATION:PRICE_BAND_TOO_WIDE_MAINBOARD',
     });
+    expect(conflict.source1).not.toBe(conflict.source2);
   });
 
   it('(b) writes a 35% band on an SME row (within the 40% SME limit)', async () => {
@@ -248,13 +257,17 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     expect(patch).not.toHaveProperty('lotSize');
     expect(patch.priceRangeMin).toBe(100);
 
+    expect(fieldSourcesMock.findByField).toHaveBeenCalledWith('ipo-id', 'ipos', 'lotSize');
     expect(upsertConflictMock).toHaveBeenCalledTimes(1);
     const conflict = upsertConflictMock.mock.calls[0][0];
     expect(conflict).toMatchObject({
       fieldName: 'lotSize',
+      source1: 'NSE',
+      source2: 'CHITTORGARH',
       severity: 'CRITICAL',
       resolutionReason: 'MERGED_RECORD_VALIDATION:LOT_SIZE_TOO_LOW',
     });
+    expect(conflict.source1).not.toBe(conflict.source2);
   });
 
   it('(e) an ADMIN-sourced band is never dropped, even at 30%', async () => {
@@ -413,5 +426,71 @@ describe('upsertIPO consolidation path — merged-record validation (W-14)', () 
     expect(patch.priceRangeMin).toBe(100);
     expect(patch.priceRangeMax).toBe(130);
     expect(upsertConflictMock).not.toHaveBeenCalled();
+  });
+
+  it('(l) no field_sources provenance for the stored value: no conflict written, field still dropped, warn logged', async () => {
+    fieldSourcesMock.findByField.mockResolvedValue(null);
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
+
+    mockConsolidated({
+      companyName: 'Acme Industries Limited',
+      priceRangeMin: 100,
+      priceRangeMax: 125,
+      symbol: 'ACME',
+    });
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ priceRangeMin: 100, priceRangeMax: 125, symbol: 'ACME' }),
+      'BSE',
+      existingRow()
+    );
+
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch).not.toHaveProperty('priceRangeMin');
+    expect(patch).not.toHaveProperty('priceRangeMax');
+    expect(patch.symbol).toBe('ACME');
+
+    expect(upsertConflictMock).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'merged_validation_no_stored_owner' }),
+      expect.any(String)
+    );
+
+    warnSpy.mockRestore();
+  });
+
+  it('(m) stored owner equals the incoming source: no conflict written, field still dropped, warn logged', async () => {
+    fieldSourcesMock.findByField.mockResolvedValue({ source: 'BSE' });
+    const warnSpy = vi.spyOn(logger, 'warn').mockImplementation(() => undefined as any);
+
+    mockConsolidated({
+      companyName: 'Acme Industries Limited',
+      priceRangeMin: 100,
+      priceRangeMax: 125,
+      symbol: 'ACME',
+    });
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(
+      ipoRepository,
+      scrape({ priceRangeMin: 100, priceRangeMax: 125, symbol: 'ACME' }),
+      'BSE',
+      existingRow()
+    );
+
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch).not.toHaveProperty('priceRangeMin');
+    expect(patch).not.toHaveProperty('priceRangeMax');
+    expect(patch.symbol).toBe('ACME');
+
+    expect(upsertConflictMock).not.toHaveBeenCalled();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'merged_validation_same_source' }),
+      expect.any(String)
+    );
+
+    warnSpy.mockRestore();
   });
 });

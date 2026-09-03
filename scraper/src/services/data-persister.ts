@@ -68,6 +68,20 @@ function getDataConflictsRepository(): DataConflictsRepository {
   return dataConflictsRepoInstance;
 }
 
+/**
+ * Module-level singleton for the field-sources repository, shared with the
+ * merged-record validation pass below (same reasoning as the conflicts
+ * repository above — one repo/Redis handle per process, not per write).
+ */
+let fieldSourcesRepoInstance: FieldSourcesRepository | null = null;
+
+function getFieldSourcesRepository(): FieldSourcesRepository {
+  if (!fieldSourcesRepoInstance) {
+    fieldSourcesRepoInstance = new FieldSourcesRepository(db, getRedisClient());
+  }
+  return fieldSourcesRepoInstance;
+}
+
 async function getConsolidationService(): Promise<DataConsolidationService> {
   if (!consolidationServiceInstance) {
     const redis = getRedisClient();
@@ -193,20 +207,48 @@ async function applyMergedRecordValidation(
       keptValues,
     }, `[MergedRecordValidation] ${error.rule} on the merged record (W-14) - offending fields NOT written`);
 
-    // Best-effort provenance for the admin queue (non-fatal-side-effects.md):
-    // a failure to record the conflict must never block the primary write.
+    // T-286/P1-2 invariant (data-consolidation-service.ts ~L1358-1369): a
+    // data_conflicts row must NEVER have source1 === source2 — that shape
+    // once destroyed the alert channel with self-comparisons. `source` here
+    // is only the INCOMING scrape; source1 MUST be the STORED value's actual
+    // owner, looked up via field_sources (the same provenance consolidation
+    // itself reads). No owner row is a data gap, not a conflict — skip the
+    // write and log instead of guessing.
+    const ownerField = fieldsToDrop[0];
     try {
-      await getDataConflictsRepository().upsertConflict({
-        ipoId: existingIPO.id,
-        tableName: 'ipos',
-        fieldName: error.field,
-        source1: source as any,
-        value1: JSON.stringify(keptValues),
-        source2: source as any,
-        value2: JSON.stringify(rejectedValues),
-        resolutionReason: `MERGED_RECORD_VALIDATION:${error.rule}`,
-        severity: 'CRITICAL',
-      });
+      const ownerRecord = await getFieldSourcesRepository().findByField(existingIPO.id, 'ipos', ownerField);
+
+      if (!ownerRecord) {
+        logger.warn({
+          ipoId: existingIPO.id,
+          source,
+          rule: error.rule,
+          field: ownerField,
+          reason: 'merged_validation_no_stored_owner',
+        }, '[MergedRecordValidation] no field_sources provenance for the stored value - conflict not recorded');
+      } else if (ownerRecord.source === source) {
+        logger.warn({
+          ipoId: existingIPO.id,
+          source,
+          rule: error.rule,
+          field: ownerField,
+          reason: 'merged_validation_same_source',
+        }, '[MergedRecordValidation] stored owner equals incoming source - conflict not recorded');
+      } else {
+        // Best-effort provenance for the admin queue (non-fatal-side-effects.md):
+        // a failure to record the conflict must never block the primary write.
+        await getDataConflictsRepository().upsertConflict({
+          ipoId: existingIPO.id,
+          tableName: 'ipos',
+          fieldName: error.field,
+          source1: ownerRecord.source as any,
+          value1: JSON.stringify(keptValues),
+          source2: source as any,
+          value2: JSON.stringify(rejectedValues),
+          resolutionReason: `MERGED_RECORD_VALIDATION:${error.rule}`,
+          severity: 'CRITICAL',
+        });
+      }
     } catch (conflictError: any) {
       logger.warn({
         ipoId: existingIPO.id,
