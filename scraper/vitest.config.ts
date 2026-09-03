@@ -15,6 +15,11 @@ export default defineConfig({
     // 20s gives real headroom under parallel-worker contention without
     // masking a genuinely hung test (which would still exceed 20s).
     testTimeout: 20_000,
+    // Native addons that aren't context-aware crash worker_threads on
+    // Windows/Node 22 (segfault, exit 139) when tests/unit/services runs
+    // under vitest's default `threads` pool; forks (separate processes) are
+    // immune and are vitest 2's documented-safe default for this class.
+    pool: 'forks',
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],

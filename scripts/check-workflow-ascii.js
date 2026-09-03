@@ -1,22 +1,59 @@
 #!/usr/bin/env node
 /**
  * Guard: fails when a `run:` step body (PowerShell or shell) in any GitHub
- * Actions workflow contains a non-ASCII character.
+ * Actions workflow contains a non-ASCII character, OR when the workflow file
+ * does not parse as valid YAML.
  *
- * Root cause this prevents: the self-hosted deploy runner is Windows
- * PowerShell 5.1, which reads a generated `run:` script as ANSI. A
+ * Root cause this prevents (non-ASCII): the self-hosted deploy runner is
+ * Windows PowerShell 5.1, which reads a generated `run:` script as ANSI. A
  * multi-byte character (e.g. U+2014 EM DASH) inside that script corrupts
  * string parsing and fails the whole step before any deploy work runs
  * (see T-217). YAML comments and other non-`run:` text are NOT scanned —
  * they never reach the generated script, so non-ASCII there is harmless.
  *
+ * Root cause this prevents (invalid YAML): a plain scalar `run:` value
+ * containing `: ` (e.g. quoted text with a colon-space inside it) is parsed
+ * by YAML as a mapping indicator, silently invalidating the whole workflow
+ * file. GitHub then creates a 0-second run with zero jobs on every trigger,
+ * with no pre-commit signal (deploy-linux.yml, PR #268, 2026-09-02). This
+ * check parses each workflow file with a YAML library and fails loudly on
+ * any parse error, before it ever reaches GitHub.
+ *
  * Usage: node scripts/check-workflow-ascii.js [file ...]
  *   No args -> scans every .yml/.yaml file under .github/workflows/.
- * Exit 0 = clean. Exit 1 = at least one non-ASCII char found in a run block.
+ * Exit 0 = clean. Exit 1 = at least one non-ASCII char in a run block, or a
+ *          workflow file that fails to parse as YAML.
  */
 
 const fs = require('fs');
 const path = require('path');
+
+function loadYamlParser() {
+  try {
+    const YAML = require('yaml');
+    return (text) => YAML.parse(text);
+  } catch (e1) {
+    try {
+      const jsYaml = require('js-yaml');
+      return (text) => jsYaml.load(text);
+    } catch (e2) {
+      return null;
+    }
+  }
+}
+
+/**
+ * Returns { message } if `content` fails to parse as YAML, or null if it
+ * parses cleanly (or if no YAML parser is available — see main()).
+ */
+function findYamlParseError(content, parse) {
+  try {
+    parse(content);
+    return null;
+  } catch (err) {
+    return { message: err && err.message ? err.message : String(err) };
+  }
+}
 
 function findWorkflowFiles() {
   const dir = path.join(__dirname, '..', '.github', 'workflows');
@@ -94,9 +131,25 @@ function main() {
     return 0;
   }
 
+  const parseYaml = loadYamlParser();
+  if (!parseYaml) {
+    console.warn(
+      '[check-workflow-ascii] WARN: no YAML parser resolvable (yaml / js-yaml) — YAML validity NOT checked.'
+    );
+  }
+
   let failed = false;
   for (const file of files) {
     const content = fs.readFileSync(file, 'utf8');
+
+    if (parseYaml) {
+      const yamlError = findYamlParseError(content, parseYaml);
+      if (yamlError) {
+        failed = true;
+        console.error(`[check-workflow-ascii] FAIL ${file}: invalid YAML: ${yamlError.message}`);
+      }
+    }
+
     const findings = findNonAsciiInRunBlocks(content);
     if (findings.length > 0) {
       failed = true;
@@ -114,16 +167,20 @@ function main() {
 
   if (failed) {
     console.error(
-      '\n[check-workflow-ascii] A run: block contains a non-ASCII character. ' +
-        'The self-hosted deploy runner reads generated scripts as ANSI (Windows ' +
-        'PowerShell 5.1) — a multi-byte character corrupts parsing and fails the ' +
-        "step before any deploy work runs. Replace it with a plain-ASCII equivalent " +
-        "(em dash -> ' - ')."
+      '\n[check-workflow-ascii] A workflow file failed a check above: either a run: ' +
+        'block contains a non-ASCII character (the self-hosted deploy runner reads ' +
+        'generated scripts as ANSI / Windows PowerShell 5.1 — a multi-byte character ' +
+        "corrupts parsing and fails the step; replace it with a plain-ASCII equivalent " +
+        "(em dash -> ' - ')), or the file is not valid YAML (a plain scalar containing " +
+        "': ' is parsed as a mapping indicator — GitHub silently runs a 0-job, 0-second " +
+        'workflow; use a block scalar (`run: |`) instead).'
     );
     return 1;
   }
 
-  console.log('[check-workflow-ascii] OK — no non-ASCII characters in any run: block.');
+  console.log(
+    '[check-workflow-ascii] OK — no non-ASCII characters in any run: block, and every workflow file parses as valid YAML.'
+  );
   return 0;
 }
 
@@ -131,4 +188,4 @@ if (require.main === module) {
   process.exit(main());
 }
 
-module.exports = { findNonAsciiInRunBlocks };
+module.exports = { findNonAsciiInRunBlocks, findYamlParseError, loadYamlParser };
