@@ -6,6 +6,7 @@ import {
   classifyBseField,
   fileNameFromUrl,
   BSE_DOCUMENT_FIELDS,
+  isNseRatiosArchiveUrl,
 } from '../../../src/services/document-classifier.js';
 import { extractBseCoreRow } from '../../../src/services/bse-ipo-board.js';
 
@@ -152,5 +153,25 @@ describe('classifyBseField — against the REAL Skyways core payload', () => {
       'Price_Band_Advertisement',
       'Anchor_Details',
     ]);
+  });
+});
+
+describe('isNseRatiosArchiveUrl — W-90 exchange-controlled archive naming', () => {
+  it('matches NSE\'s real RATIOS_DEEPA.zip url', () => {
+    expect(isNseRatiosArchiveUrl('https://nsearchives.nseindia.com/content/ipo/RATIOS_DEEPA.zip')).toBe(
+      true
+    );
+  });
+
+  it('does not match a BSE price-band zip url', () => {
+    expect(isNseRatiosArchiveUrl('https://listing.bseindia.com/Price_Band_Advertisement.zip')).toBe(
+      false
+    );
+  });
+
+  it('does not match a non-archive url', () => {
+    expect(isNseRatiosArchiveUrl('https://x/RHP_SKYWAYS/RHP Skyways.pdf')).toBe(false);
+    expect(isNseRatiosArchiveUrl(null)).toBe(false);
+    expect(isNseRatiosArchiveUrl(undefined)).toBe(false);
   });
 });

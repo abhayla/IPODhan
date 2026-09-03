@@ -162,3 +162,22 @@ export function classifyBseField(
   const fromName = classifyByTitle(fileNameFromUrl(url));
   return fromName ?? fallback;
 }
+
+/**
+ * True when `url` is NSE's own `RATIOS_<SYMBOL>.zip` archive-naming convention
+ * (W-90, verified live 2026-09-02: `RATIOS_DEEPA.zip`).
+ *
+ * NSE issues this file name itself — it is not chosen by the company/RTA that
+ * uploads the PDF inside — so it is a stronger, exchange-controlled signal of
+ * document identity than an arbitrary member file name. NSE's combined
+ * "Price Band Advertisement-cum-Basis of Issue Price" filing was verified live
+ * to ship inside this archive under a member named
+ * "<Company> - Price Band Advertisement.pdf": trusting that member name alone
+ * (the W-29 "bytes win" rule) mistypes every such filing as PRICE_BAND_AD and
+ * leaves `RATIOS_BASIS_ISSUE_PRICE` permanently unreachable. BSE has no
+ * equivalent field (`BSE_DOCUMENT_FIELDS` carries no "Ratios" entry) — this
+ * archive-naming override is NSE-only by construction.
+ */
+export function isNseRatiosArchiveUrl(url: string | null | undefined): boolean {
+  return /^ratios[_-]/i.test(fileNameFromUrl(url));
+}

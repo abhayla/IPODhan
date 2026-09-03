@@ -308,3 +308,43 @@ describe('multi-member zips — the wrong-document defect the acceptance run cau
     if (asRhp.ok && asCorr.ok) expect(asRhp.sha256).not.toBe(asCorr.sha256);
   });
 });
+
+describe('W-90 — the NSE ratios archive name overrides the member name', () => {
+  // Real shape, captured live 2026-09-02: NSE's RATIOS_DEEPA.zip has ONE
+  // member, "Deepa Jewellers Limited - Price Band Advertisement.pdf" — which
+  // classifies by name as PRICE_BAND_AD even though the archive IS the ratios
+  // filing NSE serves under this exact naming convention.
+  const priceBandMember = Buffer.from(fakePdf(70_000));
+  const ratiosZip = () =>
+    makeZip('Deepa Jewellers Limited - Price Band Advertisement.pdf', priceBandMember);
+
+  it('does not retype RATIOS_BASIS_ISSUE_PRICE when the url is NSE\'s RATIOS_<SYMBOL>.zip', () => {
+    const r = verifyDownload(
+      ratiosZip(),
+      { status: 200, contentType: 'application/zip', url: 'https://nsearchives.nseindia.com/content/ipo/RATIOS_DEEPA.zip' },
+      { wantedType: 'RATIOS_BASIS_ISSUE_PRICE' }
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.memberTypeMismatch).toBeUndefined();
+  });
+
+  it('still retypes a BSE price-band zip by member name — the override is NSE-ratios-archive-only', () => {
+    const r = verifyDownload(
+      ratiosZip(),
+      { status: 200, contentType: 'application/zip', url: 'https://listing.bseindia.com/Price_Band_Advertisement.zip' },
+      { wantedType: 'RATIOS_BASIS_ISSUE_PRICE' }
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.memberTypeMismatch).toBe('PRICE_BAND_AD');
+  });
+
+  it('a non-archive NSE url is unaffected by the override', () => {
+    const r = verifyDownload(
+      ratiosZip(),
+      { status: 200, contentType: 'application/zip', url: 'https://nsearchives.nseindia.com/content/ipo/SOME_OTHER_DEEPA.zip' },
+      { wantedType: 'RATIOS_BASIS_ISSUE_PRICE' }
+    );
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.memberTypeMismatch).toBe('PRICE_BAND_AD');
+  });
+});
