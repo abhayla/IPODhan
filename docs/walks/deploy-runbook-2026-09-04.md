@@ -32,13 +32,14 @@ Preconditions (all done on 2026-09-03 night): W-108b + W-109 landed and reproduc
 - Audit: `select count(*) from ipos where company_name = lower(company_name) and company_name <> ''` must be 0.
 
 ## 5. Post-deploy checks (laptop, against prod)
-- `npm run audit:data`, `npm run audit:substance`, `cd web && npm run test:prod-verify`.
+- `export DATABASE_URL=postgresql://<user>:<pw>@localhost:15432/ipodhan` (tunnel; no web/.env.local on this laptop) then `npm run audit:data`, `npm run audit:substance`, `cd web && npm run test:prod-verify`. Done 2026-09-04 01:00: prod-verify 28/28; the two audits fail on pre-existing rows (W-114), none DEEPA.
 - Open https://ipodhan.com/ipos/deepa-jewellers and compare with docs/walks/evidence/ipo-page-deepa-r4-fable-2026-09-03.png (issue size 459.72 Cr, face value 2, all new sections).
 - Open one listed IPO page (skyways-air-services) — unchanged.
 
 ## 6. Switch on (owner present), then watch
 - scraper.env: `ENABLE_DOCUMENT_STATE_MACHINE=true`, `ENABLE_STAGE_RECONCILER=true`, `ENABLE_FILING_AUTO_PERSIST=true`, `ENABLE_DUE_STEP_SCHEDULER=true`.
 - Next cron start (every 30 min): read `pm2 logs ipodhan-scraper --lines 200` for `Due-step cycle:` lines, `status-restricted` summary, extraction lines; exit code 0.
+- After the first cycle: `select type, url from documents where ipo_id='2745843f-cbc5-4561-8459-212b37f86765'` must show DEEPA's filings (5 expected); then on the VPS `npx tsx scripts/persist-filing.ts --ipo deepa-jewellers-ltd --doc-type ANCHOR_ALLOCATION_REPORT` (dry) then `--apply` (CLI-only path); re-check the page for Documents, RHP-filed date, anchor investors.
 - After one day: scraper_logs per source (freshness monitor quiet at night), `extraction_blocked` count, no P1 alerts from the freshness monitor. Rollback = remove the four lines, next cron start is the old path.
 
 ## Not in this deploy (after): SME walk (W-05, D-15 gate lift), W-110 ad-layout extraction, W-105, W-106, W-107, W-77, W-78, W-56, W-97, W-99.
