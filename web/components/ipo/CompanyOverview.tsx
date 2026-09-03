@@ -58,27 +58,32 @@ export function CompanyOverview({
         <CardTitle>Company Overview</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
-        {/* Business Summary */}
-        <div>
-          <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
-            Business Model
-          </h3>
-          <div className="space-y-3">
-            <p className="text-sm leading-relaxed sm:text-base">
-              {displayText}
-            </p>
-            {shouldTruncate && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsExpanded(!isExpanded)}
-                className="h-auto p-0 font-semibold text-primary hover:bg-transparent"
-              >
-                {isExpanded ? 'Read Less' : 'Read More'}
-              </Button>
-            )}
+        {/* Business Summary: no description means nothing to show here (a
+            company row can have risk factors extracted from the RHP with no
+            price-band-ad description — the risk factors block below still
+            renders, see W-103) */}
+        {companyDescription && (
+          <div>
+            <h3 className="mb-3 text-sm font-semibold text-muted-foreground">
+              Business Model
+            </h3>
+            <div className="space-y-3">
+              <p className="text-sm leading-relaxed sm:text-base">
+                {displayText}
+              </p>
+              {shouldTruncate && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setIsExpanded(!isExpanded)}
+                  className="h-auto p-0 font-semibold text-primary hover:bg-transparent"
+                >
+                  {isExpanded ? 'Read Less' : 'Read More'}
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Risk factors from the offer document. Headings are the substance
             here - the extractor often captures no body, so the accordion shows

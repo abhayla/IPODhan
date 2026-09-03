@@ -377,7 +377,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   const hasKpis = Boolean(financialData);
   const hasPeers = (peerCompanies?.length ?? 0) > 0;
 
-  const hasCompanyOverview = Boolean(ipo.companyDescription);
+  const hasCompanyOverview = Boolean(ipo.companyDescription) || riskFactorRows.length > 0;
   const hasDocuments = (documents?.length ?? 0) > 0;
 
   const hasSubscriptions = (subscriptions?.length ?? 0) > 0;
