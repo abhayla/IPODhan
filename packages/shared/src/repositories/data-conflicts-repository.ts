@@ -10,6 +10,7 @@ import type { Redis } from 'ioredis';
 import * as schema from '../db/schema';
 import { dataConflicts } from '../db/schema';
 import { BaseRepository } from './base-repository';
+import { logger } from '../logger';
 
 export interface DataConflictRecord {
   id: string;
@@ -50,6 +51,25 @@ export interface ResolveConflictInput {
   adminNote?: string;
 }
 
+/**
+ * W-79 (T-286/P1-2 invariant, reinstated at the repository boundary): a
+ * `source1 === source2` row is a self-comparison, never a real conflict --
+ * such rows once made up 9,921 of 11,493 data_conflicts rows and flooded the
+ * alert channel. The invariant used to live only in each caller's own `if`,
+ * so a new call site (W-14) reintroduced the shape undetected. Every write
+ * path in this file now checks it directly instead of trusting callers.
+ *
+ * Returned rather than thrown: no caller reads the resolved
+ * DataConflictRecord (every call site is a fire-and-forget `await`, several
+ * already wrapped in a non-fatal try/catch for genuine DB errors) -- a thrown
+ * error would land in those catch blocks and log as an unexpected failure,
+ * which a deliberate, expected refusal is not.
+ */
+export interface SameSourceSkipResult {
+  skipped: true;
+  reason: 'same_source';
+}
+
 export interface ConflictStats {
   total: number;
   unresolved: number;
@@ -73,7 +93,17 @@ export class DataConflictsRepository extends BaseRepository {
   /**
    * Log a new conflict between sources
    */
-  async logConflict(input: LogConflictInput): Promise<DataConflictRecord> {
+  async logConflict(
+    input: LogConflictInput
+  ): Promise<DataConflictRecord | SameSourceSkipResult> {
+    if (input.source1 === input.source2) {
+      logger.warn(
+        { ipoId: input.ipoId, fieldName: input.fieldName, source: input.source1 },
+        'data_conflicts: refused same-source row (W-79)'
+      );
+      return { skipped: true, reason: 'same_source' };
+    }
+
     const result = await this.executeQuery(
       'logDataConflict',
       async () => {
@@ -114,7 +144,17 @@ export class DataConflictsRepository extends BaseRepository {
    * disagreement on the same field supersedes the prior unresolved record
    * rather than piling up beside it.
    */
-  async upsertConflict(input: LogConflictInput): Promise<DataConflictRecord> {
+  async upsertConflict(
+    input: LogConflictInput
+  ): Promise<DataConflictRecord | SameSourceSkipResult> {
+    if (input.source1 === input.source2) {
+      logger.warn(
+        { ipoId: input.ipoId, fieldName: input.fieldName, source: input.source1 },
+        'data_conflicts: refused same-source row (W-79)'
+      );
+      return { skipped: true, reason: 'same_source' };
+    }
+
     const existing = await this.db
       .select({ id: dataConflicts.id })
       .from(dataConflicts)
