@@ -62,6 +62,18 @@ import { DistributedLock } from '../utils/distributed-lock.js';
 const FILING_EXTRACTION_LOCK_KEY = 'filing-auto-persist:cycle';
 const FILING_EXTRACTION_LOCK_TTL_MS = 45 * 60 * 1000;
 
+/**
+ * W-102: whole-extraction-pass (PASS 2) wall-clock ceiling across all
+ * candidate IPOs, checked BETWEEN IPOs (never interrupting a
+ * `processPendingFilings` call already in flight) — python extraction runs
+ * (minutes, not milliseconds) must never be charged against
+ * `CYCLE_BUDGET.DISCOVERY_MS`, but they still need a ceiling so pass 2 cannot
+ * run unbounded inside a 30-minute cron cycle. Local to this file (not
+ * `CYCLE_BUDGET` in document-state-machine.ts) — this round's touch-scope
+ * kept that file untouched.
+ */
+const DEFAULT_EXTRACTION_BUDGET_MS = 25 * 60 * 1000;
+
 export interface DocumentCycleSummary {
   ipos: number;
   skipped: number;
@@ -229,9 +241,13 @@ export async function demoteMissingFiles(
  * lost, they are simply next cycle's work — which is safe precisely because the
  * state table remembers where we stopped.
  */
-export async function runDocumentCycle(options: { budgetMs?: number } = {}): Promise<DocumentCycleSummary> {
+export async function runDocumentCycle(
+  options: { budgetMs?: number; extractionBudgetMs?: number; now?: () => number } = {}
+): Promise<DocumentCycleSummary> {
   const budgetMs = options.budgetMs ?? CYCLE_BUDGET.DISCOVERY_MS;
-  const startedAt = Date.now();
+  const extractionBudgetMs = options.extractionBudgetMs ?? DEFAULT_EXTRACTION_BUDGET_MS;
+  const now = options.now ?? Date.now;
+  const startedAt = now();
   const redis = getRedisClient();
   const store = new DocumentFetchStateRepository(db as never, redis as never);
   const documents = new DocumentRepository(db as never, redis as never);
@@ -286,8 +302,12 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
     let extractionBlocked = 0;
     let extractionFailed = 0;
 
+    // PASS 1 — discovery, exactly as before (ledger hooks, hints, demotion),
+    // under the discovery budget. W-102: this pass no longer runs extraction
+    // (see PASS 2 below) — python extraction time must never be charged
+    // against the discovery budget.
     for (const ipo of candidates) {
-    if (Date.now() - startedAt >= budgetMs) {
+    if (now() - startedAt >= budgetMs) {
       budgetExhausted = true;
       logger.warn(
         { processed: results.length, remaining: candidates.length - results.length, budgetMs },
@@ -353,51 +373,6 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
         existing: existingSteps,
       });
 
-      // S-02 hook 3 — extract + persist anything stored but not yet extracted.
-      //
-      // Runs for EVERY candidate, not only `result.found.length > 0`: a document
-      // found in an earlier cycle and never extracted (the flag was off, python
-      // was missing, the extractor crashed) must be picked up on a later cycle.
-      // Gating on "found something this cycle" would leave exactly those
-      // documents unextracted forever, which is the bug this hook exists to fix.
-      if (FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST) {
-        // MAJOR-1: no cycle-level lock, no extraction — a second overlapping
-        // cycle must not touch the same IN_PROGRESS rows this one may still be
-        // working through. Non-fatal: the rest of the cycle (discovery,
-        // storage) proceeds exactly as if the flag were off for this IPO.
-        if (!lockToken) {
-          // Logged once above when the lock failed; per-IPO silence here
-          // avoids one warning per candidate IPO for the same cause.
-        } else {
-          try {
-            if (!autoPersistDeps) {
-              autoPersistDeps = buildAutoPersistDeps();
-              autoPersistDeps.spawnBudget = spawnBudget;
-            }
-            const autoPersist = await processPendingFilings(
-              {
-                id: ipo.id,
-                companyName: ipo.companyName,
-                slug: ipo.slug ?? null,
-                segment: ipo.segment ?? null,
-              },
-              autoPersistDeps
-            );
-            if (autoPersist.spawned > 0 || autoPersist.failed > 0 || autoPersist.skippedBudget > 0) {
-              logger.info(
-                { ipoId: ipo.id, company: ipo.companyName, ...autoPersist },
-                'Filing auto-persist complete for one IPO'
-              );
-            }
-          } catch (error) {
-            logger.error(
-              { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
-              'Filing auto-persist threw (non-fatal) — continuing the cycle'
-            );
-          }
-        }
-      }
-
       // Remember the IPO_NO while the IPO is still on the board (it leaves once
       // closed, exactly when the Prospectus becomes due) and how many lead
       // managers BSE listed (so the nightly audit can catch the co-BRLM class).
@@ -457,7 +432,56 @@ export async function runDocumentCycle(options: { budgetMs?: number } = {}): Pro
     }
   }
 
-    const summary = summarize(results, Date.now() - startedAt, budgetExhausted, {
+    // PASS 2 — extraction. W-102: over EVERY candidate (not only the ones pass
+    // 1 reached before its own budget ran out), so a slow discovery pass never
+    // starves extraction. Runs only when the flag is on AND the cycle lock was
+    // acquired above; gated the same way the old per-IPO hook was, just moved
+    // out from under the discovery budget. Non-fatal per candidate — one IPO's
+    // extraction failure must not stop the rest.
+    if (FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST) {
+      if (!lockToken) {
+        // Logged once above when the lock failed.
+      } else {
+        const extractionStartedAt = now();
+        for (const ipo of candidates) {
+          if (now() - extractionStartedAt >= extractionBudgetMs) {
+            logger.warn(
+              { extractionBudgetMs },
+              'Document extraction budget exhausted — remaining candidates resume next cycle (spawn budget/state persisted)'
+            );
+            break;
+          }
+          try {
+            if (!autoPersistDeps) {
+              autoPersistDeps = buildAutoPersistDeps();
+              autoPersistDeps.spawnBudget = spawnBudget;
+            }
+            const autoPersist = await processPendingFilings(
+              {
+                id: ipo.id,
+                companyName: ipo.companyName,
+                slug: ipo.slug ?? null,
+                segment: ipo.segment ?? null,
+              },
+              autoPersistDeps
+            );
+            if (autoPersist.spawned > 0 || autoPersist.failed > 0 || autoPersist.skippedBudget > 0) {
+              logger.info(
+                { ipoId: ipo.id, company: ipo.companyName, ...autoPersist },
+                'Filing auto-persist complete for one IPO'
+              );
+            }
+          } catch (error) {
+            logger.error(
+              { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+              'Filing auto-persist threw (non-fatal) — continuing the cycle'
+            );
+          }
+        }
+      }
+    }
+
+    const summary = summarize(results, now() - startedAt, budgetExhausted, {
       blocked: extractionBlocked,
       failed: extractionFailed,
     });
@@ -513,19 +537,23 @@ export interface PurgeSummary {
 }
 
 /**
- * PURGE_PDFS (D4). Deletes local PDFs for IPOs past
- * `close_date + PROSPECTUS_RETENTION_DAYS`, or withdrawn. FILES ONLY — the
- * `documents` and `document_fetch_state` rows and everything extracted from the
- * PDFs are retained, so nothing we learned is lost with the bytes.
+ * W-101: bounded to IPOs that can possibly be due — a close date exists and is
+ * already past the soft window (the first cut scanned every IPO row with a
+ * close date, which grows without limit as the table does — N4).
+ *
+ * `{{RETENTION_DAYS}}` is substituted with a validated, `Math.trunc`-ed
+ * integer (see `getRetentionDays()`) before execution — never user input, so
+ * this is not a SQL-injection surface — which keeps this string a plain,
+ * test-inspectable constant (see `stage-reconciler-job.ts`'s
+ * `RECONCILER_PRESENCE_SQL` for the same pattern) instead of a parameter-bound
+ * template that a regex test cannot read without a live database.
+ *
+ * Found live 2026-09-03: `upper(i.status)` failed with Postgres 42883
+ * ("function upper(ipo_status) does not exist") on EVERY run — `ipos.status`
+ * is the `ipo_status` enum, not text, and `upper()` has no enum overload.
+ * `upper(i.status::text)` fixes it.
  */
-export async function runDocumentPurge(): Promise<PurgeSummary> {
-  const retentionDays = getRetentionDays();
-  const maxRetentionDays = getMaxRetentionDays();
-
-  // One query, bounded to IPOs that can possibly be due: a close date exists and
-  // is already past the soft window. The first cut scanned every IPO row with a
-  // close date, which grows without limit as the table does (N4).
-  const result = await db.execute(sql`
+export const PURGE_CANDIDATES_SQL = `
     SELECT i.id,
            i.close_date,
            i.status,
@@ -537,11 +565,27 @@ export async function runDocumentPurge(): Promise<PurgeSummary> {
      WHERE i.offering_type = 'IPO'
        AND i.close_date IS NOT NULL
        AND (
-         i.close_date < now() - make_interval(days => ${retentionDays})
-         OR upper(i.status) IN ('WITHDRAWN', 'POSTPONED')
+         i.close_date < now() - make_interval(days => {{RETENTION_DAYS}})
+         OR upper(i.status::text) IN ('WITHDRAWN', 'POSTPONED')
        )
      GROUP BY i.id, i.close_date, i.status
-  `);
+`;
+
+/**
+ * PURGE_PDFS (D4). Deletes local PDFs for IPOs past
+ * `close_date + PROSPECTUS_RETENTION_DAYS`, or withdrawn. FILES ONLY — the
+ * `documents` and `document_fetch_state` rows and everything extracted from the
+ * PDFs are retained, so nothing we learned is lost with the bytes.
+ */
+export async function runDocumentPurge(): Promise<PurgeSummary> {
+  const retentionDays = getRetentionDays();
+  const maxRetentionDays = getMaxRetentionDays();
+
+  // W-101: retentionDays is validated finite/>=0 by getRetentionDays(); Math.trunc
+  // guards against a non-integer env value producing invalid SQL syntax.
+  const result = await db.execute(
+    sql.raw(PURGE_CANDIDATES_SQL.replace('{{RETENTION_DAYS}}', String(Math.trunc(retentionDays))))
+  );
   const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<
     string,
     unknown
