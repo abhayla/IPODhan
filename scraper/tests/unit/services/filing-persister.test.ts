@@ -1691,3 +1691,205 @@ describe('filing-persister — W-73 risk factors / acquisition ranges / filing d
     expect(summary.skipped_no_column.some((x) => x.startsWith('rhp_filing_date ('))).toBe(true);
   });
 });
+
+/**
+ * W-82 — NO_COLUMN_FIELDS was stale: it reported fields as having no column
+ * although the schema has one. `cin` is the mapped case (ipos.cin, varchar(21));
+ * `concentration_kpis` is the conditionally-mapped case (ipo_risk_factors.kpis
+ * is jsonb ON a risk-factor row, so it lands only when a matching risk factor
+ * is written in the same run).
+ */
+describe('filing-persister — W-82 cin -> ipos.cin', () => {
+  const DEEPA_CIN = 'U74999TG2016PLC109435';
+
+  beforeEach(() => {
+    upsertIPOMock.mockClear();
+  });
+
+  it('sends the CIN the document prints to ipos.cin via upsertIPO', async () => {
+    const s = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+
+    const [, scraped, source] = upsertIPOMock.mock.calls[0] as unknown as [
+      unknown,
+      Record<string, unknown>,
+      string,
+    ];
+    expect(scraped.cin).toBe(DEEPA_CIN);
+    expect(source).toBe('DRHP');
+    expect(summary.ipos_fields).toContain('cin');
+    // It must no longer be reported as having no column.
+    expect(summary.skipped_no_column.some((x) => x.startsWith('cin ('))).toBe(false);
+  });
+
+  it('refuses a value that is not a 21-character CIN instead of overflowing the column', async () => {
+    const s = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD', {
+        cin: { value: 'Corporate Identity Number: not-a-cin', passed: true },
+      }),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const scraped = (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
+    expect(scraped.cin).toBeUndefined();
+    expect(summary.ipos_fields).not.toContain('cin');
+    expect(summary.skipped_failed_check.some((x) => x.startsWith('ipos.cin:'))).toBe(true);
+  });
+
+  it('honours field protection on ipos.cin', async () => {
+    const s = makeDeps();
+    (s.deps as unknown as Record<string, unknown>).protectionFilter = vi.fn(
+      async (_ipoId: string, tableName: string, data: Record<string, unknown>) => {
+        if (tableName !== 'ipos') return { filtered: data };
+        const { cin: _protected, ...rest } = data;
+        return { filtered: rest };
+      }
+    );
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const scraped = (upsertIPOMock.mock.calls[0] as unknown as [unknown, Record<string, unknown>])[1];
+    expect(scraped.cin).toBeUndefined();
+    expect(summary.ipos_fields).not.toContain('cin');
+    expect(summary.skipped_protected).toContain('ipos.cin');
+  });
+
+  it('plans but does not write the CIN on a dry run', async () => {
+    const s = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD' },
+      s.deps
+    );
+    expect(upsertIPOMock).not.toHaveBeenCalled();
+    expect(summary.applied).toBe(false);
+    expect(summary.ipos_fields).toContain('cin');
+  });
+
+  it('writes no CIN at all when the IPO row is scraper_locked', async () => {
+    const s = makeDeps();
+    (s.deps.ipoRepository as unknown as { findById: unknown }).findById = vi.fn(async () => ({
+      id: IPO_ID,
+      companyName: 'Deepa Jewellers Limited',
+      offeringType: 'IPO',
+      status: 'OPEN',
+      scraperLocked: true,
+    }));
+    await expect(
+      persistFilingExtraction(
+        IPO_ID,
+        extractionFromOracle('PRICE_BAND_AD'),
+        { docType: 'PRICE_BAND_AD', apply: true },
+        s.deps
+      )
+    ).rejects.toThrow(/scraper_locked/);
+    expect(upsertIPOMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('filing-persister — W-82 concentration_kpis -> ipo_risk_factors.kpis', () => {
+  beforeEach(() => {
+    upsertIPOMock.mockClear();
+  });
+
+  const KPIS = [
+    { label: 'gold procurement', value_pct: 91.4 },
+    { label: 'online marketplaces', value_pct: 12.5 },
+  ];
+
+  it('attaches each KPI to the risk factor whose heading names it, and reports the rest', async () => {
+    const s = makeDeps();
+    const w = withW73Writers(s);
+    const extraction = w73Extraction();
+    extraction.fields.concentration_kpis = {
+      value: KPIS,
+      page: 24,
+      check: { name: 'concentration_percentages_in_range', passed: true },
+    };
+
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+
+    const rows = w.replaceRiskFactors.mock.calls[0][1] as Array<Record<string, unknown>>;
+    // 'gold procurement' appears in the supplier risk's heading; that row carried
+    // no kpis of its own, so the KPI lands on it as the stored jsonb value.
+    const supplier = rows.find((r) => String(r.heading).includes('gold procurement'));
+    expect(supplier?.kpis).toEqual([KPIS[0]]);
+    // The concentration risk already carries the extractor's own per-risk kpis —
+    // untouched.
+    const southern = rows.find((r) => String(r.heading).includes('Southern India'));
+    expect(southern?.kpis).toEqual({ southern_india_revenue_pct_fy2026: 98.12 });
+    // No heading names 'online marketplaces' — reported, never silently dropped.
+    expect(
+      summary.skipped_no_column.some(
+        (x) => x.startsWith('concentration_kpis (') && x.includes('online marketplaces')
+      )
+    ).toBe(true);
+    expect(
+      summary.skipped_no_column.some((x) => x.includes('gold procurement'))
+    ).toBe(false);
+  });
+
+  it('refuses the whole replace (KPIs included) when a risk-factor column is protected', async () => {
+    const s = makeDeps();
+    const w = withW73Writers(s);
+    (s.deps as unknown as Record<string, unknown>).protectionFilter = vi.fn(
+      async (_ipoId: string, tableName: string, data: Record<string, unknown>) => {
+        if (tableName !== 'ipo_risk_factors') return { filtered: data };
+        const { kpis: _protected, ...rest } = data;
+        return { filtered: rest };
+      }
+    );
+    const extraction = w73Extraction();
+    extraction.fields.concentration_kpis = {
+      value: KPIS,
+      page: 24,
+      check: { name: 'concentration_percentages_in_range', passed: true },
+    };
+
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'RHP', apply: true },
+      s.deps
+    );
+
+    expect(w.replaceRiskFactors).not.toHaveBeenCalled();
+    expect(summary.written.ipo_risk_factors).toBeUndefined();
+    expect(summary.skipped_protected).toContain(
+      'ipo_risk_factors (whole-row replace refused: kpis protected)'
+    );
+  });
+
+  it('plans the KPI attachment on a dry run without writing it', async () => {
+    const s = makeDeps();
+    const w = withW73Writers(s);
+    const extraction = w73Extraction();
+    extraction.fields.concentration_kpis = {
+      value: KPIS,
+      page: 24,
+      check: { name: 'concentration_percentages_in_range', passed: true },
+    };
+
+    const summary = await persistFilingExtraction(IPO_ID, extraction, { docType: 'RHP' }, s.deps);
+
+    expect(w.replaceRiskFactors).not.toHaveBeenCalled();
+    expect(summary.applied).toBe(false);
+    expect(summary.written.ipo_risk_factors).toBe(2);
+  });
+});

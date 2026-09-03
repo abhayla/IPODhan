@@ -318,21 +318,43 @@ function toIsoOrUndefined(d: unknown): string | undefined {
  * anywhere in the schema. Reported, never silently dropped (W-09).
  */
 const NO_COLUMN_FIELDS: Record<string, string> = {
-  ofs_shares: 'no OFS share-count column',
-  total_offer_shares_at_floor: 'no total-offer share-count column',
+  // W-82: every reason below was re-checked against packages/shared/src/db/
+  // schema.ts. `ipo_valuation.shares_at_floor/shares_at_cap` receive the FRESH
+  // issue leg (extract_filing.py reads them off the fresh-issue row), so they
+  // are NOT a home for the OFS leg, the fresh+OFS total, or the post-issue
+  // capital. Splitting them is W-88's schema question; no column is added here.
+  ofs_shares:
+    'no OFS share-count column (ipo_valuation.shares_at_floor/at_cap hold the FRESH leg) — W-88',
+  total_offer_shares_at_floor:
+    'no total-offer share-count column (ipo_valuation.shares_at_floor/at_cap hold the FRESH leg, not fresh+OFS) — W-88',
   total_offer_amount_at_floor: 'no floor-total-amount column (issue_size is the cap total)',
-  post_offer_shares_at_floor: 'no post-offer share-count column',
-  post_offer_shares_at_cap: 'no post-offer share-count column',
+  post_offer_shares_at_floor:
+    'no post-issue share-capital column (the ipo_valuation share columns are offer-side) — W-88',
+  post_offer_shares_at_cap:
+    'no post-issue share-capital column (the ipo_valuation share columns are offer-side) — W-88',
   issue_structure: 'issue_type enum is BOOK_BUILDING/FIXED_PRICE/HYBRID, not fresh/OFS',
   shares_monotonic: 'derived check, not a stored field',
   eps_weighted_average: 'no weighted-average-EPS column',
-  industry_peer_pe_average: 'no peer-average-PE column',
-  waca_secondary_transactions: 'no secondary-transaction WACA column',
-  floor_multiple_of_waca_secondary: 'no secondary-WACA multiple column',
-  cap_multiple_of_waca_secondary: 'no secondary-WACA multiple column',
-  concentration_kpis: 'no concentration-KPI table (ipo_risk_factors.kpis needs a risk factor row)',
-  cin: 'no CIN column on ipos/ipo_details',
-  anchor_bid_date: 'no anchor-bid-date column',
+  industry_peer_pe_average:
+    'no peer-average-PE column (ipo_valuation has pe_at_floor/pe_at_cap only; peer_companies.pe_ratio is per peer)',
+  // acquisition_period is exactly 1Y|18M|3Y — there is no SECONDARY member, so
+  // promoter_acquisition_ranges has no row a secondary-transaction WACA (or its
+  // two multiples) could occupy without a schema migration.
+  waca_secondary_transactions:
+    'acquisition_period enum is 1Y|18M|3Y — no SECONDARY period row on promoter_acquisition_ranges',
+  floor_multiple_of_waca_secondary:
+    'acquisition_period enum is 1Y|18M|3Y — no SECONDARY period row on promoter_acquisition_ranges',
+  cap_multiple_of_waca_secondary:
+    'acquisition_period enum is 1Y|18M|3Y — no SECONDARY period row on promoter_acquisition_ranges',
+  // anchor_investors.bid_date EXISTS, but it is NOT NULL on a row whose
+  // total_shares_offered, total_amount_raised, anchor_investors_count,
+  // lock_in_50_percent_date and lock_in_remaining_date are ALSO NOT NULL and
+  // are not printed in a price-band ad or RHP — so no row can be created from a
+  // bid date alone. When a row does exist its date came from the anchor
+  // allocation report, which outranks a filing's stated intention; overwriting
+  // it would replace an actual bid date with a planned one.
+  anchor_bid_date:
+    'anchor_investors.bid_date is NOT NULL on a row with 5 further NOT NULL columns no filing carries; an existing row holds the date from the anchor allocation report, which must not be overwritten',
   book_building_regulation: 'no regulation-citation column (mapped to issue_type only)',
   brlm_issues_3y_total: 'totals row; the per-BRLM rows carry the figures',
   brlm_closed_below_total: 'totals row; the per-BRLM rows carry the figures',
@@ -530,6 +552,20 @@ export async function persistFilingExtraction(
   const allotmentDate = str(extraction, 'basis_of_allotment_date');
   const listingDate = str(extraction, 'listing_date');
   const description = str(extraction, 'business_description');
+  // W-82: `ipos.cin` exists (varchar(21), added by migration 0042/T-428 WP C-1)
+  // and the extractor emits `cin` off the cover page. It rides in `iposCandidate`
+  // so it goes through the SAME gates as every other ipos scalar: the
+  // scraper_locked refusal above, `filterFields('ipos', ...)`, `upsertIPO`
+  // (field-priority matrix + field_sources), and the `apply` dry-run switch.
+  const cinRaw = str(extraction, 'cin');
+  const cin = cinRaw === null ? null : cinRaw.replace(/\s+/g, '').toUpperCase();
+  // The column is varchar(21) and a CIN is exactly 21 alphanumerics. A value of
+  // any other shape is not a CIN; writing it would either overflow the column
+  // or publish a mis-parsed string as source DRHP.
+  const cinForWrite = cin !== null && /^[A-Z0-9]{21}$/.test(cin) ? cin : null;
+  if (cin !== null && cinForWrite === null) {
+    skippedFailedCheck.push(`ipos.cin: '${cin}' is not a 21-character CIN`);
+  }
 
   const scraped: Record<string, unknown> = {
     companyName: existing.companyName,
@@ -567,6 +603,7 @@ export async function persistFilingExtraction(
   if (allotmentDate) iposCandidate.allotmentDate = allotmentDate;
   if (listingDate) iposCandidate.listingDate = listingDate;
   if (description) iposCandidate.companyDescription = description;
+  if (cinForWrite !== null) iposCandidate.cin = cinForWrite;
 
   const iposWritable =
     Object.keys(iposCandidate).length > 0 ? await filterFields('ipos', iposCandidate) : {};
@@ -1115,6 +1152,41 @@ export async function persistFilingExtraction(
       kpis: item?.kpis ?? null,
     });
   });
+  // W-82: `concentration_kpis` is a flat list of {label, value_pct}. The only
+  // column in the schema that can hold it is `ipo_risk_factors.kpis` — jsonb ON
+  // a risk-factor row — so a KPI is storable only when this same run is writing
+  // the risk factor whose heading names it. The match is a literal
+  // case-insensitive containment of the KPI's label in the heading: anything
+  // looser would file a percentage under a risk it does not describe. A row that
+  // already carries its own kpis is left alone (the extractor's per-risk object
+  // is the better-scoped value), and every unattached label is reported.
+  const concentrationKpis = list<{ label?: string; value_pct?: number }>(
+    extraction,
+    'concentration_kpis'
+  );
+  if (concentrationKpis.length > 0) {
+    const unattached: string[] = [];
+    for (const kpi of concentrationKpis) {
+      const label = typeof kpi?.label === 'string' ? kpi.label.trim() : '';
+      if (label === '') continue;
+      const needle = label.toLowerCase();
+      const target = riskRows.find(
+        (r) => r.heading.toLowerCase().includes(needle) && (r.kpis === null || r.kpis === undefined)
+      );
+      if (!target) {
+        unattached.push(label);
+        continue;
+      }
+      target.kpis = [kpi];
+    }
+    if (unattached.length > 0) {
+      skippedNoColumn.push(
+        `concentration_kpis (ipo_risk_factors.kpis is per-risk-factor jsonb; no free risk-factor ` +
+          `heading in this filing names: ${unattached.join(', ')})`
+      );
+    }
+  }
+
   if (riskRows.length > 0) {
     if (!deps.riskFactors) {
       skippedNoColumn.push(
