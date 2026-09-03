@@ -572,7 +572,12 @@ export async function upsertIPO(
         // Symbol: Only set if scraper explicitly provides it (NSE/BSE have symbols, upcoming IPOs may not)
         symbol: scrapedIPO.symbol || undefined,
         // ISIN: Only set if scraper provides it (NSE API / BSE Detail may have it)
-        isin: scrapedIPO.isin || undefined
+        isin: scrapedIPO.isin || undefined,
+        // W-82 round 2: CIN from the filing persister was validated (T-329 fix)
+        // but never copied into ipoData, so it never reached the consolidation
+        // or non-destructive-fallback write paths — same undefined-when-absent
+        // convention as faceValue/isin so it never nulls a stored CIN.
+        cin: scrapedIPO.cin || undefined
       } as any;
 
       // A scraper that returns `undefined` segment (e.g. BSE-API, whose JSON board

@@ -517,6 +517,16 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     confidenceThreshold: 85,
     description: 'Stock ticker symbol - NSE symbol is canonical',
   },
+  // W-82 round 2: the filing persister scrapes CIN but the field had no matrix
+  // entry, so consolidation could not arbitrate a conflict on it.
+  cin: {
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE'],
+    normalization: 'none',
+    confidenceThreshold: 90,
+    timeBased: false,
+    validation: { regex: '^[A-Z0-9]{21}$' },
+    description: 'Corporate Identification Number from the filing',
+  },
 
   // ==================== LOT SIZE (BSE is more accurate) ====================
 

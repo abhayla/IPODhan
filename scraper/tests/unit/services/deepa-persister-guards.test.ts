@@ -198,4 +198,76 @@ describe('upsertIPO update path — Deepa walk guards', () => {
     expect(patch).not.toHaveProperty('symbol');
     expect(patch).not.toHaveProperty('leadManagers');
   });
+
+  // W-82 round 2: `cin` was validated by ScrapedIPOSchema and sent by the filing
+  // persister, but `ipoData` never copied it in, so it reached neither the
+  // consolidation write nor the non-destructive fallback. These assert the update
+  // PAYLOAD actually carries `cin` on both write paths — not just that upsertIPO's
+  // caller passed it in (that half was already covered by filing-persister.test.ts).
+  const CIN = 'U74999TG2016PLC109435';
+
+  it('W-82 round 2: the consolidation path carries cin through to the update payload', async () => {
+    consolidateIPODataMock.mockResolvedValue({
+      ipoId: 'deepa-id',
+      fieldsProcessed: 1,
+      fieldsUpdated: 1,
+      conflictsDetected: 0,
+      conflictsBySeverity: { INFO: 0, WARNING: 0, CRITICAL: 0 },
+      fieldResults: [
+        { fieldName: 'cin', finalValue: CIN, chosenSource: 'DRHP', hadConflict: false },
+      ],
+      consolidatedData: { cin: CIN },
+      errors: [],
+      performanceMs: 1,
+    });
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(ipoRepository, nseScrape({ cin: CIN }), 'DRHP' as any, existingDeepaRow());
+
+    expect(consolidateIPODataMock).toHaveBeenCalledWith(
+      expect.objectContaining({ incomingData: expect.objectContaining({ cin: CIN }) })
+    );
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch.cin).toBe(CIN);
+  });
+
+  it('W-82 round 2: an absent cin is not written on the consolidation path', async () => {
+    consolidateIPODataMock.mockResolvedValue({
+      ipoId: 'deepa-id',
+      fieldsProcessed: 0,
+      fieldsUpdated: 0,
+      conflictsDetected: 0,
+      conflictsBySeverity: { INFO: 0, WARNING: 0, CRITICAL: 0 },
+      fieldResults: [],
+      consolidatedData: {},
+      errors: [],
+      performanceMs: 1,
+    });
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(ipoRepository, nseScrape(), 'NSE', existingDeepaRow());
+
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch).not.toHaveProperty('cin');
+  });
+
+  it('W-82 round 2: the fallback path carries cin through to the update payload', async () => {
+    consolidateIPODataMock.mockRejectedValue(new Error('consolidation boom'));
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(ipoRepository, nseScrape({ cin: CIN }), 'NSE', existingDeepaRow());
+
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch.cin).toBe(CIN);
+  });
+
+  it('W-82 round 2: an absent cin is not written on the fallback path', async () => {
+    consolidateIPODataMock.mockRejectedValue(new Error('consolidation boom'));
+
+    const ipoRepository = makeIpoRepository();
+    await upsertIPO(ipoRepository, nseScrape(), 'NSE', existingDeepaRow());
+
+    const [, patch] = ipoRepository.update.mock.calls[0];
+    expect(patch).not.toHaveProperty('cin');
+  });
 });

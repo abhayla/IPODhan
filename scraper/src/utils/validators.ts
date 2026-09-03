@@ -63,7 +63,11 @@ export const ScrapedIPOSchema = z.object({
   registrar: z.string().max(255).nullable().optional(), // Allow null when not available
   leadManagers: z.array(z.string()).nullable().optional(),
   symbol: z.string().nullable().optional(), // NSE/BSE stock symbol (nullable for RIGHTS/NCD)
-  isin: z.string().length(12).nullable().optional() // ISIN code (12 characters, nullable when not available)
+  isin: z.string().length(12).nullable().optional(), // ISIN code (12 characters, nullable when not available)
+  // W-82 round 2: filing persister sent `cin` in the upsertIPO payload but this
+  // schema had no field for it, so it was silently dropped before ipoData was
+  // ever built. CIN format: 21 chars, uppercase letters + digits only.
+  cin: z.string().regex(/^[A-Z0-9]{21}$/, 'CIN must be 21 uppercase alphanumeric characters').optional()
 }).refine(
   (data) => new Date(data.closeDate) >= new Date(data.openDate),
   {
