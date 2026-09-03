@@ -12,11 +12,15 @@
  * totals), so a filing whose own arithmetic does not close is not persisted at
  * all — a half-right anchor book is worse than none.
  *
- * NAME CONFIDENCE: anchor_investors has no name-confidence column, and
+ * NAME CONFIDENCE (W-81): anchor_investors has no name-confidence column, and
  * `investor_list` is typed jsonb (IndividualInvestor[]) that the web layer
- * reads. Adding a key there would be inventing a field, so garbled names are
- * stored AS-IS and the low-confidence count is reported in the run summary
- * instead.
+ * reads, so there is nowhere to mark ONE name as untrusted without inventing a
+ * field. A garbled name is therefore stored AS-IS - but only while the filing
+ * as a whole reads cleanly. When MORE THAN `NAME_QUALITY_FLOOR` of the rows
+ * fail `isLowConfidenceName` (blank names included), the read itself is broken,
+ * not one row, and the WHOLE write is refused: the DEEPA report published
+ * "OSWAL OT] LAL FINVEST N4 LI I\4ITE D" and a blank name to the live page,
+ * which is worse for a reader than an absent anchor table.
  */
 
 import type { AnchorInvestorData } from '../scrapers/anchor-investors-scraper.js';
@@ -119,6 +123,13 @@ export function isLowConfidenceName(name: string): boolean {
   const letters = n.replace(/[^A-Za-z]/g, '').length;
   return letters / n.length < 0.6;
 }
+
+/**
+ * The share of investor rows whose name may be unreadable before the whole
+ * anchor write is refused (W-81). Above this the name column itself failed to
+ * read; below it, a stray row is tolerated and only reported.
+ */
+export const NAME_QUALITY_FLOOR = 0.3;
 
 /**
  * A gate's verdict. `not_checkable` is a THIRD state, distinct from passed and
@@ -342,6 +353,28 @@ export async function persistAnchorReport(
   const lowConfidenceNames = publishableRows
     .map((r) => r.name)
     .filter((n) => isLowConfidenceName(n));
+
+  // W-81 name-quality gate. A blank name counts as a failed name, not as a free
+  // pass: both come from the same broken read of the scan.
+  const unreadableNames = lowConfidenceNames.length + skippedBlankNames;
+  if (rows.length > 0 && unreadableNames / rows.length > NAME_QUALITY_FLOOR) {
+    const reason =
+      `anchor write refused: ${unreadableNames} of ${rows.length} investor names are ` +
+      `unreadable (> ${Math.round(NAME_QUALITY_FLOOR * 100)}% floor) - the name column ` +
+      'was not read, publishing it would show garbled investors';
+    logger.warn(
+      { ipoId, rows: rows.length, unreadableNames, lowConfidenceNames },
+      '[AnchorPersister] name-quality gate failed - writing NOTHING'
+    );
+    return {
+      ...empty,
+      checks,
+      notCheckable,
+      lowConfidenceNames,
+      skippedBlankNames,
+      refusedReason: reason,
+    };
+  }
 
   const totals = {
     shares: data.totalSharesOffered,

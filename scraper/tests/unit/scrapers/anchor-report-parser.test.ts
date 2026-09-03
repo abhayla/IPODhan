@@ -260,3 +260,51 @@ describe('the cross-check flags are COMPUTED, not asserted (MAJOR-3)', () => {
     expect(result.value.sharesTimesPriceCheckPassed).toBe(true);
   });
 });
+
+/**
+ * W-81 - investor names inside a WRAPPING name cell must come back in reading
+ * order. VERBATIM excerpt of `scripts/anchor_report_text.py` output for the
+ * DEEPA letter (documents sha256 c77950f2...), pages 1-2, AFTER the reading-order
+ * fix. The glyph damage ("N4" for M, "]" for I) is the PDF's own embedded OCR
+ * text layer and is deliberately kept as-is: this test locks the ORDER of the
+ * words, not their spelling - repairing spelling is the persister's name-quality
+ * gate (`NAME_QUALITY_FLOOR`), never a guess made here.
+ *
+ * Before the fix the same cells came back sorted by (top, x0) across a skewed
+ * two-line cell, which interleaved the lines:
+ *   "OSWAL OT] LAL FINVEST N4 LI I\\4ITE D"   (Motilal Oswal Finvest Limited)
+ *   "CAPITAL WH]TEOAK EQUITY FUND"          (WhiteOak Capital Equity Fund)
+ *   "CAPITAL CP LTD"                        (CP Capital Ltd)
+ */
+const W81_PAGES: string[] = [
+  "DEEPA IEWELLERS LIMITED\n#  | (Formerly | known as | Jewellers | Pvt. Ltd')\n#  | Add: 3-6-343, Basheer | Bagh Main | Hyderabad | - 500 029' Telangana\n#  | CIN: | U74999TG201 | 6PLC1 | 09435\n#  | Is d ch II | n P | e | L d\n#  | Board of Directors of the.company- at | its meeting | on August | 31, 2026, in consultation with the\n#  | running capjtar lead private managers Limired. to (together, the oifer,Jla-\"rv, | e-.riv | crobal | \n#  |  | Book iLr.iigi | Lead | Financial services Limited and valmjki\n#  | to Anchor Invesrors at Anchor | Investor | price | as.- tzi' pir have \"r,..\"'in finarized the aIocation fo|owing\n#  |  | No. of | Sha res | Bid Price\n#  | Name of Anchor Investor | Equity |  | ( Rs, per Total Amount\n#  |  | Shares | a o/o | Equity Allocation (Rs.)\n#  |  | Allocated | Anchor | Share)\n# 1 | N4 OT] LAL OSWAL FINVEST LI I\\4ITE D | 20,31,464 | 26.070/a | 777.00 3s,9s,69,128.00\n# 2 | WH]TEOAK CAPITAL EQUITY FUND | 5,08,273 | 6.52o/o | 177 .00 8,99,64,321.00\n# 3 | OPPO 360 RTUNITIES ONE FUND - SERIES EQUITY 2 | 5,Oa,274 | 6.52Vo | 1,77.00 8,99,64,498.00\n# 4 |  | 5 39 9s2 | 6.93o/o | L77 .O0 9 55 7l 504.00\n# 5 | TAT TATA UNIFI I D N I MUTUAL D I I D A EN C o D N Y S FUND I U ELD N4 ER F U FU N N D UNIFI D | 3 91 860 | 5.03o/o | 777.00 6 93 59 220 .00\n# 6 | FLEXI CAP FUND | 5,64,984 | 7 .25o/o | 177.00 10,00,02,168.00\n# 7 | CP CAPITAL LTD | 3 66 830 | 4.7 7o/o | 177.O0 6 49 2B 910.00\n# 8 | LRS D S EC U R I TI ES PVT LTD | 2 B2 486 | 3 ,630/o | 777.00 5 00 00 022.OO\n# 9 | [4AYBANK SECURITIES PTE LTD . ODI | 3,66,830 | 4.7 7o/o | 777.00 6,49,28,gt].oo\n# 10 | MAURITIUS PRIVATE LI c L | 2,82,486 | 3 .630/o | 777,00 5,00,00,022.00\n#  | lN: | 36AAFCD6847E1ZK |  | \n#  | +91 8341022117,8 I Email: | info@deepajewel.com; |  | accounts@deepajewel.com",
+  "No of\nEquity\n#  |  | No. of | Shares Equity | Bid Price\n#  | Name of Anchor Investor | Equity | allocated | (Rs. per Total Amount\n#  |  | Shales | as a o/o | Equity Allocation (Rs.)\n#  |  | Allocated | Anchor | Share)\n# 11 | GIR EQUITY N o N4 IK U RA FUND- S MULTICAP I N GA III PO RE - INVESTIYENT t_I [4 GROWTH ITE D | 2 B2 486 | 3 .630/o | 177.O0 5 00 00 022,00\n# 12 | ACCOU NT | 3,66,830 | 4.71o/o | 777 .OO 6,49,28,910.OO\n# 13 | ALCHEMY LONG TERNl VENI-URES ASHOKA FUND SERIES INDIA 3 EQUITY | 2,A2,4A6 | 3.630/o | i77 .OO 5,0 0,0 0,0 2 2. 0 0\n# 74 | INVESTMENT HIGH CONVICTION TRUST PLC FUND | 5 ,O8 ,27 4 | 6 ,52o/o | 177 .00 8,99,64,498.00\n# 15 | SERIES 1 | 5,08,274 | 6,52o/o | 177.O0 8,99,64,498.00\n#  | Total | 77 9 749 | lOO.OOo/o | 1 7 9 653.OO\n#  | of the total allocation 77.,97,7ag Equity | shares | Anchor | Investor, 74,96,796 Equity shares\n#  | 19'21olo of the total illocation io | anchor |  | allocated to two domestic mutual\n#  | which have appried through a totar | of three |  | Nir alocated were made to Life\n#  | companies and peniion fund, | detairs of | are | in the tabre berow:\n#  |  | No. of | Sha Eq | Bid\n#  | Name of Mutual Fund Scheme | Equity | allocated | \n#  |  | Sha res | as a | of (Rs. Equity Price per Allocation Total Amount (Rs.)\n#  |  | Allocated | Anchor | Sha re)\n# 1 | TATA TATA I DIVIDEND N D I o N YIELD SU I\\4 ER FUND FU N D | 5,39,952 | 6 ,930/0 | t77.OO 9 55 71- 504.00\n#  |  | 3,91\",860 | 5.030/a | t77 .00 6,93,59,220.O0\n# 3 | U i\\]I F] I\\,]UTUAL FUND - UNIFI FLEXI CAP FUND | 5,64,984 | 7 .25o/o | t77.OO 10,00,02,168,00\n#  | Total | t4 9 796 |  | 26 3 892,OO\n#  | the securities and Exchange Board | of India | of | and Disclosure Requirement)\n#  | 2018, as amended, in case the | onei priie | aiscovered | through book building process is\n#  | than the Anchor investor Allocation | price, nncrroilnvestors |  | be required to pay the difference\n#  | Anchor investor pay-in Date as specified | in ifie | CeN. | \n#  | as per the securities and Excha.nge | Board | of India | (Issue of capital and Disclosure\n#  | Regulations, 2018, as amended, 10 and all relevant sub-ilauses. | irom time | to time, | shall abide by schedule XIII, part",
+];
+
+describe('anchor-report-parser - wrapping name cells read in order (W-81)', () => {
+  it('keeps each printed line of a name intact instead of interleaving them', () => {
+    const result = parseAnchorReport(W81_PAGES);
+    if (!result.ok) throw new Error(result.reason);
+    const names = result.value.rows.map((r) => r.name);
+
+    expect(names).toContain('N4 OT] LAL OSWAL FINVEST LI I\\4ITE D');
+    expect(names).toContain('WH]TEOAK CAPITAL EQUITY FUND');
+    expect(names).toContain('CP CAPITAL LTD');
+    expect(names).toContain('[4AYBANK SECURITIES PTE LTD . ODI');
+
+    // The pre-fix interleavings must not come back.
+    expect(names).not.toContain('OSWAL OT] LAL FINVEST N4 LI I\\4ITE D');
+    expect(names).not.toContain('CAPITAL WH]TEOAK EQUITY FUND');
+    expect(names).not.toContain('CAPITAL CP LTD');
+  });
+
+  it('still reads the arithmetic off the same excerpt', () => {
+    const result = parseAnchorReport(W81_PAGES);
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.value.rows.length).toBe(15);
+    expect(result.value.bidPrice).toBe(177);
+    expect(result.value.totalShares).toBe(
+      result.value.rows.reduce((t, r) => t + r.shares, 0)
+    );
+  });
+});

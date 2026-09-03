@@ -33,7 +33,10 @@ const LOCKREST = new Date(Date.UTC(2026, 10, 29));
 
 /**
  * 15 rows summing EXACTLY to 7,791,789 shares and 137.9147 Cr. Three carry real
- * mutual-fund names; the rest are the OCR shrapnel the parser actually returns.
+ * mutual-fund names and three are the OCR shrapnel the parser actually returns
+ * - 3 of 15 (20%), deliberately UNDER the W-81 `NAME_QUALITY_FLOOR`, so this
+ * fixture exercises the tolerated-stray-row path. The gate itself (a read where
+ * most names are shrapnel) has its own describe block below.
  */
 function deepaAnchorFixture(): AnchorInvestorData {
   // Shares sum EXACTLY to the printed 7,791,789; each amount is the row's
@@ -44,16 +47,16 @@ function deepaAnchorFixture(): AnchorInvestorData {
     { name: 'HDFC Mutual Fund', type: 'Mutual Fund', shares: 400000, amount: 7.08 },
     { name: 'Aq u1la G1oba1 Fund L td', type: 'Unknown', shares: 700000, amount: 12.39 },
     { name: 'M0rgan V3ntures PCC', type: 'Unknown', shares: 650000, amount: 11.505 },
-    { name: 'S a i n t C a p i t a l', type: 'Unknown', shares: 600000, amount: 10.62 },
-    { name: 'Nex us 0pportunit1es', type: 'Unknown', shares: 550000, amount: 9.735 },
+    { name: 'Saint Capital Partners', type: 'Unknown', shares: 600000, amount: 10.62 },
+    { name: 'Nexus Opportunities', type: 'Unknown', shares: 550000, amount: 9.735 },
     { name: 'Bright$tone Invest', type: 'Unknown', shares: 500000, amount: 8.85 },
-    { name: 'Vant4ge Asset Co', type: 'Unknown', shares: 480000, amount: 8.496 },
-    { name: 'Ori0n Value Fund', type: 'Unknown', shares: 450000, amount: 7.965 },
+    { name: 'Vantage Asset Co', type: 'Unknown', shares: 480000, amount: 8.496 },
+    { name: 'Orion Value Fund', type: 'Unknown', shares: 450000, amount: 7.965 },
     { name: 'Ke y st one Alpha', type: 'Unknown', shares: 420000, amount: 7.434 },
-    { name: 'Ridge1ine Partners', type: 'Unknown', shares: 400000, amount: 7.08 },
+    { name: 'Ridgeline Partners', type: 'Unknown', shares: 400000, amount: 7.08 },
     { name: 'Sum mit Cap Ltd', type: 'Unknown', shares: 380000, amount: 6.726 },
-    { name: 'Alt1tude Growth', type: 'Unknown', shares: 360000, amount: 6.372 },
-    { name: 'Pinn4cle Trust', type: 'Unknown', shares: 601789, amount: 10.6517 },
+    { name: 'Altitude Growth', type: 'Unknown', shares: 360000, amount: 6.372 },
+    { name: 'Pinnacle Trust', type: 'Unknown', shares: 601789, amount: 10.6517 },
   ];
 
   const totalShares = rows.reduce((t, r) => t + r.shares, 0);
@@ -560,5 +563,74 @@ describe('anchor-persister — blank investor names (W-54)', () => {
     expect(persist).toHaveBeenCalledTimes(1);
     const payload = (persist.mock.calls[0] as unknown as [unknown, string, Record<string, unknown>])[2];
     expect((payload.investorList as unknown[]).length).toBe(15);
+  });
+});
+
+describe('anchor-persister — the name-quality gate (W-81)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  /**
+   * The DEEPA report as it actually reached the live page: the PDF's own
+   * embedded OCR text layer substituted glyphs (M -> "N4", I -> "]", W -> "I\4"),
+   * so most investor names are shrapnel. Every number still reconciles, which is
+   * exactly why the arithmetic gates let it through before this gate existed.
+   */
+  function garbledNameFixture() {
+    const bad = deepaAnchorFixture();
+    const garbled = [
+      'N4 OT] LAL OSWAL FINVEST LI I\\4ITE D',
+      'WH]TEOAK CAPITAL EQUITY FUND',
+      'TAT TATA UNIFI I D N I MUTUAL D I I D A EN C o D N Y S FUND',
+      'LRS D S EC U R I TI ES PVT LTD',
+      '[4AYBANK SECURITIES PTE LTD . ODI',
+      'GIR EQUITY N o N4 IK U RA FUND- S MULTICAP I N GA III PO RE',
+      'SERIES 1',
+      'NT ACCOU',
+    ];
+    garbled.forEach((name, i) => {
+      bad.investorList[i].name = name;
+    });
+    return bad;
+  }
+
+  it('refuses the ENTIRE write when more than 30% of the investor names are unreadable', async () => {
+    const { deps, persist } = makeDeps(garbledNameFixture());
+
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    // The arithmetic still closes — this is a NAME failure, and it must still stop the write.
+    expect(summary.checks.every((c) => c.passed || c.notCheckable)).toBe(true);
+    expect(persist).not.toHaveBeenCalled();
+    expect(summary.written).toBe(0);
+    expect(summary.investorsWritten).toBe(0);
+    expect(summary.refusedReason).toContain('unreadable');
+    expect(summary.lowConfidenceNames).toContain('N4 OT] LAL OSWAL FINVEST LI I\\4ITE D');
+  });
+
+  it('counts a blank name as an unreadable one, not as a free pass', async () => {
+    const bad = garbledNameFixture();
+    // Blank the shrapnel rows: dropping them silently would otherwise leave the
+    // published list looking clean while most of the letter was never read.
+    bad.investorList.slice(0, 8).forEach((r) => {
+      r.name = '   ';
+    });
+    const { deps, persist } = makeDeps(bad);
+
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(persist).not.toHaveBeenCalled();
+    expect(summary.skippedBlankNames).toBe(8);
+    expect(summary.refusedReason).toContain('unreadable');
+  });
+
+  it('still publishes a report whose stray garbled names stay under the floor', async () => {
+    const { deps, persist } = makeDeps(deepaAnchorFixture());
+
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(summary.refusedReason).toBeNull();
+    expect(summary.lowConfidenceNames).toHaveLength(3);
+    expect(summary.investorsWritten).toBe(15);
+    expect(persist).toHaveBeenCalledTimes(1);
   });
 });

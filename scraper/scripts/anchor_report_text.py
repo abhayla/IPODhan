@@ -118,8 +118,29 @@ def _cells(words, centres, numeric):
         idx = min(range(len(centres)), key=lambda i: abs(centres[i] - c))
         if abs(centres[idx] - c) <= ROW_ATTACH_PT:
             cells[idx].extend(group)
-    key = (lambda w: w["x0"]) if numeric else (lambda w: (w["top"], w["x0"]))
-    return [" ".join(w["text"] for w in sorted(c, key=key)) for c in cells]
+    if numeric:
+        return [" ".join(w["text"] for w in sorted(c, key=lambda w: w["x0"])) for c in cells]
+    return [_cell_text(c) for c in cells]
+
+
+def _cell_text(words):
+    """Reading order inside a wrapping NAME cell (W-81).
+
+    A name cell holds one or two printed lines. The scan is skewed, so the words
+    of ONE line do not share a `top`: across the ~150pt name column the baseline
+    drifts several points. Sorting the cell by `(top, x0)` therefore interleaves
+    the lines and scrambles the words - "MOTILAL OSWAL FINVEST / LIMITED" came
+    out as "OSWAL OT] LAL FINVEST N4 LI I\4ITE D". Cluster the cell into its own
+    sub-lines first (same y-gap rule as everywhere else), then read each
+    sub-line left to right, top line first.
+    """
+    if not words:
+        return ""
+    lines = _clusters(words, lambda w: w["top"], ROW_GAP_PT)
+    return " ".join(
+        " ".join(w["text"] for w in sorted(line, key=lambda w: w["x0"]))
+        for line in lines
+    )
 
 
 def page_text(words, bands):
