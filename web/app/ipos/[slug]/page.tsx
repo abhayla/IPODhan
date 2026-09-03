@@ -570,6 +570,8 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 valuation={valuation}
                 faceValue={ipo.faceValue ?? null}
                 peerAveragePe={peerAveragePe}
+                lotSize={ipo.lotSize}
+                priceRangeMax={ipo.priceRangeMax}
               />
             )}
 
@@ -653,15 +655,6 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
               <IPOObjectivesSection
                 objectives={ipo.objectives}
                 totalIssueSize={ipo.issueSize ? Number(ipo.issueSize) : undefined}
-              />
-            )}
-
-            {/* 12a. Lead Managers Section */}
-            {(ipoDetails?.leadManagers || intermediaryRows.length > 0) && (
-              <LeadManagerSection
-                leadManagers={ipoDetails?.leadManagers ?? null}
-                intermediaries={intermediaryRows}
-                brlmTrackRecords={brlmTrackRecordRows}
               />
             )}
 
@@ -786,6 +779,18 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
                 }}
                 title="Calculate Your Investment"
                 description="Find out how many lots you can buy with your investment amount"
+              />
+            )}
+
+            {/* 18b. Lead Managers & other intermediaries (W-86) — moved to the
+                bottom of the page, immediately above the company contact block:
+                the appointed intermediaries are reference detail, not something
+                an investor reads before the offer's own numbers. */}
+            {(ipoDetails?.leadManagers || intermediaryRows.length > 0) && (
+              <LeadManagerSection
+                leadManagers={ipoDetails?.leadManagers ?? null}
+                intermediaries={intermediaryRows}
+                brlmTrackRecords={brlmTrackRecordRows}
               />
             )}
 

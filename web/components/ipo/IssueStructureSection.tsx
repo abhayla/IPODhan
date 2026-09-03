@@ -42,6 +42,10 @@ interface IssueStructureSectionProps {
   faceValue?: number | string | null;
   /** Average P/E of the listed peers, for reading the issue P/E in context. */
   peerAveragePe?: number | null;
+  /** Shares per lot — lets the minimum investment be derived when unstored. */
+  lotSize?: number | null;
+  /** Cap of the price band — lets the minimum investment be derived when unstored. */
+  priceRangeMax?: number | null;
   className?: string;
 }
 
@@ -71,6 +75,8 @@ export function IssueStructureSection({
   valuation = null,
   faceValue = null,
   peerAveragePe = null,
+  lotSize = null,
+  priceRangeMax = null,
   className = '',
 }: IssueStructureSectionProps) {
   // If no details available, show empty state
@@ -140,7 +146,11 @@ export function IssueStructureSection({
         <div className="space-y-6">
           {/* Minimum Investment */}
           <div className="border border-gray-200 rounded-lg p-4">
-            <MinimumInvestmentDisplay minInvestment={minInvestment} />
+            <MinimumInvestmentDisplay
+              minInvestment={minInvestment}
+              lotSize={lotSize}
+              priceRangeMax={priceRangeMax}
+            />
           </div>
 
           {/* Cut-Off Price (for book building issues) */}
@@ -222,7 +232,12 @@ function ValuationAtBandTable({
   const rows: Array<{ label: string; floor: string | null; cap: string | null }> = [
     { label: 'Price per share', floor: fmtNum(floor), cap: fmtNum(cap) },
     {
-      label: 'Equity shares offered',
+      // W-85(b): `shares_at_floor`/`shares_at_cap` hold the FRESH-issue share
+      // count, not the total offer (fresh + offer for sale). Neither
+      // `ipo_details` nor `ipo_valuation` stores a total-offer share count
+      // today, so this row is labelled for what it actually holds and the
+      // footnote below says the total is not yet stored.
+      label: 'Fresh issue shares',
       floor: fmtInt(num(valuation.sharesAtFloor)),
       cap: fmtInt(num(valuation.sharesAtCap)),
     },
@@ -242,6 +257,8 @@ function ValuationAtBandTable({
       cap: fmtNum(num(valuation.faceValueMultipleCap), 'x'),
     },
   ].filter((r) => r.floor !== null || r.cap !== null);
+
+  const showsFreshIssueShares = rows.some((r) => r.label === 'Fresh issue shares');
 
   const peerAvg = peerAveragePe !== null && peerAveragePe > 0 ? peerAveragePe : null;
   const ronw3y = num(valuation.ronwWeighted3y);
@@ -290,6 +307,12 @@ function ValuationAtBandTable({
             </tbody>
           </table>
         </div>
+      )}
+
+      {showsFreshIssueShares && (
+        <p className="text-xs text-gray-500 mt-2">
+          Total offer shares including the offer for sale will be shown once stored
+        </p>
       )}
 
       {(peerAvg !== null || ronw3y !== null || valuation.peNotAscertainableReason) && (

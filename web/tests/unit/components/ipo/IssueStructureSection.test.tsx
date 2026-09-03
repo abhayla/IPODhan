@@ -259,4 +259,53 @@ describe('IssueStructureSection', () => {
       expect(screen.getByText('Fresh Issue vs OFS Breakdown')).toBeInTheDocument();
     });
   });
+
+  // W-85(b): shares_at_floor/shares_at_cap hold the FRESH-issue share count,
+  // not the total offer, and no total-offer share count is stored anywhere.
+  describe('Valuation table share row (W-85b)', () => {
+    const valuation = {
+      pricingEvent: 'PRICE_BAND_AD',
+      priceFloor: '140',
+      priceCap: '147',
+      sharesAtFloor: '14880952',
+      sharesAtCap: '14124293',
+      mcapAtFloor: null,
+      mcapAtCap: null,
+      peAtFloor: null,
+      peAtCap: null,
+      peNotAscertainableReason: null,
+      ronwWeighted3y: null,
+      faceValueMultipleFloor: null,
+      faceValueMultipleCap: null,
+    };
+
+    it('labels the share row as the fresh issue, not the whole offer', () => {
+      render(<IssueStructureSection ipoDetails={mockIpoDetails} valuation={valuation} />);
+
+      expect(screen.getByText('Fresh issue shares')).toBeInTheDocument();
+      expect(screen.queryByText('Equity shares offered')).not.toBeInTheDocument();
+      expect(screen.getByText('1,48,80,952')).toBeInTheDocument();
+    });
+
+    it('footnotes that the total offer share count is not stored yet', () => {
+      render(<IssueStructureSection ipoDetails={mockIpoDetails} valuation={valuation} />);
+
+      expect(
+        screen.getByText(
+          'Total offer shares including the offer for sale will be shown once stored'
+        )
+      ).toBeInTheDocument();
+    });
+
+    it('omits the footnote when no share counts are stored', () => {
+      render(
+        <IssueStructureSection
+          ipoDetails={mockIpoDetails}
+          valuation={{ ...valuation, sharesAtFloor: null, sharesAtCap: null }}
+        />
+      );
+
+      expect(screen.queryByText(/Total offer shares including/)).not.toBeInTheDocument();
+    });
+  });
 });

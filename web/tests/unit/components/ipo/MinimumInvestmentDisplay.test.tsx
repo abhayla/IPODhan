@@ -161,4 +161,32 @@ describe('MinimumInvestmentDisplay', () => {
       expect(container.firstChild).toHaveClass('text-center');
     });
   });
+
+  // W-85(a): the stored minimum is often empty while lot size and the cap of
+  // the band are both known — derive it instead of rendering "Not Available".
+  describe('Derived minimum investment (W-85a)', () => {
+    it('computes lotSize x priceRangeMax when the stored value is empty', () => {
+      render(
+        <MinimumInvestmentDisplay minInvestment={null} lotSize={102} priceRangeMax={146} />
+      );
+
+      expect(screen.getByText('₹14,892')).toBeInTheDocument();
+      expect(screen.queryByText('Not Available')).not.toBeInTheDocument();
+    });
+
+    it('keeps the stored value when present', () => {
+      render(
+        <MinimumInvestmentDisplay minInvestment="15000" lotSize={102} priceRangeMax={146} />
+      );
+
+      expect(screen.getByText('₹15,000')).toBeInTheDocument();
+      expect(screen.queryByText('₹14,892')).not.toBeInTheDocument();
+    });
+
+    it('still shows Not Available when neither the value nor both inputs exist', () => {
+      render(<MinimumInvestmentDisplay minInvestment={null} lotSize={102} priceRangeMax={null} />);
+
+      expect(screen.getByText('Not Available')).toBeInTheDocument();
+    });
+  });
 });
