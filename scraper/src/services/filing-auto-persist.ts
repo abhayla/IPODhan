@@ -639,6 +639,29 @@ export async function processPendingFilings(
     skippedBudget: 0,
   };
 
+  // D-15: automatic extract+persist runs ONLY for MAINBOARD IPOs until the SME
+  // walk passes — an SME candidate spawns no python, persists nothing, and
+  // gets one E1 ledger row explaining why, instead of silently being treated
+  // like a MAINBOARD row. Checked before the spawn-budget gate (below) so an
+  // SME IPO never consumes cycle-wide spawn budget either.
+  if (String(ipo.segment ?? '').toUpperCase() === 'SME') {
+    try {
+      await writeSteps(ipo.id, [
+        {
+          stepId: 'E1',
+          status: 'NOT_AVAILABLE_YET',
+          evidence: { reason: 'sme_not_validated' },
+        },
+      ]);
+    } catch (error) {
+      logger.warn(
+        { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+        'Could not record sme_not_validated E1 ledger row (non-fatal)'
+      );
+    }
+    return result;
+  }
+
   // F5 (S-02 round 6): the budget is a CYCLE-wide counter (MAJOR-1) — once it
   // is spent, every remaining candidate IPO is guaranteed to be all-skipped-
   // budget regardless of what documents it has. Loading documents + fetch

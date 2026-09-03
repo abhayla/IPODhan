@@ -598,6 +598,18 @@ export async function upsertIPO(
         cin: scrapedIPO.cin || undefined
       } as any;
 
+      // W-104: the public slug is a canonical URL key and is generated ONLY at
+      // row creation. On every UPDATE path (the consolidation `incomingData`
+      // below, and the non-destructive fallback via `buildNonDestructiveUpdate`)
+      // the freshly-generated slug MUST be dropped before it reaches either
+      // write door — a companyName correction from ANY scrape (even DRHP, see
+      // the "Rays of Belief" live incident) would otherwise silently re-slug an
+      // existing row and break every stored link, the sitemap, and the search
+      // index. ADMIN is the sole source trusted to intentionally change a slug.
+      if (existingIPO && source !== 'ADMIN') {
+        delete (ipoData as any).slug;
+      }
+
       // A scraper that returns `undefined` segment (e.g. BSE-API, whose JSON board
       // carries both SME and mainboard IPOs with no segment field) cannot determine
       // the classification and MUST NOT overwrite it. Drop the key entirely so the

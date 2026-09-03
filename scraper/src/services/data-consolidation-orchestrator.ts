@@ -203,6 +203,15 @@ export class DataConsolidationOrchestrator {
 
       let ipoId: string;
 
+      // W-104: `slug` MUST be written only on the create branch below.
+      // `consolidatedIPOData` (from `extractConsolidatedData`) never carries a
+      // `slug` key — `mapScrapedIPOToConsolidationInput` never puts one into
+      // `incomingData` — so the update branch's `ipoRepository.update()` call
+      // structurally cannot touch the stored slug. Keep it that way: never add
+      // `slug` to `mapScrapedIPOToConsolidationInput`/`extractConsolidatedData`,
+      // or a companyName correction from any non-ADMIN source will silently
+      // re-slug an existing row (see the parallel guard + incident note in
+      // `data-persister.ts` `upsertIPO`).
       if (isNew) {
         // Create new IPO
         const newIPO = await this.ipoRepository.create({

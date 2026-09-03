@@ -223,6 +223,51 @@ describe('processPendingFilings — the happy path', () => {
   });
 });
 
+// -------------------------------------------------------- D-15 segment gate
+
+describe('processPendingFilings — the D-15 segment gate (SME not validated yet)', () => {
+  const SME_IPO = { ...IPO, segment: 'SME' };
+
+  it('an SME candidate: no spawn, no persist, one E1 NOT_AVAILABLE_YET row with reason sme_not_validated', async () => {
+    const d = deps();
+    const result = await processPendingFilings(SME_IPO, d);
+
+    expect(d.loadDocuments).not.toHaveBeenCalled();
+    expect(d.loadStates).not.toHaveBeenCalled();
+    expect(d.runExtractor).not.toHaveBeenCalled();
+    expect(d.persistFiling).not.toHaveBeenCalled();
+    expect(result.spawned).toBe(0);
+    expect(result.persisted).toBe(0);
+    expect(result.considered).toBe(0);
+
+    expect(recordedSteps).toHaveLength(1);
+    expect(recordedSteps[0]).toMatchObject({
+      ipoId: 'ipo-1',
+      writes: [
+        expect.objectContaining({
+          stepId: 'E1',
+          status: 'NOT_AVAILABLE_YET',
+          evidence: { reason: 'sme_not_validated' },
+        }),
+      ],
+    });
+  });
+
+  it('an SME candidate never consumes the cycle-wide spawn budget', async () => {
+    const d = deps({ spawnBudget: { remaining: 3 } });
+    await processPendingFilings(SME_IPO, d);
+    expect(d.spawnBudget!.remaining).toBe(3);
+  });
+
+  it('a MAINBOARD candidate is unaffected by the gate (control)', async () => {
+    const d = deps();
+    const result = await processPendingFilings(IPO, d);
+    expect(result.spawned).toBe(1);
+    expect(result.persisted).toBe(1);
+    expect(d.loadDocuments).toHaveBeenCalled();
+  });
+});
+
 describe('processPendingFilings — failures are recorded, never fatal', () => {
   it('an extractor failure writes FAILED E-rows with a backoff, marks IN_PROGRESS with retryCount 1, and FAILED with retryCount unchanged', async () => {
     const d = deps({ runExtractor: vi.fn(() => ({ ok: false as const, error: 'extractor exited 1: boom' })) });
