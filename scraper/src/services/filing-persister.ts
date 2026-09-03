@@ -1313,6 +1313,26 @@ export async function persistFilingExtraction(
       grievanceEmail: null,
     });
   }
+  // W-88 E6: the advertisement's sponsor / escrow-collection / public-issue
+  // account banks. `intermediary_role` carries all three; the REFUND bank the
+  // same line names has no enum member, so the extractor does not emit it.
+  const banks = list<{ name?: string; role?: string }>(extraction, 'issue_banks');
+  const BANK_ROLES = ['SPONSOR_BANK', 'ESCROW_BANK', 'PUBLIC_ISSUE_BANK'] as const;
+  for (const bank of banks) {
+    const role = BANK_ROLES.find((r) => r === bank.role);
+    if (!role || !bank.name) continue;
+    intermediaries.push({
+      ipoId,
+      role,
+      name: bank.name,
+      sebiRegNo: null,
+      contactPerson: null,
+      phone: null,
+      email: null,
+      grievanceEmail: null,
+    });
+  }
+
   if (intermediaries.length > 0) {
     if (
       await replaceAllowed('ipo_intermediaries', { name: null, role: null, sebiRegNo: null })

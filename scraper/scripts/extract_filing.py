@@ -722,6 +722,51 @@ def syndicate_members(lines):
     return members, anchor
 
 
+ISSUE_BANK_RXS = [
+    ("SPONSOR_BANK", re.compile(r"SPONSOR\s+BANKS?\(?s?\)?\s*:", re.I)),
+    ("ESCROW_BANK", re.compile(r"ESCROW\s+COLLECTION\s+BANKS?\(?s?\)?\s*:", re.I)),
+    ("PUBLIC_ISSUE_BANK",
+     re.compile(r"PUBLIC\s+(?:OFFER|ISSUE)\s+ACCOUNT\s+BANKS?\(?s?\)?\s*:", re.I)),
+]
+
+
+def _bank_names(blob):
+    """The banks named after one "<ROLE> BANK(s):" label.
+
+    The advertisement prints these labels several to a line, separated by "|",
+    and ends each list with a full stop, so the value runs only to the first
+    "|" or "." — reading to end-of-line would swallow the NEXT role's banks.
+    Two banks in one role are joined by "and" (never a comma inside a name).
+    """
+    value = re.split(r"[|.]", blob, 1)[0]
+    out = []
+    for piece in re.split(r"\s+and\s+|[;,]", value, flags=re.I):
+        name = piece.strip()
+        if len(name) > 3 and _NAME_START_RX.match(name):
+            out.append(name)
+    return out
+
+
+def issue_banks(lines):
+    """[{name, role}] for the sponsor / escrow-collection / public-issue-account
+    banks the advertisement names. Returns ([], None) when none is printed.
+
+    The refund bank is deliberately NOT emitted: `intermediary_role` has no
+    REFUND_BANK member, so a row for it could not be filed without a migration.
+    """
+    banks, anchor = [], None
+    for role, rx in ISSUE_BANK_RXS:
+        idx = _find(lines, rx)
+        if idx < 0:
+            continue
+        m = rx.search(lines[idx])
+        for name in _bank_names(lines[idx][m.end():]):
+            banks.append({"name": name, "role": role})
+        if anchor is None:
+            anchor = idx
+    return banks, anchor
+
+
 def litigation_notices(lines):
     """[{summary}] for each litigation / IP-dispute notice the advertisement
     describes. Each summary is the sentence carrying the notice, capped at
@@ -1541,6 +1586,15 @@ def extract_price_band_ad(page_texts, emit, segment="MAINBOARD"):
         emit.put("syndicate_members", members, page_for(syn_idx),
                  "syndicate_member_names_storable",
                  (not overlong, "%s members" % len(members) if not overlong
+                  else "names over 255 chars: %s" % overlong))
+
+    banks, bank_idx = issue_banks(lines)
+    if not banks:
+        emit.null("issue_banks", "no_sponsor_escrow_or_public_issue_bank_line")
+    else:
+        overlong = [b["name"] for b in banks if len(b["name"]) > 255]
+        emit.put("issue_banks", banks, page_for(bank_idx), "issue_bank_names_storable",
+                 (not overlong, "%s banks" % len(banks) if not overlong
                   else "names over 255 chars: %s" % overlong))
 
     notices, lit_idx = litigation_notices(lines)

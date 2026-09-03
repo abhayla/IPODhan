@@ -359,8 +359,8 @@ describe('filing-persister — PRICE_BAND_AD mapping (DEEPA oracle)', () => {
     );
     const rows = s.replaceIntermediaries.mock.calls[0][1] as Array<Record<string, unknown>>;
     // 2 BRLMs + registrar + the lead Syndicate Member + 17 sub-syndicate
-    // members (W-74 E5 / W-76).
-    expect(rows).toHaveLength(21);
+    // members (W-74 E5 / W-76) + 4 issue banks (W-88 E6).
+    expect(rows).toHaveLength(25);
     expect(rows.filter((r) => r.role === 'BRLM').every((r) => r.sebiRegNo === null)).toBe(true);
     const registrar = rows.find((r) => r.role === 'REGISTRAR')!;
     expect(registrar.name).toBe('Bigshare Services Private Limited');
@@ -388,6 +388,48 @@ describe('filing-persister — PRICE_BAND_AD mapping (DEEPA oracle)', () => {
     expect(
       summary.skipped_no_column.some((x) => x.startsWith('syndicate_members'))
     ).toBe(false);
+  });
+
+  // W-88 E6: sponsor / escrow / public-issue banks reach ipo_intermediaries
+  // under their own roles instead of being dropped as having no column.
+  it('W-88: writes the sponsor, escrow and public-issue banks under their own roles', async () => {
+    const s = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      extractionFromOracle('PRICE_BAND_AD'),
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const rows = s.replaceIntermediaries.mock.calls[0][1] as Array<Record<string, unknown>>;
+    const named = (role: string) =>
+      rows.filter((r) => r.role === role).map((r) => r.name).sort();
+    expect(named('SPONSOR_BANK')).toEqual(['HDFC Bank Limited', 'ICICI Bank Limited']);
+    expect(named('ESCROW_BANK')).toEqual(['ICICI Bank Limited']);
+    expect(named('PUBLIC_ISSUE_BANK')).toEqual(['HDFC Bank Limited']);
+    expect(summary.skipped_no_column.some((x) => x.startsWith('issue_banks'))).toBe(false);
+  });
+
+  it('W-88: a bank carrying a role outside the enum is skipped, not written', async () => {
+    const s = makeDeps();
+    const extraction = extractionFromOracle('PRICE_BAND_AD');
+    (extraction.fields as Record<string, unknown>).issue_banks = {
+      value: [
+        { name: 'ICICI Bank Limited', role: 'REFUND_BANK' },
+        { name: 'HDFC Bank Limited', role: 'SPONSOR_BANK' },
+      ],
+      check: { passed: true, detail: '2 banks' },
+    };
+    await persistFilingExtraction(
+      IPO_ID,
+      extraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      s.deps
+    );
+    const rows = s.replaceIntermediaries.mock.calls[0][1] as Array<Record<string, unknown>>;
+    expect(rows.some((r) => r.role === 'REFUND_BANK')).toBe(false);
+    expect(rows.filter((r) => r.role === 'SPONSOR_BANK').map((r) => r.name)).toEqual([
+      'HDFC Bank Limited',
+    ]);
   });
 
   it('writes the peer table and financial_data in crores', async () => {

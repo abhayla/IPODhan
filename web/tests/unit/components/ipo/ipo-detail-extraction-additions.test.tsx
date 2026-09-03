@@ -142,6 +142,44 @@ describe('LeadManagerSection — intermediaries by role', () => {
     expect(screen.getByText('Sub-syndicate members')).toBeInTheDocument();
   });
 
+  // W-88 E6: the price band advertisement's sponsor / escrow-collection /
+  // public-issue account banks now reach ipo_intermediaries, so the section
+  // renders a group per bank role with the bank named in it.
+  it('W-88: groups the sponsor, escrow and public-issue banks under their own headings', () => {
+    render(
+      <LeadManagerSection
+        leadManagers={null}
+        intermediaries={[
+          { role: 'BRLM', name: 'Emkay Global', sebiRegNo: null },
+          { role: 'SPONSOR_BANK', name: 'HDFC Bank Limited', sebiRegNo: null },
+          { role: 'SPONSOR_BANK', name: 'ICICI Bank Limited', sebiRegNo: null },
+          { role: 'ESCROW_BANK', name: 'ICICI Bank Limited', sebiRegNo: null },
+          { role: 'PUBLIC_ISSUE_BANK', name: 'HDFC Bank Limited', sebiRegNo: null },
+        ]}
+      />
+    );
+
+    expect(screen.getByText('Sponsor banks')).toBeInTheDocument();
+    expect(screen.getByText('Escrow collection banks')).toBeInTheDocument();
+    expect(screen.getByText('Public issue banks')).toBeInTheDocument();
+    // Substance: the bank names themselves, once per role they hold.
+    expect(screen.getAllByText('HDFC Bank Limited')).toHaveLength(2);
+    expect(screen.getAllByText('ICICI Bank Limited')).toHaveLength(2);
+  });
+
+  it('omits every bank heading when the issue named no banks', () => {
+    render(
+      <LeadManagerSection
+        leadManagers={null}
+        intermediaries={[{ role: 'BRLM', name: 'Emkay Global', sebiRegNo: null }]}
+      />
+    );
+
+    expect(screen.queryByText('Sponsor banks')).not.toBeInTheDocument();
+    expect(screen.queryByText('Escrow collection banks')).not.toBeInTheDocument();
+    expect(screen.queryByText('Public issue banks')).not.toBeInTheDocument();
+  });
+
   it('falls back to the legacy leadManagers array when no intermediaries exist', () => {
     render(<LeadManagerSection leadManagers={['Legacy BRLM']} />);
     expect(screen.getByText('Legacy BRLM')).toBeInTheDocument();
