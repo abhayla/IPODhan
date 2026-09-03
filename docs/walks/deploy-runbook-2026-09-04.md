@@ -17,7 +17,7 @@ Preconditions (all done on 2026-09-03 night): W-108b + W-109 landed and reproduc
 - append to `/var/www/ipodhan/shared/env/prod/scraper.env`:
   `PROSPECTUS_STORE_DIR=/var/www/ipodhan/shared/prospectus/prod`
   (do NOT add any ENABLE_* here yet)
-- `pip3 install rapidocr-onnxruntime pypdfium2` ; verify `python3 -c "import rapidocr_onnxruntime, pypdfium2"`.
+- `pip3 install --break-system-packages rapidocr-onnxruntime pypdfium2` (PEP 668: plain pip3 is refused; pdfplumber is already a system-wide install, W-111 = venv follow-up) ; verify `python3 -c "import rapidocr_onnxruntime, pypdfium2"`.
 - `pm2 restart ipodhan-scraper --update-env` is NOT needed for a one-shot cron app; the next cron start reads the env file via the deploy's env link.
 
 ## 4. DEEPA production backfill (from the VPS, current-prod/scraper, prod flags)
