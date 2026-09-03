@@ -4,7 +4,7 @@ Plain-words status of the per-IPO pipeline walk on Deepa Jewellers (DEEPA). Upda
 verdict, one stage at a time (owner instruction 2026-09-02 23:41 IST). The detailed evidence, defect
 rows (W-xx) and decisions (D-xx) live in `2026-09-02-deepa-pipeline-walk.md`; this file is the summary.
 
-Last updated: 2026-09-03 11:20 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
+Last updated: 2026-09-03 11:30 IST. Branch `docs/deepa-walk-ledger`. Nothing deployed (D-09).
 
 ## 1. Stage scoreboard (52 steps)
 
@@ -76,3 +76,4 @@ Last updated: 2026-09-03 11:20 IST. Branch `docs/deepa-walk-ledger`. Nothing dep
 - 2026-09-03 11:00: W-14 closed (59a7f6b5; three rounds, two strict reviews). W-79 (conflicts table refuses same-source rows) running; W-19 after it.
 - 2026-09-03 11:10: W-79 fixed (a7aa991e): the conflicts table now refuses same-source rows at the repository. W-19 (migration generator) running, last item in the queue.
 - 2026-09-03 11:20: W-19 fixed (e3866d01): the migration generator works again and cannot overwrite the baseline. The whole tooling queue is closed. Final suites running. Known, owner-gated: 11 precision mismatches on the test DB from the gated GMP/listing migrations.
+- 2026-09-03 11:30: final suites green (shared 216, web 2,383, scraper 2,354). Owner corrected W-75: no new page; plan rewritten as additions to the existing sections; nothing built until approved.
