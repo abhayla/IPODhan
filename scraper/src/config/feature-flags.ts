@@ -205,6 +205,34 @@ export const FEATURE_FLAGS = {
    */
   ENABLE_FILING_AUTO_PERSIST: process.env.ENABLE_FILING_AUTO_PERSIST === 'true',
 
+  /**
+   * D-15 lift: let SME candidates through the SAME auto-persist door as
+   * MAINBOARD, instead of the unconditional skip in `processPendingFilings`
+   * (which otherwise writes an E1 ledger row with evidence reason
+   * `sme_not_validated` and spawns nothing for every SME IPO).
+   *
+   * With this flag on, an SME candidate is extracted+persisted through the
+   * identical write path MAINBOARD already uses — `persistFilingExtraction`
+   * with the admin protection filter and the W-45 paired-agreement gate — with
+   * `sme: true` passed to the extractor and the W-129 plausibility checks
+   * (issue-size-wired) applied exactly as they are for MAINBOARD. No second
+   * write path, no relaxed gate.
+   *
+   * With this flag off (the default), behaviour is byte-for-byte what shipped
+   * under D-15: every SME candidate is skipped and gets one E1 ledger row.
+   *
+   * Independent of `ENABLE_FILING_AUTO_PERSIST` — this flag only matters once
+   * that one is already on; it narrows/widens which SEGMENT the already-on
+   * auto-persist path covers.
+   *
+   * The SME walk (W-128 financials exact, W-129 plausibility with issue-size
+   * wiring, W-130 subscription, W-132 anchors) passed in production on
+   * Qualiance International on 2026-09-04. Turning this on is a distinct
+   * owner decision (§GATE), same class as `ENABLE_FILING_AUTO_PERSIST` itself.
+   * Default: false
+   */
+  ENABLE_SME_FILING_AUTO_PERSIST: process.env.ENABLE_SME_FILING_AUTO_PERSIST === 'true',
+
   // ==================== ROLLOUT CONTROLS ====================
 
   /**
@@ -329,6 +357,7 @@ export function getFeatureStatus(): Record<string, boolean | number | string[]> 
     CONFLICT_DETECTION_PCT: FEATURE_FLAGS.CONFLICT_DETECTION_PERCENTAGE,
     CONSOLIDATION_PCT: FEATURE_FLAGS.CONSOLIDATION_PERCENTAGE,
     FILING_AUTO_PERSIST: FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST,
+    SME_FILING_AUTO_PERSIST: FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST,
     DEBUG_MODE: FEATURE_FLAGS.DEBUG_DATA_FLOW,
     ENABLED_SCRAPERS: FEATURE_FLAGS.ENABLED_SCRAPERS,
   };
