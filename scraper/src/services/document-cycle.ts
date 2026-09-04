@@ -217,15 +217,43 @@ function lifecycleRank(ipo: Pick<DiscoveryIpo, 'stage' | 'issue'>): number {
   }
 }
 
-/** Present dates sort before null/invalid ones, in either direction (nulls always last). */
+/**
+ * Sortable "YYYY-MM-DD" key for a `date`-column value that may arrive here as
+ * either a `Date` instance or a date-only string, depending on the pg
+ * driver's parser config — WITHOUT ever running a raw string through
+ * `new Date(...)` (T-327: that parses at LOCAL midnight, then a later
+ * `.toISOString()`/`.getTime()` read shifts the calendar date a day on any
+ * host whose process TZ isn't UTC, e.g. prod PM2 on Asia/Kolkata — see
+ * `.claude/rules/utc-naive-timestamp-normalization.md`).
+ *
+ * A `Date` instance is read with its UTC getters (safe: formatting an
+ * already-constructed Date, not parsing a string). A string is matched for
+ * its leading `YYYY-MM-DD` and returned as-is — lexical comparison on that
+ * prefix is chronological order, so no numeric conversion is needed at all.
+ */
+function dateSortKey(value: unknown): string | null {
+  if (!value) return null;
+  if (value instanceof Date) {
+    const y = value.getUTCFullYear();
+    const m = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(value.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const match = String(value).trim().match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
+}
+
+/** Present dates sort before null/unparsable ones, in either direction (nulls always last). */
 function compareByDate(aDate: unknown, bDate: unknown, direction: 'asc' | 'desc'): number {
-  const at = aDate ? new Date(aDate as string | Date).getTime() : NaN;
-  const bt = bDate ? new Date(bDate as string | Date).getTime() : NaN;
-  const aValid = Number.isFinite(at);
-  const bValid = Number.isFinite(bt);
-  if (aValid !== bValid) return aValid ? -1 : 1;
-  if (!aValid) return 0;
-  return direction === 'asc' ? at - bt : bt - at;
+  const aKey = dateSortKey(aDate);
+  const bKey = dateSortKey(bDate);
+  if (aKey === null || bKey === null) {
+    if (aKey === bKey) return 0;
+    return aKey === null ? 1 : -1;
+  }
+  if (aKey === bKey) return 0;
+  const cmp = aKey < bKey ? -1 : 1;
+  return direction === 'asc' ? cmp : -cmp;
 }
 
 /**
