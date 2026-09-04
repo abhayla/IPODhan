@@ -810,19 +810,7 @@ if [ -d /proc ] && command -v setsid >/dev/null 2>&1; then
   assert_safe_root "$ROOTV"
   mkdir -p "$ROOTV/releases"
   DELETED_DIR_V="$(make_release "$ROOTV/releases" 20260825-000000 ffffffa)"
-  LEADER_SCRIPT_V="$(mktemp)"
   CHILDPIDFILE_V="$(mktemp)"
-  cat > "$LEADER_SCRIPT_V" <<'EOS'
-#!/usr/bin/env bash
-if [ -z "${RENAMED:-}" ]; then
-  export RENAMED=1
-  exec -a "PM2 v7: God Daemon" "$0" "$@"
-fi
-( cd "$1" && exec -a "next-server (v18.2.0)" sleep 60 ) &
-echo "$!" > "$2"
-wait
-EOS
-  chmod +x "$LEADER_SCRIPT_V"
   LEADER_PID_V=""
   CHILD_PID_V=""
   cleanup_case_v() {
@@ -830,29 +818,49 @@ EOS
     [ -n "$LEADER_PID_V" ] && kill -KILL -- -"$LEADER_PID_V" >/dev/null 2>&1 || true
     [ -n "$LEADER_PID_V" ] && kill -KILL "$LEADER_PID_V" >/dev/null 2>&1 || true
     wait "$LEADER_PID_V" 2>/dev/null || true
-    rm -f "$LEADER_SCRIPT_V" "$CHILDPIDFILE_V"
+    rm -f "$CHILDPIDFILE_V"
   }
-  setsid bash "$LEADER_SCRIPT_V" "$DELETED_DIR_V" "$CHILDPIDFILE_V" &
+  # `exec -a NAME "$0" ...` on a SCRIPT does NOT rename what `ps -o cmd=`
+  # reports — the kernel/bash re-execs the #!interpreter, so the visible
+  # cmdline stays "bash /path/to/script ..." and the string "PM2" never
+  # appears (diagnosed on the VPS: case v failed both assertions with the
+  # old script-based fixture). `exec -a` only sticks when the renamed
+  # target is a real BINARY — so exec -a straight onto the `bash` binary
+  # itself, which then runs a -c string that forks the (real) orphan child.
+  setsid bash -c 'exec -a "PM2 v7: God Daemon" bash -c "( cd \"\$0\" && exec -a \"next-server (v18.2.0)\" sleep 60 ) & echo \$! > \"\$1\"; wait" "$0" "$1"' "$DELETED_DIR_V" "$CHILDPIDFILE_V" &
   LEADER_PID_V=$!
   sleep 0.5
   CHILD_PID_V="$(cat "$CHILDPIDFILE_V" 2>/dev/null || true)"
   if [ -z "$CHILD_PID_V" ] || ! kill -0 "$CHILD_PID_V" 2>/dev/null; then
     fail "case v: pm2-leader/child setup did not start — cannot exercise the pm2-guard path"
   else
-    rm -rf -- "$DELETED_DIR_V"
-    HYGIENE_ROOT="$ROOTV" HYGIENE_SKIP_ORPHANS= HYGIENE_ORPHAN_ROOTS="$ROOTV/releases" HYGIENE_DEPLOY_CHECK_CMD="false" \
-      bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-v.log 2>&1
-    sleep 0.5
-    if kill -0 "$CHILD_PID_V" 2>/dev/null; then
-      pass "case v: pm2-managed orphan-shaped process was LEFT ALONE (not killed)"
+    # Fixture self-check: a fixture that cannot actually represent pm2 must
+    # never be allowed to pass (that was the round-2 bug — the assertions
+    # below looked meaningful but were exercising a fixture that could never
+    # match). Verify BEFORE running the sweep that the leader's cmdline
+    # really shows PM2 and the child's ppid really is the leader.
+    LEADER_CMD_CHECK_V="$(ps -o cmd= -p "$LEADER_PID_V" 2>/dev/null || true)"
+    CHILD_PPID_CHECK_V="$(ps -o ppid= -p "$CHILD_PID_V" 2>/dev/null | tr -d ' ' || true)"
+    if ! printf '%s' "$LEADER_CMD_CHECK_V" | grep -q PM2; then
+      fail "case v fixture: leader cmdline does not show PM2 — cmdline was: $LEADER_CMD_CHECK_V"
+    elif [ "$CHILD_PPID_CHECK_V" != "$LEADER_PID_V" ]; then
+      fail "case v fixture: child's ppid ($CHILD_PPID_CHECK_V) is not the leader ($LEADER_PID_V)"
     else
-      fail "case v: pm2-managed process was killed — the sweep must never signal a pm2-owned group"
-    fi
-    if grep -qi "left to pm2" /tmp/hygiene-test-v.log; then
-      pass "case v: a loud WARN naming pm2 was logged for the skipped candidate"
-    else
-      fail "case v: expected a WARN log line naming pm2 for the skipped candidate"
-      cat /tmp/hygiene-test-v.log
+      rm -rf -- "$DELETED_DIR_V"
+      HYGIENE_ROOT="$ROOTV" HYGIENE_SKIP_ORPHANS= HYGIENE_ORPHAN_ROOTS="$ROOTV/releases" HYGIENE_DEPLOY_CHECK_CMD="false" \
+        bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-v.log 2>&1
+      sleep 0.5
+      if kill -0 "$CHILD_PID_V" 2>/dev/null; then
+        pass "case v: pm2-managed orphan-shaped process was LEFT ALONE (not killed)"
+      else
+        fail "case v: pm2-managed process was killed — the sweep must never signal a pm2-owned group"
+      fi
+      if grep -qi "left to pm2" /tmp/hygiene-test-v.log; then
+        pass "case v: a loud WARN naming pm2 was logged for the skipped candidate"
+      else
+        fail "case v: expected a WARN log line naming pm2 for the skipped candidate"
+        cat /tmp/hygiene-test-v.log
+      fi
     fi
   fi
   cleanup_case_v
