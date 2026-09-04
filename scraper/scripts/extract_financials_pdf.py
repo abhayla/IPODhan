@@ -166,12 +166,12 @@ PNL_METRICS = [
 ]
 OTHER_METRICS = [
     (re.compile(r"^\s*EBITDA\b(?!\s*Margin)", re.I), "ebitda"),
-    # W-128: anchored to the START of the line, like the EBITDA row above — the
-    # unanchored form matched prose ("Net worth has been computed in the
-    # manner...") whose three incidental numbers (a regulation reference, a
-    # sub-clause, a year) happened to satisfy the column count and got read as
-    # the net-worth row before the real, later "Net Worth(8) 2,473.65 ..." line.
-    (re.compile(r"^\s*net\s*worth\b", re.I), "netWorth"),
+    # W-128 round 3: NOT anchored to line-start — issue #67's real row reads
+    # "Total equity / Net worth 4,083.20 8,932.55 6,544.10" (label mid-line).
+    # The line-start anchor tried in round 2 excluded that legitimate row along
+    # with the prose false-positive it was meant to stop; _is_clean_data_row
+    # below is the real discriminator (label followed only by data, not words).
+    (re.compile(r"net\s*worth", re.I), "netWorth"),
 ]
 
 
@@ -263,6 +263,25 @@ def extract(pdf_path):
     out = extract_from_texts(page_texts)
     out["pages"] = len(page_texts)
     return out
+
+
+# W-128 round 3: the real discriminator for an unanchored doc-wide label match
+# (EBITDA / Net worth can legitimately sit mid-line, e.g. "Total equity / Net
+# worth 4,083.20 ...", and its footnote/unit annotation may itself carry
+# letters, e.g. "EBITDA (i) (₹ million) 1,463.37 ...") is NOT its position on
+# the line — it's whether what FOLLOWS the label has any PROSE word OUTSIDE a
+# parenthesised/bracketed annotation. A narrative sentence ("Net worth has
+# been computed in the manner as specifies in Regulation 2(1) ...") fails this
+# even though it may carry enough incidental numbers to satisfy the column
+# count; a real row's only letters (if any) live inside "(i)" / "(₹ million)"
+# style annotations.
+_PAREN_GROUP = re.compile(r"\([^()]*\)|\[[^\]]*\]")
+_HAS_LETTER = re.compile(r"[A-Za-z]")
+
+
+def _is_clean_data_row(line, label_end):
+    tail_no_parens = _PAREN_GROUP.sub(" ", line[label_end:])
+    return not _HAS_LETTER.search(tail_no_parens)
 
 
 def _align_factory(column_fy, annual_years):
@@ -574,7 +593,8 @@ def extract_from_texts(page_texts):
             for rx, key in OTHER_METRICS:
                 if key in result["metrics"]:
                     continue
-                if rx.search(ln):
+                m = rx.search(ln)
+                if m and _is_clean_data_row(ln, m.end()):
                     mapped = align(ln)
                     if mapped:
                         result["metrics"][key] = mapped
