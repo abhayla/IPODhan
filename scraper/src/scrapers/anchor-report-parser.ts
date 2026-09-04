@@ -170,6 +170,25 @@ function digitsOf(cell: string): string {
  * them. Every split of the digit run is tried and each is scored by the price it
  * implies for the row's share count; the caller keeps the one consistent with
  * the rest of the letter. Returns the admissible (price, amount) pairs.
+ *
+ * Two amount SHAPES are tried at every split point k (W-132):
+ *
+ *  - DECIMAL: the mainboard scans print every amount with a literal ".00"
+ *    suffix ("3s,9s,69,128.00"), which contributes two extra digit
+ *    characters at the very end that are NOT part of the rupee value. The
+ *    last two digits of the run are therefore treated as printed paise and
+ *    dropped into a fractional part.
+ *  - WHOLE: an NSE Emerge (SME) allocation letter prints the total in plain
+ *    Indian-grouped rupees with no decimal at all ("3,26,39,000"). Chopping
+ *    its last two digits as paise divides the real amount by 100 and no
+ *    price in the letter ever reconciles, so the whole remaining digit run
+ *    must also be tried as the amount, undivided.
+ *
+ * A spurious WHOLE-shaped read of a DECIMAL-shaped letter lands ~100x the
+ * true price - MAX_PRICE bounds most of it, and where a decoy still slips
+ * through, the derived price is a systematic 100x apart from the real one so
+ * `modalPrice`'s lower-price tie-break and the row-level tolerance check
+ * both still land on the true price (verified against the DEEPA fixture).
  */
 export function splitPriceAndAmount(
   cell: string,
@@ -178,10 +197,13 @@ export function splitPriceAndAmount(
   const digits = digitsOf(cell);
   const out: Array<{ price: number; amount: number }> = [];
   for (let k = 3; k <= digits.length - 3; k++) {
-    const amount = Number(digits.slice(k, -2) + '.' + digits.slice(-2));
-    if (!Number.isFinite(amount) || amount <= 0) continue;
-    const price = amount / shares;
-    if (price >= MIN_PRICE && price <= MAX_PRICE) out.push({ price, amount });
+    const decimalAmount = Number(digits.slice(k, -2) + '.' + digits.slice(-2));
+    const wholeAmount = Number(digits.slice(k));
+    for (const amount of [decimalAmount, wholeAmount]) {
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+      const price = amount / shares;
+      if (price >= MIN_PRICE && price <= MAX_PRICE) out.push({ price, amount });
+    }
   }
   return out;
 }
