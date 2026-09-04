@@ -128,24 +128,69 @@ fi
 # is an env-overridable hook (used by the test suite, which has neither
 # pgrep nor /proc guaranteed); HYGIENE_DEPLOY_PGREP is the real-machine
 # pattern used when pgrep is available.
-DEPLOY_PGREP_PATTERN="${HYGIENE_DEPLOY_PGREP:-scripts/deploy-linux.sh}"
+#
+# Round 4 (2026-09-04): the pattern used to be the bare substring
+# "scripts/deploy-linux.sh", which matches ANY command line that merely
+# MENTIONS the script — including a `bash -n scripts/deploy-linux.sh`
+# syntax check, or `less`/`grep` on the file. It matched an ancestor of this
+# very test run (a compound shell whose own command line contained a `bash
+# -n scripts/deploy-linux.sh ...` check) and caused hygiene to silently skip
+# every prune. deploy-linux.yml always invokes as
+# `bash scripts/deploy-linux.sh <staging|prod> [ref]` — require that exact
+# shape (script path immediately followed by the slot word) so a bare
+# mention of the filename never matches.
+DEPLOY_PGREP_PATTERN="${HYGIENE_DEPLOY_PGREP:-scripts/deploy-linux\.sh[[:space:]]+(staging|prod)}"
+
+# Round 4: a process-command-line check must never match its own process or
+# any of its ancestors (the harness invoking THIS script may itself have
+# "scripts/deploy-linux.sh" in its command line, e.g. a preceding `bash -n`
+# check) — print self PID + every ancestor PID up to and including init, so
+# deploy_in_progress() can exclude them from any pgrep/proc match.
+self_and_ancestor_pids() {
+  local pid="$$" out=" $$ " ppid guard=0
+  while [ "$pid" -gt 1 ] && [ "$guard" -lt 100 ]; do
+    ppid="$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d '[:space:]')"
+    case "$ppid" in
+      ''|*[!0-9]*) break ;;
+    esac
+    [ "$ppid" = "$pid" ] && break
+    out="$out$ppid "
+    pid="$ppid"
+    guard=$((guard + 1))
+  done
+  printf '%s' "$out"
+}
+
 deploy_in_progress() {
   if [ -n "${HYGIENE_DEPLOY_CHECK_CMD:-}" ]; then
     eval "$HYGIENE_DEPLOY_CHECK_CMD"
     return $?
   fi
+  local exclude
+  exclude="$(self_and_ancestor_pids)"
   if command -v pgrep >/dev/null 2>&1; then
-    pgrep -f "$DEPLOY_PGREP_PATTERN" >/dev/null 2>&1
-    return $?
+    local pids candidate
+    pids="$(pgrep -f "$DEPLOY_PGREP_PATTERN" 2>/dev/null || true)"
+    for candidate in $pids; do
+      case "$exclude" in
+        *" $candidate "*) continue ;;
+      esac
+      return 0
+    done
+    return 1
   fi
   if [ -d /proc ]; then
-    local cmdline p
+    local cmdline p pid
     for p in /proc/[0-9]*/cmdline; do
       [ -r "$p" ] || continue
-      cmdline="$(tr '\0' ' ' < "$p" 2>/dev/null || true)"
-      case "$cmdline" in
-        *"$DEPLOY_PGREP_PATTERN"*) return 0 ;;
+      pid="$(basename "$(dirname "$p")")"
+      case "$exclude" in
+        *" $pid "*) continue ;;
       esac
+      cmdline="$(tr '\0' ' ' < "$p" 2>/dev/null || true)"
+      if printf '%s' "$cmdline" | grep -qE "$DEPLOY_PGREP_PATTERN" 2>/dev/null; then
+        return 0
+      fi
     done
   fi
   return 1
