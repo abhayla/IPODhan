@@ -839,4 +839,29 @@ describe('defaultExtractorRunner — python binary resolution', () => {
     expect(spawnSyncMock).toHaveBeenCalledTimes(1);
     expect(spawnSyncMock.mock.calls[0][0]).toBe('python3.11');
   });
+
+  // W-129 review: the net-worth/magnitude plausibility checks in the python
+  // extractor only run when --issue-size is on the command line — wire it.
+  it('appends --issue-size with the integer rupee value when issueSizeRupees is a finite positive number', () => {
+    spawnSyncMock.mockReturnValueOnce({ status: 0, stdout: JSON.stringify({ doc_type: 'RHP', fields: {} }), stderr: '' });
+
+    defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false, issueSizeRupees: 451104000 });
+
+    const args = spawnSyncMock.mock.calls[0][1] as string[];
+    const idx = args.indexOf('--issue-size');
+    expect(idx).toBeGreaterThan(-1);
+    expect(args[idx + 1]).toBe('451104000');
+  });
+
+  it.each([null, undefined, 0, NaN])(
+    'omits --issue-size when issueSizeRupees is %s',
+    (value) => {
+      spawnSyncMock.mockReturnValueOnce({ status: 0, stdout: JSON.stringify({ doc_type: 'RHP', fields: {} }), stderr: '' });
+
+      defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false, issueSizeRupees: value as never });
+
+      const args = spawnSyncMock.mock.calls[0][1] as string[];
+      expect(args).not.toContain('--issue-size');
+    }
+  );
 });

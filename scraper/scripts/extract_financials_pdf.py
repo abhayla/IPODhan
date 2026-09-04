@@ -255,12 +255,12 @@ def detect_unit(text):
     return unit or "lakhs"
 
 
-def extract(pdf_path):
+def extract(pdf_path, issue_size_rupees=None):
     import pdfplumber
 
     with pdfplumber.open(pdf_path) as pdf:
         page_texts = [(i, p.extract_text() or "") for i, p in enumerate(pdf.pages)]
-    out = extract_from_texts(page_texts)
+    out = extract_from_texts(page_texts, issue_size_rupees=issue_size_rupees)
     out["pages"] = len(page_texts)
     return out
 
@@ -500,6 +500,138 @@ def check_unit_stated_near_table(unit_stated, unit_phrase, unit_page, table_page
     return True, "read %r from page %s" % (unit_phrase, unit_page), []
 
 
+# --------------------------------------------------------------------------- #
+# W-129. The checks above catch INTERNAL inconsistency (PAT vs revenue, a wild
+# year-on-year jump). They caught nothing in the Qualiance International
+# production defect (2026-09-04): fiscal_years=[2026] only, revenue 3722.94,
+# net worth 30.0, PAT -4.0 (all read as Rs lakhs) — every internal ratio among
+# those three numbers happens to be self-consistent, so a document-only check
+# has no way to notice they came from the wrong table. The checks below tie
+# the parsed numbers to the DOCUMENT'S OWN STRUCTURE (its year header) and, when
+# available, to an EXTERNAL anchor (the issue size) that the internal numbers
+# cannot conspire to fake.
+# --------------------------------------------------------------------------- #
+PNL_KEYS = ("revenue", "totalIncome", "profit", "eps")
+
+# Indian IPO norms (SEBI ICDR restated financials cover 3 fiscal years; net
+# worth vs. issue size): empirically, on the two real Qualiance shapes, the
+# broken read sits at 0.3 Cr net worth against a Rs 45.11 Cr issue (0.67%) and
+# the correct read sits at 24.7 Cr (54.8%) — a wide gap. A 1% floor cleanly
+# separates a mis-read/wrong-table value from a genuine (if thin) net worth,
+# while staying permissive enough for real small-net-worth SME issuers; a 50x
+# ceiling guards the opposite mistake (a magnitude read 100x too small, so the
+# ratio comes out absurdly large instead of absurdly small).
+NET_WORTH_MIN_RATIO = 1.0 / 100
+NET_WORTH_MAX_RATIO = 50.0
+
+UNIT_TO_RUPEES = {"lakhs": 100_000.0, "crores": 10_000_000.0, "millions": 1_000_000.0}
+ONE_CRORE_RUPEES = 10_000_000.0
+
+
+def _latest_year_value(series):
+    """(year, value) for the most recent fiscal year in a {year: value} series,
+    or (None, None) when the series is empty."""
+    if not series:
+        return None, None
+    year = max(series)
+    return year, series[year]
+
+
+def _to_rupees(value, unit):
+    return value * UNIT_TO_RUPEES.get(unit, UNIT_TO_RUPEES["lakhs"])
+
+
+def check_min_two_fiscal_years(metrics):
+    """A book-built RHP/DRHP/Prospectus restates at least 2 fiscal years for
+    its P&L metrics (revenue / total income / profit / EPS). Fewer than 2 is
+    almost never a genuine single-year statement — it is the signature of a
+    year-header parse failure that pulled one stray column and mislabelled
+    everything downstream (the Qualiance pre-W-128 defect: fiscal_years=[2026]
+    only). Only the P&L metrics are rejected here; net worth is judged by
+    check_net_worth_vs_issue_size below."""
+    present = {k: metrics[k] for k in PNL_KEYS if metrics.get(k)}
+    if not present:
+        return True, "not applicable (no P&L metric present)", []
+    years = set()
+    for series in present.values():
+        years.update(series)
+    if len(years) < 2:
+        return (False,
+                "only %s fiscal year(s) found for P&L metrics (%s) — need >= 2" % (
+                    len(years), sorted(years)),
+                sorted(present))
+    return True, "%s fiscal years found for P&L metrics" % len(years), []
+
+
+def check_years_from_header_only(metrics, annual_years):
+    """Every metric year must be one the header parser actually found. W-128's
+    aligner maps every row to the parsed header column-by-column, so this
+    should never fire in production today — it is an assertion-style guard
+    against a future regression that reintroduces a guessed/unaligned year."""
+    if not annual_years:
+        return True, "not applicable (no header years to check against)", []
+    allowed = set(annual_years)
+    offenders, detail = [], []
+    for key, series in sorted((metrics or {}).items()):
+        stray = sorted(y for y in series if y not in allowed)
+        if stray:
+            offenders.append(key)
+            detail.append("%s: year(s) %s not in parsed header %s" % (
+                key, stray, sorted(allowed)))
+    if offenders:
+        return False, "; ".join(detail), offenders
+    return True, "every metric year is in the parsed header %s" % sorted(allowed), []
+
+
+def check_net_worth_vs_issue_size(metrics, unit, issue_size_rupees):
+    """Net worth converted to rupees via the stated unit must sit within a
+    sane band around the issue size (see NET_WORTH_MIN_RATIO/MAX_RATIO above).
+    `issue_size_rupees=None` (the caller has no issue size to compare against)
+    reports `passed: None` — NOT EVALUATED, never a false rejection."""
+    if issue_size_rupees is None:
+        return None, "skipped: issue size not supplied", []
+    year, value = _latest_year_value(metrics.get("netWorth") or {})
+    if year is None:
+        return True, "not applicable (net worth missing)", []
+    rupees = _to_rupees(value, unit)
+    lo = issue_size_rupees * NET_WORTH_MIN_RATIO
+    hi = issue_size_rupees * NET_WORTH_MAX_RATIO
+    if rupees < lo or rupees > hi:
+        ratio = rupees / issue_size_rupees if issue_size_rupees else float("inf")
+        return (False,
+                "net worth %s %s = %.4f Cr vs issue %.2f Cr: ratio %.4f outside "
+                "[%.4f, %.1f]" % (value, unit, rupees / ONE_CRORE_RUPEES,
+                                  issue_size_rupees / ONE_CRORE_RUPEES, ratio,
+                                  NET_WORTH_MIN_RATIO, NET_WORTH_MAX_RATIO),
+                ["netWorth"])
+    return True, "net worth %.4f Cr is within [%.4f, %.1f]x issue size %.2f Cr" % (
+        rupees / ONE_CRORE_RUPEES, NET_WORTH_MIN_RATIO, NET_WORTH_MAX_RATIO,
+        issue_size_rupees / ONE_CRORE_RUPEES), []
+
+
+def check_unit_matches_magnitude(metrics, unit, issue_size_rupees):
+    """A latest-year revenue under Rs 1 crore for an issuer raising >= Rs 10
+    crore almost always means the table was read at the wrong scale (e.g. a
+    lakh/crore/million table misread, or a stray small number picked up
+    instead of the real row). Not applicable when the issue size is unknown or
+    small enough that a sub-crore revenue is unremarkable."""
+    if issue_size_rupees is None or issue_size_rupees < 10 * ONE_CRORE_RUPEES:
+        return True, "not applicable (issue size unavailable or below Rs 10 Cr)", []
+    year, value = _latest_year_value(metrics.get("revenue") or metrics.get("totalIncome") or {})
+    if year is None:
+        return True, "not applicable (revenue/total income missing)", []
+    rupees = _to_rupees(value, unit)
+    if rupees < ONE_CRORE_RUPEES:
+        return (False,
+                "revenue %s %s = Rs %.4f Cr — below Rs 1 Cr for an issuer raising "
+                "Rs %.2f Cr (table likely read at the wrong scale)" % (
+                    value, unit, rupees / ONE_CRORE_RUPEES,
+                    issue_size_rupees / ONE_CRORE_RUPEES),
+                ["revenue"])
+    return True, "revenue Rs %.2f Cr is plausible at this magnitude" % (
+        rupees / ONE_CRORE_RUPEES), []
+
+
 def check_cross_document_agreement(a, b, tol=0.01, label_a="doc A", label_b="doc B"):
     """Agreement between the same metric series read from two documents (the
     price band advertisement's KPI table and the RHP's restated summary). Both
@@ -524,21 +656,37 @@ def check_cross_document_agreement(a, b, tol=0.01, label_a="doc A", label_b="doc
 
 
 def run_plausibility(metrics, unit_stated, unit_phrase, unit_page, table_page,
-                     weighted_shares=None):
-    """Run every named check; return (checks, surviving metrics, rejected)."""
+                     weighted_shares=None, annual_years=None, unit=None,
+                     issue_size_rupees=None):
+    """Run every named check; return (checks, surviving metrics, rejected).
+
+    `annual_years`/`unit`/`issue_size_rupees` back the W-129 checks. A check
+    may report `passed=None` (not evaluated, e.g. no issue size supplied) —
+    that is NEVER treated as a failure; only `passed is False` rejects."""
     results = [
         ("pat_not_above_revenue",) + check_pat_not_above_revenue(metrics),
         ("ebitda_at_least_pat",) + check_ebitda_at_least_pat(metrics),
         ("yoy_ratio_within_bounds",) + check_yoy_ratio_within_bounds(metrics),
         ("eps_times_shares_matches_pat",) + check_eps_times_shares_matches_pat(
             metrics, weighted_shares),
+        ("min_two_fiscal_years",) + check_min_two_fiscal_years(metrics),
+        ("years_from_header_only",) + check_years_from_header_only(
+            metrics, annual_years),
+        ("net_worth_vs_issue_size",) + check_net_worth_vs_issue_size(
+            metrics, unit, issue_size_rupees),
+        ("unit_matches_magnitude",) + check_unit_matches_magnitude(
+            metrics, unit, issue_size_rupees),
         ("unit_stated_near_table",) + check_unit_stated_near_table(
             unit_stated, unit_phrase, unit_page, table_page),
     ]
     checks, rejected = [], {}
     for name, passed, detail, offenders in results:
-        checks.append({"name": name, "passed": bool(passed), "detail": detail})
-        if not passed:
+        checks.append({
+            "name": name,
+            "passed": (bool(passed) if passed is not None else None),
+            "detail": detail,
+        })
+        if passed is False:
             for key in offenders:
                 rejected.setdefault(key, "%s: %s" % (name, detail))
     # The unit gate is document-wide: with no trustworthy unit NO magnitude may be
@@ -550,7 +698,7 @@ def run_plausibility(metrics, unit_stated, unit_phrase, unit_page, table_page,
     return checks, kept, rejected
 
 
-def extract_from_texts(page_texts):
+def extract_from_texts(page_texts, issue_size_rupees=None):
     """Pure core: given [(page_index, text)], return the extracted financials.
 
     Separated from PDF I/O so it can be unit-tested offline on captured page text.
@@ -558,6 +706,15 @@ def extract_from_texts(page_texts):
     "extractor produced nothing" rather than persist silently-empty financials.
     """
     result = {
+        # W-129 review: this "lakhs" default is a column-alignment safety net,
+        # not a claim the unit is known — `unitStated` stays False alongside
+        # it. `net_worth_vs_issue_size` / `unit_matches_magnitude` may run
+        # their ratio math against this guessed unit before the unit is known
+        # to be untrustworthy, but that verdict is moot either way:
+        # `check_unit_stated_near_table`'s document-wide gate (last in
+        # run_plausibility) rejects EVERY metric whenever `unitStated` is
+        # False, so a metric never survives to the caller on an unstated unit
+        # regardless of what the magnitude checks concluded about it.
         "unit": "lakhs", "unitStated": False, "unitPage": None, "unitPhrase": None,
         "annualYears": [], "metrics": {}, "pages": 0,
         "metricsFound": 0, "lowConfidence": True, "checks": [], "rejected": {},
@@ -606,7 +763,9 @@ def extract_from_texts(page_texts):
     #    number. `rejected` carries the failing check and its detail per metric.
     checks, kept, rejected = run_plausibility(
         result["metrics"], result["unitStated"], result["unitPhrase"],
-        result["unitPage"], result.get("pnlPage"))
+        result["unitPage"], result.get("pnlPage"),
+        annual_years=result["annualYears"], unit=result["unit"],
+        issue_size_rupees=issue_size_rupees)
     result["checks"] = checks
     result["metrics"] = kept
     result["rejected"] = rejected

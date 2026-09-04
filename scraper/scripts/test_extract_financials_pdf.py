@@ -270,3 +270,133 @@ def test_dec_interim_dedupes_by_year_when_wrapped_and_prose_mention_present():
         "March 31, 2025 March 31, 2024 March 31, 2023",
     ])
     assert efp._count_interim_columns(header) == 1
+
+
+# --------------------------------------------------------------------------- #
+# W-129 — plausibility gate additions. The Qualiance International production
+# defect (2026-09-04, pre-W-108/W-128 code path): fiscal_years=[2026] only,
+# revenue 3722.94, net worth 30.0, PAT -4.0 (all Rs lakhs), issue size Rs 45.11
+# Cr — every named check of the OLD gate passed on this shape. These tests
+# prove the two new checks (fiscal-year floor, net-worth-vs-issue-size) reject
+# it, and that the post-W-128 correct shape (3 years, net worth 2,473.65 lakh)
+# passes cleanly.
+# --------------------------------------------------------------------------- #
+QUALIANCE_ISSUE_SIZE_RUPEES = 45.11 * 1e7  # Rs 45.11 Cr, in rupees
+
+QUALIANCE_PRE_FIX_METRICS = {
+    "revenue": {2026: 3722.94},
+    "profit": {2026: -4.0},
+    "netWorth": {2026: 30.0},
+}
+
+QUALIANCE_CORRECT_METRICS = {
+    "revenue": {2026: 7689.11, 2025: 5307.24, 2024: 3722.94},
+    "totalIncome": {2026: 7689.11, 2025: 5307.24, 2024: 3722.94},
+    "profit": {2026: 1186.90, 2025: 489.85, 2024: 283.93},
+    "netWorth": {2026: 2473.65, 2025: 1382.25, 2024: 892.40},
+    "eps": {2026: 12.0, 2025: 5.0, 2024: 3.0},
+}
+
+
+def test_min_two_fiscal_years_rejects_single_year_pnl():
+    ok, detail, offenders = efp.check_min_two_fiscal_years(QUALIANCE_PRE_FIX_METRICS)
+    assert ok is False, detail
+    assert set(offenders) == {"revenue", "profit"}
+
+
+def test_min_two_fiscal_years_passes_three_years():
+    ok, _detail, offenders = efp.check_min_two_fiscal_years(QUALIANCE_CORRECT_METRICS)
+    assert ok is True and offenders == []
+
+
+def test_min_two_fiscal_years_not_applicable_with_no_pnl_metrics():
+    ok, _detail, offenders = efp.check_min_two_fiscal_years({"netWorth": {2026: 30.0}})
+    assert ok is True and offenders == []
+
+
+def test_years_from_header_only_rejects_a_year_outside_the_header():
+    metrics = {"revenue": {2026: 100.0, 2020: 5.0}}
+    ok, detail, offenders = efp.check_years_from_header_only(metrics, [2026, 2025, 2024])
+    assert ok is False and offenders == ["revenue"]
+    assert "2020" in detail
+
+
+def test_years_from_header_only_passes_when_every_year_is_in_the_header():
+    ok, _detail, offenders = efp.check_years_from_header_only(
+        QUALIANCE_CORRECT_METRICS, [2026, 2025, 2024])
+    assert ok is True and offenders == []
+
+
+def test_net_worth_vs_issue_size_rejects_the_qualiance_pre_fix_value():
+    ok, detail, offenders = efp.check_net_worth_vs_issue_size(
+        QUALIANCE_PRE_FIX_METRICS, "lakhs", QUALIANCE_ISSUE_SIZE_RUPEES)
+    assert ok is False and offenders == ["netWorth"], detail
+
+
+def test_net_worth_vs_issue_size_passes_the_correct_value():
+    ok, detail, offenders = efp.check_net_worth_vs_issue_size(
+        QUALIANCE_CORRECT_METRICS, "lakhs", QUALIANCE_ISSUE_SIZE_RUPEES)
+    assert ok is True and offenders == [], detail
+
+
+def test_net_worth_vs_issue_size_is_none_without_an_issue_size():
+    """Absent issue size the check must report None (not evaluated) — never
+    False, which would silently reject a perfectly good net worth."""
+    ok, _detail, offenders = efp.check_net_worth_vs_issue_size(
+        QUALIANCE_PRE_FIX_METRICS, "lakhs", None)
+    assert ok is None and offenders == []
+
+
+def test_unit_matches_magnitude_rejects_revenue_read_at_wrong_scale():
+    metrics = {"revenue": {2026: 0.5, 2025: 0.4, 2024: 0.3}}
+    ok, detail, offenders = efp.check_unit_matches_magnitude(
+        metrics, "lakhs", QUALIANCE_ISSUE_SIZE_RUPEES)
+    assert ok is False and offenders == ["revenue"], detail
+
+
+def test_unit_matches_magnitude_not_applicable_below_10cr_issue():
+    metrics = {"revenue": {2026: 0.5}}
+    ok, _detail, offenders = efp.check_unit_matches_magnitude(metrics, "lakhs", 5 * 1e7)
+    assert ok is True and offenders == []
+
+
+def test_run_plausibility_rejects_qualiance_pre_fix_shape():
+    checks, kept, rejected = efp.run_plausibility(
+        QUALIANCE_PRE_FIX_METRICS, True, "Rs. In Lakhs", 84, 84,
+        annual_years=[2026], unit="lakhs",
+        issue_size_rupees=QUALIANCE_ISSUE_SIZE_RUPEES)
+    by_name = {c["name"]: c for c in checks}
+    assert by_name["min_two_fiscal_years"]["passed"] is False
+    assert by_name["net_worth_vs_issue_size"]["passed"] is False
+    assert "revenue" in rejected and "netWorth" in rejected
+    assert kept == {}
+
+
+def test_run_plausibility_passes_qualiance_correct_shape():
+    checks, kept, rejected = efp.run_plausibility(
+        QUALIANCE_CORRECT_METRICS, True, "Rs. In Lakhs", 84, 84,
+        annual_years=[2026, 2025, 2024], unit="lakhs",
+        issue_size_rupees=QUALIANCE_ISSUE_SIZE_RUPEES)
+    assert rejected == {}
+    for c in checks:
+        assert c["passed"] in (True, None), c
+    assert kept == QUALIANCE_CORRECT_METRICS
+
+
+def test_run_plausibility_no_issue_size_does_not_reject_net_worth():
+    """(c) no issue size supplied -> net_worth_vs_issue_size is None and
+    nothing is rejected on its account."""
+    checks, _kept, rejected = efp.run_plausibility(
+        QUALIANCE_CORRECT_METRICS, True, "Rs. In Lakhs", 84, 84,
+        annual_years=[2026, 2025, 2024], unit="lakhs", issue_size_rupees=None)
+    by_name = {c["name"]: c for c in checks}
+    assert by_name["net_worth_vs_issue_size"]["passed"] is None
+    assert "netWorth" not in rejected
+
+
+def test_mainboard_fixture_still_passes_with_new_checks():
+    """(d) a mainboard fixture already in the tests still passes unchanged."""
+    r = efp.extract_from_texts(load_deepa())
+    assert r["rejected"] == {}
+    for c in r["checks"]:
+        assert c["passed"] in (True, None), c
