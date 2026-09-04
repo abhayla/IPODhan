@@ -494,10 +494,18 @@ function spawnExtractor(
  * whatever `python3` resolves to on the box is exactly the un-pinned,
  * drift-prone system install this venv exists to replace (W-112). Fail
  * loudly instead: no retry, error propagates as a normal extraction failure.
+ *
+ * W-111 round 3: `??` only falls back on null/undefined, not on an empty
+ * string — `PYTHON_BIN=""` (set but empty) would compute `primaryBin = ''`
+ * and spawn an invalid empty binary name before ever reaching the python3
+ * retry. Trim and treat an empty/whitespace-only PYTHON_BIN the same as
+ * unset, so both the primary-bin choice and the "explicitly set" branch
+ * below see it consistently.
  */
 export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme, issueSizeRupees }) => {
   const script = extractorScriptPath();
-  const pythonBinExplicit = process.env.PYTHON_BIN;
+  const pythonBinExplicitRaw = process.env.PYTHON_BIN?.trim();
+  const pythonBinExplicit = pythonBinExplicitRaw ? pythonBinExplicitRaw : undefined;
   const primaryBin = pythonBinExplicit ?? 'python';
 
   let result = spawnExtractor(primaryBin, script, pdfPath, docType, sme, issueSizeRupees);

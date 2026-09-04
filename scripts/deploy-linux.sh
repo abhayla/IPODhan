@@ -539,6 +539,7 @@ fi
 safe_rm_venv_dir() {
   local dir="$1"
   case "$dir" in
+    *..*) echo "FATAL: safe_rm_venv_dir: refusing to delete '$dir' — contains '..'" >&2; return 1 ;;
     "$ROOT"/shared/venv/*) rm -rf "$dir" ;;
     *) echo "FATAL: safe_rm_venv_dir: refusing to delete '$dir' — not under $ROOT/shared/venv/" >&2; return 1 ;;
   esac
@@ -590,33 +591,77 @@ setup_python_venv() {
     return 1
   fi
 
-  # W-111 round 2: import smoke check BEFORE the swap — every third-party
+  # W-111 round 2/3: import smoke check BEFORE the swap — every third-party
   # module the extractor scripts actually import (scraper/scripts/*.py),
   # so a build that "pip installed clean" but can't actually import (ABI
   # mismatch, a missing transitive) never reaches the live venv.
+  #
+  # Round 3 MAJOR-2: rapidocr_onnxruntime has NO __version__ attribute
+  # (verified on the VPS + dev laptop 2026-09-04) — the round-2
+  # `getattr(..., "__version__", "")` check always read "" and the mismatch
+  # branch never ran. Use importlib.metadata.version() (the real installed
+  # version) instead, and FAIL if the pin itself is empty (parsing broke).
+  #
+  # Round 3 MAJOR-3: a bare `import rapidocr_onnxruntime` succeeded on the
+  # broken 1.4.4 build too (the W-112 outage) — it only breaks when
+  # ocr_pages.py actually USES the engine. So this constructs RapidOCR()
+  # (verified working on the VPS system python) and asserts every private
+  # attribute ocr_pages.py touches: engine.text_recognizer(.rec_batch_num),
+  # engine.text_detector, engine.load_img, engine.sorted_boxes,
+  # engine.get_crop_img_list, engine.use_angle_cls (scraper/scripts/ocr_pages.py).
   log "Smoke-testing venv imports before the flip"
   local pinned_rapidocr_version
   pinned_rapidocr_version="$(grep -E '^rapidocr-onnxruntime==' "$req_file" | head -1 | cut -d= -f3)"
   if ! PINNED_RAPIDOCR_VERSION="$pinned_rapidocr_version" "$new_dir/bin/python" -c '
-import os
+import importlib.metadata
 import sys
 
 import pdfplumber
 import pypdfium2
 import rapidocr_onnxruntime
+from rapidocr_onnxruntime import RapidOCR
 import onnxruntime
 import cv2
 import numpy
+import PIL
 
-expected = os.environ.get("PINNED_RAPIDOCR_VERSION") or ""
-actual = getattr(rapidocr_onnxruntime, "__version__", "") or ""
-if expected and actual and actual != expected:
+expected = (__import__("os").environ.get("PINNED_RAPIDOCR_VERSION") or "").strip()
+if not expected:
+    print(
+        "rapidocr-onnxruntime pin not found in requirements.txt — "
+        "version parsing broke, refusing to trust an unpinned build",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+actual = importlib.metadata.version("rapidocr-onnxruntime")
+if actual != expected:
     print(
         f"rapidocr-onnxruntime version mismatch: installed {actual!r}, "
         f"pinned {expected!r} (requirements.txt drifted from the venv)",
         file=sys.stderr,
     )
     sys.exit(1)
+
+# MAJOR-3: construct the engine and assert the private attributes
+# ocr_pages.py actually touches — a bare import is not enough (it also
+# succeeded on the broken 1.4.4 build).
+engine = RapidOCR()
+for attr in (
+    "text_recognizer",
+    "text_detector",
+    "load_img",
+    "sorted_boxes",
+    "get_crop_img_list",
+    "use_angle_cls",
+):
+    if not hasattr(engine, attr):
+        print(
+            f"RapidOCR() engine is missing attribute {attr!r} that "
+            "scraper/scripts/ocr_pages.py relies on",
+            file=sys.stderr,
+        )
+        sys.exit(1)
 '; then
     echo "FATAL: import smoke check failed for venv build at $new_dir — not swapped into $PYTHON_VENV_DIR; the previous venv (if any) keeps serving the scraper." >&2
     safe_rm_venv_dir "$new_dir"
@@ -629,13 +674,40 @@ if expected and actual and actual != expected:
 
   # Swap: the OLD venv is only ever replaced after the NEW one built AND
   # smoke-tested clean above — a failed build never reaches this point, so
-  # the last-good venv is never destroyed by a bad one.
+  # the last-good venv is never destroyed by a bad one. W-111 round 3
+  # CRITICAL-1: BOTH mv calls are checked. If the second mv (new -> live)
+  # fails (ENOSPC, permissions), the old venv is moved back so the scraper
+  # keeps serving the last-good build instead of being left with none.
   safe_rm_venv_dir "$old_dir" || return 1
+  local had_old=0
   if [ -d "$PYTHON_VENV_DIR" ]; then
-    mv "$PYTHON_VENV_DIR" "$old_dir"
+    if ! mv "$PYTHON_VENV_DIR" "$old_dir"; then
+      echo "FATAL: 'mv $PYTHON_VENV_DIR $old_dir' failed — venv swap aborted; $PYTHON_VENV_DIR left untouched." >&2
+      safe_rm_venv_dir "$new_dir"
+      return 1
+    fi
+    had_old=1
   fi
-  mv "$new_dir" "$PYTHON_VENV_DIR"
+
+  if ! mv "$new_dir" "$PYTHON_VENV_DIR"; then
+    echo "FATAL: 'mv $new_dir $PYTHON_VENV_DIR' failed after the old venv was moved aside — restoring the last-good venv." >&2
+    if [ "$had_old" -eq 1 ]; then
+      if ! mv "$old_dir" "$PYTHON_VENV_DIR"; then
+        echo "FATAL: restore of $old_dir to $PYTHON_VENV_DIR ALSO failed — $PYTHON_VENV_DIR has NO working venv. Manual recovery required." >&2
+        return 1
+      fi
+      echo "Restored the last-good venv to $PYTHON_VENV_DIR." >&2
+    fi
+    safe_rm_venv_dir "$new_dir"
+    return 1
+  fi
   safe_rm_venv_dir "$old_dir" || true
+
+  if ! [ -x "$PYTHON_VENV_DIR/bin/python" ]; then
+    echo "FATAL: venv swap completed but $PYTHON_VENV_DIR/bin/python is not executable — refusing to report success." >&2
+    return 1
+  fi
+  return 0
 }
 
 log "Setting up scraper Python venv (W-111/W-112) at $PYTHON_VENV_DIR"

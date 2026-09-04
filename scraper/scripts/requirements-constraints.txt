@@ -12,6 +12,19 @@
 # opencv-python, ...) drifting to a new major/minor on a fresh venv build
 # and breaking the same way. Do not widen these without re-verifying OCR
 # end-to-end on the VPS.
+#
+# W-111 round 3 MAJOR-4: this file must pin the WHOLE transitive closure,
+# not just the ones OCR happens to import directly. Declared requires walked
+# on the VPS 2026-09-04: onnxruntime -> flatbuffers, numpy, packaging,
+# protobuf; rapidocr-onnxruntime -> pyclipper, onnxruntime, opencv-python,
+# numpy, six, Shapely, PyYAML, Pillow; pdfplumber -> pdfminer.six, Pillow,
+# pypdfium2; pdfminer.six -> charset-normalizer, cryptography; cryptography
+# -> cffi (non-PyPy) -> pycparser. protobuf/flatbuffers/packaging/
+# typing_extensions/charset-normalizer/cryptography are VPS-proven versions;
+# cffi/pycparser are pinned to the versions installed on this dev laptop
+# (proven with cryptography on Python 3.12 here — `python -m pip show cffi
+# pycparser`). RULE: when a direct pin in requirements.txt changes, re-derive
+# this whole file from a fresh venv's `pip freeze` on the VPS.
 numpy==2.5.2
 onnxruntime==1.29.0
 opencv-python==5.0.0.93
@@ -21,3 +34,11 @@ shapely==2.1.2
 six==1.16.0
 PyYAML==6.0.1
 pdfminer.six==20250327
+protobuf==7.36.1
+flatbuffers==25.12.19
+packaging==24.0
+typing_extensions==4.10.0
+charset-normalizer==3.5.1
+cryptography==41.0.7
+cffi==2.0.0
+pycparser==2.23

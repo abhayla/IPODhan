@@ -916,6 +916,33 @@ describe('defaultExtractorRunner — python binary resolution', () => {
     expect(result.ok).toBe(false);
   });
 
+  // W-111 round 3: PYTHON_BIN set but EMPTY (or whitespace-only) must be
+  // treated exactly like unset — `??` only falls back on null/undefined, so
+  // an empty string would otherwise become the literal spawn binary name
+  // (immediate ENOENT on a name no shell resolves) instead of going
+  // straight to 'python'.
+  it('treats an empty PYTHON_BIN the same as unset — spawns "python" directly, not an empty binary name', () => {
+    process.env.PYTHON_BIN = '';
+    spawnSyncMock.mockReturnValueOnce({ status: 0, stdout: JSON.stringify({ doc_type: 'RHP', fields: {} }), stderr: '' });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(spawnSyncMock).toHaveBeenCalledTimes(1);
+    expect(spawnSyncMock.mock.calls[0][0]).toBe('python');
+    expect(result.ok).toBe(true);
+  });
+
+  it('treats a whitespace-only PYTHON_BIN the same as unset', () => {
+    process.env.PYTHON_BIN = '   ';
+    spawnSyncMock.mockReturnValueOnce({ status: 0, stdout: JSON.stringify({ doc_type: 'RHP', fields: {} }), stderr: '' });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(spawnSyncMock).toHaveBeenCalledTimes(1);
+    expect(spawnSyncMock.mock.calls[0][0]).toBe('python');
+    expect(result.ok).toBe(true);
+  });
+
   // W-129 review: the net-worth/magnitude plausibility checks in the python
   // extractor only run when --issue-size is on the command line — wire it.
   it('appends --issue-size with the integer rupee value when issueSizeRupees is a finite positive number', () => {
