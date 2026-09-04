@@ -11,6 +11,7 @@ Run:  cd scraper && python -m pytest scripts/test_extract_financials_pdf.py -q
 """
 import json
 import os
+import re
 import importlib.util
 
 HERE = os.path.dirname(__file__)
@@ -217,3 +218,55 @@ def test_unparseable_year_header_yields_no_year_and_no_metrics():
     r = efp.extract_from_texts([(0, page)])
     assert r["annualYears"] == []
     assert r["metrics"] == {}
+
+
+# --------------------------------------------------------------------------- #
+# W-128 round 2 (PR #283 review) — three untested edges.
+# --------------------------------------------------------------------------- #
+
+def test_prose_year_far_above_table_does_not_inject_phantom_column():
+    """A prose sentence naming an unrelated fiscal year well above the table
+    ("... for FY 2018-19") must not inject a phantom 4th column — only the
+    year header immediately above the data row counts."""
+    pages = load_qualiance()
+    idx, text = pages[0]
+    lines = text.split("\n")
+    data_row = next(i for i, ln in enumerate(lines)
+                     if re.search(r"revenue\s+from\s+operations", ln, re.I))
+    lines.insert(max(0, data_row - 12),
+                 "as required under the SEBI ICDR Regulations for FY 2018-19")
+    pages[0] = (idx, "\n".join(lines))
+    r = efp.extract_from_texts(pages)
+    assert r["annualYears"] == [2026, 2025, 2024]
+
+
+def test_align_allows_up_to_two_leading_note_tokens():
+    """Sr.No + Note-No columns (two bare small integers) before the real
+    annual values must still align correctly."""
+    align = efp._align_factory([2026, 2025, 2024], [2026, 2025, 2024])
+    assert align("12 4 1,234.00 1,100.00 900.00") == {
+        2026: 1234.00, 2025: 1100.00, 2024: 900.00}
+
+
+def test_align_rejects_a_wider_peer_comparison_row():
+    """A row repeating the same header across several peer companies carries
+    far more values than two leading notes and must fail closed."""
+    align = efp._align_factory([2026, 2025, 2024], [2026, 2025, 2024])
+    peer_row = ("7,689.11 5,307.24 3,722.94 3,98,763.81 3,86,423.96 "
+                "2,37,888.47 1,57,863.70 1,39,513.40 1,08,735.50")
+    assert align(peer_row) is None
+
+
+def test_dec_interim_dedupes_by_year_when_wrapped_and_prose_mention_present():
+    """A header naming "December 31" once as a wrapped column ("December
+    31,\\n2025") and once more in unrelated prose must count ONE interim
+    column, not two, and must not drop it as a bare mention when the real
+    year is only one line below."""
+    header = "\n".join([
+        "Note: figures for the period ended December 31 are provisional estimates only.",
+        "Particulars",
+        "December 31,",
+        "2025",
+        "March 31, 2025 March 31, 2024 March 31, 2023",
+    ])
+    assert efp._count_interim_columns(header) == 1

@@ -43,11 +43,45 @@ MONEY = re.compile(r"\(?-?\d[\d,]*(?:\.\d+)?\)?")
 MARCH = re.compile(r"(?:March\s+31,?\s*|31\s+March\s+)(20\d{2})", re.I)
 # Interim (nine-month / stub) column period-ends — used to count leading interim
 # columns so they are read and then DROPPED (we only keep annual fiscal years).
-# W-128: the year itself is NOT captured (a wrapped column header can print the
-# interim column's year on its own line, several tokens away from "December
-# 31,") — only the count of interim period-end mentions matters, since an
-# interim column is always dropped regardless of which year it names.
-DEC_INTERIM = re.compile(r"(?:December\s+31\b|31\s+December\b)", re.I)
+# The year is captured (optionally) so _count_interim_columns can dedupe
+# multiple mentions of the SAME interim column by year, rather than by raw
+# text — a header can legitimately name "December 31" once in the actual
+# column header and once more in unrelated prose without that being two
+# interim columns.
+DEC_INTERIM = re.compile(r"(?:December\s+31,?\s*|31\s+December\s+)(20\d{2})?", re.I)
+
+
+def _count_interim_columns(header):
+    """How many leading interim (nine-month / stub) columns a header names.
+
+    W-128: dedupes by the captured YEAR when one is present — a header can
+    mention "December 31" once as the real (possibly wrapped-onto-the-next-
+    line) column header and once more in unrelated prose; both may match, but
+    they are the same one interim column. When a mention has no year on its
+    own line, the immediately following line is checked for a bare "YYYY"
+    (the common wrapped-header layout); only if that also fails is it counted
+    as a yearless "bare" mention. Bare mentions cap at a single interim column
+    (ambiguous without a year to distinguish them) unless a dated mention
+    already established at least one — in which case the year-based count
+    wins outright, since it is the more reliable signal.
+    """
+    lines = header.split("\n")
+    years = set()
+    bare = 0
+    bare_year_rx = re.compile(r"^\s*(20\d{2})\s*$")
+    for i, ln in enumerate(lines):
+        for m in DEC_INTERIM.finditer(ln):
+            if m.group(1):
+                years.add(m.group(1))
+                continue
+            nxt = bare_year_rx.match(lines[i + 1]) if i + 1 < len(lines) else None
+            if nxt:
+                years.add(nxt.group(1))
+            else:
+                bare += 1
+    if years:
+        return len(years)
+    return 1 if bare else 0
 # Continuation form of a wrapped "March 31, YYYY" header cell — only consulted
 # when a full MARCH anchor already matched on the same header (see _parse_pnl_page).
 MARCH_LOOSE = re.compile(r"(?<!\d)31,\s*(20\d{2})")
@@ -236,23 +270,31 @@ def _align_factory(column_fy, annual_years):
 
     `column_fy` lists the fiscal year for every data column, left to right, with
     `None` for leading interim (nine-month / stub) columns. A row's money tokens
-    may be preceded by ONE Note-No. column or footnote-marker digit, so the
-    TRAILING len(column_fy) tokens are taken and mapped positionally; only
-    annual (non-None) columns are emitted.
+    may be preceded by up to TWO leading note tokens (a Sr.No. column, a
+    Note-No. column, a footnote-marker digit — each a bare or parenthesised
+    1-2 digit integer, never a real monetary figure), so the TRAILING
+    len(column_fy) tokens are taken and mapped positionally; only annual
+    (non-None) columns are emitted.
 
-    W-128: the leading-noise allowance is capped at exactly one extra token
-    (`ncols` or `ncols + 1` values, never more). A wider row — e.g. a peer-
-    comparison table repeating the same header across several companies —
-    carries many more values than the header's own year count and MUST NOT be
-    read as this table's data; the old unbounded `>=` allowed exactly that.
+    W-128: the leading-noise allowance is capped at exactly the note-token
+    shape above, up to two of them. A wider row — e.g. a peer-comparison table
+    repeating the same header across several companies — carries many more
+    values than the header's own year count (and they are not note-shaped)
+    and MUST NOT be read as this table's data; the old unbounded `>=` allowed
+    exactly that.
     """
     ncols = len(column_fy)
+    NOTE_TOKEN = re.compile(r"^\(?\d{1,2}\)?$")
 
     def align(line):
+        tokens = MONEY.findall(_normalize_numbers(line))
         vals = money_values(line)
-        if ncols >= 1 and ncols <= len(vals) <= ncols + 1:
-            tail = vals[-ncols:]
-            return {column_fy[i]: tail[i] for i in range(ncols) if column_fy[i] is not None}
+        extra = len(vals) - ncols
+        if ncols >= 1 and 0 <= extra <= 2 and len(tokens) == len(vals):
+            leading = tokens[:extra]
+            if all(NOTE_TOKEN.match(t) for t in leading):
+                tail = vals[-ncols:]
+                return {column_fy[i]: tail[i] for i in range(ncols) if column_fy[i] is not None}
         if len(vals) == len(annual_years):  # row carries only the annual columns
             return {annual_years[i]: vals[i] for i in range(len(vals))}
         return None
@@ -289,12 +331,29 @@ def _parse_pnl_page(text):
         return None
     header = "\n".join(lines[:data_start]) or text
 
-    annual_years = _year_header_years(header)
+    # W-128 review: the YEAR header is read only from the block of lines
+    # immediately above the data row — walk upward at most 8 lines and stop at
+    # the first line (plus its wrapped continuation) that parses as a year
+    # header. A prose sentence naming an unrelated fiscal year much higher up
+    # the page ("... as required for FY 2018-19") must never inject a phantom
+    # column into a table it has nothing to do with.
+    window = lines[max(0, data_start - 8):data_start]
+    year_header = None
+    for i in range(len(window) - 1, -1, -1):
+        candidate = window[i]
+        if i + 1 < len(window):
+            candidate = candidate + "\n" + window[i + 1]
+        if _year_header_years(candidate):
+            year_header = candidate
+            break
+    if year_header is None:
+        return None
+    annual_years = _year_header_years(year_header)
     annual_years.sort(reverse=True)
     if not annual_years:
         return None
 
-    interim = len(DEC_INTERIM.findall(header))
+    interim = _count_interim_columns(header)
     column_fy = ([None] * interim) + annual_years
     align = _align_factory(column_fy, annual_years)
 
