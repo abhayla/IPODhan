@@ -178,6 +178,15 @@ export const ChittorgarhIPOSchema = ScrapedIPOSchema.merge(z.object({
     (date) => !date || !isNaN(Date.parse(date)),
     'GMP updated date must be a valid ISO 8601 date string'
   ),
+  // W-116b: Chittorgarh's own close-date column is sometimes empty for a
+  // far-future IPO or a RIGHTS/NCD record. The scraper used to default this
+  // to openDate + 3 days and emit the guess as if it were scraped (same
+  // class as W-116's Moneycontrol fix) - override to optional so the
+  // scraper can omit it instead of fabricating a value it never read.
+  closeDate: z.string().optional().refine(
+    (date) => !date || !isNaN(Date.parse(date)),
+    'Close date must be a valid ISO 8601 date string'
+  ),
 }));
 
 /**

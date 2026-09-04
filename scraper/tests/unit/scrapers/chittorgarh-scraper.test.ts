@@ -213,7 +213,12 @@ describe('chittorgarh-scraper', () => {
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should default the close date to open date + 3 days when Closing Date is missing', async () => {
+    // W-116b: this used to default closeDate to openDate + 3 days and emit
+    // the guess as if it were scraped (same class as W-116's Moneycontrol
+    // fabricated open/close dates). A source must never emit a value it did
+    // not read - omit closeDate instead so a higher-priority source
+    // (DRHP/NSE/BSE) can fill it via field-priority-matrix.
+    it('never fabricates a close date from open date + 3 days when Closing Date is missing', async () => {
       mockApiResponse([
         apiRecord({
           'Company': '<a href="/ipo/single-date-ipo/7/">Single Date IPO</a>',
@@ -226,7 +231,17 @@ describe('chittorgarh-scraper', () => {
 
       expect(result.ipos).toHaveLength(1);
       expect(result.ipos[0].openDate).toBe('2025-10-07');
-      expect(result.ipos[0].closeDate).toBe('2025-10-10'); // open + 3 days
+      expect(result.ipos[0].closeDate).toBeUndefined();
+    });
+
+    it('keeps a genuine close date when the source actually provides one', async () => {
+      mockApiResponse([apiRecord()]);
+
+      const result = await scrapeChittorgarhIPOs();
+
+      expect(result.ipos).toHaveLength(1);
+      expect(result.ipos[0].openDate).toBeTruthy();
+      expect(result.ipos[0].closeDate).toBe('2025-10-09');
     });
   });
 });

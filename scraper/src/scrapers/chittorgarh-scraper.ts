@@ -212,7 +212,7 @@ function parseListingInfo(listingAt: string): {
  */
 function determineStatus(
   openDate: string,
-  closeDate: string,
+  closeDate: string | undefined,
   listingDate: string
 ): 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' {
   if (!openDate || !closeDate) return 'UPCOMING';
@@ -377,12 +377,14 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
           continue;
         }
 
-        // For IPOs without close date, use open date + 3 days as default
-        const effectiveCloseDate = closeDate || (() => {
-          const openDateObj = new Date(openDate);
-          openDateObj.setDate(openDateObj.getDate() + 3);
-          return openDateObj.toISOString().split('T')[0];
-        })();
+        // W-116b: Chittorgarh's own close-date column is sometimes empty
+        // (far-future IPOs). This used to default to openDate + 3 days and
+        // emit the guess as if it were scraped - same class as W-116
+        // (Moneycontrol fabricating open/close dates). Leave closeDate
+        // undefined when the source didn't provide one; never compute a
+        // value it did not read. determineStatus() already treats a missing
+        // closeDate as UPCOMING.
+        const effectiveCloseDate = closeDate || undefined;
 
         // Parse price
         const price = parseChittorgarhPrice(record['Issue Price (Rs.)']);
