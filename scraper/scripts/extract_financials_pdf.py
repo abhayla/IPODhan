@@ -43,19 +43,121 @@ MONEY = re.compile(r"\(?-?\d[\d,]*(?:\.\d+)?\)?")
 MARCH = re.compile(r"(?:March\s+31,?\s*|31\s+March\s+)(20\d{2})", re.I)
 # Interim (nine-month / stub) column period-ends — used to count leading interim
 # columns so they are read and then DROPPED (we only keep annual fiscal years).
-DEC_INTERIM = re.compile(r"(?:December\s+31,?\s*|31\s+December\s+)(20\d{2})", re.I)
+# The year is captured (optionally) so _count_interim_columns can dedupe
+# multiple mentions of the SAME interim column by year, rather than by raw
+# text — a header can legitimately name "December 31" once in the actual
+# column header and once more in unrelated prose without that being two
+# interim columns.
+DEC_INTERIM = re.compile(r"(?:December\s+31,?\s*|31\s+December\s+)(20\d{2})?", re.I)
+
+
+def _count_interim_columns(header):
+    """How many leading interim (nine-month / stub) columns a header names.
+
+    W-128: dedupes by the captured YEAR when one is present — a header can
+    mention "December 31" once as the real (possibly wrapped-onto-the-next-
+    line) column header and once more in unrelated prose; both may match, but
+    they are the same one interim column. When a mention has no year on its
+    own line, the immediately following line is checked for a bare "YYYY"
+    (the common wrapped-header layout); only if that also fails is it counted
+    as a yearless "bare" mention. Bare mentions cap at a single interim column
+    (ambiguous without a year to distinguish them) unless a dated mention
+    already established at least one — in which case the year-based count
+    wins outright, since it is the more reliable signal.
+    """
+    lines = header.split("\n")
+    years = set()
+    bare = 0
+    bare_year_rx = re.compile(r"^\s*(20\d{2})\s*$")
+    for i, ln in enumerate(lines):
+        for m in DEC_INTERIM.finditer(ln):
+            if m.group(1):
+                years.add(m.group(1))
+                continue
+            nxt = bare_year_rx.match(lines[i + 1]) if i + 1 < len(lines) else None
+            if nxt:
+                years.add(nxt.group(1))
+            else:
+                bare += 1
+    if years:
+        return len(years)
+    return 1 if bare else 0
 # Continuation form of a wrapped "March 31, YYYY" header cell — only consulted
 # when a full MARCH anchor already matched on the same header (see _parse_pnl_page).
 MARCH_LOOSE = re.compile(r"(?<!\d)31,\s*(20\d{2})")
+
+# W-128: SME RHP KPI/summary tables head their columns "FY 2025-26 FY 2024-25
+# FY 2023-24" (or "FY2025-26" / "FY 25-26" / bare "2025-26") instead of the
+# mainboard "March 31, YYYY" form. A range header names the fiscal year by its
+# START; the calendar year it belongs to is the one it ENDS in
+# (FY 2025-26 -> 2026).
+FY_RANGE = re.compile(r"(?:FY|Fiscal)\s*[:\-]?\s*(\d{2,4})\s*[-/]\s*(\d{2})\b", re.I)
+# Bare "2025-26" with no FY/Fiscal prefix — the 4-digit start guards against a
+# bare page-range footnote ("8-10") ever being mistaken for a fiscal year.
+BARE_YEAR_RANGE = re.compile(r"(?<![\d/-])(20\d{2})\s*-\s*(\d{2})(?!\d)")
+# "FY 2026" / "Fiscal 2026" — already the fiscal year's own end-year. The
+# negative lookahead keeps this from also firing on the START year of a range
+# ("FY 2025-26" must be read as ONE end-year 2026 via FY_RANGE, not additionally
+# as a bare "FY 2025").
+FY_SINGLE = re.compile(r"(?:FY|Fiscal)\s+(20\d{2})\b(?!\s*[-/]\s*\d{2}\b)", re.I)
+
+
+def _fy_end_year(start_str, end_str):
+    """Map a "start-end" fiscal-year range to the calendar year it ENDS in.
+
+    "2025-26" -> 2026, "FY 25-26" -> 2026 (same math once the 2-digit start is
+    given the 2000s century). A same-century rollover ("99-00") is handled by
+    bumping the century when the 2-digit end is numerically before the start.
+    """
+    start_str = start_str.strip()
+    start = int(start_str) if len(start_str) == 4 else 2000 + int(start_str)
+    century = start - (start % 100)
+    end = century + int(end_str)
+    if end < start:
+        end += 100
+    return end
+
+
+def _year_header_years(header):
+    """All fiscal-year end-years named in a header block, in encounter order
+    (the caller sorts descending). Accepts, in any mixture within the same
+    header: "March 31, YYYY" / "31 March YYYY" (incl. the wrapped-continuation
+    form once a full anchor is present), "FY YYYY-YY" / "FYYYYY-YY" /
+    "FY YY-YY" / bare "YYYY-YY" range forms, and "FY YYYY" / "Fiscal YYYY".
+    Never guesses: a header matching none of these forms yields [].
+    """
+    years = []
+
+    def add(y):
+        if y not in years:
+            years.append(y)
+
+    for y in MARCH.findall(header):
+        add(int(y))
+    if years:
+        for y in MARCH_LOOSE.findall(header):
+            add(int(y))
+    for start_s, end_s in FY_RANGE.findall(header):
+        add(_fy_end_year(start_s, end_s))
+    for start_s, end_s in BARE_YEAR_RANGE.findall(header):
+        add(_fy_end_year(start_s, end_s))
+    for y in FY_SINGLE.findall(header):
+        add(int(y))
+    return years
+
 
 # Metric label -> output key. Order matters (first match wins per line).
 # `profit` matches loss-makers too — a loss-making issuer's bottom line reads
 # "Loss for the year" / "(Loss)/profit for the period"; the sign is recovered by
 # the accounting-negative (parenthesised) parsing in money_values (issue #67).
+# W-128: SME KPI tables label the row bare "PAT" (no "profit"/"after tax" text)
+# — `(?!\s*Margin)` keeps a "PAT Margin(...)" row from being read as the PAT
+# amount even if it happened to precede the real row.
 PNL_METRICS = [
     (re.compile(r"revenue\s+from\s+operations", re.I), "revenue"),
     (re.compile(r"total\s+income", re.I), "totalIncome"),
-    (re.compile(r"(profit|loss)[\s/()]*(for\s+the\s+(period|year)|after\s+tax)", re.I), "profit"),
+    (re.compile(r"\bPAT\b(?!\s*Margin)|(profit|loss)[\s/()]*(for\s+the\s+(period|year)|after\s+tax)", re.I),
+     "profit"),
     # EPS: either the explicit "Basic EPS / Basic earnings per share" label, OR a
     # line that is just "(1) Basic ..." under a "loss/earnings per equity share"
     # section header (the mainboard layout — Ather). align() filters false
@@ -64,6 +166,11 @@ PNL_METRICS = [
 ]
 OTHER_METRICS = [
     (re.compile(r"^\s*EBITDA\b(?!\s*Margin)", re.I), "ebitda"),
+    # W-128 round 3: NOT anchored to line-start — issue #67's real row reads
+    # "Total equity / Net worth 4,083.20 8,932.55 6,544.10" (label mid-line).
+    # The line-start anchor tried in round 2 excluded that legitimate row along
+    # with the prose false-positive it was meant to stop; _is_clean_data_row
+    # below is the real discriminator (label followed only by data, not words).
     (re.compile(r"net\s*worth", re.I), "netWorth"),
 ]
 
@@ -158,22 +265,55 @@ def extract(pdf_path):
     return out
 
 
+# W-128 round 3: the real discriminator for an unanchored doc-wide label match
+# (EBITDA / Net worth can legitimately sit mid-line, e.g. "Total equity / Net
+# worth 4,083.20 ...", and its footnote/unit annotation may itself carry
+# letters, e.g. "EBITDA (i) (₹ million) 1,463.37 ...") is NOT its position on
+# the line — it's whether what FOLLOWS the label has any PROSE word OUTSIDE a
+# parenthesised/bracketed annotation. A narrative sentence ("Net worth has
+# been computed in the manner as specifies in Regulation 2(1) ...") fails this
+# even though it may carry enough incidental numbers to satisfy the column
+# count; a real row's only letters (if any) live inside "(i)" / "(₹ million)"
+# style annotations.
+_PAREN_GROUP = re.compile(r"\([^()]*\)|\[[^\]]*\]")
+_HAS_LETTER = re.compile(r"[A-Za-z]")
+
+
+def _is_clean_data_row(line, label_end):
+    tail_no_parens = _PAREN_GROUP.sub(" ", line[label_end:])
+    return not _HAS_LETTER.search(tail_no_parens)
+
+
 def _align_factory(column_fy, annual_years):
     """Build an aligner for a known column structure (closes over the FY mapping).
 
     `column_fy` lists the fiscal year for every data column, left to right, with
     `None` for leading interim (nine-month / stub) columns. A row's money tokens
-    may be preceded by a Note-No. column or label digits, so the TRAILING
-    len(column_fy) tokens are taken and mapped positionally; only annual (non-None)
-    columns are emitted.
+    may be preceded by up to TWO leading note tokens (a Sr.No. column, a
+    Note-No. column, a footnote-marker digit — each a bare or parenthesised
+    1-2 digit integer, never a real monetary figure), so the TRAILING
+    len(column_fy) tokens are taken and mapped positionally; only annual
+    (non-None) columns are emitted.
+
+    W-128: the leading-noise allowance is capped at exactly the note-token
+    shape above, up to two of them. A wider row — e.g. a peer-comparison table
+    repeating the same header across several companies — carries many more
+    values than the header's own year count (and they are not note-shaped)
+    and MUST NOT be read as this table's data; the old unbounded `>=` allowed
+    exactly that.
     """
     ncols = len(column_fy)
+    NOTE_TOKEN = re.compile(r"^\(?\d{1,2}\)?$")
 
     def align(line):
+        tokens = MONEY.findall(_normalize_numbers(line))
         vals = money_values(line)
-        if len(vals) >= ncols >= 1:
-            tail = vals[-ncols:]
-            return {column_fy[i]: tail[i] for i in range(ncols) if column_fy[i] is not None}
+        extra = len(vals) - ncols
+        if ncols >= 1 and 0 <= extra <= 2 and len(tokens) == len(vals):
+            leading = tokens[:extra]
+            if all(NOTE_TOKEN.match(t) for t in leading):
+                tail = vals[-ncols:]
+                return {column_fy[i]: tail[i] for i in range(ncols) if column_fy[i] is not None}
         if len(vals) == len(annual_years):  # row carries only the annual columns
             return {annual_years[i]: vals[i] for i in range(len(vals))}
         return None
@@ -190,7 +330,12 @@ def _parse_pnl_page(text):
     title match, which on mainboard prospectuses is often a summary/index page with
     the title but no data rows (issue #67).
     """
-    if not re.search(r"statement\s+of\s+profit\s+and\s+loss", text, re.I):
+    # W-128: an SME RHP's KPI/summary table ("Key Performance Indicators ...")
+    # carries the same revenue/EBITDA/PAT/net-worth rows the mainboard
+    # "Statement of Profit and Loss" title carries, just under a different
+    # section heading — accept either as the anchor.
+    if not re.search(r"statement\s+of\s+profit\s+and\s+loss|key\s+performance\s+indicators",
+                      text, re.I):
         return None
 
     lines = text.split("\n")
@@ -205,27 +350,29 @@ def _parse_pnl_page(text):
         return None
     header = "\n".join(lines[:data_start]) or text
 
-    annual_years = []
-    for y in MARCH.findall(header):
-        yi = int(y)
-        if yi not in annual_years:
-            annual_years.append(yi)
-    if annual_years:
-        # W-33 (second cause): a wrapped summary header prints
-        # "For the year ending March 31, 2026 / 31, 2024 / March 31, 2025" — the
-        # middle column loses its "March" to the line break, so the strict
-        # pattern saw only TWO annual columns and the trailing-N alignment then
-        # dropped a real column. Once at least one full "March 31, YYYY" anchor
-        # is present, also accept the bare "31, YYYY" continuation form.
-        for y in MARCH_LOOSE.findall(header):
-            yi = int(y)
-            if yi not in annual_years:
-                annual_years.append(yi)
+    # W-128 review: the YEAR header is read only from the block of lines
+    # immediately above the data row — walk upward at most 8 lines and stop at
+    # the first line (plus its wrapped continuation) that parses as a year
+    # header. A prose sentence naming an unrelated fiscal year much higher up
+    # the page ("... as required for FY 2018-19") must never inject a phantom
+    # column into a table it has nothing to do with.
+    window = lines[max(0, data_start - 8):data_start]
+    year_header = None
+    for i in range(len(window) - 1, -1, -1):
+        candidate = window[i]
+        if i + 1 < len(window):
+            candidate = candidate + "\n" + window[i + 1]
+        if _year_header_years(candidate):
+            year_header = candidate
+            break
+    if year_header is None:
+        return None
+    annual_years = _year_header_years(year_header)
     annual_years.sort(reverse=True)
     if not annual_years:
         return None
 
-    interim = len(set(DEC_INTERIM.findall(header)))
+    interim = _count_interim_columns(header)
     column_fy = ([None] * interim) + annual_years
     align = _align_factory(column_fy, annual_years)
 
@@ -446,7 +593,8 @@ def extract_from_texts(page_texts):
             for rx, key in OTHER_METRICS:
                 if key in result["metrics"]:
                     continue
-                if rx.search(ln):
+                m = rx.search(ln)
+                if m and _is_clean_data_row(ln, m.end()):
                     mapped = align(ln)
                     if mapped:
                         result["metrics"][key] = mapped

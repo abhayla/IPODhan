@@ -11,6 +11,7 @@ Run:  cd scraper && python -m pytest scripts/test_extract_financials_pdf.py -q
 """
 import json
 import os
+import re
 import importlib.util
 
 HERE = os.path.dirname(__file__)
@@ -163,3 +164,109 @@ def test_metrics_that_fail_a_check_are_dropped_not_emitted():
     assert "profit" not in r["metrics"]
     assert "pat_not_above_revenue" in r["rejected"]["profit"]
     assert r["metrics"]["revenue"] == {2026: 19266.76, 2025: 13970.10, 2024: 10245.68}
+
+
+# --------------------------------------------------------------------------- #
+# W-128 — SME RHP "Key Performance Indicators" table headed "FY 2025-26
+# FY 2024-25 FY 2023-24" instead of the mainboard "March 31, YYYY" form.
+# Before the fix this header did not parse at all, so the KPI table was never
+# picked up as a P&L candidate; the extractor then read fiscal_years=[2026] and
+# every *_by_fy value from unrelated content elsewhere in the document (the
+# production defect: revenue_by_fy {2026: 3722.94} — the KPI table's own
+# FY2023-24 column, mislabelled — plus a PAT/net-worth value pulled from an
+# entirely different table).
+# --------------------------------------------------------------------------- #
+QUALIANCE_FIXTURE = os.path.join(
+    HERE, "..", "tests", "fixtures", "sme", "qualiance-rhp-kpi-pages-84-85.txt")
+
+
+def load_qualiance():
+    """Split the captured pdfplumber page-text fixture (marked
+    "===== PAGE N") into the [(page_index, text)] shape extract_from_texts
+    expects — the same shape extract_filing.py's extract_rhp() feeds it."""
+    with open(QUALIANCE_FIXTURE, encoding="utf-8") as f:
+        raw = f.read()
+    pages = []
+    for chunk in raw.split("===== PAGE ")[1:]:
+        header, _, body = chunk.partition("\n")
+        pages.append((int(header.strip()) - 1, body))
+    return pages
+
+
+def test_qualiance_kpi_table_fy_range_header():
+    r = efp.extract_from_texts(load_qualiance())
+    assert r["unit"] == "lakhs"
+    assert r["annualYears"] == [2026, 2025, 2024]
+    m = r["metrics"]
+    assert m["revenue"] == {2026: 7689.11, 2025: 5307.24, 2024: 3722.94}
+    assert m["ebitda"] == {2026: 1671.67, 2025: 797.05, 2024: 486.15}
+    assert m["profit"] == {2026: 1186.90, 2025: 489.85, 2024: 283.93}
+    assert m["netWorth"] == {2026: 2473.65, 2025: 1382.25, 2024: 892.40}
+    assert r["rejected"] == {}
+
+
+def test_unparseable_year_header_yields_no_year_and_no_metrics():
+    """A KPI/summary table whose header the parser cannot read (no recognised
+    March-31 / FY-YYYY-YY / FY-YYYY form) is skipped outright — never defaulted
+    to the current or latest year."""
+    page = "\n".join([
+        "Key Performance Indicators of our Company",
+        "(Rs. In Lakhs)",
+        "Particulars Period A Period B Period C",
+        "Revenue from operations 7,689.11 5,307.24 3,722.94",
+    ])
+    r = efp.extract_from_texts([(0, page)])
+    assert r["annualYears"] == []
+    assert r["metrics"] == {}
+
+
+# --------------------------------------------------------------------------- #
+# W-128 round 2 (PR #283 review) — three untested edges.
+# --------------------------------------------------------------------------- #
+
+def test_prose_year_far_above_table_does_not_inject_phantom_column():
+    """A prose sentence naming an unrelated fiscal year well above the table
+    ("... for FY 2018-19") must not inject a phantom 4th column — only the
+    year header immediately above the data row counts."""
+    pages = load_qualiance()
+    idx, text = pages[0]
+    lines = text.split("\n")
+    data_row = next(i for i, ln in enumerate(lines)
+                     if re.search(r"revenue\s+from\s+operations", ln, re.I))
+    lines.insert(max(0, data_row - 12),
+                 "as required under the SEBI ICDR Regulations for FY 2018-19")
+    pages[0] = (idx, "\n".join(lines))
+    r = efp.extract_from_texts(pages)
+    assert r["annualYears"] == [2026, 2025, 2024]
+
+
+def test_align_allows_up_to_two_leading_note_tokens():
+    """Sr.No + Note-No columns (two bare small integers) before the real
+    annual values must still align correctly."""
+    align = efp._align_factory([2026, 2025, 2024], [2026, 2025, 2024])
+    assert align("12 4 1,234.00 1,100.00 900.00") == {
+        2026: 1234.00, 2025: 1100.00, 2024: 900.00}
+
+
+def test_align_rejects_a_wider_peer_comparison_row():
+    """A row repeating the same header across several peer companies carries
+    far more values than two leading notes and must fail closed."""
+    align = efp._align_factory([2026, 2025, 2024], [2026, 2025, 2024])
+    peer_row = ("7,689.11 5,307.24 3,722.94 3,98,763.81 3,86,423.96 "
+                "2,37,888.47 1,57,863.70 1,39,513.40 1,08,735.50")
+    assert align(peer_row) is None
+
+
+def test_dec_interim_dedupes_by_year_when_wrapped_and_prose_mention_present():
+    """A header naming "December 31" once as a wrapped column ("December
+    31,\\n2025") and once more in unrelated prose must count ONE interim
+    column, not two, and must not drop it as a bare mention when the real
+    year is only one line below."""
+    header = "\n".join([
+        "Note: figures for the period ended December 31 are provisional estimates only.",
+        "Particulars",
+        "December 31,",
+        "2025",
+        "March 31, 2025 March 31, 2024 March 31, 2023",
+    ])
+    assert efp._count_interim_columns(header) == 1
