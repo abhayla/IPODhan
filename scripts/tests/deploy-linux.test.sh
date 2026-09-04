@@ -358,7 +358,7 @@ unset DEPLOY_ROOT
 # --- suite nothing to grep for — reverting delete+start back to `pm2 -------
 # --- reload` still passed all 16 assertions. These checks close that gap. -
 DELETE_LINE9="$(grep -n '^==> \[dry-run\] pm2 delete ipodhan-web$' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
-START_LINE9="$(grep -n '^==> \[dry-run\] env -u RUNNER_TRACKING_ID TZ=UTC pm2 start .*--name ipodhan-web ' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
+START_LINE9="$(grep -n '^==> \[dry-run\] TZ=UTC pm2 start .*--name ipodhan-web ' /tmp/deploy-test-1.log | head -1 | cut -d: -f1)"
 if [ -n "$DELETE_LINE9" ] && [ -n "$START_LINE9" ] && [ "$DELETE_LINE9" -lt "$START_LINE9" ]; then
   pass "case 9: restart_pm2 dry-run emits 'pm2 delete ipodhan-web' before 'pm2 start ... --name ipodhan-web'"
 else
@@ -384,22 +384,27 @@ else
   pass "case 9: dry-run log does NOT contain 'pm2 reload' anywhere"
 fi
 
-# --- Case 9e: W-126 — every pm2 start dry-run line (web AND scraper) must -
-# --- strip RUNNER_TRACKING_ID before the process is started, so the GitHub
-# --- self-hosted runner's post-job "Cleaning up orphan processes" step
-# --- cannot SIGKILL the freshly-started pm2 process (it kills anything
-# --- carrying its own RUNNER_TRACKING_ID). Fixture-driven: greps the same
-# --- dry-run log used by case 9/10 above for the literal command shape.
-SCRAPER_START_LINE9E="$(grep -n '^==> \[dry-run\] .*pm2 start .*--name ipodhan-scraper ' /tmp/deploy-test-1.log | head -1)"
-if printf '%s' "$SCRAPER_START_LINE9E" | grep -q 'env -u RUNNER_TRACKING_ID TZ=UTC pm2 start'; then
-  pass "case 9e: scraper dry-run pm2 start line strips RUNNER_TRACKING_ID (env -u RUNNER_TRACKING_ID)"
+# --- Case 9e: W-126 review round 1 — SOURCE-level assertion. A dry-run-log-
+# --- string check (the round-1 version of this case) is mutation-blind: it
+# --- proves nothing about the REAL pm2 invocations, and a per-site `env -u`
+# --- prefix that a future edit silently drops from one call site (or a new
+# --- pm2 call added without one) would still pass every existing dry-run
+# --- assertion. The actual fix is a SINGLE `unset RUNNER_TRACKING_ID` before
+# --- the first pm2 command in the script, covering every pm2 call (present
+# --- and future) — so assert that shape directly against the script source:
+# --- (i) a line matching '^\s*unset RUNNER_TRACKING_ID' exists, and
+# --- (ii) its line number is smaller than the line number of the FIRST
+# --- non-comment line invoking pm2 stop/delete/start/describe/jlist/list/save.
+# Strip comment lines FIRST, then number the stripped stream — so both line
+# numbers below are computed against the same consistently-numbered stream
+# and the "before/after" comparison is apples-to-apples.
+STRIPPED9E="$(grep -vE '^[[:space:]]*#' "$DEPLOY_SCRIPT")"
+UNSET_LINE9E="$(printf '%s\n' "$STRIPPED9E" | grep -n '^[[:space:]]*unset RUNNER_TRACKING_ID' | head -1 | cut -d: -f1)"
+FIRST_PM2_LINE9E="$(printf '%s\n' "$STRIPPED9E" | grep -n -E '\bpm2 (stop|delete|start|describe|jlist|list|save)\b' | head -1 | cut -d: -f1)"
+if [ -n "$UNSET_LINE9E" ] && [ -n "$FIRST_PM2_LINE9E" ] && [ "$UNSET_LINE9E" -lt "$FIRST_PM2_LINE9E" ]; then
+  pass "case 9e: 'unset RUNNER_TRACKING_ID' appears before the first pm2 stop/delete/start/describe/jlist/list/save call (unset_line=$UNSET_LINE9E, first_pm2_line=$FIRST_PM2_LINE9E)"
 else
-  fail "case 9e: scraper dry-run pm2 start line missing 'env -u RUNNER_TRACKING_ID' ($SCRAPER_START_LINE9E)"
-fi
-if printf '%s' "$WEB_START_CMD9" | grep -q 'env -u RUNNER_TRACKING_ID TZ=UTC pm2 start'; then
-  pass "case 9e: web dry-run pm2 start line strips RUNNER_TRACKING_ID (env -u RUNNER_TRACKING_ID)"
-else
-  fail "case 9e: web dry-run pm2 start line missing 'env -u RUNNER_TRACKING_ID' ($WEB_START_CMD9)"
+  fail "case 9e: expected 'unset RUNNER_TRACKING_ID' before the first pm2 stop/delete/start/describe/jlist/list/save call (unset_line=$UNSET_LINE9E, first_pm2_line=$FIRST_PM2_LINE9E)"
 fi
 
 # --- Case 10: T-262F — the AUTO-ROLLBACK path (case 8's SHA-mismatch run) --
@@ -412,7 +417,7 @@ fi
 # the NEW/mismatched release) runs first, then AUTO-ROLLBACK's own delete+
 # start (against PREVIOUS_RELEASE) — take the SECOND occurrence of each.
 DELETE_LINE10="$(grep -n '^==> \[dry-run\] pm2 delete ipodhan-web$' /tmp/deploy-test-8-2.log | sed -n '2p' | cut -d: -f1)"
-START_LINE10="$(grep -n '^==> \[dry-run\] env -u RUNNER_TRACKING_ID TZ=UTC pm2 start .*--name ipodhan-web ' /tmp/deploy-test-8-2.log | sed -n '2p' | cut -d: -f1)"
+START_LINE10="$(grep -n '^==> \[dry-run\] TZ=UTC pm2 start .*--name ipodhan-web ' /tmp/deploy-test-8-2.log | sed -n '2p' | cut -d: -f1)"
 if [ -n "$DELETE_LINE10" ] && [ -n "$START_LINE10" ] && [ "$DELETE_LINE10" -lt "$START_LINE10" ]; then
   pass "case 10: rollback dry-run emits 'pm2 delete ipodhan-web' before 'pm2 start ... --name ipodhan-web'"
 else
