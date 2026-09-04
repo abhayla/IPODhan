@@ -317,6 +317,35 @@ detect_orphaned_release_servers() {
   done
 }
 
+# W-136 review MINOR-1: after a group TERM/KILL, verify EVERY member of the
+# process group is gone, not just the leader pid — a child that traps TERM
+# (or forks between TERM and the KILL escalation) can outlive $opid while a
+# leader-only `kill -0 "$opid"` already reports the group dead. Returns the
+# space-separated list of surviving pids (empty = clean). $1=pgid (may be
+# empty/non-numeric for a non-leader single-pid kill), $2=opid fallback.
+group_survivors() {
+  local pgid="$1" opid="$2" out="" pid pgid_of
+  case "$pgid" in
+    ''|*[!0-9]*|0)
+      kill -0 "$opid" 2>/dev/null && out="$opid"
+      printf '%s' "$out"
+      return 0
+      ;;
+  esac
+  if command -v pgrep >/dev/null 2>&1; then
+    out="$(pgrep -g "$pgid" 2>/dev/null | tr '\n' ' ')"
+  elif [ -d /proc ]; then
+    for pid in /proc/[0-9]*; do
+      pid="$(basename "$pid")"
+      pgid_of="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ' || true)"
+      [ "$pgid_of" = "$pgid" ] && out="$out $pid"
+    done
+  else
+    kill -0 "$opid" 2>/dev/null && out="$opid"
+  fi
+  printf '%s' "$(printf '%s' "$out" | sed -E 's/^ +| +$//g; s/ +/ /g')"
+}
+
 # --- 1. prune releases beyond retention, both slots -------------------------
 prune_slot() {
   local slot="$1" keep="$2" releases_dir current_link cur_raw cur total
@@ -498,15 +527,21 @@ fi
 
 # --- 6. orphaned release servers (W-136, Linux only) -------------------------
 ORPHAN_COUNT=0
+ORPHAN_SKIP_REASON=""
 if [ -n "${HYGIENE_SKIP_ORPHANS:-}" ]; then
+  ORPHAN_SKIP_REASON="HYGIENE_SKIP_ORPHANS set"
   log "HYGIENE_SKIP_ORPHANS set — skipping orphaned release-server sweep"
+  report "orphan sweep skipped: HYGIENE_SKIP_ORPHANS set"
 elif [ ! -d /proc ]; then
+  ORPHAN_SKIP_REASON="no /proc on this host"
   log "no /proc on this host — skipping orphaned release-server sweep"
+  report "orphan sweep skipped: no /proc on this host"
 elif deploy_in_progress; then
   # MAJOR-2 (round 2): the deploy-in-progress guard previously covered only
   # prune_slot — during `pm2 delete` -> `pm2 start` in a live deploy a
   # transitional server could false-match the orphan sweep. Reuse the same
   # guard the release prune uses so the sweep never runs mid-deploy either.
+  ORPHAN_SKIP_REASON="deploy in progress"
   log "deploy in progress (matched '$DEPLOY_PGREP_PATTERN') — orphaned release-server sweep skipped this run"
   report "orphan sweep skipped: deploy in progress"
 else
@@ -568,28 +603,31 @@ else
         else
           kill -TERM "$opid" 2>/dev/null || true
         fi
-        KILLED=0
+        GROUP_ARG=""
+        [ "$IS_LEADER" -eq 1 ] && GROUP_ARG="$OPGID"
+        SURVIVORS=""
         WAITED=0
         while [ "$WAITED" -lt 5 ]; do
-          kill -0 "$opid" 2>/dev/null || { KILLED=1; break; }
+          SURVIVORS="$(group_survivors "$GROUP_ARG" "$opid")"
+          [ -n "$SURVIVORS" ] || break
           sleep 1
           WAITED=$((WAITED + 1))
         done
-        if [ "$KILLED" -eq 0 ]; then
+        if [ -n "$SURVIVORS" ]; then
           if [ "$IS_LEADER" -eq 1 ]; then
             kill -KILL -- -"$OPGID" 2>/dev/null || true
           else
             kill -KILL "$opid" 2>/dev/null || true
           fi
           sleep 1
-          kill -0 "$opid" 2>/dev/null || KILLED=1
+          SURVIVORS="$(group_survivors "$GROUP_ARG" "$opid")"
         fi
-        if [ "$KILLED" -eq 1 ]; then
+        if [ -z "$SURVIVORS" ]; then
           log "orphaned release server killed: pid=$opid cwd=$ocwd age=${OAGE:-unknown}"
           report "orphaned release server killed: pid=$opid cwd=$ocwd age=${OAGE:-unknown}"
         else
-          log "WARN: orphaned release server SURVIVED cleanup: pid=$opid cwd=$ocwd"
-          report "orphaned release server SURVIVED pid $opid cwd=$ocwd"
+          log "WARN: orphaned release server SURVIVED cleanup: pid(s)=$SURVIVORS cwd=$ocwd"
+          report "orphaned release server SURVIVED pid(s) $SURVIVORS cwd=$ocwd"
         fi
       fi
     fi
@@ -643,7 +681,7 @@ REPORT_TITLE="disk hygiene: ${USED_PCT} used, ${FREE_GB}GB free, ${FREED_MB}MB f
 REPORT_BODY="disk used: ${USED_PCT} (free ${FREE_GB}GB)
 prod releases kept: ${PROD_COUNT} (keep=${KEEP_PROD})
 staging releases kept: ${STAGING_COUNT} (keep=${KEEP_STAGING})
-orphaned release servers found: ${ORPHAN_COUNT}
+orphaned release servers: ${ORPHAN_SKIP_REASON:+skipped (${ORPHAN_SKIP_REASON})}${ORPHAN_SKIP_REASON:-found: ${ORPHAN_COUNT}}
 freed this run: ${FREED_MB}MB
 largest dirs under /root:
 ${LARGEST_ROOT}

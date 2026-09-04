@@ -773,10 +773,18 @@ probe_release() {
   # PORT (read from WEB_ENV_FILE, default 3000 — same fallback
   # verify_public_health() uses) — otherwise the "already in use" check
   # below would just be detecting/racing the live pm2-managed web app.
-  local web_port; web_port="$(grep -E '^PORT=' "$WEB_ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
-  if [ "$PROBE_PORT" = "${web_port:-3000}" ]; then
-    echo "FATAL: PROBE_PORT ($PROBE_PORT) is the same as the web app's own PORT (${web_port:-3000}) — refusing to start the pre-flip probe on the live app's port. Set DEPLOY_PROBE_PORT to a distinct value." >&2
-    return 1
+  local web_port_raw; web_port_raw="$(grep -E '^PORT=' "$WEB_ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+  if [ -z "$web_port_raw" ]; then
+    log "PROBE_PORT-vs-web-PORT guard skipped: no PORT= found in $WEB_ENV_FILE (fail-open)"
+  else
+    # W-136 review MINOR-4: strip surrounding single/double quotes
+    # (PORT="3000" / PORT='3000') before comparing — an unstripped quote made
+    # ["3000"] != [3000] so the guard silently never fired.
+    local web_port; web_port="$(printf '%s' "$web_port_raw" | sed -E 's/^["'"'"']|["'"'"']$//g')"
+    if [ "$PROBE_PORT" = "${web_port:-3000}" ]; then
+      echo "FATAL: PROBE_PORT ($PROBE_PORT) is the same as the web app's own PORT (${web_port:-3000}) — refusing to start the pre-flip probe on the live app's port. Set DEPLOY_PROBE_PORT to a distinct value." >&2
+      return 1
+    fi
   fi
 
   # W-136: refuse to start the probe if something is already holding the

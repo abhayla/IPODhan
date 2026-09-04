@@ -18,6 +18,26 @@ FAILED=0
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAILED=1; }
 
+# W-136 review MINOR-5: every helper process spawned by a case (setsid
+# leaders and plain background helpers alike) is recorded here so a single
+# EXIT trap can reap them all if the harness aborts early (a fail() with an
+# unexpected downstream `exit`, Ctrl-C, a timeout) — without this, an early
+# abort mid-file leaves e.g. case x's `trap '' TERM` helper running forever,
+# since its own cleanup_case_x() never gets a chance to run.
+declare -a HELPER_PIDS=()
+cleanup_all() {
+  local pid
+  for pid in "${HELPER_PIDS[@]:-}"; do
+    [ -n "$pid" ] || continue
+    # Try a process-group kill first (correct for a setsid leader, where
+    # pgid == pid); harmless no-op if the pid was never a group leader.
+    # Fall back to a plain pid kill either way, in case group-kill failed.
+    kill -KILL -- -"$pid" >/dev/null 2>&1 || true
+    kill -KILL "$pid" >/dev/null 2>&1 || true
+  done
+}
+trap 'cleanup_all' EXIT
+
 # MAJOR-1 (round 3): the /tmp sweep and the journal/npm/pip/apt/Notifier
 # steps are now gated by TWO SEPARATE flags. Export sane defaults for the
 # WHOLE file so every case skips BOTH unless it deliberately re-enables one
@@ -271,6 +291,23 @@ if grep -q "HYGIENE_SKIP_SYSTEM set" /tmp/hygiene-test-a.log; then
   pass "case g: HYGIENE_SKIP_SYSTEM=1 visibly skipped the system-level steps"
 else
   fail "case g: expected an HYGIENE_SKIP_SYSTEM skip message in the log"
+fi
+
+# W-136 review MINOR-2: when the orphan sweep is skipped (HYGIENE_SKIP_ORPHANS=1,
+# exported file-wide, is in effect for case a's run reused here), the final
+# report must say so explicitly ("skipped (...)") instead of the misleading
+# "found: 0" — a reader must not conclude the sweep ran and found nothing
+# clean when it never ran at all.
+if grep -q "HYGIENE_SKIP_ORPHANS set" /tmp/hygiene-test-a.log; then
+  pass "case g: HYGIENE_SKIP_ORPHANS=1 logged its own skip reason"
+else
+  fail "case g: expected an HYGIENE_SKIP_ORPHANS skip message in the log"
+fi
+if grep -q "orphaned release servers: skipped (HYGIENE_SKIP_ORPHANS set)" /tmp/hygiene-test-a.log; then
+  pass "case g: final report says orphan sweep was SKIPPED, not 'found: 0'"
+else
+  fail "case g: expected the final report to say 'orphaned release servers: skipped (...)', not 'found: 0'"
+  cat /tmp/hygiene-test-a.log
 fi
 
 # --- Case h: C1 — --report performs NO deletions and no Notifier POST -------
@@ -666,8 +703,10 @@ if [ -d /proc ]; then
 
   ( cd "$DELETED_DIR_S" && exec -a "next-server (v18.2.0)" sleep 30 ) 2>/dev/null &
   HELPER_PID_S=$!
+  HELPER_PIDS+=("$HELPER_PID_S")
   ( cd "$NORMAL_DIR_S" && exec -a "next-server (normal, cwd survives)" sleep 30 ) 2>/dev/null &
   NORMAL_PID_S=$!
+  HELPER_PIDS+=("$NORMAL_PID_S")
   sleep 0.3
 
   if ! kill -0 "$HELPER_PID_S" 2>/dev/null || ! kill -0 "$NORMAL_PID_S" 2>/dev/null; then
@@ -722,6 +761,7 @@ if [ -d /proc ] && command -v setsid >/dev/null 2>&1; then
   }
   DELETED_DIR_T="$DELETED_DIR_T" setsid bash -c 'cd "$DELETED_DIR_T" && exec -a "next-server (v18.2.0)" sleep 60' &
   HELPER_PID_T=$!
+  HELPER_PIDS+=("$HELPER_PID_T")
   sleep 0.3
   if ! kill -0 "$HELPER_PID_T" 2>/dev/null; then
     fail "case t: helper did not start (setsid unsupported on this host?) — cannot exercise the group-kill path"
@@ -744,7 +784,7 @@ if [ -d /proc ] && command -v setsid >/dev/null 2>&1; then
   fi
   cleanup_case_t
 else
-  pass "case t: skipped — no /proc or no setsid on this host (Windows dev box)"
+  echo "SKIP: case t — no /proc or no setsid on this host (Windows dev box)"
 fi
 
 # --- Case u: W-136 round 2 (MAJOR-1/MINOR-b) — a helper spawned WITHOUT ---
@@ -768,8 +808,10 @@ if [ -d /proc ]; then
   }
   ( cd "$NORMAL_DIR_U" && exec -a "decoy-sibling-process" sleep 30 ) &
   DECOY_PID_U=$!
+  HELPER_PIDS+=("$DECOY_PID_U")
   ( cd "$DELETED_DIR_U" && exec -a "next-server (v18.2.0)" sleep 30 ) &
   HELPER_PID_U=$!
+  HELPER_PIDS+=("$HELPER_PID_U")
   sleep 0.3
   if ! kill -0 "$HELPER_PID_U" 2>/dev/null || ! kill -0 "$DECOY_PID_U" 2>/dev/null; then
     fail "case u: a helper did not start — cannot exercise the pid-only-kill path"
@@ -797,7 +839,7 @@ if [ -d /proc ]; then
     fi
   fi
 else
-  pass "case u: skipped — no /proc on this host (Windows dev box)"
+  echo "SKIP: case u — no /proc on this host (Windows dev box)"
 fi
 
 # --- Case v: W-136 round 2 (MAJOR-1) — a candidate whose process-GROUP ----
@@ -829,6 +871,7 @@ if [ -d /proc ] && command -v setsid >/dev/null 2>&1; then
   # itself, which then runs a -c string that forks the (real) orphan child.
   setsid bash -c 'exec -a "PM2 v7: God Daemon" bash -c "( cd \"\$0\" && exec -a \"next-server (v18.2.0)\" sleep 60 ) & echo \$! > \"\$1\"; wait" "$0" "$1"' "$DELETED_DIR_V" "$CHILDPIDFILE_V" &
   LEADER_PID_V=$!
+  HELPER_PIDS+=("$LEADER_PID_V")
   sleep 0.5
   CHILD_PID_V="$(cat "$CHILDPIDFILE_V" 2>/dev/null || true)"
   if [ -z "$CHILD_PID_V" ] || ! kill -0 "$CHILD_PID_V" 2>/dev/null; then
@@ -865,7 +908,7 @@ if [ -d /proc ] && command -v setsid >/dev/null 2>&1; then
   fi
   cleanup_case_v
 else
-  pass "case v: skipped — no /proc or no setsid on this host (Windows dev box)"
+  echo "SKIP: case v — no /proc or no setsid on this host (Windows dev box)"
 fi
 
 # --- Case w: W-136 round 2 (MAJOR-2) — the orphan sweep is skipped ---------
@@ -884,6 +927,7 @@ if [ -d /proc ] && command -v setsid >/dev/null 2>&1; then
   }
   DELETED_DIR_W="$DELETED_DIR_W" setsid bash -c 'cd "$DELETED_DIR_W" && exec -a "next-server (v18.2.0)" sleep 30' &
   HELPER_PID_W=$!
+  HELPER_PIDS+=("$HELPER_PID_W")
   sleep 0.3
   if ! kill -0 "$HELPER_PID_W" 2>/dev/null; then
     fail "case w: helper did not start — cannot exercise the deploy-in-progress skip"
@@ -906,7 +950,7 @@ if [ -d /proc ] && command -v setsid >/dev/null 2>&1; then
   fi
   cleanup_case_w
 else
-  pass "case w: skipped — no /proc or no setsid on this host (Windows dev box)"
+  echo "SKIP: case w — no /proc or no setsid on this host (Windows dev box)"
 fi
 
 # --- Case x: W-136 round 2 (MAJOR-3) — a helper that IGNORES SIGTERM ------
@@ -933,6 +977,7 @@ EOS
   }
   DELETED_DIR_X="$DELETED_DIR_X" TRAP_SCRIPT_X="$TRAP_SCRIPT_X" setsid bash -c 'cd "$DELETED_DIR_X" && exec "$TRAP_SCRIPT_X"' &
   HELPER_PID_X=$!
+  HELPER_PIDS+=("$HELPER_PID_X")
   sleep 0.3
   if ! kill -0 "$HELPER_PID_X" 2>/dev/null; then
     fail "case x: TERM-trapping helper did not start — cannot exercise the KILL-escalation path"
@@ -955,7 +1000,67 @@ EOS
   fi
   cleanup_case_x
 else
-  pass "case x: skipped — no /proc or no setsid on this host (Windows dev box)"
+  echo "SKIP: case x — no /proc or no setsid on this host (Windows dev box)"
+fi
+
+# --- Case y: W-136 review MINOR-1 — group-wide kill verify. A setsid ------
+# --- leader (the matched next-server orphan) with a CHILD that traps TERM -
+# --- and ignores it: a leader-only `kill -0 $opid` check would report the --
+# --- group dead once the leader alone exits, while the TERM-ignoring child
+# --- lives on. After the sweep BOTH must be dead, and "killed" must only --
+# --- be logged once the whole group (not just the leader) is verified gone.
+if [ -d /proc ] && command -v setsid >/dev/null 2>&1; then
+  ROOTY="$(fresh_root)"
+  assert_safe_root "$ROOTY"
+  mkdir -p "$ROOTY/releases"
+  DELETED_DIR_Y="$(make_release "$ROOTY/releases" 20260828-000000 fffffe7)"
+  CHILDPIDFILE_Y="$(mktemp -u)"
+  LEADER_SCRIPT_Y="$(mktemp)"
+  cat > "$LEADER_SCRIPT_Y" <<'EOS'
+#!/usr/bin/env bash
+cd "$1"
+bash -c 'trap "" TERM; while true; do sleep 1; done' &
+echo $! > "$2"
+exec -a "next-server (v18.2.0)" sleep 60
+EOS
+  chmod +x "$LEADER_SCRIPT_Y"
+  LEADER_PID_Y=""
+  cleanup_case_y() {
+    [ -n "$CHILD_PID_Y" ] && kill -KILL "$CHILD_PID_Y" >/dev/null 2>&1 || true
+    [ -n "$LEADER_PID_Y" ] && kill -KILL -- -"$LEADER_PID_Y" >/dev/null 2>&1 || true
+    [ -n "$LEADER_PID_Y" ] && kill -KILL "$LEADER_PID_Y" >/dev/null 2>&1 || true
+    wait "$LEADER_PID_Y" 2>/dev/null || true
+    rm -f "$LEADER_SCRIPT_Y" "$CHILDPIDFILE_Y"
+  }
+  DELETED_DIR_Y="$DELETED_DIR_Y" CHILDPIDFILE_Y="$CHILDPIDFILE_Y" setsid "$LEADER_SCRIPT_Y" "$DELETED_DIR_Y" "$CHILDPIDFILE_Y" &
+  LEADER_PID_Y=$!
+  HELPER_PIDS+=("$LEADER_PID_Y")
+  sleep 0.4
+  CHILD_PID_Y="$(cat "$CHILDPIDFILE_Y" 2>/dev/null || true)"
+  HELPER_PIDS+=("$CHILD_PID_Y")
+  if [ -z "$CHILD_PID_Y" ] || ! kill -0 "$LEADER_PID_Y" 2>/dev/null || ! kill -0 "$CHILD_PID_Y" 2>/dev/null; then
+    fail "case y: leader/TERM-trapping-child setup did not start — cannot exercise the group-wide verify"
+  else
+    rm -rf -- "$DELETED_DIR_Y"
+    HYGIENE_ROOT="$ROOTY" HYGIENE_SKIP_ORPHANS= HYGIENE_ORPHAN_ROOTS="$ROOTY/releases" HYGIENE_DEPLOY_CHECK_CMD="false" \
+      bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-y.log 2>&1
+    sleep 0.5
+    if kill -0 "$LEADER_PID_Y" 2>/dev/null || kill -0 "$CHILD_PID_Y" 2>/dev/null; then
+      fail "case y: leader and/or TERM-trapping child SURVIVED — expected the whole group verified/reaped"
+      cat /tmp/hygiene-test-y.log
+    else
+      pass "case y: group-wide verify killed both the leader and the TERM-trapping child"
+    fi
+    if grep -q "orphaned release server killed" /tmp/hygiene-test-y.log && ! grep -q "SURVIVED" /tmp/hygiene-test-y.log; then
+      pass "case y: the report recorded 'killed' only once the whole group was verified gone"
+    else
+      fail "case y: expected 'killed' with no SURVIVED line once the group was actually clean"
+      cat /tmp/hygiene-test-y.log
+    fi
+  fi
+  cleanup_case_y
+else
+  echo "SKIP: case y — no /proc or no setsid on this host (Windows dev box)"
 fi
 
 if [ "$FAILED" -ne 0 ]; then

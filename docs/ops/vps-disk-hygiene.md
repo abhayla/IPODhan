@@ -47,6 +47,16 @@ is the missing weekly sweep.
    children; this sweep only reaps true orphans (release-server processes
    whose deploy-time parent is long gone), never a process pm2 is still
    managing.
+
+   **A pm2-managed process pinned to a DELETED release dir is never
+   reaped by this sweep** — only WARNed about weekly (it left it to pm2
+   by design, above). If `pm2 describe <app>` shows a `cwd` under a
+   release dir that `prune_slot()` already removed, that instance is
+   still serving out of a directory disk hygiene has deleted; the fix is
+   an operator action, not something the sweep will do for you: run
+   `pm2 restart <app>` (reloads pm2's cwd to the current `releases`/
+   `releases-staging` symlink target) or push a fresh deploy. Don't wait
+   for the next weekly cron to "fix" it — it won't.
 7. Prints a report (disk used %, free GB, prod/staging release counts,
    orphaned servers found, MB freed, largest 5 dirs under `/root` and
    `/var/www`) and POSTs it to the Notifier gateway.
