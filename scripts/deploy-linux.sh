@@ -769,10 +769,31 @@ probe_release() {
   fi
   log "Health-probing the NEW release on 127.0.0.1:$PROBE_PORT (before the flip)"
 
+  # MINOR(c) round 2: PROBE_PORT must differ from the web app's own live
+  # PORT (read from WEB_ENV_FILE, default 3000 — same fallback
+  # verify_public_health() uses) — otherwise the "already in use" check
+  # below would just be detecting/racing the live pm2-managed web app.
+  local web_port; web_port="$(grep -E '^PORT=' "$WEB_ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+  if [ "$PROBE_PORT" = "${web_port:-3000}" ]; then
+    echo "FATAL: PROBE_PORT ($PROBE_PORT) is the same as the web app's own PORT (${web_port:-3000}) — refusing to start the pre-flip probe on the live app's port. Set DEPLOY_PROBE_PORT to a distinct value." >&2
+    return 1
+  fi
+
   # W-136: refuse to start the probe if something is already holding the
   # port — a stale orphan from an earlier aborted deploy must be surfaced
   # (with its pid) rather than silently reused/raced.
-  if command -v fuser >/dev/null 2>&1; then
+  # MINOR(a) round 2: `fuser -n tcp` also matches OUTBOUND connections to a
+  # remote :$PROBE_PORT, not just LISTENING sockets — a box with an
+  # unrelated outbound connection to some remote :3999 would false-fatal
+  # here. `ss -ltnp` reports LISTENING sockets only; prefer it, fall back
+  # to fuser (kill tool, not a listener check) only when ss is unavailable.
+  if command -v ss >/dev/null 2>&1; then
+    local holder_line; holder_line="$(ss -ltnp "( sport = :$PROBE_PORT )" 2>/dev/null | grep LISTEN || true)"
+    if [ -n "$holder_line" ]; then
+      echo "FATAL: PROBE_PORT $PROBE_PORT is already in use (listener: $holder_line) — refusing to start the pre-flip probe. This is likely a stale orphan from an earlier aborted deploy; investigate and kill it manually before retrying." >&2
+      return 1
+    fi
+  elif command -v fuser >/dev/null 2>&1; then
     local holder_pid; holder_pid="$(fuser -n tcp "$PROBE_PORT" 2>/dev/null | tr -d ' ')"
     if [ -n "$holder_pid" ]; then
       echo "FATAL: PROBE_PORT $PROBE_PORT is already in use (held by pid $holder_pid) — refusing to start the pre-flip probe. This is likely a stale orphan from an earlier aborted deploy; investigate and kill it manually before retrying." >&2

@@ -705,6 +705,251 @@ else
   pass "case s: skipped — no /proc on this host, so detect_orphaned_release_servers() is a no-op by design (Windows dev box)"
 fi
 
+# --- Case t: W-136 round 2 (MAJOR-3) — a TRUE group leader (setsid'd, ------
+# --- pgid == pid — the real pre-flip-probe shape) orphan is killed via ----
+# --- TERM escalating to KILL, and reported "killed" only once verified. --
+# --- Only meaningful with /proc + setsid (Linux) — Windows/MSYS reports --
+# --- a skip, mirroring case r/s.
+if [ -d /proc ] && command -v setsid >/dev/null 2>&1; then
+  ROOTT="$(fresh_root)"
+  assert_safe_root "$ROOTT"
+  mkdir -p "$ROOTT/releases"
+  DELETED_DIR_T="$(make_release "$ROOTT/releases" 20260823-000000 ffffffc)"
+  HELPER_PID_T=""
+  cleanup_case_t() {
+    [ -n "$HELPER_PID_T" ] && kill -KILL "$HELPER_PID_T" >/dev/null 2>&1 || true
+    wait "$HELPER_PID_T" 2>/dev/null || true
+  }
+  DELETED_DIR_T="$DELETED_DIR_T" setsid bash -c 'cd "$DELETED_DIR_T" && exec -a "next-server (v18.2.0)" sleep 60' &
+  HELPER_PID_T=$!
+  sleep 0.3
+  if ! kill -0 "$HELPER_PID_T" 2>/dev/null; then
+    fail "case t: helper did not start (setsid unsupported on this host?) — cannot exercise the group-kill path"
+  else
+    rm -rf -- "$DELETED_DIR_T"
+    HYGIENE_ROOT="$ROOTT" HYGIENE_SKIP_ORPHANS= HYGIENE_ORPHAN_ROOTS="$ROOTT/releases" HYGIENE_DEPLOY_CHECK_CMD="false" \
+      bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-t.log 2>&1
+    sleep 0.5
+    if kill -0 "$HELPER_PID_T" 2>/dev/null; then
+      fail "case t: group-leader orphan (pgid==pid) survived the sweep — expected a group TERM/KILL"
+      cat /tmp/hygiene-test-t.log
+    else
+      pass "case t: group-leader orphan (pgid==pid, the setsid'd-probe shape) was killed via the whole group"
+    fi
+    if grep -q "orphaned release server killed" /tmp/hygiene-test-t.log; then
+      pass "case t: the report/log recorded 'killed' (post-verification)"
+    else
+      fail "case t: expected the report/log to record the kill"
+    fi
+  fi
+  cleanup_case_t
+else
+  pass "case t: skipped — no /proc or no setsid on this host (Windows dev box)"
+fi
+
+# --- Case u: W-136 round 2 (MAJOR-1/MINOR-b) — a helper spawned WITHOUT ---
+# --- setsid shares THIS shell's process group with a decoy sibling. -------
+# --- Only the orphan (matched by pid) may be killed; the decoy sharing ----
+# --- the group must survive — proves the sweep never issues a group-kill --
+# --- for a non-leader (which would take the group, not just the orphan). -
+if [ -d /proc ]; then
+  ROOTU="$(fresh_root)"
+  assert_safe_root "$ROOTU"
+  mkdir -p "$ROOTU/releases"
+  DELETED_DIR_U="$(make_release "$ROOTU/releases" 20260824-000000 ffffffb)"
+  NORMAL_DIR_U="$(mktemp -d)"
+  HELPER_PID_U=""
+  DECOY_PID_U=""
+  cleanup_case_u() {
+    [ -n "$HELPER_PID_U" ] && kill -KILL "$HELPER_PID_U" >/dev/null 2>&1 || true
+    [ -n "$DECOY_PID_U" ] && kill -KILL "$DECOY_PID_U" >/dev/null 2>&1 || true
+    wait "$HELPER_PID_U" "$DECOY_PID_U" 2>/dev/null || true
+    rm -rf -- "$NORMAL_DIR_U" 2>/dev/null || true
+  }
+  ( cd "$NORMAL_DIR_U" && exec -a "decoy-sibling-process" sleep 30 ) &
+  DECOY_PID_U=$!
+  ( cd "$DELETED_DIR_U" && exec -a "next-server (v18.2.0)" sleep 30 ) &
+  HELPER_PID_U=$!
+  sleep 0.3
+  if ! kill -0 "$HELPER_PID_U" 2>/dev/null || ! kill -0 "$DECOY_PID_U" 2>/dev/null; then
+    fail "case u: a helper did not start — cannot exercise the pid-only-kill path"
+  else
+    HPGID_U="$(ps -o pgid= -p "$HELPER_PID_U" 2>/dev/null | tr -d ' ')"
+    if [ "$HPGID_U" = "$HELPER_PID_U" ]; then
+      fail "case u: setup error — helper unexpectedly became its own group leader; this case needs it to share the shell's group"
+      cleanup_case_u
+    else
+      rm -rf -- "$DELETED_DIR_U"
+      HYGIENE_ROOT="$ROOTU" HYGIENE_SKIP_ORPHANS= HYGIENE_ORPHAN_ROOTS="$ROOTU/releases" HYGIENE_DEPLOY_CHECK_CMD="false" \
+        bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-u.log 2>&1
+      sleep 0.5
+      if kill -0 "$HELPER_PID_U" 2>/dev/null; then
+        fail "case u: non-leader orphan survived the sweep — expected a pid-only TERM/KILL"
+      else
+        pass "case u: non-leader orphan (pgid!=pid) was killed by PID only"
+      fi
+      if kill -0 "$DECOY_PID_U" 2>/dev/null; then
+        pass "case u: sibling process sharing the group was NOT touched — no wrongful group-kill"
+      else
+        fail "case u: sibling process sharing the group was killed — a group-kill was wrongly issued for a non-leader"
+      fi
+      cleanup_case_u
+    fi
+  fi
+else
+  pass "case u: skipped — no /proc on this host (Windows dev box)"
+fi
+
+# --- Case v: W-136 round 2 (MAJOR-1) — a candidate whose process-GROUP ----
+# --- LEADER's cmdline matches pm2 (simulated: setsid'd process renamed ----
+# --- "PM2 v7: God Daemon" that forks an orphan-shaped "next-server" -------
+# --- child sharing its group) must be LEFT ALONE, never signalled — pm2 ---
+# --- owns its children; the sweep only reaps true orphans.
+if [ -d /proc ] && command -v setsid >/dev/null 2>&1; then
+  ROOTV="$(fresh_root)"
+  assert_safe_root "$ROOTV"
+  mkdir -p "$ROOTV/releases"
+  DELETED_DIR_V="$(make_release "$ROOTV/releases" 20260825-000000 ffffffa)"
+  LEADER_SCRIPT_V="$(mktemp)"
+  CHILDPIDFILE_V="$(mktemp)"
+  cat > "$LEADER_SCRIPT_V" <<'EOS'
+#!/usr/bin/env bash
+if [ -z "${RENAMED:-}" ]; then
+  export RENAMED=1
+  exec -a "PM2 v7: God Daemon" "$0" "$@"
+fi
+( cd "$1" && exec -a "next-server (v18.2.0)" sleep 60 ) &
+echo "$!" > "$2"
+wait
+EOS
+  chmod +x "$LEADER_SCRIPT_V"
+  LEADER_PID_V=""
+  CHILD_PID_V=""
+  cleanup_case_v() {
+    [ -n "$CHILD_PID_V" ] && kill -KILL "$CHILD_PID_V" >/dev/null 2>&1 || true
+    [ -n "$LEADER_PID_V" ] && kill -KILL -- -"$LEADER_PID_V" >/dev/null 2>&1 || true
+    [ -n "$LEADER_PID_V" ] && kill -KILL "$LEADER_PID_V" >/dev/null 2>&1 || true
+    wait "$LEADER_PID_V" 2>/dev/null || true
+    rm -f "$LEADER_SCRIPT_V" "$CHILDPIDFILE_V"
+  }
+  setsid bash "$LEADER_SCRIPT_V" "$DELETED_DIR_V" "$CHILDPIDFILE_V" &
+  LEADER_PID_V=$!
+  sleep 0.5
+  CHILD_PID_V="$(cat "$CHILDPIDFILE_V" 2>/dev/null || true)"
+  if [ -z "$CHILD_PID_V" ] || ! kill -0 "$CHILD_PID_V" 2>/dev/null; then
+    fail "case v: pm2-leader/child setup did not start — cannot exercise the pm2-guard path"
+  else
+    rm -rf -- "$DELETED_DIR_V"
+    HYGIENE_ROOT="$ROOTV" HYGIENE_SKIP_ORPHANS= HYGIENE_ORPHAN_ROOTS="$ROOTV/releases" HYGIENE_DEPLOY_CHECK_CMD="false" \
+      bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-v.log 2>&1
+    sleep 0.5
+    if kill -0 "$CHILD_PID_V" 2>/dev/null; then
+      pass "case v: pm2-managed orphan-shaped process was LEFT ALONE (not killed)"
+    else
+      fail "case v: pm2-managed process was killed — the sweep must never signal a pm2-owned group"
+    fi
+    if grep -qi "left to pm2" /tmp/hygiene-test-v.log; then
+      pass "case v: a loud WARN naming pm2 was logged for the skipped candidate"
+    else
+      fail "case v: expected a WARN log line naming pm2 for the skipped candidate"
+      cat /tmp/hygiene-test-v.log
+    fi
+  fi
+  cleanup_case_v
+else
+  pass "case v: skipped — no /proc or no setsid on this host (Windows dev box)"
+fi
+
+# --- Case w: W-136 round 2 (MAJOR-2) — the orphan sweep is skipped ---------
+# --- entirely while a deploy is in progress (HYGIENE_DEPLOY_CHECK_CMD), ---
+# --- same guard as the release prune — nothing is killed and the skip is --
+# --- logged/reported.
+if [ -d /proc ] && command -v setsid >/dev/null 2>&1; then
+  ROOTW="$(fresh_root)"
+  assert_safe_root "$ROOTW"
+  mkdir -p "$ROOTW/releases"
+  DELETED_DIR_W="$(make_release "$ROOTW/releases" 20260826-000000 fffffe9)"
+  HELPER_PID_W=""
+  cleanup_case_w() {
+    [ -n "$HELPER_PID_W" ] && kill -KILL "$HELPER_PID_W" >/dev/null 2>&1 || true
+    wait "$HELPER_PID_W" 2>/dev/null || true
+  }
+  DELETED_DIR_W="$DELETED_DIR_W" setsid bash -c 'cd "$DELETED_DIR_W" && exec -a "next-server (v18.2.0)" sleep 30' &
+  HELPER_PID_W=$!
+  sleep 0.3
+  if ! kill -0 "$HELPER_PID_W" 2>/dev/null; then
+    fail "case w: helper did not start — cannot exercise the deploy-in-progress skip"
+  else
+    rm -rf -- "$DELETED_DIR_W"
+    HYGIENE_ROOT="$ROOTW" HYGIENE_SKIP_ORPHANS= HYGIENE_ORPHAN_ROOTS="$ROOTW/releases" HYGIENE_DEPLOY_CHECK_CMD="true" \
+      bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-w.log 2>&1
+    sleep 0.5
+    if kill -0 "$HELPER_PID_W" 2>/dev/null; then
+      pass "case w: orphan sweep skipped — nothing killed while a deploy is in progress"
+    else
+      fail "case w: orphan was killed even though HYGIENE_DEPLOY_CHECK_CMD reported a deploy in progress"
+    fi
+    if grep -qi "orphan sweep skipped" /tmp/hygiene-test-w.log; then
+      pass "case w: the skip was logged/reported with the deploy-in-progress reason"
+    else
+      fail "case w: expected a logged/reported reason for skipping the orphan sweep"
+      cat /tmp/hygiene-test-w.log
+    fi
+  fi
+  cleanup_case_w
+else
+  pass "case w: skipped — no /proc or no setsid on this host (Windows dev box)"
+fi
+
+# --- Case x: W-136 round 2 (MAJOR-3) — a helper that IGNORES SIGTERM ------
+# --- (trap '' TERM) must still end up dead via escalation to SIGKILL, and -
+# --- only be reported "killed" once that succeeded (never before/regardless
+# --- of outcome).
+if [ -d /proc ] && command -v setsid >/dev/null 2>&1; then
+  ROOTX="$(fresh_root)"
+  assert_safe_root "$ROOTX"
+  mkdir -p "$ROOTX/releases"
+  DELETED_DIR_X="$(make_release "$ROOTX/releases" 20260827-000000 fffffe8)"
+  TRAP_SCRIPT_X="$(mktemp)"
+  cat > "$TRAP_SCRIPT_X" <<'EOS'
+#!/usr/bin/env bash
+trap '' TERM
+exec -a "next-server (v18.2.0)" bash -c 'trap "" TERM; while true; do sleep 1; done'
+EOS
+  chmod +x "$TRAP_SCRIPT_X"
+  HELPER_PID_X=""
+  cleanup_case_x() {
+    [ -n "$HELPER_PID_X" ] && kill -KILL "$HELPER_PID_X" >/dev/null 2>&1 || true
+    wait "$HELPER_PID_X" 2>/dev/null || true
+    rm -f "$TRAP_SCRIPT_X"
+  }
+  DELETED_DIR_X="$DELETED_DIR_X" TRAP_SCRIPT_X="$TRAP_SCRIPT_X" setsid bash -c 'cd "$DELETED_DIR_X" && exec "$TRAP_SCRIPT_X"' &
+  HELPER_PID_X=$!
+  sleep 0.3
+  if ! kill -0 "$HELPER_PID_X" 2>/dev/null; then
+    fail "case x: TERM-trapping helper did not start — cannot exercise the KILL-escalation path"
+  else
+    rm -rf -- "$DELETED_DIR_X"
+    HYGIENE_ROOT="$ROOTX" HYGIENE_SKIP_ORPHANS= HYGIENE_ORPHAN_ROOTS="$ROOTX/releases" HYGIENE_DEPLOY_CHECK_CMD="false" \
+      bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-x.log 2>&1
+    sleep 0.5
+    if kill -0 "$HELPER_PID_X" 2>/dev/null; then
+      fail "case x: TERM-trapping orphan SURVIVED — expected escalation to KILL after the wait"
+      cat /tmp/hygiene-test-x.log
+    else
+      pass "case x: TERM-trapping orphan was reaped via escalation to SIGKILL"
+    fi
+    if grep -q "orphaned release server killed" /tmp/hygiene-test-x.log; then
+      pass "case x: the report recorded 'killed' only after the KILL escalation actually succeeded"
+    else
+      fail "case x: expected the report to record the kill after escalation"
+    fi
+  fi
+  cleanup_case_x
+else
+  pass "case x: skipped — no /proc or no setsid on this host (Windows dev box)"
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "vps-disk-hygiene.test.sh: FAILED"
   exit 1

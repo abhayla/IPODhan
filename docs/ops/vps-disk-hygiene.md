@@ -30,10 +30,23 @@ is the missing weekly sweep.
    2026-08-21 incident shape — a pre-flip probe or app server left running
    against a release dir that a later prune (or an aborted deploy) deleted
    out from under it, still bound to a port and still connected to the
-   production database. Every match is logged (pid, cwd, age) and its
-   whole process group is killed. Skipped entirely on a host with no
-   `/proc` (e.g. this repo's Windows dev box); `HYGIENE_SKIP_ORPHANS=1`
-   also disables it.
+   production database. Every match is logged (pid, cwd, age); a TRUE
+   process-group leader (pgid == pid — the setsid'd pre-flip-probe shape)
+   is killed via its whole group (TERM, wait up to 5s, escalate to KILL,
+   verify), everything else by pid only. Skipped entirely on a host with
+   no `/proc` (e.g. this repo's Windows dev box), while a deploy is in
+   progress (same guard as the release prune, round 2), or when
+   `HYGIENE_SKIP_ORPHANS=1` is set.
+
+   **What the sweep will never touch: pm2-managed processes.** pm2 and
+   every app it manages (the `ipodhan-web`/`ipodhan-scraper` workers,
+   plus every other app on the box) share ONE process group — the pm2
+   daemon's. If a candidate's process-group leader or direct parent has
+   `pm2`/`PM2` in its command line, the sweep leaves it alone and logs a
+   WARN naming it, instead of signalling that shared group. pm2 owns its
+   children; this sweep only reaps true orphans (release-server processes
+   whose deploy-time parent is long gone), never a process pm2 is still
+   managing.
 7. Prints a report (disk used %, free GB, prod/staging release counts,
    orphaned servers found, MB freed, largest 5 dirs under `/root` and
    `/var/www`) and POSTs it to the Notifier gateway.
