@@ -29,6 +29,14 @@ fail() { echo "FAIL: $1"; FAILED=1; }
 export HYGIENE_SKIP_SYSTEM=1
 export HYGIENE_SKIP_TMP=1
 export HYGIENE_NOTIFIER_URL="http://127.0.0.1:1/unroutable-test-guard"
+# Round 4 (W-134): the REAL deploy_in_progress() (pgrep/proc scan of the
+# whole host) must never run for a case that isn't deliberately testing it —
+# it was matching an ANCESTOR shell's own command line (e.g. a `bash -n
+# scripts/deploy-linux.sh` invocation made by the harness itself) and made
+# 7 cases fail from a compound shell where a clean shell passed 29/29. Force
+# the stub file-wide; only case p (explicit) and the new case r (sourced,
+# exercises the real check) set their own value.
+export HYGIENE_DEPLOY_CHECK_CMD="false"
 
 # Harness-level guard: refuse to run the hygiene script against the real
 # production deploy root — a case that forgot to build its own fresh_root
@@ -551,6 +559,75 @@ if [ ! -d "$P2_1" ]; then
   pass "case p: with no deploy in progress, pruning still runs normally"
 else
   fail "case p: pruning did not run when the deploy-check was forced false"
+fi
+
+# --- Case r: round 4 — the REAL deploy_in_progress() (pgrep/proc, no -----
+# --- HYGIENE_DEPLOY_CHECK_CMD stub) must ignore its own process tree and ---
+# --- any command line that merely MENTIONS the deploy script as a plain ----
+# --- argument to a non-deploy command (bash -n, less, grep, ...). Only ------
+# --- meaningful on a host with pgrep or /proc/*/cmdline (both branches of --
+# --- deploy_in_progress() need one of them to see another process's ---
+# --- command line at all) — this test host has neither, so the guard below
+# --- reports a skip instead of a false pass/fail.
+if command -v pgrep >/dev/null 2>&1 || [ -r /proc/1/cmdline ]; then
+  ROOTR="$(fresh_root)"
+  assert_safe_root "$ROOTR"
+  HELPER_PID=""
+  cleanup_case_r() {
+    [ -n "$HELPER_PID" ] && kill "$HELPER_PID" >/dev/null 2>&1 || true
+    wait "$HELPER_PID" 2>/dev/null || true
+  }
+
+  # r1: a background process whose command line contains the deploy script
+  # path only as an ARGUMENT OF A DIFFERENT COMMAND (the exact 2026-09-04
+  # incident shape: `bash -n scripts/deploy-linux.sh`) must NOT be treated
+  # as a deploy in progress.
+  sh -c 'exec -a "bash -n scripts/deploy-linux.sh --check" sleep 30' 2>/dev/null &
+  HELPER_PID=$!
+  sleep 0.3
+  (
+    HYGIENE_ROOT="$ROOTR"
+    HYGIENE_SOURCED=1
+    unset HYGIENE_DEPLOY_CHECK_CMD
+    # shellcheck source=/dev/null
+    source "$HYGIENE_SCRIPT"
+    if deploy_in_progress; then
+      echo "FAIL-INNER: r1 — deploy_in_progress() matched a non-deploy command line that merely mentions the script"
+      exit 1
+    fi
+    exit 0
+  ) >/tmp/hygiene-test-r1.log 2>&1
+  RCR1=$?
+  cleanup_case_r
+  if [ "$RCR1" -eq 0 ]; then
+    pass "case r1: deploy_in_progress() ignores a non-deploy command line mentioning the script (round-4 regression guard)"
+  else
+    fail "case r1: deploy_in_progress() false-positived on a non-deploy command line — see /tmp/hygiene-test-r1.log"
+  fi
+
+  # r2: a background process shaped like the REAL invocation
+  # (`bash scripts/deploy-linux.sh staging <ref>`, per deploy-linux.yml) IS
+  # detected.
+  sh -c 'exec -a "bash scripts/deploy-linux.sh staging deadbeef" sleep 30' 2>/dev/null &
+  HELPER_PID=$!
+  sleep 0.3
+  (
+    HYGIENE_ROOT="$ROOTR"
+    HYGIENE_SOURCED=1
+    unset HYGIENE_DEPLOY_CHECK_CMD
+    # shellcheck source=/dev/null
+    source "$HYGIENE_SCRIPT"
+    deploy_in_progress
+  ) >/tmp/hygiene-test-r2.log 2>&1
+  RCR2=$?
+  cleanup_case_r
+  if [ "$RCR2" -eq 0 ]; then
+    pass "case r2: deploy_in_progress() detects the real deploy-linux.yml invocation shape"
+  else
+    fail "case r2: deploy_in_progress() missed a genuine deploy in progress — see /tmp/hygiene-test-r2.log"
+  fi
+else
+  pass "case r: skipped — no pgrep and no /proc/*/cmdline on this host, so deploy_in_progress() can only be exercised via HYGIENE_DEPLOY_CHECK_CMD (case p)"
 fi
 
 if [ "$FAILED" -ne 0 ]; then

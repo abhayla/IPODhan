@@ -103,6 +103,14 @@ and staging release counts in the report only count directories that match
 the release-name pattern (`YYYYMMDD-HHMMSS-<sha>`) — a stray junk entry
 under `releases/` never inflates "releases kept".
 
+`deploy_in_progress()` requires the exact invocation shape
+`deploy-linux.yml` uses (`bash scripts/deploy-linux.sh <staging|prod> [ref]`
+— script path immediately followed by the slot word), never a bare mention
+of the script name, and excludes its own process plus every ancestor
+process from the match. A round-4 incident (2026-09-04) showed the bare
+substring match matching an ANCESTOR shell's own command line (a `bash -n
+scripts/deploy-linux.sh` syntax check) and silently skipping every prune.
+
 ## Notifier severity
 
 - `info` — disk used < 70%
