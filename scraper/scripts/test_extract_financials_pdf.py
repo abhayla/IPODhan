@@ -163,3 +163,57 @@ def test_metrics_that_fail_a_check_are_dropped_not_emitted():
     assert "profit" not in r["metrics"]
     assert "pat_not_above_revenue" in r["rejected"]["profit"]
     assert r["metrics"]["revenue"] == {2026: 19266.76, 2025: 13970.10, 2024: 10245.68}
+
+
+# --------------------------------------------------------------------------- #
+# W-128 — SME RHP "Key Performance Indicators" table headed "FY 2025-26
+# FY 2024-25 FY 2023-24" instead of the mainboard "March 31, YYYY" form.
+# Before the fix this header did not parse at all, so the KPI table was never
+# picked up as a P&L candidate; the extractor then read fiscal_years=[2026] and
+# every *_by_fy value from unrelated content elsewhere in the document (the
+# production defect: revenue_by_fy {2026: 3722.94} — the KPI table's own
+# FY2023-24 column, mislabelled — plus a PAT/net-worth value pulled from an
+# entirely different table).
+# --------------------------------------------------------------------------- #
+QUALIANCE_FIXTURE = os.path.join(
+    HERE, "..", "tests", "fixtures", "sme", "qualiance-rhp-kpi-pages-84-85.txt")
+
+
+def load_qualiance():
+    """Split the captured pdfplumber page-text fixture (marked
+    "===== PAGE N") into the [(page_index, text)] shape extract_from_texts
+    expects — the same shape extract_filing.py's extract_rhp() feeds it."""
+    with open(QUALIANCE_FIXTURE, encoding="utf-8") as f:
+        raw = f.read()
+    pages = []
+    for chunk in raw.split("===== PAGE ")[1:]:
+        header, _, body = chunk.partition("\n")
+        pages.append((int(header.strip()) - 1, body))
+    return pages
+
+
+def test_qualiance_kpi_table_fy_range_header():
+    r = efp.extract_from_texts(load_qualiance())
+    assert r["unit"] == "lakhs"
+    assert r["annualYears"] == [2026, 2025, 2024]
+    m = r["metrics"]
+    assert m["revenue"] == {2026: 7689.11, 2025: 5307.24, 2024: 3722.94}
+    assert m["ebitda"] == {2026: 1671.67, 2025: 797.05, 2024: 486.15}
+    assert m["profit"] == {2026: 1186.90, 2025: 489.85, 2024: 283.93}
+    assert m["netWorth"] == {2026: 2473.65, 2025: 1382.25, 2024: 892.40}
+    assert r["rejected"] == {}
+
+
+def test_unparseable_year_header_yields_no_year_and_no_metrics():
+    """A KPI/summary table whose header the parser cannot read (no recognised
+    March-31 / FY-YYYY-YY / FY-YYYY form) is skipped outright — never defaulted
+    to the current or latest year."""
+    page = "\n".join([
+        "Key Performance Indicators of our Company",
+        "(Rs. In Lakhs)",
+        "Particulars Period A Period B Period C",
+        "Revenue from operations 7,689.11 5,307.24 3,722.94",
+    ])
+    r = efp.extract_from_texts([(0, page)])
+    assert r["annualYears"] == []
+    assert r["metrics"] == {}

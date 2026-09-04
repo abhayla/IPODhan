@@ -43,19 +43,87 @@ MONEY = re.compile(r"\(?-?\d[\d,]*(?:\.\d+)?\)?")
 MARCH = re.compile(r"(?:March\s+31,?\s*|31\s+March\s+)(20\d{2})", re.I)
 # Interim (nine-month / stub) column period-ends — used to count leading interim
 # columns so they are read and then DROPPED (we only keep annual fiscal years).
-DEC_INTERIM = re.compile(r"(?:December\s+31,?\s*|31\s+December\s+)(20\d{2})", re.I)
+# W-128: the year itself is NOT captured (a wrapped column header can print the
+# interim column's year on its own line, several tokens away from "December
+# 31,") — only the count of interim period-end mentions matters, since an
+# interim column is always dropped regardless of which year it names.
+DEC_INTERIM = re.compile(r"(?:December\s+31\b|31\s+December\b)", re.I)
 # Continuation form of a wrapped "March 31, YYYY" header cell — only consulted
 # when a full MARCH anchor already matched on the same header (see _parse_pnl_page).
 MARCH_LOOSE = re.compile(r"(?<!\d)31,\s*(20\d{2})")
+
+# W-128: SME RHP KPI/summary tables head their columns "FY 2025-26 FY 2024-25
+# FY 2023-24" (or "FY2025-26" / "FY 25-26" / bare "2025-26") instead of the
+# mainboard "March 31, YYYY" form. A range header names the fiscal year by its
+# START; the calendar year it belongs to is the one it ENDS in
+# (FY 2025-26 -> 2026).
+FY_RANGE = re.compile(r"(?:FY|Fiscal)\s*[:\-]?\s*(\d{2,4})\s*[-/]\s*(\d{2})\b", re.I)
+# Bare "2025-26" with no FY/Fiscal prefix — the 4-digit start guards against a
+# bare page-range footnote ("8-10") ever being mistaken for a fiscal year.
+BARE_YEAR_RANGE = re.compile(r"(?<![\d/-])(20\d{2})\s*-\s*(\d{2})(?!\d)")
+# "FY 2026" / "Fiscal 2026" — already the fiscal year's own end-year. The
+# negative lookahead keeps this from also firing on the START year of a range
+# ("FY 2025-26" must be read as ONE end-year 2026 via FY_RANGE, not additionally
+# as a bare "FY 2025").
+FY_SINGLE = re.compile(r"(?:FY|Fiscal)\s+(20\d{2})\b(?!\s*[-/]\s*\d{2}\b)", re.I)
+
+
+def _fy_end_year(start_str, end_str):
+    """Map a "start-end" fiscal-year range to the calendar year it ENDS in.
+
+    "2025-26" -> 2026, "FY 25-26" -> 2026 (same math once the 2-digit start is
+    given the 2000s century). A same-century rollover ("99-00") is handled by
+    bumping the century when the 2-digit end is numerically before the start.
+    """
+    start_str = start_str.strip()
+    start = int(start_str) if len(start_str) == 4 else 2000 + int(start_str)
+    century = start - (start % 100)
+    end = century + int(end_str)
+    if end < start:
+        end += 100
+    return end
+
+
+def _year_header_years(header):
+    """All fiscal-year end-years named in a header block, in encounter order
+    (the caller sorts descending). Accepts, in any mixture within the same
+    header: "March 31, YYYY" / "31 March YYYY" (incl. the wrapped-continuation
+    form once a full anchor is present), "FY YYYY-YY" / "FYYYYY-YY" /
+    "FY YY-YY" / bare "YYYY-YY" range forms, and "FY YYYY" / "Fiscal YYYY".
+    Never guesses: a header matching none of these forms yields [].
+    """
+    years = []
+
+    def add(y):
+        if y not in years:
+            years.append(y)
+
+    for y in MARCH.findall(header):
+        add(int(y))
+    if years:
+        for y in MARCH_LOOSE.findall(header):
+            add(int(y))
+    for start_s, end_s in FY_RANGE.findall(header):
+        add(_fy_end_year(start_s, end_s))
+    for start_s, end_s in BARE_YEAR_RANGE.findall(header):
+        add(_fy_end_year(start_s, end_s))
+    for y in FY_SINGLE.findall(header):
+        add(int(y))
+    return years
+
 
 # Metric label -> output key. Order matters (first match wins per line).
 # `profit` matches loss-makers too — a loss-making issuer's bottom line reads
 # "Loss for the year" / "(Loss)/profit for the period"; the sign is recovered by
 # the accounting-negative (parenthesised) parsing in money_values (issue #67).
+# W-128: SME KPI tables label the row bare "PAT" (no "profit"/"after tax" text)
+# — `(?!\s*Margin)` keeps a "PAT Margin(...)" row from being read as the PAT
+# amount even if it happened to precede the real row.
 PNL_METRICS = [
     (re.compile(r"revenue\s+from\s+operations", re.I), "revenue"),
     (re.compile(r"total\s+income", re.I), "totalIncome"),
-    (re.compile(r"(profit|loss)[\s/()]*(for\s+the\s+(period|year)|after\s+tax)", re.I), "profit"),
+    (re.compile(r"\bPAT\b(?!\s*Margin)|(profit|loss)[\s/()]*(for\s+the\s+(period|year)|after\s+tax)", re.I),
+     "profit"),
     # EPS: either the explicit "Basic EPS / Basic earnings per share" label, OR a
     # line that is just "(1) Basic ..." under a "loss/earnings per equity share"
     # section header (the mainboard layout — Ather). align() filters false
@@ -64,7 +132,12 @@ PNL_METRICS = [
 ]
 OTHER_METRICS = [
     (re.compile(r"^\s*EBITDA\b(?!\s*Margin)", re.I), "ebitda"),
-    (re.compile(r"net\s*worth", re.I), "netWorth"),
+    # W-128: anchored to the START of the line, like the EBITDA row above — the
+    # unanchored form matched prose ("Net worth has been computed in the
+    # manner...") whose three incidental numbers (a regulation reference, a
+    # sub-clause, a year) happened to satisfy the column count and got read as
+    # the net-worth row before the real, later "Net Worth(8) 2,473.65 ..." line.
+    (re.compile(r"^\s*net\s*worth\b", re.I), "netWorth"),
 ]
 
 
@@ -163,15 +236,21 @@ def _align_factory(column_fy, annual_years):
 
     `column_fy` lists the fiscal year for every data column, left to right, with
     `None` for leading interim (nine-month / stub) columns. A row's money tokens
-    may be preceded by a Note-No. column or label digits, so the TRAILING
-    len(column_fy) tokens are taken and mapped positionally; only annual (non-None)
-    columns are emitted.
+    may be preceded by ONE Note-No. column or footnote-marker digit, so the
+    TRAILING len(column_fy) tokens are taken and mapped positionally; only
+    annual (non-None) columns are emitted.
+
+    W-128: the leading-noise allowance is capped at exactly one extra token
+    (`ncols` or `ncols + 1` values, never more). A wider row — e.g. a peer-
+    comparison table repeating the same header across several companies —
+    carries many more values than the header's own year count and MUST NOT be
+    read as this table's data; the old unbounded `>=` allowed exactly that.
     """
     ncols = len(column_fy)
 
     def align(line):
         vals = money_values(line)
-        if len(vals) >= ncols >= 1:
+        if ncols >= 1 and ncols <= len(vals) <= ncols + 1:
             tail = vals[-ncols:]
             return {column_fy[i]: tail[i] for i in range(ncols) if column_fy[i] is not None}
         if len(vals) == len(annual_years):  # row carries only the annual columns
@@ -190,7 +269,12 @@ def _parse_pnl_page(text):
     title match, which on mainboard prospectuses is often a summary/index page with
     the title but no data rows (issue #67).
     """
-    if not re.search(r"statement\s+of\s+profit\s+and\s+loss", text, re.I):
+    # W-128: an SME RHP's KPI/summary table ("Key Performance Indicators ...")
+    # carries the same revenue/EBITDA/PAT/net-worth rows the mainboard
+    # "Statement of Profit and Loss" title carries, just under a different
+    # section heading — accept either as the anchor.
+    if not re.search(r"statement\s+of\s+profit\s+and\s+loss|key\s+performance\s+indicators",
+                      text, re.I):
         return None
 
     lines = text.split("\n")
@@ -205,27 +289,12 @@ def _parse_pnl_page(text):
         return None
     header = "\n".join(lines[:data_start]) or text
 
-    annual_years = []
-    for y in MARCH.findall(header):
-        yi = int(y)
-        if yi not in annual_years:
-            annual_years.append(yi)
-    if annual_years:
-        # W-33 (second cause): a wrapped summary header prints
-        # "For the year ending March 31, 2026 / 31, 2024 / March 31, 2025" — the
-        # middle column loses its "March" to the line break, so the strict
-        # pattern saw only TWO annual columns and the trailing-N alignment then
-        # dropped a real column. Once at least one full "March 31, YYYY" anchor
-        # is present, also accept the bare "31, YYYY" continuation form.
-        for y in MARCH_LOOSE.findall(header):
-            yi = int(y)
-            if yi not in annual_years:
-                annual_years.append(yi)
+    annual_years = _year_header_years(header)
     annual_years.sort(reverse=True)
     if not annual_years:
         return None
 
-    interim = len(set(DEC_INTERIM.findall(header)))
+    interim = len(DEC_INTERIM.findall(header))
     column_fy = ([None] * interim) + annual_years
     align = _align_factory(column_fy, annual_years)
 
