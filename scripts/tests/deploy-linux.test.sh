@@ -1459,6 +1459,67 @@ fi
 
 unset DEPLOY_ROOT
 
+# --- Case 27: W-136 — the pre-flip probe starts in its OWN process group ---
+# --- and cleanup_probe() kills the whole group (not just the npm parent), --
+# --- then verifies the probe port is actually free. A 2026-08-21 incident --
+# --- left an orphaned `next-server` running for 14 days after `kill $pid` -
+# --- killed only npm; `sh -c next start` / `next-server` survived it.     --
+PROBE_FN_BODY27="$(awk '/^probe_release\(\) \{/,/^\}/' "$DEPLOY_SCRIPT")"
+if [ -z "$PROBE_FN_BODY27" ]; then
+  fail "case 27: could not extract probe_release() from $DEPLOY_SCRIPT — function renamed?"
+else
+  # MAJOR-4 (round 2): a file-wide grep for the word "setsid" also matches
+  # the WARN-branch string ("Install setsid (util-linux) on this host") —
+  # so removing setsid from the REAL start line still passed this assertion
+  # (verified: mutating line 786 to drop setsid left this PASS). Anchor to
+  # the exact line that starts the probe (contains both "npm run start" and
+  # PORT="$PROBE_PORT") and require setsid on THAT line specifically.
+  PROBE_START_LINE27="$(printf '%s\n' "$PROBE_FN_BODY27" | grep -E 'npm run start' | grep -F 'PORT="$PROBE_PORT"' | head -n1)"
+  if [ -z "$PROBE_START_LINE27" ]; then
+    fail "case 27: could not find the probe start line (npm run start + PORT=\"\$PROBE_PORT\") — probe_release() restructured?"
+  elif printf '%s' "$PROBE_START_LINE27" | grep -q -E '\bsetsid\b'; then
+    pass "case 27: probe_release() starts the probe under setsid (own process group)"
+  else
+    fail "case 27: expected the probe start line to run under setsid so kill can target the whole group — line: $PROBE_START_LINE27"
+  fi
+
+  if printf '%s\n' "$PROBE_FN_BODY27" | grep -q -E '\bkill\b.*-TERM.*-- -"?\$'; then
+    pass "case 27: cleanup_probe() sends TERM to a NEGATIVE pgid (whole process group)"
+  else
+    fail "case 27: expected cleanup_probe() to kill -- -\$pgid (negative pgid = whole group), not just \$pid"
+  fi
+
+  if printf '%s\n' "$PROBE_FN_BODY27" | grep -q -E 'ss .*sport|fuser .*PROBE_PORT|fuser .*\$PROBE_PORT'; then
+    pass "case 27: cleanup_probe() verifies PROBE_PORT is actually free after the kill"
+  else
+    fail "case 27: expected a post-kill listener check on \$PROBE_PORT (ss/fuser), not a bare kill-and-hope"
+  fi
+
+  if printf '%s\n' "$PROBE_FN_BODY27" | grep -q -E 'already in use|port.*in use|held by pid|fuser -n tcp "\$PROBE_PORT"'; then
+    pass "case 27: probe_release() checks PROBE_PORT is free BEFORE starting the probe"
+  else
+    fail "case 27: expected probe_release() to refuse starting when \$PROBE_PORT is already held by a stale process"
+  fi
+
+  # MINOR(a) round 2: the pre-start "already in use" check must prefer
+  # `ss -ltnp` (LISTENING sockets only) over `fuser -n tcp` (which also
+  # matches OUTBOUND connections to a remote :$PROBE_PORT — a false-fatal).
+  PROBE_PRESTART_BLOCK27="$(printf '%s\n' "$PROBE_FN_BODY27" | awk '/already holding the/,/^  local pidfile=/')"
+  if printf '%s\n' "$PROBE_PRESTART_BLOCK27" | grep -q -E '\bss\b .*-ltnp.*sport'; then
+    pass "case 27 MINOR(a): pre-start listener check uses ss -ltnp (listening sockets only), not fuser"
+  else
+    fail "case 27 MINOR(a): expected the pre-start check to use ss -ltnp before falling back to fuser"
+  fi
+
+  # MINOR(c) round 2: PROBE_PORT must be checked against the web app's own
+  # live PORT (from WEB_ENV_FILE) before the probe ever starts.
+  if printf '%s\n' "$PROBE_FN_BODY27" | grep -q -E 'PROBE_PORT.*=.*web_port|web_port.*PORT='; then
+    pass "case 27 MINOR(c): probe_release() guards PROBE_PORT against the web app's own PORT"
+  else
+    fail "case 27 MINOR(c): expected probe_release() to refuse when PROBE_PORT equals the web app's live PORT"
+  fi
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1

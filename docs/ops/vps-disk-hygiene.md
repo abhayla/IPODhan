@@ -22,9 +22,44 @@ is the missing weekly sweep.
 4. Deletes files (never directories) under `/tmp` older than 7 days.
 5. Removes stale venv build dirs `shared/venv/*.new` and `*.old` older than
    1 day (the artifacts of a build that failed mid-swap).
-6. Prints a report (disk used %, free GB, prod/staging release counts, MB
-   freed, largest 5 dirs under `/root` and `/var/www`) and POSTs it to the
-   Notifier gateway.
+6. **Orphaned release servers (W-136, Linux only):** scans `/proc` for any
+   process whose current working directory resolves under
+   `releases/` or `releases-staging/` but no longer exists on disk (a
+   `(deleted)` cwd), AND whose command line looks like a release server
+   (`next-server`, `next start`, or `npm run start`). This is the
+   2026-08-21 incident shape — a pre-flip probe or app server left running
+   against a release dir that a later prune (or an aborted deploy) deleted
+   out from under it, still bound to a port and still connected to the
+   production database. Every match is logged (pid, cwd, age); a TRUE
+   process-group leader (pgid == pid — the setsid'd pre-flip-probe shape)
+   is killed via its whole group (TERM, wait up to 5s, escalate to KILL,
+   verify), everything else by pid only. Skipped entirely on a host with
+   no `/proc` (e.g. this repo's Windows dev box), while a deploy is in
+   progress (same guard as the release prune, round 2), or when
+   `HYGIENE_SKIP_ORPHANS=1` is set.
+
+   **What the sweep will never touch: pm2-managed processes.** pm2 and
+   every app it manages (the `ipodhan-web`/`ipodhan-scraper` workers,
+   plus every other app on the box) share ONE process group — the pm2
+   daemon's. If a candidate's process-group leader or direct parent has
+   `pm2`/`PM2` in its command line, the sweep leaves it alone and logs a
+   WARN naming it, instead of signalling that shared group. pm2 owns its
+   children; this sweep only reaps true orphans (release-server processes
+   whose deploy-time parent is long gone), never a process pm2 is still
+   managing.
+
+   **A pm2-managed process pinned to a DELETED release dir is never
+   reaped by this sweep** — only WARNed about weekly (it left it to pm2
+   by design, above). If `pm2 describe <app>` shows a `cwd` under a
+   release dir that `prune_slot()` already removed, that instance is
+   still serving out of a directory disk hygiene has deleted; the fix is
+   an operator action, not something the sweep will do for you: run
+   `pm2 restart <app>` (reloads pm2's cwd to the current `releases`/
+   `releases-staging` symlink target) or push a fresh deploy. Don't wait
+   for the next weekly cron to "fix" it — it won't.
+7. Prints a report (disk used %, free GB, prod/staging release counts,
+   orphaned servers found, MB freed, largest 5 dirs under `/root` and
+   `/var/www`) and POSTs it to the Notifier gateway.
 
 Every deletion goes through a path guard (mirrors `deploy-linux.sh`'s
 `safe_rm_venv_dir()`): refuses `..`, refuses anything outside the one
