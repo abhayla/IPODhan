@@ -109,6 +109,26 @@ export interface DocumentCycleSummary {
    * is caught up.
    */
   listedDeferred: number;
+  /**
+   * W-124 round 2 (MAJOR-1): LISTED candidates whose documents are already
+   * FOUND/NOT_APPLICABLE/SUPERSEDED (or every open row still in backoff) this
+   * cycle — `alreadyComplete === true`. These never enter `candidates` at all
+   * (they need no work), so PASS 1/2 and the F4 tally never see them and they
+   * never spend a cap slot.
+   */
+  listedComplete: number;
+  /**
+   * W-124 round 2 (MAJOR-2): LISTED candidates `enrichListedCandidates`
+   * actually enriched this cycle (bounded to `listedCap * 4`).
+   */
+  listedEnriched: number;
+  /**
+   * W-124 round 2 (MAJOR-2): LISTED candidates present this cycle but past the
+   * `listedCap * 4` enrichment bound — never enriched, so their rotation/
+   * completeness is unknown and they are deferred whole, same as a
+   * capped-out row, until an earlier LISTED row rotates out of the way.
+   */
+  listedSkippedUnenriched: number;
 }
 
 /** `ipos=4 skipped=2 found=3 not_yet=1 blocked=0 calls=5 extraction_blocked=0 extraction_failed=0` — the ledger `reason`. */
@@ -126,7 +146,13 @@ export function summarize(
   durationMs: number,
   budgetExhausted = false,
   extraction: { blocked: number; failed: number } = { blocked: 0, failed: 0 },
-  listedInfo: { cap: number; deferred: number } = { cap: 0, deferred: 0 }
+  listedInfo: {
+    cap: number;
+    deferred: number;
+    complete?: number;
+    enriched?: number;
+    skippedUnenriched?: number;
+  } = { cap: 0, deferred: 0 }
 ): DocumentCycleSummary {
   return {
     ipos: results.length,
@@ -141,6 +167,9 @@ export function summarize(
     extractionFailed: extraction.failed,
     listedCap: listedInfo.cap,
     listedDeferred: listedInfo.deferred,
+    listedComplete: listedInfo.complete ?? 0,
+    listedEnriched: listedInfo.enriched ?? 0,
+    listedSkippedUnenriched: listedInfo.skippedUnenriched ?? 0,
   };
 }
 
@@ -315,8 +344,10 @@ function compareByActivity(aVal: unknown, bVal: unknown): number {
  *      `planIpoCycle(...).skipIpo` is false, so `runIpo` would actually make
  *      network calls for it). A LISTED row whose documents are already
  *      FOUND/NOT_APPLICABLE/SUPERSEDED (or still in retry backoff) costs zero
- *      network calls either way, so it is never charged against the cap and
- *      is always let through.
+ *      network calls either way, so it is never charged against the cap —
+ *      and (W-124 round 2, MAJOR-1) it never enters `candidates` at all; it
+ *      is counted in the returned `listedComplete` instead, so PASS 1/2 and
+ *      the F4 extraction tally never spend a DB round trip on it.
  *   4. The cap NEVER removes OPEN/CLOSED/UPCOMING/WITHDRAWN/POSTPONED
  *      candidates — only an incomplete LISTED candidate is ever deferred.
  *   5. Reserving a slot for the WITHDRAWN/POSTPONED purge path against the
@@ -327,7 +358,7 @@ function compareByActivity(aVal: unknown, bVal: unknown): number {
 export function orderAndCapCandidates(
   candidates: DiscoveryIpo[],
   cap: number
-): { candidates: DiscoveryIpo[]; listedDeferred: number } {
+): { candidates: DiscoveryIpo[]; listedDeferred: number; listedComplete: number } {
   const safeCap = Number.isFinite(cap) && cap >= 0 ? Math.trunc(cap) : DEFAULT_LISTED_CAP;
 
   const ordered = candidates
@@ -354,14 +385,18 @@ export function orderAndCapCandidates(
 
   let listedSeen = 0;
   let listedDeferred = 0;
+  let listedComplete = 0;
   const capped: DiscoveryIpo[] = [];
   for (const c of ordered) {
     if (lifecycleRank(c) === 3) {
-      // W-124: a LISTED row with nothing due this cycle costs zero network
-      // calls whether or not it is offered to `runIpo` — never spend a cap
-      // slot on it, so the slot goes to a row that would actually do work.
+      // W-124 round 2 (MAJOR-1): a LISTED row with nothing due this cycle
+      // costs zero network calls, and (unlike the round-1 fix) it does not
+      // even enter `candidates` any more — there is no work for PASS 1, PASS
+      // 2, or the F4 tally to do for it, so counting it here (never charging
+      // it against the cap) is a CONSEQUENCE of skipping it, not a reason to
+      // pass it through.
       if (c.alreadyComplete === true) {
-        capped.push(c);
+        listedComplete++;
         continue;
       }
       if (listedSeen < safeCap) {
@@ -374,7 +409,7 @@ export function orderAndCapCandidates(
       capped.push(c);
     }
   }
-  return { candidates: capped, listedDeferred };
+  return { candidates: capped, listedDeferred, listedComplete };
 }
 
 /**
@@ -397,16 +432,37 @@ export function orderAndCapCandidates(
  * Runs ONLY over LISTED candidates (bounded by the live window already
  * applied above) — OPEN/CLOSED/UPCOMING/WITHDRAWN/POSTPONED never rotate or
  * cap, so enriching them would be pure waste.
+ *
+ * W-124 round 2 (MAJOR-2): also bounded to at most `maxToEnrich` LISTED
+ * candidates (`listedCap * 4` — see `loadCandidateIpos`) rather than every
+ * LISTED row in the live window. Each LISTED row costs 1-2 remote DB round
+ * trips here (`store.listForIpo` + a `documents.findByIPO` fallback), run
+ * BEFORE the discovery budget clock even starts; the per-cycle cap only ever
+ * admits `cap` incomplete LISTED rows anyway, so scanning far more than
+ * `cap` gives the rotation enough margin to find `cap` eligible rows without
+ * paying an unbounded N+1 for a backlog the cap could never use in one
+ * cycle. `candidates` is already ordered lifecycle-rank-first then (within
+ * LISTED) listing-date-desc — the SQL's own order — so iterating in place and
+ * stopping once `maxToEnrich` LISTED rows are seen enriches exactly that
+ * "listing_date desc then id" prefix. LISTED rows past the bound are left
+ * un-enriched; the caller drops them from `candidates` entirely (counted as
+ * `listedSkippedUnenriched`) since their rotation/completeness is unknown.
+ *
+ * Also stores the computed `CyclePlan` on `c.precomputedPlan` (MAJOR-2) so
+ * `runIpo` does not run `planIpoCycle` a second time for the same rows.
  */
 async function enrichListedCandidates(
   candidates: DiscoveryIpo[],
   deps: {
     store: Pick<DocumentFetchStateRepository, 'listForIpo'>;
     documents: Pick<DocumentRepository, 'findByIPO'>;
-  }
-): Promise<void> {
+  },
+  maxToEnrich: number
+): Promise<{ enriched: number }> {
+  let enriched = 0;
   for (const c of candidates) {
     if (c.stage !== 'LISTED') continue;
+    if (enriched >= maxToEnrich) break;
 
     const persisted = await deps.store.listForIpo(c.id);
     const rows = persisted.map(toStateRow);
@@ -443,7 +499,10 @@ async function enrichListedCandidates(
 
     const plan = planIpoCycle({ stage: c.stage, rows, issue: c.issue });
     c.alreadyComplete = plan.skipIpo;
+    c.precomputedPlan = plan;
+    enriched++;
   }
+  return { enriched };
 }
 
 /** Candidate IPOs: live-window only (R10 — history is WP F's job, not the cycle's). */
@@ -454,6 +513,9 @@ export async function loadCandidateIpos(deps: {
   candidates: DiscoveryIpo[];
   listedCap: number;
   listedDeferred: number;
+  listedComplete: number;
+  listedEnriched: number;
+  listedSkippedUnenriched: number;
 }> {
   const result = await db.execute(sql`
     SELECT id, company_name, slug, symbol, segment, status, price_range_min,
@@ -487,7 +549,7 @@ export async function loadCandidateIpos(deps: {
     unknown
   >[];
 
-  const candidates = rows
+  const candidates: DiscoveryIpo[] = rows
     .filter((r) => {
       // A WITHDRAWN/POSTPONED issue is outside the live window but must still be
       // visited once, to close its open rows as NOT_APPLICABLE (F15/M3).
@@ -524,12 +586,31 @@ export async function loadCandidateIpos(deps: {
     }));
 
   // W-124: LISTED-only enrichment (rotation timestamp + already-complete),
-  // BEFORE ordering/capping — see `enrichListedCandidates`.
-  await enrichListedCandidates(candidates, deps);
-
+  // BEFORE ordering/capping — see `enrichListedCandidates`. W-124 round 2
+  // (MAJOR-2): bounded to `listedCap * 4` LISTED rows so the N+1 enrichment
+  // loop cannot outgrow the backlog before the discovery budget even starts.
   const listedCap = getListedCap();
-  const { candidates: ordered, listedDeferred } = orderAndCapCandidates(candidates, listedCap);
-  return { candidates: ordered, listedCap, listedDeferred };
+  const { enriched: listedEnriched } = await enrichListedCandidates(candidates, deps, listedCap * 4);
+
+  // MAJOR-2: a LISTED row past the enrichment bound has no rotation
+  // timestamp and no `alreadyComplete`/`precomputedPlan` decision — offering
+  // it to `orderAndCapCandidates` un-enriched would either wrongly consume a
+  // cap slot or wrongly skip it, so it is dropped from `candidates` entirely
+  // (deferred whole, same as a capped-out row) and counted separately.
+  let listedSkippedUnenriched = 0;
+  const boundedCandidates = candidates.filter((c) => {
+    if (c.stage !== 'LISTED') return true;
+    if (c.alreadyComplete !== undefined) return true;
+    listedSkippedUnenriched++;
+    return false;
+  });
+
+  const {
+    candidates: ordered,
+    listedDeferred,
+    listedComplete,
+  } = orderAndCapCandidates(boundedCandidates, listedCap);
+  return { candidates: ordered, listedCap, listedDeferred, listedComplete, listedEnriched, listedSkippedUnenriched };
 }
 
 /**
@@ -633,7 +714,8 @@ export async function runDocumentCycle(
       counter,
     });
 
-    const { candidates, listedCap, listedDeferred } = await loadCandidateIpos({ store, documents });
+    const { candidates, listedCap, listedDeferred, listedComplete, listedEnriched, listedSkippedUnenriched } =
+      await loadCandidateIpos({ store, documents });
     const results: IpoRunResult[] = [];
     let budgetExhausted = false;
     // Item 7 / F4: tallied AFTER pass 2 (below), across every candidate — see
@@ -669,7 +751,12 @@ export async function runDocumentCycle(
           'Could not load document hashes for demotion (non-fatal)'
         );
       }
-      await demoteMissingFiles(store, ipo.id, persisted, getStoreDir(), shaByDocId);
+      const demoted = await demoteMissingFiles(store, ipo.id, persisted, getStoreDir(), shaByDocId);
+
+      // MAJOR-2: a demotion (FOUND -> WANTED) opens up a doc type the
+      // enrichment-time plan did not see as due, so a precomputed plan is
+      // only safe to reuse when nothing was demoted for this IPO this cycle.
+      if (demoted > 0) ipo.precomputedPlan = undefined;
 
       const rows = persisted.map(toStateRow);
       const result = await runner.runIpo(ipo, rows);
@@ -890,7 +977,13 @@ export async function runDocumentCycle(
       now() - startedAt,
       budgetExhausted,
       { blocked: extractionBlocked, failed: extractionFailed },
-      { cap: listedCap, deferred: listedDeferred }
+      {
+        cap: listedCap,
+        deferred: listedDeferred,
+        complete: listedComplete,
+        enriched: listedEnriched,
+        skippedUnenriched: listedSkippedUnenriched,
+      }
     );
 
     // One scraper_logs row per cycle for source=DOCUMENTS, so the existing metrics

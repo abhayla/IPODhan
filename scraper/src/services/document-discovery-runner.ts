@@ -67,6 +67,7 @@ import {
   toPersistedState,
   type AttemptOutcome,
   type CycleOptions,
+  type CyclePlan,
   type IssueShape,
   type StateRow,
 } from './document-state-machine.js';
@@ -511,6 +512,16 @@ export interface DiscoveryIpo {
    * zero network calls either way. Only ever set for LISTED candidates.
    */
   alreadyComplete?: boolean;
+  /**
+   * W-124 round 2 (MAJOR-2): the plan `document-cycle.ts`'s `enrichListedCandidates`
+   * already computed for this LISTED candidate off the same persisted state rows
+   * `runIpo` is about to receive — reused here so `planIpoCycle` is not run twice
+   * per LISTED candidate per cycle. `processCandidate` only sets this when nothing
+   * demoted a row between enrichment and this call (see `document-cycle.ts`); a
+   * demotion invalidates the precomputed plan, so `runIpo` recomputes instead of
+   * trusting a plan that predates the demotion. Only ever set for LISTED candidates.
+   */
+  precomputedPlan?: CyclePlan;
 }
 
 export interface RunnerDeps {
@@ -1590,18 +1601,26 @@ export class DocumentDiscoveryRunner {
    *
    * The order here is the whole point: the PLAN is computed before any network
    * dependency is touched, so `skipIpo` short-circuits with zero requests.
+   *
+   * W-124 round 2 (MAJOR-2): `ipo.precomputedPlan` — when set — is trusted
+   * instead of recomputing `planIpoCycle`, so a LISTED candidate the cycle
+   * already planned during enrichment is not planned a second time. The
+   * caller (`document-cycle.ts`) only sets it when `existingRows` matches what
+   * the precomputed plan saw (no demotion happened in between).
    */
   async runIpo(ipo: DiscoveryIpo, existingRows: StateRow[]): Promise<IpoRunResult> {
     const now = this.now();
     const callsBefore = this.deps.counter.count(ipo.id);
     const attempts: FetchAttempt[] = [];
 
-    const plan = planIpoCycle({
-      stage: ipo.stage,
-      rows: existingRows,
-      issue: ipo.issue,
-      options: { ...this.deps.cycleOptions, now },
-    });
+    const plan =
+      ipo.precomputedPlan ??
+      planIpoCycle({
+        stage: ipo.stage,
+        rows: existingRows,
+        issue: ipo.issue,
+        options: { ...this.deps.cycleOptions, now },
+      });
 
     const result: IpoRunResult = {
       ipoId: ipo.id,
