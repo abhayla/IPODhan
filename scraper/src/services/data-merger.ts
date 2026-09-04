@@ -119,10 +119,18 @@ export function mergeIPOData(
   // Priority-based field merging
   if (newPriority <= existingPriority) {
     // New source has higher or equal priority - use its core data
-    merged.companyName = newData.companyName;
-    merged.issueSize = newData.issueSize;
-    merged.priceRangeMin = newData.priceRangeMin;
-    merged.priceRangeMax = newData.priceRangeMax;
+    // W-121 (hotfix residue c): mergeIPOData has zero live callers in
+    // scraper/src (deduplicateIPOs, its only in-file caller, is itself
+    // unreferenced outside this file's own tests) - see the openDate/
+    // closeDate comment below for why an unconditional assignment here is a
+    // landmine rather than an active bug. Guarded the same way so a future
+    // caller that wires a source missing one of these fields (e.g. a
+    // Moneycontrol-shaped record with no issueSize) can't silently clobber
+    // an existing value with undefined.
+    if (newData.companyName) merged.companyName = newData.companyName;
+    if (newData.issueSize !== undefined) merged.issueSize = newData.issueSize;
+    if (newData.priceRangeMin !== undefined) merged.priceRangeMin = newData.priceRangeMin;
+    if (newData.priceRangeMax !== undefined) merged.priceRangeMax = newData.priceRangeMax;
     // W-116/W-116b (review round 1, MINOR-1): openDate/closeDate can now be
     // absent from a higher-priority source (Moneycontrol never has them;
     // Chittorgarh's own close-date column can be empty) - an unconditional
@@ -132,9 +140,15 @@ export function mergeIPOData(
     // rather than leave the landmine.
     if (newData.openDate) merged.openDate = newData.openDate;
     if (newData.closeDate) merged.closeDate = newData.closeDate;
-    merged.listingExchange = newData.listingExchange;
+    if (newData.listingExchange) merged.listingExchange = newData.listingExchange;
+    // `category` was replaced by `segment`/`offeringType` (Story 11.8) and no
+    // longer exists on ScrapedIPO/MoneycontrolIPO/ChittorgarhIPO or
+    // IPOWithSources - this line is already a pre-existing `tsc --noEmit`
+    // error (out of scope for W-121; scraper/ has no commit-time type gate,
+    // see CLAUDE.md) and left unconditional rather than wrapped in a guard
+    // that would only multiply the same broken reference.
     merged.category = newData.category;
-    merged.status = newData.status;
+    if (newData.status) merged.status = newData.status;
 
     // Preserve optional fields if present in new data
     if (newData.sector) merged.sector = newData.sector;

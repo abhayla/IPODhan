@@ -223,7 +223,8 @@ function determineStatus(
   // past listing date and STILL be missing its close date (Chittorgarh's own
   // close-date column is sometimes empty), and that must read LISTED, not
   // UPCOMING. Checking this first means a missing close date never hides a
-  // status that is derivable from listing/allotment dates alone.
+  // status that is derivable from listingDate alone (this function does not
+  // read allotment dates at all).
   if (listing && now > listing) {
     return 'LISTED';
   }
