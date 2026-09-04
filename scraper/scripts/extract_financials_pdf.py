@@ -706,6 +706,15 @@ def extract_from_texts(page_texts, issue_size_rupees=None):
     "extractor produced nothing" rather than persist silently-empty financials.
     """
     result = {
+        # W-129 review: this "lakhs" default is a column-alignment safety net,
+        # not a claim the unit is known — `unitStated` stays False alongside
+        # it. `net_worth_vs_issue_size` / `unit_matches_magnitude` may run
+        # their ratio math against this guessed unit before the unit is known
+        # to be untrustworthy, but that verdict is moot either way:
+        # `check_unit_stated_near_table`'s document-wide gate (last in
+        # run_plausibility) rejects EVERY metric whenever `unitStated` is
+        # False, so a metric never survives to the caller on an unstated unit
+        # regardless of what the magnitude checks concluded about it.
         "unit": "lakhs", "unitStated": False, "unitPage": None, "unitPhrase": None,
         "annualYears": [], "metrics": {}, "pages": 0,
         "metricsFound": 0, "lowConfidence": True, "checks": [], "rejected": {},

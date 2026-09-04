@@ -255,6 +255,13 @@ export interface AutoPersistIpo {
   companyName: string;
   slug?: string | null;
   segment?: string | null;
+  /**
+   * W-129 review: `ipos.issue_size` (rupees), when the caller already has it
+   * on hand. `processPendingFilings` uses this directly when present and
+   * falls back to `deps.loadIssueSizeRupees` otherwise — the document-cycle
+   * candidate query does not currently select this column.
+   */
+  issueSize?: number | null;
 }
 
 /** One document as this service needs to see it. */
@@ -429,13 +436,35 @@ export function isExtractorFailure(result: ExtractorResult): result is Extractor
 }
 
 export interface ExtractorRunner {
-  (args: { pdfPath: string; docType: string; sme: boolean }): ExtractorResult;
+  (args: {
+    pdfPath: string;
+    docType: string;
+    sme: boolean;
+    /**
+     * W-129 review: the python extractor's net_worth_vs_issue_size /
+     * unit_matches_magnitude plausibility checks report `passed: None` (not
+     * evaluated) unless this is supplied — without it they are dead in
+     * production. `null`/`undefined`/non-finite/non-positive all mean "no
+     * known issue size"; the flag is simply omitted.
+     */
+    issueSizeRupees?: number | null;
+  }): ExtractorResult;
 }
 
 /** The one `spawnSync` call, factored so the ENOENT-retry can call it twice with a different binary. */
-function spawnExtractor(bin: string, script: string, pdfPath: string, docType: string, sme: boolean) {
+function spawnExtractor(
+  bin: string,
+  script: string,
+  pdfPath: string,
+  docType: string,
+  sme: boolean,
+  issueSizeRupees?: number | null
+) {
   const args = [script, pdfPath, '--doc-type', docType];
   if (sme) args.push('--sme');
+  if (typeof issueSizeRupees === 'number' && Number.isFinite(issueSizeRupees) && issueSizeRupees > 0) {
+    args.push('--issue-size', String(Math.round(issueSizeRupees)));
+  }
   return spawnSync(bin, args, {
     encoding: 'utf8',
     timeout: EXTRACT_TIMEOUT_MS,
@@ -458,14 +487,14 @@ function spawnExtractor(bin: string, script: string, pdfPath: string, docType: s
  * ONCE with `'python3'` before giving up — one extra spawn on a
  * misconfigured host beats a permanently FAILED document.
  */
-export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme }) => {
+export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme, issueSizeRupees }) => {
   const script = extractorScriptPath();
   const primaryBin = process.env.PYTHON_BIN ?? 'python';
 
-  let result = spawnExtractor(primaryBin, script, pdfPath, docType, sme);
+  let result = spawnExtractor(primaryBin, script, pdfPath, docType, sme, issueSizeRupees);
   if (result.error && (result.error as NodeJS.ErrnoException).code === 'ENOENT' && primaryBin !== 'python3') {
     logger.warn({ triedBin: primaryBin }, 'python binary not found — retrying once with python3');
-    result = spawnExtractor('python3', script, pdfPath, docType, sme);
+    result = spawnExtractor('python3', script, pdfPath, docType, sme, issueSizeRupees);
     if (!result.error) logger.info({ usedBin: 'python3' }, 'extractor spawned with python3 fallback');
   }
 
@@ -502,6 +531,14 @@ export interface AutoPersistDeps {
   runExtractor: ExtractorRunner;
   persistFiling: typeof persistFilingExtraction;
   persisterDeps: FilingPersisterDeps;
+  /**
+   * W-129 review: fallback source for `ipos.issue_size` (rupees) when the
+   * `AutoPersistIpo` passed in does not already carry it. Optional — existing
+   * callers/tests that omit it simply get no `--issue-size` flag (the
+   * python extractor's net_worth_vs_issue_size / unit_matches_magnitude
+   * checks then report `passed: None`, never a false pass or fail).
+   */
+  loadIssueSizeRupees?: (ipoId: string) => Promise<number | null>;
   /**
    * Stamp `documents.extraction_status` + friends. `retryCount`, when given,
    * is written verbatim (MAJOR-A) — the caller has already computed the new
@@ -552,8 +589,22 @@ export function buildAutoPersistDeps(
 ): AutoPersistDeps {
   const documentRepository = new DocumentRepository(db as never, redis as never);
   const invalidator = new CacheInvalidator(redis as never);
+  // ONE filing write door (s02-step-ledger-wiring.test.ts): this service must
+  // never instantiate its own `IPORepository` — it reuses the one the shared
+  // `buildFilingPersistDeps` builder already constructs.
+  const persisterDeps = buildFilingPersistDeps(redis);
 
   return {
+    // W-129 review: the smallest read that fits the existing pattern — no new
+    // repository, no new DB client — the document-cycle candidate query does
+    // not select `ipos.issue_size`, so it is fetched here, once per IPO per call.
+    async loadIssueSizeRupees(ipoId) {
+      const row = await persisterDeps.ipoRepository.findById(ipoId);
+      const raw = (row as { issueSize?: string | number | null } | null)?.issueSize;
+      if (raw == null) return null;
+      const n = Number(raw);
+      return Number.isFinite(n) ? n : null;
+    },
     async loadDocuments(ipoId) {
       const rows = await documentRepository.findByIPO(ipoId);
       return rows.map((r) => ({
@@ -574,7 +625,7 @@ export function buildAutoPersistDeps(
     },
     runExtractor: defaultExtractorRunner,
     persistFiling: persistFilingExtraction,
-    persisterDeps: buildFilingPersistDeps(redis),
+    persisterDeps,
     async setDocumentExtractionState({ documentId, status, error, retryCount }) {
       // Round 4: the REAL writer. It does not compute the patch itself — it
       // hands `buildExtractionStatePatch` (the ONE pure function every status
@@ -721,6 +772,24 @@ export async function processPendingFilings(
   const sme = String(ipo.segment ?? '').toUpperCase() === 'SME';
   const extractions: Array<{ doc: CandidateDocument; extraction: FilingExtraction }> = [];
 
+  // W-129 review: the same issue size backs every document extracted for this
+  // IPO this call, so it is resolved ONCE here rather than per document. The
+  // candidate object wins when it already carries `issueSize` (cheapest —
+  // zero extra reads); otherwise fall back to the injected repository read.
+  // Any failure here is non-fatal — extraction proceeds with no issue size,
+  // which the extractor treats as "not evaluated", never a false pass/fail.
+  let issueSizeRupees: number | null = ipo.issueSize ?? null;
+  if (issueSizeRupees == null && deps.loadIssueSizeRupees) {
+    try {
+      issueSizeRupees = await deps.loadIssueSizeRupees(ipo.id);
+    } catch (error) {
+      logger.warn(
+        { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+        'Could not load issue size for plausibility checks (non-fatal) — extracting without it'
+      );
+    }
+  }
+
   // ---------------------------------------------------------------- extract
   for (let pendingIdx = 0; pendingIdx < pendingForThisCall.length; pendingIdx++) {
     const doc = pendingForThisCall[pendingIdx];
@@ -767,7 +836,7 @@ export async function processPendingFilings(
 
     result.spawned++;
     if (deps.spawnBudget) deps.spawnBudget.remaining--;
-    const run = deps.runExtractor({ pdfPath, docType, sme });
+    const run = deps.runExtractor({ pdfPath, docType, sme, issueSizeRupees });
 
     if (isExtractorFailure(run)) {
       result.failed++;
