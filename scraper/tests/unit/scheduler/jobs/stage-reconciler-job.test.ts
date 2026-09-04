@@ -12,7 +12,7 @@
 import { describe, it, expect } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
 import { ipos } from '@ipodhan/shared/db/schema';
-import { RECONCILER_PRESENCE_SQL } from '../../../../src/scheduler/jobs/stage-reconciler-job.js';
+import { RECONCILER_PRESENCE_SQL, getStaleClosedDays } from '../../../../src/scheduler/jobs/stage-reconciler-job.js';
 
 describe('stage-reconciler-job presence SQL — every i.<column> is a real ipos column', () => {
   it('references only columns that exist on the ipos pgTable', () => {
@@ -33,5 +33,28 @@ describe('stage-reconciler-job presence SQL — every i.<column> is a real ipos 
     const referenced = [...RECONCILER_PRESENCE_SQL.matchAll(/\bi\.([a-zA-Z_]+)\b/g)].map((m) => m[1]);
     expect(referenced).not.toContain('gmp');
     expect(referenced).toContain('gmp_price');
+  });
+
+  // W-127: close_date/listing_date are needed to detect stale-CLOSED rows.
+  it('references close_date and listing_date (W-127 stale-CLOSED detection)', () => {
+    const referenced = [...RECONCILER_PRESENCE_SQL.matchAll(/\bi\.([a-zA-Z_]+)\b/g)].map((m) => m[1]);
+    expect(referenced).toContain('close_date');
+    expect(referenced).toContain('listing_date');
+  });
+});
+
+describe('getStaleClosedDays', () => {
+  it('defaults to 30 when STALE_CLOSED_DAYS is unset', () => {
+    expect(getStaleClosedDays({})).toBe(30);
+  });
+
+  it('reads a positive override from STALE_CLOSED_DAYS', () => {
+    expect(getStaleClosedDays({ STALE_CLOSED_DAYS: '45' })).toBe(45);
+  });
+
+  it('falls back to the default on a non-numeric or non-positive value', () => {
+    expect(getStaleClosedDays({ STALE_CLOSED_DAYS: 'abc' })).toBe(30);
+    expect(getStaleClosedDays({ STALE_CLOSED_DAYS: '0' })).toBe(30);
+    expect(getStaleClosedDays({ STALE_CLOSED_DAYS: '-5' })).toBe(30);
   });
 });

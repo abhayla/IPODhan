@@ -96,6 +96,10 @@ export interface ReconcilerIpoRow {
   companyName: string;
   status: string | null;
   priceRangeMin: number | string | null;
+  /** close_date (YYYY-MM-DD or ISO), used only for the W-127 stale-CLOSED check below. */
+  closeDate?: string | null;
+  /** listing_date (YYYY-MM-DD or ISO), used only for the W-127 stale-CLOSED check below. */
+  listingDate?: string | null;
   /** presence[kind] === true when that data is already populated for this IPO. */
   presence: Partial<Record<FetchKind, boolean>>;
 }
@@ -105,6 +109,40 @@ export interface StagePlan {
   companyName: string;
   stage: LifecycleStage;
   dueFetches: FetchKind[]; // due at-or-before this stage AND currently missing
+  /**
+   * W-127: true when this is a CLOSED row whose close_date is older than the
+   * staleness window and which has never picked up a listing_date. Its
+   * dueFetches is forced to [] — the reconciler stops treating it as a live
+   * candidate every cycle — but the row is NOT reclassified (the ipo status
+   * enum has no "closed, listing unknown" value; see status-updater-service.ts).
+   */
+  staleClosed?: boolean;
+}
+
+/** Default staleness window (days since close_date) — overridable via STALE_CLOSED_DAYS. */
+export const DEFAULT_STALE_CLOSED_DAYS = 30;
+
+/**
+ * W-127: a CLOSED IPO whose close_date is older than `staleDays` and which has
+ * never received a listing_date is "closed long ago, listing unknown" — the
+ * schema has no status for that state (CLOSED/LISTED/WITHDRAWN/POSTPONED all
+ * assert something untrue), so the row stays CLOSED but is treated as no
+ * longer a live reconciliation candidate (see planStageReconciliation).
+ *
+ * Pure — no IO, `today` is injected so this is deterministic in tests.
+ */
+export function isStaleClosedWithoutListing(
+  row: Pick<ReconcilerIpoRow, 'status' | 'closeDate' | 'listingDate'>,
+  today: Date,
+  staleDays: number = DEFAULT_STALE_CLOSED_DAYS
+): boolean {
+  if (String(row.status || '').toUpperCase() !== 'CLOSED') return false;
+  if (row.listingDate) return false; // a listing date means the status updater will advance it
+  if (!row.closeDate) return false; // no close_date at all — nothing to measure staleness from
+  const close = new Date(row.closeDate);
+  if (Number.isNaN(close.getTime())) return false;
+  const ageDays = (today.getTime() - close.getTime()) / (24 * 60 * 60 * 1000);
+  return ageDays > staleDays;
 }
 
 /**
@@ -136,11 +174,24 @@ export function dueFetchKindsForStage(stage: LifecycleStage): FetchKind[] {
 /**
  * For each IPO, compute its stage and the fetches that are due (at-or-before the stage)
  * AND not yet present. This is the work the scheduler would enqueue. Pure — no IO.
+ *
+ * W-127: a stale CLOSED-without-listing row (see isStaleClosedWithoutListing) is
+ * excluded from the due-fetch computation — its dueFetches is forced to [] so it
+ * stops being a live reconciliation candidate every cycle — and flagged
+ * `staleClosed: true` so the caller can log it for the nightly audit.
  */
-export function planStageReconciliation(rows: ReconcilerIpoRow[]): StagePlan[] {
+export function planStageReconciliation(
+  rows: ReconcilerIpoRow[],
+  opts: { today?: Date; staleClosedDays?: number } = {}
+): StagePlan[] {
+  const today = opts.today ?? new Date();
+  const staleClosedDays = opts.staleClosedDays ?? DEFAULT_STALE_CLOSED_DAYS;
   return rows.map((row) => {
     const stage = deriveLifecycleStage(row);
-    const due = dueFetchKindsForStage(stage).filter((kind) => row.presence[kind] !== true);
-    return { id: row.id, companyName: row.companyName, stage, dueFetches: due };
+    const staleClosed = isStaleClosedWithoutListing(row, today, staleClosedDays);
+    const due = staleClosed
+      ? []
+      : dueFetchKindsForStage(stage).filter((kind) => row.presence[kind] !== true);
+    return { id: row.id, companyName: row.companyName, stage, dueFetches: due, staleClosed };
   });
 }

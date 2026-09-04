@@ -3,6 +3,7 @@ import {
   deriveLifecycleStage,
   dueFetchKindsForStage,
   planStageReconciliation,
+  isStaleClosedWithoutListing,
   type ReconcilerIpoRow,
 } from '../../../src/scheduler/stage-reconciler';
 
@@ -107,5 +108,84 @@ describe('T-403 — per-document fetch kinds', () => {
       expect(planStageReconciliation([bare(status, 131)])[0].dueFetches).not.toContain('purgePdfs');
     }
     expect(planStageReconciliation([bare('LISTED', 131)])[0].dueFetches).toContain('purgePdfs');
+  });
+});
+
+/**
+ * W-127: three SME IPOs (stanbik-agro-ltd, western-overseas-study-abroad-ltd,
+ * shipwaves-online-ltd) sat CLOSED since December 2025 with no listing_date.
+ * computeTargetStatus (web/lib/services/status-updater-service.ts) correctly
+ * refuses to guess LISTED with no date — but nothing ever stopped the stage
+ * reconciler from treating them as a live candidate (dueFetches computed,
+ * step-ledger rows written) every single cycle, forever. This is the terminal
+ * rule: exclude a stale CLOSED-without-listing row from due-fetch candidacy.
+ */
+describe('W-127 — stale CLOSED-without-listing rows are excluded from live candidates', () => {
+  const today = new Date('2026-09-04T00:00:00.000Z');
+
+  it('isStaleClosedWithoutListing: true past the staleness window with no listing_date', () => {
+    expect(
+      isStaleClosedWithoutListing({ status: 'CLOSED', closeDate: '2025-12-16', listingDate: null }, today, 30)
+    ).toBe(true);
+  });
+
+  it('isStaleClosedWithoutListing: false within the staleness window', () => {
+    expect(
+      isStaleClosedWithoutListing({ status: 'CLOSED', closeDate: '2026-09-01', listingDate: null }, today, 30)
+    ).toBe(false);
+  });
+
+  it('isStaleClosedWithoutListing: false once a listing_date exists, no matter how old close_date is', () => {
+    expect(
+      isStaleClosedWithoutListing(
+        { status: 'CLOSED', closeDate: '2025-12-16', listingDate: '2025-12-22' },
+        today,
+        30
+      )
+    ).toBe(false);
+  });
+
+  it('isStaleClosedWithoutListing: false for a non-CLOSED status regardless of dates', () => {
+    expect(
+      isStaleClosedWithoutListing({ status: 'OPEN', closeDate: '2025-12-16', listingDate: null }, today, 30)
+    ).toBe(false);
+  });
+
+  it('a CLOSED row ~200 days old with no listing_date is excluded from due fetches (staleClosed: true)', () => {
+    const row: ReconcilerIpoRow = {
+      id: 'stanbik', companyName: 'Stanbik Agro Ltd', status: 'CLOSED', priceRangeMin: 100,
+      closeDate: '2025-12-16', listingDate: null, presence: {},
+    };
+    const plan = planStageReconciliation([row], { today, staleClosedDays: 30 })[0];
+    expect(plan.staleClosed).toBe(true);
+    expect(plan.dueFetches).toEqual([]);
+  });
+
+  it('a CLOSED row 3 days old with no listing_date is NOT excluded (still due for docProspectus)', () => {
+    const row: ReconcilerIpoRow = {
+      id: 'fresh', companyName: 'Fresh Ltd', status: 'CLOSED', priceRangeMin: 100,
+      closeDate: '2026-09-01', listingDate: null, presence: {},
+    };
+    const plan = planStageReconciliation([row], { today, staleClosedDays: 30 })[0];
+    expect(plan.staleClosed).toBe(false);
+    expect(plan.dueFetches).toContain('docProspectus');
+  });
+
+  it('a CLOSED row with a listing_date in the past is not stale — its dueFetches follow the normal stage rules', () => {
+    const row: ReconcilerIpoRow = {
+      id: 'listed-eventually', companyName: 'Listed Eventually Ltd', status: 'CLOSED', priceRangeMin: 100,
+      closeDate: '2025-12-16', listingDate: '2025-12-22', presence: {},
+    };
+    const plan = planStageReconciliation([row], { today, staleClosedDays: 30 })[0];
+    expect(plan.staleClosed).toBe(false);
+  });
+
+  it('respects a custom staleClosedDays threshold (default is 30)', () => {
+    const row: ReconcilerIpoRow = {
+      id: 'edge', companyName: 'Edge Ltd', status: 'CLOSED', priceRangeMin: 100,
+      closeDate: '2026-08-20', listingDate: null, presence: {}, // 15 days old at `today`
+    };
+    expect(planStageReconciliation([row], { today, staleClosedDays: 30 })[0].staleClosed).toBe(false);
+    expect(planStageReconciliation([row], { today, staleClosedDays: 10 })[0].staleClosed).toBe(true);
   });
 });
