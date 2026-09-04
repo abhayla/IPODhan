@@ -118,15 +118,21 @@ export interface DocumentCycleSummary {
    */
   listedComplete: number;
   /**
-   * W-124 round 2 (MAJOR-2): LISTED candidates `enrichListedCandidates`
-   * actually enriched this cycle (bounded to `listedCap * 4`).
+   * W-124 round 2 (MAJOR-2) / W-135: LISTED candidates `enrichListedCandidates`
+   * actually visited this cycle. Visiting continues until either `listedCap *
+   * 4` INCOMPLETE rows have been found (complete rows are visited/enriched
+   * but do not consume this bound — W-135) or the absolute
+   * `LISTED_ENRICH_VISIT_CEILING` (200) total visits is hit, whichever comes
+   * first.
    */
   listedEnriched: number;
   /**
-   * W-124 round 2 (MAJOR-2): LISTED candidates present this cycle but past the
-   * `listedCap * 4` enrichment bound — never enriched, so their rotation/
-   * completeness is unknown and they are deferred whole, same as a
-   * capped-out row, until an earlier LISTED row rotates out of the way.
+   * W-124 round 2 (MAJOR-2) / W-135: LISTED candidates present this cycle but
+   * never visited by `enrichListedCandidates` — i.e. past whichever bound
+   * (`listedCap * 4` incomplete rows found, or the `LISTED_ENRICH_VISIT_CEILING`
+   * total-visit ceiling) was hit first. Their rotation/completeness is
+   * unknown, so they are deferred whole, same as a capped-out row, until an
+   * earlier LISTED row rotates out of the way.
    */
   listedSkippedUnenriched: number;
 }
