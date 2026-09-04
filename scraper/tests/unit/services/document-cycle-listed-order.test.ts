@@ -224,33 +224,39 @@ describe('W-124 — LISTED-tier rotation (least-recently-touched first)', () => 
   });
 });
 
-describe('W-124 — the LISTED cap is charged only against candidates that are NOT already complete', () => {
-  it('a complete LISTED row never consumes the cap — it always survives alongside the capped winner', () => {
+describe('W-124 round 2 (MAJOR-1) — a complete LISTED row never enters candidates at all', () => {
+  it('a complete LISTED row is absent from candidates and counted in listedComplete — it never consumes the cap', () => {
     const complete = ipo({ id: 'complete-1', stage: 'LISTED', alreadyComplete: true });
     const incomplete1 = ipo({ id: 'incomplete-1', stage: 'LISTED', listingDate: '2026-09-01' });
     const incomplete2 = ipo({ id: 'incomplete-2', stage: 'LISTED', listingDate: '2026-01-01' });
 
-    const { candidates, listedDeferred } = orderAndCapCandidates(
+    const { candidates, listedDeferred, listedComplete } = orderAndCapCandidates(
       [complete, incomplete1, incomplete2],
       1
     );
 
-    // The complete row is a free pass; exactly one of the two incomplete rows
-    // wins the single cap slot and the other is deferred.
-    expect(candidates.map((c) => c.id)).toContain('complete-1');
-    expect(candidates).toHaveLength(2);
+    // The complete row does no work this cycle, so it is not offered to
+    // PASS 1/2 at all — only one of the two incomplete rows wins the single
+    // cap slot and the other is deferred.
+    expect(candidates.map((c) => c.id)).not.toContain('complete-1');
+    expect(candidates).toHaveLength(1);
     expect(listedDeferred).toBe(1);
+    expect(listedComplete).toBe(1);
   });
 
-  it('with cap 0, complete LISTED rows still pass through — only incomplete rows are deferred', () => {
+  it('with cap 0, complete LISTED rows are still excluded from candidates but counted in listedComplete — only incomplete rows are deferred', () => {
     const complete1 = ipo({ id: 'complete-1', stage: 'LISTED', alreadyComplete: true });
     const complete2 = ipo({ id: 'complete-2', stage: 'LISTED', alreadyComplete: true });
     const incomplete = ipo({ id: 'incomplete-1', stage: 'LISTED' });
 
-    const { candidates, listedDeferred } = orderAndCapCandidates([complete1, complete2, incomplete], 0);
+    const { candidates, listedDeferred, listedComplete } = orderAndCapCandidates(
+      [complete1, complete2, incomplete],
+      0
+    );
 
-    expect(candidates.map((c) => c.id).sort()).toEqual(['complete-1', 'complete-2']);
+    expect(candidates).toEqual([]);
     expect(listedDeferred).toBe(1);
+    expect(listedComplete).toBe(2);
   });
 });
 
