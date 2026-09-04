@@ -108,9 +108,18 @@ describe('T-236 / a zero price band is unannounced, not invalid', () => {
  * (see nse-api-client.ts computeNSEIssueSizeRupees() and validators.ts). The
  * 3-field probe above therefore no longer reports a missing-issueSize
  * error, which is correct: `issueSize: undefined` is now a VALID value.
+ *
+ * W-116 (review round 1) update: `closeDate` was REMOVED from this expected
+ * list, same treatment as T-329's issueSize. ChittorgarhIPOSchema's
+ * `closeDate` is now optional - Chittorgarh's own Closing Date column can be
+ * empty (far-future IPOs, some RIGHTS/NCD records), and chittorgarh-scraper.ts
+ * / chittorgarh-rights-debt-adapter.ts must be able to omit the field rather
+ * than fabricate it as openDate + 3 days (see field-priority-matrix.ts and
+ * moneycontrol-scraper.ts for the same class of fix, W-116/W-116b). The
+ * 3-field probe above therefore no longer reports a missing-closeDate error.
  */
 describe('T-236C / the minimal 3-field "supervisor probe" fails for unrelated reasons', () => {
-  it('fails on missing required fields, NOT on priceRangeMin/priceRangeMax or issueSize (T-329: issueSize is now optional)', () => {
+  it('fails on missing required fields, NOT on priceRangeMin/priceRangeMax, issueSize (T-329) or closeDate (W-116)', () => {
     const result = validateChittorgarhIPOData({
       companyName: 'Rays of Belief Ltd.',
       priceRangeMin: 0,
@@ -123,10 +132,12 @@ describe('T-236C / the minimal 3-field "supervisor probe" fails for unrelated re
     // issueSize is intentionally NOT expected here anymore (T-329) - it is
     // an optional field now, so omitting it produces no validation error.
     expect(paths).not.toContain('issueSize');
+    // closeDate is intentionally NOT expected here anymore (W-116) - it is
+    // an optional field now, so omitting it produces no validation error.
+    expect(paths).not.toContain('closeDate');
     expect(paths).toEqual(
       expect.arrayContaining([
         'openDate',
-        'closeDate',
         'listingExchange',
         'offeringType',
         'status',
