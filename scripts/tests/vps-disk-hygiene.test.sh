@@ -582,9 +582,12 @@ if command -v pgrep >/dev/null 2>&1 || [ -r /proc/1/cmdline ]; then
   # path only as an ARGUMENT OF A DIFFERENT COMMAND (the exact 2026-09-04
   # incident shape: `bash -n scripts/deploy-linux.sh`) must NOT be treated
   # as a deploy in progress.
-  sh -c 'exec -a "bash -n scripts/deploy-linux.sh --check" sleep 30' 2>/dev/null &
+  bash -c 'exec -a "bash -n scripts/deploy-linux.sh --check" sleep 30' 2>/dev/null &
   HELPER_PID=$!
   sleep 0.3
+  if ! kill -0 "$HELPER_PID" 2>/dev/null; then
+    fail "case r1: helper did not start (exec -a unsupported on this /bin/sh?) — cannot exercise the real check"
+  else
   (
     HYGIENE_ROOT="$ROOTR"
     HYGIENE_SOURCED=1
@@ -598,19 +601,23 @@ if command -v pgrep >/dev/null 2>&1 || [ -r /proc/1/cmdline ]; then
     exit 0
   ) >/tmp/hygiene-test-r1.log 2>&1
   RCR1=$?
-  cleanup_case_r
   if [ "$RCR1" -eq 0 ]; then
     pass "case r1: deploy_in_progress() ignores a non-deploy command line mentioning the script (round-4 regression guard)"
   else
     fail "case r1: deploy_in_progress() false-positived on a non-deploy command line — see /tmp/hygiene-test-r1.log"
   fi
+  fi
+  cleanup_case_r
 
   # r2: a background process shaped like the REAL invocation
   # (`bash scripts/deploy-linux.sh staging <ref>`, per deploy-linux.yml) IS
   # detected.
-  sh -c 'exec -a "bash scripts/deploy-linux.sh staging deadbeef" sleep 30' 2>/dev/null &
+  bash -c 'exec -a "bash scripts/deploy-linux.sh staging deadbeef" sleep 30' 2>/dev/null &
   HELPER_PID=$!
   sleep 0.3
+  if ! kill -0 "$HELPER_PID" 2>/dev/null; then
+    fail "case r2: helper did not start (exec -a unsupported on this /bin/sh?) — cannot exercise the real check"
+  else
   (
     HYGIENE_ROOT="$ROOTR"
     HYGIENE_SOURCED=1
@@ -620,12 +627,13 @@ if command -v pgrep >/dev/null 2>&1 || [ -r /proc/1/cmdline ]; then
     deploy_in_progress
   ) >/tmp/hygiene-test-r2.log 2>&1
   RCR2=$?
-  cleanup_case_r
   if [ "$RCR2" -eq 0 ]; then
     pass "case r2: deploy_in_progress() detects the real deploy-linux.yml invocation shape"
   else
     fail "case r2: deploy_in_progress() missed a genuine deploy in progress — see /tmp/hygiene-test-r2.log"
   fi
+  fi
+  cleanup_case_r
 else
   pass "case r: skipped — no pgrep and no /proc/*/cmdline on this host, so deploy_in_progress() can only be exercised via HYGIENE_DEPLOY_CHECK_CMD (case p)"
 fi
