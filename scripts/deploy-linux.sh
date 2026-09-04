@@ -161,6 +161,19 @@ if [ -z "$SLOT" ]; then
   exit 2
 fi
 
+# W-126: this script runs on a GitHub self-hosted runner. pm2 captures the
+# INVOKING shell's env — including RUNNER_TRACKING_ID — and pins it on every
+# process it starts; the runner's post-job "Cleaning up orphan processes"
+# step SIGKILLs anything still carrying its own RUNNER_TRACKING_ID. If the
+# pm2 daemon itself is not already running, the FIRST pm2 call below spawns
+# it carrying that env too, so the cleanup step can kill the daemon — taking
+# the web app and the scraper down together, not just the process this
+# script most recently started. Unsetting it once, here, before the first
+# pm2 command in the script, covers every pm2 invocation below (present and
+# future) without prefixing each one individually. This does not affect the
+# runner's own step shell/process, which is a separate process tree.
+unset RUNNER_TRACKING_ID
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 

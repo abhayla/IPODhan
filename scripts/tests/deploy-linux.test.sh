@@ -384,6 +384,29 @@ else
   pass "case 9: dry-run log does NOT contain 'pm2 reload' anywhere"
 fi
 
+# --- Case 9e: W-126 review round 1 — SOURCE-level assertion. A dry-run-log-
+# --- string check (the round-1 version of this case) is mutation-blind: it
+# --- proves nothing about the REAL pm2 invocations, and a per-site `env -u`
+# --- prefix that a future edit silently drops from one call site (or a new
+# --- pm2 call added without one) would still pass every existing dry-run
+# --- assertion. The actual fix is a SINGLE `unset RUNNER_TRACKING_ID` before
+# --- the first pm2 command in the script, covering every pm2 call (present
+# --- and future) — so assert that shape directly against the script source:
+# --- (i) a line matching '^\s*unset RUNNER_TRACKING_ID' exists, and
+# --- (ii) its line number is smaller than the line number of the FIRST
+# --- non-comment line invoking pm2 stop/delete/start/describe/jlist/list/save.
+# Strip comment lines FIRST, then number the stripped stream — so both line
+# numbers below are computed against the same consistently-numbered stream
+# and the "before/after" comparison is apples-to-apples.
+STRIPPED9E="$(grep -vE '^[[:space:]]*#' "$DEPLOY_SCRIPT")"
+UNSET_LINE9E="$(printf '%s\n' "$STRIPPED9E" | grep -n '^[[:space:]]*unset RUNNER_TRACKING_ID' | head -1 | cut -d: -f1)"
+FIRST_PM2_LINE9E="$(printf '%s\n' "$STRIPPED9E" | grep -n -E '\bpm2 (stop|delete|start|describe|jlist|list|save)\b' | head -1 | cut -d: -f1)"
+if [ -n "$UNSET_LINE9E" ] && [ -n "$FIRST_PM2_LINE9E" ] && [ "$UNSET_LINE9E" -lt "$FIRST_PM2_LINE9E" ]; then
+  pass "case 9e: 'unset RUNNER_TRACKING_ID' appears before the first pm2 stop/delete/start/describe/jlist/list/save call (unset_line=$UNSET_LINE9E, first_pm2_line=$FIRST_PM2_LINE9E)"
+else
+  fail "case 9e: expected 'unset RUNNER_TRACKING_ID' before the first pm2 stop/delete/start/describe/jlist/list/save call (unset_line=$UNSET_LINE9E, first_pm2_line=$FIRST_PM2_LINE9E)"
+fi
+
 # --- Case 10: T-262F — the AUTO-ROLLBACK path (case 8's SHA-mismatch run) --
 # --- ALSO emits delete+start against PREVIOUS_RELEASE's realpath, never ----
 # --- reload. Before this fix the rollback's pm2 calls were gated entirely -
