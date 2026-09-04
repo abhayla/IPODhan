@@ -26,6 +26,10 @@
 #   HYGIENE_SKIP_TMP        when set (any value), skip the /tmp sweep step (round 3, MAJOR-1) —
 #                           separate flag so a test case can exercise ONLY the /tmp sweep
 #                           without also running journalctl/npm/pip/apt/Notifier for real.
+#   HYGIENE_SKIP_ORPHANS    when set (any value), skip the orphaned release-server sweep (W-136)
+#   HYGIENE_ORPHAN_ROOTS    space-separated glob prefixes a process's cwd must be under to be
+#                           considered an orphaned release server (default: $ROOT/releases and
+#                           $ROOT/releases-staging) — env-overridable for the test suite.
 #   HYGIENE_NOTIFIER_URL    Notifier endpoint (default http://127.0.0.1:3300/notify) — the test
 #                           suite points this at an unroutable address as a second independent
 #                           guard, in case HYGIENE_SKIP_SYSTEM is ever dropped by a future edit.
@@ -266,6 +270,82 @@ current_target() {
   fi
 }
 
+# W-136: a probe/app server started against a release dir that was later
+# deleted (an aborted deploy, a manual prune) can be orphaned and keep
+# running — connected to prod DB, bound to a port, regenerating ISR pages
+# into a directory that officially no longer exists (the 2026-08-21
+# incident: a next-server ran for 14 days after its release dir was
+# deleted). HYGIENE_ORPHAN_ROOTS is a space-separated list of glob prefixes
+# a process's cwd must be under to be considered — env-overridable so the
+# test suite can point it at a throwaway dir instead of the real $ROOT.
+ORPHAN_ROOTS="${HYGIENE_ORPHAN_ROOTS:-$ROOT/releases $ROOT/releases-staging}"
+
+# Prints "<pid> <cwd>" (one per line) for every process whose cwd resolves
+# under one of $ORPHAN_ROOTS AND is either marked "(deleted)" by the kernel
+# or no longer exists on disk, AND whose cmdline matches a release-server
+# process (next-server / next start / npm run start). Never runs on a host
+# with no /proc (e.g. this Windows dev box) — the caller checks that too,
+# but the guard is repeated here so the function is safe to call directly.
+detect_orphaned_release_servers() {
+  [ -d /proc ] || return 0
+  local p pid cwd_link cwd_target cwd_clean cmdline root match deleted
+  for p in /proc/[0-9]*; do
+    pid="$(basename "$p")"
+    [ "$pid" = "$$" ] && continue
+    cwd_link="$p/cwd"
+    [ -L "$cwd_link" ] || continue
+    cwd_target="$(readlink "$cwd_link" 2>/dev/null || true)"
+    [ -n "$cwd_target" ] || continue
+    deleted=0
+    case "$cwd_target" in
+      *" (deleted)") deleted=1; cwd_clean="${cwd_target% (deleted)}" ;;
+      *) cwd_clean="$cwd_target" ;;
+    esac
+    [ -d "$cwd_clean" ] || deleted=1
+    [ "$deleted" -eq 1 ] || continue
+    match=0
+    for root in $ORPHAN_ROOTS; do
+      case "$cwd_clean" in
+        "$root"/*|"$root") match=1; break ;;
+      esac
+    done
+    [ "$match" -eq 1 ] || continue
+    cmdline="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || true)"
+    if printf '%s' "$cmdline" | grep -qE 'next-server|next[[:space:]]+start|npm run start'; then
+      printf '%s %s\n' "$pid" "$cwd_clean"
+    fi
+  done
+}
+
+# W-136 review MINOR-1: after a group TERM/KILL, verify EVERY member of the
+# process group is gone, not just the leader pid — a child that traps TERM
+# (or forks between TERM and the KILL escalation) can outlive $opid while a
+# leader-only `kill -0 "$opid"` already reports the group dead. Returns the
+# space-separated list of surviving pids (empty = clean). $1=pgid (may be
+# empty/non-numeric for a non-leader single-pid kill), $2=opid fallback.
+group_survivors() {
+  local pgid="$1" opid="$2" out="" pid pgid_of
+  case "$pgid" in
+    ''|*[!0-9]*|0)
+      kill -0 "$opid" 2>/dev/null && out="$opid"
+      printf '%s' "$out"
+      return 0
+      ;;
+  esac
+  if command -v pgrep >/dev/null 2>&1; then
+    out="$(pgrep -g "$pgid" 2>/dev/null | tr '\n' ' ')"
+  elif [ -d /proc ]; then
+    for pid in /proc/[0-9]*; do
+      pid="$(basename "$pid")"
+      pgid_of="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d ' ' || true)"
+      [ "$pgid_of" = "$pgid" ] && out="$out $pid"
+    done
+  else
+    kill -0 "$opid" 2>/dev/null && out="$opid"
+  fi
+  printf '%s' "$(printf '%s' "$out" | sed -E 's/^ +| +$//g; s/ +/ /g')"
+}
+
 # --- 1. prune releases beyond retention, both slots -------------------------
 prune_slot() {
   local slot="$1" keep="$2" releases_dir current_link cur_raw cur total
@@ -445,7 +525,119 @@ else
   log "no venv dir at $VENV_DIR — skipping stale venv build-dir sweep"
 fi
 
-# --- 6. final report ----------------------------------------------------------
+# --- 6. orphaned release servers (W-136, Linux only) -------------------------
+ORPHAN_COUNT=0
+ORPHAN_SKIP_REASON=""
+if [ -n "${HYGIENE_SKIP_ORPHANS:-}" ]; then
+  ORPHAN_SKIP_REASON="HYGIENE_SKIP_ORPHANS set"
+  log "HYGIENE_SKIP_ORPHANS set — skipping orphaned release-server sweep"
+  report "orphan sweep skipped: HYGIENE_SKIP_ORPHANS set"
+elif [ ! -d /proc ]; then
+  ORPHAN_SKIP_REASON="no /proc on this host"
+  log "no /proc on this host — skipping orphaned release-server sweep"
+  report "orphan sweep skipped: no /proc on this host"
+elif deploy_in_progress; then
+  # MAJOR-2 (round 2): the deploy-in-progress guard previously covered only
+  # prune_slot — during `pm2 delete` -> `pm2 start` in a live deploy a
+  # transitional server could false-match the orphan sweep. Reuse the same
+  # guard the release prune uses so the sweep never runs mid-deploy either.
+  ORPHAN_SKIP_REASON="deploy in progress"
+  log "deploy in progress (matched '$DEPLOY_PGREP_PATTERN') — orphaned release-server sweep skipped this run"
+  report "orphan sweep skipped: deploy in progress"
+else
+  while IFS=' ' read -r opid ocwd; do
+    [ -n "$opid" ] || continue
+    ORPHAN_COUNT=$((ORPHAN_COUNT + 1))
+    OAGE="$(ps -o etime= -p "$opid" 2>/dev/null | tr -d ' ' || true)"
+    log "orphaned release server: pid=$opid cwd=$ocwd age=${OAGE:-unknown}"
+    if [ "$MODE" = "dry-run" ]; then
+      log "DRY-RUN: would evaluate process-group / pm2 ownership for pid=$opid (cwd=$ocwd) before killing"
+      report "orphaned release server (would kill): pid=$opid cwd=$ocwd age=${OAGE:-unknown}"
+    elif may_delete; then
+      # Round 2 hardening: `set -o pipefail` makes a `ps -o ...` failure
+      # (unsupported flag on some ps builds, or the process having exited
+      # mid-sweep) abort the WHOLE script here without `|| true` — mirrors
+      # the OAGE lookup above and dir_kb()'s MINOR(b) guard elsewhere.
+      OPGID="$(ps -o pgid= -p "$opid" 2>/dev/null | tr -d ' ' || true)"
+      OPPID="$(ps -o ppid= -p "$opid" 2>/dev/null | tr -d ' ' || true)"
+
+      # MINOR(b): never treat an empty/invalid/1 pgid as a signalable
+      # group — a negative-1 or empty target can signal far more than
+      # intended. Only a TRUE group leader (pgid == pid, the setsid'd
+      # probe shape) is safe to group-kill; everything else is a
+      # single-pid kill.
+      IS_LEADER=0
+      case "$OPGID" in
+        ''|*[!0-9]*|1) : ;;
+        *) if [ "$OPGID" = "$opid" ]; then IS_LEADER=1; fi ;;
+      esac
+
+      # MAJOR-1: MEASURED on the VPS — the PM2 God Daemon and every
+      # next-server worker it manages (ipodhan-web x2, ipodhan-scraper,
+      # notifier, firekaro-api) share ONE process group (the daemon's).
+      # Group-killing that pgid would take down pm2 and every app it
+      # manages, not just the orphan. Refuse to signal a process group (or
+      # a single pid) whose group leader's or direct parent's cmdline
+      # names pm2/PM2 — pm2 owns its children; this sweep only reaps true
+      # orphans (ppid 1 / systemd-reparented), never a pm2-managed one.
+      LEADER_CMD=""
+      case "$OPGID" in
+        ''|*[!0-9]*|1) : ;;
+        *) LEADER_CMD="$(ps -o cmd= -p "$OPGID" 2>/dev/null || true)" ;;
+      esac
+      PARENT_CMD=""
+      case "$OPPID" in
+        ''|*[!0-9]*|1) : ;;
+        *) PARENT_CMD="$(ps -o cmd= -p "$OPPID" 2>/dev/null || true)" ;;
+      esac
+
+      if printf '%s\n%s' "$LEADER_CMD" "$PARENT_CMD" | grep -qiE 'pm2'; then
+        log "WARN: pid=$opid cwd=$ocwd is pm2-managed (leader/parent cmdline matches pm2) — left to pm2, NOT killed"
+        report "orphaned release server left to pm2 (pm2-managed, not killed): pid=$opid cwd=$ocwd"
+      else
+        # MAJOR-3: TERM, wait up to 5s (poll kill -0), escalate to KILL,
+        # then VERIFY before ever reporting "killed" — never report success
+        # before the kill lands or regardless of outcome.
+        if [ "$IS_LEADER" -eq 1 ]; then
+          kill -TERM -- -"$OPGID" 2>/dev/null || true
+        else
+          kill -TERM "$opid" 2>/dev/null || true
+        fi
+        GROUP_ARG=""
+        [ "$IS_LEADER" -eq 1 ] && GROUP_ARG="$OPGID"
+        SURVIVORS=""
+        WAITED=0
+        while [ "$WAITED" -lt 5 ]; do
+          SURVIVORS="$(group_survivors "$GROUP_ARG" "$opid")"
+          [ -n "$SURVIVORS" ] || break
+          sleep 1
+          WAITED=$((WAITED + 1))
+        done
+        if [ -n "$SURVIVORS" ]; then
+          if [ "$IS_LEADER" -eq 1 ]; then
+            kill -KILL -- -"$OPGID" 2>/dev/null || true
+          else
+            kill -KILL "$opid" 2>/dev/null || true
+          fi
+          sleep 1
+          SURVIVORS="$(group_survivors "$GROUP_ARG" "$opid")"
+        fi
+        if [ -z "$SURVIVORS" ]; then
+          log "orphaned release server killed: pid=$opid cwd=$ocwd age=${OAGE:-unknown}"
+          report "orphaned release server killed: pid=$opid cwd=$ocwd age=${OAGE:-unknown}"
+        else
+          log "WARN: orphaned release server SURVIVED cleanup: pid(s)=$SURVIVORS cwd=$ocwd"
+          report "orphaned release server SURVIVED pid(s) $SURVIVORS cwd=$ocwd"
+        fi
+      fi
+    fi
+  done < <(detect_orphaned_release_servers)
+  if [ "$ORPHAN_COUNT" -eq 0 ]; then
+    log "no orphaned release servers found"
+  fi
+fi
+
+# --- 7. final report ----------------------------------------------------------
 DISK_LINE="$(df -k "$ROOT" 2>/dev/null | tail -n1 || true)"
 USED_PCT="unknown"
 FREE_GB="unknown"
@@ -489,6 +681,7 @@ REPORT_TITLE="disk hygiene: ${USED_PCT} used, ${FREE_GB}GB free, ${FREED_MB}MB f
 REPORT_BODY="disk used: ${USED_PCT} (free ${FREE_GB}GB)
 prod releases kept: ${PROD_COUNT} (keep=${KEEP_PROD})
 staging releases kept: ${STAGING_COUNT} (keep=${KEEP_STAGING})
+orphaned release servers: ${ORPHAN_SKIP_REASON:+skipped (${ORPHAN_SKIP_REASON})}${ORPHAN_SKIP_REASON:-found: ${ORPHAN_COUNT}}
 freed this run: ${FREED_MB}MB
 largest dirs under /root:
 ${LARGEST_ROOT}
@@ -508,7 +701,7 @@ fi
 echo "=== W-134 disk hygiene report ==="
 echo "$REPORT_BODY"
 
-# --- 7. Notifier (info < 70%, warning 70-80%, critical >= 80%) --------------
+# --- 8. Notifier (info < 70%, warning 70-80%, critical >= 80%) --------------
 # C1: --report must never POST — routed through the same may_delete predicate
 # as every other destructive/external-effect step.
 if [ -z "${HYGIENE_SKIP_SYSTEM:-}" ] && may_delete; then
