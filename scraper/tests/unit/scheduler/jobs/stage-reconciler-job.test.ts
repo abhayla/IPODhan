@@ -12,7 +12,11 @@
 import { describe, it, expect } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
 import { ipos } from '@ipodhan/shared/db/schema';
-import { RECONCILER_PRESENCE_SQL, getStaleClosedDays } from '../../../../src/scheduler/jobs/stage-reconciler-job.js';
+import {
+  RECONCILER_PRESENCE_SQL,
+  getStaleClosedDays,
+  planStaleClosedLog,
+} from '../../../../src/scheduler/jobs/stage-reconciler-job.js';
 
 describe('stage-reconciler-job presence SQL — every i.<column> is a real ipos column', () => {
   it('references only columns that exist on the ipos pgTable', () => {
@@ -56,5 +60,44 @@ describe('getStaleClosedDays', () => {
     expect(getStaleClosedDays({ STALE_CLOSED_DAYS: 'abc' })).toBe(30);
     expect(getStaleClosedDays({ STALE_CLOSED_DAYS: '0' })).toBe(30);
     expect(getStaleClosedDays({ STALE_CLOSED_DAYS: '-5' })).toBe(30);
+  });
+});
+
+describe('W-127 MINOR-3: planStaleClosedLog — count + sample every cycle, full list only when the count changed', () => {
+  const rows = [
+    { id: 'a', companyName: 'Alpha', closeDate: '2026-08-01' },
+    { id: 'b', companyName: 'Beta', closeDate: '2026-08-02' },
+  ];
+
+  it('returns null when there are no stale-CLOSED rows', () => {
+    expect(planStaleClosedLog([], 30, null)).toBeNull();
+    expect(planStaleClosedLog([], 30, 5)).toBeNull();
+  });
+
+  it('attaches the full list on the first cycle (no previous count)', () => {
+    const out = planStaleClosedLog(rows, 30, null);
+    expect(out?.fields).toMatchObject({ staleClosedCount: 2, staleClosedSample: rows });
+    expect(out?.fields.staleClosedIpos).toEqual(rows);
+    expect(out?.message).toContain('count changed');
+  });
+
+  it('omits the full list when the count is unchanged since the previous cycle', () => {
+    const out = planStaleClosedLog(rows, 30, 2);
+    expect(out?.fields).toMatchObject({ staleClosedCount: 2 });
+    expect(out?.fields).not.toHaveProperty('staleClosedIpos');
+    expect(out?.message).toContain('count unchanged');
+  });
+
+  it('attaches the full list again once the count changes', () => {
+    const out = planStaleClosedLog(rows, 30, 1);
+    expect(out?.fields.staleClosedIpos).toEqual(rows);
+    expect(out?.message).toContain('count changed');
+  });
+
+  it('the sample is capped at 5 rows regardless of list size', () => {
+    const many = Array.from({ length: 8 }, (_, i) => ({ id: `id-${i}`, companyName: `C${i}`, closeDate: null }));
+    const out = planStaleClosedLog(many, 30, 8);
+    expect((out?.fields.staleClosedSample as unknown[]).length).toBe(5);
+    expect(out?.fields).not.toHaveProperty('staleClosedIpos');
   });
 });

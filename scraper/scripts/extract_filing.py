@@ -2110,7 +2110,16 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None):
             break
     emit.put("cin", found[0] if found else None, found[1] if found else None,
              "cin_matches_mca_pattern", check_cin(found[0] if found else None))
-    return {"unit": unit, "fiscal_years": fiscal_years}
+    # W-133 MAJOR-3: `pnl["status"]` (shared core's own OK/PARTIAL verdict —
+    # every headline P&L metric present for >= 2 fiscal years) can be PARTIAL
+    # even when every per-field check above passed, e.g. a single-fiscal-year
+    # document where each metric's lone year matches the (equally short)
+    # header exactly — `check_fy_series` reports a clean match, so
+    # `emit.failed` never increments, yet the read is genuinely incomplete.
+    # Surface it so `run()` can fold it into the document-level status instead
+    # of letting it evaporate unread.
+    return {"unit": unit, "fiscal_years": fiscal_years,
+            "financial_status": pnl.get("status")}
 
 
 # --------------------------------------------------------------------------- #
@@ -2132,7 +2141,11 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
     else:
         meta = extract_rhp(page_texts, emit, issue_size_rupees=issue_size_rupees)
 
-    status = STATUS_PARTIAL if emit.failed else STATUS_OK
+    # W-133 MAJOR-3: fold the shared core's own financial-completeness verdict
+    # (pnl["status"], surfaced above as meta["financial_status"]) into the
+    # document-level status — a PARTIAL financial read must never be reported
+    # as a clean OK just because every individual field check happened to pass.
+    status = STATUS_PARTIAL if (emit.failed or meta.get("financial_status") == "PARTIAL") else STATUS_OK
     fields = emit.fields
     if ocr_confidence:
         from ocr_pages import annotate_fields, CONFIDENCE_FLOOR

@@ -489,9 +489,31 @@ def test_w133_disagreement_rejects_pnl_sourced_metrics_only():
     by_name = {c["name"]: c for c in r["checks"]}
     assert by_name["kpi_vs_pnl_agreement"]["passed"] is False
     assert "revenue" in by_name["kpi_vs_pnl_agreement"]["detail"]
-    assert "totalIncome" in r["rejected"] and "kpi_vs_pnl_agreement" in r["rejected"]["totalIncome"]
-    assert "eps" in r["rejected"] and "kpi_vs_pnl_agreement" in r["rejected"]["eps"]
+    # MINOR-2: totalIncome/eps were never present in `metrics` (the fill was
+    # rejected before it happened) — `rejected` must not name keys that never
+    # existed, only keys actually present and stripped.
+    assert r["rejected"] == {}
     assert r["status"] == "PARTIAL"
+
+
+def test_w133_kpi_vs_pnl_agreement_none_when_nothing_overlaps():
+    """MINOR-1: when the KPI table and the P&L-fill page share no
+    revenue/PAT year to cross-check, `kpi_vs_pnl_agreement` must report
+    passed=None (not evaluated) — never a rubber-stamped True — per
+    run_plausibility's own convention for unevaluated checks."""
+    no_overlap_pnl_page = "\n".join([
+        "Restated Statement of Profit and Loss",
+        "(₹ in Lakhs)",
+        "Particulars For the year ended For the year ended For the year ended",
+        "March 31, 2023 March 31, 2022 March 31, 2021",
+        "III. Total income (I+II) 8,515.50 5,317.04 3,729.05",
+        "Earnings per equity share (Face value of ₹ 10 each):",
+        "Basic (₹) 12.49 5.16 2.99",
+    ])
+    pages = load_qualiance() + [(300, no_overlap_pnl_page)]
+    r = efp.extract_from_texts(pages)
+    by_name = {c["name"]: c for c in r["checks"]}
+    assert by_name["kpi_vs_pnl_agreement"]["passed"] is None
 
 
 def test_w133_mainboard_fixture_unaffected_no_fill_attempted():
