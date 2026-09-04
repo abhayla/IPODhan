@@ -61,3 +61,70 @@ describe('field-priority-matrix — a source absent from a field scores -1', () 
     expect(getSourcePriority('issueSize', 'API_FALLBACK')).toBe(-1);
   });
 });
+
+describe('field-priority-matrix — W-117 (review round 1): the filing beats the AGGREGATORS but NOT the exchanges for bidding-window dates', () => {
+  // NSE/BSE publish extensions to the open/close window after the RHP/
+  // price-band ad is printed - the ad is never updated when a window is
+  // extended, so DRHP must sit BELOW NSE/BSE (same rule as
+  // listingDate/allotmentDate already document) and ABOVE MONEYCONTROL/
+  // CHITTORGARH, which previously had no standing at all (or, for
+  // Moneycontrol, W-116's fabricated open/close dates outranked everything).
+  it.each(['open_date', 'openDate', 'close_date', 'closeDate'])(
+    'ranks NSE and BSE above DRHP for %s',
+    (field) => {
+      const drhp = getSourcePriority(field, 'DRHP');
+      expect(drhp).toBeGreaterThanOrEqual(0);
+      expect(getSourcePriority(field, 'NSE')).toBeLessThan(drhp);
+      expect(getSourcePriority(field, 'BSE')).toBeLessThan(drhp);
+    }
+  );
+
+  it.each(['open_date', 'openDate', 'close_date', 'closeDate'])(
+    'ranks DRHP above MONEYCONTROL and CHITTORGARH for %s',
+    (field) => {
+      const drhp = getSourcePriority(field, 'DRHP');
+      expect(drhp).toBeLessThan(getSourcePriority(field, 'MONEYCONTROL'));
+      expect(drhp).toBeLessThan(getSourcePriority(field, 'CHITTORGARH'));
+    }
+  );
+
+  it.each(['open_date', 'openDate', 'close_date', 'closeDate'])(
+    'still lets an admin override beat everything, including the exchanges, for %s',
+    (field) => {
+      const admin = getSourcePriority(field, 'ADMIN');
+      for (const other of ['NSE', 'BSE', 'DRHP', 'MONEYCONTROL', 'CHITTORGARH'] as const) {
+        expect(admin).toBeLessThan(getSourcePriority(field, other));
+      }
+    }
+  );
+
+  it.each(['closeDate', 'close_date'])(
+    'resolves a real bidding-window extension: NSE beats DRHP for %s (NSE "2026-09-05" vs DRHP "2026-09-03" -> NSE wins)',
+    (field) => {
+      // The exchanges published an EXTENSION past the printed ad's date;
+      // the ad was never revised. Lower index = higher priority.
+      expect(getSourcePriority(field, 'NSE')).toBeLessThan(getSourcePriority(field, 'DRHP'));
+    }
+  );
+
+  it('resolves a real conflict: DRHP still beats MONEYCONTROL on openDate/closeDate', () => {
+    for (const field of ['openDate', 'closeDate']) {
+      // DRHP '2026-09-03' vs MONEYCONTROL '2026-09-05' -> DRHP wins.
+      expect(getSourcePriority(field, 'DRHP')).toBeLessThan(getSourcePriority(field, 'MONEYCONTROL'));
+    }
+  });
+
+  it('honestly documents the current limit: CHITTORGARH does NOT outrank MONEYCONTROL', () => {
+    // CHITTORGARH '2026-09-03' vs MONEYCONTROL '2026-09-05' -> MONEYCONTROL
+    // still wins by SOURCE_PRIORITY today. This is by design until a
+    // date-substance guard exists to prefer the value that was actually
+    // read over one merely present in a lower-trust scrape - CHITTORGARH is
+    // added here only so it has STANDING at all (previously absent, scoring
+    // -1 and losing to everything), not to outrank Moneycontrol.
+    for (const field of ['openDate', 'closeDate']) {
+      expect(getSourcePriority(field, 'CHITTORGARH')).toBeGreaterThan(
+        getSourcePriority(field, 'MONEYCONTROL')
+      );
+    }
+  });
+});

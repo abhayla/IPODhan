@@ -32,7 +32,10 @@ export interface RightsDebtEnrichmentData {
   priceRangeMin: number;
   priceRangeMax: number;
   openDate: string;
-  closeDate: string;
+  // W-116b: Chittorgarh's own close-date column is sometimes empty for a
+  // RIGHTS/NCD record; a fabricated openDate+3d guess must never be written
+  // as if it were scraped (same class as W-116's Moneycontrol fix).
+  closeDate?: string;
   registrar: string | null;
   leadManagers: string[] | null;
   category: 'RIGHTS' | 'NCD';

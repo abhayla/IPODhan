@@ -247,6 +247,78 @@ describe('chittorgarh-rights-debt-adapter', () => {
       expect(results[1].companyName).toBe('Corporate Bond Issue');
     });
 
+    // W-116b: this adapter used to default closeDate to openDate + 3 days
+    // when the source's own close-date column was empty, and emit the guess
+    // as if it were scraped (same class as W-116's Moneycontrol fabricated
+    // open/close dates). A source must never emit a value it did not read.
+    it('never fabricates a close date from open date + 3 days when Closing Date is empty', async () => {
+      const mockResponse = {
+        msg: 1,
+        sSearchWhere: '',
+        reportTableData: [
+          {
+            Company: '<a href="/ipo/ncd-no-close/1/">NCD No Close Date</a>',
+            'Opening Date': 'Mon, Oct 07, 2025',
+            'Closing Date': '',
+            'Issue Price (Rs.)': '1000.00',
+            'Total Issue Amount (Incl.Firm reservations) (Rs.cr.)': '100.00',
+            'Listing at': 'BSE',
+            'Lead Manager': '',
+            '~Issue_Open_Date': '2025-10-07T00:00:00.000Z',
+            '~IssueCloseDate': '',
+            'Minimum Application': '1 Shares',
+            'Face Value (Rs.)': '1000.00',
+            Registrar: '',
+          },
+        ],
+      };
+
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const results = await fetchDebtIssuesFromChittorgarh();
+
+      expect(results).toHaveLength(1);
+      expect(results[0].openDate).toBeTruthy();
+      expect(results[0].closeDate).toBeUndefined();
+    });
+
+    it('keeps a genuine close date when the source actually provides one', async () => {
+      const mockResponse = {
+        msg: 1,
+        sSearchWhere: '',
+        reportTableData: [
+          {
+            Company: '<a href="/ipo/ncd-with-close/1/">NCD With Close Date</a>',
+            'Opening Date': 'Mon, Oct 07, 2025',
+            'Closing Date': 'Thu, Oct 09, 2025',
+            'Issue Price (Rs.)': '1000.00',
+            'Total Issue Amount (Incl.Firm reservations) (Rs.cr.)': '100.00',
+            'Listing at': 'BSE',
+            'Lead Manager': '',
+            '~Issue_Open_Date': '2025-10-07T00:00:00.000Z',
+            '~IssueCloseDate': '2025-10-09T00:00:00.000Z',
+            'Minimum Application': '1 Shares',
+            'Face Value (Rs.)': '1000.00',
+            Registrar: '',
+          },
+        ],
+      };
+
+      (global.fetch as any).mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockResponse,
+      });
+
+      const results = await fetchDebtIssuesFromChittorgarh();
+
+      expect(results).toHaveLength(1);
+      expect(results[0].openDate).toBe('2025-10-07');
+      expect(results[0].closeDate).toBe('2025-10-09');
+    });
+
     it('should handle network errors gracefully', async () => {
       // T-309: retryWithExponentialBackoff's 1s/2s/4s backoff delays are real
       // setTimeout calls — without fake timers this test burns ~7s of real

@@ -304,14 +304,12 @@ function transformChittorgarhRecord(
       return null;
     }
 
-    // For records without close date, use open date + 3 days as default
-    const effectiveCloseDate =
-      closeDate ||
-      (() => {
-        const openDateObj = new Date(openDate);
-        openDateObj.setDate(openDateObj.getDate() + 3);
-        return openDateObj.toISOString().split('T')[0];
-      })();
+    // W-116b: Chittorgarh's own close-date column is sometimes empty. This
+    // used to default to openDate + 3 days and emit the guess as if it were
+    // scraped - same class as W-116 (Moneycontrol fabricating open/close
+    // dates). Leave closeDate undefined when the source didn't provide one;
+    // never compute a value it did not read.
+    const effectiveCloseDate = closeDate || undefined;
 
     // Parse price
     const price = parseChittorgarhPrice(record['Issue Price (Rs.)']);

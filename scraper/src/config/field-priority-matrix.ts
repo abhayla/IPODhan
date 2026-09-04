@@ -438,8 +438,15 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: 1, max: 100000 },
   },
 
+  // W-117 (review round 1): the filing beats the AGGREGATORS but NOT the
+  // exchanges for bidding-window dates. NSE/BSE publish extensions to the
+  // open/close window after the RHP/price-band ad is printed - the ad is
+  // never updated when a window is extended, so DRHP sits below NSE/BSE
+  // (same rule as listingDate/allotmentDate already document) and above
+  // MONEYCONTROL/CHITTORGARH, which have no comparable authority and (in
+  // Moneycontrol's case, W-116) previously fabricated these dates outright.
   open_date: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL', 'CHITTORGARH'],
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'IPO open date - critical field',
@@ -452,14 +459,14 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // exactly like the `open_date`/`close_date`-only gap this fixes. Kept
   // identical to `open_date` on purpose; if you change one, change both.
   openDate: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL', 'CHITTORGARH'],
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'IPO open date - critical field',
   },
 
   close_date: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL', 'CHITTORGARH'],
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'IPO close date - critical field',
@@ -467,7 +474,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
 
   // W-49: camelCase sibling of `close_date` - see `openDate` comment above.
   closeDate: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'NSE', 'BSE', 'DRHP', 'MONEYCONTROL', 'CHITTORGARH'],
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'IPO close date - critical field',

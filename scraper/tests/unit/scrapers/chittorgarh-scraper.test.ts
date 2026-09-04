@@ -155,6 +155,32 @@ describe('chittorgarh-scraper', () => {
       expect(result.ipos[0].status).toBe('OPEN');
     });
 
+    // W-116b (review round 1): determineStatus() used to require BOTH
+    // openDate and closeDate before checking listingDate at all, so a row
+    // with a past listing date but an empty close-date column (Chittorgarh's
+    // own column, not fabricated per W-116b) read UPCOMING instead of
+    // LISTED. The listing check now runs first.
+    it('should determine status as LISTED when closeDate is missing but listingDate is in the past', async () => {
+      const pastListing = new Date();
+      pastListing.setDate(pastListing.getDate() - 30);
+
+      mockApiResponse([
+        apiRecord({
+          'Company': '<a href="/ipo/listed-no-close/4/">Listed No Close IPO</a>',
+          'Closing Date': '',
+          '~IssueCloseDate': '',
+          'Listing Date': 'past',
+          '~ListingDate': pastListing.toISOString(),
+        }),
+      ]);
+
+      const result = await scrapeChittorgarhIPOs();
+
+      expect(result.ipos).toHaveLength(1);
+      expect(result.ipos[0].closeDate).toBeUndefined();
+      expect(result.ipos[0].status).toBe('LISTED');
+    });
+
     it('should identify SME segment when "Listing at" mentions SME', async () => {
       mockApiResponse([
         apiRecord({
@@ -213,7 +239,12 @@ describe('chittorgarh-scraper', () => {
       expect(result.errors.length).toBeGreaterThan(0);
     });
 
-    it('should default the close date to open date + 3 days when Closing Date is missing', async () => {
+    // W-116b: this used to default closeDate to openDate + 3 days and emit
+    // the guess as if it were scraped (same class as W-116's Moneycontrol
+    // fabricated open/close dates). A source must never emit a value it did
+    // not read - omit closeDate instead so a higher-priority source
+    // (DRHP/NSE/BSE) can fill it via field-priority-matrix.
+    it('never fabricates a close date from open date + 3 days when Closing Date is missing', async () => {
       mockApiResponse([
         apiRecord({
           'Company': '<a href="/ipo/single-date-ipo/7/">Single Date IPO</a>',
@@ -226,7 +257,17 @@ describe('chittorgarh-scraper', () => {
 
       expect(result.ipos).toHaveLength(1);
       expect(result.ipos[0].openDate).toBe('2025-10-07');
-      expect(result.ipos[0].closeDate).toBe('2025-10-10'); // open + 3 days
+      expect(result.ipos[0].closeDate).toBeUndefined();
+    });
+
+    it('keeps a genuine close date when the source actually provides one', async () => {
+      mockApiResponse([apiRecord()]);
+
+      const result = await scrapeChittorgarhIPOs();
+
+      expect(result.ipos).toHaveLength(1);
+      expect(result.ipos[0].openDate).toBeTruthy();
+      expect(result.ipos[0].closeDate).toBe('2025-10-09');
     });
   });
 });

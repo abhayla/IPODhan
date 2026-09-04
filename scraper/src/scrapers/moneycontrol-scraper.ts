@@ -270,45 +270,9 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
         // Determine status
         let status: 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' = raw.status || 'UPCOMING';
 
-        // Calculate open/close dates if not available (for LISTED/CLOSED IPOs)
-        // Use listingDate to estimate: closeDate = listingDate - 3 days, openDate = closeDate - 7 days
-        let openDate = '';
-        let closeDate = '';
-
-        if (listingDate) {
-          const listingDateObj = new Date(listingDate);
-
-          // Estimate closeDate as 3 days before listing
-          const closeDateObj = new Date(listingDateObj);
-          closeDateObj.setDate(closeDateObj.getDate() - 3);
-          closeDate = closeDateObj.toISOString().split('T')[0];
-
-          // Estimate openDate as 7 days before closeDate (typical IPO duration)
-          const openDateObj = new Date(closeDateObj);
-          openDateObj.setDate(openDateObj.getDate() - 7);
-          openDate = openDateObj.toISOString().split('T')[0];
-        } else if (allotmentDate) {
-          // If no listingDate but have allotmentDate, use that
-          const allotmentDateObj = new Date(allotmentDate);
-
-          // Estimate closeDate as 2 days before allotment
-          const closeDateObj = new Date(allotmentDateObj);
-          closeDateObj.setDate(closeDateObj.getDate() - 2);
-          closeDate = closeDateObj.toISOString().split('T')[0];
-
-          // Estimate openDate as 7 days before closeDate
-          const openDateObj = new Date(closeDateObj);
-          openDateObj.setDate(openDateObj.getDate() - 7);
-          openDate = openDateObj.toISOString().split('T')[0];
-        } else {
-          // No dates available - use current date as fallback
-          const now = new Date();
-          closeDate = now.toISOString().split('T')[0];
-
-          const sevenDaysAgo = new Date(now);
-          sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-          openDate = sevenDaysAgo.toISOString().split('T')[0];
-        }
+        // W-116: openDate/closeDate deliberately omitted - Moneycontrol's
+        // page never prints them (only listingDate/allotmentDate), and this
+        // scraper used to fabricate them from those anchors.
 
         // Detect segment (MAINBOARD vs SME)
         const segment = raw.category === 'SME' ? 'SME' : 'MAINBOARD';
@@ -331,8 +295,7 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
         const ipo: MoneycontrolIPO = {
           companyName: sanitizeText(raw.companyName),
           issueSize,
-          openDate,
-          closeDate,
+          // W-116: openDate/closeDate deliberately omitted — see comment above.
           listingExchange: 'BOTH', // Moneycontrol aggregates both exchanges
           segment: segment as 'MAINBOARD' | 'SME',
           offeringType: offeringType as 'IPO',
