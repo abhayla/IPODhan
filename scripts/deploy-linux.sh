@@ -358,7 +358,14 @@ resume_scraper() {
   # invoking shell's env at start time and pins it for restarts/reload, so
   # this is the one place that actually reaches the running process (the
   # retired ecosystem.config.js TZ:'UTC' is never read on this Linux path).
-  ( cd "$target_dir/scraper" && TZ=UTC pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
+  # W-126: this script runs on a GitHub self-hosted runner. pm2 captures the
+  # INVOKING shell's env (including RUNNER_TRACKING_ID) and pins it on the
+  # started process; the runner's post-job "Cleaning up orphan processes"
+  # step SIGKILLs every process carrying its own RUNNER_TRACKING_ID — which
+  # was killing this resumed scraper 25-30s after every deploy. `env -u
+  # RUNNER_TRACKING_ID` strips just that one var before pm2 start so the
+  # process it launches is invisible to that cleanup.
+  ( cd "$target_dir/scraper" && env -u RUNNER_TRACKING_ID TZ=UTC pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
       --no-autorestart --cron-restart="*/30 * * * *" -- src/index.ts --source=all ) \
     || warn "resume_scraper: pm2 start failed for $PM2_SCRAPER_APP — investigate manually, do not assume it is running."
 }
@@ -568,9 +575,9 @@ restart_pm2() {
     local release_realpath
     release_realpath="$(cd "$RELEASE_DIR" && pwd)"
     log "[dry-run] pm2 delete $PM2_WEB_APP"
-    log "[dry-run] TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i $instances -- start (cwd=$release_realpath/web, release=$release_realpath)"
+    log "[dry-run] env -u RUNNER_TRACKING_ID TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i $instances -- start (cwd=$release_realpath/web, release=$release_realpath)"
     log "[dry-run] pm2 delete $PM2_SCRAPER_APP"
-    log "[dry-run] TZ=UTC pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart --cron-restart=*/30_*_*_*_* -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
+    log "[dry-run] env -u RUNNER_TRACKING_ID TZ=UTC pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart --cron-restart=*/30_*_*_*_* -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
     return 0
   fi
   # T-262: delete+start, NOT `pm2 reload`, for the web app. `pm2 reload`
@@ -586,15 +593,21 @@ restart_pm2() {
   # T-327 P2-7: TZ=UTC explicit on every pm2 start — this is the live path;
   # ecosystem.config.js's TZ:'UTC' is dead config here (deploy-linux.sh never
   # reads it) and is retired/documented as historical, not wired.
+  # W-126: `env -u RUNNER_TRACKING_ID` on every pm2 start below — this script
+  # runs on a GitHub self-hosted runner and pm2 pins the invoking shell's env
+  # on the started process; without stripping it, the runner's post-job
+  # cleanup (which kills anything carrying its RUNNER_TRACKING_ID) can kill
+  # the just-started web/scraper processes. See resume_scraper() for the
+  # full mechanism.
   pm2 delete "$PM2_WEB_APP" >/dev/null 2>&1 || true
-  ( cd "$RELEASE_DIR/web" && TZ=UTC pm2 start "$(resolve_bin "$RELEASE_DIR" next/dist/bin/next)" --name "$PM2_WEB_APP" \
+  ( cd "$RELEASE_DIR/web" && env -u RUNNER_TRACKING_ID TZ=UTC pm2 start "$(resolve_bin "$RELEASE_DIR" next/dist/bin/next)" --name "$PM2_WEB_APP" \
       -i "$instances" -- start )
   # Scraper is delete+start (not reload) on every deploy — it is a one-shot
   # fork process, not a long-lived server (pm2-scheduled-one-shot-scraper.md).
   # Exact script/args mirror the existing ecosystem.config.js entry so the
   # Linux PM2 process list looks like the Windows one it is replacing.
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
-  ( cd "$RELEASE_DIR/scraper" && TZ=UTC pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
+  ( cd "$RELEASE_DIR/scraper" && env -u RUNNER_TRACKING_ID TZ=UTC pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
       --no-autorestart --cron-restart="*/30 * * * *" -- src/index.ts --source=all )
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
 }
@@ -616,7 +629,7 @@ rollback_start_web() {
     local prev_realpath
     prev_realpath="$(cd "$PREVIOUS_RELEASE" && pwd)"
     log "[dry-run] pm2 delete $PM2_WEB_APP"
-    log "[dry-run] TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i ${DEPLOY_WEB_INSTANCES:-2} -- start (cwd=$prev_realpath/web, release=$prev_realpath)"
+    log "[dry-run] env -u RUNNER_TRACKING_ID TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i ${DEPLOY_WEB_INSTANCES:-2} -- start (cwd=$prev_realpath/web, release=$prev_realpath)"
     return 0
   fi
   # T-262: delete+start here too — same reasoning as restart_pm2's
@@ -625,8 +638,10 @@ rollback_start_web() {
   # repointing it at PREVIOUS_RELEASE, defeating the rollback.
   # T-327 P2-7: TZ=UTC explicit here too, so a rollback never leaves the
   # web app running without an explicit process TZ.
+  # W-126: `env -u RUNNER_TRACKING_ID` here too — same runner-cleanup
+  # mechanism as resume_scraper()/restart_pm2().
   pm2 delete "$PM2_WEB_APP" >/dev/null 2>&1 || true
-  ( cd "$PREVIOUS_RELEASE/web" && TZ=UTC pm2 start "$(resolve_bin "$PREVIOUS_RELEASE" next/dist/bin/next)" --name "$PM2_WEB_APP" \
+  ( cd "$PREVIOUS_RELEASE/web" && env -u RUNNER_TRACKING_ID TZ=UTC pm2 start "$(resolve_bin "$PREVIOUS_RELEASE" next/dist/bin/next)" --name "$PM2_WEB_APP" \
       -i "${DEPLOY_WEB_INSTANCES:-2}" -- start ) \
     || warn "rollback: pm2 start failed for $PM2_WEB_APP against $PREVIOUS_RELEASE — investigate manually, do not assume it is running."
   pm2 save >/dev/null 2>&1 || warn "rollback: pm2 save failed — a reboot may not restore the rolled-back release."
