@@ -36,7 +36,7 @@ import {
 import { NetworkCounter } from '../utils/network-counter.js';
 import { isVerifierUrl } from './company-host-source.js';
 import { deriveLifecycleStage } from '../scheduler/stage-reconciler.js';
-import { isInLiveWindow, CYCLE_BUDGET, type IssueShape } from './document-state-machine.js';
+import { isInLiveWindow, CYCLE_BUDGET, planIpoCycle, type IssueShape } from './document-state-machine.js';
 import type { DocumentFetchStateRow } from '@ipodhan/shared/repositories/document-fetch-state-repository';
 import {
   decidePurge,
@@ -257,7 +257,39 @@ function compareByDate(aDate: unknown, bDate: unknown, direction: 'asc' | 'desc'
 }
 
 /**
- * W-122: order candidates by lifecycle urgency and cap how many LISTED
+ * Sortable millisecond epoch for a `lastActivityAt`-shaped value, or `null`
+ * when there is nothing to compare (never touched).
+ */
+function activityTimeKey(value: unknown): number | null {
+  if (!value) return null;
+  if (value instanceof Date) {
+    const t = value.getTime();
+    return Number.isNaN(t) ? null : t;
+  }
+  const t = new Date(String(value)).getTime();
+  return Number.isNaN(t) ? null : t;
+}
+
+/**
+ * W-124: LISTED-tier rotation comparator — least-recently-touched first.
+ *
+ * `null` (never attempted this IPO's documents at all) sorts before every
+ * timestamp, so a LISTED row that has NEVER been offered to `runIpo` always
+ * gets first crack at the cap. Two non-null timestamps sort ascending (the
+ * longer-ago one first), so a row processed this cycle — which bumps its
+ * `last_attempt_at` — sinks to the back of the LISTED queue next cycle.
+ */
+function compareByActivity(aVal: unknown, bVal: unknown): number {
+  const aTime = activityTimeKey(aVal);
+  const bTime = activityTimeKey(bVal);
+  if (aTime === null && bTime === null) return 0;
+  if (aTime === null) return -1;
+  if (bTime === null) return 1;
+  return aTime - bTime;
+}
+
+/**
+ * W-122/W-124: order candidates by lifecycle urgency and cap how many LISTED
  * (backfill) candidates pass 1/pass 2 get to see this cycle.
  *
  * This is the SOURCE OF TRUTH for the order (unit-tested here without a
@@ -266,8 +298,31 @@ function compareByDate(aDate: unknown, bDate: unknown, direction: 'asc' | 'desc'
  * reason a live IPO's row sits behind stale LISTED backfill, but this
  * function is what actually decides — and is what the tests exercise.
  *
- * The cap ONLY ever removes LISTED candidates; every OPEN/CLOSED/UPCOMING/
- * WITHDRAWN/POSTPONED candidate always survives.
+ * Guarantees this function makes (W-124, replacing the W-122 comment that
+ * overstated fairness — the LISTED order used to be listing-date-desc ONLY,
+ * so the same most-recent rows won the cap every cycle and rows below them
+ * never got a turn while they stayed incomplete):
+ *
+ *   1. Within OPEN/CLOSED, urgency rank always wins (unchanged from W-122).
+ *   2. Within LISTED, rows ROTATE: least-recently-touched first
+ *      (`lastActivityAt` ascending, `null` = never touched sorts first),
+ *      tie-broken by `listingDate` descending. A LISTED row `runIpo` actually
+ *      processes this cycle sinks to the back of the LISTED queue next cycle,
+ *      so every LISTED row eventually gets a turn instead of the newest
+ *      listings permanently starving the older ones.
+ *   3. The per-cycle LISTED cap (`cap`) is charged ONLY against LISTED rows
+ *      that are NOT already complete (`alreadyComplete !== true` — i.e.
+ *      `planIpoCycle(...).skipIpo` is false, so `runIpo` would actually make
+ *      network calls for it). A LISTED row whose documents are already
+ *      FOUND/NOT_APPLICABLE/SUPERSEDED (or still in retry backoff) costs zero
+ *      network calls either way, so it is never charged against the cap and
+ *      is always let through.
+ *   4. The cap NEVER removes OPEN/CLOSED/UPCOMING/WITHDRAWN/POSTPONED
+ *      candidates — only an incomplete LISTED candidate is ever deferred.
+ *   5. Reserving a slot for the WITHDRAWN/POSTPONED purge path against the
+ *      wall-clock discovery budget is `runDocumentCycle`'s job (this
+ *      function has no budget concept) — see the purge-reservation comment
+ *      there.
  */
 export function orderAndCapCandidates(
   candidates: DiscoveryIpo[],
@@ -285,6 +340,8 @@ export function orderAndCapCandidates(
         const byOpenDate = compareByDate(a.c.openDate, b.c.openDate, 'asc');
         if (byOpenDate !== 0) return byOpenDate;
       } else if (ra === 3) {
+        const byActivity = compareByActivity(a.c.lastActivityAt, b.c.lastActivityAt);
+        if (byActivity !== 0) return byActivity;
         const byListingDate = compareByDate(a.c.listingDate, b.c.listingDate, 'desc');
         if (byListingDate !== 0) return byListingDate;
       }
@@ -300,6 +357,13 @@ export function orderAndCapCandidates(
   const capped: DiscoveryIpo[] = [];
   for (const c of ordered) {
     if (lifecycleRank(c) === 3) {
+      // W-124: a LISTED row with nothing due this cycle costs zero network
+      // calls whether or not it is offered to `runIpo` — never spend a cap
+      // slot on it, so the slot goes to a row that would actually do work.
+      if (c.alreadyComplete === true) {
+        capped.push(c);
+        continue;
+      }
       if (listedSeen < safeCap) {
         capped.push(c);
         listedSeen++;
@@ -313,8 +377,80 @@ export function orderAndCapCandidates(
   return { candidates: capped, listedDeferred };
 }
 
+/**
+ * W-124: enrich each LISTED candidate with the two facts `orderAndCapCandidates`
+ * needs that no plain `ipos` row carries — its rotation timestamp and whether
+ * it is already complete — then decide `alreadyComplete` (no `runIpo` call for
+ * it can cost a network request either way, so it must never spend a cap slot).
+ *
+ * `lastActivityAt` is the newest `document_fetch_state.last_attempt_at` across
+ * the IPO's doc-type rows (the persisted per-IPO fetch state the cycle already
+ * keeps). When the IPO has no fetch-state rows with an attempt yet at all
+ * (`store.listForIpo` returns none, or every row's `last_attempt_at` is null —
+ * e.g. a LISTED row whose doc-type rows were only ever created, never
+ * attempted), that is NOT "never touched": it falls back to the newest
+ * `documents.updated_at` for the IPO as a proxy (`lastActivityIsProxy: true`)
+ * so a row this cycle actually fetched something for still rotates behind one
+ * that genuinely has nothing on file. Only `null` (no fetch-state attempts AND
+ * no documents at all) means "never touched".
+ *
+ * Runs ONLY over LISTED candidates (bounded by the live window already
+ * applied above) — OPEN/CLOSED/UPCOMING/WITHDRAWN/POSTPONED never rotate or
+ * cap, so enriching them would be pure waste.
+ */
+async function enrichListedCandidates(
+  candidates: DiscoveryIpo[],
+  deps: {
+    store: Pick<DocumentFetchStateRepository, 'listForIpo'>;
+    documents: Pick<DocumentRepository, 'findByIPO'>;
+  }
+): Promise<void> {
+  for (const c of candidates) {
+    if (c.stage !== 'LISTED') continue;
+
+    const persisted = await deps.store.listForIpo(c.id);
+    const rows = persisted.map(toStateRow);
+
+    let lastAttemptAt: Date | null = null;
+    for (const row of rows) {
+      const at = row.lastAttemptAt;
+      if (at && (!lastAttemptAt || at.getTime() > lastAttemptAt.getTime())) {
+        lastAttemptAt = at;
+      }
+    }
+
+    if (lastAttemptAt) {
+      c.lastActivityAt = lastAttemptAt;
+      c.lastActivityIsProxy = false;
+    } else {
+      let proxy: Date | null = null;
+      try {
+        for (const d of await deps.documents.findByIPO(c.id)) {
+          const at = (d as { updatedAt?: Date | null }).updatedAt ?? null;
+          if (at && (!proxy || at.getTime() > proxy.getTime())) proxy = at;
+        }
+      } catch (error) {
+        // Non-fatal: without the proxy this row is simply treated as "never
+        // touched" (sorts first), which is the safe default, not a crash.
+        logger.warn(
+          { ipoId: c.id, error: error instanceof Error ? error.message : String(error) },
+          'W-124: could not load documents.updated_at proxy for LISTED rotation (non-fatal)'
+        );
+      }
+      c.lastActivityAt = proxy;
+      c.lastActivityIsProxy = proxy !== null;
+    }
+
+    const plan = planIpoCycle({ stage: c.stage, rows, issue: c.issue });
+    c.alreadyComplete = plan.skipIpo;
+  }
+}
+
 /** Candidate IPOs: live-window only (R10 — history is WP F's job, not the cycle's). */
-export async function loadCandidateIpos(): Promise<{
+export async function loadCandidateIpos(deps: {
+  store: Pick<DocumentFetchStateRepository, 'listForIpo'>;
+  documents: Pick<DocumentRepository, 'findByIPO'>;
+}): Promise<{
   candidates: DiscoveryIpo[];
   listedCap: number;
   listedDeferred: number;
@@ -334,6 +470,13 @@ export async function loadCandidateIpos(): Promise<{
          WHEN upper(status::text) = 'LISTED' THEN 3
          ELSE 2
        END,
+       -- W-124: this listing_date-desc order is only the CHEAP approximation --
+       -- true LISTED rotation needs each IPO's document_fetch_state, which
+       -- this single-table query cannot join cheaply for every cycle. The app
+       -- layer is the source of truth: enrichListedCandidates overrides this
+       -- ordering with the real last-attempted-at-ascending rotation before
+       -- orderAndCapCandidates runs, so a degraded DB round-trip only ever
+       -- affects the row order the runner never actually receives.
        CASE WHEN upper(status::text) = 'LISTED' THEN listing_date END DESC NULLS LAST,
        CASE WHEN upper(status::text) NOT IN ('LISTED', 'OPEN', 'CLOSED', 'WITHDRAWN', 'POSTPONED')
             THEN open_date END ASC NULLS LAST,
@@ -379,6 +522,10 @@ export async function loadCandidateIpos(): Promise<{
       openDate: (r.open_date as Date | string | null) ?? null,
       listingDate: (r.listing_date as Date | string | null) ?? null,
     }));
+
+  // W-124: LISTED-only enrichment (rotation timestamp + already-complete),
+  // BEFORE ordering/capping — see `enrichListedCandidates`.
+  await enrichListedCandidates(candidates, deps);
 
   const listedCap = getListedCap();
   const { candidates: ordered, listedDeferred } = orderAndCapCandidates(candidates, listedCap);
@@ -486,7 +633,7 @@ export async function runDocumentCycle(
       counter,
     });
 
-    const { candidates, listedCap, listedDeferred } = await loadCandidateIpos();
+    const { candidates, listedCap, listedDeferred } = await loadCandidateIpos({ store, documents });
     const results: IpoRunResult[] = [];
     let budgetExhausted = false;
     // Item 7 / F4: tallied AFTER pass 2 (below), across every candidate — see
@@ -498,15 +645,7 @@ export async function runDocumentCycle(
     // under the discovery budget. W-102: this pass no longer runs extraction
     // (see PASS 2 below) — python extraction time must never be charged
     // against the discovery budget.
-    for (const ipo of candidates) {
-    if (now() - startedAt >= budgetMs) {
-      budgetExhausted = true;
-      logger.warn(
-        { processed: results.length, remaining: candidates.length - results.length, budgetMs },
-        'Document discovery budget exhausted — remaining IPOs resume next cycle (state is persisted)'
-      );
-      break;
-    }
+    const processCandidate = async (ipo: DiscoveryIpo): Promise<void> => {
     try {
       const persisted = await store.listForIpo(ipo.id);
 
@@ -624,7 +763,52 @@ export async function runDocumentCycle(
         'Document discovery failed for one IPO (non-fatal) — continuing'
       );
     }
-  }
+    };
+
+    // W-124: reserve one slot per cycle for the WITHDRAWN/POSTPONED purge path
+    // (rank 4 — `deriveIssueShape(...).withdrawn`), regardless of the discovery
+    // budget. Before this, a full live backlog (OPEN/CLOSED/UPCOMING/LISTED)
+    // could burn the whole `budgetMs` and the loop would `break` before ever
+    // reaching rank 4 at the tail of `candidates` — a WITHDRAWN/POSTPONED
+    // issue's still-open rows (F15/M3) would then never close, starving the
+    // purge path indefinitely under sustained load. When the budget trips, and
+    // a purge candidate has not yet been processed this cycle, one — the next
+    // one in walk order — is processed anyway before the pass stops; every
+    // other exhausted-budget candidate still resumes next cycle as before.
+    const purgeReserved = candidates.some((c) => c.issue?.withdrawn === true);
+    let purgeProcessed = false;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const ipo = candidates[i];
+      const isPurgeCandidate = ipo.issue?.withdrawn === true;
+
+      if (now() - startedAt >= budgetMs) {
+        if (purgeReserved && !purgeProcessed) {
+          const purgeIdx = candidates.findIndex(
+            (c, idx) => idx >= i && c.issue?.withdrawn === true
+          );
+          if (purgeIdx !== -1) {
+            await processCandidate(candidates[purgeIdx]);
+            purgeProcessed = true;
+          }
+        }
+        budgetExhausted = true;
+        logger.warn(
+          {
+            processed: results.length,
+            remaining: candidates.length - results.length,
+            budgetMs,
+            purgeReserved,
+            purgeProcessed,
+          },
+          'Document discovery budget exhausted — remaining IPOs resume next cycle (state is persisted); a purge slot is reserved regardless of budget'
+        );
+        break;
+      }
+
+      await processCandidate(ipo);
+      if (isPurgeCandidate) purgeProcessed = true;
+    }
 
     // PASS 2 — extraction. W-102: over EVERY candidate (not only the ones pass
     // 1 reached before its own budget ran out), so a slow discovery pass never

@@ -166,6 +166,94 @@ describe('W-122 — orderAndCapCandidates per-cycle LISTED cap', () => {
   });
 });
 
+describe('W-124 — LISTED-tier rotation (least-recently-touched first)', () => {
+  it('two cycles: the LISTED row processed in cycle 1 sinks behind the other in cycle 2', () => {
+    // Cycle 1: neither has ever been touched (lastActivityAt null on both), so
+    // the tie-break falls to listing_date desc — listed-a (more recent) wins
+    // the single cap slot and is offered to runIpo; listed-b is deferred.
+    const listedA = ipo({ id: 'listed-a', stage: 'LISTED', listingDate: '2026-09-01' });
+    const listedB = ipo({ id: 'listed-b', stage: 'LISTED', listingDate: '2026-01-01' });
+
+    const cycle1 = orderAndCapCandidates([listedA, listedB], 1);
+    expect(cycle1.candidates.map((c) => c.id)).toEqual(['listed-a']);
+    expect(cycle1.listedDeferred).toBe(1);
+
+    // Cycle 2: listed-a was actually processed last cycle, so its persisted
+    // fetch state now carries a real last_attempt_at; listed-b's does not
+    // (still never touched, so it still sorts first regardless of date).
+    const listedANextCycle = { ...listedA, lastActivityAt: new Date('2026-09-04T00:00:00Z') };
+    const listedBNextCycle = { ...listedB, lastActivityAt: null };
+
+    const cycle2 = orderAndCapCandidates([listedANextCycle, listedBNextCycle], 1);
+    expect(cycle2.candidates.map((c) => c.id)).toEqual(['listed-b']);
+    expect(cycle2.listedDeferred).toBe(1);
+  });
+
+  it('a never-touched row (lastActivityAt null) always sorts ahead of a touched one, regardless of listing_date', () => {
+    const recentButTouched = ipo({
+      id: 'recent-touched',
+      stage: 'LISTED',
+      listingDate: '2026-09-01',
+      lastActivityAt: new Date('2026-09-03T00:00:00Z'),
+    });
+    const olderNeverTouched = ipo({
+      id: 'older-never-touched',
+      stage: 'LISTED',
+      listingDate: '2026-01-01',
+      lastActivityAt: null,
+    });
+
+    const { candidates } = orderAndCapCandidates([recentButTouched, olderNeverTouched], 10);
+    expect(candidates.map((c) => c.id)).toEqual(['older-never-touched', 'recent-touched']);
+  });
+
+  it('between two touched rows, the longer-ago attempt sorts first (ascending)', () => {
+    const touchedRecently = ipo({
+      id: 'touched-recently',
+      stage: 'LISTED',
+      lastActivityAt: new Date('2026-09-03T00:00:00Z'),
+    });
+    const touchedLongAgo = ipo({
+      id: 'touched-long-ago',
+      stage: 'LISTED',
+      lastActivityAt: new Date('2026-01-01T00:00:00Z'),
+    });
+
+    const { candidates } = orderAndCapCandidates([touchedRecently, touchedLongAgo], 10);
+    expect(candidates.map((c) => c.id)).toEqual(['touched-long-ago', 'touched-recently']);
+  });
+});
+
+describe('W-124 — the LISTED cap is charged only against candidates that are NOT already complete', () => {
+  it('a complete LISTED row never consumes the cap — it always survives alongside the capped winner', () => {
+    const complete = ipo({ id: 'complete-1', stage: 'LISTED', alreadyComplete: true });
+    const incomplete1 = ipo({ id: 'incomplete-1', stage: 'LISTED', listingDate: '2026-09-01' });
+    const incomplete2 = ipo({ id: 'incomplete-2', stage: 'LISTED', listingDate: '2026-01-01' });
+
+    const { candidates, listedDeferred } = orderAndCapCandidates(
+      [complete, incomplete1, incomplete2],
+      1
+    );
+
+    // The complete row is a free pass; exactly one of the two incomplete rows
+    // wins the single cap slot and the other is deferred.
+    expect(candidates.map((c) => c.id)).toContain('complete-1');
+    expect(candidates).toHaveLength(2);
+    expect(listedDeferred).toBe(1);
+  });
+
+  it('with cap 0, complete LISTED rows still pass through — only incomplete rows are deferred', () => {
+    const complete1 = ipo({ id: 'complete-1', stage: 'LISTED', alreadyComplete: true });
+    const complete2 = ipo({ id: 'complete-2', stage: 'LISTED', alreadyComplete: true });
+    const incomplete = ipo({ id: 'incomplete-1', stage: 'LISTED' });
+
+    const { candidates, listedDeferred } = orderAndCapCandidates([complete1, complete2, incomplete], 0);
+
+    expect(candidates.map((c) => c.id).sort()).toEqual(['complete-1', 'complete-2']);
+    expect(listedDeferred).toBe(1);
+  });
+});
+
 describe('W-122 — getListedCap() env parsing', () => {
   const OLD_ENV = { ...process.env };
 

@@ -487,6 +487,30 @@ export interface DiscoveryIpo {
    * runner itself never reads it.
    */
   listingDate?: Date | string | null;
+  /**
+   * W-124: carried ONLY to drive `orderAndCapCandidates`' LISTED-tier
+   * rotation — the per-IPO "last touched" timestamp, so a LISTED row
+   * processed this cycle sinks to the back of the LISTED queue next cycle
+   * instead of the same most-recent-`listingDate` rows winning the cap every
+   * time. `document-cycle.ts`'s `loadCandidateIpos` derives it as the newest
+   * `document_fetch_state.last_attempt_at` across the IPO's doc-type rows,
+   * falling back to the newest `documents.updated_at` for that IPO
+   * (`lastActivityIsProxy: true`) when the IPO has no fetch-state attempts
+   * yet at all. `null` means "never touched" and sorts first. The runner
+   * itself never reads either field.
+   */
+  lastActivityAt?: Date | string | null;
+  /** W-124: true when `lastActivityAt` came from the `documents.updated_at` proxy, not a real fetch-state attempt. */
+  lastActivityIsProxy?: boolean;
+  /**
+   * W-124: true when this LISTED candidate's document plan has nothing due
+   * this cycle (`planIpoCycle(...).skipIpo`) — every required doc type is
+   * already FOUND/NOT_APPLICABLE/SUPERSEDED, or every open row is still in
+   * backoff. `orderAndCapCandidates` never charges a complete LISTED
+   * candidate against the per-cycle cap, since offering it to `runIpo` costs
+   * zero network calls either way. Only ever set for LISTED candidates.
+   */
+  alreadyComplete?: boolean;
 }
 
 export interface RunnerDeps {
