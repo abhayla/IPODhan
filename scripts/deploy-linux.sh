@@ -207,7 +207,11 @@ CERT_FILE="$ROOT/shared/certs/pg-server.crt"
 # PYTHON_BIN_PATH unconditionally. Defining it late would leave it unset
 # (empty string, not the nullish-coalesced 'python' default filing-auto-
 # persist.ts falls back to) on exactly that early-failure path.
-PYTHON_VENV_DIR="$ROOT/shared/venv"
+# W-111 round 2: slotted per-$SLOT so prod and staging never share a venv —
+# before this, a staging deploy's requirements/constraints change could
+# silently change what prod's scraper runs (they both pointed at the same
+# $ROOT/shared/venv).
+PYTHON_VENV_DIR="$ROOT/shared/venv/$SLOT"
 PYTHON_BIN_PATH="$PYTHON_VENV_DIR/bin/python"
 
 KEEP_RELEASES="${DEPLOY_KEEP_RELEASES:-5}"
@@ -376,6 +380,14 @@ resume_scraper() {
     return 0
   fi
   log "Resuming scraper ($PM2_SCRAPER_APP) from $target_dir"
+  # W-111 round 2: an ENOENT spawn (PYTHON_BIN set but the file missing) is
+  # a visible extraction failure in the scraper's own logs — but this loud
+  # warn here, BEFORE the start, is what tells whoever is watching the
+  # deploy log WHY, instead of them discovering it later from a wall of
+  # per-document ENOENT errors.
+  if [ ! -x "$PYTHON_BIN_PATH" ]; then
+    warn "resume_scraper: PYTHON_BIN=$PYTHON_BIN_PATH — venv missing or not executable; starting the scraper anyway with PYTHON_BIN set to this nonexistent path (an ENOENT spawn is the visible signal — never silently falling back to system python)."
+  fi
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
   # T-327 P2-7: TZ=UTC is explicit at every pm2 start — pm2 captures the
   # invoking shell's env at start time and pins it for restarts/reload, so
@@ -520,29 +532,110 @@ fi
 # PYTHON_BIN_PATH are defined once, near CERT_FILE above — see the comment
 # there for why this section only USES them rather than defining them here.
 
+# W-111 round 2: every rm -rf below goes through this guard — never delete a
+# path that isn't (non-empty AND) under $ROOT/shared/venv/, so a collapsed/
+# empty variable can never turn a venv rebuild into an accidental wipe of
+# something else.
+safe_rm_venv_dir() {
+  local dir="$1"
+  case "$dir" in
+    "$ROOT"/shared/venv/*) rm -rf "$dir" ;;
+    *) echo "FATAL: safe_rm_venv_dir: refusing to delete '$dir' — not under $ROOT/shared/venv/" >&2; return 1 ;;
+  esac
+}
+
 setup_python_venv() {
   local req_file="$RELEASE_DIR/scraper/scripts/requirements.txt"
+  local constraints_file="$RELEASE_DIR/scraper/scripts/requirements-constraints.txt"
+  local new_dir="$PYTHON_VENV_DIR.new"
+  local old_dir="$PYTHON_VENV_DIR.old"
+
   if (( DRY_RUN )); then
-    log "[dry-run] would create/update venv at $PYTHON_VENV_DIR and 'pip install -r $req_file'"
+    log "[dry-run] would build venv at $new_dir, 'pip install -r $req_file -c $constraints_file', smoke-test imports, then swap into $PYTHON_VENV_DIR"
     return 0
   fi
-  if [ ! -x "$PYTHON_VENV_DIR/bin/python" ]; then
-    log "Creating scraper Python venv at $PYTHON_VENV_DIR"
-    if ! python3 -m venv "$PYTHON_VENV_DIR"; then
-      echo "FATAL: 'python3 -m venv $PYTHON_VENV_DIR' failed." >&2
+
+  safe_rm_venv_dir "$new_dir" || return 1
+
+  # Reuse-for-speed: seed the new build from the existing venv (already-
+  # downloaded wheels, warm site-packages) when one exists. The existing
+  # venv is untouched either way — this only ever writes into $new_dir — so
+  # a failure below still leaves $PYTHON_VENV_DIR serving the scraper.
+  if [ -x "$PYTHON_VENV_DIR/bin/python" ]; then
+    log "Seeding new venv from existing $PYTHON_VENV_DIR"
+    if ! cp -a "$PYTHON_VENV_DIR" "$new_dir"; then
+      echo "FATAL: 'cp -a $PYTHON_VENV_DIR $new_dir' failed." >&2
+      safe_rm_venv_dir "$new_dir"
       return 1
     fi
-  else
-    log "Reusing existing scraper Python venv at $PYTHON_VENV_DIR"
   fi
-  log "Installing scraper Python deps from $req_file into $PYTHON_VENV_DIR"
-  if ! "$PYTHON_VENV_DIR/bin/pip" install --quiet --upgrade-strategy only-if-needed -r "$req_file"; then
-    echo "FATAL: 'pip install -r $req_file' into $PYTHON_VENV_DIR failed." >&2
+
+  if [ ! -x "$new_dir/bin/python" ]; then
+    log "Creating scraper Python venv at $new_dir"
+    if ! python3 -m venv "$new_dir"; then
+      echo "FATAL: 'python3 -m venv $new_dir' failed." >&2
+      safe_rm_venv_dir "$new_dir"
+      return 1
+    fi
+  fi
+
+  # Shebangs inside a venv point at its OWN path — once this venv gets moved
+  # (the swap below), "$dir/bin/pip" would still shebang-resolve to the OLD
+  # path and break. Invoking pip as "python -m pip" instead has no such
+  # dependency on where the venv currently lives.
+  log "Installing scraper Python deps from $req_file (constraints: $constraints_file) into $new_dir"
+  if ! "$new_dir/bin/python" -m pip install --quiet -r "$req_file" -c "$constraints_file"; then
+    echo "FATAL: 'pip install -r $req_file -c $constraints_file' into $new_dir failed." >&2
+    safe_rm_venv_dir "$new_dir"
     return 1
   fi
-  log "Scraper Python venv ready — installed versions:"
-  "$PYTHON_VENV_DIR/bin/pip" freeze | grep -Ei '^(pdfplumber|pypdfium2|rapidocr-onnxruntime)==' || \
-    warn "setup_python_venv: expected pinned packages (pdfplumber/pypdfium2/rapidocr-onnxruntime) not found in pip freeze output"
+
+  # W-111 round 2: import smoke check BEFORE the swap — every third-party
+  # module the extractor scripts actually import (scraper/scripts/*.py),
+  # so a build that "pip installed clean" but can't actually import (ABI
+  # mismatch, a missing transitive) never reaches the live venv.
+  log "Smoke-testing venv imports before the flip"
+  local pinned_rapidocr_version
+  pinned_rapidocr_version="$(grep -E '^rapidocr-onnxruntime==' "$req_file" | head -1 | cut -d= -f3)"
+  if ! PINNED_RAPIDOCR_VERSION="$pinned_rapidocr_version" "$new_dir/bin/python" -c '
+import os
+import sys
+
+import pdfplumber
+import pypdfium2
+import rapidocr_onnxruntime
+import onnxruntime
+import cv2
+import numpy
+
+expected = os.environ.get("PINNED_RAPIDOCR_VERSION") or ""
+actual = getattr(rapidocr_onnxruntime, "__version__", "") or ""
+if expected and actual and actual != expected:
+    print(
+        f"rapidocr-onnxruntime version mismatch: installed {actual!r}, "
+        f"pinned {expected!r} (requirements.txt drifted from the venv)",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+'; then
+    echo "FATAL: import smoke check failed for venv build at $new_dir — not swapped into $PYTHON_VENV_DIR; the previous venv (if any) keeps serving the scraper." >&2
+    safe_rm_venv_dir "$new_dir"
+    return 1
+  fi
+
+  log "Scraper Python venv smoke check passed — installed versions:"
+  "$new_dir/bin/python" -m pip freeze | grep -Ei '^(pdfplumber|pypdfium2|rapidocr-onnxruntime|numpy|onnxruntime|opencv-python|pillow|pyclipper|shapely|six|PyYAML|pdfminer\.six)==' || \
+    warn "setup_python_venv: expected pinned packages not found in pip freeze output"
+
+  # Swap: the OLD venv is only ever replaced after the NEW one built AND
+  # smoke-tested clean above — a failed build never reaches this point, so
+  # the last-good venv is never destroyed by a bad one.
+  safe_rm_venv_dir "$old_dir" || return 1
+  if [ -d "$PYTHON_VENV_DIR" ]; then
+    mv "$PYTHON_VENV_DIR" "$old_dir"
+  fi
+  mv "$new_dir" "$PYTHON_VENV_DIR"
+  safe_rm_venv_dir "$old_dir" || true
 }
 
 log "Setting up scraper Python venv (W-111/W-112) at $PYTHON_VENV_DIR"

@@ -1,0 +1,23 @@
+# pip constraints (NOT installed on their own — see setup_python_venv() in
+# scripts/deploy-linux.sh, which installs with
+# `-r requirements.txt -c requirements-constraints.txt`).
+#
+# These pin the TRANSITIVE dependencies of requirements.txt to the exact
+# versions proven working, with OCR, on the target VPS (Ubuntu 24.04,
+# Python 3.12.3) on 2026-09-04 — the day an unpinned `pip install` on that
+# same box pulled rapidocr-onnxruntime 1.4.4 (a DIRECT pin, see
+# requirements.txt) whose renamed private attributes broke every OCR
+# extraction (W-112). Direct deps are pinned in requirements.txt; this file
+# closes the remaining hole — an unpinned transitive (numpy, onnxruntime,
+# opencv-python, ...) drifting to a new major/minor on a fresh venv build
+# and breaking the same way. Do not widen these without re-verifying OCR
+# end-to-end on the VPS.
+numpy==2.5.2
+onnxruntime==1.29.0
+opencv-python==5.0.0.93
+pillow==12.3.0
+pyclipper==1.4.0
+shapely==2.1.2
+six==1.16.0
+PyYAML==6.0.1
+pdfminer.six==20250327
