@@ -85,7 +85,8 @@
 #      PM2 (delete+start, same as above) against it.
 #  11. Resume the scraper against whichever release ended up live (new on
 #      success, old on rollback) — it is never left stopped.
-#  12. Prune to the last N releases (default 5). T-262: SLOT-AWARE — never
+#  12. Prune to the last N releases (default 3 prod / 2 staging, W-134 disk
+#      hygiene — DEPLOY_KEEP_RELEASES still overrides either slot). T-262: SLOT-AWARE — never
 #      deletes a release still referenced by ANY slot's `current`/
 #      `current-<slot>` link OR by a live `ipodhan-*` pm2 process's actual
 #      cwd (see collect_live_release_dirs()), not just this slot's own
@@ -214,7 +215,11 @@ CERT_FILE="$ROOT/shared/certs/pg-server.crt"
 PYTHON_VENV_DIR="$ROOT/shared/venv/$SLOT"
 PYTHON_BIN_PATH="$PYTHON_VENV_DIR/bin/python"
 
-KEEP_RELEASES="${DEPLOY_KEEP_RELEASES:-5}"
+if [ "$SLOT" = "prod" ]; then
+  KEEP_RELEASES="${DEPLOY_KEEP_RELEASES:-3}"
+else
+  KEEP_RELEASES="${DEPLOY_KEEP_RELEASES:-2}"
+fi
 PROBE_PORT="${DEPLOY_PROBE_PORT:-3999}"
 HEALTH_TIMEOUT="${DEPLOY_HEALTH_TIMEOUT_SECONDS:-30}"
 MUTEX_MAX_WAIT="${DEPLOY_MUTEX_MAX_WAIT_SECONDS:-600}"

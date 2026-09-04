@@ -1408,6 +1408,57 @@ else
   fi
 fi
 
+# --- Case 26: W-134 — per-slot retention DEFAULT (no DEPLOY_KEEP_RELEASES --
+# --- override): prod keeps 3, staging keeps 2, and 'current'/'current-  ---
+# --- staging' is never pruned even when it is the oldest surviving one. ---
+unset DEPLOY_KEEP_RELEASES 2>/dev/null || true
+
+ROOT26="$(fresh_root)"
+export DEPLOY_ROOT="$ROOT26"
+for i in 1 2 3 4 5; do
+  bash "$DEPLOY_SCRIPT" prod --dry-run --force >/tmp/deploy-test-26-prod-$i.log 2>&1 || {
+    fail "case 26: prod deploy #$i failed"
+    cat /tmp/deploy-test-26-prod-$i.log
+  }
+  sleep 1.1
+done
+# shellcheck disable=SC2012
+COUNT26P="$(ls -1 "$ROOT26/releases" 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$COUNT26P" -le 3 ]; then
+  pass "case 26: prod default retention kept <= 3 releases with no override (kept $COUNT26P)"
+else
+  fail "case 26: prod default retention kept $COUNT26P releases, expected <= 3"
+fi
+CUR_TARGET26P="$(current_target "$ROOT26/current")"
+if [ -n "$CUR_TARGET26P" ] && [ -d "$CUR_TARGET26P" ]; then
+  pass "case 26: prod 'current' survived the default-retention prune"
+else
+  fail "case 26: prod 'current' was pruned (or missing) under default retention ($CUR_TARGET26P)"
+fi
+
+for i in 1 2 3 4; do
+  bash "$DEPLOY_SCRIPT" staging --dry-run --force >/tmp/deploy-test-26-staging-$i.log 2>&1 || {
+    fail "case 26: staging deploy #$i failed"
+    cat /tmp/deploy-test-26-staging-$i.log
+  }
+  sleep 1.1
+done
+# shellcheck disable=SC2012
+COUNT26S="$(ls -1 "$ROOT26/releases-staging" 2>/dev/null | wc -l | tr -d ' ')"
+if [ "$COUNT26S" -le 2 ]; then
+  pass "case 26: staging default retention kept <= 2 releases with no override (kept $COUNT26S)"
+else
+  fail "case 26: staging default retention kept $COUNT26S releases, expected <= 2"
+fi
+CUR_TARGET26S="$(current_target "$ROOT26/current-staging")"
+if [ -n "$CUR_TARGET26S" ] && [ -d "$CUR_TARGET26S" ]; then
+  pass "case 26: staging 'current-staging' survived the default-retention prune"
+else
+  fail "case 26: staging 'current-staging' was pruned (or missing) under default retention ($CUR_TARGET26S)"
+fi
+
+unset DEPLOY_ROOT
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1
