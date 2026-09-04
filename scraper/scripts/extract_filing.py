@@ -2017,13 +2017,17 @@ def extract_risk_factors(page_texts, limit=480):
     return out, first_page
 
 
-def extract_rhp(page_texts, emit):
+def extract_rhp(page_texts, emit, issue_size_rupees=None):
     # Strip the rupee glyphs before the shared core: prospectuses write
     # "(<glyph> in million)", and the unit detector's "in <unit>" pattern will not
     # match across the glyph, so it would silently fall back to the SME default.
     # Money parsing is unaffected (the glyph is never part of a number token).
     cleaned = [(i, re.sub(r"[`₹]", " ", t or "")) for i, t in page_texts]
-    pnl = extract_pnl_from_texts(cleaned)
+    # W-129: issue_size_rupees (from the caller's --issue-size / the IPO's known
+    # issue size) backs the shared core's net_worth_vs_issue_size and
+    # unit_matches_magnitude checks. None when not supplied — those checks then
+    # report passed=None (not evaluated), never a false rejection.
+    pnl = extract_pnl_from_texts(cleaned, issue_size_rupees=issue_size_rupees)
     fiscal_years = pnl.get("annualYears") or []
     metrics = pnl.get("metrics") or {}
     # MAJOR-1 (C7): do NOT trust `pnl["unit"]` — the shared module's own detector
@@ -2059,7 +2063,14 @@ def extract_rhp(page_texts, emit):
 
     # W-33: surface the shared core's named plausibility checks, and the metric it
     # rejected, instead of silently emitting a number that failed one.
+    # W-129: a check can report passed=None ("not evaluated" — e.g.
+    # net_worth_vs_issue_size / unit_matches_magnitude with no --issue-size
+    # supplied). Emitter.put's bool(passed) would coerce that to a false/failed
+    # field; skip emitting it instead, so "not evaluated" never reads as a pass
+    # OR a fail.
     for chk in pnl.get("checks") or []:
+        if chk["passed"] is None:
+            continue
         emit.put("financial_plausibility_%s" % chk["name"], chk["passed"] or None, None,
                  chk["name"], (chk["passed"], chk["detail"]))
     # When no unit line exists at all, put_c_money has already nulled every money
@@ -2103,9 +2114,12 @@ def extract_rhp(page_texts, emit):
 
 
 # --------------------------------------------------------------------------- #
-def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=None):
+def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=None,
+        issue_size_rupees=None):
     """`ocr_confidence` (D6/W-57): {page_index: confidence} for pages whose text
-    came from OCR rather than from the PDF's own text layer."""
+    came from OCR rather than from the PDF's own text layer. `issue_size_rupees`
+    (W-129) backs the net_worth_vs_issue_size / unit_matches_magnitude checks —
+    None when the caller has no issue size to pass."""
     emit = Emitter(source_doc)
     # E4/E5: a document with no text layer is classified, never guessed at.
     if not any((t or "").strip() for _i, t in page_texts):
@@ -2116,7 +2130,7 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
     if doc_type == "PRICE_BAND_AD":
         meta = extract_price_band_ad(page_texts, emit, segment)
     else:
-        meta = extract_rhp(page_texts, emit)
+        meta = extract_rhp(page_texts, emit, issue_size_rupees=issue_size_rupees)
 
     status = STATUS_PARTIAL if emit.failed else STATUS_OK
     fields = emit.fields
@@ -2137,7 +2151,7 @@ def run(page_texts, doc_type, source_doc, segment="MAINBOARD", ocr_confidence=No
 
 
 def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
-            ocr_dpi=None, ocr_backend=None):
+            ocr_dpi=None, ocr_backend=None, issue_size_rupees=None):
     """Read the PDF's text layer; for any page that has none worth trusting,
     fall back to the OCR route (D6/W-57) instead of stopping at NEEDS_OCR."""
     import pdfplumber
@@ -2163,7 +2177,7 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
                 page_texts = sorted(by_page.items())
 
     return run(page_texts, doc_type, os.path.basename(pdf_path), segment,
-               ocr_confidence or None)
+               ocr_confidence or None, issue_size_rupees=issue_size_rupees)
 
 
 def main():
@@ -2175,18 +2189,26 @@ def main():
         print(json.dumps({"error": "unknown doc type %s" % doc_type}))
         sys.exit(2)
     segment = "SME" if "--sme" in argv else "MAINBOARD"
-    positional = [a for a in argv if not a.startswith("--") and a != doc_type]
+    # W-129: --issue-size <rupees> backs the net-worth/magnitude plausibility
+    # checks (the IPO's known issue size); absent it, those checks report
+    # passed=None (not evaluated) rather than a false pass or fail.
+    issue_size_arg = argv[argv.index("--issue-size") + 1] if "--issue-size" in argv else None
+    issue_size_rupees = float(issue_size_arg) if issue_size_arg is not None else None
+    positional = [a for a in argv if not a.startswith("--")
+                  and a != doc_type and a != issue_size_arg]
 
     if "--texts" in argv:
         with open(positional[0], "r", encoding="utf-8") as fh:
             pages = json.load(fh)
         out = run([(int(p[0]), p[1]) for p in pages], doc_type,
-                  os.path.basename(positional[0]), segment)
+                  os.path.basename(positional[0]), segment,
+                  issue_size_rupees=issue_size_rupees)
     else:
         ocr_dpi = int(argv[argv.index("--ocr-dpi") + 1]) if "--ocr-dpi" in argv else None
         backend = argv[argv.index("--backend") + 1] if "--backend" in argv else None
         out = extract(positional[0], doc_type, segment, ocr="--no-ocr" not in argv,
-                      ocr_dpi=ocr_dpi, ocr_backend=backend)
+                      ocr_dpi=ocr_dpi, ocr_backend=backend,
+                      issue_size_rupees=issue_size_rupees)
     print(json.dumps(out, indent=2, default=str))
 
 
