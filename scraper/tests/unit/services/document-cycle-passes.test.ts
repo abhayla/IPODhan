@@ -152,14 +152,14 @@ vi.mock('../../../src/utils/distributed-lock.js', () => ({
 // loadCandidateIpos hits the DB directly via `db.execute(sql...)`; stub the
 // raw rows it expects rather than mocking loadCandidateIpos itself, so the
 // real candidate-shaping logic (including the live-window filter) still runs.
-function candidateRow(id: string) {
+function candidateRow(id: string, status = 'OPEN') {
   return {
     id,
     company_name: `Company ${id}`,
     slug: id,
     symbol: null,
     segment: 'MAINBOARD',
-    status: 'OPEN',
+    status,
     price_range_min: null,
     price_range_max: null,
     listing_date: null,
@@ -334,6 +334,42 @@ describe('F4 — extraction_blocked/extraction_failed tally covers pass 2, over 
     const summary = await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
 
     expect(summary.extractionBlocked).toBe(1);
+  });
+});
+
+describe('W-124 — one purge (WITHDRAWN/POSTPONED) slot is reserved regardless of the discovery budget', () => {
+  it('with budgetMs=0 (the live backlog would normally get zero slots), the WITHDRAWN candidate is still processed', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('ipo-1', 'OPEN'), candidateRow('ipo-2', 'OPEN'), candidateRow('withdrawn-1', 'WITHDRAWN')],
+    });
+
+    await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed).toContain('withdrawn-1');
+    expect(idsProcessed).toHaveLength(1);
+  });
+
+  it('with no purge candidate present, budgetMs=0 processes nobody (no reservation to make)', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('ipo-1', 'OPEN'), candidateRow('ipo-2', 'OPEN')],
+    });
+
+    await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    expect(runIpoMock).not.toHaveBeenCalled();
+  });
+
+  it('a purge candidate reached BEFORE the budget trips is processed normally, with no double-processing', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('withdrawn-1', 'WITHDRAWN'), candidateRow('ipo-1', 'OPEN')],
+    });
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed.filter((id) => id === 'withdrawn-1')).toHaveLength(1);
+    expect(idsProcessed).toContain('ipo-1');
   });
 });
 
