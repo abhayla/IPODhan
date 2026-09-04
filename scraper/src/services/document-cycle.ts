@@ -118,15 +118,21 @@ export interface DocumentCycleSummary {
    */
   listedComplete: number;
   /**
-   * W-124 round 2 (MAJOR-2): LISTED candidates `enrichListedCandidates`
-   * actually enriched this cycle (bounded to `listedCap * 4`).
+   * W-124 round 2 (MAJOR-2) / W-135: LISTED candidates `enrichListedCandidates`
+   * actually visited this cycle. Visiting continues until either `listedCap *
+   * 4` INCOMPLETE rows have been found (complete rows are visited/enriched
+   * but do not consume this bound — W-135) or the absolute
+   * `LISTED_ENRICH_VISIT_CEILING` (200) total visits is hit, whichever comes
+   * first.
    */
   listedEnriched: number;
   /**
-   * W-124 round 2 (MAJOR-2): LISTED candidates present this cycle but past the
-   * `listedCap * 4` enrichment bound — never enriched, so their rotation/
-   * completeness is unknown and they are deferred whole, same as a
-   * capped-out row, until an earlier LISTED row rotates out of the way.
+   * W-124 round 2 (MAJOR-2) / W-135: LISTED candidates present this cycle but
+   * never visited by `enrichListedCandidates` — i.e. past whichever bound
+   * (`listedCap * 4` incomplete rows found, or the `LISTED_ENRICH_VISIT_CEILING`
+   * total-visit ceiling) was hit first. Their rotation/completeness is
+   * unknown, so they are deferred whole, same as a capped-out row, until an
+   * earlier LISTED row rotates out of the way.
    */
   listedSkippedUnenriched: number;
 }
@@ -218,6 +224,16 @@ export function getListedCap(): number {
   if (!Number.isFinite(n) || n < 0) return DEFAULT_LISTED_CAP;
   return Math.trunc(n);
 }
+
+/**
+ * W-135: absolute safety ceiling on how many LISTED rows
+ * `enrichListedCandidates` will VISIT in one cycle, independent of the
+ * `maxToEnrich` (incomplete-row) bound. Without it, a cycle where every
+ * LISTED row in the backlog happens to be complete would keep visiting rows
+ * forever looking for `maxToEnrich` incomplete ones, re-introducing the
+ * unbounded N+1 (`store.listForIpo` per row) MAJOR-2 was meant to prevent.
+ */
+export const LISTED_ENRICH_VISIT_CEILING = 200;
 
 /**
  * W-122: lifecycle urgency rank. Lower sorts first.
@@ -441,12 +457,25 @@ export function orderAndCapCandidates(
  * admits `cap` incomplete LISTED rows anyway, so scanning far more than
  * `cap` gives the rotation enough margin to find `cap` eligible rows without
  * paying an unbounded N+1 for a backlog the cap could never use in one
- * cycle. `candidates` is already ordered lifecycle-rank-first then (within
- * LISTED) listing-date-desc — the SQL's own order — so iterating in place and
- * stopping once `maxToEnrich` LISTED rows are seen enriches exactly that
- * "listing_date desc then id" prefix. LISTED rows past the bound are left
- * un-enriched; the caller drops them from `candidates` entirely (counted as
- * `listedSkippedUnenriched`) since their rotation/completeness is unknown.
+ * cycle.
+ *
+ * W-135: `maxToEnrich` counts only INCOMPLETE rows (`plan.skipIpo === false`)
+ * — a row this function finds already complete is still enriched (so
+ * `listedComplete` stays accurate) but does NOT consume the bound. Round-2's
+ * original "stop at maxToEnrich visited" let the newest LISTED rows fill the
+ * whole bound forever once THEY became complete, starving every older LISTED
+ * row behind them of enrichment (and therefore of a cap slot) for as long as
+ * they stayed in the live window — seen live on the 2026-09-04 staging soak
+ * (`listedEnriched 8, listedComplete 0` every cycle, 9 older rows stuck at
+ * `listedSkippedUnenriched`). An absolute `LISTED_ENRICH_VISIT_CEILING` still
+ * bounds total rows VISITED, so a backlog that happens to be entirely
+ * complete cannot re-introduce an unbounded N+1 while searching for
+ * incomplete rows that do not exist. `candidates` is already ordered
+ * lifecycle-rank-first then (within LISTED) listing-date-desc — the SQL's own
+ * order — so iterating in place enriches that "listing_date desc then id"
+ * prefix up to whichever bound is hit first. LISTED rows never visited are
+ * left un-enriched; the caller drops them from `candidates` entirely (counted
+ * as `listedSkippedUnenriched`) since their rotation/completeness is unknown.
  *
  * Also stores the computed `CyclePlan` on `c.precomputedPlan` (MAJOR-2) so
  * `runIpo` does not run `planIpoCycle` a second time for the same rows.
@@ -459,10 +488,13 @@ async function enrichListedCandidates(
   },
   maxToEnrich: number
 ): Promise<{ enriched: number }> {
-  let enriched = 0;
+  let enriched = 0; // total rows VISITED (complete + incomplete) — the return value
+  let incompleteSeen = 0; // rows that actually consume the maxToEnrich bound
+  const visitCeiling = Math.max(maxToEnrich, LISTED_ENRICH_VISIT_CEILING);
   for (const c of candidates) {
     if (c.stage !== 'LISTED') continue;
-    if (enriched >= maxToEnrich) break;
+    if (incompleteSeen >= maxToEnrich) break;
+    if (enriched >= visitCeiling) break;
 
     const persisted = await deps.store.listForIpo(c.id);
     const rows = persisted.map(toStateRow);
@@ -501,6 +533,7 @@ async function enrichListedCandidates(
     c.alreadyComplete = plan.skipIpo;
     c.precomputedPlan = plan;
     enriched++;
+    if (!plan.skipIpo) incompleteSeen++;
   }
   return { enriched };
 }
