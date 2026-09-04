@@ -694,13 +694,24 @@ def _fill_missing_from_pnl_page(kpi_metrics, best, candidates):
 
     contributed = [k for k in missing if k in pnl["metrics"]]
     if agree_ok is False:
-        return kpi_metrics, ("kpi_vs_pnl_agreement", False, agree_detail, contributed)
+        # MINOR-2: `contributed` (totalIncome/eps) never made it into
+        # `kpi_metrics` — they are the candidate fill keys, not keys actually
+        # present. Naming them as offenders makes `run_plausibility` record a
+        # "rejected" entry for a metric that was never in `metrics` at all.
+        # Offenders must be restricted to keys actually present in `metrics`.
+        offenders = [k for k in contributed if k in kpi_metrics]
+        return kpi_metrics, ("kpi_vs_pnl_agreement", False, agree_detail, offenders)
 
     merged = dict(kpi_metrics)
     for k in contributed:
         merged[k] = pnl["metrics"][k]
-    detail = agree_detail if (a and b) else "no overlapping revenue/PAT to cross-check"
-    return merged, ("kpi_vs_pnl_agreement", True, detail, [])
+    if a and b:
+        return merged, ("kpi_vs_pnl_agreement", True, agree_detail, [])
+    # MINOR-1: nothing was actually cross-checked (no overlapping revenue/PAT
+    # between the two pages) — per run_plausibility's own convention, an
+    # unevaluated check reports passed=None, never a rubber-stamped True.
+    return merged, ("kpi_vs_pnl_agreement", None,
+                    "no overlapping revenue/PAT to cross-check", [])
 
 
 def check_cross_document_agreement(a, b, tol=0.01, label_a="doc A", label_b="doc B"):

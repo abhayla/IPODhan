@@ -272,6 +272,17 @@ describe('planExtractionSteps — E1..E10 and D6', () => {
     expect(w.get('E9').evidence).toMatchObject({ checksFailed: 1, failedFields: ['shares_monotonic'] });
   });
 
+  it("W-133 MAJOR-3: E9 carries the extractor's own PARTIAL verdict as evidence, not just its checks", () => {
+    const w = byId(planExtractionSteps(extraction({ price_band_floor: ok(100) }, 'PARTIAL'), opts));
+    expect(w.get('E9').status).toBe('DONE');
+    expect(w.get('E9').evidence).toMatchObject({ extractionStatus: 'PARTIAL' });
+  });
+
+  it('W-133 MAJOR-3: E9 carries OK too, so PARTIAL is visibly a change from the default', () => {
+    const w = byId(planExtractionSteps(extraction({ price_band_floor: ok(100) }, 'OK'), opts));
+    expect(w.get('E9').evidence).toMatchObject({ extractionStatus: 'OK' });
+  });
+
   it('E10 counts unresolved [•] placeholders', () => {
     const w = byId(planExtractionSteps(extraction({ issue_price: nulled('not_priced_yet') }), opts));
     expect(w.get('E10').evidence).toMatchObject({ placeholderFields: 1, fields: ['issue_price'] });
