@@ -1222,6 +1222,31 @@ export async function scrapeNSEAPI(): Promise<NSEAPIResult> {
     try {
       const currentData = await fetchCurrentIPOs();
 
+      // W-130: /api/all-upcoming-issues?category=ipo (fetchAllIPOs above) only
+      // ever returns mainboard (series EQ) rows - there is no SME variant of
+      // that list. /api/ipo-current-issue (fetchCurrentIPOs) is the only NSE
+      // endpoint that reports SME (series SME) issues, mainboard or SME alike,
+      // while they are live. Every row it returns MUST survive into the final
+      // result exactly once, or an SME IPO's status/subscription never reaches
+      // the persister even though NSE is actively reporting it (Qualiance
+      // International, 2026-09-04). The current-issue row wins on conflict -
+      // it is the live feed; the upcoming list can be stale by comparison.
+      for (const ipo of currentData.ipos) {
+        const existingIndex = ipo.symbol
+          ? allIPOs.ipos.findIndex(i => i.symbol === ipo.symbol)
+          : -1;
+        if (existingIndex === -1) {
+          allIPOs.ipos.push(ipo);
+        } else {
+          logger.debug({
+            symbol: ipo.symbol,
+            previousStatus: allIPOs.ipos[existingIndex].status,
+            currentIssueStatus: ipo.status,
+          }, 'Current-issue row replaced the upcoming-list row (live feed wins, W-130)');
+          allIPOs.ipos[existingIndex] = ipo;
+        }
+      }
+
       // Merge subscription data.
       // T-266: the old rule was "keep whatever arrived first", and
       // fetchAllIPOs() always arrives first with the NSE-only figure - so the
