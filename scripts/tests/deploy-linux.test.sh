@@ -490,6 +490,7 @@ else
     PM2_WEB_APP="ipodhan-web"
     PM2_SCRAPER_APP="ipodhan-scraper"
     DEPLOY_WEB_INSTANCES=2
+    PYTHON_BIN_PATH="/tmp/fake-venv-9b/bin/python"
     PATH="$FAKEBIN9B:$PATH"
     export PM2_CALL_LOG="$CALLLOG9B"
     restart_pm2
@@ -532,6 +533,7 @@ else
     RELEASE_DIR="$REL9C"
     SCRAPER_RESUME_TARGET="new"
     PM2_SCRAPER_APP="ipodhan-scraper"
+    PYTHON_BIN_PATH="/tmp/fake-venv-9c/bin/python"
     PATH="$FAKEBIN9C:$PATH"
     export PM2_CALL_LOG="$CALLLOG9C"
     resume_scraper
@@ -1129,6 +1131,40 @@ else
   fi
 
   rm -rf "$ENVDIR15"
+fi
+
+# --- Case 16: W-111/W-112 — scraper Python deps (pdfplumber/pypdfium2/ -----
+# --- rapidocr-onnxruntime) are installed into a deploy-managed venv        -
+# --- BEFORE the scraper is (re)started, and every REAL scraper pm2 start  -
+# --- pins PYTHON_BIN to that venv. SOURCE-level assertion (same shape as  -
+# --- case 9e): a dry-run-log-string check would prove nothing about the  --
+# --- REAL 'pip install' / 'pm2 start' invocations actually carrying      --
+# --- these — assert the shape directly against the script source:       --
+# ---   (i)  the venv's real 'pip install -r requirements.txt' line      ---
+# ---        exists and comes BEFORE restart_pm2()'s real (non-dry-run)  ---
+# ---        scraper pm2 start line, and                                 ---
+# ---   (ii) EVERY real (non-dry-run) scraper pm2 start line — both      ---
+# ---        restart_pm2()'s and resume_scraper()'s — carries PYTHON_BIN=. -
+# --- Red-then-green: deleting the pip-install line or either PYTHON_BIN= -
+# --- assignment from deploy-linux.sh flips this case to FAIL.
+STRIPPED16="$(grep -vE '^[[:space:]]*#' "$DEPLOY_SCRIPT")"
+PIP_INSTALL_LINE16="$(printf '%s\n' "$STRIPPED16" | grep -n -E '"\$PYTHON_VENV_DIR/bin/pip" install .*-r "\$req_file"' | head -1 | cut -d: -f1)"
+RESTART_SCRAPER_START_LINE16="$(printf '%s\n' "$STRIPPED16" | grep -n -E 'pm2 start .*tsx/dist/cli\.mjs' | grep -v '\[dry-run\]' | tail -1 | cut -d: -f1)"
+
+if [ -n "$PIP_INSTALL_LINE16" ] && [ -n "$RESTART_SCRAPER_START_LINE16" ] && [ "$PIP_INSTALL_LINE16" -lt "$RESTART_SCRAPER_START_LINE16" ]; then
+  pass "case 16: venv 'pip install -r requirements.txt' (setup_python_venv) appears before restart_pm2()'s real scraper pm2 start (pip_line=$PIP_INSTALL_LINE16, scraper_start_line=$RESTART_SCRAPER_START_LINE16)"
+else
+  fail "case 16: expected the venv pip-install step before restart_pm2()'s real scraper pm2 start (pip_line=$PIP_INSTALL_LINE16, scraper_start_line=$RESTART_SCRAPER_START_LINE16)"
+fi
+
+SCRAPER_START_LINES16="$(printf '%s\n' "$STRIPPED16" | grep -n -E 'pm2 start .*tsx/dist/cli\.mjs' | grep -v '\[dry-run\]')"
+SCRAPER_START_COUNT16="$(printf '%s\n' "$SCRAPER_START_LINES16" | grep -c .)"
+SCRAPER_START_WITH_PYTHON_BIN16="$(printf '%s\n' "$SCRAPER_START_LINES16" | grep -c 'PYTHON_BIN=')"
+
+if [ "$SCRAPER_START_COUNT16" -ge 2 ] && [ "$SCRAPER_START_COUNT16" = "$SCRAPER_START_WITH_PYTHON_BIN16" ]; then
+  pass "case 16: every real (non-dry-run) scraper pm2 start carries PYTHON_BIN=... ($SCRAPER_START_WITH_PYTHON_BIN16/$SCRAPER_START_COUNT16 lines)"
+else
+  fail "case 16: expected every real scraper pm2 start to carry PYTHON_BIN=... (found $SCRAPER_START_WITH_PYTHON_BIN16/$SCRAPER_START_COUNT16 real scraper start lines with it)"
 fi
 
 if [ "$FAILED" -ne 0 ]; then

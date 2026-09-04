@@ -200,6 +200,16 @@ WEB_ENV_FILE="$ENV_DIR/web.env.local"
 SCRAPER_ENV_FILE="$ENV_DIR/scraper.env"
 CERT_FILE="$ROOT/shared/certs/pg-server.crt"
 
+# W-111/W-112: defined here (release-independent, alongside CERT_FILE above),
+# NOT down near setup_python_venv()'s call site — resume_scraper()'s EXIT
+# trap can fire on an EARLY failure (e.g. required-keys assert, runtime
+# preflight) before setup_python_venv() ever runs, and it references
+# PYTHON_BIN_PATH unconditionally. Defining it late would leave it unset
+# (empty string, not the nullish-coalesced 'python' default filing-auto-
+# persist.ts falls back to) on exactly that early-failure path.
+PYTHON_VENV_DIR="$ROOT/shared/venv"
+PYTHON_BIN_PATH="$PYTHON_VENV_DIR/bin/python"
+
 KEEP_RELEASES="${DEPLOY_KEEP_RELEASES:-5}"
 PROBE_PORT="${DEPLOY_PROBE_PORT:-3999}"
 HEALTH_TIMEOUT="${DEPLOY_HEALTH_TIMEOUT_SECONDS:-30}"
@@ -371,7 +381,10 @@ resume_scraper() {
   # invoking shell's env at start time and pins it for restarts/reload, so
   # this is the one place that actually reaches the running process (the
   # retired ecosystem.config.js TZ:'UTC' is never read on this Linux path).
-  ( cd "$target_dir/scraper" && TZ=UTC pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
+  # W-111/W-112: PYTHON_BIN pins the auto-persist PDF/OCR extractor to the
+  # deploy-managed venv (setup_python_venv() above) instead of whatever
+  # `python`/`python3` happens to resolve on PATH.
+  ( cd "$target_dir/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" pm2 start "$(resolve_bin "$target_dir" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
       --no-autorestart --cron-restart="*/30 * * * *" -- src/index.ts --source=all ) \
     || warn "resume_scraper: pm2 start failed for $PM2_SCRAPER_APP — investigate manually, do not assume it is running."
 }
@@ -485,6 +498,58 @@ if ! build_release; then
   fatal "build failed for $RELEASE_NAME — 'current' was NOT touched; $CURRENT_LINK still serves the old release."
 fi
 
+# ------------------------- 6.5 scraper Python deps in a deploy-managed venv (W-111/W-112)
+# The scraper's auto-persist path spawns `python`/`python3` (PYTHON_BIN) for
+# DRHP/RHP PDF extraction — pdfplumber, plus the pypdfium2/rapidocr OCR route
+# (scraper/scripts/requirements.txt). Before this step, those deps were
+# installed by hand on the box with `pip3 install --break-system-packages`
+# (Ubuntu 24.04 / PEP 668) — never by the deploy itself — so a fresh box or a
+# hand-reinstall could silently drift from the pinned versions (W-112: a
+# fresh install pulled rapidocr-onnxruntime 1.4.4, whose renamed private
+# attributes crashed every OCR extraction on the VPS). A venv OWNED by this
+# script, rebuilt from the RELEASE's own requirements.txt on every deploy,
+# makes the installed versions match what's pinned in git — not whatever a
+# past hand-install left behind.
+#
+# The venv lives under $ROOT/shared (release-independent, like shared/env
+# and shared/certs above) so it persists across releases instead of being
+# rebuilt from scratch on every deploy, and so resume_scraper()'s EXIT trap
+# (which may resume the PREVIOUS release on an early failure) can still find
+# it. `python3 -m venv` is idempotent — reused if already present, created
+# once on the first deploy after this script lands. PYTHON_VENV_DIR /
+# PYTHON_BIN_PATH are defined once, near CERT_FILE above — see the comment
+# there for why this section only USES them rather than defining them here.
+
+setup_python_venv() {
+  local req_file="$RELEASE_DIR/scraper/scripts/requirements.txt"
+  if (( DRY_RUN )); then
+    log "[dry-run] would create/update venv at $PYTHON_VENV_DIR and 'pip install -r $req_file'"
+    return 0
+  fi
+  if [ ! -x "$PYTHON_VENV_DIR/bin/python" ]; then
+    log "Creating scraper Python venv at $PYTHON_VENV_DIR"
+    if ! python3 -m venv "$PYTHON_VENV_DIR"; then
+      echo "FATAL: 'python3 -m venv $PYTHON_VENV_DIR' failed." >&2
+      return 1
+    fi
+  else
+    log "Reusing existing scraper Python venv at $PYTHON_VENV_DIR"
+  fi
+  log "Installing scraper Python deps from $req_file into $PYTHON_VENV_DIR"
+  if ! "$PYTHON_VENV_DIR/bin/pip" install --quiet --upgrade-strategy only-if-needed -r "$req_file"; then
+    echo "FATAL: 'pip install -r $req_file' into $PYTHON_VENV_DIR failed." >&2
+    return 1
+  fi
+  log "Scraper Python venv ready — installed versions:"
+  "$PYTHON_VENV_DIR/bin/pip" freeze | grep -Ei '^(pdfplumber|pypdfium2|rapidocr-onnxruntime)==' || \
+    warn "setup_python_venv: expected pinned packages (pdfplumber/pypdfium2/rapidocr-onnxruntime) not found in pip freeze output"
+}
+
+log "Setting up scraper Python venv (W-111/W-112) at $PYTHON_VENV_DIR"
+if ! setup_python_venv; then
+  fatal "python venv setup failed for $RELEASE_NAME — 'current' was NOT touched; $CURRENT_LINK still serves the old release."
+fi
+
 # ------------------------------- 7. apply + assert DB migrations BEFORE the flip
 apply_migrations() {
   if (( DRY_RUN )); then
@@ -583,7 +648,7 @@ restart_pm2() {
     log "[dry-run] pm2 delete $PM2_WEB_APP"
     log "[dry-run] TZ=UTC pm2 start next/dist/bin/next --name $PM2_WEB_APP -i $instances -- start (cwd=$release_realpath/web, release=$release_realpath)"
     log "[dry-run] pm2 delete $PM2_SCRAPER_APP"
-    log "[dry-run] TZ=UTC pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart --cron-restart=*/30_*_*_*_* -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
+    log "[dry-run] TZ=UTC PYTHON_BIN=$PYTHON_BIN_PATH pm2 start tsx/dist/cli.mjs --name $PM2_SCRAPER_APP --no-autorestart --cron-restart=*/30_*_*_*_* -- src/index.ts --source=all (cwd=$release_realpath/scraper, release=$release_realpath)"
     return 0
   fi
   # T-262: delete+start, NOT `pm2 reload`, for the web app. `pm2 reload`
@@ -606,8 +671,11 @@ restart_pm2() {
   # fork process, not a long-lived server (pm2-scheduled-one-shot-scraper.md).
   # Exact script/args mirror the existing ecosystem.config.js entry so the
   # Linux PM2 process list looks like the Windows one it is replacing.
+  # W-111/W-112: PYTHON_BIN pins the auto-persist PDF/OCR extractor to the
+  # deploy-managed venv (setup_python_venv() above) instead of whatever
+  # `python`/`python3` happens to resolve on PATH.
   pm2 delete "$PM2_SCRAPER_APP" >/dev/null 2>&1 || true
-  ( cd "$RELEASE_DIR/scraper" && TZ=UTC pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
+  ( cd "$RELEASE_DIR/scraper" && TZ=UTC PYTHON_BIN="$PYTHON_BIN_PATH" pm2 start "$(resolve_bin "$RELEASE_DIR" tsx/dist/cli.mjs)" --name "$PM2_SCRAPER_APP" \
       --no-autorestart --cron-restart="*/30 * * * *" -- src/index.ts --source=all )
   SCRAPER_RESUME_TARGET="new" # scraper is already up against the new release; resume_scraper's EXIT trap becomes a no-op re-affirmation
 }
