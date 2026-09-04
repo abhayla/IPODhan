@@ -475,6 +475,18 @@ export interface DiscoveryIpo {
    * persist without a second query per IPO.
    */
   slug?: string | null;
+  /**
+   * W-122: carried ONLY to drive `orderAndCapCandidates`' urgency ordering in
+   * document-cycle.ts (UPCOMING sorts by open date ascending). The runner
+   * itself never reads it.
+   */
+  openDate?: Date | string | null;
+  /**
+   * W-122: carried ONLY to drive `orderAndCapCandidates`' urgency ordering in
+   * document-cycle.ts (LISTED backfill sorts by listing date descending). The
+   * runner itself never reads it.
+   */
+  listingDate?: Date | string | null;
 }
 
 export interface RunnerDeps {

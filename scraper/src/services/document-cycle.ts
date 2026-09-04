@@ -95,6 +95,20 @@ export interface DocumentCycleSummary {
   extractionBlocked: number;
   /** S-02 round 4 item 7: documents currently FAILED among this cycle's candidate IPOs. */
   extractionFailed: number;
+  /**
+   * W-122: the per-cycle LISTED-backfill cap in effect this cycle
+   * (`DOCUMENT_CYCLE_LISTED_CAP`, default 2 — see `getListedCap()`). Never
+   * caps OPEN/CLOSED/UPCOMING/WITHDRAWN/POSTPONED candidates.
+   */
+  listedCap: number;
+  /**
+   * W-122: LISTED candidates present this cycle but deferred past the cap —
+   * they are simply not offered to `runIpo` this cycle; the state table
+   * remembers where each one is, so they are picked up (in the same
+   * most-recent-first order) on a later cycle once OPEN/CLOSED/UPCOMING work
+   * is caught up.
+   */
+  listedDeferred: number;
 }
 
 /** `ipos=4 skipped=2 found=3 not_yet=1 blocked=0 calls=5 extraction_blocked=0 extraction_failed=0` — the ledger `reason`. */
@@ -111,7 +125,8 @@ export function summarize(
   results: IpoRunResult[],
   durationMs: number,
   budgetExhausted = false,
-  extraction: { blocked: number; failed: number } = { blocked: 0, failed: 0 }
+  extraction: { blocked: number; failed: number } = { blocked: 0, failed: 0 },
+  listedInfo: { cap: number; deferred: number } = { cap: 0, deferred: 0 }
 ): DocumentCycleSummary {
   return {
     ipos: results.length,
@@ -124,6 +139,8 @@ export function summarize(
     budgetExhausted,
     extractionBlocked: extraction.blocked,
     extractionFailed: extraction.failed,
+    listedCap: listedInfo.cap,
+    listedDeferred: listedInfo.deferred,
   };
 }
 
@@ -153,22 +170,181 @@ export function deriveIssueShape(row: Record<string, unknown>): IssueShape {
   };
 }
 
+/**
+ * W-122: default LISTED-backfill cap per cycle, when
+ * `DOCUMENT_CYCLE_LISTED_CAP` is unset/blank/invalid.
+ */
+export const DEFAULT_LISTED_CAP = 2;
+
+/**
+ * W-122: parse `DOCUMENT_CYCLE_LISTED_CAP` safely — a non-negative integer,
+ * `0` meaning "no LISTED backfill at all this cycle". Any missing/blank/
+ * non-numeric/negative value falls back to `DEFAULT_LISTED_CAP` rather than
+ * producing `NaN` or a silently-unbounded cap.
+ */
+export function getListedCap(): number {
+  const raw = process.env.DOCUMENT_CYCLE_LISTED_CAP;
+  if (raw === undefined || raw.trim() === '') return DEFAULT_LISTED_CAP;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return DEFAULT_LISTED_CAP;
+  return Math.trunc(n);
+}
+
+/**
+ * W-122: lifecycle urgency rank. Lower sorts first.
+ *
+ * OPEN and CLOSED are time-critical (an OPEN issue's PRICE_BAND_AD/anchor
+ * report is only available while it is live; a CLOSED issue's Prospectus
+ * becomes due the moment it leaves the board). UPCOMING is next — nothing is
+ * overdue yet, ordered by how soon it opens. LISTED is backfill: real, but
+ * never urgent, so it must never crowd out a live issue's budget slot again
+ * (the Deepa Jewellers incident this fixes). WITHDRAWN/POSTPONED only need one
+ * visit to close their rows as NOT_APPLICABLE (F15/M3) — last, always.
+ */
+function lifecycleRank(ipo: Pick<DiscoveryIpo, 'stage' | 'issue'>): number {
+  if (ipo.issue?.withdrawn) return 4;
+  switch (ipo.stage) {
+    case 'OPEN':
+      return 0;
+    case 'CLOSED':
+      return 1;
+    case 'LISTED':
+      return 3;
+    case 'UPCOMING':
+    case 'PRE_OPEN':
+    default:
+      return 2;
+  }
+}
+
+/**
+ * Sortable "YYYY-MM-DD" key for a `date`-column value that may arrive here as
+ * either a `Date` instance or a date-only string, depending on the pg
+ * driver's parser config — WITHOUT ever running a raw string through
+ * `new Date(...)` (T-327: that parses at LOCAL midnight, then a later
+ * `.toISOString()`/`.getTime()` read shifts the calendar date a day on any
+ * host whose process TZ isn't UTC, e.g. prod PM2 on Asia/Kolkata — see
+ * `.claude/rules/utc-naive-timestamp-normalization.md`).
+ *
+ * A `Date` instance is read with its UTC getters (safe: formatting an
+ * already-constructed Date, not parsing a string). A string is matched for
+ * its leading `YYYY-MM-DD` and returned as-is — lexical comparison on that
+ * prefix is chronological order, so no numeric conversion is needed at all.
+ */
+function dateSortKey(value: unknown): string | null {
+  if (!value) return null;
+  if (value instanceof Date) {
+    const y = value.getUTCFullYear();
+    const m = String(value.getUTCMonth() + 1).padStart(2, '0');
+    const d = String(value.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  const match = String(value).trim().match(/^(\d{4}-\d{2}-\d{2})/);
+  return match ? match[1] : null;
+}
+
+/** Present dates sort before null/unparsable ones, in either direction (nulls always last). */
+function compareByDate(aDate: unknown, bDate: unknown, direction: 'asc' | 'desc'): number {
+  const aKey = dateSortKey(aDate);
+  const bKey = dateSortKey(bDate);
+  if (aKey === null || bKey === null) {
+    if (aKey === bKey) return 0;
+    return aKey === null ? 1 : -1;
+  }
+  if (aKey === bKey) return 0;
+  const cmp = aKey < bKey ? -1 : 1;
+  return direction === 'asc' ? cmp : -cmp;
+}
+
+/**
+ * W-122: order candidates by lifecycle urgency and cap how many LISTED
+ * (backfill) candidates pass 1/pass 2 get to see this cycle.
+ *
+ * This is the SOURCE OF TRUTH for the order (unit-tested here without a
+ * database); `loadCandidateIpos`'s SQL `ORDER BY` is written to already
+ * produce the same order so a slow/degraded DB round-trip is never the
+ * reason a live IPO's row sits behind stale LISTED backfill, but this
+ * function is what actually decides — and is what the tests exercise.
+ *
+ * The cap ONLY ever removes LISTED candidates; every OPEN/CLOSED/UPCOMING/
+ * WITHDRAWN/POSTPONED candidate always survives.
+ */
+export function orderAndCapCandidates(
+  candidates: DiscoveryIpo[],
+  cap: number
+): { candidates: DiscoveryIpo[]; listedDeferred: number } {
+  const safeCap = Number.isFinite(cap) && cap >= 0 ? Math.trunc(cap) : DEFAULT_LISTED_CAP;
+
+  const ordered = candidates
+    .map((c, idx) => ({ c, idx }))
+    .sort((a, b) => {
+      const ra = lifecycleRank(a.c);
+      const rb = lifecycleRank(b.c);
+      if (ra !== rb) return ra - rb;
+      if (ra === 2) {
+        const byOpenDate = compareByDate(a.c.openDate, b.c.openDate, 'asc');
+        if (byOpenDate !== 0) return byOpenDate;
+      } else if (ra === 3) {
+        const byListingDate = compareByDate(a.c.listingDate, b.c.listingDate, 'desc');
+        if (byListingDate !== 0) return byListingDate;
+      }
+      // Stable tie-break so the order never reshuffles cycle to cycle for
+      // candidates with the same rank and date.
+      const byId = a.c.id.localeCompare(b.c.id);
+      return byId !== 0 ? byId : a.idx - b.idx;
+    })
+    .map((x) => x.c);
+
+  let listedSeen = 0;
+  let listedDeferred = 0;
+  const capped: DiscoveryIpo[] = [];
+  for (const c of ordered) {
+    if (lifecycleRank(c) === 3) {
+      if (listedSeen < safeCap) {
+        capped.push(c);
+        listedSeen++;
+      } else {
+        listedDeferred++;
+      }
+    } else {
+      capped.push(c);
+    }
+  }
+  return { candidates: capped, listedDeferred };
+}
+
 /** Candidate IPOs: live-window only (R10 — history is WP F's job, not the cycle's). */
-export async function loadCandidateIpos(): Promise<DiscoveryIpo[]> {
+export async function loadCandidateIpos(): Promise<{
+  candidates: DiscoveryIpo[];
+  listedCap: number;
+  listedDeferred: number;
+}> {
   const result = await db.execute(sql`
     SELECT id, company_name, slug, symbol, segment, status, price_range_min,
-           price_range_max, listing_date, bse_ipo_no,
+           price_range_max, open_date, listing_date, bse_ipo_no,
            company_website, verifier_url
       FROM ipos
      WHERE offering_type = 'IPO'
        AND status IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED')
+     ORDER BY
+       CASE
+         WHEN upper(status::text) IN ('WITHDRAWN', 'POSTPONED') THEN 4
+         WHEN upper(status::text) = 'OPEN' THEN 0
+         WHEN upper(status::text) = 'CLOSED' THEN 1
+         WHEN upper(status::text) = 'LISTED' THEN 3
+         ELSE 2
+       END,
+       CASE WHEN upper(status::text) = 'LISTED' THEN listing_date END DESC NULLS LAST,
+       CASE WHEN upper(status::text) NOT IN ('LISTED', 'OPEN', 'CLOSED', 'WITHDRAWN', 'POSTPONED')
+            THEN open_date END ASC NULLS LAST,
+       id
   `);
   const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<
     string,
     unknown
   >[];
 
-  return rows
+  const candidates = rows
     .filter((r) => {
       // A WITHDRAWN/POSTPONED issue is outside the live window but must still be
       // visited once, to close its open rows as NOT_APPLICABLE (F15/M3).
@@ -198,7 +374,15 @@ export async function loadCandidateIpos(): Promise<DiscoveryIpo[]> {
         ? String(r.verifier_url).trim()
         : null,
       issue: deriveIssueShape(r),
+      // W-122: carried only to drive the urgency ordering below; the runner
+      // itself never reads these two fields.
+      openDate: (r.open_date as Date | string | null) ?? null,
+      listingDate: (r.listing_date as Date | string | null) ?? null,
     }));
+
+  const listedCap = getListedCap();
+  const { candidates: ordered, listedDeferred } = orderAndCapCandidates(candidates, listedCap);
+  return { candidates: ordered, listedCap, listedDeferred };
 }
 
 /**
@@ -302,7 +486,7 @@ export async function runDocumentCycle(
       counter,
     });
 
-    const candidates = await loadCandidateIpos();
+    const { candidates, listedCap, listedDeferred } = await loadCandidateIpos();
     const results: IpoRunResult[] = [];
     let budgetExhausted = false;
     // Item 7 / F4: tallied AFTER pass 2 (below), across every candidate — see
@@ -517,10 +701,13 @@ export async function runDocumentCycle(
       }
     }
 
-    const summary = summarize(results, now() - startedAt, budgetExhausted, {
-      blocked: extractionBlocked,
-      failed: extractionFailed,
-    });
+    const summary = summarize(
+      results,
+      now() - startedAt,
+      budgetExhausted,
+      { blocked: extractionBlocked, failed: extractionFailed },
+      { cap: listedCap, deferred: listedDeferred }
+    );
 
     // One scraper_logs row per cycle for source=DOCUMENTS, so the existing metrics
     // tracker and alert thresholds cover documents like any other source (§7.4).
