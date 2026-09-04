@@ -438,8 +438,15 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     validation: { min: 1, max: 100000 },
   },
 
+  // W-117: DRHP added right after ADMIN — the RHP/price-band ad prints the
+  // bidding-window dates and, unlike listing/allotment (which the exchanges
+  // can revise after printing), the open/close window is fixed once
+  // announced. CHITTORGARH added after MONEYCONTROL — a real but lower-trust
+  // scrape source, never higher than the exchanges. This also closes the gap
+  // that let MONEYCONTROL's fabricated open/close dates (W-116) outrank a
+  // filing that actually read the real dates.
   open_date: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'IPO open date - critical field',
@@ -452,14 +459,14 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
   // exactly like the `open_date`/`close_date`-only gap this fixes. Kept
   // identical to `open_date` on purpose; if you change one, change both.
   openDate: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'IPO open date - critical field',
   },
 
   close_date: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'IPO close date - critical field',
@@ -467,7 +474,7 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
 
   // W-49: camelCase sibling of `close_date` - see `openDate` comment above.
   closeDate: {
-    sources: ['ADMIN', 'NSE', 'BSE', 'MONEYCONTROL'],
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'MONEYCONTROL', 'CHITTORGARH'],
     normalization: 'date',
     confidenceThreshold: 95,
     description: 'IPO close date - critical field',

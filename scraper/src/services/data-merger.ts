@@ -17,13 +17,19 @@ export const SOURCE_PRIORITY = {
 
 export type DataSource = keyof typeof SOURCE_PRIORITY;
 
-export interface IPOWithSources extends ScrapedIPO {
+export interface IPOWithSources extends Omit<ScrapedIPO, 'openDate' | 'closeDate'> {
   dataSources: DataSource[];
   rating?: number;
   listingGains?: number;
   gmp?: number;
   gmpPercentage?: number;
   gmpUpdatedAt?: string;
+  // W-116: MONEYCONTROL never provides a real open/close date (see
+  // moneycontrol-scraper.ts) - ScrapedIPO's required openDate/closeDate would
+  // force this merged-state type to demand a value no source of the union
+  // (ScrapedIPO | MoneycontrolIPO | ChittorgarhIPO) is guaranteed to carry.
+  openDate?: string;
+  closeDate?: string;
 }
 
 /**

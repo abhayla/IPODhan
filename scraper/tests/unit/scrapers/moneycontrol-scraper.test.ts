@@ -105,6 +105,48 @@ describe('moneycontrol-scraper', () => {
       expect(result.errors).toHaveLength(0);
     });
 
+    // W-116: Moneycontrol's Closed/Listed/Draft tables never expose a real
+    // open/close date column (only Allotment Date and Listing Date - see the
+    // page.evaluate() column maps above). The scraper used to ESTIMATE
+    // closeDate/openDate from listingDate (closeDate = listingDate - 3d,
+    // openDate = closeDate - 7d) or allotmentDate (-2d/-7d), or fall back to
+    // "today"/"7 days ago", and emit the guess as a scraped value. On
+    // production this fabricated a date for every IPO Moneycontrol touched
+    // (Skyways: real 24-27 Aug vs a computed "22-29 Aug", both landing on a
+    // Saturday - the tell that they were computed, not read).
+    it('never fabricates openDate/closeDate from listingDate when the source has no date columns', async () => {
+      mockBrowserExtraction([
+        rawIpo({ listingDate: '17 Oct 25', allotmentDate: '15 Oct 25' }),
+      ]);
+
+      const result = await scrapeMoneycontrolIPOs();
+
+      expect(result.ipos).toHaveLength(1);
+      // The real, actually-scraped anchors are still parsed and kept.
+      expect(result.ipos[0].listingDate).toBe('2025-10-17');
+      expect(result.ipos[0].allotmentDate).toBe('2025-10-15');
+      // But open/close are NEVER computed from them - the field is absent,
+      // not a derived date (undefined, so a higher-priority source such as
+      // DRHP/NSE/BSE can still supply the real value via field-priority-matrix).
+      expect(result.ipos[0].openDate).toBeUndefined();
+      expect(result.ipos[0].closeDate).toBeUndefined();
+    });
+
+    it('never fabricates openDate/closeDate from "today" when no date anchor is available at all', async () => {
+      // DRAFT rows carry no listingDate/allotmentDate either (see the DRAFT
+      // branch of the in-page extraction) - this used to hit the "no dates
+      // available" fallback (closeDate = today, openDate = today - 7 days).
+      mockBrowserExtraction([
+        { companyName: 'No Anchor Ltd', category: 'MAINBOARD', tableType: 'DRAFT', status: 'UPCOMING' },
+      ]);
+
+      const result = await scrapeMoneycontrolIPOs();
+
+      expect(result.ipos).toHaveLength(1);
+      expect(result.ipos[0].openDate).toBeUndefined();
+      expect(result.ipos[0].closeDate).toBeUndefined();
+    });
+
     it('should extract listing gains when present', async () => {
       mockBrowserExtraction([
         rawIpo({ tableType: 'LISTED', status: 'LISTED', listingGain: '+15.5%' }),

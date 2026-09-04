@@ -107,6 +107,23 @@ export const MoneycontrolIPOSchema = ScrapedIPOSchema.merge(z.object({
   qibSubscription: z.number().min(0).optional(),
   niiSubscription: z.number().min(0).optional(),
   retailSubscription: z.number().min(0).optional(),
+  // W-116: Moneycontrol's list/table pages never print a separate open/close
+  // date column — the scraper used to ESTIMATE them from listingDate/allotmentDate
+  // (closeDate = listingDate - 3d, openDate = closeDate - 7d) and emitted the
+  // guess as if it were a scraped value. On production every IPO Moneycontrol
+  // touched got fabricated dates (Skyways: real 24-27 Aug, Moneycontrol printed
+  // "22-29 Aug", both landing on a Saturday). ScrapedIPOSchema requires these as
+  // non-optional strings for sources that DO expose a real column (NSE/BSE);
+  // Moneycontrol has no such column, so override both to optional here and let
+  // the scraper omit them entirely rather than compute a value it never read.
+  openDate: z.string().optional().refine(
+    (date) => !date || !isNaN(Date.parse(date)),
+    'Open date must be a valid ISO 8601 date string'
+  ),
+  closeDate: z.string().optional().refine(
+    (date) => !date || !isNaN(Date.parse(date)),
+    'Close date must be a valid ISO 8601 date string'
+  ),
 }));
 
 export type MoneycontrolIPO = z.infer<typeof MoneycontrolIPOSchema>;
