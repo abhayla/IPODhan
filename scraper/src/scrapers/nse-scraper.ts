@@ -559,7 +559,7 @@ export async function scrapeNSEIPOs(): Promise<NSEScrapeResult> {
  * cycle for months and nobody saw it, while the site published BSE's partial
  * book as the whole-market figure. It must be loud.
  */
-function reportSubscriptionYield(
+export function reportSubscriptionYield(
   result: NSEScrapeResult,
   scrapeSource: 'api' | 'browser'
 ): void {
@@ -592,14 +592,22 @@ function reportSubscriptionYield(
  * @param result - Scrape result with IPOs and subscriptions
  * @returns Coverage statistics
  */
-function calculateSubscriptionCoverage(result: NSEScrapeResult): {
+export function calculateSubscriptionCoverage(result: NSEScrapeResult): {
   openIPOs: number;
   withSubscriptions: number;
   percentage: number;
 } {
   const openIPOs = result.ipos.filter(ipo => ipo.status === 'OPEN');
   const openIPOCount = openIPOs.length;
-  const subscriptionsCount = result.subscriptions.length;
+  // W-131: count only ATTACHABLE subscriptions - ones whose symbol matches an
+  // IPO row that actually made it into `result.ipos`. Raw `result.subscriptions.length`
+  // let a subscription for a symbol dropped from the final IPO list (the
+  // W-130 bug) silently mask a zero-yield anomaly, or conversely count a
+  // subscription that can never reach the persister as "coverage".
+  const openSymbols = new Set(openIPOs.map(ipo => ipo.symbol).filter((s): s is string => !!s));
+  const subscriptionsCount = result.subscriptions.filter(
+    sub => sub.ipoSymbol && openSymbols.has(sub.ipoSymbol)
+  ).length;
 
   const percentage = openIPOCount > 0 ? (subscriptionsCount / openIPOCount) * 100 : 0;
 

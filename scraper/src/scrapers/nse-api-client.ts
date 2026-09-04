@@ -1222,6 +1222,52 @@ export async function scrapeNSEAPI(): Promise<NSEAPIResult> {
     try {
       const currentData = await fetchCurrentIPOs();
 
+      // W-130: /api/all-upcoming-issues?category=ipo (fetchAllIPOs above) only
+      // ever returns mainboard (series EQ) rows - there is no SME variant of
+      // that list. /api/ipo-current-issue (fetchCurrentIPOs) is the only NSE
+      // endpoint that reports SME (series SME) issues, mainboard or SME alike,
+      // while they are live. Every row it returns MUST survive into the final
+      // result exactly once, or an SME IPO's status/subscription never reaches
+      // the persister even though NSE is actively reporting it (Qualiance
+      // International, 2026-09-04). The current-issue row wins on conflict -
+      // it is the live feed; the upcoming list can be stale by comparison.
+      for (const ipo of currentData.ipos) {
+        const existingIndex = ipo.symbol
+          ? allIPOs.ipos.findIndex(i => i.symbol === ipo.symbol)
+          : -1;
+        if (existingIndex === -1) {
+          allIPOs.ipos.push(ipo);
+        } else {
+          // W-130 review round 2: FIELD merge, not an object swap. The
+          // current-issue payload is often sparser than the upcoming-list row
+          // (no lotSize/faceValue/issueSize/price band) - swapping the whole
+          // object would null out fields the upcoming-list row actually had.
+          // status/dates always come from current-issue (the live feed);
+          // every other field keeps the existing row's value unless the
+          // current-issue row provides its own (non-null/undefined) value.
+          const existing = allIPOs.ipos[existingIndex];
+          const merged: typeof existing = { ...existing };
+          for (const key of Object.keys(ipo) as (keyof typeof ipo)[]) {
+            const value = ipo[key];
+            if (value !== undefined && value !== null) {
+              (merged as any)[key] = value;
+            }
+          }
+          // Always take the live feed's status/dates, even when the merge
+          // loop above would already have picked them up.
+          merged.status = ipo.status;
+          merged.openDate = ipo.openDate;
+          merged.closeDate = ipo.closeDate;
+
+          logger.debug({
+            symbol: ipo.symbol,
+            previousStatus: existing.status,
+            currentIssueStatus: ipo.status,
+          }, 'Current-issue row merged into the upcoming-list row (live feed wins, W-130)');
+          allIPOs.ipos[existingIndex] = merged;
+        }
+      }
+
       // Merge subscription data.
       // T-266: the old rule was "keep whatever arrived first", and
       // fetchAllIPOs() always arrives first with the NSE-only figure - so the
