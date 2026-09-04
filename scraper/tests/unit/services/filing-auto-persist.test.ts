@@ -5,6 +5,18 @@ const spawnSyncMock = vi.fn();
 vi.mock('node:child_process', () => ({ spawnSync: (...args: unknown[]) => spawnSyncMock(...args) }));
 
 /**
+ * D-15 lift: mutable so tests can flip ENABLE_SME_FILING_AUTO_PERSIST per case without
+ * re-importing the module (same pattern as document-cycle-passes.test.ts). Both flags
+ * default to false — production shape — and are reset in afterEach. Declared via
+ * vi.hoisted so it exists by the time the hoisted vi.mock factory below runs.
+ */
+const MOCK_FEATURE_FLAGS = vi.hoisted(() => ({
+  ENABLE_FILING_AUTO_PERSIST: false,
+  ENABLE_SME_FILING_AUTO_PERSIST: false,
+}));
+vi.mock('../../../src/config/feature-flags.js', () => ({ FEATURE_FLAGS: MOCK_FEATURE_FLAGS }));
+
+/**
  * S-02 — the automatic extract + persist path.
  *
  * The step-ledger writer is mocked at the module boundary: these tests are about
@@ -33,6 +45,7 @@ import {
   selectPendingFilings,
   processPendingFilings,
   autoPersistEnabled,
+  smeAutoPersistEnabled,
   documentExtractionBlocked,
   defaultExtractorRunner,
   EXTRACTOR_VERSION,
@@ -105,6 +118,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   delete process.env.ENABLE_FILING_AUTO_PERSIST;
+  MOCK_FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST = false;
+  MOCK_FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST = false;
 });
 
 // --------------------------------------------------------------------- flag
@@ -265,6 +280,50 @@ describe('processPendingFilings — the D-15 segment gate (SME not validated yet
     expect(result.spawned).toBe(1);
     expect(result.persisted).toBe(1);
     expect(d.loadDocuments).toHaveBeenCalled();
+  });
+});
+
+// --------------------------------------------- D-15 lift (SME auto-persist)
+
+describe('processPendingFilings — the D-15 lift behind ENABLE_SME_FILING_AUTO_PERSIST', () => {
+  const SME_IPO = { ...IPO, segment: 'SME' };
+
+  it('flag OFF (default): smeAutoPersistEnabled() is false — production behaviour is unchanged', () => {
+    expect(smeAutoPersistEnabled()).toBe(false);
+  });
+
+  it('flag ON: an SME candidate spawns the extractor with sme:true and issue-size, persists through the same door, and writes no sme_not_validated row', async () => {
+    MOCK_FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST = true;
+    const smeIpoWithIssueSize = { ...SME_IPO, issueSize: 5_00_00_000 };
+    const d = deps();
+
+    const result = await processPendingFilings(smeIpoWithIssueSize, d);
+
+    expect(d.loadDocuments).toHaveBeenCalled();
+    expect(d.runExtractor).toHaveBeenCalledWith(
+      expect.objectContaining({ sme: true, issueSizeRupees: 5_00_00_000 })
+    );
+    expect(result.spawned).toBe(1);
+    expect(result.persisted).toBe(1);
+    // The SAME write door MAINBOARD uses — persistFiling called with the shared persisterDeps.
+    expect(d.persistFiling).toHaveBeenCalled();
+    const persistCall = (d.persistFiling as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(persistCall[3]).toBe(d.persisterDeps);
+
+    const writesByIpo = recordedSteps.filter((r) => r.ipoId === smeIpoWithIssueSize.id);
+    const evidenceReasons = writesByIpo.flatMap((r) =>
+      r.writes.map((w) => (w as unknown as { evidence?: { reason?: string } }).evidence?.reason)
+    );
+    expect(evidenceReasons).not.toContain('sme_not_validated');
+  });
+
+  it('flag ON does not change a MAINBOARD candidate', async () => {
+    MOCK_FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST = true;
+    const d = deps();
+    const result = await processPendingFilings(IPO, d);
+    expect(result.spawned).toBe(1);
+    expect(result.persisted).toBe(1);
+    expect(d.runExtractor).toHaveBeenCalledWith(expect.objectContaining({ sme: false }));
   });
 });
 
