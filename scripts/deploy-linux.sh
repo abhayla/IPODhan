@@ -611,6 +611,10 @@ setup_python_venv() {
   # engine.get_crop_img_list, engine.use_angle_cls (scraper/scripts/ocr_pages.py).
   log "Smoke-testing venv imports before the flip"
   local pinned_rapidocr_version
+  # requirements.txt is CRLF in this repo, so the bash value cut here carries
+  # a trailing \r. Python's `.strip()` below is what makes the comparison
+  # against importlib.metadata.version() work — any future bash-side
+  # comparison of this value must strip \r first (e.g. `${var%$'\r'}`).
   pinned_rapidocr_version="$(grep -E '^rapidocr-onnxruntime==' "$req_file" | head -1 | cut -d= -f3)"
   if ! PINNED_RAPIDOCR_VERSION="$pinned_rapidocr_version" "$new_dir/bin/python" -c '
 import importlib.metadata
@@ -701,7 +705,7 @@ for attr in (
     safe_rm_venv_dir "$new_dir"
     return 1
   fi
-  safe_rm_venv_dir "$old_dir" || true
+  safe_rm_venv_dir "$old_dir" || warn "setup_python_venv: could not remove $old_dir after a successful swap; the next deploy will fail at its stale-.old cleanup unless it is removed by hand"
 
   if ! [ -x "$PYTHON_VENV_DIR/bin/python" ]; then
     echo "FATAL: venv swap completed but $PYTHON_VENV_DIR/bin/python is not executable — refusing to report success." >&2
