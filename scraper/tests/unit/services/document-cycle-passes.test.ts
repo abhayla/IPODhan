@@ -497,3 +497,96 @@ describe('W-101 — PURGE_CANDIDATES_SQL', () => {
     expect(invalid).toEqual([]);
   });
 });
+
+/**
+ * W-135 — `enrichListedCandidates` must bound `maxToEnrich` to INCOMPLETE
+ * LISTED rows only. Found on the 2026-09-04 staging soak: the newest LISTED
+ * rows fill the bound every cycle even after they become complete, so older
+ * LISTED rows past them are never enriched, never offered a cap slot, and
+ * never get their documents fetched — permanent starvation until they leave
+ * the live window (staging: `listedCap 2, listedEnriched 8, listedComplete
+ * 0, listedSkippedUnenriched 9`, cycle after cycle).
+ */
+describe('W-135 — enrichListedCandidates counts only incomplete rows toward the enrichment bound', () => {
+  const COMPLETE_STATE_ROWS = [
+    { id: 'r1', docType: 'DRHP', state: 'FOUND', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r2', docType: 'RHP', state: 'FOUND', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r3', docType: 'PRICE_BAND_AD', state: 'FOUND', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r4', docType: 'RATIOS_BASIS_ISSUE_PRICE', state: 'FOUND', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r5', docType: 'ANCHOR_ALLOCATION_REPORT', state: 'FOUND', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r6', docType: 'CORRIGENDUM', state: 'NOT_APPLICABLE', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r7', docType: 'PROSPECTUS', state: 'FOUND', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r8', docType: 'BASIS_OF_ALLOTMENT_AD', state: 'FOUND', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r9', docType: 'ADDENDUM', state: 'NOT_APPLICABLE', lastAttemptAt: new Date('2026-08-01') },
+  ];
+
+  it('17 LISTED rows, the newest 8 already complete, listedCap 2 -> the 9th/10th (oldest incomplete among the first 10) win the cap slots; listedComplete=8, listedSkippedUnenriched=0', async () => {
+    deriveLifecycleStageMock.mockImplementation((args: unknown) => (args as { status: string }).status);
+    process.env.DOCUMENT_CYCLE_LISTED_CAP = '2'; // bound = 2 * 4 = 8 INCOMPLETE rows
+    try {
+      // Newest-first (listing_date desc, matching the SQL order): indices
+      // 0-7 are complete, 8-16 are incomplete.
+      const listedRows = Array.from({ length: 17 }, (_, i) => ({
+        ...candidateRow(`listed-${i}`, 'LISTED'),
+        listing_date: daysAgo(i),
+      }));
+      dbExecuteMock.mockResolvedValue({ rows: listedRows });
+
+      vi.mocked(DocumentFetchStateRepository).mockImplementation(
+        () =>
+          ({
+            listForIpo: vi.fn((ipoId: string) => {
+              const idx = Number(ipoId.replace('listed-', ''));
+              return Promise.resolve(idx < 8 ? COMPLETE_STATE_ROWS : []);
+            }),
+            update: vi.fn().mockResolvedValue(undefined),
+          }) as never
+      );
+      const findByIpoMock = vi.fn().mockResolvedValue([]);
+      vi.mocked(DocumentRepository).mockImplementation(() => ({ findByIPO: findByIpoMock }) as never);
+
+      const summary = await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+      const runIpoIds = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+      // The two cap slots must go to the oldest INCOMPLETE rows reached
+      // (listed-8, listed-9), not be starved by the 8 complete rows ahead
+      // of them filling the old (wrong) bound.
+      expect(runIpoIds).toContain('listed-8');
+      expect(runIpoIds).toContain('listed-9');
+      expect(summary.listedComplete).toBe(8);
+      expect(summary.listedSkippedUnenriched).toBe(0);
+    } finally {
+      delete process.env.DOCUMENT_CYCLE_LISTED_CAP;
+    }
+  });
+
+  it('a visit ceiling still bounds the N+1 even when every LISTED row is complete — rows past the ceiling are listedSkippedUnenriched', async () => {
+    deriveLifecycleStageMock.mockImplementation((args: unknown) => (args as { status: string }).status);
+    process.env.DOCUMENT_CYCLE_LISTED_CAP = '2';
+    try {
+      const totalRows = 250; // > LISTED_ENRICH_VISIT_CEILING (200)
+      // All within the 10-day live window (unlike the ordering tests above) —
+      // this test is about the visit ceiling, not the live-window filter, so
+      // every row must actually reach `enrichListedCandidates` as a candidate.
+      const listedRows = Array.from({ length: totalRows }, (_, i) => ({
+        ...candidateRow(`listed-${i}`, 'LISTED'),
+        listing_date: daysAgo(1),
+      }));
+      dbExecuteMock.mockResolvedValue({ rows: listedRows });
+
+      const listForIpoMock = vi.fn().mockResolvedValue(COMPLETE_STATE_ROWS); // every row complete
+      vi.mocked(DocumentFetchStateRepository).mockImplementation(
+        () => ({ listForIpo: listForIpoMock, update: vi.fn().mockResolvedValue(undefined) }) as never
+      );
+      vi.mocked(DocumentRepository).mockImplementation(() => ({ findByIPO: vi.fn().mockResolvedValue([]) }) as never);
+
+      const summary = await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+      const distinctIpoIds = new Set(listForIpoMock.mock.calls.map((c) => c[0]));
+      expect(distinctIpoIds.size).toBeLessThanOrEqual(200);
+      expect(summary.listedSkippedUnenriched).toBeGreaterThan(0);
+    } finally {
+      delete process.env.DOCUMENT_CYCLE_LISTED_CAP;
+    }
+  });
+});
