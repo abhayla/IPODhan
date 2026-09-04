@@ -21,7 +21,14 @@
 #   HYGIENE_KEEP_PROD       release count to keep for the prod slot (default 3)
 #   HYGIENE_KEEP_STAGING    release count to keep for the staging slot (default 2)
 #   HYGIENE_SKIP_SYSTEM     when set (any value), skip journalctl/npm/pip/apt/Notifier steps —
-#                           used by the test suite so it never touches the real machine
+#                           used by the test suite so it never touches the real machine.
+#                           Does NOT skip the /tmp sweep — see HYGIENE_SKIP_TMP.
+#   HYGIENE_SKIP_TMP        when set (any value), skip the /tmp sweep step (round 3, MAJOR-1) —
+#                           separate flag so a test case can exercise ONLY the /tmp sweep
+#                           without also running journalctl/npm/pip/apt/Notifier for real.
+#   HYGIENE_NOTIFIER_URL    Notifier endpoint (default http://127.0.0.1:3300/notify) — the test
+#                           suite points this at an unroutable address as a second independent
+#                           guard, in case HYGIENE_SKIP_SYSTEM is ever dropped by a future edit.
 #   NOTIFIER_ENV            path to the Notifier .env (default /root/notifier/.env)
 #   NOTIFIER_KEY_IPODHAN    Notifier API key — sourced from NOTIFIER_ENV or GLOBAL.env; if unset
 #                           the Notifier POST is skipped (logged, non-fatal)
@@ -38,14 +45,15 @@ for arg in "$@"; do
 done
 
 ROOT="${HYGIENE_ROOT:-/var/www/ipodhan}"
-# C2: canonicalise ROOT so a trailing slash or a symlink component can never
-# make a release path fail to match the 'current' target it is compared
-# against — both are always resolved through the same canonical prefix.
-if [ -d "$ROOT" ]; then
-  ROOT="$(cd "$ROOT" && pwd -P)"
-else
-  ROOT="${ROOT%/}"
-fi
+# MINOR-4 (round 3): strip a trailing slash only. A separate `pwd -P`
+# canonicalisation of ROOT used to live here; it was dead weight — the
+# safe_rm_release_dir() prefix guard is self-consistent because every
+# candidate path is built from this SAME $ROOT variable, and the 'current'
+# comparison in prune_slot() is independently canonicalised on BOTH sides
+# via `readlink -f` regardless of whether ROOT itself was resolved. Removing
+# it left the suite green (including case j, ROOT reached via a symlink),
+# confirming readlink -f was already doing the real work.
+ROOT="${ROOT%/}"
 KEEP_PROD="${HYGIENE_KEEP_PROD:-3}"
 KEEP_STAGING="${HYGIENE_KEEP_STAGING:-2}"
 NOTIFIER_ENV="${NOTIFIER_ENV:-/root/notifier/.env}"
@@ -66,19 +74,52 @@ may_delete() { [ "$MODE" = "run" ]; }
 # atomic, so this needs no flock(1) dependency. HYGIENE_LOCK_DIR lets the
 # test suite point this at a throwaway dir.
 LOCK_DIR="${HYGIENE_LOCK_DIR:-/var/lock/ipodhan-disk-hygiene.lock.d}"
+LOCK_STALE_MIN="${HYGIENE_LOCK_STALE_MIN:-360}"  # MEDIUM-2: 6 hours
+
+# MEDIUM-2: a run killed by SIGTERM/SIGKILL/OOM must not wedge the mechanism
+# forever — every later weekly run would exit 0 silently with no Notifier.
+# The lock dir now carries the holder's PID; a contender reclaims the lock
+# when that PID is no longer alive, or the lock dir is older than 6 hours
+# regardless of PID liveness (covers PID reuse). trap fires on INT/TERM/HUP
+# too, not just a clean EXIT.
+acquire_lock() {
+  if mkdir "$LOCK_DIR" 2>/dev/null; then
+    echo "$$" > "$LOCK_DIR/pid" 2>/dev/null || true
+    trap 'rm -f "$LOCK_DIR/pid" 2>/dev/null; rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT INT TERM HUP
+    return 0
+  fi
+  return 1
+}
+
 if [ -z "${HYGIENE_SOURCED:-}" ]; then
-  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  if ! acquire_lock; then
     if [ -d "$LOCK_DIR" ]; then
-      # The dir already existing IS the lock signal — another run holds it.
-      log "another disk-hygiene run holds the lock ($LOCK_DIR) — exiting"
-      exit 0
+      HELD_PID=""
+      [ -f "$LOCK_DIR/pid" ] && HELD_PID="$(cat "$LOCK_DIR/pid" 2>/dev/null || true)"
+      PID_ALIVE=0
+      if [ -n "$HELD_PID" ] && kill -0 "$HELD_PID" 2>/dev/null; then
+        PID_ALIVE=1
+      fi
+      LOCK_OLD=0
+      if find "$LOCK_DIR" -maxdepth 0 -mmin "+$LOCK_STALE_MIN" 2>/dev/null | grep -q .; then
+        LOCK_OLD=1
+      fi
+      if [ "$PID_ALIVE" -eq 1 ] && [ "$LOCK_OLD" -eq 0 ]; then
+        log "another disk-hygiene run holds the lock ($LOCK_DIR, pid=$HELD_PID alive) — exiting"
+        exit 0
+      fi
+      log "WARN: reclaiming stale lock $LOCK_DIR (pid=${HELD_PID:-unknown}, alive=$PID_ALIVE, age>${LOCK_STALE_MIN}min=$LOCK_OLD)"
+      rm -rf "$LOCK_DIR" 2>/dev/null || true
+      if ! acquire_lock; then
+        log "another disk-hygiene run holds the lock ($LOCK_DIR) — exiting"
+        exit 0
+      fi
+    else
+      # mkdir failed for any other reason (missing parent, permissions) — the
+      # lock path itself is unusable on this host. Fail OPEN: a hygiene sweep
+      # that never runs is worse than one run without the concurrency guard.
+      log "WARN: could not create lock dir $LOCK_DIR — continuing without a lock (non-fatal)"
     fi
-    # mkdir failed for any other reason (missing parent, permissions) — the
-    # lock path itself is unusable on this host. Fail OPEN: a hygiene sweep
-    # that never runs is worse than one run without the concurrency guard.
-    log "WARN: could not create lock dir $LOCK_DIR — continuing without a lock (non-fatal)"
-  else
-    trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
   fi
 fi
 
@@ -193,9 +234,10 @@ prune_slot() {
 
   [ -d "$releases_dir" ] || { log "no releases dir for slot '$slot' — skipping"; return 0; }
 
-  # C2: resolve 'current' to its CANONICAL path (readlink -f), the same
-  # canonicalisation ROOT itself already went through — so a trailing slash
-  # or a symlink component can never desync the comparison below. If
+  # C2: resolve 'current' to its CANONICAL path (readlink -f); old_canon
+  # below is resolved the same way, so a trailing slash or a symlink
+  # component can never desync the comparison — this canonicalisation is
+  # independent of whatever form $ROOT itself was given in (MINOR-4). If
   # 'current' cannot be resolved at all (missing link, dangling target),
   # skip this slot outright rather than risk pruning blind.
   cur_raw="$(current_target "$current_link" 2>/dev/null || true)"
@@ -333,8 +375,8 @@ TMP_PRUNE_EXPR=(
              -o -name 'systemd-private-*' -o -name 'tsx-*' -o -name 'node-compile-cache' \) -prune
   -o -type f -mtime +7
 )
-if [ -n "${HYGIENE_SKIP_SYSTEM:-}" ]; then
-  log "HYGIENE_SKIP_SYSTEM set — skipping /tmp sweep"
+if [ -n "${HYGIENE_SKIP_TMP:-}" ]; then
+  log "HYGIENE_SKIP_TMP set — skipping /tmp sweep"
 elif [ "$MODE" = "dry-run" ]; then
   log "DRY-RUN: would delete files older than 7 days under $TMP_SWEEP_DIR (excluding known-safe dirs)"
   find "$TMP_SWEEP_DIR" -xdev "${TMP_PRUNE_EXPR[@]}" -print0 2>/dev/null | while IFS= read -r -d '' f; do log "DRY-RUN: would remove $f"; done || true
@@ -370,10 +412,24 @@ if [ -n "$DISK_LINE" ]; then
   fi
 fi
 
-PROD_COUNT=0
-STAGING_COUNT=0
-[ -d "$ROOT/releases" ] && PROD_COUNT="$(ls -1 "$ROOT/releases" 2>/dev/null | wc -l | tr -d ' ')"
-[ -d "$ROOT/releases-staging" ] && STAGING_COUNT="$(ls -1 "$ROOT/releases-staging" 2>/dev/null | wc -l | tr -d ' ')"
+# MEDIUM-3: count only REAL release dirs (matching RELEASE_NAME_RE), the
+# same filter prune_slot() uses — a stray junk entry (file, unrelated dir)
+# must never inflate the reported "releases kept" count.
+count_real_releases() {
+  local dir="$1" n=0 d base
+  [ -d "$dir" ] || { echo 0; return; }
+  shopt -s nullglob
+  for d in "$dir"/*; do
+    [ -d "$d" ] || continue
+    [ -L "$d" ] && continue
+    base="$(basename "$d")"
+    [[ "$base" =~ $RELEASE_NAME_RE ]] && n=$((n + 1))
+  done
+  shopt -u nullglob
+  echo "$n"
+}
+PROD_COUNT="$(count_real_releases "$ROOT/releases")"
+STAGING_COUNT="$(count_real_releases "$ROOT/releases-staging")"
 
 FREED_MB=$((FREED_KB > 0 ? FREED_KB / 1024 : 0))
 
@@ -393,6 +449,16 @@ largest dirs under /root:
 ${LARGEST_ROOT}
 largest dirs under ${ROOT}:
 ${LARGEST_WWW}"
+
+# MEDIUM-3: REPORT_LINES (e.g. "release prune skipped: deploy in progress")
+# was accumulated but never printed or sent — the reason a run did less than
+# usual never reached the report or the Notifier body. Fold it in here so it
+# reaches both.
+if [ "${#REPORT_LINES[@]}" -gt 0 ]; then
+  REPORT_BODY="$REPORT_BODY
+notes:
+$(printf '%s\n' "${REPORT_LINES[@]}")"
+fi
 
 echo "=== W-134 disk hygiene report ==="
 echo "$REPORT_BODY"
@@ -431,7 +497,7 @@ print(json.dumps({
 }))
 " "$SEVERITY" "$REPORT_TITLE" "$REPORT_BODY" "$DATE_TAG" 2>/dev/null || true)"
     if [ -n "$PAYLOAD" ]; then
-      curl -s -m 15 -X POST "http://127.0.0.1:3300/notify" \
+      curl -s -m 15 -X POST "${HYGIENE_NOTIFIER_URL:-http://127.0.0.1:3300/notify}" \
         -H "X-Api-Key: $NOTIFIER_KEY_IPODHAN" -H "Content-Type: application/json" \
         -d "$PAYLOAD" >/dev/null 2>&1 || log "WARN: Notifier POST failed (non-fatal)"
     else

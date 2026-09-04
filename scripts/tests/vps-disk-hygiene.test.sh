@@ -2,8 +2,10 @@
 # W-134 — self-test for scripts/vps-disk-hygiene.sh.
 # Builds a fake root under mktemp -d (HYGIENE_ROOT override) and exercises
 # the prune/guard/dry-run logic without touching the real machine.
-# HYGIENE_SKIP_SYSTEM=1 keeps journalctl/npm/pip/apt/Notifier out of every
-# case here.
+# HYGIENE_SKIP_SYSTEM=1 and HYGIENE_SKIP_TMP=1 are exported for the WHOLE
+# file (below) so no case here ever reaches journalctl/npm/pip/apt/Notifier
+# or the real /tmp — only case n clears HYGIENE_SKIP_TMP, for its own
+# HYGIENE_TMP_DIR-scoped invocation, to exercise the /tmp sweep itself.
 #
 # Run: bash scripts/tests/vps-disk-hygiene.test.sh
 
@@ -15,6 +17,29 @@ FAILED=0
 
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAILED=1; }
+
+# MAJOR-1 (round 3): the /tmp sweep and the journal/npm/pip/apt/Notifier
+# steps are now gated by TWO SEPARATE flags. Export sane defaults for the
+# WHOLE file so every case skips BOTH unless it deliberately re-enables one
+# — case n needs the /tmp step to run, so it clears HYGIENE_SKIP_TMP for its
+# own invocation only. HYGIENE_NOTIFIER_URL is also pointed at an
+# unroutable address as a second, independent guard: even if a future edit
+# drops HYGIENE_SKIP_SYSTEM from a case, the POST still cannot reach a real
+# endpoint and dedupe a real day's alert.
+export HYGIENE_SKIP_SYSTEM=1
+export HYGIENE_SKIP_TMP=1
+export HYGIENE_NOTIFIER_URL="http://127.0.0.1:1/unroutable-test-guard"
+
+# Harness-level guard: refuse to run the hygiene script against the real
+# production deploy root — a case that forgot to build its own fresh_root
+# must hard-stop instead of silently falling through to the live host path.
+assert_safe_root() {
+  local root="$1"
+  if [ -z "$root" ] || [ "$root" = "/var/www/ipodhan" ]; then
+    echo "FATAL: test case attempted to run hygiene against HYGIENE_ROOT='$root' — refusing" >&2
+    exit 99
+  fi
+}
 
 fresh_root() {
   local d
@@ -69,6 +94,7 @@ S2="$(make_release "$ROOTA/releases-staging" 20260902-000000 bbbbbbb)"
 S3="$(make_release "$ROOTA/releases-staging" 20260903-000000 ccccccc)"
 link_current "$ROOTA/current-staging" "$S3"
 
+assert_safe_root "$ROOTA"
 HYGIENE_ROOT="$ROOTA" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-a.log 2>&1
 RCA=$?
 if [ "$RCA" -ne 0 ]; then
@@ -99,6 +125,7 @@ B4="$(make_release "$ROOTB/releases" 20260904-000000 ddddddd)"
 # left it pinned there) — it must survive the prune anyway.
 link_current "$ROOTB/current" "$B1"
 
+assert_safe_root "$ROOTB"
 HYGIENE_ROOT="$ROOTB" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-b.log 2>&1
 
 if [ -d "$B1" ]; then
@@ -118,6 +145,7 @@ mkdir -p "$ROOTC/releases/not-a-release-dir"
 echo keep > "$ROOTC/releases/not-a-release-dir/marker.txt"
 link_current "$ROOTC/current" "$C4"
 
+assert_safe_root "$ROOTC"
 HYGIENE_ROOT="$ROOTC" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-c.log 2>&1
 
 if [ -d "$ROOTC/releases/not-a-release-dir" ]; then
@@ -134,6 +162,13 @@ if [ ! -d "$C1" ] && [ -d "$C2" ] && [ -d "$C3" ] && [ -d "$C4" ]; then
 else
   fail "case c: under-retention — expected only C1 pruned, C2/C3/C4 kept (C1=$([ -d "$C1" ] && echo present || echo gone), C2=$([ -d "$C2" ] && echo present || echo gone), C3=$([ -d "$C3" ] && echo present || echo gone), C4=$([ -d "$C4" ] && echo present || echo gone))"
 fi
+# MEDIUM-3: the reported "prod releases kept" count must also exclude the
+# junk dir — 3 real releases survive (C2/C3/C4), not 4.
+if grep -q "prod releases kept: 3 " /tmp/hygiene-test-c.log; then
+  pass "case c: reported 'prod releases kept' count excludes the junk dir (3, not 4)"
+else
+  fail "case c: reported release count includes the junk dir — MEDIUM-3 regression ($(grep 'prod releases kept' /tmp/hygiene-test-c.log))"
+fi
 
 # --- Case d: --dry-run removes nothing ---------------------------------------
 ROOTD="$(fresh_root)"
@@ -144,6 +179,7 @@ D3="$(make_release "$ROOTD/releases" 20260903-000000 ccccccc)"
 D4="$(make_release "$ROOTD/releases" 20260904-000000 ddddddd)"
 link_current "$ROOTD/current" "$D4"
 
+assert_safe_root "$ROOTD"
 HYGIENE_ROOT="$ROOTD" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" --dry-run >/tmp/hygiene-test-d.log 2>&1
 RCD=$?
 
@@ -180,6 +216,7 @@ for i in 1 2 3 4; do
 done
 link_current "$ROOTE/current" "$(printf '%s/releases/20260104-000000-fffffff' "$ROOTE")"
 
+assert_safe_root "$ROOTE"
 HYGIENE_ROOT="$ROOTE" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-e.log 2>&1
 
 if [ -f "$OUTSIDEE/20260101-000000-eeeeeee/sentinel.txt" ]; then
@@ -199,6 +236,7 @@ echo fresh > "$ROOTF/shared/venv/staging.new/marker.txt"
 touch -d '2 days ago' "$ROOTF/shared/venv/prod.new" "$ROOTF/shared/venv/prod.old" 2>/dev/null \
   || find "$ROOTF/shared/venv/prod.new" "$ROOTF/shared/venv/prod.old" -exec touch -t "$(date -d '2 days ago' +%Y%m%d0000 2>/dev/null || date -v-2d +%Y%m%d0000)" {} \; 2>/dev/null || true
 
+assert_safe_root "$ROOTF"
 HYGIENE_ROOT="$ROOTF" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-f.log 2>&1
 
 if [ ! -d "$ROOTF/shared/venv/prod.new" ] && [ ! -d "$ROOTF/shared/venv/prod.old" ]; then
@@ -231,6 +269,7 @@ H3="$(make_release "$ROOTH/releases" 20260903-000000 ccccccc)"
 H4="$(make_release "$ROOTH/releases" 20260904-000000 ddddddd)"
 link_current "$ROOTH/current" "$H4"
 
+assert_safe_root "$ROOTH"
 HYGIENE_ROOT="$ROOTH" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" --report >/tmp/hygiene-test-h.log 2>&1
 RCH=$?
 
@@ -254,6 +293,7 @@ I3="$(make_release "$ROOTI/releases" 20260903-000000 ccccccc)"
 I4="$(make_release "$ROOTI/releases" 20260904-000000 ddddddd)"
 link_current "$ROOTI/current" "$I1"
 
+assert_safe_root "$ROOTI"
 HYGIENE_ROOT="$ROOTI/" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-i.log 2>&1
 
 if [ -d "$I1" ]; then
@@ -273,6 +313,7 @@ J4="$(make_release "$ROOTJ_REAL/releases" 20260904-000000 ddddddd)"
 link_current "$ROOTJ_REAL/current" "$J1"
 ROOTJ_LINK="$(mktemp -u)"
 if ln -sfn "$ROOTJ_REAL" "$ROOTJ_LINK" 2>/dev/null && [ -L "$ROOTJ_LINK" ]; then
+  assert_safe_root "$ROOTJ_LINK"
   HYGIENE_ROOT="$ROOTJ_LINK" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-j.log 2>&1
   if [ -d "$J1" ]; then
     pass "case j: HYGIENE_ROOT reached via a symlink — 'current' target survived"
@@ -292,6 +333,7 @@ K3="$(make_release "$ROOTK/releases" 20260903-000000 ccccccc)"
 K4="$(make_release "$ROOTK/releases" 20260904-000000 ddddddd)"
 # deliberately no 'current' link created for this slot
 
+assert_safe_root "$ROOTK"
 HYGIENE_ROOT="$ROOTK" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-k.log 2>&1
 
 if [ -d "$K1" ] && [ -d "$K2" ] && [ -d "$K3" ] && [ -d "$K4" ]; then
@@ -317,6 +359,7 @@ L3="$(make_release "$ROOTL/releases" 20260903-000000 ccccccc)"
 L4="$(make_release "$ROOTL/releases" 20260904-000000 ddddddd)"
 link_current "$ROOTL/current" "$L4"
 
+assert_safe_root "$ROOTL"
 HYGIENE_ROOT="$ROOTL" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-l.log 2>&1
 
 FREED_LINE="$(grep -o 'freed this run: [0-9]*MB' /tmp/hygiene-test-l.log || true)"
@@ -334,6 +377,7 @@ ROOTM="$(fresh_root)"
 mkdir -p "$ROOTM/releases"
 GUARD_FAILED=0
 (
+  assert_safe_root "$ROOTM"
   HYGIENE_ROOT="$ROOTM"
   HYGIENE_SOURCED=1
   # shellcheck source=/dev/null
@@ -382,7 +426,11 @@ find "$ROOTN_TMP" -type f -exec touch -d '10 days ago' {} \; 2>/dev/null \
 ROOTN="$(fresh_root)"
 mkdir -p "$ROOTN/releases"
 link_current "$ROOTN/current" "$(make_release "$ROOTN/releases" 20260901-000000 aaaaaaa)"
-HYGIENE_ROOT="$ROOTN" HYGIENE_TMP_DIR="$ROOTN_TMP" bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-n.log 2>&1
+assert_safe_root "$ROOTN"
+# MAJOR-1: this is the ONLY case that needs the /tmp step itself, so it
+# clears HYGIENE_SKIP_TMP for this one invocation while keeping
+# HYGIENE_SKIP_SYSTEM=1 — journalctl/npm/pip/apt/Notifier still never run.
+HYGIENE_ROOT="$ROOTN" HYGIENE_SKIP_SYSTEM=1 HYGIENE_SKIP_TMP= HYGIENE_TMP_DIR="$ROOTN_TMP" bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-n.log 2>&1
 
 if [ -f "$ROOTN_TMP/puppeteer_dev_chrome_profile-XYZ/lock.json" ] && [ -f "$ROOTN_TMP/tsx-1234/cache.bin" ] && [ -f "$ROOTN_TMP/node-compile-cache/v8.blob" ]; then
   pass "case n: excluded /tmp dirs (puppeteer/tsx/node-compile-cache) were left alone"
@@ -406,13 +454,18 @@ O4="$(make_release "$ROOTO/releases" 20260904-000000 ddddddd)"
 link_current "$ROOTO/current" "$O4"
 LOCKO="$(mktemp -u)"
 mkdir -p "$LOCKO"
+# MEDIUM-2: a lock held by a LIVE pid must be respected. Use $$ (this test
+# script's own pid) as the holder — it is guaranteed alive for the duration
+# of this run, so `kill -0` on it succeeds and the lock is never reclaimed.
+echo "$$" > "$LOCKO/pid"
 
+assert_safe_root "$ROOTO"
 HYGIENE_ROOT="$ROOTO" HYGIENE_SKIP_SYSTEM=1 HYGIENE_LOCK_DIR="$LOCKO" bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-o.log 2>&1
 RCO=$?
-rmdir "$LOCKO" 2>/dev/null || true
+rm -rf "$LOCKO" 2>/dev/null || true
 
 if [ "$RCO" -eq 0 ] && [ -d "$O1" ] && [ -d "$O4" ]; then
-  pass "case o: a held lock made the run skip cleanly (exit 0, nothing pruned)"
+  pass "case o: a held lock (live pid) made the run skip cleanly (exit 0, nothing pruned)"
 else
   fail "case o: a held lock did not stop the run as expected (rc=$RCO)"
 fi
@@ -420,6 +473,36 @@ if grep -qi "lock" /tmp/hygiene-test-o.log; then
   pass "case o: the lock skip was logged"
 else
   fail "case o: no lock-related log line found"
+fi
+
+# --- Case q: MEDIUM-2 — a lock left behind by a dead/killed run (stale PID) -
+# --- is reclaimed, and the run proceeds normally instead of wedging forever -
+ROOTQ="$(fresh_root)"
+mkdir -p "$ROOTQ/releases"
+Q1="$(make_release "$ROOTQ/releases" 20260901-000000 aaaaaaa)"
+Q2="$(make_release "$ROOTQ/releases" 20260902-000000 bbbbbbb)"
+Q3="$(make_release "$ROOTQ/releases" 20260903-000000 ccccccc)"
+Q4="$(make_release "$ROOTQ/releases" 20260904-000000 ddddddd)"
+link_current "$ROOTQ/current" "$Q4"
+LOCKQ="$(mktemp -u)"
+mkdir -p "$LOCKQ"
+# A PID number picked to be implausible as a live process on the test box.
+echo "999999" > "$LOCKQ/pid"
+
+assert_safe_root "$ROOTQ"
+HYGIENE_ROOT="$ROOTQ" HYGIENE_SKIP_SYSTEM=1 HYGIENE_LOCK_DIR="$LOCKQ" bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-q.log 2>&1
+RCQ=$?
+rm -rf "$LOCKQ" 2>/dev/null || true
+
+if [ "$RCQ" -eq 0 ] && [ ! -d "$Q1" ] && [ -d "$Q4" ]; then
+  pass "case q: a stale lock (dead pid) was reclaimed and the prune ran normally"
+else
+  fail "case q: stale-lock reclaim did not happen as expected (rc=$RCQ, Q1=$([ -d "$Q1" ] && echo present || echo gone))"
+fi
+if grep -qi "reclaiming stale lock" /tmp/hygiene-test-q.log; then
+  pass "case q: the reclaim was logged"
+else
+  fail "case q: no reclaim log line found"
 fi
 
 # --- Case p: MINOR(c) — release prune is skipped while a deploy is ----------
@@ -432,6 +515,7 @@ P3="$(make_release "$ROOTP/releases" 20260903-000000 ccccccc)"
 P4="$(make_release "$ROOTP/releases" 20260904-000000 ddddddd)"
 link_current "$ROOTP/current" "$P4"
 
+assert_safe_root "$ROOTP"
 HYGIENE_ROOT="$ROOTP" HYGIENE_SKIP_SYSTEM=1 HYGIENE_DEPLOY_CHECK_CMD="true" bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-p.log 2>&1
 RCP=$?
 
@@ -445,6 +529,13 @@ if grep -qi "deploy in progress" /tmp/hygiene-test-p.log; then
 else
   fail "case p: no 'deploy in progress' log line found"
 fi
+# MEDIUM-3: REPORT_LINES must actually reach the printed report (and, via
+# REPORT_BODY, the Notifier payload) — not just the running log.
+if grep -q "notes:" /tmp/hygiene-test-p.log && grep -q "release prune skipped: deploy in progress" /tmp/hygiene-test-p.log; then
+  pass "case p: the final report carries the 'prune skipped: deploy in progress' reason"
+else
+  fail "case p: the final report is missing the prune-skipped reason — MEDIUM-3 regression"
+fi
 
 # Sanity: with the deploy-check forced FALSE, pruning still happens normally.
 ROOTP2="$(fresh_root)"
@@ -454,6 +545,7 @@ make_release "$ROOTP2/releases" 20260902-000000 bbbbbbb >/dev/null
 make_release "$ROOTP2/releases" 20260903-000000 ccccccc >/dev/null
 P2_4="$(make_release "$ROOTP2/releases" 20260904-000000 ddddddd)"
 link_current "$ROOTP2/current" "$P2_4"
+assert_safe_root "$ROOTP2"
 HYGIENE_ROOT="$ROOTP2" HYGIENE_SKIP_SYSTEM=1 HYGIENE_DEPLOY_CHECK_CMD="false" bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-p2.log 2>&1
 if [ ! -d "$P2_1" ]; then
   pass "case p: with no deploy in progress, pruning still runs normally"

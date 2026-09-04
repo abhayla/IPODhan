@@ -56,8 +56,11 @@ scripts/vps-disk-hygiene.sh --report    # prints only the final report
 | `HYGIENE_ROOT` | `/var/www/ipodhan` | deploy root; `releases*/` live under this |
 | `HYGIENE_KEEP_PROD` | `3` | releases to keep for the prod slot |
 | `HYGIENE_KEEP_STAGING` | `2` | releases to keep for the staging slot |
-| `HYGIENE_SKIP_SYSTEM` | unset | when set, skip journalctl/npm/pip/apt/`/tmp`/Notifier steps entirely (used by the test suite) |
+| `HYGIENE_SKIP_SYSTEM` | unset | when set, skip journalctl/npm/pip/apt/Notifier steps (used by the test suite). Does NOT skip the `/tmp` sweep — see `HYGIENE_SKIP_TMP` (round 3, MAJOR-1) |
+| `HYGIENE_SKIP_TMP` | unset | when set, skip the `/tmp` sweep only — a separate flag so the test suite can exercise the `/tmp` sweep in isolation without also touching journalctl/npm/pip/apt/Notifier for real |
 | `HYGIENE_TMP_DIR` | `/tmp` | directory swept for 7-day-old files |
+| `HYGIENE_NOTIFIER_URL` | `http://127.0.0.1:3300/notify` | Notifier POST endpoint — the test suite points this at an unroutable address as a second guard, independent of `HYGIENE_SKIP_SYSTEM` |
+| `HYGIENE_LOCK_STALE_MIN` | `360` (6h) | how old the concurrency lock dir must be before a contending run reclaims it, regardless of whether the recorded PID is still alive |
 | `NOTIFIER_ENV` | `/root/notifier/.env` | sourced for `NOTIFIER_KEY_IPODHAN` |
 
 The deploy script's own per-slot retention default also changed alongside
@@ -76,6 +79,29 @@ still overrides either slot for a one-off deploy).
   self-hosted runner; unrelated to IPODhan's own deploy.
 - `/opt/actions-runner-ipodhan` — IPODhan's own self-hosted Actions runner
   (`linux-vps-ipodhan`); deleting this breaks CI/deploy.
+
+## Concurrency lock (single-flight, self-healing)
+
+A second run (cron overlap, a manual invocation) skips cleanly while the
+first holds the lock (`mkdir`-based, `/var/lock/ipodhan-disk-hygiene.lock.d`
+by default). The lock dir carries the holder's PID. If the process that
+holds the lock died without cleaning up (SIGKILL, OOM), a later run
+reclaims the lock instead of skipping forever — the trigger is either the
+recorded PID no longer being alive (`kill -0` fails), or the lock dir being
+older than `HYGIENE_LOCK_STALE_MIN` (default 6 hours) regardless of PID
+liveness (covers PID reuse). Reclaiming is logged as a `WARN: reclaiming
+stale lock` line and, on the next Notifier POST, is visible in the report's
+`notes:` section if it also caused the prune to be skipped that run.
+
+## Report notes / skip reasons
+
+The final report (`echo`'d and sent to the Notifier) carries a `notes:`
+section whenever the run did less than the full sweep — currently the only
+producer is "release prune skipped: deploy in progress" when
+`deploy_in_progress()` detects a `deploy-linux.sh` process mid-copy. Prod
+and staging release counts in the report only count directories that match
+the release-name pattern (`YYYYMMDD-HHMMSS-<sha>`) — a stray junk entry
+under `releases/` never inflates "releases kept".
 
 ## Notifier severity
 
