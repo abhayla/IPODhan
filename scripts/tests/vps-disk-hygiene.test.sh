@@ -126,6 +126,15 @@ else
   fail "case c: non-matching directory 'not-a-release-dir' was removed — name-pattern guard regression"
 fi
 
+# M1: the junk dir must NOT count toward retention — with keep=3 and 4 REAL
+# releases + 1 junk dir, exactly 1 real release (the oldest, C1) is pruned;
+# a junk-inflated count would wrongly prune 2 real releases.
+if [ ! -d "$C1" ] && [ -d "$C2" ] && [ -d "$C3" ] && [ -d "$C4" ]; then
+  pass "case c: junk dir did not inflate the retention count — exactly the oldest real release (C1) was pruned"
+else
+  fail "case c: under-retention — expected only C1 pruned, C2/C3/C4 kept (C1=$([ -d "$C1" ] && echo present || echo gone), C2=$([ -d "$C2" ] && echo present || echo gone), C3=$([ -d "$C3" ] && echo present || echo gone), C4=$([ -d "$C4" ] && echo present || echo gone))"
+fi
+
 # --- Case d: --dry-run removes nothing ---------------------------------------
 ROOTD="$(fresh_root)"
 mkdir -p "$ROOTD/releases"
@@ -211,6 +220,245 @@ if grep -q "HYGIENE_SKIP_SYSTEM set" /tmp/hygiene-test-a.log; then
   pass "case g: HYGIENE_SKIP_SYSTEM=1 visibly skipped the system-level steps"
 else
   fail "case g: expected an HYGIENE_SKIP_SYSTEM skip message in the log"
+fi
+
+# --- Case h: C1 — --report performs NO deletions and no Notifier POST -------
+ROOTH="$(fresh_root)"
+mkdir -p "$ROOTH/releases"
+H1="$(make_release "$ROOTH/releases" 20260901-000000 aaaaaaa)"
+H2="$(make_release "$ROOTH/releases" 20260902-000000 bbbbbbb)"
+H3="$(make_release "$ROOTH/releases" 20260903-000000 ccccccc)"
+H4="$(make_release "$ROOTH/releases" 20260904-000000 ddddddd)"
+link_current "$ROOTH/current" "$H4"
+
+HYGIENE_ROOT="$ROOTH" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" --report >/tmp/hygiene-test-h.log 2>&1
+RCH=$?
+
+if [ "$RCH" -eq 0 ] && [ -d "$H1" ] && [ -d "$H2" ] && [ -d "$H3" ] && [ -d "$H4" ]; then
+  pass "case h: --report exited 0 and deleted nothing (4 prod releases all survived)"
+else
+  fail "case h: --report either exited non-zero ($RCH) or deleted a release — C1 regression"
+fi
+if grep -q "W-134 disk hygiene report" /tmp/hygiene-test-h.log; then
+  pass "case h: --report printed the final report"
+else
+  fail "case h: --report produced no report output"
+fi
+
+# --- Case i: C2 — trailing slash on HYGIENE_ROOT never loses 'current' ------
+ROOTI="$(fresh_root)"
+mkdir -p "$ROOTI/releases"
+I1="$(make_release "$ROOTI/releases" 20260901-000000 aaaaaaa)"
+I2="$(make_release "$ROOTI/releases" 20260902-000000 bbbbbbb)"
+I3="$(make_release "$ROOTI/releases" 20260903-000000 ccccccc)"
+I4="$(make_release "$ROOTI/releases" 20260904-000000 ddddddd)"
+link_current "$ROOTI/current" "$I1"
+
+HYGIENE_ROOT="$ROOTI/" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-i.log 2>&1
+
+if [ -d "$I1" ]; then
+  pass "case i: trailing slash on HYGIENE_ROOT — 'current' target (oldest release) survived"
+else
+  fail "case i: trailing slash on HYGIENE_ROOT — 'current' target was PRUNED — canonicalisation regression"
+fi
+
+# --- Case j: C2 — HYGIENE_ROOT reached through a symlink never loses ---------
+# --- 'current' ---------------------------------------------------------------
+ROOTJ_REAL="$(fresh_root)"
+mkdir -p "$ROOTJ_REAL/releases"
+J1="$(make_release "$ROOTJ_REAL/releases" 20260901-000000 aaaaaaa)"
+J2="$(make_release "$ROOTJ_REAL/releases" 20260902-000000 bbbbbbb)"
+J3="$(make_release "$ROOTJ_REAL/releases" 20260903-000000 ccccccc)"
+J4="$(make_release "$ROOTJ_REAL/releases" 20260904-000000 ddddddd)"
+link_current "$ROOTJ_REAL/current" "$J1"
+ROOTJ_LINK="$(mktemp -u)"
+if ln -sfn "$ROOTJ_REAL" "$ROOTJ_LINK" 2>/dev/null && [ -L "$ROOTJ_LINK" ]; then
+  HYGIENE_ROOT="$ROOTJ_LINK" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-j.log 2>&1
+  if [ -d "$J1" ]; then
+    pass "case j: HYGIENE_ROOT reached via a symlink — 'current' target survived"
+  else
+    fail "case j: HYGIENE_ROOT reached via a symlink — 'current' target was PRUNED — canonicalisation regression"
+  fi
+else
+  echo "SKIP: case j — this filesystem does not support symlinks (ln -sfn failed)"
+fi
+
+# --- Case k: C2 — a slot with no 'current' link is skipped, never pruned ----
+ROOTK="$(fresh_root)"
+mkdir -p "$ROOTK/releases"
+K1="$(make_release "$ROOTK/releases" 20260901-000000 aaaaaaa)"
+K2="$(make_release "$ROOTK/releases" 20260902-000000 bbbbbbb)"
+K3="$(make_release "$ROOTK/releases" 20260903-000000 ccccccc)"
+K4="$(make_release "$ROOTK/releases" 20260904-000000 ddddddd)"
+# deliberately no 'current' link created for this slot
+
+HYGIENE_ROOT="$ROOTK" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-k.log 2>&1
+
+if [ -d "$K1" ] && [ -d "$K2" ] && [ -d "$K3" ] && [ -d "$K4" ]; then
+  pass "case k: no 'current' link — slot skipped entirely, nothing pruned blind"
+else
+  fail "case k: no 'current' link — the slot was pruned anyway (blind-prune regression)"
+fi
+if grep -qi "skipping prune" /tmp/hygiene-test-k.log; then
+  pass "case k: an explicit WARN/skip line was logged for the missing 'current' link"
+else
+  fail "case k: no skip/WARN line logged for the missing 'current' link"
+fi
+
+# --- Case l: M2 — MB-freed is actually counted (not always 0) ---------------
+ROOTL="$(fresh_root)"
+mkdir -p "$ROOTL/releases"
+L1="$(make_release "$ROOTL/releases" 20260901-000000 aaaaaaa)"
+# Give L1 real bulk so freed-KB is unambiguously > 0 once pruned.
+head -c 2097152 /dev/urandom > "$ROOTL/releases/20260901-000000-aaaaaaa/bulk.bin" 2>/dev/null \
+  || dd if=/dev/zero of="$ROOTL/releases/20260901-000000-aaaaaaa/bulk.bin" bs=1024 count=2048 >/dev/null 2>&1
+L2="$(make_release "$ROOTL/releases" 20260902-000000 bbbbbbb)"
+L3="$(make_release "$ROOTL/releases" 20260903-000000 ccccccc)"
+L4="$(make_release "$ROOTL/releases" 20260904-000000 ddddddd)"
+link_current "$ROOTL/current" "$L4"
+
+HYGIENE_ROOT="$ROOTL" HYGIENE_SKIP_SYSTEM=1 bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-l.log 2>&1
+
+FREED_LINE="$(grep -o 'freed this run: [0-9]*MB' /tmp/hygiene-test-l.log || true)"
+FREED_NUM="$(echo "$FREED_LINE" | grep -o '[0-9]*' || echo 0)"
+if [ -n "$FREED_NUM" ] && [ "$FREED_NUM" -gt 0 ]; then
+  pass "case l: freed-MB counter is non-zero after pruning a release with real bulk ($FREED_LINE)"
+else
+  fail "case l: freed-MB counter stayed 0 despite pruning a ~2MB release — subshell-pipe regression"
+fi
+
+# --- Case m: M3 — safe_rm_release_dir() refuses every hostile path, --------
+# --- exercised by SOURCING the script (HYGIENE_SOURCED=1 early-return) -----
+# --- and calling the guard directly. ----------------------------------------
+ROOTM="$(fresh_root)"
+mkdir -p "$ROOTM/releases"
+GUARD_FAILED=0
+(
+  HYGIENE_ROOT="$ROOTM"
+  HYGIENE_SOURCED=1
+  # shellcheck source=/dev/null
+  source "$HYGIENE_SCRIPT"
+
+  check_refused() {
+    local desc="$1" path="$2"
+    if safe_rm_release_dir "$path" 2>/tmp/hygiene-test-m-guard.log; then
+      echo "FAIL-INNER: $desc — safe_rm_release_dir accepted '$path'"
+      return 1
+    fi
+    return 0
+  }
+
+  ok=1
+  check_refused "empty string" "" || ok=0
+  check_refused "/etc" "/etc" || ok=0
+  check_refused "traversal via .." "$ROOTM/releases/../shared" || ok=0
+  check_refused "trailing slash" "$ROOTM/releases/20260101-000000-aaaaaaa/" || ok=0
+  mkdir -p "$ROOTM/outside-target"
+  ln -sfn "$ROOTM/outside-target" "$ROOTM/releases/20260101-000000-bbbbbbb-link" 2>/dev/null || true
+  check_refused "symlink inside releases pointing outside" "$ROOTM/releases/20260101-000000-bbbbbbb-link" || ok=0
+  check_refused "name with a space" "$ROOTM/releases/2026 0101-000000-ccccccc" || ok=0
+  [ "$ok" -eq 1 ]
+) >/tmp/hygiene-test-m.log 2>&1
+GUARD_RC=$?
+if [ "$GUARD_RC" -eq 0 ]; then
+  pass "case m: safe_rm_release_dir() refused every hostile path (empty, /etc, .., trailing slash, escaping symlink, space)"
+else
+  fail "case m: safe_rm_release_dir() accepted at least one hostile path — see /tmp/hygiene-test-m.log"
+  cat /tmp/hygiene-test-m.log
+fi
+
+# --- Case n: MINOR(a) — /tmp sweep excludes known-safe dirs, still removes --
+# --- plain old files ----------------------------------------------------------
+ROOTN_TMP="$(fresh_root)"
+mkdir -p "$ROOTN_TMP/puppeteer_dev_chrome_profile-XYZ" "$ROOTN_TMP/tsx-1234" "$ROOTN_TMP/node-compile-cache"
+echo old > "$ROOTN_TMP/puppeteer_dev_chrome_profile-XYZ/lock.json"
+echo old > "$ROOTN_TMP/tsx-1234/cache.bin"
+echo old > "$ROOTN_TMP/node-compile-cache/v8.blob"
+echo old > "$ROOTN_TMP/plain-old-file.log"
+OLD_TS="2 days ago"
+find "$ROOTN_TMP" -type f -exec touch -d '10 days ago' {} \; 2>/dev/null \
+  || find "$ROOTN_TMP" -type f -exec touch -t "$(date -d '10 days ago' +%Y%m%d0000 2>/dev/null || date -v-10d +%Y%m%d0000)" {} \; 2>/dev/null || true
+
+ROOTN="$(fresh_root)"
+mkdir -p "$ROOTN/releases"
+link_current "$ROOTN/current" "$(make_release "$ROOTN/releases" 20260901-000000 aaaaaaa)"
+HYGIENE_ROOT="$ROOTN" HYGIENE_TMP_DIR="$ROOTN_TMP" bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-n.log 2>&1
+
+if [ -f "$ROOTN_TMP/puppeteer_dev_chrome_profile-XYZ/lock.json" ] && [ -f "$ROOTN_TMP/tsx-1234/cache.bin" ] && [ -f "$ROOTN_TMP/node-compile-cache/v8.blob" ]; then
+  pass "case n: excluded /tmp dirs (puppeteer/tsx/node-compile-cache) were left alone"
+else
+  fail "case n: an excluded /tmp dir's contents were deleted — MINOR(a) regression"
+fi
+if [ ! -f "$ROOTN_TMP/plain-old-file.log" ]; then
+  pass "case n: a plain old file outside the excluded dirs was still removed"
+else
+  fail "case n: plain-old-file.log (10 days old, not excluded) was NOT removed"
+fi
+
+# --- Case o: MINOR(c) — concurrency lock: a second run skips while the ------
+# --- lock is held --------------------------------------------------------------
+ROOTO="$(fresh_root)"
+mkdir -p "$ROOTO/releases"
+O1="$(make_release "$ROOTO/releases" 20260901-000000 aaaaaaa)"
+O2="$(make_release "$ROOTO/releases" 20260902-000000 bbbbbbb)"
+O3="$(make_release "$ROOTO/releases" 20260903-000000 ccccccc)"
+O4="$(make_release "$ROOTO/releases" 20260904-000000 ddddddd)"
+link_current "$ROOTO/current" "$O4"
+LOCKO="$(mktemp -u)"
+mkdir -p "$LOCKO"
+
+HYGIENE_ROOT="$ROOTO" HYGIENE_SKIP_SYSTEM=1 HYGIENE_LOCK_DIR="$LOCKO" bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-o.log 2>&1
+RCO=$?
+rmdir "$LOCKO" 2>/dev/null || true
+
+if [ "$RCO" -eq 0 ] && [ -d "$O1" ] && [ -d "$O4" ]; then
+  pass "case o: a held lock made the run skip cleanly (exit 0, nothing pruned)"
+else
+  fail "case o: a held lock did not stop the run as expected (rc=$RCO)"
+fi
+if grep -qi "lock" /tmp/hygiene-test-o.log; then
+  pass "case o: the lock skip was logged"
+else
+  fail "case o: no lock-related log line found"
+fi
+
+# --- Case p: MINOR(c) — release prune is skipped while a deploy is ----------
+# --- detected as in-progress (env-overridable check, no real pgrep needed) --
+ROOTP="$(fresh_root)"
+mkdir -p "$ROOTP/releases"
+P1="$(make_release "$ROOTP/releases" 20260901-000000 aaaaaaa)"
+P2="$(make_release "$ROOTP/releases" 20260902-000000 bbbbbbb)"
+P3="$(make_release "$ROOTP/releases" 20260903-000000 ccccccc)"
+P4="$(make_release "$ROOTP/releases" 20260904-000000 ddddddd)"
+link_current "$ROOTP/current" "$P4"
+
+HYGIENE_ROOT="$ROOTP" HYGIENE_SKIP_SYSTEM=1 HYGIENE_DEPLOY_CHECK_CMD="true" bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-p.log 2>&1
+RCP=$?
+
+if [ "$RCP" -eq 0 ] && [ -d "$P1" ] && [ -d "$P2" ] && [ -d "$P3" ] && [ -d "$P4" ]; then
+  pass "case p: prune skipped while a deploy is detected in progress"
+else
+  fail "case p: prune ran even though a deploy was detected in progress (rc=$RCP)"
+fi
+if grep -qi "deploy in progress" /tmp/hygiene-test-p.log; then
+  pass "case p: the deploy-in-progress skip was logged"
+else
+  fail "case p: no 'deploy in progress' log line found"
+fi
+
+# Sanity: with the deploy-check forced FALSE, pruning still happens normally.
+ROOTP2="$(fresh_root)"
+mkdir -p "$ROOTP2/releases"
+P2_1="$(make_release "$ROOTP2/releases" 20260901-000000 aaaaaaa)"
+make_release "$ROOTP2/releases" 20260902-000000 bbbbbbb >/dev/null
+make_release "$ROOTP2/releases" 20260903-000000 ccccccc >/dev/null
+P2_4="$(make_release "$ROOTP2/releases" 20260904-000000 ddddddd)"
+link_current "$ROOTP2/current" "$P2_4"
+HYGIENE_ROOT="$ROOTP2" HYGIENE_SKIP_SYSTEM=1 HYGIENE_DEPLOY_CHECK_CMD="false" bash "$HYGIENE_SCRIPT" >/tmp/hygiene-test-p2.log 2>&1
+if [ ! -d "$P2_1" ]; then
+  pass "case p: with no deploy in progress, pruning still runs normally"
+else
+  fail "case p: pruning did not run when the deploy-check was forced false"
 fi
 
 if [ "$FAILED" -ne 0 ]; then

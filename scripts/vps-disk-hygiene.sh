@@ -38,6 +38,14 @@ for arg in "$@"; do
 done
 
 ROOT="${HYGIENE_ROOT:-/var/www/ipodhan}"
+# C2: canonicalise ROOT so a trailing slash or a symlink component can never
+# make a release path fail to match the 'current' target it is compared
+# against — both are always resolved through the same canonical prefix.
+if [ -d "$ROOT" ]; then
+  ROOT="$(cd "$ROOT" && pwd -P)"
+else
+  ROOT="${ROOT%/}"
+fi
 KEEP_PROD="${HYGIENE_KEEP_PROD:-3}"
 KEEP_STAGING="${HYGIENE_KEEP_STAGING:-2}"
 NOTIFIER_ENV="${NOTIFIER_ENV:-/root/notifier/.env}"
@@ -49,6 +57,59 @@ REPORT_LINES=()
 log() { [ "$MODE" = "report" ] && return 0; echo "[$(date -Iseconds)] $*"; }
 report() { REPORT_LINES+=("$*"); }
 
+# C1: the ONE predicate every destructive step routes through. --report and
+# --dry-run must never delete anything and never POST to the Notifier.
+may_delete() { [ "$MODE" = "run" ]; }
+
+# MINOR(c): single-flight lock — a second concurrent run (cron overlap, a
+# manual invocation) skips cleanly instead of racing the first. mkdir is
+# atomic, so this needs no flock(1) dependency. HYGIENE_LOCK_DIR lets the
+# test suite point this at a throwaway dir.
+LOCK_DIR="${HYGIENE_LOCK_DIR:-/var/lock/ipodhan-disk-hygiene.lock.d}"
+if [ -z "${HYGIENE_SOURCED:-}" ]; then
+  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+    if [ -d "$LOCK_DIR" ]; then
+      # The dir already existing IS the lock signal — another run holds it.
+      log "another disk-hygiene run holds the lock ($LOCK_DIR) — exiting"
+      exit 0
+    fi
+    # mkdir failed for any other reason (missing parent, permissions) — the
+    # lock path itself is unusable on this host. Fail OPEN: a hygiene sweep
+    # that never runs is worse than one run without the concurrency guard.
+    log "WARN: could not create lock dir $LOCK_DIR — continuing without a lock (non-fatal)"
+  else
+    trap 'rmdir "$LOCK_DIR" 2>/dev/null || true' EXIT
+  fi
+fi
+
+# MINOR(c): skip the release prune while a deploy is running, so hygiene
+# never prunes a release deploy-linux.sh is mid-copy into. HYGIENE_DEPLOY_CHECK_CMD
+# is an env-overridable hook (used by the test suite, which has neither
+# pgrep nor /proc guaranteed); HYGIENE_DEPLOY_PGREP is the real-machine
+# pattern used when pgrep is available.
+DEPLOY_PGREP_PATTERN="${HYGIENE_DEPLOY_PGREP:-scripts/deploy-linux.sh}"
+deploy_in_progress() {
+  if [ -n "${HYGIENE_DEPLOY_CHECK_CMD:-}" ]; then
+    eval "$HYGIENE_DEPLOY_CHECK_CMD"
+    return $?
+  fi
+  if command -v pgrep >/dev/null 2>&1; then
+    pgrep -f "$DEPLOY_PGREP_PATTERN" >/dev/null 2>&1
+    return $?
+  fi
+  if [ -d /proc ]; then
+    local cmdline p
+    for p in /proc/[0-9]*/cmdline; do
+      [ -r "$p" ] || continue
+      cmdline="$(tr '\0' ' ' < "$p" 2>/dev/null || true)"
+      case "$cmdline" in
+        *"$DEPLOY_PGREP_PATTERN"*) return 0 ;;
+      esac
+    done
+  fi
+  return 1
+}
+
 # --- release-dir name + path safety guards ----------------------------------
 # Mirrors deploy-linux.sh's safe_rm_venv_dir(): every deletion goes through a
 # guard that (a) refuses '..' outright and (b) refuses anything outside the
@@ -57,6 +118,10 @@ RELEASE_NAME_RE='^[0-9]{8}-[0-9]{6}-[0-9a-f]{7,40}$'
 
 safe_rm_release_dir() {
   local dir="$1" base
+  case "$dir" in
+    "") echo "FATAL: safe_rm_release_dir: refusing an empty path" >&2; return 1 ;;
+    */) echo "FATAL: safe_rm_release_dir: refusing '$dir' — trailing slash not allowed" >&2; return 1 ;;
+  esac
   base="$(basename "$dir")"
   case "$dir" in
     *..*) echo "FATAL: safe_rm_release_dir: refusing '$dir' — contains '..'" >&2; return 1 ;;
@@ -70,8 +135,8 @@ safe_rm_release_dir() {
   if [ -z "$dir" ] || [ ! -d "$dir" ]; then
     return 0
   fi
-  if [ "$MODE" = "dry-run" ]; then
-    log "DRY-RUN: would remove release dir $dir"
+  if ! may_delete; then
+    [ "$MODE" = "dry-run" ] && log "DRY-RUN: would remove release dir $dir"
     return 0
   fi
   log "removing release dir $dir"
@@ -88,18 +153,22 @@ safe_rm_venv_build_dir() {
   if [ -z "$dir" ] || [ ! -e "$dir" ]; then
     return 0
   fi
-  if [ "$MODE" = "dry-run" ]; then
-    log "DRY-RUN: would remove stale venv build dir $dir"
+  if ! may_delete; then
+    [ "$MODE" = "dry-run" ] && log "DRY-RUN: would remove stale venv build dir $dir"
     return 0
   fi
   log "removing stale venv build dir $dir"
   rm -rf -- "${dir:?}"
 }
 
+# MINOR(b): a du failure (permission, race) must never leave dir_kb emitting
+# an empty string — under set -e, `[ "" -gt N ]` aborts the whole script.
 dir_kb() {
-  local dir="$1"
+  local dir="$1" kb
   [ -e "$dir" ] || { echo 0; return; }
-  du -sk "$dir" 2>/dev/null | awk '{print $1}' || echo 0
+  kb="$(du -sk "$dir" 2>/dev/null | awk '{print $1}')"
+  [ -n "$kb" ] || kb=0
+  echo "$kb"
 }
 
 current_target() {
@@ -113,7 +182,7 @@ current_target() {
 
 # --- 1. prune releases beyond retention, both slots -------------------------
 prune_slot() {
-  local slot="$1" keep="$2" releases_dir current_link cur total
+  local slot="$1" keep="$2" releases_dir current_link cur_raw cur total
   if [ "$slot" = "prod" ]; then
     releases_dir="$ROOT/releases"
     current_link="$ROOT/current"
@@ -124,45 +193,85 @@ prune_slot() {
 
   [ -d "$releases_dir" ] || { log "no releases dir for slot '$slot' — skipping"; return 0; }
 
-  cur="$(current_target "$current_link" || true)"
-  # shellcheck disable=SC2012
-  total="$(cd "$releases_dir" && ls -1 | LC_ALL=C sort | wc -l | tr -d ' ')"
-  if [ "$total" -le "$keep" ]; then
-    log "slot '$slot': $total release(s) <= keep=$keep, nothing to prune"
+  # C2: resolve 'current' to its CANONICAL path (readlink -f), the same
+  # canonicalisation ROOT itself already went through — so a trailing slash
+  # or a symlink component can never desync the comparison below. If
+  # 'current' cannot be resolved at all (missing link, dangling target),
+  # skip this slot outright rather than risk pruning blind.
+  cur_raw="$(current_target "$current_link" 2>/dev/null || true)"
+  cur=""
+  if [ -n "$cur_raw" ]; then
+    cur="$(readlink -f "$cur_raw" 2>/dev/null || true)"
+  fi
+  if [ -z "$cur" ]; then
+    log "WARN: slot '$slot': could not resolve a 'current' target at $current_link — skipping prune to avoid pruning blind"
     return 0
   fi
 
-  local removed=0
-  # shellcheck disable=SC2012
-  ls -1 "$releases_dir" | LC_ALL=C sort | head -n "$((total - keep))" | while IFS= read -r old; do
-    local old_path="$releases_dir/$old"
-    if [ "$old_path" = "$cur" ]; then
+  # M1: build the candidate list from REAL directories matching the release
+  # name pattern ONLY — a stray junk entry (a stray file, an unrelated dir)
+  # must never inflate the count and cause a real release to be pruned early.
+  local candidates=() d base
+  shopt -s nullglob
+  for d in "$releases_dir"/*; do
+    [ -d "$d" ] || continue
+    [ -L "$d" ] && continue
+    base="$(basename "$d")"
+    [[ "$base" =~ $RELEASE_NAME_RE ]] && candidates+=("$base")
+  done
+  shopt -u nullglob
+  if [ "${#candidates[@]}" -gt 1 ]; then
+    IFS=$'\n' candidates=($(printf '%s\n' "${candidates[@]}" | LC_ALL=C sort))
+    unset IFS
+  fi
+  total="${#candidates[@]}"
+  if [ "$total" -le "$keep" ]; then
+    log "slot '$slot': $total real release(s) <= keep=$keep, nothing to prune"
+    return 0
+  fi
+
+  local to_remove=$((total - keep)) i old old_path old_canon before after
+  for ((i = 0; i < to_remove; i++)); do
+    old="${candidates[$i]}"
+    old_path="$releases_dir/$old"
+    old_canon="$(readlink -f "$old_path" 2>/dev/null || echo "$old_path")"
+    if [ "$old_canon" = "$cur" ] || [ "$(basename "$old_canon")" = "$(basename "$cur")" ]; then
       log "slot '$slot': keeping $old (it is 'current')"
       continue
     fi
-    if ! [[ "$old" =~ $RELEASE_NAME_RE ]]; then
-      log "slot '$slot': skipping $old — name does not match the release-dir pattern"
-      continue
-    fi
-    local before after
+    # M2: a plain (non-subshell) for-loop, so FREED_KB actually accumulates
+    # across iterations — the prior `| while read` piped this into a subshell
+    # where every increment was discarded.
     before="$(dir_kb "$old_path")"
     safe_rm_release_dir "$old_path"
-    if [ "$MODE" != "dry-run" ]; then
+    if may_delete; then
       after="$(dir_kb "$old_path")"
       FREED_KB=$((FREED_KB + (before - after)))
     fi
   done
 }
 
+# M3: when sourced (HYGIENE_SOURCED=1), every function above is now defined
+# and available to call directly (e.g. safe_rm_release_dir) — stop here
+# instead of running the sweep, taking the lock, or touching the filesystem.
+if [ -n "${HYGIENE_SOURCED:-}" ]; then
+  return 0 2>/dev/null || exit 0
+fi
+
 log "=== W-134 disk hygiene: $(date -Iseconds) mode=$MODE root=$ROOT ==="
-prune_slot prod "$KEEP_PROD"
-prune_slot staging "$KEEP_STAGING"
+if deploy_in_progress; then
+  log "deploy in progress (matched '$DEPLOY_PGREP_PATTERN') — release prune skipped this run"
+  report "release prune skipped: deploy in progress"
+else
+  prune_slot prod "$KEEP_PROD"
+  prune_slot staging "$KEEP_STAGING"
+fi
 
 # --- 2. journal vacuum -------------------------------------------------------
 if [ -z "${HYGIENE_SKIP_SYSTEM:-}" ]; then
   if [ "$MODE" = "dry-run" ]; then
     log "DRY-RUN: would run journalctl --vacuum-size=200M"
-  elif command -v journalctl >/dev/null 2>&1; then
+  elif may_delete && command -v journalctl >/dev/null 2>&1; then
     log "vacuuming journal to 200M"
     journalctl --vacuum-size=200M >/dev/null 2>&1 || log "WARN: journalctl vacuum failed (non-fatal)"
   fi
@@ -179,7 +288,7 @@ if [ -z "${HYGIENE_SKIP_SYSTEM:-}" ]; then
   if [ "$NPM_KB" -gt $((2 * 1024 * 1024)) ]; then
     if [ "$MODE" = "dry-run" ]; then
       log "DRY-RUN: would run npm cache clean --force (npm cache is ${NPM_KB}KB, over 2GB)"
-    elif command -v npm >/dev/null 2>&1; then
+    elif may_delete && command -v npm >/dev/null 2>&1; then
       log "npm cache is ${NPM_KB}KB (over 2GB) — running npm cache clean --force"
       npm cache clean --force >/dev/null 2>&1 || log "WARN: npm cache clean failed (non-fatal)"
       FREED_KB=$((FREED_KB + NPM_KB - $(dir_kb "$NPM_CACHE_DIR")))
@@ -192,7 +301,7 @@ if [ -z "${HYGIENE_SKIP_SYSTEM:-}" ]; then
   if [ "$PIP_KB" -gt $((500 * 1024)) ]; then
     if [ "$MODE" = "dry-run" ]; then
       log "DRY-RUN: would run pip cache purge (pip cache is ${PIP_KB}KB, over 500MB)"
-    elif command -v python3 >/dev/null 2>&1; then
+    elif may_delete && command -v python3 >/dev/null 2>&1; then
       log "pip cache is ${PIP_KB}KB (over 500MB) — running pip cache purge"
       python3 -m pip cache purge >/dev/null 2>&1 || log "WARN: pip cache purge failed (non-fatal)"
       FREED_KB=$((FREED_KB + PIP_KB - $(dir_kb "$PIP_CACHE_DIR")))
@@ -203,7 +312,7 @@ if [ -z "${HYGIENE_SKIP_SYSTEM:-}" ]; then
 
   if [ "$MODE" = "dry-run" ]; then
     log "DRY-RUN: would run apt-get clean"
-  elif command -v apt-get >/dev/null 2>&1; then
+  elif may_delete && command -v apt-get >/dev/null 2>&1; then
     log "running apt-get clean"
     apt-get clean >/dev/null 2>&1 || log "WARN: apt-get clean failed (non-fatal)"
   fi
@@ -216,14 +325,25 @@ fi
 # of the real /tmp; HYGIENE_SKIP_SYSTEM also skips this step outright so a
 # test run never touches the real machine's /tmp.
 TMP_SWEEP_DIR="${HYGIENE_TMP_DIR:-/tmp}"
+# MINOR(a): never walk into dirs that are themselves live application state —
+# a running Puppeteer/Chrome profile, systemd's private tmpfs, a tsx/
+# node-compile-cache dir — even when a file inside happens to be 7+ days old.
+TMP_PRUNE_EXPR=(
+  -type d \( -name 'puppeteer_dev_chrome_profile-*' -o -name '.org.chromium.*' \
+             -o -name 'systemd-private-*' -o -name 'tsx-*' -o -name 'node-compile-cache' \) -prune
+  -o -type f -mtime +7
+)
 if [ -n "${HYGIENE_SKIP_SYSTEM:-}" ]; then
   log "HYGIENE_SKIP_SYSTEM set — skipping /tmp sweep"
 elif [ "$MODE" = "dry-run" ]; then
-  log "DRY-RUN: would delete files older than 7 days under $TMP_SWEEP_DIR"
-  find "$TMP_SWEEP_DIR" -xdev -type f -mtime +7 2>/dev/null | while IFS= read -r f; do log "DRY-RUN: would remove $f"; done || true
-else
-  log "deleting files older than 7 days under $TMP_SWEEP_DIR"
-  find "$TMP_SWEEP_DIR" -xdev -type f -mtime +7 -delete 2>/dev/null || true
+  log "DRY-RUN: would delete files older than 7 days under $TMP_SWEEP_DIR (excluding known-safe dirs)"
+  find "$TMP_SWEEP_DIR" -xdev "${TMP_PRUNE_EXPR[@]}" -print0 2>/dev/null | while IFS= read -r -d '' f; do log "DRY-RUN: would remove $f"; done || true
+elif may_delete; then
+  log "deleting files older than 7 days under $TMP_SWEEP_DIR (excluding known-safe dirs)"
+  # NOTE: -delete cannot combine with -prune (find refuses — -delete forces
+  # -depth, which silently disables -prune) so this deletes via an explicit
+  # rm loop over -print0 instead of `find ... -delete`.
+  find "$TMP_SWEEP_DIR" -xdev "${TMP_PRUNE_EXPR[@]}" -print0 2>/dev/null | while IFS= read -r -d '' f; do rm -f -- "$f" 2>/dev/null || true; done
 fi
 
 # --- 5. stale venv build dirs (*.new / *.old older than 1 day) --------------
@@ -278,7 +398,9 @@ echo "=== W-134 disk hygiene report ==="
 echo "$REPORT_BODY"
 
 # --- 7. Notifier (info < 70%, warning 70-80%, critical >= 80%) --------------
-if [ -z "${HYGIENE_SKIP_SYSTEM:-}" ] && [ "$MODE" != "dry-run" ]; then
+# C1: --report must never POST — routed through the same may_delete predicate
+# as every other destructive/external-effect step.
+if [ -z "${HYGIENE_SKIP_SYSTEM:-}" ] && may_delete; then
   USED_NUM="$(echo "$USED_PCT" | tr -d '%')"
   SEVERITY="info"
   if [[ "$USED_NUM" =~ ^[0-9]+$ ]]; then
@@ -319,7 +441,7 @@ print(json.dumps({
     log "NOTIFY-SKIP: NOTIFIER_KEY_IPODHAN not set"
   fi
 else
-  log "skipping Notifier POST (HYGIENE_SKIP_SYSTEM set or dry-run)"
+  log "skipping Notifier POST (HYGIENE_SKIP_SYSTEM set, or MODE != run)"
 fi
 
 exit 0
