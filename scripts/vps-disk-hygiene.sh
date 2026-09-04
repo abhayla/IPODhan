@@ -26,6 +26,10 @@
 #   HYGIENE_SKIP_TMP        when set (any value), skip the /tmp sweep step (round 3, MAJOR-1) —
 #                           separate flag so a test case can exercise ONLY the /tmp sweep
 #                           without also running journalctl/npm/pip/apt/Notifier for real.
+#   HYGIENE_SKIP_ORPHANS    when set (any value), skip the orphaned release-server sweep (W-136)
+#   HYGIENE_ORPHAN_ROOTS    space-separated glob prefixes a process's cwd must be under to be
+#                           considered an orphaned release server (default: $ROOT/releases and
+#                           $ROOT/releases-staging) — env-overridable for the test suite.
 #   HYGIENE_NOTIFIER_URL    Notifier endpoint (default http://127.0.0.1:3300/notify) — the test
 #                           suite points this at an unroutable address as a second independent
 #                           guard, in case HYGIENE_SKIP_SYSTEM is ever dropped by a future edit.
@@ -266,6 +270,53 @@ current_target() {
   fi
 }
 
+# W-136: a probe/app server started against a release dir that was later
+# deleted (an aborted deploy, a manual prune) can be orphaned and keep
+# running — connected to prod DB, bound to a port, regenerating ISR pages
+# into a directory that officially no longer exists (the 2026-08-21
+# incident: a next-server ran for 14 days after its release dir was
+# deleted). HYGIENE_ORPHAN_ROOTS is a space-separated list of glob prefixes
+# a process's cwd must be under to be considered — env-overridable so the
+# test suite can point it at a throwaway dir instead of the real $ROOT.
+ORPHAN_ROOTS="${HYGIENE_ORPHAN_ROOTS:-$ROOT/releases $ROOT/releases-staging}"
+
+# Prints "<pid> <cwd>" (one per line) for every process whose cwd resolves
+# under one of $ORPHAN_ROOTS AND is either marked "(deleted)" by the kernel
+# or no longer exists on disk, AND whose cmdline matches a release-server
+# process (next-server / next start / npm run start). Never runs on a host
+# with no /proc (e.g. this Windows dev box) — the caller checks that too,
+# but the guard is repeated here so the function is safe to call directly.
+detect_orphaned_release_servers() {
+  [ -d /proc ] || return 0
+  local p pid cwd_link cwd_target cwd_clean cmdline root match deleted
+  for p in /proc/[0-9]*; do
+    pid="$(basename "$p")"
+    [ "$pid" = "$$" ] && continue
+    cwd_link="$p/cwd"
+    [ -L "$cwd_link" ] || continue
+    cwd_target="$(readlink "$cwd_link" 2>/dev/null || true)"
+    [ -n "$cwd_target" ] || continue
+    deleted=0
+    case "$cwd_target" in
+      *" (deleted)") deleted=1; cwd_clean="${cwd_target% (deleted)}" ;;
+      *) cwd_clean="$cwd_target" ;;
+    esac
+    [ -d "$cwd_clean" ] || deleted=1
+    [ "$deleted" -eq 1 ] || continue
+    match=0
+    for root in $ORPHAN_ROOTS; do
+      case "$cwd_clean" in
+        "$root"/*|"$root") match=1; break ;;
+      esac
+    done
+    [ "$match" -eq 1 ] || continue
+    cmdline="$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null || true)"
+    if printf '%s' "$cmdline" | grep -qE 'next-server|next[[:space:]]+start|npm run start'; then
+      printf '%s %s\n' "$pid" "$cwd_clean"
+    fi
+  done
+}
+
 # --- 1. prune releases beyond retention, both slots -------------------------
 prune_slot() {
   local slot="$1" keep="$2" releases_dir current_link cur_raw cur total
@@ -445,7 +496,37 @@ else
   log "no venv dir at $VENV_DIR — skipping stale venv build-dir sweep"
 fi
 
-# --- 6. final report ----------------------------------------------------------
+# --- 6. orphaned release servers (W-136, Linux only) -------------------------
+ORPHAN_COUNT=0
+if [ -n "${HYGIENE_SKIP_ORPHANS:-}" ]; then
+  log "HYGIENE_SKIP_ORPHANS set — skipping orphaned release-server sweep"
+elif [ ! -d /proc ]; then
+  log "no /proc on this host — skipping orphaned release-server sweep"
+else
+  while IFS=' ' read -r opid ocwd; do
+    [ -n "$opid" ] || continue
+    ORPHAN_COUNT=$((ORPHAN_COUNT + 1))
+    OAGE="$(ps -o etime= -p "$opid" 2>/dev/null | tr -d ' ' || true)"
+    log "orphaned release server: pid=$opid cwd=$ocwd age=${OAGE:-unknown}"
+    if [ "$MODE" = "dry-run" ]; then
+      log "DRY-RUN: would kill process group for pid=$opid (cwd=$ocwd)"
+      report "orphaned release server (would kill): pid=$opid cwd=$ocwd age=${OAGE:-unknown}"
+    elif may_delete; then
+      report "orphaned release server killed: pid=$opid cwd=$ocwd age=${OAGE:-unknown}"
+      OPGID="$(ps -o pgid= -p "$opid" 2>/dev/null | tr -d ' ')"
+      if [ -n "$OPGID" ]; then
+        kill -TERM -- -"$OPGID" 2>/dev/null || kill "$opid" 2>/dev/null || true
+      else
+        kill "$opid" 2>/dev/null || true
+      fi
+    fi
+  done < <(detect_orphaned_release_servers)
+  if [ "$ORPHAN_COUNT" -eq 0 ]; then
+    log "no orphaned release servers found"
+  fi
+fi
+
+# --- 7. final report ----------------------------------------------------------
 DISK_LINE="$(df -k "$ROOT" 2>/dev/null | tail -n1 || true)"
 USED_PCT="unknown"
 FREE_GB="unknown"
@@ -489,6 +570,7 @@ REPORT_TITLE="disk hygiene: ${USED_PCT} used, ${FREE_GB}GB free, ${FREED_MB}MB f
 REPORT_BODY="disk used: ${USED_PCT} (free ${FREE_GB}GB)
 prod releases kept: ${PROD_COUNT} (keep=${KEEP_PROD})
 staging releases kept: ${STAGING_COUNT} (keep=${KEEP_STAGING})
+orphaned release servers found: ${ORPHAN_COUNT}
 freed this run: ${FREED_MB}MB
 largest dirs under /root:
 ${LARGEST_ROOT}
@@ -508,7 +590,7 @@ fi
 echo "=== W-134 disk hygiene report ==="
 echo "$REPORT_BODY"
 
-# --- 7. Notifier (info < 70%, warning 70-80%, critical >= 80%) --------------
+# --- 8. Notifier (info < 70%, warning 70-80%, critical >= 80%) --------------
 # C1: --report must never POST — routed through the same may_delete predicate
 # as every other destructive/external-effect step.
 if [ -z "${HYGIENE_SKIP_SYSTEM:-}" ] && may_delete; then

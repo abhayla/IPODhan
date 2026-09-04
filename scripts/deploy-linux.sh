@@ -768,11 +768,64 @@ probe_release() {
     return 0
   fi
   log "Health-probing the NEW release on 127.0.0.1:$PROBE_PORT (before the flip)"
+
+  # W-136: refuse to start the probe if something is already holding the
+  # port — a stale orphan from an earlier aborted deploy must be surfaced
+  # (with its pid) rather than silently reused/raced.
+  if command -v fuser >/dev/null 2>&1; then
+    local holder_pid; holder_pid="$(fuser -n tcp "$PROBE_PORT" 2>/dev/null | tr -d ' ')"
+    if [ -n "$holder_pid" ]; then
+      echo "FATAL: PROBE_PORT $PROBE_PORT is already in use (held by pid $holder_pid) — refusing to start the pre-flip probe. This is likely a stale orphan from an earlier aborted deploy; investigate and kill it manually before retrying." >&2
+      return 1
+    fi
+  fi
+
   local pidfile="/tmp/ipodhan-preflip-probe-$SLOT.pid"
   rm -f "$pidfile"
-  ( cd "$RELEASE_DIR/web" && PORT="$PROBE_PORT" nohup npm run start >/tmp/ipodhan-preflip-probe-"$SLOT".log 2>&1 & echo $! > "$pidfile" )
+  if command -v setsid >/dev/null 2>&1; then
+    ( cd "$RELEASE_DIR/web" && PORT="$PROBE_PORT" setsid nohup npm run start >/tmp/ipodhan-preflip-probe-"$SLOT".log 2>&1 & echo $! > "$pidfile" )
+  else
+    log "WARN: setsid not found — the probe's child processes (sh -c next start / next-server) will NOT be in the same process group and may survive cleanup_probe()'s kill. Install setsid (util-linux) on this host."
+    ( cd "$RELEASE_DIR/web" && PORT="$PROBE_PORT" nohup npm run start >/tmp/ipodhan-preflip-probe-"$SLOT".log 2>&1 & echo $! > "$pidfile" )
+  fi
   local pid; pid="$(cat "$pidfile")"
-  cleanup_probe() { kill "$pid" 2>/dev/null || true; }
+  # With setsid, the child's PID equals its PGID (setsid makes it the group
+  # leader of a new session) — so -$pid targets the whole process group,
+  # not just the npm parent. Without setsid this degrades to a plain kill.
+  cleanup_probe() {
+    local pgid="$pid"
+    kill -TERM -- -"$pgid" 2>/dev/null || kill "$pid" 2>/dev/null || true
+    local waited=0
+    while [ "$waited" -lt 5 ]; do
+      if ! kill -0 "$pid" 2>/dev/null; then
+        break
+      fi
+      sleep 1
+      waited=$((waited + 1))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      kill -KILL -- -"$pgid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+    fi
+    # Verify the probe port is actually free — a survivor here means a
+    # stray production-bound server could still be listening.
+    if command -v ss >/dev/null 2>&1; then
+      local still_listening; still_listening="$(ss -ltn "( sport = :$PROBE_PORT )" 2>/dev/null | grep -c LISTEN || true)"
+      if [ "${still_listening:-0}" -gt 0 ]; then
+        echo "WARN: PROBE_PORT $PROBE_PORT still has a listener after cleanup_probe() killed pid $pid (pgid $pgid) — attempting fuser -k as a last resort." >&2
+        if command -v fuser >/dev/null 2>&1; then
+          local survivors; survivors="$(fuser -n tcp "$PROBE_PORT" 2>/dev/null | tr -d ' ')"
+          echo "WARN: surviving pid(s) on PROBE_PORT $PROBE_PORT: ${survivors:-unknown}" >&2
+          fuser -k -n tcp "$PROBE_PORT" 2>/dev/null || true
+          sleep 1
+          local final_check; final_check="$(ss -ltn "( sport = :$PROBE_PORT )" 2>/dev/null | grep -c LISTEN || true)"
+          if [ "${final_check:-0}" -gt 0 ]; then
+            echo "FATAL: PROBE_PORT $PROBE_PORT still has a listener after fuser -k — a stray process may still be bound to it. Refusing to proceed with the flip." >&2
+            PROBE_CLEANUP_FAILED=1
+          fi
+        fi
+      fi
+    fi
+  }
   trap cleanup_probe RETURN
 
   local waited=0 root_code=000 health_code=000
@@ -791,8 +844,12 @@ probe_release() {
   return 1
 }
 
+PROBE_CLEANUP_FAILED=0
 if ! probe_release; then
   fatal "pre-flip health probe failed for $RELEASE_NAME — 'current' was NOT touched; $CURRENT_LINK still serves the old release."
+fi
+if [ "$PROBE_CLEANUP_FAILED" -ne 0 ]; then
+  fatal "pre-flip probe cleanup failed for $RELEASE_NAME — a stray process may still be listening on PROBE_PORT $PROBE_PORT; refusing to flip $CURRENT_LINK. Investigate and kill it manually before retrying."
 fi
 
 # ------------------------------------------------------- 9. atomic pointer flip

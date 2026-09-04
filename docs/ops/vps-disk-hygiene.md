@@ -22,9 +22,21 @@ is the missing weekly sweep.
 4. Deletes files (never directories) under `/tmp` older than 7 days.
 5. Removes stale venv build dirs `shared/venv/*.new` and `*.old` older than
    1 day (the artifacts of a build that failed mid-swap).
-6. Prints a report (disk used %, free GB, prod/staging release counts, MB
-   freed, largest 5 dirs under `/root` and `/var/www`) and POSTs it to the
-   Notifier gateway.
+6. **Orphaned release servers (W-136, Linux only):** scans `/proc` for any
+   process whose current working directory resolves under
+   `releases/` or `releases-staging/` but no longer exists on disk (a
+   `(deleted)` cwd), AND whose command line looks like a release server
+   (`next-server`, `next start`, or `npm run start`). This is the
+   2026-08-21 incident shape — a pre-flip probe or app server left running
+   against a release dir that a later prune (or an aborted deploy) deleted
+   out from under it, still bound to a port and still connected to the
+   production database. Every match is logged (pid, cwd, age) and its
+   whole process group is killed. Skipped entirely on a host with no
+   `/proc` (e.g. this repo's Windows dev box); `HYGIENE_SKIP_ORPHANS=1`
+   also disables it.
+7. Prints a report (disk used %, free GB, prod/staging release counts,
+   orphaned servers found, MB freed, largest 5 dirs under `/root` and
+   `/var/www`) and POSTs it to the Notifier gateway.
 
 Every deletion goes through a path guard (mirrors `deploy-linux.sh`'s
 `safe_rm_venv_dir()`): refuses `..`, refuses anything outside the one

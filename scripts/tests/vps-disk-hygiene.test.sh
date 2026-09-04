@@ -28,6 +28,11 @@ fail() { echo "FAIL: $1"; FAILED=1; }
 # endpoint and dedupe a real day's alert.
 export HYGIENE_SKIP_SYSTEM=1
 export HYGIENE_SKIP_TMP=1
+# W-136: the real orphaned-release-server sweep walks the WHOLE host's
+# /proc — never appropriate for a case that isn't deliberately testing it.
+# Only the new case s (below) clears this, scoped to its own throwaway
+# HYGIENE_ORPHAN_ROOTS so it never matches a real host process.
+export HYGIENE_SKIP_ORPHANS=1
 export HYGIENE_NOTIFIER_URL="http://127.0.0.1:1/unroutable-test-guard"
 # Round 4 (W-134): the REAL deploy_in_progress() (pgrep/proc scan of the
 # whole host) must never run for a case that isn't deliberately testing it —
@@ -636,6 +641,68 @@ if command -v pgrep >/dev/null 2>&1 || [ -r /proc/1/cmdline ]; then
   cleanup_case_r
 else
   pass "case r: skipped — no pgrep and no /proc/*/cmdline on this host, so deploy_in_progress() can only be exercised via HYGIENE_DEPLOY_CHECK_CMD (case p)"
+fi
+
+# --- Case s: W-136 — detect_orphaned_release_servers() lists a next-server- --
+# --- shaped process whose cwd resolves to a DELETED release dir, and does ---
+# --- NOT list an otherwise-identical process whose cwd still exists. Only --
+# --- meaningful on a host with /proc (this test host — a Windows dev box --
+# --- under MSYS bash — has none, so it reports a skip instead of a false --
+# --- pass/fail, mirroring case r above).
+if [ -d /proc ]; then
+  ROOTS_S="$(fresh_root)"
+  assert_safe_root "$ROOTS_S"
+  mkdir -p "$ROOTS_S/releases"
+  DELETED_DIR_S="$(make_release "$ROOTS_S/releases" 20260821-000000 ffffffe)"
+  NORMAL_DIR_S="$(make_release "$ROOTS_S/releases" 20260822-000000 ffffffd)"
+  HELPER_PID_S=""
+  NORMAL_PID_S=""
+  cleanup_case_s() {
+    [ -n "$HELPER_PID_S" ] && kill "$HELPER_PID_S" >/dev/null 2>&1 || true
+    [ -n "$NORMAL_PID_S" ] && kill "$NORMAL_PID_S" >/dev/null 2>&1 || true
+    wait "$HELPER_PID_S" "$NORMAL_PID_S" 2>/dev/null || true
+    rm -rf -- "$NORMAL_DIR_S" 2>/dev/null || true
+  }
+
+  ( cd "$DELETED_DIR_S" && exec -a "next-server (v18.2.0)" sleep 30 ) 2>/dev/null &
+  HELPER_PID_S=$!
+  ( cd "$NORMAL_DIR_S" && exec -a "next-server (normal, cwd survives)" sleep 30 ) 2>/dev/null &
+  NORMAL_PID_S=$!
+  sleep 0.3
+
+  if ! kill -0 "$HELPER_PID_S" 2>/dev/null || ! kill -0 "$NORMAL_PID_S" 2>/dev/null; then
+    fail "case s: a helper did not start (exec -a unsupported on this /bin/sh?) — cannot exercise the orphan sweep"
+    cleanup_case_s
+  else
+    # Delete ONLY the first helper's cwd — its process keeps running with a
+    # now-nonexistent cwd (the exact 2026-08-21 shape: an aborted deploy's
+    # release dir deleted out from under a still-running next-server).
+    rm -rf -- "$DELETED_DIR_S"
+
+    DETECT_OUT_S="$(
+      HYGIENE_ROOT="$ROOTS_S"
+      HYGIENE_SOURCED=1
+      HYGIENE_ORPHAN_ROOTS="$ROOTS_S/releases"
+      # shellcheck source=/dev/null
+      source "$HYGIENE_SCRIPT"
+      detect_orphaned_release_servers
+    )"
+
+    if printf '%s\n' "$DETECT_OUT_S" | grep -q "^$HELPER_PID_S "; then
+      pass "case s: detect_orphaned_release_servers() lists the orphaned (deleted-cwd) next-server pid"
+    else
+      fail "case s: detect_orphaned_release_servers() did NOT list the orphaned pid $HELPER_PID_S — output: $DETECT_OUT_S"
+    fi
+
+    if printf '%s\n' "$DETECT_OUT_S" | grep -q "^$NORMAL_PID_S "; then
+      fail "case s: detect_orphaned_release_servers() wrongly listed a normal process $NORMAL_PID_S whose cwd still exists"
+    else
+      pass "case s: detect_orphaned_release_servers() did NOT list a normal process whose cwd still exists"
+    fi
+    cleanup_case_s
+  fi
+else
+  pass "case s: skipped — no /proc on this host, so detect_orphaned_release_servers() is a no-op by design (Windows dev box)"
 fi
 
 if [ "$FAILED" -ne 0 ]; then

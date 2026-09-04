@@ -1459,6 +1459,40 @@ fi
 
 unset DEPLOY_ROOT
 
+# --- Case 27: W-136 — the pre-flip probe starts in its OWN process group ---
+# --- and cleanup_probe() kills the whole group (not just the npm parent), --
+# --- then verifies the probe port is actually free. A 2026-08-21 incident --
+# --- left an orphaned `next-server` running for 14 days after `kill $pid` -
+# --- killed only npm; `sh -c next start` / `next-server` survived it.     --
+PROBE_FN_BODY27="$(awk '/^probe_release\(\) \{/,/^\}/' "$DEPLOY_SCRIPT")"
+if [ -z "$PROBE_FN_BODY27" ]; then
+  fail "case 27: could not extract probe_release() from $DEPLOY_SCRIPT — function renamed?"
+else
+  if printf '%s\n' "$PROBE_FN_BODY27" | grep -q -E '\bsetsid\b'; then
+    pass "case 27: probe_release() starts the probe under setsid (own process group)"
+  else
+    fail "case 27: expected probe_release() to start the probe with setsid so kill can target the whole group"
+  fi
+
+  if printf '%s\n' "$PROBE_FN_BODY27" | grep -q -E '\bkill\b.*-TERM.*-- -"?\$'; then
+    pass "case 27: cleanup_probe() sends TERM to a NEGATIVE pgid (whole process group)"
+  else
+    fail "case 27: expected cleanup_probe() to kill -- -\$pgid (negative pgid = whole group), not just \$pid"
+  fi
+
+  if printf '%s\n' "$PROBE_FN_BODY27" | grep -q -E 'ss .*sport|fuser .*PROBE_PORT|fuser .*\$PROBE_PORT'; then
+    pass "case 27: cleanup_probe() verifies PROBE_PORT is actually free after the kill"
+  else
+    fail "case 27: expected a post-kill listener check on \$PROBE_PORT (ss/fuser), not a bare kill-and-hope"
+  fi
+
+  if printf '%s\n' "$PROBE_FN_BODY27" | grep -q -E 'already in use|port.*in use|held by pid|fuser -n tcp "\$PROBE_PORT"'; then
+    pass "case 27: probe_release() checks PROBE_PORT is free BEFORE starting the probe"
+  else
+    fail "case 27: expected probe_release() to refuse starting when \$PROBE_PORT is already held by a stale process"
+  fi
+fi
+
 if [ "$FAILED" -ne 0 ]; then
   echo "deploy-linux.test.sh: FAILED"
   exit 1
