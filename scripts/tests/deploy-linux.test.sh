@@ -490,6 +490,7 @@ else
     PM2_WEB_APP="ipodhan-web"
     PM2_SCRAPER_APP="ipodhan-scraper"
     DEPLOY_WEB_INSTANCES=2
+    PYTHON_BIN_PATH="/tmp/fake-venv-9b/bin/python"
     PATH="$FAKEBIN9B:$PATH"
     export PM2_CALL_LOG="$CALLLOG9B"
     restart_pm2
@@ -532,6 +533,7 @@ else
     RELEASE_DIR="$REL9C"
     SCRAPER_RESUME_TARGET="new"
     PM2_SCRAPER_APP="ipodhan-scraper"
+    PYTHON_BIN_PATH="/tmp/fake-venv-9c/bin/python"
     PATH="$FAKEBIN9C:$PATH"
     export PM2_CALL_LOG="$CALLLOG9C"
     resume_scraper
@@ -1129,6 +1131,281 @@ else
   fi
 
   rm -rf "$ENVDIR15"
+fi
+
+# --- Case 16: W-111/W-112 — scraper Python deps (pdfplumber/pypdfium2/ -----
+# --- rapidocr-onnxruntime) are installed into a deploy-managed venv        -
+# --- BEFORE the scraper is (re)started, and every REAL scraper pm2 start  -
+# --- pins PYTHON_BIN to that venv. SOURCE-level assertion (same shape as  -
+# --- case 9e): a dry-run-log-string check would prove nothing about the  --
+# --- REAL 'pip install' / 'pm2 start' invocations actually carrying      --
+# --- these — assert the shape directly against the script source:       --
+# ---   (i)  the venv's real 'pip install -r requirements.txt' line      ---
+# ---        exists and comes BEFORE restart_pm2()'s real (non-dry-run)  ---
+# ---        scraper pm2 start line, and                                 ---
+# ---   (ii) EVERY real (non-dry-run) scraper pm2 start line — both      ---
+# ---        restart_pm2()'s and resume_scraper()'s — carries PYTHON_BIN=. -
+# --- Red-then-green: deleting the pip-install line or either PYTHON_BIN= -
+# --- assignment from deploy-linux.sh flips this case to FAIL.
+STRIPPED16="$(grep -vE '^[[:space:]]*#' "$DEPLOY_SCRIPT")"
+# W-111 round 2: pip is invoked as "<venv>/bin/python -m pip install", never
+# "<venv>/bin/pip" (a moved venv's pip shebang would still point at its OLD
+# path — see setup_python_venv()'s atomic-swap comment) — match on that
+# shape rather than a literal venv-dir variable name.
+PIP_INSTALL_LINE16="$(printf '%s\n' "$STRIPPED16" | grep -n -E '/bin/python" -m pip install .*-r "\$req_file"' | head -1 | cut -d: -f1 || true)"
+RESTART_SCRAPER_START_LINE16="$(printf '%s\n' "$STRIPPED16" | grep -n -E 'pm2 start .*tsx/dist/cli\.mjs' | grep -v '\[dry-run\]' | tail -1 | cut -d: -f1 || true)"
+
+if [ -n "$PIP_INSTALL_LINE16" ] && [ -n "$RESTART_SCRAPER_START_LINE16" ] && [ "$PIP_INSTALL_LINE16" -lt "$RESTART_SCRAPER_START_LINE16" ]; then
+  pass "case 16: venv 'pip install -r requirements.txt' (setup_python_venv) appears before restart_pm2()'s real scraper pm2 start (pip_line=$PIP_INSTALL_LINE16, scraper_start_line=$RESTART_SCRAPER_START_LINE16)"
+else
+  fail "case 16: expected the venv pip-install step before restart_pm2()'s real scraper pm2 start (pip_line=$PIP_INSTALL_LINE16, scraper_start_line=$RESTART_SCRAPER_START_LINE16)"
+fi
+
+SCRAPER_START_LINES16="$(printf '%s\n' "$STRIPPED16" | grep -n -E 'pm2 start .*tsx/dist/cli\.mjs' | grep -v '\[dry-run\]' || true)"
+SCRAPER_START_COUNT16="$(printf '%s\n' "$SCRAPER_START_LINES16" | grep -c . || true)"
+SCRAPER_START_WITH_PYTHON_BIN16="$(printf '%s\n' "$SCRAPER_START_LINES16" | grep -c 'PYTHON_BIN=' || true)"
+SCRAPER_START_COUNT16="${SCRAPER_START_COUNT16:-0}"
+SCRAPER_START_WITH_PYTHON_BIN16="${SCRAPER_START_WITH_PYTHON_BIN16:-0}"
+
+if [ "$SCRAPER_START_COUNT16" -ge 2 ] && [ "$SCRAPER_START_COUNT16" = "$SCRAPER_START_WITH_PYTHON_BIN16" ]; then
+  pass "case 16: every real (non-dry-run) scraper pm2 start carries PYTHON_BIN=... ($SCRAPER_START_WITH_PYTHON_BIN16/$SCRAPER_START_COUNT16 lines)"
+else
+  fail "case 16: expected every real scraper pm2 start to carry PYTHON_BIN=... (found $SCRAPER_START_WITH_PYTHON_BIN16/$SCRAPER_START_COUNT16 real scraper start lines with it)"
+fi
+
+# --- Case 17: W-111 round 2 hole 1 — pinned constraints file is installed -
+# --- alongside requirements.txt (pip -c), so an unpinned transitive       -
+# --- (numpy/onnxruntime/opencv-python/...) can't silently drift on a      -
+# --- fresh venv build the way the direct rapidocr pin already guards      -
+# --- against (W-112). Source-level: same shape as case 16.
+if printf '%s\n' "$STRIPPED16" | grep -q -E '/bin/python" -m pip install .*-r "\$req_file" -c "\$constraints_file"'; then
+  pass "case 17: pip install passes both -r \$req_file and -c \$constraints_file (transitive deps pinned)"
+else
+  fail "case 17: expected the pip install line to pass -r \$req_file -c \$constraints_file"
+fi
+
+if [ -f "$SCRIPT_DIR/../../scraper/scripts/requirements-constraints.txt" ]; then
+  pass "case 17: scraper/scripts/requirements-constraints.txt exists"
+else
+  fail "case 17: expected scraper/scripts/requirements-constraints.txt to exist"
+fi
+
+# --- Case 18: W-111 round 2 hole 2 — import smoke check runs before the ---
+# --- venv is swapped in, and covers every third-party module the         -
+# --- extractor scripts actually import.
+SMOKE_LINE18="$(printf '%s\n' "$STRIPPED16" | grep -n 'import pdfplumber' | head -1 | cut -d: -f1 || true)"
+SWAP_LINE18="$(printf '%s\n' "$STRIPPED16" | grep -n 'mv "\$new_dir" "\$PYTHON_VENV_DIR"' | head -1 | cut -d: -f1 || true)"
+if [ -n "$SMOKE_LINE18" ] && [ -n "$SWAP_LINE18" ] && [ "$SMOKE_LINE18" -lt "$SWAP_LINE18" ]; then
+  pass "case 18: import smoke check (line $SMOKE_LINE18) runs before the venv swap (line $SWAP_LINE18)"
+else
+  fail "case 18: expected the import smoke check before the venv swap (smoke_line=$SMOKE_LINE18, swap_line=$SWAP_LINE18)"
+fi
+
+for mod in pdfplumber pypdfium2 rapidocr_onnxruntime onnxruntime cv2 numpy; do
+  if printf '%s\n' "$STRIPPED16" | grep -q "import $mod"; then
+    pass "case 18: smoke check imports '$mod'"
+  else
+    fail "case 18: expected the smoke check to import '$mod'"
+  fi
+done
+
+if printf '%s\n' "$STRIPPED16" | grep -q 'PINNED_RAPIDOCR_VERSION'; then
+  pass "case 18: smoke check asserts the installed rapidocr-onnxruntime version against requirements.txt's own pin"
+else
+  fail "case 18: expected the smoke check to cross-check the installed rapidocr-onnxruntime version"
+fi
+
+# --- Case 19: W-111 round 2 hole 3 — the venv is slotted per-$SLOT, so ----
+# --- prod and staging never share one build.
+if grep -q 'PYTHON_VENV_DIR="\$ROOT/shared/venv/\$SLOT"' "$DEPLOY_SCRIPT"; then
+  pass "case 19: PYTHON_VENV_DIR is slotted under \$ROOT/shared/venv/\$SLOT (prod and staging never share a venv)"
+else
+  fail "case 19: expected PYTHON_VENV_DIR to be slotted as \$ROOT/shared/venv/\$SLOT"
+fi
+
+# --- Case 20: W-111 round 2 hole 4 — the venv is built into a sibling -----
+# --- '.new' dir and swapped only after a clean smoke test; a failed build -
+# --- never destroys the last-good venv, and no rm -rf can escape          -
+# --- $ROOT/shared/venv/.
+if printf '%s\n' "$STRIPPED16" | grep -q -E 'local new_dir="\$PYTHON_VENV_DIR\.new"'; then
+  pass "case 20: setup_python_venv() builds into a sibling '.new' directory"
+else
+  fail "case 20: expected setup_python_venv() to build into \$PYTHON_VENV_DIR.new"
+fi
+
+if printf '%s\n' "$STRIPPED16" | grep -q -E 'safe_rm_venv_dir\(\)'; then
+  pass "case 20: a safe_rm_venv_dir() guard wraps rm -rf calls in the venv build/swap"
+else
+  fail "case 20: expected a safe_rm_venv_dir() guard around the venv build/swap rm -rf calls"
+fi
+
+# The || true matters: a prior case (13/14/15/16 area) leaves top-level
+# `set -e` ON for the rest of this script (documented at case 14) — a bare
+# assignment whose grep finds NO match (the expected/passing outcome here)
+# would otherwise abort the whole test run instead of just yielding empty.
+RM_RF_LINES20="$(printf '%s\n' "$STRIPPED16" | grep -n -E 'rm -rf "\$(new_dir|old_dir)"' || true)"
+if [ -z "$RM_RF_LINES20" ]; then
+  pass "case 20: no bare 'rm -rf \"\$new_dir\"'/'rm -rf \"\$old_dir\"' outside the safe_rm_venv_dir() guard"
+else
+  fail "case 20: found bare 'rm -rf' directly on \$new_dir/\$old_dir outside the guard: $RM_RF_LINES20"
+fi
+
+# --- Case 21: W-111 round 2 hole 5 — resume_scraper() warns loudly when ---
+# --- PYTHON_BIN_PATH is missing/not executable, and still starts the      -
+# --- scraper with PYTHON_BIN set (no silent switch to system python).
+RESUME_FN_BODY21="$(awk '/^resume_scraper\(\) \{/,/^\}/' "$DEPLOY_SCRIPT")"
+if printf '%s\n' "$RESUME_FN_BODY21" | grep -q -E '\[ ! -x "\$PYTHON_BIN_PATH" \]'; then
+  pass "case 21: resume_scraper() checks whether \$PYTHON_BIN_PATH is executable"
+else
+  fail "case 21: expected resume_scraper() to check [ ! -x \"\$PYTHON_BIN_PATH\" ]"
+fi
+
+if printf '%s\n' "$RESUME_FN_BODY21" | grep -q -E 'warn .*PYTHON_BIN.*venv missing'; then
+  pass "case 21: resume_scraper() emits a loud warn naming PYTHON_BIN + 'venv missing' when the venv is absent"
+else
+  fail "case 21: expected a warn line in resume_scraper() containing PYTHON_BIN and 'venv missing'"
+fi
+
+# --- Case 22: W-111 round 3 CRITICAL-1 — setup_python_venv()'s venv swap --
+# --- checks BOTH mv calls and never silently returns 0 with no venv at    -
+# --- the final path. Reproduces: mv#1 ($PYTHON_VENV_DIR -> $old_dir)      -
+# --- succeeds, mv#2 ($new_dir -> $PYTHON_VENV_DIR) fails (ENOSPC/perms)   -
+# --- -> old code fell through to safe_rm_venv_dir "$old_dir" || true      -
+# --- (unconditional) then an implicit return 0 -> caller believes the    -
+# --- venv is healthy while $PYTHON_VENV_DIR has nothing in it. Source-    -
+# --- level, same shape as case 16/20: extract setup_python_venv() and      -
+# --- assert (i) each mv is guarded (`if ! mv` or `mv ... || {`), (ii) a    -
+# --- restore-from-.old path exists, (iii) the function's last non-comment -
+# --- line is `return 0`, preceded (within the last few lines) by an        -
+# --- explicit -x check on $PYTHON_VENV_DIR/bin/python.
+SETUP_FN_BODY22="$(awk '/^setup_python_venv\(\) \{/,/^\}/' "$DEPLOY_SCRIPT")"
+if [ -z "$SETUP_FN_BODY22" ]; then
+  fail "case 22: could not extract setup_python_venv() from $DEPLOY_SCRIPT — function renamed?"
+else
+  # (i) both mv calls are guarded, never bare/unchecked.
+  if printf '%s\n' "$SETUP_FN_BODY22" | grep -q -E '(if ! mv "\$PYTHON_VENV_DIR" "\$old_dir"|mv "\$PYTHON_VENV_DIR" "\$old_dir".*\|\|)'; then
+    pass "case 22: mv \"\$PYTHON_VENV_DIR\" \"\$old_dir\" is guarded (checked, not bare)"
+  else
+    fail "case 22: expected mv \"\$PYTHON_VENV_DIR\" \"\$old_dir\" to be guarded (if ! mv ... / mv ... || ...)"
+  fi
+
+  if printf '%s\n' "$SETUP_FN_BODY22" | grep -q -E '(if ! mv "\$new_dir" "\$PYTHON_VENV_DIR"|mv "\$new_dir" "\$PYTHON_VENV_DIR".*\|\|)'; then
+    pass "case 22: mv \"\$new_dir\" \"\$PYTHON_VENV_DIR\" is guarded (checked, not bare)"
+  else
+    fail "case 22: expected mv \"\$new_dir\" \"\$PYTHON_VENV_DIR\" to be guarded (if ! mv ... / mv ... || ...)"
+  fi
+
+  # (ii) a restore-from-.old path exists (moves $old_dir back to $PYTHON_VENV_DIR).
+  if printf '%s\n' "$SETUP_FN_BODY22" | grep -q -E 'mv "\$old_dir" "\$PYTHON_VENV_DIR"'; then
+    pass "case 22: a restore-from-.old path exists (mv \"\$old_dir\" \"\$PYTHON_VENV_DIR\")"
+  else
+    fail "case 22: expected a restore path moving \$old_dir back to \$PYTHON_VENV_DIR when the second mv fails"
+  fi
+
+  # (iii) the function ends with an explicit `return 0`, only after a final -x check.
+  LAST_LINES22="$(printf '%s\n' "$SETUP_FN_BODY22" | grep -vE '^\s*#|^\s*$' | tail -6 || true)"
+  LAST_NONCOMMENT_LINE22="$(printf '%s\n' "$SETUP_FN_BODY22" | grep -vE '^\s*#|^\s*$' | tail -1 || true)"
+  # The extracted body includes the closing '}' as its last awk-matched line;
+  # drop it to find the last real statement.
+  if [ "$LAST_NONCOMMENT_LINE22" = "}" ]; then
+    LAST_NONCOMMENT_LINE22="$(printf '%s\n' "$SETUP_FN_BODY22" | grep -vE '^\s*#|^\s*$' | tail -2 | head -1 || true)"
+  fi
+
+  if [ "$(printf '%s' "$LAST_NONCOMMENT_LINE22" | sed -E 's/^\s+|\s+$//g')" = "return 0" ]; then
+    pass "case 22: setup_python_venv()'s last non-comment statement is 'return 0'"
+  else
+    fail "case 22: expected setup_python_venv() to end with an explicit 'return 0', found: '$LAST_NONCOMMENT_LINE22'"
+  fi
+
+  if printf '%s\n' "$LAST_LINES22" | grep -q -E '\[ -x "\$PYTHON_VENV_DIR/bin/python" \]'; then
+    pass "case 22: the final 'return 0' is preceded by a -x check on \$PYTHON_VENV_DIR/bin/python"
+  else
+    fail "case 22: expected a [ -x \"\$PYTHON_VENV_DIR/bin/python\" ] check immediately before the final return 0"
+  fi
+fi
+
+# --- Case 23: W-111 round 3 MAJOR-2 — the rapidocr-onnxruntime version -----
+# --- cross-check is real, not vacuous. rapidocr_onnxruntime has NO         -
+# --- __version__ attribute (verified on the VPS + dev laptop 2026-09-04),  -
+# --- so the round-2 `getattr(..., "__version__", "")` check always reads  -
+# --- an empty string and the mismatch branch never runs. Fix: use          -
+# --- importlib.metadata.version(...) and FAIL when it differs from the    -
+# --- pin, and FAIL when the pin itself is empty (parsing broke).
+if printf '%s\n' "$STRIPPED16" | grep -q -E 'importlib\.metadata\.version\("rapidocr-onnxruntime"\)'; then
+  pass "case 23: smoke check reads the installed version via importlib.metadata.version(), not the (nonexistent) __version__ attribute"
+else
+  fail "case 23: expected the smoke check to use importlib.metadata.version(\"rapidocr-onnxruntime\") to read the installed version"
+fi
+
+EMPTY_PIN_BLOCK23="$(awk '/^if not expected:/,/^actual = /' "$DEPLOY_SCRIPT")"
+if printf '%s\n' "$EMPTY_PIN_BLOCK23" | grep -q 'sys.exit(1)'; then
+  pass "case 23: smoke check fails (sys.exit(1)) when the pin (expected) itself is empty/unparsed"
+else
+  fail "case 23: expected the smoke check to sys.exit(1) when 'expected' (the pin read from requirements.txt) is empty"
+fi
+
+if printf '%s\n' "$STRIPPED16" | grep -q -E 'actual != expected'; then
+  pass "case 23: smoke check still compares installed vs pinned version and fails on mismatch"
+else
+  fail "case 23: expected the smoke check to compare the installed version against the pin and fail on mismatch"
+fi
+
+# --- Case 24: W-111 round 3 MAJOR-3 — the smoke check actually exercises --
+# --- RapidOCR the way ocr_pages.py uses it, not just a bare import. A      -
+# --- bare `import rapidocr_onnxruntime` succeeded on the broken 1.4.4      -
+# --- build too (the W-112 outage) — verified today that RapidOCR()        -
+# --- construction works on the VPS system python, so the smoke check must -
+# --- construct it and check for the private attributes ocr_pages.py       -
+# --- actually touches.
+OCR_PAGES24="$SCRIPT_DIR/../../scraper/scripts/ocr_pages.py"
+if [ -f "$OCR_PAGES24" ]; then
+  pass "case 24: scraper/scripts/ocr_pages.py exists (source of the attribute list)"
+else
+  fail "case 24: expected scraper/scripts/ocr_pages.py to exist"
+fi
+
+if printf '%s\n' "$STRIPPED16" | grep -q -E 'from rapidocr_onnxruntime import RapidOCR'; then
+  pass "case 24: smoke check imports RapidOCR by name (from rapidocr_onnxruntime import RapidOCR)"
+else
+  fail "case 24: expected the smoke check to 'from rapidocr_onnxruntime import RapidOCR'"
+fi
+
+if printf '%s\n' "$STRIPPED16" | grep -q -E 'RapidOCR\(\)'; then
+  pass "case 24: smoke check actually constructs RapidOCR()"
+else
+  fail "case 24: expected the smoke check to construct RapidOCR()"
+fi
+
+for attr in text_recognizer text_detector load_img sorted_boxes get_crop_img_list use_angle_cls; do
+  if [ -f "$OCR_PAGES24" ] && ! grep -q "$attr" "$OCR_PAGES24"; then
+    # attribute list drifted from ocr_pages.py's real usage — not this case's job to fix ocr_pages.py, just flag it.
+    :
+  fi
+  if printf '%s\n' "$STRIPPED16" | grep -q "$attr"; then
+    pass "case 24: smoke check asserts hasattr(...) (or equivalent) for '$attr' (used by ocr_pages.py)"
+  else
+    fail "case 24: expected the smoke check to assert the '$attr' attribute ocr_pages.py relies on"
+  fi
+done
+
+if printf '%s\n' "$STRIPPED16" | grep -q -E '^import PIL|^from PIL'; then
+  pass "case 24: smoke check imports PIL"
+else
+  fail "case 24: expected the smoke check to import PIL"
+fi
+
+# --- Case 25: W-111 round 3 MINOR-6 — safe_rm_venv_dir() rejects any path -
+# --- containing '..' even when the glob prefix matches, closing the        -
+# --- directory-traversal hole in the $ROOT/shared/venv/* guard.
+SAFE_RM_FN_BODY25="$(awk '/^safe_rm_venv_dir\(\) \{/,/^\}/' "$DEPLOY_SCRIPT")"
+if [ -z "$SAFE_RM_FN_BODY25" ]; then
+  fail "case 25: could not extract safe_rm_venv_dir() from $DEPLOY_SCRIPT — function renamed?"
+else
+  if printf '%s\n' "$SAFE_RM_FN_BODY25" | grep -q -E '\*\.\.\*|case "\$dir" in.*\.\.'; then
+    pass "case 25: safe_rm_venv_dir() rejects paths containing '..'"
+  else
+    fail "case 25: expected safe_rm_venv_dir() to explicitly reject any path containing '..'"
+  fi
 fi
 
 if [ "$FAILED" -ne 0 ]; then

@@ -520,6 +520,13 @@ export function planExtractionSteps(
     });
   }
 
+  // W-133 MAJOR-3: the extractor's own document-level verdict (OK / PARTIAL /
+  // OK_OCR / PARTIAL_OCR / NEEDS_OCR — extract_filing.py's run() now also folds
+  // in the shared PDF-financials core's PARTIAL when a headline metric never
+  // reaches 2 fiscal years) must be visible in the ledger evidence, not
+  // silently consumed. Computed once here so both E9 and D6 below carry it.
+  const extractionStatus = String(extraction.extraction_status ?? '');
+
   // E9 — the arithmetic checks. The extractor runs a named check per field and
   // reports pass/fail; this step is the report, so it is DONE whenever the
   // extraction ran, with the failures as its evidence.
@@ -530,6 +537,7 @@ export function planExtractionSteps(
     stepId: 'E9',
     status: 'DONE',
     evidence: {
+      extractionStatus,
       checksRun: checked.length,
       checksFailed: failed.length,
       failedFields: failed.map(([n]) => n).slice(0, 20),
@@ -550,17 +558,16 @@ export function planExtractionSteps(
   // D6 — the OCR route. Recorded here rather than in the runner because the
   // extractor is the only thing that knows whether a stored PDF actually needed
   // OCR; the download step cannot tell a scanned PDF from a digital one.
-  const status = String(extraction.extraction_status ?? '');
-  if (OCR_STATUSES.has(status)) {
+  if (OCR_STATUSES.has(extractionStatus)) {
     writes.push({
       stepId: 'D6',
       status: 'DONE',
       source: options.docType,
       inputRef: common.inputRef,
       version: options.version,
-      evidence: { extractionStatus: status },
+      evidence: { extractionStatus },
     });
-  } else if (status === 'NEEDS_OCR') {
+  } else if (extractionStatus === 'NEEDS_OCR') {
     writes.push({
       stepId: 'D6',
       status: 'FAILED',
@@ -568,7 +575,7 @@ export function planExtractionSteps(
       inputRef: common.inputRef,
       version: options.version,
       error: 'document has no text layer and the OCR backend was unavailable',
-      evidence: { extractionStatus: status },
+      evidence: { extractionStatus },
     });
   }
 

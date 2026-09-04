@@ -486,13 +486,36 @@ function spawnExtractor(
  * `'python'`. If that first spawn returns ENOENT (`result.error.code`), retry
  * ONCE with `'python3'` before giving up — one extra spawn on a
  * misconfigured host beats a permanently FAILED document.
+ *
+ * W-111 round 2: the python3 retry is ONLY for the default-bin path (no
+ * `PYTHON_BIN` set). When `PYTHON_BIN` IS explicitly set — the deploy sets
+ * it to the deploy-managed venv's own python (deploy-linux.sh) — an ENOENT
+ * there means that venv is missing or broken, and silently falling back to
+ * whatever `python3` resolves to on the box is exactly the un-pinned,
+ * drift-prone system install this venv exists to replace (W-112). Fail
+ * loudly instead: no retry, error propagates as a normal extraction failure.
+ *
+ * W-111 round 3: `??` only falls back on null/undefined, not on an empty
+ * string — `PYTHON_BIN=""` (set but empty) would compute `primaryBin = ''`
+ * and spawn an invalid empty binary name before ever reaching the python3
+ * retry. Trim and treat an empty/whitespace-only PYTHON_BIN the same as
+ * unset, so both the primary-bin choice and the "explicitly set" branch
+ * below see it consistently.
  */
 export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme, issueSizeRupees }) => {
   const script = extractorScriptPath();
-  const primaryBin = process.env.PYTHON_BIN ?? 'python';
+  const pythonBinExplicitRaw = process.env.PYTHON_BIN?.trim();
+  const pythonBinExplicit = pythonBinExplicitRaw ? pythonBinExplicitRaw : undefined;
+  const primaryBin = pythonBinExplicit ?? 'python';
 
   let result = spawnExtractor(primaryBin, script, pdfPath, docType, sme, issueSizeRupees);
-  if (result.error && (result.error as NodeJS.ErrnoException).code === 'ENOENT' && primaryBin !== 'python3') {
+  const isEnoent = result.error && (result.error as NodeJS.ErrnoException).code === 'ENOENT';
+  if (isEnoent && pythonBinExplicit) {
+    logger.error(
+      { triedBin: primaryBin },
+      'PYTHON_BIN explicitly set but not found (ENOENT) — this is the deploy-managed venv; not falling back to system python'
+    );
+  } else if (isEnoent && primaryBin !== 'python3') {
     logger.warn({ triedBin: primaryBin }, 'python binary not found — retrying once with python3');
     result = spawnExtractor('python3', script, pdfPath, docType, sme, issueSizeRupees);
     if (!result.error) logger.info({ usedBin: 'python3' }, 'extractor spawned with python3 fallback');
@@ -690,12 +713,19 @@ export async function processPendingFilings(
     skippedBudget: 0,
   };
 
-  // D-15: automatic extract+persist runs ONLY for MAINBOARD IPOs until the SME
-  // walk passes — an SME candidate spawns no python, persists nothing, and
-  // gets one E1 ledger row explaining why, instead of silently being treated
-  // like a MAINBOARD row. Checked before the spawn-budget gate (below) so an
-  // SME IPO never consumes cycle-wide spawn budget either.
-  if (String(ipo.segment ?? '').toUpperCase() === 'SME') {
+  // D-15: automatic extract+persist ran ONLY for MAINBOARD IPOs until the SME
+  // walk passed in production (W-128 financials exact, W-129 plausibility with
+  // issue-size wiring, W-130 subscription, W-132 anchors — Qualiance
+  // International, 2026-09-04). The lift is flag-controlled
+  // (`ENABLE_SME_FILING_AUTO_PERSIST`, default OFF): with the flag off, an SME
+  // candidate still spawns no python, persists nothing, and gets one E1
+  // ledger row explaining why, instead of silently being treated like a
+  // MAINBOARD row. With the flag on, it falls through to the same code below
+  // that already handles it (the `sme` bool + `issueSizeRupees` resolution
+  // just past the budget gate) — same write door, same W-45/W-129 gates, no
+  // second path. Checked before the spawn-budget gate (below) so an
+  // SME IPO never consumes cycle-wide spawn budget either, while the flag is off.
+  if (String(ipo.segment ?? '').toUpperCase() === 'SME' && !smeAutoPersistEnabled()) {
     try {
       await writeSteps(ipo.id, [
         {
@@ -1058,4 +1088,14 @@ export async function processPendingFilings(
 /** True when the automatic path is switched on. Read through the flag object. */
 export function autoPersistEnabled(): boolean {
   return FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST === true;
+}
+
+/**
+ * D-15 lift: true when SME candidates are allowed through the same
+ * auto-persist door as MAINBOARD. Read through the flag object. Independent
+ * of `autoPersistEnabled()` — this only narrows/widens which segment the
+ * already-on auto-persist path covers.
+ */
+export function smeAutoPersistEnabled(): boolean {
+  return FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST === true;
 }

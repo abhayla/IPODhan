@@ -400,3 +400,140 @@ def test_mainboard_fixture_still_passes_with_new_checks():
     assert r["rejected"] == {}
     for c in r["checks"]:
         assert c["passed"] in (True, None), c
+
+
+# --------------------------------------------------------------------------- #
+# W-133 — production defect (2026-09-04, Qualiance International SME RHP): the
+# KPI table (pages 84-85) yields revenue/EBITDA/PAT/net worth for 3 years, but
+# has no EPS or total-income row, so those two stayed None and status was
+# PARTIAL even though the document's restated Statement of Profit and Loss
+# (built as a same-style fixture here) carries both, consistent with the KPI
+# numbers. The extractor must continue to that second page and fill ONLY the
+# metrics the KPI table is missing — never overwriting a KPI-table value — and
+# cross-check the metrics both pages share (revenue/PAT) before trusting the
+# fill.
+# --------------------------------------------------------------------------- #
+QUALIANCE_PNL_FIXTURE = os.path.join(
+    HERE, "..", "tests", "fixtures", "sme", "qualiance-rhp-pnl-page.txt")
+
+
+def _load_txt_pages(path):
+    with open(path, encoding="utf-8") as f:
+        raw = f.read()
+    pages = []
+    for chunk in raw.split("===== PAGE ")[1:]:
+        header, _, body = chunk.partition("\n")
+        pages.append((int(header.strip()) - 1, body))
+    return pages
+
+
+def load_qualiance_with_pnl():
+    """The KPI pages (84-85) plus the restated P&L page — as extract_rhp()
+    would feed multiple pages of the SAME PDF to extract_from_texts."""
+    return load_qualiance() + _load_txt_pages(QUALIANCE_PNL_FIXTURE)
+
+
+def test_w133_fills_eps_and_total_income_from_pnl_page():
+    r = efp.extract_from_texts(load_qualiance_with_pnl())
+    m = r["metrics"]
+    # Filled from the restated P&L page (the KPI table has neither row).
+    assert m["totalIncome"] == {2026: 7704.61, 2025: 5317.04, 2024: 3729.05}
+    assert m["eps"] == {2026: 12.49, 2025: 5.16, 2024: 2.99}
+    # KPI-table values are UNCHANGED — never overwritten by the P&L page.
+    assert m["revenue"] == {2026: 7689.11, 2025: 5307.24, 2024: 3722.94}
+    assert m["profit"] == {2026: 1186.90, 2025: 489.85, 2024: 283.93}
+    assert m["netWorth"] == {2026: 2473.65, 2025: 1382.25, 2024: 892.40}
+    assert r["rejected"] == {}
+    by_name = {c["name"]: c for c in r["checks"]}
+    assert by_name["kpi_vs_pnl_agreement"]["passed"] is True
+
+
+def test_w133_status_ok_once_pnl_page_fills_the_gap():
+    r = efp.extract_from_texts(load_qualiance_with_pnl())
+    assert r["status"] == "OK"
+
+
+def test_w133_status_stays_partial_without_a_pnl_page():
+    """The KPI-only fixture (no restated P&L page in the document text handed
+    to the extractor) has no source for EPS/total income — status MUST stay
+    PARTIAL, not be silently upgraded."""
+    r = efp.extract_from_texts(load_qualiance())
+    assert "eps" not in r["metrics"]
+    assert "totalIncome" not in r["metrics"]
+    assert r["status"] == "PARTIAL"
+
+
+def test_w133_disagreement_rejects_pnl_sourced_metrics_only():
+    """A restated P&L page whose revenue disagrees with the KPI table by more
+    than 1% must not contribute EPS/total income — and must leave the KPI
+    table's own revenue/PAT/net worth untouched."""
+    disagreeing_pnl_page = "\n".join([
+        "Restated Statement of Profit and Loss",
+        "(₹ in Lakhs)",
+        "Particulars For the year ended For the year ended For the year ended",
+        "March 31, 2026 March 31, 2025 March 31, 2024",
+        "I. Revenue from operations 8,500.00 5,307.24 3,722.94",
+        "II. Other income 15.50 9.80 6.11",
+        "III. Total income (I+II) 8,515.50 5,317.04 3,729.05",
+        "VII. Profit for the year 1,186.90 489.85 283.93",
+        "Earnings per equity share (Face value of ₹ 10 each):",
+        "Basic (₹) 12.49 5.16 2.99",
+    ])
+    pages = load_qualiance() + [(300, disagreeing_pnl_page)]
+    r = efp.extract_from_texts(pages)
+    assert "totalIncome" not in r["metrics"]
+    assert "eps" not in r["metrics"]
+    # KPI values are never touched by a rejected P&L page.
+    assert r["metrics"]["revenue"] == {2026: 7689.11, 2025: 5307.24, 2024: 3722.94}
+    assert r["metrics"]["profit"] == {2026: 1186.90, 2025: 489.85, 2024: 283.93}
+    by_name = {c["name"]: c for c in r["checks"]}
+    assert by_name["kpi_vs_pnl_agreement"]["passed"] is False
+    assert "revenue" in by_name["kpi_vs_pnl_agreement"]["detail"]
+    # MINOR-2: totalIncome/eps were never present in `metrics` (the fill was
+    # rejected before it happened) — `rejected` must not name keys that never
+    # existed, only keys actually present and stripped.
+    assert r["rejected"] == {}
+    assert r["status"] == "PARTIAL"
+
+
+def test_w133_kpi_vs_pnl_agreement_none_when_nothing_overlaps():
+    """MINOR-1: when the KPI table and the P&L-fill page share no
+    revenue/PAT year to cross-check, `kpi_vs_pnl_agreement` must report
+    passed=None (not evaluated) — never a rubber-stamped True — per
+    run_plausibility's own convention for unevaluated checks."""
+    no_overlap_pnl_page = "\n".join([
+        "Restated Statement of Profit and Loss",
+        "(₹ in Lakhs)",
+        "Particulars For the year ended For the year ended For the year ended",
+        "March 31, 2023 March 31, 2022 March 31, 2021",
+        "III. Total income (I+II) 8,515.50 5,317.04 3,729.05",
+        "Earnings per equity share (Face value of ₹ 10 each):",
+        "Basic (₹) 12.49 5.16 2.99",
+    ])
+    pages = load_qualiance() + [(300, no_overlap_pnl_page)]
+    r = efp.extract_from_texts(pages)
+    by_name = {c["name"]: c for c in r["checks"]}
+    assert by_name["kpi_vs_pnl_agreement"]["passed"] is None
+
+
+def test_w133_mainboard_fixture_unaffected_no_fill_attempted():
+    """A mainboard fixture whose pages already carry every headline metric
+    (revenue/totalIncome/profit/eps/ebitda/netWorth, Anubhav Plast) has
+    nothing missing — the W-133 fill/cross-check must be a no-op (no
+    `kpi_vs_pnl_agreement` check emitted) and status must read OK."""
+    r = efp.extract_from_texts(load_pages())
+    names = {c["name"] for c in r["checks"]}
+    assert "kpi_vs_pnl_agreement" not in names
+    assert r["status"] == "OK"
+
+
+def test_w133_deepa_mainboard_fixture_stays_partial_no_networth():
+    """The Deepa fixture never carries net worth — the W-133 fill only ever
+    touches totalIncome/eps, so status correctly stays PARTIAL and no
+    `kpi_vs_pnl_agreement` check is emitted (nothing to fill from a second
+    page in this single-page fixture)."""
+    r = efp.extract_from_texts(load_deepa())
+    assert r["rejected"] == {}
+    names = {c["name"] for c in r["checks"]}
+    assert "kpi_vs_pnl_agreement" not in names
+    assert r["status"] == "PARTIAL"

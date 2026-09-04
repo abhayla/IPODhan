@@ -21,7 +21,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { getTableColumns } from 'drizzle-orm';
 import { ipos } from '@ipodhan/shared/db/schema';
-import { DocumentRepository } from '@ipodhan/shared';
+import { DocumentRepository, DocumentFetchStateRepository } from '@ipodhan/shared';
 
 // ---------------------------------------------------------------------------
 // Mocks — every dependency runDocumentCycle touches, fake-deps style (see
@@ -90,8 +90,13 @@ vi.mock('../../../src/services/company-host-source.js', () => ({
   isVerifierUrl: () => false,
 }));
 
+// W-124 round 2: a vi.fn() (not a plain arrow) so individual tests can
+// override the stage per DB status — the round-1 tests below all want the
+// default fixed 'PRE_OPEN' regardless of status, the round-2 LISTED tests
+// need the real status-to-stage mapping to reach the LISTED-only code paths.
+const deriveLifecycleStageMock = vi.fn(() => 'PRE_OPEN' as string);
 vi.mock('../../../src/scheduler/stage-reconciler.js', () => ({
-  deriveLifecycleStage: () => 'PRE_OPEN',
+  deriveLifecycleStage: (...args: unknown[]) => deriveLifecycleStageMock(...args),
 }));
 
 vi.mock('../../../src/services/document-store.js', () => ({
@@ -152,14 +157,14 @@ vi.mock('../../../src/utils/distributed-lock.js', () => ({
 // loadCandidateIpos hits the DB directly via `db.execute(sql...)`; stub the
 // raw rows it expects rather than mocking loadCandidateIpos itself, so the
 // real candidate-shaping logic (including the live-window filter) still runs.
-function candidateRow(id: string) {
+function candidateRow(id: string, status = 'OPEN') {
   return {
     id,
     company_name: `Company ${id}`,
     slug: id,
     symbol: null,
     segment: 'MAINBOARD',
-    status: 'OPEN',
+    status,
     price_range_min: null,
     price_range_max: null,
     listing_date: null,
@@ -174,6 +179,7 @@ const { runDocumentCycle, PURGE_CANDIDATES_SQL } = await import('../../../src/se
 beforeEach(() => {
   vi.clearAllMocks();
   FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST = true;
+  deriveLifecycleStageMock.mockImplementation(() => 'PRE_OPEN');
   lockAcquireMock.mockResolvedValue({ acquired: true, token: 'tok-1' });
   // Restore the default implementation every test — `clearAllMocks()` clears
   // call history but NOT a `mockImplementation` a previous test installed
@@ -334,6 +340,143 @@ describe('F4 — extraction_blocked/extraction_failed tally covers pass 2, over 
     const summary = await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
 
     expect(summary.extractionBlocked).toBe(1);
+  });
+});
+
+describe('W-124 — one purge (WITHDRAWN/POSTPONED) slot is reserved regardless of the discovery budget', () => {
+  it('with budgetMs=0 (the live backlog would normally get zero slots), the WITHDRAWN candidate is still processed', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('ipo-1', 'OPEN'), candidateRow('ipo-2', 'OPEN'), candidateRow('withdrawn-1', 'WITHDRAWN')],
+    });
+
+    await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed).toContain('withdrawn-1');
+    expect(idsProcessed).toHaveLength(1);
+  });
+
+  it('with no purge candidate present, budgetMs=0 processes nobody (no reservation to make)', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('ipo-1', 'OPEN'), candidateRow('ipo-2', 'OPEN')],
+    });
+
+    await runDocumentCycle({ budgetMs: 0, extractionBudgetMs: 999_999 });
+
+    expect(runIpoMock).not.toHaveBeenCalled();
+  });
+
+  it('a purge candidate reached BEFORE the budget trips is processed normally, with no double-processing', async () => {
+    dbExecuteMock.mockResolvedValue({
+      rows: [candidateRow('withdrawn-1', 'WITHDRAWN'), candidateRow('ipo-1', 'OPEN')],
+    });
+
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    const idsProcessed = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    expect(idsProcessed.filter((id) => id === 'withdrawn-1')).toHaveLength(1);
+    expect(idsProcessed).toContain('ipo-1');
+  });
+});
+
+/**
+ * W-124 round 2 (Tier A review findings) — MAJOR-1 and MAJOR-2.
+ *
+ * MAJOR-1: a complete LISTED row (`alreadyComplete === true`) must not enter
+ * `candidates` at all, so it costs zero DB round trips in PASS 1
+ * (`runIpo`/`processCandidate`), PASS 2 (`processPendingFilings`), or the F4
+ * extraction tally (`documents.findByIPO`) — only counted in the summary.
+ *
+ * MAJOR-2: `enrichListedCandidates` is bounded to `listedCap * 4` LISTED
+ * rows — the sequential N+1 (`store.listForIpo` per LISTED row) must never
+ * scan the whole LISTED backlog before the discovery budget clock starts.
+ */
+/** N days ago as a `YYYY-MM-DD` string — must stay inside the 10-day live window (`isInLiveWindow`). */
+function daysAgo(n: number): string {
+  return new Date(Date.now() - n * 86_400_000).toISOString().slice(0, 10);
+}
+
+describe('W-124 round 2 — MAJOR-1: a complete LISTED row is excluded from every pass', () => {
+  function listedRow(id: string, listingDate: string) {
+    return { ...candidateRow(id, 'LISTED'), listing_date: listingDate };
+  }
+
+  // Every doc type `dueDocTypesForStage('LISTED')` accumulates, already
+  // closed (FOUND — extraction is not enabled in this cycle, so FOUND is a
+  // closed state) or already NOT_APPLICABLE for the two types LISTED retires
+  // permanently (CORRIGENDUM/ADDENDUM) — this is what makes `planIpoCycle`
+  // return `skipIpo: true` for this row.
+  const COMPLETE_STATE_ROWS = [
+    { id: 'r1', docType: 'DRHP', state: 'FOUND', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r2', docType: 'RHP', state: 'FOUND', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r3', docType: 'PRICE_BAND_AD', state: 'FOUND', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r4', docType: 'RATIOS_BASIS_ISSUE_PRICE', state: 'FOUND', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r5', docType: 'ANCHOR_ALLOCATION_REPORT', state: 'FOUND', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r6', docType: 'CORRIGENDUM', state: 'NOT_APPLICABLE', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r7', docType: 'PROSPECTUS', state: 'FOUND', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r8', docType: 'BASIS_OF_ALLOTMENT_AD', state: 'FOUND', lastAttemptAt: new Date('2026-08-01') },
+    { id: 'r9', docType: 'ADDENDUM', state: 'NOT_APPLICABLE', lastAttemptAt: new Date('2026-08-01') },
+  ];
+
+  it('the complete LISTED row never reaches runIpo, processPendingFilings, or the F4 tally', async () => {
+    deriveLifecycleStageMock.mockImplementation((args: unknown) => (args as { status: string }).status);
+    dbExecuteMock.mockResolvedValue({
+      rows: [listedRow('listed-complete', daysAgo(1)), candidateRow('ipo-1', 'OPEN')],
+    });
+    vi.mocked(DocumentFetchStateRepository).mockImplementation(
+      () =>
+        ({
+          listForIpo: vi.fn((ipoId: string) =>
+            Promise.resolve(ipoId === 'listed-complete' ? COMPLETE_STATE_ROWS : [])
+          ),
+          update: vi.fn().mockResolvedValue(undefined),
+        }) as never
+    );
+    const findByIpoMock = vi.fn().mockResolvedValue([]);
+    vi.mocked(DocumentRepository).mockImplementation(() => ({ findByIPO: findByIpoMock }) as never);
+
+    const summary = await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    const runIpoIds = runIpoMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    const persistIds = processPendingFilingsMock.mock.calls.map((c) => (c[0] as { id: string }).id);
+    const tallyIds = findByIpoMock.mock.calls.map((c) => c[0]);
+
+    expect(runIpoIds).not.toContain('listed-complete');
+    expect(persistIds).not.toContain('listed-complete');
+    expect(tallyIds).not.toContain('listed-complete');
+    expect(runIpoIds).toContain('ipo-1');
+    expect(summary.listedComplete).toBe(1);
+  });
+});
+
+describe('W-124 round 2 — MAJOR-2: LISTED enrichment is bounded to listedCap * 4', () => {
+  it('only enriches the first listedCap * 4 LISTED rows — store.listForIpo is called at most that many times for LISTED stage', async () => {
+    deriveLifecycleStageMock.mockImplementation((args: unknown) => (args as { status: string }).status);
+    process.env.DOCUMENT_CYCLE_LISTED_CAP = '1'; // bound = 1 * 4 = 4
+    try {
+      const listedRows = Array.from({ length: 10 }, (_, i) =>
+        ({ ...candidateRow(`listed-${i}`, 'LISTED'), listing_date: daysAgo(i) })
+      );
+      dbExecuteMock.mockResolvedValue({ rows: listedRows });
+
+      const listForIpoMock = vi.fn().mockResolvedValue([]);
+      vi.mocked(DocumentFetchStateRepository).mockImplementation(
+        () => ({ listForIpo: listForIpoMock, update: vi.fn().mockResolvedValue(undefined) }) as never
+      );
+
+      await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+      // Bounded to listedCap * 4 = 4 DISTINCT LISTED ipos enriched, never all
+      // 10 — the cap admits at most 1 of those 4 into PASS 1, which re-fetches
+      // `listForIpo` once more for that single winner (a separate call this
+      // test does not care about); what matters is the enrichment loop itself
+      // never touched more than 4 distinct LISTED ipoIds.
+      const distinctIpoIds = new Set(listForIpoMock.mock.calls.map((c) => c[0]));
+      expect(distinctIpoIds.size).toBeLessThanOrEqual(4);
+      expect(listForIpoMock.mock.calls.length).toBeLessThanOrEqual(5);
+    } finally {
+      delete process.env.DOCUMENT_CYCLE_LISTED_CAP;
+    }
   });
 });
 

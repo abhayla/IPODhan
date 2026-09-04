@@ -12,7 +12,12 @@ import { sql } from 'drizzle-orm';
 import { db } from '@ipodhan/shared/db';
 import { getRedisClient, IpoPipelineStepsRepository } from '@ipodhan/shared';
 import logger from '../../utils/logger.js';
-import { planStageReconciliation, type ReconcilerIpoRow, type FetchKind } from '../stage-reconciler.js';
+import {
+  planStageReconciliation,
+  DEFAULT_STALE_CLOSED_DAYS,
+  type ReconcilerIpoRow,
+  type FetchKind,
+} from '../stage-reconciler.js';
 import { initStepLedger } from '../../services/step-ledger.js';
 import { planLifecycleSteps, writeSteps } from '../../services/step-ledger-recorders.js';
 
@@ -52,6 +57,20 @@ export interface StageReconcilerResult {
   iposWithDueFetches: number;
   dueByKind: Record<string, number>;
   byStage: Record<string, number>;
+  /** W-127: CLOSED rows past the staleness window with no listing_date — excluded from dueFetches. */
+  staleClosedCount: number;
+}
+
+/**
+ * W-127: days since close_date after which a CLOSED-with-no-listing-date row
+ * is treated as stale (excluded from due-fetch candidacy, logged for the
+ * nightly audit). Overridable via STALE_CLOSED_DAYS; falls back to the pure
+ * core's default when unset or not a positive integer.
+ */
+export function getStaleClosedDays(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.STALE_CLOSED_DAYS;
+  const parsed = raw !== undefined ? Number(raw) : NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_STALE_CLOSED_DAYS;
 }
 
 /**
@@ -67,6 +86,7 @@ export interface StageReconcilerResult {
  */
 export const RECONCILER_PRESENCE_SQL = `
     SELECT i.id, i.company_name AS "companyName", i.status, i.price_range_min AS "priceRangeMin",
+      i.close_date AS "closeDate", i.listing_date AS "listingDate",
       EXISTS(SELECT 1 FROM documents d WHERE d.ipo_id=i.id)            AS "documents",
       EXISTS(SELECT 1 FROM financial_data f WHERE f.ipo_id=i.id)       AS "financials",
       EXISTS(SELECT 1 FROM peer_companies p WHERE p.ipo_id=i.id)       AS "peers",
@@ -79,6 +99,44 @@ export const RECONCILER_PRESENCE_SQL = `
       (i.allotment_date IS NOT NULL)                                   AS "allotment"
     FROM ipos i WHERE i.offering_type = 'IPO'
 `;
+
+/**
+ * W-127 MINOR-3: the stale-CLOSED count from the previous cycle, so a cycle
+ * only pays the full-list log cost when the set actually changed. Module-level
+ * is fine for a one-shot scheduler process (each cron invocation is a fresh
+ * process) — it resets per run, which is the intended "did THIS run change
+ * from the last one" semantics, not a durable cross-process comparison.
+ */
+let lastStaleClosedCount: number | null = null;
+
+/**
+ * W-127 MINOR-3: pure decision for the stale-CLOSED log line. Previously this
+ * logged the FULL `staleClosedIpos` array on every cycle the set was
+ * non-empty — with the set typically static cycle-to-cycle, that is a wall of
+ * repeated rows in scraper-out.log for no new information. Now every non-empty
+ * cycle logs the count + a 5-row sample; the full list is attached only when
+ * the count changed since the previous cycle (a row entered or left the set).
+ * Returns null when there is nothing to log (empty set).
+ */
+export function planStaleClosedLog(
+  staleClosedIpos: { id: string; companyName: string; closeDate: string | null }[],
+  staleClosedDays: number,
+  lastCount: number | null
+): { fields: Record<string, unknown>; message: string } | null {
+  if (staleClosedIpos.length === 0) return null;
+  const changed = staleClosedIpos.length !== lastCount;
+  return {
+    fields: {
+      staleClosedDays,
+      staleClosedCount: staleClosedIpos.length,
+      staleClosedSample: staleClosedIpos.slice(0, 5),
+      ...(changed ? { staleClosedIpos } : {}),
+    },
+    message: changed
+      ? '[stage-reconciler-job] stale CLOSED rows with no listing_date — excluded from live candidates (count changed, full list attached)'
+      : '[stage-reconciler-job] stale CLOSED rows with no listing_date — excluded from live candidates (count unchanged since last cycle)',
+  };
+}
 
 /**
  * Run one reconciliation cycle. dryRun (default true) logs the plan only — no enqueue.
@@ -95,13 +153,23 @@ export async function runStageReconcilerJob(opts: { dryRun?: boolean } = {}): Pr
   const ipoRows: ReconcilerIpoRow[] = raw.map((r: any) => {
     const presence: Partial<Record<FetchKind, boolean>> = {};
     for (const k of PRESENCE_KEYS) presence[k] = r[k] === true;
-    return { id: r.id, companyName: r.companyName, status: r.status, priceRangeMin: r.priceRangeMin, presence };
+    return {
+      id: r.id,
+      companyName: r.companyName,
+      status: r.status,
+      priceRangeMin: r.priceRangeMin,
+      closeDate: r.closeDate ?? null,
+      listingDate: r.listingDate ?? null,
+      presence,
+    };
   });
 
-  const plans = planStageReconciliation(ipoRows);
+  const staleClosedDays = getStaleClosedDays();
+  const plans = planStageReconciliation(ipoRows, { today: new Date(), staleClosedDays });
   const dueByKind: Record<string, number> = {};
   const byStage: Record<string, number> = {};
   let iposWithDueFetches = 0;
+  const staleClosedIpos: { id: string; companyName: string; closeDate: string | null }[] = [];
 
   // S-02: the ledger repository, built once for the whole cycle.
   const stepsRepository = new IpoPipelineStepsRepository(db as never, getRedisClient() as never);
@@ -110,6 +178,10 @@ export async function runStageReconcilerJob(opts: { dryRun?: boolean } = {}): Pr
     byStage[p.stage] = (byStage[p.stage] || 0) + 1;
     if (p.dueFetches.length > 0) iposWithDueFetches++;
     for (const k of p.dueFetches) dueByKind[k] = (dueByKind[k] || 0) + 1;
+    if (p.staleClosed) {
+      const source = ipoRows.find((r) => r.id === p.id);
+      staleClosedIpos.push({ id: p.id, companyName: p.companyName, closeDate: source?.closeDate ?? null });
+    }
 
     // S-02 hook — I1 (stage derived) + I2 (due list computed), and a DUE row for
     // each step whose window is open.
@@ -149,7 +221,21 @@ export async function runStageReconcilerJob(opts: { dryRun?: boolean } = {}): Pr
     }
   }
 
-  const result: StageReconcilerResult = { totalIpos: plans.length, iposWithDueFetches, dueByKind, byStage };
+  // W-127 MINOR-3: log the count + a bounded sample every cycle the set is
+  // non-empty; the FULL list is only worth its log-volume cost when the count
+  // actually changed since the previous cycle (a new stale row appeared, or
+  // one dropped off) — an unchanged set means the nightly audit already has it.
+  const logPayload = planStaleClosedLog(staleClosedIpos, staleClosedDays, lastStaleClosedCount);
+  if (logPayload) logger.warn(logPayload.fields, logPayload.message);
+  lastStaleClosedCount = staleClosedIpos.length;
+
+  const result: StageReconcilerResult = {
+    totalIpos: plans.length,
+    iposWithDueFetches,
+    dueByKind,
+    byStage,
+    staleClosedCount: staleClosedIpos.length,
+  };
   logger.info({ ...result, dryRun }, '[stage-reconciler-job] cycle complete (plan computed; enqueue is §GATE)');
   return result;
 }

@@ -5,5 +5,13 @@ pdfplumber==0.11.6
 # D6 / W-57 — OCR route for SCANNED filings (no usable text layer). Pure pip,
 # no system binary needed: `pip install rapidocr-onnxruntime pypdfium2`.
 # (tesseract stays OPTIONAL — used only when the binary is already on PATH.)
-pypdfium2>=4.30.0
-rapidocr-onnxruntime>=1.3.24
+#
+# W-112: pinned EXACT, not >=. A fresh `pip install` on 2026-09-04 pulled
+# rapidocr-onnxruntime 1.4.4, whose internal API renamed/removed the private
+# attributes ocr_pages.py touches (text_recognizer, text_detector, load_img,
+# sorted_boxes, get_crop_img_list, use_angle_cls) — every OCR extraction
+# crashed on the VPS while the dev laptop (pinned to 1.2.3 + pypdfium2 5.0.0)
+# stayed green. These are the exact versions verified working; do not widen
+# back to a range without also updating ocr_pages.py for the 1.4.x API.
+pypdfium2==5.0.0
+rapidocr-onnxruntime==1.2.3

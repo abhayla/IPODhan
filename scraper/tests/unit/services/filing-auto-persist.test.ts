@@ -5,6 +5,18 @@ const spawnSyncMock = vi.fn();
 vi.mock('node:child_process', () => ({ spawnSync: (...args: unknown[]) => spawnSyncMock(...args) }));
 
 /**
+ * D-15 lift: mutable so tests can flip ENABLE_SME_FILING_AUTO_PERSIST per case without
+ * re-importing the module (same pattern as document-cycle-passes.test.ts). Both flags
+ * default to false — production shape — and are reset in afterEach. Declared via
+ * vi.hoisted so it exists by the time the hoisted vi.mock factory below runs.
+ */
+const MOCK_FEATURE_FLAGS = vi.hoisted(() => ({
+  ENABLE_FILING_AUTO_PERSIST: false,
+  ENABLE_SME_FILING_AUTO_PERSIST: false,
+}));
+vi.mock('../../../src/config/feature-flags.js', () => ({ FEATURE_FLAGS: MOCK_FEATURE_FLAGS }));
+
+/**
  * S-02 — the automatic extract + persist path.
  *
  * The step-ledger writer is mocked at the module boundary: these tests are about
@@ -33,6 +45,7 @@ import {
   selectPendingFilings,
   processPendingFilings,
   autoPersistEnabled,
+  smeAutoPersistEnabled,
   documentExtractionBlocked,
   defaultExtractorRunner,
   EXTRACTOR_VERSION,
@@ -105,6 +118,8 @@ beforeEach(() => {
 afterEach(() => {
   vi.restoreAllMocks();
   delete process.env.ENABLE_FILING_AUTO_PERSIST;
+  MOCK_FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST = false;
+  MOCK_FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST = false;
 });
 
 // --------------------------------------------------------------------- flag
@@ -265,6 +280,50 @@ describe('processPendingFilings — the D-15 segment gate (SME not validated yet
     expect(result.spawned).toBe(1);
     expect(result.persisted).toBe(1);
     expect(d.loadDocuments).toHaveBeenCalled();
+  });
+});
+
+// --------------------------------------------- D-15 lift (SME auto-persist)
+
+describe('processPendingFilings — the D-15 lift behind ENABLE_SME_FILING_AUTO_PERSIST', () => {
+  const SME_IPO = { ...IPO, segment: 'SME' };
+
+  it('flag OFF (default): smeAutoPersistEnabled() is false — production behaviour is unchanged', () => {
+    expect(smeAutoPersistEnabled()).toBe(false);
+  });
+
+  it('flag ON: an SME candidate spawns the extractor with sme:true and issue-size, persists through the same door, and writes no sme_not_validated row', async () => {
+    MOCK_FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST = true;
+    const smeIpoWithIssueSize = { ...SME_IPO, issueSize: 5_00_00_000 };
+    const d = deps();
+
+    const result = await processPendingFilings(smeIpoWithIssueSize, d);
+
+    expect(d.loadDocuments).toHaveBeenCalled();
+    expect(d.runExtractor).toHaveBeenCalledWith(
+      expect.objectContaining({ sme: true, issueSizeRupees: 5_00_00_000 })
+    );
+    expect(result.spawned).toBe(1);
+    expect(result.persisted).toBe(1);
+    // The SAME write door MAINBOARD uses — persistFiling called with the shared persisterDeps.
+    expect(d.persistFiling).toHaveBeenCalled();
+    const persistCall = (d.persistFiling as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(persistCall[3]).toBe(d.persisterDeps);
+
+    const writesByIpo = recordedSteps.filter((r) => r.ipoId === smeIpoWithIssueSize.id);
+    const evidenceReasons = writesByIpo.flatMap((r) =>
+      r.writes.map((w) => (w as unknown as { evidence?: { reason?: string } }).evidence?.reason)
+    );
+    expect(evidenceReasons).not.toContain('sme_not_validated');
+  });
+
+  it('flag ON does not change a MAINBOARD candidate', async () => {
+    MOCK_FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST = true;
+    const d = deps();
+    const result = await processPendingFilings(IPO, d);
+    expect(result.spawned).toBe(1);
+    expect(result.persisted).toBe(1);
+    expect(d.runExtractor).toHaveBeenCalledWith(expect.objectContaining({ sme: false }));
   });
 });
 
@@ -838,6 +897,50 @@ describe('defaultExtractorRunner — python binary resolution', () => {
 
     expect(spawnSyncMock).toHaveBeenCalledTimes(1);
     expect(spawnSyncMock.mock.calls[0][0]).toBe('python3.11');
+  });
+
+  // W-111 round 2: an ENOENT on an EXPLICITLY-set PYTHON_BIN (the deploy-
+  // managed venv path — deploy-linux.sh) must NOT silently fall back to
+  // system python3 — that is the exact drift this venv exists to prevent
+  // (W-112). Only the unset/default-'python' path gets the python3 retry.
+  it('does NOT retry with python3 on ENOENT when PYTHON_BIN is explicitly set (no silent fallback to system python)', () => {
+    process.env.PYTHON_BIN = '/var/www/ipodhan/shared/venv/prod/bin/python';
+    spawnSyncMock.mockReturnValueOnce({
+      error: Object.assign(new Error('not found'), { code: 'ENOENT' }),
+    });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(spawnSyncMock).toHaveBeenCalledTimes(1);
+    expect(spawnSyncMock.mock.calls[0][0]).toBe('/var/www/ipodhan/shared/venv/prod/bin/python');
+    expect(result.ok).toBe(false);
+  });
+
+  // W-111 round 3: PYTHON_BIN set but EMPTY (or whitespace-only) must be
+  // treated exactly like unset — `??` only falls back on null/undefined, so
+  // an empty string would otherwise become the literal spawn binary name
+  // (immediate ENOENT on a name no shell resolves) instead of going
+  // straight to 'python'.
+  it('treats an empty PYTHON_BIN the same as unset — spawns "python" directly, not an empty binary name', () => {
+    process.env.PYTHON_BIN = '';
+    spawnSyncMock.mockReturnValueOnce({ status: 0, stdout: JSON.stringify({ doc_type: 'RHP', fields: {} }), stderr: '' });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(spawnSyncMock).toHaveBeenCalledTimes(1);
+    expect(spawnSyncMock.mock.calls[0][0]).toBe('python');
+    expect(result.ok).toBe(true);
+  });
+
+  it('treats a whitespace-only PYTHON_BIN the same as unset', () => {
+    process.env.PYTHON_BIN = '   ';
+    spawnSyncMock.mockReturnValueOnce({ status: 0, stdout: JSON.stringify({ doc_type: 'RHP', fields: {} }), stderr: '' });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(spawnSyncMock).toHaveBeenCalledTimes(1);
+    expect(spawnSyncMock.mock.calls[0][0]).toBe('python');
+    expect(result.ok).toBe(true);
   });
 
   // W-129 review: the net-worth/magnitude plausibility checks in the python
