@@ -155,6 +155,32 @@ describe('chittorgarh-scraper', () => {
       expect(result.ipos[0].status).toBe('OPEN');
     });
 
+    // W-116b (review round 1): determineStatus() used to require BOTH
+    // openDate and closeDate before checking listingDate at all, so a row
+    // with a past listing date but an empty close-date column (Chittorgarh's
+    // own column, not fabricated per W-116b) read UPCOMING instead of
+    // LISTED. The listing check now runs first.
+    it('should determine status as LISTED when closeDate is missing but listingDate is in the past', async () => {
+      const pastListing = new Date();
+      pastListing.setDate(pastListing.getDate() - 30);
+
+      mockApiResponse([
+        apiRecord({
+          'Company': '<a href="/ipo/listed-no-close/4/">Listed No Close IPO</a>',
+          'Closing Date': '',
+          '~IssueCloseDate': '',
+          'Listing Date': 'past',
+          '~ListingDate': pastListing.toISOString(),
+        }),
+      ]);
+
+      const result = await scrapeChittorgarhIPOs();
+
+      expect(result.ipos).toHaveLength(1);
+      expect(result.ipos[0].closeDate).toBeUndefined();
+      expect(result.ipos[0].status).toBe('LISTED');
+    });
+
     it('should identify SME segment when "Listing at" mentions SME', async () => {
       mockApiResponse([
         apiRecord({

@@ -62,43 +62,54 @@ describe('field-priority-matrix — a source absent from a field scores -1', () 
   });
 });
 
-describe('field-priority-matrix — W-117: open/close date priority includes DRHP + CHITTORGARH', () => {
-  // Unlike listingDate/allotmentDate (indicative, revised by the exchanges
-  // after the ad is printed), the bidding WINDOW dates on the RHP/price-band
-  // ad are fixed once announced - so DRHP ranks ABOVE the exchanges here,
-  // not below. This closes the gap that let MONEYCONTROL's fabricated
-  // open/close dates (W-116) outrank a filing that actually read the dates.
+describe('field-priority-matrix — W-117 (review round 1): the filing beats the AGGREGATORS but NOT the exchanges for bidding-window dates', () => {
+  // NSE/BSE publish extensions to the open/close window after the RHP/
+  // price-band ad is printed - the ad is never updated when a window is
+  // extended, so DRHP must sit BELOW NSE/BSE (same rule as
+  // listingDate/allotmentDate already document) and ABOVE MONEYCONTROL/
+  // CHITTORGARH, which previously had no standing at all (or, for
+  // Moneycontrol, W-116's fabricated open/close dates outranked everything).
   it.each(['open_date', 'openDate', 'close_date', 'closeDate'])(
-    'ranks DRHP above NSE, BSE and MONEYCONTROL for %s',
+    'ranks NSE and BSE above DRHP for %s',
     (field) => {
       const drhp = getSourcePriority(field, 'DRHP');
       expect(drhp).toBeGreaterThanOrEqual(0);
-      expect(drhp).toBeLessThan(getSourcePriority(field, 'NSE'));
-      expect(drhp).toBeLessThan(getSourcePriority(field, 'BSE'));
+      expect(getSourcePriority(field, 'NSE')).toBeLessThan(drhp);
+      expect(getSourcePriority(field, 'BSE')).toBeLessThan(drhp);
+    }
+  );
+
+  it.each(['open_date', 'openDate', 'close_date', 'closeDate'])(
+    'ranks DRHP above MONEYCONTROL and CHITTORGARH for %s',
+    (field) => {
+      const drhp = getSourcePriority(field, 'DRHP');
       expect(drhp).toBeLessThan(getSourcePriority(field, 'MONEYCONTROL'));
+      expect(drhp).toBeLessThan(getSourcePriority(field, 'CHITTORGARH'));
     }
   );
 
   it.each(['open_date', 'openDate', 'close_date', 'closeDate'])(
-    'still lets an admin override beat the filing for %s',
+    'still lets an admin override beat everything, including the exchanges, for %s',
     (field) => {
-      expect(getSourcePriority(field, 'ADMIN')).toBeLessThan(getSourcePriority(field, 'DRHP'));
+      const admin = getSourcePriority(field, 'ADMIN');
+      for (const other of ['NSE', 'BSE', 'DRHP', 'MONEYCONTROL', 'CHITTORGARH'] as const) {
+        expect(admin).toBeLessThan(getSourcePriority(field, other));
+      }
     }
   );
 
-  it.each(['open_date', 'openDate', 'close_date', 'closeDate'])(
-    'includes CHITTORGARH, ranked below MONEYCONTROL, for %s',
+  it.each(['closeDate', 'close_date'])(
+    'resolves a real bidding-window extension: NSE beats DRHP for %s (NSE "2026-09-05" vs DRHP "2026-09-03" -> NSE wins)',
     (field) => {
-      const chittorgarh = getSourcePriority(field, 'CHITTORGARH');
-      expect(chittorgarh).toBeGreaterThanOrEqual(0);
-      expect(chittorgarh).toBeGreaterThan(getSourcePriority(field, 'MONEYCONTROL'));
+      // The exchanges published an EXTENSION past the printed ad's date;
+      // the ad was never revised. Lower index = higher priority.
+      expect(getSourcePriority(field, 'NSE')).toBeLessThan(getSourcePriority(field, 'DRHP'));
     }
   );
 
-  it('resolves a real conflict: DRHP beats MONEYCONTROL on openDate/closeDate', () => {
+  it('resolves a real conflict: DRHP still beats MONEYCONTROL on openDate/closeDate', () => {
     for (const field of ['openDate', 'closeDate']) {
-      // DRHP '2026-09-03' vs MONEYCONTROL '2026-09-05' -> DRHP wins (lower
-      // index = higher priority in this matrix's convention).
+      // DRHP '2026-09-03' vs MONEYCONTROL '2026-09-05' -> DRHP wins.
       expect(getSourcePriority(field, 'DRHP')).toBeLessThan(getSourcePriority(field, 'MONEYCONTROL'));
     }
   });

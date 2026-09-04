@@ -123,8 +123,15 @@ export function mergeIPOData(
     merged.issueSize = newData.issueSize;
     merged.priceRangeMin = newData.priceRangeMin;
     merged.priceRangeMax = newData.priceRangeMax;
-    merged.openDate = newData.openDate;
-    merged.closeDate = newData.closeDate;
+    // W-116/W-116b (review round 1, MINOR-1): openDate/closeDate can now be
+    // absent from a higher-priority source (Moneycontrol never has them;
+    // Chittorgarh's own close-date column can be empty) - an unconditional
+    // assignment here would overwrite a real existing date with undefined.
+    // Dead code today (mergeIPOData has no live caller into this branch with
+    // a date-less newData yet), but guard it like the optional fields below
+    // rather than leave the landmine.
+    if (newData.openDate) merged.openDate = newData.openDate;
+    if (newData.closeDate) merged.closeDate = newData.closeDate;
     merged.listingExchange = newData.listingExchange;
     merged.category = newData.category;
     merged.status = newData.status;

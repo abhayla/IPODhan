@@ -215,17 +215,25 @@ function determineStatus(
   closeDate: string | undefined,
   listingDate: string
 ): 'UPCOMING' | 'OPEN' | 'CLOSED' | 'LISTED' {
-  if (!openDate || !closeDate) return 'UPCOMING';
-
   const now = new Date();
-  const open = new Date(openDate);
-  const close = new Date(closeDate);
   const listing = listingDate ? new Date(listingDate) : null;
 
-  // If listed date is in the past, status is LISTED
+  // W-116b (review round 1): the listing check only needs listingDate, so it
+  // MUST run before the openDate/closeDate guard below - a row can have a
+  // past listing date and STILL be missing its close date (Chittorgarh's own
+  // close-date column is sometimes empty), and that must read LISTED, not
+  // UPCOMING. Checking this first means a missing close date never hides a
+  // status that is derivable from listing/allotment dates alone.
   if (listing && now > listing) {
     return 'LISTED';
   }
+
+  // OPEN/CLOSED both need a real open AND close date - if either is absent,
+  // there's nothing more to derive than UPCOMING.
+  if (!openDate || !closeDate) return 'UPCOMING';
+
+  const open = new Date(openDate);
+  const close = new Date(closeDate);
 
   // If current date is within open-close range, status is OPEN
   if (now >= open && now <= close) {
@@ -382,8 +390,9 @@ export async function scrapeChittorgarhIPOs(): Promise<ChittorgarhScraperResult>
         // emit the guess as if it were scraped - same class as W-116
         // (Moneycontrol fabricating open/close dates). Leave closeDate
         // undefined when the source didn't provide one; never compute a
-        // value it did not read. determineStatus() already treats a missing
-        // closeDate as UPCOMING.
+        // value it did not read. determineStatus() checks the listing date
+        // BEFORE requiring open/close, so a missing closeDate reads UPCOMING
+        // only when no LISTED/CLOSED status is derivable from listingDate.
         const effectiveCloseDate = closeDate || undefined;
 
         // Parse price
