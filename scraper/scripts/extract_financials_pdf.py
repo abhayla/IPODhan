@@ -333,9 +333,15 @@ def _parse_pnl_page(text):
     # W-128: an SME RHP's KPI/summary table ("Key Performance Indicators ...")
     # carries the same revenue/EBITDA/PAT/net-worth rows the mainboard
     # "Statement of Profit and Loss" title carries, just under a different
-    # section heading — accept either as the anchor.
-    if not re.search(r"statement\s+of\s+profit\s+and\s+loss|key\s+performance\s+indicators",
-                      text, re.I):
+    # section heading — accept either as the anchor. W-133: which of the two
+    # anchors matched is remembered (`isKpiTable`) so the caller can prefer the
+    # KPI table as the CANONICAL source when both exist in the same document —
+    # a restated P&L page frequently carries MORE PNL_METRICS rows (it has its
+    # own revenue/totalIncome/profit/eps, where the KPI table may lack EPS or
+    # total income) and would otherwise outscore and displace the KPI table
+    # entirely, rather than merely filling its gaps.
+    is_kpi_table = bool(re.search(r"key\s+performance\s+indicators", text, re.I))
+    if not (is_kpi_table or re.search(r"statement\s+of\s+profit\s+and\s+loss", text, re.I)):
         return None
 
     lines = text.split("\n")
@@ -397,6 +403,7 @@ def _parse_pnl_page(text):
         "metrics": metrics,
         "align": align,
         "score": len(metrics),
+        "isKpiTable": is_kpi_table,
     }
 
 
@@ -528,6 +535,22 @@ UNIT_TO_RUPEES = {"lakhs": 100_000.0, "crores": 10_000_000.0, "millions": 1_000_
 ONE_CRORE_RUPEES = 10_000_000.0
 
 
+# W-133: the five headline metrics a "complete" restated-financials read must
+# carry — the DEFECT was precisely one of these (eps/totalIncome) staying None
+# while the other three looked fine, yet status still read OK downstream.
+STATUS_REQUIRED_KEYS = ("revenue", "profit", "netWorth", "eps", "totalIncome")
+
+
+def _compute_status(metrics):
+    """"OK" only when every headline metric has >= 2 fiscal years of data;
+    "PARTIAL" otherwise (missing metric, or a metric with a single year)."""
+    for key in STATUS_REQUIRED_KEYS:
+        series = metrics.get(key)
+        if not series or len(series) < 2:
+            return "PARTIAL"
+    return "OK"
+
+
 def _latest_year_value(series):
     """(year, value) for the most recent fiscal year in a {year: value} series,
     or (None, None) when the series is empty."""
@@ -632,6 +655,54 @@ def check_unit_matches_magnitude(metrics, unit, issue_size_rupees):
         rupees / ONE_CRORE_RUPEES), []
 
 
+# --------------------------------------------------------------------------- #
+# W-133. The KPI/summary table (W-128's anchor) frequently omits EPS and/or
+# Total income — SME "Key Performance Indicators" tables report only Revenue /
+# EBITDA / PAT / Net worth. Those two metrics DO appear on the document's
+# restated Statement of Profit and Loss, elsewhere in the same RHP. This fills
+# ONLY the metrics the KPI table is missing, from the richest OTHER parsed
+# candidate page that carries them — and NEVER overwrites a KPI-table value
+# that is already present. Because the two pages are independently parsed
+# (their own header, own column alignment), a same-issuer sanity cross-check
+# on the metrics both pages DO share (revenue / PAT) guards against silently
+# blending in a mis-aligned page: on disagreement > 1%, the P&L-sourced fill is
+# rejected outright (the KPI values themselves are never touched).
+# --------------------------------------------------------------------------- #
+PNL_FILL_KEYS = ("totalIncome", "eps")
+CROSS_CHECK_KEYS = ("revenue", "profit")
+
+
+def _fill_missing_from_pnl_page(kpi_metrics, best, candidates):
+    """Fill totalIncome/eps from a second candidate page when the KPI table
+    lacks them. Returns (metrics, extra_check_tuple_or_None) where
+    extra_check_tuple is `(name, passed, detail, offenders)` in the same shape
+    `run_plausibility` already expects from its own named checks."""
+    missing = [k for k in PNL_FILL_KEYS if k not in kpi_metrics]
+    if not missing:
+        return kpi_metrics, None
+
+    others = [c for c in candidates
+              if c is not best and any(k in c["metrics"] for k in missing)]
+    if not others:
+        return kpi_metrics, None
+    pnl = max(others, key=lambda c: (c["score"], len(c["years"])))
+
+    a = {k: v for k, v in kpi_metrics.items() if k in CROSS_CHECK_KEYS}
+    b = {k: v for k, v in pnl["metrics"].items() if k in CROSS_CHECK_KEYS}
+    agree_ok, agree_detail, _agree_offenders = check_cross_document_agreement(
+        a, b, tol=0.01, label_a="KPI table", label_b="restated P&L page")
+
+    contributed = [k for k in missing if k in pnl["metrics"]]
+    if agree_ok is False:
+        return kpi_metrics, ("kpi_vs_pnl_agreement", False, agree_detail, contributed)
+
+    merged = dict(kpi_metrics)
+    for k in contributed:
+        merged[k] = pnl["metrics"][k]
+    detail = agree_detail if (a and b) else "no overlapping revenue/PAT to cross-check"
+    return merged, ("kpi_vs_pnl_agreement", True, detail, [])
+
+
 def check_cross_document_agreement(a, b, tol=0.01, label_a="doc A", label_b="doc B"):
     """Agreement between the same metric series read from two documents (the
     price band advertisement's KPI table and the RHP's restated summary). Both
@@ -657,12 +728,17 @@ def check_cross_document_agreement(a, b, tol=0.01, label_a="doc A", label_b="doc
 
 def run_plausibility(metrics, unit_stated, unit_phrase, unit_page, table_page,
                      weighted_shares=None, annual_years=None, unit=None,
-                     issue_size_rupees=None):
+                     issue_size_rupees=None, extra_checks=None):
     """Run every named check; return (checks, surviving metrics, rejected).
 
     `annual_years`/`unit`/`issue_size_rupees` back the W-129 checks. A check
     may report `passed=None` (not evaluated, e.g. no issue size supplied) —
-    that is NEVER treated as a failure; only `passed is False` rejects."""
+    that is NEVER treated as a failure; only `passed is False` rejects.
+    `extra_checks` (W-133) is an optional list of pre-computed
+    `(name, passed, detail, offenders)` tuples — the same shape every named
+    check below produces — folded in alongside them (e.g. the
+    `kpi_vs_pnl_agreement` cross-check between the KPI table and a second
+    restated-P&L page)."""
     results = [
         ("pat_not_above_revenue",) + check_pat_not_above_revenue(metrics),
         ("ebitda_at_least_pat",) + check_ebitda_at_least_pat(metrics),
@@ -679,6 +755,13 @@ def run_plausibility(metrics, unit_stated, unit_phrase, unit_page, table_page,
         ("unit_stated_near_table",) + check_unit_stated_near_table(
             unit_stated, unit_phrase, unit_page, table_page),
     ]
+    # W-133: `unit_stated_near_table` is looked up BY NAME (not by trailing
+    # position) for the document-wide gate below — `extra_checks` appends
+    # AFTER it, so `results[-1]` would silently pick up the wrong check (and,
+    # with the last check's `passed=False`, wrongly nuke every metric).
+    unit_check_idx = next(i for i, r in enumerate(results) if r[0] == "unit_stated_near_table")
+    if extra_checks:
+        results.extend(extra_checks)
     checks, rejected = [], {}
     for name, passed, detail, offenders in results:
         checks.append({
@@ -691,9 +774,10 @@ def run_plausibility(metrics, unit_stated, unit_phrase, unit_page, table_page,
                 rejected.setdefault(key, "%s: %s" % (name, detail))
     # The unit gate is document-wide: with no trustworthy unit NO magnitude may be
     # written, so every metric is rejected, not just one.
-    if not results[-1][1]:
+    unit_check = results[unit_check_idx]
+    if not unit_check[1]:
         for key in list(metrics):
-            rejected.setdefault(key, "unit_stated_near_table: %s" % results[-1][2])
+            rejected.setdefault(key, "unit_stated_near_table: %s" % unit_check[2])
     kept = {k: v for k, v in metrics.items() if k not in rejected}
     return checks, kept, rejected
 
@@ -718,6 +802,7 @@ def extract_from_texts(page_texts, issue_size_rupees=None):
         "unit": "lakhs", "unitStated": False, "unitPage": None, "unitPhrase": None,
         "annualYears": [], "metrics": {}, "pages": 0,
         "metricsFound": 0, "lowConfidence": True, "checks": [], "rejected": {},
+        "status": "PARTIAL",
     }
 
     # 1. Parse EVERY candidate P&L page; keep the richest (most metrics, then most
@@ -733,7 +818,16 @@ def extract_from_texts(page_texts, issue_size_rupees=None):
         return result
     # A page that states its own unit and carries more annual columns is a better
     # read of the same statement than a garbled annexure page (W-33/W-35).
-    best = max(candidates, key=lambda c: (c["score"], len(c["years"]), c["unitStated"]))
+    # W-133: when a KPI-table page exists, it is the CANONICAL source (a
+    # restated P&L page elsewhere in the same document only ever fills the
+    # KPI table's gaps below) — never let a richer P&L page outscore and
+    # displace it outright. The `unitStated` gate here matters: "key
+    # performance indicators" can appear as an incidental prose mention on an
+    # unrelated notes/definitions page (no data table, no stated unit) that
+    # would otherwise hijack this pool from the genuine KPI table.
+    kpi_candidates = [c for c in candidates if c.get("isKpiTable") and c["unitStated"]]
+    best_pool = kpi_candidates or candidates
+    best = max(best_pool, key=lambda c: (c["score"], len(c["years"]), c["unitStated"]))
 
     result["unit"] = best["unit"]
     result["unitStated"] = best["unitStated"]
@@ -758,6 +852,13 @@ def extract_from_texts(page_texts, issue_size_rupees=None):
         if all(k2 in result["metrics"] for _, k2 in OTHER_METRICS):
             break
 
+    # 2.5. W-133: the KPI/summary table often has no EPS or Total income row —
+    #      fill ONLY those from the richest other candidate page (the restated
+    #      P&L), never overwriting a KPI-table value already present.
+    result["metrics"], pnl_fill_check = _fill_missing_from_pnl_page(
+        result["metrics"], best, candidates)
+    extra_checks = [pnl_fill_check] if pnl_fill_check else None
+
     # 3. Plausibility gate (W-33): a metric that fails a named check is DROPPED,
     #    so the consumer sees null-with-a-reason rather than a confident wrong
     #    number. `rejected` carries the failing check and its detail per metric.
@@ -765,7 +866,7 @@ def extract_from_texts(page_texts, issue_size_rupees=None):
         result["metrics"], result["unitStated"], result["unitPhrase"],
         result["unitPage"], result.get("pnlPage"),
         annual_years=result["annualYears"], unit=result["unit"],
-        issue_size_rupees=issue_size_rupees)
+        issue_size_rupees=issue_size_rupees, extra_checks=extra_checks)
     result["checks"] = checks
     result["metrics"] = kept
     result["rejected"] = rejected
@@ -775,6 +876,12 @@ def extract_from_texts(page_texts, issue_size_rupees=None):
     result["lowConfidence"] = result["metricsFound"] == 0 or not (
         "revenue" in result["metrics"] or "totalIncome" in result["metrics"]
     )
+
+    # 5. W-133: status is OK only when every headline metric (revenue / PAT /
+    #    net worth / EPS / total income) is present for at least 2 fiscal
+    #    years — anything less (a KPI table missing EPS/total income with no
+    #    usable P&L fill, or a genuinely single-year read) stays PARTIAL.
+    result["status"] = _compute_status(result["metrics"])
     return result
 
 

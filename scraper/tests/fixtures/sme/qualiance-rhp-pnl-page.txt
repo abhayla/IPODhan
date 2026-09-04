@@ -1,0 +1,22 @@
+===== PAGE 210
+Restated Statement of Profit and Loss
+(₹ in Lakhs)
+Particulars For the year ended For the year ended For the year ended
+March 31, 2026 March 31, 2025 March 31, 2024
+I. Revenue from operations 7,689.11 5,307.24 3,722.94
+II. Other income 15.50 9.80 6.11
+III. Total income (I+II) 7,704.61 5,317.04 3,729.05
+IV. Expenses:
+Cost of materials consumed 3,456.78 2,345.67 1,678.90
+Employee benefit expenses 987.65 654.32 456.78
+Other expenses 543.21 321.09 234.56
+Total expenses 4,987.64 3,321.08 2,370.24
+V. Profit before tax 2,716.97 1,995.96 1,358.81
+VI. Tax expense 1,530.07 1,506.11 1,074.88
+VII. Profit for the year 1,186.90 489.85 283.93
+Earnings per equity share (Face value of ₹ 10 each):
+Basic (₹) 12.49 5.16 2.99
+Diluted (₹) 12.49 5.16 2.99
+Weighted average number of equity shares outstanding for
+computing Basic and Diluted EPS: 95,00,000 equity shares of ₹ 10 each.
+209
