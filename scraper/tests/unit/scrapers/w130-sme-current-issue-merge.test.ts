@@ -79,6 +79,21 @@ const ALL_UPCOMING = [
     issueSize: '500000',
     noOfSharesOffered: '500000',
   },
+  {
+    // Round-2 review case: present in BOTH lists. The upcoming-list row
+    // carries lotSize/priceRange the sparser current-issue row lacks - a
+    // field-level merge must keep them, not lose them to an object swap.
+    companyName: 'Mergo Limited',
+    issueStartDate: '05-Sep-2026',
+    issueEndDate: '09-Sep-2026',
+    issuePrice: 'Rs.300 to Rs.315',
+    series: 'EQ',
+    status: 'Forthcoming',
+    symbol: 'MERGO',
+    lotSize: '50',
+    issueSize: '900000',
+    noOfSharesOffered: '900000',
+  },
 ];
 
 // Current issues as served by /api/ipo-current-issue - carries the one SME
@@ -107,6 +122,18 @@ const CURRENT_ISSUES = [
     symbol: 'DUPCO',
     noOfSharesOffered: '500000',
     noOfTime: '2.10',
+  },
+  {
+    // Sparser than the upcoming-list MERGO row above: no issuePrice, no
+    // lotSize. Only status/dates are the live truth here.
+    companyName: 'Mergo Limited',
+    issueStartDate: '05-Sep-2026',
+    issueEndDate: '09-Sep-2026',
+    series: 'EQ',
+    status: 'Active',
+    symbol: 'MERGO',
+    noOfSharesOffered: '900000',
+    noOfTime: '3.30',
   },
 ];
 
@@ -178,6 +205,26 @@ describe('W-130: scrapeNSEAPI merges current-issue IPO rows into the final resul
       // The upcoming list said "Forthcoming" (-> UPCOMING); the live
       // current-issue feed says "Active" (-> OPEN) and must win.
       expect(dupcoRows[0].status).toBe('OPEN');
+    });
+  });
+
+  it('(round-2 review) merges fields into the existing row instead of swapping objects: a sparser current-issue row must not null lotSize/priceRange the upcoming row had', async () => {
+    await withNSEModule(async ({ scrapeNSEAPI }) => {
+      const promise = scrapeNSEAPI();
+      await vi.runAllTimersAsync();
+      const result = await promise;
+
+      const mergoRows = result.ipos.filter(i => i.symbol === 'MERGO');
+      expect(mergoRows).toHaveLength(1);
+      const mergo = mergoRows[0];
+
+      // Live feed wins for status/dates.
+      expect(mergo.status).toBe('OPEN');
+      // But fields the current-issue row didn't carry must survive from the
+      // upcoming-list row, not be nulled by an object swap.
+      expect(mergo.lotSize).toBe(50);
+      expect(mergo.priceRangeMin).toBe(300);
+      expect(mergo.priceRangeMax).toBe(315);
     });
   });
 

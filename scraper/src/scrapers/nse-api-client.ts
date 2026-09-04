@@ -1238,12 +1238,33 @@ export async function scrapeNSEAPI(): Promise<NSEAPIResult> {
         if (existingIndex === -1) {
           allIPOs.ipos.push(ipo);
         } else {
+          // W-130 review round 2: FIELD merge, not an object swap. The
+          // current-issue payload is often sparser than the upcoming-list row
+          // (no lotSize/faceValue/issueSize/price band) - swapping the whole
+          // object would null out fields the upcoming-list row actually had.
+          // status/dates always come from current-issue (the live feed);
+          // every other field keeps the existing row's value unless the
+          // current-issue row provides its own (non-null/undefined) value.
+          const existing = allIPOs.ipos[existingIndex];
+          const merged: typeof existing = { ...existing };
+          for (const key of Object.keys(ipo) as (keyof typeof ipo)[]) {
+            const value = ipo[key];
+            if (value !== undefined && value !== null) {
+              (merged as any)[key] = value;
+            }
+          }
+          // Always take the live feed's status/dates, even when the merge
+          // loop above would already have picked them up.
+          merged.status = ipo.status;
+          merged.openDate = ipo.openDate;
+          merged.closeDate = ipo.closeDate;
+
           logger.debug({
             symbol: ipo.symbol,
-            previousStatus: allIPOs.ipos[existingIndex].status,
+            previousStatus: existing.status,
             currentIssueStatus: ipo.status,
-          }, 'Current-issue row replaced the upcoming-list row (live feed wins, W-130)');
-          allIPOs.ipos[existingIndex] = ipo;
+          }, 'Current-issue row merged into the upcoming-list row (live feed wins, W-130)');
+          allIPOs.ipos[existingIndex] = merged;
         }
       }
 
