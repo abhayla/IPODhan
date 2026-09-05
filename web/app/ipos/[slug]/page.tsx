@@ -365,6 +365,19 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
   const hasIssueStructure = Boolean(
     ipoDetails && (ipoDetails.freshIssue || ipoDetails.ofsIssue || ipoDetails.issueType)
   );
+  // W-151: an `ipo_details` row now exists for every IPO with a persisted
+  // filing, so row-existence no longer means "there is reservation data".
+  // Gate on the VALUES, like hasIssueStructure above.
+  const hasReservationData = Boolean(
+    ipoDetails &&
+      (ipoDetails.qibSharesOffered ||
+        ipoDetails.niiSharesOffered ||
+        ipoDetails.retailSharesOffered ||
+        ipoDetails.employeeSharesOffered ||
+        ipoDetails.anchorSharesOffered ||
+        ipoDetails.designatedExchange ||
+        (allocationPct && Object.keys(allocationPct).length > 0))
+  );
   const hasScore = Boolean(ipoScore);
   const hasFinancials = Boolean(financialData);
   const hasGmpHistory = (gmpRecords?.length ?? 0) > 0;
@@ -679,7 +692,7 @@ export default async function IPODetailPage({ params, searchParams }: PageProps)
             )}
 
             {/* 13a. Category Reservation Section */}
-            {ipoDetails && (
+            {hasReservationData && ipoDetails && (
               <CategoryReservationSection
                 reservationData={{
                   qibSharesOffered: ipoDetails.qibSharesOffered,

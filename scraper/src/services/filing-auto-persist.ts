@@ -1393,7 +1393,13 @@ export async function processPendingFilings(
       summary = await deps.persistFiling(
         ipo.id,
         extraction,
-        { docType, documentId: doc.id, sourceSha: doc.sha256, apply: true },
+        {
+          docType,
+          documentId: doc.id,
+          sourceSha: doc.sha256,
+          extractorVersion: EXTRACTOR_VERSION,
+          apply: true,
+        },
         deps.persisterDeps
       );
     } catch (error) {
