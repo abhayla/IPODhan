@@ -59,6 +59,7 @@ export interface IPODataToValidate {
   isin?: string | null;
   openDate?: Date | string | null;
   closeDate?: Date | string | null;
+  listingDate?: Date | string | null;
   [key: string]: any;
 }
 
@@ -238,6 +239,39 @@ export function validateIPOData(
         severity: 'WARNING',
         message: `IPO duration ${duration} days is unusually long (typical: 3-5 days).`,
       });
+    }
+  }
+
+  // Rule 6b (W-160): close < listing, plus the close->listing gap by segment
+  // (12 days MAINBOARD, 6 days SME — the same figures the T-328 HOLD escape
+  // in data-consolidation-service.ts uses). WARNING severity, not ERROR —
+  // this never drops a field on its own; it exists so the merged-record pass
+  // (W-14, data-persister.ts) can surface an impossible listing/close
+  // combination that per-source validation alone would miss (each source
+  // rarely reports listingDate and closeDate together in one payload).
+  if (data.closeDate && data.listingDate) {
+    const closeDate = new Date(data.closeDate);
+    const listingDate = new Date(data.listingDate);
+
+    if (Number.isFinite(closeDate.getTime()) && Number.isFinite(listingDate.getTime())) {
+      const gapDays = (listingDate.getTime() - closeDate.getTime()) / (1000 * 60 * 60 * 24);
+      const maxGapDays = data.segment === 'SME' ? 6 : 12;
+
+      if (gapDays <= 0) {
+        warnings.push({
+          field: 'dates',
+          rule: 'LISTING_DATE_BEFORE_CLOSE',
+          severity: 'WARNING',
+          message: `Listing date (${listingDate.toISOString().split('T')[0]}) is not after close date (${closeDate.toISOString().split('T')[0]}).`,
+        });
+      } else if (gapDays > maxGapDays) {
+        warnings.push({
+          field: 'dates',
+          rule: 'LISTING_DATE_GAP_TOO_WIDE',
+          severity: 'WARNING',
+          message: `Listing date is ${gapDays} days after close date (typical: up to ${maxGapDays} for ${data.segment ?? 'MAINBOARD'}).`,
+        });
+      }
     }
   }
 

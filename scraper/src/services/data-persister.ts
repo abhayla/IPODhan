@@ -333,12 +333,19 @@ async function applyMergedRecordValidation(
     priceRangeMin: mergedValue('priceRangeMin'),
     priceRangeMax: mergedValue('priceRangeMax'),
     issueType: mergedValue('issueType'),
+    // W-160: openDate/closeDate/listingDate together, on the MERGED record —
+    // a single source rarely reports all three in one payload (per-source
+    // validation's CLOSE_DATE_BEFORE_OPEN never sees listingDate at all), so
+    // an impossible close/listing combination only becomes visible here.
+    openDate: mergedValue('openDate'),
+    closeDate: mergedValue('closeDate'),
+    listingDate: mergedValue('listingDate'),
   };
 
   const mergedValidation = validateIPOData(mergedRecord as any, source);
 
   for (const warning of mergedValidation.warnings) {
-    if (warning.field === 'lotSize' || warning.field === 'priceBand') {
+    if (warning.field === 'lotSize' || warning.field === 'priceBand' || warning.field === 'dates') {
       logger.warn({
         ipoId: existingIPO.id,
         companyName,
