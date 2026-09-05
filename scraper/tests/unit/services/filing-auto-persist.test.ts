@@ -226,6 +226,48 @@ describe('selectPendingFilings — what still needs extracting', () => {
   });
 });
 
+// --------------------------------- W-142: SME anchor ZIP root cause (RED) --
+
+describe('selectPendingFilings — W-142 root cause: ANCHOR_ALLOCATION_REPORT is never extractable', () => {
+  const states = [
+    { docType: 'ANCHOR_ALLOCATION_REPORT', documentId: 'doc-1', extractedAt: null, extractorVersion: null },
+  ];
+  const exists = () => true;
+
+  /**
+   * W-142: 7 SME IPOs (Ashutosh, Qualiance, Shantiinor, ...) have an
+   * ANCHOR_ALLOCATION_REPORT `documents` row — correctly discovered from an
+   * NSE Emerge `ANCHOR_<SYM>.zip` URL and correctly unwrapped/stored as a
+   * plain PDF on disk by `document-discovery-runner.ts` (verified live:
+   * downloading + unzipping ANCHOR_ASHUTOSH.zip and ANCHOR_QUALIANCE.zip
+   * yields a normal, text-layer PDF each) — stuck at `extraction_status
+   * PENDING` forever. The ZIP-vs-PDF shape of the source URL is a red
+   * herring: `selectPendingFilings` drops EVERY `ANCHOR_ALLOCATION_REPORT`
+   * document before the extractor ever runs, via the type allow-list at
+   * `filing-auto-persist.ts` `EXTRACTABLE_DOC_TYPES` (`['PRICE_BAND_AD',
+   * 'RHP', 'DRHP', 'PROSPECTUS']` — no anchor type at all), regardless of
+   * segment (SME or MAINBOARD) or whether the stored file is a PDF or was
+   * unwrapped from a zip. This test documents that gap directly: a stored,
+   * correctly-hashed anchor document is never selected as pending.
+   *
+   * This is intentionally RED against the current code and is NOT closed by
+   * a one-line allow-list edit alone — see the fix-plan note on
+   * `EXTRACTABLE_DOC_TYPES` below and the PR description for why the full
+   * fix (wiring real anchor-table extraction into the auto-persist door) is
+   * out of scope for this change.
+   */
+  it('selects a stored SME anchor allocation report (unwrapped from an NSE Emerge ZIP) as pending', () => {
+    const { pending, skipped } = selectPendingFilings(
+      'ipo-1',
+      [doc({ id: 'doc-1', type: 'ANCHOR_ALLOCATION_REPORT' })],
+      states,
+      { fileExists: exists }
+    );
+    expect(skipped.join(' ')).not.toContain('not an extractable doc type');
+    expect(pending.map((d) => d.type)).toEqual(['ANCHOR_ALLOCATION_REPORT']);
+  });
+});
+
 // -------------------------------------------------- processPendingFilings
 
 describe('processPendingFilings — the happy path', () => {
