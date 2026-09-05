@@ -31,6 +31,25 @@ same ~1.5 GB of headroom above the higher of the two measured RSS peaks.
 Two scrapers (prod + staging) can run at once on the 8 GB box: 2 x 3072 MB
 VSZ is fine because actual RSS use stays ~1.2-1.5 GB each — VSZ is address
 space reserved, not memory paged in.
+
+Round 4 — the limit of what THIS module can do: a C library (seen live on
+the VPS: OpenBLAS, loaded transitively by numpy on the OCR route) can call
+`abort()` directly at the C level when RLIMIT_AS refuses it an allocation
+("OpenBLAS error: Memory allocation still failed after 10 retries, giving
+up."). That terminates the process before ANY Python code — this module's
+own exception handlers included — gets a chance to run, so stdout comes back
+completely empty and the exit code is an ordinary-looking 1, not this
+module's `EXIT_MEMORY_CEILING`. No amount of `try`/`except` here can catch a
+process abort. Two mitigations, in order: (1) `_pin_blas_thread_env()` below
+pins every BLAS/OMP thread-pool env var to 1 BEFORE numpy/onnxruntime/cv2 are
+ever imported, which removes the specific trigger seen on the VPS (each
+thread's own scratch allocation pushing the process over the ceiling on a
+2 vCPU box) — this is a mitigation, not a guarantee, since a single-threaded
+allocation can still exceed the ceiling on a large enough document; (2) the
+NODE side (`filing-auto-persist.ts`'s `MEMORY_ABORT_STDERR_RE`) is the actual
+backstop — it scans the captured stderr tail for the abort's own message
+REGARDLESS of exit code, because that message is the only signal that
+survives a C-level abort.
 """
 import json
 import os
@@ -55,14 +74,59 @@ def max_rss_mb():
     return value if value > 0 else DEFAULT_MAX_RSS_MB
 
 
+# Round 4: threading env vars every BLAS/OMP-backed library (numpy, scipy,
+# onnxruntime, opencv — the whole OCR route) reads AT IMPORT TIME to size its
+# internal thread pools. Each thread gets its OWN scratch allocation, and
+# under RLIMIT_AS those add up fast; on the VPS (2 vCPU) OpenBLAS's default
+# thread count tried to grow past what the ceiling allowed and called abort()
+# at the C level — `OpenBLAS error: Memory allocation still failed after 10
+# retries, giving up.` — which no Python exception handler can catch (the
+# process is gone, stdout is whatever happened to be flushed, i.e. nothing).
+# Pinning every one of these to 1 thread both shrinks per-library scratch
+# memory AND matches the 2 vCPU box (no thread thrash). MUST be set before
+# numpy/onnxruntime/cv2 are ever imported — `memory_guard` is imported first
+# in every CLI script specifically so this land before those heavy imports.
+_THREAD_LIMIT_ENV_VARS = (
+    "OPENBLAS_NUM_THREADS",
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+)
+
+
+def _pin_blas_thread_env():
+    """`setdefault` — never overrides a value the caller/deploy env already
+    set on purpose. Runs on EVERY platform (POSIX and Windows): the OpenBLAS
+    abort is a property of the library being imported with many threads under
+    tight memory, not of `RLIMIT_AS` itself, so this must apply even where
+    the address-space ceiling below is a no-op (Windows has no `resource`)."""
+    for var in _THREAD_LIMIT_ENV_VARS:
+        os.environ.setdefault(var, "1")
+
+
+# Round 4: run at IMPORT time, not only when `install_memory_ceiling()` is
+# explicitly called. numpy/onnxruntime/cv2 read these env vars the moment
+# THEY are imported, which can happen lazily deep inside a call (e.g.
+# `anchor_report_text.py` does `import ocr_pages` mid-`extract()`, and
+# `ocr_pages`'s own numpy/cv2 imports are themselves lazy, inside functions).
+# Every one of those import sites is preceded by `import memory_guard`
+# somewhere earlier in the same process — pinning here, unconditionally,
+# means that is ALWAYS enough, regardless of whether the importer remembers
+# to also call `install_memory_ceiling()` before its own heavy import.
+_pin_blas_thread_env()
+
+
 def install_memory_ceiling():
-    """Set RLIMIT_AS to `max_rss_mb()`.
+    """Pin BLAS/OMP thread counts to 1 (all platforms), then set RLIMIT_AS to
+    `max_rss_mb()` (POSIX only).
 
     Returns the limit (in MB) that was applied, or `None` when the platform
     has no `resource` module (Windows) or the call itself failed — a caller
-    can use the return value to log/test without guessing whether the guard
-    is actually active.
+    can use the return value to log/test without guessing whether the
+    RLIMIT_AS half of the guard is actually active. The thread-pinning half
+    always runs regardless of this return value.
     """
+    _pin_blas_thread_env()
     try:
         import resource
     except ImportError:

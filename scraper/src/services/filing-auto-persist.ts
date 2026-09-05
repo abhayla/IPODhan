@@ -158,6 +158,20 @@ export const EXTRACTION_BLOCKED_ERROR = 'blocked_after_10_attempts';
  */
 export const EXTRACTOR_MEMORY_CEILING_EXIT = 3;
 
+/** Round 4: stderr signatures of a memory failure that killed the extractor
+ * at the C level, before Python (or even `memory_guard`) could run any
+ * handler — so exit code and stdout carry NO information at all. Matched
+ * case-insensitively against the captured stderr tail regardless of exit
+ * code: `OpenBLAS error` / `Memory allocation still failed` (numpy's BLAS
+ * backend under RLIMIT_AS, seen live on the VPS at EXTRACTOR_MAX_RSS_MB=200),
+ * `MemoryError` / `memory ceiling exceeded` / `Cannot allocate memory` (the
+ * ordinary Python-catchable shapes, matched here too as a backstop in case a
+ * future change to the CLI's own handler regresses), `std::bad_alloc` (a C++
+ * dependency's own OOM exception), and `Killed` (the shell's own message
+ * when the kernel OOM-killer — not RLIMIT_AS — still gets there first). */
+export const MEMORY_ABORT_STDERR_RE =
+  /Memory allocation still failed|OpenBLAS error|MemoryError|memory ceiling exceeded|Cannot allocate memory|std::bad_alloc|Killed/i;
+
 /** Marks a FAILED row's `extraction_error` as a HARD failure (killed/OOM),
  * with the count of consecutive hard failures embedded — read back by
  * `documentExtractionBlocked` to widen the backoff past the normal
@@ -604,7 +618,17 @@ export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme,
     // Accepted: two slow-network documents in a row earn the 24h floor the
     // same as two OOM kills — a document that reliably times out is exactly
     // as unsafe to retry hourly as one that is killed for memory.
-    const hardFailure = result.status === null || result.status === EXTRACTOR_MEMORY_CEILING_EXIT;
+    // Round 4: OpenBLAS (loaded by numpy on the OCR route) can call abort()
+    // at the C level under RLIMIT_AS — "OpenBLAS error: Memory allocation
+    // still failed after 10 retries, giving up." — which no Python exception
+    // handler can run. That leaves EMPTY stdout and an ORDINARY-looking
+    // non-zero exit (1), indistinguishable from a real bug by exit code
+    // alone. The node side is the only place left that can still tell:
+    // scan the captured stderr tail for the known C-level abort/OOM
+    // signatures, regardless of exit code.
+    const stderrLooksLikeMemoryAbort = MEMORY_ABORT_STDERR_RE.test(result.stderr || '');
+    const hardFailure =
+      result.status === null || result.status === EXTRACTOR_MEMORY_CEILING_EXIT || stderrLooksLikeMemoryAbort;
     return {
       ok: false,
       error: `extractor exited ${result.status}${result.signal ? ` (signal ${result.signal})` : ''}: ${(result.stderr || '').slice(-800)}`,

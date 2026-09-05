@@ -34,7 +34,13 @@ import os
 import re
 import sys
 
-import pdfplumber
+# Round 4: import (and thereby pin BLAS/OMP thread env vars) BEFORE pdfplumber
+# and, later at runtime, before the OCR route's lazy numpy/cv2 imports inside
+# `ocr_pages` — see memory_guard.py's module-level `_pin_blas_thread_env()`.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import memory_guard  # noqa: E402
+
+import pdfplumber  # noqa: E402
 
 COL_GAP_PT = 15.0
 ROW_GAP_PT = 7.0

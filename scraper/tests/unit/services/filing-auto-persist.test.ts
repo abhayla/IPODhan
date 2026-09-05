@@ -644,6 +644,52 @@ describe('defaultExtractorRunner — W-137 hard-failure classification', () => {
     expect(result.ok).toBe(false);
     expect((result as { hardFailure?: boolean }).hardFailure).toBe(false);
   });
+
+  it('round 4: a C-level OpenBLAS abort (ordinary exit 1, EMPTY stdout) is still a hard failure — stderr is the only signal', () => {
+    spawnSyncMock.mockReturnValueOnce({
+      status: 1,
+      stdout: '',
+      stderr: 'OpenBLAS error: Memory allocation still failed after 10 retries, giving up.',
+    });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(result.ok).toBe(false);
+    expect((result as { hardFailure?: boolean }).hardFailure).toBe(true);
+  });
+
+  it('round 4: an ordinary exit 1 with unrelated stderr stays a SOFT failure', () => {
+    spawnSyncMock.mockReturnValueOnce({
+      status: 1,
+      stdout: '',
+      stderr: 'Traceback (most recent call last):\n  File "extract_filing.py", line 42\nValueError: unknown doc type XYZ',
+    });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(result.ok).toBe(false);
+    expect((result as { hardFailure?: boolean }).hardFailure).toBe(false);
+  });
+});
+
+describe('processPendingFilings — round 4: a C-level memory abort is written as a hard failure', () => {
+  it('an OpenBLAS-abort run (exit 1, empty stdout) reaches setDocumentExtractionState with the HARD_FAILURE marker', async () => {
+    const d = deps({
+      runExtractor: vi.fn(() => ({
+        ok: false as const,
+        error: 'extractor exited 1: OpenBLAS error: Memory allocation still failed after 10 retries, giving up.',
+        hardFailure: true,
+      })),
+    });
+
+    const result = await processPendingFilings(IPO, d);
+
+    expect(result.failed).toBe(1);
+    const failedCall = (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'FAILED'
+    );
+    expect(failedCall[0].error).toContain(HARD_FAILURE_MARKER);
+  });
 });
 
 describe('processPendingFilings — W-137 hard-failure marker written end to end (MAJOR-1)', () => {
