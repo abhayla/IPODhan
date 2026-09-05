@@ -1,9 +1,9 @@
 ---
-globs:
+paths:
   - ".claude/**"
   - "docs/**"
 ---
-# Scope: path (globs above)
+# Scope: path (paths above)
 
 # Context Management Rules
 

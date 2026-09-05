@@ -268,7 +268,7 @@ export async function GET(request: NextRequest) {
 ## Rules for Claude
 
 1. **Bug Fixing**: Use `/fix-loop` or `/fix-github-issue`. Start by writing a test that reproduces the bug, then fix and prove with a passing test.
-2. **Rules**: Path-scoped rules live in `.claude/rules/` and auto-load via `globs:` frontmatter when matching files are opened. Browse with `ls .claude/rules/` — enumerating each rule here would cost ~4k tokens per session for zero enforcement benefit.
+2. **Rules**: Path-scoped rules live in `.claude/rules/` and auto-load via `paths:` frontmatter when matching files are opened. Browse with `ls .claude/rules/` — enumerating each rule here would cost ~4k tokens per session for zero enforcement benefit.
 
 ## Claude Code Configuration
 

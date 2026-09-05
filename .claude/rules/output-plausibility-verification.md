@@ -1,10 +1,10 @@
 ---
-globs:
+paths:
   - "web/app/**"
   - "web/components/**"
   - "scraper/src/**"
 ---
-# Scope: path (globs above)
+# Scope: path (paths above)
 
 # Output Plausibility Verification — catch "wrong-but-working", not just "broken"
 

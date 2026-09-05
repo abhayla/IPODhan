@@ -1,10 +1,10 @@
 ---
-globs:
+paths:
   - ".claude/**"
   - "CLAUDE.md"
   - "docs/**"
 ---
-# Scope: path (globs above)
+# Scope: path (paths above)
 
 # Configuration Single Source of Truth (SSOT)
 

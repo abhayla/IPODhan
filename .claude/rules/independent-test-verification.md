@@ -1,10 +1,10 @@
 ---
-globs:
+paths:
   - "web/**"
   - "scraper/**"
   - "packages/**"
 ---
-# Scope: path (globs above)
+# Scope: path (paths above)
 
 # Independent Test Verification — the blind second tester
 
