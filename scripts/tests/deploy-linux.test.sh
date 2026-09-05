@@ -1709,7 +1709,7 @@ exec "%s" "$@"
   # wait, no fuser fallback, INFO "free after" line printed.
   OUT28A="$(run_cleanup_probe_28 a 45001 3 8 0.2 yes 2>&1)"
   if emit "$OUT28A" | grep -q 'probe port 45001 free after' \
-     && ! emit "$OUT28A" | grep -qi 'attempting fuser' \
+     && ! emit "$OUT28A" | grep -qi 'surviving pid(s)' \
      && ! emit "$OUT28A" | grep -qi 'FATAL' \
      && emit "$OUT28A" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
     pass "case 28a: child listener outlives leader by ~3s -> cleaned by the port wait, no fuser fallback"
@@ -1725,7 +1725,7 @@ exec "%s" "$@"
   # fired (see the mutation-proof step right after this case).
   OUT28B="$(run_cleanup_probe_28_body "$CLEANUP_FN_28" killaware 45002 0 2 0.2 yes 2>&1)"
   if emit "$OUT28B" | grep -q 'probe port 45002 free after' \
-     && ! emit "$OUT28B" | grep -qi 'attempting fuser' \
+     && ! emit "$OUT28B" | grep -qi 'surviving pid(s)' \
      && ! emit "$OUT28B" | grep -qi 'FATAL' \
      && emit "$OUT28B" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
     pass "case 28b: port survives the initial wait -> KILL escalation clears it, no fuser fallback"
@@ -1748,7 +1748,7 @@ exec "%s" "$@"
   else
     MUT_OUT28B="$(run_cleanup_probe_28_body "$MUTANT_FN_28" killaware 45012 0 2 0.2 yes 2>&1)"
     if emit "$MUT_OUT28B" | grep -q 'probe port 45012 free after' \
-       && ! emit "$MUT_OUT28B" | grep -qi 'attempting fuser'; then
+       && ! emit "$MUT_OUT28B" | grep -qi 'surviving pid(s)'; then
       fail "case 28b mutation-proof: removing the KILL escalation should have broken case 28b's assertions, but the mutant still passed — the test does not actually depend on the escalation"
     else
       pass "case 28b mutation-proof: removing the KILL escalation correctly makes case 28b's pass condition fail (mutant output: $MUT_OUT28B)"
@@ -1774,7 +1774,7 @@ exec "%s" "$@"
   # listener -> falls through to the EXISTING fuser -k last resort,
   # which (in this fake) actually frees it -> no FATAL.
   OUT28D="$(run_cleanup_probe_28 d 45004 999999 2 0.2 yes 2>&1)"
-  if emit "$OUT28D" | grep -qi 'attempting fuser -k' \
+  if emit "$OUT28D" | grep -qi 'trying a direct listener kill first' \
      && ! emit "$OUT28D" | grep -qi 'FATAL' \
      && emit "$OUT28D" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
     pass "case 28d: existing fuser-last-resort still fires and clears a truly stubborn listener"
@@ -2002,6 +2002,196 @@ FAKEPS29
 
   rm -rf "$FAKEBIN29"
   rm -rf "$FAKEBIN28"
+fi
+
+# --- Case 30: W-176 --- release_scraper_cycle_locks() releases the two
+# --- Redis cycle locks the scraper holds when `pm2 stop` interrupts it   --
+# --- mid-cycle. Root cause (staging 2026-09-05 21:25-22:39Z): the locks   --
+# --- (`lock:resource:scraper:cycle`, `lock:resource:filing-auto-persist:  --
+# --- cycle` — DistributedLock's `lock:resource:<id>` key shape) survive  --
+# --- the scraper process being stopped, with their TTLs intact, so the   --
+# --- next 1-2 deploy cycles see them held and skip all work. This        --
+# --- extracts the REAL function body and runs it against a fake          --
+# --- `redis-cli` that records every invocation and answers GET/TTL/DEL.  --
+RELEASE_LOCKS_FN_30="$(awk '/^release_scraper_cycle_locks\(\) \{/,/^}$/' "$DEPLOY_SCRIPT")"
+if [ -z "$RELEASE_LOCKS_FN_30" ]; then
+  fail "case 30 setup: could not extract release_scraper_cycle_locks() body from $DEPLOY_SCRIPT"
+else
+  # Static case: release_scraper_cycle_locks is invoked AFTER the real
+  # `pm2 stop "$PM2_SCRAPER_APP"` line, not before it (the locks' only
+  # holder must already be stopped before we delete its locks).
+  STOP_LINE_30="$(grep -n 'pm2 stop "\$PM2_SCRAPER_APP"' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  CALL_LINE_30="$(grep -n '^release_scraper_cycle_locks || true$' "$DEPLOY_SCRIPT" | head -1 | cut -d: -f1)"
+  if [ -n "$STOP_LINE_30" ] && [ -n "$CALL_LINE_30" ] && [ "$CALL_LINE_30" -gt "$STOP_LINE_30" ]; then
+    pass "case 30 static: release_scraper_cycle_locks is called after the real 'pm2 stop', not before"
+  else
+    fail "case 30 static: expected release_scraper_cycle_locks (line ${CALL_LINE_30:-?}) to be called AFTER the real 'pm2 stop' (line ${STOP_LINE_30:-?})"
+  fi
+
+  FAKEBIN30="$(mktemp -d)"
+  ENVDIR30="$(mktemp -d)"
+  printf 'REDIS_URL=redis://localhost:6379/1\n' > "$ENVDIR30/scraper.env"
+
+  # run_release_locks_30 sources the REAL function body with a fake
+  # `log`/`warn` and a fake `redis-cli` ahead of PATH (or no redis-cli at
+  # all, for case 30c), then invokes it and returns stdout+stderr plus the
+  # fake's argv log.
+  #   $1 = "held-both" | "held-none" | "no-redis-cli" | "token-changed"
+  #   $2 = DRY_RUN (0/1)
+  # The fake strips "-t N" and "-u URL" before reading the command, so it
+  # works regardless of flag order. EVAL simulates the compare-and-delete
+  # Lua script server-side: it only "deletes" (returns 1) when ARGV[1]
+  # still equals the token GET returned earlier -- "token-changed" models
+  # a scraper cron-restart grabbing a fresh lock between our GET and EVAL.
+  # DEL is instrumented to yell if the function ever calls it directly
+  # (it must only ever be invoked from inside the EVAL script).
+  run_release_locks_30() {
+    local scenario="$1" dry_run="${2:-0}"
+    local rc_log; rc_log="$(mktemp)"
+    if [ "$scenario" != "no-redis-cli" ]; then
+      cat > "$FAKEBIN30/redis-cli" <<FAKERC30
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> '$rc_log'
+args=("\$@")
+filtered=()
+i=0
+while [ \$i -lt \${#args[@]} ]; do
+  case "\${args[\$i]}" in
+    -t|-u) i=\$((i+2)); continue ;;
+    *) filtered+=("\${args[\$i]}"); i=\$((i+1)) ;;
+  esac
+done
+cmd="\${filtered[0]}"
+case "\$cmd" in
+  GET)
+    if [ "$scenario" = "held-both" ] || [ "$scenario" = "token-changed" ]; then
+      echo "tok-abc"
+    else
+      echo ""
+    fi
+    ;;
+  TTL) echo "111" ;;
+  EVAL)
+    argv1="\${filtered[4]}"
+    if [ "$scenario" = "token-changed" ]; then
+      echo 0
+    elif [ "\$argv1" = "tok-abc" ]; then
+      echo 1
+    else
+      echo 0
+    fi
+    ;;
+  DEL)
+    echo "DEL-CALLED-DIRECTLY" >&2
+    echo "1"
+    ;;
+esac
+FAKERC30
+      chmod +x "$FAKEBIN30/redis-cli"
+    else
+      rm -f "$FAKEBIN30/redis-cli"
+    fi
+    (
+      log() { echo "LOG: $*"; }
+      warn() { echo "WARN: $*" >&2; }
+      DRY_RUN="$dry_run"
+      SCRAPER_ENV_FILE="$ENVDIR30/scraper.env"
+      if [ "$scenario" = "no-redis-cli" ]; then
+        PATH="/usr/bin:/bin"
+      else
+        PATH="$FAKEBIN30:$PATH"
+      fi
+      eval "$RELEASE_LOCKS_FN_30"
+      release_scraper_cycle_locks
+    ) 2>&1
+    echo "--- rc-log ---"
+    cat "$rc_log" 2>/dev/null || true
+    rm -f "$rc_log"
+  }
+
+  # 30a: both keys held -> both released, correct GET/TTL/DEL sequence per
+  # key, using the REDIS_URL from the temp env file (asserts the `-u` URL
+  # form is passed), and the final summary line.
+  OUT30A="$(run_release_locks_30 held-both 0)"
+  if emit "$OUT30A" | grep -q 'releasing lock:resource:scraper:cycle (held: 111s remaining)' \
+     && emit "$OUT30A" | grep -q 'releasing lock:resource:filing-auto-persist:cycle (held: 111s remaining)' \
+     && emit "$OUT30A" | grep -q 'cycle locks released: 2' \
+     && emitn "$OUT30A" | grep -q -- '-t 3 -u redis://localhost:6379/1 GET lock:resource:scraper:cycle' \
+     && emitn "$OUT30A" | grep -q -- '-t 3 -u redis://localhost:6379/1 GET lock:resource:filing-auto-persist:cycle' \
+     && emitn "$OUT30A" | grep -qE -- '-t 3 -u redis://localhost:6379/1 EVAL .*lock:resource:scraper:cycle tok-abc$' \
+     && emitn "$OUT30A" | grep -qE -- '-t 3 -u redis://localhost:6379/1 EVAL .*lock:resource:filing-auto-persist:cycle tok-abc$' \
+     && ! emit "$OUT30A" | grep -q 'DEL-CALLED-DIRECTLY'; then
+    pass "case 30a: both cycle locks held -> released via EVAL compare-and-delete on the GET token, DEL never issued directly"
+  else
+    fail "case 30a: expected EVAL-based compare-and-delete keyed on the GET token (never a direct DEL) — got: $OUT30A"
+  fi
+
+  # 30b: neither key held -> both logged 'not held', released 0.
+  OUT30B="$(run_release_locks_30 held-none 0)"
+  if emit "$OUT30B" | grep -q 'lock:resource:scraper:cycle not held' \
+     && emit "$OUT30B" | grep -q 'lock:resource:filing-auto-persist:cycle not held' \
+     && emit "$OUT30B" | grep -q 'cycle locks released: 0' \
+     && ! emit "$OUT30B" | grep -qi 'releasing'; then
+    pass "case 30b: neither cycle lock held -> both 'not held', released 0"
+  else
+    fail "case 30b: expected both keys reported not held and released 0 — got: $OUT30B"
+  fi
+
+  # 30c: redis-cli absent from PATH -> WARN + return 0, deploy continues
+  # (no GET/TTL/DEL attempted, nothing fatal).
+  OUT30C="$(run_release_locks_30 no-redis-cli 0)"
+  if emit "$OUT30C" | grep -qi 'redis-cli not found' \
+     && emit "$OUT30C" | grep -qi 'cycle locks left to expire' \
+     && ! emit "$OUT30C" | grep -qi 'FATAL' \
+     && ! emit "$OUT30C" | grep -qi 'released:'; then
+    pass "case 30c: redis-cli absent -> WARN and return 0, no crash"
+  else
+    fail "case 30c: expected a WARN naming redis-cli absence and a clean return — got: $OUT30C"
+  fi
+
+  # 30d: dry-run -> no redis-cli call at all, only the dry-run log line.
+  OUT30D="$(run_release_locks_30 held-both 1)"
+  if emit "$OUT30D" | grep -qi '\[dry-run\] skipping scraper cycle-lock release' \
+     && ! emit "$OUT30D" | grep -q -- '-u redis://'; then
+    pass "case 30d: dry-run skips redis-cli entirely, logs the dry-run line only"
+  else
+    fail "case 30d: expected dry-run to skip redis-cli and log the dry-run line only — got: $OUT30D"
+  fi
+
+  # 30e: the token changes between GET and EVAL (the scraper's pm2
+  # --cron-restart=*/30 grabbed a fresh lock in that window) -> EVAL's
+  # compare returns 0, the key is left alone, and the summary reflects 0
+  # released (never a false "released" claim for a lock we didn't own).
+  OUT30E="$(run_release_locks_30 token-changed 0)"
+  if emit "$OUT30E" | grep -q 'releasing lock:resource:scraper:cycle (held: 111s remaining)' \
+     && emit "$OUT30E" | grep -q 'lock:resource:scraper:cycle token changed, not released' \
+     && emit "$OUT30E" | grep -q 'lock:resource:filing-auto-persist:cycle token changed, not released' \
+     && emit "$OUT30E" | grep -q 'cycle locks released: 0' \
+     && ! emit "$OUT30E" | grep -q 'DEL-CALLED-DIRECTLY'; then
+    pass "case 30e: token changed between GET and EVAL -> 'token changed, not released', released count 0"
+  else
+    fail "case 30e: expected 'token changed, not released' + a released-0 summary when EVAL loses the race — got: $OUT30E"
+  fi
+
+  # 30f: the full argv log for a held-both run is EXACTLY six calls — one
+  # GET, one TTL, one EVAL per key, nothing else (no stray key, no
+  # additional command) — and every call carries the -t 3 connect timeout.
+  RC_LOG_30F="$(emitn "$OUT30A" | awk '/^--- rc-log ---$/{f=1;next} f')"
+  RC_LINES_30F="$(printf '%s\n' "$RC_LOG_30F" | grep -c .)"
+  if [ "$RC_LINES_30F" -eq 6 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c ' GET ')" -eq 2 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c ' TTL ')" -eq 2 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c ' EVAL ')" -eq 2 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c ' DEL ')" -eq 0 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -vc -- '^-t 3 -u ')" -eq 0 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c 'lock:resource:scraper:cycle')" -eq 3 ] \
+     && [ "$(printf '%s\n' "$RC_LOG_30F" | grep -c 'lock:resource:filing-auto-persist:cycle')" -eq 3 ]; then
+    pass "case 30f: argv log is exactly GET/TTL/EVAL for the two known keys, -t 3 on every call, no other key or command"
+  else
+    fail "case 30f: expected exactly 6 calls (GET/TTL/EVAL x2 keys) all carrying -t 3, no stray key/command — got: $RC_LOG_30F"
+  fi
+
+  rm -rf "$FAKEBIN30" "$ENVDIR30"
 fi
 
 if [ "$FAILED" -ne 0 ]; then
