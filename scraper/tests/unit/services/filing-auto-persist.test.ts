@@ -53,6 +53,8 @@ import {
   AUTO_PERSIST_DOC_TYPES,
   EXTRACTABLE_DOC_TYPES,
   MAX_EXTRACTION_ATTEMPTS,
+  parseBlockedVersion,
+  withBlockedVersion,
   EXTRACTION_BLOCKED_ERROR,
   EXTRACTOR_MEMORY_CEILING_EXIT,
   HARD_FAILURE_MARKER,
@@ -66,6 +68,8 @@ import {
   type CandidateDocument,
 } from '../../../src/services/filing-auto-persist.js';
 import type { FilingExtraction, PersistFilingSummary } from '../../../src/services/filing-persister.js';
+import logger from '../../../src/utils/logger.js';
+import { documentPath } from '../../../src/services/document-store.js';
 
 const SHA = 'a'.repeat(64);
 const IPO = { id: 'ipo-1', companyName: 'Rays Of Belief Ltd', slug: 'rays-of-belief-ltd', segment: 'MAINBOARD' };
@@ -1328,7 +1332,9 @@ describe('W-142 — anchor allocation reports are selected by the automatic door
     const r = await processPendingFilings(IPO, d);
 
     expect(d.runExtractor).not.toHaveBeenCalled();
-    expect(d.runAnchorPersist).toHaveBeenCalledWith({ ipoId: 'ipo-1', companyName: IPO.companyName });
+    expect(d.runAnchorPersist).toHaveBeenCalledWith(
+      expect.objectContaining({ ipoId: 'ipo-1', companyName: IPO.companyName })
+    );
     expect(d.persistFiling).not.toHaveBeenCalled();
     expect(r.persisted).toBe(1);
     expect(r.spawned).toBe(1);
@@ -1459,5 +1465,103 @@ describe('W-142 — the outcome map written to documents.extraction_status', () 
   it('keeps the anchor sidecar timeout inside the extractor budget the lock TTL is sized on', async () => {
     const { SIDECAR_TIMEOUT_MS } = await import('../../../src/scrapers/anchor-investors-scraper.js');
     expect(SIDECAR_TIMEOUT_MS).toBeLessThanOrEqual(EXTRACT_TIMEOUT_MS_REAL);
+  });
+});
+
+// ------------------------------------------------- W-142 round-2 findings
+
+describe('W-142 round 2 — MAJOR-1: the door pins the row it selected', () => {
+  it('passes the SELECTED document id and its verified store path to the anchor runner', async () => {
+    const d = anchorDeps();
+    await processPendingFilings(IPO, d);
+
+    const call = (d.runAnchorPersist as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(call.document.documentId).toBe('anchor-1');
+    expect(call.document.pdfPath).toBe(
+      documentPath('ipo-1', 'ANCHOR_ALLOCATION_REPORT', SHA, 'C:/store')
+    );
+  });
+
+  it('with two active anchor rows, each run pins its own row — the stamp cannot land on the other', async () => {
+    const d = anchorDeps({
+      loadDocuments: vi.fn(async () => [
+        anchorDoc({ id: 'anchor-old', sha256: 'b'.repeat(64) }),
+        anchorDoc({ id: 'anchor-new' }),
+      ]),
+    });
+    await processPendingFilings(IPO, d);
+
+    const pinned = (d.runAnchorPersist as ReturnType<typeof vi.fn>).mock.calls.map(
+      (c) => c[0].document.documentId
+    );
+    expect(pinned).toEqual(['anchor-old', 'anchor-new']);
+    // Each COMPLETED stamp names the row that was actually extracted.
+    const completed = stateCalls(d)
+      .filter((c) => c.status === 'COMPLETED')
+      .map((c) => c.documentId);
+    expect(completed.sort()).toEqual(['anchor-new', 'anchor-old']);
+  });
+});
+
+describe('W-142 round 2 — MINOR-1: an anchor MANUAL_REVIEW carries the extractor version', () => {
+  it('stamps @version so a future extractor bump revives the row instead of parking it forever', async () => {
+    const d = anchorDeps({
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'manual_review' as const,
+        reason: 'anchor: 6 of 12 investor names are unreadable',
+      })),
+    });
+    await processPendingFilings(IPO, d);
+
+    const call = stateCalls(d).find((c) => c.status === 'MANUAL_REVIEW');
+    expect(call.error).toContain(EXTRACTOR_VERSION);
+    // The gate must READ that version back: same version blocks, a bump revives.
+    expect(parseBlockedVersion(call.error)).toBe(EXTRACTOR_VERSION);
+    expect(
+      documentExtractionBlocked(
+        { extractionStatus: 'MANUAL_REVIEW', extractionError: call.error, retryCount: 1, updatedAt: null },
+        EXTRACTOR_VERSION
+      ).blocked
+    ).toBe(true);
+    expect(
+      documentExtractionBlocked(
+        { extractionStatus: 'MANUAL_REVIEW', extractionError: call.error, retryCount: 1, updatedAt: null },
+        'extract_filing.py@2099-01-01'
+      ).blocked
+    ).toBe(false);
+  });
+
+  it('keeps the version suffix even when the reason would overflow the error column', () => {
+    const stamped = withBlockedVersion('x'.repeat(5000), EXTRACTOR_VERSION);
+    expect(stamped.length).toBeLessThanOrEqual(1000);
+    expect(parseBlockedVersion(stamped)).toBe(EXTRACTOR_VERSION);
+  });
+
+  it('still reads the original blocked_after_10_attempts encoding', () => {
+    expect(parseBlockedVersion(`${EXTRACTION_BLOCKED_ERROR}@v1`)).toBe('v1');
+    expect(parseBlockedVersion('an operator note with no version')).toBeNull();
+  });
+});
+
+describe('W-142 round 2 — MINOR-2: blank-name rows are published, never silently dropped', () => {
+  it('COMPLETES the document and warns with the skipped count', async () => {
+    const warn = vi.spyOn(logger, 'warn');
+    const d = anchorDeps({
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'persisted' as const,
+        reason: null,
+        summary: anchorSummary({ investorsWritten: 4, skippedBlankNames: 2 }),
+      })),
+    });
+    await processPendingFilings(IPO, d);
+
+    expect(stateCalls(d)).toContainEqual(
+      expect.objectContaining({ documentId: 'anchor-1', status: 'COMPLETED' })
+    );
+    const warned = warn.mock.calls.find(
+      (c) => (c[0] as { skippedBlankNames?: number })?.skippedBlankNames === 2
+    );
+    expect(warned).toBeDefined();
+    warn.mockRestore();
   });
 });

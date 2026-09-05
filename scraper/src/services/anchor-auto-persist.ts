@@ -27,6 +27,7 @@ import {
   scrapeAnchorInvestorsDetailed,
   ANCHOR_EMPTY_PAGES_REASON,
   type AnchorScrapeFailureKind,
+  type PinnedAnchorDocument,
 } from '../scrapers/anchor-investors-scraper.js';
 import { AnchorInvestorRepository } from '../repositories/anchor-investor-repository.js';
 import type { FilingPersisterDeps } from './filing-persister.js';
@@ -95,6 +96,14 @@ export function classifyAnchorAutoOutcome(input: {
 export interface AnchorAutoPersistArgs {
   ipoId: string;
   companyName: string;
+  /**
+   * MAJOR-1 (round 2): the document row the door SELECTED and the store path
+   * it already proved exists. Required — without it the scrape would re-select
+   * "the newest active anchor row" and could stamp a different row than the
+   * one extracted, and could fall through to an HTTP download inside the
+   * deadline-checked extract loop.
+   */
+  document: PinnedAnchorDocument;
 }
 
 /**
@@ -116,7 +125,7 @@ export async function runAnchorAutoPersist(
     { companyName: args.companyName, apply: true },
     {
       scrapeAnchorReport: async (id, name) => {
-        const outcome = await scrapeAnchorInvestorsDetailed(db, id, name);
+        const outcome = await scrapeAnchorInvestorsDetailed(db, id, name, args.document);
         failure = outcome.failure;
         return outcome.data;
       },

@@ -132,6 +132,22 @@ export type AnchorScrapeFailureKind =
   | 'issue_size_conflict'
   | 'error';
 
+/**
+ * MAJOR-1 (round 2). The automatic door has ALREADY selected one document row
+ * and proved its stored file exists. Letting the scrape re-select "the newest
+ * active anchor row" (`getAnchorReport`) meant that, with two active anchor
+ * rows, the door could stamp COMPLETED on the row it did NOT extract — and
+ * `resolvePdfPath`'s last resort is a 3-retry HTTP download with no timeout,
+ * fired from inside the deadline-checked extract loop. Pinning both the row id
+ * and the verified path closes that: the sidecar runs on exactly the selected
+ * row's file, and the automatic door NEVER reaches the network.
+ */
+export interface PinnedAnchorDocument {
+  documentId: string;
+  /** The store path the door already proved exists. Never a URL. */
+  pdfPath: string;
+}
+
 export interface AnchorScrapeOutcome {
   data: AnchorInvestorData | null;
   failure?: { kind: AnchorScrapeFailureKind; reason: string };
@@ -200,24 +216,38 @@ export async function scrapeAnchorInvestors(
 export async function scrapeAnchorInvestorsDetailed(
   db: NodePgDatabase<typeof schema>,
   ipoId: string,
-  companyName: string
+  companyName: string,
+  pinned?: PinnedAnchorDocument
 ): Promise<AnchorScrapeOutcome> {
   try {
     logger.info(`[Anchor Investors] Starting scrape for ${companyName} (${ipoId})`);
 
-    const document = await getAnchorReport(db, ipoId);
-    if (!document) {
-      logger.warn(`[Anchor Investors] No anchor allocation report on file for ${companyName}`);
-      return { data: null, failure: { kind: 'no_document', reason: 'no anchor allocation report on file' } };
-    }
-
-    const pdfPath = await resolvePdfPath(document, ipoId);
-    if (!pdfPath) {
-      logger.error(`[Anchor Investors] Anchor report ${document.id} could not be read for ${companyName}`);
-      return {
-        data: null,
-        failure: { kind: 'unreadable_file', reason: `anchor report ${document.id} could not be read` },
-      };
+    let pdfPath: string | null;
+    if (pinned) {
+      // MAJOR-1: no row re-selection and no download — the caller already
+      // selected the row and proved its stored file exists.
+      if (!existsSync(pinned.pdfPath)) {
+        const reason =
+          `anchor report ${pinned.documentId}: stored file missing at ${pinned.pdfPath} — ` +
+          'the automatic door never downloads';
+        logger.error(`[Anchor Investors] ${reason}`);
+        return { data: null, failure: { kind: 'unreadable_file', reason } };
+      }
+      pdfPath = pinned.pdfPath;
+    } else {
+      const document = await getAnchorReport(db, ipoId);
+      if (!document) {
+        logger.warn(`[Anchor Investors] No anchor allocation report on file for ${companyName}`);
+        return { data: null, failure: { kind: 'no_document', reason: 'no anchor allocation report on file' } };
+      }
+      pdfPath = await resolvePdfPath(document, ipoId);
+      if (!pdfPath) {
+        logger.error(`[Anchor Investors] Anchor report ${document.id} could not be read for ${companyName}`);
+        return {
+          data: null,
+          failure: { kind: 'unreadable_file', reason: `anchor report ${document.id} could not be read` },
+        };
+      }
     }
 
     const sidecar = extractPageTexts(pdfPath);
@@ -346,10 +376,32 @@ export function extractPageTexts(pdfPath: string): SidecarResult {
   // no usable exit code at all, only a stderr signature. Either is a HARD
   // failure the caller must back off far longer than a parse failure.
   const stderr = res.stderr || '';
-  if (res.status === ANCHOR_SIDECAR_MEMORY_CEILING_EXIT || res.status === null || isMemoryAbortStderr(stderr)) {
+  const memoryAbort =
+    res.status === ANCHOR_SIDECAR_MEMORY_CEILING_EXIT || isMemoryAbortStderr(stderr);
+
+  // MAJOR-2 (round 2). `spawnSync` reports `status === null` for ANY signal —
+  // including its OWN 120s timeout kill. Treating that as a memory abort gave
+  // a merely-slow scan the W-137 hard-failure marker, a 24h backoff floor and
+  // an error line that named a cause that never happened. The timeout is
+  // checked FIRST and reported honestly as an ordinary retryable failure;
+  // only exit 3 or the W-137 stderr shape is a memory abort.
+  const timedOut = (res.error as { code?: string } | undefined)?.code === 'ETIMEDOUT';
+  if (timedOut && !memoryAbort) {
+    const reason = `anchor sidecar timed out after ${SIDECAR_TIMEOUT_MS}ms`;
+    logger.error(`[Anchor Investors] ${reason}`);
+    return { ok: false, kind: 'sidecar_error', reason };
+  }
+  if (memoryAbort) {
     const reason = `anchor sidecar memory abort (exit ${String(res.status)}): ${stderr.slice(0, 300)}`;
     logger.error(`[Anchor Investors] ${reason}`);
     return { ok: false, kind: 'hard_failure', reason };
+  }
+  if (res.status === null) {
+    // Killed by a signal with no memory signature: real, but not a memory
+    // ceiling. Ordinary FAILED + backoff, with the signal named.
+    const reason = `anchor sidecar killed (signal ${String(res.signal ?? 'unknown')}): ${stderr.slice(0, 300)}`;
+    logger.error(`[Anchor Investors] ${reason}`);
+    return { ok: false, kind: 'sidecar_error', reason };
   }
 
   if (!res.stdout) {

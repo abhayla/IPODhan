@@ -241,7 +241,26 @@ export interface DocumentGate {
 export function parseBlockedVersion(error: string | null | undefined): string | null {
   if (!error) return null;
   const match = new RegExp(`^${EXTRACTION_BLOCKED_ERROR}@(.+)$`).exec(error);
-  return match ? match[1] : null;
+  if (match) return match[1];
+  // Round-2 MINOR-1: a MANUAL_REVIEW written for a REASON other than
+  // "10 attempts" (the anchor door's scan-quality refusals) still has to say
+  // which extractor build parked it, or `documentExtractionBlocked` reads it
+  // as an operator-set/legacy row and blocks it FOREVER — even after an
+  // extractor bump that would fix it. Such rows end with ` @<version>`.
+  const suffix = / @(\S+)$/.exec(error);
+  return suffix ? suffix[1] : null;
+}
+
+/**
+ * Stamp an extractor version onto a MANUAL_REVIEW reason (round-2 MINOR-1).
+ *
+ * The reason is truncated FIRST so the version suffix always survives the
+ * 1000-char `extraction_error` cap — a truncated-off version is exactly the
+ * permanent block this fixes.
+ */
+export function withBlockedVersion(reason: string, version: string, max = 1000): string {
+  const suffix = ` @${version}`;
+  return `${reason.slice(0, Math.max(0, max - suffix.length))}${suffix}`;
 }
 
 /**
@@ -700,7 +719,12 @@ export interface AutoPersistDeps {
    * supplied, the document is reported as skipped rather than silently
    * dropped or run through the wrong extractor.
    */
-  runAnchorPersist?: (args: { ipoId: string; companyName: string }) => Promise<AnchorAutoOutcome>;
+  runAnchorPersist?: (args: {
+    ipoId: string;
+    companyName: string;
+    /** The SELECTED row and its already-verified store path (round-2 MAJOR-1). */
+    document: { documentId: string; pdfPath: string };
+  }) => Promise<AnchorAutoOutcome>;
   persistFiling: typeof persistFilingExtraction;
   persisterDeps: FilingPersisterDeps;
   /**
@@ -871,6 +895,8 @@ async function runAnchorDocument(
   doc: CandidateDocument,
   deps: AutoPersistDeps,
   ctx: {
+    /** The store path `selectPendingFilings` already proved exists for THIS row. */
+    pdfPath: string;
     version: string;
     result: AutoPersistResult;
     retryCountAtStamp: number;
@@ -887,7 +913,14 @@ async function runAnchorDocument(
 
   let outcome: AnchorAutoOutcome;
   try {
-    outcome = await deps.runAnchorPersist({ ipoId: ipo.id, companyName: ipo.companyName ?? '' });
+    outcome = await deps.runAnchorPersist({
+      ipoId: ipo.id,
+      companyName: ipo.companyName ?? '',
+      // MAJOR-1: pin the SELECTED row + its verified file. The scrape must not
+      // re-select the newest anchor row (a second active row would be stamped
+      // COMPLETED without having been extracted) and must not download.
+      document: { documentId: doc.id, pdfPath: ctx.pdfPath },
+    });
   } catch (error) {
     outcome = {
       kind: 'failed',
@@ -910,8 +943,29 @@ async function runAnchorDocument(
         })
         .catch(() => undefined);
     }
+    // MINOR-2: a blank-name row is DROPPED from the write, not a refusal — the
+    // rest of the letter is real, checked data and publishing it is right. But
+    // a silent COMPLETED hid the fact that some allocation rows were omitted,
+    // so the count is logged here and is already carried in the H3 evidence
+    // `anchor-persister.ts` writes on the applied path.
+    if (outcome.summary.skippedBlankNames > 0) {
+      logger.warn(
+        {
+          ipoId: ipo.id,
+          company: ipo.companyName,
+          skippedBlankNames: outcome.summary.skippedBlankNames,
+          investorsWritten: outcome.summary.investorsWritten,
+        },
+        'Anchor report persisted with investor rows omitted for a blank name — see the H3 evidence (W-142)'
+      );
+    }
     logger.info(
-      { ipoId: ipo.id, company: ipo.companyName, investors: outcome.summary.investorsWritten },
+      {
+        ipoId: ipo.id,
+        company: ipo.companyName,
+        investors: outcome.summary.investorsWritten,
+        skippedBlankNames: outcome.summary.skippedBlankNames,
+      },
       'Anchor allocation report extracted and persisted automatically (W-142)'
     );
     return { persisted: true };
@@ -922,22 +976,26 @@ async function runAnchorDocument(
   // MANUAL_REVIEW: a scan-quality problem no retry fixes. Written with the
   // REASON, and with the retry count, so the row says why a human is needed.
   if (outcome.kind === 'manual_review') {
+    // MINOR-1: the version goes ON the row. Without it
+    // `documentExtractionBlocked` treats this as an operator-parked row and
+    // never revives it, not even after an extractor bump.
+    const parked = withBlockedVersion(outcome.reason, version);
     logger.warn(
-      { ipoId: ipo.id, reason: outcome.reason },
+      { ipoId: ipo.id, reason: outcome.reason, version },
       'Anchor allocation report needs a human — recorded MANUAL_REVIEW with the reason (W-142)'
     );
     await deps
       .setDocumentExtractionState({
         documentId: doc.id,
         status: 'MANUAL_REVIEW',
-        error: outcome.reason.slice(0, 1000),
+        error: parked,
         retryCount: retryCountAtStamp,
       })
       .catch(() => undefined);
     await recordLiveStep(ipo.id, 'H3', {
       status: 'BLOCKED',
       source: ANCHOR_DOC_TYPE,
-      error: outcome.reason.slice(0, 1000),
+      error: parked,
     }).catch(() => undefined);
     return { persisted: false };
   }
@@ -1177,6 +1235,7 @@ export async function processPendingFilings(
     // gate, which compares a price-band ad against an RHP).
     if (doc.type === ANCHOR_DOC_TYPE) {
       const outcome = await runAnchorDocument(ipo, doc, deps, {
+        pdfPath,
         version,
         result,
         retryCountAtStamp: newRetryCount,
