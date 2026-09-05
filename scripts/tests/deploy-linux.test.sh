@@ -1654,12 +1654,20 @@ FAKEFUSER
       # builtin/shadowed function, not resolved via PATH), resolved from
       # the CURRENT PATH via `command -v`, with `ss` itself excluded.
       local NOSS_FAKEBIN28; NOSS_FAKEBIN28="$(mktemp -d)"
-      for c in bash sleep date grep awk sed cat tr cut head tail ps mktemp rm; do
+      local REALBASH; REALBASH="$(command -v bash)"
+      for c in bash sleep date grep awk sed cat tr cut head tail ps mktemp rm env; do
         real="$(command -v "$c" 2>/dev/null || true)"
         [ -n "$real" ] || continue
-        printf '#!/usr/bin/env bash
+        # Absolute shebang -- NOT "#!/usr/bin/env bash": on this ss-less
+        # PATH, /usr/bin/env would resolve `bash` to the wrapper NAMED
+        # bash, whose own #!/usr/bin/env bash shebang re-invokes env bash
+        # again -- infinite recursion (W-169e). An absolute shebang to the
+        # real interpreter breaks the loop; `env` itself is also wrapped
+        # (with the same absolute-bash form) so the fake fuser's
+        # #!/usr/bin/env bash shebang still resolves.
+        printf '#!%s
 exec "%s" "$@"
-' "$real" > "$NOSS_FAKEBIN28/$c"
+' "$REALBASH" "$real" > "$NOSS_FAKEBIN28/$c"
         chmod +x "$NOSS_FAKEBIN28/$c"
       done
       cp "$FAKEBIN28/fuser" "$NOSS_FAKEBIN28/fuser"
