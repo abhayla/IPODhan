@@ -144,6 +144,55 @@ const HIGH_VALUE_LIVE_FIELDS = new Set<string>([
 const LIVE_STATUSES = new Set<string>(['UPCOMING', 'OPEN']);
 
 /**
+ * W-160: the two primary exchanges. Consensus BETWEEN these two (regardless
+ * of which aggregator source is currently held) is the strongest possible
+ * signal that a held value is wrong — see `resolveHighValueHoldEscape` below.
+ */
+const EXCHANGE_SOURCES = new Set<ScraperSource>(['NSE', 'BSE']);
+
+/**
+ * W-160: max days between close and listing the invariant tolerates, by
+ * segment. Anything else (segment absent, e.g. RIGHTS/InvIT/REIT) uses the
+ * MAINBOARD figure — the wider of the two — so the invariant never
+ * false-positives on a segment it can't classify.
+ */
+const MAX_LISTING_GAP_DAYS: Record<string, number> = {
+  MAINBOARD: 12,
+  SME: 6,
+};
+
+function toEpochDay(value: any): number | null {
+  if (value === null || value === undefined || value === '') return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : Math.floor(d.getTime() / 86400000);
+}
+
+/**
+ * W-160: open < close < listing, plus the close→listing gap-by-segment. Only
+ * checks pairs where BOTH sides are present/parseable — missing data is
+ * "can't judge", never treated as a violation (a false-positive override is
+ * worse than leaving an already-conservative HOLD in place).
+ */
+function datesSatisfyOrderInvariant(
+  openDate: any,
+  closeDate: any,
+  listingDate: any,
+  segment: any
+): boolean {
+  const open = toEpochDay(openDate);
+  const close = toEpochDay(closeDate);
+  const listing = toEpochDay(listingDate);
+
+  if (open !== null && close !== null && !(open < close)) return false;
+  if (close !== null && listing !== null) {
+    if (!(close < listing)) return false;
+    const maxGap = MAX_LISTING_GAP_DAYS[String(segment)] ?? MAX_LISTING_GAP_DAYS.MAINBOARD;
+    if (listing - close > maxGap) return false;
+  }
+  return true;
+}
+
+/**
  * W-60: terminal `ipo_status` values (commit 4a96ab7d). Once an IPO is
  * WITHDRAWN or POSTPONED, the web updater's own `TERMINAL_STATUSES` guard
  * (`web/lib/services/status-updater-service.ts`) refuses to move it back —
@@ -687,6 +736,15 @@ export class DataConsolidationService {
             // live. `ipos.status` is already on the row passed as
             // `existingData` — no new column, no new table.
             ipoStatus: input.existingData?.status,
+            // W-160: sibling dates + segment for the open<close<listing
+            // invariant escape — read from the raw row, not `existingSourceMap`,
+            // so it's available even for an untracked field.
+            dateContext: {
+              openDate: input.existingData?.openDate,
+              closeDate: input.existingData?.closeDate,
+              listingDate: input.existingData?.listingDate,
+              segment: input.existingData?.segment,
+            },
           });
 
           result.fieldResults.push(fieldResult);
@@ -784,6 +842,7 @@ export class DataConsolidationService {
     scrapedAt?: Date;
     existingUpdatedAt?: Date;
     ipoStatus?: string;
+    dateContext?: { openDate?: any; closeDate?: any; listingDate?: any; segment?: any };
   }): Promise<FieldConsolidationResult> {
     const {
       ipoId,
@@ -1119,9 +1178,95 @@ export class DataConsolidationService {
       scrapedAt: params.scrapedAt,
       existingUpdatedAt: params.existingUpdatedAt,
       ipoStatus: params.ipoStatus,
+      dateContext: params.dateContext,
     });
 
     return conflict;
+  }
+
+  /**
+   * W-160: the two escape hatches out of the T-328 HOLD above. HOLD is right
+   * to protect a published value against ONE disagreeing source — but a
+   * wrong aggregator value must not stay protected against two primary
+   * exchanges that agree with each other, nor against an incoming value that
+   * fixes an impossible date order the held value is already violating.
+   * Field-priority ranks are untouched; this only decides whether HOLD
+   * itself still applies. Returns null when neither escape fires (the
+   * caller falls through to the ordinary HOLD).
+   */
+  private async resolveHighValueHoldEscape(params: {
+    ipoId: string;
+    tableName: string;
+    fieldName: string;
+    existingValue: any;
+    incomingValue: any;
+    incomingSource: ScraperSource;
+    rules: FieldRules;
+    dateContext?: { openDate?: any; closeDate?: any; listingDate?: any; segment?: any };
+  }): Promise<{ chosenValue: any; chosenSource: ScraperSource; resolutionReason: string } | null> {
+    const { ipoId, tableName, fieldName, existingValue, incomingValue, incomingSource, rules, dateContext } =
+      params;
+
+    // (a) Exchange consensus: the incoming source is NSE or BSE, and the
+    // OTHER exchange already disagreed with the held value in this same way
+    // — recorded as an open `data_conflicts` row by a prior HOLD this cycle
+    // (or an earlier one). Two independent exchanges agreeing outranks a
+    // single aggregator, regardless of the matrix's ranks.
+    if (EXCHANGE_SOURCES.has(incomingSource) && FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+      const otherExchange = incomingSource === 'NSE' ? 'BSE' : 'NSE';
+      try {
+        const openConflicts: Array<{ tableName: string; fieldName: string; source2: string; value2: string | null }> =
+          (await this.dataConflictsRepository.findUnresolvedForIPO(ipoId)) ?? [];
+        const normalizedIncoming = normalize(fieldName, incomingValue, rules);
+        const priorAgreement = openConflicts.find(
+          (row) =>
+            row.tableName === tableName &&
+            row.fieldName === fieldName &&
+            row.source2 === otherExchange &&
+            row.value2 !== null &&
+            areEquivalent(normalize(fieldName, row.value2, rules), normalizedIncoming)
+        );
+        if (priorAgreement) {
+          return {
+            chosenValue: incomingValue,
+            chosenSource: incomingSource,
+            resolutionReason: 'EXCHANGE_CONSENSUS_OVERRIDE_HELD_VALUE',
+          };
+        }
+      } catch (error) {
+        console.error('[DataConsolidation] Failed to check exchange consensus (non-fatal):', error);
+      }
+    }
+
+    // (b) Date-order invariant: open < close < listing (listing within
+    // MAX_LISTING_GAP_DAYS of close, by segment). Only openDate/closeDate are
+    // HIGH_VALUE_LIVE_FIELDS, so only those two reach here. Fires from a
+    // SINGLE disagreeing source — no consensus required, because a value
+    // that makes the row internally impossible is wrong on its own terms.
+    if (dateContext && (fieldName === 'openDate' || fieldName === 'closeDate')) {
+      const heldOpen = fieldName === 'openDate' ? existingValue : dateContext.openDate;
+      const heldClose = fieldName === 'closeDate' ? existingValue : dateContext.closeDate;
+      const incomingOpen = fieldName === 'openDate' ? incomingValue : dateContext.openDate;
+      const incomingClose = fieldName === 'closeDate' ? incomingValue : dateContext.closeDate;
+
+      const heldSatisfies = datesSatisfyOrderInvariant(heldOpen, heldClose, dateContext.listingDate, dateContext.segment);
+      const incomingSatisfies = datesSatisfyOrderInvariant(
+        incomingOpen,
+        incomingClose,
+        dateContext.listingDate,
+        dateContext.segment
+      );
+
+      if (!heldSatisfies && incomingSatisfies) {
+        return {
+          chosenValue: incomingValue,
+          chosenSource: incomingSource,
+          resolutionReason: 'DATE_INVARIANT_OVERRIDE_HELD_VALUE',
+        };
+      }
+    }
+
+    return null;
   }
 
   /**
@@ -1142,6 +1287,11 @@ export class DataConsolidationService {
     scrapedAt?: Date;
     existingUpdatedAt?: Date;
     ipoStatus?: string;
+    // W-160: sibling date/segment context for the open<close<listing
+    // invariant escape — the field being resolved may be openDate or
+    // closeDate, so the OTHER two values come from the stored row, not from
+    // this field's own existing/incoming pair.
+    dateContext?: { openDate?: any; closeDate?: any; listingDate?: any; segment?: any };
   }): Promise<FieldConsolidationResult> {
     const {
       ipoId,
@@ -1184,11 +1334,51 @@ export class DataConsolidationService {
         incomingSource
       );
 
+      // W-160: the HOLD below is right to protect a published value against
+      // ONE disagreeing source, but must yield when either (a) NSE and BSE —
+      // the two primary exchanges — independently agree with each other on
+      // the incoming value, or (b) the HELD value violates the
+      // open < close < listing date-order invariant while the incoming value
+      // satisfies it. Checked only when the TZ tie-break above didn't already
+      // resolve the field, and only ever computed once per call.
+      const holdEscape = tiebreak
+        ? null
+        : await this.resolveHighValueHoldEscape({
+            ipoId,
+            tableName,
+            fieldName,
+            existingValue,
+            incomingValue,
+            incomingSource,
+            rules,
+            dateContext: params.dateContext,
+          });
+
       if (tiebreak) {
         chosenSource = tiebreak.chosenSource;
         chosenValue = tiebreak.chosenValue;
         resolutionReason = 'TZ_SIGNATURE_TIEBREAK_PREFER_NON_NSE';
         tiebreakResolved = true;
+      } else if (holdEscape) {
+        chosenSource = holdEscape.chosenSource;
+        chosenValue = holdEscape.chosenValue;
+        resolutionReason = holdEscape.resolutionReason;
+        tiebreakResolved = true;
+
+        logger.warn(
+          {
+            ipoId,
+            tableName,
+            fieldName,
+            ipoStatus,
+            existingSource,
+            existingValue,
+            incomingSource,
+            incomingValue,
+            escapeReason: resolutionReason,
+          },
+          'hold_status_transition: overridden — exchange consensus / invariant violation'
+        );
       } else {
         // HOLD: keep the previously-published value, never assert either
         // side. `hold_status_transition` naming mirrors the status-updater's
