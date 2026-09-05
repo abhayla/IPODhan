@@ -52,6 +52,36 @@ describe('parseBseBoard — corporate-action pollution (matrix F12)', () => {
   });
 });
 
+describe('parseBseBoard — issueFlag derives isFixedPrice (W-143)', () => {
+  it("W143: IR_FLAG_FULL 'Fixed Price' -> isFixedPrice true, 'Book Building' -> false", () => {
+    const synthetic = {
+      Table: [
+        {
+          IPO_NO: 9001,
+          Scrip_name: 'Fly-Hi Maritime Travels Ltd',
+          Scrip_cd: 1234,
+          Status: 'L',
+          IR_FLAG_FULL: 'Fixed Price',
+          Start_Dt: '2026-09-01T00:00:00',
+          End_Dt: '2026-09-03T00:00:00',
+        },
+        {
+          IPO_NO: 9002,
+          Scrip_name: 'Book Built Co Ltd',
+          Scrip_cd: 5678,
+          Status: 'L',
+          IR_FLAG_FULL: 'Book Building',
+          Start_Dt: '2026-09-01T00:00:00',
+          End_Dt: '2026-09-03T00:00:00',
+        },
+      ],
+    };
+    const rows = parseBseBoard(synthetic);
+    expect(rows.find((r) => r.ipoNo === 9001)?.isFixedPrice).toBe(true);
+    expect(rows.find((r) => r.ipoNo === 9002)?.isFixedPrice).toBe(false);
+  });
+});
+
 describe('resolveBseBoardRow / resolveIpoNo', () => {
   const rows = parseBseBoard(boardPayload);
 

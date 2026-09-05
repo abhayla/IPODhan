@@ -685,7 +685,18 @@ export async function persistFilingExtraction(
 
   // The ad cites SEBI ICDR Reg 6(1)/6(2) only for a book-built offer.
   const regulation = str(extraction, 'book_building_regulation');
-  if (regulation) mark('issueType', 'BOOK_BUILDING');
+  if (regulation) {
+    mark('issueType', 'BOOK_BUILDING');
+  } else if (floor !== null && cap !== null && floor === cap) {
+    // W-143: no book-building regulation cited AND the band collapses to one
+    // price — the same domain rule `data-validation.ts` already documents
+    // ("a FIXED_PRICE issue may legitimately have min === max"), applied to
+    // the one column (`ipo_details.issueType`) that had no writer for it at
+    // all. `floor`/`cap` are the SAME price_band_floor/price_band_cap fields
+    // already read above for `ipos.priceRangeMin`/`priceRangeMax` — no new
+    // extraction field, just a second consumer of the one already parsed.
+    mark('issueType', 'FIXED_PRICE');
+  }
   // W-88 (A12): the citation itself now has a column, so the offer's regulation
   // survives instead of collapsing into the issue_type enum. Stored in the
   // form the ad prints it ("Regulation 6(1)"), inside the column's 32 chars.

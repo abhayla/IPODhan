@@ -107,4 +107,63 @@ describe('W-143: ipo_details.issue_type must be derivable as FIXED_PRICE', () =>
     const [, values] = detailsUpsert.mock.calls[0] as [string, Record<string, unknown>];
     expect(values.issueType).toBe('FIXED_PRICE');
   });
+
+  it('stays BOOK_BUILDING for a real band (floor < cap), never falls back to FIXED_PRICE', async () => {
+    const deps = makeDeps();
+    const bandExtraction: FilingExtraction = {
+      doc_type: 'PRICE_BAND_AD',
+      source_doc: 'book-built-band.pdf',
+      pages: 1,
+      extraction_status: 'OK',
+      unit: 'rupees',
+      fiscal_years: [],
+      fields: {
+        price_band_floor: { value: 168, page: 1, check: { name: 'floor_check', passed: true } },
+        price_band_cap: { value: 177, page: 1, check: { name: 'cap_check', passed: true } },
+        book_building_regulation: { value: '6(1)', page: 1, check: { name: 'reg_check', passed: true } },
+      },
+    };
+
+    await persistFilingExtraction(
+      IPO_ID,
+      bandExtraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      deps
+    );
+
+    const detailsUpsert = deps.ipoDetailsWriter.upsert as unknown as ReturnType<typeof vi.fn>;
+    const [, values] = detailsUpsert.mock.calls[0] as [string, Record<string, unknown>];
+    expect(values.issueType).toBe('BOOK_BUILDING');
+  });
+
+  it('does not write FIXED_PRICE when the band is a real range with no regulation cited either (unresolved, not guessed)', async () => {
+    const deps = makeDeps();
+    const unresolvedExtraction: FilingExtraction = {
+      doc_type: 'PRICE_BAND_AD',
+      source_doc: 'unresolved-band.pdf',
+      pages: 1,
+      extraction_status: 'OK',
+      unit: 'rupees',
+      fiscal_years: [],
+      fields: {
+        price_band_floor: { value: 100, page: 1, check: { name: 'floor_check', passed: true } },
+        price_band_cap: { value: 110, page: 1, check: { name: 'cap_check', passed: true } },
+        // A harmless unrelated field so ipo_details still gets a write to
+        // inspect (an all-empty `details` payload short-circuits before the
+        // writer is even called, which would make this assertion vacuous).
+        compliance_officer: { value: 'Test Officer', page: 1, check: { name: 'co_check', passed: true } },
+      },
+    };
+
+    await persistFilingExtraction(
+      IPO_ID,
+      unresolvedExtraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      deps
+    );
+
+    const detailsUpsert = deps.ipoDetailsWriter.upsert as unknown as ReturnType<typeof vi.fn>;
+    const [, values] = detailsUpsert.mock.calls[0] as [string, Record<string, unknown>];
+    expect(values.issueType).toBeUndefined();
+  });
 });
