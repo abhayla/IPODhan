@@ -223,6 +223,9 @@ export async function GET(request: NextRequest) {
 - **Serving target (since the 2026-08 migration):** Linux VPS `72.61.240.224` — nginx + PM2
   (`ipodhan-web` cluster x2, `ipodhan-scraper` one-shot on cron), behind Cloudflare.
 - **Deploy:** GitHub Actions `deploy-linux.yml`, on the `linux-vps-ipodhan` self-hosted runner.
+- **Branching (owner rule 2026-09-05):** prod deploys ONLY from a frozen `release/prod-<date>` branch
+  (`--ref release/prod-<date> -f slot=prod -f ref=<sha>`); `main` is never frozen and feeds staging.
+  SSOT: `docs/ops/branching-model.md`; rule: `.claude/rules/branching-model.md`.
 - **CI is narrower than it looks.** `pr-gate.yml` (lint + type-check + unit tests, skipped for docs-only
   PRs) is the ONLY workflow that triggers on a PR. `ci.yml` and `test.yml` are `workflow_dispatch`-only
   after a prior Actions billing block — integration and E2E do NOT run automatically. Before merging
