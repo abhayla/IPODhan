@@ -36,6 +36,7 @@ import * as schema from '@ipodhan/shared/db/schema';
 import { and, desc, eq } from 'drizzle-orm';
 import { documentPath, getStoreDir } from '../services/document-store';
 import { parseAnchorReport } from './anchor-report-parser';
+import { isMemoryAbortStderr } from '../services/memory-abort-stderr.js';
 
 /**
  * Individual anchor investor data
@@ -98,7 +99,73 @@ const MAX_ANCHOR_SHARE_OF_QIB = 0.6;
 const MAX_QIB_SHARE_OF_ISSUE = 0.75;
 /** Slack on the issue-size check - `issue_size` is a scraped, rounded figure. */
 const ISSUE_SIZE_SLACK = 0.02;
-const SIDECAR_TIMEOUT_MS = 120_000;
+export const SIDECAR_TIMEOUT_MS = 120_000;
+/** Mirrors `memory_guard.EXIT_MEMORY_CEILING` — the sidecar's own OOM exit code. */
+export const ANCHOR_SIDECAR_MEMORY_CEILING_EXIT = 3;
+/**
+ * W-139. The exact reason recorded on `documents.extraction_error` when the
+ * sidecar returned pages but every one of them is blank: the letter is a scan
+ * and `anchor_report_text.py`'s OCR route did not fire for it. Retrying is
+ * pointless until a human looks, so the auto door writes MANUAL_REVIEW.
+ */
+export const ANCHOR_EMPTY_PAGES_REASON = 'no text and OCR heuristic did not fire';
+
+/**
+ * W-142: WHY the scrape now reports a REASON, not just `null`.
+ *
+ * The automatic door (`filing-auto-persist.ts`) has to stamp
+ * `documents.extraction_status` honestly: an OOM-killed sidecar must take the
+ * W-137 hard-failure backoff, a page with no text at all is a human's problem
+ * (MANUAL_REVIEW), and an ordinary parse failure is a retryable FAILED. All
+ * three used to collapse into one `null`, which can only be recorded as "it
+ * did not work" — the shape that leaves rows stuck at PENDING forever.
+ * `scrapeAnchorInvestors` keeps its exact old signature and delegates here, so
+ * the legacy callers are untouched.
+ */
+export type AnchorScrapeFailureKind =
+  | 'no_document'
+  | 'unreadable_file'
+  | 'hard_failure'
+  | 'empty_pages'
+  | 'sidecar_error'
+  | 'parse_failed'
+  | 'issue_size_conflict'
+  | 'error';
+
+export interface AnchorScrapeOutcome {
+  data: AnchorInvestorData | null;
+  failure?: { kind: AnchorScrapeFailureKind; reason: string };
+}
+
+/** The sidecar's own outcome, before any anchor-table parsing. */
+export type SidecarFailure = {
+  ok: false;
+  kind: 'hard_failure' | 'empty_pages' | 'sidecar_error';
+  reason: string;
+};
+export type SidecarResult = { ok: true; pages: string[] } | SidecarFailure;
+
+/**
+ * This workspace compiles with `strict: false`, where a boolean discriminant
+ * does NOT narrow a union (the same trap documented on
+ * `filing-auto-persist.ts`'s `isExtractorFailure`). A type-predicate function
+ * narrows in both modes.
+ */
+export function isSidecarFailure(result: SidecarResult): result is SidecarFailure {
+  return result.ok === false;
+}
+
+/**
+ * W-139: a page whose text layer produced nothing readable.
+ *
+ * Every page blank means the sidecar read a scan whose OCR route did not fire
+ * (see `anchor_report_text.py`'s `page_needs_ocr`). Parsing that is guaranteed
+ * to fail, and retrying it hourly is guaranteed to fail identically — so it is
+ * classified here, once, rather than surfacing as a generic parse failure.
+ */
+export function pagesAreEmpty(pages: string[]): boolean {
+  return pages.length === 0 || pages.every((p) => String(p ?? '').trim().length === 0);
+}
 
 const SIDECAR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -121,38 +188,58 @@ export async function scrapeAnchorInvestors(
   ipoId: string,
   companyName: string
 ): Promise<AnchorInvestorData | null> {
+  return (await scrapeAnchorInvestorsDetailed(db, ipoId, companyName)).data;
+}
+
+/**
+ * The same scrape, reporting WHY it produced nothing (W-142).
+ *
+ * `scrapeAnchorInvestors` above is a one-line wrapper over this — there is one
+ * scrape path, not two, so the automatic and the CLI door can never drift.
+ */
+export async function scrapeAnchorInvestorsDetailed(
+  db: NodePgDatabase<typeof schema>,
+  ipoId: string,
+  companyName: string
+): Promise<AnchorScrapeOutcome> {
   try {
     logger.info(`[Anchor Investors] Starting scrape for ${companyName} (${ipoId})`);
 
     const document = await getAnchorReport(db, ipoId);
     if (!document) {
       logger.warn(`[Anchor Investors] No anchor allocation report on file for ${companyName}`);
-      return null;
+      return { data: null, failure: { kind: 'no_document', reason: 'no anchor allocation report on file' } };
     }
 
     const pdfPath = await resolvePdfPath(document, ipoId);
     if (!pdfPath) {
       logger.error(`[Anchor Investors] Anchor report ${document.id} could not be read for ${companyName}`);
-      return null;
+      return {
+        data: null,
+        failure: { kind: 'unreadable_file', reason: `anchor report ${document.id} could not be read` },
+      };
     }
 
-    const pages = extractPageTexts(pdfPath);
-    if (!pages) {
-      logger.error(`[Anchor Investors] Text extraction failed for ${companyName}`);
-      return null;
+    const sidecar = extractPageTexts(pdfPath);
+    if (isSidecarFailure(sidecar)) {
+      logger.error(`[Anchor Investors] Text extraction failed for ${companyName}: ${sidecar.reason}`);
+      return { data: null, failure: { kind: sidecar.kind, reason: sidecar.reason } };
     }
 
-    const parsed = parseAnchorReport(pages);
+    const parsed = parseAnchorReport((sidecar as { pages: string[] }).pages);
     if (!parsed.ok) {
-      logger.warn(`[Anchor Investors] ${companyName}: ${parsed.reason}`);
-      return null;
+      // `strict: false` again — read the refusal reason off an explicitly
+      // narrowed view rather than relying on the boolean to narrow.
+      const reason = (parsed as { reason: string }).reason;
+      logger.warn(`[Anchor Investors] ${companyName}: ${reason}`);
+      return { data: null, failure: { kind: 'parse_failed', reason } };
     }
     const report = parsed.value;
 
     const qibReason = await checkAgainstIssueSize(db, ipoId, report.totalAmountRupees);
     if (qibReason) {
       logger.warn(`[Anchor Investors] ${companyName}: ${qibReason}`);
-      return null;
+      return { data: null, failure: { kind: 'issue_size_conflict', reason: qibReason } };
     }
 
     const bidDate = report.letterDate;
@@ -164,7 +251,7 @@ export async function scrapeAnchorInvestors(
         `Rs ${(report.totalAmountRupees / RUPEES_PER_CRORE).toFixed(2)} Cr`
     );
 
-    return {
+    const data: AnchorInvestorData = {
       bidDate,
       totalSharesOffered: report.totalShares,
       totalAmountRaised: report.totalAmountRupees / RUPEES_PER_CRORE,
@@ -190,9 +277,13 @@ export async function scrapeAnchorInvestors(
         percentOfIssue: row.percentOfAnchorPortion,
       })),
     };
+    return { data };
   } catch (error) {
     logger.error(`[Anchor Investors] Error scraping ${companyName}:`, error);
-    return null;
+    return {
+      data: null,
+      failure: { kind: 'error', reason: error instanceof Error ? error.message : String(error) },
+    };
   }
 }
 
@@ -242,28 +333,53 @@ async function resolvePdfPath(
  * returns the table's digits interleaved between rows. Only word coordinates can
  * rebuild it - see `scripts/anchor_report_text.py`.
  */
-function extractPageTexts(pdfPath: string): string[] | null {
+export function extractPageTexts(pdfPath: string): SidecarResult {
   const res = spawnSync('python', [SIDECAR, pdfPath], {
     encoding: 'utf8',
     timeout: SIDECAR_TIMEOUT_MS,
     maxBuffer: 32 * 1024 * 1024,
     env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
   });
-  if (!res.stdout) {
-    logger.error(`[Anchor Investors] Text sidecar produced no output: ${res.stderr?.slice(0, 300)}`);
-    return null;
+
+  // W-137 shape, applied to THIS sidecar: `memory_guard` exits 3 on the memory
+  // ceiling and prints its JSON; a C-level abort (OpenBLAS/OOM-killer) leaves
+  // no usable exit code at all, only a stderr signature. Either is a HARD
+  // failure the caller must back off far longer than a parse failure.
+  const stderr = res.stderr || '';
+  if (res.status === ANCHOR_SIDECAR_MEMORY_CEILING_EXIT || res.status === null || isMemoryAbortStderr(stderr)) {
+    const reason = `anchor sidecar memory abort (exit ${String(res.status)}): ${stderr.slice(0, 300)}`;
+    logger.error(`[Anchor Investors] ${reason}`);
+    return { ok: false, kind: 'hard_failure', reason };
   }
+
+  if (!res.stdout) {
+    const reason = `text sidecar produced no output: ${stderr.slice(0, 300)}`;
+    logger.error(`[Anchor Investors] ${reason}`);
+    return { ok: false, kind: 'sidecar_error', reason };
+  }
+  let parsed: { error?: string; pages?: unknown };
   try {
-    const parsed = JSON.parse(res.stdout.trim().split('\n').pop() || '{}');
-    if (parsed.error) {
-      logger.error(`[Anchor Investors] Text sidecar failed: ${parsed.error}`);
-      return null;
-    }
-    return Array.isArray(parsed.pages) ? parsed.pages : null;
+    parsed = JSON.parse(res.stdout.trim().split('\n').pop() || '{}');
   } catch {
     logger.error('[Anchor Investors] Text sidecar output was not JSON');
-    return null;
+    return { ok: false, kind: 'sidecar_error', reason: 'text sidecar output was not JSON' };
   }
+  if (parsed.error) {
+    logger.error(`[Anchor Investors] Text sidecar failed: ${parsed.error}`);
+    return { ok: false, kind: 'sidecar_error', reason: `text sidecar failed: ${parsed.error}` };
+  }
+  if (!Array.isArray(parsed.pages)) {
+    return { ok: false, kind: 'sidecar_error', reason: 'text sidecar returned no pages array' };
+  }
+  const pages = (parsed.pages as unknown[]).map((p) => String(p ?? ''));
+  if (pagesAreEmpty(pages)) {
+    return {
+      ok: false,
+      kind: 'empty_pages',
+      reason: ANCHOR_EMPTY_PAGES_REASON,
+    };
+  }
+  return { ok: true, pages };
 }
 
 /**

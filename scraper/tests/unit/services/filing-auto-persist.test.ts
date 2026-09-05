@@ -49,6 +49,9 @@ import {
   documentExtractionBlocked,
   defaultExtractorRunner,
   EXTRACTOR_VERSION,
+  ANCHOR_DOC_TYPE,
+  AUTO_PERSIST_DOC_TYPES,
+  EXTRACTABLE_DOC_TYPES,
   MAX_EXTRACTION_ATTEMPTS,
   EXTRACTION_BLOCKED_ERROR,
   EXTRACTOR_MEMORY_CEILING_EXIT,
@@ -1256,4 +1259,205 @@ describe('defaultExtractorRunner — python binary resolution', () => {
       expect(args).not.toContain('--issue-size');
     }
   );
+});
+
+// ------------------------------------------------------------------- W-142
+/**
+ * W-142 — the anchor allocation report through the AUTOMATIC door.
+ *
+ * Root cause (proven by the RED test above): `selectPendingFilings` dropped
+ * every `ANCHOR_ALLOCATION_REPORT` as "not an extractable doc type", so the 7
+ * SME + 7 MAINBOARD anchor rows on production could only ever reach the
+ * database through a human running `scripts/persist-filing.ts`. These tests
+ * pin the routing (anchor goes to the ANCHOR runner, never to
+ * `extract_filing.py`), the SME flag gate, and the outcome map — the part that
+ * decides what a human sees on `documents.extraction_status` afterwards.
+ */
+const anchorDoc = (o: Partial<CandidateDocument> = {}): CandidateDocument =>
+  doc({ id: 'anchor-1', type: 'ANCHOR_ALLOCATION_REPORT', ...o });
+
+const anchorSummary = (o: Record<string, unknown> = {}) =>
+  ({
+    written: 1,
+    investorsWritten: 12,
+    totals: { shares: 100, amountCrore: 5, count: 12 },
+    checks: [],
+    notCheckable: [],
+    refusedReason: null,
+    refusedKind: null,
+    lowConfidenceNames: [],
+    skippedBlankNames: 0,
+    applied: true,
+    ...o,
+  }) as never;
+
+function anchorDeps(overrides: Partial<AutoPersistDeps> = {}): AutoPersistDeps {
+  return deps({
+    loadDocuments: vi.fn(async () => [anchorDoc()]),
+    loadStates: vi.fn(async () => [
+      {
+        id: 'state-anchor',
+        docType: 'ANCHOR_ALLOCATION_REPORT',
+        documentId: 'anchor-1',
+        extractedAt: null,
+        extractorVersion: null,
+      },
+    ]) as never,
+    runAnchorPersist: vi.fn(async () => ({
+      kind: 'persisted' as const,
+      reason: null,
+      summary: anchorSummary(),
+    })),
+    ...overrides,
+  });
+}
+
+const stateCalls = (d: AutoPersistDeps) =>
+  (d.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+
+describe('W-142 — anchor allocation reports are selected by the automatic door', () => {
+  it('lists ANCHOR_ALLOCATION_REPORT as an auto-persist doc type but NOT as an extract_filing.py type', () => {
+    // The distinction is load-bearing: adding it to EXTRACTABLE_DOC_TYPES would
+    // spawn a python extractor that answers "unknown doc type".
+    expect(AUTO_PERSIST_DOC_TYPES).toContain(ANCHOR_DOC_TYPE);
+    expect(EXTRACTABLE_DOC_TYPES as readonly string[]).not.toContain(ANCHOR_DOC_TYPE);
+  });
+
+  it('routes an anchor document to the anchor runner and never to the filing extractor', async () => {
+    const d = anchorDeps();
+    const r = await processPendingFilings(IPO, d);
+
+    expect(d.runExtractor).not.toHaveBeenCalled();
+    expect(d.runAnchorPersist).toHaveBeenCalledWith({ ipoId: 'ipo-1', companyName: IPO.companyName });
+    expect(d.persistFiling).not.toHaveBeenCalled();
+    expect(r.persisted).toBe(1);
+    expect(r.spawned).toBe(1);
+  });
+
+  it('leaves the anchor document PENDING (skipped, never mis-routed) when no anchor runner is wired', async () => {
+    const d = anchorDeps({ runAnchorPersist: undefined });
+    const r = await processPendingFilings(IPO, d);
+
+    expect(d.runExtractor).not.toHaveBeenCalled();
+    expect(r.persisted).toBe(0);
+    expect(r.skipped.join(' ')).toContain('no anchor runner wired');
+  });
+
+  it('gates an SME anchor behind ENABLE_SME_FILING_AUTO_PERSIST like every other SME filing', async () => {
+    const smeIpo = { ...IPO, segment: 'SME' };
+
+    MOCK_FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST = false;
+    const off = anchorDeps();
+    const rOff = await processPendingFilings(smeIpo, off);
+    expect(off.runAnchorPersist).not.toHaveBeenCalled();
+    expect(rOff.spawned).toBe(0);
+
+    MOCK_FEATURE_FLAGS.ENABLE_SME_FILING_AUTO_PERSIST = true;
+    const on = anchorDeps();
+    const rOn = await processPendingFilings(smeIpo, on);
+    expect(on.runAnchorPersist).toHaveBeenCalledTimes(1);
+    expect(rOn.persisted).toBe(1);
+  });
+
+  it('consumes the shared cycle spawn budget, so anchors cannot starve the lock TTL', async () => {
+    const budget = { remaining: 1 };
+    const d = anchorDeps({ spawnBudget: budget });
+    await processPendingFilings(IPO, d);
+    expect(budget.remaining).toBe(0);
+  });
+});
+
+describe('W-142 — the outcome map written to documents.extraction_status', () => {
+  it('persisted -> COMPLETED, retry counter reset, fetch state stamped, caches invalidated', async () => {
+    const d = anchorDeps();
+    await processPendingFilings(IPO, d);
+
+    expect(stateCalls(d)).toContainEqual(
+      expect.objectContaining({ documentId: 'anchor-1', status: 'COMPLETED', retryCount: 0 })
+    );
+    expect(d.setFetchStateExtracted).toHaveBeenCalledWith(
+      expect.objectContaining({ stateId: 'state-anchor', extractorVersion: EXTRACTOR_VERSION })
+    );
+    // J1 must still run for an anchor-only cycle — it persists inside the
+    // extract loop, not in the filing persist loop.
+    expect(d.invalidateCaches).toHaveBeenCalledTimes(1);
+    expect(recordedSteps.flatMap((s) => s.writes).map((w) => w.stepId)).toContain('J1');
+  });
+
+  it('garbled-name floor refusal -> MANUAL_REVIEW with the reason, not FAILED and not silent', async () => {
+    const reason =
+      'anchor: anchor write refused: 6 of 12 investor names are unreadable (> 30% floor)';
+    const d = anchorDeps({
+      runAnchorPersist: vi.fn(async () => ({ kind: 'manual_review' as const, reason })),
+    });
+    const r = await processPendingFilings(IPO, d);
+
+    const call = stateCalls(d).find((c) => c.status === 'MANUAL_REVIEW');
+    expect(call).toBeDefined();
+    expect(call.error).toContain('unreadable');
+    expect(stateCalls(d).some((c) => c.status === 'FAILED')).toBe(false);
+    expect(r.failed).toBe(1);
+    // The refusal is visible in the ledger as the anchor step, blocked.
+    const h3 = recordedSteps.flatMap((s) => s.writes).filter((w) => w.stepId === 'H3');
+    expect(h3.length).toBeGreaterThan(0);
+  });
+
+  it('empty pages (W-139 shape) -> MANUAL_REVIEW naming the OCR heuristic, never an endless retry', async () => {
+    const d = anchorDeps({
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'manual_review' as const,
+        reason: 'anchor: no text and OCR heuristic did not fire',
+      })),
+    });
+    await processPendingFilings(IPO, d);
+
+    const call = stateCalls(d).find((c) => c.status === 'MANUAL_REVIEW');
+    expect(call.error).toContain('no text and OCR heuristic did not fire');
+  });
+
+  it('memory ceiling -> FAILED carrying the W-137 hard-failure marker', async () => {
+    const d = anchorDeps({
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'hard_failure' as const,
+        reason: 'anchor: anchor sidecar memory abort (exit 3)',
+      })),
+    });
+    await processPendingFilings(IPO, d);
+
+    const call = stateCalls(d).find((c) => c.status === 'FAILED');
+    expect(call).toBeDefined();
+    expect(call.error).toContain(HARD_FAILURE_MARKER);
+  });
+
+  it('an ordinary refusal (arithmetic gate) -> FAILED with the ordinary backoff, no hard-failure marker', async () => {
+    const d = anchorDeps({
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'failed' as const,
+        reason: 'anchor: shares x price does not equal the printed total',
+      })),
+    });
+    await processPendingFilings(IPO, d);
+
+    const call = stateCalls(d).find((c) => c.status === 'FAILED');
+    expect(call.error).toContain('shares x price');
+    expect(call.error).not.toContain(HARD_FAILURE_MARKER);
+  });
+
+  it('a throwing anchor runner is FAILED, never an unhandled rejection out of the cycle', async () => {
+    const d = anchorDeps({
+      runAnchorPersist: vi.fn(async () => {
+        throw new Error('boom');
+      }),
+    });
+    const r = await processPendingFilings(IPO, d);
+    expect(r.failed).toBe(1);
+    expect(
+      stateCalls(d).some((c) => c.status === 'FAILED' && String(c.error).includes('boom'))
+    ).toBe(true);
+  });
+
+  it('keeps the anchor sidecar timeout inside the extractor budget the lock TTL is sized on', async () => {
+    const { SIDECAR_TIMEOUT_MS } = await import('../../../src/scrapers/anchor-investors-scraper.js');
+    expect(SIDECAR_TIMEOUT_MS).toBeLessThanOrEqual(EXTRACT_TIMEOUT_MS_REAL);
+  });
 });

@@ -495,6 +495,46 @@ def apply_ocr_names(rows, ocr_lines):
     return rows
 
 
+def has_name_shaped_word(name):
+    """True when the cell holds something that could be part of an entity name.
+
+    A run of two or more letters. Deliberately weaker than
+    `is_low_confidence_name`: this asks "did the text layer give us ANY name
+    material at all?", not "is this name good enough to publish".
+    """
+    return bool(re.search(r"[A-Za-z]{2,}", name or ""))
+
+
+def page_needs_ocr(rows):
+    """Should this page's name column be re-read by OCR?
+
+    Two triggers, both about the NAME column (the only thing OCR repairs here):
+
+      1. Original: more than `NAME_QUALITY_FLOOR` of the rows carry a name the
+         publication gate would reject — the historical "the scan's text layer
+         is damaged" case.
+      2. W-139 (Lumino, MAINBOARD): the page HAS table rows but not one of them
+         yields a name-shaped word — every name cell is blank or pure
+         punctuation/digits. `low_confidence_share` returns 0.0 for an empty
+         name list, so a page like this scored PERFECTLY and never reached OCR;
+         the letter then parsed to nothing and the document sat at PENDING
+         forever. A page with no name material at all is the strongest possible
+         signal that the text layer failed.
+
+    A page with no table rows at all (`rows` is None — a pure image page) is NOT
+    flagged: `apply_ocr_names` needs the text layer's row geometry to place the
+    OCR read, so there is nothing to apply the result to. Those pages surface to
+    the caller as empty text, which the node side records as MANUAL_REVIEW with
+    "no text and OCR heuristic did not fire" rather than retrying forever.
+    """
+    if not rows:
+        return False
+    names = rows["names"]
+    if low_confidence_share(names) > NAME_QUALITY_FLOOR:
+        return True
+    return bool(names) and not any(has_name_shaped_word(n) for n in names)
+
+
 def extract(path, ocr=True):
     pages_words = []
     with pdfplumber.open(path) as pdf:
@@ -507,10 +547,7 @@ def extract(path, ocr=True):
     bands = column_bands(pages_words)
     pages = [page_rows(w, bands) for w in pages_words]
 
-    scanned = [
-        i for i, rows in enumerate(pages)
-        if rows and low_confidence_share(rows["names"]) > NAME_QUALITY_FLOOR
-    ]
+    scanned = [i for i, rows in enumerate(pages) if page_needs_ocr(rows)]
     if ocr and scanned:
         import ocr_pages  # local: the OCR stack is only needed on damaged scans
 
