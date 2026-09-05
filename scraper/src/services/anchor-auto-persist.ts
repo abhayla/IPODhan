@@ -47,7 +47,20 @@ export type AnchorAutoOutcome =
   | { kind: 'persisted'; reason: null; summary: AnchorPersistSummary }
   | { kind: 'manual_review'; reason: string; summary?: AnchorPersistSummary }
   | { kind: 'hard_failure'; reason: string }
-  | { kind: 'failed'; reason: string; summary?: AnchorPersistSummary };
+  | {
+      kind: 'failed';
+      reason: string;
+      summary?: AnchorPersistSummary;
+      /**
+       * W-168: true when this failure came from a DETERMINISTIC parser
+       * refusal (`AnchorScrapeFailureKind === 'parse_failed'`) — the same
+       * scan will refuse identically on every retry, so the caller escalates
+       * to MANUAL_REVIEW after the 2nd identical failure instead of the
+       * ordinary 10-attempt backoff. Never set for a transient failure
+       * (timeout/OOM/network/sidecar error), which keeps its existing path.
+       */
+      deterministic?: boolean;
+    };
 
 /**
  * The whole outcome mapping, as ONE pure function.
@@ -73,7 +86,16 @@ export function classifyAnchorAutoOutcome(input: {
       // again, so it goes to a human rather than round the backoff loop.
       return { kind: 'manual_review', reason: `anchor: ${ANCHOR_EMPTY_PAGES_REASON}`, summary };
     }
-    return { kind: 'failed', reason: `anchor: ${failure.reason}`, summary };
+    // W-168: `parse_failed` is the anchor-report-parser's own structural
+    // refusal (no bid price derivable / no amount consistent with the
+    // derived bid price / too few investor rows read) — a deterministic
+    // verdict on the file's content, not a transient error.
+    return {
+      kind: 'failed',
+      reason: `anchor: ${failure.reason}`,
+      summary,
+      deterministic: failure.kind === 'parse_failed',
+    };
   }
 
   if (!summary) {

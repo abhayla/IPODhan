@@ -1077,6 +1077,11 @@ describe('processPendingFilings — the per-cycle spawn budget (MAJOR-1)', () =>
       loadDocuments: vi.fn(async () => FIVE_DOCS),
       loadStates: vi.fn(async () => FIVE_STATES),
       spawnBudget: budget,
+      // W-168: the anchor budget must ALSO be exhausted for the F5
+      // skip-the-load optimization to fire — an anchor budget still open
+      // (or unconfigured/unbounded) means there is still anchor work this
+      // IPO's documents might contain, so the load must proceed.
+      anchorSpawnBudget: { remaining: 0 },
     });
 
     const result = await processPendingFilings(IPO, d);
@@ -1157,9 +1162,18 @@ describe('processPendingFilings — the per-document extraction deadline (F3)', 
  * the lock TTL.
  */
 describe('F3 — spawn cap cannot outlive the extraction lock', () => {
-  it('DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS + 60s < FILING_EXTRACTION_LOCK_TTL_MS', async () => {
+  it('DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS + anchor sidecar + 60s < FILING_EXTRACTION_LOCK_TTL_MS', async () => {
     const { FILING_EXTRACTION_LOCK_TTL_MS } = await import('../../../src/services/document-cycle.js');
-    const worstCaseMs = DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL * EXTRACT_TIMEOUT_MS_REAL + 60_000;
+    const { DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE } = await import('../../../src/services/filing-auto-persist.js');
+    const { SIDECAR_TIMEOUT_MS } = await import('../../../src/scrapers/anchor-investors-scraper.js');
+    // W-168: the anchor pass runs AFTER the filing pass, on its OWN budget —
+    // its worst case (every anchor spawn taking the full sidecar timeout)
+    // ADDS to the filing worst case rather than sharing it, so the lock TTL
+    // must cover both passes back to back, not just the filing one.
+    const worstCaseMs =
+      DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL * EXTRACT_TIMEOUT_MS_REAL +
+      DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE * SIDECAR_TIMEOUT_MS +
+      60_000;
     expect(worstCaseMs).toBeLessThan(FILING_EXTRACTION_LOCK_TTL_MS);
   });
 });
@@ -1365,11 +1379,146 @@ describe('W-142 — anchor allocation reports are selected by the automatic door
     expect(rOn.persisted).toBe(1);
   });
 
-  it('consumes the shared cycle spawn budget, so anchors cannot starve the lock TTL', async () => {
-    const budget = { remaining: 1 };
-    const d = anchorDeps({ spawnBudget: budget });
+  // W-168: this used to assert the anchor drew from the SHARED filing budget
+  // (the bug the live evidence exposed — three failing anchors ate the
+  // cycle's whole `DEFAULT_MAX_SPAWNS_PER_CYCLE`). It now has its OWN budget.
+  it('does NOT consume the shared filing spawn budget — it has its own', async () => {
+    const spawnBudget = { remaining: 1 };
+    const d = anchorDeps({ spawnBudget });
     await processPendingFilings(IPO, d);
-    expect(budget.remaining).toBe(0);
+    expect(spawnBudget.remaining).toBe(1);
+  });
+
+  it('consumes its OWN anchorSpawnBudget, separate from the filing spawnBudget', async () => {
+    const spawnBudget = { remaining: 3 };
+    const anchorSpawnBudget = { remaining: 1 };
+    const d = anchorDeps({ spawnBudget, anchorSpawnBudget });
+    const r = await processPendingFilings(IPO, d);
+    expect(anchorSpawnBudget.remaining).toBe(0);
+    expect(spawnBudget.remaining).toBe(3);
+    expect(r.anchorsSpawned).toBe(1);
+    expect(r.anchorsConsidered).toBe(1);
+    expect(r.anchorsPersisted).toBe(1);
+  });
+
+  it('3 failing anchors do not reduce the filing spawn budget or block a filing document', async () => {
+    const spawnBudget = { remaining: 3 };
+    const anchorSpawnBudget = { remaining: 3 };
+    const d = anchorDeps({
+      spawnBudget,
+      anchorSpawnBudget,
+      loadDocuments: vi.fn(async () => [
+        doc({ id: 'rhp-1' }),
+        anchorDoc({ id: 'anchor-a', sha256: 'a'.repeat(64) }),
+        anchorDoc({ id: 'anchor-b', sha256: 'b'.repeat(64) }),
+        anchorDoc({ id: 'anchor-c', sha256: 'c'.repeat(64) }),
+      ]),
+      loadStates: vi.fn(async () => [
+        { id: 'state-1', docType: 'RHP', documentId: 'rhp-1', extractedAt: null, extractorVersion: null },
+        { id: 'state-anchor', docType: 'ANCHOR_ALLOCATION_REPORT', documentId: null, extractedAt: null, extractorVersion: null },
+      ]) as never,
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'failed' as const,
+        reason: 'anchor: only 0 investor rows could be read from the anchor report',
+      })),
+    });
+    const r = await processPendingFilings(IPO, d);
+
+    expect(spawnBudget.remaining).toBe(2); // one RHP spawn only — the filing budget never saw the anchors
+    expect(anchorSpawnBudget.remaining).toBe(0); // all 3 anchor attempts
+    expect(r.anchorsSpawned).toBe(3);
+    expect(r.spawned).toBe(4); // 1 filing + 3 anchor — `spawned` stays the combined total
+    expect(d.persistFiling).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('W-168 — deterministic anchor parser refusals escalate faster than a transient failure', () => {
+  const parseFailedReason = 'anchor: no bid price could be derived from the investor rows';
+
+  it('a FIRST parse_failed refusal is FAILED with the ordinary backoff, not MANUAL_REVIEW yet', async () => {
+    const d = anchorDeps({
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'failed' as const,
+        reason: parseFailedReason,
+        deterministic: true,
+      })),
+    });
+    const r = await processPendingFilings(IPO, d);
+
+    const call = stateCalls(d).find((c) => c.status === 'FAILED');
+    expect(call).toBeDefined();
+    expect(call.error).toContain('no bid price could be derived');
+    expect(stateCalls(d).some((c) => c.status === 'MANUAL_REVIEW')).toBe(false);
+    expect(r.anchorsManualReview).toBe(0);
+    expect(r.anchorsFailed).toBe(1);
+  });
+
+  it('the SECOND identical parse_failed refusal on the SAME sha becomes MANUAL_REVIEW, stamped with the version', async () => {
+    // The document row as it stands after the first failure: FAILED, with the
+    // `<reason> @sha:<sha16>` this module stamps on a first occurrence.
+    const previouslyFailed = anchorDoc({
+      extractionStatus: 'FAILED',
+      extractionError: `${parseFailedReason} @sha:${SHA.slice(0, 16)}`,
+      retryCount: 1,
+      // Long past its backoff window, so the per-document gate admits it.
+      updatedAt: new Date(0),
+    });
+    const d = anchorDeps({
+      loadDocuments: vi.fn(async () => [previouslyFailed]),
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'failed' as const,
+        reason: parseFailedReason,
+        deterministic: true,
+      })),
+    });
+    const r = await processPendingFilings(IPO, d);
+
+    const call = stateCalls(d).find((c) => c.status === 'MANUAL_REVIEW');
+    expect(call).toBeDefined();
+    expect(call.error).toContain('no bid price could be derived');
+    expect(call.error).toContain(EXTRACTOR_VERSION);
+    expect(stateCalls(d).some((c) => c.status === 'FAILED')).toBe(false);
+    expect(r.anchorsManualReview).toBe(1);
+  });
+
+  it('a DIFFERENT sha resets the count — treated as a fresh first occurrence, not escalated', async () => {
+    const previouslyFailed = anchorDoc({
+      extractionStatus: 'FAILED',
+      // Stamped against an OLD sha (the file was re-fetched with new bytes).
+      extractionError: `${parseFailedReason} @sha:${'f'.repeat(16)}`,
+      retryCount: 1,
+      sha256: SHA,
+      updatedAt: new Date(0),
+    });
+    const d = anchorDeps({
+      loadDocuments: vi.fn(async () => [previouslyFailed]),
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'failed' as const,
+        reason: parseFailedReason,
+        deterministic: true,
+      })),
+    });
+    const r = await processPendingFilings(IPO, d);
+
+    expect(stateCalls(d).some((c) => c.status === 'MANUAL_REVIEW')).toBe(false);
+    const call = stateCalls(d).find((c) => c.status === 'FAILED');
+    expect(call.error).toContain(`@sha:${SHA.slice(0, 16)}`);
+    expect(r.anchorsFailed).toBe(1);
+  });
+
+  it('a timeout/OOM (hard_failure) keeps its OWN >=24h-floor path, never the 2-strike MANUAL_REVIEW path', async () => {
+    const d = anchorDeps({
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'hard_failure' as const,
+        reason: 'anchor: anchor sidecar timed out after 120000ms',
+      })),
+    });
+    const r = await processPendingFilings(IPO, d);
+
+    const call = stateCalls(d).find((c) => c.status === 'FAILED');
+    expect(call.error).toContain(HARD_FAILURE_MARKER);
+    expect(stateCalls(d).some((c) => c.status === 'MANUAL_REVIEW')).toBe(false);
+    expect(r.anchorsFailed).toBe(1);
   });
 });
 

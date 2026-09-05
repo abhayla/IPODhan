@@ -53,6 +53,7 @@ import {
   processPendingFilings,
   buildAutoPersistDeps,
   DEFAULT_MAX_SPAWNS_PER_CYCLE,
+  anchorMaxSpawnsPerCycle,
   type AutoPersistDeps,
   type SpawnBudget,
 } from './filing-auto-persist.js';
@@ -807,6 +808,11 @@ export async function runDocumentCycle(
   const distributedLock = new DistributedLock(redis as never);
   let lockToken: string | undefined;
   const spawnBudget: SpawnBudget = { remaining: DEFAULT_MAX_SPAWNS_PER_CYCLE };
+  // W-168: the anchor allocation report's OWN cycle-wide budget, separate from
+  // `spawnBudget` above — see `filing-auto-persist.ts`'s `anchorSpawnBudget`
+  // doc comment for why (three failing SME anchors used to eat the whole
+  // filing budget for the cycle).
+  const anchorSpawnBudget: SpawnBudget = { remaining: anchorMaxSpawnsPerCycle() };
   if (FEATURE_FLAGS.ENABLE_FILING_AUTO_PERSIST) {
     const lock = await distributedLock.acquire(FILING_EXTRACTION_LOCK_KEY, { ttl: FILING_EXTRACTION_LOCK_TTL_MS });
     if (lock.acquired) {
@@ -1030,6 +1036,12 @@ export async function runDocumentCycle(
         // Logged once above when the lock failed.
       } else {
         const extractionStartedAt = now();
+        // W-168: one summary line per cycle — accumulated across every
+        // candidate IPO's `processPendingFilings` call, logged once after
+        // this loop (not per IPO, which would bury the cycle-wide picture
+        // the live evidence needed: three failing anchors in a row was only
+        // visible by reading every per-IPO log line by hand).
+        const anchorCycleTotals = { considered: 0, spawned: 0, persisted: 0, manualReview: 0, failed: 0 };
         for (const ipo of candidates) {
           if (now() - extractionStartedAt >= extractionBudgetMs) {
             logger.warn(
@@ -1042,6 +1054,7 @@ export async function runDocumentCycle(
             if (!autoPersistDeps) {
               autoPersistDeps = buildAutoPersistDeps();
               autoPersistDeps.spawnBudget = spawnBudget;
+              autoPersistDeps.anchorSpawnBudget = anchorSpawnBudget;
             }
             // F3: same absolute deadline + clock on every call this cycle, so
             // the per-document deadline check inside `processPendingFilings`
@@ -1063,6 +1076,11 @@ export async function runDocumentCycle(
                 'Filing auto-persist complete for one IPO'
               );
             }
+            anchorCycleTotals.considered += autoPersist.anchorsConsidered;
+            anchorCycleTotals.spawned += autoPersist.anchorsSpawned;
+            anchorCycleTotals.persisted += autoPersist.anchorsPersisted;
+            anchorCycleTotals.manualReview += autoPersist.anchorsManualReview;
+            anchorCycleTotals.failed += autoPersist.anchorsFailed;
           } catch (error) {
             logger.error(
               { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
@@ -1070,6 +1088,14 @@ export async function runDocumentCycle(
             );
           }
         }
+        // W-168: log even when everything was zero — a silent cycle IS the
+        // evidence that nothing starved anything, and its absence would be
+        // exactly the gap the live-evidence incident exposed (no single line
+        // said how the cycle's spawn budget was actually spent on anchors).
+        logger.info(
+          { ...anchorCycleTotals, anchorSpawnBudgetRemaining: anchorSpawnBudget.remaining },
+          'Anchor auto-persist summary for this cycle (W-168)'
+        );
       }
     }
 
