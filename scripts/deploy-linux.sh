@@ -811,6 +811,11 @@ probe_release() {
 
   local pidfile="/tmp/ipodhan-preflip-probe-$SLOT.pid"
   rm -f "$pidfile"
+  # W-169: recorded so cleanup_probe()'s port-listener escalation can refuse
+  # to kill a pre-existing process that merely happens to be listening on
+  # PROBE_PORT (see the start-time guard below) � only a listener that
+  # started at/after this probe is ever a direct-kill target.
+  local probe_start_ts; probe_start_ts="$(date +%s)"
   if command -v setsid >/dev/null 2>&1; then
     ( cd "$RELEASE_DIR/web" && PORT="$PROBE_PORT" setsid nohup npm run start >/tmp/ipodhan-preflip-probe-"$SLOT".log 2>&1 & echo $! > "$pidfile" )
   else
@@ -902,21 +907,120 @@ probe_release() {
     elif [ "$have_ss" -ne 1 ] && kill -0 "$pid" 2>/dev/null; then
       kill -KILL -- -"$pgid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
     fi
-    # Verify the probe port is actually free — a survivor here means a
+    # Verify the probe port is actually free -- a survivor here means a
     # stray production-bound server could still be listening.
     if command -v ss >/dev/null 2>&1; then
       local still_listening; still_listening="$(ss -ltn "( sport = :$PROBE_PORT )" 2>/dev/null | grep -c LISTEN || true)"
       if [ "${still_listening:-0}" -gt 0 ]; then
         echo "WARN: PROBE_PORT $PROBE_PORT still has a listener after cleanup_probe() killed pid $pid (pgid $pgid) — attempting fuser -k as a last resort." >&2
-        if command -v fuser >/dev/null 2>&1; then
-          local survivors; survivors="$(fuser -n tcp "$PROBE_PORT" 2>/dev/null | tr -d ' ')"
-          echo "WARN: surviving pid(s) on PROBE_PORT $PROBE_PORT: ${survivors:-unknown}" >&2
-          fuser -k -n tcp "$PROBE_PORT" 2>/dev/null || true
-          sleep 1
-          local final_check; final_check="$(ss -ltn "( sport = :$PROBE_PORT )" 2>/dev/null | grep -c LISTEN || true)"
-          if [ "${final_check:-0}" -gt 0 ]; then
-            echo "FATAL: PROBE_PORT $PROBE_PORT still has a listener after fuser -k — a stray process may still be bound to it. Refusing to proceed with the flip." >&2
-            PROBE_CLEANUP_FAILED=1
+
+        # W-169: root cause is that the group TERM/KILL above only ever
+        # reaches processes in $pgid -- the next-server CHILD frequently
+        # lands OUTSIDE that group (npm/next spawn their own session on
+        # some npm/Next versions), so a blind fuser -k was the only thing
+        # that ever freed the port, with no pm2/age guard on what it
+        # kills. Target the ACTUAL listener pid(s) directly instead: find
+        # them by port (ss preferred -- reports pid=NNN per listener;
+        # fuser query as fallback), skip a pm2-managed one (never kill a
+        # pm2 God Daemon / pm2-managed app), skip one that predates this
+        # probe (a pre-existing, unrelated listener), then TERM -> wait ->
+        # KILL -> wait each surviving target directly.
+        local listener_pids=""
+        if command -v ss >/dev/null 2>&1; then
+          listener_pids="$(ss -ltnp "( sport = :$PROBE_PORT )" 2>/dev/null             | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u | tr '
+' ' ')"
+        fi
+        if [ -z "$listener_pids" ] && command -v fuser >/dev/null 2>&1; then
+          listener_pids="$(fuser -n tcp "$PROBE_PORT" 2>/dev/null | tr -s ' 	' '
+' | grep -E '^[0-9]+$' | sort -u | tr '
+' ' ')"
+        fi
+
+        local any_direct_target=0 direct_kill_waited=0
+        for lpid in $listener_pids; do
+          [ -n "$lpid" ] || continue
+
+          # pm2 guard (reused from vps-disk-hygiene.sh's orphan-sweep W-136
+          # guard): never signal a pid whose group leader or direct parent
+          # cmdline names pm2 -- the PM2 God Daemon and every app it
+          # manages share process groups/lineage; killing one can take the
+          # others down with it. Left to pm2 untouched, WARN only.
+          local lpgid lppid leader_cmd parent_cmd
+          lpgid="$(ps -o pgid= -p "$lpid" 2>/dev/null | tr -d ' ' || true)"
+          lppid="$(ps -o ppid= -p "$lpid" 2>/dev/null | tr -d ' ' || true)"
+          leader_cmd=""
+          case "$lpgid" in
+            ''|*[!0-9]*|1) : ;;
+            *) leader_cmd="$(ps -o cmd= -p "$lpgid" 2>/dev/null || true)" ;;
+          esac
+          parent_cmd=""
+          case "$lppid" in
+            ''|*[!0-9]*|1) : ;;
+            *) parent_cmd="$(ps -o cmd= -p "$lppid" 2>/dev/null || true)" ;;
+          esac
+          if printf '%s
+%s' "$leader_cmd" "$parent_cmd" | grep -qiE 'pm2'; then
+            echo "WARN: PROBE_PORT $PROBE_PORT listener pid=$lpid is pm2-managed (leader/parent cmdline matches pm2) -- left to pm2, NOT killed." >&2
+            continue
+          fi
+
+          # Start-time guard: never kill a listener that predates THIS
+          # probe -- it is an unrelated process that merely happens to be
+          # bound to PROBE_PORT (e.g. a stale orphan a human is already
+          # investigating), not the probe's own escaped child.
+          #
+          # W-169 round 3: this must FAIL SAFE. An empty/unparseable
+          # lstart_ts (ps lookup failed, or `date -d` could not parse the
+          # lstart format on this host) previously fell through the
+          # `[ -n "$lstart_ts" ]` guard and got killed anyway -- an
+          # unknown age must be treated the same as "too old to touch",
+          # not "young enough to kill".
+          local lstart lstart_ts
+          lstart="$(ps -o lstart= -p "$lpid" 2>/dev/null || true)"
+          lstart_ts="$( [ -n "$lstart" ] && date -d "$lstart" +%s 2>/dev/null || true)"
+          if [ -z "$lstart_ts" ]; then
+            echo "WARN: PROBE_PORT $PROBE_PORT listener pid=$lpid has an unparseable/unknown start time (lstart='$lstart') -- left alone, NOT killed (fail-safe)." >&2
+            continue
+          fi
+          if [ "$lstart_ts" -lt "$probe_start_ts" ]; then
+            echo "WARN: PROBE_PORT $PROBE_PORT listener pid=$lpid started before this probe (lstart=$lstart) -- left alone, NOT killed." >&2
+            continue
+          fi
+
+          any_direct_target=1
+          kill -TERM "$lpid" 2>/dev/null || true
+          local lwaited=0
+          while [ "$lwaited" -lt "$wait_secs" ] && kill -0 "$lpid" 2>/dev/null; do
+            sleep 1
+            lwaited=$((lwaited + 1))
+          done
+          [ "$lwaited" -gt "$direct_kill_waited" ] && direct_kill_waited="$lwaited"
+          if kill -0 "$lpid" 2>/dev/null; then
+            kill -KILL "$lpid" 2>/dev/null || true
+            sleep 3
+            direct_kill_waited=$((direct_kill_waited + 3))
+          fi
+        done
+
+        if [ "$any_direct_target" -eq 1 ]; then
+          local direct_check; direct_check="$(ss -ltn "( sport = :$PROBE_PORT )" 2>/dev/null | grep -c LISTEN || true)"
+          if [ "${direct_check:-0}" -eq 0 ]; then
+            log "probe port $PROBE_PORT free after ${direct_kill_waited}s (direct listener kill)"
+            still_listening=0
+          fi
+        fi
+
+        if [ "${still_listening:-0}" -gt 0 ]; then
+          if command -v fuser >/dev/null 2>&1; then
+            local survivors; survivors="$(fuser -n tcp "$PROBE_PORT" 2>/dev/null | tr -d ' ')"
+            echo "WARN: surviving pid(s) on PROBE_PORT $PROBE_PORT: ${survivors:-unknown}" >&2
+            fuser -k -n tcp "$PROBE_PORT" 2>/dev/null || true
+            sleep 1
+            local final_check; final_check="$(ss -ltn "( sport = :$PROBE_PORT )" 2>/dev/null | grep -c LISTEN || true)"
+            if [ "${final_check:-0}" -gt 0 ]; then
+              echo "FATAL: PROBE_PORT $PROBE_PORT still has a listener after fuser -k -- a stray process may still be bound to it. Refusing to proceed with the flip." >&2
+              PROBE_CLEANUP_FAILED=1
+            fi
           fi
         fi
       fi
