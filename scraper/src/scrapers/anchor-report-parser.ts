@@ -63,6 +63,17 @@ export interface AnchorReportParse {
   percentageCheckPassed: boolean;
   /** The summed amounts matched summed shares x the derived bid price. */
   sharesTimesPriceCheckPassed: boolean;
+
+  // ------------------------------------------------------------ row errors
+  // Round 2 (Hole 1): `rows`/`totalShares`/`totalAmountRupees` above cover
+  // only the rows that reconciled - a row skipped for an unreadable amount
+  // cell is silently absent from them. A caller (the persister) MUST see
+  // that absence to avoid treating an UNDERSTATED sum as a clean total: a
+  // partially-read letter must never be persisted as if it were complete.
+  /** Investor rows that could not be reconciled to the derived price and were skipped (not published in `rows`). */
+  rowErrors: number;
+  /** Investor rows actually read into `rows` (== rows.length; carried explicitly so a caller need not recompute it). */
+  rowsRead: number;
 }
 
 export type AnchorReportResult =
@@ -88,6 +99,14 @@ export const PRICE_TOLERANCE = 0.005;
 /** Percentages must add up to 100 within this many points. */
 const PERCENT_SUM_TOLERANCE = 1;
 const MIN_ROWS = 2;
+/**
+ * Share of investor rows allowed to fail the derived-price reconciliation
+ * before the WHOLE letter is refused (W-170). Mirrors the Python sidecar's
+ * `NAME_QUALITY_FLOOR` (anchor_report_text.py) - a scan corrupts a handful of
+ * rows, not the letter's arithmetic; refusing the entire report over one bad
+ * cell throws away N-1 rows that read and reconciled cleanly.
+ */
+export const ROW_ERROR_FLOOR = 0.3;
 /** Longest a percentage cell can be before it is prose, not a value. */
 const MAX_PERCENT_TEXT = 10;
 
@@ -189,6 +208,18 @@ function digitsOf(cell: string): string {
  * through, the derived price is a systematic 100x apart from the real one so
  * `modalPrice`'s lower-price tie-break and the row-level tolerance check
  * both still land on the true price (verified against the DEEPA fixture).
+ *
+ * `k` is a CUT POINT in the digit run, not a count of "price digits" read off
+ * as a value - the price is always `amount / shares` (never the leftover
+ * digits themselves), so `k` only decides where the amount candidate starts.
+ * The loop starts at `k = 0` (W-170): some NSE Emerge letters print the bid
+ * price only in prose ("at Rs 83 per share") and the row's own trailing cell
+ * holds NOTHING but the amount (Shanti Inorganics: "3,99,72,800" alone, no
+ * price digits mixed in) - the correct cut is then "cut nothing off the
+ * front", i.e. k = 0. A 2-3 digit price prefix sharing the cell with the
+ * amount (Ashutosh Fibre: "92 6,00,57,600") needs a small k too, which the old
+ * `k >= 3` floor excluded and silently discarded every one of those rows'
+ * only valid split.
  */
 export function splitPriceAndAmount(
   cell: string,
@@ -196,7 +227,7 @@ export function splitPriceAndAmount(
 ): Array<{ price: number; amount: number }> {
   const digits = digitsOf(cell);
   const out: Array<{ price: number; amount: number }> = [];
-  for (let k = 3; k <= digits.length - 3; k++) {
+  for (let k = 0; k <= digits.length - 3; k++) {
     const decimalAmount = Number(digits.slice(k, -2) + '.' + digits.slice(-2));
     const wholeAmount = Number(digits.slice(k));
     for (const amount of [decimalAmount, wholeAmount]) {
@@ -244,6 +275,26 @@ function parseLetterDate(firstPage: string): Date | null {
   return new Date(Date.UTC(Number(m[3]), month, Number(m[2])));
 }
 
+/**
+ * The bid price stated in the letter's own PROSE ("at Rs 83 per share",
+ * "Investor allocation price of Rs 127 per Equity Share", "₹83 per
+ * Equity Share"), read as a LAST-RESORT fallback (W-170) when the per-row
+ * amount/shares derivation (`modalPrice`) cannot agree on one - e.g. every
+ * row's trailing cell is scanned/OCR'd too badly for `splitPriceAndAmount` to
+ * land a value in range. Never preferred over the row-derived price: the rows
+ * are cross-checked against each other and against the total, while a single
+ * printed sentence is not corroborated by anything.
+ */
+export function parsePrintedBidPrice(text: string): number | null {
+  const m = text.match(
+    /(?:allocation\s+price\s+of|at\s+a\s+price\s+of|at)\s*(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d+)?)\s*(?:\/-)?\s*per\s+(?:equity\s+)?share/i
+  );
+  if (!m) return null;
+  const value = Number(m[1].replace(/,/g, ''));
+  if (!Number.isFinite(value) || value < MIN_PRICE || value > MAX_PRICE) return null;
+  return value;
+}
+
 interface RawRecord {
   name: string;
   cells: string[];
@@ -266,6 +317,8 @@ interface Candidate {
   shares: number;
   percent: number;
   splits: Array<{ price: number; amount: number }>;
+  /** The unsplit trailing cell(s), for `amountMatchesPrice` (the prose-price fallback). */
+  rawTail: string;
 }
 
 function readRow(rec: RawRecord): Candidate | null {
@@ -286,7 +339,35 @@ function readRow(rec: RawRecord): Candidate | null {
   }
   if (shares === null) return null;
   const tail = rec.cells.slice(pctAt + 1).join(' ');
-  return { name: rec.name, shares, percent, splits: splitPriceAndAmount(tail, shares) };
+  return { name: rec.name, shares, percent, splits: splitPriceAndAmount(tail, shares), rawTail: tail };
+}
+
+/**
+ * Does this row's raw amount cell agree with `shares x price` at a KNOWN,
+ * already-trusted price (round 2 / Hole 2)?
+ *
+ * `splitPriceAndAmount` only reports splits whose IMPLIED price falls in
+ * [MIN_PRICE, MAX_PRICE] - it has no known price to check against yet. When
+ * the price instead comes from the letter's own prose (`parsePrintedBidPrice`,
+ * used only when NO row's cell yields ANY in-range split at all), every row's
+ * `splits` array is therefore already empty by construction, and re-filtering
+ * an empty array can never accept a row - the prose-price branch would be
+ * dead code. This re-runs the same digit-cut search but checks the resulting
+ * amount against the KNOWN `shares x price` target directly, with no price
+ * bounds of its own to fail.
+ */
+export function amountMatchesPrice(rawTail: string, shares: number, price: number): number | null {
+  const digits = digitsOf(rawTail);
+  const target = shares * price;
+  for (let k = 0; k <= digits.length - 3; k++) {
+    const decimalAmount = Number(digits.slice(k, -2) + '.' + digits.slice(-2));
+    const wholeAmount = Number(digits.slice(k));
+    for (const amount of [decimalAmount, wholeAmount]) {
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+      if (Math.abs(amount - target) / target <= PRICE_TOLERANCE) return amount;
+    }
+  }
+  return null;
 }
 
 /**
@@ -425,6 +506,33 @@ function modalPrice(prices: number[]): number | null {
 }
 
 /**
+ * Is this the letter's "Total" row?
+ *
+ * Usually its own name cell reads "Total" - but a scan can drop the label
+ * entirely and still capture the row's numbers (W-170: Ashutosh Fibre's Total
+ * row prints with a BLANK name cell). Missing that row is worse than a missed
+ * label: it falls through to `readRow` as if it were a 6th investor, silently
+ * doubling every summed total and halving every percentage. A blank-named row
+ * whose own percentage cell reads ~100% is caught by that instead - no
+ * genuine investor row prints 100% of the anchor portion by itself, only the
+ * row that sums every investor does.
+ */
+function looksLikeTotalRow(rec: RawRecord, isLastPercentBearingRecord: boolean): boolean {
+  if (/^total\b/i.test(rec.name.trim())) return true;
+  if (rec.name.trim() !== '') return false;
+  // Position guard (round 2 / Hole 3): a blank-named ~100% row is only
+  // trusted as the Total row when it is the LAST record in the whole letter
+  // that carries any percentage at all - a mid-letter row that happens to be
+  // both blank-named AND print ~100% (unlikely, but not impossible in a
+  // sub-table) must not be mistaken for the table's own Total row.
+  if (!isLastPercentBearingRecord) return false;
+  const pctCell = rec.cells.find((c) => parsePercent(c) !== null);
+  if (pctCell === undefined) return false;
+  const value = parsePercent(pctCell) as number;
+  return value >= 99 && value <= 100.5;
+}
+
+/**
  * Parse the sidecar's page texts into the letter's allocation table.
  *
  * The main table ends at the row the letter labels "Total"; everything after it
@@ -432,8 +540,13 @@ function modalPrice(prices: number[]): number | null {
  * sub-table's repeat of three investors can never be counted twice.
  */
 export function parseAnchorReport(pages: string[]): AnchorReportResult {
+  const fullText = pages.join('\n');
   const all = records(pages);
-  const totalAt = all.findIndex((r) => /^total\b/i.test(r.name.trim()));
+  const percentBearingIndices = all
+    .map((r, i) => (r.cells.some((c) => parsePercent(c) !== null) ? i : -1))
+    .filter((i) => i !== -1);
+  const lastPercentIdx = percentBearingIndices[percentBearingIndices.length - 1] ?? -1;
+  const totalAt = all.findIndex((r, i) => looksLikeTotalRow(r, i === lastPercentIdx));
   const main = totalAt === -1 ? all : all.slice(0, totalAt);
   const after = totalAt === -1 ? [] : all.slice(totalAt + 1);
 
@@ -447,39 +560,83 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
     };
   }
 
-  const price = modalPrice(
+  // Prefer the price every row's own arithmetic agrees on - it is corroborated
+  // by N independent rows and by the total. Only when NO row's amount cell
+  // yields a derivable price at all does the letter's own prose statement of
+  // the price step in (W-170) - never the other way around, because the prose
+  // is a single uncorroborated sentence.
+  const rowDerivedPrice = modalPrice(
     candidates.reduce<number[]>((acc, c) => acc.concat(c.splits.map((s) => s.price)), [])
   );
+  const price = rowDerivedPrice ?? parsePrintedBidPrice(fullText);
   if (price === null) {
     return { ok: false, reason: 'no bid price could be derived from the investor rows' };
   }
 
-  // Every row must have exactly one amount that agrees with that price. "Exactly
-  // one" matters: two admissible amounts means the split is ambiguous, and a
-  // guess between them is precisely what this parser must not make.
+  // Every row must have an amount that agrees with that price. Round 2 (Hole
+  // 2): this ALWAYS goes through `amountMatchesPrice` against the now-known
+  // `price`, regardless of whether it came from the rows or from the prose -
+  // re-filtering `c.splits` (bound-gated against [MIN_PRICE, MAX_PRICE] with
+  // no known price yet) is only ever non-empty when the row's own arithmetic
+  // ALREADY agrees with `price` within [MIN_PRICE, MAX_PRICE], which is
+  // exactly what `amountMatchesPrice` also re-derives directly from the raw
+  // cell - so using the one function unconditionally means the prose-price
+  // fallback is exercised by the SAME code path as the row-derived price,
+  // never a dead branch that can't actually accept a row.
+  //
+  // A row whose amount cannot be made to agree (scan/OCR damage on that one
+  // cell) is a ROW error, not a letter-wide failure - it is skipped and
+  // counted, and only refuses the whole letter once skipped rows cross
+  // ROW_ERROR_FLOOR (mirrors the sidecar's NAME_QUALITY_FLOOR: a few
+  // corrupted cells do not make the rest of the letter unusable).
   const rows: AnchorReportRow[] = [];
+  let rowErrors = 0;
+  let rowErrorReason: string | null = null;
+  // The percent CELL of a skipped row is read independently of its amount
+  // cell and is not itself in question - only the amount failed to
+  // reconcile. Kept for the percentage cross-checks below, which otherwise
+  // see a portion "missing" its skipped members and fail for a reason that
+  // has nothing to do with a real percentage mismatch.
+  let skippedPercentSum = 0;
   for (const c of candidates) {
-    const fits = c.splits.filter((s) => Math.abs(s.price - price) / price <= PRICE_TOLERANCE);
-    const amounts = Array.from(new Set(fits.map((s) => s.amount)));
-    if (amounts.length === 0) {
-      return {
-        ok: false,
-        reason: `row "${c.name || c.shares}" has no amount consistent with the derived bid price ${price}`,
-      };
-    }
-    if (amounts.length > 1) {
-      return { ok: false, reason: `row "${c.name || c.shares}" has ${amounts.length} possible amounts` };
+    const amount = amountMatchesPrice(c.rawTail, c.shares, price);
+    if (amount === null) {
+      rowErrors++;
+      skippedPercentSum += c.percent;
+      rowErrorReason ??= `row "${c.name || c.shares}" has no amount consistent with the derived bid price ${price}`;
+      continue;
     }
     rows.push({
       name: c.name,
       shares: c.shares,
-      amountRupees: amounts[0],
+      amountRupees: amount,
       percentOfAnchorPortion: c.percent,
     });
+  }
+  // Round 2 (Hole 1): `>=` - exactly the floor's own share of bad rows also
+  // refuses (a 30%-bad letter is not "under" a 30% floor).
+  if (rowErrors / candidates.length >= ROW_ERROR_FLOOR) {
+    return {
+      ok: false,
+      reason: `${rowErrors} of ${candidates.length} investor rows disagreed with the derived bid price ${price}, at or over the ${Math.round(ROW_ERROR_FLOOR * 100)}% floor - first: ${rowErrorReason}`,
+    };
+  }
+  if (rows.length < MIN_ROWS) {
+    return {
+      ok: false,
+      reason: `only ${rows.length} investor rows could be read from the anchor report`,
+    };
   }
 
   const totalShares = rows.reduce((s, r) => s + r.shares, 0);
   const totalAmountRupees = rows.reduce((s, r) => s + r.amountRupees, 0);
+  // Denominator for the per-row percentage check, below. A skipped row's
+  // SHARE count is still reliable (only its amount cell failed to
+  // reconcile), and the letter's printed percentages are of the FULL anchor
+  // portion including that row - so the portion a kept row's percent is
+  // checked against must include the skipped rows' shares too, or every kept
+  // row's percentage looks inflated by exactly the skipped share.
+  const totalSharesInPortion = candidates.reduce((s, c) => s + c.shares, 0);
 
   // The totals are cross-checked against the printed percentages, which are an
   // INDEPENDENT statement of each row's share of the anchor portion: had a share
@@ -494,7 +651,7 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
   let percentageCheckPassed = true;
   let percentageReason: string | null = null;
   for (const row of rows) {
-    const expected = ((row.shares / totalShares) * 100).toFixed(2);
+    const expected = ((row.shares / totalSharesInPortion) * 100).toFixed(2);
     const printed = row.percentOfAnchorPortion.toFixed(2);
     if (!withinOneGlyph(printed, expected)) {
       percentageCheckPassed = false;
@@ -502,7 +659,7 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
       break;
     }
   }
-  const percentSum = rows.reduce((s, r) => s + r.percentOfAnchorPortion, 0);
+  const percentSum = rows.reduce((s, r) => s + r.percentOfAnchorPortion, 0) + skippedPercentSum;
   if (percentageCheckPassed && Math.abs(percentSum - 100) > PERCENT_SUM_TOLERANCE) {
     percentageCheckPassed = false;
     percentageReason = `investor percentages add up to ${percentSum.toFixed(2)}%, not 100%`;
@@ -539,7 +696,6 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
     mutualFundShares.push(parsed.shares);
   }
 
-  const fullText = pages.join('\n');
   const printed = readPrintedTotals(totalAt === -1 ? undefined : all[totalAt]);
   // A total the scan mangled is MISSING, not contradicting — see
   // isPrintedTotalReadable. Null here becomes `not_checkable` downstream.
@@ -568,6 +724,8 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
       printedCount: readPrintedCount(fullText),
       percentageCheckPassed,
       sharesTimesPriceCheckPassed,
+      rowErrors,
+      rowsRead: rows.length,
     },
   };
 }

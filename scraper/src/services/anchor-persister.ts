@@ -257,9 +257,18 @@ export function runAnchorChecks(data: AnchorInvestorData): AnchorCheck[] {
     printedCount?: number | null;
     percentageCheckPassed?: boolean;
     sharesTimesPriceCheckPassed?: boolean;
+    rowErrors?: number;
   };
+  const rowErrors = d.rowErrors ?? 0;
+  // Round 2 (Hole 1): a partially-read letter (rowErrors > 0) has UNDERSTATED
+  // `investorList`/summed totals by construction - the row-arithmetic
+  // cross-checks can both pass against that understated sum with no
+  // relationship to whether the FULL letter's totals are what got persisted.
+  // `corroborated` therefore requires rowErrors === 0: it is only ever asked
+  // to stand in for a printed total the scan could not read, never for rows
+  // the scan could not read.
   const corroborated =
-    d.percentageCheckPassed === true && d.sharesTimesPriceCheckPassed === true;
+    rowErrors === 0 && d.percentageCheckPassed === true && d.sharesTimesPriceCheckPassed === true;
 
   const reconcile = (
     name: string,
@@ -294,6 +303,20 @@ export function runAnchorChecks(data: AnchorInvestorData): AnchorCheck[] {
       name: 'investor_rows_present',
       passed: rows.length > 0,
       detail: `${rows.length} investor rows parsed`,
+    },
+    // Round 2 (Hole 1): unconditional - independent of whether any printed
+    // total happens to be readable. A printed total that numerically agrees
+    // with `sumShares`/`sumAmount` when rowErrors > 0 is NOT real
+    // corroboration: those sums are understated by construction (rows the
+    // scan could not reconcile are missing from them), so agreement with an
+    // understated figure proves nothing and must not let the letter through.
+    {
+      name: 'no_row_errors',
+      passed: rowErrors === 0,
+      detail:
+        rowErrors === 0
+          ? 'every investor row reconciled cleanly'
+          : `${rowErrors} rows unreadable, totals not corroborated`,
     },
     reconcile(
       'count_matches_printed',

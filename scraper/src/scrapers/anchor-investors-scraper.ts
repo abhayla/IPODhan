@@ -72,6 +72,14 @@ export interface AnchorInvestorData {
   /** Both parser-internal cross-checks passed (an ok parse implies both). */
   percentageCheckPassed: boolean;
   sharesTimesPriceCheckPassed: boolean;
+  /**
+   * W-170 round 2 (Hole 1): investor rows the parser could NOT reconcile and
+   * skipped from `investorList`/`totalSharesOffered`/`totalAmountRaised` —
+   * those totals are therefore UNDERSTATED whenever this is > 0. The
+   * persister must refuse rather than treat an understated sum as complete,
+   * even when a printed total happens to agree with it.
+   */
+  rowErrors: number;
 }
 
 /**
@@ -296,6 +304,7 @@ export async function scrapeAnchorInvestorsDetailed(
       printedCount: report.printedCount,
       percentageCheckPassed: report.percentageCheckPassed,
       sharesTimesPriceCheckPassed: report.sharesTimesPriceCheckPassed,
+      rowErrors: report.rowErrors,
       investorList: report.rows.map((row) => ({
         name: row.name,
         // The letter names the mutual-fund allottees in a sub-table and nowhere
