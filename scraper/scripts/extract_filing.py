@@ -82,11 +82,22 @@ TBD = re.compile(r"\[\s*[•●○▪·.\-]\s*\]")
 # `0.50 million)" or "?0.50 million" verbatim. Only a backtick/`?` DIRECTLY
 # against a digit (optionally one space between) is a rupee-symbol misread;
 # nothing else about the line is touched.
-RUPEE_GLYPH_RX = re.compile(r"[`?]\s*(?=\d)")
+#
+# W-138: a THIRD misencoding was found live (PRASOLCHEM's price-band ad) — the
+# same glyph came through as a literal NUL byte ("Bid Amount is up to
+# \x000.50 million)"). Postgres refuses to store a NUL byte in text/jsonb at
+# all (22P05 "unsupported Unicode escape sequence"), so this variant is not
+# just a display glitch like the backtick/`?` ones — an unrepaired NUL crashes
+# every persist attempt for the document, forever (the extractor is
+# deterministic, so retrying does not change the output). Folded into the same
+# repair since it is the same root cause (an unmapped custom-font glyph) and
+# the same fix (rewrite to "Rs ").
+RUPEE_GLYPH_RX = re.compile(r"[`?\x00]\s*(?=\d)")
 
 
 def _normalize_rupee_glyph(line):
-    """Repair a misencoded ₹ glyph (backtick or `?`) immediately before a digit."""
+    """Repair a misencoded ₹ glyph (backtick, `?`, or a NUL byte) immediately
+    before a digit."""
     return RUPEE_GLYPH_RX.sub("Rs ", line)
 
 MONTHS = {m: i + 1 for i, m in enumerate(
@@ -499,6 +510,26 @@ def check_date_before(a, b, label):
 # --------------------------------------------------------------------------- #
 # emission helpers
 # --------------------------------------------------------------------------- #
+def _strip_nul_bytes(value):
+    """W-138 backstop: Postgres refuses a NUL byte (\\x00) anywhere in text or
+    jsonb (22P05 "unsupported Unicode escape sequence") — one slipping through
+    fails EVERY future persist attempt for the document, not just this one. The
+    known source is an unmapped custom-font glyph (see `_normalize_rupee_glyph`,
+    scoped to `bid_windows`), but that repair only covers the field it was
+    written for; any OTHER field could carry the same misencoding from a
+    different filing's font. Applied once, here, to the whole output tree
+    right before it is serialized, so no single field needs its own copy of
+    this defense. Recurses through dict/list; leaves non-string values (and
+    already-clean strings) untouched."""
+    if isinstance(value, str):
+        return value.replace("\x00", "") if "\x00" in value else value
+    if isinstance(value, dict):
+        return {k: _strip_nul_bytes(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_strip_nul_bytes(v) for v in value]
+    return value
+
+
 class Emitter:
     def __init__(self, source_doc):
         self.source_doc = source_doc
@@ -2282,7 +2313,7 @@ def main():
         # configured cap. Anything else re-raises unchanged.
         _emit_memory_ceiling_and_exit(exc)
         return
-    print(json.dumps(out, indent=2, default=str))
+    print(json.dumps(_strip_nul_bytes(out), indent=2, default=str))
 
 
 if __name__ == "__main__":
