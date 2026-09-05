@@ -56,6 +56,7 @@ if ! command -v jq >/dev/null; then
 fi
 
 prompt=$(printf '%s' "$input" | jq -r '.prompt // ""')
+_sid=$(printf '%s' "$input" | jq -r '.session_id // ""' 2>/dev/null)
 
 # Trim leading/trailing whitespace for length check
 trimmed=$(printf '%s' "$prompt" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
@@ -84,6 +85,30 @@ if [ "${#trimmed}" -le 40 ]; then
       exit 0
       ;;
   esac
+fi
+
+# Once-per-session gate (T-448, applying hub T-445 to this project-customized hook): the
+# full reminder + governance tail cost ~1.2k tokens and are re-sent on EVERY later API call
+# for the rest of the session once injected — over a long session that is millions of
+# duplicate tokens. So the full text renders only on the FIRST non-exempt turn per
+# session_id (marker file $HOME/.claude/.enhance-reminder-shown/<session_id> — kept OUTSIDE
+# the project's .claude/ so it can never be accidentally committed); every later non-exempt
+# turn on that same session gets a one-line pointer instead — the model still owes the same
+# governance, it is just not re-taught it every turn. When session_id is unavailable
+# (missing from stdin, e.g. an older harness), gating is skipped and the full text renders
+# every turn — the pre-T-448 behavior — since a marker keyed on "no session" would wrongly
+# collapse unrelated turns.
+if [ -n "$_sid" ]; then
+  reminder_marker_dir="$HOME/.claude/.enhance-reminder-shown"
+  mkdir -p "$reminder_marker_dir" 2>/dev/null
+  # Fail-open janitor: drop markers older than 2 days so this dir never grows unbounded.
+  find "$reminder_marker_dir" -mtime +2 -delete 2>/dev/null
+  reminder_marker="$reminder_marker_dir/$_sid"
+  if [ -f "$reminder_marker" ]; then
+    echo "Reminder: enhance banner + governance tail apply (SSOT prompt-auto-enhance.md); full text shown at turn 1."
+    exit 0
+  fi
+  touch "$reminder_marker" 2>/dev/null
 fi
 
 # Default: emit the full reminder
