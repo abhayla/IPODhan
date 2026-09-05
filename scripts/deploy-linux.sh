@@ -366,6 +366,70 @@ else
   pm2 stop "$PM2_SCRAPER_APP" >/dev/null 2>&1 || warn "pm2 stop $PM2_SCRAPER_APP: not running / not found (ok on first deploy)"
 fi
 
+# W-176 (staging 2026-09-05 21:25-22:39Z, four deploys that night): `pm2
+# stop` above can stop the scraper MID-CYCLE, but the two Redis locks the
+# scraper process holds survive the stop with their TTLs intact:
+#   - `scraper:cycle`             (CYCLE_LOCK_RESOURCE, scraper/src/index.ts)
+#   - `filing-auto-persist:cycle` (FILING_EXTRACTION_LOCK_KEY,
+#     scraper/src/services/document-cycle.ts — 45-minute TTL)
+# `DistributedLock` (scraper/src/utils/distributed-lock.ts) stores these
+# under `lock:resource:<resourceId>`, so the real keys are
+# `lock:resource:scraper:cycle` and `lock:resource:filing-auto-persist:cycle`.
+# The next 1-2 cycles then log "previous cycle still running" / "lock
+# already held by another cycle" and exit without doing any work, losing up
+# to 45 minutes of staging evidence per deploy.
+#
+# Safety: the ONLY process that ever holds these two keys is the scraper
+# process this deploy just stopped, immediately above — the web app never
+# touches them — so deleting them here cannot steal a lock from a still-live
+# holder. Called AFTER the real `pm2 stop` so the holder is actually gone by
+# the time we delete its locks.
+#
+# Fail-safe throughout: this must never fail the deploy. Every redis-cli
+# call is `|| true`, a missing redis-cli or REDIS_URL just warns and
+# returns 0, and the function itself always returns 0.
+release_scraper_cycle_locks() {
+  if (( DRY_RUN )); then
+    log "[dry-run] skipping scraper cycle-lock release (scraper:cycle, filing-auto-persist:cycle)"
+    return 0
+  fi
+
+  if ! command -v redis-cli >/dev/null 2>&1; then
+    warn "release_scraper_cycle_locks: redis-cli not found; cycle locks left to expire"
+    return 0
+  fi
+
+  # Same env-file read pattern used elsewhere in this script (e.g. the
+  # ENABLE_* flag summary below) — the scraper's own REDIS_URL, so staging
+  # vs prod's different Redis DB index (the URL's /N path suffix) is
+  # honoured automatically; scraper/src/config.ts passes REDIS_URL straight
+  # through to ioredis the same way.
+  local redis_url
+  redis_url="$(grep -E '^REDIS_URL=' "$SCRAPER_ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- || true)"
+  redis_url="${redis_url%\"}"; redis_url="${redis_url#\"}"
+  redis_url="${redis_url%\'}"; redis_url="${redis_url#\'}"
+  if [ -z "$redis_url" ]; then
+    warn "release_scraper_cycle_locks: REDIS_URL not found in $SCRAPER_ENV_FILE; cycle locks left to expire"
+    return 0
+  fi
+
+  local key value ttl released=0
+  for key in "lock:resource:scraper:cycle" "lock:resource:filing-auto-persist:cycle"; do
+    value="$(redis-cli -u "$redis_url" GET "$key" 2>/dev/null || true)"
+    if [ -z "$value" ]; then
+      log "release_scraper_cycle_locks: $key not held"
+      continue
+    fi
+    ttl="$(redis-cli -u "$redis_url" TTL "$key" 2>/dev/null || true)"
+    log "release_scraper_cycle_locks: releasing $key (held: ${ttl}s remaining)"
+    redis-cli -u "$redis_url" DEL "$key" >/dev/null 2>&1 || true
+    released=$((released + 1))
+  done
+  log "release_scraper_cycle_locks: cycle locks released: $released"
+  return 0
+}
+release_scraper_cycle_locks || true
+
 # A single trap resumes the scraper on ANY exit path (success, rollback, or a
 # hard failure before the flip) — it is never left stopped by this script.
 SCRAPER_RESUME_TARGET="prev" # 'new' set once the flip to the new release lands
@@ -912,7 +976,7 @@ probe_release() {
     if command -v ss >/dev/null 2>&1; then
       local still_listening; still_listening="$(ss -ltn "( sport = :$PROBE_PORT )" 2>/dev/null | grep -c LISTEN || true)"
       if [ "${still_listening:-0}" -gt 0 ]; then
-        echo "WARN: PROBE_PORT $PROBE_PORT still has a listener after cleanup_probe() killed pid $pid (pgid $pgid) — attempting fuser -k as a last resort." >&2
+        echo "WARN: PROBE_PORT $PROBE_PORT still has a listener after cleanup_probe() killed pid $pid (pgid $pgid) — trying a direct listener kill first (fuser -k only if that fails)." >&2
 
         # W-169: root cause is that the group TERM/KILL above only ever
         # reaches processes in $pgid -- the next-server CHILD frequently
