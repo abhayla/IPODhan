@@ -704,6 +704,24 @@ export const FIELD_PRIORITY_MATRIX: Record<string, FieldRules> = {
     description: 'Lead manager banks',
   },
 
+  // W-145: the one identity field that had NO matrix entry, so it fell through
+  // to getFieldRules()'s DEFAULT rule and resolved last-writer-wins — any source
+  // could stomp a correct single-board value. The exchanges are a SET
+  // (`SET_VALUED_FIELDS` in data-consolidation-service.ts): NSE and BSE each
+  // assert only THEMSELVES and the truth is the union of those self-assertions;
+  // CHITTORGARH (page-stated "Listing At") ranks below them; MONEYCONTROL and
+  // API_FALLBACK sit at the bottom and may only add a board they actually name
+  // (their 'BOTH' is dropped as unknown at the boundary — see
+  // listing-exchange-resolution.ts). API_FALLBACK being the WORST listed source
+  // also means `outranksUntrackedValue()` denies it a silent replacement of an
+  // untracked stored value.
+  listingExchanges: {
+    sources: ['ADMIN', 'DRHP', 'NSE', 'BSE', 'CHITTORGARH', 'MONEYCONTROL', 'API_FALLBACK'],
+    normalization: 'none',
+    confidenceThreshold: 75,
+    description: 'Listing exchange set — union of exchange self-assertions (NSE/BSE speak only for themselves)',
+  },
+
   // ==================== LISTING PERFORMANCE ====================
 
   listing_price: {

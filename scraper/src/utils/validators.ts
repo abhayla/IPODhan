@@ -33,9 +33,15 @@ export const ScrapedIPOSchema = z.object({
     (date) => !isNaN(Date.parse(date)),
     'Close date must be a valid ISO 8601 date string'
   ),
+  // W-145: OPTIONAL. A source that cannot see which board an issue lists on
+  // must report nothing rather than default to 'BOTH' — unknown never
+  // overwrites, whereas a defaulted 'BOTH' overwrote correct single-board
+  // values on every cycle. NSE/BSE self-assert their own board; the canonical
+  // stored field is the `listingExchanges` ARRAY (see
+  // services/listing-exchange-resolution.ts).
   listingExchange: z.enum(['NSE', 'BSE', 'BOTH'], {
     message: 'Invalid listing exchange'
-  }),
+  }).optional(),
   // Story 11.8: Replaced category with segment + offeringType
   // NOTE: segment is nullable for RIGHTS/InvITs/REITs/NCDs (they don't have market segments)
   segment: z.enum(['MAINBOARD', 'SME']).nullable().optional(),

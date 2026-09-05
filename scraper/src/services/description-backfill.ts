@@ -29,8 +29,10 @@ export interface DescBackfillIpo {
 /**
  * Build the upsertIPO payload to set company_description on an existing IPO.
  * Throws on an empty description (never writes a blank). Carries the existing
- * sector through unchanged. listingExchange is inferred from symbol/isin presence
- * (BOTH is the safe default — it does not change exchange membership).
+ * sector through unchanged. W-145: listingExchange is left UNDEFINED — a
+ * description backfill has no evidence about the listing board, and the old
+ * 'BOTH' default did change exchange membership (it re-widened single-board
+ * rows on every run).
  */
 export function buildDescriptionScrapedIPO(ipo: DescBackfillIpo, description: string): ScrapedIPO {
   const desc = description.trim();
@@ -50,7 +52,9 @@ export function buildDescriptionScrapedIPO(ipo: DescBackfillIpo, description: st
     issueSize: issueSizeNum,
     openDate: ipo.openDate ?? today,
     closeDate: ipo.closeDate ?? ipo.openDate ?? today,
-    listingExchange: 'BOTH',
+    // W-145: a description backfill knows nothing about the listing board —
+    // asserting 'BOTH' here re-widened single-board rows on every run.
+    listingExchange: undefined,
     segment: ipo.segment ?? undefined,
     offeringType: ipo.offeringType as ScrapedIPO['offeringType'],
     status: ipo.status as ScrapedIPO['status'], // preserve existing status — a description backfill must not change it

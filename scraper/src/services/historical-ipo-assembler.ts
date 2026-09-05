@@ -88,7 +88,9 @@ export function assembleHistoricalRecord(input: {
     issueSize: issueSizeRupees ?? 0,
     openDate: openDate ?? listingDate,
     closeDate: closeDate ?? openDate ?? listingDate,
-    listingExchange: 'BOTH',
+    // W-145: the historical report row does not state the listing board, so the
+    // assembler must report unknown rather than assert both.
+    listingExchange: undefined,
     segment,
     offeringType: 'IPO',
     status: 'LISTED', // listing date has passed for an aged-out historical IPO

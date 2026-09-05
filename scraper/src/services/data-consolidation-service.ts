@@ -41,6 +41,12 @@ import {
 import { confidenceFor } from '../config/source-confidence';
 import type { ConflictSeverity } from '../config/source-confidence';
 import { FEATURE_FLAGS, shouldUseFeature } from '../config/feature-flags';
+import {
+  violatesSmeSingleExchange,
+  collapseSmeExchanges,
+  SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+  type SmeCollapseEvidence,
+} from './listing-exchange-resolution.js';
 import logger from '../utils/logger.js';
 import { toUtcEpochDay, toUtcEpochMs } from '../utils/date-string-parsing.js';
 
@@ -579,7 +585,11 @@ export class DataConsolidationService {
 
   constructor(
     private fieldSourcesRepository: any, // FieldSourcesRepository from web
-    private dataConflictsRepository: any // DataConflictsRepository from web
+    private dataConflictsRepository: any, // DataConflictsRepository from web
+    // W-145 round 2: OPTIONAL. `listing_performance.exchange` is the strongest
+    // evidence for which single board an SME issue actually listed on. Omitted
+    // (tests, callers without the repo) simply drops that evidence tier.
+    private listingPerformanceRepository?: { findByIPO(ipoId: string): Promise<any> }
   ) {}
 
   /**
@@ -776,6 +786,52 @@ export class DataConsolidationService {
         listingDate: input.existingData?.listingDate,
         segment: input.existingData?.segment,
       };
+      // W-145 round 2: a union never shrinks, so an SME row already stored with
+      // TWO exchanges can only be repaired by an evidence-based collapse. The
+      // evidence is gathered once per call, and only for the rows that need it.
+      const storedExchanges = input.existingData?.listingExchanges;
+      const smeSegment = input.existingData?.segment ?? input.incomingData.segment ?? null;
+      let smeCollapseEvidence: SmeCollapseEvidence | undefined;
+      if (violatesSmeSingleExchange(smeSegment, storedExchanges)) {
+        let listingRecordExchange: any = null;
+        try {
+          // Round 3: an absent repository is a MISSING evidence tier, not a
+          // silent no-op — say so once, so a mis-wired caller is visible.
+          if (!this.listingPerformanceRepository) {
+            logger.info(
+              { ipoId: input.ipoId },
+              '[DataConsolidation] W-145 tier 1 skipped: no listing repository'
+            );
+          }
+          listingRecordExchange =
+            input.ipoId !== 'new' && this.listingPerformanceRepository
+              ? (await this.listingPerformanceRepository.findByIPO(input.ipoId))?.exchange ?? null
+              : null;
+        } catch (error) {
+          // Evidence gathering is never allowed to fail the consolidation.
+          logger.warn(
+            { ipoId: input.ipoId, error: error instanceof Error ? error.message : String(error) },
+            '[DataConsolidation] W-145 listing-record evidence lookup failed (non-fatal)'
+          );
+        }
+        smeCollapseEvidence = {
+          listingRecordExchange,
+          trackedExchangeRows: existingFieldSources
+            .filter(
+              (row: any) =>
+                row.tableName === input.tableName &&
+                (row.fieldName === 'symbol' || row.fieldName === 'listingExchanges')
+            )
+            .map((row: any) => ({
+              fieldName: row.fieldName,
+              source: row.source,
+              value: row.value,
+              updatedAt: row.updatedAt,
+            })),
+          incomingSource: input.source,
+        };
+      }
+
       const incomingDates = {
         openDate: 'openDate' in input.incomingData ? input.incomingData.openDate : heldDates.openDate,
         closeDate: 'closeDate' in input.incomingData ? input.incomingData.closeDate : heldDates.closeDate,
@@ -821,6 +877,8 @@ export class DataConsolidationService {
             // computation deadlocked.
             heldDates,
             incomingDates,
+            segment: smeSegment,
+            smeCollapseEvidence,
           });
 
           result.fieldResults.push(fieldResult);
@@ -920,6 +978,13 @@ export class DataConsolidationService {
     ipoStatus?: string;
     heldDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
     incomingDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
+    // W-145: the row's segment, for the SME single-exchange invariant. The
+    // STORED segment leads (it is the classified row); the incoming one is
+    // only a fallback for a row that has none yet.
+    segment?: string | null;
+    // W-145 round 2: evidence for collapsing an SME row that is ALREADY stored
+    // with two exchanges (present only for such rows).
+    smeCollapseEvidence?: SmeCollapseEvidence;
   }): Promise<FieldConsolidationResult> {
     const {
       ipoId,
@@ -1110,6 +1175,119 @@ export class DataConsolidationService {
       // cycle with no conflict row. Only genuinely set-valued fields merge;
       // every other array falls through to normal priority resolution.
       if (SET_VALUED_FIELDS.has(fieldName)) {
+        // W-145 round 2: repair BEFORE the merge branches. An SME row already
+        // stored with two exchanges is wrong (an SME issue lists on exactly one
+        // board) and the union can never shrink it, so every later branch would
+        // just keep the bad pair — including `addsNothing`, which is the shape
+        // the 5 wrong prod rows hit on every cycle. Collapse only on EVIDENCE;
+        // with none, fall through and keep the pair + its conflict row.
+        if (params.smeCollapseEvidence && violatesSmeSingleExchange(params.segment, normalizedStored)) {
+          const collapsed = collapseSmeExchanges(normalizedStored, params.smeCollapseEvidence);
+          if (collapsed) {
+            logger.warn(
+              {
+                ipoId,
+                fieldName,
+                stored: storedValue,
+                collapsedTo: collapsed.exchange,
+                evidenceTier: collapsed.tier,
+                incomingSource,
+              },
+              '[DataConsolidation] W-145 SME single-exchange collapse - two stored exchanges reduced to the evidenced board'
+            );
+
+            await this.trackFieldSource({
+              ipoId,
+              tableName,
+              fieldName,
+              value: [collapsed.exchange],
+              source: existingSource || incomingSource,
+              previousValue: storedValue,
+              previousSource: existingSource,
+            });
+
+            // Round 3: the collapse ANSWERS the disagreement an earlier cycle
+            // recorded — leaving that CRITICAL row open would keep a resolved
+            // problem in the admin queue forever. Best-effort/non-fatal, like
+            // every other conflict-row cleanup.
+            if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+              try {
+                const openRows =
+                  (await this.dataConflictsRepository.findUnresolvedForIPO(ipoId)) ?? [];
+                for (const row of openRows) {
+                  if (
+                    row.tableName === tableName &&
+                    row.fieldName === fieldName &&
+                    row.resolutionReason === SME_SINGLE_EXCHANGE_CONFLICT_REASON
+                  ) {
+                    await this.dataConflictsRepository.resolveConflict(row.id, {
+                      resolvedSource: collapsed.exchange,
+                      resolutionReason: `SME_COLLAPSE_${collapsed.tier}`,
+                      resolvedBy: 'SYSTEM',
+                    });
+                  }
+                }
+              } catch (error) {
+                console.error(
+                  '[DataConsolidation] Failed to resolve SME invariant conflict row after collapse (non-fatal):',
+                  error
+                );
+              }
+            }
+
+            return {
+              fieldName,
+              finalValue: [collapsed.exchange],
+              chosenSource: existingSource || incomingSource,
+              hadConflict: false,
+              conflictReason: `SME_SINGLE_EXCHANGE_COLLAPSE_${collapsed.tier}`,
+              rejectedSources: [
+                {
+                  source: incomingSource,
+                  value: storedValue,
+                  reason: `SME_SINGLE_EXCHANGE_COLLAPSE_${collapsed.tier}`,
+                },
+              ],
+            };
+          }
+
+          // No evidence: the pair stays, and the disagreement stays VISIBLE as
+          // a CRITICAL conflict row for admin review. A guessed board is worse
+          // than a tracked unknown.
+          if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+            await this.logConflict({
+              ipoId,
+              tableName,
+              fieldName,
+              existingValue: storedValue,
+              existingSource: existingSource || incomingSource,
+              incomingValue,
+              incomingSource,
+              normalizedExisting: normalizedStored,
+              normalizedIncoming,
+              severity: 'CRITICAL',
+              reason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+              chosenSource: existingSource || incomingSource,
+            });
+          }
+
+          return {
+            fieldName,
+            finalValue: storedValue,
+            chosenSource: existingSource || incomingSource,
+            hadConflict: true,
+            conflictSeverity: 'CRITICAL',
+            conflictReason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+            rejectedSources: [
+              {
+                source: incomingSource,
+                value: incomingValue,
+                reason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+              },
+            ],
+          };
+        }
+
         if (addsNothing) {
           // W-25 (round 4): a confirming source also gives an UNTRACKED set its
           // provenance row — otherwise a merged list stays untracked forever,
@@ -1131,6 +1309,46 @@ export class DataConsolidationService {
             hadConflict: false,
             rejectedSources: [
               { source: incomingSource, value: incomingValue, reason: 'SET_MERGE_NO_NEW_MEMBERS' },
+            ],
+          };
+        }
+
+        // W-145 SME invariant: an SME issue lists on exactly ONE board (NSE
+        // Emerge or BSE SME). A union that would give it two exchanges is a
+        // disagreement about WHICH board, not two partial views of a set - so
+        // it becomes a conflict row for admin review and the stored single
+        // board is kept, never widened.
+        if (violatesSmeSingleExchange(params.segment, merged)) {
+          if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+            await this.logConflict({
+              ipoId,
+              tableName,
+              fieldName,
+              existingValue: storedValue,
+              existingSource: existingSource || incomingSource,
+              incomingValue,
+              incomingSource,
+              normalizedExisting: normalizedStored,
+              normalizedIncoming,
+              severity: 'CRITICAL',
+              reason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+              chosenSource: existingSource || incomingSource,
+            });
+          }
+
+          return {
+            fieldName,
+            finalValue: storedValue,
+            chosenSource: existingSource || incomingSource,
+            hadConflict: true,
+            conflictSeverity: 'CRITICAL',
+            conflictReason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+            rejectedSources: [
+              {
+                source: incomingSource,
+                value: incomingValue,
+                reason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+              },
             ],
           };
         }

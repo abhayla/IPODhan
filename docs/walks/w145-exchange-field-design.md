@@ -28,8 +28,33 @@
    the board; unknown never overwrites.
 4. **SME invariant**: `segment === 'SME'` implies exactly one exchange; a second exchange for an SME row
    is a conflict row (conflicts repo), not a write. Guard in the consolidator + a plausibility audit line.
-5. **Backfill**: recompute the 5 wrong SME rows and the "both" mainboard rows from NSE/BSE list scrapers'
-   self-assertions via the normal cycle (PRIMARY_SOURCE_DISCOVERY), no direct SQL.
+5. **Repairing the 5 wrong SME rows** (CORRECTED in round 2 — the original text was false):
+   "the normal cycle recomputes" does NOT hold. `listingExchanges` is a SET field and the merge is a
+   UNION, which never shrinks; the SME invariant only refuses to WIDEN, so a row already stored as
+   `['NSE','BSE']` would keep both boards forever. The repair is therefore an **evidence-based
+   collapse inside the consolidation path** (not a one-shot script), in `collapseSmeExchanges`
+   (`scraper/src/services/listing-exchange-resolution.ts`), applied whenever a `segment === 'SME'`
+   row is read with two exchanges:
+   1. **Listing record** — `listing_performance.exchange` for that IPO, when it names NSE or BSE
+      (a `BOTH` listing row is not evidence).
+   2. **Provenance** — the exchange whose OWN scraper holds a `field_sources` row for `symbol` or
+      `listingExchanges` on this IPO, when exactly ONE exchange qualifies (rows from both
+      exchanges cancel out).
+   3. **This run** — the self-asserting exchange (NSE/BSE) writing in the current cycle.
+   With NO evidence the stored pair is kept AND a CRITICAL `data_conflicts` row
+   (`SME_SINGLE_EXCHANGE_INVARIANT`) is written for admin review — a guessed board is worse than a
+   tracked unknown. Every collapse logs one warn line naming the evidence tier used. The collapse
+   runs when some source sends a value for the field, so in practice the 5 rows repair on the next
+   NSE or BSE cycle (those sources always self-assert); a cycle from a source that reports nothing
+   for the field leaves the row untouched, by design.
+   The **74 mainboard "both" rows are presumed CORRECT and are untouched** — a mainboard issue may
+   genuinely list on both boards, so no collapse ever applies to them.
+
+   **Two read-side consequences of dropping the hard-coded 'BOTH' (accepted, not bugs):**
+   - a mainboard IPO seen so far only by the NSE cycle shows "NSE" until the BSE cycle runs and the
+     union adds BSE — the page is now under-stated rather than wrong;
+   - an IPO first discovered by Moneycontrol (or another aggregator that cannot see the board)
+     shows "-" for exchanges until an exchange cycle reaches it, instead of a fabricated "NSE, BSE".
 6. **W-145c**: schema-drift gate first (fails when the live DB has a column schema.ts lacks), then the gated
    drop.
 
