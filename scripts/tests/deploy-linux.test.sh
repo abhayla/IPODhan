@@ -1644,10 +1644,32 @@ FAKEFUSER
     if [ "$use_fakes" = "yes" ]; then
       runpath="$FAKEBIN28:$PATH"
     else
-      # case 28c: simulate an `ss`-less host by excluding the fakebin dir
-      # (this test box genuinely has no real `ss` either, so this is a
-      # real "ss absent" run, not merely a simulated one).
-      runpath="$PATH"
+      # case 28c: an ubuntu CI runner HAS a real `ss` (unlike this
+      # Windows dev box), so merely reusing "$PATH" does not simulate an
+      # ss-less host there -- cleanup_probe() would see the real socket
+      # table and never hit the fallback. Build a PATH that provably
+      # lacks `ss`: a fresh dir with a wrapper for every external command
+      # cleanup_probe()/fake-fuser actually need (kill is a bash
+      # builtin/shadowed function, not resolved via PATH), resolved from
+      # the CURRENT PATH via `command -v`, with `ss` itself excluded.
+      local NOSS_FAKEBIN28; NOSS_FAKEBIN28="$(mktemp -d)"
+      for c in bash sleep date grep awk sed cat tr cut head tail ps mktemp rm; do
+        real="$(command -v "$c" 2>/dev/null || true)"
+        [ -n "$real" ] || continue
+        printf '#!/usr/bin/env bash
+exec "%s" "$@"
+' "$real" > "$NOSS_FAKEBIN28/$c"
+        chmod +x "$NOSS_FAKEBIN28/$c"
+      done
+      cp "$FAKEBIN28/fuser" "$NOSS_FAKEBIN28/fuser"
+      chmod +x "$NOSS_FAKEBIN28/fuser"
+      runpath="$NOSS_FAKEBIN28"
+      # Guard: if `ss` is STILL resolvable on this PATH, the simulation
+      # leaked and the case would pass by accident (real ss present) --
+      # fail loudly instead of silently validating nothing.
+      if PATH="$runpath" command -v ss >/dev/null 2>&1; then
+        fail "case 28c: harness leak: ss still resolvable on the ss-less PATH"
+      fi
     fi
     (
       PATH="$runpath"
@@ -1666,6 +1688,7 @@ FAKEFUSER
       echo "PROBE_CLEANUP_FAILED=$PROBE_CLEANUP_FAILED"
     )
     rm -rf "$statedir"
+    [ -n "${NOSS_FAKEBIN28:-}" ] && rm -rf "$NOSS_FAKEBIN28"
   }
   run_cleanup_probe_28() {
     local name="$1" port="$2" free_after="$3" wait_secs="$4" leaderdelay="$5" use_fakes="$6"
