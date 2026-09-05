@@ -65,8 +65,16 @@ async function withRetry<T>(fn: () => Promise<T>, attempts = 5): Promise<T> {
   throw lastErr;
 }
 
-function runSidecar(url: string): any | null {
-  const res = spawnSync('python', ['scripts/extract_financials_pdf.py', url], {
+/**
+ * W-148 round 3: the sidecar's year-on-year plausibility band is segment-aware
+ * (SME issuers legitimately grow far faster than the mainboard band allows).
+ * This CLI path never passed one, so every SME issuer backfilled here was
+ * judged on the mainboard band and lost its profit series to a false positive.
+ * `segment` comes from the `ipos` row this script already joins.
+ */
+function runSidecar(url: string, segment: string | null | undefined): any | null {
+  const seg = segment === 'SME' ? 'SME' : 'MAINBOARD';
+  const res = spawnSync('python', ['scripts/extract_financials_pdf.py', url, '--segment', seg], {
     encoding: 'utf8',
     // Mainboard RHPs run 500+ pages; pdfplumber parses Ather's 586-page RHP in
     // ~4 min. The old 120s cap killed every large prospectus mid-parse (the perf
@@ -124,7 +132,7 @@ async function main() {
   // Stored RHP/Prospectus PDFs + their IPO + existing financial_data row.
   const docs = await withRetry(() =>
     db
-      .select({ ipoId: schema.documents.ipoId, type: schema.documents.type, url: schema.documents.url, companyName: schema.ipos.companyName })
+      .select({ ipoId: schema.documents.ipoId, type: schema.documents.type, url: schema.documents.url, companyName: schema.ipos.companyName, segment: schema.ipos.segment })
       .from(schema.documents)
       .innerJoin(schema.ipos, eq(schema.documents.ipoId, schema.ipos.id))
       .where(inArray(schema.documents.type, ['RHP', 'PROSPECTUS'] as any))
@@ -147,7 +155,7 @@ async function main() {
     if (stats.processed >= LIMIT) break;
     stats.processed++;
 
-    const data = runSidecar(doc.url!);
+    const data = runSidecar(doc.url!, doc.segment);
     if (!data || !data.metrics || Object.keys(data.metrics).length === 0) {
       stats.sidecarFail++;
       continue;

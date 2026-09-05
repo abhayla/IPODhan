@@ -113,3 +113,72 @@ def test_the_check_name_and_band_are_recorded_in_the_detail():
     _p2, mb_detail, _o2 = check_yoy_ratio_within_bounds(VAHH, "MAINBOARD")
     assert sme_detail.startswith("SME band 0.05x..20.0x")
     assert mb_detail.startswith("MAINBOARD band 0.2x..5.0x")
+
+
+# --------------------------------------------------------------------------- #
+# W-148 round 3 — the consistency spare needs a magnitude ceiling.
+#
+# A uniformly-scaled mis-read keeps revenue >= EBITDA >= PAT intact at every
+# year, so round 2's ordering test spared it. Beyond the OUTER band the step is
+# rejected regardless of ordering.
+# --------------------------------------------------------------------------- #
+from extract_financials_pdf import (  # noqa: E402
+    HARD_YOY_MIN,
+    HARD_YOY_MAX,
+    SME_HARD_YOY_MIN,
+    SME_HARD_YOY_MAX,
+    yoy_hard_bounds,
+    parse_segment,
+)
+
+# 1000x on every row, and internally consistent at both years.
+UNIFORMLY_SCALED = {
+    "revenue": {2026: 1000.0, 2025: 1.0},
+    "ebitda": {2026: 500.0, 2025: 0.5},
+    "profit": {2026: 100.0, 2025: 0.1},
+}
+
+
+def test_hard_bounds_are_the_outer_band():
+    assert yoy_hard_bounds("MAINBOARD") == (HARD_YOY_MIN, HARD_YOY_MAX) == (0.1, 10.0)
+    assert yoy_hard_bounds("SME") == (SME_HARD_YOY_MIN, SME_HARD_YOY_MAX) == (0.02, 50.0)
+
+
+def test_a_1000x_internally_consistent_series_is_rejected_on_both_segments():
+    for segment in ("SME", "MAINBOARD"):
+        passed, detail, offenders = check_yoy_ratio_within_bounds(UNIFORMLY_SCALED, segment)
+        assert passed is False, (segment, detail)
+        assert set(offenders) == {"revenue", "ebitda", "profit"}, segment
+        assert "hard ceiling" in detail, segment
+
+
+def test_the_real_sme_growth_rows_are_still_spared_under_the_ceiling():
+    """Horizon 9.93x and Vahh 7.49x sit inside the SME hard band (0.02x-50x),
+    so the round-3 ceiling does not take back the round-2 fix."""
+    for name, metrics in (("horizon", HORIZON), ("vahh", VAHH)):
+        passed, detail, offenders = check_yoy_ratio_within_bounds(metrics, "SME")
+        assert passed is True, (name, detail)
+        assert offenders == []
+        assert "hard ceiling" not in detail, name
+    # And on the mainboard band both are still spared by internal consistency,
+    # because 9.93x is inside the mainboard hard band (0.1x-10x).
+    passed, detail, _o = check_yoy_ratio_within_bounds(HORIZON, "MAINBOARD")
+    assert passed is True, detail
+    assert "spared: 2026 figures internally consistent" in detail
+
+
+# --------------------------------------------------------------------------- #
+# W-148 round 3 — `--segment` on the backfill CLI (the path
+# scraper/scripts/backfill-financials-pdf.ts spawns).
+# --------------------------------------------------------------------------- #
+def test_parse_segment_accepts_both_flag_forms_and_defaults_closed():
+    assert parse_segment(["file.pdf", "--segment", "SME"]) == "SME"
+    assert parse_segment(["file.pdf", "--segment=SME"]) == "SME"
+    assert parse_segment(["file.pdf", "--segment", "sme"]) == "SME"
+    assert parse_segment(["file.pdf", "--segment=MAINBOARD"]) == "MAINBOARD"
+    # No flag, an empty value, or an unrecognised one falls back to the NARROWER
+    # mainboard band — an unknown caller never silently gets the loose one.
+    assert parse_segment(["file.pdf"]) == "MAINBOARD"
+    assert parse_segment(["file.pdf", "--segment="]) == "MAINBOARD"
+    assert parse_segment(["file.pdf", "--segment", "EMERGE"]) == "MAINBOARD"
+    assert parse_segment(["file.pdf", "--segment"]) == "MAINBOARD"

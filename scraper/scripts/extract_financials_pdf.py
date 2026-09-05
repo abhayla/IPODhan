@@ -258,7 +258,7 @@ def detect_unit(text):
     return unit or "lakhs"
 
 
-def extract(pdf_path, issue_size_rupees=None):
+def extract(pdf_path, issue_size_rupees=None, segment="MAINBOARD"):
     import pdfplumber
 
     page_texts = []
@@ -268,7 +268,8 @@ def extract(pdf_path, issue_size_rupees=None):
         for i, p in enumerate(pdf.pages):
             page_texts.append((i, p.extract_text() or ""))
             p.close()
-    out = extract_from_texts(page_texts, issue_size_rupees=issue_size_rupees)
+    out = extract_from_texts(page_texts, issue_size_rupees=issue_size_rupees,
+                             segment=segment)
     out["pages"] = len(page_texts)
     return out
 
@@ -432,10 +433,24 @@ YOY_MIN, YOY_MAX = 0.2, 5.0
 # is much wider; the mis-parse signal it gives up is recovered by the
 # internal-consistency escape below.
 SME_YOY_MIN, SME_YOY_MAX = 0.05, 20.0
+# W-148 round 3: the internal-consistency spare below has to have a MAGNITUDE
+# ceiling. Round 2 spared ANY out-of-band step whose year held together, so a
+# uniformly-scaled mis-read (revenue 1 -> 1000, EBITDA 0.5 -> 500, PAT 0.1 -> 100)
+# kept revenue >= EBITDA >= PAT intact at every year and sailed through as
+# "consistent". Beyond the OUTER band a step is rejected whatever the ordering
+# says — no real issuer's published series moves that far in one year.
+HARD_YOY_MIN, HARD_YOY_MAX = 0.1, 10.0
+SME_HARD_YOY_MIN, SME_HARD_YOY_MAX = 0.02, 50.0
 
 
 def yoy_bounds(segment):
     return (SME_YOY_MIN, SME_YOY_MAX) if segment == "SME" else (YOY_MIN, YOY_MAX)
+
+
+def yoy_hard_bounds(segment):
+    """The outer band the internal-consistency spare may never reach past."""
+    return ((SME_HARD_YOY_MIN, SME_HARD_YOY_MAX) if segment == "SME"
+            else (HARD_YOY_MIN, HARD_YOY_MAX))
 
 
 def _series_internally_consistent(metrics, year):
@@ -506,6 +521,7 @@ def check_yoy_ratio_within_bounds(metrics, segment="MAINBOARD"):
     signs agreeing) — the ordering a mis-parse breaks and real growth does not.
     The detail line names which rule spared or condemned each step."""
     lo, hi = yoy_bounds(segment)
+    hard_lo, hard_hi = yoy_hard_bounds(segment)
     failed, details, spared, ok = [], [], [], 0
     for key, series in sorted(metrics.items()):
         years = sorted(series, reverse=True)
@@ -517,12 +533,16 @@ def check_yoy_ratio_within_bounds(metrics, segment="MAINBOARD"):
             if lo <= ratio <= hi:
                 ok += 1
                 continue
-            if _series_internally_consistent(metrics, newer):
+            beyond_ceiling = not (hard_lo <= ratio <= hard_hi)
+            if not beyond_ceiling and _series_internally_consistent(metrics, newer):
                 spared.append("%s %s/%s = %.2fx (spared: %s figures internally "
                               "consistent)" % (key, newer, older, ratio, newer))
                 continue
             failed.append(key)
-            details.append("%s %s/%s = %.2fx" % (key, newer, older, ratio))
+            details.append("%s %s/%s = %.2fx%s" % (
+                key, newer, older, ratio,
+                " (hard ceiling %sx..%sx — no consistency spare)" % (hard_lo, hard_hi)
+                if beyond_ceiling else ""))
     if failed:
         return False, "%s band %sx..%sx — year-on-year step outside it and not " \
             "internally consistent: %s" % (segment, lo, hi, "; ".join(details)), sorted(set(failed))
@@ -956,11 +976,38 @@ def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD"):
     return result
 
 
+VALID_SEGMENTS = ("SME", "MAINBOARD")
+
+
+def parse_segment(argv):
+    """`--segment SME` or `--segment=SME`, case-insensitive. Anything else (a
+    missing flag, an empty or unrecognised value) is MAINBOARD — the narrower
+    plausibility band, so an unknown caller never silently gets the loose one."""
+    for i, tok in enumerate(argv):
+        value = None
+        if tok.startswith("--segment="):
+            value = tok.split("=", 1)[1]
+        elif tok == "--segment" and i + 1 < len(argv):
+            value = argv[i + 1]
+        if value is not None:
+            value = value.strip().upper()
+            return value if value in VALID_SEGMENTS else "MAINBOARD"
+    return "MAINBOARD"
+
+
 def main():
     import memory_guard
     memory_guard.install_memory_ceiling()
 
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    segment = parse_segment(sys.argv[1:])
+    # W-148 round 3: `--segment SME` puts its VALUE in the positional list too
+    # (it does not start with "--"), which would be read as the input path.
+    skip = set()
+    for i, tok in enumerate(sys.argv[1:]):
+        if tok == "--segment" and i + 1 < len(sys.argv[1:]):
+            skip.add(i + 1)
+    args = [a for i, a in enumerate(sys.argv[1:])
+            if not a.startswith("--") and i not in skip]
     keep = "--keep" in sys.argv
 
     # Offline test seam: --texts <json> runs the pure core on captured page text
@@ -971,7 +1018,7 @@ def main():
             with open(args[0], "r", encoding="utf-8") as fh:
                 pages = json.load(fh)
             page_texts = [(int(p[0]), p[1]) for p in pages]
-            data = extract_from_texts(page_texts)
+            data = extract_from_texts(page_texts, segment=segment)
             data["pages"] = len(page_texts)
             print(json.dumps(strip_nul_bytes(data)))
             sys.exit(0)
@@ -1009,7 +1056,7 @@ def main():
             path = tmp.name
         else:
             path = src
-        data = extract(path)
+        data = extract(path, segment=segment)
         print(json.dumps(strip_nul_bytes(data)))
     except Exception as e:  # noqa: BLE001 — sidecar must always emit JSON, never crash the caller
         # MAJOR-2 (W-137 round 2): round 1 caught only `MemoryError` here; a
