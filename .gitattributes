@@ -5,3 +5,9 @@
 # direction: this repo's contributors are on Windows, its deploy targets
 # are Linux.
 *.sh text eol=lf
+
+# W-164b: same class for ESM launchers with a shebang (web/scripts/run-prod-verify.mjs,
+# lint-ci-gate.mjs, scripts/*.mjs): a CRLF checkout on Windows makes vite fail to strip
+# "#!/usr/bin/env node" and every test importing the module dies with
+# "Invalid or unexpected token" while node itself and the Linux gate pass.
+*.mjs text eol=lf
