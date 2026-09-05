@@ -71,6 +71,57 @@ const FILING_EXTRACTION_LOCK_KEY = 'filing-auto-persist:cycle';
 export const FILING_EXTRACTION_LOCK_TTL_MS = 45 * 60 * 1000;
 
 /**
+ * W-140: registry of Redis locks currently held by an in-flight document
+ * cycle, so a signal handler in `index.ts` (SIGTERM/SIGINT, which calls
+ * `process.exit` and therefore skips this file's `finally` block below) can
+ * still release them before the process dies. Without this, a deploy that
+ * signals a running cycle leaves `FILING_EXTRACTION_LOCK_KEY` held for the
+ * full 45-minute TTL, starving the next two cycles' extraction step.
+ *
+ * `registerHeldLock`/`unregisterHeldLock` are called right around the same
+ * acquire/finally-release pair that already manages the lock's lifecycle —
+ * this registry never changes when or whether the lock is released on the
+ * normal path, it only gives the signal path a way to do the same release.
+ */
+const heldLocks: Array<{ key: string; token: string }> = [];
+
+export function registerHeldLock(key: string, token: string): void {
+  heldLocks.push({ key, token });
+}
+
+export function unregisterHeldLock(key: string, token: string): void {
+  const index = heldLocks.findIndex((entry) => entry.key === key && entry.token === token);
+  if (index !== -1) {
+    heldLocks.splice(index, 1);
+  }
+}
+
+/**
+ * Release every lock currently in the registry — token-checked (so it can
+ * only ever release a lock this process actually acquired), swallows errors
+ * (the TTL is the fallback), and logs one line per lock released. Idempotent:
+ * calling it with an empty registry (nothing held, or already released) is a
+ * no-op.
+ */
+export async function releaseHeldLocks(): Promise<void> {
+  if (heldLocks.length === 0) return;
+  const toRelease = heldLocks.splice(0, heldLocks.length);
+  const redis = getRedisClient();
+  const lock = new DistributedLock(redis as never);
+  for (const { key, token } of toRelease) {
+    try {
+      const released = await lock.release(key, token);
+      logger.warn({ key, released }, 'Signal path: released held lock before exit');
+    } catch (error) {
+      logger.warn(
+        { key, error: error instanceof Error ? error.message : String(error) },
+        'Signal path: failed to release held lock (non-fatal — it will expire via TTL)'
+      );
+    }
+  }
+}
+
+/**
  * W-102: whole-extraction-pass (PASS 2) wall-clock ceiling across all
  * candidate IPOs, checked BETWEEN IPOs (never interrupting a
  * `processPendingFilings` call already in flight) — python extraction runs
@@ -725,6 +776,9 @@ export async function runDocumentCycle(
     const lock = await distributedLock.acquire(FILING_EXTRACTION_LOCK_KEY, { ttl: FILING_EXTRACTION_LOCK_TTL_MS });
     if (lock.acquired) {
       lockToken = lock.token;
+      if (lockToken) {
+        registerHeldLock(FILING_EXTRACTION_LOCK_KEY, lockToken);
+      }
     } else {
       logger.warn(
         { key: FILING_EXTRACTION_LOCK_KEY },
@@ -1050,6 +1104,7 @@ export async function runDocumentCycle(
     // on EVERY exit path (return above, or a throw anywhere in the try block)
     // rather than only the successful-fallthrough path.
     if (lockToken) {
+      unregisterHeldLock(FILING_EXTRACTION_LOCK_KEY, lockToken);
       try {
         await distributedLock.release(FILING_EXTRACTION_LOCK_KEY, lockToken);
       } catch (error) {
