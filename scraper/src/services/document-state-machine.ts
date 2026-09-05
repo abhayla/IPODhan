@@ -135,6 +135,33 @@ export function isPermanentlyPastDue(docType: DocumentType, stage: LifecycleStag
 }
 
 /**
+ * W-143: has this row EVER been attempted? A never-attempted optional type
+ * (no row at all, or a row still sitting at `attempts: 0` in its initial
+ * `WANTED` state) must NOT be folded into `notApplicable` on first sight of
+ * LISTED — that retires it with zero network calls, zero attempts, forever
+ * (the 358-IPO / 0-CORRIGENDUM prod gap).
+ *
+ * The `attempts >= 1` check covers the ordinary case. The NOT_YET_FILED /
+ * NOT_FOUND state check (round 2 review) is NOT what retires a type missed
+ * WHILE the IPO is already at LISTED — that miss goes straight to
+ * NOT_APPLICABLE inside `applyOutcome`'s `no_link` branch (it checks
+ * `isPermanentlyPastDue` before this function is ever consulted again), and
+ * a subsequent cycle retires it via `closedStates`, never reaching this
+ * filter at all. What the state check DOES catch: a row that missed at an
+ * EARLIER stage (e.g. a CORRIGENDUM miss at PRE_OPEN, which is NOT
+ * permanently-past-due there and so is left at NOT_YET_FILED WITHOUT
+ * `attempts` being bumped — see the `notYetFiled` branch above) and is only
+ * now, on a later cycle, being evaluated for the first time against LISTED.
+ * Without this branch that row would look never-attempted and get a spurious
+ * extra due cycle it does not need.
+ */
+function hasBeenAttempted(row: StateRow | undefined): boolean {
+  if (!row) return false;
+  if ((row.attempts ?? 0) >= 1) return true;
+  return row.state === 'NOT_YET_FILED' || row.state === 'NOT_FOUND';
+}
+
+/**
  * True when the stage says this filing is not DUE yet — the only honest reason
  * to write NOT_YET_FILED (W-28). Everything else that fails to find a filing is
  * a discovery miss, not a statement about what the issuer has done.
@@ -342,8 +369,11 @@ export function planIpoCycle(params: {
   // four-rung chain per type per cycle for filings that cannot exist.
   const notApplicable = [
     ...notApplicableTypes(issue),
-    ...dueDocTypesForStage(params.stage).filter((t) =>
-      isPermanentlyPastDue(t, params.stage)
+    // W-143: a never-attempted optional type gets ONE real due cycle before
+    // being retired — `hasBeenAttempted` is what tells "genuinely never
+    // filed" (attempted, came back empty) apart from "never even asked".
+    ...dueDocTypesForStage(params.stage).filter(
+      (t) => isPermanentlyPastDue(t, params.stage) && hasBeenAttempted(byType.get(t))
     ),
   ];
 

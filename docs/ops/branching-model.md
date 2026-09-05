@@ -25,3 +25,14 @@ Rules
 Current lines
 - `release/prod-2026-09-05` = d38b72aa (cut 16:05 IST 2026-09-05; deploy candidate for the 21:00-23:30 window).
 - production before that: 8cd287d5 (no branch; rollback = `-f ref=8cd287d5` from the same release branch, since 8cd287d5 is an ancestor).
+
+## Oversight (owner 2026-09-05 16:45 IST: "keep overseeing that everything is followed, and self-improve")
+
+The architect session runs a supervision tick every 30 minutes (in-session cron `supervision-tick`,
+owner rule R7) that checks, read-only: worktrees have a purpose and are within TTL (`wt-sweep.ps1`);
+no commit on `release/prod-*` outside `hotfix/*`; no push to `main` outside a PR; every work branch is
+based on `main`; no `git stash` anywhere (T-438); every running worker against its Budget line;
+ledger facts vs reality (served sha, prod flags). A finding = a ledger line + a lesson when it is a
+class; a repeated class = a mechanism (hook/test), per Learn-or-block. Mechanical gates already in
+place: `deploy-branch-guard.py` (wrong deploy command), the workflow step (wrong branch/sha), the
+pre-commit YAML/ASCII check, `wt-new.ps1`/`wt-rm.ps1` (worktree lifecycle).

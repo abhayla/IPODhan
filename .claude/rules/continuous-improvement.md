@@ -1,4 +1,10 @@
-# Scope: global
+---
+paths:
+  - ".claude/**"
+  - "CLAUDE.md"
+  - "docs/**"
+---
+# Scope: path (paths above)
 
 # Continuous Improvement — learn from every mistake/issue; improve SELF and the SYSTEM
 

@@ -1,4 +1,9 @@
-# Scope: global
+---
+paths:
+  - ".claude/**"
+  - "docs/**"
+---
+# Scope: path (paths above)
 
 # Context Management Rules
 

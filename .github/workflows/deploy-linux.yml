@@ -64,6 +64,36 @@ jobs:
             echo "slot=${{ inputs.slot }}" >> "$GITHUB_OUTPUT"
           fi
 
+      # W-141 - docs/ops/branching-model.md Rule 1: nothing reaches prod
+      # except a commit on a release/prod-<date> branch. This step is the
+      # mechanical enforcement of that prose rule - it is NOT bypassable by
+      # the `ref` input alone: it checks both the branch this run is ON
+      # (github.ref) AND that the deploy target sha is an ancestor of that
+      # branch's tip. See scripts/deploy/require-release-branch.sh for the
+      # logic and scripts/deploy/tests/require-release-branch.test.sh for
+      # its unit tests. Staging (push, or an explicit slot=staging dispatch)
+      # is unaffected - the script itself no-ops for any non-prod slot.
+      - name: Require release/prod-* branch for a prod deploy
+        if: steps.slot.outputs.slot == 'prod'
+        shell: bash
+        # Round 2 (Tier A finding #2): the ref/sha values below MUST reach
+        # the script only via `env:`, never interpolated directly into the
+        # `run:` body — a ref/sha containing a quote + newline, interpolated
+        # as `"${{ ... }}"`, can terminate the shell statement early and
+        # make the step exit 0 without the gate ever running.
+        env:
+          SLOT: ${{ steps.slot.outputs.slot }}
+          RUN_REF: ${{ github.ref }}
+          RUN_SHA: ${{ github.sha }}
+          TARGET_REF: ${{ inputs.ref }}
+        run: |
+          set -euo pipefail
+          TARGET_SHA="$TARGET_REF"
+          if [ -z "$TARGET_SHA" ]; then
+            TARGET_SHA="$RUN_SHA"
+          fi
+          bash scripts/deploy/require-release-branch.sh "$SLOT" "$RUN_REF" "$TARGET_SHA"
+
       - name: Deploy
         shell: bash
         env:
