@@ -142,6 +142,12 @@ export interface PersistFilingSummary {
   skipped_no_column: string[];
   /** Unit-dependent writes refused because the filing states no usable unit. */
   skipped_no_unit: string[];
+  /**
+   * W-147: headline columns a PROSPECTUS/RHP COVER wanted to write that a price
+   * band advertisement already owns. Optional so existing callers that build a
+   * summary literal keep compiling.
+   */
+  skipped_lower_priority_source?: string[];
   /** Statement rows refused because a stored row is in a different unit. */
   skipped_unit_mismatch: string[];
   /** What actually went to `ipos` via upsertIPO (issueSize et al). */
@@ -332,6 +338,8 @@ const NO_COLUMN_FIELDS: Record<string, string> = {
   post_offer_shares_at_cap:
     'no post-issue share-capital column (the ipo_valuation share columns are offer-side) — W-88',
   issue_structure: 'issue_type enum is BOOK_BUILDING/FIXED_PRICE/HYBRID, not fresh/OFS',
+  headline_source:
+    'W-147 provenance marker, not data — it ranks the cover headline below a price band ad (see coverOutrankedByAd)',
   shares_monotonic: 'derived check, not a stored field',
   eps_weighted_average: 'no weighted-average-EPS column',
   industry_peer_pe_average:
@@ -473,6 +481,55 @@ export async function persistFilingExtraction(
     );
   }
 
+  // ------------------------------------------- W-147 headline source ranking
+  //
+  // `scraperSourceForDocType` maps BOTH the price band advertisement and the
+  // prospectus/RHP to the single scraper_source member 'DRHP', so the
+  // field-priority matrix cannot tell them apart — to it, the later run always
+  // wins. But they are NOT equal evidence for the offering headline: the ad is
+  // the FINAL priced offer (a book-built RHP cover prints the price as "[●]",
+  // and even a fixed-price cover is superseded if an ad restates it), so the
+  // cover ranks BELOW the ad and ABOVE nothing else.
+  //
+  // The discriminator is the provenance this module itself writes: every
+  // field_sources row carries `dataLineage.docType`. A cover-sourced headline
+  // therefore skips any headline column whose last filing write came from a
+  // PRICE_BAND_AD. ADMIN edits are already handled one layer up by
+  // `filterFields`; every non-headline field (financials, objects, risks, CIN)
+  // is unaffected, and `ipo_valuation` needs no guard at all because its rows
+  // are keyed by `pricing_event` ('PRICE_BAND_AD' vs 'PROSPECTUS') and so never
+  // collide.
+  const isCoverHeadline = str(extraction, 'headline_source') === 'PROSPECTUS_COVER';
+  const skippedLowerPriority: string[] = [];
+  const coverOutrankedByAd = async (tableName: string, column: string): Promise<boolean> => {
+    if (!isCoverHeadline) return false;
+    try {
+      const prior = await deps.fieldSources.findByField(ipoId, tableName, column);
+      const priorDocType = (prior?.dataLineage as { docType?: string } | null | undefined)?.docType;
+      if (priorDocType !== 'PRICE_BAND_AD') return false;
+      skippedLowerPriority.push(
+        `${tableName}.${column} (a price band advertisement already set it; a ` +
+          `${options.docType} cover ranks below the ad)`
+      );
+      return true;
+    } catch {
+      // A provenance read failure must not silently DOWNGRADE the guard into a
+      // write — the ad's value is the one worth keeping, so fail closed.
+      skippedLowerPriority.push(`${tableName}.${column} (provenance unreadable; kept the stored value)`);
+      return true;
+    }
+  };
+  const dropOutranked = async (
+    tableName: string,
+    candidate: Record<string, unknown>,
+    columns: readonly string[]
+  ): Promise<void> => {
+    if (!isCoverHeadline) return;
+    for (const col of columns) {
+      if (col in candidate && (await coverOutrankedByAd(tableName, col))) delete candidate[col];
+    }
+  };
+
   const lineage = {
     method: 'FILING_EXTRACTION',
     docType: options.docType,
@@ -603,6 +660,16 @@ export async function persistFilingExtraction(
   if (description) iposCandidate.companyDescription = description;
   if (cinForWrite !== null) iposCandidate.cin = cinForWrite;
 
+  // W-147: drop any headline column a price band advertisement already owns,
+  // BEFORE the admin-protection gate and the write.
+  await dropOutranked('ipos', iposCandidate, [
+    'issueSize',
+    'priceRangeMin',
+    'priceRangeMax',
+    'lotSize',
+    'faceValue',
+  ]);
+
   const iposWritable =
     Object.keys(iposCandidate).length > 0 ? await filterFields('ipos', iposCandidate) : {};
   for (const [col, v] of Object.entries(iposWritable)) {
@@ -685,7 +752,25 @@ export async function persistFilingExtraction(
 
   // The ad cites SEBI ICDR Reg 6(1)/6(2) only for a book-built offer.
   const regulation = str(extraction, 'book_building_regulation');
-  if (regulation) mark('issueType', 'BOOK_BUILDING');
+  // W-147: an SME cover names its own process in words ("Fixed Price Issue" /
+  // "100% Book Built Issue"). That is the ONLY filing signal for a FIXED_PRICE
+  // issue — the Reg 6(1)/6(2) citation above exists only for a book-built one —
+  // and `data-validation.ts` / `data-consolidation-service.ts` both key their
+  // zero-width-price-band exemption off this exact enum, so a fixed-price SME
+  // issue whose issueType is unset has its (legitimate) floor == cap rejected as
+  // corruption. The two signals must AGREE: a cover reading FIXED_PRICE next to
+  // a book-building regulation citation means one of them was misread, so
+  // neither is written.
+  const coverPriceType = str(extraction, 'issue_price_type');
+  const priceTypeForWrite =
+    coverPriceType === 'FIXED_PRICE' || coverPriceType === 'BOOK_BUILDING' ? coverPriceType : null;
+  if (regulation && priceTypeForWrite === 'FIXED_PRICE') {
+    skippedFailedCheck.push(
+      `ipo_details.issueType: the cover reads FIXED_PRICE but the filing cites SEBI ICDR ` +
+        `Regulation ${regulation}, which applies only to a book-built offer`
+    );
+  } else if (regulation) mark('issueType', 'BOOK_BUILDING');
+  else if (priceTypeForWrite) mark('issueType', priceTypeForWrite);
   // W-88 (A12): the citation itself now has a column, so the offer's regulation
   // survives instead of collapsing into the issue_type enum. Stored in the
   // form the ad prints it ("Regulation 6(1)"), inside the column's 32 chars.
@@ -715,6 +800,15 @@ export async function persistFilingExtraction(
   if (pgTxns && pgTxns.check?.passed && Array.isArray(pgTxns.value)) {
     mark('promoterGroupTransactionsSinceDrhp', pgTxns.value);
   }
+
+  // W-147: the ipo_details half of the headline, same rule as `ipos` above.
+  await dropOutranked('ipo_details', details, [
+    'freshIssue',
+    'ofsIssue',
+    'faceValue',
+    'lotMultiple',
+    'issueType',
+  ]);
 
   if (Object.keys(details).length > 0) {
     // Per-field protection: an admin who hand-corrected one ipo_details column
@@ -1539,6 +1633,7 @@ export async function persistFilingExtraction(
     skipped_failed_check: skippedFailedCheck.sort(),
     skipped_no_column: [...new Set(skippedNoColumn)].sort(),
     skipped_no_unit: [...new Set(skippedNoUnit)].sort(),
+    skipped_lower_priority_source: [...new Set(skippedLowerPriority)].sort(),
     skipped_unit_mismatch: [...new Set(skippedUnitMismatch)].sort(),
     skipped_protected: [...new Set(skippedProtected)].sort(),
     skipped_cross_document_disagreement: [...new Set(skippedCrossDoc)].sort(),
