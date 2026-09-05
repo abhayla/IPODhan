@@ -63,6 +63,17 @@ export interface AnchorReportParse {
   percentageCheckPassed: boolean;
   /** The summed amounts matched summed shares x the derived bid price. */
   sharesTimesPriceCheckPassed: boolean;
+
+  // ------------------------------------------------------------ row errors
+  // Round 2 (Hole 1): `rows`/`totalShares`/`totalAmountRupees` above cover
+  // only the rows that reconciled - a row skipped for an unreadable amount
+  // cell is silently absent from them. A caller (the persister) MUST see
+  // that absence to avoid treating an UNDERSTATED sum as a clean total: a
+  // partially-read letter must never be persisted as if it were complete.
+  /** Investor rows that could not be reconciled to the derived price and were skipped (not published in `rows`). */
+  rowErrors: number;
+  /** Investor rows actually read into `rows` (== rows.length; carried explicitly so a caller need not recompute it). */
+  rowsRead: number;
 }
 
 export type AnchorReportResult =
@@ -306,6 +317,8 @@ interface Candidate {
   shares: number;
   percent: number;
   splits: Array<{ price: number; amount: number }>;
+  /** The unsplit trailing cell(s), for `amountMatchesPrice` (the prose-price fallback). */
+  rawTail: string;
 }
 
 function readRow(rec: RawRecord): Candidate | null {
@@ -326,7 +339,35 @@ function readRow(rec: RawRecord): Candidate | null {
   }
   if (shares === null) return null;
   const tail = rec.cells.slice(pctAt + 1).join(' ');
-  return { name: rec.name, shares, percent, splits: splitPriceAndAmount(tail, shares) };
+  return { name: rec.name, shares, percent, splits: splitPriceAndAmount(tail, shares), rawTail: tail };
+}
+
+/**
+ * Does this row's raw amount cell agree with `shares x price` at a KNOWN,
+ * already-trusted price (round 2 / Hole 2)?
+ *
+ * `splitPriceAndAmount` only reports splits whose IMPLIED price falls in
+ * [MIN_PRICE, MAX_PRICE] - it has no known price to check against yet. When
+ * the price instead comes from the letter's own prose (`parsePrintedBidPrice`,
+ * used only when NO row's cell yields ANY in-range split at all), every row's
+ * `splits` array is therefore already empty by construction, and re-filtering
+ * an empty array can never accept a row - the prose-price branch would be
+ * dead code. This re-runs the same digit-cut search but checks the resulting
+ * amount against the KNOWN `shares x price` target directly, with no price
+ * bounds of its own to fail.
+ */
+export function amountMatchesPrice(rawTail: string, shares: number, price: number): number | null {
+  const digits = digitsOf(rawTail);
+  const target = shares * price;
+  for (let k = 0; k <= digits.length - 3; k++) {
+    const decimalAmount = Number(digits.slice(k, -2) + '.' + digits.slice(-2));
+    const wholeAmount = Number(digits.slice(k));
+    for (const amount of [decimalAmount, wholeAmount]) {
+      if (!Number.isFinite(amount) || amount <= 0) continue;
+      if (Math.abs(amount - target) / target <= PRICE_TOLERANCE) return amount;
+    }
+  }
+  return null;
 }
 
 /**
@@ -476,9 +517,15 @@ function modalPrice(prices: number[]): number | null {
  * genuine investor row prints 100% of the anchor portion by itself, only the
  * row that sums every investor does.
  */
-function looksLikeTotalRow(rec: RawRecord): boolean {
+function looksLikeTotalRow(rec: RawRecord, isLastPercentBearingRecord: boolean): boolean {
   if (/^total\b/i.test(rec.name.trim())) return true;
   if (rec.name.trim() !== '') return false;
+  // Position guard (round 2 / Hole 3): a blank-named ~100% row is only
+  // trusted as the Total row when it is the LAST record in the whole letter
+  // that carries any percentage at all - a mid-letter row that happens to be
+  // both blank-named AND print ~100% (unlikely, but not impossible in a
+  // sub-table) must not be mistaken for the table's own Total row.
+  if (!isLastPercentBearingRecord) return false;
   const pctCell = rec.cells.find((c) => parsePercent(c) !== null);
   if (pctCell === undefined) return false;
   const value = parsePercent(pctCell) as number;
@@ -495,7 +542,11 @@ function looksLikeTotalRow(rec: RawRecord): boolean {
 export function parseAnchorReport(pages: string[]): AnchorReportResult {
   const fullText = pages.join('\n');
   const all = records(pages);
-  const totalAt = all.findIndex(looksLikeTotalRow);
+  const percentBearingIndices = all
+    .map((r, i) => (r.cells.some((c) => parsePercent(c) !== null) ? i : -1))
+    .filter((i) => i !== -1);
+  const lastPercentIdx = percentBearingIndices[percentBearingIndices.length - 1] ?? -1;
+  const totalAt = all.findIndex((r, i) => looksLikeTotalRow(r, i === lastPercentIdx));
   const main = totalAt === -1 ? all : all.slice(0, totalAt);
   const after = totalAt === -1 ? [] : all.slice(totalAt + 1);
 
@@ -514,23 +565,30 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
   // yields a derivable price at all does the letter's own prose statement of
   // the price step in (W-170) - never the other way around, because the prose
   // is a single uncorroborated sentence.
-  const price =
-    modalPrice(
-      candidates.reduce<number[]>((acc, c) => acc.concat(c.splits.map((s) => s.price)), [])
-    ) ?? parsePrintedBidPrice(fullText);
+  const rowDerivedPrice = modalPrice(
+    candidates.reduce<number[]>((acc, c) => acc.concat(c.splits.map((s) => s.price)), [])
+  );
+  const price = rowDerivedPrice ?? parsePrintedBidPrice(fullText);
   if (price === null) {
     return { ok: false, reason: 'no bid price could be derived from the investor rows' };
   }
 
-  // Every row must have exactly one amount that agrees with that price. A row
-  // whose amount cannot be made to agree (scan/OCR damage on that one cell) is
-  // a ROW error, not a letter-wide failure - it is skipped and counted, and
-  // only refuses the whole letter once skipped rows cross ROW_ERROR_FLOOR
-  // (W-170; mirrors the sidecar's NAME_QUALITY_FLOOR for the same reasoning:
-  // a few corrupted cells do not make the rest of the letter unusable).
-  // "Exactly one" agreeing amount still matters per row: two admissible
-  // amounts means that row's own split is ambiguous, and guessing between them
-  // is precisely what this parser must not do - such a row is skipped too.
+  // Every row must have an amount that agrees with that price. Round 2 (Hole
+  // 2): this ALWAYS goes through `amountMatchesPrice` against the now-known
+  // `price`, regardless of whether it came from the rows or from the prose -
+  // re-filtering `c.splits` (bound-gated against [MIN_PRICE, MAX_PRICE] with
+  // no known price yet) is only ever non-empty when the row's own arithmetic
+  // ALREADY agrees with `price` within [MIN_PRICE, MAX_PRICE], which is
+  // exactly what `amountMatchesPrice` also re-derives directly from the raw
+  // cell - so using the one function unconditionally means the prose-price
+  // fallback is exercised by the SAME code path as the row-derived price,
+  // never a dead branch that can't actually accept a row.
+  //
+  // A row whose amount cannot be made to agree (scan/OCR damage on that one
+  // cell) is a ROW error, not a letter-wide failure - it is skipped and
+  // counted, and only refuses the whole letter once skipped rows cross
+  // ROW_ERROR_FLOOR (mirrors the sidecar's NAME_QUALITY_FLOOR: a few
+  // corrupted cells do not make the rest of the letter unusable).
   const rows: AnchorReportRow[] = [];
   let rowErrors = 0;
   let rowErrorReason: string | null = null;
@@ -541,28 +599,26 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
   // has nothing to do with a real percentage mismatch.
   let skippedPercentSum = 0;
   for (const c of candidates) {
-    const fits = c.splits.filter((s) => Math.abs(s.price - price) / price <= PRICE_TOLERANCE);
-    const amounts = Array.from(new Set(fits.map((s) => s.amount)));
-    if (amounts.length !== 1) {
+    const amount = amountMatchesPrice(c.rawTail, c.shares, price);
+    if (amount === null) {
       rowErrors++;
       skippedPercentSum += c.percent;
-      rowErrorReason ??=
-        amounts.length === 0
-          ? `row "${c.name || c.shares}" has no amount consistent with the derived bid price ${price}`
-          : `row "${c.name || c.shares}" has ${amounts.length} possible amounts`;
+      rowErrorReason ??= `row "${c.name || c.shares}" has no amount consistent with the derived bid price ${price}`;
       continue;
     }
     rows.push({
       name: c.name,
       shares: c.shares,
-      amountRupees: amounts[0],
+      amountRupees: amount,
       percentOfAnchorPortion: c.percent,
     });
   }
-  if (rowErrors / candidates.length > ROW_ERROR_FLOOR) {
+  // Round 2 (Hole 1): `>=` - exactly the floor's own share of bad rows also
+  // refuses (a 30%-bad letter is not "under" a 30% floor).
+  if (rowErrors / candidates.length >= ROW_ERROR_FLOOR) {
     return {
       ok: false,
-      reason: `${rowErrors} of ${candidates.length} investor rows disagreed with the derived bid price ${price}, over the ${Math.round(ROW_ERROR_FLOOR * 100)}% floor - first: ${rowErrorReason}`,
+      reason: `${rowErrors} of ${candidates.length} investor rows disagreed with the derived bid price ${price}, at or over the ${Math.round(ROW_ERROR_FLOOR * 100)}% floor - first: ${rowErrorReason}`,
     };
   }
   if (rows.length < MIN_ROWS) {
@@ -668,6 +724,8 @@ export function parseAnchorReport(pages: string[]): AnchorReportResult {
       printedCount: readPrintedCount(fullText),
       percentageCheckPassed,
       sharesTimesPriceCheckPassed,
+      rowErrors,
+      rowsRead: rows.length,
     },
   };
 }

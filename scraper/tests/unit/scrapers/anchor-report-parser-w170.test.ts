@@ -30,7 +30,12 @@
  * (Qualiance) — never re-derived from the code under test.
  */
 import { describe, it, expect } from 'vitest';
-import { parseAnchorReport, ROW_ERROR_FLOOR } from '../../../src/scrapers/anchor-report-parser';
+import {
+  parseAnchorReport,
+  ROW_ERROR_FLOOR,
+  parsePrintedBidPrice,
+  amountMatchesPrice,
+} from '../../../src/scrapers/anchor-report-parser';
 import shanti from '../../fixtures/sme/shanti-inorganics-anchor-report-text.json';
 import ashutosh from '../../fixtures/sme/ashutosh-fibre-anchor-report-text.json';
 import qualianceOcr from '../../fixtures/sme/qualiance-anchor-report-ocr-text.json';
@@ -136,5 +141,65 @@ describe('parseAnchorReport - row-error skip (W-170)', () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.reason).toMatch(/disagreed with the derived bid price/);
+  });
+
+  it('exposes rowErrors and rowsRead on the parsed value (round 2, Hole 1)', () => {
+    const result = parseAnchorReport([PAGE]);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.value.rowErrors).toBe(1);
+    expect(result.value.rowsRead).toBe(3);
+  });
+
+  it('refuses at EXACTLY the 30% floor, not just over it (round 2: > became >=)', () => {
+    // 10 rows, 3 bad = exactly 30%.
+    const good = Array.from({ length: 7 }, (_, i) => `# ${i + 1} | Fund ${i + 1} | 1,000 | 10.00% | 1,00,000`);
+    const bad = Array.from({ length: 3 }, (_, i) => `# ${i + 8} | Fund ${i + 8} | 1,000 | 10.00% | 1`);
+    const result = parseAnchorReport([[...good, ...bad].join('\n')]);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.reason).toMatch(/disagreed with the derived bid price/);
+  });
+});
+
+describe('parseAnchorReport - prose bid price is a REAL fallback, not dead code (round 2, Hole 2)', () => {
+  // Shanti-shaped: amount-only trailing cells (no price digits mixed in,
+  // consistent with the real Shanti Inorganics letter). Every row's own
+  // amount cell has been damaged down to a single digit - too few digits
+  // (< 3) for the shared digit-cut search either function uses, so NEITHER
+  // `splitPriceAndAmount` (row-derived) NOR `amountMatchesPrice` (prose
+  // fallback) can recover an amount from any row - modalPrice returns null
+  // (there is nothing in [MIN_PRICE, MAX_PRICE] to be modal OVER), and the
+  // ONLY source left for a bid price at all is the letter's own prose ("at
+  // Rs 83 per share").
+  const PAGE = [
+    'Anchor Investors have been allocated at Rs 83 per share.',
+    '# 1 | Investor A | 4,81,600 | 29.74% | 3',
+    '# 2 | Investor B | 1,21,600 | 7.51% | 8',
+  ].join('\n');
+
+  it('is reached (price derived from prose), not "no bid price could be derived" (that would mean the fallback never even fired)', () => {
+    const result = parseAnchorReport([PAGE]);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    // Every row's amount is unrecoverable either way, so the letter still
+    // refuses (correctly - there is genuinely no reconcilable data) - but
+    // the reason names 83, proving `price` reached that value via
+    // `parsePrintedBidPrice`, not that no derivation was attempted at all.
+    expect(result.reason).not.toBe('no bid price could be derived from the investor rows');
+    expect(result.reason).toContain('83');
+  });
+
+  it('parsePrintedBidPrice reads the prose price directly', () => {
+    expect(parsePrintedBidPrice(PAGE)).toBe(83);
+  });
+
+  it('amountMatchesPrice recovers a row the bound-only split search would also find (round-2 unification), proving the fallback and the row-derived path now share one live function', () => {
+    // 4,81,600 shares @ Rs 83 = Rs 3,99,72,800 - the real Shanti Inorganics
+    // row 1, amount-only cell.
+    expect(amountMatchesPrice('3,99,72,800', 481600, 83)).toBe(39972800);
+    // A cell with no relationship to shares x price at all is correctly
+    // rejected, not guessed at.
+    expect(amountMatchesPrice('9,99,999', 481600, 83)).toBeNull();
   });
 });

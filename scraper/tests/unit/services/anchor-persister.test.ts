@@ -298,6 +298,73 @@ describe('anchor-persister — a report whose arithmetic does not close writes N
   });
 });
 
+describe('anchor-persister — a PARTIALLY read letter (rowErrors > 0) is never persisted (round 2, Hole 1)', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  /** DEEPA minus its last row, standing in for a row the parser SKIPPED (not deleted from the letter — the sum below is understated by construction). */
+  function partialFixture(): AnchorInvestorData {
+    const full = deepaAnchorFixture();
+    const kept = full.investorList.slice(0, -1);
+    const understatedShares = kept.reduce((t, r) => t + r.shares, 0);
+    const understatedAmount = Number(kept.reduce((t, r) => t + r.amount, 0).toFixed(4));
+    return {
+      ...full,
+      investorList: kept,
+      anchorInvestorsCount: kept.length,
+      totalSharesOffered: understatedShares,
+      totalAmountRaised: understatedAmount,
+      rowErrors: 1,
+    } as AnchorInvestorData;
+  }
+
+  it('refuses when printed totals are unreadable — "rows unreadable, totals not corroborated", never persisted', async () => {
+    const partial = partialFixture();
+    (partial as unknown as { printedTotalShares: null; printedTotalAmountRaised: null; printedCount: null }).printedTotalShares = null;
+    (partial as unknown as { printedTotalAmountRaised: null }).printedTotalAmountRaised = null;
+    (partial as unknown as { printedCount: null }).printedCount = null;
+    const { deps, persist } = makeDeps(partial);
+
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(persist).not.toHaveBeenCalled();
+    expect(summary.written).toBe(0);
+    expect(summary.refusedReason).toContain('no_row_errors');
+    expect(summary.refusedReason).toContain('1 rows unreadable, totals not corroborated');
+  });
+
+  it('refuses even when the printed totals are READABLE and agree with the understated sum — agreement with an understated total is not corroboration', async () => {
+    const partial = partialFixture();
+    // The printed totals "happen" to equal the UNDERSTATED sum, as they
+    // would if the scan's own Total row were itself misread down to the
+    // 14-row figure — plausible OCR damage, and exactly the trap: this must
+    // still refuse, because these are not the letter's TRUE totals.
+    (partial as unknown as { printedTotalShares: number }).printedTotalShares = partial.totalSharesOffered;
+    (partial as unknown as { printedTotalAmountRaised: number }).printedTotalAmountRaised =
+      partial.totalAmountRaised;
+    (partial as unknown as { printedCount: number }).printedCount = partial.investorList.length;
+    const { deps, persist } = makeDeps(partial);
+
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+
+    expect(persist).not.toHaveBeenCalled();
+    expect(summary.written).toBe(0);
+    expect(summary.refusedReason).toContain('no_row_errors');
+  });
+
+  it('a CLEAN letter (rowErrors: 0) is unaffected — the DEEPA fixture still writes', async () => {
+    const clean = deepaAnchorFixture();
+    (clean as unknown as { rowErrors: number }).rowErrors = 0;
+    const checks = runAnchorChecks(clean);
+    const rowErrorCheck = checks.find((c) => c.name === 'no_row_errors');
+    expect(rowErrorCheck).toBeDefined();
+    expect(rowErrorCheck!.passed).toBe(true);
+    const { deps, persist } = makeDeps(clean);
+    const summary = await persistAnchorReport(IPO_ID, { companyName: COMPANY, apply: true }, deps);
+    expect(persist).toHaveBeenCalled();
+    expect(summary.refusedReason).toBeNull();
+  });
+});
+
 describe('anchor-persister — the gates compare against the PRINTED figures (MAJOR-2)', () => {
   beforeEach(() => vi.clearAllMocks());
 
