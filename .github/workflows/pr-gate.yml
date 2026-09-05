@@ -180,7 +180,15 @@ jobs:
       - name: Run scraper python extractor test suite
         env:
           PYTHONDONTWRITEBYTECODE: '1'
-        run: python -m pytest scraper/scripts -q --maxfail=1 -p no:cacheprovider
+          # W-159 round 2: extract_filing.py installs the W-137 RLIMIT_AS
+          # memory ceiling at MODULE import (memory_guard.install_memory_ceiling()),
+          # which is real (not a no-op) on this ubuntu runner. "off" is the
+          # one documented opt-out value (memory_guard.ceiling_disabled_by_env())
+          # so collecting test_extract_filing_rupee_glyph.py does not pin the
+          # pytest process itself to max_rss_mb(). Production default (unset)
+          # is unaffected.
+          EXTRACTOR_MEMORY_CEILING: 'off'
+        run: python -m pytest scraper/scripts -q -rs -p no:cacheprovider
 
   # M-c: this job used to live in test.yml, which is workflow_dispatch-only —
   # so the gate that replays the journal from empty ran only when a human

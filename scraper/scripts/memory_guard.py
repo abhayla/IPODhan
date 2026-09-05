@@ -126,13 +126,28 @@ _pin_blas_thread_env()
 _installed_ceiling_mb = None
 
 
+def ceiling_disabled_by_env():
+    """W-159 round 2: `EXTRACTOR_MEMORY_CEILING=off` opts OUT of installing
+    the RLIMIT_AS ceiling — any other value (including unset, the default)
+    leaves production behaviour unchanged (ceiling installs as before).
+
+    Exists so a test runner on a real POSIX box (unlike Windows, where the
+    ceiling is already a no-op) can import `extract_filing.py` — which calls
+    `install_memory_ceiling()` at module import — without pinning the
+    *pytest process itself* to `max_rss_mb()`. The pr-gate CI job (ubuntu)
+    sets this env for its pytest step for exactly that reason.
+    """
+    return os.environ.get("EXTRACTOR_MEMORY_CEILING", "").strip().lower() == "off"
+
+
 def install_memory_ceiling():
     """Pin BLAS/OMP thread counts to 1 (all platforms), then set RLIMIT_AS to
     `max_rss_mb()` (POSIX only).
 
     Returns the limit (in MB) that was applied, or `None` when the platform
-    has no `resource` module (Windows) or the call itself failed — a caller
-    can use the return value to log/test without guessing whether the
+    has no `resource` module (Windows), `EXTRACTOR_MEMORY_CEILING=off` opted
+    out (see `ceiling_disabled_by_env()`), or the call itself failed — a
+    caller can use the return value to log/test without guessing whether the
     RLIMIT_AS half of the guard is actually active. The thread-pinning half
     always runs regardless of this return value. Also records the applied
     limit in `_installed_ceiling_mb` so `is_near_memory_ceiling()` can tell a
@@ -140,6 +155,9 @@ def install_memory_ceiling():
     """
     global _installed_ceiling_mb
     _pin_blas_thread_env()
+    if ceiling_disabled_by_env():
+        _installed_ceiling_mb = None
+        return None
     try:
         import resource
     except ImportError:
