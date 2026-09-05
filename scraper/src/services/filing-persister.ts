@@ -85,6 +85,17 @@ export interface PersistFilingOptions {
 /** The one ipo_details write this module needs, narrowed so tests can mock it. */
 export interface IpoDetailsWriter {
   upsert(ipoId: string, values: Record<string, unknown>): Promise<void>;
+  /**
+   * W-151 round 2: create the identity row ONLY when the IPO has none
+   * (INSERT ... ON CONFLICT DO NOTHING). Returns true when a row was created.
+   *
+   * An `upsert` here would rewrite `data_source` + `updated_at` (and a
+   * field_sources row) for every extracted IPO on every cycle - pure churn that
+   * also makes `updated_at` lie about when the data last changed. Optional so a
+   * caller built before this method still compiles; when it is absent the
+   * identity row is simply not written.
+   */
+  insertIfMissing?(ipoId: string, values: Record<string, unknown>): Promise<boolean>;
 }
 
 /**
@@ -861,12 +872,25 @@ export async function persistFilingExtraction(
   // `dataSource` is appended AFTER `filterFields`, exactly as before: it is a
   // provenance stamp the persister owns, not an admin-editable value, and it is
   // NOT NULL so an insert cannot omit it.
-  if (apply) {
-    await deps.ipoDetailsWriter.upsert(ipoId, { ...detailsWritable, dataSource: source });
-    for (const col of Object.keys(detailsWritable)) await trackField('ipo_details', col);
-    await trackField('ipo_details', 'dataSource');
+  if (Object.keys(detailsWritable).length > 0) {
+    if (apply) {
+      await deps.ipoDetailsWriter.upsert(ipoId, { ...detailsWritable, dataSource: source });
+      for (const col of Object.keys(detailsWritable)) await trackField('ipo_details', col);
+    }
+    bump(written, 'ipo_details', 1);
+  } else if (apply && deps.ipoDetailsWriter.insertIfMissing) {
+    // Identity-only case: create the row if it is missing, and do NOTHING when
+    // it already exists - a repeat cycle must not touch `data_source`,
+    // `updated_at` or field_sources for a row it has no new value for.
+    const inserted = await deps.ipoDetailsWriter.insertIfMissing(ipoId, { dataSource: source });
+    if (inserted) {
+      await trackField('ipo_details', 'dataSource');
+      bump(written, 'ipo_details', 1);
+    }
   }
-  bump(written, 'ipo_details', 1);
+  // Plan mode (apply: false) deliberately counts only the field write: whether
+  // the identity row is missing is unknowable without reading the database, and
+  // a plan that claims a write it may not make is a dishonest plan.
 
   // ------------------------------------------------- 3. financial_statements
   const basisRaw = str(extraction, 'financial_basis');

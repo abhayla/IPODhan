@@ -82,8 +82,15 @@ export function CategoryReservationSection({
     ? Object.entries(allocationPct).filter(([, v]) => Number.isFinite(v))
     : [];
 
-  // Don't render if there is nothing at all to show
-  if (!reservationData && allocationEntries.length === 0 && !designatedExchange) {
+  // Don't render if there is nothing at all to show. W-151: `reservationData`
+  // is now an object of nulls for every IPO whose filing was persisted without
+  // per-category counts, so the object's PRESENCE proves nothing - only a
+  // non-null count does.
+  const hasCounts = Boolean(
+    reservationData &&
+      Object.values(reservationData).some((v) => v !== null && v !== undefined)
+  );
+  if (!hasCounts && allocationEntries.length === 0 && !designatedExchange) {
     return null;
   }
 

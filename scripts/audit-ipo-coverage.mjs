@@ -322,8 +322,11 @@ async function main() {
   if (!detailsRow) {
     log(`  [SKIP] ipo_details row present - document_fetch_state table absent on this database`);
   } else {
-    if (!detailsRow.pass) fail++;
-    log(`  [${detailsRow.pass ? 'PASS' : 'FAIL'}] ipo_details row present ${detailsRow.detail}`);
+    // WARN until the activation date (the population needs two full document
+    // rotations); HARD after it.
+    if (!detailsRow.pass && detailsRow.hard) fail++;
+    const verdict = detailsRow.pass ? 'PASS' : detailsRow.hard ? 'FAIL' : 'WARN';
+    log(`  [${verdict}] ipo_details row present ${detailsRow.detail}`);
   }
 
   log(`\n  -- Substance plausibility (HARD; folds audit-substance-plausibility) --`);

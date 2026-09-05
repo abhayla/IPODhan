@@ -49,6 +49,13 @@ export function makeIpoDetailsWriter(): IpoDetailsWriter {
           set: { ...values, updatedAt: new Date() } as never,
         });
     },
+    async insertIfMissing(ipoId, values) {
+      const result = await db
+        .insert(schema.ipoDetails)
+        .values({ ipoId, ...values } as never)
+        .onConflictDoNothing({ target: schema.ipoDetails.ipoId });
+      return (result.rowCount ?? 0) > 0;
+    },
   };
 }
 

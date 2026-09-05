@@ -27,6 +27,9 @@ import {
 
 const IPO_ID = 'w151-ipo-id';
 
+/** Whether the simulated database already holds an ipo_details row. */
+const rowExists = { value: false };
+
 /** An RHP whose extraction carries nothing that maps to an ipo_details column. */
 function zeroDetailExtraction(): FilingExtraction {
   return {
@@ -43,6 +46,7 @@ function zeroDetailExtraction(): FilingExtraction {
 function makeDeps(
   protectionFilter?: FilingPersisterDeps['protectionFilter']
 ): FilingPersisterDeps {
+  rowExists.value = false;
   return {
     ipoRepository: {
       findById: vi.fn(async () => ({
@@ -63,13 +67,29 @@ function makeDeps(
     peerCompanies: { deleteByIPOId: vi.fn(async () => 0), batchCreate: vi.fn(async () => []) },
     financialData: { upsert: vi.fn(async (r: unknown) => r) },
     fieldSources: { findByField: vi.fn(async () => null), trackFieldUpdate: vi.fn(async () => ({})) },
-    ipoDetailsWriter: { upsert: vi.fn(async () => undefined) },
+    ipoDetailsWriter: {
+      upsert: vi.fn(async () => undefined),
+      // Round 2: the identity row is an INSERT ... ON CONFLICT DO NOTHING.
+      // `rowExists` drives the mock's return value so a second cycle can be
+      // simulated without a database.
+      insertIfMissing: vi.fn(async () => {
+        if (rowExists.value) return false;
+        rowExists.value = true;
+        return true;
+      }),
+    },
     ...(protectionFilter ? { protectionFilter } : {}),
   } as unknown as FilingPersisterDeps;
 }
 
 const upsertCalls = (deps: FilingPersisterDeps) =>
   (deps.ipoDetailsWriter.upsert as unknown as ReturnType<typeof vi.fn>).mock.calls as [
+    string,
+    Record<string, unknown>
+  ][];
+
+const insertCalls = (deps: FilingPersisterDeps) =>
+  (deps.ipoDetailsWriter.insertIfMissing as unknown as ReturnType<typeof vi.fn>).mock.calls as [
     string,
     Record<string, unknown>
   ][];
@@ -85,7 +105,8 @@ describe('W-151: an ipo_details row per persisted filing', () => {
       deps
     );
 
-    const calls = upsertCalls(deps);
+    expect(upsertCalls(deps)).toHaveLength(0);
+    const calls = insertCalls(deps);
     expect(calls).toHaveLength(1);
     const [ipoId, values] = calls[0];
     expect(ipoId).toBe(IPO_ID);
@@ -130,6 +151,25 @@ describe('W-151: an ipo_details row per persisted filing', () => {
     );
 
     expect(upsertCalls(deps)).toHaveLength(0);
+    expect(insertCalls(deps)).toHaveLength(0);
+  });
+
+  it('a second cycle with no detail fields writes nothing and tracks no field', async () => {
+    const deps = makeDeps();
+    const opts = { docType: 'RHP' as const, documentId: 'doc-1', apply: true };
+
+    await persistFilingExtraction(IPO_ID, zeroDetailExtraction(), opts, deps);
+    const track = deps.fieldSources.trackFieldUpdate as unknown as ReturnType<typeof vi.fn>;
+    const afterFirst = track.mock.calls.length;
+
+    // Same IPO, next cycle: the row already exists, so the insert is a no-op -
+    // no data_source rewrite, no updated_at bump, no new field_sources row.
+    const summary = await persistFilingExtraction(IPO_ID, zeroDetailExtraction(), opts, deps);
+
+    expect(insertCalls(deps)).toHaveLength(2);
+    expect(upsertCalls(deps)).toHaveLength(0);
+    expect(track.mock.calls.length).toBe(afterFirst);
+    expect((summary as { written?: Record<string, number> }).written?.ipo_details ?? 0).toBe(0);
   });
 
   it('still writes the row when every extracted detail column is admin-protected', async () => {
@@ -158,7 +198,8 @@ describe('W-151: an ipo_details row per persisted filing', () => {
       deps
     );
 
-    const calls = upsertCalls(deps);
+    expect(upsertCalls(deps)).toHaveLength(0);
+    const calls = insertCalls(deps);
     expect(calls).toHaveLength(1);
     const [, values] = calls[0];
     expect(values).not.toHaveProperty('faceValue');
@@ -190,11 +231,12 @@ describe('W-151: an ipo_details row per persisted filing', () => {
       deps
     );
 
+    expect(insertCalls(deps)).toHaveLength(1); // cycle 1: identity row only
     const calls = upsertCalls(deps);
-    expect(calls).toHaveLength(2);
-    // The second write carries the new column and nothing else — an upsert that
+    expect(calls).toHaveLength(1);
+    // The field write carries the new column and nothing else: an upsert that
     // sets only the columns it knows, leaving the rest of the row alone.
-    expect(calls[1][1].faceValue).toBe('10');
-    expect(calls[1][1]).not.toHaveProperty('issueType');
+    expect(calls[0][1].faceValue).toBe('10');
+    expect(calls[0][1]).not.toHaveProperty('issueType');
   });
 });
