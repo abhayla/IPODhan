@@ -51,6 +51,11 @@ import {
   EXTRACTOR_VERSION,
   MAX_EXTRACTION_ATTEMPTS,
   EXTRACTION_BLOCKED_ERROR,
+  EXTRACTOR_MEMORY_CEILING_EXIT,
+  HARD_FAILURE_MARKER,
+  HARD_FAILURE_MIN_BACKOFF_MS,
+  parseHardFailureCount,
+  markHardFailure,
   DEFAULT_MAX_SPAWNS_PER_CYCLE as DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL,
   EXTRACT_TIMEOUT_MS as EXTRACT_TIMEOUT_MS_REAL,
   type AutoPersistDeps,
@@ -538,6 +543,106 @@ describe('documentExtractionBlocked — pure per-document gate logic', () => {
       documentExtractionBlocked({ extractionStatus: 'IN_PROGRESS', retryCount: 1, updatedAt: twentyMinAgo }, V1, now)
         .blocked
     ).toBe(false);
+  });
+
+  // W-137: a document that has been killed/hit the memory ceiling TWICE must
+  // not be retried an hour later just because the normal exponential curve
+  // (2^attempts x 15 min, capped at 6h) says it is due.
+  it('W-137 — 2 consecutive hard failures back off at least 24h, past the normal 6h cap', () => {
+    const twentyHoursAgo = new Date(now.getTime() - 20 * 60 * 60_000);
+    const twentyFiveHoursAgo = new Date(now.getTime() - 25 * 60 * 60_000);
+    const twoHardFailures = `${HARD_FAILURE_MARKER}:2:extractor exited null: killed`;
+
+    // Ordinary exponential backoff at retryCount 5 is already capped at 6h,
+    // so 20h later it would normally be clear — the hard-failure floor must
+    // still hold it.
+    expect(
+      documentExtractionBlocked(
+        { extractionStatus: 'FAILED', retryCount: 5, updatedAt: twentyHoursAgo, extractionError: twoHardFailures },
+        V1,
+        now
+      ).blocked
+    ).toBe(true);
+
+    expect(
+      documentExtractionBlocked(
+        { extractionStatus: 'FAILED', retryCount: 5, updatedAt: twentyFiveHoursAgo, extractionError: twoHardFailures },
+        V1,
+        now
+      ).blocked
+    ).toBe(false);
+  });
+
+  it('W-137 — a SINGLE hard failure still uses the normal exponential backoff (no 24h floor yet)', () => {
+    const twentyMinAgo = new Date(now.getTime() - 20 * 60_000);
+    const oneHardFailure = `${HARD_FAILURE_MARKER}:1:extractor exited null: killed`;
+    expect(
+      documentExtractionBlocked(
+        { extractionStatus: 'FAILED', retryCount: 1, updatedAt: twentyMinAgo, extractionError: oneHardFailure },
+        V1,
+        now
+      ).blocked
+    ).toBe(false);
+  });
+});
+
+describe('parseHardFailureCount / markHardFailure — W-137 hard-failure marker', () => {
+  it('parses the count out of a marked error', () => {
+    expect(parseHardFailureCount(`${HARD_FAILURE_MARKER}:3:extractor exited null: boom`)).toBe(3);
+  });
+
+  it('returns 0 for null, undefined, and an ordinary (non-marked) error', () => {
+    expect(parseHardFailureCount(null)).toBe(0);
+    expect(parseHardFailureCount(undefined)).toBe(0);
+    expect(parseHardFailureCount('extractor: some parse error')).toBe(0);
+  });
+
+  it('markHardFailure starts at 1 with no prior marker, and increments an existing one', () => {
+    expect(markHardFailure(null, 'extractor exited null: killed')).toBe(
+      `${HARD_FAILURE_MARKER}:1:extractor exited null: killed`
+    );
+    expect(markHardFailure(`${HARD_FAILURE_MARKER}:1:extractor exited null: killed`, 'extractor exited 3: killed again')).toBe(
+      `${HARD_FAILURE_MARKER}:2:extractor exited 3: killed again`
+    );
+  });
+});
+
+describe('defaultExtractorRunner — W-137 hard-failure classification', () => {
+  beforeEach(() => {
+    spawnSyncMock.mockReset();
+    delete process.env.PYTHON_BIN;
+  });
+
+  it('a signal-killed process (status null) is reported as a hard failure', () => {
+    spawnSyncMock.mockReturnValueOnce({ status: null, signal: 'SIGKILL', stdout: '', stderr: '' });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(result.ok).toBe(false);
+    expect((result as { hardFailure?: boolean }).hardFailure).toBe(true);
+    expect((result as { error: string }).error).toContain('SIGKILL');
+  });
+
+  it('exit code EXTRACTOR_MEMORY_CEILING_EXIT (3) is reported as a hard failure', () => {
+    spawnSyncMock.mockReturnValueOnce({
+      status: EXTRACTOR_MEMORY_CEILING_EXIT,
+      stdout: '',
+      stderr: JSON.stringify({ error: 'memory ceiling exceeded (2500 MB)' }),
+    });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(result.ok).toBe(false);
+    expect((result as { hardFailure?: boolean }).hardFailure).toBe(true);
+  });
+
+  it('an ordinary non-zero exit (e.g. bad doc type) is NOT a hard failure', () => {
+    spawnSyncMock.mockReturnValueOnce({ status: 2, stdout: '', stderr: 'unknown doc type' });
+
+    const result = defaultExtractorRunner({ pdfPath: 'x.pdf', docType: 'RHP', sme: false });
+
+    expect(result.ok).toBe(false);
+    expect((result as { hardFailure?: boolean }).hardFailure).toBe(false);
   });
 });
 

@@ -488,10 +488,14 @@ def apply_ocr_names(rows, ocr_lines):
 
 
 def extract(path, ocr=True):
+    pages_words = []
     with pdfplumber.open(path) as pdf:
-        pages_words = [
-            p.extract_words(y_tolerance=1, x_tolerance=1.5) for p in pdf.pages
-        ]
+        # W-137 sibling: release each page's pdfplumber cache as we go rather
+        # than holding the whole document's char/object cache alive at once
+        # (same shape as extract_filing.py's prospectus OOM).
+        for p in pdf.pages:
+            pages_words.append(p.extract_words(y_tolerance=1, x_tolerance=1.5))
+            p.close()
     bands = column_bands(pages_words)
     pages = [page_rows(w, bands) for w in pages_words]
 

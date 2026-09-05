@@ -145,6 +145,48 @@ export const MAX_EXTRACTION_ATTEMPTS = 10;
 export const EXTRACTION_BLOCKED_ERROR = 'blocked_after_10_attempts';
 
 /**
+ * W-137: the python extractor's own "the memory ceiling tripped" exit code
+ * (`memory_guard.EXIT_MEMORY_CEILING`) — a HARD failure, same bucket as a
+ * signal-killed process (`result.status === null`, logged as "extractor
+ * exited null"). A 400-page prospectus PDF held pdfplumber's per-page cache
+ * alive for the whole document, growing the process to 3.9-4.7 GB RSS on the
+ * VPS; the kernel OOM-killer then killed the extractor AND the pm2 daemon
+ * supervising it, restarting every app on the box. The fix streams pages
+ * (scripts side) and caps RLIMIT_AS so a runaway trips this exit code
+ * instead — but the node side must still stop retrying that SAME document
+ * hourly, since streaming does not guarantee every prospectus fits.
+ */
+export const EXTRACTOR_MEMORY_CEILING_EXIT = 3;
+
+/** Marks a FAILED row's `extraction_error` as a HARD failure (killed/OOM),
+ * with the count of consecutive hard failures embedded — read back by
+ * `documentExtractionBlocked` to widen the backoff past the normal
+ * exponential curve. Format: `HARD_FAILURE:<n>:<original error>`. */
+export const HARD_FAILURE_MARKER = 'HARD_FAILURE';
+
+/** W-137: after the 2nd consecutive hard failure (killed/memory-ceiling) for
+ * the SAME document, back off at least a day rather than retrying hourly —
+ * a document that kills the box does not become safe to retry an hour later. */
+export const HARD_FAILURE_MIN_BACKOFF_MS = 24 * 60 * 60 * 1000;
+
+/** Reads the consecutive-hard-failure count off a `HARD_FAILURE:<n>:...`
+ * marked error string. Returns 0 for anything else (including null/undefined
+ * or an ordinary error) — never throws on malformed input. */
+export function parseHardFailureCount(error: string | null | undefined): number {
+  if (!error) return 0;
+  const match = new RegExp(`^${HARD_FAILURE_MARKER}:(\\d+):`).exec(error);
+  if (!match) return 0;
+  const n = Number(match[1]);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+/** Wraps a hard-failure's raw error with the marker + incremented count, read
+ * back by `parseHardFailureCount` on the NEXT cycle's gate check. */
+export function markHardFailure(previousError: string | null | undefined, rawError: string): string {
+  return `${HARD_FAILURE_MARKER}:${parseHardFailureCount(previousError) + 1}:${rawError}`;
+}
+
+/**
  * The per-document gate. Pure, so the backoff arithmetic is testable without a
  * database. `doc` is the subset of `documents` columns the gate reads.
  */
@@ -212,7 +254,15 @@ export function documentExtractionBlocked(
     return { blocked: false };
   }
   if ((doc.extractionStatus === 'FAILED' || doc.extractionStatus === 'IN_PROGRESS') && doc.retryCount > 0) {
-    const nextDueAt = backoffNextDueAt(doc.retryCount - 1, doc.updatedAt ?? now);
+    const anchor = doc.updatedAt ?? now;
+    let nextDueAt = backoffNextDueAt(doc.retryCount - 1, anchor);
+    // W-137: 2+ consecutive killed/memory-ceiling failures on this SAME
+    // document override the normal (6h-capped) exponential backoff with a
+    // floor of 24h — the document is what kills the box, not the timing.
+    if (parseHardFailureCount(doc.extractionError) >= 2) {
+      const hardFloor = new Date(anchor.getTime() + HARD_FAILURE_MIN_BACKOFF_MS);
+      if (hardFloor.getTime() > nextDueAt.getTime()) nextDueAt = hardFloor;
+    }
     if (nextDueAt.getTime() > now.getTime()) {
       return { blocked: true, reason: `extraction backing off until ${nextDueAt.toISOString()}` };
     }
@@ -427,7 +477,14 @@ export function extractorScriptPath(): string {
  * The same trap already bit `document-discovery-runner.ts`; a type-predicate
  * function narrows in both modes.
  */
-export type ExtractorFailure = { ok: false; error: string };
+export type ExtractorFailure = {
+  ok: false;
+  error: string;
+  /** W-137: true when the extractor was killed by a signal (OOM) or exited
+   * with `EXTRACTOR_MEMORY_CEILING_EXIT` — a HARD failure the caller must
+   * back off much longer than an ordinary parse/validation failure. */
+  hardFailure?: boolean;
+};
 export type ExtractorSuccess = { ok: true; extraction: FilingExtraction };
 export type ExtractorResult = ExtractorSuccess | ExtractorFailure;
 
@@ -523,9 +580,17 @@ export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme,
 
   if (result.error) return { ok: false, error: `spawn failed: ${result.error.message}` };
   if (result.status !== 0) {
+    // W-137: `result.status === null` means the process was terminated by a
+    // signal (`result.signal`, e.g. SIGKILL from the OOM killer) rather than
+    // exiting normally — the "exited null" this incident is named for. Exit
+    // code 3 is the extractor's OWN memory-ceiling report (memory_guard.py).
+    // Both are HARD failures: retrying the same document hourly is exactly
+    // what took the pm2 daemon down repeatedly.
+    const hardFailure = result.status === null || result.status === EXTRACTOR_MEMORY_CEILING_EXIT;
     return {
       ok: false,
-      error: `extractor exited ${result.status}: ${(result.stderr || '').slice(-800)}`,
+      error: `extractor exited ${result.status}${result.signal ? ` (signal ${result.signal})` : ''}: ${(result.stderr || '').slice(-800)}`,
+      hardFailure,
     };
   }
   let parsed: FilingExtraction;
@@ -870,18 +935,27 @@ export async function processPendingFilings(
 
     if (isExtractorFailure(run)) {
       result.failed++;
+      // W-137: a killed/memory-ceiling extractor is a HARD failure — embed
+      // the (incrementing) hard-failure marker so the NEXT cycle's
+      // `documentExtractionBlocked` widens the backoff to >= 24h once this
+      // has happened twice on the SAME document, instead of retrying hourly.
+      const rawError = run.hardFailure
+        ? markHardFailure(doc.extractionError, `extractor: ${run.error}`)
+        : `extractor: ${run.error}`;
       // Transition 3 / 5: retryCount is NOT re-incremented here — it was
       // already counted at the IN_PROGRESS stamp above. Once that count has
       // reached MAX_EXTRACTION_ATTEMPTS, classifyFailure writes MANUAL_REVIEW
       // (with EXTRACTOR_VERSION embedded in the error) instead of FAILED, so
       // the row self-documents WHY the next cycle will not retry it.
-      const classified = classifyFailure(newRetryCount, version, `extractor: ${run.error}`);
+      const classified = classifyFailure(newRetryCount, version, rawError);
       const blocked = classified.status === 'MANUAL_REVIEW';
       logger.error(
-        { ipoId: ipo.id, docType, error: run.error, retryCount: newRetryCount, blocked },
+        { ipoId: ipo.id, docType, error: run.error, retryCount: newRetryCount, blocked, hardFailure: run.hardFailure === true },
         blocked
           ? 'Filing extraction failed for the 10th time — blocked until EXTRACTOR_VERSION changes'
-          : 'Filing extraction failed (non-fatal) — recorded as FAILED with a backoff'
+          : run.hardFailure
+            ? 'Filing extractor was killed (OOM/memory ceiling) — recorded as FAILED with a hard backoff (>=24h after the 2nd such failure)'
+            : 'Filing extraction failed (non-fatal) — recorded as FAILED with a backoff'
       );
       await writeSteps(
         ipo.id,

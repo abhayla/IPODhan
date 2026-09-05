@@ -2168,8 +2168,15 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
     """Read the PDF's text layer; for any page that has none worth trusting,
     fall back to the OCR route (D6/W-57) instead of stopping at NEEDS_OCR."""
     import pdfplumber
+    page_texts = []
     with pdfplumber.open(pdf_path) as pdf:
-        page_texts = [(i, p.extract_text() or "") for i, p in enumerate(pdf.pages)]
+        # W-137: pdfplumber caches every page's chars/objects for the life of
+        # `pdf.pages` — for a 400-page prospectus that pins gigabytes. Extract
+        # one page's text, keep only the string, then release that page's
+        # cache immediately (`close()` also clears the shared textmap cache).
+        for i, p in enumerate(pdf.pages):
+            page_texts.append((i, p.extract_text() or ""))
+            p.close()
 
     ocr_confidence = {}
     if ocr:
@@ -2194,6 +2201,9 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
 
 
 def main():
+    import memory_guard
+    memory_guard.install_memory_ceiling()
+
     argv = sys.argv[1:]
     doc_type = "RHP"
     if "--doc-type" in argv:
@@ -2210,18 +2220,25 @@ def main():
     positional = [a for a in argv if not a.startswith("--")
                   and a != doc_type and a != issue_size_arg]
 
-    if "--texts" in argv:
-        with open(positional[0], "r", encoding="utf-8") as fh:
-            pages = json.load(fh)
-        out = run([(int(p[0]), p[1]) for p in pages], doc_type,
-                  os.path.basename(positional[0]), segment,
-                  issue_size_rupees=issue_size_rupees)
-    else:
-        ocr_dpi = int(argv[argv.index("--ocr-dpi") + 1]) if "--ocr-dpi" in argv else None
-        backend = argv[argv.index("--backend") + 1] if "--backend" in argv else None
-        out = extract(positional[0], doc_type, segment, ocr="--no-ocr" not in argv,
-                      ocr_dpi=ocr_dpi, ocr_backend=backend,
+    try:
+        if "--texts" in argv:
+            with open(positional[0], "r", encoding="utf-8") as fh:
+                pages = json.load(fh)
+            out = run([(int(p[0]), p[1]) for p in pages], doc_type,
+                      os.path.basename(positional[0]), segment,
                       issue_size_rupees=issue_size_rupees)
+        else:
+            ocr_dpi = int(argv[argv.index("--ocr-dpi") + 1]) if "--ocr-dpi" in argv else None
+            backend = argv[argv.index("--backend") + 1] if "--backend" in argv else None
+            out = extract(positional[0], doc_type, segment, ocr="--no-ocr" not in argv,
+                          ocr_dpi=ocr_dpi, ocr_backend=backend,
+                          issue_size_rupees=issue_size_rupees)
+    except MemoryError:
+        # W-137: the RLIMIT_AS ceiling tripped — report a clean, catchable
+        # failure instead of letting the kernel OOM-kill this process (and, on
+        # the VPS, the pm2 daemon supervising it) out from under us.
+        print(memory_guard.memory_ceiling_error_json(memory_guard.max_rss_mb()))
+        sys.exit(memory_guard.EXIT_MEMORY_CEILING)
     print(json.dumps(out, indent=2, default=str))
 
 
