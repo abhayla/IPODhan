@@ -24,8 +24,17 @@ npx tsx scripts/reset-document.ts --document-id <uuid> --to MANUAL_REVIEW --appl
 ```
 
 Refuses (exit 1, no writes) when: the id doesn't match a row, or `--ipo` +
-`--doc-type` match more than one row. Refuses (exit 1) with `NODE_ENV=production`
-unless `--allow-prod` is passed.
+`--doc-type` match more than one row.
+
+**Prod guard is on the database name, not `NODE_ENV`.** Both the prod and
+staging VPS slots run with `NODE_ENV=production` (VPS slot env fact, round 2),
+so `NODE_ENV` cannot tell them apart — and this CLI exists to be run against
+*staging*. The guard instead resolves the target database name (`DATABASE_URL`'s
+path, falling back to `DATABASE_NAME`/`PGDATABASE`) and refuses only the
+production name `ipodhan`; `ipodhan_staging`, `ipodhan_test`, and anything else
+run without a flag. `--allow-prod` is the only override for `ipodhan` itself.
+The resolved database name is always printed first, dry run or not, so the
+operator sees which slot they are pointed at before anything happens.
 
 ## Staging invocation (via the DB tunnel)
 

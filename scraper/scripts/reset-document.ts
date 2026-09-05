@@ -31,7 +31,13 @@
  *                                   marker, both of which live in extraction_error)
  *   --no-clear-retries             explicitly keep retry_count/extraction_error
  *   --apply                        perform the writes (default: dry run)
- *   --allow-prod                   permit running with NODE_ENV=production
+ *   --allow-prod                   permit running against the PRODUCTION
+ *                                   database (DATABASE_NAME/DATABASE_URL path
+ *                                   == "ipodhan"). NODE_ENV=production is NOT
+ *                                   the guard — both the prod and staging VPS
+ *                                   slots run with NODE_ENV=production, so
+ *                                   only the resolved database name (printed
+ *                                   in the header) distinguishes them.
  *
  * Default for --clear-retries: ON when --to PENDING, OFF when --to MANUAL_REVIEW
  * (an operator moving a document back to MANUAL_REVIEW is usually parking it,
@@ -80,6 +86,30 @@ export interface RunDeps {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The one database name this CLI refuses without --allow-prod. */
+export const PRODUCTION_DATABASE_NAME = 'ipodhan';
+
+/**
+ * Round 2: resolve the target database name from DATABASE_URL's path, falling
+ * back to DATABASE_NAME/PGDATABASE — mirrors
+ * `backfill-anchor-investor-list-json.ts`'s `assertTestDatabase`, but names
+ * the PRODUCTION database rather than requiring a `_test` suffix, since this
+ * CLI's whole purpose is running against staging.
+ */
+export function resolveDatabaseName(env: NodeJS.ProcessEnv): string {
+  const raw = env.DATABASE_URL || '';
+  const fromUrl = raw
+    ? (() => {
+        try {
+          return new URL(raw).pathname.replace(/^\//, '');
+        } catch {
+          return '';
+        }
+      })()
+    : '';
+  return fromUrl || env.DATABASE_NAME || env.PGDATABASE || '';
+}
 
 function toDocumentRow(row: {
   id: string;
@@ -217,16 +247,24 @@ export async function run(argv: string[] = process.argv, overrides: Partial<RunD
     return i >= 0 ? argv[i + 1] : undefined;
   };
 
-  const isProd = process.env.NODE_ENV === 'production';
+  // Round 2: both the prod AND staging scraper slots run with
+  // NODE_ENV=production (VPS slot env fact) — that variable does not
+  // distinguish the two, so a NODE_ENV guard refused staging too, where this
+  // command is meant to be used. Guard on the resolved DATABASE NAME instead:
+  // only the production database name is refused; ipodhan_staging /
+  // ipodhan_test / anything else runs without a flag.
+  const dbName = resolveDatabaseName(process.env);
+  const isProdDb = dbName === PRODUCTION_DATABASE_NAME;
   const allowProd = argv.includes('--allow-prod');
-  if (isProd && !allowProd) {
+  console.log(`database: ${dbName || '(unresolved)'}`);
+  if (isProdDb && !allowProd) {
     console.error(
-      'reset-document: refusing to run with NODE_ENV=production — pass --allow-prod to override.'
+      `reset-document: refusing to run against the production database "${PRODUCTION_DATABASE_NAME}" — pass --allow-prod to override.`
     );
     process.exit(1);
   }
-  if (isProd && allowProd) {
-    console.log('ALLOW-PROD: running with NODE_ENV=production (--allow-prod given).');
+  if (isProdDb && allowProd) {
+    console.log(`ALLOW-PROD: running against "${PRODUCTION_DATABASE_NAME}" (--allow-prod given).`);
   }
 
   const documentId = arg('document-id');

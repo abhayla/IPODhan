@@ -59,7 +59,8 @@ describe('reset-document CLI', () => {
   let exitSpy: ReturnType<typeof vi.spyOn>;
   let logSpy: ReturnType<typeof vi.spyOn>;
   let errSpy: ReturnType<typeof vi.spyOn>;
-  const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+  const ORIGINAL_DATABASE_URL = process.env.DATABASE_URL;
+  const ORIGINAL_DATABASE_NAME = process.env.DATABASE_NAME;
 
   beforeEach(() => {
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
@@ -67,13 +68,16 @@ describe('reset-document CLI', () => {
     }) as never);
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
     errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    delete process.env.DATABASE_URL;
+    delete process.env.DATABASE_NAME;
   });
 
   afterEach(() => {
     exitSpy.mockRestore();
     logSpy.mockRestore();
     errSpy.mockRestore();
-    process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+    process.env.DATABASE_URL = ORIGINAL_DATABASE_URL;
+    process.env.DATABASE_NAME = ORIGINAL_DATABASE_NAME;
   });
 
   it('dry run (no --apply): writes nothing and deletes no cache key', async () => {
@@ -190,8 +194,10 @@ describe('reset-document CLI', () => {
     expect(deps.updateDocument).not.toHaveBeenCalled();
   });
 
-  it('prod guard: refuses when NODE_ENV=production without --allow-prod', async () => {
-    process.env.NODE_ENV = 'production';
+  // Round 2: both the prod AND staging VPS slots run NODE_ENV=production, so
+  // the guard is on the resolved DATABASE NAME, not NODE_ENV.
+  it('prod-db guard: refuses when DATABASE_URL resolves to the production database name, no --allow-prod', async () => {
+    process.env.DATABASE_URL = 'postgresql://user:pw@host:5432/ipodhan';
     const { run } = await import('../../../scripts/reset-document');
     const { deps, updateCalls } = makeFakeDeps(makeDoc());
 
@@ -203,12 +209,32 @@ describe('reset-document CLI', () => {
     expect(deps.getDocumentById).not.toHaveBeenCalled();
   });
 
-  it('prod guard: proceeds when NODE_ENV=production WITH --allow-prod', async () => {
-    process.env.NODE_ENV = 'production';
+  it('prod-db guard: --allow-prod overrides the production database name', async () => {
+    process.env.DATABASE_URL = 'postgresql://user:pw@host:5432/ipodhan';
     const { run } = await import('../../../scripts/reset-document');
     const { deps, updateCalls } = makeFakeDeps(makeDoc());
 
     await run(['node', 'reset-document.ts', '--document-id', DOC_ID, '--apply', '--allow-prod'], deps);
+
+    expect(updateCalls).toHaveLength(1);
+  });
+
+  it('staging database name runs without --allow-prod (this CLI exists to fix staging)', async () => {
+    process.env.DATABASE_URL = 'postgresql://user:pw@host:5432/ipodhan_staging';
+    const { run } = await import('../../../scripts/reset-document');
+    const { deps, updateCalls } = makeFakeDeps(makeDoc());
+
+    await run(['node', 'reset-document.ts', '--document-id', DOC_ID, '--apply'], deps);
+
+    expect(updateCalls).toHaveLength(1);
+  });
+
+  it('_test database name also runs without --allow-prod', async () => {
+    process.env.DATABASE_NAME = 'ipodhan_test';
+    const { run } = await import('../../../scripts/reset-document');
+    const { deps, updateCalls } = makeFakeDeps(makeDoc());
+
+    await run(['node', 'reset-document.ts', '--document-id', DOC_ID, '--apply'], deps);
 
     expect(updateCalls).toHaveLength(1);
   });
