@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { isValidProdBaseUrl, buildPlaywrightArgs } from '../../../scripts/run-prod-verify.mjs';
 
 // W-164: guards the exact bug that let `npm run test:prod-verify` boot a
 // local `next dev` server on the laptop while targeting prod
@@ -40,5 +41,40 @@ describe('playwright.config.ts prod-verify gating', () => {
 
     expect(config.webServer).toBeDefined();
     expect((config.webServer as { command: string }).command).toBe('npm run dev');
+  });
+});
+
+describe('run-prod-verify.mjs (round 2: arg forwarding + URL validation)', () => {
+  it('forwards extra CLI args after the fixed playwright args', () => {
+    const args = buildPlaywrightArgs(['--grep', 'compare']);
+
+    expect(args).toEqual([
+      'playwright',
+      'test',
+      'production-verification',
+      '--project=chromium',
+      '--grep',
+      'compare',
+    ]);
+  });
+
+  it('forwards no extra args when none are given', () => {
+    expect(buildPlaywrightArgs([])).toEqual([
+      'playwright',
+      'test',
+      'production-verification',
+      '--project=chromium',
+    ]);
+  });
+
+  it('accepts http(s) URLs as valid PROD_BASE_URL', () => {
+    expect(isValidProdBaseUrl('https://ipodhan.com')).toBe(true);
+    expect(isValidProdBaseUrl('http://localhost:3000')).toBe(true);
+  });
+
+  it('rejects a PROD_BASE_URL that is not http(s)', () => {
+    expect(isValidProdBaseUrl('ipodhan.com')).toBe(false);
+    expect(isValidProdBaseUrl('ftp://ipodhan.com')).toBe(false);
+    expect(isValidProdBaseUrl('')).toBe(false);
   });
 });

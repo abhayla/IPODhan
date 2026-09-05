@@ -8,18 +8,42 @@
 // (tests/e2e/production-verification.spec.ts) already defaults its target to
 // https://ipodhan.com. This script sets the one env var both the config and
 // the spec key off, so a local server is never started for this command.
+//
+// Round 2: forward extra CLI args (e.g. `npm run test:prod-verify -- --grep
+// compare`) which the round-1 script silently dropped, and validate
+// PROD_BASE_URL is actually an http(s) URL before spawning Playwright.
 import { spawnSync } from 'node:child_process';
 
-const PROD_BASE_URL = process.env.PROD_BASE_URL || 'https://ipodhan.com';
+export function isValidProdBaseUrl(url) {
+  return /^https?:\/\//i.test(url);
+}
 
-const result = spawnSync(
-  'npx',
-  ['playwright', 'test', 'production-verification', '--project=chromium'],
-  {
+export function buildPlaywrightArgs(extraArgs) {
+  return ['playwright', 'test', 'production-verification', '--project=chromium', ...extraArgs];
+}
+
+function main() {
+  const PROD_BASE_URL = process.env.PROD_BASE_URL || 'https://ipodhan.com';
+
+  if (!isValidProdBaseUrl(PROD_BASE_URL)) {
+    console.error(
+      `[run-prod-verify] PROD_BASE_URL must start with http:// or https:// (got: ${PROD_BASE_URL})`
+    );
+    process.exit(2);
+    return;
+  }
+
+  const extraArgs = process.argv.slice(2);
+
+  const result = spawnSync('npx', buildPlaywrightArgs(extraArgs), {
     stdio: 'inherit',
     shell: true,
     env: { ...process.env, PROD_BASE_URL },
-  }
-);
+  });
 
-process.exit(result.status ?? 1);
+  process.exit(result.status ?? 1);
+}
+
+if (process.argv[1] && import.meta.url === `file://${process.argv[1].replace(/\\/g, '/')}`) {
+  main();
+}
