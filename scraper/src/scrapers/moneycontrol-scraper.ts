@@ -296,7 +296,12 @@ export async function scrapeMoneycontrolIPOs(): Promise<MoneycontrolScraperResul
           companyName: sanitizeText(raw.companyName),
           issueSize,
           // W-116: openDate/closeDate deliberately omitted — see comment above.
-          listingExchange: 'BOTH', // Moneycontrol aggregates both exchanges
+          // W-145: Moneycontrol aggregates both boards but does NOT state which
+          // one an issue lists on — the old hard-coded 'BOTH' asserted a fact the
+          // page never carries and stomped correct single-board values (the 5 SME
+          // rows wrongly marked "both" in prod). Unknown is omitted; NSE/BSE's own
+          // self-assertions are the source of truth for this field.
+          listingExchange: undefined,
           segment: segment as 'MAINBOARD' | 'SME',
           offeringType: offeringType as 'IPO',
           status,

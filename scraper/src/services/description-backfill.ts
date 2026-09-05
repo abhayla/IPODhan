@@ -50,7 +50,9 @@ export function buildDescriptionScrapedIPO(ipo: DescBackfillIpo, description: st
     issueSize: issueSizeNum,
     openDate: ipo.openDate ?? today,
     closeDate: ipo.closeDate ?? ipo.openDate ?? today,
-    listingExchange: 'BOTH',
+    // W-145: a description backfill knows nothing about the listing board —
+    // asserting 'BOTH' here re-widened single-board rows on every run.
+    listingExchange: undefined,
     segment: ipo.segment ?? undefined,
     offeringType: ipo.offeringType as ScrapedIPO['offeringType'],
     status: ipo.status as ScrapedIPO['status'], // preserve existing status — a description backfill must not change it

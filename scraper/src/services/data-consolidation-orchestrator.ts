@@ -36,6 +36,10 @@ import {
   LOCK_DEFAULTS,
 } from '../utils/distributed-lock.js';
 import { FEATURE_FLAGS } from '../config/feature-flags.js';
+import {
+  toListingExchangesForSource,
+  violatesSmeSingleExchange,
+} from './listing-exchange-resolution.js';
 import { initStepLedger } from './step-ledger.js';
 import { recordDiscoverySteps } from './step-ledger-recorders.js';
 import type { Redis } from 'ioredis';
@@ -160,7 +164,7 @@ export class DataConsolidationOrchestrator {
       }
 
       // Prepare incoming data for consolidation
-      const incomingData = this.mapScrapedIPOToConsolidationInput(scrapedIPO);
+      const incomingData = this.mapScrapedIPOToConsolidationInput(scrapedIPO, source);
 
       // Consolidate IPO main table data
       const consolidationResult =
@@ -186,7 +190,9 @@ export class DataConsolidationOrchestrator {
       // Extract consolidated values for database insert/update
       const consolidatedIPOData = this.extractConsolidatedData(
         consolidationResult,
-        scrapedIPO
+        scrapedIPO,
+        source,
+        existingIPO
       );
 
       // Protect an authoritative corporate-action classification from being downgraded to a
@@ -336,8 +342,18 @@ export class DataConsolidationOrchestrator {
    * Map ScrapedIPO to consolidation input format
    */
   private mapScrapedIPOToConsolidationInput(
-    scrapedIPO: ScrapedIPO
+    scrapedIPO: ScrapedIPO,
+    source: ScraperSource
   ): Record<string, any> {
+    // W-145: the incoming record used to carry `listingExchange` (SINGULAR)
+    // while the stored record carries `listingExchanges` (PLURAL), so the
+    // consolidator never compared like with like and the field escaped every
+    // priority/merge rule. The singular key is mapped to the canonical array
+    // HERE, at the one boundary, and the singular spelling never enters the
+    // record shape again. `undefined` (unknown) is OMITTED entirely, so the
+    // absent-never-overwrites-present guard keeps the stored value.
+    const listingExchanges = toListingExchangesForSource(scrapedIPO.listingExchange, source);
+
     return {
       companyName: scrapedIPO.companyName,
       segment: scrapedIPO.segment,
@@ -356,7 +372,7 @@ export class DataConsolidationOrchestrator {
       companyDescription: scrapedIPO.companyDescription,
       registrar: scrapedIPO.registrar,
       leadManagers: scrapedIPO.leadManagers,
-      listingExchange: scrapedIPO.listingExchange,
+      ...(listingExchanges ? { listingExchanges } : {}),
       symbol: scrapedIPO.symbol,
       isin: scrapedIPO.isin,
     };
@@ -395,7 +411,9 @@ export class DataConsolidationOrchestrator {
    */
   private extractConsolidatedData(
     result: ConsolidationResult,
-    originalScraped: ScrapedIPO
+    originalScraped: ScrapedIPO,
+    source: ScraperSource,
+    existingIPO?: IPO | null
   ): Partial<IPOInsert> {
     const consolidated: any = {};
 
@@ -427,7 +445,7 @@ export class DataConsolidationOrchestrator {
       companyDescription: consolidated.companyDescription,
       registrar: consolidated.registrar,
       leadManagers: consolidated.leadManagers,
-      listingExchanges: this.extractListingExchanges(consolidated, originalScraped),
+      listingExchanges: this.extractListingExchanges(consolidated, originalScraped, source, existingIPO),
       symbol: consolidated.symbol,
       isin: consolidated.isin,
       lastScrapedAt: new Date(),
@@ -435,19 +453,52 @@ export class DataConsolidationOrchestrator {
   }
 
   /**
-   * Extract listing exchanges with merge logic
+   * W-145: the consolidated `listingExchanges` (union of exchange
+   * self-assertions, resolved by the matrix) is the value; this only decides
+   * what to write when consolidation produced nothing for the field.
+   *
+   * The old body read the SINGULAR key off the consolidated record — a key the
+   * consolidator never produced — so it always fell back to the raw scrape and
+   * wrote `['NSE','BSE']` for any source that hard-coded 'BOTH', overwriting a
+   * correct single-board value on every cycle.
+   *
+   * `undefined` is returned (not `[]`) when nothing is known, so
+   * `buildNonDestructiveUpdate` / the repository leave the stored column alone.
    */
   private extractListingExchanges(
     consolidated: any,
-    originalScraped: ScrapedIPO
-  ): ('NSE' | 'BSE')[] {
-    const incomingExchange = consolidated.listingExchange || originalScraped.listingExchange;
+    originalScraped: ScrapedIPO,
+    source: ScraperSource,
+    existingIPO?: IPO | null
+  ): ('NSE' | 'BSE')[] | undefined {
+    const stored = (existingIPO?.listingExchanges as ('NSE' | 'BSE')[] | null | undefined) ?? undefined;
+    const resolved: ('NSE' | 'BSE')[] | undefined =
+      (Array.isArray(consolidated.listingExchanges) && consolidated.listingExchanges.length > 0
+        ? consolidated.listingExchanges
+        : undefined) ??
+      toListingExchangesForSource(originalScraped.listingExchange, source) ??
+      stored;
 
-    if (incomingExchange === 'BOTH') {
-      return ['NSE', 'BSE'];
-    } else {
-      return [incomingExchange as 'NSE' | 'BSE'];
+    if (resolved === undefined) return undefined;
+
+    // SME invariant, last line of defence on the write itself: an SME issue
+    // lists on exactly one board. The consolidator already refuses to MERGE a
+    // second exchange onto an SME row (and logs the conflict); if a two-board
+    // value still reaches here, keep the stored single board rather than write
+    // the violation.
+    const segment = (consolidated.segment ?? originalScraped.segment ?? existingIPO?.segment) as
+      | string
+      | null
+      | undefined;
+    if (violatesSmeSingleExchange(segment, resolved)) {
+      logger.warn(
+        { source, segment, resolved, stored },
+        '[DataConsolidation] W-145 SME single-exchange invariant — refusing to write two exchanges'
+      );
+      return stored && stored.length === 1 ? stored : undefined;
     }
+
+    return resolved;
   }
 
   /**

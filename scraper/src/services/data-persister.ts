@@ -559,14 +559,25 @@ function mergeListingExchanges(
 export function mergeListingExchangesForSource(
   existingExchanges: ('NSE' | 'BSE')[] | null | undefined,
   source: ScraperSource,
-  scrapedListingExchange: 'NSE' | 'BSE' | 'BOTH' | undefined
+  scrapedListingExchange: 'NSE' | 'BSE' | 'BOTH' | undefined,
+  // W-145: SME rows list on exactly one board, so the fallback must not widen
+  // them either. Omitted (or non-SME) keeps the previous union behaviour.
+  segment?: string | null
 ): ('NSE' | 'BSE')[] {
   const existing = existingExchanges ?? [];
-  if (source !== 'NSE' && source !== 'BSE') {
-    return existing.length > 0 ? existing : (scrapedListingExchange === 'BOTH' ? ['NSE', 'BSE'] : scrapedListingExchange ? [scrapedListingExchange] : []);
+  // W-145: ONE rule for what a source proves — an aggregator's 'BOTH' is
+  // unknown, NSE/BSE assert only themselves.
+  const incoming = toListingExchangesForSource(scrapedListingExchange, source);
+  if (!incoming) return existing;
+
+  let merged = existing;
+  for (const exchange of incoming) {
+    merged = mergeListingExchanges(merged, exchange);
   }
-  const incoming = scrapedListingExchange === 'BOTH' ? source : (scrapedListingExchange ?? source);
-  return mergeListingExchanges(existing, incoming);
+  if (violatesSmeSingleExchange(segment, merged) && existing.length > 0) {
+    return existing;
+  }
+  return merged;
 }
 
 /**
@@ -598,6 +609,10 @@ export function buildNonDestructiveUpdate(
 // in lock-step (A3 / #6 #8 #16). Imported for local use in upsertIPO AND
 // re-exported for existing callers (e.g. the GMP orchestrator).
 import { normalizeCompanyNameForMatching } from '@ipodhan/shared/utils/company-name-normalizer';
+import {
+  toListingExchangesForSource,
+  violatesSmeSingleExchange,
+} from './listing-exchange-resolution.js';
 export { normalizeCompanyNameForMatching };
 
 /**
@@ -684,13 +699,12 @@ export async function upsertIPO(
         }, '[Phase 11] Found existing IPO via fuzzy name matching - preventing duplicate!');
       }
 
-      // Determine listing exchange(s)
-      let listingExchanges: ('NSE' | 'BSE')[];
-      if (scrapedIPO.listingExchange === 'BOTH') {
-        listingExchanges = ['NSE', 'BSE'];
-      } else {
-        listingExchanges = [scrapedIPO.listingExchange];
-      }
+      // W-145: one shared rule for "which boards does THIS source prove?" —
+      // NSE/BSE assert only themselves, a 'BOTH' from an aggregator is unknown
+      // (undefined), and unknown leaves the column NULL rather than writing a
+      // guessed pair. `[scrapedIPO.listingExchange]` used to be written blind,
+      // which produced `[undefined]` the moment the field became optional.
+      const listingExchanges = toListingExchangesForSource(scrapedIPO.listingExchange, source);
 
       // Stage A.5 write-path date-plausibility guard (#41/#52): a current scrape must
       // not stomp an old IPO's open/close dates. Anchor on the trustworthy post-IPO
@@ -850,11 +864,27 @@ export async function upsertIPO(
 
             const consolidationDuration = Date.now() - consolidationStartTime;
 
-            // Merge exchanges (preserve exchange tracking logic)
+            // Merge exchanges (preserve exchange tracking logic).
+            // W-145: the union is over what each source can actually prove —
+            // NSE/BSE self-assertions only — and an SME row may hold exactly ONE
+            // board, so a merge that would widen an SME row is refused here too
+            // (the consolidation service logs the conflict row).
             let mergedExchanges = existingIPO.listingExchanges as ('NSE' | 'BSE')[];
-            if (source === 'NSE' || source === 'BSE') {
-              const currentExchange = scrapedIPO.listingExchange === 'BOTH' ? source : scrapedIPO.listingExchange;
-              mergedExchanges = mergeListingExchanges(mergedExchanges, currentExchange);
+            const incomingExchanges = toListingExchangesForSource(scrapedIPO.listingExchange, source);
+            if (incomingExchanges) {
+              const widened = [...(mergedExchanges ?? [])];
+              for (const exchange of incomingExchanges) {
+                if (!widened.includes(exchange)) widened.push(exchange);
+              }
+              const segment = (existingIPO.segment ?? scrapedIPO.segment) as string | null | undefined;
+              if (violatesSmeSingleExchange(segment, widened)) {
+                logger.warn(
+                  { ipoId: existingIPO.id, source, segment, stored: mergedExchanges, incomingExchanges },
+                  '[DataPersister] W-145 SME single-exchange invariant - refusing to widen an SME row'
+                );
+              } else {
+                mergedExchanges = widened as ('NSE' | 'BSE')[];
+              }
             }
 
             // #52 observability: detect an incoherent merged date sequence BEFORE the
@@ -1070,7 +1100,8 @@ export async function upsertIPO(
           listingExchanges: mergeListingExchangesForSource(
             (existingIPO as any).listingExchanges,
             source,
-            scrapedIPO.listingExchange
+            scrapedIPO.listingExchange,
+            ((existingIPO as any).segment ?? scrapedIPO.segment) as string | null | undefined
           ),
           lastScrapedAt: new Date(),
           updatedAt: new Date(),

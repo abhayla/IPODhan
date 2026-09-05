@@ -41,6 +41,10 @@ import {
 import { confidenceFor } from '../config/source-confidence';
 import type { ConflictSeverity } from '../config/source-confidence';
 import { FEATURE_FLAGS, shouldUseFeature } from '../config/feature-flags';
+import {
+  violatesSmeSingleExchange,
+  SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+} from './listing-exchange-resolution.js';
 import logger from '../utils/logger.js';
 import { toUtcEpochDay, toUtcEpochMs } from '../utils/date-string-parsing.js';
 
@@ -821,6 +825,7 @@ export class DataConsolidationService {
             // computation deadlocked.
             heldDates,
             incomingDates,
+            segment: input.existingData?.segment ?? input.incomingData.segment ?? null,
           });
 
           result.fieldResults.push(fieldResult);
@@ -920,6 +925,10 @@ export class DataConsolidationService {
     ipoStatus?: string;
     heldDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
     incomingDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
+    // W-145: the row's segment, for the SME single-exchange invariant. The
+    // STORED segment leads (it is the classified row); the incoming one is
+    // only a fallback for a row that has none yet.
+    segment?: string | null;
   }): Promise<FieldConsolidationResult> {
     const {
       ipoId,
@@ -1131,6 +1140,46 @@ export class DataConsolidationService {
             hadConflict: false,
             rejectedSources: [
               { source: incomingSource, value: incomingValue, reason: 'SET_MERGE_NO_NEW_MEMBERS' },
+            ],
+          };
+        }
+
+        // W-145 SME invariant: an SME issue lists on exactly ONE board (NSE
+        // Emerge or BSE SME). A union that would give it two exchanges is a
+        // disagreement about WHICH board, not two partial views of a set - so
+        // it becomes a conflict row for admin review and the stored single
+        // board is kept, never widened.
+        if (violatesSmeSingleExchange(params.segment, merged)) {
+          if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+            await this.logConflict({
+              ipoId,
+              tableName,
+              fieldName,
+              existingValue: storedValue,
+              existingSource: existingSource || incomingSource,
+              incomingValue,
+              incomingSource,
+              normalizedExisting: normalizedStored,
+              normalizedIncoming,
+              severity: 'CRITICAL',
+              reason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+              chosenSource: existingSource || incomingSource,
+            });
+          }
+
+          return {
+            fieldName,
+            finalValue: storedValue,
+            chosenSource: existingSource || incomingSource,
+            hadConflict: true,
+            conflictSeverity: 'CRITICAL',
+            conflictReason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+            rejectedSources: [
+              {
+                source: incomingSource,
+                value: incomingValue,
+                reason: SME_SINGLE_EXCHANGE_CONFLICT_REASON,
+              },
             ],
           };
         }
