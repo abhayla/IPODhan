@@ -123,16 +123,27 @@ describe('MAJOR-1 — a pinned document is never re-selected and never downloade
   it('runs the sidecar on the pinned path itself, without touching the documents table', async () => {
     spawnSyncMock.mockReturnValue({ status: 0, stdout: '{"pages":["nothing parseable"]}', stderr: '' });
 
+    const pinnedPdfPath = import.meta.url.replace('file:///', '');
     const outcome = await scrapeAnchorInvestorsDetailed(
       dbThatMustNotBeQueried,
       'ipo-1',
       'Qualiance',
-      { documentId: 'anchor-1', pdfPath: import.meta.url.replace('file:///', '') }
+      { documentId: 'anchor-1', pdfPath: pinnedPdfPath }
     );
 
     // The parse fails (this file is not an anchor letter) — the point is WHICH
-    // file was read and that no row lookup or download happened.
-    expect(spawnSyncMock.mock.calls[0][1][1]).toContain('anchor-sidecar-classification');
+    // file was read and that no row lookup or download happened. Find the
+    // sidecar invocation by its argv content (the script path), not by a
+    // fixed call/arg index — which binary got spawned (`python`, or a
+    // `python3` fallback on a box with no `python` symlink) and how many
+    // attempts it took must not matter to this assertion.
+    const sidecarCall = spawnSyncMock.mock.calls.find(
+      (call) =>
+        Array.isArray(call[1]) &&
+        call[1].some((arg) => typeof arg === 'string' && arg.includes('anchor_report_text'))
+    );
+    expect(sidecarCall).toBeDefined();
+    expect(sidecarCall?.[1]).toContain(pinnedPdfPath);
     expect(outcome.failure?.kind).toBe('parse_failed');
     expect(axiosGet).not.toHaveBeenCalled();
   });
