@@ -280,4 +280,59 @@ describe('T-328 HOLD disputed HIGH_VALUE fields (Lumino shape)', () => {
     const fieldResult = result.fieldResults.find((f) => f.fieldName === 'openDate');
     expect(fieldResult!.conflictReason).not.toBe('HELD_DISPUTED_HIGH_VALUE_LIVE');
   });
+
+  it('W-161b: logs a warning when upsertConflict SKIPS the HOLD audit-trail write', async () => {
+    // Empirically (W-161 integration test against ipodhan_test), a
+    // different-source HOLD tuple like Kanohar's (CHITTORGARH vs NSE) is
+    // NOT refused by the repository — but the caller here previously
+    // ignored the `{ skipped: true }` return shape entirely (it only ever
+    // throws on a genuine DB error, caught below). This proves the caller
+    // now surfaces a skip at warn level instead of silently treating it as
+    // a successful write, for whatever future guard inside `upsertConflict`
+    // (or a same-source shape slipping through upstream) causes one.
+    vi.mocked(mockConflictsRepo.upsertConflict).mockResolvedValueOnce({
+      skipped: true,
+      reason: 'same_source',
+    } as any);
+    const loggerModule = await import('../../../src/utils/logger.js');
+    const warnSpy = vi.spyOn(loggerModule.default, 'warn');
+
+    const existingFieldSources = [
+      {
+        ipoId: 'kanohar-ipo',
+        tableName: 'ipos',
+        fieldName: 'openDate',
+        source: 'CHITTORGARH',
+        value: '2026-12-09',
+        confidence: 90,
+        dataLineage: null,
+        previousValue: null,
+        previousSource: null,
+        updatedAt: new Date('2026-09-01T00:00:00Z'),
+        createdAt: new Date('2026-09-01T00:00:00Z'),
+      },
+    ];
+    vi.mocked(mockFieldSourcesRepo.findByIPOId).mockResolvedValue(existingFieldSources as any);
+
+    const result = await service.consolidateIPOData({
+      ipoId: 'kanohar-ipo',
+      tableName: 'ipos',
+      incomingData: { openDate: '2026-09-08' },
+      source: 'NSE',
+      confidence: 95,
+      existingData: { status: 'OPEN', openDate: '2026-12-09' },
+      scrapedAt: new Date('2026-09-05T06:30:00Z'),
+    });
+
+    const fieldResult = result.fieldResults.find((f) => f.fieldName === 'openDate');
+    expect(fieldResult!.conflictReason).toBe('HELD_DISPUTED_HIGH_VALUE_LIVE');
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ipoId: 'kanohar-ipo',
+        fieldName: 'openDate',
+        skipReason: 'same_source',
+      }),
+      expect.stringContaining('SKIPPED the HOLD audit-trail write')
+    );
+  });
 });
