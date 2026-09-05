@@ -136,6 +136,34 @@ describe('W-143: ipo_details.issue_type must be derivable as FIXED_PRICE', () =>
     expect(values.issueType).toBe('BOOK_BUILDING');
   });
 
+  it('does not write FIXED_PRICE (or BOOK_BUILDING) when floor === cap === 0 — a passed extraction with no real price', async () => {
+    const deps = makeDeps();
+    const zeroExtraction: FilingExtraction = {
+      doc_type: 'PRICE_BAND_AD',
+      source_doc: 'zero-band.pdf',
+      pages: 1,
+      extraction_status: 'OK',
+      unit: 'rupees',
+      fiscal_years: [],
+      fields: {
+        price_band_floor: { value: 0, page: 1, check: { name: 'floor_check', passed: true } },
+        price_band_cap: { value: 0, page: 1, check: { name: 'cap_check', passed: true } },
+        compliance_officer: { value: 'Test Officer', page: 1, check: { name: 'co_check', passed: true } },
+      },
+    };
+
+    await persistFilingExtraction(
+      IPO_ID,
+      zeroExtraction,
+      { docType: 'PRICE_BAND_AD', apply: true },
+      deps
+    );
+
+    const detailsUpsert = deps.ipoDetailsWriter.upsert as unknown as ReturnType<typeof vi.fn>;
+    const [, values] = detailsUpsert.mock.calls[0] as [string, Record<string, unknown>];
+    expect(values.issueType).toBeUndefined();
+  });
+
   it('does not write FIXED_PRICE when the band is a real range with no regulation cited either (unresolved, not guessed)', async () => {
     const deps = makeDeps();
     const unresolvedExtraction: FilingExtraction = {

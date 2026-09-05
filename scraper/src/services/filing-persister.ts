@@ -687,7 +687,7 @@ export async function persistFilingExtraction(
   const regulation = str(extraction, 'book_building_regulation');
   if (regulation) {
     mark('issueType', 'BOOK_BUILDING');
-  } else if (floor !== null && cap !== null && floor === cap) {
+  } else if (floor !== null && cap !== null && floor === cap && floor > 0) {
     // W-143: no book-building regulation cited AND the band collapses to one
     // price — the same domain rule `data-validation.ts` already documents
     // ("a FIXED_PRICE issue may legitimately have min === max"), applied to

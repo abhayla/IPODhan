@@ -139,9 +139,21 @@ export function isPermanentlyPastDue(docType: DocumentType, stage: LifecycleStag
  * (no row at all, or a row still sitting at `attempts: 0` in its initial
  * `WANTED` state) must NOT be folded into `notApplicable` on first sight of
  * LISTED — that retires it with zero network calls, zero attempts, forever
- * (the 358-IPO / 0-CORRIGENDUM prod gap). `attempts >= 1` or a prior
- * NOT_YET_FILED/NOT_FOUND answer both mean discovery already asked at least
- * once and came back empty — THAT is the legitimate terminal case.
+ * (the 358-IPO / 0-CORRIGENDUM prod gap).
+ *
+ * The `attempts >= 1` check covers the ordinary case. The NOT_YET_FILED /
+ * NOT_FOUND state check (round 2 review) is NOT what retires a type missed
+ * WHILE the IPO is already at LISTED — that miss goes straight to
+ * NOT_APPLICABLE inside `applyOutcome`'s `no_link` branch (it checks
+ * `isPermanentlyPastDue` before this function is ever consulted again), and
+ * a subsequent cycle retires it via `closedStates`, never reaching this
+ * filter at all. What the state check DOES catch: a row that missed at an
+ * EARLIER stage (e.g. a CORRIGENDUM miss at PRE_OPEN, which is NOT
+ * permanently-past-due there and so is left at NOT_YET_FILED WITHOUT
+ * `attempts` being bumped — see the `notYetFiled` branch above) and is only
+ * now, on a later cycle, being evaluated for the first time against LISTED.
+ * Without this branch that row would look never-attempted and get a spurious
+ * extra due cycle it does not need.
  */
 function hasBeenAttempted(row: StateRow | undefined): boolean {
   if (!row) return false;
