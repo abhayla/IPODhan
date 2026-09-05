@@ -18,6 +18,15 @@
 # to force continuation. A per-user-turn counter (.claude/.keepgoing-count, reset
 # by prompt-enhance-reminder.sh) caps auto-continues at 12 to prevent any loop.
 #
+# GENUINE-WAIT MARKER: a final text may contain the literal token
+# `[waiting: background]` to declare, unambiguously, that the turn is ending
+# because it is genuinely blocked on background agents/tasks and nothing else
+# is executable right now. Prefer the regex exemptions below when the wording
+# already matches one of the recognized wait shapes; use the marker as the
+# explicit escape hatch when a legitimate wait doesn't happen to match a
+# recognized phrasing. The marker is honest-use, self-policing the same way as
+# `*Sync-check:*` — it renders visibly to the user, so abuse is visible too.
+#
 # Plus one NON-BLOCKING telemetry class (the output-side backstop):
 #   C. ENHANCE-BANNER MISS — a substantive assistant turn (>=300 chars) that does
 #      NOT open with the *Enhanced:* governance banner. WHY: prompt-enhance-reminder.sh
@@ -69,12 +78,6 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)"
 # "§GATE (needs Abhay)". These are escalation STATEMENTS, not permission-to-START
 # over-asks (those still match the A/B patterns below), so exempting them does not
 # reopen the over-ask hole — it stops looping a genuinely-blocked run to the 12-cap.
-if printf '%s' "$full" | grep -qiE "running background agent|background agent (is|whose|is still) |a running (background )?agent|arrives by notification|waiting on (a |the )?(running|background|dispatched) (agent|task)|^blocker:|blocker: |(agent|task|worker|build|run)[^.]{0,60}(is|still|only one) running|(agent|task|worker|build) running|only (task|agent|thing) running|-minute budget|budget[^.]{0,30}(started|running)|when (it|the (result|notification)) (lands|arrives)" ; then
-  # (2026-09-03, W-91) A turn that ends because a dispatched agent / background task
-  # is still running is a genuine wait, not narrate-and-stop: the result arrives
-  # as a task-notification and nothing can be executed until then.
-  exit 0
-fi
 if printf '%s' "$full" | grep -qE "push to prod|deploy|dns|cutover|force[- ]push|--force|spend|publish|destructive|drop (table|column)|delete (the )?(branch|remote)|escalat|blocked on|need (your|you to)|your (credential|password|approval|login|call|decision|two|sign-?off|go-?ahead)|waiting on (you|the user)|holding for your|awaiting your|act without|will not (act|force|revert|push)|not autonomously|gate \(needs|log in yourself|run .* yourself|requires? your|sync-check"; then
   exit 0
 fi
@@ -103,7 +106,9 @@ if [ "${#last_text}" -ge 300 ] && printf '%s' "$full" | grep -qE "final (strengt
   printf '%s\trole-miss (len=%s)\n' "$(jq -rn 'now|todate' 2>/dev/null || echo now)" "${#last_text}" >> "$root/.claude/.enhance-misses.log" 2>/dev/null
 fi
 
-# ── A. Over-ask detection ──
+# ── A. Over-ask detection ── (runs BEFORE the wait exemption — a genuine wait
+# never excuses an over-ask; "want me to proceed? a worker is still running"
+# still blocks on A.)
 flag=""
 printf '%s' "$tail_part" | grep -qE "want me to|should i |shall i |would you like me to|do you want me to|let me know if|say the word|which (would|do) you|or (should|do|leave) (i|we|them|it)" && flag="over-ask: trailing offer"
 [ -z "$flag" ] && printf '%s' "$tail_part" | grep -qE "q[0-9]+ of|which (option|default|one|approach|do you want)|,? or [a-d]\?|\b[a-d], [a-d],? (or )?[a-d]\?|which —|which\?" && flag="over-ask: multiple-choice"
@@ -112,6 +117,24 @@ ends_q=$(printf '%s' "$tail_part" | grep -qE '\?[[:space:]]*$' && echo 1 || echo
 
 # ── B. Narrate-and-stop detection (deferred next-step language) ──
 [ -z "$flag" ] && printf '%s' "$tail_part" | grep -qE "next step|next, i|next i('|’)?ll|the continuation|continuation from here|from here[.:]|immediate next|next up|i('|’)?ll (work|tackle|start|do|continue|extend|implement|build|close|fix|add|wire|drive|cover)|remaining[^.]{0,40}(tracked|stays|remain|in #)|the rest[^.]{0,40}(tracked|stays|remain|in #)|that('|’)?s the continuation|is the continuation|work #[0-9]|items? (left|remain)|the only[^.]{0,40}(left|remain|item)|remainder|narrow (remainder|bit|layer|follow|scope|item)|separate[, ]{0,3}(thin )?scope|thin scope|follow-?up|noted in #[0-9]|tracked in #[0-9]|are (genuinely )?separate|stays? (a |as )?follow|two items|one (narrow|thin)" && flag="narrate-and-stop"
+
+# ── Genuine-wait exemption — clears ONLY the B (narrate-and-stop) flag, NEVER A. ──
+# WHY: a turn that ends because a dispatched agent / background task is still
+# running is a genuine wait, not narrate-and-stop — the result arrives as a
+# task-notification and nothing can be executed until then. But a wait phrase
+# does NOT excuse an over-ask: "want me to proceed? a worker is still running"
+# is still an over-ask (it asks permission-to-START on reversible work) and
+# MUST still block on A. So this check runs AFTER A/B are computed and only
+# downgrades flag when the violation was B, never A.
+# (2026-09-03, W-91 / 2026-09-06 broadened / 2026-09-06 round 2 reordered)
+# The subject-anchored alternative below requires a wait-noun (agent/worker/
+# task/job/build/review/reproduction/watch/cron/sweep/run) within ~40 chars
+# BEFORE "still/is/are running|building|in flight" — an unanchored "is still
+# running" alone is too easy to smuggle into an over-ask/narrate sentence
+# ("Should I go ahead? The build is still running.").
+if [ "$flag" = "narrate-and-stop" ] && printf '%s' "$full" | grep -qiE "running background agent|background agent (is|whose|is still) |a running (background )?agent|arrives by notification|waiting on (a |the )?(running|background|dispatched) (agent|task)|^blocker:|blocker: |(agent|task|worker|build|run)[^.]{0,60}(is|still|only one) running|(agent|task|worker|build) running|only (task|agent|thing) running|-minute budget|budget[^.]{0,30}(started|running)|when (it|the (result|notification)) (lands|arrives)|workers?( are| is)?( still)? (running|building|in flight)|(agent|worker|task|job|build|review|reproduction|watch|cron|sweep|run|[wt]-[0-9]+)[^.]{0,40}(still|is|are) (running|building|in flight)|in (the )?background|background (job|watch|read|task|agent|worker)s?|until (one|any) of (those|them|these)[^.]{0,20}(returns?|reports?|lands?|finishes|completes)|reports? back|(their|its) (results?|reports?) (arrive|land|come)|waiting (on|for) (the )?[^.]{0,40}(agent|worker|watch|cron|scheduled|review|reproduction|gate)|scheduled (step|read|cron|one-shot)|\[waiting: background\]" ; then
+  flag=""
+fi
 
 [ -z "$flag" ] && exit 0
 
