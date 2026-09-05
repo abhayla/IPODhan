@@ -193,6 +193,49 @@ function datesSatisfyOrderInvariant(
 }
 
 /**
+ * W-160 round 2 (MAJOR-3): the STRICT counterpart to
+ * `datesSatisfyOrderInvariant` above, used ONLY to decide whether an
+ * INCOMING candidate triple is trustworthy enough to override a held value.
+ * Unlike the lenient version (which treats a missing date as "can't judge,
+ * don't block"), this one requires ALL THREE dates to be present and
+ * parseable — an incoming triple with an unknown listingDate must never
+ * silently pass just because there was nothing to check. Also checks
+ * open < listing explicitly (not just close < listing): a corrupt/garbage
+ * listingDate that happens to sit before the incoming OPEN date (the exact
+ * Kanohar shape: listing Sep-16 vs a wrong held open of Dec-09) must
+ * disqualify the escape rather than being silently accepted.
+ */
+function datesFullySatisfyInvariant(
+  openDate: any,
+  closeDate: any,
+  listingDate: any,
+  segment: any
+): boolean {
+  const open = toEpochDay(openDate);
+  const close = toEpochDay(closeDate);
+  const listing = toEpochDay(listingDate);
+
+  if (open === null || close === null || listing === null) return false;
+  if (!(open < close)) return false;
+  if (!(open < listing)) return false;
+  if (!(close < listing)) return false;
+
+  const maxGap = MAX_LISTING_GAP_DAYS[String(segment)] ?? MAX_LISTING_GAP_DAYS.MAINBOARD;
+  if (listing - close > maxGap) return false;
+
+  return true;
+}
+
+/**
+ * W-160 round 2 (MAJOR-3): a consensus row older than this is not trusted as
+ * still-live agreement — an exchange's stance from weeks ago proves nothing
+ * about what it would say today. 7 days comfortably spans one IPO's HOLD
+ * window (open→listing is at most ~3 weeks) without keeping stale rows alive
+ * indefinitely.
+ */
+const HOLD_CONFLICT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/**
  * W-60: terminal `ipo_status` values (commit 4a96ab7d). Once an IPO is
  * WITHDRAWN or POSTPONED, the web updater's own `TERMINAL_STATUSES` guard
  * (`web/lib/services/status-updater-service.ts`) refuses to move it back —
@@ -703,6 +746,26 @@ export class DataConsolidationService {
         });
       }
 
+      // W-160 round 2 (CRITICAL-1): the HELD triple (stored row) and the
+      // INCOMING triple (this cycle's full payload, falling back to held for
+      // whatever the source didn't send) computed ONCE per call, BEFORE the
+      // per-field loop — so when a source reports openDate AND closeDate
+      // together, both fields' escape checks see the SAME pair, and either
+      // both flip or neither (never one field judged against the other
+      // field's stale stored value — see `resolveHighValueHoldEscape`).
+      const heldDates = {
+        openDate: existingSourceMap.get('openDate')?.value ?? input.existingData?.openDate,
+        closeDate: existingSourceMap.get('closeDate')?.value ?? input.existingData?.closeDate,
+        listingDate: input.existingData?.listingDate,
+        segment: input.existingData?.segment,
+      };
+      const incomingDates = {
+        openDate: 'openDate' in input.incomingData ? input.incomingData.openDate : heldDates.openDate,
+        closeDate: 'closeDate' in input.incomingData ? input.incomingData.closeDate : heldDates.closeDate,
+        listingDate: 'listingDate' in input.incomingData ? input.incomingData.listingDate : heldDates.listingDate,
+        segment: heldDates.segment,
+      };
+
       // Process each field in incoming data
       for (const [fieldName, incomingValue] of Object.entries(
         input.incomingData
@@ -736,15 +799,11 @@ export class DataConsolidationService {
             // live. `ipos.status` is already on the row passed as
             // `existingData` — no new column, no new table.
             ipoStatus: input.existingData?.status,
-            // W-160: sibling dates + segment for the open<close<listing
-            // invariant escape — read from the raw row, not `existingSourceMap`,
-            // so it's available even for an untracked field.
-            dateContext: {
-              openDate: input.existingData?.openDate,
-              closeDate: input.existingData?.closeDate,
-              listingDate: input.existingData?.listingDate,
-              segment: input.existingData?.segment,
-            },
+            // W-160 round 2: the held/incoming date triples computed once
+            // above the loop — see the comment there for why per-field
+            // computation deadlocked.
+            heldDates,
+            incomingDates,
           });
 
           result.fieldResults.push(fieldResult);
@@ -842,7 +901,8 @@ export class DataConsolidationService {
     scrapedAt?: Date;
     existingUpdatedAt?: Date;
     ipoStatus?: string;
-    dateContext?: { openDate?: any; closeDate?: any; listingDate?: any; segment?: any };
+    heldDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
+    incomingDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
   }): Promise<FieldConsolidationResult> {
     const {
       ipoId,
@@ -1178,7 +1238,8 @@ export class DataConsolidationService {
       scrapedAt: params.scrapedAt,
       existingUpdatedAt: params.existingUpdatedAt,
       ipoStatus: params.ipoStatus,
-      dateContext: params.dateContext,
+      heldDates: params.heldDates,
+      incomingDates: params.incomingDates,
     });
 
     return conflict;
@@ -1198,35 +1259,67 @@ export class DataConsolidationService {
     ipoId: string;
     tableName: string;
     fieldName: string;
-    existingValue: any;
     incomingValue: any;
     incomingSource: ScraperSource;
     rules: FieldRules;
-    dateContext?: { openDate?: any; closeDate?: any; listingDate?: any; segment?: any };
+    // W-160 round 2 (CRITICAL-1): the HELD triple is the STORED row (what's
+    // published today); the INCOMING triple is this cycle's full incoming
+    // payload, falling back to the held value for any date the source didn't
+    // send this cycle. Computed ONCE per `consolidateIPOData` call (not
+    // per-field) so openDate and closeDate resolve against the SAME triple —
+    // when a source reports both in one payload, checking openDate against a
+    // stale held closeDate (and vice versa) is exactly the deadlock the round-1
+    // version shipped: Kanohar's openDate escape needed the incoming
+    // closeDate to validate, and its closeDate escape needed the incoming
+    // openDate — neither ever saw the other because each was judged against
+    // the OTHER field's stale stored value.
+    heldDates: { openDate: any; closeDate: any; listingDate: any; segment: any };
+    incomingDates: { openDate: any; closeDate: any; listingDate: any; segment: any };
   }): Promise<{ chosenValue: any; chosenSource: ScraperSource; resolutionReason: string } | null> {
-    const { ipoId, tableName, fieldName, existingValue, incomingValue, incomingSource, rules, dateContext } =
-      params;
+    const { ipoId, tableName, fieldName, incomingValue, incomingSource, rules, heldDates, incomingDates } = params;
 
-    // (a) Exchange consensus: the incoming source is NSE or BSE, and the
-    // OTHER exchange already disagreed with the held value in this same way
-    // — recorded as an open `data_conflicts` row by a prior HOLD this cycle
-    // (or an earlier one). Two independent exchanges agreeing outranks a
-    // single aggregator, regardless of the matrix's ranks.
-    if (EXCHANGE_SOURCES.has(incomingSource) && FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+    // MAJOR-3: both escapes require the incoming source to be a primary
+    // exchange — an aggregator (CHITTORGARH/MONEYCONTROL/etc.) can never
+    // itself trigger an override, consensus or invariant.
+    if (!EXCHANGE_SOURCES.has(incomingSource)) return null;
+
+    // (a) Exchange consensus: the OTHER exchange already disagreed with the
+    // held value in exactly this way — recorded as an open `data_conflicts`
+    // row by a prior HOLD, no older than HOLD_CONFLICT_MAX_AGE_MS. Two
+    // independent exchanges agreeing outranks a single aggregator, regardless
+    // of the matrix's ranks. The row is explicitly RESOLVED on match so it
+    // can never be matched again or mistaken for a still-open dispute.
+    {
       const otherExchange = incomingSource === 'NSE' ? 'BSE' : 'NSE';
       try {
-        const openConflicts: Array<{ tableName: string; fieldName: string; source2: string; value2: string | null }> =
-          (await this.dataConflictsRepository.findUnresolvedForIPO(ipoId)) ?? [];
+        const openConflicts = (await this.dataConflictsRepository.findUnresolvedForIPO(ipoId)) ?? [];
         const normalizedIncoming = normalize(fieldName, incomingValue, rules);
+        const now = Date.now();
         const priorAgreement = openConflicts.find(
-          (row) =>
+          (row: any) =>
             row.tableName === tableName &&
             row.fieldName === fieldName &&
+            // Mutation-gap guard (round 2): MUST be the OTHER exchange, never
+            // the SAME source repeating itself (NSE proposing X twice is not
+            // consensus — it's one source, unchanged).
             row.source2 === otherExchange &&
             row.value2 !== null &&
-            areEquivalent(normalize(fieldName, row.value2, rules), normalizedIncoming)
+            areEquivalent(normalize(fieldName, row.value2, rules), normalizedIncoming) &&
+            row.detectedAt !== undefined &&
+            now - new Date(row.detectedAt).getTime() <= HOLD_CONFLICT_MAX_AGE_MS
         );
         if (priorAgreement) {
+          if (!this.currentShadowMode) {
+            try {
+              await this.dataConflictsRepository.resolveConflict(priorAgreement.id, {
+                resolvedSource: incomingSource,
+                resolutionReason: 'EXCHANGE_CONSENSUS_OVERRIDE_HELD_VALUE',
+                resolvedBy: 'SYSTEM',
+              });
+            } catch (error) {
+              console.error('[DataConsolidation] Failed to resolve consensus conflict row (non-fatal):', error);
+            }
+          }
           return {
             chosenValue: incomingValue,
             chosenSource: incomingSource,
@@ -1241,23 +1334,44 @@ export class DataConsolidationService {
     // (b) Date-order invariant: open < close < listing (listing within
     // MAX_LISTING_GAP_DAYS of close, by segment). Only openDate/closeDate are
     // HIGH_VALUE_LIVE_FIELDS, so only those two reach here. Fires from a
-    // SINGLE disagreeing source — no consensus required, because a value
-    // that makes the row internally impossible is wrong on its own terms.
-    if (dateContext && (fieldName === 'openDate' || fieldName === 'closeDate')) {
-      const heldOpen = fieldName === 'openDate' ? existingValue : dateContext.openDate;
-      const heldClose = fieldName === 'closeDate' ? existingValue : dateContext.closeDate;
-      const incomingOpen = fieldName === 'openDate' ? incomingValue : dateContext.openDate;
-      const incomingClose = fieldName === 'closeDate' ? incomingValue : dateContext.closeDate;
-
-      const heldSatisfies = datesSatisfyOrderInvariant(heldOpen, heldClose, dateContext.listingDate, dateContext.segment);
-      const incomingSatisfies = datesSatisfyOrderInvariant(
-        incomingOpen,
-        incomingClose,
-        dateContext.listingDate,
-        dateContext.segment
+    // SINGLE exchange source — no consensus required, because a value that
+    // makes the row internally impossible is wrong on its own terms. The
+    // HELD side uses the lenient check (missing data never counts as a
+    // violation); the INCOMING side uses the STRICT check (missing/corrupt
+    // data never counts as satisfying it — MAJOR-3).
+    if (fieldName === 'openDate' || fieldName === 'closeDate') {
+      const heldSatisfies = datesSatisfyOrderInvariant(
+        heldDates.openDate,
+        heldDates.closeDate,
+        heldDates.listingDate,
+        heldDates.segment
+      );
+      const incomingSatisfies = datesFullySatisfyInvariant(
+        incomingDates.openDate,
+        incomingDates.closeDate,
+        incomingDates.listingDate,
+        incomingDates.segment
       );
 
       if (!heldSatisfies && incomingSatisfies) {
+        // Resolve whatever open HOLD row exists for THIS field, if any — a
+        // prior cycle may have already recorded one before the invariant
+        // check had the data to fire.
+        if (!this.currentShadowMode) {
+          try {
+            const openConflicts = (await this.dataConflictsRepository.findUnresolvedForIPO(ipoId)) ?? [];
+            const ownRow = openConflicts.find((row: any) => row.tableName === tableName && row.fieldName === fieldName);
+            if (ownRow) {
+              await this.dataConflictsRepository.resolveConflict(ownRow.id, {
+                resolvedSource: incomingSource,
+                resolutionReason: 'DATE_INVARIANT_OVERRIDE_HELD_VALUE',
+                resolvedBy: 'SYSTEM',
+              });
+            }
+          } catch (error) {
+            console.error('[DataConsolidation] Failed to resolve invariant conflict row (non-fatal):', error);
+          }
+        }
         return {
           chosenValue: incomingValue,
           chosenSource: incomingSource,
@@ -1287,11 +1401,10 @@ export class DataConsolidationService {
     scrapedAt?: Date;
     existingUpdatedAt?: Date;
     ipoStatus?: string;
-    // W-160: sibling date/segment context for the open<close<listing
-    // invariant escape — the field being resolved may be openDate or
-    // closeDate, so the OTHER two values come from the stored row, not from
-    // this field's own existing/incoming pair.
-    dateContext?: { openDate?: any; closeDate?: any; listingDate?: any; segment?: any };
+    // W-160 round 2: the held (stored) and incoming (this cycle's full
+    // payload) date triples, computed once per `consolidateIPOData` call.
+    heldDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
+    incomingDates?: { openDate: any; closeDate: any; listingDate: any; segment: any };
   }): Promise<FieldConsolidationResult> {
     const {
       ipoId,
@@ -1341,17 +1454,30 @@ export class DataConsolidationService {
       // open < close < listing date-order invariant while the incoming value
       // satisfies it. Checked only when the TZ tie-break above didn't already
       // resolve the field, and only ever computed once per call.
+      const heldDates = params.heldDates ?? {
+        openDate: fieldName === 'openDate' ? existingValue : undefined,
+        closeDate: fieldName === 'closeDate' ? existingValue : undefined,
+        listingDate: undefined,
+        segment: undefined,
+      };
+      const incomingDates = params.incomingDates ?? {
+        openDate: fieldName === 'openDate' ? incomingValue : undefined,
+        closeDate: fieldName === 'closeDate' ? incomingValue : undefined,
+        listingDate: undefined,
+        segment: undefined,
+      };
+
       const holdEscape = tiebreak
         ? null
         : await this.resolveHighValueHoldEscape({
             ipoId,
             tableName,
             fieldName,
-            existingValue,
             incomingValue,
             incomingSource,
             rules,
-            dateContext: params.dateContext,
+            heldDates,
+            incomingDates,
           });
 
       if (tiebreak) {
@@ -1398,16 +1524,24 @@ export class DataConsolidationService {
           'hold_status_transition: HIGH_VALUE field disputed on a live IPO — holding previously-published value'
         );
 
-        if (FEATURE_FLAGS.ENABLE_CONFLICT_DETECTION && !this.currentShadowMode) {
+        // W-160 round 2 (CRITICAL-2): a HOLD on a live IPO ALWAYS persists its
+        // conflict row — it IS the audit trail `resolveHighValueHoldEscape`
+        // reads to detect exchange consensus, so gating it on
+        // `ENABLE_CONFLICT_DETECTION` (a rollout flag for the OTHER detection
+        // paths, currently off/0% in prod and staging) silently made the
+        // escape permanently inert: Kanohar accumulated zero conflict rows
+        // across weeks of holds. Shadow mode is still respected — a preview
+        // consolidation run must never write.
+        if (!this.currentShadowMode) {
           try {
             await this.dataConflictsRepository.upsertConflict({
               ipoId,
               tableName,
               fieldName,
               source1: existingSource,
-              value1: existingValue === null || existingValue === undefined ? null : String(existingValue),
+              value1: existingValue === null || existingValue === undefined ? null : serializeFieldValue(existingValue),
               source2: incomingSource,
-              value2: incomingValue === null || incomingValue === undefined ? null : String(incomingValue),
+              value2: incomingValue === null || incomingValue === undefined ? null : serializeFieldValue(incomingValue),
               resolvedSource: existingSource,
               resolutionReason: 'HELD_DISPUTED_HIGH_VALUE_LIVE',
               severity: 'CRITICAL',
@@ -1729,9 +1863,22 @@ export class DataConsolidationService {
         tableName: conflict.tableName,
         fieldName: conflict.fieldName,
         source1: conflict.existingSource,
-        value1: JSON.stringify(conflict.existingValue),
+        // W-160 round 2 (MINOR): this used to be `JSON.stringify(...)` while
+        // the HOLD write path (below) used `String(...)` — a plain date
+        // string like `2026-09-08` came out as `"2026-09-08"` (quoted) from
+        // this path and `2026-09-08` from HOLD's, so `new Date(...)` inside
+        // `normalize()` failed to parse whichever form the exchange-consensus
+        // escape read back, and consensus could never match. `serializeFieldValue`
+        // is the ONE shared serialization used everywhere else a conflict
+        // value is written (field_sources.previous_value) — String() for
+        // primitives, JSON.stringify only for objects/arrays.
+        value1: conflict.existingValue === null || conflict.existingValue === undefined
+          ? null
+          : serializeFieldValue(conflict.existingValue),
         source2: conflict.incomingSource,
-        value2: JSON.stringify(conflict.incomingValue),
+        value2: conflict.incomingValue === null || conflict.incomingValue === undefined
+          ? null
+          : serializeFieldValue(conflict.incomingValue),
         // W-48: resolvedSource is the source whose value the caller actually
         // kept/wrote, passed in explicitly — never re-derived from `reason`
         // (that derivation assumed SOURCE_PRIORITY always means the existing
