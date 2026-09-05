@@ -259,12 +259,23 @@ export function documentExtractionBlocked(
     // W-137: 2+ consecutive killed/memory-ceiling failures on this SAME
     // document override the normal (6h-capped) exponential backoff with a
     // floor of 24h — the document is what kills the box, not the timing.
-    if (parseHardFailureCount(doc.extractionError) >= 2) {
+    const hardFailureCount = parseHardFailureCount(doc.extractionError);
+    const hardFloorApplies = hardFailureCount >= 2;
+    if (hardFloorApplies) {
       const hardFloor = new Date(anchor.getTime() + HARD_FAILURE_MIN_BACKOFF_MS);
       if (hardFloor.getTime() > nextDueAt.getTime()) nextDueAt = hardFloor;
     }
     if (nextDueAt.getTime() > now.getTime()) {
-      return { blocked: true, reason: `extraction backing off until ${nextDueAt.toISOString()}` };
+      // MAJOR-3: a hard-failure floor is never silent — the 24h wait is not
+      // "try again soon", it is "this document has killed the extractor
+      // twice; look at it". The ordinary exponential backoff keeps its
+      // terser message since it is expected, routine retry timing.
+      return {
+        blocked: true,
+        reason: hardFloorApplies
+          ? `extraction backing off until ${nextDueAt.toISOString()} — ${hardFailureCount} consecutive hard failures (killed/OOM), needs manual extraction if this recurs`
+          : `extraction backing off until ${nextDueAt.toISOString()}`,
+      };
     }
   }
   return { blocked: false };
@@ -586,6 +597,13 @@ export const defaultExtractorRunner: ExtractorRunner = ({ pdfPath, docType, sme,
     // code 3 is the extractor's OWN memory-ceiling report (memory_guard.py).
     // Both are HARD failures: retrying the same document hourly is exactly
     // what took the pm2 daemon down repeatedly.
+    //
+    // MINOR-1: a `spawnSync` timeout (`EXTRACT_TIMEOUT_MS`, 10 min) also
+    // terminates the process by signal (SIGTERM), so it lands in this SAME
+    // `result.status === null` branch and is treated as a hard failure too.
+    // Accepted: two slow-network documents in a row earn the 24h floor the
+    // same as two OOM kills — a document that reliably times out is exactly
+    // as unsafe to retry hourly as one that is killed for memory.
     const hardFailure = result.status === null || result.status === EXTRACTOR_MEMORY_CEILING_EXIT;
     return {
       ok: false,

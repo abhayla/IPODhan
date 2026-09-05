@@ -956,10 +956,15 @@ def main():
             path = src
         data = extract(path)
         print(json.dumps(data))
-    except MemoryError:
-        print(memory_guard.memory_ceiling_error_json(memory_guard.max_rss_mb()))
-        sys.exit(memory_guard.EXIT_MEMORY_CEILING)
     except Exception as e:  # noqa: BLE001 — sidecar must always emit JSON, never crash the caller
+        # MAJOR-2 (W-137 round 2): round 1 caught only `MemoryError` here; a
+        # C-extension allocation failure under the same RLIMIT_AS ceiling
+        # (pdfplumber's deps) instead raises OSError/RuntimeError, which fell
+        # through to the generic branch below as an ordinary (soft) failure.
+        # `is_memory_exhaustion` recognizes both shapes.
+        if memory_guard.is_memory_exhaustion(e):
+            print(memory_guard.memory_ceiling_error_json(memory_guard.max_rss_mb()))
+            sys.exit(memory_guard.EXIT_MEMORY_CEILING)
         print(json.dumps({"error": str(e)}))
         sys.exit(2)
     finally:

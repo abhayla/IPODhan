@@ -646,6 +646,66 @@ describe('defaultExtractorRunner — W-137 hard-failure classification', () => {
   });
 });
 
+describe('processPendingFilings — W-137 hard-failure marker written end to end (MAJOR-1)', () => {
+  /**
+   * MAJOR-1 (round 2 review): the pure-function tests above prove
+   * `markHardFailure`/`documentExtractionBlocked` are correct in isolation, but
+   * nothing proved the SERVICE actually calls `markHardFailure` at the real
+   * write site and that a THIRD attempt is refused by the 24h floor. Deleting
+   * the `markHardFailure` call at its only call site (~941-943) left every
+   * other test in this file green — this test is red against that deletion.
+   */
+  it('two signal-killed extractions on the same document write HARD_FAILURE:1 then HARD_FAILURE:2, and a third attempt is refused by the 24h floor', async () => {
+    const makeKilledRunner = () =>
+      vi.fn(() => ({ ok: false as const, error: 'extractor exited null (signal SIGKILL): ', hardFailure: true }));
+
+    // --- attempt 1: fresh PENDING document, first hard failure -----------
+    const d1 = deps({ runExtractor: makeKilledRunner(), loadDocuments: vi.fn(async () => [doc()]) });
+    const r1 = await processPendingFilings(IPO, d1);
+    expect(r1.spawned).toBe(1);
+    const failed1 = (d1.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'FAILED'
+    );
+    expect(failed1[0].error).toBe(`${HARD_FAILURE_MARKER}:1:extractor: extractor exited null (signal SIGKILL): `);
+
+    // --- attempt 2: document now FAILED with the 1st hard-failure marker,
+    // updated 20 minutes ago — clear of the ordinary exponential backoff
+    // (retryCount 1 -> 15 min) but still only ONE hard failure, so it is
+    // NOT yet held by the 24h floor and the extractor runs again. ---------
+    const twentyMinAgo = new Date(Date.now() - 20 * 60_000);
+    const docAfterFirstHardFailure = doc({
+      extractionStatus: 'FAILED',
+      retryCount: 1,
+      extractionError: failed1[0].error,
+      updatedAt: twentyMinAgo,
+    });
+    const d2 = deps({ runExtractor: makeKilledRunner(), loadDocuments: vi.fn(async () => [docAfterFirstHardFailure]) });
+    const r2 = await processPendingFilings(IPO, d2);
+    expect(r2.spawned).toBe(1);
+    const failed2 = (d2.setDocumentExtractionState as ReturnType<typeof vi.fn>).mock.calls.find(
+      (c) => c[0].status === 'FAILED'
+    );
+    expect(failed2[0].error).toBe(`${HARD_FAILURE_MARKER}:2:extractor: extractor exited null (signal SIGKILL): `);
+
+    // --- attempt 3: document now carries its 2nd hard-failure marker,
+    // updated 20 hours ago — clear of the normal exponential cap (6h) but
+    // still inside the W-137 24h hard-failure floor. The extractor MUST NOT
+    // be spawned a third time, and the refusal reason must be recorded. ---
+    const twentyHoursAgo = new Date(Date.now() - 20 * 60 * 60_000);
+    const docAfterSecondHardFailure = doc({
+      extractionStatus: 'FAILED',
+      retryCount: 2,
+      extractionError: failed2[0].error,
+      updatedAt: twentyHoursAgo,
+    });
+    const d3 = deps({ runExtractor: makeKilledRunner(), loadDocuments: vi.fn(async () => [docAfterSecondHardFailure]) });
+    const r3 = await processPendingFilings(IPO, d3);
+    expect(r3.spawned).toBe(0);
+    expect(d3.runExtractor).not.toHaveBeenCalled();
+    expect(r3.skipped.some((s) => /extraction backing off until/.test(s))).toBe(true);
+  });
+});
+
 describe('selectPendingFilings — the per-document retry gate (MAJOR-A)', () => {
   const twoStates = [
     { docType: 'RHP', documentId: 'doc-x', extractedAt: null, extractorVersion: null },

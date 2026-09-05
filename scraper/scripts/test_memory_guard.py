@@ -48,6 +48,45 @@ def test_memory_ceiling_error_json_shape():
     assert payload == {"error": "memory ceiling exceeded (2500 MB)"}
 
 
+def test_is_memory_exhaustion_recognizes_memory_error():
+    assert memory_guard.is_memory_exhaustion(MemoryError()) is True
+
+
+def test_is_memory_exhaustion_recognizes_oserror_enomem():
+    exc = OSError("Cannot allocate memory")
+    exc.errno = 12  # ENOMEM
+    assert memory_guard.is_memory_exhaustion(exc) is True
+
+
+def test_is_memory_exhaustion_recognizes_oserror_eagain():
+    exc = OSError("Resource temporarily unavailable")
+    exc.errno = 11  # EAGAIN
+    assert memory_guard.is_memory_exhaustion(exc) is True
+
+
+def test_is_memory_exhaustion_ignores_unrelated_oserror():
+    exc = OSError("No such file or directory")
+    exc.errno = 2  # ENOENT
+    assert memory_guard.is_memory_exhaustion(exc) is False
+
+
+def test_is_memory_exhaustion_recognizes_onnxruntime_style_message():
+    # onnxruntime raises a plain RuntimeError/RuntimeException with no errno
+    # at all — the message is the only signal.
+    assert memory_guard.is_memory_exhaustion(RuntimeError("Failed to allocate memory for requested buffer")) is True
+    assert memory_guard.is_memory_exhaustion(RuntimeError("bad allocation")) is True
+
+
+def test_is_memory_exhaustion_recognizes_thread_start_failure():
+    assert memory_guard.is_memory_exhaustion(RuntimeError("can't start new thread")) is True
+
+
+def test_is_memory_exhaustion_false_for_ordinary_exceptions():
+    assert memory_guard.is_memory_exhaustion(ValueError("unknown doc type XYZ")) is False
+    assert memory_guard.is_memory_exhaustion(KeyError("missing_field")) is False
+    assert memory_guard.is_memory_exhaustion(RuntimeError("unexpected token in JSON")) is False
+
+
 def test_extract_filing_exits_3_on_memory_ceiling():
     """Linux-only: set an impossibly low ceiling so importing pdfplumber's
     dependency stack itself trips RLIMIT_AS, and assert the script reports a

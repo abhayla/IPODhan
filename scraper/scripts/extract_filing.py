@@ -2233,10 +2233,17 @@ def main():
             out = extract(positional[0], doc_type, segment, ocr="--no-ocr" not in argv,
                           ocr_dpi=ocr_dpi, ocr_backend=backend,
                           issue_size_rupees=issue_size_rupees)
-    except MemoryError:
-        # W-137: the RLIMIT_AS ceiling tripped — report a clean, catchable
-        # failure instead of letting the kernel OOM-kill this process (and, on
-        # the VPS, the pm2 daemon supervising it) out from under us.
+    except Exception as exc:
+        # W-137/MAJOR-2: the RLIMIT_AS ceiling tripped — report a clean,
+        # catchable failure instead of letting the kernel OOM-kill this
+        # process (and, on the VPS, the pm2 daemon supervising it) out from
+        # under us. Round 1 caught only `MemoryError`; C extensions
+        # (pdfplumber's deps, onnxruntime/opencv for the OCR route) instead
+        # raise `OSError` (errno ENOMEM/EAGAIN) or a message-shaped
+        # RuntimeError/RuntimeException — `is_memory_exhaustion` recognizes
+        # all of them. Anything else re-raises unchanged.
+        if not memory_guard.is_memory_exhaustion(exc):
+            raise
         print(memory_guard.memory_ceiling_error_json(memory_guard.max_rss_mb()))
         sys.exit(memory_guard.EXIT_MEMORY_CEILING)
     print(json.dumps(out, indent=2, default=str))
