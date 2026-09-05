@@ -23,6 +23,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const dbExecuteMock = vi.fn();
 const dbInsertMock = vi.fn().mockReturnValue({ values: vi.fn().mockResolvedValue(undefined) });
 
+/** Spy wrapping `fakeStoreListForIpo` so a test can observe the ORDER `enrichListedCandidates` visits ipos in (W-153). */
+const listForIpoSpy = vi.fn((ipoId: string) => Promise.resolve(fakeStoreListForIpo(ipoId)));
+
 vi.mock('@ipodhan/shared', () => ({
   db: {
     execute: (...args: unknown[]) => dbExecuteMock(...args),
@@ -33,7 +36,7 @@ vi.mock('@ipodhan/shared', () => ({
     findByIPO: vi.fn().mockResolvedValue([]),
   })),
   DocumentFetchStateRepository: vi.fn().mockImplementation(() => ({
-    listForIpo: (ipoId: string) => Promise.resolve(fakeStoreListForIpo(ipoId)),
+    listForIpo: (...args: unknown[]) => listForIpoSpy(...(args as [string])),
     update: vi.fn().mockResolvedValue(undefined),
   })),
   IPORepository: vi.fn().mockImplementation(() => ({})),
@@ -214,7 +217,14 @@ function candidateRow(id: string) {
     status: 'LISTED',
     price_range_min: null,
     price_range_max: null,
-    listing_date: daysAgo(listingRank.get(id)!),
+    // Fixed, small offset regardless of N — `isInLiveWindow` only keeps
+    // LISTED rows within LIVE_WINDOW_DAYS_AFTER_LISTING (10) days, and a
+    // large-N rotation test (e.g. 25 ids) must not accidentally push older
+    // ranks outside that window. `listingRank` still breaks id-order ties
+    // deterministically via `sqlOrderedIds`; the real listing_date-desc
+    // tie-break inside `orderAndCapCandidates` falls back to `id` when dates
+    // are equal (see its comparator), so a shared date is still deterministic.
+    listing_date: daysAgo(1),
     bse_ipo_no: null,
     company_website: null,
     verifier_url: null,
@@ -226,6 +236,7 @@ const { runDocumentCycle } = await import('../../../src/services/document-cycle.
 beforeEach(() => {
   vi.clearAllMocks();
   runIpoMock.mockClear();
+  listForIpoSpy.mockImplementation((ipoId: string) => Promise.resolve(fakeStoreListForIpo(ipoId)));
   fakeClock = 0;
   visitLog = [];
   store = new Map();
@@ -234,9 +245,44 @@ beforeEach(() => {
   delete process.env.DOCUMENT_CYCLE_LISTED_CAP;
 });
 
+/** Max `lastAttemptAt` across an ipo's persisted rows, or `null` if never attempted — the same aggregate `CANDIDATE_IPOS_SQL`'s LEFT JOIN computes in Postgres. */
+function currentActivityMs(id: string): number | null {
+  const rows = store.get(id);
+  if (!rows || rows.length === 0) return null;
+  let max: number | null = null;
+  for (const r of rows) {
+    if (r.lastAttemptAt) {
+      const t = r.lastAttemptAt.getTime();
+      if (max === null || t > max) max = t;
+    }
+  }
+  return max;
+}
+
+/**
+ * W-153: simulates `CANDIDATE_IPOS_SQL`'s LISTED ordering — last_activity ASC
+ * NULLS FIRST, listing_date DESC as tie-break only. `db.execute` is fully
+ * mocked in these tests (no real Postgres), so this is what stands in for
+ * the JOIN's output order every cycle; the code under test
+ * (`enrichListedCandidates`'s bounded scan, `orderAndCapCandidates`) is
+ * unchanged and is what actually gets exercised against it.
+ */
+function sqlOrderedIds(ids: string[]): string[] {
+  return [...ids].sort((a, b) => {
+    const ta = currentActivityMs(a);
+    const tb = currentActivityMs(b);
+    if (ta === null && tb === null) return listingRank.get(a)! - listingRank.get(b)!;
+    if (ta === null) return -1;
+    if (tb === null) return 1;
+    if (ta !== tb) return ta - tb;
+    return listingRank.get(a)! - listingRank.get(b)!;
+  });
+}
+
 async function runCycles(n: number, ids: string[]): Promise<void> {
+  ids.forEach((id) => candidateRow(id)); // registers each id's listingRank before any sort needs it
   for (let i = 0; i < n; i++) {
-    dbExecuteMock.mockResolvedValueOnce({ rows: ids.map((id) => candidateRow(id)) });
+    dbExecuteMock.mockResolvedValueOnce({ rows: sqlOrderedIds(ids).map((id) => candidateRow(id)) });
     await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
   }
 }
@@ -335,47 +381,73 @@ describe('W-144 — LISTED rotation is bounded and fair within the enrichment wi
 });
 
 /**
- * W-144 DEFECT: `enrichListedCandidates` bounds how many LISTED rows it even
- * LOOKS AT to `listedCap * 4` INCOMPLETE rows (W-135), scanned in the fixed
- * SQL row order (`listing_date DESC`) — NOT in rotation order. When more than
- * `listedCap * 4` LISTED rows are simultaneously, persistently incomplete
- * (the realistic "these are all still WANTED because nothing has been filed
- * yet" case this test builds — 25 rows, cap 2 -> bound 8), the SAME first-8
- * rows (by listing_date desc) are re-scanned every cycle: none of them ever
- * resolves to complete (real code, not a test artifact — see `bumpAttempt`,
- * which deliberately never flips state to FOUND), so `incompleteSeen` always
- * hits the bound at row 8 and rows 8..24 are NEVER enriched, NEVER given a
- * `lastActivityAt`, and therefore NEVER even considered for the cap. They are
- * not "deferred" (which the code full well tracks) — they are silently
- * dropped every single cycle as `listedSkippedUnenriched`, forever, for as
- * long as they stay in the live window. This is the residual case the W-135
- * fix (only complete rows exit the bound) does not cover: it fixes staleness
- * cleared by completion, not a backlog that never completes.
- *
- * `it.fails` — this documents a REAL, currently-unfixed starvation bug. It is
- * expected to fail (i.e. `it.fails` itself passes) until W-144 lands a fix
- * (e.g. scanning LISTED rows in rotation order before applying the
- * enrichment bound, or persisting a rotation cursor). If this ever starts
- * passing, `it.fails` will FAIL and must be converted to a normal `it`.
+ * W-153 fix: `enrichListedCandidates` still bounds how many LISTED rows it
+ * looks at to `listedCap * 4` INCOMPLETE rows (W-135, UNCHANGED) — but which
+ * rows arrive in that scan window is no longer the fixed SQL row order
+ * (`listing_date DESC`). `CANDIDATE_IPOS_SQL` now orders the LISTED tier by
+ * `last_activity ASC NULLS FIRST` (a LEFT JOIN aggregate over
+ * `document_fetch_state`), `listing_date DESC` only breaking ties — so the
+ * scan window always contains the GLOBALLY least-recently-touched rows, not
+ * whichever rows happen to have the newest listing date. Before the fix
+ * (see the W-144 test this replaces), 25 permanently-incomplete rows with
+ * cap 2 (bound 8) meant rows 8..24 were silently dropped every cycle,
+ * forever. `sqlOrderedIds` (this file) simulates the JOIN's output order
+ * cycle to cycle — `db.execute` is fully mocked, so it is the SQL-ordering
+ * assumption under test; `enrichListedCandidates`/`orderAndCapCandidates`
+ * are exercised unmodified against it.
  */
-describe('W-144 DEFECT — backlog larger than listedCap*4 starves rows past the enrichment scan window', () => {
-  it.fails(
-    'N=25, cap=2 (enrichment bound=8), all rows permanently incomplete: every IPO is visited within ceil(N/cap)+slack cycles',
-    async () => {
-      const N = 25;
-      const cap = 2;
-      process.env.DOCUMENT_CYCLE_LISTED_CAP = String(cap);
-      const ids = Array.from({ length: N }, (_, i) => `listed-${i}`);
-      ids.forEach((id) => seedListedIpo(id));
+describe('W-153 — rotation-aware scan order removes the backlog-starvation defect', () => {
+  it('N=25, cap=2 (enrichment bound=8), all rows permanently incomplete: every IPO is visited within ceil(N/cap)+slack cycles', async () => {
+    const N = 25;
+    const cap = 2;
+    process.env.DOCUMENT_CYCLE_LISTED_CAP = String(cap);
+    const ids = Array.from({ length: N }, (_, i) => `listed-${i}`);
+    ids.forEach((id) => seedListedIpo(id));
 
-      const boundedCycles = Math.ceil(N / cap) + 5; // generous slack
-      await runCycles(boundedCycles, ids);
+    const boundedCycles = Math.ceil(N / cap) + 5; // generous slack
+    await runCycles(boundedCycles, ids);
 
-      const visited = new Set(visitLog);
-      // EXPECTED (per the rotation guarantee): visited.size === N.
-      // ACTUAL: only the first listedCap*4 = 8 rows (by listing_date desc)
-      // are ever enriched/visited; rows 8..24 are permanently starved.
-      expect(visited.size).toBe(N);
-    }
-  );
+    const visited = new Set(visitLog);
+    expect(visited.size).toBe(N); // no row is left behind, however large the backlog
+  });
+
+  it('a row with a NULL last activity is scanned before any touched row, regardless of listing_date', async () => {
+    const cap = 5; // large enough that both rows fit the enrichment bound and the cap
+    process.env.DOCUMENT_CYCLE_LISTED_CAP = String(cap);
+    seedListedIpo('touched');
+    seedListedIpo('never-touched');
+    candidateRow('touched'); // registers listingRank -> lower rank (more recent listing_date)
+    candidateRow('never-touched');
+    const touchedRow = store.get('touched')!;
+    touchedRow[0].lastAttemptAt = new Date('2020-01-01'); // touched long ago, but touched
+
+    const scanOrder: string[] = [];
+    listForIpoSpy.mockImplementation((ipoId: string) => {
+      scanOrder.push(ipoId);
+      return Promise.resolve(fakeStoreListForIpo(ipoId));
+    });
+
+    dbExecuteMock.mockResolvedValueOnce({
+      rows: sqlOrderedIds(['touched', 'never-touched']).map((id) => candidateRow(id)),
+    });
+    await runDocumentCycle({ budgetMs: 999_999, extractionBudgetMs: 999_999 });
+
+    // never-touched (NULL last_activity) must be the FIRST row enrichListedCandidates
+    // reads via store.listForIpo, ahead of touched — even though touched has
+    // an OLDER listing_date (would have won the pre-W-153 listing_date-desc order).
+    expect(scanOrder[0]).toBe('never-touched');
+  });
+});
+
+describe('W-153 — CANDIDATE_IPOS_SQL text', () => {
+  it('joins document_fetch_state and orders the LISTED tier by last_activity ASC NULLS FIRST before listing_date', async () => {
+    const { CANDIDATE_IPOS_SQL } = await import('../../../src/services/document-cycle.js');
+    expect(CANDIDATE_IPOS_SQL).toContain('document_fetch_state');
+    expect(CANDIDATE_IPOS_SQL).toMatch(/last_activity\s+END\s+ASC\s+NULLS\s+FIRST/);
+    // last_activity must be ordered BEFORE listing_date (tie-break only).
+    const activityIdx = CANDIDATE_IPOS_SQL.indexOf('last_activity END ASC');
+    const listingIdx = CANDIDATE_IPOS_SQL.indexOf("i.listing_date END DESC");
+    expect(activityIdx).toBeGreaterThan(-1);
+    expect(listingIdx).toBeGreaterThan(activityIdx);
+  });
 });
