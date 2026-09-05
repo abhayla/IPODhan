@@ -68,7 +68,7 @@ Classify each detected pattern into exactly one of these 5 categories:
 
 For each detected pattern, ask in order:
 
-1. **Is it a static constraint with no steps?** → **Rule** (scoped via `globs:`)
+1. **Is it a static constraint with no steps?** → **Rule** (scoped via `paths:`)
 2. **Must it run automatically on every tool call with zero exceptions?** → **Hook** (deterministic, no user invocation)
 3. **Does it need a persistent connection to an external service?** → **MCP Server** (database, browser, API bridge)
 4. **Can it run autonomously without user interaction?** → **Agent** (delegatable, isolated context)
