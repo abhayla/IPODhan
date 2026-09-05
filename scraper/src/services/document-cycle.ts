@@ -56,20 +56,23 @@ import {
   anchorMaxSpawnsPerCycle,
   type AutoPersistDeps,
   type SpawnBudget,
+  FILING_EXTRACTION_LOCK_TTL_MS,
 } from './filing-auto-persist.js';
 import { DistributedLock } from '../utils/distributed-lock.js';
 
 /** MAJOR-1: key + TTL for the cycle-level extraction lock (document-cycle.ts). */
 const FILING_EXTRACTION_LOCK_KEY = 'filing-auto-persist:cycle';
 /**
- * Exported (F3, S-02 round 6) so a static test can assert the spawn cap can
- * never outlive the lock: `DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS`
- * (worst case, every spawn takes the full extractor timeout) plus slack MUST
- * stay under this TTL, or a future cap raise could let extraction keep
- * running after the lock protecting it from a second overlapping cycle has
- * already expired.
+ * W-168 round 2: moved to `filing-auto-persist.ts` (re-exported here
+ * unchanged for existing importers) so `anchorMaxSpawnsPerCycle()` can clamp
+ * against it without a circular import between the two modules. Still the
+ * SAME constant the F3 static test checks: `DEFAULT_MAX_SPAWNS_PER_CYCLE *
+ * EXTRACT_TIMEOUT_MS` (worst case, every spawn takes the full extractor
+ * timeout) plus the anchor pass's own worst case plus slack MUST stay under
+ * this TTL, or a future cap raise could let extraction keep running after
+ * the lock protecting it from a second overlapping cycle has already expired.
  */
-export const FILING_EXTRACTION_LOCK_TTL_MS = 45 * 60 * 1000;
+export { FILING_EXTRACTION_LOCK_TTL_MS };
 
 /**
  * W-140: registry of Redis locks currently held by an in-flight document

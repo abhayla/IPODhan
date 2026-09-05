@@ -60,6 +60,16 @@ export type AnchorAutoOutcome =
        * (timeout/OOM/network/sidecar error), which keeps its existing path.
        */
       deterministic?: boolean;
+      /**
+       * W-168 round 2 (HOLE 3): the structural `AnchorScrapeFailureKind`
+       * this failure came from (e.g. `'parse_failed'`), carried alongside
+       * `reason` so the caller's "is this the SAME failure as last time"
+       * identity check can key on (kind, sha256) — a structural signal — and
+       * NOT on the reason text, which an OCR pass can render with cosmetic
+       * variation (different whitespace/rounding) between two runs that are
+       * otherwise the identical deterministic refusal.
+       */
+      sourceKind?: AnchorScrapeFailureKind;
     };
 
 /**
@@ -95,6 +105,7 @@ export function classifyAnchorAutoOutcome(input: {
       reason: `anchor: ${failure.reason}`,
       summary,
       deterministic: failure.kind === 'parse_failed',
+      sourceKind: failure.kind,
     };
   }
 

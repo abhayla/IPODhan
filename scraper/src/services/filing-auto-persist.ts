@@ -120,6 +120,7 @@ import {
 } from './step-ledger-recorders.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { runAnchorAutoPersist, type AnchorAutoOutcome } from './anchor-auto-persist.js';
+import { SIDECAR_TIMEOUT_MS } from '../scrapers/anchor-investors-scraper.js';
 
 /**
  * The extractor build that produced a stored extraction.
@@ -361,23 +362,29 @@ export function documentExtractionBlocked(
  * `blocked_after_10_attempts` floor refusal — so a later extractor version
  * bump revives it via the existing `parseBlockedVersion` mechanism.
  *
- * "Identical" = same reason text AND same source sha256, both encoded in the
- * previous `extraction_error` as `<reason> @sha:<sha16>`. A DIFFERENT sha
+ * W-168 round 2 (HOLE 3): "identical" is keyed on the STRUCTURAL identity
+ * `(kind, sha256)`, both encoded in the previous `extraction_error` as
+ * `<reason> @id:<kind>:<sha16>` — never on the reason TEXT. `reason` is kept
+ * only for the human-readable message; comparing it would let a cosmetic OCR
+ * variation between two runs (different whitespace, a re-rounded number) read
+ * as "a different failure" and defeat the 2-strike rule even though the
+ * underlying refusal (same kind, same file) is identical. A DIFFERENT sha
  * (the document row was re-fetched with new bytes) is treated as a fresh
  * first occurrence — a new file may not fail the same way — never a match.
  */
 export function classifyDeterministicAnchorParseFailure(
+  kind: string,
   reason: string,
   sha256: string | null | undefined,
   previousError: string | null | undefined,
   version: string
 ): { status: 'FAILED' | 'MANUAL_REVIEW'; error: string } {
   const shaTag = sha256 ? sha256.slice(0, 16) : 'unknown';
-  const prevMatch = /^(.*) @sha:([0-9a-f]+|unknown)$/.exec(previousError ?? '');
-  if (prevMatch && prevMatch[1] === reason && prevMatch[2] === shaTag) {
+  const prevMatch = /@id:([a-z0-9_]+):([0-9a-f]+|unknown)\s*$/i.exec(previousError ?? '');
+  if (prevMatch && prevMatch[1] === kind && prevMatch[2] === shaTag) {
     return { status: 'MANUAL_REVIEW', error: withBlockedVersion(reason, version) };
   }
-  return { status: 'FAILED', error: `${reason} @sha:${shaTag}` };
+  return { status: 'FAILED', error: `${reason} @id:${kind}:${shaTag}` };
 }
 
 /** The status values `buildExtractionStatePatch` (and the `documents` column) accept. */
@@ -498,14 +505,60 @@ export const DEFAULT_MAX_SPAWNS_PER_CYCLE = 3;
 export const DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE = 1;
 
 /**
+ * W-168 round 2 (HOLE 1). The lock-TTL static test only ever asserted the
+ * DEFAULT anchor budget against the TTL — an operator setting
+ * `ANCHOR_MAX_SPAWNS_PER_CYCLE` high enough (8, at the sidecar's 120s each)
+ * pushes the combined worst case (filing pass + anchor pass + slack) PAST
+ * `FILING_EXTRACTION_LOCK_TTL_MS` without the code (or the static test,
+ * which only checked the const) ever noticing. `anchorMaxSpawnsPerCycle()`
+ * now clamps its own return value to the largest count that still keeps
+ * `filingWorstMs + n * SIDECAR_TIMEOUT_MS + LOCK_SLACK_MS < FILING_EXTRACTION_LOCK_TTL_MS`,
+ * derived from the same constants the static test checks — never hard-coded
+ * — and warns once per call when it had to clamp.
+ */
+export const FILING_EXTRACTION_LOCK_TTL_MS = 45 * 60 * 1000;
+
+/** Same 60s slack the F3 static test already reserves for the filing side. */
+export const LOCK_SLACK_MS = 60_000;
+
+/**
+ * The largest anchor spawn count that still leaves the filing worst case +
+ * that many anchor sidecars + slack under the lock TTL. Exported so the
+ * static test can assert against THIS derivation instead of a re-typed copy.
+ */
+export function maxAnchorSpawnsWithinLockTtl(sidecarTimeoutMs: number): number {
+  const filingWorstMs = DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS;
+  const budgetForAnchors = FILING_EXTRACTION_LOCK_TTL_MS - filingWorstMs - LOCK_SLACK_MS;
+  // Strict "<", not "<=": a count whose worst case lands EXACTLY on the
+  // budget still leaves zero margin against the TTL, so floor() alone (which
+  // can land exactly on it when the division is even) is one spawn too many.
+  let n = Math.max(0, Math.floor(budgetForAnchors / sidecarTimeoutMs));
+  while (n > 0 && n * sidecarTimeoutMs >= budgetForAnchors) n--;
+  return n;
+}
+
+/**
  * `ANCHOR_MAX_SPAWNS_PER_CYCLE` env override, read at call time (not module
  * load) so tests can flip it without re-importing the module — same pattern
  * as the other numeric env knobs in `config/feature-flags.ts`. Falls back to
- * `DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE` on anything non-finite or <= 0.
+ * `DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE` on anything non-finite or <= 0, and
+ * is then CLAMPED (HOLE 1) to whatever `maxAnchorSpawnsWithinLockTtl` allows
+ * for the anchor sidecar's own timeout — a raw env value is never trusted
+ * past the point where it would let the anchor pass outlive the cycle lock.
  */
 export function anchorMaxSpawnsPerCycle(): number {
   const raw = Number(process.env.ANCHOR_MAX_SPAWNS_PER_CYCLE);
-  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE;
+  const requested = Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE;
+  const sidecarTimeoutMs = SIDECAR_TIMEOUT_MS;
+  const cap = maxAnchorSpawnsWithinLockTtl(sidecarTimeoutMs);
+  if (requested > cap) {
+    logger.warn(
+      { requested, cap, sidecarTimeoutMs, FILING_EXTRACTION_LOCK_TTL_MS },
+      'ANCHOR_MAX_SPAWNS_PER_CYCLE clamped — the requested value would let the anchor pass outlive the extraction lock TTL (W-168 round 2)'
+    );
+    return cap;
+  }
+  return requested;
 }
 
 /**
@@ -1102,6 +1155,7 @@ async function runAnchorDocument(
     classified = classifyFailure(retryCountAtStamp, version, rawError);
   } else if (outcome.deterministic) {
     classified = classifyDeterministicAnchorParseFailure(
+      outcome.sourceKind ?? 'parse_failed',
       outcome.reason,
       doc.sha256,
       doc.extractionError,
@@ -1338,9 +1392,15 @@ export async function processPendingFilings(
     for (let i = 0; i < anchorBudgeted.length; i++) {
       const doc = anchorBudgeted[i];
 
-      // F3: same per-document deadline check as the filing loop.
+      // F3: same per-document deadline check as the filing loop. W-168 round
+      // 2 (HOLE 2): anchors run AFTER the filing pass within one IPO call, so
+      // a deadline that already elapsed during filing extraction must not
+      // silently no-op the anchor pass — it has to show up the SAME way a
+      // filing-side deadline skip does: `skippedBudget` incremented and a
+      // skip reason recorded, both of which the cycle-summary log reads.
       if (deps.deadlineMs !== undefined && (deps.now ?? Date.now)() >= deps.deadlineMs) {
         const remaining = anchorBudgeted.length - i;
+        result.skippedBudget += remaining;
         result.skipped = [
           ...result.skipped,
           `${remaining} anchor document(s) left PENDING — extraction deadline reached`,

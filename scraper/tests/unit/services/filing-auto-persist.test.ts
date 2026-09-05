@@ -1176,6 +1176,38 @@ describe('F3 — spawn cap cannot outlive the extraction lock', () => {
       60_000;
     expect(worstCaseMs).toBeLessThan(FILING_EXTRACTION_LOCK_TTL_MS);
   });
+
+  // W-168 round 2 (HOLE 1): the test above only ever checked the DEFAULT
+  // anchor budget — an operator raising ANCHOR_MAX_SPAWNS_PER_CYCLE past what
+  // the lock TTL can absorb was invisible to it. Assert the FUNCTION'S
+  // clamped output instead of a re-typed worst-case literal, with the env
+  // set high enough (8) that an unclamped read would blow the TTL.
+  it('anchorMaxSpawnsPerCycle() clamps a too-high ANCHOR_MAX_SPAWNS_PER_CYCLE so the combined worst case still fits the lock TTL', async () => {
+    const { FILING_EXTRACTION_LOCK_TTL_MS } = await import('../../../src/services/document-cycle.js');
+    const { anchorMaxSpawnsPerCycle, maxAnchorSpawnsWithinLockTtl } = await import(
+      '../../../src/services/filing-auto-persist.js'
+    );
+    const { SIDECAR_TIMEOUT_MS } = await import('../../../src/scrapers/anchor-investors-scraper.js');
+
+    process.env.ANCHOR_MAX_SPAWNS_PER_CYCLE = '8';
+    try {
+      // 8 unclamped would be 30min (filing) + 8*120s (16min) + 1min = 47min,
+      // OVER the 45-min TTL — proving the raw env value alone is unsafe.
+      const requestedWorstCaseMs =
+        DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL * EXTRACT_TIMEOUT_MS_REAL + 8 * SIDECAR_TIMEOUT_MS + 60_000;
+      expect(requestedWorstCaseMs).toBeGreaterThan(FILING_EXTRACTION_LOCK_TTL_MS);
+
+      const clamped = anchorMaxSpawnsPerCycle();
+      expect(clamped).toBe(maxAnchorSpawnsWithinLockTtl(SIDECAR_TIMEOUT_MS));
+      expect(clamped).toBeLessThan(8);
+
+      const actualWorstCaseMs =
+        DEFAULT_MAX_SPAWNS_PER_CYCLE_REAL * EXTRACT_TIMEOUT_MS_REAL + clamped * SIDECAR_TIMEOUT_MS + 60_000;
+      expect(actualWorstCaseMs).toBeLessThan(FILING_EXTRACTION_LOCK_TTL_MS);
+    } finally {
+      delete process.env.ANCHOR_MAX_SPAWNS_PER_CYCLE;
+    }
+  });
 });
 
 // --------------------------------------------------- MINOR-1: python binary
@@ -1430,6 +1462,23 @@ describe('W-142 — anchor allocation reports are selected by the automatic door
     expect(r.spawned).toBe(4); // 1 filing + 3 anchor — `spawned` stays the combined total
     expect(d.persistFiling).toHaveBeenCalledTimes(1);
   });
+
+  // W-168 round 2 (HOLE 2): the anchor pass runs AFTER the filing pass
+  // WITHIN one IPO call, so a per-cycle deadline that already elapsed during
+  // filing extraction must not silently no-op the anchor pass — it has to
+  // show up the SAME way a filing-side deadline skip does.
+  it('a deadline already passed before the anchor pass records skippedBudget + a skip reason, never a silent no-op', async () => {
+    const d = anchorDeps({
+      deadlineMs: 1000,
+      now: () => 2000, // already past the deadline before the anchor pass runs
+    });
+    const r = await processPendingFilings(IPO, d);
+
+    expect(d.runAnchorPersist).not.toHaveBeenCalled();
+    expect(r.persisted).toBe(0);
+    expect(r.skippedBudget).toBe(1);
+    expect(r.skipped.join(' ')).toContain('anchor document(s) left PENDING — extraction deadline reached');
+  });
 });
 
 describe('W-168 — deterministic anchor parser refusals escalate faster than a transient failure', () => {
@@ -1455,10 +1504,10 @@ describe('W-168 — deterministic anchor parser refusals escalate faster than a 
 
   it('the SECOND identical parse_failed refusal on the SAME sha becomes MANUAL_REVIEW, stamped with the version', async () => {
     // The document row as it stands after the first failure: FAILED, with the
-    // `<reason> @sha:<sha16>` this module stamps on a first occurrence.
+    // `<reason> @id:<kind>:<sha16>` this module stamps on a first occurrence.
     const previouslyFailed = anchorDoc({
       extractionStatus: 'FAILED',
-      extractionError: `${parseFailedReason} @sha:${SHA.slice(0, 16)}`,
+      extractionError: `${parseFailedReason} @id:parse_failed:${SHA.slice(0, 16)}`,
       retryCount: 1,
       // Long past its backoff window, so the per-document gate admits it.
       updatedAt: new Date(0),
@@ -1485,7 +1534,7 @@ describe('W-168 — deterministic anchor parser refusals escalate faster than a 
     const previouslyFailed = anchorDoc({
       extractionStatus: 'FAILED',
       // Stamped against an OLD sha (the file was re-fetched with new bytes).
-      extractionError: `${parseFailedReason} @sha:${'f'.repeat(16)}`,
+      extractionError: `${parseFailedReason} @id:parse_failed:${'f'.repeat(16)}`,
       retryCount: 1,
       sha256: SHA,
       updatedAt: new Date(0),
@@ -1502,8 +1551,37 @@ describe('W-168 — deterministic anchor parser refusals escalate faster than a 
 
     expect(stateCalls(d).some((c) => c.status === 'MANUAL_REVIEW')).toBe(false);
     const call = stateCalls(d).find((c) => c.status === 'FAILED');
-    expect(call.error).toContain(`@sha:${SHA.slice(0, 16)}`);
+    expect(call.error).toContain(`@id:parse_failed:${SHA.slice(0, 16)}`);
     expect(r.anchorsFailed).toBe(1);
+  });
+
+  // W-168 round 2 (HOLE 3): identity is (kind, sha) — NOT the reason text —
+  // so cosmetic OCR variation between two runs (different wording/rounding
+  // for the SAME structural refusal) cannot defeat the 2-strike rule.
+  it('an OCR-noise variation in the reason text does NOT defeat the 2-strike rule — identity is (kind, sha)', async () => {
+    const firstRunReason = 'anchor: no bid price could be derived from the investor rows';
+    const secondRunReasonWithNoise = 'anchor: no bid price could be derived from the investor  rows'; // extra space, OCR noise
+    const previouslyFailed = anchorDoc({
+      extractionStatus: 'FAILED',
+      extractionError: `${firstRunReason} @id:parse_failed:${SHA.slice(0, 16)}`,
+      retryCount: 1,
+      updatedAt: new Date(0),
+    });
+    const d = anchorDeps({
+      loadDocuments: vi.fn(async () => [previouslyFailed]),
+      runAnchorPersist: vi.fn(async () => ({
+        kind: 'failed' as const,
+        reason: secondRunReasonWithNoise,
+        deterministic: true,
+        sourceKind: 'parse_failed' as const,
+      })),
+    });
+    const r = await processPendingFilings(IPO, d);
+
+    const call = stateCalls(d).find((c) => c.status === 'MANUAL_REVIEW');
+    expect(call).toBeDefined();
+    expect(stateCalls(d).some((c) => c.status === 'FAILED')).toBe(false);
+    expect(r.anchorsManualReview).toBe(1);
   });
 
   it('a timeout/OOM (hard_failure) keeps its OWN >=24h-floor path, never the 2-strike MANUAL_REVIEW path', async () => {

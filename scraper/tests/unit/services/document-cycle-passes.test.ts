@@ -150,6 +150,7 @@ vi.mock('../../../src/services/filing-auto-persist.js', () => ({
   DEFAULT_MAX_SPAWNS_PER_CYCLE: 3,
   // W-168: the anchor allocation report's own per-cycle spawn budget.
   anchorMaxSpawnsPerCycle: () => 1,
+  FILING_EXTRACTION_LOCK_TTL_MS: 45 * 60 * 1000,
 }));
 
 const lockAcquireMock = vi.fn().mockResolvedValue({ acquired: true, token: 'tok-1' });
