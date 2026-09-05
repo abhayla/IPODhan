@@ -92,6 +92,16 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/deploy-branch-guard.py\"",
+            "timeout": 10
+          }
+        ]
       }
     ],
     "TaskCreated": [
