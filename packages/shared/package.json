@@ -12,6 +12,7 @@
     "./repositories/field-sources-repository": "./src/repositories/field-sources-repository.ts",
     "./repositories/listing-performance-repository": "./src/repositories/listing-performance-repository.ts",
     "./cache": "./src/cache/index.ts",
+    "./cache/cache-keys": "./src/cache/cache-keys.ts",
     "./cache/redis-client": "./src/cache/redis-client.ts",
     "./types": "./src/types/index.ts",
     "./admin/field-protection-checker": "./src/admin/field-protection-checker.ts",
