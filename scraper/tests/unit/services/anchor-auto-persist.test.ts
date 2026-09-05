@@ -83,8 +83,26 @@ describe('classifyAnchorAutoOutcome — the outcome map', () => {
     for (const kind of ['scraper_locked', 'protected_field', 'ipo_missing', 'no_report'] as const) {
       const out = classifyAnchorAutoOutcome({ summary: summary({ refusedReason: 'x', refusedKind: kind }) });
       expect(out.kind).toBe('failed');
+    }
+  });
+
+  it('W-168b: protected_field is a content verdict (admin protection does not clear on retry) — DETERMINISTIC', () => {
+    const out = classifyAnchorAutoOutcome({
+      summary: summary({ refusedReason: 'x', refusedKind: 'protected_field' }),
+    });
+    expect(out.kind).toBe('failed');
+    if (out.kind === 'failed') {
+      expect(out.deterministic).toBe(true);
+      expect(out.sourceKind).toBe('protected_field');
+    }
+  });
+
+  it('W-168b: scraper_locked / ipo_missing / no_report are TRANSIENT — never deterministic, stay retryable forever', () => {
+    for (const kind of ['scraper_locked', 'ipo_missing', 'no_report'] as const) {
+      const out = classifyAnchorAutoOutcome({ summary: summary({ refusedReason: 'x', refusedKind: kind }) });
+      expect(out.kind).toBe('failed');
       if (out.kind === 'failed') {
-        expect(out.deterministic).toBe(true);
+        expect(out.deterministic).toBeFalsy();
         expect(out.sourceKind).toBe(kind);
       }
     }
