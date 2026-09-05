@@ -510,24 +510,7 @@ def check_date_before(a, b, label):
 # --------------------------------------------------------------------------- #
 # emission helpers
 # --------------------------------------------------------------------------- #
-def _strip_nul_bytes(value):
-    """W-138 backstop: Postgres refuses a NUL byte (\\x00) anywhere in text or
-    jsonb (22P05 "unsupported Unicode escape sequence") — one slipping through
-    fails EVERY future persist attempt for the document, not just this one. The
-    known source is an unmapped custom-font glyph (see `_normalize_rupee_glyph`,
-    scoped to `bid_windows`), but that repair only covers the field it was
-    written for; any OTHER field could carry the same misencoding from a
-    different filing's font. Applied once, here, to the whole output tree
-    right before it is serialized, so no single field needs its own copy of
-    this defense. Recurses through dict/list; leaves non-string values (and
-    already-clean strings) untouched."""
-    if isinstance(value, str):
-        return value.replace("\x00", "") if "\x00" in value else value
-    if isinstance(value, dict):
-        return {k: _strip_nul_bytes(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_strip_nul_bytes(v) for v in value]
-    return value
+from json_safe import strip_nul_bytes as _strip_nul_bytes  # noqa: E402
 
 
 class Emitter:
