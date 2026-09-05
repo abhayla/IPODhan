@@ -156,6 +156,11 @@ describe('isMemoryAbortStderr — round 5 MINOR-1 (Killed word-boundary anchor)'
     expect(isMemoryAbortStderr('Traceback (most recent call last):\nMemoryError: \n')).toBe(true);
     expect(isMemoryAbortStderr('MemoryError')).toBe(true);
   });
+
+  it('matches a real Python traceback ending with a bare or colon-suffixed MemoryError line followed by a trailing newline', () => {
+    expect(isMemoryAbortStderr('Traceback (most recent call last):\n  ...\nMemoryError\n')).toBe(true);
+    expect(isMemoryAbortStderr('Traceback (most recent call last):\n  ...\nMemoryError: x\n')).toBe(true);
+  });
 });
 
 // --------------------------------------------------------------------- flag

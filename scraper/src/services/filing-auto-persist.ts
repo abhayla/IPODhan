@@ -180,7 +180,7 @@ export const EXTRACTOR_MEMORY_CEILING_EXIT = 3;
  * followed by `:` as in `MemoryError: ...`), not any incidental mention of
  * the word (e.g. inside a comment or an unrelated log string). */
 export const MEMORY_ABORT_STDERR_RE =
-  /Memory allocation still failed|OpenBLAS error|(^|\n)MemoryError(:|$)|memory ceiling exceeded|Cannot allocate memory|std::bad_alloc/i;
+  /Memory allocation still failed|OpenBLAS error|(^|\n)MemoryError(:|\n|$)|memory ceiling exceeded|Cannot allocate memory|std::bad_alloc/i;
 /** Round 5 (MINOR-1): kept case-sensitive and word-boundary-anchored, and
  * OUTSIDE `MEMORY_ABORT_STDERR_RE`'s `i` flag on purpose — a JS regex literal
  * cannot mix case sensitivity per-alternative, and the shell's OOM-killer
