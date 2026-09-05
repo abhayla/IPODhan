@@ -273,3 +273,30 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ipodhan_test
           REDIS_URL: redis://localhost:6379
         run: npx vitest run -c vitest.integration.config.ts tests/integration/document-fetch-state-repository.integration.test.ts
+
+  # W-169 round 2: nothing in CI ran scripts/tests/deploy-linux.test.sh —
+  # pr-gate's `gate` job only runs the two node self-tests under
+  # scripts/tests, never the deploy-script bash suites. That suite covers
+  # W-136/W-136b/W-169 (probe process-group + PROBE_PORT listener cleanup)
+  # and previously ran ONLY on a developer's own machine, where `ss`,
+  # `fuser` and real process-group semantics are not guaranteed (the W-169
+  # round-1 harness had to skip-guard one case for exactly that reason on
+  # Windows/Git-Bash). ubuntu-latest has ss/fuser/setsid for real, so this
+  # job proves the fake-root harness (and the escalation logic it drives)
+  # against a genuine Linux host, independent of every other job here.
+  deploy-script-tests:
+    name: Deploy Script Tests (W-136/W-136b/W-169)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run deploy-linux.sh test suite
+        run: |
+          set -o pipefail
+          bash scripts/tests/deploy-linux.test.sh 2>&1 | tee /tmp/deploy-linux-test.log
+          echo "--- tail ---"
+          tail -n 40 /tmp/deploy-linux-test.log
+
+      - name: Run require-release-branch test suite
+        run: bash scripts/deploy/tests/require-release-branch.test.sh
