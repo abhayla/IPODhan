@@ -100,3 +100,96 @@ current scrape's `ipoData` object wholesale).
 - `audit:substance --gate` now fails on exit code the moment such a row
   reaches the DB by any path the persister guard doesn't cover, closing the
   gap this incident's own detection check (audit:substance) had.
+
+## Round 2 (Opus review: CRITICAL-1, MAJOR-1)
+
+### CRITICAL-1 — round 1's "class mechanism" claim was false
+
+Round 1 said the class mechanism was "every door that writes `issueSize`
+calls `collectImplausibleIssueSizeFields` before it writes." That was true of
+`data-persister.ts`'s two doors but **not of the door prod actually uses**:
+with `ENABLE_DATA_CONSOLIDATION` on (prod), `BaseScraperOrchestrator.ts:539`
+writes via `DataConsolidationOrchestrator.consolidatedUpsertIPO`, which calls
+`consolidationOrchestrator.extractConsolidatedData()` to build the insert/
+update payload — `data-persister.ts`'s `upsertIPO` runs only on the
+skip-fallback (:554) / flag-off (:595) branches. The T-329 guard's OWN call
+inside `consolidateIPOData` correctly rejected Shanti's share count (`
+fieldResult.finalValue` came back `undefined` — no stored value to fall back
+to on a brand-new row), but `extractConsolidatedData` then rebuilt the write
+payload as `consolidated.issueSize?.toString() ??
+originalScraped.issueSize?.toString()` — the `??` treated "consolidation
+rejected the value, nothing to write" the same as "consolidation never
+touched this field," and re-admitted the exact raw share count the guard had
+just refused.
+
+**Why round 1's own review didn't catch it:** round 1 traced from
+`data-persister.ts` outward (the file the T-329 guard's original author
+touched) and never traced INTO `BaseScraperOrchestrator.ts` to check which of
+the two write doors prod's `ENABLE_DATA_CONSOLIDATION=true` config actually
+exercises. The unit tests added in round 1
+(`data-persister-issue-size-plausibility.test.ts`) call `upsertIPO` directly,
+so they never exercised the consolidation-orchestrator door at all — a green
+suite proved the door round 1 fixed was fixed, and said nothing about the
+door prod uses.
+
+**Fix:** `DataConsolidationOrchestrator.extractConsolidatedData()` now builds
+a `rejectedFields` set from `result.fieldResults[].rejectedSources` (any
+entry naming the incoming `source` — the shape every rejection branch in
+`data-consolidation-service.ts` already produces) and never falls back to
+`originalScraped` for a field in that set. Swept the same `??`/`||
+originalScraped.<field>` pattern across every field in
+`extractConsolidatedData` that reads from `originalScraped`:
+`companyName`, `segment`, `offeringType`, `issueSize`, `status`, `openDate`,
+`closeDate` (all seven now gated through the same `fallback()` helper).
+`priceRangeMin`/`priceRangeMax`/`sector`/`lotSize`/`faceValue`/
+`allotmentDate`/`listingDate`/`companyDescription`/`registrar`/
+`leadManagers`/`symbol`/`isin` were already read straight off `consolidated`
+with no `originalScraped` fallback and needed no change; `listingExchanges`
+has its own dedicated resolver (`extractListingExchanges`) already reasoned
+about separately (W-145) and was left as-is.
+
+**Corrected class mechanism:** the class is now genuinely closed at BOTH
+doors — `data-persister.ts` create/legacy-fallback (round 1) AND the
+consolidation orchestrator's create/update (round 2) — because both now
+distinguish "consolidation had nothing to say about this field" from
+"consolidation evaluated and rejected the incoming value," and only the
+former falls back to the raw scrape.
+
+**Detection upgrade:** `scraper/tests/unit/services/data-consolidation-orchestrator-issue-size-rejection.test.ts`
+exercises the REAL `DataConsolidationService.consolidateIPOData()` (not a
+mocked stand-in) feeding a REAL rejection result into
+`extractConsolidatedData`, so a future regression that reintroduces a bare
+`?? originalScraped.<field>` on a guarded field fails a unit test, not just
+`audit:substance` on the next scrape cycle. `audit:substance --gate`
+(round 1) remains the read-side backstop for whichever door a future write
+bypasses next.
+
+### MAJOR-1 — the coherence arm's `sharesOffered` input is a dead field name
+
+`data-persister.ts:755/773` passed `(scrapedIPO as any).sharesOffered` into
+`collectImplausibleIssueSizeFields`'s shares-x-band coherence check.
+`sharesOffered` is NOT a field on `ScrapedIPO`
+(`scraper/src/utils/validators.ts` `ScrapedIPOSchema`) — it belongs to the
+unrelated `ScrapedSubscriptionSchema` (subscription-multiple records). No
+IPO-main scraper or adapter sets either `sharesOffered` or
+`noOfSharesOffered` on the `ScrapedIPO` object reaching this door: NSE's
+`computeNSEIssueSizeRupees` (`nse-api-client.ts`) reads `noOfSharesOffered`
+off the RAW API response and converts it to rupees internally, but the share
+count itself never survives onto `ScrapedIPO`. **The coherence arm at the
+create/legacy-fallback door has therefore never fired in prod** — it silently
+degrades to the segment-floor check alone for every real scraper today.
+
+**Fix applied:** changed the read to `(scrapedIPO as any).noOfSharesOffered
+?? (scrapedIPO as any).sharesOffered`, matching the same preference order
+`collectImplausibleIssueSizeFields` itself uses internally
+(`data-consolidation-service.ts:563`) — the day a scraper starts populating
+either key, this door and the consolidation orchestrator's coherence check
+agree with no further change needed. **This is a documented gap, not a
+closed one**: no schema field currently carries the share count onto
+`ScrapedIPO`, so the coherence arm remains dormant at this door until a
+future scraper change adds one (out of scope for this round — the segment
+floor, which DOES fire today, is what caught both Shanti and Ashutosh Fibre).
+Test 5 in the new orchestrator test file proves the coherence arm fires
+correctly at the `DataConsolidationService` layer when a real field name
+(`noOfSharesOffered`) is present, so the logic itself is verified even though
+today's scrapers never feed it.

@@ -746,13 +746,27 @@ export async function upsertIPO(
       // threshold — so every write door rejects an implausible value the
       // same way: never written, loud WARN with the segment floor / shares-x-
       // band figure for whoever reviews the log.
+      //
+      // W-177 round 2 (MAJOR-1): `ScrapedIPO` (validators.ts `ScrapedIPOSchema`)
+      // has NO `sharesOffered`/`noOfSharesOffered` field at all — that name
+      // belongs to `ScrapedSubscriptionSchema`, a different payload entirely.
+      // No IPO-main scraper/adapter currently sets either key on the object
+      // reaching this door (NSE's `computeNSEIssueSizeRupees` reads
+      // `noOfSharesOffered` off the RAW API response and converts it to
+      // rupees internally — the share count itself never survives onto
+      // `ScrapedIPO`), so the coherence (shares x band) arm of
+      // `collectImplausibleIssueSizeFields` is currently a no-op on this
+      // path: it only fires once some scraper actually populates one of
+      // these keys. `?? noOfSharesOffered` matches the helper's own
+      // preference order so the day a source starts supplying it, this door
+      // and the consolidation orchestrator agree with no further change.
       if (safeIssueSize !== null) {
         const effectiveSegment = scrapedIPO.segment ?? existingIPO?.segment ?? null;
         const implausible = collectImplausibleIssueSizeFields(
           {
             issueSize: safeIssueSize,
             segment: effectiveSegment,
-            sharesOffered: (scrapedIPO as any).sharesOffered,
+            sharesOffered: (scrapedIPO as any).noOfSharesOffered ?? (scrapedIPO as any).sharesOffered,
             priceRangeMin: scrapedIPO.priceRangeMin,
             priceRangeMax: scrapedIPO.priceRangeMax,
           },
@@ -770,7 +784,7 @@ export async function upsertIPO(
             rejectedIssueSize: safeIssueSize,
             segment: effectiveSegment,
             segmentFloor: effectiveSegment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : effectiveSegment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null,
-            sharesOffered: (scrapedIPO as any).sharesOffered ?? null,
+            sharesOffered: (scrapedIPO as any).noOfSharesOffered ?? (scrapedIPO as any).sharesOffered ?? null,
             priceRangeMin: scrapedIPO.priceRangeMin ?? existingIPO?.priceRangeMin ?? null,
             priceRangeMax: scrapedIPO.priceRangeMax ?? existingIPO?.priceRangeMax ?? null,
             reason: implausible.reason,

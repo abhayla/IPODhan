@@ -427,24 +427,54 @@ export class DataConsolidationOrchestrator {
       consolidated[fieldResult.fieldName] = fieldResult.finalValue;
     }
 
+    // W-177 round 2 (CRITICAL-1): a field can be missing from `consolidated`
+    // for two entirely different reasons, and only ONE of them may fall back
+    // to the raw scrape:
+    //   (a) consolidation never evaluated the field a value for (honest gap —
+    //       e.g. this source's incoming value is genuinely undefined and
+    //       there is no stored value either) -> falling back to
+    //       `originalScraped.<field>` is a no-op (it's the same undefined).
+    //   (b) consolidation evaluated the incoming value and REJECTED it
+    //       (T-329 implausible issueSize, DEGENERATE_PRICE_BAND,
+    //       VALIDATION_FAILED, TERMINAL_STATUS_KEPT, a lost priority
+    //       resolution, ...) -> `finalValue` is the correct answer (often
+    //       `undefined`/NULL on a brand-new row with nothing stored yet) and
+    //       falling back to `originalScraped.<field>` re-admits the EXACT
+    //       value the guard just refused. This was the door Shanti's raw
+    //       share count (5,691,200) walked through as `issueSize`.
+    // `rejectedSources` always names the incoming source when the incoming
+    // value itself was refused (see data-consolidation-service.ts), so any
+    // field with a rejectedSources entry naming THIS call's `source` is case
+    // (b) — never fall back to the raw scrape for it.
+    const rejectedFields = new Set<string>();
+    for (const fieldResult of result.fieldResults) {
+      if (fieldResult.rejectedSources?.some((r) => r.source === source)) {
+        rejectedFields.add(fieldResult.fieldName);
+      }
+    }
+    const fallback = <T>(fieldName: string, value: T): T | undefined =>
+      rejectedFields.has(fieldName) ? undefined : value;
+
     // Ensure required fields have values
     return {
-      companyName: consolidated.companyName || originalScraped.companyName,
-      segment: consolidated.segment ?? originalScraped.segment ?? null,
-      offeringType: consolidated.offeringType || originalScraped.offeringType,
+      companyName: consolidated.companyName || fallback('companyName', originalScraped.companyName),
+      segment: consolidated.segment ?? fallback('segment', originalScraped.segment) ?? null,
+      offeringType: consolidated.offeringType || fallback('offeringType', originalScraped.offeringType),
       sector: consolidated.sector,
       // T-329: issueSize is optional on ScrapedIPO (a source may genuinely
       // have no rupee-convertible value) — `?.toString()` on both sides
       // avoids a TypeError when neither side has a value, leaving it
       // undefined so data-persister.ts's coercePositiveOrNull writes NULL.
-      issueSize: consolidated.issueSize?.toString() ?? originalScraped.issueSize?.toString(),
+      // W-177 round 2: a REJECTED issueSize never falls back to the raw
+      // scrape — see `rejectedFields` above.
+      issueSize: consolidated.issueSize?.toString() ?? fallback('issueSize', originalScraped.issueSize)?.toString(),
       priceRangeMin: consolidated.priceRangeMin,
       priceRangeMax: consolidated.priceRangeMax,
       lotSize: consolidated.lotSize,
       faceValue: consolidated.faceValue,
-      status: consolidated.status || originalScraped.status,
-      openDate: consolidated.openDate || originalScraped.openDate,
-      closeDate: consolidated.closeDate || originalScraped.closeDate,
+      status: consolidated.status || fallback('status', originalScraped.status),
+      openDate: consolidated.openDate || fallback('openDate', originalScraped.openDate),
+      closeDate: consolidated.closeDate || fallback('closeDate', originalScraped.closeDate),
       allotmentDate: consolidated.allotmentDate,
       listingDate: consolidated.listingDate,
       companyDescription: consolidated.companyDescription,
