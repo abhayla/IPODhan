@@ -1544,16 +1544,43 @@ else
   FAKEBIN28="$(mktemp -d)"
   cat > "$FAKEBIN28/ss" <<'FAKESS'
 #!/usr/bin/env bash
-# Fake `ss -ltn "( sport = :$PORT )"`. Reports LISTEN until either a
-# freed-marker file exists (written by our fake `fuser -k`) or the
-# case's configured "free-after" second count has elapsed since the
-# case's recorded start time — both read from CLEANUP_TEST_STATE_DIR so
-# the timing is decoupled from any real socket/process.
+# Fake `ss -ltn "( sport = :$PORT )"`, driven entirely by state files under
+# CLEANUP_TEST_STATE_DIR (decoupled from any real socket/process — this
+# box has no real `ss`). Three modes, read from mode-$port (default "time"):
+#   time       — LISTEN until the case's free-after second count elapses
+#                since its recorded start time (cases 28a/28c/28d).
+#   killaware  — MUTATION-PROOF mode (case 28b, round-2 review finding):
+#                LISTEN until kill-calls.log (written by the test's
+#                shadowed `kill` function) records a -KILL signal — i.e.
+#                this fake can ONLY be freed by the real escalation
+#                actually firing, not by a wall clock, so deleting the
+#                `kill -KILL` line in cleanup_probe() makes this fake
+#                (and therefore case 28b) fail.
+#   error      — exits 1 with NO output for the first errlimit-$port
+#                polls (round-2 MINOR(3): ss erroring must be treated as
+#                UNKNOWN, not "free"), then falls back to time mode.
 argline="$*"
 port="$(printf '%s' "$argline" | grep -oE ':[0-9]+' | tail -1 | tr -d ':')"
 state_dir="${CLEANUP_TEST_STATE_DIR:?ss: CLEANUP_TEST_STATE_DIR not set}"
 if [ -f "$state_dir/freed-$port" ]; then
   exit 0
+fi
+mode="$(cat "$state_dir/mode-$port" 2>/dev/null || echo time)"
+if [ "$mode" = "killaware" ]; then
+  if [ -f "$state_dir/kill-calls.log" ] && grep -q '^-KILL' "$state_dir/kill-calls.log" 2>/dev/null; then
+    exit 0
+  fi
+  echo "LISTEN 0 1 127.0.0.1:$port 0.0.0.0:* users:((\"fake-next-server\",pid=99999,fd=3))"
+  exit 0
+fi
+if [ "$mode" = "error" ]; then
+  count_file="$state_dir/errcount-$port"
+  n="$(cat "$count_file" 2>/dev/null || echo 0)"
+  limit="$(cat "$state_dir/errlimit-$port" 2>/dev/null || echo 0)"
+  if [ "$n" -lt "$limit" ]; then
+    echo $((n + 1)) > "$count_file"
+    exit 1
+  fi
 fi
 free_after="$(cat "$state_dir/free-after-$port" 2>/dev/null || echo 999999)"
 start_ts="$(cat "$state_dir/start-$port" 2>/dev/null || echo 0)"
@@ -1584,14 +1611,25 @@ esac
 FAKEFUSER
   chmod +x "$FAKEBIN28/ss" "$FAKEBIN28/fuser"
 
-  # Runs the real cleanup_probe() body against a fresh fake state dir.
-  #   $1 name  $2 port  $3 free_after_secs  $4 PROBE_CLEANUP_WAIT_SECS
-  #   $5 leader_delay_secs  $6 "yes"|"no" (put fake ss/fuser on PATH)
-  run_cleanup_probe_28() {
-    local port="$2" free_after="$3" wait_secs="$4" leaderdelay="$5" use_fakes="$6"
+  # Runs a cleanup_probe() body (real or, for the mutation-proof step, a
+  # deliberately mutated copy) against a fresh fake state dir.
+  #   $1 fn_body (the extracted function source)  $2 mode ("time"|"killaware"|"error")
+  #   $3 port  $4 free_after_secs (ignored for killaware)  $5 PROBE_CLEANUP_WAIT_SECS
+  #   $6 leader_delay_secs  $7 "yes"|"no" (put fake ss/fuser on PATH)  $8 errlimit (mode=error only)
+  # Shadows the `kill` BUILTIN with a bash FUNCTION (functions win over
+  # builtins in bash's command lookup) that records every invocation to
+  # kill-calls.log before forwarding to the real builtin via `command
+  # kill` — this is what lets the "killaware" fake `ss` observe whether
+  # cleanup_probe() actually issued a -KILL (round-2 review MAJOR finding:
+  # a wall-clock-only fake let the escalation be deleted with all cases
+  # still green).
+  run_cleanup_probe_28_body() {
+    local fn_body="$1" mode="$2" port="$3" free_after="$4" wait_secs="$5" leaderdelay="$6" use_fakes="$7" errlimit="${8:-0}"
     local statedir; statedir="$(mktemp -d)"
     date +%s > "$statedir/start-$port"
     echo "$free_after" > "$statedir/free-after-$port"
+    echo "$mode" > "$statedir/mode-$port"
+    echo "$errlimit" > "$statedir/errlimit-$port"
     ( sleep "$leaderdelay" ) &
     local leaderpid=$!
     local runpath="$PATH"
@@ -1610,12 +1648,20 @@ FAKEFUSER
       PROBE_CLEANUP_FAILED=0
       PROBE_CLEANUP_WAIT_SECS="$wait_secs"
       export CLEANUP_TEST_STATE_DIR="$statedir"
+      kill() {
+        printf '%s\n' "$*" >> "$CLEANUP_TEST_STATE_DIR/kill-calls.log"
+        command kill "$@"
+      }
       log() { echo "==> $*"; }
-      eval "$CLEANUP_FN_28"
+      eval "$fn_body"
       cleanup_probe
       echo "PROBE_CLEANUP_FAILED=$PROBE_CLEANUP_FAILED"
     )
     rm -rf "$statedir"
+  }
+  run_cleanup_probe_28() {
+    local name="$1" port="$2" free_after="$3" wait_secs="$4" leaderdelay="$5" use_fakes="$6"
+    run_cleanup_probe_28_body "$CLEANUP_FN_28" time "$port" "$free_after" "$wait_secs" "$leaderdelay" "$use_fakes" 0
   }
 
   # 28a: child listener outlives the leader by ~3s -> cleaned by the PORT
@@ -1633,7 +1679,10 @@ FAKEFUSER
   # 28b: port never frees during the initial (short) wait window -> KILL
   # escalation runs, port frees a couple seconds into the escalation's
   # own poll -> still no fuser fallback needed.
-  OUT28B="$(run_cleanup_probe_28 b 45002 6 2 0.2 yes 2>&1)"
+  # round 2: killaware mode — this fake can ONLY free the port once it
+  # observes a recorded -KILL, so this genuinely proves the escalation
+  # fired (see the mutation-proof step right after this case).
+  OUT28B="$(run_cleanup_probe_28_body "$CLEANUP_FN_28" killaware 45002 0 2 0.2 yes 2>&1)"
   if printf '%s' "$OUT28B" | grep -q 'probe port 45002 free after' \
      && ! printf '%s' "$OUT28B" | grep -qi 'attempting fuser' \
      && ! printf '%s' "$OUT28B" | grep -qi 'FATAL' \
@@ -1642,6 +1691,29 @@ FAKEFUSER
   else
     fail "case 28b: expected KILL escalation to resolve it with an INFO 'free after' line and no fuser fallback — got: $OUT28B"
   fi
+
+  # round 2 MAJOR mutation-proof: strip the `kill -KILL` escalation from a
+  # temp copy of the real script and rerun case 28b's exact scenario
+  # against the MUTANT body. The killaware fake ss can only free the port
+  # via a recorded -KILL, so with the escalation gone it must stay
+  # listening forever and case 28b's assertions must FAIL — if they don't,
+  # this test isn't actually exercising the escalation.
+  MUTANT_SCRIPT_28="$(mktemp)"
+  sed 's/kill -KILL -- -"\$pgid" 2>\/dev\/null || kill -KILL "\$pid" 2>\/dev\/null || true/: # MUTATED for the mutation-proof test: escalation removed/' \
+    "$DEPLOY_SCRIPT" > "$MUTANT_SCRIPT_28"
+  MUTANT_FN_28="$(awk '/^  cleanup_probe\(\) \{/,/^  \}$/' "$MUTANT_SCRIPT_28")"
+  if printf '%s\n' "$MUTANT_FN_28" | grep -q 'kill -KILL'; then
+    fail "case 28b mutation-proof: the sed mutation did not actually remove the -KILL escalation from the extracted body — mutation setup is broken"
+  else
+    MUT_OUT28B="$(run_cleanup_probe_28_body "$MUTANT_FN_28" killaware 45012 0 2 0.2 yes 2>&1)"
+    if printf '%s' "$MUT_OUT28B" | grep -q 'probe port 45012 free after' \
+       && ! printf '%s' "$MUT_OUT28B" | grep -qi 'attempting fuser'; then
+      fail "case 28b mutation-proof: removing the KILL escalation should have broken case 28b's assertions, but the mutant still passed — the test does not actually depend on the escalation"
+    else
+      pass "case 28b mutation-proof: removing the KILL escalation correctly makes case 28b's pass condition fail (mutant output: $MUT_OUT28B)"
+    fi
+  fi
+  rm -f "$MUTANT_SCRIPT_28"
 
   # 28c: `ss` absent -> falls back to a leader-only wait with the WARN
   # fallback log line, and does not hang/crash (leader dies quickly so
@@ -1667,6 +1739,34 @@ FAKEFUSER
     pass "case 28d: existing fuser-last-resort still fires and clears a truly stubborn listener"
   else
     fail "case 28d: expected the fuser -k last resort to fire and succeed with no FATAL — got: $OUT28D"
+  fi
+
+  # 28e (round 2 MINOR(3)): `ss` itself EXITS NON-ZERO (a real error, not
+  # "zero matches") for the first 2 polls. That must be treated as
+  # UNKNOWN (keep waiting), never as "free" — a bug here would show up as
+  # a bogus "free after 0s"/"free after 1s" line fired during the error
+  # polls, before the port has actually had time to free.
+  OUT28E="$(run_cleanup_probe_28_body "$CLEANUP_FN_28" error 45005 2 6 0.2 yes 2 2>&1)"
+  if printf '%s' "$OUT28E" | grep -qE 'free after [2-9][0-9]*s' \
+     && ! printf '%s' "$OUT28E" | grep -qE 'free after [01]s' \
+     && ! printf '%s' "$OUT28E" | grep -qi 'FATAL' \
+     && printf '%s' "$OUT28E" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+    pass "case 28e: ss exiting non-zero is treated as UNKNOWN (kept waiting), not falsely reported as free"
+  else
+    fail "case 28e: expected ss errors to be treated as unknown/keep-waiting, not an immediate false 'free after 0s/1s' — got: $OUT28E"
+  fi
+
+  # 28f (round 2 MINOR(2)): PROBE_CLEANUP_WAIT_SECS is not a non-negative
+  # integer -> logs a WARN and falls back to the 10s default instead of
+  # crashing or misbehaving (e.g. an unbounded/negative loop bound).
+  OUT28F="$(run_cleanup_probe_28_body "$CLEANUP_FN_28" time 45006 1 "not-a-number" 0.2 yes 0 2>&1)"
+  if printf '%s' "$OUT28F" | grep -qi "PROBE_CLEANUP_WAIT_SECS='not-a-number' is not a non-negative integer" \
+     && printf '%s' "$OUT28F" | grep -q 'probe port 45006 free after' \
+     && ! printf '%s' "$OUT28F" | grep -qi 'FATAL' \
+     && printf '%s' "$OUT28F" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+    pass "case 28f: an invalid PROBE_CLEANUP_WAIT_SECS logs a WARN and falls back to the 10s default"
+  else
+    fail "case 28f: expected a WARN + fallback to the 10s default for a non-integer PROBE_CLEANUP_WAIT_SECS — got: $OUT28F"
   fi
 
   rm -rf "$FAKEBIN28"

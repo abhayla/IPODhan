@@ -834,17 +834,40 @@ probe_release() {
     # Poll for the PORT itself to free up (leader dead AND no listener),
     # not just the leader — that is the actual condition we need.
     local wait_secs="${PROBE_CLEANUP_WAIT_SECS:-10}"
+    if ! printf '%s' "$wait_secs" | grep -qE '^[0-9]+$'; then
+      log "WARN: PROBE_CLEANUP_WAIT_SECS='$wait_secs' is not a non-negative integer — using the default of 10s."
+      wait_secs=10
+    fi
     local have_ss=0
     if command -v ss >/dev/null 2>&1; then
       have_ss=1
     fi
+    # round 2 MINOR(3): `ss` exiting non-zero (a real error — permission,
+    # netns, transient failure) must NOT be read as "no listener" — piping
+    # its (empty) output through `grep -c LISTEN || true` silently turned
+    # an ss ERROR into a false "port is free". Check ss's own exit status
+    # first; only trust its output when it actually succeeded.
+    _probe_port_state() {
+      local out status
+      out="$(ss -ltn "( sport = :$PROBE_PORT )" 2>/dev/null)"
+      status=$?
+      if [ "$status" -ne 0 ]; then
+        echo "unknown"
+        return
+      fi
+      if printf '%s\n' "$out" | grep -q LISTEN; then
+        echo "listening"
+      else
+        echo "free"
+      fi
+    }
     local waited=0 port_free=0
     if [ "$have_ss" -eq 1 ]; then
       while [ "$waited" -lt "$wait_secs" ]; do
         local leader_gone=0
         kill -0 "$pid" 2>/dev/null || leader_gone=1
-        local listen_count; listen_count="$(ss -ltn "( sport = :$PROBE_PORT )" 2>/dev/null | grep -c LISTEN || true)"
-        if [ "$leader_gone" -eq 1 ] && [ "${listen_count:-0}" -eq 0 ]; then
+        local port_state; port_state="$(_probe_port_state)"
+        if [ "$leader_gone" -eq 1 ] && [ "$port_state" = "free" ]; then
           port_free=1
           break
         fi
@@ -867,8 +890,8 @@ probe_release() {
       kill -KILL -- -"$pgid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
       local kwaited=0
       while [ "$kwaited" -lt 3 ]; do
-        local kcount; kcount="$(ss -ltn "( sport = :$PROBE_PORT )" 2>/dev/null | grep -c LISTEN || true)"
-        if [ "${kcount:-0}" -eq 0 ]; then
+        local port_state; port_state="$(_probe_port_state)"
+        if [ "$port_state" = "free" ]; then
           port_free=1
           log "probe port $PROBE_PORT free after $((waited + kwaited))s"
           break
