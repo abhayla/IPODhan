@@ -589,6 +589,67 @@ async function enrichListedCandidates(
   return { enriched };
 }
 
+/**
+ * W-153: candidate IPOs query, with the LISTED-tier order now rotation-aware.
+ *
+ * Root cause (W-144): `enrichListedCandidates` bounds its scan to
+ * `listedCap * 4` INCOMPLETE LISTED rows (W-135) — a hard requirement, kept
+ * exactly as-is here. Before this fix, the rows it scanned were whichever
+ * ones this query's `ORDER BY` happened to put first — `listing_date DESC`,
+ * a fixed, never-changing order. When more than `listedCap * 4` LISTED rows
+ * are simultaneously incomplete, that scan visits the SAME newest-by-listing-
+ * date rows every cycle forever; anything past the bound is silently dropped
+ * as `listedSkippedUnenriched` and never gets a turn.
+ *
+ * Fix: a LEFT JOIN aggregates each ipo's most recent
+ * `document_fetch_state.last_attempt_at`, and the LISTED tier now orders by
+ * that value ASCENDING with NULLS FIRST — a LISTED row that has never been
+ * attempted (no fetch-state rows at all) sorts first, exactly the same
+ * "never touched wins the turn" rule `orderAndCapCandidates`'s comparator
+ * already applies once a row IS scanned (W-124). `listing_date DESC` is now
+ * only the tie-break for two rows with the same last-activity value (both
+ * never touched, or touched in the same cycle) — it no longer decides which
+ * rows are even reachable. The JOIN is a single aggregate over
+ * `document_fetch_state`, computed once per cycle by Postgres, not an N+1 —
+ * it costs nothing extra over the previous single-table query.
+ *
+ * `enrichListedCandidates` itself is UNCHANGED: it still scans the incoming
+ * array in order up to the same `listedCap * 4` bound. What changed is which
+ * rows arrive in that first `listedCap * 4` slice.
+ */
+export const CANDIDATE_IPOS_SQL = `
+    SELECT i.id, i.company_name, i.slug, i.symbol, i.segment, i.status, i.price_range_min,
+           i.price_range_max, i.open_date, i.listing_date, i.bse_ipo_no,
+           i.company_website, i.verifier_url
+      FROM ipos i
+      LEFT JOIN (
+        SELECT ipo_id, MAX(last_attempt_at) AS last_activity
+          FROM document_fetch_state
+         GROUP BY ipo_id
+      ) dfs ON dfs.ipo_id = i.id
+     WHERE i.offering_type = 'IPO'
+       AND i.status IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED')
+     ORDER BY
+       CASE
+         WHEN upper(i.status::text) IN ('WITHDRAWN', 'POSTPONED') THEN 4
+         WHEN upper(i.status::text) = 'OPEN' THEN 0
+         WHEN upper(i.status::text) = 'CLOSED' THEN 1
+         WHEN upper(i.status::text) = 'LISTED' THEN 3
+         ELSE 2
+       END,
+       -- W-153: LISTED rotation order -- least-recently-touched first (NULL =
+       -- never touched sorts first), listing_date DESC only breaks ties.
+       -- The app layer (enrichListedCandidates/orderAndCapCandidates)
+       -- remains the source of truth once a row's real fetch-state rows are
+       -- read; this ordering only decides which rows are reachable within
+       -- the W-135 enrichment bound.
+       CASE WHEN upper(i.status::text) = 'LISTED' THEN dfs.last_activity END ASC NULLS FIRST,
+       CASE WHEN upper(i.status::text) = 'LISTED' THEN i.listing_date END DESC NULLS LAST,
+       CASE WHEN upper(i.status::text) NOT IN ('LISTED', 'OPEN', 'CLOSED', 'WITHDRAWN', 'POSTPONED')
+            THEN i.open_date END ASC NULLS LAST,
+       i.id
+`;
+
 /** Candidate IPOs: live-window only (R10 — history is WP F's job, not the cycle's). */
 export async function loadCandidateIpos(deps: {
   store: Pick<DocumentFetchStateRepository, 'listForIpo'>;
@@ -601,33 +662,7 @@ export async function loadCandidateIpos(deps: {
   listedEnriched: number;
   listedSkippedUnenriched: number;
 }> {
-  const result = await db.execute(sql`
-    SELECT id, company_name, slug, symbol, segment, status, price_range_min,
-           price_range_max, open_date, listing_date, bse_ipo_no,
-           company_website, verifier_url
-      FROM ipos
-     WHERE offering_type = 'IPO'
-       AND status IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED')
-     ORDER BY
-       CASE
-         WHEN upper(status::text) IN ('WITHDRAWN', 'POSTPONED') THEN 4
-         WHEN upper(status::text) = 'OPEN' THEN 0
-         WHEN upper(status::text) = 'CLOSED' THEN 1
-         WHEN upper(status::text) = 'LISTED' THEN 3
-         ELSE 2
-       END,
-       -- W-124: this listing_date-desc order is only the CHEAP approximation --
-       -- true LISTED rotation needs each IPO's document_fetch_state, which
-       -- this single-table query cannot join cheaply for every cycle. The app
-       -- layer is the source of truth: enrichListedCandidates overrides this
-       -- ordering with the real last-attempted-at-ascending rotation before
-       -- orderAndCapCandidates runs, so a degraded DB round-trip only ever
-       -- affects the row order the runner never actually receives.
-       CASE WHEN upper(status::text) = 'LISTED' THEN listing_date END DESC NULLS LAST,
-       CASE WHEN upper(status::text) NOT IN ('LISTED', 'OPEN', 'CLOSED', 'WITHDRAWN', 'POSTPONED')
-            THEN open_date END ASC NULLS LAST,
-       id
-  `);
+  const result = await db.execute(sql.raw(CANDIDATE_IPOS_SQL));
   const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<
     string,
     unknown
