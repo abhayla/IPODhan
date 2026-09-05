@@ -1702,7 +1702,7 @@ FAKEFUSER
   sed 's/kill -KILL -- -"\$pgid" 2>\/dev\/null || kill -KILL "\$pid" 2>\/dev\/null || true/: # MUTATED for the mutation-proof test: escalation removed/' \
     "$DEPLOY_SCRIPT" > "$MUTANT_SCRIPT_28"
   MUTANT_FN_28="$(awk '/^  cleanup_probe\(\) \{/,/^  \}$/' "$MUTANT_SCRIPT_28")"
-  if printf '%s\n' "$MUTANT_FN_28" | grep -q 'kill -KILL'; then
+  if printf '%s\n' "$MUTANT_FN_28" | grep -qE 'kill -KILL -- -"$pgid"'; then
     fail "case 28b mutation-proof: the sed mutation did not actually remove the -KILL escalation from the extracted body — mutation setup is broken"
   else
     MUT_OUT28B="$(run_cleanup_probe_28_body "$MUTANT_FN_28" killaware 45012 0 2 0.2 yes 2>&1)"
@@ -1769,6 +1769,146 @@ FAKEFUSER
     fail "case 28f: expected a WARN + fallback to the 10s default for a non-integer PROBE_CLEANUP_WAIT_SECS — got: $OUT28F"
   fi
 
+
+  # --- Case 29: W-169 --- cleanup_probe()'s new direct-listener-kill step.
+  # Root cause (staging 4de93a3f, 2026-09-06 00:0x IST): the group TERM/KILL
+  # only ever reaches pids in $pgid; the next-server CHILD routinely lands
+  # OUTSIDE that group (npm/next spawn their own session on some npm/Next
+  # versions), so the group kill never reaches it and cleanup fell straight
+  # to a blind, unguarded `fuser -k`. This targets the ACTUAL listener pid
+  # by port (ss -ltnp reporting pid=NNN) and TERMs/KILLs it directly, with a
+  # pm2-ownership guard. Dedicated fakebin: `ss` reports a REAL background
+  # process (a stand-in listener, distinct from the group leader) as
+  # LISTENING for as long as that real pid is alive (kill -0), so real
+  # TERM/KILL semantics (a plain sleep dies on TERM; a TERM-trapping one
+  # needs KILL) drive the scenario rather than scripted state. `ps` returns
+  # scripted pgid/ppid/cmd for that pid (to drive the pm2 guard).
+  FAKEBIN29="$(mktemp -d)"
+  cat > "$FAKEBIN29/ss" <<'FAKESS29'
+#!/usr/bin/env bash
+argline="$*"
+port="$(printf '%s' "$argline" | grep -oE ':[0-9]+' | tail -1 | tr -d ':')"
+state_dir="${CLEANUP_TEST_STATE_DIR29:?ss: CLEANUP_TEST_STATE_DIR29 not set}"
+lpid="$(cat "$state_dir/lpid-$port" 2>/dev/null || echo 88888)"
+if kill -0 "$lpid" 2>/dev/null; then
+  echo "LISTEN 0 1 127.0.0.1:$port 0.0.0.0:* users:((\"node\",pid=$lpid,fd=3))"
+fi
+exit 0
+FAKESS29
+  cat > "$FAKEBIN29/fuser" <<'FAKEFUSER29'
+#!/usr/bin/env bash
+# Last-resort fallback fake: never frees anything on its own — case 29's
+# scenarios are proven entirely by the direct-listener-kill step, so this
+# only needs to exist so the old fallback path doesn't crash if reached.
+exit 0
+FAKEFUSER29
+  cat > "$FAKEBIN29/ps" <<'FAKEPS29'
+#!/usr/bin/env bash
+field="" pid=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -o) shift; field="$1" ;;
+    -p) shift; pid="$1" ;;
+  esac
+  shift
+done
+state_dir="${CLEANUP_TEST_STATE_DIR29:?ps: CLEANUP_TEST_STATE_DIR29 not set}"
+case "$field" in
+  pgid=) cat "$state_dir/pgid-$pid" 2>/dev/null || echo "$pid" ;;
+  ppid=) cat "$state_dir/ppid-$pid" 2>/dev/null || echo 1 ;;
+  cmd=) cat "$state_dir/cmd-$pid" 2>/dev/null || echo "node fake-next-server" ;;
+  lstart=) cat "$state_dir/lstart-$pid" 2>/dev/null || date '+%a %b %e %H:%M:%S %Y' ;;
+  *) exit 1 ;;
+esac
+exit 0
+FAKEPS29
+  chmod +x "$FAKEBIN29/ss" "$FAKEBIN29/fuser" "$FAKEBIN29/ps"
+
+  # Runs the REAL cleanup_probe() body (CLEANUP_FN_28 -- cleanup_probe() is
+  # the same function, extracted once in case 28) with the case-29 fakebin
+  # ahead of PATH, a real short-lived leader pid (so the group TERM/KILL
+  # step resolves quickly without freeing the port), and a REAL background
+  # process standing in for the escaped listener (so TERM/KILL against it
+  # have genuine effect, unlike a synthetic pid).
+  #   $1 listener_cmd (spawns the stand-in listener)  $2 port
+  #   $3 pgid-for-listener  $4 cmd-for-pgid (drives the pm2 guard)
+  run_cleanup_probe_29() {
+    local listener_cmd="$1" port="$2" lpgid_marker="$3" lcmd="$4"
+    local statedir; statedir="$(mktemp -d)"
+    eval "$listener_cmd" &
+    local lpid=$!
+    local real_lpgid="$lpid"
+    [ "$lpgid_marker" = "self" ] && real_lpgid="$lpid"
+    echo "$lpid" > "$statedir/lpid-$port"
+    echo "$real_lpgid" > "$statedir/pgid-$lpid"
+    echo 1 > "$statedir/ppid-$lpid"
+    echo "$lcmd" > "$statedir/cmd-$real_lpgid"
+    date '+%a %b %e %H:%M:%S %Y' > "$statedir/lstart-$lpid"
+    ( sleep 0.2 ) &
+    local leaderpid=$!
+    (
+      PATH="$FAKEBIN29:$PATH"
+      PROBE_PORT="$port"
+      pid="$leaderpid"
+      PROBE_CLEANUP_FAILED=0
+      PROBE_CLEANUP_WAIT_SECS=2
+      probe_start_ts=0
+      export CLEANUP_TEST_STATE_DIR29="$statedir"
+      kill() {
+        printf '%s\n' "$*" >> "$CLEANUP_TEST_STATE_DIR29/kill-calls.log"
+        command kill "$@"
+      }
+      log() { echo "==> $*"; }
+      eval "$CLEANUP_FN_28"
+      cleanup_probe
+      echo "PROBE_CLEANUP_FAILED=$PROBE_CLEANUP_FAILED"
+    )
+    kill -KILL "$lpid" 2>/dev/null || true
+    wait "$lpid" 2>/dev/null || true
+    rm -rf "$statedir"
+  }
+
+  # 29a: listener pid is NOT in the probe's process group (a distinct, real,
+  # non-pm2 pid that dies on a plain TERM, matching an ordinary next-server
+  # child) -> freed by the direct TERM, no old-fuser fallback reached, INFO
+  # "free after ... (direct listener kill)" line printed.
+  OUT29A="$(run_cleanup_probe_29 '( sleep 30 )' 45101 self "node /app/web/node_modules/.bin/next-server" 2>&1)"
+  if printf '%s' "$OUT29A" | grep -q 'free after.*direct listener kill' \
+     && ! printf '%s' "$OUT29A" | grep -qi 'surviving pid' \
+     && ! printf '%s' "$OUT29A" | grep -qi 'FATAL' \
+     && printf '%s' "$OUT29A" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+    pass "case 29a: listener outside the group dies on direct TERM -> freed, no fuser, 'free after' printed"
+  else
+    fail "case 29a: expected a clean direct-TERM resolution with no fuser fallback -- got: $OUT29A"
+  fi
+
+  # 29b: listener ignores TERM (traps it) -> the direct TERM has no effect,
+  # the direct KILL escalation frees it -> still no old-fuser fallback.
+  OUT29B="$(run_cleanup_probe_29 '( trap "" TERM; sleep 30 )' 45102 self "node /app/web/node_modules/.bin/next-server" 2>&1)"
+  if printf '%s' "$OUT29B" | grep -q 'free after.*direct listener kill' \
+     && printf '%s\n' "$OUT29B" | grep -Eq -- '-KILL [0-9]+' \
+     && ! printf '%s' "$OUT29B" | grep -qi 'FATAL' \
+     && printf '%s' "$OUT29B" | grep -q 'PROBE_CLEANUP_FAILED=0'; then
+    pass "case 29b: listener ignores TERM -> direct KILL escalation frees it"
+  else
+    fail "case 29b: expected TERM to fail and a direct KILL to free the listener -- got: $OUT29B"
+  fi
+
+  # 29c: listener's process-group leader cmdline names pm2 (the PM2 God
+  # Daemon shape) -> WARN'd and left alone, NEVER signaled with TERM/KILL
+  # (only the harness's own final `kill -KILL "$lpid"` teardown touches it,
+  # which is asserted separately as absent from the DIRECT-kill loop's own
+  # signals), regardless of what the old fallback does afterward (unchanged
+  # FATAL/fuser path -- not re-asserted here).
+  OUT29C="$(run_cleanup_probe_29 '( sleep 30 )' 45103 self "PM2 v5.3.0: God Daemon (/root/.pm2)" 2>&1)"
+  if printf '%s' "$OUT29C" | grep -qi 'pm2-managed' \
+     && printf '%s' "$OUT29C" | grep -qi 'left to pm2, NOT killed'; then
+    pass "case 29c: pm2-managed listener is WARN'd and never signaled directly"
+  else
+    fail "case 29c: expected a pm2-managed listener to be WARN'd and left unsignaled -- got: $OUT29C"
+  fi
+
+  rm -rf "$FAKEBIN29"
   rm -rf "$FAKEBIN28"
 fi
 
