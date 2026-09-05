@@ -70,6 +70,24 @@ export interface AnchorPersisterDeps {
   ) => Promise<{ filtered: Record<string, unknown> }>;
 }
 
+/**
+ * WHY this exists (W-142). The auto-persist door must map an anchor refusal to
+ * an HONEST `documents.extraction_status`: a name-quality/blank-name refusal is
+ * MANUAL_REVIEW (a human must look at the scan), while an arithmetic or
+ * protection refusal is a retryable FAILED. Both arrive as prose in
+ * `refusedReason`, and matching on that prose would silently re-classify every
+ * refusal the day someone rewords a message. The kind is therefore stated
+ * structurally, at each refusal site, and `refusedReason` stays the human text.
+ */
+export type AnchorRefusalKind =
+  | 'ipo_missing'
+  | 'scraper_locked'
+  | 'no_report'
+  | 'arithmetic'
+  | 'blank_names'
+  | 'name_quality'
+  | 'protected_field';
+
 export interface AnchorPersistSummary {
   written: number;
   investorsWritten: number;
@@ -90,6 +108,8 @@ export interface AnchorPersistSummary {
   notCheckable: string[];
   /** Populated only when a gate failed; the run wrote nothing. */
   refusedReason: string | null;
+  /** W-142: which gate refused, stated structurally — never parsed out of `refusedReason`. */
+  refusedKind: AnchorRefusalKind | null;
   /** Names the OCR could not read cleanly. No column exists for this. */
   lowConfidenceNames: string[];
   /**
@@ -350,6 +370,7 @@ export async function persistAnchorReport(
     checks: [],
     notCheckable: [],
     refusedReason: null,
+    refusedKind: null,
     lowConfidenceNames: [],
     skippedBlankNames: 0,
     applied: apply,
@@ -361,19 +382,27 @@ export async function persistAnchorReport(
   // door, rather than in the CLI, so every caller of the persister is covered.
   const existing = await deps.ipoRepository.findById(ipoId);
   if (!existing) {
-    return { ...empty, refusedReason: `persistAnchorReport: no IPO row for id ${ipoId}` };
+    return {
+      ...empty,
+      refusedReason: `persistAnchorReport: no IPO row for id ${ipoId}`,
+      refusedKind: 'ipo_missing',
+    };
   }
   if (existing.scraperLocked === true) {
     const reason =
       `IPO ${ipoId} (${existing.companyName ?? 'unknown'}) is scraper_locked — ` +
       'refusing the entire anchor write. Clear the lock in admin to allow it.';
     logger.warn({ ipoId }, '[AnchorPersister] IPO is scraper_locked — writing NOTHING');
-    return { ...empty, refusedReason: reason };
+    return { ...empty, refusedReason: reason, refusedKind: 'scraper_locked' };
   }
 
   const data = await deps.scrapeAnchorReport(ipoId, options.companyName);
   if (!data) {
-    return { ...empty, refusedReason: 'no anchor allocation report parsed for this IPO' };
+    return {
+      ...empty,
+      refusedReason: 'no anchor allocation report parsed for this IPO',
+      refusedKind: 'no_report',
+    };
   }
 
   const checks = runAnchorChecks(data);
@@ -388,7 +417,7 @@ export async function persistAnchorReport(
       { ipoId, companyName: options.companyName, failed: failed.map((c) => c.name) },
       '[AnchorPersister] arithmetic gate failed — writing NOTHING'
     );
-    return { ...empty, checks, notCheckable, lowConfidenceNames, refusedReason: reason };
+    return { ...empty, checks, notCheckable, lowConfidenceNames, refusedReason: reason, refusedKind: 'arithmetic' };
   }
 
   // Names are not an arithmetic gate by design (WHY GATES, top of file) — a
@@ -408,7 +437,14 @@ export async function persistAnchorReport(
       { ipoId, rows: rows.length },
       '[AnchorPersister] every investor row has a blank name — writing NOTHING'
     );
-    return { ...empty, checks, notCheckable, skippedBlankNames, refusedReason: reason };
+    return {
+      ...empty,
+      checks,
+      notCheckable,
+      skippedBlankNames,
+      refusedReason: reason,
+      refusedKind: 'blank_names',
+    };
   }
 
   const lowConfidenceNames = publishableRows
@@ -434,6 +470,7 @@ export async function persistAnchorReport(
       lowConfidenceNames,
       skippedBlankNames,
       refusedReason: reason,
+      refusedKind: 'name_quality',
     };
   }
 
@@ -464,7 +501,15 @@ export async function persistAnchorReport(
         `anchor_investors write refused: ${blocked.join(', ')} ` +
         'protected by an admin edit, and this row is rewritten whole';
       logger.warn({ ipoId, blocked }, '[AnchorPersister] protected field — writing NOTHING');
-      return { ...empty, checks, notCheckable, lowConfidenceNames, skippedBlankNames, refusedReason: reason };
+      return {
+        ...empty,
+        checks,
+        notCheckable,
+        lowConfidenceNames,
+        skippedBlankNames,
+        refusedReason: reason,
+        refusedKind: 'protected_field',
+      };
     }
   }
 
@@ -513,6 +558,7 @@ export async function persistAnchorReport(
     checks,
     notCheckable,
     refusedReason: null,
+    refusedKind: null,
     lowConfidenceNames,
     skippedBlankNames,
     applied: apply,

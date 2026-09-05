@@ -119,6 +119,7 @@ import {
   backoffNextDueAt,
 } from './step-ledger-recorders.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
+import { runAnchorAutoPersist, type AnchorAutoOutcome } from './anchor-auto-persist.js';
 
 /**
  * The extractor build that produced a stored extraction.
@@ -130,12 +131,34 @@ import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
  */
 export const EXTRACTOR_VERSION = 'extract_filing.py@2026-09-03';
 
-/** Doc types the python extractor understands. Anything else is skipped. */
+/** Doc types `scripts/extract_filing.py` understands. Anything else is skipped. */
 export const EXTRACTABLE_DOC_TYPES: readonly FilingDocType[] = [
   'PRICE_BAND_AD',
   'RHP',
   'DRHP',
   'PROSPECTUS',
+];
+
+/**
+ * W-142. The anchor allocation report is auto-persistable but is NOT an
+ * `extract_filing.py` doc type — it has its own extractor
+ * (`scripts/anchor_report_text.py`) and its own write door
+ * (`anchor-persister.ts`). Keeping it out of `EXTRACTABLE_DOC_TYPES` and out
+ * of `FilingDocType` is deliberate: those two say "the python filing extractor
+ * parses this", and teaching them otherwise would make `runExtractor` spawn a
+ * script that answers `unknown doc type ANCHOR_ALLOCATION_REPORT`.
+ */
+export const ANCHOR_DOC_TYPE = 'ANCHOR_ALLOCATION_REPORT';
+
+/**
+ * Every doc type the automatic door will CONSIDER — the filing extractor's
+ * four plus the anchor report. This, not `EXTRACTABLE_DOC_TYPES`, is the
+ * selection gate; the branch inside `processPendingFilings` decides which
+ * extractor each one goes to.
+ */
+export const AUTO_PERSIST_DOC_TYPES: readonly string[] = [
+  ...EXTRACTABLE_DOC_TYPES,
+  ANCHOR_DOC_TYPE,
 ];
 
 /** 10 minutes: an OCR pass over a 600-page RHP is slow, but not unbounded. */
@@ -158,45 +181,18 @@ export const EXTRACTION_BLOCKED_ERROR = 'blocked_after_10_attempts';
  */
 export const EXTRACTOR_MEMORY_CEILING_EXIT = 3;
 
-/** Round 4: stderr signatures of a memory failure that killed the extractor
- * at the C level, before Python (or even `memory_guard`) could run any
- * handler — so exit code and stdout carry NO information at all. Matched
- * case-insensitively against the captured stderr tail regardless of exit
- * code: `OpenBLAS error` / `Memory allocation still failed` (numpy's BLAS
- * backend under RLIMIT_AS, seen live on the VPS at EXTRACTOR_MAX_RSS_MB=200),
- * `MemoryError` / `memory ceiling exceeded` / `Cannot allocate memory` (the
- * ordinary Python-catchable shapes, matched here too as a backstop in case a
- * future change to the CLI's own handler regresses), `std::bad_alloc` (a C++
- * dependency's own OOM exception), and `Killed` (the shell's own message
- * when the kernel OOM-killer — not RLIMIT_AS — still gets there first).
- *
- * Round 5 (MINOR-1): `Killed` was unanchored and case-insensitive, so it also
- * matched unrelated stderr text containing "skilled" or "killed by user"
- * (e.g. a worker-pool log line). Anchored to the whole word with `\b` and
- * pulled out of the case-insensitive flag via a separate case-sensitive
- * alternation, since the shell's own message is always capitalized `Killed`.
- * `MemoryError` is similarly narrowed to only match an actual Python
- * exception line (`MemoryError` at the start of a traceback line, or
- * followed by `:` as in `MemoryError: ...`), not any incidental mention of
- * the word (e.g. inside a comment or an unrelated log string). */
-export const MEMORY_ABORT_STDERR_RE =
-  /Memory allocation still failed|OpenBLAS error|(^|\n)MemoryError(:|\n|$)|memory ceiling exceeded|Cannot allocate memory|std::bad_alloc/i;
-/** Round 5 (MINOR-1): kept case-sensitive and word-boundary-anchored, and
- * OUTSIDE `MEMORY_ABORT_STDERR_RE`'s `i` flag on purpose — a JS regex literal
- * cannot mix case sensitivity per-alternative, and the shell's OOM-killer
- * message is always capitalized `Killed`. Folding it in case-insensitively
- * (the previous shape) also matched "skilled"-style substrings and lowercase
- * "killed" inside unrelated prose. Combined with `MEMORY_ABORT_STDERR_RE` via
- * `isMemoryAbortStderr()` below — always use that, not this regex alone. */
-export const MEMORY_ABORT_KILLED_RE = /\bKilled\b/;
-
-/** The single check callers use: true when the captured stderr tail carries
- * ANY known C-level memory-abort or OOM-kill signature — see the two
- * constants above for what each half matches and why they cannot be one
- * regex literal. */
-export function isMemoryAbortStderr(stderr: string): boolean {
-  return MEMORY_ABORT_STDERR_RE.test(stderr) || MEMORY_ABORT_KILLED_RE.test(stderr);
-}
+/**
+ * W-137 memory-abort stderr detection. The definitions moved to
+ * `memory-abort-stderr.ts` (see that file for why) and are re-exported here
+ * unchanged — every existing importer of `MEMORY_ABORT_STDERR_RE`,
+ * `MEMORY_ABORT_KILLED_RE` and `isMemoryAbortStderr` keeps working.
+ */
+import { isMemoryAbortStderr } from './memory-abort-stderr.js';
+export {
+  MEMORY_ABORT_STDERR_RE,
+  MEMORY_ABORT_KILLED_RE,
+  isMemoryAbortStderr,
+} from './memory-abort-stderr.js';
 
 /** Marks a FAILED row's `extraction_error` as a HARD failure (killed/OOM),
  * with the count of consecutive hard failures embedded — read back by
@@ -245,7 +241,26 @@ export interface DocumentGate {
 export function parseBlockedVersion(error: string | null | undefined): string | null {
   if (!error) return null;
   const match = new RegExp(`^${EXTRACTION_BLOCKED_ERROR}@(.+)$`).exec(error);
-  return match ? match[1] : null;
+  if (match) return match[1];
+  // Round-2 MINOR-1: a MANUAL_REVIEW written for a REASON other than
+  // "10 attempts" (the anchor door's scan-quality refusals) still has to say
+  // which extractor build parked it, or `documentExtractionBlocked` reads it
+  // as an operator-set/legacy row and blocks it FOREVER — even after an
+  // extractor bump that would fix it. Such rows end with ` @<version>`.
+  const suffix = / @(\S+)$/.exec(error);
+  return suffix ? suffix[1] : null;
+}
+
+/**
+ * Stamp an extractor version onto a MANUAL_REVIEW reason (round-2 MINOR-1).
+ *
+ * The reason is truncated FIRST so the version suffix always survives the
+ * 1000-char `extraction_error` cap — a truncated-off version is exactly the
+ * permanent block this fixes.
+ */
+export function withBlockedVersion(reason: string, version: string, max = 1000): string {
+  const suffix = ` @${version}`;
+  return `${reason.slice(0, Math.max(0, max - suffix.length))}${suffix}`;
 }
 
 /**
@@ -472,7 +487,7 @@ export function selectPendingFilings(
 
   for (const doc of docs) {
     const type = String(doc.type ?? '').toUpperCase();
-    if (!EXTRACTABLE_DOC_TYPES.includes(type as FilingDocType)) {
+    if (!AUTO_PERSIST_DOC_TYPES.includes(type)) {
       skipped.push(`${type}: not an extractable doc type`);
       continue;
     }
@@ -698,6 +713,18 @@ export interface AutoPersistDeps {
     Pick<DocumentFetchStateRow, 'id' | 'docType' | 'documentId' | 'extractedAt' | 'extractorVersion'>[]
   >;
   runExtractor: ExtractorRunner;
+  /**
+   * W-142: the anchor route. Optional so every existing caller and test is
+   * unaffected; when a candidate anchor document is selected and this is not
+   * supplied, the document is reported as skipped rather than silently
+   * dropped or run through the wrong extractor.
+   */
+  runAnchorPersist?: (args: {
+    ipoId: string;
+    companyName: string;
+    /** The SELECTED row and its already-verified store path (round-2 MAJOR-1). */
+    document: { documentId: string; pdfPath: string };
+  }) => Promise<AnchorAutoOutcome>;
   persistFiling: typeof persistFilingExtraction;
   persisterDeps: FilingPersisterDeps;
   /**
@@ -793,6 +820,10 @@ export function buildAutoPersistDeps(
       return store.listForIpo(ipoId);
     },
     runExtractor: defaultExtractorRunner,
+    // W-142: the anchor document's own extractor + write door, wired with the
+    // SAME persister deps (one IPORepository, one protection filter) the
+    // filing door uses — the shape `scripts/persist-filing.ts` already has.
+    runAnchorPersist: (args) => runAnchorAutoPersist(args, persisterDeps, redis),
     persistFiling: persistFilingExtraction,
     persisterDeps,
     async setDocumentExtractionState({ documentId, status, error, retryCount }) {
@@ -835,6 +866,166 @@ function classifyFailure(
     return { status: 'MANUAL_REVIEW', error: `${EXTRACTION_BLOCKED_ERROR}@${version}` };
   }
   return { status: 'FAILED', error: rawError };
+}
+
+/**
+ * One anchor document, from extraction to an honest `extraction_status` (W-142).
+ *
+ * THE OUTCOME MAP — the whole point of this function. Before it, the only two
+ * outcomes an anchor document could have were "a human ran the CLI" and
+ * "PENDING forever", so nothing had to be classified. Automatically, every
+ * outcome must land somewhere a later cycle (and a human reading the row) can
+ * act on:
+ *
+ *   persisted            -> COMPLETED, retry counter reset, fetch state stamped
+ *   garbled-name floor   -> MANUAL_REVIEW **with the persister's own reason**
+ *   all-blank names      -> MANUAL_REVIEW (same class: the name column failed)
+ *   empty pages (W-139)  -> MANUAL_REVIEW, "no text and OCR heuristic did not fire"
+ *   memory ceiling / OOM -> FAILED via the W-137 hard-failure marker (>=24h
+ *                           backoff from the second such failure)
+ *   anything else        -> FAILED with the ordinary 2^n x 15 min backoff
+ *
+ * H3 (the anchor step) is recorded at the same sites the other doc types
+ * record theirs: the success row is written by `anchor-persister.ts` itself on
+ * the applied path, and every refusal writes an H3 with the reason here, so a
+ * blocked anchor is visible in the ledger instead of being invisible.
+ */
+async function runAnchorDocument(
+  ipo: AutoPersistIpo,
+  doc: CandidateDocument,
+  deps: AutoPersistDeps,
+  ctx: {
+    /** The store path `selectPendingFilings` already proved exists for THIS row. */
+    pdfPath: string;
+    version: string;
+    result: AutoPersistResult;
+    retryCountAtStamp: number;
+    previousRetryCount: number;
+    stateId?: string;
+  }
+): Promise<{ persisted: boolean }> {
+  const { version, result, retryCountAtStamp } = ctx;
+
+  if (!deps.runAnchorPersist) {
+    result.skipped.push(`${ANCHOR_DOC_TYPE}: no anchor runner wired into these deps`);
+    return { persisted: false };
+  }
+
+  let outcome: AnchorAutoOutcome;
+  try {
+    outcome = await deps.runAnchorPersist({
+      ipoId: ipo.id,
+      companyName: ipo.companyName ?? '',
+      // MAJOR-1: pin the SELECTED row + its verified file. The scrape must not
+      // re-select the newest anchor row (a second active row would be stamped
+      // COMPLETED without having been extracted) and must not download.
+      document: { documentId: doc.id, pdfPath: ctx.pdfPath },
+    });
+  } catch (error) {
+    outcome = {
+      kind: 'failed',
+      reason: `anchor: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+
+  if (outcome.kind === 'persisted') {
+    result.extracted++;
+    result.persisted++;
+    await deps
+      .setDocumentExtractionState({ documentId: doc.id, status: 'COMPLETED', error: null, retryCount: 0 })
+      .catch(() => undefined);
+    if (ctx.stateId) {
+      await deps
+        .setFetchStateExtracted({
+          stateId: ctx.stateId,
+          extractedAt: new Date(),
+          extractorVersion: version,
+        })
+        .catch(() => undefined);
+    }
+    // MINOR-2: a blank-name row is DROPPED from the write, not a refusal — the
+    // rest of the letter is real, checked data and publishing it is right. But
+    // a silent COMPLETED hid the fact that some allocation rows were omitted,
+    // so the count is logged here and is already carried in the H3 evidence
+    // `anchor-persister.ts` writes on the applied path.
+    if (outcome.summary.skippedBlankNames > 0) {
+      logger.warn(
+        {
+          ipoId: ipo.id,
+          company: ipo.companyName,
+          skippedBlankNames: outcome.summary.skippedBlankNames,
+          investorsWritten: outcome.summary.investorsWritten,
+        },
+        'Anchor report persisted with investor rows omitted for a blank name — see the H3 evidence (W-142)'
+      );
+    }
+    logger.info(
+      {
+        ipoId: ipo.id,
+        company: ipo.companyName,
+        investors: outcome.summary.investorsWritten,
+        skippedBlankNames: outcome.summary.skippedBlankNames,
+      },
+      'Anchor allocation report extracted and persisted automatically (W-142)'
+    );
+    return { persisted: true };
+  }
+
+  result.failed++;
+
+  // MANUAL_REVIEW: a scan-quality problem no retry fixes. Written with the
+  // REASON, and with the retry count, so the row says why a human is needed.
+  if (outcome.kind === 'manual_review') {
+    // MINOR-1: the version goes ON the row. Without it
+    // `documentExtractionBlocked` treats this as an operator-parked row and
+    // never revives it, not even after an extractor bump.
+    const parked = withBlockedVersion(outcome.reason, version);
+    logger.warn(
+      { ipoId: ipo.id, reason: outcome.reason, version },
+      'Anchor allocation report needs a human — recorded MANUAL_REVIEW with the reason (W-142)'
+    );
+    await deps
+      .setDocumentExtractionState({
+        documentId: doc.id,
+        status: 'MANUAL_REVIEW',
+        error: parked,
+        retryCount: retryCountAtStamp,
+      })
+      .catch(() => undefined);
+    await recordLiveStep(ipo.id, 'H3', {
+      status: 'BLOCKED',
+      source: ANCHOR_DOC_TYPE,
+      error: parked,
+    }).catch(() => undefined);
+    return { persisted: false };
+  }
+
+  // W-137: an OOM-killed / memory-ceiling sidecar carries the incrementing
+  // hard-failure marker, so the SECOND such failure on this document widens
+  // its backoff to >= 24h instead of retrying it every cycle.
+  const rawError =
+    outcome.kind === 'hard_failure'
+      ? markHardFailure(doc.extractionError, outcome.reason)
+      : outcome.reason;
+  const classified = classifyFailure(retryCountAtStamp, version, rawError);
+  logger.error(
+    { ipoId: ipo.id, reason: outcome.reason, hardFailure: outcome.kind === 'hard_failure' },
+    'Anchor allocation report failed (non-fatal) — recorded with a backoff (W-142)'
+  );
+  await deps
+    .setDocumentExtractionState({
+      documentId: doc.id,
+      status: classified.status,
+      error: classified.error.slice(0, 1000),
+      ...(classified.status === 'MANUAL_REVIEW' ? { retryCount: retryCountAtStamp } : {}),
+    })
+    .catch(() => undefined);
+  await recordLiveStep(ipo.id, 'H3', {
+    status: 'FAILED',
+    source: ANCHOR_DOC_TYPE,
+    error: classified.error.slice(0, 1000),
+  }).catch(() => undefined);
+  return { persisted: false };
 }
 
 /**
@@ -966,6 +1157,29 @@ export async function processPendingFilings(
     }
   }
 
+  // J1 runs whenever ANYTHING was written this call — including an anchor
+  // report, which persists inside the extract loop below rather than in the
+  // filing persist loop. Hoisted (and the J1 block factored into `finish`)
+  // so an anchor-only run still invalidates the IPO's caches (W-142).
+  let anyPersisted = false;
+
+  const finish = async (): Promise<AutoPersistResult> => {
+    if (!anyPersisted) return result;
+    try {
+      await deps.invalidateCaches(ipo.slug ?? '');
+      await recordLiveStep(ipo.id, 'J1', {
+        source: 'FILING_AUTO_PERSIST',
+        evidence: { slug: ipo.slug ?? null, documents: result.persisted },
+      });
+    } catch (error) {
+      logger.warn(
+        { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
+        'Cache invalidation after auto-persist failed (non-fatal)'
+      );
+    }
+    return result;
+  };
+
   // ---------------------------------------------------------------- extract
   for (let pendingIdx = 0; pendingIdx < pendingForThisCall.length; pendingIdx++) {
     const doc = pendingForThisCall[pendingIdx];
@@ -1012,6 +1226,26 @@ export async function processPendingFilings(
 
     result.spawned++;
     if (deps.spawnBudget) deps.spawnBudget.remaining--;
+
+    // ------------------------------------------------------- W-142 anchor
+    // The anchor report does NOT go to `extract_filing.py` (it does not parse
+    // anchor tables and never will — see ANCHOR_DOC_TYPE). It goes to its own
+    // existing extractor + write door, and extracts AND persists in one step,
+    // so it never joins `extractions` (and so never enters the W-45 paired
+    // gate, which compares a price-band ad against an RHP).
+    if (doc.type === ANCHOR_DOC_TYPE) {
+      const outcome = await runAnchorDocument(ipo, doc, deps, {
+        pdfPath,
+        version,
+        result,
+        retryCountAtStamp: newRetryCount,
+        previousRetryCount,
+        stateId: stateIdByDocType.get(ANCHOR_DOC_TYPE),
+      });
+      if (outcome.persisted) anyPersisted = true;
+      continue;
+    }
+
     const run = deps.runExtractor({ pdfPath, docType, sme, issueSizeRupees });
 
     if (isExtractorFailure(run)) {
@@ -1082,7 +1316,7 @@ export async function processPendingFilings(
     );
   }
 
-  if (extractions.length === 0) return result;
+  if (extractions.length === 0) return finish();
 
   // ------------------------------------------------------- W-45 paired gate
   // When this run produced BOTH a price-band ad and an RHP, the same
@@ -1148,11 +1382,10 @@ export async function processPendingFilings(
         version,
       },
     ]);
-    return result;
+    return finish();
   }
 
   // ---------------------------------------------------------------- persist
-  let anyPersisted = false;
   for (const { doc, extraction } of extractions) {
     const docType = doc.type as FilingDocType;
     let summary: PersistFilingSummary;
@@ -1222,22 +1455,7 @@ export async function processPendingFilings(
   }
 
   // ---------------------------------------------------------------------- J1
-  if (anyPersisted) {
-    try {
-      await deps.invalidateCaches(ipo.slug ?? '');
-      await recordLiveStep(ipo.id, 'J1', {
-        source: 'FILING_AUTO_PERSIST',
-        evidence: { slug: ipo.slug ?? null, documents: result.persisted },
-      });
-    } catch (error) {
-      logger.warn(
-        { ipoId: ipo.id, error: error instanceof Error ? error.message : String(error) },
-        'Cache invalidation after auto-persist failed (non-fatal)'
-      );
-    }
-  }
-
-  return result;
+  return finish();
 }
 
 /** True when the automatic path is switched on. Read through the flag object. */
