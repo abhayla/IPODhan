@@ -142,7 +142,8 @@ vi.mock('../../src/services/selector-degradation-monitor.js', async (importOrigi
 // not whether field-level consolidation math is correct (that is covered
 // elsewhere -- data-consolidation-service tests).
 const mockConsolidateIPOData = vi.fn();
-vi.mock('../../src/services/data-consolidation-service.js', () => ({
+vi.mock('../../src/services/data-consolidation-service.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../src/services/data-consolidation-service.js')>()),
   DataConsolidationService: vi.fn().mockImplementation(() => ({
     consolidateIPOData: mockConsolidateIPOData,
   })),

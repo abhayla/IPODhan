@@ -65,7 +65,7 @@ async function main() {
   // listing_performance.issue_price is the authoritative per-share issue price;
   // price_range_max is the fallback proxy for the GMP-premium denominator.
   const rows = await q(
-    `SELECT i.id, i.company_name, i.isin,
+    `SELECT i.id, i.company_name, i.isin, i.segment,
             i.open_date, i.close_date, i.allotment_date, i.listing_date,
             i.lot_size, i.price_range_min, i.price_range_max, i.issue_size, i.registrar,
             lp.listing_price, lp.listing_gain_percent,

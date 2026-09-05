@@ -48,7 +48,8 @@ vi.mock('../../../src/config/feature-flags.js', () => ({
   shouldUseFeature: () => false,
 }));
 
-vi.mock('../../../src/services/data-consolidation-service.js', () => ({
+vi.mock('../../../src/services/data-consolidation-service.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../../src/services/data-consolidation-service.js')>()),
   DataConsolidationService: vi.fn(),
 }));
 

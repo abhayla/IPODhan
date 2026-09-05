@@ -178,6 +178,38 @@ export function checkDegenerateBookbuildingBand(row) {
   return `price band is degenerate (min===max===${min}) but the issue is not FIXED_PRICE (issue_type=${row.issue_type ?? 'null'}) — a book-built issue always has floor < cap`;
 }
 
+// ---- Check 10: issue_size vs segment floor (W-177) -------------------------
+// The T-329 scraper-side guard (`collectImplausibleIssueSizeFields`,
+// scraper/src/services/data-consolidation-service.ts) rejects a MAINBOARD
+// issue_size below Rs10 Cr or an SME issue_size below Rs1 Cr BEFORE it is
+// written — but that guard only fires on a live scrape write. This is the
+// read-side companion: it catches a polluted row that reached the DB by any
+// other path (a stale write predating the guard, a manual insert, a future
+// write-door the guard hasn't been wired into yet) — the W-177 shape
+// (shanti-inorganics-ltd, ashutosh-fibre-ltd: SHARE COUNT sitting in the
+// issue_size column, ~80x below the real value) that `audit:substance` had
+// no bound for and so rendered green while the pages showed impossible sizes.
+// SAME floors as the scraper guard (never re-derived): keep both in sync by
+// hand — they are independent SSOTs by design (this script has no import
+// path into scraper/src), so a floor change must be applied in both places.
+export const MAINBOARD_ISSUE_SIZE_FLOOR = 10_00_00_000; // Rs10 Cr
+export const SME_ISSUE_SIZE_FLOOR = 1_00_00_000; // Rs1 Cr
+
+export function checkIssueSizeSegmentFloor(row) {
+  const size = toNumber(row.issue_size);
+  if (size === null || size <= 0) return null; // checkIssueSize already flags <=0
+  const band = toNumber(row.price_range_min) ?? toNumber(row.price_range_max);
+  if (band === null) return null; // no band on record — nothing to bound this against yet
+  const segment = row.segment;
+  const floor =
+    segment === 'MAINBOARD' ? MAINBOARD_ISSUE_SIZE_FLOOR : segment === 'SME' ? SME_ISSUE_SIZE_FLOOR : null;
+  if (floor === null) return null; // no segment (RIGHTS/NCD/REIT/InvIT) — floor doesn't apply
+  if (size < floor) {
+    return `issue_size (${size}) is below the ${segment} floor (${floor}) while a price band (${row.price_range_min ?? row.price_range_max}) is on record — looks like a share count, not a rupee value`;
+  }
+  return null;
+}
+
 // ---- Check 9: registrar quality (#45) --------------------------------------
 // A registrar string MUST NOT carry address/contact pollution — '^'/tab/newline
 // delimiters or "Tel:"/"E-mail:" blocks (the scrape artifact sanitizeRegistrar removes).
@@ -199,6 +231,7 @@ export const SUBSTANCE_CHECKS = [
   { key: 'price_band', name: 'price band (min>0, min<=max)', predicate: checkPriceBand },
   { key: 'degenerate_bookbuilding_band', name: 'no degenerate band on a non-FIXED_PRICE issue', predicate: checkDegenerateBookbuildingBand },
   { key: 'issue_size', name: 'issue_size > 0', predicate: checkIssueSize },
+  { key: 'issue_size_segment_floor', name: 'issue_size >= segment floor when a band is present', predicate: checkIssueSizeSegmentFloor },
   { key: 'isin_format', name: 'ISIN format IN[E|F]{9 alnum}', predicate: checkIsinFormat },
   { key: 'name_quality', name: 'name has no trailing status token', predicate: checkNameQuality },
   { key: 'listing_performance', name: 'listing_price>0 & gain in [-90..900]%', predicate: checkListingPerformance },
