@@ -98,7 +98,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$(git rev-parse --show-toplevel)/.claude/hooks/deploy-branch-guard.py\"",
+            "command": "bash -c 'py=$(command -v python3 || command -v python); exec \"$py\" \"$(git rev-parse --show-toplevel)/.claude/hooks/deploy-branch-guard.py\"'",
             "timeout": 10
           }
         ]

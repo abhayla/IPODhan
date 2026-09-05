@@ -76,13 +76,23 @@ jobs:
       - name: Require release/prod-* branch for a prod deploy
         if: steps.slot.outputs.slot == 'prod'
         shell: bash
+        # Round 2 (Tier A finding #2): the ref/sha values below MUST reach
+        # the script only via `env:`, never interpolated directly into the
+        # `run:` body — a ref/sha containing a quote + newline, interpolated
+        # as `"${{ ... }}"`, can terminate the shell statement early and
+        # make the step exit 0 without the gate ever running.
+        env:
+          SLOT: ${{ steps.slot.outputs.slot }}
+          RUN_REF: ${{ github.ref }}
+          RUN_SHA: ${{ github.sha }}
+          TARGET_REF: ${{ inputs.ref }}
         run: |
           set -euo pipefail
-          TARGET_SHA="${{ inputs.ref }}"
+          TARGET_SHA="$TARGET_REF"
           if [ -z "$TARGET_SHA" ]; then
-            TARGET_SHA="${{ github.sha }}"
+            TARGET_SHA="$RUN_SHA"
           fi
-          bash scripts/deploy/require-release-branch.sh "${{ steps.slot.outputs.slot }}" "${{ github.ref }}" "$TARGET_SHA"
+          bash scripts/deploy/require-release-branch.sh "$SLOT" "$RUN_REF" "$TARGET_SHA"
 
       - name: Deploy
         shell: bash

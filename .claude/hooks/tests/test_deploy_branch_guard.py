@@ -81,6 +81,41 @@ class DeployBranchGuardTest(unittest.TestCase):
         code, _out, err = run_hook(payload)
         self.assertEqual(code, 0, msg=f"expected allow, got {code}: {err}")
 
+    def test_bare_workflow_name_without_yml_is_blocked(self):
+        # `gh workflow run` accepts the workflow file id with or without
+        # its extension - round 2 finding #4.
+        cmd = "gh workflow run deploy-linux -f slot=prod -f ref=abc1234"
+        code, _out, err = run_hook(bash_payload(cmd))
+        self.assertEqual(code, 2, msg=f"expected block, got {code}: {err}")
+
+    def test_display_name_form_is_blocked(self):
+        cmd = 'gh workflow run "Deploy Linux (Migration M3)" -f slot=prod -f ref=abc1234'
+        code, _out, err = run_hook(bash_payload(cmd))
+        self.assertEqual(code, 2, msg=f"expected block, got {code}: {err}")
+
+    def test_raw_field_form_is_blocked(self):
+        cmd = "gh workflow run deploy-linux.yml --raw-field slot=prod -f ref=abc1234"
+        code, _out, err = run_hook(bash_payload(cmd))
+        self.assertEqual(code, 2, msg=f"expected block, got {code}: {err}")
+
+    def test_single_quoted_value_is_blocked(self):
+        cmd = "gh workflow run deploy-linux.yml -f slot='prod' -f ref=abc1234"
+        code, _out, err = run_hook(bash_payload(cmd))
+        self.assertEqual(code, 2, msg=f"expected block, got {code}: {err}")
+
+    def test_double_quoted_value_is_blocked(self):
+        cmd = 'gh workflow run deploy-linux.yml -f slot="prod" -f ref=abc1234'
+        code, _out, err = run_hook(bash_payload(cmd))
+        self.assertEqual(code, 2, msg=f"expected block, got {code}: {err}")
+
+    def test_different_workflow_starting_with_deploy_linux_is_allowed(self):
+        # Must not false-positive on a DIFFERENT workflow file that merely
+        # starts with "deploy-linux" - the \b-guarded regex should not
+        # match "deploy-linux-staging.yml" as this workflow.
+        cmd = "gh workflow run deploy-linux-staging.yml -f slot=prod -f ref=abc1234"
+        code, _out, err = run_hook(bash_payload(cmd))
+        self.assertEqual(code, 0, msg=f"expected allow, got {code}: {err}")
+
     def test_deploy_linux_dispatch_without_slot_is_allowed(self):
         # e.g. dispatching with only defaults (slot defaults to staging in
         # the workflow's own UI) - the hook only fires on an EXPLICIT

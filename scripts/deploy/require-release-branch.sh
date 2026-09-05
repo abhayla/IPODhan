@@ -56,7 +56,7 @@ fi
 
 # --- Check 1: github.ref must be a release/prod-* branch -------------------
 case "$REF_NAME" in
-  refs/heads/release/prod-*)
+  refs/heads/release/prod-?*)
     ;;
   *)
     refuse "prod deploys must run from a release/prod-<date> branch (docs/ops/branching-model.md Rule 1); this run's ref is '$REF_NAME'. Cut a release branch and dispatch with --ref release/prod-<date>."
@@ -78,13 +78,20 @@ if ! RESOLVED_SHA="$(git rev-parse --verify "${TARGET_SHA}^{commit}" 2>/dev/null
   fi
 fi
 
-if git merge-base --is-ancestor "$RESOLVED_SHA" "$REF_NAME" 2>/dev/null; then
+# NOTE: `if CMD; then ...; fi` with a false CMD and no else clause exits
+# the *if statement* with status 0 (POSIX: "if no compound-list is
+# executed, the exit status of if shall be zero") — `$?` read right after
+# such a `fi` is NOT the condition's exit code. Capture it explicitly with
+# `CMD && rc=0 || rc=$?` instead, so a real non-ancestor (rc=1) is
+# distinguished from an undecidable check (rc>1, e.g. shallow history).
+git merge-base --is-ancestor "$RESOLVED_SHA" "$REF_NAME" 2>/dev/null && MERGE_BASE_RC=0 || MERGE_BASE_RC=$?
+
+if [ "$MERGE_BASE_RC" -eq 0 ]; then
   echo "OK: $RESOLVED_SHA is an ancestor of $REF_NAME — prod deploy gate satisfied."
   exit 0
 fi
 
-MERGE_BASE_EXIT=$?
-if [ "$MERGE_BASE_EXIT" -eq 1 ]; then
+if [ "$MERGE_BASE_RC" -eq 1 ]; then
   refuse "target sha '$RESOLVED_SHA' is NOT reachable from '$REF_NAME' — it is not on the release branch."
 fi
 
@@ -93,8 +100,12 @@ fi
 # or an unrelated-history repo). One more bounded retry, then fail closed.
 BRANCH_SHORT="${REF_NAME#refs/heads/}"
 git fetch --deepen=200 origin "$BRANCH_SHORT" >/dev/null 2>&1 || true
-if git merge-base --is-ancestor "$RESOLVED_SHA" "$REF_NAME" 2>/dev/null; then
+git merge-base --is-ancestor "$RESOLVED_SHA" "$REF_NAME" 2>/dev/null && MERGE_BASE_RC=0 || MERGE_BASE_RC=$?
+if [ "$MERGE_BASE_RC" -eq 0 ]; then
   echo "OK: $RESOLVED_SHA is an ancestor of $REF_NAME — prod deploy gate satisfied (after deepen retry)."
   exit 0
+fi
+if [ "$MERGE_BASE_RC" -eq 1 ]; then
+  refuse "target sha '$RESOLVED_SHA' is NOT reachable from '$REF_NAME' — it is not on the release branch."
 fi
 refuse "could not determine whether '$RESOLVED_SHA' is an ancestor of '$REF_NAME' (ancestry unknown even after deepening) — refusing rather than guessing."

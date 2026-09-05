@@ -91,12 +91,44 @@ else
 fi
 
 # --- Case 4: prod + release ref + sha only on main -> REFUSED --------------
+# Round 2 (Tier A finding #1): the refusal REASON must name "NOT reachable"
+# — not the generic "could not determine ancestry" text, which is reserved
+# for the genuinely undecidable case (case 4b below). Before the round-2
+# fix, `MERGE_BASE_EXIT=$?` read right after an `if cmd; then ...; fi` with
+# a false condition and no `else` was ALWAYS 0 (POSIX: an `if` with no
+# executed branch exits 0), so this case fell through to a wasted
+# `git fetch --deepen` and the misleading "could not determine" reason.
 OUT4="$(run_gate prod refs/heads/release/prod-2026-09-05 "$MAIN_TIP_SHA" 2>&1)"
 CODE4=$?
-if [ "$CODE4" -eq 12 ] && echo "$OUT4" | grep -q "^REFUSED:"; then
-  pass "case 4: prod requesting a main-only sha on the release ref is REFUSED"
+if [ "$CODE4" -eq 12 ] && echo "$OUT4" | grep -q "^REFUSED:" && echo "$OUT4" | grep -q "NOT reachable from"; then
+  pass "case 4: prod requesting a main-only sha on the release ref is REFUSED with the 'NOT reachable' reason"
 else
-  fail "case 4: expected exit 12 + REFUSED for main-only sha, got exit $CODE4: $OUT4"
+  fail "case 4: expected exit 12 + REFUSED + 'NOT reachable' reason for main-only sha, got exit $CODE4: $OUT4"
+fi
+
+# --- Case 4b: undecidable ancestry (target ref itself doesn't exist) -------
+# Matches the release/prod-* glob but is not a real ref, so git merge-base
+# cannot resolve it at all (exit >1, not 0 or 1) even after the deepen
+# retry (no `origin` remote in this throwaway repo) — must REFUSE with the
+# "could not determine" reason, distinct from case 4's "NOT reachable".
+OUT4B="$(run_gate prod refs/heads/release/prod-doesnotexist "$RELEASE_TIP_SHA" 2>&1)"
+CODE4B=$?
+if [ "$CODE4B" -eq 12 ] && echo "$OUT4B" | grep -q "^REFUSED:" && echo "$OUT4B" | grep -q "could not determine whether"; then
+  pass "case 4b: undecidable ancestry (nonexistent release ref) is REFUSED with the 'could not determine' reason"
+else
+  fail "case 4b: expected exit 12 + REFUSED + 'could not determine' reason, got exit $CODE4B: $OUT4B"
+fi
+
+# --- Case 4c: exact 'release/prod-' (no date suffix) is REFUSED -----------
+# Round 2 (Tier A finding #3): the glob must require at least one char
+# after the trailing dash — a branch literally named `release/prod-`
+# must not satisfy check 1.
+OUT4C="$(run_gate prod refs/heads/release/prod- "$RELEASE_TIP_SHA" 2>&1)"
+CODE4C=$?
+if [ "$CODE4C" -eq 12 ] && echo "$OUT4C" | grep -q "^REFUSED:"; then
+  pass "case 4c: exact ref 'release/prod-' (no suffix) is REFUSED"
+else
+  fail "case 4c: expected exit 12 + REFUSED for bare 'release/prod-', got exit $CODE4C: $OUT4C"
 fi
 
 # --- Case 5: missing args -> REFUSED exit 12 -------------------------------

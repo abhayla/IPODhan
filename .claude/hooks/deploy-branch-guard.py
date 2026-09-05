@@ -34,12 +34,19 @@ import sys
 
 
 def has_field_form(command: str, field: str, value: str) -> bool:
-    """True if `command` sets a gh -f/--field/-F <field>=<value> (or that
-    same key/value via a JSON body, e.g. `-f slot=prod` or `"slot": "prod"`).
+    """True if `command` sets a gh -f/-F/--field/--raw-field <field>=<value>
+    (bare or quoted, e.g. `-f slot=prod`, `--raw-field slot=prod`,
+    `-f slot='prod'`, `-f slot="prod"`), or that same key/value via a JSON
+    body, e.g. `"slot": "prod"`.
     """
-    # -f slot=prod / --field slot=prod / -F slot=prod
+    # -f slot=prod / --field slot=prod / -F slot=prod / --raw-field slot=prod
+    # / any of those with the value quoted: slot='prod' / slot="prod"
     flag_pattern = re.compile(
-        r"(?:-f|-F|--field)\s+" + re.escape(field) + r"\s*=\s*" + re.escape(value)
+        r"(?:-f|-F|--field|--raw-field)\s+"
+        + re.escape(field)
+        + r"\s*=\s*[\"']?"
+        + re.escape(value)
+        + r"[\"']?(?:\s|$)"
     )
     if flag_pattern.search(command):
         return True
@@ -52,6 +59,24 @@ def has_field_form(command: str, field: str, value: str) -> bool:
         return True
 
     return False
+
+
+# The workflow may be referenced by its filename (with or without the
+# .yml extension — `gh workflow run` accepts both), or by its `name:`
+# field (the display name shown in the Actions tab), quoted on the
+# command line. `\b` guards against matching a DIFFERENT workflow whose
+# filename merely starts with "deploy-linux" (e.g. deploy-linux-staging.yml).
+# `(?![\w-])` (rather than a trailing `\b`) after the optional `.yml` makes
+# sure "deploy-linux-staging.yml" (a DIFFERENT workflow file that merely
+# starts with the same prefix) does NOT match - a bare `\b` would still
+# match there, since "x" -> "-" is itself a word boundary.
+DEPLOY_LINUX_WORKFLOW_REF = re.compile(
+    r"\bdeploy-linux(?:\.yml)?(?![\w-])|Deploy Linux \(Migration M3\)"
+)
+
+
+def references_deploy_linux_workflow(command: str) -> bool:
+    return bool(DEPLOY_LINUX_WORKFLOW_REF.search(command))
 
 
 def main() -> int:
@@ -72,7 +97,7 @@ def main() -> int:
         if not isinstance(command, str) or not command:
             return 0
 
-        if "gh workflow run" not in command or "deploy-linux.yml" not in command:
+        if "gh workflow run" not in command or not references_deploy_linux_workflow(command):
             return 0
 
         if not has_field_form(command, "slot", "prod"):
