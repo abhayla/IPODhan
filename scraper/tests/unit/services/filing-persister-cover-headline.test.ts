@@ -221,6 +221,53 @@ describe('filing-persister — W-147 cover headline', () => {
     expect(summary.skipped_failed_check.join(' ')).toContain('ipo_details.issueType');
   });
 
+  it('keeps the stored value when the field_sources row carries no doc type (fail closed)', async () => {
+    // W-147 round 2 / MINOR-2: a row that EXISTS but names no docType is UNKNOWN
+    // provenance, not "not an ad" — it may well be the advertisement's value.
+    const h = makeDeps();
+    (h.findByField as ReturnType<typeof vi.fn>).mockImplementation(
+      async (_ipoId: string, table: string, field: string) =>
+        `${table}.${field}` === 'ipos.issueSize'
+          ? { previousValue: '999', source: 'DRHP', dataLineage: { method: 'FILING_EXTRACTION' } }
+          : null
+    );
+
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      coverExtraction(),
+      { docType: 'PROSPECTUS', apply: true },
+      h.deps
+    );
+
+    const scraped = upsertIPOMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(scraped).not.toHaveProperty('issueSize');
+    // Every other column has no row at all and is written normally.
+    expect(scraped.priceRangeMin).toBe(41);
+    expect(summary.skipped_lower_priority_source?.join(' ')).toContain(
+      'no doc-type provenance'
+    );
+  });
+
+  it('writes when the stored value names a NON-ad doc type', async () => {
+    const h = makeDeps();
+    (h.findByField as ReturnType<typeof vi.fn>).mockImplementation(async () => ({
+      previousValue: '999',
+      source: 'DRHP',
+      dataLineage: { method: 'FILING_EXTRACTION', docType: 'DRHP' },
+    }));
+
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      coverExtraction(),
+      { docType: 'PROSPECTUS', apply: true },
+      h.deps
+    );
+
+    const scraped = upsertIPOMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(scraped.issueSize).toBe(146_001_000);
+    expect(summary.skipped_lower_priority_source).toEqual([]);
+  });
+
   it('keeps the stored value when the provenance read fails (fail closed)', async () => {
     const h = makeDeps();
     (h.findByField as ReturnType<typeof vi.fn>).mockImplementation(async () => {

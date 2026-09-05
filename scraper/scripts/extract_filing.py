@@ -2104,7 +2104,12 @@ COVER_OFFER_SHARES_RX = re.compile(
     r"|THE\s+ISSUE|THE\s+OFFER)\s+OF\s+(?:UP\s*TO\s+)?([\d,]+)\s+EQUITY\s+SHARES", re.I)
 COVER_AGGREGATING_RX = re.compile(
     r"AGGREGAT(?:ING|E|ES)\s+(?:UP\s*TO|UPTO|TO)?\s*" + _CV_CCY +
-    r"\s*([\d,]+(?:\.\d+)?)\s*/?\s*-?\s*(LAKHS?|CRORES?|MILLIONS?)", re.I)
+    # W-147 round 2 / MINOR-1: covers print the unit half a dozen ways —
+    # "Lakh(s)", "Lac(s)", "Crore(s)", "Cr"/"Cr.", "Million(s)", "Mn". All six
+    # spellings convert identically; recognising only three silently dropped the
+    # aggregate on the rest.
+    r"\s*([\d,]+(?:\.\d+)?)\s*/?\s*-?\s*"
+    r"(LAKHS?|LACS?|CRORES?|CRS?\.?|MILLIONS?|MN\.?)(?![A-Z])", re.I)
 COVER_LOT_RX = re.compile(
     r"MINIMUM\s+(?:BID\s+)?LOT(?:\s+SIZE)?\s+(?:IS|OF|WILL\s+BE)\s+([\d,]+)\s+EQUITY\s+SHARES",
     re.I)
@@ -2135,12 +2140,12 @@ _TYPICAL_FACE_VALUES = (1.0, 2.0, 5.0, 10.0)
 
 
 def _canon_unit(word):
-    w = (word or "").lower()
-    if w.startswith("lakh"):
+    w = (word or "").lower().rstrip(".")
+    if w.startswith("lakh") or w.startswith("lac"):
         return "lakhs"
-    if w.startswith("cror"):
+    if w.startswith("cror") or w in ("cr", "crs"):
         return "crores"
-    if w.startswith("million"):
+    if w.startswith("million") or w == "mn":
         return "millions"
     return None
 
@@ -2330,10 +2335,14 @@ def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=No
     # both are nulled with the reason instead.
     stated_nil = bool(COVER_NO_OFS_RX.search(blob)) or bool(COVER_OFS_NIL_RX.search(blob))
     entirely_fresh = stated_nil and not COVER_OFS_PRESENT_RX.search(blob)
-    arith_check = ((arithmetic_ok is not False),
-                   arithmetic_detail if arithmetic_ok is not None
-                   else "no price on the cover to check the aggregate against")
-    doc_amount = _convert_amount(amount, amount_unit, doc_unit)
+    # W-147 round 2 / MAJOR-1: an UNCHECKED identity is not a passed identity.
+    # Round 1 treated `arithmetic_ok is None` (price or share count unparseable —
+    # e.g. a cover printing "AT A PRICE OF Rs [*]" beside a real aggregate) as
+    # good enough, and published the aggregate on no evidence at all. A money
+    # field is written ONLY when shares x cap price actually reproduced it.
+    arith_check = ((arithmetic_ok is True), arithmetic_detail)
+    doc_amount = _convert_amount(amount, amount_unit, doc_unit) if arithmetic_ok is True else None
+    uncheckable = arithmetic_ok is None
     nil_ofs = (True, "the cover states the entire issue is a fresh issue")
 
     if not entirely_fresh:
@@ -2342,8 +2351,12 @@ def extract_offering_headline(page_texts, emit, segment="MAINBOARD", doc_unit=No
                       cover_page)
         emit.null("issue_structure", "fresh/OFS split not readable from the cover", cover_page)
     elif doc_amount is None:
-        reason = ("unit_unknown" if doc_unit is None or amount_unit is None
-                  else "no aggregate amount printed on the cover (price not yet determined)")
+        if uncheckable and amount is not None:
+            reason = "aggregate withheld: identity uncheckable (no price/shares)"
+        elif doc_unit is None or amount_unit is None:
+            reason = "unit_unknown"
+        else:
+            reason = "no aggregate amount printed on the cover (price not yet determined)"
         for name in _HEADLINE_MONEY_FIELDS:
             emit.null(name, reason, cover_page)
         emit.put("ofs_shares", 0.0, cover_page, "cover_states_offer_is_entirely_fresh", nil_ofs)
@@ -2389,7 +2402,10 @@ def extract_rhp(page_texts, emit, issue_size_rupees=None, segment="MAINBOARD"):
     # issue size) backs the shared core's net_worth_vs_issue_size and
     # unit_matches_magnitude checks. None when not supplied — those checks then
     # report passed=None (not evaluated), never a false rejection.
-    pnl = extract_pnl_from_texts(cleaned, issue_size_rupees=issue_size_rupees)
+    # W-148: the segment decides the year-on-year plausibility band — an SME
+    # issuer legitimately grows far faster than the mainboard band allows.
+    pnl = extract_pnl_from_texts(cleaned, issue_size_rupees=issue_size_rupees,
+                                 segment=segment)
     fiscal_years = pnl.get("annualYears") or []
     metrics = pnl.get("metrics") or {}
     # MAJOR-1 (C7): do NOT trust `pnl["unit"]` — the shared module's own detector

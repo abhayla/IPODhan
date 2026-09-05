@@ -424,6 +424,43 @@ def _parse_pnl_page(text):
 # of a wrong number.
 # --------------------------------------------------------------------------- #
 YOY_MIN, YOY_MAX = 0.2, 5.0
+# W-148: the mainboard band above is a mis-parse detector (a dropped leading
+# digit shows up as a 3,970x step), but on an SME issuer it fires on REAL
+# growth: the W-146 matrix rejected Horizon Reclaim's PAT (9.93x) and Vahh
+# Chemicals' PAT (7.49x) — genuine figures from small bases, on 2 of 3 filings.
+# An SME issuer's series legitimately moves a long way in one year, so its band
+# is much wider; the mis-parse signal it gives up is recovered by the
+# internal-consistency escape below.
+SME_YOY_MIN, SME_YOY_MAX = 0.05, 20.0
+
+
+def yoy_bounds(segment):
+    return (SME_YOY_MIN, SME_YOY_MAX) if segment == "SME" else (YOY_MIN, YOY_MAX)
+
+
+def _series_internally_consistent(metrics, year):
+    """True when this year's figures hold together: revenue >= EBITDA >= PAT for
+    a profitable year, and PAT's sign agrees with EBITDA's.
+
+    A dropped or gained leading digit breaks that ordering (a PAT read 10x too
+    large lands above EBITDA, or above revenue); a genuinely explosive but
+    correctly-read year does not. So a year that is internally consistent is
+    never rejected on the strength of its year-on-year step alone."""
+    rev = (metrics.get("revenue") or {}).get(year)
+    ebitda = (metrics.get("ebitda") or {}).get(year)
+    pat = (metrics.get("profit") or {}).get(year)
+    if pat is None or (rev is None and ebitda is None):
+        return False
+    if rev is not None and pat > rev * 1.0001:
+        return False
+    if ebitda is not None:
+        if pat > 0 and ebitda < pat * 0.99:
+            return False
+        if pat > 0 and ebitda < 0:
+            return False
+    if rev is not None and ebitda is not None and ebitda > rev * 1.0001:
+        return False
+    return True
 
 
 def _shared_years(a, b):
@@ -458,11 +495,18 @@ def check_ebitda_at_least_pat(metrics):
     return True, "EBITDA >= PAT for %s profitable years" % len(years), []
 
 
-def check_yoy_ratio_within_bounds(metrics):
-    """No published annual series moves by less than 0.2x or more than 5x in a
-    single year without the parse being suspect. A dropped leading digit
-    (13,970.10 read as 3,970.10) shows up here as a 3,970x step."""
-    failed, details, ok = [], [], 0
+def check_yoy_ratio_within_bounds(metrics, segment="MAINBOARD"):
+    """No published annual series moves outside its segment's band in a single
+    year without the parse being suspect. A dropped leading digit (13,970.10
+    read as 3,970.10) shows up here as a 3,970x step.
+
+    W-148: the band is segment-aware (mainboard 0.2x-5x unchanged, SME
+    0.05x-20x), and a step outside even the wider band is NOT rejected when the
+    offending year's figures are internally consistent (revenue >= EBITDA >= PAT,
+    signs agreeing) — the ordering a mis-parse breaks and real growth does not.
+    The detail line names which rule spared or condemned each step."""
+    lo, hi = yoy_bounds(segment)
+    failed, details, spared, ok = [], [], [], 0
     for key, series in sorted(metrics.items()):
         years = sorted(series, reverse=True)
         for newer, older in zip(years, years[1:]):
@@ -470,15 +514,22 @@ def check_yoy_ratio_within_bounds(metrics):
             if a == 0 or b == 0:
                 continue
             ratio = abs(a) / abs(b)
-            if ratio < YOY_MIN or ratio > YOY_MAX:
-                failed.append(key)
-                details.append("%s %s/%s = %.2fx" % (key, newer, older, ratio))
-            else:
+            if lo <= ratio <= hi:
                 ok += 1
+                continue
+            if _series_internally_consistent(metrics, newer):
+                spared.append("%s %s/%s = %.2fx (spared: %s figures internally "
+                              "consistent)" % (key, newer, older, ratio, newer))
+                continue
+            failed.append(key)
+            details.append("%s %s/%s = %.2fx" % (key, newer, older, ratio))
     if failed:
-        return False, "year-on-year step outside %sx..%sx: %s" % (
-            YOY_MIN, YOY_MAX, "; ".join(details)), sorted(set(failed))
-    return True, "%s year-on-year steps within %sx..%sx" % (ok, YOY_MIN, YOY_MAX), []
+        return False, "%s band %sx..%sx — year-on-year step outside it and not " \
+            "internally consistent: %s" % (segment, lo, hi, "; ".join(details)), sorted(set(failed))
+    detail = "%s band %sx..%sx — %s steps within band" % (segment, lo, hi, ok)
+    if spared:
+        detail += "; " + "; ".join(spared)
+    return True, detail, []
 
 
 def check_eps_times_shares_matches_pat(metrics, weighted_shares, tol=0.02):
@@ -747,7 +798,7 @@ def check_cross_document_agreement(a, b, tol=0.01, label_a="doc A", label_b="doc
 
 def run_plausibility(metrics, unit_stated, unit_phrase, unit_page, table_page,
                      weighted_shares=None, annual_years=None, unit=None,
-                     issue_size_rupees=None, extra_checks=None):
+                     issue_size_rupees=None, extra_checks=None, segment="MAINBOARD"):
     """Run every named check; return (checks, surviving metrics, rejected).
 
     `annual_years`/`unit`/`issue_size_rupees` back the W-129 checks. A check
@@ -761,7 +812,7 @@ def run_plausibility(metrics, unit_stated, unit_phrase, unit_page, table_page,
     results = [
         ("pat_not_above_revenue",) + check_pat_not_above_revenue(metrics),
         ("ebitda_at_least_pat",) + check_ebitda_at_least_pat(metrics),
-        ("yoy_ratio_within_bounds",) + check_yoy_ratio_within_bounds(metrics),
+        ("yoy_ratio_within_bounds",) + check_yoy_ratio_within_bounds(metrics, segment),
         ("eps_times_shares_matches_pat",) + check_eps_times_shares_matches_pat(
             metrics, weighted_shares),
         ("min_two_fiscal_years",) + check_min_two_fiscal_years(metrics),
@@ -801,7 +852,7 @@ def run_plausibility(metrics, unit_stated, unit_phrase, unit_page, table_page,
     return checks, kept, rejected
 
 
-def extract_from_texts(page_texts, issue_size_rupees=None):
+def extract_from_texts(page_texts, issue_size_rupees=None, segment="MAINBOARD"):
     """Pure core: given [(page_index, text)], return the extracted financials.
 
     Separated from PDF I/O so it can be unit-tested offline on captured page text.
@@ -885,7 +936,8 @@ def extract_from_texts(page_texts, issue_size_rupees=None):
         result["metrics"], result["unitStated"], result["unitPhrase"],
         result["unitPage"], result.get("pnlPage"),
         annual_years=result["annualYears"], unit=result["unit"],
-        issue_size_rupees=issue_size_rupees, extra_checks=extra_checks)
+        issue_size_rupees=issue_size_rupees, extra_checks=extra_checks,
+        segment=segment)
     result["checks"] = checks
     result["metrics"] = kept
     result["rejected"] = rejected

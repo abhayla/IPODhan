@@ -210,6 +210,7 @@ def test_horizon_book_built_rhp_with_an_undetermined_price():
 #    Rs 127); no Emerge cover PDF was available to read.
 #    1,009,000 x 127 = Rs 128,143,000 = 1,281.43 lakh -> the identity holds.
 # --------------------------------------------------------------------------- #
+# SYNTHETIC - not proven on a real cover (W-147 follow-up)
 EMERGE_COVER = """RED HERRING PROSPECTUS
 Dated: September 01, 2026
 100% Book Built Issue
@@ -238,6 +239,7 @@ def test_nse_emerge_book_built_cover_with_a_determined_band():
 #    in crore, and the segment bound is the mainboard one.
 #    30,000,000 x 500 = Rs 15,000,000,000 = 1,500 crore -> the identity holds.
 # --------------------------------------------------------------------------- #
+# SYNTHETIC - not proven on a real cover (W-147 follow-up)
 MAINBOARD_COVER = """RED HERRING PROSPECTUS
 Dated: August 25, 2026
 Book Built Offer
@@ -315,3 +317,74 @@ def test_cover_with_no_offer_sentence_nulls_every_headline_field():
         assert value(f, name) is None, name
     # The marker is still emitted so the persister can rank the (empty) read.
     assert value(f, "headline_source") == "PROSPECTUS_COVER"
+
+
+# --------------------------------------------------------------------------- #
+# W-147 round 2 — MAJOR-1: an UNCHECKED identity is not a passed identity.
+# --------------------------------------------------------------------------- #
+UNPRICED_BUT_AGGREGATED_COVER = AUTOFURNISH_COVER.replace(
+    "AT A PRICE OF RS. 41/- PER EQUITY SHARE INCLUDING A SHARE PREMIUM OF RS. 31/- PER\n"
+    "EQUITY SHARE (THE \"ISSUE PRICE\") AGGREGATING TO RS. 1460.01 LAKHS",
+    "AT A PRICE OF RS. [*] PER EQUITY SHARE (THE \"ISSUE PRICE\") "
+    "AGGREGATING TO RS. 1460.01 LAKHS",
+)
+
+
+def test_aggregate_withheld_when_the_identity_cannot_be_checked():
+    """The cover prints an aggregate but no price, so shares x price == aggregate
+    was never evaluated. Round 1 published the aggregate anyway, on no evidence
+    at all."""
+    assert "PRICE OF RS. [*]" in UNPRICED_BUT_AGGREGATED_COVER
+    f = headline(UNPRICED_BUT_AGGREGATED_COVER)
+    assert value(f, "price_band_cap") is None
+    for name in ("fresh_issue_amount", "total_offer_amount_at_cap", "ofs_amount",
+                 "ofs_amount_at_cap"):
+        assert value(f, name) is None, name
+        assert f[name]["check"]["detail"] == (
+            "aggregate withheld: identity uncheckable (no price/shares)"
+        ), name
+    # The share count and the face value are printed independently and survive.
+    assert value(f, "total_offer_shares_at_cap") == 3561000.0
+    assert value(f, "face_value") == 10.0
+
+
+def test_aggregate_withheld_when_the_share_count_is_unreadable():
+    cover = AUTOFURNISH_COVER.replace(
+        "INITIAL PUBLIC OFFERING OF UP TO 35,61,000 EQUITY SHARES",
+        "INITIAL PUBLIC OFFERING OF UP TO [*] EQUITY SHARES",
+    )
+    f = headline(cover)
+    # With no readable share count the offer sentence is not located at all, so
+    # every headline field — the aggregate included — is withheld a step earlier.
+    assert value(f, "fresh_issue_amount") is None
+    assert value(f, "total_offer_amount_at_cap") is None
+    assert value(f, "total_offer_shares_at_cap") is None
+    assert f["fresh_issue_amount"]["check"]["detail"] == (
+        "no 'issue/offer of N equity shares' sentence on the cover"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# W-147 round 2 — MINOR-1: the unit spellings a cover actually uses.
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize(
+    "printed,doc_unit,expected",
+    [
+        ("RS. 1460.01 LAKHS", "lakhs", 1460.01),
+        ("RS. 1460.01 LAKH", "lakhs", 1460.01),
+        ("RS. 1460.01 LACS", "lakhs", 1460.01),
+        ("RS. 1460.01 LAC", "lakhs", 1460.01),
+        ("RS. 14.6001 CRORES", "lakhs", 1460.01),
+        ("RS. 14.6001 CRORE", "lakhs", 1460.01),
+        ("RS. 14.6001 CR", "lakhs", 1460.01),
+        ("RS. 14.6001 CR.", "lakhs", 1460.01),
+        ("RS. 146.001 MILLIONS", "lakhs", 1460.01),
+        ("RS. 146.001 MILLION", "lakhs", 1460.01),
+        ("RS. 146.001 MN", "lakhs", 1460.01),
+        ("RS. 146.001 MN.", "lakhs", 1460.01),
+    ],
+)
+def test_every_printed_unit_spelling_converts_the_same_way(printed, doc_unit, expected):
+    cover = AUTOFURNISH_COVER.replace("RS. 1460.01 LAKHS", printed)
+    f = headline(cover, doc_unit=doc_unit)
+    assert value(f, "fresh_issue_amount") == pytest.approx(expected, rel=1e-6)

@@ -505,11 +505,21 @@ export async function persistFilingExtraction(
     if (!isCoverHeadline) return false;
     try {
       const prior = await deps.fieldSources.findByField(ipoId, tableName, column);
-      const priorDocType = (prior?.dataLineage as { docType?: string } | null | undefined)?.docType;
-      if (priorDocType !== 'PRICE_BAND_AD') return false;
+      // No row at all: the column has never been written by a filing — the
+      // cover is the best evidence there is, so it writes.
+      if (!prior) return false;
+      const priorDocType = (prior.dataLineage as { docType?: string } | null | undefined)?.docType;
+      // W-147 round 2 / MINOR-2: a row that exists but carries NO docType is
+      // UNKNOWN provenance, not "not an ad". Round 1 read it as fail-open and
+      // let a cover overwrite a value that may well have come from the ad.
+      // Only a row naming a non-ad doc type permits the write.
+      if (priorDocType && priorDocType !== 'PRICE_BAND_AD') return false;
       skippedLowerPriority.push(
-        `${tableName}.${column} (a price band advertisement already set it; a ` +
-          `${options.docType} cover ranks below the ad)`
+        priorDocType === 'PRICE_BAND_AD'
+          ? `${tableName}.${column} (a price band advertisement already set it; a ` +
+            `${options.docType} cover ranks below the ad)`
+          : `${tableName}.${column} (stored value has no doc-type provenance; kept it rather ` +
+            `than overwrite a possible price band advertisement value)`
       );
       return true;
     } catch {
