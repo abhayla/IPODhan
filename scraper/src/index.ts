@@ -23,7 +23,7 @@ import { reresolveRegistrarIds } from './services/registrar-reresolve.js';
 import { runDuplicateSweepJob } from './scheduler/jobs/duplicate-sweep-job.js';
 import { runStageReconcilerJob } from './scheduler/jobs/stage-reconciler-job.js';
 import { runPrimaryDocBackfill } from './scripts/backfill-primary-source-documents.js';
-import { runDocumentCycle, runDocumentPurge, formatCycleReason } from './services/document-cycle.js';
+import { runDocumentCycle, runDocumentPurge, formatCycleReason, releaseHeldLocks } from './services/document-cycle.js';
 import { shouldRunOnCatchUpCadence, isCatchUpCadenceDue, markCatchUpCadenceRan } from './scheduler/catch-up-cadence.js';
 import { isDiscoveryDue, isMarketHoursIST, mostRecentDiscoverySlotLabel } from './scheduler/due-step-cycle.js';
 import { runDemandBackfill } from './scripts/backfill-demand-graph.js';
@@ -575,7 +575,14 @@ export async function main() {
         // only ever fire on a later event-loop tick, after it is initialized.
         const hadError = combinedResult.errors.length > 0;
         const exitCode = hadError ? 1 : 130;
-        void releaseCycleLock().finally(() => process.exit(exitCode));
+        // W-140: release document-cycle's extraction lock (registered via
+        // registerHeldLock, held for up to FILING_EXTRACTION_LOCK_TTL_MS =
+        // 45 minutes) BEFORE the cycle lock and process.exit — process.exit
+        // skips document-cycle.ts's own `finally` release, which used to
+        // leave this lock held for its full TTL after any signal mid-cycle.
+        void releaseHeldLocks()
+          .finally(() => releaseCycleLock())
+          .finally(() => process.exit(exitCode));
       };
       process.once('SIGTERM', onSignal);
       process.once('SIGINT', onSignal);
