@@ -23,7 +23,7 @@
     "test:e2e:mobile": "playwright test --project=mobile-chrome --project=mobile-safari",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:debug": "playwright test --debug",
-    "test:prod-verify": "playwright test production-verification --project=chromium",
+    "test:prod-verify": "node scripts/run-prod-verify.mjs",
     "test:load": "artillery run artillery.yml",
     "test:load:quick": "artillery quick --count 10 --num 100 http://localhost:3000",
     "test:all": "npm run lint && npm run test && npm run test:e2e",
