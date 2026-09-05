@@ -1,4 +1,10 @@
-# Scope: global
+---
+paths:
+  - "docs/**"
+  - "web/app/**"
+  - "web/components/**"
+---
+# Scope: path (paths above)
 
 # Design & Scope Single Source of Truth (SSOT)
 

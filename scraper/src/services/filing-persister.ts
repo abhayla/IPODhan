@@ -762,25 +762,38 @@ export async function persistFilingExtraction(
 
   // The ad cites SEBI ICDR Reg 6(1)/6(2) only for a book-built offer.
   const regulation = str(extraction, 'book_building_regulation');
-  // W-147: an SME cover names its own process in words ("Fixed Price Issue" /
-  // "100% Book Built Issue"). That is the ONLY filing signal for a FIXED_PRICE
-  // issue — the Reg 6(1)/6(2) citation above exists only for a book-built one —
-  // and `data-validation.ts` / `data-consolidation-service.ts` both key their
-  // zero-width-price-band exemption off this exact enum, so a fixed-price SME
-  // issue whose issueType is unset has its (legitimate) floor == cap rejected as
-  // corruption. The two signals must AGREE: a cover reading FIXED_PRICE next to
-  // a book-building regulation citation means one of them was misread, so
-  // neither is written.
   const coverPriceType = str(extraction, 'issue_price_type');
   const priceTypeForWrite =
     coverPriceType === 'FIXED_PRICE' || coverPriceType === 'BOOK_BUILDING' ? coverPriceType : null;
   if (regulation && priceTypeForWrite === 'FIXED_PRICE') {
+    // The two signals disagree: a book-building regulation citation next to a
+    // cover reading FIXED_PRICE means one of them was misread, so neither is
+    // written (W-147 round 2).
     skippedFailedCheck.push(
       `ipo_details.issueType: the cover reads FIXED_PRICE but the filing cites SEBI ICDR ` +
         `Regulation ${regulation}, which applies only to a book-built offer`
     );
-  } else if (regulation) mark('issueType', 'BOOK_BUILDING');
-  else if (priceTypeForWrite) mark('issueType', priceTypeForWrite);
+  } else if (priceTypeForWrite) {
+    // W-147: the cover wording is the PRIMARY signal - an SME cover names its
+    // own process in words ("Fixed Price Issue" / "100% Book Built Issue").
+    // It takes precedence over both the regulation citation and the W-143
+    // floor==cap heuristic below (e.g. a book-built issue whose band happens
+    // to collapse to one price during a revision still reads BOOK_BUILDING
+    // from the cover, not FIXED_PRICE from the coincidental floor==cap).
+    mark('issueType', priceTypeForWrite);
+  } else if (regulation) {
+    mark('issueType', 'BOOK_BUILDING');
+  } else if (floor !== null && cap !== null && floor === cap && floor > 0) {
+    // W-143: no cover signal and no book-building regulation cited, AND the
+    // band collapses to one price - the same domain rule `data-validation.ts`
+    // already documents ("a FIXED_PRICE issue may legitimately have
+    // min === max"), applied to the one column (`ipo_details.issueType`) that
+    // had no writer for it at all. `floor`/`cap` are the SAME
+    // price_band_floor/price_band_cap fields already read above for
+    // `ipos.priceRangeMin`/`priceRangeMax` - no new extraction field, just a
+    // second consumer of the one already parsed.
+    mark('issueType', 'FIXED_PRICE');
+  }
   // W-88 (A12): the citation itself now has a column, so the offer's regulation
   // survives instead of collapsing into the issue_type enum. Stored in the
   // form the ad prints it ("Regulation 6(1)"), inside the column's 32 chars.

@@ -1,4 +1,10 @@
-# Scope: global
+---
+paths:
+  - "web/**"
+  - "scraper/**"
+  - "packages/**"
+---
+# Scope: path (paths above)
 
 # Independent Test Verification — the blind second tester
 

@@ -1,4 +1,10 @@
-# Scope: global
+---
+paths:
+  - ".claude/**"
+  - "CLAUDE.md"
+  - "docs/**"
+---
+# Scope: path (paths above)
 
 # Cross-Project Context Capture — one home for facts that outlive a single repo
 

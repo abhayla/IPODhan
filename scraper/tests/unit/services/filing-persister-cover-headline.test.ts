@@ -221,6 +221,24 @@ describe('filing-persister — W-147 cover headline', () => {
     expect(summary.skipped_failed_check.join(' ')).toContain('ipo_details.issueType');
   });
 
+  it('trusts the cover over the W-143 floor==cap heuristic: BOOK_BUILDING cover + collapsed band stays BOOK_BUILDING', async () => {
+    // W-143 (main) infers FIXED_PRICE from floor === cap alone when there is no
+    // other signal. This cover names its own process ("100% Book Built Issue")
+    // while the band happens to have collapsed to one price (e.g. a revision) —
+    // the cover wording is the PRIMARY signal and must win over that heuristic.
+    const h = makeDeps();
+    const summary = await persistFilingExtraction(
+      IPO_ID,
+      coverExtraction({ issue_price_type: 'BOOK_BUILDING' }),
+      { docType: 'PROSPECTUS', apply: true },
+      h.deps
+    );
+
+    const details = h.detailsUpsert.mock.calls[0][1] as Record<string, unknown>;
+    expect(details.issueType).toBe('BOOK_BUILDING');
+    expect(summary.skipped_failed_check).toEqual([]);
+  });
+
   it('keeps the stored value when the field_sources row carries no doc type (fail closed)', async () => {
     // W-147 round 2 / MINOR-2: a row that EXISTS but names no docType is UNKNOWN
     // provenance, not "not an ad" — it may well be the advertisement's value.

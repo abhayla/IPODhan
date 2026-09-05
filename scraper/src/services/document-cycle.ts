@@ -71,6 +71,57 @@ const FILING_EXTRACTION_LOCK_KEY = 'filing-auto-persist:cycle';
 export const FILING_EXTRACTION_LOCK_TTL_MS = 45 * 60 * 1000;
 
 /**
+ * W-140: registry of Redis locks currently held by an in-flight document
+ * cycle, so a signal handler in `index.ts` (SIGTERM/SIGINT, which calls
+ * `process.exit` and therefore skips this file's `finally` block below) can
+ * still release them before the process dies. Without this, a deploy that
+ * signals a running cycle leaves `FILING_EXTRACTION_LOCK_KEY` held for the
+ * full 45-minute TTL, starving the next two cycles' extraction step.
+ *
+ * `registerHeldLock`/`unregisterHeldLock` are called right around the same
+ * acquire/finally-release pair that already manages the lock's lifecycle —
+ * this registry never changes when or whether the lock is released on the
+ * normal path, it only gives the signal path a way to do the same release.
+ */
+const heldLocks: Array<{ key: string; token: string }> = [];
+
+export function registerHeldLock(key: string, token: string): void {
+  heldLocks.push({ key, token });
+}
+
+export function unregisterHeldLock(key: string, token: string): void {
+  const index = heldLocks.findIndex((entry) => entry.key === key && entry.token === token);
+  if (index !== -1) {
+    heldLocks.splice(index, 1);
+  }
+}
+
+/**
+ * Release every lock currently in the registry — token-checked (so it can
+ * only ever release a lock this process actually acquired), swallows errors
+ * (the TTL is the fallback), and logs one line per lock released. Idempotent:
+ * calling it with an empty registry (nothing held, or already released) is a
+ * no-op.
+ */
+export async function releaseHeldLocks(): Promise<void> {
+  if (heldLocks.length === 0) return;
+  const toRelease = heldLocks.splice(0, heldLocks.length);
+  const redis = getRedisClient();
+  const lock = new DistributedLock(redis as never);
+  for (const { key, token } of toRelease) {
+    try {
+      const released = await lock.release(key, token);
+      logger.warn({ key, released }, 'Signal path: released held lock before exit');
+    } catch (error) {
+      logger.warn(
+        { key, error: error instanceof Error ? error.message : String(error) },
+        'Signal path: failed to release held lock (non-fatal — it will expire via TTL)'
+      );
+    }
+  }
+}
+
+/**
  * W-102: whole-extraction-pass (PASS 2) wall-clock ceiling across all
  * candidate IPOs, checked BETWEEN IPOs (never interrupting a
  * `processPendingFilings` call already in flight) — python extraction runs
@@ -538,6 +589,67 @@ async function enrichListedCandidates(
   return { enriched };
 }
 
+/**
+ * W-153: candidate IPOs query, with the LISTED-tier order now rotation-aware.
+ *
+ * Root cause (W-144): `enrichListedCandidates` bounds its scan to
+ * `listedCap * 4` INCOMPLETE LISTED rows (W-135) — a hard requirement, kept
+ * exactly as-is here. Before this fix, the rows it scanned were whichever
+ * ones this query's `ORDER BY` happened to put first — `listing_date DESC`,
+ * a fixed, never-changing order. When more than `listedCap * 4` LISTED rows
+ * are simultaneously incomplete, that scan visits the SAME newest-by-listing-
+ * date rows every cycle forever; anything past the bound is silently dropped
+ * as `listedSkippedUnenriched` and never gets a turn.
+ *
+ * Fix: a LEFT JOIN aggregates each ipo's most recent
+ * `document_fetch_state.last_attempt_at`, and the LISTED tier now orders by
+ * that value ASCENDING with NULLS FIRST — a LISTED row that has never been
+ * attempted (no fetch-state rows at all) sorts first, exactly the same
+ * "never touched wins the turn" rule `orderAndCapCandidates`'s comparator
+ * already applies once a row IS scanned (W-124). `listing_date DESC` is now
+ * only the tie-break for two rows with the same last-activity value (both
+ * never touched, or touched in the same cycle) — it no longer decides which
+ * rows are even reachable. The JOIN is a single aggregate over
+ * `document_fetch_state`, computed once per cycle by Postgres, not an N+1 —
+ * it costs nothing extra over the previous single-table query.
+ *
+ * `enrichListedCandidates` itself is UNCHANGED: it still scans the incoming
+ * array in order up to the same `listedCap * 4` bound. What changed is which
+ * rows arrive in that first `listedCap * 4` slice.
+ */
+export const CANDIDATE_IPOS_SQL = `
+    SELECT i.id, i.company_name, i.slug, i.symbol, i.segment, i.status, i.price_range_min,
+           i.price_range_max, i.open_date, i.listing_date, i.bse_ipo_no,
+           i.company_website, i.verifier_url
+      FROM ipos i
+      LEFT JOIN (
+        SELECT ipo_id, MAX(last_attempt_at) AS last_activity
+          FROM document_fetch_state
+         GROUP BY ipo_id
+      ) dfs ON dfs.ipo_id = i.id
+     WHERE i.offering_type = 'IPO'
+       AND i.status IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED')
+     ORDER BY
+       CASE
+         WHEN upper(i.status::text) IN ('WITHDRAWN', 'POSTPONED') THEN 4
+         WHEN upper(i.status::text) = 'OPEN' THEN 0
+         WHEN upper(i.status::text) = 'CLOSED' THEN 1
+         WHEN upper(i.status::text) = 'LISTED' THEN 3
+         ELSE 2
+       END,
+       -- W-153: LISTED rotation order -- least-recently-touched first (NULL =
+       -- never touched sorts first), listing_date DESC only breaks ties.
+       -- The app layer (enrichListedCandidates/orderAndCapCandidates)
+       -- remains the source of truth once a row's real fetch-state rows are
+       -- read; this ordering only decides which rows are reachable within
+       -- the W-135 enrichment bound.
+       CASE WHEN upper(i.status::text) = 'LISTED' THEN dfs.last_activity END ASC NULLS FIRST,
+       CASE WHEN upper(i.status::text) = 'LISTED' THEN i.listing_date END DESC NULLS LAST,
+       CASE WHEN upper(i.status::text) NOT IN ('LISTED', 'OPEN', 'CLOSED', 'WITHDRAWN', 'POSTPONED')
+            THEN i.open_date END ASC NULLS LAST,
+       i.id
+`;
+
 /** Candidate IPOs: live-window only (R10 — history is WP F's job, not the cycle's). */
 export async function loadCandidateIpos(deps: {
   store: Pick<DocumentFetchStateRepository, 'listForIpo'>;
@@ -550,33 +662,7 @@ export async function loadCandidateIpos(deps: {
   listedEnriched: number;
   listedSkippedUnenriched: number;
 }> {
-  const result = await db.execute(sql`
-    SELECT id, company_name, slug, symbol, segment, status, price_range_min,
-           price_range_max, open_date, listing_date, bse_ipo_no,
-           company_website, verifier_url
-      FROM ipos
-     WHERE offering_type = 'IPO'
-       AND status IN ('UPCOMING', 'OPEN', 'CLOSED', 'LISTED', 'WITHDRAWN', 'POSTPONED')
-     ORDER BY
-       CASE
-         WHEN upper(status::text) IN ('WITHDRAWN', 'POSTPONED') THEN 4
-         WHEN upper(status::text) = 'OPEN' THEN 0
-         WHEN upper(status::text) = 'CLOSED' THEN 1
-         WHEN upper(status::text) = 'LISTED' THEN 3
-         ELSE 2
-       END,
-       -- W-124: this listing_date-desc order is only the CHEAP approximation --
-       -- true LISTED rotation needs each IPO's document_fetch_state, which
-       -- this single-table query cannot join cheaply for every cycle. The app
-       -- layer is the source of truth: enrichListedCandidates overrides this
-       -- ordering with the real last-attempted-at-ascending rotation before
-       -- orderAndCapCandidates runs, so a degraded DB round-trip only ever
-       -- affects the row order the runner never actually receives.
-       CASE WHEN upper(status::text) = 'LISTED' THEN listing_date END DESC NULLS LAST,
-       CASE WHEN upper(status::text) NOT IN ('LISTED', 'OPEN', 'CLOSED', 'WITHDRAWN', 'POSTPONED')
-            THEN open_date END ASC NULLS LAST,
-       id
-  `);
+  const result = await db.execute(sql.raw(CANDIDATE_IPOS_SQL));
   const rows = ((result as unknown as { rows?: Record<string, unknown>[] }).rows ?? []) as Record<
     string,
     unknown
@@ -725,6 +811,9 @@ export async function runDocumentCycle(
     const lock = await distributedLock.acquire(FILING_EXTRACTION_LOCK_KEY, { ttl: FILING_EXTRACTION_LOCK_TTL_MS });
     if (lock.acquired) {
       lockToken = lock.token;
+      if (lockToken) {
+        registerHeldLock(FILING_EXTRACTION_LOCK_KEY, lockToken);
+      }
     } else {
       logger.warn(
         { key: FILING_EXTRACTION_LOCK_KEY },
@@ -1050,6 +1139,7 @@ export async function runDocumentCycle(
     // on EVERY exit path (return above, or a throw anywhere in the try block)
     // rather than only the successful-fallthrough path.
     if (lockToken) {
+      unregisterHeldLock(FILING_EXTRACTION_LOCK_KEY, lockToken);
       try {
         await distributedLock.release(FILING_EXTRACTION_LOCK_KEY, lockToken);
       } catch (error) {
