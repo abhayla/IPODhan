@@ -127,9 +127,18 @@ vi.mock('../../../src/services/filing-auto-persist.js', () => ({
     skipped: [],
     spawned: 0,
     skippedBudget: 0,
+    anchorsConsidered: 0,
+    anchorsSpawned: 0,
+    anchorsPersisted: 0,
+    anchorsManualReview: 0,
+    anchorsFailed: 0,
   }),
   buildAutoPersistDeps: vi.fn().mockImplementation(() => ({})),
   DEFAULT_MAX_SPAWNS_PER_CYCLE: 3,
+  // W-168: read unconditionally by runDocumentCycle (same as
+  // DEFAULT_MAX_SPAWNS_PER_CYCLE above), regardless of the flag value.
+  anchorMaxSpawnsPerCycle: () => 1,
+  FILING_EXTRACTION_LOCK_TTL_MS: 45 * 60 * 1000,
 }));
 vi.mock('../../../src/utils/distributed-lock.js', () => ({
   DistributedLock: vi.fn().mockImplementation(() => ({

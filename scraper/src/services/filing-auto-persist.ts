@@ -120,6 +120,7 @@ import {
 } from './step-ledger-recorders.js';
 import { CacheInvalidator } from '../scheduler/cache-invalidator.js';
 import { runAnchorAutoPersist, type AnchorAutoOutcome } from './anchor-auto-persist.js';
+import { SIDECAR_TIMEOUT_MS } from '../scrapers/anchor-investors-scraper.js';
 
 /**
  * The extractor build that produced a stored extraction.
@@ -349,6 +350,43 @@ export function documentExtractionBlocked(
   return { blocked: false };
 }
 
+/**
+ * W-168: a deterministic parser refusal (`AnchorScrapeFailureKind ===
+ * 'parse_failed'` — "no bid price could be derived", "no amount consistent
+ * with the derived bid price", "N investor rows could be read") will refuse
+ * the SAME way on every retry: the scan/table shape does not change between
+ * cycles, so the ordinary 10-attempt exponential backoff just burns a spawn
+ * every cycle for up to 10 cycles before finally parking it. This classifies
+ * such a refusal to MANUAL_REVIEW after the SECOND identical failure on the
+ * SAME source file, stamped with the extractor version exactly like the
+ * `blocked_after_10_attempts` floor refusal — so a later extractor version
+ * bump revives it via the existing `parseBlockedVersion` mechanism.
+ *
+ * W-168 round 2 (HOLE 3): "identical" is keyed on the STRUCTURAL identity
+ * `(kind, sha256)`, both encoded in the previous `extraction_error` as
+ * `<reason> @id:<kind>:<sha16>` — never on the reason TEXT. `reason` is kept
+ * only for the human-readable message; comparing it would let a cosmetic OCR
+ * variation between two runs (different whitespace, a re-rounded number) read
+ * as "a different failure" and defeat the 2-strike rule even though the
+ * underlying refusal (same kind, same file) is identical. A DIFFERENT sha
+ * (the document row was re-fetched with new bytes) is treated as a fresh
+ * first occurrence — a new file may not fail the same way — never a match.
+ */
+export function classifyDeterministicAnchorParseFailure(
+  kind: string,
+  reason: string,
+  sha256: string | null | undefined,
+  previousError: string | null | undefined,
+  version: string
+): { status: 'FAILED' | 'MANUAL_REVIEW'; error: string } {
+  const shaTag = sha256 ? sha256.slice(0, 16) : 'unknown';
+  const prevMatch = /@id:([a-z0-9_]+):([0-9a-f]+|unknown)\s*$/i.exec(previousError ?? '');
+  if (prevMatch && prevMatch[1] === kind && prevMatch[2] === shaTag) {
+    return { status: 'MANUAL_REVIEW', error: withBlockedVersion(reason, version) };
+  }
+  return { status: 'FAILED', error: `${reason} @id:${kind}:${shaTag}` };
+}
+
 /** The status values `buildExtractionStatePatch` (and the `documents` column) accept. */
 export type ExtractionStatus = 'IN_PROGRESS' | 'COMPLETED' | 'FAILED' | 'PENDING' | 'MANUAL_REVIEW';
 
@@ -418,6 +456,18 @@ export interface AutoPersistResult {
   spawned: number;
   /** MAJOR-1: pending docs left unextracted this cycle because the spawn budget ran out. */
   skippedBudget: number;
+  /**
+   * W-168: anchor allocation report counts for this call, kept separate from
+   * the filing-doc-type counters above (`extracted`/`persisted`/`failed`
+   * still include anchors too, for backward compatibility with existing
+   * callers) so `document-cycle.ts` can log ONE
+   * "anchors considered/spawned/persisted/manual_review/failed" line per cycle.
+   */
+  anchorsConsidered: number;
+  anchorsSpawned: number;
+  anchorsPersisted: number;
+  anchorsManualReview: number;
+  anchorsFailed: number;
 }
 
 /**
@@ -437,6 +487,79 @@ export interface SpawnBudget {
 
 /** Default cap on python spawns per document cycle, across every IPO. */
 export const DEFAULT_MAX_SPAWNS_PER_CYCLE = 3;
+
+/**
+ * W-168. Before this, the anchor allocation report shared the SAME cycle-wide
+ * `spawnBudget` as the four `extract_filing.py` doc types. Live evidence
+ * (2026-09-06, two staging cycles): every SME anchor letter tried failed
+ * deterministically in the parser, and each failing anchor consumed one of
+ * the cycle's `DEFAULT_MAX_SPAWNS_PER_CYCLE` (3) slots, retried across BOTH
+ * cycles by the ordinary exponential backoff — three failing anchors can eat
+ * the WHOLE extraction budget and starve real filings (RHP/ads) for cycles.
+ *
+ * Anchors now get their OWN per-cycle spawn budget (`anchorSpawnBudget`,
+ * separate `SpawnBudget` instance), attempted in their OWN pass AFTER every
+ * filing document this call — never drawn from the filing budget, and never
+ * blocking a filing document behind it.
+ */
+export const DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE = 1;
+
+/**
+ * W-168 round 2 (HOLE 1). The lock-TTL static test only ever asserted the
+ * DEFAULT anchor budget against the TTL — an operator setting
+ * `ANCHOR_MAX_SPAWNS_PER_CYCLE` high enough (8, at the sidecar's 120s each)
+ * pushes the combined worst case (filing pass + anchor pass + slack) PAST
+ * `FILING_EXTRACTION_LOCK_TTL_MS` without the code (or the static test,
+ * which only checked the const) ever noticing. `anchorMaxSpawnsPerCycle()`
+ * now clamps its own return value to the largest count that still keeps
+ * `filingWorstMs + n * SIDECAR_TIMEOUT_MS + LOCK_SLACK_MS < FILING_EXTRACTION_LOCK_TTL_MS`,
+ * derived from the same constants the static test checks — never hard-coded
+ * — and warns once per call when it had to clamp.
+ */
+export const FILING_EXTRACTION_LOCK_TTL_MS = 45 * 60 * 1000;
+
+/** Same 60s slack the F3 static test already reserves for the filing side. */
+export const LOCK_SLACK_MS = 60_000;
+
+/**
+ * The largest anchor spawn count that still leaves the filing worst case +
+ * that many anchor sidecars + slack under the lock TTL. Exported so the
+ * static test can assert against THIS derivation instead of a re-typed copy.
+ */
+export function maxAnchorSpawnsWithinLockTtl(sidecarTimeoutMs: number): number {
+  const filingWorstMs = DEFAULT_MAX_SPAWNS_PER_CYCLE * EXTRACT_TIMEOUT_MS;
+  const budgetForAnchors = FILING_EXTRACTION_LOCK_TTL_MS - filingWorstMs - LOCK_SLACK_MS;
+  // Strict "<", not "<=": a count whose worst case lands EXACTLY on the
+  // budget still leaves zero margin against the TTL, so floor() alone (which
+  // can land exactly on it when the division is even) is one spawn too many.
+  let n = Math.max(0, Math.floor(budgetForAnchors / sidecarTimeoutMs));
+  while (n > 0 && n * sidecarTimeoutMs >= budgetForAnchors) n--;
+  return n;
+}
+
+/**
+ * `ANCHOR_MAX_SPAWNS_PER_CYCLE` env override, read at call time (not module
+ * load) so tests can flip it without re-importing the module — same pattern
+ * as the other numeric env knobs in `config/feature-flags.ts`. Falls back to
+ * `DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE` on anything non-finite or <= 0, and
+ * is then CLAMPED (HOLE 1) to whatever `maxAnchorSpawnsWithinLockTtl` allows
+ * for the anchor sidecar's own timeout — a raw env value is never trusted
+ * past the point where it would let the anchor pass outlive the cycle lock.
+ */
+export function anchorMaxSpawnsPerCycle(): number {
+  const raw = Number(process.env.ANCHOR_MAX_SPAWNS_PER_CYCLE);
+  const requested = Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_ANCHOR_MAX_SPAWNS_PER_CYCLE;
+  const sidecarTimeoutMs = SIDECAR_TIMEOUT_MS;
+  const cap = maxAnchorSpawnsWithinLockTtl(sidecarTimeoutMs);
+  if (requested > cap) {
+    logger.warn(
+      { requested, cap, sidecarTimeoutMs, FILING_EXTRACTION_LOCK_TTL_MS },
+      'ANCHOR_MAX_SPAWNS_PER_CYCLE clamped — the requested value would let the anchor pass outlive the extraction lock TTL (W-168 round 2)'
+    );
+    return cap;
+  }
+  return requested;
+}
 
 /**
  * Which stored documents still need extracting.
@@ -765,8 +888,22 @@ export interface AutoPersistDeps {
   fileExists?: (path: string) => boolean;
   storeDir?: string;
   version?: string;
-  /** MAJOR-1: shared across the whole document cycle. `undefined` = unbounded (existing callers/tests). */
+  /**
+   * MAJOR-1: shared across the whole document cycle. `undefined` = unbounded
+   * (existing callers/tests). W-168: this budget is for the four
+   * `extract_filing.py` doc types ONLY — the anchor allocation report never
+   * draws from it (see `anchorSpawnBudget`).
+   */
   spawnBudget?: SpawnBudget;
+  /**
+   * W-168: the anchor allocation report's OWN cycle-wide spawn budget,
+   * separate from `spawnBudget` — a `SpawnBudget` instance
+   * `document-cycle.ts` creates once per cycle
+   * (`{ remaining: anchorMaxSpawnsPerCycle() }`, default 1) and threads
+   * through every `processPendingFilings` call for that cycle, exactly like
+   * `spawnBudget`. `undefined` = unbounded (existing callers/tests).
+   */
+  anchorSpawnBudget?: SpawnBudget;
   /**
    * F3 (S-02 round 6): absolute epoch ms (per `now()`) after which no NEW
    * spawn may start. Checked BEFORE each spawn inside the extract loop —
@@ -931,6 +1068,7 @@ async function runAnchorDocument(
   if (outcome.kind === 'persisted') {
     result.extracted++;
     result.persisted++;
+    result.anchorsPersisted++;
     await deps
       .setDocumentExtractionState({ documentId: doc.id, status: 'COMPLETED', error: null, retryCount: 0 })
       .catch(() => undefined);
@@ -984,6 +1122,7 @@ async function runAnchorDocument(
       { ipoId: ipo.id, reason: outcome.reason, version },
       'Anchor allocation report needs a human — recorded MANUAL_REVIEW with the reason (W-142)'
     );
+    result.anchorsManualReview++;
     await deps
       .setDocumentExtractionState({
         documentId: doc.id,
@@ -1003,14 +1142,41 @@ async function runAnchorDocument(
   // W-137: an OOM-killed / memory-ceiling sidecar carries the incrementing
   // hard-failure marker, so the SECOND such failure on this document widens
   // its backoff to >= 24h instead of retrying it every cycle.
-  const rawError =
-    outcome.kind === 'hard_failure'
-      ? markHardFailure(doc.extractionError, outcome.reason)
-      : outcome.reason;
-  const classified = classifyFailure(retryCountAtStamp, version, rawError);
+  //
+  // W-168: a DETERMINISTIC parser refusal (`outcome.deterministic`, i.e.
+  // `AnchorScrapeFailureKind === 'parse_failed'`) takes a SEPARATE path —
+  // MANUAL_REVIEW after the 2nd identical failure on the same file, never
+  // the ordinary 10-attempt backoff (which would just retry the same
+  // unparseable letter for up to 10 cycles first). Timeout/OOM/network
+  // failures are NOT `outcome.deterministic` and keep their existing paths.
+  let classified: { status: 'FAILED' | 'MANUAL_REVIEW'; error: string };
+  if (outcome.kind === 'hard_failure') {
+    const rawError = markHardFailure(doc.extractionError, outcome.reason);
+    classified = classifyFailure(retryCountAtStamp, version, rawError);
+  } else if (outcome.deterministic) {
+    classified = classifyDeterministicAnchorParseFailure(
+      outcome.sourceKind ?? 'parse_failed',
+      outcome.reason,
+      doc.sha256,
+      doc.extractionError,
+      version
+    );
+  } else {
+    classified = classifyFailure(retryCountAtStamp, version, outcome.reason);
+  }
+  if (classified.status === 'MANUAL_REVIEW') result.anchorsManualReview++;
+  else result.anchorsFailed++;
   logger.error(
-    { ipoId: ipo.id, reason: outcome.reason, hardFailure: outcome.kind === 'hard_failure' },
-    'Anchor allocation report failed (non-fatal) — recorded with a backoff (W-142)'
+    {
+      ipoId: ipo.id,
+      reason: outcome.reason,
+      hardFailure: outcome.kind === 'hard_failure',
+      deterministic: outcome.kind === 'failed' && outcome.deterministic === true,
+      status: classified.status,
+    },
+    classified.status === 'MANUAL_REVIEW'
+      ? 'Anchor allocation report failed the same deterministic way twice — recorded MANUAL_REVIEW (W-168)'
+      : 'Anchor allocation report failed (non-fatal) — recorded with a backoff (W-142)'
   );
   await deps
     .setDocumentExtractionState({
@@ -1021,7 +1187,7 @@ async function runAnchorDocument(
     })
     .catch(() => undefined);
   await recordLiveStep(ipo.id, 'H3', {
-    status: 'FAILED',
+    status: classified.status === 'MANUAL_REVIEW' ? 'BLOCKED' : 'FAILED',
     source: ANCHOR_DOC_TYPE,
     error: classified.error.slice(0, 1000),
   }).catch(() => undefined);
@@ -1048,6 +1214,11 @@ export async function processPendingFilings(
     skipped: [],
     spawned: 0,
     skippedBudget: 0,
+    anchorsConsidered: 0,
+    anchorsSpawned: 0,
+    anchorsPersisted: 0,
+    anchorsManualReview: 0,
+    anchorsFailed: 0,
   };
 
   // D-15: automatic extract+persist ran ONLY for MAINBOARD IPOs until the SME
@@ -1086,7 +1257,14 @@ export async function processPendingFilings(
   // states for it first was pure waste (two DB round trips per candidate,
   // every cycle, for data that gets thrown away unread). Check BEFORE any
   // read.
-  if (deps.spawnBudget && deps.spawnBudget.remaining <= 0) {
+  // W-168: the filing budget alone being spent no longer skips this IPO's
+  // load — the anchor report has its OWN budget now and must still get a
+  // chance to run. Only skip the load when EVERY budget that is actually
+  // configured for this call is exhausted; an unconfigured (`undefined`)
+  // budget is unbounded and never counts as "exhausted" here.
+  const filingBudgetExhausted = deps.spawnBudget !== undefined && deps.spawnBudget.remaining <= 0;
+  const anchorBudgetAvailable = deps.anchorSpawnBudget === undefined || deps.anchorSpawnBudget.remaining > 0;
+  if (filingBudgetExhausted && !anchorBudgetAvailable) {
     logger.info(
       { ipoId: ipo.id },
       'Spawn budget already exhausted this cycle — skipping document load for this IPO (non-fatal)'
@@ -1115,25 +1293,47 @@ export async function processPendingFilings(
   result.considered = docs.length;
   result.skipped = skipped;
 
+  // W-168: the anchor allocation report is split OUT of the filing pending
+  // list here, before either budget is applied — it never draws from the
+  // filing spawn budget, and a filing document never waits behind an anchor.
+  const filingPending = pending.filter((d) => d.type !== ANCHOR_DOC_TYPE);
+  const anchorPending = pending.filter((d) => d.type === ANCHOR_DOC_TYPE);
+  result.anchorsConsidered = anchorPending.length;
+
   // MAJOR-1: apply the cross-cycle spawn budget BEFORE extracting anything.
   // Docs beyond the remaining budget are left PENDING (untouched) and reported
   // as skipped_budget — they are simply next cycle's (or a later IPO's, since
   // the same counter is shared) work, exactly like the wall-clock budget in
   // `runDocumentCycle` already treats unprocessed IPOs.
-  let budgeted = pending;
+  let filingBudgeted = filingPending;
   if (deps.spawnBudget) {
     const allowed = Math.max(0, deps.spawnBudget.remaining);
-    if (pending.length > allowed) {
-      budgeted = pending.slice(0, allowed);
-      result.skippedBudget = pending.length - allowed;
+    if (filingPending.length > allowed) {
+      filingBudgeted = filingPending.slice(0, allowed);
+      result.skippedBudget = filingPending.length - allowed;
       result.skipped = [
         ...result.skipped,
         `${result.skippedBudget} document(s) left PENDING — spawn budget exhausted this cycle`,
       ];
     }
   }
-  if (budgeted.length === 0) return result;
-  const pendingForThisCall = budgeted;
+
+  // W-168: the anchor report's OWN budget, never the filing one above.
+  let anchorBudgeted = anchorPending;
+  if (deps.anchorSpawnBudget) {
+    const allowed = Math.max(0, deps.anchorSpawnBudget.remaining);
+    if (anchorPending.length > allowed) {
+      anchorBudgeted = anchorPending.slice(0, allowed);
+      const anchorSkippedBudget = anchorPending.length - allowed;
+      result.skipped = [
+        ...result.skipped,
+        `${anchorSkippedBudget} anchor document(s) left PENDING — anchor spawn budget exhausted this cycle`,
+      ];
+    }
+  }
+
+  if (filingBudgeted.length === 0 && anchorBudgeted.length === 0) return result;
+  const pendingForThisCall = filingBudgeted;
 
   const stateIdByDocType = new Map(states.map((s) => [s.docType, s.id]));
   const sme = String(ipo.segment ?? '').toUpperCase() === 'SME';
@@ -1178,6 +1378,65 @@ export async function processPendingFilings(
       );
     }
     return result;
+  };
+
+  // W-168: the anchor pass — a SEPARATE, later pass over `anchorBudgeted`,
+  // run AFTER the filing extract+persist flow below (at every exit point of
+  // this function, via the `await runAnchorPass()` calls), using its OWN
+  // `anchorSpawnBudget` rather than `deps.spawnBudget`. Extracted to a
+  // closure (not inlined into the filing loop, as it was before W-168) so it
+  // still runs even on the "no filing extractions this call" and "W-45
+  // refused" early exits — an anchor-only IPO must not be starved just
+  // because it had no RHP/ad this cycle.
+  const runAnchorPass = async (): Promise<void> => {
+    for (let i = 0; i < anchorBudgeted.length; i++) {
+      const doc = anchorBudgeted[i];
+
+      // F3: same per-document deadline check as the filing loop. W-168 round
+      // 2 (HOLE 2): anchors run AFTER the filing pass within one IPO call, so
+      // a deadline that already elapsed during filing extraction must not
+      // silently no-op the anchor pass — it has to show up the SAME way a
+      // filing-side deadline skip does: `skippedBudget` incremented and a
+      // skip reason recorded, both of which the cycle-summary log reads.
+      if (deps.deadlineMs !== undefined && (deps.now ?? Date.now)() >= deps.deadlineMs) {
+        const remaining = anchorBudgeted.length - i;
+        result.skippedBudget += remaining;
+        result.skipped = [
+          ...result.skipped,
+          `${remaining} anchor document(s) left PENDING — extraction deadline reached`,
+        ];
+        break;
+      }
+
+      const pdfPath = documentPath(ipo.id, doc.type, doc.sha256 as string, deps.storeDir ?? getStoreDir());
+      const previousRetryCount = doc.retryCount ?? 0;
+      const revivingAfterManualReview = doc.extractionStatus === 'MANUAL_REVIEW';
+      const newRetryCount = revivingAfterManualReview ? 1 : previousRetryCount + 1;
+      doc.retryCount = newRetryCount;
+
+      try {
+        await deps.setDocumentExtractionState({ documentId: doc.id, status: 'IN_PROGRESS', retryCount: newRetryCount });
+      } catch (error) {
+        logger.warn(
+          { ipoId: ipo.id, docType: doc.type, error: error instanceof Error ? error.message : String(error) },
+          'Could not mark anchor document IN_PROGRESS (non-fatal) — extracting anyway'
+        );
+      }
+
+      result.spawned++;
+      result.anchorsSpawned++;
+      if (deps.anchorSpawnBudget) deps.anchorSpawnBudget.remaining--;
+
+      const outcome = await runAnchorDocument(ipo, doc, deps, {
+        pdfPath,
+        version,
+        result,
+        retryCountAtStamp: newRetryCount,
+        previousRetryCount,
+        stateId: stateIdByDocType.get(ANCHOR_DOC_TYPE),
+      });
+      if (outcome.persisted) anyPersisted = true;
+    }
   };
 
   // ---------------------------------------------------------------- extract
@@ -1226,25 +1485,6 @@ export async function processPendingFilings(
 
     result.spawned++;
     if (deps.spawnBudget) deps.spawnBudget.remaining--;
-
-    // ------------------------------------------------------- W-142 anchor
-    // The anchor report does NOT go to `extract_filing.py` (it does not parse
-    // anchor tables and never will — see ANCHOR_DOC_TYPE). It goes to its own
-    // existing extractor + write door, and extracts AND persists in one step,
-    // so it never joins `extractions` (and so never enters the W-45 paired
-    // gate, which compares a price-band ad against an RHP).
-    if (doc.type === ANCHOR_DOC_TYPE) {
-      const outcome = await runAnchorDocument(ipo, doc, deps, {
-        pdfPath,
-        version,
-        result,
-        retryCountAtStamp: newRetryCount,
-        previousRetryCount,
-        stateId: stateIdByDocType.get(ANCHOR_DOC_TYPE),
-      });
-      if (outcome.persisted) anyPersisted = true;
-      continue;
-    }
 
     const run = deps.runExtractor({ pdfPath, docType, sme, issueSizeRupees });
 
@@ -1316,7 +1556,10 @@ export async function processPendingFilings(
     );
   }
 
-  if (extractions.length === 0) return finish();
+  if (extractions.length === 0) {
+    await runAnchorPass();
+    return finish();
+  }
 
   // ------------------------------------------------------- W-45 paired gate
   // When this run produced BOTH a price-band ad and an RHP, the same
@@ -1382,6 +1625,7 @@ export async function processPendingFilings(
         version,
       },
     ]);
+    await runAnchorPass();
     return finish();
   }
 
@@ -1461,6 +1705,7 @@ export async function processPendingFilings(
   }
 
   // ---------------------------------------------------------------------- J1
+  await runAnchorPass();
   return finish();
 }
 

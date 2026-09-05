@@ -68,11 +68,43 @@ describe('classifyAnchorAutoOutcome — the outcome map', () => {
     expect(out.kind).toBe('failed');
   });
 
+  it('W-168b: a persister refusal (arithmetic) is DETERMINISTIC — same PDF, same verdict, so the 2nd identical repeat escalates to MANUAL_REVIEW instead of retrying forever', () => {
+    const out = classifyAnchorAutoOutcome({
+      summary: summary({ refusedReason: 'shares x price mismatch', refusedKind: 'arithmetic' }),
+    });
+    expect(out.kind).toBe('failed');
+    if (out.kind === 'failed') {
+      expect(out.deterministic).toBe(true);
+      expect(out.sourceKind).toBe('arithmetic');
+    }
+  });
+
   it('a locked / protected / missing-row refusal is FAILED, not a silent success', () => {
     for (const kind of ['scraper_locked', 'protected_field', 'ipo_missing', 'no_report'] as const) {
-      expect(
-        classifyAnchorAutoOutcome({ summary: summary({ refusedReason: 'x', refusedKind: kind }) }).kind
-      ).toBe('failed');
+      const out = classifyAnchorAutoOutcome({ summary: summary({ refusedReason: 'x', refusedKind: kind }) });
+      expect(out.kind).toBe('failed');
+    }
+  });
+
+  it('W-168b: protected_field is a content verdict (admin protection does not clear on retry) — DETERMINISTIC', () => {
+    const out = classifyAnchorAutoOutcome({
+      summary: summary({ refusedReason: 'x', refusedKind: 'protected_field' }),
+    });
+    expect(out.kind).toBe('failed');
+    if (out.kind === 'failed') {
+      expect(out.deterministic).toBe(true);
+      expect(out.sourceKind).toBe('protected_field');
+    }
+  });
+
+  it('W-168b: scraper_locked / ipo_missing / no_report are TRANSIENT — never deterministic, stay retryable forever', () => {
+    for (const kind of ['scraper_locked', 'ipo_missing', 'no_report'] as const) {
+      const out = classifyAnchorAutoOutcome({ summary: summary({ refusedReason: 'x', refusedKind: kind }) });
+      expect(out.kind).toBe('failed');
+      if (out.kind === 'failed') {
+        expect(out.deterministic).toBeFalsy();
+        expect(out.sourceKind).toBe(kind);
+      }
     }
   });
 

@@ -22,6 +22,7 @@ import { db, getRedisClient, filterProtectedFields } from '@ipodhan/shared';
 import {
   persistAnchorReport,
   type AnchorPersistSummary,
+  type AnchorRefusalKind,
 } from './anchor-persister.js';
 import {
   scrapeAnchorInvestorsDetailed,
@@ -47,7 +48,41 @@ export type AnchorAutoOutcome =
   | { kind: 'persisted'; reason: null; summary: AnchorPersistSummary }
   | { kind: 'manual_review'; reason: string; summary?: AnchorPersistSummary }
   | { kind: 'hard_failure'; reason: string }
-  | { kind: 'failed'; reason: string; summary?: AnchorPersistSummary };
+  | {
+      kind: 'failed';
+      reason: string;
+      summary?: AnchorPersistSummary;
+      /**
+       * W-168: true when this failure came from a DETERMINISTIC parser
+       * refusal (`AnchorScrapeFailureKind === 'parse_failed'`) — the same
+       * scan will refuse identically on every retry, so the caller escalates
+       * to MANUAL_REVIEW after the 2nd identical failure instead of the
+       * ordinary 10-attempt backoff. Never set for a transient failure
+       * (timeout/OOM/network/sidecar error), which keeps its existing path.
+       *
+       * W-168b: also true when this failure came from a PERSISTER refusal
+       * (e.g. `refusedKind === 'arithmetic'`) that reaches the catch-all
+       * FAILED branch below. A persister refusal is a verdict on the file's
+       * CONTENT — same PDF, same OCR result, same refusal — so it deserves
+       * the same "retry once, then MANUAL_REVIEW" treatment as a scraper
+       * parse failure, not an unbounded 10-attempt backoff.
+       */
+      deterministic?: boolean;
+      /**
+       * W-168 round 2 (HOLE 3): the structural `AnchorScrapeFailureKind`
+       * this failure came from (e.g. `'parse_failed'`), carried alongside
+       * `reason` so the caller's "is this the SAME failure as last time"
+       * identity check can key on (kind, sha256) — a structural signal — and
+       * NOT on the reason text, which an OCR pass can render with cosmetic
+       * variation (different whitespace/rounding) between two runs that are
+       * otherwise the identical deterministic refusal.
+       *
+       * W-168b: also carries an `AnchorRefusalKind` (e.g. `'arithmetic'`)
+       * when this failure is a PERSISTER refusal rather than a scraper
+       * failure — see the `deterministic` doc below.
+       */
+      sourceKind?: AnchorScrapeFailureKind | AnchorRefusalKind;
+    };
 
 /**
  * The whole outcome mapping, as ONE pure function.
@@ -73,7 +108,17 @@ export function classifyAnchorAutoOutcome(input: {
       // again, so it goes to a human rather than round the backoff loop.
       return { kind: 'manual_review', reason: `anchor: ${ANCHOR_EMPTY_PAGES_REASON}`, summary };
     }
-    return { kind: 'failed', reason: `anchor: ${failure.reason}`, summary };
+    // W-168: `parse_failed` is the anchor-report-parser's own structural
+    // refusal (no bid price derivable / no amount consistent with the
+    // derived bid price / too few investor rows read) — a deterministic
+    // verdict on the file's content, not a transient error.
+    return {
+      kind: 'failed',
+      reason: `anchor: ${failure.reason}`,
+      summary,
+      deterministic: failure.kind === 'parse_failed',
+      sourceKind: failure.kind,
+    };
   }
 
   if (!summary) {
@@ -90,7 +135,29 @@ export function classifyAnchorAutoOutcome(input: {
   if (summary.refusedKind === 'name_quality' || summary.refusedKind === 'blank_names') {
     return { kind: 'manual_review', reason: `anchor: ${summary.refusedReason}`, summary };
   }
-  return { kind: 'failed', reason: `anchor: ${summary.refusedReason}`, summary };
+  // W-168b: this refusal reached the catch-all because it is neither
+  // "arithmetic checked out" (persisted) nor name/blank-name garbling
+  // (manual_review above). Only SOME of these `refusedKind`s are a verdict
+  // on the document's CONTENT — `arithmetic` (shares x price mismatch) and
+  // `protected_field` (an admin-protected column blocked the write; that
+  // protection does not clear itself on retry) refuse the same way every
+  // time on the same file/DB row, so they earn the "2nd identical refusal ->
+  // MANUAL_REVIEW" treatment, same as a scraper parse failure.
+  //
+  // `scraper_locked` (the extraction lock is transiently held), `ipo_missing`
+  // (the IPO row may simply not exist YET), and `no_report` (a report may be
+  // uploaded later) are NOT content verdicts — they can clear themselves with
+  // no change to the document at all, so they MUST stay retryable FAILED.
+  // Marking those deterministic would send an ordinary lock collision to
+  // MANUAL_REVIEW forever after two unlucky collisions.
+  const CONTENT_VERDICT_KINDS = new Set(['arithmetic', 'protected_field']);
+  return {
+    kind: 'failed',
+    reason: `anchor: ${summary.refusedReason}`,
+    summary,
+    deterministic: summary.refusedKind != null && CONTENT_VERDICT_KINDS.has(summary.refusedKind),
+    sourceKind: summary.refusedKind ?? undefined,
+  };
 }
 
 export interface AnchorAutoPersistArgs {

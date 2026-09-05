@@ -134,6 +134,11 @@ const processPendingFilingsMock = vi.fn(
       skipped: [],
       spawned: 0,
       skippedBudget: 0,
+      anchorsConsidered: 0,
+      anchorsSpawned: 0,
+      anchorsPersisted: 0,
+      anchorsManualReview: 0,
+      anchorsFailed: 0,
     };
   }
 );
@@ -143,6 +148,9 @@ vi.mock('../../../src/services/filing-auto-persist.js', () => ({
   processPendingFilings: (...args: unknown[]) => processPendingFilingsMock(...args),
   buildAutoPersistDeps: (...args: unknown[]) => buildAutoPersistDepsMock(...args),
   DEFAULT_MAX_SPAWNS_PER_CYCLE: 3,
+  // W-168: the anchor allocation report's own per-cycle spawn budget.
+  anchorMaxSpawnsPerCycle: () => 1,
+  FILING_EXTRACTION_LOCK_TTL_MS: 45 * 60 * 1000,
 }));
 
 const lockAcquireMock = vi.fn().mockResolvedValue({ acquired: true, token: 'tok-1' });
@@ -197,6 +205,11 @@ beforeEach(() => {
         skipped: [],
         spawned: 0,
         skippedBudget: 0,
+        anchorsConsidered: 0,
+        anchorsSpawned: 0,
+        anchorsPersisted: 0,
+        anchorsManualReview: 0,
+        anchorsFailed: 0,
       };
     }
   );
@@ -269,6 +282,11 @@ describe('W-102 — the spawn budget object is the SAME instance across both can
           skipped: [],
           spawned: 1,
           skippedBudget: 0,
+          anchorsConsidered: 0,
+          anchorsSpawned: 0,
+          anchorsPersisted: 0,
+          anchorsManualReview: 0,
+          anchorsFailed: 0,
         };
       }
     );
