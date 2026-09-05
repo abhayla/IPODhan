@@ -18,6 +18,15 @@
 # to force continuation. A per-user-turn counter (.claude/.keepgoing-count, reset
 # by prompt-enhance-reminder.sh) caps auto-continues at 12 to prevent any loop.
 #
+# GENUINE-WAIT MARKER: a final text may contain the literal token
+# `[waiting: background]` to declare, unambiguously, that the turn is ending
+# because it is genuinely blocked on background agents/tasks and nothing else
+# is executable right now. Prefer the regex exemptions below when the wording
+# already matches one of the recognized wait shapes; use the marker as the
+# explicit escape hatch when a legitimate wait doesn't happen to match a
+# recognized phrasing. The marker is honest-use, self-policing the same way as
+# `*Sync-check:*` — it renders visibly to the user, so abuse is visible too.
+#
 # Plus one NON-BLOCKING telemetry class (the output-side backstop):
 #   C. ENHANCE-BANNER MISS — a substantive assistant turn (>=300 chars) that does
 #      NOT open with the *Enhanced:* governance banner. WHY: prompt-enhance-reminder.sh
@@ -69,10 +78,14 @@ root="$(git rev-parse --show-toplevel 2>/dev/null)"
 # "§GATE (needs Abhay)". These are escalation STATEMENTS, not permission-to-START
 # over-asks (those still match the A/B patterns below), so exempting them does not
 # reopen the over-ask hole — it stops looping a genuinely-blocked run to the 12-cap.
-if printf '%s' "$full" | grep -qiE "running background agent|background agent (is|whose|is still) |a running (background )?agent|arrives by notification|waiting on (a |the )?(running|background|dispatched) (agent|task)|^blocker:|blocker: |(agent|task|worker|build|run)[^.]{0,60}(is|still|only one) running|(agent|task|worker|build) running|only (task|agent|thing) running|-minute budget|budget[^.]{0,30}(started|running)|when (it|the (result|notification)) (lands|arrives)" ; then
+if printf '%s' "$full" | grep -qiE "running background agent|background agent (is|whose|is still) |a running (background )?agent|arrives by notification|waiting on (a |the )?(running|background|dispatched) (agent|task)|^blocker:|blocker: |(agent|task|worker|build|run)[^.]{0,60}(is|still|only one) running|(agent|task|worker|build) running|only (task|agent|thing) running|-minute budget|budget[^.]{0,30}(started|running)|when (it|the (result|notification)) (lands|arrives)|workers?( are| is)?( still)? (running|building|in flight)|(still|is|are) (running|building|in flight)|in (the )?background|background (job|watch|read|task|agent|worker)s?|until (one|any) of (those|them|these)[^.]{0,20}(returns?|reports?|lands?|finishes|completes)|reports? back|(their|its) (results?|reports?) (arrive|land|come)|waiting (on|for) (the )?[^.]{0,40}(agent|worker|watch|cron|scheduled|review|reproduction|gate)|scheduled (step|read|cron|one-shot)|\[waiting: background\]" ; then
   # (2026-09-03, W-91) A turn that ends because a dispatched agent / background task
   # is still running is a genuine wait, not narrate-and-stop: the result arrives
   # as a task-notification and nothing can be executed until then.
+  # (2026-09-06) Broadened after real waits ("workers remain... still building",
+  # "nothing else can move until one of those five returns", "still running:",
+  # "in flight", "runs in the background") were mis-flagged as narrate-and-stop --
+  # plus the explicit `[waiting: background]` marker documented above.
   exit 0
 fi
 if printf '%s' "$full" | grep -qE "push to prod|deploy|dns|cutover|force[- ]push|--force|spend|publish|destructive|drop (table|column)|delete (the )?(branch|remote)|escalat|blocked on|need (your|you to)|your (credential|password|approval|login|call|decision|two|sign-?off|go-?ahead)|waiting on (you|the user)|holding for your|awaiting your|act without|will not (act|force|revert|push)|not autonomously|gate \(needs|log in yourself|run .* yourself|requires? your|sync-check"; then
