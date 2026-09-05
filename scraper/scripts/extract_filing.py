@@ -21,16 +21,48 @@ import re
 import json
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-# Reuse, do not copy (T-430 DoD): the column/number helpers already proven on RHPs.
-from extract_financials_pdf import (  # noqa: E402
-    money_values,
-    _normalize_numbers,
-    extract_from_texts as extract_pnl_from_texts,
-    check_pat_not_above_revenue,
-    check_ebitda_at_least_pat,
-    check_yoy_ratio_within_bounds,
-    check_cross_document_agreement,
-)
+import memory_guard  # noqa: E402 — light (no heavy deps), safe to import first
+
+
+def _emit_memory_ceiling_and_exit(exc):
+    """W-137 round 3: the ONE choke point for 'this looked like the memory
+    ceiling, emit the JSON and exit 3' — called both from the guarded heavy
+    import below AND from `main()`'s own try/except, so a memory failure
+    reaches this same JSON-then-exit path whether it happens before `main()`
+    ever runs or during extraction itself. A VPS run at a very low cap
+    (`EXTRACTOR_MAX_RSS_MB=60`) previously exited 1 with EMPTY stdout because
+    the failure landed in code that ran before `main()`'s own try/except
+    existed — a raw traceback with no JSON at all, which the node caller
+    cannot distinguish from a crash.
+    """
+    if not memory_guard.is_memory_exhaustion(exc):
+        raise exc
+    try:
+        print(memory_guard.memory_ceiling_error_json(memory_guard.max_rss_mb()))
+    except Exception:
+        # Even `json`/`memory_guard` itself failing to run is still the
+        # ceiling — stdout must never come back empty.
+        print('{"error": "memory ceiling exceeded"}')
+    sys.exit(memory_guard.EXIT_MEMORY_CEILING)
+
+
+# W-137 round 3: install the ceiling BEFORE the heavy import, and guard the
+# import itself — under a very low cap, pdfplumber's C-extension init (via
+# extract_financials_pdf) can trip the ceiling before `main()` ever runs.
+try:
+    memory_guard.install_memory_ceiling()
+    # Reuse, do not copy (T-430 DoD): the column/number helpers already proven on RHPs.
+    from extract_financials_pdf import (
+        money_values,
+        _normalize_numbers,
+        extract_from_texts as extract_pnl_from_texts,
+        check_pat_not_above_revenue,
+        check_ebitda_at_least_pat,
+        check_yoy_ratio_within_bounds,
+        check_cross_document_agreement,
+    )
+except BaseException as _import_exc:  # noqa: BLE001
+    _emit_memory_ceiling_and_exit(_import_exc)
 
 DOC_TYPES = ("RHP", "PRICE_BAND_AD", "PROSPECTUS", "DRHP")
 
@@ -2201,26 +2233,30 @@ def extract(pdf_path, doc_type, segment="MAINBOARD", ocr=True,
 
 
 def main():
-    import memory_guard
-    memory_guard.install_memory_ceiling()
-
-    argv = sys.argv[1:]
-    doc_type = "RHP"
-    if "--doc-type" in argv:
-        doc_type = argv[argv.index("--doc-type") + 1].upper()
-    if doc_type not in DOC_TYPES:
-        print(json.dumps({"error": "unknown doc type %s" % doc_type}))
-        sys.exit(2)
-    segment = "SME" if "--sme" in argv else "MAINBOARD"
-    # W-129: --issue-size <rupees> backs the net-worth/magnitude plausibility
-    # checks (the IPO's known issue size); absent it, those checks report
-    # passed=None (not evaluated) rather than a false pass or fail.
-    issue_size_arg = argv[argv.index("--issue-size") + 1] if "--issue-size" in argv else None
-    issue_size_rupees = float(issue_size_arg) if issue_size_arg is not None else None
-    positional = [a for a in argv if not a.startswith("--")
-                  and a != doc_type and a != issue_size_arg]
-
+    # W-137 round 3: the ceiling is already installed at module load (above,
+    # around the heavy import) — not repeated here. The ENTIRE body below is
+    # inside one try/except (not just the `extract()`/`run()` call) because a
+    # VPS run at a very low cap (`EXTRACTOR_MAX_RSS_MB=60`) tripped the
+    # ceiling during ordinary argv handling, BEFORE the try block used to
+    # start — that escaped as a raw traceback with empty stdout instead of
+    # the JSON + exit 3 contract the node caller depends on.
     try:
+        argv = sys.argv[1:]
+        doc_type = "RHP"
+        if "--doc-type" in argv:
+            doc_type = argv[argv.index("--doc-type") + 1].upper()
+        if doc_type not in DOC_TYPES:
+            print(json.dumps({"error": "unknown doc type %s" % doc_type}))
+            sys.exit(2)
+        segment = "SME" if "--sme" in argv else "MAINBOARD"
+        # W-129: --issue-size <rupees> backs the net-worth/magnitude plausibility
+        # checks (the IPO's known issue size); absent it, those checks report
+        # passed=None (not evaluated) rather than a false pass or fail.
+        issue_size_arg = argv[argv.index("--issue-size") + 1] if "--issue-size" in argv else None
+        issue_size_rupees = float(issue_size_arg) if issue_size_arg is not None else None
+        positional = [a for a in argv if not a.startswith("--")
+                      and a != doc_type and a != issue_size_arg]
+
         if "--texts" in argv:
             with open(positional[0], "r", encoding="utf-8") as fh:
                 pages = json.load(fh)
@@ -2233,19 +2269,19 @@ def main():
             out = extract(positional[0], doc_type, segment, ocr="--no-ocr" not in argv,
                           ocr_dpi=ocr_dpi, ocr_backend=backend,
                           issue_size_rupees=issue_size_rupees)
-    except Exception as exc:
-        # W-137/MAJOR-2: the RLIMIT_AS ceiling tripped — report a clean,
-        # catchable failure instead of letting the kernel OOM-kill this
-        # process (and, on the VPS, the pm2 daemon supervising it) out from
-        # under us. Round 1 caught only `MemoryError`; C extensions
-        # (pdfplumber's deps, onnxruntime/opencv for the OCR route) instead
-        # raise `OSError` (errno ENOMEM/EAGAIN) or a message-shaped
-        # RuntimeError/RuntimeException — `is_memory_exhaustion` recognizes
-        # all of them. Anything else re-raises unchanged.
-        if not memory_guard.is_memory_exhaustion(exc):
-            raise
-        print(memory_guard.memory_ceiling_error_json(memory_guard.max_rss_mb()))
-        sys.exit(memory_guard.EXIT_MEMORY_CEILING)
+    except SystemExit:
+        raise
+    except BaseException as exc:  # noqa: BLE001
+        # W-137/MAJOR-2/round-3: the RLIMIT_AS ceiling tripped — report a
+        # clean, catchable failure instead of letting the kernel OOM-kill
+        # this process (and, on the VPS, the pm2 daemon supervising it) out
+        # from under us. `is_memory_exhaustion` recognizes `MemoryError`,
+        # `OSError` (errno ENOMEM/EAGAIN), message-shaped
+        # RuntimeError/RuntimeException, a bare `SystemError` (round 3), and
+        # (last resort) ANY exception while the process is already near the
+        # configured cap. Anything else re-raises unchanged.
+        _emit_memory_ceiling_and_exit(exc)
+        return
     print(json.dumps(out, indent=2, default=str))
 
 

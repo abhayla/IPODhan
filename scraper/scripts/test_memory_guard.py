@@ -87,6 +87,41 @@ def test_is_memory_exhaustion_false_for_ordinary_exceptions():
     assert memory_guard.is_memory_exhaustion(RuntimeError("unexpected token in JSON")) is False
 
 
+def test_is_memory_exhaustion_recognizes_systemerror_shape(monkeypatch):
+    """Round 3 — seen live on the VPS at EXTRACTOR_MAX_RSS_MB=60: CPython's
+    own 'a C allocation failed without raising MemoryError' symptom."""
+    monkeypatch.setattr(memory_guard, "is_near_memory_ceiling", lambda *a, **k: False)
+    assert memory_guard.is_memory_exhaustion(SystemError("error return without exception set")) is True
+    # Any SystemError counts, even with an unrelated/empty message — round 3
+    # asks for the type itself to be trusted, not just this one message.
+    assert memory_guard.is_memory_exhaustion(SystemError()) is True
+
+
+def test_is_memory_exhaustion_near_ceiling_catches_unrecognized_exception_types(monkeypatch):
+    """Round 3 last resort: an exception type/message we did not anticipate,
+    but the process is already at/above 85% of the configured cap."""
+    monkeypatch.setenv("EXTRACTOR_MAX_RSS_MB", "100")
+    monkeypatch.setattr(memory_guard, "_current_vm_peak_mb", lambda: 90.0)  # 90% of 100
+    assert memory_guard.is_memory_exhaustion(IndexError("list index out of range")) is True
+
+
+def test_is_memory_exhaustion_below_near_ceiling_threshold_is_not_exhaustion(monkeypatch):
+    monkeypatch.setenv("EXTRACTOR_MAX_RSS_MB", "100")
+    monkeypatch.setattr(memory_guard, "_current_vm_peak_mb", lambda: 50.0)  # 50% of 100
+    assert memory_guard.is_memory_exhaustion(IndexError("list index out of range")) is False
+
+
+def test_is_near_memory_ceiling_false_when_vm_peak_unmeasurable(monkeypatch):
+    monkeypatch.setattr(memory_guard, "_current_vm_peak_mb", lambda: None)
+    assert memory_guard.is_near_memory_ceiling(limit_mb=100) is False
+
+
+def test_is_near_memory_ceiling_respects_custom_threshold(monkeypatch):
+    monkeypatch.setattr(memory_guard, "_current_vm_peak_mb", lambda: 70.0)
+    assert memory_guard.is_near_memory_ceiling(limit_mb=100, threshold=0.85) is False
+    assert memory_guard.is_near_memory_ceiling(limit_mb=100, threshold=0.6) is True
+
+
 def test_extract_filing_exits_3_on_memory_ceiling():
     """Linux-only: set an impossibly low ceiling so importing pdfplumber's
     dependency stack itself trips RLIMIT_AS, and assert the script reports a
